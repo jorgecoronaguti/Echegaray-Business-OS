@@ -52,7 +52,7 @@ test('NO SE LE MUESTRA UN SOLO NÚMERO DE LA PLATA DE LA OBRA', async ({ page })
   }
 })
 
-test('la barra de tres contextos lleva a los tres, y marca dónde estás', async ({ page }) => {
+test('la barra de cuatro contextos lleva a los cuatro, y marca dónde estás', async ({ page }) => {
   await entrar(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('barra-contextos')).toBeVisible()
@@ -61,15 +61,33 @@ test('la barra de tres contextos lleva a los tres, y marca dónde estás', async
   await page.waitForURL(/\/mi-trabajo/)
   await expect(page.getByTestId('nav-mi-trabajo')).toHaveAttribute('aria-current', 'page')
 
+  // «Horas» es su propia pestaña desde M06 (24/08), y se prueba ANTES que «Yo»: las dos rutas
+  // comparten prefijo, y si la barra las resolviera al revés estar en Mis horas encendería «Yo».
+  await page.getByTestId('nav-mis-horas').click()
+  await page.waitForURL(/\/mi-informacion\/horas/)
+  await expect(page.getByTestId('nav-mis-horas')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('nav-mi-informacion')).not.toHaveAttribute('aria-current', 'page')
+
   await page.getByTestId('nav-mi-informacion').click()
-  await page.waitForURL(/\/mi-informacion/)
+  await page.waitForURL(/\/mi-informacion$/)
   await expect(page.getByTestId('nav-mi-informacion')).toHaveAttribute('aria-current', 'page')
 
-  // Una SUBpantalla mantiene encendido su contexto: si se apagara, la barra dejaría de decir dónde
-  // estás justo cuando más lejos estás de la raíz.
+  // CAMBIO DE REGLA DECLARADO (Design 23/08) · Employee shell: la barra de contextos «se usa sólo en
+  // las pantallas raíz; las de detalle llevan back en el topbar». Antes la barra seguía abajo en la
+  // subpantalla y lo que se probaba era que su tab quedara encendido. Ahora la subpantalla no la
+  // dibuja: lo que hay que probar es que NO deja a nadie encerrado — arriba está la flecha, con el
+  // destino en su `aria-label`, y el objetivo mide 48px.
   await page.getByTestId('ir-legajo').click()
   await page.waitForURL(/\/mi-informacion\/legajo/)
-  await expect(page.getByTestId('nav-mi-informacion')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('barra-contextos')).toHaveCount(0)
+  await expect(page.getByTestId('topbar-detalle')).toBeVisible()
+  const volver = page.getByTestId('volver')
+  await expect(volver).toHaveAttribute('aria-label', 'Volver a Mi información')
+  expect((await volver.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+
+  await volver.click()
+  await page.waitForURL(/\/mi-informacion$/)
+  await expect(page.getByTestId('barra-contextos')).toBeVisible()
 })
 
 test('el teléfono no se corre de costado en ninguna pantalla del perfil', async ({ page }) => {
@@ -211,7 +229,7 @@ test('el escritorio es la misma experiencia, no otra', async ({ page }) => {
   await entrar(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/hoy')
-  // Los tres contextos suben al header y la barra de abajo desaparece.
+  // Los cuatro contextos suben al header y la barra de abajo desaparece.
   await expect(page.getByTestId('nav-hoy-desktop')).toBeVisible()
   await expect(page.getByTestId('barra-contextos')).toBeHidden()
   // Y aparece la columna derecha del handoff: pendientes, mi mes y los papeles de la obra.

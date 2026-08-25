@@ -26,7 +26,9 @@ export const MAPA = [
   ['04 · Tarea Panel lateral',             '(main)/obras/[obra]'],
   ['05 · Registrar avance',                '(main)/obras/[obra]'],
   ['06 · Avance masivo',                   '(main)/obras/[obra]'],
-  ['07 · Obra Cronograma',                 '(main)/obras/[obra]/cronograma'],
+  // La 07 vive DENTRO del workspace (`?vista=cronograma`) desde el 24/08/2026: la ruta propia
+  // dibujaba las barras desde una secuencia que no existe y hoy sólo redirige. Ver el `page.tsx`.
+  ['07 · Obra Cronograma',                 '(main)/obras/[obra]'],
   ['08 · Obra Dotación y Proyección',      '(main)/obras/[obra]/dotacion'],
   ['09 · Obra Personal',                   '(main)/obras/[obra]'],
   ['10 · Obra Subcontratistas',            '(main)/obras/[obra]'],

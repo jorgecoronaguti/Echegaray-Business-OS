@@ -1,38 +1,39 @@
 'use client'
 
 import { useActionState } from 'react'
+import { Boton, CAMPO, Campo } from '@/shared/components/ds'
 import { signupAction, type ActionState } from '../services/actions'
 
 const initialState: ActionState = { error: null }
+
+// El alta pública no la dibuja el Design canónico —acá no hay usuarios externos—, pero la ruta
+// EXISTE y `supabase/config.toml` declara `enable_signup = true`. Mientras esté viva se ve como el
+// resto del OS: esconderla la dejaría abierta y sin cartel. Apagarla es una decisión de acceso, no
+// de diseño, y se toma en la configuración de auth del proyecto.
 
 export function SignupForm() {
   const [state, formAction, pending] = useActionState(signupAction, initialState)
 
   return (
-    <form action={formAction} className="flex flex-col gap-3" data-testid="signup-form">
-      <label className="flex flex-col text-sm">
-        Nombre
-        <input name="nombre" required className="rounded border px-3 py-2" />
-      </label>
-      <label className="flex flex-col text-sm">
-        Email
-        <input name="email" type="email" required autoComplete="email" className="rounded border px-3 py-2" />
-      </label>
-      <label className="flex flex-col text-sm">
-        Contraseña
-        <input name="password" type="password" required autoComplete="new-password" className="rounded border px-3 py-2" />
-      </label>
+    <form action={formAction} className="flex flex-col gap-4" data-testid="signup-form">
+      <Campo rotulo="Nombre">
+        <input name="nombre" required className={CAMPO} />
+      </Campo>
+      <Campo rotulo="Email">
+        <input name="email" type="email" required autoComplete="email" className={CAMPO} />
+      </Campo>
+      <Campo
+        rotulo="Contraseña"
+        ayuda="La cuenta se crea SIN rol. Hasta que Dirección te asigne uno no podés cargar ni editar nada."
+      >
+        <input name="password" type="password" required autoComplete="new-password" className={CAMPO} />
+      </Campo>
 
-      <p className="text-xs text-gray-500">
-        La cuenta se crea sin rol asignado -- Dirección tiene que asignarte un rol (Dirección, Administración o Jefe
-        de Obra) antes de que puedas cargar o editar información.
-      </p>
+      {state.error && <p className="text-[13px] text-neg" data-testid="signup-error">{state.error}</p>}
 
-      {state.error && <p className="text-sm text-red-600" data-testid="signup-error">{state.error}</p>}
-
-      <button type="submit" disabled={pending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
-        {pending ? 'Creando cuenta...' : 'Crear cuenta'}
-      </button>
+      <Boton type="submit" variante="primaria" tamano="acceso" disabled={pending}>
+        {pending ? 'Creando la cuenta…' : 'Crear cuenta'}
+      </Boton>
     </form>
   )
 }

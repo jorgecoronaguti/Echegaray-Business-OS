@@ -1,354 +1,214 @@
 import Link from 'next/link'
-import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import type { Actividad, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion } from '@/features/obras/types'
+import { Vacio } from '@/shared/components/ds'
+import type {
+  Actividad, EconomiaObra, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion,
+} from '@/features/obras/types'
 import { PlanVsRealResumen } from './PlanVsRealResumen'
 import { ChecklistPreparacion } from './ChecklistPreparacion'
+import { CurvaAvance } from './CurvaAvance'
+import { Ficha, UltimoMovimiento } from './FichaObra'
+import { Tarjeta, CabeceraTarjeta } from './TarjetaResumen'
+import { Titular } from './TitularObra'
+import { AtencionObra, type ItemAtencion } from './AtencionObra'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
-import { fecha, plataCorta } from './formato'
+import { lineasPlanVsReal } from '../services/planVsReal'
+import type { PersonasDeHoy } from '../services/personalService'
+import { fecha } from './formato'
 
-// EL RESUMEN DE LA OBRA — contesta UNA pregunta: ¿cómo está, y qué necesita atención?
+// EL RESUMEN DE LA OBRA — tres preguntas, en este orden y sin párrafos entre medio:
 //
-// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1b) ═══
+//   ¿CÓMO VAMOS?            → la fila de métricas: avance, plazo, costo, personas.
+//   ¿QUÉ NECESITA ATENCIÓN? → «Atención», y SÓLO lo que está mal.
+//   ¿VAMOS AL RITMO?        → «Avance real vs esperado»: el avance medido contra el calendario.
+//   ¿QUÉ HAY QUE HACER?     → «Próximas 2 semanas».
 //
-//   Plan vs real en UNA fila de métricas con barra fina · Impedimentos abiertos · Próximas 2
-//   semanas · aside con la ficha de la obra, el último movimiento, editar y archivar.
+// Y en la columna de contexto, qué obra es (la ficha), qué le falta para producir (preparación) y
+// si se está reportando (último movimiento).
 //
-// Antes eran siete recuadros para seis números: cuando cada dato trae su propio borde, ninguno pesa
-// más que otro y la pantalla deja de tener un mensaje. Ahora no hay ni un recuadro: la jerarquía la
-// hacen el tamaño, el espacio y los hairlines.
+// ═══ POR EXCEPCIÓN: LO NORMAL ES SILENCIOSO ═══
 //
-// El CICLO DE VIDA (Previo › Inicio › … › Cierre) no se dibuja acá: vive en el encabezado de la
-// entidad, que es de la página. Sin etapa declarada no se resalta ninguna.
+// Antes el Resumen publicaba las seis lecturas del plan a la vista, con su punto verde cuando no
+// pasaba nada. Seis renglones que casi siempre dicen «bien» entrenan a saltear el bloque entero, y
+// el día que uno se pone rojo se saltea igual. Ahora arriba sólo aparece lo que está mal; las
+// lecturas completas —incluidas las que están bien y las que no se pueden medir— quedan plegadas al
+// final, sin perderse.
 //
-// ═══ SE FUE «REQUIERE ATENCIÓN», Y NO SE PERDIÓ NADA ═══
+// ═══ UNA SOLA REGLA PARA «ESTÁ MAL» ═══
 //
-// Era una lista de alertas —atrasos, desvío de HH, desvío de costo— dibujada ARRIBA de «Lecturas
-// del plan», que publica esas mismas tres cosas con los mismos umbrales, los mismos destinos y
-// además el origen del número. La captura del 20/08 lo muestra literal: «39 actividades con fin
-// previsto vencido y sin completar» arriba, y «39 actividad(es) pasaron su fecha de fin sin llegar
-// al 100%» cuatro renglones más abajo. Dos listas de lo que está mal en la misma pantalla se
-// contradicen el día que a una se le agrega un criterio y a la otra no. Queda la que tiene origen
-// y prueba: `lineasPlanVsReal`.
+// «Atención» NO tiene umbrales propios: lee `lineasPlanVsReal`, la misma función que publica las
+// lecturas del plan, y se queda con los tonos de alerta. Dos listas de lo que está mal con criterios
+// distintos es exactamente cómo se llega a que la misma pantalla se contradiga: acá hay una sola
+// regla y dos niveles de detalle.
+//
+// ═══ LOS IMPEDIMENTOS SE CUENTAN ACÁ, SE RESUELVEN EN OPERACIÓN ═══
+//
+// La tabla de impedimentos del Resumen se fue: era una segunda copia de lectura de la tabla que vive
+// en Operación —la única puerta de escritura— y ocupaba media pantalla para decir, casi siempre,
+// «no hay». Queda lo que decide algo: los vencidos, con nombre, y el conteo del resto.
 //
 // ═══ EL VACÍO SE DECLARA, NO SE RELLENA ═══
 //
-// Una obra sin presupuesto cargado no tiene un desvío de costo del 0%: no tiene desvío. La
-// diferencia entre «no hay problema» y «no sé si hay problema» es exactamente lo que este módulo
-// existe para no perder.
+// Una obra sin presupuesto cargado no tiene un desvío de costo del 0%: no tiene desvío. Y una
+// métrica sin dato dice «sin dato» con el motivo al lado, nunca un cero.
 
-const TONO_VALOR = { ink: 'text-ink', neg: 'text-neg', warn: 'text-warn', pos: 'text-pos' } as const
-
-/**
- * UNA MÉTRICA DE «PLAN VS REAL»: rótulo · valor · contraste · barra fina · cobertura.
- *
- * La barra es de 4px y su PISTA se dibuja siempre; el relleno, sólo cuando existe una fracción
- * real. Una pista vacía se lee como «no hay con qué llenarla», que es la verdad; un relleno en 0%
- * afirmaría que el avance es cero.
- *
- * No está en el design system porque el handoff la describe sólo acá: `Franja` es el pie de 56px de
- * los workspaces, y una fila de métricas de encabezado no es lo mismo.
- */
-function Metrica({ k, v, falta, contra, tonoContra = 'muted', pista, sub, tono = 'ink' }: {
-  k: string
-  /** El número. `null` = no existe, y entonces manda `falta`. */
-  v: string | null
-  /** Cómo se llama la ausencia. Va en `faint` y en la letra del sistema, NO en el mono de 24px: un
-   *  «sin imputar» del tamaño de una cifra se lee como si fuera la cifra. */
-  falta?: string
-  contra?: string
-  tonoContra?: 'muted' | 'neg' | 'pos'
-  /** 0–100. `null` = no hay fracción que dibujar. */
-  pista: number | null
-  sub: string
-  tono?: keyof typeof TONO_VALOR
-}) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5" data-metrica={k}>
-      <span className="text-[12px] text-muted">{k}</span>
-      <div className="flex items-baseline gap-2">
-        {v == null ? (
-          <span className="text-[15px] leading-none text-faint" data-nulo="">{falta ?? 'sin cargar'}</span>
-        ) : (
-          <span className={`font-mono text-[22px] font-semibold leading-none tracking-[-0.01em] tabular-nums ${TONO_VALOR[tono]}`}>{v}</span>
-        )}
-        {v != null && contra && (
-          <span className={`truncate text-[12px] ${tonoContra === 'neg' ? 'text-neg' : tonoContra === 'pos' ? 'text-pos' : 'text-muted'}`}>
-            {contra}
-          </span>
-        )}
-      </div>
-      <span className="block h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
-        {pista != null && <span className="block h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, pista))}%` }} />}
-      </span>
-      <span className="text-[11.5px] leading-snug text-faint">{sub}</span>
-    </div>
-  )
-}
-
-/** Cuánto del calendario del plan ya pasó. Es aritmética de fechas, no una estimación de avance. */
-function calendarioTranscurrido(inicio: string | null, fin: string | null, hoy: string): number | null {
-  if (!inicio || !fin || fin <= inicio) return null
-  const dia = 86_400_000
-  const t = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00Z`)
-  return Math.round(((t(hoy) - t(inicio)) / dia) / ((t(fin) - t(inicio)) / dia) * 100)
-}
-
-function fraccion(real: number | null | undefined, plan: number | null | undefined): number | null {
-  if (real == null || plan == null || plan <= 0) return null
-  return Math.round((real / plan) * 100)
-}
-
-/** La fila de cuatro métricas. Es el titular de la obra y no cambia de forma con los datos. */
-function PlanContraReal({ obra, plan, hoy }: { obra: ObraPanel; plan: PlanVsReal | null; hoy: string }) {
-  const dias = plan?.desvio_plazo_dias ?? null
-  const hhPlan = plan?.hh_plan ?? plan?.hh_estimada ?? null
-  const hhReal = plan?.hh_real ?? null
-  const n = (x: number) => Math.round(x).toLocaleString('es-AR')
-
-  return (
-    <section data-testid="titular-obra">
-      <Eyebrow className="mb-3.5">Plan vs real</Eyebrow>
-      <div className="flex flex-wrap gap-x-8 gap-y-5 sm:flex-nowrap">
-        <Metrica
-          k="Avance físico"
-          v={obra.avance_pct == null ? null : `${obra.avance_pct}%`}
-          falta="sin medir"
-          pista={obra.avance_pct}
-          sub={obra.avance_pct == null
-            ? `${obra.n_actividades} actividades, ninguna con fecha`
-            : `promedio de ${obra.n_actividades_medidas} de ${obra.n_actividades} actividades`}
-        />
-        <Metrica
-          k="Plazo"
-          v={dias == null ? null : dias === 0 ? 'en fecha' : `${dias > 0 ? '+' : ''}${dias} d`}
-          falta="sin medir"
-          contra={dias == null ? undefined : dias > 0 ? 'sobre plan' : dias < 0 ? 'antes del plan' : undefined}
-          tonoContra={dias != null && dias > 0 ? 'neg' : 'muted'}
-          tono={dias != null && dias > 0 ? 'neg' : 'ink'}
-          pista={calendarioTranscurrido(plan?.inicio_plan ?? null, plan?.fin_plan ?? null, hoy)}
-          sub={dias == null
-            ? (plan?.actividades_con_baseline ? 'sin fin previsto' : 'línea base sin sellar')
-            : `fin previsto ${fecha(plan?.fin_plan)} · línea base sellada`}
-        />
-        <Metrica
-          k="HH"
-          v={hhReal == null ? null : n(hhReal)}
-          falta="sin imputar"
-          contra={hhPlan == null ? undefined : `de ${n(hhPlan)}`}
-          pista={fraccion(hhReal, hhPlan)}
-          tono={plan?.desvio_hh_pct != null && plan.desvio_hh_pct > 10 ? 'warn' : 'ink'}
-          sub={hhPlan == null
-            ? 'HH plan sin cargar'
-            : hhReal == null ? 'HH real sin imputar' : `desvío ${n(hhReal - hhPlan)} HH a la fecha`}
-        />
-        <Metrica
-          k="Costo real"
-          // `obra_panel.costo_real` llega en 0 —no en null— cuando la obra no tiene ni un
-          // comprobante imputado, y «$0» AFIRMA que la obra no costó nada. La cobertura la dice
-          // `n_comprobantes`: sin comprobantes no hay costo medido, hay costo sin medir.
-          v={(obra.n_comprobantes ?? 0) === 0 || obra.costo_real == null ? null : plataCorta(obra.costo_real)}
-          falta="sin imputar"
-          contra={plan?.costo_presupuestado == null ? undefined : `de ${plataCorta(plan.costo_presupuestado)}`}
-          pista={fraccion(obra.costo_real, plan?.costo_presupuestado)}
-          tono={plan?.desvio_costo_pct != null && plan.desvio_costo_pct > 5 ? 'neg' : 'ink'}
-          sub={(obra.n_comprobantes ?? 0) === 0
-            ? 'ningún comprobante imputado a esta obra'
-            : plan?.costo_presupuestado == null
-              ? `${obra.n_comprobantes} comprobantes · sin presupuesto contra qué medir`
-              : `${obra.n_comprobantes} comprobantes imputados`}
-        />
-      </div>
-    </section>
-  )
-}
-
-/** El encabezado de una sección del Resumen: rótulo, señal de riesgo, y su acción a la derecha. */
-function Rotulo({ children, senal, accion }: { children: string; senal?: string; accion?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-      <Eyebrow>{children}</Eyebrow>
-      {senal && <span className="text-[11.5px] text-neg">{senal}</span>}
-      {accion && <span className="ml-auto">{accion}</span>}
-    </div>
-  )
+/** LO QUE FRENA LA OBRA. Los vencidos con nombre —son los que hay que ir a destrabar hoy—; el resto,
+ *  contado. La descripción entera y el formulario viven en Operación, la única puerta de escritura. */
+function itemsDeImpedimentos(abiertas: Restriccion[], obraId: string, hoy: string): ItemAtencion[] {
+  const href = `/obras/${obraId}?vista=operacion&sub=impedimentos`
+  const vencidos = abiertas
+    .filter((r) => r.fecha_compromiso != null && r.fecha_compromiso < hoy)
+    .sort((a, b) => (a.fecha_compromiso ?? '').localeCompare(b.fecha_compromiso ?? ''))
+  // El QUÉ va en tinta y el DÓNDE en faint. Antes iban pegados en una sola oración roja: la
+  // descripción del impedimento y su fecha vencida competían con el mismo peso, y lo que decide
+  // cuál se destraba primero —el nombre de lo que falta— quedaba enterrado entre comas.
+  const items: ItemAtencion[] = vencidos.slice(0, 3).map((r) => ({
+    clave: `impedimento-${r.id}`,
+    tono: 'neg',
+    clase: 'bloqueo',
+    titulo: r.descripcion,
+    contexto: `vencía el ${fecha(r.fecha_compromiso)} · ${r.responsable ?? 'sin responsable'}`,
+    accion: 'Resolver',
+    href,
+    origen: 'impedimento abierto con la fecha de compromiso ya pasada',
+  }))
+  const resto = abiertas.length - Math.min(vencidos.length, 3)
+  if (resto > 0) {
+    items.push({
+      clave: 'impedimentos-resto',
+      tono: 'warn',
+      clase: 'bloqueo',
+      titulo: `${resto} impedimento(s) abierto(s) más`,
+      accion: 'Ver',
+      href,
+      origen: 'impedimentos sin liberar de esta obra',
+    })
+  }
+  return items
 }
 
 /**
- * IMPEDIMENTOS ABIERTOS — lo que frena la obra, corto y con el vencimiento en rojo.
+ * LAS LECTURAS DEL PLAN QUE PIDEN TRABAJO. Mismos umbrales y mismos destinos que el bloque plegado:
+ * es la misma función, leída por tono. Y ahora entra también el tono `falta`.
  *
- * Es una tabla de LECTURA: anotar y liberar viven en Operación, que es la única puerta de escritura
- * del impedimento. Dos altas del mismo dato en dos pantallas se contestan distinto el día que a una
- * se le agregue un campo.
+ * ¿POR QUÉ ENTRA `falta`? Porque el canónico 02 pone «Faltan datos» como un corte de Atención, y
+ * tiene razón de negocio: «la línea base no está sellada» no es una lectura tranquila que se guarda
+ * en un plegable, es trabajo pendiente de alguien —sólo que de otra persona y con otra urgencia que
+ * un bloqueo de obra—. Por eso llega clasificado, no mezclado. Las lecturas en `ok` siguen fuera:
+ * ésas sí no piden nada.
  */
-function Impedimentos({ abiertas, obraId, actividadDe, hoy }: {
-  abiertas: Restriccion[]; obraId: string; actividadDe: Map<string, string>; hoy: string
-}) {
-  const vencidos = abiertas.filter((r) => r.fecha_compromiso != null && r.fecha_compromiso < hoy).length
-  const orden = [...abiertas].sort((a, b) =>
-    (a.fecha_compromiso ?? '9999').localeCompare(b.fecha_compromiso ?? '9999'))
-  const aOperacion = (
-    <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`} className="text-[12px] text-muted hover:text-ink">
-      Anotar impedimento
-    </Link>
-  )
-  return (
-    <section data-testid="impedimentos-resumen">
-      <Rotulo senal={vencidos > 0 ? `${vencidos} con la fecha vencida` : undefined} accion={aOperacion}>
-        Impedimentos abiertos
-      </Rotulo>
-      {orden.length === 0 ? (
-        <Vacio>
-          Nada declarado como impedimento. En una obra en ejecución eso rara vez significa que no
-          haya: significa que nadie los anotó.
-        </Vacio>
-      ) : (
-        <Tabla testid="tabla-impedimentos-resumen" minWidth={620}>
-          <THead>
-            <Th>Qué frena</Th><Th>Actividad</Th><Th>Responsable</Th><Th num>Compromiso</Th>
-          </THead>
-          <tbody>
-            {orden.slice(0, 6).map((r) => {
-              const vencido = r.fecha_compromiso != null && r.fecha_compromiso < hoy
-              return (
-                <Tr key={r.id} compacta>
-                  <Td fuerte>
-                    <Estado tono={vencido ? 'neg' : 'pendiente'} clave={vencido ? 'vencido' : 'abierto'}>
-                      {r.descripcion}
-                    </Estado>
-                  </Td>
-                  <Td>{r.actividad_id
-                    ? (actividadDe.get(r.actividad_id) ?? <Nulo>actividad archivada</Nulo>)
-                    : <Nulo>ninguna en particular</Nulo>}</Td>
-                  <Td>{r.responsable ?? <span className="text-[12.5px] text-warn">sin responsable</span>}</Td>
-                  <Td num className={vencido ? 'font-medium text-neg' : ''}>
-                    {r.fecha_compromiso ? fecha(r.fecha_compromiso) : <Nulo>sin fecha</Nulo>}
-                  </Td>
-                </Tr>
-              )
-            })}
-          </tbody>
-        </Tabla>
-      )}
-      {orden.length > 6 && (
-        <p className="mt-2 text-[11.5px] text-faint">Se muestran 6 de {orden.length}. El resto, en Operación.</p>
-      )}
-    </section>
-  )
+function itemsDelPlan(
+  plan: PlanVsReal | null, economia: EconomiaObra | null, veComercial: boolean, obraId: string,
+): ItemAtencion[] {
+  if (!plan) return []
+  return lineasPlanVsReal(plan, veComercial, economia)
+    .filter((l) => l.tono !== 'ok')
+    .map((l) => ({
+      clave: l.clave,
+      tono: l.tono === 'alerta' ? ('neg' as const) : ('warn' as const),
+      clase: l.tono === 'falta' ? ('dato' as const) : ('bloqueo' as const),
+      titulo: l.titulo,
+      // El verbo declara qué tipo de trabajo espera del otro lado: un dato que falta se CARGA,
+      // un desvío medido se VA A VER — nadie «resuelve» un número mirándolo.
+      accion: l.tono === 'falta' ? 'Cargar' : 'Ver',
+      href: `/obras/${obraId}?vista=${l.vista}`,
+      origen: l.origen,
+    }))
 }
 
-/** PRÓXIMAS 2 SEMANAS — el trabajo que arranca o que hay que cerrar en la quincena. */
+/**
+ * PRÓXIMAS 2 SEMANAS — el trabajo que arranca o que hay que cerrar en la quincena.
+ *
+ * Era una tabla de tres columnas (FECHAS · ACTIVIDAD · RUBRO). El canónico 02 la vuelve una lista
+ * de renglones —nombre a la izquierda, fecha a la derecha— y el cambio no es estético: la tabla
+ * daba a la fecha una columna de ancho fijo a la izquierda, y la fecha es lo que decide el ORDEN de
+ * lectura, no la identidad de la fila. El rubro se fue porque no cambia ninguna decisión de esta
+ * pantalla; sigue entero en el cronograma.
+ *
+ * LA FECHA SE PINTA POR URGENCIA: lo que vence hoy o ya venció en `neg`, lo de esta semana en
+ * `warn`, el resto en faint. Es el único color de la lista.
+ */
 function Proximas({ actividades, obraId, hoy }: {
   actividades: Actividad[]; obraId: string; hoy: string
 }) {
   const proximas = proximasDeLaObra(actividades, hoy)
-  const rango = (p: { inicio_plan: string | null; fin_plan: string | null }) =>
-    p.inicio_plan && p.fin_plan && p.inicio_plan !== p.fin_plan
-      ? `${fecha(p.inicio_plan)}–${fecha(p.fin_plan)}`
-      : fecha(p.inicio_plan ?? p.fin_plan)
+  const dia = 86_400_000
+  const enDias = (f: string | null) =>
+    f == null ? null : Math.round((Date.parse(`${f.slice(0, 10)}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / dia)
   return (
-    <section data-testid="proximas-resumen">
-      <Rotulo accion={
-        <Link href={`/obras/${obraId}?vista=cronograma&sub=proximos`} className="text-[12px] text-muted hover:text-ink">
-          Ver cronograma →
-        </Link>
-      }>Próximas 2 semanas</Rotulo>
+    <Tarjeta testid="proximas-resumen" className="min-w-0 flex-1">
+      <CabeceraTarjeta
+        icono={
+          <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
+          </svg>
+        }
+        titulo="Próximas 2 semanas"
+        cifra={proximas.length > 0 ? `${proximas.length} actividades` : undefined}
+        accion={
+          <Link
+            href={`/obras/${obraId}?vista=tareas&sub=gantt`} prefetch={false}
+            className="flex items-center gap-1.5 text-[11.5px] text-ink-soft hover:text-ink"
+          >
+            Cronograma
+            <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </Link>
+        }
+      />
       {proximas.length === 0 ? (
-        <Vacio>Nada arranca ni vence en las próximas dos semanas según el cronograma cargado.</Vacio>
+        <div className="px-4 py-5"><Vacio>Nada arranca ni vence en dos semanas.</Vacio></div>
       ) : (
-        <Tabla testid="tabla-proximas" minWidth={560}>
-          <THead><Th>Fechas</Th><Th>Actividad</Th><Th>Rubro</Th><Th num /></THead>
-          <tbody>
-            {proximas.slice(0, 8).map((p) => (
-              <Tr key={p.id} compacta>
-                <Td num className="whitespace-nowrap text-muted">{rango(p)}</Td>
-                <Td fuerte>{p.nombre}</Td>
-                <Td>{p.rubro ?? <Nulo>sin rubro</Nulo>}</Td>
-                <Td num>{p.hito
-                  ? <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">hito</span>
-                  : ''}</Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Tabla>
+        <ul data-testid="tabla-proximas">
+          {proximas.slice(0, 6).map((p) => {
+            const ref = p.fin_plan ?? p.inicio_plan
+            const d = enDias(ref)
+            const tono = d == null ? 'text-faint' : d <= 0 ? 'text-neg' : d <= 7 ? 'text-warn' : 'text-faint'
+            return (
+              <li key={p.id} className="border-b border-surface-sunken last:border-b-0">
+                <Link
+                  href={`/obras/${obraId}?vista=tareas&sub=gantt`} prefetch={false}
+                  className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-surface-quiet"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+                    {p.nombre}
+                    {p.hito && (
+                      <span className="ml-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">hito</span>
+                    )}
+                  </span>
+                  <span className={`shrink-0 whitespace-nowrap font-mono text-[11.5px] tabular-nums ${tono}`}>
+                    {d != null && d <= 0 ? 'vence hoy' : fecha(ref)}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
       )}
-    </section>
+    </Tarjeta>
   )
 }
 
-/** La ficha del aside: rótulo a la izquierda, valor a la derecha, sin recuadro. */
-function Ficha({ obra, plan }: { obra: ObraPanel; plan: PlanVsReal | null }) {
-  const filas: { k: string; v: React.ReactNode }[] = [
-    { k: 'Cliente', v: obra.cliente_nombre ?? obra.cliente_texto ?? <Nulo>sin cliente declarado</Nulo> },
-    { k: 'Responsable', v: obra.jefe_obra ?? <Nulo>sin jefe de obra</Nulo> },
-    { k: 'Actividades', v: obra.n_actividades > 0 ? <Num>{obra.n_actividades}</Num> : <Nulo>sin cronograma</Nulo> },
-    {
-      k: 'Línea base',
-      v: plan?.actividades_con_baseline
-        ? <Num>{plan.actividades_con_baseline} selladas</Num>
-        : <Nulo>sin sellar</Nulo>,
-    },
-    { k: 'Inicio real', v: obra.fecha_inicio_real ? <Num>{fecha(obra.fecha_inicio_real)}</Num> : <Nulo>sin arrancar</Nulo> },
-    { k: 'Carpeta Drive', v: obra.drive_carpeta_id ? 'vinculada' : <Nulo>sin vincular</Nulo> },
-  ]
-  return (
-    <div className="border-t border-[#EFEEEA] pt-3.5">
-      <Eyebrow className="mb-3">La obra</Eyebrow>
-      <dl className="flex flex-col gap-2.5">
-        {filas.map((f) => (
-          <div key={f.k} className="flex items-baseline justify-between gap-3">
-            <dt className="shrink-0 text-[12px] text-muted">{f.k}</dt>
-            <dd className="min-w-0 truncate text-right text-[12.5px] text-ink">{f.v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
-}
-
-/** El último parte cargado, en una oración. Es la señal de si la obra se está reportando. */
-function UltimoMovimiento({ partes, actividadDe, obraId }: {
-  partes: ParteEjecucion[]; actividadDe: Map<string, string>; obraId: string
-}) {
-  const p = partes[0] ?? null
-  return (
-    <div className="border-t border-[#EFEEEA] pt-3.5">
-      <Eyebrow className="mb-2.5">Último movimiento</Eyebrow>
-      {p == null ? (
-        <p className="text-[13px] leading-relaxed text-muted">
-          Todavía no se cargó ningún parte en esta obra.
-        </p>
-      ) : (
-        <p className="text-[13px] leading-relaxed text-ink">
-          Parte del <Num>{fecha(p.fecha)}</Num>
-          {': '}
-          {p.cantidad != null
-            ? `+${p.cantidad.toLocaleString('es-AR', { maximumFractionDigits: 2 })} `
-            : p.avance_pct != null ? `+${p.avance_pct}% ` : ''}
-          en {actividadDe.get(p.actividad_id) ?? 'una actividad archivada'}
-          {p.comentario ? `. ${p.comentario}` : '.'}
-        </p>
-      )}
-      <Link href={`/obras/${obraId}?vista=ejecucion`} className="mt-2.5 inline-block text-[12px] text-muted hover:text-ink">
-        Ir a Ejecución →
-      </Link>
-    </div>
-  )
-}
 
 export function TabResumen({
-  obra, plan, abiertas, obraId, editar, archivar, veComercial = true,
-  actividades, partes, hoy = new Date().toISOString().slice(0, 10),
+  obra, plan, economia = null, abiertas, obraId, editar, archivar, veComercial = true,
+  actividades, partes, personasDeHoy = null, hoy = new Date().toISOString().slice(0, 10),
 }: {
+  /** Asignadas vigentes y presentes hoy (§25). `null` = la página no lo pidió o no se pudo leer. */
+  personasDeHoy?: PersonasDeHoy | null
   obra: ObraPanel
   plan: PlanVsReal | null
+  /** El panel económico. SIN ÉL NO SE ARMA LÍNEA DE MARGEN: la línea vieja era `contratado − costo
+   *  real`, que no es margen. Ver `lineasPlanVsReal`. */
+  economia?: EconomiaObra | null
   abiertas: Restriccion[]
   obraId: string
   /** El bloque de edición, que la página arma con su action atada a esta obra. */
   editar: React.ReactNode
-  /** Archivar o reactivar. Va al aside y no arriba: es la acción menos frecuente de la ficha. */
+  /** Archivar o reactivar. Va al final y plegado: es la acción menos frecuente de la ficha. */
   archivar?: React.ReactNode
-  /** El nivel Obras no ve margen. Ver `PlanVsRealResumen`: no es ocultar un número, es no explicar
-   *  mal una ausencia — el dato ya viene NULL de la base. */
+  /** El nivel Obras no ve margen ni presupuesto. Ver `PlanVsRealResumen`: no es ocultar un número,
+   *  es no explicar mal una ausencia — el dato ya viene NULL de la base. */
   veComercial?: boolean
   /** El cronograma vivo. SIN ÉL NO SE DIBUJA «Próximas 2 semanas»: la ausencia de la prop significa
    *  que la página no la pidió, y eso no es lo mismo que una obra sin trabajo por delante. Una tabla
@@ -360,29 +220,59 @@ export function TabResumen({
   hoy?: string
 }) {
   const actividadDe = new Map((actividades ?? []).map((a) => [a.id, a.nombre]))
+  const atencion = [
+    ...itemsDeImpedimentos(abiertas, obraId, hoy),
+    ...itemsDelPlan(plan, economia, veComercial, obraId),
+  ]
 
   return (
-    <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
-      <div className="flex min-w-0 flex-1 flex-col gap-8">
-        <PlanContraReal obra={obra} plan={plan} hoy={hoy} />
+    // LAS DOS COLUMNAS DEL CANÓNICO 02 y su respiración de 12px. El gap era de 32/40px, que es
+    // aire de página sin marcos; con cada bloque enmarcado ese hueco separa tarjetas que ya se
+    // separan solas y empuja «Próximas 2 semanas» fuera de la primera pantalla.
+    <div className="flex flex-col gap-3 lg:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <Titular obra={obra} plan={plan} obraId={obraId} veComercial={veComercial} hoy={hoy} personasDeHoy={personasDeHoy} />
 
-        <Impedimentos abiertas={abiertas} obraId={obraId} actividadDe={actividadDe} hoy={hoy} />
+        <AtencionObra items={atencion} />
 
-        {actividades && <Proximas actividades={actividades} obraId={obraId} hoy={hoy} />}
+        {/* ¿CÓMO VIENE CONTRA EL CALENDARIO? y ¿QUÉ VIENE? van uno al lado del otro (Design 02): son
+            las dos mitades de la misma pregunta —cómo vamos y qué sigue— y apiladas empujaban la
+            segunda fuera de la primera pantalla. En angosto se apilan solas. */}
+        <div className="flex flex-col gap-3 xl:flex-row">
+          <CurvaAvance
+            inicio={plan?.inicio_plan ?? obra.fecha_inicio_plan}
+            fin={plan?.fin_plan ?? obra.fecha_fin_plan}
+            avancePct={obra.avance_pct}
+            hoy={hoy}
+          />
+          {actividades && <Proximas actividades={actividades} obraId={obraId} hoy={hoy} />}
+        </div>
 
-        {plan && <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} />}
+        {/* LAS LECTURAS COMPLETAS, PLEGADAS. Lo que está bien y lo que no se puede medir no se
+            perdió: dejó de competir por la primera pantalla con lo que hay que ir a resolver. */}
+        {plan && (
+          <details className="rounded-card border border-line bg-surface px-4 py-3" data-testid="lecturas-del-plan">
+            <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
+              Lecturas del plan, una por una
+            </summary>
+            <div className="mt-3.5">
+              <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} economia={economia} />
+            </div>
+          </details>
+        )}
 
-        {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA, plegado: explica los «sin medir» de arriba, no
-            compite con ellos. Y desaparece solo cuando no falta nada — un checklist entero en ✓
-            ocupa lugar sin decir nada. */}
-        <ChecklistPreparacion obraId={obraId} plegado ocultarSiCompleto />
       </div>
 
-      <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-[360px]">
+      <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[352px]">
         <Ficha obra={obra} plan={plan} />
+        {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA. Va en la columna de contexto y ABIERTO (Design
+            canónico 02): estaba plegado al final del cuerpo, donde explicaba los «sin medir» de las
+            métricas a dos pantallas de distancia y sólo si alguien lo abría. Sigue desapareciendo
+            solo cuando no falta nada — un checklist entero en ✓ ocupa lugar sin decir nada. */}
+        <ChecklistPreparacion obraId={obraId} ocultarSiCompleto enTarjeta />
         {partes && <UltimoMovimiento partes={partes} actividadDe={actividadDe} obraId={obraId} />}
-        <div className="border-t border-[#EFEEEA] pt-3.5">{editar}</div>
-        {archivar && <div className="border-t border-[#EFEEEA] pt-3.5">{archivar}</div>}
+        <div className="rounded-card border border-line bg-surface px-4 py-3">{editar}</div>
+        {archivar && <div className="rounded-card border border-line bg-surface px-4 py-3">{archivar}</div>}
       </aside>
     </div>
   )

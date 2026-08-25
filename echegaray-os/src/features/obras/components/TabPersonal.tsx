@@ -23,14 +23,18 @@
 // publica `obra_plan_vs_real`, que también anula el desvío cuando falta una. Acá no se vuelve a
 // sumar: se muestra lo que la vista publicó y, debajo, las filas que lo respaldan.
 
+import { Suspense } from 'react'
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  Aviso, CAMPO, Campo, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Aviso, CAMPO, Campo, Nulo, Plegable, SubTabs, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
+import { TablaEsqueleto } from '@/shared/components/carga'
+import { HoyEnObra } from './HoyEnObra'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
-import type { Actividad, Asignacion, Persona, PlanVsReal } from '../types'
+import type { Actividad, Asignacion, Persona } from '../types'
+import type { PlanDePersonal } from '../services/obrasService'
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
@@ -48,7 +52,7 @@ import { desvio } from './formato'
  * obra perfectamente cumplida.
  */
 function Titular({ plan, asignaciones, registros }: {
-  plan: PlanVsReal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
+  plan: PlanDePersonal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
 }) {
   const hhPlan = plan?.hh_plan ?? null
   const hhReal = plan?.hh_real ?? null
@@ -153,24 +157,107 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
  * panel debajo. Sin estado de cliente: lo resuelve `<details>`, y por eso la pantalla entera sigue
  * siendo un componente de servidor.
  */
-function Alta({ titulo, testid, children }: {
+function Alta({ titulo, testid, children, primaria = false }: {
   titulo: string; testid: string; children: React.ReactNode
+  /** La PRIMARIA de la pantalla (canónico 09): amarillo de marca, en la banda. Es la misma
+   *  mecánica —`<details>`, sin estado de cliente—, no un componente aparte: dos formas de abrir el
+   *  mismo panel se desincronizan en el primer cambio. */
+  primaria?: boolean
 }) {
   return (
-    <details className="w-full min-w-0 sm:w-auto" data-testid={testid}>
-      <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
+    <details className={primaria ? 'relative min-w-0' : 'w-full min-w-0 sm:w-auto'} data-testid={testid}>
+      <summary
+        className={primaria
+          ? 'flex cursor-pointer select-none items-center gap-1.5 rounded-[6px] bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] [&::-webkit-details-marker]:hidden'
+          : 'cursor-pointer select-none text-[12.5px] text-muted hover:text-ink'}
+      >
         {titulo}
       </summary>
-      <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">{children}</div>
+      {/* ABIERTA DESDE LA BANDA, EL PANEL BAJA SOBRE EL CONTENIDO y no empuja la lista: la banda
+          mide 34px de alto y un formulario de seis campos adentro la convertiría en un bloque.
+          `right-0` lo ancla al botón, que está al final de la banda. */}
+      <div className={primaria
+        ? 'absolute right-0 z-30 mt-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-4 shadow-pop'
+        : 'mt-3 border-t border-[#EFEEEA] pt-3.5'}
+      >
+        {children}
+      </div>
     </details>
   )
 }
 
+/**
+ * ASIGNAR UNA PERSONA A ESTA OBRA — el formulario, en un componente propio.
+ *
+ * Vivía escrito dentro del plegable. Se saca porque ahora lo usa la PRIMARIA de la banda, y dos
+ * copias del mismo formulario se separan en el primer campo que se agregue: una obra donde el rol
+ * se puede elegir desde un lado y no desde el otro.
+ */
+function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
+  personas: Persona[]
+  cuadrillas: { id: string; nombre: string; integrantes: number }[]
+  actividades: Actividad[]
+  asignar: AccionFormulario
+}) {
+  if (personas.length === 0) {
+    return <Aviso tono="warn">No hay ninguna persona activa en el legajo, así que no hay a quién asignar.</Aviso>
+  }
+  return (
+    <FormAccion accion={asignar} testid="form-asignar" enviar="Asignar" limpiarAlOk mensajeOk="Asignado.">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Campo rotulo="Persona" className="col-span-2">
+          <select name="persona_id" required className={CAMPO} defaultValue="">
+            <option value="" disabled>elegir del legajo</option>
+            {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+          </select>
+        </Campo>
+        <Campo rotulo="Rol">
+          <select name="rol" defaultValue="integrante" className={CAMPO}>
+            <option value="integrante">integrante</option>
+            <option value="responsable">responsable</option>
+          </select>
+        </Campo>
+        <Campo rotulo="Cuadrilla">
+          <select name="cuadrilla_id" defaultValue="" className={CAMPO}>
+            <option value="">sin cuadrilla</option>
+            {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </Campo>
+        <Campo rotulo="Desde"><input type="date" name="desde" className={CAMPO} /></Campo>
+        <Campo
+          rotulo="Actividad" className="col-span-2 sm:col-span-3"
+          ayuda="Opcional: en blanco queda asignado a la obra entera."
+        >
+          <select name="actividad_id" defaultValue="" className={CAMPO}>
+            <option value="">toda la obra</option>
+            {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+          </select>
+        </Campo>
+        <Campo rotulo="Notas" className="col-span-2 sm:col-span-4" ayuda="Por qué está en esta obra.">
+          <input name="notas" maxLength={300} className={CAMPO} />
+        </Campo>
+      </div>
+    </FormAccion>
+  )
+}
+
 export function TabPersonal({
-  plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
-  asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras,
+  obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
+  asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
 }: {
-  plan: PlanVsReal | null
+  /** LA OBRA, RECIBIDA Y NO DEDUCIDA. Hasta el 25/08 salía de `plan?.obra_id ?? asignaciones[0]
+   *  ?.obra_id ?? actividades[0]?.obra_id`, porque la solapa no estaba montada y agregarle un
+   *  parámetro obligaba a tocar un `page.tsx` que en esa tanda tenía otro dueño. La deducción falla
+   *  justo donde más duele: una obra recién abierta —sin línea base, sin nadie asignado y sin
+   *  actividades— daba `null`, y con `null` no se dibujaba la banda, así que no había buscador, no
+   *  había filtros y, sobre todo, no había «+ Asignar persona». La pantalla desde la que se asigna
+   *  a la primera persona era la única que no dejaba asignar a nadie. */
+  obraId: string
+  /** LAS CUATRO COLUMNAS QUE ESTA SOLAPA DIBUJA (`obra_id`, `hh_plan`, `hh_real`, `desvio_hh_pct`),
+   *  no la vista entera: pedir `obra_plan_vs_real` completa cuesta el doble de trabajo en la base y
+   *  era parte de por qué esta pantalla se caía por `statement timeout`. El tipo es un `Pick<>` a
+   *  propósito — leer acá una columna que no esté en `COLUMNAS_PLAN.personal` no compila. */
+  plan: PlanDePersonal | null
   asignaciones: Asignacion[]
   personas: Persona[]
   cuadrillas: { id: string; nombre: string; integrantes: number }[]
@@ -181,6 +268,7 @@ export function TabPersonal({
   cerrar: (asignacionId: string) => Promise<ResultadoAccion>
   quitar: (asignacionId: string) => Promise<ResultadoAccion>
   imputar: AccionFormulario
+  causas?: { clave: string; nombre: string }[]
   imputarMasivo: AccionFormulario
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
@@ -189,11 +277,55 @@ export function TabPersonal({
   const sinPersona = registros.filter((r) => !r.persona_id).length
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <Titular plan={plan} asignaciones={asignaciones} registros={registros} />
 
-      <section>
-        <Eyebrow className="mb-2.5">Quién trabaja en esta obra</Eyebrow>
+      {/* ═══ LA BANDA DEL CANÓNICO 09: NAVEGACIÓN, BUSCADOR, PASTILLAS Y LA PRIMARIA ═══
+          Las tres maneras de mirar a la gente de la obra van DENTRO de la banda, con el buscador y
+          los filtros: el canónico dibuja UNA sola. Sólo se dibujan las que TIENEN A DÓNDE IR —un
+          sub-tab que no navega es un botón muerto—. «Asistencia» sale de la obra: esa pantalla es
+          de Administración y todavía no acepta un filtro por obra; el día que lo acepte, este href
+          es lo único que cambia. */}
+      <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
+        {/* LOS REGISTROS VIAJAN, NO SE VUELVEN A LEER. La columna de horas del canónico y el KPI
+            de HH imputadas salen de los MISMOS registros que dibujan la tabla de abajo: una
+            segunda lectura podría llegar un segundo después y publicar dos totales distintos de
+            la misma jornada en la misma pantalla. */}
+        <HoyEnObra
+          obraId={obraId}
+          asignaciones={asignaciones}
+          registros={registros}
+          navegacion={
+            <SubTabs
+              testid="subtabs-personal"
+              items={[
+                { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
+                { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
+                { href: '/administracion/asistencia', label: 'Asistencia', testid: 'sub-asistencia' },
+              ]}
+            />
+          }
+          /* LA PRIMARIA DE LA PANTALLA, EN LA BANDA Y ABIERTA ACÁ MISMO (canónico 09). Estaba dos
+             niveles adentro —dentro del plegable «Quién trabaja en esta obra», dentro de un
+             `<details>`—: asignar a alguien a la obra es LO que se hace en esta solapa y había
+             que descubrirlo. No navega a ninguna parte: baja su panel debajo de la banda. */
+          accion={
+            <Alta titulo="+ Asignar persona" testid="alta-asignacion" primaria>
+              <FormAsignar
+                personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar}
+              />
+            </Alta>
+          }
+        />
+      </Suspense>
+
+      {/* ═══ EL CUERPO DE LA PANTALLA ES «HOY EN OBRA»; LO DEMÁS SE ABRE (24/08 · canónico 09) ═══
+          Las tres tablas de abajo medían cuatro pantallas de alto debajo de lo único que se mira
+          todos los días —quién está hoy y cuántas horas lleva—. No se pierde nada: la asignación,
+          el plan contra real y el detalle de las horas siguen acá, a un clic, con su contador en la
+          fila cerrada para que se vea cuánto hay adentro sin abrir. */}
+      <Plegable titulo="Quién trabaja en esta obra" cuenta={asignaciones.length}
+        testid="plegable-asignaciones">
         {asignaciones.length === 0
           ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «+ Asignar persona».</Vacio>
           : (
@@ -204,78 +336,39 @@ export function TabPersonal({
             )}
 
         <div className="mt-3.5 flex flex-wrap items-start gap-x-6 gap-y-3">
-          <Alta titulo="+ Asignar persona" testid="alta-asignacion">
-            {personas.length === 0
-              ? <Aviso tono="warn">No hay ninguna persona activa en el legajo, así que no hay a quién asignar.</Aviso>
-              : (
-                  <FormAccion accion={asignar} testid="form-asignar" enviar="Asignar" limpiarAlOk mensajeOk="Asignado.">
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      <Campo rotulo="Persona" className="col-span-2">
-                        <select name="persona_id" required className={CAMPO} defaultValue="">
-                          <option value="" disabled>elegir del legajo</option>
-                          {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
-                        </select>
-                      </Campo>
-                      <Campo rotulo="Rol">
-                        <select name="rol" defaultValue="integrante" className={CAMPO}>
-                          <option value="integrante">integrante</option>
-                          <option value="responsable">responsable</option>
-                        </select>
-                      </Campo>
-                      <Campo rotulo="Cuadrilla">
-                        <select name="cuadrilla_id" defaultValue="" className={CAMPO}>
-                          <option value="">sin cuadrilla</option>
-                          {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                      </Campo>
-                      <Campo rotulo="Desde"><input type="date" name="desde" className={CAMPO} /></Campo>
-                      <Campo
-                        rotulo="Actividad" className="col-span-2 sm:col-span-3"
-                        ayuda="Opcional: en blanco queda asignado a la obra entera."
-                      >
-                        <select name="actividad_id" defaultValue="" className={CAMPO}>
-                          <option value="">toda la obra</option>
-                          {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                        </select>
-                      </Campo>
-                      <Campo rotulo="Notas" className="col-span-2 sm:col-span-4" ayuda="Por qué está en esta obra.">
-                        <input name="notas" maxLength={300} className={CAMPO} />
-                      </Campo>
-                    </div>
-                  </FormAccion>
-                )}
-          </Alta>
-
           <Alta titulo="+ Imputar horas" testid="alta-hh">
             <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
-              actividades={actividades} imputar={imputar} />
+              actividades={actividades} imputar={imputar} causas={causas} />
           </Alta>
 
           <Alta titulo="+ Imputar a la cuadrilla" testid="alta-hh-masiva">
             <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
           </Alta>
         </div>
-      </section>
+      </Plegable>
 
-      {/* Las dos tablas de horas, enfrentadas: la de la izquierda dice si el plan alcanza, la de la
-          derecha dice de dónde sale el número. Se leen juntas o no se leen. */}
-      <div className="flex flex-col gap-8 xl:flex-row xl:gap-10">
-        <section className="min-w-0 flex-1">
-          <Eyebrow className="mb-2.5">Plan contra real por actividad</Eyebrow>
-          <TablaProductividad actividades={actividadHH} />
-        </section>
+      <Plegable titulo="Plan contra real por actividad" cuenta={actividadHH.length}
+        testid="plegable-plan-vs-real">
+        <TablaProductividad actividades={actividadHH} />
+      </Plegable>
 
-        <section className="min-w-0 xl:w-[520px] xl:shrink-0">
-          <Eyebrow className="mb-2.5">Horas imputadas a esta obra</Eyebrow>
-          <TablaHoras registros={registros} borrarHoras={borrarHoras} />
-          {sinPersona > 0 && (
-            <p className="mt-2.5 text-[11px] leading-relaxed text-faint">
-              {sinPersona} {sinPersona === 1 ? 'registro histórico no tiene' : 'registros históricos no tienen'} persona:
-              son horas reales aunque no se sepa de quién, y no se les inventa un dueño.
-            </p>
-          )}
-        </section>
-      </div>
+      <Plegable
+        titulo="Horas imputadas a esta obra" cuenta={registros.length}
+        testid="plegable-horas"
+        {...(sinPersona > 0
+          ? { alerta: `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` }
+          : {})}
+      >
+        <TablaHoras registros={registros} borrarHoras={borrarHoras} />
+        {/* La advertencia se queda porque evita un error real —creer que a alguien le faltan
+            horas— pero en una línea: el porqué largo vive en la ayuda, no en la pantalla. */}
+        {sinPersona > 0 && (
+          <p className="mt-2.5 text-[11px] text-faint">
+            {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas
+            reales sin dueño conocido.
+          </p>
+        )}
+      </Plegable>
     </div>
   )
 }

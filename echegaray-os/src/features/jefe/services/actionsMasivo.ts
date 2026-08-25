@@ -25,13 +25,15 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from '@/features/obras/services/actions'
-import { AVISO_CRITERIO, deltaHasta, elPorcentajeMueveElAvance, VALORES_MASIVOS } from './medicion.ts'
+import { AVISO_CRITERIO, deltaHasta, elPorcentajeMueveElAvance, leerSeleccion, VALORES_MASIVOS } from './medicion.ts'
 import type { Metodo } from './medicion.ts'
 
 const esquema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
-  objetivo: z.coerce.number().min(1, 'Elegí a cuánto llegaron').max(100, 'El avance va de 0 a 100'),
+  /** `id:80,id:65` — cada tarea con el porcentaje al que la mandó el jefe. Ver `leerSeleccion`. */
   tareas: z.string().min(1, 'Elegí las tareas que avanzaron'),
+  /** El valor único del formato viejo. Se usa sólo si una fila viene sin el suyo. */
+  objetivo: z.coerce.number().min(1).max(100).optional(),
   criterio: z.string().trim().max(500).optional(),
 })
 
@@ -48,11 +50,18 @@ export async function aplicarAvanceMasivo(obraId: string, form: FormData): Promi
   const parsed = esquema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
-  if (!(VALORES_MASIVOS as readonly number[]).includes(d.objetivo)) {
-    return { ok: false, error: 'Ese avance no es uno de los valores de la pantalla.' }
+  // CADA FILA CON SU PORCENTAJE (J04, 24/08/2026). El formato viejo —ids sueltos— sigue entrando y
+  // cae al `objetivo` global; sin ninguno de los dos, la fila no tiene destino y se rechaza el envío
+  // entero en vez de inventarle un número a la producción de un día.
+  const elegidas = leerSeleccion(d.tareas).map((e) => ({ ...e, objetivo: e.objetivo ?? d.objetivo ?? null }))
+  if (elegidas.length === 0) return { ok: false, error: 'Elegí las tareas que avanzaron.' }
+  if (elegidas.some((e) => e.objetivo == null)) {
+    return { ok: false, error: 'Falta a cuánto llegó alguna de las tareas elegidas.' }
   }
-  const ids = [...new Set(d.tareas.split(',').map((s) => s.trim()).filter(Boolean))]
-  if (ids.length === 0) return { ok: false, error: 'Elegí las tareas que avanzaron.' }
+  const fuera = elegidas.filter((e) => !(VALORES_MASIVOS as readonly number[]).includes(e.objetivo as number))
+  if (fuera.length > 0) return { ok: false, error: 'Ese avance no es uno de los valores de la pantalla.' }
+  const objetivoDe = new Map(elegidas.map((e) => [e.actividad_id, e.objetivo as number]))
+  const ids = elegidas.map((e) => e.actividad_id)
 
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -76,7 +85,8 @@ export async function aplicarAvanceMasivo(obraId: string, form: FormData): Promi
       afuera.push(`${f.nombre} (no se mide por porcentaje)`)
       continue
     }
-    const delta = deltaHasta(d.objetivo, f.avance_pct)
+    const objetivo = objetivoDe.get(f.actividad_id) as number
+    const delta = deltaHasta(objetivo, f.avance_pct)
     if (delta == null) { afuera.push(`${f.nombre} (ya estaba en ${f.avance_pct ?? 0} % o más)`); continue }
     entran.push({
       obra_id: obraId, actividad_id: f.actividad_id, fecha: d.fecha,
@@ -98,6 +108,7 @@ export async function aplicarAvanceMasivo(obraId: string, form: FormData): Promi
 
   revalidatePath('/obra/hoy')
   revalidatePath('/obra/tareas')
-  const mensaje = `${entran.length} ${entran.length === 1 ? 'tarea' : 'tareas'} al ${d.objetivo} %`
+  const valores = [...new Set(entran.map((e) => objetivoDe.get(String(e.actividad_id)) as number))].sort((a, b) => a - b)
+  const mensaje = `${entran.length} ${entran.length === 1 ? 'tarea' : 'tareas'} al ${valores.join(' / ')} %`
   return { ok: true, mensaje: afuera.length === 0 ? mensaje : `${mensaje}. Afuera: ${afuera.join(' · ')}.` }
 }

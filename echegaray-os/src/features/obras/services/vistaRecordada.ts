@@ -18,7 +18,9 @@
 // botón de atrás—: la cookie sólo recuerda con qué URL abrir cuando no se pidió ninguna.
 
 /** Las claves de la URL que definen "cómo quiero ver esto". Nada más se recuerda. */
-export const CLAVES_VISTA = ['orden', 'dir', 'etapa', 'q', 'archivadas', 'escala'] as const
+// `atraso` está acá por la misma razón que `etapa`: es una elección de cómo se quiere ver la
+// cartera. Sin él, filtrar por atraso y volver mañana devolvía la cartera entera sin decir por qué.
+export const CLAVES_VISTA = ['orden', 'dir', 'etapa', 'q', 'archivadas', 'escala', 'atraso'] as const
 export type ClaveVista = typeof CLAVES_VISTA[number]
 
 /** Una cookie por vista: el Gantt y el Resumen se miran distinto y no comparten preferencia. */

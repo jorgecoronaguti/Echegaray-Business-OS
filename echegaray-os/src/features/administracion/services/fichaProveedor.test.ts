@@ -11,7 +11,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  comprasPorObra, conceptosProvistos, resumirProveedor, textosCrudosDe,
+  comprasPorObra, conceptosProvistos, resumirProveedor, textosCrudosDe, ultimosMovimientos,
   type ComprobanteProveedor,
 } from './fichaProveedor.ts'
 
@@ -120,4 +120,33 @@ test('el cruce con Compras usa la normalización de la base, no una comparación
 test('sin nombres vinculados no se traen comprobantes: un filtro vacío traería los de todos', () => {
   assert.deepEqual(textosCrudosDe([], ['Corralon Progreso']), [])
   assert.deepEqual(textosCrudosDe(['   '], ['Corralon Progreso']), [])
+})
+
+// ═══ ACTIVIDAD DE LA FICHA (Design 23/08 · anatomía de ficha, bloque «actividad») ═══
+//
+// Los defectos que atrapan:
+//
+//   · El comprobante SIN FECHA tratado como el más viejo → se cae del bloque y el papel que hay que
+//     completar es justo el que nadie ve.
+//   · El bloque mostrando los primeros N de la lista en vez de los últimos N por fecha → «últimos
+//     movimientos» diciendo lo de hace dos años.
+
+test('la actividad muestra los últimos por fecha, no los primeros de la lista', () => {
+  const filas = [
+    c({ id: 'viejo', fecha: '2025-01-02' }),
+    c({ id: 'nuevo', fecha: '2026-08-20' }),
+    c({ id: 'medio', fecha: '2026-02-11' }),
+  ]
+  assert.deepEqual(ultimosMovimientos(filas, 2).map((f) => f.id), ['nuevo', 'medio'])
+})
+
+test('un comprobante sin fecha no se esconde al fondo del tiempo: entra y se ve', () => {
+  const filas = [c({ id: 'sin-fecha', fecha: null }), c({ id: 'con-fecha', fecha: '2026-08-20' })]
+  const salida = ultimosMovimientos(filas, 2).map((f) => f.id)
+  assert.deepEqual(salida, ['con-fecha', 'sin-fecha'])
+})
+
+test('la actividad no pisa el NULL del importe: llega tal cual a la fila', () => {
+  const [fila] = ultimosMovimientos([c({ total: null })])
+  assert.equal(fila.total, null, 'un comprobante sin importe se convirtió en $ 0')
 })

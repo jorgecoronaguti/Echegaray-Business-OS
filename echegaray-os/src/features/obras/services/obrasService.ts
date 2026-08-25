@@ -9,10 +9,11 @@
 // Los documentos se resuelven contra `drive_index`, que es el espejo del Drive: el archivo NO se
 // copia ni se sirve desde acá, sólo se enlaza.
 
+import type { JuegoDeColumnasDelPlan } from './lecturasDeVista'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  Actividad, Dependencia, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult,
-  ServiceResultOpcional,
+  Actividad, Dependencia, DocumentoObra, EconomiaObra, ObraPanel, PlanVsReal, Restriccion,
+  ServiceResult, ServiceResultOpcional,
 } from '../types'
 
 /** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
@@ -57,22 +58,145 @@ export async function getUbicacion(supabase: SupabaseClient, obraId: string): Pr
 }
 
 /**
- * PLAN CONTRA REAL de una obra. Sale entero de la vista `obra_plan_vs_real`: acá NO se resta, no se
- * divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese null
- * viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.
+ * LOS DÍAS QUE ESTA OBRA TRABAJA (`isodow`: 1 lunes … 7 domingo), leídos de `obra_canonica`.
+ *
+ * El cronograma sombrea los días que NO están en esta lista. Vacío NO se completa con lunes a
+ * viernes: una obra que trabaja los sábados vería pintado de franco el día en que su cuadrilla
+ * estuvo en obra, y el ancho de una barra es calendario —los días hábiles ya los resolvió el
+ * motor—, así que la sombra es lo único que distingue diez días de trabajo de diez días corridos.
  */
-export async function getPlanVsReal(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<PlanVsReal>> {
-  const { data, error } = await supabase.from('obra_plan_vs_real').select('*').eq('obra_id', obraId).maybeSingle()
-  if (error) return { data: null, error: error.message }
-  if (!data) return { data: null, error: `No hay plan contra real para "${obraId}"` }
-  return { data: data as PlanVsReal, error: null }
+export async function getDiasHabiles(supabase: SupabaseClient, obraId: string): Promise<number[]> {
+  const { data } = await supabase.from('obra_canonica').select('dias_habiles').eq('id', obraId).maybeSingle()
+  const d = data?.dias_habiles
+  return Array.isArray(d) ? (d as number[]).filter((n) => typeof n === 'number') : []
 }
 
-/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo y margen. */
-export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise<ServiceResult<PlanVsReal[]>> {
-  const { data, error } = await supabase.from('obra_plan_vs_real').select('*')
+/** LAS COLUMNAS DE `obra_plan_vs_real` QUE DIBUJA CADA SOLAPA, y su tipo.
+ *
+ *  ═══ POR QUÉ HAY TRES LECTURAS Y NO UNA CON `select('*')` (25/08/2026) ═══
+ *
+ *  Mismo motivo y misma forma que `COLUMNAS_PLAZO_Y_HH` acá abajo, pero por una razón más dura: la
+ *  solapa Personal y el Resumen se caían con `canceling statement due to statement timeout`, y el
+ *  techo no es negociable —el rol `authenticated` corre con `statement_timeout = 8s`—. Medido con
+ *  EXPLAIN (ANALYZE, BUFFERS) como Dirección sobre `quattropani`, mediana de 5:
+ *
+ *    select *                        9.413 buffers · 29,7 ms
+ *    las 4 columnas de Personal      4.572 buffers · 15,5 ms   −51 %
+ *    las 8 columnas de Economía      4.577 buffers · 16,4 ms   −51 %
+ *
+ *  La causa de que recortar columnas valga la mitad —y de por qué el Resumen no ahorra nada— está
+ *  en `lecturasDeVista.ts`, al lado de la matriz que decide quién pide qué.
+ *
+ *  SON TRES FUNCIONES Y NO UNA CON UN PARÁMETRO porque el tipo tiene que ser exacto: un objeto con
+ *  treinta campos ausentes se lee `undefined`, y en pantalla eso es indistinguible de un dato que
+ *  falta de verdad. Con un `Pick<>` por solapa, la primera columna que alguien dibuje sin haberla
+ *  pedido no compila — que es exactamente lo que tiene que pasar. */
+export type PlanDePersonal = Pick<PlanVsReal, 'obra_id' | 'hh_plan' | 'hh_real' | 'desvio_hh_pct'>
+
+export type PlanDeEconomia = Pick<
+  PlanVsReal,
+  'obra_id' | 'monto_presupuestado' | 'margen_esperado' | 'certificado' | 'facturado' | 'cobrado'
+  | 'pendiente_certificar' | 'por_cobrar_proyectado'
+>
+
+/** Una sola definición de cada juego, para la consulta y para su test. */
+export const COLUMNAS_PLAN: Record<JuegoDeColumnasDelPlan, string> = {
+  // El Resumen pide la vista entera A PROPÓSITO: recortarla a las diecinueve columnas que dibuja
+  // se midió y da lo mismo (9.405 contra 9.413 buffers), porque `forecast_fin` —una sola columna—
+  // arrastra el bloque de fechas completo. Dejarlo en `*` es honesto: no hay ahorro que declarar.
+  resumen: '*',
+  personal: 'obra_id,hh_plan,hh_real,desvio_hh_pct',
+  economia: 'obra_id,monto_presupuestado,margen_esperado,certificado,facturado,cobrado,'
+    + 'pendiente_certificar,por_cobrar_proyectado',
+}
+
+async function leerPlan<T>(
+  supabase: SupabaseClient, obraId: string, juego: JuegoDeColumnasDelPlan,
+): Promise<ServiceResult<T>> {
+  const { data, error } = await supabase
+    .from('obra_plan_vs_real').select(COLUMNAS_PLAN[juego]).eq('obra_id', obraId).maybeSingle()
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as PlanVsReal[], error: null }
+  if (!data) return { data: null, error: `No hay plan contra real para "${obraId}"` }
+  return { data: data as T, error: null }
+}
+
+/**
+ * PLAN CONTRA REAL de una obra, entero. Sale de la vista `obra_plan_vs_real`: acá NO se resta, no
+ * se divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese
+ * null viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.
+ */
+export function getPlanVsReal(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanVsReal>> {
+  return leerPlan<PlanVsReal>(supabase, obraId, 'resumen')
+}
+
+/** Las HH del titular de Personal, y nada más. Cuatro columnas: ver el bloque de arriba. */
+export function getPlanDePersonal(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanDePersonal>> {
+  return leerPlan<PlanDePersonal>(supabase, obraId, 'personal')
+}
+
+/** Presupuesto, margen, certificación y cobranza de la solapa Economía. Ocho columnas. */
+export function getPlanDeEconomia(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanDeEconomia>> {
+  return leerPlan<PlanDeEconomia>(supabase, obraId, 'economia')
+}
+
+/**
+ * EL PANEL ECONÓMICO de una obra, entero de la vista `obra_economia`. Acá NO se resta ni se
+ * completa: los márgenes ya vienen en null cuando falta la base, y la pantalla dice qué falta.
+ *
+ * Devuelve `null` sin error cuando la vista no publica fila: para quien no ve la economía, la venta
+ * y el margen llegan en null desde Postgres y esta pantalla no tiene nada que dibujar.
+ */
+export async function getEconomiaObra(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<EconomiaObra | null>> {
+  const { data, error } = await supabase.from('obra_economia').select('*').eq('obra_id', obraId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  return { data: (data as EconomiaObra) ?? null, error: null }
+}
+
+/** Las SIETE columnas que la cartera dibuja de `obra_plan_vs_real`, y ninguna más.
+ *
+ *  El tipo es un `Pick` y no una interfaz nueva a propósito: la fuente de la forma sigue siendo
+ *  `PlanVsReal`: si mañana `desvio_plazo_dias` cambia de tipo, esto cambia solo. */
+export type PlazoYHHDeCartera = Pick<
+  PlanVsReal,
+  'obra_id' | 'inicio_plan' | 'fin_plan' | 'desvio_plazo_dias' | 'hh_plan' | 'hh_estimada' | 'hh_real'
+>
+
+/** Las columnas pedidas, en el orden del tipo. Una sola definición para la consulta y para el test. */
+export const COLUMNAS_PLAZO_Y_HH =
+  'obra_id,inicio_plan,fin_plan,desvio_plazo_dias,hh_plan,hh_estimada,hh_real'
+
+/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo.
+ *
+ *  ═══ POR QUÉ NO ES `select('*')` (24/08/2026) ═══
+ *
+ *  Pedía las ~40 columnas de la vista y la cartera dibuja siete. Medido contra PostgREST con sesión
+ *  de Dirección, nueve vueltas intercaladas para no confundir la mejora con la deriva de una base
+ *  contendida:
+ *
+ *    select=*      → mediana 320 ms · p90 607 ms · 16,6 KB
+ *    siete columnas→ mediana 257 ms · p90 315 ms ·  2,5 KB
+ *
+ *  Las columnas que se dejan de pedir no son gratis: `pendiente_certificar` llama a
+ *  `es_administracion()` por fila, y el bloque económico arrastra `presupuesto_monto()` y
+ *  `presupuesto_margen()`. La cartera nunca los dibujó.
+ *
+ *  NO SE DEVUELVE UN `PlanVsReal` INCOMPLETO. Un objeto con 33 campos ausentes se lee `undefined`
+ *  —no `null`— y la primera columna nueva que alguien agregue a la tabla se dibujaría vacía sin un
+ *  solo error. El tipo dice exactamente lo que la consulta trae. */
+export async function getPlanVsRealPortafolio(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<PlazoYHHDeCartera[]>> {
+  const { data, error } = await supabase.from('obra_plan_vs_real').select(COLUMNAS_PLAZO_Y_HH)
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as PlazoYHHDeCartera[], error: null }
 }
 
 /**
@@ -180,7 +304,13 @@ export async function getDocumentos(
       // `manual`/`path_inferido` es el vocabulario viejo de la tabla. Se traduce acá para que la
       // pantalla no muestre dos palabras distintas para lo mismo durante la ventana en la que la
       // migración está escrita pero no aplicada.
-      origen: v.origen === 'inferido' || v.origen === 'path_inferido' ? 'inferido' : 'confirmado',
+      //
+      // `carpeta_drive` (20260822T6500) NO se colapsa en `confirmado`: el vínculo salió de que el
+      // archivo vive adentro de la carpeta que declara la obra —evidencia dura— pero ninguna persona
+      // lo afirmó. Mezclarlos haría que los 32 papeles que entran por barrido se lean como revisados.
+      origen: v.origen === 'carpeta_drive'
+        ? 'carpeta_drive'
+        : v.origen === 'inferido' || v.origen === 'path_inferido' ? 'inferido' : 'confirmado',
       // `drive_index` GANA: un archivo renombrado en Drive aparece con su nombre nuevo sin que nadie
       // toque el vínculo. Lo guardado al vincular es el respaldo para los archivos que el índice no
       // conoce — sólo espeja la carpeta `administracion`.

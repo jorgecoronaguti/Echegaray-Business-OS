@@ -73,24 +73,28 @@ export function PanelPartida({
         />
         <Fila k="Incidencia en el presupuesto" v={porcentaje(inc, 'auto')} falta="sin base" />
         <Fila k="HH previstas" v={fHH(p.hh)} falta="sin dato" />
-        <Fila k="Rendimiento" v={p.hs_unitarias === null ? null : `${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'}`} falta="sin dato" />
-        <Fila k="Margen aplicado" v={porcentajeDeFraccion(presupuesto.pct_margen)} falta="sin cargar" />
+        {/* ESFUERZO Y NO «RENDIMIENTO»: hs/unidad baja cuando la tarea mejora. Con el rótulo viejo,
+            cotizar «con más rendimiento» significaba cotizar con MÁS horas. */}
+        <Fila k="Esfuerzo" v={p.hs_unitarias === null ? null : `${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'}`} falta="sin dato" />
+        {/* BENEFICIO, no «margen»: el 22 % se aplica sobre el costo industrial, así que es markup
+            sobre el costo y no margen sobre el precio. El margen sobre el precio lo publica la
+            cascada aparte y siempre da menos — confundirlos es el error más caro de presupuestar. */}
+        <Fila k="Beneficio aplicado" v={porcentajeDeFraccion(presupuesto.pct_beneficio)} falta="sin cargar" />
       </dl>
 
-      <div className="mt-4 rounded-card bg-surface-quiet px-3 py-2.5 text-[12px] leading-relaxed text-muted">
-        <span className="font-medium text-ink">Al convertir a obra: </span>
-        {p.cantidad === null ? (
-          <>esta partida todavía no se puede convertir: sin cómputo no hay cantidad que repartir entre frentes.</>
-        ) : p.sin_analisis ? (
-          <>esta partida se convierte igual, <span className="text-warn">sin HH y sin plazo</span>, marcada como deuda de carga. La cantidad no cambia.</>
-        ) : (
-          <>
-            esta partida se reparte entre los frentes que elijas, con la plantilla que elijas, y cada
-            actividad guarda {p.codigo ?? 'la partida'} y su análisis. Las {fHH(p.hh)} HH se reparten
-            por el peso de cada paso. La cantidad no cambia.
-          </>
-        )}
-      </div>
+      {/* NORMAL SILENCIOSO, PROBLEMA VISIBLE (Design 23/08). Cuando la partida se convierte sin
+          reparos —el caso de las 65 de 68— el párrafo explicaba el mecanismo de la conversión en la
+          pantalla equivocada: eso lo dice la 13, con el árbol delante. Acá sólo queda lo que
+          BLOQUEA o DEGRADA la conversión. */}
+      {p.cantidad === null ? (
+        <p className="mt-4 border-l-2 border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="nota-conversion">
+          Sin cómputo no se puede convertir: no hay cantidad que repartir entre frentes.
+        </p>
+      ) : p.sin_analisis ? (
+        <p className="mt-4 border-l-2 border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="nota-conversion">
+          Se convierte igual, sin HH y sin plazo, marcada como deuda de carga.
+        </p>
+      ) : null}
 
       <div className="mt-3">
         <Link href={`/presupuestos/${presupuesto.id}/partida/${p.partida_id}`}

@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo, FECHA_DEL_CONTEO,
+  FECHA_ULTIMO_EFECTIVO,
 } from './caja-anexo.mjs'
 import { rescatarAnexo } from '../scripts/caja-anexo-pestana.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
@@ -638,4 +639,50 @@ test('TEXTO EN UNA COLUMNA DE PLATA: sólo los encabezados que el formateador de
         `fila ${i + 1} col ${String.fromCharCode(65 + col)}: "${v}" es texto en una columna de plata fuera de un encabezado`)
     }
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA DEL ÚLTIMO MOVIMIENTO DE EFECTIVO — DE ACÁ SALE `CAJA!D7` (24/08/2026)
+//
+// El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+// realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+// efectivo"*. El neto se movía con seis fuentes y la fecha se quedaba en el conteo.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL RENGLÓN DE LA FECHA DEL ÚLTIMO MOVIMIENTO usa EL MISMO ANCLA que los seis del histórico', () => {
+  const g = construir()
+  const f = g.fUltimoEfectivo
+  assert.ok(f > g.fSello, 'va DEBAJO del sello: en la columna C entre el histórico y el sello todo ENTRA al neto')
+  // EL DEFECTO QUE ATRAPA: si la fecha se anclara en otra celda que el importe, publicaría una ventana
+  // distinta de la que suma — un saldo nuevo con fecha vieja, o frescura por plata no contada.
+  assert.ok(celda(g, f, 5).includes(`$F$${g.fSello}`),
+    'el ancla es el INSTANTE sellado, el mismo que reciben los seis renglones del neto')
+  // Y EL PISO ES EL DÍA QUE CAJA MUESTRA, no INT del instante: el instante puede caer del otro lado de
+  // la medianoche y publicaría un día que el conteo no tuvo (ver diaDelConteo).
+  assert.ok(celda(g, f, 5).includes(`MAX(${ANEXO.conteoArsDia};`))
+  assert.ok(!celda(g, f, 5).includes(`MAX(INT($F$${g.fSello});`))
+  // Las columnas de plata quedan vacías: no es plata, y en la E heredaría formato de moneda.
+  for (const c of [2, 3, 4]) assert.ok(vacia(celda(g, f, c)), `la columna ${c} no lleva nada: no es plata`)
+  assert.ok(FECHA_ULTIMO_EFECTIVO.origen.length > 40, 'el renglón dice de dónde sale su número')
+})
+
+test('el nombre que CAJA cita para la fecha del saldo apunta a la COLUMNA F de ese renglón', () => {
+  const g = construir()
+  const d = g.destinos.find((x) => x.name === ANEXO.ultimoEfectivoDia)
+  assert.equal(d?.fila, g.fUltimoEfectivo)
+  assert.equal(d?.col, 6, 'la F es la única columna de fechas del anexo: en la E se dibujaría "$46.248"')
+  // Va sin especie y con su excusa escrita, como las otras dos fechas: `publicar` con especie
+  // declarada descarta el destino vacío y CAJA quedaría en #NAME?.
+  assert.ok(!(d?.especie ?? ESPECIE_ANEXO[ANEXO.ultimoEfectivoDia]))
+  assert.ok(PUEDE_ESTAR_VACIO[ANEXO.ultimoEfectivoDia]?.length > 40, 'con el motivo escrito, no en silencio')
+})
+
+test('el control "Efectivo en el cajón HOY" fecha con LO MISMO que CAJA!D7 — una plata, una fecha', () => {
+  const g = construir()
+  const f = filaDe(g, /^Efectivo en el cajón HOY/)
+  assert.ok(f > 0, 'el renglón existe')
+  // Muestra EXACTAMENTE el mismo número que la fila 7 de CAJA. Si cada uno armara su fecha, el archivo
+  // tendría dos fechas para la misma plata — el defecto de este cambio, en chico.
+  assert.equal(celda(g, f, 5),
+    `=IF(ISNUMBER(${ANEXO.conteoArsDia});IF(ISNUMBER(${ANEXO.ultimoEfectivoDia});${ANEXO.ultimoEfectivoDia};${ANEXO.conteoArsDia});"")`)
 })

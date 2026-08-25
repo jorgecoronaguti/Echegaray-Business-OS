@@ -20,7 +20,11 @@
 
 export const VISTAS_OBRA = [
   { id: 'resumen', label: 'Resumen' },
-  { id: 'tareas', label: 'Tareas' },
+  // «Trabajo», no «Tareas» (22/08/2026 · overhaul UX): la solapa contiene tres maneras de operar
+  // el trabajo —la lista de tareas, el cronograma y el parte diario— y nombrarla por una de las
+  // tres hacía buscar el cronograma en el nivel de arriba. El id sigue siendo `tareas`: está en
+  // marcadores, en links de chat y en los tests, y una URL no se rompe por un rótulo.
+  { id: 'tareas', label: 'Trabajo' },
   { id: 'personal', label: 'Personal' },
   { id: 'operacion', label: 'Operación' },
   { id: 'economia', label: 'Economía' },
@@ -28,37 +32,52 @@ export const VISTAS_OBRA = [
 ] as const
 export type VistaObra = (typeof VISTAS_OBRA)[number]['id']
 
-// ═══ EL GANTT DE TAREAS Y LA PANTALLA «CRONOGRAMA» NO SON DOS VERDADES (21/08/2026) ═══
+// ═══ HAY UN SOLO CRONOGRAMA DE OBRA (24/08/2026) ═══
 //
-// Conviven, y hay que decir por qué antes de que alguien las tome por un descuido. Las DOS leen
-// `obra_actividad_control` —la misma fuente, con el mismo portero— y contestan preguntas distintas:
+// Hubo dos, y convivían con el porqué escrito: `?vista=tareas&sub=gantt` dibujaba el plan COMO ESTÁ
+// CARGADO y `/obras/<obra>/cronograma` el plan COMO LO IMPLICA LA SECUENCIA, recalculado desde las
+// dependencias. La convivencia no resistió el dato: las obras tienen CERO dependencias cargadas, y
+// sin dependencias el motor arranca TODAS las actividades el mismo día — la segunda pantalla
+// dibujaba treinta y cinco barras apiladas sobre la primera semana y lo rotulaba «cronograma».
 //
-//   `?vista=tareas&sub=gantt`      → **el plan COMO ESTÁ CARGADO**. Dibuja `inicio_plan`/`fin_plan`
-//                                     tal como alguien los escribió. Es el tracker de todos los días.
-//   `/obras/<obra>/cronograma`     → **el plan COMO LO IMPLICA LA SECUENCIA**. Recalcula fechas desde
-//                                     las dependencias y las duraciones, y de ahí salen la holgura y
-//                                     el camino crítico. Con cero dependencias cargadas se niega a
-//                                     publicar un fin de obra y dice «sin secuencia cargada».
-//
-// Las dos son pantallas del contrato (03 · Obra Tareas y 07 · Obra Cronograma). Lo que sí sería un
-// defecto es que las barras difieran y nadie explique por qué: por eso el rótulo de la sub-vista
-// dice «Gantt» y no «Cronograma», y por eso `CRONOGRAMA_CALCULADO` existe acá y no como una URL
-// escrita a mano en un componente.
+// Queda la primera, portada del canónico 07, y la URL vieja redirige a ella. El motor sigue vivo y
+// probado (`cronogramaMotor.ts`): lo usa la 08 · Dotación. Lo que se retiró es la VISTA que
+// publicaba su resultado como si fuera el plan de la obra.
 
-/** La pantalla 07: el cronograma calculado desde la secuencia. Vive fuera del workspace porque
- *  recalcula en vez de dibujar lo guardado, y esa diferencia tiene que ser visible en la URL. */
-export const hrefCronogramaCalculado = (obraId: string) => `/obras/${obraId}/cronograma`
+/** La pantalla 07, dentro del workspace. La ruta `/obras/<obra>/cronograma` redirige acá. */
+export const hrefCronograma = (obraId: string) => `/obras/${obraId}?vista=tareas&sub=gantt`
 
 /** La pantalla 08, por la misma razón. */
 export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
 
-/** Las vistas del workspace de Tareas: el árbol nuevo y las cuatro del cronograma más el parte. */
+/**
+ * LAS VISTAS QUE NO SON SOLAPAS PERO LA GENTE ESCRIBE COMO SI LO FUERAN.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA (auditoría del 24/08) ═══
+ *
+ * `?vista=dotacion` no está en `VISTAS_OBRA` ni en `ALIAS`, así que `resolverVistaObra` lo mandaba
+ * a **Resumen, en silencio**: quien seguía ese link creía que la Dotación no existía. Es la misma
+ * clase de falla que los alias de `?vista=gantt`, con la diferencia de que la 08 no vive dentro del
+ * workspace —tiene ruta hermana— y por eso no se resuelve con un alias sino con un redirect.
+ *
+ * Devuelve `null` cuando la vista pedida sí es del workspace o no se reconoce: ahí decide
+ * `resolverVistaObra` como siempre.
+ */
+export function rutaHermana(vistaRaw: string | undefined, obraId: string): string | null {
+  return vistaRaw === 'dotacion' ? hrefDotacion(obraId) : null
+}
+
+/** La pantalla 10. Cuelga de Tareas —un paquete es una porción del alcance de actividades que ya
+ *  existen, no un trabajo paralelo— pero vive fuera del workspace: mira el MISMO alcance desde el
+ *  lado del tercero que lo ejecuta, con su contrato, sus papeles y su gente. */
+export const hrefSubcontratos = (obraId: string) => `/obras/${obraId}/subcontratos`
+
+/** Las vistas del workspace de Trabajo: la lista de tareas, el cronograma y el parte diario.
+ *  Lista, Tablero y Próximos se retiraron el 22/08/2026 (overhaul UX): eran representaciones del
+ *  mismo dataset y sus URLs caen en el Cronograma vía `SUB_ALIAS`. */
 export const SUBS_TAREAS = [
   { id: 'arbol', label: 'Tareas' },
-  { id: 'gantt', label: 'Gantt' },
-  { id: 'lista', label: 'Lista' },
-  { id: 'tablero', label: 'Tablero' },
-  { id: 'proximos', label: 'Próximos' },
+  { id: 'gantt', label: 'Cronograma' },
   { id: 'parte', label: 'Parte diario' },
 ] as const
 export type SubTareas = (typeof SUBS_TAREAS)[number]['id']
@@ -74,6 +93,17 @@ const ALIAS: Record<string, { vista: VistaObra; sub: SubTareas }> = {
   ejecucion: { vista: 'tareas', sub: 'parte' },
 }
 
+/** Las sub-vistas retiradas: sus URLs viejas abren el Cronograma, que es donde vive lo que
+ *  mostraban, en vez de caer en silencio en el árbol. */
+const SUB_ALIAS: Record<string, SubTareas> = {
+  lista: 'gantt',
+  tablero: 'gantt',
+  proximos: 'gantt',
+}
+
+const resolverSub = (subRaw: string | undefined, porDefecto: SubTareas): SubTareas =>
+  esSubTareas(subRaw) ? subRaw : (subRaw && SUB_ALIAS[subRaw]) || porDefecto
+
 /**
  * Resuelve `?vista=` y `?sub=` juntos. Van juntos a propósito: el alias de una vista vieja decide
  * también con qué sub-vista abre, y resolverlos por separado dejaba `?vista=ejecucion` cayendo en
@@ -84,9 +114,9 @@ export function resolverVistaObra(
 ): { vista: VistaObra; sub: SubTareas } {
   const directa = VISTAS_OBRA.find((v) => v.id === vistaRaw)
   if (directa) {
-    return { vista: directa.id, sub: esSubTareas(subRaw) ? subRaw : 'arbol' }
+    return { vista: directa.id, sub: resolverSub(subRaw, 'arbol') }
   }
   const alias = vistaRaw ? ALIAS[vistaRaw] : undefined
-  if (alias) return { vista: alias.vista, sub: esSubTareas(subRaw) ? subRaw : alias.sub }
+  if (alias) return { vista: alias.vista, sub: resolverSub(subRaw, alias.sub) }
   return { vista: 'resumen', sub: 'arbol' }
 }

@@ -540,9 +540,44 @@ export async function formatear(google, sheetId, g, anexo) {
   while (colA.length < 600) colA.push([''])
   const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA))
   if (!charts.length) return
-  await google.spreadsheetBatchUpdate(ID, charts)
-    .then(() => console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`))
-    .catch((e) => console.warn(`  ⚠ NO pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`))
+  let respuesta
+  try {
+    respuesta = await google.spreadsheetBatchUpdate(ID, charts)
+    console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`)
+  } catch (e) {
+    console.warn(`  ⚠ NO pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`)
+    return
+  }
+  // ═══ LA ESPECIFICACIÓN SE REAFIRMA DESPUÉS DE CREAR (25/08/2026) ═══
+  //
+  // `addChart` con un COMBO apilado devuelve el gráfico con las dos curvas de saldo en el eje
+  // IZQUIERDO y sin eje derecho, aunque el request las manda al derecho: el dueño vio las barras
+  // «lo que sale ese día» aplastadas contra el cero porque compartían escala con un saldo de
+  // decenas de millones. `updateChartSpec` sobre el gráfico recién creado, con la MISMA
+  // especificación, sí conserva el eje derecho (probado en vivo). Es idempotente: si la creación
+  // ya vino bien, no cambia nada.
+  const reafirmar = reafirmarEspecificaciones(charts, respuesta)
+  if (reafirmar.length) {
+    await google.spreadsheetBatchUpdate(ID, reafirmar)
+      .catch((e) => console.warn(`  ⚠ NO pude reafirmar los ejes de los gráficos (${e.message}): las curvas de saldo pueden quedar en el eje izquierdo.`))
+  }
+}
+
+/**
+ * Empareja cada `addChart` del lote con el `chartId` que devolvió la API y arma el `updateChartSpec`
+ * equivalente. Pura: se prueba sin Google. Los `deleteEmbeddedObject` del lote no tienen respuesta
+ * útil y se saltean por posición.
+ */
+export function reafirmarEspecificaciones(requests, respuesta) {
+  const replies = respuesta?.replies ?? []
+  const out = []
+  requests.forEach((req, i) => {
+    const spec = req.addChart?.chart?.spec
+    const chartId = replies[i]?.addChart?.chart?.chartId
+    if (!spec || !Number.isFinite(chartId)) return
+    out.push({ updateChartSpec: { chartId, spec } })
+  })
+  return out
 }
 
 // ═══ SÓLO ESCRIBE SI SE LO CORRE A PROPÓSITO ═══

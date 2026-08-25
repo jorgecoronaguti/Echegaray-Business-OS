@@ -7,7 +7,7 @@
 //
 // Vive en un `.mjs` y no en un `.test.mjs` a propósito: lo comparten varios archivos de prueba.
 
-import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, colapsarRepetidos } from '../../lib/comprobantes/fajo.mjs'
 
 /** Repositorio en memoria. `fallarEn('reservarClaves')` simula una base que se cae. */
 export function repoMemoria() {
@@ -43,9 +43,15 @@ export function repoMemoria() {
 
     async abrirFajo(_p, { plataforma = 'mattermost', userId, username, channelId, rootPostId, postId, items = [] } = {}) {
       api._chequear('abrirFajo')
-      // El índice único parcial de la migración: si ya hay uno abierto, se devuelve ese.
+      // El índice único parcial de la migración: si ya hay uno abierto, el perdedor de la carrera
+      // AMPLÍA ese en vez de devolverlo pelado. Devolverlo sin los ítems recién leídos es como se
+      // evaporaban los comprobantes del segundo post (25/08); el doble tiene que reproducirlo.
       const ya = await api.fajoAbierto(_p, { plataforma, userId, channelId })
-      if (ya) return ya
+      if (ya) {
+        if (!items?.length) return ya
+        const { items: todos } = colapsarRepetidos([...(ya.items ?? []), ...items])
+        return await api.agregarAlFajo(_p, { id: ya.id, items: todos, postId })
+      }
       const id = `fajo_${++seq}`
       const f = {
         id, plataforma, plataforma_user_id: userId, plataforma_username: username ?? null,

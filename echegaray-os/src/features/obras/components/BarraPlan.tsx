@@ -89,7 +89,7 @@ function FilaRubro({ r, acciones }: { r: Rubro; acciones: AccionesPlan }) {
 
 export function BarraPlan({
   rubros, personas, filtro, alFiltrar, acciones, alta, altaRubroAbierta = false,
-  sub, alCambiarSub, detalleCerrado = false, alAbrirDetalle, escala, alCambiarEscala, sellar,
+  sub, alCambiarSub, detalleCerrado = false, alAbrirDetalle, escala, alCambiarEscala, sellar, extra,
 }: {
   rubros: Rubro[]
   personas: Persona[]
@@ -110,6 +110,8 @@ export function BarraPlan({
   alCambiarEscala?: (e: Escala) => void
   /** Sellar la línea base: acción de Administración sobre TODO el plan, no sobre una actividad. */
   sellar?: ReactNode
+  /** Un enlace extra de la vista (p. ej. la secuencia calculada). Se dibuja junto a la escala. */
+  extra?: ReactNode
 }) {
   const [abierto, setAbierto] = useState<'' | 'actividad' | 'rubros' | 'filtros'>(
     altaRubroAbierta ? 'rubros' : '',
@@ -120,15 +122,19 @@ export function BarraPlan({
   return (
     <div data-testid="barra-plan">
       <div className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 py-1">
-        <SubTabs
-          testid="subvistas-plan"
-          items={SUBVISTAS.map((v) => ({
-            label: v.label,
-            onClick: () => alCambiarSub(v.id),
-            activo: sub === v.id,
-            testid: `subvista-${v.id}`,
-          }))}
-        />
+        {/* Con una sola sub-vista viva no hay nada que elegir: el selector se dibuja sólo si
+            algún día vuelve a haber más de una. */}
+        {SUBVISTAS.length > 1 && (
+          <SubTabs
+            testid="subvistas-plan"
+            items={SUBVISTAS.map((v) => ({
+              label: v.label,
+              onClick: () => alCambiarSub(v.id),
+              activo: sub === v.id,
+              testid: `subvista-${v.id}`,
+            }))}
+          />
+        )}
         <div className="flex-1" />
         {detalleCerrado && alAbrirDetalle && (
           <button type="button" onClick={alAbrirDetalle} className={DISCRETO} data-testid="abrir-detalle">Detalle ‹</button>
@@ -147,6 +153,7 @@ export function BarraPlan({
             ))}
           </span>
         )}
+        {extra}
         {sellar}
         <button type="button" onClick={() => alternar('filtros')} aria-expanded={abierto === 'filtros'} data-testid="boton-filtros" className={DISCRETO}>
           Filtros{n > 0 ? ` · ${n}` : ''}

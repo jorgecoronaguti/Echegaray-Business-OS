@@ -6,18 +6,46 @@
 // sector pertenece cada una. Un árbol filtrado que pierde el camino deja de ser un árbol: se
 // conservan los ANTEPASADOS de cada coincidencia, aunque ellos no coincidan.
 
-import { sinAnalisis, type Agregado, type NodoObra } from './wbs.ts'
+import { ejecutorDe, sinAnalisis, type Agregado, type NodoObra } from './wbs.ts'
 import type { EstadoActividad } from '../types/index.ts'
 
-export const VISTAS_ARBOL = ['todo', 'en_curso', 'critico', 'problema'] as const
+// ═══ FILTROS RÁPIDOS AL ESTILO DE UN GESTOR DE PROYECTOS (22/08/2026 · overhaul UX) ═══
+//
+// «Con problema» agrupaba conceptos del modelo (sin análisis, subcontrato, sin ejecutor) bajo un
+// rótulo que nadie podía predecir. Los filtros nuevos nombran lo que un jefe de obra busca:
+// atrasadas, bloqueadas, sin asignar. La deuda de carga (sin análisis) sigue visible como estado
+// de la fila; no necesita un filtro con nombre técnico.
+export const VISTAS_ARBOL = ['todo', 'en_curso', 'atrasadas', 'bloqueadas', 'sin_asignar', 'critico'] as const
 export type VistaArbol = (typeof VISTAS_ARBOL)[number]
 
 export const VISTA_ARBOL_LABEL: Record<VistaArbol, string> = {
   todo: 'Todo',
   en_curso: 'En curso',
-  critico: 'Camino crítico',
-  problema: 'Con problema',
+  atrasadas: 'Atrasadas',
+  // «Problemas» y «Crítico» son los rótulos del canónico 03. Nombran lo que el que mira busca —hay
+  // algo trabado, hay algo que empuja la fecha de fin— y no el mecanismo interno que lo produce.
+  bloqueadas: 'Problemas',
+  sin_asignar: 'Sin asignar',
+  critico: 'Crítico',
 }
+
+/**
+ * LAS CUATRO QUE SE VEN PRIMERO, en el orden del canónico 03: Todo · En curso · Crítico · Problemas.
+ *
+ * Las otras dos no se borran —atrasadas y sin asignar son las dos preguntas que un jefe de obra
+ * hace todos los días— pero van detrás, apagadas: el diseño reserva la línea de arriba para las
+ * cuatro que contestan «¿cómo viene la obra?» de un vistazo.
+ *
+ * «Apagadas» ES UNA PROPIEDAD DEL CHIP, no una promesa de este comentario. Durante un tiempo lo fue:
+ * esta lista existía, la de arriba también, y las seis se dibujaban con el mismo borde, el mismo
+ * fondo y el mismo tamaño. Lo implementa `Chip secundario` en `components/canon/Piezas.tsx`, y
+ * `TabTareas` las separa con un filete. Quien mueva una vista de una lista a la otra cambia el peso
+ * visual del filtro, no sólo su orden.
+ */
+export const VISTAS_PRIMARIAS: readonly VistaArbol[] = ['todo', 'en_curso', 'critico', 'bloqueadas']
+export const VISTAS_SECUNDARIAS: readonly VistaArbol[] = VISTAS_ARBOL.filter(
+  (v) => !VISTAS_PRIMARIAS.includes(v),
+)
 
 export function esVistaArbol(v: unknown): v is VistaArbol {
   return typeof v === 'string' && (VISTAS_ARBOL as readonly string[]).includes(v)
@@ -49,7 +77,10 @@ export function estadoDeFila(
   if (enCurso && n.es_critica) return { clave: 'en_curso_critica', label: 'En curso · crítica' }
   if (enCurso) return { clave: 'en_curso', label: 'En curso' }
   if (sinAnalisis(n)) return { clave: 'sin_analisis', label: 'Sin análisis' }
-  if (!n.es_contenedor && n.responsable === null) return { clave: 'sin_cuadrilla', label: 'Sin cuadrilla' }
+  // «SIN CUADRILLA» PREGUNTA POR EL EJECUTOR, NO POR EL RESPONSABLE. Mientras el campo mezclaba los
+  // dos daba lo mismo; ahora no: una actividad con jefe asignado y sin cuadrilla sigue sin poder
+  // arrancar, y un paquete subcontratado nunca estuvo en deuda de cuadrilla.
+  if (!n.es_contenedor && ejecutorDe(n) === null) return { clave: 'sin_cuadrilla', label: 'Sin cuadrilla' }
   if (!n.fin_plan && !n.es_contenedor) return { clave: 'sin_plan', label: 'Sin plan' }
   return { clave: 'pendiente', label: 'Pendiente' }
 }
@@ -63,20 +94,32 @@ function normalizar(s: string): string {
   return s.toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-/** ¿La fila, por sí sola, entra en la vista y en la búsqueda? Sin mirar a sus antepasados. */
+/** ¿La fila, por sí sola, entra en la vista y en la búsqueda? Sin mirar a sus antepasados.
+ *  `hoy` viene de afuera: la regla es pura y el test no depende del día en que corre. */
 export function coincide(
-  n: NodoObra, avance: number | null, vista: VistaArbol, query: string,
+  n: NodoObra, avance: number | null, vista: VistaArbol, query: string, hoy: string,
 ): boolean {
   if (query) {
     const q = normalizar(query)
-    const texto = normalizar(`${n.nombre} ${n.partida_codigo ?? ''} ${n.responsable ?? ''}`)
+    // Se busca por los TRES: quien escribe «Pérez» busca al responsable y quien escribe «Cuadrilla
+    // 2» busca la composición. Con un solo campo, una de las dos búsquedas no encontraba nada.
+    const texto = normalizar(
+      `${n.nombre} ${n.partida_codigo ?? ''} ${n.responsable ?? ''} ${n.cuadrilla ?? ''} ${n.subcontratista ?? ''}`,
+    )
     if (!texto.includes(q)) return false
   }
   switch (vista) {
     case 'todo': return true
     case 'en_curso': return avance !== null && avance > 0 && avance < 100
+    // ATRASADA = venció su fin de plan y no está terminada. El avance nulo cuenta: «nadie midió»
+    // no puede esconder un vencimiento — se muestra y que se resuelva mirándola.
+    case 'atrasadas':
+      return !n.es_contenedor && n.fin_plan !== null && n.fin_plan < hoy && (avance === null || avance < 100)
+    case 'bloqueadas': return n.impedimentos_abiertos > 0
+    // SIN ASIGNAR pregunta por el EJECUTOR (cuadrilla o subcontratista), no por el responsable:
+    // una actividad con jefe y sin cuadrilla sigue sin poder arrancar.
+    case 'sin_asignar': return !n.es_contenedor && ejecutorDe(n) === null
     case 'critico': return n.es_critica
-    case 'problema': return sinAnalisis(n) || n.es_subcontrato || n.responsable === null
   }
 }
 
@@ -99,15 +142,15 @@ export interface FilaVisible {
 export function filasVisibles(
   nodos: readonly NodoObra[],
   agregados: Map<string, Agregado>,
-  opciones: { vista: VistaArbol; query: string; plegados: ReadonlySet<string> },
+  opciones: { vista: VistaArbol; query: string; plegados: ReadonlySet<string>; hoy?: string },
 ): FilaVisible[] {
-  const { vista, query, plegados } = opciones
+  const { vista, query, plegados, hoy = '' } = opciones
   const porId = new Map(nodos.map((n) => [n.id, n]))
   const avances = new Map(nodos.map((n) => [n.id, avanceDe(n, agregados)]))
 
   const dentro = new Set<string>()
   for (const n of nodos) {
-    if (!coincide(n, avances.get(n.id) ?? null, vista, query)) continue
+    if (!coincide(n, avances.get(n.id) ?? null, vista, query, hoy)) continue
     dentro.add(n.id)
     let p = n.padre_id
     while (p && !dentro.has(p)) { dentro.add(p); p = porId.get(p)?.padre_id ?? null }
@@ -139,4 +182,26 @@ export function filasVisibles(
 /** Los contenedores: lo que colapsa «Colapsar». Las actividades nunca se pliegan, no tienen hijas. */
 export function contenedores(nodos: readonly NodoObra[]): string[] {
   return nodos.filter((n) => n.es_contenedor && n.tiene_hijas).map((n) => n.id)
+}
+
+/**
+ * CUÁNTAS ACTIVIDADES HAY DETRÁS DE CADA FILTRO.
+ *
+ * El chip sin número obliga a tocarlo para saber si hay algo del otro lado; con el número, «Problemas
+ * 0» ya contestó la pregunta sin un clic. Se cuentan **actividades, no filas del árbol**: los rubros
+ * son agrupadores y sumarlos infla cada contador con trabajo que no existe — «Todo» tiene que dar el
+ * mismo número que «Actividades» en la franja del pie, o uno de los dos está mintiendo.
+ *
+ * No mira el buscador: el contador describe la OBRA, no lo que quedó en pantalla.
+ */
+export function conteoDeVistas(
+  nodos: readonly NodoObra[], agregados: Map<string, Agregado>, hoy: string,
+): Record<VistaArbol, number> {
+  const cuenta = Object.fromEntries(VISTAS_ARBOL.map((v) => [v, 0])) as Record<VistaArbol, number>
+  for (const n of nodos) {
+    if (n.es_contenedor) continue
+    const avance = avanceDe(n, agregados)
+    for (const v of VISTAS_ARBOL) if (coincide(n, avance, v, '', hoy)) cuenta[v] += 1
+  }
+  return cuenta
 }

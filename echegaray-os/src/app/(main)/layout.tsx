@@ -2,7 +2,8 @@ import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { ROL_LABEL } from '@/features/auth/types'
-import { areasDe } from '@/features/auth/types/areas'
+import { puedeVerRuta } from '@/features/auth/types/areas'
+import { solapasDeNav } from '@/features/auth/types/navegacion'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AppHeader } from '@/shared/components/AppHeader'
 import { HeaderEsqueleto } from '@/shared/components/carga'
@@ -49,25 +50,38 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 }
 
 async function HeaderConUsuario() {
-  const { email, rolLabel, rol } = await loadUsuario()
-  return <AppHeader areas={areasDe(rol)} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
+  const { nombre, email, rolLabel, rol } = await loadUsuario()
+  return (
+    <AppHeader
+      solapas={solapasDeNav(rol)}
+      nombre={nombre}
+      email={email}
+      rolLabel={rolLabel}
+      // El mismo portero que el middleware: si la ruta le está cerrada, el ítem del menú no existe.
+      verUsuarios={puedeVerRuta(rol, '/administracion/usuarios')}
+      salir={<LogoutButton />}
+    />
+  )
 }
 
 async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
-    if (!user) return { email: null, rolLabel: null, rol: null }
+    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null }
     // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
     const perfil = await getPerfilActual(supabase, user.id)
     return {
+      // El nombre es sólo para las iniciales del avatar: si el perfil no lo tiene, `iniciales()`
+      // se cae al correo. Nunca se dibuja entero en el header.
+      nombre: perfil.data?.nombre ?? null,
       email: user.email ?? null,
       rolLabel: perfil.data ? ROL_LABEL[perfil.data.rol] : 'Sin rol asignado',
       rol: perfil.data?.rol ?? null,
     }
   } catch {
-    // Sin perfil legible se cae al nivel MENOS privilegiado (`areasDe(null)` → sólo Obras), nunca al
+    // Sin perfil legible se cae al nivel MENOS privilegiado (`solapasDeNav(null)` → sólo Obras), nunca al
     // más. Un error de lectura no puede ser una puerta a la economía de la empresa.
-    return { email: null, rolLabel: null, rol: null }
+    return { nombre: null, email: null, rolLabel: null, rol: null }
   }
 }

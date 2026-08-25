@@ -7,6 +7,7 @@
 // Son tres cosas distintas y se ven distinto. Que un listado vacío POR ERROR se dibuje como «no hay
 // datos» hace que un sistema caído parezca una empresa sin trabajo.
 export { EstadoError } from './EstadoError'
+export { AvisoDeLectura } from './AvisoDeLectura'
 export { EstadoNoEncontrado } from './EstadoNoEncontrado'
 export { SelloDatoBueno } from './SelloDatoBueno'
 export { diagnosticar, type Diagnostico, type ErrorDeRuta } from './diagnostico'

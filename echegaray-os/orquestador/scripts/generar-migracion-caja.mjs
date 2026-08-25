@@ -20,7 +20,12 @@ import { dirname, resolve } from 'node:path'
 import { sqlRubroDeCaja } from '../lib/rubro-caja.mjs'
 import { RUBROS_SIN_PROYECCION, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 
-export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260720160000_rubro_caja_nucleo.sql')
+// El DESTINO tiene que ser el ÚLTIMO archivo de la cadena que defina rubro_caja y sus vistas:
+// una migración generada más vieja que quede DESPUÉS en el orden de nombres se devora la regla
+// vigente en cualquier base reconstruida (pasó con 20260731140000 vs 20260720173000: la cadena
+// terminaba con la regla vieja, y producción con las vistas viejas — $95,3M de quincenas en el
+// mes equivocado). migracion-caja.test.mjs vigila este invariante.
+export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260822T1600_rubro_caja_nucleo.sql')
 
 /** NÚCLEO PURO: el texto completo de la migración. Se genera para poder testearlo sin tocar disco. */
 /** La línea del cash flow que NO sale de Compras porque mide lo que a Compras le falta. */
@@ -35,6 +40,16 @@ export function migracion() {
 -- ⚠ GENERADO por orquestador/scripts/generar-migracion-caja.mjs — NO editar a mano.
 -- Hay un test (orquestador/lib/migracion-caja.test.mjs) que compara este archivo contra el
 -- generador: si alguien lo edita acá, o agrega un rubro y no regenera, el test rompe.
+--
+-- QUÉ CAMBIÓ EL 31/07: LA FECHA DE CAJA DE UNA QUINCENA. Decía "la quincena es caja del día en que
+-- CIERRA" y era falso: el extracto del Santander prueba que se paga uno o dos días hábiles después
+-- (la que cerró el 15/07 se pagó el 17/07 — lote 260717507 + cci = $3.775.150 exactos). La caja va
+-- por coalesce(fecha_pago, hasta). Ver 20260731120000_jornal_quincena_fecha_pago.sql.
+-- QUÉ CAMBIÓ EL 22/08: esa corrección vivía SOLO en la migración generada del 31/07 y el template
+-- del generador había regresado a "hasta" — una regeneración posterior la pisó en producción
+-- ($95,3M de quincenas en el mes equivocado, hallazgo del auditor de reproducibilidad). Desde hoy
+-- el template la incorpora, el DESTINO del generador es el ÚLTIMO archivo de la cadena que define
+-- estos objetos, y un test lo vigila.
 --
 -- POR QUÉ EXISTE (20/07). La regla que dice qué es cada gasto y cuánto se va a gastar vivía SOLO en
 -- las fórmulas del Sheet. Medido: el calendario de caja de la web mostraba $4.121.169 de egresos
@@ -91,8 +106,12 @@ create or replace view public.egreso_rubro_mes as
          and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
              <> 'Nómina · Jornales de obra'
       union all
-      -- La quincena es caja del día en que CIERRA: se paga al terminarla.
-      select 'Nómina · Jornales de obra', date_trunc('month', j.hasta)::date, j.clase, j.total, 1
+      -- LA QUINCENA ES CAJA DEL DÍA EN QUE SE PAGA, NO DEL DÍA EN QUE CIERRA (31/07). Ver el
+      -- encabezado: el banco lo prueba, uno o dos días hábiles después del cierre. El coalesce es el
+      -- FALLBACK: una quincena sin fecha de pago cargada vale su cierre y no desaparece del cuadro —
+      -- que una línea quede en cero sin avisar es peor que una fecha vieja.
+      select 'Nómina · Jornales de obra',
+             date_trunc('month', coalesce(j.fecha_pago, j.hasta))::date, j.clase, j.total, 1
         from public.jornal_quincena j
       union all
       select '${LINEA_INSTRUMENTOS}', date_trunc('month', i.fecha_pago)::date, 'real', i.monto, 1
@@ -201,10 +220,13 @@ create or replace view public.calendario_caja as
      and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
          <> 'Nómina · Jornales de obra'
   union all
-  select 'pago', j.clase, j.hasta,
+  -- El evento de caja de una quincena es su PAGO, no su cierre. Y el concepto lo dice, para que en el
+  -- calendario se lea "Quincena 16/07–31/07 · se paga el 03/08" y nadie tenga que deducirlo.
+  select 'pago', j.clase, coalesce(j.fecha_pago, j.hasta),
          'Jornales de obra',
          'Quincena ' || to_char(j.desde, 'DD/MM') || '–' || to_char(j.hasta, 'DD/MM')
-           || coalesce(' · ' || j.personas || ' personas', ''),
+           || coalesce(' · ' || j.personas || ' personas', '')
+           || coalesce(' · se paga el ' || to_char(j.fecha_pago, 'DD/MM'), ' · sin fecha de pago cargada'),
          -j.total,
          (j.clase = 'real')
     from public.jornal_quincena j

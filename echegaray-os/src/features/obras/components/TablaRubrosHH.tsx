@@ -13,9 +13,13 @@ import type { FilaRubro } from '../services/dotacion'
 const n0 = (v: number | null) => (v == null ? null : Math.round(v).toLocaleString('es-AR'))
 const n2 = (v: number | null) => (v == null ? null : v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
+// PLAN · REAL · PROYECCIÓN VAN EN MONO (canónico 08). Son tres columnas que existen para
+// COMPARARSE entre sí renglón a renglón: en proporcional, «1.240» y «980» no alinean sus dígitos y
+// la comparación pasa a ser una lectura en vez de un vistazo. `tnum` sola no alcanza —iguala el
+// ancho de los dígitos, no el de la coma ni el del punto de miles—.
 function Celda({ children, tono = 'normal' }: { children: React.ReactNode; tono?: 'normal' | 'warn' | 'faint' }) {
   const clase = tono === 'warn' ? 'text-warn' : (tono === 'faint' ? 'text-faint' : 'text-ink-soft')
-  return <td className={`px-2 py-1.5 text-right text-[12px] tnum ${clase}`}>{children}</td>
+  return <td className={`px-2 py-1.5 text-right font-mono text-[12px] tabular-nums ${clase}`}>{children}</td>
 }
 
 export function TablaRubrosHH({ filas }: { filas: FilaRubro[] }) {

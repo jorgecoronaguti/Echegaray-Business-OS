@@ -1,12 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
-import { LogoutButton } from '@/features/auth/components/LogoutButton'
+import { getUsuarioActual } from '@/features/auth/services/authService'
 import { ShellEmpleado } from '@/features/empleado/components/ShellEmpleado'
-// `inicialesDe` se importa de la LÓGICA y no del `.tsx`: ese archivo es `'use client'`, y una
-// función re-exportada desde un módulo de cliente no se puede llamar desde el servidor —Next la
-// convierte en una referencia y tira «Attempted to call inicialesDe() from the server».
-import { inicialesDe } from '@/features/empleado/components/shell-logica'
 
 // EL MARCO DEL PERFIL EMPLEADO.
 //
@@ -24,15 +19,9 @@ export default async function EmpleadoLayout({ children }: { children: React.Rea
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
-  const perfil = await getPerfilActual(supabase, user.id)
 
-  return (
-    <ShellEmpleado
-      email={user.email ?? null}
-      iniciales={inicialesDe(perfil.data?.nombre, user.email)}
-      salir={<LogoutButton />}
-    >
-      {children}
-    </ShellEmpleado>
-  )
+  // NI LAS INICIALES NI LA OBRA VIAJAN POR ACÁ. El topbar de marca lo dibuja M02 —M09 abre con la
+  // ficha de la persona y M03…M08 con su topbar de detalle—, así que leerlos en el marco obligaba a
+  // consultar el perfil y la obra en las nueve pantallas para pintarlos en una.
+  return <ShellEmpleado>{children}</ShellEmpleado>
 }

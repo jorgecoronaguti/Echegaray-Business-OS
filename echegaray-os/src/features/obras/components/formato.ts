@@ -1,59 +1,16 @@
-// FORMATO DEL MÓDULO DE OBRAS — una sola copia de las tres funciones que usaban seis pantallas.
+// FORMATO DEL MÓDULO DE OBRAS — la implementación ya NO vive acá.
 //
-// EL VACÍO NUNCA SE PRESENTA COMO CERO. `plata(null)` da '—' y no '$0': un contratado sin cargar y
-// un contrato de cero pesos son cosas distintas, y confundirlas es fabricar un dato. Donde el '—'
-// no alcanza, la pantalla escribe al lado QUÉ falta — para eso está `FaltaDato`.
+// Estas nueve funciones se mudaron a `shared/utils` (21/08/2026): las de números a
+// `shared/utils/format.ts`, junto a `money`/`pct` —que son otra regla, no la misma, y ahora la
+// diferencia está escrita al lado—, y las de fecha a `shared/utils/fecha.ts`, donde quedaron
+// nombradas por CÓMO leen el instante (`ISO` = día calendario, `Local` = huso del navegador).
+//
+// El archivo sobrevive como re-export para no tocar los ~50 imports que ya apuntan acá: mover la
+// regla y mover los llamadores son dos cambios distintos, y hacerlos juntos deja el riesgo de los
+// dos en el mismo commit. Los nombres locales (`fecha`, `fechaCorta`) se conservan porque son los
+// que leen las pantallas de Obras.
 
-export const plata = (n: number | null | undefined) =>
-  n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR')
-
-/** Una fecha ISO (YYYY-MM-DD) en formato local, leída en UTC para que no se corra un día. */
-export const fecha = (iso: string | null | undefined) =>
-  iso
-    ? new Date(iso.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('es-AR', {
-        day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC',
-      })
-    : '—'
-
-/** Horas con un decimal: las HH vienen en `numeric` y 12.5 no es 12. */
-export const horas = (n: number | null | undefined) =>
-  n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })} HH`
-
-/** Un porcentaje de desvío con su signo. Positivo = por encima de lo planificado. */
-export const desvio = (n: number | null | undefined) =>
-  n == null ? '—' : `${n > 0 ? '+' : ''}${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`
-
-/** Plata ABREVIADA, para los titulares donde la cifra compite por el ancho con otras tres.
- *  `$74,3M` en vez de `$74.300.000`. El número exacto vive en Economía: acá se decide si mirarlo. */
-export const plataCorta = (n: number | null | undefined) => {
-  if (n == null) return '—'
-  const a = Math.abs(n)
-  const s = n < 0 ? '-$' : '$'
-  const f = (x: number, u: string) =>
-    s + x.toLocaleString('es-AR', { maximumFractionDigits: x < 10 ? 1 : 0 }) + u
-  if (a >= 1e9) return f(n / 1e9 * (n < 0 ? -1 : 1), 'MM')
-  if (a >= 1e6) return f(n / 1e6 * (n < 0 ? -1 : 1), 'M')
-  if (a >= 1e3) return f(n / 1e3 * (n < 0 ? -1 : 1), 'k')
-  return s + Math.round(a).toLocaleString('es-AR')
-}
-
-/** Un porcentaje con el espacio del es-AR: `35 %`. `null` no es `0 %`: devuelve `null` y la
- *  pantalla escribe qué falta. */
-export const porcentaje = (n: number | null | undefined) =>
-  n == null ? null : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`
-
-/** `DD/MM` — el formato de la columna PLAZO, donde el año no aporta y sí ocupa.
- *
- *  SE ARMA A MANO Y NO CON `toLocaleDateString`: con `day: '2-digit'` el ICU del navegador igual
- *  devuelve `26/6` en es-AR, y una columna donde unas fechas miden cinco caracteres y otras cuatro
- *  deja de estar alineada — que es lo único para lo que existe una columna de fechas en mono. */
-export const fechaCorta = (iso: string | null | undefined) =>
-  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null
-
-/** Una cantidad con su unidad: `2,84 m³`. Sin unidad, sólo el número. */
-export const cantidad = (n: number | null | undefined, unidad: string | null | undefined) =>
-  n == null ? null : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 })}${unidad ? ` ${unidad}` : ''}`
-
-/** HH sin decimales: en obra nadie planifica media hora hombre. */
-export const hh = (n: number | null | undefined) =>
-  n == null ? null : Math.round(Number(n)).toLocaleString('es-AR')
+// La ruta va RELATIVA y con extensión: el alias `@/` lo resuelve el bundler, no `node --test`, y
+// desde acá cuelga código que los tests importan.
+export { cantidad, desvio, hh, horas, plata, plataCorta, porcentaje } from '../../../shared/utils/format.ts'
+export { diaMesAnioISO as fecha, diaMesISO as fechaCorta } from '../../../shared/utils/fecha.ts'

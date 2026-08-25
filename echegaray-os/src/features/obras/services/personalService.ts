@@ -34,6 +34,19 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
   return { data: (data ?? []) as Persona[], error: null }
 }
 
+/** El catálogo de causas de desvío para la hora improductiva (§19, 22/08). Sólo las activas. */
+export async function getCausasDesvio(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<{ clave: string; nombre: string }[]>> {
+  const { data, error } = await supabase
+    .from('causa_desvio')
+    .select('clave, nombre')
+    .eq('activa', true)
+    .order('orden', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as { clave: string; nombre: string }[], error: null }
+}
+
 /** Las cuadrillas para el selector. Se leen enteras: hay pocas y la lista no depende de la obra. */
 export async function getCuadrillas(
   supabase: SupabaseClient,
@@ -213,4 +226,31 @@ export async function getIntegrantesPorCuadrilla(
     (m[f.cuadrilla_id] ??= []).push(f.persona_id)
   }
   return m
+}
+
+/** ═══ PERSONAS DEL RESUMEN (§25 · 23/08) — asignados ≠ presentes ═══
+ *
+ * ASIGNADAS sale de `obra_asignacion` vigente; PRESENTES de `presencia_del_dia` (las marcas de
+ * asistencia de HOY en esta obra — la misma vista que «En obra ahora»). Cero marcas NO afirma
+ * ausencia: se publica como «sin fichar», nunca como 0 personas. El error de lectura queda en
+ * `null` y la métrica dice «sin dato», no un número inventado. */
+export interface PersonasDeHoy {
+  asignadas: number | null
+  presentes: number | null
+}
+
+export async function getPersonasDeHoy(
+  supabase: SupabaseClient, obraId: string,
+): Promise<PersonasDeHoy> {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const [a, p] = await Promise.all([
+    supabase.from('obra_asignacion').select('id', { count: 'exact', head: true })
+      .eq('obra_id', obraId).or(`hasta.is.null,hasta.gte.${hoy}`),
+    supabase.from('presencia_del_dia').select('persona_id', { count: 'exact', head: true })
+      .eq('obra_id', obraId).eq('fecha', hoy),
+  ])
+  return {
+    asignadas: a.error ? null : a.count ?? null,
+    presentes: p.error ? null : p.count ?? null,
+  }
 }

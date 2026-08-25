@@ -51,6 +51,7 @@ export function BuscadorURL({
   oculto,
   ancho = 'w-full sm:w-[240px]',
   testid,
+  variante = 'hairline',
 }: {
   /** La ruta a la que vuelve. Es la misma pantalla. */
   accion: string
@@ -63,6 +64,8 @@ export function BuscadorURL({
    *  `${testid}-form`. Al revés —el nombre en el formulario— un `getByTestId(...).fill()` apunta al
    *  `<form>` y falla sin decir por qué. */
   testid?: string
+  /** `caja` para las carteras portadas del zip. Ver `ds/Controles.tsx` § Buscador. */
+  variante?: 'hairline' | 'caja'
 }) {
   const router = useRouter()
   const [texto, setTexto] = useState(q ?? '')
@@ -112,6 +115,7 @@ export function BuscadorURL({
         name="q"
         placeholder={placeholder}
         testid={testid ?? 'buscador'}
+        variante={variante}
       />
     </form>
   )

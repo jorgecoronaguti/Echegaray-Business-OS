@@ -181,15 +181,17 @@ export async function conLaTanda(d, m = {}, trabajo) {
     // ESTE POST YA SE PROCESÓ (reejecución de la tarea). No se vuelve a leer ni a escribir nada: se
     // refresca el mensaje con lo que hay y se calla. Contar dos veces sería mentir el total.
     const est = await repo.estadoDeLaTanda(port, tanda.id)
-    await refrescar({ mattermost, log }, tanda, textoTanda(est.parte, { enVuelo: est.enVuelo }))
-    return { texto: textoTanda(est.parte, { enVuelo: est.enVuelo }), estado: 'repetido', privado: false, silencioso: true }
+    const texto = textoTanda(est.parte, { enVuelo: est.enVuelo })
+    const { ok } = await refrescar({ mattermost, log }, tanda, texto)
+    // Igual que abajo: sólo se declara `silencioso` si el mensaje de verdad quedó en el canal.
+    return { texto, estado: 'repetido', privado: false, ...(ok ? { silencioso: true } : {}) }
   }
 
   // ⏳ ANTES DE TRABAJAR. El especialista tarda minutos: sin esto el canal queda mudo y el dueño
   // vuelve a mandar las fotos.
   const enCurso = await repo.estadoDeLaTanda(port, tanda.id)
   const publicado = await refrescar({ mattermost, log }, tanda, textoTanda(enCurso.parte, { enVuelo: Math.max(1, enCurso.enVuelo) }), { port, repo })
-  if (publicado) tanda = { ...tanda, aviso_post_id: publicado }
+  if (publicado.creado) tanda = { ...tanda, aviso_post_id: publicado.creado }
 
   let r
   try {
@@ -206,12 +208,64 @@ export async function conLaTanda(d, m = {}, trabajo) {
   }
 
   await repo.cerrarParte(port, { tandaId: tanda.id, postId: m.postId, parte: r?.parte ?? parteVacia() })
-  const texto = await refrescarMensaje({ port, repo, mattermost, log }, tanda)
+  const { texto, ok: refrescado } = await refrescarMensaje({ port, repo, mattermost, log }, tanda)
+
+  // ═══ UNA PREGUNTA NO ES UN RESUMEN, Y NO PUEDE IR REESCRITA (25/08) ═══
+  //
+  // El resumen se REESCRIBE sobre el post que la tanda publicó al principio, y eso está bien: es lo
+  // que el dueño pidió («solo quiero q confirme q termino todo»). Pero Mattermost no notifica ni
+  // reordena un post editado: quien mandó una foto hace un minuto no mira un mensaje de hace cinco.
+  //
+  // Medido el 25/08 en el canal `ataehrd…`: la tanda `e0f7529f` agrupó tres posts y reescribió
+  // siempre el mismo aviso (`qpr8tig33…`, publicado 15:16:38). El journal registró tres veces «el
+  // especialista publicó por su cuenta» —era verdad, publicó— y en el canal no apareció nada nuevo.
+  // El fajo `de1c9a7a` quedó abierto esperando una respuesta a una pregunta que nadie llegó a leer.
+  //
+  // Así que la pregunta sale como POST PROPIO, en el hilo. Y si NO se pudo publicar, esto no se
+  // declara `silencioso`: cae al outbox, que tiene reintento y dead-letter. Un fallo de publicación
+  // no puede convertirse en silencio sin rastro, que es exactamente lo que pasó.
+  const pregunta = r?.pregunta
+  if (pregunta?.texto) {
+    const publicada = await publicarPregunta({ mattermost, log }, tanda, pregunta)
+    if (!publicada) {
+      log?.warn?.('comprobantes: no pude publicar la pregunta del fajo, la mando por el outbox', { tanda: tanda.id, fajo: pregunta.fajoId })
+      return { texto: pregunta.texto, estado: r?.estado, privado: false, datos: { tanda: tanda.id, fajo: pregunta.fajoId } }
+    }
+  }
 
   // Si no se pudo publicar ni reescribir nada, se degrada honestamente: sale por el outbox. Un
   // mensaje de más es mejor que ninguno.
-  if (!tanda.aviso_post_id) return { texto: texto ?? r?.texto, estado: r?.estado, privado: false }
+  //
+  // `refrescado` es la mitad que faltaba: `aviso_post_id` prueba que ALGUNA VEZ se publicó, no que
+  // ESTA reescritura haya entrado. Si Mattermost rechazó la edición, el canal se queda con el
+  // «⏳ leyendo…» y el handler informaba éxito — silencio sin rastro, otra vez.
+  if (!tanda.aviso_post_id || !refrescado) return { texto: texto ?? r?.texto, estado: r?.estado, privado: false }
   return { texto, estado: r?.estado, privado: false, silencioso: true, datos: { tanda: tanda.id, post: tanda.aviso_post_id } }
+}
+
+/**
+ * Publica la pregunta abierta como post NUEVO en el hilo. Nunca lanza.
+ *
+ * Lleva sus `attachments` si los trae (con los botones apagados vienen vacíos, y el texto ya dice
+ * qué escribir para contestar: la salida no puede depender de un interruptor que en producción está
+ * en cero).
+ *
+ * @returns {Promise<boolean>} si de verdad quedó publicada
+ */
+async function publicarPregunta({ mattermost, log }, tanda, pregunta) {
+  if (typeof mattermost?.crearPost !== 'function' || !tanda?.channel_id) return false
+  try {
+    const post = await mattermost.crearPost({
+      channel_id: tanda.channel_id,
+      message: pregunta.texto,
+      root_id: tanda.root_post_id ?? undefined,
+      props: { attachments: pregunta.attachments ?? [] },
+    })
+    return Boolean(post?.id)
+  } catch (e) {
+    log?.warn?.('comprobantes: no pude publicar la pregunta', { detalle: String(e?.message ?? e).slice(0, 200) })
+    return false
+  }
 }
 
 /**
@@ -232,8 +286,11 @@ export async function conLaTanda(d, m = {}, trabajo) {
 async function refrescarMensaje({ port, repo, mattermost, log }, tanda) {
   const est = await repo.estadoDeLaTanda(port, tanda.id)
   const texto = textoTanda(est.parte, { enVuelo: est.enVuelo })
-  await refrescar({ mattermost, log }, tanda, texto)
-  return texto
+  // `ok` es lo que permite no mentir cuando Mattermost rechaza la edición. Ver `conLaTanda`: sin
+  // esto, una edición fallida se declaraba publicada y el canal se quedaba con el «⏳ leyendo…» de
+  // hace cinco minutos, que es exactamente lo que el dueño lee como «se clavó».
+  const { ok } = await refrescar({ mattermost, log }, tanda, texto)
+  return { texto, ok }
 }
 
 /**
@@ -242,34 +299,36 @@ async function refrescarMensaje({ port, repo, mattermost, log }, tanda) {
  * NUNCA MANDA `attachments`: `props.attachments: []` va explícito para que un post que quedó de
  * antes con botones los pierda al reescribirse. Las tarjetas se fueron (ver `botonesFajo`).
  *
- * @returns {Promise<string|null>} el id del post si lo acaba de crear
+ * @returns {Promise<{ok:boolean, creado:string|null}>} `ok` = el mensaje quedó en el canal;
+ *   `creado` = el id, sólo cuando lo acaba de publicar.
  */
 async function refrescar({ mattermost, log }, tanda, texto, guardar = null) {
   const id = tanda?.aviso_post_id
+  const nada = { ok: false, creado: null }
   try {
     if (id) {
-      if (typeof mattermost?.actualizarPost !== 'function') return null
+      if (typeof mattermost?.actualizarPost !== 'function') return nada
       await mattermost.actualizarPost({ id, message: texto, props: { attachments: [] } })
-      return null
+      return { ok: true, creado: null }
     }
-    if (typeof mattermost?.crearPost !== 'function' || !tanda?.channel_id) return null
+    if (typeof mattermost?.crearPost !== 'function' || !tanda?.channel_id) return nada
     const post = await mattermost.crearPost({
       channel_id: tanda.channel_id,
       message: texto,
       root_id: tanda.root_post_id ?? undefined,
       props: { attachments: [] },
     })
-    if (!post?.id) return null
+    if (!post?.id) return nada
     if (guardar?.port && guardar?.repo) {
       // Si otro proceso ganó la carrera, manda el suyo: el nuestro queda huérfano pero no se
       // multiplican los mensajes hacia adelante.
       const vigente = await guardar.repo.guardarAviso(guardar.port, { id: tanda.id, avisoPostId: post.id })
-      return vigente ?? post.id
+      return { ok: true, creado: vigente ?? post.id }
     }
-    return post.id
+    return { ok: true, creado: post.id }
   } catch (e) {
     log?.warn?.('comprobantes: no pude refrescar el mensaje de la tanda', { detalle: String(e?.message ?? e).slice(0, 200) })
-    return null
+    return nada
   }
 }
 

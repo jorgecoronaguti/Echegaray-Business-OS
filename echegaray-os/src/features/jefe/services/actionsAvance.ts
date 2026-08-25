@@ -36,6 +36,8 @@ import type { Resultado } from '@/features/obras/services/actions'
 import { leerReparto } from '@/features/obras/services/repartoHH'
 import { AVISO_CRITERIO, deltaHasta, elPorcentajeMueveElAvance } from './medicion.ts'
 import type { Metodo } from './medicion.ts'
+import { aplicarPlan, planDePasos } from './pasos.ts'
+import type { PasoDeLaTarea } from './pasos.ts'
 
 const esquema = z.object({
   actividad_id: z.string().uuid('Elegí la tarea'),
@@ -99,43 +101,53 @@ export async function registrarAvance(obraId: string, form: FormData): Promise<R
 
 type Cliente = Awaited<ReturnType<typeof createClient>>
 
-/** Los pasos ejecutados. Marcar y DESMARCAR: el jefe se equivoca de renglón con el pulgar. */
+/**
+ * Los pasos ejecutados. Marcar y DESMARCAR: el jefe se equivoca de renglón con el pulgar.
+ *
+ * QUÉ SE ESCRIBE Y EN QUÉ ORDEN LO DECIDE `pasos.ts`, que es puro y está probado. Acá queda sólo la
+ * conversación con la base: leer los pasos —CON SU PESO, que es de donde sale cuánto aporta cada
+ * uno— y ejecutar las tres escrituras del plan. La firma va SIEMPRE primero: el porqué, en
+ * `aplicarPlan`.
+ */
 async function guardarPasos(
   supabase: Cliente, obraId: string, d: z.infer<typeof esquema>, metodo: Metodo,
 ): Promise<Resultado> {
   const marcados = new Set((d.pasos ?? '').split(',').map((s) => s.trim()).filter(Boolean))
   const { data: pasos, error } = await supabase
-    .from('obra_actividad_paso').select('id, nombre, hecho_en').eq('actividad_id', d.actividad_id)
+    .from('obra_actividad_paso').select('id, nombre, peso, hecho_en').eq('actividad_id', d.actividad_id)
   if (error) return { ok: false, error: error.message }
-  const lista = (pasos ?? []) as { id: string; nombre: string; hecho_en: string | null }[]
-  if (lista.length === 0) {
-    return { ok: false, error: 'Esta tarea se mide por pasos y todavía no tiene pasos cargados.' }
-  }
+  const lista = (pasos ?? []).map((p) => ({
+    id: String(p.id), nombre: String(p.nombre),
+    // `peso` es numeric y la cuenta que sigue es una división: se convierte una sola vez acá, en la
+    // frontera, y no en el medio del cálculo. Igual que el `Number(pct)` de `getMisTareas`.
+    peso: Number(p.peso ?? 0), hecho_en: (p.hecho_en as string | null) ?? null,
+  })) as PasoDeLaTarea[]
 
-  const nuevos = lista.filter((p) => marcados.has(p.id) && !p.hecho_en)
-  const deshechos = lista.filter((p) => !marcados.has(p.id) && p.hecho_en)
-  if (nuevos.length === 0 && deshechos.length === 0) {
-    return { ok: false, error: 'No cambiaste ningún paso.' }
-  }
+  const plan = planDePasos(lista, marcados)
+  if (!plan.ok) return { ok: false, error: plan.error }
 
-  const ahora = new Date().toISOString()
-  if (nuevos.length > 0) {
-    const { error: e } = await supabase.from('obra_actividad_paso')
-      .update({ hecho_en: ahora }).in('id', nuevos.map((p) => p.id))
-    if (e) return { ok: false, error: e.message }
-    // Un registro de ejecución POR PASO: es lo que deja el rastro de quién y cuándo lo firmó.
-    const { error: eE } = await supabase.from('obra_ejecucion').insert(nuevos.map((p) => ({
-      obra_id: obraId, actividad_id: d.actividad_id, fecha: d.fecha,
-      metodo, paso_id: p.id, comentario: d.comentario || null, fuente: 'jefe_telefono',
-    })))
-    if (eE) return { ok: false, error: eE.message }
-  }
-  if (deshechos.length > 0) {
-    const { error: e } = await supabase.from('obra_actividad_paso')
-      .update({ hecho_en: null }).in('id', deshechos.map((p) => p.id))
-    if (e) return { ok: false, error: e.message }
-  }
-  return { ok: true, mensaje: `${nuevos.length} pasos marcados, ${deshechos.length} desmarcados` }
+  return aplicarPlan(plan, {
+    // Un registro de ejecución POR PASO, con lo que ese paso aporta: es el rastro de quién y cuándo
+    // lo firmó, y sin `avance_pct` la base lo rechaza (`obra_ejecucion_dice_algo`).
+    firmar: async (firmas) => {
+      const { error: e } = await supabase.from('obra_ejecucion').insert(firmas.map((f) => ({
+        obra_id: obraId, actividad_id: d.actividad_id, fecha: d.fecha,
+        metodo, paso_id: f.paso_id, avance_pct: f.avance_pct,
+        comentario: d.comentario || null, fuente: 'jefe_telefono',
+      })))
+      return { error: e?.message ?? null }
+    },
+    marcar: async (ids, cuando) => {
+      const { error: e } = await supabase.from('obra_actividad_paso')
+        .update({ hecho_en: cuando }).in('id', [...ids])
+      return { error: e?.message ?? null }
+    },
+    desmarcar: async (ids) => {
+      const { error: e } = await supabase.from('obra_actividad_paso')
+        .update({ hecho_en: null }).in('id', [...ids])
+      return { error: e?.message ?? null }
+    },
+  }, new Date().toISOString())
 }
 
 /** Cantidad, partes o manual. El método decide qué columna se llena y qué se exige. */

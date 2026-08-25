@@ -2,9 +2,15 @@
 
 // ═══ 05 · REGISTRAR AVANCE — los métodos, el criterio y la firma ═══
 //
-// Es una PANTALLA ENTERA y no un panel: registrar avance es el acto que más consecuencias tiene en
-// el módulo —mueve el avance de la obra, el rendimiento y la proyección de HH— y se hace mirando
-// tres cosas a la vez (los pasos, las horas y la evidencia). En un cajón lateral de 412px no entran.
+// UNA SOLA DEFINICIÓN, DOS ENVASES (orden del dueño 24/08). La pantalla entera de
+// `/obras/[obra]/avance/[actividad]` y el formulario embebido en el panel lateral de la tarea son
+// EL MISMO componente con `variante`: lo que cambia es el envase —el título y las dos columnas—,
+// nunca la regla. Duplicar el formulario para el panel sería duplicar el criterio del método
+// manual, la resta del acumulado y la firma: tres reglas que ya tienen su gemela en la base y que
+// nadie volvería a corregir en los dos lados.
+//
+// Lo que la variante `panel` NO trae es el chrome de página: ni cabecera de obra, ni contenedor, ni
+// el historial. Eso lo pone quien la embebe.
 //
 // ═══ EL CRITERIO DEL MÉTODO MANUAL ═══
 //
@@ -21,6 +27,7 @@
 
 import { useState } from 'react'
 import { FormAccion } from '@/shared/components/ui'
+import { IconoFoto, IconoProblema } from '@/shared/components/iconos'
 import { avancePorCantidad, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import { hh as fmtHH, porcentaje } from './formato'
 import type { PasoDeActividad } from '../services/tareasService'
@@ -38,15 +45,20 @@ function metodoInicial(n: NodoObra): MetodoRegistrable {
   return 'manual'
 }
 
-export function FormAvance({
-  nodo, pasos, cuadrillas, autor, hoy, registrar,
-}: {
+export interface DatosFormAvance {
   nodo: NodoObra
   pasos: PasoDeActividad[]
   cuadrillas: { id: string; nombre: string }[]
   autor: string
   hoy: string
   registrar: (form: FormData) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
+}
+
+export function FormAvance({
+  nodo, pasos, cuadrillas, autor, hoy, registrar, variante = 'pagina',
+}: DatosFormAvance & {
+  /** `panel`: sin título propio y en una sola columna, para un cajón de ~412px. */
+  variante?: 'pagina' | 'panel'
 }) {
   const [metodo, setMetodo] = useState<MetodoRegistrable>(metodoInicial(nodo))
   const [tildados, setTildados] = useState<ReadonlySet<string>>(
@@ -56,6 +68,12 @@ export function FormAvance({
   const [declarado, setDeclarado] = useState(String(nodo.avance_pct ?? 0))
   const [criterio, setCriterio] = useState('')
 
+  // UN CONTENEDOR NO SE MIDE, SE AGREGA: la base lo rechaza con un trigger. La guarda vive ACÁ y
+  // no en la página porque el mismo formulario se embebe en el panel de la tarea: dejada afuera,
+  // cada embebedor tendría que acordarse de repetirla y el primero que se olvide muestra un
+  // formulario que la base va a rebotar después de completarlo.
+  const esContenedor = nodo.es_contenedor
+
   const pesoTotal = pasos.reduce((s, p) => s + Number(p.peso), 0)
   const pesoHecho = pasos.filter((p) => tildados.has(p.id)).reduce((s, p) => s + Number(p.peso), 0)
   const avancePasos = pesoTotal > 0 ? Math.round((pesoHecho / pesoTotal) * 1000) / 10 : null
@@ -64,21 +82,37 @@ export function FormAvance({
   const faltaCriterio = metodo === 'manual' && criterio.trim() === ''
   const proy = hhProyectadas(nodo.hh_real, resultante)
 
+  if (esContenedor) {
+    return (
+      <p className="border-l-[3px] border-warn bg-warn-soft px-3.5 py-3 text-[13px] text-warn"
+        data-testid="es-contenedor">
+        «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de
+        ahí sube solo.
+      </p>
+    )
+  }
+
+  const enPanel = variante === 'panel'
+
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">{nodo.nombre}</h1>
-          <p className="text-[12px] text-muted">
-            {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
-            {nodo.camino !== nodo.nombre && nodo.camino}
-            {nodo.cantidad_objetivo !== null && (
-              <span className="ml-2 font-mono text-[11px] text-faint">
-                {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
-              </span>
-            )}
-          </p>
-        </div>
+        {/* EN EL PANEL EL TÍTULO YA ESTÁ ARRIBA: repetirlo empuja el número grande fuera de la
+            vista, que es justo lo único que este bloque tiene que mostrar primero. */}
+        {!enPanel && (
+          <div>
+            <h1 className="text-[20px] font-semibold text-ink">{nodo.nombre}</h1>
+            <p className="text-[12px] text-muted">
+              {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
+              {nodo.camino !== nodo.nombre && nodo.camino}
+              {nodo.cantidad_objetivo !== null && (
+                <span className="ml-2 font-mono text-[11px] text-faint">
+                  {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
+                </span>
+              )}
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="text-[10.5px] uppercase tracking-[0.05em] text-faint">Avance</div>
@@ -106,9 +140,10 @@ export function FormAvance({
       {/* LA CONVERSIÓN SE DICE ANTES DE HACERLA. 141 actividades vivas se miden sumando partes
           diarios; registrar acá las pasa a otro método, y eso cambia de dónde sale su número. */}
       {nodo.metodo_avance === 'partes' && (
-        <p className="mb-3 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="aviso-partes">
-          Esta actividad venía sumando los avances de sus partes diarios. Registrar acá la pasa a
-          «{METODOS.find(([m]) => m === metodo)?.[1]}» y su porcentaje pasa a salir de otro lado.
+        <p className="mb-3 flex items-start gap-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="aviso-partes">
+          <IconoProblema className="mt-[1px] h-[14px] w-[14px] shrink-0" />
+          Venía sumando sus partes diarios: registrar acá la pasa a
+          «{METODOS.find(([m]) => m === metodo)?.[1]}» y su porcentaje sale de otro lado.
         </p>
       )}
 
@@ -123,15 +158,14 @@ export function FormAvance({
         <input type="hidden" name="metodo" value={metodo} />
         <input type="hidden" name="fecha" value={hoy} />
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+        <div className={enPanel ? 'grid gap-5' : 'grid gap-6 lg:grid-cols-[1fr_300px]'}>
           <div>
             {metodo === 'pasos' && (
               <section data-testid="cuerpo-pasos">
                 <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Pasos ejecutados</h2>
                 {pasos.length === 0 ? (
                   <p className="text-[12.5px] text-muted">
-                    Esta actividad todavía no tiene pasos cargados: sin pasos no hay peso que sumar.
-                    Elegí otro método o cargá la secuencia primero.
+                    Sin pasos cargados no hay peso que sumar. Elegí otro método o cargá la secuencia.
                   </p>
                 ) : (
                   <ul>
@@ -183,8 +217,8 @@ export function FormAvance({
                   <span className="text-[13px] text-muted">{nodo.unidad ?? ''}</span>
                   <span className="text-[12.5px] text-faint">
                     {nodo.cantidad_objetivo === null
-                      ? 'sin cantidad objetivo cargada: no hay porcentaje que calcular'
-                      : `de ${nodo.cantidad_objetivo} ${nodo.unidad ?? ''} contratados`}
+                      ? 'sin cantidad objetivo: no hay porcentaje que calcular'
+                      : `de ${nodo.cantidad_objetivo} ${nodo.unidad ?? ''}`}
                   </span>
                 </div>
                 <p className="mt-2 text-[12px] text-muted">
@@ -196,8 +230,10 @@ export function FormAvance({
 
             {metodo === 'manual' && (
               <section data-testid="cuerpo-manual">
-                <h2 className="mb-1 text-[13px] font-semibold text-ink">Avance declarado</h2>
-                <p className="mb-2 text-[12px] text-muted">Medir por unidad no representa este trabajo.</p>
+                {/* SIN PÁRRAFO DE APOYO: que el método manual sea para lo que no se mide por unidad
+                    ya lo dice el selector de método, y la regla que sí importa —el criterio— está
+                    donde se incumple, al lado del campo. */}
+                <h2 className="mb-2 text-[13px] font-semibold text-ink">Avance declarado</h2>
                 <input type="hidden" name="avance_pct" value={declarado} />
                 <div className="flex flex-wrap gap-1.5">
                   {ESCALONES.map((v) => (
@@ -224,8 +260,12 @@ export function FormAvance({
               </section>
             )}
 
+            {/* HH NO ES AVANCE: van al lado, con su propio rótulo. Es la regla del modelo, y por eso
+                el rótulo se conserva aunque el resto de la pantalla haya perdido palabras. */}
             <section className="mt-5 border-t border-line pt-3" data-testid="hh-consumidas">
-              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">HH consumidas — no es avance</h2>
+              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">
+                HH consumidas <span className="font-normal text-faint">— no es avance</span>
+              </h2>
               <div className="grid grid-cols-3 gap-3">
                 <Cifra rotulo="Plan" valor={fmtHH(nodo.hh_plan)} falta="sin cargar" sub="del análisis" />
                 <Cifra rotulo="Real" valor={fmtHH(nodo.hh_real)} falta="sin registro" sub="cargadas por asistencia" />
@@ -234,16 +274,22 @@ export function FormAvance({
               </div>
             </section>
 
-            <section className="mt-5 border-t border-line pt-3">
+            {/* El `id` es el destino de «Adjuntar evidencia» del panel de la tarea (04): esta es la
+                pantalla donde la evidencia se carga, porque la evidencia es de UN registro de
+                avance y no de la actividad entera. */}
+            <section id="evidencia" className="mt-5 border-t border-line pt-3">
               <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Evidencia</h2>
               {/* NO HAY SUBIDA DE ARCHIVOS EN EL OS: el archivo vive en Drive y acá se guarda el
                   enlace, igual que en Documentos. Un cargador propio sería una segunda copia del
                   mismo papel, y la que se desactualiza es siempre la copia. */}
-              <input
-                type="url" name="evidencia" placeholder="Pegá el enlace de Drive de la foto o el remito"
-                aria-label="Enlace de la evidencia" data-testid="campo-evidencia"
-                className="h-control w-full rounded-control border border-line-strong px-2.5 text-[13px] text-ink placeholder:text-faint"
-              />
+              <span className="flex items-center gap-2 rounded-control border border-line-strong px-2.5">
+                <IconoFoto className="h-[15px] w-[15px] shrink-0 text-faint" />
+                <input
+                  type="url" name="evidencia" placeholder="Enlace de Drive de la foto o el remito"
+                  aria-label="Enlace de la evidencia" data-testid="campo-evidencia"
+                  className="h-control w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-faint"
+                />
+              </span>
             </section>
           </div>
 
@@ -274,6 +320,18 @@ export function FormAvance({
       </FormAccion>
     </div>
   )
+}
+
+/**
+ * EL MISMO FORMULARIO, EMBEBIDO EN EL PANEL LATERAL DE LA TAREA.
+ *
+ * Es un envase, no una copia: fija `variante` y nada más. Quien lo importa le pasa la actividad, la
+ * cuadrilla, el autor y la server action ya atada con `.bind` a la obra y a la actividad — el
+ * `actividad_id` NUNCA viaja en un campo del formulario, porque un id editable desde el navegador
+ * deja escribir el avance de la actividad de al lado.
+ */
+export function FormAvanceEmbebido(datos: DatosFormAvance) {
+  return <FormAvance {...datos} variante="panel" />
 }
 
 function Firma({ clave, valor }: { clave: string; valor: string }) {

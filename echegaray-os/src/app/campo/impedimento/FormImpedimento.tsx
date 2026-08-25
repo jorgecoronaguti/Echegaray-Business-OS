@@ -58,7 +58,7 @@ export function FormImpedimento({
           required
           minLength={3}
           placeholder="Faltan bloques 18×18 para seguir el muro sur"
-          className={`${CAMPO} h-auto py-2`}
+          className={`${CAMPO} h-auto min-h-[96px] py-2`}
           data-testid="impedimento-descripcion"
         />
       </Campo>
@@ -73,7 +73,7 @@ export function FormImpedimento({
         </select>
       </Campo>
 
-      <Campo rotulo="Quién lo resuelve" ayuda="Una persona con nombre. Un área no libera nada.">
+      <Campo rotulo="Quién lo resuelve" ayuda="Una persona con nombre: un área no libera nada.">
         <input name="responsable" required minLength={2} className={CAMPO} data-testid="impedimento-responsable" />
       </Campo>
 
@@ -89,7 +89,7 @@ export function FormImpedimento({
       </Campo>
 
       {actividades.length > 0 && (
-        <Campo rotulo="Actividad" ayuda="Opcional: si sabés a qué actividad frena, queda colgado de ella.">
+        <Campo rotulo="Actividad" ayuda="Opcional: a qué tarea frena.">
           <select name="actividad_id" defaultValue="" className={CAMPO}>
             <option value="">sin actividad</option>
             {actividades.map((a) => (
@@ -108,14 +108,9 @@ export function FormImpedimento({
       )}
       {state.error && <ErrorCampo>{state.error}</ErrorCampo>}
 
+      {/* El alto lo pone `tamano="bloque"`, no un `className`: ver el porqué en `Boton.tsx`. */}
       <div className="border-t border-line pt-3">
-        <Boton
-          type="submit"
-          variante="primaria"
-          disabled={guardando}
-          className="h-[48px] w-full text-[15px]"
-          data-testid="guardar-impedimento"
-        >
+        <Boton type="submit" variante="primaria" tamano="bloque" disabled={guardando} data-testid="guardar-impedimento">
           {guardando ? 'Guardando…' : `Anotar el impedimento en ${obraNombre}`}
         </Boton>
       </div>

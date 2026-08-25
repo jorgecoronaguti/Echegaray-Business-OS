@@ -50,8 +50,9 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useEffect, useRef } from 'react'
+import { Ayuda } from '@/shared/components/ds'
 import { construirEscala, type Escala } from '../services/escala'
-import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
+import { PALABRA_SEMAFORO, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
 
 /** 48px por renglón: la celda de la izquierda apila nombre de obra y cliente, y las dos líneas
@@ -63,12 +64,13 @@ const ALTO_FILA = 48
 const ALTO_HEAD = 40
 
 /** EL ESTADO EN UN LUGAR: el color de la barra, el del punto y la palabra del detalle salen de acá.
- *  Tres tablas separadas se desincronizan el día que alguien agrega un estado. */
+ *  Tres tablas separadas se desincronizan el día que alguien agrega un estado. LA PALABRA no se
+ *  escribe acá: sale de `PALABRA_SEMAFORO`, porque el Resumen de la obra nombra el mismo estado. */
 const ESTADO: Record<Semaforo, { fill: string; punto: string; texto: string; palabra: string }> = {
-  al_dia:         { fill: 'fill-accent', punto: 'bg-accent',      texto: 'text-muted', palabra: 'al día' },
-  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',        texto: 'text-warn',  palabra: 'atraso menor' },
-  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',         texto: 'text-neg',   palabra: 'atraso crítico' },
-  sin_datos:      { fill: 'fill-faint',  punto: 'bg-line-strong', texto: 'text-faint', palabra: 'sin datos para juzgar' },
+  al_dia:         { fill: 'fill-accent', punto: 'bg-accent',      texto: 'text-muted', palabra: PALABRA_SEMAFORO.al_dia },
+  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',        texto: 'text-warn',  palabra: PALABRA_SEMAFORO.atraso_menor },
+  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',         texto: 'text-neg',   palabra: PALABRA_SEMAFORO.atraso_critico },
+  sin_datos:      { fill: 'fill-faint',  punto: 'bg-line-strong', texto: 'text-faint', palabra: PALABRA_SEMAFORO.sin_datos },
 }
 
 /** TERMINADA ES VERDE, y es el único verde de la pantalla. `COMPONENTS.md` §Gantt row: *"relleno
@@ -152,7 +154,7 @@ function Renglon({ f }: { f: FilaObra }) {
   const sem = f.barra ? f.barra.desvio.semaforo : 'sin_datos'
   return (
     <Link
-      href={hrefDe(f.obraId)}
+      href={hrefDe(f.obraId)} prefetch={false}
       data-testid="obra-gantt"
       data-obra={f.obraId}
       data-etapa={f.etapa ?? ''}
@@ -398,15 +400,23 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
           discutir, y el que lo mira le inventa un significado al rojo. Los cuatro umbrales salen de
           `UMBRAL_ATRASO`, que es de donde los lee la función que pinta: si mañana cambian, este
           párrafo cambia solo. */}
+      {/* 22/08/2026 · SEIS LÍNEAS PERMANENTES DEBAJO DEL GRÁFICO PASARON A LA AYUDA. El criterio no
+          se tira —sigue entero, y sigue leyendo `UMBRAL_ATRASO`—, pero es una leyenda: se consulta
+          cuando alguien discute un color, no cada vez que se abre la cartera de obras. Lo que sí
+          queda a la vista es que el avance esperado es una ESTIMACIÓN, porque eso cambia cómo se
+          lee CADA barra y no se puede esconder detrás de un clic. */}
       <p className="mt-3 max-w-[900px] text-[11.5px] leading-relaxed text-faint" data-testid="regla-semaforo">
+        El avance esperado es una <strong className="font-medium text-muted">ESTIMACIÓN</strong>:
+        ordena la atención, no afirma cuánto se atrasó una obra.
+      </p>
+      <Ayuda titulo="Cómo se pinta el semáforo" testid="ayuda-semaforo">
         La obra sin fechas de plan no dibuja barra: no se le inventa un inicio, se dice el motivo. El
         rojo no es «se pasó la fecha»: es una brecha de más de {UMBRAL_ATRASO.criticoPuntos} puntos
         contra el avance esperado, o más de {UMBRAL_ATRASO.criticoDias} días de atraso —ámbar a partir
         de {UMBRAL_ATRASO.menorPuntos} puntos o {UMBRAL_ATRASO.menorDias} días—. Terminada al 100% va
-        al día aunque haya cerrado tarde. El avance esperado es una <strong className="font-medium text-muted">ESTIMACIÓN</strong>:
-        supone que el trabajo se reparte parejo sobre el calendario, y ninguna obra avanza así. Sirve
-        para ordenar la atención, no para afirmar cuánto se atrasó una obra.
-      </p>
+        al día aunque haya cerrado tarde. El avance esperado supone que el trabajo se reparte parejo
+        sobre el calendario, y ninguna obra avanza así.
+      </Ayuda>
     </div>
   )
 }

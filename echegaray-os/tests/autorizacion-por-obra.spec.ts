@@ -302,8 +302,11 @@ test('el monto contratado NO llega al jefe de obra: se enmascara en la base, no 
     // publicarlo publica el contrato con una resta de primer grado. Ésa es la distinción que este
     // test fija, y es la que se rompe sola si alguien "destapa una columna más".
     const plan = (await pedir(jefe,
-      `obra_plan_vs_real?select=monto_contratado,monto_presupuestado,margen_actual,margen_esperado,pendiente_certificar,certificado,hh_real&obra_id=eq.${OBRA}`)).filas as Array<Record<string, unknown>>
-    for (const col of ['monto_contratado', 'monto_presupuestado', 'margen_actual', 'margen_esperado',
+      `obra_plan_vs_real?select=monto_contratado,monto_presupuestado,margen_esperado,pendiente_certificar,certificado,hh_real&obra_id=eq.${OBRA}`)).filas as Array<Record<string, unknown>>
+    // `margen_actual` salió de la lista porque salió de la vista el 22/08: era `contratado − costo
+    // real` y no es margen. El margen vive en `obra_economia` y se vigila en
+    // `control-obra-permisos.spec.ts`.
+    for (const col of ['monto_contratado', 'monto_presupuestado', 'margen_esperado',
       'pendiente_certificar']) {
       expect(plan[0][col], `obra_plan_vs_real.${col} llegó al jefe de obra`).toBeNull()
     }

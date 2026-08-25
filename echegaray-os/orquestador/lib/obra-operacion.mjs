@@ -155,3 +155,86 @@ export function obraDeTexto(indice, texto) {
   const v = indice.get(a)
   return typeof v === 'string' ? v : null
 }
+
+// ═══ LOS IMPEDIMENTOS: FILTRO Y ATRASO (23/08 · design canónico, pantalla 11) ═══
+//
+// La pantalla ofrece tres chips —Todo · Sin resolver · Críticos— y un panel que dice hace cuánto
+// está trabado. Las tres reglas viven ACÁ y no en el componente por una razón concreta: son las
+// únicas partes de esa pantalla que se pueden probar sin navegador, y un chip que cuenta mal se ve
+// igual de bien que uno que cuenta bien.
+//
+// «CRÍTICO» NO ES UNA COLUMNA. El canónico lo dibuja como un booleano del dato, y la base no lo
+// tiene: `obra_restriccion` no guarda prioridad ni severidad. Inventar un campo para poder pintar
+// el chip sería fabricar dato. Lo que SÍ es un hecho verificable es que el compromiso venció: si
+// alguien se comprometió a destrabarlo para una fecha y esa fecha pasó, eso es lo crítico de la
+// obra hoy. El chip cuenta eso, y la pantalla lo dice con esa palabra.
+
+/** @typedef {{ estado?: string|null, tipo?: string|null, fecha_compromiso?: string|null, fecha_liberacion?: string|null }} ImpedimentoLike */
+
+/** Abierto = todo lo que no fue liberado. `en_curso` sigue frenando la obra. */
+export function impedimentoAbierto(r) {
+  return (r?.estado ?? null) !== 'liberada'
+}
+
+/**
+ * Vencido: abierto Y con un compromiso que ya pasó. Un impedimento sin fecha NO es crítico —es
+ * incompleto—, y contarlo como crítico taparía el dato que falta con una alarma.
+ */
+export function impedimentoVencido(r, hoyIso) {
+  if (!impedimentoAbierto(r)) return false
+  const f = r?.fecha_compromiso ?? null
+  return typeof f === 'string' && f !== '' && f < hoyIso
+}
+
+/** El clima es un motivo de impedimento (migración 20260823T1000), no otra tabla. */
+export function impedimentoDeClima(r) {
+  return (r?.tipo ?? null) === 'clima'
+}
+
+export const CHIPS_IMPEDIMENTO = /** @type {const} */ (['todo', 'sin_resolver', 'criticos'])
+
+/**
+ * @template {ImpedimentoLike} T
+ * @param {readonly T[]} lista
+ * @param {string} chip
+ * @param {string} hoyIso
+ * @returns {T[]}
+ */
+export function filtrarImpedimentos(lista, chip, hoyIso) {
+  const filas = [...(lista ?? [])]
+  if (chip === 'sin_resolver') return filas.filter((r) => impedimentoAbierto(r))
+  if (chip === 'criticos') return filas.filter((r) => impedimentoVencido(r, hoyIso))
+  return filas
+}
+
+/**
+ * Los tres contadores. Se cuentan SIEMPRE sobre la lista completa, no sobre la ya filtrada: un chip
+ * cuyo número cambia según qué chip esté activo no sirve para decidir a cuál ir.
+ * @param {readonly ImpedimentoLike[]} lista
+ * @param {string} hoyIso
+ */
+export function contarImpedimentos(lista, hoyIso) {
+  const filas = lista ?? []
+  return {
+    todo: filas.length,
+    sin_resolver: filas.filter((r) => impedimentoAbierto(r)).length,
+    criticos: filas.filter((r) => impedimentoVencido(r, hoyIso)).length,
+  }
+}
+
+/**
+ * DÍAS DE ATRASO — `null` cuando no hay atraso que medir, nunca 0.
+ *
+ * `null` significa «no se puede saber» (no hay compromiso) o «no está vencido»; 0 significaría
+ * «vence hoy y ya está atrasado», que es falso. Son cosas distintas y la pantalla las dice
+ * distinto.
+ * @returns {number|null}
+ */
+export function diasDeAtraso(r, hoyIso) {
+  if (!impedimentoVencido(r, hoyIso)) return null
+  const desde = Date.parse(`${r.fecha_compromiso}T00:00:00Z`)
+  const hasta = Date.parse(`${hoyIso}T00:00:00Z`)
+  if (Number.isNaN(desde) || Number.isNaN(hasta)) return null
+  const dias = Math.round((hasta - desde) / 86_400_000)
+  return dias > 0 ? dias : null
+}

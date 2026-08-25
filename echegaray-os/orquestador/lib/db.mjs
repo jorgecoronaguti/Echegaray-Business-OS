@@ -6,6 +6,7 @@
 // (query / withTx). Cambiar de Postgres gestionado a otro no toca nada más.
 import pg from 'pg'
 import { loadConfig } from './config.mjs'
+import { baseDeclaradaDePrueba, enContextoDePrueba, instalarGuarda } from './guarda-base-de-prueba.mjs'
 
 let pool = null
 
@@ -44,7 +45,12 @@ export function parseConnectionString(raw) {
 }
 
 /** Pool singleton. SSL por defecto (Supabase pooler lo exige); sin verificación
- *  de CA porque el pooler usa cert propio — la conexión sigue cifrada. */
+ *  de CA porque el pooler usa cert propio — la conexión sigue cifrada.
+ *
+ *  Y si quien lo pide es un test contra la base PRODUCTIVA, el pool sale vigilado: escribir en
+ *  autocommit falla y un commit que escribió se convierte en rollback. El detalle y las tres
+ *  salidas legítimas, en `guarda-base-de-prueba.mjs`. Fuera de un test devuelve el pool pelado —
+ *  la guarda no se instala en producción. */
 export function getPool() {
   if (pool) return pool
   const cfg = loadConfig()
@@ -60,7 +66,10 @@ export function getPool() {
     application_name: `orq-worker:${cfg.WORKER_ID}`,
     idle_in_transaction_session_timeout: 60_000,
   })
-  return pool
+  return instalarGuarda(pool, {
+    esPrueba: enContextoDePrueba(),
+    baseDePrueba: baseDeclaradaDePrueba(cfg.DATABASE_URL),
+  })
 }
 
 /** Query simple fuera de transacción. */

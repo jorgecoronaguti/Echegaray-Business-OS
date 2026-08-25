@@ -4,7 +4,6 @@
 // tilda por rango y se escribe una vez — y la columna «QUEDARÁ EN» muestra, antes de escribir, qué
 // va a quedar en cada fila y cuáles no se van a tocar.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getObra } from '@/features/obras/services/obrasService'
@@ -12,6 +11,7 @@ import { getArbol } from '@/features/obras/services/tareasService'
 import { getCuadrillas } from '@/features/obras/services/personalService'
 import { aplicarEnLote } from '@/features/obras/services/actionsAvance'
 import { AvanceMasivo } from '@/features/obras/components/AvanceMasivo'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { porcentaje } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
@@ -28,22 +28,30 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 py-6 lg:px-10">
-        <div className="mb-4 border-l-4 border-marca bg-accent px-4 py-2.5">
-          <p className="text-[11px] text-faint">
-            <Link href={`/obras/${obraId}?vista=tareas`} className="hover:underline">← {obra.nombre} · Tareas</Link>
-          </p>
-          <div className="flex flex-wrap items-baseline gap-x-5">
-            <h1 className="text-[20px] font-semibold text-white">Avance masivo</h1>
-            <span className="text-[11.5px] text-line">
-              Avance {porcentaje(obra.avance_pct) ?? 'sin medir'}
-              {obra.fecha_fin_plan && ` · Fin plan ${obra.fecha_fin_plan.slice(8, 10)}/${obra.fecha_fin_plan.slice(5, 7)}`}
-            </span>
-          </div>
-        </div>
+      <>
+        {/* LA CABECERA ES LA DE LA OBRA, no un encabezado propio (24/08 · C-CANON §12). Ya usaba
+            `EntityHeader` —el slab grafito se había retirado el 23/08— pero titulaba «Avance
+            masivo» y no mostraba ni los campos de identidad ni las solapas: seguía siendo una
+            cabecera distinta de la de las otras cuatro pantallas de la misma obra. El título es la
+            OBRA; el nombre de la pantalla va en la línea meta, que es donde el contrato lo pone. */}
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          // Avance masivo ES Trabajo (contrato 06): cierra de una vez las actividades del árbol.
+          vistaActiva="tareas"
+          // «Cierre de la jornada» es el rótulo del zip para esta pantalla, y dice para qué se
+          // abre; «Avance masivo» describe el mecanismo. El nombre del mecanismo sigue estando en
+          // la barra de la 03, que es de donde se llega.
+          pantalla="Cierre de la jornada"
+          // «Fin plan» ya lo publica la cabecera como campo de identidad — repetirlo acá sería el
+          // mismo número dos veces en el mismo renglón. Queda el avance, que es lo que se va a mover.
+          kpis={[
+            { rotulo: 'Avance de la obra', valor: porcentaje(obra.avance_pct), falta: 'sin medir' },
+          ]}
+        />
 
         {arbol.error !== null || arbol.data === null ? (
-          <p className="rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">
+          <p className="mx-5 mt-4 rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">
             No pude leer la estructura de la obra: {arbol.error ?? 'la lectura volvió vacía'}
           </p>
         ) : (
@@ -54,7 +62,7 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
             aplicarEnLote={aplicarEnLote.bind(null, obraId)}
           />
         )}
-      </div>
+      </>
     </div>
   )
 }

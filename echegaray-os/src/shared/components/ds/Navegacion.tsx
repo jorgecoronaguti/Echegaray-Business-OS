@@ -15,27 +15,66 @@ import type { ReactNode } from 'react'
 // (`margin-bottom:-1px`), que es lo que hace que el tab parezca continuar la superficie de abajo
 // en vez de flotar sobre ella.
 
-export type Tab = { href: string; label: ReactNode; activo?: boolean; testid?: string }
+export type Tab = {
+  href: string
+  label: ReactNode
+  activo?: boolean
+  testid?: string
+  /**
+   * CONTADOR MONO A LA DERECHA DEL RÓTULO — `COMPONENTS.md` §Anatomía de ficha de entidad:
+   * «nivel 2 de solapas con contador mono». Sólo cuando el número se sabe: `null` o ausente no
+   * dibuja nada, porque un `0` al lado de «Documentos» dice que el legajo está vacío y eso es una
+   * afirmación distinta de «todavía no lo miré».
+   */
+  cuenta?: number | null
+}
 
-export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }) {
+// La separación ENTRE tabs es de 2px (especimen §04), no de 4: el padding de 14px de cada tab ya
+// los separa de sobra, y el hueco extra rompía la sensación de fila continua sobre el hairline.
+/**
+ * EL FILO DEL TAB ACTIVO — amarillo en el nivel 1, GRAFITO en el nivel 2.
+ *
+ * No es una preferencia: los canónicos lo separan sin excepción. El header de la aplicación marca
+ * «Administración» con `inset 0 -2px 0 #FDC900` (`00 · Home Navegación.dc.html`), y la barra de
+ * áreas de abajo marca la suya con `inset 0 -2px 0 #30302F` — igual en el 17, el 18, el 19 y el 21.
+ * Con los dos en amarillo, la pantalla tiene dos marcas de «acá estás» del mismo color y ninguna
+ * dice cuál manda.
+ *
+ * El valor por defecto sigue siendo `marca` para no mover las pantallas que todavía no se portaron.
+ */
+export type FiloTab = 'marca' | 'grafito'
+
+export function Tabs({
+  tabs, testid = 'tabs', filo = 'marca',
+}: { tabs: Tab[]; testid?: string; filo?: FiloTab }) {
   return (
     <nav
       data-testid={testid}
-      className="-mb-px flex items-end gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="-mb-px flex items-end gap-[2px] overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((t) => (
+        // `prefetch={false}`: los tabs apuntan a rutas force-dynamic donde el prefetch dispara un
+        // render RSC completo por tab visible — seis renders de servidor por página vista, para
+        // nada. Ver el mismo motivo en `FilaWbs`.
         <Link
           key={t.href}
           href={t.href}
+          prefetch={false}
           data-testid={t.testid}
           aria-current={t.activo ? 'page' : undefined}
-          className={`shrink-0 whitespace-nowrap border-b-2 px-3.5 py-[9px] text-[14px] transition-colors ${
+          // 13px / padding 8px 11px — medido de los estilos inline del zip (`02 · Obra Resumen`,
+          // `03 · Obra Tareas`: `fontSize:13px;padding:8px 11px`). Estaba en 14px / 14px / 9px, y
+          // con seis solapas esos 3px de más por lado son 36px de fila que no dicen nada.
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-[11px] py-2 text-[13px] transition-colors ${
             t.activo
-              ? 'border-marca font-medium text-ink'
+              ? `font-medium text-ink ${filo === 'grafito' ? 'border-accent' : 'border-marca'}`
               : 'border-transparent text-muted hover:text-ink'
           }`}
         >
           {t.label}
+          {t.cuenta !== null && t.cuenta !== undefined && (
+            <span className="font-mono text-[11.5px] tabular-nums text-faint">{t.cuenta}</span>
+          )}
         </Link>
       ))}
     </nav>
@@ -48,9 +87,20 @@ export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }
  */
 export function SubTabs({
   items,
+  scroll = false,
   testid = 'subtabs',
 }: {
   items: { href?: string; onClick?: () => void; label: ReactNode; cuenta?: number | null; activo?: boolean; testid?: string }[]
+  /**
+   * `true` cuando los `href` son ANCLAS DE LA MISMA PÁGINA (`#bloque-obras`).
+   *
+   * El default es `false` y ésa es la razón por la que existe este interruptor: `scroll={false}`
+   * también cancela el salto al ancla, así que un índice de secciones construido con este
+   * componente se dibujaba entero y no llevaba a ninguna parte al tocarlo. Para cambiar de
+   * sub-vista sigue siendo `false`, que es lo correcto — el que mira la fila 200 del árbol tiene
+   * que seguir mirándola.
+   */
+  scroll?: boolean
   testid?: string
 }) {
   return (
@@ -70,7 +120,11 @@ export function SubTabs({
             : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'
         }`
         return i.href ? (
-          <Link key={i.href} href={i.href} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
+          // `scroll={false}` por defecto: cambiar de sub-vista o de filtro no puede mandar la página
+          // al tope — el que está mirando la fila 200 del árbol sigue mirando la fila 200.
+          // `prefetch={false}`: mismo motivo que en Tabs — rutas dinámicas, el prefetch es un
+          // render completo por ítem visible.
+          <Link key={i.href} href={i.href} scroll={scroll} prefetch={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
             {contenido}
           </Link>
         ) : (

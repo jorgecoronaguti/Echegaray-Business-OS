@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { migracion, DESTINO } from '../scripts/generar-migracion-caja.mjs'
 import { RUBROS } from './rubro-caja.mjs'
 import { RUBROS_SIN_PROYECCION } from './cash-flow-lineas.mjs'
@@ -36,4 +37,26 @@ test('la vista de caja distingue el hecho del supuesto', () => {
   const sql = migracion()
   assert.ok(sql.includes("'real'::text"), 'los movimientos con comprobante se marcan real')
   assert.ok(sql.includes("'proyeccion'"), 'las estimaciones se marcan proyeccion')
+})
+
+// ═══ EL INVARIANTE QUE EL AUDITOR DE REPRODUCIBILIDAD ENCONTRÓ ROTO (22/08) ═══
+//
+// El generador es el DUEÑO ÚNICO de rubro_caja y sus vistas, y en una base reconstruida gana el
+// archivo que se aplica ÚLTIMO — el orden de nombres. El 31/07 el destino era un archivo nuevo con
+// la corrección de fecha de pago; después el destino volvió al nombre viejo (20260720…) y la
+// migración del 31/07, más nueva en la historia pero posterior en el orden, se devoraba la regla
+// vigente en cada replay — y la regeneración inversa pisó las vistas corregidas EN PRODUCCIÓN:
+// $95,3M de quincenas imputadas al mes del cierre en vez del mes del pago.
+//
+// La regla: DESTINO tiene que ser el ÚLTIMO archivo de la cadena que defina cualquiera de los
+// objetos del generador. Si alguien crea una migración posterior que los toque, esto se pone rojo.
+test('ninguna migración posterior al DESTINO redefine los objetos del generador', () => {
+  const dir = dirname(DESTINO)
+  const destino = basename(DESTINO)
+  const DUENOS = /create\s+or\s+replace\s+(function\s+public\.rubro_caja|view\s+public\.(egreso_rubro_mes|calendario_caja|proyeccion_egreso))\b/i
+  const posteriores = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql') && f > destino)
+    .filter((f) => DUENOS.test(readFileSync(join(dir, f), 'utf8')))
+  assert.deepEqual(posteriores, [],
+    `estas migraciones redefinen objetos del generador DESPUÉS del DESTINO (${destino}) y se lo van a devorar en toda base reconstruida: ${posteriores.join(', ')} — mover el DESTINO al final o quitar la redefinición`)
 })

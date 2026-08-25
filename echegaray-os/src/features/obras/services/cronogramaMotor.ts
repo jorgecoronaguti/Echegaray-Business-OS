@@ -58,12 +58,17 @@ export interface ActividadCruda {
   dotacion_prevista: number | string | null
   tope_frente: number | string | null
   impedimentos_abiertos: number | string | null
+  /** Lo que no se comprime con más gente: curado, fraguado, secado. Sus `dias_plan` son días fijos
+   *  y NO entran en la división HH ÷ capacidad. Lo declara la actividad — no se deduce. */
+  tiempo_tecnico?: boolean | null
   /** Capacidad ponderada de la cuadrilla asignada. Se resuelve aparte (`cuadrilla_capacidad`)
    *  porque PostgREST no hace este join, y es lo que convierte «4 personas» en 3,2 de capacidad. */
   capacidad_ponderada?: number | string | null
 }
 
 export interface DependenciaCruda {
+  /** Opcional para el motor —no lo usa— y necesario para poder BORRARLA desde la pantalla. */
+  id?: string
   origen_id: string
   destino_id: string
   tipo: string
@@ -295,21 +300,8 @@ export interface Arrastre {
 export function simularArrastre(
   insumos: InsumosCronograma, actividadId: string, deltaDias: number, hoy?: string,
 ): Arrastre {
-  const { obra, actividades, dependencias } = insumos
-  const calendario = new CalendarioObra(obra.dias_habiles ?? [1, 2, 3, 4, 5], insumos.noLaborables)
-  const jornada = num(obra.jornada_horas) || 8
-  const origen = origenDelCronograma(obra, actividades, calendario, hoy)
-  const nombres = new Map(actividades.map((a) => [a.actividad_id, a.nombre]))
-  const paraElMotor = actividades
-    .filter((a) => a.tipo !== 'resumen')
-    .map((a) => ({
-      id: a.actividad_id, nombre: a.nombre, duracion: duracionDe(a, jornada), cuadrillaId: a.cuadrilla_id,
-    }))
-  const deps = dependencias.map((d) => ({
-    origen: d.origen_id, destino: d.destino_id, tipo: d.tipo, lag: num(d.lag_dias) ?? 0,
-  }))
-
-  const r = simularMovimiento(paraElMotor, deps, actividadId, deltaDias)
+  const { calendario, origen, r } = correrSimulacion(insumos, actividadId, deltaDias, hoy)
+  const nombres = new Map(insumos.actividades.map((a) => [a.actividad_id, a.nombre]))
   return {
     arrastradas: r.arrastradas.map((x: { id: string; dias: number }) => ({
       ...x, nombre: nombres.get(x.id) ?? x.id,
@@ -319,4 +311,79 @@ export function simularArrastre(
     corrimientoFinObra: r.corrimientoFinObra ?? 0,
     sinPlan: Boolean(r.sinPlan),
   }
+}
+
+interface MovimientoCrudo { id: string; dias: number; inicio: number; fin: number }
+interface SimulacionCruda {
+  arrastradas: { id: string; dias: number }[]
+  movimientos: MovimientoCrudo[]
+  finObraAntes: number | null
+  finObraDespues: number | null
+  corrimientoFinObra?: number
+  sinPlan?: boolean
+}
+
+/** El armado del motor y su corrida, en un solo lugar: lo que se SIMULA y lo que se ESCRIBE tienen
+ *  que salir de la misma llamada, o la pantalla promete un plan y la base guarda otro. */
+function correrSimulacion(
+  insumos: InsumosCronograma, actividadId: string, deltaDias: number, hoy?: string,
+): { calendario: CalendarioObra; origen: string; r: SimulacionCruda } {
+  const { obra, actividades, dependencias } = insumos
+  const calendario = new CalendarioObra(obra.dias_habiles ?? [1, 2, 3, 4, 5], insumos.noLaborables)
+  const jornada = num(obra.jornada_horas) || 8
+  const origen = origenDelCronograma(obra, actividades, calendario, hoy)
+  const paraElMotor = actividades
+    .filter((a) => a.tipo !== 'resumen')
+    .map((a) => ({
+      id: a.actividad_id, nombre: a.nombre, duracion: duracionDe(a, jornada), cuadrillaId: a.cuadrilla_id,
+    }))
+  const deps = dependencias.map((d) => ({
+    origen: d.origen_id, destino: d.destino_id, tipo: d.tipo, lag: num(d.lag_dias) ?? 0,
+  }))
+  return { calendario, origen, r: simularMovimiento(paraElMotor, deps, actividadId, deltaDias) as SimulacionCruda }
+}
+
+/** Una fila del plan tal como queda después del arrastre. Es exactamente lo que se escribe. */
+export interface MovimientoDePlan {
+  id: string
+  nombre: string
+  /** Cuántos días hábiles se corrió DE VERDAD. Puede ser 0 si una predecesora la frenó. */
+  dias: number
+  inicio_plan: string
+  fin_plan: string
+}
+
+/**
+ * EL ARRASTRE, EN FECHAS ESCRIBIBLES. La misma simulación que muestra el popover.
+ *
+ * El primer elemento es siempre la actividad movida; los demás, las que arrastró. Con
+ * `resecuenciar: false` se devuelve sólo la movida — el resto se deja donde está, que es lo que
+ * significa «mover igual».
+ *
+ * ═══ LO QUE ESTA FUNCIÓN NO DEVUELVE ═══
+ *
+ * Nada de la línea base. `inicio_base`/`fin_base` son contra qué se mide el desvío, y moverlos al
+ * reprogramar dejaría el desvío en cero para siempre. Sólo `sellarBaseline` los escribe.
+ */
+export function movimientosDelArrastre(
+  insumos: InsumosCronograma,
+  actividadId: string,
+  deltaDias: number,
+  opciones: { resecuenciar: boolean },
+  hoy?: string,
+): { movimientos: MovimientoDePlan[]; sinPlan: boolean } {
+  const { calendario, origen, r } = correrSimulacion(insumos, actividadId, deltaDias, hoy)
+  if (r.sinPlan) return { movimientos: [], sinPlan: true }
+  const nombres = new Map(insumos.actividades.map((a) => [a.actividad_id, a.nombre]))
+  const crudos = (r.movimientos ?? []).filter((m) => opciones.resecuenciar || m.id === actividadId)
+  const movimientos = crudos.map((m) => ({
+    id: m.id,
+    nombre: nombres.get(m.id) ?? m.id,
+    dias: m.dias,
+    inicio_plan: calendario.fecha(origen, m.inicio),
+    fin_plan: calendario.fecha(origen, m.fin),
+  }))
+  // La movida primero: es la que la persona tocó, y es la que el resultado nombra.
+  movimientos.sort((a, b) => Number(b.id === actividadId) - Number(a.id === actividadId))
+  return { movimientos, sinPlan: false }
 }

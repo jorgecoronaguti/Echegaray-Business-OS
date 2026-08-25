@@ -16,6 +16,7 @@ import { crearConector } from './conector.mjs'
 import { crearLog } from '../../../communication-service/src/index.mjs'
 import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT } from './asistencia-sesion.mjs'
 import { crearEntregador, ENTREGA_INTERVALO_MS_DEFAULT } from './asistente/entrega-recordatorios.mjs'
+import { crearVigiaDeFajosMudos, VIGIA_INTERVALO_MS_DEFAULT } from './comprobantes/vigia-mudos.mjs'
 import { query, withTx } from '../lib/db.mjs'
 
 const IDLE_MS = Number(process.env.COMM_WORKER_IDLE_MS ?? 2000)
@@ -25,12 +26,16 @@ const MAX_IDLE_MS = 15_000
 const VENCER_MS = Number(process.env.COMM_WORKER_VENCER_MS ?? VENCER_INTERVALO_MS_DEFAULT)
 // Cada cuánto se buscan recordatorios internos vencidos. Ver crearEntregador.
 const RECORDATORIOS_MS = Number(process.env.COMM_WORKER_RECORDATORIOS_MS ?? ENTREGA_INTERVALO_MS_DEFAULT)
+// Cada cuánto se buscan cargas de comprobantes que quedaron abiertas sin decirle nada a nadie.
+// Ver `comprobantes/vigia-mudos.mjs`: un fajo mudo no tiene error, ni dead-letter, ni fila — es
+// invisible para todos los controles a la vez, y adentro hay plata sin registrar.
+const MUDOS_MS = Number(process.env.COMM_WORKER_MUDOS_MS ?? VIGIA_INTERVALO_MS_DEFAULT)
 
 const log = crearLog()
 let parar = false
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function tick(con, vencerSesiones, entregarRecordatorios) {
+async function tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos) {
   await con.recuperarLeasesWorkFabric()
   await con.recuperarLeasesComm()
   // Barrido de formularios de asistencia abandonados. Tiene su PROPIO intervalo (este loop
@@ -40,6 +45,9 @@ async function tick(con, vencerSesiones, entregarRecordatorios) {
   // Entrega de recordatorios internos. Mismo criterio que el barrido de arriba: intervalo
   // propio, no suma a `trabajo` y no propaga error (un recordatorio roto no voltea el canal).
   await entregarRecordatorios()
+  // Las cargas de comprobantes que quedaron abiertas y calladas. Mismo criterio que los dos de
+  // arriba: intervalo propio, no suma a `trabajo` y no propaga error.
+  await vigilarMudos()
   const inbox = await con.procesarInbox({ lote: 20 })
   const wf = await con.procesarWorkFabric({ lote: 20 })
   const outbox = await con.procesarOutbox({ lote: 20 })
@@ -71,14 +79,24 @@ async function main() {
     publicar: ({ channelId, texto }) => con.cliente.crearPost({ channel_id: channelId, message: texto }),
     intervaloMs: RECORDATORIOS_MS, log,
   })
-  log.info('worker-comunicacion arrancado', { vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS })
+  // El vigía de fajos mudos vive acá por la misma razón que los otros dos: es el único proceso que
+  // tiene a la vez el pool de la base y el cliente de Mattermost. La respuesta va AL HILO del
+  // mensaje que la originó, igual que cualquier respuesta de este subsistema.
+  const vigilarMudos = crearVigiaDeFajosMudos({
+    port: { query, withTx },
+    publicar: ({ channelId, rootPostId, texto }) => con.cliente.crearPost({
+      channel_id: channelId, message: texto, ...(rootPostId ? { root_id: rootPostId } : {}),
+    }),
+    intervaloMs: MUDOS_MS, log,
+  })
+  log.info('worker-comunicacion arrancado', { vencer_sesiones_ms: VENCER_MS, recordatorios_ms: RECORDATORIOS_MS, fajos_mudos_ms: MUDOS_MS })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
   let espera = IDLE_MS
   while (!parar) {
     let r
     try {
-      r = await tick(con, vencerSesiones, entregarRecordatorios)
+      r = await tick(con, vencerSesiones, entregarRecordatorios, vigilarMudos)
     } catch (e) {
       log.error('tick falló (se reintenta el próximo ciclo)', { error: String(e?.message ?? e) })
       await sleep(Math.min(espera, MAX_IDLE_MS))

@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  AVISO_CRITERIO, avisoDePrecision, controlDe, deltaHasta, elPorcentajeMueveElAvance, renglones,
+  AVISO_CRITERIO, avisoDePrecision, controlDe, deltaHasta, elPorcentajeMueveElAvance, enVista,
+  leerSeleccion, opcionesMasivas, renglones, vistaInicial,
 } from './medicion.ts'
 import type { TareaDelDia } from './medicion.ts'
 
@@ -96,4 +97,81 @@ test('UNA TAREA YA AL 100 % NO SE OFRECE TOCABLE en el masivo', () => {
 test('EL AVISO DE PRECISIÓN NO CUENTA LO QUE NO SE PUEDE APLICAR', () => {
   const r = renglones([t({ actividad_id: 'x', metodo_avance: 'manual', avance_pct: 100 })])
   assert.equal(avisoDePrecision(r), null)
+})
+
+test('LA VISTA ABRE EN «EN CURSO» — y en «TODO» cuando no hay ninguna en curso', () => {
+  // El defecto que atrapa: abrir siempre en «En curso» deja la pantalla vacía en una obra donde
+  // todo está al 100 %, y eso se lee como «esta obra no tiene tareas».
+  const conCurso = renglones([
+    t({ actividad_id: 'a', avance_pct: 40 }),
+    t({ actividad_id: 'b', avance_pct: 100 }),
+  ])
+  assert.equal(vistaInicial(conCurso), 'curso')
+  const todoCerrado = renglones([t({ actividad_id: 'b', avance_pct: 100 })])
+  assert.equal(vistaInicial(todoCerrado), 'todo')
+})
+
+test('«EN CURSO» NO INCLUYE LO QUE NO SE PUEDE MOVER', () => {
+  // El defecto que atrapa: filtrar sólo por «avance > 0» mete las terminadas y las medidas por
+  // pasos en la vista de trabajo del día — filas que el jefe toca y no hacen nada.
+  const [enCurso, cerrada, porPasos] = renglones([
+    t({ actividad_id: 'a', avance_pct: 40 }),
+    t({ actividad_id: 'b', avance_pct: 100 }),
+    t({ actividad_id: 'c', avance_pct: 30, metodo_avance: 'pasos' }),
+  ])
+  assert.equal(enVista(enCurso, 'curso'), true)
+  assert.equal(enVista(cerrada, 'curso'), false)
+  assert.equal(enVista(porPasos, 'curso'), false)
+  // «Todo» las muestra a las tres: apagadas y con su motivo, nunca escondidas.
+  assert.deepEqual([enCurso, cerrada, porPasos].map((f) => enVista(f, 'todo')), [true, true, true])
+})
+
+test('«SIN ARRANCAR» TRATA IGUAL EL CERO Y EL SIN MEDIR', () => {
+  const [enCero, sinMedir] = renglones([
+    t({ actividad_id: 'a', avance_pct: 0 }),
+    t({ actividad_id: 'b', avance_pct: null }),
+  ])
+  assert.equal(enVista(enCero, 'sin-arrancar'), true)
+  assert.equal(enVista(sinMedir, 'sin-arrancar'), true)
+  assert.equal(enVista(enCero, 'curso'), false)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// J04 · CADA TAREA CON SU PORCENTAJE (24/08/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('sólo se ofrecen valores que MUEVEN el avance: `obra_ejecucion` guarda incrementos', () => {
+  // Una tarea en 74 % con la escala completa ofrecería 25 y 50, y cada toque terminaría en un
+  // rechazo del servidor («ya estaba en 74 % o más»). Con diez tareas elegidas, el mensaje de
+  // resultado se vuelve ilegible y el jefe no sabe qué entró.
+  assert.deepEqual(opcionesMasivas(74), [75, 90, 100])
+  assert.deepEqual(opcionesMasivas(0), [50, 75, 90, 100])
+  assert.deepEqual(opcionesMasivas(null), [50, 75, 90, 100])
+  // Arriba de 90 sólo queda el 100: es el único destino que todavía mueve algo.
+  assert.deepEqual(opcionesMasivas(95), [100])
+  // Al 100 no queda ninguno arriba, y devolver una lista vacía dejaría la tarjeta sin botones:
+  // se ofrece el 100 igual, y el servidor la rechaza nombrándola.
+  assert.deepEqual(opcionesMasivas(100), [100])
+})
+
+test('la selección viaja con el valor de cada tarea, sin repetidos', () => {
+  assert.deepEqual(leerSeleccion('a:80,b:65'), [
+    { actividad_id: 'a', objetivo: 80 },
+    { actividad_id: 'b', objetivo: 65 },
+  ])
+  // Un id repetido gana la primera vez: dos filas para la misma tarea serían dos incrementos.
+  assert.deepEqual(leerSeleccion('a:80,a:100'), [{ actividad_id: 'a', objetivo: 80 }])
+  // Espacios, comas sueltas y cadena vacía no producen una tarea fantasma.
+  assert.deepEqual(leerSeleccion(' , a:75 , '), [{ actividad_id: 'a', objetivo: 75 }])
+  assert.deepEqual(leerSeleccion(''), [])
+})
+
+test('el formato viejo (ids sueltos) entra con objetivo null, no con un número inventado', () => {
+  // Un enlace o una prueba anterior manda `a,b`. Si esto devolviera 100 por defecto, esas dos
+  // tareas se cerrarían enteras sin que nadie lo pidiera.
+  assert.deepEqual(leerSeleccion('a,b'), [
+    { actividad_id: 'a', objetivo: null },
+    { actividad_id: 'b', objetivo: null },
+  ])
+  assert.deepEqual(leerSeleccion('a:xx'), [{ actividad_id: 'a', objetivo: null }])
 })

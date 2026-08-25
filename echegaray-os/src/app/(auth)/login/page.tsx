@@ -1,15 +1,14 @@
-import Image from 'next/image'
 import { LoginForm } from '@/features/auth/components/LoginForm'
+import { MarcoAuth } from '@/features/auth/components/MarcoAuth'
 
-// LA PRIMERA PANTALLA — y la única donde la marca va entera.
+// M01 · LA PRIMERA PANTALLA. El marco —isotipo + wordmark en dos renglones, columna de 430px sobre
+// blanco, la ayuda al pie— es el de `M01 · Login.dc.html` y vive en `MarcoAuth`, que es el mismo de
+// alta, recuperación y contraseña nueva: cuatro pantallas sin sesión con un solo encabezado, no
+// cuatro copias que se van separando de a un píxel.
 //
-// Adentro del OS el isotipo mide 26px y el logotipo es una palabra: ahí la marca es una firma, no el
-// contenido. Acá todavía no hay contenido, así que el logo completo es lo correcto — y es el archivo
-// oficial del dueño (`public/marca/logo.png`), no un redibujo.
-//
-// Sin gradiente, sin card flotando en el medio de un fondo de color, sin ilustración: el dueño pidió
-// *"software operativo moderno, sobrio y extremadamente claro"* y *"no imitar la UI de un banco"*.
-// Una pantalla de login que parece una landing es exactamente lo que no se quiere.
+// El título es el del mockup —«Entrá a tu obra»— y la bajada dice la verdad de este OS: el
+// artboard promete «con el celular que registró la empresa» y acá se entra con el usuario. El
+// porqué está en `LoginForm`.
 
 export default async function LoginPage({
   searchParams,
@@ -18,29 +17,18 @@ export default async function LoginPage({
 }) {
   const { registrado } = await searchParams
   return (
-    <div className="flex min-h-screen items-center justify-center px-6">
-      {/* 384px: la medida de un formulario de una sola columna. Más ancho obliga a barrer el ojo de
-          punta a punta para leer una etiqueta de dos palabras. */}
-      <div className="w-full max-w-sm">
-        <Image
-          src="/marca/logo.png"
-          alt="Echegaray Construcciones"
-          width={578}
-          height={432}
-          priority
-          className="mb-8 h-auto w-[188px]"
-        />
-        <h1 className="text-[20px] font-semibold leading-tight text-ink">Ingresar</h1>
-        <p className="mt-1 mb-6 text-[13px] text-muted">Business OS · gestión interna</p>
+    <MarcoAuth
+      titulo="Entrá a tu obra"
+      bajada="Con el usuario que te dio la empresa."
+      ayuda="Si no tenés acceso o cambiaste de correo, pedile a la oficina que lo actualice."
+    >
+      {registrado && (
+        <p className="mb-4 rounded-card border border-pos/25 bg-pos-soft px-3.5 py-2.5 text-[13px] text-pos">
+          Cuenta creada. Ya podés ingresar — el rol lo asigna Administración.
+        </p>
+      )}
 
-        {registrado && (
-          <p className="mb-4 rounded-card border border-pos/25 bg-pos-soft px-3.5 py-2.5 text-[13px] text-pos">
-            Cuenta creada. Ya podés ingresar — el rol lo asigna Administración.
-          </p>
-        )}
-
-        <LoginForm />
-      </div>
-    </div>
+      <LoginForm />
+    </MarcoAuth>
   )
 }

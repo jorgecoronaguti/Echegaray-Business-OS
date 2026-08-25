@@ -34,19 +34,21 @@ const OPCION = 'shrink-0 pb-[2px] text-[12.5px] transition-colors'
 const PUESTA = 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]'
 const SUELTA = 'text-muted hover:text-ink'
 
-export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto }: {
+export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto, atraso }: {
   activo: CampoOrden | null
   dir: Direccion
   archivadas: boolean
   /** El filtro puesto: cambiar el orden no puede devolver a la pantalla las obras que se filtraron. */
   etapa?: string
   q?: string
+  atraso?: boolean
 }) {
   const q = (extra: Record<string, string>, conArchivadas = archivadas) => {
     const p = new URLSearchParams()
     if (conArchivadas) p.set('archivadas', '1')
     if (etapa) p.set('etapa', etapa)
     if (texto) p.set('q', texto)
+    if (atraso) p.set('atraso', '1')
     for (const [k, v] of Object.entries(extra)) p.set(k, v)
     const s = p.toString()
     return `/obras/gantt${s ? `?${s}` : ''}`
@@ -59,7 +61,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto }: {
     <div data-testid="orden-gantt" className="mb-4 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
       <span className="shrink-0 text-[12px] text-faint">Ordenar por</span>
       <Link
-        href={q({})}
+        href={q({})} prefetch={false}
         data-testid="orden-gantt-cronologico"
         data-activo={activo === null ? 'si' : undefined}
         className={`${OPCION} ${activo === null ? PUESTA : SUELTA}`}
@@ -71,7 +73,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto }: {
         return (
           <Link
             key={campo}
-            href={q({ orden: campo, dir: proximaDireccion(campo, activo, esActivo ? dir : null) })}
+            href={q({ orden: campo, dir: proximaDireccion(campo, activo, esActivo ? dir : null) })} prefetch={false}
             data-testid={`orden-gantt-${campo}`}
             data-activo={esActivo ? dir : undefined}
             className={`${OPCION} ${esActivo ? PUESTA : SUELTA}`}
@@ -83,7 +85,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto }: {
       })}
       <span aria-hidden className="text-line-strong">·</span>
       <Link
-        href={q(ordenPuesto, !archivadas)}
+        href={q(ordenPuesto, !archivadas)} prefetch={false}
         data-testid="gantt-archivadas"
         className={`${OPCION} ${archivadas ? PUESTA : SUELTA}`}
       >

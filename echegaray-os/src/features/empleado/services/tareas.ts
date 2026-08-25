@@ -82,3 +82,74 @@ export function dm(iso: string, hoy?: string): string {
   if (!d) return iso
   return hoy && hoy.slice(0, 4) !== a ? `${d}/${m}/${a}` : `${d}/${m}`
 }
+
+/**
+ * LO QUE FALTA DE LA TAREA, EN SU UNIDAD — el renglón «24,96 m² restantes» de M02 y M03.
+ *
+ * ═══ SIN LAS DOS PUNTAS NO HAY RESTANTE, Y SE DICE «SIN MEDICIÓN» ═══
+ *
+ * El restante necesita objetivo Y porcentaje. Con uno solo se puede escribir un número que parece
+ * un dato: sin `cantidad_objetivo` daría 0 —«no falta nada», o sea la tarea terminada— y sin `pct`
+ * daría el objetivo entero —«no se hizo nada»—. Las dos mentiras son creíbles y ninguna es
+ * verificable mirando la pantalla. Por eso devuelve `null` y el mockup escribe «sin medición».
+ *
+ * El 0 SÍ es un dato cuando las dos puntas existen: una tarea al 100% muestra «0,00 m² restantes».
+ */
+export function restante(t: {
+  pct: number | null
+  cantidad_objetivo: number | null
+  unidad: string | null
+}): string | null {
+  if (t.cantidad_objetivo == null || t.pct == null) return null
+  const falta = Math.max(0, t.cantidad_objetivo * (1 - t.pct / 100))
+  return `${falta.toFixed(2).replace('.', ',')}${t.unidad ? ` ${t.unidad}` : ''} restantes`
+}
+
+/**
+ * LO QUE SE ESCRIBE DEBAJO DE LA BARRA DE AVANCE DE M04 — y por qué el mensaje viejo mentía.
+ *
+ * El mockup enfrenta dos cantidades: «71,04 m² hechos» a la izquierda y «de 96,00 m²» a la derecha.
+ * Cuando no se puede escribir ninguna de las dos, escribe UNA línea que dice qué falta para poder.
+ *
+ * ═══ EL DEFECTO QUE ARREGLA (25/08/2026, auditoría móvil con datos, hallazgo 4) ═══
+ *
+ * La pantalla resolvía «sin medición: falta la cantidad objetivo» para CUALQUIER tarea sin
+ * `cantidad_objetivo`. Sobre una tarea medida POR PASOS —con sus tres pasos cargados y uno hecho—
+ * eso es doblemente falso: la cantidad objetivo no aplica a una tarea por pasos, y la medición
+ * existe (33,3 %). Cada método dice lo suyo:
+ *
+ *   · pasos    → «1 paso hecho» / «de 3» — la medida son los pasos, y se cuentan.
+ *   · cantidad → las dos cantidades, o qué falta: el objetivo o el avance cargado.
+ *   · partes / manual → el porcentaje es el único dato; sin él, «falta el avance cargado».
+ *
+ * Nunca dice que falta algo que ese método no usa: un mensaje que pide un dato que no corresponde
+ * manda a la persona a buscar en la planificación algo que nadie tenía que cargar.
+ */
+export function lecturaDeMedicion(
+  t: { pct: number | null; metodo_avance: string | null; cantidad_objetivo: number | null; unidad: string | null },
+  pasos: { total: number; hechos: number } | null,
+): { hechas: string; total: string } | { falta: string } {
+  if (t.metodo_avance === 'pasos') {
+    if (!pasos || pasos.total === 0) {
+      return { falta: 'sin medición: se mide por pasos y todavía no tiene pasos cargados' }
+    }
+    return {
+      hechas: `${pasos.hechos} ${pasos.hechos === 1 ? 'paso hecho' : 'pasos hechos'}`,
+      total: `de ${pasos.total}`,
+    }
+  }
+  if (t.cantidad_objetivo != null && t.pct != null) {
+    const u = t.unidad ? ` ${t.unidad}` : ''
+    return {
+      hechas: `${n2(t.cantidad_objetivo * (t.pct / 100))}${u} hechos`,
+      total: `de ${n2(t.cantidad_objetivo)}${u}`,
+    }
+  }
+  if (t.metodo_avance === 'cantidad' && t.cantidad_objetivo == null) {
+    return { falta: 'sin medición: falta la cantidad objetivo' }
+  }
+  return { falta: 'sin medición: falta el avance cargado' }
+}
+
+const n2 = (v: number) =>
+  new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)

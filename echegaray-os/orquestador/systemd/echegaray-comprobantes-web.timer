@@ -1,0 +1,16 @@
+[Unit]
+# CADA MINUTO. Del otro lado hay una persona mirando la pantalla con el papel todavía en la mano: la
+# demora tiene que sentirse como «está leyendo», no como «se perdió». `AccuracySec` al segundo porque
+# el default de systemd (1 min) convertiría este minuto en dos.
+Description=Echegaray OS - Cola de comprobantes de la web (cada minuto)
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+AccuracySec=1s
+# NO `Persistent`: si la VM estuvo apagada, no tiene sentido "recuperar" las corridas perdidas — la
+# cola está en Postgres y la próxima corrida la vacía igual.
+Unit=echegaray-comprobantes-web.service
+
+[Install]
+WantedBy=timers.target

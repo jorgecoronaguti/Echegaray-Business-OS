@@ -1,16 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { rollup, type NodoObra } from './wbs.ts'
-import { contenedores, estadoDeFila, filasVisibles } from './vistaArbol.ts'
+import {
+  contenedores, conteoDeVistas, estadoDeFila, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL,
+  VISTAS_PRIMARIAS, VISTAS_SECUNDARIAS,
+} from './vistaArbol.ts'
 
 const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   id, padre_id: null, nivel: 0, camino: id, es_contenedor: false, tiene_hijas: false,
   nombre: id, tipo: 'tarea', rol_estructura: null, partida_codigo: null, unidad: null,
   cantidad_objetivo: null, cantidad_ejecutada: null, hh_plan: null, hh_real: null,
-  metodo_avance: 'manual', avance_pct: null, fin_plan: null, responsable: null,
+  metodo_avance: 'manual', avance_pct: null, inicio_plan: null, fin_plan: null, responsable: null,
+  cuadrilla: null, subcontratista: null,
   es_subcontrato: false, estado: null, impedimentos_abiertos: 0, n_pasos: 0, n_pasos_hechos: 0,
-  peso_pasos: null, analisis_id: null, tope_frente: null, dotacion_prevista: null,
-  es_critica: false, ...extra,
+  peso_pasos: null, analisis_id: null, tarea_tipo_id: null, cotizacion_partida_id: null,
+  tope_frente: null, dotacion_prevista: null, cuadrilla_id: null, tiempo_tecnico: false,
+  dias_plan: null, es_critica: false, ...extra,
 })
 const contenedor = (id: string, extra: Partial<NodoObra> = {}): NodoObra =>
   nodo(id, { tipo: 'resumen', es_contenedor: true, tiene_hijas: true, ...extra })
@@ -54,17 +59,79 @@ test('la vista En curso deja afuera lo que no arrancó y lo terminado', () => {
     ['Estructura', 'Encofrado de piso'])
 })
 
-test('la vista Con problema junta la deuda de carga, el subcontrato y lo que no tiene responsable', () => {
+// ═══ CAMBIO DE REGLA DECLARADO (22/08/2026 · overhaul UX) ═══
+// «Con problema» se retiró: agrupaba conceptos del modelo bajo un rótulo impredecible. Los filtros
+// nuevos nombran lo que se busca en obra: Atrasadas, Bloqueadas, Sin asignar.
+test('Atrasadas: venció el fin de plan y no está terminada — el avance nulo no la esconde', () => {
   const arbol: NodoObra[] = [
     contenedor('R'),
-    nodo('ok', { padre_id: 'R', nivel: 1, hh_plan: 4, responsable: 'Cuadrilla 1' }),
-    nodo('sin-analisis', { padre_id: 'R', nivel: 1, responsable: 'Cuadrilla 1' }),
-    nodo('sub', { padre_id: 'R', nivel: 1, hh_plan: 4, responsable: 'Yeseros', es_subcontrato: true }),
+    nodo('vencida-a-medias', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01', avance_pct: 60 }),
+    nodo('vencida-sin-medir', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01' }),
+    nodo('vencida-pero-hecha', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01', avance_pct: 100 }),
+    nodo('al-dia', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-09-01', avance_pct: 10 }),
+    nodo('sin-plan', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
+  ]
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'atrasadas', query: '', plegados: new Set(), hoy: '2026-08-22' })
+    .map((f) => f.nodo.id)
+  assert.deepEqual(ids, ['R', 'vencida-a-medias', 'vencida-sin-medir'])
+})
+
+test('Bloqueadas: sólo lo que tiene un impedimento abierto', () => {
+  const arbol: NodoObra[] = [
+    contenedor('R'),
+    nodo('libre', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
+    nodo('frenada', { padre_id: 'R', nivel: 1, hh_plan: 4, impedimentos_abiertos: 2 }),
+  ]
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'bloqueadas', query: '', plegados: new Set() })
+    .map((f) => f.nodo.id)
+  assert.deepEqual(ids, ['R', 'frenada'])
+})
+
+test('Sin asignar mira el EJECUTOR: el subcontrato tiene quién lo haga, el responsable solo no alcanza', () => {
+  const arbol: NodoObra[] = [
+    contenedor('R'),
+    nodo('con-cuadrilla', { padre_id: 'R', nivel: 1, hh_plan: 4, cuadrilla: 'Cuadrilla 1' }),
+    nodo('sub', { padre_id: 'R', nivel: 1, hh_plan: 4, subcontratista: 'Yeseros', es_subcontrato: true }),
+    nodo('solo-responsable', { padre_id: 'R', nivel: 1, hh_plan: 4, responsable: 'PEREZ JUAN' }),
     nodo('sin-nadie', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
   ]
-  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'problema', query: '', plegados: new Set() })
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'sin_asignar', query: '', plegados: new Set() })
     .map((f) => f.nodo.id)
-  assert.deepEqual(ids, ['R', 'sin-analisis', 'sub', 'sin-nadie'])
+  assert.deepEqual(ids, ['R', 'solo-responsable', 'sin-nadie'])
+})
+
+// EL DEFECTO 4.3, ATRAPADO. Una actividad CON responsable declarado y SIN cuadrilla sigue sin poder
+// arrancar: no hay con qué. Mientras los dos hechos compartían un campo esto era inexpresable —el
+// nombre de la persona llenaba el hueco de la cuadrilla— y la fila se pintaba «Sin plan», que manda
+// a cargar una fecha cuando lo que falta es la gente. Revertir la separación pone este test en rojo.
+test('un responsable asignado NO tapa que la actividad no tiene cuadrilla', () => {
+  assert.equal(
+    estadoDeFila(nodo('a', { hh_plan: 4, responsable: 'PEREZ JUAN CARLOS' }), null).clave,
+    'sin_cuadrilla')
+  // Y al revés: con cuadrilla y sin responsable, la deuda que queda es la fecha, no la gente.
+  assert.equal(
+    estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'Cuadrilla 1' }), null).clave,
+    'sin_plan')
+})
+
+// UN PAQUETE SUBCONTRATADO NUNCA TUVO DEUDA DE CUADRILLA: lo ejecuta un tercero con su propia gente.
+test('el subcontrato no se marca «Sin cuadrilla» por no tener cuadrilla propia', () => {
+  assert.equal(
+    estadoDeFila(nodo('a', { hh_plan: 4, subcontratista: 'Yeseros', es_subcontrato: true }), null).clave,
+    'sin_plan')
+})
+
+// LAS DOS BÚSQUEDAS ENCUENTRAN. Con un solo campo, buscar a la persona no devolvía nada en cuanto
+// la actividad tenía cuadrilla: el nombre nunca llegaba al texto indexado.
+test('se busca por el responsable Y por la cuadrilla', () => {
+  const arbol: NodoObra[] = [
+    contenedor('R'),
+    nodo('pintura', { padre_id: 'R', nivel: 1, responsable: 'PEREZ JUAN CARLOS', cuadrilla: 'Cuadrilla 2' }),
+  ]
+  const ver2 = (q: string) => filasVisibles(arbol, rollup(arbol), { vista: 'todo', query: q, plegados: new Set() })
+    .map((f) => f.nodo.id)
+  assert.deepEqual(ver2('perez'), ['R', 'pintura'])
+  assert.deepEqual(ver2('cuadrilla 2'), ['R', 'pintura'])
 })
 
 test('el caret sólo se dibuja donde quedan hijas después de filtrar', () => {
@@ -86,14 +153,57 @@ test('el estado pone el hecho por encima de la deuda de carga, y el impedimento 
   assert.equal(estadoDeFila(nodo('a', { es_critica: true }), 40).clave, 'en_curso_critica')
   assert.equal(estadoDeFila(nodo('a'), null).clave, 'sin_analisis')
   assert.equal(estadoDeFila(nodo('a', { hh_plan: 4 }), null).clave, 'sin_cuadrilla')
-  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, responsable: 'Cuadrilla 1' }), null).clave, 'sin_plan')
+  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'Cuadrilla 1' }), null).clave, 'sin_plan')
   assert.equal(
-    estadoDeFila(nodo('a', { hh_plan: 4, responsable: 'Cuadrilla 1', fin_plan: '2026-09-01' }), null).clave,
+    estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'Cuadrilla 1', fin_plan: '2026-09-01' }), null).clave,
     'pendiente')
 })
 
 // UN AVANCE DE 0 NO ES «SIN AVANCE». El cero lo declaró alguien; el nulo es que nadie lo midió.
 test('el cero declarado no se confunde con la ausencia de avance', () => {
-  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, responsable: 'C1', fin_plan: '2026-09-01' }), 0).clave, 'pendiente')
-  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, responsable: 'C1', estado: 'en_curso' }), 0).clave, 'en_curso')
+  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'C1', fin_plan: '2026-09-01' }), 0).clave, 'pendiente')
+  assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'C1', estado: 'en_curso' }), 0).clave, 'en_curso')
+})
+
+// ═══ EL CONTADOR DEL CHIP (24/08 · auditoría 03 contra el canónico) ═══
+//
+// Los filtros salían sin número: había que tocar cada uno para saber si tenía algo detrás. El
+// defecto que estos asserts atrapan es el que hace inútil el contador — contar filas del árbol en
+// vez de ACTIVIDADES. Con los rubros adentro, «Todo» daría 5 donde la franja del pie dice
+// «Actividades 3», y dos números de la misma pantalla se contradirían.
+test('el contador cuenta actividades, NO filas: los rubros no son trabajo', () => {
+  const c = conteoDeVistas(ARBOL, rollup(ARBOL), '2026-08-24')
+  assert.equal(c.todo, 3, 'los dos contenedores no pueden entrar en el total')
+  assert.equal(c.en_curso, 1, 'sólo «Encofrado de piso» está entre 0 y 100')
+})
+
+test('cada vista cuenta con su propia regla, y el buscador no la toca', () => {
+  const arbol: NodoObra[] = [
+    contenedor('Estructura'),
+    nodo('Vencida', { padre_id: 'Estructura', nivel: 1, fin_plan: '2026-08-01', avance_pct: 30 }),
+    nodo('Trabada', { padre_id: 'Estructura', nivel: 1, impedimentos_abiertos: 2, avance_pct: 10 }),
+    nodo('Del camino', { padre_id: 'Estructura', nivel: 1, es_critica: true, cuadrilla: 'C1' }),
+  ]
+  const c = conteoDeVistas(arbol, rollup(arbol), '2026-08-24')
+  assert.equal(c.todo, 3)
+  assert.equal(c.atrasadas, 1)
+  assert.equal(c.bloqueadas, 1)
+  assert.equal(c.critico, 1)
+  // Sin ejecutor: dos de las tres no tienen cuadrilla ni subcontratista.
+  assert.equal(c.sin_asignar, 2)
+})
+
+// UNA VISTA QUE SE QUEDA SIN CHIP DESAPARECE DE LA PANTALLA. Si alguien agrega una vista nueva a
+// `VISTAS_ARBOL` y no la ubica, este assert se pone rojo antes de que el filtro quede invisible.
+test('toda vista se dibuja en algún lado: primaria o secundaria, ninguna huérfana', () => {
+  const ubicadas = [...VISTAS_PRIMARIAS, ...VISTAS_SECUNDARIAS].sort()
+  assert.deepEqual(ubicadas, [...VISTAS_ARBOL].sort())
+  assert.equal(new Set(ubicadas).size, VISTAS_ARBOL.length, 'ninguna vista en los dos grupos')
+})
+
+// LOS RÓTULOS DEL CANÓNICO 03. Renombrarlos «porque el interno se entiende mejor» devuelve la
+// pantalla al estado que la auditoría marcó: chips que no dicen lo que el que mira busca.
+test('los cuatro chips del canónico se llaman como el canónico', () => {
+  assert.deepEqual(VISTAS_PRIMARIAS.map((v) => VISTA_ARBOL_LABEL[v]),
+    ['Todo', 'En curso', 'Crítico', 'Problemas'])
 })

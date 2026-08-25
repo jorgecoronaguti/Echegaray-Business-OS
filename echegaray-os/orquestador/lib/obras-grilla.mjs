@@ -532,6 +532,7 @@ export const SECCION_OBRAS = 3
 /** El bloque del gasto por obra. Mismo motivo que `SECCION_OBRAS`: el número aparece en el título del
  *  bloque y en el rótulo de cada fila, y los dos tienen que moverse juntos. */
 export const SECCION_COSTO = 4
+export const SECCION_MATERIALES = 5
 
 /**
  * LA VENTANA DEL AÑO — porque el rótulo dice "⇒ TOTAL 2026" y hasta ahora era toda la pestaña.
@@ -700,13 +701,23 @@ const retenido = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'retencion
 const pctCobrado = (f) => `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`
 
 /**
- * LO QUE SE PUBLICA CUANDO NO HAY DATO. No es un cero y no es una celda en blanco.
+ * EL GLIFO DE "ACÁ NO HAY NADA QUE DECIR", y por qué no puede ser una celda en blanco.
  *
- * Un 0 afirmaría que el contrato vale cero; un blanco es indistinguible de una fórmula que se rompió
- * en silencio, que es el defecto que `columnasDesparejas` existe para cazar. El guion dice lo único
- * cierto: esta obra no declara contrato en ninguna de sus filas de Cobranzas.
+ * Un blanco es indistinguible de una fórmula que se rompió en silencio —el defecto que
+ * `columnasDesparejas` existe para cazar— así que toda celda cuyo vacío sea LEGÍTIMO tiene que
+ * decirlo con un carácter. Vive una sola vez porque el control lo mira: si una columna publicara dos
+ * glifos distintos para el mismo "no hay dato", el que se olvidara de actualizarse volvería a contar
+ * como defecto.
  */
-export const SIN_CONTRATO = '—'
+export const GUION = '—'
+
+/**
+ * LO QUE SE PUBLICA CUANDO NO HAY CONTRATO. No es un cero y no es una celda en blanco.
+ *
+ * Un 0 afirmaría que el contrato vale cero. El guion dice lo único cierto: esta obra no declara
+ * contrato en ninguna de sus filas de Cobranzas.
+ */
+export const SIN_CONTRATO = GUION
 
 /**
  * `% CONTRATO` — el `% FACTURADO` del modelo del dueño, contra el contrato y no contra la cartera.
@@ -847,8 +858,9 @@ const vencido = (cob, cliente, extra = {}) =>
  * LA PRÓXIMA FECHA DE COBRO pendiente.
  *
  * `MINIFS` devuelve 0 cuando no hay ninguna pendiente, y un 0 en una celda con formato de fecha se
- * dibuja "30/12/1899". El `1/(1/x)` convierte ese 0 en un error que el IFERROR transforma en blanco:
- * una obra sin cobranzas pendientes no tiene próxima fecha, y eso es un guion, no un error.
+ * dibuja "30/12/1899". Por eso el 0 se mapea a una fecha imposible (`LEJOS`) ANTES del MIN, y cuando
+ * el MIN queda en esa fecha imposible la celda publica el GUION: una obra sin cobranzas pendientes no
+ * tiene próxima fecha, y eso es un guion, no un error — y tampoco un blanco (ver el cierre).
  *
  * ACÁ VIVIÓ EL `#ERROR!` QUE SE PUBLICÓ EN LAS 7 OBRAS (13/08): esta fórmula cerraba un paréntesis de
  * más. Sheets no evalúa una fórmula que no parsea — la muestra como `#ERROR!` — y los tests no lo
@@ -875,7 +887,15 @@ const proximoCobro = (cob, cliente, extra = '') => {
   const forma = `IFERROR(INDEX(${abierto(cob, 'forma')};MATCH(1;ARRAYFORMULA(`
     + `(${variantesDe(cliente).map((v) => `(${abierto(cob, 'cliente')}="${v}")`).join('+')})`
     + `*(${abierto(cob, 'fechaCobro')}=${min})*(${abierto(cob, 'estado')}<>"${COBRADO}"));0));"")`
-  return `=IF(${min}>=${LEJOS};"";TEXT(${min};"dd/mm")&" · "&${forma})`
+  // ═══ SIN NADA PENDIENTE VA EL GUION, NO EL BLANCO (24/08) ═══
+  //
+  // Esta fórmula ya declaraba arriba que una obra sin cobranzas pendientes "no tiene próxima fecha, y
+  // eso es un guion, no un error" — y publicaba un BLANCO. San Francisco 3.4 cobró todo el 21/08, su
+  // celda I salió vacía y `columnasDesparejas` la contó como fórmula rota: el timer del Flujo de Caja
+  // terminó en FAILURE con la pestaña ya publicada y sana. El control no estaba de más — no puede
+  // distinguir un vacío legítimo de uno roto, y no debe: el que sabe cuál es cuál es esta fórmula, y
+  // lo dice acá. Después del guion, una I vacía vuelve a significar UNA sola cosa: se rompió algo.
+  return `=IF(${min}>=${LEJOS};"${GUION}";TEXT(${min};"dd/mm")&" · "&${forma})`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
@@ -1239,11 +1259,54 @@ function bloqueCosto(h, refs, o, idx) {
   return { clave: o.clave, fila: f, proyectado, patron }
 }
 
+/** El texto que va en la celda D cuando un egreso de `obras-datos.mjs` no declara fecha. */
+export const SIN_FECHA_PREVISTA = 'sin fecha'
+
+/**
+ * LOS ÍTEMS DEL CUADRO 5 COMO LOS DECLARA `obras-datos.mjs` — LA SEMILLA, YA EN FORMA DE CELDA.
+ *
+ * Es la ÚNICA definición de cómo se dibuja un ítem previsto, y por eso vive acá y no en la fusión:
+ * el que siembra un ítem nuevo tiene que producir exactamente la misma fila que produciría este
+ * generador solo. Dos renderizados del mismo ítem se desincronizan sin dar error, y la diferencia
+ * aparecería como un ítem "distinto" que nunca vuelve a emparejar.
+ *
+ * LA ESPECIE DE LA D ES PARTE DEL DATO: una fecha única va como SERIAL con especie `fecha` (Sheets
+ * la muestra DD/MM); varias cuotas van como TEXTO con «·», que el parser de Sheets no puede
+ * convertir a fecha a escondidas — un «24/08» crudo se auto-parseaba a serial y mostraba 46258.
+ *
+ * @param {Array} obras las de `obras-datos.mjs`
+ * @returns {Array<{rotulo:string, familia:string, proveedor:string, fecha:number|string,
+ *   especieFecha:'fecha'|'texto', previsto:number, nota:string, origen:'semilla'}>}
+ */
+export function itemsSemilla(obras = []) {
+  const items = []
+  for (const o of obras) {
+    for (const e of (o.egresos ?? [])) {
+      const multi = Array.isArray(e.cuotas) && e.cuotas.length > 0
+      const fecha = multi
+        ? e.cuotas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' · ')
+        : (e.fechaEstimada ? serialISO(e.fechaEstimada) : SIN_FECHA_PREVISTA)
+      items.push({
+        rotulo: `${o.obra ?? o.clave} — ${e.concepto}`,
+        familia: e.familia ?? '',
+        proveedor: e.proveedor ?? 'sin proveedor',
+        fecha,
+        especieFecha: multi || !e.fechaEstimada ? 'texto' : 'fecha',
+        previsto: e.monto,
+        nota: e.nota ?? '',
+        origen: 'semilla',
+      })
+    }
+  }
+  return items
+}
+
 /**
  * LA GRILLA COMPLETA DE `OBRAS`.
  *
  * @param {object} ctx `obras` (defecto: OBRAS_FUTURAS de obras-datos.mjs, inyectable en los tests),
- *   `refs` (defecto: REFS_OBRAS; el escritor pasa las resueltas por rótulo), `clientes`.
+ *   `refs` (defecto: REFS_OBRAS; el escritor pasa las resueltas por rótulo), `clientes`,
+ *   `materiales` (los ítems YA fusionados contra la pestaña; sin ellos se dibuja la semilla).
  * @returns {{filas:Array, tipeadas:Array, protagonistas:number[], detalles:number[], totales:number[],
  *   bloques:Array, fClientes:number[]}} `bloques` expone la anatomía de cada obra (protagonista,
  *   rango de detalle, MO, no-caja) para que la verificación mire la estructura y no el texto.
@@ -1380,6 +1443,45 @@ export function grillaObras(ctx = {}) {
     }
   }
 
+  // ═══ CUADRO 5 — MATERIALES PREVISTOS, ÍTEM POR ÍTEM (24/08/2026, pedido del dueño) ═══
+  //
+  // El detalle de la explosión de gastos que antes sólo viajaba agregado en el cuadro 4 y como
+  // proyección del calendario de caja. El 24/08 el dueño sacó esas proyecciones del calendario
+  // («nada de eso va a suceder mañana») y pidió VERLAS en una pestaña: este cuadro es el plan,
+  // ítem por ítem, con su fecha estimada — SIN tocar la caja. La compra real entra por Compras y
+  // el neteo del cuadro 4 la descuenta sola.
+  //
+  // ═══ EL CUADRO 5 SE FUSIONA: LA PESTAÑA ES EL ORIGEN DESDE EL 24/08 ═══
+  //
+  // `obras-datos.mjs` SÓLO SIEMBRA ÍTEMS NUEVOS. La fecha y el importe de un ítem que ya está en la
+  // pestaña salen de la PESTAÑA, porque ahí es donde el dueño los edita —el 24/08 movió los 17 al
+  // 01/10/2026— y desde ese día el libro los lee de ahí (`lib/materiales-previstos.mjs`). Este
+  // generador escribía las constantes en cada corrida y le pisaba la corrección: por eso el timer
+  // del flujo de caja estuvo detenido. Quien fusiona es `lib/materiales-fusion.mjs`; acá sólo se
+  // DIBUJA la lista que llega en `ctx.materiales`, y sin ella se dibuja la semilla —que es lo
+  // correcto para un test, para el `--dry` y para la primera corrida sobre una pestaña sin cuadro.
+  h.push([])
+  h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario de caja desde el 24/08)`], ['rotulo'])
+  h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
+  const filasMateriales = []
+  {
+    const filasItem = []
+    for (const it of (ctx.materiales ?? itemsSemilla(obras))) {
+      const f = h.n + 1
+      filasItem.push(f)
+      filasMateriales.push(f)
+      h.push([it.rotulo, it.familia, it.proveedor, it.fecha, it.previsto, it.nota],
+        ['rotulo', 'texto', 'texto', it.especieFecha, 'moneda', 'texto'])
+      h.tipeadas.push({ fila: f, col: 4 })
+    }
+    if (filasItem.length) {
+      const fT = h.n + 1
+      h.push([`⇒ TOTAL — ${filasItem.length} ÍTEMS PREVISTOS`, '', '', '', suma('E', filasItem), ''],
+        ['rotulo', null, null, null, 'monedaTotal', 'texto'])
+      filasMateriales.push(fT)
+    }
+  }
+
   // LA LÍNEA DE CARTERA ES UN CIERRE: lleva el "$" y la regla arriba, como los otros dos totales.
   const totales = [s0.fCartera, s1.fTot, fTot2, fTot3, fSinImputar].filter(Boolean)
   return {
@@ -1401,6 +1503,9 @@ export function grillaObras(ctx = {}) {
     /** Las filas del cuadro de costo. El formateador las necesita aparte: su `C` es una PROYECCIÓN
      *  (la explosión del dueño) y su `D` un HECHO, al revés que en los cuadros de venta. */
     filasCosto,
+    /** Las filas del cuadro 5 (ítems + total): también declaran `texto` en la F (Nota), y el control
+     *  de derrame necesita saber que son legítimas — su G/H/I van vacías, no llevan contratado. */
+    filasMateriales,
     totales,
     /** Los cierres de cada cuadro, en orden — el escritor los cita por nombre y no por posición. */
     fTotObras: fTot2,

@@ -13,7 +13,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filasDeLaTabla, filtrarPartidas, rubroDe, faltantesDe, subcontratadasFueraDelPrecio, SIN_RUBRO } from './partidas.ts'
+import {
+  filasDeLaTabla, filtrarPartidas, rubroDe, faltantesDe, subcontratadasFueraDelPrecio, SIN_RUBRO,
+  contarFaltantes, filtrarPorFalta,
+} from './partidas.ts'
 import type { PartidaValorizada } from '../types/index.ts'
 
 let n = 0
@@ -127,4 +130,51 @@ test('el buscador de partidas también ignora tildes y espacios de sobra', () =>
   const lista = [part({ codigo: 'T1009', descripcion: 'Columna de encadenado', rubro: 'Albañilería' })]
   assert.equal(filtrarPartidas(lista, ' albanileria ').length, 1)
   assert.equal(filtrarPartidas(lista, '').length, 1)
+})
+
+// ═══ LOS CHIPS DE DEUDA DE CARGA DE LA TOOLBAR (Design 23/08) ═══
+//
+// EL DEFECTO QUE ATRAPAN: `cantidad: 0` tratado como ausencia. Un `!p.cantidad` o un `?? null` mal
+// puesto cuenta el cero como «sin cómputo», y entonces el chip manda a cargar un dato que ya está
+// cargado — y de paso esconde la partida que de verdad falta entre las que no faltan.
+
+test('cantidad 0 NO es «sin cómputo»: cero es un número que alguien escribió', () => {
+  const lista = [
+    part({ cantidad: 0, sin_analisis: false }),
+    part({ cantidad: null, sin_analisis: false }),
+    part({ cantidad: 12, sin_analisis: true }),
+  ]
+  const c = contarFaltantes(lista)
+  assert.equal(c.sinComputo, 1)
+  assert.equal(c.sinAnalisis, 1)
+  assert.deepEqual(filtrarPorFalta(lista, 'sin_computo').map((p) => p.cantidad), [null])
+  assert.deepEqual(filtrarPorFalta(lista, 'sin_analisis').map((p) => p.cantidad), [12])
+})
+
+test('sin chip activo la tabla muestra todo, y filtrar no muta la lista original', () => {
+  const lista = [part({ cantidad: null }), part()]
+  assert.equal(filtrarPorFalta(lista, null).length, 2)
+  assert.notEqual(filtrarPorFalta(lista, null), lista)
+})
+
+// ═══ EL RUBRO PLEGABLE (Design 23/08 · COMPONENTS.md §Table, grupos colapsables) ═══
+//
+// EL DEFECTO QUE ATRAPA: una fila de partida que no sabe a qué rubro pertenece. Sin `rubroClave`,
+// la tabla tiene que deducirlo recorriendo las filas anteriores, y cualquier error ahí cierra el
+// rubro equivocado — el usuario pliega «Movimiento de suelo» y desaparece «Hormigón armado».
+
+test('cada partida declara la clave de SU rubro, no la de la anterior', () => {
+  const filas = filasDeLaTabla([
+    part({ rubro: 'Movimiento de suelo', orden: 1 }),
+    part({ rubro: 'Hormigón armado', orden: 2 }),
+    part({ rubro: 'Hormigón armado', orden: 3 }),
+  ], 1000)
+  const partidas = filas.filter((f) => f.tipo === 'partida')
+  assert.deepEqual(partidas.map((f) => f.tipo === 'partida' && f.rubroClave), [
+    'rubro:Movimiento de suelo', 'rubro:Hormigón armado', 'rubro:Hormigón armado',
+  ])
+  // Y la clave de la partida es la MISMA cadena que la de su fila de rubro: si no, el `includes`
+  // del plegado nunca coincide y el rubro no se cierra jamás.
+  const rubros = filas.filter((f) => f.tipo === 'rubro').map((f) => f.clave)
+  assert.ok(partidas.every((f) => f.tipo === 'partida' && rubros.includes(f.rubroClave)))
 })

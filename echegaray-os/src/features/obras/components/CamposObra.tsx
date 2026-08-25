@@ -83,7 +83,17 @@ export function CampoDrive({ valor }: { valor?: string | null }) {
   )
 }
 
-export function CamposObra({ obra, ubicacion }: { obra?: ObraPanel; ubicacion?: string | null }) {
+/**
+ * `veEconomia` NACE EN FALSE, y no es una preferencia de diseño (21/08/2026).
+ *
+ * Desde la 5000 `obra_canonica.monto_contratado` no es escribible por PostgREST: entra por
+ * `fijar_monto_contratado()`, que exige `ve_economia()`. Dibujarle el campo a un jefe de obra sería
+ * una pantalla más ancha que la base — tipea un monto, aprieta guardar y la base lo rechaza. El
+ * default cierra: quien no declara que ve economía, no ve el campo.
+ */
+export function CamposObra({ obra, ubicacion, veEconomia = false }: {
+  obra?: ObraPanel; ubicacion?: string | null; veEconomia?: boolean
+}) {
   return (
     <div className="grid grid-cols-2 gap-3">
       <CampoNombre valor={obra?.nombre} />
@@ -107,7 +117,7 @@ export function CamposObra({ obra, ubicacion }: { obra?: ObraPanel; ubicacion?: 
           <Campo rotulo="Fin real"><input type="date" name="fecha_fin_real" defaultValue={v(obra.fecha_fin_real)} className={CAMPO} /></Campo>
         </>
       )}
-      <CampoMontoContratado valor={obra?.monto_contratado} />
+      {veEconomia && <CampoMontoContratado valor={obra?.monto_contratado} />}
       <CampoDrive valor={obra?.drive_carpeta_id} />
     </div>
   )

@@ -25,6 +25,7 @@
 import type { BaseProyeccion, FilaCronograma } from './cronogramaMotor.ts'
 import { hhRestantes } from './cronogramaMotor.ts'
 import { claveDeGrupo, SIN_GRUPO } from './cronograma.ts'
+import { avanceAgregado } from './avance.ts'
 
 const num = (v: number | string | null | undefined): number | null =>
   v === null || v === undefined || v === '' ? null : Number(v)
@@ -57,6 +58,20 @@ export function dotacionNecesaria(
   return n
 }
 
+/**
+ * EL TECHO DE DOTACIÓN QUE EL SISTEMA SABE TRANSPORTAR — UNA SOLA VEZ.
+ *
+ * `?dot=<frente>~<n>` lo acota, `aplicarDotacionAlPlan` lo vuelve a acotar y la pantalla tiene que
+ * saberlo para no ofrecer un botón que va a escribir nada. Estaba escrito «99» en los tres lados, y
+ * ahí es donde se cuela el modo de falla que apareció con datos reales: la cuenta inversa de
+ * Quattropani (3.788 HH en un día) devuelve 474 personas, la URL lo descarta en silencio y el
+ * servidor contesta «no hay ninguna dotación elegida» sobre una pantalla que mostraba un número.
+ *
+ * No es un límite de negocio —474 personas es la respuesta correcta a una pregunta absurda— es el
+ * ancho del contrato entre la pantalla, la URL y la escritura.
+ */
+export const TOPE_DOTACION = 99
+
 /** Por qué el frente está donde está. Es la columna `LÍMITE` de la 08, y las cuatro son
  *  distintas: «terminado» no es «sin gente», y ninguna de las dos es «con margen». */
 export type Limite = 'terminado' | 'sin gente' | 'tope del frente' | 'con margen'
@@ -76,9 +91,16 @@ export interface Frente {
    *  restantes del frente son `null`: un total al que le falta una parte no es un total. */
   sinDato: number
   dotacion: number
+  /** La dotación que el PLAN tiene escrita (`dotacion_prevista`), sin la simulación encima. Es a lo
+   *  que vuelve «Volver al plan», y contra lo que se lee el delta: sin ella, una simulación no se
+   *  distingue de lo que ya estaba guardado. */
+  dotacionPlan: number
   tope: number | null
   /** Días con la dotación elegida. `null` si no hay HH o la dotación es 0. */
   dias: number | null
+  /** Cuántos de esos días NO se comprimen con más gente (curado, fraguado, secado). Se muestra: un
+   *  frente que no baja de 9 días por más gente que se le ponga tiene que poder decir por qué. */
+  diasTecnicos: number
   fin: string | null
   limite: Limite
   nActividades: number
@@ -140,6 +162,38 @@ function sumarHH(filas: FilaCronograma[]): { hh: number | null; base: BaseProyec
   return { hh: total, base: observado ? 'rendimiento observado' : 'plan', sinDato: 0 }
 }
 
+/**
+ * LOS DÍAS DEL FRENTE QUE NO SE COMPRIMEN CON MÁS GENTE.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA ═══
+ *
+ * `duracionDias` recibe los días técnicos como cuarto argumento y los suma aparte —está así desde el
+ * día uno, y su función SQL gemela también—, pero `frentesDe` NUNCA se lo pasaba. Consecuencia: un
+ * frente de hormigón con siete días de curado se comprimía como si el curado fuera trabajo. La
+ * pantalla contestaba «poné el doble de gente y terminás en la mitad de tiempo» sobre un frente
+ * donde el hormigón cura siete días haya una persona o veinte, y esa respuesta se descubre el día
+ * de la entrega.
+ *
+ * ═══ CÓMO SE SABE CUÁL ES TÉCNICA — Y POR QUÉ NO SE ADIVINA ═══
+ *
+ * Lo dice la actividad: `tiempo_tecnico`, que la conversión de partida a plan copia del paso de la
+ * plantilla que ya lo declaraba. NO se deduce de «tiene `dias_plan` y se mide manual»: ése es el
+ * estado por defecto de las 344 actividades traídas del tracker, y con esa regla los días de plan de
+ * TODA la obra se habrían sumado como días técnicos. Un frente inflado es peor defecto que el que se
+ * está arreglando.
+ *
+ * Una técnica YA CUMPLIDA no vuelve a sumar sus días: el curado que pasó, pasó.
+ */
+function diasTecnicosDe(filas: FilaCronograma[]): number {
+  let total = 0
+  for (const f of filas) {
+    if (f.tipo === 'resumen' || !f.tiempo_tecnico) continue
+    if (hhRestantes(f).base === 'terminada') continue
+    total += num(f.dias_plan) ?? 0
+  }
+  return total
+}
+
 /** Con qué límite topa el frente: ya está hecho, nadie asignado, el tope, o todavía hay lugar.
  *
  *  «Terminado» va primero y gana: un frente al 100 % con nadie asignado no está frenado por falta
@@ -178,11 +232,14 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
     // El tope del frente no es decorativo: una dotación pedida por la URL (`?dot=99`) no puede
     // producir un plazo que el tope declara imposible. Se recorta acá, donde nace el divisor
     // — el stepper de la pantalla ya lo respetaba, pero la URL entraba sin pasar por el stepper.
-    const pedida = dotaciones[clave] ?? (previstas.length ? Math.max(...previstas) : 0)
+    const delPlan = previstas.length ? Math.max(...previstas) : 0
+    const pedida = dotaciones[clave] ?? delPlan
     const dotacion = tope != null ? Math.min(pedida, tope) : pedida
+    // Los días técnicos NO se comprimen: entran por el cuarto argumento, sumados aparte.
+    const diasTecnicos = diasTecnicosDe(hijas)
     // Un frente sin trabajo pendiente no se planifica: 0 días y ninguna fecha. Publicar «termina
     // hoy» sobre algo que ya está hecho llena el fin de obra de fechas que nadie va a esperar.
-    const dias = hh === 0 ? 0 : (dotacion > 0 ? duracionDias(hh, dotacion, jornada) : null)
+    const dias = hh === 0 ? 0 : (dotacion > 0 ? duracionDias(hh, dotacion, jornada, diasTecnicos) : null)
     return {
       clave,
       nombre: clave === SIN_GRUPO ? 'Sin clasificar' : clave,
@@ -193,8 +250,10 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
       base,
       sinDato,
       dotacion,
+      dotacionPlan: tope != null ? Math.min(delPlan, tope) : delPlan,
       tope,
       dias,
+      diasTecnicos,
       fin: dias != null && dias > 0 && desde && sumarDiasHabiles
         ? sumarDiasHabiles(desde, dias - 1)
         : null,
@@ -202,6 +261,80 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
       nActividades: hijas.filter((h) => h.tipo !== 'resumen').length,
     }
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// EL SIMULADOR, RECALCULADO EN EL NAVEGADOR
+//
+// El stepper de la 08 navegaba: cada clic era una vuelta al servidor con seis frentes recalculados
+// y la pantalla entera remontada. Mover una dotación de 2 a 6 costaba cuatro navegaciones y cuatro
+// esqueletos. Ahora la cuenta corre donde está el gesto y la URL se sincroniza con `replaceState`,
+// así que el link compartido sigue abriendo la MISMA simulación.
+//
+// Lo único que el navegador no puede saber es qué días trabaja la obra: el calendario vive en el
+// servidor (`CalendarioObra`, con los feriados y los no laborables cargados). Por eso la página
+// manda los días hábiles ya resueltos y acá sólo se INDEXA — no se recalcula un calendario paralelo
+// que el día que aparezca un feriado nuevo diría otra fecha que el resto del OS.
+
+export interface Simulacion {
+  /** La pedida ya recortada por el tope del frente. */
+  dotacion: number
+  dias: number | null
+  fin: string | null
+  limite: Limite
+  /** La pedida superaba el tope y se recortó. La pantalla lo dice: un stepper que muestra 8 cuando
+   *  el motor calculó con 4 enseña a desconfiar del número. */
+  recortada: boolean
+}
+
+export function simularFrente(
+  f: Pick<Frente, 'hhRestantes' | 'tope' | 'diasTecnicos'>,
+  pedida: number,
+  jornada: number,
+  habiles: readonly string[],
+): Simulacion {
+  const dotacion = f.tope != null ? Math.min(pedida, f.tope) : pedida
+  const dias = f.hhRestantes === 0
+    ? 0
+    : (dotacion > 0 ? duracionDias(f.hhRestantes, dotacion, jornada, f.diasTecnicos) : null)
+  return {
+    dotacion,
+    dias,
+    // El fin es el día hábil número `dias` contando desde el arranque, y el arranque es el índice 0:
+    // un frente de un día termina el día que empieza. Fuera del calendario que mandó el servidor no
+    // se inventa una fecha — se devuelve null y la pantalla dice «sin plan».
+    fin: dias != null && dias > 0 ? habiles[dias - 1] ?? null : null,
+    limite: limiteDe(dotacion, f.tope, f.hhRestantes),
+    recortada: f.tope != null && pedida > f.tope,
+  }
+}
+
+export interface ResumenSimulacion {
+  genteTotal: number
+  fin: string | null
+  /** Días de trabajo contra el fin del plan. `null` sin plan o sin simulación.
+   *
+   *  ═══ EL DEFECTO QUE ESTO ARREGLA ═══
+   *
+   *  La cuenta anterior era `habilesEntre(finPlan, finSimulado) - 1 || 0`, y `habilesEntre` devuelve
+   *  0 cuando el hasta es anterior al desde. O sea: CUALQUIER adelanto —un día o dos meses— se
+   *  publicaba como «−1 d». La pantalla que existe para decir cuánto se gana poniendo gente decía
+   *  siempre lo mismo. Con índices de día hábil con signo, adelantar 12 días dice −12. */
+  desvioDias: number | null
+}
+
+export function resumenSimulacion(
+  sims: readonly { dotacion: number; dias: number | null }[],
+  idxFinPlan: number | null,
+  habiles: readonly string[],
+): ResumenSimulacion {
+  const dias = sims.map((s) => s.dias).filter((d): d is number => d != null && d > 0)
+  const maxDias = dias.length ? Math.max(...dias) : null
+  return {
+    genteTotal: sims.reduce((a, s) => a + s.dotacion, 0),
+    fin: maxDias == null ? null : habiles[maxDias - 1] ?? null,
+    desvioDias: maxDias == null || idxFinPlan == null ? null : (maxDias - 1) - idxFinPlan,
+  }
 }
 
 export interface OpcionInversa {
@@ -326,23 +459,11 @@ function agregar(hijas: FilaCronograma[]): Omit<FilaRubro, 'nivel' | 'nombre'> {
   return {
     hhPlan,
     hhReal: suma('hhReal'),
-    avancePct: promedioPonderado(hijas),
+    // UNA SOLA REGLA DE AVANCE AGREGADO para todo el OS: `avanceAgregado` en `avance.ts`.
+    avancePct: avanceAgregado(hijas.map((h) => ({ avance_pct: num(h.avance_pct), hh_plan: num(h.hh_plan) }))).pct,
     rendPlan: rendimiento(hhPlan, cantTotal),
     rendReal: rendimiento(suma('hhReal'), cantTotal),
     hhProyectadas: fc,
     desvioHH: fc == null || hhPlan == null ? null : fc - hhPlan,
   }
-}
-
-/** Avance del rubro ponderado por HH plan; si ninguna hija tiene HH, promedio simple sobre las que
- *  SÍ tienen avance. Sin ninguna de las dos cosas devuelve null, que se lee «sin plan». */
-function promedioPonderado(hijas: FilaCronograma[]): number | null {
-  const conAvance = hijas.filter((h) => num(h.avance_pct) != null)
-  if (!conAvance.length) return null
-  const pesos = conAvance.map((h) => num(h.hh_plan) ?? 0)
-  const total = pesos.reduce((a, b) => a + b, 0)
-  if (total > 0) {
-    return conAvance.reduce((acc, h, i) => acc + (pesos[i] / total) * num(h.avance_pct)!, 0)
-  }
-  return conAvance.reduce((acc, h) => acc + num(h.avance_pct)!, 0) / conAvance.length
 }

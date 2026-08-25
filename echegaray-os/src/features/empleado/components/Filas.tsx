@@ -64,6 +64,42 @@ export function Dato({ rotulo, valor, falta = 'sin cargar' }: { rotulo: string; 
   )
 }
 
+/**
+ * EL BLOQUE DE DATO GRANDE del Employee shell: etiqueta de 11,5px `muted` + número mono de 22–30px
+ * en 600 con `letter-spacing:-0.02em`. Es el único lugar del perfil donde un número se agranda, y
+ * sirve para lo que se mira de lejos y de una: horas, presencia, la hora de entrada.
+ *
+ * ═══ EL FALTANTE SE ESCRIBE, NO SE RELLENA ═══
+ *
+ * `valor === null` NO es cero ni «00:00». Un `00:00` en la salida de hoy afirma que alguien se fue a
+ * medianoche; «sin registrar» dice lo que pasó. Por eso el faltante entra en `faint` y en el tamaño
+ * del texto, no en el del número: un hueco no merece 26px.
+ */
+export function BloqueDato({
+  etiqueta, valor, falta = 'sin registrar', tono, testid,
+}: {
+  etiqueta: string
+  /** El número YA formateado. `null` cuando el dato no existe — nunca un cero de relleno. */
+  valor: string | null
+  falta?: string
+  tono?: 'warn' | 'neg'
+  testid?: string
+}) {
+  const color = tono === 'neg' ? 'text-neg' : tono === 'warn' ? 'text-warn' : 'text-ink'
+  return (
+    <div data-testid={testid} data-vacio={valor == null ? 'si' : undefined}>
+      <span className="block text-[11.5px] text-muted">{etiqueta}</span>
+      {valor == null ? (
+        <span className="mt-0.5 block text-[14px] text-faint">{falta}</span>
+      ) : (
+        <span className={`mt-0.5 block font-mono text-[26px] font-semibold leading-none tracking-[-0.02em] tabular-nums ${color}`}>
+          {valor}
+        </span>
+      )}
+    </div>
+  )
+}
+
 /** El vacío que EXPLICA. Nunca «no hay datos»: qué falta, y quién lo carga. */
 export function Nada({ children, testid }: { children: ReactNode; testid?: string }) {
   return (

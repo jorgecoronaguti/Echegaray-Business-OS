@@ -124,7 +124,7 @@ export function FormAccion({
  *
  * `accion={() => quitar(fila.id)}` sólo se puede escribir dentro de un componente de cliente: una
  * función no cruza la frontera del servidor. Con `args`, las pantallas que son server components
- * —las tablas de Personal, Economía y Planificación— pasan la acción del servidor y su id, y no
+ * —las tablas de Personal, Economía y Cronograma— pasan la acción del servidor y su id, y no
  * necesitan volverse de cliente enteras sólo para tener un botón de borrar.
  */
 export function BotonAccion<A extends unknown[] = []>({
@@ -199,6 +199,6 @@ export function Campo({
   )
 }
 
-/** Las clases de un input/select/textarea, en un solo lugar: catorce formularios iguales. */
-export const CTRL =
-  'mt-1 w-full min-w-0 rounded-control border border-line bg-white px-2 py-1.5 text-[13px] text-ink placeholder:text-faint'
+// CTRL vive en ./estilos.ts (módulo sin 'use client') y se reexporta acá para los consumidores
+// cliente existentes; los Server Components lo importan de estilos directamente.
+export { CTRL } from './estilos.ts'

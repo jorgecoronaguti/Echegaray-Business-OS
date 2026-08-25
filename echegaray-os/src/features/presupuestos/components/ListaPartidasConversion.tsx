@@ -1,10 +1,17 @@
 'use client'
 
-// 13 · LAS PARTIDAS DEL CONTRATO — tarjetas, no filas.
+// 13 · LAS PARTIDAS DEL CONTRATO — una lista de trabajo.
 //
 // Cada partida se elige una vez y se convierte una vez: no es una tabla que se compara de arriba a
-// abajo, es una lista de trabajo. La tarjeta muestra las tres cosas que deciden si se puede tocar:
-// cuánto hay que repartir, cómo se llama, y en qué estado está.
+// abajo. La fila muestra las tres cosas que deciden si se puede tocar: cuánto hay que repartir, cómo
+// se llama, y en qué estado está.
+//
+// ═══ FILAS CON HAIRLINE, NO OCHO TARJETAS (Design 23/08) ═══
+//
+// Eran ocho `rounded-card border`: ocho cajas para leer ocho nombres, y la seleccionada se marcaba
+// pintando la caja entera de amarillo suave. El sistema marca la selección con la regla amarilla de
+// 2px sobre `surface-quiet` —igual que en la tabla de partidas, la de obras y la de compras—, y la
+// jerarquía la hace el peso tipográfico. «Antes de una caja: ¿hace falta para entender el dato?».
 //
 // ═══ EL ESTADO SE LEE DE `obra_actividad`, NO DE UNA MARCA ═══
 //
@@ -47,30 +54,36 @@ export function ListaPartidasConversion({
         <Buscador value={busqueda} onChange={setBusqueda} placeholder="Buscar partida" testid="buscador-conversion" />
       </div>
 
-      <ul className="mt-3 space-y-1.5" data-testid="lista-partidas-conversion">
+      <ul className="mt-2 border-t border-line" data-testid="lista-partidas-conversion">
         {visibles.map((p) => {
           const c = conversiones[p.partida_id]
           const activa = seleccionada === p.partida_id
           return (
-            <li key={p.partida_id}>
+            <li key={p.partida_id} className="border-b border-[#EFEEEA]">
               <Link
                 href={`${hrefBase}?partida=${p.partida_id}`}
                 data-testid="tarjeta-partida"
                 data-partida={p.partida_id}
-                className={`block rounded-card border px-2.5 py-2 transition-colors ${
-                  activa ? 'border-marca bg-marca-soft' : 'border-line bg-surface hover:bg-surface-quiet'
+                data-seleccionada={activa ? '' : undefined}
+                style={activa ? { boxShadow: 'inset 2px 0 0 var(--os-marca)' } : undefined}
+                className={`block px-2.5 py-2 transition-colors ${
+                  activa ? 'bg-surface-quiet' : 'hover:bg-surface-quiet'
                 }`}
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate font-mono text-[11px] tabular-nums text-muted">
-                    {p.codigo ?? 'sin código'}
+                  <span className={`min-w-0 truncate text-[12.5px] ${activa ? 'font-semibold text-ink' : 'text-ink'}`}>
+                    {p.descripcion}
                   </span>
                   <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-soft">
                     {p.cantidad === null ? 'sin cómputo' : `${fCantidad(p.cantidad)} ${p.unidad ?? ''}`.trim()}
                   </span>
                 </div>
-                <div className="mt-0.5 truncate text-[12.5px] text-ink">{p.descripcion}</div>
-                <EstadoTarjeta p={p} c={c} />
+                <div className="mt-0.5 flex items-baseline justify-between gap-2">
+                  <EstadoTarjeta p={p} c={c} />
+                  <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-faint">
+                    {p.codigo ?? 'sin código'}
+                  </span>
+                </div>
               </Link>
             </li>
           )
@@ -89,7 +102,7 @@ export function ListaPartidasConversion({
 }
 
 function EstadoTarjeta({ p, c }: { p: PartidaValorizada; c?: ConversionDeLaPartida }) {
-  const clases = 'mt-1 inline-flex items-center gap-1.5 text-[11px]'
+  const clases = 'inline-flex min-w-0 items-center gap-1.5 truncate text-[11px]'
   if (c) {
     return (
       <span className={`${clases} text-pos`} data-estado="convertida">

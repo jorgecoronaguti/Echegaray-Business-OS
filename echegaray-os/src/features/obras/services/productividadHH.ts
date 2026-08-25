@@ -52,6 +52,29 @@ export function lecturaProductividad(a: ActividadHH): string {
 }
 
 /**
+ * LA MISMA REGLA, SIN LA FRASE — Design 23/08: normal silencioso, problema visible.
+ *
+ * La columna de lectura repetía en palabras dos números que la fila ya muestra en sus columnas
+ * («Avance 45 % · HH consumidas 80 % del plan»), y la ÚNICA parte que no estaba en ninguna otra
+ * celda era el adjetivo del final. Esto devuelve exactamente esa parte: la excepción, o `null`
+ * cuando la actividad va como se esperaba — y ahí la fila no dice nada, que es el punto.
+ *
+ * Los umbrales NO se redefinen acá: se leen del texto que produce `lecturaProductividad`, para que
+ * no puedan separarse. Dos implementaciones del ±10 darían dos verdades sobre la misma actividad.
+ */
+export function senalProductividad(a: ActividadHH): { texto: string; tono: 'warn' | 'pos' | 'nulo' } | null {
+  const lectura = lecturaProductividad(a)
+  if (lectura.endsWith('consumo adelantado')) return { texto: 'consumo adelantado', tono: 'warn' }
+  if (lectura.endsWith('rinde mejor que el plan')) return { texto: 'rinde mejor', tono: 'pos' }
+  // Lo que falta se dice por su nombre y sin punto: es la ausencia de un dato, no un estado.
+  if (lectura === 'HH plan sin cargar') return { texto: 'HH plan sin cargar', tono: 'nulo' }
+  if (lectura === 'sin horas imputadas') return { texto: 'sin horas imputadas', tono: 'nulo' }
+  if (lectura.endsWith('HH plan sin cargar')) return { texto: 'HH plan sin cargar', tono: 'nulo' }
+  if (lectura.endsWith('avance sin medir')) return { texto: 'avance sin medir', tono: 'nulo' }
+  return null
+}
+
+/**
  * Las horas que le cruzan a cada asignado. Devuelve un mapa `asignacion.id → horas`.
  *
  * ═══ EL CRUCE ES POR ID, NO POR NOMBRE ═══

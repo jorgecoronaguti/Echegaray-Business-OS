@@ -1,6 +1,9 @@
 'use client'
 
-// LA TABLA DE ACTIVIDADES — la mitad izquierda del workspace de Planificación.
+// LA TABLA DE ACTIVIDADES — la mitad izquierda del workspace de Cronograma.
+//
+// («Planificación» era una pestaña separada y dejó de existir: planificar no es un lugar distinto
+// de donde vive el cronograma. Ver la cabecera de `app/(main)/obras/[obra]/page.tsx`.)
 //
 // ═══ CINCO COLUMNAS Y NINGUNA MÁS ═══
 //

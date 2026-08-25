@@ -44,8 +44,7 @@ export function FormParte({
   if (actividades.length === 0) {
     return (
       <Aviso tono="warn" titulo="Esta obra no tiene actividades cargadas.">
-        Un parte se carga contra una actividad del plan. Hasta que la obra tenga su planificación, no hay contra qué
-        cargarlo — se prepara desde Obras, en el escritorio.
+        El parte se carga contra una actividad del plan. Se preparan desde Obras.
       </Aviso>
     )
   }
@@ -77,11 +76,11 @@ export function FormParte({
       </Campo>
 
       {actividad === null ? (
-        <p className="text-[12.5px] text-faint">Elegí la actividad y te pido lo que esa actividad mide.</p>
+        <p className="text-[12.5px] text-faint">Elegí la actividad para seguir.</p>
       ) : porCantidad ? (
         <Campo
           rotulo={`Cantidad ejecutada${actividad.unidad ? ` (${actividad.unidad})` : ''}`}
-          ayuda="Lo de HOY, no el acumulado: el acumulado lo suma el OS."
+          ayuda="Lo de HOY, no el acumulado."
         >
           <input
             name="cantidad"
@@ -95,7 +94,7 @@ export function FormParte({
           />
         </Campo>
       ) : (
-        <Campo rotulo="Avance del día (%)" ayuda="Cuánto avanzó HOY esa actividad, de 0 a 100.">
+        <Campo rotulo="Avance del día (%)" ayuda="Cuánto avanzó HOY, de 0 a 100.">
           <input
             name="avance_pct"
             type="number"
@@ -111,7 +110,7 @@ export function FormParte({
       )}
 
       <Campo rotulo="Comentario" ayuda="Qué pasó: lo que no entra en un número.">
-        <textarea name="comentario" rows={3} maxLength={500} className={`${CAMPO} h-auto py-2`} />
+        <textarea name="comentario" rows={3} maxLength={500} className={`${CAMPO} h-auto min-h-[96px] py-2`} />
       </Campo>
 
       {state.ok && state.mensaje && (
@@ -121,19 +120,16 @@ export function FormParte({
       )}
       {state.error && <ErrorCampo>{state.error}</ErrorCampo>}
 
+      {/* `tamano="bloque"` y no un `className` con otro alto: `Boton` separó el tamaño del resto
+          justamente porque dos reglas de alto compitiendo las ordena Tailwind, no el que escribe —
+          el botón medía 48 «a veces». Los 48px de la primaria del teléfono los fija el sistema. */}
       <div className="space-y-2 border-t border-line pt-3">
-        <Boton
-          type="submit"
-          variante="primaria"
-          disabled={guardando}
-          className="h-[48px] w-full text-[15px]"
-          data-testid="guardar-parte"
-        >
+        <Boton type="submit" variante="primaria" tamano="bloque" disabled={guardando} data-testid="guardar-parte">
           {guardando ? 'Guardando…' : `Guardar el parte de ${obraNombre}`}
         </Boton>
+        {/* El límite se declara, pero en un renglón: sin señal el guardado FALLA y se ve. */}
         <p className="text-center text-[11px] text-faint">
-          Se guarda al instante contra la base. Si el teléfono no tiene señal, el guardado falla y te lo dice: nada
-          queda «en camino» sin que lo sepas. <Nulo>La cola sin conexión todavía no existe.</Nulo>
+          <Nulo>Sin conexión no hay cola: si falla, te lo dice.</Nulo>
         </p>
       </div>
     </form>

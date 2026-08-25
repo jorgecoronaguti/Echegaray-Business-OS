@@ -35,7 +35,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getClientes } from '@/features/clientes/services/clientesService'
 import { getActividades, getObra, getUbicacion } from '@/features/obras/services/obrasService'
 import { getAsignaciones, getPersonas } from '@/features/obras/services/personalService'
@@ -48,7 +48,7 @@ import {
 } from '@/features/obras/components/CamposObra'
 import { BarraDePasos, LinkPaso, Paso } from '@/features/obras/components/PasosAlta'
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
-import { Aviso, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
 import { FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -66,6 +66,10 @@ export default async function NuevaObraPage({
   // final. Falla al nivel MENOS privilegiado: sin perfil legible, no se entra.
   const perfil = await getPerfilActual(supabase)
   const esAdmin = esAdministracion(perfil.data?.rol ?? null)
+  // El monto contratado es PRECIO, no operación: desde la 5000 sólo `ve_economia()` puede fijarlo
+  // (`fijar_monto_contratado`). Sin esto el paso «contrato» le pediría al jefe de obra un número que
+  // la base le va a rechazar.
+  const veContrato = veEconomia(perfil.data?.rol ?? null)
   if (!esAdmin) {
     return (
       <PageShell eyebrow={<Volver href="/obras">Obras</Volver>} title="Nueva obra">
@@ -101,7 +105,7 @@ export default async function NuevaObraPage({
     >
       {error && <Aviso tono="neg">No pude leer la obra: {error}</Aviso>}
       {obraParam && !obra && !error && (
-        <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva">Empezar una nueva</Link>.</Aviso>
+        <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva" prefetch={false}>Empezar una nueva</Link>.</Aviso>
       )}
 
       <BarraDePasos obraId={obraId} actual={paso} />
@@ -151,7 +155,7 @@ export default async function NuevaObraPage({
               ))}
             </dl>
             <p className="mt-3 text-[12px] text-faint">
-              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`}>la ficha de la obra</Link>.
+              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`} prefetch={false}>la ficha de la obra</Link>.
             </p>
           </Paso>
         )}
@@ -163,7 +167,7 @@ export default async function NuevaObraPage({
             pie={<>
               <LinkPaso obraId={obraId} paso="informacion" testid="volver-informacion">Volver al principio</LinkPaso>
               <Link
-                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')}
+                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')} prefetch={false}
                 data-testid={`saltar-${paso}`}
                 className="text-muted underline underline-offset-2 transition-colors hover:text-ink"
               >Saltar este paso</Link>
@@ -177,7 +181,7 @@ export default async function NuevaObraPage({
               <div className="grid grid-cols-2 gap-3">
                 {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
                 {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
-                {paso === 'contrato' && <CampoMontoContratado valor={obra.monto_contratado} />}
+                {paso === 'contrato' && veContrato && <CampoMontoContratado valor={obra.monto_contratado} />}
                 {paso === 'drive' && <CampoDrive valor={obra.drive_carpeta_id} />}
               </div>
             </FormAccion>
@@ -223,7 +227,7 @@ export default async function NuevaObraPage({
             paso="cronograma"
             pie={<>
               <LinkPaso obraId={obraId} paso="confirmar" testid="seguir-confirmar" fuerte>Siguiente</LinkPaso>
-              <Link href={`/obras/${obraId}?vista=cronograma`} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
+              <Link href={`/obras/${obraId}?vista=cronograma`} prefetch={false} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
                 Abrir el cronograma completo
               </Link>
             </>}
@@ -260,9 +264,12 @@ export default async function NuevaObraPage({
             {/* EL CHECKLIST NO SE REPITE ACÁ: es el panel de la derecha, el mismo que acompañó los
                 siete pasos anteriores. Dos copias de la misma lista en la misma pantalla son dos
                 lugares donde puede decir cosas distintas. */}
+            {/* 22/08/2026 · Se recorta a las dos frases que son ESTADO —la obra existe, y dónde
+                mirar lo que falta—. La explicación de por qué nada bloquea era la misma que el
+                panel de al lado repetía tres líneas más abajo. */}
             <p className="text-[13px] text-ink">
-              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, línea
-              por línea y con el número concreto: nada de esto bloquea nada.
+              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, y
+              nada de eso la bloquea.
             </p>
           </Paso>
         )}
@@ -274,11 +281,13 @@ export default async function NuevaObraPage({
                 aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
                 muestra a medio preparar. */}
             <ChecklistPreparacion obraId={obraId} />
-            <p className="mt-3 max-w-[520px] text-[11.5px] leading-relaxed text-faint">
-              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Esta misma lista
-              aparece en el Resumen de la obra hasta que no falte nada — no es un tablero, es un
-              checklist que se agota.
-            </p>
+            {/* 22/08/2026 · El párrafo acompañaba al checklist en los OCHO pasos del alta. Qué es
+                la lista se pregunta una vez; que lo pendiente no bloquea ya se lee en el paso de
+                confirmación, que es donde alguien podría creer que sí. */}
+            <Ayuda titulo="Qué es esta lista" testid="ayuda-checklist-alta">
+              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Aparece igual en
+              el Resumen hasta que no falte nada — no es un tablero, es un checklist que se agota.
+            </Ayuda>
           </aside>
         )}
       </div>

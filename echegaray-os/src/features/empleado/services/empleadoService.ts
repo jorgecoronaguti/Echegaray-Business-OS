@@ -12,7 +12,8 @@ import type { ServiceResult } from '@/features/auth/services/authService'
 import { faltaLaMigracion } from '@/features/mi-cuenta/services/miCuentaService'
 import type { DocumentoDelEmpleado } from './documentos'
 import type {
-  CompaneroDeCuadrilla, DiaDeAsistencia, MiImpedimento, MiLegajoCompleto, MiObra, MiRecibo, MiTarea,
+  CompaneroDeCuadrilla, DiaDeAsistencia, MiCorreccion, MiImpedimento, MiLegajoCompleto, MiObra,
+  MiRecibo, MiTarea,
 } from '../types'
 
 /** La migración que crea todo lo del perfil empleado. Si falta, la pantalla lo dice CON SU NOMBRE en
@@ -109,6 +110,32 @@ export async function getMiDiaDeHoy(
   }
   const d = data as DiaDeAsistencia | null
   return { data: d ? { ...d, minutos: d.minutos == null ? null : Number(d.minutos) } : null, error: null }
+}
+
+/** LA MIGRACIÓN DE M05, aparte de la del perfil: una base con el perfil aplicado y sin ésta muestra
+ *  la asistencia entera y sólo se queda sin el pedido de corrección. Decir el nombre correcto es lo
+ *  que hace que el mensaje sirva para algo. */
+export const MIGRACION_CORRECCION = '20260821T5460_la_salida_que_falta_se_pide_y_la_aprueba_administracion'
+
+/** Mis pedidos de corrección de la ventana que se está mirando. Es lo PEDIDO, no lo corregido: el
+ *  efecto de una aprobación se lee en `mi_asistencia_dia`, que ya trae la marca escrita. */
+export async function getMisCorrecciones(
+  supabase: SupabaseClient, desde: string, hasta: string,
+): Promise<ServiceResult<MiCorreccion[]>> {
+  const { data, error } = await supabase
+    .from('mi_correccion_asistencia').select('*')
+    .gte('fecha', desde).lte('fecha', hasta)
+    .order('fecha', { ascending: false })
+  if (error) {
+    if (faltaLaMigracion(error)) {
+      return {
+        data: null,
+        error: `No puedo mostrar tus pedidos de corrección: falta aplicar en la base la migración ${MIGRACION_CORRECCION}.`,
+      }
+    }
+    return { data: null, error: error.message }
+  }
+  return { data: (data as MiCorreccion[] | null) ?? [], error: null }
 }
 
 export async function getMisDocumentos(supabase: SupabaseClient): Promise<ServiceResult<DocumentoDelEmpleado[]>> {

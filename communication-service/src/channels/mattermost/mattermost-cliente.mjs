@@ -187,6 +187,21 @@ export class MattermostCliente {
     }
   }
 
+  /**
+   * UNA PÁGINA DEL HISTORIAL DE UN CANAL, del más nuevo al más viejo.
+   *
+   * Existe para el backfill de comprobantes: recuperar los adjuntos que ya se mandaron por chat
+   * exige recorrer TODO el canal, y hacerlo con `fetch` suelto desde un script sería una segunda
+   * forma de hablarle a Mattermost —otro manejo del token, otro timeout, otro tratamiento del
+   * error— al lado de ésta. El cliente es uno.
+   *
+   * Devuelve `{order, posts}` tal cual lo da la API: `order` es el orden real y `posts` un objeto
+   * indexado por id. Recorrer `Object.values(posts)` perdería el orden.
+   */
+  postsDelCanal({ channel_id, page = 0, per_page = 200 }) {
+    return this._req('GET', `/channels/${encodeURIComponent(channel_id)}/posts?page=${page}&per_page=${per_page}`)
+  }
+
   /** Resuelve un canal por equipo+nombre (para no hardcodear channel_ids). */
   canalPorNombre({ team_id, nombre }) {
     return this._req('GET', `/teams/${team_id}/channels/name/${encodeURIComponent(nombre)}`)

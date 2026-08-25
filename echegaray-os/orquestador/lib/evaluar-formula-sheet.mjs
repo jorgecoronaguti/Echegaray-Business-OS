@@ -14,7 +14,7 @@
 //
 // LO QUE NO ES. No lo usa ningún generador, ninguna capacidad y ninguna pantalla: no hay ningún
 // número de la empresa que salga de acá. Cubre EXACTAMENTE el subconjunto que las pestañas escriben
-// —comparaciones, aritmética elemento a elemento, SUM/SUMPRODUCT/MAX/IF/IFERROR/EOMONTH— y cualquier
+// —comparaciones, aritmética elemento a elemento, SUM/SUMPRODUCT/MAX/IF/IFERROR/EOMONTH/INDEX/MATCH— y cualquier
 // otra función revienta RUIDOSA en vez de devolver un número inventado. Un evaluador que "hace lo
 // que puede" con lo que no entiende sería peor que no tenerlo: haría pasar tests que no probaron nada.
 //
@@ -334,6 +334,32 @@ function llamar(n, args, ev) {
     case 'UPPER': {
       const may = (x) => String(x ?? '').toUpperCase()
       return Array.isArray(v[0]) ? v[0].map(may) : may(v[0])
+    }
+    // ARRAYFORMULA NO CALCULA NADA NUEVO: le pide a Sheets que resuelva elemento a elemento lo que
+    // acá ya resuelve `binario` por su cuenta. Devolver el argumento tal cual es su semántica exacta
+    // en este subconjunto, no un atajo — hace falta para evaluar la máscara con la que `Próx. cobro`
+    // busca la FORMA de la fila que le corresponde a la próxima fecha.
+    case 'ARRAYFORMULA': return v[0]
+    // MATCH(buscado; rango; 0) — SÓLO la coincidencia EXACTA. Los tipos 1 y −1 exigen el rango
+    // ordenado y devuelven "el más cercano por debajo/arriba": si el instrumento los adivinara, un
+    // test podría pasar apuntando a la fila equivocada. Sin tipo, Sheets asume 1, así que omitirlo
+    // también revienta. Sin coincidencia es #N/A — un error DE HOJA, que es lo que el IFERROR del
+    // generador está puesto para absorber.
+    case 'MATCH': {
+      if (v[2] === undefined) throw new Error('evaluar-formula-sheet: MATCH sin tipo (en Sheets el default es 1, aproximado)')
+      if (num(v[2]) !== 0) throw new Error('evaluar-formula-sheet: MATCH sólo soporta el tipo 0 (exacto)')
+      const lista = plano([v[1]])
+      const i = lista.findIndex((x) => binario('=', x, v[0]) === 1)
+      if (i < 0) throw new ErrorHoja('#N/A — MATCH sin coincidencia')
+      return i + 1
+    }
+    // INDEX(rango; n) — el n-ésimo del rango, 1-based y contando desde la PRIMERA fila del rango (no
+    // desde la fila 1 de la pestaña). Fuera de límites es #REF!, como en Sheets.
+    case 'INDEX': {
+      const lista = plano([v[0]])
+      const i = num(v[1])
+      if (!Number.isInteger(i) || i < 1 || i > lista.length) throw new ErrorHoja(`#REF! — INDEX fuera del rango (${i} de ${lista.length})`)
+      return lista[i - 1]
     }
     // Deliberadamente RUIDOSO: un test que pasa porque el evaluador adivinó no probó nada.
     default: throw new Error(`evaluar-formula-sheet: la función ${n}() no está soportada`)

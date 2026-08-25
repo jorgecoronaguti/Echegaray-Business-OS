@@ -197,6 +197,26 @@ export const ventanaDelConteo = (fecha, ancla, entra = false) =>
     : `(${fecha}>=INT(${ancla}))*(${fecha}>0)`)
 
 /**
+ * EL ANCLA CON LA QUE SE MIRA UNA SALIDA — la única definición, para que nadie la reescriba.
+ *
+ * Las seis líneas del efectivo no comparan todas contra el mismo número: las ENTRADAS miran el ancla
+ * pelada y las SALIDAS miran un día antes (ver `historicoEfectivo` en caja-anexo.mjs, donde nació esta
+ * regla). El ancla es el INSTANTE en que la corrida vio el conteo, y ese instante puede caer hasta un
+ * día después del momento en que el dueño lo tipeó —el intervalo del timer puede cruzar la medianoche,
+ * es el mismo motivo por el que `diaDelConteo` publica el borde más viejo—; correr las salidas un día
+ * atrás es el lado que sólo puede mostrar de menos.
+ *
+ * VIVE ACÁ Y NO ADENTRO DEL GENERADOR PORQUE AHORA LA LEEN DOS: la fórmula que SUMA los movimientos y
+ * la que publica la FECHA del último. Escrita dos veces, la primera corrección en una de las dos
+ * dejaría la fecha mirando una ventana distinta de la del importe — un saldo nuevo con fecha vieja, que
+ * es exactamente el defecto que la fecha viene a arreglar.
+ *
+ * @param {string} ancla la referencia al ancla (o el literal '0', que es "sin ventana")
+ * @returns {string} la expresión de ancla que corresponde a una SALIDA
+ */
+export const anclaDeSalida = (ancla) => (ancla === '0' ? '0' : `(${ancla}-1)`)
+
+/**
  * El trozo que aísla EL EMPATE: los movimientos que caen exactamente el día del conteo.
  *
  * No es decoración ni un renglón "informativo": es la única forma de que el criterio conservador se

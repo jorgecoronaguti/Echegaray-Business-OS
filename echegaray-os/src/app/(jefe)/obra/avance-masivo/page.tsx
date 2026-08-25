@@ -1,10 +1,11 @@
-import { Aviso } from '@/shared/components/ds'
+import { AvisoError, TopBarDetalle } from '@/shared/components/movil/Piezas'
 import { FormularioMasivo } from '@/features/jefe/components/FormularioMasivo'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol } from '@/features/jefe/services/jefeService'
 import { frentePorTarea } from '@/features/jefe/services/frentes'
 import { aplicarAvanceMasivo } from '@/features/jefe/services/actionsMasivo'
+import { conObra } from '@/features/jefe/services/navegacion'
 
 // J04 · AVANCE MASIVO — la carga de fin de jornada, de una sola pasada.
 //
@@ -29,13 +30,16 @@ export default async function JefeAvanceMasivoPage({
     getActividades(supabase, obra.id),
     getArbol(supabase, obra.id),
   ])
+  const volver = { href: conObra('/obra/hoy', obra.id), label: 'Hoy' }
+
   if (actividades.error) {
     return (
-      <div className="px-4 py-6">
-        <Aviso tono="neg" titulo="No se pudieron leer las tareas." testid="jefe-masivo-error">
-          {actividades.error}
-        </Aviso>
-      </div>
+      <>
+        <TopBarDetalle volver={volver} testidVolver="volver-jefe" titulo="Avance del día" sub={obra.nombre} />
+        <div style={{ padding: '16px 16px 24px' }}>
+          <AvisoError testid="jefe-masivo-error">{actividades.error}</AvisoError>
+        </div>
+      </>
     )
   }
 
@@ -52,6 +56,7 @@ export default async function JefeAvanceMasivoPage({
         [...frentePorTarea(arbol.data ?? [])].map(([id, f]) => [id, f.nombre]))}
       fecha={hoyEnObra()}
       obraNombre={obra.nombre}
+      volver={volver}
       accion={aplicar}
     />
   )

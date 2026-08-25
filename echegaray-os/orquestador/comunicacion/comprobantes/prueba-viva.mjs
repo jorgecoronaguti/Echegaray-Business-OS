@@ -43,7 +43,7 @@ import pg from 'pg'
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..', '..')
 const MIGR = join(RAIZ, 'supabase', 'migrations')
-const MIGR_COMM = join(RAIZ, '..', 'communication-service', 'db', 'migrations')
+// La fundación de `comunicacion` se mudó a la cadena única de supabase/migrations (22/08/2026)
 
 const NOMBRE = `comprobantes-prueba-${process.pid}`
 const PUERTO = Number(process.env.PRUEBA_PG_PUERTO || 55461)
@@ -64,7 +64,7 @@ const ESQUEMA = [
   join(MIGR, '20260711120000_orq_fundacion_work_fabric.sql'),
   join(MIGR, '20260711121000_orq_ledger.sql'),
   join(MIGR, '20260729180000_orq_comunicacion_lane.sql'),
-  join(MIGR_COMM, '0001_comunicacion.sql'),
+  join(MIGR, '20260730125500_comunicacion_fundacion.sql'),
   join(MIGR, '20260730130000_asistencia_mattermost.sql'),   // permisos_skill
   join(MIGR, '20260730160000_comunicacion_canales_area.sql'),
   join(MIGR, '20260715230000_arca_comprobantes_integraciones.sql'), // comprobantes_arca (vacía)

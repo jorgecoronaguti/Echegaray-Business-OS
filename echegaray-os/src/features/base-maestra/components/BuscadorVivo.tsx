@@ -40,6 +40,41 @@ import { useEffect, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { IconoBuscar } from '@/shared/components/ds'
 
+/**
+ * EL SINCRONIZADOR, APARTE DEL CONTROL. La lógica de abajo costó dos defectos encontrados con el
+ * navegador —el hook que suspendía la pantalla entera y la reescritura que cerraba la ficha recién
+ * abierta— y por eso vive en UNA función: el canónico 17/18 dibuja el buscador con caja en vez del
+ * hairline de este componente, y copiar el efecto en el otro control habría copiado los dos
+ * defectos la próxima vez que uno se arregle acá.
+ */
+export function useUrlQ(valor: string) {
+  const router = useRouter()
+  const [, empezar] = useTransition()
+  const primerRender = useRef(true)
+
+  useEffect(() => {
+    // No se reescribe la URL en el primer render: entrar a `?q=acero` desde un enlace no tiene por
+    // qué generar una navegación más.
+    if (primerRender.current) { primerRender.current = false; return }
+    const alAgendar = window.location.pathname + window.location.search
+    const t = setTimeout(() => {
+      const ahora = window.location.pathname + window.location.search
+      // ALGUIEN NAVEGÓ MIENTRAS ESPERÁBAMOS: gana el usuario. Reescribir acá cancelaría la
+      // navegación que acaba de hacer —abrir una ficha, cambiar de sub-vista— y la pantalla se le
+      // cerraría sola sin explicación.
+      if (ahora !== alAgendar) return
+      const p = new URLSearchParams(window.location.search)
+      if (valor.trim()) p.set('q', valor)
+      else p.delete('q')
+      const qs = p.toString()
+      const destino = qs ? `${window.location.pathname}?${qs}` : window.location.pathname
+      if (destino === ahora) return
+      empezar(() => router.replace(destino, { scroll: false }))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [valor, router, empezar])
+}
+
 export function BuscadorVivo({
   valor,
   onCambio,
@@ -58,34 +93,7 @@ export function BuscadorVivo({
   ancho?: string
   testid?: string
 }) {
-  const router = useRouter()
-  const [, empezar] = useTransition()
-  const primerRender = useRef(true)
-
-  useEffect(() => {
-    // No se reescribe la URL en el primer render: entrar a `?q=acero` desde un enlace no tiene por
-    // qué generar una navegación más.
-    if (primerRender.current) { primerRender.current = false; return }
-    // La dirección tal como estaba cuando se armó el temporizador. Es la referencia para saber, al
-    // disparar, si en el medio se movió algo que no fue esta caja.
-    const alAgendar = window.location.pathname + window.location.search
-    const t = setTimeout(() => {
-      const ahora = window.location.pathname + window.location.search
-      // ALGUIEN NAVEGÓ MIENTRAS ESPERÁBAMOS: gana el usuario. Reescribir acá cancelaría la
-      // navegación que acaba de hacer —abrir una ficha, cambiar de sub-vista— y la pantalla se le
-      // cerraría sola sin explicación. El próximo render vuelve a agendar si todavía hace falta.
-      if (ahora !== alAgendar) return
-      const p = new URLSearchParams(window.location.search)
-      if (valor.trim()) p.set('q', valor)
-      else p.delete('q')
-      const qs = p.toString()
-      const destino = qs ? `${window.location.pathname}?${qs}` : window.location.pathname
-      // Y si la dirección ya es ésa, tampoco se navega: una navegación de más no es gratis.
-      if (destino === ahora) return
-      empezar(() => router.replace(destino, { scroll: false }))
-    }, 300)
-    return () => clearTimeout(t)
-  }, [valor, router])
+  useUrlQ(valor)
 
   const hayFiltro = valor.trim().length > 0
   return (

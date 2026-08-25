@@ -12,6 +12,7 @@
 
 import { useState } from 'react'
 import { CTRL } from '@/shared/components/ui'
+import { IconoCrear } from '@/shared/components/iconos'
 
 export function FilasDeEquipo({ catalogo = [] }: { catalogo?: string[] }) {
   const [n, setN] = useState(1)
@@ -39,12 +40,16 @@ export function FilasDeEquipo({ catalogo = [] }: { catalogo?: string[] }) {
       <datalist id="catalogo-equipos">
         {catalogo.map((c) => <option key={c} value={c} />)}
       </datalist>
+      {/* La acción que agrega es la MISMA de todo el OS: `IconoCrear` + su palabra, nunca un «+»
+          tipográfico que cada pantalla dibuja distinto. */}
       <button
         type="button"
         onClick={() => setN((v) => Math.min(8, v + 1))}
         data-testid="agregar-equipo"
-        className="text-[12px] text-muted hover:text-ink"
-      >+ otro equipo</button>
+        className="inline-flex items-center gap-1.5 text-[12px] text-muted transition-colors hover:text-ink"
+      >
+        <IconoCrear className="h-[13px] w-[13px]" />otro equipo
+      </button>
     </div>
   )
 }

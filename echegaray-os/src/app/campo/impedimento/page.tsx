@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
-import { Aviso, Volver } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { getActividadesDeObras } from '@/features/integraciones/services/operacionGlobalService'
 import { hoyISO, leerDatosCampo } from '../datos'
 import { puedeCargarParte } from '../permisos'
@@ -27,8 +27,7 @@ export default async function ImpedimentoCampoPage({ searchParams }: { searchPar
     return (
       <MarcoCampo titulo="Anotar impedimento">
         <Aviso tono="warn" titulo="Tu usuario no puede anotar impedimentos.">
-          Los anota el jefe de obra, administración o dirección. Contale lo que está frenando el trabajo a tu jefe de
-          obra, o pedí el material desde{' '}
+          Los anota el jefe de obra. Si falta material, pedilo desde{' '}
           <Link href="/integraciones/pedidos-materiales" className="underline">
             Pedidos
           </Link>
@@ -65,8 +64,9 @@ export default async function ImpedimentoCampoPage({ searchParams }: { searchPar
   const act = await getActividadesDeObras(supabase, [obra.id])
   const actividades = (act.data?.[obra.id] ?? []).map((a) => ({ id: a.id, nombre: a.nombre, codigo: a.codigo }))
 
+  // El `volver` de 44px lo pone `MarcoCampo` por defecto y va al mismo lugar.
   return (
-    <MarcoCampo titulo="Anotar impedimento" subtitulo={obra.nombre} volver={<Volver href="/campo">Campo</Volver>}>
+    <MarcoCampo titulo="Anotar impedimento" subtitulo={obra.nombre}>
       <FormImpedimento obraId={obra.id} obraNombre={obra.nombre} actividades={actividades} hoy={hoyISO()} />
     </MarcoCampo>
   )

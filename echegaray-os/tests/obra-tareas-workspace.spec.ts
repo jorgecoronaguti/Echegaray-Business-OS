@@ -163,7 +163,11 @@ test('el avance masivo dice qué va a quedar en cada fila antes de escribir', as
   await entrar(page)
   await page.goto('/obras/san-francisco/avance-masivo')
   await expect(page.getByTestId('tabla-masiva')).toBeVisible()
+  // SIN SELECCIÓN LA PANTALLA DICE QUÉ HACER, y esa línea se va al primer clic (Design 23/08). Si
+  // se quedara, competiría con la barra de acciones en el mismo borde inferior.
+  await expect(page.getByTestId('masivo-sin-seleccion')).toBeVisible()
   await page.getByTestId('sel-todo').click()
+  await expect(page.getByTestId('masivo-sin-seleccion')).toHaveCount(0)
   const barra = page.getByTestId('barra-tareas')
   await expect(barra).toBeVisible()
   // EL BOTÓN DICE A CUÁNTAS SE VA A ESCRIBIR, no cuántas hay tildadas. Las que se miden por pasos y
@@ -202,6 +206,10 @@ test('el avance en lote escribe las marcadas, deja la no marcada quieta y firma 
   await page.getByTestId(`masivo-sel-${ids[1]}`).check()
   await expect(page.getByTestId('barra-tareas-conteo')).toHaveText('2 actividades')
   await page.getByTestId('chip-avance-25').click()
+  // LA COLUMNA DICE CON QUÉ CALIDAD QUEDA EL DATO, no sólo el número (Design 23/08). Las tres de
+  // prueba son `manual`: el porcentaje lo declara una persona, y en lote más todavía. Si esa
+  // palabra desaparece, la pantalla vuelve a mostrar un 25 % que parece medido.
+  await expect(page.getByTestId('tabla-masiva')).toContainText('estimado')
   await expect(page.getByTestId('barra-tareas-aplicar')).toHaveText('Aplicar a 2')
   await page.getByTestId('barra-tareas-aplicar').click()
   await expect(page.getByTestId('masiva-resultado')).toContainText('2 escritas', { timeout: 30000 })

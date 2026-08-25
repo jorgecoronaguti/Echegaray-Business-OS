@@ -137,16 +137,30 @@ test('EL COSTO SÍ, EL PRECIO NO — la línea exacta que pidió el dueño', asy
 
   // `contratado_de_obra()` es SECURITY DEFINER y es el ÚNICO camino al monto: devuelve null, no error.
   const { data: panel } = await jefe.from('obra_panel')
-    .select('obra_id, monto_contratado, margen_sobre_contratado_pct')
+    .select('obra_id, monto_contratado')
     .not('monto_contratado', 'is', null).limit(1)
   expect(panel, 'una sola obra con monto visible ya es la filtración entera').toHaveLength(0)
 
   const { data: pvr } = await jefe.from('obra_plan_vs_real')
-    .select('obra_id, monto_contratado, monto_presupuestado, margen_actual, certificado').limit(5)
+    .select('obra_id, monto_contratado, monto_presupuestado, certificado').limit(5)
   for (const f of pvr ?? []) {
     const row = f as Record<string, unknown>
-    for (const c of ['monto_contratado', 'monto_presupuestado', 'margen_actual', 'certificado']) {
+    for (const c of ['monto_contratado', 'monto_presupuestado', 'certificado']) {
       expect(row[c], `${c} llegó al jefe de obra`).toBeNull()
+    }
+  }
+
+  // ═══ EL MARGEN SE MUDÓ A `obra_economia` (22/08/2026), Y LA PUERTA SE MUDÓ CON ÉL ═══
+  //
+  // `margen_actual` y `margen_sobre_contratado_pct` ya no existen —no eran margen—. Lo que hay que
+  // vigilar ahora es la vista nueva: si publicara la venta o el margen a un jefe de obra, la fuga
+  // sería la misma con otro nombre de columna.
+  const { data: eco } = await jefe.from('obra_economia')
+    .select('obra_id, venta_contratada, venta_total, margen_cotizado, margen_final_proyectado').limit(5)
+  for (const f of eco ?? []) {
+    const row = f as Record<string, unknown>
+    for (const c of ['venta_contratada', 'venta_total', 'margen_cotizado', 'margen_final_proyectado']) {
+      expect(row[c], `obra_economia.${c} llegó al jefe de obra`).toBeNull()
     }
   }
 })

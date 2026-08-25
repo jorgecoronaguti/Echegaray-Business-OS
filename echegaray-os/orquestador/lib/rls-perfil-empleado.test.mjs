@@ -73,11 +73,13 @@ for (const vista of VISTAS_CON_PORTERO) {
 test('la marca de asistencia sólo se escribe a nombre propio', { skip: SIN_BASE }, async () => {
   const p = await policies('asistencia_marca')
   const insert = p.find((x) => x.cmd === 'INSERT')
+  // 22/08 (overhaul UX · 20260822T7000): los porteros van envueltos en ( SELECT ... ) para que el
+  // planificador los evalúe una vez por consulta y no por fila. La regla que se afirma es la misma.
   assert.ok(insert, 'no hay policy de INSERT en asistencia_marca')
-  assert.match(String(insert.chequeo), /persona_id = mi_persona_id\(\)/,
+  assert.match(String(insert.chequeo), /persona_id = (\( SELECT )?mi_persona_id\(\)/,
     'el with check dejó de atar la fila a quien la escribe: se puede fabricar la presencia de otro')
   const select = p.find((x) => x.cmd === 'SELECT')
-  assert.match(String(select?.usando), /persona_id = mi_persona_id\(\)/,
+  assert.match(String(select?.usando), /persona_id = (\( SELECT )?mi_persona_id\(\)/,
     'la lectura de asistencia dejó de acotarse a la persona')
   assert.ok(!/^\(?true\)?$/i.test(String(select?.usando ?? '').trim()), 'lectura de asistencia abierta')
 })
@@ -109,7 +111,7 @@ test('NADIE SE AUTOAPRUEBA UN DOCUMENTO', { skip: SIN_BASE }, async () => {
   const insert = p.find((x) => x.cmd === 'INSERT')
   assert.match(String(insert?.chequeo), /estado = 'en_revision'/,
     'la presentación puede nacer aprobada')
-  assert.match(String(insert?.chequeo), /persona_id = mi_persona_id\(\)/,
+  assert.match(String(insert?.chequeo), /persona_id = (\( SELECT )?mi_persona_id\(\)/,
     'se puede presentar documentación a nombre de otro')
   const update = p.find((x) => x.cmd === 'UPDATE')
   assert.match(String(update?.usando), /es_administracion\(\)/, 'la revisión dejó de ser de Administración')
@@ -120,7 +122,7 @@ test('el recibo lo lee su dueño o quien ve la plata — el jefe de obra NO', { 
   // incluye al jefe de obra y `ve_economia()` no. Un sueldo es plata.
   const select = (await policies('recibo_empleado')).find((x) => x.cmd === 'SELECT')
   assert.match(String(select?.usando), /ve_economia\(\)/)
-  assert.match(String(select?.usando), /persona_id = mi_persona_id\(\)/)
+  assert.match(String(select?.usando), /persona_id = (\( SELECT )?mi_persona_id\(\)/)
   assert.ok(!/es_administracion/.test(String(select?.usando)),
     'es_administracion incluye al jefe de obra: con eso, un jefe leería los sueldos de su cuadrilla')
 })

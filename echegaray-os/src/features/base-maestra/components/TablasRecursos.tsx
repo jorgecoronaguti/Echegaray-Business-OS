@@ -12,69 +12,18 @@
 
 import { useState } from 'react'
 import { Tabla, THead, Th, Tr, Td, FilaTotal, Vacio, Estado, Nulo, Aviso } from '@/shared/components/ds'
-import type { CargaSocialFila, CategoriaManoObra, Plantilla, RecursoFila, VersionPrecio } from '../types'
+import type { CargaSocialFila, CategoriaManoObra, Plantilla, VersionPrecio } from '../types'
 import { filtrar, numero, pesosCierran, porcentaje, sumaDePesos } from '../services/reglas'
 import { BuscadorVivo } from './BuscadorVivo'
 import { FechaPrecio, N, Texto } from './celdas'
 
-// ═══ INSUMOS ═══════════════════════════════════════════════════════════════════════════════════
-
-export function TablaInsumos({
-  filas, q, economia,
-}: { filas: RecursoFila[]; q: string; economia: boolean }) {
-  const [consulta, setConsulta] = useState(q)
-  const visibles = filtrar(filas, consulta, (r) => [r.codigo, r.nombre, r.familia, r.unidad])
-  return (
-    <>
-      <Barra
-        valor={consulta} onCambio={setConsulta} placeholder="Buscar insumo, código o familia"
-        resultados={visibles.length} total={filas.length} testid="buscador-insumos"
-      />
-      {visibles.length === 0 ? (
-        <Vacio>{vacio(consulta, filas.length, 'insumos', 'Se cargan al importar la Planilla para Cotizar.')}</Vacio>
-      ) : (
-        <Tabla testid="tabla-insumos" minWidth={economia ? 860 : 740}>
-          <THead>
-            <Th className="w-[76px]">Código</Th>
-            <Th>Insumo</Th>
-            <Th className="w-[132px]">Familia</Th>
-            <Th className="w-[54px]">Un.</Th>
-            {economia && <Th num className="w-[96px]">Costo</Th>}
-            <Th num className="w-[64px]">Desp.</Th>
-            <Th className="w-[150px]">Fuente</Th>
-            <Th num className="w-[86px]">Actualiz.</Th>
-          </THead>
-          <tbody>
-            {visibles.map((r) => (
-              <Tr key={r.recurso_id} data-testid={`insumo-${r.codigo}`}>
-                <Td className="font-mono text-[11px] text-muted">{r.codigo}</Td>
-                <Td fuerte>{r.nombre}</Td>
-                <Td className="text-[11.5px] text-muted"><Texto v={r.familia} falta="sin familia" /></Td>
-                <Td className="text-[12px]">{r.unidad}</Td>
-                {economia && <Td num><N v={r.costo_base} decimales={0} falta="sin cargar" /></Td>}
-                <Td num>
-                  {/* 0 % de desperdicio es un DATO (no lleva desperdicio), no una ausencia. */}
-                  <span className="font-mono text-[11.5px] tabular-nums text-muted">{porcentaje(r.desperdicio, 0)}</span>
-                </Td>
-                {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
-                    Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila
-                    mide cuatro líneas: la tabla deja de poder barrerse de un vistazo, que es lo
-                    único para lo que existe. El valor completo queda en el `title`. */}
-                <Td className="text-[11.5px]">
-                  <span className="block max-w-[150px] truncate" title={r.fuente ?? r.proveedor ?? undefined}>
-                    <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" />
-                  </span>
-                </Td>
-                <Td num><FechaPrecio iso={r.fecha_precio} frescura={r.frescura} /></Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Tabla>
-      )}
-      <Pie filas={visibles} total={filas.length} economia={economia} />
-    </>
-  )
-}
+// ═══ INSUMOS Y EQUIPOS YA NO ESTÁN ACÁ ═════════════════════════════════════════════════════════
+//
+// `TablaRecursos` dibujaba insumos y equipos como dos sub-vistas separadas. El canónico 18 dibuja
+// UNA lista con una columna TIPO y chips para recortarla, y eso vive ahora en `RecursosCartera`.
+// El componente viejo se borra en vez de quedar sin llamadores: código muerto que compila es la
+// manera en que dos definiciones de la misma tabla conviven hasta que alguien arregla la que nadie
+// mira.
 
 // ═══ MANO DE OBRA ══════════════════════════════════════════════════════════════════════════════
 
@@ -198,73 +147,6 @@ export function TablaManoDeObra({
           )}
         </section>
       )}
-    </>
-  )
-}
-
-// ═══ EQUIPOS ═══════════════════════════════════════════════════════════════════════════════════
-//
-// EL CONTRATO PIDE CUATRO COLUMNAS QUE EL MODELO NO TIENE: `TIPO` (Propio/Alquilado), `RENDIM.`,
-// `UBICACIÓN` y `ESTADO`. Un equipo de la base maestra es un `recurso` con su costo horario; dónde
-// está y de quién es vive en la flota, que hoy es otra tabla (`equipos`) sin costo ni ubicación.
-//
-// No se dibujan cuatro columnas de «sin dato»: se muestran las que existen y se declara arriba lo
-// que falta. Inventar la estructura de datos para llenar un mockup es exactamente lo que el
-// CLAUDE.md prohíbe.
-
-export function TablaEquipos({ filas, q, economia }: { filas: RecursoFila[]; q: string; economia: boolean }) {
-  const [consulta, setConsulta] = useState(q)
-  const visibles = filtrar(filas, consulta, (r) => [r.codigo, r.nombre, r.familia, r.unidad])
-  return (
-    <>
-      <Barra
-        valor={consulta} onCambio={setConsulta} placeholder="Buscar equipo"
-        resultados={visibles.length} total={filas.length} testid="buscador-equipos"
-      />
-      {visibles.length === 0 ? (
-        <Vacio>{vacio(consulta, filas.length, 'equipos', 'Se cargan al importar la Planilla para Cotizar.')}</Vacio>
-      ) : (
-        <Tabla testid="tabla-equipos" minWidth={economia ? 760 : 640}>
-          <THead>
-            <Th className="w-[76px]">Código</Th>
-            <Th>Equipo</Th>
-            <Th className="w-[132px]">Familia</Th>
-            <Th className="w-[54px]">Un.</Th>
-            {economia && <Th num className="w-[112px]">Costo horario</Th>}
-            <Th className="w-[150px]">Fuente</Th>
-            <Th num className="w-[86px]">Actualiz.</Th>
-          </THead>
-          <tbody>
-            {visibles.map((r) => (
-              <Tr key={r.recurso_id} data-testid={`equipo-${r.codigo}`}>
-                <Td className="font-mono text-[11px] text-muted">{r.codigo}</Td>
-                <Td fuerte>{r.nombre}</Td>
-                <Td className="text-[11.5px] text-muted"><Texto v={r.familia} falta="sin familia" /></Td>
-                <Td className="text-[12px]">{r.unidad}</Td>
-                {economia && <Td num><N v={r.costo_base} decimales={0} falta="sin cargar" /></Td>}
-                {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
-                    Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila
-                    mide cuatro líneas: la tabla deja de poder barrerse de un vistazo, que es lo
-                    único para lo que existe. El valor completo queda en el `title`. */}
-                <Td className="text-[11.5px]">
-                  <span className="block max-w-[150px] truncate" title={r.fuente ?? r.proveedor ?? undefined}>
-                    <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" />
-                  </span>
-                </Td>
-                <Td num><FechaPrecio iso={r.fecha_precio} frescura={r.frescura} /></Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Tabla>
-      )}
-      <div className="mt-4">
-        <Aviso tono="info" titulo="Tipo, rendimiento, ubicación y estado todavía no viven en el modelo">
-          La base maestra guarda el equipo y su costo horario. De quién es cada unidad, dónde está y en qué
-          estado se encuentra es la flota — otra tabla, sin costo ni ubicación cargados. Hasta que se unan,
-          esas cuatro columnas no se muestran en vez de mostrarse vacías.
-        </Aviso>
-      </div>
-      <Pie filas={visibles} total={filas.length} economia={economia} />
     </>
   )
 }
@@ -401,14 +283,4 @@ function vacio(consulta: string, total: number, que: string, comoSeCargan: strin
   if (consulta) return `Nada coincide con «${consulta}».`
   if (total === 0) return `La base maestra todavía no tiene ${que} cargados. ${comoSeCargan}`
   return `No hay ${que} que mostrar.`
-}
-
-/** El pie sólo cuenta la deuda de precio cuando quien mira PUEDE ver precios. */
-function Pie({ filas, total, economia }: { filas: RecursoFila[]; total: number; economia: boolean }) {
-  const sinPrecio = filas.filter((f) => f.costo_base == null).length
-  const viejos = filas.filter((f) => f.frescura === 'vieja').length
-  const partes = [`${filas.length} de ${total}`]
-  if (economia && sinPrecio) partes.push(`${sinPrecio} sin precio cargado`)
-  if (economia && viejos) partes.push(`${viejos} con precio vencido`)
-  return <p className="mt-3 text-[11px] text-faint" data-testid="pie-recursos">{partes.join(' · ')}</p>
 }

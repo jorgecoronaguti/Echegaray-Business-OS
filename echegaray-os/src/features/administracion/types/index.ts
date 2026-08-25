@@ -117,8 +117,21 @@ export interface Integrante {
   id: string
   persona_id: string
   nombre_completo: string | null
+  /** La clave de `categoria_obra` (`oficial`, `ayudante`…). Es lo que le da su PESO al integrante:
+   *  cuatro ayudantes no son cuatro oficiales. `null` cuando la persona no la tiene cargada, y ahí
+   *  la pantalla dice «sin categoría» en vez de suponer 1,0 en silencio. */
+  categoria: string | null
   desde: string
   hasta: string | null
+}
+
+/** Una persona del plantel activo SIN cuadrilla vigente. El pool que la pantalla 21 pone al lado de
+ *  las cuadrillas: gente disponible que hoy no aparece en ninguna lista operativa. */
+export interface SinCuadrilla {
+  id: string
+  nombre_completo: string
+  categoria: string | null
+  obra_actual: string | null
 }
 
 /** Las categorías de documento del legajo de una constructora.

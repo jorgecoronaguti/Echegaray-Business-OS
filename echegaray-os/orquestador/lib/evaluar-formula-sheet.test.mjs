@@ -131,3 +131,24 @@ test('EL DEFECTO EN FRÍO: un MINIFS vacío daba 0 y el 0 ganaba el MIN, dejando
   assert.equal(ev(sano, hoja), 46261, 'con el arreglo gana la fecha real más próxima')
   assert.equal(ev(`=IF(${sano.slice(1)}>=2958465;"";${sano.slice(1)})`, hoja), 46261)
 })
+
+test('INDEX/MATCH devuelven la fila que corresponde, y sin coincidencia dan #N/A — nunca la primera', () => {
+  // Es el par que `Próx. cobro` usa para traer la FORMA de la fila cuya fecha es la próxima. Si MATCH
+  // devolviera 1 cuando no encuentra nada, la celda publicaría la forma de cobro de otra fila: un
+  // dato creíble y falso, que es exactamente lo que un instrumento de prueba no puede permitirse.
+  const hoja = { A1: 46261, A2: 46270, A3: 46280, B1: 'Efectivo', B2: 'Transferencia', B3: 'Cheque' }
+  assert.equal(ev('=MATCH(46270;A1:A3;0)', hoja), 2)
+  assert.equal(ev('=INDEX(B1:B3;MATCH(46270;A1:A3;0))', hoja), 'Transferencia')
+  assert.throws(() => ev('=MATCH(46999;A1:A3;0)', hoja), ErrorHoja)
+  assert.equal(ev('=IFERROR(INDEX(B1:B3;MATCH(46999;A1:A3;0));"")', hoja), '', 'el #N/A lo absorbe el IFERROR del generador')
+  assert.throws(() => ev('=INDEX(B1:B3;9)', hoja), ErrorHoja)
+  // El tipo de MATCH no se adivina: sin el 0 explícito Sheets busca APROXIMADO sobre un rango que
+  // esta pestaña no ordena, así que el instrumento se niega en vez de contestar otra fila.
+  assert.throws(() => ev('=MATCH(46270;A1:A3)', hoja), /MATCH sin tipo/)
+  assert.throws(() => ev('=MATCH(46270;A1:A3;1)', hoja), /tipo 0/)
+})
+
+test('ARRAYFORMULA es la máscara 0/1 que MATCH busca, elemento a elemento', () => {
+  const hoja = { A1: 'San Francisco', A2: 'MESSINA', A3: 'San Francisco', B1: 'Cobrado', B2: 'Pendiente', B3: 'Pendiente' }
+  assert.equal(ev('=MATCH(1;ARRAYFORMULA((A1:A3="San Francisco")*(B1:B3<>"Cobrado"));0)', hoja), 3)
+})

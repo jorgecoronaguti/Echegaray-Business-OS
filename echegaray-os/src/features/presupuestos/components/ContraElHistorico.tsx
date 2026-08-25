@@ -36,8 +36,11 @@ export function ContraElHistorico({
 
   if (!r) {
     return (
-      <section className="mt-5 border-t border-line pt-3.5" data-testid="contra-historico">
-        <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">Contra el histórico</h3>
+      <section
+        className="mt-4 rounded-card border border-line bg-surface px-4 py-3"
+        data-testid="contra-historico"
+      >
+        <h3 className="text-[13px] font-semibold text-ink">Contra el histórico</h3>
         <p className="mt-2 text-[12px] text-muted">
           Esta partida no está vinculada a una tarea tipo, así que no hay histórico contra el cual
           compararla. Sin ese vínculo, el rendimiento que se mida en obra tampoco vuelve a la base.
@@ -60,8 +63,23 @@ export function ContraElHistorico({
   }
 
   return (
-    <section className="mt-5 border-t border-line pt-3.5" data-testid="contra-historico">
-      <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">Contra el histórico</h3>
+    <section
+      className="mt-4 rounded-card border border-line bg-surface px-4 py-3"
+      data-testid="contra-historico"
+    >
+      {/* TARJETA, COMO EN EL CANON 16: la columna derecha es una pila de bloques cerrados —lo que
+          cuesta, contra qué se compara— y separarlos con una línea al aire los hacía leer como
+          continuación de la tarjeta de arriba.
+
+          LA MAGNITUD, EN EL TÍTULO. Las dos filas son hs/unidad —esfuerzo—: sin decirlo, «observado
+          mayor que cotizado» parece una mejora y es lo contrario, que es justo lo que el ámbar de
+          la fila de abajo está señalando. */}
+      <h3 className="text-[13px] font-semibold text-ink">
+        Contra el histórico
+        <span className="ml-2 font-mono text-[11px] font-normal text-faint">
+          esfuerzo hs/{p.unidad ?? 'un'}
+        </span>
+      </h3>
       <dl className="mt-2 text-[12px]">
         <Fila k="Cotizado ahora" v={rendimiento(cotizado)} falta="sin dato" fuerte />
         <Fila k="Observado (mediana)" v={rendimiento(r.hs_observado_mediana)} falta="sin medir"
@@ -99,7 +117,7 @@ export function ContraElHistorico({
       </p>
 
       {estado.error && <p className="mt-1 text-[11px] text-neg" data-testid="error-rendimiento">{estado.error}</p>}
-      {estado.ok && <p className="mt-1 text-[11px] text-pos">Rendimiento aplicado a esta partida.</p>}
+      {estado.ok && <p className="mt-1 text-[11px] text-pos">Esfuerzo aplicado a esta partida.</p>}
     </section>
   )
 }

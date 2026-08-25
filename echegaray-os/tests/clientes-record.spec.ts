@@ -6,11 +6,13 @@ import { entrarComo } from './util/login'
 //
 // ═══ QUÉ DEFECTOS ATRAPA ESTE ARCHIVO ═══
 //
-// 1. LA LISTA VUELVE A LLENARSE DE COLUMNAS. Tenía siete (responsable, contratado, costo real,
-//    restricciones, documentos, CUIT de subtítulo) y ninguna decidía nada: nadie elige a quién
-//    llamar por su costo real acumulado. El dueño pidió CLIENTE | OBRAS. Es la clase de decisión que
-//    se revierte sola en tres semanas «porque el dato ya lo teníamos», y sin un test que la defienda
-//    nadie se entera.
+// 1. LA LISTA VUELVE A LLENARSE DE COLUMNAS. **CAMBIO DE REGLA DECLARADO (Design 23/08).** Este
+//    caso fijaba las DOS columnas que el dueño pidió el 19/08 —*"CLIENTE | OBRAS. Nada más para el
+//    MVP"*—. El canónico 25 del 23/08, cuatro días después y contrato vigente, rediseña la cartera
+//    con CLIENTE · EN EJECUCIÓN · OBRAS · CONTRATADO. El test sigue existiendo y sigue prohibiendo
+//    que crezca: cambió el número, no la regla. Lo que se conserva textual es la lista de columnas
+//    que NO vuelven —costo real, restricciones, documentos— porque ésas siguen sin decidir nada, y
+//    se suma que las cuatro tienen que ser EXACTAMENTE las del canónico.
 // 2. EL BUSCADOR NO FILTRA. Un campo de búsqueda que se ve y no filtra es peor que no tenerlo.
 // 3. ALGO DEL RECORD VUELVE DETRÁS DE UNA SOLAPA. Propiedades, actividad, obras, contactos y
 //    documentos tienen que estar A LA VEZ, sin un clic de por medio.
@@ -21,31 +23,50 @@ import { entrarComo } from './util/login'
 // el dueño; RECARGA, o sea vuelve a leer del servidor y no del estado del navegador; exige que el
 // dato esté; y borra al final, gane o pierda.
 
-// ── LA LISTA: DOS COLUMNAS Y UN BUSCADOR ───────────────────────────────────
+// ── LA LISTA: LAS CUATRO COLUMNAS DEL CANÓNICO Y UN BUSCADOR ───────────────
 
-test('la lista de clientes trae el nombre y cuántas obras tiene, y nada más', async ({ page }) => {
+test('la cartera trae exactamente las columnas del canónico 25, y ninguna más', async ({ page }) => {
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)
 
   try {
+    // La sesión de este recorrido ve economía (`entrar` usa la cuenta de dirección/administración),
+    // así que CONTRATADO se dibuja. Con la del jefe de obra son tres — lo mide `veEconomia`.
     await entrar(page)
     await page.goto('/clientes')
     const tabla = page.getByTestId('clientes-tabla')
     await expect(tabla).toBeVisible()
 
-    // DOS columnas. Contar los encabezados es lo que impide que vuelva a crecer: una afirmación
-    // sobre los textos dejaría pasar una columna nueva con cualquier otro rótulo.
-    const encabezados = tabla.locator('thead th')
-    await expect(encabezados).toHaveCount(2)
-    await expect(encabezados.nth(0)).toHaveText('Cliente')
-    await expect(encabezados.nth(1)).toHaveText('Obras')
+    // CUATRO columnas con rótulo, y éstas. Contar los encabezados es lo que impide que vuelva a
+    // crecer —una afirmación sobre los textos dejaría pasar una columna nueva con cualquier otro
+    // rótulo— y nombrarlos es lo que impide que se cambien por otras cuatro.
+    //
+    // SE BUSCA POR `role`, NO POR `thead th`: desde el porte de `25 · Clientes Cartera.dc.html` la
+    // tabla es una GRILLA y no una `<table>`, porque el canónico fija los anchos de columna en px
+    // mezclados con fracciones (`minmax(0,1.5fr) minmax(0,1.2fr) 60px 120px 26px`, línea 121) y una
+    // `<table>` los reparte por contenido. Los rótulos van en VERSALITAS, que es como los escribe
+    // el canónico. La quinta columna es la de acciones y va sin rótulo, también como el canónico.
+    const encabezados = tabla.locator('[role="columnheader"]')
+    await expect(encabezados).toHaveCount(5)
+    await expect(encabezados.nth(0)).toHaveText('CLIENTE')
+    await expect(encabezados.nth(1)).toHaveText('EN EJECUCIÓN')
+    await expect(encabezados.nth(2)).toHaveText('OBRAS')
+    await expect(encabezados.nth(3)).toHaveText('CONTRATADO')
+    await expect(encabezados.nth(4)).toHaveText('')
 
-    // Y ninguno de los que el dueño mandó sacar. Van por separado del conteo porque dicen otra cosa:
-    // el conteo prohíbe que crezca, esto prohíbe que vuelvan JUSTO ESTOS, que son los que ya
-    // estuvieron y los que alguien va a querer devolver.
-    for (const columna of ['Responsable', 'Contratado', 'Costo real', 'Restric', 'Docs']) {
+    // Y ninguno de los que el dueño mandó sacar el 19/08 y el canónico tampoco devuelve. Van por
+    // separado del conteo porque dicen otra cosa: el conteo prohíbe que crezca, esto prohíbe que
+    // vuelvan JUSTO ÉSTOS, que son los que ya estuvieron y los que alguien va a querer devolver.
+    // «Contratado» salió de esta lista: el canónico lo dibuja y arriba se exige que esté.
+    for (const columna of ['Responsable', 'Costo real', 'Restric', 'Docs']) {
       await expect(tabla).not.toContainText(columna)
+    }
+
+    // LOS TRES RECORTES DEL CANÓNICO, con su contador. Sin ellos la cartera vuelve a ser una lista
+    // sin recorte y «datos faltantes» —el CUIT que frena una factura— no se puede ver de un vistazo.
+    for (const t of ['filtro-cartera-todo', 'filtro-cartera-activos', 'filtro-cartera-sin-datos']) {
+      await expect(page.getByTestId(t)).toBeVisible()
     }
   } finally {
     await limpiar(sb)
@@ -101,7 +122,15 @@ test('el buscador deja sólo los clientes que se llaman así', async ({ page }) 
 
 // ── EL RECORD: LAS CINCO CARAS A LA VEZ ────────────────────────────────────
 
-test('el record del cliente muestra propiedades, actividad, obras, contactos y documentos sin navegar', async ({ page }) => {
+// ═══ LO QUE ESTE TEST AFIRMABA HASTA EL 24/08 ═══
+//
+// Que las CINCO caras del cliente se veían de una sola vez, sin un clic — la regla del 19/08 («el
+// record no puede quedar detrás de una solapa»). El canónico 26 la revierte por orden de máxima
+// fidelidad al mockup: hoy hay SOLAPAS reales, y este test las sigue. Lo que NO se movió, y por eso
+// se sigue exigiendo acá, es la identidad: datos, contactos y actividad viven en el aside y se ven
+// desde las cinco solapas. Ése era el caso que motivó la regla vieja («¿tiene el contrato cargado y
+// a quién llamo?») y es el que este test protege ahora.
+test('la ficha del cliente muestra identidad, contactos y actividad desde cualquier solapa', async ({ page }) => {
   test.setTimeout(180000)
   await entrar(page)
 
@@ -111,24 +140,78 @@ test('el record del cliente muestra propiedades, actividad, obras, contactos y d
   await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
   const url = page.url()
 
-  // LAS CINCO CARAS, TODAS A LA VEZ. Ni un clic entre una y otra.
+  // LA IDENTIDAD NO ENTRA EN NINGUNA SOLAPA: se ve al abrir, sin un clic.
   await expect(page.getByTestId('panel-informacion')).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'CUIT' })).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
   await expect(page.getByTestId('bloque-actividad')).toBeVisible()
   await expect(page.getByTestId('tabla-actividad')).toBeVisible()
-  await expect(page.getByTestId('obras-del-cliente')).toBeVisible()
   await expect(page.getByTestId('bloque-contactos')).toBeVisible()
-  await expect(page.getByTestId('bloque-documentos')).toBeVisible()
+  // Y el Resumen abre con las obras y su avance, que es la respuesta a «¿cómo va este cliente?».
+  await expect(page.getByTestId('obras-del-cliente')).toBeVisible()
 
   // Y la dirección NO cambió: lo anterior no fue una navegación disfrazada.
   expect(page.url()).toBe(url)
 
+  // ═══ LA ANATOMÍA DE FICHA DE ENTIDAD (Design 23/08, COMPONENTS.md) ═══
+  //
+  // «Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA estructura»: cabecera BLANCA de
+  // ficha de entidad —avatar, nombre a 21px, pastilla de estado, línea de identidad y solapas
+  // pegadas abajo—, con las métricas en su tira sobre el cuerpo.
+  //
+  // EL DEFECTO QUE ATRAPA (24/08/2026): la ficha del cliente se coronaba con el slab GRAFITO
+  // (`BarraContexto`), una cabecera oscura que no existe en ningún mockup del zip. Se exige que la
+  // identidad y las solapas estén dentro de la cabecera y que la tira de métricas exista aparte;
+  // si alguien devuelve el slab, `metricas-cliente` desaparece y esto se pone rojo.
+  //
+  // LAS SOLAPAS CAMBIAN DE VISTA Y EL ESTADO VIAJA EN LA URL. Se exige que cada una LLEVE a su cara
+  // —una solapa que no cambia nada es un enlace muerto que nadie nota— y que la identidad siga
+  // visible en todas: ése es el precio que el 19/08 no quería pagar y que acá queda acotado.
+  const slab = page.getByTestId('slab-cliente')
+  await expect(slab).toBeVisible()
+  // La miga de pan y el nombre viven en la cabecera; las solapas, adentro de ella.
+  await expect(slab.getByTestId('ficha-volver')).toBeVisible()
+  await expect(slab.getByTestId('solapas-cliente')).toBeVisible()
+  // Las métricas bajaron a su tira. `Obras` es la que siempre está, con o sin permiso económico.
+  await expect(page.getByTestId('metricas-cliente').locator('[data-metrica="Obras"]')).toBeVisible()
+  for (const [solapa, bloque] of [
+    ['solapa-obras', 'bloque-obras'],
+    ['solapa-documentos', 'bloque-documentos'],
+  ] as const) {
+    await page.getByTestId(solapa).click()
+    await expect(page.getByTestId(bloque), `${solapa} no abre ${bloque}`).toBeVisible()
+    // La identidad sobrevive al cambio de solapa. Sin esto, partir el record habría escondido
+    // justo lo que el dueño exigió que estuviera siempre.
+    await expect(page.getByTestId('panel-informacion')).toBeVisible()
+    await expect(page.getByTestId('bloque-contactos')).toBeVisible()
+  }
+
+  // ═══ LA SOLAPA «CUENTA» SE CONVIRTIÓ EN «CUENTA CORRIENTE» (25/08/2026) ═══
+  //
+  // Hasta hoy `solapa-cuenta` abría `bloque-cuenta`: contratado y costo por obra, que es lo mismo
+  // que ya muestra la solapa Obras y que existía porque cobranzas no tenía fuente. El mockup 28 la
+  // reemplaza por la cuenta corriente entera —saldo, antigüedad, certificados, plan del día— y esa
+  // cara va A SANGRE, sin el aside de identidad: su columna derecha es el panel del certificado.
+  // Manda el mockup (BRIEFING), así que se afirma la pantalla nueva y NO se exige el aside acá.
+  await page.getByTestId('solapa-cuenta').click()
+  await expect(page.getByTestId('vista-cuenta-corriente')).toBeVisible()
+  await expect(page.getByTestId('metricas-cuenta')).toBeVisible()
+  await expect(page.getByTestId('antiguedad')).toBeVisible()
+  await page.getByTestId('solapa-obras').click()
+  await expect(page.getByTestId('panel-informacion')).toBeVisible()
+
+  // UN SOLO `h1`: el slab trae el suyo y `PageShell` no puede dibujar otro con el mismo nombre.
+  // Si alguien saca `encabezado={false}`, esto se pone rojo antes que nadie mire la pantalla.
+  await expect(page.locator('h1')).toHaveCount(1)
+
   // Las altas de cada bloque están A LA VISTA, arriba de su lista. Enterradas al final de una tabla
-  // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre.
+  // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre. Con solapas, cada
+  // alta se exige EN SU CARA: la de documentos vive en la solapa Documentos, que es donde está su
+  // lista — pedirla en todas obligaría a dibujar cuatro formularios en cada vista.
+  await expect(page.getByTestId('alta-documento')).toBeVisible()
+  await page.getByTestId('solapa-resumen').click()
   await expect(page.getByTestId('alta-obra')).toBeVisible()
   await expect(page.getByTestId('alta-contacto')).toBeVisible()
-  await expect(page.getByTestId('alta-documento')).toBeVisible()
   await expect(page.getByTestId('alta-nota')).toBeVisible()
 
   // ═══ EL RECORD ENTRA EN UN TELÉFONO SIN CORRERSE DE COSTADO ═══
@@ -273,9 +356,13 @@ test('el jefe de obra administra el record del cliente, porque es Administració
 
   // LO QUE SÍ: los formularios de administración del maestro, porque la base los acepta. Si alguno
   // faltara, el jefe estaría viendo una ficha de sólo lectura sobre un cliente que sí administra.
-  for (const t of ['editar-cliente', 'alta-contacto', 'alta-obra', 'alta-documento',
-    'alta-nota', 'archivar-cliente']) {
+  for (const t of ['editar-cliente', 'alta-contacto', 'alta-obra', 'alta-nota', 'archivar-cliente']) {
     await expect(page.getByTestId(t),
       `no se le ofreció «${t}» a un jefe de obra, y la base sí se lo acepta`).toHaveCount(1)
   }
+  // El alta de documentos vive en SU solapa desde el canónico 26 (24/08): se la exige donde está,
+  // no donde estaba. Que no aparezca en Resumen es diseño; que no aparezca acá sería el defecto.
+  await page.getByTestId('solapa-documentos').click()
+  await expect(page.getByTestId('alta-documento'),
+    'no se le ofreció «alta-documento» a un jefe de obra, y la base sí se lo acepta').toHaveCount(1)
 })

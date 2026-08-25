@@ -1,0 +1,85 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- PROPUESTA, NO APLICADA. Este archivo NO crea, borra ni modifica NADA.
+--
+-- Es el resultado escrito de medir la base antes de proponerle cambios, y su conclusión es que la
+-- base NO es el cuello de botella de app.ecsas.com.ar. Queda en `migrations/` para que la próxima
+-- persona que sospeche de Postgres encuentre la medición hecha en vez de repetirla — y para que
+-- nadie agregue índices "por las dudas" sobre tablas de diecisiete filas.
+--
+-- Lo decide el coordinador. Si se descarta, se descarta por escrito.
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- ─── QUÉ SE MIDIÓ (24/08/2026, base productiva, rol `authenticated`, sesión de Dirección) ───
+--
+-- 1. TAMAÑO REAL DE LOS DATOS (pg_stat_user_tables · pg_total_relation_size)
+--
+--      drive_index ········ 3.615 filas ··· 4.048 kB   ← la MÁS grande de todo el modelo
+--      costos_obra ··········· 875 filas ····· 832 kB
+--      obra_actividad ········ 377 filas ····· 440 kB
+--      obra_ejecucion ········ 247 filas ····· 216 kB
+--      registros_hh ··········· 24 filas ····· 216 kB
+--      obra_canonica ·········· 17 filas ······ 80 kB
+--      obra_restriccion ········ 0 filas ······ 64 kB
+--      certificados ············ 0 filas ····· 128 kB
+--
+--    El modelo entero entra en unos pocos megabytes. Un `seq scan` de diecisiete filas es más
+--    rápido que bajar por un índice: no hay ningún índice que agregar que mejore un plan.
+--
+-- 2. LOS ÍNDICES YA ESTÁN — Y SOBRAN
+--
+--    `registros_hh` tiene OCHO índices para veinticuatro filas, y `pg_stat_user_indexes` muestra
+--    cinco de ellos con `idx_scan = 0`. Sobre una tabla de este tamaño el costo de mantenerlos es
+--    despreciable, así que tampoco se propone borrarlos: sería otro cambio sin efecto medible.
+--    Se anota para que no se agregue el noveno.
+--
+-- 3. LOS PORTEROS DE RLS YA ESTÁN BIEN (era la sospecha más razonable)
+--
+--    `es_administracion`, `current_rol`, `ve_obra`, `ve_obra_texto`, `texto_es_de_obra`,
+--    `contratado_de_obra`, `presupuesto_monto` y `presupuesto_margen` son TODAS `STABLE`,
+--    `SECURITY DEFINER` y con `search_path` fijado. Las policies de `obra_canonica` envuelven los
+--    porteros sin fila en `(select …)`, que es lo que las convierte en InitPlan en vez de una
+--    llamada por fila. Ese trabajo ya se hizo (T7000). No hay nada que corregir acá.
+--
+-- 4. DÓNDE SE VA EL TIEMPO DE VERDAD
+--
+--    Para `obra_plan_vs_real` de UNA obra: `EXPLAIN ANALYZE` da 73 ms de ejecución, y el mismo
+--    pedido por PostgREST mide entre 190 ms y 2.586 ms. El piso de red medido contra este Supabase
+--    (São Paulo) es ~90 ms por request. O sea: el tiempo NO está en el plan de la consulta, está en
+--    el viaje y en la CONTENCIÓN — y la contención la produce la cantidad de requests, no su costo.
+--
+--    Los contadores lo confirman: `obra_restriccion` (CERO filas) acumula 1.746.946 `seq_scan`, y
+--    `registros_hh` (24 filas) más de 4.000.000. Eso no es una consulta lenta: es la MISMA página
+--    ejecutándose una y otra vez. Cada `<Link>` visible de una ruta `force-dynamic` disparaba un
+--    render RSC completo del servidor, con su tanda entera de consultas, para bytes que se tiraban.
+--
+--    Por eso el arreglo de esta tanda es de la aplicación y no de la base: se cortó el prefetch de
+--    los 49 links de obras, dos lecturas dejaron de salir en las solapas que no las dibujan, el
+--    perfil del usuario se resuelve una vez por request en vez de tres, y la cartera pide siete
+--    columnas en lugar de cuarenta.
+--
+--
+-- ─── LO ÚNICO ESTRUCTURAL QUE SÍ CONVIENE SABER (límite de escala, no problema de hoy) ───
+--
+-- `obra_plan_vs_real` arma cuatro CTE agregadas —`hh`, `hh_plan`, `pres`, `cert`— que agrupan sobre
+-- TODAS las obras, y recién después filtra. Un `where obra_id = 'x'` no baja adentro de un
+-- `group by`: Postgres calcula igual la agregación completa. Medido, leer UNA obra sale MÁS caro
+-- que leer las diecisiete (864 ms contra 488 ms de mediana por PostgREST).
+--
+-- Con diecisiete obras eso es gratis y NO justifica tocar una vista de la que cuelgan `cliente_panel`
+-- y media aplicación. Con unos cientos de obras dejaría de serlo, y la salida sería una función
+-- `obra_plan_vs_real_de(obra_id)` que empuje el filtro adentro de cada agregación, dejando la vista
+-- como está para los consumos de cartera. NO se propone hacerlo ahora: sería complejidad comprada
+-- por adelantado contra un problema que todavía no existe.
+--
+--
+-- ─── LO QUE ESTA MEDICIÓN NO PUDO MIRAR ───
+--
+--   · `work_mem` en 2 MB y los `statement timeout` observados son configuración de la instancia de
+--     Supabase, no algo que una migración pueda cambiar. Quedan para quien administre el proyecto.
+--   · Todo se midió desde una conexión de escritorio contra São Paulo. Vercel corre las funciones en
+--     otra región (`gru1` según la traza del dueño): los tiempos absolutos allá serán distintos, las
+--     diferencias RELATIVAS entre antes y después no.
+--   · No se midió con varias sesiones concurrentes. El efecto de sacar la estampida de prefetch
+--     debería ser MAYOR bajo concurrencia real que en esta medición de a una.
+
+-- (sin sentencias: este archivo es deliberadamente inerte)

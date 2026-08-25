@@ -1,59 +1,80 @@
 'use client'
 
-// PANTALLA 17 · LA LISTA DE TAREAS TIPO Y SU SELECCIÓN.
+// 17 · BASE MAESTRA TAREAS — porte literal de `echegaray-design/17 · Base Maestra Tareas.dc.html`.
 //
-// Es de cliente por una sola razón: el buscador filtra MIENTRAS SE ESCRIBE. Las 223 filas ya
-// vinieron del servidor en la carga —caben de sobra en una respuesta— así que teclear no vuelve a
-// consultar la base ni parpadea.
+// ═══ MEDIDO DEL CANÓNICO ═══
 //
-// LA SELECCIÓN VIVE EN LA URL (`?t=<id>`), no en un `useState`. Un enlace a una tarea tipo abierta
-// se pega en un mensaje y abre en esa tarea; con estado local, todas las tareas compartirían la
-// misma dirección.
+//   grilla   `62px minmax(0,1.6fr) 48px 92px 108px 84px 56px` · `gap:10px` (línea 231)
+//   fila     44px · divisor #F1F0EC · `padding:0 14px` · seleccionada #FEF9E6
+//   columnas CÓD. · TAREA · UN. · HH / UN. · REAL OBRA · COMPOSICIÓN · USOS
+//   chips    Todo · Con desvío · Sin dato real, DENTRO de la banda de nivel 3
+//   pie      TAREAS · CON DATO REAL · (DESACTUALIZADAS), adentro de la caja sobre #FAFAF8
 //
-// ═══ LAS DIRECCIONES SE ARMAN ACÁ, Y NO LLEGAN COMO FUNCIONES ═══
+// La versión anterior dibujaba ANÁLISIS y MUESTRA en lugar de COMPOSICIÓN y USOS, y lo declaraba:
+// «esta pantalla NO lee las líneas de las 223 tareas». Ahora las lee —`getComposiciones`, una
+// lectura paginada de `analisis_linea` y otra de `recurso`, ninguna de las dos económica— así que
+// las dos columnas del canónico vuelven con su dato real. Lo que NO se perdió es la deuda de carga:
+// la celda de COMPOSICIÓN escribe «sin análisis» cuando no hay ninguno, y el triángulo del canónico
+// se enciende con el motivo puesto en el `title`.
 //
-// Costó media hora encontrarlo. Este componente recibía `hrefDe` y `hrefDivision`, dos funciones que
-// la página le pasaba. **Una función no cruza la frontera servidor→cliente**: la serialización del
-// árbol falla, y como el documento ya salió con 200, lo que ve el usuario es la pantalla clavada en
-// el esqueleto de carga PARA SIEMPRE — sin error en la consola y sin error en el servidor.
+// ═══ DOS RÓTULOS QUE NO SON LOS DEL ZIP, Y POR QUÉ ═══
 //
-// El modo de falla es el peor: los registros dicen `200 in 3.5s` y la pantalla no aparece nunca.
-// Por eso lo que cruza son DATOS —la ruta y los parámetros— y el armado de la dirección vive de este
-// lado, que además es donde se puede leer qué preserva cada enlace.
+//   DESACTUALIZADAS → CON AVISO. El canónico cuenta ahí `t.aviso`, que en sus datos de ejemplo son
+//     tres cosas distintas (desvío, sin actualizar, sin rendimiento). Contarlas bajo «desactualizadas»
+//     diría que una tarea SIN ANÁLISIS está desactualizada, que es otra cosa y se arregla de otra
+//     manera.
+//   ANCHO DE LA BANDA. El zip la dibuja de borde a borde de la ventana; acá arranca donde arranca el
+//     contenido de la aplicación, como la barra de Administración que tiene encima. Alinearla con el
+//     borde y dejar la de arriba adentro sería peor que las dos iguales.
+//
+// ═══ ES DE CLIENTE POR UNA SOLA RAZÓN ═══
+//
+// El buscador filtra MIENTRAS SE ESCRIBE, y los chips recortan sin volver al servidor. Las tareas ya
+// vinieron enteras. LO QUE CRUZA LA FRONTERA SON DATOS, NUNCA FUNCIONES: este componente recibía un
+// `hrefDe`, y una función que no serializa deja la pantalla clavada en el esqueleto PARA SIEMPRE con
+// el registro diciendo `200 in 3.5s`. El panel entra como `children`, ya renderizado en el servidor.
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { Tabla, THead, Th, Tr, Td, Vacio, Filtros } from '@/shared/components/ds'
+import { useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  ALTO, BotonMarca, C, CeldaTexto, CuentaChip, EncabezadoCanon, FilaCanon, IcoAlerta,
+  IcoBaja, IcoCuadrilla, IcoEquipo, IcoIgual, IcoMas, IcoMaterial, IcoSube, PAGINA, PieCanon,
+  TarjetaTabla, VacioCanon,
+} from '@/shared/components/canon'
 import type { TareaTipoFila } from '../types'
-import { filtrar, motivoDelEstado } from '../services/reglas'
-import { BuscadorVivo } from './BuscadorVivo'
-import { EstadoAnalisisCelda, N } from './celdas'
+import {
+  desvioObservado, motivoDelEstado, numero, type DireccionDesvio, type TipoComposicion,
+} from '../services/reglas'
+import { CORTES_TAREA, ROTULO_CORTE, coincideTarea, cumpleCorte, type CorteTarea } from '../services/vistas'
+import { BandaBaseMaestra, type SolapaBM } from './NavBaseMaestra'
+import { BuscadorCajaViva } from './BuscadorCajaViva'
+import { ChipCorte } from './controles'
+
+/** `17`, línea 231. Sin USOS cuando quien mira no puede contarlos: la columna no se dibuja vacía. */
+const COLS = '62px minmax(0,1.6fr) 48px 92px 108px 84px 56px'
+const COLS_SIN_USOS = '62px minmax(0,1.6fr) 48px 92px 108px 84px'
 
 export function TareasTipo({
-  tareas,
-  q,
-  division,
-  divisiones,
-  seleccionada,
-  ruta,
-  otros,
+  tareas, q, seleccionada, economia, cuentas, ruta, otros, hrefNueva, panel,
 }: {
   tareas: TareaTipoFila[]
   q: string
-  division: string | null
-  divisiones: string[]
   seleccionada: string | null
-  /** La ruta y lo que hay que preservar al buscar. Llegan del servidor: ver `BuscadorVivo`. */
+  /** Decide si la columna USOS tiene un número que se pueda sostener. Ver `getUsosDeTareas`. */
+  economia: boolean
+  cuentas: Partial<Record<SolapaBM, number | null>>
   ruta: string
   otros: Record<string, string | undefined>
+  hrefNueva: string
+  panel?: ReactNode
 }) {
+  const router = useRouter()
   const [consulta, setConsulta] = useState(q)
+  const [corte, setCorte] = useState<CorteTarea>('todo')
 
-  // El filtro de división lo aplica el SERVIDOR (viaja en la URL y recorta la lectura); la consulta
-  // de texto la aplica el navegador, que es lo que la hace instantánea.
-  const visibles = filtrar(tareas, consulta, (t) => [t.codigo, t.nombre, t.division, t.unidad])
+  const visibles = tareas.filter((t) => coincideTarea(t, consulta) && cumpleCorte(t, corte))
+  const cols = economia ? COLS : COLS_SIN_USOS
 
-  /** Una dirección de esta pantalla con algunos parámetros cambiados. `undefined` los quita. */
   const href = (cambios: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
     for (const [k, v] of Object.entries({ ...otros, q: consulta || undefined, ...cambios })) {
@@ -64,93 +85,204 @@ export function TareasTipo({
   }
 
   return (
-    <div className="min-w-0 flex-1">
-      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-        <BuscadorVivo
-          valor={consulta}
-          onCambio={setConsulta}
-          placeholder="Buscar tarea, código o rubro"
-          resultados={visibles.length}
-          total={tareas.length}
-          testid="buscador-tareas"
+    <>
+      <BandaBaseMaestra activa="tareas" cuentas={cuentas}>
+        <BuscadorCajaViva
+          value={consulta}
+          onChange={setConsulta}
+          placeholder="Buscar tarea o código"
+          ancho={230}
+          testid="buscador-tareas-q"
         />
-        <Filtros
-          testid="filtros-division"
-          opciones={[
-            { label: 'Todos', href: href({ d: undefined }), activo: !division, testid: 'division-todos' },
-            ...divisiones.map((d) => ({
-              label: d, href: href({ d }), activo: d === division, testid: `division-${d}`,
-            })),
-          ]}
-        />
+        <div data-testid="filtros-corte" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {CORTES_TAREA.map((k) => (
+            <ChipCorte key={k} activo={corte === k} onClick={() => setCorte(k)} testid={`corte-${k}`}>
+              {ROTULO_CORTE[k]}
+              <CuentaChip n={tareas.filter((t) => cumpleCorte(t, k)).length} activo={corte === k} />
+            </ChipCorte>
+          ))}
+        </div>
+        <BotonMarca href={hrefNueva} testid="nueva-tarea">
+          <IcoMas s={14} /> Nueva tarea
+        </BotonMarca>
+      </BandaBaseMaestra>
+
+      <div style={{ ...PAGINA.cuerpo, paddingTop: 14 }}>
+        <TarjetaTabla testid="tabla-tareas-tipo" cols={cols}>
+          <EncabezadoCanon
+            cols={cols}
+            columnas={[
+              { rotulo: 'CÓD.' },
+              { rotulo: 'TAREA' },
+              { rotulo: 'UN.' },
+              // ESFUERZO Y NO «RENDIMIENTO»: son hs por unidad, y bajan cuando la tarea mejora.
+              { rotulo: 'HH / UN.', alineacion: 'derecha' },
+              { rotulo: 'REAL OBRA', alineacion: 'derecha' },
+              { rotulo: 'COMPOSICIÓN' },
+              ...(economia ? [{ rotulo: 'USOS', alineacion: 'derecha' as const }] : []),
+            ]}
+          />
+
+          {visibles.map((t) => (
+            <Fila
+              key={t.id}
+              t={t}
+              cols={cols}
+              economia={economia}
+              seleccionada={t.id === seleccionada}
+              // Abrir otra tarea limpia la solapa: la de la anterior puede no existir acá.
+              onAbrir={() => router.push(href({ t: t.id, s: undefined }), { scroll: false })}
+            />
+          ))}
+
+          {visibles.length === 0 && (
+            <VacioCanon testid="tareas-vacio">{vacioDe(consulta, corte, tareas.length)}</VacioCanon>
+          )}
+
+          {/* EL PIE CUENTA SOBRE EL TOTAL, NO SOBRE LO VISIBLE: es el estado de la base maestra, no
+              el de la búsqueda de este momento. */}
+          <PieCanon
+            totales={[
+              { rotulo: 'TAREAS', valor: String(tareas.length), testid: 'pie-tareas' },
+              {
+                rotulo: 'CON DATO REAL',
+                valor: String(tareas.filter((t) => t.hs_observado != null).length),
+                color: C.pos,
+              },
+              {
+                rotulo: 'CON AVISO',
+                valor: String(tareas.filter((t) => avisoDe(t) != null).length),
+                color: C.warn,
+              },
+            ]}
+          />
+        </TarjetaTabla>
+
+        {panel}
       </div>
-
-      {visibles.length === 0 ? (
-        <Vacio
-          accion={
-            consulta ? (
-              <button type="button" onClick={() => setConsulta('')} className="text-[13px] font-medium text-ink underline">
-                Ver todo
-              </button>
-            ) : undefined
-          }
-        >
-          {vacioDe(consulta, division, tareas.length)}
-        </Vacio>
-      ) : (
-        <Tabla testid="tabla-tareas-tipo" minWidth={620}>
-          <THead>
-            <Th className="w-[86px]">Código</Th>
-            <Th>Tarea tipo</Th>
-            <Th className="w-[56px]">Un.</Th>
-            <Th num className="w-[82px]">Hs/un.</Th>
-            <Th className="w-[118px]">Análisis</Th>
-          </THead>
-          <tbody>
-            {visibles.map((t) => (
-              <Tr key={t.id} seleccionada={t.id === seleccionada} data-testid={`tarea-${t.codigo}`}>
-                <Td className="font-mono text-[11.5px] text-muted">{t.codigo}</Td>
-                <Td fuerte>
-                  {/* Abrir otra tarea limpia la solapa: la de la anterior puede no existir acá. */}
-                  <Link href={href({ t: t.id, s: undefined })} scroll={false} className="block hover:underline">
-                    {t.nombre}
-                  </Link>
-                </Td>
-                <Td className="text-[12px]">{t.unidad}</Td>
-                <Td num>
-                  {/* «sin dato» y no 0: una tarea sin rendimiento aporta 0 HH al plan, que es mentira. */}
-                  <N v={t.hs_unitarias} decimales={2} falta="sin dato" />
-                </Td>
-                <Td>
-                  <EstadoAnalisisCelda estado={t.estado} titulo={motivoDelEstado(t.estado, t.falta)} />
-                </Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Tabla>
-      )}
-
-      <p className="mt-3 text-[11px] text-faint" data-testid="pie-tareas">
-        {resumen(tareas, visibles.length)}
-      </p>
-    </div>
+    </>
   )
 }
 
-function vacioDe(consulta: string, division: string | null, total: number): string {
-  if (consulta) return `Nada coincide con «${consulta}».`
-  if (division) return `No hay tareas tipo en «${division}».`
-  if (total === 0) {
-    return 'La base maestra todavía no tiene tareas tipo cargadas. Se cargan al importar la Planilla para Cotizar.'
+/**
+ * EL AVISO DE LA FILA — el triángulo del canónico, con el motivo puesto en el `title`.
+ *
+ * El orden importa: la deuda de carga manda sobre la recomendación. Una tarea sin análisis no tiene
+ * nada que «actualizar con el real»: lo que le falta es la composición, y ése es el trabajo.
+ */
+function avisoDe(t: TareaTipoFila): string | null {
+  const deuda = motivoDelEstado(t.estado, t.falta)
+  if (deuda) return deuda
+  if (t.hs_recomendado != null) {
+    return `El real de obra propone ${numero(t.hs_recomendado, 2)} HH/${t.unidad}: hay una recomendación sin decidir`
   }
-  return 'No hay tareas tipo que mostrar.'
+  return null
 }
 
-function resumen(tareas: TareaTipoFila[], visibles: number): string {
-  const sinAnalisis = tareas.filter((t) => t.estado === 'sin_analisis').length
-  const sinRevisar = tareas.filter((t) => t.estado === 'sin_revisar').length
-  const partes = [`${visibles} de ${tareas.length} tareas tipo`]
-  if (sinAnalisis) partes.push(`${sinAnalisis} sin análisis`)
-  if (sinRevisar) partes.push(`${sinRevisar} sin revisar`)
-  return partes.join(' · ')
+const ICONO_COMPOSICION: Record<TipoComposicion, { ico: ReactNode; tip: string }> = {
+  mano_obra: { ico: <IcoCuadrilla s={13} />, tip: 'Mano de obra' },
+  material: { ico: <IcoMaterial s={13} />, tip: 'Materiales' },
+  equipo: { ico: <IcoEquipo s={13} />, tip: 'Equipos' },
+}
+
+const TINTA_DESVIO: Record<DireccionDesvio, string> = { peor: C.warn, mejor: C.pos, igual: C.tinta }
+
+function Fila({
+  t, cols, economia, seleccionada, onAbrir,
+}: {
+  t: TareaTipoFila
+  cols: string
+  economia: boolean
+  seleccionada: boolean
+  onAbrir: () => void
+}) {
+  const d = desvioObservado(t.hs_unitarias, t.hs_observado)
+  const real = numero(t.hs_observado, 2)
+  const aviso = avisoDe(t)
+  const color = d ? TINTA_DESVIO[d.direccion] : C.tenue
+
+  return (
+    <FilaCanon
+      cols={cols}
+      alto={ALTO.filaBloque}
+      seleccionada={seleccionada}
+      onClick={onAbrir}
+      testid={`tarea-${t.codigo}`}
+      tabIndex={0}
+      role="row"
+      onKeyDown={(e) => { if (e.key === 'Enter') onAbrir() }}
+    >
+      <CeldaTexto mono tam="11.5px" color={C.apagado}>{t.codigo}</CeldaTexto>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <CeldaTexto tam="12.5px" color={C.tinta} titulo={t.nombre}>{t.nombre}</CeldaTexto>
+        {aviso && (
+          <span title={aviso} data-testid="aviso-tarea" style={{ display: 'flex', color: C.warn, flexShrink: 0 }}>
+            <IcoAlerta s={13} />
+          </span>
+        )}
+      </div>
+
+      <CeldaTexto tam="12px">{t.unidad}</CeldaTexto>
+
+      <CeldaTexto mono tam="12px" color={C.tinta} alineacion="derecha">
+        {/* «sin dato» y no 0: una tarea sin esfuerzo cargado aporta 0 HH al plan, que es la
+            afirmación de que no lleva mano de obra. */}
+        {numero(t.hs_unitarias, 2) ?? <span style={{ fontSize: '11.5px', color: C.tenue }}>sin dato</span>}
+      </CeldaTexto>
+
+      <div
+        role="cell"
+        data-desvio={d?.direccion ?? 'sin-base'}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, minWidth: 0 }}
+      >
+        {real == null ? (
+          // «sin medir» y no «sin dato»: la tarea puede estar perfectamente cargada; lo que falta es
+          // que alguien la haya ejecutado y le haya imputado horas.
+          <span style={{ fontSize: '11.5px', color: C.tenue }}>sin medir</span>
+        ) : (
+          <>
+            <span style={{ display: 'flex', color, flexShrink: 0 }}>
+              {d?.direccion === 'peor' ? <IcoSube s={12} /> : d?.direccion === 'mejor' ? <IcoBaja s={12} /> : <IcoIgual s={12} />}
+            </span>
+            <span className="font-mono tabular-nums" style={{ fontSize: '12px', color }}>{real}</span>
+            {/* `1,32×` dice cuánto, no sólo el signo: es la lectura que el icono solo no da. */}
+            {d && <span className="font-mono tabular-nums" style={{ fontSize: '11px', color }}>{numero(d.ratio, 2)}×</span>}
+          </>
+        )}
+      </div>
+
+      <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+        {t.composicion.length === 0 ? (
+          <span
+            title={t.estado === 'sin_analisis' ? 'Nadie cargó la composición: no aporta HH ni costo.' : undefined}
+            style={{ fontSize: '11.5px', color: C.tenue }}
+          >
+            {t.estado === 'sin_analisis' ? 'sin análisis' : 'sin líneas'}
+          </span>
+        ) : (
+          t.composicion.map((k) => (
+            <span key={k} title={ICONO_COMPOSICION[k].tip} style={{ display: 'flex', color: C.apagado }}>
+              {ICONO_COMPOSICION[k].ico}
+            </span>
+          ))
+        )}
+      </div>
+
+      {economia && (
+        <CeldaTexto mono tam="11.5px" color={C.apagado} alineacion="derecha" titulo="Partidas de presupuesto y actividades de obra que salieron de esta tarea">
+          {t.usos == null ? '—' : t.usos}
+        </CeldaTexto>
+      )}
+    </FilaCanon>
+  )
+}
+
+function vacioDe(consulta: string, corte: CorteTarea, total: number): string {
+  if (consulta) return `Nada coincide con «${consulta}».`
+  if (corte !== 'todo') return `Ninguna tarea tipo queda en «${ROTULO_CORTE[corte]}».`
+  if (total === 0) {
+    return 'La base maestra todavía no tiene tareas tipo cargadas. Se cargan al importar la Planilla para Cotizar o con «Nueva tarea».'
+  }
+  return 'Nada coincide.'
 }

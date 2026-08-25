@@ -17,7 +17,11 @@
 // entera diría «sin base». Por eso el rollup declara CON QUÉ ponderó (`ponderacion`): con HH cuando
 // hay HH, en partes iguales cuando no hay ninguna, y `null` sólo cuando ninguna hija tiene avance.
 // El criterio se muestra al lado del número en vez de esconderse adentro.
+//
+// La CUENTA en sí no vive acá: es `avanceAgregado` de `avance.ts`, una sola para todo el OS. Este
+// archivo sólo la traduce al vocabulario del árbol (`ponderacion`, entero).
 
+import { avanceAgregado } from './avance.ts'
 import type { EstadoActividad, MetodoAvance, TipoActividad } from '../types/index.ts'
 
 export type RolEstructura = 'rubro' | 'sector' | 'nivel' | 'frente' | 'elemento'
@@ -41,9 +45,24 @@ export interface NodoObra {
   hh_real: number | null
   metodo_avance: MetodoAvance
   avance_pct: number | null
+  inicio_plan: string | null
   fin_plan: string | null
-  /** El texto que va en RESPONSABLE. `null` = nadie lo declaró; la pantalla escribe «sin asignar». */
+  /** LA PERSONA que responde por la actividad, resuelta desde `responsable_id`. `null` = nadie la
+   *  declaró; la pantalla escribe «sin asignar».
+   *
+   *  ANTES ACÁ VENÍA LA CUADRILLA (22/08/2026). El campo se llamaba `responsable` y lo llenaba
+   *  `cuadrilla_prevista ?? cuadrilla`, así que el árbol, el panel y Próximos trabajos publicaban
+   *  «2 oficiales + 2 ayudantes» debajo del rótulo RESPONSABLE. Son dos hechos distintos y ninguno
+   *  reemplaza al otro: una cuadrilla no rinde cuentas de una fecha ni firma un avance, y una
+   *  persona no es una composición productiva. Mezclados, la obra no puede contestar a quién
+   *  reclamarle — que es la única razón por la que el rótulo existe. */
   responsable: string | null
+  /** LA COMPOSICIÓN PRODUCTIVA prevista: el nombre de la cuadrilla (`cuadrilla_prevista`, con el
+   *  texto legacy de `cuadrilla` como respaldo). Su peso real está en `cuadrilla_capacidad`. */
+  cuadrilla: string | null
+  /** Quién EJECUTA cuando la actividad está subcontratada. Va junto a `es_subcontrato`: un paquete
+   *  de un tercero no tiene cuadrilla propia ni responsable interno de la ejecución. */
+  subcontratista: string | null
   es_subcontrato: boolean
   estado: EstadoActividad | null
   impedimentos_abiertos: number
@@ -52,9 +71,29 @@ export interface NodoObra {
   peso_pasos: number | null
   /** El análisis de la base maestra con el que se planificó. Sin él no hay rendimiento ni duración. */
   analisis_id: string | null
+  /** La tarea tipo: la llave del histórico de rendimiento. */
+  tarea_tipo_id: string | null
+  /** La partida del presupuesto de la que salió. Es lo que habilita «Ver partida». */
+  cotizacion_partida_id: string | null
   tope_frente: number | null
   dotacion_prevista: number | null
+  cuadrilla_id: string | null
+  /** Días que NO se comprimen con más gente. Van al cuarto argumento de `duracionDias`, sumados
+   *  aparte: curar dos días son dos días haya una persona o veinte. */
+  tiempo_tecnico: boolean
+  dias_plan: number | null
   es_critica: boolean
+}
+
+/**
+ * QUIÉN LA EJECUTA — el subcontratista si está subcontratada, si no la cuadrilla prevista.
+ *
+ * Existe para que separar RESPONSABLE de CUADRILLA no cambie qué actividades se marcan «sin
+ * cuadrilla»: un paquete de un tercero no tiene cuadrilla propia y nunca fue una deuda de carga.
+ * Es la pregunta «¿hay alguien que la haga?», distinta de «¿quién responde por ella?».
+ */
+export function ejecutorDe(n: NodoObra): string | null {
+  return n.subcontratista ?? n.cuadrilla
 }
 
 /**
@@ -108,18 +147,22 @@ function aporteDe(n: NodoObra, agregados: Map<string, Agregado>): Agregado {
   }
 }
 
-/** El avance ponderado de una lista de aportes, con el criterio que se pudo usar. */
+/**
+ * El avance ponderado de una lista de aportes, con el criterio que se pudo usar.
+ *
+ * LA REGLA NO VIVE ACÁ: es `avanceAgregado` de `avance.ts`, la misma que usan la pantalla del jefe
+ * (J06), la dotación (08), la ficha de la obra y la vista publicada `obra_avance`. Lo que queda acá
+ * es la TRADUCCIÓN a lo que el árbol publica —`ponderacion` y un entero—, porque el rollup dibuja el
+ * criterio al lado del número y la franja del pie escribe `${avance}%` sin decimales.
+ *
+ * Lo que había era una tercera implementación de la misma cuenta: filtraba las hijas sin HH en vez
+ * de darles peso 0 —aritméticamente lo mismo— y por eso daba el mismo número. Una regla que hoy
+ * coincide por tres caminos distintos es una regla que mañana se corrige en uno solo.
+ */
 function ponderar(aportes: Agregado[]): Pick<Agregado, 'avance_pct' | 'ponderacion'> {
-  const conAvance = aportes.filter((a) => a.avance_pct !== null)
-  if (conAvance.length === 0) return { avance_pct: null, ponderacion: null }
-  const conHH = conAvance.filter((a) => a.hh_plan !== null && a.hh_plan > 0)
-  const base = conHH.length > 0 ? conHH : conAvance
-  const modo: Ponderacion = conHH.length > 0 ? 'hh' : 'iguales'
-  const peso = (a: Agregado) => (modo === 'hh' ? (a.hh_plan as number) : 1)
-  const total = base.reduce((s, a) => s + peso(a), 0)
-  if (total === 0) return { avance_pct: null, ponderacion: null }
-  const suma = base.reduce((s, a) => s + peso(a) * (a.avance_pct as number), 0)
-  return { avance_pct: Math.round(suma / total), ponderacion: modo }
+  const { pct, ponderado } = avanceAgregado(aportes)
+  if (pct === null) return { avance_pct: null, ponderacion: null }
+  return { avance_pct: Math.round(pct), ponderacion: ponderado ? 'hh' : 'iguales' }
 }
 
 /**

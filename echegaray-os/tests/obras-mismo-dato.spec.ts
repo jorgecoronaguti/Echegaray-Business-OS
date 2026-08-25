@@ -130,13 +130,17 @@ test('el renglón global de una obra responde a las actividades de esa obra', as
  * en esas URLs no quede NADA de la vista global —ni su barra ni su tabla— y que la pantalla diga
  * que no hay tal obra. Si alguien repone el `page.tsx`, las dos condiciones se rompen.
  */
-test('la barra del área Obras tiene exactamente dos entradas: Resumen y Gantt', async ({ page }) => {
+test('la barra del área Obras tiene exactamente dos entradas: Tabla y Línea de tiempo', async ({ page }) => {
   await entrar(page)
   await page.goto('/obras')
 
+  // CAMBIO DE REGLA DECLARADO (Design 23/08): las dos vistas del área pasaron a llamarse por lo que
+  // muestran —«Tabla» y «Línea de tiempo»— en vez de «Resumen» y «Gantt». «Resumen» colisionaba con
+  // la primera solapa de una obra. Siguen siendo DOS y siguen siendo del área: eso es lo que se
+  // prueba acá.
   const barra = page.getByTestId('nav-vistas-obras')
   await expect(barra).toBeVisible({ timeout: 30000 })
-  await expect(barra.getByRole('link')).toHaveText(['Resumen', 'Gantt'])
+  await expect(barra.getByRole('link')).toHaveText(['Tabla', 'Línea de tiempo'])
 
   // Y el nivel 1 no se mezcla con el 2: en Obras, el título es OBRAS.
   await expect(page.getByRole('heading', { name: 'OBRAS', level: 1 })).toBeVisible()

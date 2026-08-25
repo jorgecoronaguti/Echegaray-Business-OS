@@ -10,13 +10,15 @@
 //
 // ═══ NO SE PIDE UNA SOLA COLUMNA DE DINERO ═══
 //
-// `obra_panel` publica `monto_contratado`, `costo_real` y `margen_sobre_contratado_pct`. Ninguna se
+// `obra_panel` publica `monto_contratado` y `costo_real`, y `obra_economia` la venta y el margen.
+// Ninguna se
 // nombra en este archivo. No es por prudencia: es que la lista de columnas de un `select` es la
 // única parte del contrato que se puede leer de un vistazo, y la que un revisor puede verificar sin
 // levantar la base. La cerradura sigue siendo `ve_economia()`.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
+import type { EstadoFecha } from '@/features/obras/types'
 import type { NodoArbol } from './frentes.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
 
@@ -79,21 +81,31 @@ export interface ActividadDelJefe extends TareaDelDia {
   n_pasos: number
   n_pasos_hechos: number
   cuadrilla_prevista: string | null
+  /** El peso de la tarea. Entra en el avance ponderado del frente (`avance.ts`). NO es costo. */
+  hh_plan: number | null
   hh_real: number | null
   inicio_plan: string | null
   fin_plan: string | null
+  /** Evidencia, nunca futuro: de `actividad_fechas`. */
+  inicio_real: string | null
   fin_real: string | null
+  forecast_fin: string | null
+  estado_fecha: EstadoFecha | null
   ultimo_parte: string | null
   unidad: string | null
   cantidad_objetivo: number | null
   cantidad_ejecutada: number | null
 }
 
+// `inicio_real`/`fin_real` salen de `actividad_fechas` (evidencia, nunca futuro): son las que usan
+// `diasDeAtraso` y «terminada el …». Con la columna cruda de la tabla —vacía en las 350 filas— una
+// tarea cerrada hace dos semanas se publicaba como terminada SIN FECHA y una abierta hace un mes no
+// se distinguía de una que no arrancó.
 const COLUMNAS_ACTIVIDAD =
   'actividad_id, obra_id, nombre, tipo, rubro, metodo_avance, avance_pct, origen_avance,'
   + ' estado_operativo, impedimentos_abiertos, n_pasos, n_pasos_hechos, cuadrilla_prevista,'
-  + ' hh_real, inicio_plan, fin_plan, fin_real, ultimo_parte, unidad, cantidad_objetivo,'
-  + ' cantidad_ejecutada'
+  + ' hh_plan, hh_real, inicio_plan, fin_plan, inicio_real, fin_real, forecast_fin, estado_fecha,'
+  + ' ultimo_parte, unidad, cantidad_objetivo, cantidad_ejecutada'
 
 export async function getActividades(
   supabase: SupabaseClient, obraId: string,
@@ -132,10 +144,14 @@ function aActividad(o: unknown): ActividadDelJefe {
     n_pasos: Number(f.n_pasos ?? 0),
     n_pasos_hechos: Number(f.n_pasos_hechos ?? 0),
     cuadrilla_prevista: (f.cuadrilla_prevista as string | null) ?? null,
+    hh_plan: numero(f.hh_plan),
     hh_real: numero(f.hh_real),
     inicio_plan: (f.inicio_plan as string | null) ?? null,
     fin_plan: (f.fin_plan as string | null) ?? null,
+    inicio_real: (f.inicio_real as string | null) ?? null,
     fin_real: (f.fin_real as string | null) ?? null,
+    forecast_fin: (f.forecast_fin as string | null) ?? null,
+    estado_fecha: (f.estado_fecha as EstadoFecha | null) ?? null,
     ultimo_parte: (f.ultimo_parte as string | null) ?? null,
     unidad: (f.unidad as string | null) ?? null,
     cantidad_objetivo: numero(f.cantidad_objetivo),
@@ -170,6 +186,51 @@ export async function getPasos(
         id: String(f.id), orden: Number(f.orden ?? 0), nombre: String(f.nombre ?? ''),
         peso: Number(f.peso ?? 1), tiempo_tecnico: Boolean(f.tiempo_tecnico),
         hecho_en: (f.hecho_en as string | null) ?? null,
+      }
+    }),
+    error: null,
+  }
+}
+
+/** Una línea de «Últimos partes» (J06): qué se cargó ese día contra la tarea, y con qué método. */
+export interface ParteDeTarea {
+  id: string
+  fecha: string
+  cantidad: number | null
+  avance_pct: number | null
+  metodo: string | null
+  comentario: string | null
+}
+
+/**
+ * LOS ÚLTIMOS PARTES DE UNA TAREA — el bloque «Últimos partes» que dibuja J06.
+ *
+ * Sale de `obra_ejecucion`, que guarda HECHOS de un día: cada fila es lo que se cargó ESE día, no
+ * el acumulado. Por eso la pantalla los escribe con `+`: «+0,18 m³» es producción del 20/08, y
+ * sumarlos da el acumulado — que es exactamente lo que hace la vista de control.
+ *
+ * Se piden cinco: en 390px entran tres sin desplazar y el resto es contexto.
+ */
+export async function getUltimosPartes(
+  supabase: SupabaseClient, actividadId: string, limite = 5,
+): Promise<ServiceResult<ParteDeTarea[]>> {
+  const { data, error } = await supabase
+    .from('obra_ejecucion')
+    .select('id, fecha, cantidad, avance_pct, metodo, comentario')
+    .eq('actividad_id', actividadId)
+    .order('fecha', { ascending: false })
+    .limit(limite)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: (data ?? []).map((p) => {
+      const f = p as Record<string, unknown>
+      return {
+        id: String(f.id),
+        fecha: String(f.fecha ?? ''),
+        cantidad: numero(f.cantidad),
+        avance_pct: numero(f.avance_pct),
+        metodo: (f.metodo as string | null) ?? null,
+        comentario: (f.comentario as string | null) ?? null,
       }
     }),
     error: null,

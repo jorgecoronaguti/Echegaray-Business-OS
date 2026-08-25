@@ -41,7 +41,15 @@ export function TablaComprobantes({
         </THead>
         <tbody>
           {filas.map((f) => (
-            <Tr key={f.id} compacta>
+            // LA FILA TRANSACCIONAL, MISMA REGLA QUE COMPRAS (COMPONENTS.md §Transaction row): la
+            // excepción se marca con la regla interior de 3px en el borde izquierdo, no con una
+            // pastilla al final. Acá la excepción es una sola —el comprobante que no llega a
+            // ninguna obra—, y es la que hace que el costo de esa obra esté incompleto.
+            <Tr
+              key={f.id}
+              data-testid="fila-comprobante-proveedor"
+              className={f.obra_texto?.trim() ? '' : 'shadow-[inset_3px_0_0_var(--os-warn)]'}
+            >
               <Td num className="text-muted">{fecha(f.fecha)}</Td>
               <Td>
                 <span className="font-mono text-[12px] tabular-nums text-ink">

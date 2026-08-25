@@ -1,19 +1,27 @@
-// LOS NOMBRES DE COMPRAS QUE TODAVÍA NO SON NADIE — la cola, ordenada por lo que pesa.
+// LA COLA DE NOMBRES QUE TODAVÍA NO SON NADIE — `22 · Proveedores v2.dc.html`, líneas 208-232.
 //
-// `Compras!E` del Sheet es texto libre y su espejo en Postgres (`costos_obra.proveedor`) tiene 845
-// comprobantes con 112 grafías distintas. 33 coinciden EXACTAMENTE con un proveedor del maestro; las
-// otras 79 —284 comprobantes, $382,8M— no son nadie. Medido el 18/08/2026.
+// `Compras!E` del Sheet es texto libre y su espejo en Postgres (`costos_obra.proveedor`) tenía 875
+// comprobantes con 115 grafías distintas: 33 coinciden EXACTAMENTE con un proveedor del maestro y
+// las otras 82 no son nadie (medido el 25/08/2026 contra la base). Cada una de esas 82 es un gasto
+// que queda fuera de la cuenta de su proveedor.
 //
-// Ordenada por importe: resolver «Sueldos» (58 comprobantes, $197,5M) mueve más que resolver
-// «Google» ($114). Y arriba de la lista hay cuatro cosas que NO son proveedores —SUELDOS, ARCA,
-// SINDICATOS, BANCO—, que es exactamente por lo que no puede existir un botón de "vincular todo lo
-// parecido": un emparejador por similitud las habría colgado del proveedor de nombre más cercano.
+// Ordenada por cantidad de comprobantes —así la publica la vista— porque la lista es una COLA DE
+// TRABAJO: resolver el nombre que aparece 58 veces mueve mucho más costo de obra que el que aparece
+// una sola. Y arriba de la lista hay cosas que NO son proveedores —SUELDOS, ARCA, SINDICATOS,
+// BANCO—, que es exactamente por lo que no puede existir un botón de «vincular todo lo parecido»:
+// un emparejador por similitud las habría colgado del proveedor de nombre más cercano.
 
 import Link from 'next/link'
-import { fecha, plata } from '@/features/obras/components/formato'
+import { pesos } from '@/shared/components/canon/formato'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
-import { Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, RotuloPanel, V } from './proveedores/patron'
 import type { NombrePendiente, NombreResuelto } from '../types'
+
+/** `22v2:449-451`. En angosto se suelta COMPROB., nunca el texto que hay que resolver. */
+const COLS
+  = 'grid-cols-[minmax(220px,1.6fr)_minmax(0,90px)_minmax(0,140px)_minmax(0,110px)]'
+  + ' max-[1249px]:grid-cols-[minmax(200px,1.6fr)_minmax(0,1fr)_minmax(0,104px)]'
+const SOLO_ANCHO = 'max-[1249px]:hidden'
 
 export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
   pendientes: NombrePendiente[]
@@ -22,42 +30,72 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
 }) {
   if (pendientes.length === 0) {
     return (
-      <div data-testid="cola-vacia">
-        <Vacio>Todos los nombres de compras tienen proveedor. No hay nada que resolver.</Vacio>
-      </div>
+      <p data-testid="cola-vacia" style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }}>
+        Todos los nombres de Compras tienen proveedor. No hay nada que resolver.
+      </p>
     )
   }
 
   return (
-    <Tabla testid="cola-nombres" minWidth={560}>
-      <THead>
-        <Th>Nombre en el Sheet</Th>
-        <Th num>Comprob.</Th>
-        <Th num>Importe</Th>
-        <Th>Período</Th>
-      </THead>
-      <tbody>
-        {pendientes.map((n) => (
-          <Tr key={n.nombre_norm} data-testid="nombre-pendiente" seleccionada={n.nombre_norm === seleccionado}>
-            <Td fuerte>
-              <Link href={hrefDe(n.nombre_norm)} data-testid="abrir-nombre" className="block min-w-0">
-                <span className="text-[13px] text-ink hover:underline">{n.nombre_origen}</span>
-              </Link>
-            </Td>
-            <Td num className="w-[100px] text-muted">{n.comprobantes}</Td>
-            <Td num fuerte className="w-[150px]">{plata(n.total)}</Td>
-            <Td className="w-[170px]">
-              <Num className="text-faint">{fecha(n.primera_fecha)} → {fecha(n.ultima_fecha)}</Num>
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
+    <div data-testid="cola-nombres">
+      <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
+        <RotuloCol>Texto de Compras</RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprob.</RotuloCol></span>
+        <RotuloCol derecha>Total</RotuloCol>
+        <span style={{ paddingBottom: 6 }} />
+      </div>
+
+      {pendientes.map((n) => {
+        const elegido = n.nombre_norm === seleccionado
+        return (
+          <div
+            key={n.nombre_norm}
+            role="row"
+            data-testid="nombre-pendiente"
+            data-seleccionada={elegido ? '' : undefined}
+            className={`relative grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+            style={{
+              height: ALTO_V2.fila,
+              borderBottom: `1px solid ${V.lineaFila}`,
+              background: elegido ? V.seleccion : undefined,
+              boxShadow: elegido ? FILO_ELEGIDA : undefined,
+            }}
+          >
+            <Link
+              href={hrefDe(n.nombre_norm)}
+              data-testid="abrir-nombre"
+              className="min-w-0 truncate font-mono after:absolute after:inset-0 after:content-['']"
+              style={{ fontSize: '12.5px', color: V.tinta }}
+            >
+              {n.nombre_origen}
+            </Link>
+            <span className={`font-mono tabular-nums ${SOLO_ANCHO}`} style={{ fontSize: '12px', textAlign: 'right', color: V.apagado }}>
+              {n.comprobantes}
+            </span>
+            <span className="font-mono tabular-nums" style={{ fontSize: '12px', textAlign: 'right', color: V.tinta }}>
+              {/* Un nombre sin importe NO es $ 0: la suma de la vista puede venir en cero porque los
+                  comprobantes no traen total, y eso no significa que no costaran nada. */}
+              {Number(n.total ?? 0) > 0 ? pesos(n.total) : 'sin importe'}
+            </span>
+            <span style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta, textAlign: 'right', paddingRight: 2 }}>
+              Vincular →
+            </span>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
-/** Lo ya resuelto a mano, con su deshacer. Un vínculo equivocado que no se puede sacar es peor que
- *  el pendiente: el costo queda imputado a un proveedor que nunca facturó eso. */
+/**
+ * LO YA RESUELTO A MANO, CON SU DESHACER.
+ *
+ * No está en el mockup y se conserva a propósito: un vínculo equivocado que no se puede sacar es
+ * peor que el pendiente, porque el costo queda imputado a un proveedor que nunca facturó eso y
+ * nadie vuelve a mirarlo. Sacarlo por fidelidad habría borrado la única marcha atrás de la única
+ * pantalla que escribe imputaciones. Va en la gramática del v2 —filos, sin caja— para que no se lea
+ * como un pedazo de otra pantalla.
+ */
 export function NombresResueltos({ resueltos, deshacer }: {
   resueltos: NombreResuelto[]
   deshacer: (aliasId: string) => Promise<ResultadoAccion>
@@ -66,26 +104,22 @@ export function NombresResueltos({ resueltos, deshacer }: {
   if (manuales.length === 0) return null
 
   return (
-    <section className="mt-8">
-      <Eyebrow className="mb-2">Resueltos a mano · {manuales.length}</Eyebrow>
+    <section style={{ marginTop: 28 }}>
+      <RotuloPanel cuenta={manuales.length}>Resueltos a mano</RotuloPanel>
       <div data-testid="cola-resueltos">
         {manuales.map((r) => (
           <div
             key={r.nombre_norm}
             data-testid="nombre-resuelto"
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-[#EFEEEA] py-2.5 last:border-0"
+            style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '8px 0', borderBottom: `1px solid ${V.lineaPanel}` }}
           >
-            <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.nombre_norm}</span>
-            <span className="text-[11.5px] text-muted">
-              {r.estado === 'no_es_proveedor'
-                ? <Nulo>no es un proveedor</Nulo>
-                : (r.proveedor_nombre ?? <Nulo>sin proveedor</Nulo>)}
+            <span className="min-w-0 flex-1 truncate font-mono" style={{ fontSize: '12px', color: V.tinta }}>{r.nombre_norm}</span>
+            <span style={{ fontSize: '12px', color: r.estado === 'no_es_proveedor' ? V.tenue : V.tintaSuave }}>
+              {r.estado === 'no_es_proveedor' ? 'no es un proveedor' : (r.proveedor_nombre ?? 'sin proveedor')}
             </span>
-            <Num className="text-faint">{r.comprobantes}</Num>
+            <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.tenue }}>{r.comprobantes}</span>
             {r.alias_id && (
-              <BotonAccion accion={deshacer} args={[r.alias_id]} testid="deshacer-resolucion">
-                Deshacer
-              </BotonAccion>
+              <BotonAccion accion={deshacer} args={[r.alias_id]} testid="deshacer-resolucion">Deshacer</BotonAccion>
             )}
           </div>
         ))}

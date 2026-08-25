@@ -4,6 +4,11 @@
 // de `obra_panel`, que lo calcula desde `costos_obra` por alias — no hay una columna de costo en
 // ninguna tabla de este módulo, y no debe haberla. Lo mismo con HH y con cobranza.
 
+import type { FechasDeActividad } from './fechas.ts'
+// La economía de la obra vive en su propio archivo y se reexporta acá: los consumidores siguen
+// importando de `@/features/obras/types` y no tienen que saber de la división.
+export type * from './economia.ts' 
+
 /** Las cinco etapas del ciclo de vida, en su orden. La etapa gobierna qué habilita el módulo. */
 export const ETAPAS = ['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre'] as const
 export type Etapa = (typeof ETAPAS)[number]
@@ -32,14 +37,31 @@ export interface ObraPanel {
   etapa: Etapa | null
   jefe_obra: string | null
   monto_contratado: number | null
+  // ═══ LAS FECHAS DE LA OBRA SON LAS DE SU PLAN (`obra_fechas`) ═══
+  // La envolvente de sus actividades; el campo del formulario queda de respaldo y viaja aparte como
+  // `*_declarado`. Antes la cabecera leía el formulario y el Resumen la envolvente: 8 de 11 obras
+  // decían dos fechas distintas.
   fecha_inicio_plan: string | null
   fecha_fin_plan: string | null
+  /** REAL: evidencia de las actividades o declaración PASADA. Nunca una fecha futura. */
   fecha_inicio_real: string | null
   fecha_fin_real: string | null
+  fecha_inicio_plan_declarado: string | null
+  fecha_fin_plan_declarado: string | null
+  fecha_inicio_real_declarado: string | null
+  fecha_fin_real_declarado: string | null
+  /** `plan de actividades` · `declarado en la obra` · `null` si no hay ninguna fecha. */
+  origen_fechas_plan: string | null
+  origen_inicio_real: string | null
+  /** Cuándo termina la obra al ritmo medido: el mayor forecast de sus actividades. */
+  forecast_fin: string | null
+  /** Actividades sin NINGUNA fecha. Es lo que falta programar, y se dice en todas las pantallas. */
+  n_actividades_sin_fecha: number
   drive_carpeta_id: string | null
   costo_real: number | null
   n_comprobantes: number | null
-  margen_sobre_contratado_pct: number | null
+  /** La porción del costo real con `area = 'personas'`. En 0: no tiene una hora adentro. */
+  costo_mano_de_obra: number | null
   /** Promedio sobre las actividades PLANIFICADAS (con fecha) que no son de resumen.
    *  Se calcula UNA vez, en la vista `obra_avance`, y de ahí lo leen también /chat y
    *  /control-obras: dos cálculos del mismo número fue el defecto que obligó a unificarlo. */
@@ -56,10 +78,13 @@ export interface ObraPanel {
 
 export type TipoActividad = 'tarea' | 'resumen' | 'hito'
 
+// Las fechas de la actividad tienen su propio archivo: son el contrato de una vista.
+export type { EstadoFecha, FechasDeActividad } from './fechas.ts'
+
 /** Una actividad del cronograma. `inicio_base`/`fin_base` es la línea base congelada: si están en
  *  null, la obra todavía no tiene plan aprobado y el desvío no se puede medir — se dice, no se
  *  dibuja un cero. */
-export interface Actividad {
+export interface Actividad extends FechasDeActividad {
   id: string
   obra_id: string
   /** LA IDENTIDAD: `sección/nombre`, derivada del contenido de la fila del tracker. No es la
@@ -165,6 +190,13 @@ export interface Actividad {
   dotacion_prevista?: number | null
   /** El análisis de la base maestra con el que se planificó. Sin él no hay rendimiento ni duración. */
   analisis_id?: string | null
+  /** La tarea tipo de la base maestra. Es la llave del histórico (`rendimiento_recomendado`). */
+  tarea_tipo_id?: string | null
+  /** La partida del presupuesto de la que salió. Con ella se llega al análisis CONGELADO. */
+  cotizacion_partida_id?: string | null
+  /** Marca lo que NO se comprime con más gente: curado, fraguado, secado. Sus `dias_plan` son días
+   *  fijos y entran aparte en la división HH ÷ capacidad. */
+  tiempo_tecnico?: boolean | null
 }
 
 /** Los cinco estados del tablero. `bloqueada` NO se guarda: sale de tener un impedimento abierto. */
@@ -307,7 +339,11 @@ export interface ReferenciaDrive {
 export interface DocumentoObra {
   drive_file_id: string
   rol: string | null
-  origen: 'confirmado' | 'inferido'
+  /** De dónde salió el vínculo. `carpeta_drive` NO es lo mismo que `confirmado`: es evidencia dura
+   *  —el archivo está adentro de la carpeta de Drive que declara la obra, alguien lo puso ahí— pero
+   *  nadie lo afirmó todavía. Mostrarlos con la misma palabra borraría exactamente la distinción
+   *  que permite saber qué falta revisar. */
+  origen: 'confirmado' | 'inferido' | 'carpeta_drive'
   tipo: TipoDrive
   name: string | null
   path: string | null
@@ -357,14 +393,29 @@ export interface PlanVsReal {
   desvio_costo_pct: number | null
   monto_contratado: number | null
   margen_esperado: number | null
-  margen_actual: number | null
+  // `margen_actual` NO ESTÁ: era `contratado − costo real`, que no es margen. Ver `EconomiaObra`.
   // Contrato
   certificado: number | null
   facturado: number | null
+  /** De `cobranzas`, no de `certificados` (que está vacía). Ver 20260822T6200. */
   cobrado: number | null
+  cobrado_neto: number | null
   pendiente_certificar: number | null
-  pendiente_cobrar: number | null
+  /** Lo agendado y todavía no cobrado. Reemplaza a `pendiente_cobrar`, que daba 0 sobre dos vacíos. */
+  por_cobrar_proyectado: number | null
+  n_cobranzas: number | null
+  // Plazo real y proyectado — la misma fuente que la cabecera de la ficha (`obra_fechas`).
+  inicio_real: string | null
+  fin_real: string | null
+  forecast_fin: string | null
+  desvio_forecast_dias: number | null
+  /** Actividades sin ninguna fecha: el plan que todavía no existe, contado. */
+  actividades_sin_fecha: number
+  origen_fechas_plan: string | null
+  /** El fin declarado a mano en la ficha de la obra. Se muestra rotulado, nunca como «el plan». */
+  fin_plan_declarado: string | null
 }
+
 
 /** Una persona del legajo. `personas` es la única fuente de nombres del plantel. */
 /** El plantel elegible, tal como lo publica `persona_plantel`: CINCO columnas y ninguna más. El

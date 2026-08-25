@@ -625,11 +625,14 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     // o en un contrato; si la búsqueda sólo mirara el comercial, no encontraría nada y el dato
     // recién cargado sería inútil. La fila que aparece sigue mostrando el nombre comercial.
     await page.getByTestId('buscar-cliente').fill('Sociedad Anónima')
-    await expect(page.getByTestId('clientes-tabla').locator('tbody tr')).toHaveCount(1)
+    // `fila-cliente` y no `tbody tr`: desde el porte de `25 · Clientes Cartera.dc.html` la tabla es
+    // una GRILLA con `role="row"`, porque el canónico fija los anchos de columna en px mezclados con
+    // fracciones y una `<table>` los reparte por contenido.
+    await expect(page.getByTestId('fila-cliente')).toHaveCount(1)
     await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
     await page.getByTestId('buscar-cliente').fill('')
 
-    const fila = page.getByTestId('clientes-tabla').locator('tr', { hasText: nombre })
+    const fila = page.getByTestId('fila-cliente').filter({ hasText: nombre })
     await expect(fila).not.toContainText(nombreResponsable)
     // Lo único que la fila lleva además del nombre es el conteo de obras: este cliente no tiene
     // ninguna, y por eso el guion.

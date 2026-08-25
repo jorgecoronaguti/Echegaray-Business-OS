@@ -9,7 +9,7 @@ import { CLAVES_VISTA, cookieDeVista, preferenciaDe } from '../services/vistaRec
 // ═══ EL DEFECTO QUE ESTO CORRIGE (19/08/2026, medido contra producción) ═══
 //
 // La preferencia se guardaba en el middleware: cada GET a `/obras` con claves de vista escribía la
-// cookie. Pero **Next precarga todos los `<Link>` que entran en pantalla**, y una precarga es un GET
+// cookie. Pero **Next precarga todos los `<Link prefetch={false}>` que entran en pantalla**, y una precarga es un GET
 // idéntico al de una navegación. La barra de filtros tiene seis pastillas, así que el navegador
 // guardaba seis preferencias sin que nadie tocara nada y ganaba la última en llegar: se elegía
 // «Terminación» y la vista volvía con `etapa=inicio` o con `etapa=` (la pastilla «Todas»).

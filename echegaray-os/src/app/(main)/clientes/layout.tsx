@@ -20,7 +20,10 @@ import { NavAdministracion } from '@/features/administracion/components/NavAdmin
 export default function ClientesLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <div className="mx-auto max-w-[1400px] px-4 pt-7 sm:px-6"><NavAdministracion /></div>
+      {/* A SANGRE, como en `/administracion`: la barra v2 es una banda blanca con filo inferior que
+          apoya en el header. Metida en un contenedor con `px-4 pt-7` quedaba flotando y el
+          contenido saltaba de costado al navegar entre las dos. */}
+      <NavAdministracion />
       {children}
     </>
   )

@@ -103,6 +103,35 @@ export async function getDirectorio(
   return { data: (data ?? []) as unknown as PersonaEnDirectorio[], error: null }
 }
 
+/**
+ * CUÁNTAS PERSONAS HAY EN CADA CORTE — el contador de las pastillas del canónico 19.
+ *
+ * Son cuatro `count` sin filas. Se leen aparte del listado a propósito: el contador de un filtro
+ * tiene que decir cuántas personas hay en ESE corte de la empresa, no cuántas de las que
+ * sobrevivieron a la búsqueda que estoy tecleando. Un chip que baja de 18 a 2 mientras escribo
+ * «Juan» no ayuda a decidir a dónde ir — que es lo único para lo que existe.
+ *
+ * `null` = no se pudo contar, y entonces la pastilla va sin número. Nunca 0: «Inactivos 0» afirma
+ * que nadie egresó nunca.
+ */
+export async function getConteosDeFiltro(
+  supabase: SupabaseClient,
+): Promise<Record<FiltroPersonal, number | null>> {
+  const head = { count: 'exact' as const, head: true }
+  const cuenta = async (c: PromiseLike<{ count: number | null; error: unknown }>) => {
+    const { count, error } = await c
+    return error ? null : count ?? null
+  }
+  const plantel = () => supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', true)
+  const [todos, enObra, sinAsignar, inactivos] = await Promise.all([
+    cuenta(plantel()),
+    cuenta(plantel().not('obra_actual_id', 'is', null)),
+    cuenta(plantel().is('obra_actual_id', null)),
+    cuenta(supabase.from('persona_directorio').select('*', head).eq('en_la_empresa', false)),
+  ])
+  return { plantel: todos, en_obra: enObra, sin_asignar: sinAsignar, inactivos }
+}
+
 export async function getPersona(supabase: SupabaseClient, id: string): Promise<ServiceResult<Persona | null>> {
   const { data, error } = await supabase.from('persona_legajo').select(COLUMNAS_FICHA).eq('id', id).maybeSingle()
   if (error) return { data: null, error: error.message }

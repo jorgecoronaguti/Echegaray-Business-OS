@@ -9,7 +9,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ObraPanel, ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
 import type {
-  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente, Responsable,
+  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente,
+  ObraDePanel, Responsable,
 } from '../types'
 import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
@@ -48,6 +49,77 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
     .order('nombre_comercial', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []).map((r) => normalizar(r as Record<string, unknown>)), error: null }
+}
+
+/**
+ * QUÉ LE ESTAMOS EJECUTANDO A CADA CLIENTE — la columna «EN EJECUCIÓN» del canónico 25.
+ *
+ * `cliente_panel.n_obras_activas` dice CUÁNTAS, no CUÁLES, y el número solo no sirve para lo que la
+ * columna contesta: «¿de qué me va a hablar si me llama?». Se resuelve con UNA lectura de
+ * `obra_panel` para toda la cartera, no una por fila.
+ *
+ * `estado = 'activa'` y no `estado <> 'cerrada'`: MEDIDO el 24/08/2026 contra la base, la suma de
+ * `n_obras_activas` (12) coincide exactamente con las obras en `activa`, no con las 13 que no están
+ * cerradas —Quattropani tiene una `pausada` y el panel le cuenta 0—. Con el otro criterio, la
+ * columna y el contador del filtro se contradirían en la misma fila.
+ *
+ * Un fallo NO tira la cartera: se devuelve el mapa vacío y la columna dice «sin cargar», que es lo
+ * cierto, en vez de afirmar que el cliente no tiene nada en ejecución.
+ */
+export async function getObrasEnEjecucion(
+  supabase: SupabaseClient,
+): Promise<Map<string, { obra_id: string; nombre: string }[]>> {
+  const { data } = await supabase
+    .from('obra_panel')
+    .select('obra_id, nombre, cliente_id')
+    .eq('estado', 'activa')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  const por = new Map<string, { obra_id: string; nombre: string }[]>()
+  for (const o of data ?? []) {
+    const cliente = o.cliente_id as string | null
+    if (!cliente) continue
+    por.set(cliente, [...(por.get(cliente) ?? []), { obra_id: o.obra_id as string, nombre: o.nombre as string }])
+  }
+  return por
+}
+
+/**
+ * TODAS las obras de TODOS los clientes, en UNA consulta, para el panel lateral del canónico 00.
+ *
+ * El panel se abre al tocar una fila y tiene que dibujarse SIN VIAJE: con `?cliente=` cada fila que
+ * alguien toca comparando dos clientes cuesta un round-trip y un esqueleto. Con una sola consulta
+ * más —la misma vista que ya lee la lista, sin filtro de estado— la selección es instantánea.
+ *
+ * Distinto de `getObrasEnEjecucion`, que trae SÓLO `activa` porque alimenta la columna EN EJECUCIÓN.
+ * Acá entran también las terminadas: el panel muestra la relación completa con ese cliente.
+ *
+ * Un fallo devuelve el mapa vacío y el panel dice «sin obras cargadas» — nunca inventa cero.
+ */
+export async function getObrasPorCliente(
+  supabase: SupabaseClient,
+): Promise<Map<string, ObraDePanel[]>> {
+  const { data } = await supabase
+    .from('obra_panel')
+    .select('obra_id, nombre, cliente_id, estado, avance_pct')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  const por = new Map<string, ObraDePanel[]>()
+  for (const o of data ?? []) {
+    const cliente = o.cliente_id as string | null
+    if (!cliente) continue
+    por.set(cliente, [
+      ...(por.get(cliente) ?? []),
+      {
+        obra_id: o.obra_id as string,
+        nombre: o.nombre as string,
+        estado: o.estado as string,
+        // NULL NO ES 0. Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe.
+        avance_pct: (o.avance_pct as number | null) ?? null,
+      },
+    ])
+  }
+  return por
 }
 
 export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResultOpcional<ClientePanel>> {
@@ -91,9 +163,28 @@ export async function getContactos(supabase: SupabaseClient, clienteId: string):
  * Sale de `perfiles`, que es la misma tabla que decide el rol de quien entra: un texto libre haría
  * que «Rodrigo», «R. Echegaray» y «rodri» fueran tres responsables distintos y que la pregunta
  * «¿de quién es este cliente?» dejara de tener respuesta.
+ *
+ * ═══ Y NO OFRECE LAS IDENTIDADES DE PRUEBA (22/08/2026) ═══
+ *
+ * `perfiles` guarda también las tres cuentas con las que la suite mide la cerradura —«Usuario de
+ * prueba E2E», «QA Jefe», «QA Campo»—. Sin este filtro, el desplegable de responsable las ofrecía
+ * al lado de Rodrigo y de Jorge, y nombrar responsable a una cuenta de QA es una decisión de
+ * negocio tomada por accidente.
+ *
+ * Se filtra por `es_prueba`, no por el texto del nombre: hay un proveedor real llamado CHAPA
+ * SEMILLA MELO y archivos reales llamados «Ejemplo …». Filtrar por texto es filtrar datos reales.
+ *
+ * ESTO ES UN SELECTOR, no un listado de auditoría: en `/administracion/usuarios` y en cualquier
+ * rastro de autoría esas cuentas SIGUEN viéndose — pueden entrar, así que tienen que verse.
+ *
+ * EXIGE LA MIGRACIÓN `20260822T6400_lo_que_existe_para_probar_se_declara_…sql` APLICADA. Sin la
+ * columna, PostgREST devuelve 42703 y la pantalla de clientes se queda sin responsables: el error
+ * es ruidoso a propósito, porque el modo de falla silencioso —seguir mostrando las cuentas de QA—
+ * es el que se está corrigiendo.
  */
 export async function getResponsables(supabase: SupabaseClient): Promise<ServiceResult<Responsable[]>> {
-  const { data, error } = await supabase.from('perfiles').select('id, nombre, rol').order('nombre')
+  const { data, error } = await supabase
+    .from('perfiles').select('id, nombre, rol').eq('es_prueba', false).order('nombre')
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Responsable[], error: null }
 }
@@ -196,8 +287,11 @@ export async function getActividadCliente(
 ): Promise<ServiceResult<LineaDeTiempo>> {
   const [ficha, obras, contactos, documentos, notas] = await Promise.all([
     supabase.from('clientes').select('nombre_comercial, created_at, updated_at').eq('id', clienteId).maybeSingle(),
-    supabase.from('obra_canonica')
-      .select('id, nombre, created_at, fecha_inicio_real, fecha_fin_real')
+    // Las fechas reales salen de `obra_panel` —o sea de `obra_fechas`— y no de la tabla: el CRM
+    // llegó a publicar «arrancó la obra» con fecha de pasado mañana, porque el campo del formulario
+    // acepta cualquier cosa. Acá no se filtra nada a mano: lo que la fuente no publica, no existe.
+    supabase.from('obra_panel')
+      .select('obra_id, nombre, creada_en, fecha_inicio_real, fecha_fin_real')
       .eq('cliente_id', clienteId),
     supabase.from('cliente_contacto').select('id, nombre, rol, creado_en').eq('cliente_id', clienteId),
     supabase.from('cliente_documento').select('drive_file_id, rol, origen, creado_en').eq('cliente_id', clienteId),
@@ -224,8 +318,8 @@ export async function getActividadCliente(
       rol: (c.rol as string) ?? null, creado_en: (c.creado_en as string) ?? null,
     })),
     obras: obrasDelCliente.map((o) => ({
-      obra_id: o.id as string, nombre: o.nombre as string,
-      creada_en: (o.created_at as string) ?? null,
+      obra_id: o.obra_id as string, nombre: o.nombre as string,
+      creada_en: (o.creada_en as string) ?? null,
       fecha_inicio_real: (o.fecha_inicio_real as string) ?? null,
       fecha_fin_real: (o.fecha_fin_real as string) ?? null,
     })),
@@ -249,7 +343,7 @@ async function certificadosDe(
   obras: Record<string, unknown>[],
 ): Promise<FuentesActividad['certificados']> {
   if (!obras.length) return []
-  const nombrePorId = new Map(obras.map((o) => [o.id as string, o.nombre as string]))
+  const nombrePorId = new Map(obras.map((o) => [o.obra_id as string, o.nombre as string]))
   const { data } = await supabase
     .from('certificados')
     .select('id, numero, obra_canonica_id, fecha_certificacion, monto_certificado, fecha_facturacion, monto_facturado, fecha_cobranza, monto_cobrado')

@@ -13,10 +13,10 @@
 // puede decir esta pantalla.
 
 import { FormAccion, BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
-import { lecturaProductividad } from '../services/productividadHH'
+import { senalProductividad } from '../services/productividadHH'
 import { TIPOS_HORA, TIPO_HORA_LABEL, type TipoHora } from '../services/tipoHora'
 
 const hh = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }))
@@ -31,26 +31,33 @@ export function TablaProductividad({ actividades }: { actividades: ActividadHH[]
   if (conAlgo.length === 0) {
     return (
       <Vacio>
-        Ninguna actividad tiene HH plan cargadas ni horas imputadas. El plan se carga en
-        Planificación; las horas, con «+ Imputar horas».
+        {/* 22/08/2026 · «Planificación» dejó de ser un lugar: el plan se edita en Cronograma, sobre
+            las MISMAS actividades. Mandar a una pestaña que no existe es mandar a nadie. */}
+        Ninguna actividad tiene HH plan cargadas ni horas imputadas. Las HH plan se cargan en
+        Cronograma, sobre la actividad; las horas, con «+ Imputar horas».
       </Vacio>
     )
   }
   return (
     <Tabla testid="tabla-productividad" minWidth={620}>
       <THead>
-        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th>Lectura</Th>
+        {/* La columna ya no se llama «Lectura» ni contiene una frase: contiene la EXCEPCIÓN, y en la
+            actividad que va como se esperaba queda vacía a propósito (Design 23/08). */}
+        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th />
       </THead>
       <tbody>
-        {conAlgo.map((a) => (
-          <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
-            <Td fuerte>{a.nombre}</Td>
-            <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
-            <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
-            <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
-            <Td className="text-[11.5px] text-muted">{lecturaProductividad(a)}</Td>
-          </Tr>
-        ))}
+        {conAlgo.map((a) => {
+          const senal = senalProductividad(a)
+          return (
+            <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
+              <Td fuerte>{a.nombre}</Td>
+              <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
+              <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
+              <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
+              <Td>{senal && <Estado tono={senal.tono} clave={senal.texto}>{senal.texto}</Estado>}</Td>
+            </Tr>
+          )
+        })}
       </tbody>
     </Tabla>
   )
@@ -129,23 +136,36 @@ function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: s
 }
 
 function SelectActividad({ actividades }: { actividades: Actividad[] }) {
+  // DOS ACTIVIDADES CON EL MISMO NOMBRE SON INDISTINGUIBLES EN UN SELECT (22/08, E2E Quattropani):
+  // la del tracker y la convertida del presupuesto se llaman igual, y 8 HH fueron a parar a la
+  // equivocada. Cuando el nombre se repite, la opción dice también de dónde viene — el usuario
+  // decide con un dato, no con una moneda.
+  const repetidos = new Set(
+    [...actividades.reduce((m, a) => m.set(a.nombre, (m.get(a.nombre) ?? 0) + 1), new Map<string, number>())]
+      .filter(([, n]) => n > 1).map(([nombre]) => nombre),
+  )
+  const rotulo = (a: Actividad) => repetidos.has(a.nombre)
+    ? `${a.nombre} · ${a.seccion?.trim() || 'sin rubro'} (${a.id.slice(0, 4)})`
+    : a.nombre
   return (
     <select name="actividad_id" defaultValue="" className={CAMPO}>
       <option value="">toda la obra</option>
-      {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+      {actividades.map((a) => <option key={a.id} value={a.id}>{rotulo(a)}</option>)}
     </select>
   )
 }
 
 /** CARGA A: una persona, un día. */
 export function FormIndividual({
-  personas, asignadas, actividades, imputar,
+  personas, asignadas, actividades, imputar, causas = [],
 }: {
   personas: Persona[]
   /** Los ids de quienes están asignados a ESTA obra hoy. Se muestran primero. */
   asignadas?: string[]
   actividades: Actividad[]
   imputar: AccionFormulario
+  /** El catálogo de causas de desvío (`causa_desvio`): una hora improductiva lleva la suya. */
+  causas?: { clave: string; nombre: string }[]
 }) {
   // ═══ LOS DE ESTA OBRA ARRIBA, EL RESTO DEL PLANTEL DESPUÉS (19/08/2026, QA) ═══
   //
@@ -193,6 +213,25 @@ export function FormIndividual({
         <Campo rotulo="Observación" className="col-span-2">
           <input name="notas" maxLength={300} className={CAMPO} />
         </Campo>
+        {/* §19 (22/08): la hora improductiva se declara ACÁ, con su causa — antes el modelo las
+            distinguía y ninguna pantalla las escribía. Plegado: el caso común es la hora normal. */}
+        {causas.length > 0 && (
+          <details className="col-span-2" data-testid="hh-improductiva">
+            <summary className="cursor-pointer text-[12px] text-muted">Hora improductiva (con causa)</summary>
+            <div className="mt-2 grid grid-cols-2 gap-2.5">
+              <label className="flex items-center gap-2 text-[12.5px] text-ink">
+                <input type="checkbox" name="improductiva" className="h-3.5 w-3.5" data-testid="marca-improductiva" />
+                Improductiva
+              </label>
+              <Campo rotulo="Causa">
+                <select name="causa_desvio" defaultValue="" className={CAMPO} data-testid="causa-desvio">
+                  <option value="">elegir la causa</option>
+                  {causas.map((c) => <option key={c.clave} value={c.clave}>{c.nombre}</option>)}
+                </select>
+              </Campo>
+            </div>
+          </details>
+        )}
       </div>
     </FormAccion>
   )
@@ -269,10 +308,13 @@ export function FormMasiva({
         ))}
       </div>
 
-      <p className="mt-2 text-[11px] text-faint">
-        El que no trabajó se deja en blanco o en cero: no se imputa. Quien ya tenga horas cargadas ese
-        día se saltea y se avisa cuántos fueron.
-      </p>
+      {/* 22/08/2026 · La regla de la carga masiva se pliega: quien imputa la cuadrilla todos los
+          días no la relee, y el resultado del envío —cuántos entraron y cuántos se saltearon— ya
+          dice lo mismo DESPUÉS de actuar, que es cuando importa. */}
+      <Ayuda titulo="Quién queda afuera" testid="ayuda-hh-masiva">
+        El que no trabajó se deja en blanco o en cero: no se imputa. Quien ya tenga horas cargadas
+        ese día se saltea y se avisa cuántos fueron.
+      </Ayuda>
       <Campo rotulo="Observación" className="mt-2 block">
         <input name="notas" maxLength={300} className={CAMPO} />
       </Campo>

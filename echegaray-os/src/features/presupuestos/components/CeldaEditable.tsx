@@ -69,10 +69,13 @@ export function CeldaEditable({
         placeholder={placeholder}
         inputMode={mono ? 'decimal' : undefined}
         aria-label={campo}
+        title={valor || undefined}
         data-testid={testid}
         onBlur={(e) => { if (e.target.value !== valor) form.current?.requestSubmit() }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-        className={`${ancho} min-w-0 rounded-[4px] border border-transparent bg-transparent px-1 py-0.5 text-[11.5px] text-ink-soft outline-none transition-colors placeholder:text-faint hover:border-line focus:border-marca focus:bg-surface disabled:cursor-not-allowed disabled:text-faint ${
+        // `text-ellipsis`: una descripción más larga que la celda se recortaba en seco y parecía
+        // completa (QA 24/08). Con foco el navegador vuelve a mostrar desde el cursor, como debe.
+        className={`${ancho} min-w-0 truncate rounded-[4px] border border-transparent bg-transparent px-1 py-0.5 text-[11.5px] text-ink-soft outline-none transition-colors placeholder:text-faint hover:border-line focus:border-marca focus:bg-surface disabled:cursor-not-allowed disabled:text-faint ${
           alineacion === 'derecha' ? 'text-right' : ''
         } ${mono ? 'font-mono tabular-nums' : ''}`}
       />

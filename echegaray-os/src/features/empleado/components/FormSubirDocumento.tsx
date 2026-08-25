@@ -66,15 +66,16 @@ export function FormSubirDocumento({
       {nombre && <p className="mt-2 text-[12.5px] text-ink" data-testid="archivo-elegido">{nombre}</p>}
       {estado.error && <p className="mt-3 text-[12.5px] text-neg" data-testid="subir-error">{estado.error}</p>}
 
+      {/* APAGADO, EL BOTÓN DICE QUÉ FALTA. «Enviar» en gris obliga a buscar la explicación abajo;
+          «Adjuntá el archivo» ES la explicación, en el único lugar donde el dedo ya está mirando. */}
       <button
         type="submit"
         disabled={enviando || !nombre}
         data-testid="enviar-documento"
         className="mt-6 flex h-[52px] w-full items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] disabled:opacity-50 lg:w-auto lg:px-6"
       >
-        {enviando ? 'Enviando…' : 'Enviar'}
+        {enviando ? 'Enviando…' : nombre ? 'Enviar' : 'Adjuntá el archivo'}
       </button>
-      {!nombre && <p className="mt-2 text-center text-[11.5px] text-faint lg:text-left">Se habilita cuando adjuntás el archivo</p>}
     </form>
   )
 }

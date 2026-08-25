@@ -101,10 +101,12 @@ test('el Resumen abre con CUATRO cifras y sin cadenas técnicas de base de datos
   for (const k of ['Avance físico', 'Plazo', 'HH', 'Costo real']) {
     await expect(titular.getByText(k, { exact: true })).toBeVisible()
   }
-  // «Requiere atención» se fue del Resumen el 20/08: publicaba los mismos atrasos y los mismos
-  // desvíos que «Lecturas del plan», que además dice de qué dato sale cada uno. Lo que este test
-  // mide —que el Resumen publique lo que está mal y lleve al dato— lo mide sobre la que quedó.
-  await expect(page.getByTestId('plan-vs-real')).toBeVisible()
+  // 22/08 (overhaul UX): las lecturas completas del plan quedaron PLEGADAS al final —lo normal es
+  // silencioso— y lo que está mal se publica arriba en «Atención» con la MISMA regla
+  // (`lineasPlanVsReal`). El test mide que el pliegue exista y que la sección de excepción esté:
+  // una de las dos («atencion-obra» con ítems, o «sin-atencion» cuando no hay nada mal).
+  await expect(page.getByTestId('lecturas-del-plan')).toBeVisible()
+  await expect(page.getByTestId('atencion-obra').or(page.getByTestId('sin-atencion'))).toBeVisible()
 
   // ═══ NADA DE EXPLICACIONES TÉCNICAS PERMANENTES (regla visual del dueño) ═══
   // El resumen publicaba `obra_actividad.fin_plan anterior a hoy…` como texto fijo. El origen no se

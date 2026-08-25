@@ -13,6 +13,13 @@ import assert from 'node:assert/strict'
 import { marcasDeVaciado, noReponerPorCeldas, olvidarMarcas } from './no-reponer.mjs'
 import { guardarHuellas } from './huella-celda.mjs'
 import { query } from './db.mjs'
+import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
+
+// ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA A PROPÓSITO: la marca de vaciado vive en SQL y lo que
+// se mide es que `updateCells` de la corrida siguiente NO reponga la celda. Con rollback no hay
+// corrida siguiente que probar. Se declara — sin declaración la guarda lo frena.
+declararEscrituraEnPrueba('la marca de vaciado se prueba contra la tabla real porque lo que se mide '
+  + 'es que la corrida siguiente no reponga la celda; file_id sintético y borrado al final')
 
 const FILE = `TEST_NOREPONER_${process.pid}`
 const TAB = 'Cheques Emitidos'

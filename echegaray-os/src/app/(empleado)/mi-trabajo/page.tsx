@@ -4,35 +4,50 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso, Estado, Plegable } from '@/shared/components/ds'
-import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
-import { Fila, Nada } from '@/features/empleado/components/Filas'
+import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
+import { C, R, pct } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
+import { AvisoError, BarraAvance, Pastilla, Vacio, mono } from '@/shared/components/movil/Piezas'
 import {
-  getDocumentosDeMiObra, getMiCuadrilla, getMisImpedimentos, getMiObra, getMisTareas,
+  getMiCuadrilla, getMisImpedimentos, getMiObra, getMisTareas,
 } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
-import { clasificar, lecturaDeEstado, lecturaDeFecha } from '@/features/empleado/services/tareas'
-import { legible } from '@/features/empleado/services/fecha'
+import { clasificar, estaCompleta, restante } from '@/features/empleado/services/tareas'
 import type { MiTarea } from '@/features/empleado/types'
 
-// «MI TRABAJO» — la obra donde estoy, lo que tengo que hacer y con quién.
+// M03 · MI TRABAJO — porte literal de `M03 · Mi trabajo.dc.html`.
 //
-// ═══ PROGRESSIVE DISCLOSURE, Y LA EXCEPCIÓN QUE IMPORTA ═══
+// ═══ TRES FILTROS Y NO CUATRO ═══
 //
-// Las secciones vienen plegadas: en un teléfono, cinco bloques abiertos son cinco pantallas de
-// desplazamiento y la de arriba deja de leerse. La excepción es la regla §4 del Design System —**un
-// problema crítico se muestra aunque su sección esté plegada**—: «Impedimentos» cerrada esconde que
-// el trabajo está frenado, y esconder eso es peor que no tener la sección.
+// «Para hoy» es lo que se trabaja hoy —incluido lo vencido, que se trabaja más que ninguna—.
+// «Terminadas» es lo hecho. «Todas» incluye lo planificado a futuro, que en este OS son 212 de 349
+// actividades sin fecha: si eso cayera en «Para hoy», el lunes a la mañana la pantalla mostraría
+// doscientas tareas y ninguna sería la del muro sur.
 //
-// ═══ LO QUE ESTA PANTALLA NO MUESTRA, Y NO POR OLVIDO ═══
+// ═══ LA TARJETA DICE POR QUÉ ESTÁ PARADA, NO SÓLO QUE LO ESTÁ ═══
 //
-// Contratado, presupuesto, margen, certificado: ninguno. Y no porque la pantalla no los dibuje —eso
-// sería seguridad cosmética— sino porque `mi_obra` no los SELECCIONA y `obra_canonica` le niega
-// `monto_contratado` a `authenticated` por grant de columna. Por PostgREST tampoco salen.
+// La nota del mockup: «Sabe por qué no puede avanzar sin abrir nada». El renglón rojo lleva la
+// descripción real del impedimento —«falta bloque 18×18»—, no la palabra «frenada». La barra se
+// pinta roja por lo mismo: un 74 % con el material faltante no es una buena noticia.
+//
+// ═══ LO QUE EL MOCKUP NO DIBUJA Y NO SE BORRA ═══
+//
+// Pedidos de materiales, herramientas, movimientos y el parte de campo son pantallas vivas que el
+// nivel campo usa hoy. El mockup no las dibuja porque describe el día del empleado, no el
+// inventario del OS — y borrarlas para «cumplir el diseño» sería eliminar funcionalidad. Bajan al
+// pie, en texto, después de la última tarjeta.
 
 export const dynamic = 'force-dynamic'
 
-export default async function MiTrabajoPage() {
+type Filtro = 'hoy' | 'terminadas' | 'todas'
+const FILTROS: Filtro[] = ['hoy', 'terminadas', 'todas']
+const ETIQUETA: Record<Filtro, string> = { hoy: 'Para hoy', terminadas: 'Terminadas', todas: 'Todas' }
+
+export default async function MiTrabajoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ver?: string }>
+}) {
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
@@ -46,174 +61,138 @@ export default async function MiTrabajoPage() {
     )
   }
 
+  const { ver } = await searchParams
+  const filtro: Filtro = FILTROS.includes(ver as Filtro) ? (ver as Filtro) : 'hoy'
   const hoy = await hoyISO()
   const [obras, cuadrilla, tareas, impedimentos] = await Promise.all([
     getMiObra(supabase), getMiCuadrilla(supabase), getMisTareas(supabase), getMisImpedimentos(supabase),
   ])
   const obra = obras.data?.[0] ?? null
-  const papeles = await (obra ? getDocumentosDeMiObra(supabase, obra.id) : Promise.resolve({ data: [], error: null }))
   const grupos = clasificar(tareas.data ?? [], hoy)
+  const todas = [...grupos.hoy, ...grupos.proximas, ...grupos.completadas]
+  const lista = filtro === 'hoy' ? grupos.hoy : filtro === 'terminadas' ? grupos.completadas : todas
   const error = obras.error ?? tareas.error ?? impedimentos.error ?? null
 
+  // POR QUÉ ESTÁ PARADA, POR ACTIVIDAD. Se toma el primero: la tarjeta tiene un renglón, y dos
+  // motivos apilados en 390px empujan la barra fuera de la vista. El resto se ve al abrir la tarea.
+  const porQue = new Map<string, string>()
+  for (const i of impedimentos.data ?? []) {
+    if (i.actividad_id && !porQue.has(i.actividad_id)) {
+      porQue.set(i.actividad_id, i.descripcion ?? 'sin describir')
+    }
+  }
+
+  // LA CUENTA DE UN CHIP QUE NO SE PUDO LEER VA `null`, NO 0. Un «Todas 0» sobre una lectura que
+  // falló afirma que la persona no tiene ni una tarea asignada, que es una acusación, no un dato.
+  const cuenta = (n: number) => (tareas.error ? null : n)
+
   return (
-    <PantallaEmpleado titulo="Mi trabajo" sub={obra?.nombre}>
-      {error && <Aviso tono="neg" titulo="No se pudo leer todo." testid="trabajo-error">{error}</Aviso>}
-
-      <Seccion titulo="OBRA ACTUAL">
-        {obra ? (
-          <div data-testid="obra-actual">
-            <p className="text-[16px] font-medium text-ink">{obra.nombre}</p>
-            <p className="mt-0.5 text-[12.5px] text-faint">
-              {obra.etapa ? `Etapa ${obra.etapa}` : 'sin etapa cargada'} · {obra.ubicacion ?? 'sin ubicación cargada'}
-            </p>
-            <div className="mt-3 flex gap-8">
-              <span>
-                <span className="block text-[11px] text-faint">Responsable</span>
-                <span className="text-[13.5px] text-ink">{obra.jefe_obra ?? <span className="text-faint">sin cargar</span>}</span>
-              </span>
-              <span>
-                <span className="block text-[11px] text-faint">Cuadrilla</span>
-                <span className="text-[13.5px] text-ink">
-                  {cuadrilla.data?.[0]?.cuadrilla ?? obra.cuadrilla ?? <span className="text-faint">sin cuadrilla</span>}
-                </span>
-              </span>
-            </div>
-          </div>
-        ) : (
-          <Nada testid="sin-obra">
-            No tenés ninguna obra asignada hoy. Las asignaciones las carga Administración desde Personal.
-          </Nada>
-        )}
-      </Seccion>
-
-      <div className="mt-6 border-t border-[#EFEEEA]">
-        <Plegable
-          titulo="Mis tareas"
-          cuenta={grupos.hoy.length}
-          testid="seccion-mis-tareas"
-          abiertoPorDefecto
-          alerta={grupos.hoy.some((t) => t.impedimentos > 0) ? 'hay trabajo frenado' : undefined}
-        >
-          <ListaDeTareas tareas={grupos.hoy} hoy={hoy} vacio="No tenés tareas para hoy." />
-          <Link href="/mi-trabajo/tareas" className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ir-mis-tareas">
-            Ver todas mis tareas →
-          </Link>
-        </Plegable>
-
-        <Plegable titulo="Próximos trabajos" cuenta={grupos.proximas.length} testid="seccion-proximos">
-          <ListaDeTareas tareas={grupos.proximas.slice(0, 10)} hoy={hoy} vacio="No hay trabajos planificados a tu nombre." />
-        </Plegable>
-
-        <Plegable
-          titulo="Impedimentos de mi trabajo"
-          cuenta={impedimentos.data?.length ?? 0}
-          testid="seccion-impedimentos"
-          alerta={impedimentos.data && impedimentos.data.length > 0 ? `${impedimentos.data.length} abierto${impedimentos.data.length === 1 ? '' : 's'}` : undefined}
-        >
-          {impedimentos.data && impedimentos.data.length > 0 ? (
-            impedimentos.data.map((i) => (
-              <Fila
-                key={i.id}
-                testid="impedimento"
-                href={i.actividad_id ? `/mi-trabajo/tareas/${i.actividad_id}` : undefined}
-                titulo={i.descripcion ?? 'Impedimento'}
-                detalle={i.actividad ?? 'sin actividad'}
-                senal="abierto"
-                senalTono="neg"
-              />
-            ))
-          ) : (
-            <Nada testid="sin-impedimentos">
-              No hay nada frenando tu trabajo. Si aparece algo, lo reportás desde la tarea.
-            </Nada>
-          )}
-        </Plegable>
-
-        <Plegable titulo="Planos y documentos de obra" cuenta={papeles.data?.length ?? 0} testid="seccion-papeles">
-          {papeles.data && papeles.data.length > 0 ? (
-            papeles.data.map((d) => (
-              <Fila
-                key={d.drive_file_id}
-                testid="papel-de-obra"
-                href={`https://drive.google.com/file/d/${d.drive_file_id}/view`}
-                titulo={d.nombre ?? 'Documento'}
-                detalle={d.rol ?? 'sin categoría'}
-              />
-            ))
-          ) : (
-            <Nada testid="sin-papeles">Todavía no hay planos ni documentos cargados en esta obra.</Nada>
-          )}
-        </Plegable>
-
-        {/* ═══ LO OPERATIVO QUE YA EXISTÍA, Y QUE NO SE SACA ═══
-            Pedidos de materiales, Herramientas y Movimientos son pantallas reales que el nivel campo
-            usa hoy (`CAMPO_RUTAS_PERMITIDAS`). El handoff del perfil no las menciona porque describe
-            el día del empleado, no el inventario del OS — y sacarlas para «cumplir el diseño» sería
-            eliminar funcionalidad viva. Bajan a una sección plegada: siguen a un toque de distancia. */}
-        <Plegable titulo="Pedidos, herramientas y partes" testid="seccion-operacion">
-          <Fila href="/integraciones/pedidos-materiales" testid="ir-pedidos" titulo="Pedir material" detalle="Y ver el estado de lo pedido" />
-          <Fila href="/integraciones/herramientas" testid="ir-herramientas" titulo="Herramientas" detalle="Qué hay en obra" />
-          <Fila href="/integraciones/movimientos" testid="ir-movimientos" titulo="Movimientos" detalle="Registrar un traslado" />
-          <Fila href="/campo" testid="ir-campo" titulo="Campo" detalle="El parte del día y los impedimentos de la obra" />
-        </Plegable>
-      </div>
-
-      <Seccion titulo="MI CUADRILLA">
-        {cuadrilla.data && cuadrilla.data.length > 0 ? (
-          <div data-testid="lista-cuadrilla">
-            {cuadrilla.data.map((c) => (
-              <Fila
-                key={c.nombre_completo}
-                testid="companero"
-                titulo={
-                  <>
-                    {c.nombre_completo}
-                    {c.soy_yo && <span className="text-faint"> · vos</span>}
-                  </>
-                }
-                detalle={legible(c.rol) ?? 'sin categoría'}
-                senal={c.es_responsable ? <Estado tono="curso">responsable</Estado> : undefined}
+    <>
+      <PantallaEmpleado
+        titulo="Mi trabajo"
+        sub={`${obra?.nombre ?? 'sin obra asignada'} · ${cuadrilla.data?.[0]?.cuadrilla ?? obra?.cuadrilla ?? 'sin cuadrilla'}`}
+        franja={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, overflowX: 'auto' }} data-testid="filtros-trabajo">
+            {FILTROS.map((f) => (
+              <Pastilla
+                key={f}
+                testid={`chip-${f}`}
+                href={f === 'hoy' ? '/mi-trabajo' : `/mi-trabajo?ver=${f}`}
+                texto={ETIQUETA[f]}
+                cuenta={cuenta(f === 'hoy' ? grupos.hoy.length : f === 'terminadas' ? grupos.completadas.length : todas.length)}
+                activa={f === filtro}
               />
             ))}
           </div>
-        ) : (
-          <Nada testid="sin-companeros">
-            No estás en ninguna cuadrilla. Las arma Administración desde Personal → Cuadrillas.
-          </Nada>
-        )}
-        <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
-          Ves quién trabaja con vos, nada más: los legajos y documentos de tus compañeros no se abren
-          desde acá.
-        </p>
-      </Seccion>
-    </PantallaEmpleado>
+        }
+      >
+        {error && <AvisoError testid="trabajo-error">{error}</AvisoError>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="lista-tareas">
+          {lista.length === 0 ? (
+            <Vacio testid="sin-tareas">
+              {filtro === 'terminadas'
+                ? 'Todavía no terminaste ninguna tarea.'
+                : 'No tenés tareas en este filtro. Una actividad es tuya cuando sos su responsable o es de tu cuadrilla; lo asigna el jefe de obra.'}
+            </Vacio>
+          ) : lista.map((t) => <TarjetaDeTarea key={t.id} t={t} porQue={porQue.get(t.id) ?? null} />)}
+        </div>
+
+        <div style={{ marginTop: 28, borderTop: `1px solid ${C.inerte}`, paddingTop: 14 }} data-testid="mas-de-obra">
+          <p style={{ fontSize: 11, color: C.faint, letterSpacing: '.06em' }}>TAMBIÉN DESDE ACÁ</p>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontSize: 12.5 }}>
+            <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
+            <Link href="/integraciones/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
+            <Link href="/integraciones/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
+            <Link href="/campo" data-testid="ir-campo" style={{ color: C.muted }}>Parte de campo →</Link>
+          </div>
+        </div>
+      </PantallaEmpleado>
+    </>
   )
 }
 
-function ListaDeTareas({ tareas, hoy, vacio }: { tareas: MiTarea[]; hoy: string; vacio: string }) {
-  if (tareas.length === 0) return <Nada>{vacio}</Nada>
+/**
+ * La tarjeta de un frente: qué hay que hacer, cuánto falta EN SU UNIDAD, y el avance como barra.
+ *
+ * `restante()` devuelve `null` sin las dos puntas y entonces se escribe «sin medición»: sin
+ * objetivo daría «0,00 m² restantes» —la tarea terminada— y sin porcentaje el objetivo entero.
+ */
+function TarjetaDeTarea({ t, porQue }: { t: MiTarea; porQue: string | null }) {
+  const frenada = porQue != null || t.impedimentos > 0
+  const hecha = estaCompleta(t)
+  const icono = hecha ? 'ok' : frenada ? 'bloqueo' : t.estado === 'en_curso' ? 'reloj' : 'pendiente'
+  const color = hecha ? C.pos : frenada ? C.neg : t.estado === 'en_curso' ? C.info : C.tenue
   return (
-    <>
-      {tareas.map((t) => {
-        const e = lecturaDeEstado(t)
-        const f = lecturaDeFecha(t, hoy)
-        return (
-          <Fila
-            key={t.id}
-            testid="tarea"
-            href={`/mi-trabajo/tareas/${t.id}`}
-            titulo={t.nombre}
-            detalle={
-              <>
-                {t.seccion ?? t.obra}
-                {t.impedimentos > 0 && <span className="text-neg"> · frenada</span>}
-              </>
-            }
-            senal={<Estado tono={e.tono} clave={t.estado ?? ''}>{e.texto}</Estado>}
-            accion={<span className={`whitespace-nowrap text-[12px] ${f.vencida ? 'text-neg' : 'text-faint'}`}>{f.texto}</span>}
+    <Link
+      href={`/mi-trabajo/tareas/${t.id}`}
+      data-testid="tarjeta-tarea"
+      style={{
+        background: C.surface, border: `1px solid ${frenada ? C.negBorde : C.linea}`,
+        borderRadius: R.tarjeta, padding: 14, display: 'block', color: C.ink,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
+        <span style={{ display: 'flex', color, flexShrink: 0, marginTop: 2 }}>
+          <Icono nombre={icono} tamano={20} />
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: hecha ? C.muted : C.ink, lineHeight: 1.3 }}>
+            {t.nombre}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, color: C.muted }}>{t.seccion ?? t.obra ?? 'sin sección'}</span>
+            <span style={{ color: C.lineaFuerte }}>·</span>
+            <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>{restante(t) ?? 'sin medición'}</span>
+          </div>
+        </div>
+        <span style={{ display: 'flex', color: C.tenue, flexShrink: 0, marginTop: 4 }}>
+          <Icono nombre="siguiente" tamano={18} />
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <BarraAvance
+            pct={t.pct}
+            color={hecha ? C.pos : frenada ? C.neg : (t.pct ?? 0) > 0 ? C.info : C.lineaFuerte}
           />
-        )
-      })}
-    </>
+        </div>
+        <span style={{ ...mono, fontSize: 13, fontWeight: 600, color: t.pct == null ? C.faint : hecha ? C.pos : C.ink }}>
+          {t.pct == null ? '—' : pct(t.pct)}
+        </span>
+      </div>
+      {frenada && (
+        <div
+          data-testid="frente-parado"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, paddingTop: 10,
+            borderTop: `1px solid ${C.divisorSuave}`, fontSize: 12, color: C.neg,
+          }}
+        >
+          <Icono nombre="material" tamano={14} />
+          Frente parado: {porQue ?? 'hay un impedimento abierto'}
+        </div>
+      )}
+    </Link>
   )
 }

@@ -7,7 +7,8 @@ import { dirname, join } from 'node:path'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const MIGR_ORQ = join(AQUI, '..', '..', 'supabase', 'migrations')
-const MIGR_COMM = join(AQUI, '..', '..', '..', 'communication-service', 'db', 'migrations')
+// El esquema `comunicacion` vive desde el 22/08/2026 en la cadena única de supabase/migrations
+// (antes estaba en communication-service/db/migrations/0001_comunicacion.sql).
 
 // Orden mínimo suficiente para el flujo vertical de PR-4:
 //   fundacion (schema orq, tenants/projects/repos/principals, events, emit_event)
@@ -18,7 +19,7 @@ const ARCHIVOS = [
   join(MIGR_ORQ, '20260711120000_orq_fundacion_work_fabric.sql'),
   join(MIGR_ORQ, '20260711121000_orq_ledger.sql'),
   join(MIGR_ORQ, '20260729180000_orq_comunicacion_lane.sql'), // PR-4.1: lane de comunicación
-  join(MIGR_COMM, '0001_comunicacion.sql'),
+  join(MIGR_ORQ, '20260730125500_comunicacion_fundacion.sql'),
   // Sin esto el test vertical del asistente correría contra tablas inexistentes y "pasaría"
   // por no llegar nunca a tocarlas.
   join(MIGR_ORQ, '20260715170000_google_tokens_oauth.sql'), // quién autorizó su Google

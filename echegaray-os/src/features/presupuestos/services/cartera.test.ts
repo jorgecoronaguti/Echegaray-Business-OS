@@ -12,7 +12,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro } from './cartera.ts'
+import {
+  filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro, problemasDe, cuentasPorFiltro, FILTROS,
+} from './cartera.ts'
 import type { EstadoPresupuesto, PresupuestoCascada } from '../types/index.ts'
 
 let n = 0
@@ -23,10 +25,15 @@ function p(estado: EstadoPresupuesto, precio: number | null, margen: number | nu
     id: `p${n}`, numero: `COT-${String(n).padStart(3, '0')}`, version: 1, vigente: true, estado,
     cliente: 'Orica', cliente_id: null, obra_nombre: `Obra ${n}`, obra_canonica_id: null,
     fecha_cotizacion: `2026-0${(n % 9) + 1}-01`, congelada_en: null, convertida_obra_id: null,
-    pct_indirectos: 0, pct_gastos_generales: 0, pct_margen: 0, pct_financiero: 0, pct_impuestos: 0,
+    parametro_comercial_id: null,
+    pct_gastos_generales: 0, pct_beneficio: 0, pct_financiero: 0, factor_financiero: 0,
+    pct_iibb: 0, pct_ganancias: 0, pct_cheque: 0, pct_iva: 0,
     costo_directo: 1, hh_previstas: 1, n_partidas: 1, n_sin_analisis: 0, n_sin_computo: 0,
-    indirectos: 0, gastos_generales: 0, costo_total: 1, margen: 0, financiero: 0,
-    subtotal_antes_impuestos: 1, impuestos: 0, precio_venta: precio, margen_sobre_precio_pct: margen,
+    n_sin_precio_subcontrato: 0,
+    gastos_generales: 0, costo_industrial: 1, beneficio: 0, financiero: 0, iibb: 0, ganancias: 0,
+    subtotal: 1, impuesto_cheque: 0, venta_sin_iva: precio, iva: 0, venta_final: precio,
+    coeficiente_sin_iva: 1, coeficiente_con_iva: 1,
+    precio_venta: precio, margen_sobre_precio_pct: margen,
     ...over,
   }
 }
@@ -83,11 +90,82 @@ test('los filtros agrupan por el estado, y anulada no cae en adjudicados', () =>
   assert.equal(filtrarCartera(lista, 'todos', '').length, 5)
 })
 
-test('«Sin margen» busca el NULL, no el cero: un margen de 0 % es una decisión', () => {
+test('«Con problema» busca el margen NULL, no el cero: un margen de 0 % es una decisión', () => {
   const lista = [p('adjudicada', 1, null), p('adjudicada', 1, 0)]
-  const r = filtrarCartera(lista, 'sin_margen', '')
+  const r = filtrarCartera(lista, 'con_problema', '')
   assert.equal(r.length, 1)
   assert.equal(r[0].margen_sobre_precio_pct, null)
+})
+
+test('«Con problema» ve las tres deudas de carga, no sólo el margen', () => {
+  // Sin esto el chip encontraba el margen NULL y dejaba pasar el presupuesto que publica un precio
+  // incompleto —el caso caro—: tres partidas sin análisis de precio y un total que igual se manda.
+  const sinAnalisis = p('enviada', 1, 12, { n_sin_analisis: 3 })
+  const sinComputo = p('enviada', 1, 12, { n_sin_computo: 2 })
+  const sinSubcontrato = p('enviada', 1, 12, { n_sin_precio_subcontrato: 1 })
+  const sano = p('enviada', 1, 12)
+  const r = filtrarCartera([sinAnalisis, sinComputo, sinSubcontrato, sano], 'con_problema', '')
+  assert.deepEqual(r.map((x) => x.id), [sinAnalisis.id, sinComputo.id, sinSubcontrato.id])
+  assert.deepEqual(problemasDe(sano), [])
+})
+
+test('un presupuesto SIN partidas no está «sin margen»: le falta empezar, no el costo', () => {
+  // `coalesce(...,0)` de la vista deja el borrador vacío con margen NULL. Contarlo como problema
+  // llenaba el chip de presupuestos recién creados y tapaba los que de verdad hay que corregir.
+  assert.deepEqual(problemasDe(p('borrador', null, null, { n_partidas: 0 })), [])
+})
+
+test('un presupuesto CERRADO no aparece «con problema»: ya no se puede corregir', () => {
+  assert.deepEqual(problemasDe(p('perdida', 1, null, { n_sin_analisis: 4 })), [])
+  assert.deepEqual(problemasDe(p('anulada', 1, null, { n_sin_analisis: 4 })), [])
+})
+
+test('todo el que entra al chip «Con problema» tiene un motivo para mostrar', () => {
+  // EL DEFECTO QUE ATRAPA: el panel de la 14 escribía a mano dos deudas —«sin análisis» y «sin
+  // cómputo»— mientras el chip contaba CUATRO con `problemasDe`. Un presupuesto cuyo único
+  // problema era un subcontrato sin precio entraba al filtro y abría una ficha que no decía nada:
+  // el filtro mandaba a alguien a una pantalla que no explicaba por qué estaba ahí.
+  //
+  // Ahora el panel RENDERIZA `problemasDe`, así que el invariante es que las dos puntas no puedan
+  // separarse: cada fila que el chip cuenta tiene al menos una frase. Si alguien ensancha el
+  // filtro sin ensanchar los motivos, el panel dibuja una caja de alerta vacía y esto se pone rojo.
+  const casos = [
+    p('enviada', 1, 12, { n_sin_analisis: 3 }),
+    p('enviada', 1, 12, { n_sin_computo: 2 }),
+    p('enviada', 1, 12, { n_sin_precio_subcontrato: 1 }),
+    p('borrador', 1, null, { n_partidas: 8 }),
+  ]
+  for (const x of filtrarCartera(casos, 'con_problema', '')) {
+    assert.ok(problemasDe(x).length > 0, `${x.id} entra al chip sin motivo que mostrar en el panel`)
+  }
+})
+
+test('el rótulo del filtro se puede cambiar; su clave es la URL y no', () => {
+  // «Adjudicados» pasó a llamarse «Ganados» (canónico 14). La clave sigue siendo `adjudicados`
+  // porque es el estado del CHECK de `cotizaciones` y lo que quedó pegado en links compartidos.
+  // Renombrar la clave junto con el rótulo rompería esos links en silencio: `esFiltro` no
+  // reconocería el valor y caería en «Todos», mostrando de más sin avisar.
+  assert.deepEqual(FILTROS.map((f) => f.clave), ['todos', 'abiertos', 'adjudicados', 'cerrados', 'con_problema'])
+  assert.equal(esFiltro('adjudicados'), 'adjudicados')
+})
+
+test('el contador de cada chip respeta la búsqueda de la caja', () => {
+  // El defecto: contar sobre la cartera entera mientras la tabla muestra lo buscado. El chip decía
+  // 2 y abajo había 1 — dos números distintos de la misma cosa, en la misma barra.
+  const lista = [
+    p('enviada', 1, 12, { obra_nombre: 'Escuela San Juan' }),
+    p('adjudicada', 1, 12, { obra_nombre: 'Galpón Pocito' }),
+  ]
+  const c = cuentasPorFiltro(lista, 'escuela')
+  assert.equal(c.todos, 1)
+  assert.equal(c.abiertos, 1)
+  assert.equal(c.adjudicados, 0)
+})
+
+test('un link viejo con ?filtro=sin_margen sigue abriendo «Con problema»', () => {
+  assert.equal(esFiltro('sin_margen'), 'con_problema')
+  assert.equal(esFiltro('con_problema'), 'con_problema')
+  assert.equal(esFiltro('cualquiera'), 'todos')
 })
 
 test('el buscador filtra por número, obra y cliente, sin distinguir mayúsculas', () => {

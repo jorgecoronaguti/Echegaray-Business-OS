@@ -68,8 +68,13 @@ export const CUENTAS = [
     moneda: 'ARS',
     patron: /^efectivo en pesos/i,
     origenSugerido: 'Arqueo de caja',
-    // La fecha de esta fila es la del ARQUEO, no la de hoy. Ver caja-pestana.mjs: fechar un conteo
-    // de caja con TODAY() afirma que se contó hoy y deja la alarma de antigüedad clavada en 0 días.
+    // La fecha de esta fila NUNCA sale del reloj de la corrida: fechar un conteo de caja con TODAY()
+    // afirma que se contó hoy y deja la alarma de antigüedad clavada en 0 días.
+    // Y DESDE EL 24/08/2026 TAMPOCO ES LA DEL CONTEO: es la del ÚLTIMO MOVIMIENTO de efectivo, porque
+    // el número de esta fila es el conteo MÁS seis fuentes de movimientos posteriores. El dueño: *"me
+    // confunde con la fecha del saldo... no me indica la fecha del ultimo movimiento de efectivo"*.
+    // El día del conteo sigue a la vista en `_CAJA_ANEXO` (renglón "la fecha que CAJA publica para el
+    // conteo en pesos" y la línea de estado del SELLO). Ver `formulaFechaUltimoEfectivo`.
     arqueo: 'CAJA_ARQUEO_ARS_FECHA',
   },
   {

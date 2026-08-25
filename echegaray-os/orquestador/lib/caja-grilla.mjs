@@ -55,7 +55,7 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia } from './fecha-de-frescura.mjs'
 import {
   formulaFrescuraCaja, formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte,
-  formulaCobrosUsdEfectivoPosteriores,
+  formulaCobrosUsdEfectivoPosteriores, celdaFechaDelEfectivo,
 } from './caja-posterior-al-corte.mjs'
 import { formulaCartera } from './cartera-cheques.mjs'
 import { inciertoHasta } from './caja-anexo-controles.mjs'
@@ -227,10 +227,24 @@ export function grilla(cargado, refs) {
     // LA GUARDA `ISNUMBER` NO ES DECORATIVA: mientras no haya conteo cargado la celda del anexo está
     // VACÍA, y sin el `IF` la fecha se dibujaría como el serial 0, o sea 30/12/1899. Es el mismo
     // defecto del `MIN` de celdas vacías que la tarjeta ya evita en el otro extremo de la cuenta.
-    const fechaDelConteo = (cuenta) => {
-      const nombre = cuenta.arqueo === DESDE_CAJA.arqueoUsdFecha ? ANEXO.conteoUsdDia : ANEXO.conteoArsDia
-      return `=IF(ISNUMBER(${nombre});${nombre};"")`
-    }
+    //
+    // ═══ Y LA FECHA QUE SE PUBLICA ES LA DEL ÚLTIMO MOVIMIENTO, NO LA DEL CONTEO (24/08/2026) ═══
+    //
+    // El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+    // realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+    // efectivo"*. `C7` es el conteo MÁS seis fuentes de movimientos posteriores; fecharlo con el día
+    // del conteo era una contradicción dentro de la misma fila: el número llega a hoy y su fecha se
+    // quedaba en el 19/08. Ahora cita `ANEXO_EFECTIVO_ULTIMO_DIA`, que el anexo calcula con la MISMA
+    // ventana con que suma. Sin movimientos posteriores da el día del conteo, así que la fila nunca
+    // envejece hacia atrás — y sin sello, la celda cae al conteo y la guarda ISNUMBER sigue evitando
+    // el 30/12/1899.
+    //
+    // LOS DÓLARES NO CAMBIAN: su cuenta no tiene desglose de movimientos (sólo cobros USD en efectivo,
+    // y hoy el conteo vale 0). Fecharla con un MAX de una sola fuente sería prometer un mecanismo que
+    // no existe. Queda declarado, no disimulado.
+    const fechaDelConteo = (cuenta) => (cuenta.arqueo === DESDE_CAJA.arqueoUsdFecha
+      ? celdaFechaDelEfectivo(ANEXO.conteoUsdDia)
+      : celdaFechaDelEfectivo(ANEXO.conteoArsDia, ANEXO.ultimoEfectivoDia))
     if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
     if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
     const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)

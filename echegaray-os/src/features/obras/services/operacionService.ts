@@ -53,8 +53,39 @@ import type { ServiceResult } from '../types'
 // viven afuera (el Sheet, el índice de herramientas); el quinto es el único que se escribe desde
 // acá, y por eso su lista no la arma `getOperacionObra` sino que ya venía cargada en la página —
 // `obra_restriccion` es una tabla del OS y la ficha la lee para todas sus solapas.
-export const SUBS_OPERACION = ['pedidos', 'compras', 'herramientas', 'movimientos', 'impedimentos'] as const
+//
+// ═══ LA TAXONOMÍA LA FIJA EL DESIGN CANÓNICO (23/08 · pantalla 11) ═══
+//
+// Impedimentos · Pedidos · Equipos · Clima. El orden no es decorativo: primero lo que FRENA la
+// obra, después lo que la abastece. La lista de cinco anterior ordenaba por origen del dato (lo que
+// viene del Sheet primero) en vez de por urgencia de quien mira.
+//
+// EQUIPOS FUSIONA «Herramientas» y «Movimientos»: son el mismo recurso —qué hay en obra y cómo
+// llegó—, y separarlos obligaba a cambiar de pestaña para contestar una sola pregunta. Las dos
+// tablas siguen enteras adentro; no se perdió ninguna columna.
+//
+// CLIMA sale de `obra_restriccion` con `tipo = 'clima'` (migración 20260823T1000). No es una fuente
+// nueva: es el mismo impedimento visto por su motivo.
+//
+// COMPRAS SE QUEDA AL FINAL Y ES UNA DESVIACIÓN DECLARADA del canónico, que no la dibuja. Es
+// capacidad real y única —el detalle del costo imputado a la obra contra el total que declara
+// `obra_costo_real`— y no vive en ninguna otra pantalla de la ficha. Sacarla para parecerse al
+// dibujo habría borrado una capacidad; queda última porque es la que menos se abre en el día.
+export const SUBS_OPERACION = ['impedimentos', 'pedidos', 'equipos', 'clima', 'compras'] as const
 export type SubOperacion = (typeof SUBS_OPERACION)[number]
+
+/**
+ * Las URLs viejas siguen andando. `?sub=herramientas` y `?sub=movimientos` están en marcadores, en
+ * enlaces pegados en Mattermost y en los tests de navegador: caer al sub por defecto dejaría a
+ * alguien mirando Impedimentos convencido de que su enlace apuntaba ahí.
+ */
+const SUB_LEGACY: Record<string, SubOperacion> = { herramientas: 'equipos', movimientos: 'equipos' }
+
+/** El sub que pide la URL, o el primero. Único lugar donde se traduce el query string. */
+export function subDeLaUrl(sub: string | undefined): SubOperacion {
+  if (!sub) return SUBS_OPERACION[0]
+  return SUBS_OPERACION.find((x) => x === sub) ?? SUB_LEGACY[sub] ?? SUBS_OPERACION[0]
+}
 
 /** El diccionario `obra_alias` dado vuelta. Opaco a propósito: sólo lo entiende `obraDeTexto`. */
 export type IndiceObras = Map<string, string | symbol>

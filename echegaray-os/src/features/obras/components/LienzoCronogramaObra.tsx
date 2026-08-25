@@ -1,256 +1,259 @@
 'use client'
 
-// EL GANTT DE LA OBRA — panel fijo a la izquierda, barras a la derecha, y el arrastre que avisa.
+// EL GANTT DE LA OBRA — PORTE LITERAL de `07 · Obra Cronograma.dc.html`.
 //
-// ═══ LO ÚNICO QUE CORRE EN EL NAVEGADOR ES EL GESTO ═══
+// ═══ LAS MEDIDAS SON LAS DEL MOCKUP, NO LAS DEL DESIGN SYSTEM ═══
 //
-// Arrastrar una barra no mueve nada y no calcula nada: mide cuántos días se corrió el puntero y
-// navega a `?sel=<id>&mover=<días>`. La consecuencia —qué arrastra, cuánto corre el fin de obra,
-// qué cuadrilla queda en conflicto— la calcula el servidor con el motor de camino crítico y vuelve
-// en el popover. Si esa cuenta se hiciera acá habría dos cronogramas: el que el navegador dibuja
-// mientras se arrastra y el que la base sabe. El primero siempre gana la discusión y siempre está
-// mal.
+//   día        `DAYW = 26`px · fila `ROWH = 36`px · cabecera 46 partida en 22 (mes) + 24 (escala)
+//   base       `top:6 h:4 r:2` gris #D7D5CF — lo prometido no compite con lo que está pasando
+//   barra      `top:13 h:15 r:4` con fondo tenue y relleno de avance
+//   resumen    `top:18 h:5 r:2` #B9B7B1 — el corchete plano de un rubro, que no se mide
+//   proyección `top:13 h:15 r:4` punteado 1,5px #B42318, sin relleno
+//   hoy        columna amarilla en la cabecera + línea de 1,5px al medio del día
 //
-// ═══ CUÁNTO ES UN DÍA EN PÍXELES ═══
+// ═══ TRES CAPAS SUPERPUESTAS, Y CADA UNA ES OTRA AFIRMACIÓN ═══
 //
-// El lienzo es porcentual —`escalaCronograma.ts` posiciona todo en %— así que el ancho de un día
-// depende del ancho real del contenedor, que sólo se conoce en el navegador. Se mide del elemento,
-// no se asume: con una ventana angosta, asumir 1000px convertiría un arrastre de un día en cuatro.
+// BASE lo que se prometió al sellar · PLAN lo cargado, con su avance · PROYECCIÓN lo que va a pasar
+// al ritmo medido (`forecast_fin`). Se superponen porque el desvío ES la diferencia entre capas: en
+// tres pantallas separadas hay que recordarla de memoria. La capa que no tiene dato NO se dibuja —
+// un hueco es el dato, y una base copiada del plan sería una promesa inventada.
+//
+// ═══ LO QUE ESTA PANTALLA YA NO HACE, Y POR QUÉ ═══
+//
+// Arrastrar una barra para simular un corrimiento vivía acá y navegaba a `?mover=N` para que el
+// motor de camino crítico contestara qué arrastra. Ese motor calcula las fechas DESDE LA SECUENCIA
+// y hoy hay CERO precedencias cargadas en todas las obras: contestaba siempre «sin secuencia», y
+// dibujaba todas las barras arrancando el mismo día. Este lienzo dibuja el plan COMO ESTÁ CARGADO
+// (`cronogramaPlan.ts`); mover una fecha se hace donde se edita la actividad, en Tareas.
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
-import type { EscalaCronograma } from '../services/escalaCronograma'
-import { tramoDe } from '../services/escalaCronograma'
-import type { EstadoUrl, FilaVista } from '../services/vistaCronograma'
-import { hrefCronograma } from '../services/vistaCronograma'
+import { useMemo } from 'react'
+import { tramoDe, type EscalaCronograma } from '../services/escalaCronograma'
+import { bandasDePeriodo, divisionesDe, type DivisionEscala } from '../services/bandaCronograma'
+import type { FilaPlan } from '../services/cronogramaPlan'
+import { TablaCronogramaObra } from './TablaCronogramaObra'
+import { C, MONO } from './canon/tokens'
 
-/** 34px por fila: es el alto del contrato visual, y el panel izquierdo usa EXACTAMENTE el mismo
- *  número. Si se separan, la barra deja de estar en la fila de su actividad y el Gantt miente sin
- *  dar ningún error. */
-const ALTO_FILA = 34
-const ALTO_HEAD = 34
+/** El alto de la fila y el de la cabecera los leen las DOS columnas —la tabla y el lienzo— desde
+ *  acá: el día que se separen, la barra deja de estar en la fila de su actividad y ningún test lo
+ *  nota. Son `ROWH = 36` y la cabecera de 46 = 22 + 24 del mockup. */
+const ALTO_FILA = 36
+const ALTO_HEAD = 46
+const ALTO_PERIODO = 22
 
-const fmt = (iso: string | null) =>
-  (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
+/** Cómo se pinta una barra. Los cuatro casos del mockup, con una traducción declarada: el zip pinta
+ *  de ámbar la actividad EN CURSO del camino crítico, y sin precedencias no hay camino crítico. El
+ *  ámbar pasa a la que está en curso y PROYECTA ATRASO, que es el mismo aviso sobre el dato que sí
+ *  existe. Ver `cronogramaPlan.ts`. */
+export function pinturaDeBarra(f: FilaPlan): { relleno: string; fondo: string; borde: string } {
+  const av = f.avancePct
+  if (av != null && av >= 100) return { relleno: '#067647', fondo: '#E6F3EB', borde: '#CDE7D7' }
+  if (av != null && av > 0) {
+    return (f.desvio ?? 0) > 0
+      ? { relleno: '#B54708', fondo: '#FBEFE1', borde: '#F0E1CD' }
+      : { relleno: '#175CD3', fondo: '#E4EEFC', borde: '#CFE0FA' }
+  }
+  return { relleno: C.bordeFuerte, fondo: C.pistaPlan, borde: C.borde }
+}
 
-/** UNA CABECERA DE FRENTE NUNCA ESTÁ SELECCIONADA. Su `actividadId` es null y la comparación
- *  `seleccionada === f.actividadId` daba verdadero con nada seleccionado —null === null—: las diez
- *  cabeceras aparecían resaltadas en amarillo como si el usuario las hubiera tocado todas. */
-const estaSeleccionada = (f: FilaVista, sel: string | null) => f.actividadId != null && f.actividadId === sel
-
-/** El color de la barra ejecutada. Verde sólo cuando terminó de verdad; naranja cuando está en el
- *  camino crítico; grafito el resto. El amarillo de la marca no pinta estado nunca. */
-function colorEjecutado(f: FilaVista): string {
-  if (f.avancePct != null && f.avancePct >= 100) return 'bg-pos'
-  return f.critica ? 'bg-warn' : 'bg-accent'
+/** Qué filas se ven con estos rubros plegados. Un rubro cerrado se lleva sus hijas hasta el próximo
+ *  rubro: las filas vienen planas y el nivel es la única jerarquía que tienen. */
+export function visibles(filas: readonly FilaPlan[], cerrados: ReadonlySet<string>): FilaPlan[] {
+  const salida: FilaPlan[] = []
+  let ocultando = false
+  for (const f of filas) {
+    if (f.nivel === 0) {
+      ocultando = cerrados.has(f.clave)
+      salida.push(f)
+      continue
+    }
+    if (!ocultando) salida.push(f)
+  }
+  return salida
 }
 
 export interface Props {
-  filas: FilaVista[]
+  filas: FilaPlan[]
   escala: EscalaCronograma
-  /** Días corridos de la ventana. Convierte el arrastre en píxeles a días. */
-  diasVentana: number
-  obraId: string
-  /** El estado de la URL, PLANO. Una función no cruza la frontera servidor→cliente: la primera
-   *  versión pasaba el constructor de links como prop y la pantalla entera moría en «A server
-   *  error occurred», sin un solo link roto a la vista. */
-  estadoUrl: EstadoUrl
+  seleccionada: string | null
+  alSeleccionar: (clave: string) => void
+  cerrados: ReadonlySet<string>
+  plegar: (clave: string) => void
+  verBase: boolean
+  verProyeccion: boolean
+  /** Los días que ESTA obra trabaja (isodow). Los otros se sombrean: sin eso, diez días de barra
+   *  sobre el calendario no se distinguen de diez días de trabajo. */
+  diasHabiles?: readonly number[]
+  /** El día de hoy, en ISO. Sólo para poder fijarlo en un test. */
+  hoy: string
 }
 
-export function LienzoCronogramaObra({ filas, escala, diasVentana, obraId, estadoUrl }: Props) {
-  const seleccionada = estadoUrl.sel
-  const hrefDe = (c: { sel?: string | null; mover?: number | null }) => hrefCronograma(obraId, estadoUrl, c)
-  const router = useRouter()
-  const lienzo = useRef<HTMLDivElement>(null)
-  const [arrastre, setArrastre] = useState<{ id: string; dias: number } | null>(null)
-
-  const diasDelGesto = (dx: number): number => {
-    const ancho = lienzo.current?.clientWidth ?? 0
-    if (!ancho) return 0
-    return Math.round((dx / ancho) * diasVentana)
-  }
-
-  const alSoltar = (id: string, dx: number) => {
-    const dias = diasDelGesto(dx)
-    setArrastre(null)
-    if (dias === 0) {
-      router.push(hrefDe({ sel: id, mover: null }))
-      return
-    }
-    router.push(hrefDe({ sel: id, mover: dias }))
-  }
-
-  const iniciarArrastre = (e: React.PointerEvent, id: string) => {
-    const x0 = e.clientX
-    e.currentTarget.setPointerCapture(e.pointerId)
-    const mover = (ev: PointerEvent) => setArrastre({ id, dias: diasDelGesto(ev.clientX - x0) })
-    const soltar = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', mover)
-      window.removeEventListener('pointerup', soltar)
-      alSoltar(id, ev.clientX - x0)
-    }
-    window.addEventListener('pointermove', mover)
-    window.addEventListener('pointerup', soltar)
-  }
-
+export function LienzoCronogramaObra({
+  filas, escala, seleccionada, alSeleccionar, cerrados, plegar, verBase, verProyeccion,
+  diasHabiles = [], hoy,
+}: Props) {
+  const alaVista = useMemo(() => visibles(filas, cerrados), [filas, cerrados])
+  const divisiones = useMemo(
+    () => divisionesDe(escala.columnas, hoy, diasHabiles),
+    [escala.columnas, hoy, diasHabiles],
+  )
   return (
-    <div className="flex overflow-x-auto rounded-card border border-line bg-surface" data-testid="cronograma">
-      <PanelIzquierdo filas={filas} seleccionada={seleccionada} hrefDe={hrefDe} />
-      <div className="min-w-[560px] flex-1 border-l border-line" ref={lienzo}>
-        <Encabezado escala={escala} />
-        <div className="relative">
-          {escala.hoyPosPct != null && (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-marca"
-              style={{ left: `${escala.hoyPosPct}%` }}
-            />
-          )}
-          {filas.map((f) => (
-            <Renglon
-              key={f.clave} fila={f} escala={escala} diasVentana={diasVentana}
-              seleccionada={estaSeleccionada(f, seleccionada)}
-              arrastreDias={arrastre?.id === f.actividadId ? arrastre.dias : null}
-              alArrastrar={iniciarArrastre}
-            />
-          ))}
+    <div data-testid="cronograma" style={{
+      background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
+      display: 'flex', overflow: 'hidden',
+    }}>
+      <TablaCronogramaObra
+        filas={alaVista} seleccionada={seleccionada} alSeleccionar={alSeleccionar}
+        cerrados={cerrados} plegar={plegar} altoFila={ALTO_FILA} altoCabecera={ALTO_HEAD}
+      />
+      {/* EL SCROLL ES DEL LIENZO, NO DE LA PÁGINA: la tabla de actividades queda quieta. Leer una
+          barra de noviembre sin ver de qué actividad es no sirve de nada. */}
+      <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
+        <div style={{ width: `${escala.anchoPx}px`, position: 'relative' }}>
+          <Encabezado escala={escala} divisiones={divisiones} />
+          <div style={{ position: 'relative', height: `${alaVista.length * ALTO_FILA}px` }}>
+            <Fondo divisiones={divisiones} />
+            {escala.hoyX != null && (
+              // LA LÍNEA VA DEBAJO DE LAS FILAS, como en el zip: se dibuja antes y sin `z-index`,
+              // así una barra la tapa en vez de quedar cortada al medio por un pelo amarillo.
+              <div aria-hidden data-testid="linea-hoy" style={{
+                position: 'absolute', top: 0, bottom: 0, width: '1.5px', background: C.marca,
+                left: `${escala.hoyX + escala.pxPorDia / 2}px`, pointerEvents: 'none',
+              }} />
+            )}
+            {alaVista.map((f) => (
+              <Renglon
+                key={f.clave} fila={f} escala={escala} verBase={verBase} verProyeccion={verProyeccion}
+                selecta={seleccionada === f.clave} alSeleccionar={alSeleccionar}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function Encabezado({ escala }: { escala: EscalaCronograma }) {
+/** Las columnas del calendario, detrás de las barras: son la referencia para leer una barra, no
+ *  contenido. Si se notan, compiten con lo único que la pantalla quiere que se mire. */
+function Fondo({ divisiones }: { divisiones: DivisionEscala[] }) {
   return (
-    <div className="relative border-b border-line" style={{ height: ALTO_HEAD }}>
-      {escala.columnas.filter((c) => c.nueva).map((c) => (
-        <span
-          key={`${c.etiqueta}-${c.posPct}`}
-          className="absolute top-1/2 -translate-y-1/2 text-[9.5px] tracking-[0.04em] text-faint tnum"
-          style={{ left: `${c.posPct}%`, paddingLeft: 4 }}
-        >
-          {c.etiqueta}
-        </span>
+    <div aria-hidden data-testid="fondo-calendario" style={{ position: 'absolute', inset: 0 }}>
+      {divisiones.map((d) => (
+        <span key={d.clave} style={{
+          position: 'absolute', top: 0, bottom: 0, left: `${d.izqPct}%`, width: `${d.anchoPct}%`,
+          background: d.franco ? C.tenueFondo : C.superficie, borderRight: `1px solid ${C.bordeLista}`,
+        }} />
       ))}
     </div>
   )
 }
 
-function PanelIzquierdo({ filas, seleccionada, hrefDe }: {
-  filas: FilaVista[]
-  seleccionada: string | null
-  hrefDe: (c: { sel?: string | null; mover?: number | null }) => string
-}) {
+/** LA CABECERA DE DOS BANDAS: el período arriba (22px), las divisiones de la escala abajo (24px).
+ *  Doce rótulos «S32 S33 S34…» no dicen en qué mes cae la obra, y esa es la pregunta que se hace
+ *  primero. */
+function Encabezado({ escala, divisiones }: { escala: EscalaCronograma; divisiones: DivisionEscala[] }) {
+  const periodos = bandasDePeriodo(escala.desde, escala.hasta, escala.unidad)
   return (
-    <div className="w-[300px] shrink-0 lg:w-[360px]">
-      <div
-        className="grid items-center gap-2 border-b border-line px-3 text-[10px] uppercase tracking-[0.05em] text-faint"
-        style={{ height: ALTO_HEAD, gridTemplateColumns: '1fr 62px 54px' }}
-      >
-        <span>Estructura</span>
-        <span className="text-right">Días</span>
-        <span className="text-right">%</span>
+    <div style={{ height: `${ALTO_HEAD}px`, borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo }}>
+      <div style={{ position: 'relative', height: `${ALTO_PERIODO}px` }}>
+        {periodos.map((p) => (
+          <span key={p.clave} style={{
+            position: 'absolute', top: 0, bottom: 0, left: `${p.izqPct}%`, width: `${p.anchoPct}%`,
+            borderRight: `1px solid ${C.borde}`, fontSize: '11px', fontWeight: 500, color: C.tintaMedia,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            whiteSpace: 'nowrap',
+          }}>{p.etiqueta}</span>
+        ))}
       </div>
-      {filas.map((f) => (
-        <Link
-          key={f.clave}
-          href={f.actividadId ? hrefDe({ sel: f.actividadId, mover: null }) : hrefDe({ sel: null, mover: null })}
-          scroll={false}
-          data-sel={estaSeleccionada(f, seleccionada) ? '1' : undefined}
-          className={`grid items-center gap-2 px-3 hover:bg-surface-quiet ${
-            estaSeleccionada(f, seleccionada) ? 'bg-marca-soft shadow-[inset_3px_0_0_var(--os-marca)]' : ''
-          }`}
-          style={{ height: ALTO_FILA, gridTemplateColumns: '1fr 62px 54px' }}
-        >
-          <span className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: f.nivel * 15 }}>
-            <span className={`truncate ${f.nivel === 0 ? 'text-[12.5px] font-semibold text-ink' : 'text-[12.5px] text-ink-soft'}`}>
-              {f.nombre}
-            </span>
-            {f.critica && (
-              <span className="shrink-0 rounded-[3px] border border-warn px-1 text-[9.5px] leading-[14px] text-warn">
-                crítica
-              </span>
-            )}
-            {f.tieneImpedimento && <span className="shrink-0 text-[11px] text-neg" title="impedimento abierto">△</span>}
-          </span>
-          <span className="text-right text-[11px] text-ink-soft tnum">
-            {f.duracion ?? <span className="text-faint">—</span>}
-          </span>
-          <span className={`text-right text-[11px] tnum ${f.avancePct == null ? 'text-faint' : 'text-ink-soft'}`}>
-            {f.avancePct == null ? 'sin plan' : `${f.avancePct} %`}
-          </span>
-        </Link>
-      ))}
+      <div style={{ position: 'relative', height: `${ALTO_HEAD - ALTO_PERIODO}px` }}>
+        {divisiones.map((d) => (
+          <span key={d.clave} data-hoy={d.esHoy ? '1' : undefined} style={{
+            position: 'absolute', top: 0, bottom: 0, left: `${d.izqPct}%`, width: `${d.anchoPct}%`,
+            background: d.esHoy ? C.marca : 'transparent',
+            color: d.esHoy ? C.tinta : d.franco ? C.apagado : C.tintaSuave,
+            fontFamily: MONO, fontSize: '9.5px', fontWeight: d.esHoy ? 600 : 400,
+            borderRadius: d.esHoy ? '4px' : 0, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', overflow: 'hidden',
+          }}>{d.etiqueta}</span>
+        ))}
+      </div>
     </div>
   )
 }
 
-interface RenglonProps {
-  fila: FilaVista
+function Renglon({ fila, escala, verBase, verProyeccion, selecta, alSeleccionar }: {
+  fila: FilaPlan
   escala: EscalaCronograma
-  diasVentana: number
-  seleccionada: boolean
-  arrastreDias: number | null
-  alArrastrar: (e: React.PointerEvent, id: string) => void
-}
-
-function Renglon({ fila, escala, diasVentana, seleccionada, arrastreDias, alArrastrar }: RenglonProps) {
+  verBase: boolean
+  verProyeccion: boolean
+  selecta: boolean
+  alSeleccionar: (clave: string) => void
+}) {
   const tramo = tramoDe(escala, fila.inicio, fila.fin)
-  // El fantasma del arrastre se corre en % del lienzo, no en píxeles: el lienzo es porcentual y un
-  // desplazamiento en px se despegaría de la barra en cuanto la ventana cambie de ancho.
-  const desplPct = arrastreDias ? (arrastreDias / Math.max(1, diasVentana)) * 100 : 0
-  const proyeccion = fila.fin && fila.finPlan && fila.fin > fila.finPlan
-    ? tramoDe(escala, fila.finPlan, fila.fin)
+  const base = verBase ? tramoDe(escala, fila.inicioBase, fila.finBase) : null
+  // La proyección es el tramo que se estira MÁS ALLÁ del plan. Con forecast anterior al fin de plan
+  // no hay nada punteado que dibujar: la actividad va bien, y eso ya lo dice la columna de desvío.
+  const proyeccion = verProyeccion && fila.fin && fila.finForecast && fila.finForecast > fila.fin
+    ? tramoDe(escala, fila.fin, fila.finForecast)
     : null
-
+  const esRubro = fila.nivel === 0
+  const pintura = pinturaDeBarra(fila)
   return (
     <div
-      className={`relative border-b border-surface-sunken ${seleccionada ? 'bg-marca-soft' : 'hover:bg-surface-quiet'}`}
-      style={{ height: ALTO_FILA }}
       data-fila={fila.clave}
+      onClick={() => alSeleccionar(fila.clave)}
+      style={{
+        position: 'relative', height: `${ALTO_FILA}px`, borderBottom: `1px solid ${C.bordeFila}`,
+        background: selecta ? C.marcaSuave : 'transparent', cursor: 'pointer',
+      }}
     >
-      {!tramo && (
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-warn">
-          sin fechas · falta análisis
-        </span>
+      {/* NULL NO ES CERO: una actividad sin fechas no se dibuja arrancando hoy, se dice. */}
+      {!tramo && !esRubro && (
+        <span style={{
+          position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+          fontSize: '11px', color: C.warn,
+        }}>sin fechas · falta análisis</span>
+      )}
+      {base && (
+        <div aria-hidden data-testid="barra-base" style={{
+          position: 'absolute', top: '6px', height: '4px', borderRadius: '2px',
+          background: C.bordeFuerte, left: `${base.izqPct}%`, width: `${base.anchoPct}%`,
+        }} />
       )}
       {proyeccion && (
-        <div
-          aria-hidden
-          className="absolute top-1/2 h-[10px] -translate-y-1/2 rounded-[2px] bg-marca-track"
-          style={{ left: `${proyeccion.izqPct}%`, width: `${proyeccion.anchoPct}%` }}
-        />
+        <div aria-hidden data-testid="barra-proyeccion" style={{
+          position: 'absolute', top: '13px', height: '15px', borderRadius: '4px',
+          border: `1.5px dashed ${C.neg}`, background: 'transparent',
+          left: `${proyeccion.izqPct}%`, width: `${proyeccion.anchoPct}%`,
+        }} />
       )}
-      {tramo && (
-        <div
-          className="absolute top-1/2 h-[10px] -translate-y-1/2 rounded-[2px] bg-surface-sunken"
-          style={{ left: `${tramo.izqPct + desplPct}%`, width: `${tramo.anchoPct}%` }}
-          onPointerDown={fila.actividadId ? (e) => alArrastrar(e, fila.actividadId!) : undefined}
-          role={fila.actividadId ? 'button' : undefined}
-          tabIndex={fila.actividadId ? 0 : undefined}
-          aria-label={fila.actividadId
-            ? `${fila.nombre}, del ${fmt(fila.inicio)} al ${fmt(fila.fin)}. Arrastrar para simular un corrimiento.`
-            : undefined}
-        >
+      {tramo && esRubro && (
+        <div aria-hidden data-testid="barra-resumen" style={{
+          position: 'absolute', top: '18px', height: '5px', borderRadius: '2px', background: C.apagado,
+          left: `${tramo.izqPct}%`, width: `${tramo.anchoPct}%`,
+        }} />
+      )}
+      {tramo && !esRubro && (
+        <div data-testid="barra-plan" title={`${fila.nombre} · ${fila.inicio} → ${fila.fin}`} style={{
+          position: 'absolute', top: '13px', height: '15px', borderRadius: '4px', overflow: 'hidden',
+          background: pintura.fondo, border: `1px solid ${pintura.borde}`,
+          left: `${tramo.izqPct}%`, width: `${tramo.anchoPct}%`,
+        }}>
           {fila.avancePct != null && fila.avancePct > 0 && (
-            <div
-              className={`h-full rounded-[2px] ${colorEjecutado(fila)}`}
-              style={{ width: `${Math.min(100, fila.avancePct)}%` }}
-            />
-          )}
-          {fila.esHito && (
-            <span className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-ink" aria-hidden />
-          )}
-          {fila.tieneImpedimento && (
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] leading-none text-neg" aria-hidden>△</span>
+            <div style={{
+              height: '100%', width: `${Math.min(100, fila.avancePct)}%`, background: pintura.relleno,
+            }} />
           )}
         </div>
       )}
-      {arrastreDias != null && arrastreDias !== 0 && (
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10.5px] font-semibold text-warn tnum">
-          {arrastreDias > 0 ? `+${arrastreDias}` : arrastreDias} d
-        </span>
+      {/* EL ROMBO DEL HITO VA FUERA DE LA BARRA. Vivía adentro, con `-right-1` sobre un contenedor
+          `overflow:hidden`: el navegador lo recortaba entero y ningún hito se veía nunca. */}
+      {tramo && !esRubro && fila.esHito && (
+        <span aria-hidden data-testid="hito" style={{
+          position: 'absolute', top: '20.5px', height: '9px', width: '9px',
+          transform: 'translate(-50%, -50%) rotate(45deg)', border: `1px solid ${C.superficie}`,
+          background: C.tinta, left: `${tramo.izqPct + tramo.anchoPct}%`,
+        }} />
       )}
     </div>
   )

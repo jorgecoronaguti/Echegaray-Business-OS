@@ -155,6 +155,40 @@ export async function asignarActividadADocumento(
 }
 
 /**
+ * CLASIFICAR UN PAPEL — escribir `rol`, la categoría del canon.
+ *
+ * ═══ ES LA ÚNICA PUERTA POR DONDE LA CATEGORÍA SE ESCRIBE ═══
+ *
+ * La pantalla calcula una SUGERENCIA por el nombre del archivo (`sugerirCategoria`) y la dibuja
+ * como «sugerido: X — confirmar». Esa sugerencia no llega nunca sola hasta acá: llega porque
+ * alguien apretó. Una regla que escribiera la categoría sola convertiría una inferencia en un
+ * hecho guardado, y nadie podría distinguir después cuáles clasificó una persona y cuáles adivinó
+ * el OS por el nombre del archivo — que es justo la distinción que hace falta para poder revisar.
+ *
+ * `''` DESCLASIFICA: devuelve el papel a «Sin clasificar». Tiene que poder deshacerse una
+ * confirmación equivocada sin desvincular el archivo.
+ *
+ * NO valida contra un vocabulario cerrado: `rol` es texto libre en la base y hay rótulos viejos
+ * cargados a mano. Lo que sí acota es el largo, igual que el alta.
+ */
+export async function clasificarDocumento(
+  obraId: string, driveFileId: string, categoria: string,
+): Promise<Resultado> {
+  const parsed = z.string().trim().max(120).safeParse(categoria)
+  if (!parsed.success) return { ok: false, error: 'Esa categoría es demasiado larga.' }
+  const supabase = await createClient()
+  // El `eq('obra_id')` no sobra: sin él, un archivo vinculado a dos obras se clasificaría en las dos.
+  const { error } = await supabase
+    .from('obra_documento')
+    .update({ rol: parsed.data || null })
+    .eq('obra_id', obraId)
+    .eq('drive_file_id', driveFileId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true }
+}
+
+/**
  * SOLTAR UN PAPEL DE SU ACTIVIDAD, sin desvincularlo de la obra.
  *
  * Existe como acción propia y no como `asignarActividadADocumento(obraId, id, '')` escrito en la

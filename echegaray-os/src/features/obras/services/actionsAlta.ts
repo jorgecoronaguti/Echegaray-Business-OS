@@ -28,7 +28,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
 import {
-  altaSchema, columnasDelPaso, ESQUEMA_PASO, idDeObra, pasoSiguiente, urlPaso,
+  altaSchema, columnasDelPaso, ESQUEMA_PASO, idDeObra, pasoSiguiente, urlPaso, vacioANull,
   type PasoQueGuarda,
 } from './alta'
 
@@ -79,10 +79,30 @@ export async function guardarPasoObra(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('obra_canonica')
-    .update(columnasDelPaso(paso, parsed.data as Record<string, unknown>))
-    .eq('id', obraId)
-  if (error) return { ok: false, error: error.message }
+
+  // EL PASO «CONTRATO» NO ES UN UPDATE MÁS (21/08/2026). La migración 5000 le sacó a
+  // `authenticated` el GRANT de columna sobre `obra_canonica.monto_contratado` —el jefe de obra
+  // podía pisarlo sin poder leerlo— y la única vía es `fijar_monto_contratado()`, que lleva
+  // `ve_economia()` adentro y deja rastro en `entidad_cambio`. Se separa acá y no dentro de
+  // `columnasDelPaso`, que es una función pura de mapeo y tiene sus propios tests: mezclarle una
+  // llamada a la base la volvería intesteable sin base.
+  //
+  // Y EL CAMPO AUSENTE NO ES UN CAMPO VACÍO: la pantalla no le dibuja el monto a quien no ve
+  // economía, así que en su POST la clave no viene. Sin este chequeo, pasar por el paso «contrato»
+  // le mandaría un NULL a la base y le devolvería «el monto lo fija Dirección» por un campo que ni
+  // vio. Un vacío TIPEADO sí llega —y sí borra—, porque la clave viaja igual.
+  if (paso === 'contrato') {
+    if (form.has('monto_contratado')) {
+      const monto = vacioANull((parsed.data as { monto_contratado?: number | '' }).monto_contratado) ?? null
+      const { error } = await supabase.rpc('fijar_monto_contratado', { p_obra_id: obraId, p_monto: monto })
+      if (error) return { ok: false, error: error.message }
+    }
+  } else {
+    const { error } = await supabase.from('obra_canonica')
+      .update(columnasDelPaso(paso, parsed.data as Record<string, unknown>))
+      .eq('id', obraId)
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras')
   const siguiente = pasoSiguiente(paso)

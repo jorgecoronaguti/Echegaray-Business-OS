@@ -21,6 +21,9 @@ import { query } from './db.mjs'
 /** Las vistas que se apoyan en el RLS de sus tablas. Si se agrega una, va acá. */
 const CON_RLS = [
   'obra_panel', 'obra_plan_vs_real', 'obra_avance', 'cliente_panel',
+  // ECONOMÍA HONESTA (22/08): la vista del margen corre con los permisos de quien pregunta — un
+  // `create or replace` que le borre el invoker le mostraría los márgenes a cualquier autenticado.
+  'obra_economia',
   'imputacion_pendiente', 'proveedor_nombre_pendiente',
   // MÓDULO PERSONAL / HH (19/08/2026). Las tres se apoyan en el RLS de sus tablas:
   //  · `persona_directorio` hereda el de `personas` — por eso el listado es de Administración sola.

@@ -32,13 +32,15 @@ interface FilaWbs {
   archivada: boolean
 }
 
-/** El nombre del que responde por la actividad, con la precedencia que ya usa el resto del módulo. */
-function responsableDe(a: Actividad, subcontratista: string | undefined): string | null {
-  if (subcontratista) return subcontratista
+/** La composición productiva prevista. La cuadrilla canónica manda; el texto legacy ('1', '2') que
+ *  quedó en `obra_actividad.cuadrilla` es el respaldo mientras haya actividades sin migrar. */
+function cuadrillaDe(a: Actividad): string | null {
   return a.cuadrilla_prevista ?? a.cuadrilla ?? null
 }
 
-function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): NodoObra {
+function aNodo(
+  w: FilaWbs, a: Actividad, subcontratista: string | undefined, responsable: string | null,
+): NodoObra {
   return {
     id: w.actividad_id,
     padre_id: w.actividad_padre_id,
@@ -57,8 +59,11 @@ function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): No
     hh_real: a.hh_real,
     metodo_avance: a.metodo_avance,
     avance_pct: a.avance_pct,
+    inicio_plan: a.inicio_plan,
     fin_plan: a.fin_plan,
-    responsable: responsableDe(a, subcontratista),
+    responsable,
+    cuadrilla: cuadrillaDe(a),
+    subcontratista: subcontratista ?? null,
     es_subcontrato: subcontratista !== undefined,
     estado: a.estado_operativo === 'bloqueada' ? null : (a.estado_operativo ?? null),
     impedimentos_abiertos: a.impedimentos_abiertos,
@@ -66,8 +71,16 @@ function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): No
     n_pasos_hechos: a.n_pasos_hechos ?? 0,
     peso_pasos: a.peso_pasos ?? null,
     analisis_id: a.analisis_id ?? null,
+    tarea_tipo_id: a.tarea_tipo_id ?? null,
+    cotizacion_partida_id: a.cotizacion_partida_id ?? null,
     tope_frente: a.tope_frente ?? null,
     dotacion_prevista: a.dotacion_prevista ?? null,
+    cuadrilla_id: a.cuadrilla_id ?? null,
+    // `undefined` mientras la migración del tiempo técnico no esté aplicada: el `select *` de
+    // PostgREST devuelve las columnas que existan. Se lee como `false`, que es el default de la
+    // columna — no como «no sé», porque el cálculo tiene que poder correr igual.
+    tiempo_tecnico: a.tiempo_tecnico === true,
+    dias_plan: a.dias_plan ?? null,
     // Ver la cabecera: sin una sola precedencia declarada no hay camino crítico que afirmar.
     es_critica: false,
   }
@@ -95,6 +108,25 @@ async function subcontratistasPorActividad(
   return salida
 }
 
+/** EL NOMBRE DEL RESPONSABLE, contra `persona_plantel`.
+ *
+ * La vista `obra_actividad_control` publica `responsable_id` y no el nombre, así que sin esta
+ * lectura la pantalla sólo tendría un uuid — y eso es lo que llevó a rellenar RESPONSABLE con la
+ * cuadrilla, que sí venía con nombre. `persona_plantel` es la ÚNICA puerta a los nombres del
+ * plantel (misma que usa `personalService`): no se lee `personas`, cuya RLS es de Administración.
+ *
+ * Un id que la vista no devuelve queda en `null` y la pantalla escribe «sin asignar»: quien no está
+ * en el plantel vigente no puede seguir figurando como responsable de una actividad en curso.
+ */
+async function nombresDeResponsables(
+  supabase: SupabaseClient, ids: string[],
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data } = await supabase
+    .from('persona_plantel').select('id, nombre_completo').in('id', ids)
+  return new Map((data ?? []).map((p) => [p.id as string, p.nombre_completo as string]))
+}
+
 /**
  * EL ÁRBOL DE LA OBRA, en orden constructivo y sin las archivadas.
  *
@@ -115,12 +147,21 @@ export async function getArbol(
   if (control.error) return { data: null, error: control.error.message }
 
   const porId = new Map((control.data ?? []).map((a) => [a.actividad_id as string, a as Actividad]))
+  // Los ids se juntan de la MISMA lectura y se resuelven de una sola vez: una consulta por
+  // actividad serían 275 viajes en san-francisco para pintar una columna.
+  const nombres = await nombresDeResponsables(
+    supabase,
+    [...new Set([...porId.values()].map((a) => a.responsable_id).filter((v): v is string => Boolean(v)))],
+  )
   const nodos: NodoObra[] = []
   for (const w of (wbs.data ?? []) as FilaWbs[]) {
     if (w.archivada) continue
     const a = porId.get(w.actividad_id)
     if (!a) continue
-    nodos.push(aNodo(w, a, subs.get(w.actividad_id)))
+    nodos.push(aNodo(
+      w, a, subs.get(w.actividad_id),
+      a.responsable_id ? nombres.get(a.responsable_id) ?? null : null,
+    ))
   }
   return { data: nodos, error: null }
 }
@@ -155,6 +196,11 @@ export interface RelacionLegible {
   /** LA RELACIÓN EN PALABRAS, DESDE LA BASE. Si el texto se armara acá, cada pantalla inventaría
    *  el suyo y un día dejarían de coincidir. La sigla (FS/SS/FF/SF) no se muestra nunca. */
   relacion: string
+  /** LA SIGLA NO SE MUESTRA: SE EDITA. Viaja para poder abrir el selector de «Cambiar relación» en
+   *  lo que la dependencia ES hoy — un desplegable que arranca siempre en FS haría que cambiar la
+   *  demora de una SS la convierta en FS sin que nadie lo pida. */
+  tipo: 'FS' | 'SS' | 'FF' | 'SF'
+  lag_dias: number
 }
 
 export async function getRelaciones(
@@ -162,7 +208,7 @@ export async function getRelaciones(
 ): Promise<ServiceResult<RelacionLegible[]>> {
   const { data, error } = await supabase
     .from('obra_dependencia_legible')
-    .select('id, origen_id, destino_id, origen, destino, relacion').eq('obra_id', obraId)
+    .select('id, origen_id, destino_id, origen, destino, relacion, tipo, lag_dias').eq('obra_id', obraId)
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as RelacionLegible[], error: null }
 }
@@ -179,6 +225,9 @@ export interface RegistroAvance {
   fuente: string | null
   masivo: boolean
   autor: string | null
+  /** Los enlaces de la evidencia (`obra_ejecucion.evidencia`, `text[]`). El OS NO guarda archivos:
+   *  el papel vive en Drive y acá queda su enlace. Ver la nota de la solapa Avance en el panel. */
+  evidencia: string[]
 }
 
 /**
@@ -192,7 +241,7 @@ export async function getHistorial(
 ): Promise<ServiceResult<RegistroAvance[]>> {
   const { data, error } = await supabase
     .from('obra_ejecucion')
-    .select('id, fecha, creado_en, cantidad, avance_pct, comentario, criterio, metodo, fuente, masivo, creado_por')
+    .select('id, fecha, creado_en, cantidad, avance_pct, comentario, criterio, metodo, fuente, masivo, creado_por, evidencia')
     .eq('actividad_id', actividadId)
     .order('fecha', { ascending: false }).order('creado_en', { ascending: false })
   if (error) return { data: null, error: error.message }
@@ -215,6 +264,7 @@ export async function getHistorial(
     fuente: (r.fuente as string) ?? null,
     masivo: Boolean(r.masivo),
     autor: r.creado_por ? (nombres.get(r.creado_por as string) ?? null) : null,
+    evidencia: Array.isArray(r.evidencia) ? (r.evidencia as string[]).filter(Boolean) : [],
   }))
   return { data: filas, error: null }
 }

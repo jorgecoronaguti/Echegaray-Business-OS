@@ -43,6 +43,21 @@ export interface ClientePanel {
   n_documentos: number
 }
 
+/**
+ * Una obra vista DESDE el cliente: lo mínimo que el panel lateral del canónico 00 dibuja.
+ *
+ * No es un `ObraPanel` recortado por comodidad: es lo único que se lee para toda la cartera de una
+ * vez, y traer `select *` de todas las obras para dibujar un punto y un porcentaje sería pagar la
+ * ficha entera de cada obra en la pantalla que sólo las lista.
+ */
+export interface ObraDePanel {
+  obra_id: string
+  nombre: string
+  estado: string
+  /** `null` = sin avance sincronizado. NO es 0 %. */
+  avance_pct: number | null
+}
+
 /** Una persona del OS que puede quedar como responsable interno de un cliente. */
 export interface Responsable {
   id: string
@@ -187,3 +202,16 @@ export interface FuentesActividad {
     monto_cobrado: number | null
   }[]
 }
+
+// LA CUENTA CORRIENTE, EL ESQUEMA DE PAGO Y EL PORTAL viven en su propio archivo: son las
+// pantallas 28 · 31 · 32 y traen veinte tipos que no tienen nada que ver con la identidad del
+// cliente. Se re-exportan acá porque `@/features/clientes/types` es la puerta que usan las
+// pantallas, y partir la puerta obligaría a recordar en cuál de dos archivos está cada cosa.
+//
+// UN SOLO ARCHIVO, `cobranzas.ts`. El frente de datos había traído un segundo (`portalCliente.ts`)
+// con los mismos conceptos y otros nombres; se unificó allá y este re-export es la única puerta.
+export type {
+  AccesoPortal, ActividadPortal, CambioCobranza, CertificadoCliente, CuentaCorriente, EsquemaCliente,
+  EstadoCambioCobranza, EstadoCertificado, EstadoPago, MedioPago, PagoEsquema, Reprogramacion,
+  TipoActividadPortal,
+} from './cobranzas'

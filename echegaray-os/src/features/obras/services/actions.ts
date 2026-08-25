@@ -15,8 +15,10 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { finNoAnteriorAlInicio } from './validacionFechas'
 import { claveDeActividad } from './claves'
 import { haceCiclo } from './cronograma'
+import { debeFijarMonto } from './alta'
 
 export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
 
@@ -56,6 +58,31 @@ const obraSchema = z.object({
   drive_carpeta_id: z.string().trim().optional(),
 })
 
+/**
+ * EL MONTO CONTRATADO SALIÓ DEL `update` DE LA OBRA (21/08/2026).
+ *
+ * La migración 5000 le sacó a `authenticated` el GRANT de columna sobre
+ * `obra_canonica.monto_contratado`: hasta ese día el jefe de obra podía PISARLO sin poder leerlo. La
+ * vía legítima es `fijar_monto_contratado()`, que lleva `ve_economia()` adentro y deja su rastro en
+ * `entidad_cambio`.
+ *
+ * CUÁNDO se llama lo decide `debeFijarMonto`, que es pura y tiene sus propios tests: acá queda sólo
+ * el ida y vuelta con la base.
+ */
+async function fijarMontoSiCambio(
+  supabase: Awaited<ReturnType<typeof createClient>>, obraId: string, form: FormData,
+  monto: number | null,
+): Promise<string | null> {
+  if (!form.has('monto_contratado')) return null
+  const { data: actual } = await supabase.from('obra_canonica')
+    .select('monto_contratado').eq('id', obraId).maybeSingle()
+  const antes = (actual?.monto_contratado ?? null) as number | string | null
+  if (!debeFijarMonto(true, antes, monto)) return null
+
+  const { error } = await supabase.rpc('fijar_monto_contratado', { p_obra_id: obraId, p_monto: monto })
+  return error ? error.message : null
+}
+
 function idDeObra(nombre: string): string {
   return nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50)
@@ -83,14 +110,20 @@ export async function crearObra(form: FormData): Promise<Resultado> {
     tipo: 'obra',
     etapa: vacioANull(d.etapa),
     jefe_obra: d.jefe_obra || null,
-    monto_contratado: vacioANull(d.monto_contratado),
     fecha_inicio_plan: vacioANull(d.fecha_inicio_plan),
     fecha_fin_plan: vacioANull(d.fecha_fin_plan),
     drive_carpeta_id: d.drive_carpeta_id || null,
     ubicacion: d.ubicacion || null,
   })
   if (error) return { ok: false, error: error.message }
+
+  // La obra ya existe: el monto entra en un segundo paso porque la columna no es escribible por
+  // PostgREST. Si el RPC rechaza, NO se revierte el alta —la obra es un hecho útil sin su monto— y
+  // el mensaje dice exactamente qué quedó afuera en vez de un «algo salió mal» sobre una obra que sí
+  // se creó.
+  const eMonto = await fijarMontoSiCambio(supabase, id, form, vacioANull(d.monto_contratado))
   revalidatePath('/clientes', 'layout'); revalidatePath('/obras')
+  if (eMonto) return { ok: true, id, mensaje: `Obra creada, pero el monto contratado no se guardó: ${eMonto}` }
   return { ok: true, id }
 }
 
@@ -105,7 +138,6 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
     estado: d.estado,
     etapa: vacioANull(d.etapa),
     jefe_obra: d.jefe_obra || null,
-    monto_contratado: vacioANull(d.monto_contratado),
     fecha_inicio_plan: vacioANull(d.fecha_inicio_plan),
     fecha_fin_plan: vacioANull(d.fecha_fin_plan),
     fecha_inicio_real: vacioANull(d.fecha_inicio_real),
@@ -114,7 +146,10 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
     ubicacion: d.ubicacion || null,
   }).eq('id', obraId)
   if (error) return { ok: false, error: error.message }
+
+  const eMonto = await fijarMontoSiCambio(supabase, obraId, form, vacioANull(d.monto_contratado))
   revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
+  if (eMonto) return { ok: false, error: eMonto }
   return { ok: true }
 }
 
@@ -153,7 +188,7 @@ export async function archivarObra(obraId: string, archivar: boolean): Promise<R
 
 // ── ACTIVIDADES DEL CRONOGRAMA ───────────────────────────────────────────────
 
-const actividadSchema = z.object({
+const actividadBase = z.object({
   nombre: z.string().trim().min(2, 'La actividad necesita un nombre'),
   seccion: z.string().trim().optional(),
   inicio_plan: fechaOpt,
@@ -166,6 +201,8 @@ const actividadSchema = z.object({
   comentario: z.string().trim().optional(),
   es_hito: z.union([z.literal('on'), z.literal('')]).optional(),
 })
+
+const actividadSchema = actividadBase.refine(...finNoAnteriorAlInicio)
 
 export async function crearActividad(obraId: string, form: FormData): Promise<Resultado> {
   const parsed = actividadSchema.safeParse(Object.fromEntries(form))
@@ -210,7 +247,8 @@ export async function crearActividad(obraId: string, form: FormData): Promise<Re
 }
 
 export async function editarActividad(obraId: string, actividadId: string, form: FormData): Promise<Resultado> {
-  const parsed = actividadSchema.partial({ nombre: true }).safeParse(Object.fromEntries(form))
+  const parsed = actividadBase.partial({ nombre: true }).refine(...finNoAnteriorAlInicio)
+    .safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
   const supabase = await createClient()

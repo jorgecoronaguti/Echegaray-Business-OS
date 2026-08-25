@@ -93,6 +93,18 @@ export interface FrenteDelDia {
   /** Personas que imputaron horas hoy a alguna tarea del frente. Es el único vínculo real. */
   personasHoy: number
   hhHoy: number
+  /**
+   * Alguien cargó HOY un parte contra alguna tarea del frente (`ultimo_parte`).
+   *
+   * No es lo mismo que «hay horas imputadas»: el parte es la declaración de avance del día y las HH
+   * son otra fila. Un frente puede tener gente con horas y nadie que haya dicho hasta dónde llegó,
+   * que es exactamente el frente que hay que ir a buscar antes de que termine la jornada.
+   */
+  parteHoy: boolean
+  /** Impedimentos abiertos sobre sus tareas. Con uno, el frente está parado. */
+  impedimentos: number
+  /** Ninguna de sus tareas abiertas tiene cuadrilla prevista: el frente no tiene quién lo haga. */
+  sinCuadrilla: boolean
 }
 
 /**
@@ -118,23 +130,33 @@ export function frentesDelDia(
 
   return frentesDe(arbol).map((frente) => {
     const tareas = frente.tareas.map((id) => porId.get(id)).filter((a): a is ActividadDelJefe => !!a)
-    const avance = avanceDelFrente(tareas.map((t) => ({ actividad_id: t.actividad_id, avance_pct: t.avance_pct })))
+    // Las HH plan viajan porque el avance del frente se pondera por ellas — la regla canónica está
+    // en `avance.ts`. Sin este campo el frente volvería a promediar simple sin decirlo.
+    const avance = avanceDelFrente(tareas.map(
+      (t) => ({ actividad_id: t.actividad_id, avance_pct: t.avance_pct, hh_plan: t.hh_plan }),
+    ))
     const gente = new Set<string>()
     let hhHoy = 0
     for (const t of tareas) {
       for (const p of personasPorActividad.get(t.actividad_id) ?? []) gente.add(p)
       hhHoy += horasPorActividad.get(t.actividad_id) ?? 0
     }
+    const abiertas = tareas.filter((t) => !estaTerminada(t))
     return {
       frente,
       pct: avance.pct,
       medidas: avance.medidas,
       total: avance.total,
-      abiertas: tareas.filter((t) => !estaTerminada(t)).length,
+      abiertas: abiertas.length,
       atrasoDias: atrasoDelFrente(
-        tareas.filter((t) => !estaTerminada(t)).map((t) => ({ fin_plan: t.fin_plan, fin_real: t.fin_real })), hoy),
+        abiertas.map((t) => ({ fin_plan: t.fin_plan, fin_real: t.fin_real })), hoy),
       personasHoy: gente.size,
       hhHoy: Math.round(hhHoy * 100) / 100,
+      // `ultimo_parte` llega como fecha o como marca de tiempo según la vista: se compara por los
+      // diez primeros caracteres, que es el día. Comparar la cadena entera daba siempre `false`.
+      parteHoy: tareas.some((t) => t.ultimo_parte?.slice(0, 10) === hoy),
+      impedimentos: tareas.reduce((s, t) => s + t.impedimentos_abiertos, 0),
+      sinCuadrilla: abiertas.length > 0 && abiertas.every((t) => !t.cuadrilla_prevista),
     }
   })
 }
@@ -149,4 +171,32 @@ export function frentesAbiertos(frentes: FrenteDelDia[]): FrenteDelDia[] {
   return frentes
     .filter((f) => f.total > 0 && f.abiertas > 0)
     .sort((a, b) => (b.atrasoDias ?? -1) - (a.atrasoDias ?? -1))
+}
+
+export interface EstadoDeFrente { palabra: string; tono: 'neg' | 'warn' | 'ink' | 'faint' }
+
+/**
+ * EL ESTADO DEL FRENTE EN UNA PALABRA — punto + palabra, nunca una pastilla de color.
+ *
+ * «Sin gente» NO se decide por las horas imputadas: a media mañana nadie imputó todavía y el ámbar
+ * cubriría la lista entera, que es cómo un color de alerta deja de alertar. Se decide por la
+ * CUADRILLA PREVISTA, que es una decisión de planificación tomada o no tomada, y no cambia con la
+ * hora del día.
+ */
+export function estadoDelFrente(f: FrenteDelDia): EstadoDeFrente {
+  if (f.impedimentos > 0) return { palabra: 'parado', tono: 'neg' }
+  if (f.sinCuadrilla) return { palabra: 'sin cuadrilla', tono: 'warn' }
+  if (f.personasHoy > 0) return { palabra: 'en curso', tono: 'ink' }
+  return { palabra: 'sin horas hoy', tono: 'faint' }
+}
+
+/** Los tres números del encabezado de J01. Ninguno inventado: los tres se cuentan. */
+export interface ResumenDeFrentes { abiertos: number; conParte: number; parados: number }
+
+export function resumenDeFrentes(frentes: FrenteDelDia[]): ResumenDeFrentes {
+  return {
+    abiertos: frentes.length,
+    conParte: frentes.filter((f) => f.parteHoy).length,
+    parados: frentes.filter((f) => f.impedimentos > 0).length,
+  }
 }

@@ -21,6 +21,10 @@ const act = (p: Partial<Actividad>): Actividad => ({
   n_imputaciones: 0, impedimentos_abiertos: 0, avance_pct: null, origen_avance: null,
   estado_operativo: 'pendiente', productividad: null, consumo_hh_pct: null,
   actividad_padre_id: null, n_tareas: 0, n_tareas_hechas: 0, n_pedidos: 0,
+  inicio_real_declarado: null, fin_real_declarado: null, origen_inicio_real: null,
+  origen_fin_real: null, forecast_fin: null, base_del_forecast: null, dias_restantes: null,
+  tiene_fecha: false, tiene_fecha_plan: false, estado_fecha: 'sin_fecha',
+  desvio_plan_dias: null, desvio_forecast_dias: null,
   ...p,
 })
 

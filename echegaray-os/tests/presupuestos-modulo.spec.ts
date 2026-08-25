@@ -52,13 +52,18 @@ test.describe('presupuestos · lo que anda hoy', () => {
     await expect(page.getByTestId('kpis-cartera')).toHaveCount(0)
   })
 
-  test('la solapa Presupuestos existe en la barra de Administración', async ({ page }) => {
+  // SUBIÓ A NIVEL 1 EL 25/08 (00 · Home Navegación v2). Estaba en la barra de Administración, entre
+  // Usuarios y Personas; ahora vive en la barra de la aplicación, al lado de Obras, con el motivo
+  // escrito en su `title`: «Comercial, no administración: vive al lado de Obras».
+  test('la solapa Presupuestos vive en la barra de la aplicación, no en la de Administración', async ({ page }) => {
     await entrar(page)
     await page.goto('/clientes')
-    const solapa = page.getByTestId('nav-admin-secciones-presupuestos')
+    await expect(page.getByTestId('nav-admin-secciones-presupuestos')).toHaveCount(0)
+    const solapa = page.getByTestId('nav-areas').getByTestId('nav-presupuestos')
     await expect(solapa).toBeVisible()
     await solapa.click()
     await page.waitForURL(/\/presupuestos/)
+    await expect(solapa).toHaveAttribute('aria-current', 'page')
   })
 
   test('cuando la base rechaza la lectura, la pantalla muestra SU mensaje', async ({ page }) => {

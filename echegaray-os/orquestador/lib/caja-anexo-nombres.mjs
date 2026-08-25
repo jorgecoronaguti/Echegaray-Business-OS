@@ -55,6 +55,18 @@ export const ANEXO = {
   // cambió una celda. CAJA lo cita por nombre y no lo recalcula.
   conteoArsDia: 'ANEXO_CONTEO_ARS_DIA',
   conteoUsdDia: 'ANEXO_CONTEO_USD_DIA',
+  // LA FECHA DEL ÚLTIMO MOVIMIENTO DE EFECTIVO — la que CAJA publica de verdad en D7 (24/08/2026).
+  //
+  // El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+  // realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+  // efectivo"*. `CAJA!C7` = conteo + los movimientos posteriores de SEIS fuentes; su fecha decía el día
+  // del conteo. El número llegaba a hoy y la fecha se quedaba en el conteo.
+  //
+  // SE CALCULA EN EL ANEXO Y NO EN CAJA por el mismo motivo que el neto: su ancla es el INSTANTE
+  // sellado (`$F$` del SELLO), que vive en el anexo y no tiene nombre propio; y porque la fórmula mira
+  // las seis fuentes enteras — una expresión así en la portada es exactamente lo que el anexo existe
+  // para sacar de ahí. CAJA la cita por nombre, como todo lo demás que cruza la frontera.
+  ultimoEfectivoDia: 'ANEXO_EFECTIVO_ULTIMO_DIA',
 }
 
 /**
@@ -79,6 +91,14 @@ export const DESDE_CAJA = {
   // una sola vez. Citarlas por nombre es lo que permitió mover el bloque del arqueo del final de la
   // pestaña al segundo lugar sin tocar una sola de las seis fórmulas del efectivo.
   arqueoArs: 'CAJA_ARQUEO_ARS',
+  // OJO CON ESTE NOMBRE (24/08/2026): apunta a `CAJA!D7`, y desde que esa celda publica la fecha del
+  // ÚLTIMO MOVIMIENTO de efectivo —y no la del conteo— el nombre dice más de lo que la celda tiene.
+  // NO SE RENOMBRA DESDE ACÁ: un nombre publicado puede estar citado por una fórmula escrita a mano en
+  // el libro, y renombrarlo a ciegas la dejaría en #NAME?. Ninguna fórmula del REPO lo lee (verificado
+  // por grep el 24/08: sólo lo escriben `caja-pestana.mjs` al republicarlo y `caja-disponibilidades`
+  // para marcar cuál es la fila del arqueo). El ancla del cálculo NO es esta celda desde el 15/08: es
+  // el instante sellado en F del SELLO del anexo. Quien necesite el DÍA del conteo tiene
+  // `ANEXO_CONTEO_ARS_DIA`, que sigue siendo exactamente eso.
   arqueoArsFecha: 'CAJA_ARQUEO_ARS_FECHA',
   arqueoUsd: 'CAJA_ARQUEO_USD',
   arqueoUsdFecha: 'CAJA_ARQUEO_USD_FECHA',
@@ -130,6 +150,7 @@ export const ESPECIE_ANEXO = {
 export const PUEDE_ESTAR_VACIO = {
   [ANEXO.conteoArsDia]: 'sin conteo en pesos cargado no hay fecha que publicar, y una fecha inventada sobre un arqueo que no ocurrió es peor que la celda vacía',
   [ANEXO.conteoUsdDia]: 'hoy está SIEMPRE vacía: `CAJA_ARQUEO_USD` vale 0 y no hay conteo en dólares. El nombre existe igual para que `CAJA!D8` no quede en #NAME? y se complete sola el día que se cargue uno',
+  [ANEXO.ultimoEfectivoDia]: 'su celda tiene SIEMPRE una fórmula, pero el valor es texto vacío mientras la corrida no haya sellado el instante del conteo: sin ancla no hay ventana, y una fecha de "último movimiento" sin ventana sería el histórico entero. CAJA cae a la fecha del conteo en ese caso, y el nombre tiene que existir igual o D7 quedaría en #NAME?',
 }
 
 /** El nombre de la pestaña auxiliar. Prefijo `_` como `_BANCO_RAW` y `_PROVEEDORES_OS`: no se lee. */

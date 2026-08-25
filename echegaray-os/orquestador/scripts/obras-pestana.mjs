@@ -15,6 +15,12 @@
 // la H, la fórmula tiene que mudarse sola; y si un rótulo no está, el script ROMPE en vez de escribir
 // fórmulas que suman la columna equivocada sin un solo error.
 //
+// EL CUADRO 5 NO SE REGENERA: SE FUSIONA (24/08/2026). La fecha y el importe de cada material
+// previsto los edita EL DUEÑO en la pestaña, y desde el 24/08 el libro de movimientos los lee de ahí.
+// Este script se los pisaba en cada corrida con las constantes de obras-datos.mjs —por eso el timer
+// del flujo de caja quedó detenido—. Ahora lee la pestaña ANTES de armar la grilla y fusiona:
+// `lib/materiales-fusion.mjs`. `obras-datos.mjs` sólo siembra ítems nuevos.
+//
 // LOS TRES MODOS, DE MÁS SEGURO A MENOS:
 //
 //   --dry       EN SECO. No abre cliente de Google, no lee, no escribe: arma la grilla con las
@@ -39,7 +45,10 @@ import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
-import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, leerRegistro } from '../lib/respetar-ediciones.mjs'
+// EL CUADRO 5 NO SE REGENERA: SE FUSIONA. La pestaña es el origen de la fecha y el importe de cada
+// material previsto desde el 24/08 — este script se los pisaba en cada corrida. Ver materiales-fusion.
+import { fusionarCuadro5, lineasDeFusion, clavesEscritas, clavesDeMemoria, MARCA_ESCRITO } from '../lib/materiales-fusion.mjs'
 // EL FORMATO DE NÚMERO SALE DE LA ESPECIE QUE DECLARA LA GRILLA. Ver `obras-especies.mjs`.
 import { matrizDeEspecies, requestsDeEspecie } from '../lib/obras-especies.mjs'
 import {
@@ -343,7 +352,14 @@ async function main() {
   if (DRY) {
     const seco = grillaObras({ obras: OBRAS_FUTURAS })
     if (!seco.filas.length) throw new Error('la grilla salió vacía: no hay nada que mostrar ni que escribir.')
-    return console.log(render(seco, OBRAS_FUTURAS))
+    console.log(render(seco, OBRAS_FUTURAS))
+    // EL CUADRO 5 DE ESTA SALIDA NO ES EL QUE SE ESCRIBIRÍA, y decirlo es obligatorio: `--dry` es
+    // offline, así que dibuja la SEMILLA de obras-datos. Lo que se escribe de verdad sale de fusionar
+    // esa semilla con la pestaña, donde vive la fecha que el dueño editó. El ensayo de esa fusión —con
+    // el archivo delante y sin escribir— es `scripts/obras-cuadro5-ensayo.mjs`.
+    return console.log('\n⚠ el cuadro 5 de arriba es la SEMILLA de obras-datos.mjs, no lo que se escribiría: '
+      + '--dry es offline y la fusión necesita leer la pestaña.\n'
+      + '  Para ver el cuadro 5 real: node orquestador/scripts/obras-cuadro5-ensayo.mjs')
   }
 
   const google = ESCRIBIR
@@ -397,7 +413,34 @@ async function main() {
     }
   }
 
-  const g = grillaObras({ obras, refs, clientes })
+  // ═══ EL CUADRO 5 SE FUSIONA CONTRA LA PESTAÑA, NO SE REGENERA (24/08/2026) ═══
+  //
+  // La fecha y el importe de cada material previsto los edita el DUEÑO en la pestaña —el 24/08 movió
+  // los 17 ítems al 01/10— y desde ese día el libro los lee de ahí. Escribir las constantes de
+  // obras-datos encima es pisarle la corrección, y por eso el timer del flujo de caja quedó detenido.
+  //
+  // SE LEE CRUDO (`UNFORMATTED_VALUE`) Y APARTE de la lectura de la Regla 0: aquélla necesita el texto
+  // FORMATEADO para emparejar rótulos; ésta necesita el SERIAL de la columna D — formateada llegaría
+  // "01/10/2026" y volvería a la celda como texto. Son dos lecturas porque son dos preguntas.
+  //
+  // LA PESTAÑA QUE NO EXISTE Y LA LECTURA QUE FALLA NO SON LO MISMO: la primera es la primera corrida
+  // (siembra completa, legítima); la segunda es no saber, y ahí no se escribe — sembrar a ciegas es
+  // exactamente el defecto que esto arregla.
+  const hojas = await google.getSheetMeta(ID)
+  const existeObras = hojas.some((h) => h.title === PESTANA_OBRAS)
+  const filasObras = existeObras
+    ? await google.readSheetValues(ID, `'${PESTANA_OBRAS}'!A1:${letra(ANCHO_OBRAS - 1)}`, { render: 'UNFORMATTED_VALUE' })
+      .catch((e) => { throw new Error(`no pude leer "${PESTANA_OBRAS}" para fusionar el cuadro 5 (${e.message}). NO escribo: sin esa lectura le piso al dueño la fecha y el importe de cada material previsto.`) })
+    : []
+  // LA MEMORIA DE QUÉ ÍTEMS ESCRIBÍ LA CORRIDA PASADA. Es lo único que distingue un ítem NUEVO de
+  // obras-datos de uno que el dueño BORRÓ de la pestaña: los dos se ven igual en una sola lectura.
+  // Sin registro (`null`) la fusión elige no resucitar, que es la dirección segura para equivocarse.
+  const memoria = await leerRegistro(ID, PESTANA_OBRAS).then((r) => clavesDeMemoria(r.mios))
+    .catch((e) => { console.warn(`  ⚠ no pude leer el registro de rótulos (${e.message}): la fusión del cuadro 5 no va a sembrar ítems nuevos en esta corrida.`); return null })
+  const fusion = fusionarCuadro5({ obras, filas: filasObras, escritos: memoria })
+  for (const l of lineasDeFusion(fusion.diagnostico)) console.log(l)
+
+  const g = grillaObras({ obras, refs, clientes, materiales: fusion.items })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
@@ -412,7 +455,8 @@ async function main() {
   console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${OBRAS_FUTURAS.length} obras · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
 
-  const hojas = await google.getSheetMeta(ID)
+  // `hojas` se leyó arriba, antes de la grilla: la misma lectura decide si la pestaña EXISTE (y por
+  // lo tanto si el cuadro 5 se fusiona o se siembra) y si hay que crearla.
   let hoja = hojas.find((h) => h.title === PESTANA_OBRAS)
   // LA PESTAÑA SE CREA CON ALTO DE SOBRA: un batch que apunta más allá del alto real aborta ENTERO.
   if (!hoja) {
@@ -455,6 +499,16 @@ async function main() {
   await formatear(google, hoja.sheetId, g)
   const quedo = await google.readSheetValues(ID, `${PESTANA_OBRAS}!A1:${letra(ANCHO_OBRAS - 1)}${g.filas.length}`,
     { render: 'FORMATTED_VALUE' }).catch(() => [])
+  // ═══ LA MEMORIA DEL CUADRO 5 VIAJA EN EL MISMO REGISTRO ═══
+  //
+  // Sin ella la fusión no puede distinguir un ítem NUEVO de obras-datos de uno que el dueño BORRÓ, y
+  // peor: un borrado respetado hoy volvería mañana, porque al no escribirlo desaparece de todo rastro.
+  // Se guarda como una edición más —`sheet_rotulos` conserva las ediciones aunque el generador deje de
+  // escribir ese texto (es su regla explícita)— bajo una marca que ninguna celda puede tener, así que
+  // `respetarEdiciones` nunca la va a encontrar en una celda generada. Las claves de la corrida
+  // anterior se PODAN antes: si no, un ítem sacado de obras-datos quedaría recordado para siempre.
+  for (const k of [...ediciones.keys()]) if (String(k).startsWith(MARCA_ESCRITO)) ediciones.delete(k)
+  for (const k of clavesEscritas(fusion.items)) ediciones.set(k, '')
   await guardarRegistro(ID, PESTANA_OBRAS, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 

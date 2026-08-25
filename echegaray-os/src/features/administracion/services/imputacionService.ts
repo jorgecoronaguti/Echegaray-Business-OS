@@ -16,12 +16,37 @@
 // ═══ LA LECTURA ES PAGINADA A PROPÓSITO ═══
 //
 // PostgREST corta en 1.000 filas por respuesta y no avisa: devuelve 200 con menos filas. Compras
-// tiene 845 hoy. El día que pase de 1.000, un `select` suelto empezaría a decir que todo está
+// tiene 875 hoy. El día que pase de 1.000, un `select` suelto empezaría a decir que todo está
 // imputado porque el resto no llegó, y ese es justo el modo de falla que no se ve.
+//
+// ═══ DE CUÁNTO TRAE CADA COLUMNA DEPENDE PARA QUÉ SE LA USA (25/08/2026) ═══
+//
+// La pantalla tardaba 1.022 ms de servidor (Navigation Timing en producción, `responseEnd −
+// responseStart`) y descargaba 2 KB de JavaScript: el segundo entero era esperar a la base. De las
+// cuatro fuentes, `costos_obra` traía ONCE columnas de sus 875 filas —262 KB— para que al final se
+// dibujaran DOS textos pendientes. Las otras diez columnas sólo hacen falta para las filas que
+// alguien va a mirar.
+//
+// Entonces la lectura se parte según para qué sirve cada dato, y NO según de qué tabla sale:
+//
+//   OLA 1 · lo que hace falta para CONTAR. `obra_texto` (y `proveedor`, que es lo que sostiene la
+//           evidencia B del sugeridor) de las 875 compras: 50 KB en vez de 262. Las otras tres
+//           fuentes suman 220 filas entre las tres y se traen enteras — partirlas costaría un viaje
+//           más y ahorraría 40 KB.
+//   OLA 2 · el DETALLE de las compras cuyo texto quedó pendiente, y de ninguna otra. Es un `in
+//           (…)` por tabla, no uno por fila: si hubiera 300 textos pendientes seguirían siendo
+//           tres viajes, no 300. Hoy no hay ninguna compra pendiente, así que esta ola tiene CERO
+//           consultas y la página se resuelve en una sola.
+//
+// Lo que NO se hace es contar con `count: 'exact'` por fuente: los cinco números de cada fila del
+// resumen (a una obra · estructura · pendientes · sin texto · total) salen de clasificar la MISMA
+// lista que arma la cola. Cinco `head` con `count` por tabla serían veinte viajes que además
+// podrían contradecir a la cola, y el estado de una fila no se puede pedir por filtro —depende de
+// `norm_obra(texto)`, y PostgREST no filtra por el resultado de una función.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  agruparPendientes, historialDeRecurso, indexarAlias, resumirPorTipo, sugerirObra,
+  agruparPendientes, estadoDeFila, historialDeRecurso, indexarAlias, resumirPorTipo, sugerirObra,
 } from '../../../../orquestador/lib/imputacion-pendiente.mjs'
 import type { ServiceResult } from '../types'
 
@@ -81,6 +106,17 @@ export interface ResumenFuente {
   sin_texto: number
 }
 
+/** Una obra a la que se puede mandar el costo, con lo que hace falta para distinguirla de la de al
+ *  lado: de quién es y cómo viene. `avance_pct` puede ser NULL — una obra sin actividades medidas
+ *  no avanzó 0 %, no se sabe—, y la pantalla lo dice con todas las letras. */
+export interface ObraElegible {
+  obra_id: string
+  nombre: string
+  estado: string
+  cliente_nombre: string | null
+  avance_pct: number | null
+}
+
 export interface Pendientes {
   grupos: GrupoPendiente[]
   resumen: ResumenFuente[]
@@ -103,6 +139,26 @@ const TABLA_DE: Record<TipoFuente, string> = {
 const PAGINA = 1000
 /** Tope duro: 60.000 filas. Sin él, una respuesta que siempre devuelve página llena cicla para siempre. */
 const MAX_PAGINAS = 60
+/** Cuántos textos entran en un `in (…)`. La URL de PostgREST tiene largo máximo y un texto de obra
+ *  puede medir 60 caracteres: partir en tandas mantiene el viaje por TABLA, nunca por fila. */
+const TANDA_IN = 80
+
+/** Las columnas que hacen falta para MOSTRAR una fila, por fuente. Se piden sólo de las filas que
+ *  alguien va a mirar. */
+const DETALLE_DE: Record<TipoFuente, string> = {
+  compra: 'id, obra_texto, proveedor, concepto, categoria, tipo, comprobante, referencia_externa, total, fecha, origen',
+  pedido: 'id, id_pedido, obra_texto, material, cantidad, fecha, origen',
+  herramienta: 'id, id_herramienta, nombre, ubicacion_actual, fecha, origen',
+  movimiento: 'id, id_movimiento, id_herramienta, destino, responsable, fecha, origen',
+}
+
+/** De qué columna sale el texto de obra en cada fuente. */
+const COLUMNA_TEXTO: Record<TipoFuente, string> = {
+  compra: 'obra_texto',
+  pedido: 'obra_texto',
+  herramienta: 'ubicacion_actual',
+  movimiento: 'destino',
+}
 
 async function traerTodo(
   supabase: SupabaseClient, tabla: string, columnas: string,
@@ -115,6 +171,24 @@ async function traerTodo(
     const lote = (data ?? []) as unknown as Record<string, unknown>[]
     filas.push(...lote)
     if (lote.length < PAGINA) break
+  }
+  return filas
+}
+
+/**
+ * Las filas de una tabla cuyo texto de obra es uno de los que se piden.
+ *
+ * Es UNA consulta por tanda de 80 textos, no una por texto: buscar la evidencia texto por texto es
+ * exactamente el N+1 que esta pantalla no puede permitirse, porque la cola crece con el desorden.
+ */
+async function traerPorTexto(
+  supabase: SupabaseClient, tabla: string, columna: string, textos: string[], columnas: string,
+): Promise<Record<string, unknown>[]> {
+  const filas: Record<string, unknown>[] = []
+  for (let i = 0; i < textos.length; i += TANDA_IN) {
+    const { data, error } = await supabase.from(tabla).select(columnas).in(columna, textos.slice(i, i + TANDA_IN))
+    if (error) throw new Error(`${tabla}: ${error.message}`)
+    filas.push(...((data ?? []) as unknown as Record<string, unknown>[]))
   }
   return filas
 }
@@ -191,6 +265,33 @@ function deMovimientos(fila: Record<string, unknown>): FilaImputable {
 }
 
 /**
+ * UNA COMPRA VISTA SÓLO PARA CONTARLA.
+ *
+ * Trae lo justo para saber en qué estado está (`texto`) y para alimentar la evidencia B del
+ * sugeridor (`recurso` = el proveedor). Todo lo demás queda en `null` A PROPÓSITO y esta fila NUNCA
+ * llega a la pantalla: si apareciera, se vería como una compra sin fecha ni importe, que es un dato
+ * inventado. Por eso los grupos se arman con `paraDetalle`, no con esto.
+ */
+function deComprasLiviana(fila: Record<string, unknown>): FilaImputable {
+  return {
+    tipo: 'compra', id: '', tabla: TABLA_DE.compra, referencia: null, fuente: null,
+    fecha: null, descripcion: '', importe: null,
+    recurso: opcional(fila.proveedor), texto: texto(fila.obra_texto),
+  }
+}
+
+/** Los textos DISTINTOS de una fuente que hoy no tienen respuesta en el diccionario. */
+function textosPendientes(filas: FilaImputable[], indice: Map<string, FilaAlias>): string[] {
+  const vistos = new Set<string>()
+  for (const f of filas) {
+    if (estadoDeFila(f.texto, indice) !== 'pendiente') continue
+    const t = String(f.texto)
+    if (t) vistos.add(t)
+  }
+  return [...vistos]
+}
+
+/**
  * Todo lo pendiente, agrupado por el texto exacto y con su sugerencia — cuando hay evidencia.
  *
  * Se lee con la sesión de quien mira: `costos_obra`, `herramientas`, `movimientos_herramienta` y
@@ -201,30 +302,44 @@ export async function getPendientesDeImputacion(
   supabase: SupabaseClient,
 ): Promise<ServiceResult<Pendientes>> {
   try {
-    const [compras, pedidos, herramientas, movimientos, alias] = await Promise.all([
-      traerTodo(supabase, TABLA_DE.compra, 'id, obra_texto, proveedor, concepto, categoria, tipo, comprobante, referencia_externa, total, fecha, origen'),
-      traerTodo(supabase, TABLA_DE.pedido, 'id, id_pedido, obra_texto, material, cantidad, fecha, origen'),
-      traerTodo(supabase, TABLA_DE.herramienta, 'id, id_herramienta, nombre, ubicacion_actual, fecha, origen'),
-      traerTodo(supabase, TABLA_DE.movimiento, 'id, id_movimiento, id_herramienta, destino, responsable, fecha, origen'),
+    // ── OLA 1 · lo que hace falta para CONTAR ────────────────────────────────────────────────
+    const [comprasLivianas, pedidos, herramientas, movimientos, alias] = await Promise.all([
+      traerTodo(supabase, TABLA_DE.compra, 'obra_texto, proveedor'),
+      traerTodo(supabase, TABLA_DE.pedido, DETALLE_DE.pedido),
+      traerTodo(supabase, TABLA_DE.herramienta, DETALLE_DE.herramienta),
+      traerTodo(supabase, TABLA_DE.movimiento, DETALLE_DE.movimiento),
       traerTodo(supabase, 'obra_alias', 'alias, obra_id, clasificacion, ejemplo_raw'),
     ])
     const aliasFilas = alias as unknown as FilaAlias[]
+    const indice = indexarAlias(aliasFilas)
 
-    const filas: FilaImputable[] = [
-      ...compras.map(deCompras),
+    const compras = comprasLivianas.map(deComprasLiviana)
+    const otrasFuentes: FilaImputable[] = [
       ...pedidos.map(dePedidos),
       ...herramientas.map(deHerramientas),
       ...movimientos.map(deMovimientos),
     ]
 
-    const indice = indexarAlias(aliasFilas)
-    const historial = historialDeRecurso(filas, indice)
-    const grupos = (agruparPendientes(filas, indice) as GrupoPendiente[]).map((g) => ({
+    // ── OLA 2 · el detalle de las compras que SÍ están pendientes, y de ninguna otra ─────────
+    const pendientesDeCompras = textosPendientes(compras, indice)
+    const comprasVisibles = pendientesDeCompras.length === 0 ? [] : (await traerPorTexto(
+      supabase, TABLA_DE.compra, COLUMNA_TEXTO.compra, pendientesDeCompras, DETALLE_DE.compra,
+    )).map(deCompras)
+
+    // DOS LISTAS DISTINTAS, Y MEZCLARLAS SERÍA EL DEFECTO. `paraContar` tiene las 875 compras
+    // livianas: es lo único con lo que el resumen puede decir 875. `paraAgrupar` tiene sólo filas
+    // con detalle: agrupar con las livianas dibujaría compras sin fecha ni importe, que es un dato
+    // inventado. Las dos coinciden en el único lugar donde importa —qué está pendiente— porque las
+    // compras pendientes están enteras en las dos.
+    const paraContar = [...compras, ...otrasFuentes]
+    const paraAgrupar = [...otrasFuentes, ...comprasVisibles]
+    const historial = historialDeRecurso(compras, indice)
+    const grupos = (agruparPendientes(paraAgrupar, indice) as GrupoPendiente[]).map((g) => ({
       ...g,
       sugerencia: (sugerirObra(g, { aliasFilas, historial }) ?? null) as Sugerencia | null,
     }))
 
-    const crudo = resumirPorTipo(filas, indice) as Record<string, Omit<ResumenFuente, 'tipo'>>
+    const crudo = resumirPorTipo(paraContar, indice) as Record<string, Omit<ResumenFuente, 'tipo'>>
     const resumen = (Object.keys(ETIQUETA_TIPO) as TipoFuente[])
       .map((tipo) => ({ tipo, ...(crudo[tipo] ?? { total: 0, obra: 0, estructura: 0, pendiente: 0, sin_texto: 0 }) }))
 
@@ -232,4 +347,23 @@ export async function getPendientesDeImputacion(
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'No pude leer las fuentes' }
   }
+}
+
+/**
+ * LAS OBRAS A LAS QUE SE PUEDE IMPUTAR, con lo que hace falta para elegir entre ellas.
+ *
+ * `getPortafolio` hace `select('*')` sobre `obra_panel` —una vista de 40 columnas, 44 ms medidos
+ * con RLS puesta— y de eso acá se usan cinco campos. Se pide lo que se usa: 18,5 ms y 2 KB en vez
+ * de 19 KB. No se toca `getPortafolio`, que la comparten otras pantallas con otras necesidades.
+ */
+export async function getObrasParaImputar(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<ObraElegible[]>> {
+  const { data, error } = await supabase
+    .from('obra_panel')
+    .select('obra_id, nombre, estado, cliente_nombre, avance_pct')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as unknown as ObraElegible[], error: null }
 }

@@ -43,11 +43,17 @@ export function Plegable({
         >
           ›
         </span>
-        <span className={`text-[12.5px] ${abierto ? 'font-semibold text-ink' : 'text-ink-soft'}`}>{titulo}</span>
+        {/* La sección plegada NO se apaga: el especimen §08 dibuja las cuatro filas en `ink` y sólo
+            cambia el PESO (600 abierta, 400 cerrada). Estaba en `ink-soft` cerrada, y con cuatro o
+            cinco secciones el índice entero de la ficha quedaba en segundo plano — justo el índice
+            que existe para decidir dónde entrar. */}
+        <span className={`text-[12.5px] text-ink ${abierto ? 'font-semibold' : ''}`}>{titulo}</span>
         {cuenta !== null && cuenta !== undefined && (
-          <span className="font-mono text-[11.5px] tabular-nums text-faint">{cuenta}</span>
+          <span className="font-mono text-[11px] tabular-nums text-faint">{cuenta}</span>
         )}
-        <span className="ml-auto pr-1 text-[11.5px] text-neg">{!abierto && alerta}</span>
+        {/* 10px de aire antes del chevron (§08): con 4px la alerta quedaba pegada al caret y se leía
+            como su etiqueta en vez de como el problema de la sección. */}
+        <span className="ml-auto pr-[10px] text-[11.5px] text-neg">{!abierto && alerta}</span>
       </button>
       {abierto && (
         <div id={id} className="pb-4">

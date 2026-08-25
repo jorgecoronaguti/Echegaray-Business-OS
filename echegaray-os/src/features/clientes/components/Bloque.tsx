@@ -34,8 +34,11 @@ export function Bloque({
   children: ReactNode
   testid?: string
 }) {
+  // EL `id` ES EL DEL TESTID, y no un tercer identificador: el índice de solapas de la ficha
+  // (`#bloque-obras`) apunta a estos anclajes. Con dos nombres para lo mismo, renombrar un testid
+  // rompería en silencio un enlace que sigue existiendo y ya no lleva a ningún lado.
   return (
-    <section data-testid={testid} className="min-w-0">
+    <section id={testid} data-testid={testid} className="scroll-mt-4 min-w-0">
       {/* 13/600 SIN VERSALITAS (mock 2h). En versalitas, «Obras asociadas» y «Documentos» pesaban
           más que los nombres de las obras que rotulan: el título de un bloque orienta, no compite. */}
       <h2 className="mb-3 flex items-baseline gap-2 text-[13px] font-semibold text-ink">

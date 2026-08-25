@@ -92,7 +92,7 @@
      consumen por Tailwind (`h-fila`, `h-thead`…); un `h-[46px]` suelto en un componente es la
      forma en que dos filas que deberían medir lo mismo dejan de medirlo. */
   --os-header-h: 48px; /* header global, una línea */
-  --os-row-h: 46px; /* fila de tabla */
+  --os-row-h: 44px; /* fila de tabla */
   --os-row-h-compacta: 38px; /* fila del Gantt y de la tabla que se le alinea 1:1 */
   --os-thead-h: 32px; /* encabezado de tabla */
   --os-disclosure-h: 44px; /* fila plegable / de rubro */
@@ -109,6 +109,11 @@
 
 @layer base {
   body {
+  /* LA PÁGINA NUNCA SCROLLEA DE COSTADO (contrato del Design; QA 24/08). Un layout transitorio
+     ancho durante la hidratación expandía el viewport móvil a 823px y quedaba así para siempre.
+     `clip` —no `hidden`— para no romper `position: sticky` (clip no crea scroll container). Lo
+     ancho scrollea ADENTRO de su contenedor (Tabla, Gantt), que ya lo hacen. */
+  overflow-x: clip;
     color: var(--os-ink);
     background: var(--os-canvas);
     font-family: var(--font-plex-sans), 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
@@ -142,5 +147,31 @@
   }
   100% {
     transform: translateX(400%);
+  }
+}
+
+/* LA TABLA DEL CANON EN EL TELÉFONO — scrollea POR DENTRO, no corta el dato.
+   `body` lleva `overflow-x: clip` (arriba): lo que no entra no se corre, se CORTA. Las grillas del
+   canon mezclan columnas en px con `minmax(0, N fr)`, y a 390 px las fraccionales caían a cero: el
+   encabezado se leía «PRESUPUESTOCLIENTE» y el nombre del cliente quedaba en una letra, sin barra
+   que avisara que faltaba algo. Acá la caja se vuelve su propio contenedor de scroll y la grilla
+   reserva el ancho que `anchoMinimoDeGrilla()` calcula de sus MISMAS columnas.
+
+   SÓLO POR DEBAJO DE `lg` (1024px, el corte de Tailwind). De ahí para arriba —1280 y 1440, las dos
+   geometrías del porte literal— no se aplica nada: ni `overflow`, ni `min-width`. El escritorio
+   sigue midiendo exactamente lo que mide el `.dc.html`, incluso cuando el panel lateral de 372px
+   deja la tabla más angosta que este mínimo. */
+@media (max-width: 1023px) {
+  .canon-scroll-x {
+    /* `relative` NO es decorativo: un `sr-only` (position:absolute) dentro de la grilla escapa del
+       clip de un scroll container no posicionado y ensancha el <html> hasta su posición estática
+       (782px en /presupuestos a 390, medido 25/08) — la página vuelve a scrollear de costado. */
+    position: relative;
+    overflow-x: auto;
+    /* Llegar al final de la tabla no arrastra la página detrás. */
+    overscroll-behavior-x: contain;
+  }
+  .canon-ancho-canonico {
+    min-width: var(--canon-ancho, 0px);
   }
 }

@@ -8,9 +8,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  DIAS_ACEPTABLE, DIAS_FRESCO, ETIQUETA_ANALISIS, claveDeCategoria, coincide, costoDeCategoria,
-  diasEntre, estadoDelAnalisis, fechaCorta, fechaLarga, filtrar, frescuraDePrecio, motivoDelEstado,
-  faltaOperativa, numero, pesos, pesosCierran, porcentaje, sumaDeCargas, sumaDePesos,
+  BANDA_DESVIO, DIAS_ACEPTABLE, DIAS_FRESCO, ETIQUETA_ANALISIS, claveDeCategoria, coincide,
+  costoDeCategoria, desvioObservado, diasEntre, estadoDelAnalisis, fechaCorta, fechaLarga, filtrar,
+  frescuraDePrecio, motivoDelEstado, faltaOperativa, numero, pesos, pesosCierran, porcentaje,
+  sumaDeCargas, sumaDePesos,
 } from './reglas.ts'
 
 // ═══ 1 · EL ESTADO DEL ANÁLISIS ════════════════════════════════════════════════════════════════
@@ -273,4 +274,41 @@ test('la fecha se lee en UTC y no se corre un día', () => {
   assert.equal(fechaLarga('2026-08-01'), '01/08/2026')
   assert.equal(fechaCorta('2026-02-22T00:00:00+00:00'), '22/02/26')
   assert.equal(fechaCorta('no es una fecha'), null)
+})
+
+// ═══ 8 · LA BASE CONTRA LO QUE PASÓ EN OBRA ════════════════════════════════════════════════════
+
+test('el cociente se lee al derecho: más horas que la base es PEOR, no mejor', () => {
+  // EL DEFECTO QUE ATRAPA: las dos puntas son hs/unidad —esfuerzo—, así que 44,88 contra 34,00 es
+  // un 32 % MÁS de mano de obra. Leerlo como «rendimiento» invierte el signo y pinta de verde la
+  // tarea que se está yendo de costo, que es el número con el que se cotiza.
+  const peor = desvioObservado(34, 44.88)
+  assert.equal(peor?.direccion, 'peor')
+  assert.ok(peor && peor.ratio > 1)
+
+  const mejor = desvioObservado(34, 24)
+  assert.equal(mejor?.direccion, 'mejor')
+  assert.ok(mejor && mejor.ratio < 1)
+})
+
+test('la banda es simétrica: 8 % para cualquier lado NO es desvío', () => {
+  // Con la banda asimétrica del mockup (1,10 / 0,95) un 6 % mejor se declaraba desvío favorable y
+  // un 6 % peor no se declaraba nada: la mitad de evidencia para la buena noticia que para la mala.
+  assert.equal(desvioObservado(100, 108)?.direccion, 'igual')
+  assert.equal(desvioObservado(100, 92)?.direccion, 'igual')
+  assert.equal(desvioObservado(100, 100 * (1 + BANDA_DESVIO))?.direccion, 'igual')
+  assert.equal(desvioObservado(100, 100 * (1 - BANDA_DESVIO))?.direccion, 'igual')
+  assert.equal(desvioObservado(100, 111)?.direccion, 'peor')
+  assert.equal(desvioObservado(100, 89)?.direccion, 'mejor')
+})
+
+test('sin una de las dos puntas NO hay desvío: no se inventa un 1,00', () => {
+  // Devolver `{ratio: 1, direccion: 'igual'}` cuando falta el dato pintaría «la obra confirma la
+  // base» sobre una tarea que nunca se midió — que es lo contrario de lo que pasó.
+  assert.equal(desvioObservado(null, 12), null)
+  assert.equal(desvioObservado(12, null), null)
+  assert.equal(desvioObservado(undefined, undefined), null)
+  // Y una base en 0 no se divide: el infinito saldría formateado como si fuera un dato.
+  assert.equal(desvioObservado(0, 12), null)
+  assert.equal(desvioObservado(Number.NaN, 12), null)
 })

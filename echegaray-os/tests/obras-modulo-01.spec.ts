@@ -172,13 +172,12 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // mismo de antes: que el cronograma dibuja el plan y no una grilla vacía.
   expect(await gantt.getByTestId('fila-gantt').count()).toBeGreaterThan(5)
 
-  // 5. PRÓXIMOS TRABAJOS — la otra vista del mismo cronograma. Desde el 20/08 muestra QUÉ FRENA lo
-  //    que viene, sin formulario: el alta y la liberación viven en Operación › Impedimentos, que es
-  //    donde el dueño puso los cinco bloques de la ejecución diaria. Dos altas del mismo dato en dos
-  //    pantallas se contestan distinto el día que a una se le agregue un campo.
-  await page.getByTestId('subvista-proximos').click()
-  await page.waitForURL(/sub=proximos/)
-  await expect(page.getByTestId('impedimentos-de-la-ventana')).toBeVisible()
+  // 5. «PRÓXIMOS» SE RETIRÓ (22/08/2026 · overhaul UX): era otra representación del mismo dataset.
+  //    Su URL vieja cae en el Cronograma —no en el default silencioso— y lo que aquel bloque
+  //    afirmaba de las puertas sigue: el alta de impedimentos NO vive en el Cronograma, vive en
+  //    Operación › Impedimentos (5b).
+  await page.goto('/obras/san-francisco?vista=cronograma&sub=proximos')
+  await expect(page.getByTestId('gantt'), 'la URL vieja de Próximos no cayó en el Cronograma').toBeVisible()
   await expect(page.getByTestId('alta-impedimento'),
     'el alta volvió a Cronograma: hay dos puertas para el mismo dato').toHaveCount(0)
 

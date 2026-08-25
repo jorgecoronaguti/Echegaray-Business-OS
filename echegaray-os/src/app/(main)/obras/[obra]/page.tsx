@@ -29,108 +29,175 @@
 // Ninguno de los cuatro se edita desde este módulo.
 
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDependencias, getDocumentos, getObra, getPlanVsReal, getRestricciones,
-  getUbicacion,
+  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanDeEconomia,
+  getPlanDePersonal, getPlanVsReal, getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
-  getActividadHH, getAsignaciones, getCuadrillas, getPersonas, getRegistrosHH,
+  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
+  getRegistrosHH,
 } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
-  agregarDependencia, archivarActividad, archivarObra, crearActividad, crearImpedimento,
-  editarActividad, editarImpedimento, editarObra, liberarImpedimento, marcarHito, quitarDependencia,
-  registrarAvance,
-  sellarBaseline,
+  archivarActividad, archivarObra, crearImpedimento, editarObra, liberarImpedimento, sellarBaseline,
 } from '@/features/obras/services/actions'
-import {
-  asignarResponsableMasivo, cargarHHPlanMasivo, sellarBaselineMasivo,
-} from '@/features/obras/services/actionsMasivas'
 import {
   asignarPersona, cerrarAsignacion, quitarAsignacion,
 } from '@/features/obras/services/actionsPersonal'
-import {
-  archivarRubro, crearRubro, moverActividadDeRubro, moverRubro, renombrarRubro,
-} from '@/features/obras/services/actionsRubro'
-import { agregarNota, borrarNota } from '@/features/obras/services/actionsNotas'
-import {
-  getCatalogoEquipos, getEquiposPorActividad, getNotas, getTrabajoPorActividad,
-} from '@/features/obras/services/recursosService'
+import { getCatalogoEquipos } from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
-import { ETAPA_LABEL, type Etapa } from '@/features/obras/types'
+import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
+import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
+import { Ico, P } from '@/features/obras/components/canon/Ico'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
-import { CicloDeVida } from '@/features/obras/components/CicloDeVida'
 import { TabResumen } from '@/features/obras/components/TabResumen'
-import { TabCronograma } from '@/features/obras/components/TabCronograma'
-import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
-import { esSubVista } from '@/features/obras/services/subvistas'
+import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
+import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
-import {
-  resolverVistaObra, SUBS_TAREAS, VISTAS_OBRA,
-} from '@/features/obras/services/vistasObra'
+import { resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
+import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
-import { SubTabs } from '@/shared/components/ds'
-import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
+import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
-  asignarActividadAPedido, borrarParte, cambiarEstado, cambiarEstadoTarea, crearTarea,
-  definirMedicion, medirEnLote, registrarEjecucion,
+  asignarActividadAPedido, borrarParte, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
-import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
-import { veEconomia } from '@/features/auth/types/areas'
+import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
-  asignarActividadADocumento, desvincularDocumento, soltarDocumentoDeActividad, vincularDocumento,
+  asignarActividadADocumento, clasificarDocumento, desvincularDocumento, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
-import { fecha as fmtFecha } from '@/features/obras/components/formato'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
-import { Aviso, EntityHeader, Tabs } from '@/shared/components/ds'
+
 import { crearLector } from '@/shared/components/estado/lecturas'
-import { EstadoError } from '@/shared/components/estado'
-// `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
-// importan componentes de cliente. Ver el comentario en `ds/index.ts`.
-import { anchoSplit } from '@/shared/components/ds/split-servidor'
-
+import { AvisoDeLectura, EstadoError } from '@/shared/components/estado'
 export const dynamic = 'force-dynamic'
-
-/** El ancho por defecto del split cuando no hay cookie: la tabla manda, el panel acompaña. */
-const ANCHO_TABLA = 470
-const ANCHO_PANEL = 452
 
 export default async function ObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
   searchParams: Promise<{
-    vista?: string; sub?: string; semanas?: string; act?: string; filtro?: string; sol?: string
+    vista?: string; sub?: string; act?: string; filtro?: string; sol?: string
+    /** La dotación simulada del panel de la tarea (04). Igual que en la 08: la URL es la memoria
+     *  del simulador, así que el mismo link abre la misma simulación del otro lado del chat. */
+    dot?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas, act, filtro, sol } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot } = await searchParams
+  // UNA VISTA QUE VIVE EN OTRA RUTA SE LLEVA AHÍ, NO SE IGNORA. `?vista=dotacion` caía en Resumen
+  // sin un solo aviso, y quien seguía ese link concluía que la pantalla no existía.
+  const hermana = rutaHermana(vistaRaw, obraId)
+  if (hermana) redirect(hermana)
   // LA VISTA Y LA SUB-VISTA SE RESUELVEN JUNTAS: el alias de una URL vieja decide también con qué
   // vista abre. `?vista=ejecucion` tiene que caer en el parte diario, no en el árbol.
   const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
 
   const supabase = await createClient()
-  // UNA SOLA LECTURA DEL PERFIL PARA TODA LA FICHA. El dato comercial ya no llega de la base a quien
-  // no es Administración; esto decide qué CARTEL se dibuja, para no explicar una ausencia que no lo
-  // es. Ver el comentario largo en `TabEconomia`.
-  // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración. El jefe de obra entra a
-  // Administración desde el 19/08 y ve el COSTO de su obra —el presupuestado y el gastado—, pero no
-  // cuánto se vendió: `veEconomia`, no `esAdministracion`.
-  const veComercial = veEconomia((await getPerfilActual(supabase)).data?.rol ?? null)
-  const { data: obra, error } = await getObra(supabase, obraId)
+
+  // ═══ QUÉ VISTA DEL WORKSPACE SE ESTÁ MIRANDO ═══
+  const enTareas = vista === 'tareas'
+  const esArbol = enTareas && subTareas === 'arbol'
+  const esCronograma = enTareas && subTareas === 'gantt'
+  const esParte = enTareas && subTareas === 'parte'
+
+  // ═══ TODAS LAS LECTURAS DE LA VISTA SALEN JUNTAS (22/08/2026) ═══
+  //
+  // Este bloque era una escalera de once `await` — un viaje entero a la base detrás del otro: el
+  // Resumen tardaba 12,5 s en empezar a dibujarse con consultas que individualmente vuelven en
+  // menos de medio segundo. La vista decide QUÉ se pide (cada solapa paga sólo lo suyo); el
+  // `Promise.all` decide CUÁNDO: todo a la vez, y la página tarda lo que su consulta más lenta.
+  //
+  // UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA: lo que admite fallo parcial pasa por
+  // `lector.leer` DESPUÉS de resolver, y el cartel de arriba dice qué no se pudo leer.
+  const lector = crearLector()
+  // QUÉ PIDE ESTA SOLAPA, decidido por una función pura y probada aparte: la matriz vive en
+  // `lecturasDeVista` para que se pueda probar sin levantar el servidor ni la base, y para que
+  // agregar una lectura obligue a declarar quién la usa. Los partes, por ejemplo, también en
+  // Cronograma y Resumen: el panel de la actividad muestra su ejecución reciente y «último
+  // movimiento» del Resumen es literalmente el último parte.
+  const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
+  const [
+    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes, planEconomiaRes,
+    diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
+    actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
+    documentosRes, catalogoEquipos, opRes, personasDeHoy,
+  ] = await Promise.all([
+    // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
+    // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
+    getPerfilActual(supabase),
+    getObra(supabase, obraId),
+    getActividades(supabase, obraId),
+    // Restricciones y plan DEJARON DE SER INCONDICIONALES (24/08): `obra_plan_vs_real` es la
+    // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen,
+    // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
+    necesita.restricciones ? getRestricciones(supabase, obraId) : null,
+    // ═══ EL PLAN SE PIDE EN TRES RECORTES, NO EN UNO (25/08/2026) ═══
+    // QUÉ COLUMNAS pide cada solapa lo decide la MATRIZ, no este archivo. Personal y Economía no
+    // dibujan ni una fecha del plan, y no pedirlas le saca la mitad del trabajo a la consulta que
+    // hacía caer la pantalla con `canceling statement due to statement timeout`. Sale UNA sola de
+    // las tres: las otras dos son `null` porque `planColumnas` es uno solo. Y son tres lecturas
+    // separadas para que cada solapa reciba su tipo exacto — un `Pick<>` que no compila si alguien
+    // dibuja una columna que no pidió. Medido y explicado en `lecturasDeVista`.
+    necesita.planColumnas === 'resumen' ? getPlanVsReal(supabase, obraId) : null,
+    necesita.planColumnas === 'personal' ? getPlanDePersonal(supabase, obraId) : null,
+    necesita.planColumnas === 'economia' ? getPlanDeEconomia(supabase, obraId) : null,
+    // Los días que ESTA obra trabaja: los sombrea el cronograma y nadie más. Reemplaza a las
+    // precedencias, que hasta el 24/08 se traían acá para dibujar flechas que el canónico 07 no
+    // tiene — y que en la base son CERO filas en todas las obras.
+    esCronograma ? getDiasHabiles(supabase, obraId) : null,
+    necesita.personas ? getPersonas(supabase) : null,
+    vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
+    // ═══ LAS CUATRO LECTURAS DE PERSONAL PASAN POR LA MATRIZ, Y HOY LA MATRIZ DICE QUE SÍ ═══
+    // Estuvieron apagadas mientras `TabPersonal` estaba importado y sin montar: la solapa juntaba
+    // estas cuatro consultas más el plan para tirarlas, y ése era el gasto que la volteaba con
+    // `statement timeout`. Con el render repuesto vuelven a salir, y siguen colgadas del MISMO
+    // interruptor —`PERSONAL_SE_DIBUJA`, en `lecturasDeVista`— para que nunca puedan volver a
+    // separarse del render. Acá no se decide: acá se obedece.
+    necesita.personal ? getAsignaciones(supabase, obraId) : null,
+    necesita.personal ? getCausasDesvio(supabase) : null,
+    necesita.personal || esParte ? getRegistrosHH(supabase, obraId) : null,
+    // Plan contra real por actividad: la publica Personal. El cronograma dejó de pedirla el 24/08
+    // junto con el panel de la actividad — la 07 dibuja plazo, y las HH son de Personal.
+    necesita.personal ? getActividadHH(supabase, obraId) : null,
+    necesita.cuadrillas ? getCuadrillas(supabase) : [],
+    esParte ? getIntegrantesPorCuadrilla(supabase) : {},
+    necesita.partes ? getPartes(supabase, obraId) : null,
+    vista === 'economia' ? getCertificados(supabase, obraId) : null,
+    // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
+    // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
+    vista === 'economia' || vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
+    // Los papeles los pide la solapa Documentos. El cronograma los pedía para el panel de la
+    // actividad, que ya no vive ahí: el detalle de una actividad es de Tareas (mockup 03).
+    vista === 'documentos' ? getDocumentos(supabase, obraId) : null,
+    // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto.
+    esParte ? getCatalogoEquipos(supabase) : [],
+    // Operación trae sus cuatro listas de una vez: se atan a la obra por el MISMO puente
+    // (`obra_alias`); si esa fuente falla, fallan juntas. Los impedimentos son tabla del OS y no
+    // dependen de ese puente.
+    vista === 'operacion' ? getOperacionObra(supabase, obraId) : null,
+    // PERSONAS del Resumen (§25): asignadas vigentes y presentes HOY. Dos conteos con cabeza.
+    vista === 'resumen' ? getPersonasDeHoy(supabase, obraId) : null,
+  ])
+
+  const rolActual = perfilRes.data?.rol ?? null
+  const veComercial = veEconomia(rolActual)
+  const puedeEditarPlan = esAdministracion(rolActual)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
   // tenía permiso. Buscar un defecto de permisos detrás de un 404 es buscarlo en el lugar equivocado.
+  const { data: obra, error } = obraRes
   if (error) {
     // El cartel COMPARTIDO, no uno propio: trae el diagnóstico del mensaje de la base (permisos,
     // sesión vencida, no se llegó), Reintentar y la hora del último dato bueno de esta ficha.
@@ -138,33 +205,34 @@ export default async function ObraPage({
   }
   if (!obra) notFound()
 
-  // ═══ QUÉ VISTA DEL WORKSPACE SE ESTÁ MIRANDO ═══
-  // Cada una pide SÓLO lo suyo: la ficha se abre muchas veces por día desde el teléfono, en obra y
-  // con mala señal, y traerlo todo en cada visita serían seis consultas para mostrar una.
-  const enTareas = vista === 'tareas'
-  const esArbol = enTareas && subTareas === 'arbol'
-  const esCronograma = enTareas && (subTareas === 'gantt' || subTareas === 'lista'
-    || subTareas === 'tablero' || subTareas === 'proximos')
-  const esParte = enTareas && subTareas === 'parte'
+  const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
+  const restricciones = restriccionesRes ? lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>) : []
+  // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
+  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia. Son tres porque son
+  // tres recortes distintos de la misma vista, y cada solapa recibe el suyo con su forma exacta.
+  const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
+  const planEconomia = planEconomiaRes
+    ? lector.leer<NonNullable<typeof planEconomiaRes.data> | null>(planEconomiaRes, null) : null
+  // El recorte de cuatro columnas que dibuja el titular de Personal. Conserva su `null` por el mismo
+  // motivo que los otros dos: «esta obra no tiene línea base» no es «no se pudo leer el plan», y
+  // `TabPersonal` sabe decir «HH plan sin cargar» en vez de un cero que la daría por cumplida.
+  const planPersonal = planPersonalRes
+    ? lector.leer<NonNullable<typeof planPersonalRes.data> | null>(planPersonalRes, null) : null
+  const diasHabiles = diasHabilesRes ?? []
+  const personas = personasRes ? lector.leer(personasRes, []) : []
+  const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
+  const causasDesvio = causasRes ? lector.leer(causasRes, []) : []
+  const registros = registrosRes ? lector.leer(registrosRes, []) : []
+  const actividadHH = actividadHHRes ? lector.leer(actividadHHRes, []) : []
+  const partes = partesRes ? lector.leer(partesRes, []) : []
+  const certificados = certificadosRes ? lector.leer(certificadosRes, []) : []
+  const economia = economiaRes ? lector.leer(economiaRes, null) : null
+  const documentos = documentosRes ? lector.leer(documentosRes, []) : []
+  const operacion = opRes?.data ?? null
+  // La traducción del query string vive en el servicio: ahí están los subs y ahí están los nombres
+  // viejos que todavía llegan por enlaces guardados.
+  const subOp: SubOperacion = subDeLaUrl(sub)
 
-  // ═══ UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA ═══
-  //
-  // Todo lo de abajo se leía con `.data ?? []`: si la consulta fallaba, la solapa mostraba «esta
-  // obra todavía no tiene actividades cargadas» o «nadie tiene una asignación en esta obra». Son
-  // afirmaciones sobre la obra sacadas de un fallo de la base — y la ficha se sigue dibujando
-  // (media pantalla es mejor que ninguna), pero ahora con el cartel de lo que no se pudo leer.
-  const lector = crearLector()
-  const [actividades, restricciones, plan] = await Promise.all([
-    getActividades(supabase, obraId),
-    getRestricciones(supabase, obraId),
-    getPlanVsReal(supabase, obraId),
-  ]).then(([a, r, p]) => [
-    lector.leer(a, [] as NonNullable<typeof a.data>),
-    lector.leer(r, [] as NonNullable<typeof r.data>),
-    // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
-    // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
-    lector.leer<NonNullable<typeof p.data> | null>(p, null),
-  ] as const)
   const todas = actividades
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
   // existiendo, y por eso hay dentro de Cronograma una lista aparte para volver a traerlas.
@@ -175,145 +243,19 @@ export default async function ObraPage({
   // ═══ QUÉ ES DEL PLAN Y QUÉ DESCOMPONE UNA ACTIVIDAD ═══
   // Lo decide el TIPO DEL PADRE, no la mera presencia de un padre: desde `20260821T2000` hay 161
   // actividades reales colgadas de su rubro, y el filtro viejo (`!actividad_padre_id`) las dejaba
-  // afuera del Gantt, de la Lista, del Tablero y de Próximos sin un solo error. Ver `subtareas.ts`.
-  const { plan: filasDelPlan, subtareas: tareasPorActividad } = separarPlanYSubtareas(vivas)
+  // afuera del Gantt sin un solo error. Ver `subtareas.ts`.
+  const { plan: filasDelPlan } = separarPlanYSubtareas(vivas)
   const acts = filasDelPlan
   const archivadas = todas.filter((a) => a.archivada)
   const restr = restricciones ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
-  const yaSellada = todas.some((a) => a.sellada_en != null)
-
-  // Cada solapa pide SÓLO lo suyo. Traerlo todo en cada visita costaría seis consultas para mostrar
-  // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
-  // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
-  // por visita para nadie.
-  const dependencias = esCronograma ? lector.leer(await getDependencias(supabase, obraId), []) : []
-  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
-  const personas = necesitaPersonas ? lector.leer(await getPersonas(supabase), []) : []
-  const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
-  const asignaciones = vista === 'personal' ? lector.leer(await getAsignaciones(supabase, obraId), []) : []
-  const registros = vista === 'personal' ? lector.leer(await getRegistrosHH(supabase, obraId), []) : []
-  // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
-  // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
-  const actividadHH = vista === 'personal' || esCronograma
-    ? lector.leer(await getActividadHH(supabase, obraId), []) : []
-  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
-  const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
-  const integrantes = esParte ? await getIntegrantesPorCuadrilla(supabase) : {}
-  // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
-  // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
-  // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
-  // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
-  const partes = esParte || esCronograma || vista === 'resumen'
-    ? lector.leer(await getPartes(supabase, obraId), []) : []
-  const partesPorActividad = new Map<string, typeof partes>()
-  for (const p of partes) {
-    const previos = partesPorActividad.get(p.actividad_id) ?? []
-    previos.push(p)
-    partesPorActividad.set(p.actividad_id, previos)
-  }
-  const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
-  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
-  // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
-  // no coinciden.
-  const documentos = vista === 'documentos' || esCronograma
-    ? lector.leer(await getDocumentos(supabase, obraId), []) : []
-
-  // ═══ LO QUE MUESTRA EL PANEL DE UNA ACTIVIDAD ═══
-  //
-  // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic, y
-  // una consulta por clic haría el cronograma pegajoso justo en lo que más se usa. Se indexan una
-  // vez, acá, y el Gantt sólo se las pasa al panel.
-  const trabajo = esCronograma
-    ? await getTrabajoPorActividad(supabase, obraId)
-    : { personas: new Map(), porFecha: new Map() }
-  const equiposPorActividad = esCronograma
-    ? await getEquiposPorActividad(supabase, obraId) : new Map()
-  const notasPorActividad = esCronograma
-    ? await getNotas(supabase, obraId) : new Map()
-  // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto, y un
-  // equipo alquilado por una semana no puede ser motivo para no anotarlo.
-  const catalogoEquipos = esParte ? await getCatalogoEquipos(supabase) : []
-  // ═══ EL ANCHO DEL SPLIT SE LEE EN EL SERVIDOR ═══
-  // La cookie la escribe el navegador al soltar el divisor y la lee acá el servidor, así que la
-  // PRIMERA pintura del workspace ya sale con el reparto que la persona eligió. Leyéndola en el
-  // cliente, la pantalla más pesada del sistema nacería con el ancho por defecto y se corregiría
-  // sola cien milisegundos después — un salto visible justo donde más molesta.
-  const [anchoTabla, anchoPanel] = esCronograma
-    ? await Promise.all([anchoSplit('obra-tabla', ANCHO_TABLA, 300, 760), anchoSplit('obra-panel', ANCHO_PANEL, 340, 760)])
-    : [ANCHO_TABLA, ANCHO_PANEL]
-
-  const docsPorActividad = new Map<string, typeof documentos>()
-  for (const d of documentos) {
-    if (!d.actividad_id) continue
-    const previos = docsPorActividad.get(d.actividad_id) ?? []
-    previos.push(d)
-    docsPorActividad.set(d.actividad_id, previos)
-  }
-
-  const datosPorActividad = new Map<string, DatosDeActividad>()
-  if (esCronograma) {
-    for (const a of acts) {
-      datosPorActividad.set(a.id, {
-        partes: partesPorActividad.get(a.id) ?? [],
-        tareas: tareasPorActividad.get(a.id) ?? [],
-        notas: notasPorActividad.get(a.id) ?? [],
-        documentos: docsPorActividad.get(a.id) ?? [],
-        personasReales: trabajo.personas.get(a.id) ?? [],
-        equipos: equiposPorActividad.get(a.id) ?? [],
-        hhPorFecha: trabajo.porFecha.get(a.id) ?? new Map(),
-      })
-    }
-  }
-  // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
-  // puente (`obra_alias`), así que resolverlo cuatro veces sería resolverlo cuatro veces mal.
-  // LAS CUATRO LISTAS Y LOS IMPEDIMENTOS NO COMPARTEN DESTINO (20/08/2026). Pedidos, compras,
-  // herramientas y movimientos salen de una fuente externa por el puente de alias; si esa fuente
-  // falla, las cuatro fallan juntas —y eso está bien, porque media pantalla llena se leería como
-  // «esta obra no tiene movimientos»—. Los impedimentos son una tabla del OS y no tienen NADA que
-  // ver con ese puente: hasta hoy se escondían con las otras cuatro, así que un problema del Sheet
-  // dejaba a la obra sin poder anotar qué la está frenando.
-  const opRes = vista === 'operacion' ? await getOperacionObra(supabase, obraId) : null
-  const operacion = opRes?.data ?? null
-  const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
-
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
-  // El dueño lo dibujó así: «← Obras», el nombre de la obra, y debajo el cliente. El cliente es un
-  // link cuando existe en el eje canónico; cuando la obra sólo tiene el nombre del cliente escrito
-  // a mano, se muestra el texto y se dice que falta vincularlo — sin inventar la ficha.
-  // ARCHIVADA SE DICE EN EL ENCABEZADO. Es la única señal de que esta ficha se abrió por su URL y no
-  // desde el portafolio —porque del portafolio ya no cuelga—, y sin ella alguien podría cargar HH o
-  // avance sobre una obra archivada sin enterarse de que lo está.
+  // «← Obras», el nombre de la obra, sus campos de identidad rotulados y el ciclo de vida. Todo eso
+  // vive en `CabeceraDeObra` —la MISMA que dibujan Cronograma, Dotación, Subcontratos y Avance
+  // masivo— desde el 24/08: era la única cabecera del OS que existía dos veces, y las pantallas
+  // hijas se habían quedado con una banda grafito propia que parecía otra aplicación.
+  // `archivada` se sigue calculando acá porque el bloque de archivar del Resumen lo necesita.
   const archivada = obra.estado === 'cerrada'
-  const deQuien = obra.cliente_slug ? (
-    <Link href={`/clientes/${obra.cliente_slug}`} className="text-ink hover:underline">{obra.cliente_nombre}</Link>
-  ) : obra.cliente_texto ? (
-    <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
-  ) : null
-  // ═══ LA CABECERA ROTULA CADA DATO (20/08/2026) ═══
-  //
-  // Decía «La Estrella · 06/07/26 → 22/08/26»: cuatro datos distintos separados por puntos, donde
-  // el que mira tiene que adivinar cuál es el cliente, cuál la etapa y cuál de las dos fechas es el
-  // fin. El dueño lo pidió rotulado —«Cliente: · Etapa: · Inicio: · Fin plan:»— y rotulado se lee
-  // sin pensar. Cada campo dice qué le falta por su nombre: una fecha vacía es «sin fecha», nunca
-  // un guión suelto que se leería como «hoy».
-  const etapaLabel = obra.etapa
-    ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
-    : 'sin declarar'
-  const campos = [
-    ...(deQuien ? [{ rotulo: 'Cliente', valor: deQuien }] : []),
-    { rotulo: 'Etapa', valor: obra.etapa ? etapaLabel : null, falta: 'sin declarar' },
-    {
-      rotulo: 'Inicio',
-      valor: obra.fecha_inicio_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_inicio_plan)}</span> : null,
-      falta: 'sin fecha',
-    },
-    {
-      rotulo: 'Fin plan',
-      valor: obra.fecha_fin_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_fin_plan)}</span> : null,
-      falta: 'sin fecha',
-    },
-  ]
 
   return (
     // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
@@ -321,55 +263,93 @@ export default async function ObraPage({
     // contenido, sin el margen de una página de lectura. El marco (fondo y padding de pantalla) es
     // el mismo: 16px en el teléfono, 40px en escritorio.
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 pt-6 lg:px-10">
-        <EntityHeader
-          volverA="/obras"
-          volverLabel="Obras"
-          titulo={obra.nombre}
-          campos={campos}
-          derecha={
-            <div className="flex flex-wrap items-center gap-3" data-testid="cabecera-obra">
-              {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió
-                  por su URL y no desde el portafolio, y sin ella alguien podría cargar HH o avance
-                  sobre una obra archivada sin enterarse de que lo está. */}
-              {archivada && (
-                <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">
-                  archivada
-                </span>
-              )}
-              <CicloDeVida etapa={obra.etapa} />
-            </div>
-          }
-        />
-        {/* Nivel 2: SEIS solapas —Ejecución dejó de ser una— que se desplazan en vez de empujar la
-            página: en 390px no entran. */}
-        <Tabs
-          testid="tabs-obra"
-          tabs={VISTAS_OBRA.map((v) => ({
-            href: `/obras/${obraId}?vista=${v.id}`,
-            label: v.label,
-            activo: vista === v.id,
-            testid: `tab-${v.id}`,
-          }))}
-        />
-      </div>
-      <div className="w-full px-4 pb-6 pt-4 lg:px-10">
+      {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): su aire de 20px es interno.
+          La primaria de la obra es «Cargar parte» —la del mockup 02— y al lado el «···» con las
+          cinco operaciones de todos los días. Dos amarillos en la misma línea harían leer dos
+          acciones principales, así que sólo el parte lleva el color de marca. */}
+      <CabeceraDeObra
+        obraId={obraId}
+        obra={obra}
+        vistaActiva={vista}
+        acciones={
+          <>
+            <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false}
+              data-testid="cabecera-cargar-parte" style={ESTILO_PRIMARIA}>
+              <Ico d={P.editar} s={14} />Cargar parte
+            </Link>
+            <AccionesRapidas obraId={obraId} />
+          </>
+        }
+      />
+      {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
+          `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:
+          el buscador y los filtros en uno, el navegador de día en el otro. */}
+      {vista === 'tareas' && !esArbol && !esCronograma && !esParte && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
 
-      {/* LO QUE NO SE PUDO LEER SE DICE ACÁ, ARRIBA DE LA SOLAPA. Sin este cartel, una consulta
-          caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el error
-          dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. */}
+      {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
+          ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
+      {esArbol && (
+        <WorkspaceTareas
+          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
+          cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
+        />
+      )}
+
+      {/* LO QUE NO SE PUDO LEER SE DICE ARRIBA DE LA SOLAPA, Y ANTES DE ELLA. Sin este cartel, una
+          consulta caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el
+          error dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. Va acá afuera porque
+          las dos pantallas que se dibujan a sangre —el árbol y el cronograma— lo dejaban debajo del
+          contenido y pegado al borde: el aviso de que falta un dato no puede leerse después. */}
       {lector.falla() && (
-        <div className="mb-4">
-          <Aviso tono="neg" titulo="Parte de esta ficha no se pudo leer" testid="obra-lectura-fallida">
-            Lo que falta abajo NO significa que no exista: significa que la consulta falló. {lector.falla()}
-          </Aviso>
+        <div className="px-5 pt-3.5">
+          <AvisoDeLectura mensaje={lector.falla() as string} que="parte de esta ficha" testid="obra-lectura-fallida" />
         </div>
       )}
+
+      {/* LA 07 TAMBIÉN VA A SANGRE: la banda de nivel 3 con el zoom y las capas tiene que llegar a
+          los dos bordes, y el aire de 20px del mockup lo pone la pantalla adentro. */}
+      {esCronograma && (
+        <CronogramaDeObra
+          obraId={obraId}
+          actividades={acts}
+          diasHabiles={diasHabiles}
+          actividadAbierta={act ?? null}
+          archivadas={archivadas}
+          restaurar={archivarActividad.bind(null, obraId)}
+          // Sellar congela el plan de hoy como lo prometido: es de Administración y de la jefatura.
+          // La guarda de verdad está en la acción; esto evita ofrecer un gesto que va a ser rechazado.
+          {...(puedeEditarPlan ? { sellar: sellarBaseline.bind(null, obraId) } : {})}
+        />
+      )}
+
+      {/* LA 05 TAMBIÉN VA DE BORDE A BORDE: su banda de día y su aire de 14/20/24 son internos
+          del módulo, y el padding de la página los duplicaría. */}
+      {esParte && (
+        <ParteDiario
+          obraId={obraId}
+          actividades={acts}
+          partes={partes}
+          personas={personas}
+          cuadrillas={cuadrillas}
+          integrantes={integrantes}
+          hoy={new Date().toISOString().slice(0, 10)}
+          equipos={catalogoEquipos}
+          registrosHH={registros}
+          registrar={registrarEjecucion.bind(null, obraId)}
+          borrarParte={borrarParte.bind(null, obraId)}
+        />
+      )}
+
+      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el cronograma en
+          pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
+      <div className={esArbol || esCronograma || esParte ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {vista === 'resumen' && (
         <TabResumen
           obra={obra}
           plan={plan}
+          personasDeHoy={personasDeHoy}
+          economia={economia}
           abiertas={abiertas}
           obraId={obraId}
           veComercial={veComercial}
@@ -383,7 +363,7 @@ export default async function ObraPage({
               <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
               <div className="border-t border-line p-4">
                 <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
-                  <CamposObra obra={obra} ubicacion={ubicacion} />
+                  <CamposObra obra={obra} ubicacion={ubicacion} veEconomia={veComercial} />
                 </FormAccion>
               </div>
             </details>
@@ -412,118 +392,32 @@ export default async function ObraPage({
         />
       )}
 
-      {/* Nivel 3 de Tareas: TEXTO subrayado, nunca otra barra. Son seis maneras de mirar LAS
-          MISMAS actividades — el árbol nuevo, las cuatro del cronograma y el parte diario. */}
-      {vista === 'tareas' && (
-        <div className="pb-3">
-          <SubTabs
-            testid="subtabs-tareas"
-            items={SUBS_TAREAS.map((sv) => ({
-              href: `/obras/${obraId}?vista=tareas&sub=${sv.id}`,
-              label: sv.label,
-              activo: subTareas === sv.id,
-              testid: `sub-${sv.id}`,
-            }))}
-          />
-        </div>
-      )}
+      {/* ═══ LA 09 VA EN EL CONTENEDOR CON AIRE, Y SU BANDA SE VA A SANGRE SOLA ═══
+          A diferencia de la 03/05/07 —que se montan arriba, fuera de este div— Personal se monta
+          ACÁ ADENTRO, igual que Operación (11) y Documentos (12), que dibujan LA MISMA banda:
+          `ListaHoyEnObra` sale del marco con `-mx-5`, que es exactamente el `px-5` de este
+          contenedor. Montarla de borde a borde la haría salirse 20px por lado y la página
+          scrollearía de costado — el defecto medido el 24/08 (`scrollWidth` 1300 contra `innerWidth`
+          1280) que dejó anclado `canonico-personal.test.ts`.
 
-      {esArbol && (
-        <WorkspaceTareas
-          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol}
-          cuadrillas={cuadrillas}
-        />
-      )}
-
-      {esCronograma && (
-        <TabCronograma
-          obraId={obraId}
-          sub={esSubVista(sub) ? sub : 'gantt'}
-          semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
-          actividadAbierta={act ?? null}
-          hhPorActividad={new Map(actividadHH.map((h) => [h.actividad_id, h]))}
-          actividades={acts}
-          archivadas={archivadas}
-          restricciones={restr}
-          dependencias={dependencias}
-          personas={personas}
-          yaSellada={yaSellada}
-          acciones={{
-            crear: crearActividad.bind(null, obraId),
-            editar: editarActividad.bind(null, obraId),
-            avance: registrarAvance.bind(null, obraId),
-            archivar: archivarActividad.bind(null, obraId),
-            hito: marcarHito.bind(null, obraId),
-            sellar: sellarBaseline.bind(null, obraId),
-            definirMedicion: definirMedicion.bind(null, obraId),
-            crearTarea: crearTarea.bind(null, obraId),
-            cambiarEstadoTarea: cambiarEstadoTarea.bind(null, obraId),
-            // LAS PRECEDENCIAS SE PODÍAN ESCRIBIR DESDE EL 17/08 Y NADIE PODÍA CARGAR UNA: las dos
-            // acciones existían y esta página no las ataba, así que el panel dibujaba «nada
-            // declarado» sin un solo control para declarar algo — y el Gantt no tenía una flecha que
-            // dibujar porque la tabla estaba vacía por falta de puerta, no por falta de dato.
-            agregarDependencia: agregarDependencia.bind(null, obraId),
-            quitarDependencia: quitarDependencia.bind(null, obraId),
-            agregarNota: agregarNota.bind(null, obraId),
-            borrarNota: borrarNota.bind(null, obraId),
-            // LA MISMA ACCIÓN QUE USA OPERACIÓN. El `actividad_id` viaja en el formulario del panel;
-            // una segunda implementación de «anotar un impedimento» se contestaría distinto el día
-            // que a una de las dos se le agregue un campo.
-            crearImpedimento: crearImpedimento.bind(null, obraId),
-            liberarImpedimento: liberarImpedimento.bind(null, obraId),
-            editarImpedimento: editarImpedimento.bind(null, obraId),
-            vincularDocumento: vincularDocumento.bind(null, obraId),
-            soltarDocumento: soltarDocumentoDeActividad.bind(null, obraId),
-            moverDeRubro: moverActividadDeRubro.bind(null, obraId),
-          }}
-          accionesPlan={{
-            crearRubro: crearRubro.bind(null, obraId),
-            renombrarRubro: renombrarRubro.bind(null, obraId),
-            moverRubro: moverRubro.bind(null, obraId),
-            archivarRubro: archivarRubro.bind(null, obraId),
-          }}
-          /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
-             en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
-             que hace una persona—, y por eso cada acción vuelve a acotar por `obra_id` del lado del
-             servidor antes de escribir una sola fila. */
-          masivas={{
-            responsable: asignarResponsableMasivo.bind(null, obraId),
-            hhPlan: cargarHHPlanMasivo.bind(null, obraId),
-            baseline: sellarBaselineMasivo.bind(null, obraId),
-          }}
-          restaurarActividad={archivarActividad.bind(null, obraId)}
-          cambiarEstado={cambiarEstado.bind(null, obraId)}
-          datosPorActividad={datosPorActividad}
-          medirEnLote={medirEnLote.bind(null, obraId)}
-          anchoTabla={anchoTabla}
-          anchoPanel={anchoPanel}
-        />
-      )}
-
-      {esParte && (
-        <TabEjecucion
-          obraId={obraId}
-          actividades={acts}
-          partes={partes}
-          personas={personas}
-          cuadrillas={cuadrillas}
-          integrantes={integrantes}
-          hoy={new Date().toISOString().slice(0, 10)}
-          equipos={catalogoEquipos}
-          registrar={registrarEjecucion.bind(null, obraId)}
-          borrarParte={borrarParte.bind(null, obraId)}
-        />
-      )}
-
+          ESTE RENDER ES LO QUE PAGAN LAS SIETE CONSULTAS de arriba: mientras faltó, la solapa las
+          disparaba para tirarlas. Las dos cosas están atadas por `PERSONAL_SE_DIBUJA` y por el test
+          `lecturasDeVista.test.ts`, que se pone rojo si alguien vuelve a separarlas. */}
       {vista === 'personal' && (
         <TabPersonal
-          plan={plan}
+          obraId={obraId}
+          plan={planPersonal}
           asignaciones={asignaciones}
           personas={personas}
           cuadrillas={cuadrillas}
           actividades={acts}
           actividadHH={actividadHH}
           registros={registros}
+          causas={causasDesvio}
+          // `.bind(null, obraId)` Y NO UNA ARROW, por lo mismo que en Operación: una arrow escrita
+          // acá es una función NUEVA creada en el servidor y React la rechaza en el navegador con
+          // «Functions cannot be passed directly to Client Components». Ni el typecheck ni el build
+          // lo ven. Y el `obraId` va en el `bind`, nunca en un campo del formulario.
           asignar={asignarPersona.bind(null, obraId)}
           cerrar={cerrarAsignacion.bind(null, obraId)}
           quitar={quitarAsignacion.bind(null, obraId)}
@@ -556,7 +450,8 @@ export default async function ObraPage({
 
       {vista === 'economia' && (
         <TabEconomia
-          plan={plan}
+          plan={planEconomia}
+          economia={economia}
           certificados={certificados}
           crearCert={crearCertificado.bind(null, obraId)}
           borrarCert={borrarCertificado.bind(null, obraId)}
@@ -572,6 +467,7 @@ export default async function ObraPage({
           vincular={vincularDocumento.bind(null, obraId)}
           desvincular={desvincularDocumento.bind(null, obraId)}
           asignarActividad={asignarActividadADocumento.bind(null, obraId)}
+          clasificar={clasificarDocumento.bind(null, obraId)}
         />
       )}
       </div>

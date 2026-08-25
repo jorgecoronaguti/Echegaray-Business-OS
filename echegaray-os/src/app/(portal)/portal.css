@@ -1,0 +1,65 @@
+/* EL PORTAL DEL CLIENTE A DOS ANCHOS — `29` a 1280 y `30` a 390. Una sola app.
+ *
+ * ═══ POR QUÉ HAY UN ARCHIVO CSS Y NO TODO INLINE ═══
+ *
+ * El porte es literal: los estilos del `.dc.html` viajan como `style={{...}}` en el JSX. Pero los
+ * dos mockups son la MISMA pantalla a dos anchos, y una media query no se escribe inline. Lo único
+ * que vive acá es lo que depende del ancho de la ventana; todo lo demás sigue en el JSX, medido.
+ *
+ * Va en un archivo propio del grupo `(portal)` y no en `globals.css` para que el porte no pise el
+ * archivo que están tocando los otros frentes en paralelo.
+ *
+ * ═══ EL `!important` NO ES PEREZA ═══
+ *
+ * Los bloques que se prenden y se apagan llevan `display:flex` INLINE, copiado del mockup, y un
+ * estilo inline le gana a cualquier regla de clase. Sacar ese `display` del JSX para poder apagarlo
+ * desde acá sería empezar a mover el mockup de lugar, que es justo lo que este porte no hace.
+ *
+ * El corte es 900px: el `29` necesita 580 (columna) + 34 (gap) + 336 (panel) + 48 (padding) = 998px
+ * para no envolver, y entre 900 y 998 el panel cae abajo solo, que es el comportamiento del propio
+ * `flexWrap` del mockup. Debajo de 900 ya no es esa pantalla: es la del teléfono. */
+
+@media (max-width: 899px) {
+  .portal-escritorio { display: none !important; }
+}
+
+@media (min-width: 900px) {
+  .portal-movil { display: none !important; }
+}
+
+/* El cuerpo: `padding:20px 24px 32px;gap:34px` en el `29` (línea 87) contra `padding:14px 20px 16px;
+   gap:15px` en el `30` (línea 82). Es el único bloque cuya geometría cambia entera, así que sus
+   valores viven acá y no en el JSX — con la medida del mockup al lado. */
+.portal-cuerpo {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 34px;
+  padding: 20px 24px 32px;
+}
+
+@media (max-width: 899px) {
+  .portal-cuerpo {
+    flex-direction: column;
+    gap: 15px;
+    padding: 14px 20px 16px;
+  }
+  /* La columna izquierda del `29` no baja de 580px. En el teléfono eso obligaría a scrollear de
+     costado la página entera: acá ocupa el ancho que haya. */
+  .portal-columna { min-width: 0 !important; width: 100%; }
+  /* El panel de 336px pasa a ancho completo. */
+  .portal-panel { width: 100% !important; }
+}
+
+/* La barra de abajo del teléfono es fija: el pulgar la encuentra sin scrollear (`30:221`). El cuerpo
+   reserva su alto para que la última fila de la lista no quede debajo. */
+@media (max-width: 899px) {
+  .portal-barra-inferior {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+  }
+  .portal-marco { padding-bottom: 76px; }
+}

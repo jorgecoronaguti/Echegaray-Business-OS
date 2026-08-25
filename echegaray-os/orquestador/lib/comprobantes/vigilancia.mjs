@@ -245,3 +245,70 @@ export async function vigilar({ auditar, port = null, log = null } = {}) {
     return { ok: false, aviso: null, resumen: { disponible: false }, motivo: String(e?.message ?? e).slice(0, 200) }
   }
 }
+
+// ═══ UN FAJO ABIERTO Y MUDO TIENE QUE GRITAR (25/08) ═════════════════════════
+//
+// El descalce de arriba compara el registro contra Compras: encuentra lo que se dio por cargado y no
+// está. No ve —no puede ver— lo que nunca llegó a cargarse porque el bot se quedó esperando una
+// respuesta que nadie leyó.
+//
+// Eso pasó el 25/08. El fajo `de1c9a7a` quedó `estado='abierto'`, `aviso_post_id=null`, `error=null`
+// y con la factura 0004-00003745 de Corralón Progreso ($304.515,98) adentro. Sin error no hay
+// dead-letter, sin `aviso_post_id` no hay mensaje en el canal, sin fila no hay descalce: era
+// invisible para todos los controles a la vez. La única razón por la que se supo fue que el dueño
+// avisó que el bot «se clavó».
+//
+// La regla, entonces: **un fajo abierto que no publicó su aviso y hace rato que no se mueve es un
+// gasto retenido**. Núcleo puro, sin SQL: recibe las filas y decide. Lo miran el tick del worker
+// (rápido) y el vigía diario (por si el worker estuvo caído).
+
+/** Cuánto puede estar un fajo abierto sin haber dicho nada. Un post tarda ~2m30s: 15 min es tres. */
+export const MINUTOS_MUDO = Number(process.env.ORQ_COMPROBANTES_MUDO_MIN || 15)
+
+/**
+ * Los fajos abiertos que quedaron sin voz.
+ *
+ * @param {Array<object>} fajos  filas de `comunicacion.comprobante_fajos`
+ * @param {{ahora?:Date, minutos?:number}} [o]
+ * @returns {Array<{id:string, motivo:string, minutos:number, comprobantes:number, suma:number}>}
+ */
+export function fajosMudos(fajos = [], { ahora = new Date(), minutos = MINUTOS_MUDO } = {}) {
+  const t0 = new Date(ahora).getTime()
+  const out = []
+  for (const f of fajos ?? []) {
+    if (!f || f.estado !== 'abierto') continue
+    // Con el aviso publicado la persona SÍ vio algo: eso no es mudo, es una conversación pendiente.
+    if (f.aviso_post_id) continue
+    const ultimo = new Date(f.ultimo_at ?? f.creado_at ?? 0).getTime()
+    if (!Number.isFinite(ultimo)) continue
+    const mins = Math.floor((t0 - ultimo) / 60_000)
+    if (mins < minutos) continue
+    const items = Array.isArray(f.items) ? f.items : []
+    // Un fajo abierto y VACÍO no retiene ninguna plata: no vale despertar a nadie por él.
+    if (!items.length) continue
+    out.push({
+      id: f.id,
+      motivo: `abierto hace ${mins} min sin aviso publicado`,
+      minutos: mins,
+      channel_id: f.channel_id ?? null,
+      root_post_id: f.root_post_id ?? null,
+      plataforma_username: f.plataforma_username ?? null,
+      comprobantes: items.length,
+      suma: items.reduce((a, it) => a + (Number(it?.comprobante?.total) || 0), 0),
+    })
+  }
+  return out.sort((a, b) => b.minutos - a.minutos)
+}
+
+/** El aviso legible de los fajos mudos. Nombra la plata retenida: sin el número no se prioriza. */
+export function avisoFajosMudos(mudos = []) {
+  if (!mudos.length) return '✓ Ningún fajo abierto quedó sin respuesta.'
+  const plata = mudos.reduce((a, m) => a + (m.suma ?? 0), 0)
+  const l = [`⚠ **${mudos.length} ${mudos.length === 1 ? 'carga quedó trabada' : 'cargas quedaron trabadas'} sin avisarle a nadie**`
+    + (plata ? ` — $${Math.round(plata).toLocaleString('es-AR')} sin registrar.` : '.')]
+  for (const m of mudos.slice(0, 10)) {
+    l.push(`· \`${String(m.id).slice(0, 8)}\` — ${m.comprobantes} comprobante(s), ${m.motivo}`
+      + (m.plataforma_username ? ` (de ${m.plataforma_username})` : ''))
+  }
+  return l.join('\n')
+}

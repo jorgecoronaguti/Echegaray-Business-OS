@@ -218,11 +218,14 @@ test('alta de obra en pasos: la fila queda en la base, el borrador se recupera y
     // ── Y EL MISMO CHECKLIST EN EL RESUMEN DE LA OBRA ───────────────────────
     // Es el mismo componente con la misma lectura: si acá dijera otra cosa, habría dos verdades
     // sobre la misma obra.
+    // CAMBIO DE REGLA DECLARADO (Design 23/08): en el Resumen el checklist dejó de estar PLEGADO al
+    // final del cuerpo y pasó ABIERTO a la columna de contexto, al lado de las métricas cuyos «sin
+    // medir» explica (pantalla 02 del Design canónico). Lo que este test prueba no cambia —que es el
+    // MISMO checklist con la MISMA lectura que el del alta—, así que se saca el clic de abrir y se
+    // lee la línea directamente. `preparacion-abrir` ya no existe en esta pantalla.
     await page.goto(`/obras/${obraId}?vista=resumen`)
-    const plegado = page.getByTestId('preparacion')
-    await expect(plegado).toBeVisible()
-    await expect(page.getByTestId('preparacion-abrir')).toContainText('pendientes')
-    await page.getByTestId('preparacion-abrir').click()
+    await expect(page.getByTestId('preparacion')).toBeVisible()
+    await expect(page.getByTestId('preparacion-cuenta')).toContainText('pendientes')
     expect((await linea(page, 'personal')).texto).toContain('nadie asignado a la obra')
   } finally {
     await limpiarAlta(sb)

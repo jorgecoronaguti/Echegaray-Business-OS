@@ -53,10 +53,12 @@ function CamposPersona({ persona }: { persona: Persona | null }) {
       <Campo label="CUIL">
         <input name="cuil" inputMode="numeric" maxLength={15} className={CTRL} defaultValue={persona?.cuil ?? ''} />
       </Campo>
-      <Campo label="Categoría">
+      {/* Los dos rótulos completos: la categoría es del CONVENIO (lo que cobra) y el oficio es lo
+          que sabe hacer. Ver `services/vocabularioPersona.ts`. */}
+      <Campo label="Categoría UOCRA">
         <SelectCategoria valor={persona?.categoria ?? null} />
       </Campo>
-      <Campo label="Especialidad">
+      <Campo label="Oficio / especialidad">
         <input name="especialidad" maxLength={120} className={CTRL} defaultValue={persona?.especialidad ?? ''} />
       </Campo>
       <Campo label="Ingreso" ancho="col-span-2">

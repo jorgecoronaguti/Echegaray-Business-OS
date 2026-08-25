@@ -23,7 +23,7 @@
 
 import Link from 'next/link'
 import { Estado, Eyebrow, type TonoEstado } from '@/shared/components/ds'
-import type { PlanVsReal } from '../types'
+import type { EconomiaObra, PlanVsReal } from '../types'
 import { lineasPlanVsReal, type Tono } from '../services/planVsReal'
 
 const TONO: Record<Tono, TonoEstado> = {
@@ -33,10 +33,10 @@ const TONO: Record<Tono, TonoEstado> = {
   falta: 'nulo',
 }
 
-export function PlanVsRealResumen({ plan, obraId, veComercial = true }: {
-  plan: PlanVsReal; obraId: string; veComercial?: boolean
+export function PlanVsRealResumen({ plan, obraId, veComercial = true, economia = null }: {
+  plan: PlanVsReal; obraId: string; veComercial?: boolean; economia?: EconomiaObra | null
 }) {
-  const lineas = lineasPlanVsReal(plan, veComercial)
+  const lineas = lineasPlanVsReal(plan, veComercial, economia)
   return (
     <section data-testid="plan-vs-real">
       <Eyebrow className="mb-3">Lecturas del plan</Eyebrow>
@@ -54,7 +54,7 @@ export function PlanVsRealResumen({ plan, obraId, veComercial = true }: {
                 TOCAR LA LÍNEA SIGUE LLEVANDO AL DATO: una lectura que no se puede seguir hasta su
                 origen obliga a buscarlo a mano, y ahí es donde se deja de mirar. */}
             <Link
-              href={`/obras/${obraId}?vista=${l.vista}`}
+              href={`/obras/${obraId}?vista=${l.vista}`} prefetch={false}
               title={l.origen}
               className="flex h-fila-compacta items-center gap-2.5 hover:bg-surface-quiet"
             >

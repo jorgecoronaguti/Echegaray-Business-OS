@@ -54,6 +54,7 @@
 // derivado de la imputación (`rubro-caja.mjs`, definición única), y se muestra como lo que es.
 
 import { estaCompleto, preguntasDe, rotulosDe, etiquetaComprobante, botonesFajo, PREGUNTA_OBRA, opcionesDe } from './fajo.mjs'
+import { identificar } from './identidad.mjs'
 import { dudasDeLectura } from './plausibilidad.mjs'
 
 export const money = (n) => (n == null
@@ -498,4 +499,49 @@ export function resumenFajo(fajo = {}) {
 /** El mensaje completo (texto + botones) tal como sale al canal. */
 export function mensajeFajo(fajo, { url } = {}) {
   return { texto: resumenFajo(fajo), attachments: botonesFajo(fajo, { url }) }
+}
+
+// ═══ LA PREGUNTA, SEPARADA DEL RESUMEN — EL ARREGLO DEL 25/08 ════════════════
+//
+// La tanda publica UN mensaje que dice si terminó y cuántos entraron, y lo REESCRIBE en cada post.
+// Eso es lo que el dueño pidió y sigue igual. Lo que no puede viajar por ahí es una PREGUNTA:
+// Mattermost no notifica ni reordena un post editado, así que preguntar reescribiendo un mensaje de
+// hace cinco minutos es preguntar en voz baja y de espaldas. Medido el 25/08: el bot editó tres
+// veces el post de las 15:16:38 y el dueño no vio nada — para él, se clavó.
+//
+// Por eso una pregunta abierta sale SIEMPRE como post propio, en el hilo, y con las palabras exactas
+// que hay que escribir para contestarla. `resumenFajo` no sirve para esto: es la tabla completa del
+// fajo, pensada para el mensaje con botones. Acá va lo mínimo accionable.
+
+/**
+ * El post que pide la respuesta que traba el fajo. `null` si no hay nada que preguntar.
+ *
+ * @param {{items?:Array}} fajo
+ * @returns {{texto:string}|null}
+ */
+export function textoPregunta(fajo = {}) {
+  const trabados = (fajo.items ?? []).filter((it) => it && !estaCompleto(it) && !it.yaCargado)
+  if (!trabados.length) return null
+
+  const l = [trabados.length === 1
+    ? '⚠ **Uno no lo pude cargar solo.** Necesito que me contestes esto:'
+    : `⚠ **${trabados.length} no los pude cargar solos.** Necesito que me contestes esto:`]
+
+  for (const it of trabados.slice(0, 6)) {
+    const quien = identificar(it).texto ?? 'un comprobante que no pude leer'
+    l.push('', `**${quien}**`)
+    const dup = it.posibleDuplicado && !it.duplicadoResuelto ? it.posibleDuplicado : null
+    if (dup) {
+      // LAS PALABRAS EXACTAS. Un botón apagado no es una salida, y «contestame» sin decir qué
+      // escribir tampoco: `RE_DUP_MISMO` / `RE_DUP_OTRO` son las que se aceptan.
+      l.push(`· Puede que ya esté en la **fila ${dup.fila ?? '?'}** de Compras `
+        + `(${dup.numero ?? 's/n'} · ${dup.fecha ?? 's/f'} · ${money(dup.total)}).`)
+      l.push('· Escribime **«es el mismo»** y no lo cargo, o **«es otro»** y lo cargo.')
+      continue
+    }
+    for (const p of preguntasDe(it).slice(0, 4)) l.push(`· ${p}`)
+  }
+  if (trabados.length > 6) l.push('', `_…y ${trabados.length - 6} más._`)
+  l.push('', '_Si no va ninguno, escribime **«descartalo»**._')
+  return { texto: l.join('\n') }
 }

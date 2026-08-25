@@ -361,7 +361,20 @@ test('sin nada leído, el CONTEO sale AUSENTE: sin dato no se sobrescribe', () =
 test('LAS DOS FILAS DE EFECTIVO PUBLICAN SU FECHA, y sale del centinela — no de TODAY() ni de una celda tipeada', () => {
   const g = construir()
   const fecha = (f) => String(g.filas[f - 1][3] ?? '')
-  assert.equal(fecha(g.fArqArs), `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`)
+  // ═══ Y LA DE PESOS FECHA EL SALDO, NO EL CONTEO (24/08/2026) ═══
+  //
+  // El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+  // realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+  // efectivo"*. C7 es conteo + seis fuentes de movimientos; su fecha decía el día del conteo. El día
+  // que alguien vuelva a atar D7 al conteo pelado, este test se pone rojo.
+  assert.equal(fecha(g.fArqArs),
+    `=IF(ISNUMBER(${ANEXO.conteoArsDia});IF(ISNUMBER(${ANEXO.ultimoEfectivoDia});${ANEXO.ultimoEfectivoDia};${ANEXO.conteoArsDia});"")`)
+  assert.ok(fecha(g.fArqArs).includes(ANEXO.ultimoEfectivoDia),
+    'D7 tiene que citar la fecha del ÚLTIMO MOVIMIENTO: el saldo se mueve con seis fuentes y la fecha se quedaba en el conteo')
+  // Y el conteo sigue siendo el respaldo: sin sello no hay ventana, y ahí la fecha honesta es la del
+  // conteo — nunca un 0, que se dibuja 30/12/1899.
+  assert.ok(fecha(g.fArqArs).endsWith(`${ANEXO.conteoArsDia});"")`))
+  // Los dólares NO cambian: esa cuenta no tiene desglose de movimientos.
   assert.equal(fecha(g.fArqUsd), `=IF(ISNUMBER(${ANEXO.conteoUsdDia});${ANEXO.conteoUsdDia};"")`)
   for (const f of [g.fArqArs, g.fArqUsd]) {
     // UN `TODAY()` ACÁ AFIRMA QUE SE CONTÓ HOY, todos los días. Es el defecto que el dueño ya señaló
@@ -379,8 +392,9 @@ test('la fecha del conteo NO se le vuelve a pedir al dueño: la tipeada se desca
   const cargado = new Map([['Efectivo en pesos', { saldo: 12000000, fecha: 46233, origen: '', quien: '' }]])
   const g = grilla(cargado, REFS)
   assert.equal(g.filas[g.fArqArs - 1][1], 12000000, 'el CONTEO del dueño sí viaja: es su dato')
-  assert.equal(g.filas[g.fArqArs - 1][3], `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`,
-    'su FECHA ya no: la derivan los timestamps del código')
+  assert.doesNotMatch(String(g.filas[g.fArqArs - 1][3]), /46233/,
+    'su FECHA ya no: la derivan los timestamps del código y las seis fuentes de movimientos')
+  assert.match(String(g.filas[g.fArqArs - 1][3]), new RegExp(`^=IF\\(ISNUMBER\\(${ANEXO.conteoArsDia}\\)`))
 })
 
 test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO', () => {

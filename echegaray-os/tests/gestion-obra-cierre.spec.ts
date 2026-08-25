@@ -265,20 +265,29 @@ test('10-14 · una carga: producción, horas de la persona y horas del EQUIPO, c
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}?vista=ejecucion`)
-  // El parte YA NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
-  // columna izquierda de la solapa y está siempre a la vista, y el reparto de horas dejó de ser un
-  // bloque plegado. Un parte diario que hay que desplegar es un parte diario que se carga dos
-  // semanas. Por eso se fueron el clic en `abrir-registrar` y el clic en el `summary` de
-  // `parte-personal`: no se borró funcionalidad, se dejó de esconder.
-  const panel = page.getByTestId('panel-registrar')
-  await panel.getByTestId('parte-actividad').selectOption(actividadId)
+  // El parte NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
+  // columna izquierda de la solapa y está siempre a la vista. Por eso se fue el clic en
+  // `abrir-registrar`: no se borró funcionalidad, se dejó de esconder.
+  //
+  // CAMBIO DE REGLA DECLARADO (Design 23/08): el REPARTO DE HORAS vuelve a ser un disclosure —un
+  // chip «quién trabajó» con la cuenta— porque dieciocho casilleros permanentes son el bloque que
+  // hay que pasar de largo todos los días para llegar al botón. El campo es el mismo (`horas_<id>`)
+  // y sigue en el DOM; lo que cambia es que hay que abrirlo, como los equipos.
+  //
+  // PORTE LITERAL DEL CANÓNICO 05 (24/08/2026): la actividad se elige de la lista del mockup —no de
+  // un `<select>`—, los chips son botones y la persona se marca antes de recibir sus horas.
+  const panel = page.getByTestId('form-ejecucion')
+  await panel.getByTestId('parte-actividad').click()
+  await panel.getByTestId(`parte-actividad-${actividadId}`).click()
   await panel.getByTestId('parte-cantidad').fill('3')
   await panel.getByTestId('parte-comentario').fill(`${M} tres columnas`)
+  await panel.getByTestId('parte-personal').click()
+  await panel.getByTestId(`marcar-${personaId}`).check()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('parte-equipos').locator('summary').click()
+  await panel.getByTestId('parte-equipos').click()
   await panel.getByTestId('equipo-0').fill(`${M} Hormigonera`)
   await panel.getByTestId('equipo-horas-0').fill('4')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar parte' }).click()
+  await panel.getByRole('button', { name: 'Registrar' }).click()
 
   // ═══ CADA HECHO A SU FUENTE ═══
   //   3 un de producción   → obra_ejecucion       → avance CALCULADO 25% (3 de 12)
@@ -345,15 +354,16 @@ test('15-17 · el papel se cuelga de la actividad, el filtro recorta y el rubro 
     return (data ?? []).length
   }, { timeout: 20_000 }).toBe(1)
 
-  // ═══ EL FILTRO RECORTA LAS CUATRO VISTAS Y NO ROMPE LOS RUBROS ═══
+  // ═══ EL FILTRO RECORTA EL CRONOGRAMA Y NO ROMPE LOS RUBROS ═══
   // Filtrar por estado se llevaba puestas las filas de RESUMEN, que son la cabecera del grupo: sin
-  // ellas las hijas quedaban colgando de «Sin sección».
-  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
-  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 25_000 })
+  // ellas las hijas quedaban colgando de «Sin sección». (22/08: la Lista se retiró; el mismo filtro
+  // vive en la barra del Cronograma y se afirma sobre su tabla.)
+  await page.goto(`/obras/${OBRA}?vista=cronograma`)
+  await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 25_000 })
   await page.getByTestId('boton-filtros').click()
   await page.getByTestId('filtro-rubro').selectOption(RUBRO)
   await expect(page.getByTestId('aviso-filtro')).toBeVisible()
-  await expect(page.getByTestId('vista-lista')).toContainText(ACT)
+  await expect(page.getByTestId('actividad-cronograma').filter({ hasText: ACT }).first()).toBeVisible()
   await page.getByTestId('limpiar-filtros').click()
 
   // ═══ RENOMBRAR ARRASTRA A LAS HIJAS ═══

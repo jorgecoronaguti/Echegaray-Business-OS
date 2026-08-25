@@ -17,7 +17,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { horasPorAsignado, lecturaProductividad } from './productividadHH.ts'
+import { horasPorAsignado, lecturaProductividad, senalProductividad } from './productividadHH.ts'
 import type { ActividadHH, RegistroHH } from './personalService.ts'
 import type { Asignacion } from '../types/index.ts'
 
@@ -104,4 +104,36 @@ test('las filas legacy sin persona no se le cuelgan a un asignado', () => {
     [registro({ persona_id: null, trabajador_o_cuadrilla: 'PEREZ JUAN' })],
   )
   assert.equal(m.size, 0)
+})
+
+// ═══ LA SEÑAL, SIN LA FRASE (Design 23/08) ═══
+//
+// LO QUE ATRAPA: que la columna de excepción se vuelva a llenar en todas las filas. Si `senalProductividad`
+// devuelve algo cuando la actividad va como se esperaba, la 09 vuelve a tener una frase por fila —y
+// con treinta filas, la única que importa deja de saltar a la vista.
+
+test('la actividad que va como se esperaba NO dice nada: normal silencioso', () => {
+  assert.equal(senalProductividad(act({ hh_plan: 100, hh_real: 50, consumo_plan_pct: 50, avance_pct: 46 })), null)
+})
+
+test('el consumo adelantado y el mejor rendimiento son las dos únicas señales con color', () => {
+  const adelantado = senalProductividad(act({ hh_plan: 100, hh_real: 73, consumo_plan_pct: 73, avance_pct: 45 }))
+  assert.deepEqual(adelantado, { texto: 'consumo adelantado', tono: 'warn' })
+  const mejor = senalProductividad(act({ hh_plan: 100, hh_real: 30, consumo_plan_pct: 30, avance_pct: 60 }))
+  assert.deepEqual(mejor, { texto: 'rinde mejor', tono: 'pos' })
+})
+
+test('lo que falta se dice por su nombre y sin punto de estado', () => {
+  assert.deepEqual(
+    senalProductividad(act({ hh_real: 120, avance_pct: 45 })),
+    { texto: 'HH plan sin cargar', tono: 'nulo' },
+  )
+  assert.deepEqual(
+    senalProductividad(act({ hh_plan: 100 })),
+    { texto: 'sin horas imputadas', tono: 'nulo' },
+  )
+  assert.deepEqual(
+    senalProductividad(act({ hh_plan: 100, hh_real: 73, consumo_plan_pct: 73 })),
+    { texto: 'avance sin medir', tono: 'nulo' },
+  )
 })

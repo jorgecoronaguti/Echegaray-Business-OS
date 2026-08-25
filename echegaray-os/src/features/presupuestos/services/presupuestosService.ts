@@ -14,7 +14,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
 import type {
-  EstadoPresupuesto, LineaComposicion, PartidaValorizada, PresupuestoCascada, RendimientoRecomendado,
+  EstadoPresupuesto, LineaComposicion, ParametroComercial, PartidaValorizada, PresupuestoCascada,
+  RendimientoRecomendado,
 } from '../types'
 import { aNumero } from './formato'
 import { desdeCongelada, desdeViva, type FilaCongelada, type FilaViva } from './composicion'
@@ -40,25 +41,66 @@ function aCascada(r: Fila): PresupuestoCascada {
     fecha_cotizacion: txt(r.fecha_cotizacion),
     congelada_en: txt(r.congelada_en),
     convertida_obra_id: txt(r.convertida_obra_id),
-    pct_indirectos: num(r.pct_indirectos) ?? 0,
+    parametro_comercial_id: txt(r.parametro_comercial_id),
     pct_gastos_generales: num(r.pct_gastos_generales) ?? 0,
-    pct_margen: num(r.pct_margen) ?? 0,
+    pct_beneficio: num(r.pct_beneficio) ?? 0,
     pct_financiero: num(r.pct_financiero) ?? 0,
-    pct_impuestos: num(r.pct_impuestos) ?? 0,
+    factor_financiero: num(r.factor_financiero) ?? 0,
+    pct_iibb: num(r.pct_iibb) ?? 0,
+    pct_ganancias: num(r.pct_ganancias) ?? 0,
+    pct_cheque: num(r.pct_cheque) ?? 0,
+    pct_iva: num(r.pct_iva) ?? 0,
     costo_directo: num(r.costo_directo),
     hh_previstas: num(r.hh_previstas),
     n_partidas: ent(r.n_partidas),
     n_sin_analisis: ent(r.n_sin_analisis),
     n_sin_computo: ent(r.n_sin_computo),
-    indirectos: num(r.indirectos),
+    n_sin_precio_subcontrato: ent(r.n_sin_precio_subcontrato),
     gastos_generales: num(r.gastos_generales),
-    costo_total: num(r.costo_total),
-    margen: num(r.margen),
+    costo_industrial: num(r.costo_industrial),
+    beneficio: num(r.beneficio),
     financiero: num(r.financiero),
-    subtotal_antes_impuestos: num(r.subtotal_antes_impuestos),
-    impuestos: num(r.impuestos),
+    iibb: num(r.iibb),
+    ganancias: num(r.ganancias),
+    subtotal: num(r.subtotal),
+    impuesto_cheque: num(r.impuesto_cheque),
+    venta_sin_iva: num(r.venta_sin_iva),
+    iva: num(r.iva),
+    venta_final: num(r.venta_final),
+    coeficiente_sin_iva: num(r.coeficiente_sin_iva),
+    coeficiente_con_iva: num(r.coeficiente_con_iva),
     precio_venta: num(r.precio_venta),
     margen_sobre_precio_pct: num(r.margen_sobre_precio_pct),
+  }
+}
+
+/**
+ * EL PARÁMETRO COMERCIAL VIGENTE — los ocho porcentajes con los que nace un presupuesto nuevo.
+ *
+ * Se lee de la base y no se tipea en el formulario: los valores «de la empresa» vivían en un
+ * `defaultValue` de un componente de React —sin historial, invisibles para el chat, y editables por
+ * quien tocara el `.tsx`—. Si la tabla estuviera vacía devuelve `null` y la pantalla lo dice: un
+ * default inventado en el front sería volver exactamente al problema.
+ */
+export async function getParametroComercialVigente(
+  supabase: SupabaseClient,
+): Promise<ParametroComercial | null> {
+  const { data } = await supabase.from('parametro_comercial').select('*').eq('vigente', true).maybeSingle()
+  if (!data) return null
+  const r = data as Fila
+  return {
+    id: String(r.id),
+    version: ent(r.version),
+    pct_gastos_generales: num(r.pct_gastos_generales) ?? 0,
+    pct_beneficio: num(r.pct_beneficio) ?? 0,
+    pct_financiero: num(r.pct_financiero) ?? 0,
+    factor_financiero: num(r.factor_financiero) ?? 0,
+    pct_iibb: num(r.pct_iibb) ?? 0,
+    pct_ganancias: num(r.pct_ganancias) ?? 0,
+    pct_cheque: num(r.pct_cheque) ?? 0,
+    pct_iva: num(r.pct_iva) ?? 0,
+    fuente: String(r.fuente ?? ''),
+    notas: txt(r.notas),
   }
 }
 

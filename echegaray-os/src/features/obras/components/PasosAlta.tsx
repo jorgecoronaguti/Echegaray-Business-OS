@@ -35,7 +35,7 @@ export function BarraDePasos({ obraId, actual }: { obraId: string | null; actual
         return (
           <li key={p.id} className="flex items-center gap-1.5">
             {alcanzable && !esActual
-              ? <Link href={urlPaso(obraId, p.id)} data-testid={`paso-${p.id}`}>{pastilla}</Link>
+              ? <Link href={urlPaso(obraId, p.id)} prefetch={false} data-testid={`paso-${p.id}`}>{pastilla}</Link>
               : <span data-testid={`paso-${p.id}`} aria-current={esActual ? 'step' : undefined}>{pastilla}</span>}
             {k < PASOS.length - 1 && <span aria-hidden className="text-[11px] text-faint">›</span>}
           </li>
@@ -85,7 +85,7 @@ export function LinkPaso({
   }
   return (
     <Link
-      href={urlPaso(obraId, paso)}
+      href={urlPaso(obraId, paso)} prefetch={false}
       data-testid={testid}
       className="text-muted underline underline-offset-2 transition-colors hover:text-ink"
     >{children}</Link>

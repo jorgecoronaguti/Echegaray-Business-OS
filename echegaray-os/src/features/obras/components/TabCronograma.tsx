@@ -1,5 +1,22 @@
 'use client'
 
+// ═══ ESTE COMPONENTE YA NO TIENE PANTALLA (24/08/2026 · porte del canónico 07) ═══
+//
+// La vista «Cronograma» del workspace la dibuja `CronogramaDeObra.tsx`, que es el porte literal del
+// mockup `07 · Obra Cronograma.dc.html`: tabla de actividad y desvío, Gantt con las tres capas, y
+// nada más. Este archivo —y con él `Gantt.tsx`, `PanelActividad.tsx` y la `BarraMasiva`— queda sin
+// nadie que lo renderice.
+//
+// NO SE BORRÓ, y hay que decir por qué: es el único lugar del OS donde existen las ACCIONES EN LOTE
+// del plan (responsable, HH plan y sellado por selección), la lista de actividades archivadas con su
+// «Restaurar», y los filtros del plan. Nada de eso está en el canónico 07 y todo eso pertenece al
+// árbol de Tareas (mockup 03), que es el que dibuja las casillas de selección. Mudarlo es una
+// decisión de producto —y de otro frente—, no un efecto colateral de portar una pantalla.
+//
+// Mientras tanto: el sellado de la línea base de TODA la obra sí sobrevive, en la banda de nivel 3
+// del cronograma nuevo (`SellarLineaBase`), porque sin él la línea base no se puede sellar desde
+// ninguna parte y sin línea base no hay desvío que medir.
+
 // PLANIFICACIÓN — UNA solapa con cuatro maneras de mirar LAS MISMAS actividades.
 //
 // ═══ POR QUÉ NO HAY UNA SOLAPA «PLANIFICACIÓN» Y OTRA «GANTT» ═══
@@ -27,19 +44,18 @@
 // barra NO: en el Gantt se toca una actividad tras otra para comparar fechas, y una vuelta al
 // servidor por clic haría el cronograma pegajoso justo en lo que más se usa.
 
+import Link from 'next/link'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Franja, type Metrica } from '@/shared/components/ds'
-import { BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 // LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
 // necesita, y un valor exportado desde un archivo `'use client'` no cruza esa frontera.
-import { type SubVista } from '../services/subvistas'
-import { VistaProximos, type Ventana } from './VistaProximos'
-import { VistaLista } from './VistaLista'
-import { VistaTablero } from './VistaTablero'
+import { type SubVista, type Ventana } from '../services/subvistas'
+import { hrefCronograma } from '../services/vistasObra'
 import { BarraPlan, type AccionesPlan } from './BarraPlan'
 import { resumenDelPlan, type ResumenDelPlan } from '../services/resumenDelPlan'
 import { aplicarFiltro, FILTRO_VACIO, hayFiltro, type FiltroPlan } from '../services/filtroPlan'
@@ -111,9 +127,7 @@ export function TabCronograma({
   actividadAbierta = null,
   hoy,
   hhPorActividad,
-  cambiarEstado,
   datosPorActividad,
-  medirEnLote,
   anchoTabla,
   anchoPanel,
 }: {
@@ -140,9 +154,7 @@ export function TabCronograma({
   /** Sólo para poder fijar el día en un test. En la pantalla es hoy. */
   hoy?: Date
   hhPorActividad?: Map<string, ActividadHH>
-  cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
   datosPorActividad?: Map<string, DatosDeActividad>
-  medirEnLote?: AccionFormulario
   /** Los anchos del split, leídos de la cookie por el servidor. */
   anchoTabla?: number
   anchoPanel?: number
@@ -150,7 +162,7 @@ export function TabCronograma({
   const router = useRouter()
   const params = useSearchParams()
   const [subLocal, setSubLocal] = useState<SubVista>(sub ?? 'gantt')
-  const [semanasLocal, setSemanasLocal] = useState<Ventana>(semanas ?? '2')
+  const [semanasLocal] = useState<Ventana>(semanas ?? '2')
   // EL FILTRO NO VIAJA EN LA URL. Es estado de trabajo —«mostrame lo mío ahora»— y no una vista que
   // se comparte: un enlace mandado por chat que llega con un recorte que el que lo abre no puso es
   // la manera más rápida de leer mal una obra.
@@ -186,16 +198,6 @@ export function TabCronograma({
     router.replace(`?${p.toString()}`, { scroll: false })
   }
   const cambiarSub = (v: SubVista) => { setSubLocal(v); irA('sub', v) }
-  const cambiarSemanas = (v: Ventana) => { setSemanasLocal(v); irA('semanas', v) }
-
-  // Abrir una actividad desde Lista o Tablero lleva al Gantt con ella seleccionada: el panel de la
-  // actividad vive ahí y es UNO solo. Tres paneles para la misma actividad terminarían mostrando
-  // tres versiones de sus datos.
-  const abrirActividad = (id: string) => {
-    setSelId(id)
-    setPanelCerrado(false)
-    cambiarSub('gantt')
-  }
 
   const resumen = resumenDelPlan(
     visibles, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10), Number(ventanaActual),
@@ -221,6 +223,14 @@ export function TabCronograma({
         }}
         escala={escala}
         alCambiarEscala={setEscala}
+        // La distinción que antes cargaba el rótulo «Gantt»: lo CALCULADO desde la secuencia —el
+        // camino crítico— vive en su pantalla, y desde acá se llega con un clic.
+        extra={
+          <Link href={hrefCronograma(obraId)} prefetch={false} data-testid="ir-camino-critico"
+            className="hidden text-[12.5px] text-muted hover:text-ink md:inline">
+            Camino crítico →
+          </Link>
+        }
         {...(acciones ? { sellar: <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} /> } : {})}
         {...(acciones
           ? { alta: <FormNuevaActividad personas={personas} crear={acciones.crear} rubros={nombresDeRubro} /> }
@@ -263,26 +273,6 @@ export function TabCronograma({
         </div>
       )}
 
-      {subActual === 'lista' && (
-        <VistaLista actividades={visibles} onAbrir={abrirActividad} {...(medirEnLote ? { medir: medirEnLote } : {})} />
-      )}
-
-      {subActual === 'tablero' && cambiarEstado && (
-        <VistaTablero actividades={visibles} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
-      )}
-
-      {subActual === 'proximos' && (
-        <VistaProximos
-          actividades={visibles}
-          impedimentos={restricciones}
-          obraId={obraId}
-          personas={personas}
-          semanas={ventanaActual}
-          alCambiarSemanas={cambiarSemanas}
-          {...(hoy ? { hoy } : {})}
-        />
-      )}
-
       {subActual === 'gantt' && archivadas.length > 0 && restaurarActividad && (
         <details className="border-t border-line py-2" data-testid="actividades-archivadas">
           <summary className="cursor-pointer text-[12.5px] text-muted">
@@ -303,8 +293,12 @@ export function TabCronograma({
 
       {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar de
           mirarlo, y salen de las MISMAS actividades que se acaban de dibujar —filtradas incluidas,
-          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla. */}
-      <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
+          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla.
+          Desde el mockup 07 es una TARJETA de celdas, así que el aire de arriba lo pone quien la
+          coloca: el componente no trae margen propio. */}
+      <div className="pt-3">
+        <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
+      </div>
     </div>
   )
 }

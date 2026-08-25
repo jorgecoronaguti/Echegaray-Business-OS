@@ -103,3 +103,72 @@ export function ordenar(docs: DocumentoDelEmpleado[], hoy: string): DocumentoDel
     return (a.fecha_vencimiento ?? '9999-12-31').localeCompare(b.fecha_vencimiento ?? '9999-12-31')
   })
 }
+
+/**
+ * M08 — LOS PAPELES SE AGRUPAN POR PARA QUÉ SIRVEN, NO POR TIPO DE ARCHIVO.
+ *
+ * La nota del mockup: «Recibos, salud, personales: no por extensión de archivo». Ordenados por
+ * `tipo_documento` alfabéticamente, el apto médico que vence en veinte días cae entre el DNI y el
+ * carnet de conducir. Agrupados por para-qué-sirven, «Salud y seguridad» es un bloque que se mira
+ * entero y donde un vencimiento salta.
+ *
+ * ═══ POR PALABRA Y NO POR DICCIONARIO CERRADO ═══
+ *
+ * El vocabulario de `tipo_documento` no está congelado: Administración da de alta tipos nuevos. Un
+ * diccionario cerrado manda todo lo desconocido a «Personales» hasta que alguien se acuerde de
+ * agregarlo, y ahí es donde se pierde un curso de altura vencido. La palabra hace el trabajo, y lo
+ * que NO matchea cae en «Personales» —que es el grupo sin consecuencia de seguridad—, no al revés.
+ */
+export type GrupoDePapeles = 'salud' | 'personales'
+
+const PALABRAS_DE_SALUD = /apto|medic|médic|salud|art\b|asegurad|curso|altura|segurid|induc|psicof|vacun|emergenc/i
+
+export function grupoDe(tipoDocumento: string | null | undefined, nombre?: string | null): GrupoDePapeles {
+  const texto = `${tipoDocumento ?? ''} ${nombre ?? ''}`
+  return PALABRAS_DE_SALUD.test(texto) ? 'salud' : 'personales'
+}
+
+export const GRUPO_LABEL: Record<GrupoDePapeles, string> = {
+  salud: 'Salud y seguridad',
+  personales: 'Personales',
+}
+
+/** Los papeles de cada grupo, en el orden que ya decide `ordenar()`: lo que hay que hacer arriba. */
+export function agrupar(
+  docs: DocumentoDelEmpleado[], hoy: string,
+): Record<GrupoDePapeles, DocumentoDelEmpleado[]> {
+  const r: Record<GrupoDePapeles, DocumentoDelEmpleado[]> = { salud: [], personales: [] }
+  for (const d of ordenar(docs, hoy)) r[grupoDe(d.tipo_documento, d.nombre)].push(d)
+  return r
+}
+
+/**
+ * EL RENGLÓN DE ESTADO DE M08 — «vence 12/09 · en 20 días», «vencido el 30/06», «vigente».
+ *
+ * El mockup escribe DOS cosas distintas para el mismo campo: «vence en 20 días» y «vencido el
+ * 30/06». Son estados distintos y por eso se leen distinto —uno es una cuenta regresiva y el otro
+ * un hecho consumado—, y esa diferencia es la que hace que alguien se mueva o no.
+ */
+export function notaDeVencimiento(
+  d: DocumentoDelEmpleado, hoy: string,
+): { texto: string; tono: 'faint' | 'warn' | 'neg' | 'pos' } {
+  const e = estadoEnPantalla(d, hoy)
+  if (e === 'en_revision') return { texto: 'enviado · esperando revisión', tono: 'faint' }
+  if (e === 'requiere_correccion') return { texto: d.motivo_revision ?? 'requiere corrección', tono: 'neg' }
+  if (e === 'solicitado') return { texto: 'te lo están pidiendo', tono: 'warn' }
+  if (!d.fecha_vencimiento) return { texto: e === 'vigente' ? 'vigente' : ESTADO_LABEL[e].toLowerCase(), tono: e === 'vigente' ? 'faint' : 'warn' }
+  const dias = diasEntre(hoy, d.fecha_vencimiento)
+  const fecha = `${d.fecha_vencimiento.slice(8, 10)}/${d.fecha_vencimiento.slice(5, 7)}`
+  if (dias < 0) return { texto: `vencido el ${fecha}`, tono: 'neg' }
+  if (dias === 0) return { texto: `vence hoy, ${fecha}`, tono: 'neg' }
+  if (e === 'por_vencer') return { texto: `vence ${fecha} · en ${dias} día${dias === 1 ? '' : 's'}`, tono: 'warn' }
+  return { texto: `vigente hasta ${fecha}`, tono: 'faint' }
+}
+
+/** Días enteros entre dos fechas ISO, en UTC para que no se corra uno por el huso. */
+function diasEntre(desde: string, hasta: string): number {
+  const a = Date.parse(`${desde.slice(0, 10)}T00:00:00Z`)
+  const b = Date.parse(`${hasta.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0
+  return Math.round((b - a) / 86400000)
+}

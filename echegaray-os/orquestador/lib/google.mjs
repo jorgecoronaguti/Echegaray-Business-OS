@@ -167,6 +167,54 @@ export function normalizarDestinatarios(raw) {
   return { lista: ok.join(', '), invalidos }
 }
 
+// Construye un mensaje RFC 2822 y lo codifica base64url para la Gmail API.
+// VIVE A NIVEL DE MÓDULO Y SE EXPORTA para poder probarla: no usa nada del closure del cliente
+// (sólo `normalizarDestinatarios`, que ya es de módulo), y encerrada adentro no había forma de
+// verificar que el cuerpo HTML del portal saliera con el Content-Type correcto. Asunto en
+// encoded-word UTF-8 para no romper con acentos (común en español).
+// `html: true` manda el cuerpo como text/html. Por defecto sigue siendo text/plain — el portal del
+// cliente necesita HTML (lleva el logo y una tabla), y sin esto el cliente recibía las etiquetas
+// crudas en pantalla. Retrocompatible: ningún llamador existente pasa `html`.
+export function buildRawEmail({ to, cc, bcc, subject, body, attachments = [], html = false }) {
+  const tipoCuerpo = html ? 'text/html' : 'text/plain'
+  const encWord = (s) => `=?UTF-8?B?${Buffer.from(String(s || ''), 'utf8').toString('base64')}?=`
+  // Completar destinatarios abreviados (rodrigo@ecsas → rodrigo@ecsas.com.ar) para no
+  // mandar un header inválido a Gmail. Si tras completar sigue habiendo inválidos, cortamos
+  // acá con un error CLARO (mejor fallar honesto que enviar a una dirección rota/equivocada).
+  const nTo = normalizarDestinatarios(to), nCc = normalizarDestinatarios(cc), nBcc = normalizarDestinatarios(bcc)
+  const malos = [...nTo.invalidos, ...nCc.invalidos, ...nBcc.invalidos]
+  if (malos.length) throw new Error(`destinatario inválido: ${malos.join(', ')}. Dame el mail completo (ej. nombre@ecsas.com.ar).`)
+  if (!nTo.lista) throw new Error('falta el destinatario (to) del mail.')
+  const h = []
+  h.push(`To: ${nTo.lista}`)
+  if (nCc.lista) h.push(`Cc: ${nCc.lista}`)
+  if (nBcc.lista) h.push(`Bcc: ${nBcc.lista}`)
+  h.push(`Subject: ${encWord(subject)}`)
+  h.push('MIME-Version: 1.0')
+  let mime
+  if (Array.isArray(attachments) && attachments.length) {
+    // multipart/mixed: cuerpo de texto + cada adjunto en base64.
+    const bnd = `b_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const p = [`Content-Type: multipart/mixed; boundary="${bnd}"`, '', `--${bnd}`,
+      `Content-Type: ${tipoCuerpo}; charset="UTF-8"`, 'Content-Transfer-Encoding: 8bit', '', String(body || '')]
+    for (const a of attachments) {
+      const b64 = String(a.dataBase64 || '').replace(/[\r\n]/g, '')
+      p.push(`--${bnd}`,
+        `Content-Type: ${a.mimeType || 'application/octet-stream'}; name="${a.filename || 'adjunto'}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${a.filename || 'adjunto'}"`, '',
+        b64.replace(/(.{76})/g, '$1\r\n'))
+    }
+    p.push(`--${bnd}--`)
+    mime = h.join('\r\n') + '\r\n' + p.join('\r\n')
+  } else {
+    h.push(`Content-Type: ${tipoCuerpo}; charset="UTF-8"`)
+    h.push('Content-Transfer-Encoding: 8bit')
+    mime = h.join('\r\n') + '\r\n\r\n' + String(body || '')
+  }
+  return Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 /**
  * Fábrica del cliente. En producción se construye con la key real; en tests se
  * inyecta `auth` (con getAccessToken) y `fetchImpl` para no tocar red ni disco.
@@ -321,47 +369,6 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       throw err
     }
     return { ok: true }
-  }
-
-  // Construye un mensaje RFC 2822 y lo codifica base64url para la Gmail API. Asunto en
-  // encoded-word UTF-8 para no romper con acentos (común en español).
-  function buildRawEmail({ to, cc, bcc, subject, body, attachments = [] }) {
-    const encWord = (s) => `=?UTF-8?B?${Buffer.from(String(s || ''), 'utf8').toString('base64')}?=`
-    // Completar destinatarios abreviados (rodrigo@ecsas → rodrigo@ecsas.com.ar) para no
-    // mandar un header inválido a Gmail. Si tras completar sigue habiendo inválidos, cortamos
-    // acá con un error CLARO (mejor fallar honesto que enviar a una dirección rota/equivocada).
-    const nTo = normalizarDestinatarios(to), nCc = normalizarDestinatarios(cc), nBcc = normalizarDestinatarios(bcc)
-    const malos = [...nTo.invalidos, ...nCc.invalidos, ...nBcc.invalidos]
-    if (malos.length) throw new Error(`destinatario inválido: ${malos.join(', ')}. Dame el mail completo (ej. nombre@ecsas.com.ar).`)
-    if (!nTo.lista) throw new Error('falta el destinatario (to) del mail.')
-    const h = []
-    h.push(`To: ${nTo.lista}`)
-    if (nCc.lista) h.push(`Cc: ${nCc.lista}`)
-    if (nBcc.lista) h.push(`Bcc: ${nBcc.lista}`)
-    h.push(`Subject: ${encWord(subject)}`)
-    h.push('MIME-Version: 1.0')
-    let mime
-    if (Array.isArray(attachments) && attachments.length) {
-      // multipart/mixed: cuerpo de texto + cada adjunto en base64.
-      const bnd = `b_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const p = [`Content-Type: multipart/mixed; boundary="${bnd}"`, '', `--${bnd}`,
-        'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit', '', String(body || '')]
-      for (const a of attachments) {
-        const b64 = String(a.dataBase64 || '').replace(/[\r\n]/g, '')
-        p.push(`--${bnd}`,
-          `Content-Type: ${a.mimeType || 'application/octet-stream'}; name="${a.filename || 'adjunto'}"`,
-          'Content-Transfer-Encoding: base64',
-          `Content-Disposition: attachment; filename="${a.filename || 'adjunto'}"`, '',
-          b64.replace(/(.{76})/g, '$1\r\n'))
-      }
-      p.push(`--${bnd}--`)
-      mime = h.join('\r\n') + '\r\n' + p.join('\r\n')
-    } else {
-      h.push('Content-Type: text/plain; charset="UTF-8"')
-      h.push('Content-Transfer-Encoding: 8bit')
-      mime = h.join('\r\n') + '\r\n\r\n' + String(body || '')
-    }
-    return Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   }
 
   /** Resuelve un archivo de Drive (por file_id) a un adjunto de mail: {filename, mimeType,
@@ -584,10 +591,10 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Envía un mail. to/cc/bcc son strings. threadId opcional (responder en hilo).
      *  attachmentFileIds: file_ids de Drive para ADJUNTAR; attachmentFormat 'documento'|'pdf'. */
-    async gmailSend({ to, cc, bcc, subject, body, threadId, attachmentFileIds, attachmentFormat } = {}) {
+    async gmailSend({ to, cc, bcc, subject, body, threadId, attachmentFileIds, attachmentFormat, html = false } = {}) {
       const { attachments, links } = await this.prepareAttachments(attachmentFileIds, { formato: attachmentFormat, shareWith: to })
       const finalBody = links.length ? `${body || ''}\n\n${links.map((l) => `📎 ${l.name}: ${l.url}`).join('\n')}` : body
-      const raw = buildRawEmail({ to, cc, bcc, subject, body: finalBody, attachments })
+      const raw = buildRawEmail({ to, cc, bcc, subject, body: finalBody, attachments, html })
       const payload = threadId ? { raw, threadId } : { raw }
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', payload)
       return { id: r.id, threadId: r.threadId, to, subject, adjuntos: [...attachments.map((a) => a.filename), ...links.map((l) => `${l.name} (link Drive)`)] }
