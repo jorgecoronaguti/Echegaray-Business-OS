@@ -94,17 +94,27 @@ test('sin cliente de Google el control no se dispara — y por eso el cableado s
   assert.doesNotMatch(r.texto ?? '', /NO están en Compras/)
 })
 
-test('EL CABLEADO: el especialista le pasa el cliente de Google a la escritura', async () => {
+test('EL CABLEADO: el cliente de Google llega hasta la escritura, salto por salto', async () => {
   // Sin esta aserción, alguien saca el argumento en una refactor y volvemos al punto de partida: el
   // auditor existiendo y sin que nadie lo llame, verde y callado.
+  //
+  // Desde el 25/08 el cableado no está en un archivo sino en DOS: el especialista le pasa `google`
+  // al circuito compartido (`comprobantes/circuito.mjs`) y el circuito se lo pasa a `escribirFajo`.
+  // Se afirman los dos saltos: cortar cualquiera de ellos apaga el auditor igual, y una aserción
+  // sobre un solo salto se quedaría verde con la cadena rota más abajo.
   const { readFileSync } = await import('node:fs')
   const { fileURLToPath } = await import('node:url')
-  const ruta = fileURLToPath(new URL('../especialistas/comprobantes.mjs', import.meta.url))
-  const fuente = readFileSync(ruta, 'utf8')
+  const lee = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+
   assert.match(
-    fuente,
-    /escribir:\s*\(f\)\s*=>\s*escribirFajo\(\{[^}]*\bgoogle\b[^}]*\},\s*f\)/,
-    'el especialista dejó de pasarle `google` a escribirFajo: el auditor no se dispara más',
+    lee('../especialistas/comprobantes.mjs'),
+    /procesarComprobantes\(\{[^}]*\bgoogle\b[^}]*\}/,
+    'el especialista dejó de pasarle `google` al circuito: el auditor no se dispara más',
+  )
+  assert.match(
+    lee('./circuito.mjs'),
+    /escribirFajo\(\{[^}]*\bgoogle\b[^}]*\},\s*f\)/,
+    'el circuito dejó de pasarle `google` a escribirFajo: el auditor no se dispara más',
   )
 })
 

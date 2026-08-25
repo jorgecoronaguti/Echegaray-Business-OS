@@ -40,14 +40,10 @@
 // (`comprobantes/tanda.mjs`), que publica UN post al recibir el primer adjunto y lo reescribe hasta
 // «✔ listo: 8 cargados, 2 ya estaban». Las tarjetas se apagaron en `botonesFajo`.
 
-import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
-import { escribirFajo } from '../comprobantes/escritura.mjs'
+import { TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
+import { procesarComprobantes } from '../comprobantes/circuito.mjs'
 import { atenderRespuesta } from '../comprobantes/respuesta.mjs'
 import { interpretarRespuesta, MAX_LARGO } from '../../lib/comprobantes/respuesta-texto.mjs'
-import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
-import { listasDeCompras, proveedoresPorCuit } from '../../lib/comprobantes/listas.mjs'
-import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
-import { perfilesDeImputacionDesdeDB } from '../../lib/imputacion-aprendida.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
 import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import { conLaTanda } from '../comprobantes/tanda.mjs'
@@ -214,55 +210,19 @@ export const especialista = {
   },
 }
 
-/** El trabajo de verdad: bajar, leer, imputar y escribir. Devuelve `{texto, estado, fajoId, parte}`. */
+/**
+ * El trabajo de verdad: bajar, leer, imputar y escribir. Devuelve `{texto, estado, fajoId, parte}`.
+ *
+ * ═══ EL CABLEADO SE MUDÓ A `comprobantes/circuito.mjs` (25/08) ═══
+ *
+ * Acá vivían las siete dependencias del circuito (visión, listas + mapa de CUIT, ARCA, la pestaña
+ * viva, el banco, los perfiles aprendidos y el escritor). Ahora las arma `circuito.mjs`, porque la
+ * pantalla 24 carga comprobantes por la misma vía y el dueño pidió que fuera «de la misma manera».
+ * Lo único que este especialista sigue decidiendo es lo suyo: de dónde salen los archivos (un post
+ * de Mattermost) y qué se publica después.
+ */
 async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url }) {
-  const r = await procesarPost({
-    port,
-    mattermost,
-    leer: (adjunto, vocabulario) => leerAdjunto(adjunto, { vocabulario }),
-    // LAS LISTAS VIAJAN CON EL MAPA DE CUIT. Sin él, «DUBOS UGARTE PEDRO LUIS RAUL» se declara
-    // proveedor nuevo y la carga frena, aunque DUPEC esté en el desplegable con ese mismo CUIT.
-    listas: async () => {
-      // Y el mapa CUIT → nombres de las OTRAS dos fuentes (`public.proveedores` y el libro fiscal),
-      // que es lo que resuelve al proveedor cuyo CUIT no está cargado a mano en la pestaña. Ver
-      // `nombresPorCuit`: si la base no contesta, viene vacío y todo se comporta como antes.
-      const [l, porCuit, nombresPorCuit] = await Promise.all([
-        listasDeCompras(google),
-        proveedoresPorCuit(google),
-        repo.nombresPorCuit(port).catch(() => new Map()),
-      ])
-      return { ...l, porCuit, nombresPorCuit }
-    },
-    // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
-    // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué
-    // claves se usan lo decide `arca.mjs`, que es también el que las va a conciliar.
-    arcaDe: (c) => repo.candidatasArca(port, c ?? {}),
-    // LA PESTAÑA VIVA es la única que sabe lo que entró por Claude Code o a mano. También trae el
-    // vocabulario de la columna K con el que se resuelve la obra escrita a mano, y la historia de
-    // imputación con la que aprende `imputacion-aprendida.mjs`.
-    comprasDe: () => indiceDeCompras(google),
-    // EL EXTRACTO BANCARIO que el importador carga todos los días: contra él se cruza todo
-    // comprobante que declare «pagada por transferencia». Últimos 25 días de débitos alcanzan: la
-    // ventana del cruce es de ±5 días por comprobante. Si la consulta falla, `marcarBanco` lo
-    // declara `no_verificable` — nunca frena la carga.
-    bancoDe: () => port.query(
-      `select fecha, concepto, importe, referencia from banco_movimientos
-        where importe < 0 and fecha >= current_date - 25 order by fecha desc limit 800`,
-    ).then((r) => r.rows),
-    // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
-    // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
-    perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),
-    // EL ESCRITOR. Es el mismo `escribirFajo` que dispara el botón Confirmar —el que corre el
-    // cargador de Claude Code como proceso hijo—: no hay dos caminos de escritura, hay uno solo
-    // al que ahora también se llega sin apretar nada.
-    // `google` viaja para que al cerrar la carga corra el AUDITOR de descalces registro↔pestaña. Es
-    // el mismo cliente que ya se usó para leer las listas y la pestaña viva: el control no paga una
-    // autenticación más. Sin este argumento el auditor no se dispara — y "no lo dispara nadie" es
-    // exactamente el defecto que se está arreglando.
-    escribir: (f) => escribirFajo({ port, log, google }, f),
-    url,
-    log,
-  }, {
+  const r = await procesarComprobantes({ port, google, log, url, mattermost }, {
     fileIds,
     // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
     // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
