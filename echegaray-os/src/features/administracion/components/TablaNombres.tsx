@@ -14,7 +14,7 @@
 import Link from 'next/link'
 import { pesos } from '@/shared/components/canon/formato'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
-import { ALTO_V2, ENCABEZADO, FILO_ELEGIDA, RotuloCol, RotuloPanel, V } from './proveedores/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, RotuloPanel, V } from './proveedores/patron'
 import type { NombrePendiente, NombreResuelto } from '../types'
 
 /** `22v2:449-451`. En angosto se suelta COMPROB., nunca el texto que hay que resolver. */
@@ -53,7 +53,7 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
             role="row"
             data-testid="nombre-pendiente"
             data-seleccionada={elegido ? '' : undefined}
-            className={`relative grid items-center gap-[14px] ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+            className={`relative grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
             style={{
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,

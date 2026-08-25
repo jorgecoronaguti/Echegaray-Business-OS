@@ -268,6 +268,37 @@ test('sólo el pedazo que necesita interactividad es de cliente', () => {
   }
 })
 
+// ── LAS DOS UNIDADES BASE QUE CORRÍAN LA PANTALLA ENTERA ─────────────────────────────────────────
+//
+// Medido contra el `.dc.html` a 1520x900 el 25/08/2026. Ninguna de las dos era un bloque mal
+// maquetado: eran dos defaults distintos entre el mockup y Tailwind, y cada uno movía POCOS píxeles
+// por elemento que se acumulaban hacia abajo. Se arreglan arriba, una sola vez, y se fijan acá
+// porque un refactor los borra sin que nadie note nada hasta comparar de nuevo.
+
+test('el interlineado del mockup se declara UNA vez y no envuelve la barra ajena', () => {
+  // ANTES: cada bloque de texto era 4-5px más alto que el del zip («Lo que pide trabajo» 24 contra
+  // 20, la solapa de nivel 3 24 contra 20) y eso corría el encabezado de la tabla 25px. El `.dc.html`
+  // no declara `line-height` en ningún lado —corre con `normal`— y el preflight de Tailwind pone 1.5.
+  const src = codigoPagina()
+  assert.match(src, /lineHeight: 'normal'/, 'la pantalla volvió a heredar el interlineado 1.5 de Tailwind')
+  // Y NO puede envolver a `NavAdministracion`: esa barra es de la sección, no de esta pantalla.
+  const nav = src.indexOf('<NavAdministracion')
+  const lh = src.indexOf("lineHeight: 'normal'")
+  assert.ok(lh > nav, 'el interlineado envuelve la barra de áreas, que no es de esta pantalla')
+})
+
+test('el alto y el ancho se miden como el mockup: el borde va POR AFUERA', () => {
+  // ANTES: el panel medía 396px contra los 421px del zip —el padding de 24 y el borde de 1 se los
+  // comía desde adentro `border-box`— y esos 25px se los llevaba la lista. Las filas, 40 contra 41.
+  const patron = codigo('proveedores/patron.tsx')
+  assert.match(patron, /export const CAJA_CONTENIDO = 'box-content'/)
+  assert.match(patron, /lg:box-content lg:w-\[372px\]/, 'el panel volvió a medir su padding por dentro')
+  assert.match(patron, /boxSizing: 'content-box'/, 'el encabezado de columnas perdió su filo por afuera')
+  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', 'proveedores/LoQuePideTrabajo.tsx']) {
+    assert.match(codigo(a), /CAJA_CONTENIDO/, `${a}: sus filas volvieron a comerse el filo desde adentro`)
+  }
+})
+
 // ── LO QUE SE CONSERVÓ AUNQUE EL MOCKUP NO LO DIBUJE ─────────────────────────────────────────────
 
 test('deshacer una resolución sigue existiendo: un vínculo equivocado se saca', () => {

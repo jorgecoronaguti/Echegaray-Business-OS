@@ -157,6 +157,24 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   return (
     <Marco>
       <NavAdministracion />
+
+      {/* ═══ EL INTERLINEADO DE ESTA PANTALLA ES EL DEL MOCKUP, Y SE DECLARA UNA SOLA VEZ ═══
+
+          Medido a 1520×900 contra el `.dc.html`: cada bloque de texto de la app era 4-5px más alto
+          que el del zip —«Lo que pide trabajo» 24 contra 20, la solapa de nivel 3 24 contra 20, el
+          chip de filtro 26 contra 15—, y esos milímetros acumulados corrían todo lo de abajo 25px.
+          Era el diff de píxeles «repartido parejo»: no había ningún bloque mal maquetado, había una
+          unidad base distinta.
+
+          La causa: el `.dc.html` no declara `line-height` en ningún lado, así que corre con el
+          default de CSS (`normal`, ≈1.25); el preflight de Tailwind pone `1.5` en el body y la app
+          lo heredaba. Donde el mockup quiere otro interlineado lo escribe explícito —1.6 en las
+          notas al pie, 1.25 en el título del panel— y esos siguen mandando sobre esta herencia.
+
+          Va acá y no en `globals.css` porque el token global lo gobierna otro frente, y no en
+          `Marco` porque ahí adentro está `NavAdministracion`, que es de la barra de áreas y no de
+          esta pantalla: moverle el interlineado sería corregir mi corrimiento rompiendo el de otro. */}
+      <div style={{ lineHeight: 'normal' }}>
       <LoQuePideTrabajo senales={senales} />
 
       <CabeceraProveedores
@@ -297,6 +315,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
             />
           )}
         </div>
+      </div>
       </div>
     </Marco>
   )

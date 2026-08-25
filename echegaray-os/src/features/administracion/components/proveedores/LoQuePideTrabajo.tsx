@@ -13,7 +13,7 @@
 import Link from 'next/link'
 import { IconoProveedor } from '@/shared/components/iconos'
 import { resumirTrabajo, type SenalDeTrabajo } from '../../services/senalesProveedores'
-import { ALTO_V2, FILO_BLOQUEA, V } from './patron'
+import { ALTO_V2, CAJA_CONTENIDO, FILO_BLOQUEA, V } from './patron'
 
 export type { SenalDeTrabajo }
 
@@ -40,7 +40,7 @@ export function LoQuePideTrabajo({ senales }: { senales: SenalDeTrabajo[] }) {
               key={s.clave}
               href={s.href}
               data-testid={`senal-${s.clave}`}
-              className="grid cursor-pointer items-center gap-[14px] grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px] hover:bg-[#F2F1ED]"
+              className={`grid cursor-pointer items-center gap-[14px] ${CAJA_CONTENIDO} grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px] hover:bg-[#F2F1ED]`}
               style={{
                 height: ALTO_V2.trabajo,
                 borderTop: `1px solid ${V.lineaFila}`,

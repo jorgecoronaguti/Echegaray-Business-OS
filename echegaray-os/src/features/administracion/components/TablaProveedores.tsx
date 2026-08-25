@@ -28,7 +28,7 @@ import Link from 'next/link'
 import { IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
 import { pesos } from '@/shared/components/canon/formato'
-import { ALTO_V2, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from './proveedores/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from './proveedores/patron'
 import type { CompradoProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
@@ -80,7 +80,7 @@ export function TablaProveedores({
             role="row"
             data-testid="fila-proveedor"
             data-seleccionada={elegido ? '' : undefined}
-            className={`relative grid items-center gap-[14px] ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+            className={`relative grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
             style={{
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,

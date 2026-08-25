@@ -93,6 +93,8 @@ export function RotuloCol({ children, derecha }: { children?: ReactNode; derecha
 export const ENCABEZADO: CSSProperties = {
   display: 'grid', gap: 14, alignItems: 'end',
   height: ALTO_V2.encabezado, borderBottom: `1px solid ${V.lineaFuerte}`,
+  // El filo va POR AFUERA del alto, como en el mockup: 26 + 1 = 27. Ver `CAJA_CONTENIDO`.
+  boxSizing: 'content-box',
 }
 
 /** La nota al pie de un bloque: 11px, 1.6 de interlínea, 720px de ancho de lectura. `22v2:144`. */
@@ -138,10 +140,36 @@ export function PanelFilo({ children, testid }: { children: ReactNode; testid?: 
   return (
     <aside
       data-testid={testid}
-      className="w-full shrink-0 border-t pt-4 lg:ml-6 lg:w-[372px] lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+      className="w-full shrink-0 border-t pt-4 lg:ml-6 lg:box-content lg:w-[372px] lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
       style={{ borderColor: V.linea, display: 'flex', flexDirection: 'column', minWidth: 0 }}
     >
       {children}
     </aside>
   )
 }
+
+/**
+ * `box-sizing: content-box` — LA UNIDAD QUE EXPLICA TODO EL CORRIMIENTO CONTRA EL MOCKUP.
+ *
+ * ═══ LO MEDIDO (25/08/2026, mockup y app a 1520×900, lado a lado) ═══
+ *
+ *   bloque                      mockup    app     Δ
+ *   panel lateral (ancho total)  421px   396px   −25
+ *   lista del maestro (ancho)   1059px  1084px   +25
+ *   fila de tabla (alto)           41px    40px   −1
+ *   encabezado de columnas         27px    26px   −1
+ *   fila de «lo que pide trabajo»  39px    38px   −1
+ *
+ * Una sola causa: el `.dc.html` no declara `box-sizing`, así que corre con el DEFAULT DE CSS
+ * —`content-box`— donde `width:372px` es el CONTENIDO y el padding de 24 y el borde de 1 se SUMAN
+ * por afuera (372+24+1+24 de margen = 421). El preflight de Tailwind pone `border-box` en todo, y
+ * ahí los mismos 372px se los comen el padding y el borde desde adentro: el panel queda 25px más
+ * angosto y esos 25px se los lleva la lista. Idéntico con `height:40px` + `borderBottom:1px`: 41 en
+ * el mockup, 40 en la app.
+ *
+ * Se corrige donde nace —en las cuatro declaraciones que fijan alto o ancho junto a un borde— y no
+ * compensando bloque por bloque con números mágicos: sumarle 25 al ancho y 1 a cada alto dejaría
+ * cuatro constantes que ya no se parecen a las del zip, y el próximo que compare el archivo con la
+ * pantalla no entendería de dónde salieron.
+ */
+export const CAJA_CONTENIDO = 'box-content'
