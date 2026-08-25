@@ -202,3 +202,6 @@ export interface FuentesActividad {
     monto_cobrado: number | null
   }[]
 }
+
+// Los tipos de las pantallas 28/31/32 (cuenta corriente, accesos, esquema de pago).
+export * from './portalCliente'

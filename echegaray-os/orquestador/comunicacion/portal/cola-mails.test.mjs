@@ -59,7 +59,7 @@ test('la comprobación de revocación es sólo para la habilitación, no para el
 test('el estado se marca ANTES de enviar: un mail no se puede des-enviar', async () => {
   let orden = []
   const port = {
-    async query(sql, params) {
+    async query(sql) {
       if (/cliente_acceso/.test(sql)) return { rows: [{ revocado_at: null }] }
       // El reciclado de colgados corre siempre al principio y no es parte del orden que se mide.
       if (/estado = 'procesando' and tomado_at/.test(sql)) return { rows: [] }
