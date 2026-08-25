@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { cargarSaldoCajaAction, type CargarSaldoState } from '../services/cargarSaldoAction'
+import { IconoDinero } from '@/shared/components/iconos'
 
 const initialState: CargarSaldoState = { ok: null, error: null }
 
@@ -12,7 +13,10 @@ export function CargarSaldoForm() {
 
   return (
     <details className="rounded-lg border bg-white p-3 shadow-sm" data-testid="cargar-saldo-section">
-      <summary className="cursor-pointer text-sm font-semibold text-gray-800">💵 Cargar saldo de hoy</summary>
+      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-800">
+        <IconoDinero className="h-4 w-4 text-gray-500" />
+        Cargar saldo de hoy
+      </summary>
       <form action={formAction} className="mt-3 flex flex-wrap items-end gap-3" data-testid="cargar-saldo-form">
         <label className="flex flex-col text-xs text-gray-600">
           Cuenta

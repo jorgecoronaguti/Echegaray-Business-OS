@@ -5,6 +5,7 @@ import {
 } from '@/features/flujo-caja/services/calendarioReader'
 import { CargarSaldoForm } from '@/features/flujo-caja/components/CargarSaldoForm'
 import { CalendarioFlujo } from '@/features/flujo-caja/components/CalendarioFlujo'
+import { IconoFecha } from '@/shared/components/iconos'
 
 // Calendario de cobros y pagos — la web muestra lo que hay que cobrar y pagar,
 // día por día, con el saldo proyectado acumulado. Fuente única: el Sheet real
@@ -50,7 +51,10 @@ export default async function FlujoCajaPage() {
   if ('error' in cal) {
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <h1 className="text-2xl font-bold">📅 Calendario de cobros y pagos</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <IconoFecha className="h-6 w-6 text-gray-500" />
+          Calendario de cobros y pagos
+        </h1>
         <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">La conexión con el Sheet no está configurada en este entorno.</p>
           <p className="mt-2">{cal.error}</p>
@@ -62,7 +66,10 @@ export default async function FlujoCajaPage() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-bold">📅 Calendario de cobros y pagos</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <IconoFecha className="h-6 w-6 text-gray-500" />
+          Calendario de cobros y pagos
+        </h1>
         <div className="text-xs text-gray-500">
           Fuente:{' '}
           <a href={SHEET_URL} target="_blank" rel="noreferrer" className="underline hover:text-gray-700">

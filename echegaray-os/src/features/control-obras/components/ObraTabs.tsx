@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
+import { IconoHerramienta, IconoMaterial, IconoMovimiento } from '@/shared/components/iconos'
 import { pedidoPendiente, type AvanceObra, type ObraDetalle } from '../services/controlObrasService'
 import type { CostosObra } from '../services/costosObraService'
 
@@ -63,7 +64,7 @@ export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; av
             <Vacio texto="No hay herramientas asignadas a esta obra." />
           ) : (
             detalle.herramientas.map((h) => (
-              <Row key={h.id_herramienta} icon="🔧" titulo={h.nombre} sub={h.origen ? `origen: ${h.origen}` : ''} />
+              <Row key={h.id_herramienta} icon={<IconoHerramienta className="h-[18px] w-[18px]" />} titulo={h.nombre} sub={h.origen ? `origen: ${h.origen}` : ''} />
             ))
           ))}
 
@@ -76,7 +77,7 @@ export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; av
               return (
                 <Row
                   key={p.id_pedido}
-                  icon="📦"
+                  icon={<IconoMaterial className="h-[18px] w-[18px]" />}
                   titulo={[p.material, p.cantidad ? `· ${p.cantidad}` : ''].filter(Boolean).join(' ') || 'Pedido'}
                   sub={fecha(p.fecha)}
                   pill={p.estado ? { texto: p.estado, tono: pend ? 'amber' : 'ok' } : undefined}
@@ -92,7 +93,7 @@ export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; av
             detalle.movimientos.map((m) => (
               <Row
                 key={m.id_movimiento}
-                icon="↔"
+                icon={<IconoMovimiento className="h-[18px] w-[18px]" />}
                 titulo={m.herramienta_nombre || 'Herramienta'}
                 sub={[m.destino ? `→ ${m.destino}` : '', m.responsable || ''].filter(Boolean).join(' · ')}
                 stamp={fecha(m.fecha)}
@@ -111,7 +112,7 @@ function Row({
   pill,
   stamp,
 }: {
-  icon: string
+  icon: ReactNode
   titulo: string
   sub?: string
   pill?: { texto: string; tono: 'ok' | 'amber' }
@@ -119,7 +120,7 @@ function Row({
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gray-100 text-lg">{icon}</div>
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gray-100 text-gray-700">{icon}</div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-gray-900">{titulo}</div>
         {sub && <div className="truncate text-xs text-gray-500">{sub}</div>}

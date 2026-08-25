@@ -3,6 +3,7 @@ import type { ReporteDefinicion, ReporteGenerado } from '@/features/reportes/typ
 import { FRECUENCIA_LABEL } from '@/features/reportes/types'
 import { GenerarReporteButton } from '@/features/reportes/components/GenerarReporteButton'
 import { ReporteVista } from '@/features/reportes/components/ReporteVista'
+import { IconoDocumento } from '@/shared/components/iconos'
 
 // Sección Reportes (skill reportes-automaticos-y-comunicaciones, 2026-07-10):
 // cada definición con su última generación visible y su historial. Generación
@@ -26,7 +27,10 @@ export default async function ReportesPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-bold">📄 Reportes</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <IconoDocumento className="h-6 w-6 text-gray-500" />
+        Reportes
+      </h1>
       <p className="mt-1 text-sm text-gray-600">
         Cada reporte declara sus fuentes y su confianza. Para PDF: abrir el reporte y imprimir (Cmd/Ctrl+P).
       </p>

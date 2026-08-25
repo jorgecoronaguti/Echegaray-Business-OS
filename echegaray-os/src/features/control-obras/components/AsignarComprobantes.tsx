@@ -37,7 +37,7 @@ function Fila({ c, obras }: { c: ComprobanteConSugerencia; obras: string[] }) {
             }`}
             title={`Basado en tu historial: ${sug.veces} de ${sug.deTotal} comprobantes de este proveedor fueron a "${sug.obra}". El OS lo propone, vos confirmás.`}
           >
-            🔎 Sugerido: {sug.obra} · {sug.veces}/{sug.deTotal} previos
+            Sugerido: {sug.obra} · {sug.veces}/{sug.deTotal} previos
           </div>
         )}
       </div>
