@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, conteosDe, ESTADO, filtroDe, pasa, pastillaDe, totalesDe,
+  claseDeAdjunto, conteosDe, ESTADO, esEstructura, filtroDe, pasa, pastillaDe, totalesDe,
   type Filtrable,
 } from './comprasSheet.ts'
 
@@ -129,4 +129,14 @@ test('sin tipo no hay adjunto, y eso se dice — no se dibuja un hueco', () => {
 
 test('un tipo que no es imagen ni PDF se muestra igual, como «otro»', () => {
   assert.equal(claseDeAdjunto('application/zip'), 'otro')
+})
+
+test('las tres asignaciones que no son obra llevan su chip; una obra real no', () => {
+  // Medido en `compra_sheet` el 25/08/2026: F931 15 filas, Taller 58, Almacen 24.
+  for (const x of ['F931', 'Taller', 'Almacen', 'almacén', '  taller  ']) {
+    assert.equal(esEstructura(x), true, x)
+  }
+  for (const x of ['LA ESTRELLA', 'San Francisco', 'MESSINA', '', null, undefined]) {
+    assert.equal(esEstructura(x), false, String(x))
+  }
 })
