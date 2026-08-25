@@ -29,6 +29,7 @@
 // «Sin firmar» y «Falta»: los tres son estados que ninguna tabla de la base sabe. Sólo se dibuja el
 // estado que `estadoVigencia` puede probar con una fecha.
 
+import { AccionesDeFila } from './AccionesDeFila'
 import Link from 'next/link'
 import { Estado } from '@/shared/components/ds'
 import {
@@ -194,10 +195,7 @@ export function TablaDocumentos({
                 inventado: `enlaceDrive` es la vista del archivo y `enlaceDescarga` la descarga
                 directa, las mismas dos que ya usa el panel. `target="_blank"` porque salen del OS.
                 El clic no debe seleccionar la fila: por eso frena la propagación. */}
-            <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <AccionesDeFila>
               <a
                 href={enlaceDrive(d.drive_file_id)}
                 target="_blank"
@@ -225,7 +223,7 @@ export function TablaDocumentos({
                   <IcoExportar s={15} />
                 </a>
               )}
-            </div>
+            </AccionesDeFila>
           </FilaCanon>
         )
       })}
