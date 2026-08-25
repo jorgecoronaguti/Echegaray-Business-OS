@@ -36,7 +36,14 @@ import type { Proveedor } from '../types'
 const COLS
   = 'grid-cols-[minmax(220px,1.6fr)_minmax(0,150px)_minmax(0,140px)_minmax(0,84px)_minmax(0,116px)]'
   + ' max-[1249px]:grid-cols-[minmax(160px,1.6fr)_minmax(0,1fr)_minmax(0,104px)]'
-/** Las dos celdas que se sueltan en angosto, en la fila y en el encabezado. */
+/**
+ * Las celdas que se sueltan en angosto, en la fila y en el encabezado.
+ *
+ * EL `display` DE ESTAS CELDAS VA POR CLASE, NUNCA INLINE. Un `style={{ display: 'grid' }}` le gana
+ * a `max-[1249px]:hidden` —un estilo inline gana a cualquier media query— y el rótulo se quedaba
+ * dibujado sobre una grilla que ya no tenía su columna: «COMPROB.» aparecía pisando el nombre de la
+ * primera fila. Medido a 1200px el 25/08/2026. Es la misma trampa que `EnvoltorioAncho` documenta.
+ */
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 
 export function TablaProveedores({
@@ -58,8 +65,8 @@ export function TablaProveedores({
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Proveedor</RotuloCol>
         <RotuloCol>CUIT · identidad</RotuloCol>
-        <span className={SOLO_ANCHO} style={{ display: 'grid' }}><RotuloCol derecha>Comprado</RotuloCol></span>
-        <span className={SOLO_ANCHO} style={{ display: 'grid' }}><RotuloCol derecha>Comprob.</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprado</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprob.</RotuloCol></span>
         <span style={{ paddingBottom: 6 }} />
       </div>
 

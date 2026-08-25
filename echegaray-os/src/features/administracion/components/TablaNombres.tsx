@@ -40,7 +40,7 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
     <div data-testid="cola-nombres">
       <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Texto de Compras</RotuloCol>
-        <span className={SOLO_ANCHO} style={{ display: 'grid' }}><RotuloCol derecha>Comprob.</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprob.</RotuloCol></span>
         <RotuloCol derecha>Total</RotuloCol>
         <span style={{ paddingBottom: 6 }} />
       </div>

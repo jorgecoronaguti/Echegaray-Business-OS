@@ -170,6 +170,22 @@ test('no se redibuja ningún icono: se usan los que ya existen', () => {
 
 // ── LAS COLUMNAS SON LAS QUE LA BASE PUEDE PROBAR ────────────────────────────────────────────────
 
+test('el rotulo que se suelta en angosto no lleva `display` inline', () => {
+  // EL DEFECTO, MEDIDO A 1200px EL 25/08: un estilo inline le gana a cualquier media query, asi que
+  // `style={{ display: "grid" }}` anulaba `max-[1249px]:hidden`. Las dos celdas de la FILA se
+  // ocultaban bien y sus ROTULOS no, con lo cual «COMPROB.» quedaba dibujado sobre el nombre de la
+  // primera fila y «COMPRADO» colgado del borde derecho. Es la misma trampa que ya documenta
+  // `EnvoltorioAncho`, y por eso se fija en un test y no en un comentario.
+  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx']) {
+    const src = codigo(a)
+    for (const linea of src.split('\n')) {
+      if (!linea.includes('SOLO_ANCHO')) continue
+      assert.equal(/style=\{\{[^}]*display:/.test(linea), false,
+        `${a}: una celda que se suelta en angosto fija su display inline y gana a la media query`)
+    }
+  }
+})
+
 test('el maestro tiene CUATRO columnas: ni RUBRO ni PAPELES ni TIPO', () => {
   const src = codigo('TablaProveedores.tsx')
   for (const c of ['Proveedor', 'CUIT · identidad', 'Comprado', 'Comprob.']) {
