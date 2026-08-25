@@ -43,10 +43,16 @@ import { aritmetica } from '../lib/comprobantes/verificacion.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
 import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
+import { CAMINO, ampliarDesplegable, aplicarAltas, planDeAltas, requestValidacionProveedores, resolverNoMatcheado } from '../lib/alta-proveedor.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
 const ADD_PROV = process.argv.includes('--add-proveedores')
+// EL FRENO DE MANO DEL ALTA AUTOMÁTICA. El dueño pidió que un proveedor con CUIT se cree solo, y así
+// corre por defecto — también desde el bot, que invoca este script sin banderas. Existe la salida
+// para apagarlo sin tocar código el día que haga falta: la decisión de crear datos maestros sin nadie
+// mirando tiene que poder revertirse en un comando, no en un deploy.
+const SIN_ALTA = process.argv.includes('--sin-alta-proveedores')
 // "Ya lo revisé, no es el mismo: cargalo." Es el equivalente por línea de comandos del botón "Es
 // otro, cargalo" del bot, y sólo levanta los PROBABLES. Una coincidencia CIERTA —mismo número y
 // mismo total— no la levanta ninguna bandera: para eso habría que borrar la fila que ya está.
@@ -72,6 +78,34 @@ const idx = colIndice // 'A'->0, 'AA'->26
 // ya los saca el bot. Acá había una copia de `listasDeCompras` —las mismas quince líneas leyendo la
 // misma validación de `Compras!E4:E12`— y una copia es una segunda verdad esperando el día en que
 // una de las dos se arregle sola. Se borró: una capacidad, una fuente.
+
+/**
+ * EL MAESTRO DE `app.ecsas`: quién existe y qué texto ya resolvió una persona.
+ *
+ * Es la otra mitad de la identidad. La pestaña `Proveedores` del Sheet sabe de CUIT pero no de los
+ * alias firmados a mano ni de las fichas creadas desde la web; Postgres sabe de las dos cosas.
+ *
+ * NUNCA LANZA: si la base no contesta se sigue con lo que dice el Sheet, exactamente como antes de
+ * este arreglo. No poder leer el maestro no puede convertirse en un proveedor duplicado — pero sí
+ * se DECLARA, porque «no está» y «no pude mirar» no son lo mismo.
+ */
+export async function maestroDeProveedores(q = query) {
+  try {
+    const [p, a] = await Promise.all([
+      q('select id, nombre, cuit from public.proveedores'),
+      q("select nombre_norm, proveedor_id, estado from public.proveedor_alias"),
+    ])
+    return { ok: true, proveedores: p.rows ?? [], alias: a.rows ?? [] }
+  } catch (e) {
+    return { ok: false, proveedores: [], alias: [], error: String(e?.message ?? e).slice(0, 160) }
+  }
+}
+
+/** Los otros nombres que cada CUIT tiene en el maestro y en el libro fiscal. Nunca lanza. */
+async function nombresDelPadronPorCuit() {
+  const { nombresPorCuit } = await import('../comunicacion/comprobantes/repositorio.mjs')
+  return nombresPorCuit({ query }).catch(() => new Map())
+}
 
 /** Traduce lo que devolvió la escritura en la razón HUMANA de por qué el destino quedó como quedó. */
 function porQueNoEntro(respuesta, leidoOk) {
@@ -205,6 +239,18 @@ export function debeAgregarProveedores(addProv, nuevos) {
   return Boolean(addProv) && Array.isArray(nuevos) && nuevos.length > 0
 }
 
+/** Los otros nombres de ese CUIT, probados contra el desplegable estricto. null si ninguno matchea. */
+function matchPorPadron(cuit, lista, nombresPorCuit, porCuit) {
+  const c = String(cuit ?? '').replace(/\D/g, '')
+  if (c.length !== 11 || !nombresPorCuit) return null
+  const candidatos = (nombresPorCuit instanceof Map ? nombresPorCuit.get(c) : nombresPorCuit[c]) ?? []
+  for (const nombre of candidatos) {
+    const m = matchProveedor(nombre, lista, { cuit, porCuit })
+    if (!m.esNuevo) return { ...m, motivo: m.motivo ?? 'cuit-padron' }
+  }
+  return null
+}
+
 /** Concilia contra el padrón. MUTA el comprobante: le corrige el número, el CUIT y el CAE. */
 async function conciliar(cc, arcaDe) {
   if (typeof arcaDe !== 'function') return { estado: ESTADO_ARCA.NO_VERIFICADO }
@@ -223,13 +269,26 @@ async function conciliar(cc, arcaDe) {
  *
  * @returns {Promise<{item:object, arca:object, prov:object, hallazgo:object|null}>}
  */
-export async function prepararUno(c = {}, { lista = [], porCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false } = {}) {
+export async function prepararUno(c = {}, { lista = [], porCuit = null, nombresPorCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false, conocidos = {} } = {}) {
   // EL CUIT MANDA SOBRE EL NOMBRE, igual que en el chat: la factura trae la razón social del padrón
   // y el desplegable el nombre de fantasía. Sin `porCuit` se comporta exactamente como antes.
-  const prov = matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit })
+  let prov = matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit })
+  // ═══ Y SI NO ENGANCHÓ, LA IDENTIDAD LA DA EL CUIT (25/08) ═══
+  //
+  // El desplegable no lo tiene, pero el CUIT del papel puede identificarlo igual: contra el maestro,
+  // contra la pestaña `Proveedores` o contra lo que una persona ya resolvió a mano. Lo que va a la
+  // celda es SIEMPRE el nombre canónico —nunca la variante recién leída—, porque escribir la razón
+  // social de un proveedor vivo le parte la cuenta corriente en dos. Ver `alta-proveedor.mjs`.
+  // Antes de decidir nada se prueban los OTROS nombres que ese CUIT tiene en el maestro y en el libro
+  // fiscal, con el MISMO matcheo estricto — el paso que el bot hacía y este cargador no. No afloja un
+  // umbral: sólo le da al matcheo los nombres que el papel no dejó leer. Ver `item.mjs`.
+  const porPadron = prov.esNuevo ? matchPorPadron(c.cuit, lista, nombresPorCuit, porCuit) : null
+  if (porPadron) prov = porPadron
+  const alta = prov.esNuevo ? resolverNoMatcheado({ nombre: prov.valor, cuit: c.cuit }, { ...conocidos, porCuit }) : null
+  const nombreCelda = alta?.nombreCanonico ?? prov.valor
   // La fecha se canoniza ANTES que nada: ARCA la exige en DD/MM/AAAA y el índice de Compras compara
   // contra ese mismo formato. Un "5/1/2026" sin normalizar no matchea nada y el duplicado pasa.
-  const cc = { ...c, proveedor: prov.valor, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
+  const cc = { ...c, proveedor: nombreCelda, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
   const arca = await conciliar(cc, arcaDe)
   const hallazgo = indiceCompras?.ok === false ? null : buscarEnCompras(cc, indiceCompras ?? {})
   const item = {
@@ -241,7 +300,7 @@ export async function prepararUno(c = {}, { lista = [], porCuit = null, indiceCo
   }
   if (hallazgo?.que === HALLAZGO.CARGADO) item.yaCargado = hallazgo
   else if (hallazgo?.que === HALLAZGO.PROBABLE) item.posibleDuplicado = hallazgo
-  return { item, arca, prov, hallazgo }
+  return { item, arca, prov, hallazgo, alta }
 }
 
 /**
@@ -255,8 +314,11 @@ export async function prepararPlan(comprobantes = [], o = {}) {
   const { perfiles = null } = o
   const plan = []; const rechazos = []; const duplicados = []; const percep = []
   const nuevos = new Set(); const arca = { coinciden: 0, corregidos: 0 }
+  // Las resoluciones de identidad SÓLO de las filas que se van a escribir: dar de alta un proveedor
+  // por un comprobante que se rechazó o que ya estaba cargado dejaría una ficha que nadie pidió.
+  const resoluciones = []
   for (const [i, c] of comprobantes.entries()) {
-    const { item, arca: bloque, prov } = await prepararUno(c, o)
+    const { item, arca: bloque, prov, alta } = await prepararUno(c, o)
     const cc = item.comprobante
     if (bloque.estado === ESTADO_ARCA.COINCIDE) { arca.coinciden++; if (bloque.numeroLeido) arca.corregidos++ }
     // UN DUPLICADO NO ES UN PROBLEMA DE DATOS: se informa aparte para que no se lea como un
@@ -272,7 +334,11 @@ export async function prepararPlan(comprobantes = [], o = {}) {
       rechazos.push({ i, proveedor: c.proveedor, problemas })
       continue
     }
-    if (prov.esNuevo) nuevos.add(prov.valor)
+    if (alta) resoluciones.push(alta)
+    // `nuevos` son los que SIGUEN fuera del desplegable después de intentar identificarlos: los que
+    // el CUIT resolvió entran por `altas` y salen del rojo. Confundirlos haría que el bot avise de un
+    // proveedor que ya quedó bien y se calle el que de verdad hay que mirar.
+    if (prov.esNuevo && (!alta || alta.camino === CAMINO.SIN_IDENTIDAD || alta.camino === CAMINO.CONFLICTO)) nuevos.add(cc.proveedor)
     const dif = discrepanciaNeto(cc)
     if (dif) percep.push({ i, proveedor: prov.valor, dif })
     // ═══ LA IMPUTACIÓN SE APLICA, NO SE IMPRIME (14/08) ═══
@@ -295,7 +361,7 @@ export async function prepararPlan(comprobantes = [], o = {}) {
   }
   // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
   // cosas se ven iguales si nadie las distingue. Quien informe esto tiene que poder decir cuál fue.
-  return { plan, rechazos, duplicados, percep, nuevos: [...nuevos], arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+  return { plan, rechazos, duplicados, percep, nuevos: [...nuevos], altas: planDeAltas(resoluciones), arca, revisadoContraCompras: o.indiceCompras?.ok === true }
 }
 
 /** Lo que se decidió, para una persona. No decide nada: sólo cuenta lo que ya se decidió. */
@@ -326,6 +392,34 @@ function informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima
  * dos mitades y la primera es la que importa: lo que ya quedó escrito, con el conteo que lo respalda.
  * Lo que no llegó a firme sigue siendo una sugerencia y se dice como tal.
  */
+/**
+ * QUÉ SE DECIDIÓ SOBRE CADA PROVEEDOR QUE EL DESPLEGABLE NO TENÍA — antes de escribir nada.
+ *
+ * Se imprime también en `--dry`, que es donde tiene que mirarse: el alta de un proveedor es un dato
+ * maestro y equivocarlo cuesta caro de deshacer.
+ */
+function informarAltas(altas, conocidos) {
+  if (!altas) return
+  if (conocidos?.ok === false) {
+    // NO PODER MIRAR EL MAESTRO NO ES «NO ESTÁ». Con la base caída, un proveedor que ya existe en
+    // `app.ecsas` se vería como nuevo, y eso es exactamente el duplicado que hay que evitar.
+    console.log(`\n⚠ No pude leer el maestro de proveedores (${conocidos.error}): la identidad se resolvió sólo con el Sheet.`)
+  }
+  for (const a of altas.existentes) console.log(`  = ${a.nombre} ya existía (CUIT ${a.cuit}) — no se crea nada, se imputa al que estaba.`)
+  for (const a of altas.altas) console.log(`  + ALTA de proveedor: ${a.nombre} (CUIT ${a.cuit}, ${a.motivo}).`)
+  for (const a of altas.alias) console.log(`  ↳ variante "${a.nombre_origen}" queda vinculada al CUIT ${a.cuit}.`)
+  for (const c of altas.conflictos) console.log(`  ✖ ${c.nombreLeido}: ${c.motivo} — lo resuelve una persona en /administracion/proveedores.`)
+  for (const n of altas.ambiguos) console.log(`  ✖ "${n}" apunta a dos CUIT distintos en esta misma tanda: no se vincula a ninguno.`)
+}
+
+/** Lo que la BASE dijo que pasó. La evidencia del alta es la fila que volvió, no el plan. */
+function informarAplicadas(r) {
+  if (r.creados.length) console.log(`  ✔ ${r.creados.length} proveedor(es) creado(s) en app.ecsas: ${r.creados.map((x) => `${x.nombre} [${x.id}]`).join(' · ')}`)
+  if (r.yaEstaban.length) console.log(`  ℹ ${r.yaEstaban.length} ya estaba(n) en la base (otra corrida ganó la carrera): ${r.yaEstaban.map((x) => x.nombre).join(' · ')}`)
+  if (r.alias.length) console.log(`  ✔ ${r.alias.length} variante(s) de nombre registrada(s).`)
+  for (const x of r.rechazos) console.log(`  ✖ ${x.nombre ?? x.nombre_origen}: ${x.motivo}`)
+}
+
 function informarImputacion(plan, perfiles) {
   const conSug = plan.filter((p) => p.sug)
   if (!perfiles?.por_proveedor && !perfiles?.disponible) {
@@ -406,29 +500,32 @@ async function main() {
   // dónde entrara: «DUBOS UGARTE PEDRO LUIS RAUL» es DUPEC por CUIT para el chat y un proveedor
   // nuevo para la terminal. Dos respuestas para el mismo paso es lo que este archivo evita en las
   // columnas y no estaba evitando en el proveedor. Una capacidad, una fuente.
-  const [listas, porCuit, colE, indiceCompras] = await Promise.all([
+  const [listas, porCuit, colE, indiceCompras, conocidos, nombresPorCuit] = await Promise.all([
     listasDeCompras(google, { fileId: ID }),
     proveedoresPorCuit(google, { fileId: ID }),
     google.readSheetValues(ID, 'Compras!E1:E'),
     indiceDeCompras(google, { fileId: ID }),
+    maestroDeProveedores(),
+    nombresDelPadronPorCuit(),
   ])
   const lista = listas.proveedores
   const perfiles = await perfilesDe(indiceCompras)
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
 
-  const { plan, rechazos, duplicados, percep, nuevos, arca } = await prepararPlan(comprobantes, {
-    lista, porCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL,
+  const { plan, rechazos, duplicados, percep, nuevos, altas, arca } = await prepararPlan(comprobantes, {
+    lista, porCuit, nombresPorCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL, conocidos,
     arcaDe: (c) => candidatasArca({ query }, c),
   })
 
   const desde = ultima + 1
   const hasta = ultima + plan.length
   informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
+  informarAltas(altas, conocidos)
   if (!plan.length) {
     console.log('\nNada cargable.')
     // `duplicados` viaja: para quien llama no es lo mismo "no se pudo leer" que "ya estaba cargado".
-    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos, percep })
+    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -443,7 +540,7 @@ async function main() {
       + `${modelo.faltan.length ? ` (a la ${ultima} le faltan en ${modelo.faltan.join(', ')})` : ''}.`)
     console.error('   No copio fórmulas de una fila pegada a mano: bajaría el total de otro comprobante y quedaría verde.')
     console.error('   Arreglá la fórmula de alguna fila reciente (o pegá la de la fila 4 hacia abajo) y volvé a correr. NO se escribió nada.')
-    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, nuevos, percep, faltan: modelo.faltan })
+    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, nuevos, altas, percep, faltan: modelo.faltan })
     process.exitCode = 1
     await closePool(); return
   }
@@ -455,7 +552,7 @@ async function main() {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
     console.log(`  Fórmulas a estampar por copyPaste desde la fila ${modelo.fila}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
-    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos, percep })
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos, altas, percep })
     await closePool(); return
   }
 
@@ -464,31 +561,43 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta + 20 } }, fields: 'gridProperties.rowCount' } }])
   }
 
-  // 0) PROVEEDORES NUEVOS → al desplegable estricto (si se pidió), para que queden fijos y matcheen
-  //    en la próxima carga. Se reescribe la validación de toda la columna E con la lista ampliada.
+  // 0) EL DESPLEGABLE ANTES DE LA CELDA; LA FICHA DE app.ecsas, DESPUÉS DE QUE LA FILA ENTRE.
+  //
+  //    El orden no es estético. El desplegable tiene que tener el valor ANTES de que se escriba la
+  //    columna E, o la fila entra en rojo y fuera de los cruces de Proveedores, Cash Flow y CAJA —
+  //    que es exactamente el defecto que este bloque arregla. Y el alta en Postgres va DESPUÉS de
+  //    verificar la fila: si la escritura del Sheet no entra (freno de mano, candado de pestaña),
+  //    una ficha de proveedor sin un solo comprobante detrás es basura que después hay que salir a
+  //    distinguir de los proveedores de verdad. Un desplegable con un valor de más no es daño; una
+  //    ficha huérfana sí. Ver el paso 4.
   //
   // ═══ `nuevos.size` SOBRE UN ARRAY: LA BANDERA MUERTA (14/08) ═══
   //
-  // `prepararPlan` junta los nuevos en un Set y devuelve `[...nuevos]` — un ARRAY. Acá se preguntaba
-  // `nuevos.size`, que en un array es `undefined`: **falsy siempre**. O sea que `--add-proveedores`
-  // nunca agregó un solo proveedor al desplegable, y no lo avisaba. Mientras tanto el proveedor nuevo
-  // SÍ se escribía en la columna E, que tiene validación estricta: la celda quedaba en rojo y fuera
-  // del vocabulario de todos los cruces. Una bandera que falla en silencio es peor que no tenerla.
-  if (debeAgregarProveedores(ADD_PROV, nuevos)) {
-    const listaFinal = [...lista, ...nuevos]
-    await google.spreadsheetBatchUpdate(ID, [{
-      setDataValidation: {
-        range: { sheetId: hoja.sheetId, startRowIndex: 3, endRowIndex: Math.max(hoja.rows ?? 0, hasta + 20), startColumnIndex: idx('E'), endColumnIndex: idx('E') + 1 },
-        rule: { condition: { type: 'ONE_OF_LIST', values: listaFinal.map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true },
-      },
-    }])
-    console.log(`  + ${nuevos.length} proveedor(es) agregado(s) al desplegable: ${nuevos.join(' · ')}`)
-  } else if (nuevos.length) {
-    // SIN LA BANDERA, LA CELDA QUEDA EN ROJO Y HAY QUE DECIRLO. Agregar al desplegable estricto del
-    // dueño no se hace solo —es su lista—, pero callarse que la fila entra fuera del vocabulario sí
-    // sería un defecto: nadie va a ir a mirar esa celda si nadie la nombra.
-    console.log(`\n⚠ ${nuevos.length} proveedor(es) NO están en el desplegable estricto de la columna E: ${nuevos.join(' · ')}.`)
-    console.log('   La celda va a quedar EN ROJO y fuera de los cruces hasta que los agregues (o volvé a correr con --add-proveedores).')
+  // Acá se preguntaba `nuevos.size` sobre el ARRAY que devuelve `prepararPlan` —`undefined`, falsy
+  // siempre—, o sea que `--add-proveedores` nunca agregó un solo proveedor y no lo avisaba. La
+  // bandera sigue existiendo, pero YA NO GOBIERNA el caso que importa: un proveedor con CUIT no
+  // necesita permiso de una bandera para existir, lo pidió el dueño. Lo que la bandera todavía
+  // gobierna es lo ÚNICO que no tiene identidad: sumar al desplegable un nombre sin CUIT.
+  if (SIN_ALTA && (altas.altas.length || altas.existentes.length)) {
+    console.log(`\n⚠ --sin-alta-proveedores: NO se creó ni se vinculó nada, aunque ${altas.altas.length + altas.existentes.length} proveedor(es) tenían CUIT.`)
+  }
+  const sinIdentidad = debeAgregarProveedores(ADD_PROV, nuevos) ? nuevos : []
+  const ampliada = ampliarDesplegable(lista, SIN_ALTA ? sinIdentidad : [...altas.nombres, ...sinIdentidad])
+  if (ampliada.agregados.length) {
+    await google.spreadsheetBatchUpdate(ID, [requestValidacionProveedores({
+      sheetId: hoja.sheetId,
+      lista: ampliada.lista,
+      filas: Math.max(hoja.rows ?? 0, hasta + 20),
+      columna: idx('E'),
+    })])
+    console.log(`  + ${ampliada.agregados.length} nombre(s) agregado(s) al desplegable de la columna E: ${ampliada.agregados.join(' · ')}`)
+  }
+  if (nuevos.length && !sinIdentidad.length) {
+    // SIN CUIT NO HAY ALTA, Y HAY QUE DECIRLO. La celda entra fuera del vocabulario estricto y nadie
+    // va a ir a mirarla si nadie la nombra. `--add-proveedores` la mete al desplegable igual, pero
+    // NO crea la ficha en `app.ecsas`: sin identidad no hay proveedor que crear.
+    console.log(`\n⚠ ${nuevos.length} proveedor(es) sin CUIT utilizable: ${nuevos.join(' · ')}.`)
+    console.log('   No se dan de alta —sin identidad no hay proveedor— y la celda queda fuera del desplegable estricto.')
   }
 
   // 1) VALORES de input y de imputación (obra), una columna por vez. NO toca fórmulas, derivadas
@@ -577,6 +686,11 @@ async function main() {
   } catch (e) {
     console.log(`· frescura no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
   }
+  // 4) LA FICHA EN app.ecsas, CON LA FILA YA VERIFICADA EN SU DESTINO. El proveedor nace porque un
+  //    gasto suyo entró de verdad, no porque un plan dijera que iba a entrar.
+  const aplicadas = DRY || SIN_ALTA ? null : await aplicarAltas(altas, { query, comprobante: `Compras!${desde}..${hasta}` })
+  if (aplicadas) informarAplicadas(aplicadas)
+
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
     filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
@@ -585,7 +699,7 @@ async function main() {
     // adentro del costo sin que el dueño se enterara. Es correcto por el contrato de la columna M
     // (Total − IVA), pero es CRÉDITO FISCAL contabilizado como costo y hay que decirlo.
     // `noCierran` viaja por la misma razón: el control nuevo no sirve si su resultado se queda acá.
-    rechazos, nuevos, duplicados, arca, percep, filaModelo: modelo.fila,
+    rechazos, nuevos, altas, altasAplicadas: aplicadas, duplicados, arca, percep, filaModelo: modelo.fila,
     noCierran: noCierran.map((n) => ({ fila: n.fila, dif: n.dif, total: n.total })),
   })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')

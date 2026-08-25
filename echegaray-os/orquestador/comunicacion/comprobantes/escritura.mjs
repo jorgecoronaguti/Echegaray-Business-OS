@@ -440,6 +440,24 @@ export async function escribirFajo(d, fajo) {
 }
 
 /**
+ * LOS PROVEEDORES QUE NACIERON EN ESTA CARGA, Y LOS QUE NADIE PUDO RESOLVER.
+ *
+ * Un alta automática es correcta cuando el CUIT es correcto, y el CUIT sale de una foto. Por eso se
+ * nombra en el chat: es el único momento en que el dueño tiene el papel a mano para desmentirlo.
+ */
+function avisosDeAlta(altas, aplicadas) {
+  const l = []
+  // EL ALTA SE ANUNCIA DESDE LO QUE DEVOLVIÓ LA BASE, NO DESDE EL PLAN. `altas.altas` es lo que se
+  // iba a crear; si la escritura del Sheet no entró, o si otro proceso ganó la carrera, no se creó
+  // nada — y decir que sí sería felicitar el intento.
+  for (const a of aplicadas?.creados ?? []) l.push(`Proveedor NUEVO dado de alta: **${a.nombre}** (CUIT ${a.cuit}). Si no es él, avisame.`)
+  for (const c of altas?.conflictos ?? []) l.push(`No pude resolver "${c.nombreLeido}" (${c.motivo}) — está en /administracion/proveedores.`)
+  for (const n of altas?.ambiguos ?? []) l.push(`"${n}" apareció con dos CUIT distintos en la misma tanda: no lo vinculé a ninguno.`)
+  for (const r of aplicadas?.rechazos ?? []) l.push(`No pude registrar "${r.nombre ?? r.nombre_origen}": ${r.motivo}.`)
+  return l
+}
+
+/**
  * Lo que hay que decir sí o sí aunque el mensaje sea corto: filas con #ERROR, proveedores fuera del
  * desplegable, comprobantes que el cargador NO escribió, y los archivos que traían más de un
  * comprobante. No entra acá nada informativo: el mensaje único es de tres renglones y todo lo que
@@ -448,7 +466,10 @@ export async function escribirFajo(d, fajo) {
 function avisosDuros(datos, varios = [], descalces = null) {
   const l = []
   if (datos?.errores) l.push(`${datos.errores} fila(s) quedaron con #ERROR en Compras — revisalas.`)
-  if (datos?.nuevos?.length) l.push(`Proveedor(es) fuera del desplegable: ${datos.nuevos.join(' · ')}.`)
+  if (datos?.nuevos?.length) l.push(`Proveedor(es) SIN CUIT legible, fuera del desplegable: ${datos.nuevos.join(' · ')}.`)
+  // UN PROVEEDOR QUE NACE ES UN DATO MAESTRO NUEVO, Y ESO SE AVISA. Se crea solo porque el CUIT lo
+  // identifica sin ambigüedad, pero si el CUIT estaba mal leído el que hay que ir a mirar es éste.
+  l.push(...avisosDeAlta(datos?.altas, datos?.altasAplicadas))
   // LA ARITMÉTICA QUE NO CIERRA ES DURA. Un total equivocado no da `#ERROR` y se propaga solo a cuatro
   // pestañas del Flujo de Fondos: si no entra acá, se pierde entre lo informativo.
   if (datos?.noCierran?.length) {
@@ -584,7 +605,8 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
   if (filas.length > 1) for (const f of filas) l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}`)
   if (yaEstaban.length) l.push(`_${yaEstaban.length} ya estaba(n) cargado(s); no los dupliqué._`)
   if (datos?.errores) l.push(`⚠ ${datos.errores} fila(s) quedaron con #ERROR — revisalas.`)
-  if (datos?.nuevos?.length) l.push(`⚠ Proveedor(es) fuera del desplegable: ${datos.nuevos.join(' · ')}. Confirmá si hay que agregarlos.`)
+  if (datos?.nuevos?.length) l.push(`⚠ Proveedor(es) sin CUIT legible, fuera del desplegable: ${datos.nuevos.join(' · ')}. Agregalos vos o mandá el comprobante donde se lea el CUIT.`)
+  l.push(...avisosDeAlta(datos?.altas, datos?.altasAplicadas).map((t) => `⚠ ${t}`))
   // EL CARGADOR TAMBIÉN MIRA COMPRAS. Si encontró uno que ya estaba, no lo escribió: entre la
   // confirmación y la escritura pasa tiempo, y en ese hueco el comprobante pudo entrar por Claude
   // Code o a mano. Decirlo es lo que evita que el dueño lo dé por cargado y lo mande de nuevo.
