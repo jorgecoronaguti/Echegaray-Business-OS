@@ -84,12 +84,22 @@ import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
-import { FichaCuenta } from '@/features/clientes/components/FichaCuenta'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
-import { Aviso, BotonEnlace, SubTabs } from '@/shared/components/ds'
+import { CabeceraCliente } from '@/features/clientes/components/CabeceraCliente'
+import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
+import { EsquemaPago } from '@/features/clientes/components/esquema/EsquemaPago'
+import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPortal'
+import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
+import { getEsquema } from '@/features/clientes/services/esquema'
+import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesos'
 import {
-  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
-} from '@/features/administracion/components/FichaCanonica'
+  editarPago, habilitarAcceso, publicarEsquema, reenviarInvitacion, registrarCobro, revocarAcceso,
+} from '@/features/clientes/services/actionsCobranza'
+import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
+import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
+import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
+import { Aviso } from '@/shared/components/ds'
+import { TiraMetricas } from '@/features/administracion/components/FichaCanonica'
 import { EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { PageShell } from '@/shared/components/ui'
@@ -106,15 +116,15 @@ const VE_CONTRACTUALES = ['direccion', 'administracion']
 type Params = { cliente: string }
 type Query = {
   contacto?: string; editar?: string; archivadas?: string; actividad?: string; documentos?: string
+  vista?: string
+  /** El nombre viejo del mismo parámetro. Sigue leyéndose para que un enlace ya compartido —o un
+   *  favorito— no caiga en Resumen sin decir por qué. No se escribe más: `url()` emite `vista`. */
   solapa?: string
 }
 
-/** Las cinco caras del canónico 26. Una solapa que no existe abre Resumen: un enlace viejo o
- *  tipeado a mano no puede dejar la ficha en blanco. */
-const SOLAPAS = ['resumen', 'obras', 'presupuestos', 'documentos', 'cuenta'] as const
-type Solapa = (typeof SOLAPAS)[number]
-const solapaDe = (v: string | undefined): Solapa =>
-  (SOLAPAS as readonly string[]).includes(v ?? '') ? (v as Solapa) : 'resumen'
+// LAS SIETE CARAS DE LA FICHA —las cinco del canónico 26 más las tres de los mockups 28, 31 y 32,
+// donde «Cuenta corriente» reemplaza a la vieja «Cuenta»— y quién ve cada una viven en
+// `services/solapasCliente.ts`, con test: la lista de acá abajo se dibuja, la de allá se prueba.
 
 export default async function ClientePage({
   params, searchParams,
@@ -185,11 +195,31 @@ export default async function ClientePage({
   // La ficha se sigue dibujando —el resto de los bloques sirve—, pero con el cartel de qué faltó.
   const lector = crearLector()
 
-  const solapa = solapaDe(q.solapa)
+  const solapa = solapaDe(q.vista, q.solapa)
+  // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
+  // navegador, un jefe con el reloj corrido —o de viaje— vería una mora distinta que administración
+  // sobre el mismo cliente. Mismo criterio que `/mi-cuenta`.
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const aSangre = A_SANGRE.includes(solapa)
   // Los presupuestos DE ESTE CLIENTE. `getCartera` trae la cartera entera —es la vista que ya usa
   // /presupuestos— y el corte se hace acá por `cliente_id`: filtrar por el nombre escrito en el
   // presupuesto ataría la ficha a la grafía del texto, que es lo que `cliente_id` vino a arreglar.
   const presupuestos = lector.leer(cartera, []).filter((p) => p.cliente_id === id)
+
+  // LAS CARAS NUEVAS LEEN SU MATERIAL SÓLO CUANDO ESTÁN ABIERTAS. Ninguna alimenta un contador de
+  // la barra de solapas —el mockup no les pone número—, así que esconderlas ahorra la consulta
+  // entera y no sólo el dibujo, que es lo contrario de lo que pasa con Obras o Documentos.
+  const [cuenta, certificados] = solapa === 'cuenta' && veEconomia
+    ? await Promise.all([getCuentaCorriente(id), getCertificados(id)])
+    : [null, []]
+  const esquema = solapa === 'esquema' && veEconomia ? await getEsquema(id) : null
+  // El contador de la pastilla sale de la MISMA lista que dibuja la tabla: si saliera de una
+  // consulta aparte, la cabecera podría decir «2 cambios» sobre una tabla que muestra uno.
+  const sinPublicar = cambiosSinPublicar(esquema?.pagos ?? [])
+  const [accesos, actividadPortal] = solapa === 'accesos' && veEconomia
+    ? await Promise.all([getAccesos(id), getActividadPortal(id)])
+    : [[], []]
+  const portal = resumenAccesos(accesos)
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -199,7 +229,11 @@ export default async function ClientePage({
    *  no puede cerrar el contacto que alguien tenía abierto tres bloques más abajo. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
     const p = new URLSearchParams(
-      Object.entries({ ...q, ...cambio }).filter(([, v]) => v != null && v !== '') as [string, string][],
+      // `solapa` se lee pero NO se propaga: un enlace viejo abre la cara que pedía y a partir de
+      // ahí la dirección se escribe con el nombre de hoy. Dos parámetros para lo mismo terminan
+      // discrepando el día que alguien cambie uno solo.
+      Object.entries({ ...q, solapa: null, ...cambio })
+        .filter(([, v]) => v != null && v !== '') as [string, string][],
     )
     const s = p.toString()
     return `/clientes/${slug}${s ? `?${s}` : ''}`
@@ -217,100 +251,44 @@ export default async function ClientePage({
       // el de `PageShell` daría dos `h1` con el mismo nombre a 60px de distancia.
       encabezado={false}
     >
-      {/* LA CABECERA BLANCA DEL CANÓNICO 26 — el MISMO `CabeceraFicha` que coronan la ficha de
-          Persona (20) y la de Proveedor (23). Va a sangre (`-mx`) porque su filo inferior es el que
-          separa la identidad del cuerpo, y un filo que arranca a 40px del borde no separa nada.
-
-          LA MIGA DE PAN vive adentro de la cabecera: «01 · Obras · Clientes» contradecía a la barra
-          de Administración que corona la pantalla y repetía en tres niveles lo que esa barra dice. */}
-      <div className="-mx-4 mb-4 lg:-mx-10">
-        <CabeceraFicha
-          testid="slab-cliente"
-          volverA="/clientes"
-          volverLabel="Clientes"
-          titulo={cliente.nombre_comercial}
-          avatar={
-            // EL GLIFO DE EMPRESA, el mismo que lleva el proveedor. Un cliente no tiene iniciales de
-            // persona: «La Estrella» abreviado a «LE» al lado de su propio nombre no agrega nada.
-            // CUADRADO CON RADIO 10, no un círculo: `26:41` dibuja
-            // `width:44px;height:44px;borderRadius:10px;background:#F2F1ED` — el mismo avatar que la
-            // ficha de proveedor y que las filas de la cartera 25, sólo que grande. El círculo es el
-            // avatar de una PERSONA; un cliente es una empresa.
-            <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#F2F1ED] text-[#3A3A38]"
-              data-testid="glifo-cliente"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-                <path d="M3 21h18M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 10h.01M15 10h.01" />
-              </svg>
-            </span>
-          }
-          pastillas={
-            // ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
-            // cartera, y saberlo cambia lo que se hace con ella.
-            <PastillaFicha
-              tono={!cliente.activo ? 'neutro' : enCurso.length > 0 ? 'curso' : 'neutro'}
-              testid="pastilla-estado-cliente"
-            >
-              {!cliente.activo
-                ? 'Archivado'
-                : enCurso.length > 0
-                  ? `${enCurso.length} ${enCurso.length === 1 ? 'obra en curso' : 'obras en curso'}`
-                  : 'Sin obra en curso'}
-            </PastillaFicha>
-          }
-          hechos={
-            <>
-              <HechoFicha>{cliente.razon_social?.trim() || 'sin razón social'}</HechoFicha>
-              <Punto />
-              {/* EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco,
-                  y en proporcional los dígitos no se alinean con nada. La ausencia va en texto
-                  normal porque no es un número — escribirla en mono la disfraza de dato. */}
-              {cliente.cuit
-                ? <HechoFicha mono>{cliente.cuit}</HechoFicha>
-                : <HechoFicha>sin CUIT</HechoFicha>}
-              <Punto />
-              <HechoFicha>{cliente.responsable_nombre ?? 'sin responsable asignado'}</HechoFicha>
-            </>
-          }
-          acciones={puedeEditar && (
-            // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla esa
-            // alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un segundo
-            // botón con el mismo nombre daría dos entradas a la misma escritura. Queda declarado
-            // como desviación: la primaria del objeto está en su bloque, no en la cabecera.
-            <BotonEnlace
-              href={url({ editar: q.editar === '1' ? null : '1' })}
-              data-testid="editar-ficha"
-            >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
-          )}
-          solapas={
-            /* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono, DENTRO de la cabecera, para que la
-               activa se apoye sobre su filo. Cambian de vista, no de página: el estado viaja en
-               `?solapa=`, así que cada cara es una dirección compartible y «atrás» vuelve a la
-               anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al lado de
-               Cuenta se leería como saldo. */
-            <SubTabs
-              testid="solapas-cliente"
-              items={[
-                { href: url({ solapa: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
-                { href: url({ solapa: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
-                ...(veEconomia
-                  ? [{ href: url({ solapa: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
-                  : []),
-                { href: url({ solapa: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
-                ...(veEconomia
-                  ? [{ href: url({ solapa: 'cuenta' }), label: 'Cuenta', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' }]
-                  : []),
-              ]}
-            />
-          }
-        />
-      </div>
+      {/* La identidad, las pastillas de la cara abierta, sus acciones y las solapas. El dibujo vive
+          en `CabeceraCliente`; acá se decide QUÉ mostrarle. */}
+      <CabeceraCliente
+        cliente={cliente}
+        solapa={solapa}
+        solapas={solapasDeCliente({
+          veEconomia,
+          obras: todas.length,
+          presupuestos: presupuestos.length,
+          documentos: lector.leer(documentos, []).length,
+        }).map((s) => ({
+          // Resumen es la cara por defecto y por eso su enlace NO lleva parámetro: así la dirección
+          // de la ficha sigue siendo `/clientes/<slug>` a secas.
+          href: url({ vista: s.clave === 'resumen' ? null : s.clave }),
+          label: s.label,
+          cuenta: s.cuenta,
+          activo: solapa === s.clave,
+          testid: `solapa-${s.clave}`,
+        }))}
+        veEconomia={veEconomia}
+        puedeEditar={puedeEditar}
+        obrasEnCurso={enCurso.length}
+        urlEditar={url({ editar: q.editar === '1' ? null : '1' })}
+        editando={q.editar === '1'}
+        vencido={cuenta?.vencido ?? null}
+        sinPublicar={sinPublicar}
+        portalActivo={portal.habilitados > 0}
+      />
 
       {/* EL RESUMEN DE MÉTRICAS, sobre el cuerpo y no adentro de la cabecera: es donde lo pone el
           canónico y donde ya está en las fichas de Persona y de Proveedor. Ninguna se inventa —obras
           y contratado salen de las obras ya leídas, misma fuente que la tabla de abajo, así que no
-          pueden discrepar— y ninguna escribe un cero por una ausencia. */}
+          pueden discrepar— y ninguna escribe un cero por una ausencia.
+
+          NO APARECE EN 28, 31 NI 32: esas caras traen sus propias cifras (saldo, vencido, DSO; el
+          total del contrato; los mails habilitados) y apilar las dos tiras dejaría ocho números
+          arriba, ninguno de los cuales es el de la pantalla. */}
+      {!aSangre && (
       <div className="mb-6">
         <TiraMetricas
           testid="metricas-cliente"
@@ -332,6 +310,7 @@ export default async function ClientePage({
           ]}
         />
       </div>
+      )}
 
       {lector.falla() && (
         <div className="mb-5" data-testid="cliente-lectura-fallida">
@@ -359,6 +338,46 @@ export default async function ClientePage({
       {/* 372px y hueco de 12px — `26:180` y `26:158`. Eran 320px con 28px de hueco: el panel
           quedaba 52px más angosto que el de la cartera de al lado, así que el MISMO bloque «Datos»
           truncaba un email en la ficha y no en el panel. */}
+      {/* LAS TRES CARAS NUEVAS OCUPAN EL ANCHO ENTERO. Sus mockups usan la columna derecha para el
+          panel del certificado (28), del pago (32) o del alta de acceso (31): dejar además el aside
+          de identidad partiría la pantalla en tres columnas y el contenido quedaría en 500px sobre
+          un MacBook de 1280. La identidad sigue a un clic, en Resumen. */}
+      {solapa === 'cuenta' && veEconomia && (
+        <CuentaCorriente
+          cuenta={cuenta}
+          documentos={certificados}
+          hoy={hoy}
+          registrarCobro={registrarCobro}
+        />
+      )}
+
+      {solapa === 'esquema' && veEconomia && (
+        <EsquemaPago
+          esquema={esquema}
+          hoy={hoy}
+          clienteId={id}
+          editarPago={editarPago}
+          publicarEsquema={publicarEsquema}
+        />
+      )}
+
+      {solapa === 'accesos' && veEconomia && (
+        <AccesosPortal
+          accesos={accesos}
+          actividad={actividadPortal}
+          // EL CRUCE CONTRA LOS CONTACTOS YA CARGADOS es el único control contra un typo en el mail
+          // que se habilita. Sale de la MISMA lectura que dibuja el bloque Contactos de la ficha.
+          contactos={lector.leer(contactos, []).map((c) => ({ nombre: c.nombre, email: c.email, rol: c.rol }))}
+          obras={todas.map((o) => ({ id: o.obra_id, nombre: o.nombre }))}
+          hoy={hoy}
+          clienteId={id}
+          habilitarAcceso={habilitarAcceso}
+          revocarAcceso={revocarAcceso}
+          reenviarInvitacion={reenviarInvitacion}
+        />
+      )}
+
+      {!aSangre && (
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_372px]">
         <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-6 lg:order-2" data-testid="panel-informacion">
           <div className="space-y-3">
@@ -440,14 +459,9 @@ export default async function ClientePage({
               />
             </Bloque>
           )}
-
-          {solapa === 'cuenta' && veEconomia && (
-            <Bloque titulo="Cuenta" testid="bloque-cuenta">
-              <FichaCuenta obras={todas} />
-            </Bloque>
-          )}
         </div>
       </div>
+      )}
     </PageShell>
   )
 }

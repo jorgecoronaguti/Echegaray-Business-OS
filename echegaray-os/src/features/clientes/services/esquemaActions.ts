@@ -6,7 +6,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { esquemaPublicado } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
-import type { PagoEsquema, ResultadoAccion } from '../types'
+import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import type { PagoEsquema } from '../types'
 import { proximoVencimiento } from './esquemaService'
 
 const ajustarSchema = z.object({

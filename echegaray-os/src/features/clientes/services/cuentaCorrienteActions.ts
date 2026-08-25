@@ -12,7 +12,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import type { ResultadoAccion } from '../types'
+import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 
 const fechaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
 

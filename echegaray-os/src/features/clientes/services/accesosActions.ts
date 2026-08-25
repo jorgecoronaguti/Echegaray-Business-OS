@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/server'
 // lo puede mandar el timer de avisos, y dos plantillas para un mensaje es cómo se llega a que el
 // cliente reciba dos textos distintos según quién apretó el botón.
 import { habilitacionPortal } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
-import type { ResultadoAccion } from '../types'
+import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 
 const habilitarSchema = z.object({
   clienteId: z.string().uuid(),

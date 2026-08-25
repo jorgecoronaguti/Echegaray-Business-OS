@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
 import type { AccesoPortal, ActividadPortal } from '../types'
+import { nombresDeObra } from './nombresDeObra'
 
 const COLUMNAS =
   'id, cliente_id, email, persona_contacto, puede_ver_obra, puede_ver_montos, puede_aprobar, obras,'
@@ -28,7 +29,19 @@ export async function getAccesos(
     .order('habilitado_at', { ascending: false, nullsFirst: false })
 
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as AccesoPortal[], error: null }
+  const filas = (data ?? []) as unknown as Record<string, unknown>[]
+  // `obras` es `null` = TODAS: no hay ids que resolver y `obras_nombres` queda `null` también.
+  // Aplanar las dos cosas a `[]` haría que «entra a todas» y «no entra a ninguna» se vean igual.
+  const nombres = await nombresDeObra(
+    supabase, filas.flatMap((f) => ((f.obras as string[] | null) ?? [])),
+  )
+  return {
+    data: filas.map((f) => ({
+      ...f,
+      obras_nombres: (f.obras as string[] | null)?.map((id) => nombres.get(id) ?? id) ?? null,
+    })) as unknown as AccesoPortal[],
+    error: null,
+  }
 }
 
 /**
@@ -44,13 +57,24 @@ export async function getActividadPortal(
 ): Promise<ServiceResult<ActividadPortal[]>> {
   const { data, error } = await supabase
     .from('cliente_actividad_portal')
-    .select('id, cliente_id, acceso_id, tipo, referencia, detalle, monto, at')
+    .select('id, cliente_id, acceso_id, tipo, referencia, detalle, monto, at,'
+      + ' cliente_acceso:acceso_id (persona_contacto, email)')
     .eq('cliente_id', clienteId)
     .order('at', { ascending: false })
     .limit(limite)
 
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as ActividadPortal[], error: null }
+  return {
+    // QUIÉN LO HIZO. `acceso_id` es null cuando la línea la produjo administración («habilitado»),
+    // y entonces `persona` queda null: escribir ahí el nombre del cliente diría que la acción la
+    // hizo él. Cuando hay acceso pero no cargaron el nombre, vale el mail — es lo que se sabe.
+    data: ((data ?? []) as unknown as Record<string, unknown>[]).map((a) => {
+      const acc = a.cliente_acceso as { persona_contacto: string | null; email: string } | null
+      const { cliente_acceso: _ignorado, ...fila } = a
+      return { ...fila, persona: acc?.persona_contacto ?? acc?.email ?? null }
+    }) as unknown as ActividadPortal[],
+    error: null,
+  }
 }
 
 /**

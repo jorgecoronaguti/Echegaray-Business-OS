@@ -11,7 +11,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
-import type { CambioCobranza, CertificadoCliente, CuentaCorrienteCliente } from '../types'
+import type { CambioCobranza, CertificadoCliente, CuentaCorriente } from '../types'
+import { nombresDeObra } from './nombresDeObra'
 
 /**
  * La cuenta corriente de UN cliente.
@@ -23,7 +24,7 @@ import type { CambioCobranza, CertificadoCliente, CuentaCorrienteCliente } from 
 export async function getCuentaCorriente(
   supabase: SupabaseClient,
   clienteId: string,
-): Promise<ServiceResultOpcional<CuentaCorrienteCliente>> {
+): Promise<ServiceResultOpcional<CuentaCorriente>> {
   const { data, error } = await supabase
     .from('cliente_cuenta_corriente')
     .select('*')
@@ -40,7 +41,7 @@ export async function getCuentaCorriente(
  * `comprobantes_pendientes` llega como `"7"` y cualquier comparación numérica en la pantalla —o un
  * `.toLocaleString()`— se comporta de forma sorprendente. Se arregla en el borde, una sola vez.
  */
-function normalizarCuenta(row: Record<string, unknown>): CuentaCorrienteCliente {
+function normalizarCuenta(row: Record<string, unknown>): CuentaCorriente {
   const num = (k: string): number => Number(row[k] ?? 0)
   // Los que pueden ser legítimamente NULL conservan el null: ver el comentario de los tipos.
   const opc = (k: string): number | null => (row[k] == null ? null : Number(row[k]))
@@ -84,7 +85,15 @@ export async function getCertificados(
     .order('numero', { ascending: false })
 
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as CertificadoCliente[], error: null }
+  const filas = (data ?? []) as unknown as Record<string, unknown>[]
+  const nombres = await nombresDeObra(supabase, filas.map((f) => (f.obra_id as string) ?? null))
+  return {
+    data: filas.map((f) => ({
+      ...f,
+      obra_nombre: f.obra_id ? nombres.get(f.obra_id as string) ?? null : null,
+    })) as unknown as CertificadoCliente[],
+    error: null,
+  }
 }
 
 /**

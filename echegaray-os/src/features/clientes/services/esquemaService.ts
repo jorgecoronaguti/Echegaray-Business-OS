@@ -2,7 +2,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
-import type { PagoEsquema } from '../types'
+import type { EsquemaCliente, PagoEsquema } from '../types'
+import { nombresDeObra } from './nombresDeObra'
 
 const COLUMNAS =
   'id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, reparo, estado, medio,'
@@ -28,7 +29,43 @@ export async function getEsquema(
     .order('fecha', { ascending: true, nullsFirst: false })
 
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as unknown as PagoEsquema[], error: null }
+  const filas = (data ?? []) as unknown as Record<string, unknown>[]
+  const nombres = await nombresDeObra(supabase, filas.map((f) => (f.obra_id as string) ?? null))
+  return {
+    data: filas.map((f) => ({
+      ...f,
+      obra_nombre: f.obra_id ? nombres.get(f.obra_id as string) ?? null : null,
+    })) as unknown as PagoEsquema[],
+    error: null,
+  }
+}
+
+/**
+ * EL ESQUEMA MÁS EL CONTRATO CONTRA EL QUE SE CONTROLA, que es lo que dibuja la pantalla 32.
+ *
+ * `contrato_total` sale de `cliente_panel.contratado` —la suma de lo contratado de las obras del
+ * cliente, que ya calcula `obra_panel`— y NO se recalcula acá: el cliente consolida, no administra.
+ * `null` cuando ninguna obra lo tiene cargado, y entonces la pantalla NO puede afirmar «falta
+ * asignar $X»: no sabe contra qué.
+ */
+export async function getEsquemaCliente(
+  supabase: SupabaseClient,
+  clienteId: string,
+): Promise<ServiceResult<EsquemaCliente>> {
+  const [pagos, panel] = await Promise.all([
+    getEsquema(supabase, clienteId),
+    supabase.from('cliente_panel').select('contratado').eq('cliente_id', clienteId).maybeSingle(),
+  ])
+  if (pagos.error !== null) return { data: null, error: pagos.error }
+  if (panel.error) return { data: null, error: panel.error.message }
+  return {
+    data: {
+      cliente_id: clienteId,
+      contrato_total: panel.data?.contratado == null ? null : Number(panel.data.contratado),
+      pagos: pagos.data,
+    },
+    error: null,
+  }
 }
 
 /**

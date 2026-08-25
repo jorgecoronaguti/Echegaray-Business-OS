@@ -203,5 +203,15 @@ export interface FuentesActividad {
   }[]
 }
 
-// Los tipos de las pantallas 28/31/32 (cuenta corriente, accesos, esquema de pago).
-export * from './portalCliente'
+// LA CUENTA CORRIENTE, EL ESQUEMA DE PAGO Y EL PORTAL viven en su propio archivo: son las
+// pantallas 28 · 31 · 32 y traen veinte tipos que no tienen nada que ver con la identidad del
+// cliente. Se re-exportan acá porque `@/features/clientes/types` es la puerta que usan las
+// pantallas, y partir la puerta obligaría a recordar en cuál de dos archivos está cada cosa.
+//
+// UN SOLO ARCHIVO, `cobranzas.ts`. El frente de datos había traído un segundo (`portalCliente.ts`)
+// con los mismos conceptos y otros nombres; se unificó allá y este re-export es la única puerta.
+export type {
+  AccesoPortal, ActividadPortal, CambioCobranza, CertificadoCliente, CuentaCorriente, EsquemaCliente,
+  EstadoCambioCobranza, EstadoCertificado, EstadoPago, MedioPago, PagoEsquema, Reprogramacion,
+  TipoActividadPortal,
+} from './cobranzas'
