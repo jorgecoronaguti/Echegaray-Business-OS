@@ -73,7 +73,10 @@ export function NavAdministracionTabs({ rol }: { rol?: Rol | null }) {
       // el encabezado global (`nav-${area}`). Dos elementos con el mismo identificador de prueba
       // hacen fallar por ambigüedad a cualquier test que los busque, y el mensaje no dice cuál sobra.
       data-testid="nav-admin-secciones"
-      className="mb-5"
+      // EN EL TELÉFONO LA BARRA SCROLLEA POR DENTRO: diez secciones no entran en 390px y, con
+      // `body { overflow-x: clip }`, lo que sobraba era la única causa del desborde de /presupuestos
+      // a 390 (medido 25/08: la solapa «Documentos» terminaba en x=921).
+      className="mb-5 max-lg:overflow-x-auto max-lg:[scrollbar-width:none]"
     >
       <Tabs
         testid="tabs-administracion"
