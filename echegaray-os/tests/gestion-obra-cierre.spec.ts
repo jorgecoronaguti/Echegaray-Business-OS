@@ -273,16 +273,21 @@ test('10-14 · una carga: producción, horas de la persona y horas del EQUIPO, c
   // chip «quién trabajó» con la cuenta— porque dieciocho casilleros permanentes son el bloque que
   // hay que pasar de largo todos los días para llegar al botón. El campo es el mismo (`horas_<id>`)
   // y sigue en el DOM; lo que cambia es que hay que abrirlo, como los equipos.
-  const panel = page.getByTestId('panel-registrar')
-  await panel.getByTestId('parte-actividad').selectOption(actividadId)
+  //
+  // PORTE LITERAL DEL CANÓNICO 05 (24/08/2026): la actividad se elige de la lista del mockup —no de
+  // un `<select>`—, los chips son botones y la persona se marca antes de recibir sus horas.
+  const panel = page.getByTestId('form-ejecucion')
+  await panel.getByTestId('parte-actividad').click()
+  await panel.getByTestId(`parte-actividad-${actividadId}`).click()
   await panel.getByTestId('parte-cantidad').fill('3')
   await panel.getByTestId('parte-comentario').fill(`${M} tres columnas`)
-  await panel.getByTestId('parte-personal').locator('summary').click()
+  await panel.getByTestId('parte-personal').click()
+  await panel.getByTestId(`marcar-${personaId}`).check()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('parte-equipos').locator('summary').click()
+  await panel.getByTestId('parte-equipos').click()
   await panel.getByTestId('equipo-0').fill(`${M} Hormigonera`)
   await panel.getByTestId('equipo-horas-0').fill('4')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar' }).click()
+  await panel.getByRole('button', { name: 'Registrar' }).click()
 
   // ═══ CADA HECHO A SU FUENTE ═══
   //   3 un de producción   → obra_ejecucion       → avance CALCULADO 25% (3 de 12)

@@ -75,7 +75,7 @@ import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { resolverVistaObra } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
-import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
+import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
@@ -320,8 +320,9 @@ export default async function ObraPage({
         }
       />
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
-          `TabTareas`, porque ahí comparte renglón con el buscador y los filtros, que son suyos. */}
-      {vista === 'tareas' && !esArbol && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+          `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:
+          el buscador y los filtros en uno, el navegador de día en el otro. */}
+      {vista === 'tareas' && !esArbol && !esParte && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
 
       {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
           ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
@@ -332,17 +333,35 @@ export default async function ObraPage({
         />
       )}
 
-      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol en pantalla este
-          div queda vacío y sin padding: 40px de aire fantasma debajo del Gantt se ven. */}
-      <div className={esArbol ? '' : 'w-full px-5 pb-6 pt-3.5'}>
+      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el parte en
+          pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
+      <div className={esArbol || esParte ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {/* LO QUE NO SE PUDO LEER SE DICE ACÁ, ARRIBA DE LA SOLAPA. Sin este cartel, una consulta
           caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el error
           dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. */}
       {lector.falla() && (
-        <div className="mb-4">
+        <div className={esArbol || esParte ? 'px-5 pt-3.5' : 'mb-4'}>
           <AvisoDeLectura mensaje={lector.falla() as string} que="parte de esta ficha" testid="obra-lectura-fallida" />
         </div>
+      )}
+
+      {/* LA 05 TAMBIÉN VA DE BORDE A BORDE: su banda de día y su aire de 14/20/24 son internos
+          del módulo, y el padding de la página los duplicaría. */}
+      {esParte && (
+        <ParteDiario
+          obraId={obraId}
+          actividades={acts}
+          partes={partes}
+          personas={personas}
+          cuadrillas={cuadrillas}
+          integrantes={integrantes}
+          hoy={new Date().toISOString().slice(0, 10)}
+          equipos={catalogoEquipos}
+          registrosHH={registros}
+          registrar={registrarEjecucion.bind(null, obraId)}
+          borrarParte={borrarParte.bind(null, obraId)}
+        />
       )}
 
       {vista === 'resumen' && (
@@ -453,22 +472,6 @@ export default async function ObraPage({
           datosPorActividad={datosPorActividad}
           anchoTabla={anchoTabla}
           anchoPanel={anchoPanel}
-        />
-      )}
-
-      {esParte && (
-        <TabEjecucion
-          obraId={obraId}
-          actividades={acts}
-          partes={partes}
-          personas={personas}
-          cuadrillas={cuadrillas}
-          integrantes={integrantes}
-          hoy={new Date().toISOString().slice(0, 10)}
-          equipos={catalogoEquipos}
-          registrosHH={registros}
-          registrar={registrarEjecucion.bind(null, obraId)}
-          borrarParte={borrarParte.bind(null, obraId)}
         />
       )}
 
