@@ -45,12 +45,12 @@ export async function GET(request: NextRequest) {
   // Es idempotente y silencioso para los empleados: quien no tiene fila en `cliente_acceso` no es
   // asunto del portal y sigue de largo por el camino de siempre.
   const portal = await completarIngresoPortal()
-  if (portal.dato?.clienteId) return NextResponse.redirect(new URL('/portal', origin))
-  if (portal.ok === false) {
+  if (portal.ok && portal.id) return NextResponse.redirect(new URL('/portal', origin))
+  if (!portal.ok) {
     // Acceso revocado o mail ya atado a otra cuenta: `completarIngresoPortal` ya cerró la sesión.
     // Se le dice por qué en la puerta del portal, que es de donde vino.
     const rechazo = new URL('/portal/ingresar', origin)
-    rechazo.searchParams.set('error', portal.error ?? 'Tu acceso no está vigente')
+    rechazo.searchParams.set('error', portal.error)
     return NextResponse.redirect(rechazo)
   }
 

@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { pedirLinkSchema, RUTA_INGRESO_PORTAL, type Resultado } from '../types'
+import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import { pedirLinkSchema } from '../types'
 
 // LA PUERTA DEL PORTAL — Supabase OTP por mail.
 //
@@ -28,12 +29,12 @@ const RESPUESTA_UNIFORME =
  *
  * Devuelve `{ ok: true }` con el mismo texto en los dos casos. Ver arriba.
  */
-export async function pedirLinkPortal(entrada: unknown): Promise<Resultado<string>> {
-  const parsed = pedirLinkSchema.safeParse(entrada)
+export async function pedirLinkPortal(email: string): Promise<ResultadoAccion> {
+  const parsed = pedirLinkSchema.safeParse({ email })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Escribí un correo válido' }
   }
-  const { email } = parsed.data
+  const { email: mail } = parsed.data
 
   // La consulta va con la clave de servicio porque quien pregunta NO TIENE SESIÓN todavía: con la
   // clave anónima la RLS de `cliente_acceso` devolvería vacío siempre y ningún mail entraría nunca.
@@ -44,7 +45,7 @@ export async function pedirLinkPortal(entrada: unknown): Promise<Resultado<strin
     const { data, error } = await admin
       .from('cliente_acceso')
       .select('id, revocado_at')
-      .eq('email', email)
+      .eq('email', mail)
       .maybeSingle()
     if (error) throw new Error(error.message)
     habilitado = Boolean(data && !data.revocado_at)
@@ -52,17 +53,17 @@ export async function pedirLinkPortal(entrada: unknown): Promise<Resultado<strin
     // Falla CERRADA: si no se puede confirmar la habilitación, no se manda ningún enlace. Un
     // permiso que se afloja cuando se cae la base no es un permiso.
     console.error('[portal] no pude verificar la habilitación:', e instanceof Error ? e.message : e)
-    return { ok: true, dato: RESPUESTA_UNIFORME }
+    return { ok: true, mensaje: RESPUESTA_UNIFORME }
   }
 
   if (!habilitado) {
-    console.warn(`[portal] enlace pedido para un mail sin acceso vigente: ${email}`)
-    return { ok: true, dato: RESPUESTA_UNIFORME }
+    console.warn(`[portal] enlace pedido para un mail sin acceso vigente: ${mail}`)
+    return { ok: true, mensaje: RESPUESTA_UNIFORME }
   }
 
   const supabase = await createClient()
   const { error } = await supabase.auth.signInWithOtp({
-    email,
+    email: mail,
     options: {
       // LA LÍNEA QUE IMPIDE EL ALTA PÚBLICA. Sin esto, escribir cualquier dirección crea el usuario.
       shouldCreateUser: false,
@@ -75,7 +76,7 @@ export async function pedirLinkPortal(entrada: unknown): Promise<Resultado<strin
     console.error('[portal] signInWithOtp falló:', error.message)
     // Igual se responde lo mismo: distinguir acá volvería a abrir el oráculo.
   }
-  return { ok: true, dato: RESPUESTA_UNIFORME }
+  return { ok: true, mensaje: RESPUESTA_UNIFORME }
 }
 
 /** La URL pública del sitio. El enlace del mail tiene que volver acá, no a localhost. */
@@ -98,7 +99,7 @@ function baseDelSitio(): string {
  * revocarse. Un enlace válido de un acceso revocado NO puede crear el perfil: se cierra la sesión.
  * La validación al pedir el enlace no sirve como validación al usarlo.
  */
-export async function completarIngresoPortal(): Promise<Resultado<{ clienteId: string }>> {
+export async function completarIngresoPortal(): Promise<ResultadoAccion> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user?.email) return { ok: false, error: 'No hay sesión' }
@@ -158,7 +159,8 @@ export async function completarIngresoPortal(): Promise<Resultado<{ clienteId: s
     detalle: acceso.primer_ingreso_at ? 'ingreso al portal' : 'primer ingreso al portal',
   })
 
-  return { ok: true, dato: { clienteId: acceso.cliente_id } }
+  // `id` es el campo del resultado compartido para «qué fila quedó tocada»: acá, el cliente.
+  return { ok: true, id: acceso.cliente_id }
 }
 
 /** `maria.gomez@arcor.com` → `Maria Gomez`. Un nombre provisorio; el real lo pone Administración. */
@@ -168,4 +170,4 @@ function nombreDe(email: string): string {
   return limpio.replace(/\b\p{Ll}/gu, (c) => c.toUpperCase()) || 'Cliente'
 }
 
-export { RUTA_INGRESO_PORTAL }
+

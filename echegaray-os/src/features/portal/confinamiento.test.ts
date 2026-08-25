@@ -1,7 +1,7 @@
 // El aislamiento entre una empresa y sus clientes se prueba acá, sin levantar Next.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { destinoPorRol, esRutaPortal, RUTA_INGRESO_PORTAL } from './types.ts'
+import { destinoPorRol, esRutaPortal, RUTA_PORTAL_INGRESAR } from './rutas.ts'
 
 test('el cliente se queda dentro del portal y no ve nada de adentro', () => {
   assert.equal(destinoPorRol('cliente', '/portal'), null)
@@ -35,6 +35,6 @@ test('una ruta que sólo EMPIEZA como el portal no es el portal', () => {
 })
 
 test('la puerta de ingreso está dentro del portal: si no, el cliente no podría ni pedir el link', () => {
-  assert.equal(esRutaPortal(RUTA_INGRESO_PORTAL), true)
-  assert.equal(destinoPorRol('cliente', RUTA_INGRESO_PORTAL), null)
+  assert.equal(esRutaPortal(RUTA_PORTAL_INGRESAR), true)
+  assert.equal(destinoPorRol('cliente', RUTA_PORTAL_INGRESAR), null)
 })

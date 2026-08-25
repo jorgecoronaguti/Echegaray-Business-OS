@@ -113,17 +113,20 @@ export const RUTAS_PUBLICAS = [
   // Va como entrada de la lista BLANCA y no relajando el matcher: exceptuar "todo archivo con
   // extensión" abriría de una vez cualquier cosa que alguien deje caer en `public/` mañana, que es
   // exactamente el modo de fallar de una lista negra.
-  // ═══ LA PUERTA DEL PORTAL DEL CLIENTE (25/08/2026) ═══
-  //
-  // `/portal/ingresar` es donde el cliente pide su enlace de acceso: por definición llega SIN
-  // sesión. Sin esta entrada el middleware lo manda a `/login`, que es la pantalla de los
-  // empleados y le pide una contraseña que el cliente no tiene ni va a tener.
-  //
-  // Va SÓLO la puerta, no `/portal` entero: el resto del portal muestra certificados e importes y
-  // exige sesión como cualquier otra pantalla.
-  '/portal/ingresar',
   '/marca', // el logotipo y el isotipo — la pantalla de login los necesita sin sesión
   '/icon.png', // el favicon que genera Next desde src/app/icon.png
+  // ═══ LA PUERTA DEL PORTAL DEL CLIENTE (25/08/2026) ═══
+  //
+  // `30 · Portal Cliente Mobile` es la única pantalla del OS que abre alguien que NO trabaja acá, y
+  // llega sin sesión por definición: lo que pide es el link que la crea. Sin esta entrada el
+  // middleware la manda a `/login`, que es la pantalla de los empleados y le pide una contraseña
+  // que el cliente no tiene ni va a tener.
+  //
+  // ES LA RUTA EXACTA, NO EL PREFIJO `/portal`: `esRutaPublica` compara con `pathname === r ||
+  // pathname.startsWith(r + '/')`, así que poner `/portal` abriría `/portal` y `/portal/obra/…` —el
+  // portal entero, con certificados e importes— a cualquier anónimo. Lo único público es pedir el
+  // link. (Los dos frentes agregaron esta misma entrada por su lado; quedó UNA.)
+  '/portal/ingresar',
 ]
 export function esRutaPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))

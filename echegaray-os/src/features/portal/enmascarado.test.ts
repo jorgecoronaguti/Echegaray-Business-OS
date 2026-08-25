@@ -1,7 +1,7 @@
 // Las reglas que deciden qué ve un TERCERO de la economía de una obra.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { enmascararMonto } from './services/portalService.ts'
+import { enmascararMonto } from './reglas/permisos.ts'
 import { hayCambiosSinPublicar, proximoVencimiento } from '../clientes/services/esquemaService.ts'
 import { estadoDeAcceso } from '../clientes/services/accesosService.ts'
 import type { PagoEsquema, AccesoPortal } from '../clientes/types'

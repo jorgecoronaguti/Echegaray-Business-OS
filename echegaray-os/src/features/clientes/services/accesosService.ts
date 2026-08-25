@@ -70,7 +70,10 @@ export async function getActividadPortal(
     // hizo él. Cuando hay acceso pero no cargaron el nombre, vale el mail — es lo que se sabe.
     data: ((data ?? []) as unknown as Record<string, unknown>[]).map((a) => {
       const acc = a.cliente_acceso as { persona_contacto: string | null; email: string } | null
-      const { cliente_acceso: _ignorado, ...fila } = a
+      // El objeto embebido NO viaja a la pantalla: `persona` es todo lo que hace falta, y mandar el
+      // acceso entero pondría el mail de un contacto del cliente en el HTML de cada renglón.
+      const fila = { ...a }
+      delete fila.cliente_acceso
       return { ...fila, persona: acc?.persona_contacto ?? acc?.email ?? null }
     }) as unknown as ActividadPortal[],
     error: null,
