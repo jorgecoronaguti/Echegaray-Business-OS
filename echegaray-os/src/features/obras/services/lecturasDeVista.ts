@@ -34,15 +34,15 @@ export type SubTareas = 'arbol' | 'gantt' | 'parte' | null
 /** Qué tiene que leer el workspace para dibujar esta solapa. Todo lo que diga `false` es una
  *  consulta a Supabase que NO sale — no una que sale y se descarta al renderizar. */
 export type LecturasDeVista = {
-  /** El plantel. Cronograma (panel de la actividad), Personal y el parte diario. */
+  /** El plantel. Personal y el parte diario. */
   personas: boolean
   /** Las cuadrillas. Personal, el parte diario y el árbol de tareas. */
   cuadrillas: boolean
-  /** Los partes de ejecución. El parte, Cronograma y «último movimiento» del Resumen. */
+  /** Los partes de ejecución. El parte diario y «último movimiento» del Resumen. */
   partes: boolean
   /** `obra_plan_vs_real`. LA MÁS CARA: 864 ms medidos. Sólo Resumen, Personal y Economía. */
   plan: boolean
-  /** `obra_restriccion`. Resumen (las abiertas), Cronograma y Operación (los impedimentos). */
+  /** `obra_restriccion`. Resumen (las abiertas) y Operación (los impedimentos). */
   restricciones: boolean
 }
 
@@ -55,14 +55,18 @@ export type LecturasDeVista = {
 export function lecturasDeVista(vista: string, sub: SubTareas): LecturasDeVista {
   const enTareas = vista === 'tareas'
   const esArbol = enTareas && sub === 'arbol'
-  const esCronograma = enTareas && sub === 'gantt'
   const esParte = enTareas && sub === 'parte'
 
+  // ═══ EL CRONOGRAMA DEJÓ DE PAGAR TRES LECTURAS (24/08/2026 · porte del canónico 07) ═══
+  //
+  // Las pedía para el PANEL de la actividad que vivía al lado del Gantt —plantel, partes e
+  // impedimentos—. Ese panel es la pantalla 03 (Tareas): el canónico 07 dibuja plazo y nada más.
+  // La 07 lee las actividades y los días hábiles de la obra, y con eso dibuja las tres capas.
   return {
-    personas: esCronograma || vista === 'personal' || esParte,
+    personas: vista === 'personal' || esParte,
     cuadrillas: vista === 'personal' || esParte || esArbol,
-    partes: esParte || esCronograma || vista === 'resumen',
+    partes: esParte || vista === 'resumen',
     plan: vista === 'resumen' || vista === 'personal' || vista === 'economia',
-    restricciones: vista === 'resumen' || esCronograma || vista === 'operacion',
+    restricciones: vista === 'resumen' || vista === 'operacion',
   }
 }

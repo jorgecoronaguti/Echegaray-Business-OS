@@ -32,26 +32,20 @@ export const VISTAS_OBRA = [
 ] as const
 export type VistaObra = (typeof VISTAS_OBRA)[number]['id']
 
-// ═══ EL GANTT DE TAREAS Y LA PANTALLA «CRONOGRAMA» NO SON DOS VERDADES (21/08/2026) ═══
+// ═══ HAY UN SOLO CRONOGRAMA DE OBRA (24/08/2026) ═══
 //
-// Conviven, y hay que decir por qué antes de que alguien las tome por un descuido. Las DOS leen
-// `obra_actividad_control` —la misma fuente, con el mismo portero— y contestan preguntas distintas:
+// Hubo dos, y convivían con el porqué escrito: `?vista=tareas&sub=gantt` dibujaba el plan COMO ESTÁ
+// CARGADO y `/obras/<obra>/cronograma` el plan COMO LO IMPLICA LA SECUENCIA, recalculado desde las
+// dependencias. La convivencia no resistió el dato: las obras tienen CERO dependencias cargadas, y
+// sin dependencias el motor arranca TODAS las actividades el mismo día — la segunda pantalla
+// dibujaba treinta y cinco barras apiladas sobre la primera semana y lo rotulaba «cronograma».
 //
-//   `?vista=tareas&sub=gantt`      → **el plan COMO ESTÁ CARGADO**. Dibuja `inicio_plan`/`fin_plan`
-//                                     tal como alguien los escribió. Es el tracker de todos los días.
-//   `/obras/<obra>/cronograma`     → **el plan COMO LO IMPLICA LA SECUENCIA**. Recalcula fechas desde
-//                                     las dependencias y las duraciones, y de ahí salen la holgura y
-//                                     el camino crítico. Con cero dependencias cargadas se niega a
-//                                     publicar un fin de obra y dice «sin secuencia cargada».
-//
-// Las dos son pantallas del contrato (03 · Obra Tareas y 07 · Obra Cronograma). Lo que sí sería un
-// defecto es que las barras difieran y nadie explique por qué: por eso el rótulo de la sub-vista
-// dice «Gantt» y no «Cronograma», y por eso `CRONOGRAMA_CALCULADO` existe acá y no como una URL
-// escrita a mano en un componente.
+// Queda la primera, portada del canónico 07, y la URL vieja redirige a ella. El motor sigue vivo y
+// probado (`cronogramaMotor.ts`): lo usa la 08 · Dotación. Lo que se retiró es la VISTA que
+// publicaba su resultado como si fuera el plan de la obra.
 
-/** La pantalla 07: el cronograma calculado desde la secuencia. Vive fuera del workspace porque
- *  recalcula en vez de dibujar lo guardado, y esa diferencia tiene que ser visible en la URL. */
-export const hrefCronogramaCalculado = (obraId: string) => `/obras/${obraId}/cronograma`
+/** La pantalla 07, dentro del workspace. La ruta `/obras/<obra>/cronograma` redirige acá. */
+export const hrefCronograma = (obraId: string) => `/obras/${obraId}?vista=tareas&sub=gantt`
 
 /** La pantalla 08, por la misma razón. */
 export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`

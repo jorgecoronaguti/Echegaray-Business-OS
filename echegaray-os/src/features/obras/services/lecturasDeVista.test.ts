@@ -30,9 +30,19 @@ test('el plan sólo lo leen las tres solapas que lo dibujan', () => {
   assert.deepEqual(conPlan.sort(), ['economia', 'personal', 'resumen'])
 })
 
-test('las restricciones sólo las leen Resumen, Cronograma y Operación', () => {
+test('las restricciones sólo las leen Resumen y Operación', () => {
   const con = SOLAPAS.filter(([v, s]) => lecturasDeVista(v, s).restricciones).map(([v, s]) => s ? `${v}/${s}` : v)
-  assert.deepEqual(con.sort(), ['operacion', 'resumen', 'tareas/gantt'])
+  assert.deepEqual(con.sort(), ['operacion', 'resumen'])
+})
+
+test('el cronograma no paga NINGUNA de las cinco: dibuja el plan y los días hábiles', () => {
+  // El canónico 07 no tiene panel de actividad: plantel, partes e impedimentos son de Tareas y de
+  // Operación. El defecto que atrapa es el de siempre —una lectura que se dejó prendida «por si
+  // acaso»— con el agravante de que acá se paga en cada visita al cronograma.
+  const l = lecturasDeVista('tareas', 'gantt')
+  assert.deepEqual(l, {
+    personas: false, cuadrillas: false, partes: false, plan: false, restricciones: false,
+  })
 })
 
 test('ninguna solapa lee las cinco cosas: la matriz cobra por vista, no de fábrica', () => {

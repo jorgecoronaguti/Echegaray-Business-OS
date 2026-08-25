@@ -1,5 +1,22 @@
 'use client'
 
+// ═══ ESTE COMPONENTE YA NO TIENE PANTALLA (24/08/2026 · porte del canónico 07) ═══
+//
+// La vista «Cronograma» del workspace la dibuja `CronogramaDeObra.tsx`, que es el porte literal del
+// mockup `07 · Obra Cronograma.dc.html`: tabla de actividad y desvío, Gantt con las tres capas, y
+// nada más. Este archivo —y con él `Gantt.tsx`, `PanelActividad.tsx` y la `BarraMasiva`— queda sin
+// nadie que lo renderice.
+//
+// NO SE BORRÓ, y hay que decir por qué: es el único lugar del OS donde existen las ACCIONES EN LOTE
+// del plan (responsable, HH plan y sellado por selección), la lista de actividades archivadas con su
+// «Restaurar», y los filtros del plan. Nada de eso está en el canónico 07 y todo eso pertenece al
+// árbol de Tareas (mockup 03), que es el que dibuja las casillas de selección. Mudarlo es una
+// decisión de producto —y de otro frente—, no un efecto colateral de portar una pantalla.
+//
+// Mientras tanto: el sellado de la línea base de TODA la obra sí sobrevive, en la banda de nivel 3
+// del cronograma nuevo (`SellarLineaBase`), porque sin él la línea base no se puede sellar desde
+// ninguna parte y sin línea base no hay desvío que medir.
+
 // PLANIFICACIÓN — UNA solapa con cuatro maneras de mirar LAS MISMAS actividades.
 //
 // ═══ POR QUÉ NO HAY UNA SOLAPA «PLANIFICACIÓN» Y OTRA «GANTT» ═══
@@ -38,7 +55,7 @@ import { Gantt } from './Gantt'
 // LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
 // necesita, y un valor exportado desde un archivo `'use client'` no cruza esa frontera.
 import { type SubVista, type Ventana } from '../services/subvistas'
-import { hrefCronogramaCalculado } from '../services/vistasObra'
+import { hrefCronograma } from '../services/vistasObra'
 import { BarraPlan, type AccionesPlan } from './BarraPlan'
 import { resumenDelPlan, type ResumenDelPlan } from '../services/resumenDelPlan'
 import { aplicarFiltro, FILTRO_VACIO, hayFiltro, type FiltroPlan } from '../services/filtroPlan'
@@ -209,7 +226,7 @@ export function TabCronograma({
         // La distinción que antes cargaba el rótulo «Gantt»: lo CALCULADO desde la secuencia —el
         // camino crítico— vive en su pantalla, y desde acá se llega con un clic.
         extra={
-          <Link href={hrefCronogramaCalculado(obraId)} prefetch={false} data-testid="ir-camino-critico"
+          <Link href={hrefCronograma(obraId)} prefetch={false} data-testid="ir-camino-critico"
             className="hidden text-[12.5px] text-muted hover:text-ink md:inline">
             Camino crítico →
           </Link>

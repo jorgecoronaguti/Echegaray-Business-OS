@@ -32,7 +32,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDependencias, getDocumentos, getEconomiaObra, getObra, getPlanVsReal,
+  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanVsReal,
   getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
@@ -41,24 +41,12 @@ import {
 } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
-  agregarDependencia, archivarActividad, archivarObra, crearActividad, crearImpedimento,
-  editarActividad, editarImpedimento, editarObra, liberarImpedimento, marcarHito, quitarDependencia,
-  registrarAvance,
-  sellarBaseline,
+  archivarActividad, archivarObra, crearImpedimento, editarObra, liberarImpedimento, sellarBaseline,
 } from '@/features/obras/services/actions'
-import {
-  asignarResponsableMasivo, cargarHHPlanMasivo, sellarBaselineMasivo,
-} from '@/features/obras/services/actionsMasivas'
 import {
   asignarPersona, cerrarAsignacion, quitarAsignacion,
 } from '@/features/obras/services/actionsPersonal'
-import {
-  archivarRubro, crearRubro, moverActividadDeRubro, moverRubro, renombrarRubro,
-} from '@/features/obras/services/actionsRubro'
-import { agregarNota, borrarNota } from '@/features/obras/services/actionsNotas'
-import {
-  getCatalogoEquipos, getEquiposPorActividad, getNotas, getTrabajoPorActividad,
-} from '@/features/obras/services/recursosService'
+import { getCatalogoEquipos } from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
@@ -67,9 +55,7 @@ import { Ico, P } from '@/features/obras/components/canon/Ico'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
-import { TabCronograma } from '@/features/obras/components/TabCronograma'
-import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
-import { esSubVista } from '@/features/obras/services/subvistas'
+import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
 import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { resolverVistaObra } from '@/features/obras/services/vistasObra'
@@ -79,8 +65,7 @@ import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
-  asignarActividadAPedido, borrarParte, cambiarEstadoTarea, crearTarea,
-  definirMedicion, registrarEjecucion,
+  asignarActividadAPedido, borrarParte, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
@@ -90,36 +75,27 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
-  asignarActividadADocumento, clasificarDocumento, desvincularDocumento, soltarDocumentoDeActividad,
-  vincularDocumento,
+  asignarActividadADocumento, clasificarDocumento, desvincularDocumento, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
 
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { AvisoDeLectura, EstadoError } from '@/shared/components/estado'
-// `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
-// importan componentes de cliente. Ver el comentario en `ds/index.ts`.
-import { anchoSplit } from '@/shared/components/ds/split-servidor'
-
 export const dynamic = 'force-dynamic'
-
-/** El ancho por defecto del split cuando no hay cookie: la tabla manda, el panel acompaña. */
-const ANCHO_TABLA = 470
-const ANCHO_PANEL = 452
 
 export default async function ObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
   searchParams: Promise<{
-    vista?: string; sub?: string; semanas?: string; act?: string; filtro?: string; sol?: string
+    vista?: string; sub?: string; act?: string; filtro?: string; sol?: string
     /** La dotación simulada del panel de la tarea (04). Igual que en la 08: la URL es la memoria
      *  del simulador, así que el mismo link abre la misma simulación del otro lado del chat. */
     dot?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas, act, filtro, sol, dot } = await searchParams
+  const { vista: vistaRaw, sub, act, filtro, sol, dot } = await searchParams
   // LA VISTA Y LA SUB-VISTA SE RESUELVEN JUNTAS: el alias de una URL vieja decide también con qué
   // vista abre. `?vista=ejecucion` tiene que caer en el parte diario, no en el árbol.
   const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
@@ -150,10 +126,9 @@ export default async function ObraPage({
   const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
   const [
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes,
-    dependenciasRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
+    diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
-    documentosRes, trabajo, equiposPorActividad, notasPorActividad, catalogoEquipos,
-    anchosDelSplit, opRes, personasDeHoy,
+    documentosRes, catalogoEquipos, opRes, personasDeHoy,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -165,17 +140,18 @@ export default async function ObraPage({
     // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
     necesita.restricciones ? getRestricciones(supabase, obraId) : null,
     necesita.plan ? getPlanVsReal(supabase, obraId) : null,
-    // Las precedencias sólo las dibuja el Gantt: traerlas en las otras solapas es una consulta
-    // por visita para nadie.
-    esCronograma ? getDependencias(supabase, obraId) : null,
+    // Los días que ESTA obra trabaja: los sombrea el cronograma y nadie más. Reemplaza a las
+    // precedencias, que hasta el 24/08 se traían acá para dibujar flechas que el canónico 07 no
+    // tiene — y que en la base son CERO filas en todas las obras.
+    esCronograma ? getDiasHabiles(supabase, obraId) : null,
     necesita.personas ? getPersonas(supabase) : null,
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
     vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
     vista === 'personal' ? getCausasDesvio(supabase) : null,
     vista === 'personal' || esParte ? getRegistrosHH(supabase, obraId) : null,
-    // Plan contra real por actividad: Personal la publica y Cronograma la usa en el panel de la
-    // actividad, con el MISMO cálculo.
-    vista === 'personal' || esCronograma ? getActividadHH(supabase, obraId) : null,
+    // Plan contra real por actividad: la publica Personal. El cronograma dejó de pedirla el 24/08
+    // junto con el panel de la actividad — la 07 dibuja plazo, y las HH son de Personal.
+    vista === 'personal' ? getActividadHH(supabase, obraId) : null,
     necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
     necesita.partes ? getPartes(supabase, obraId) : null,
@@ -183,22 +159,11 @@ export default async function ObraPage({
     // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
     // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
     vista === 'economia' || vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
-    // LOS PAPELES LOS PIDEN DOS SOLAPAS: es la MISMA lectura — dos consultas darían dos listas
-    // que un día no coinciden.
-    vista === 'documentos' || esCronograma ? getDocumentos(supabase, obraId) : null,
-    // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic.
-    esCronograma
-      ? getTrabajoPorActividad(supabase, obraId)
-      : { personas: new Map(), porFecha: new Map() },
-    esCronograma ? getEquiposPorActividad(supabase, obraId) : new Map(),
-    esCronograma ? getNotas(supabase, obraId) : new Map(),
+    // Los papeles los pide la solapa Documentos. El cronograma los pedía para el panel de la
+    // actividad, que ya no vive ahí: el detalle de una actividad es de Tareas (mockup 03).
+    vista === 'documentos' ? getDocumentos(supabase, obraId) : null,
     // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto.
     esParte ? getCatalogoEquipos(supabase) : [],
-    // El ancho del split se lee en el servidor: la PRIMERA pintura ya sale con el reparto que la
-    // persona eligió. Leído en el cliente, la pantalla nacería con el ancho por defecto y saltaría.
-    esCronograma
-      ? Promise.all([anchoSplit('obra-tabla', ANCHO_TABLA, 300, 760), anchoSplit('obra-panel', ANCHO_PANEL, 340, 760)])
-      : null,
     // Operación trae sus cuatro listas de una vez: se atan a la obra por el MISMO puente
     // (`obra_alias`); si esa fuente falla, fallan juntas. Los impedimentos son tabla del OS y no
     // dependen de ese puente.
@@ -226,7 +191,7 @@ export default async function ObraPage({
   // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
   // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
   const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
-  const dependencias = dependenciasRes ? lector.leer(dependenciasRes, []) : []
+  const diasHabiles = diasHabilesRes ?? []
   const personas = personasRes ? lector.leer(personasRes, []) : []
   const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
   const causasDesvio = causasRes ? lector.leer(causasRes, []) : []
@@ -236,7 +201,6 @@ export default async function ObraPage({
   const certificados = certificadosRes ? lector.leer(certificadosRes, []) : []
   const economia = economiaRes ? lector.leer(economiaRes, null) : null
   const documentos = documentosRes ? lector.leer(documentosRes, []) : []
-  const [anchoTabla, anchoPanel] = anchosDelSplit ?? [ANCHO_TABLA, ANCHO_PANEL]
   const operacion = opRes?.data ?? null
   // La traducción del query string vive en el servicio: ahí están los subs y ahí están los nombres
   // viejos que todavía llegan por enlaces guardados.
@@ -253,40 +217,11 @@ export default async function ObraPage({
   // Lo decide el TIPO DEL PADRE, no la mera presencia de un padre: desde `20260821T2000` hay 161
   // actividades reales colgadas de su rubro, y el filtro viejo (`!actividad_padre_id`) las dejaba
   // afuera del Gantt sin un solo error. Ver `subtareas.ts`.
-  const { plan: filasDelPlan, subtareas: tareasPorActividad } = separarPlanYSubtareas(vivas)
+  const { plan: filasDelPlan } = separarPlanYSubtareas(vivas)
   const acts = filasDelPlan
   const archivadas = todas.filter((a) => a.archivada)
   const restr = restricciones ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
-  const yaSellada = todas.some((a) => a.sellada_en != null)
-  const partesPorActividad = new Map<string, typeof partes>()
-  for (const p of partes) {
-    const previos = partesPorActividad.get(p.actividad_id) ?? []
-    previos.push(p)
-    partesPorActividad.set(p.actividad_id, previos)
-  }
-  const docsPorActividad = new Map<string, typeof documentos>()
-  for (const d of documentos) {
-    if (!d.actividad_id) continue
-    const previos = docsPorActividad.get(d.actividad_id) ?? []
-    previos.push(d)
-    docsPorActividad.set(d.actividad_id, previos)
-  }
-
-  const datosPorActividad = new Map<string, DatosDeActividad>()
-  if (esCronograma) {
-    for (const a of acts) {
-      datosPorActividad.set(a.id, {
-        partes: partesPorActividad.get(a.id) ?? [],
-        tareas: tareasPorActividad.get(a.id) ?? [],
-        notas: notasPorActividad.get(a.id) ?? [],
-        documentos: docsPorActividad.get(a.id) ?? [],
-        personasReales: trabajo.personas.get(a.id) ?? [],
-        equipos: equiposPorActividad.get(a.id) ?? [],
-        hhPorFecha: trabajo.porFecha.get(a.id) ?? new Map(),
-      })
-    }
-  }
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
   // «← Obras», el nombre de la obra, sus campos de identidad rotulados y el ciclo de vida. Todo eso
   // vive en `CabeceraDeObra` —la MISMA que dibujan Cronograma, Dotación, Subcontratos y Avance
@@ -321,7 +256,7 @@ export default async function ObraPage({
       />
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
           `TabTareas`, porque ahí comparte renglón con el buscador y los filtros, que son suyos. */}
-      {vista === 'tareas' && !esArbol && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+      {vista === 'tareas' && !esArbol && !esCronograma && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
 
       {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
           ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
@@ -332,18 +267,36 @@ export default async function ObraPage({
         />
       )}
 
-      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol en pantalla este
-          div queda vacío y sin padding: 40px de aire fantasma debajo del Gantt se ven. */}
-      <div className={esArbol ? '' : 'w-full px-5 pb-6 pt-3.5'}>
-
-      {/* LO QUE NO SE PUDO LEER SE DICE ACÁ, ARRIBA DE LA SOLAPA. Sin este cartel, una consulta
-          caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el error
-          dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. */}
+      {/* LO QUE NO SE PUDO LEER SE DICE ARRIBA DE LA SOLAPA, Y ANTES DE ELLA. Sin este cartel, una
+          consulta caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el
+          error dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. Va acá afuera porque
+          las dos pantallas que se dibujan a sangre —el árbol y el cronograma— lo dejaban debajo del
+          contenido y pegado al borde: el aviso de que falta un dato no puede leerse después. */}
       {lector.falla() && (
-        <div className="mb-4">
+        <div className="px-5 pt-3.5">
           <AvisoDeLectura mensaje={lector.falla() as string} que="parte de esta ficha" testid="obra-lectura-fallida" />
         </div>
       )}
+
+      {/* LA 07 TAMBIÉN VA A SANGRE: la banda de nivel 3 con el zoom y las capas tiene que llegar a
+          los dos bordes, y el aire de 20px del mockup lo pone la pantalla adentro. */}
+      {esCronograma && (
+        <CronogramaDeObra
+          obraId={obraId}
+          actividades={acts}
+          diasHabiles={diasHabiles}
+          actividadAbierta={act ?? null}
+          archivadas={archivadas}
+          restaurar={archivarActividad.bind(null, obraId)}
+          // Sellar congela el plan de hoy como lo prometido: es de Administración y de la jefatura.
+          // La guarda de verdad está en la acción; esto evita ofrecer un gesto que va a ser rechazado.
+          {...(puedeEditarPlan ? { sellar: sellarBaseline.bind(null, obraId) } : {})}
+        />
+      )}
+
+      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el cronograma en
+          pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
+      <div className={esArbol || esCronograma ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {vista === 'resumen' && (
         <TabResumen
@@ -390,69 +343,6 @@ export default async function ObraPage({
               >{archivada ? 'Reactivar' : 'Archivar'}</BotonAccion>
             </section>
           }
-        />
-      )}
-
-      {esCronograma && (
-        <TabCronograma
-          obraId={obraId}
-          sub={esSubVista(sub) ? sub : 'gantt'}
-          semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
-          actividadAbierta={act ?? null}
-          hhPorActividad={new Map(actividadHH.map((h) => [h.actividad_id, h]))}
-          actividades={acts}
-          archivadas={archivadas}
-          restricciones={restr}
-          dependencias={dependencias}
-          personas={personas}
-          yaSellada={yaSellada}
-          acciones={{
-            crear: crearActividad.bind(null, obraId),
-            editar: editarActividad.bind(null, obraId),
-            avance: registrarAvance.bind(null, obraId),
-            archivar: archivarActividad.bind(null, obraId),
-            hito: marcarHito.bind(null, obraId),
-            sellar: sellarBaseline.bind(null, obraId),
-            definirMedicion: definirMedicion.bind(null, obraId),
-            crearTarea: crearTarea.bind(null, obraId),
-            cambiarEstadoTarea: cambiarEstadoTarea.bind(null, obraId),
-            // LAS PRECEDENCIAS SE PODÍAN ESCRIBIR DESDE EL 17/08 Y NADIE PODÍA CARGAR UNA: las dos
-            // acciones existían y esta página no las ataba, así que el panel dibujaba «nada
-            // declarado» sin un solo control para declarar algo — y el Gantt no tenía una flecha que
-            // dibujar porque la tabla estaba vacía por falta de puerta, no por falta de dato.
-            agregarDependencia: agregarDependencia.bind(null, obraId),
-            quitarDependencia: quitarDependencia.bind(null, obraId),
-            agregarNota: agregarNota.bind(null, obraId),
-            borrarNota: borrarNota.bind(null, obraId),
-            // LA MISMA ACCIÓN QUE USA OPERACIÓN. El `actividad_id` viaja en el formulario del panel;
-            // una segunda implementación de «anotar un impedimento» se contestaría distinto el día
-            // que a una de las dos se le agregue un campo.
-            crearImpedimento: crearImpedimento.bind(null, obraId),
-            liberarImpedimento: liberarImpedimento.bind(null, obraId),
-            editarImpedimento: editarImpedimento.bind(null, obraId),
-            vincularDocumento: vincularDocumento.bind(null, obraId),
-            soltarDocumento: soltarDocumentoDeActividad.bind(null, obraId),
-            moverDeRubro: moverActividadDeRubro.bind(null, obraId),
-          }}
-          accionesPlan={{
-            crearRubro: crearRubro.bind(null, obraId),
-            renombrarRubro: renombrarRubro.bind(null, obraId),
-            moverRubro: moverRubro.bind(null, obraId),
-            archivarRubro: archivarRubro.bind(null, obraId),
-          }}
-          /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
-             en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
-             que hace una persona—, y por eso cada acción vuelve a acotar por `obra_id` del lado del
-             servidor antes de escribir una sola fila. */
-          masivas={{
-            responsable: asignarResponsableMasivo.bind(null, obraId),
-            hhPlan: cargarHHPlanMasivo.bind(null, obraId),
-            baseline: sellarBaselineMasivo.bind(null, obraId),
-          }}
-          restaurarActividad={archivarActividad.bind(null, obraId)}
-          datosPorActividad={datosPorActividad}
-          anchoTabla={anchoTabla}
-          anchoPanel={anchoPanel}
         />
       )}
 

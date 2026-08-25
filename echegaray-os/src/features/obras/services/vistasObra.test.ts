@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  resolverVistaObra, SUBS_TAREAS, hrefCronogramaCalculado, hrefDotacion, hrefSubcontratos,
+  resolverVistaObra, SUBS_TAREAS, hrefCronograma, hrefDotacion, hrefSubcontratos,
 } from './vistasObra.ts'
 
 // LAS URLS VIEJAS ESTÁN EN LINKS MANDADOS POR CHAT, EN MARCADORES Y EN LOS TESTS. Ninguna puede
@@ -46,11 +46,11 @@ test('las seis solapas siguen resolviendo a sí mismas', () => {
   }
 })
 
-test('el cronograma calculado y la dotación tienen su propia URL, y no se escribe a mano', () => {
+test('el cronograma, la dotación y los subcontratos tienen su URL, y no se escribe a mano', () => {
   // Si cada componente arma la ruta con una plantilla suya, el día que cambie la ruta quedan
-  // enlaces rotos repartidos. Y la diferencia entre el Gantt guardado y el cronograma calculado
-  // tiene que ser visible en la URL: son preguntas distintas sobre la misma fuente.
-  assert.equal(hrefCronogramaCalculado('messina'), '/obras/messina/cronograma')
+  // enlaces rotos repartidos. El cronograma vive DENTRO del workspace desde el 24/08/2026: la ruta
+  // propia (`/obras/<obra>/cronograma`) redirige acá.
+  assert.equal(hrefCronograma('messina'), '/obras/messina?vista=tareas&sub=gantt')
   assert.equal(hrefDotacion('messina'), '/obras/messina/dotacion')
   assert.equal(hrefSubcontratos('messina'), '/obras/messina/subcontratos')
 })

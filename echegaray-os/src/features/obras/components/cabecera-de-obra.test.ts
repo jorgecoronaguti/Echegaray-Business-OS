@@ -51,6 +51,13 @@ const codigo = (fuente: string) => fuente
   .filter((l) => !l.trimStart().startsWith('//'))
   .join('\n')
 
+/** Una ruta que SÓLO redirige no dibuja nada, y por eso no tiene cabecera que compartir.
+ *  `/obras/<obra>/cronograma` es eso desde el 24/08/2026: la pantalla que vivía ahí se retiró
+ *  —dibujaba las barras desde una secuencia que no existe— y la URL sigue viva porque está en
+ *  marcadores y en links de chat. Sin esta excepción, la regla obligaría a dibujar una cabecera
+ *  arriba de un `redirect()`, o sea a inventar una pantalla para satisfacer una regla. */
+const soloRedirige = (fuente: string) => /\bredirect\(/.test(fuente) && !/<[A-Z]/.test(fuente)
+
 test('las pantallas de la obra dibujan LA MISMA cabecera, no una propia', () => {
   const rutas = paginas(RUTAS_DE_OBRA)
   // Si esto baja de 6, alguien borró una pantalla y la regla dejaría de mirar lo que debe mirar.
@@ -58,6 +65,7 @@ test('las pantallas de la obra dibujan LA MISMA cabecera, no una propia', () => 
 
   for (const ruta of rutas) {
     const fuente = codigo(readFileSync(ruta, 'utf8'))
+    if (soloRedirige(fuente)) continue
     assert.match(
       fuente, /CabeceraDeObra/,
       `${relativo(ruta)} no usa CabeceraDeObra: es una pantalla de la obra con cabecera propia`,
