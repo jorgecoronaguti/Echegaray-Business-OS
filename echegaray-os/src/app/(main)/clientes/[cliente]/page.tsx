@@ -102,6 +102,7 @@ import {
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { montoM } from '@/features/clientes/services/cobranzaFormato'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
+import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
 import { Ico, P } from '@/features/clientes/components/canon/Iconos'
 import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import {
@@ -129,19 +130,9 @@ type Query = {
   solapa?: string
 }
 
-/** LAS SIETE CARAS DE LA FICHA. Las cinco del canónico 26 más las tres que traen los mockups 28,
- *  31 y 32 —«Cuenta corriente» reemplaza a la vieja «Cuenta»—. Una solapa que no existe abre
- *  Resumen: un enlace viejo o tipeado a mano no puede dejar la ficha en blanco. */
-const SOLAPAS = [
-  'resumen', 'obras', 'presupuestos', 'documentos', 'cuenta', 'esquema', 'accesos',
-] as const
-type Solapa = (typeof SOLAPAS)[number]
-const solapaDe = (v: string | undefined): Solapa =>
-  (SOLAPAS as readonly string[]).includes(v ?? '') ? (v as Solapa) : 'resumen'
-
-/** Las tres caras nuevas se dibujan A SANGRE, sin el aside de identidad: sus mockups usan esa
- *  columna para el panel del certificado, del pago o del acceso. */
-const A_SANGRE: readonly Solapa[] = ['cuenta', 'esquema', 'accesos']
+// LAS SIETE CARAS DE LA FICHA —las cinco del canónico 26 más las tres de los mockups 28, 31 y 32,
+// donde «Cuenta corriente» reemplaza a la vieja «Cuenta»— y quién ve cada una viven en
+// `services/solapasCliente.ts`, con test: la lista de acá abajo se dibuja, la de allá se prueba.
 
 export default async function ClientePage({
   params, searchParams,
@@ -212,7 +203,7 @@ export default async function ClientePage({
   // La ficha se sigue dibujando —el resto de los bloques sirve—, pero con el cartel de qué faltó.
   const lector = crearLector()
 
-  const solapa = solapaDe(q.vista ?? q.solapa)
+  const solapa = solapaDe(q.vista, q.solapa)
   // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
   // navegador, un jefe con el reloj corrido —o de viaje— vería una mora distinta que administración
   // sobre el mismo cliente. Mismo criterio que `/mi-cuenta`.
@@ -379,24 +370,20 @@ export default async function ClientePage({
                Cuenta se leería como saldo. */
             <SolapasFicha
               testid="solapas-cliente"
-              items={[
-                { href: url({ vista: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
-                { href: url({ vista: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
-                ...(veEconomia
-                  ? [{ href: url({ vista: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
-                  : []),
-                { href: url({ vista: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
-                // LAS TRES CARAS ECONÓMICAS SON DE QUIEN VE LA ECONOMÍA. El jefe de obra no ve el
-                // precio de venta (misma frontera que «Contratado»), y el acceso al portal decide
-                // qué ve el CLIENTE de la empresa: eso lo administra Administración, no la obra.
-                ...(veEconomia
-                  ? [
-                      { href: url({ vista: 'cuenta' }), label: 'Cuenta corriente', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' },
-                      { href: url({ vista: 'esquema' }), label: 'Esquema de pago', cuenta: null, activo: solapa === 'esquema', testid: 'solapa-esquema' },
-                      { href: url({ vista: 'accesos' }), label: 'Acceso al portal', cuenta: null, activo: solapa === 'accesos', testid: 'solapa-accesos' },
-                    ]
-                  : []),
-              ]}
+              items={solapasDeCliente({
+                veEconomia,
+                obras: todas.length,
+                presupuestos: presupuestos.length,
+                documentos: lector.leer(documentos, []).length,
+              }).map((s) => ({
+                // Resumen es la cara por defecto y por eso su enlace NO lleva parámetro: así la
+                // dirección de la ficha sigue siendo `/clientes/<slug>` a secas.
+                href: url({ vista: s.clave === 'resumen' ? null : s.clave }),
+                label: s.label,
+                cuenta: s.cuenta,
+                activo: solapa === s.clave,
+                testid: `solapa-${s.clave}`,
+              }))}
             />
           }
         />
