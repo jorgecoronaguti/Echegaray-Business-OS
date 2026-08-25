@@ -40,7 +40,7 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
         {pendientes.map((n) => (
           <Tr key={n.nombre_norm} data-testid="nombre-pendiente" seleccionada={n.nombre_norm === seleccionado}>
             <Td fuerte>
-              <Link href={hrefDe(n.nombre_norm)} data-testid="abrir-nombre" className="block min-w-0">
+              <Link href={hrefDe(n.nombre_norm)} prefetch={false} data-testid="abrir-nombre" className="block min-w-0">
                 <span className="text-[13px] text-ink hover:underline">{n.nombre_origen}</span>
               </Link>
             </Td>

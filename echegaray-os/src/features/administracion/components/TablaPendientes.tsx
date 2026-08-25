@@ -58,7 +58,7 @@ export function TablaPendientes({ grupos, seleccionada, hrefDe, nombreDeObra }: 
         {grupos.map((g) => (
           <Tr key={g.clave} data-testid="fila-pendiente" seleccionada={g.clave === seleccionada}>
             <Td fuerte>
-              <Link href={hrefDe(g.clave)} data-testid="abrir-pendiente" className="block min-w-0">
+              <Link href={hrefDe(g.clave)} prefetch={false} data-testid="abrir-pendiente" className="block min-w-0">
                 <span className="font-mono text-[13px] text-ink hover:underline">{g.textos[0]}</span>
                 {g.textos.length > 1 && (
                   <span className="block truncate text-[11px] text-faint">

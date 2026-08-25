@@ -29,7 +29,29 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // ═══ LA FIRMA SE VERIFICA ACÁ, NO EN SÃO PAULO (25/08/2026) ═══
+  //
+  // Acá había `auth.getUser()`, que manda un GET a `/auth/v1/user` y espera la respuesta ANTES de
+  // dejar pasar el request. Medido contra el Supabase real desde esta VM, mediana de 5 corridas:
+  // 76 ms. Y no se paga una vez por pantalla: el matcher cubre el documento, cada payload RSC y
+  // cada Server Action. Una sola visita a `/documentos` disparaba 77 pasadas por este archivo
+  // (medido el 25/08 con el middleware instrumentado) — 77 × 76 ms de espera pura.
+  //
+  // El proyecto firma sus JWT con clave ASIMÉTRICA (`alg: ES256`, `kid` presente, JWKS público en
+  // `/auth/v1/.well-known/jwks.json` — comprobado el 25/08 decodificando un token real). Con eso,
+  // `getClaims()` verifica la firma con WebCrypto contra la clave pública, en el proceso, y sólo sale
+  // a la red la primera vez de cada instancia para traer el JWKS: `GLOBAL_JWKS` de auth-js vive en
+  // el módulo y lo comparten todos los clientes del mismo proceso.
+  //
+  // NO ES UNA PUERTA MÁS FLOJA. `getClaims()` rechaza un token con firma inválida
+  // (`AuthInvalidJwtError`) y uno vencido (`validateExp`), y si el proyecto volviera a firmar con
+  // HS256 la propia librería se cae a `getUser()` sola. Lo que cambia es CUÁNDO se entera de una
+  // sesión cerrada a mano: hasta que venza el access token (~1 h) en vez de al instante. Eso ya era
+  // así para los datos —PostgREST también valida la firma localmente y nunca le pregunta al servidor
+  // de Auth—, así que la ventana no la abre este cambio: la tenía la cerradura, no la puerta. El
+  // refresh token sí queda invalidado al instante por `signOut({ scope: 'global' })`.
+  const { data: sesion } = await supabase.auth.getClaims()
+  const user = sesion?.claims ? { id: sesion.claims.sub } : null
   const pathname = request.nextUrl.pathname
 
   // ── SIN SESIÓN NO SE VE NADA. Es lo primero que se decide, antes que cualquier rol.

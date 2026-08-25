@@ -122,6 +122,7 @@ export function TablaDocumentos({
             <div style={{ minWidth: 0 }}>
               <Link
                 href={hrefs[d.drive_file_id] ?? '#'}
+                prefetch={false}
                 data-testid="abrir-documento"
                 className="block truncate hover:underline"
                 style={{ fontSize: '12.5px', color: C.tinta }}

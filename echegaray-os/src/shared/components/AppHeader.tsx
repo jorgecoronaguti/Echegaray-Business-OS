@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -77,7 +76,17 @@ export function AppHeader({
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
         >
-          <Image src="/marca/isotipo.png" alt="" width={24} height={24} priority className="h-[24px] w-[24px]" />
+{/* EL ISOTIPO NO PASA POR EL OPTIMIZADOR DE IMÁGENES (25/08/2026).
+              Acá había un `<Image>` de Next. Medido contra producción con sesión real, la petición
+              `/_next/image?url=%2Fmarca%2Fisotipo.png&w=32&q=75` tardó 243 ms en `/administracion` y
+              1.257 ms en `/administracion/pendientes` — en CADA carga de CADA pantalla, porque este
+              header vive en todas. El archivo pesa 7,7 kB: optimizarlo ahorra unos 5 kB y cuesta
+              hasta 1,2 s.
+              Servido derecho desde `public/` son los mismos píxeles: mismo archivo, mismo alto y
+              ancho, misma clase. Es además lo que ya hacen `movil/Piezas`, `MarcoAuth` y `/campo`
+              con este mismo archivo. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/marca/isotipo.png" alt="" width={24} height={24} className="h-[24px] w-[24px]" />
           {/* EL NOMBRE ENTERO, Y LAS DOS PALABRAS CON EL MISMO FORMATO (19/08/2026).
               La primera versión ponía «CONSTRUCCIONES» en peso normal y gris, como si fuera una
               bajada. El dueño lo corrigió: no son una marca y su descripción — son UN nombre. Mismo
