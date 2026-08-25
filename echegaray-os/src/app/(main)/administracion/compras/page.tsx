@@ -21,12 +21,20 @@
 // front mientras PostgREST publica el mismo importe a cualquier sesión sería teatro — la pantalla
 // quedaría más angosta que la base y el agujero seguiría abierto sin que nadie lo vea.
 //
-// ═══ «CARGAR COMPROBANTE» NO SUBE ARCHIVOS, Y ES A PROPÓSITO ═══
+// ═══ «CARGAR COMPROBANTE» SUBE ARCHIVOS, Y ENTRA POR EL CIRCUITO DEL BOT (25/08/2026) ═══
 //
-// El cargador real es el bot @os de Mattermost: se le manda la foto o el PDF y él lee, cruza contra
-// ARCA y contra el banco, y carga. Duplicar esa entrada en la web daría dos caminos para el mismo
-// hecho —el problema que la regla de realidad única prohíbe— y el de la web sería el peor: sin OCR,
-// sin cruce y sin las tres verificaciones que el bot ya hace. El botón explica la vía oficial.
+// Hasta el 24/08 este botón explicaba que la carga se hacía sólo por Mattermost, con un argumento
+// correcto —una segunda puerta sin OCR ni cruces cargaría comprobantes que nadie verificó— y una
+// conclusión equivocada. El dueño la corrigió, textual: *«la carga de comprobantes se debe hacer de
+// la misma manera que se hace vía bot del OS: cargo archivo multimedia al canal carga de
+// comprobantes y la carga se debe hacer en app ecsas y en sheet flujo de fondos, todo respaldado en
+// BD»*.
+//
+// La realidad única se respeta igual, y por eso esta pantalla NO carga nada: encola. El archivo va
+// al bucket privado `comprobantes`, la fila a `public.comprobante_entrada`, y el worker de la VM lo
+// procesa con EXACTAMENTE el mismo código que el bot (`comunicacion/comprobantes/circuito.mjs`) —
+// visión, los tres cruces, el freno de mano de Sheets y el registro de idempotencia. Un circuito,
+// dos puertas. El estado de cada archivo vuelve leyendo esa misma fila.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -35,9 +43,11 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { getObrasCanonicas } from '@/features/control-obras/services/costosObraService'
 import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { C, FranjaCartera, IcoSubir, PAGINA } from '@/shared/components/canon'
+import { C, FranjaCartera, PAGINA } from '@/shared/components/canon'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
+import { CargarComprobante } from '@/features/administracion/components/CargarComprobante'
+import { EntradasSubidas } from '@/features/administracion/components/EntradasSubidas'
 import { TablaCompras } from '@/features/administracion/components/TablaCompras'
 import { PanelCompra } from '@/features/administracion/components/PanelCompra'
 import {
@@ -46,6 +56,7 @@ import {
 import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
+import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,28 +73,6 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
   if (o) p.set('o', o)
   const s = p.toString()
   return s ? `${RUTA}?${s}` : RUTA
-}
-
-/** La vía oficial de carga, escrita al lado del botón. Sin JavaScript: es un `details` nativo. */
-function CargarComprobante() {
-  return (
-    <details data-testid="cargar-comprobante" className="min-w-0">
-      {/* La ACCIÓN PRIMARIA del canónico (`24:76`) es el botón amarillo «Cargar comprobante». Acá es
-          un `details` y no un botón: la carga real la hace el bot, y un botón que abre un formulario
-          que no existe sería un botón falso. Se dibuja con la caja del canónico —radio 6, 12,5px,
-          peso 600, amarillo de marca— y al abrirlo explica la vía oficial. */}
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] bg-[#FDC900] px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]">
-        <IcoSubir s={14} />
-        Cargar comprobante
-      </summary>
-        <p className="mt-2 max-w-[420px] text-[11.5px] leading-relaxed text-muted">
-        Se le manda la foto o el PDF al bot <span className="font-medium text-ink">@os</span> por
-        Mattermost: él lo lee, lo cruza contra ARCA y contra el banco, y avisa si ya estaba cargado.
-        Esta pantalla no sube archivos a propósito — una segunda puerta sin esos tres cruces
-        cargaría comprobantes que nadie verificó.
-      </p>
-    </details>
-  )
 }
 
 export default async function ComprasPage({
@@ -111,11 +100,14 @@ export default async function ComprasPage({
   // TODO EN UN VIAJE, panel incluido. `getCompra` esperaba a que terminara la lista para recién
   // ahí salir a buscar el comprobante abierto: cada clic en una fila pagaba dos idas a la base en
   // serie (~2,2s medidos en el QA del 24/08). El panel no depende de la lista para nada.
-  const [listado, conteos, obras, abierta] = await Promise.all([
+  const [listado, conteos, obras, abierta, entradas] = await Promise.all([
     getCompras(supabase, { q, filtro }),
     getConteos(supabase),
     getObrasCanonicas(supabase),
     sp.c ? getCompra(supabase, sp.c) : Promise.resolve(null),
+    // LA COLA DE LO SUBIDO VA EN EL MISMO VIAJE. Es la lectura más chica de la pantalla y la que más
+    // rápido cambia: pedirla aparte pagaría una ida a la base por cada refresco del polling.
+    getEntradas(supabase),
   ])
 
   if (listado.error || !listado.data || conteos.error || !conteos.data) {
@@ -169,6 +161,13 @@ export default async function ComprasPage({
           hrefDe={(f) => url({ f, q, c: sp.c })}
         />
       </FranjaCartera>
+
+      {/* LO RECIÉN SUBIDO VA ARRIBA DE TODO lo demás y debajo de la acción que lo produjo: es lo
+          único de esta pantalla que está pasando AHORA. La banda de atención cuenta problemas
+          acumulados (653 sin imputar); esto contesta «la foto que acabo de sacar, ¿entró?». */}
+      <div style={{ padding: '0 20px' }}>
+        <EntradasSubidas entradas={entradas.data ?? []} />
+      </div>
 
       <div style={PAGINA.atencion}>
         <AtencionCompras conteos={conteos.data} hrefDe={(f) => url({ f, q, c: sp.c })} />

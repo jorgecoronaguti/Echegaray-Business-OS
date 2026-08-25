@@ -284,6 +284,19 @@ export async function procesarPost(d, m = {}) {
   // El repositorio entra INYECTABLE (default: el real). Es la costura que permite probar el flujo
   // entero —puerta, lectura, agrupado, idempotencia, mensaje— con un doble en memoria, sin Postgres.
   const repo = d.repo ?? repoReal
+  // ═══ DE DÓNDE SALE EL ARCHIVO, Y QUIÉN ABRE LA PUERTA (25/08) ═══
+  //
+  // Los dos entran inyectables y los dos tienen como DEFAULT lo de Mattermost, así que el bot no
+  // cambia una línea de comportamiento. Existen porque el dueño pidió cargar el comprobante también
+  // desde la pantalla 24, y la alternativa era copiar este archivo entero para la web: dos copias de
+  // «leer una factura y escribirla en Compras» se separan a la primera corrección, y la que se
+  // quedaría atrás es la que escribe plata en el Sheet.
+  //
+  // Lo que NO se hace inyectable es la PREGUNTA: sigue habiendo puerta y sigue fallando cerrada. Lo
+  // que cambia por origen es quién la contesta —el canal oficial en el chat, el rol de la sesión en
+  // la web—, nunca si se hace.
+  const bajar = d.bajar ?? ((fileId) => bajarAdjunto(mattermost, fileId))
+  const guarda = d.guarda ?? puedeCargarComprobantes
   const fileIds = (m.fileIds ?? []).filter(Boolean)
   // EL RECUENTO ACOMPAÑA A TODAS LAS SALIDAS, incluidas las que fallan antes de leer un byte. La
   // tanda publica UN mensaje sumando lo de varios posts: un post que se va sin `parte` desaparece de
@@ -297,7 +310,7 @@ export async function procesarPost(d, m = {}) {
   if (!await repo.tablasListas(port)) return conParte({ texto: TEXTO.SIN_ESQUEMA, estado: 'sin_esquema' }, { avisos: [TEXTO.SIN_ESQUEMA] })
 
   // 2) LA PUERTA. Antes de bajar un byte y antes de gastar un token de visión.
-  const permitido = await puedeCargarComprobantes({
+  const permitido = await guarda({
     port, actor: m.actor ?? {}, channelId: m.channelId, plataforma: m.plataforma ?? 'mattermost',
     mattermost, // segunda vía del permiso: estar en el canal oficial habilita
   })
@@ -311,7 +324,7 @@ export async function procesarPost(d, m = {}) {
   const bajados = []
   const problemas = []
   for (const id of fileIds) {
-    const a = await bajarAdjunto(mattermost, id)
+    const a = await bajar(id)
     // Los problemas viajan como OBJETOS con su `fileId`, no como renglones ya formateados: el
     // renglón se puede escribir al final, pero aparear un adjunto con su motivo exige el id.
     if (a.ok) bajados.push(a); else problemas.push({ fileId: a.fileId ?? id, nombre: a.nombre, error: a.error })
