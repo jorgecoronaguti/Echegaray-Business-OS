@@ -131,3 +131,19 @@ test('sin detalle por archivo, todos heredan el veredicto del lote', () => {
   assert.deepEqual(r.map((x) => x.estado), [ENTRADA.CARGADO, ENTRADA.CARGADO])
   assert.deepEqual(r.map((x) => x.id), ['a', 'b'])
 })
+
+
+test('«confirmar» con todos ya cargados es «ya estaba», no «en espera» (Barcelo 0113-00014607, 25/08)', () => {
+  const r = estadoDeEntrada({
+    estado: 'confirmar',
+    texto: '⚠️ Ya está cargado — Compras fila 883. No hay nada para cargar.\nObra: falta — ¿a qué obra va?',
+    parte: { suma: 0, cargados: 0, yaEstaban: 1 },
+  })
+  assert.equal(r.estado, 'ya_estaba')
+  assert.equal(r.yaEstaban, 1)
+})
+
+test('«confirmar» con algo que sí falta cargar sigue en espera', () => {
+  const r = estadoDeEntrada({ estado: 'confirmar', texto: 'Obra: falta', parte: { suma: 1, cargados: 0, yaEstaban: 0 } })
+  assert.equal(r.estado, 'en_espera')
+})

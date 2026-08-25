@@ -97,6 +97,11 @@ export function estadoDeEntrada(salida = {}) {
     return { ...base, estado: ENTRADA.EN_ESPERA, motivo: base.motivo ?? 'la escritura de Sheets está congelada' }
   }
   if (e === 'confirmar') {
+    // «Confirmar» con TODO ya cargado no es esperar a nadie: el circuito reconoció el duplicado y
+    // de paso preguntó la obra (en el chat es un diálogo; en la web nadie contesta). Prueba real
+    // 25/08: Barcelo 0113-00014607 quedó «Falta algo» con el fajo abierto cuando el propio texto
+    // decía «No hay nada que cargar». Si no cargó ninguno y todos ya estaban, ya estaba.
+    if (base.cargados === 0 && base.yaEstaban > 0) return { ...base, estado: ENTRADA.YA_ESTABA }
     return { ...base, estado: ENTRADA.EN_ESPERA, motivo: base.motivo ?? 'falta un dato para poder cargarlo' }
   }
   if (e === 'ilegible' || e === 'demasiados' || e.startsWith('rechazado_')) {
