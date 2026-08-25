@@ -17,9 +17,12 @@ import {
 } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { diaCorto, dm, mesAnterior, mesDe, mesLargo, semanaDe } from '@/features/empleado/services/fecha'
-import { duracion, hora, totalDelPeriodo } from '@/features/empleado/services/asistencia'
+import {
+  completarSemana, duracion, hora, totalDelPeriodo,
+} from '@/features/empleado/services/asistencia'
+import type { DiaSinMarca } from '@/features/empleado/services/asistencia'
+import { getDiasHabiles } from '@/features/obras/services/obrasService'
 import { diaAPedirCorreccion, horaCorta, pendienteDe } from '@/features/empleado/services/correccion'
-import type { DiaDeAsistencia } from '@/features/empleado/types'
 
 // M05 · ASISTENCIA — porte literal de `M05 · Asistencia.dc.html`.
 //
@@ -75,6 +78,10 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
     getMisCorrecciones(supabase, v.desde, v.hasta),
   ])
   const total = totalDelPeriodo(dias.data ?? [])
+  // LOS DÍAS QUE ESTA OBRA TRABAJA, para no acusar de «sin fichar» a un sábado. Sin obra asignada
+  // no hay calendario que aplicar y la lista queda vacía: no se supone lunes a viernes.
+  const obraId = obras.data?.[0]?.id ?? null
+  const diasHabiles = obraId ? await getDiasHabiles(supabase, obraId) : []
 
   // ═══ EL PEDIDO DE CORRECCIÓN ═══
   //
@@ -86,7 +93,9 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
   // LA SEMANA SE DIBUJA ENTERA, INCLUIDOS LOS DÍAS QUE NO EXISTEN EN LA BASE. Un día sin marcas no
   // devuelve fila, y una lista de cuatro renglones para una semana de siete esconde justo el día
   // que falta fichar — que es lo que la persona vino a ver.
-  const filas = ventana === 'semana' ? completarSemana(v.desde, dias.data ?? []) : (dias.data ?? [])
+  const filas = ventana === 'semana'
+    ? completarSemana(v.desde, dias.data ?? [], hoy, diasHabiles)
+    : (dias.data ?? []).map((d) => ({ ...d, sinMarca: null }))
 
   return (
     <PantallaEmpleado
@@ -146,12 +155,12 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
             // el pedido ve la misma fila «falta salida» y vuelve a pedir.
             const pedido = pendienteDe(correcciones.data ?? [], d.fecha)
             const esHoy = d.fecha === hoy
-            const a = aspecto(d.estado, esHoy)
+            const a = aspecto(d.estado, esHoy, d.sinMarca)
             return (
               <div
                 key={d.fecha}
                 data-testid="dia-asistencia"
-                data-estado={d.estado}
+                data-estado={d.sinMarca ?? d.estado}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
                   borderBottom: `1px solid ${C.divisor}`, minHeight: 48,
@@ -161,7 +170,10 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
                 <span title={a.titulo} style={{ display: 'flex', color: a.color, flexShrink: 0 }}>
                   <Icono nombre={a.icono} tamano={17} />
                 </span>
-                <span style={{ fontSize: 13.5, fontWeight: esHoy ? 600 : 400, color: C.ink, width: 76, flexShrink: 0 }}>
+                <span style={{
+                  fontSize: 13.5, fontWeight: esHoy ? 600 : 400, width: 76, flexShrink: 0,
+                  color: d.sinMarca === 'sin_fichar' || d.sinMarca == null ? C.ink : C.faint,
+                }}>
                   {diaCorto(d.fecha)}
                 </span>
                 {/* LAS DOS MARCAS JUNTAS, COMO SE LEEN. Sin ninguna, «sin fichar» — y nunca
@@ -169,9 +181,13 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
                 <span style={{ ...mono, fontSize: 12.5, color: C.muted, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {d.entrada || d.salida
                     ? `${hora(d.entrada) ?? '—'} → ${hora(d.salida) ?? (d.estado === 'en_curso' ? 'en obra' : pedido ? `${horaCorta(pedido.hora_propuesta)}?` : '—')}`
-                    : 'sin fichar'}
+                    : a.texto ?? 'sin fichar'}
                 </span>
-                <span style={{ ...mono, marginLeft: 'auto', fontSize: 14, fontWeight: 600, flexShrink: 0, color: d.minutos != null ? C.ink : C.warn }}>
+                <span style={{
+                  ...mono, marginLeft: 'auto', fontSize: 14, fontWeight: 600, flexShrink: 0,
+                  // El «—» de un día que no se juzga NO va en `warn`: no falta nada.
+                  color: d.minutos != null ? C.ink : d.sinMarca && d.sinMarca !== 'sin_fichar' ? C.tenue : C.warn,
+                }}>
                   {d.minutos != null
                     ? duracion(d.minutos)
                     : pedido ? 'pedido' : '—'}
@@ -195,25 +211,23 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
   )
 }
 
-/** El icono y el color de una fila de la semana, con los valores medidos en M05. */
-function aspecto(estado: string, esHoy: boolean): { icono: NombreIcono; color: string; titulo: string } {
-  if (estado === 'sin_registrar') return { icono: 'falta', color: C.warn, titulo: 'Sin fichar' }
-  if (estado === 'falta_salida') return { icono: 'alerta', color: C.warn, titulo: 'Falta la salida' }
-  if (estado === 'en_curso' || esHoy) return { icono: 'reloj', color: C.info, titulo: 'En curso' }
-  return { icono: 'ok', color: C.pos, titulo: 'Jornada completa' }
-}
-
-/** Los siete días de la semana, con los que la base no devolvió marcados como `sin_registrar`. La
- *  fila sintética lleva `minutos: null` a propósito: no es un día de cero horas, es un día del que
- *  no se sabe nada, y `totalDelPeriodo` ya distingue esos dos casos. */
-function completarSemana(lunes: string, dias: DiaDeAsistencia[]): DiaDeAsistencia[] {
-  const porFecha = new Map(dias.map((d) => [d.fecha, d]))
-  const base = new Date(`${lunes}T00:00:00Z`).getTime()
-  return Array.from({ length: 7 }, (_, i) => {
-    const fecha = new Date(base + i * 86400000).toISOString().slice(0, 10)
-    return porFecha.get(fecha) ?? {
-      fecha, entrada: null, salida: null, incidencias: 0, motivo: null,
-      estado: 'sin_registrar' as const, minutos: null, obra_id: null,
-    }
-  })
+/**
+ * EL ICONO Y EL COLOR DE UNA FILA DE LA SEMANA, con los valores medidos en M05 y M06.
+ *
+ * `sinMarca` sólo viene en las filas que la base NO devolvió, y decide antes que el estado: un día
+ * que todavía no pasó y un domingo no son «sin fichar». Los tres tratamientos salen del dibujo:
+ * M05 pinta la falta con la ✕ en `#B54708`, y M06 pinta el descanso con el icono de obra en
+ * `#C9C4C2` («Domingo 24 · descanso»). El día futuro no está en ningún mockup —las dos pantallas
+ * cortan la semana en hoy— y se resuelve con el mismo tono apagado y un «—»: la fila existe para
+ * que la semana se lea completa, no para acusar a nadie.
+ */
+function aspecto(
+  estado: string, esHoy: boolean, sinMarca: DiaSinMarca | null,
+): { icono: NombreIcono; color: string; titulo: string; texto: string | null } {
+  if (sinMarca === 'futuro') return { icono: 'pendiente', color: C.tenue, titulo: 'Todavía no pasó', texto: '—' }
+  if (sinMarca === 'no_laborable') return { icono: 'obra', color: C.tenue, titulo: 'Descanso', texto: 'descanso' }
+  if (estado === 'sin_registrar') return { icono: 'falta', color: C.warn, titulo: 'Sin fichar', texto: null }
+  if (estado === 'falta_salida') return { icono: 'alerta', color: C.warn, titulo: 'Falta la salida', texto: null }
+  if (estado === 'en_curso' || esHoy) return { icono: 'reloj', color: C.info, titulo: 'En curso', texto: null }
+  return { icono: 'ok', color: C.pos, titulo: 'Jornada completa', texto: null }
 }

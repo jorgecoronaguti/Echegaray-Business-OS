@@ -10,7 +10,7 @@ import type { DiaDeAsistencia } from '../types'
 
 // ASISTENCIA EN «HOY» — una sola acción primaria, de 52px, y nada al lado.
 //
-// El handoff: «La acción es siempre una sola (Registrar entrada → Registrar salida)». Dos botones a
+// El handoff: «La acción es siempre una sola (Marcar entrada → Marcar salida)». Dos botones a
 // la vez obligan a elegir, y a las siete de la mañana con guantes puestos la respuesta correcta es
 // una sola. Cuál es, la decide el estado del día — y lo vuelve a decidir el servidor, porque un
 // `tipo` mandado a mano cerraría un día que nunca se abrió.
@@ -145,7 +145,7 @@ export function BloqueAsistencia({
           </span>
           <span style={{ minWidth: 0, flex: 1 }}>
             <span style={{ display: 'block', fontSize: 16, fontWeight: 600, color: C.ink }} data-testid="estado-asistencia">
-              {ubicando ? 'Tomando la ubicación…' : enviando ? 'Registrando…' : enObra ? 'Estás en obra' : siguiente.texto}
+              {ubicando ? 'Tomando la ubicación…' : enviando ? 'Marcando…' : enObra ? 'Estás en obra' : siguiente.texto}
             </span>
             <span style={{
               display: 'block', fontSize: 13, color: C.muted, marginTop: 1,
@@ -177,7 +177,7 @@ export function BloqueAsistencia({
           }}
         >
           <Icono nombre={siguiente.tipo === 'entrada' ? 'entrar' : 'salir'} tamano={22} />
-          {ubicando ? 'Tomando la ubicación…' : enviando ? 'Registrando…' : siguiente.texto}
+          {ubicando ? 'Tomando la ubicación…' : enviando ? 'Marcando…' : siguiente.texto}
         </button>
       )}
     </form>
