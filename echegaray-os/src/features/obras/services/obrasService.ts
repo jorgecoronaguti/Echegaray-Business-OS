@@ -9,6 +9,7 @@
 // Los documentos se resuelven contra `drive_index`, que es el espejo del Drive: el archivo NO se
 // copia ni se sirve desde acá, sólo se enlaza.
 
+import type { JuegoDeColumnasDelPlan } from './lecturasDeVista'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Actividad, Dependencia, DocumentoObra, EconomiaObra, ObraPanel, PlanVsReal, Restriccion,
@@ -70,16 +71,78 @@ export async function getDiasHabiles(supabase: SupabaseClient, obraId: string): 
   return Array.isArray(d) ? (d as number[]).filter((n) => typeof n === 'number') : []
 }
 
-/**
- * PLAN CONTRA REAL de una obra. Sale entero de la vista `obra_plan_vs_real`: acá NO se resta, no se
- * divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese null
- * viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.
- */
-export async function getPlanVsReal(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<PlanVsReal>> {
-  const { data, error } = await supabase.from('obra_plan_vs_real').select('*').eq('obra_id', obraId).maybeSingle()
+/** LAS COLUMNAS DE `obra_plan_vs_real` QUE DIBUJA CADA SOLAPA, y su tipo.
+ *
+ *  ═══ POR QUÉ HAY TRES LECTURAS Y NO UNA CON `select('*')` (25/08/2026) ═══
+ *
+ *  Mismo motivo y misma forma que `COLUMNAS_PLAZO_Y_HH` acá abajo, pero por una razón más dura: la
+ *  solapa Personal y el Resumen se caían con `canceling statement due to statement timeout`, y el
+ *  techo no es negociable —el rol `authenticated` corre con `statement_timeout = 8s`—. Medido con
+ *  EXPLAIN (ANALYZE, BUFFERS) como Dirección sobre `quattropani`, mediana de 5:
+ *
+ *    select *                        9.413 buffers · 29,7 ms
+ *    las 4 columnas de Personal      4.572 buffers · 15,5 ms   −51 %
+ *    las 8 columnas de Economía      4.577 buffers · 16,4 ms   −51 %
+ *
+ *  La causa de que recortar columnas valga la mitad —y de por qué el Resumen no ahorra nada— está
+ *  en `lecturasDeVista.ts`, al lado de la matriz que decide quién pide qué.
+ *
+ *  SON TRES FUNCIONES Y NO UNA CON UN PARÁMETRO porque el tipo tiene que ser exacto: un objeto con
+ *  treinta campos ausentes se lee `undefined`, y en pantalla eso es indistinguible de un dato que
+ *  falta de verdad. Con un `Pick<>` por solapa, la primera columna que alguien dibuje sin haberla
+ *  pedido no compila — que es exactamente lo que tiene que pasar. */
+export type PlanDePersonal = Pick<PlanVsReal, 'obra_id' | 'hh_plan' | 'hh_real' | 'desvio_hh_pct'>
+
+export type PlanDeEconomia = Pick<
+  PlanVsReal,
+  'obra_id' | 'monto_presupuestado' | 'margen_esperado' | 'certificado' | 'facturado' | 'cobrado'
+  | 'pendiente_certificar' | 'por_cobrar_proyectado'
+>
+
+/** Una sola definición de cada juego, para la consulta y para su test. */
+export const COLUMNAS_PLAN: Record<JuegoDeColumnasDelPlan, string> = {
+  // El Resumen pide la vista entera A PROPÓSITO: recortarla a las diecinueve columnas que dibuja
+  // se midió y da lo mismo (9.405 contra 9.413 buffers), porque `forecast_fin` —una sola columna—
+  // arrastra el bloque de fechas completo. Dejarlo en `*` es honesto: no hay ahorro que declarar.
+  resumen: '*',
+  personal: 'obra_id,hh_plan,hh_real,desvio_hh_pct',
+  economia: 'obra_id,monto_presupuestado,margen_esperado,certificado,facturado,cobrado,'
+    + 'pendiente_certificar,por_cobrar_proyectado',
+}
+
+async function leerPlan<T>(
+  supabase: SupabaseClient, obraId: string, juego: JuegoDeColumnasDelPlan,
+): Promise<ServiceResult<T>> {
+  const { data, error } = await supabase
+    .from('obra_plan_vs_real').select(COLUMNAS_PLAN[juego]).eq('obra_id', obraId).maybeSingle()
   if (error) return { data: null, error: error.message }
   if (!data) return { data: null, error: `No hay plan contra real para "${obraId}"` }
-  return { data: data as PlanVsReal, error: null }
+  return { data: data as T, error: null }
+}
+
+/**
+ * PLAN CONTRA REAL de una obra, entero. Sale de la vista `obra_plan_vs_real`: acá NO se resta, no
+ * se divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese
+ * null viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.
+ */
+export function getPlanVsReal(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanVsReal>> {
+  return leerPlan<PlanVsReal>(supabase, obraId, 'resumen')
+}
+
+/** Las HH del titular de Personal, y nada más. Cuatro columnas: ver el bloque de arriba. */
+export function getPlanDePersonal(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanDePersonal>> {
+  return leerPlan<PlanDePersonal>(supabase, obraId, 'personal')
+}
+
+/** Presupuesto, margen, certificación y cobranza de la solapa Economía. Ocho columnas. */
+export function getPlanDeEconomia(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<PlanDeEconomia>> {
+  return leerPlan<PlanDeEconomia>(supabase, obraId, 'economia')
 }
 
 /**
