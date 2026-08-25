@@ -1,6 +1,6 @@
 'use server'
 
-// SUBIR UN COMPROBANTE DESDE LA PANTALLA 24 — la app ENCOLA, no carga.
+// REGISTRAR UN COMPROBANTE YA SUBIDO — la app ENCOLA, no carga, y ahora tampoco transporta.
 //
 // ═══ EL PEDIDO, TEXTUAL (25/08/2026) ═══
 //
@@ -8,141 +8,113 @@
 // archivo multimedia al canal carga de comprobantes y la carga se debe hacer en app ecsas y en sheet
 // flujo de fondos, todo respaldado en BD».
 //
+// ═══ QUÉ CAMBIÓ Y POR QUÉ (probado en producción el 25/08) ═══
+//
+// Esta acción recibía el `FormData` con los archivos adentro y los subía ella. Con una foto de
+// celular de 4,4 MB devolvía **500 «Body exceeded 1 MB limit»**. Levantar `bodySizeLimit` no lo
+// arregla: Vercel corta el cuerpo de la función en 4,5 MB y el techo del comprobante es 5 MB.
+//
+// Ahora el navegador pone el archivo en el bucket con la sesión del usuario —la policy
+// `comprobantes_sube_administracion` lo obliga a escribir en SU carpeta— y acá llega sólo el
+// renglón: ruta, nombre, tipo, bytes y lote. Un lote de doce comprobantes son unos pocos cientos de
+// bytes de JSON.
+//
 // ═══ POR QUÉ ESTA ACCIÓN NO LEE NI CARGA NADA ═══
 //
 // Leer un comprobante es: convertir el HEIC, mirarlo con el modelo de visión, cruzarlo contra el
 // padrón de ARCA, contra el extracto bancario y contra la pestaña Compras VIVA del Sheet, y después
 // correr `scripts/cargar-comprobantes-compras.mjs` como proceso hijo con su freno de mano. Eso
-// necesita las credenciales de Google, el token del razonador y un proceso que pueda tardar minutos:
-// nada de eso vive —ni puede vivir— en una server action de Vercel.
-//
-// Así que acá se hace lo único que corresponde: el archivo va al bucket privado, la fila va a la
-// cola, y el worker de la VM lo procesa con EXACTAMENTE el mismo código que el bot de Mattermost
-// (`orquestador/comunicacion/comprobantes/circuito.mjs`). Una capacidad, una fuente.
+// necesita las credenciales de Google, el token del razonador y un proceso que puede tardar minutos:
+// nada de eso vive —ni puede vivir— en una server action de Vercel. El worker de la VM lo procesa
+// con EXACTAMENTE el mismo código que el bot de Mattermost. Una capacidad, una fuente.
 //
 // ═══ NO ES LA CERRADURA ═══
 //
 // Quien decide de verdad es Postgres: la policy de `comprobante_entrada` exige `es_administracion()`,
-// que la fila nazca a nombre propio y en estado `pendiente`; la del bucket exige además que el
-// archivo caiga en la carpeta del propio usuario. Aunque alguien llame esta acción a mano, la base
-// rechaza lo que no le corresponde. Lo que se hace acá es no ofrecer un botón que va a rebotar y
+// que la fila nazca a nombre propio, en estado `pendiente` y con `intentos = 0`. Lo que se hace acá
+// es validar con Zod lo que manda un cliente que ya no es de confianza —ahora arma la ruta él— y
 // traducir el `42501` a una frase útil.
 
-import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { archivoAceptable, extensionDe, MAX_ARCHIVOS } from './comprobanteEntrada'
-
-export type Resultado = { ok: true; mensaje?: string } | { ok: false; error: string }
+import { MAX_ARCHIVOS, MAX_BYTES, MEDIA_ACEPTADOS } from './comprobanteEntrada.ts'
+import { esRutaDelUsuario, traducirError } from './subidaComprobantes.ts'
 
 const RUTA = '/administracion/compras'
-const BUCKET = 'comprobantes'
+
+/** El resultado de UN renglón. La ruta es la clave: es `unique` en la tabla. */
+export type FilaRegistrada =
+  | { storage_path: string; ok: true }
+  | { storage_path: string; ok: false; error: string }
+
+export type Registro = { ok: true; filas: FilaRegistrada[] } | { ok: false; error: string }
 
 /**
- * Lo que se inserta por archivo. Zod valida la FILA, no el `File`: el archivo lo valida
- * `archivoAceptable`, que es puro y tiene su test. Acá se garantiza que nada raro llegue al insert
- * aunque el nombre venga de un teléfono.
+ * Lo que el navegador manda por archivo. Se valida TODO aunque el cliente ya lo haya validado: el
+ * cliente es la comodidad, no el control. `media_type` es un enum cerrado —el mismo que acepta el
+ * bucket— y `bytes` tiene el techo del modelo de visión.
  */
-const filaSchema = z.object({
-  origen: z.literal('web'),
-  lote: z.string().uuid(),
+const metaSchema = z.object({
   storage_path: z.string().min(3).max(400),
   // El nombre lo escribe la cámara de alguien: se recorta y se limpian los saltos de línea, que en
   // un mensaje del bot romperían el renglón de la rendición.
   nombre_archivo: z.string().trim().min(1).max(160).transform((s) => s.replace(/[\r\n\t]+/g, ' ')),
-  media_type: z.string().min(3).max(60),
-  bytes: z.number().int().positive(),
-  subido_por: z.string().uuid(),
-  estado: z.literal('pendiente'),
-  intentos: z.literal(0),
+  media_type: z.enum(MEDIA_ACEPTADOS),
+  bytes: z.number().int().positive().max(MAX_BYTES),
 })
 
-const SIN_PERMISO = 'Tu usuario no tiene permiso para cargar comprobantes. Si creés que sí debería, avisale a Dirección.'
-
-/** El `42501` de Postgres y la falta de migración no le dicen nada a nadie con un papel en la mano. */
-function traducir(mensaje: string): string {
-  if (/relation .* does not exist|schema cache/i.test(mensaje)) {
-    return 'Todavía no puedo recibir comprobantes por acá: falta aplicar la migración en la base. Avisale a Dirección.'
-  }
-  if (/permission denied|row-level security|violates row-level/i.test(mensaje)) return SIN_PERMISO
-  if (/Bucket not found/i.test(mensaje)) {
-    return 'Todavía no está creado el depósito de comprobantes en la base. Avisale a Dirección.'
-  }
-  if (/duplicate key/i.test(mensaje)) return 'Ese archivo ya estaba en la cola.'
-  return mensaje
-}
-
 /**
- * Encola uno o varios comprobantes. Todos los del mismo envío comparten `lote`.
- *
  * EL LOTE ES EL EQUIVALENTE DE UN POST CON VARIAS FOTOS: el circuito agrupa por tanda y escribe una
  * sola vez. Sin lote, cinco facturas subidas juntas abrirían cinco conversaciones con el Sheet y la
  * misma factura fotografiada dos veces entraría dos veces.
  */
-export async function subirComprobantes(form: FormData): Promise<Resultado> {
-  const archivos = form.getAll('archivos').filter((a): a is File => a instanceof File && a.size > 0)
-  if (!archivos.length) return { ok: false, error: 'Elegí al menos un archivo.' }
-  if (archivos.length > MAX_ARCHIVOS) {
-    return { ok: false, error: `Subí hasta ${MAX_ARCHIVOS} comprobantes por vez, así los puedo revisar de a uno.` }
-  }
+const loteSchema = z.object({
+  lote: z.string().uuid(),
+  archivos: z.array(metaSchema).min(1).max(MAX_ARCHIVOS),
+})
+
+/** Escribe un renglón por archivo ya subido. Devuelve el resultado DE CADA UNO, no uno solo. */
+export async function registrarComprobantes(entrada: unknown): Promise<Registro> {
+  const leido = loteSchema.safeParse(entrada)
+  if (!leido.success) return { ok: false, error: `No pude registrar la carga: ${leido.error.issues[0].message}` }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Tu sesión venció. Volvé a entrar y probá otra vez.' }
 
-  // LA VALIDACIÓN ES ANTES DE SUBIR NADA: si el tercero de cinco no sirve, no queda un lote a medias
-  // con dos archivos huérfanos en el bucket y tres en la cola.
-  const revisados = archivos.map((a) => ({ archivo: a, control: archivoAceptable({ name: a.name, type: a.type, size: a.size }) }))
-  const malo = revisados.find((r) => !r.control.ok)
-  if (malo && !malo.control.ok) return { ok: false, error: malo.control.error }
-
-  const lote = randomUUID()
-  const subidos: string[] = []
-  for (const { archivo, control } of revisados) {
-    if (!control.ok) continue
-    // La carpeta es el usuario —lo exige la policy del bucket— y adentro el lote, para poder mirar
-    // una carga entera de un vistazo cuando algo salga mal.
-    const ruta = `${user.id}/${lote}/${randomUUID()}.${extensionDe(control.mediaType)}`
-    const { error: eSubida } = await supabase.storage
-      .from(BUCKET).upload(ruta, archivo, { contentType: control.mediaType, upsert: false })
-    if (eSubida) {
-      await limpiar(supabase, subidos)
-      return { ok: false, error: traducir(eSubida.message) }
-    }
-    subidos.push(ruta)
-
-    const fila = filaSchema.safeParse({
-      origen: 'web', lote, storage_path: ruta, nombre_archivo: archivo.name,
-      media_type: control.mediaType, bytes: archivo.size, subido_por: user.id,
-      estado: 'pendiente', intentos: 0,
-    })
-    if (!fila.success) {
-      await limpiar(supabase, subidos)
-      return { ok: false, error: fila.error.issues[0].message }
-    }
-    const { error } = await supabase.from('comprobante_entrada').insert(fila.data)
-    // SI LA FILA NO ENTRA, LOS ARCHIVOS SE BORRAN. Un objeto que nadie apunta es basura en el bucket
-    // y, peor, la pantalla diría «subido» sobre algo que el worker no va a mirar nunca.
-    if (error) {
-      await limpiar(supabase, subidos)
-      return { ok: false, error: traducir(error.message) }
-    }
+  // La ruta la arma el navegador, así que acá se vuelve a preguntar lo que preguntó Storage: que el
+  // archivo esté en la carpeta de quien firma la fila. Sin esto, un renglón podría apuntar al
+  // comprobante de otra persona y el worker lo leería como propio.
+  if (leido.data.archivos.some((a) => !esRutaDelUsuario(a.storage_path, user.id))) {
+    return { ok: false, error: 'Esa carga no quedó a tu nombre. Recargá la pantalla y probá otra vez.' }
   }
+
+  // UNO POR UNO, NO UN INSERT DE DOCE: si el tercero choca contra el `unique` de `storage_path`, un
+  // insert por lote se caería entero y los once buenos quedarían como archivos huérfanos en el
+  // bucket que nadie va a leer nunca.
+  const filas = await Promise.all(
+    leido.data.archivos.map((a) => insertarUna(supabase, { ...a, lote: leido.data.lote, subido_por: user.id })),
+  )
 
   revalidatePath(RUTA)
-  return {
-    ok: true,
-    mensaje: archivos.length === 1
-      ? 'Subido. El OS lo lee y lo carga en Compras; el estado aparece acá abajo.'
-      : `${archivos.length} comprobantes subidos. El OS los lee y los carga en Compras; el estado aparece acá abajo.`,
-  }
+  return { ok: true, filas }
 }
 
-/** Borra lo que se alcanzó a subir de un lote que no se pudo completar. Nunca lanza. */
-async function limpiar(
-  supabase: Awaited<ReturnType<typeof createClient>>, rutas: string[],
-): Promise<void> {
-  if (!rutas.length) return
-  try { await supabase.storage.from(BUCKET).remove(rutas) } catch { /* el lote ya falló: no empeorar */ }
+type Cliente = Awaited<ReturnType<typeof createClient>>
+
+/** Un renglón. Nunca lanza: un lote a medias se informa, no se convierte en un 500. */
+async function insertarUna(
+  supabase: Cliente,
+  fila: z.infer<typeof metaSchema> & { lote: string; subido_por: string },
+): Promise<FilaRegistrada> {
+  // `origen`, `estado` e `intentos` los pone el servidor, NUNCA el cliente: son exactamente los tres
+  // valores que la policy de insert exige, y son los que convertirían una fila recién subida en un
+  // gasto declarado como ya cargado.
+  const { error } = await supabase
+    .from('comprobante_entrada')
+    .insert({ ...fila, origen: 'web', estado: 'pendiente', intentos: 0 })
+  return error
+    ? { storage_path: fila.storage_path, ok: false, error: traducirError(error.message) }
+    : { storage_path: fila.storage_path, ok: true }
 }
