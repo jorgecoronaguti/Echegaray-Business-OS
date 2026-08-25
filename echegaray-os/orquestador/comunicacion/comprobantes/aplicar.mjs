@@ -11,7 +11,7 @@
 //
 // NO SABE PUBLICAR NI CONTESTAR HTTP. Devuelve el fajo y los hechos; el mensaje lo arma cada camino.
 
-import { ESTADO, estaCompleto, aplicarOpcion, imputacionPendiente } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, aplicarOpcion, imputacionPendiente, resolverDuplicado, indiceDuplicadoAbierto } from '../../lib/comprobantes/fajo.mjs'
 import { escribirFajo } from './escritura.mjs'
 import * as repoReal from './repositorio.mjs'
 
@@ -61,6 +61,45 @@ export async function aplicarEleccion(d, { fajoId, indices = [], campo, valor } 
   const vivos = guardado.items ?? []
   const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
   return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo), aplicados }
+}
+
+/**
+ * Contesta un PROBABLE duplicado y guarda el fajo. Misma fuente para el botón y para el texto.
+ *
+ * ═══ POR QUÉ EXISTE (25/08) ═══
+ *
+ * `contestarDuplicado` en `accion.mjs` hacía esto mismo, pero sólo lo alcanzaba un botón — y los
+ * botones están apagados en producción. Cuando se cableó la respuesta escrita, copiar el cuerpo
+ * habría dejado dos criterios para la misma decisión; el que se queda viejo es siempre el que menos
+ * se usa, y acá lo que está en juego es cargar dos veces un gasto o no cargarlo nunca.
+ *
+ * @param {object} d {port, repo?, log?}
+ * @param {object} p {fajoId, indice?, respuesta:'mismo'|'otro'}
+ * @returns {Promise<{que:string, fajo?:object, listo?:boolean}>}
+ *   `listo` = ya no queda nada que preguntar y hay algo cargable, igual que en `aplicarEleccion`.
+ */
+export async function contestarDuplicado(d, { fajoId, indice = -1, respuesta } = {}) {
+  const { port, repo = repoReal, log = null } = d
+  const fajo = await repo.fajoPorId(port, fajoId)
+  if (!fajo) return { que: RESULTADO.SIN_FAJO }
+  if (fajo.estado !== ESTADO.ABIERTO) return { que: RESULTADO.CERRADO, fajo }
+
+  // Sin índice válido se contesta el PRIMERO abierto: es lo que la persona está mirando cuando
+  // escribe «es otro». Con varios, se contesta de a uno y el mensaje vuelve a preguntar por el que
+  // sigue — repreguntar es barato, resolver dos duplicados con una palabra no.
+  const i = indice >= 0 ? indice : indiceDuplicadoAbierto(fajo.items ?? [])
+  const items = resolverDuplicado(fajo.items ?? [], i, respuesta)
+  // Ni el índice existe ni había nada abierto: o ya lo contestaron, o el mensaje quedó viejo. En los
+  // dos casos no se toca nada — el mismo idempotente que el botón.
+  if (!items) return { que: RESULTADO.INVALIDA, fajo }
+
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return { que: RESULTADO.CERRADO, fajo }
+  log?.info?.('comprobantes: duplicado contestado', { fajo: fajo.id, indice: i, respuesta })
+
+  const vivos = guardado.items ?? []
+  const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
+  return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo) }
 }
 
 /**

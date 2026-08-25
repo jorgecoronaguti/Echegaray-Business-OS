@@ -18,7 +18,8 @@
 //   node orquestador/scripts/vigilar-comprobantes.mjs --json
 
 import { auditar } from './auditar-comprobantes-cargados.mjs'
-import { descalces, avisoDescalces, anotarDescalces } from '../lib/comprobantes/vigilancia.mjs'
+import { descalces, avisoDescalces, anotarDescalces, fajosMudos, avisoFajosMudos } from '../lib/comprobantes/vigilancia.mjs'
+import { fajosSinAviso } from '../comunicacion/comprobantes/repositorio.mjs'
 
 async function main() {
   const args = process.argv.slice(2)
@@ -33,6 +34,15 @@ async function main() {
 
   const resultado = await auditar({ google, port })
   const d = descalces(resultado)
+
+  // ═══ LA SEGUNDA RED, POR SI EL WORKER ESTUVO CAÍDO (25/08) ═══
+  //
+  // Quien salva la conversación es el barrido del propio worker (`comprobantes/vigia-mudos.mjs`):
+  // avisa a los minutos, no al día siguiente. Pero un fajo queda mudo justo cuando el worker no
+  // pudo publicar, y a veces la razón es que el worker no estaba. Acá no se publica nada —este
+  // script no habla por Mattermost— : se INFORMA, que es lo que un timer de auditoría puede hacer
+  // sin abrir un segundo camino de publicación.
+  const mudos = port ? await fajosSinAviso(port, { minutos: 30, limite: 50 }).then((f) => fajosMudos(f, { minutos: 30 })).catch(() => null) : null
 
   if (!d.disponible) {
     // NO PODER LEER EL REGISTRO NO ES "NO HAY DESCALCES". Confundirlos haría que un Postgres caído
@@ -49,7 +59,7 @@ async function main() {
   const aviso = avisoDescalces(d, { nuevos: dry ? null : anotado.anotados })
 
   if (json) {
-    process.stdout.write(`${JSON.stringify({ ok: true, ...d, ...anotado, dry }, null, 2)}\n`)
+    process.stdout.write(`${JSON.stringify({ ok: true, ...d, ...anotado, mudos, dry }, null, 2)}\n`)
   } else if (!todos.length) {
     process.stdout.write('✓ El registro de cargas y la pestaña Compras coinciden: ningún descalce.\n')
   } else {
@@ -60,6 +70,12 @@ async function main() {
     // Salir distinto de 0 es lo que hace que un timer de systemd deje rastro en el journal cuando hay
     // algo: un control que siempre sale 0 obliga a leer la salida para saber si encontró algo.
     process.exitCode = d.sinGasto.length ? 2 : 0
+  }
+  // NO PODER MIRAR NO ES «NO HAY»: `mudos === null` significa que la consulta no se pudo hacer, y se
+  // dice. Callarlo haría que una base caída se leyera igual que un canal sano.
+  if (!json) {
+    if (mudos === null) process.stdout.write('⚠ No pude revisar si quedaron cargas trabadas sin avisar.\n')
+    else if (mudos.length) { process.stdout.write(`\n${avisoFajosMudos(mudos)}\n`); process.exitCode = 2 }
   }
   await db?.closePool?.().catch?.(() => {})
 }

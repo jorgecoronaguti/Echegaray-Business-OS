@@ -9,7 +9,7 @@
 // vez de reventar con un error de Postgres en la cara del dueño. El deploy y la migración no siempre
 // caen juntos, y este repo ya perdió medio día por suponer que sí.
 
-import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, colapsarRepetidos } from '../../lib/comprobantes/fajo.mjs'
 import { clavesEquivalentes } from '../../lib/comprobantes/lectura.mjs'
 
 /** ¿Está aplicada la migración? Una sola consulta barata, sin tocar datos. */
@@ -35,6 +35,23 @@ export async function fajoAbierto(port, { plataforma = 'mattermost', userId, cha
   return rows[0] ?? null
 }
 
+/**
+ * Los fajos ABIERTOS que todavía no publicaron su aviso y hace rato que no se mueven.
+ *
+ * La condición de tiempo va en SQL a propósito: el reloj que decide es el mismo con el que se
+ * escribió `ultimo_at`. Quién es "mudo" de verdad lo decide `fajosMudos` (núcleo puro); esto sólo
+ * acota el barrido para no traerse la tabla entera.
+ */
+export async function fajosSinAviso(port, { minutos = 15, limite = 20 } = {}) {
+  const { rows } = await port.query(
+    `select * from comunicacion.comprobante_fajos
+      where estado = $1 and aviso_post_id is null
+        and ultimo_at < now() - ($2 || ' minutes')::interval
+      order by ultimo_at asc limit $3`,
+    [ESTADO.ABIERTO, String(Math.max(1, Number(minutos) || 15)), limite])
+  return rows
+}
+
 /** Un fajo por id, en cualquier estado. Lo usa el manejador de los botones. */
 export async function fajoPorId(port, id) {
   if (!id) return null
@@ -44,10 +61,23 @@ export async function fajoPorId(port, id) {
 
 /**
  * Abre un fajo. Si otro proceso lo abrió primero (dos posts casi simultáneos), el índice único
- * parcial rechaza el insert y devolvemos el que ya existe: nunca dos confirmaciones para la misma
- * tanda.
+ * parcial rechaza el insert y se AMPLÍA el que ya existe: nunca dos confirmaciones para la misma
+ * tanda, y nunca un comprobante que se evapora.
+ *
+ * ═══ EL PERDEDOR DE LA CARRERA SE LLEVABA SUS COMPROBANTES AL TACHO (25/08) ═══
+ *
+ * Acá decía `return fajoAbierto(...)`: el que perdía devolvía el fajo AJENO, pelado, sin los ítems
+ * que acababa de leer con el modelo. `procesarPost` seguía adelante con ese fajo, la rendición no
+ * cuadraba (queda el `log.error` «hay adjuntos sin destino») y los comprobantes recién leídos no
+ * quedaban en ningún lado. Es el modo de falla que el dueño pidió contemplar: «muchas personas
+ * pueden empezar a enviar comprobantes» — y también la misma persona mandando dos posts seguidos,
+ * que es el caso que ya se dio.
+ *
+ * Se colapsa al fusionar por la MISMA razón que al ampliar: la misma foto en dos posts tiene que dar
+ * una línea. Y si el ganador se cerró entre medio, se reintenta abrir UNA vez: dos vueltas alcanzan
+ * porque el índice sólo puede rechazar mientras haya uno abierto.
  */
-export async function abrirFajo(port, { plataforma = 'mattermost', userId, username, channelId, rootPostId, postId, items = [] } = {}) {
+export async function abrirFajo(port, { plataforma = 'mattermost', userId, username, channelId, rootPostId, postId, items = [] } = {}, { reintentos = 1 } = {}) {
   try {
     const { rows } = await port.query(
       `insert into comunicacion.comprobante_fajos
@@ -57,7 +87,18 @@ export async function abrirFajo(port, { plataforma = 'mattermost', userId, usern
     return rows[0]
   } catch (e) {
     if (String(e?.code) !== '23505') throw e
-    return fajoAbierto(port, { plataforma, userId, channelId })
+    const ganador = await fajoAbierto(port, { plataforma, userId, channelId })
+    if (!ganador) {
+      // Se cerró entre el choque y la lectura: ahora hay lugar. Una sola vuelta más.
+      if (reintentos > 0) return abrirFajo(port, { plataforma, userId, username, channelId, rootPostId, postId, items }, { reintentos: reintentos - 1 })
+      return null
+    }
+    if (!items?.length) return ganador
+    const { items: todos } = colapsarRepetidos([...(ganador.items ?? []), ...items])
+    const ampliado = await agregarAlFajo(port, { id: ganador.id, items: todos, postId })
+    if (ampliado) return ampliado
+    if (reintentos > 0) return abrirFajo(port, { plataforma, userId, username, channelId, rootPostId, postId, items }, { reintentos: reintentos - 1 })
+    return null
   }
 }
 
