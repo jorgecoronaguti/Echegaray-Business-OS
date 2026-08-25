@@ -14,7 +14,7 @@
 import { ESTADO, ETIQUETA_CAMPO, imputacionPendiente } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { RESPUESTA } from '../../lib/comprobantes/respuesta-texto.mjs'
-import { aplicarEleccion, confirmarFajo, RESULTADO } from './aplicar.mjs'
+import { aplicarEleccion, confirmarFajo, contestarDuplicado, RESULTADO } from './aplicar.mjs'
 import * as repoReal from './repositorio.mjs'
 
 export const TEXTO = Object.freeze({
@@ -22,6 +22,7 @@ export const TEXTO = Object.freeze({
   YA_CERRADO: 'Esa carga ya se cerró. Si querés cambiar algo, mandá el comprobante de nuevo.',
   INVALIDA: 'Esa opción ya no corresponde a estos comprobantes. Usá **Corregir** en el mensaje de arriba.',
   DESCARTADO: '🗑 Descartado. **No cargué nada.**',
+  DUPLICADO_RESUELTO: 'Ese ya lo contestaste. Si querés cambiarlo, mandá el comprobante de nuevo.',
   CARGANDO: '⏳ Cargando en Compras…',
 })
 
@@ -72,6 +73,52 @@ export async function atenderRespuesta(d, { fajo, respuesta } = {}) {
     if (!cerrado) return { texto: TEXTO.YA_CERRADO, estado: 'ya_cerrado' }
     await refrescar(mattermost, cerrado, { message: TEXTO.DESCARTADO }, log)
     return { texto: TEXTO.DESCARTADO, estado: 'descartado' }
+  }
+
+  // ── El PROBABLE duplicado, contestado escribiendo ──────────────────────────
+  //
+  // Era el único freno del flujo sin salida por texto, y los botones —su única salida— están
+  // apagados en producción. Ver `RE_DUP_MISMO` / `RE_DUP_OTRO`.
+  if (respuesta.que === RESPUESTA.DUPLICADO) {
+    const r = await contestarDuplicado({ port, repo, log }, {
+      fajoId: fajo.id, indice: respuesta.indices?.[0] ?? -1, respuesta: respuesta.valor,
+    })
+    if (r.que === RESULTADO.SIN_FAJO) return { texto: TEXTO.SIN_FAJO, estado: 'sin_fajo' }
+    if (r.que === RESULTADO.CERRADO) return { texto: TEXTO.YA_CERRADO, estado: 'ya_cerrado' }
+    if (r.que === RESULTADO.INVALIDA) return { texto: TEXTO.DUPLICADO_RESUELTO, estado: 'duplicado_resuelto' }
+
+    const anotado = respuesta.valor === 'mismo'
+      ? '✔ Anotado: **es el mismo**, no lo cargo de nuevo.'
+      : '✔ Anotado: **es otro comprobante**, lo cargo.'
+
+    // CONTESTAR LO ÚLTIMO QUE FALTABA ES CONFIRMAR — el mismo escritor y la misma condición que el
+    // botón y que la carga automática del post. No hay un tercer camino de escritura.
+    if (r.listo) {
+      const c = await confirmarFajo({
+        port, repo, escribir, log,
+        alEmpezar: (f) => refrescar(mattermost, f, { message: `${TEXTO.CARGANDO}\n\n${anotado}` }, log),
+      }, { fajoId: r.fajo.id })
+      if (c.que === RESULTADO.SIN_FAJO) return { texto: TEXTO.SIN_FAJO, estado: 'sin_fajo' }
+      if (c.que === 'ya_en_curso' || c.que === RESULTADO.CERRADO) {
+        return { texto: `${anotado}\n\nEsos comprobantes ya se estaban cargando.`, estado: 'ya_en_curso' }
+      }
+      await refrescar(mattermost, c.fajo, { message: c.texto }, log)
+      return { texto: `${anotado}\n\n${c.texto ?? '✔ Cargado.'}`, estado: c.estado ?? ESTADO.CARGADO }
+    }
+
+    // «Es el mismo» sobre el ÚNICO comprobante del fajo deja un fajo sin nada que cargar: se cierra
+    // acá mismo. Dejarlo abierto lo volvería a trabar todo, que es justo el defecto que se corrige.
+    if ((r.fajo.items ?? []).every((it) => it?.duplicadoResuelto === 'mismo' || it?.yaCargado)) {
+      await repo.cerrarFajo(port, { id: r.fajo.id, estado: ESTADO.DESCARTADO, error: 'el dueño confirmó que ya estaba cargado' })
+      return { texto: `${anotado}`, estado: 'ya_estaba' }
+    }
+
+    await refrescar(mattermost, r.fajo, mensajeAtarjeta(r.fajo, url), log)
+    const faltan = loQueFalta(r.fajo)
+    return {
+      texto: faltan.length ? `${anotado}\n\nMe falta todavía: **${faltan.join('** · **')}**.` : anotado,
+      estado: 'anotado',
+    }
   }
 
   // ── Ambiguo: se repregunta nombrando las candidatas ────────────────────────

@@ -27,7 +27,7 @@ import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobant
 import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
 import { cruceBancario, dicePagadaPorBanco } from '../../lib/comprobantes/banco.mjs'
 import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, rotulosDe, ESTADO } from '../../lib/comprobantes/fajo.mjs'
-import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
+import { mensajeFajo, textoPregunta } from '../../lib/comprobantes/mensaje.mjs'
 import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
 import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { parteVacia, parteDeRendicion, parteDeEscritura, sumarPartes } from '../../lib/comprobantes/parte.mjs'
@@ -485,7 +485,19 @@ export async function procesarPost(d, m = {}) {
     // Nada se escribió: lo que estaba listo queda trabado y se NOMBRA. Sin `seCargaron` la rendición
     // diría «listo» sobre un gasto que no entró a ningún lado.
     parte: parteDeRendicion(rendicion, { seCargaron: false }),
+    // ═══ LA PREGUNTA VIAJA APARTE, Y ESE ES EL ARREGLO (25/08) ═══
+    //
+    // El resumen de la tanda se REESCRIBE sobre un post viejo; una pregunta escrita ahí no la ve
+    // nadie. Se declara por separado para que quien publica pueda darle su propio post — y para que,
+    // si no puede publicarla, NO se dé por publicada. Ver `conLaTanda` y `textoPregunta`.
+    ...preguntaDelFajo(fajo),
   }
+}
+
+/** `{pregunta}` si el fajo quedó esperando una respuesta, o `{}`. Se esparce sobre la salida. */
+function preguntaDelFajo(fajo) {
+  const p = textoPregunta(fajo)
+  return p ? { pregunta: { ...p, fajoId: fajo.id } } : {}
 }
 
 /** ¿Este ítem entró con alguna de las fotos de ESTE post? Por `origen` o por cualquiera de sus copias. */
@@ -664,6 +676,9 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
         estado,
         fajoId: nuevo.id,
         parte,
+        // Se cargó lo que se podía Y quedó algo esperando: son dos mensajes distintos y el segundo
+        // exige respuesta. El resumen sigue yendo a la tanda; la pregunta, a su propio post.
+        ...preguntaDelFajo(nuevo),
       }
     }
   }
