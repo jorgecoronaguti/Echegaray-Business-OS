@@ -1,194 +1,255 @@
-// LA FICHA DE UN PROVEEDOR — quién es, qué se le compró, y con qué nombres llega de Compras.
+// LA FICHA CORTA DE UN PROVEEDOR — `22 · Proveedores v2.dc.html`, líneas 147-203.
 //
-// ═══ EL CUIT ES LA IDENTIDAD, Y POR ESO ES EL PRIMER CAMPO ═══
+// ═══ EL CUIT ES LA IDENTIDAD, Y POR ESO ES LO PRIMERO QUE RECLAMA ═══
 //
 // El dueño pidió *"proveedor como entidad canónica administrable"* y *"evitar duplicados por texto
 // libre"*. La identidad no puede ser el nombre: «Corralón Progreso», «CORRALON PROGRESO» y «Corralon
 // Progreso SRL» son tres textos y un proveedor. El CUIT es la única clave que ARCA, el banco y el
-// Sheet comparten, y por eso manda. Se guarda con 11 dígitos y sin guiones —lo normaliza
-// `normalizarCuit`— porque escrito de dos formas deja de cruzar contra ARCA.
+// Sheet comparten. Se guarda con 11 dígitos y sin guiones —lo normaliza `normalizarCuit`— porque
+// escrito de dos formas deja de cruzar.
 //
-// El CUIT es OPCIONAL a propósito: 14 de los 36 proveedores cargados no lo tienen, y exigirlo
-// dejaría a Administración sin poder registrar un proveedor real hasta conseguir un papel. Lo que
-// sí se hace es DECIR qué se pierde sin él, ahí donde falta.
+// Es OPCIONAL a propósito: 14 de los 36 proveedores cargados no lo tienen (medido 24/08/2026), y
+// exigirlo dejaría a Administración sin poder registrar un proveedor real hasta conseguir un papel.
+// Lo que sí se hace es DECIR qué se pierde sin él y poner el campo ahí mismo.
 //
-// ═══ QUÉ NO ESTÁ EN LA FICHA, Y POR QUÉ ═══
+// ═══ CRITERIO 2: EL VERBO FUNCIONA EN EL LUGAR ═══
 //
-// El handoff dibuja también condición de IVA, contacto y condición de pago. `public.proveedores` no
-// tiene esas columnas —tiene nombre, razón social, CUIT, notas y activo—. Dibujarlas en «sin cargar»
-// prometería un campo que el sistema no puede guardar: quien lo intentara no encontraría dónde. Se
-// declara en el informe del bloque, con la migración que haría falta.
+// «Cargar CUIT →» y «Editar» abren su formulario DEBAJO, en el panel. No navegan a una pantalla de
+// edición: el patrón prohíbe el `Ver → Editar → formulario → Guardar`, y con razón — quien viene de
+// la fila que reclama el CUIT ya sabe qué va a escribir, y mandarlo a otra ruta le hace perder de
+// vista cuál de los 14 estaba resolviendo.
+//
+// ═══ LO QUE EL MOCKUP DIBUJA Y LA BASE NO PUEDE PROBAR ═══
+//
+// «ÚLTIMAS COMPRAS» con fecha, obra e importe por comprobante. Ninguna vista publica el
+// comprobante de un proveedor: `proveedor_nombre_resuelto` agrega por nombre —comprobantes y total,
+// sin fecha ni obra— y `costos_obra` guarda el proveedor como TEXTO LIBRE, así que llegar a sus
+// filas exige normalizar dentro de Postgres, que PostgREST no puede hacer desde acá. Emparejar por
+// el texto crudo encontraría sólo las grafías exactas y publicaría un «últimas compras» incompleto
+// sin avisar, que es peor que no tenerlo. Se dibuja lo que sí está —los nombres vinculados con su
+// peso— y el motivo queda escrito EN LA PANTALLA, no sólo acá.
 
 import Link from 'next/link'
-import {
-  BotonAccion, Campo, CTRL, FormAccion,
-  type AccionFormulario, type ResultadoAccion,
-} from '@/shared/components/ui'
-import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
-import { plata } from '@/features/obras/components/formato'
-import { formatearCuit } from './TablaProveedores'
+import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { CamposProveedor } from './proveedores/CamposProveedor'
+import { IconoCerrar, IconoEditar, IconoProblema } from '@/shared/components/iconos'
+import { pesos } from '@/shared/components/canon/formato'
+import { formatearCuit } from '../services/identidad'
+import { PanelFilo, RotuloPanel, V } from './proveedores/patron'
 import type { ComprasDelProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
-export function CamposProveedor({ proveedor }: { proveedor: Proveedor | null }) {
+/** Una fila de propiedad del panel: rótulo de 104px y valor. `22v2:170-175`. */
+function Prop({ k, children, apagado }: { k: string; children: React.ReactNode; apagado?: boolean }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      <Campo label="Nombre" ancho="col-span-2" ayuda="Como se lo nombra en obra y en el Sheet.">
-        <input
-          name="nombre" required maxLength={200} className={CTRL}
-          defaultValue={proveedor?.nombre ?? ''} data-testid="proveedor-nombre"
-        />
-      </Campo>
-      <Campo label="CUIT" ancho="col-span-2" ayuda="11 dígitos. Se guarda sin guiones.">
-        <input
-          name="cuit" inputMode="numeric" maxLength={15} className={CTRL}
-          defaultValue={proveedor?.cuit ?? ''} data-testid="proveedor-cuit"
-        />
-      </Campo>
-      <Campo label="Razón social" ancho="col-span-2" ayuda="Sólo si difiere del nombre de arriba.">
-        <input name="razon_social" maxLength={200} className={CTRL} defaultValue={proveedor?.razon_social ?? ''} />
-      </Campo>
-      <Campo label="Notas" ancho="col-span-2">
-        <input name="notas" maxLength={300} className={CTRL} defaultValue={proveedor?.notas ?? ''} />
-      </Campo>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 0', borderBottom: `1px solid ${V.lineaPanel}` }}>
+      <span style={{ fontSize: '11.5px', color: V.tenue, width: 104, flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: '12px', color: apagado ? V.tenue : V.tinta, minWidth: 0 }}>{children}</span>
     </div>
   )
 }
 
-function Propiedad({ k, children }: { k: string; children: React.ReactNode }) {
+/**
+ * LA BANDA DE LO QUE FALTA, CON EL CAMPO ADENTRO. `22v2:159-167`.
+ *
+ * El formulario manda los cuatro campos porque `editarProveedor` valida el registro entero y
+ * comprueba que ni el CUIT ni el nombre normalizado sean de otro. Los tres que no se editan viajan
+ * ocultos con su valor actual: partir la acción en una que sólo toque el CUIT sería una segunda
+ * puerta de escritura sin el control de duplicados, que es el único motivo por el que la columna
+ * existe.
+ */
+function CargarCuit({ proveedor, editar, abierto }: {
+  proveedor: Proveedor
+  editar: AccionFormulario
+  abierto: boolean
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="shrink-0 text-[12px] text-muted">{k}</span>
-      <span className="min-w-0 truncate text-right text-[12.5px] text-ink">{children}</span>
-    </div>
+    <details open={abierto} data-testid="cargar-cuit" style={{ marginTop: 14 }}>
+      <summary
+        className="cursor-pointer list-none"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9,
+          borderTop: `1px solid ${V.lineaFila}`, borderBottom: `1px solid ${V.lineaFila}`,
+          padding: '9px 0 9px 11px', boxShadow: `inset 2px 0 0 ${V.warn}`,
+        }}
+      >
+        <span style={{ display: 'flex', color: V.warn, flexShrink: 0 }}>
+          <IconoProblema className="h-[14px] w-[14px]" />
+        </span>
+        <span style={{ fontSize: '12px', color: V.tintaSuave, flex: 1, minWidth: 0 }}>
+          No cruza con ARCA ni con el banco.
+        </span>
+        <span style={{ fontSize: '12.5px', fontWeight: 600, color: V.tinta, flexShrink: 0 }}>Cargar CUIT →</span>
+      </summary>
+      <div style={{ paddingTop: 12 }}>
+        <FormAccion accion={editar} testid="form-cargar-cuit" enviar="Guardar CUIT" mensajeOk="CUIT cargado.">
+          <input type="hidden" name="nombre" value={proveedor.nombre} />
+          <input type="hidden" name="razon_social" value={proveedor.razon_social ?? ''} />
+          <input type="hidden" name="notas" value={proveedor.notas ?? ''} />
+          <Campo label="CUIT" ayuda="11 dígitos. Se guarda sin guiones.">
+            <input name="cuit" inputMode="numeric" maxLength={15} className={CTRL} data-testid="cuit-inline" autoFocus={abierto} />
+          </Campo>
+        </FormAccion>
+      </div>
+    </details>
   )
 }
 
 export function PanelProveedor({
-  proveedor, compras, crear, editar, archivar, cerrarHref,
+  proveedor, compras, crear, editar, archivar, cerrarHref, abrirCuit = false,
 }: {
   /** `null` = alta. */
   proveedor: Proveedor | null
-  /** Lo que llega de Compras. `null` en el alta: todavía no hay a qué mirarle las compras. */
+  /** Lo que llega de Compras. `null` en el alta, o cuando la lectura de la cartera falló. */
   compras: ComprasDelProveedor | null
   crear: AccionFormulario
   editar: AccionFormulario
   archivar: (proveedorId: string, activo: boolean) => Promise<ResultadoAccion>
   cerrarHref: string
+  /** Viene de la fila que reclama el CUIT: el formulario ya llega abierto. */
+  abrirCuit?: boolean
 }) {
-  const esAlta = proveedor === null
+  if (proveedor === null) {
+    return (
+      <PanelFilo testid="panel-proveedor">
+        <Cabecera titulo="Nuevo proveedor" cerrarHref={cerrarHref} />
+        <div style={{ marginTop: 18 }}>
+          <FormAccion accion={crear} testid="form-proveedor-alta" enviar="Crear" limpiarAlOk mensajeOk="Proveedor creado.">
+            <CamposProveedor proveedor={null} />
+          </FormAccion>
+        </div>
+      </PanelFilo>
+    )
+  }
 
+  const sinCompras = compras === null || compras.nombres.length === 0
   return (
-    <aside
-      data-testid="panel-proveedor"
-      className="w-full shrink-0 border-t border-line pt-4 lg:w-[392px] lg:border-l lg:border-t-0 lg:py-1 lg:pl-6 lg:pt-0"
-    >
-      <div className="flex items-baseline gap-2.5">
-        <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">
-          {proveedor?.nombre ?? 'Nuevo proveedor'}
-        </h2>
-        {/* LA PUERTA A LA FICHA. El panel sirve para ELEGIR y para editar cuatro campos; la ficha
-            es donde el proveedor se entiende (qué se le compró, a qué obras fue, qué provee). Sin
-            este enlace la única forma de llegar sería escribir la URL. */}
-        {!esAlta && (
-          <Link
-            href={`/administracion/proveedores/${proveedor.id}`}
-            data-testid="abrir-ficha-proveedor"
-            className="shrink-0 text-[12px] leading-none text-muted underline transition-colors hover:text-ink"
-          >Ver ficha</Link>
-        )}
-        <Link
-          href={cerrarHref} data-testid="cerrar-panel" aria-label="Cerrar el panel"
-          className="shrink-0 text-[12px] leading-none text-faint transition-colors hover:text-ink"
-        >✕</Link>
+    <PanelFilo testid="panel-proveedor">
+      <Cabecera
+        titulo={proveedor.nombre}
+        cerrarHref={cerrarHref}
+        bajo={
+          <span className="font-mono" style={{ fontSize: '12px', color: proveedor.cuit ? V.apagado : V.warn }}>
+            {proveedor.cuit ? formatearCuit(proveedor.cuit) : 'sin CUIT'}
+          </span>
+        }
+        fichaHref={`/administracion/proveedores/${proveedor.id}`}
+      />
+
+      {!proveedor.cuit && <CargarCuit proveedor={proveedor} editar={editar} abierto={abrirCuit} />}
+
+      <div style={{ marginTop: 18 }} data-testid="proveedor-props">
+        <Prop k="Estado" apagado={!proveedor.activo}>{proveedor.activo ? 'Activo' : 'Archivado'}</Prop>
+        <Prop k="Razón social" apagado={!proveedor.razon_social}>{proveedor.razon_social ?? 'sin cargar'}</Prop>
+        <Prop k="Comprado" apagado={sinCompras}>
+          {/* NI CERO NI GUIÓN MUDO: se distingue «no se le compró» de «no lo pude leer». */}
+          {compras === null
+            ? 'no pude leerlo'
+            : compras.comprado === null
+              ? 'sin compras'
+              : <span data-testid="proveedor-comprado" className="font-mono tabular-nums">{pesos(compras.comprado)} · histórico</span>}
+        </Prop>
+        <Prop k="Comprobantes" apagado={sinCompras}>
+          {compras === null ? 'no pude leerlos' : compras.comprobantes > 0 ? compras.comprobantes : 'ninguno'}
+        </Prop>
+        <Prop k="Notas" apagado={!proveedor.notas}>{proveedor.notas ?? 'sin cargar'}</Prop>
       </div>
 
-      {!esAlta && (
-        <>
-          <div className="mt-1">
-            {proveedor.cuit
-              ? <Num className="text-muted">{formatearCuit(proveedor.cuit)}</Num>
-              : (
-                  <p className="text-[12px] text-warn" data-testid="proveedor-sin-cuit">
-                    Sin CUIT: no cruza con ARCA ni con el banco.
-                  </p>
-                )}
-          </div>
+      <div style={{ marginTop: 20 }}>
+        <RotuloPanel cuenta={compras && compras.nombres.length ? compras.nombres.length : undefined}>
+          Nombres de Compras vinculados
+        </RotuloPanel>
+        {sinCompras
+          ? (
+              <p style={{ fontSize: '12px', color: V.tenue, padding: '7px 0' }} data-testid="proveedor-sin-nombres">
+                {compras === null
+                  ? 'No pude leer la resolución de nombres: esta ficha no puede afirmar que no se le compró nada.'
+                  : 'Todavía no se le compró nada: ningún texto de Compras apunta a esta ficha.'}
+              </p>
+            )
+          : (
+              <div data-testid="nombres-vinculados">
+                {compras.nombres.map((n) => (
+                  <div key={n.nombre_norm} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${V.lineaPanel}` }}>
+                    {/* De dónde salió el vínculo: el nombre escrito IGUAL que el maestro, o una
+                        resolución que alguien firmó. No es lo mismo para auditarlo. */}
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', color: V.tenue, width: 52, flexShrink: 0 }}>
+                      {n.manual ? 'resuelto' : 'exacto'}
+                    </span>
+                    <span className="truncate" style={{ fontSize: '12px', color: V.tintaSuave, minWidth: 0 }}>{n.nombre_norm}</span>
+                    <span className="font-mono tabular-nums" style={{ marginLeft: 'auto', fontSize: '11.5px', color: V.tinta, flexShrink: 0 }}>
+                      {pesos(n.total)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+        <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 10, textWrap: 'pretty' }} data-testid="sin-detalle-comprobantes">
+          El detalle comprobante por comprobante —fecha y obra— no se puede mostrar: Compras guarda
+          el proveedor como texto libre y ninguna vista publica esas filas por proveedor. Se ve por
+          nombre vinculado, que es lo que el OS sí puede probar.
+        </p>
+      </div>
 
-          <div className="mt-4 space-y-2.5">
-            <Propiedad k="Razón social">{proveedor.razon_social ?? <Nulo>sin cargar</Nulo>}</Propiedad>
-            <Propiedad k="Estado">{proveedor.activo ? 'activo' : <Nulo>archivado</Nulo>}</Propiedad>
-            <Propiedad k="Comprado (histórico)">
-              {compras?.comprado == null
-                ? <Nulo>sin compras vinculadas</Nulo>
-                : <span data-testid="proveedor-comprado"><Num>{plata(compras.comprado)}</Num></span>}
-            </Propiedad>
-            <Propiedad k="Comprobantes">
-              {compras && compras.comprobantes > 0 ? <Num>{compras.comprobantes}</Num> : <Nulo>ninguno</Nulo>}
-            </Propiedad>
-            <Propiedad k="Última compra">
-              {/* La vista que publica lo comprado no publica la fecha máxima. Se dice en lenguaje
-                  de producto (QA 24/08): «la vista» es jerga de la base, no del que mira la ficha. */}
-              <Nulo>sin fecha registrada</Nulo>
-            </Propiedad>
-            <Propiedad k="Notas">{proveedor.notas ?? <Nulo>sin cargar</Nulo>}</Propiedad>
-          </div>
-
-          <section className="mt-6">
-            <Eyebrow className="mb-2.5">Nombres de Compras vinculados</Eyebrow>
-            {!compras || compras.nombres.length === 0
-              ? <Nulo>ningún nombre del Sheet apunta todavía a este proveedor</Nulo>
-              : (
-                  <ul className="space-y-1.5" data-testid="nombres-vinculados">
-                    {compras.nombres.map((n) => (
-                      <li key={n.nombre_norm} className="flex items-baseline gap-3">
-                        <span className="min-w-0 flex-1 truncate border-b border-[#EFEEEA] pb-[2px] text-[11.5px] text-ink-soft">
-                          {n.nombre_norm}
-                        </span>
-                        {/* De dónde salió el vínculo: el nombre escrito IGUAL que el maestro, o una
-                            resolución que alguien decidió. No es lo mismo para auditarlo. */}
-                        <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">
-                          {n.manual ? 'resuelto' : 'exacto'}
-                        </span>
-                        <Num className="shrink-0 text-[11px] text-faint">{n.comprobantes}</Num>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-          </section>
-        </>
-      )}
-
-      <section className={esAlta ? 'mt-4' : 'mt-6 border-t border-line pt-4'}>
-        {!esAlta && <Eyebrow className="mb-2.5">Datos del proveedor</Eyebrow>}
-        <FormAccion
-          accion={esAlta ? crear : editar}
-          testid={esAlta ? 'form-proveedor-alta' : 'form-proveedor-editar'}
-          enviar={esAlta ? 'Crear' : 'Guardar'}
-          limpiarAlOk={esAlta}
-          mensajeOk={esAlta ? 'Proveedor creado.' : 'Guardado.'}
-        >
-          <CamposProveedor proveedor={proveedor} />
-        </FormAccion>
-      </section>
-
-      {!esAlta && (
-        <section className="mt-6 border-t border-line pt-4">
-          <p className="mb-2 text-[12px] text-muted">
-            {proveedor.activo
-              ? 'Archivar lo saca de la lista operativa. Las compras que ya tiene imputadas no se tocan.'
-              : 'Está archivado: no aparece en la lista ni se ofrece para vincular nombres.'}
-          </p>
-          <BotonAccion
-            accion={archivar}
-            args={[proveedor.id, !proveedor.activo]}
-            testid={proveedor.activo ? 'archivar-proveedor' : 'activar-proveedor'}
-            tono={proveedor.activo ? 'peligro' : 'neutral'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+        <details data-testid="editar-proveedor" style={{ minWidth: 0, flex: '1 1 100%' }}>
+          <summary
+            className="inline-flex cursor-pointer list-none items-center gap-[7px] hover:border-[#D7D5CF]"
+            style={{
+              border: `1px solid ${V.linea}`, background: '#FFFFFF', color: V.tinta,
+              fontSize: '12.5px', fontWeight: 500, borderRadius: 6, padding: '7px 12px',
+            }}
           >
-            {proveedor.activo ? 'Archivar' : 'Volver a activar'}
-          </BotonAccion>
-        </section>
+            <IconoEditar className="h-[14px] w-[14px]" />
+            Editar
+          </summary>
+          <div style={{ paddingTop: 14 }}>
+            <FormAccion accion={editar} testid="form-proveedor-editar" enviar="Guardar" mensajeOk="Guardado.">
+              <CamposProveedor proveedor={proveedor} />
+            </FormAccion>
+          </div>
+        </details>
+        <BotonAccion
+          accion={archivar}
+          args={[proveedor.id, !proveedor.activo]}
+          testid={proveedor.activo ? 'archivar-proveedor' : 'activar-proveedor'}
+          tono="neutral"
+        >
+          {proveedor.activo ? 'Archivar' : 'Volver a activar'}
+        </BotonAccion>
+        <span style={{ fontSize: '11px', color: V.tenue }}>
+          {proveedor.activo
+            ? 'Sale de la cartera activa; sus compras quedan.'
+            : 'No aparece en la lista ni se ofrece para vincular nombres.'}
+        </span>
+      </div>
+    </PanelFilo>
+  )
+}
+
+function Cabecera({ titulo, bajo, cerrarHref, fichaHref }: {
+  titulo: string
+  bajo?: React.ReactNode
+  cerrarHref: string
+  fichaHref?: string
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 600, color: V.tinta, lineHeight: 1.25 }}>{titulo}</h2>
+        {bajo && <div style={{ marginTop: 3 }}>{bajo}</div>}
+      </div>
+      {/* LA PUERTA A LA FICHA COMPLETA. El panel sirve para elegir y para corregir cuatro campos; la
+          ficha es donde el proveedor se entiende. Sin este enlace la única forma de llegar sería
+          escribir la URL a mano. */}
+      {fichaHref && (
+        <Link href={fichaHref} data-testid="abrir-ficha-proveedor" style={{ flexShrink: 0, fontSize: '12px', color: V.apagado, textDecoration: 'underline' }}>
+          Ver ficha
+        </Link>
       )}
-    </aside>
+      <Link href={cerrarHref} data-testid="cerrar-panel" aria-label="Cerrar el panel" title="Cerrar" style={{ display: 'flex', color: V.tenue, flexShrink: 0 }}>
+        <IconoCerrar className="h-[14px] w-[14px]" />
+      </Link>
+    </div>
   )
 }

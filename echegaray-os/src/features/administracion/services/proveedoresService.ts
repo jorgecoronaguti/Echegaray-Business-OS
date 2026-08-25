@@ -6,6 +6,9 @@
 // pregunta y la pantalla podría discrepar con cualquier otro consumidor.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+// La ruta es relativa y con extensión a propósito: `node --test` corre este archivo sin el alias
+// `@/` de Next, y un import por alias lo hace fallar antes del primer test.
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import type { NombrePendiente, NombreResuelto, Proveedor, ServiceResult } from '../types'
 
 const COLUMNAS = 'id, nombre, razon_social, cuit, notas, activo'
@@ -13,7 +16,6 @@ const COLUMNAS = 'id, nombre, razon_social, cuit, notas, activo'
 export type FiltroActivo = 'activos' | 'archivados' | 'todos'
 
 export interface FiltroProveedores {
-  q?: string
   activo?: FiltroActivo
   /**
    * `true` = sólo los que NO tienen CUIT. Es el filtro al que aterriza el aviso de la cartera: un
@@ -27,29 +29,63 @@ export interface FiltroProveedores {
   sinCuit?: boolean
 }
 
+/**
+ * EL PREDICADO, UNA SOLA VEZ — y como DATOS, no como una función que toca el builder.
+ *
+ * Lo comparten la lista y el conteo: si «sin CUIT» se escribiera dos veces, el día que difieran el
+ * aviso de la primera línea pediría un trabajo que la lista no muestra.
+ *
+ * Devuelve condiciones en vez de aplicarlas porque el builder de `postgrest-js` lleva ocho
+ * parámetros genéricos que arrastran la forma del `select()`: una función que lo recibiera y lo
+ * devolviera obliga a un `any` o a un cast por llamada, y con `T extends Filtrable<T>` TypeScript
+ * se va a «type instantiation is excessively deep». De paso, el predicado queda probable sin base.
+ */
+export type CondicionProveedores =
+  | { op: 'eq'; columna: string; valor: unknown }
+  | { op: 'or'; filtro: string }
+
+export function condicionesDe(filtro: FiltroProveedores): CondicionProveedores[] {
+  const cs: CondicionProveedores[] = []
+  const activo = filtro.activo ?? 'activos'
+  if (activo === 'activos') cs.push({ op: 'eq', columna: 'activo', valor: true })
+  if (activo === 'archivados') cs.push({ op: 'eq', columna: 'activo', valor: false })
+  // EL CUIT VACÍO CUENTA COMO AUSENCIA: la columna admite `''` además de `null`, y un CUIT vacío no
+  // cruza con ARCA ni con el banco igual que uno que no está.
+  if (filtro.sinCuit) cs.push({ op: 'or', filtro: 'cuit.is.null,cuit.eq.' })
+  return cs
+}
+
+/**
+ * ¿ESTE PROVEEDOR COINCIDE CON LO QUE SE TIPEÓ?
+ *
+ * El filtro por texto se resolvía en Postgres con tres `ilike`. Se trajo a memoria por dos motivos
+ * medidos, no por gusto:
+ *
+ *   1. `ilike` NO ignora las tildes. Buscar «corralon» no encontraba «Corralón», y nadie escribe
+ *      los acentos cuando busca. `contiene` —la misma normalización que usan las otras cuatro
+ *      listas del OS— sí los ignora, así que el mismo tipeo da el mismo resultado en toda la app.
+ *   2. La pantalla necesita DOS conteos: cuántos hay bajo el filtro y cuántos quedan después de
+ *      buscar. Con el texto en la consulta hacían falta dos viajes para saberlos; con el maestro ya
+ *      en memoria —decenas de filas, no miles— salen los dos de la misma lectura.
+ *
+ * El CUIT se compara por sus DÍGITOS: quien lo tiene a mano lo tipea con guiones y la base lo guarda
+ * sin ellos, así que sin esto buscar «30-70839055-7» no encontraría nada.
+ */
+export function coincideProveedor(p: Proveedor, q: string | undefined): boolean {
+  if (!q?.trim()) return true
+  if (contieneEnAlguno([p.nombre, p.razon_social], q)) return true
+  const digitos = q.replace(/\D/g, '')
+  return digitos.length > 0 && (p.cuit ?? '').includes(digitos)
+}
+
 export async function getProveedores(
   supabase: SupabaseClient,
   filtro: FiltroProveedores = {},
 ): Promise<ServiceResult<Proveedor[]>> {
   let consulta = supabase.from('proveedores').select(COLUMNAS)
-
-  const activo = filtro.activo ?? 'activos'
-  if (activo === 'activos') consulta = consulta.eq('activo', true)
-  if (activo === 'archivados') consulta = consulta.eq('activo', false)
-
-  if (filtro.sinCuit) consulta = consulta.or('cuit.is.null,cuit.eq.')
-
-  const q = filtro.q?.trim()
-  if (q) {
-    const seguro = q.replace(/[,()]/g, ' ').trim()
-    // El CUIT se busca por sus dígitos: quien lo tiene a mano lo tipea con guiones, y la base lo
-    // guarda sin ellos. Sin esto, buscar "30-70839055-7" no encontraría nada.
-    const digitos = seguro.replace(/\D/g, '')
-    const partes = [`nombre.ilike.%${seguro}%`, `razon_social.ilike.%${seguro}%`]
-    if (digitos) partes.push(`cuit.ilike.%${digitos}%`)
-    if (seguro) consulta = consulta.or(partes.join(','))
+  for (const c of condicionesDe(filtro)) {
+    consulta = c.op === 'eq' ? consulta.eq(c.columna, c.valor) : consulta.or(c.filtro)
   }
-
   const { data, error } = await consulta.order('nombre', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Proveedor[], error: null }
@@ -116,7 +152,15 @@ export interface ComprasDelProveedor {
   comprado: number | null
 }
 
-/** El resumen, separado de la consulta para poder probarlo sin base. */
+/**
+ * El resumen de UN proveedor, a partir de las filas de la lectura única de la cartera.
+ *
+ * Es una función pura sobre datos ya leídos, no una consulta: el panel de un proveedor NO dispara
+ * un viaje propio. `getResolucionCartera` trae la vista una sola vez para toda la página y de ahí
+ * salen las dos cosas —la columna COMPRADO de cada fila y el detalle del que está abierto—. Antes
+ * eran dos lecturas de `proveedor_nombre_resuelto`, y esa vista reagrupa `costos_obra` ENTERA en
+ * cada llamada: pedirla dos veces era pagar dos veces el mismo agregado.
+ */
 export function resumirCompras(filas: NombreResuelto[]): ComprasDelProveedor {
   const nombres = filas
     .map((f) => ({
@@ -134,24 +178,11 @@ export function resumirCompras(filas: NombreResuelto[]): ComprasDelProveedor {
   }
 }
 
-export async function getComprasDelProveedor(
-  supabase: SupabaseClient,
-  proveedorId: string,
-): Promise<ComprasDelProveedor> {
-  const { data, error } = await supabase
-    .from('proveedor_nombre_resuelto')
-    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
-    .eq('proveedor_id', proveedorId)
-  // Un error de lectura NO se dibuja como «no compró nada»: se devuelve la lista vacía con
-  // `comprado: null`, que la ficha escribe como ausencia y no como cero.
-  if (error) return { nombres: [], comprobantes: 0, comprado: null }
-  return resumirCompras((data ?? []) as NombreResuelto[])
-}
-
 // ═══ LA CARTERA (canónico 22): LO COMPRADO Y EL TIPO, PARA TODAS LAS FILAS DE UNA VEZ ═══
 //
-// El canónico dibuja seis columnas: PROVEEDOR · RUBRO · TIPO · CUIT · COMPRADO 12 M · PAPELES.
-// Tres de ellas tienen fuente y tres no, y la diferencia se resuelve acá, no en el componente:
+// El canónico v2 ya viene podado a lo que la base prueba: PROVEEDOR · CUIT · COMPRADO · COMPROB.
+// La v1 dibujaba además RUBRO y PAPELES y ninguna tenía fuente. Queda escrito por qué, para que
+// nadie las vuelva a agregar «porque el diseño viejo las tenía»:
 //
 //   COMPRADO  sale de `proveedor_nombre_resuelto`, la misma vista que ya alimenta la ficha. Se lee
 //             una vez para toda la lista y se agrupa en memoria —son decenas de filas, no miles—;
@@ -187,17 +218,54 @@ export function agruparComprado(filas: NombreResuelto[]): Map<string, CompradoPr
   return mapa
 }
 
-export async function getCompradoDeLaCartera(
+export async function getResolucionCartera(
   supabase: SupabaseClient,
-): Promise<ServiceResult<Map<string, CompradoProveedor>>> {
+): Promise<ServiceResult<NombreResuelto[]>> {
   const { data, error } = await supabase
     .from('proveedor_nombre_resuelto')
     .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
     .not('proveedor_id', 'is', null)
-  // UN ERROR DE LECTURA NO ES UN MAPA VACÍO. Vacío se dibuja como «a ninguno se le compró nada»;
+  // UN ERROR DE LECTURA NO ES UNA LISTA VACÍA. Vacío se dibuja como «a ninguno se le compró nada»;
   // el error se dice y la columna queda sin afirmar nada.
   if (error) return { data: null, error: error.message }
-  return { data: agruparComprado((data ?? []) as NombreResuelto[]), error: null }
+  return { data: (data ?? []) as NombreResuelto[], error: null }
+}
+
+/**
+ * CUÁNTOS PROVEEDORES CUMPLEN UN FILTRO, SIN TRAERLOS.
+ *
+ * El aviso «14 sin CUIT» necesita el número, no las filas: `head: true` deja el cuerpo vacío y
+ * Postgres devuelve sólo el conteo. Traer las 14 fichas enteras para hacerles `.length` era pedir
+ * datos que nadie iba a mirar, y además metía una segunda copia del maestro en la memoria del
+ * render. El predicado es EL MISMO de `getProveedores`: si se escribiera aparte, el día que
+ * difieran el aviso pediría un trabajo que la lista no muestra.
+ *
+ * ═══ POR QUÉ `exact` Y NO `planned` (decisión consciente, 25/08/2026) ═══
+ *
+ * `planned` usa la estimación del planificador y sale en tiempo constante, pero MIENTE por diseño.
+ * Acá el número no es una luz de aviso: es la etiqueta de un enlace que aterriza en la lista
+ * filtrada por el MISMO predicado, así que quien lee «14 sin CUIT» y hace clic tiene que ver 14
+ * filas. Un estimado que dijera 12 o 17 convertiría la primera línea de la pantalla en un dato que
+ * no se puede confrontar con nada — lo contrario de para qué existe.
+ *
+ * El costo está medido y es despreciable: `proveedores` tiene 36 filas (24/08/2026) y su política
+ * de RLS es un portero de área, no una comparación por fila. Si esta tabla creciera a decenas de
+ * miles, la decisión se revisa: ahí `exact` con RLS recorre y evalúa fila por fila.
+ */
+export async function contarProveedores(
+  supabase: SupabaseClient,
+  filtro: FiltroProveedores = {},
+): Promise<ServiceResult<number>> {
+  let consulta = supabase.from('proveedores').select('id', { count: 'exact', head: true })
+  for (const c of condicionesDe(filtro)) {
+    consulta = c.op === 'eq' ? consulta.eq(c.columna, c.valor) : consulta.or(c.filtro)
+  }
+  const { count, error } = await consulta
+  if (error) return { data: null, error: error.message }
+  // `count` puede venir `null` si PostgREST no pudo contar. NULL NO ES CERO: cero diría «no hay
+  // ninguno sin CUIT», que es justo la afirmación que esta pantalla no puede permitirse regalar.
+  if (count === null) return { data: null, error: 'PostgREST no devolvió el conteo' }
+  return { data: count, error: null }
 }
 
 /**
@@ -213,32 +281,4 @@ export async function getSubcontratistas(supabase: SupabaseClient): Promise<Serv
   const ids = new Set<string>()
   for (const f of (data ?? []) as { proveedor_id: string | null }[]) if (f.proveedor_id) ids.add(f.proveedor_id)
   return { data: ids, error: null }
-}
-
-export interface ResumenCartera {
-  proveedores: number
-  sinCuit: number
-  subcontratistas: number
-  /** `null` cuando ninguna fila visible tiene compras leídas: 0 diría que no se compró nada. */
-  comprado: number | null
-}
-
-/** El pie de la cartera: cuenta lo que la pantalla MUESTRA, con el mismo dato con que la dibuja. */
-export function resumirCartera(
-  proveedores: Proveedor[],
-  comprado: Map<string, CompradoProveedor> | null,
-  subcontratistas: Set<string> | null,
-): ResumenCartera {
-  let total = 0
-  let conDato = 0
-  for (const p of proveedores) {
-    const c = comprado?.get(p.id)
-    if (c) { total += c.total; conDato += 1 }
-  }
-  return {
-    proveedores: proveedores.length,
-    sinCuit: proveedores.filter((p) => !p.cuit).length,
-    subcontratistas: subcontratistas ? proveedores.filter((p) => subcontratistas.has(p.id)).length : 0,
-    comprado: conDato === 0 ? null : total,
-  }
 }
