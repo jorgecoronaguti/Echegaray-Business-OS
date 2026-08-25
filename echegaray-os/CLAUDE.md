@@ -29,6 +29,29 @@ con más de 400k. Eso —no el tamaño de las tareas— es el gasto.
   contaminado. `/clear` y reformular con lo aprendido.
 - **Antes de cerrar con trabajo a medio hacer: `/traspaso`.** La sesión siguiente lo recibe sola.
 
+**Lo medido el 25/08/2026, cuando el consumo semanal llegó al 100%:**
+
+- **La salida de los tests era el gasto \#1.** `npm run orq:test` imprimía una línea por cada uno de
+  los 9.365 tests: ~800.000 caracteres ≈ **228.000 tokens por corrida**, y en una jornada se corre
+  ocho o diez veces. Ahora usa `--test-reporter=dot`: la misma corrida son ~2.600 tokens, **86× menos**,
+  y los fallos siguen saliendo enteros con su stack y su diff. Para ver los ✔ uno por uno existe
+  `npm run orq:test:detalle`, que casi nunca hace falta.
+- **La misma regla vale para toda salida de shell.** `build`, `eslint`, `tsc` y cualquier script
+  hablador van a un archivo y se lee el final: `> /tmp/.../x.log 2>&1; tail -20 x.log`. Una salida
+  cruda entra al contexto entera y se queda ahí el resto de la sesión.
+- **Ninguna skill se carga "por las dudas".** Las 44 suman 163.650 tokens; sus `description` ya están
+  en el contexto y alcanzan para elegir. El `orquestador-de-razonamiento-y-skills` (5.180 tokens) es
+  un meta-cargador que arrastra otras en cascada: se carga la skill que hace falta, directamente y por
+  su nombre, o ninguna. Portar una pantalla, arreglar un test o refactorizar no lleva ninguna.
+- **Un subagente cuesta entre 150.000 y 380.000 tokens.** Medido sobre los once de esa jornada. Se
+  lanza cuando aporta **paralelismo o aislamiento real** —frentes que avanzan a la vez, un worktree
+  propio, un contexto que no conviene mezclar—, no para tareas que la conversación principal resuelve
+  en tres herramientas. Un agente para algo que se hace con dos `grep` cuesta cien veces más que los
+  dos `grep`.
+- **Checkpoint commiteado en cada etapa.** Un agente que cae con trabajo sin commitear obliga a
+  reconstruir su contexto entero para retomar. Ese día cayeron seis a la vez y ninguno había
+  commiteado.
+
 ### 2. Todo trabajo de código se hace en un worktree
 
 Nunca sobre el árbol principal: el dueño trabaja ahí.

@@ -69,5 +69,8 @@ Una afirmación sin evidencia adjunta no está pendiente: **está incumplida**. 
 
 ## Antes de empezar
 
-Cargá el `orquestador-de-razonamiento-y-skills` y, con él, las skills de dominio que toque el trabajo.
-Auditar una corrección de IVA sin `impuestos-construccion` es opinar, no auditar.
+Cargá **directamente por su nombre** la skill de dominio que toque el trabajo, y sólo si lo toca:
+auditar una corrección de IVA sin `impuestos-construccion` es opinar, no auditar — pero auditar un
+porte de pantalla o un refactor no necesita ninguna. No pases por el
+`orquestador-de-razonamiento-y-skills`: son 5.180 tokens de meta-cargador que arrastra otras skills en
+cascada, y las `description` de las 44 ya están en tu contexto, así que podés elegir sin él.

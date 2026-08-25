@@ -33,8 +33,14 @@ dependencias faltantes.
 
 1. **Entendé el proceso real antes de escribir.** Del `CLAUDE.md`: no digitalizar caos, no automatizar
    procesos rotos, no fabricar estructura de datos sin evidencia.
-2. **Cargá las skills que correspondan** vía el `orquestador-de-razonamiento-y-skills`. Escribir código
-   de IVA sin `impuestos-construccion` es improvisar.
+2. **Cargá una skill SÓLO si el trabajo decide algo de dominio.** Escribir código de IVA sin
+   `impuestos-construccion` es improvisar — pero portar una pantalla, arreglar un test o refactorizar
+   no toca ningún dominio y **no lleva ninguna**. El criterio es el del `CLAUDE.md` raíz: se activan
+   cuando el trabajo decide algo con efecto económico, contractual, fiscal, laboral o de seguridad, o
+   cuando toca una fuente de verdad (el Sheet real, Postgres, ARCA, el banco). **Cargá la skill
+   directamente por su nombre**, no el `orquestador-de-razonamiento-y-skills`: ese meta-cargador son
+   5.180 tokens que además arrastra otras en cascada, y sus `description` ya están en tu contexto, así
+   que podés elegir sin él. Una skill que se carga y no cambia lo que hacés no debía cargarse.
 3. **Escribí como escribe el repo.** Archivos ≤500 líneas, funciones ≤50, sin `any` (usá `unknown`),
    Zod para toda entrada de usuario, RLS en toda tabla nueva, cero secretos en código. Y los
    comentarios de este repo explican **por qué**, no qué — mirá los archivos de al lado.
