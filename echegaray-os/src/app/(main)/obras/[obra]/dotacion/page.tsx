@@ -33,7 +33,7 @@ import {
 import { getObra } from '@/features/obras/services/obrasService'
 import { armarCronograma } from '@/features/obras/services/cronogramaMotor'
 import {
-  dotacionNecesaria, frentesDe, rubrosDe, sumaCompleta, type Frente,
+  frentesDe, rubrosDe, sumaCompleta, TOPE_DOTACION, type Frente,
 } from '@/features/obras/services/dotacion'
 import { aplicarDotacionAlPlan } from '@/features/obras/services/actionsPlan'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -51,10 +51,10 @@ type Params = Promise<{ obra: string }>
 type Search = Promise<{ dot?: string | string[] }>
 
 const n0 = (v: number | null) => (v == null ? null : Math.round(v).toLocaleString('es-AR'))
-const fmt = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
 
-/** `?dot=Piso~4&dot=Techo~2`. La dotación se acota a 0–99: un `dot=x~99999` desde la barra de
- *  direcciones no puede hacer que la pantalla dibuje un plantel imposible como si fuera una opción. */
+/** `?dot=Piso~4&dot=Techo~2`. La dotación se acota por `TOPE_DOTACION` —el MISMO tope que usa la
+ *  escritura y que la pantalla consulta para no ofrecer un botón que no escribiría nada—: un
+ *  `dot=x~99999` desde la barra de direcciones no puede dibujar un plantel imposible como opción. */
 function dotacionesDe(raw: string | string[] | undefined): Record<string, number> {
   const lista = raw === undefined ? [] : (Array.isArray(raw) ? raw : [raw])
   const salida: Record<string, number> = {}
@@ -62,7 +62,7 @@ function dotacionesDe(raw: string | string[] | undefined): Record<string, number
     const i = par.lastIndexOf('~')
     if (i <= 0) continue
     const n = Number(par.slice(i + 1))
-    if (!Number.isInteger(n) || n < 0 || n > 99) continue
+    if (!Number.isInteger(n) || n < 0 || n > TOPE_DOTACION) continue
     salida[par.slice(0, i)] = n
   }
   return salida
@@ -150,65 +150,45 @@ export default async function DotacionObraPage(
         />
       </>
 
-      <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
-        {hhPlan == null && (
+      {hhPlan == null && (
+        <div className="px-5 pt-3.5">
           <Callout tono="warn">
             <strong>Ninguna actividad de esta obra tiene HH del análisis cargadas.</strong>{' '}
             El motor de dotación divide HH por capacidad: sin HH no hay días, no hay fecha de fin y
-            no hay dotación necesaria. Por eso la columna dice <em>sin dato</em> y no 0 — lo que
+            no hay dotación necesaria. Por eso los campos dicen <em>sin dato</em> y no 0 — lo que
             falta es la carga, no el trabajo. Se carga al convertir el presupuesto en plan de obra.
           </Callout>
-        )}
+        </div>
+      )}
 
-        <section className="grid gap-4 xl:grid-cols-[1fr_300px]">
-          <SimuladorDotacion
-            obraId={obraId}
-            frentes={frentes}
-            dotIniciales={dotaciones}
-            jornada={crono.jornada}
-            habiles={habiles}
-            idxFinPlan={idxFinPlan}
-            disponibles={disponibles}
-            puedeAplicar={puedeAplicar}
-            // `.bind`, no una arrow: una función creada en un Server Component no cruza a un
-            // componente cliente, compila igual y deja la pantalla en blanco en producción.
-            aplicar={aplicarDotacionAlPlan.bind(null, obraId)}
-          />
+      {/* ═══ EL CUERPO ES EL DEL CANÓNICO: 428px + resto, y NADA MÁS ARRIBA DEL PLIEGUE ═══
+          Había una tercera columna de 300px con «Al revés», «Límites reales» y «Capacidad
+          ponderada». «Al revés» dejó de existir como bloque aparte porque el canónico lo absorbió:
+          el modo **Duración** ES la cuenta inversa, hecha sobre el frente que se está mirando y con
+          sus días técnicos descontados — la versión de la barra lateral corría sobre las HH de toda
+          la obra y sin días técnicos, así que las dos podían contestar distinto a la misma
+          pregunta. Los límites subieron a la columna derecha, donde el mockup los dibuja. */}
+      <SimuladorDotacion
+        obraId={obraId}
+        frentes={frentes}
+        dotIniciales={dotaciones}
+        jornada={crono.jornada}
+        habiles={habiles}
+        idxFinPlan={idxFinPlan}
+        disponibles={disponibles}
+        puedeAplicar={puedeAplicar}
+        // `.bind`, no una arrow: una función creada en un Server Component no cruza a un
+        // componente cliente, compila igual y deja la pantalla en blanco en producción.
+        aplicar={aplicarDotacionAlPlan.bind(null, obraId)}
+      />
 
-          <div className="flex flex-col gap-4">
-            <AlReves hh={hhRest} jornada={crono.jornada} tope={topeMasBajo(frentes)} desde={desde} calendario={calendario} />
-            <LimitesReales frentes={frentes} disponibles={disponibles} />
-            <div className="rounded-card border border-line bg-surface p-4">
-              <h2 className="mb-2 text-[13px] font-semibold text-ink">Capacidad ponderada</h2>
-              {/* 22/08/2026 · La explicación del ponderado baja a la ayuda: la lista de factores que
-                  sigue ES el dato, y dos líneas de teoría encima la empujaban fuera de la primera
-                  mirada cada vez que se abre la pantalla. */}
-              <Ayuda titulo="Por qué no se cuentan cabezas" testid="ayuda-capacidad">
-                Dos oficiales y dos ayudantes son cuatro personas y 3,2 de capacidad. Contar cabezas
-                para dividir HH deja el plan un 20 % optimista.
-              </Ayuda>
-              {capacidad.data?.length
-                ? (
-                  <ul className="flex flex-col gap-1">
-                    {capacidad.data.map((c) => (
-                      <li key={c.nombre} className="flex items-baseline justify-between gap-3">
-                        <span className="text-[12px] text-ink-soft">{c.nombre}</span>
-                        <span className="text-[12px] text-ink tnum">
-                          {c.factor.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )
-                : <p className="text-[12px] text-warn">No pude leer los factores de capacidad.</p>}
-            </div>
-          </div>
-        </section>
-
-        {/* ═══ LA PANTALLA ES EL SIMULADOR; LA TABLA POR RUBRO ES EL RESPALDO (24/08 · canónico 08) ═══
-            La tabla de rubros mide más alto que el simulador entero y se lee UNA vez —para entender
-            de dónde salió el número— no cada vez que se mueve la dotación. Plegada, la decisión que
-            la pantalla existe para tomar queda sola arriba; abierta, no falta nada. */}
+      {/* ═══ EL RESPALDO VA PLEGADO, DEBAJO DEL SIMULADOR (24/08 · canónico 08) ═══
+          La tabla de rubros mide más alto que el simulador entero y se lee UNA vez —para entender
+          de dónde salió el número— no cada vez que se mueve la dotación. Los factores de capacidad
+          son de la misma clase: explican por qué cuatro personas no son cuatro, y esa explicación
+          se necesita el primer día, no en cada carga de la pantalla. El mockup no dibuja ninguna de
+          las dos; sacarlas del todo habría borrado de dónde salen los números de arriba. */}
+      <div className="flex flex-col gap-4 px-5 pb-6">
         <Plegable titulo="Plan · Real · Proyección por rubro" testid="rubros-hh-plegable"
           cuenta={rubros.length}>
           {/* 22/08/2026 · De dónde sale la proyección baja a la ayuda. Lo que no se puede esconder
@@ -220,6 +200,28 @@ export default async function DotacionObraPage(
             <em>sin base</em>. Nunca el plan disfrazado de proyección.
           </Ayuda>
         </Plegable>
+
+        <Plegable titulo="Capacidad ponderada" testid="capacidad-plegable"
+          cuenta={capacidad.data?.length ?? 0}>
+          <Ayuda titulo="Por qué no se cuentan cabezas" testid="ayuda-capacidad">
+            Dos oficiales y dos ayudantes son cuatro personas y 3,2 de capacidad. Contar cabezas
+            para dividir HH deja el plan un 20 % optimista.
+          </Ayuda>
+          {capacidad.data?.length
+            ? (
+              <ul className="flex flex-col gap-1">
+                {capacidad.data.map((c) => (
+                  <li key={c.nombre} className="flex items-baseline justify-between gap-3">
+                    <span className="text-[12px] text-ink-soft">{c.nombre}</span>
+                    <span className="text-[12px] text-ink tnum">
+                      {c.factor.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              )
+            : <p className="text-[12px] text-warn">No pude leer los factores de capacidad.</p>}
+        </Plegable>
       </div>
     </main>
   )
@@ -228,11 +230,6 @@ export default async function DotacionObraPage(
 function sumar(vs: (number | null)[]): number | null {
   const hay = vs.filter((v): v is number => v != null)
   return hay.length ? hay.reduce((a, b) => a + b, 0) : null
-}
-
-const topeMasBajo = (frentes: Frente[]): number | null => {
-  const topes = frentes.map((f) => f.tope).filter((x): x is number => x != null)
-  return topes.length ? Math.min(...topes) : null
 }
 
 /** El techo de fechas que se le manda al navegador: dos años de trabajo. Más que eso no es una
@@ -254,131 +251,9 @@ function diasHabilesDe(
     const dias = Math.ceil(f.hhRestantes / (1 * (jornada || 8))) + f.diasTecnicos
     return Math.max(max, dias)
   }, 1)
-  const n = Math.min(MAX_HABILES, Math.max(1, peor))
+  // PISO DE 20 DÍAS: el modo **Duración** deja pedir hasta 10 días aunque el frente se haga en uno,
+  // y sin fechas para ese pedido la pantalla contestaría «fuera de calendario» a una fecha que la
+  // obra sí tiene. Veinte fechas más no se notan; una respuesta falsa sí.
+  const n = Math.min(MAX_HABILES, Math.max(20, peor))
   return Array.from({ length: n }, (_, i) => calendario.sumarHabiles(desde, i))
-}
-
-/**
- * LOS LÍMITES REALES — Design 23/08 · 08.
- *
- * Lo que impide que más gente acorte el plazo, dicho con los números que la obra tiene cargados. No
- * inventa restricciones: un tope que nadie declaró se dice «sin declarar», y ahí el simulador deja
- * subir la dotación hasta el infinito porque nadie escribió dónde está el techo — que es un dato
- * faltante, no un permiso.
- */
-function LimitesReales({ frentes, disponibles }: { frentes: Frente[]; disponibles: number | null }) {
-  const tope = topeMasBajo(frentes)
-  const enTope = frentes.filter((f) => f.limite === 'tope del frente').length
-  const sinHH = frentes.filter((f) => f.hhRestantes == null).length
-  const filas: { que: string; detalle: string; valor: string; tono: string }[] = [
-    {
-      que: 'Tope del frente más estrecho',
-      detalle: tope == null
-        ? 'ninguna actividad declara cuánta gente entra'
-        : `${enTope} ${enTope === 1 ? 'frente está' : 'frentes están'} en su tope`,
-      valor: tope == null ? 'sin declarar' : String(tope),
-      tono: tope == null ? 'text-faint' : (enTope > 0 ? 'text-warn' : 'text-ink'),
-    },
-    {
-      que: 'Plantel de la obra',
-      detalle: 'personas con asignación vigente',
-      valor: disponibles == null ? 'sin dato' : String(disponibles),
-      tono: disponibles == null ? 'text-faint' : 'text-ink',
-    },
-    {
-      que: 'Frentes sin HH cargadas',
-      detalle: sinHH === 0 ? 'todos los frentes tienen con qué calcular' : 'no producen plazo con ninguna dotación',
-      valor: sinHH === 0 ? 'ok' : String(sinHH),
-      tono: sinHH === 0 ? 'text-pos' : 'text-warn',
-    },
-  ]
-  return (
-    // La cabecera con hairline y las filas a 11px de padding son las del canónico: son una TABLA
-    // de restricciones, no una lista de viñetas, y la cabecera separada es lo que lo dice.
-    <div className="overflow-hidden rounded-card border border-line bg-surface" data-testid="limites-reales">
-      <div className="flex items-center gap-2 border-b border-surface-sunken px-4 py-2.5">
-        <span aria-hidden className="text-[12px] text-warn">⚠</span>
-        <h2 className="text-[13px] font-semibold text-ink">Límites reales</h2>
-      </div>
-      <ul className="flex flex-col">
-        {filas.map((f) => (
-          <li
-            key={f.que} data-limite={f.que}
-            className="flex items-center justify-between gap-3 border-b border-surface-sunken px-4 py-2.5 last:border-b-0"
-          >
-            <span className="min-w-0">
-              <span className="block text-[12.5px] text-ink">{f.que}</span>
-              <span className="block text-[11px] text-faint">{f.detalle}</span>
-            </span>
-            <span className={`shrink-0 font-mono text-[12.5px] font-semibold tabular-nums ${f.tono}`}>{f.valor}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/**
- * AL REVÉS: FIJÁ LA FECHA Y EL SISTEMA DICE LA DOTACIÓN — bloque quiet del canónico 08.
- *
- * Va sobre `surface-quiet` y no sobre una tarjeta blanca más: es la MISMA cuenta del simulador
- * corrida al revés, no un segundo dato. La superficie apagada lo dice sin un párrafo.
- *
- * Las fechas se ofrecen sobre el calendario real de la obra —no sobre días corridos— porque la
- * pregunta es cuántos días TRABAJADOS quedan. Y se ofrecen VARIAS y no una: la pregunta real del
- * jefe de obra no es «¿cuánta gente para el 25?» sino «¿a partir de cuándo esto se vuelve posible?».
- */
-function AlReves({ hh, jornada, tope, desde, calendario }: {
-  hh: number | null; jornada: number; tope: number | null; desde: string; calendario: CalendarioObra
-}) {
-  const objetivos = [4, 7, 11, 18].map((d) => ({ dias: d, fecha: calendario.sumarHabiles(desde, d - 1) }))
-  return (
-    <div className="rounded-card border border-line bg-surface-quiet p-4" data-testid="al-reves">
-      <h2 className="text-[13px] font-semibold text-ink">Al revés</h2>
-      <p className="mb-2.5 mt-0.5 text-[11px] text-muted">Fijá la fecha y el sistema dice la dotación.</p>
-      {hh == null && (
-        <p className="text-[12px] text-warn">
-          Sin HH cargadas no hay cuenta inversa: no se puede decir cuánta gente hace falta para una
-          fecha si no se sabe cuánto trabajo queda.
-        </p>
-      )}
-      {hh != null && (
-        <ul className="flex flex-col">
-          {objetivos.map((o) => {
-            const n = dotacionNecesaria(hh, o.dias, jornada, tope)
-            return (
-              <li
-                key={o.dias} data-objetivo={o.dias}
-                className="flex items-baseline justify-between gap-3 border-b border-line py-2 last:border-b-0"
-              >
-                <span className="min-w-0">
-                  {/* LA FRASE ENTERA, no una etiqueta y un número sueltos: «Terminar el 02/09 →
-                      necesitás 6 personas» se lee de un saque; «02/09 · 6» hay que armarlo. */}
-                  <span className="text-[12.5px] text-ink-soft">Terminar el </span>
-                  <span className="font-mono text-[12.5px] text-ink tabular-nums">{fmt(o.fecha)}</span>
-                  <span className="block text-[10.5px] text-faint">
-                    {o.dias} días hábiles{n == null ? ' · el tope del frente lo impide' : ''}
-                  </span>
-                </span>
-                {/* NULL NO ES CERO: «no alcanza» es una respuesta —el tope del frente impide llegar
-                    a esa fecha—, no un dato faltante. Prometer la fecha igual se descubre el día de
-                    la entrega. */}
-                <span className={`shrink-0 whitespace-nowrap ${n == null ? 'text-[12.5px] font-medium text-neg' : 'text-[12.5px] text-muted'}`}>
-                  {n == null
-                    ? 'no alcanza'
-                    : (
-                      <>
-                        necesitás{' '}
-                        <span className="font-mono text-[17px] font-semibold text-ink tabular-nums">{n}</span>
-                        {n === 1 ? ' persona' : ' personas'}
-                      </>
-                      )}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </div>
-  )
 }

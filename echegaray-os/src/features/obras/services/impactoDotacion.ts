@@ -1,20 +1,25 @@
-// 08 · EL IMPACTO DE LA SIMULACIÓN — plan contra simulado, en cuatro celdas.
+// 08 · EL IMPACTO DE LA SIMULACIÓN — plan contra simulado, en las cuatro celdas del canónico.
 //
-// ═══ POR QUÉ ES UNA COMPARACIÓN Y NO TRES NÚMEROS SUELTOS ═══
+// ═══ QUÉ MIDE CADA CELDA, Y POR QUÉ TRES SON DEL FRENTE Y UNA DE LA OBRA ═══
 //
-// El canónico 08 dibuja «Impacto de la simulación» con el valor del PLAN y, al lado, el simulado
-// con su flecha. La pantalla tenía tres cifras sueltas —gente total, fin de obra, contra el plan—
-// que dicen dónde se llegó pero no de dónde se salió: mover un stepper cambiaba el número y no
-// había con qué compararlo salvo la memoria.
+// El canónico 08 dibuja DURACIÓN · FIN DEL FRENTE · HH TOTALES · IMPACTO EN OBRA. Las tres primeras
+// hablan del frente que se está simulando; la cuarta traduce eso a lo único que le importa al
+// cliente: cuándo termina la obra. Mezclarlas —que era lo que hacía la versión anterior, con las
+// cuatro celdas a nivel obra— deja al jefe moviendo un frente y mirando un número que casi nunca se
+// mueve, porque el frente que simula no es el que manda el plazo.
 //
 // ═══ LO QUE ESTA CAPA SE NIEGA A DECIR ═══
 //
-// · Un fin de obra que el calendario no alcanza. `null` es «fuera del calendario que mandó el
-//   servidor», no una fecha inventada.
-// · «0 HH» cuando ningún frente tiene análisis cargado. Las HH no cambian con la dotación —es el
+// · Un fin que el calendario no alcanza. `null` es «fuera del calendario que mandó el servidor»,
+//   no una fecha inventada.
+// · «0 HH» cuando el frente no tiene análisis cargado. Las HH no cambian con la dotación —es el
 //   punto de la pantalla— pero eso no las convierte en cero cuando no están.
 // · «igual al plan» cuando la simulación no es ejecutable. Un frente que pide más gente de la que
 //   entra no está «igual»: no se puede hacer, y eso le gana a cualquier otra lectura.
+// · «sin dato» disfrazado de plan. Hoy NINGUNA actividad del OS tiene `dotacion_prevista` cargada
+//   (0 filas en toda la base, medido el 25/08/2026), así que el lado «plan» de esta comparación
+//   está vacío en las 17 obras. Se dice vacío; no se rellena con la dotación que la pantalla
+//   muestra, que es la simulación mirándose a sí misma.
 
 export type Direccion = 'sube' | 'baja' | 'igual'
 
@@ -36,27 +41,35 @@ export interface EstadoImpacto {
   tono: 'neg' | 'warn' | 'pos'
 }
 
-export interface LadoSimulado {
-  genteTotal: number
+/** Un lado de la comparación, para el frente que se está simulando. */
+export interface LadoFrente {
+  dias: number | null
   fin: string | null
-  desvioDias: number | null
 }
 
 export interface InsumosImpacto {
-  plan: LadoSimulado
-  simulado: LadoSimulado
-  /** HH que faltan en toda la obra. `null` = ningún frente tiene análisis. */
-  hhRestantes: number | null
-  /** Frentes donde la dotación pedida no entra: el tope del frente la recortó. */
-  noEjecutables: number
-  /** Cuántos frentes movió la persona. 0 = la pantalla muestra el plan tal cual. */
-  tocados: number
-  /** Cuánta gente hay de verdad en la obra. `null` cuando no se pudo leer — y ahí no se compara. */
+  /** HH que faltan en el frente simulado. `null` = sin análisis. NUNCA 0 por ausencia. */
+  hhFrente: number | null
+  planFrente: LadoFrente
+  simFrente: LadoFrente
+  /** Días de desvío del FIN DE OBRA contra el fin de plan, de los dos lados. `null` sin plan. */
+  desvioObraPlan: number | null
+  desvioObraSim: number | null
+  /** La dotación pedida no entra en el frente: el tope la recortó. */
+  noEjecutable: boolean
+  /** En modo Duración: no existe dotación que llegue a esa fecha (los días técnicos no se comprimen). */
+  imposible: boolean
+  /** La simulación difiere del plan. `false` = la pantalla está mostrando el plan tal cual. */
+  cambio: boolean
+  /** Gente que la simulación pide en TODA la obra, y cuánta hay. `null` = no se pudo leer. */
+  genteSimulada: number
   disponibles: number | null
 }
 
 const fecha = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
 const n0 = (v: number) => Math.round(v).toLocaleString('es-AR')
+const dias = (v: number | null) => (v == null ? null : `${v.toLocaleString('es-AR')} d`)
+const conSigno = (v: number | null) => (v == null ? null : `${v > 0 ? '+' : ''}${v} d`)
 
 /** Hacia dónde se movió un número. Sin uno de los dos lados no hay dirección: es `igual`, que acá
  *  significa «no hay nada que comparar», y por eso el tono queda neutro. */
@@ -71,22 +84,21 @@ export function direccionDe(planN: number | null, simN: number | null): Direccio
  * Un frente donde la dotación pedida no entra NO está «sin aplicar»: está mal. Publicar «simulación
  * sin aplicar» ahí invita a aplicarla, y al aplicarla el servidor la recorta al tope — la pantalla
  * mostraría 8 personas y el plan quedaría con 4.
+ *
+ * «pide N y la obra tiene M» no está en el canónico —su fixture tiene 18 de plantel y un stepper que
+ * llega a 8, así que nunca se dispara— pero el plantel de la obra sí está entre sus «Límites
+ * reales». Una simulación que pide gente que no existe no es ejecutable por la misma razón que la
+ * que no entra en el frente, y callarlo para parecerse más al mockup sería mentir por estética.
  */
-export function estadoDelImpacto(
-  { noEjecutables, tocados, disponibles, simulado }: Pick<InsumosImpacto, 'noEjecutables' | 'tocados' | 'disponibles' | 'simulado'>,
-): EstadoImpacto {
-  if (noEjecutables > 0) {
-    return {
-      texto: noEjecutables === 1
-        ? 'no ejecutable: 1 frente no tiene lugar para esa gente'
-        : `no ejecutable: ${noEjecutables} frentes no tienen lugar para esa gente`,
-      tono: 'neg',
-    }
+export function estadoDelImpacto(i: InsumosImpacto): EstadoImpacto {
+  if (i.imposible) {
+    return { texto: 'no ejecutable: ninguna dotación llega a esa fecha', tono: 'neg' }
   }
-  if (disponibles != null && simulado.genteTotal > disponibles) {
-    return { texto: `pide ${simulado.genteTotal} y la obra tiene ${disponibles}`, tono: 'neg' }
+  if (i.noEjecutable) return { texto: 'no ejecutable con este frente', tono: 'neg' }
+  if (i.disponibles != null && i.genteSimulada > i.disponibles) {
+    return { texto: `pide ${i.genteSimulada} y la obra tiene ${i.disponibles}`, tono: 'neg' }
   }
-  if (tocados === 0) return { texto: 'igual al plan', tono: 'pos' }
+  if (!i.cambio) return { texto: 'igual al plan', tono: 'pos' }
   return { texto: 'simulación sin aplicar', tono: 'warn' }
 }
 
@@ -98,51 +110,51 @@ export function estadoDelImpacto(
  * cuánta gente. Por eso su lado simulado dice «iguales» y no repite el número.
  */
 export function celdasDelImpacto(i: InsumosImpacto): CeldaImpacto[] {
-  const dirGente = direccionDe(i.plan.genteTotal, i.simulado.genteTotal)
+  const dirDias = direccionDe(i.planFrente.dias, i.simFrente.dias)
   const dirFin = direccionDe(
-    i.plan.fin ? Number(i.plan.fin.replaceAll('-', '')) : null,
-    i.simulado.fin ? Number(i.simulado.fin.replaceAll('-', '')) : null,
+    i.planFrente.fin ? Number(i.planFrente.fin.replaceAll('-', '')) : null,
+    i.simFrente.fin ? Number(i.simFrente.fin.replaceAll('-', '')) : null,
   )
+  const dirObra = direccionDe(i.desvioObraPlan, i.desvioObraSim)
   return [
     {
-      clave: 'gente',
-      rotulo: 'DOTACIÓN',
-      plan: i.plan.genteTotal > 0 ? `${i.plan.genteTotal}` : null,
-      simulado: `${i.simulado.genteTotal}`,
-      direccion: dirGente,
-      // Más gente no es «peor»: es el gesto de la pantalla. Lo que se juzga es el plazo.
-      tono: 'neutro',
+      clave: 'duracion',
+      rotulo: 'DURACIÓN',
+      plan: dias(i.planFrente.dias),
+      simulado: dias(i.simFrente.dias),
+      direccion: dirDias,
+      // Alargar el frente es peor; acortarlo es mejor. Es la única celda donde la dirección se
+      // juzga sola, sin mirar la fecha.
+      tono: dirDias === 'sube' ? 'neg' : (dirDias === 'baja' ? 'pos' : 'neutro'),
       detalle: 'plan → simulado',
     },
     {
       clave: 'fin',
-      rotulo: 'FIN DE OBRA',
-      plan: fecha(i.plan.fin),
-      simulado: fecha(i.simulado.fin),
+      rotulo: 'FIN DEL FRENTE',
+      plan: fecha(i.planFrente.fin),
+      simulado: fecha(i.simFrente.fin),
       direccion: dirFin,
       tono: dirFin === 'sube' ? 'neg' : (dirFin === 'baja' ? 'pos' : 'neutro'),
-      detalle: i.simulado.fin == null ? 'fuera del calendario simulado' : 'fecha proyectada',
+      detalle: i.simFrente.fin == null ? 'fuera del calendario simulado' : 'fecha proyectada',
     },
     {
       clave: 'hh',
-      rotulo: 'HH QUE FALTAN',
+      rotulo: 'HH TOTALES',
       // NULL NO ES CERO: sin análisis no hay HH, y no es que no quede trabajo.
-      plan: i.hhRestantes == null ? null : n0(i.hhRestantes),
-      simulado: i.hhRestantes == null ? null : 'iguales',
+      plan: i.hhFrente == null ? null : n0(i.hhFrente),
+      simulado: i.hhFrente == null ? null : 'iguales',
       direccion: 'igual',
       tono: 'neutro',
-      detalle: 'la cantidad de trabajo no cambia',
+      detalle: 'la cantidad no cambia',
     },
     {
-      clave: 'desvio',
-      rotulo: 'CONTRA EL PLAN',
-      plan: i.plan.desvioDias == null ? null : `${i.plan.desvioDias > 0 ? '+' : ''}${i.plan.desvioDias} d`,
-      simulado: i.simulado.desvioDias == null ? null : `${i.simulado.desvioDias > 0 ? '+' : ''}${i.simulado.desvioDias} d`,
-      direccion: direccionDe(i.plan.desvioDias, i.simulado.desvioDias),
-      tono: i.simulado.desvioDias == null
-        ? 'neutro'
-        : (i.simulado.desvioDias > 0 ? 'neg' : (i.simulado.desvioDias < 0 ? 'pos' : 'neutro')),
-      detalle: 'días de trabajo contra el fin de plan',
+      clave: 'obra',
+      rotulo: 'IMPACTO EN OBRA',
+      plan: conSigno(i.desvioObraPlan),
+      simulado: conSigno(i.desvioObraSim),
+      direccion: dirObra,
+      tono: dirObra === 'sube' ? 'neg' : (dirObra === 'baja' ? 'pos' : 'neutro'),
+      detalle: 'fin de obra proyectado',
     },
   ]
 }

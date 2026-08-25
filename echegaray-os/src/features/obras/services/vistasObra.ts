@@ -50,6 +50,23 @@ export const hrefCronograma = (obraId: string) => `/obras/${obraId}?vista=tareas
 /** La pantalla 08, por la misma razón. */
 export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
 
+/**
+ * LAS VISTAS QUE NO SON SOLAPAS PERO LA GENTE ESCRIBE COMO SI LO FUERAN.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA (auditoría del 24/08) ═══
+ *
+ * `?vista=dotacion` no está en `VISTAS_OBRA` ni en `ALIAS`, así que `resolverVistaObra` lo mandaba
+ * a **Resumen, en silencio**: quien seguía ese link creía que la Dotación no existía. Es la misma
+ * clase de falla que los alias de `?vista=gantt`, con la diferencia de que la 08 no vive dentro del
+ * workspace —tiene ruta hermana— y por eso no se resuelve con un alias sino con un redirect.
+ *
+ * Devuelve `null` cuando la vista pedida sí es del workspace o no se reconoce: ahí decide
+ * `resolverVistaObra` como siempre.
+ */
+export function rutaHermana(vistaRaw: string | undefined, obraId: string): string | null {
+  return vistaRaw === 'dotacion' ? hrefDotacion(obraId) : null
+}
+
 /** La pantalla 10. Cuelga de Tareas —un paquete es una porción del alcance de actividades que ya
  *  existen, no un trabajo paralelo— pero vive fuera del workspace: mira el MISMO alcance desde el
  *  lado del tercero que lo ejecuta, con su contrato, sus papeles y su gente. */

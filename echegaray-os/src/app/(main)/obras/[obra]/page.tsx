@@ -29,7 +29,7 @@
 // Ninguno de los cuatro se edita desde este módulo.
 
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
   getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanVsReal,
@@ -58,7 +58,7 @@ import { TabResumen } from '@/features/obras/components/TabResumen'
 import { CronogramaDeObra } from '@/features/obras/components/CronogramaDeObra'
 import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
-import { resolverVistaObra } from '@/features/obras/services/vistasObra'
+import { resolverVistaObra, rutaHermana } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
 import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
@@ -96,6 +96,10 @@ export default async function ObraPage({
 }) {
   const { obra: obraId } = await params
   const { vista: vistaRaw, sub, act, filtro, sol, dot } = await searchParams
+  // UNA VISTA QUE VIVE EN OTRA RUTA SE LLEVA AHÍ, NO SE IGNORA. `?vista=dotacion` caía en Resumen
+  // sin un solo aviso, y quien seguía ese link concluía que la pantalla no existía.
+  const hermana = rutaHermana(vistaRaw, obraId)
+  if (hermana) redirect(hermana)
   // LA VISTA Y LA SUB-VISTA SE RESUELVEN JUNTAS: el alias de una URL vieja decide también con qué
   // vista abre. `?vista=ejecucion` tiene que caer en el parte diario, no en el árbol.
   const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
