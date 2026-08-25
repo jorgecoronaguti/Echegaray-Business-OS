@@ -37,7 +37,8 @@ import {
   BotonAccion, Callout, Campo, CTRL, FormAccion,
   type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
-import type { Certificado, EconomiaObra, PlanVsReal } from '../types'
+import type { Certificado, EconomiaObra } from '../types'
+import type { PlanDeEconomia } from '../services/obrasService'
 import { fecha, plata } from './formato'
 
 /** Un renglón: concepto ↔ cifra. El origen va en el `title`; el "qué falta", visible sólo si falta. */
@@ -85,7 +86,11 @@ function pct(valor: number | null | undefined, base: number | null | undefined):
 export function TabEconomia({
   plan, economia, certificados, crearCert, borrarCert, veComercial = true,
 }: {
-  plan: PlanVsReal | null
+  /** LAS OCHO COLUMNAS QUE ESTA SOLAPA DIBUJA, no la vista entera: pedir `obra_plan_vs_real`
+   *  completa cuesta el doble de trabajo en la base y era parte de por qué el workspace de la obra
+   *  se caía por `statement timeout`. El tipo es un `Pick<>` a propósito — agregar acá una lectura
+   *  del plan que no esté en `COLUMNAS_PLAN.economia` no compila. */
+  plan: PlanDeEconomia | null
   /** El panel económico (`obra_economia`). `null` = no llegó: no se dibuja margen ninguno. */
   economia: EconomiaObra | null
   certificados: Certificado[]

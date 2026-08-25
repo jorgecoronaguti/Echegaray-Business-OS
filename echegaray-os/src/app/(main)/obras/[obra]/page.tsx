@@ -32,8 +32,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanVsReal,
-  getRestricciones, getUbicacion,
+  getActividades, getDiasHabiles, getDocumentos, getEconomiaObra, getObra, getPlanDeEconomia,
+  getPlanDePersonal, getPlanVsReal, getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
   getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
@@ -125,7 +125,7 @@ export default async function ObraPage({
   // movimiento» del Resumen es literalmente el último parte.
   const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
   const [
-    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes,
+    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes, planPersonalRes, planEconomiaRes,
     diasHabilesRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
     documentosRes, catalogoEquipos, opRes, personasDeHoy,
@@ -139,19 +139,33 @@ export default async function ObraPage({
     // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen,
     // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
     necesita.restricciones ? getRestricciones(supabase, obraId) : null,
-    necesita.plan ? getPlanVsReal(supabase, obraId) : null,
+    // ═══ EL PLAN SE PIDE EN TRES RECORTES, NO EN UNO (25/08/2026) ═══
+    // QUÉ COLUMNAS pide cada solapa lo decide la MATRIZ, no este archivo. Personal y Economía no
+    // dibujan ni una fecha del plan, y no pedirlas le saca la mitad del trabajo a la consulta que
+    // hacía caer la pantalla con `canceling statement due to statement timeout`. Sale UNA sola de
+    // las tres: las otras dos son `null` porque `planColumnas` es uno solo. Y son tres lecturas
+    // separadas para que cada solapa reciba su tipo exacto — un `Pick<>` que no compila si alguien
+    // dibuja una columna que no pidió. Medido y explicado en `lecturasDeVista`.
+    necesita.planColumnas === 'resumen' ? getPlanVsReal(supabase, obraId) : null,
+    necesita.planColumnas === 'personal' ? getPlanDePersonal(supabase, obraId) : null,
+    necesita.planColumnas === 'economia' ? getPlanDeEconomia(supabase, obraId) : null,
     // Los días que ESTA obra trabaja: los sombrea el cronograma y nadie más. Reemplaza a las
     // precedencias, que hasta el 24/08 se traían acá para dibujar flechas que el canónico 07 no
     // tiene — y que en la base son CERO filas en todas las obras.
     esCronograma ? getDiasHabiles(supabase, obraId) : null,
     necesita.personas ? getPersonas(supabase) : null,
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
-    vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
-    vista === 'personal' ? getCausasDesvio(supabase) : null,
-    vista === 'personal' || esParte ? getRegistrosHH(supabase, obraId) : null,
+    // ═══ LAS CUATRO LECTURAS DE PERSONAL PASAN POR LA MATRIZ, Y HOY LA MATRIZ DICE QUE NO ═══
+    // `TabPersonal` está importado más arriba y NUNCA se monta en este JSX: la solapa juntaba estas
+    // cuatro consultas más el plan para tirarlas, y ése era el gasto que la volteaba con `statement
+    // timeout`. El interruptor —y cómo se vuelve a prender cuando el render regrese— está en
+    // `PERSONAL_SE_DIBUJA`, en `lecturasDeVista`. Acá no se decide: acá se obedece.
+    necesita.personal ? getAsignaciones(supabase, obraId) : null,
+    necesita.personal ? getCausasDesvio(supabase) : null,
+    necesita.personal || esParte ? getRegistrosHH(supabase, obraId) : null,
     // Plan contra real por actividad: la publica Personal. El cronograma dejó de pedirla el 24/08
     // junto con el panel de la actividad — la 07 dibuja plazo, y las HH son de Personal.
-    vista === 'personal' ? getActividadHH(supabase, obraId) : null,
+    necesita.personal ? getActividadHH(supabase, obraId) : null,
     necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
     necesita.partes ? getPartes(supabase, obraId) : null,
@@ -189,8 +203,18 @@ export default async function ObraPage({
   const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
   const restricciones = restriccionesRes ? lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>) : []
   // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
-  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
+  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia. Son tres porque son
+  // tres recortes distintos de la misma vista, y cada solapa recibe el suyo con su forma exacta.
   const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
+  const planEconomia = planEconomiaRes
+    ? lector.leer<NonNullable<typeof planEconomiaRes.data> | null>(planEconomiaRes, null) : null
+  // ═══ PERSONAL PIDE SU RECORTE Y HOY NO LO DIBUJA NADIE ═══
+  // `TabPersonal` se importa en este archivo pero NUNCA se monta: `?vista=personal` paga sus siete
+  // consultas para no pintar una sola fila. No se borran las lecturas —la solapa está en la
+  // navegación y el componente existe entero, así que le falta el render, no los datos— pero
+  // tampoco se finge que el resultado se usa. Se pasa por el lector para que un fallo de esa
+  // consulta salga en el cartel de arriba en vez de desaparecer en silencio.
+  if (planPersonalRes) lector.leer(planPersonalRes, null)
   const diasHabiles = diasHabilesRes ?? []
   const personas = personasRes ? lector.leer(personasRes, []) : []
   const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
@@ -389,7 +413,7 @@ export default async function ObraPage({
 
       {vista === 'economia' && (
         <TabEconomia
-          plan={plan}
+          plan={planEconomia}
           economia={economia}
           certificados={certificados}
           crearCert={crearCertificado.bind(null, obraId)}

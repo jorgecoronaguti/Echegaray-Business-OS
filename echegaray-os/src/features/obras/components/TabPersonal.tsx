@@ -33,7 +33,8 @@ import {
 import { TablaEsqueleto } from '@/shared/components/carga'
 import { HoyEnObra } from './HoyEnObra'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
-import type { Actividad, Asignacion, Persona, PlanVsReal } from '../types'
+import type { Actividad, Asignacion, Persona } from '../types'
+import type { PlanDePersonal } from '../services/obrasService'
 import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
@@ -51,7 +52,7 @@ import { desvio } from './formato'
  * obra perfectamente cumplida.
  */
 function Titular({ plan, asignaciones, registros }: {
-  plan: PlanVsReal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
+  plan: PlanDePersonal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
 }) {
   const hhPlan = plan?.hh_plan ?? null
   const hhReal = plan?.hh_real ?? null
@@ -244,7 +245,11 @@ export function TabPersonal({
   plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
 }: {
-  plan: PlanVsReal | null
+  /** LAS CUATRO COLUMNAS QUE ESTA SOLAPA DIBUJA (`obra_id`, `hh_plan`, `hh_real`, `desvio_hh_pct`),
+   *  no la vista entera: pedir `obra_plan_vs_real` completa cuesta el doble de trabajo en la base y
+   *  era parte de por qué esta pantalla se caía por `statement timeout`. El tipo es un `Pick<>` a
+   *  propósito — leer acá una columna que no esté en `COLUMNAS_PLAN.personal` no compila. */
+  plan: PlanDePersonal | null
   asignaciones: Asignacion[]
   personas: Persona[]
   cuadrillas: { id: string; nombre: string; integrantes: number }[]
