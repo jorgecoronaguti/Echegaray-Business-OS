@@ -9,12 +9,16 @@
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
 
-/** `2026-08-20` → `miércoles 20/08`. Es el encabezado de «Hoy». */
+/** `2026-08-20` → `Miércoles 20/08`. Es el encabezado de «Hoy».
+ *
+ *  CON MAYÚSCULA INICIAL porque así lo escribe el mockup —«Sábado 23/08», M02— y porque es el
+ *  comienzo de una línea, no una palabra dentro de una oración. */
 export function diaYFecha(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`)
   if (Number.isNaN(d.getTime())) return iso
   const [, m, dd] = iso.slice(0, 10).split('-')
-  return `${DIAS[d.getUTCDay()]} ${dd}/${m}`
+  const dia = DIAS[d.getUTCDay()]
+  return `${dia[0].toUpperCase()}${dia.slice(1)} ${dd}/${m}`
 }
 
 /** `2026-08-20` → `miércoles 20/08/2026`. La versión de escritorio, que tiene lugar para el año. */
