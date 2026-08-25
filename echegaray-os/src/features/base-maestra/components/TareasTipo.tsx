@@ -147,7 +147,7 @@ export function TareasTipo({
         {accion && <div className="ml-auto">{accion}</div>}
       </div>
 
-      <ListaCanon testid="tabla-tareas-tipo">
+      <ListaCanon testid="tabla-tareas-tipo" cols={COLS}>
         <CabezaCanon cols={COLS}>
           <RotuloCanon>CÓD.</RotuloCanon>
           <RotuloCanon>TAREA</RotuloCanon>

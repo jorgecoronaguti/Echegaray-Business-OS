@@ -154,7 +154,7 @@ export function ListaPresupuestos({
       </FranjaCartera>
 
       <div style={PAGINA.cuerpo}>
-        <TarjetaTabla testid="tabla-presupuestos">
+        <TarjetaTabla testid="tabla-presupuestos" cols={COLS}>
           <EncabezadoCanon
             cols={COLS}
             columnas={[

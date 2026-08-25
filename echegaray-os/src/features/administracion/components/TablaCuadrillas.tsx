@@ -79,7 +79,7 @@ export function TablaCuadrillas({
   archivar?: (cuadrillaId: string) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
 }) {
   return (
-    <ListaCanon testid="tabla-cuadrillas">
+    <ListaCanon testid="tabla-cuadrillas" cols={COLS}>
       <CabezaCanon cols={COLS}>
         <RotuloCanon>CUADRILLA</RotuloCanon>
         <RotuloCanon>OBRAS (DERIVADAS)</RotuloCanon>

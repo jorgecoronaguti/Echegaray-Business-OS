@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { EnvoltorioAncho } from './EnvoltorioAncho'
 
 // LA LISTA DEL CANÓNICO — porte literal, no una tabla reinterpretada.
 //
@@ -37,15 +38,25 @@ import type { CSSProperties, ReactNode } from 'react'
 
 /** El contenedor: caja blanca, hairline, radio 10, y nada se derrama fuera. */
 export function ListaCanon({
-  children, testid, className = '',
-}: { children: ReactNode; testid?: string; className?: string }) {
+  children, testid, className = '', cols,
+}: {
+  children: ReactNode
+  testid?: string
+  className?: string
+  /**
+   * LA MISMA cadena que reciben `CabezaCanon` y `FilaCanon`. Sin ella la lista no scrollea por
+   * dentro y en el teléfono las columnas fraccionales caen a cero: «Aguero Cristian Domingo» se
+   * dibuja como «A» y nada avisa que falta el resto. Ver `ancho-minimo.ts`.
+   */
+  cols?: string
+}) {
   return (
     <div
       role="table"
       data-testid={testid}
       className={`min-w-0 flex-1 overflow-hidden rounded-[10px] border border-line bg-surface ${className}`}
     >
-      {children}
+      {cols ? <EnvoltorioAncho cols={cols}>{children}</EnvoltorioAncho> : children}
     </div>
   )
 }

@@ -142,7 +142,7 @@ export function TablaPartidas({
         </Chip>
       </div>
 
-      <TarjetaTabla testid="tabla-partidas">
+      <TarjetaTabla testid="tabla-partidas" cols={COLS}>
         <EncabezadoCanon
           cols={COLS}
           columnas={[

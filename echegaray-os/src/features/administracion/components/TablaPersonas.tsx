@@ -124,7 +124,7 @@ export function TablaPersonas({
   const cols = columnas({ pulso: conPulso, conPapeles, conBaja })
 
   return (
-    <ListaCanon testid="tabla-personas">
+    <ListaCanon testid="tabla-personas" cols={cols}>
       <CabezaCanon cols={cols}>
         <RotuloCanon>PERSONA</RotuloCanon>
         {/* El canónico dice «ROL»; acá dice qué es cada renglón, porque son dos hechos distintos. */}

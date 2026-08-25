@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { ALTO, C, PIE_TOTALES, TARJETA, rotuloColumna } from './estilos'
+import { EnvoltorioAncho } from './EnvoltorioAncho'
 
 // LA TABLA DE LAS PANTALLAS DE ADMINISTRACIÓN — portada de los `.dc.html`, no derivada del DS.
 //
@@ -23,13 +24,30 @@ import { ALTO, C, PIE_TOTALES, TARJETA, rotuloColumna } from './estilos'
 // muerta al pasar el mouse. El mockup escribe `transparent`; acá se omite, que es lo mismo pintado
 // y además deja vivo el hover.
 
-export function TarjetaTabla({ children, style, testid }: { children: ReactNode; style?: CSSProperties; testid?: string }) {
+export function TarjetaTabla({
+  children,
+  style,
+  testid,
+  cols,
+}: {
+  children: ReactNode
+  style?: CSSProperties
+  testid?: string
+  /**
+   * LA MISMA cadena que reciben `EncabezadoCanon` y `FilaCanon`. Con ella la caja se vuelve su
+   * propio contenedor de scroll por debajo de `lg` y reserva el ancho con el que la grilla todavía
+   * se lee (ver `ancho-minimo.ts` y `.canon-scroll-x` en `globals.css`). Sin ella la tabla no
+   * scrollea y a 390 px las columnas fraccionales se van a cero: el dato no se corre, se corta.
+   */
+  cols?: string
+}) {
   return (
     <div data-testid={testid} role="table" style={{ ...TARJETA, flex: 1, minWidth: 0, ...style }}>
-      {children}
+      {cols ? <EnvoltorioAncho cols={cols}>{children}</EnvoltorioAncho> : children}
     </div>
   )
 }
+
 
 /** Una columna del encabezado: rótulo, alineación y si va en el tamaño chico de las tablas anidadas. */
 export interface ColumnaCanon {

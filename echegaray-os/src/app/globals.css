@@ -149,3 +149,25 @@
     transform: translateX(400%);
   }
 }
+
+/* LA TABLA DEL CANON EN EL TELÉFONO — scrollea POR DENTRO, no corta el dato.
+   `body` lleva `overflow-x: clip` (arriba): lo que no entra no se corre, se CORTA. Las grillas del
+   canon mezclan columnas en px con `minmax(0, N fr)`, y a 390 px las fraccionales caían a cero: el
+   encabezado se leía «PRESUPUESTOCLIENTE» y el nombre del cliente quedaba en una letra, sin barra
+   que avisara que faltaba algo. Acá la caja se vuelve su propio contenedor de scroll y la grilla
+   reserva el ancho que `anchoMinimoDeGrilla()` calcula de sus MISMAS columnas.
+
+   SÓLO POR DEBAJO DE `lg` (1024px, el corte de Tailwind). De ahí para arriba —1280 y 1440, las dos
+   geometrías del porte literal— no se aplica nada: ni `overflow`, ni `min-width`. El escritorio
+   sigue midiendo exactamente lo que mide el `.dc.html`, incluso cuando el panel lateral de 372px
+   deja la tabla más angosta que este mínimo. */
+@media (max-width: 1023px) {
+  .canon-scroll-x {
+    overflow-x: auto;
+    /* Llegar al final de la tabla no arrastra la página detrás. */
+    overscroll-behavior-x: contain;
+  }
+  .canon-ancho-canonico {
+    min-width: var(--canon-ancho, 0px);
+  }
+}

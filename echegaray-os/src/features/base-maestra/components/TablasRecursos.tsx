@@ -128,7 +128,7 @@ export function TablaRecursos({
           fuente de este listado (la ficha del recurso sí, por recurso). Lo que sí está y el mockup
           no dibuja —CÓDIGO, FAMILIA, DESPERDICIO— es lo que identifica y lo que altera el costo.
           DESVÍO DECLARADO. */}
-      <ListaCanon testid={`tabla-${clase}`}>
+      <ListaCanon testid={`tabla-${clase}`} cols={cols}>
         <CabezaCanon cols={cols}>
           <RotuloCanon>CÓD.</RotuloCanon>
           <RotuloCanon>{c.singular.toUpperCase()}</RotuloCanon>

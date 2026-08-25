@@ -87,7 +87,7 @@ export function TablaDocumentos({
   const totales = resumirListado(documentos, hoy)
 
   return (
-    <TarjetaTabla testid="tabla-documentos">
+    <TarjetaTabla testid="tabla-documentos" cols={cols}>
       <EncabezadoCanon
         cols={cols}
         columnas={[

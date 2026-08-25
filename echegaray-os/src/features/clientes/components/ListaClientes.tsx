@@ -108,7 +108,7 @@ export function ListaClientes({
       </FranjaCartera>
 
       <div style={PAGINA.cuerpo}>
-        <TarjetaTabla testid="clientes-tabla">
+        <TarjetaTabla testid="clientes-tabla" cols={cols}>
           <EncabezadoCanon
             cols={cols}
             columnas={[

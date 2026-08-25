@@ -53,7 +53,7 @@ export function TablaProveedores({
   resumen: ResumenCartera
 }) {
   return (
-    <TarjetaTabla testid="tabla-proveedores">
+    <TarjetaTabla testid="tabla-proveedores" cols={COLS}>
       <EncabezadoCanon
         cols={COLS}
         columnas={[

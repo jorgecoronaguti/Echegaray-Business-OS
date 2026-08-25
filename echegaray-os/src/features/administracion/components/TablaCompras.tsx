@@ -123,7 +123,7 @@ export function TablaCompras({
   const sinObra = filas.filter((c) => c.imputacion === 'sin_identificar' || (!c.obra_texto?.trim() && !c.imputacion)).length
 
   return (
-    <TarjetaTabla testid="tabla-compras">
+    <TarjetaTabla testid="tabla-compras" cols={COLS}>
       <EncabezadoCanon
         cols={COLS}
         columnas={[
