@@ -3,6 +3,7 @@
 // Las seis pantallas empiezan igual: resolver la obra. Escrito una vez, porque seis copias de
 // «¿tiene obras? ¿la pedida es suya? ¿cuál muestro?» divergen en la primera corrección.
 
+import { ZONA_OBRA } from './zona.ts'
 import { createClient } from '@/lib/supabase/server'
 import { getObrasDelJefe, type ObraDelJefe } from './jefeService.ts'
 import { obraElegida } from './navegacion.ts'
@@ -21,7 +22,7 @@ export interface Contexto {
  * base de datos de zonas horarias es éste. Cada pantalla que la escriba por su cuenta es una que
  * mañana queda en UTC: ahí «hoy» arranca a las 21:00 y una marca de las 07:12 se publica 10:12.
  */
-export const ZONA_OBRA = 'America/Argentina/Buenos_Aires'
+export { ZONA_OBRA }
 
 /** La fecha de hoy en San Juan. */
 export function hoyEnObra(): string {

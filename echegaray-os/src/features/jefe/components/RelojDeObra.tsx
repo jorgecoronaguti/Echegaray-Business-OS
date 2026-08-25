@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ZONA_OBRA } from '../services/contexto'
+import { ZONA_OBRA } from '../services/zona'
 
 // LA HORA DEL ENCABEZADO DE J01 — «Sáb 23/08 · 07:40».
 //
