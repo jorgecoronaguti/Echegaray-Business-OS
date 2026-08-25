@@ -701,13 +701,23 @@ const retenido = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'retencion
 const pctCobrado = (f) => `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`
 
 /**
- * LO QUE SE PUBLICA CUANDO NO HAY DATO. No es un cero y no es una celda en blanco.
+ * EL GLIFO DE "ACÁ NO HAY NADA QUE DECIR", y por qué no puede ser una celda en blanco.
  *
- * Un 0 afirmaría que el contrato vale cero; un blanco es indistinguible de una fórmula que se rompió
- * en silencio, que es el defecto que `columnasDesparejas` existe para cazar. El guion dice lo único
- * cierto: esta obra no declara contrato en ninguna de sus filas de Cobranzas.
+ * Un blanco es indistinguible de una fórmula que se rompió en silencio —el defecto que
+ * `columnasDesparejas` existe para cazar— así que toda celda cuyo vacío sea LEGÍTIMO tiene que
+ * decirlo con un carácter. Vive una sola vez porque el control lo mira: si una columna publicara dos
+ * glifos distintos para el mismo "no hay dato", el que se olvidara de actualizarse volvería a contar
+ * como defecto.
  */
-export const SIN_CONTRATO = '—'
+export const GUION = '—'
+
+/**
+ * LO QUE SE PUBLICA CUANDO NO HAY CONTRATO. No es un cero y no es una celda en blanco.
+ *
+ * Un 0 afirmaría que el contrato vale cero. El guion dice lo único cierto: esta obra no declara
+ * contrato en ninguna de sus filas de Cobranzas.
+ */
+export const SIN_CONTRATO = GUION
 
 /**
  * `% CONTRATO` — el `% FACTURADO` del modelo del dueño, contra el contrato y no contra la cartera.
@@ -848,8 +858,9 @@ const vencido = (cob, cliente, extra = {}) =>
  * LA PRÓXIMA FECHA DE COBRO pendiente.
  *
  * `MINIFS` devuelve 0 cuando no hay ninguna pendiente, y un 0 en una celda con formato de fecha se
- * dibuja "30/12/1899". El `1/(1/x)` convierte ese 0 en un error que el IFERROR transforma en blanco:
- * una obra sin cobranzas pendientes no tiene próxima fecha, y eso es un guion, no un error.
+ * dibuja "30/12/1899". Por eso el 0 se mapea a una fecha imposible (`LEJOS`) ANTES del MIN, y cuando
+ * el MIN queda en esa fecha imposible la celda publica el GUION: una obra sin cobranzas pendientes no
+ * tiene próxima fecha, y eso es un guion, no un error — y tampoco un blanco (ver el cierre).
  *
  * ACÁ VIVIÓ EL `#ERROR!` QUE SE PUBLICÓ EN LAS 7 OBRAS (13/08): esta fórmula cerraba un paréntesis de
  * más. Sheets no evalúa una fórmula que no parsea — la muestra como `#ERROR!` — y los tests no lo
@@ -876,7 +887,15 @@ const proximoCobro = (cob, cliente, extra = '') => {
   const forma = `IFERROR(INDEX(${abierto(cob, 'forma')};MATCH(1;ARRAYFORMULA(`
     + `(${variantesDe(cliente).map((v) => `(${abierto(cob, 'cliente')}="${v}")`).join('+')})`
     + `*(${abierto(cob, 'fechaCobro')}=${min})*(${abierto(cob, 'estado')}<>"${COBRADO}"));0));"")`
-  return `=IF(${min}>=${LEJOS};"";TEXT(${min};"dd/mm")&" · "&${forma})`
+  // ═══ SIN NADA PENDIENTE VA EL GUION, NO EL BLANCO (24/08) ═══
+  //
+  // Esta fórmula ya declaraba arriba que una obra sin cobranzas pendientes "no tiene próxima fecha, y
+  // eso es un guion, no un error" — y publicaba un BLANCO. San Francisco 3.4 cobró todo el 21/08, su
+  // celda I salió vacía y `columnasDesparejas` la contó como fórmula rota: el timer del Flujo de Caja
+  // terminó en FAILURE con la pestaña ya publicada y sana. El control no estaba de más — no puede
+  // distinguir un vacío legítimo de uno roto, y no debe: el que sabe cuál es cuál es esta fórmula, y
+  // lo dice acá. Después del guion, una I vacía vuelve a significar UNA sola cosa: se rompió algo.
+  return `=IF(${min}>=${LEJOS};"${GUION}";TEXT(${min};"dd/mm")&" · "&${forma})`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
