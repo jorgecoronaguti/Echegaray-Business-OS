@@ -185,6 +185,8 @@ export function previsionSemanal(
 export interface Comportamiento {
   /** Días promedio entre emitir y cobrar, de la vista. `null` = no cobró nada en la ventana. */
   diasCobroPromedio: number | null
+  /** El promedio dio ≤ 0: cobró antes de facturar. No es un plazo de pago. Ver el bloque de abajo. */
+  cobraAntesDeFacturar: boolean
   /** Cuántos documentos observó sobre cuántos se le emitieron. */
   observados: number
   emitidos: number
@@ -206,12 +208,22 @@ export interface Comportamiento {
  *
  * «PAGA EL TOTAL» del mockup tampoco está: para afirmar que pagó el 96 % de lo facturado hace falta
  * el importe cobrado de cada documento, y `certificado_cliente` guarda el emitido y el estado.
+ *
+ * ═══ EL PROMEDIO PUEDE VENIR NEGATIVO, Y ESO NO ES UN ERROR DE CÁLCULO ═══
+ *
+ * Verificado contra la base el 25/08/2026: hay 6 filas de Cobranzas con la fecha de cobro ANTERIOR
+ * a la de emisión, hasta 32 días antes. Son anticipos —se cobra y después se factura—, o un tipeo.
+ * La vista promedia lo que hay y da −7 días para un cliente. Un «tarda −7 días en pagar» no
+ * significa nada, así que la pantalla lo dice de otra manera en vez de dibujar un número absurdo.
+ * `negativo` marca el caso: la regla lo señala, la pantalla elige las palabras.
  */
 export function comportamientoDePago(
   documentos: CertificadoCliente[], cuenta: CuentaCorriente | null,
 ): Comportamiento {
+  const dias = cuenta?.dias_cobro_promedio ?? null
   return {
-    diasCobroPromedio: cuenta?.dias_cobro_promedio ?? null,
+    diasCobroPromedio: dias,
+    cobraAntesDeFacturar: dias != null && dias <= 0,
     observados: documentos.filter((d) => d.observacion != null && d.observacion !== '').length,
     emitidos: documentos.length,
   }

@@ -68,7 +68,11 @@ export function Comportamiento({ documentos, cuenta }: {
   const dias = c.diasCobroPromedio
   const conclusion = dias == null
     ? 'Sin cobros en los últimos 90 días: no se puede afirmar cómo paga este cliente.'
-    : `Tarda ${dias} días en pagar un certificado desde que se emite, medido sobre lo cobrado en los últimos 90 días.`
+    : c.cobraAntesDeFacturar
+      // Un plazo de pago negativo no existe. Lo que existe es cobrar antes de facturar, y decirlo
+      // así es un dato útil: ese cliente financia la obra, no al revés.
+      ? `Paga antes de que se le facture: en promedio, ${Math.abs(dias)} días ANTES de la emisión del certificado.`
+      : `Tarda ${dias} días en pagar un certificado desde que se emite, medido sobre lo cobrado en los últimos 90 días.`
   return (
     <div data-testid="comportamiento">
       <TituloBloque icono={<Ico d={P.barras2} s={15} />} titulo="Comportamiento de pago" conFilo />
@@ -79,10 +83,11 @@ export function Comportamiento({ documentos, cuenta }: {
       <Fila
         rotulo="Días en pagar"
         // 90 días llenan la barra: es la ventana sobre la que la vista mide el promedio, así que
-        // es el único techo que no sale de una preferencia.
-        ancho={dias == null ? 0 : Math.min(100, Math.round((dias / 90) * 100))}
-        valor={dias == null ? '—' : `${dias} d`}
-        color={dias == null ? C.tenue : dias > 60 ? C.warn : C.pos}
+        // es el único techo que no sale de una preferencia. Un promedio negativo NO dibuja barra:
+        // no hay plazo que representar, y el renglón de abajo lo explica con todas las letras.
+        ancho={dias == null || c.cobraAntesDeFacturar ? 0 : Math.min(100, Math.round((dias / 90) * 100))}
+        valor={dias == null ? '—' : c.cobraAntesDeFacturar ? 'anticipa' : `${dias} d`}
+        color={dias == null ? C.tenue : c.cobraAntesDeFacturar ? C.pos : dias > 60 ? C.warn : C.pos}
         testid="conducta-dias-cobro"
       />
       <SinFuente

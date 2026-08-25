@@ -177,3 +177,19 @@ test('lo cobrado no entra al plan del día', () => {
   )
   assert.deepEqual(plan, [])
 })
+
+test('un promedio de cobro negativo no se publica como un plazo de pago', () => {
+  // VERIFICADO CONTRA LA BASE EL 25/08/2026: hay 6 filas de Cobranzas cobradas ANTES de emitidas
+  // (hasta 32 días antes), y la vista promedia −7 días para San Francisco. Sin esta marca la
+  // pantalla escribía «Tarda −7 días en pagar», que no significa nada. Lo que significa es que ese
+  // cliente anticipa — y eso sí es un dato de gestión.
+  const c = comportamientoDePago([], cta({ dias_cobro_promedio: -7 }))
+  assert.equal(c.cobraAntesDeFacturar, true)
+  assert.equal(c.diasCobroPromedio, -7, 'el número no se toca: se toca cómo se lo cuenta')
+
+  // Cero también anticipa: cobra el mismo día que factura, no «tarda 0 días».
+  assert.equal(comportamientoDePago([], cta({ dias_cobro_promedio: 0 })).cobraAntesDeFacturar, true)
+  assert.equal(comportamientoDePago([], cta({ dias_cobro_promedio: 34 })).cobraAntesDeFacturar, false)
+  // Y sin dato no se afirma ni una cosa ni la otra.
+  assert.equal(comportamientoDePago([], cta()).cobraAntesDeFacturar, false)
+})
