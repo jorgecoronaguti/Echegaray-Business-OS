@@ -17,11 +17,13 @@
 
 import type { DiaDeAsistencia, EstadoAsistencia } from '../types'
 
+/** El verbo es el del mockup: «Marcar entrada» / «Marcar salida» (M02 `fichajeT`, M05 `txtBtn`), no
+ *  «Registrar». Se ficha, no se registra: es la palabra que usa la obra. */
 export const ACCION: Record<EstadoAsistencia, { texto: string; tipo: 'entrada' | 'salida' | null }> = {
-  sin_registrar: { texto: 'Registrar entrada', tipo: 'entrada' },
-  en_curso: { texto: 'Registrar salida', tipo: 'salida' },
-  falta_salida: { texto: 'Registrar salida', tipo: 'salida' },
-  completo: { texto: 'Ya registraste entrada y salida', tipo: null },
+  sin_registrar: { texto: 'Marcar entrada', tipo: 'entrada' },
+  en_curso: { texto: 'Marcar salida', tipo: 'salida' },
+  falta_salida: { texto: 'Marcar salida', tipo: 'salida' },
+  completo: { texto: 'Ya marcaste entrada y salida', tipo: null },
 }
 
 /** UNA SOLA ACCIÓN PRIMARIA, siempre. El diseño: «Registrar entrada → Registrar salida». Dos
@@ -141,4 +143,68 @@ export function encabezadoDelDia(dia: DiaDeAsistencia | null): {
 export function trabajadoHoy(dia: DiaDeAsistencia | null): string | null {
   if (dia?.minutos == null) return null
   return duracion(dia.minutos)
+}
+
+/**
+ * QUÉ SE PUEDE DECIR DE UN DÍA DE LA SEMANA QUE NO TIENE NINGUNA MARCA.
+ *
+ * ═══ EL DEFECTO QUE ARREGLA (25/08/2026, auditoría móvil con datos, hallazgo 3) ═══
+ *
+ * La semana se dibuja entera, y los días que la base no devuelve se rellenaban TODOS como
+ * `sin_registrar` con la ✕ en `warn`. Medido el martes 25: la pantalla acusaba de «sin fichar» al
+ * miércoles, al jueves, al viernes, al sábado y al domingo. Los tres primeros son días que TODAVÍA
+ * NO PASARON —nadie puede haber faltado a un día que no ocurrió— y los dos últimos no son hábiles
+ * para la obra (`obra_canonica.dias_habiles = {1..5}`, isodow). El mockup M05 corta la lista en el
+ * día de hoy y M06 escribe «Domingo 24 · descanso»: ninguna de las dos pantallas juzga esos días.
+ *
+ * `diasHabiles` vacío = NO SE INVENTA UNA SEMANA LABORAL. Una obra que trabaja los sábados existe,
+ * y suponerle lunes a viernes le pintaría de descanso el día que su cuadrilla estuvo en obra. Es la
+ * misma regla que ya aplica el sombreado del cronograma (`bandaCronograma.ts`), con la misma
+ * numeración isodow: 1 lunes … 7 domingo, y `getUTCDay() || 7` para que el domingo sea 7 y no 0.
+ */
+export type DiaSinMarca = 'sin_fichar' | 'futuro' | 'no_laborable'
+
+export function lecturaDelDiaSinMarca(
+  fecha: string, hoy: string, diasHabiles: readonly number[] | null,
+): DiaSinMarca {
+  const iso = fecha.slice(0, 10)
+  // Primero lo que el día ES —un sábado es no laborable se lo mire cuando se lo mire—, y después
+  // cuándo se lo mira. Al revés, el sábado que viene diría «todavía no pasó» y el pasado «faltaste».
+  if (diasHabiles && diasHabiles.length > 0) {
+    const d = new Date(`${iso}T00:00:00Z`)
+    if (!Number.isNaN(d.getTime()) && !diasHabiles.includes(d.getUTCDay() || 7)) return 'no_laborable'
+  }
+  if (iso > hoy.slice(0, 10)) return 'futuro'
+  return 'sin_fichar'
+}
+
+/** Una fila de la semana de M05: el día de la base, o el que falta con el motivo por el que falta. */
+export interface FilaDeSemana extends DiaDeAsistencia {
+  /** `null` cuando la fila SÍ tiene marcas: ahí manda `estado`, que lo dice la base. */
+  sinMarca: DiaSinMarca | null
+}
+
+/**
+ * LOS SIETE DÍAS DE LA SEMANA, con los que la base no devolvió clasificados por qué les pasa.
+ *
+ * La fila sintética lleva `minutos: null` a propósito: no es un día de cero horas, es un día del
+ * que no se sabe nada, y `totalDelPeriodo` ya distingue esos dos casos. Un día NO LABORABLE en el
+ * que igual se fichó vuelve de la base con sus marcas y se dibuja como cualquier otro: el hecho le
+ * gana al calendario.
+ */
+export function completarSemana(
+  lunes: string, dias: readonly DiaDeAsistencia[], hoy: string, diasHabiles: readonly number[] | null,
+): FilaDeSemana[] {
+  const porFecha = new Map(dias.map((d) => [d.fecha, d]))
+  const base = new Date(`${lunes}T00:00:00Z`).getTime()
+  return Array.from({ length: 7 }, (_, i) => {
+    const fecha = new Date(base + i * 86400000).toISOString().slice(0, 10)
+    const real = porFecha.get(fecha)
+    if (real) return { ...real, sinMarca: null }
+    return {
+      fecha, entrada: null, salida: null, incidencias: 0, motivo: null,
+      estado: 'sin_registrar' as const, minutos: null, obra_id: null,
+      sinMarca: lecturaDelDiaSinMarca(fecha, hoy, diasHabiles),
+    }
+  })
 }
