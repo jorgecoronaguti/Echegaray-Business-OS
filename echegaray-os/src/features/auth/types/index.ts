@@ -3,7 +3,9 @@ import { z } from 'zod'
 // Perfil — rol real del usuario autenticado (PR5). El alta de perfil (asignación de
 // rol) se hace manualmente por Jorge en Supabase, no vía signup -- así nadie se
 // autoasigna 'direccion'. Ver supabase/migrations/20260708121545_login_roles.sql
-export type Rol = 'direccion' | 'administracion' | 'jefe_obra' | 'campo'
+// `cliente` es el primer rol EXTERNO: no es un empleado con menos permisos, es alguien de otra
+// empresa. Vive confinado a /portal y las reglas están en features/portal/types.ts.
+export type Rol = 'direccion' | 'administracion' | 'jefe_obra' | 'campo' | 'cliente'
 
 export interface Perfil {
   id: string
@@ -21,6 +23,9 @@ export const ROL_LABEL: Record<Rol, string> = {
   // es como se llama a sí misma la persona que entra. La CLAVE sigue siendo `campo` —renombrarla
   // obligaría a migrar cada policy escrita contra ese literal— y esto es sólo cómo se escribe.
   campo: 'Empleado',
+  // El único rol EXTERNO. Se escribe «Cliente» a secas: es como se presenta la persona y como lo
+  // nombra el dueño («el cliente entra y ve su obra»).
+  cliente: 'Cliente',
 }
 
 // Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
@@ -108,6 +113,15 @@ export const RUTAS_PUBLICAS = [
   // Va como entrada de la lista BLANCA y no relajando el matcher: exceptuar "todo archivo con
   // extensión" abriría de una vez cualquier cosa que alguien deje caer en `public/` mañana, que es
   // exactamente el modo de fallar de una lista negra.
+  // ═══ LA PUERTA DEL PORTAL DEL CLIENTE (25/08/2026) ═══
+  //
+  // `/portal/ingresar` es donde el cliente pide su enlace de acceso: por definición llega SIN
+  // sesión. Sin esta entrada el middleware lo manda a `/login`, que es la pantalla de los
+  // empleados y le pide una contraseña que el cliente no tiene ni va a tener.
+  //
+  // Va SÓLO la puerta, no `/portal` entero: el resto del portal muestra certificados e importes y
+  // exige sesión como cualquier otra pantalla.
+  '/portal/ingresar',
   '/marca', // el logotipo y el isotipo — la pantalla de login los necesita sin sesión
   '/icon.png', // el favicon que genera Next desde src/app/icon.png
 ]
