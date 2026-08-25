@@ -3,8 +3,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   debitosDelExtracto, corteDelExtracto, pagosDeResumen, cubiertaPorResumen,
-  respaldoEnLote, PARTES_MAXIMAS, HOLGURA_LOTE, chequesCubiertosPorBanco,
+  respaldoEnLote, PARTES_MAXIMAS, HOLGURA_LOTE, chequesCubiertosPorBanco, AVISO_CASI,
 } from './libro-respaldo-banco.mjs'
+import { cuotasEnCheque } from './libro-extractores-compras.mjs'
 import { NAT } from './banco-santander.mjs'
 
 // Las filas son las del archivo vivo, copiadas tal cual (A fecha · B concepto · C importe · D saldo ·
@@ -180,4 +181,143 @@ test('más pendientes que débitos del mismo importe = ambiguo: no se cubre ning
   assert.equal(cubiertos.size, 0)
   assert.equal(avisos.length, 1)
   assert.match(avisos[0], /ambiguo/)
+})
+
+// ── D · EL CHEQUE QUE PAGA VARIAS FACTURAS: EL BANCO LO DEBITA UNA VEZ, POR EL TOTAL ──────────────
+
+/** Las tres cuotas vivas del echeq 365 de Con-Sec, medidas en `_MOVIMIENTOS` el 25/08/2026: mismo
+ *  papel, tres filas de Compras (f668, f703, f720), las tres VENCIDO al 24/08 (serial 46258). */
+const CUOTAS_365 = [
+  { i: 0, importe: 1191295, filaCompras: 668 },
+  { i: 1, importe: 436295, filaCompras: 703 },
+  { i: 2, importe: 72410, filaCompras: 720 },
+]
+const cuota365 = ({ importe, filaCompras }, extra = {}) => ({
+  signo: -1, instrumento: 'echeq', estado: 'VENCIDO', importe, fecha: 46258,
+  concepto: 'Con-Sec - Lopez Claudia Alejandra · echeq 365',
+  origen: { pestana: 'Compras', fila: `${filaCompras} · cheque 40` },
+  ...extra,
+})
+const ECHEQ_365 = CUOTAS_365.map((c) => cuota365(c))
+/** El débito real de `_BANCO_RAW` del 25/08/2026: −1.700.000, saldo 6.311.573,19. */
+const CLEARING = { fecha: 46259, concepto: 'Echeq clearing recibido 48hs', importe: 1700000, fila: 300 }
+
+test('MULTIFACTURA (25/08): el echeq 365 partido en tres cuotas lo cubre UN débito por la suma', () => {
+  // EL DEFECTO MEDIDO: la tarjeta "DEUDA ATRASADA Y DEL MES" publicaba $29.038.270 con $1.700.000
+  // adentro que ya habían salido del banco. Ningún importe individual (1.191.295 / 436.295 / 72.410)
+  // coincide con el débito de 1.700.000, así que el cruce por importe exacto no cubría ninguna cuota
+  // y la deuda sobrevivía a su propio pago.
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(ECHEQ_365, [CLEARING])
+  assert.equal(cubiertos.size, 3, 'las tres cuotas del mismo papel se cubren juntas o no se cubre ninguna')
+  for (const c of CUOTAS_365) {
+    assert.equal(cubiertos.get(c.i)?.fecha, 46259, `f${c.filaCompras} queda REAL a la fecha del débito`)
+    assert.equal(cubiertos.get(c.i)?.fila, 300)
+  }
+  assert.equal(avisos.length, 0)
+})
+
+test('MULTIFACTURA: con $1.699.999 no se cubre ninguna — el peso sigue siendo señal', () => {
+  // La agrupación no trae ninguna tolerancia nueva: la suma del grupo se compara EXACTA contra el
+  // débito, igual que el importe individual. El $1 ya probó ser señal (el cheque 313 del 06/08).
+  const { cubiertos } = chequesCubiertosPorBanco(ECHEQ_365, [{ ...CLEARING, importe: 1699999 }])
+  assert.equal(cubiertos.size, 0)
+})
+
+test('MULTIFACTURA: dos echeqs distintos que suman lo mismo y UN débito = ambiguo, no cubro ninguno', () => {
+  // Es la misma prudencia del conteo por importe, un nivel más arriba: con dos papeles candidatos al
+  // mismo débito, decir cuál se pagó es adivinar — y decir "pagado" de más rompe una tesorería.
+  const otro = [
+    cuota365({ importe: 1000000, filaCompras: 801 }, { concepto: 'Otro proveedor · echeq 999', origen: { pestana: 'Compras', fila: '801 · cheque 55' } }),
+    cuota365({ importe: 700000, filaCompras: 802 }, { concepto: 'Otro proveedor · echeq 999', origen: { pestana: 'Compras', fila: '802 · cheque 55' } }),
+  ]
+  const { cubiertos, avisos } = chequesCubiertosPorBanco([...ECHEQ_365, ...otro], [CLEARING])
+  assert.equal(cubiertos.size, 0, 'ni las del 365 ni las del 999')
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /ambiguo/)
+})
+
+test('MULTIFACTURA: un cheque de UNA sola factura cruza como siempre — el camino viejo no cambia', () => {
+  const sola = [cuota365({ importe: 1700000, filaCompras: 900 }, { concepto: 'Con-Sec · echeq 366', origen: { pestana: 'Compras', fila: '900 · cheque 41' } })]
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(sola, [CLEARING])
+  assert.equal(cubiertos.size, 1, 'un grupo de una cuota vale su propio importe')
+  assert.equal(cubiertos.get(0).fecha, 46259)
+  assert.equal(avisos.length, 0)
+})
+
+test('MULTIFACTURA: si un REAL ya consumió el débito, el grupo NO se cubre', () => {
+  // El mismo papel no paga dos veces: lo REAL consume primero, y lo que queda libre es lo único que
+  // puede respaldar un pendiente.
+  const movs = [
+    { signo: -1, instrumento: 'echeq', estado: 'REAL', importe: 1700000, fecha: 46259, concepto: 'otro echeq ya contado' },
+    ...ECHEQ_365,
+  ]
+  const { cubiertos } = chequesCubiertosPorBanco(movs, [CLEARING])
+  assert.equal(cubiertos.size, 0, 'el único débito de $1.700.000 ya estaba tomado')
+})
+
+test('MULTIFACTURA: una cuota REAL del mismo papel NO entra en la suma del grupo pendiente', () => {
+  // Lo REAL ya está adentro del saldo del banco: sumarlo al grupo pediría un débito por el total del
+  // papel que el extracto nunca va a tener dos veces, y el grupo pendiente quedaría vivo para siempre.
+  const movs = [
+    cuota365(CUOTAS_365[0], { estado: 'REAL' }),
+    cuota365(CUOTAS_365[1]),
+    cuota365(CUOTAS_365[2]),
+  ]
+  const debitos = [
+    { fecha: 46256, concepto: 'Echeq clearing recibido 48hs', importe: 1191295, fila: 290 },
+    { fecha: 46259, concepto: 'Echeq clearing recibido 48hs', importe: 508705, fila: 300 },
+  ]
+  const { cubiertos } = chequesCubiertosPorBanco(movs, debitos)
+  assert.equal(cubiertos.size, 2, '436.295 + 72.410 = 508.705, sin la cuota REAL')
+  assert.equal(cubiertos.get(1).fila, 300)
+  assert.equal(cubiertos.get(2).fila, 300)
+})
+
+test('CONTRATO con cuotasEnCheque: el número del papel viaja en la frase que ese archivo arma', () => {
+  // El número del cheque NO sobrevive a `movimiento()` (sólo alimenta `clave`), así que la única
+  // huella del papel en una cuota es el texto que escribe `cuotasEnCheque`. Este test llama a la
+  // función REAL: si mañana cambia la frase o el formato del origen, el agrupador deja de agrupar y
+  // los $1.700.000 vuelven a la deuda sin que nada dé error. Que falle acá.
+  const base = { signo: -1, concepto: 'Con-Sec - Lopez Claudia Alejandra', contraparte: 'Con-Sec', instrumento: 'echeq', rubro: 'Materiales' }
+  const movs = CUOTAS_365.flatMap((c) => cuotasEnCheque(
+    base,
+    [{ filaCheque: 40, numero: '365', instrumento: 'echeq', importe: c.importe, fechaPago: 46258 }],
+    46259,
+    { fila: c.filaCompras, comprobante: `A-0001-0000${c.filaCompras}` },
+  ))
+  assert.equal(movs.length, 3)
+  assert.ok(movs.every((m) => m.estado === 'VENCIDO'), 'las tres vencidas al 24/08, como en el Sheet vivo')
+  const { cubiertos } = chequesCubiertosPorBanco(movs, [CLEARING])
+  assert.equal(cubiertos.size, 3, 'el agrupador reconoce el papel en lo que cuotasEnCheque escribe')
+})
+
+test('MULTIFACTURA: el grupo que casi coincide NO se cubre, pero deja de ser mudo — el caso vivo', () => {
+  // LEÍDO DEL SHEET VIVO EL 25/08/2026 (sólo lectura): las tres cuotas del echeq 365 son
+  // $1.191.294,61 + $436.294,54 + $72.410,03 = $1.699.999,18, y el débito f473 del extracto es
+  // $1.700.000,00. Los 82 centavos son el redondeo con que se libró el papel: `repartirPorCompra` le
+  // da a cada factura SU total, así que el valor nominal del cheque no existe en el libro. La regla
+  // es exacta y no lo cubre — pero lo dice, que es la diferencia entre un límite y un agujero.
+  const reales = [
+    cuota365({ importe: 1191294.61, filaCompras: 668 }),
+    cuota365({ importe: 436294.54, filaCompras: 703 }),
+    cuota365({ importe: 72410.03, filaCompras: 720 }),
+  ]
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(reales, [{ ...CLEARING, fila: 473 }])
+  assert.equal(cubiertos.size, 0, 'exacto es exacto: los 82 centavos no se regalan')
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /1699999\.18/)
+  assert.match(avisos[0], /f473/)
+  assert.match(avisos[0], /NO lo cubro/)
+})
+
+test(`MULTIFACTURA: a $${AVISO_CASI} de diferencia no hay aviso — el peso sigue siendo señal, no redondeo`, () => {
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(ECHEQ_365, [{ ...CLEARING, importe: 1700001 }])
+  assert.equal(cubiertos.size, 0)
+  assert.equal(avisos.length, 0, 'un peso de diferencia es otro cheque, no el redondeo de éste')
+})
+
+test('MULTIFACTURA: una cuota SOLA que casi coincide no avisa — no arrastra el redondeo de ningún papel', () => {
+  const sola = [cuota365({ importe: 1699999.18, filaCompras: 900 }, { concepto: 'X · echeq 400', origen: { pestana: 'Compras', fila: '900 · cheque 60' } })]
+  const { avisos } = chequesCubiertosPorBanco(sola, [CLEARING])
+  assert.equal(avisos.length, 0)
 })

@@ -207,6 +207,52 @@ export function respaldoEnLote(importe, prevista, debitos = [], { corte, usados 
 /** Un débito del extracto que ES un cheque saliendo: el papel presentado o el echeq canjeado. */
 const ES_DEBITO_DE_CHEQUE = /cheque debitado|echeq (canje|clearing)|canje interno recibido/i
 
+// ── EL CONTRATO CON `cuotasEnCheque` (libro-extractores-compras.mjs) ───────────────────────────────
+//
+// Ese archivo escribe las dos huellas del papel en una cuota, y son las dos únicas que sobreviven a
+// `movimiento()`:  concepto → "<proveedor> · <instrumento> <número>"  ·  origen.fila → "<fila de
+// Compras> · cheque <fila del papel>". Están ancladas al FINAL a propósito: el proveedor puede decir
+// cualquier cosa adelante. El porqué de leerlo del texto está arriba, en `chequesCubiertosPorBanco`.
+const PAPEL_EN_CONCEPTO = /·\s*(cheque|echeq)\s+(.+)$/i
+const PAPEL_EN_ORIGEN = /·\s*cheque\s+(\d+)\s*$/i
+
+/**
+ * NÚCLEO PURO: qué papel está pagando esta cuota, o `null` si el movimiento no declara ninguno.
+ *
+ * `null` NO es un error: un cheque emitido sin factura entra por otra puerta y no lleva la frase. Un
+ * movimiento sin papel se cruza solo, como siempre — nunca se lo agrupa con nadie por parecido.
+ *
+ * @returns {string|null} `instrumento|número|fila del papel`
+ */
+export function papelDeLaCuota(m) {
+  const enConcepto = PAPEL_EN_CONCEPTO.exec(String(m?.concepto ?? '').trim())
+  if (!enConcepto) return null
+  const enOrigen = PAPEL_EN_ORIGEN.exec(String(m?.origen?.fila ?? ''))
+  return `${enConcepto[1].toLowerCase()}|${enConcepto[2].trim().toLowerCase()}|${enOrigen ? enOrigen[1] : '?'}`
+}
+
+// SUMAR FLOTANTES INVENTA CENTAVOS QUE NO EXISTEN, y esto no es una tolerancia: 1.191.295,10 +
+// 436.295,20 da 1.727.590,299999… en binario y ese número no es igual a ningún débito del banco. Se
+// redondea al centavo —la unidad en la que el banco publica— y nada más: el $1 de diferencia sigue
+// siendo señal, y un candidato de una sola cuota nunca pasa por acá (su importe es el del dato).
+const redondo = (n) => Math.round(n * 100) / 100
+
+/**
+ * Cuánta diferencia hace que un grupo casi coincida con un débito. NO ES UNA TOLERANCIA: nada se
+ * cubre con esto, sólo se AVISA.
+ *
+ * MEDIDO EL 25/08/2026, y es la razón por la que existe: las tres cuotas del echeq 365 suman
+ * $1.699.999,18 (los totales de las facturas f668/f703/f720) y el banco debitó $1.700.000,00. Los 82
+ * centavos son del papel, no del libro — el echeq se libró redondeado al peso y esa diferencia no
+ * entra por ninguna puerta: `repartirPorCompra` le da a cada factura SU total, así que el valor
+ * nominal del cheque no está en ningún movimiento. Sin este aviso el caso queda mudo para siempre:
+ * la regla exacta no lo cubre y nadie se entera de por qué.
+ *
+ * ESTRICTAMENTE MENOR QUE UN PESO. El $1 de diferencia ya probó ser SEÑAL en este mismo archivo
+ * (el cheque 313), y sigue siéndolo: acá sólo cabe el redondeo al peso de quien firmó el papel.
+ */
+export const AVISO_CASI = 1
+
 /**
  * NÚCLEO PURO: los cheques del libro que el banco YA debitó — la corrección del 06/08.
  *
@@ -223,12 +269,40 @@ const ES_DEBITO_DE_CHEQUE = /cheque debitado|echeq (canje|clearing)|canje intern
  *   2. cada movimiento REAL del libro con instrumento cheque/echeq CONSUME primero su débito de
  *      igual importe (el más cercano en fecha) — sin este paso, el débito del cheque ya contado
  *      cubriría además al pendiente y el mismo papel pagaría dos veces;
- *   3. una cuota pendiente queda CUBIERTA sólo si los débitos restantes de su importe EXACTO
- *      alcanzan para TODAS las pendientes de ese importe — si hay más pendientes que débitos, no
- *      se cubre ninguna: decir "pagado" de más es el error que rompe una tesorería.
+ *   3. las cuotas pendientes se AGRUPAN POR PAPEL (ver abajo) y el candidato vale la SUMA del grupo;
+ *   4. un candidato queda CUBIERTO sólo si los débitos restantes de su importe EXACTO alcanzan para
+ *      TODOS los candidatos de ese importe — si hay más candidatos que débitos, no se cubre
+ *      ninguno: decir "pagado" de más es el error que rompe una tesorería.
  *
  * El $1 de diferencia ya probó ser señal, no ruido: el débito de $470.945 NO cubre la cuota de
  * $470.944 — y está bien, porque ese débito es el cheque 313 que el libro ya tiene como REAL.
+ *
+ * ═══ EL PASO 3, Y POR QUÉ HIZO FALTA (25/08/2026) ═══
+ *
+ * MEDIDO EN VIVO: la tarjeta "DEUDA ATRASADA Y DEL MES" de CAJA publicaba $29.038.270 con
+ * $1.700.000 adentro que YA habían salido del banco. `_BANCO_RAW` del 25/08 tiene
+ * "Echeq clearing recibido 48hs · −1.700.000 · saldo 6.311.573,19"; `_MOVIMIENTOS` tenía tres filas
+ * VENCIDO del 24/08, las tres del echeq 365 de Con-Sec (Compras f668 $1.191.295 + f703 $436.295 +
+ * f720 $72.410 = $1.700.000 exactos).
+ *
+ * LA CAUSA: un cheque que paga VARIAS facturas se parte en el libro en una cuota por factura
+ * (`cuotasEnCheque`, que no puede hacer otra cosa: la clave de dedup necesita la factura), pero el
+ * banco lo debita UNA vez por el TOTAL. Ningún importe individual coincidía con el débito, así que
+ * no se cubría ninguna cuota y la deuda sobrevivía a su propio pago. No es un caso raro: es cómo se
+ * le paga normalmente a un proveedor.
+ *
+ * LA IDENTIDAD DEL PAPEL SE LEE DEL TEXTO, Y ES A PROPÓSITO. `movimiento()` NO conserva
+ * `numeroCheque` —sólo lo usa para armar `clave`—, así que en una cuota la única huella del papel es
+ * la frase que escribe `cuotasEnCheque`. Y propagarlo como campo está PROHIBIDO por el defecto que
+ * ese archivo documenta: con `numeroCheque`, `claveDe` arma `cheque:N°:S` y las tres cuotas del 365
+ * colapsan en una — se perderían $508.705. Se paga el precio del contrato de formato entre los dos
+ * archivos, y ese contrato tiene su propio test (`CONTRATO con cuotasEnCheque`), que falla si la
+ * frase cambia. Sin ese test el agrupador dejaría de agrupar en silencio.
+ *
+ * Y LA CLAVE INCLUYE LA FILA DEL PAPEL, no sólo (instrumento, número): en el registro vivo las filas
+ * 101 y 102 son las DOS "FISICO 316" ($500.000 y $510.000). Dos papeles distintos con el mismo
+ * número existen y están medidos; fusionar sus cuotas en un grupo pediría un débito por una suma que
+ * nadie debitó nunca — o, peor, por una que otro cheque debitó.
  *
  * @param {Array} movimientos el libro completo (se lee, no se muta)
  * @param {Array} debitos `debitosDelExtracto(banco)`
@@ -251,24 +325,57 @@ export function chequesCubiertosPorBanco(movimientos = [], debitos = []) {
     grupo.sort((a, b) => Math.abs(a.fecha - m.fecha) - Math.abs(b.fecha - m.fecha))
     grupo.shift()
   }
-  // Paso 3: conteo por importe exacto sobre lo pendiente.
-  const pendientes = new Map()
+  // Paso 3: las cuotas del MISMO papel son un solo candidato, por su suma. Lo REAL no entra al grupo
+  // —ya está adentro del saldo— y una cuota que no declara papel es su propio candidato, que es
+  // exactamente el camino de siempre: un grupo de uno vale su propio importe.
+  const porPapel = new Map()
+  const candidatos = [] // en orden del libro: el orden decide qué débito toma cada uno
   movimientos.forEach((m, i) => {
     if (!esCheque(m) || m.estado === 'REAL') return
-    if (!pendientes.has(m.importe)) pendientes.set(m.importe, [])
-    pendientes.get(m.importe).push(i)
+    const papel = papelDeLaCuota(m)
+    const abierto = papel ? porPapel.get(papel) : null
+    if (abierto) {
+      abierto.indices.push(i)
+      abierto.importe = redondo(abierto.importe + m.importe)
+      return
+    }
+    const c = { importe: m.importe, indices: [i] }
+    candidatos.push(c)
+    if (papel) porPapel.set(papel, c)
   })
+  // Paso 4: el conteo por importe exacto de siempre, ahora sobre candidatos en vez de cuotas sueltas.
+  const pendientes = new Map()
+  for (const c of candidatos) {
+    if (!pendientes.has(c.importe)) pendientes.set(c.importe, [])
+    pendientes.get(c.importe).push(c)
+  }
   const cubiertos = new Map()
   const avisos = []
-  for (const [importe, indices] of pendientes) {
+  // Para el aviso de "casi": los que sobrevivieron al paso 2. Señalar un débito que un REAL ya
+  // consumió mandaría a mirar el papel equivocado.
+  const sinReclamar = [...libres.values()].flat()
+  for (const [importe, cs] of pendientes) {
     const grupo = (libres.get(importe) ?? []).sort((a, b) => a.fecha - b.fecha)
-    if (!grupo.length) continue
-    if (grupo.length < indices.length) {
-      avisos.push(`respaldo-banco: ${grupo.length} débito(s) de $${importe} contra ${indices.length} `
+    if (!grupo.length) {
+      for (const c of cs) avisarCasi(c, importe, sinReclamar, avisos)
+      continue
+    }
+    if (grupo.length < cs.length) {
+      avisos.push(`respaldo-banco: ${grupo.length} débito(s) de $${importe} contra ${cs.length} `
         + 'cheque(s) pendientes del mismo importe — ambiguo, no cubro ninguno')
       continue
     }
-    indices.forEach((i, k) => cubiertos.set(i, { fecha: grupo[k].fecha, fila: grupo[k].fila }))
+    cs.forEach((c, k) => c.indices.forEach((i) => cubiertos.set(i, { fecha: grupo[k].fecha, fila: grupo[k].fila })))
   }
   return { cubiertos, avisos }
+}
+
+/** El grupo que casi coincide con un débito: no se cubre, se DICE. Ver `AVISO_CASI`. */
+function avisarCasi(candidato, importe, sinReclamar, avisos) {
+  if (candidato.indices.length < 2) return // una cuota sola no arrastra el redondeo del papel
+  const casi = sinReclamar.filter((d) => Math.abs(d.importe - importe) < AVISO_CASI && d.importe !== importe)
+  if (!casi.length) return
+  avisos.push(`respaldo-banco: ${candidato.indices.length} cuotas del mismo cheque suman $${importe} y el `
+    + `extracto tiene $${casi[0].importe} (_BANCO_RAW f${casi[0].fila}) — NO lo cubro: probablemente el `
+    + 'cheque se libró redondeado y esa diferencia no está en el libro. Decide una persona.')
 }
