@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import type { CertificadoPortal, DatosDeCobro } from '../types'
 import type { CorteAPagar } from '../reglas/aPagar'
 import { estadoEnPantalla } from '../reglas/estado'
@@ -27,16 +26,20 @@ import { InformarTransferencia } from './InformarTransferencia'
 // merece el mismo bloque en tono neutro con lo que viene: pintarle de rojo «$ 0,00 M» sería
 // inventarle una mora, y esconder el bloque le sacaría la única forma de ver qué le toca pagar.
 
-export function PanelAPagar({ corte, cobro, montos, hoy }: {
+export type BloqueAbierto = 'no' | 'pagar' | 'informar'
+
+export function PanelAPagar({ corte, cobro, montos, hoy, abierto, onAbrir }: {
   corte: CorteAPagar
   cobro: DatosDeCobro
   montos: boolean
   /** El día en curso, resuelto EN EL SERVIDOR. Leer el reloj del navegador acá haría que el HTML
    *  del servidor y el del cliente digan cosas distintas a la medianoche, y React lo descarta entero. */
   hoy: string
+  /** Qué bloque está desplegado. LO GOBIERNA LA PANTALLA, no el panel: «Pagar» también se aprieta
+   *  desde una fila de la tabla de certificados, y dos estados para el mismo bloque se desincronizan. */
+  abierto: BloqueAbierto
+  onAbrir: (b: BloqueAbierto) => void
 }) {
-  const [abierto, setAbierto] = useState<'no' | 'pagar' | 'informar'>('no')
-
   if (!montos) return null
 
   const hayVencido = corte.vencidos.length > 0
@@ -110,7 +113,7 @@ export function PanelAPagar({ corte, cobro, montos, hoy }: {
       <div style={{ padding: '13px 16px 15px' }}>
         <button
           type="button"
-          onClick={() => setAbierto((v) => (v === 'pagar' ? 'no' : 'pagar'))}
+          onClick={() => onAbrir(abierto === 'pagar' ? 'no' : 'pagar')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%',
             background: P.marca, color: P.tinta, fontSize: '13px', fontWeight: 600, borderRadius: 6,
@@ -143,7 +146,7 @@ export function PanelAPagar({ corte, cobro, montos, hoy }: {
 
         <button
           type="button"
-          onClick={() => setAbierto((v) => (v === 'informar' ? 'no' : 'informar'))}
+          onClick={() => onAbrir(abierto === 'informar' ? 'no' : 'informar')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 8,
             width: '100%', border: `1px solid ${P.linea}`, background: P.superficie, color: P.tintaSuave,
@@ -159,7 +162,7 @@ export function PanelAPagar({ corte, cobro, montos, hoy }: {
           <InformarTransferencia
             certificados={filas}
             sugerido={total}
-            onListo={() => setAbierto('no')}
+            onListo={() => onAbrir('no')}
           />
         )}
 
