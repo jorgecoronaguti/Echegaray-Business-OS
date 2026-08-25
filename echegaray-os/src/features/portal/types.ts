@@ -107,12 +107,20 @@ export interface ObraPortal {
   fotos_al: string | null
 }
 
-/** Lo que devuelve `getMiObra()`: quién sos, qué obras abrís y cuál estás mirando. */
+/**
+ * Lo que devuelve `getMiObra()`: quién sos, qué obras abrís y cuál estás mirando.
+ *
+ * `cobro` y `contactos` viajan acá y no en dos funciones aparte porque son UNA lectura de la misma
+ * relación —el CBU con el que se le cobra a este cliente y quién lo atiende— y el portal las dibuja
+ * siempre juntas, en la misma columna de la derecha del `29`.
+ */
 export interface MiObra {
   acceso: AccesoPortal
   obras: ObraDelSelector[]
   /** `null` = el acceso no tiene ninguna obra publicada todavía. */
   obra: ObraPortal | null
+  cobro: DatosDeCobro
+  contactos: ContactoPortal[]
 }
 
 export type EstadoCertificado =
