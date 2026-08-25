@@ -60,11 +60,11 @@ export function AppHeader({
         : null
 
   return (
-    // UNA SOLA LÍNEA, 48px CONTANDO EL HAIRLINE. El alto vive en el `<header>` y no en el div de
+    // UNA SOLA LÍNEA, 44px CONTANDO EL HAIRLINE (medido del mockup 00: padding 9px + isotipo 24 + hairline). El alto vive en el `<header>` y no en el div de
     // adentro: con `h-12` adentro y el borde afuera, el header medía 49px — 48 de contenido más 1 de
     // línea. Un píxel no se ve, pero el header es la referencia de la que cuelga todo lo demás, y el
     // handoff dice 48. Es la medida que la regla ejecutable comprueba en las 22 pantallas.
-    <header className="sticky top-0 z-30 h-12 border-b border-line bg-surface" data-testid="app-header">
+    <header className="sticky top-0 z-30 h-11 border-b border-line bg-surface" data-testid="app-header">
       <div className="flex h-full w-full items-center gap-1 px-4 sm:px-6 lg:px-10">
         {/* LA MARCA REAL, NO SU NOMBRE ESCRITO (18/08/2026). El isotipo es el archivo oficial del
             dueño —Drive · "logo y colores de la empresa" · `LOGO REDONDO.png`, con transparencia—,
