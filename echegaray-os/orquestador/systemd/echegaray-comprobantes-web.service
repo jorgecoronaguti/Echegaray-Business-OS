@@ -12,6 +12,9 @@ Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# La lectura del comprobante es con visión (Anthropic): la llave vive en anthropic.env, como en el worker del bot.
+# Sin esta línea el worker arrancaba «listo» y rechazaba todo con «no hay lectura disponible» (prueba real 25/08).
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/procesar-comprobantes-web.mjs
 # Un lote grande son doce llamadas al modelo de visión más una corrida del cargador: cuatro minutos
 # de techo, no el default. Matar al escritor a mitad de camino deja el fajo abierto y la fila en

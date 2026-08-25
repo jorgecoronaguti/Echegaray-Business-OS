@@ -26,6 +26,9 @@ const json = args.includes('--json')
 function faltantes() {
   const falta = []
   if (!process.env.DATABASE_URL) falta.push('DATABASE_URL')
+  // Sin la llave de visión el worker toma la fila y la rechaza con «no hay lectura disponible»:
+  // eso no es «listo», es ciego. Se exige acá, antes de tomar nada (prueba real 25/08).
+  if (!process.env.ANTHROPIC_API_KEY) falta.push('ANTHROPIC_API_KEY (anthropic.env)')
   const s = accesoAStorage(process.env)
   if (!s.ok) falta.push(s.falta)
   return falta
