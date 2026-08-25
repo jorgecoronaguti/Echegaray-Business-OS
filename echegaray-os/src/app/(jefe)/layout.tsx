@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
-import { inicialesDe } from '@/features/empleado/components/shell-logica'
+import { getUsuarioActual } from '@/features/auth/services/authService'
 import { ShellJefe } from '@/features/jefe/components/ShellJefe'
 
 // EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO.
@@ -16,14 +15,13 @@ import { ShellJefe } from '@/features/jefe/components/ShellJefe'
 // `security_invoker = true` sobre `ve_obra()`: quien entre a mano no ve la obra de nadie, ve las
 // suyas — o nada. Y ni una sola consulta de este perfil nombra una columna de dinero.
 //
-// `inicialesDe` se importa del perfil empleado y no se copia: dos implementaciones del mismo
-// círculo terminan mostrando iniciales distintas para la misma persona en dos pantallas.
-
+// LAS INICIALES YA NO VIAJAN POR ACÁ. El topbar de marca lo dibuja J01, que es la única pantalla
+// que lo tiene (los mockups J02…J06 abren con su propio topbar de detalle): pasarlas por el marco
+// obligaba a leer el perfil en las seis para pintarlas en una.
 export default async function JefeLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
   if (!user) redirect('/login')
-  const perfil = await getPerfilActual(supabase, user.id)
 
-  return <ShellJefe iniciales={inicialesDe(perfil.data?.nombre, user.email)}>{children}</ShellJefe>
+  return <ShellJefe>{children}</ShellJefe>
 }

@@ -1,14 +1,17 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso, Estado } from '@/shared/components/ds'
 import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
-import { Nada } from '@/features/empleado/components/Filas'
 import { BloqueAsistencia } from '@/features/empleado/components/BloqueAsistencia'
 import { PedirCorreccion } from '@/features/empleado/components/PedirCorreccion'
+import { AvisarAusencia } from '@/features/empleado/components/AvisarAusencia'
+import { C } from '@/shared/components/movil/tokens'
+import { Icono, type NombreIcono } from '@/shared/components/movil/Iconos'
+import {
+  AvisoError, BotonTopBar, RotuloSeccion, TarjetaLista, Vacio, mono,
+} from '@/shared/components/movil/Piezas'
 import {
   getMiAsistencia, getMiDiaDeHoy, getMiObra, getMisCorrecciones,
 } from '@/features/empleado/services/empleadoService'
@@ -18,43 +21,33 @@ import { duracion, hora, totalDelPeriodo } from '@/features/empleado/services/as
 import { diaAPedirCorreccion, horaCorta, pendienteDe } from '@/features/empleado/services/correccion'
 import type { DiaDeAsistencia } from '@/features/empleado/types'
 
-// «ASISTENCIA» (M05) — un estado grande, un botón grande, y la semana como LISTA.
-//
-// ═══ POR QUÉ LA SEMANA Y NO EL MES ═══
-//
-// La ventana por defecto era el mes y el mockup la cambia a la semana. La razón está en el uso: lo
-// que alguien viene a mirar acá es si le falta una salida esta semana —eso todavía se puede
-// corregir— y cuánto lleva. Treinta filas para contestar eso obligan a buscar el renglón de ayer
-// entre las de hace tres semanas. El mes no se perdió: vive en «Ver el mes» del encabezado.
+// M05 · ASISTENCIA — porte literal de `M05 · Asistencia.dc.html`.
 //
 // ═══ LA SEMANA ES UNA LISTA, NO UNA PLANILLA ═══
 //
-// La nota del mockup: «La semana se lee como lista, no como planilla». La cabecera de columnas
-// FECHA·ENTRADA·SALIDA·TOTAL en 390px comprime cuatro celdas en el ancho de un pulgar. La lista
-// pone el día a la izquierda, las dos marcas juntas en el medio —que es como se leen: «entré a las
-// siete y salí a las cinco»— y el total a la derecha.
+// La nota del mockup: «La semana se lee como lista, no como planilla». Cada fila lleva su icono de
+// estado, el día en 76px, las dos marcas juntas en monoespaciada —«07:05 → 17:10», que es como se
+// leen— y el total a la derecha. El día de hoy va sobre `#FEF9E6`.
 //
 // ═══ «SIN FICHAR» NO ES CERO ═══
 //
 // La nota del mockup, textual: «El jueves dice "sin fichar", no 0,0 h». Un 0,0 h afirma que la
-// persona estuvo cero horas —o sea, que faltó—. «Sin fichar» dice lo que efectivamente pasó: nadie
-// tocó el botón, y eso puede ser una falta, un olvido o un día que se trabajó en otro lado.
+// persona estuvo cero horas —o sea, que faltó—. «Sin fichar» dice lo que efectivamente pasó.
 //
-// ═══ LO QUE NO SE DIBUJA: EL «DENTRO DEL PREDIO DE LA OBRA» ═══
+// ═══ LO QUE NO SE DIBUJA: «DENTRO DEL PREDIO DE LA OBRA» ═══
 //
-// El mockup pone una tarjeta «Dentro del predio de la obra · verificado por ubicación». No está
-// implementada y no se simula: el fichaje guarda el punto, pero NADIE lo compara todavía contra un
-// perímetro de obra —esa geocerca no existe en la base—. Escribir «verificado» sin verificación
-// sería exactamente el cartel que después alguien usa para discutir una jornada.
+// El mockup pone una tarjeta «verificado por ubicación · 07:12». No está implementada y no se
+// simula: el fichaje guarda el punto, pero NADIE lo compara todavía contra un perímetro de obra
+// —esa geocerca no existe en la base—. Escribir «verificado» sin verificación sería exactamente el
+// cartel que después alguien usa para discutir una jornada.
+//
+// ═══ NI EL OBJETIVO DE «38,0 / 44,0 h» ═══
+//
+// Las 44 h semanales no salen de ninguna fuente del OS —no hay jornada pactada por persona en la
+// base— y ponerlas a mano convertiría una constante inventada en la vara contra la que alguien mide
+// su mes. Se publica lo trabajado y se dice cuántos días quedaron sin cerrar.
 
 export const dynamic = 'force-dynamic'
-
-const ESTADO: Record<string, { texto: string; tono: 'pos' | 'warn' | 'curso' | 'nulo' }> = {
-  completo: { texto: '', tono: 'pos' },
-  en_curso: { texto: 'en obra', tono: 'curso' },
-  falta_salida: { texto: 'falta salida', tono: 'warn' },
-  sin_registrar: { texto: 'sin fichar', tono: 'nulo' },
-}
 
 type Ventana = 'semana' | 'mes' | 'mes-pasado'
 
@@ -101,112 +94,113 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
       volver={{ href: '/mi-informacion', label: 'Mi información' }}
       sub={obras.data?.[0]?.nombre ?? 'sin obra asignada'}
       acciones={
-        <Link
+        <BotonTopBar
+          titulo={ventana === 'semana' ? 'Ver el mes' : 'Ver la semana'}
+          testid="cambiar-ventana"
           href={ventana === 'semana' ? '/mi-informacion/asistencia?ver=mes' : '/mi-informacion/asistencia'}
-          data-testid="cambiar-ventana"
-          className="flex h-[44px] items-center px-2 text-[12.5px] text-muted hover:text-ink"
         >
-          {ventana === 'semana' ? 'Ver el mes' : 'Ver la semana'}
-        </Link>
+          <Icono nombre="historial" tamano={20} />
+        </BotonTopBar>
       }
     >
-      {dias.error && <Aviso tono="neg" titulo="No se pudo leer tu asistencia." testid="asistencia-error-lectura">{dias.error}</Aviso>}
-      {correcciones.error && (
-        <Aviso tono="neg" titulo="No se pudieron leer tus pedidos de corrección." testid="correcciones-error-lectura">
-          {correcciones.error}
-        </Aviso>
-      )}
+      {dias.error && <AvisoError testid="asistencia-error-lectura">{dias.error}</AvisoError>}
+      {correcciones.error && <AvisoError testid="correcciones-error-lectura">{correcciones.error}</AvisoError>}
 
-      <BloqueAsistencia dia={dia.data} obraId={obras.data?.[0]?.id ?? null} grande />
+      <BloqueAsistencia dia={dia.data} obraId={obras.data?.[0]?.id ?? null} />
 
       {aCorregir && (
-        <div className="mt-5">
+        <div style={{ marginTop: 20 }}>
           <PedirCorreccion fecha={aCorregir.fecha} entrada={hora(aCorregir.entrada)} />
         </div>
       )}
 
       {/* ═══ EL ENCABEZADO DEL PERÍODO ES EL CONTRATO ═══
           Dice QUÉ ventana se está mirando y CUÁNTO suma. El total es sólo de los días cerrados, y
-          los que quedaron afuera se nombran: un total que calla los días abiertos parece completo.
-
-          NO SE DIBUJA UN OBJETIVO. El mockup escribe «38,0 / 44,0 h», pero las 44 h semanales no
-          salen de ninguna fuente del OS —no hay jornada pactada por persona en la base— y ponerlas
-          a mano convertiría una constante inventada en la vara contra la que alguien mide su mes. */}
-      <div className="mt-7 flex items-baseline gap-3">
-        <h2 className="text-[13px] font-semibold text-ink">
-          {ventana === 'semana' ? 'Esta semana' : ventana === 'mes' ? mesLargo(hoy) : mesLargo(v.desde)}
-        </h2>
-        <span className="ml-auto font-mono text-[13px] font-semibold tabular-nums text-ink" data-testid="total-presencia">
-          {duracion(total.minutos) ?? <span className="text-[12px] font-normal text-faint">sin registrar</span>}
-        </span>
-      </div>
-      <p className="mt-0.5 text-[11.5px] text-faint">
+          los que quedaron afuera se nombran: un total que calla los días abiertos parece completo. */}
+      <RotuloSeccion
+        icono="fecha"
+        margenArriba={24}
+        extra={duracion(total.minutos) ?? 'sin registrar'}
+        colorExtra={total.minutos > 0 ? C.ink : C.faint}
+      >
+        {ventana === 'semana' ? 'Esta semana' : ventana === 'mes' ? mesLargo(hoy) : mesLargo(v.desde)}
+      </RotuloSeccion>
+      <p style={{ marginTop: 2, fontSize: 11.5, color: C.faint }}>
         {dm(v.desde)} – {dm(v.hasta)}
         {total.sinCerrar > 0 && (
-          <span className="text-warn"> · {total.sinCerrar} día{total.sinCerrar === 1 ? '' : 's'} sin cerrar, que no suman</span>
+          <span style={{ color: C.warn }}>
+            {' '}· {total.sinCerrar} día{total.sinCerrar === 1 ? '' : 's'} sin cerrar, que no suman
+          </span>
         )}
       </p>
 
-      <div className="mt-2 overflow-hidden rounded-[14px] border border-line bg-surface" data-testid="historial-asistencia">
-        {filas.length === 0 ? (
-          <Nada testid="sin-asistencia">
-            No registraste asistencia en este período. Se registra acá arriba, con el botón de
-            entrada y salida.
-          </Nada>
-        ) : (
-          filas.map((d) => {
-            const e = ESTADO[d.estado] ?? ESTADO.sin_registrar
-            // EL DÍA QUE YA SE PIDIÓ NO SE VE IGUAL QUE EL QUE FALTA PEDIR. Sin este chip, quien ya
-            // mandó el pedido ve la misma fila «falta salida» y vuelve a pedir.
+      <div style={{ marginTop: 10 }}>
+        <TarjetaLista testid="historial-asistencia">
+          {filas.length === 0 ? (
+            <Vacio testid="sin-asistencia">
+              No registraste asistencia en este período. Se registra acá arriba, con el botón de
+              entrada y salida.
+            </Vacio>
+          ) : filas.map((d) => {
+            // EL DÍA QUE YA SE PIDIÓ NO SE VE IGUAL QUE EL QUE FALTA PEDIR. Sin esto, quien ya mandó
+            // el pedido ve la misma fila «falta salida» y vuelve a pedir.
             const pedido = pendienteDe(correcciones.data ?? [], d.fecha)
             const esHoy = d.fecha === hoy
+            const a = aspecto(d.estado, esHoy)
             return (
               <div
                 key={d.fecha}
                 data-testid="dia-asistencia"
                 data-estado={d.estado}
-                className={`flex min-h-[50px] items-center gap-3 border-b border-[#EFEEEA] px-4 py-2 text-[13px] last:border-b-0 ${esHoy ? 'bg-marca-soft' : ''}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+                  borderBottom: `1px solid ${C.divisor}`, minHeight: 48,
+                  background: esHoy ? C.marcaSuave : 'transparent',
+                }}
               >
-                <span className={`w-[64px] shrink-0 ${esHoy ? 'font-semibold text-ink' : 'text-ink'}`}>
+                <span title={a.titulo} style={{ display: 'flex', color: a.color, flexShrink: 0 }}>
+                  <Icono nombre={a.icono} tamano={17} />
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: esHoy ? 600 : 400, color: C.ink, width: 76, flexShrink: 0 }}>
                   {diaCorto(d.fecha)}
                 </span>
-                {/* LAS DOS MARCAS JUNTAS, COMO SE LEEN. Sin ninguna, «sin fichar» en `faint` — y
-                    nunca `00:00 → 00:00`, que serían dos horas que nadie marcó. */}
-                <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-muted">
-                  {d.entrada || d.salida ? (
-                    <>
-                      {hora(d.entrada) ?? '—'} → {hora(d.salida) ?? (d.estado === 'en_curso' ? 'en obra' : pedido ? `${horaCorta(pedido.hora_propuesta)}?` : '—')}
-                    </>
-                  ) : (
-                    <span className="text-faint">sin fichar</span>
-                  )}
+                {/* LAS DOS MARCAS JUNTAS, COMO SE LEEN. Sin ninguna, «sin fichar» — y nunca
+                    `00:00 → 00:00`, que serían dos horas que nadie marcó. */}
+                <span style={{ ...mono, fontSize: 12.5, color: C.muted, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {d.entrada || d.salida
+                    ? `${hora(d.entrada) ?? '—'} → ${hora(d.salida) ?? (d.estado === 'en_curso' ? 'en obra' : pedido ? `${horaCorta(pedido.hora_propuesta)}?` : '—')}`
+                    : 'sin fichar'}
                 </span>
-                <span className="shrink-0 text-right">
-                  {d.minutos != null ? (
-                    <span className="font-mono tabular-nums text-ink">{duracion(d.minutos)}</span>
-                  ) : pedido ? (
-                    <Estado tono="pendiente" clave="correccion_pendiente" testid="chip-correccion">corrección pendiente</Estado>
-                  ) : d.estado === 'sin_registrar' ? (
-                    /* EL GUIÓN LARGO Y NO UN 0,0. Un cero afirma que estuvo cero horas —o sea, que
-                       faltó—; el guión dice que no hay dato, que es lo único cierto. */
-                    <span className="font-mono text-neg" aria-label="sin fichar">—</span>
-                  ) : (
-                    <Estado tono={e.tono} clave={d.estado}>{e.texto}</Estado>
-                  )}
+                <span style={{ ...mono, marginLeft: 'auto', fontSize: 14, fontWeight: 600, flexShrink: 0, color: d.minutos != null ? C.ink : C.warn }}>
+                  {d.minutos != null
+                    ? duracion(d.minutos)
+                    : pedido ? 'pedido' : '—'}
                 </span>
               </div>
             )
-          })
-        )}
+          })}
+        </TarjetaLista>
       </div>
 
-      <p className="mt-6 text-[11.5px] leading-relaxed text-faint">
+      {/* LA FILA DEL MOCKUP QUE SÍ ESCRIBE: una incidencia del día, con su motivo. No declara la
+          falta —eso es una novedad de liquidación y la escribe Administración— y lo dice. */}
+      <AvisarAusencia obraId={obras.data?.[0]?.id ?? null} />
+
+      <p style={{ marginTop: 18, fontSize: 11.5, lineHeight: 1.6, color: C.faint }}>
         Presencia laboral, no horas imputadas a obra. Desde acá no se edita una marca ya registrada:
         si falta tu salida, lo que se manda es un pedido y la corrección la escribe Administración
         cuando lo aprueba. Mientras esté pendiente, el día sigue sin salida y no suma al total.
       </p>
     </PantallaEmpleado>
   )
+}
+
+/** El icono y el color de una fila de la semana, con los valores medidos en M05. */
+function aspecto(estado: string, esHoy: boolean): { icono: NombreIcono; color: string; titulo: string } {
+  if (estado === 'sin_registrar') return { icono: 'falta', color: C.warn, titulo: 'Sin fichar' }
+  if (estado === 'falta_salida') return { icono: 'alerta', color: C.warn, titulo: 'Falta la salida' }
+  if (estado === 'en_curso' || esHoy) return { icono: 'reloj', color: C.info, titulo: 'En curso' }
+  return { icono: 'ok', color: C.pos, titulo: 'Jornada completa' }
 }
 
 /** Los siete días de la semana, con los que la base no devolvió marcados como `sin_registrar`. La
