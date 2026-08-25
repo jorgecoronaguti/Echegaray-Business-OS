@@ -29,7 +29,7 @@ import { MAGNITUD } from '../services/vocabulario'
 import { aceptarRecomendacion, descartarRecomendacion } from '../services/recomendacionActions'
 import { N } from './celdas'
 
-export function SolapaRendimiento({ ficha }: { ficha: Ficha }) {
+export function SolapaRendimiento({ ficha, conDecision = true }: { ficha: Ficha; conDecision?: boolean }) {
   const r = ficha.rendimiento
   const u = ficha.tarea.unidad
 
@@ -84,7 +84,10 @@ export function SolapaRendimiento({ ficha }: { ficha: Ficha }) {
         </div>
       </div>
 
-      <Decision tareaTipoId={ficha.tarea.id} r={r} />
+      {/* La DECISIÓN vive en el Resumen —donde el canónico 17 pone «Actualizar la base con el
+          real»— y por eso acá se puede apagar: dos formularios idénticos en la misma ficha son dos
+          maneras de hacer lo mismo, y la segunda es la que nadie prueba. */}
+      {conDecision && <Decision tareaTipoId={ficha.tarea.id} r={r} />}
 
       <Ayuda titulo="De dónde sale cada eslabón" testid="ayuda-esfuerzo">
         El presupuestado es el de la versión vigente del análisis, que es con la que se cotiza. El real
@@ -111,7 +114,7 @@ function Eslabon({ rotulo, children }: { rotulo: string; children: React.ReactNo
 // La vista PROPONE; acá alguien decide, y las dos decisiones quedan escritas. Descartar también se
 // registra: sin eso, la misma recomendación vuelve mañana y alguien la vuelve a evaluar de cero.
 
-function Decision({ tareaTipoId, r }: { tareaTipoId: string; r: NonNullable<Ficha['rendimiento']> }) {
+export function Decision({ tareaTipoId, r }: { tareaTipoId: string; r: NonNullable<Ficha['rendimiento']> }) {
   if (r.hs_recomendado == null) {
     return (
       <p className="mt-3 text-[12px] text-faint" data-testid="sin-decision">

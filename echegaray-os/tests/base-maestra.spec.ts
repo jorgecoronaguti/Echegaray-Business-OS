@@ -73,14 +73,15 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     // la consulta falle, no — y la pantalla los dibuja distinto justamente para poder afirmarlo.
     await expect(page.getByTestId('tareas-error')).toHaveCount(0)
 
-    const hayTabla = await page.getByTestId('tabla-tareas-tipo').count()
-    if (hayTabla === 0) {
+    await expect(page.getByTestId('tabla-tareas-tipo')).toBeVisible()
+    const filas = page.getByTestId('tabla-tareas-tipo').locator('[data-testid^="tarea-"]')
+    if (await filas.count() === 0) {
       // ESTADO VACÍO: tiene que decir qué falta y cómo se carga, no quedar en blanco.
-      await expect(page.getByTestId('vacio')).toContainText('todavía no tiene tareas tipo')
-      await expect(page.getByTestId('vacio')).toContainText('Planilla para Cotizar')
+      await expect(page.getByTestId('tareas-vacio')).toContainText('todavía no tiene tareas tipo')
+      await expect(page.getByTestId('tareas-vacio')).toContainText('Planilla para Cotizar')
     } else {
-      await expect(page.getByTestId('tabla-tareas-tipo')).toBeVisible()
-      await expect(page.getByTestId('estado-analisis').first()).toBeVisible()
+      // El pie es el estado de la base maestra, no el de la búsqueda de este momento.
+      await expect(page.getByTestId('pie-tareas')).toBeVisible()
     }
     await page.setViewportSize({ width: 1440, height: 950 })
     await page.screenshot({ path: 'test-results/17-base-maestra-tareas.png' })
@@ -89,36 +90,33 @@ test.describe('las dos pantallas abren con datos de la base', () => {
   test('17 · la ficha abre con las solapas y el buscador filtra al teclear', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 950 })
     await page.goto('/administracion/base-maestra/tareas')
-    if (await page.getByTestId('tabla-tareas-tipo').count() === 0) {
+    const filas = page.getByTestId('tabla-tareas-tipo').locator('[data-testid^="tarea-"]')
+    if (await filas.count() === 0) {
       test.skip(true, 'la base maestra todavía no tiene tareas tipo cargadas')
     }
 
     // EL BUSCADOR FILTRA AL TECLEAR: sin Enter y sin botón. Se mide contra el conteo de filas.
-    const antes = await page.getByTestId('tabla-tareas-tipo').locator('tbody tr').count()
+    const antes = await filas.count()
     await page.getByTestId('buscador-tareas-q').fill('hormigon')
-    await expect
-      .poll(() => page.getByTestId('tabla-tareas-tipo').locator('tbody tr').count(), { timeout: 4000 })
-      .toBeLessThan(antes)
+    await expect.poll(() => filas.count(), { timeout: 4000 }).toBeLessThan(antes)
     // Y sin acentos encuentra igual: la base dice «HORMIGON» y alguien puede escribir «hormigón».
-    const conQuery = await page.getByTestId('tabla-tareas-tipo').locator('tbody tr').count()
-    expect(conQuery).toBeGreaterThan(0)
+    expect(await filas.count()).toBeGreaterThan(0)
     // El estado se refleja en la URL para que la búsqueda se pueda compartir.
     await expect(page).toHaveURL(/q=hormigon/, { timeout: 4000 })
 
     // Limpiar y ESPERAR A QUE LA URL SE ASIENTE antes de abrir una ficha. La reescritura de `?q=`
     // es diferida: encadenar el clic sin esperar es una carrera del test, no del producto.
-    await page.getByTestId('buscador-tareas-limpiar').click()
+    await page.getByTestId('buscador-tareas-q').fill('')
     await expect(page).not.toHaveURL(/q=/, { timeout: 5000 })
-    await expect
-      .poll(() => page.getByTestId('tabla-tareas-tipo').locator('tbody tr').count(), { timeout: 5000 })
-      .toBe(antes)
+    await expect.poll(() => filas.count(), { timeout: 5000 }).toBe(antes)
 
-    await page.getByTestId('tabla-tareas-tipo').locator('tbody tr').first().locator('a').click()
+    // LA FILA ENTERA ABRE EL PANEL, como el canónico 17 (`onClick={{ f.sel }}` sobre la fila).
+    await filas.first().click()
     await expect(page).toHaveURL(/[?&]t=/, { timeout: 10000 })
 
-    // LA FICHA: seis solapas con permiso económico, y el estado del análisis en la cabecera.
+    // LA FICHA: las TRES solapas del canónico 17 (Resumen · Composición · Historial).
     await expect(page.getByTestId('ficha-tarea')).toBeVisible()
-    for (const s of ['resumen', 'analisis', 'secuencia', 'rendimiento', 'versiones', 'uso']) {
+    for (const s of ['resumen', 'analisis', 'historial']) {
       await expect(page.getByTestId(`solapa-${s}`)).toBeVisible()
     }
     await expect(page.getByTestId('panel-resumen')).toBeVisible()
@@ -131,16 +129,14 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     // LOS DOS NÚMEROS QUE DECIDEN, ENFRENTADOS (Design 23/08). La ficha tiene que abrir mostrando
     // con qué se cotiza Y qué pasó en obra: si mañana alguien saca la segunda cifra, la pantalla
     // vuelve a ser un catálogo y deja de ser una base de aprendizaje, que es su razón de existir.
-    await expect(page.getByTestId('ficha-tarea')).toContainText('Esfuerzo base')
-    await expect(page.getByTestId('ficha-tarea')).toContainText('Real de obra')
+    await expect(page.getByTestId('ficha-tarea')).toContainText('BASE')
+    await expect(page.getByTestId('ficha-tarea')).toContainText('REAL DE OBRA')
 
-    await page.getByTestId('solapa-rendimiento').click()
-    await expect(page.getByTestId('panel-rendimiento')).toBeVisible()
-    // La solapa viaja en la URL: este enlace abre en la solapa de esfuerzo, no en Resumen.
-    // 22/08/2026 · La CLAVE sigue siendo `rendimiento` justamente para no romper este enlace; lo que
-    // cambió es el RÓTULO («Esfuerzo»), porque hs/unidad no es un rendimiento. Este test mide la
-    // clave y por eso no lo toca el renombre — que es la razón por la que la clave no se renombró.
-    await expect(page).toHaveURL(/s=rendimiento/)
+    // LOS ENLACES VIEJOS NO SE ROMPEN. Las seis solapas del panel anterior se fundieron en tres, y
+    // `?s=rendimiento` —que está en mensajes y marcadores— cae donde AHORA vive la cadena del
+    // esfuerzo: Historial. Si algún día cae en Resumen, este test se pone rojo.
+    await page.goto(new URL(page.url()).pathname + new URL(page.url()).search.replace(/s=\w+/, 's=rendimiento'))
+    await expect(page.getByTestId('panel-historial')).toBeVisible()
   })
 
   test('18 · Mano de obra calcula el costo empresa desde el convenio', async ({ page }) => {
@@ -182,19 +178,19 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     await page.screenshot({ path: 'test-results/18-base-maestra-plantillas.png' })
   })
 
-  test('18 · Insumos y Equipos abren y resuelven el vacío', async ({ page }) => {
+  test('18 · la lista de recursos es UNA, con su columna TIPO y sus chips', async ({ page }) => {
+    // El canónico 18 dibuja una sola lista con TIPO; los enlaces viejos (`?v=insumos`, `?v=equipos`)
+    // caen en ella en vez de en un 404. Si mañana vuelven a partirse en sub-vistas, esto se rompe.
+    await page.setViewportSize({ width: 1440, height: 950 })
     await page.goto('/administracion/base-maestra/recursos?v=insumos')
     await expect(page.getByTestId('recursos-error')).toHaveCount(0)
-    if (await page.getByTestId('tabla-insumos').count() === 0) {
-      await expect(page.getByTestId('vacio')).toContainText('todavía no tiene insumos')
-    }
-    await page.setViewportSize({ width: 1440, height: 950 })
-    await page.screenshot({ path: 'test-results/18-base-maestra-insumos.png' })
+    await expect(page.getByTestId('tabla-recursos')).toBeVisible()
+    await expect(page.getByTestId('tipo-material')).toHaveAttribute('aria-pressed', 'true')
+    await page.screenshot({ path: 'test-results/18-base-maestra-recursos.png' })
 
     await page.goto('/administracion/base-maestra/recursos?v=equipos')
     await expect(page.getByTestId('recursos-error')).toHaveCount(0)
-    // La deuda del modelo se DECLARA en la pantalla, no se tapa con cuatro columnas vacías.
-    await expect(page.locator('[data-tono="info"]')).toContainText('flota')
+    await expect(page.getByTestId('tabla-recursos')).toBeVisible()
     await page.screenshot({ path: 'test-results/18-base-maestra-equipos.png' })
   })
 
@@ -204,19 +200,26 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     // vigentes les pega. Si la ficha deja de abrirse, la pantalla vuelve a ser una lista de precios
     // sin trazabilidad — que es el estado del que venimos.
     await page.setViewportSize({ width: 1440, height: 950 })
-    await page.goto('/administracion/base-maestra/recursos?v=insumos')
-    if (await page.getByTestId('tabla-insumos').count() === 0) {
-      test.skip(true, 'la base maestra todavía no tiene insumos cargados')
+    await page.goto('/administracion/base-maestra/recursos')
+    const filas = page.getByTestId('tabla-recursos').locator('[data-testid^="recurso-"]')
+    if (await filas.count() === 0) {
+      test.skip(true, 'la base maestra todavía no tiene recursos cargados')
     }
 
-    await page.getByTestId('tabla-insumos').locator('tbody tr').first().locator('a').click()
+    await filas.first().click()
     await expect(page).toHaveURL(/[?&]r=/, { timeout: 10000 })
     await expect(page.getByTestId('ficha-recurso')).toBeVisible()
     // Las dos secciones se dibujan SIEMPRE: cuando no hay filas dicen por qué, y ese texto es el
     // dato. Una sección que desaparece deja al que mira sin saber si preguntó mal o no hay nada.
     await expect(page.getByTestId('historial-precio')).toBeVisible()
     await expect(page.getByTestId('uso-recurso')).toBeVisible()
+    // «Actualizar precio» del canónico 18 ESCRIBE, y el panel se abre EN EL LUGAR — no navega.
+    await page.getByTestId('actualizar-precio').click()
+    await expect(page.getByTestId('panel-precio-recurso')).toBeVisible()
+    await expect(page).toHaveURL(/[?&]precio=/)
     await page.screenshot({ path: 'test-results/18-base-maestra-ficha-recurso.png' })
+    await page.getByTestId('panel-precio-recurso-cancelar').click()
+    await expect(page).not.toHaveURL(/[?&]precio=/, { timeout: 5000 })
 
     await page.getByTestId('cerrar-ficha-recurso').click()
     await expect(page).not.toHaveURL(/[?&]r=/, { timeout: 5000 })
@@ -233,7 +236,7 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     // Entrar por la dirección directa tiene que dejar la pantalla en esa sub-vista: si la sub-vista
     // viviera en un `useState`, este enlace abriría siempre en Insumos.
     await page.goto('/administracion/base-maestra/recursos?v=plantillas')
-    await expect(page.getByTestId('bm-vista-plantillas')).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('bm-vista-plantillas')).toHaveAttribute('aria-current', 'page')
     await page.getByTestId('bm-vista-mano-obra').click()
     await expect(page).toHaveURL(/v=mano-obra/)
   })
@@ -260,13 +263,13 @@ test('un jefe de obra abre la base maestra y NO ve columnas de costo', async ({ 
 
   // Y «Versiones de precio» es entera económica: no se abre a medias, manda a Insumos.
   await page.goto('/administracion/base-maestra/recursos?v=precios')
-  await expect(page).toHaveURL(/v=insumos/)
-  await expect(page.getByTestId('tabla-insumos')).toBeVisible()
+  await expect(page).not.toHaveURL(/v=precios/)
+  await expect(page.getByTestId('tabla-recursos')).toBeVisible()
 
   // Y LA FICHA DE UN INSUMO NO DICE «SIN HISTORIAL»: dice que no lo ve. `recurso_precio` le devuelve
   // cero filas sin error, que es idéntico a un recurso que nunca tuvo precio — y escribir la segunda
   // frase manda a alguien a cargar de nuevo precios que ya están cargados.
-  await page.getByTestId('tabla-insumos').locator('tbody tr').first().locator('a').click()
+  await page.getByTestId('tabla-recursos').locator('[data-testid^="recurso-"]').first().click()
   await expect(page.getByTestId('ficha-recurso')).toBeVisible()
   await expect(page.getByTestId('recurso-sin-economia')).toContainText('no los ves')
   await expect(page.getByTestId('historial-precio')).toHaveCount(0)

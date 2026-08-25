@@ -5,11 +5,8 @@
 // una vez, se cumplen siempre.
 
 import type { ReactNode } from 'react'
-import { Estado, Nulo, type TonoEstado } from '@/shared/components/ds'
-import {
-  ETIQUETA_ANALISIS, desvioObservado, fechaCorta, numero, pesos, porcentaje,
-  type EstadoAnalisis, type Frescura,
-} from '../services/reglas'
+import { Nulo } from '@/shared/components/ds'
+import { fechaCorta, numero, pesos, porcentaje, type Frescura } from '../services/reglas'
 
 /** Un número. `falta` es lo que se escribe cuando no hay — nunca un cero. */
 export function N({
@@ -34,21 +31,6 @@ export function Pct({
   const t = porcentaje(v, decimales)
   if (t == null) return <Nulo>{falta}</Nulo>
   return <span className="font-mono text-[12px] tabular-nums">{t}</span>
-}
-
-// ═══ EL COSTO QUE NO SE PUEDE MOSTRAR ══════════════════════════════════════════════════════════
-//
-// ESTA ES LA CELDA QUE IMPIDE LA MENTIRA. `recurso_precio` sólo abre para `ve_economia()`, y un
-// jefe de obra recibe cero filas SIN ERROR: todos los costos llegan en null, exactamente iguales a
-// «nadie los cargó».
-//
-// Escribir «sin cargar» ahí sería afirmar que falta cargar 409 precios que están cargados, y mandar
-// a alguien a cargarlos de nuevo. La pantalla dice lo que pasa de verdad: no tenés permiso.
-//
-// Lo correcto es no renderizar la columna —y las tablas de este módulo no la renderizan—; esto es
-// la red por si alguna vez se cuela una.
-export function SinPermiso() {
-  return <span className="text-[12.5px] text-faint" data-sin-permiso="">sin permiso</span>
 }
 
 // ═══ LA FRESCURA DE UN PRECIO ══════════════════════════════════════════════════════════════════
@@ -78,53 +60,11 @@ export function FechaPrecio({ iso, frescura }: { iso: string | null; frescura: F
   )
 }
 
-// ═══ LO QUE PASÓ EN OBRA, AL LADO DE LA BASE ═══════════════════════════════════════════════════
-//
-// El número es el esfuerzo observado y el `×` es su cociente contra la base. Van juntos porque
-// separados no se pueden leer: 44,88 hs/m³ no dice nada hasta que se sabe que la base decía 34.
-//
-// LA DIRECCIÓN LA DICE EL COCIENTE, NO UNA FLECHA. El diseño canónico dibuja ↑/↓, pero la
-// iconografía del OS no tiene ese par y redibujarlo acá lo convertiría en el trigésimo tercer
-// icono del sistema — además de que `1,32×` es más informativo que una flecha, que sólo dice el
-// signo. El color sigue la banda de `desvioObservado`: warn cuando la obra pidió más horas.
-export function EsfuerzoObservado({
-  base, observado,
-}: { base: number | null | undefined; observado: number | null | undefined }) {
-  const t = numero(observado, 2)
-  // «sin medir» y no «sin dato»: la tarea puede estar perfectamente cargada; lo que falta es que
-  // alguien la haya ejecutado y le haya imputado horas.
-  if (t == null) return <Nulo>sin medir</Nulo>
-  const d = desvioObservado(base, observado)
-  const color = d == null ? 'text-ink-soft' : d.direccion === 'peor' ? 'text-warn' : d.direccion === 'mejor' ? 'text-pos' : 'text-ink-soft'
-  return (
-    <span
-      data-desvio={d?.direccion ?? 'sin-base'}
-      title={d == null ? 'Medido en obra, pero la tarea no tiene esfuerzo base para comparar' : undefined}
-      className={`whitespace-nowrap font-mono text-[12px] tabular-nums ${color}`}
-    >
-      {t}
-      {d && <span className="ml-1.5 text-[11px]">{numero(d.ratio, 2)}×</span>}
-    </span>
-  )
-}
-
-// ═══ EL ESTADO DEL ANÁLISIS ════════════════════════════════════════════════════════════════════
-
-const TONO_ANALISIS: Record<EstadoAnalisis, TonoEstado> = {
-  completo: 'pos',
-  sin_revisar: 'warn',
-  sin_analisis: 'neg',
-}
-
-export function EstadoAnalisisCelda({ estado, titulo }: { estado: EstadoAnalisis; titulo?: string | null }) {
-  return (
-    <span title={titulo ?? undefined}>
-      <Estado tono={TONO_ANALISIS[estado]} clave={estado} testid="estado-analisis">
-        {ETIQUETA_ANALISIS[estado]}
-      </Estado>
-    </span>
-  )
-}
+// LO QUE SIGUE VIVIENDO ACÁ es lo que usan las tablas que NO se portaron del zip (mano de obra,
+// plantillas, versiones de precio) y la solapa Composición. `SinPermiso`, `EsfuerzoObservado` y
+// `EstadoAnalisisCelda` se borraron con el porte del canónico 17/18: sus tres pantallas ahora
+// dibujan esas celdas con los valores medidos del zip, y una celda sin llamadores es la que se
+// queda con la regla vieja hasta que alguien la copia de nuevo sin darse cuenta.
 
 /** Texto que puede faltar. `sin asignar`, `sin cargar`, `sin base`: la ausencia se nombra. */
 export function Texto({
