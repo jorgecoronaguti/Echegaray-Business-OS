@@ -13,7 +13,10 @@
 // razón escrita: el bloque existe, se ve lo que va a haber, y no miente sobre lo que hay.
 //
 // LO QUE FALTA PARA QUE FUNCIONEN: una tabla `cliente_portal_regla` (cliente_id, clave, valor) con
-// RLS de administración. Queda declarado para back-28-32.
+// RLS de administración. AL INTEGRAR LOS TRES FRENTES (25/08/2026) LA TABLA SIGUE SIN EXISTIR, y no
+// se inventó acá: cada uno de los tres interruptores cambia lo que un tercero ve de la empresa
+// —qué certificados, qué plazo, qué medio de pago— y ninguno se decide desde una integración.
+// El bloque queda apagado, con esta razón a la vista, hasta que el dueño defina las tres reglas.
 
 import { C } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'

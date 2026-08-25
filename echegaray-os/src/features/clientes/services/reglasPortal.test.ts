@@ -15,6 +15,7 @@ function acceso(p: Partial<AccesoPortal> & { email: string }): AccesoPortal {
   return {
     id: p.email, cliente_id: 'c1', persona_contacto: null, puede_ver_obra: true,
     puede_ver_montos: false, puede_aprobar: false, obras: null, obras_nombres: null,
+    auth_user_id: null,
     habilitado_at: '2026-07-18T10:00:00Z', invitacion_enviada_at: null, primer_ingreso_at: null,
     ultimo_ingreso_at: null, ultimo_dispositivo: null, revocado_at: null, ...p,
   }

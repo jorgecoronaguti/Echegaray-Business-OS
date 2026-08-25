@@ -114,6 +114,34 @@ export function sinVencimiento(documentos: CertificadoCliente[], hoy: string): n
     .reduce((s, d) => s + d.monto, 0)
 }
 
+/**
+ * LO QUE LA BARRA MUESTRA Y LA TABLA DE ABAJO NO PUEDE EXPLICAR.
+ *
+ * ═══ POR QUÉ HACE FALTA ESTE NÚMERO ═══
+ *
+ * La barra sale de `cliente_cuenta_corriente`, que suma TODAS las cuentas por cobrar de la réplica
+ * viva de Cobranzas. La tabla sale de `certificado_cliente`, que es un SUBCONJUNTO: el sync sólo
+ * materializa las filas que clasifica como certificado, descarta los ajustes y deja afuera las que
+ * no resuelven a un cliente. Tener una sola definición del aging no hace que las dos listas tengan
+ * las mismas filas — mueve el problema de «dos números que se contradicen» a «un número y una tabla
+ * que no lo explica entera».
+ *
+ * Así que se mide y se escribe. `0` = la tabla explica el saldo completo. Positivo = hay plata al
+ * cobro que no tiene certificado detrás, y la pantalla lo dice en vez de dejar que el que mira
+ * sume la columna y crea que le faltan filas.
+ *
+ * Negativo se devuelve como 0: significaría que hay certificados por más plata que el saldo del
+ * Sheet —normalmente, certificados nacidos en la app que todavía no llegaron a Cobranzas— y eso no
+ * es un faltante de la tabla, que es lo único que esta función afirma.
+ */
+export function saldoSinCertificado(
+  documentos: CertificadoCliente[], cuenta: CuentaCorriente | null,
+): number {
+  if (!cuenta) return 0
+  const enCertificados = documentos.filter(sigueEnLaCalle).reduce((s, d) => s + d.monto, 0)
+  return Math.max(0, Math.round(cuenta.saldo - enCertificados))
+}
+
 export interface SemanaPrevista {
   /** Lunes (o día de arranque) del tramo, ISO. Es el rótulo del eje. */
   desde: string
@@ -188,11 +216,6 @@ export function comportamientoDePago(
     emitidos: documentos.length,
   }
 }
-
-/** El ancho de la barra de atraso: 30 días de mora llenan la barra (medido en `28:625`, donde
- *  9 días pintan el 30 %). Más de 30 no la desborda: satura. */
-export const anchoDeAtraso = (dias: number | null): number =>
-  dias == null ? 0 : Math.min(100, Math.round((dias / 30) * 100))
 
 export type AccionPlan = 'remedicion' | 'recordatorio' | 'aviso'
 

@@ -100,3 +100,75 @@ export const accesoSchema = z.object({
   avisar_por_mail: z.boolean(),
 })
 export type AltaAcceso = z.infer<typeof accesoSchema>
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS FORMAS QUE RECIBEN LAS SERVER ACTIONS DE 28 · 31 · 32
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ POR QUÉ NO ALCANZA CON `entrada: unknown` ═══
+//
+// Las acciones parsean su entrada con Zod, así que `unknown` parecía suficiente: total, lo que no
+// coincide rebota. AL INTEGRAR LOS TRES FRENTES ESO FALLÓ, y falló callado. La pantalla llamaba
+// `habilitarAcceso(clienteId, entrada)` a una acción de UN parámetro —el `clienteId` entraba como
+// la entrada entera— y `revocarAcceso(id)` a una que espera `{ accesoId }`. Las dos COMPILAN:
+// TypeScript deja pasar argumentos de más y `unknown` acepta cualquier cosa. El error recién
+// aparecía apretando el botón, con un «Datos inválidos» que no dice qué está mal.
+//
+// Con estos tipos, la misma equivocación es un error de compilación. El `safeParse` de adentro se
+// queda igual y no es redundante: el tipo protege del error de programación, el parse protege del
+// `curl`, y entre la pantalla y la acción hay una red.
+
+/** `registrarCobro` (28). La fila y la huella las lee el servidor: no viajan desde el navegador. */
+export type EntradaCobro = {
+  cobranzaFila: number
+  esquemaPagoId?: string | null
+  fecha: string
+  medio?: 'transferencia' | 'cheque' | 'efectivo' | null
+  huellaComprobante?: string | null
+  huellaMonto?: number | null
+}
+
+/** `editarPago` (28/32): UN campo espejo del Sheet, con su valor anterior para dejarlo auditable. */
+export type EntradaEdicionPago = {
+  esquemaPagoId: string
+  cobranzaFila: number | null
+  campo: 'fecha' | 'monto' | 'medio'
+  valorNuevo: string
+  valorAnterior?: string | null
+  huellaComprobante?: string | null
+  huellaMonto?: number | null
+  motivo?: string
+}
+
+/** `ajustarPagoEsquema` (32): sólo lo PROPIO de la app. `undefined` = la pantalla no lo tocó. */
+export type EntradaAjustePago = {
+  esquemaPagoId: string
+  visiblePortal?: boolean
+  avisoDias?: number | null
+  mostrarReprogramaciones?: boolean
+  notaInterna?: string | null
+  orden?: number
+}
+
+/**
+ * `habilitarAcceso` (31). EN CAMELCASE, y no es capricho: es el idioma de las actions de este
+ * módulo. `accesoSchema` —el de la pantalla— usa snake_case porque nombra las columnas que dibuja.
+ * Los dos existen y por eso el borde se declara: sin este tipo, un `puede_ver_montos` mandado a una
+ * acción que espera `puedeVerMontos` se cae al default `false` y el acceso nace sin ver importes.
+ */
+export type EntradaAltaAcceso = {
+  clienteId: string
+  email: string
+  personaContacto?: string
+  puedeVerObra?: boolean
+  puedeVerMontos?: boolean
+  puedeAprobar?: boolean
+  obras?: string[] | null
+  avisarPorMail?: boolean
+}
+
+/** `revocarAcceso` y `reenviarInvitacion` (31). */
+export type EntradaAcceso = { accesoId: string }
+
+/** `publicarEsquema` (32). */
+export type EntradaPublicacion = { clienteId: string }

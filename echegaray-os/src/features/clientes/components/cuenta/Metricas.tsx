@@ -7,12 +7,19 @@
 // NINGUNA ESCRIBE UN CERO POR UNA AUSENCIA. Un «$ 0» en SALDO dice que el cliente no debe nada y
 // un «—» dice que no lo sabemos; sobre esta pantalla la diferencia es una llamada que se hace o no
 // se hace. El detalle de abajo explica cuál de las dos es.
+//
+// ═══ TRES ADORNOS DEL MOCKUP QUE SE CAYERON, Y POR QUÉ ═══
+//
+// El mockup pintaba el DSO contra un OBJETIVO, la efectividad contra el PERÍODO ANTERIOR, y el
+// fondo de reparo con su FECHA DE LIBERACIÓN. Ninguno de los tres tiene fuente: nadie declaró un
+// objetivo de DSO, no se guarda la efectividad de un período para poder restarla, y
+// `certificado_cliente` no tiene fecha de liberación del reparo. Se caen enteros —el número, el
+// color condicional y el renglón de abajo— en vez de dibujarse con un valor de relleno: un
+// «objetivo 45» inventado convierte esta pantalla en la que decide a quién se llama primero.
 
 import type { ReactNode } from 'react'
 import { C, MONO } from '../canon/tokens'
-import { Ico, P } from '../canon/Iconos'
 import { montoM } from '../../services/cobranzaFormato'
-import { diaMes } from '../../services/cobranzaFormato'
 import type { CuentaCorriente } from '../../types/cobranzas'
 
 function Metrica({ rotulo, valor, color = C.tinta, detalle, testid }: {
@@ -40,10 +47,8 @@ const SIN_DATO = <span style={{ color: C.fantasma }}>sin dato todavía</span>
 
 export function Metricas({ cuenta }: { cuenta: CuentaCorriente | null }) {
   const c = cuenta
-  const dso = c?.dso_dias
+  const dso = c?.dso
   const efec = c?.efectividad_pct
-  const delta = c?.efectividad_delta_pts
-  const libera = diaMes(c?.fondo_reparo_libera)
   return (
     <div
       data-testid="metricas-cuenta"
@@ -62,33 +67,26 @@ export function Metricas({ cuenta }: { cuenta: CuentaCorriente | null }) {
       <Metrica
         rotulo="DSO"
         valor={dso == null ? '—' : `${dso} d`}
-        // `#B54708` cuando está por encima del objetivo (`28:97`); sin objetivo no hay contra qué
-        // pintarlo, así que queda en tinta.
-        color={dso != null && c?.dso_objetivo != null && dso > c.dso_objetivo ? C.warn : C.tinta}
-        detalle={dso == null ? SIN_DATO : c?.dso_objetivo != null ? `objetivo ${c.dso_objetivo}` : undefined}
+        // El mockup lo pinta `#B54708` por encima del objetivo. Sin objetivo declarado no hay contra
+        // qué pintarlo, y elegir un umbral acá sería fijar una política de cobranzas desde una hoja
+        // de estilos. Queda en tinta hasta que el dueño declare el objetivo.
+        detalle={dso == null ? SIN_DATO : undefined}
         testid="metrica-dso"
       />
       <Metrica
         rotulo="EFECTIVIDAD"
         valor={efec == null ? '—' : `${efec} %`}
         color={efec == null ? C.tinta : efec >= 80 ? C.pos : C.warn}
-        detalle={
-          efec == null ? SIN_DATO : delta == null ? undefined : (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '3px',
-              color: delta >= 0 ? C.pos : C.neg,
-            }}>
-              <Ico d={P.arriba} s={11} w={2.4} style={{ transform: delta >= 0 ? undefined : 'rotate(180deg)' }} />
-              {Math.abs(delta)} pts
-            </span>
-          )
-        }
+        // NO DICE «efectividad de pago en término»: es cobrado 90d / (cobrado 90d + vencido), que
+        // es «de la plata que debería estar en la mano, cuánta está». La otra no es computable
+        // porque la columna Q pisa la promesa con la fecha real. Está declarado en la vista.
+        detalle={efec == null ? SIN_DATO : undefined}
         testid="metrica-efectividad"
       />
       <Metrica
         rotulo="FONDO DE REPARO"
         valor={montoM(c?.fondo_reparo)}
-        detalle={c?.fondo_reparo == null ? SIN_DATO : libera ? `libera ${libera}` : 'sin fecha de liberación'}
+        detalle={c?.fondo_reparo == null ? SIN_DATO : 'sin fecha de liberación'}
         testid="metrica-reparo"
       />
     </div>

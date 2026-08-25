@@ -10,7 +10,7 @@
 // ═══ LAS TRES ACCIONES DEL MOCKUP TODAVÍA NO TIENEN SERVICIO ═══
 //
 // «Coordinar remedición», «Enviar recordatorio» y «Programar aviso» mandan un mail o agendan algo
-// del lado del cliente: son NIVEL E y su cola (`mail_saliente`) la trae back-28-32. El botón se
+// del lado del cliente: son NIVEL E y salen por la cola `mail_saliente`. El botón se
 // dibuja igual y contesta con todas las letras que todavía no está conectado, en la misma tarjeta.
 // La alternativa —esconder el botón hasta que exista— dejaría la pantalla sin la mitad del plan y
 // sin forma de descubrir que falta.
@@ -86,8 +86,12 @@ export function PlanDeCobranza({ documentos, hoy, onElegir }: {
             <Boton
               estilo={ACCION_PLAN} hoverFondo={C.grafitoHover}
               testid={`plan-accion-${item.documento.id}`}
+              // LA COLA DE MAILS EXISTE Y EL WORKER LA MANDA; LO QUE FALTA ES LA PLANTILLA. Las
+              // tres plantillas escritas son la invitación al portal, el aviso de esquema
+              // publicado y el de vencimiento próximo — ninguna dice «coordinemos la remedición».
+              // Encolar un mail sin plantilla le manda al cliente un cuerpo vacío.
               onClick={() => setAviso(
-                `«${item.rotulo}» todavía no está conectado: manda un mail al cliente y esa cola la trae back-28-32.`,
+                `«${item.rotulo}» le manda un mail al cliente y todavía no tiene plantilla escrita.`,
               )}
             >
               {ICONO[item.accion]}

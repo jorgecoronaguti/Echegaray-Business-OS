@@ -17,7 +17,7 @@ import { BotonIcono, Interruptor, Vacio } from '../canon/Piezas'
 import { CeldaEstado } from '../cuenta/estados'
 import { FechaEnLaFila } from './FechaEnLaFila'
 import { enMillones, montoM } from '../../services/cobranzaFormato'
-import { cuadreDelContrato, estadoVigente, totalEsquema } from '../../services/reglasEsquema'
+import { cuadreDelContrato, detalleDePago, estadoVigente, totalEsquema } from '../../services/reglasEsquema'
 import type { CambioPago } from '../../services/entradasCobranza'
 import type { PagoEsquema } from '../../types/cobranzas'
 
@@ -85,7 +85,7 @@ export function ListadoEsquema({ pagos, contratoTotal, hoy, elegido, onElegir, o
                 fontSize: '11px', marginTop: '1px',
                 color: p.cambio_pendiente ? C.warn : estado === 'vencido' ? C.neg : C.tenue,
               }}>
-                {p.cambio_pendiente ? 'cambio sin publicar' : (p.detalle ?? p.obra_nombre ?? '')}
+                {p.cambio_pendiente ? 'cambio sin publicar' : (detalleDePago(p) ?? p.obra_nombre ?? '')}
               </div>
             </div>
 

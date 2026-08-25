@@ -40,6 +40,39 @@ export function cuadreDelContrato(contratoTotal: number | null, pagos: PagoEsque
 export const cambiosSinPublicar = (pagos: PagoEsquema[]): number =>
   pagos.filter((p) => p.cambio_pendiente).length
 
+/**
+ * EL MONTO DE ESTE PAGO ¿SE PUEDE EDITAR ACÁ? No cuando lo impone un comprobante ya emitido.
+ *
+ * Es DERIVADO, no una columna: `esquema_pago` no tiene `monto_bloqueado` y no debería tenerlo, o
+ * habría dos verdades sobre lo mismo. El bloqueo es exactamente «esta fila existe en Cobranzas»:
+ * con `cobranza_fila` el importe lo manda el certificado y cambiarlo desde el esquema publicaría al
+ * cliente un número distinto del que dice su factura. Sin fila, el pago es una previsión del
+ * esquema y su monto es de esta pantalla.
+ */
+export const montoBloqueado = (p: PagoEsquema): boolean => p.cobranza_fila !== null
+
+/**
+ * EL RENGLÓN CHICO DEBAJO DEL CONCEPTO: «cobrado 06/07 · transferencia», «previsto · sin emitir».
+ *
+ * Se ARMA acá y no viene de la base, porque no es un dato: es la lectura en castellano de tres
+ * campos que ya están en la fila (`estado`, `fecha`, `medio`). Guardarlo como texto lo dejaría
+ * congelado el día que alguien mueva la fecha.
+ *
+ * `null` cuando no hay nada que agregar: la pantalla cae al nombre de la obra, y si tampoco lo hay
+ * deja el renglón vacío en vez de escribir una frase de relleno.
+ */
+export function detalleDePago(p: PagoEsquema): string | null {
+  const partes: string[] = []
+  if (p.estado === 'cobrado') partes.push(p.fecha ? `cobrado ${diaMesCorto(p.fecha)}` : 'cobrado')
+  else if (p.estado === 'previsto') partes.push('previsto · todavía sin emitir')
+  else if (p.estado === 'retenido') partes.push('retenido · fondo de reparo')
+  if (p.medio) partes.push(p.medio)
+  return partes.length ? partes.join(' · ') : null
+}
+
+/** `2026-07-06` → `06/07`. Local acá: es el único formato que este renglón necesita. */
+const diaMesCorto = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
 export interface CambioDelEsquema {
   /** ISO del instante del cambio. */
   at: string

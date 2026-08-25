@@ -21,6 +21,7 @@ import { Ico, P } from '../canon/Iconos'
 import { Boton, BotonIcono, Chip, Interruptor } from '../canon/Piezas'
 import { diaMes, diaMesAnio, pesos } from '../../services/cobranzaFormato'
 import { MEDIOS, type CambioPago } from '../../services/entradasCobranza'
+import { montoBloqueado } from '../../services/reglasEsquema'
 import type { MedioPago, PagoEsquema } from '../../types/cobranzas'
 
 function Rotulo({ children }: { children: string }) {
@@ -118,7 +119,7 @@ export function PanelPago({ pago, onCambiar, onCerrar, onQuitar, error, guardand
           <span style={{ fontFamily: MONO, fontSize: '14px', color: C.tintaSuave, flex: 1 }}>
             {pesos(pago.monto)}
           </span>
-          {pago.monto_bloqueado && (
+          {montoBloqueado(pago) && (
             <span title="Viene del certificado" style={{ display: 'flex', color: C.tenue }}>
               <Ico d={P.candado} s={15} />
             </span>

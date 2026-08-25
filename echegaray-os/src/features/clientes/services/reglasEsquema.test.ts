@@ -7,8 +7,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  cambiosDelEsquema, cambiosSinPublicar, cuadreDelContrato, estadoVigente, grillaDelMes,
-  pagosDelDia, totalEsquema,
+  cambiosDelEsquema, cambiosSinPublicar, cuadreDelContrato, detalleDePago, estadoVigente,
+  grillaDelMes, montoBloqueado, pagosDelDia, totalEsquema,
 } from './reglasEsquema.ts'
 import type { PagoEsquema } from '../types/cobranzas.ts'
 
@@ -17,10 +17,10 @@ const HOY = '2026-08-24'
 function pago(p: Partial<PagoEsquema> & { monto: number }): PagoEsquema {
   return {
     id: p.concepto ?? String(p.monto), cliente_id: 'c1', obra_id: null, obra_nombre: null,
-    cobranza_fila: null, concepto: p.concepto ?? 'Pago', detalle: null, fecha: null, reparo: null,
+    cobranza_fila: null, concepto: p.concepto ?? 'Pago', fecha: null, reparo: null,
     estado: 'a_vencer', medio: null, visible_portal: true, aviso_dias: null,
     mostrar_reprogramaciones: false, nota_interna: null, reprogramaciones: [], publicado_at: null,
-    cambio_pendiente: false, orden: 0, monto_bloqueado: false, ...p,
+    cambio_pendiente: false, orden: 0, ...p,
   }
 }
 
@@ -115,4 +115,24 @@ test('los pagos de un día salen en el orden del esquema', () => {
     pago({ concepto: 'C', monto: 3, fecha: '2026-09-18', orden: 0 }),
   ], '2026-09-17')
   assert.deepEqual(dia.map((p) => p.concepto), ['A', 'B'])
+})
+
+test('el monto se bloquea cuando lo impone un comprobante, y no antes', () => {
+  // No es una columna de la tabla: `esquema_pago` no tiene `monto_bloqueado`. El bloqueo ES tener
+  // fila en Cobranzas. Guardarlo aparte dejaba dos verdades sobre lo mismo, y la que se editaba a
+  // mano le habilitaba a la administración cambiar el importe de una factura ya emitida.
+  assert.equal(montoBloqueado(pago({ monto: 1, cobranza_fila: 62 })), true)
+  assert.equal(montoBloqueado(pago({ monto: 1, cobranza_fila: null })), false)
+})
+
+test('el renglón de detalle se arma con lo que la fila ya dice', () => {
+  assert.equal(
+    detalleDePago(pago({ monto: 1, estado: 'cobrado', fecha: '2026-07-06', medio: 'transferencia' })),
+    'cobrado 06/07 · transferencia',
+  )
+  assert.equal(detalleDePago(pago({ monto: 1, estado: 'previsto' })), 'previsto · todavía sin emitir')
+  // Un pago a vencer y sin medio elegido no tiene nada que agregar: `null`, no una frase vacía ni
+  // un « · » suelto. La pantalla cae al nombre de la obra.
+  assert.equal(detalleDePago(pago({ monto: 1, estado: 'a_vencer' })), null)
+  assert.equal(detalleDePago(pago({ monto: 1, estado: 'a_vencer', medio: 'cheque' })), 'cheque')
 })

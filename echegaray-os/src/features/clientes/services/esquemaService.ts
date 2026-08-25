@@ -3,7 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/obras/types'
 import type { EsquemaCliente, PagoEsquema } from '../types'
-import { nombresDeObra } from './nombresDeObra'
+import { nombresDeObra } from './nombresDeObra.ts'
 
 const COLUMNAS =
   'id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, reparo, estado, medio,'

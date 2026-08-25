@@ -12,7 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
 import type { CambioCobranza, CertificadoCliente, CuentaCorriente } from '../types'
-import { nombresDeObra } from './nombresDeObra'
+import { nombresDeObra } from './nombresDeObra.ts'
 
 /**
  * La cuenta corriente de UN cliente.

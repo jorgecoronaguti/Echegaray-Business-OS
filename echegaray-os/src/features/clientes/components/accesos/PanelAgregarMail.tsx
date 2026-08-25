@@ -20,6 +20,7 @@
 
 import { useState } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import type { EntradaAltaAcceso } from '../../services/entradasCobranza'
 import { C, MONO, PRIMARIA, TARJETA } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { Boton, Casilla, Chip } from '../canon/Piezas'
@@ -43,7 +44,10 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
   /** El acceso que se está editando, o `null` para el alta. */
   edicion: AccesoPortal | null
   onCerrarEdicion: () => void
-  habilitar: (entrada: unknown) => Promise<ResultadoAccion>
+  /** Ya atada al cliente por `bind` en la vista: acá sólo viaja lo que se llenó en el formulario.
+   *  EN CAMELCASE, que es el idioma de la action — los permisos se dibujan en snake_case porque
+   *  nombran columnas, y el borde entre las dos grafías se cruza acá, una sola vez y a la vista. */
+  habilitar: (entrada: Omit<EntradaAltaAcceso, 'clienteId'>) => Promise<ResultadoAccion>
 }) {
   const [mail, setMail] = useState(edicion?.email ?? '')
   const [permisos, setPermisos] = useState<Permisos>({
@@ -66,10 +70,12 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
     setResultado(null)
     const r = await habilitar({
       email: mail,
-      persona_contacto: contacto?.nombre ?? edicion?.persona_contacto ?? undefined,
-      ...permisos,
+      personaContacto: contacto?.nombre ?? edicion?.persona_contacto ?? undefined,
+      puedeVerObra: permisos.puede_ver_obra,
+      puedeVerMontos: permisos.puede_ver_montos,
+      puedeAprobar: permisos.puede_aprobar,
       obras: elegidas,
-      avisar_por_mail: avisar,
+      avisarPorMail: avisar,
     })
     setEnviando(false)
     setResultado(r)

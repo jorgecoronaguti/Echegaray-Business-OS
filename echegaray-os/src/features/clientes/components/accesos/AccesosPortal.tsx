@@ -13,6 +13,7 @@
 
 import { useState } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import type { EntradaAcceso, EntradaAltaAcceso } from '../../services/entradasCobranza'
 import { C } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { useAlPedir } from '../canon/pedidos'
@@ -33,9 +34,9 @@ export function AccesosPortal({
   obras: ObraElegible[]
   hoy: string
   clienteId: string
-  habilitarAcceso: (clienteId: string, entrada: unknown) => Promise<ResultadoAccion>
-  revocarAcceso: (accesoId: string) => Promise<ResultadoAccion>
-  reenviarInvitacion: (accesoId: string) => Promise<ResultadoAccion>
+  habilitarAcceso: (entrada: EntradaAltaAcceso) => Promise<ResultadoAccion>
+  revocarAcceso: (entrada: EntradaAcceso) => Promise<ResultadoAccion>
+  reenviarInvitacion: (entrada: EntradaAcceso) => Promise<ResultadoAccion>
 }) {
   const [editando, setEditando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -50,9 +51,14 @@ export function AccesosPortal({
       setAviso(null)
       document.querySelector<HTMLInputElement>('[data-testid="acceso-mail"]')?.focus()
     } else if (p === 'ingresos') {
-      setAviso('El registro de ingresos completo lo trae back-28-32; abajo están los últimos.')
+      // La tabla `cliente_actividad_portal` guarda TODO; la lectura de esta pantalla pide los
+      // últimos 50 porque el libro sólo crece. Falta la pantalla que los pagine, no el dato.
+      setAviso('Abajo están los últimos 50 movimientos. El registro completo todavía no tiene pantalla que lo pagine.')
     } else if (p === 'suspender') {
-      setAviso('Suspender el portal entero del cliente todavía no está conectado (back-28-32).')
+      // No hay interruptor de cliente: el corte es POR ACCESO (`cliente_acceso.revocado_at`) y la
+      // RLS lee esa columna. Suspender el portal entero sería revocar los N accesos de una — se
+      // puede, pero es una acción destructiva sobre varias filas y nadie decidió si se revierte.
+      setAviso('No hay un interruptor del portal por cliente: el acceso se corta mail por mail, con «Revocar».')
     }
   })
 
@@ -94,8 +100,8 @@ export function AccesosPortal({
         <TablaAccesos
           accesos={accesos} totalObras={obras.length} hoy={hoy} elegido={editando}
           onEditar={setEditando}
-          onReenviar={(id) => correr(() => reenviarInvitacion(id), 'Invitación reenviada.')}
-          onRevocar={(id) => correr(() => revocarAcceso(id), 'Acceso revocado: ese mail ya no entra.')}
+          onReenviar={(id) => correr(() => reenviarInvitacion({ accesoId: id }), 'Invitación reenviada.')}
+          onRevocar={(id) => correr(() => revocarAcceso({ accesoId: id }), 'Acceso revocado: ese mail ya no entra.')}
         />
 
         <ActividadDelPortal actividad={actividad} hoy={hoy} />
@@ -111,7 +117,7 @@ export function AccesosPortal({
           key={editando ?? 'alta'}
           accesos={accesos} contactos={contactos} obras={obras} edicion={enEdicion}
           onCerrarEdicion={() => setEditando(null)}
-          habilitar={(entrada) => habilitarAcceso(clienteId, entrada)}
+          habilitar={(entrada) => habilitarAcceso({ clienteId, ...entrada })}
         />
         <ReglasDelPortal />
       </div>

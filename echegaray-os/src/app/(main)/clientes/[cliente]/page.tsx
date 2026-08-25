@@ -89,12 +89,14 @@ import { CabeceraCliente } from '@/features/clientes/components/CabeceraCliente'
 import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
 import { EsquemaPago } from '@/features/clientes/components/esquema/EsquemaPago'
 import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPortal'
-import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
-import { getEsquema } from '@/features/clientes/services/esquema'
-import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesos'
+import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorrienteService'
+import { getEsquemaCliente } from '@/features/clientes/services/esquemaService'
+import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesosService'
+import { registrarCobroDeCertificado } from '@/features/clientes/services/cuentaCorrienteActions'
+import { editarPagoDelEsquema, publicarEsquema } from '@/features/clientes/services/esquemaActions'
 import {
-  editarPago, habilitarAcceso, publicarEsquema, reenviarInvitacion, registrarCobro, revocarAcceso,
-} from '@/features/clientes/services/actionsCobranza'
+  habilitarAcceso, reenviarInvitacion, revocarAcceso,
+} from '@/features/clientes/services/accesosActions'
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
@@ -209,17 +211,24 @@ export default async function ClientePage({
   // LAS CARAS NUEVAS LEEN SU MATERIAL SÓLO CUANDO ESTÁN ABIERTAS. Ninguna alimenta un contador de
   // la barra de solapas —el mockup no les pone número—, así que esconderlas ahorra la consulta
   // entera y no sólo el dibujo, que es lo contrario de lo que pasa con Obras o Documentos.
+  //
+  // Pasan por el MISMO `lector` que el resto de la ficha: un fallo de la base no puede publicarse
+  // como «este cliente no debe nada». `lector.leer` se queda con el error para el cartel de arriba
+  // y devuelve el vacío, que la pantalla distingue del cero.
   const [cuenta, certificados] = solapa === 'cuenta' && veEconomia
-    ? await Promise.all([getCuentaCorriente(id), getCertificados(id)])
-    : [null, []]
-  const esquema = solapa === 'esquema' && veEconomia ? await getEsquema(id) : null
+    ? await Promise.all([getCuentaCorriente(supabase, id), getCertificados(supabase, id)])
+    : [{ data: null, error: null }, { data: [], error: null }]
+  const esquema = solapa === 'esquema' && veEconomia
+    ? await getEsquemaCliente(supabase, id)
+    : { data: null, error: null }
+  const pagosDelEsquema = esquema.data?.pagos ?? []
   // El contador de la pastilla sale de la MISMA lista que dibuja la tabla: si saliera de una
   // consulta aparte, la cabecera podría decir «2 cambios» sobre una tabla que muestra uno.
-  const sinPublicar = cambiosSinPublicar(esquema?.pagos ?? [])
+  const sinPublicar = cambiosSinPublicar(pagosDelEsquema)
   const [accesos, actividadPortal] = solapa === 'accesos' && veEconomia
-    ? await Promise.all([getAccesos(id), getActividadPortal(id)])
-    : [[], []]
-  const portal = resumenAccesos(accesos)
+    ? await Promise.all([getAccesos(supabase, id), getActividadPortal(supabase, id)])
+    : [{ data: [], error: null }, { data: [], error: null }]
+  const portal = resumenAccesos(lector.leer(accesos, []))
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -275,7 +284,7 @@ export default async function ClientePage({
         obrasEnCurso={enCurso.length}
         urlEditar={url({ editar: q.editar === '1' ? null : '1' })}
         editando={q.editar === '1'}
-        vencido={cuenta?.vencido ?? null}
+        vencido={lector.leer(cuenta, null)?.vencido ?? null}
         sinPublicar={sinPublicar}
         portalActivo={portal.habilitados > 0}
       />
@@ -344,27 +353,27 @@ export default async function ClientePage({
           un MacBook de 1280. La identidad sigue a un clic, en Resumen. */}
       {solapa === 'cuenta' && veEconomia && (
         <CuentaCorriente
-          cuenta={cuenta}
-          documentos={certificados}
+          cuenta={lector.leer(cuenta, null)}
+          documentos={lector.leer(certificados, [])}
           hoy={hoy}
-          registrarCobro={registrarCobro}
+          registrarCobro={registrarCobroDeCertificado}
         />
       )}
 
       {solapa === 'esquema' && veEconomia && (
         <EsquemaPago
-          esquema={esquema}
+          esquema={lector.leer(esquema, null)}
           hoy={hoy}
           clienteId={id}
-          editarPago={editarPago}
+          editarPago={editarPagoDelEsquema}
           publicarEsquema={publicarEsquema}
         />
       )}
 
       {solapa === 'accesos' && veEconomia && (
         <AccesosPortal
-          accesos={accesos}
-          actividad={actividadPortal}
+          accesos={lector.leer(accesos, [])}
+          actividad={lector.leer(actividadPortal, [])}
           // EL CRUCE CONTRA LOS CONTACTOS YA CARGADOS es el único control contra un typo en el mail
           // que se habilita. Sale de la MISMA lectura que dibuja el bloque Contactos de la ficha.
           contactos={lector.leer(contactos, []).map((c) => ({ nombre: c.nombre, email: c.email, rol: c.rol }))}

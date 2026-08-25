@@ -1,3 +1,14 @@
+
+//
+// ═══ NO HAY `cobrado_at`: LA FECHA DE COBRO ES `vence` ═══
+//
+// La columna Q de Cobranzas —de donde sale `vence`— guarda la fecha ESPERADA mientras el cobro
+// está pendiente y se PISA con la fecha REAL al cobrarse. Para un certificado `cobrado`, `vence`
+// ya ES el día en que entró la plata. Un segundo campo sería la misma fecha con otro nombre.
+//
+// Consecuencia que se declara en vez de disimularse: el ATRASO de un certificado ya cobrado no es
+// medible con esta fuente (restar la fecha contra sí misma da cero siempre, y publicaría una
+// puntualidad perfecta para cualquier cliente). Se muestra «—», no un 0.
 'use client'
 
 // EL PANEL DEL CERTIFICADO (`28:466`–`28:608`) — la tarjeta de 376px de la derecha.
@@ -49,6 +60,14 @@ function Celda({ rotulo, valor, color = C.tinta, ultima = false }: {
 }
 
 /** Un hito de «del certificado al cobro». El hilo baja mientras haya un hito debajo. */
+/** Por qué no está cada acción del pie del panel. Se escribe el motivo REAL, no «falta el back». */
+const MOTIVO: Record<string, string> = {
+  'Enviar recordatorio': 'la cola de mails existe, pero el recordatorio de cobranza no tiene plantilla escrita',
+  'Registrar promesa de pago': 'no hay dónde guardarla: ninguna tabla registra la promesa de un cliente',
+  'Descargar comprobante': 'el certificado no guarda el archivo de la factura, sólo su número',
+  Escalar: 'no hay circuito de escalamiento definido: falta decidir a quién escala y con qué efecto',
+}
+
 function Hito({ icono, color, titulo, fecha, detalle, ultimo = false, apagado = false }: {
   icono: React.ReactNode
   color: string
@@ -165,9 +184,11 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
   onCobrando: (v: boolean) => void
 }) {
   const [aviso, setAviso] = useState<string | null>(null)
-  const atraso = diasEntre(documento.vence, documento.estado === 'cobrado' ? documento.cobrado_at : hoy)
-  const noConectado = (que: string) =>
-    setAviso(`«${que}» todavía no está conectado: lo aterriza back-28-32.`)
+  // `null` para un cobrado: ver el bloque de arriba. No es «cero días de atraso».
+  const atraso = documento.estado === 'cobrado' ? null : diasEntre(documento.vence, hoy)
+  // CADA UNO DICE POR QUÉ, Y SON MOTIVOS DISTINTOS. Un mensaje único de «no está conectado»
+  // esconde que tres de estos cuatro están a una decisión de distancia y el otro a una tabla.
+  const noConectado = (que: string) => setAviso(`«${que}» todavía no está: ${MOTIVO[que]}`)
 
   return (
     <div style={TARJETA} data-testid="panel-certificado">
@@ -193,7 +214,7 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
         <Celda rotulo="MONTO" valor={montoM(documento.monto)} />
         <Celda
           rotulo={documento.estado === 'cobrado' ? 'COBRADO' : atraso != null && atraso > 0 ? 'VENCIÓ' : 'VENCE'}
-          valor={diaMes(documento.estado === 'cobrado' ? documento.cobrado_at : documento.vence) ?? '—'}
+          valor={diaMes(documento.vence) ?? '—'}
         />
         <Celda
           rotulo="ATRASO" ultima
@@ -237,18 +258,18 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
             titulo={(atraso ?? 0) > 0 ? 'Vencido' : 'Vence'}
             fecha={diaMes(documento.vence) ?? ''}
             detalle={(atraso ?? 0) > 0 && documento.estado !== 'cobrado' ? 'Sin cobro registrado' : undefined}
-            ultimo={!documento.cobrado_at && !documento.observacion}
+            ultimo={documento.estado !== 'cobrado' && !documento.observacion}
           />
         )}
         {documento.observacion && (
           <Hito icono={<Ico d={P.chat} s={15} w={2} />} color={C.warn} titulo="Observado por el cliente"
-            fecha="" detalle={documento.observacion} ultimo={!documento.cobrado_at} />
+            fecha="" detalle={documento.observacion} ultimo={documento.estado !== 'cobrado'} />
         )}
-        {documento.cobrado_at && (
+        {documento.estado === 'cobrado' && (
           <Hito icono={<Ico d={P.okCirculo} s={15} w={2} />} color={C.pos} titulo="Cobrado"
-            fecha={diaMes(documento.cobrado_at) ?? ''} ultimo />
+            fecha={diaMes(documento.vence) ?? ''} ultimo />
         )}
-        {!documento.emitido_at && !documento.vence && !documento.cobrado_at && (
+        {!documento.emitido_at && !documento.vence && (
           <div style={{ fontSize: '11.5px', color: C.tenue, paddingBottom: '10px' }}>
             Este documento no tiene fechas cargadas todavía.
           </div>

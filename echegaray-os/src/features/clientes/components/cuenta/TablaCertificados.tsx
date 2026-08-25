@@ -1,3 +1,14 @@
+
+//
+// ═══ NO HAY `cobrado_at`: LA FECHA DE COBRO ES `vence` ═══
+//
+// La columna Q de Cobranzas —de donde sale `vence`— guarda la fecha ESPERADA mientras el cobro
+// está pendiente y se PISA con la fecha REAL al cobrarse. Para un certificado `cobrado`, `vence`
+// ya ES el día en que entró la plata. Un segundo campo sería la misma fecha con otro nombre.
+//
+// Consecuencia que se declara en vez de disimularse: el ATRASO de un certificado ya cobrado no es
+// medible con esta fuente (restar la fecha contra sí misma da cero siempre, y publicaría una
+// puntualidad perfecta para cualquier cliente). Se muestra «—», no un 0.
 'use client'
 
 // «CERTIFICADOS Y FACTURAS» (`28:172`–`28:332`).
@@ -30,7 +41,7 @@ const COLS = 'minmax(0,1.7fr) 96px 104px 78px 116px 92px'
 /** El segundo renglón de la columna VENCE: «en 24 d», «20 d» en rojo, «cobrado a 34 d». */
 function plazo(d: CertificadoCliente, hoy: string): { texto: string; color: string } | null {
   if (d.estado === 'cobrado') {
-    const tardanza = diasEntre(d.emitido_at, d.cobrado_at)
+    const tardanza = diasEntre(d.emitido_at, d.vence)
     return tardanza == null ? null : { texto: `cobrado a ${tardanza} d`, color: C.tenue }
   }
   const dias = diasEntre(d.vence, hoy)
@@ -44,7 +55,7 @@ function Gestion({ d }: { d: CertificadoCliente }) {
   const marcas: { titulo: string; color: string; icono: React.ReactNode }[] = []
   if (d.factura) marcas.push({ titulo: `Facturado · ${d.factura}`, color: C.tintaSuave, icono: <Ico d={P.documento} s={15} /> })
   if (d.observacion) marcas.push({ titulo: `Observado: ${d.observacion}`, color: C.warn, icono: <Ico d={P.chat} s={15} /> })
-  if (d.cobrado_at) marcas.push({ titulo: `Cobrado el ${diaMes(d.cobrado_at)}`, color: C.pos, icono: <Ico d={P.ok} s={15} /> })
+  if (d.estado === 'cobrado') marcas.push({ titulo: `Cobrado el ${diaMes(d.vence)}`, color: C.pos, icono: <Ico d={P.ok} s={15} /> })
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '9px', justifyContent: 'flex-end' }}>
       {marcas.map((m) => (
@@ -90,7 +101,7 @@ export function TablaCertificados({ documentos, hoy, elegido, onElegir, filtrado
 
       {documentos.map((d) => {
         const sel = elegido === d.id
-        const apagado = d.estado === 'cobrado' || d.estado === 'retenido'
+        const apagado = d.estado === 'cobrado'
         const pl = plazo(d, hoy)
         return (
           <div
@@ -119,7 +130,7 @@ export function TablaCertificados({ documentos, hoy, elegido, onElegir, filtrado
 
             <div>
               <div style={{ fontFamily: MONO, fontSize: '12px', color: apagado ? C.tintaSuave : C.tinta }}>
-                {diaMes(d.estado === 'cobrado' ? d.cobrado_at : d.vence) ?? '—'}
+                {diaMes(d.vence) ?? '—'}
               </div>
               {pl && (
                 <div style={{ fontFamily: MONO, fontSize: '11px', color: pl.color, marginTop: '1px' }}>

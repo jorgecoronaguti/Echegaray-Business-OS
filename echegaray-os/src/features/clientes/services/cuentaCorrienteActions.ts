@@ -12,6 +12,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { cobroSchema, type EntradaCobro, type EntradaEdicionPago } from './entradasCobranza'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 
 const fechaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
@@ -40,7 +41,7 @@ const registrarCobroSchema = z.object({
  * cuenta —el bisturí rechaza por celda, no por lote—. Si fueran una sola, el rechazo de una parte
  * dejaría el conjunto en un estado que nadie puede leer.
  */
-export async function registrarCobro(entrada: unknown): Promise<ResultadoAccion> {
+export async function registrarCobro(entrada: EntradaCobro): Promise<ResultadoAccion> {
   const parsed = registrarCobroSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const v = parsed.data
@@ -95,7 +96,7 @@ const editarPagoSchema = z.object({
  * La reprogramación se guarda SIEMPRE (aunque el cliente no la vea): es la evidencia de cuántas
  * veces se movió una fecha, que es justo lo que hay que poder mirar al recotizar a ese cliente.
  */
-export async function editarPago(entrada: unknown): Promise<ResultadoAccion> {
+export async function editarPago(entrada: EntradaEdicionPago): Promise<ResultadoAccion> {
   const parsed = editarPagoSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const v = parsed.data
@@ -144,4 +145,51 @@ function traducir(mensaje: string): string {
     return 'Esa fila no es un renglón de cobranzas'
   }
   return mensaje
+}
+
+/**
+ * LO QUE APRIETA LA PANTALLA 28 — «Registrar cobro» desde el formulario del panel del certificado.
+ *
+ * ═══ POR QUÉ ESTA ADAPTADORA EXISTE Y NO SE LLAMA A `registrarCobro` DIRECTO ═══
+ *
+ * `registrarCobro` habla el idioma de la COLA: fila física, huella, fecha ya en ISO. El panel habla
+ * el de una persona: un `<form>` con la fecha, el monto escrito en argentino y el medio elegido.
+ * Traducir en el navegador obligaría a mandarle al cliente la fila y la huella, y ahí se rompe lo
+ * que la huella protege — un `curl` podría declarar la huella que le convenga y el worker escribiría
+ * sobre la fila equivocada creyendo que la verificó.
+ *
+ * Así que la fila y la huella se LEEN acá, del certificado, con la sesión del que aprieta el botón.
+ * Del formulario sólo viaja lo que una persona escribió.
+ */
+export async function registrarCobroDeCertificado(
+  certificadoId: string, form: FormData,
+): Promise<ResultadoAccion> {
+  if (!certificadoId) return { ok: false, error: 'Falta el certificado que se está cobrando' }
+  // `cobroSchema` es el de la pantalla: entiende «3.100.000» como tres millones cien mil y rechaza
+  // el 30 de febrero. Ver `entradasCobranza.ts`.
+  const parsed = cobroSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
+
+  const supabase = await createClient()
+  const { data: cert, error } = await supabase
+    .from('certificado_cliente')
+    .select('cobranza_fila, huella_comprobante, huella_monto')
+    .eq('id', certificadoId)
+    .maybeSingle()
+  if (error) return { ok: false, error: traducir(error.message) }
+  if (!cert) return { ok: false, error: 'No se encontró ese certificado' }
+  if (cert.cobranza_fila == null) {
+    return {
+      ok: false,
+      error: 'Este certificado no tiene fila en Cobranzas. Cargá el cobro en el Flujo de Caja y volvé.',
+    }
+  }
+
+  return registrarCobro({
+    cobranzaFila: cert.cobranza_fila,
+    fecha: parsed.data.fecha,
+    medio: parsed.data.medio,
+    huellaComprobante: cert.huella_comprobante,
+    huellaMonto: cert.huella_monto,
+  })
 }

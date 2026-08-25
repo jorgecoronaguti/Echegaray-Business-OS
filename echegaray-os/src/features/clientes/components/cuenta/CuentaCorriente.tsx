@@ -63,11 +63,16 @@ export function CuentaCorriente({ cuenta, documentos, hoy, registrarCobro }: {
       setElegido(destino.id)
       setCobrando(true)
     } else if (p === 'exportar') {
-      setAviso('«Exportar estado de cuenta» todavía no está conectado: lo aterriza back-28-32.')
+      // SIGUE SIN CONECTAR DESPUÉS DE LA INTEGRACIÓN, y el motivo cambió: ya no falta la tabla,
+      // falta el PDF. No hay generador de estado de cuenta en el OS y armar uno acá sería inventar
+      // el documento que el cliente después reclama.
+      setAviso('«Exportar estado de cuenta» todavía no está: falta el generador del PDF.')
     } else if (p === 'recordatorio') {
-      setAviso('«Enviar recordatorio» manda un mail al cliente y su cola la trae back-28-32.')
+      // La cola de mails existe (`mail_saliente`) y el worker la manda, pero el recordatorio de
+      // cobranza no tiene plantilla: las que hay son la invitación y el aviso de esquema.
+      setAviso('«Enviar recordatorio» necesita su plantilla de mail: todavía no está escrita.')
     } else if (p === 'ver-como-cliente') {
-      setAviso('El portal del cliente lo trae el frente portal-29-30.')
+      setAviso('Para ver el portal como lo ve el cliente hay que entrar con su acceso: la sesión de administración no puede leer /portal.')
     }
   })
 
@@ -84,7 +89,7 @@ export function CuentaCorriente({ cuenta, documentos, hoy, registrarCobro }: {
         flex: 1, minWidth: 'min(600px, 100%)', display: 'flex', flexDirection: 'column', gap: '24px',
       }}>
         <Metricas cuenta={cuenta} />
-        <Antiguedad documentos={documentos} hoy={hoy} filtro={banda} onFiltrar={setBanda} />
+        <Antiguedad cuenta={cuenta} documentos={documentos} hoy={hoy} filtro={banda} onFiltrar={setBanda} />
         <TablaCertificados
           documentos={visibles} hoy={hoy} elegido={elegido} onElegir={setElegido}
           filtrado={banda !== null}
@@ -118,7 +123,7 @@ export function CuentaCorriente({ cuenta, documentos, hoy, registrarCobro }: {
                 : 'Elegí un documento de la lista para verlo y registrar su cobro.'}
             </Vacio>
           )}
-        <Comportamiento documentos={documentos} />
+        <Comportamiento documentos={documentos} cuenta={cuenta} />
       </div>
     </div>
   )

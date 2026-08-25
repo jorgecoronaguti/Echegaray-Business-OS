@@ -15,7 +15,7 @@
 // nunca recibió.
 //
 // Hoy `editarPago` es un stub que siempre contesta «no está conectado», así que la vuelta atrás se
-// ve en cada clic. Es exactamente lo que tiene que pasar hasta que aterrice back-28-32.
+// ve en cada clic.
 
 import { useState } from 'react'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
@@ -72,7 +72,7 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
   hoy: string
   clienteId: string
   editarPago: (pagoId: string, cambio: CambioPago) => Promise<ResultadoAccion>
-  publicarEsquema: (clienteId: string) => Promise<ResultadoAccion>
+  publicarEsquema: (entrada: { clienteId: string }) => Promise<ResultadoAccion>
 }) {
   const [pagos, setPagos] = useState<PagoEsquema[]>(esquema?.pagos ?? [])
   const [vista, setVista] = useState<'listado' | 'calendario'>('listado')
@@ -101,15 +101,22 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
     if (p === 'publicar') {
       setAviso(null)
       setError(null)
-      const r = await publicarEsquema(clienteId)
+      const r = await publicarEsquema({ clienteId })
       if (r.ok) setAviso(r.mensaje ?? 'Publicado: el cliente ya ve el esquema en el portal.')
       else setError(r.error)
     } else if (p === 'agregar-pago') {
-      setAviso('«Agregar pago» crea una fila en Cobranzas y esa escritura la trae back-28-32.')
+      // La cola `cobranza_cambio` sabe MOVER una celda de una fila existente, verificando su
+      // huella antes de escribir. INSERTAR una fila nueva en la pestaña es otra operación: corre
+      // la columna A (`=ROW()-4`) de todas las de abajo y con ella el `cobranza_fila` de cada
+      // certificado. No se agrega hasta que el worker sepa reasignar esos punteros.
+      setAviso('«Agregar pago» inserta una fila en Cobranzas y eso corre los punteros de todas las de abajo: todavía no está.')
     } else if (p === 'descartar-cambios') {
-      setAviso('«Descartar cambios» necesita la cola de cambios sin publicar (back-28-32).')
+      // `cambio_pendiente` dice QUE algo cambió, no QUÉ valor tenía antes de cambiar: el valor
+      // anterior sólo queda guardado para lo que ya pasó por `cobranza_cambio`. Sin eso, descartar
+      // no tiene a qué volver.
+      setAviso('«Descartar cambios» necesita el valor anterior de cada campo y el esquema sólo guarda que cambió.')
     } else if (p === 'ver-como-cliente') {
-      setAviso('El portal del cliente lo trae el frente portal-29-30.')
+      setAviso('Para ver el portal como lo ve el cliente hay que entrar con su acceso: la sesión de administración no puede leer /portal.')
     }
   })
 
@@ -205,7 +212,8 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
                 pago={pago}
                 onCambiar={(c) => cambiar(pago.id, c)}
                 onCerrar={() => setElegido(null)}
-                onQuitar={() => setAviso('«Quitar del esquema» borra la fila de Cobranzas: esa escritura la trae back-28-32.')}
+                // Mismo motivo que «Agregar pago»: borrar una fila corre la columna A del resto.
+                onQuitar={() => setAviso('«Quitar del esquema» borra una fila de Cobranzas y eso corre los punteros de todas las de abajo: todavía no está.')}
                 error={error}
                 guardando={guardando === pago.id}
               />

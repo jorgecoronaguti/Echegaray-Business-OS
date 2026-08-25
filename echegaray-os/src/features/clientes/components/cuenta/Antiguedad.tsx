@@ -12,13 +12,25 @@
 //
 // FILTRAR ES LA ACCIÓN DE ESTE BLOQUE: tocar un tramo deja abajo sólo los documentos de esa edad.
 // El mockup lo insinúa con `cursor:pointer` en cada tramo y en cada ítem de la leyenda.
+//
+// ═══ LOS NÚMEROS DE LA BARRA SALEN DE LA VISTA, NO DE LA TABLA DE ABAJO ═══
+//
+// `cliente_cuenta_corriente` publica las cinco bandas ya calculadas y es la ÚNICA definición del
+// aging del OS: la misma que leen el chat y Claude Code, y la misma que da el saldo y el vencido
+// escritos arriba en esta pantalla. Sumarlas otra vez acá, sobre los certificados, daba un segundo
+// aging que no cerraba con su propio encabezado.
+//
+// Las dos fuentes no tienen las mismas filas —la vista suma toda la cartera, la tabla sólo lo que
+// el sync materializó como certificado— y eso NO se disimula: se mide (`saldoSinCertificado`) y se
+// escribe debajo de la barra. Un tramo con plata y sin filas al filtrar tiene que tener explicación
+// a la vista, o el que mira va a creer que la pantalla perdió documentos.
 
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { TituloBloque } from '../canon/Piezas'
 import { enMillones, montoM, diaMes } from '../../services/cobranzaFormato'
-import { bandasAntiguedad, type ClaveBanda } from '../../services/reglasCobranza'
-import type { CertificadoCliente } from '../../types/cobranzas'
+import { bandasAntiguedad, saldoSinCertificado, sinVencimiento, type ClaveBanda } from '../../services/reglasCobranza'
+import type { CertificadoCliente, CuentaCorriente } from '../../types/cobranzas'
 
 /** Los tres colores de cada tramo, medidos en `28:121`–`28:129` y `28:133`–`28:168`. */
 const COLOR: Record<ClaveBanda, { fondo: string; fuerte: string }> = {
@@ -33,13 +45,17 @@ const COLOR: Record<ClaveBanda, { fondo: string; fuerte: string }> = {
 const colorDe = (clave: ClaveBanda, monto: number) =>
   monto > 0 ? COLOR[clave] : { fondo: '#F2F1ED', fuerte: C.bordeFuerte }
 
-export function Antiguedad({ documentos, hoy, filtro, onFiltrar }: {
+export function Antiguedad({ cuenta, documentos, hoy, filtro, onFiltrar }: {
+  /** La fila de `cliente_cuenta_corriente`. `null` = el cliente no tiene movimientos en Cobranzas. */
+  cuenta: CuentaCorriente | null
   documentos: CertificadoCliente[]
   hoy: string
   filtro: ClaveBanda | null
   onFiltrar: (b: ClaveBanda | null) => void
 }) {
-  const { bandas, sinVencimiento } = bandasAntiguedad(documentos, hoy)
+  const bandas = bandasAntiguedad(cuenta)
+  const sinFecha = sinVencimiento(documentos, hoy)
+  const sinCertificado = saldoSinCertificado(documentos, cuenta)
   return (
     <div data-testid="antiguedad">
       <TituloBloque
@@ -113,7 +129,7 @@ export function Antiguedad({ documentos, hoy, filtro, onFiltrar }: {
         })}
       </div>
 
-      {sinVencimiento > 0 && (
+      {sinFecha > 0 && (
         // UN CONTROL QUE NO PUDO MIRAR NO DICE «NO HAY». Esta plata no entró en ninguna banda
         // porque su documento no tiene fecha de vencimiento; callarla la haría desaparecer de la
         // barra y del total sin que nadie se entere.
@@ -122,7 +138,18 @@ export function Antiguedad({ documentos, hoy, filtro, onFiltrar }: {
           style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '9px', fontSize: '11.5px', color: C.warn }}
         >
           <Ico d={P.alerta} s={13} w={2} />
-          {montoM(sinVencimiento)} sin fecha de vencimiento: no entra en ninguna banda.
+          {montoM(sinFecha)} sin fecha de vencimiento: no entra en ninguna banda.
+        </div>
+      )}
+
+      {sinCertificado > 0 && (
+        // LA BARRA MIDE TODA LA CARTERA; LA TABLA, SÓLO LOS CERTIFICADOS. Ver el bloque de arriba.
+        <div
+          data-testid="antiguedad-sin-certificado"
+          style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '9px', fontSize: '11.5px', color: C.tenue }}
+        >
+          <Ico d={P.alerta} s={13} w={2} />
+          {montoM(sinCertificado)} del saldo no tiene certificado cargado: está en la barra y no en la tabla.
         </div>
       )}
     </div>

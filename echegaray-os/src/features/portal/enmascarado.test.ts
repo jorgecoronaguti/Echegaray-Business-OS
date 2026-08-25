@@ -21,7 +21,8 @@ test('con permiso, un importe ausente sigue siendo null y no se convierte en 0',
 })
 
 const pago = (p: Partial<PagoEsquema>): PagoEsquema => ({
-  id: 'p', cliente_id: 'c', obra_id: null, cobranza_fila: null, concepto: 'x', fecha: null,
+  id: 'p', cliente_id: 'c', obra_id: null, obra_nombre: null, cobranza_fila: null,
+  concepto: 'x', fecha: null,
   monto: 100, reparo: null, estado: 'a_vencer', medio: null, visible_portal: false,
   aviso_dias: null, mostrar_reprogramaciones: false, nota_interna: null, reprogramaciones: [],
   publicado_at: null, cambio_pendiente: false, orden: 0, ...p,
@@ -67,7 +68,8 @@ test('lo que vence HOY todavía cuenta como próximo vencimiento', () => {
 
 const acceso = (a: Partial<AccesoPortal>): AccesoPortal => ({
   id: 'a', cliente_id: 'c', email: 'x@y.com', persona_contacto: null, puede_ver_obra: true,
-  puede_ver_montos: false, puede_aprobar: false, obras: null, habilitado_at: null,
+  puede_ver_montos: false, puede_aprobar: false, obras: null, obras_nombres: null,
+  habilitado_at: null,
   invitacion_enviada_at: null, primer_ingreso_at: null, ultimo_ingreso_at: null,
   ultimo_dispositivo: null, revocado_at: null, auth_user_id: null, ...a,
 })

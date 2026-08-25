@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/server'
 // cliente reciba dos textos distintos según quién apretó el botón.
 import { habilitacionPortal } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
+import type { EntradaAcceso, EntradaAltaAcceso } from './entradasCobranza'
 
 const habilitarSchema = z.object({
   clienteId: z.string().uuid(),
@@ -42,7 +43,7 @@ const habilitarSchema = z.object({
  * habilitación, un problema de correo dejaría al cliente sin acceso. Se informa el mail no enviado
  * sin mentir sobre el acceso, que sí está.
  */
-export async function habilitarAcceso(entrada: unknown): Promise<ResultadoAccion> {
+export async function habilitarAcceso(entrada: EntradaAltaAcceso): Promise<ResultadoAccion> {
   const parsed = habilitarSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
   const v = parsed.data
@@ -105,7 +106,7 @@ const idSchema = z.object({ accesoId: z.string().uuid() })
  * `cliente_de_sesion()` devuelve NULL para un acceso revocado, así que la sesión que tuviera abierta
  * deja de ver todo en la consulta siguiente.
  */
-export async function revocarAcceso(entrada: unknown): Promise<ResultadoAccion> {
+export async function revocarAcceso(entrada: EntradaAcceso): Promise<ResultadoAccion> {
   const parsed = idSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: 'Acceso inválido' }
 
@@ -125,7 +126,7 @@ export async function revocarAcceso(entrada: unknown): Promise<ResultadoAccion> 
  * cuando el primer mail se perdió, así que la clave de idempotencia va en null y este mail sale
  * aunque ya haya salido otro igual.
  */
-export async function reenviarInvitacion(entrada: unknown): Promise<ResultadoAccion> {
+export async function reenviarInvitacion(entrada: EntradaAcceso): Promise<ResultadoAccion> {
   const parsed = idSchema.safeParse(entrada)
   if (!parsed.success) return { ok: false, error: 'Acceso inválido' }
 
