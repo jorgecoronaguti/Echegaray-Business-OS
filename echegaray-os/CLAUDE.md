@@ -12,6 +12,11 @@ y administración.
 
 **REUNIR CONTEXTO → ACTUAR → VERIFICAR.** Todo lo de abajo es cómo se cierra cada etapa.
 
+**Antes de buscar nada, `.claude/MAPA.md`.** Dice qué archivo toca cada tipo de tarea, cuál es
+la fuente de verdad de cada concepto, los comandos, las unidades de producción y las trampas ya
+pagadas. No se carga solo: se abre cuando hace falta, y evita recorrer 400 módulos y 200 scripts
+para encontrar dónde vive algo. Si algo suyo quedó viejo, se corrige ahí mismo.
+
 ### 1. El contexto es el recurso escaso
 
 Medido sobre 60 sesiones de este repo: el 75% de los turnos corrió con más de 200k tokens y el 39%
@@ -79,6 +84,11 @@ el bucle de verificación.
 - **Se muestra la evidencia, no se afirma el éxito**: el comando, su salida, la captura.
 - **De más barata a más fuerte**: reglas (tests, typecheck, lint) · visual (capturas, el PDF de la
   pestaña) · un modelo que juzga (`auditor-de-cierre`).
+- **La pirámide, y se sube sólo lo que el riesgo pida.** Mientras se itera: el test del archivo que
+  se tocó (`node --test <archivo>`, segundos). Antes de dar algo por hecho: `typecheck` y el lint
+  del área. Antes de mergear: la suite del dominio. **`orq:test` completo y `build` sólo en el
+  hito o antes del deploy** — no en cada iteración. E2E únicamente sobre el circuito que se tocó.
+  Correr la suite entera después de cada edición no agrega certeza: agrega minutos y tokens.
 - **La causa raíz, no el síntoma.** Silenciar un error no es arreglarlo.
 
 ### 5. Nadie cierra su propio trabajo
