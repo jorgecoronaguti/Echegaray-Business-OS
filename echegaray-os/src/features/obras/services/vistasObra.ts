@@ -85,6 +85,38 @@ export type SubTareas = (typeof SUBS_TAREAS)[number]['id']
 export const esSubTareas = (v: string | undefined): v is SubTareas =>
   SUBS_TAREAS.some((s) => s.id === v)
 
+/** Cuál de las cuatro pantallas de Trabajo se está mirando. `'ninguna'` para las que cuelgan de
+ *  Trabajo y no son ninguna de ellas — hoy, el cronograma calculado, que no es el `sub=gantt` del
+ *  workspace y marcarlo activo afirmaría que son la misma vista. */
+export type PantallaDeTrabajo = SubTareas | 'subcontratos' | 'ninguna'
+
+/**
+ * LAS CUATRO DEL NIVEL 3, EN UN SOLO LUGAR. El canónico 07 las dibuja juntas —`Tareas ·
+ * Cronograma · Parte diario · Subcontratos`— y hasta el 25/08/2026 se emitían en DOS componentes
+ * distintos, con dos listas escritas por separado. Ya se habían separado una vez: Subcontratos
+ * rotulaba «Actividades» lo que el workspace llamaba «Tareas», para el mismo destino.
+ *
+ * Subcontratos entra acá aunque sea otra URL y no una sub-vista: es el MISMO alcance de la obra
+ * mirado desde el lado del tercero que lo ejecuta, y por eso cuelga de Trabajo en vez de ser una
+ * séptima solapa — el tope de seis está declarado en `page.tsx` de la obra.
+ */
+export function pantallasDeTrabajo(obraId: string, activa: PantallaDeTrabajo | null) {
+  return [
+    ...SUBS_TAREAS.map((s) => ({
+      id: s.id as string,
+      label: s.label as string,
+      href: `/obras/${obraId}?vista=tareas&sub=${s.id}`,
+      activo: activa === s.id,
+    })),
+    {
+      id: 'subcontratos',
+      label: 'Subcontratos',
+      href: hrefSubcontratos(obraId),
+      activo: activa === 'subcontratos',
+    },
+  ]
+}
+
 /** Lo que llega por link viejo, por marcador o por un test: adónde va, y con qué vista adentro. */
 const ALIAS: Record<string, { vista: VistaObra; sub: SubTareas }> = {
   planificacion: { vista: 'tareas', sub: 'arbol' },

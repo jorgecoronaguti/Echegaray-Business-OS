@@ -40,7 +40,7 @@ import {
   registrarDocumento,
 } from '@/features/obras/services/actionsSubcontratos'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
-import { SubTabsTrabajo } from '@/features/obras/components/SubTabsTrabajo'
+import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceSubcontratos } from '@/features/obras/components/WorkspaceSubcontratos'
 import { FormNuevoPaquete } from '@/features/obras/components/FormNuevoPaquete'
 import { Aviso } from '@/shared/components/ds'
@@ -103,7 +103,7 @@ export default async function SubcontratosObraPage({
         {/* Nivel 3: las CUATRO del canónico 07, emitidas en un solo lugar. Eran dos escritas acá
             —Actividades y Subcontratos— y desde esta pantalla no había forma de llegar al parte
             diario ni al cronograma sin volver al workspace. */}
-        <SubTabsTrabajo obraId={obraId} activa="subcontratos" />
+        <SubNavTrabajo obraId={obraId} sub="subcontratos" />
 
         {data.avisos.map((a) => (
           <Aviso key={a} tono="warn" titulo="Falta parte de esta pantalla" testid="aviso-lectura">
