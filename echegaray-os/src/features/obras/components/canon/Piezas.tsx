@@ -11,7 +11,7 @@
 // estado local. Es la única traducción que el porte se permite, y está acá para hacerla una vez.
 
 import { useState, type CSSProperties, type ReactNode } from 'react'
-import { C, MONO, PASTILLA, type TonoPastilla } from './tokens'
+import { C, colorDeChip, MONO, PASTILLA, type TonoPastilla } from './tokens'
 import { Ico, P } from './Ico'
 
 /** Una fila u opción que se ilumina al pasar el mouse, como el `style-hover` del zip. */
@@ -59,8 +59,16 @@ export function Pastilla({ tono, children, radio = 11, tam = 11 }: {
  *
  * El número no es decorativo: sin él hay que tocar el chip para saber si hay algo del otro lado.
  * Activo = grafito lleno con el número en `#B9B7B1`; apagado = blanco con borde.
+ *
+ * `secundario` ES EL CHIP QUE NO ESTÁ EN EL MOCKUP. El 03 dibuja cuatro filtros y el código sostiene
+ * dos más que contestan preguntas reales del día (atrasadas, sin asignar). Se quedan, pero no
+ * pueden pesar lo mismo que las cuatro que resumen la obra: mismo fondo blanco y mismo borde
+ * `#E7E6E2` del chip apagado del 03, y el rótulo en `#6B6B67` —el gris con el que ese mismo mockup
+ * pinta lo secundario: la sub-solapa inactiva y el conmutador de dependencias—, contra el `#3A3A38`
+ * de las cuatro. El conteo sigue en `faint`: es un dato real, no un adorno. Activo pesa igual en
+ * los seis; elegir un filtro no es un estado de segunda.
  */
-export function Chip({ activo, onClick, titulo, icono, n, children }: {
+export function Chip({ activo, onClick, titulo, icono, n, secundario = false, children }: {
   activo: boolean
   onClick: () => void
   titulo?: string
@@ -68,23 +76,24 @@ export function Chip({ activo, onClick, titulo, icono, n, children }: {
   icono?: ReactNode
   /** `null` = este filtro no cuenta nada (los del 05). */
   n?: string | null
+  /** Un filtro que el mockup no dibuja: va detrás, apagado. */
+  secundario?: boolean
   children: ReactNode
 }) {
+  const c = colorDeChip({ activo, secundario })
   return (
     <button type="button" onClick={onClick} title={titulo} aria-pressed={activo}
-      data-activo={activo ? '1' : undefined}
+      data-activo={activo ? '1' : undefined} data-secundario={secundario ? '1' : undefined}
       style={{
         display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px',
-        border: `1px solid ${activo ? C.grafito : C.borde}`,
-        background: activo ? C.grafito : C.superficie,
-        color: activo ? C.superficie : C.tintaMedia,
+        border: `1px solid ${c.borde}`, background: c.fondo, color: c.texto,
         borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', font: 'inherit',
         fontFamily: 'inherit', lineHeight: 1.4,
       }}>
       {icono}
       {children}
       {n != null && (
-        <span style={{ fontFamily: MONO, fontSize: '10.5px', color: activo ? C.apagado : C.tenue }}>{n}</span>
+        <span style={{ fontFamily: MONO, fontSize: '10.5px', color: c.cuenta }}>{n}</span>
       )}
     </button>
   )

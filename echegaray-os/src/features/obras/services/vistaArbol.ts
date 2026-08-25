@@ -35,6 +35,12 @@ export const VISTA_ARBOL_LABEL: Record<VistaArbol, string> = {
  * Las otras dos no se borran —atrasadas y sin asignar son las dos preguntas que un jefe de obra
  * hace todos los días— pero van detrás, apagadas: el diseño reserva la línea de arriba para las
  * cuatro que contestan «¿cómo viene la obra?» de un vistazo.
+ *
+ * «Apagadas» ES UNA PROPIEDAD DEL CHIP, no una promesa de este comentario. Durante un tiempo lo fue:
+ * esta lista existía, la de arriba también, y las seis se dibujaban con el mismo borde, el mismo
+ * fondo y el mismo tamaño. Lo implementa `Chip secundario` en `components/canon/Piezas.tsx`, y
+ * `TabTareas` las separa con un filete. Quien mueva una vista de una lista a la otra cambia el peso
+ * visual del filtro, no sólo su orden.
  */
 export const VISTAS_PRIMARIAS: readonly VistaArbol[] = ['todo', 'en_curso', 'critico', 'bloqueadas']
 export const VISTAS_SECUNDARIAS: readonly VistaArbol[] = VISTAS_ARBOL.filter(

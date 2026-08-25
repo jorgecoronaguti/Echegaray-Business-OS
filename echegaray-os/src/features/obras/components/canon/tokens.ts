@@ -99,6 +99,33 @@ export const PASTILLA = {
 
 export type TonoPastilla = keyof typeof PASTILLA
 
+/**
+ * LOS COLORES DE UN CHIP DE FILTRO, MEDIDOS EN «03 · Obra Tareas.dc.html» (línea 646–649):
+ * activo `borde/fondo #30302F`, texto `#FFFFFF`, conteo `#B9B7B1`; apagado `#FFFFFF` con borde
+ * `#E7E6E2`, texto `#3A3A38` y conteo `#91918B`.
+ *
+ * `secundario` NO ESTÁ EN EL MOCKUP Y POR ESO EXISTE. El 03 dibuja cuatro filtros; el código sostiene
+ * dos más —«Atrasadas» y «Sin asignar»—, y el comentario que los agregó prometió que iban «detrás,
+ * apagadas». No lo estaban: los seis salían idénticos. El apagado es el `#6B6B67` con el que ese
+ * mismo mockup pinta lo secundario (la sub-solapa inactiva y el conmutador de dependencias), y NO un
+ * gris nuevo. El conteo se queda en `faint`: dice cuántas actividades hay atrasadas y eso es un dato,
+ * no un adorno.
+ *
+ * Es una función y no tres ternarios adentro del JSX porque es lo único de la pastilla que se puede
+ * probar sin navegador.
+ */
+export function colorDeChip({ activo, secundario = false }: { activo: boolean; secundario?: boolean }) {
+  if (activo) {
+    return { borde: C.grafito, fondo: C.grafito, texto: C.superficie, cuenta: C.apagado }
+  }
+  return {
+    borde: C.borde,
+    fondo: C.superficie,
+    texto: secundario ? C.tintaSuave : C.tintaMedia,
+    cuenta: C.tenue,
+  }
+}
+
 // ═══ LOS DOS ESTILOS DE BOTÓN VIVEN EN UN MÓDULO NEUTRAL ═══
 //
 // Estaban en `Piezas.tsx`, que lleva `'use client'`, y la cabecera de la obra los usa desde un
