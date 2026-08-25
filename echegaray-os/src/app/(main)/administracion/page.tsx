@@ -40,7 +40,7 @@ import {
 import { separarArchivados } from '@/features/clientes/services/cartera'
 import { ListaClientes, type ObraEnCurso } from '@/features/clientes/components/ListaClientes'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, TituloPantalla, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, Vacio } from '@/shared/components/ds'
 import { BarraAreas } from '@/features/administracion/components/BarraAreas'
 import { BarraAtencion } from '@/features/administracion/components/BarraAtencion'
 import {
@@ -77,7 +77,6 @@ export default async function AdministracionPage() {
 
       {/* EL ÚNICO `h1` DE LA PANTALLA. Sin el encabezado de página, el título de la lista es el
           título: una pantalla sin `h1` deja al lector de pantalla sin punto de entrada. */}
-      <TituloPantalla className="mb-3">Clientes</TituloPantalla>
 
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
       {cartera.error ? (

@@ -1,289 +1,361 @@
 'use client'
 
 import { useActionState, useRef, useState } from 'react'
-import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
-import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
-import { IconoObra } from '@/shared/components/iconos'
+import { C, HOVER_SUAVE, R, pct } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
 import {
-  AVISO_CRITERIO, VALORES_MASIVOS, VISTAS_MASIVAS, avisoDePrecision, enVista, renglones, vistaInicial,
+  AvisoError, FranjaFiltros, TopBarDetalle, Vacio, mono,
+} from '@/shared/components/movil/Piezas'
+import {
+  AVISO_CRITERIO, VISTAS_MASIVAS, avisoDePrecision, enVista, opcionesMasivas, renglones, vistaInicial,
 } from '../services/medicion'
 import type { Renglon, VistaMasiva } from '../services/medicion'
 import type { ActividadDelJefe } from '../services/jefeService'
 
-// J04 · AVANCE DEL DÍA — «tocá las que avanzaron».
+// J04 · AVANCE DEL DÍA — porte literal de `J04 · Jefe Avance masivo.dc.html`.
+//
+// ═══ CADA TAREA CON SU PROPIO PORCENTAJE — ES EL CAMBIO DE FONDO ═══
+//
+// La versión anterior tenía UN valor para toda la selección: se marcaban diez tareas y las diez
+// iban al mismo número. El mockup pone los pasos DENTRO de cada tarjeta y en su ejemplo guarda una
+// al 80 % y otra al 65 % en el mismo envío. Eso es lo que hace que la pantalla sirva para cerrar un
+// día real, donde cada frente llegó hasta donde llegó. La regla del formato de envío —`id:80,id:65`—
+// vive en `medicion.ts` con su test, y el servidor la vuelve a validar.
 //
 // ═══ LA TAREA QUE NO SE PUEDE APLICAR SE MUESTRA APAGADA, NO SE ESCONDE ═══
 //
 // Una medida por cantidad o por pasos no se mueve con un porcentaje: la vista la calcula de otra
 // manera y la fila entraría sin efecto. Esconderla dejaría al jefe buscando una tarea que él sabe
-// que existe; mostrarla tocable produciría un éxito informado con el dato quieto, que es peor. Va a
-// la vista, apagada, con la unidad real escrita al lado.
+// que existe; mostrarla tocable produciría un éxito informado con el dato quieto, que es peor.
 //
-// ═══ EL PIE APARECE CUANDO HAY ALGO ELEGIDO ═══
+// ═══ EL PIE DICE QUÉ HACER CUANDO NO HAY NADA ELEGIDO ═══
 //
-// Sin nada marcado, el pie dice qué hacer en vez de mostrar un botón que no puede hacer nada. Es la
-// misma idea del panel que no se dibuja cuando no tiene nada que decir.
+// Sin selección el mockup no dibuja un botón apagado: dibuja la instrucción, «Tocá los frentes que
+// avanzaron hoy». Un botón que no puede hacer nada enseña a ignorar los botones.
 
 type Estado = { ok: boolean; mensaje: string } | null
 
 export function FormularioMasivo({
-  actividades, frentes, fecha, obraNombre, accion,
+  actividades, frentes, fecha, obraNombre, volver, accion,
 }: {
   actividades: ActividadDelJefe[]
   /** `actividad_id` → nombre del frente, sacado del ÁRBOL. Ver el porqué en `frentes.ts`. */
   frentes: Record<string, string>
   fecha: string
   obraNombre: string
+  volver: { href: string; label: string }
   accion: (estado: Estado, form: FormData) => Promise<Estado>
 }) {
   const filas = renglones(actividades)
+  const porId = new Map(actividades.map((a) => [a.actividad_id, a]))
   const [vista, setVista] = useState<VistaMasiva>(() => vistaInicial(filas))
-  const [elegidas, setElegidas] = useState<Set<string>>(new Set())
-  const [objetivo, setObjetivo] = useState<number>(100)
+  const [elegidas, setElegidas] = useState<Record<string, number>>({})
   const [criterio, setCriterio] = useState('')
   const [estado, enviar, enviando] = useActionState(accion, null)
-  // La barra del sistema aplica con un `onClick`, no con un `submit`: el botón es `type="button"`
-  // para no enviar el formulario de la pantalla que la contenga. Acá SÍ hay un formulario y es el
-  // que lleva la fecha, el objetivo y los ids, así que se lo envía a mano.
+  // La barra aplica con `requestSubmit()` porque el botón vive fuera del flujo del formulario.
   const formulario = useRef<HTMLFormElement | null>(null)
 
   // TRAS UN GUARDADO EXITOSO LA SELECCIÓN SE VACÍA — y con ella se va la barra. Dejarla abierta
-  // ofreciendo «Guardar N avances» invita a un segundo tap, y como el guardado manual escribe
-  // INCREMENTOS, ese segundo tap no es inocuo: duplica el avance (E2E 24/08, defecto observado
-  // en las dos pasadas).
-  // Estado DERIVADO durante el render, no en un efecto: React permite `setState` en render cuando
-  // se compara contra el valor anterior (mismo patrón que `filtroDeLaUrl` en TabTareas). Un
-  // `useEffect` que llama a `setState` es el anti-patrón que eslint marca, y además pinta un frame
-  // con la selección vieja antes de vaciarla.
+  // ofreciendo «Guardar N avances» invita a un segundo toque, y como el guardado escribe
+  // INCREMENTOS ese segundo toque no es inocuo: duplica el avance (defecto observado el 24/08).
+  // Estado DERIVADO en render, no en un efecto: un `useEffect` con `setState` pinta un frame con la
+  // selección vieja antes de vaciarla, y además es el anti-patrón que marca eslint.
   const [ultimoOk, setUltimoOk] = useState<Estado>(null)
   if (estado?.ok && estado !== ultimoOk) {
     setUltimoOk(estado)
-    setElegidas(new Set())
+    setElegidas({})
   }
 
-  // «Todas» marca LO QUE SE VE, no lo que existe. Con la vista filtrada, marcar tareas fuera de
-  // pantalla y guardarlas es exactamente el tipo de escritura que nadie pidió.
-  const aplicables = filas.filter((f) => f.aplicable && enVista(f, vista))
-  const seleccion = filas.filter((f) => elegidas.has(f.actividad_id))
+  const visibles = filas.filter((f) => enVista(f, vista))
+  const aplicables = visibles.filter((f) => f.aplicable)
+  const ids = Object.keys(elegidas)
+  const seleccion = filas.filter((f) => ids.includes(f.actividad_id))
   const aviso = avisoDePrecision(seleccion)
   const exigeCriterio = seleccion.some((f) => f.metodo === 'manual')
   const faltaCriterio = exigeCriterio && criterio.trim() === ''
 
-  const grupos = agrupar(actividades, filas.filter((f) => enVista(f, vista)), frentes)
+  const alternar = (f: Renglon) => setElegidas((prev) => {
+    const copia = { ...prev }
+    if (copia[f.actividad_id] != null) delete copia[f.actividad_id]
+    else copia[f.actividad_id] = opcionesMasivas(f.avance_pct)[0]
+    return copia
+  })
 
   return (
     <form action={enviar} ref={formulario}>
       <input type="hidden" name="fecha" value={fecha} />
-      <input type="hidden" name="objetivo" value={objetivo} />
-      <input type="hidden" name="tareas" value={[...elegidas].join(',')} />
+      <input type="hidden" name="tareas" value={ids.map((id) => `${id}:${elegidas[id]}`).join(',')} />
+      {exigeCriterio && <input type="hidden" name="criterio" value={criterio} />}
 
-      <div className="flex items-start gap-3 px-4 pb-2.5 pt-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[20px] font-semibold leading-tight text-ink">Avance del día</h1>
-          <p className="mt-0.5 text-[13.5px] text-muted">{obraNombre} · {diaMes(fecha)}</p>
-        </div>
-        {aplicables.length > 0 && (
+      <TopBarDetalle
+        volver={volver}
+        testidVolver="volver-jefe"
+        titulo="Avance del día"
+        sub={`${obraNombre} · ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`}
+        accion={aplicables.length > 0 ? (
           <button
             type="button"
             data-testid="todas-ninguna"
-            onClick={() => setElegidas(elegidas.size < aplicables.length
-              ? new Set(aplicables.map((f) => f.actividad_id))
-              : new Set())}
-            className="flex h-[44px] shrink-0 items-center text-[13.5px] font-medium text-ink"
+            title={ids.length > 0 ? 'Deseleccionar todo' : 'Seleccionar lo que está en curso'}
+            onClick={() => setElegidas(ids.length > 0
+              ? {}
+              // «Todas» marca LO QUE SE VE, no lo que existe: con la vista filtrada, guardar tareas
+              // fuera de pantalla es exactamente la escritura que nadie pidió.
+              : Object.fromEntries(aplicables.map((f) => [f.actividad_id, opcionesMasivas(f.avance_pct)[0]])))}
+            className={HOVER_SUAVE}
+            style={{
+              width: 44, height: 44, borderRadius: 22, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: C.muted, flexShrink: 0, border: 'none',
+              background: 'transparent', cursor: 'pointer',
+            }}
           >
-            {elegidas.size < aplicables.length ? 'Todas' : 'Ninguna'}
+            <Icono nombre={ids.length > 0 ? 'ninguno' : 'masivo'} tamano={20} />
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
-      {/* LAS TRES VISTAS DEL CANÓNICO J04. Arranca en «En curso» porque es lo que se cierra al final
-          del día: en esta obra 60 de 89 tareas ya están al 100 % y la lista completa entierra las
-          cinco que el jefe vino a tocar. Si no hay ninguna en curso, arranca en «Todo» — un filtro
-          que abre la pantalla vacía se lee como «no hay tareas». */}
       {filas.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto px-4 pb-3">
+        <FranjaFiltros testid="vistas-masivo">
           {VISTAS_MASIVAS.map(([id, label]) => {
-            const n = filas.filter((f) => enVista(f, id)).length
+            const activa = vista === id
             return (
               <button
                 key={id}
                 type="button"
-                // CAMBIAR DE VISTA SUELTA LA SELECCIÓN. Sin esto, una tarea marcada en «En curso»
-                // se guarda desde «Sin arrancar» sin estar en pantalla: una escritura que el jefe
-                // no puede ver antes de confirmarla.
-                onClick={() => { setVista(id); setElegidas(new Set()) }}
                 data-testid={`vista-${id}`}
-                aria-pressed={vista === id}
-                // EL FILTRO ELEGIDO ES GRAFITO, NO AMARILLO. Los mockups J04 y J05 dibujan la
-                // pastilla activa en `#30302F` con texto blanco: el amarillo de la marca ya es el
-                // botón que GUARDA, y usarlo también para «qué estoy mirando» hace que la pantalla
-                // tenga dos amarillos que significan cosas distintas.
-                className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-4 text-[13.5px] ${
-                  vista === id
-                    ? 'border-accent bg-accent font-semibold text-white'
-                    : 'border-line bg-surface text-ink'
-                }`}
+                aria-pressed={activa}
+                // CAMBIAR DE VISTA SUELTA LA SELECCIÓN: sin esto, una tarea marcada en «En curso» se
+                // guarda desde «Sin arrancar» sin estar en pantalla.
+                onClick={() => { setVista(id); setElegidas({}) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5,
+                  border: `1px solid ${activa ? C.grafito : C.linea}`,
+                  background: activa ? C.grafito : C.surface,
+                  color: activa ? C.surface : C.inkSuave,
+                  borderRadius: R.pastilla, padding: '7px 12px', whiteSpace: 'nowrap', minHeight: 36,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
               >
                 {label}
-                <span className={`font-mono text-[12px] tabular-nums ${vista === id ? 'text-white/70' : 'text-faint'}`}>
-                  {n}
+                <span style={{ ...mono, fontSize: 11, color: activa ? C.grafitoTenue : C.faint }}>
+                  {filas.filter((f) => enVista(f, id)).length}
                 </span>
               </button>
             )
           })}
-        </div>
+        </FranjaFiltros>
       )}
 
-      <div className="flex flex-col gap-3.5 px-4 pb-6">
-        {estado?.ok && <Confirmacion testid="resultado-masivo">{estado.mensaje}</Confirmacion>}
-        {estado && !estado.ok && (
-          <Aviso tono="neg" titulo="No se pudo aplicar" testid="resultado-masivo">{estado.mensaje}</Aviso>
+      <div style={{ padding: '14px 16px 152px' }}>
+        {estado?.ok && (
+          <div
+            data-testid="resultado-masivo"
+            style={{
+              background: C.posFondo, border: `1px solid ${C.posBorde}`, borderRadius: R.tarjeta,
+              padding: '12px 14px', marginBottom: 12, display: 'flex', gap: 9, alignItems: 'center',
+              fontSize: 13, color: C.pos,
+            }}
+          >
+            <Icono nombre="ok" tamano={18} />
+            {estado.mensaje}
+          </div>
         )}
+        {estado && !estado.ok && <AvisoError testid="resultado-masivo">{estado.mensaje}</AvisoError>}
 
         {filas.length === 0 ? (
-          <Panel testid="masivo-vacio">
-            <Nada>
-              Esta obra no tiene tareas que se puedan medir. Los frentes agrupan, no se miden: el
-              avance se carga en las tareas que cuelgan de ellos.
-            </Nada>
-          </Panel>
-        ) : (
-          grupos.map((g) => (
-            <div key={g.nombre}>
-              <Rotulo
-                icono={<IconoObra className="h-[16px] w-[16px]" />}
-                extra={`${g.filas.length} ${g.filas.length === 1 ? 'tarea' : 'tareas'}`}
+          <Vacio testid="masivo-vacio">
+            Esta obra no tiene tareas que se puedan medir. Los frentes agrupan, no se miden: el
+            avance se carga en las tareas que cuelgan de ellos.
+          </Vacio>
+        ) : visibles.length === 0 ? (
+          <Vacio testid="masivo-sin-vista">Nada en este filtro.</Vacio>
+        ) : visibles.map((f) => {
+          const valor = elegidas[f.actividad_id]
+          const on = valor != null
+          const a = porId.get(f.actividad_id)
+          return (
+            <div
+              key={f.actividad_id}
+              data-testid={f.aplicable ? 'tarea-masiva' : 'tarea-no-aplicable'}
+              style={{
+                background: C.surface, border: `1.5px solid ${on ? C.marca : C.linea}`,
+                borderRadius: R.tarjeta, padding: '13px 14px', marginBottom: 10,
+                opacity: f.aplicable ? 1 : 0.72,
+              }}
+            >
+              <button
+                type="button"
+                disabled={!f.aplicable}
+                aria-pressed={on}
+                onClick={() => alternar(f)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 11, width: '100%',
+                  background: 'transparent', border: 'none', padding: 0, textAlign: 'left',
+                  cursor: f.aplicable ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+                }}
               >
-                {g.nombre}
-              </Rotulo>
-              <Panel>
-                {g.filas.map((f) => {
-                  const marcada = elegidas.has(f.actividad_id)
-                  return (
-                    <button
-                      key={f.actividad_id}
-                      type="button"
-                      disabled={!f.aplicable}
-                      data-testid={f.aplicable ? 'tarea-masiva' : 'tarea-no-aplicable'}
-                      aria-pressed={marcada}
-                      onClick={() => setElegidas(alternar(elegidas, f.actividad_id))}
-                      className={`flex min-h-[64px] w-full items-center gap-3.5 border-t border-surface-sunken px-4 py-3.5 text-left first:border-t-0 disabled:cursor-not-allowed ${
-                        marcada ? 'bg-marca-soft' : ''
-                      }`}
-                    >
-                      <span className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px] text-[14px] font-semibold ${
-                        !f.aplicable ? 'border-line bg-surface-sunken text-faint'
-                          : marcada ? 'border-marca bg-marca text-ink' : 'border-line-strong bg-surface'
-                      }`}>
-                        {marcada ? '✓' : ''}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className={`block text-[15px] leading-tight ${
-                          f.aplicable ? 'text-ink' : 'text-muted'} ${marcada ? 'font-semibold' : ''}`}>
-                          {f.nombre}
-                        </span>
-                        {/* El motivo va APAGADO, no en ámbar: «ya está al 100 %» es trabajo hecho,
-                            no un problema, y en esta obra son 60 de 89 filas. Un color de alerta que
-                            cubre dos tercios de la lista deja de ser una alerta. */}
-                        <span className={`mt-0.5 block text-[12.5px] ${f.aplicable ? 'text-muted' : 'text-faint'}`}>
-                          {f.motivo ?? `se mide por ${f.metodo}`}
-                        </span>
-                      </span>
-                      <span className="shrink-0 font-mono text-[16px] font-semibold tabular-nums text-ink">
-                        {f.avance_pct == null ? '—' : `${f.avance_pct} %`}
-                      </span>
-                    </button>
-                  )
-                })}
-              </Panel>
+                <span style={{
+                  width: 44, height: 44, marginLeft: -9, marginTop: -9, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <span style={{
+                    width: 24, height: 24, borderRadius: 7,
+                    border: `2px solid ${on ? C.marca : C.lineaFuerte}`,
+                    background: on ? C.marca : C.surface, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', color: C.ink,
+                  }}>
+                    {on && <Icono nombre="ok" tamano={14} grosor={3} />}
+                  </span>
+                </span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: C.ink, lineHeight: 1.3 }}>
+                    {f.nombre}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>{frentes[f.actividad_id] ?? 'sin frente'}</span>
+                    <span style={{ color: C.lineaFuerte }}>·</span>
+                    <span style={{ ...mono, fontSize: 12, color: f.aplicable ? C.muted : C.warn }}>
+                      {f.motivo ?? restanteDe(a)}
+                    </span>
+                  </span>
+                </span>
+                <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <span style={{ ...mono, display: 'block', fontSize: 15, fontWeight: 600, color: (f.avance_pct ?? 0) > 0 ? C.ink : C.faint }}>
+                    {f.avance_pct == null ? '—' : pct(f.avance_pct)}
+                  </span>
+                  {on && valor > (f.avance_pct ?? 0) && (
+                    <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11.5, color: C.pos, justifyContent: 'flex-end' }}>
+                      <Icono nombre="tope" tamano={11} grosor={2.6} />
+                      {valor}%
+                    </span>
+                  )}
+                </span>
+              </button>
+
+              {on && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.divisorSuave}` }}>
+                  <div style={{ display: 'flex', gap: 7 }}>
+                    {opcionesMasivas(f.avance_pct).map((v) => {
+                      const elegido = valor === v
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          data-testid="paso-masivo"
+                          aria-pressed={elegido}
+                          onClick={() => setElegidas((prev) => ({ ...prev, [f.actividad_id]: v }))}
+                          style={{
+                            flex: 1, minHeight: 44, display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center', gap: 1,
+                            border: `1px solid ${elegido ? C.grafito : C.linea}`,
+                            background: elegido ? C.grafito : C.surface,
+                            color: elegido ? C.surface : C.ink,
+                            borderRadius: R.controlChico, cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <span style={{ ...mono, fontSize: 13, fontWeight: 600 }}>{v}%</span>
+                          <span style={{ fontSize: 9.5, color: elegido ? C.grafitoTenue : C.faint, whiteSpace: 'nowrap' }}>
+                            {f.metodo === 'manual' ? 'manual' : '%'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {f.pierdePrecision && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 9, fontSize: 11.5, color: C.warn }}>
+                      <Icono nombre="alerta" tamano={14} />
+                      medición manual: queda registrado como estimado
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))
-        )}
+          )
+        })}
       </div>
 
-      {/* EL HUECO PARA LA BARRA. `BarraContextual` es `fixed`: sin este espaciador la última tarea
-          de la lista queda debajo y no se puede tocar — la misma trampa que ya pagó el perfil
-          empleado. Alto generoso porque en el teléfono la barra se apila (chips + aviso + dos
-          botones) y crece cuando aparece el criterio. */}
-      <div aria-hidden data-testid="espaciador-barra" className={elegidas.size === 0 ? 'h-[92px]' : 'h-[300px] lg:h-[80px]'} />
-
-      {elegidas.size === 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[520px] border-t border-line bg-canvas px-4 py-4 text-center">
-          <p className="text-[14px] text-muted" data-testid="sin-eleccion">
-            {aplicables.length === 0
-              ? 'Ninguna tarea de esta obra se puede cargar por porcentaje.'
-              : 'Elegí las tareas que avanzaron'}
-          </p>
+      {ids.length === 0 ? (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, margin: '0 auto', maxWidth: 430,
+          background: C.surface, borderTop: `1px solid ${C.linea}`, padding: '14px 16px 18px',
+          display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: C.faint, zIndex: 20,
+        }} data-testid="sin-eleccion">
+          <Icono nombre="info" tamano={16} />
+          {aplicables.length === 0
+            ? 'Ninguna tarea de este filtro se puede cargar por porcentaje.'
+            : 'Tocá los frentes que avanzaron hoy'}
         </div>
       ) : (
-        <BarraContextual
-          testid="barra-masivo"
-          titulo={`${elegidas.size} ${elegidas.size === 1 ? 'tarea' : 'tareas'}`}
-          subtitulo={`de ${aplicables.length} que se pueden cargar por porcentaje`}
-          // UNA SOLA OPERACIÓN, y se declara igual. El jefe en el teléfono no cambia responsable ni
-          // corre fechas: eso se decide sentado, en el workspace de Tareas. Ofrecer acá las cuatro
-          // sería la web comprimida, que es lo que el contrato de este perfil prohíbe.
-          operaciones={[{ id: 'avance', label: 'Poner el avance en' }]}
-          activa="avance"
-          alElegirOperacion={() => {}}
-          aviso={faltaCriterio ? AVISO_CRITERIO : aviso}
-          alCancelar={() => setElegidas(new Set())}
-          // DICE QUÉ VA A PASAR, no «aplicar». Parado en la obra, «Guardar 3 avances» se verifica
-          // contra lo que uno acaba de tocar; «Aplicar a 3» obliga a recordar a qué.
-          aplicarLabel={`Guardar ${elegidas.size} ${elegidas.size === 1 ? 'avance' : 'avances'}`}
-          alAplicar={() => formulario.current?.requestSubmit()}
-          pendiente={enviando || faltaCriterio}
-        >
-          <ChipsValor
-            valores={VALORES_MASIVOS.map((v) => ({ valor: String(v), etiqueta: `${v} %` }))}
-            activo={String(objetivo)}
-            alElegir={(v) => setObjetivo(Number(v))}
-            testid="valor"
-          />
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, margin: '0 auto', maxWidth: 430,
+          background: C.surface, borderTop: `1px solid ${C.linea}`, padding: '12px 16px 16px', zIndex: 20,
+        }} data-testid="barra-masivo">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
+              {ids.length} {ids.length === 1 ? 'frente' : 'frentes'}
+            </span>
+            <span style={{ fontSize: 12.5, color: C.muted }}>·</span>
+            <span style={{ fontSize: 12.5, color: aviso ? C.warn : C.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {faltaCriterio ? AVISO_CRITERIO : aviso ?? 'con pasos definidos'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setElegidas({})}
+              style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted, padding: 6, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Cancelar
+            </button>
+          </div>
           {exigeCriterio && (
             <textarea
-              name="criterio"
               value={criterio}
               onChange={(e) => setCriterio(e.target.value)}
               rows={2}
               data-testid="criterio-masivo"
               placeholder="Con qué criterio (lo exige el método manual)"
-              className="w-full rounded-[12px] bg-accent-hover px-3 py-2.5 text-[13px] leading-relaxed text-white outline-none placeholder:text-faint"
+              style={{
+                width: '100%', borderRadius: R.controlChico, border: `1px solid ${C.lineaFuerte}`,
+                padding: '8px 10px', fontSize: 13, color: C.ink, marginBottom: 10, resize: 'none',
+                outline: 'none', fontFamily: 'inherit',
+              }}
             />
           )}
-        </BarraContextual>
+          <button
+            type="button"
+            disabled={enviando || faltaCriterio}
+            data-testid="guardar-masivo"
+            onClick={() => formulario.current?.requestSubmit()}
+            style={{
+              width: '100%', minHeight: 52, borderRadius: R.control,
+              background: enviando || faltaCriterio ? C.inerte : C.marca,
+              color: enviando || faltaCriterio ? C.faint : C.ink,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+              fontSize: 16, fontWeight: 600, border: 'none', fontFamily: 'inherit',
+              cursor: enviando || faltaCriterio ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Icono nombre="ok" tamano={20} grosor={2.4} />
+            {enviando ? 'Guardando…' : `Guardar ${ids.length} ${ids.length === 1 ? 'avance' : 'avances'}`}
+          </button>
+        </div>
       )}
     </form>
   )
 }
 
-/** `2026-08-23` → `23/08`. La fecha del día que se está cerrando, sin el año. */
-const diaMes = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-
-function alternar(s: Set<string>, id: string): Set<string> {
-  const n = new Set(s)
-  if (n.has(id)) n.delete(id)
-  else n.add(id)
-  return n
-}
-
-/** Los renglones agrupados por su frente, conservando el orden constructivo en que llegaron. */
-function agrupar(
-  actividades: ActividadDelJefe[], filas: Renglon[], frentes: Record<string, string>,
-): { nombre: string; filas: Renglon[] }[] {
-  const rubroDe = new Map(actividades.map(
-    (a) => [a.actividad_id, frentes[a.actividad_id] ?? a.rubro?.trim() ?? 'Sin frente']))
-  const salida: { nombre: string; filas: Renglon[] }[] = []
-  const indice = new Map<string, { nombre: string; filas: Renglon[] }>()
-  for (const f of filas) {
-    const nombre = rubroDe.get(f.actividad_id) ?? 'Sin frente'
-    let g = indice.get(nombre)
-    if (!g) {
-      g = { nombre, filas: [] }
-      indice.set(nombre, g)
-      salida.push(g)
-    }
-    g.filas.push(f)
+/**
+ * «24,96 m² restantes» — el renglón que J04 pone al lado del frente.
+ *
+ * Sin objetivo o sin porcentaje NO se escribe un número: con una sola punta daría 0 («no falta
+ * nada», o sea terminada) o el objetivo entero («no se hizo nada»), y las dos mentiras son
+ * creíbles. Se dice con qué se mide, que es lo que sí se sabe.
+ */
+function restanteDe(a: ActividadDelJefe | undefined): string {
+  if (!a) return 'sin datos'
+  if (a.cantidad_objetivo == null || a.avance_pct == null) {
+    return a.avance_pct == null ? 'sin medición' : `${100 - a.avance_pct} % restante`
   }
-  return salida
+  const falta = Math.max(0, a.cantidad_objetivo * (1 - a.avance_pct / 100))
+  const n = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(falta)
+  return `${n}${a.unidad ? ` ${a.unidad}` : ''} restantes`
 }

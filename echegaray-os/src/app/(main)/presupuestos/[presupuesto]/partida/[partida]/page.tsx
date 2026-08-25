@@ -28,8 +28,11 @@ import { incidencia, tieneCifras } from '@/features/presupuestos/services/cascad
 import { cantidad as fCantidad, hh as fHH, importe, plata, porcentaje, rendimiento } from '@/features/presupuestos/services/formato'
 import { TablaComposicion } from '@/features/presupuestos/components/TablaComposicion'
 import { ContraElHistorico } from '@/features/presupuestos/components/ContraElHistorico'
-import { Aviso, Ayuda, EntityHeader, Estado, Nulo } from '@/shared/components/ds'
+import { Aviso, Ayuda, Nulo } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
+import {
+  BandaDetalle, C, LineaCampos, MIN_COLUMNA_FICHA, PANEL, PastillaTitulo, TONO,
+} from '@/shared/components/canon'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,46 +74,58 @@ export default async function PartidaPage({
   const incPresupuesto = incidencia(p.subtotal, tieneCifras(presupuesto) ? presupuesto.costo_directo : null)
   const origen = composicion.data?.origen ?? 'sin_analisis'
 
-  return (
-    <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 pt-6 lg:px-10">
-        {/* ENCABEZADO CLARO (Design 23/08 · pantalla 16). El código de la partida abre el título en
-            mono, como en el diseño: es la clave con la que se la nombra en obra y en la base
-            maestra, no un dato secundario del subtítulo. */}
-        <EntityHeader
-          volverA={`/presupuestos/${presupuestoId}`}
-          volverLabel={`${presupuesto.numero ?? 'Presupuesto'} · ${presupuesto.obra_nombre ?? ''}`}
-          titulo={
-            <span className="flex flex-wrap items-baseline gap-2.5">
-              {p.codigo && <span className="font-mono text-[15px] tabular-nums text-faint">{p.codigo}</span>}
-              <span>{p.descripcion}</span>
-            </span>
-          }
-          campos={[
-            { rotulo: 'Rubro', valor: p.rubro, falta: 'sin rubro' },
-            {
-              rotulo: 'Cómputo',
-              valor: p.cantidad === null ? null : `${fCantidad(p.cantidad)} ${p.unidad ?? ''}`.trim(),
-              falta: 'sin cómputo',
-            },
-            { rotulo: 'HH', valor: fHH(p.hh), falta: 'sin dato' },
-            { rotulo: 'Análisis por', valor: `unidad de ${p.unidad ?? 'un.'}` },
-          ]}
-          derecha={
-            // ORIGEN DE LA COMPOSICIÓN COMO ESTADO: es la diferencia entre «así se cotiza hoy» y
-            // «así se cotizó ese día», y las dos se ven igual si nadie las nombra.
-            origen === 'sin_analisis'
-              ? <Estado tono="warn" clave="sin_analisis">Sin análisis</Estado>
-              : origen === 'congelada'
-                ? <Estado tono="pos" clave="congelada">Congelado con el presupuesto</Estado>
-                : <Estado tono="curso" clave="viva">Base maestra · precios de hoy</Estado>
-          }
-        />
-      </div>
+  // ORIGEN DE LA COMPOSICIÓN COMO ESTADO: es la diferencia entre «así se cotiza hoy» y «así se
+  // cotizó ese día», y las dos se ven igual si nadie las nombra.
+  const estadoOrigen = origen === 'sin_analisis'
+    ? { tono: TONO.warn, texto: 'Sin análisis' }
+    : origen === 'congelada'
+      ? { tono: TONO.pos, texto: 'Congelado con el presupuesto' }
+      : { tono: TONO.curso, texto: 'Base maestra · precios de hoy' }
 
-      <div className="w-full px-4 pb-5 lg:px-10">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="min-w-0">
+  return (
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      {/* LA BANDA BLANCA DEL CANÓNICO 16: miga de pan de TRES tramos —Presupuestos / el
+          presupuesto / esta partida—, el código de la partida en mono ANTES del título, y la línea
+          de campos debajo. El código abre el título porque es la clave con la que se la nombra en
+          obra y en la base maestra, no un dato secundario del subtítulo. */}
+      <BandaDetalle
+        testid="banda-partida"
+        miga={[
+          { texto: 'Presupuestos', href: '/presupuestos' },
+          { texto: presupuesto.obra_nombre ?? presupuesto.numero ?? 'Presupuesto', href: `/presupuestos/${presupuestoId}` },
+          { texto: p.descripcion },
+        ]}
+        antesDelTitulo={
+          p.codigo
+            ? <span className="font-mono tabular-nums" style={{ fontSize: '13px', color: C.apagado }}>{p.codigo}</span>
+            : undefined
+        }
+        titulo={p.descripcion}
+        pastillas={
+          <PastillaTitulo color={estadoOrigen.tono.color} fondo={estadoOrigen.tono.fondo} borde={estadoOrigen.tono.borde} testid="origen-composicion">
+            {estadoOrigen.texto}
+          </PastillaTitulo>
+        }
+        campos={
+          <LineaCampos
+            testid="campos-partida"
+            campos={[
+              `Rubro: ${p.rubro ?? 'sin rubro'}`,
+              <span key="c" className="font-mono tabular-nums">
+                {p.cantidad === null ? 'sin cómputo' : `${fCantidad(p.cantidad)} ${p.unidad ?? ''}`.trim()}
+              </span>,
+              <span key="h" className="font-mono tabular-nums">{fHH(p.hh) ?? 'sin dato'} HH</span>,
+              `análisis por unidad de ${p.unidad ?? 'un.'}`,
+            ]}
+          />
+        }
+      />
+
+      {/* DOS COLUMNAS QUE ENVUELVEN, no una grilla de dos anchos fijos: el canónico da a la
+          izquierda `flex:1;minWidth:520px` y a la derecha 392px, así que debajo de ~930px el panel
+          baja solo en vez de estrangular la tabla de insumos. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 20px 24px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: MIN_COLUMNA_FICHA }}>
             {/* EL TOGGLE «Usa base maestra ↔ Análisis propio» SE FUE, y no por prolijidad: era un
                 control dibujado sobre una capacidad que la base no tiene. Una pantalla con un
                 interruptor apagado promete que existe la otra posición. El canon 16 no lo dibuja y
@@ -144,7 +159,7 @@ export default async function PartidaPage({
             )}
           </div>
 
-          <aside className="min-w-0">
+          <aside style={{ width: PANEL.analisis, flexShrink: 0, minWidth: 0 }}>
             {/* ═══ EL COSTO UNITARIO, ARMADO (Design 23/08 · pantalla 16) ═══
                 Eran cuatro barras de incidencia con su porcentaje. La incidencia sigue —ahora en la
                 cabecera de cada sección de la izquierda, al lado de su subtotal— y este bloque pasa
@@ -197,7 +212,6 @@ export default async function PartidaPage({
 
             <ContraElHistorico p={p} r={rend.data ?? null} cotizacionId={presupuestoId} />
           </aside>
-        </div>
       </div>
     </div>
   )

@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   avanceMasivoLabel, avancePorCantidad, avancePorPasos, avisoMasivo, deltaDeAvance, deltaDeCantidad,
-  hhProyectadas, operacionCompatible, proyeccionExcedida, quedaraEn, resumenSeleccion,
-  seleccionable, type CandidataMasiva,
+  escalonesDeAvance, hhProyectadas, operacionCompatible, proyeccionExcedida, quedaraEn,
+  resumenSeleccion, seleccionable, type CandidataMasiva,
 } from './avance.ts'
 
 const act = (extra: Partial<CandidataMasiva> = {}): CandidataMasiva => ({
@@ -147,4 +147,34 @@ test('sobre el método partes se escribe la diferencia de porcentaje, no el obje
   assert.equal(deltaDeAvance(75, 65), 10)
   assert.equal(deltaDeAvance(75, null), 75)
   assert.equal(deltaDeAvance(50, 90), -40, 'el retroceso se guarda: es un hecho, no un error')
+})
+
+// ═══ LOS ESCALONES POR FILA DEL AVANCE MASIVO (canónico 06) ═══
+//
+// El defecto que atrapan: ofrecer un valor MENOR al que la actividad ya tiene. Guardar un avance
+// masivo con veinte filas tildadas y un botón mal puesto haría retroceder un avance ya declarado,
+// y un retroceso silencioso en lote es de las cosas que nadie encuentra hasta que busca un número
+// que cargó y no está.
+
+test('los escalones nunca ofrecen retroceder', () => {
+  for (const actual of [0, 12, 40, 74, 99]) {
+    for (const v of escalonesDeAvance(actual)) {
+      assert.ok(v > actual, `con ${actual} % se ofreció ${v} %, que es un retroceso`)
+    }
+  }
+})
+
+test('cerca del final el escalón se afina de 10 a 5', () => {
+  assert.deepEqual(escalonesDeAvance(0), [10, 20, 30, 100])
+  assert.deepEqual(escalonesDeAvance(12), [20, 30, 40, 100])
+  assert.deepEqual(escalonesDeAvance(74), [75, 80, 85, 100])
+})
+
+test('terminar siempre está a un clic, y una terminada no ofrece nada', () => {
+  for (const actual of [0, 12, 74, 95]) {
+    assert.ok(escalonesDeAvance(actual).includes(100), `con ${actual} % no se ofrece cerrar la actividad`)
+  }
+  assert.deepEqual(escalonesDeAvance(100), [])
+  // Sin avance cargado se trata como cero: es la fila que hay que arrancar, no una que se esconde.
+  assert.deepEqual(escalonesDeAvance(null), [10, 20, 30, 100])
 })

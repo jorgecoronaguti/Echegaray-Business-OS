@@ -54,7 +54,7 @@ export function PlanVsRealResumen({ plan, obraId, veComercial = true, economia =
                 TOCAR LA LÍNEA SIGUE LLEVANDO AL DATO: una lectura que no se puede seguir hasta su
                 origen obliga a buscarlo a mano, y ahí es donde se deja de mirar. */}
             <Link
-              href={`/obras/${obraId}?vista=${l.vista}`}
+              href={`/obras/${obraId}?vista=${l.vista}`} prefetch={false}
               title={l.origen}
               className="flex h-fila-compacta items-center gap-2.5 hover:bg-surface-quiet"
             >

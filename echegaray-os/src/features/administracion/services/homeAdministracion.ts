@@ -144,6 +144,43 @@ export async function getConteosHome(supabase: SupabaseClient): Promise<ConteosH
   }
 }
 
+/**
+ * SÓLO LO QUE ENCIENDE LA CAMPANITA — las siete lecturas que alimentan los chips, sin las ocho de
+ * navegación.
+ *
+ * ═══ POR QUÉ NO SE REUSA `getConteosHome` ═══
+ *
+ * La campanita del header (`00 · Home Navegación.dc.html`) vive en TODAS las pantallas del OS.
+ * Colgarla de los quince conteos le sumaría a cada carga ocho consultas que nadie mira: cuántos
+ * clientes hay no cambia si algo pide trabajo. Las siete que quedan son EXACTAMENTE las que
+ * `CHIPS` consulta, así que la campanita y la banda de atención de `/administracion` no pueden
+ * decir números distintos — que es lo único que había que preservar.
+ *
+ * Los ocho contadores de navegación vuelven en `null`, que ya significa «no se leyó». Nadie los
+ * pide desde acá; si alguien lo hiciera, no vería un cero inventado.
+ */
+export async function getConteosDeAtencion(supabase: SupabaseClient): Promise<ConteosHome> {
+  const comprobantes = () => supabase.from('comprobante_compra').select('id', head) as unknown as Contador
+  const [
+    proveedoresSinCuit, nombresSinResolver, comprasSinImputar, comprasSinResolver,
+    comprasDuplicadas, pendientes, correcciones,
+  ] = await Promise.all([
+    cuenta(supabase.from('proveedores').select('*', head).eq('activo', true).is('cuit', null)),
+    cuenta(supabase.from('proveedor_nombre_pendiente').select('*', head)),
+    cuenta(aplicarFiltro(comprobantes(), 'sin-imputar')),
+    cuenta(aplicarFiltro(comprobantes(), 'sin-resolver')),
+    cuenta(aplicarFiltro(comprobantes(), 'duplicados')),
+    cuenta(supabase.from('imputacion_pendiente').select('*', head)),
+    cuenta(supabase.from('correccion_asistencia_bandeja').select('*', head).eq('estado', 'pendiente')),
+  ])
+  return {
+    clientes: null, presupuestos: null, usuarios: null, personas: null, proveedores: null,
+    compras: null, tareasTipo: null, documentos: null,
+    proveedoresSinCuit, nombresSinResolver, comprasSinImputar, comprasSinResolver,
+    comprasDuplicadas, pendientes, correcciones,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // LA BARRA DE ÁREAS — lo puro, para poder probarlo sin base
 // ─────────────────────────────────────────────────────────────────────────────────────────────

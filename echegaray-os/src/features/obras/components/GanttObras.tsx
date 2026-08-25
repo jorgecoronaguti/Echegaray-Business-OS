@@ -154,7 +154,7 @@ function Renglon({ f }: { f: FilaObra }) {
   const sem = f.barra ? f.barra.desvio.semaforo : 'sin_datos'
   return (
     <Link
-      href={hrefDe(f.obraId)}
+      href={hrefDe(f.obraId)} prefetch={false}
       data-testid="obra-gantt"
       data-obra={f.obraId}
       data-etapa={f.etapa ?? ''}

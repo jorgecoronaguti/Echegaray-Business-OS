@@ -123,7 +123,7 @@ export function AtencionObra({ items }: { items: ItemAtencion[] }) {
           {visibles.map((i) => (
             <li key={i.clave} className="border-b border-surface-sunken last:border-b-0">
               <Link
-                href={i.href}
+                href={i.href} prefetch={false}
                 title={i.origen}
                 data-testid={`atencion-${i.clave}`}
                 className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-surface-quiet"

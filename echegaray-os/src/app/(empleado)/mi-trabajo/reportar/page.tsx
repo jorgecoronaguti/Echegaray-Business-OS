@@ -3,9 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso } from '@/shared/components/ds'
 import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
-import { Nada } from '@/features/empleado/components/Filas'
+import { AvisoError, Vacio } from '@/shared/components/movil/Piezas'
 import { FormProblema } from '@/features/empleado/components/FormProblema'
 import { getMiObra, getMisImpedimentos, getMisTareas } from '@/features/empleado/services/empleadoService'
 
@@ -40,20 +39,24 @@ export default async function ReportarPage({
   const obraId = obraQuery ?? obras.data?.[0]?.id ?? null
 
   return (
-    <PantallaEmpleado titulo="Avisar un problema" volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}>
-      {tareas.error && <Aviso tono="neg" titulo="No se pudieron leer tus tareas." testid="reportar-error">{tareas.error}</Aviso>}
+    <PantallaEmpleado titulo="Avisar un problema"
+      sub={obras.data?.[0]?.nombre ?? 'sin obra asignada'}
+      volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}
+    >
+      {tareas.error && <AvisoError testid="reportar-error">{tareas.error}</AvisoError>}
       {obraId ? (
         <FormProblema
           tareas={tareas.data ?? []}
           obraId={obraId}
           tareaId={tarea ?? null}
           yaAvisado={avisados.data ?? []}
+          jefe={obras.data?.[0]?.jefe_obra ?? null}
         />
       ) : (
-        <Nada testid="sin-obra-para-reportar">
+        <Vacio testid="sin-obra-para-reportar">
           No tenés ninguna obra asignada, así que no hay dónde anotar el impedimento. Las asignaciones
           las carga Administración desde Personal.
-        </Nada>
+        </Vacio>
       )}
     </PantallaEmpleado>
   )

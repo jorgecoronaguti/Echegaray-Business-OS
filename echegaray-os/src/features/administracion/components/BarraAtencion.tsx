@@ -48,7 +48,9 @@ export function BarraAtencion({ chips, noLeida }: { chips: ChipAtencion[]; noLei
           href={c.href}
           prefetch={false}
           data-testid={`atencion-${c.clave}`}
-          className={`inline-flex items-baseline gap-2 rounded-md border px-3 py-1.5 transition-colors ${TONO[c.tono].caja}`}
+          // `borderRadius:7px;padding:6px 11px` — medido de la banda de atención del canónico 00
+          // (`atencion`), la misma que dibuja el 19. `rounded-md` es 6 y `px-3 py-1.5` es 12/6.
+          className={`inline-flex items-baseline gap-2 rounded-[7px] border px-[11px] py-[6px] transition-colors ${TONO[c.tono].caja}`}
         >
           <span className={`font-mono text-[13px] font-semibold tabular-nums ${TONO[c.tono].cifra}`}>{c.numero}</span>
           <span className="text-[12px] text-ink-soft">{c.texto}</span>

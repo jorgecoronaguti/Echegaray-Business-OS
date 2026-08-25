@@ -209,7 +209,7 @@ export function TabCronograma({
         // La distinción que antes cargaba el rótulo «Gantt»: lo CALCULADO desde la secuencia —el
         // camino crítico— vive en su pantalla, y desde acá se llega con un clic.
         extra={
-          <Link href={hrefCronogramaCalculado(obraId)} data-testid="ir-camino-critico"
+          <Link href={hrefCronogramaCalculado(obraId)} prefetch={false} data-testid="ir-camino-critico"
             className="hidden text-[12.5px] text-muted hover:text-ink md:inline">
             Camino crítico →
           </Link>

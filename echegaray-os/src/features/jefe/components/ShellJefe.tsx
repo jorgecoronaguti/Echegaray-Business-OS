@@ -1,165 +1,71 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { CONTEXTOS, contextoActivo, conObra, volverDe } from '../services/navegacion'
-import { IconoAvance, IconoGente, IconoHoy, IconoTareas } from './Iconos'
+import type { ReactNode } from 'react'
+import { CONTEXTOS, contextoActivo, conObra } from '../services/navegacion'
+import { MarcoMovil, BarraContextos } from '@/shared/components/movil/Piezas'
+import type { NombreIcono } from '@/shared/components/movil/Iconos'
 
-// EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO — el hermano mayor de `ShellEmpleado`, no la web achicada.
+// EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO — porte literal de J01 (`J01 · Jefe Hoy.dc.html`).
 //
-// ═══ QUÉ CAMBIA RESPECTO DEL EMPLEADO, Y POR QUÉ ═══
+// ═══ QUÉ CAMBIÓ EL 24/08 Y POR QUÉ ═══
 //
-// El empleado navega SU día y todo lo suyo cabe en una secuencia vertical sin tarjetas. El jefe
-// navega UNA OBRA con varios frentes abiertos a la vez, y esa comparación —cómo va cada frente, a
-// quién le falta gente— necesita bloques separables. Por eso acá el contenido vive en PANELES
-// blancos sobre el canvas, que es lo que pide `LAYOUT_RESPONSIVE.md` §Paneles. Más densidad, mismas
-// reglas físicas: una columna, objetivos de 44px para arriba, la acción del día fija abajo.
+// Hasta hoy este archivo dibujaba TAMBIÉN el encabezado: una barra propia de 52px con el isotipo,
+// la palabra «ECHEGARAY» y la flecha de volver. Los seis mockups no tienen esa barra: J01 abre con
+// el topbar de MARCA (isotipo 26 + empresa + obra + iniciales en un círculo grafito de 34) y
+// J02…J06 abren cada uno con su topbar de DETALLE, que lleva su propio título, su bajada y su
+// objetivo de 44 a la derecha (buscar, historial, «más»).
 //
-// ═══ ESTO NO ES ESCRITORIO REDUCIDO, Y TAMPOCO SE ESTIRA ═══
+// Un encabezado genérico no puede dibujar los dos, así que el encabezado bajó a las pantallas —que
+// son las que saben su título y a dónde vuelve su flecha— y acá quedó lo único que es del marco: el
+// ancho de la columna y la barra de contextos.
 //
-// El contrato es explícito: *«Más información que empleado, pero optimizado para teléfono y campo.
-// No desktop reducido.»* No hay un `lg:` que abra dos columnas ni que suba la barra al header: si
-// el jefe abre esto en una notebook ve la misma pantalla, centrada. Lo que necesita del escritorio
-// —Gantt, economía, cronograma— ya existe en `/obras/<obra>` y es OTRO producto.
+// ═══ LA BARRA SE QUEDA AUNQUE J02, J03 Y J05 NO LA DIBUJEN — DESVÍO DECLARADO ═══
+//
+// Los `.dc.html` de esas tres no incluyen el bloque de la barra inferior; sólo J01 lo tiene. Pero
+// J01 dibuja los cuatro destinos —Hoy · Tareas · Avance · Gente— y esos destinos SON J01, J02, J03 y
+// J05. Sacar la barra al llegar convertiría tres de los cuatro botones en un viaje de ida: se entra
+// por la barra y se vuelve por una flecha que el mockup de J02 y J03 tampoco dibuja hacia un
+// contexto. Se conserva la barra en las cuatro pantallas de contexto, con el aspecto medido en J01.
 //
 // ═══ LA BARRA ES FIJA Y EL CONTENIDO LE DEJA LUGAR ═══
 //
-// Sin el `pb`, la última fila de cualquier lista queda tapada por la barra y nadie la puede tocar.
-// Es la misma trampa que ya pagó el perfil empleado.
+// Sin el hueco de `ALTO_BARRA`, la última fila de cualquier lista queda tapada por la barra y nadie
+// la puede tocar. Es la misma trampa que ya pagó el perfil empleado.
 
-const ALTO_BARRA = 58
-
-// LA FORMA DE CADA CONTEXTO, ACÁ Y NO EN `navegacion.ts`. Ese archivo es el que corre bajo
-// `node --test`, y el runner no entiende JSX: por eso la lógica de la barra vive separada de su
-// dibujo. Se mapea por `href`, que es la clave que ese módulo declara — si mañana aparece un cuarto
-// contexto sin icono, la barra lo dibuja igual con su palabra en vez de romperse.
-const ICONO: Record<string, (p: { className?: string }) => ReactNode> = {
-  '/obra/hoy': IconoHoy,
-  '/obra/tareas': IconoTareas,
-  '/obra/avance': IconoAvance,
-  '/obra/personas': IconoGente,
+const ICONO: Record<string, NombreIcono> = {
+  '/obra/hoy': 'casa',
+  '/obra/tareas': 'tarea',
+  '/obra/avance': 'avance',
+  '/obra/personas': 'gente',
 }
 
-export function ShellJefe({
-  iniciales,
-  children,
-}: {
-  iniciales: string
-  children: ReactNode
-}) {
+export function ShellJefe({ children }: { children: ReactNode }) {
   // La ruta la pone el navegador: un layout de App Router no la recibe, y pasarla por `headers()`
   // volvería dinámica toda pantalla sólo para encender un rótulo.
   const pathname = usePathname() ?? ''
   const params = useSearchParams()
   const obraId = params?.get('obra') ?? null
-  // `/obra/avance` son dos pantallas: J03 con barra, y el formulario de UNA tarea con flecha. El
+  // `/obra/avance` son dos pantallas: J03 con barra, y el formulario de UNA tarea sin ella. El
   // porqué está en `navegacion.ts`; acá sólo se le pasa cuál de las dos es.
   const conActividad = !!params?.get('actividad')
   const activo = contextoActivo(pathname, conActividad)
-  const volver = volverDe(pathname, obraId, conActividad)
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[520px] bg-canvas" data-testid="shell-jefe">
-      <header className="sticky top-0 z-10 flex h-[52px] items-center gap-2 border-b border-line bg-surface px-4">
-        {volver && (
-          <Link
-            href={volver}
-            data-testid="volver-jefe"
-            aria-label="Volver"
-            className="-ml-2 flex h-[44px] w-[44px] items-center justify-center text-[22px] text-ink"
-          >
-            ‹
-          </Link>
-        )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/marca/isotipo.png" alt="" className="h-[22px] w-[22px]" />
-        <span className="text-[12.5px] font-semibold tracking-[0.12em] text-ink">ECHEGARAY</span>
-        {!volver && (
-          <span
-            data-testid="iniciales-jefe"
-            className="ml-auto flex h-[32px] w-[32px] items-center justify-center rounded-full bg-accent text-[11.5px] font-semibold text-white"
-          >
-            {iniciales}
-          </span>
-        )}
-      </header>
-
-      {/* El `padding` va por estilo y no por clase: `pb-[${ALTO_BARRA}px]` interpolado no existe
-          como texto en el fuente, y Tailwind sólo genera las clases que puede LEER. */}
-      <main style={activo ? { paddingBottom: ALTO_BARRA } : undefined}>{children}</main>
-
+    <MarcoMovil conBarra={!!activo}>
+      <div data-testid="shell-jefe">{children}</div>
       {activo && (
-        <nav
-          data-testid="barra-jefe"
-          className="fixed inset-x-0 bottom-0 z-20 mx-auto flex h-[58px] max-w-[520px] border-t border-line bg-surface"
-        >
-          {CONTEXTOS.map((c) => {
-            const Icono = ICONO[c.href]
-            const encendido = activo === c.href
-            return (
-              <Link
-                key={c.href}
-                href={conObra(c.href, obraId)}
-                data-testid={c.testid}
-                aria-current={encendido ? 'page' : undefined}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-[3px] text-[11.5px] ${
-                  encendido ? 'font-semibold text-ink' : 'text-muted'
-                }`}
-              >
-                {encendido && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-marca" />}
-                {Icono && <Icono className="h-[21px] w-[21px]" />}
-                <span>{c.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
+        <BarraContextos
+          testid="barra-jefe"
+          items={CONTEXTOS.map((c) => ({
+            href: conObra(c.href, obraId),
+            label: c.label,
+            icono: ICONO[c.href] ?? 'casa',
+            activo: activo === c.href,
+            testid: c.testid,
+          }))}
+        />
       )}
-    </div>
-  )
-}
-
-/**
- * EL PIE DE ACCIÓN — la única primaria de la pantalla, fija abajo.
- *
- * Va con un ESPACIADOR del mismo alto en el flujo normal, no con un `padding-bottom` puesto a ojo
- * en la pantalla: el pie mide distinto en cada una (un botón, dos, o el bloque de valores del
- * masivo) y un padding fijo tapa la última fila de la más alta y deja un hueco en la más baja.
- */
-export function PieDeAccion({
-  children, sobreBarra = false, testid = 'pie-accion',
-}: {
-  children: ReactNode
-  /** La pantalla tiene barra de contextos: el pie se apoya arriba de ella. */
-  sobreBarra?: boolean
-  testid?: string
-}) {
-  // El espaciador se MIDE, no se estima. El pie del avance masivo crece cuando aparece el aviso de
-  // precisión, y un alto escrito a mano tapa la última tarea de la lista justo cuando el jefe la
-  // necesita. `ResizeObserver` lo sigue solo; hasta que mide, el espaciador es 0 y no hay salto
-  // visible porque el pie está fijo y no ocupaba lugar de todos modos.
-  const [alto, setAlto] = useState(0)
-  const pie = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const el = pie.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setAlto(el.offsetHeight))
-    ro.observe(el)
-    setAlto(el.offsetHeight)
-    return () => ro.disconnect()
-  }, [])
-
-  return (
-    <>
-      <div aria-hidden data-testid="espaciador-pie" style={{ height: alto }} />
-      <div
-        ref={pie}
-        data-testid={testid}
-        style={{ bottom: sobreBarra ? ALTO_BARRA : 0 }}
-        className="fixed inset-x-0 z-20 mx-auto max-w-[520px] border-t border-line bg-canvas px-4 pb-3 pt-3"
-      >
-        {children}
-      </div>
-    </>
+    </MarcoMovil>
   )
 }

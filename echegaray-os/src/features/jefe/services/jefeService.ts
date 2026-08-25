@@ -192,6 +192,51 @@ export async function getPasos(
   }
 }
 
+/** Una línea de «Últimos partes» (J06): qué se cargó ese día contra la tarea, y con qué método. */
+export interface ParteDeTarea {
+  id: string
+  fecha: string
+  cantidad: number | null
+  avance_pct: number | null
+  metodo: string | null
+  comentario: string | null
+}
+
+/**
+ * LOS ÚLTIMOS PARTES DE UNA TAREA — el bloque «Últimos partes» que dibuja J06.
+ *
+ * Sale de `obra_ejecucion`, que guarda HECHOS de un día: cada fila es lo que se cargó ESE día, no
+ * el acumulado. Por eso la pantalla los escribe con `+`: «+0,18 m³» es producción del 20/08, y
+ * sumarlos da el acumulado — que es exactamente lo que hace la vista de control.
+ *
+ * Se piden cinco: en 390px entran tres sin desplazar y el resto es contexto.
+ */
+export async function getUltimosPartes(
+  supabase: SupabaseClient, actividadId: string, limite = 5,
+): Promise<ServiceResult<ParteDeTarea[]>> {
+  const { data, error } = await supabase
+    .from('obra_ejecucion')
+    .select('id, fecha, cantidad, avance_pct, metodo, comentario')
+    .eq('actividad_id', actividadId)
+    .order('fecha', { ascending: false })
+    .limit(limite)
+  if (error) return { data: null, error: error.message }
+  return {
+    data: (data ?? []).map((p) => {
+      const f = p as Record<string, unknown>
+      return {
+        id: String(f.id),
+        fecha: String(f.fecha ?? ''),
+        cantidad: numero(f.cantidad),
+        avance_pct: numero(f.avance_pct),
+        metodo: (f.metodo as string | null) ?? null,
+        comentario: (f.comentario as string | null) ?? null,
+      }
+    }),
+    error: null,
+  }
+}
+
 /**
  * La relación EN PALABRAS, tal como la escribe la base.
  *

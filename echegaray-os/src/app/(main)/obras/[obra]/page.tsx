@@ -28,6 +28,7 @@
 // `registros_hh`), el presupuesto (vía `presupuestos`) y los archivos de Drive (vía `drive_index`).
 // Ninguno de los cuatro se edita desde este módulo.
 
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -61,18 +62,19 @@ import {
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
+import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
+import { Ico, P } from '@/features/obras/components/canon/Ico'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
 import { esSubVista } from '@/features/obras/services/subvistas'
+import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
-import {
-  hrefSubcontratos, resolverVistaObra, SUBS_TAREAS,
-} from '@/features/obras/services/vistasObra'
+import { resolverVistaObra } from '@/features/obras/services/vistasObra'
+import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
-import { SubTabs } from '@/shared/components/ds'
 import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
@@ -140,11 +142,12 @@ export default async function ObraPage({
   // UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA: lo que admite fallo parcial pasa por
   // `lector.leer` DESPUÉS de resolver, y el cartel de arriba dice qué no se pudo leer.
   const lector = crearLector()
-  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
-  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
-  // Los partes también en Cronograma y Resumen: el panel de la actividad muestra su ejecución
-  // reciente, y «último movimiento» del Resumen es literalmente el último parte.
-  const necesitaPartes = esParte || esCronograma || vista === 'resumen'
+  // QUÉ PIDE ESTA SOLAPA, decidido por una función pura y probada aparte: la matriz vive en
+  // `lecturasDeVista` para que se pueda probar sin levantar el servidor ni la base, y para que
+  // agregar una lectura obligue a declarar quién la usa. Los partes, por ejemplo, también en
+  // Cronograma y Resumen: el panel de la actividad muestra su ejecución reciente y «último
+  // movimiento» del Resumen es literalmente el último parte.
+  const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
   const [
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes,
     dependenciasRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
@@ -157,12 +160,15 @@ export default async function ObraPage({
     getPerfilActual(supabase),
     getObra(supabase, obraId),
     getActividades(supabase, obraId),
-    getRestricciones(supabase, obraId),
-    getPlanVsReal(supabase, obraId),
+    // Restricciones y plan DEJARON DE SER INCONDICIONALES (24/08): `obra_plan_vs_real` es la
+    // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen,
+    // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
+    necesita.restricciones ? getRestricciones(supabase, obraId) : null,
+    necesita.plan ? getPlanVsReal(supabase, obraId) : null,
     // Las precedencias sólo las dibuja el Gantt: traerlas en las otras solapas es una consulta
     // por visita para nadie.
     esCronograma ? getDependencias(supabase, obraId) : null,
-    necesitaPersonas ? getPersonas(supabase) : null,
+    necesita.personas ? getPersonas(supabase) : null,
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
     vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
     vista === 'personal' ? getCausasDesvio(supabase) : null,
@@ -170,9 +176,9 @@ export default async function ObraPage({
     // Plan contra real por actividad: Personal la publica y Cronograma la usa en el panel de la
     // actividad, con el MISMO cálculo.
     vista === 'personal' || esCronograma ? getActividadHH(supabase, obraId) : null,
-    necesitaCuadrillas ? getCuadrillas(supabase) : [],
+    necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
-    necesitaPartes ? getPartes(supabase, obraId) : null,
+    necesita.partes ? getPartes(supabase, obraId) : null,
     vista === 'economia' ? getCertificados(supabase, obraId) : null,
     // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
     // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
@@ -216,10 +222,10 @@ export default async function ObraPage({
   if (!obra) notFound()
 
   const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
-  const restricciones = lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>)
+  const restricciones = restriccionesRes ? lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>) : []
   // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
   // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
-  const plan = lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null)
+  const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
   const dependencias = dependenciasRes ? lector.leer(dependenciasRes, []) : []
   const personas = personasRes ? lector.leer(personasRes, []) : []
   const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
@@ -295,18 +301,40 @@ export default async function ObraPage({
     // contenido, sin el margen de una página de lectura. El marco (fondo y padding de pantalla) es
     // el mismo: 16px en el teléfono, 40px en escritorio.
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 pt-6 lg:px-10">
-        {/* Nivel 2 adentro: SEIS solapas —Ejecución dejó de ser una— que se desplazan en vez de
-            empujar la página, porque en 390px no entran. */}
-        <CabeceraDeObra
-          obraId={obraId}
-          obra={obra}
-          vistaActiva={vista}
-          /* Las cinco operaciones de todos los días, sin buscar en qué solapa viven. */
-          acciones={<AccionesRapidas obraId={obraId} />}
+      {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): su aire de 20px es interno.
+          La primaria de la obra es «Cargar parte» —la del mockup 02— y al lado el «···» con las
+          cinco operaciones de todos los días. Dos amarillos en la misma línea harían leer dos
+          acciones principales, así que sólo el parte lleva el color de marca. */}
+      <CabeceraDeObra
+        obraId={obraId}
+        obra={obra}
+        vistaActiva={vista}
+        acciones={
+          <>
+            <Link href={`/obras/${obraId}?vista=tareas&sub=parte`} prefetch={false}
+              data-testid="cabecera-cargar-parte" style={ESTILO_PRIMARIA}>
+              <Ico d={P.editar} s={14} />Cargar parte
+            </Link>
+            <AccionesRapidas obraId={obraId} />
+          </>
+        }
+      />
+      {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
+          `TabTareas`, porque ahí comparte renglón con el buscador y los filtros, que son suyos. */}
+      {vista === 'tareas' && !esArbol && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+
+      {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
+          ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
+      {esArbol && (
+        <WorkspaceTareas
+          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
+          cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
         />
-      </div>
-      <div className="w-full px-4 pb-6 pt-4 lg:px-10">
+      )}
+
+      {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol en pantalla este
+          div queda vacío y sin padding: 40px de aire fantasma debajo del Gantt se ven. */}
+      <div className={esArbol ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {/* LO QUE NO SE PUDO LEER SE DICE ACÁ, ARRIBA DE LA SOLAPA. Sin este cartel, una consulta
           caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el error
@@ -362,40 +390,6 @@ export default async function ObraPage({
               >{archivada ? 'Reactivar' : 'Archivar'}</BotonAccion>
             </section>
           }
-        />
-      )}
-
-      {/* Nivel 3 de Tareas: TEXTO subrayado, nunca otra barra. Son seis maneras de mirar LAS
-          MISMAS actividades — el árbol nuevo, las cuatro del cronograma y el parte diario. */}
-      {vista === 'tareas' && (
-        <div className="pb-3">
-          <SubTabs
-            testid="subtabs-tareas"
-            items={[
-              ...SUBS_TAREAS.map((sv) => ({
-                href: `/obras/${obraId}?vista=tareas&sub=${sv.id}`,
-                label: sv.label,
-                activo: subTareas === sv.id,
-                testid: `sub-${sv.id}`,
-              })),
-              // LA PANTALLA 10 ENTRA POR ACÁ y nunca queda activa: es otra URL, no otra sub-vista.
-              // Es el MISMO alcance de la obra mirado desde el lado del tercero que lo ejecuta, y
-              // por eso cuelga de Tareas en vez de ser una séptima solapa —el tope de seis está
-              // declarado arriba—.
-              {
-                href: hrefSubcontratos(obraId),
-                label: 'Subcontratos',
-                testid: 'sub-subcontratos',
-              },
-            ]}
-          />
-        </div>
-      )}
-
-      {esArbol && (
-        <WorkspaceTareas
-          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
-          cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
         />
       )}
 

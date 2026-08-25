@@ -33,9 +33,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { getObrasCanonicas } from '@/features/control-obras/services/costosObraService'
-import { PageShell } from '@/shared/components/ui'
-import { Aviso, Ayuda, BuscadorURL, Num, TituloPantalla } from '@/shared/components/ds'
-import { IconoCompra } from '@/shared/components/iconos'
+import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { C, FranjaCartera, IcoSubir, PAGINA } from '@/shared/components/canon'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
 import { TablaCompras } from '@/features/administracion/components/TablaCompras'
@@ -68,11 +68,15 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
 function CargarComprobante() {
   return (
     <details data-testid="cargar-comprobante" className="min-w-0">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:bg-surface-quiet">
-        <IconoCompra className="h-[14px] w-[14px]" aria-hidden />
+      {/* La ACCIÓN PRIMARIA del canónico (`24:76`) es el botón amarillo «Cargar comprobante». Acá es
+          un `details` y no un botón: la carga real la hace el bot, y un botón que abre un formulario
+          que no existe sería un botón falso. Se dibuja con la caja del canónico —radio 6, 12,5px,
+          peso 600, amarillo de marca— y al abrirlo explica la vía oficial. */}
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] bg-[#FDC900] px-[11px] py-[6px] text-[12.5px] font-semibold text-[#1F1F1E] transition-colors hover:bg-[#EEBE00]">
+        <IcoSubir s={14} />
         Cargar comprobante
       </summary>
-      <p className="mt-2 max-w-[420px] text-[11.5px] leading-relaxed text-muted">
+        <p className="mt-2 max-w-[420px] text-[11.5px] leading-relaxed text-muted">
         Se le manda la foto o el PDF al bot <span className="font-medium text-ink">@os</span> por
         Mattermost: él lo lee, lo cruza contra ARCA y contra el banco, y avisa si ya estaba cargado.
         Esta pantalla no sube archivos a propósito — una segunda puerta sin esos tres cruces
@@ -97,10 +101,10 @@ export default async function ComprasPage({
   // evita mostrarle la pantalla a quien no administra nada.
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
-      <PageShell title="Compras" encabezado={false}>
+      <Marco>
         <NavAdministracion />
-        <Aviso tono="info">Esta pantalla es de Administración.</Aviso>
-      </PageShell>
+        <div style={{ padding: '0 20px' }}><Aviso tono="info">Esta pantalla es de Administración.</Aviso></div>
+      </Marco>
     )
   }
 
@@ -116,14 +120,14 @@ export default async function ComprasPage({
 
   if (listado.error || !listado.data || conteos.error || !conteos.data) {
     return (
-      <PageShell title="Compras" encabezado={false}>
+      <Marco>
         <NavAdministracion />
-        <div data-testid="compras-error">
+        <div style={{ padding: '0 20px' }} data-testid="compras-error">
           <Aviso tono="neg" titulo="No pude leer el libro de compras">
             {listado.error ?? conteos.error}
           </Aviso>
         </div>
-      </PageShell>
+      </Marco>
     )
   }
 
@@ -139,22 +143,24 @@ export default async function ComprasPage({
     // SIN ENCABEZADO DE PÁGINA (24/08/2026, canónico 24). El «Compras» a 22px arriba de todo no
     // está en el mockup: la sub-navegación ya lo nombra con su contador, y el nombre de la lista
     // baja a la misma línea que el buscador y la acción primaria.
-    <PageShell title="Compras" encabezado={false}>
+    <Marco>
       <NavAdministracion />
 
-      {/* ═══ UNA SOLA LÍNEA DE CONTROL, Y LA ALARMA DEBAJO (canónico 24 · 24/08/2026) ═══
+      {/* ═══ UNA SOLA LÍNEA DE CONTROL, Y LA ALARMA DEBAJO (canónico 24) ═══
 
           El mockup pone buscador, filtros y la acción primaria en el MISMO renglón, y recién debajo
           la banda suave de lo que pide trabajo. Antes eran dos bloques apilados —buscador arriba,
           seis KPIs grandes debajo— y la lista arrancaba a 190px del encabezado: en un portátil se
           veían cuatro filas del libro de compras. */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <TituloPantalla className="mr-1">Compras</TituloPantalla>
+      <FranjaCartera titulo="Compras" testid="franja-compras" accion={<CargarComprobante />}>
+        {/* 238px — `24`, línea 60. */}
         <BuscadorURL
           accion={RUTA}
           q={sp.q}
-          placeholder="Proveedor, CUIT, número u obra"
+          placeholder="Buscar comprobante o proveedor"
           oculto={{ f: filtro === 'capturadas' ? undefined : filtro, c: sp.c }}
+          ancho="w-[238px] max-w-full"
+          variante="caja"
           testid="buscar-compra"
         />
         <FiltrosCompras
@@ -162,23 +168,26 @@ export default async function ComprasPage({
           activo={filtro}
           hrefDe={(f) => url({ f, q, c: sp.c })}
         />
-        <div className="ml-auto"><CargarComprobante /></div>
-      </div>
+      </FranjaCartera>
 
-      <AtencionCompras conteos={conteos.data} hrefDe={(f) => url({ f, q, c: sp.c })} />
+      <div style={PAGINA.atencion}>
+        <AtencionCompras conteos={conteos.data} hrefDe={(f) => url({ f, q, c: sp.c })} />
+      </div>
 
       {/* EL SUBTÍTULO EXPLICATIVO SE FUE ACÁ ADENTRO (Design 23/08). Lo que la pantalla muestra no
           se explica; lo que NO se ve —de dónde sale cada fila y qué manda cuando dos fuentes
           discrepan— sí hace falta, pero una vez y bajo demanda. */}
+      <div style={{ padding: '0 20px' }}>
       <Ayuda titulo="De dónde salen estas filas" testid="ayuda-compras">
         Es el libro de compras que ARCA le reconoce a la empresa, comprobante por comprobante. El
         control vive en esta base: la pestaña Compras del Sheet es una proyección de lo mismo, no
         una segunda versión. El estado de cada fila se calcula —no se guarda—, así que imputar por
         otra puerta lo cambia igual.
       </Ayuda>
+      </div>
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <div className={`min-w-0 flex-1 ${abierta ? '' : 'lg:max-w-[1080px]'}`}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start" style={{ padding: '0 20px 20px' }}>
+        <div className="min-w-0 flex-1">
           <TablaCompras
             filas={filas}
             seleccionado={abierta?.id}
@@ -217,6 +226,19 @@ export default async function ComprasPage({
           />
         )}
       </div>
-    </PageShell>
+    </Marco>
+  )
+}
+
+/**
+ * EL MARCO DEL CANON: fondo #F7F7F5 a toda la altura. `SelloDatoBueno` venía de `PageShell`, que
+ * esta pantalla ya no usa — sin él, `error.tsx` pierde la hora del último dato bueno.
+ */
+function Marco({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      <SelloDatoBueno />
+      {children}
+    </div>
   )
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   AVISO_CRITERIO, avisoDePrecision, controlDe, deltaHasta, elPorcentajeMueveElAvance, enVista,
-  renglones, vistaInicial,
+  leerSeleccion, opcionesMasivas, renglones, vistaInicial,
 } from './medicion.ts'
 import type { TareaDelDia } from './medicion.ts'
 
@@ -134,4 +134,44 @@ test('«SIN ARRANCAR» TRATA IGUAL EL CERO Y EL SIN MEDIR', () => {
   assert.equal(enVista(enCero, 'sin-arrancar'), true)
   assert.equal(enVista(sinMedir, 'sin-arrancar'), true)
   assert.equal(enVista(enCero, 'curso'), false)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// J04 · CADA TAREA CON SU PORCENTAJE (24/08/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('sólo se ofrecen valores que MUEVEN el avance: `obra_ejecucion` guarda incrementos', () => {
+  // Una tarea en 74 % con la escala completa ofrecería 25 y 50, y cada toque terminaría en un
+  // rechazo del servidor («ya estaba en 74 % o más»). Con diez tareas elegidas, el mensaje de
+  // resultado se vuelve ilegible y el jefe no sabe qué entró.
+  assert.deepEqual(opcionesMasivas(74), [75, 90, 100])
+  assert.deepEqual(opcionesMasivas(0), [50, 75, 90, 100])
+  assert.deepEqual(opcionesMasivas(null), [50, 75, 90, 100])
+  // Arriba de 90 sólo queda el 100: es el único destino que todavía mueve algo.
+  assert.deepEqual(opcionesMasivas(95), [100])
+  // Al 100 no queda ninguno arriba, y devolver una lista vacía dejaría la tarjeta sin botones:
+  // se ofrece el 100 igual, y el servidor la rechaza nombrándola.
+  assert.deepEqual(opcionesMasivas(100), [100])
+})
+
+test('la selección viaja con el valor de cada tarea, sin repetidos', () => {
+  assert.deepEqual(leerSeleccion('a:80,b:65'), [
+    { actividad_id: 'a', objetivo: 80 },
+    { actividad_id: 'b', objetivo: 65 },
+  ])
+  // Un id repetido gana la primera vez: dos filas para la misma tarea serían dos incrementos.
+  assert.deepEqual(leerSeleccion('a:80,a:100'), [{ actividad_id: 'a', objetivo: 80 }])
+  // Espacios, comas sueltas y cadena vacía no producen una tarea fantasma.
+  assert.deepEqual(leerSeleccion(' , a:75 , '), [{ actividad_id: 'a', objetivo: 75 }])
+  assert.deepEqual(leerSeleccion(''), [])
+})
+
+test('el formato viejo (ids sueltos) entra con objetivo null, no con un número inventado', () => {
+  // Un enlace o una prueba anterior manda `a,b`. Si esto devolviera 100 por defecto, esas dos
+  // tareas se cerrarían enteras sin que nadie lo pidiera.
+  assert.deepEqual(leerSeleccion('a,b'), [
+    { actividad_id: 'a', objetivo: null },
+    { actividad_id: 'b', objetivo: null },
+  ])
+  assert.deepEqual(leerSeleccion('a:xx'), [{ actividad_id: 'a', objetivo: null }])
 })

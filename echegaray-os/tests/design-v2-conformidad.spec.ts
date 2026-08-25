@@ -132,11 +132,11 @@ async function reglas(page: Page, nombre: string): Promise<string[]> {
     const fam = getComputedStyle(document.body).fontFamily
     if (!/plex/i.test(fam)) f.push(`${n}: el cuerpo no usa IBM Plex (${fam})`)
 
-    // 2 · EL HEADER GLOBAL MIDE 48px. Es andamiaje: cada píxel de más se lo saca a la tabla.
+    // 2 · EL HEADER GLOBAL MIDE 44px (mockup 00 del zip). Es andamiaje: cada píxel de más se lo saca a la tabla.
     const header = document.querySelector('[data-testid="app-header"]')
     if (header) {
       const h = Math.round(header.getBoundingClientRect().height)
-      if (h !== 48) f.push(`${n}: el header mide ${h}px y el handoff dice 48`)
+      if (h !== 44) f.push(`${n}: el header mide ${h}px y el mockup dice 44`)
     }
 
     // 3 · SIN GRADIENTES. Regla absoluta del handoff: no hay ni uno en todo el sistema.

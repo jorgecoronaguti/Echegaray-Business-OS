@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  avisosDelDia, estadoDeFila, horasDeHoy, hoyEnObra, SIN_CUADRILLA,
+  avisosDelDia, cuentasDeHoy, estadoDeFila, filtrarHoy, horasDeHoy, hoyEnObra, SIN_CUADRILLA,
   type AsignadoDeObra, type MarcaDelDia,
 } from './presenciaObra.ts'
 
@@ -152,4 +152,53 @@ test('las extras suman al día y a la persona: son horas trabajadas, con recargo
   ], '2026-08-24')
   assert.equal(r.total, 10)
   assert.equal(r.porPersona.get('a'), 10, 'se guardan reales: 2 al 50 % son 2, no 3')
+})
+
+// ═══ EL BUSCADOR Y LAS PASTILLAS DE LA BANDA (canónico 09) ═══
+
+test('filtrar por texto NO cambia las cuentas del grupo: son la realidad de la cuadrilla', () => {
+  const r = hoyEnObra(
+    [asignado({ persona_id: 'a', persona_nombre: 'Juan Tello' }),
+      asignado({ persona_id: 'b', persona_nombre: 'Diego Rosales' })],
+    [marca({ persona_id: 'a', nombre_completo: 'Juan Tello' })],
+  )
+  const [g] = filtrarHoy(r.grupos, { texto: 'tello' })
+  assert.equal(g.filas.length, 1)
+  // El defecto que atrapa: recalcular presentes/asignados sobre lo filtrado. Buscar «Tello» diría
+  // que la cuadrilla tiene una sola persona.
+  assert.equal(g.asignados, 2)
+  assert.equal(g.presentes, 1)
+})
+
+test('el grupo sin coincidencias no se dibuja: una cabecera vacía se lee «no hay nadie»', () => {
+  const r = hoyEnObra([asignado({ persona_id: 'a', persona_nombre: 'Juan Tello' })], [])
+  assert.equal(filtrarHoy(r.grupos, { texto: 'zzz' }).length, 0)
+})
+
+test('«sin fichar» no incluye al que fichó sin asignación: son dos hechos distintos', () => {
+  const r = hoyEnObra(
+    [asignado({ persona_id: 'a', persona_nombre: 'Asignado sin marca' })],
+    [marca({ persona_id: 'x', nombre_completo: 'Fichó sin estar' })],
+  )
+  const c = cuentasDeHoy(r.grupos)
+  assert.equal(c.sin_fichar, 1)
+  assert.equal(c.sin_asignacion, 1)
+  assert.equal(c.todo, 2)
+})
+
+test('las cuentas de las pastillas salen de TODAS las filas, no del filtro puesto', () => {
+  const r = hoyEnObra(
+    [asignado({ persona_id: 'a' }), asignado({ persona_id: 'b', persona_nombre: 'Otro' })],
+    [marca({ persona_id: 'a' })],
+  )
+  const visibles = filtrarHoy(r.grupos, { filtro: 'en_obra' })
+  assert.equal(visibles[0].filas.length, 1)
+  // El defecto que atrapa: contar sobre lo visible. Con el filtro «en obra» puesto, la pastilla
+  // «Sin fichar» diría 0 justo cuando hay uno que no fichó.
+  assert.equal(cuentasDeHoy(r.grupos).sin_fichar, 1)
+})
+
+test('el texto busca también por rol: se busca «ayudante», no sólo un apellido', () => {
+  const r = hoyEnObra([asignado({ persona_id: 'a', rol: 'ayudante' })], [])
+  assert.equal(filtrarHoy(r.grupos, { texto: 'ayud' }).length, 1)
 })

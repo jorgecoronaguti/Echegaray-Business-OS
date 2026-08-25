@@ -250,15 +250,6 @@ export function TabDocumentos({
             : <Nulo>sin vincular · se carga en Resumen › Editar la obra</Nulo>}
         </span>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 sm:ml-auto">
-          {documentos.length >= FILAS_PARA_BUSCAR && (
-            <Buscador
-              value={query}
-              onChange={setQuery}
-              placeholder="Buscar documento o categoría"
-              testid="buscar-documento-obra"
-              className="w-[220px]"
-            />
-          )}
           <Vincular tipo="archivo" accion={vincular} testid="vincular-archivo" />
           <Vincular tipo="carpeta" accion={vincular} testid="vincular-carpeta" />
           {/* LA PRIMARIA DE LA PANTALLA. Sólo existe cuando hay carpeta declarada: un botón que
@@ -277,11 +268,17 @@ export function TabDocumentos({
         </div>
       </div>
 
-      {/* LOS CHIPS DE CATEGORÍA. Están los cinco grupos siempre, con su conteo — también en cero:
-          «Contrato y cliente · 0» es la forma más corta de decir que a esta obra le falta el
-          contrato. Filtrar es una elección explícita, así que el chip deja el grupo aunque quede
-          vacío; el buscador, en cambio, esconde los grupos sin coincidencias. */}
+      {/* ═══ LA BANDA DEL CANÓNICO 12, A SANGRE: CHIPS A LA IZQUIERDA, BUSCADOR A LA DERECHA ═══
+          Los chips flotaban sobre el canvas y el buscador vivía tres metros más arriba, en la fila
+          de acciones: dos controles que gobiernan la MISMA lista, separados por una fila entera.
+          Fondo `surface-quiet` con hairline arriba y abajo, de borde a borde del marco de la ficha.
+
+          LOS CHIPS SON LOS CINCO GRUPOS SIEMPRE, con su conteo — también en cero: «Contrato · 0» es
+          la forma más corta de decir que a esta obra le falta el contrato. Filtrar es una elección
+          explícita, así que el chip deja el grupo aunque quede vacío; el buscador, en cambio,
+          esconde los grupos sin coincidencias. */}
       {documentos.length > 0 && (
+      <div className="-mx-4 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1.5 lg:-mx-10 lg:px-10">
         <Filtros
           testid="chips-categoria-documento"
           opciones={[
@@ -299,6 +296,19 @@ export function TabDocumentos({
             })),
           ]}
         />
+        {/* 216px y en CAJA: la medida del canónico. Sobre el #FAFAF8 de la banda el hairline
+            inferior del buscador de lista no se ve y el campo queda flotando. */}
+        {documentos.length >= FILAS_PARA_BUSCAR && (
+          <Buscador
+            value={query}
+            onChange={setQuery}
+            placeholder="Buscar documento"
+            variante="caja"
+            testid="buscar-documento-obra"
+            className="ml-auto w-[216px]"
+          />
+        )}
+      </div>
       )}
 
       {documentos.length === 0 ? (

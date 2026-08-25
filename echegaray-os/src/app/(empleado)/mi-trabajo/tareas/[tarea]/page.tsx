@@ -2,45 +2,40 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
-import { Aviso, Estado, Plegable } from '@/shared/components/ds'
-import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
-import { Dato, Fila, Nada } from '@/features/empleado/components/Filas'
-import { Barra } from '@/features/empleado/components/Bloques'
-import { PieFijo } from '@/features/empleado/components/Piezas'
+import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
+import { C, R, pct } from '@/shared/components/movil/tokens'
+import { Icono, type NombreIcono } from '@/shared/components/movil/Iconos'
+import {
+  AvisoError, PieFijo, RotuloSeccion, TarjetaLista, Vacio, mono,
+} from '@/shared/components/movil/Piezas'
 import { getMiTarea, getMisImpedimentos } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { lecturaDeEstado, lecturaDeFecha, dm } from '@/features/empleado/services/tareas'
 
-// DETALLE DE TAREA — lo que hay que hacer, cómo se mide, y qué la está frenando.
+// M04 · DETALLE DE TAREA — porte literal de `M04 · Detalle tarea.dc.html`.
+//
+// ═══ LO QUE SE PORTA ═══
+//
+// El topbar con el nombre de la tarea y su frente, la tarjeta de avance con el porcentaje en 24px,
+// la barra de 9px y las dos cantidades enfrentadas, los tres azulejos de acción (Foto · Nota ·
+// Problema), «Lo último cargado» y la primaria fija abajo.
+//
+// ═══ EL CONTADOR − / + QUE GUARDA NO SE CONSTRUYE, Y NO ES COMODIDAD ═══
+//
+// El mockup pone debajo del avance un contador con atajos que escribe producción. La policy
+// `obra_ejecucion_insert` exige `current_rol()` en {direccion, administracion, jefe_obra}: el perfil
+// que usa esta pantalla NO puede insertar, y la base lo rechaza con un 42501 para el 100 % de sus
+// usuarios. Un contador que parece guardar y rebota es peor que no tenerlo — la pantalla mentiría.
+//
+// Se agrega, además, que `registrarAvance` recibe el ACUMULADO y `mi_tarea` no lo publica: derivarlo
+// de `pct × objetivo` mandaría un acumulado redondeado que la acción convierte en delta, o sea
+// avance fabricado por redondeo. El hueco queda declarado, no disimulado con un control apagado.
 //
 // ═══ NUNCA UNA FILA LLENA DE BOTONES ═══
 //
-// El handoff: «Acciones al pie según estado y permiso: Marcar avance (primaria), Completar,
-// Reportar problema. Nunca una fila llena de botones». Acá el permiso corta de verdad: el nivel
-// campo NO puede escribir `obra_actividad` —la policy exige dirección, administración o jefe de
-// obra— y ofrecerle «Marcar avance» sería una primaria amarilla que rebota contra un `42501`.
-//
-// Un botón que no puede funcionar es peor que no tenerlo: enseña que la pantalla miente. Se dice
-// quién carga el avance, y se ofrece lo único que este perfil SÍ puede hacer, que es reportar.
-//
-// ═══ M04 (24/08/2026): LA TARJETA DE AVANCE SÍ, EL CONTADOR QUE ESCRIBE NO ═══
-//
-// El mockup pone arriba una tarjeta con el porcentaje grande, la barra y las dos cantidades —«71,04
-// m² hechos · de 96,00 m²»—: eso es LECTURA y está construido, porque contesta «en cuánto queda el
-// frente» sin hacer cuentas. Debajo dibuja un contador − / + con atajos que GUARDA avance, y ese no
-// se construyó. Tres razones, ninguna de comodidad:
-//
-//   1. El perfil que usa esta pantalla no puede escribir `obra_actividad` —la policy exige
-//      dirección, administración o jefe de obra—. Un contador que guarda sería un botón que rebota
-//      contra un 42501 para el 100% de sus usuarios.
-//   2. `registrarAvance` recibe la cantidad ACUMULADA, no el incremento; el acumulado real vive en
-//      `obra_actividad_control` y `mi_tarea` no lo publica. Derivarlo de `pct × objetivo` mandaría
-//      un acumulado redondeado que la acción convierte en delta: avance fabricado por redondeo.
-//   3. Hay dos migraciones sin commitear en el árbol —«avance manual sale de los hechos» y «avance
-//      manual es suma de incrementos»— que cambian justo esa semántica. Construir encima de un
-//      contrato en vuelo produce un botón que anda en el repo y no en producción.
-//
-// Queda declarado como pendiente, no disimulado con un contador apagado.
+// Al pie va UNA primaria, y sólo la que puede funcionar: avisar un problema, que es lo único que
+// este perfil sí escribe (`obra_restriccion_insert` lo permite). Foto y Nota van apagados, con el
+// motivo en su `title`.
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +56,7 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
     if (t.error) {
       return (
         <PantallaEmpleado titulo="Tarea" volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}>
-          <Aviso tono="neg" titulo="No se pudo leer la tarea." testid="tarea-error">{t.error}</Aviso>
+          <AvisoError testid="tarea-error">{t.error}</AvisoError>
         </PantallaEmpleado>
       )
     }
@@ -73,149 +68,252 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
   const f = lecturaDeFecha(tarea, hoy)
   const escribe = ESCRIBEN_LA_ACTIVIDAD.includes(perfil.data?.rol ?? '')
 
-  const [impedimentos, notas, papeles, dependencias] = await Promise.all([
+  const [impedimentos, notas, papeles] = await Promise.all([
     getMisImpedimentos(supabase),
-    supabase.from('obra_actividad_nota').select('id, texto, creado_en').eq('actividad_id', tarea.id).order('creado_en', { ascending: false }),
+    supabase.from('obra_actividad_nota').select('id, texto, creado_en').eq('actividad_id', tarea.id).order('creado_en', { ascending: false }).limit(5),
     supabase.from('obra_documento').select('drive_file_id, nombre, rol').eq('actividad_id', tarea.id),
-    supabase.from('obra_dependencia').select('origen_id, tipo').eq('destino_id', tarea.id),
   ])
 
   const mios = (impedimentos.data ?? []).filter((i) => i.actividad_id === tarea.id)
-  const previas = (dependencias.data ?? []) as { origen_id: string; tipo: string | null }[]
+  const hechas = tarea.cantidad_objetivo != null && tarea.pct != null
+    ? (tarea.cantidad_objetivo * tarea.pct) / 100
+    : null
 
   return (
     <PantallaEmpleado
       titulo={tarea.nombre}
       volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}
-      sub={
-        <>
-          <Estado tono={e.tono} clave={tarea.estado ?? ''} testid="estado-tarea">{e.texto}</Estado>
-          <span className={f.vencida ? 'text-neg' : 'text-faint'}> · {f.texto}</span>
-          <span className="block text-faint">{tarea.seccion ? `${tarea.seccion} · ` : ''}{tarea.obra}</span>
-        </>
-      }
+      sub={`${tarea.seccion ? `${tarea.seccion} · ` : ''}${tarea.obra ?? 'sin obra'}`}
     >
+      {/* EL PROBLEMA PRIMERO: si la tarea está frenada, es lo primero que se ve. */}
       {mios.length > 0 && (
-        <Aviso tono="neg" titulo={mios.length === 1 ? 'Esta tarea está frenada' : `Esta tarea tiene ${mios.length} impedimentos abiertos`} testid="tarea-frenada">
-          {mios[0].descripcion ?? 'Hay un impedimento abierto.'}
-        </Aviso>
+        <div
+          data-testid="tarea-frenada"
+          style={{
+            background: C.negFondo, border: `1px solid ${C.negBorde}`, borderRadius: R.tarjeta,
+            padding: 14, display: 'flex', alignItems: 'center', gap: 11, minHeight: 64, marginBottom: 14,
+          }}
+        >
+          <span style={{ display: 'flex', color: C.neg, flexShrink: 0 }}><Icono nombre="bloqueo" tamano={22} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink }}>
+              {mios.length === 1 ? 'Frente parado' : `${mios.length} impedimentos abiertos`}
+            </div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 1 }}>
+              {mios[0].descripcion ?? 'Hay un impedimento abierto.'}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ═══ LA TARJETA DE AVANCE (M04) ═══
-          El porcentaje en 30px porque es el número que decide, la barra debajo, y las dos
-          cantidades enfrentadas: lo hecho a la izquierda y el objetivo a la derecha. La nota del
-          mockup: «Muestra en cuánto queda el frente, no cómo se calcula».
-
-          SIN LAS DOS PUNTAS NO SE DIBUJAN CANTIDADES. Sin objetivo, «0,00 m² hechos» diría que no se
-          hizo nada; sin porcentaje, el objetivo entero diría lo mismo al revés. Las dos son creíbles
-          y ninguna es verificable mirando la pantalla, así que se escribe «sin medición». */}
-      <div className="rounded-[14px] border border-line bg-surface px-4 py-3.5" data-testid="tarjeta-avance">
-        <div className="flex items-baseline gap-3">
-          <span className="text-[13px] text-muted">Avance</span>
-          <span className="ml-auto font-mono text-[30px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-ink">
-            {tarea.pct == null ? <span className="text-[14px] font-normal text-faint">sin medir</span> : `${Math.round(tarea.pct)} %`}
+          La nota del mockup: «Muestra en cuánto queda el frente, no cómo se calcula».
+          SIN LAS DOS PUNTAS NO SE DIBUJAN CANTIDADES: sin objetivo, «0,00 m² hechos» diría que no se
+          hizo nada; sin porcentaje, el objetivo entero diría lo mismo al revés. */}
+      <div
+        data-testid="tarjeta-avance"
+        style={{ background: C.surface, border: `1px solid ${C.linea}`, borderRadius: R.tarjeta, padding: 16 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: 12.5, color: C.muted }}>Avance</span>
+          <span style={{ ...mono, fontSize: 24, fontWeight: 600, color: tarea.pct == null ? C.faint : C.ink }}>
+            {tarea.pct == null ? 'sin medir' : pct(tarea.pct)}
           </span>
         </div>
-        <Barra pct={tarea.pct} frenada={mios.length > 0} />
-        <div className="mt-2 flex items-baseline gap-3 font-mono text-[12.5px]">
-          {tarea.cantidad_objetivo != null && tarea.pct != null ? (
+        <div style={{ height: 9, background: C.pista, borderRadius: 5, marginTop: 8, overflow: 'hidden' }}>
+          {tarea.pct != null && (
+            <div style={{
+              height: '100%', width: `${Math.max(0, Math.min(100, tarea.pct))}%`,
+              background: mios.length > 0 ? C.neg : C.info,
+            }} />
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 10 }}>
+          {hechas != null && tarea.cantidad_objetivo != null ? (
             <>
-              <span className="text-ink">
-                {(tarea.cantidad_objetivo * tarea.pct / 100).toFixed(2).replace('.', ',')}
-                {tarea.unidad ? ` ${tarea.unidad}` : ''} hechos
+              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>
+                {n2(hechas)}{tarea.unidad ? ` ${tarea.unidad}` : ''} hechos
               </span>
-              <span className="ml-auto text-faint">
-                de {tarea.cantidad_objetivo.toFixed(2).replace('.', ',')}{tarea.unidad ? ` ${tarea.unidad}` : ''}
+              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>
+                de {n2(tarea.cantidad_objetivo)}{tarea.unidad ? ` ${tarea.unidad}` : ''}
               </span>
             </>
           ) : (
-            <span className="text-faint">sin medición: falta {tarea.cantidad_objetivo == null ? 'la cantidad objetivo' : 'el avance cargado'}</span>
+            <span style={{ ...mono, fontSize: 12.5, color: C.faint }}>
+              sin medición: falta {tarea.cantidad_objetivo == null ? 'la cantidad objetivo' : 'el avance cargado'}
+            </span>
           )}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, fontSize: 12.5, color: C.muted }}>
+          <Icono nombre="reloj" tamano={15} />
+          {e.texto} · <span style={{ color: f.vencida ? C.neg : C.muted }}>{f.texto}</span>
+        </div>
       </div>
 
-      <Seccion titulo="DATOS">
-        <div data-testid="datos-tarea">
+      {/* LOS TRES AZULEJOS DE ACCIÓN. Sólo «Problema» tiene destino: los otros dos van apagados con
+          el motivo en su `title`, porque un azulejo que no lleva a ningún lado enseña que la
+          pantalla miente. */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 16 }} data-testid="acciones-tarea">
+        <AzulejoAccion
+          icono="foto" texto="Foto" testid="accion-foto"
+          motivo="La foto viaja como enlace de Drive al registrar el avance: no hay carga de archivo para una tarea"
+        />
+        <AzulejoAccion
+          icono="nota" texto="Nota" testid="accion-nota"
+          motivo="Las notas de una actividad las escribe la obra, no este perfil"
+        />
+        <AzulejoAccion
+          icono="alerta" texto="Problema" testid="accion-problema" color={C.warn}
+          fondo={C.warnFondo} borde={C.warnBorde}
+          href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
+        />
+      </div>
+
+      {/* ── LOS DATOS DE LA TAREA ─────────────────────────────────────────────────────── */}
+      <RotuloSeccion icono="doc" margenArriba={22}>Datos</RotuloSeccion>
+      <div style={{ marginTop: 9 }}>
+        <TarjetaLista testid="datos-tarea">
           <Dato rotulo="Cómo se mide" valor={tarea.metodo_avance ?? (tarea.unidad ? `por ${tarea.unidad}` : null)} falta="no se declaró" />
-          <Dato rotulo="Plan" valor={tarea.inicio_plan || tarea.fin_plan ? `${tarea.inicio_plan ? dm(tarea.inicio_plan, hoy) : '—'} a ${tarea.fin_plan ? dm(tarea.fin_plan, hoy) : '—'}` : null} falta="sin planificar" />
+          <Dato
+            rotulo="Plan"
+            valor={tarea.inicio_plan || tarea.fin_plan
+              ? `${tarea.inicio_plan ? dm(tarea.inicio_plan, hoy) : '—'} a ${tarea.fin_plan ? dm(tarea.fin_plan, hoy) : '—'}`
+              : null}
+            falta="sin planificar"
+          />
           <Dato rotulo="Obra" valor={tarea.obra} />
           <Dato rotulo="Código" valor={tarea.codigo} falta="sin código" />
-        </div>
-      </Seccion>
-
-      {tarea.comentario && (
-        <Seccion titulo="INDICACIONES">
-          <p className="text-[13.5px] leading-relaxed text-ink" data-testid="indicaciones">{tarea.comentario}</p>
-        </Seccion>
-      )}
-
-      <div className="mt-6 border-t border-[#EFEEEA]">
-        <Plegable
-          titulo="Impedimentos"
-          cuenta={mios.length}
-          testid="tarea-impedimentos"
-          alerta={mios.length > 0 ? 'abierto' : undefined}
-        >
-          {mios.length > 0
-            ? mios.map((i) => <Fila key={i.id} testid="tarea-impedimento" titulo={i.descripcion ?? 'Impedimento'} detalle={i.tipo ?? 'sin clasificar'} senal="abierto" senalTono="neg" />)
-            : <Nada>Nada frena esta tarea.</Nada>}
-        </Plegable>
-
-        <Plegable titulo="Documentos" cuenta={papeles.data?.length ?? 0} testid="tarea-documentos">
-          {papeles.data && papeles.data.length > 0
-            ? papeles.data.map((d) => (
-                <Fila key={d.drive_file_id as string} testid="tarea-documento" href={`https://drive.google.com/file/d/${d.drive_file_id}/view`} titulo={(d.nombre as string) ?? 'Documento'} detalle={(d.rol as string) ?? 'sin categoría'} />
-              ))
-            : <Nada>No hay documentos colgados de esta tarea.</Nada>}
-        </Plegable>
-
-        <Plegable titulo="Notas" cuenta={notas.data?.length ?? 0} testid="tarea-notas">
-          {notas.data && notas.data.length > 0
-            ? notas.data.map((n) => (
-                <p key={n.id as string} data-testid="tarea-nota" className="border-b border-[#EFEEEA] py-2.5 text-[13px] leading-relaxed text-ink">
-                  {n.texto as string}
-                  <span className="block text-[11px] text-faint">{String(n.creado_en).slice(8, 10)}/{String(n.creado_en).slice(5, 7)}</span>
-                </p>
-              ))
-            : <Nada>Sin notas.</Nada>}
-        </Plegable>
-
-        <Plegable titulo="Depende de" cuenta={previas.length} testid="tarea-dependencias">
-          {previas.length > 0
-            ? <p className="py-2.5 text-[12.5px] text-muted" data-testid="tarea-dependencia">
-                {previas.length === 1 ? 'Depende de 1 trabajo previo' : `Depende de ${previas.length} trabajos previos`} de la misma obra.
-              </p>
-            : <Nada>No depende de ningún trabajo previo.</Nada>}
-        </Plegable>
+        </TarjetaLista>
       </div>
 
-      {/* ── AL PIE: UNA PRIMARIA, Y SÓLO LA QUE PUEDE FUNCIONAR ────────────────────────── */}
-      <div className="mt-8">
-        <PieFijo testid="pie-tarea">
-          <Link
-            href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
-            data-testid="reportar-problema"
-            className="flex h-[52px] w-full items-center justify-center rounded-[12px] bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] active:opacity-90"
-          >
-            Avisar un problema
-          </Link>
-        </PieFijo>
+      {tarea.comentario && (
+        <>
+          <RotuloSeccion icono="nota" margenArriba={22}>Indicaciones</RotuloSeccion>
+          <p data-testid="indicaciones" style={{ marginTop: 9, fontSize: 13.5, lineHeight: 1.6, color: C.ink }}>
+            {tarea.comentario}
+          </p>
+        </>
+      )}
+
+      {/* ── LO ÚLTIMO CARGADO: las notas de la actividad y sus papeles ─────────────────── */}
+      <RotuloSeccion icono="historial" margenArriba={22}>Lo último cargado</RotuloSeccion>
+      <div style={{ marginTop: 9 }}>
+        <TarjetaLista testid="ultimo-cargado">
+          {(notas.data ?? []).length === 0 && (papeles.data ?? []).length === 0 ? (
+            <Vacio>Todavía no hay notas ni documentos colgados de esta tarea.</Vacio>
+          ) : (
+            <>
+              {(notas.data ?? []).map((n) => (
+                <div
+                  key={String(n.id)}
+                  data-testid="tarea-nota"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: `1px solid ${C.divisor}` }}
+                >
+                  <span style={{ ...mono, fontSize: 12, color: C.faint, width: 42, flexShrink: 0 }}>
+                    {String(n.creado_en).slice(8, 10)}/{String(n.creado_en).slice(5, 7)}
+                  </span>
+                  <span style={{ fontSize: 13, color: C.ink, minWidth: 0, flex: 1 }}>{String(n.texto)}</span>
+                </div>
+              ))}
+              {(papeles.data ?? []).map((d) => (
+                <a
+                  key={String(d.drive_file_id)}
+                  href={`https://drive.google.com/file/d/${d.drive_file_id}/view`}
+                  data-testid="tarea-documento"
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: `1px solid ${C.divisor}`, color: C.ink }}
+                >
+                  <span style={{ display: 'flex', color: C.muted, flexShrink: 0 }}><Icono nombre="doc" tamano={18} /></span>
+                  <span style={{ fontSize: 13.5, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {String(d.nombre ?? 'Documento')}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: C.faint, flexShrink: 0 }}>{String(d.rol ?? 'sin categoría')}</span>
+                </a>
+              ))}
+            </>
+          )}
+        </TarjetaLista>
+      </div>
+
+      <p data-testid={escribe ? 'ir-a-la-obra' : 'quien-carga-avance'} style={{ marginTop: 14, fontSize: 11.5, lineHeight: 1.6, color: C.faint }}>
         {escribe ? (
-          <p className="mt-2.5 text-[11.5px] text-faint">
+          <>
             El avance y el cierre de la actividad se cargan en el parte del día de la obra, que es
             donde imputan las horas.{' '}
-            <Link href={`/obras/${tarea.obra_id}`} className="text-muted underline hover:text-ink" data-testid="ir-a-la-obra">
-              Ir a la obra →
-            </Link>
-          </p>
+            <Link href={`/obras/${tarea.obra_id}`} style={{ color: C.muted, textDecoration: 'underline' }}>Ir a la obra →</Link>
+          </>
         ) : (
-          <p className="mt-2.5 text-[11.5px] leading-relaxed text-faint" data-testid="quien-carga-avance">
+          <>
             El avance de la actividad lo carga el jefe de obra en el parte del día: tu usuario no
             tiene permiso para escribirlo, y la base lo rechazaría igual. Lo que sí podés hacer es
             reportar lo que está frenando el trabajo.
-          </p>
+          </>
         )}
-      </div>
+      </p>
+
+      <PieFijo testid="pie-tarea">
+        <Link
+          href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
+          data-testid="reportar-problema"
+          style={{
+            minHeight: 52, width: '100%', borderRadius: R.control, background: C.marca, color: C.ink,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            fontSize: 16, fontWeight: 600,
+          }}
+        >
+          <Icono nombre="alerta" tamano={20} />
+          Avisar un problema
+        </Link>
+      </PieFijo>
     </PantallaEmpleado>
   )
 }
+
+/** El renglón `rótulo · valor`. La ausencia se escribe con su nombre: un guión no distingue «no
+ *  tiene» de «nadie lo cargó». */
+function Dato({ rotulo, valor, falta = 'sin cargar' }: { rotulo: string; valor: string | null; falta?: string }) {
+  const vacio = valor == null || valor === ''
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 11, padding: '13px 14px',
+      borderBottom: `1px solid ${C.divisor}`, minHeight: 52,
+    }}>
+      <span style={{ fontSize: 12.5, color: C.muted, width: 110, flexShrink: 0 }}>{rotulo}</span>
+      <span style={{
+        fontSize: 13.5, color: vacio ? C.faint : C.ink, minWidth: 0,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {vacio ? falta : valor}
+      </span>
+    </div>
+  )
+}
+
+/** Uno de los tres azulejos de acción de M04. Sin `href` queda apagado y su `title` dice por qué. */
+function AzulejoAccion({ icono, texto, href, motivo, color = C.muted, fondo = C.surface, borde = C.linea, testid }: {
+  icono: NombreIcono
+  texto: string
+  href?: string
+  motivo?: string
+  color?: string
+  fondo?: string
+  borde?: string
+  testid: string
+}) {
+  const estilo = {
+    flex: 1, background: fondo, border: `1px solid ${borde}`, borderRadius: R.tarjeta,
+    padding: '14px 8px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center',
+    gap: 7, minHeight: 86, justifyContent: 'center',
+  }
+  const cuerpo = (
+    <>
+      <span style={{ display: 'flex', color: href ? color : C.tenue }}><Icono nombre={icono} tamano={22} /></span>
+      <span style={{ fontSize: 12, fontWeight: 500, color: href ? C.ink : C.faint, textAlign: 'center' }}>{texto}</span>
+    </>
+  )
+  return href
+    ? <Link href={href} data-testid={testid} style={estilo}>{cuerpo}</Link>
+    : <span data-testid={testid} aria-disabled title={motivo} style={{ ...estilo, cursor: 'not-allowed' }}>{cuerpo}</span>
+}
+
+const n2 = (v: number) =>
+  new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)

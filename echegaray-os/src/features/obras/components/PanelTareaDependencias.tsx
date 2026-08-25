@@ -77,7 +77,7 @@ export function PanelTareaDependencias({
         </p>
       )}
 
-      <Link href={hrefVincular} data-testid="ir-vincular"
+      <Link href={hrefVincular} prefetch={false} data-testid="ir-vincular"
         className="mt-3 inline-block text-[12.5px] font-medium text-ink hover:underline">
         Vincular otra actividad
       </Link>

@@ -1,45 +1,55 @@
 import Link from 'next/link'
-import { Aviso, BotonEnlace } from '@/shared/components/ds'
-import { BuscadorURL } from '@/shared/components/ds/BuscadorURL'
 import { avanceAgregado } from '@/features/obras/services/avance'
-import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
-import { Barra, Encabezado, Nada, Panel, porcentaje } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
+import { C, R, pct } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
+import {
+  AvisoError, BotonTopBar, FranjaFiltros, Pastilla, TarjetaLista, TopBarDetalle, Vacio, mono,
+} from '@/shared/components/movil/Piezas'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol } from '@/features/jefe/services/jefeService'
 import type { ActividadDelJefe } from '@/features/jefe/services/jefeService'
 import { frentePorTarea } from '@/features/jefe/services/frentes'
-import { estaTerminada } from '@/features/jefe/services/dia'
+import { aspectoDeTarea } from '@/features/jefe/services/aspecto'
 import { conObra } from '@/features/jefe/services/navegacion'
 import {
   FILTROS, FILTRO_LABEL, agruparPorFrente, detalleDeTarea, filtrar, filtroDe,
 } from '@/features/jefe/services/tareas'
 
-// J02 · TAREAS — toda la obra, buscable, agrupada por frente.
+// J02 · TAREAS — porte literal de `J02 · Jefe Tareas.dc.html`.
 //
 // ═══ EL ESTADO VIVE EN LA URL, Y POR ESO NO HAY JAVASCRIPT ACÁ ═══
 //
-// Búsqueda y filtro son parámetros. La consecuencia práctica en obra: la pantalla se puede compartir
-// por WhatsApp («mirá las atrasadas del galpón 2») y llega al otro tal cual, y volver atrás con el
-// gesto del teléfono deshace el filtro en vez de salirse de la pantalla.
+// Búsqueda, filtro y el propio despliegue del buscador son parámetros. La consecuencia práctica en
+// obra: la pantalla se puede compartir por WhatsApp («mirá las atrasadas del galpón 2») y llega al
+// otro tal cual, y el gesto de atrás del teléfono deshace el filtro en vez de salirse.
 //
-// El buscador es un `<form>` que envía con el enter del teclado. Buscar mientras se teclea obligaría
-// a un componente de cliente que vuelve a pedir en cada letra: con guante, parado, y con la señal de
-// una obra, un envío explícito es más rápido que seis consultas a medio escribir.
+// La lupa del mockup ABRE Y CIERRA el campo (`toggleBuscar`), y eso también es un parámetro: sin
+// nada buscado el campo no ocupa los 46px que en 390px son media tarjeta.
+//
+// ═══ CONFLICTO DECLARADO CON EL MOCKUP: EL AGRUPAMIENTO ═══
+//
+// El `.dc.html` agrupa por RUBRO («Fundaciones», «Elevación») y pone el frente en cada renglón. Acá
+// se agrupa por FRENTE. No es una licencia estética: `obra_actividad_control.rubro` sale de
+// `codigo_padre`, que es el rastro del tracker del que se importó la obra, y en san-francisco NO
+// coincide con el árbol. Agrupar por rubro ya produjo una vez que la misma tarea apareciera bajo
+// «GALPÓN 4» en una pantalla y bajo «Sin frente» en la de al lado —el porqué completo está en
+// `frentes.ts`—. Como el grupo ES el frente, el renglón no lo repite.
 
 export const dynamic = 'force-dynamic'
 
 export default async function JefeTareasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ obra?: string; q?: string; filtro?: string }>
+  searchParams: Promise<{ obra?: string; q?: string; filtro?: string; buscar?: string }>
 }) {
-  const { obra: pedida, q = '', filtro: filtroPedido } = await searchParams
+  const { obra: pedida, q = '', filtro: filtroPedido, buscar } = await searchParams
   const { supabase, obra, error } = await contextoDeObra(pedida)
   if (!obra) return <SinObra error={error} />
 
   const hoy = hoyEnObra()
   const filtro = filtroDe(filtroPedido)
+  const buscando = buscar === '1' || q.trim() !== ''
   const [actividades, arbol] = await Promise.all([
     getActividades(supabase, obra.id),
     getArbol(supabase, obra.id),
@@ -48,161 +58,183 @@ export default async function JefeTareasPage({
   const encontradas = filtrar(actividades.data ?? [], q, filtro, hoy)
   const grupos = agruparPorFrente(encontradas, frentes)
   const total = filtrar(actividades.data ?? [], '', 'todas', hoy).length
+  const primerError = error ?? actividades.error ?? arbol.error ?? null
 
   return (
     <>
-      <Encabezado titulo="Tareas de la obra" sub={`${obra.nombre} · ${total} actividades`} />
+      <TopBarDetalle
+        titulo="Tareas de la obra"
+        sub={`${obra.nombre} · ${total} actividades`}
+        accion={
+          <BotonTopBar
+            titulo={buscando ? 'Cerrar la búsqueda' : 'Buscar'}
+            testid="alternar-buscar"
+            color={buscando ? C.ink : C.muted}
+            href={buscando
+              ? conObra('/obra/tareas', obra.id, { filtro })
+              : conObra('/obra/tareas', obra.id, { filtro, buscar: '1' })}
+          >
+            <Icono nombre="buscar" tamano={20} />
+          </BotonTopBar>
+        }
+        extra={buscando ? (
+          <form
+            action="/obra/tareas"
+            method="get"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineaFuerte}`,
+              borderRadius: R.controlChico, padding: '9px 11px', marginTop: 8, marginBottom: 4,
+            }}
+          >
+            <input type="hidden" name="obra" value={obra.id} />
+            <input type="hidden" name="filtro" value={filtro} />
+            <input type="hidden" name="buscar" value="1" />
+            <span style={{ display: 'flex', color: C.faint }}><Icono nombre="buscar" tamano={16} /></span>
+            <input
+              type="text"
+              name="q"
+              defaultValue={q}
+              data-testid="buscar-tarea"
+              placeholder="Buscar actividad o frente"
+              style={{
+                border: 'none', background: 'transparent', fontSize: 14, color: C.ink,
+                width: '100%', padding: 0, outline: 'none', fontFamily: 'inherit',
+              }}
+            />
+            {q.trim() !== '' && (
+              <Link
+                href={conObra('/obra/tareas', obra.id, { filtro, buscar: '1' })}
+                aria-label="Limpiar la búsqueda"
+                data-testid="limpiar-busqueda"
+                style={{ display: 'flex', color: C.faint, padding: 4 }}
+              >
+                <Icono nombre="cerrar" tamano={16} />
+              </Link>
+            )}
+          </form>
+        ) : undefined}
+      />
 
-      {/* EL BUSCADOR ES EL DEL SISTEMA, y filtra al teclear. El contrato lo dice literal —«sin
-          Enter ni botón Buscar»— y `BuscadorURL` ya lo resuelve para toda la aplicación: deja el
-          filtro en la URL, se comparte, vuelve con el botón de atrás y sigue funcionando sin
-          JavaScript. Escribir acá un `form` GET propio habría sido el cuarto comportamiento
-          distinto de la misma lupa. */}
-      <div className="px-4 pb-3">
-        <BuscadorURL
-          accion="/obra/tareas"
-          q={q}
-          placeholder="Buscar tarea"
-          oculto={{ obra: obra.id, filtro }}
-          ancho="w-full"
-          testid="buscar-tarea"
-        />
-      </div>
+      <FranjaFiltros testid="filtros-tareas">
+        {FILTROS.map((f) => (
+          <Pastilla
+            key={f}
+            testid={`filtro-${f}`}
+            href={conObra('/obra/tareas', obra.id, { filtro: f, q, buscar: buscando ? '1' : '' })}
+            texto={FILTRO_LABEL[f]}
+            cuenta={filtrar(actividades.data ?? [], q, f, hoy).length}
+            activa={f === filtro}
+          />
+        ))}
+      </FranjaFiltros>
 
-      {/* EL CHIP DICE CUÁNTAS TIENE. Sin el contador el jefe toca «Con problema» para descubrir que
-          no hay ninguna, y en 390px cada toque que no informa nada cuesta una pantalla entera. El
-          conteo respeta la búsqueda: es sobre lo que está mirando, no sobre la obra entera. */}
-      <div className="flex gap-2 overflow-x-auto px-4 pb-3">
-        {FILTROS.map((f) => {
-          const activo = f === filtro
-          const n = filtrar(actividades.data ?? [], q, f, hoy).length
-          return (
-            <Link
-              key={f}
-              href={conObra('/obra/tareas', obra.id, { filtro: f, q })}
-              data-testid={`filtro-${f}`}
-              aria-current={activo ? 'true' : undefined}
-              // LA PASTILLA ELEGIDA ES GRAFITO. J02, J04 y J05 la dibujan igual: `#30302F` con
-              // texto blanco y radio completo. El amarillo queda para la acción que escribe.
-              className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-4 text-[13.5px] ${
-                activo ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-surface text-ink'
-              }`}
-            >
-              {FILTRO_LABEL[f]}
-              <span className={`font-mono text-[12px] tabular-nums ${activo ? 'text-white/70' : 'text-faint'}`}>
-                {n}
-              </span>
-            </Link>
-          )
-        })}
-      </div>
-
-      <div className="flex flex-col gap-4 px-4 pb-6">
-        {(error ?? actividades.error ?? arbol.error) && (
-          <Aviso tono="neg" titulo="No se pudieron leer las tareas." testid="jefe-tareas-error">
-            {error ?? actividades.error ?? arbol.error}
-          </Aviso>
-        )}
+      <div style={{ padding: '14px 16px 24px' }}>
+        {primerError && <AvisoError testid="jefe-tareas-error">{primerError}</AvisoError>}
 
         {grupos.length === 0 ? (
-          <Panel testid="jefe-tareas-vacio">
-            <Nada>
-              {q.trim()
-                ? `Nada coincide con «${q.trim()}» en esta obra con el filtro ${FILTRO_LABEL[filtro].toLowerCase()}.`
-                : total === 0
-                  ? 'Esta obra todavía no tiene tareas cargadas. Se arman desde la planificación de la obra.'
-                  : `Ninguna tarea de esta obra entra en el filtro ${FILTRO_LABEL[filtro].toLowerCase()}.`}
-            </Nada>
-          </Panel>
-        ) : (
-          grupos.map((g) => (
-            <GrupoDeFrente key={g.clave} nombre={g.nombre} tareas={g.tareas} obraId={obra.id} hoy={hoy} />
-          ))
-        )}
+          <Vacio testid="jefe-tareas-vacio">
+            {q.trim()
+              ? <>Nada coincide con «{q.trim()}». <Link href={conObra('/obra/tareas', obra.id)} style={{ color: C.ink, fontWeight: 600 }}>Ver todo</Link></>
+              : total === 0
+                ? 'Esta obra todavía no tiene tareas cargadas. Se arman desde la planificación de la obra.'
+                : <>Ninguna entra en este filtro. <Link href={conObra('/obra/tareas', obra.id)} style={{ color: C.ink, fontWeight: 600 }}>Ver todo</Link></>}
+          </Vacio>
+        ) : grupos.map((g) => (
+          <Grupo key={g.clave} nombre={g.nombre} tareas={g.tareas} obraId={obra.id} hoy={hoy} />
+        ))}
       </div>
-
-      <PieDeAccion sobreBarra>
-        <BotonEnlace
-          href={conObra('/obra/avance-masivo', obra.id)}
-          variante="primaria"
-          tamano="bloque"
-          data-testid="cargar-avance-del-dia"
-        >
-          Cargar avance del día
-        </BotonEnlace>
-      </PieDeAccion>
     </>
   )
 }
 
 /**
- * UN FRENTE PLEGABLE, SIN UNA LÍNEA DE JAVASCRIPT.
+ * UN RUBRO PLEGABLE, SIN UNA LÍNEA DE JAVASCRIPT.
  *
- * `<details>` cierra el rubro con el pulgar y sobrevive a la navegación del servidor. Un estado de
+ * `<details>` cierra el grupo con el pulgar y sobrevive a la navegación del servidor. Un estado de
  * apertura en React habría convertido toda la lista en un componente de cliente para conservar algo
- * que el navegador ya sabe hacer solo.
+ * que el navegador ya sabe hacer solo. El chevron gira con `group-open:` — es la misma rotación de
+ * 90° que el mockup calcula en `g.rot`.
  *
- * El porcentaje del frente NO se promedia acá: sale de `avanceAgregado`, la misma regla ponderada
- * que usan J01, J03 y J06. Un frente que dice 48 % en una pantalla y 52 % en la de al lado destruye
- * la confianza en las dos.
+ * El porcentaje NO se promedia acá: sale de `avanceAgregado`, la misma regla ponderada que usan
+ * J01, J03 y J06. Un frente que dice 48 % en una pantalla y 52 % en la de al lado destruye la
+ * confianza en las dos.
  */
-function GrupoDeFrente({
-  nombre, tareas, obraId, hoy,
-}: {
+function Grupo({ nombre, tareas, obraId, hoy }: {
   nombre: string
   tareas: ActividadDelJefe[]
   obraId: string
   hoy: string
 }) {
-  const { pct } = avanceAgregado(tareas)
+  const { pct: avance } = avanceAgregado(tareas)
   return (
-    <details open data-testid="grupo-frente">
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-1 [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="text-[13px] text-faint transition-transform">▾</span>
-        <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-ink">{nombre}</span>
-        <span className="font-mono text-[12px] tabular-nums text-faint">{tareas.length}</span>
-        <span className="font-mono text-[14.5px] font-semibold tabular-nums text-ink">
-          {pct == null ? '—' : porcentaje(pct)}
+    <details open className="group" data-testid="grupo-frente" style={{ marginBottom: 16 }}>
+      <summary
+        className="list-none [&::-webkit-details-marker]:hidden"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9, padding: '8px 2px', minHeight: 44, cursor: 'pointer',
+        }}
+      >
+        <span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}>
+          <svg
+            aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.2" strokeLinecap="round"
+            className="transition-transform group-open:rotate-90"
+          >
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </span>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.ink, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {nombre}
+        </div>
+        <span style={{ ...mono, marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: C.ink, flexShrink: 0 }}>
+          {avance == null ? '—' : pct(avance)}
         </span>
       </summary>
-      <Panel>
+      <TarjetaLista>
         {tareas.map((t) => <FilaDeTarea key={t.actividad_id} t={t} obraId={obraId} hoy={hoy} />)}
-      </Panel>
+      </TarjetaLista>
     </details>
   )
 }
 
 function FilaDeTarea({ t, obraId, hoy }: { t: ActividadDelJefe; obraId: string; hoy: string }) {
+  const a = aspectoDeTarea(t)
   const d = detalleDeTarea(t, hoy)
+  const colorPlazo = t.fin_plan == null ? C.warn : d.tono === 'neg' ? C.neg : d.tono === 'warn' ? C.warn : C.muted
   return (
     <Link
       href={conObra('/obra/avance', obraId, { actividad: t.actividad_id })}
       data-testid="tarea"
-      className={`block min-h-[64px] border-t border-surface-sunken px-[17px] py-3 first:border-t-0 active:bg-surface-quiet ${
-        t.impedimentos_abiertos > 0 ? 'shadow-[inset_3px_0_0_var(--os-neg)]' : ''
-      }`}
+      style={{
+        display: 'block', padding: '12px 14px', borderBottom: `1px solid ${C.divisor}`,
+        minHeight: 56, color: C.ink,
+      }}
     >
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[14.5px] font-medium leading-tight text-ink">{t.nombre}</div>
-          <div className={`mt-1 text-[12px] ${
-            d.tono === 'neg' ? 'text-neg' : d.tono === 'warn' ? 'text-warn' : 'text-muted'
-          }`}>
-            {/* CÓMO SE MIDIÓ VA PEGADO AL NÚMERO: un 74 % calculado desde producción y uno tipeado
-                a mano no valen lo mismo, y sin esto se leen igual. Antes ocupaba un tercer renglón
-                por tarea; en una lista de 89 eran 89 renglones para decir casi siempre lo mismo. */}
-            {d.texto}
-            {t.origen_avance ? ` · por ${t.origen_avance}` : ''}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span title={a.titulo} style={{ display: 'flex', color: a.color, flexShrink: 0, marginTop: 2 }}>
+          <Icono nombre={a.icono} tamano={18} />
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.35 }}>{t.nombre}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 3, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11.5, color: C.muted }}>
+              {t.cuadrilla_prevista ?? 'sin asignar'}
+            </span>
+            <span style={{ color: C.lineaFuerte }}>·</span>
+            <span style={{ ...mono, fontSize: 11.5, color: colorPlazo }}>
+              {t.fin_plan ? `${t.fin_plan.slice(8, 10)}/${t.fin_plan.slice(5, 7)}` : 'sin plan'}
+            </span>
           </div>
         </div>
-        <span className="shrink-0 font-mono text-[17px] font-semibold tabular-nums text-ink">
-          {t.avance_pct == null ? '—' : `${t.avance_pct} %`}
+        <span style={{ ...mono, fontSize: 14, fontWeight: 600, color: a.colorValor, flexShrink: 0 }}>
+          {t.avance_pct == null ? '—' : pct(t.avance_pct)}
         </span>
       </div>
-      <Barra
-        pct={t.avance_pct}
-        tono={estaTerminada(t) ? 'pos' : t.impedimentos_abiertos > 0 ? 'warn' : 'ink'}
-      />
+      <div style={{ height: 5, background: C.pista, borderRadius: 3, marginTop: 10, overflow: 'hidden' }}>
+        {t.avance_pct != null && (
+          <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, t.avance_pct))}%`, background: a.barra }} />
+        )}
+      </div>
     </Link>
   )
 }

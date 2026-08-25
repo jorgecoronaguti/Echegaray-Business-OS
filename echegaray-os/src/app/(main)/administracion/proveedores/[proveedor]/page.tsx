@@ -147,7 +147,10 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
         }
       />
 
-      <div className="flex flex-col gap-3.5 px-4 lg:px-5">
+      {/* `px-5 pt-3.5 gap-3` = el `padding:14px 20px 24px;gap:12px` del canónico 23 (línea 158).
+          Era `px-4 lg:px-5` con 14px de hueco: el cuerpo arrancaba en una vertical distinta que la
+          banda de arriba en el teléfono, y los bloques respiraban dos píxeles más que en la 26. */}
+      <div className="flex flex-col gap-3 px-5 pt-3.5 pb-6">
         {lectura.error && (
           <Aviso tono="neg" titulo="No pude leer los comprobantes de este proveedor">{lectura.error}</Aviso>
         )}

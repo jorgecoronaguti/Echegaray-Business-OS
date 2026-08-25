@@ -58,6 +58,7 @@ import {
 import { metricasDelPlazo } from '@/features/obras/services/metricasCronograma'
 import { LienzoCronogramaObra } from '@/features/obras/components/LienzoCronogramaObra'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
+import { SubTabsTrabajo } from '@/features/obras/components/SubTabsTrabajo'
 import { PopoverArrastre } from '@/features/obras/components/PopoverArrastre'
 import {
   Conflictos, Dependencias, PlanDeLaSeleccionada, textosDeConflicto,
@@ -157,7 +158,9 @@ export default async function CronogramaObraPage(
     // saltar a Personal o a Economía sin volver primero al workspace. El marco es el del OS —16px
     // en el teléfono, 40px en escritorio— igual que el workspace, no el `px-4 lg:px-8` de antes.
     <main className="min-h-screen bg-canvas pb-10">
-      <div className="w-full px-4 pt-6 lg:px-10">
+      {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): el aire de 20px es
+          suyo, adentro. Envuelta en el padding de la página quedaba flotando. */}
+      <>
         <CabeceraDeObra
           obraId={obraId}
           obra={obra}
@@ -180,9 +183,16 @@ export default async function CronogramaObraPage(
             { rotulo: 'Sin plan', valor: `${crono.sinPlan.length} act.` },
           ]}
         />
-      </div>
+      </>
 
       <div className="flex flex-col gap-3 px-4 pt-4 lg:px-10">
+        {/* Nivel 3 (canónico 07): las cuatro maneras de operar el trabajo de la obra. Sin esto,
+            desde el cronograma no se podía llegar al parte diario ni a los subcontratos sin volver
+            al workspace — la cabecera marca «Trabajo» y ahí se terminaba la navegación.
+            NINGUNA queda activa a propósito: esta pantalla no es ninguna de las cuatro. Ver el
+            bloque «por qué en la 07 no queda ninguna activa» de `SubTabsTrabajo`. */}
+        <SubTabsTrabajo obraId={obraId} activa="ninguna" />
+
         <Barra
           vista={vista} unidad={unidad} enProyeccion={enProyeccion} verBase={verBase} href={href}
         />
@@ -193,7 +203,7 @@ export default async function CronogramaObraPage(
           <Callout tono="warn">
             <strong>Sin secuencia cargada.</strong>{' '}
             {crono.actividades.length} actividades con fechas, sin encadenar.{' '}
-            <Link href={`/obras/${obraId}?vista=cronograma`} className="font-medium underline">
+            <Link href={`/obras/${obraId}?vista=cronograma`} prefetch={false} className="font-medium underline">
               Cargar la secuencia
             </Link>
             <Ayuda titulo="Qué no se puede calcular" testid="ayuda-sin-secuencia">
@@ -309,7 +319,7 @@ function Barra({ vista, unidad, enProyeccion, verBase, href }: {
       <div className="flex items-stretch">
         {VISTAS.map((v) => (
           <Link
-            key={v} href={href({ vista: v, mover: null })} scroll={false}
+            key={v} href={href({ vista: v, mover: null })} prefetch={false} scroll={false}
             className={`px-2.5 py-[9px] text-[12.5px] ${vista === v
               ? 'font-semibold text-ink shadow-[inset_0_-2px_0_var(--os-accent)]'
               : 'text-muted hover:text-ink'}`}
@@ -324,7 +334,7 @@ function Barra({ vista, unidad, enProyeccion, verBase, href }: {
         <div className="flex items-center overflow-hidden rounded-control border border-line" data-testid="escala-cronograma">
           {UNIDADES.map((u) => (
             <Link
-              key={u} href={href({ escala: u })} scroll={false}
+              key={u} href={href({ escala: u })} prefetch={false} scroll={false}
               className={`border-r border-line px-[11px] py-[5px] text-[12px] last:border-r-0 ${
                 unidad === u ? 'bg-accent font-semibold text-white' : 'bg-surface text-ink-soft hover:text-ink'
               }`}
@@ -362,7 +372,7 @@ function Capa({ activa, href, titulo, muestra, testid, children }: {
 }) {
   return (
     <Link
-      href={href} scroll={false} title={titulo} data-testid={testid}
+      href={href} prefetch={false} scroll={false} title={titulo} data-testid={testid}
       data-activa={activa ? '1' : undefined}
       aria-pressed={activa}
       className={`flex items-center gap-[6px] rounded-control border px-[9px] py-1 text-[12px] ${

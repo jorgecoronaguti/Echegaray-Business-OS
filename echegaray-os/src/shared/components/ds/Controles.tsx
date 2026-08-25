@@ -85,6 +85,7 @@ export function Buscador({
   placeholder = 'Buscar',
   testid = 'buscador',
   className = '',
+  variante = 'linea',
 }: {
   value: string
   onChange: (v: string) => void
@@ -93,9 +94,25 @@ export function Buscador({
   placeholder?: string
   testid?: string
   className?: string
+  /**
+   * `caja` — el buscador DENTRO DE UNA BANDA DE FILTROS (`09 · Obra Personal`, `12 · Obra
+   * Documentos`): sobre `#FAFAF8` el hairline inferior no se ve, y el campo queda flotando sin
+   * decir dónde empieza. Medido del zip: borde 1px, radio 6px, padding 4px 8px, texto 12px.
+   *
+   * `linea` — el de siempre, arriba de una tabla sin caja. Sigue siendo el default: cambiarlo
+   * habría movido doce pantallas de una sola vez.
+   */
+  variante?: 'linea' | 'hairline' | 'caja'  // `hairline` = alias de `linea` (frente 14–27)
 }) {
+  const caja = variante === 'caja'
   return (
-    <div className={`flex min-w-0 items-center gap-2 border-b border-line ${className}`}>
+    <div
+      className={`flex min-w-0 items-center ${
+        caja
+          ? 'gap-1.5 rounded-[6px] border border-line bg-surface px-2 py-1'
+          : 'gap-2 border-b border-line'
+      } ${className}`}
+    >
       <IconoBuscar />
       <input
         type="search"
@@ -105,7 +122,11 @@ export function Buscador({
         placeholder={placeholder}
         data-testid={testid}
         aria-label={placeholder}
-        className="h-control min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint max-lg:h-control-movil"
+        className={`min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-faint ${
+          caja
+            ? 'h-[22px] text-[12px]'
+            : 'h-control text-[13px] max-lg:h-control-movil'
+        }`}
       />
     </div>
   )

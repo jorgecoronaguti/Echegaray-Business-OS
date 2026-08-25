@@ -105,7 +105,7 @@ export default async function NuevaObraPage({
     >
       {error && <Aviso tono="neg">No pude leer la obra: {error}</Aviso>}
       {obraParam && !obra && !error && (
-        <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva">Empezar una nueva</Link>.</Aviso>
+        <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva" prefetch={false}>Empezar una nueva</Link>.</Aviso>
       )}
 
       <BarraDePasos obraId={obraId} actual={paso} />
@@ -155,7 +155,7 @@ export default async function NuevaObraPage({
               ))}
             </dl>
             <p className="mt-3 text-[12px] text-faint">
-              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`}>la ficha de la obra</Link>.
+              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`} prefetch={false}>la ficha de la obra</Link>.
             </p>
           </Paso>
         )}
@@ -167,7 +167,7 @@ export default async function NuevaObraPage({
             pie={<>
               <LinkPaso obraId={obraId} paso="informacion" testid="volver-informacion">Volver al principio</LinkPaso>
               <Link
-                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')}
+                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')} prefetch={false}
                 data-testid={`saltar-${paso}`}
                 className="text-muted underline underline-offset-2 transition-colors hover:text-ink"
               >Saltar este paso</Link>
@@ -227,7 +227,7 @@ export default async function NuevaObraPage({
             paso="cronograma"
             pie={<>
               <LinkPaso obraId={obraId} paso="confirmar" testid="seguir-confirmar" fuerte>Siguiente</LinkPaso>
-              <Link href={`/obras/${obraId}?vista=cronograma`} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
+              <Link href={`/obras/${obraId}?vista=cronograma`} prefetch={false} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
                 Abrir el cronograma completo
               </Link>
             </>}
