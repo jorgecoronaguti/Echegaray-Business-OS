@@ -5,14 +5,14 @@ import { diaCorto, diaFechaYAnio, diaYFecha, dm, legible, mesAnterior, mesDe, me
 test('el día de la semana sale en castellano SIN depender del ICU del servidor', () => {
   // El defecto que atrapa: con ICU reducido, `toLocaleDateString('es-AR')` devuelve «Wednesday» y la
   // pantalla queda en inglés sin romperse — un fallo silencioso que en obra nadie reporta.
-  assert.equal(diaYFecha('2026-08-20'), 'jueves 20/08')
-  assert.equal(diaFechaYAnio('2026-08-20'), 'jueves 20/08/2026')
+  assert.equal(diaYFecha('2026-08-20'), 'Jueves 20/08')
+  assert.equal(diaFechaYAnio('2026-08-20'), 'Jueves 20/08/2026')
 })
 
 test('la fecha no se corre un día por el huso', () => {
   // `new Date('2026-08-20')` es medianoche UTC: leída en Argentina, es el 19 a las 21. Sin el
   // cálculo en UTC, «hoy» se dibujaría como ayer todas las mañanas.
-  assert.equal(diaYFecha('2026-01-01').startsWith('jueves'), true)
+  assert.equal(diaYFecha('2026-01-01').startsWith('Jueves'), true)
 })
 
 test('el mes se calcula entero, incluidos febrero y los de 31', () => {

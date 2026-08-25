@@ -198,7 +198,9 @@ export default async function MisPapelesPage({
             }}
           >
             <Icono nombre="subir" tamano={20} />
-            Subir {(destinoDeSubida.nombre ?? categoriaDe(destinoDeSubida.tipo_documento)).toLowerCase()}
+            {/* SIN `toLowerCase()`: el nombre del documento es como lo escribió quien lo pidió, y
+                un «DNI» convertido en «dni» deja de ser la sigla que la persona busca. */}
+            Subir {destinoDeSubida.nombre ?? categoriaDe(destinoDeSubida.tipo_documento)}
           </Link>
         ) : (
           <BotonPie disabled type="button" testid="subir-papel">
