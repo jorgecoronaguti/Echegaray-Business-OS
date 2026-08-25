@@ -38,8 +38,8 @@ export const COL = {
 /** Columnas que se llenan desde la foto/condición. El resto se estampa, se deriva o lo pone el dueño. */
 export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo', 'numero', 'concepto', 'neto', 'iva', 'formaPago', 'totalParcial', 'pagado', 'estado']
 
-/** Grupos contiguos de columnas con fórmula POR FILA, para copiarlas con PASTE_FORMULA de la última
- *  fila a las nuevas. Las ARRAYFORMULA (AC/AD/AE/AF/AJ) NO están: bajan solas desde la fila 4.
+/** Grupos contiguos de columnas con fórmula POR FILA, para copiarlas con PASTE_FORMULA de la fila
+ *  modelo a las nuevas. Las ARRAYFORMULA NO están: bajan solas desde la fila 4.
  *
  * ═══ POR QUÉ CAMBIÓ (14/08): LA CARGA ESTABA ROTA AL 100% ═══
  *
@@ -51,8 +51,25 @@ export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo'
  * la foto — cuando ninguna foto había llegado siquiera a esa etapa.
  *
  * `Z` («Estado pago») sí está calculada en 47 de 47 y no figuraba. Es la que entra en lugar de las dos.
+ *
+ * ═══ Y POR QUÉ DEJÓ DE SER UNA LISTA (25/08): SE HABÍA QUEDADO CORTA OTRA VEZ ═══
+ *
+ * Medido sobre `Compras!A800:AN895`: `U` («Monto Parcial 1» = `=T−O`, el saldo del pago parcial) es
+ * fórmula en 89 de 96 filas y `AG` («Orden de pago») en 96 de 96, y ninguna de las dos figuraba. La
+ * fila nueva nacía sin ellas, y peor: `filaModeloDeFormulas` no las exigía, así que una fila con `U`
+ * pegada a mano calificaba como modelo y el `PASTE_FORMULA` bajaba ese cero literal a todo el lote.
+ *
+ * Una lista de letras escrita a mano se separa de la pestaña cada vez que la pestaña se mueve, y no
+ * lo grita — tardó once días la vez pasada. Ahora se DERIVA del contrato de columnas, que es la
+ * única declaración de qué es cada celda de Compras y tiene su propia medición congelada en un test.
+ * Ver `comprobantes/contrato-columnas.mjs`.
  */
-export const GRUPOS_FORMULA = [['A', 'A'], ['D', 'D'], ['O', 'O'], ['Q', 'R'], ['Z', 'Z'], ['AH', 'AI']]
+// SE IMPORTA Y SE RE-EXPORTA, NO SE RE-EXPORTA A SECAS: un `export ... from` reenvía el símbolo a
+// quien importe este módulo pero NO crea el binding local, así que `filaModeloDeFormulas` —que lo usa
+// como valor por defecto de `grupos`— reventaba con `GRUPOS_FORMULA is not defined` en tiempo de
+// ejecución, no de carga: el typecheck y el lint pasaban y sólo fallaba al llamar la función.
+import { GRUPOS_FORMULA } from './comprobantes/contrato-columnas.mjs'
+export { GRUPOS_FORMULA }
 
 const TIPOS = { A: 'F A', B: 'F B', C: 'F C', NC: 'N C', 'N/A': 'N/A' }
 
@@ -336,7 +353,13 @@ export function valoresInput(c) {
   set('obra', c.obra)
   set('detalle', c.detalle)
   // Si quedó pagada al contado, lo pagado es el total; en cuenta corriente pendiente, no hay pago aún.
-  if (estado === 'Pagado' && total != null) set('pagado', total)
+  //
+  // EL CERO NO SE ESCRIBE, Y NO ES UN CAPRICHO: `T` es la fórmula `=IF(F="pago";O;0)`, que para una
+  // fila sin pago YA devuelve 0. Pegarle un 0 encima no cambia lo que se lee y sí mata la fórmula: a
+  // partir de ahí `U` (`=T-O`) deja de moverse y la fila miente en silencio si alguien la marca pagada
+  // después. Medido el 25/08 sobre Compras: 37 celdas de Q, 7 de U y 2 de R pisadas por el cargador.
+  // `total` falsy incluye el 0 a propósito — es exactamente el caso que la fórmula ya cubre.
+  if (estado === 'Pagado' && total) set('pagado', total)
   return out
 }
 
