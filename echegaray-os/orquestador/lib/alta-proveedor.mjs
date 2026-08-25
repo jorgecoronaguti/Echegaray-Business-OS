@@ -187,9 +187,12 @@ export function conflictoDeAlias(nombreLeido, nombreCanonico, proveedorId, alias
  * (`administracion/services/proveedoresActions.ts`). Escrita dos veces serían dos respuestas
  * posibles a «¿este proveedor ya está?», que es justo el duplicado que se quiere evitar.
  *
- * @returns {{por:'cuit'|'nombre', proveedor:object}|null}
+ * @param {Array<{id?:string, nombre?:string, cuit?:string|null}>} proveedores
+ * @param {{nombre?:string, cuit?:string|null, excluirId?:string|null}} identidad
+ * @returns {{por:'cuit'|'nombre', proveedor:{id?:string, nombre?:string, cuit?:string|null}}|null}
  */
-export function identidadOcupadaPor(proveedores = [], { nombre = '', cuit = null, excluirId = null } = {}) {
+export function identidadOcupadaPor(proveedores = [], identidad = {}) {
+  const { nombre = '', cuit = null, excluirId = null } = identidad
   const c = normalizarCuit(cuit)
   const otros = proveedores.filter((p) => !excluirId || p?.id !== excluirId)
   if (c) {

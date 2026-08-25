@@ -561,12 +561,15 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta + 20 } }, fields: 'gridProperties.rowCount' } }])
   }
 
-  // 0) LA IDENTIDAD PRIMERO, EL DESPLEGABLE DESPUÉS.
+  // 0) EL DESPLEGABLE ANTES DE LA CELDA; LA FICHA DE app.ecsas, DESPUÉS DE QUE LA FILA ENTRE.
   //
-  //    El alta en Postgres va ANTES que la validación de la columna E y antes de escribir las filas,
-  //    y el orden no es estético: si la celda se escribiera primero, el desplegable estricto todavía
-  //    no tendría el valor y la fila entraría en rojo — fuera de los cruces de Proveedores, Cash Flow
-  //    y CAJA, que es exactamente el defecto que este bloque arregla.
+  //    El orden no es estético. El desplegable tiene que tener el valor ANTES de que se escriba la
+  //    columna E, o la fila entra en rojo y fuera de los cruces de Proveedores, Cash Flow y CAJA —
+  //    que es exactamente el defecto que este bloque arregla. Y el alta en Postgres va DESPUÉS de
+  //    verificar la fila: si la escritura del Sheet no entra (freno de mano, candado de pestaña),
+  //    una ficha de proveedor sin un solo comprobante detrás es basura que después hay que salir a
+  //    distinguir de los proveedores de verdad. Un desplegable con un valor de más no es daño; una
+  //    ficha huérfana sí. Ver el paso 4.
   //
   // ═══ `nuevos.size` SOBRE UN ARRAY: LA BANDERA MUERTA (14/08) ═══
   //
@@ -578,9 +581,6 @@ async function main() {
   if (SIN_ALTA && (altas.altas.length || altas.existentes.length)) {
     console.log(`\n⚠ --sin-alta-proveedores: NO se creó ni se vinculó nada, aunque ${altas.altas.length + altas.existentes.length} proveedor(es) tenían CUIT.`)
   }
-  const aplicadas = DRY || SIN_ALTA ? null : await aplicarAltas(altas, { query, comprobante: `fajo ${plan.length} comprobante(s)` })
-  if (aplicadas) informarAplicadas(aplicadas)
-
   const sinIdentidad = debeAgregarProveedores(ADD_PROV, nuevos) ? nuevos : []
   const ampliada = ampliarDesplegable(lista, SIN_ALTA ? sinIdentidad : [...altas.nombres, ...sinIdentidad])
   if (ampliada.agregados.length) {
@@ -686,6 +686,11 @@ async function main() {
   } catch (e) {
     console.log(`· frescura no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
   }
+  // 4) LA FICHA EN app.ecsas, CON LA FILA YA VERIFICADA EN SU DESTINO. El proveedor nace porque un
+  //    gasto suyo entró de verdad, no porque un plan dijera que iba a entrar.
+  const aplicadas = DRY || SIN_ALTA ? null : await aplicarAltas(altas, { query, comprobante: `Compras!${desde}..${hasta}` })
+  if (aplicadas) informarAplicadas(aplicadas)
+
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
     filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
@@ -694,7 +699,7 @@ async function main() {
     // adentro del costo sin que el dueño se enterara. Es correcto por el contrato de la columna M
     // (Total − IVA), pero es CRÉDITO FISCAL contabilizado como costo y hay que decirlo.
     // `noCierran` viaja por la misma razón: el control nuevo no sirve si su resultado se queda acá.
-    rechazos, nuevos, altas, duplicados, arca, percep, filaModelo: modelo.fila,
+    rechazos, nuevos, altas, altasAplicadas: aplicadas, duplicados, arca, percep, filaModelo: modelo.fila,
     noCierran: noCierran.map((n) => ({ fila: n.fila, dif: n.dif, total: n.total })),
   })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')

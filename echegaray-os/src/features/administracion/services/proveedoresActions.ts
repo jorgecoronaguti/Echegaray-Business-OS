@@ -17,6 +17,10 @@ import {
   normalizarCuit,
   normalizarNombreProveedor,
 } from '../../../../orquestador/lib/proveedor-identidad.mjs'
+// LA MISMA PREGUNTA UNA SOLA VEZ. «¿Este proveedor ya está?» la contestan este formulario y el alta
+// automática del cargador de comprobantes. Escrita dos veces serían dos respuestas posibles, que es
+// exactamente el duplicado que las dos quieren evitar. Ver `orquestador/lib/alta-proveedor.mjs`.
+import { identidadOcupadaPor } from '../../../../orquestador/lib/alta-proveedor.mjs'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -42,24 +46,17 @@ async function identidadOcupada(
   cuit: string | null,
   excluirId?: string,
 ): Promise<string | null> {
-  if (cuit) {
-    let q = supabase.from('proveedores').select('id, nombre').eq('cuit', cuit)
-    if (excluirId) q = q.neq('id', excluirId)
-    const { data } = await q.maybeSingle()
-    if (data) return `El CUIT ya es de "${(data as { nombre: string }).nombre}"`
-  }
-  // El nombre se compara NORMALIZADO, que es como lo compara el índice único: si acá se comparara
-  // el texto crudo, "Alumetal" y "ALUMETAL" pasarían el control y reventarían contra la base.
-  const norm = normalizarNombreProveedor(nombre)
-  let q = supabase.from('proveedores').select('id, nombre')
-  if (excluirId) q = q.neq('id', excluirId)
-  const { data } = await q
-  const choque = ((data ?? []) as { id: string; nombre: string }[]).find(
-    (p) => normalizarNombreProveedor(p.nombre) === norm,
-  )
-  if (choque) return `Ya existe un proveedor con ese nombre: "${choque.nombre}"`
-  return null
+  // UNA sola lectura para las dos comprobaciones: la tabla tiene decenas de filas, y dos viajes para
+  // preguntar dos veces por el mismo maestro es pagar dos veces lo mismo.
+  const { data } = await supabase.from('proveedores').select('id, nombre, cuit')
+  const ocupada = identidadOcupadaPor((data ?? []) as ProveedorMinimo[], { nombre, cuit, excluirId })
+  if (!ocupada) return null
+  return ocupada.por === 'cuit'
+    ? `El CUIT ya es de "${ocupada.proveedor.nombre}"`
+    : `Ya existe un proveedor con ese nombre: "${ocupada.proveedor.nombre}"`
 }
+
+interface ProveedorMinimo { id: string; nombre: string; cuit: string | null }
 
 export async function crearProveedor(form: FormData): Promise<Resultado> {
   const parsed = proveedorSchema.safeParse(Object.fromEntries(form))

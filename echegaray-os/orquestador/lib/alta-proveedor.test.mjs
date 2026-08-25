@@ -221,7 +221,7 @@ test('identidadOcupadaPor distingue el choque por CUIT del choque por nombre', (
 
 test('el alta que la base rechaza por carrera se relee y NO se convierte en un segundo proveedor', async () => {
   const llamadas = []
-  const query = async (sql, params) => {
+  const query = async (sql) => {
     llamadas.push(sql.trim().split(/\s+/).slice(0, 3).join(' '))
     if (sql.includes('insert into public.proveedores')) return { rows: [] } // otro ganó la carrera
     if (sql.includes('select id from public.proveedores')) return { rows: [{ id: 'ya-estaba' }] }
