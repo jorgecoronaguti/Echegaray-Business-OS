@@ -1,76 +1,60 @@
-// LO QUE ATRAPAN: que el pie de la 07 diga «en fecha» sobre una obra sin línea base sellada, que
-// publique un conteo de atrasadas sin decir sobre cuántas miró, y que cuente las cabeceras de frente
-// como si fueran actividades.
-
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { metricasDelPlazo, type FilaConBase } from './metricasCronograma.ts'
 
-const crono = (p: Partial<Parameters<typeof metricasDelPlazo>[1]> = {}) => ({
-  finObra: '2026-09-21', sinSecuencia: false, criticas: ['a'], ...p,
+// ═══ EL PIE DEL CRONOGRAMA CARGADO ═══
+
+import { metricasDelCronogramaCargado } from './metricasCronograma.ts'
+import type { ResumenDelCronograma } from './cronogramaPlan.ts'
+
+const resumen = (p: Partial<ResumenDelCronograma> = {}): ResumenDelCronograma => ({
+  finBase: '2026-09-05', finPlan: '2026-09-05', finForecast: '2026-09-21',
+  desvioDelFin: 16, atrasadas: 4, medidas: 8, sinPlan: 0, actividades: 8, ...p,
 })
 
-/** El calendario de la obra, simulado: 5 días de trabajo por cada 7 corridos. */
-const desvioDe = (finBase: string, fin: string) =>
-  Math.round(((Date.parse(fin) - Date.parse(finBase)) / 86_400_000) * (5 / 7))
+const celda = (m: ReturnType<typeof metricasDelCronogramaCargado>, etiqueta: string) =>
+  m.find((x) => x.etiqueta === etiqueta)!
 
-const de = (m: ReturnType<typeof metricasDelPlazo>, etiqueta: string) =>
-  m.find((x) => x.etiqueta.startsWith(etiqueta))!
-
-test('SIN LÍNEA BASE SELLADA no se publica «en fecha»: se dice que no hay base', () => {
-  const filas: FilaConBase[] = [{ nivel: 1, finBase: null, desvio: null }]
-  const m = metricasDelPlazo(filas, crono(), false, desvioDe)
-  assert.equal(de(m, 'Fin de línea base').valor, 'sin sellar')
-  assert.equal(de(m, 'Contra la base').valor, 'sin base')
-  assert.equal(de(m, 'Contra la base').tono, undefined, 'sin base no se pinta ni de verde ni de rojo')
-  assert.equal(de(m, 'Atrasadas').valor, 'sin base')
+test('el fin proyectado publica el desvío contra el plan y se pinta en rojo', () => {
+  const c = celda(metricasDelCronogramaCargado(resumen(), '2026-08-05'), 'Fin proyectado')
+  assert.equal(c.valor, '21/09')
+  assert.equal(c.contexto, '+16 d')
+  assert.equal(c.tono, 'neg')
 })
 
-test('el desvío contra la base va en días de TRABAJO y con signo', () => {
-  const filas: FilaConBase[] = [{ nivel: 1, finBase: '2026-09-05', desvio: 11 }]
-  const m = metricasDelPlazo(filas, crono(), false, desvioDe)
-  assert.equal(de(m, 'Fin de línea base').valor, '05/09')
-  assert.equal(de(m, 'Contra la base').valor, '+11 d')
-  assert.equal(de(m, 'Contra la base').contexto, 'días de trabajo')
-  assert.equal(de(m, 'Contra la base').tono, 'neg')
+test('sin sellar, el fin de línea base lo dice y no muestra la fecha del plan', () => {
+  const m = metricasDelCronogramaCargado(resumen({ finBase: null }), null)
+  assert.equal(celda(m, 'Fin de línea base').valor, 'sin sellar')
+  assert.equal(celda(m, 'Fin de línea base').contexto, undefined)
 })
 
-test('adelantar contra la base va en pos, no en rojo', () => {
-  const filas: FilaConBase[] = [{ nivel: 1, finBase: '2026-10-05', desvio: -10 }]
-  const m = metricasDelPlazo(filas, crono(), false, desvioDe)
-  assert.equal(de(m, 'Contra la base').tono, 'pos')
-  assert.equal(de(m, 'Fin calculado').tono, undefined)
+test('sin forecast, «atrasadas» no dice 0: dice que no se pudo medir', () => {
+  // El defecto que atrapa: publicar «0 atrasadas» sobre una obra donde ninguna actividad tiene
+  // forecast. Cero atrasadas es un hecho; no poder medirlo, otro.
+  const m = metricasDelCronogramaCargado(
+    resumen({ finForecast: null, desvioDelFin: null, atrasadas: 0, medidas: 0 }), null,
+  )
+  assert.equal(celda(m, 'Actividades atrasadas').valor, 'sin forecast')
+  assert.equal(celda(m, 'Fin proyectado').valor, 'sin forecast')
+  assert.equal(celda(m, 'Fin proyectado').contexto, undefined)
 })
 
-test('ATRASADAS DICE SOBRE CUÁNTAS MIRÓ: «0» a secas es otra obra', () => {
-  const filas: FilaConBase[] = [
-    { nivel: 1, finBase: '2026-09-05', desvio: 3 },
-    { nivel: 1, finBase: '2026-09-05', desvio: 0 },
-    { nivel: 1, finBase: null, desvio: null },
-  ]
-  const m = metricasDelPlazo(filas, crono(), false, desvioDe)
-  assert.equal(de(m, 'Atrasadas').valor, '1')
-  assert.equal(de(m, 'Atrasadas').contexto, 'de 2 con base', 'la que no tiene base no entra al total')
+test('las atrasadas llevan siempre su denominador', () => {
+  const c = celda(metricasDelCronogramaCargado(resumen(), null), 'Actividades atrasadas')
+  assert.equal(c.valor, '4')
+  assert.equal(c.contexto, 'de 8 medidas')
+  assert.equal(c.tono, 'warn')
 })
 
-test('la cabecera de frente no se cuenta como actividad atrasada: duplicaría a sus hijas', () => {
-  const filas: FilaConBase[] = [
-    { nivel: 0, finBase: '2026-09-05', desvio: 15 },
-    { nivel: 1, finBase: '2026-09-05', desvio: 15 },
-  ]
-  const m = metricasDelPlazo(filas, crono(), false, desvioDe)
-  assert.equal(de(m, 'Atrasadas').valor, '1')
-  assert.equal(de(m, 'Atrasadas').contexto, 'de 1 con base')
+test('las actividades sin fecha se publican con el total de la obra', () => {
+  const c = celda(metricasDelCronogramaCargado(resumen({ sinPlan: 25, actividades: 33 }), null), 'Sin fecha')
+  assert.equal(c.valor, '25')
+  assert.equal(c.contexto, 'de 33 actividades')
+  assert.equal(c.tono, 'warn')
 })
 
-test('sin secuencia no hay fin de obra ni camino crítico, y se dicen con la misma palabra', () => {
-  const m = metricasDelPlazo([], { finObra: null, sinSecuencia: true, criticas: [] }, false, desvioDe)
-  assert.equal(de(m, 'Fin calculado').valor, 'sin secuencia')
-  assert.equal(de(m, 'Camino crítico').valor, 'sin secuencia')
-  assert.equal(de(m, 'Camino crítico').tono, undefined, 'un aviso naranja sobre algo que no se calculó')
-})
-
-test('el rótulo del fin distingue proyectado de calculado: no son la misma afirmación', () => {
-  assert.equal(metricasDelPlazo([], crono(), true, desvioDe)[1].etiqueta, 'Fin proyectado')
-  assert.equal(metricasDelPlazo([], crono(), false, desvioDe)[1].etiqueta, 'Fin calculado')
+test('camino crítico y holgura NO se publican: exigen precedencias y hoy no hay ninguna', () => {
+  const etiquetas = metricasDelCronogramaCargado(resumen(), null).map((m) => m.etiqueta)
+  assert.equal(etiquetas.includes('Camino crítico'), false)
+  assert.equal(etiquetas.includes('Holgura del crítico'), false)
+  assert.equal(etiquetas.length, 5)
 })

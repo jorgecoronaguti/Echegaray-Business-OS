@@ -109,3 +109,62 @@ export function franjasNoLaborables(
   }
   return franjas
 }
+
+// ═══ LAS DIVISIONES DE LA ESCALA — la banda de abajo de la cabecera, y la grilla del lienzo ═══
+//
+// El mockup dibuja UNA celda rotulada por día, de 26px (`DAYW`). La escala mantiene ese ancho en los
+// tres zooms —la celda rotulada mide siempre 26px, sea un día, una semana o un mes— así que la
+// misma lista sirve para las tres: en día son días, en semana semanas y en mes meses.
+//
+// POR QUÉ LA CABECERA Y EL FONDO LEEN LA MISMA LISTA: dibujar el rótulo con una regla y la línea
+// vertical con otra es cómo se llega a una grilla corrida medio día respecto de sus números, que se
+// ve prolija y ubica cada barra en el día equivocado.
+
+export interface DivisionEscala {
+  clave: string
+  etiqueta: string
+  izqPct: number
+  anchoPct: number
+  /** Cuántos días corridos abarca. En escala de día es siempre 1. */
+  dias: number
+  /** El día de hoy cae adentro. Es la celda amarilla del mockup. */
+  esHoy: boolean
+  /** Ningún día de la división es laborable para ESTA obra: la columna va sombreada. */
+  franco: boolean
+}
+
+/**
+ * Las divisiones de la escala, en % del lienzo (que sobre un ancho fijo es decir: en píxeles).
+ *
+ * `franco` se resuelve por división y no por día: en escala de mes, sombrear los sábados pinta el
+ * lienzo entero de rayas de medio píxel. Una división es franco sólo si NINGUNO de sus días se
+ * trabaja — o sea, en escala de día, exactamente los días no laborables del mockup.
+ */
+export function divisionesDe(
+  columnas: readonly { iso: string; etiqueta: string; nueva: boolean }[],
+  hoy: string,
+  diasHabiles: readonly number[],
+): DivisionEscala[] {
+  const celdas = Math.max(1, columnas.length)
+  const habil = new Set(diasHabiles)
+  const divs: DivisionEscala[] = []
+  columnas.forEach((c, i) => {
+    // `isodow`: 1 lunes … 7 domingo, la misma numeración que `obra_canonica.dias_habiles`. Con
+    // `getUTCDay()` a secas el domingo sería 0 y una obra que trabaja los domingos los vería grises.
+    const dow = aDate(c.iso).getUTCDay() || 7
+    const esLaborable = habil.size === 0 || habil.has(dow)
+    if (c.nueva || divs.length === 0) {
+      divs.push({
+        clave: c.iso, etiqueta: c.etiqueta, izqPct: (i / celdas) * 100,
+        anchoPct: (1 / celdas) * 100, dias: 1, esHoy: c.iso === hoy, franco: !esLaborable,
+      })
+      return
+    }
+    const d = divs[divs.length - 1]!
+    d.dias += 1
+    d.anchoPct = ((i + 1) / celdas) * 100 - d.izqPct
+    if (c.iso === hoy) d.esHoy = true
+    if (esLaborable) d.franco = false
+  })
+  return divs
+}

@@ -5,22 +5,12 @@
 // Cada una de las cinco puede decir una mentira distinta y ninguna daría error:
 //
 //   · «en fecha» sobre una obra que nadie selló                → sin base sellada no hay promesa
-//   · «0 atrasadas» contando sólo las que tienen base          → un 0 sobre una muestra de 3
-//   · un desvío en días CORRIDOS presentado como días de obra  → dos días de más por semana
+//   · «0 atrasadas» sin decir sobre cuántas se pudo medir      → un 0 sobre una muestra de 3
+//   · «sin forecast» dicho como «en fecha»                     → lo no medido leído como cumplido
 //
 // Las tres se ven bien en la pantalla. Acá viven donde un test las alcanza.
 
-export interface FilaConBase {
-  nivel: number
-  finBase: string | null
-  desvio: number | null
-}
-
-export interface CronogramaResumido {
-  finObra: string | null
-  sinSecuencia: boolean
-  criticas: readonly string[]
-}
+import type { ResumenDelCronograma } from './cronogramaPlan.ts'
 
 /** Lo que la `Franja` del design system consume. Se declara acá para que este archivo no dependa de
  *  un componente: la regla no tiene por qué recompilarse cuando el pie cambie de forma. */
@@ -33,52 +23,49 @@ export interface MetricaPlazo {
 
 const fmt = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
 
-/**
- * @param filas       las de la vista, con su desvío ya calculado contra la base.
- * @param crono       el resultado del motor.
- * @param enProyeccion cambia el rótulo del fin: proyectado y calculado no son la misma afirmación.
- * @param desvioDe    días de trabajo entre dos fechas, con el calendario de la obra.
- */
-export function metricasDelPlazo(
-  filas: readonly FilaConBase[],
-  crono: CronogramaResumido,
-  enProyeccion: boolean,
-  desvioDe: (finBase: string, fin: string) => number | null,
-): MetricaPlazo[] {
-  // Las cabeceras de frente quedan afuera: su base es la de sus hijas, y contarlas duplicaría cada
-  // actividad atrasada una vez más por cada frente.
-  const conBase = filas.filter((f) => f.nivel !== 0 && f.finBase)
-  const finBase = conBase.map((f) => f.finBase!).sort().at(-1) ?? null
-  const atrasadas = conBase.filter((f) => (f.desvio ?? 0) > 0).length
-  const desvio = finBase && crono.finObra ? desvioDe(finBase, crono.finObra) : null
-  const criticas = crono.criticas.length
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PIE DEL CRONOGRAMA CARGADO (la 07 del workspace)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las cinco celdas del mockup son «Fin de línea base · Fin proyectado · Camino crítico ·
+// Actividades atrasadas · Holgura del crítico». DOS de ellas no se pueden publicar sobre el plan
+// cargado y no se inventan: camino crítico y holgura exigen precedencias declaradas, y hoy hay CERO
+// en todas las obras. En su lugar van las otras dos capas del propio dibujo —el fin de PLAN, que
+// está entre lo prometido y lo proyectado— y la cobertura: cuántas actividades no tienen fecha.
+// Sin ese último número, «3 atrasadas» sobre una obra con 25 filas sin planificar se lee como una
+// obra sana. Ver `cronogramaPlan.ts`.
 
+
+export function metricasDelCronogramaCargado(
+  r: ResumenDelCronograma, selladaEn: string | null,
+): MetricaPlazo[] {
+  const desvio = r.desvioDelFin
   return [
-    { etiqueta: 'Fin de línea base', valor: fmt(finBase) ?? 'sin sellar' },
     {
-      etiqueta: enProyeccion ? 'Fin proyectado' : 'Fin calculado',
-      valor: fmt(crono.finObra) ?? 'sin secuencia',
-      tono: desvio != null && desvio > 0 ? 'neg' : undefined,
+      etiqueta: 'Fin de línea base',
+      valor: fmt(r.finBase) ?? 'sin sellar',
+      ...(selladaEn ? { contexto: `sellada ${fmt(selladaEn)}` } : {}),
+    },
+    { etiqueta: 'Fin de plan', valor: fmt(r.finPlan) ?? 'sin plan' },
+    {
+      etiqueta: 'Fin proyectado',
+      valor: fmt(r.finForecast) ?? 'sin forecast',
+      ...(desvio == null ? {} : { contexto: desvio > 0 ? `+${desvio} d` : 'en fecha' }),
+      ...(desvio != null && desvio > 0 ? { tono: 'neg' as const } : {}),
     },
     {
-      // SIN BASE NO ES «EN FECHA». Es que nadie prometió una fecha contra la cual estarlo.
-      etiqueta: 'Contra la base',
-      valor: desvio == null ? 'sin base' : `${desvio > 0 ? '+' : ''}${desvio} d`,
-      contexto: desvio == null ? undefined : 'días de trabajo',
-      tono: desvio == null ? undefined : (desvio > 0 ? 'neg' : 'pos'),
+      // SIN FORECAST NO ES «NINGUNA ATRASADA»: es que no se pudo medir ninguna. El denominador va
+      // siempre — «1 de 2» y «1 de 200» son dos obras distintas.
+      etiqueta: 'Actividades atrasadas',
+      valor: r.medidas === 0 ? 'sin forecast' : String(r.atrasadas),
+      ...(r.medidas === 0 ? {} : { contexto: `de ${r.medidas} medidas` }),
+      ...(r.atrasadas > 0 ? { tono: 'warn' as const } : {}),
     },
     {
-      etiqueta: 'Camino crítico',
-      valor: crono.sinSecuencia ? 'sin secuencia' : String(criticas),
-      contexto: crono.sinSecuencia ? undefined : 'actividades',
-      tono: criticas > 0 ? 'warn' : undefined,
-    },
-    {
-      // «0 de 3 con base» y «0 de 300 con base» son dos obras distintas: el denominador va siempre.
-      etiqueta: 'Atrasadas',
-      valor: conBase.length === 0 ? 'sin base' : String(atrasadas),
-      contexto: conBase.length === 0 ? undefined : `de ${conBase.length} con base`,
-      tono: atrasadas > 0 ? 'warn' : undefined,
+      etiqueta: 'Sin fecha',
+      valor: String(r.sinPlan),
+      contexto: `de ${r.actividades} actividades`,
+      ...(r.sinPlan > 0 ? { tono: 'warn' as const } : {}),
     },
   ]
 }

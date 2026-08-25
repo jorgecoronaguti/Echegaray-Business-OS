@@ -57,6 +57,20 @@ export async function getUbicacion(supabase: SupabaseClient, obraId: string): Pr
 }
 
 /**
+ * LOS DÍAS QUE ESTA OBRA TRABAJA (`isodow`: 1 lunes … 7 domingo), leídos de `obra_canonica`.
+ *
+ * El cronograma sombrea los días que NO están en esta lista. Vacío NO se completa con lunes a
+ * viernes: una obra que trabaja los sábados vería pintado de franco el día en que su cuadrilla
+ * estuvo en obra, y el ancho de una barra es calendario —los días hábiles ya los resolvió el
+ * motor—, así que la sombra es lo único que distingue diez días de trabajo de diez días corridos.
+ */
+export async function getDiasHabiles(supabase: SupabaseClient, obraId: string): Promise<number[]> {
+  const { data } = await supabase.from('obra_canonica').select('dias_habiles').eq('id', obraId).maybeSingle()
+  const d = data?.dias_habiles
+  return Array.isArray(d) ? (d as number[]).filter((n) => typeof n === 'number') : []
+}
+
+/**
  * PLAN CONTRA REAL de una obra. Sale entero de la vista `obra_plan_vs_real`: acá NO se resta, no se
  * divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese null
  * viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.

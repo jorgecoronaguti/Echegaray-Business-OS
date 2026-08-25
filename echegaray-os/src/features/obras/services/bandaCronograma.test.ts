@@ -58,3 +58,46 @@ test('sobre una ventana larga no se dibuja ninguna franja: a esa escala un día 
 test('sin días hábiles declarados no se inventa una semana laboral', () => {
   assert.deepEqual(franjasNoLaborables('2026-08-03', '2026-08-16', []), [])
 })
+
+// ═══ LAS DIVISIONES DE LA ESCALA ═══
+
+import { divisionesDe } from './bandaCronograma.ts'
+import { construirEscalaCronograma } from './escalaCronograma.ts'
+
+const cols = (desde: string, hasta: string, unidad: 'dia' | 'semana' | 'mes', hoy: string) =>
+  construirEscalaCronograma({ desde, hasta }, unidad, hoy).columnas
+
+test('en escala de día hay una división por día y son todas del mismo ancho', () => {
+  const d = divisionesDe(cols('2026-08-03', '2026-08-07', 'dia', '2026-08-05'), '2026-08-05', [1, 2, 3, 4, 5])
+  assert.equal(d.length, 5)
+  assert.deepEqual(d.map((x) => x.dias), [1, 1, 1, 1, 1])
+  assert.equal(d.filter((x) => x.esHoy).length, 1)
+  assert.equal(d.find((x) => x.esHoy)!.clave, '2026-08-05')
+})
+
+test('en escala de semana la división agrupa siete días y hoy cae adentro de una sola', () => {
+  const d = divisionesDe(cols('2026-08-03', '2026-08-23', 'semana', '2026-08-12'), '2026-08-12', [1, 2, 3, 4, 5])
+  assert.deepEqual(d.map((x) => x.dias), [7, 7, 7])
+  assert.equal(d.filter((x) => x.esHoy).length, 1)
+  assert.equal(d[1].esHoy, true)
+})
+
+test('una división es franco sólo si NINGUNO de sus días se trabaja', () => {
+  // El defecto que atrapa: sombrear la semana entera porque tiene un domingo adentro.
+  const semana = divisionesDe(cols('2026-08-03', '2026-08-09', 'semana', '2026-08-03'), '2026-08-03', [1, 2, 3, 4, 5])
+  assert.equal(semana[0].franco, false)
+  const dias = divisionesDe(cols('2026-08-08', '2026-08-09', 'dia', '2026-08-03'), '2026-08-03', [1, 2, 3, 4, 5])
+  assert.deepEqual(dias.map((x) => x.franco), [true, true])
+})
+
+test('sin días hábiles declarados no se sombrea nada: no se asume sábado y domingo', () => {
+  const d = divisionesDe(cols('2026-08-08', '2026-08-09', 'dia', '2026-08-03'), '2026-08-03', [])
+  assert.deepEqual(d.map((x) => x.franco), [false, false])
+})
+
+test('las divisiones cubren el lienzo entero, sin huecos ni desbordes', () => {
+  const d = divisionesDe(cols('2026-08-03', '2026-09-30', 'mes', '2026-08-20'), '2026-08-20', [1, 2, 3, 4, 5])
+  assert.equal(d[0].izqPct, 0)
+  const ultima = d[d.length - 1]
+  assert.ok(Math.abs(ultima.izqPct + ultima.anchoPct - 100) < 0.0001)
+})
