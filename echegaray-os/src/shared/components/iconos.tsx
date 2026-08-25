@@ -34,7 +34,14 @@ function Trazo({ className = 'h-[24px] w-[24px]', children }: Props & { children
   )
 }
 
-export { IconoProblema, IconoHerramienta } from '@/app/campo/iconos'
+export {
+  IconoProblema, IconoHerramienta,
+  // Canónicos igual que los otros dos, y por las mismas razones. Se re-exportan acá porque el
+  // vocabulario de Administración también los usa: un pedido de materiales y un traslado de
+  // herramienta son la misma cosa vistos desde la oficina o desde el frente, y dibujarlos otra vez
+  // sería tener dos iconos para un mismo concepto.
+  IconoMaterial, IconoMovimiento,
+} from '@/app/campo/iconos'
 
 /** Filtrar por texto, siempre instantáneo. */
 export function IconoBuscar(p: Props) {
@@ -155,4 +162,38 @@ export function IconoHistorial(p: Props) {
 /** Ajustes del contexto. */
 export function IconoConfig(p: Props) {
   return <Trazo {...p}><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1L14.5 3h-5l-.4 2.6a7 7 0 00-1.7 1l-2.3-1-2 3.4L5 11a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.4 2.6h5l.4-2.6a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5a7 7 0 00.2-1z" /></Trazo>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS CUATRO RESPUESTAS DE UNA IMPUTACIÓN (25/08/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `obra_alias.clasificacion` acepta cuatro valores y ninguno más. Los cuatro necesitan forma
+// propia porque en la pantalla de Pendientes conviven en una misma fila de opciones: si dos
+// compartieran icono, elegir mal sería un clic de distancia. `obra` reusa `IconoObra` —es
+// literalmente la misma cosa— así que acá sólo entran los otros tres.
+
+/** Un mantenimiento: trabajo sobre algo que ya existe. Se imputa a una obra igual que el resto. */
+export function IconoMantenimiento(p: Props) {
+  return <Trazo {...p}><path d="M14.5 3.5a4.5 4.5 0 00-6 5.9L3 15v6h6l5.6-5.6a4.5 4.5 0 005.9-6L17 13l-3-3z" /></Trazo>
+}
+/** Costo de estructura: la empresa, no una obra. Administración, Taller, F931, UOCRA.
+ *  Distinto de `IconoCliente`, que es la empresa de ENFRENTE. */
+export function IconoEstructura(p: Props) {
+  return <Trazo {...p}><path d="M4 21V7l8-4 8 4v14" /><path d="M4 12h16M12 7v14" /></Trazo>
+}
+/** No corresponde contarlo: se registra y no cuenta como costo en ningún lado. */
+export function IconoExcluido(p: Props) {
+  return <Trazo {...p}><circle cx="12" cy="12" r="8.5" /><path d="M6.5 6.5l11 11" /></Trazo>
+}
+
+/** Una explicación, no un problema. `IconoBloqueo` es el signo de admiración —algo está mal—; éste
+ *  es la «i» —esto es lo que hay que saber— y son dos mensajes que no se pueden confundir. */
+export function IconoInfo(p: Props) {
+  return <Trazo {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.6v.01" /></Trazo>
+}
+/** Nada pendiente. El tilde ENCERRADO es un estado alcanzado; `IconoCompletar`, el tilde suelto,
+ *  es la acción de confirmar. */
+export function IconoNadaPendiente(p: Props) {
+  return <Trazo {...p}><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.6 2.5L16 9.5" /></Trazo>
 }

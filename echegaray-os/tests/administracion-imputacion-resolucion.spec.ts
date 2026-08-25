@@ -88,8 +88,13 @@ test.describe('pendientes de imputación', () => {
       const fila = page.getByTestId('fila-pendiente').filter({ hasText: texto })
       await expect(fila, 'la compra sin clasificar no apareció en la cola').toHaveCount(1)
 
+      // LA COLA YA NO NAVEGA: elegir un texto es estado de cliente (no hay `?c=` que ir a buscar al
+      // servidor). Entonces el clic tiene que llegar DESPUÉS de la hidratación o no hace nada — y
+      // como el panel ya está dibujado con el primer texto, un clic perdido no se vería: el test
+      // pasaría midiendo otro grupo.
+      await esperarHidratacion(page, 'form-resolver')
       await fila.getByTestId('abrir-pendiente').click()
-      await expect(page.getByTestId('panel-pendiente')).toBeVisible()
+      await expect(page.getByTestId('panel-pendiente')).toContainText(texto)
 
       // SIN EVIDENCIA NO HAY SUGERENCIA. Es un texto que nadie vio nunca y su proveedor tampoco
       // tiene historial: proponer una obra acá sería inventarla.
@@ -101,8 +106,11 @@ test.describe('pendientes de imputación', () => {
       await expect(page.getByTestId('fila-detalle')).toContainText('costos_obra')
       await expect(page.getByTestId('fila-detalle')).toContainText(`${MARCA}-FA-1`)
 
-      await page.getByTestId('obra-destino').selectOption(OBRA_DESTINO)
-      await esperarHidratacion(page, 'form-resolver')
+      // LA OBRA SE ELIGE DE LA LISTA, NO DE UN DESPLEGABLE (25/08/2026). El mockup 33 sustituyó el
+      // `<select>` por las obras en vivo con su cliente y su avance: la decisión pide comparar
+      // entre ellas, y un desplegable cerrado obliga a recordar en vez de mirar. El clic va sobre
+      // la fila de la obra, que es un botón dentro del mismo formulario.
+      await page.getByTestId(`obra-${OBRA_DESTINO}`).click()
       await page.getByTestId('form-resolver-enviar').click()
 
       // EL EFECTO, LEÍDO EN LA BASE CON OTRA CONEXIÓN.
