@@ -202,3 +202,12 @@ export interface FuentesActividad {
     monto_cobrado: number | null
   }[]
 }
+
+// LA CUENTA CORRIENTE, EL ESQUEMA DE PAGO Y EL PORTAL viven en su propio archivo: son las
+// pantallas 28 · 31 · 32 y traen veinte tipos que no tienen nada que ver con la identidad del
+// cliente. Se re-exportan acá porque `@/features/clientes/types` es la puerta que usan las
+// pantallas, y partir la puerta obligaría a recordar en cuál de dos archivos está cada cosa.
+export type {
+  AccesoPortal, ActividadPortal, CertificadoCliente, CuentaCorriente, EsquemaCliente,
+  EstadoCertificado, EstadoPago, MedioPago, PagoEsquema, Reprogramacion, TipoActividadPortal,
+} from './cobranzas'
