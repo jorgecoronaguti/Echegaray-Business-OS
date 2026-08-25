@@ -18,7 +18,7 @@ const PASSWORD = 'TestPassword123!'
 /** Los seis grupos del header viejo. Ninguno puede volver a la navegación. */
 const CATEGORIAS_VIEJAS = ['01 · Obras', 'OS', 'Finanzas', 'Reportes', 'Conexiones']
 
-test('la navegación tiene DOS áreas y ninguna categoría interna del OS', async ({ page }) => {
+test('la navegación tiene TRES solapas y ninguna categoría interna del OS', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/obras')
@@ -27,11 +27,13 @@ test('la navegación tiene DOS áreas y ninguna categoría interna del OS', asyn
   await expect(header).toBeVisible()
   await expect(header.getByTestId('marca')).toContainText('ECHEGARAY')
 
-  // Las dos áreas, y sólo esas dos.
+  // Las dos áreas de usuario más Presupuestos, que subió a nivel 1 el 25/08 (00 v2) porque es
+  // comercial y no administración. Y ninguna más: el header viejo tenía diecisiete.
   const nav = page.getByTestId('nav-areas')
   await expect(nav.getByTestId('nav-administracion')).toBeVisible()
   await expect(nav.getByTestId('nav-obras')).toBeVisible()
-  expect(await nav.getByRole('link').count(), 'la navegación tiene más de dos áreas').toBe(2)
+  await expect(nav.getByTestId('nav-presupuestos')).toBeVisible()
+  expect(await nav.getByRole('link').count(), 'la navegación tiene solapas de más').toBe(3)
 
   // Ninguna categoría del header viejo sobrevive COMO DESTINO DE NAVEGACIÓN.
   //
@@ -98,56 +100,81 @@ test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page 
   }
 })
 
-test('Administración tiene sus secciones, y ni una de otro nivel', async ({ page }) => {
+test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
 
-  // EL `h1` «Administración» SE FUE (24/08/2026, canónico 00): el mockup arranca en la barra de
-  // áreas y el título repetía la solapa de nivel 1 ya encendida arriba. Lo que se exige ahora es que
-  // la pantalla siga teniendo su punto de entrada —el título de la lista— y su barra de áreas.
-  await expect(page.getByRole('heading', { name: 'Clientes', level: 1 })).toBeVisible()
+  // EL `h1` ES «Lo que pide trabajo» (25/08, canónico 00 v2): la primera línea de contenido de la
+  // pantalla es el TRABAJO, no el maestro. Antes era «Clientes», el título de la cartera.
+  await expect(page.getByRole('heading', { name: 'Lo que pide trabajo', level: 1 })).toBeVisible()
 
-  // ═══ EL CONTRATO, TEXTUAL (19/08/2026) ═══
+  // ═══ EL CONTRATO NUEVO (00 · Home Navegación v2, zip del 25/08/2026) ═══
   //
-  //   *"NIVEL 1: Administración | Obras. NIVEL 2 Administración: Clientes / Usuarios / Personas /
-  //   Proveedores / Pendientes. **No mezclar niveles en la misma barra.**"*
-  //
-  // Este test exigía «ir-obras» y las tres de integraciones. Se reemplaza porque eso era el
-  // problema: Obras es el OTRO módulo de nivel 1 —está en el encabezado, al lado de Administración—
-  // y ofrecerlo también acá adentro dice que es una sección de ésta. Pedidos, herramientas y
-  // movimientos se mudaron al workspace de cada obra, acotados por obra_id.
-  for (const t of ['ir-clientes', 'ir-usuarios', 'ir-personas', 'ir-proveedores', 'ir-pendientes']) {
-    await expect(page.getByTestId(t), `falta la sección ${t}`).toBeVisible()
+  // Siete destinos en tres grupos: `Trabajo · | Clientes · Personal · Proveedores · | Compras ·
+  // Base maestra · Documentos`. Pendientes y Asistencia se absorbieron en Trabajo; Presupuestos
+  // subió a la barra de la aplicación y Usuarios bajó al menú de la cuenta.
+  for (const t of ['ir-trabajo', 'ir-clientes', 'ir-personas', 'ir-proveedores', 'ir-compras',
+    'ir-base-maestra', 'ir-documentos']) {
+    await expect(page.getByTestId(t), `falta el destino ${t}`).toBeVisible()
   }
-  for (const t of ['ir-obras', 'ir-pedidos', 'ir-herramientas', 'ir-movimientos']) {
-    await expect(page.getByTestId(t), `${t} volvió a ofrecerse dentro de Administración`).toHaveCount(0)
+  for (const t of ['ir-obras', 'ir-pedidos', 'ir-herramientas', 'ir-movimientos', 'ir-pendientes',
+    'ir-asistencia', 'ir-presupuestos']) {
+    await expect(page.getByTestId(t), `${t} volvió a ofrecerse en la barra del área`).toHaveCount(0)
   }
-  // Y «Usuarios» aparece UNA sola vez: estaba dos veces, entre las entidades y en un bloque aparte.
-  await expect(page.getByTestId('ir-usuarios')).toHaveCount(1)
-
-  // CAMBIO DE REGLA DECLARADO (Design 23/08): la entrada ya no dibuja la barra Y ABAJO una lista de
-  // maestros con los mismos nombres — el contador y el aviso se mudaron ADENTRO de la barra, y los
-  // `ir-*` de arriba son ahora sus enlaces. Por eso las dos comprobaciones miran el mismo elemento.
-  //
-  // Y el número pasa de cinco a DIEZ, que es lo que la barra dibuja desde que entraron Presupuestos,
-  // Compras, Asistencia, Base maestra y Documentos: esta línea estaba en rojo desde entonces sin que
-  // nadie la corrigiera. Se cuenta para dirección, que es el rol con el que entra este test.
   const barra = page.getByTestId('nav-admin-secciones')
   await expect(barra).toBeVisible()
-  await expect(barra.getByRole('link')).toHaveCount(10)
+  await expect(barra.getByRole('link')).toHaveCount(7)
+  // Dos filos, uno por cambio de grupo. Sin ellos son siete tablas en fila otra vez.
+  await expect(barra.getByTestId('filo-grupo')).toHaveCount(2)
+
+  // USUARIOS NO DESAPARECIÓ: se entra por el menú de la cuenta, y la ruta responde igual.
+  await page.getByTestId('avatar-usuario').click()
+  await expect(page.getByTestId('menu-usuario').getByTestId('ir-usuarios')).toBeVisible()
+  await page.keyboard.press('Escape')
 
   // Y llevan a donde dicen.
   await page.getByTestId('ir-clientes').click()
   await page.waitForURL(/\/clientes/)
   await expect(page.getByTestId('clientes-tabla')).toBeVisible()
 
-  // La barra dice DÓNDE ESTOY PARADO. Sin esto, cinco secciones se ven iguales desde adentro.
+  // La barra dice DÓNDE ESTOY PARADO. Sin esto, siete destinos se ven iguales desde adentro.
   await page.goto('/administracion/personas')
-  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Personas' }))
+  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Personal' }))
     .toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Proveedores' }))
     .not.toHaveAttribute('aria-current', 'page')
+
+  // Y LO QUE «TRABAJO» ABSORBIÓ SIGUE ENCENDIENDO SU SOLAPA: sin esto, entrar a Pendientes apaga la
+  // barra entera y la pantalla deja de decir dónde está parado el que la mira.
+  for (const ruta of ['/administracion/pendientes', '/administracion/asistencia']) {
+    const res = await page.goto(ruta)
+    expect(res?.status(), `${ruta} dejó de responder`).toBeLessThan(400)
+    await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Trabajo' }))
+      .toHaveAttribute('aria-current', 'page')
+  }
+})
+
+// PRESUPUESTOS SUBIÓ A NIVEL 1 (v2). Es lo que este archivo tiene que fijar: la solapa existe, sólo
+// para quien ve economía, y pinta ELLA cuando estás adentro — mientras `/documentos` y
+// `/flujo-caja` siguen pintando Administración, que es la corrección del 24/08 que no se toca.
+test('Presupuestos es una solapa de nivel 1 y no rompe el «dónde estoy» de las demás', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, EMAIL, PASSWORD)
+  const nav = page.getByTestId('nav-areas')
+
+  await page.goto('/presupuestos')
+  await expect(nav.getByTestId('nav-presupuestos')).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByTestId('nav-administracion')).not.toHaveAttribute('aria-current', 'page')
+  // Y adentro de Presupuestos ya no se dibuja la barra de nivel 2 de Administración: serían dos
+  // «dónde estoy» contradictorios, y el de abajo sin ninguna solapa encendida.
+  await expect(page.getByTestId('nav-admin-secciones')).toHaveCount(0)
+
+  for (const ruta of ['/documentos', '/flujo-caja']) {
+    await page.goto(ruta)
+    await expect(nav.getByTestId('nav-administracion'), `${ruta} dejó de pintar Administración`)
+      .toHaveAttribute('aria-current', 'page')
+  }
 })
 
 // Las rutas que salieron del menú SIGUEN respondiendo: sacar algo de la navegación no es apagarlo.

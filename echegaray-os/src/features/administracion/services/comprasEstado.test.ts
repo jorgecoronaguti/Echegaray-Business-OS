@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aplicarFiltro, controlDe, filtroDe, FILTROS, obrasFrecuentes, totalDeLaVista,
+  aplicarFiltro, controlDe, cumpleFiltro, filtroDe, FILTROS, obrasFrecuentes, totalDeLaVista,
   type ControlEntrada, type FiltroCompras,
 } from './comprasEstado.ts'
 
@@ -207,4 +207,40 @@ test('un papel sin signo conocido no entra al total en ninguna dirección', () =
 test('una vista sin nada sumable no suma $ 0: no suma nada', () => {
   assert.equal(totalDeLaVista([]).total, null)
   assert.equal(totalDeLaVista([{ imp_total: null, signo: 1 }]).total, null)
+})
+
+// ═══ CONTAR CONTRA LA BASE Y CONTAR EN MEMORIA TIENEN QUE DAR LO MISMO (25/08/2026) ═══
+//
+// La entrada de Administración cuenta los cuatro números de Compras sobre UNA lectura de tres
+// columnas en vez de cuatro conteos: medido, `count(*) where tiene_posible_duplicado` cuesta 250 ms
+// —lo mismo que traer las tres columnas de las 653 filas— y así se ahorran tres viajes.
+//
+// El riesgo de eso es EXACTAMENTE el que este archivo existe para impedir: dos predicados, uno en
+// SQL y otro en TypeScript, que se separan en silencio y hacen que la fila de la entrada diga «3
+// sin obra» mientras la lista de la pantalla 24 muestra nueve. Por eso hay UNA tabla de condiciones
+// y dos consumidores, y esto lo comprueba fila por fila.
+
+test('`cumpleFiltro` selecciona lo MISMO que `aplicarFiltro` le pide a la base', () => {
+  const filas: Record<string, unknown>[] = [
+    { imputacion: 'obra', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
+    { imputacion: 'sin_identificar', tiene_posible_duplicado: false, estado_control: 'sin_revisar' },
+    { imputacion: 'sin_resolver', tiene_posible_duplicado: true, estado_control: 'sin_revisar' },
+    { imputacion: 'estructura', tiene_posible_duplicado: true, estado_control: 'confirmado' },
+    { imputacion: 'obra', tiene_posible_duplicado: true, estado_control: 'en_revision' },
+    // Los `null` son el borde donde las dos formas se pueden separar: en SQL, `= true` NO toma los
+    // nulos, y en JavaScript un `==` laxo o un `!!` los trataría distinto.
+    { imputacion: null, tiene_posible_duplicado: null, estado_control: null },
+  ]
+
+  for (const filtro of FILTROS) {
+    // Lo que la base recibiría, reconstruido desde el espía: columna = valor, todas conjuntivas.
+    const q = new QuerySpia()
+    aplicarFiltro(q, filtro)
+    const comoSQL = filas.filter((f) => q.llamadas.every((l) => {
+      const [, columna, valor] = /^eq:([^=]+)=(.*)$/.exec(l)!
+      return String(f[columna]) === valor
+    }))
+    const comoMemoria = filas.filter((f) => cumpleFiltro(f, filtro))
+    assert.deepEqual(comoMemoria, comoSQL, `«${filtro}» cuenta distinto en memoria que contra la base`)
+  }
 })
