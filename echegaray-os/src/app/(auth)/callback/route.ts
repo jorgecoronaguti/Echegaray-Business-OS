@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { RUTA_RECUPERAR, destinoSeguro } from '@/features/auth/services/recuperacion'
+import { completarIngresoPortal } from '@/features/portal/services/portalAuth'
 
 // LA VUELTA DEL CORREO — el único lugar del OS donde un enlace se convierte en sesión.
 //
@@ -32,6 +33,26 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { error } = await supabase.auth.exchangeCodeForSession(code)
   if (error) return NextResponse.redirect(vencido)
+
+  // ═══ EL CLIENTE DEL PORTAL SE ATA ACÁ, NO EN UNA PANTALLA (25/08/2026) ═══
+  //
+  // Éste es el primer momento en que existe un `auth.users` para el cliente, así que es el único
+  // lugar donde se puede completar `cliente_acceso.auth_user_id` y crear su `perfiles` con rol
+  // `cliente`. Hacerlo en la pantalla del portal sería tarde: el middleware la evalúa ANTES de que
+  // esa pantalla corra, vería un usuario sin rol y lo rebotaría — un bucle de redirección para
+  // alguien que entró bien.
+  //
+  // Es idempotente y silencioso para los empleados: quien no tiene fila en `cliente_acceso` no es
+  // asunto del portal y sigue de largo por el camino de siempre.
+  const portal = await completarIngresoPortal()
+  if (portal.dato?.clienteId) return NextResponse.redirect(new URL('/portal', origin))
+  if (portal.ok === false) {
+    // Acceso revocado o mail ya atado a otra cuenta: `completarIngresoPortal` ya cerró la sesión.
+    // Se le dice por qué en la puerta del portal, que es de donde vino.
+    const rechazo = new URL('/portal/ingresar', origin)
+    rechazo.searchParams.set('error', portal.error ?? 'Tu acceso no está vigente')
+    return NextResponse.redirect(rechazo)
+  }
 
   // `origin` y no `siteUrl()`: la persona ya está parada en este host —quien abrió el correo llegó
   // acá— y devolverla a otro dominio le pediría entrar de nuevo con la sesión recién creada del
