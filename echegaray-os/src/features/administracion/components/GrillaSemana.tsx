@@ -70,6 +70,7 @@ export function GrillaSemana({ filas, dias }: { filas: FilaSemana[]; dias: strin
               <Td fuerte>
                 <Link
                   href={`/administracion/personas/${f.persona.persona_id}`}
+                  prefetch={false}
                   className="text-[13px] text-ink hover:underline"
                 >
                   {f.persona.nombre_completo}

@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -76,10 +75,16 @@ export function AppHeader({
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
         >
-          {/* `unoptimized`: son 7,7 KB de PNG con transparencia que el optimizador de imágenes
-              volvía a servir en CADA carga por `/_next/image?url=…&w=32&q=75` — medido el 25/08 en
-              producción, entre 243 y 1.257 ms, en el header, o sea en TODAS las pantallas. Servido
-              desde `/public` sale con caché inmutable y no pasa por ninguna función. */}
+          {/* EL ISOTIPO NO PASA POR EL OPTIMIZADOR DE IMÁGENES (25/08/2026).
+              Medido contra producción con sesión real, la petición
+              `/_next/image?url=%2Fmarca%2Fisotipo.png&w=32&q=75` tardó 243 ms en `/administracion` y
+              1.257 ms en `/administracion/pendientes` — en CADA carga de CADA pantalla, porque este
+              header vive en todas. El archivo pesa 7,7 kB con transparencia: optimizarlo ahorra unos
+              5 kB y cuesta hasta 1,2 s.
+              `unoptimized` sirve el archivo derecho desde `public/` con caché inmutable y sin pasar
+              por ninguna función; son los mismos píxeles. Se prefiere sobre un `<img>` plano —que es
+              lo que ya hacen `movil/Piezas`, `MarcoAuth` y `/campo` con este mismo archivo— para no
+              tener que silenciar la regla de lint que existe justamente para atrapar este caso. */}
           <Image src="/marca/isotipo.png" alt="" width={24} height={24} priority unoptimized className="h-[24px] w-[24px]" />
           {/* EL NOMBRE ENTERO, Y LAS DOS PALABRAS CON EL MISMO FORMATO (19/08/2026).
               La primera versión ponía «CONSTRUCCIONES» en peso normal y gris, como si fuera una

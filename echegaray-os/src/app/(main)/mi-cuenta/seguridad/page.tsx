@@ -16,9 +16,16 @@
 //
 // `user.factors` viene en el objeto de sesión: si hay un factor verificado, está activo. No se
 // asume ni se pregunta aparte.
+//
+// ═══ ÉSTA ES LA ÚNICA PANTALLA QUE LE PREGUNTA AL SERVIDOR DE AUTH (25/08/2026) ═══
+//
+// El resto del OS resuelve «quién sos» verificando la firma del JWT en el proceso
+// (`getUsuarioActual`), sin viaje de red. Acá no alcanza: `factors`, `last_sign_in_at` y
+// `email_confirmed_at` NO viajan en el token — son estado del servidor de Auth, no de la sesión.
+// Y es justo donde el viaje se justifica: una pantalla que afirma «tu cuenta tiene dos pasos» no
+// puede contestar con lo que el navegador trajo.
 
 import { createClient } from '@/lib/supabase/server'
-import { getUsuarioActual } from '@/features/auth/services/authService'
 import { MiCuentaShell, Dato } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { CambiarContrasena } from '@/features/mi-cuenta/components/CambiarContrasena'
 import { Aviso, Estado, Nulo, Num } from '@/shared/components/ds'
@@ -38,7 +45,7 @@ function cuando(iso: string | null | undefined): string | null {
 
 export default async function SeguridadPage() {
   const supabase = await createClient()
-  const user = await getUsuarioActual(supabase)
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return <MiCuentaShell titulo="Seguridad"><Aviso tono="neg">Tu sesión venció. Volvé a entrar.</Aviso></MiCuentaShell>
 
   const factores = user.factors ?? []

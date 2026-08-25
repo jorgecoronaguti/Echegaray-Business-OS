@@ -361,6 +361,7 @@ function FilaPartida({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}>
         <Link
           href={`${base}?partida=${p.partida_id}`}
+          prefetch={false}
           title="Ver el detalle en el panel"
           data-testid={`ver-${p.partida_id}`}
           className="flex text-[#C9C4C2] transition-colors hover:text-[#1F1F1E]"

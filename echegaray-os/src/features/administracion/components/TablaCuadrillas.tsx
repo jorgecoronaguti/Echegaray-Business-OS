@@ -99,7 +99,7 @@ export function TablaCuadrillas({
         const cap = capacidades?.get(c.id)
         return (
           <FilaCanon key={c.id} cols={COLS} alto={52} seleccionada={c.id === abierta} testid="fila-cuadrilla">
-            <Link href={hrefDe(c.id)} className="flex min-w-0 items-center gap-[9px]" data-testid="abrir-cuadrilla">
+            <Link href={hrefDe(c.id)} prefetch={false} className="flex min-w-0 items-center gap-[9px]" data-testid="abrir-cuadrilla">
               <span className="flex shrink-0 text-muted"><IconoCuadrilla className="h-[15px] w-[15px]" /></span>
               <span className="min-w-0">
                 <span className="block truncate text-[12.5px] font-medium text-ink hover:underline">{c.nombre}</span>
