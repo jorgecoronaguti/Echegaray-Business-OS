@@ -22,9 +22,12 @@
 // Storage y sin gastar un token de visión.
 
 import { procesarComprobantes } from './circuito.mjs'
+import * as repoReal from './repositorio.mjs'
 import { bajarDeStorage } from '../../lib/storage-supabase.mjs'
+import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import {
-  ENTRADA, MAX_INTENTOS, aplicarReintento, estadoDeEntrada, estadoDeExcepcion, repartirVeredicto,
+  ENTRADA, MAX_INTENTOS, aplicarReintento, cierreDelFajo, estadoDeEntrada, estadoDeExcepcion,
+  repartirVeredicto,
 } from '../../lib/comprobantes/entrada-web.mjs'
 
 /** El bucket privado donde la pantalla deja los archivos. */
@@ -176,6 +179,44 @@ async function guardarFila(port, veredicto, { fajoId = null, resultado = null } 
 }
 
 /**
+ * CIERRA EL FAJO CUANDO LA FILA WEB YA NO ESPERA A NADIE.
+ *
+ * Por chat, un fajo que vuelve como `confirmar` queda abierto porque hay un hilo donde una persona
+ * va a tocar un botón. En la web no hay hilo: el veredicto ES la respuesta. Sin esto, un lote que
+ * termina `ya_estaba` cierra su fila y deja el fajo `abierto` para siempre (prueba real 25/08), y
+ * ese fajo abierto es además el que la carga SIGUIENTE de la misma persona va a reusar.
+ *
+ * Qué estado le corresponde a cada veredicto lo decide `cierreDelFajo`, que es puro y tiene su test.
+ * Acá sólo queda lo que necesita la base: de dónde sale el id y por qué se cierra condicionado.
+ *
+ * `desde: ABIERTO` no es prudencia decorativa: en el camino feliz `escritura.mjs` ya cerró el fajo
+ * como CARGADO con las filas que escribió, y volver a cerrarlo con `filas: null` borraría justamente
+ * la evidencia de en qué fila de Compras entró el gasto.
+ *
+ * No propaga: el veredicto de las filas ya está guardado y es lo que ve la pantalla. Si esto falla,
+ * se registra y el fajo queda abierto —el estado de hoy—, pero el lote no se pierde.
+ */
+export async function cerrarFajoDelLote(dep, { fajoId = null, lote, usuario, veredicto } = {}) {
+  const { port, log } = dep
+  const repo = dep.repo ?? repoReal
+  const cierre = cierreDelFajo(veredicto?.estado, { motivo: veredicto?.motivo })
+  if (!cierre) return null
+  try {
+    // Sin `fajoId` (una excepción que voló antes de que el circuito contestara) el fajo se busca por
+    // la misma clave con la que se abrió: la web, la persona y el lote-como-canal.
+    const id = fajoId ?? (await repo.fajoAbierto(port, {
+      plataforma: 'web', userId: String(usuario), channelId: String(lote),
+    }))?.id
+    if (!id) return null
+    const r = await repo.cerrarFajo(port, { id, desde: ESTADO.ABIERTO, ...cierre })
+    return r ? { id, estado: cierre.estado } : null
+  } catch (e) {
+    log?.error?.('comprobantes web: no pude cerrar el fajo', { lote, error: String(e?.message ?? e) })
+    return null
+  }
+}
+
+/**
  * Procesa UN lote. Devuelve `null` si no había nada que hacer.
  *
  * @param {object} dep `{port, google, log, procesar?, bajarArchivo?}`
@@ -217,8 +258,11 @@ export async function procesarUnLote(dep) {
   } catch (e) {
     const v = aplicarReintento(estadoDeExcepcion(e), intentos)
     for (const f of filas) await guardarFila(port, { ...v, id: f.id })
-    log?.error?.('comprobantes web: el lote falló', { lote, error: String(e?.message ?? e) })
-    return { lote, filas: filas.length, estado: v.estado }
+    // Si al lote no le quedan reintentos, la fila cierra en `error` y el fajo tiene que cerrar con
+    // ella. Mientras queden (`pendiente`), `cierreDelFajo` devuelve null y el fajo se reusa.
+    const fajo = await cerrarFajoDelLote(dep, { lote, usuario, veredicto: v })
+    log?.error?.('comprobantes web: el lote falló', { lote, error: String(e?.message ?? e), fajo: fajo?.id ?? null })
+    return { lote, filas: filas.length, estado: v.estado, fajo }
   }
 
   const veredicto = aplicarReintento(estadoDeEntrada(salida), intentos)
@@ -232,8 +276,11 @@ export async function procesarUnLote(dep) {
   for (const v of repartirVeredicto(filas, veredicto, salida?.parte ?? {})) {
     await guardarFila(port, v, { fajoId: salida?.fajoId ?? null, resultado })
   }
-  log?.info?.('comprobantes web: lote procesado', { lote, filas: filas.length, estado: veredicto.estado })
-  return { lote, filas: filas.length, estado: veredicto.estado, registrados: registrados?.length ?? null }
+  // EL FAJO SE CIERRA CON EL VEREDICTO DEL LOTE, no con el de cada archivo: el fajo es uno solo y
+  // agrupa la tanda entera. Un archivo ilegible dentro de un lote que cargó no descarta la tanda.
+  const fajo = await cerrarFajoDelLote(dep, { fajoId: salida?.fajoId ?? null, lote, usuario, veredicto })
+  log?.info?.('comprobantes web: lote procesado', { lote, filas: filas.length, estado: veredicto.estado, fajo: fajo?.estado ?? null })
+  return { lote, filas: filas.length, estado: veredicto.estado, registrados: registrados?.length ?? null, fajo }
 }
 
 /** Vacía la cola: recicla lo colgado y procesa lotes hasta que no quede ninguno pendiente. */

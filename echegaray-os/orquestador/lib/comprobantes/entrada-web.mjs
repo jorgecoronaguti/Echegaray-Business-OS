@@ -18,6 +18,8 @@
 //   · «error» es lo único reintentable, y con tope. Una base caída, un timeout, la migración sin
 //     aplicar: cosas que se arreglan solas o con una acción de Dirección.
 
+import { ESTADO } from './fajo.mjs'
+
 /** Los estados de una fila de `public.comprobante_entrada`. El CHECK de la tabla es esta lista. */
 export const ENTRADA = Object.freeze({
   PENDIENTE: 'pendiente',
@@ -172,4 +174,55 @@ export function repartirVeredicto(filas = [], veredicto = {}, parte = {}) {
       + `${propio.estado === ENTRADA.RECHAZADO ? 'uno no se pudo leer' : 'uno quedó esperando'} y no puedo afirmar cuál`
     return { id: f.id, ...veredicto, motivo: [veredicto.motivo, ambiguo].filter(Boolean).join(' · ') }
   })
+}
+
+/**
+ * QUÉ HACER CON EL FAJO CUANDO LA FILA WEB YA TIENE VEREDICTO.
+ *
+ * ═══ EL DEFECTO (prueba real 25/08) ═══
+ *
+ * El circuito es el mismo para las dos puertas, pero el que CIERRA el fajo no siempre es él: por
+ * chat, un fajo que vuelve como `confirmar` queda ABIERTO a propósito, esperando que una persona
+ * toque Confirmar / Corregir / Descartar en el hilo. En la web ese hilo no existe y nadie contesta
+ * nunca. Resultado medido: la fila de `comprobante_entrada` cerraba en `ya_estaba` con su
+ * `cerrado_at`, y el fajo quedaba `estado='abierto'`, `cerrado_at null`, `filas null` — un fajo vivo
+ * con sus ítems YA cargados en Compras (fajos 6569dd6d… y 64d7e5da…). Además de la basura, un fajo
+ * abierto es el que `entraEnElFajo` va a reusar: la carga siguiente de esa persona se agrega a algo
+ * que ya se resolvió.
+ *
+ * Esta función es la traducción, y es pura para poder probarla sin base. No inventa estados: usa los
+ * mismos que escribe el bot, con su significado.
+ *
+ *   · `cargado`   → ESTADO.CARGADO. Normalmente `escritura.mjs` ya lo cerró con sus `filas`; esto es
+ *                   la red por si quedó abierto (por eso quien llama cierra sólo si sigue abierto:
+ *                   pisar un fajo ya cerrado le borraría las filas escritas).
+ *   · `ya_estaba` → ESTADO.CARGADO con `filas: []`. Es LITERALMENTE la convención del bot cuando no
+ *                   entró ninguno porque todos ya estaban (`escritura.mjs`, rama `!entran.length`).
+ *                   No es `descartado`: no se tiró nada, el gasto está en Compras.
+ *   · `rechazado` → ESTADO.DESCARTADO, igual que el botón Descartar y que el fajo vencido.
+ *   · `error`     → ESTADO.ERROR, y sólo cuando ya no quedan reintentos (`aplicarReintento` convierte
+ *                   el error reintentable en `pendiente`, y de ahí sale `null`).
+ *   · `en_espera` → `null`: NO se cierra. El comprobante está vivo esperando a una persona —el freno
+ *                   de Sheets, un proveedor fuera del desplegable, una obra que falta— y cerrarle el
+ *                   fajo sería tirar los ítems que esa persona todavía puede completar.
+ *   · `pendiente`/`procesando` → `null`: el lote vuelve a la cola y el próximo intento reusa el
+ *                   MISMO fajo abierto (mismo canal = mismo lote). Cerrarlo obligaría a releer todo.
+ *
+ * @param {string} estadoFila el estado que se va a ESCRIBIR en la fila (ya pasado por `aplicarReintento`).
+ * @param {{motivo?:string|null}} [o]
+ * @returns {{estado:string, filas:Array|null, error:string|null}|null} `null` = el fajo sigue abierto.
+ */
+export function cierreDelFajo(estadoFila, { motivo = null } = {}) {
+  switch (estadoFila) {
+    case ENTRADA.CARGADO:
+      return { estado: ESTADO.CARGADO, filas: null, error: null }
+    case ENTRADA.YA_ESTABA:
+      return { estado: ESTADO.CARGADO, filas: [], error: recorte(motivo) ?? 'ya estaban cargados' }
+    case ENTRADA.RECHAZADO:
+      return { estado: ESTADO.DESCARTADO, filas: null, error: recorte(motivo) ?? 'no se pudo leer' }
+    case ENTRADA.ERROR:
+      return { estado: ESTADO.ERROR, filas: null, error: recorte(motivo) ?? 'falló sin decir por qué' }
+    default:
+      return null
+  }
 }

@@ -10,6 +10,9 @@
 //     entrado a Compras.
 //  3. Aflojar la puerta cuando la base no contesta. El rol se vuelve a preguntar al procesar porque
 //     acá se escribe plata; si esa consulta falla y se deja pasar, el permiso no es un permiso.
+//  4. Cerrar la fila y dejar el fajo ABIERTO. En el chat «abierto» significa que el bot espera un
+//     botón; en la web nadie contesta nunca, así que el fajo queda vivo con sus ítems ya cargados
+//     (fajos 6569dd6d… y 64d7e5da… del 25/08) y la carga siguiente de esa persona se le agrega.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -17,6 +20,7 @@ import {
   bajadorDe, comprobantesDelLote, guardaDeLaWeb, procesarUnLote,
 } from './cola-web.mjs'
 import { ENTRADA } from '../../lib/comprobantes/entrada-web.mjs'
+import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 
 const LOTE = '11111111-1111-1111-1111-111111111111'
 const USUARIO = '22222222-2222-2222-2222-222222222222'
@@ -172,4 +176,98 @@ test('el nombre de quien subió viaja al fajo: sin él, el freno de mano no se l
   let visto2 = null
   await procesarUnLote({ port: sinPerfil, procesar: async (_d, m) => { visto2 = m; return { estado: 'encolado', texto: '🧊 congelada', parte: parte() } } })
   assert.equal(visto2.actor.plataforma_username, null)
+})
+
+/** Un repositorio de fajos de mentira: anota los cierres y de dónde salió el id. */
+function repoFalso({ abierto = { id: 'f-abierto' } } = {}) {
+  const cierres = []
+  const buscados = []
+  return {
+    cierres,
+    buscados,
+    async fajoAbierto(_port, clave) { buscados.push(clave); return abierto },
+    async cerrarFajo(_port, o) { cierres.push(o); return { id: o.id, estado: o.estado } },
+  }
+}
+
+test('un lote que ya estaba cargado CIERRA su fajo, no lo deja abierto (25/08)', async () => {
+  const port = portFalso({ filas: [filaCola('a', '1.jpg')] })
+  const repo = repoFalso()
+  const r = await procesarUnLote({
+    port,
+    repo,
+    procesar: async () => ({
+      estado: 'confirmar',
+      texto: '⚠️ Ya está cargado — Compras fila 883. No hay nada para cargar.',
+      fajoId: 'f-web',
+      parte: parte({ cargados: 0, yaEstaban: 1 }),
+    }),
+  })
+  assert.equal(port.updates[0].estado, ENTRADA.YA_ESTABA)
+  assert.equal(repo.cierres.length, 1, 'la fila cerró y el fajo quedó abierto: nadie va a contestarle')
+  assert.equal(repo.cierres[0].id, 'f-web')
+  // El estado es el del bot para «ya estaban»: CARGADO con filas [], no un estado nuevo.
+  assert.equal(repo.cierres[0].estado, ESTADO.CARGADO)
+  assert.deepEqual(repo.cierres[0].filas, [])
+  // Y se cierra sólo si sigue abierto: pisar un fajo ya cerrado por escritura.mjs le borraría las
+  // filas de Compras que se escribieron.
+  assert.equal(repo.cierres[0].desde, ESTADO.ABIERTO)
+  assert.equal(r.fajo.estado, ESTADO.CARGADO)
+  // El id vino en la salida del circuito: no hizo falta ir a buscarlo.
+  assert.equal(repo.buscados.length, 0)
+})
+
+test('lo que quedó ESPERANDO deja el fajo abierto: todavía puede completarlo una persona', async () => {
+  const port = portFalso({ filas: [filaCola('a', '1.jpg')] })
+  const repo = repoFalso()
+  await procesarUnLote({
+    port,
+    repo,
+    procesar: async () => ({ estado: 'encolado', texto: '🧊 La escritura de Sheets está congelada.', fajoId: 'f-web', parte: parte() }),
+  })
+  assert.equal(port.updates[0].estado, ENTRADA.EN_ESPERA)
+  assert.deepEqual(repo.cierres, [], 'cerró el fajo de un comprobante que sigue vivo')
+
+  // Lo mismo con «confirmar» cuando SÍ falta cargar algo: es el caso del chat, y ahí el fajo abierto
+  // es lo correcto — lo que falta es un dato que alguien puede completar.
+  const otro = portFalso({ filas: [filaCola('b', '2.jpg')] })
+  const repo2 = repoFalso()
+  await procesarUnLote({
+    port: otro,
+    repo: repo2,
+    procesar: async () => ({ estado: 'confirmar', texto: 'Obra: falta', fajoId: 'f-web', parte: parte({ suma: 1000 }) }),
+  })
+  assert.equal(otro.updates[0].estado, ENTRADA.EN_ESPERA)
+  assert.deepEqual(repo2.cierres, [])
+})
+
+test('una excepción sin reintentos cierra el fajo buscándolo por lote; con reintentos no lo toca', async () => {
+  const gastado = portFalso({ filas: [{ ...filaCola('a', '1.jpg'), intentos: 3 }] })
+  const repo = repoFalso()
+  await procesarUnLote({ port: gastado, repo, procesar: async () => { throw new Error('ECONNRESET') } })
+  assert.equal(gastado.updates[0].estado, ENTRADA.ERROR)
+  assert.equal(repo.cierres[0].estado, ESTADO.ERROR)
+  // Sin `fajoId` (el circuito nunca contestó) el fajo se busca por la clave con la que se abrió.
+  assert.deepEqual(repo.buscados[0], { plataforma: 'web', userId: USUARIO, channelId: LOTE })
+
+  // Con reintentos disponibles la fila vuelve a `pendiente` y el fajo TIENE que seguir abierto: el
+  // próximo intento lo reusa.
+  const vivo = portFalso({ filas: [filaCola('b', '2.jpg')] })
+  const repo2 = repoFalso()
+  await procesarUnLote({ port: vivo, repo: repo2, procesar: async () => { throw new Error('ECONNRESET') } })
+  assert.equal(vivo.updates[0].estado, ENTRADA.PENDIENTE)
+  assert.deepEqual(repo2.cierres, [])
+  assert.deepEqual(repo2.buscados, [], 'fue a buscar un fajo que no iba a cerrar')
+})
+
+test('si cerrar el fajo falla, el veredicto de las filas igual queda guardado', async () => {
+  const port = portFalso({ filas: [filaCola('a', '1.jpg')] })
+  const repo = { async fajoAbierto() { return null }, async cerrarFajo() { throw new Error('la base se cayó') } }
+  const r = await procesarUnLote({
+    port,
+    repo,
+    procesar: async () => ({ estado: 'cargado', texto: '✔ Cargado.', fajoId: 'f-web', parte: parte({ cargados: 1, suma: 100 }) }),
+  })
+  assert.equal(port.updates[0].estado, ENTRADA.CARGADO)
+  assert.equal(r.fajo, null)
 })

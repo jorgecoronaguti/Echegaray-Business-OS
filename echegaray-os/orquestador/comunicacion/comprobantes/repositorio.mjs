@@ -111,13 +111,24 @@ export async function tomarParaConfirmar(port, { id } = {}) {
   return rows[0] ?? null
 }
 
-/** Estado final del fajo (cargado / encolado / descartado / error). */
-export async function cerrarFajo(port, { id, estado, filas = null, error = null } = {}) {
+/**
+ * Estado final del fajo (cargado / encolado / descartado / error).
+ *
+ * `desde` es un compare-and-set OPCIONAL: cierra sólo si el fajo todavía está en ese estado, y
+ * devuelve null si no. Sin él (el caso del bot) se cierra sea cual sea el estado, que es lo que
+ * hace falta cuando quien cierra es el mismo que acaba de confirmarlo.
+ *
+ * Con él (el caso de la web, que cierra DESPUÉS de que el circuito terminó) se evita pisar un fajo
+ * que `escritura.mjs` ya cerró: un segundo `cerrarFajo` con `filas: null` le borraría a un fajo
+ * CARGADO la lista de filas que se escribieron en Compras — la única evidencia de dónde entró el
+ * gasto.
+ */
+export async function cerrarFajo(port, { id, estado, filas = null, error = null, desde = null } = {}) {
   const { rows } = await port.query(
     `update comunicacion.comprobante_fajos
         set estado = $2, filas = $3::jsonb, error = $4, ultimo_at = now(), cerrado_at = now()
-      where id = $1 returning *`,
-    [id, estado, filas ? JSON.stringify(filas) : null, error])
+      where id = $1 and ($5::text is null or estado = $5) returning *`,
+    [id, estado, filas ? JSON.stringify(filas) : null, error, desde])
   return rows[0] ?? null
 }
 
