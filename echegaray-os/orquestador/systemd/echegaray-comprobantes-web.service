@@ -1,0 +1,25 @@
+[Unit]
+# LA COLA DE LA PANTALLA 24. Toma los comprobantes que alguien subió desde app.ecsas.com.ar y los
+# pasa por el MISMO circuito que el bot de Mattermost: visión, ARCA, banco, pestaña Compras viva y el
+# cargador `cargar-comprobantes-compras.mjs` con su freno de mano. Escribe en el Sheet, así que
+# hereda todas las guardas de esa cadena — no las esquiva ninguna.
+Description=Echegaray OS - Cola de comprobantes de la web (pantalla 24 -> pestaña Compras)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/procesar-comprobantes-web.mjs
+# Un lote grande son doce llamadas al modelo de visión más una corrida del cargador: cuatro minutos
+# de techo, no el default. Matar al escritor a mitad de camino deja el fajo abierto y la fila en
+# `procesando` hasta que la recicle el lease — ver `timeout-que-mata-al-escritor`.
+TimeoutStartSec=240
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comprobantes-web
+
+[Install]
+WantedBy=default.target
