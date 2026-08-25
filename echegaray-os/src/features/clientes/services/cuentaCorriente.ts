@@ -16,11 +16,15 @@
 import type { CertificadoCliente, CuentaCorriente } from '../types/cobranzas'
 
 /** Saldo, vencido, DSO, efectividad y fondo de reparo. `null` = todavía no hay de dónde leerlos. */
-export async function getCuentaCorriente(_clienteId: string): Promise<CuentaCorriente | null> {
+export async function getCuentaCorriente(clienteId: string): Promise<CuentaCorriente | null> {
+  // La guarda no es de adorno ni desaparece cuando llegue el cuerpo: un id vacío llegando hasta la
+  // consulta devolvería la cuenta corriente de OTRO cliente o la de todos.
+  if (!clienteId) return null
   return null
 }
 
 /** Los certificados y facturas emitidos al cliente, del más nuevo al más viejo. */
-export async function getCertificados(_clienteId: string): Promise<CertificadoCliente[]> {
+export async function getCertificados(clienteId: string): Promise<CertificadoCliente[]> {
+  if (!clienteId) return []
   return []
 }

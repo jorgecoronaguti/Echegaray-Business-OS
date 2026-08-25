@@ -84,9 +84,16 @@ import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
-import { FichaCuenta } from '@/features/clientes/components/FichaCuenta'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
-import { Aviso, BotonEnlace, SubTabs } from '@/shared/components/ds'
+import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
+import { AccionesCuenta } from '@/features/clientes/components/canon/AccionesDeVista'
+import { SolapasFicha } from '@/features/clientes/components/canon/SolapasFicha'
+import { Pastilla } from '@/features/clientes/components/canon/Piezas'
+import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
+import { registrarCobro } from '@/features/clientes/services/actionsCobranza'
+import { montoM } from '@/features/clientes/services/cobranzaFormato'
+import { Ico, P } from '@/features/clientes/components/canon/Iconos'
+import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import {
   CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
 } from '@/features/administracion/components/FichaCanonica'
@@ -106,15 +113,25 @@ const VE_CONTRACTUALES = ['direccion', 'administracion']
 type Params = { cliente: string }
 type Query = {
   contacto?: string; editar?: string; archivadas?: string; actividad?: string; documentos?: string
+  vista?: string
+  /** El nombre viejo del mismo parámetro. Sigue leyéndose para que un enlace ya compartido —o un
+   *  favorito— no caiga en Resumen sin decir por qué. No se escribe más: `url()` emite `vista`. */
   solapa?: string
 }
 
-/** Las cinco caras del canónico 26. Una solapa que no existe abre Resumen: un enlace viejo o
- *  tipeado a mano no puede dejar la ficha en blanco. */
-const SOLAPAS = ['resumen', 'obras', 'presupuestos', 'documentos', 'cuenta'] as const
+/** LAS SIETE CARAS DE LA FICHA. Las cinco del canónico 26 más las tres que traen los mockups 28,
+ *  31 y 32 —«Cuenta corriente» reemplaza a la vieja «Cuenta»—. Una solapa que no existe abre
+ *  Resumen: un enlace viejo o tipeado a mano no puede dejar la ficha en blanco. */
+const SOLAPAS = [
+  'resumen', 'obras', 'presupuestos', 'documentos', 'cuenta', 'esquema', 'accesos',
+] as const
 type Solapa = (typeof SOLAPAS)[number]
 const solapaDe = (v: string | undefined): Solapa =>
   (SOLAPAS as readonly string[]).includes(v ?? '') ? (v as Solapa) : 'resumen'
+
+/** Las tres caras nuevas se dibujan A SANGRE, sin el aside de identidad: sus mockups usan esa
+ *  columna para el panel del certificado, del pago o del acceso. */
+const A_SANGRE: readonly Solapa[] = ['cuenta', 'esquema', 'accesos']
 
 export default async function ClientePage({
   params, searchParams,
@@ -185,11 +202,23 @@ export default async function ClientePage({
   // La ficha se sigue dibujando —el resto de los bloques sirve—, pero con el cartel de qué faltó.
   const lector = crearLector()
 
-  const solapa = solapaDe(q.solapa)
+  const solapa = solapaDe(q.vista ?? q.solapa)
+  // EL DÍA DE HOY LO DECIDE EL SERVIDOR, EN EL HUSO DE LA EMPRESA. Si «vencido» lo calculara el
+  // navegador, un jefe con el reloj corrido —o de viaje— vería una mora distinta que administración
+  // sobre el mismo cliente. Mismo criterio que `/mi-cuenta`.
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const aSangre = A_SANGRE.includes(solapa)
   // Los presupuestos DE ESTE CLIENTE. `getCartera` trae la cartera entera —es la vista que ya usa
   // /presupuestos— y el corte se hace acá por `cliente_id`: filtrar por el nombre escrito en el
   // presupuesto ataría la ficha a la grafía del texto, que es lo que `cliente_id` vino a arreglar.
   const presupuestos = lector.leer(cartera, []).filter((p) => p.cliente_id === id)
+
+  // LAS CARAS NUEVAS LEEN SU MATERIAL SÓLO CUANDO ESTÁN ABIERTAS. Ninguna alimenta un contador de
+  // la barra de solapas —el mockup no les pone número—, así que esconderlas ahorra la consulta
+  // entera y no sólo el dibujo, que es lo contrario de lo que pasa con Obras o Documentos.
+  const [cuenta, certificados] = solapa === 'cuenta' && veEconomia
+    ? await Promise.all([getCuentaCorriente(id), getCertificados(id)])
+    : [null, []]
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -199,7 +228,11 @@ export default async function ClientePage({
    *  no puede cerrar el contacto que alguien tenía abierto tres bloques más abajo. */
   const url = (cambio: Partial<Record<keyof Query, string | null>>) => {
     const p = new URLSearchParams(
-      Object.entries({ ...q, ...cambio }).filter(([, v]) => v != null && v !== '') as [string, string][],
+      // `solapa` se lee pero NO se propaga: un enlace viejo abre la cara que pedía y a partir de
+      // ahí la dirección se escribe con el nombre de hoy. Dos parámetros para lo mismo terminan
+      // discrepando el día que alguien cambie uno solo.
+      Object.entries({ ...q, solapa: null, ...cambio })
+        .filter(([, v]) => v != null && v !== '') as [string, string][],
     )
     const s = p.toString()
     return `/clientes/${slug}${s ? `?${s}` : ''}`
@@ -246,18 +279,28 @@ export default async function ClientePage({
             </span>
           }
           pastillas={
-            // ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
-            // cartera, y saberlo cambia lo que se hace con ella.
-            <PastillaFicha
-              tono={!cliente.activo ? 'neutro' : enCurso.length > 0 ? 'curso' : 'neutro'}
-              testid="pastilla-estado-cliente"
-            >
-              {!cliente.activo
-                ? 'Archivado'
-                : enCurso.length > 0
-                  ? `${enCurso.length} ${enCurso.length === 1 ? 'obra en curso' : 'obras en curso'}`
-                  : 'Sin obra en curso'}
-            </PastillaFicha>
+            <>
+              {/* ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
+                  cartera, y saberlo cambia lo que se hace con ella. */}
+              <PastillaFicha
+                tono={!cliente.activo ? 'neutro' : enCurso.length > 0 ? 'curso' : 'neutro'}
+                testid="pastilla-estado-cliente"
+              >
+                {!cliente.activo
+                  ? 'Archivado'
+                  : enCurso.length > 0
+                    ? `${enCurso.length} ${enCurso.length === 1 ? 'obra en curso' : 'obras en curso'}`
+                    : 'Sin obra en curso'}
+              </PastillaFicha>
+              {/* LA PASTILLA DE LA CARA ABIERTA (`28:41`): lo vencido en rojo, al lado del nombre.
+                  Sólo aparece cuando hay algo vencido — una pastilla «$ 0 vencido» permanente
+                  entrena a no mirar el rojo, que es justo lo que esta pastilla existe para lograr. */}
+              {solapa === 'cuenta' && cuenta?.vencido != null && cuenta.vencido > 0 && (
+                <Pastilla tono="neg" icono={<Ico d={P.alerta} s={12} w={2.2} />} testid="pastilla-vencido">
+                  {montoM(cuenta.vencido)} vencido
+                </Pastilla>
+              )}
+            </>
           }
           hechos={
             <>
@@ -273,33 +316,48 @@ export default async function ClientePage({
               <HechoFicha>{cliente.responsable_nombre ?? 'sin responsable asignado'}</HechoFicha>
             </>
           }
-          acciones={puedeEditar && (
-            // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla esa
-            // alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un segundo
-            // botón con el mismo nombre daría dos entradas a la misma escritura. Queda declarado
-            // como desviación: la primaria del objeto está en su bloque, no en la cabecera.
-            <BotonEnlace
-              href={url({ editar: q.editar === '1' ? null : '1' })}
-              data-testid="editar-ficha"
-            >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
-          )}
+          acciones={
+            // CADA CARA TRAE SUS ACCIONES, que es como lo dibuja cada mockup: la 28 corona con
+            // «Registrar cobro», la 32 con «Publicar al cliente», la 31 con «Agregar mail». No se
+            // acumulan con «Editar»: el mockup pone una sola fila y la del cliente pertenece a la
+            // cara que se está mirando.
+            solapa === 'cuenta' && veEconomia
+              ? <AccionesCuenta />
+              : puedeEditar && (
+                // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla
+                // esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
+                // segundo botón con el mismo nombre daría dos entradas a la misma escritura. Queda
+                // declarado como desviación: la primaria del objeto está en su bloque.
+                <BotonEnlace
+                  href={url({ editar: q.editar === '1' ? null : '1' })}
+                  data-testid="editar-ficha"
+                >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
+              )
+          }
           solapas={
             /* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono, DENTRO de la cabecera, para que la
                activa se apoye sobre su filo. Cambian de vista, no de página: el estado viaja en
                `?solapa=`, así que cada cara es una dirección compartible y «atrás» vuelve a la
                anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al lado de
                Cuenta se leería como saldo. */
-            <SubTabs
+            <SolapasFicha
               testid="solapas-cliente"
               items={[
-                { href: url({ solapa: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
-                { href: url({ solapa: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
+                { href: url({ vista: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
+                { href: url({ vista: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
                 ...(veEconomia
-                  ? [{ href: url({ solapa: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
+                  ? [{ href: url({ vista: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
                   : []),
-                { href: url({ solapa: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
+                { href: url({ vista: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
+                // LAS TRES CARAS ECONÓMICAS SON DE QUIEN VE LA ECONOMÍA. El jefe de obra no ve el
+                // precio de venta (misma frontera que «Contratado»), y el acceso al portal decide
+                // qué ve el CLIENTE de la empresa: eso lo administra Administración, no la obra.
                 ...(veEconomia
-                  ? [{ href: url({ solapa: 'cuenta' }), label: 'Cuenta', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' }]
+                  ? [
+                      { href: url({ vista: 'cuenta' }), label: 'Cuenta corriente', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' },
+                      { href: url({ vista: 'esquema' }), label: 'Esquema de pago', cuenta: null, activo: solapa === 'esquema', testid: 'solapa-esquema' },
+                      { href: url({ vista: 'accesos' }), label: 'Acceso al portal', cuenta: null, activo: solapa === 'accesos', testid: 'solapa-accesos' },
+                    ]
                   : []),
               ]}
             />
@@ -311,6 +369,10 @@ export default async function ClientePage({
           canónico y donde ya está en las fichas de Persona y de Proveedor. Ninguna se inventa —obras
           y contratado salen de las obras ya leídas, misma fuente que la tabla de abajo, así que no
           pueden discrepar— y ninguna escribe un cero por una ausencia. */}
+      {/* LA TIRA DE MÉTRICAS ES DEL CANÓNICO 26 y no aparece en 28, 31 ni 32: esas caras traen sus
+          propias cifras (saldo, vencido, DSO; total del contrato; mails habilitados) y apilar las
+          dos tiras dejaría ocho números arriba, ninguno de los cuales es el de la pantalla. */}
+      {!aSangre && (
       <div className="mb-6">
         <TiraMetricas
           testid="metricas-cliente"
@@ -332,6 +394,7 @@ export default async function ClientePage({
           ]}
         />
       </div>
+      )}
 
       {lector.falla() && (
         <div className="mb-5" data-testid="cliente-lectura-fallida">
@@ -359,6 +422,20 @@ export default async function ClientePage({
       {/* 372px y hueco de 12px — `26:180` y `26:158`. Eran 320px con 28px de hueco: el panel
           quedaba 52px más angosto que el de la cartera de al lado, así que el MISMO bloque «Datos»
           truncaba un email en la ficha y no en el panel. */}
+      {/* LAS TRES CARAS NUEVAS OCUPAN EL ANCHO ENTERO. Sus mockups usan la columna derecha para el
+          panel del certificado (28), del pago (32) o del alta de acceso (31): dejar además el aside
+          de identidad partiría la pantalla en tres columnas y el contenido quedaría en 500px sobre
+          un MacBook de 1280. La identidad sigue a un clic, en Resumen. */}
+      {solapa === 'cuenta' && veEconomia && (
+        <CuentaCorriente
+          cuenta={cuenta}
+          documentos={certificados}
+          hoy={hoy}
+          registrarCobro={registrarCobro}
+        />
+      )}
+
+      {!aSangre && (
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_372px]">
         <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-6 lg:order-2" data-testid="panel-informacion">
           <div className="space-y-3">
@@ -440,14 +517,9 @@ export default async function ClientePage({
               />
             </Bloque>
           )}
-
-          {solapa === 'cuenta' && veEconomia && (
-            <Bloque titulo="Cuenta" testid="bloque-cuenta">
-              <FichaCuenta obras={todas} />
-            </Bloque>
-          )}
         </div>
       </div>
+      )}
     </PageShell>
   )
 }

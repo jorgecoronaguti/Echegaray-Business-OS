@@ -10,11 +10,13 @@
 import type { AccesoPortal, ActividadPortal } from '../types/cobranzas'
 
 /** Los mails habilitados, incluidos los revocados (la pantalla los distingue y los cuenta aparte). */
-export async function getAccesos(_clienteId: string): Promise<AccesoPortal[]> {
+export async function getAccesos(clienteId: string): Promise<AccesoPortal[]> {
+  if (!clienteId) return []
   return []
 }
 
 /** «Qué hicieron en el portal», del más nuevo al más viejo. */
-export async function getActividadPortal(_clienteId: string): Promise<ActividadPortal[]> {
+export async function getActividadPortal(clienteId: string): Promise<ActividadPortal[]> {
+  if (!clienteId) return []
   return []
 }

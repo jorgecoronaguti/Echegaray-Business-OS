@@ -12,6 +12,7 @@
 
 import type { EsquemaCliente } from '../types/cobranzas'
 
-export async function getEsquema(_clienteId: string): Promise<EsquemaCliente | null> {
+export async function getEsquema(clienteId: string): Promise<EsquemaCliente | null> {
+  if (!clienteId) return null
   return null
 }
