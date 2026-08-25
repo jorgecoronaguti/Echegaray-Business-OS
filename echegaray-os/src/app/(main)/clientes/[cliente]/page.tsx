@@ -86,12 +86,15 @@ import { BloqueInformacion } from '@/features/clientes/components/BloqueInformac
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
 import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
-import { AccionesCuenta } from '@/features/clientes/components/canon/AccionesDeVista'
+import { EsquemaPago } from '@/features/clientes/components/esquema/EsquemaPago'
+import { AccionesCuenta, AccionesEsquema } from '@/features/clientes/components/canon/AccionesDeVista'
 import { SolapasFicha } from '@/features/clientes/components/canon/SolapasFicha'
 import { Pastilla } from '@/features/clientes/components/canon/Piezas'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
-import { registrarCobro } from '@/features/clientes/services/actionsCobranza'
+import { getEsquema } from '@/features/clientes/services/esquema'
+import { editarPago, publicarEsquema, registrarCobro } from '@/features/clientes/services/actionsCobranza'
 import { montoM } from '@/features/clientes/services/cobranzaFormato'
+import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { Ico, P } from '@/features/clientes/components/canon/Iconos'
 import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import {
@@ -219,6 +222,10 @@ export default async function ClientePage({
   const [cuenta, certificados] = solapa === 'cuenta' && veEconomia
     ? await Promise.all([getCuentaCorriente(id), getCertificados(id)])
     : [null, []]
+  const esquema = solapa === 'esquema' && veEconomia ? await getEsquema(id) : null
+  // El contador de la pastilla sale de la MISMA lista que dibuja la tabla: si saliera de una
+  // consulta aparte, la cabecera podría decir «2 cambios» sobre una tabla que muestra uno.
+  const sinPublicar = cambiosSinPublicar(esquema?.pagos ?? [])
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -300,6 +307,13 @@ export default async function ClientePage({
                   {montoM(cuenta.vencido)} vencido
                 </Pastilla>
               )}
+              {/* `32:26`: lo que el cliente TODAVÍA NO VIO, en la cabecera. Es la pastilla que
+                  justifica el botón «Publicar al cliente» de al lado. */}
+              {solapa === 'esquema' && sinPublicar > 0 && (
+                <Pastilla tono="warn" icono={<Ico d={P.reloj} s={12} w={2.2} />} testid="pastilla-sin-publicar">
+                  {sinPublicar} {sinPublicar === 1 ? 'cambio sin publicar' : 'cambios sin publicar'}
+                </Pastilla>
+              )}
             </>
           }
           hechos={
@@ -323,6 +337,8 @@ export default async function ClientePage({
             // cara que se está mirando.
             solapa === 'cuenta' && veEconomia
               ? <AccionesCuenta />
+              : solapa === 'esquema' && veEconomia
+              ? <AccionesEsquema />
               : puedeEditar && (
                 // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla
                 // esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
@@ -432,6 +448,16 @@ export default async function ClientePage({
           documentos={certificados}
           hoy={hoy}
           registrarCobro={registrarCobro}
+        />
+      )}
+
+      {solapa === 'esquema' && veEconomia && (
+        <EsquemaPago
+          esquema={esquema}
+          hoy={hoy}
+          clienteId={id}
+          editarPago={editarPago}
+          publicarEsquema={publicarEsquema}
         />
       )}
 
