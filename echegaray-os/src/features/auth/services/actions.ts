@@ -1,5 +1,6 @@
 'use server'
 
+import { mensajeDeAuth } from './mensajeDeAuth'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -30,7 +31,7 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
 
   const supabase = await createClient()
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data)
-  if (error) return { error: error.message }
+  if (error) return { error: mensajeDeAuth(error.message) }
 
   revalidatePath('/', 'layout')
 
@@ -65,7 +66,7 @@ export async function signupAction(_prev: ActionState, formData: FormData): Prom
     password: parsed.data.password,
     options: { data: { nombre: parsed.data.nombre } },
   })
-  if (error) return { error: error.message }
+  if (error) return { error: mensajeDeAuth(error.message) }
 
   revalidatePath('/', 'layout')
   redirect('/login?registrado=1')
@@ -132,7 +133,7 @@ export async function contrasenaNuevaAction(_prev: ActionState, formData: FormDa
   }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
-  if (error) return { error: error.message }
+  if (error) return { error: mensajeDeAuth(error.message) }
 
   revalidatePath('/', 'layout')
   // Mismo aterrizaje que el login: quien acaba de recuperar la contraseña ya está adentro, y el
