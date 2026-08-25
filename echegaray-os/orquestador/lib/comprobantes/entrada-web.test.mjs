@@ -10,9 +10,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ENTRADA, MAX_INTENTOS, aplicarReintento, estadoDeEntrada, estadoDeExcepcion, motivoDelTexto,
-  reintentable, terminal,
+  ENTRADA, MAX_INTENTOS, aplicarReintento, cierreDelFajo, estadoDeEntrada, estadoDeExcepcion,
+  motivoDelTexto, reintentable, terminal,
 } from './entrada-web.mjs'
+import { ESTADO } from './fajo.mjs'
 
 const parte = (o = {}) => ({ recibidos: 1, cargados: 0, yaEstaban: 0, copias: 0, suma: 0, ...o })
 
@@ -146,4 +147,43 @@ test('«confirmar» con todos ya cargados es «ya estaba», no «en espera» (Ba
 test('«confirmar» con algo que sí falta cargar sigue en espera', () => {
   const r = estadoDeEntrada({ estado: 'confirmar', texto: 'Obra: falta', parte: { suma: 1, cargados: 0, yaEstaban: 0 } })
   assert.equal(r.estado, 'en_espera')
+})
+
+// ═══ EL FAJO SE CIERRA CON LA FILA (prueba real 25/08) ═══
+//
+// Una fila web que termina `ya_estaba` cerraba con su `cerrado_at` y dejaba el fajo `abierto`,
+// `cerrado_at null`, `filas null` (fajos 6569dd6d… y 64d7e5da…). En el chat ese «abierto» significa
+// «espero que una persona toque un botón»; en la web nadie va a tocar nada. Si se revierte
+// `cierreDelFajo` a devolver null para todo, los tres tests de acá abajo se ponen rojos.
+
+test('un lote que terminó cierra el fajo con el mismo estado que usa el bot', () => {
+  // «Ya estaban cargados» es CARGADO con filas [] — la rama `!entran.length` de escritura.mjs.
+  // Descartado sería mentira: no se tiró nada, el gasto está en Compras.
+  assert.deepEqual(cierreDelFajo(ENTRADA.YA_ESTABA), {
+    estado: ESTADO.CARGADO, filas: [], error: 'ya estaban cargados',
+  })
+  assert.equal(cierreDelFajo(ENTRADA.CARGADO).estado, ESTADO.CARGADO)
+  assert.equal(cierreDelFajo(ENTRADA.RECHAZADO).estado, ESTADO.DESCARTADO)
+  assert.equal(cierreDelFajo(ENTRADA.ERROR).estado, ESTADO.ERROR)
+
+  // Y ninguno inventa un estado: todos tienen que estar en el CHECK de la tabla.
+  const validos = new Set(Object.values(ESTADO))
+  for (const e of [ENTRADA.CARGADO, ENTRADA.YA_ESTABA, ENTRADA.RECHAZADO, ENTRADA.ERROR]) {
+    assert.ok(validos.has(cierreDelFajo(e).estado), e)
+  }
+})
+
+test('«en espera» NO cierra el fajo: el comprobante está vivo esperando a una persona', () => {
+  assert.equal(cierreDelFajo(ENTRADA.EN_ESPERA), null)
+  assert.equal(cierreDelFajo(ENTRADA.EN_ESPERA, { motivo: 'falta la obra' }), null)
+  // Lo que vuelve a la cola tampoco: el próximo intento reusa el MISMO fajo abierto.
+  assert.equal(cierreDelFajo(ENTRADA.PENDIENTE), null)
+  assert.equal(cierreDelFajo(ENTRADA.PROCESANDO), null)
+  assert.equal(cierreDelFajo(undefined), null)
+})
+
+test('el motivo de la fila viaja al fajo, recortado', () => {
+  assert.equal(cierreDelFajo(ENTRADA.RECHAZADO, { motivo: '  la foto  no se lee ' }).error, 'la foto no se lee')
+  const largo = cierreDelFajo(ENTRADA.ERROR, { motivo: 'x'.repeat(900) })
+  assert.ok(largo.error.length <= 400)
 })
