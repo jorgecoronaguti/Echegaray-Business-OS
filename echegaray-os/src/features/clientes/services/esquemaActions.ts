@@ -1,0 +1,159 @@
+'use server'
+
+// PANTALLA 32 — publicar el esquema al portal y ajustar lo que el cliente ve de cada pago.
+
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+import { esquemaPublicado } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
+import type { PagoEsquema, ResultadoAccion } from '../types'
+import { proximoVencimiento } from './esquemaService'
+
+const ajustarSchema = z.object({
+  esquemaPagoId: z.string().uuid(),
+  visiblePortal: z.boolean().optional(),
+  avisoDias: z.number().int().min(0).max(365).nullable().optional(),
+  mostrarReprogramaciones: z.boolean().optional(),
+  notaInterna: z.string().trim().max(2000).nullable().optional(),
+  orden: z.number().int().min(0).max(9999).optional(),
+})
+
+/**
+ * Ajusta lo que es PROPIO de la app: visibilidad, aviso, nota interna y orden.
+ *
+ * La fecha, el monto, el medio y el estado NO se tocan acá — son espejo de las columnas Q/J/N/O de
+ * Cobranzas y se cambian con `editarPago`, que encola. El grant de la base tampoco los deja: si una
+ * action distraída los mandara, rebota con permission denied en vez de crear una segunda verdad.
+ *
+ * Marcar `cambio_pendiente` cuando cambia la VISIBILIDAD de algo ya publicado es deliberado: mostrar
+ * un pago que estaba oculto es un cambio para el cliente aunque el importe no se haya movido.
+ */
+export async function ajustarPagoEsquema(entrada: unknown): Promise<ResultadoAccion> {
+  const parsed = ajustarSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }
+  const v = parsed.data
+
+  const cambios: Record<string, unknown> = { actualizado_at: new Date().toISOString() }
+  if (v.visiblePortal !== undefined) cambios.visible_portal = v.visiblePortal
+  if (v.avisoDias !== undefined) cambios.aviso_dias = v.avisoDias
+  if (v.mostrarReprogramaciones !== undefined) cambios.mostrar_reprogramaciones = v.mostrarReprogramaciones
+  if (v.notaInterna !== undefined) cambios.nota_interna = v.notaInterna
+  if (v.orden !== undefined) cambios.orden = v.orden
+  if (v.visiblePortal !== undefined) cambios.cambio_pendiente = true
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('esquema_pago').update(cambios).eq('id', v.esquemaPagoId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/clientes')
+  return { ok: true }
+}
+
+const publicarSchema = z.object({ clienteId: z.string().uuid() })
+
+/**
+ * PUBLICA EL ESQUEMA AL PORTAL y le avisa al cliente por mail.
+ *
+ * ═══ SE PUBLICA LO VISIBLE, Y NADA MÁS ═══
+ *
+ * Sólo los pagos marcados `visible_portal`. Un esquema a medio armar no puede filtrarse: la fecha
+ * que el dueño está tanteando no es una fecha comprometida con el cliente. Los que no están
+ * marcados no cambian de estado y el RLS los sigue ocultando aunque alguien consulte PostgREST.
+ *
+ * ═══ SI NO HAY NADA VISIBLE, NO SE PUBLICA NI SE AVISA ═══
+ *
+ * Publicar un esquema vacío le mandaría al cliente un mail que lo invita a mirar una pantalla en
+ * blanco. Se dice que falta marcar los pagos, que es lo que hay que hacer.
+ */
+export async function publicarEsquema(entrada: unknown): Promise<ResultadoAccion> {
+  const parsed = publicarSchema.safeParse(entrada)
+  if (!parsed.success) return { ok: false, error: 'Cliente inválido' }
+  const { clienteId } = parsed.data
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'No hay sesión' }
+
+  const { data: pagos, error: errLectura } = await supabase
+    .from('esquema_pago')
+    .select('id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, reparo, estado, medio,'
+      + ' visible_portal, aviso_dias, mostrar_reprogramaciones, nota_interna, reprogramaciones,'
+      + ' publicado_at, cambio_pendiente, orden')
+    .eq('cliente_id', clienteId)
+  if (errLectura) return { ok: false, error: errLectura.message }
+
+  const visibles = ((pagos ?? []) as unknown as PagoEsquema[]).filter((p) => p.visible_portal)
+  if (!visibles.length) {
+    return { ok: false, error: 'No hay ningún pago marcado como visible para el cliente. Marcá los que quiera ver y volvé a publicar.' }
+  }
+
+  const publicadoAt = new Date().toISOString()
+  const { error: errPublicar } = await supabase
+    .from('esquema_pago')
+    .update({ publicado_at: publicadoAt, cambio_pendiente: false, actualizado_at: publicadoAt })
+    .eq('cliente_id', clienteId)
+    .eq('visible_portal', true)
+  if (errPublicar) return { ok: false, error: errPublicar.message }
+
+  const aviso = await encolarAvisoPublicacion(supabase, { clienteId, publicadoAt, visibles, pedidoPor: user.id })
+
+  revalidatePath('/clientes')
+  revalidatePath('/portal')
+  // El esquema QUEDÓ publicado aunque el mail no salga: son dos hechos y se informan por separado.
+  if (!aviso.ok) return { ok: false, error: `El esquema quedó publicado, pero no pude encolar el aviso: ${aviso.error}` }
+  return { ok: true }
+}
+
+type DatosPublicacion = {
+  clienteId: string; publicadoAt: string; visibles: PagoEsquema[]; pedidoPor: string
+}
+
+async function encolarAvisoPublicacion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  d: DatosPublicacion,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: cliente } = await supabase
+    .from('clientes').select('nombre_comercial').eq('id', d.clienteId).maybeSingle()
+
+  // A quién se le avisa: los accesos VIVOS del cliente. Un acceso revocado no recibe nada.
+  const { data: accesos } = await supabase
+    .from('cliente_acceso')
+    .select('email, persona_contacto')
+    .eq('cliente_id', d.clienteId)
+    .is('revocado_at', null)
+
+  if (!accesos?.length) {
+    // No es un fallo del publicado: el esquema está publicado y lo verá quien entre. Simplemente
+    // todavía no hay a quién escribirle.
+    return { ok: true }
+  }
+
+  const proximo = proximoVencimiento(d.visibles)
+  for (const a of accesos) {
+    const plantilla = esquemaPublicado({
+      persona_contacto: a.persona_contacto,
+      cliente_nombre: cliente?.nombre_comercial ?? 'tu obra',
+      cantidad_pagos: d.visibles.length,
+      proximo: proximo ? { fecha: proximo.fecha, monto: proximo.monto } : null,
+      cliente_id: d.clienteId,
+      publicado_at: d.publicadoAt,
+    })
+    const { error } = await supabase.from('mail_saliente').insert({
+      para: a.email,
+      asunto: plantilla.asunto,
+      cuerpo_html: plantilla.html,
+      plantilla: plantilla.plantilla,
+      // La clave lleva el destinatario además del publicado_at: si no, el segundo acceso del mismo
+      // cliente chocaría contra el UNIQUE del primero y sólo se enteraría una persona.
+      clave_unica: plantilla.clave_unica ? `${plantilla.clave_unica}:${a.email}` : null,
+      cliente_id: d.clienteId,
+      pedido_por: d.pedidoPor,
+      estado: 'pendiente',
+      intentos: 0,
+    })
+    if (error && !/duplicate key|unique/i.test(error.message)) {
+      return { ok: false, error: error.message }
+    }
+  }
+  return { ok: true }
+}

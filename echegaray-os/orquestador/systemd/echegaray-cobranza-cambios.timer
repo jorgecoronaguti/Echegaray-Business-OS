@@ -1,0 +1,15 @@
+[Unit]
+# CADA MINUTO. Del otro lado hay alguien que acaba de registrar un cobro y está mirando la pantalla:
+# la demora tiene que sentirse como «se está aplicando», no como «se perdió». AccuracySec al segundo
+# porque el default de systemd (1 min) convertiría este minuto en dos.
+Description=Echegaray OS - Cola de cambios a Cobranzas (cada minuto)
+
+[Timer]
+OnBootSec=120s
+OnUnitInactiveSec=60s
+AccuracySec=1s
+# NO Persistent: la cola vive en Postgres y la próxima corrida la vacía igual.
+Unit=echegaray-cobranza-cambios.service
+
+[Install]
+WantedBy=timers.target

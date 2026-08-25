@@ -1,0 +1,13 @@
+[Unit]
+# CADA DOS MINUTOS. Un mail no necesita el minuto de la cola de cobros: el admin aprieta «avisarle»
+# y se va. Dos minutos es imperceptible y baja a la mitad las corridas en vacío.
+Description=Echegaray OS - Cola de mails del portal (cada 2 minutos)
+
+[Timer]
+OnBootSec=150s
+OnUnitInactiveSec=120s
+AccuracySec=5s
+Unit=echegaray-portal-mails.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[Unit]
+# A LOS :10 DE CADA HORA — diez minutos después del timer de cobranzas (:00), que es el que refresca
+# la réplica de la que esto se alimenta. Correr antes proyectaría la foto de la hora anterior.
+Description=Echegaray OS - Proyeccion al portal del cliente (cada hora, :10)
+
+[Timer]
+OnCalendar=*-*-* *:10:00
+# Persistent SÍ, al revés que la cola de comprobantes: si la VM estuvo apagada, la proyección quedó
+# vieja y hay que recuperarla — no se vacía sola como una cola.
+Persistent=true
+Unit=echegaray-portal-esquema.service
+
+[Install]
+WantedBy=timers.target

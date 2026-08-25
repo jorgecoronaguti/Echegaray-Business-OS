@@ -5,6 +5,7 @@ import { puedeVerRuta } from '@/features/auth/types/areas'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
+import { destinoPorRol } from '@/features/portal/types'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -51,6 +52,28 @@ export async function middleware(request: NextRequest) {
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
   if (user && !esApiOAuth) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+
+    // ═══ EL PORTAL DEL CLIENTE SE DECIDE PRIMERO (25/08/2026) ═══
+    //
+    // Antes que el RBAC de campo y antes que las áreas, porque `cliente` no es un empleado con menos
+    // permisos: es alguien de OTRA empresa. Las reglas de abajo están escritas para gente de adentro
+    // y ninguna de ellas contempla que el usuario no lo sea — un cliente que cayera en la rama de
+    // `puedeVerRuta` pasaría a `/obras` en vez de a su portal.
+    //
+    // El confinamiento es en las DOS direcciones y la segunda suele olvidarse: nadie de adentro
+    // entra a `/portal`. Ahí las consultas filtran por `cliente_de_sesion()`, que para un empleado
+    // devuelve NULL: vería la pantalla vacía y concluiría que el cliente no tiene nada cargado.
+    //
+    // ESTO ES LA PUERTA, NO LA CERRADURA. Una llamada directa a PostgREST no pasa por acá: eso lo
+    // decide el RLS (`es_cliente()` + `cliente_de_sesion()` en Postgres).
+    const destino = destinoPorRol(perfil?.rol, pathname)
+    if (destino) {
+      const url = request.nextUrl.clone()
+      url.pathname = destino
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
     if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
       url.pathname = '/hoy'
