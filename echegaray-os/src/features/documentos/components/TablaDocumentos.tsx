@@ -29,6 +29,7 @@
 // «Sin firmar» y «Falta»: los tres son estados que ninguna tabla de la base sabe. Sólo se dibuja el
 // estado que `estadoVigencia` puede probar con una fecha.
 
+import { AccionesDeFila } from './AccionesDeFila'
 import Link from 'next/link'
 import { Estado } from '@/shared/components/ds'
 import {
@@ -67,11 +68,12 @@ function IconoClase({ clase }: { clase: ClaseVinculo }) {
 }
 
 export function TablaDocumentos({
-  documentos, seleccionado, hrefDe, hoy, vacio,
+  documentos, seleccionado, hrefs, hoy, vacio,
 }: {
   documentos: Documento[]
   seleccionado?: string
-  hrefDe: (driveFileId: string) => string
+  /** Enlace por `drive_file_id`, calculado en el servidor: una función no puede cruzar a este componente. */
+  hrefs: Record<string, string>
   /** El día contra el que se mide la vigencia, en ISO. Se pasa: `new Date()` dentro de un
    *  componente lo vuelve imposible de probar y hace que el render dependa del reloj del servidor. */
   hoy: string
@@ -119,7 +121,7 @@ export function TablaDocumentos({
           >
             <div style={{ minWidth: 0 }}>
               <Link
-                href={hrefDe(d.drive_file_id)}
+                href={hrefs[d.drive_file_id] ?? '#'}
                 data-testid="abrir-documento"
                 className="block truncate hover:underline"
                 style={{ fontSize: '12.5px', color: C.tinta }}
@@ -193,10 +195,7 @@ export function TablaDocumentos({
                 inventado: `enlaceDrive` es la vista del archivo y `enlaceDescarga` la descarga
                 directa, las mismas dos que ya usa el panel. `target="_blank"` porque salen del OS.
                 El clic no debe seleccionar la fila: por eso frena la propagación. */}
-            <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <AccionesDeFila>
               <a
                 href={enlaceDrive(d.drive_file_id)}
                 target="_blank"
@@ -224,7 +223,7 @@ export function TablaDocumentos({
                   <IcoExportar s={15} />
                 </a>
               )}
-            </div>
+            </AccionesDeFila>
           </FilaCanon>
         )
       })}
