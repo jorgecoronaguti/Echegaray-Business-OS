@@ -87,12 +87,19 @@ import { BloqueObras } from '@/features/clientes/components/BloqueObras'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
 import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
 import { EsquemaPago } from '@/features/clientes/components/esquema/EsquemaPago'
-import { AccionesCuenta, AccionesEsquema } from '@/features/clientes/components/canon/AccionesDeVista'
+import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPortal'
+import {
+  AccionesAccesos, AccionesCuenta, AccionesEsquema,
+} from '@/features/clientes/components/canon/AccionesDeVista'
 import { SolapasFicha } from '@/features/clientes/components/canon/SolapasFicha'
 import { Pastilla } from '@/features/clientes/components/canon/Piezas'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
 import { getEsquema } from '@/features/clientes/services/esquema'
-import { editarPago, publicarEsquema, registrarCobro } from '@/features/clientes/services/actionsCobranza'
+import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesos'
+import {
+  editarPago, habilitarAcceso, publicarEsquema, reenviarInvitacion, registrarCobro, revocarAcceso,
+} from '@/features/clientes/services/actionsCobranza'
+import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
 import { montoM } from '@/features/clientes/services/cobranzaFormato'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { Ico, P } from '@/features/clientes/components/canon/Iconos'
@@ -226,6 +233,10 @@ export default async function ClientePage({
   // El contador de la pastilla sale de la MISMA lista que dibuja la tabla: si saliera de una
   // consulta aparte, la cabecera podría decir «2 cambios» sobre una tabla que muestra uno.
   const sinPublicar = cambiosSinPublicar(esquema?.pagos ?? [])
+  const [accesos, actividadPortal] = solapa === 'accesos' && veEconomia
+    ? await Promise.all([getAccesos(id), getActividadPortal(id)])
+    : [[], []]
+  const portal = resumenAccesos(accesos)
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -309,6 +320,14 @@ export default async function ClientePage({
               )}
               {/* `32:26`: lo que el cliente TODAVÍA NO VIO, en la cabecera. Es la pastilla que
                   justifica el botón «Publicar al cliente» de al lado. */}
+              {/* `31:44`: el portal está vivo cuando hay al menos un mail que entra. Sin ninguno no
+                  se dibuja nada — «Portal inactivo» sonaría a una falla y es sólo que nadie lo
+                  habilitó todavía, que ya lo dice la tabla vacía de abajo. */}
+              {solapa === 'accesos' && portal.habilitados > 0 && (
+                <Pastilla tono="pos" icono={<Ico d={P.okCirculo} s={12} w={2.2} />} testid="pastilla-portal">
+                  Portal activo
+                </Pastilla>
+              )}
               {solapa === 'esquema' && sinPublicar > 0 && (
                 <Pastilla tono="warn" icono={<Ico d={P.reloj} s={12} w={2.2} />} testid="pastilla-sin-publicar">
                   {sinPublicar} {sinPublicar === 1 ? 'cambio sin publicar' : 'cambios sin publicar'}
@@ -339,6 +358,8 @@ export default async function ClientePage({
               ? <AccionesCuenta />
               : solapa === 'esquema' && veEconomia
               ? <AccionesEsquema />
+              : solapa === 'accesos' && veEconomia
+              ? <AccionesAccesos />
               : puedeEditar && (
                 // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla
                 // esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
@@ -458,6 +479,22 @@ export default async function ClientePage({
           clienteId={id}
           editarPago={editarPago}
           publicarEsquema={publicarEsquema}
+        />
+      )}
+
+      {solapa === 'accesos' && veEconomia && (
+        <AccesosPortal
+          accesos={accesos}
+          actividad={actividadPortal}
+          // EL CRUCE CONTRA LOS CONTACTOS YA CARGADOS es el único control contra un typo en el mail
+          // que se habilita. Sale de la MISMA lectura que dibuja el bloque Contactos de la ficha.
+          contactos={lector.leer(contactos, []).map((c) => ({ nombre: c.nombre, email: c.email, rol: c.rol }))}
+          obras={todas.map((o) => ({ id: o.obra_id, nombre: o.nombre }))}
+          hoy={hoy}
+          clienteId={id}
+          habilitarAcceso={habilitarAcceso}
+          revocarAcceso={revocarAcceso}
+          reenviarInvitacion={reenviarInvitacion}
         />
       )}
 
