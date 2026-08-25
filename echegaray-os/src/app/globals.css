@@ -163,6 +163,10 @@
    deja la tabla más angosta que este mínimo. */
 @media (max-width: 1023px) {
   .canon-scroll-x {
+    /* `relative` NO es decorativo: un `sr-only` (position:absolute) dentro de la grilla escapa del
+       clip de un scroll container no posicionado y ensancha el <html> hasta su posición estática
+       (782px en /presupuestos a 390, medido 25/08) — la página vuelve a scrollear de costado. */
+    position: relative;
     overflow-x: auto;
     /* Llegar al final de la tabla no arrastra la página detrás. */
     overscroll-behavior-x: contain;
