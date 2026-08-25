@@ -8,18 +8,22 @@ import { P } from '../estilos'
 // una línea de 1px, y NO lleva la caja blanca con radio que llevan los bloques del OS interno.
 
 /** El encabezado de una sección: icono, título, y a la derecha lo que aclare (`29:239`, `29:419`). */
-export function TituloBloque({ icono, titulo, nota, accion, separacion = 10 }: {
+export function TituloBloque({ icono, titulo, nota, accion, separacion = 10, linea = true }: {
   icono?: ReactNode
   titulo: string
   nota?: string | null
   accion?: ReactNode
   /** `29` usa 10px, 12px cuando abajo va una grilla de fotos. */
   separacion?: number
+  /** El hairline de cierre. «Certificados y facturas» (`29:240`) NO lo lleva: abajo tiene el
+   *  encabezado de la tabla, que trae el suyo, y dos líneas seguidas se ven como un error. */
+  linea?: boolean
 }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      paddingBottom: separacion, borderBottom: `1px solid ${P.linea}`,
+      [linea ? 'paddingBottom' : 'marginBottom']: separacion,
+      borderBottom: linea ? `1px solid ${P.linea}` : undefined,
     }}>
       {icono && <span style={{ display: 'flex', color: P.tenue }}>{icono}</span>}
       <div style={{ fontSize: '12.5px', fontWeight: 600, color: P.tinta }}>{titulo}</div>

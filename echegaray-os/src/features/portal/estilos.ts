@@ -20,6 +20,8 @@ export const P = {
 
   /** Tramo COBRADO de la barra del contrato y su borde (`29:100`, `29:113`). */
   verdeSuave: '#D6EBDF',
+  /** El verde oscuro del importe escrito DENTRO del tramo cobrado (`29:101`). */
+  verdeTinta: '#05603A',
   /** Tramo SIN COBRAR (`29:103`). */
   rojoSuave: '#FDE2DE',
   /** Tramo FONDO DE REPARO — el único gris con borde propio (`29:106`, `29:121`). */
