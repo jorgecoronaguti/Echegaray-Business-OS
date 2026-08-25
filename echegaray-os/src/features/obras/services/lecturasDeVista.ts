@@ -57,7 +57,7 @@
 /** ═══ EL INTERRUPTOR DE LA SOLAPA PERSONAL (25/08/2026) ═══
  *
  *  `TabPersonal` —la solapa entera: plantel, HH por actividad, imputaciones y `HoyEnObra`— se
- *  importa en el `page.tsx` y NUNCA se monta. Se cayó del JSX y nadie lo notó: ESLint lo venía
+ *  importaba en el `page.tsx` y NUNCA se montaba. Se cayó del JSX y nadie lo notó: ESLint lo venía
  *  avisando con diez warnings de variables sin usar (`asignaciones`, `causasDesvio`, `actividadHH`,
  *  las seis acciones de personal y el propio import del componente).
  *
@@ -65,12 +65,16 @@
  *  del workspace. Eso es lo que hacía caer la pantalla con `canceling statement due to statement
  *  timeout`: no se caía dibujando, se caía juntando datos que nadie iba a dibujar.
  *
- *  NO SE BORRÓ EL COMPONENTE NI SU CABLEADO: le falta el render, no los datos, y reponerlo es de
- *  quien esté portando el canónico 09. Lo que se cortó es el gasto, y se cortó DESDE ACÁ para que
- *  volver a prenderlo sea una sola línea en vez de reconstruir seis ternarios. `lecturasDeVista.test`
- *  ata las dos cosas: el día que `<TabPersonal` vuelva al `page.tsx`, el test se pone rojo hasta que
- *  esta constante diga `true`. */
-export const PERSONAL_SE_DIBUJA = false
+ *  NO SE BORRÓ EL COMPONENTE NI SU CABLEADO —le faltaba el render, no los datos— y el gasto se cortó
+ *  DESDE ACÁ para que reponerlo fuera una sola línea en vez de reconstruir seis ternarios.
+ *
+ *  25/08/2026 · EL RENDER VOLVIÓ: `<TabPersonal` se monta en el `page.tsx` dentro del contenedor con
+ *  aire, así que el interruptor pasa a `true` y las siete consultas vuelven a tener destino. La
+ *  constante NO se borra: es lo que mantiene el render y las lecturas atados en LOS DOS SENTIDOS
+ *  —`lecturasDeVista.test` se pone rojo tanto si el componente se cae del JSX con esto en `true`
+ *  como si vuelve al JSX con esto en `false`—. Sin ella, «la solapa dibuja vacío» y «la solapa paga
+ *  siete consultas de más» son dos regresiones que ningún test podría ver. */
+export const PERSONAL_SE_DIBUJA = true
 
 /** Las sub-vistas de la solapa Tareas. `null` cuando la solapa activa no es Tareas. */
 export type SubTareas = 'arbol' | 'gantt' | 'parte' | null

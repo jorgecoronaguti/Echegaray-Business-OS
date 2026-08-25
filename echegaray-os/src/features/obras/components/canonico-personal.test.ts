@@ -92,3 +92,93 @@ test('en Documentos el buscador y los chips gobiernan la misma lista y viven jun
   const chips = src.indexOf('testid="chips-categoria-documento"')
   assert.ok(banda > 0 && chips > banda && buscador > chips, 'el buscador volvió a salirse de la banda')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// QUÉ DEFECTO ATRAPA ESTE ÚLTIMO BLOQUE (25/08/2026)
+//
+// `?vista=personal` NO DIBUJABA NADA. `TabPersonal` estaba importado en el `page.tsx` de la obra y
+// nunca se montaba: el componente entero —banda, buscador, filtros, «Hoy en obra», asignaciones,
+// plan contra real e imputaciones— existía completo y la pantalla salía en blanco. La única señal
+// eran diez warnings de ESLint por variables sin usar, que no ponen roja ninguna corrida.
+//
+// Un test que renderizara el componente NO habría visto nada: el componente estaba bien. El defecto
+// vivía en el cableado de la página, y por eso lo que se afirma acá es el MONTAJE — que se monta,
+// con qué datos, con qué acciones y EN QUÉ CONTENEDOR.
+//
+// LO QUE NO PRUEBA: que la pantalla se vea bien ni que asignar escriba en `obra_asignacion`. Eso es
+// una captura y la lectura del efecto en la base, y las hace quien no escribió esto.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const PAGE = join(DIR, '../../../app/(main)/obras/[obra]/page.tsx')
+const page = () => readFileSync(PAGE, 'utf8')
+
+test('la solapa Personal MONTA su componente: era el defecto, la pantalla salía vacía', () => {
+  assert.match(
+    page(), /\{vista === 'personal' && \(\s*\n\s*<TabPersonal/,
+    'TabPersonal volvió a estar importado sin montarse: `?vista=personal` dibuja una pantalla vacía',
+  )
+})
+
+test('TabPersonal recibe los siete datos reales de la obra, ninguno fabricado acá', () => {
+  const src = page()
+  // Cada prop apunta a una variable que sale del `Promise.all` de la página, no a un literal: un
+  // `asignaciones={[]}` compilaría igual y dibujaría «nadie asignado» en una obra con veinte.
+  for (const [prop, dato] of [
+    ['obraId', 'obraId'], ['plan', 'planPersonal'], ['asignaciones', 'asignaciones'], ['personas', 'personas'],
+    ['cuadrillas', 'cuadrillas'], ['actividades', 'acts'], ['actividadHH', 'actividadHH'],
+    ['registros', 'registros'], ['causas', 'causasDesvio'],
+  ]) {
+    assert.match(src, new RegExp(`\\n\\s+${prop}=\\{${dato}\\}`), `TabPersonal perdió ${prop}={${dato}}`)
+  }
+})
+
+test('las seis acciones de Personal van atadas a ESTA obra con bind, nunca con una arrow', () => {
+  const src = page()
+  // Dos defectos a la vez. Uno: una arrow escrita en el servidor no es una server action —React la
+  // rechaza en el navegador y la solapa queda en blanco—, y ni el typecheck ni el build lo ven.
+  // Dos: el `obraId` viaja en el `bind` y no en un campo del formulario, que sería editable desde
+  // el navegador y dejaría escribir sobre la obra de al lado.
+  for (const [prop, accion] of [
+    ['asignar', 'asignarPersona'], ['cerrar', 'cerrarAsignacion'], ['quitar', 'quitarAsignacion'],
+    ['imputar', 'imputarHH'], ['imputarMasivo', 'imputarHHMasivo'], ['borrarHoras', 'borrarHH'],
+  ]) {
+    assert.match(
+      src, new RegExp(`\\n\\s+${prop}=\\{${accion}\\.bind\\(null, obraId\\)\\}`),
+      `la acción ${prop} de Personal dejó de atarse con ${accion}.bind(null, obraId)`,
+    )
+  }
+})
+
+test('Personal se monta DENTRO del marco con aire, que es lo que su banda descuenta', () => {
+  const src = page()
+  // El defecto que atrapa: montarla arriba, de borde a borde, como la 03/05/07. La banda de la 09
+  // ya sale del marco sola con `-mx-5`, y ese 5 es el `px-5` de este contenedor: afuera se saldría
+  // 20px por lado y la página scrollearía de costado (medido el 24/08, `scrollWidth` 1300 contra
+  // `innerWidth` 1280). Es el mismo montaje que Operación y Documentos, que dibujan la misma banda.
+  const marco = src.indexOf("'w-full px-5 pb-6 pt-3.5'")
+  assert.ok(marco > 0, 'el contenedor con aire de la ficha de obra cambió de medida')
+  assert.ok(src.indexOf('<TabPersonal') > marco, 'TabPersonal se montó fuera del marco con aire')
+})
+
+test('«Hoy en obra» se dibuja UNA sola vez, y adentro de la solapa', () => {
+  // El defecto que atrapa: reponer el render copiando `HoyEnObra` a la página y dejarlo también
+  // dentro de `TabPersonal`. Serían dos lecturas de `presencia_del_dia` en la misma pantalla,
+  // llegando en momentos distintos, publicando dos jornadas distintas de la misma obra.
+  const fuentes = ['TabPersonal.tsx', 'HoyEnObra.tsx', 'ListaHoyEnObra.tsx'].map(fuente).join('\n')
+  const todo = fuentes + '\n' + page()
+  assert.equal((todo.match(/<HoyEnObra[\s/>]/g) ?? []).length, 1)
+  assert.equal((todo.match(/<ListaHoyEnObra[\s/>]/g) ?? []).length, 1)
+  assert.match(fuente('TabPersonal.tsx'), /<HoyEnObra/, '«Hoy en obra» salió de la solapa Personal')
+})
+
+test('la obra la RECIBE la solapa, no la adivina de la primera fila que encuentre', () => {
+  // El defecto que atrapa: `plan?.obra_id ?? asignaciones[0]?.obra_id ?? actividades[0]?.obra_id`.
+  // En una obra recién abierta —sin línea base, sin nadie asignado y sin actividades— las tres
+  // fuentes dan `undefined`, la banda no se dibujaba y con ella se caía «+ Asignar persona»: la
+  // pantalla desde la que se asigna a la primera persona era la única que no dejaba asignar.
+  const src = fuente('TabPersonal.tsx')
+  assert.doesNotMatch(src, /const obraId = /, 'la solapa volvió a deducir la obra en vez de recibirla')
+  assert.match(src, /\n\s+obraId: string\n/, 'TabPersonal dejó de recibir la obra por prop')
+  // Y la banda del canónico ya no cuelga de que esa deducción haya salido bien.
+  assert.doesNotMatch(src, /\{obraId && \(/, 'la banda de la 09 volvió a esconderse cuando falta el dato')
+})
