@@ -21,6 +21,24 @@
 // front mientras PostgREST publica el mismo importe a cualquier sesión sería teatro — la pantalla
 // quedaría más angosta que la base y el agujero seguiría abierto sin que nadie lo vea.
 //
+// ═══ LA LISTA ES LA PESTAÑA COMPRAS, NO EL LIBRO DE ARCA (25/08/2026) ═══
+//
+// Pedido del dueño, textual: *«la sección "compras" en app.ecsas tiene que replicar toda la
+// información que actualmente se concentra en pestaña Compras de Sheet Flujo de Fondos»*.
+//
+// Hasta hoy esta pantalla listaba `comprobante_compra` —la vista del libro de compras de ARCA— y su
+// propio texto de ayuda afirmaba que «la pestaña Compras del Sheet es una proyección de lo mismo, no
+// una segunda versión». Medido el 25/08 contra las dos fuentes: ARCA tiene 632 comprobantes y la
+// pestaña 882 filas. No son la misma población y no podían serlo — ARCA no puede tener el gasto sin
+// factura, los sueldos, los impuestos, las boletas, ni la imputación a obra que el dueño escribe a
+// mano. La afirmación era falsa y estaba escrita en la pantalla.
+//
+// Ahora la lista es `public.compra_sheet` (la réplica fiel, ver `20260825T1200`). EL CONTROL CONTRA
+// ARCA NO SE BORRÓ: sigue entero detrás del chip «Control ARCA» (`?f=arca`), con su imputación a
+// obra, sus duplicados y su panel. Son dos preguntas distintas —qué gastó la empresa y qué le
+// reconoce AFIP— y las dos siguen teniendo respuesta; lo que no puede seguir es que la pantalla
+// llame «Compras» a una población distinta de la que el dueño llama Compras.
+//
 // ═══ «CARGAR COMPROBANTE» SUBE ARCHIVOS, Y ENTRA POR EL CIRCUITO DEL BOT (25/08/2026) ═══
 //
 // Hasta el 24/08 este botón explicaba que la carga se hacía sólo por Mattermost, con un argumento
@@ -53,6 +71,15 @@ import { PanelCompra } from '@/features/administracion/components/PanelCompra'
 import {
   filtroDe, obrasFrecuentes, ROTULO_FILTRO, type FiltroCompras,
 } from '@/features/administracion/services/comprasEstado'
+import { TablaComprasSheet } from '@/features/administracion/components/TablaComprasSheet'
+import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
+import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
+import {
+  conteosDe, filtroDe as filtroSheetDe, pasa, ROTULO as ROTULO_SHEET, type FiltroSheet,
+} from '@/features/administracion/services/comprasSheet'
+import {
+  getAdjuntosSueltos, getComprasSheet, TOPE as TOPE_SHEET,
+} from '@/features/administracion/services/comprasSheetService'
 import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
@@ -65,7 +92,13 @@ const RUTA = '/administracion/compras'
 /** La URL de una vista de esta pantalla. Todo el estado vive acá: se comparte y vuelve con «atrás». */
 function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: string }): string {
   const p = new URLSearchParams()
-  if (f && f !== 'capturadas') p.set('f', f)
+  // `f=arca` es lo que MANTIENE abierta esta vista: sin él, cualquier clic dentro del control
+  // fiscal caería en la pestaña Compras y la persona perdería dónde estaba.
+  p.set('f', 'arca')
+  // El filtro propio del control viaja en `fa` para no pelearse con el de la pestaña. Que sean dos
+  // parámetros y no uno es a propósito: son dos vistas con dos vocabularios distintos, y meterlos en
+  // la misma llave haría que «sinObra» de una significara otra cosa en la otra.
+  if (f && f !== 'capturadas') p.set('fa', f)
   if (q) p.set('q', q)
   if (c) p.set('c', c)
   // La obra que dejó elegida un atajo del panel. Viaja en la URL como todo el resto del estado: sin
@@ -75,13 +108,148 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
   return s ? `${RUTA}?${s}` : RUTA
 }
 
+/**
+ * EL RUTEO DE LA PANTALLA. `?f=arca` abre el control contra el libro de ARCA —que es todo lo que
+ * había acá hasta el 25/08 y sigue igual—; cualquier otra cosa abre la pestaña Compras, que es lo
+ * que el dueño llama Compras.
+ */
 export default async function ComprasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; f?: string; c?: string; o?: string }>
+  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string }>
 }) {
   const sp = await searchParams
-  const filtro = filtroDe(sp.f)
+  if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
+  return <PestanaCompras sp={sp} />
+}
+
+/** LA PESTAÑA COMPRAS, entera. La lista que pidió el dueño. */
+async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string } }) {
+  const filtro = filtroSheetDe(sp.f)
+  const q = sp.q?.trim().toLowerCase() || undefined
+
+  const supabase = await createClient()
+  const perfil = await getPerfilActual(supabase)
+  if (!esAdministracion(perfil.data?.rol ?? null)) {
+    return (
+      <Marco>
+        <NavAdministracion />
+        <div style={{ padding: '0 20px' }}><Aviso tono="info">Esta pantalla es de Administración.</Aviso></div>
+      </Marco>
+    )
+  }
+
+  const [listado, sueltos, entradas] = await Promise.all([
+    getComprasSheet(supabase),
+    getAdjuntosSueltos(supabase),
+    getEntradas(supabase),
+  ])
+
+  if (listado.error || !listado.data) {
+    return (
+      <Marco>
+        <NavAdministracion />
+        <div style={{ padding: '0 20px' }} data-testid="compras-error">
+          <Aviso tono="neg" titulo="No pude leer la pestaña Compras">{listado.error}</Aviso>
+        </div>
+      </Marco>
+    )
+  }
+
+  const todas = listado.data.filas
+  // LOS CONTEOS SALEN DE LA POBLACIÓN ENTERA, no de lo que se está mirando: si contaran lo filtrado,
+  // el número de arriba dejaría de ser el de la empresa.
+  const conteos = conteosDe(todas)
+  const visibles = todas.filter((f) => {
+    if (!pasa(f, filtro)) return false
+    if (!q) return true
+    return [f.proveedor, f.comprobante, f.concepto, f.detalle_obra, f.obra_texto, f.cuit]
+      .some((v) => v?.toLowerCase().includes(q))
+  })
+
+  const href = (f: FiltroSheet) => {
+    const p = new URLSearchParams()
+    if (f !== 'todo') p.set('f', f)
+    if (sp.q) p.set('q', sp.q)
+    const t = p.toString()
+    return t ? `${RUTA}?${t}` : RUTA
+  }
+
+  return (
+    <Marco>
+      <NavAdministracion />
+      <FranjaCartera titulo="Compras" testid="franja-compras" accion={<CargarComprobante />}>
+        <BuscadorURL
+          accion={RUTA}
+          q={sp.q}
+          placeholder="Buscar comprobante o proveedor"
+          oculto={{ f: filtro === 'todo' ? undefined : filtro }}
+          ancho="w-[238px] max-w-full"
+          variante="caja"
+          testid="buscar-compra"
+        />
+        <FiltrosSheet
+          conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
+        />
+        {/* EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta. */}
+        <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
+          Control ARCA
+        </Link>
+      </FranjaCartera>
+
+      <div style={{ padding: '0 20px' }}>
+        <EntradasSubidas entradas={entradas.data ?? []} />
+      </div>
+
+      <div style={{ padding: '0 20px' }}>
+        <Ayuda titulo="De dónde salen estas filas" testid="ayuda-compras">
+          Es la pestaña Compras del Sheet Flujo de Caja, fila por fila: todo lo que la empresa gastó,
+          con la obra que le asignó Dirección y el comprobante que se mandó por el chat. La FUENTE
+          sigue siendo el Sheet — esto es su espejo, y se refresca solo. El libro que ARCA le
+          reconoce a la empresa es otra cosa y vive en «Control ARCA»: ahí están 632 comprobantes
+          fiscales, acá {todas.length} filas de gasto.
+        </Ayuda>
+      </div>
+
+      <div style={{ padding: '0 20px 20px' }}>
+        {filtro === 'sueltos' ? (
+          <div style={{ background: C.superficie, border: `1px solid ${C.linea}`, borderRadius: 10, overflow: 'hidden' }}>
+            <AdjuntosSueltos adjuntos={sueltos.data ?? []} />
+          </div>
+        ) : (
+          <>
+            <TablaComprasSheet filas={visibles} hrefDe={() => RUTA} />
+            <p className="mt-3 max-w-[820px] text-[11px] text-faint">
+              <Num className="text-faint">{visibles.length}</Num> de{' '}
+              <Num className="text-faint">{todas.length}</Num>
+              {filtro !== 'todo' && <> · {ROTULO_SHEET[filtro]}</>}
+              {q && <> · «{sp.q}»</>}
+              {(q || filtro !== 'todo') && (
+                <> · <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link></>
+              )}
+            </p>
+            {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». */}
+            {listado.data.truncado && (
+              <p className="mt-1 max-w-[820px] text-[11.5px] text-warn" data-testid="compras-truncado">
+                Se muestran las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está fuera del
+                tope de esta pantalla.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Marco>
+  )
+}
+
+/** EL CONTROL CONTRA EL LIBRO DE ARCA — sin cambios respecto del 24/08, sólo movido detrás de `?f=arca`. */
+async function ControlArca({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string }>
+}) {
+  const sp = await searchParams
+  const filtro = filtroDe(sp.fa)
   const q = sp.q?.trim() || undefined
 
   const supabase = await createClient()
@@ -144,13 +312,16 @@ export default async function ComprasPage({
           la banda suave de lo que pide trabajo. Antes eran dos bloques apilados —buscador arriba,
           seis KPIs grandes debajo— y la lista arrancaba a 190px del encabezado: en un portátil se
           veían cuatro filas del libro de compras. */}
-      <FranjaCartera titulo="Compras" testid="franja-compras" accion={<CargarComprobante />}>
+      <FranjaCartera titulo="Control ARCA" testid="franja-compras" accion={<CargarComprobante />}>
         {/* 238px — `24`, línea 60. */}
         <BuscadorURL
           accion={RUTA}
           q={sp.q}
           placeholder="Buscar comprobante o proveedor"
-          oculto={{ f: filtro === 'capturadas' ? undefined : filtro, c: sp.c }}
+          // `f=arca` VIAJA SIEMPRE EN EL BUSCADOR: sin él, buscar dentro del control fiscal
+          // devolvía a la pestaña Compras, y el filtro del control se leía como filtro de la
+          // pestaña —donde no existe—, así que la lista volvía a «todo» sin decir por qué.
+          oculto={{ f: 'arca', fa: filtro === 'capturadas' ? undefined : filtro, c: sp.c }}
           ancho="w-[238px] max-w-full"
           variante="caja"
           testid="buscar-compra"

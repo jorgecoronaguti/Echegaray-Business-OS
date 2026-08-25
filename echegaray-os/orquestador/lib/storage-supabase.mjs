@@ -90,3 +90,47 @@ export async function bajarDeStorage(o = {}, dep = {}) {
     return { ok: false, nombre: o.nombre ?? o.path, error: `no pude bajar el archivo: ${String(e?.message ?? e).slice(0, 120)}` }
   }
 }
+
+/**
+ * SUBE un objeto al bucket, sin el SDK. Devuelve `{ok:false, error}` en vez de lanzar, igual que
+ * `bajarDeStorage`: un archivo que no se puede guardar no puede tumbar a los otros ciento nueve.
+ *
+ * `upsert:false` POR DEFECTO Y A PROPÓSITO. El backfill del histórico se corre más de una vez —para
+ * eso es idempotente— y sobrescribir sería re-subir 429 MB cada vez y, peor, pisar un archivo que ya
+ * está referenciado por una fila. Storage contesta 409 cuando el objeto existe: ESO NO ES UN ERROR,
+ * es la respuesta correcta a «ya estaba», y se devuelve como `yaEstaba` para que el llamador lo
+ * cuente en vez de reintentarlo.
+ *
+ * @param {{bucket:string, path:string, data:Buffer|string, mediaType?:string, upsert?:boolean}} o
+ *        `data` acepta Buffer o base64.
+ * @param {{env?:object, fetchImpl?:Function}} [dep]
+ * @returns {Promise<{ok:true, yaEstaba:boolean, bytes:number}|{ok:false, error:string}>}
+ */
+export async function subirAStorage(o = {}, dep = {}) {
+  const env = dep.env ?? process.env
+  const traer = dep.fetchImpl ?? fetch
+  const acceso = accesoAStorage(env)
+  if (!acceso.ok) return { ok: false, error: `no puedo guardar el archivo: falta ${acceso.falta}` }
+  const buf = Buffer.isBuffer(o.data) ? o.data : Buffer.from(String(o.data ?? ''), 'base64')
+  if (!buf.length) return { ok: false, error: 'el archivo vino vacío: no lo guardo' }
+  try {
+    const r = await traer(urlDeObjeto(acceso.base, o.bucket, o.path), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${acceso.clave}`,
+        apikey: acceso.clave,
+        'content-type': o.mediaType || 'application/octet-stream',
+        'x-upsert': o.upsert ? 'true' : 'false',
+      },
+      body: buf,
+    })
+    if (r?.status === 409) return { ok: true, yaEstaba: true, bytes: buf.length }
+    if (!r?.ok) {
+      const detalle = String(await r.text().catch(() => '')).slice(0, 160)
+      return { ok: false, error: `Storage contestó ${r?.status ?? '?'} al guardar: ${detalle}` }
+    }
+    return { ok: true, yaEstaba: false, bytes: buf.length }
+  } catch (e) {
+    return { ok: false, error: `no pude guardar el archivo: ${String(e?.message ?? e).slice(0, 120)}` }
+  }
+}
