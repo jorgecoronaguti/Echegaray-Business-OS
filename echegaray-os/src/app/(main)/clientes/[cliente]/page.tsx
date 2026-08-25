@@ -85,14 +85,10 @@ import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumento
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
+import { CabeceraCliente } from '@/features/clientes/components/CabeceraCliente'
 import { CuentaCorriente } from '@/features/clientes/components/cuenta/CuentaCorriente'
 import { EsquemaPago } from '@/features/clientes/components/esquema/EsquemaPago'
 import { AccesosPortal } from '@/features/clientes/components/accesos/AccesosPortal'
-import {
-  AccionesAccesos, AccionesCuenta, AccionesEsquema,
-} from '@/features/clientes/components/canon/AccionesDeVista'
-import { SolapasFicha } from '@/features/clientes/components/canon/SolapasFicha'
-import { Pastilla } from '@/features/clientes/components/canon/Piezas'
 import { getCertificados, getCuentaCorriente } from '@/features/clientes/services/cuentaCorriente'
 import { getEsquema } from '@/features/clientes/services/esquema'
 import { getAccesos, getActividadPortal } from '@/features/clientes/services/accesos'
@@ -100,14 +96,10 @@ import {
   editarPago, habilitarAcceso, publicarEsquema, reenviarInvitacion, registrarCobro, revocarAcceso,
 } from '@/features/clientes/services/actionsCobranza'
 import { resumenAccesos } from '@/features/clientes/services/reglasPortal'
-import { montoM } from '@/features/clientes/services/cobranzaFormato'
 import { cambiosSinPublicar } from '@/features/clientes/services/reglasEsquema'
 import { A_SANGRE, solapaDe, solapasDeCliente } from '@/features/clientes/services/solapasCliente'
-import { Ico, P } from '@/features/clientes/components/canon/Iconos'
-import { Aviso, BotonEnlace } from '@/shared/components/ds'
-import {
-  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
-} from '@/features/administracion/components/FichaCanonica'
+import { Aviso } from '@/shared/components/ds'
+import { TiraMetricas } from '@/features/administracion/components/FichaCanonica'
 import { EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { PageShell } from '@/shared/components/ui'
@@ -259,143 +251,43 @@ export default async function ClientePage({
       // el de `PageShell` daría dos `h1` con el mismo nombre a 60px de distancia.
       encabezado={false}
     >
-      {/* LA CABECERA BLANCA DEL CANÓNICO 26 — el MISMO `CabeceraFicha` que coronan la ficha de
-          Persona (20) y la de Proveedor (23). Va a sangre (`-mx`) porque su filo inferior es el que
-          separa la identidad del cuerpo, y un filo que arranca a 40px del borde no separa nada.
-
-          LA MIGA DE PAN vive adentro de la cabecera: «01 · Obras · Clientes» contradecía a la barra
-          de Administración que corona la pantalla y repetía en tres niveles lo que esa barra dice. */}
-      <div className="-mx-4 mb-4 lg:-mx-10">
-        <CabeceraFicha
-          testid="slab-cliente"
-          volverA="/clientes"
-          volverLabel="Clientes"
-          titulo={cliente.nombre_comercial}
-          avatar={
-            // EL GLIFO DE EMPRESA, el mismo que lleva el proveedor. Un cliente no tiene iniciales de
-            // persona: «La Estrella» abreviado a «LE» al lado de su propio nombre no agrega nada.
-            // CUADRADO CON RADIO 10, no un círculo: `26:41` dibuja
-            // `width:44px;height:44px;borderRadius:10px;background:#F2F1ED` — el mismo avatar que la
-            // ficha de proveedor y que las filas de la cartera 25, sólo que grande. El círculo es el
-            // avatar de una PERSONA; un cliente es una empresa.
-            <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#F2F1ED] text-[#3A3A38]"
-              data-testid="glifo-cliente"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-                <path d="M3 21h18M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 10h.01M15 10h.01" />
-              </svg>
-            </span>
-          }
-          pastillas={
-            <>
-              {/* ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
-                  cartera, y saberlo cambia lo que se hace con ella. */}
-              <PastillaFicha
-                tono={!cliente.activo ? 'neutro' : enCurso.length > 0 ? 'curso' : 'neutro'}
-                testid="pastilla-estado-cliente"
-              >
-                {!cliente.activo
-                  ? 'Archivado'
-                  : enCurso.length > 0
-                    ? `${enCurso.length} ${enCurso.length === 1 ? 'obra en curso' : 'obras en curso'}`
-                    : 'Sin obra en curso'}
-              </PastillaFicha>
-              {/* LA PASTILLA DE LA CARA ABIERTA (`28:41`): lo vencido en rojo, al lado del nombre.
-                  Sólo aparece cuando hay algo vencido — una pastilla «$ 0 vencido» permanente
-                  entrena a no mirar el rojo, que es justo lo que esta pastilla existe para lograr. */}
-              {solapa === 'cuenta' && cuenta?.vencido != null && cuenta.vencido > 0 && (
-                <Pastilla tono="neg" icono={<Ico d={P.alerta} s={12} w={2.2} />} testid="pastilla-vencido">
-                  {montoM(cuenta.vencido)} vencido
-                </Pastilla>
-              )}
-              {/* `32:26`: lo que el cliente TODAVÍA NO VIO, en la cabecera. Es la pastilla que
-                  justifica el botón «Publicar al cliente» de al lado. */}
-              {/* `31:44`: el portal está vivo cuando hay al menos un mail que entra. Sin ninguno no
-                  se dibuja nada — «Portal inactivo» sonaría a una falla y es sólo que nadie lo
-                  habilitó todavía, que ya lo dice la tabla vacía de abajo. */}
-              {solapa === 'accesos' && portal.habilitados > 0 && (
-                <Pastilla tono="pos" icono={<Ico d={P.okCirculo} s={12} w={2.2} />} testid="pastilla-portal">
-                  Portal activo
-                </Pastilla>
-              )}
-              {solapa === 'esquema' && sinPublicar > 0 && (
-                <Pastilla tono="warn" icono={<Ico d={P.reloj} s={12} w={2.2} />} testid="pastilla-sin-publicar">
-                  {sinPublicar} {sinPublicar === 1 ? 'cambio sin publicar' : 'cambios sin publicar'}
-                </Pastilla>
-              )}
-            </>
-          }
-          hechos={
-            <>
-              <HechoFicha>{cliente.razon_social?.trim() || 'sin razón social'}</HechoFicha>
-              <Punto />
-              {/* EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco,
-                  y en proporcional los dígitos no se alinean con nada. La ausencia va en texto
-                  normal porque no es un número — escribirla en mono la disfraza de dato. */}
-              {cliente.cuit
-                ? <HechoFicha mono>{cliente.cuit}</HechoFicha>
-                : <HechoFicha>sin CUIT</HechoFicha>}
-              <Punto />
-              <HechoFicha>{cliente.responsable_nombre ?? 'sin responsable asignado'}</HechoFicha>
-            </>
-          }
-          acciones={
-            // CADA CARA TRAE SUS ACCIONES, que es como lo dibuja cada mockup: la 28 corona con
-            // «Registrar cobro», la 32 con «Publicar al cliente», la 31 con «Agregar mail». No se
-            // acumulan con «Editar»: el mockup pone una sola fila y la del cliente pertenece a la
-            // cara que se está mirando.
-            solapa === 'cuenta' && veEconomia
-              ? <AccionesCuenta />
-              : solapa === 'esquema' && veEconomia
-              ? <AccionesEsquema />
-              : solapa === 'accesos' && veEconomia
-              ? <AccionesAccesos />
-              : puedeEditar && (
-                // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla
-                // esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
-                // segundo botón con el mismo nombre daría dos entradas a la misma escritura. Queda
-                // declarado como desviación: la primaria del objeto está en su bloque.
-                <BotonEnlace
-                  href={url({ editar: q.editar === '1' ? null : '1' })}
-                  data-testid="editar-ficha"
-                >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
-              )
-          }
-          solapas={
-            /* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono, DENTRO de la cabecera, para que la
-               activa se apoye sobre su filo. Cambian de vista, no de página: el estado viaja en
-               `?solapa=`, así que cada cara es una dirección compartible y «atrás» vuelve a la
-               anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al lado de
-               Cuenta se leería como saldo. */
-            <SolapasFicha
-              testid="solapas-cliente"
-              items={solapasDeCliente({
-                veEconomia,
-                obras: todas.length,
-                presupuestos: presupuestos.length,
-                documentos: lector.leer(documentos, []).length,
-              }).map((s) => ({
-                // Resumen es la cara por defecto y por eso su enlace NO lleva parámetro: así la
-                // dirección de la ficha sigue siendo `/clientes/<slug>` a secas.
-                href: url({ vista: s.clave === 'resumen' ? null : s.clave }),
-                label: s.label,
-                cuenta: s.cuenta,
-                activo: solapa === s.clave,
-                testid: `solapa-${s.clave}`,
-              }))}
-            />
-          }
-        />
-      </div>
+      {/* La identidad, las pastillas de la cara abierta, sus acciones y las solapas. El dibujo vive
+          en `CabeceraCliente`; acá se decide QUÉ mostrarle. */}
+      <CabeceraCliente
+        cliente={cliente}
+        solapa={solapa}
+        solapas={solapasDeCliente({
+          veEconomia,
+          obras: todas.length,
+          presupuestos: presupuestos.length,
+          documentos: lector.leer(documentos, []).length,
+        }).map((s) => ({
+          // Resumen es la cara por defecto y por eso su enlace NO lleva parámetro: así la dirección
+          // de la ficha sigue siendo `/clientes/<slug>` a secas.
+          href: url({ vista: s.clave === 'resumen' ? null : s.clave }),
+          label: s.label,
+          cuenta: s.cuenta,
+          activo: solapa === s.clave,
+          testid: `solapa-${s.clave}`,
+        }))}
+        veEconomia={veEconomia}
+        puedeEditar={puedeEditar}
+        obrasEnCurso={enCurso.length}
+        urlEditar={url({ editar: q.editar === '1' ? null : '1' })}
+        editando={q.editar === '1'}
+        vencido={cuenta?.vencido ?? null}
+        sinPublicar={sinPublicar}
+        portalActivo={portal.habilitados > 0}
+      />
 
       {/* EL RESUMEN DE MÉTRICAS, sobre el cuerpo y no adentro de la cabecera: es donde lo pone el
           canónico y donde ya está en las fichas de Persona y de Proveedor. Ninguna se inventa —obras
           y contratado salen de las obras ya leídas, misma fuente que la tabla de abajo, así que no
-          pueden discrepar— y ninguna escribe un cero por una ausencia. */}
-      {/* LA TIRA DE MÉTRICAS ES DEL CANÓNICO 26 y no aparece en 28, 31 ni 32: esas caras traen sus
-          propias cifras (saldo, vencido, DSO; total del contrato; mails habilitados) y apilar las
-          dos tiras dejaría ocho números arriba, ninguno de los cuales es el de la pantalla. */}
+          pueden discrepar— y ninguna escribe un cero por una ausencia.
+
+          NO APARECE EN 28, 31 NI 32: esas caras traen sus propias cifras (saldo, vencido, DSO; el
+          total del contrato; los mails habilitados) y apilar las dos tiras dejaría ocho números
+          arriba, ninguno de los cuales es el de la pantalla. */}
       {!aSangre && (
       <div className="mb-6">
         <TiraMetricas
