@@ -10,7 +10,7 @@ import {
 } from '@/shared/components/movil/Piezas'
 import { getMiTarea, getMisImpedimentos } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
-import { lecturaDeEstado, lecturaDeFecha, dm } from '@/features/empleado/services/tareas'
+import { lecturaDeEstado, lecturaDeFecha, lecturaDeMedicion, dm } from '@/features/empleado/services/tareas'
 
 // M04 · DETALLE DE TAREA — porte literal de `M04 · Detalle tarea.dc.html`.
 //
@@ -68,16 +68,23 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
   const f = lecturaDeFecha(tarea, hoy)
   const escribe = ESCRIBEN_LA_ACTIVIDAD.includes(perfil.data?.rol ?? '')
 
-  const [impedimentos, notas, papeles] = await Promise.all([
+  // LOS PASOS SE LEEN DE SU TABLA, no de `mi_tarea`: la vista publica la tarea, no su desglose.
+  // `obra_actividad_paso` ya tiene su propia RLS (`ve_obra` sobre la obra de la actividad), así que
+  // esto no abre nada: quien no ve la obra recibe cero filas.
+  const [impedimentos, notas, papeles, pasos] = await Promise.all([
     getMisImpedimentos(supabase),
     supabase.from('obra_actividad_nota').select('id, texto, creado_en').eq('actividad_id', tarea.id).order('creado_en', { ascending: false }).limit(5),
     supabase.from('obra_documento').select('drive_file_id, nombre, rol').eq('actividad_id', tarea.id),
+    tarea.metodo_avance === 'pasos'
+      ? supabase.from('obra_actividad_paso').select('id, nombre, orden, hecho_en').eq('actividad_id', tarea.id).order('orden')
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   const mios = (impedimentos.data ?? []).filter((i) => i.actividad_id === tarea.id)
-  const hechas = tarea.cantidad_objetivo != null && tarea.pct != null
-    ? (tarea.cantidad_objetivo * tarea.pct) / 100
-    : null
+  const listaPasos = (pasos.data ?? []) as { id: string; nombre: string; hecho_en: string | null }[]
+  const medida = lecturaDeMedicion(tarea, tarea.metodo_avance === 'pasos'
+    ? { total: listaPasos.length, hechos: listaPasos.filter((x) => x.hecho_en).length }
+    : null)
 
   return (
     <PantallaEmpleado
@@ -129,19 +136,13 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 10 }}>
-          {hechas != null && tarea.cantidad_objetivo != null ? (
+          {'hechas' in medida ? (
             <>
-              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>
-                {n2(hechas)}{tarea.unidad ? ` ${tarea.unidad}` : ''} hechos
-              </span>
-              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>
-                de {n2(tarea.cantidad_objetivo)}{tarea.unidad ? ` ${tarea.unidad}` : ''}
-              </span>
+              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>{medida.hechas}</span>
+              <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>{medida.total}</span>
             </>
           ) : (
-            <span style={{ ...mono, fontSize: 12.5, color: C.faint }}>
-              sin medición: falta {tarea.cantidad_objetivo == null ? 'la cantidad objetivo' : 'el avance cargado'}
-            </span>
+            <span style={{ ...mono, fontSize: 12.5, color: C.faint }}>{medida.falta}</span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, fontSize: 12.5, color: C.muted }}>
@@ -168,6 +169,29 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
           href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
         />
       </div>
+
+      {/* ── LOS PASOS, CUANDO LA TAREA SE MIDE ASÍ ──────────────────────────────────────
+          El dibujo es el de J06 —círculo de 26px, tildado en `pos`, el nombre apagado cuando está
+          hecho—, porque es el mismo objeto: los pasos de una actividad. Acá van en SÓLO LECTURA y
+          eso NO es una simplificación: la policy `obra_ejecucion_insert` exige dirección,
+          administración o jefe de obra, así que una casilla que este perfil pueda tocar rebotaría
+          con 42501 al firmar el avance. Una casilla que parece marcar y no marca es peor que una
+          que no está. Que el empleado de campo pueda firmar producción es una decisión del dueño
+          sobre esa policy, no algo que se resuelva en esta pantalla. */}
+      {tarea.metodo_avance === 'pasos' && (
+        <>
+          <RotuloSeccion icono="paso" margenArriba={22}>
+            Pasos
+          </RotuloSeccion>
+          <div style={{ marginTop: 9 }}>
+            <TarjetaLista testid="pasos-tarea">
+              {listaPasos.length === 0 ? (
+                <Vacio>Se mide por pasos y todavía no tiene pasos cargados. Se definen en la planificación.</Vacio>
+              ) : listaPasos.map((p) => <Paso key={p.id} nombre={p.nombre} hecho={!!p.hecho_en} />)}
+            </TarjetaLista>
+          </div>
+        </>
+      )}
 
       {/* ── LOS DATOS DE LA TAREA ─────────────────────────────────────────────────────── */}
       <RotuloSeccion icono="doc" margenArriba={22}>Datos</RotuloSeccion>
@@ -268,6 +292,37 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
   )
 }
 
+/** Un paso de la tarea: hecho o pendiente. El círculo y sus 26px salen de J06, que es donde el
+ *  jefe los marca — un mismo objeto no se dibuja de dos maneras según quién lo mire. */
+function Paso({ nombre, hecho }: { nombre: string; hecho: boolean }) {
+  return (
+    <div
+      data-testid="paso-tarea"
+      data-hecho={hecho ? 'si' : 'no'}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 11, padding: '13px 14px',
+        borderBottom: `1px solid ${C.divisor}`, minHeight: 52,
+        background: hecho ? C.quiet : 'transparent',
+      }}
+    >
+      <span style={{
+        width: 26, height: 26, borderRadius: 13, flexShrink: 0,
+        border: `2px solid ${hecho ? C.pos : C.lineaFuerte}`, background: hecho ? C.pos : C.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.surface,
+      }}>
+        {hecho && <Icono nombre="ok" tamano={14} grosor={3} />}
+      </span>
+      <span style={{
+        fontSize: 14, color: hecho ? C.inkSuave : C.ink, minWidth: 0, flex: 1,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {nombre}
+      </span>
+      <span style={{ fontSize: 12, color: C.faint, flexShrink: 0 }}>{hecho ? 'hecho' : 'pendiente'}</span>
+    </div>
+  )
+}
+
 /** El renglón `rótulo · valor`. La ausencia se escribe con su nombre: un guión no distingue «no
  *  tiene» de «nadie lo cargó». */
 function Dato({ rotulo, valor, falta = 'sin cargar' }: { rotulo: string; valor: string | null; falta?: string }) {
@@ -314,6 +369,3 @@ function AzulejoAccion({ icono, texto, href, motivo, color = C.muted, fondo = C.
     ? <Link href={href} data-testid={testid} style={estilo}>{cuerpo}</Link>
     : <span data-testid={testid} aria-disabled title={motivo} style={{ ...estilo, cursor: 'not-allowed' }}>{cuerpo}</span>
 }
-
-const n2 = (v: number) =>
-  new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)

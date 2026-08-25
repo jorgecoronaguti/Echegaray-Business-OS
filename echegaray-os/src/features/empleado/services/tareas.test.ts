@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clasificar, dm, esDeHoy, lecturaDeEstado, lecturaDeFecha, ordenar, restante } from './tareas.ts'
+import { clasificar, dm, esDeHoy, lecturaDeEstado, lecturaDeFecha, lecturaDeMedicion, ordenar, restante } from './tareas.ts'
 import type { MiTarea } from '../types/index.ts'
 
 const HOY = '2026-08-20'
@@ -67,4 +67,42 @@ test('con las dos puntas el restante sale en la unidad de la tarea, y el 0 sí e
   assert.equal(restante({ pct: 100, cantidad_objetivo: 96, unidad: 'm²' }), '0,00 m² restantes')
   assert.equal(restante({ pct: 40, cantidad_objetivo: 1.083, unidad: 'm³' }), '0,65 m³ restantes')
   assert.equal(restante({ pct: 50, cantidad_objetivo: 10, unidad: null }), '5,00 restantes')
+})
+
+// ── CADA MÉTODO DICE LO SUYO (hallazgo 4 de la auditoría del 25/08/2026) ───────────────────────
+
+test('UNA TAREA POR PASOS SE MIDE EN PASOS, y no le falta ninguna cantidad objetivo', () => {
+  // El defecto que atrapa: sobre `[PRUEBA E2E] Columna de encadenado H17` (3 pasos, 1 hecho, 33,3 %)
+  // la pantalla escribía «sin medición: falta la cantidad objetivo» — un dato que ese método no usa.
+  const r = lecturaDeMedicion(
+    { pct: 33.3, metodo_avance: 'pasos', cantidad_objetivo: null, unidad: null },
+    { total: 3, hechos: 1 },
+  )
+  assert.deepEqual(r, { hechas: '1 paso hecho', total: 'de 3' })
+  assert.ok(!JSON.stringify(r).includes('cantidad objetivo'))
+})
+
+test('por pasos y sin pasos cargados: lo dice sin pedir una cantidad', () => {
+  const r = lecturaDeMedicion({ pct: null, metodo_avance: 'pasos', cantidad_objetivo: null, unidad: null }, { total: 0, hechos: 0 })
+  assert.deepEqual(r, { falta: 'sin medición: se mide por pasos y todavía no tiene pasos cargados' })
+})
+
+test('por cantidad con las dos puntas: las dos cantidades enfrentadas del mockup', () => {
+  const r = lecturaDeMedicion({ pct: 8.3, metodo_avance: 'cantidad', cantidad_objetivo: 120, unidad: 'm²' }, null)
+  assert.deepEqual(r, { hechas: '9,96 m² hechos', total: 'de 120,00 m²' })
+})
+
+test('por cantidad sin objetivo pide el objetivo; por partes o manual pide el avance', () => {
+  assert.deepEqual(
+    lecturaDeMedicion({ pct: null, metodo_avance: 'cantidad', cantidad_objetivo: null, unidad: 'm²' }, null),
+    { falta: 'sin medición: falta la cantidad objetivo' },
+  )
+  assert.deepEqual(
+    lecturaDeMedicion({ pct: null, metodo_avance: 'partes', cantidad_objetivo: null, unidad: null }, null),
+    { falta: 'sin medición: falta el avance cargado' },
+  )
+  assert.deepEqual(
+    lecturaDeMedicion({ pct: null, metodo_avance: 'manual', cantidad_objetivo: null, unidad: null }, null),
+    { falta: 'sin medición: falta el avance cargado' },
+  )
 })
