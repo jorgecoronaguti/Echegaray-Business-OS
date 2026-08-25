@@ -67,11 +67,12 @@ function IconoClase({ clase }: { clase: ClaseVinculo }) {
 }
 
 export function TablaDocumentos({
-  documentos, seleccionado, hrefDe, hoy, vacio,
+  documentos, seleccionado, hrefs, hoy, vacio,
 }: {
   documentos: Documento[]
   seleccionado?: string
-  hrefDe: (driveFileId: string) => string
+  /** Enlace por `drive_file_id`, calculado en el servidor: una función no puede cruzar a este componente. */
+  hrefs: Record<string, string>
   /** El día contra el que se mide la vigencia, en ISO. Se pasa: `new Date()` dentro de un
    *  componente lo vuelve imposible de probar y hace que el render dependa del reloj del servidor. */
   hoy: string
@@ -119,7 +120,7 @@ export function TablaDocumentos({
           >
             <div style={{ minWidth: 0 }}>
               <Link
-                href={hrefDe(d.drive_file_id)}
+                href={hrefs[d.drive_file_id] ?? '#'}
                 data-testid="abrir-documento"
                 className="block truncate hover:underline"
                 style={{ fontSize: '12.5px', color: C.tinta }}

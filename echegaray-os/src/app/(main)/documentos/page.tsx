@@ -274,7 +274,10 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
             seleccionado={sp.d}
             // `pv` se apaga al cambiar de documento: dejarlo prendido abriría el visor de un archivo
             // que nadie pidió ver, y para un PDF de 40 MB eso es una descarga que nadie pidió.
-            hrefDe={(id) => armarHref(sp, { d: id, pv: undefined })}
+            // UNA FUNCIÓN NO CRUZA AL CLIENTE: `TablaDocumentos` es 'use client' y una función como prop
+            // tumbaba el render del servidor (React #419 en producción, 24/08). Los enlaces se calculan
+            // acá, uno por documento, y viajan como datos.
+            hrefs={Object.fromEntries(documentos.map((d) => [d.drive_file_id, armarHref(sp, { d: d.drive_file_id, pv: undefined })]))}
             hoy={hoy}
             vacio={
               filtrando ? (
