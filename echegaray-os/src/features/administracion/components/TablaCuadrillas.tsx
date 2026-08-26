@@ -1,161 +1,217 @@
-// PANTALLA 21 · EL LISTADO DE CUADRILLAS — porte literal de `21 · Cuadrillas y HH.dc.html`.
+// 21 v2 · LA LISTA DE CUADRILLAS — porte medido de `21 · Cuadrillas y HH v2.dc.html` (líneas 95-137).
 //
-// ═══ MEDIDO DEL CANÓNICO ═══
+// ═══ QUÉ CAMBIÓ CONTRA EL PORTE ANTERIOR ═══
 //
-//   grilla   `gap:10px` · fila `minHeight:52px` · `padding:8px 16px` · divisor `#F1F0EC`
-//   cuadrilla  icono 15px + nombre 12,5px/500 + segunda línea 11px `#91918B`
-//   dotación   barritas de 8×16 radio 2, `gap:2px`, y el número en mono 11,5px
-//   pie        `CUADRILLAS · HH SEMANA · SIN ASIGNAR`, adentro de la caja sobre `#FAFAF8`
+// La caja. La versión de agosto dibujaba `ListaCanon` —borde, radio 10, encabezado gris de 38px y
+// pie de totales adentro—, y el v2 borra el objeto entero: criterio 3 del patrón, «sin cajas; filos,
+// tipografía y números tabulares». Tampoco hay fila de rótulos de columna: el mockup abre directo
+// con la primera cuadrilla, cerrada arriba por un filo `#D7D5CF` que hace de encabezado.
 //
-// INTEGRANTES y OBRAS DERIVADAS se calculan al leer: la primera cuenta los períodos abiertos de
-// `cuadrilla_integrante`, la segunda junta las obras de las asignaciones vigentes de esa gente.
-// Guardarlas obligaría a mantenerlas de acuerdo con la realidad para siempre, y el día que no
-// coincidieran nadie se enteraría.
+// Y la fila dejó de ser un renglón para pasar a ser un BLOQUE: al elegirla se despliega su gente
+// debajo, indentada 26px (criterio 4, jerarquía por indentación). Antes eso vivía en un panel
+// lateral de 372px que empujaba la lista a 600px y estrangulaba el nombre de la cuadrilla.
 //
-// ═══ LAS DOS COLUMNAS DEL CANÓNICO QUE NO EXISTEN, Y POR QUÉ ═══
+// ═══ LAS COLUMNAS DEL MOCKUP QUE NO SE DIBUJAN, Y POR QUÉ ═══
 //
-//   DOTACIÓN «4 / 5»  el denominador es la dotación TOPE de la cuadrilla, y no existe: `tope_frente`
-//                     y `dotacion_prevista` viven en el plan de la TAREA, no en la cuadrilla, y una
-//                     cuadrilla no está asignada a un frente en ninguna tabla. Las barritas se
-//                     dibujan igual —una por integrante vigente, que es un dato— pero sin casilleros
-//                     vacíos: pintar cinco huecos afirmaría un tope que nadie fijó.
-//   RENDIM. «1,14×»   necesita las HH DE BASE de lo ejecutado por esa cuadrilla. La base maestra las
-//                     tiene por TAREA y estas HH se imputan por PERSONA y obra: no existe el vínculo
-//                     cuadrilla → tarea que las haría comparables. En su lugar va CAP. POND., que sí
-//                     tiene fuente (`cuadrilla_capacidad`) y contesta la pregunta de fondo — cuánto
-//                     puede esta gente, no cuántos son.
+//   «5/6 PRESENTES»  se dibuja como FICHADOS. `presencia_del_dia` guarda MARCAS, no asistencia: sin
+//                    fichar incluye al que no tiene teléfono, al que le negó el permiso al GPS y al
+//                    que faltó. Escribir «presentes» convertiría esa ignorancia en una ausencia.
+//   «REND. 1,08»     no tiene fuente. Exige HH DE BASE de lo ejecutado por la cuadrilla, y la base
+//                    maestra las tiene por TAREA mientras que estas HH se imputan por PERSONA y
+//                    obra: no existe el vínculo cuadrilla → tarea que las haría comparables.
 
 import Link from 'next/link'
-import { Nulo } from '@/shared/components/ds'
-import {
-  CabezaCanon, FilaCanon, ListaCanon, PieCanon, RotuloCanon, VacioCanon, type MetricaCanon,
-} from '@/shared/components/canon/ListaCanon'
+import { CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
+import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import { IconoCuadrilla } from '@/shared/components/iconos'
-import type { Cuadrilla } from '../types'
-import type { CapacidadCuadrilla } from '../services/cuadrillasService'
-import { AccionesCuadrilla } from './AccionesCuadrilla'
+import type { Cuadrilla, Integrante } from '../types'
+import type { Fichaje } from '../services/hhPorPeriodo'
 
-/** Las HH van SIN decimales: el canónico escribe «168», y media hora no cambia ninguna decisión de
- *  dotación. El decimal está en el registro, que es donde se liquida. */
-const horas = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+/** HH sin decimales: el mockup escribe «486 HH», y media hora no cambia una decisión de dotación. */
+const horas = (n: number) => `${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })} HH`
 
-/** `2.4` → `2,4`. Un decimal: la capacidad se compara de un vistazo entre cuadrillas, no se liquida. */
-const capacidad = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+/** Las dos grillas del mockup (`21v2:227`): bajo 1250px se suelta FICHADOS, nunca la identidad. */
+const GRILLA = 'grid items-center gap-[14px] grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,80px)]'
+  + ' min-[1250px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,150px)_minmax(0,80px)]'
 
-const COLS = 'minmax(0,1.3fr) minmax(0,1.2fr) 152px 92px 96px 26px'
-
-/** Las barritas del canónico: UNA por integrante vigente. Sin tope no hay casillero vacío. */
-function Slots({ n }: { n: number }) {
-  // Se topea el DIBUJO en doce: una cuadrilla de treinta convertiría la columna en una regla y
-  // empujaría el número fuera de la celda. El número de al lado sigue diciendo la verdad.
-  const dibujadas = Math.min(n, 12)
-  return (
-    <span className="flex shrink-0 gap-[2px]" aria-hidden>
-      {Array.from({ length: dibujadas }, (_, i) => (
-        <span key={i} className="h-[16px] w-[8px] rounded-[2px] bg-accent" />
-      ))}
-      {n > dibujadas && <span className="h-[16px] w-[8px] rounded-[2px] bg-line-strong" />}
-    </span>
-  )
+export interface DespliegueDeCuadrilla {
+  /** Los integrantes VIGENTES de la cuadrilla abierta, en el orden en que se muestran. */
+  integrantes: Integrante[]
+  /** HH del período de cada persona. Ausente del mapa = sin registros, que NO es haber hecho 0. */
+  porPersona: Map<string, number>
+  /** Quiénes marcaron hoy. `null` = no se pudo leer la presencia; entonces no se afirma ninguna. */
+  fichadosHoy: Set<string> | null
+  /** Dónde se edita la cuadrilla, se archiva y se toca su gente. */
+  hrefEditar: string
 }
 
 export function TablaCuadrillas({
-  cuadrillas, abierta, hrefDe, capacidades, hhSemana, metricas, vacio, archivar,
+  cuadrillas, abierta, hrefDe, hh, fichaje, despliegue, vacio,
 }: {
   cuadrillas: Cuadrilla[]
   abierta?: string
   hrefDe: (id: string) => string
-  /** De la vista `cuadrilla_capacidad`. Una cuadrilla que no está en el mapa muestra «—»: la vista
-   *  no pudo leerse, y un 0 ahí diría que la cuadrilla no rinde nada. */
-  capacidades?: Map<string, CapacidadCuadrilla>
-  /** HH trabajadas de la semana, ya agrupadas (`hhSemanaCuadrillas`). `undefined` = no se leyeron;
-   *  una cuadrilla ausente del mapa = no tiene registros, que NO es haber trabajado 0. */
-  hhSemana?: Map<string, number>
-  /** El pie del canónico, calculado por la página con lo que ya leyó. */
-  metricas?: MetricaCanon[]
-  /** Qué decir cuando el filtro no deja nada. */
-  vacio?: string
-  /** Archivar desde la fila. Recibe el id: la página la liga con `bind` del lado del servidor. */
-  archivar?: (cuadrillaId: string) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
+  /** HH trabajadas del período por cuadrilla. `undefined` = no se leyeron. */
+  hh?: Map<string, number>
+  /** Cuántos de los vigentes marcaron hoy. `undefined` = no se pudo leer la presencia. */
+  fichaje?: Map<string, Fichaje>
+  despliegue?: DespliegueDeCuadrilla
+  vacio: string
 }) {
+  if (cuadrillas.length === 0) {
+    return (
+      <p style={{ fontSize: '12.5px', color: V.apagado, paddingTop: 4 }} data-testid="cuadrillas-vacio">
+        {vacio}
+      </p>
+    )
+  }
+
   return (
-    <ListaCanon testid="tabla-cuadrillas" cols={COLS}>
-      <CabezaCanon cols={COLS}>
-        <RotuloCanon>CUADRILLA</RotuloCanon>
-        <RotuloCanon>OBRAS (DERIVADAS)</RotuloCanon>
-        <RotuloCanon>DOTACIÓN</RotuloCanon>
-        {hhSemana && <RotuloCanon alinear="right">HH SEMANA</RotuloCanon>}
-        {/* CUATRO AYUDANTES NO SON CUATRO OFICIALES: son 2,4. La columna existe para que el tamaño
-            de una cuadrilla deje de leerse como cabezas. */}
-        <RotuloCanon alinear="right">CAP. POND.</RotuloCanon>
-        <RotuloCanon />
-      </CabezaCanon>
-
-      {cuadrillas.length === 0 && (
-        <VacioCanon testid="cuadrillas-vacio">{vacio ?? 'Nada coincide.'}</VacioCanon>
-      )}
-
+    <div data-testid="tabla-cuadrillas">
       {cuadrillas.map((c) => {
-        const cap = capacidades?.get(c.id)
+        const esta = c.id === abierta
+        const f = fichaje?.get(c.id)
+        const suyas = hh?.get(c.id)
         return (
-          <FilaCanon key={c.id} cols={COLS} alto={52} seleccionada={c.id === abierta} testid="fila-cuadrilla">
-            <Link href={hrefDe(c.id)} prefetch={false} className="flex min-w-0 items-center gap-[9px]" data-testid="abrir-cuadrilla">
-              <span className="flex shrink-0 text-muted"><IconoCuadrilla className="h-[15px] w-[15px]" /></span>
-              <span className="min-w-0">
-                <span className="block truncate text-[12.5px] font-medium text-ink hover:underline">{c.nombre}</span>
-                {/* La segunda línea del canónico es la «especialidad» de la cuadrilla, que este
-                    modelo no tiene. Lo que sí tiene y hace falta en el mismo lugar es de QUIÉN es:
-                    el capataz. Una cuadrilla archivada lo dice acá y no en una columna propia. */}
-                <span className="block truncate text-[11px] text-faint">
-                  {c.responsable ?? 'sin responsable'}
-                  {!c.activa && ' · archivada'}
+          <div key={c.id} style={{ marginBottom: 16 }}>
+            <Link
+              href={hrefDe(c.id)} prefetch={false} data-testid="fila-cuadrilla"
+              className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-[#F2F1ED]`}
+              style={{
+                // 44 y no los 40 de una fila de tabla: la de la 21 es la cabeza de un bloque que se
+                // despliega, no un renglón de lista (`21v2:99`).
+                height: 44, paddingLeft: 13,
+                borderTop: `1px solid ${V.lineaFuerte}`, borderBottom: `1px solid ${V.lineaFila}`,
+                background: esta ? V.seleccion : 'transparent',
+                // EL FILO ÁMBAR DICE «ESTO BLOQUEA», NO «ESTO ESTÁ ELEGIDO»: sobrevive a la
+                // selección, que se expresa sólo con el fondo.
+                boxShadow: c.obras_actuales ? 'none' : `inset 2px 0 0 ${V.warn}`,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ display: 'flex', color: V.inerteTrabajo, flexShrink: 0 }}>
+                  <IconoCuadrilla className="h-4 w-4" />
                 </span>
+                <span className="truncate" style={{ fontSize: '13.5px', fontWeight: 600, color: V.tinta }}>
+                  {c.nombre}
+                </span>
+                <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }}>
+                  {c.responsable ?? 'sin capataz'}{!c.activa && ' · archivada'}
+                </span>
+              </span>
+
+              <span
+                className="truncate"
+                style={{ fontSize: '12px', color: c.obras_actuales ? V.tintaSuave : V.warn }}
+              >
+                {c.obras_actuales ?? 'sin obra asignada'}
+              </span>
+
+              {/* FICHADOS, no «presentes». Sin lectura de presencia la columna dice «sin leer»: un
+                  «0/6» ahí afirmaría que no fue nadie. */}
+              <span className="hidden min-w-0 items-center gap-2 min-[1250px]:flex" data-testid="fichados-cuadrilla">
+                {f
+                  ? (
+                      <>
+                        <span style={{ display: 'flex', flex: 1, minWidth: 40 }}>
+                          <BarraDeCostado
+                            fraccion={f.integrantes === 0 ? 0 : f.fichados / f.integrantes}
+                            color={f.fichados === f.integrantes ? '#067647' : V.warn}
+                          />
+                        </span>
+                        <span
+                          className="font-mono tabular-nums"
+                          style={{
+                            fontSize: '11.5px', flexShrink: 0,
+                            color: f.integrantes > 0 && f.fichados === f.integrantes ? '#067647' : V.warn,
+                          }}
+                        >
+                          {f.fichados}/{f.integrantes} fichados
+                        </span>
+                      </>
+                    )
+                  : <span style={{ fontSize: '11.5px', color: V.tenue }}>sin leer</span>}
+              </span>
+
+              <span
+                className="font-mono tabular-nums" data-testid="hh-cuadrilla"
+                style={{
+                  fontSize: '13px', fontWeight: 600, textAlign: 'right',
+                  color: suyas === undefined ? V.tenue : V.tinta,
+                }}
+              >
+                {suyas === undefined ? '—' : horas(suyas)}
               </span>
             </Link>
 
-            <span className="min-w-0 truncate text-[12px] text-ink-soft">
-              {c.obras_actuales ?? <span className="text-warn">sin obra vigente</span>}
-            </span>
-
-            <div className="flex min-w-0 items-center gap-2">
-              <Slots n={c.integrantes} />
-              <span className={`whitespace-nowrap font-mono text-[11.5px] tabular-nums ${c.integrantes === 0 ? 'text-warn' : 'text-muted'}`}>
-                {c.integrantes} {c.integrantes === 1 ? 'persona' : 'personas'}
-              </span>
-            </div>
-
-            {hhSemana && (
-              <span className="text-right">
-                {hhSemana.has(c.id)
-                  ? <span data-testid="hh-semana-cuadrilla" className="font-mono text-[12px] tabular-nums text-ink">{horas(hhSemana.get(c.id) ?? 0)}</span>
-                  : <Nulo>—</Nulo>}
-              </span>
+            {esta && despliegue && (
+              <Gente {...despliegue} nombre={c.nombre} />
             )}
-
-            <span
-              className="text-right"
-              data-testid="cap-pond"
-              title={cap && cap.personas_sin_categoria > 0 ? `${cap.personas_sin_categoria} sin categoría cargada pesan 1,0` : undefined}
-            >
-              {/* «—» y no 0 cuando la vista `cuadrilla_capacidad` no trajo la fila: un 0 diría que la
-                  cuadrilla no rinde nada, que es una afirmación distinta de «no lo sé». */}
-              {cap ? (
-                <>
-                  <span className="font-mono text-[12px] tabular-nums text-ink">{capacidad(cap.capacidad_ponderada)}</span>
-                  {/* El supuesto se VE, no se esconde adentro del total. */}
-                  {cap.personas_sin_categoria > 0 && <span className="ml-1 text-[10px] text-faint">·s/cat</span>}
-                </>
-              ) : <Nulo>—</Nulo>}
-            </span>
-
-            {archivar && c.activa
-              ? <AccionesCuadrilla cuadrillaId={c.id} nombre={c.nombre} abrirHref={hrefDe(c.id)} archivar={archivar} />
-              : <span />}
-          </FilaCanon>
+          </div>
         )
       })}
+    </div>
+  )
+}
 
-      {metricas && metricas.length > 0 && <PieCanon metricas={metricas} testid="pie-cuadrillas" />}
-    </ListaCanon>
+/** El despliegue de una cuadrilla: su gente indentada, y el enlace a lo que se puede cambiar. */
+function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: DespliegueDeCuadrilla & { nombre: string }) {
+  return (
+    <div data-testid="gente-cuadrilla">
+      {integrantes.length === 0 && (
+        <p style={{ fontSize: '12px', color: V.warn, padding: '8px 0 8px 39px' }} data-testid="cuadrilla-sin-gente">
+          Nadie vigente en esta cuadrilla. Sus HH no pueden imputarse a nadie.
+        </p>
+      )}
+      {integrantes.map((i) => {
+        const suyas = porPersona.get(i.persona_id)
+        const marco = fichadosHoy?.has(i.persona_id)
+        return (
+          <div
+            key={i.id}
+            className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-[#FAFAF8]`}
+            style={{ height: 34, paddingLeft: 13, borderBottom: `1px solid ${V.lineaPanel}` }}
+            data-testid="fila-integrante"
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, paddingLeft: 26 }}>
+              <span
+                aria-hidden
+                style={{
+                  width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+                  background: fichadosHoy == null ? V.inerte : (marco ? '#067647' : V.warn),
+                }}
+              />
+              <span className="truncate" style={{ fontSize: '12px', color: V.tinta }}>
+                {i.nombre_completo ?? 'sin nombre en el legajo'}
+              </span>
+              <span style={{ fontSize: '11px', color: V.lupa, flexShrink: 0 }}>
+                {i.categoria ?? 'sin categoría'}
+              </span>
+            </span>
+
+            {/* «SIN FICHAR» NO ES «AUSENTE», y sin lectura de presencia no se dice ninguna de las dos. */}
+            <span style={{ fontSize: '11.5px', color: marco ? V.tintaSuave : V.warn }}>
+              {fichadosHoy == null ? '' : (marco ? 'fichó hoy' : 'sin fichar hoy')}
+            </span>
+
+            <span className="hidden min-[1250px]:block" />
+
+            <span
+              className="font-mono tabular-nums"
+              style={{ fontSize: '11.5px', color: suyas === undefined ? V.tenue : V.apagado, textAlign: 'right' }}
+            >
+              {suyas === undefined ? '—' : horas(suyas)}
+            </span>
+          </div>
+        )
+      })}
+      <Link
+        href={hrefEditar} prefetch={false} data-testid="editar-cuadrilla"
+        className="hover:text-[#30302F]"
+        style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, margin: '10px 0 0 39px' }}
+      >
+        Editar {nombre} →
+      </Link>
+    </div>
   )
 }
