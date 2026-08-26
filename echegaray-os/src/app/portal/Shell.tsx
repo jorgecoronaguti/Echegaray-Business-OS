@@ -81,6 +81,11 @@ export function Shell({ cliente, obras, children }: Props) {
           ECHEGARAY<span className="hidden sm:inline"> CONSTRUCCIONES</span>
         </span>
         <span className="ml-auto text-[11px] text-faint">Portal del cliente</span>
+        {/* En el teléfono no hay barra lateral: «Salir» vive acá, y se ESCRIBE. Un chevron a la
+            derecha se lee «siguiente», no «cerrar sesión». */}
+        <Link href="/portal/salir" className="flex min-h-11 items-center px-1 text-[12px] text-muted hover:text-ink md:hidden">
+          Salir
+        </Link>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -102,21 +107,11 @@ export function Shell({ cliente, obras, children }: Props) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* ── QUIÉN ES ─────────────────────────────────────────────────────────────────────── */}
-        <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]">
-          <span className="min-h-[22px] text-[14px] font-semibold text-ink">{cliente}</span>
-          <span className="text-[12.5px] text-faint">
-            {obras === 0 ? 'sin obras' : obras === 1 ? '1 obra' : `${obras} obras`}
-          </span>
-          <div className="ml-auto flex items-center gap-[9px] text-[12.5px] text-muted">
-            <IconoUsuario tamano={17} />
-            {/* En el teléfono no hay barra lateral: salir vive acá, y se ESCRIBE. Un chevron a la
-                derecha se lee «siguiente», no «cerrar sesión». */}
-            <Link href="/portal/salir" className="flex min-h-11 items-center px-2 text-[12.5px] text-muted hover:text-ink md:hidden">
-              Salir
-            </Link>
-          </div>
-        </header>
+        {/* LA BARRA DEL CLIENTE SE RETIRÓ (26/08/2026). Repetía su nombre en cada pantalla y no
+            aportaba: el cliente sabe quién es. «El header del portal no tiene que decir siempre el
+            nombre del cliente, sólo el nombre de la empresa; el nombre del cliente es para la
+            pantalla de bienvenida únicamente.» Arriba queda la marca de la empresa, que es de quién
+            es el portal — el dato que sí hace falta repetir. */}
 
         {/* `pb` deja libre la altura del menú inferior del teléfono; en escritorio no hay menú abajo. */}
         {/* El hueco del menú inferior incluye la barra de gestos: en un iPhone sin ella el último

@@ -7,7 +7,6 @@ import { papelesVisibles, vistaDeObra, hayAlgoQueMostrar, type Papel, type Vista
 import { papelesDelCliente, corridasDelEspejo, type CorridaDelEspejo } from './datos'
 import { Rubro, Vacio } from '../../Piezas'
 import { IconoCarpeta, IconoFactura, IconoDescarga, IconoCheck, IconoClip } from '../../iconos'
-import { Adjuntar } from './Adjuntar'
 
 // DOCUMENTOS — la carpeta de la obra, contada como la entiende el cliente.
 //
@@ -101,7 +100,12 @@ function DeUnaObra({
           <IconoCarpeta tamano={15} />
           Drive · {haceCuanto(corrida?.al ?? null)}
         </span>
-        {obraId ? <div className="ml-auto"><Adjuntar obraId={obraId} /></div> : null}
+        {/* SIN «ADJUNTAR» (26/08/2026, decisión del dueño). Documentos es lo que la EMPRESA le
+            entrega al cliente: su cotización, su contrato, sus planos. Dejar ahí un formulario de
+            subida mezclaba dos cosas que no son la misma —lo que damos y lo que nos mandan— y abría
+            una vía de entrada de archivos sin nadie del otro lado esperándolos.
+            La ruta y la acción NO se borran: siguen existiendo para el día que haya un circuito de
+            recepción con dueño. Lo que se retira es el botón. */}
       </div>
 
       {/* LOS TRES VACÍOS SON DISTINTOS y se dicen distinto. Uno se resuelve solo, otro hay que
@@ -116,13 +120,6 @@ function DeUnaObra({
         <Pila datos={datos} />
       )}
 
-      <Rubro>LO QUE USTED SUBE</Rubro>
-      <p className="mt-4 flex items-center gap-2 text-[13px] text-muted">
-        <IconoClip tamano={17} />
-        {obraId
-          ? 'Lo que suba cae en una carpeta propia de esta obra y avisamos a administración.'
-          : 'Para adjuntar algo, elegí la obra a la que corresponde.'}
-      </p>
     </section>
   )
 }

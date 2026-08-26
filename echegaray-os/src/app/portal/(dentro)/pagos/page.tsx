@@ -272,34 +272,37 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
               </p>
             </section>
           ) : null}
-
-          {/* UN SOLO JUEGO DE TOTALES, al pie de la lista. */}
-          {montos ? (
-            <>
-              <div className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
-                <Total rotulo="Contrato" monto={total.contrato} />
-                {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
-                    compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
-                    van en letra chica debajo y no como dos columnas más. */}
-                <div>
-                  <p className="text-[11px] tracking-[.09em] text-faint">PAGADO</p>
-                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
-                  <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
-                    neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
-                  </p>
-                </div>
-                <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
-                <Total rotulo="Falta certificar" monto={total.faltaCertificar} />
-              </div>
-              {total.sinMonto ? (
-                <p className="mt-3 text-[12.5px] text-faint">
-                  {total.sinMonto === 1 ? '1 pago no entra en estos totales' : `${total.sinMonto} pagos no entran en estos totales`} — sin monto cargado o en otra moneda.
-                </p>
-              ) : null}
-            </>
-          ) : null}
         </>
       )}
+
+      {/* LOS TOTALES, AL PIE Y EN LAS DOS VISTAS. Estaban dentro de la rama del listado, así que en
+          el calendario no salían: «que al final de los pagos salga lo total, pagado y pendiente en
+          cada uno de los portales del cliente». Son del cronograma COMPLETO —no del filtro—: si
+          cambiaran al tocar una pastilla, el número dejaría de significar algo. */}
+      {montos ? (
+        <>
+          <div className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
+            <Total rotulo="Contrato" monto={total.contrato} />
+        {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
+                compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
+                van en letra chica debajo y no como dos columnas más. */}
+            <div>
+              <p className="text-[11px] tracking-[.09em] text-faint">PAGADO</p>
+              <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
+              <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
+                neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
+              </p>
+            </div>
+            <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
+            <Total rotulo="Falta certificar" monto={total.faltaCertificar} />
+          </div>
+          {total.sinMonto ? (
+            <p className="mt-3 text-[12.5px] text-faint">
+              {total.sinMonto === 1 ? '1 pago no entra en estos totales' : `${total.sinMonto} pagos no entran en estos totales`} — sin monto cargado o en otra moneda.
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </>
   )
 }

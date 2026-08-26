@@ -4,52 +4,28 @@ import { accesoDelPortal } from '../../datos'
 import { loQueSiPuedeVer } from '../../permisos'
 import { esquemaDelPortal, hoyEnObra } from '../datosObra'
 import { estadoDePago, pesos, diaMes } from '../../cronograma'
-import { costurarRecibos, type ReciboDelPortal } from '../../recibos'
-import { IconoEstado, Vacio, Fila, Rubro } from '../../Piezas'
+import { IconoEstado, Vacio, Rubro } from '../../Piezas'
 import { IconoDescarga } from '../../iconos'
-import { recibosDelCliente } from './datos'
+import { papelesDePlata, type PapelDePlata } from './datos'
 
-// FACTURAS Y RECIBOS — una lista sola.
+// FACTURAS Y RECIBOS — lo que la empresa le emitió, con el papel al lado.
 //
-// No hay dos pestañas ni dos tablas: una factura y su recibo son el mismo hecho visto en dos momentos.
-// La pagada muestra el número de recibo en la misma fila; separarlos obligaría al cliente a cruzar
-// dos listas para contestar «¿esta ya la pagué?».
+// ═══ DOS FUENTES QUE DICEN COSAS DISTINTAS Y LAS DOS HACEN FALTA ═══
 //
-// SON LAS FACTURAS DEL CLIENTE, DE TODAS SUS OBRAS (26/08/2026). Antes mostraba las de la obra elegida
-// arriba; el dueño lo rechazó —«me sirve por cliente y q cada cliente tenga todas sus obras»—: quien
-// busca una factura busca un NÚMERO, y no tiene por qué acordarse de en qué obra la emitimos.
+// · El ESQUEMA (Cobranzas) sabe el número de factura, su fecha, su importe y si se cobró. No tiene
+//   el papel.
+// · El ESPEJO de Drive tiene el archivo —la factura escaneada, el recibo— pero de muchos no se puede
+//   sacar un importe: los «Recibo N» son el estado de cuenta entero del cliente.
 //
-// ═══ LOS RECIBOS SON ARCHIVOS, NO TEXTO (26/08/2026) ═══
+// Se muestran las dos, cada una con lo que sabe, y NUNCA se rellena una con la otra. Una factura sin
+// archivo se lista igual (existe y el cliente la debe); un recibo sin importe se lista igual (se lo
+// dieron y puede abrirlo). Lo que no se hace es inventar el dato que falta.
 //
-// `esquema_pago.recibo_numero` existe y está VACÍO en los 79 pagos de los cinco clientes: los recibos
-// que la empresa emite viven como PDF en la carpeta de Drive del cliente, y nadie los miraba. Ahora
-// se registran en `public.recibo_cliente` y esta pantalla los muestra:
-//
-//   · si el número del recibo coincide con el `recibo_numero` de un pago que ya está en la lista, es
-//     EL MISMO HECHO: se le cuelga la descarga a esa fila, no se dibuja otra;
-//   · si no coincide con nada, es una fila propia — con su obra si la tiene, y SIN renglón de obra
-//     si no. Los 23 de hoy no dicen de qué obra son y así es como el dueño pidió dejarlos.
-//
-// Sólo aparece lo que TIENE número de factura o es un recibo. Un certificado todavía sin facturar no
-// es una factura vacía: no está en esta pantalla, está en Pagos como «sin factura».
+// EL ARCHIVO SE ABRE, NO SE BAJA: la fila lleva al visor del navegador y el icono de la derecha lo
+// descarga con `?descargar=1`. Y sale por la MISMA ruta que Documentos —el espejo del OS—, no
+// pidiéndoselo a Drive en el momento: eso es lo que devolvía «No encontrado» en los veintitrés.
 
 export const dynamic = 'force-dynamic'
-
-/** El icono que BAJA el archivo. Sin archivo no se dibuja nada: un botón que no hace nada es una
- *  promesa que el sistema no cumple, y ésta estuvo dibujada sin funcionar hasta hoy. */
-function Descarga({ recibo }: { recibo: ReciboDelPortal | undefined }) {
-  if (!recibo?.descargaEn) return <span className="min-h-11 min-w-11" aria-hidden />
-  return (
-    <a
-      href={recibo.descargaEn}
-      className="grid min-h-11 min-w-11 place-items-center text-faint hover:text-marca"
-      title={recibo.nombreArchivo}
-      aria-label={`Descargar ${recibo.numero ? `recibo ${recibo.numero}` : recibo.nombreArchivo}`}
-    >
-      <IconoDescarga tamano={18} />
-    </a>
-  )
-}
 
 export default async function Facturas() {
   const sesion = await sesionDelPortal()
@@ -57,19 +33,23 @@ export default async function Facturas() {
   const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
-  const [{ pagos, bloques }, { recibos, noSePudoLeer }] = await Promise.all([
-    esquemaDelPortal(acceso),
-    recibosDelCliente(acceso),
-  ])
+  const [{ pagos, bloques }, papeles] = await Promise.all([esquemaDelPortal(acceso), papelesDePlata(acceso)])
   const hoy = hoyEnObra()
   const montos = acceso.puedeVerMontos
-  // POR FECHA, NO POR OBRA. La lista se lee para encontrar una factura, y lo que uno recuerda de una
-  // factura es cuándo fue, no de qué obra era. Las que no tienen fecha van al final, no al principio.
-  const facturas = pagos.filter((p) => p.facturaNumero).sort((a, b) =>
-    (b.fechaPago ?? b.fechaPrevista ?? '').localeCompare(a.fechaPago ?? a.fechaPrevista ?? ''))
-  const { archivoDelPago, sueltos } = costurarRecibos(facturas, recibos)
   const variasObras = bloques.length > 1
+
+  const facturas = pagos.filter((p) => p.facturaNumero)
+  const recibos = papeles.filter((p) => p.categoria === 'recibo')
+  const archivosDeFactura = papeles.filter((p) => p.categoria === 'factura')
   const sinFacturar = pagos.length - facturas.length
+
+  /** El archivo de una factura, si el espejo lo tiene. Se busca por el número dentro del título. */
+  const archivoDe = (numero: string | null) => {
+    if (!numero) return undefined
+    const digitos = numero.replace(/\D/g, '')
+    if (digitos.length < 3) return undefined
+    return archivosDeFactura.find((a) => a.titulo.replace(/\D/g, '').includes(digitos))
+  }
 
   return (
     <>
@@ -83,7 +63,7 @@ export default async function Facturas() {
 
       {!montos ? <p className="mt-4 text-[13.5px] text-muted">{loQueSiPuedeVer(acceso)}</p> : null}
 
-      {facturas.length === 0 && sueltos.length === 0 ? (
+      {facturas.length === 0 && recibos.length === 0 ? (
         <div className="mt-6">
           <Vacio>
             {pagos.length
@@ -97,74 +77,51 @@ export default async function Facturas() {
         <div className="mt-5">
           {facturas.map((p) => {
             const estado = estadoDePago(p, hoy)
-            const archivo = archivoDelPago.get(p.id)
+            const papel = archivoDe(p.facturaNumero)
             return (
-              <Fila key={p.id}>
-                <IconoEstado estado={estado} />
-                <span className="tnum min-w-0 flex-1 basis-[38%] truncate font-mono text-sm">{p.facturaNumero}</span>
-                <span className="tnum w-[70px] font-mono text-[13px] text-muted">
-                  {diaMes(p.fechaPago ?? p.fechaPrevista)}
-                </span>
-                {/* CON VARIAS OBRAS HAY QUE DECIR DE CUÁL ES. Se oculta en pantalla angosta, donde la
-                    fila no entra: ahí manda el número de factura, que es por lo que se busca. */}
-                {variasObras ? (
-                  <span className="hidden w-[150px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
-                ) : null}
-                {/* El recibo va pegado a su factura: es la respuesta a «¿ésta ya la pagué?». */}
-                <span className="w-[118px] text-[12.5px] text-pos">
-                  {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
-                </span>
-                {montos ? (
-                  <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
-                ) : null}
-                <Descarga recibo={archivo} />
-              </Fila>
+              <div key={p.id} className="flex min-h-11 items-center gap-3 border-b border-line">
+                <Envoltorio href={papel?.verEn}>
+                  <IconoEstado estado={estado} />
+                  <span className="tnum min-w-0 flex-1 basis-[34%] truncate font-mono text-sm">{p.facturaNumero}</span>
+                  <span className="tnum w-[70px] font-mono text-[13px] text-muted">
+                    {diaMes(p.fechaPago ?? p.fechaPrevista)}
+                  </span>
+                  {variasObras && p.obraNombre ? (
+                    <span className="hidden w-[140px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
+                  ) : null}
+                  {/* El recibo va pegado a su factura: es la respuesta a «¿ésta ya la pagué?». */}
+                  <span className="hidden w-[110px] text-[12.5px] text-pos sm:block">
+                    {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
+                  </span>
+                  {montos ? (
+                    <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                  ) : null}
+                </Envoltorio>
+                <Bajar en={papel?.verEn} que={`factura ${p.facturaNumero}`} />
+              </div>
             )
           })}
         </div>
       ) : null}
 
-      {/* ═══ LOS RECIBOS ENVIADOS: UNA LISTA DE ARCHIVOS ═══
-          Se intentó sacarles el importe y la fecha del PDF y NO SE PUDO con certeza: son la foto del
-          estado de cuenta al momento de cada cobro, y de doce sólo tres cerraron contra la resta de
-          saldos. Publicar los otros nueve habría puesto un importe equivocado en el portal de un
-          cliente, que es peor que no poner ninguno.
-          Decisión del dueño, textual: «armá una lista con los recibos que ya están enviados, que de
-          ahí se vea, y si el cliente quiere descargarlo o compartirlo que lo haga; no reflejes nada
-          más». Así que es exactamente eso — el papel, abierto de un toque. Sin una columna de
-          importe que sólo podría decir «sin importe» doce veces. */}
-      {sueltos.length ? (
+      {recibos.length ? (
         <>
+          {/* LOS RECIBOS ENVIADOS. Sin columna de importe: los archivos son el estado de cuenta del
+              cliente y no declaran uno propio — de doce, sólo tres cerraron contra la resta de
+              saldos. Poner un importe que no cierra en el portal de un cliente es peor que no poner
+              ninguno; lo que sí se puede es darle el papel. */}
           <Rubro derecha="tocá para verlo">RECIBOS ENVIADOS</Rubro>
           <div>
-            {sueltos.map((r) => (
+            {recibos.map((r) => (
               <div key={r.id} className="flex min-h-11 items-center gap-3 border-b border-line">
-                <a
-                  href={r.descargaEn ?? '#'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex min-w-0 flex-1 items-center gap-3 py-[15px]"
-                >
+                <Envoltorio href={r.verEn}>
                   <IconoEstado estado="pagado" />
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {/* SIN NÚMERO NO SE INVENTA UNO: va el nombre del archivo, que es lo que de
-                        verdad se sabe de ese papel. */}
-                    {r.numero ? `Recibo ${r.numero}` : r.nombreArchivo}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{r.titulo}</span>
                   {r.fecha ? (
                     <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(r.fecha)}</span>
                   ) : null}
-                </a>
-                {r.descargaEn ? (
-                  <a
-                    href={`${r.descargaEn}?descargar=1`}
-                    aria-label={`Descargar ${r.numero ? `recibo ${r.numero}` : r.nombreArchivo}`}
-                    title="Descargar"
-                    className="grid min-h-11 min-w-11 place-items-center rounded-[6px] text-faint hover:bg-surface-quiet hover:text-ink"
-                  >
-                    <IconoDescarga tamano={18} />
-                  </a>
-                ) : null}
+                </Envoltorio>
+                <Bajar en={r.verEn} que={r.titulo} />
               </div>
             ))}
           </div>
@@ -176,19 +133,28 @@ export default async function Facturas() {
           {sinFacturar === 1 ? 'Hay 1 pago del plan todavía sin facturar' : `Hay ${sinFacturar} pagos del plan todavía sin facturar`} — están en Pagos.
         </p>
       ) : null}
-
-      {/* UN CERO POR ERROR DE LECTURA Y UN CERO REAL SE VEN IGUAL SI NO SE DICE. */}
-      {/* LOS ESTADOS DE CUENTA NO SE PIERDEN: se dice dónde están. Sacarlos de acá sin decirlo haría
-          creer que se borraron. */}
-      <p className="mt-2 text-[12.5px] text-faint">
-        Los estados de cuenta y los papeles de cada obra están en Documentos.
-      </p>
-
-      {noSePudoLeer ? (
-        <p className="mt-3 text-[12.5px] text-warn">
-          No pudimos leer los recibos en este momento — lo que ves arriba puede estar incompleto.
-        </p>
-      ) : null}
     </>
+  )
+}
+
+/** La fila entera abre el papel cuando lo hay; cuando no, es texto y no finge ser un botón. */
+function Envoltorio({ href, children }: { href?: string; children: React.ReactNode }) {
+  const clase = 'flex min-w-0 flex-1 items-center gap-3 py-[15px]'
+  if (!href) return <div className={clase}>{children}</div>
+  return <a href={href} target="_blank" rel="noreferrer" className={`${clase} hover:text-ink`}>{children}</a>
+}
+
+function Bajar({ en, que }: { en?: string; que: string }) {
+  // Sin archivo NO se dibuja un icono apagado: un botón que no hace nada se toca igual.
+  if (!en) return <span className="min-h-11 min-w-11" aria-hidden />
+  return (
+    <a
+      href={`${en}?descargar=1`}
+      aria-label={`Descargar ${que}`}
+      title="Descargar"
+      className="grid min-h-11 min-w-11 place-items-center rounded-[6px] text-faint hover:bg-surface-quiet hover:text-ink"
+    >
+      <IconoDescarga tamano={18} />
+    </a>
   )
 }

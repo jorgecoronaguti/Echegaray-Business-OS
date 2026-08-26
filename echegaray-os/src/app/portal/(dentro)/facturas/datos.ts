@@ -1,58 +1,71 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { AccesoDelPortal } from '../../permisos'
-import { alcanzaLaObra } from '../../permisos'
-import { recibosDelPortal, type FilaRecibo, type ReciboDelPortal } from '../../recibos'
+import { alcanzaLaObra, type AccesoDelPortal } from '../../permisos'
 
-// LO QUE LA PANTALLA DE FACTURAS LE PREGUNTA A `public.recibo_cliente`.
+// LOS PAPELES DE PLATA DEL CLIENTE — facturas y recibos, servidos DESDE EL OS.
 //
-// Vive acá y no en `datosObra.ts` porque es de UNA pantalla: el cronograma y Pagos no muestran el
-// papel, muestran el compromiso.
+// ═══ POR QUÉ NO SE LEEN DE `recibo_cliente` NI DE DRIVE (26/08/2026) ═══
+//
+// La primera versión guardaba los recibos en `recibo_cliente` con el id del archivo en Drive, y la
+// ruta de descarga se lo pedía a Google EN EL MOMENTO. Desde Vercel eso falla, la excepción quedaba
+// tapada en el `catch` y el cliente recibía «No encontrado» en los veintitrés. El dueño lo vio así:
+// «no encontrado dice cada uno de los recibos, están todos mal».
+//
+// El espejo ya resolvió ese problema para Documentos: el OS baja los archivos UNA vez desde la VM
+// —donde la credencial existe— y los guarda. Facturas y recibos salen de la MISMA tabla y por la
+// MISMA ruta: una sola manera de servir un papel, no dos, y ninguna que dependa de que Google
+// conteste mientras el cliente mira la pantalla.
 
-export type LecturaDeRecibos = {
-  recibos: ReciboDelPortal[]
-  /** `true` = la consulta falló (típicamente: la migración todavía no se aplicó). NO es «no hay
-   *  recibos»: un cero por tabla ausente y un cero real se ven igual, y el que mira tiene que poder
-   *  distinguirlos. */
-  noSePudoLeer: boolean
+export type PapelDePlata = {
+  id: string
+  titulo: string
+  categoria: 'factura' | 'recibo'
+  /** ISO. `null` = el archivo no la declara y no se deduce del nombre. */
+  fecha: string | null
+  obraId: string | null
+  bytes: number | null
+  /** Se abre acá; con `?descargar=1` se baja. */
+  verEn: string
+}
+
+type Fila = {
+  id: string
+  titulo: string
+  categoria: string
+  fecha: string | null
+  obra_id: string | null
+  bytes: number | null
+  storage_path: string | null
+  visible_portal: boolean
 }
 
 /**
- * LOS RECIBOS DE ESTE CLIENTE, ya recortados por lo que el acceso alcanza.
+ * Las facturas y los recibos que este acceso puede ver.
  *
- * Se piden TODOS los del cliente y el filtro por obra se aplica después, en `recibosDelPortal`: es
- * una decisión de permiso y tiene que poder probarse sin base. `select('*')` por la misma razón que
- * en `datosObra.ts`: nombrar columnas hace que el día que falte una, PostgREST devuelva error y la
- * pantalla entera quede vacía por una columna.
+ * `visible_portal` y el alcance de obra se comprueban acá Y en la ruta que sirve el archivo: la URL
+ * lleva el id y se puede tipear, así que la lista no es la cerradura.
  */
-export async function recibosDelCliente(acceso: AccesoDelPortal): Promise<LecturaDeRecibos> {
-  const sb = createAdminClient()
-  // ═══ LA LISTA DE RECIBOS ENVIADOS, SIN INVENTAR UN IMPORTE (26/08/2026) ═══
-  //
-  // Los PDF de la carpeta de Drive llamados «Recibo 10», «Recibo 11»… se abrieron y NO son
-  // comprobantes: son el ESTADO DE CUENTA del cliente. Adentro hay veinte filas —«Pago 1 · LINEA B ·
-  // EFECTIVO · 25-jun · $15.000.000», «SALDO PENDIENTE $55.814.174,70»— que cruzan tres obras. No
-  // tienen un monto ni una fecha propios: tienen veinte de cada uno.
-  //
-  // Mostrarlos acá los dibujaba con importe y fecha vacíos en una pantalla de plata, que es la peor
-  // forma de decir «no sé»: parece un cobro sin registrar. Un documento sin importe no es una
-  // factura incompleta — es un DOCUMENTO, y ya está publicado como tal en la pantalla de Documentos,
-  // donde se ve y se descarga entero.
-  //
-  // El día que se emita un recibo de verdad —o que administración cargue su número en la línea del
-  // pago— entra por acá solo, sin tocar una línea: la costura ya está hecha y probada.
-  const { data, error } = await sb.from('recibo_cliente').select('*').eq('cliente_id', acceso.clienteId)
-  if (error) return { recibos: [], noSePudoLeer: true }
+export async function papelesDePlata(acceso: AccesoDelPortal): Promise<PapelDePlata[]> {
+  const { data } = await createAdminClient()
+    .from('documento_cliente')
+    .select('id, titulo, categoria, fecha, obra_id, bytes, storage_path, visible_portal')
+    .eq('cliente_id', acceso.clienteId)
+    .in('categoria', ['factura', 'recibo'])
 
-  const filas = (data ?? []) as unknown as FilaRecibo[]
-  const idsDeObra = [...new Set(filas.map((f) => f.obra_id).filter((id): id is string => !!id))]
-  const { data: obras } = idsDeObra.length
-    ? await sb.from('obra_canonica').select('id, nombre').in('id', idsDeObra)
-    : { data: [] as { id: string; nombre: string }[] }
-  const nombres = new Map((obras ?? []).map((o) => [String(o.id), String(o.nombre)]))
-
-  return {
-    recibos: recibosDelPortal(filas, nombres, (obraId) => alcanzaLaObra(acceso.obras, obraId), acceso.puedeVerMontos),
-    noSePudoLeer: false,
-  }
+  return ((data ?? []) as unknown as Fila[])
+    .filter((f) => f.visible_portal === true)
+    // Sin archivo en el espejo no se ofrece: un enlace que no abre nada es peor que no ofrecerlo.
+    .filter((f) => Boolean(f.storage_path))
+    .filter((f) => alcanzaLaObra(acceso.obras, f.obra_id))
+    .map((f) => ({
+      id: String(f.id),
+      titulo: String(f.titulo),
+      categoria: f.categoria === 'factura' ? 'factura' as const : 'recibo' as const,
+      fecha: f.fecha ?? null,
+      obraId: f.obra_id ?? null,
+      bytes: f.bytes == null ? null : Number(f.bytes),
+      verEn: `/portal/documentos/${f.id}`,
+    }))
+    // Lo más nuevo primero; lo que no declara fecha va al final, no al principio.
+    .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? '') || a.titulo.localeCompare(b.titulo, 'es'))
 }
