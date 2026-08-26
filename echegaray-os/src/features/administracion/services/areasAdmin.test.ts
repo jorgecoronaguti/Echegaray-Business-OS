@@ -85,14 +85,14 @@ test('Usuarios ya no es una sección del área: no enciende ninguna solapa', () 
   assert.equal(areaActiva('/obras'), null)
 })
 
-test('las dos pantallas del portal encienden «Clientes» sin ser un octavo destino', () => {
-  // El defecto que esto impide: `areaActiva` leía `absorbe` SÓLO en el destino `trabajo`. Con el
-  // campo declarado para todos y leído para uno, una pantalla colgada de otra solapa apagaba la
-  // barra entera — y la única alternativa era agregar un destino que el mockup no tiene.
-  assert.equal(areaActiva('/administracion/portal'), 'clientes')
-  assert.equal(areaActiva('/administracion/cronograma'), 'clientes')
-  assert.equal(areaActiva('/administracion/cronograma?obra=abc'), 'clientes')
-  // Y siguen siendo SIETE: la absorción no agrega solapas.
+test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {
+  // Duplicaban las solapas 31 y 32 de la ficha del cliente y se borraron el 26/08/2026. Si alguien
+  // las devuelve, este test se pone rojo y hay que discutirlo antes de tener dos veces lo mismo.
+  assert.equal(areaActiva('/administracion/portal'), null)
+  assert.equal(areaActiva('/administracion/cronograma'), null)
+  // La ficha del cliente —que es donde eso vive ahora— sí enciende «Clientes».
+  assert.equal(areaActiva('/clientes/arcor'), 'clientes')
+  // Y siguen siendo SIETE.
   assert.equal(DESTINOS.length, 7)
 })
 
@@ -105,11 +105,15 @@ test('absorber no le roba la ruta a «Trabajo» ni a los demás', () => {
   assert.equal(areaActiva('/administracion/usuarios'), null)
 })
 
-test('el portal es una ruta del dinero: el jefe de obra no la abre', () => {
-  // Decidir quién ve la plata de un cliente es economía. La solapa que la absorbe (Clientes) SÍ la
-  // ve el jefe, así que sin esta línea el enlace de la pantalla de Clientes lo llevaría a un rebote.
-  assert.equal(puedeVerRuta('jefe_obra', '/administracion/portal'), false)
-  assert.equal(puedeVerRuta('jefe_obra', '/administracion/cronograma'), false)
-  assert.equal(puedeVerRuta('administracion', '/administracion/portal'), true)
-  assert.ok(RUTAS_SOLO_ECONOMIA.includes('/administracion/portal'))
+test('las rutas retiradas del portal ya no figuran entre las del dinero', () => {
+  // Se fueron con las pantallas. Dejarlas en la lista haría creer que hay una puerta cerrada donde
+  // no hay ninguna puerta, y el próximo que busque dónde se decide el acceso al portal iría ahí.
+  // Se ensancha el tipo a `string[]` a propósito: la lista es un literal y preguntarle por una ruta
+  // que ya NO contiene es justamente lo que TypeScript rechaza. El test tiene que poder hacer la
+  // pregunta; si mañana alguien devuelve la ruta a la lista, la aserción se pone roja igual.
+  const soloEconomia: readonly string[] = RUTAS_SOLO_ECONOMIA
+  assert.ok(!soloEconomia.includes('/administracion/portal'))
+  assert.ok(!soloEconomia.includes('/administracion/cronograma'))
+  // Lo que SÍ sigue siendo del dinero: la ficha del cliente, que es donde eso se administra ahora.
+  assert.equal(puedeVerRuta('jefe_obra', '/clientes'), true)
 })

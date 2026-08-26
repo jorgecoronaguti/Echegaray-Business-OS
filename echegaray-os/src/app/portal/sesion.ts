@@ -15,9 +15,11 @@ import { cookies } from 'next/headers'
 // La cookie dice a qué obras alcanza este mail. Sin firma, cualquiera edita el número de obra en el
 // navegador y ve la obra de otro cliente. Se firma con HMAC y se compara en tiempo constante.
 //
-// LO QUE LA COOKIE NO DECIDE: qué puede VER. El alcance real se vuelve a comprobar contra la base en
-// cada consulta (`obrasDelMail`). La cookie dice quién es; la base dice qué le toca. Un permiso que
-// viaja en el navegador es un permiso que se puede editar.
+// LO QUE LA COOKIE NO DECIDE: qué puede VER. El alcance real se vuelve a comprobar contra
+// `public.cliente_acceso` en cada carga (`accesosDelMail`), que es la lista de invitados que
+// administra la ficha del cliente. La cookie dice quién es; la base dice qué le toca — y si el
+// acceso fue revocado, deja de ver en la pantalla siguiente. Un permiso que viaja en el navegador es
+// un permiso que se puede editar.
 
 const COOKIE = 'portal_sesion'
 const VIDA_HORAS = 12

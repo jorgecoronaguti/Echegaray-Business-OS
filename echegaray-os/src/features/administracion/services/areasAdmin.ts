@@ -64,15 +64,11 @@ export const DESTINOS: readonly Destino[] = [
     clave: 'trabajo', titulo: 'Trabajo', href: '/administracion', grupo: 'trabajo',
     absorbe: ['/administracion/pendientes', '/administracion/asistencia'],
   },
-  // Clientes ABSORBE las dos pantallas del portal del cliente. No son un octavo destino: la barra
-  // tiene siete y el mockup manda. Y no son hermanas de Clientes — son lo que se le hace A un
-  // cliente: a quién de él se le da acceso, y qué cobros ve de cada obra. Con solapa propia, la
-  // barra diría que hay nueve áreas; sin absorción, se apagaría entera adentro de ellas y la
-  // pantalla dejaría de decir dónde está parado el que la mira.
-  {
-    clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien',
-    absorbe: ['/administracion/portal', '/administracion/cronograma'],
-  },
+  // Clientes NO absorbe nada. Durante unas horas del 26/08/2026 absorbió `/administracion/portal` y
+  // `/administracion/cronograma`, dos pantallas que duplicaban las solapas 31 y 32 de la ficha del
+  // cliente; se retiraron y la absorción se fue con ellas. Quién entra al portal y qué cobros ve se
+  // administra DENTRO de la ficha, que es una subruta de `/clientes` y ya enciende esta solapa sola.
+  { clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien' },
   // «Personal» y no «Personas»: es el rótulo del canónico 19 y el del mockup. La clave sigue siendo
   // `personas` porque es la que nombra la ruta y los identificadores de prueba.
   { clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien' },

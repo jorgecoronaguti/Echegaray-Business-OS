@@ -1,8 +1,26 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Pago } from '../cronograma'
+import type { AccesoDelPortal } from '../permisos'
+import { alcanzaLaObra } from '../permisos'
+import {
+  agruparPorObra, pagosDelEsquema, sinImportes,
+  type BloqueDeObra, type FilaEsquema, type PagoConObra,
+} from '../esquema'
 
-// LO QUE SE LE PREGUNTA A LA BASE POR UNA OBRA. Una sola vez, para las tres pantallas de plata.
+// LO QUE SE LE PREGUNTA A LA BASE. Una sola vez, para las tres pantallas de plata.
+//
+// ═══ EL CRONOGRAMA SALE DE `esquema_pago` (26/08/2026) ═══
+//
+// Salía de `pago_programado`, una tabla que el portal se creó para sí mismo. La pantalla 32 de la
+// ficha del cliente ya administraba el mismo cronograma en `esquema_pago`, con su flujo de
+// publicación: administración movía una fecha ahí, la publicaba, y el cliente seguía viendo la
+// vieja. LA FICHA DEL CLIENTE GANA.
+//
+// ═══ EL CRONOGRAMA ES POR CLIENTE, NO POR OBRA ═══
+//
+// `esquema_pago.cliente_id` es NOT NULL y `obra_id` es opcional. Se pide TODO el esquema del cliente
+// en una consulta y se agrupa acá: pedirlo por obra dejaría afuera, sin que nadie lo note, los pagos
+// acordados que todavía no cuelgan de ninguna obra.
 
 export type ObraDetalle = {
   id: string
@@ -14,6 +32,13 @@ export type ObraDetalle = {
   driveCarpetaId: string | null
 }
 
+/**
+ * Una obra de `public.obras`, para Documentos y Terminadas.
+ *
+ * Sigue siendo `public.obras` y no `obra_canonica` porque es el registro que esas dos pantallas —y
+ * `obra_adjunto_cliente`— ya usan. El cronograma, en cambio, vive en `obra_canonica`. Que existan
+ * dos registros de obra es un problema anterior a este archivo y está declarado en `datos.ts`.
+ */
 export async function obraDetalle(obraId: string): Promise<ObraDetalle | null> {
   const { data } = await createAdminClient()
     .from('obras')
@@ -32,91 +57,74 @@ export async function obraDetalle(obraId: string): Promise<ObraDetalle | null> {
   }
 }
 
-export async function pagosDeObra(obraId: string): Promise<Pago[]> {
-  const { data } = await createAdminClient()
-    .from('pago_programado')
-    .select('id, orden, tipo, rotulo, monto, moneda, fecha_prevista, fecha_pago, factura_numero, recibo_numero, devolucion_en, devuelto_en, estado')
-    .eq('obra_id', obraId).order('orden')
-  return (data ?? []).map((r) => ({
-    id: String(r.id),
-    orden: Number(r.orden),
-    tipo: r.tipo as Pago['tipo'],
-    rotulo: String(r.rotulo),
-    monto: r.monto == null ? null : Number(r.monto),
-    moneda: (r.moneda === 'USD' ? 'USD' : 'ARS') as 'ARS' | 'USD',
-    fechaPrevista: r.fecha_prevista ?? null,
-    fechaPago: r.fecha_pago ?? null,
-    facturaNumero: r.factura_numero ?? null,
-    reciboNumero: r.recibo_numero ?? null,
-    devolucionEn: r.devolucion_en ?? null,
-    devueltoEn: r.devuelto_en ?? null,
-    estadoFijado: (r.estado as Pago['estadoFijado']) ?? null,
-  }))
-}
-
 /** Hoy, en la zona de San Juan. Comparar contra UTC corre el vencimiento tres horas. */
 export function hoyEnObra(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 }
 
-// ── LAS OBRAS DE UN CLIENTE, DE UNA VEZ ──────────────────────────────────────────────────────
-//
-// El portal muestra TODAS las obras del cliente juntas. Pedirlas de a una es una consulta por obra en
-// cada pantalla: con cuatro obras son cuatro viajes a la base para dibujar una lista.
-
-/** Un pago con la obra a la que pertenece: sin esto, juntar cuatro cronogramas pierde de cuál es cada fila. */
-export type PagoConObra = Pago & { obraId: string; obraNombre: string }
-
-export async function obrasDetalle(obraIds: string[]): Promise<ObraDetalle[]> {
-  if (!obraIds.length) return []
-  const { data } = await createAdminClient()
-    .from('obras')
-    .select('id, nombre, monto_contratado, fecha_inicio, fecha_cierre, estado, drive_carpeta_id')
-    .in('id', obraIds)
-  return (data ?? []).map((d) => ({
-    id: String(d.id),
-    nombre: String(d.nombre),
-    // `monto_contratado` puede no estar: NULL no es cero, y la pantalla lo dice.
-    contrato: d.monto_contratado == null ? null : Number(d.monto_contratado),
-    fechaInicio: d.fecha_inicio ?? null,
-    fechaCierre: d.fecha_cierre ?? null,
-    estado: String(d.estado),
-    driveCarpetaId: d.drive_carpeta_id ?? null,
-  }))
+export type EsquemaDelPortal = {
+  /** Todos los pagos que este acceso puede ver, en el orden de la pantalla 32. */
+  pagos: PagoConObra[]
+  /** Los mismos, agrupados por obra, con las filas sin obra al final. */
+  bloques: BloqueDeObra[]
+  /** `Map<obra_canonica.id, monto_contratado>`. Sin la obra en el mapa: no hay contrato cargado. */
+  contratos: Map<string, number | null>
 }
 
-/** Los cronogramas de varias obras en UNA consulta, indexados por obra. */
-export async function pagosDeObras(obras: { id: string; nombre: string }[]): Promise<Map<string, PagoConObra[]>> {
-  const porObra = new Map<string, PagoConObra[]>()
-  for (const o of obras) porObra.set(o.id, [])
-  if (!obras.length) return porObra
+/**
+ * EL ESQUEMA DE PAGO QUE ESTE ACCESO PUEDE VER.
+ *
+ * Se leen las filas del cliente ENTERAS (`select('*')`) a propósito: tres columnas que la pantalla
+ * de Facturas necesita —`moneda`, `factura_numero`, `recibo_numero`— llegan en una migración que
+ * todavía no se aplicó, y nombrarlas en el `select` haría que PostgREST devolviera error hasta que
+ * alguien la corra: el portal entero quedaría vacío por una columna que falta. Con `*` llega lo que
+ * exista y `aPagoDelPortal` trata la ausencia como ausencia. La tabla ya se lee entera en la
+ * pantalla 32, así que no se está trayendo nada nuevo.
+ *
+ * El filtro por obra y el recorte de importes se aplican DESPUÉS, en funciones puras con test.
+ */
+export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<EsquemaDelPortal> {
+  const sb = createAdminClient()
+  const { data } = await sb.from('esquema_pago').select('*').eq('cliente_id', acceso.clienteId)
+  const filas = (data ?? []) as unknown as FilaEsquema[]
 
-  const { data } = await createAdminClient()
-    .from('pago_programado')
-    .select('id, obra_id, orden, tipo, rotulo, monto, moneda, fecha_prevista, fecha_pago, factura_numero, recibo_numero, devolucion_en, devuelto_en, estado')
-    .in('obra_id', obras.map((o) => o.id))
-    .order('orden')
+  const idsDeObra = [...new Set(filas.map((f) => f.obra_id).filter((id): id is string => !!id))]
+  const { data: obras } = idsDeObra.length
+    ? await sb.from('obra_canonica').select('id, nombre, monto_contratado').in('id', idsDeObra)
+    : { data: [] as { id: string; nombre: string; monto_contratado: number | null }[] }
 
-  const nombre = new Map(obras.map((o) => [o.id, o.nombre]))
-  for (const r of data ?? []) {
-    const obraId = String(r.obra_id)
-    porObra.get(obraId)?.push({
-      id: String(r.id),
-      obraId,
-      obraNombre: nombre.get(obraId) ?? '',
-      orden: Number(r.orden),
-      tipo: r.tipo as Pago['tipo'],
-      rotulo: String(r.rotulo),
-      monto: r.monto == null ? null : Number(r.monto),
-      moneda: (r.moneda === 'USD' ? 'USD' : 'ARS') as 'ARS' | 'USD',
-      fechaPrevista: r.fecha_prevista ?? null,
-      fechaPago: r.fecha_pago ?? null,
-      facturaNumero: r.factura_numero ?? null,
-      reciboNumero: r.recibo_numero ?? null,
-      devolucionEn: r.devolucion_en ?? null,
-      devueltoEn: r.devuelto_en ?? null,
-      estadoFijado: (r.estado as Pago['estadoFijado']) ?? null,
-    })
+  const filasObra = (obras ?? []) as { id: string; nombre: string; monto_contratado: number | null }[]
+  const nombres = new Map(filasObra.map((o) => [String(o.id), String(o.nombre)]))
+  const contratos = new Map<string, number | null>(
+    // NULL no es cero: una obra sin contrato cargado entra al mapa como `null` y la pantalla escribe
+    // «sin cargar» en vez de publicar un contrato de $ 0.
+    filasObra.map((o) => [String(o.id), o.monto_contratado == null ? null : Number(o.monto_contratado)]),
+  )
+
+  const visibles = pagosDelEsquema(filas, nombres, (obraId) => alcanzaLaObra(acceso.obras, obraId))
+  const pagos = acceso.puedeVerMontos ? visibles : sinImportes(visibles)
+  return { pagos, bloques: agruparPorObra(pagos), contratos }
+}
+
+/**
+ * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
+ *
+ * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
+ * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
+ *
+ * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
+ * todo el conjunto no lo tenga.
+ */
+export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
+  if (!bloques.length) return null
+  let total = 0
+  for (const b of bloques) {
+    if (b.obraId === null) return null
+    const c = contratos.get(b.obraId)
+    if (c == null) return null
+    total += c
   }
-  return porObra
+  return total
 }
+
+export type { BloqueDeObra, PagoConObra }

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelClientePara } from '../../datos'
-import { pagosDeObras } from '../datosObra'
+import { accesoDelPortal } from '../../datos'
+import { esquemaDelPortal } from '../datosObra'
 import { proximoPago, pesos, diaMes } from '../../cronograma'
 import { Vacio, Rubro } from '../../Piezas'
 import { CUENTA_PARA_COBRAR, FALTAN_DATOS_BANCARIOS } from '../../datosBancarios'
@@ -21,10 +21,16 @@ export default async function Transferir() {
   if (!sesion) redirect('/portal/login')
   // EL PRÓXIMO PAGO DEL CLIENTE, no el de una obra: el que transfiere paga lo que vence primero, sin
   // importar de cuál de sus obras sea.
-  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
-  const porObra = await pagosDeObras(obras)
-  const proximo = proximoPago(obras.flatMap((o) => porObra.get(o.id) ?? []))
-  const variasObras = obras.length > 1
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
+  // SIN `puede_ver_montos` NO SE ENTRA ACÁ. Esta pantalla existe para pagar un importe; quien no
+  // puede ver la plata no puede transferirla, y dibujarla sin el monto sería pedirle que pague algo
+  // que no sabe cuánto es.
+  if (!acceso.puedeVerMontos) redirect('/portal')
+
+  const { pagos, bloques } = await esquemaDelPortal(acceso)
+  const proximo = proximoPago(pagos)
+  const variasObras = bloques.length > 1
 
   return (
     <>
