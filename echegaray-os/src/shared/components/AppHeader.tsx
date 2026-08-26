@@ -104,7 +104,13 @@ export function AppHeader({
           </span>
         </Link>
 
-        <nav className="flex h-full min-w-0 items-stretch" data-testid="nav-areas">
+        {/* LA BARRA SE CORRE, NO SE MONTA ENCIMA (26/08/2026, medido a 390x844).
+            Con `min-w-0` y `overflow: visible` el nav se encogía a 237px pero sus solapas seguían
+            midiendo 292: los 55px que sobraban se dibujaban DEBAJO de la lupa y del avatar, y
+            «Presupuestos» quedaba tapado por el icono de búsqueda. `barra-corrible` (globals.css)
+            hace que la caja recorte y se corra por dentro. A 1280 y 1440 el contenido entra y
+            `overflow-x: auto` no dibuja ni recorta nada: la geometría de escritorio no se toca. */}
+        <nav className="barra-corrible flex h-full min-w-0 items-stretch" data-testid="nav-areas">
           {solapas.length === 1 ? (
             <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{solapas[0].label}</span>
           ) : (
@@ -148,7 +154,12 @@ export function AppHeader({
             header. El mockup pone un círculo de 27px con las iniciales y guarda lo demás detrás de
             un clic: el email y el rol NO se borraron, se muestran adentro del menú, que es donde se
             los va a buscar cuando hacen falta («¿por qué no veo tal pantalla?»). */}
-        <div className="ml-auto flex min-w-0 items-center gap-1.5" data-testid="usuario-actual">
+        {/* `shrink-0` Y NO `min-w-0`: los tres controles de la derecha tienen tamaño fijo (dos
+            iconos de 15px y un avatar de 27px). Dejarlos encoger no los hacía más chicos —no hay
+            nada que ceder— sino que los sacaba de su caja unos encima de otros: 95px de contenido
+            en 77px de ancho, medido. Quien cede el ancho es la barra de la izquierda, que sí tiene
+            a dónde correrse. */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5" data-testid="usuario-actual">
           {/* LUPA Y CAMPANITA, EN EL ORDEN DEL MOCKUP y sólo con sesión: sin usuario no hay RLS que
               consultar y las dos devolverían vacío. `gap-1.5` es el `gap:6px` del canónico. */}
           {email && (

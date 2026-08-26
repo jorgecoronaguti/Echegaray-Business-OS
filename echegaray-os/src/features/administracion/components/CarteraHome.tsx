@@ -22,7 +22,38 @@ import { IconoCrear, IconoObra } from '@/shared/components/iconos'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { diaRelativo, type ClienteEnCartera } from '../services/homeCartera'
 
-const COLS = 'minmax(0,1.9fr) 140px 150px 96px'
+// ═══ EL NOMBRE DEL CLIENTE NUNCA SE ESTRANGULA (26/08/2026) ═══
+//
+// Medido a 390x844: la grilla declaraba 386px de columnas FIJAS (140+150+96) más los 42 de `gap`
+// dentro de un contenedor de 350px. Las fijas no ceden un pixel, así que la única fraccional —la
+// del nombre— absorbía todo el faltante y quedaba en CERO: las filas de la cartera se dibujaban
+// sin cliente y sin obra, sólo con la plata a la derecha, y los 78px que sobraban ensanchaban el
+// documento a 448px (el desborde lateral de la pantalla, +58px).
+//
+// La regla del handoff es que por debajo de 1250px se SUELTAN las columnas secundarias y nunca la
+// identidad (`25v2:154`, ya aplicada en `TablaClientes`/`TablaPersonas`/`TablaProveedores`). Acá se
+// suelta en dos pasos porque son cuatro columnas y no tres: primero «Últ. mov.» —una fecha de
+// contexto—, y en el teléfono también «Obras», cuyo número se lee igual contando las filas que
+// cuelgan debajo. Sobreviven siempre el nombre y lo contratado.
+//
+// Va como clase y NUNCA inline: un `gridTemplateColumns` en el atributo `style` le gana a cualquier
+// media query, que es la trampa que ya documenta `canonico-proveedores-v2.test.ts`.
+const COLS
+  = 'grid-cols-[minmax(0,1.9fr)_140px_150px_96px]'
+  + ' max-[1249px]:grid-cols-[minmax(0,1.9fr)_140px_150px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1.9fr)_150px]'
+
+/** «Últ. mov.»: la fecha del último hecho es contexto, no la fila. */
+const SUELTA_ANCHO = 'max-[1249px]:hidden'
+/**
+ * Lo que cuelga del nombre de la OBRA —barra de avance, jefe— cuando la celda deja de tener aire.
+ * Se suelta en el corte `lg` y no en el de columnas: entre 1024 y 1249 la celda mide ~890px y todo
+ * entra; a 768 mide 410 y estos adornos, que llevan `flex-shrink: 0`, se quedaban con 306 y le
+ * dejaban 100 al nombre. El adorno no puede ganarle a lo que identifica la fila.
+ */
+const SUELTA_TABLET = 'max-[1023px]:hidden'
+/** «Obras» y el estado de certificación: en 350px sólo entra quién es y cuánto. */
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 /** Los tonos del mockup que el canon todavía no tenía nombrados. */
 const TONO = { contexto: '#B5B3AC', divisorObra: '#F3F2EE', pista: '#EDECE8', iconoObra: '#C4C2BB' } as const
@@ -97,11 +128,12 @@ export function CarteraHome({
         </Link>
       </div>
 
-      <div style={{ ...grilla, alignItems: 'end', height: 26, borderBottom: `1px solid ${C.lineaFuerte}` }}>
+      <div className={COLS} style={{ ...grilla, alignItems: 'end', height: 26, borderBottom: `1px solid ${C.lineaFuerte}` }}>
         <span style={rotulo}>Cliente</span>
-        <span style={{ ...rotulo, textAlign: 'right' }}>Obras</span>
+        <span className={SUELTA_TELEFONO} style={{ ...rotulo, textAlign: 'right' }}>Obras</span>
         <span style={{ ...rotulo, textAlign: 'right' }}>{veEconomia ? 'Contratado' : ''}</span>
         <span
+          className={SUELTA_ANCHO}
           style={{ ...rotulo, textAlign: 'right' }}
           title="El hecho más reciente que el OS registró: un parte de obra o un certificado. No es la última edición de la ficha."
         >
@@ -116,7 +148,7 @@ export function CarteraHome({
             <FilaObra key={o.obra_id} o={o} hoy={hoy} veEconomia={veEconomia} />
           ))}
           {c.enCurso.length === 0 && (
-            <div style={{ ...grilla, alignItems: 'center', height: 26, borderBottom: `1px solid ${TONO.divisorObra}` }}>
+            <div className={COLS} style={{ ...grilla, alignItems: 'center', height: 26, borderBottom: `1px solid ${TONO.divisorObra}` }}>
               <span style={{ fontSize: '11.5px', color: TONO.contexto, paddingLeft: 36 }}>
                 {/* «No pude leerlas» NO se dibuja como «no hay»: es el defecto de un control que no
                     pudo mirar y afirma que no hay nada. */}
@@ -151,7 +183,7 @@ function FilaCliente({ c, hoy, veEconomia }: { c: ClienteEnCartera; hoy: string;
           </span>
         )}
       </span>
-      <span className="font-mono tabular-nums" style={{ fontSize: '12px', color: C.apagado, textAlign: 'right' }}>
+      <span className={`font-mono tabular-nums ${SUELTA_TELEFONO}`} style={{ fontSize: '12px', color: C.apagado, textAlign: 'right' }}>
         {/* CERO OBRAS SE ESCRIBE CON PALABRAS: «0 obras» y «nadie le cargó ninguna» se leen igual. */}
         {c.obras ? `${c.obras} ${c.obras === 1 ? 'obra' : 'obras'}` : 'sin obras'}
       </span>
@@ -161,7 +193,7 @@ function FilaCliente({ c, hoy, veEconomia }: { c: ClienteEnCartera; hoy: string;
       >
         {veEconomia ? (c.contratado === null ? 'sin contrato' : pesos(c.contratado)) : ''}
       </span>
-      <span className="font-mono" style={{ fontSize: '11.5px', color: C.tenue, textAlign: 'right' }}>
+      <span className={`font-mono ${SUELTA_ANCHO}`} style={{ fontSize: '11.5px', color: C.tenue, textAlign: 'right' }}>
         {diaRelativo(c.ultimoMovimiento, hoy) ?? 'sin movimientos'}
       </span>
     </>
@@ -170,11 +202,12 @@ function FilaCliente({ c, hoy, veEconomia }: { c: ClienteEnCartera; hoy: string;
     ...grilla, alignItems: 'center', height: 34,
     borderBottom: `1px solid ${c.enCurso.length ? TONO.divisorObra : C.lineaFila}`,
   }
+  const clases = COLS
   // Sin identificador no hay ficha a la que entrar. La fila se dibuja igual: esconderla haría que
   // un cliente real desapareciera de la lista sin que nadie se entere.
   return c.slug
-    ? <Link href={`/clientes/${c.slug}`} prefetch={false} data-testid="fila-cliente" style={estilo}>{cuerpo}</Link>
-    : <div data-testid="fila-cliente" style={estilo}>{cuerpo}</div>
+    ? <Link href={`/clientes/${c.slug}`} prefetch={false} data-testid="fila-cliente" className={clases} style={estilo}>{cuerpo}</Link>
+    : <div data-testid="fila-cliente" className={clases} style={estilo}>{cuerpo}</div>
 }
 
 function FilaObra({
@@ -185,6 +218,7 @@ function FilaObra({
       href={`/obras/${o.obra_id}`}
       prefetch={false}
       data-testid="fila-obra"
+      className={COLS}
       style={{ ...grilla, alignItems: 'center', height: 30, borderBottom: `1px solid ${TONO.divisorObra}` }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, paddingLeft: 14 }}>
@@ -194,43 +228,49 @@ function FilaObra({
         <span className="truncate" style={{ fontSize: '12px', color: C.tintaSuave }}>{o.nombre}</span>
         {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin avance
             sincronizado no avanzó cero por ciento, no se sabe — y una barra vacía dice que sí. */}
+        {/* EL `display` DE LO QUE SE SUELTA VA EN LA CLASE, NUNCA INLINE. Un `display: 'flex'` en el
+            atributo `style` le gana a `hidden` y la barra de avance seguiría ocupando sus 96px
+            inelásticos en el teléfono, que es de donde salían los 306px que se comían el nombre. */}
         {o.avance === null ? (
-          <span style={{ fontSize: '11.5px', color: TONO.contexto, flexShrink: 0 }}>sin medir</span>
+          <span className={SUELTA_TABLET} style={{ fontSize: '11.5px', color: TONO.contexto, flexShrink: 0 }}>sin medir</span>
         ) : (
           <>
-            <span style={{ display: 'flex', height: 4, width: 96, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 4 }}>
+            <span className={`flex ${SUELTA_TABLET}`} style={{ height: 4, width: 96, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 4 }}>
               <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: C.grafito, borderRadius: 2 }} />
             </span>
-            <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: C.apagado, flexShrink: 0 }}>
+            <span className={`font-mono tabular-nums ${SUELTA_TABLET}`} style={{ fontSize: '11.5px', color: C.apagado, flexShrink: 0 }}>
               {porcentajeCanon(o.avance, 0)}
             </span>
           </>
         )}
-        <span style={{ fontSize: '11.5px', color: TONO.contexto, flexShrink: 0, marginLeft: 4 }}>
+        <span className={SUELTA_TABLET} style={{ fontSize: '11.5px', color: TONO.contexto, flexShrink: 0, marginLeft: 4 }}>
           {o.jefe ?? 'sin jefe'}
         </span>
         <span
-          className="truncate"
+          className={`truncate ${SUELTA_TELEFONO}`}
           style={{ fontSize: '11.5px', color: o.certificacion.reclama ? C.warn : C.tenue }}
         >
           · {o.certificacion.texto}
         </span>
       </span>
-      <span />
+      {/* La celda vacía de «Obras»: existe para que la obra caiga en la MISMA columna que su
+          cliente, y desaparece con la columna. */}
+      <span className={SUELTA_TELEFONO} />
       <span
         className="font-mono tabular-nums"
         style={{ fontSize: '11.5px', textAlign: 'right', color: o.contratado === null ? C.warn : C.apagado }}
       >
         {veEconomia ? (o.contratado === null ? 'sin contrato' : pesos(o.contratado)) : ''}
       </span>
-      <span className="font-mono" style={{ fontSize: '11.5px', color: TONO.contexto, textAlign: 'right' }}>
+      <span className={`font-mono ${SUELTA_ANCHO}`} style={{ fontSize: '11.5px', color: TONO.contexto, textAlign: 'right' }}>
         {diaRelativo(o.ultimoParte, hoy) ?? 'sin partes'}
       </span>
     </Link>
   )
 }
 
-const grilla: React.CSSProperties = { display: 'grid', gridTemplateColumns: COLS, gap: 14 }
+/** Lo que SÍ puede ir inline: ni el `display` ni el `gap` cambian con el ancho. */
+const grilla: React.CSSProperties = { display: 'grid', gap: 14 }
 
 const rotulo: React.CSSProperties = {
   fontSize: '10px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue, paddingBottom: 6,

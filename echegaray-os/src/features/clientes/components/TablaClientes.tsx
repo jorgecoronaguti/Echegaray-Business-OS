@@ -34,6 +34,19 @@ const COLS
 /** La celda que se suelta en angosto. Su `display` NUNCA va inline: un inline gana a la media query. */
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 
+/**
+ * LO QUE CUELGA DEL NOMBRE DE LA OBRA, y que en el teléfono se lo comía (medido a 390x844 el
+ * 26/08/2026). La columna del nombre respeta su piso —`minmax(200px, ...)`, la media query hace su
+ * trabajo—, pero DENTRO de esa celda la barra de avance declara `width: 80px` con `flex-shrink: 0`
+ * y el porcentaje otro tanto: 128 de los 164px útiles. Al nombre le quedaban 36 y «Galpón 9» se
+ * dibujaba «Galp…». Soltar la columna y estrangular el nombre adentro es el mismo defecto una capa
+ * más abajo.
+ *
+ * Se suelta en el corte `lg` —no en el de columnas— porque entre 1024 y 1249 la celda mide ~660px y
+ * todo entra holgado; el problema aparece de 1023 para abajo.
+ */
+const ADORNO_ANCHO = 'max-[1023px]:hidden'
+
 /** Los tonos que el v2 usa en esta pantalla y el vocabulario todavía no tenía nombrados. */
 const TONO = { divisorObra: '#F3F2EE', pista: '#EDECE8', textoObra: '#3A3A38' } as const
 
@@ -135,14 +148,17 @@ export function TablaClientes({
                   {/* BARRA SÓLO SI EL NÚMERO ES UNA FRACCIÓN 0–100. `null` no es cero: una obra sin
                       avance sincronizado no avanzó cero por ciento — no se sabe, y una barra vacía
                       dice que sí. */}
+                  {/* EL `display` DE LO QUE SE SUELTA VA EN LA CLASE Y NUNCA INLINE: un
+                      `display: 'flex'` en el atributo `style` le gana a `hidden` y la barra
+                      seguiría ocupando sus 80px inelásticos. */}
                   {o.avance === null
-                    ? <span style={{ fontSize: '11.5px', color: V.lupa, flexShrink: 0 }}>sin medir</span>
+                    ? <span className={ADORNO_ANCHO} style={{ fontSize: '11.5px', color: V.lupa, flexShrink: 0 }}>sin medir</span>
                     : (
                         <>
-                          <span style={{ display: 'flex', height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
+                          <span className={`flex ${ADORNO_ANCHO}`} style={{ height: 4, width: 80, borderRadius: 2, background: TONO.pista, flexShrink: 0, marginLeft: 2 }}>
                             <span style={{ width: `${Math.min(100, Math.max(0, o.avance))}%`, background: V.grafito, borderRadius: 2 }} />
                           </span>
-                          <span className="font-mono tabular-nums" style={{ fontSize: '11.5px', color: V.apagado, flexShrink: 0 }}>
+                          <span className={`font-mono tabular-nums ${ADORNO_ANCHO}`} style={{ fontSize: '11.5px', color: V.apagado, flexShrink: 0 }}>
                             {porcentajeCanon(o.avance, 0)}
                           </span>
                         </>

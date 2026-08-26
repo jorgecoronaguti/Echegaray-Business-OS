@@ -31,7 +31,28 @@ const TONO = {
   divisor: '#EDECE8',
 } as const
 
-const COLS = '44px minmax(0,1.1fr) minmax(0,1fr) 330px'
+// ═══ LO QUE SE SUELTA CUANDO LA PANTALLA SE ANGOSTA (26/08/2026) ═══
+//
+// Medido a 390x844: 44 + 330 de columnas fijas más 42 de `gap` son 416px dentro de un contenedor de
+// 350. Las dos fraccionales —«qué falta» y «qué bloquea»— caían casi a cero y el encabezado se leía
+// «QUÉ FAL/TA» encima de «QUÉ BLOQUEA», con el verbo cortado contra el borde («Comp…», «Res…»).
+//
+// El orden en que se suelta es el de la decisión: primero el DÓNDE se arregla, que es contexto
+// («Compras · duplicados»); después «qué bloquea», que es la justificación. Nunca se sueltan la
+// CIFRA ni «qué falta» ni el VERBO: son las tres cosas con las que alguien decide dejar lo que está
+// haciendo. Y la fila sigue siendo un enlace al lugar donde se resuelve, así que lo que se suelta
+// está a un toque.
+//
+// Como CLASE y no inline: `gridTemplateColumns` en el atributo `style` le gana a la media query.
+const COLS
+  = 'grid-cols-[44px_minmax(0,1.1fr)_minmax(0,1fr)_330px]'
+  + ' max-[1249px]:grid-cols-[44px_minmax(0,1.1fr)_minmax(0,1fr)_150px]'
+  + ' max-[767px]:grid-cols-[36px_minmax(0,1fr)_120px]'
+
+/** El «dónde» que precede al verbo: contexto, no la acción. */
+const SUELTA_ANCHO = 'max-[1249px]:hidden'
+/** «Qué bloquea»: en 350px no entran tres columnas de texto sin estrangular las otras dos. */
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 const ICONOS: Record<IconoSenal, (p: { className?: string }) => React.ReactElement> = {
   bloqueo: IconoBloqueo,
@@ -68,10 +89,10 @@ export function LibroDeTrabajo({ senales, noLeida }: { senales: SenalTrabajo[]; 
           tabla con encabezados y sin filas se lee como si algo se hubiera roto. */}
       {!noLeida && senales.length > 0 && (
         <>
-          <div style={{ ...grilla, alignItems: 'end', height: 26, borderBottom: `1px solid ${C.lineaFuerte}` }}>
+          <div className={COLS} style={{ ...grilla, alignItems: 'end', height: 26, borderBottom: `1px solid ${C.lineaFuerte}` }}>
             <span style={{ ...rotulo, textAlign: 'right' }}>N.º</span>
             <span style={rotulo}>Qué falta</span>
-            <span style={rotulo}>Qué bloquea</span>
+            <span className={SUELTA_TELEFONO} style={rotulo}>Qué bloquea</span>
             <span style={{ paddingBottom: 6 }} />
           </div>
 
@@ -83,6 +104,7 @@ export function LibroDeTrabajo({ senales, noLeida }: { senales: SenalTrabajo[]; 
                 href={s.href}
                 prefetch={false}
                 data-testid={`atencion-${s.clave}`}
+                className={COLS}
                 style={{
                   ...grilla,
                   alignItems: 'center',
@@ -109,9 +131,9 @@ export function LibroDeTrabajo({ senales, noLeida }: { senales: SenalTrabajo[]; 
                   </span>
                   <span className="truncate" style={{ fontSize: '12.5px', color: C.tinta }}>{s.texto}</span>
                 </span>
-                <span className="truncate" style={{ fontSize: '12px', color: C.apagado }}>{s.bloquea}</span>
+                <span className={`truncate ${SUELTA_TELEFONO}`} style={{ fontSize: '12px', color: C.apagado }}>{s.bloquea}</span>
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 7, justifyContent: 'flex-end', paddingRight: 2, minWidth: 0 }}>
-                  <span className="truncate" style={{ fontSize: '11.5px', color: TONO.contexto }}>{s.donde}</span>
+                  <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: '11.5px', color: TONO.contexto }}>{s.donde}</span>
                   <span style={{ fontSize: '12.5px', fontWeight: 500, color: C.tinta, flexShrink: 0 }}>
                     {s.accion} →
                   </span>
@@ -125,7 +147,8 @@ export function LibroDeTrabajo({ senales, noLeida }: { senales: SenalTrabajo[]; 
   )
 }
 
-const grilla: React.CSSProperties = { display: 'grid', gridTemplateColumns: COLS, gap: 14 }
+/** Lo que SÍ puede ir inline: ni el `display` ni el `gap` cambian con el ancho. */
+const grilla: React.CSSProperties = { display: 'grid', gap: 14 }
 
 const rotulo: React.CSSProperties = {
   fontSize: '10px', letterSpacing: '.06em', textTransform: 'uppercase', color: C.tenue, paddingBottom: 6,

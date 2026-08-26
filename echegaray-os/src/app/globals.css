@@ -150,6 +150,23 @@
   }
 }
 
+/* UNA BARRA DE NAVEGACIÓN SE CORRE POR DENTRO; NO SE MONTA ENCIMA DE LO QUE TIENE AL LADO.
+   Medido a 390x844 el 26/08/2026 en `/administracion`: el `<nav>` de nivel 1 llevaba `min-w-0` y
+   `overflow: visible`, así que sus solapas se salían de su propia caja (contenido 292px en 237px de
+   ancho) y quedaban DEBAJO de la lupa, la campana y el avatar — «Presupuestos» tapado por el icono
+   de búsqueda. Con `overflow-x: auto` la caja recorta y se corre; sin barra visible porque el header
+   mide 44px y una barra de scroll se comería un tercio.
+   No cambia nada en 1280 ni en 1440: ahí el contenido entra y `auto` no dibuja ni recorta nada. */
+.barra-corrible {
+  overflow-x: auto;
+  /* Llegar al final de la barra no arrastra la página detrás. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.barra-corrible::-webkit-scrollbar {
+  display: none;
+}
+
 /* LA TABLA DEL CANON EN EL TELÉFONO — scrollea POR DENTRO, no corta el dato.
    `body` lleva `overflow-x: clip` (arriba): lo que no entra no se corre, se CORTA. Las grillas del
    canon mezclan columnas en px con `minmax(0, N fr)`, y a 390 px las fraccionales caían a cero: el
