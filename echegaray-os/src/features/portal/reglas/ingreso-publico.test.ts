@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { esRutaPublica } from '../../auth/types/index.ts'
-import { RUTA_PORTAL, RUTA_PORTAL_INGRESAR } from '../rutas.ts'
+import { RUTA_PORTAL, RUTA_PORTAL_INGRESAR, destinoPorRol } from '../rutas.ts'
 
 // EL PORTAL PASA POR EL MIDDLEWARE, PERO NO SE ABRE SOLO.
 //
@@ -71,4 +71,29 @@ test('la sesión del portal no es la del OS: se valida firmada, no por Supabase'
   assert.match(sesion, /timingSafeEqual/, 'la firma se compara en tiempo constante')
   // Falla CERRADO: sin secreto no se firma nada, y sin firma no hay sesión.
   assert.match(sesion, /no puede firmar sesiones/)
+})
+
+// ── LA VISTA PREVIA DE DIRECCIÓN ─────────────────────────────────────────────────────────────
+//
+// El confinamiento manda a `/` a cualquier empleado que entre a `/portal`, y está bien: vería una
+// pantalla filtrada por un cliente que no es suyo y creería que el cliente no tiene nada cargado.
+// Pero rebotaba también al que entra A PROPÓSITO desde la ficha — el enlace «Ver el portal como lo
+// ve este cliente» terminaba en `/flujo-caja`, que es donde aterriza Dirección.
+
+test('Dirección entra a la vista previa; sin ella sigue rebotando', () => {
+  // La puerta: comprueba adentro la sesión del OS y el permiso económico.
+  assert.equal(destinoPorRol('direccion', '/portal/vista-previa/quattropani'), null)
+  // Ya adentro, con la cookie firmada que emitió esa puerta.
+  assert.equal(destinoPorRol('direccion', '/portal/pagos', true), null)
+  // Sin cookie, el confinamiento sigue en pie: entrar de casualidad a `/portal` no muestra nada útil.
+  assert.equal(destinoPorRol('direccion', '/portal/pagos', false), '/')
+  assert.equal(destinoPorRol('direccion', '/portal'), '/')
+})
+
+test('el cliente sigue confinado a su portal, con cookie o sin ella', () => {
+  assert.equal(destinoPorRol('cliente', '/flujo-caja', true), RUTA_PORTAL)
+  assert.equal(destinoPorRol('cliente', '/clientes'), RUTA_PORTAL)
+  // Un rol ausente NO es cliente y no se cuela por tener una cookie: la excepción es para el portal,
+  // no para el OS.
+  assert.equal(destinoPorRol(null, '/flujo-caja', true), null)
 })

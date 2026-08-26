@@ -24,6 +24,7 @@
 // hay línea de tiempo: `getActividadCliente` son seis lecturas por cliente, o sea treinta consultas
 // para recorrer una cartera de cinco. Vive en la ficha, y el verbo «Editar» lleva hasta ahí.
 
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { BotonAccion } from '@/shared/components/ui'
 import { pesos, porcentajeCanon } from '@/shared/components/canon/formato'
@@ -34,6 +35,14 @@ import type { ClientePanel, ObraDePanel } from '../types'
 
 /** `25v2:229`. Verde = terminada; azul = en ejecución. Nunca sólo el color: el % va al lado. */
 const PUNTO = { fin: '#067647', curso: '#175CD3', otro: V.lupa } as const
+
+/** Un atajo a una solapa de la ficha: fila entera clicable, sin caja — el patrón de la lista. */
+const ATAJO: CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+  minHeight: 34, fontSize: '12.5px', color: V.tinta, textDecoration: 'none',
+  borderBottom: `1px solid ${V.linea}`,
+}
+const CHEVRON: CSSProperties = { color: V.tenue, fontSize: '12px' }
 
 export function PanelCliente({
   c, obras, veEconomia, cerrarHref, puedeEditar,
@@ -157,6 +166,32 @@ export function PanelCliente({
               </Link>
             ))}
       </div>
+
+      {/* ── LO QUE SE ADMINISTRA DE ESTE CLIENTE, NOMBRADO ───────────────────────────────────
+          El panel se abre al tocar un cliente en la lista y hasta hoy sólo ofrecía «Nueva obra»,
+          «Editar» y «Archivar». Su cronograma de cobros y sus accesos al portal viven en la ficha,
+          dos solapas más adentro, y desde acá no había forma de saber que existían. El dueño lo
+          resumió así: «nunca encuentro nada». Son enlaces a la MISMA ficha, no una segunda pantalla:
+          lo único que cambia es que la solapa se nombra en vez de esconderse. */}
+      {c.slug && veEconomia && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 18 }}>
+          <span style={{ fontSize: '10.5px', letterSpacing: '.08em', color: V.tenue, marginBottom: 4 }}>
+            ADMINISTRAR
+          </span>
+          <Link href={`/clientes/${c.slug}?vista=esquema`} prefetch={false} data-testid="panel-cliente-esquema"
+            style={ATAJO}>Cronograma de cobros<span style={CHEVRON}>→</span></Link>
+          <Link href={`/clientes/${c.slug}?vista=accesos`} prefetch={false} data-testid="panel-cliente-accesos"
+            style={ATAJO}>Acceso al portal<span style={CHEVRON}>→</span></Link>
+          <Link href={`/clientes/${c.slug}?vista=cuenta`} prefetch={false} data-testid="panel-cliente-cuenta"
+            style={ATAJO}>Cuenta corriente<span style={CHEVRON}>→</span></Link>
+          {/* Abre en otra pestaña: es el portal, otra aplicación, y perder la ficha para mirarlo
+              obligaría a volver a buscar el cliente en la lista. */}
+          <a href={`/portal/vista-previa/${c.slug}`} target="_blank" rel="noreferrer"
+            data-testid="panel-cliente-ver-portal" style={ATAJO}>
+            Ver el portal como lo ve el cliente<span style={CHEVRON}>↗</span>
+          </a>
+        </div>
+      )}
 
       {puedeEditar && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>

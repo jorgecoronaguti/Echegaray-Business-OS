@@ -88,7 +88,9 @@ export async function middleware(request: NextRequest) {
     //
     // ESTO ES LA PUERTA, NO LA CERRADURA. Una llamada directa a PostgREST no pasa por acá: eso lo
     // decide el RLS (`es_cliente()` + `cliente_de_sesion()` en Postgres).
-    const destino = destinoPorRol(perfil?.rol, pathname)
+    // La cookie de la vista previa: si está, quien mira ya pasó por la puerta que comprueba la
+    // sesión del OS y el permiso económico. Acá sólo se mira que exista.
+    const destino = destinoPorRol(perfil?.rol, pathname, request.cookies.has('portal_sesion'))
     if (destino) {
       const url = request.nextUrl.clone()
       url.pathname = destino
