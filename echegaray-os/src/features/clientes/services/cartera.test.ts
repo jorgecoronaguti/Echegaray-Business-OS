@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { avisoDeDatos, faltaUnDatoQueFrena, recortarCartera, separarArchivados, totalesCartera } from './cartera.ts'
+import { avisoDeDatos, faltaUnDatoQueFrena, recortarCartera } from './cartera.ts'
 import { senalesDeClientes } from './senalesClientes.ts'
 
 // ═══ QUÉ DEFECTOS ATRAPA ═══
@@ -57,11 +57,6 @@ test('las dos señales cuentan unidades distintas y por eso no se suman', () => 
   assert.match(s[1].texto, /obras/)
 })
 
-test('archivar saca de la lista, y el total de contratado nunca es 0 por ausencia', () => {
-  const { activos, archivados } = separarArchivados([
-    { activo: true, ...cliente() }, { activo: false, ...cliente() },
-  ])
-  assert.equal(activos.length, 1)
-  assert.equal(archivados.length, 1)
-  assert.equal(totalesCartera([cliente({ contratado: null })]).contratado, null)
-})
+// `separarArchivados` y `totalesCartera` los prueba `orquestador/lib/cliente-cartera.test.mjs`, que
+// es más viejo que este archivo. No se duplican acá: dos pruebas de la misma función se corrigen de
+// a una, y la que queda sin tocar sigue afirmando la regla anterior en verde.

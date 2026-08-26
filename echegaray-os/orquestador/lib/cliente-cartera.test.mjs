@@ -63,8 +63,13 @@ test('el orden que traía la lectura se respeta en cada grupo', () => {
 //    el otro criterio, Quattropani aparecería con obra activa y su propia fila diría 0.
 import { avisoDeDatos, recortarCartera, totalesCartera } from '../../src/features/clientes/services/cartera.ts'
 
+// `telefono` entra en la ficha desde el porte `25 · Clientes v2` (25/08/2026): el recorte «Datos
+// faltantes» mira las TRES cosas que frenan el cobro —CUIT, teléfono y contrato—, que es
+// literalmente el `faltanDatos` del `.dc.html`. La ETIQUETA de la fila (`avisoDeDatos`) sigue
+// nombrando una sola, el CUIT: una fila con tres etiquetas ámbar deja de señalar nada.
 const cli = (nombre, p = {}) => ({
-  nombre, activo: true, cuit: null, n_obras_activas: 0, contratado: null, ...p,
+  nombre, activo: true, cuit: null, telefono: '+54 351 512-3344',
+  n_obras_activas: 0, contratado: null, ...p,
 })
 
 const CARTERA = [
@@ -82,9 +87,16 @@ test('«con obra activa» son las que el panel cuenta como activas, no las que n
   assert.deepEqual(activos, ['La Estrella', 'Messina', 'San Francisco'])
 })
 
-test('«datos faltantes» es el CUIT, y el aviso dice qué se rompe sin él', () => {
+test('«datos faltantes» junta lo que frena el cobro, y el aviso dice qué se rompe sin el CUIT', () => {
+  // Quattropani y San Francisco no tienen CUIT; ARCOR tampoco, y además no tiene contrato cargado.
+  // La Estrella y Messina tienen las tres cosas, así que quedan afuera.
   const sin = recortarCartera(CARTERA, 'sin-datos').map((c) => c.nombre)
   assert.deepEqual(sin, ['Quattropani', 'ARCOR', 'San Francisco'])
+  // Y el recorte NO es la etiqueta: un cliente con CUIT pero sin contrato entra al recorte y no
+  // lleva etiqueta. Son dos decisiones distintas que comparten archivo.
+  const sinContrato = cli('y', { cuit: '30716490498', contratado: null })
+  assert.equal(recortarCartera([sinContrato], 'sin-datos').length, 1)
+  assert.equal(avisoDeDatos(sinContrato), null)
   assert.equal(avisoDeDatos(cli('x')), 'Sin CUIT: no se le puede facturar')
   assert.equal(avisoDeDatos(cli('x', { cuit: '30716490498' })), null)
   // Un CUIT en blanco NO es un CUIT cargado: la columna es texto y acepta espacios.
