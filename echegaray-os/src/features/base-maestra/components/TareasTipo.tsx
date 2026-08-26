@@ -55,7 +55,7 @@ const COLS = '62px minmax(0,1.6fr) 48px 92px 108px 84px 56px'
 const COLS_SIN_USOS = '62px minmax(0,1.6fr) 48px 92px 108px 84px'
 
 export function TareasTipo({
-  tareas, q, seleccionada, economia, cuentas, ruta, otros, hrefNueva, panel,
+  tareas, q, seleccionada, economia, cuentas, ruta, otros, hrefNueva, panel, corteInicial = 'todo',
 }: {
   tareas: TareaTipoFila[]
   q: string
@@ -67,10 +67,15 @@ export function TareasTipo({
   otros: Record<string, string | undefined>
   hrefNueva: string
   panel?: ReactNode
+  /** El recorte con el que llega la pantalla, desde `?c=`. Lo pone el verbo de la primera línea. */
+  corteInicial?: CorteTarea
 }) {
   const router = useRouter()
   const [consulta, setConsulta] = useState(q)
-  const [corte, setCorte] = useState<CorteTarea>('todo')
+  // EL CORTE ARRANCA DONDE LO MANDÓ EL VERBO. La señal «tareas tipo sin análisis» de la primera
+  // línea aterriza acá con `?c=sinAnalisis`: sin esto, el verbo abría la lista entera y el que lo
+  // tocó tenía que volver a buscar a mano las que la señal acababa de contar.
+  const [corte, setCorte] = useState<CorteTarea>(corteInicial)
 
   const visibles = tareas.filter((t) => coincideTarea(t, consulta) && cumpleCorte(t, corte))
   const cols = economia ? COLS : COLS_SIN_USOS

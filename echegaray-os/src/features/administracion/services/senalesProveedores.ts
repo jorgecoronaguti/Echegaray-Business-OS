@@ -5,7 +5,9 @@
 //
 // Vive en un `.ts` sin JSX a propósito: es la regla que decide QUÉ se le pide al usuario apenas
 // entra, y una regla así tiene que poder probarse sin montar React ni pegarle a la base. Lo que
-// dibuja está en `components/proveedores/LoQuePideTrabajo.tsx` y no decide nada.
+// dibuja está en `shared/components/v2/TrabajoDeSeccion.tsx` y no decide nada — y LA FORMA de la
+// señal y su resumen viven ahí también (`shared/components/v2/trabajo.ts`), porque las ocho
+// secciones abren con el mismo renglón y dos formas del mismo renglón se dibujan distinto.
 //
 // ═══ LAS TRES REGLAS QUE HACE CUMPLIR ═══
 //
@@ -19,17 +21,14 @@
 //   EL VERBO ATERRIZA EN EL FILTRO QUE PRODUJO EL NÚMERO. Un aviso que dice «14 sin CUIT» y cae en
 //   la lista completa de 36 obliga a buscar a mano los 14 que acaba de contar.
 
-export interface SenalDeTrabajo {
-  clave: string
-  /** `null` = no se pudo contar. Nunca 0 por ausencia de lectura. */
-  numero: number | null
-  texto: string
-  /** Qué se pierde mientras esto siga así, en consecuencia de negocio y no en jerga de base. */
-  bloquea: string
-  /** El verbo, sin flecha: la flecha la pone la fila. */
-  accion: string
-  href: string
-}
+import { resumirTrabajo, type SenalDeTrabajo } from '../../../shared/components/v2/trabajo.ts'
+
+// Se reexportan para que la página de Proveedores siga pidiéndoselos a su servicio: quien arma las
+// señales es el dueño de la forma con la que se dibujan. Se importan y se reexportan por separado
+// —nunca `export … from`—: esa forma reenvía el símbolo sin crear el enlace local y revienta en
+// ejecución con el `typecheck` y el `lint` en verde.
+export { resumirTrabajo }
+export type { SenalDeTrabajo }
 
 /** Lo que la página sabe de cada frente: el número, o el error que impidió contarlo. */
 export interface LecturaSenal {
@@ -82,19 +81,4 @@ export function armarSenales(
   }
 
   return s
-}
-
-/**
- * El resumen de la cabecera: cuántas señales y cuántos registros hay detrás (`22v2:365`).
- *
- * Con alguna señal sin contar el total de registros sería un PISO, no un total: se dice que lo es
- * en vez de publicar un número con forma de completo.
- */
-export function resumirTrabajo(senales: SenalDeTrabajo[]): string {
-  if (senales.length === 0) return 'nada pendiente'
-  const contadas = senales.filter((s) => s.numero !== null)
-  const registros = contadas.reduce((a, s) => a + (s.numero ?? 0), 0)
-  const senal = `${senales.length} ${senales.length === 1 ? 'señal' : 'señales'}`
-  if (contadas.length !== senales.length) return `${senal} · al menos ${registros} registros`
-  return `${senal} · ${registros} ${registros === 1 ? 'registro' : 'registros'}`
 }

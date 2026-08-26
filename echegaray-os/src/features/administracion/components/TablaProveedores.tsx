@@ -28,7 +28,7 @@ import Link from 'next/link'
 import { IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
 import { pesos } from '@/shared/components/canon/formato'
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from './proveedores/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { CompradoProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 

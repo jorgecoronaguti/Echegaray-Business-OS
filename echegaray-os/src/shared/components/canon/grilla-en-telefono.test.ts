@@ -59,7 +59,13 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
 
   // Si esto se desploma, la regla dejó de mirar lo que debe mirar (componentes movidos o
   // renombrados) y se estaría poniendo verde por vacía.
-  assert.ok(archivos.length >= 10, `esperaba las tablas del canon, encontré ${archivos.length}`)
+  //
+  // EL PISO BAJA A MEDIDA QUE AVANZA EL PORTE v2, y eso es lo esperado: la cartera de Clientes fue
+  // la primera en salir del canon (25/08/2026). Las tablas del v2 NO llevan caja de scroll porque
+  // resuelven el teléfono de otra manera —una media query que SUELTA columnas secundarias por
+  // debajo de 1250px y nunca estrangula el nombre—, así que no entran en esta regla. Bajar el piso
+  // de a uno por cada porte es deliberado: si se desploma de golpe, algo se rompió.
+  assert.ok(archivos.length >= 7, `esperaba las tablas del canon, encontré ${archivos.length}`)
 
   let cajas = 0
   for (const { ruta, src } of archivos) {
@@ -81,7 +87,7 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
       )
     }
   }
-  assert.ok(cajas >= 10, `esperaba ≥10 cajas del canon, miré ${cajas}`)
+  assert.ok(cajas >= 7, `esperaba ≥7 cajas del canon, miré ${cajas}`)
 })
 
 test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso', () => {
@@ -109,9 +115,11 @@ test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso'
       )
     }
   }
-  // Once geometrías declaradas como literal suelto: las diez tablas vivas, y `25 · Clientes` y
-  // `27 · Documentos` con dos cada una. Las de `19 · Personal` se arman con plantilla y no entran acá.
-  assert.ok(grillas >= 11, `esperaba ≥11 grillas canon declaradas, encontré ${grillas}`)
+  // EL PISO BAJA CON CADA PANTALLA QUE SALE DEL CANON, y eso es lo esperado: `25 · Clientes`,
+  // `19 · Personal` y `27 · Documentos` ya están en el patrón v2, que resuelve el teléfono con una
+  // media query que SUELTA columnas en vez de con una caja que scrollea. Bajar el piso de a una por
+  // porte es deliberado; si se desploma de golpe, la regla dejó de mirar lo que debe mirar.
+  assert.ok(grillas >= 9, `esperaba ≥9 grillas canon declaradas, encontré ${grillas}`)
 })
 
 test('las DOS cajas del canon envuelven con scroll propio y ancho reservado', () => {

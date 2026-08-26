@@ -38,11 +38,12 @@ import { NombresResueltos, TablaNombres } from '@/features/administracion/compon
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
-import { CabeceraProveedores } from '@/features/administracion/components/proveedores/CabeceraProveedores'
-import { FiltrosSuaves } from '@/features/administracion/components/proveedores/FiltrosSuaves'
-import { LoQuePideTrabajo } from '@/features/administracion/components/proveedores/LoQuePideTrabajo'
+import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
+import { IconoProveedor } from '@/shared/components/iconos'
 import { armarSenales } from '@/features/administracion/services/senalesProveedores'
-import { NotaBloque, V } from '@/features/administracion/components/proveedores/patron'
+import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { contiene } from '@/shared/utils/busqueda'
 import {
@@ -175,16 +176,22 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           `Marco` porque ahí adentro está `NavAdministracion`, que es de la barra de áreas y no de
           esta pantalla: moverle el interlineado sería corregir mi corrimiento rompiendo el de otro. */}
       <div style={{ lineHeight: 'normal' }}>
-      <LoQuePideTrabajo senales={senales} />
+      <TrabajoDeSeccion
+        senales={senales}
+        icono={IconoProveedor}
+        vacio="Ningún proveedor sin CUIT y ningún nombre de Compras sin resolver."
+      />
 
-      <CabeceraProveedores
+      <CabeceraSeccion
+        testid="vistas-proveedores"
         espacioPanel={panelAbierto}
-        altaHref={armarHref({}, { p: 'nuevo' })}
+        alta={{ href: armarHref({}, { p: 'nuevo' }), etiqueta: 'Nuevo proveedor', testid: 'nuevo-proveedor' }}
         buscador={{
           accion: RUTA,
           q: sp.q,
           placeholder: maestro ? 'Buscar proveedor' : 'Buscar nombre',
           oculto: { activo: sp.activo, vista: sp.vista, cuit: sp.cuit, tipo: sp.tipo, p: sp.p, n: sp.n },
+          testid: 'buscar-proveedor',
         }}
         vistas={[
           {

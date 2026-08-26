@@ -37,6 +37,7 @@ export const esVistaCartera = (v: string | undefined): v is VistaCartera =>
 /** Lo que hace falta para decidir el recorte. Deliberadamente mínimo: así se prueba sin base. */
 export interface FilaCartera {
   cuit: string | null
+  telefono: string | null
   n_obras_activas: number
   contratado: number | null
 }
@@ -52,9 +53,28 @@ export function avisoDeDatos(c: FilaCartera): string | null {
   return c.cuit?.trim() ? null : 'Sin CUIT: no se le puede facturar'
 }
 
+/**
+ * ¿LE FALTA ALGO QUE FRENA EL COBRO? Es lo que decide el recorte «Datos faltantes» (`25v2:47`).
+ *
+ * TRES COSAS Y NO UNA (v2, 25/08/2026). Hasta el porte anterior este recorte era el mismo conjunto
+ * que `avisoDeDatos` —sólo el CUIT—, y por eso la primera línea de la pantalla no tenía dónde
+ * aterrizar: el mockup abre con dos señales, «clientes con datos faltantes» y «obra sin contrato
+ * cargado», y las dos caen acá. Su `faltanDatos` es literalmente `!cuit || !tel || monto === null`.
+ *
+ * Las tres frenan plata por motivos distintos y por eso ninguna se puede sacar: sin CUIT no se
+ * factura, sin teléfono no se reclama lo facturado, y sin contrato cargado no hay esquema de pago
+ * contra el cual certificar.
+ *
+ * NO ES LO MISMO QUE `avisoDeDatos`, y no es un descuido: la ETIQUETA de la fila sigue siendo sólo
+ * la del CUIT, porque una fila con tres etiquetas ámbar deja de señalar nada.
+ */
+export function faltaUnDatoQueFrena(c: FilaCartera): boolean {
+  return !c.cuit?.trim() || !c.telefono?.trim() || c.contratado === null
+}
+
 export function recortarCartera<T extends FilaCartera>(clientes: T[], vista: VistaCartera): T[] {
   if (vista === 'activos') return clientes.filter((c) => c.n_obras_activas > 0)
-  if (vista === 'sin-datos') return clientes.filter((c) => avisoDeDatos(c) !== null)
+  if (vista === 'sin-datos') return clientes.filter(faltaUnDatoQueFrena)
   return clientes
 }
 

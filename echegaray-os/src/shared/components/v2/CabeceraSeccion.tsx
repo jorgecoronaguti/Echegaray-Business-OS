@@ -1,4 +1,4 @@
-// LAS DOS SUB-VISTAS DE NIVEL 3, EL BUSCADOR Y EL ALTA — `22v2:81-103`.
+// EL NIVEL 3, EL BUSCADOR Y LA ACCIÓN PRIMARIA DE UNA SECCIÓN — `22v2:81-103`, `25v2:57-76`.
 //
 // NIVEL 3 ES TEXTO CON SUBRAYADO, NO UNA TERCERA BARRA DE SOLAPAS. Arriba ya están la barra del
 // producto y la del área; una tercera barra deja de decir dónde está parado el que mira. El activo
@@ -21,17 +21,31 @@ import { V } from './patron'
 export interface SubVista {
   clave: string
   titulo: string
+  /** Lo que la sección abarca, al lado del título y en 12px (`27v2:59`). No es una descripción. */
+  subtitulo?: string
   /** `null` = no se pudo contar. El conteo se omite, nunca se escribe 0. */
   cuenta: number | null
   activa: boolean
   href: string
 }
 
-export function CabeceraProveedores({ vistas, buscador, altaHref, espacioPanel }: {
+export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel, testid = 'vistas-seccion' }: {
+  /** Una sola = el título de la sección, sin subrayado de solapa. Dos o más = el nivel 3. */
   vistas: SubVista[]
-  buscador: { accion: string; q?: string; placeholder: string; oculto?: Record<string, string | undefined> }
-  altaHref: string
+  buscador: {
+    accion: string; q?: string; placeholder: string
+    oculto?: Record<string, string | undefined>
+    testid?: string
+  }
+  /**
+   * LA ÚNICA ACCIÓN PRIMARIA DE LA PANTALLA. `undefined` = esta sección no da de alta nada —
+   * Documentos y Base maestra no crean su fila desde acá— y entonces no se dibuja ningún amarillo.
+   */
+  alta?: { href: string; etiqueta: string; testid?: string }
+  /** Los recortes, cuando el mockup los pone en la MISMA línea que el buscador (`25v2:66-73`). */
+  filtros?: React.ReactNode
   espacioPanel: boolean
+  testid?: string
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', padding: '26px 20px 0' }}>
@@ -40,7 +54,7 @@ export function CabeceraProveedores({ vistas, buscador, altaHref, espacioPanel }
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
           gap: 18, flexWrap: 'wrap', rowGap: 12,
         }}
-        data-testid="vistas-proveedores"
+        data-testid={testid}
       >
         {vistas.map((v) => (
           <Link
@@ -50,17 +64,25 @@ export function CabeceraProveedores({ vistas, buscador, altaHref, espacioPanel }
             aria-current={v.activa ? 'page' : undefined}
             style={{
               display: 'flex', alignItems: 'baseline', gap: 7, paddingBottom: 6,
-              boxShadow: v.activa ? `inset 0 -2px 0 ${V.grafito}` : 'none',
+              // El subrayado dice CUÁL de las sub-vistas está abierta. Con una sola no hay cuál:
+              // subrayar el título sería marcar una elección que nadie hizo.
+              boxShadow: v.activa && vistas.length > 1 ? `inset 0 -2px 0 ${V.grafito}` : 'none',
             }}
           >
             <span
               style={{
-                fontSize: '16px', fontWeight: v.activa ? 600 : 500,
+                // Una sección con UNA sola vista escribe su nombre como título de 19px
+                // (`25v2:59`); con dos o más, las solapas de nivel 3 miden 16 (`22v2:118`).
+                fontSize: vistas.length === 1 ? '19px' : '16px',
+                fontWeight: v.activa ? 600 : 500,
                 color: v.activa ? V.tinta : V.tenue, letterSpacing: '-.01em',
               }}
             >
               {v.titulo}
             </span>
+            {v.subtitulo && (
+              <span style={{ fontSize: '12px', color: V.tenue }}>{v.subtitulo}</span>
+            )}
             {v.cuenta !== null && (
               <span
                 className="font-mono tabular-nums"
@@ -78,20 +100,23 @@ export function CabeceraProveedores({ vistas, buscador, altaHref, espacioPanel }
             q={buscador.q}
             placeholder={buscador.placeholder}
             oculto={buscador.oculto}
-            testid="buscar-proveedor"
+            testid={buscador.testid ?? 'buscar'}
           />
-          <Link
-            href={altaHref}
-            data-testid="nuevo-proveedor"
-            className="hover:bg-[#EEBE00]"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, background: V.marca, color: V.tinta,
-              fontSize: '12.5px', fontWeight: 600, borderRadius: 6, padding: '6px 11px',
-            }}
-          >
-            <IconoCrear className="h-[14px] w-[14px]" />
-            Nuevo proveedor
-          </Link>
+          {filtros}
+          {alta && (
+            <Link
+              href={alta.href}
+              data-testid={alta.testid ?? 'nuevo'}
+              className="hover:bg-[#EEBE00]"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, background: V.marca, color: V.tinta,
+                fontSize: '12.5px', fontWeight: 600, borderRadius: 6, padding: '6px 11px',
+              }}
+            >
+              <IconoCrear className="h-[14px] w-[14px]" />
+              {alta.etiqueta}
+            </Link>
+          )}
         </div>
       </div>
 

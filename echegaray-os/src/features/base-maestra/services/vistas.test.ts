@@ -13,22 +13,45 @@ test('«Sin dato real» junta las dos ausencias: sin observado Y sin base', () =
   // EL DEFECTO: filtrar sólo por `hs_observado == null` deja afuera las tareas que se midieron pero
   // no tienen análisis con qué compararse — que también están sin comparación hecha, que es lo que
   // este corte junta. Es literal del canónico (`t.real === null || t.hh === null`).
-  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: null }, 'sinDato'), true)
-  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: 12 }, 'sinDato'), true)
-  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 44 }, 'sinDato'), false)
+  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: null, analisis_id: 'a1' }, 'sinDato'), true)
+  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: 12, analisis_id: 'a1' }, 'sinDato'), true)
+  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 44, analisis_id: 'a1' }, 'sinDato'), false)
 })
 
 test('«Con desvío» es sólo lo ADVERSO: una tarea que rindió mejor no es un problema', () => {
   // El canónico filtra `d > 1,1`, o sea la obra pidió MÁS horas que la base. Meter también lo
   // favorable llenaría la lista de trabajo con tareas sobre las que no hay nada que corregir.
-  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 44.88 }, 'desvio'), true)
-  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 24 }, 'desvio'), false)
-  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 35 }, 'desvio'), false)
-  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: null }, 'desvio'), false)
+  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 44.88, analisis_id: 'a1' }, 'desvio'), true)
+  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 24, analisis_id: 'a1' }, 'desvio'), false)
+  assert.equal(cumpleCorte({ hs_unitarias: 34, hs_observado: 35, analisis_id: 'a1' }, 'desvio'), false)
+  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: null, analisis_id: 'a1' }, 'desvio'), false)
 })
 
 test('«Todo» no filtra nada, ni siquiera lo que no tiene un solo dato', () => {
-  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: null }, 'todo'), true)
+  assert.equal(cumpleCorte({ hs_unitarias: null, hs_observado: null, analisis_id: 'a1' }, 'todo'), true)
+})
+
+test('«Sin análisis» NO es «Sin dato real»: son dos ausencias distintas', () => {
+  // EL DEFECTO QUE ATRAPA: mandar la señal «tareas tipo sin análisis» al corte `sinDato`. Aquél es
+  // sin rendimiento MEDIDO en obra —la tarea cotiza igual, con su análisis—; éste es sin costo
+  // unitario, y esa tarea no entra en ningún presupuesto. Aterrizar en el corte equivocado deja al
+  // que tocó el verbo mirando una lista más grande que el número que acaba de leer.
+  const sinAnalisis = { hs_unitarias: null, hs_observado: null, analisis_id: null }
+  const conAnalisisSinMedir = { hs_unitarias: 34, hs_observado: null, analisis_id: 'a1' }
+  assert.equal(cumpleCorte(sinAnalisis, 'sinAnalisis'), true)
+  assert.equal(cumpleCorte(conAnalisisSinMedir, 'sinAnalisis'), false)
+  assert.equal(cumpleCorte(conAnalisisSinMedir, 'sinDato'), true, 'sigue sin dato real, y eso no cambió')
+  assert.equal(corteDe('sinAnalisis'), 'sinAnalisis')
+})
+
+test('«Sin precio» es un SUBCONJUNTO de «Con problema», no el mismo corte', () => {
+  // «Con problema» junta tres avisos; la señal de arriba cuenta uno solo. Si compartieran corte, el
+  // verbo caería en una lista más grande que su propia cifra.
+  const viejo = { tipo: 'material', costo_base: 900, frescura: 'vieja' as const }
+  const sinPrecio = { tipo: 'material', costo_base: null, frescura: 'sin_fecha' as const }
+  assert.equal(cumpleCorteRecurso(viejo, 'problema'), true)
+  assert.equal(cumpleCorteRecurso(viejo, 'sin_precio'), false)
+  assert.equal(cumpleCorteRecurso(sinPrecio, 'sin_precio'), true)
 })
 
 test('un corte inventado en la URL cae en «Todo», no rompe la pantalla', () => {

@@ -37,7 +37,7 @@ import { pesos } from '@/shared/components/canon/formato'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { formatearCuit } from '../services/identidad'
 import { CamposProveedor } from './proveedores/CamposProveedor'
-import { PanelFilo, V } from './proveedores/patron'
+import { PanelFilo, V } from '@/shared/components/v2/patron'
 import type { NombrePendiente, Proveedor } from '../types'
 
 export function PanelNombre({

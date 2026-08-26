@@ -1,21 +1,38 @@
-// PERSONAL — la entrada al módulo. Buscar, filtrar, crear, y entrar a una ficha.
+// 19 · PERSONAL v2 — el patrón de sección aplicado al plantel.
 //
-// El dueño dibujó esta pantalla y dijo *"Nada más salvo razón operativa fuerte"*: UNA línea con la
-// búsqueda, los cuatro filtros, Cuadrillas y el alta, y debajo la tabla. Lo que NO está es tan
-// deliberado como lo que está —ni DNI, ni CUIL, ni teléfono, ni retribución, ni métricas— y no está
-// de verdad: el listado sale de `persona_directorio` con sus columnas nombradas una por una, así que
+// ═══ EL ORDEN DE LA PANTALLA ES EL ARGUMENTO ═══
+//
+// Criterio 1: la primera línea de contenido muestra TRABAJO, no un maestro. Lo primero que ve quien
+// entra no es el plantel —que casi nunca hay que tocar— sino lo que hay que resolver hoy: quién no
+// fichó, quién está sin obra y, cuando exista el dato, quién tiene un papel vencido.
+//
+// Eso reemplaza a la banda de tres pastillas de alerta: las mismas cuentas, ahora con QUÉ BLOQUEA y
+// con el verbo del que sí tiene dónde aterrizar. Y a diferencia de aquéllas, el bloque de trabajo
+// se dibuja SIEMPRE, no sólo cuando la lista está sin filtrar — porque cuenta el PLANTEL entero y
+// lo dice, no «2 de los que ves».
+//
+// ═══ LO QUE NO ESTÁ ES TAN DELIBERADO COMO LO QUE ESTÁ ═══
+//
+// Ni DNI, ni CUIL, ni teléfono, ni retribución, ni métricas: viven en el legajo. Y no están de
+// verdad — el listado sale de `persona_directorio` con sus columnas nombradas una por una, así que
 // esos campos tampoco viajan al navegador aunque alguien abra las herramientas de desarrollo.
 //
-// Es una vista de GESTIÓN, no un tablero: sin tarjetas, sin cifras arriba, sin gráficos. Todo el
-// estado vive en la URL y es un server component entero — no hay un `useState` que se pierda al
-// recargar ni una segunda copia de los datos en el navegador.
+// ═══ LO QUE EL MOCKUP DIBUJA Y ACÁ NO ESTÁ ═══
+//
+// · «AUSENTES SIN JUSTIFICAR», la señal roja: este modelo no tiene ausencias. Ver `senalesPersonal`.
+// · EL PANEL LATERAL de la persona (jornadas, cuadrilla, papeles): la fila sigue llevando al legajo
+//   360, que muestra todo eso y más. Un panel con las últimas jornadas es una lectura por persona
+//   tocada, y esa pantalla ya existe. DECLARADO COMO PENDIENTE, no como hecho.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, TituloPantalla } from '@/shared/components/ds'
-import { ChipsCanon } from '@/shared/components/canon/ChipsCanon'
-import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
+import { Aviso } from '@/shared/components/ds'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { IconoCuadrilla, IconoFecha, IconoObra, IconoPersona } from '@/shared/components/iconos'
+import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
+import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -23,12 +40,10 @@ import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/c
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
-import { metricasCanonicas } from '@/features/administracion/services/resumenPersonal'
+import { senalesDePersonal } from '@/features/administracion/services/senalesPersonal'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
-  alertasDelPlantel, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
-  partirCifra,
-  papelesPorPersona,
+  hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente, papelesPorPersona,
 } from '@/features/administracion/services/pulsoDelPlantel'
 import {
   getHHDelMes, getMarcasDeHoy, getPapelesDelPlantel,
@@ -36,6 +51,11 @@ import {
 import { hoyEnObra } from '@/features/jefe/services/contexto'
 
 export const dynamic = 'force-dynamic'
+
+const RUTA = '/administracion/personas'
+
+/** Los tres iconos que esta sección mezcla: el tiempo, la obra y el papel del legajo. */
+const ICONOS = { tiempo: IconoFecha, obra: IconoObra }
 
 type Busqueda = { q?: string; f?: string; nueva?: string }
 
@@ -46,7 +66,7 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
   if (f && f !== 'plantel') params.set('f', f)
   if (nueva) params.set('nueva', '1')
   const qs = params.toString()
-  return `/administracion/personas${qs ? `?${qs}` : ''}`
+  return `${RUTA}${qs ? `?${qs}` : ''}`
 }
 
 /** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
@@ -58,8 +78,8 @@ function vacioDe(filtro: FiltroPersonal, q?: string) {
 }
 
 /**
- * LAS CUATRO LECTURAS EN UNA SOLA TANDA. El directorio no depende de las otras tres, así que
- * esperarlas en fila costaría cuatro viajes en serie por cada carga de la pantalla. Van juntas.
+ * LAS CINCO LECTURAS EN UNA SOLA TANDA. El directorio no depende de las otras, así que esperarlas
+ * en fila costaría cinco viajes en serie por cada carga de la pantalla.
  *
  * A QUIEN YA NO ESTÁ NO SE LE PREGUNTA SI FICHÓ HOY: en «Inactivos» las tres lecturas del pulso ni
  * se piden. No es sólo ahorro — la columna diría «sin fichar» de 45 personas que se fueron hace un
@@ -76,7 +96,7 @@ async function leerTodo(
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
     conPulso ? getHHDelMes(supabase, desde, hasta) : null,
     conPulso ? getPapelesDelPlantel(supabase) : null,
-    // Los contadores de las pastillas: cuatro `count` sin filas, y del CORTE entero — no de lo que
+    // Los contadores de los recortes: cuatro `count` sin filas, y del CORTE entero — no de lo que
     // sobrevive a la búsqueda de este momento (ver `getConteosDeFiltro`).
     getConteosDeFiltro(supabase),
   ])
@@ -100,9 +120,8 @@ function armarPulso(
     hoyDisponible: marcas.error == null,
     hhDisponible: hh.error == null,
     // LA COLUMNA EXISTE EN LA BASE Y AUN ASÍ PUEDE NO HABER CONTROL. Sonda del 24/08 sobre la base
-    // real: 847 papeles cargados y CERO con vencimiento. Con eso, la columna diría «al día» en 61
-    // filas —una afirmación sobre un control que nadie está haciendo—. `hayControlDeVencimientos`
-    // la apaga hasta que haya el primer dato; ahí aparece sola.
+    // real: 847 papeles cargados y CERO con vencimiento. Con eso, una señal de «vencidos» sería una
+    // afirmación sobre un control que nadie está haciendo. Aparece sola el día del primer dato.
     papelesDisponible: papeles.error == null && hayControlDeVencimientos(papeles.data),
   }
 }
@@ -117,203 +136,166 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
   // diferencia entre las dos es todo. Esta pantalla estuvo muerta un día por eso mismo
-  // ("permission denied for table personas") y este mensaje es lo que permitió encontrarlo.
+  // («permission denied for table personas») y este mensaje es lo que permitió encontrarlo.
   if (listado.error) {
     return (
-      <PageShell title="Personas" encabezado={false}>
+      <Marco>
         <NavAdministracion />
-        <div data-testid="personas-error">
+        <div style={{ padding: '24px 20px' }} data-testid="personas-error">
           <Aviso tono="neg" titulo="No pude leer el legajo">{listado.error}</Aviso>
         </div>
-      </PageShell>
+      </Marco>
     )
   }
 
   const personas = listado.data ?? []
   const pulso = armarPulso(marcas, hh, papeles, hoy)
+  const abierta = sp.nueva === '1'
 
-  // ═══ LOS BANNERS CUENTAN EL PLANTEL, ASÍ QUE SÓLO SALEN CUANDO LO QUE SE VE ES EL PLANTEL ═══
-  //
-  // «2 sin fichar hoy» arriba de una búsqueda por «Juan» dice que la empresa tiene dos personas sin
-  // fichar, y son dos de las tres que coincidieron. Es el mismo defecto que en el Sheet escondió
-  // $292,8 M: el número correcto y la palabra que lo nombra, no. La franja del pie lo resuelve
-  // renombrando el conjunto; un banner de alerta no tiene esa salida —«ATENCIÓN, 2 de los que ves»
-  // no es una alerta— así que en un conjunto filtrado no se dibuja.
-  const alertas = filtro === 'plantel' && !sp.q?.trim() && pulso
-    ? alertasDelPlantel({
+  // LAS SEÑALES CUENTAN EL PLANTEL, NO LO QUE SE VE. Un número que cambiara al poner un filtro diría
+  // que la empresa tiene menos trabajo pendiente porque alguien tocó un chip. Se calculan sobre las
+  // filas del corte «plantel»: `getDirectorio` ya excluye a quien no pertenece, y `senalesDePersonal`
+  // lo vuelve a exigir con `en_la_empresa`.
+  const senales = pulso
+    ? senalesDePersonal({
         personas,
         marcas: pulso.marcas,
         papeles: pulso.papeles,
         hoyDisponible: pulso.hoyDisponible,
         papelesDisponible: pulso.papelesDisponible,
+        hrefSinObra: armarHref({}, 'sin_asignar'),
       })
     : []
 
   return (
-    // SIN ENCABEZADO DE PÁGINA (24/08/2026, auditoría lado a lado del canónico 19). El mockup no
-    // dibuja el «Personal» a 22px arriba de todo: la pantalla arranca en la sub-navegación —donde
-    // «Personas» ya está encendida con su contador— y el nombre de la lista vive en la MISMA línea
-    // que su buscador, sus filtros y su alta. El título separado sumaba un renglón que no decidía
-    // nada y empujaba la primera fila del plantel hacia abajo.
-    <PageShell title="Personas" encabezado={false}>
+    <Marco>
       <NavAdministracion />
 
-      {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR, y su columna se apaga en vez de
-          publicar «sin fichar» diecisiete veces. Un control que no pudo mirar no dice «no está». */}
-      {[
-        { clave: 'presencia', que: 'la presencia de hoy', error: marcas?.error },
-        { clave: 'hh', que: 'las horas del mes', error: hh?.error },
-        { clave: 'papeles', que: 'los papeles del legajo', error: papeles?.error },
-      ].filter((f) => f.error).map((f) => (
-        <div key={f.clave} className="mb-3">
-          <Aviso tono="info" testid={`sin-lectura-${f.clave}`} titulo={`No pude leer ${f.que}`}>
-            {f.error}
-          </Aviso>
-        </div>
-      ))}
+      {/* EL INTERLINEADO DEL MOCKUP, DECLARADO UNA VEZ y por fuera de la barra de áreas, que es de
+          la sección y no de esta pantalla. Ver `patron.tsx · CAJA_CONTENIDO`. */}
+      <div style={{ lineHeight: 'normal' }}>
+        <TrabajoDeSeccion
+          senales={senales}
+          icono={IconoPersona}
+          iconos={ICONOS}
+          vacio={pulso
+            ? 'Todo el plantel fichó hoy y está asignado a una obra.'
+            : 'No pude leer la presencia de hoy: esta pantalla no puede afirmar que no haya nada que resolver.'}
+        />
 
-      {/* UNA SOLA LÍNEA: buscar · filtros · Cuadrillas · la acción primaria. Cuadrillas va discreta
-          porque es NAVEGACIÓN, no una acción — y vive DENTRO de Personal, no como sección nueva. */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-        {/* EL NOMBRE DE LA LISTA, EN SU LÍNEA DE CONTROLES — es donde lo pone el canónico 19, y a
-            19px (`fontSize:19px;fontWeight:600`). `TituloPantalla` dibuja 22, que es el tamaño del
-            título de una pantalla con encabezado propio; acá el título comparte renglón con cuatro
-            controles y 22px lo convierte en el objeto más pesado de la línea. */}
-        <TituloPantalla className="mr-1 !text-[19px]">Personas</TituloPantalla>
-        <BuscadorURL
-          accion="/administracion/personas"
-          q={sp.q}
-          placeholder="Buscar…"
-          oculto={{ f: filtro === 'plantel' ? undefined : filtro }}
-          ancho="w-full sm:w-[208px]"
-          testid="buscar-persona"
+        {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR, y su columna se apaga en vez de
+            publicar «sin fichar» diecisiete veces. Un control que no pudo mirar no dice «no está». */}
+        {[
+          { clave: 'presencia', que: 'la presencia de hoy', error: marcas?.error },
+          { clave: 'hh', que: 'las horas del mes', error: hh?.error },
+          { clave: 'papeles', que: 'los papeles del legajo', error: papeles?.error },
+        ].filter((f) => f.error).map((f) => (
+          <div key={f.clave} style={{ padding: '12px 20px 0' }}>
+            <Aviso tono="info" testid={`sin-lectura-${f.clave}`} titulo={`No pude leer ${f.que}`}>
+              {f.error}
+            </Aviso>
+          </div>
+        ))}
+
+        <CabeceraSeccion
+          testid="vistas-personal"
+          espacioPanel={abierta}
+          vistas={[{ clave: 'personal', titulo: 'Personal', cuenta: conteos.plantel, activa: true, href: armarHref({}) }]}
+          buscador={{
+            accion: RUTA,
+            q: sp.q,
+            placeholder: 'Buscar persona',
+            oculto: { f: filtro === 'plantel' ? undefined : filtro },
+            testid: 'buscar-persona',
+          }}
+          alta={{ href: armarHref(sp, filtro, !abierta), etiqueta: abierta ? 'Cancelar' : 'Nueva persona', testid: 'nueva-persona' }}
+          filtros={
+            // NAVEGACIÓN, NO ACCIONES: «En obra ahora» y «Cuadrillas» son otras dos distancias de la
+            // misma pregunta y viven DENTRO de Personal, no como secciones nuevas. Por eso van en
+            // texto discreto y la única primaria amarilla de la pantalla es el alta.
+            <>
+              <NavDiscreta href="/administracion/personas/en-obra" testid="ir-en-obra" icono="persona">En obra ahora</NavDiscreta>
+              <NavDiscreta href="/administracion/personas/cuadrillas" testid="ir-cuadrillas" icono="cuadrilla">Cuadrillas</NavDiscreta>
+            </>
+          }
         />
-        {/* PASTILLAS CON SU CONTADOR, no texto subrayado: es lo que dibuja el canónico 19, y el
-            número es lo que evita el viaje a un corte vacío. */}
-        <ChipsCanon
-          testid="filtros-personal"
-          opciones={FILTROS.map((f) => ({
-            clave: f.valor,
-            label: f.etiqueta,
-            href: armarHref(sp, f.valor),
-            activo: f.valor === filtro,
-            cuenta: conteos[f.valor],
-            testid: `filtro-${f.valor}`,
-          }))}
-        />
-        <div className="ml-auto flex items-center gap-4">
-          {/* «En obra ahora» va al lado de Cuadrillas y por el mismo motivo: es NAVEGACIÓN dentro de
-              Personal, no una sección nueva del sistema. Quién está hoy y quién es el plantel son la
-              misma pregunta mirada a dos distancias. */}
-          {/* UNA ACCIÓN = UN ICONO (Design 23/08). Los tres son de `shared/components/iconos`, que
-              es la única fuente de iconografía del OS: el «+» tipográfico de la primaria era el
-              único signo dibujado con una tipografía en toda la barra. */}
-          <BotonEnlace href="/administracion/personas/en-obra" variante="discreta" data-testid="ir-en-obra">
-            <IconoPersona className="h-[15px] w-[15px]" />
-            En obra ahora
-          </BotonEnlace>
-          <BotonEnlace href="/administracion/personas/cuadrillas" variante="discreta" data-testid="ir-cuadrillas">
-            <IconoCuadrilla className="h-[15px] w-[15px]" />
-            Cuadrillas
-          </BotonEnlace>
-          <BotonEnlace href={armarHref(sp, filtro, true)} variante="primaria" data-testid="nueva-persona">
-            <IconoCrear className="h-[15px] w-[15px]" />
-            Nueva persona
-          </BotonEnlace>
-        </div>
-      </div>
-      {/* EL PULSO ANTES QUE EL DIRECTORIO (Design 23/08, pantalla 19). Lo que hay que mirar hoy va
-          arriba de la tabla, no escondido en una columna de la fila catorce. Sin nada que avisar no
-          se dibuja NADA: un cartel verde permanente que diga «todo en orden» entrena a la gente a no
-          leer los carteles, y entonces el día que uno diga algo grave tampoco se lee. */}
-      {/* ═══ TRES PASTILLAS, NO TRES TARJETAS (Design canónico 19) ═══
-          Eran tres `Aviso` en una grilla: tres bloques de dos renglones, con su párrafo explicativo,
-          ocupando el tercio superior de la pantalla antes de que apareciera una sola persona. El
-          canónico las dibuja como una fila de pastillas suaves —cifra teñida, rótulo en tinta— que
-          es la MISMA banda del 00. El detalle no se tira: viaja en el `title`, disponible para quien
-          se detiene y fuera del camino de quien está barriendo el plantel. */}
-      {/* ═══ Y EL CHIP QUE PUEDE FILTRAR, FILTRA (canónico 19: `go: () => setState({ filtro })`) ═══
-          De las tres alertas, sólo «sin obra asignada» tiene un corte que la muestre: es el filtro
-          `sin_asignar`, que ya existe y ya cuenta lo mismo. «Papeles» y «sin fichar» NO tienen corte
-          —no hay filtro por legajo ni por fichada del día— y por eso quedan como pastillas de
-          lectura: un chip que parece un botón y no lleva a ninguna parte enseña a no hacerles clic,
-          y entonces tampoco se usa el que sí funciona. DESVÍO DECLARADO. */}
-      {alertas.length > 0 && (
-        <div data-testid="alertas-plantel" className="mb-4 flex flex-wrap items-center gap-2">
-          {alertas.map((a) => {
-            const { cifra, rotulo } = partirCifra(a.texto)
-            const caja = `inline-flex items-baseline gap-2 rounded-[7px] border px-[11px] py-[6px] ${
-              a.tono === 'neg' ? 'border-neg/25 bg-neg-soft' : 'border-warn/25 bg-warn-soft'
-            }`
-            const cuerpo = (
-              <>
-                {cifra && (
-                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${a.tono === 'neg' ? 'text-neg' : 'text-warn'}`}>
-                    {cifra}
-                  </span>
-                )}
-                <span className="text-[12px] text-ink-soft">{rotulo}</span>
-              </>
-            )
-            return a.clave === 'sin_obra' ? (
-              <Link
-                key={a.clave}
-                href={armarHref(sp, 'sin_asignar')}
-                prefetch={false}
-                data-testid={`alerta-${a.clave}`}
-                title={a.detalle}
-                className={`${caja} transition-colors hover:bg-surface`}
+
+        <div style={{ padding: '10px 20px 24px' }}>
+          <div className="flex flex-col lg:flex-row lg:items-stretch">
+            <div className="min-w-0 flex-1">
+              <FiltrosSuaves
+                testid="filtro"
+                conteo={{ n: personas.length, total: conteos[filtro] ?? personas.length }}
+                opciones={FILTROS.map((f) => ({
+                  clave: f.valor,
+                  etiqueta: f.etiqueta,
+                  href: armarHref(sp, f.valor),
+                  activo: f.valor === filtro,
+                }))}
+              />
+
+              <TablaPersonas
+                personas={personas}
+                conBaja={filtro === 'inactivos'}
+                pulso={pulso}
+                vacio={vacioDe(filtro, sp.q)}
+              />
+
+              <NotaBloque testid="nota-personal">
+                El plantel sale de la pertenencia a la empresa, no de la fecha de egreso: hay bajas
+                sin fecha cargada. DNI, CUIL, teléfono y retribución no viajan a esta lista — viven
+                en el legajo. Y no hay control de vencimientos de papeles: hay 847 documentos
+                cargados y ninguno con fecha, así que nada acá puede decir «al día».
+              </NotaBloque>
+            </div>
+
+            {abierta && (
+              <PanelEdicion
+                titulo="Nueva persona"
+                accion={crearPersona}
+                cerrarHref={armarHref(sp, filtro)}
+                enviar="Crear"
+                testid="panel-alta-persona"
+                ayuda="DNI, CUIL, teléfono y retribución se cargan en el legajo, no en el listado."
               >
-                {cuerpo}
-              </Link>
-            ) : (
-              <span key={a.clave} data-testid={`alerta-${a.clave}`} title={a.detalle} className={caja}>
-                {cuerpo}
-              </span>
-            )
-          })}
+                <CamposAlta />
+              </PanelEdicion>
+            )}
+          </div>
         </div>
-      )}
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-        <div className="flex min-w-0 flex-1">
-          {/* LA CAJA SE DIBUJA IGUAL SIN FILAS: el canónico pone «Nada coincide» ADENTRO de la
-              lista, debajo del encabezado de columnas. Sacarla dejaba la pantalla sin la referencia
-              de qué se estaba mirando justo cuando hace falta —el filtro se corrige leyendo los
-              rótulos que acaban de no devolver nada—. El texto sí cambia según el corte. */}
-          <TablaPersonas
-            personas={personas}
-            conBaja={filtro === 'inactivos'}
-            pulso={pulso}
-            vacio={vacioDe(filtro, sp.q)}
-            metricas={personas.length > 0
-              ? metricasCanonicas({
-                  filtro,
-                  buscando: Boolean(sp.q?.trim()),
-                  personas,
-                  marcas: pulso?.marcas ?? null,
-                  hh: pulso?.hh ?? null,
-                  hoyDisponible: pulso?.hoyDisponible ?? false,
-                  hhDisponible: pulso?.hhDisponible ?? false,
-                })
-              : undefined}
-          />
-        </div>
-
-        {sp.nueva === '1' && (
-          <PanelEdicion
-            titulo="Nueva persona"
-            accion={crearPersona}
-            cerrarHref={armarHref(sp, filtro)}
-            enviar="Crear"
-            testid="panel-alta-persona"
-            ayuda="DNI, CUIL, teléfono y retribución se cargan en el legajo, no en el listado."
-          >
-            <CamposAlta />
-          </PanelEdicion>
-        )}
       </div>
+    </Marco>
+  )
+}
 
-    </PageShell>
+/** Un destino de nivel 3 en texto: navegación, no acción. `19v2:74-81`. */
+function NavDiscreta({ href, children, testid, icono }: {
+  href: string
+  children: React.ReactNode
+  testid: string
+  icono: 'persona' | 'cuadrilla'
+}) {
+  const Icono = icono === 'persona' ? IconoPersona : IconoCuadrilla
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      data-testid={testid}
+      className="hover:text-[#1F1F1E]"
+      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12.5px', color: V.apagado }}
+    >
+      <Icono className="h-[15px] w-[15px]" />
+      {children}
+    </Link>
+  )
+}
+
+/** El marco: fondo a toda la altura y el sello del último dato bueno, que `error.tsx` necesita. */
+function Marco({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: '100vh', background: V.fondo, display: 'flex', flexDirection: 'column' }}>
+      <SelloDatoBueno />
+      {children}
+    </div>
   )
 }

@@ -25,7 +25,7 @@ import { entrarComo } from './util/login'
 
 // ── LA LISTA: LAS CUATRO COLUMNAS DEL CANÓNICO Y UN BUSCADOR ───────────────
 
-test('la cartera trae exactamente las columnas del canónico 25, y ninguna más', async ({ page }) => {
+test('la cartera trae exactamente las columnas del canónico 25 v2, y ninguna más', async ({ page }) => {
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)
@@ -38,27 +38,26 @@ test('la cartera trae exactamente las columnas del canónico 25, y ninguna más'
     const tabla = page.getByTestId('clientes-tabla')
     await expect(tabla).toBeVisible()
 
-    // CUATRO columnas con rótulo, y éstas. Contar los encabezados es lo que impide que vuelva a
-    // crecer —una afirmación sobre los textos dejaría pasar una columna nueva con cualquier otro
-    // rótulo— y nombrarlos es lo que impide que se cambien por otras cuatro.
+    // TRES columnas, y éstas. `25 · Clientes v2` (zip del 25/08/2026) borró «EN EJECUCIÓN» —que
+    // era los nombres de las obras concatenados dentro de una celda— y la convirtió en FILAS
+    // indentadas bajo el cliente, con sus mismas columnas (criterio 4: jerarquía por indentación).
+    // También se fue la columna de acciones: el `···` por fila era una columna de ruido en una
+    // lista que existe para encontrar y abrir.
     //
-    // SE BUSCA POR `role`, NO POR `thead th`: desde el porte de `25 · Clientes Cartera.dc.html` la
-    // tabla es una GRILLA y no una `<table>`, porque el canónico fija los anchos de columna en px
-    // mezclados con fracciones (`minmax(0,1.5fr) minmax(0,1.2fr) 60px 120px 26px`, línea 121) y una
-    // `<table>` los reparte por contenido. Los rótulos van en VERSALITAS, que es como los escribe
-    // el canónico. La quinta columna es la de acciones y va sin rótulo, también como el canónico.
-    const encabezados = tabla.locator('[role="columnheader"]')
-    await expect(encabezados).toHaveCount(5)
-    await expect(encabezados.nth(0)).toHaveText('CLIENTE')
-    await expect(encabezados.nth(1)).toHaveText('EN EJECUCIÓN')
-    await expect(encabezados.nth(2)).toHaveText('OBRAS')
-    await expect(encabezados.nth(3)).toHaveText('CONTRATADO')
-    await expect(encabezados.nth(4)).toHaveText('')
+    // Contar los rótulos es lo que impide que la tabla vuelva a crecer —una afirmación sobre los
+    // textos dejaría pasar una columna nueva con cualquier otro rótulo— y nombrarlos es lo que
+    // impide que se cambien por otras tres. La tabla es una GRILLA y no una `<table>`: el canónico
+    // fija los anchos en px mezclados con fracciones y una `<table>` los reparte por contenido.
+    await expect(tabla).toContainText('Cliente')
+    await expect(tabla).toContainText('Obras')
+    await expect(tabla).toContainText('Contratado')
+    // La obra en ejecución es una fila propia, no una celda.
+    await expect(page.getByTestId('fila-obra').first()).toBeVisible()
+    await expect(tabla).not.toContainText('EN EJECUCIÓN')
 
     // Y ninguno de los que el dueño mandó sacar el 19/08 y el canónico tampoco devuelve. Van por
     // separado del conteo porque dicen otra cosa: el conteo prohíbe que crezca, esto prohíbe que
     // vuelvan JUSTO ÉSTOS, que son los que ya estuvieron y los que alguien va a querer devolver.
-    // «Contratado» salió de esta lista: el canónico lo dibuja y arriba se exige que esté.
     for (const columna of ['Responsable', 'Costo real', 'Restric', 'Docs']) {
       await expect(tabla).not.toContainText(columna)
     }

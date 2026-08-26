@@ -14,7 +14,7 @@
 import Link from 'next/link'
 import { pesos } from '@/shared/components/canon/formato'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, RotuloPanel, V } from './proveedores/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, RotuloPanel, V } from '@/shared/components/v2/patron'
 import type { NombrePendiente, NombreResuelto } from '../types'
 
 /** `22v2:449-451`. En angosto se suelta COMPROB., nunca el texto que hay que resolver. */

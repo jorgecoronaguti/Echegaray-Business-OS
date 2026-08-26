@@ -207,24 +207,10 @@ export async function getDocumentos(
   }
 }
 
-/**
- * CUÁNTOS ARCHIVOS CUELGA CADA CLASE DE ENTIDAD — el contador de cada chip del filtro.
- *
- * Se cuentan ARCHIVOS DISTINTOS, no filas de vínculo: un mismo PDF en el legajo de dos personas es
- * un archivo, y un contador que dijera 2 mandaría a buscar un documento que no existe. Por eso no
- * alcanza un `count: exact` sobre la tabla y hay que traer los ids para deduplicarlos.
- *
- * Un fallo acá NO tira la pantalla: se devuelve `null` en esa clase y el chip va sin número, que es
- * lo cierto. La lista de documentos sigue leyéndose igual.
- */
-export async function getConteoEntidades(
-  supabase: SupabaseClient,
-): Promise<Record<Entidad, number | null>> {
-  const partes = await Promise.all(ENTIDADES.map((e) => idsDeEntidad(supabase, e)))
-  return Object.fromEntries(
-    ENTIDADES.map((e, i) => [e, partes[i].error ? null : (partes[i].data?.length ?? 0)]),
-  ) as Record<Entidad, number | null>
-}
+// EL CONTADOR POR CHIP SE FUE CON EL PORTE 27 v2 (25/08/2026). `getConteoEntidades` traía los ids
+// de las TRES tablas de vínculo —1.093 filas— en cada carga para poner un número al lado de cada
+// pastilla; el v2 no los dibuja, y el único conteo que quedó es `n/total`, que sale de la consulta
+// que la lista ya hace. Tres lecturas menos por página vista, y ningún dato menos en pantalla.
 
 /** Los archivos vinculados a una clase de entidad. Es lo que hace que «De obras» filtre en Postgres
  *  y no descartando filas ya traídas: sin esto, filtrar por obra sobre las 100 primeras dejaría

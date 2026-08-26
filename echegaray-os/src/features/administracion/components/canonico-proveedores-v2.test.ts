@@ -21,6 +21,10 @@ import { dirname, join } from 'node:path'
 // radio y pie de totales. Basta un import distraído para que la pantalla vuelva atrás.
 
 const DIR = dirname(fileURLToPath(import.meta.url))
+// EL VOCABULARIO DEL v2 VIVE EN `shared/components/v2` DESDE EL PORTE DE LAS OTRAS SECCIONES: las
+// ocho abren con el mismo bloque de trabajo y la misma cabecera, y tenerlo bajo `proveedores/` hacía
+// que Clientes importara una carpeta de otro dominio para dibujar su propia pantalla. Este test
+// sigue siendo el guardián de las decisiones — lo único que cambió es dónde están los archivos.
 const fuente = (a: string) => readFileSync(join(DIR, a), 'utf8')
 const pagina = () => readFileSync(join(DIR, '../../../app/(main)/administracion/proveedores/page.tsx'), 'utf8')
 
@@ -52,16 +56,19 @@ const codigoPagina = () => pagina()
   })
   .join('\n')
 
+/** Dónde vive el vocabulario compartido del v2, relativo a esta carpeta. */
+const V2 = '../../../shared/components/v2/'
+
 const PANTALLAS = ['TablaProveedores.tsx', 'TablaNombres.tsx', 'PanelProveedor.tsx', 'PanelNombre.tsx',
-  'proveedores/patron.tsx', 'proveedores/CabeceraProveedores.tsx', 'proveedores/FiltrosSuaves.tsx',
-  'proveedores/LoQuePideTrabajo.tsx']
+  V2 + 'patron.tsx', V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx',
+  V2 + 'TrabajoDeSeccion.tsx']
 
 // ── CRITERIO 1 · LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO ────────────────────────────────────────
 
 test('el bloque de trabajo se dibuja ANTES que las sub-vistas y que cualquier lista', () => {
   const src = pagina()
-  const trabajo = src.indexOf('<LoQuePideTrabajo')
-  const cabecera = src.indexOf('<CabeceraProveedores')
+  const trabajo = src.indexOf('<TrabajoDeSeccion')
+  const cabecera = src.indexOf('<CabeceraSeccion')
   assert.ok(trabajo > 0, 'desapareció la primera línea de trabajo')
   assert.ok(cabecera > 0)
   assert.ok(trabajo < cabecera, 'el maestro volvió a ser lo primero que se ve')
@@ -138,11 +145,11 @@ test('los números de las tablas son tabulares: dos filas se comparan de un vist
     const src = fuente(a)
     assert.match(src, /tabular-nums/, `${a} perdió los números tabulares`)
   }
-  assert.match(fuente('proveedores/LoQuePideTrabajo.tsx'), /font-mono tabular-nums/)
+  assert.match(fuente(V2 + 'TrabajoDeSeccion.tsx'), /font-mono tabular-nums/)
 })
 
 test('el color sólo va en la cifra: el filo ámbar marca el problema y la selección va en el fondo', () => {
-  const patron = fuente('proveedores/patron.tsx')
+  const patron = fuente(V2 + 'patron.tsx')
   assert.match(patron, /FILO_BLOQUEA = `inset 2px 0 0 \$\{V\.warn\}`/)
   const tabla = fuente('TablaProveedores.tsx')
   // El defecto que atrapa: colgar el filo ámbar de la selección. Elegir la fila borraría su
@@ -154,11 +161,14 @@ test('el color sólo va en la cifra: el filo ámbar marca el problema y la selec
 // ── CRITERIO 5 · ICONOS DE TRAZO 1.6, LOS DEL §11 ────────────────────────────────────────────────
 
 test('los iconos salen del set de trazo 1.6 del §11, no del canon de trazo 2', () => {
-  for (const a of PANTALLAS.concat(['proveedores/BuscadorFilo.tsx'])) {
+  for (const a of PANTALLAS.concat([V2 + 'BuscadorFilo.tsx'])) {
     const src = codigo(a)
     assert.equal(/from '@\/shared\/components\/canon'/.test(src), false,
       `${a} importa iconos/estilos del canon de agosto (trazo 2, caja)`)
-    if (src.includes('Icono')) assert.match(src, /from '@\/shared\/components\/iconos'/)
+    // Se mira un NOMBRE de icono concreto (`IconoProveedor`), no la palabra «Icono»: un componente
+    // que RECIBE el icono por prop —`TrabajoDeSeccion`, que las ocho secciones llenan con el suyo—
+    // no importa ninguno, y exigirle el import lo obligaría a elegir uno por todas.
+    if (/Icono[A-Z]/.test(src)) assert.match(src, /from '@\/shared\/components\/iconos'/)
   }
 })
 
@@ -258,12 +268,12 @@ test('sólo el pedazo que necesita interactividad es de cliente', () => {
   // panel del proveedor y la cabecera se renderizan en el servidor; el buscador y el panel de la
   // cola —que sí tienen estado— son los únicos de cliente.
   for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', 'PanelProveedor.tsx',
-    'proveedores/CabeceraProveedores.tsx', 'proveedores/FiltrosSuaves.tsx',
-    'proveedores/LoQuePideTrabajo.tsx', 'proveedores/patron.tsx']) {
+    V2 + 'CabeceraSeccion.tsx', V2 + 'FiltrosSuaves.tsx',
+    V2 + 'TrabajoDeSeccion.tsx', V2 + 'patron.tsx']) {
     assert.equal(fuente(a).startsWith("'use client'"), false, `${a} se volvió de cliente sin necesitarlo`)
   }
   assert.equal(codigoPagina().includes("'use client'"), false)
-  for (const a of ['PanelNombre.tsx', 'proveedores/BuscadorFilo.tsx']) {
+  for (const a of ['PanelNombre.tsx', V2 + 'BuscadorFilo.tsx']) {
     assert.ok(fuente(a).startsWith("'use client'"), `${a} necesita estado y dejó de ser de cliente`)
   }
 })
@@ -290,11 +300,11 @@ test('el interlineado del mockup se declara UNA vez y no envuelve la barra ajena
 test('el alto y el ancho se miden como el mockup: el borde va POR AFUERA', () => {
   // ANTES: el panel medía 396px contra los 421px del zip —el padding de 24 y el borde de 1 se los
   // comía desde adentro `border-box`— y esos 25px se los llevaba la lista. Las filas, 40 contra 41.
-  const patron = codigo('proveedores/patron.tsx')
+  const patron = codigo(V2 + 'patron.tsx')
   assert.match(patron, /export const CAJA_CONTENIDO = 'box-content'/)
   assert.match(patron, /lg:box-content lg:w-\[372px\]/, 'el panel volvió a medir su padding por dentro')
   assert.match(patron, /boxSizing: 'content-box'/, 'el encabezado de columnas perdió su filo por afuera')
-  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', 'proveedores/LoQuePideTrabajo.tsx']) {
+  for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', V2 + 'TrabajoDeSeccion.tsx']) {
     assert.match(codigo(a), /CAJA_CONTENIDO/, `${a}: sus filas volvieron a comerse el filo desde adentro`)
   }
 })
