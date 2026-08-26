@@ -279,31 +279,37 @@ const CERTIFICADO = /certificado\s*n?[°º]?\s*(\d+)/i
  * @returns {{tipo: 'anticipo'|'certificado'|'fondo_reparo'|'otro', rotulo: string}}
  */
 export function clasificar(concepto, ordenCompra, formaDeCobro) {
-  const limpioC = sinCategoriaContable(concepto)
-  const limpioH = sinCategoriaContable(ordenCompra)
+  // ═══ EL RÓTULO ES LO QUE DICE EL SHEET, TAL CUAL (26/08/2026) ═══
+  //
+  // Antes esto reescribía: «Anticipos quincenales de todas las obras — 1ª de 2 cuotas» salía
+  // «Anticipo», «Saldo 50% de todas las obras — cuota quincenal 1 de 4» salía «Saldo obras San
+  // Francisco — 1/4», y las filas sin concepto se numeraban «(1 de 5)». El dueño lo dijo dos veces:
+  // «estás inventando cobros» y «están mal los conceptos».
+  //
+  // Reescribir un concepto es afirmar que uno entendió mejor que quien lo escribió. Acá no hace
+  // falta: la persona que carga Cobranzas ya redactó qué es cada cobro, y ese texto es el que el
+  // cliente tiene que leer. Lo único que se le saca es la categoría contable —«Blanco», «Negro»—,
+  // que es interna y no puede salir del portal.
+  //
+  // EL `tipo` SÍ SE DEDUCE, y es otra cosa: no cambia una palabra de lo que se muestra. Decide si la
+  // línea es un fondo de reparo —que va último y no suma a la deuda— y eso el rótulo no lo dice solo.
+  const limpioC = sinCategoriaContable(concepto).trim()
+  const limpioH = sinCategoriaContable(ordenCompra).trim()
   const texto = `${limpioC} ${limpioH}`
-  const cert = texto.match(CERTIFICACION) || texto.match(CERTIFICADO)
-  if (cert) return { tipo: 'certificado', rotulo: `Certificado ${Number(cert[1])}` }
-  if (/fondo\s+de\s+reparo/i.test(texto)) return { tipo: 'fondo_reparo', rotulo: 'Fondo de reparo' }
-  if (/\banticipos?\b/i.test(texto)) return { tipo: 'anticipo', rotulo: 'Anticipo' }
-  if (/\badicional\b/i.test(texto)) return { tipo: 'otro', rotulo: 'Adicional' }
-  // Sin categoría reconocible manda el concepto, que es lo único que describe el trabajo. Se acota:
-  // un rótulo de 200 caracteres no es un rótulo, es una nota.
+  const tipo = /fondo\s+de\s+reparo/i.test(texto) ? 'fondo_reparo'
+    : /certificaci[oó]n|certificado/i.test(texto) ? 'certificado'
+    : /\banticipos?\b/i.test(texto) ? 'anticipo'
+    : 'otro'
+
+  // El concepto manda sobre la orden de compra: es el campo donde se describe el cobro.
   const crudo = limpioC || limpioH
   if (!crudo) {
-    // ═══ SIN CONCEPTO NO SE FABRICA UNO (26/08/2026) ═══
-    //
-    // Cinco filas de San Francisco vienen SIN concepto: el Sheet sólo dice «Efectivo», «Cobrado», su
-    // fecha y su monto. Se publicaban como «Cobro (1 de 5)», «Cobro (2 de 5)»… y esa numeración NO
-    // EXISTE en ningún lado — la inventó el numerador al ver cinco rótulos iguales. El dueño lo vio
-    // en el portal de su cliente: «estás inventando cobros y fechas».
-    //
-    // Lo único cierto de esas filas es CÓMO se cobró. Ese es el rótulo, y viene de la columna N.
-    // `sinConcepto` viaja para que el numerador no las toque: la fecha ya las distingue.
-    const forma = String(formaDeCobro ?? '').trim()
-    return { tipo: 'otro', rotulo: forma || 'Cobro', sinConcepto: true }
+    // Sin concepto lo único cierto es CÓMO se cobró, y eso lo dice la columna N. `sinConcepto` viaja
+    // para que el numerador no las toque: la fecha ya las distingue.
+    return { tipo, rotulo: String(formaDeCobro ?? '').trim() || 'Cobro', sinConcepto: true }
   }
-  return { tipo: 'otro', rotulo: crudo.length > 80 ? `${crudo.slice(0, 79).trimEnd()}…` : crudo }
+  // Un rótulo de 200 caracteres no es un rótulo, es una nota: se acota, no se reescribe.
+  return { tipo, rotulo: crudo.length > 90 ? `${crudo.slice(0, 89).trimEnd()}…` : crudo }
 }
 
 /**

@@ -239,22 +239,35 @@ test('ningún rótulo generado lleva la categoría contable al portal', () => {
   }
 })
 
-test('el rótulo dice QUÉ cobro es, no repite el nombre de la obra', () => {
-  assert.deepEqual(clasificar('Playon Azufre - Blanco - Certificación 1/2', ''), { tipo: 'certificado', rotulo: 'Certificado 1' })
-  assert.deepEqual(clasificar('Salón Comercial - Certificación 9/9', ''), { tipo: 'certificado', rotulo: 'Certificado 9' })
-  // La categoría suele estar en la orden de compra cuando el concepto sólo tiene la obra.
-  assert.deepEqual(clasificar('Pisos Industriales', 'Anticipo inicio obra Pisos Industriales - Total Obra: $47.590.272'),
-    { tipo: 'anticipo', rotulo: 'Anticipo' })
-  assert.deepEqual(clasificar('', 'Certificado 3'), { tipo: 'certificado', rotulo: 'Certificado 3' })
-  assert.deepEqual(clasificar('ADICIONAL - BASE DE TANQUE SO2', ''), { tipo: 'otro', rotulo: 'Adicional' })
-  assert.equal(clasificar('Retención fondo de reparo', '').tipo, 'fondo_reparo')
+test('EL RÓTULO ES EL DEL SHEET, palabra por palabra', () => {
+  // Antes esto reescribía: «Anticipos quincenales de todas las obras — 1ª de 2 cuotas» salía
+  // «Anticipo». Reescribir un concepto es afirmar que uno entendió mejor que quien lo escribió, y
+  // el dueño lo vio dos veces en el portal de su cliente: «están mal los conceptos».
+  assert.equal(clasificar('Anticipos quincenales de todas las obras — 1ª de 2 cuotas', '').rotulo,
+    'Anticipos quincenales de todas las obras — 1ª de 2 cuotas')
+  assert.equal(clasificar('Salón Comercial - Certificación 9/9', '').rotulo, 'Salón Comercial - Certificación 9/9')
+  // El concepto manda sobre la orden de compra; si el concepto está vacío, la orden.
+  assert.equal(clasificar('', 'Saldo 50% de todas las obras — cuota quincenal 1 de 4').rotulo,
+    'Saldo 50% de todas las obras — cuota quincenal 1 de 4')
+  // LO ÚNICO que se le saca es la categoría contable: es interna y no sale del portal.
+  assert.equal(clasificar('Playon Azufre - Blanco - Certificación 1/2', '').rotulo, 'Playon Azufre - Certificación 1/2')
 })
 
-test('sin categoría reconocible manda el concepto, acotado', () => {
+test('el TIPO sí se deduce — no cambia una palabra de lo que se muestra', () => {
+  // Decide si la línea es un fondo de reparo (va último y no suma a la deuda). Eso el rótulo no lo
+  // dice solo, y no tocar el rótulo es justamente lo que permite deducirlo sin reescribir nada.
+  assert.equal(clasificar('Retención fondo de reparo', '').tipo, 'fondo_reparo')
+  assert.equal(clasificar('Salón Comercial - Certificación 9/9', '').tipo, 'certificado')
+  assert.equal(clasificar('Anticipos quincenales de todas las obras', '').tipo, 'anticipo')
+  assert.equal(clasificar('IVA de Factura 220', '').tipo, 'otro')
+})
+
+test('sin concepto manda la forma de cobro, y un rótulo largo se ACOTA, no se reescribe', () => {
   assert.deepEqual(clasificar('IVA de Factura 220', ''), { tipo: 'otro', rotulo: 'IVA de Factura 220' })
+  assert.deepEqual(clasificar('', '', 'Efectivo'), { tipo: 'otro', rotulo: 'Efectivo', sinConcepto: true })
   assert.deepEqual(clasificar('', ''), { tipo: 'otro', rotulo: 'Cobro', sinConcepto: true })
   const largo = clasificar('Cambio de pisos RRHH - se facturó el 80% $ 7.520.000 y el 20% restante queda para el cierre de la obra', '')
-  assert.ok(largo.rotulo.length <= 80, `el rótulo mide ${largo.rotulo.length}`)
+  assert.ok(largo.rotulo.length <= 90, `el rótulo mide ${largo.rotulo.length}`)
   assert.ok(largo.rotulo.endsWith('…'))
 })
 
