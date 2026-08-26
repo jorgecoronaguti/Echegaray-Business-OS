@@ -121,6 +121,12 @@ export const RUTAS_SOLO_ECONOMIA = [
   // un cliente ve de SU plata: contrato, certificaciones, facturas, recibos, montos y fechas. Es
   // precio y es cobro; el jefe de obra no lo ve, igual que no ve un presupuesto.
   '/administracion/cronograma',
+  // `/administracion/portal` entra el 26/08/2026 con la consola que operar el portal exigía y que no
+  // existía: hasta ese día habilitar a un cliente era un INSERT a mano contra Postgres. Ahí se decide
+  // QUIÉN de un cliente ve su plata —lo que debe, lo que pagó, sus papeles— y se lee `portal_acceso`.
+  // Dar acceso no es un dato económico: es la llave de todos ellos, y por eso queda del lado de
+  // `veEconomia`, igual que `/administracion/usuarios`, que tampoco está por económica.
+  '/administracion/portal',
 ] as const
 
 /**

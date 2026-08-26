@@ -84,3 +84,32 @@ test('Usuarios ya no es una sección del área: no enciende ninguna solapa', () 
   assert.equal(areaActiva('/presupuestos'), null)
   assert.equal(areaActiva('/obras'), null)
 })
+
+test('las dos pantallas del portal encienden «Clientes» sin ser un octavo destino', () => {
+  // El defecto que esto impide: `areaActiva` leía `absorbe` SÓLO en el destino `trabajo`. Con el
+  // campo declarado para todos y leído para uno, una pantalla colgada de otra solapa apagaba la
+  // barra entera — y la única alternativa era agregar un destino que el mockup no tiene.
+  assert.equal(areaActiva('/administracion/portal'), 'clientes')
+  assert.equal(areaActiva('/administracion/cronograma'), 'clientes')
+  assert.equal(areaActiva('/administracion/cronograma?obra=abc'), 'clientes')
+  // Y siguen siendo SIETE: la absorción no agrega solapas.
+  assert.equal(DESTINOS.length, 7)
+})
+
+test('absorber no le roba la ruta a «Trabajo» ni a los demás', () => {
+  // `/administracion` sigue siendo Trabajo aunque Clientes absorba dos rutas que empiezan igual.
+  assert.equal(areaActiva('/administracion'), 'trabajo')
+  assert.equal(areaActiva('/administracion/pendientes'), 'trabajo')
+  assert.equal(areaActiva('/administracion/personas'), 'personas')
+  // Y lo que nadie absorbe sigue sin encender nada.
+  assert.equal(areaActiva('/administracion/usuarios'), null)
+})
+
+test('el portal es una ruta del dinero: el jefe de obra no la abre', () => {
+  // Decidir quién ve la plata de un cliente es economía. La solapa que la absorbe (Clientes) SÍ la
+  // ve el jefe, así que sin esta línea el enlace de la pantalla de Clientes lo llevaría a un rebote.
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/portal'), false)
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/cronograma'), false)
+  assert.equal(puedeVerRuta('administracion', '/administracion/portal'), true)
+  assert.ok(RUTAS_SOLO_ECONOMIA.includes('/administracion/portal'))
+})

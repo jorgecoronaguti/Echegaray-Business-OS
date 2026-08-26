@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { normalizarMail, pareceMail } from '@/app/portal/login/acceso'
+// Ruta RELATIVA y con la extensión real, no el alias `@/`: este módulo lo carga `node --test`
+// con su despojado de tipos nativo, y el resolvedor de Node no conoce los `paths` del
+// tsconfig. Con el alias, la lógica de la puerta sólo se podía probar levantando Next.
+import { normalizarMail, pareceMail } from '../../../app/portal/login/acceso.ts'
 
 // QUIÉN ENTRA AL PORTAL — la lógica pura de la consola de clientes.
 //
