@@ -117,6 +117,10 @@ export const RUTAS_SOLO_ECONOMIA = [
   // los archivos con vínculo propio (su legajo, sus obras, los del cliente si administra). La ruta
   // y la base ya no se contradicen.
   '/documentos',
+  // `/administracion/cronograma` entra el 26/08/2026 con el portal del cliente. Ahí se edita lo que
+  // un cliente ve de SU plata: contrato, certificaciones, facturas, recibos, montos y fechas. Es
+  // precio y es cobro; el jefe de obra no lo ve, igual que no ve un presupuesto.
+  '/administracion/cronograma',
 ] as const
 
 /**
