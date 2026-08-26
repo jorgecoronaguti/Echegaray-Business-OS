@@ -56,6 +56,9 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
     puede_aprobar: edicion?.puede_aprobar ?? false,
   })
   const [elegidas, setElegidas] = useState<string[] | null>(edicion?.obras ?? null)
+  // CON QUÉ NOMBRE LO SALUDA EL PORTAL. Se precarga con el contacto si el mail ya figura en la
+  // ficha, y se puede escribir a mano: es el nombre de una PERSONA, no el de la empresa.
+  const [nombre, setNombre] = useState(edicion?.persona_contacto ?? '')
   const [avisar, setAvisar] = useState(true)
   const [resultado, setResultado] = useState<ResultadoAccion | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -70,7 +73,8 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
     setResultado(null)
     const r = await habilitar({
       email: mail,
-      personaContacto: contacto?.nombre ?? edicion?.persona_contacto ?? undefined,
+      // Lo escrito a mano manda sobre el cruce automático: quien lo tipeó sabe más que el cruce.
+      personaContacto: nombre.trim() || contacto?.nombre || edicion?.persona_contacto || undefined,
       puedeVerObra: permisos.puede_ver_obra,
       puedeVerMontos: permisos.puede_ver_montos,
       puedeAprobar: permisos.puede_aprobar,
@@ -138,6 +142,28 @@ export function PanelAgregarMail({ accesos, contactos, obras, edicion, onCerrarE
                     No figura entre los contactos de esta ficha.</>)}
           </div>
         )}
+
+        {/* EL NOMBRE CON EL QUE EL PORTAL LO SALUDA. Vacío no es un error: sin nombre el portal
+            saluda con el del cliente, que es cierto aunque sea menos cálido. Nunca se inventa uno a
+            partir del mail — «j.perez@» no es «J Perez». */}
+        <div style={{ fontSize: '11px', color: C.tenue, letterSpacing: '.05em', marginTop: '15px' }}>
+          NOMBRE <span style={{ letterSpacing: 0, textTransform: 'none' }}>· así lo saluda el portal</span>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '9px', marginTop: '7px',
+          border: `1px solid ${C.bordeCampo}`, borderRadius: '7px', padding: '0 12px', minHeight: '42px',
+        }}>
+          <Ico d={P.globo} s={16} style={{ color: C.tenue }} />
+          <input
+            type="text" value={nombre} onChange={(e) => setNombre(e.target.value)}
+            placeholder={contacto?.nombre ?? 'Marta Ruiz'} maxLength={80}
+            data-testid="acceso-nombre" aria-label="Nombre de la persona"
+            style={{
+              fontSize: '13px', color: C.tinta, flex: 1, border: 'none',
+              outline: 'none', background: 'transparent', padding: 0,
+            }}
+          />
+        </div>
       </div>
 
       <div style={{ padding: '14px 16px 8px' }}>

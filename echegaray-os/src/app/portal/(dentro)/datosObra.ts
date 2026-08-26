@@ -128,3 +128,43 @@ export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<stri
 }
 
 export type { BloqueDeObra, PagoConObra }
+
+/** Una obra del cliente para el Inicio: sin un peso, sólo qué es y cómo va. */
+export type ObraDelInicio = {
+  id: string
+  nombre: string
+  /** `'en ejecución'`, `'terminada'`… tal como lo declara el registro. `null` = sin declarar. */
+  estado: string | null
+  /** `null` = SIN FECHA DE INICIO cargada. No se rellena con la de creación del registro. */
+  desde: string | null
+}
+
+/**
+ * LAS OBRAS DEL CLIENTE PARA EL INICIO — desde `obra_canonica`, el registro real.
+ *
+ * No usa `obrasDelCliente` (que lee `public.obras`) a propósito: el alcance de un acceso —
+ * `cliente_acceso.obras` — guarda ids de `obra_canonica`, así que preguntarle a la otra tabla obliga
+ * a fallar cerrado cuando el acceso está acotado. Acá el filtro es exacto y un contacto con acceso a
+ * dos obras ve exactamente esas dos.
+ */
+export async function obrasParaElInicio(acceso: AccesoDelPortal): Promise<ObraDelInicio[]> {
+  const { data } = await createAdminClient()
+    .from('obra_canonica')
+    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan')
+    .eq('cliente_id', acceso.clienteId)
+    .order('nombre')
+
+  type Fila = { id: string; nombre: string; estado: string | null; fecha_inicio_real: string | null; fecha_inicio_plan: string | null }
+  return ((data ?? []) as Fila[])
+    .filter((o) => alcanzaLaObra(acceso.obras, String(o.id)))
+    .map((o) => ({
+      id: String(o.id),
+      nombre: String(o.nombre),
+      estado: o.estado ?? null,
+      // La REAL manda sobre la planificada: es cuándo arrancó de verdad. Sin ninguna de las dos,
+      // `null` — y la pantalla no escribe una fecha inventada.
+      desde: o.fecha_inicio_real ?? o.fecha_inicio_plan ?? null,
+    }))
+    // Las cerradas al final: el cliente entra a ver lo que está en curso.
+    .sort((a, b) => Number(a.estado === 'cerrada') - Number(b.estado === 'cerrada'))
+}

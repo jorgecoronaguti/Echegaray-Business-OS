@@ -2,34 +2,26 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../sesion'
 import { accesoDelPortal } from '../datos'
-import { loQueSiPuedeVer } from '../permisos'
-import { esquemaDelPortal, hoyEnObra, type PagoConObra } from './datosObra'
-import { proximoPago, resumenDeCobro, loQueSigue, estadoDePago, pesos, diaMes } from '../cronograma'
-import { IconoEstado, Rubro, Vacio, Fila } from '../Piezas'
-import { IconoPagos, IconoBanco, IconoDescarga } from '../iconos'
+import { obrasParaElInicio, type ObraDelInicio } from './datosObra'
+import { Vacio } from '../Piezas'
+import { IconoInicio, IconoFlecha } from '../iconos'
 
-// INICIO — abre por LO QUE HAY QUE HACER, no por un cartel de deuda.
+// INICIO — a quién saludamos y qué le estamos haciendo. Nada más.
 //
-// El número grande es el PRÓXIMO PAGO. El vencido, el pendiente y el pagado van abajo, en letra chica:
-// el cliente entra a saber qué le toca ahora, no a que le recuerden cuánto debe. Es la decisión del
-// módulo y no una preferencia estética.
+// ═══ ACÁ NO HAY UN PESO (26/08/2026, decisión del dueño) ═══
 //
-// ═══ TODAS SUS OBRAS, NO UNA (26/08/2026) ═══
+// Abría con el próximo pago en 38px y tres líneas de vencido / pendiente / pagado. Textual: «no
+// quiero q el inicio de los clientes sea el monto de la obra o lo q deben, no me gusta eso; esa es
+// una función exclusiva de la sección Pagos. En el inicio darle la bienvenida y listar las obras».
 //
-// Antes se elegía una obra en una barra de arriba y todo lo de abajo hablaba de esa. El dueño lo
-// rechazó —«me sirve por cliente y q cada cliente tenga todas sus obras»— y tiene razón: el próximo
-// pago de un cliente es el más cercano de TODAS sus obras, y con una obra por pantalla había que
-// mirar cuatro para saber cuál era.
+// Es una decisión de relación, no de diseño: la primera pantalla que ve un cliente al entrar no
+// puede ser un recordatorio de deuda. La plata tiene su lugar —Pagos— y está a un clic.
 //
-// El próximo pago no se calcula acá: sale de `cronograma.ts`, la misma función que usa Pagos. Si cada
-// pantalla resolviera por su cuenta, Inicio y Pagos podrían mostrar dos pagos distintos el mismo día.
+// MINIMALISMO: un saludo, la lista de sus obras, y un enlace al cronograma. Ni una tarjeta, ni un
+// gráfico, ni un contador. Lo que no aporta a «qué me están haciendo» no entra.
 //
-// ═══ SIN `puede_ver_montos` NO HAY IMPORTES, Y NO HAY «$ 0» ═══
-//
-// La pantalla se reordena: el número grande deja de ser plata y pasa a ser la FECHA del próximo
-// vencimiento, que es lo que ese contacto sí tiene derecho a saber. Las tres líneas de totales se
-// retiran enteras. Tapar los importes con un guión sería peor que no mostrarlos: «—» se lee «este
-// pago no tiene importe», y seis renglones así dicen que la empresa no le facturó nada.
+// LO QUE NO SE INVENTA: una obra sin fecha de inicio cargada no dice cuándo empezó, y una sin estado
+// no se rotula «en ejecución» por descarte. Ausencia se escribe como ausencia.
 
 export const dynamic = 'force-dynamic'
 
@@ -39,159 +31,66 @@ export default async function Inicio() {
   const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
-  const { pagos, bloques, contratos } = await esquemaDelPortal(acceso)
-  const hoy = hoyEnObra()
-  const montos = acceso.puedeVerMontos
-
-  const proximo = proximoPago(pagos) as PagoConObra | null
-  const r = resumenDeCobro(pagos, null, hoy)
-  const siguen = loQueSigue(pagos, bloques.length > 1 ? 4 : 2) as PagoConObra[]
-  const variasObras = bloques.length > 1
+  const obras = await obrasParaElInicio(acceso)
 
   return (
-    // EN EL TELÉFONO LA PRIMARIA VA ABAJO, después de las tres líneas —así lo dibuja la maqueta y así
-    // cae bajo el pulgar—. En escritorio va al lado del monto. Es el MISMO botón: `display:contents`
-    // deja que el orden lo decida el contenedor de afuera en vez de duplicar el bloque.
     <section className="flex flex-col">
-      <div className="contents md:flex md:flex-wrap md:items-end md:gap-x-10">
-        <div>
-          <p className="text-[11px] tracking-[.09em] text-faint">
-            {montos ? 'PRÓXIMO PAGO' : 'PRÓXIMO VENCIMIENTO'}
-          </p>
-          {proximo ? (
-            <>
-              <p className="tnum mt-1.5 font-mono text-[38px] font-semibold leading-none tracking-[-.025em] md:text-[40px]">
-                {montos ? pesos(proximo.monto, proximo.moneda) : diaMes(proximo.fechaPrevista)}
-              </p>
-              <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-muted">
-                <IconoPagos tamano={17} />
-                {montos ? <span className="tnum">{diaMes(proximo.fechaPrevista)}</span> : null}
-                <span className="text-faint">{montos ? '· ' : ''}{proximo.rotulo}</span>
-                {/* CON VARIAS OBRAS HAY QUE DECIR DE CUÁL ES. Un monto sin obra obliga a adivinar. */}
-                {variasObras ? <span className="text-faint">· {proximo.obraNombre || 'sin obra asignada'}</span> : null}
-              </p>
-            </>
-          ) : (
-            // NO SE DIBUJA UN CERO. Sin cronograma publicado no hay próximo pago, y decir «$ 0» sería
-            // afirmar que no debe nada.
-            <p className="mt-2 max-w-[420px] text-[15px] text-muted">
-              {pagos.length ? 'No queda ningún pago pendiente.' : 'Todavía no publicamos el plan de pagos.'}
-            </p>
-          )}
+      {/* SE SALUDA A LA PERSONA SI ADMINISTRACIÓN CARGÓ SU NOMBRE; si no, al cliente. Nunca se
+          deriva del mail: «j.perez@» no es «J Perez». */}
+      <h1 className="text-[26px] font-semibold tracking-[-.02em] md:text-[30px]">
+        Bienvenido, {acceso.persona ?? acceso.clienteNombre}
+      </h1>
+      <p className="mt-2 max-w-[520px] text-[14px] leading-relaxed text-muted">
+        Acá está lo que estamos construyendo para usted. Sus pagos, sus facturas y los papeles de cada
+        obra están en el menú.
+      </p>
+
+      <h2 className="mt-11 text-[11px] tracking-[.09em] text-faint">
+        {obras.length === 1 ? 'SU OBRA' : 'SUS OBRAS'}
+      </h2>
+
+      {obras.length === 0 ? (
+        <div className="mt-4">
+          <Vacio>Todavía no tenemos ninguna obra asociada a su acceso. Escribinos y lo resolvemos.</Vacio>
         </div>
-
-        {/* «Transferir» es una acción sobre plata. Sin permiso de montos no se ofrece: mandaría a una
-            pantalla a informar un pago cuyo importe esta persona no puede ver. */}
-        {montos ? (
-          <div className="order-3 mt-7 flex items-center gap-2.5 md:order-none md:ml-auto md:mt-0">
-            <Link
-              href="/portal/transferir"
-              className="flex min-h-[46px] items-center gap-[9px] rounded-[6px] bg-marca px-5 text-sm font-semibold text-ink"
-            >
-              <IconoBanco tamano={18} />
-              <span>Transferir</span>
-            </Link>
-            <Link
-              href="/portal/pagos"
-              title="Ver el cronograma completo"
-              aria-label="Ver el cronograma completo"
-              className="grid min-h-[46px] min-w-[46px] place-items-center rounded-[6px] border border-line-strong bg-surface text-muted hover:border-faint hover:text-ink"
-            >
-              <IconoDescarga tamano={18} />
-            </Link>
-          </div>
-        ) : null}
-      </div>
-
-      {montos ? (
-        <>
-          <div className="order-2 mt-8 border-t border-line md:order-none">
-            {/* SIN PLAN PUBLICADO NO SE ESCRIBE «$ 0». Un cero acá afirma que no debe nada. */}
-            <LineaResumen rotulo="Vencido" monto={r.hayPlan ? r.vencido : null} estado="vencido" />
-            <LineaResumen rotulo="Pendiente" monto={r.hayPlan ? r.pendiente : null} estado="programado" />
-            <LineaResumen rotulo="Pagado" monto={r.hayPlan ? r.pagado : null} estado="pagado" />
-          </div>
-          {r.sinMonto ? (
-            // LO QUE LA SUMA NO ESTÁ CONTANDO SE DICE. Callarlo haría que el total parezca completo.
-            <p className="order-2 mt-2 text-[12.5px] text-faint md:order-none">
-              {r.sinMonto === 1 ? 'Hay 1 pago que no entra en estas sumas' : `Hay ${r.sinMonto} pagos que no entran en estas sumas`} — sin monto cargado o en otra moneda.
-            </p>
-          ) : null}
-        </>
       ) : (
-        // QUÉ SÍ PUEDE VER. Una pantalla más corta sin explicación se lee como una pantalla rota.
-        <p className="order-2 mt-8 border-t border-line pt-4 text-[13.5px] text-muted md:order-none">
-          {loQueSiPuedeVer(acceso)}
-        </p>
+        <ul className="mt-1">
+          {obras.map((o) => <FilaObra key={o.id} obra={o} />)}
+        </ul>
       )}
 
-      {/* ── SUS OBRAS ─────────────────────────────────────────────────────────────────────────── */}
-      {variasObras ? (
-        <div className="order-4 md:order-none">
-          <Rubro derecha={`${bloques.length} obras`}>SUS OBRAS</Rubro>
-          {bloques.map((b) => {
-            const suyo = resumenDeCobro(b.pagos, b.obraId ? contratos.get(b.obraId) ?? null : null, hoy)
-            const sig = proximoPago(b.pagos)
-            return (
-              <Link key={b.obraId ?? 'sin-obra'} href="/portal/pagos" className="block">
-                <Fila>
-                  <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{b.nombre}</span>
-                  <span className="w-[150px] text-[12.5px] text-muted">
-                    {sig ? `sigue ${diaMes(sig.fechaPrevista)}` : 'al día'}
-                  </span>
-                  {montos ? (
-                    <span className="tnum w-[120px] text-right font-mono text-[15px]">
-                      {pesos(suyo.hayPlan ? suyo.pendiente : null)}
-                    </span>
-                  ) : null}
-                </Fila>
-              </Link>
-            )
-          })}
-        </div>
-      ) : null}
-
-      <div className="order-5 md:order-none">
-        <Rubro derecha={contratoDeLaUnica(bloques, contratos, montos)}>LO QUE SIGUE</Rubro>
-        {siguen.length ? (
-          siguen.map((p) => (
-            <Fila key={p.id}>
-              <IconoEstado estado={estadoDePago(p, hoy)} />
-              <span className="min-w-0 flex-1 truncate text-sm">{p.rotulo}</span>
-              {variasObras ? (
-                <span className="hidden w-[150px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
-              ) : null}
-              <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(p.fechaPrevista)}</span>
-              {montos ? (
-                <span className="tnum w-[120px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
-              ) : null}
-            </Fila>
-          ))
-        ) : (
-          <Vacio>No hay pagos programados por delante.</Vacio>
-        )}
-      </div>
+      <Link
+        href="/portal/pagos"
+        className="mt-9 inline-flex min-h-11 items-center gap-2 self-start text-[13.5px] font-semibold text-ink"
+      >
+        Ver el cronograma de pagos
+        <IconoFlecha tamano={16} />
+      </Link>
     </section>
   )
 }
 
-/** El contrato al costado del rubro, sólo con UNA obra y con permiso de montos. */
-function contratoDeLaUnica(
-  bloques: { obraId: string | null }[],
-  contratos: Map<string, number | null>,
-  montos: boolean,
-): string | undefined {
-  if (!montos || bloques.length !== 1 || bloques[0].obraId === null) return undefined
-  const c = contratos.get(bloques[0].obraId)
-  return c == null ? undefined : `contrato ${pesos(c)}`
+/** El mes y el año en que arrancó: «desde mar 2026». El día no le dice nada al cliente. */
+function desdeCuando(iso: string | null): string | null {
+  if (!iso || iso.length < 7) return null
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  const m = MES[Number(iso.slice(5, 7)) - 1]
+  return m ? `desde ${m} ${iso.slice(0, 4)}` : null
 }
 
-function LineaResumen({ rotulo, monto, estado }: { rotulo: string; monto: number | null; estado: 'vencido' | 'programado' | 'pagado' }) {
+function FilaObra({ obra }: { obra: ObraDelInicio }) {
+  const cerrada = obra.estado === 'cerrada'
+  // El renglón de abajo se arma con lo que HAY. Sin estado y sin fecha no se escribe nada: una obra
+  // puede estar cargada sin esos datos y rellenarlos sería afirmar algo que nadie declaró.
+  const detalle = [cerrada ? 'terminada' : obra.estado, desdeCuando(obra.desde)].filter(Boolean).join(' · ')
+
   return (
-    <div className="flex items-center gap-3 border-b border-line py-[15px]">
-      <IconoEstado estado={estado} />
-      <span className="flex-1 text-sm">{rotulo}</span>
-      <span className={`tnum font-mono text-[15px] ${monto == null ? 'text-faint' : ''}`}>{pesos(monto)}</span>
-    </div>
+    <li className="flex min-h-[58px] items-center gap-3.5 border-b border-line py-3.5">
+      <span className={cerrada ? 'text-faint' : 'text-muted'}><IconoInicio tamano={19} /></span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-[15px] ${cerrada ? 'text-muted' : 'text-ink'}`}>{obra.nombre}</span>
+        {detalle ? <span className="mt-0.5 block truncate text-[12.5px] text-faint">{detalle}</span> : null}
+      </span>
+    </li>
   )
 }

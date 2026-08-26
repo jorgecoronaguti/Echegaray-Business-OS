@@ -35,6 +35,9 @@ export interface AccesoDelPortal {
   accesoId: string
   clienteId: string
   clienteNombre: string
+  /** El nombre de la PERSONA, con el que el portal la saluda. `null` = no se cargó: entonces saluda
+   *  con el nombre del cliente, que es cierto aunque menos cálido. Nunca se deriva del mail. */
+  persona: string | null
   puedeVerObra: boolean
   puedeVerMontos: boolean
   puedeAprobar: boolean
