@@ -242,7 +242,11 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
                 <PanelCompraSheet
                   fila={filaAbierta}
                   cerrarHref={urlSheet({ s: null })}
-                  hrefFiltro={(f) => urlSheet({ f: f as FiltroSheet, s: null })}
+                  hrefsFiltro={{
+                    sinObra: urlSheet({ f: 'sinObra', s: null }),
+                    sinComprobante: urlSheet({ f: 'sinComprobante', s: null }),
+                    aPagar: urlSheet({ f: 'aPagar', s: null }),
+                  }}
                 />
               )}
             </div>

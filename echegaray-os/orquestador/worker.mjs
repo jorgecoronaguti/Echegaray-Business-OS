@@ -111,7 +111,17 @@ async function runOnce() {
 }
 
 async function runDaemon() {
-  log.info('daemon iniciado', { concurrency: cfg.CONCURRENCY, engine: cfg.ENGINE })
+  // EL LOG DICE EL MOTOR QUE DE VERDAD DECIDE. `cfg.ENGINE` (`ORQ_ENGINE`) no lo usa NADIE para
+  // elegir: los cuatro handlers resuelven con `AI_ENGINE_DEFAULT`, y `code_change` fija `claude-cli`
+  // por su cuenta porque es el Builder. Durante meses `ORQ_ENGINE=claude-cli` estuvo en `worker.env`
+  // y esta línea publicaba «engine: claude-cli», que hacía creer que el negocio del OS corría por
+  // Claude Code y se caía con su cuota. No era cierto — y ahora el log tampoco lo dice.
+  log.info('daemon iniciado', {
+    concurrency: cfg.CONCURRENCY,
+    razonador: cfg.AI_ENGINE_DEFAULT,
+    constructor: 'claude-cli (sólo code_change)',
+    engine_legado: cfg.ENGINE ?? null,
+  })
   let ticks = 0
   while (accepting) {
     if (ticks % 20 === 0) await reapExpiredLeases() // reconciliación periódica

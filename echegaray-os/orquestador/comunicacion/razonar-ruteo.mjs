@@ -12,7 +12,13 @@
 // nunca un destino inventado, porque un destino inventado puede terminar escribiendo en la
 // planilla de jornales.
 
-const MODELO = process.env.ORQ_RUTEO_MODELO || 'claude-haiku-4-5-20251001'
+// EL MODELO YA NO SE ELIGE ACÁ (25/08/2026). Se declara la CAPACIDAD que hace falta —elegir un
+// slug de una lista cerrada es lo más SIMPLE que hay— y `lib/ia/cliente.mjs` resuelve con qué
+// modelo. `ORQ_RUTEO_MODELO` sigue funcionando como escotilla, pero ahora pasa por la puerta única y
+// queda registrada en el costo junto al resto.
+import { CAPACIDAD, pedirTextoONull } from '../lib/ia/cliente.mjs'
+
+const MODELO = process.env.ORQ_RUTEO_MODELO || null
 const MAX_TOKENS = 24
 
 /**
@@ -38,19 +44,22 @@ export function crearRazonadorDeRuteo({ apiKey = process.env.ANTHROPIC_API_KEY, 
       'Respondé ÚNICAMENTE el slug del especialista, o la palabra NINGUNO si no corresponde a ninguno.',
     ].join('\n')
 
-    try {
-      const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: modelo, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }),
-      })
-      if (!res.ok) return null
-      const j = await res.json()
-      const salida = String(j?.content?.[0]?.text ?? '').trim().toLowerCase()
-      // Lista cerrada: se acepta sólo un slug que exista de verdad.
-      return candidatos.some((c) => c.slug === salida) ? salida : null
-    } catch {
-      return null
-    }
+    // Sigue devolviendo null ante cualquier problema —el Director muestra el catálogo y nadie se
+    // queda sin respuesta—, pero ahora el motivo quedó clasificado y registrado, y si era falta de
+    // saldo el OS entero se enteró en vez de seguir intentando en silencio.
+    const salida = String(await pedirTextoONull({
+      capacidad: CAPACIDAD.SIMPLE,
+      mensajes: [{ role: 'user', content: prompt }],
+      maxTokens: MAX_TOKENS,
+      agente: 'director',
+      funcion: 'rutear',
+      modelo,
+      apiKey,
+      fetchImpl,
+    }) ?? '').trim().toLowerCase()
+
+    // LISTA CERRADA: se acepta sólo un slug que exista de verdad. Un destino inventado puede
+    // terminar escribiendo en la planilla de jornales.
+    return candidatos.some((c) => c.slug === salida) ? salida : null
   }
 }

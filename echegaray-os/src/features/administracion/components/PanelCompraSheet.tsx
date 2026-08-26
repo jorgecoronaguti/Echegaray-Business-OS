@@ -89,12 +89,21 @@ function Papel({ a }: { a: Adjunto }) {
   )
 }
 
+/**
+ * `hrefsFiltro` es un OBJETO de URLs ya resueltas, no una función.
+ *
+ * Este componente es de cliente —`useEffect` pide la URL firmada del papel— y quien lo dibuja es un
+ * Server Component. Una arrow creada allá y pasada como prop compila, pasa el typecheck, pasa el
+ * `build`, y en producción tira React #419 dejando la pantalla en blanco: no es una server action y
+ * no se puede serializar. Lo cazó `frontera-servidor-cliente.test.mjs`, que es el único control que
+ * mira esto. Las tres URLs son tres strings: eso sí cruza la frontera.
+ */
 export function PanelCompraSheet({
-  fila, cerrarHref, hrefFiltro,
+  fila, cerrarHref, hrefsFiltro,
 }: {
   fila: FilaConPapel
   cerrarHref: string
-  hrefFiltro: (filtro: string) => string
+  hrefsFiltro: Record<string, string>
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -147,7 +156,7 @@ export function PanelCompraSheet({
             </svg>
           </span>
           <span style={{ fontSize: 12, color: C.tintaSuave, flex: 1, minWidth: 0 }}>{reclamo.texto}</span>
-          <Link href={hrefFiltro(reclamo.filtro)} style={{ fontSize: 12.5, fontWeight: 600, color: C.tinta, flexShrink: 0 }}>
+          <Link href={hrefsFiltro[reclamo.filtro] ?? cerrarHref} style={{ fontSize: 12.5, fontWeight: 600, color: C.tinta, flexShrink: 0 }}>
             {reclamo.verbo} →
           </Link>
         </div>

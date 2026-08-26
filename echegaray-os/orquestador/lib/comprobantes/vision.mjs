@@ -28,6 +28,7 @@ import { aNumero } from '../carga-comprobantes.mjs'
 import { identidadDelComprobante } from './aritmetica.mjs'
 import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
 import { fechaDeLectura } from './lectura.mjs'
+import { avisarEstado, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
 export const MODELO_LECTURA = process.env.ORQ_COMPROBANTES_MODELO || 'claude-haiku-4-5-20251001'
@@ -413,6 +414,7 @@ async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify(cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado })),
   })
+  const t0 = Date.now()
   try {
     let res = await pedir(false)
     // ═══ Y SI IGUAL LO RECHAZA, SE INSISTE UNA VEZ CON EL CUERPO PELADO ═══
@@ -420,12 +422,36 @@ async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt
     // La lista de arriba envejece: mañana sale un modelo que deja de aceptar otra cosa. Un 400 es
     // siempre un problema del CUERPO —no de la foto ni del crédito—, así que se reintenta una sola
     // vez sin nada opcional. Si eso anda, el comprobante se leyó igual y el dueño no se enteró.
-    if (res.status === 400) res = await pedir(true)
+    //
+    // OJO: un 400 POR SALDO no es un problema del cuerpo y pelarlo no lo arregla. Por eso el motivo
+    // se lee ANTES de decidir el reintento — la clasificación compartida distingue los dos 400.
+    if (res.status === 400) {
+      const motivo = await motivoDeLaApi(res)
+      const c = clasificarRespuesta(400, motivo ?? '')
+      if (c.kind === 'credit') {
+        await avisarEstado(c)
+        await registrarUso({ modelo, usd: null, agente: 'comprobantes', funcion: 'leer', proveedor: 'anthropic', capacidad: 'complex', tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false, errorKind: c.kind })
+        return { ok: false, error: `la lectura del comprobante falló (400): ${motivo ?? 'sin saldo'}` }
+      }
+      res = await pedir(true)
+    }
     if (!res.ok) {
       const motivo = await motivoDeLaApi(res)
+      const c = clasificarRespuesta(res.status, motivo ?? '')
+      // El OS entero se entera de que el razonador no puede: hasta hoy la lectura fallaba en
+      // silencio y el fajo se quedaba esperando sin que nadie supiera por qué.
+      await avisarEstado(c)
+      await registrarUso({ modelo, usd: null, agente: 'comprobantes', funcion: 'leer', proveedor: 'anthropic', capacidad: 'complex', tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false, errorKind: c.kind })
       return { ok: false, error: `la lectura del comprobante falló (${res.status})${motivo ? `: ${motivo}` : ''}` }
     }
     const j = await res.json()
+    // LEER UN COMPROBANTE CON `claude-opus-5` NO ERA GRATIS Y NO FIGURABA EN NINGUNA TABLA.
+    await registrarUso({
+      modelo: j?.model ?? modelo, usd: null, agente: 'comprobantes', funcion: 'leer',
+      proveedor: 'anthropic', capacidad: 'complex',
+      tokensIn: j?.usage?.input_tokens ?? null, tokensOut: j?.usage?.output_tokens ?? null,
+      ms: Date.now() - t0, ok: true,
+    })
     const texto = (j?.content ?? []).filter((b) => b?.type === 'text').map((b) => b.text).join('\n')
     const m = String(texto ?? '').match(/\{[\s\S]*\}/)
     // UN JSON CORTADO NO ES UN JSON. Con los modelos que razonan, `max_tokens` es el techo de
