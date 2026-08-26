@@ -32,12 +32,26 @@ type FilaDocumento = {
   visible_portal: boolean
 }
 
-/** TODOS los papeles espejados de este cliente. Sin recortar: el recorte es de `papelesVisibles`. */
+/**
+ * Los papeles de OBRA de este cliente: su cotización, su contrato, sus planos, sus certificados.
+ *
+ * ═══ LAS FACTURAS Y LOS RECIBOS NO ENTRAN (26/08/2026) ═══
+ *
+ * «No mezclar recibos en la sección Documentos del portal de clientes.» Y tiene razón por una
+ * distinción que no es de orden sino de uso: Documentos contesta «qué me están construyendo» y se
+ * mira una vez por etapa; Facturas contesta «qué me cobraron y qué pagué» y se mira todos los meses.
+ * Con los recibos mezclados, veintitrés PDF de estado de cuenta enterraban la cotización y el
+ * contrato, que son los dos papeles que el cliente busca acá.
+ *
+ * No se pierden ni se duplican: la pantalla de Facturas los lee de esta MISMA tabla por su
+ * categoría. Un papel, un lugar.
+ */
 export async function papelesDelCliente(clienteId: string): Promise<Papel[]> {
   const { data } = await createAdminClient()
     .from('documento_cliente')
     .select(CAMPOS)
     .eq('cliente_id', clienteId)
+    .not('categoria', 'in', '("factura","recibo")')
     .order('fecha', { ascending: false })
 
   return ((data ?? []) as FilaDocumento[]).map((f) => ({
