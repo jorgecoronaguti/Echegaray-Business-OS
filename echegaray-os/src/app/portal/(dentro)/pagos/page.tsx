@@ -362,12 +362,12 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
               que debe más de lo que contrató. El total con impuesto sigue publicado, abajo y en
               letra chica, que es donde el cliente lo busca para su libro de IVA compras. */}
           <div className="mt-2 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
-            {hayPesos ? (
-              <Cifra
-                rotulo={hayDolares ? 'CONTRATO ARS$' : 'CONTRATO'}
-                neto={contratoARS}
-                pie={contratoARS == null ? null : deQuienEsElContrato(cobertura)}
-              />
+            {/* SIN CONTRATO EN PESOS NO SE DIBUJA LA COLUMNA. A Quattropani —contrato en dólares—
+                le publicaba «CONTRATO ARS$ sin cargar» al lado del de U$S 63.000: una columna vacía
+                que sólo se puede leer como que falta cargar algo. No falta: ese contrato no existe
+                en pesos. */}
+            {hayPesos && contratoARS != null ? (
+              <Cifra rotulo={hayDolares ? 'CONTRATO ARS$' : 'CONTRATO'} neto={contratoARS} pie={deQuienEsElContrato(cobertura)} />
             ) : null}
             {/* ═══ «U$S 63.000 + IVA», COMO LO DICE EL CONTRATO ═══
                 El contrato de Quattropani se firmó por U$S 63.000 MÁS IVA, y así es como el cliente
