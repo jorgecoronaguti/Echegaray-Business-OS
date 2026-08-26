@@ -91,6 +91,20 @@ export const RUTAS_PUBLICAS = [
   // venció o se abrió dos veces. Con sesión exigida, el middleware manda a /login ANTES de que la
   // página pueda decir «pedí otro enlace» — la página ya sabe explicarlo; hay que dejarla hablar.
   '/contrasena-nueva',
+  // ═══ EL PORTAL DEL CLIENTE TIENE SU PROPIA CERRADURA (26/08/2026) ═══
+  //
+  // `/portal` NO es una pantalla del OS con menos permisos: es otra aplicación, para gente de otra
+  // empresa que NO tiene usuario de Supabase. Su puerta es el mail que el administrador cargó en la
+  // ficha más un código, y su sesión es una cookie firmada que valida cada pantalla del portal.
+  //
+  // Sin esta entrada el middleware exige sesión de Supabase y manda al `/login` DEL OS: el cliente
+  // ve la pantalla de entrada de la empresa, con su formulario de contraseña, y no tiene cuenta.
+  //
+  // SER PÚBLICA NO ES SER ABIERTA. Cada página de `/portal` llama a `sesionDelPortal()` y redirige a
+  // `/portal/login` sin cookie válida; el alcance a las obras se vuelve a preguntar a la base en
+  // cada carga. Lo que se saca acá es la exigencia de una credencial que el cliente no puede tener,
+  // no la credencial.
+  '/portal',
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
   '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
                       // devolvía un 307 al login y el consentimiento no arrancaba nunca

@@ -99,3 +99,17 @@ test('null se escribe, no se inventa', () => {
   assert.equal(diaMes(null), 'sin fecha')
   assert.equal(diaMes('2026-08-29'), '29/08')
 })
+
+test('SIN PLAN CARGADO no se publica «$ 0» — cero afirma que no debe nada', () => {
+  const r = resumenDeCobro([], 26_400_000, HOY)
+  assert.equal(r.hayPlan, false, 'la pantalla necesita saberlo para escribir «sin cargar»')
+  // Y «falta certificar» tampoco es el contrato entero: sería cierto por aritmética y falso como
+  // afirmación — no es que no se certificó nada, es que no cargamos el plan.
+  assert.equal(r.faltaCertificar, null)
+})
+
+test('con una sola línea cargada, el plan existe y los totales son reales', () => {
+  const r = resumenDeCobro([p({ monto: 5_726_423.6, fechaPago: '2026-08-21' })], 47_590_271.5, HOY)
+  assert.equal(r.hayPlan, true)
+  assert.equal(r.pagado, 5_726_423.6)
+})

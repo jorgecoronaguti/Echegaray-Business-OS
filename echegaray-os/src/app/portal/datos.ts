@@ -16,13 +16,22 @@ export async function obrasDelCliente(clienteId: string): Promise<ObraDelPortal[
     .select('id, nombre, estado')
     .eq('cliente_id', clienteId)
     .order('nombre')
-  return (data ?? []).map((o) => ({ id: String(o.id), nombre: String(o.nombre) }))
+  // LAS CERRADAS VAN AL FINAL. La primera de la lista es la que abre el portal, y abrir por una obra
+  // terminada le muestra al cliente un cronograma vacío de algo que ya pagó — parece que perdimos su
+  // obra en curso. Las terminadas tienen su propia pantalla.
+  return (data ?? [])
+    .map((o) => ({ id: String(o.id), nombre: String(o.nombre), cerrada: String(o.estado) === 'cerrada' }))
+    .sort((a, b) => Number(a.cerrada) - Number(b.cerrada))
+    .map(({ id, nombre }) => ({ id, nombre }))
 }
 
 export async function nombreDelCliente(clienteId: string): Promise<string> {
   const sb = createAdminClient()
   const { data } = await sb.from('clientes').select('nombre_comercial, razon_social').eq('id', clienteId).maybeSingle()
-  return String(data?.nombre_comercial ?? data?.razon_social ?? 'Cliente')
+  // El nombre viene como lo cargó administración —«(IMOTOR / Javier Sánchez)»— y los paréntesis son
+  // una anotación interna. El cliente no tiene por qué ver la nota que alguien se dejó a sí mismo.
+  const crudo = String(data?.nombre_comercial ?? data?.razon_social ?? 'Cliente').trim()
+  return crudo.replace(/^\((.*)\)$/, '$1').trim()
 }
 
 /** La obra elegida por la URL, acotada SIEMPRE a las que este mail alcanza. */

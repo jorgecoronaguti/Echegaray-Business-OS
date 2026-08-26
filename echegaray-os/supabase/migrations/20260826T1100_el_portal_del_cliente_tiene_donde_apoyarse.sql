@@ -152,3 +152,13 @@ alter table public.portal_codigo         enable row level security;
 alter table public.portal_acceso         enable row level security;
 alter table public.pago_programado       enable row level security;
 alter table public.obra_adjunto_cliente  enable row level security;
+
+-- ── UNA COLUMNA NUEVA NACE SIN PERMISO ────────────────────────────────────────────────────────
+--
+-- `public.obras` no tiene un GRANT de tabla entera: tiene GRANT POR COLUMNA. Una columna agregada
+-- después queda fuera de esa lista y la web la lee VACÍA — sin error, sin log, sin nada. La pantalla
+-- muestra un campo en blanco y nadie lo asocia a un permiso.
+--
+-- Lo detectó `orquestador/lib/columnas-comerciales-cerradas.test.mjs`, que existe exactamente para
+-- esto y que se puso en rojo en cuanto se aplicó la primera mitad de esta migración.
+grant select (drive_carpeta_id, fecha_cierre) on public.obras to authenticated;

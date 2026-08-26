@@ -64,7 +64,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
 
       <div className="mt-8 flex flex-wrap gap-x-12 gap-y-5 border-t border-line-strong pt-5">
         <Total rotulo="Contrato" monto={r.contrato} />
-        <Total rotulo="Pagado" monto={r.pagado} />
+        <Total rotulo="Pagado" monto={r.hayPlan ? r.pagado : null} />
         <Total rotulo="Falta certificar" monto={r.faltaCertificar} />
       </div>
       {r.sinMonto ? (

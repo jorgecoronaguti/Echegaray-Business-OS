@@ -28,7 +28,7 @@ import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { DESTINOS, NAVEGABLES, destinoActivo } from './destinos'
 import { IconoDestino } from './IconoDestino'
-import { IconoUsuario, IconoChevron } from './iconos'
+import { IconoUsuario } from './iconos'
 
 export type ObraDelPortal = { id: string; nombre: string }
 
@@ -75,10 +75,15 @@ export function Shell({ obras, obraActivaId, cliente, children }: Props) {
                 <Link
                   key={o.id}
                   href={`${ruta}?obra=${encodeURIComponent(o.id)}`}
+                  // DOS DIBUJOS PARA LA MISMA COSA, porque las maquetas los dibujan distinto y con
+                  // razón: en escritorio la solapa vive pegada al borde de una barra y el subrayado
+                  // alcanza; en el teléfono no hay barra que subrayar y la seleccionada tiene que
+                  // leerse de un vistazo, así que es una pastilla amarilla.
                   className={
-                    'flex min-h-[44px] items-center gap-2 px-3 text-[13.5px] transition-colors ' +
+                    'flex min-h-[44px] items-center gap-2 text-[13.5px] transition-colors ' +
+                    'my-1.5 rounded-[7px] px-[11px] md:my-0 md:rounded-none md:px-3 ' +
                     (o.id === obraActivaId
-                      ? 'font-semibold text-ink shadow-[inset_0_-2px_0_var(--os-marca)]'
+                      ? 'bg-marca font-semibold text-ink md:bg-transparent md:shadow-[inset_0_-2px_0_var(--os-marca)]'
                       : 'text-muted hover:text-ink')
                   }
                 >
@@ -93,16 +98,20 @@ export function Shell({ obras, obraActivaId, cliente, children }: Props) {
           <div className="ml-auto flex items-center gap-[9px] text-[12.5px] text-muted">
             <IconoUsuario tamano={17} />
             <span className="hidden sm:inline">{cliente}</span>
-            {/* En el teléfono no hay barra lateral: salir vive acá. */}
-            <Link href="/portal/salir" className="ml-1 grid h-11 w-11 place-items-center text-muted hover:text-ink md:hidden" aria-label="Salir">
-              <IconoChevron tamano={18} />
+            {/* En el teléfono no hay barra lateral: salir vive acá, y se ESCRIBE. Un chevron a la
+                derecha se lee «siguiente», no «cerrar sesión». */}
+            <Link href="/portal/salir" className="ml-1 flex min-h-11 items-center px-2 text-[12.5px] text-muted hover:text-ink md:hidden">
+              Salir
             </Link>
           </div>
         </header>
 
         {/* `pb` deja libre la altura del menú inferior del teléfono; en escritorio no hay menú abajo. */}
         <main className="min-w-0 flex-1 overflow-x-hidden pb-[86px] md:pb-0">
-          <div className="mx-auto w-full max-w-[880px] px-5 py-7 md:px-[34px] md:pb-12 md:pt-10">{children}</div>
+          {/* Anclado a la IZQUIERDA, no centrado: la maqueta pone `padding:40px 34px;maxWidth:880px` sin
+              margen automático. Centrarlo despega el contenido de la barra lateral y a 2560px lo deja
+              flotando en el medio de la pantalla, lejos del menú que lo gobierna. */}
+          <div className="w-full max-w-[880px] px-5 py-7 md:px-[34px] md:pb-12 md:pt-10">{children}</div>
         </main>
       </div>
 

@@ -69,6 +69,11 @@ export function proximoPago(pagos: Pago[]): Pago | null {
 }
 
 export type ResumenCobro = {
+  /**
+   * `null` cuando NO hay cronograma cargado. No es lo mismo que cero: cero afirma que no debe nada,
+   * y sin plan cargado lo único cierto es que no sabemos. La pantalla escribe «sin cargar».
+   */
+  hayPlan: boolean
   /** Lo no pagado con fecha ya vencida. Es un SUBCONJUNTO de `pendiente`, no un sumando aparte. */
   vencido: number
   /** Todo lo no pagado del cronograma, sin el fondo de reparo. */
@@ -98,8 +103,11 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto
   }
   return {
+    hayPlan: pagos.length > 0,
     vencido, pendiente, pagado, sinMonto, contrato,
-    faltaCertificar: contrato == null ? null : contrato - (pagado + pendiente),
+    // Sin plan cargado, «falta certificar» sería el contrato entero — cierto por aritmética y falso
+    // como afirmación: no es que no se certificó nada, es que no cargamos el plan.
+    faltaCertificar: contrato == null || pagos.length === 0 ? null : contrato - (pagado + pendiente),
   }
 }
 

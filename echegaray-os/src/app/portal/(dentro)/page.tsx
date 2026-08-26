@@ -33,8 +33,11 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
   const siguen = loQueSigue(pagos, 2)
 
   return (
-    <>
-      <div className="flex flex-wrap items-end gap-x-10 gap-y-5">
+    // EN EL TELÉFONO LA PRIMARIA VA ABAJO, después de las tres líneas —así lo dibuja la maqueta y así
+    // cae bajo el pulgar—. En escritorio va al lado del monto. Es el MISMO botón: `display:contents`
+    // deja que el orden lo decida el contenedor de afuera en vez de duplicar el bloque.
+    <section className="flex flex-col">
+      <div className="contents md:flex md:flex-wrap md:items-end md:gap-x-10">
         <div>
           <p className="text-[11px] tracking-[.09em] text-faint">PRÓXIMO PAGO</p>
           {proximo ? (
@@ -57,7 +60,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
           )}
         </div>
 
-        <div className="flex items-center gap-2.5 md:ml-auto">
+        <div className="order-3 mt-7 flex items-center gap-2.5 md:order-none md:ml-auto md:mt-0">
           <Link
             href={`/portal/transferir?obra=${elegida.id}`}
             className="flex min-h-[46px] items-center gap-[9px] rounded-[6px] bg-marca px-5 text-sm font-semibold text-ink"
@@ -76,18 +79,20 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
         </div>
       </div>
 
-      <div className="mt-8 border-t border-line">
-        <LineaResumen rotulo="Vencido" monto={r.vencido} estado="vencido" />
-        <LineaResumen rotulo="Pendiente" monto={r.pendiente} estado="programado" />
-        <LineaResumen rotulo="Pagado" monto={r.pagado} estado="pagado" />
+      <div className="order-2 mt-8 border-t border-line md:order-none">
+        {/* SIN PLAN CARGADO NO SE ESCRIBE «$ 0». Un cero acá afirma que no debe nada. */}
+        <LineaResumen rotulo="Vencido" monto={r.hayPlan ? r.vencido : null} estado="vencido" />
+        <LineaResumen rotulo="Pendiente" monto={r.hayPlan ? r.pendiente : null} estado="programado" />
+        <LineaResumen rotulo="Pagado" monto={r.hayPlan ? r.pagado : null} estado="pagado" />
       </div>
       {r.sinMonto ? (
         // LO QUE LA SUMA NO ESTÁ CONTANDO SE DICE. Callarlo haría que el total parezca completo.
-        <p className="mt-2 text-[12.5px] text-faint">
+        <p className="order-2 mt-2 text-[12.5px] text-faint md:order-none">
           {r.sinMonto === 1 ? 'Hay 1 pago sin monto cargado' : `Hay ${r.sinMonto} pagos sin monto cargado`}, no está en estas sumas.
         </p>
       ) : null}
 
+      <div className="order-4 md:order-none">
       <Rubro derecha={obra?.contrato != null ? `contrato ${pesos(obra.contrato)}` : 'sin contrato cargado'}>
         LO QUE SIGUE
       </Rubro>
@@ -103,16 +108,17 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
       ) : (
         <Vacio>No hay pagos programados por delante.</Vacio>
       )}
-    </>
+      </div>
+    </section>
   )
 }
 
-function LineaResumen({ rotulo, monto, estado }: { rotulo: string; monto: number; estado: 'vencido' | 'programado' | 'pagado' }) {
+function LineaResumen({ rotulo, monto, estado }: { rotulo: string; monto: number | null; estado: 'vencido' | 'programado' | 'pagado' }) {
   return (
     <div className="flex items-center gap-3 border-b border-line py-[15px]">
       <IconoEstado estado={estado} />
       <span className="flex-1 text-sm">{rotulo}</span>
-      <span className="tnum font-mono text-[15px]">{pesos(monto)}</span>
+      <span className={`tnum font-mono text-[15px] ${monto == null ? 'text-faint' : ''}`}>{pesos(monto)}</span>
     </div>
   )
 }
