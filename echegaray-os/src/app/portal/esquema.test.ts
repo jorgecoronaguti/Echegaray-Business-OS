@@ -175,3 +175,20 @@ test('un cobro sin obra NO borra el contrato del cliente', () => {
   // Sin ninguna obra no hay contra qué contrato comparar.
   assert.equal(contratoDelConjunto([{ obraId: null, nombre: '', pagos: [] }] as never, contratos), null)
 })
+
+test('un cobro de obra ANTERIOR no suma al contrato en curso', () => {
+  // Javier Sánchez leía «Pagado $131 M» contra $299 M contratados, y $77 M de eso eran cobros de
+  // obras que ya habían terminado. El contrato contra el que se comparan estos totales es el de las
+  // obras EN CURSO: mezclarlos hacía que «pagado» y «falta certificar» dieran cualquier cosa.
+  const enCurso = aPagoDelPortal(fila({ monto: '10000000', estado: 'cobrado', fecha: '2026-08-01' }), 'Pisos')
+  const anterior = { ...aPagoDelPortal(fila({ monto: '77350000', estado: 'cobrado', fecha: '2026-01-15' }), 'Pisos'), historico: true }
+  const r = resumenDeCobro([enCurso, anterior], 40_000_000, '2026-08-26')
+  assert.equal(r.pagado, 10_000_000)
+  // Y por eso «falta certificar» sigue siendo el resto real del contrato vigente.
+  assert.equal(r.faltaCertificar, 30_000_000)
+})
+
+test('el histórico llega marcado desde la base, y por defecto NO lo es', () => {
+  assert.equal(aPagoDelPortal(fila({}), 'x').historico, false)
+  assert.equal(aPagoDelPortal({ ...fila({}), historico: true } as never, 'x').historico, true)
+})

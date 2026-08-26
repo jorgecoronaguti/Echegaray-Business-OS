@@ -52,7 +52,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
 
   // POR FECHA, que es como se lee un cronograma. Lo que no tiene fecha —el fondo de reparo, un pago
   // todavía sin programar— va al final: es lo único que no se puede ubicar en el tiempo.
-  const enOrden = [...pagos].sort((a, b) => {
+  const porFecha = (lista: typeof pagos) => [...lista].sort((a, b) => {
     const fa = a.fechaPago ?? a.fechaPrevista
     const fb = b.fechaPago ?? b.fechaPrevista
     if (!fa && !fb) return a.orden - b.orden
@@ -60,6 +60,11 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     if (!fb) return -1
     return fa.localeCompare(fb) || a.orden - b.orden
   })
+  // LAS OBRAS ANTERIORES, APARTE. Son cobros de trabajo previo para el mismo cliente: se le muestran
+  // —los pagó y tiene derecho a verlos— pero abajo, en gris, y sin sumar al contrato en curso.
+  const enOrden = porFecha(pagos.filter((p) => !p.historico))
+  const anteriores = porFecha(pagos.filter((p) => p.historico))
+  const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
 
   return (
     <>
@@ -148,6 +153,54 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
               )
             })}
           </div>
+
+          {/* ── COBROS DE OBRAS ANTERIORES ─────────────────────────────────────────────────────
+              En gris, como los destinos que todavía no navegan: dice «esto ya pasó y no es de lo que
+              estamos haciendo» sin esconderlo y sin necesitar la pantalla de Terminadas. */}
+          {anteriores.length ? (
+            <section className="mt-10 opacity-60">
+              <div className="flex flex-wrap items-baseline gap-2.5 border-b border-line pb-2">
+                <h2 className="text-[13px] font-semibold tracking-[-.01em] text-muted">Cobros de obras anteriores</h2>
+                <span className="text-[11.5px] text-faint">
+                  {anteriores.length === 1 ? '1 cobro' : `${anteriores.length} cobros`} · ya pagados
+                </span>
+                {montos ? (
+                  <span className="tnum ml-auto font-mono text-[13px] text-muted">{pesos(totalAnterior)}</span>
+                ) : null}
+              </div>
+              <div>
+                {anteriores.map((p) => (
+                  <Fila key={p.id}>
+                    <IconoEstado estado="pagado" />
+                    <span className="min-w-0 flex-1 basis-[38%]">
+                      <span className="block truncate text-[13.5px] text-muted">{p.rotulo}</span>
+                      {p.obraNombre ? (
+                        <span className="block truncate text-[11px] text-faint">{p.obraNombre}</span>
+                      ) : null}
+                    </span>
+                    <span className="tnum w-[74px] font-mono text-[12.5px] text-faint">{diaMes(p.fechaPrevista)}</span>
+                    {montos ? (
+                      <>
+                        <span className="tnum hidden w-[112px] text-right font-mono text-[12.5px] text-faint lg:block">
+                          {pesos(p.neto, p.moneda)}
+                        </span>
+                        <span className="tnum hidden w-[96px] text-right font-mono text-[12.5px] text-faint lg:block">
+                          {pesos(p.iva, p.moneda)}
+                        </span>
+                        <span className="tnum w-[118px] text-right font-mono text-[13.5px] text-muted">
+                          {pesos(p.monto, p.moneda)}
+                        </span>
+                      </>
+                    ) : null}
+                    <span className="w-[112px] text-right text-[12px] text-faint">pagado</span>
+                  </Fila>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11.5px] text-faint">
+                Trabajo anterior que ya nos pagó. No entra en los totales de arriba, que son de las obras en curso.
+              </p>
+            </section>
+          ) : null}
 
           {/* UN SOLO JUEGO DE TOTALES, al pie de la lista. */}
           {montos ? (

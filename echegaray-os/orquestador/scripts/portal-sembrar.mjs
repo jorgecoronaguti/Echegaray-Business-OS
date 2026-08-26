@@ -106,7 +106,8 @@ async function universoDeObras(delSheet) {
   // `obra_canonica` Y NO `public.obras` (26/08/2026). El esquema de pago que administración edita en
   // la ficha del cliente apunta ahí —`esquema_pago.obra_id` es FK a `obra_canonica`—, así que sembrar
   // contra otra tabla dejaba dos registros de obra y un cronograma que la ficha no podía mostrar.
-  const { rows } = await query(`select o.id, o.nombre, o.estado, o.cliente_id, c.nombre_comercial
+  const { rows } = await query(`select o.id, o.nombre, o.estado, o.cliente_id, c.nombre_comercial,
+                                       coalesce(o.fecha_inicio_real, o.fecha_inicio_plan) desde
                                 from public.obra_canonica o join public.clientes c on c.id = o.cliente_id
                                 where coalesce(o.estado,'activa') <> 'cancelada'`)
   const universo = [...delSheet]
@@ -131,6 +132,9 @@ async function universoDeObras(delSheet) {
       // desaparecer $49,8 M del portal sin que nadie lo viera. Una obra terminada sigue teniendo
       // historia que el cliente puede mirar, y el portal ya tiene su pantalla para eso.
       cerrada: String(r.estado ?? 'activa') === 'cerrada',
+      // CUÁNDO ARRANCÓ. Es lo que separa un cobro de ESTA obra de uno de la obra anterior que
+      // ocupaba el mismo lugar y el mismo cliente.
+      desde: r.desde ? new Date(r.desde).toISOString().slice(0, 10) : null,
       // SÓLO LAS DE `obra_canonica` SE PUEDEN ESCRIBIR: `esquema_pago.obra_id` es FK contra esa
       // tabla. Una obra que el Sheet declara y el registro no tiene existe para IMPUTAR —así se ve
       // cuánto cae en ella— pero no se guarda, y el informe lo dice en vez de romper con un error
@@ -301,7 +305,13 @@ function revisarQueNadaInternoSalga(porObra) {
  * El barrido alcanza a TODAS las obras del universo, no sólo a las que hoy tienen líneas: una obra
  * que dejó de recibir cobranzas tiene que quedar vacía, no con la foto de la corrida anterior.
  */
-async function escribir(obras, porObra) {
+/** El corte de cada cliente: desde cuándo los cobros son de las obras en curso. */
+async function cortesPorCliente() {
+  const { rows } = await query('select id, portal_cobros_desde from public.clientes where portal_cobros_desde is not null')
+  return new Map(rows.map((r) => [r.id, new Date(r.portal_cobros_desde).toISOString().slice(0, 10)]))
+}
+
+async function escribir(obras, porObra, corteDe) {
   for (const o of obras) {
     if (!o.id || !o.canonica) continue
     const lineas = porObra.get(o) ?? []
@@ -313,19 +323,31 @@ async function escribir(obras, porObra) {
         : l.tipo === 'fondo_reparo' ? 'retenido'
         : !l.prevista ? 'previsto'
         : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      // ═══ DE UNA OBRA ANTERIOR ═══
+      //
+      // Un cobro anterior al corte del cliente es de trabajo previo, no de las obras en curso. Se le
+      // sigue mostrando —lo pagó y tiene derecho a verlo— pero aparte y sin sumar al contrato
+      // vigente: sin esta separación, Javier Sánchez leía «Pagado $131 M» contra un contrato de
+      // $299 M donde $77 M eran de obras que ya terminaron.
+      //
+      // EL CORTE ES UN DATO DEL DUEÑO (`clientes.portal_cobros_desde`), no algo derivado del inicio
+      // de la obra. Se intentó derivarlo y falla por una razón del oficio: en construcción el
+      // ANTICIPO se cobra ANTES de que la obra arranque, así que «fecha < inicio» marcaba como
+      // anterior el anticipo de la obra en curso. Quattropani perdía $65,7 M por ese camino.
+      const historico = Boolean(corteDe.get(o.cliente.id) && l.prevista && l.prevista < corteDe.get(o.cliente.id))
       // `visible_portal` NO se pisa si la fila ya existe: apagar una línea es una decisión de
       // administración y una corrida del sembrador no puede deshacerla en silencio.
       await query(
         `insert into public.esquema_pago
            (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
-            nota_interna, neto, iva, origen, visible_portal, publicado_at, sincronizado_en)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'sync_cobranzas', true, now(), now())
+            nota_interna, neto, iva, historico, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'sync_cobranzas', true, now(), now())
          on conflict (obra_id, orden) where origen = 'sync_cobranzas' do update set
            concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
            fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
            nota_interna = excluded.nota_interna, neto = excluded.neto, iva = excluded.iva,
-           sincronizado_en = now(), actualizado_at = now()`,
-        [o.cliente.id, o.id, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva])
+           historico = excluded.historico, sincronizado_en = now(), actualizado_at = now()`,
+        [o.cliente.id, o.id, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva, historico])
     }
     const { rowCount } = await query(
       `delete from public.esquema_pago where obra_id=$1 and orden>$2 and origen='sync_cobranzas'`, [o.id, orden])
@@ -340,7 +362,7 @@ async function escribir(obras, porObra) {
  * nunca con el de una obra del mismo cliente y para que la ficha los muestre al final, después de
  * los cobros que sí tienen obra.
  */
-async function escribirDelCliente(porCliente, todosLosClientes) {
+async function escribirDelCliente(porCliente, todosLosClientes, corteDe) {
   // EL BARRIDO ALCANZA A TODOS LOS CLIENTES, no sólo a los que hoy tienen líneas sin obra. Un cliente
   // cuyas filas pasaron a tener obra —Javier Sánchez, cuando el buscador aprendió a leer «Saldo obras
   // San Francisco»— deja de aparecer en `porCliente`, y sin este barrido sus quince líneas viejas
@@ -354,17 +376,18 @@ async function escribirDelCliente(porCliente, todosLosClientes) {
         : l.tipo === 'fondo_reparo' ? 'retenido'
         : !l.prevista ? 'previsto'
         : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      const historico = Boolean(corteDe.get(clienteId) && l.prevista && l.prevista < corteDe.get(clienteId))
       await query(
         `insert into public.esquema_pago
            (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
-            nota_interna, neto, iva, origen, visible_portal, publicado_at, sincronizado_en)
-         values ($1, null, $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'sync_cobranzas', true, now(), now())
+            nota_interna, neto, iva, historico, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1, null, $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'sync_cobranzas', true, now(), now())
          on conflict (cliente_id, orden) where obra_id is null and origen = 'sync_cobranzas' do update set
            concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
            fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
            nota_interna = excluded.nota_interna, neto = excluded.neto, iva = excluded.iva,
-           sincronizado_en = now(), actualizado_at = now()`,
-        [clienteId, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva])
+           historico = excluded.historico, sincronizado_en = now(), actualizado_at = now()`,
+        [clienteId, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva, historico])
     }
     const { rowCount } = await query(
       `delete from public.esquema_pago
@@ -482,8 +505,9 @@ async function main() {
 
   conciliar(porObra, sinImputar)
   if (!APLICAR) { console.log('\n(en seco: no se escribió nada — agregá --aplicar)'); return }
-  await escribir(obras, porObra)
-  await escribirDelCliente(porCliente, [...new Set(obras.map((o) => o.cliente.id))])
+  const corteDe = await cortesPorCliente()
+  await escribir(obras, porObra, corteDe)
+  await escribirDelCliente(porCliente, [...new Set(obras.map((o) => o.cliente.id))], corteDe)
   await releerDeLaBase()
 }
 

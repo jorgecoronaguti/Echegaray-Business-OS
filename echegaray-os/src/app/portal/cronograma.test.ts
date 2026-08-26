@@ -7,7 +7,7 @@ import {
 const HOY = '2026-08-26'
 const p = (x: Partial<Pago>): Pago => ({
   id: x.id ?? 'x', orden: x.orden ?? 1, tipo: x.tipo ?? 'certificado', rotulo: x.rotulo ?? 'C',
-  monto: x.monto === undefined ? 100 : x.monto, neto: null, iva: null, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
+  monto: x.monto === undefined ? 100 : x.monto, neto: null, iva: null, historico: x.historico ?? false, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
   facturaNumero: x.facturaNumero ?? null, reciboNumero: x.reciboNumero ?? null,
   devolucionEn: null, devueltoEn: null, estadoFijado: x.estadoFijado ?? null,
 })

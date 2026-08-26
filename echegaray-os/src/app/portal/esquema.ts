@@ -33,6 +33,7 @@ export interface FilaEsquema {
   fecha: string | null
   neto?: string | number | null
   iva?: string | number | null
+  historico?: boolean | null
   monto: number | string | null
   reparo: number | string | null
   estado: string
@@ -112,6 +113,7 @@ export function aPagoDelPortal(f: FilaEsquema, obraNombre: string): PagoConObra 
     // propia contabilidad. Se publican los tres y la pantalla los muestra juntos.
     neto: aNumero(f.neto),
     iva: aNumero(f.iva),
+    historico: f.historico === true,
     // Sin la columna `moneda` (migración sin aplicar) se asume ARS, que es su default declarado.
     moneda: f.moneda === 'USD' ? 'USD' : 'ARS',
     // `esquema_pago` guarda UNA fecha: la del pago. Cuando está cobrado ES la fecha en que se pagó,

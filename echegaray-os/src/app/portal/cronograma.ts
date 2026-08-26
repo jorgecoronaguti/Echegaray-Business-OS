@@ -26,6 +26,9 @@ export type Pago = {
   /** El IVA. CERO cuando el cobro no lleva —un pago en efectivo sin factura— y `null` cuando no se
    *  sabe: son cosas distintas y la pantalla las escribe distinto. */
   iva: number | null
+  /** Es de una obra ANTERIOR del mismo cliente. Se le muestra —lo pagó— pero no suma al contrato
+   *  vigente: mezclarlos hacía que «pagado» y «falta certificar» dieran cualquier cosa. */
+  historico: boolean
   /** ARS salvo que el contrato diga otra cosa. Dibujar dólares con signo peso es un error de cuatro
    *  órdenes de magnitud que el cliente ve. */
   moneda: 'ARS' | 'USD'
@@ -121,6 +124,11 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
   // y eso se escribe con ausencia, no con un cero.
   let nPendiente = 0, nPagado = 0
   for (const p of pagos) {
+    // LOS DE OBRAS ANTERIORES NO ENTRAN. Son cobros de trabajo previo para el mismo cliente y el
+    // contrato contra el que se comparan estos totales es el de las obras EN CURSO. Sumarlos hacía
+    // que Javier Sánchez leyera «Pagado $131 M» contra $299 M contratados, con $77 M que no eran de
+    // ninguna de esas obras. Tienen su propio subtotal, abajo y aparte.
+    if (p.historico) continue
     // LAS MONEDAS NO SE SUMAN. Una línea en dólares metida en un total en pesos lo arruina sin dar
     // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
     if (p.moneda !== 'ARS') { sinMonto++; continue }
