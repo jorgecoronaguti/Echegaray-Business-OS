@@ -293,8 +293,11 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                 neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
               </p>
             </div>
+            {/* «FALTA CERTIFICAR» SE RETIRÓ (26/08/2026, pedido del dueño). Es una cuenta interna
+                —contrato menos lo que ya entró al cronograma— y al cliente le decía poco: no es plata
+                que deba ni que le vayan a cobrar en una fecha. El pie del portal contesta las tres
+                preguntas que sí son suyas: cuánto se contrató, cuánto pagó, cuánto le falta pagar. */}
             <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
-            <Total rotulo="Falta certificar" monto={total.faltaCertificar} />
           </div>
           {total.sinMonto ? (
             <p className="mt-3 text-[12.5px] text-faint">

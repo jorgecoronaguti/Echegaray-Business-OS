@@ -110,6 +110,12 @@ export default async function Facturas() {
                       <span className="shrink-0 text-pos sm:w-[110px] sm:text-[12.5px]">
                         {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
                       </span>
+                      {/* SIN ARCHIVO SE DICE. Una fila que no abre nada y no explica por qué se toca
+                          diez veces antes de que alguien concluya que está rota. No lo está: esa
+                          factura todavía no está en la carpeta de Drive de la obra. */}
+                      {!papel ? (
+                        <span className="shrink-0 text-faint sm:text-[12px]">sin archivo</span>
+                      ) : null}
                     </span>
                     {montos ? (
                       <span className="tnum hidden w-[118px] text-right font-mono text-[15px] sm:block">
