@@ -44,9 +44,12 @@ function corto(n: number | null, moneda: 'ARS' | 'USD'): string {
 }
 
 export function Calendario({
-  pagos, mes, semanas, hoy, montos,
+  pagos, mes, semanas, hoy, montos, enlaceDeMes,
 }: {
   pagos: Pago[]
+  /** Cómo se arma la URL de otro mes CONSERVANDO el resto —la obra elegida, sobre todo—: cambiar de
+   *  mes no puede tirar el filtro por obra. La arma la pantalla, que es la que conoce los filtros. */
+  enlaceDeMes: (ym: string) => string
   /** `YYYY-MM`. */
   mes: string
   semanas: { iso: string; delMes: boolean }[][]
@@ -58,9 +61,9 @@ export function Calendario({
   return (
     <div className="mt-5">
       <div className="flex items-center gap-1">
-        <Paso a={`?vista=calendario&mes=${mesVecino(mes, -1)}`} rotulo="Mes anterior">‹</Paso>
+        <Paso a={enlaceDeMes(mesVecino(mes, -1))} rotulo="Mes anterior">‹</Paso>
         <span className="min-w-[150px] text-center text-[13.5px] font-semibold">{nombreDelMes(mes)}</span>
-        <Paso a={`?vista=calendario&mes=${mesVecino(mes, 1)}`} rotulo="Mes siguiente">›</Paso>
+        <Paso a={enlaceDeMes(mesVecino(mes, 1))} rotulo="Mes siguiente">›</Paso>
       </div>
 
       {/* ═══ ENTRA EN LA PANTALLA, NO SE SCROLLEA (26/08/2026, iPhone 14) ═══

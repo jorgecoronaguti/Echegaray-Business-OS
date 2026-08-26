@@ -31,7 +31,7 @@ import { Calendario } from './Calendario'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string; ver?: string }> }) {
+export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string; ver?: string; obra?: string }> }) {
   const q = await searchParams
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
@@ -43,6 +43,15 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const montos = acceso.puedeVerMontos
   const total = resumenDeCobro(pagos, contratoDelConjunto(bloques, contratos), hoy)
   const proximo = proximoPago(pagos)
+  /** La misma URL con UN parámetro cambiado. Conserva el resto: elegir una obra no puede tirar el
+   *  filtro de estado ni sacarte del calendario. */
+  const con = (cambio: Record<string, string | null>) => {
+    const u = new URLSearchParams()
+    const base: Record<string, string | null> = { vista: q.vista ?? null, mes: q.mes ?? null, ver: q.ver ?? null, obra: q.obra ?? null, ...cambio }
+    for (const [k, v] of Object.entries(base)) if (v) u.set(k, v)
+    const s = u.toString()
+    return s ? `/portal/pagos?${s}` : '/portal/pagos'
+  }
   const enCalendario = q.vista === 'calendario'
   // EL MES QUE ABRE: el del próximo pago, y si no queda ninguno, el de hoy. Abrir siempre en el mes
   // corriente le mostraría un calendario vacío a quien tiene todo por delante o todo pagado.
@@ -75,10 +84,27 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // que «Pagado» cambiara al tocar una pastilla, que es la forma más rápida de perderle la confianza
   // a un número.
   const ver = q.ver === 'pagados' || q.ver === 'pendientes' ? q.ver : 'todos'
-  const visibles = ver === 'pagados' ? enOrden.filter((p) => p.fechaPago)
-    : ver === 'pendientes' ? enOrden.filter((p) => !p.fechaPago)
-    : enOrden
-  const nPagados = enOrden.filter((p) => p.fechaPago).length
+
+  // ═══ EL FILTRO POR OBRA ═══
+  //
+  // Con cuatro obras en una sola lista, «¿cómo viene Pisos Industriales?» obliga a barrer 21 filas
+  // leyendo el renglón chico de cada una. La obra se elige de las que REALMENTE tienen pagos, no de
+  // todas las del cliente: ofrecer una obra que filtra a cero es un botón que lleva a nada.
+  //
+  // Se cruza con el filtro de estado y viaja en la URL, así que «los pagos pendientes de Pisos» es
+  // una dirección que se comparte. Y vale para las dos vistas: en el calendario, filtrar por obra es
+  // justamente «cómo me cae el mes de ESTA obra».
+  const conPagos = [...new Map(enOrden.filter((p) => p.obraId)
+    .map((p) => [p.obraId as string, p.obraNombre])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], 'es'))
+  const obra = conPagos.some(([id]) => id === q.obra) ? q.obra : null
+
+  const porObra = (lista: typeof enOrden) => (obra ? lista.filter((p) => p.obraId === obra) : lista)
+  const delEstado = porObra(enOrden)
+  const visibles = ver === 'pagados' ? delEstado.filter((p) => p.fechaPago)
+    : ver === 'pendientes' ? delEstado.filter((p) => !p.fechaPago)
+    : delEstado
+  const nPagados = delEstado.filter((p) => p.fechaPago).length
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
 
   return (
@@ -97,19 +123,29 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
       {pagos.length ? (
         <div className="mt-4 flex items-center gap-1 self-start rounded-[8px] border border-line p-[3px]">
-          <Solapa a={`/portal/pagos${ver === 'todos' ? '' : `?ver=${ver}`}`} activa={!enCalendario}>Listado</Solapa>
-          <Solapa a={`/portal/pagos?vista=calendario&mes=${mes}`} activa={enCalendario}>Calendario</Solapa>
+          <Solapa a={con({ vista: null, mes: null })} activa={!enCalendario}>Listado</Solapa>
+          <Solapa a={con({ vista: 'calendario', mes })} activa={enCalendario}>Calendario</Solapa>
         </div>
       ) : null}
 
       {/* Sólo bajo el listado: en el calendario la distinción ya la da la fecha. */}
       {pagos.length && !enCalendario ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Pastilla a="/portal/pagos" activa={ver === 'todos'}>{`Todos ${enOrden.length}`}</Pastilla>
-          <Pastilla a="/portal/pagos?ver=pendientes" activa={ver === 'pendientes'}>
-            {`Por cobrar ${enOrden.length - nPagados}`}
+          <Pastilla a={con({ ver: null })} activa={ver === 'todos'}>{`Todos ${delEstado.length}`}</Pastilla>
+          <Pastilla a={con({ ver: 'pendientes' })} activa={ver === 'pendientes'}>
+            {`Por cobrar ${delEstado.length - nPagados}`}
           </Pastilla>
-          <Pastilla a="/portal/pagos?ver=pagados" activa={ver === 'pagados'}>{`Pagados ${nPagados}`}</Pastilla>
+          <Pastilla a={con({ ver: 'pagados' })} activa={ver === 'pagados'}>{`Pagados ${nPagados}`}</Pastilla>
+        </div>
+      ) : null}
+
+      {/* POR OBRA — sólo con más de una: una pastilla que no elige nada es ruido. */}
+      {conPagos.length > 1 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Pastilla a={con({ obra: null })} activa={!obra}>Todas las obras</Pastilla>
+          {conPagos.map(([id, nombre]) => (
+            <Pastilla key={id} a={con({ obra: id })} activa={obra === id}>{nombre}</Pastilla>
+          ))}
         </div>
       ) : null}
 
@@ -117,11 +153,12 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         <div className="mt-6"><Vacio>Todavía no publicamos el plan de pagos.</Vacio></div>
       ) : enCalendario ? (
         <Calendario
-          pagos={pagos}
+          pagos={porObra(pagos)}
           mes={mes}
           semanas={grillaDelMes(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)))}
           hoy={hoy}
           montos={montos}
+          enlaceDeMes={(ym) => con({ vista: 'calendario', mes: ym })}
         />
       ) : (
         <>
