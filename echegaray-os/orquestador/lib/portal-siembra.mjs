@@ -226,7 +226,7 @@ const CERTIFICADO = /certificado\s*n?[°º]?\s*(\d+)/i
  *
  * @returns {{tipo: 'anticipo'|'certificado'|'fondo_reparo'|'otro', rotulo: string}}
  */
-export function clasificar(concepto, ordenCompra) {
+export function clasificar(concepto, ordenCompra, formaDeCobro) {
   const limpioC = sinCategoriaContable(concepto)
   const limpioH = sinCategoriaContable(ordenCompra)
   const texto = `${limpioC} ${limpioH}`
@@ -238,7 +238,19 @@ export function clasificar(concepto, ordenCompra) {
   // Sin categoría reconocible manda el concepto, que es lo único que describe el trabajo. Se acota:
   // un rótulo de 200 caracteres no es un rótulo, es una nota.
   const crudo = limpioC || limpioH
-  if (!crudo) return { tipo: 'otro', rotulo: 'Cobro' }
+  if (!crudo) {
+    // ═══ SIN CONCEPTO NO SE FABRICA UNO (26/08/2026) ═══
+    //
+    // Cinco filas de San Francisco vienen SIN concepto: el Sheet sólo dice «Efectivo», «Cobrado», su
+    // fecha y su monto. Se publicaban como «Cobro (1 de 5)», «Cobro (2 de 5)»… y esa numeración NO
+    // EXISTE en ningún lado — la inventó el numerador al ver cinco rótulos iguales. El dueño lo vio
+    // en el portal de su cliente: «estás inventando cobros y fechas».
+    //
+    // Lo único cierto de esas filas es CÓMO se cobró. Ese es el rótulo, y viene de la columna N.
+    // `sinConcepto` viaja para que el numerador no las toque: la fecha ya las distingue.
+    const forma = String(formaDeCobro ?? '').trim()
+    return { tipo: 'otro', rotulo: forma || 'Cobro', sinConcepto: true }
+  }
   return { tipo: 'otro', rotulo: crudo.length > 80 ? `${crudo.slice(0, 79).trimEnd()}…` : crudo }
 }
 
@@ -314,9 +326,14 @@ export function fusionarImportes(partes) {
  */
 export function numerarRepetidos(lineas) {
   const cuenta = new Map()
-  for (const l of lineas) cuenta.set(l.rotulo, (cuenta.get(l.rotulo) ?? 0) + 1)
+  for (const l of lineas) if (!l.sinConcepto) cuenta.set(l.rotulo, (cuenta.get(l.rotulo) ?? 0) + 1)
   const visto = new Map()
   return lineas.map((l) => {
+    // UNA FILA SIN CONCEPTO NO SE NUMERA. «Efectivo (1 de 5)» afirma un orden que el Sheet no
+    // declara: son cinco cobros en efectivo, no la cuota 1 de 5 de nada. La fecha ya las distingue,
+    // y esa sí está escrita. Numerar «Certificado» repetido es otra cosa: ahí el concepto existe y
+    // el número desambigua dos líneas que de verdad se llaman igual.
+    if (l.sinConcepto) return l
     const n = cuenta.get(l.rotulo)
     if (n < 2) return l
     const i = (visto.get(l.rotulo) ?? 0) + 1

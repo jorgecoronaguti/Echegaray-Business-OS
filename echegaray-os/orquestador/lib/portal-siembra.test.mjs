@@ -196,7 +196,7 @@ test('el rótulo dice QUÉ cobro es, no repite el nombre de la obra', () => {
 
 test('sin categoría reconocible manda el concepto, acotado', () => {
   assert.deepEqual(clasificar('IVA de Factura 220', ''), { tipo: 'otro', rotulo: 'IVA de Factura 220' })
-  assert.deepEqual(clasificar('', ''), { tipo: 'otro', rotulo: 'Cobro' })
+  assert.deepEqual(clasificar('', ''), { tipo: 'otro', rotulo: 'Cobro', sinConcepto: true })
   const largo = clasificar('Cambio de pisos RRHH - se facturó el 80% $ 7.520.000 y el 20% restante queda para el cierre de la obra', '')
   assert.ok(largo.rotulo.length <= 80, `el rótulo mide ${largo.rotulo.length}`)
   assert.ok(largo.rotulo.endsWith('…'))
@@ -308,4 +308,33 @@ test('una fila que abarca VARIAS obras no se mete en una sola', () => {
   assert.equal(imputarObra({ concepto: 'Anticipos quincenales de todas las obras — 1ª de 2', clienteSheet: cliente }, suyas), null)
   assert.equal(abarcaVariasObras('Saldo 50% de todas las obras'), true)
   assert.equal(abarcaVariasObras('Certificado 2'), false)
+})
+
+// ── LO QUE EL SHEET NO DICE, NO SE ESCRIBE ───────────────────────────────────────────────────
+//
+// Cinco filas de San Francisco vienen sin concepto: el Sheet dice «Efectivo», «Cobrado», su fecha y
+// su monto, y nada más. Se publicaban como «Cobro (1 de 5)»… (2 de 5)»… y esa numeración no existe
+// en ningún lado. El dueño lo vio en el portal de su cliente: «estás inventando cobros y fechas».
+
+test('sin concepto, el rótulo es la FORMA DE COBRO — lo único que el Sheet declara', () => {
+  assert.deepEqual(clasificar('', '', 'Efectivo'), { tipo: 'otro', rotulo: 'Efectivo', sinConcepto: true })
+  assert.deepEqual(clasificar('', '', 'Transferencia'), { tipo: 'otro', rotulo: 'Transferencia', sinConcepto: true })
+  // Sin concepto Y sin forma de cobro no queda nada que decir salvo que fue un cobro.
+  assert.deepEqual(clasificar('', '', ''), { tipo: 'otro', rotulo: 'Cobro', sinConcepto: true })
+  // Con concepto NO se marca: ese rótulo sí describe el trabajo.
+  assert.equal(clasificar('Certificado 3', '', 'Efectivo').sinConcepto, undefined)
+})
+
+test('una fila sin concepto NO se numera: «Efectivo (1 de 5)» afirma un orden inexistente', () => {
+  const sin = [
+    { rotulo: 'Efectivo', sinConcepto: true },
+    { rotulo: 'Efectivo', sinConcepto: true },
+    { rotulo: 'Efectivo', sinConcepto: true },
+  ]
+  assert.deepEqual(numerarRepetidos(sin).map((l) => l.rotulo), ['Efectivo', 'Efectivo', 'Efectivo'])
+
+  // Numerar un CONCEPTO repetido es otra cosa: ahí el rótulo existe y el número desambigua dos
+  // líneas que de verdad se llaman igual.
+  const con = [{ rotulo: 'Anticipo' }, { rotulo: 'Anticipo' }]
+  assert.deepEqual(numerarRepetidos(con).map((l) => l.rotulo), ['Anticipo (1 de 2)', 'Anticipo (2 de 2)'])
 })

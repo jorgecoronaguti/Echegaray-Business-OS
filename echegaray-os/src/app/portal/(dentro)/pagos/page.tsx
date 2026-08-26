@@ -133,7 +133,10 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Pastilla a={con({ ver: null })} activa={ver === 'todos'}>{`Todos ${delEstado.length}`}</Pastilla>
           <Pastilla a={con({ ver: 'pendientes' })} activa={ver === 'pendientes'}>
-            {`Por cobrar ${delEstado.length - nPagados}`}
+            {/* «PENDIENTE», NO «POR COBRAR». El portal lo lee el CLIENTE: para él eso no es algo que
+                va a cobrar, es algo que tiene que pagar. Y es la palabra que usa la pestaña Cobranzas
+                y la ficha del cliente — el mismo estado no puede llamarse distinto según la pantalla. */}
+            {`Pendiente ${delEstado.length - nPagados}`}
           </Pastilla>
           <Pastilla a={con({ ver: 'pagados' })} activa={ver === 'pagados'}>{`Pagados ${nPagados}`}</Pastilla>
         </div>

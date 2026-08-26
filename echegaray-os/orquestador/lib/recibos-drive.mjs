@@ -154,3 +154,90 @@ export function obraDeLasCarpetas(obraIds) {
   const unicas = [...new Set((obraIds ?? []).filter(Boolean))]
   return unicas.length === 1 ? unicas[0] : null
 }
+
+// ── EL RECIBO N ES EL PAGO N ─────────────────────────────────────────────────────────────────
+//
+// ═══ POR QUÉ ESTO NO ES ADIVINAR (26/08/2026) ═══
+//
+// Los PDF de la carpeta son la FOTO del estado de cuenta al momento de cada cobro: «Recibo 3» trae
+// los pagos 1, 2 y 3 y el saldo que quedó. El primer intento los descartó por eso —«no declaran un
+// importe único»— y era una lectura equivocada: el importe del recibo ES el del último renglón de
+// pago, el que motivó esa foto.
+//
+// Y SE PUEDE PROBAR SIN CREERLE A NADIE. Entre dos recibos consecutivos, la resta de sus saldos
+// pendientes tiene que dar el importe del segundo:
+//
+//   Recibo 2 → saldo $123.368.716,40      Recibo 3 → saldo $108.368.716,40
+//   123.368.716,40 − 108.368.716,40 = 15.000.000 = el importe del Pago 3   ✔
+//
+// `conciliarPorSaldo` corre esa identidad sobre la serie entera. Lo que no cierra NO se publica: un
+// importe equivocado en el portal de un cliente es peor que un importe ausente.
+
+const MESES_CORTOS = {
+  ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
+  jul: 7, ago: 8, sep: 9, sept: 9, oct: 10, nov: 11, dic: 12,
+}
+
+/** Los renglones «Pago N ⟩ … ⟩ 25-sept ⟩ 15.000.000,00» del PDF, en orden. */
+export function pagosDelEstadoDeCuenta(texto) {
+  const salida = []
+  for (const linea of String(texto ?? '').split('\n')) {
+    if (!/^\s*Pago\s+\d+/.test(linea)) continue
+    // Las columnas vienen separadas por TABULACIONES, no por espacios: buscarlas con `\s+` juntaba
+    // «MONTO MAS IVA» con la fecha y no calzaba ninguna fila.
+    const celdas = linea.split('\t').map((c) => c.trim()).filter(Boolean)
+    const fecha = celdas.map((c) => c.match(/^(\d{1,2})-([a-zá]+)$/i)).find(Boolean)
+    // El importe es el ÚLTIMO número con centavos de la fila: los porcentajes no los tienen.
+    const importes = celdas.filter((c) => /^[\d.]+,\d{2}$/.test(c))
+    if (!fecha || !importes.length) continue
+    salida.push({
+      dia: Number(fecha[1]),
+      mes: MESES_CORTOS[fecha[2].toLowerCase().slice(0, 4)] ?? MESES_CORTOS[fecha[2].toLowerCase().slice(0, 3)] ?? null,
+      importe: aNumeroArgentino(importes.at(-1)),
+      medio: celdas.find((c) => /^(EFECTIVO|TRANSFERENCIA|CHEQUE|ECHEQ)$/i.test(c)) ?? null,
+    })
+  }
+  return salida
+}
+
+/** El saldo pendiente que declara la foto. `null` si no lo dice. */
+export function saldoDelEstadoDeCuenta(texto) {
+  const m = String(texto ?? '').match(/SALDO PENDIENTE[^\n]*?([\d.]+,\d{2})/)
+  return m ? aNumeroArgentino(m[1]) : null
+}
+
+/**
+ * EL AÑO NO ESTÁ ESCRITO: las fechas son «25-jun», «23-ago», «13-feb».
+ *
+ * Se deduce de la SECUENCIA, que es un hecho del documento y no una suposición: los pagos van en
+ * orden, así que cada vez que el mes retrocede cambió el año. El primero arranca en `anioInicial`,
+ * que es el del comienzo de la obra — un dato del registro, no un número elegido.
+ */
+export function conAnio(pagos, anioInicial) {
+  let anio = anioInicial
+  let mesPrevio = 0
+  return pagos.map((p) => {
+    if (p.mes == null) return { ...p, fecha: null }
+    if (p.mes < mesPrevio) anio += 1
+    mesPrevio = p.mes
+    return { ...p, fecha: `${anio}-${String(p.mes).padStart(2, '0')}-${String(p.dia).padStart(2, '0')}` }
+  })
+}
+
+/**
+ * LA PRUEBA: la resta de saldos consecutivos tiene que dar el importe del segundo recibo.
+ *
+ * Devuelve cada recibo con `cierra: true/false`. Un saldo que SUBE no es un error — es obra nueva
+ * facturada entre las dos fotos— y por eso sólo se exige la identidad cuando el saldo baja.
+ * El primero de la serie no tiene contra qué compararse: queda `cierra: null`.
+ */
+export function conciliarPorSaldo(recibos) {
+  const orden = [...recibos].sort((a, b) => Number(a.numero) - Number(b.numero))
+  return orden.map((r, i) => {
+    const previo = orden[i - 1]
+    if (!previo || previo.saldo == null || r.saldo == null || r.importe == null) return { ...r, cierra: null }
+    const baja = previo.saldo - r.saldo
+    if (baja <= 0) return { ...r, cierra: null }
+    return { ...r, cierra: Math.abs(baja - r.importe) < 1 }
+  })
+}

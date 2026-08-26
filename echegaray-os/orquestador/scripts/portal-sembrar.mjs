@@ -159,7 +159,8 @@ function lineaDeFila(valores, formulas, nroFila) {
   const v = valores, f = formulas
   const concepto = sinCategoriaContable(v?.[8])
   const ordenCompra = sinCategoriaContable(v?.[7])
-  const { tipo, rotulo } = clasificar(concepto, ordenCompra)
+  // La forma de cobro (columna N) es lo único que describe una fila sin concepto.
+  const { tipo, rotulo, sinConcepto } = clasificar(concepto, ordenCompra, v?.[13])
   const total = monto(v?.[12])
   const netoCrudo = monto(v?.[9])
   // EL IVA VACÍO ES CERO, NO «NO SE SABE». Una fila en efectivo sin factura no lleva IVA, y esa celda
@@ -175,7 +176,7 @@ function lineaDeFila(valores, formulas, nroFila) {
     fila: nroFila,
     clienteSheet: String(v?.[6] ?? '').trim(),
     conceptoCrudo: String(v?.[8] ?? '').trim(),
-    concepto, ordenCompra, tipo, rotulo,
+    concepto, ordenCompra, tipo, rotulo, sinConcepto: sinConcepto === true,
     monto: usd ?? total,
     neto: usd != null ? aUsd(netoCrudo) : netoCrudo,
     iva: usd != null ? aUsd(ivaCrudo) : ivaCrudo,
@@ -257,6 +258,7 @@ function lineasDeObra(filas, nombreObra) {
     const p = partes[0]
     lineas.push({
       tipo: p.tipo, rotulo: depurarRotulo(p.rotulo, nombreObra), monto: sumado.monto, moneda: sumado.moneda,
+      sinConcepto: p.sinConcepto === true,
       // Neto e IVA se suman igual que el total: una certificación partida en dos filas del Sheet es
       // UN cobro con un neto y un IVA. `null` si a alguna parte le falta — sumar lo que hay daría un
       // neto más chico que el real con cara de dato cierto.
