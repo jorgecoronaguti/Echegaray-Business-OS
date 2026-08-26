@@ -408,9 +408,12 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // en toda la página lo encontraría ahí y daría rojo diciendo que la obra sigue en la lista
     // cuando no está. El bloque es el que tiene que contestar por su propia lista.
     await page.goto(`/clientes/${cli.slug}`)
-    await expect(page.getByTestId('bloque-obras').getByRole('link', { name: obra })).toHaveCount(0)
-    // Y en la actividad SÍ sigue estando: archivar una obra no borra que se dio de alta.
-    await expect(page.getByTestId('bloque-actividad')).toContainText(obra)
+    await expect(page.getByTestId('obras-del-cliente').getByRole('link', { name: obra })).toHaveCount(0)
+    // Y en la actividad SÍ sigue estando: archivar una obra no borra que se dio de alta. En el v2 la
+    // actividad es una CARA de la ficha y no un bloque del costado, así que hay que abrirla.
+    await page.getByTestId('solapa-actividad').click()
+    await expect(page.getByTestId('tabla-actividad')).toContainText(obra)
+    await page.getByTestId('solapa-obras').click()
     await page.getByTestId('ver-archivadas-cliente').click()
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
 
