@@ -33,7 +33,17 @@ export function mesVecino(ym: string, paso: 1 | -1): string {
   return `${a}-${String(m).padStart(2, '0')}`
 }
 
-const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+// ═══ CINCO DÍAS, NO SIETE (26/08/2026) ═══
+//
+// «En vista calendario quitale sábado y domingo, si no no se ven bien los montos.» Los dos días de
+// la semana que nunca tienen un cobro se llevaban el 28% del ancho, y en un teléfono eso es la
+// diferencia entre que «$ 9,0 M» entre o se recorte. Un cobro no se programa un domingo: la columna
+// existía para dibujar una semana completa, no para mostrar algo.
+//
+// SI ALGUNA VEZ CAE UNO EN FIN DE SEMANA NO DESAPARECE: `pagosDeLaSemana` lo empuja al lunes
+// siguiente de su misma fila y lo dice con «(sáb)» al lado. Esconder plata para ganar ancho sería
+// cambiar una molestia por un defecto.
+const DIAS = ['L', 'M', 'M', 'J', 'V']
 
 /** `9034356` → `$ 9,0 M`. Para la celda del teléfono, donde el importe entero no entra. */
 function corto(n: number | null, moneda: 'ARS' | 'USD'): string {
@@ -76,15 +86,18 @@ export function Calendario({
           sobra cuando el día ya lo dice. */}
       <div className="mt-3">
         <div>
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-5">
             {DIAS.map((d, i) => (
               <span key={i} className="pb-1.5 text-center text-[10px] tracking-[.06em] text-faint sm:px-1.5 sm:text-left sm:text-[10.5px]">{d}</span>
             ))}
           </div>
           {semanas.map((semana, f) => (
-            <div key={f} className="grid grid-cols-7 border-t border-line">
-              {semana.map((dia) => {
-                const suyos = delDia(dia.iso)
+            <div key={f} className="grid grid-cols-5 border-t border-line">
+              {semana.slice(0, 5).map((dia, i) => {
+                // Lo del sábado y el domingo de ESTA fila se muestra en el lunes, que es el primer
+                // día hábil en el que ese cobro se puede atender.
+                const finDeSemana = i === 0 ? semana.slice(5).flatMap((d) => delDia(d.iso).map((p) => ({ ...p, finDeSemana: d.iso }))) : []
+                const suyos = [...delDia(dia.iso), ...finDeSemana]
                 const esHoy = dia.iso === hoy
                 return (
                   <div
@@ -106,6 +119,12 @@ export function Calendario({
                       const estado = estadoDePago(p, hoy)
                       return (
                         <span key={p.id} className="mt-1 block" title={p.rotulo}>
+                          {/* Si vino de un fin de semana se dice cuál: la fecha real no se pisa. */}
+                          {(p as { finDeSemana?: string }).finDeSemana ? (
+                            <span className="block text-[9px] text-warn">
+                              {`sáb/dom ${Number((p as { finDeSemana?: string }).finDeSemana!.slice(8, 10))}`}
+                            </span>
+                          ) : null}
                           {/* El monto arriba y el rótulo abajo: en una celda de 74px lo que se
                               busca de un vistazo es cuánto cae ese día. Sin permiso de montos no se
                               dibuja un guión —eso se lee «este pago no tiene importe»—: sólo el rótulo. */}
