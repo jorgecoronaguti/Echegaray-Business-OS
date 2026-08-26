@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO, type Pago,
+  corto, estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO, type Pago,
 } from './cronograma.ts'
 
 const HOY = '2026-08-26'
@@ -206,4 +206,14 @@ test('cero real y «sin cargar» no son lo mismo', () => {
   const otraMoneda = resumenDeCobro([p({ monto: 15_400, moneda: 'USD' })], null, HOY)
   assert.equal(otraMoneda.pagado, null)
   assert.equal(otraMoneda.pendiente, null)
+})
+
+test('la abreviatura no redondea lo que entra entero', () => {
+  // La pastilla del filtro escribe el MISMO importe que su columna del pie: «U$S 32k» al lado de
+  // «U$S 31.500» hace dudar de cuál de los dos es el bueno.
+  assert.equal(corto(31_500, 'USD'), 'U$S 31.500')
+  assert.equal(corto(1_200_000, 'USD'), 'U$S 1,2 M')
+  assert.equal(corto(109_592_878), '$ 109,6 M')
+  assert.equal(corto(852_300), '$ 852k')
+  assert.equal(corto(null), '', 'sin dato no se dibuja un cero')
 })

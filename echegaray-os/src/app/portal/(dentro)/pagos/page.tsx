@@ -382,20 +382,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                   rotulo={hayDolares ? 'PAGADO ARS$' : 'PAGADO'}
                   neto={total.netoPagado}
                   conIva={total.pagado}
-                  pie={cuantos(total.nPagado, 'cobrado')}
+                  pie={cuantos(total.nPagado, 'cobrado', 'cobrados')}
                 />
                 <Cifra
                   rotulo={hayDolares ? 'PENDIENTE ARS$' : 'PENDIENTE'}
                   neto={total.netoPendiente}
                   conIva={total.pendiente}
-                  pie={cuantos(total.nPendiente, 'por pagar')}
+                  pie={cuantos(total.nPendiente, 'por pagar', 'por pagar')}
                 />
               </>
             ) : null}
             {hayDolares ? (
               <>
-                <Cifra rotulo="PAGADO US$" neto={enDolares.netoPagado} conIva={enDolares.pagado} moneda="USD" pie={cuantos(enDolares.nPagado, 'cobrado')} />
-                <Cifra rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} conIva={enDolares.pendiente} moneda="USD" pie={cuantos(enDolares.nPendiente, 'por pagar')} />
+                <Cifra rotulo="PAGADO US$" neto={enDolares.netoPagado} conIva={enDolares.pagado} moneda="USD" pie={cuantos(enDolares.nPagado, 'cobrado', 'cobrados')} />
+                <Cifra rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} conIva={enDolares.pendiente} moneda="USD" pie={cuantos(enDolares.nPendiente, 'por pagar', 'por pagar')} />
               </>
             ) : null}
           </div>
@@ -426,8 +426,9 @@ function deQuienEsElContrato({ obras, sinContrato }: { obras: number; sinContrat
   return sinContrato ? `${base} · ${sinContrato === 1 ? '1 obra sin contrato cargado' : `${sinContrato} obras sin contrato cargado`}` : base
 }
 
-/** «3 cobros cobrados» — el conteo que ata la cifra del pie con las filas de arriba. */
-const cuantos = (n: number, que: string): string => `${n === 1 ? '1 cobro' : `${n} cobros`} ${que}`
+/** «3 cobros cobrados» · «1 cobro por pagar» — el conteo que ata la cifra del pie con las filas. */
+const cuantos = (n: number, uno: string, varios: string): string =>
+  n === 1 ? `1 cobro ${uno}` : `${n} cobros ${varios}`
 
 /**
  * UNA CIFRA DEL PIE: el neto grande, el «+ IVA», y debajo de dónde sale.

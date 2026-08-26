@@ -247,9 +247,13 @@ export function pesos(n: number | null, moneda: 'ARS' | 'USD' = 'ARS'): string {
  */
 export function corto(n: number | null, moneda: 'ARS' | 'USD' = 'ARS'): string {
   if (n == null) return ''
-  if (moneda === 'USD') return `U$S ${Math.round(n / 1000).toLocaleString('es-AR')}k`
+  const millones = `${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
+  // EN DÓLARES EL NÚMERO ENTERO ENTRA, así que se escribe entero: abreviar U$S 31.500 a «U$S 32k»
+  // redondea 500 dólares para ahorrar tres caracteres, y el importe deja de coincidir con el del
+  // pie que tiene al lado. La abreviatura existe para lo que NO entra, no por costumbre.
+  if (moneda === 'USD') return Math.abs(n) < 1_000_000 ? pesos(n, 'USD') : `U$S ${millones}`
   if (Math.abs(n) < 1_000_000) return `$ ${Math.round(n / 1000).toLocaleString('es-AR')}k`
-  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
+  return `$ ${millones}`
 }
 
 /** dd/mm. `null` es «sin fecha», nunca una fecha inventada ni un guion suelto. */
