@@ -162,10 +162,28 @@ function lineaDeFila(valores, formulas, nroFila) {
   }
 }
 
-/** Cada fila a su obra. Lo que no calza no se reparte: se devuelve para que salga por pantalla. */
+/**
+ * Cada fila a su obra — y la que no calza, AL CLIENTE.
+ *
+ * ═══ POR QUÉ YA NO SE DESCARTAN (26/08/2026) ═══
+ *
+ * Una fila que no nombra ninguna obra se dejaba fuera del portal. El resultado lo vio el dueño en la
+ * ficha de Javier Sánchez: contrato $299,68 M, esquema $47,83 M. Faltaban $104,77 M ya COBRADOS
+ * —«Certificado 2», «Certificado 3» y siete pagos en efectivo, que no nombran obra porque para el
+ * cliente es obvia— y $79,59 M pendientes cuyo concepto dice, textual, «de todas las obras».
+ *
+ * Esos cobros no pertenecen a una obra: pertenecen al CLIENTE. `esquema_pago.cliente_id` es NOT NULL
+ * y `obra_id` es nullable justamente para eso. Se publican con `obra_id` nulo, que es la verdad —no
+ * sabemos de qué obra es, o es de varias— en vez de adivinar una obra o hacerlas desaparecer.
+ *
+ * ADIVINAR SIGUE PROHIBIDO: no se reparte por proporción ni se manda a «la obra más grande». Lo único
+ * que cambia es que dejan de esconderse.
+ */
 function imputarTodas(valores, formulas, obras, hallarCliente) {
   const porObra = new Map()
   const sinImputar = []
+  /** Las del cliente sin obra: la clave es el cliente, no una obra. */
+  const porCliente = new Map()
   for (let i = 0; i < valores.length; i++) {
     const v = valores[i]
     if (!v || !String(v?.[6] ?? '').trim()) continue
@@ -174,14 +192,21 @@ function imputarTodas(valores, formulas, obras, hallarCliente) {
     const cliente = hallarCliente(l.clienteSheet)
     if (!cliente) { sinImputar.push({ ...l, porque: 'el cliente no está en Postgres' }); continue }
     const suyas = obras.filter((o) => o.cliente.id === cliente.id)
-    if (!suyas.length) { sinImputar.push({ ...l, porque: 'el cliente no tiene obras vivas' }); continue }
-    const imputada = imputarObra(l, suyas)
-    if (!imputada) { sinImputar.push({ ...l, porque: 'ninguna obra del cliente calza con el concepto' }); continue }
+    const imputada = suyas.length ? imputarObra(l, suyas) : null
+    if (!imputada) {
+      // AL CLIENTE, NO AL TACHO. Se anota por qué no tiene obra para que el informe lo diga.
+      const porque = !suyas.length ? 'el cliente no tiene obras vivas' : 'el concepto no nombra ninguna obra suya'
+      const lista = porCliente.get(cliente.id) ?? []
+      lista.push({ ...l, porque })
+      porCliente.set(cliente.id, lista)
+      sinImputar.push({ ...l, porque })
+      continue
+    }
     const lista = porObra.get(imputada.obra) ?? []
     lista.push(l)
     porObra.set(imputada.obra, lista)
   }
-  return { porObra, sinImputar }
+  return { porObra, porCliente, sinImputar }
 }
 
 /**
@@ -235,7 +260,7 @@ function revisarQueNadaInternoSalga(porObra) {
     for (const l of lineas) {
       for (const [campo, texto] of [['rótulo', l.rotulo], ['nota', l.nota]]) {
         const t = terminoProhibido(texto)
-        if (t) sucias.push(`${o.nombre} · fila ${l.filas.join('+')} · ${campo} «${texto}» ⇒ «${t}»`)
+        if (t) sucias.push(`${o.nombre ?? o} · fila ${l.filas.join('+')} · ${campo} «${texto}» ⇒ «${t}»`)
       }
     }
   }
@@ -281,13 +306,47 @@ async function escribir(obras, porObra) {
   }
 }
 
+/**
+ * LOS COBROS DEL CLIENTE SIN OBRA — los que dicen «de todas las obras» o no la nombran.
+ *
+ * `obra_id` queda NULO, que es la verdad. Se numeran a partir de 1000 para que su `orden` no choque
+ * nunca con el de una obra del mismo cliente y para que la ficha los muestre al final, después de
+ * los cobros que sí tienen obra.
+ */
+async function escribirDelCliente(porCliente) {
+  for (const [clienteId, lineas] of porCliente) {
+    let orden = 1000
+    for (const l of lineas) {
+      orden += 1
+      const estado = l.pago ? 'cobrado'
+        : l.tipo === 'fondo_reparo' ? 'retenido'
+        : !l.prevista ? 'previsto'
+        : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      await query(
+        `insert into public.esquema_pago
+           (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
+            nota_interna, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1, null, $2,$3,$4,$5,$6,$7,$8,$9,'sync_cobranzas', true, now(), now())
+         on conflict (cliente_id, orden) where obra_id is null and origen = 'sync_cobranzas' do update set
+           concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
+           fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
+           nota_interna = excluded.nota_interna, sincronizado_en = now(), actualizado_at = now()`,
+        [clienteId, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota])
+    }
+    const { rowCount } = await query(
+      `delete from public.esquema_pago
+        where cliente_id=$1 and obra_id is null and orden>$2 and origen='sync_cobranzas'`, [clienteId, orden])
+    if (rowCount) console.log(`  · (sin obra): ${rowCount} línea(s) vieja(s) borrada(s)`)
+  }
+}
+
 /** LA EVIDENCIA ES EL DATO LEÍDO EN SU DESTINO, no el «ok» de la escritura. */
 async function releerDeLaBase() {
-  const { rows } = await query(`select c.nombre_comercial cli, o.nombre obra, p.orden, p.estado tipo,
+  const { rows } = await query(`select c.nombre_comercial cli, coalesce(o.nombre, '(sin obra)') obra, p.orden, p.estado tipo,
                                        p.concepto rotulo, p.moneda, p.monto,
                                        p.fecha fecha_prevista, null::date fecha_pago
                                 from public.esquema_pago p
-                                join public.obra_canonica o on o.id = p.obra_id
+                                left join public.obra_canonica o on o.id = p.obra_id
                                 join public.clientes c on c.id = p.cliente_id
                                 order by c.nombre_comercial, o.nombre, p.orden`)
   console.log('\n══ LEÍDO DE esquema_pago ═════════════════════════════════════════════════════════')
@@ -363,7 +422,7 @@ async function main() {
 
   const valores = await g.readSheetValues(ID, 'Cobranzas!A5:AB')
   const formulas = await g.readSheetValues(ID, 'Cobranzas!A5:AB', { render: 'FORMULA' })
-  const { porObra, sinImputar } = imputarTodas(valores, formulas, obras, hallarCliente)
+  const { porObra, porCliente, sinImputar } = imputarTodas(valores, formulas, obras, hallarCliente)
 
   const conflictos = []
   for (const [o, filas] of [...porObra]) {
@@ -371,9 +430,16 @@ async function main() {
     porObra.set(o, r.lineas)
     conflictos.push(...r.conflictos)
   }
+  // Las del cliente pasan por la MISMA fusión y numeración: son cobros iguales a los demás, lo único
+  // que no tienen es obra. Sin nombre de obra que depurar, se pasa cadena vacía.
+  for (const [id, filas] of [...porCliente]) {
+    const r = lineasDeObra(filas, '')
+    porCliente.set(id, r.lineas)
+    conflictos.push(...r.conflictos)
+  }
   informar(obras, porObra, sinImputar, conflictos)
 
-  const sucias = revisarQueNadaInternoSalga(porObra)
+  const sucias = [...revisarQueNadaInternoSalga(porObra), ...revisarQueNadaInternoSalga(porCliente)]
   if (sucias.length) {
     console.error('\n✖ LA CORRIDA SE ABORTA: contabilidad interna a punto de salir al portal del cliente.')
     for (const s of sucias) console.error(`   ${s}`)
@@ -384,6 +450,7 @@ async function main() {
   conciliar(porObra, sinImputar)
   if (!APLICAR) { console.log('\n(en seco: no se escribió nada — agregá --aplicar)'); return }
   await escribir(obras, porObra)
+  await escribirDelCliente(porCliente)
   await releerDeLaBase()
 }
 

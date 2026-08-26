@@ -56,7 +56,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
       {previa ? (
         <div className="fixed inset-x-0 top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink px-4 py-2 text-[12px] text-canvas">
           <span>Estás viendo el portal como lo ve <strong className="font-semibold">{cliente}</strong>.</span>
-          <a href="/clientes" className="underline underline-offset-2">Volver a Clientes</a>
+          <Link href="/clientes" className="underline underline-offset-2">Volver a Clientes</Link>
         </div>
       ) : null}
       {/* ── BARRA LATERAL · sólo escritorio ─────────────────────────────────────────────────── */}

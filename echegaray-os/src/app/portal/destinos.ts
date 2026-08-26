@@ -19,7 +19,16 @@ export const DESTINOS: readonly Destino[] = [
   { href: '/portal/pagos', rotulo: 'Pagos', icono: 'pagos' },
   { href: '/portal/facturas', rotulo: 'Facturas', icono: 'facturas' },
   { href: '/portal/documentos', rotulo: 'Documentos', icono: 'documentos' },
-  { href: '/portal/terminadas', rotulo: 'Terminadas', icono: 'terminadas' },
+  // TERMINADAS QUEDA FRENADA (26/08/2026, decisión del dueño: «es confuso lo de terminadas,
+  // bloquear esto por ahora»). Y es confuso por un motivo real, no de rótulo: una obra terminada se
+  // decide por `obras.estado = 'cerrada'` en `public.obras`, mientras que el cronograma vive en
+  // `obra_canonica` — dos registros de obra distintos y sin mapeo entre ellos. La pantalla mostraba
+  // «0 obras» a clientes que sí tienen obras terminadas, o al revés.
+  //
+  // Se marca `masAdelante` en vez de borrarse: el rótulo sigue a la vista, en gris y sin enlace, para
+  // que el cliente sepa que va a estar. Esconderlo lo convertiría en una sorpresa, y borrar la ruta
+  // rompería los enlaces que ya se compartieron — sigue respondiendo si se la escribe.
+  { href: '/portal/terminadas', rotulo: 'Terminadas', icono: 'terminadas', masAdelante: true },
   // Se enchufa cuando exista el módulo de Obras. Se dibuja igual: que el cliente vea que viene es
   // parte del acuerdo, esconderlo lo convertiría en una sorpresa.
   { href: '/portal/avance', rotulo: 'Avance', icono: 'avance', masAdelante: true },
