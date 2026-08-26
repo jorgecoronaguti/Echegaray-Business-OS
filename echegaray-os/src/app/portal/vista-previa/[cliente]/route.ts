@@ -32,11 +32,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ cliente
   if (!usuario || !veEconomia(perfil.data?.rol)) redirect('/login?volver=/clientes')
 
   const { cliente } = await params
-  // El cliente se busca por SLUG o por id: el enlace de la ficha usa el slug, que es lo que hay en
-  // la URL donde estaba parado quien lo tocó.
-  const { data } = await supabase
-    .from('clientes').select('id').or(`slug.eq.${cliente},id.eq.${cliente}`).maybeSingle()
-  if (!data) redirect('/clientes')
+  // POR SLUG O POR ID, PERO NO CON UN `or(...)`. `id` es `uuid`: pedirle a PostgREST
+  // `id.eq.quattropani` no devuelve cero filas, devuelve un ERROR de tipo, y con él se caía la
+  // consulta entera aunque el slug existiera. La previa terminaba rebotando a `/clientes` sin decir
+  // por qué. Se mira la forma del texto y se consulta la columna que corresponde.
+  const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cliente)
+  const { data, error } = await supabase
+    .from('clientes').select('id').eq(esUuid ? 'id' : 'slug', cliente).maybeSingle()
+  if (error || !data) redirect('/clientes')
 
   // El mail queda registrado como el de quien mira: si algo se hace desde la previa, se sabe quién
   // fue. No es el mail de un contacto del cliente y no se compara nunca contra `cliente_acceso`.
