@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, type Pago,
+  estadoDePago, proximoPago, resumenDeCobro, loQueSigue, pesos, diaMes, ROTULO_ESTADO, type Pago,
 } from './cronograma.ts'
 
 const HOY = '2026-08-26'
@@ -26,6 +26,18 @@ test('vencido es fecha anterior a hoy; el mismo día NO está vencido', () => {
   assert.equal(estadoDePago(p({ fechaPrevista: '2026-08-25' }), HOY), 'vencido')
   assert.equal(estadoDePago(p({ fechaPrevista: HOY }), HOY), 'programado', 'vence hoy, todavía no venció')
   assert.equal(estadoDePago(p({ fechaPrevista: '2026-08-27' }), HOY), 'programado')
+})
+
+test('el estado que fija la base gana sobre la fecha: el Sheet no se contradice con la pantalla', () => {
+  // «Proyectado» en la columna O de Cobranzas llega acá como `sin_factura`. Con la fecha ya pasada,
+  // derivar habría escrito «vencido» sobre un cobro que todavía no facturamos.
+  assert.equal(estadoDePago(p({ fechaPrevista: '2026-01-01', estadoFijado: 'sin_factura' }), HOY), 'sin_factura')
+})
+
+test('las palabras del portal son las del Sheet: «Pendiente», no «programado»', () => {
+  assert.equal(ROTULO_ESTADO.programado, 'pendiente')
+  assert.equal(ROTULO_ESTADO.vencido, 'vencido')
+  assert.equal(ROTULO_ESTADO.pagado, 'pagado')
 })
 
 test('la hora no corre la fecha', () => {

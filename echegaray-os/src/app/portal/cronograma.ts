@@ -193,10 +193,15 @@ export function diaMes(iso: string | null): string {
   return `${d}/${m}`
 }
 
+/**
+ * LAS PALABRAS SON LAS DEL SHEET, no otras. El cliente y el dueño tienen que poder decir lo mismo
+ * mirando pantallas distintas: la columna O de Cobranzas escribe «Pendiente», y el portal escribía
+ * «programado» — la misma fila con dos nombres, en el único lugar donde los dos se cruzan.
+ */
 export const ROTULO_ESTADO: Record<EstadoPago, string> = {
   pagado: 'pagado',
   vencido: 'vencido',
   proximo: 'próximo',
-  programado: 'programado',
+  programado: 'pendiente',
   sin_factura: 'sin factura',
 }

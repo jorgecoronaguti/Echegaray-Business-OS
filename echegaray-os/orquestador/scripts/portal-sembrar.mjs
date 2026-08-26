@@ -22,8 +22,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import {
-  monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoDeCobranza,
-  seDescarta, terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio,
+  monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoPublicado,
+  fueCobrada, seDescarta, terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio,
   fusionarImportes, numerarRepetidos, depurarRotulo,
 } from '../lib/portal-siembra.mjs'
 
@@ -171,7 +171,10 @@ function lineaDeFila(valores, formulas, nroFila) {
   // En dólares el total viene convertido; neto e IVA se convierten con el MISMO tipo de cambio
   // implícito (total ÷ usd), para que las tres cifras sigan cerrando entre sí.
   const aUsd = (x) => (usd == null || !total || x == null ? x : Math.round((x * usd / total) * 100) / 100)
-  const cobrado = String(v?.[14] ?? '').trim().toLowerCase() === 'cobrado'
+  // EL ESTADO LO DECLARA EL SHEET Y SE LEE UNA SOLA VEZ. Nadie lo vuelve a decidir río abajo: ni
+  // `escribir()`, ni el informe en seco, ni la pantalla del cliente.
+  const prevista = fecha(v?.[16])
+  const cobrado = fueCobrada(v?.[14])
   return {
     fila: nroFila,
     clienteSheet: String(v?.[6] ?? '').trim(),
@@ -182,9 +185,11 @@ function lineaDeFila(valores, formulas, nroFila) {
     iva: usd != null ? aUsd(ivaCrudo) : ivaCrudo,
     moneda: usd != null ? 'USD' : (String(v?.[26] ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS'),
     factura: v?.[4] ? `${v?.[3] ?? ''} ${v?.[4]}`.trim() : null,
-    prevista: fecha(v?.[16]),
-    pago: cobrado ? fecha(v?.[16]) : null,
-    estado: estadoDeCobranza(v?.[14], null),
+    prevista,
+    pago: cobrado ? prevista : null,
+    estado: estadoPublicado({ estadoSheet: v?.[14], tipo, prevista, hoy: HOY }),
+    /** Lo que dice la columna O, tal cual, para poder cruzar el portal contra el Sheet a ojo. */
+    estadoSheet: String(v?.[14] ?? '').trim(),
   }
 }
 
@@ -267,7 +272,11 @@ function lineasDeObra(filas, nombreObra) {
       prevista: p.prevista, factura: partes.map((x) => x.factura).find(Boolean) ?? null,
       // PAGADO SÓLO SI TODAS LAS PARTES SE COBRARON: media certificación cobrada no es un cobro.
       pago: partes.every((x) => x.pago) ? p.pago : null,
-      estado: partes.every((x) => x.pago) ? 'pagado' : p.estado,
+      // Y EL ESTADO SALE DE LA PARTE QUE TODAVÍA NO SE COBRÓ, no de la primera del grupo: si el Sheet
+      // marcó cobrada la fila B y pendiente la N, el cobro está pendiente y así se publica.
+      estado: partes.every((x) => x.pago) ? 'cobrado'
+        : (partes.find((x) => x.estado !== 'cobrado')?.estado ?? p.estado),
+      estadoSheet: [...new Set(partes.map((x) => x.estadoSheet).filter(Boolean))].join('+'),
       // La nota guarda de qué filas del Sheet salió la línea y qué decían: es el único hilo para
       // volver del portal a Cobranzas cuando alguien pregunte por un importe.
       nota: `Cobranzas fila${partes.length > 1 ? 's' : ''} ${partes.map((x) => x.fila).join('+')} · ${[...new Set(partes.map((x) => x.concepto).filter(Boolean))].join(' + ')}`.slice(0, 200),
@@ -320,11 +329,10 @@ async function escribir(obras, porObra, corteDe) {
     let orden = 0
     for (const l of lineas) {
       orden += 1
-      // LOS CINCO ESTADOS DE `esquema_pago` son otros que los del portal: se traduce acá, una vez.
-      const estado = l.pago ? 'cobrado'
-        : l.tipo === 'fondo_reparo' ? 'retenido'
-        : !l.prevista ? 'previsto'
-        : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      // EL ESTADO YA ESTÁ DECIDIDO, en `estadoPublicado` y sobre la columna O del Sheet. Acá se
+      // guarda, no se vuelve a resolver: cuando esto derivaba la fecha por su cuenta, las tres filas
+      // que el dueño marcó «Proyectado» se publicaban como si fueran deuda exigible.
+      const estado = l.estado
       // ═══ DE UNA OBRA ANTERIOR ═══
       //
       // Un cobro anterior al corte del cliente es de trabajo previo, no de las obras en curso. Se le
@@ -374,10 +382,7 @@ async function escribirDelCliente(porCliente, todosLosClientes, corteDe) {
     let orden = 1000
     for (const l of lineas) {
       orden += 1
-      const estado = l.pago ? 'cobrado'
-        : l.tipo === 'fondo_reparo' ? 'retenido'
-        : !l.prevista ? 'previsto'
-        : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      const estado = l.estado
       const historico = Boolean(corteDe.get(clienteId) && l.prevista && l.prevista < corteDe.get(clienteId))
       await query(
         `insert into public.esquema_pago
@@ -427,7 +432,7 @@ function informar(obras, porObra, sinImputar, conflictos) {
     const marca = o.canonica ? '' : '  ⚠ NO está en el registro de obras del OS: se imputa pero no se publica'
     console.log(`\n  ${o.cliente.nombre_comercial} · ${o.nombre} — ${lineas.length} línea(s)${marca}`)
     for (const l of lineas) {
-      console.log(`   ${l.tipo.padEnd(12)} ${l.rotulo.slice(0, 36).padEnd(38)} ${$(l.monto, l.moneda).padStart(16)}  ${l.prevista ?? 'sin fecha'}  ${l.pago ? 'cobrado' : (l.estado ?? 'a vencer')}  [fila ${l.filas.join('+')}]`)
+      console.log(`   ${l.tipo.padEnd(12)} ${l.rotulo.slice(0, 36).padEnd(38)} ${$(l.monto, l.moneda).padStart(16)}  ${l.prevista ?? 'sin fecha'}  ${String(l.estadoSheet || '—').padEnd(11)}⇒ ${String(l.estado).padEnd(9)} [fila ${l.filas.join('+')}]`)
     }
   }
   if (conflictos.length) {

@@ -159,18 +159,70 @@ export function abarcaVariasObras(texto) {
   return /\btodas las obras\b|\bde todas\b|\bvarias obras\b/.test(sinTildes(texto))
 }
 
-/** El estado de la fila de Cobranzas, traducido al del cronograma del portal. */
-export function estadoDeCobranza(estado, fechaPago) {
-  const e = sinTildes(estado)
-  if (e === 'cobrado' || fechaPago) return 'pagado'
-  if (e === 'facturado' || e === 'pendiente') return null // lo decide la fecha, como en el portal
-  if (e === 'proyectado') return 'sin_factura'
-  return null
+/**
+ * LA ÚNICA LECTURA DE LA COLUMNA O DE COBRANZAS — sin tildes, en minúscula y SIN espacios.
+ *
+ * Había DOS lecturas distintas de la misma celda en el mismo circuito: el sembrador preguntaba si
+ * estaba cobrada con `.trim().toLowerCase()` y el estado se resolvía con una normalización que NO
+ * recortaba espacios. Con «Cobrado » —un espacio de más al tipear— la fila salía cobrada por una
+ * lectura y sin estado por la otra. Y «CANCELAR » dejaba de descartarse: una fila que el dueño mandó
+ * cancelar se le publicaba al cliente.
+ */
+export function estadoDelSheet(crudo) {
+  return sinTildes(crudo).trim()
+}
+
+/** ¿La columna O dice que esta fila ya se cobró? Misma lectura que `estadoDeCobranza`. */
+export function fueCobrada(estadoSheet) {
+  return estadoDelSheet(estadoSheet) === 'cobrado'
+}
+
+/**
+ * NÚCLEO PURO: la columna O de Cobranzas traducida a los cinco estados de `public.esquema_pago`.
+ *
+ * ═══ MANDA EL SHEET (26/08/2026) ═══
+ *
+ * Antes esta función devolvía los estados del PORTAL y el sembrador la ignoraba: escribía el estado
+ * derivando la fecha contra hoy. La columna se leía y se tiraba. Se ve en la base: de 79 líneas
+ * publicadas había 45 `cobrado` y 34 `a_vencer`, y NI UNA `previsto` — aunque el dueño tiene tres
+ * filas marcadas «Proyectado» en la columna O. El informe en seco encima imprimía «sin_factura» para
+ * esas mismas filas: el reporte y la base decían cosas distintas.
+ *
+ * ═══ QUÉ DECLARA EL SHEET Y QUÉ DERIVA ═══
+ *
+ * Lo dice su propia fórmula, la de la columna V, que es la que el dueño mira:
+ *   =IF(O="Cobrado";"✓ Cobrado";IF(O="Vencido";"▲ Vencido";IF(O="Proyectado";"⊘ Proyectado";
+ *      IF(Q<TODAY();"▲ Vencido";IF(Q-TODAY()<=7;"⇒ Por vencer";"· Vigente")))))
+ *
+ * O es la fuente; U y V son fórmulas SOBRE O. «Cobrado» y «Proyectado» son declaraciones y mandan.
+ * «Pendiente», «Facturado» y «Vencido» dicen todos lo mismo —todavía no se cobró— y el vencimiento
+ * no lo declara nadie: lo calcula el propio Sheet con `Q<TODAY()`. Acá se hace ESA misma cuenta, y
+ * es lo único que se deriva. Tomar «Vencido» como terminal contradiría a la pantalla el día que
+ * administración mueve la fecha al futuro en la ficha del cliente y el sync todavía no corrió.
+ */
+export function estadoDeCobranza(estadoSheet, prevista, hoy) {
+  const e = estadoDelSheet(estadoSheet)
+  if (e === 'cobrado') return 'cobrado'
+  if (e === 'proyectado') return 'previsto'
+  // Sin fecha no hay vencimiento que calcular: es un cobro acordado y todavía sin programar.
+  if (!prevista) return 'previsto'
+  return prevista < hoy ? 'vencido' : 'a_vencer'
+}
+
+/**
+ * EL ESTADO QUE SE GUARDA — y el mismo que imprime la corrida en seco.
+ *
+ * `retenido` es el único que no sale de la columna O: el Sheet no tiene esa palabra, sale de QUÉ ES
+ * la línea. Va después de `cobrado` porque un fondo de reparo ya devuelto está cobrado, no retenido.
+ */
+export function estadoPublicado({ estadoSheet, tipo, prevista, hoy }) {
+  const e = estadoDeCobranza(estadoSheet, prevista, hoy)
+  return e !== 'cobrado' && tipo === 'fondo_reparo' ? 'retenido' : e
 }
 
 /** Una fila de Cobranzas que no se carga nunca: la que el dueño marcó para cancelar. */
 export function seDescarta(estado) {
-  return sinTildes(estado) === 'cancelar'
+  return estadoDelSheet(estado) === 'cancelar'
 }
 
 // ── LO QUE EL CLIENTE NO PUEDE LEER ──────────────────────────────────────────────────────────

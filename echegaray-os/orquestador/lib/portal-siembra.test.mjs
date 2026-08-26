@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoDeCobranza, seDescarta,
+  estadoDelSheet, estadoPublicado, fueCobrada,
   terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio, parteDeclaradaUsd,
   totalDeclaradoUsd, fusionarImportes, numerarRepetidos, depurarRotulo, abarcaVariasObras,
 } from './portal-siembra.mjs'
@@ -76,11 +77,66 @@ test('lo marcado CANCELAR no se carga nunca', () => {
   assert.equal(seDescarta('Cobrado'), false)
 })
 
-test('cobrado es pagado; lo demás lo decide la fecha, como en el portal', () => {
-  assert.equal(estadoDeCobranza('Cobrado', null), 'pagado')
-  assert.equal(estadoDeCobranza('Pendiente', null), null)
-  assert.equal(estadoDeCobranza('Facturado', null), null)
-  assert.equal(estadoDeCobranza('Proyectado', null), 'sin_factura')
+// ── LA COLUMNA O DE COBRANZAS ES LA FUENTE DEL ESTADO ────────────────────────────────────────
+//
+// El defecto que estos tests atrapan: la columna se leía y se tiraba. El sembrador volvía a decidir
+// el estado comparando la fecha contra hoy, y la pantalla lo decidía una tercera vez. En la base no
+// había ni una sola línea `previsto` aunque el Sheet tenía tres filas «Proyectado».
+
+const HOY = '2026-08-26'
+
+test('«Proyectado» NO se deriva de la fecha: es lo que el dueño declaró', () => {
+  // Éste es el defecto. Con la fecha por delante, derivar daba `a_vencer`; con la fecha pasada daba
+  // `vencido` — le reclamaba al cliente un cobro que todavía no le facturamos.
+  assert.equal(estadoDeCobranza('Proyectado', '2026-09-30', HOY), 'previsto')
+  assert.equal(estadoDeCobranza('Proyectado', '2026-01-10', HOY), 'previsto')
+})
+
+test('«Cobrado» manda sobre la fecha, y los cinco estados son los del CHECK de esquema_pago', () => {
+  assert.equal(estadoDeCobranza('Cobrado', '2026-01-15', HOY), 'cobrado')
+  // Los valores que puede devolver son EXACTAMENTE los que acepta la base. Uno de más revienta la
+  // corrida entera contra `esquema_pago_estado_check`, con las líneas a medio escribir.
+  const DE_LA_BASE = ['cobrado', 'a_vencer', 'vencido', 'previsto', 'retenido']
+  const salidas = new Set()
+  for (const e of ['Cobrado', 'Pendiente', 'Facturado', 'Proyectado', 'Vencido', '']) {
+    for (const f of ['2026-01-10', '2026-12-31', null]) {
+      for (const tipo of ['otro', 'fondo_reparo']) {
+        salidas.add(estadoPublicado({ estadoSheet: e, tipo, prevista: f, hoy: HOY }))
+      }
+    }
+  }
+  for (const s of salidas) assert.ok(DE_LA_BASE.includes(s), `«${s}» no existe en esquema_pago`)
+})
+
+test('«Pendiente» y «Facturado» no declaran vencimiento: lo calcula la fecha, como la columna V', () => {
+  assert.equal(estadoDeCobranza('Pendiente', '2026-08-31', HOY), 'a_vencer')
+  assert.equal(estadoDeCobranza('Pendiente', '2026-08-25', HOY), 'vencido')
+  assert.equal(estadoDeCobranza('Facturado', '2026-09-17', HOY), 'a_vencer')
+  // Vence hoy: todavía no venció. Es el `Q<TODAY()` del Sheet, ni un día antes.
+  assert.equal(estadoDeCobranza('Pendiente', HOY, HOY), 'a_vencer')
+  // Sin fecha no hay vencimiento que calcular: acordado y sin programar.
+  assert.equal(estadoDeCobranza('Pendiente', null, HOY), 'previsto')
+})
+
+test('la columna se lee UNA vez: espacios, mayúsculas y tildes no cambian lo que dice', () => {
+  // El sembrador preguntaba «¿está cobrada?» con `.trim()` y resolvía el estado SIN `.trim()`. Con un
+  // espacio de más las dos lecturas de la misma celda daban cosas distintas.
+  for (const crudo of ['Cobrado', 'COBRADO', ' cobrado ', 'Cobrado\n', '  Cóbrado  ']) {
+    assert.equal(fueCobrada(crudo), true, `«${crudo}»`)
+    assert.equal(estadoDeCobranza(crudo, '2026-12-01', HOY), 'cobrado', `«${crudo}»`)
+  }
+  assert.equal(estadoDelSheet('  CANCELAR '), 'cancelar')
+  // Lo peor del espacio de más: una fila que el dueño mandó cancelar se le publicaba al cliente.
+  assert.equal(seDescarta('CANCELAR '), true)
+  assert.equal(seDescarta(' cancelar'), true)
+  assert.equal(seDescarta('Pendiente'), false)
+})
+
+test('el fondo de reparo es retenido salvo que ya se haya devuelto', () => {
+  assert.equal(estadoPublicado({ estadoSheet: 'Pendiente', tipo: 'fondo_reparo', prevista: '2026-01-10', hoy: HOY }), 'retenido')
+  // Ya devuelto: está cobrado, no retenido. Marcarlo `retenido` lo dejaría fuera de lo pagado.
+  assert.equal(estadoPublicado({ estadoSheet: 'Cobrado', tipo: 'fondo_reparo', prevista: '2026-01-10', hoy: HOY }), 'cobrado')
+  assert.equal(estadoPublicado({ estadoSheet: 'Pendiente', tipo: 'certificado', prevista: '2026-01-10', hoy: HOY }), 'vencido')
 })
 
 test('con UNA sola obra no hay nada que mezclar: la fila va ahí', () => {
