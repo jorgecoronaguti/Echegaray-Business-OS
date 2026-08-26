@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelClientePara } from '../../datos'
-import { pagosDeObras, hoyEnObra } from '../datosObra'
+import { accesoDelPortal } from '../../datos'
+import { loQueSiPuedeVer } from '../../permisos'
+import { esquemaDelPortal, hoyEnObra } from '../datosObra'
 import { estadoDePago, pesos, diaMes } from '../../cronograma'
 import { IconoEstado, Vacio, Fila } from '../../Piezas'
 import { IconoDescarga } from '../../iconos'
@@ -18,24 +19,30 @@ import { IconoDescarga } from '../../iconos'
 // SON LAS FACTURAS DEL CLIENTE, DE TODAS SUS OBRAS (26/08/2026). Antes mostraba las de la obra elegida
 // arriba; el dueño lo rechazó —«me sirve por cliente y q cada cliente tenga todas sus obras»—: quien
 // busca una factura busca un NÚMERO, y no tiene por qué acordarse de en qué obra la emitimos.
+//
+// ═══ LOS NÚMEROS DE FACTURA TODAVÍA NO TIENEN DÓNDE VIVIR ═══
+//
+// `esquema_pago` no tiene `factura_numero` ni `recibo_numero`: llegan en una migración escrita y sin
+// aplicar. Hasta que se aplique, esta pantalla queda vacía y lo DICE, en vez de mostrar filas sin
+// número que se leerían como facturas sin identificar.
 
 export const dynamic = 'force-dynamic'
 
 export default async function Facturas() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
-  if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
 
+  const { pagos, bloques } = await esquemaDelPortal(acceso)
   const hoy = hoyEnObra()
-  const porObra = await pagosDeObras(obras)
-  const todos = obras.flatMap((o) => porObra.get(o.id) ?? [])
+  const montos = acceso.puedeVerMontos
   // POR FECHA, NO POR OBRA. La lista se lee para encontrar una factura, y lo que uno recuerda de una
   // factura es cuándo fue, no de qué obra era. Las que no tienen fecha van al final, no al principio.
-  const facturas = todos.filter((p) => p.facturaNumero).sort((a, b) =>
+  const facturas = pagos.filter((p) => p.facturaNumero).sort((a, b) =>
     (b.fechaPago ?? b.fechaPrevista ?? '').localeCompare(a.fechaPago ?? a.fechaPrevista ?? ''))
-  const variasObras = obras.length > 1
-  const sinFacturar = todos.length - facturas.length
+  const variasObras = bloques.length > 1
+  const sinFacturar = pagos.length - facturas.length
 
   return (
     <>
@@ -46,12 +53,14 @@ export default async function Facturas() {
         </span>
       </div>
 
+      {!montos ? <p className="mt-4 text-[13.5px] text-muted">{loQueSiPuedeVer(acceso)}</p> : null}
+
       {facturas.length === 0 ? (
         <div className="mt-6">
           <Vacio>
-            {todos.length
-              ? 'Todavía no emitimos ninguna factura.'
-              : 'Todavía no cargamos el plan de pagos.'}
+            {pagos.length
+              ? 'Todavía no registramos el número de ninguna factura de este plan.'
+              : 'Todavía no publicamos el plan de pagos.'}
           </Vacio>
         </div>
       ) : (
@@ -74,7 +83,9 @@ export default async function Facturas() {
                 <span className="w-[118px] text-[12.5px] text-pos">
                   {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
                 </span>
-                <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                {montos ? (
+                  <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                ) : null}
                 <span className="grid min-h-11 min-w-11 place-items-center text-faint" aria-hidden>
                   <IconoDescarga tamano={18} />
                 </span>

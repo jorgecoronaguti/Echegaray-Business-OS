@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../../sesion'
-import { obrasDelMail } from '../../../datos'
-import { obraDetalle, pagosDeObra } from '../../datosObra'
+import { accesoDelPortal, obrasDelCliente } from '../../../datos'
+import { obraDetalle } from '../../datosObra'
 import { documentosDeObra } from '../../documentos/drive'
 import { cierreDeObra } from '../cierre'
 import { pesos } from '../../../cronograma'
@@ -24,14 +24,14 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
 
   // EL ALCANCE SE COMPRUEBA CONTRA LA BASE, no contra la URL. Cambiar el id a mano no abre la obra
   // de otro cliente.
-  const permitidas = await obrasDelMail(sesion.mail)
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
+  const permitidas = await obrasDelCliente(acceso)
   if (!permitidas.some((o) => o.id === obraId)) notFound()
 
-  const [obra, pagos, cierre] = await Promise.all([obraDetalle(obraId), pagosDeObra(obraId), cierreDeObra(obraId)])
+  const [obra, cierre] = await Promise.all([obraDetalle(obraId), cierreDeObra(obraId)])
   if (!obra) notFound()
   const { datos, al } = await documentosDeObra(obra.driveCarpetaId)
-  const facturas = pagos.filter((p) => p.facturaNumero)
-  const recibos = pagos.filter((p) => p.reciboNumero)
 
   return (
     <>
@@ -95,7 +95,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
       <div className="flex min-h-11 items-center gap-3 border-b border-line py-[15px]">
         <span className="text-pos"><IconoCheck tamano={19} /></span>
         <span className="flex-1 text-sm">
-          {facturas.length} {facturas.length === 1 ? 'factura' : 'facturas'} · {recibos.length} {recibos.length === 1 ? 'recibo' : 'recibos'}
+          {cierre.facturas} {cierre.facturas === 1 ? 'factura' : 'facturas'} · {cierre.recibos} {cierre.recibos === 1 ? 'recibo' : 'recibos'}
         </span>
         <span className="tnum font-mono text-[15px]">{pesos(cierre.cobrado)}</span>
         <span className="grid min-h-11 min-w-11 place-items-center text-faint"><IconoDescarga tamano={18} /></span>

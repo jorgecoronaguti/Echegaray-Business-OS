@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sesionDelPortal } from '../../sesion'
+import { accesoDelPortal, obrasDelCliente } from '../../datos'
 import { pesos } from '../../cronograma'
 import { Vacio } from '../../Piezas'
 import { IconoChevron, IconoTerminadas } from '../../iconos'
@@ -22,11 +23,19 @@ export default async function Terminadas() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
 
-  const { data } = await createAdminClient()
-    .from('obras')
-    .select('id, nombre, monto_contratado, fecha_inicio, fecha_cierre, estado')
-    .eq('cliente_id', sesion.clienteId).eq('estado', 'cerrada')
-    .order('fecha_cierre', { ascending: false, nullsFirst: false })
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
+
+  // EL ALCANCE SALE DE `cliente_acceso`, NO DE LA COOKIE. Antes esta consulta filtraba por el
+  // `cliente_id` de la cookie y por nada más: un acceso revocado seguía viendo las obras cerradas.
+  const suyas = new Set((await obrasDelCliente(acceso)).map((o) => o.id))
+  const { data } = suyas.size
+    ? await createAdminClient()
+      .from('obras')
+      .select('id, nombre, monto_contratado, fecha_inicio, fecha_cierre, estado')
+      .in('id', [...suyas]).eq('estado', 'cerrada')
+      .order('fecha_cierre', { ascending: false, nullsFirst: false })
+    : { data: [] as { id: string; nombre: string; monto_contratado: number | null; fecha_inicio: string | null; fecha_cierre: string | null; estado: string }[] }
 
   const obras = data ?? []
   const cierres = await Promise.all(obras.map((o) => cierreDeObra(String(o.id))))

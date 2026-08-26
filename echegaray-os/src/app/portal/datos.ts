@@ -1,143 +1,132 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ObraDelPortal } from './Shell'
+import { accesoVigente, alcanzaLaObra, limpiarNombre, type AccesoDelPortal, type FilaAcceso } from './permisos'
 
-// QUÉ VE ESTE MAIL — la pregunta se le hace a la BASE, no a la cookie.
+// QUÉ VE ESTE MAIL — la pregunta se le hace a `public.cliente_acceso`, que es la ficha del cliente.
 //
-// El alcance de un mail es una decisión del administrador y vive en `cliente_mail`. Que la cookie
-// diga «cliente X» no autoriza a ver nada: se vuelve a preguntar acá, por MAIL, en cada carga. Si el
-// administrador da de baja un acceso, la sesión abierta deja de ver la obra en la pantalla siguiente,
-// no cuando venza la cookie doce horas después.
+// ═══ LA CORRECCIÓN DEL 26/08/2026 ═══
 //
-// ═══ UN MAIL, VARIOS CLIENTES (26/08/2026) ═══
+// Este archivo leía `cliente_mail`, una tabla que el portal se creó para sí mismo sin ver que la
+// pantalla 31 —«Acceso al portal», ya en producción— administraba exactamente lo mismo en
+// `cliente_acceso`. Convivían dos definiciones de «quién entra»: administración revocaba un acceso
+// en la ficha y el portal seguía dejándolo pasar. LA FICHA DEL CLIENTE GANA, siempre.
 //
-// Antes esto preguntaba por `cliente_id` —el que la cookie guardó al entrar— y por eso un mail veía
-// las obras de UN cliente. Ahora pregunta por el mail y junta todo su alcance:
-//   · fila con `obra_id NULL` → todas las obras de ese cliente;
-//   · fila con `obra_id` → sólo esa obra.
-// El mail del dueño puede así estar habilitado en varios clientes y ver, desde el portal, exactamente
-// lo que cada uno ve.
+// Lo que `cliente_mail` no sabía y acá sí se respeta: un acceso vale mientras `revocado_at IS NULL`;
+// `obras = NULL` es TODAS y `obras = []` es NINGUNA; y los tres permisos (`puede_ver_obra`,
+// `puede_ver_montos`, `puede_aprobar`) son independientes. Las reglas viven en `./permisos.ts`,
+// puras y con test — acá sólo se consulta.
 //
-// EL CLIENTE_ID DE LA COOKIE YA NO DECIDE NADA. Queda para saber por dónde entró; el alcance sale de
-// acá. Un permiso que viaja en el navegador es un permiso que se puede editar.
+// ═══ LA COOKIE NO DECIDE NADA ═══
+//
+// El alcance se vuelve a preguntar por MAIL en cada carga. Si administración revoca un acceso, la
+// sesión abierta deja de ver en la pantalla siguiente, no cuando venza la cookie doce horas después.
+// Un permiso que viaja en el navegador es un permiso que se puede editar.
 
-/** Una obra del alcance, con el cliente al que pertenece: con varios clientes hay que poder decir cuál. */
-export type ObraAlcanzada = ObraDelPortal & { clienteId: string; clienteNombre: string; cerrada: boolean }
+const COLUMNAS_ACCESO =
+  'id, cliente_id, puede_ver_obra, puede_ver_montos, puede_aprobar, obras, revocado_at,'
+  + ' clientes(nombre_comercial, razon_social)'
 
-/** Los paréntesis de «(IMOTOR / Javier Sánchez)» son una anotación interna de administración. */
-function limpiarNombre(crudo: string): string {
-  return crudo.trim().replace(/^\((.*)\)$/, '$1').trim()
+type FilaConCliente = FilaAcceso & {
+  clientes: { nombre_comercial: string | null; razon_social: string | null }
+    | { nombre_comercial: string | null; razon_social: string | null }[] | null
 }
 
 /**
- * TODAS LAS OBRAS QUE ESTE MAIL ALCANZA, de todos los clientes en los que está habilitado.
+ * LOS ACCESOS VIVOS DE ESTE MAIL, uno por cliente.
  *
- * Devuelve `[]` cuando el mail no tiene ninguna fila activa, y eso NO es un error: es el estado de un
- * acceso que el administrador acaba de dar de baja. La pantalla lo dice; no muestra una obra igual.
+ * Devuelve `[]` cuando no hay ninguno, y eso NO es un error: es el estado de un acceso que
+ * administración acaba de revocar. La pantalla lo dice; no muestra una obra igual.
+ *
+ * `revocado_at is null` va en el `where` Y en `accesoVigente`. No es redundancia: el filtro de la
+ * consulta es el que evita traer filas de más, y la función pura es la que tiene test y el único
+ * lugar donde cambiar la regla el día que un acceso también venza.
  */
-export async function obrasDelMail(mail: string): Promise<ObraAlcanzada[]> {
-  const sb = createAdminClient()
-  const { data: permisos } = await sb
-    .from('cliente_mail')
-    .select('cliente_id, obra_id')
-    .eq('mail', mail)
-    .eq('activo', true)
+export async function accesosDelMail(mail: string): Promise<AccesoDelPortal[]> {
+  const { data } = await createAdminClient()
+    .from('cliente_acceso')
+    .select(COLUMNAS_ACCESO)
+    .eq('email', mail)
+    .is('revocado_at', null)
 
-  if (!permisos?.length) return []
-
-  const clientesEnteros = [...new Set(permisos.filter((p) => p.obra_id == null).map((p) => String(p.cliente_id)))]
-  const obrasSueltas = [...new Set(permisos.filter((p) => p.obra_id != null).map((p) => String(p.obra_id)))]
-
-  // Dos consultas y no un `or(...)` armado con strings: el filtro de PostgREST se escribe en una URL
-  // y un nombre con una coma adentro parte la expresión. Acá los valores van como parámetros.
-  const [porCliente, porObra] = await Promise.all([
-    clientesEnteros.length
-      ? sb.from('obras').select('id, nombre, estado, cliente_id, clientes(nombre_comercial, razon_social)').in('cliente_id', clientesEnteros)
-      : Promise.resolve({ data: [] as never[] }),
-    obrasSueltas.length
-      ? sb.from('obras').select('id, nombre, estado, cliente_id, clientes(nombre_comercial, razon_social)').in('id', obrasSueltas)
-      : Promise.resolve({ data: [] as never[] }),
-  ])
-
-  type Fila = { id: string; nombre: string; estado: string; cliente_id: string; clientes: { nombre_comercial: string | null; razon_social: string | null } | { nombre_comercial: string | null; razon_social: string | null }[] | null }
-  const unicas = new Map<string, ObraAlcanzada>()
-  for (const o of [...(porCliente.data ?? []), ...(porObra.data ?? [])] as unknown as Fila[]) {
-    // PostgREST devuelve el join anidado como objeto o como arreglo según la relación que infiera.
-    const c = Array.isArray(o.clientes) ? o.clientes[0] : o.clientes
-    // Un mail habilitado al cliente entero Y a una de sus obras trae la misma obra dos veces.
-    unicas.set(String(o.id), {
-      id: String(o.id),
-      nombre: String(o.nombre),
-      clienteId: String(o.cliente_id),
-      clienteNombre: limpiarNombre(String(c?.nombre_comercial ?? c?.razon_social ?? 'Cliente')),
-      cerrada: String(o.estado) === 'cerrada',
+  const filas = (data ?? []) as unknown as FilaConCliente[]
+  return filas
+    .filter(accesoVigente)
+    .map((f) => {
+      // PostgREST devuelve el join anidado como objeto o como arreglo según la relación que infiera.
+      const c = Array.isArray(f.clientes) ? f.clientes[0] : f.clientes
+      return {
+        accesoId: String(f.id),
+        clienteId: String(f.cliente_id),
+        clienteNombre: limpiarNombre(String(c?.nombre_comercial ?? c?.razon_social ?? 'Cliente')),
+        puedeVerObra: f.puede_ver_obra === true,
+        puedeVerMontos: f.puede_ver_montos === true,
+        puedeAprobar: f.puede_aprobar === true,
+        // `obras` viaja tal cual: `null` y `[]` significan cosas opuestas y aplanarlos acá sería
+        // exactamente el defecto que publica los permisos al revés.
+        obras: f.obras ?? null,
+      }
     })
-  }
+    .sort((a, b) => a.clienteNombre.localeCompare(b.clienteNombre, 'es'))
+}
+
+/**
+ * EL ACCESO CON EL QUE SE ESTÁ MIRANDO. `null` = este mail ya no alcanza a ese cliente.
+ *
+ * El `clienteId` viene de la cookie —lo eligió en la puerta— pero NO es una credencial: se busca
+ * contra los accesos reales del mail. Aunque se rompiera la firma de la cookie, un cliente que el
+ * mail no alcanza devuelve `null` y la pantalla no dibuja nada suyo.
+ */
+export async function accesoDelPortal(mail: string, clienteId: string): Promise<AccesoDelPortal | null> {
+  return (await accesosDelMail(mail)).find((a) => a.clienteId === clienteId) ?? null
+}
+
+/** Una obra del alcance, con el cliente al que pertenece. */
+export type ObraAlcanzada = ObraDelPortal & { clienteId: string; clienteNombre: string; cerrada: boolean }
+
+/**
+ * LAS OBRAS DEL CLIENTE, PARA DOCUMENTOS Y TERMINADAS.
+ *
+ * ═══ LO QUE ESTA FUNCIÓN NO PUEDE HACER, DICHO ACÁ ═══
+ *
+ * Estas dos pantallas se apoyan en `public.obras` (uuid), y `cliente_acceso.obras` guarda ids de
+ * `public.obra_canonica` (texto) — son DOS registros de obra distintos, con distinta granularidad:
+ * `public.obras` tiene «MAMPOSTERÍA» donde `obra_canonica` tiene «Galpones, Mampostería, Cancha de
+ * Padel». No existe mapeo entre ellos y fabricarlo sería inventar el dato.
+ *
+ * Por eso, cuando el acceso está ACOTADO a un subconjunto de obras (`obras` no es `null`), esta
+ * función devuelve `[]`: no se puede afirmar cuál de las obras de `public.obras` corresponde a las
+ * autorizadas, y mostrarlas todas filtraría documentos de obras que ese contacto no tiene. Falla
+ * cerrado. El cronograma —que sí vive en `obra_canonica`— no tiene esta limitación.
+ */
+export async function obrasDelCliente(acceso: AccesoDelPortal): Promise<ObraAlcanzada[]> {
+  // `alcanzaLaObra(obras, null)` es true sólo con `obras = null`: es la misma regla probada, no un
+  // `if (obras !== null)` suelto que mañana se cambie en un lugar y no en el otro.
+  if (!alcanzaLaObra(acceso.obras, null)) return []
+
+  const { data } = await createAdminClient()
+    .from('obras')
+    .select('id, nombre, estado')
+    .eq('cliente_id', acceso.clienteId)
+
+  const obras = ((data ?? []) as { id: string; nombre: string; estado: string }[]).map((o) => ({
+    id: String(o.id),
+    nombre: String(o.nombre),
+    clienteId: acceso.clienteId,
+    clienteNombre: acceso.clienteNombre,
+    cerrada: String(o.estado) === 'cerrada',
+  }))
 
   // LAS CERRADAS VAN AL FINAL. La primera de la lista es la que abre el portal, y abrir por una obra
-  // terminada le muestra al cliente un cronograma vacío de algo que ya pagó — parece que perdimos su
-  // obra en curso. Las terminadas tienen su propia pantalla.
-  return [...unicas.values()].sort(
-    (a, b) =>
-      Number(a.cerrada) - Number(b.cerrada) ||
-      a.clienteNombre.localeCompare(b.clienteNombre, 'es') ||
-      a.nombre.localeCompare(b.nombre, 'es'),
+  // terminada le muestra al cliente algo que ya pagó. Las terminadas tienen su propia pantalla.
+  return obras.sort(
+    (a, b) => Number(a.cerrada) - Number(b.cerrada) || a.nombre.localeCompare(b.nombre, 'es'),
   )
 }
 
-/**
- * EL RÓTULO DE ARRIBA: de quién es la obra que se está mirando.
- *
- * Con un solo cliente es su nombre, como siempre. Con varios es el de la obra ABIERTA, que es la
- * única respuesta que no miente: poner «3 clientes» ahí no le dice a nadie qué está viendo.
- */
-export function nombreParaElEncabezado(obras: ObraAlcanzada[], activa: ObraAlcanzada | null): string {
-  return activa?.clienteNombre ?? obras[0]?.clienteNombre ?? 'Su obra'
-}
-
-/** La obra elegida por la URL, acotada SIEMPRE a las que este mail alcanza. */
+/** La obra elegida por la URL, acotada SIEMPRE a las que este acceso alcanza. */
 export function obraElegida<T extends { id: string }>(obras: T[], pedida: string | undefined): T | null {
   const halla = pedida ? obras.find((o) => o.id === pedida) : null
   // Una obra pedida que no está en el alcance no da error ni pantalla vacía: cae en la primera suya.
   return halla ?? obras[0] ?? null
-}
-
-// ── EL PORTAL SE ORGANIZA POR CLIENTE, NO POR OBRA (26/08/2026) ──────────────────────────────
-//
-// La maqueta ponía arriba una barra de OBRAS y cada pantalla mostraba UNA. El dueño lo probó y lo
-// rechazó: «por obra ingresar no me sirve, me sirve por cliente y q cada cliente tenga todas sus
-// obras». Tiene razón y el motivo es del negocio, no de la pantalla: un cliente con cuatro obras no
-// quiere saber cuánto debe en la Mampostería —quiere saber cuánto debe—. Elegir una obra para ver el
-// total lo obliga a sumar de memoria cuatro pantallas.
-//
-// Ahora lo que se elige es el CLIENTE (y sólo cuando el mail alcanza más de uno, que es el caso del
-// dueño mirando lo que ve cada uno). Todas las obras de ese cliente se muestran juntas, agrupadas.
-
-export type ClienteDelPortal = { id: string; nombre: string; obras: ObraAlcanzada[] }
-
-/**
- * LAS OBRAS DE UN CLIENTE, PARA ESTE MAIL. El portal entero se dibuja con esto.
- *
- * El `clienteId` viene de la cookie —lo eligió en la puerta— pero NO es una credencial: se filtra
- * contra el alcance real del mail. Editar la cookie no alcanza para ver otro cliente porque la cookie
- * está firmada, y aunque se rompiera la firma, un cliente que el mail no alcanza devuelve lista vacía.
- */
-export async function obrasDelClientePara(mail: string, clienteId: string): Promise<ObraAlcanzada[]> {
-  return (await obrasDelMail(mail)).filter((o) => o.clienteId === clienteId)
-}
-
-/** Los clientes que este mail alcanza, cada uno con TODAS sus obras. Deriva de `obrasDelMail`. */
-export function clientesDelMail(obras: ObraAlcanzada[]): ClienteDelPortal[] {
-  const porCliente = new Map<string, ClienteDelPortal>()
-  for (const o of obras) {
-    const previo = porCliente.get(o.clienteId)
-    if (previo) previo.obras.push(o)
-    else porCliente.set(o.clienteId, { id: o.clienteId, nombre: o.clienteNombre, obras: [o] })
-  }
-  return [...porCliente.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-}
-
-/** El cliente elegido por la URL, acotado SIEMPRE a los que este mail alcanza. */
-export function clienteElegido(clientes: ClienteDelPortal[], pedido: string | undefined): ClienteDelPortal | null {
-  return (pedido ? clientes.find((c) => c.id === pedido) : null) ?? clientes[0] ?? null
 }

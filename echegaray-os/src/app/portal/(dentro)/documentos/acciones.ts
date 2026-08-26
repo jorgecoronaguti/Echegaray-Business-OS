@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelMail } from '../../datos'
+import { accesoDelPortal, obrasDelCliente } from '../../datos'
 
 // LO QUE SUBE EL CLIENTE — se registra, y administración se entera.
 //
@@ -19,7 +19,11 @@ export async function registrarAdjunto(
   if (!sesion) return { hecho: false, error: 'La sesión venció' }
 
   const obraId = String(form.get('obraId') ?? '')
-  const permitidas = await obrasDelMail(sesion.mail)
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  // Sin acceso vigente, o sin `puede_ver_obra`, no hay dónde adjuntar: la misma respuesta que para
+  // una obra ajena, porque distinguirlas convertiría el formulario en un oráculo de qué obras hay.
+  if (!acceso?.puedeVerObra) return { hecho: false, error: 'Esa obra no es suya' }
+  const permitidas = await obrasDelCliente(acceso)
   if (!permitidas.some((o) => o.id === obraId)) return { hecho: false, error: 'Esa obra no es suya' }
 
   const archivo = form.get('archivo')

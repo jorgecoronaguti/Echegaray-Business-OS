@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../sesion'
-import { obrasDelClientePara } from '../datos'
-import { obrasDetalle, pagosDeObras, hoyEnObra, type PagoConObra } from './datosObra'
+import { accesoDelPortal } from '../datos'
+import { loQueSiPuedeVer } from '../permisos'
+import { esquemaDelPortal, hoyEnObra, type PagoConObra } from './datosObra'
 import { proximoPago, resumenDeCobro, loQueSigue, estadoDePago, pesos, diaMes } from '../cronograma'
 import { IconoEstado, Rubro, Vacio, Fila } from '../Piezas'
 import { IconoPagos, IconoBanco, IconoDescarga } from '../iconos'
@@ -22,23 +23,30 @@ import { IconoPagos, IconoBanco, IconoDescarga } from '../iconos'
 //
 // El próximo pago no se calcula acá: sale de `cronograma.ts`, la misma función que usa Pagos. Si cada
 // pantalla resolviera por su cuenta, Inicio y Pagos podrían mostrar dos pagos distintos el mismo día.
+//
+// ═══ SIN `puede_ver_montos` NO HAY IMPORTES, Y NO HAY «$ 0» ═══
+//
+// La pantalla se reordena: el número grande deja de ser plata y pasa a ser la FECHA del próximo
+// vencimiento, que es lo que ese contacto sí tiene derecho a saber. Las tres líneas de totales se
+// retiran enteras. Tapar los importes con un guión sería peor que no mostrarlos: «—» se lee «este
+// pago no tiene importe», y seis renglones así dicen que la empresa no le facturó nada.
 
 export const dynamic = 'force-dynamic'
 
 export default async function Inicio() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
-  if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail. Escribinos y lo resolvemos.</Vacio>
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
 
-  const [detalles, porObra] = await Promise.all([obrasDetalle(obras.map((o) => o.id)), pagosDeObras(obras)])
+  const { pagos, bloques, contratos } = await esquemaDelPortal(acceso)
   const hoy = hoyEnObra()
-  const contratoDe = new Map(detalles.map((d) => [d.id, d.contrato]))
-  const todos = obras.flatMap((o) => porObra.get(o.id) ?? [])
+  const montos = acceso.puedeVerMontos
 
-  const proximo = proximoPago(todos) as PagoConObra | null
-  const r = resumenDeCobro(todos, null, hoy)
-  const siguen = loQueSigue(todos, obras.length > 1 ? 4 : 2) as PagoConObra[]
+  const proximo = proximoPago(pagos) as PagoConObra | null
+  const r = resumenDeCobro(pagos, null, hoy)
+  const siguen = loQueSigue(pagos, bloques.length > 1 ? 4 : 2) as PagoConObra[]
+  const variasObras = bloques.length > 1
 
   return (
     // EN EL TELÉFONO LA PRIMARIA VA ABAJO, después de las tres líneas —así lo dibuja la maqueta y así
@@ -47,80 +55,95 @@ export default async function Inicio() {
     <section className="flex flex-col">
       <div className="contents md:flex md:flex-wrap md:items-end md:gap-x-10">
         <div>
-          <p className="text-[11px] tracking-[.09em] text-faint">PRÓXIMO PAGO</p>
+          <p className="text-[11px] tracking-[.09em] text-faint">
+            {montos ? 'PRÓXIMO PAGO' : 'PRÓXIMO VENCIMIENTO'}
+          </p>
           {proximo ? (
             <>
               <p className="tnum mt-1.5 font-mono text-[38px] font-semibold leading-none tracking-[-.025em] md:text-[40px]">
-                {pesos(proximo.monto, proximo.moneda)}
+                {montos ? pesos(proximo.monto, proximo.moneda) : diaMes(proximo.fechaPrevista)}
               </p>
               <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-muted">
                 <IconoPagos tamano={17} />
-                <span className="tnum">{diaMes(proximo.fechaPrevista)}</span>
-                <span className="text-faint">· {proximo.rotulo}</span>
+                {montos ? <span className="tnum">{diaMes(proximo.fechaPrevista)}</span> : null}
+                <span className="text-faint">{montos ? '· ' : ''}{proximo.rotulo}</span>
                 {/* CON VARIAS OBRAS HAY QUE DECIR DE CUÁL ES. Un monto sin obra obliga a adivinar. */}
-                {obras.length > 1 ? <span className="text-faint">· {proximo.obraNombre}</span> : null}
+                {variasObras ? <span className="text-faint">· {proximo.obraNombre || 'sin obra asignada'}</span> : null}
               </p>
             </>
           ) : (
-            // NO SE DIBUJA UN CERO. Sin cronograma cargado no hay próximo pago, y decir «$ 0» sería
+            // NO SE DIBUJA UN CERO. Sin cronograma publicado no hay próximo pago, y decir «$ 0» sería
             // afirmar que no debe nada.
             <p className="mt-2 max-w-[420px] text-[15px] text-muted">
-              {todos.length ? 'No queda ningún pago pendiente.' : 'Todavía no cargamos el plan de pagos.'}
+              {pagos.length ? 'No queda ningún pago pendiente.' : 'Todavía no publicamos el plan de pagos.'}
             </p>
           )}
         </div>
 
-        <div className="order-3 mt-7 flex items-center gap-2.5 md:order-none md:ml-auto md:mt-0">
-          <Link
-            href="/portal/transferir"
-            className="flex min-h-[46px] items-center gap-[9px] rounded-[6px] bg-marca px-5 text-sm font-semibold text-ink"
-          >
-            <IconoBanco tamano={18} />
-            <span>Transferir</span>
-          </Link>
-          <Link
-            href="/portal/pagos"
-            title="Ver el cronograma completo"
-            aria-label="Ver el cronograma completo"
-            className="grid min-h-[46px] min-w-[46px] place-items-center rounded-[6px] border border-line-strong bg-surface text-muted hover:border-faint hover:text-ink"
-          >
-            <IconoDescarga tamano={18} />
-          </Link>
-        </div>
+        {/* «Transferir» es una acción sobre plata. Sin permiso de montos no se ofrece: mandaría a una
+            pantalla a informar un pago cuyo importe esta persona no puede ver. */}
+        {montos ? (
+          <div className="order-3 mt-7 flex items-center gap-2.5 md:order-none md:ml-auto md:mt-0">
+            <Link
+              href="/portal/transferir"
+              className="flex min-h-[46px] items-center gap-[9px] rounded-[6px] bg-marca px-5 text-sm font-semibold text-ink"
+            >
+              <IconoBanco tamano={18} />
+              <span>Transferir</span>
+            </Link>
+            <Link
+              href="/portal/pagos"
+              title="Ver el cronograma completo"
+              aria-label="Ver el cronograma completo"
+              className="grid min-h-[46px] min-w-[46px] place-items-center rounded-[6px] border border-line-strong bg-surface text-muted hover:border-faint hover:text-ink"
+            >
+              <IconoDescarga tamano={18} />
+            </Link>
+          </div>
+        ) : null}
       </div>
 
-      <div className="order-2 mt-8 border-t border-line md:order-none">
-        {/* SIN PLAN CARGADO NO SE ESCRIBE «$ 0». Un cero acá afirma que no debe nada. */}
-        <LineaResumen rotulo="Vencido" monto={r.hayPlan ? r.vencido : null} estado="vencido" />
-        <LineaResumen rotulo="Pendiente" monto={r.hayPlan ? r.pendiente : null} estado="programado" />
-        <LineaResumen rotulo="Pagado" monto={r.hayPlan ? r.pagado : null} estado="pagado" />
-      </div>
-      {r.sinMonto ? (
-        // LO QUE LA SUMA NO ESTÁ CONTANDO SE DICE. Callarlo haría que el total parezca completo.
-        <p className="order-2 mt-2 text-[12.5px] text-faint md:order-none">
-          {r.sinMonto === 1 ? 'Hay 1 pago que no entra en estas sumas' : `Hay ${r.sinMonto} pagos que no entran en estas sumas`} — sin monto cargado o en otra moneda.
+      {montos ? (
+        <>
+          <div className="order-2 mt-8 border-t border-line md:order-none">
+            {/* SIN PLAN PUBLICADO NO SE ESCRIBE «$ 0». Un cero acá afirma que no debe nada. */}
+            <LineaResumen rotulo="Vencido" monto={r.hayPlan ? r.vencido : null} estado="vencido" />
+            <LineaResumen rotulo="Pendiente" monto={r.hayPlan ? r.pendiente : null} estado="programado" />
+            <LineaResumen rotulo="Pagado" monto={r.hayPlan ? r.pagado : null} estado="pagado" />
+          </div>
+          {r.sinMonto ? (
+            // LO QUE LA SUMA NO ESTÁ CONTANDO SE DICE. Callarlo haría que el total parezca completo.
+            <p className="order-2 mt-2 text-[12.5px] text-faint md:order-none">
+              {r.sinMonto === 1 ? 'Hay 1 pago que no entra en estas sumas' : `Hay ${r.sinMonto} pagos que no entran en estas sumas`} — sin monto cargado o en otra moneda.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        // QUÉ SÍ PUEDE VER. Una pantalla más corta sin explicación se lee como una pantalla rota.
+        <p className="order-2 mt-8 border-t border-line pt-4 text-[13.5px] text-muted md:order-none">
+          {loQueSiPuedeVer(acceso)}
         </p>
-      ) : null}
+      )}
 
       {/* ── SUS OBRAS ─────────────────────────────────────────────────────────────────────────── */}
-      {obras.length > 1 ? (
+      {variasObras ? (
         <div className="order-4 md:order-none">
-          <Rubro derecha={`${obras.length} obras`}>SUS OBRAS</Rubro>
-          {obras.map((o) => {
-            const pagos = porObra.get(o.id) ?? []
-            const suyo = resumenDeCobro(pagos, contratoDe.get(o.id) ?? null, hoy)
-            const sig = proximoPago(pagos)
+          <Rubro derecha={`${bloques.length} obras`}>SUS OBRAS</Rubro>
+          {bloques.map((b) => {
+            const suyo = resumenDeCobro(b.pagos, b.obraId ? contratos.get(b.obraId) ?? null : null, hoy)
+            const sig = proximoPago(b.pagos)
             return (
-              <Link key={o.id} href="/portal/pagos" className="block">
+              <Link key={b.obraId ?? 'sin-obra'} href="/portal/pagos" className="block">
                 <Fila>
-                  <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{o.nombre}</span>
+                  <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{b.nombre}</span>
                   <span className="w-[150px] text-[12.5px] text-muted">
-                    {/* Una obra sin plan no dice «$ 0»: dice que falta cargarlo. */}
-                    {!pagos.length ? 'sin plan cargado' : sig ? `sigue ${diaMes(sig.fechaPrevista)}` : 'al día'}
+                    {sig ? `sigue ${diaMes(sig.fechaPrevista)}` : 'al día'}
                   </span>
-                  <span className="tnum w-[120px] text-right font-mono text-[15px]">
-                    {pesos(suyo.hayPlan ? suyo.pendiente : null)}
-                  </span>
+                  {montos ? (
+                    <span className="tnum w-[120px] text-right font-mono text-[15px]">
+                      {pesos(suyo.hayPlan ? suyo.pendiente : null)}
+                    </span>
+                  ) : null}
                 </Fila>
               </Link>
             )
@@ -129,21 +152,19 @@ export default async function Inicio() {
       ) : null}
 
       <div className="order-5 md:order-none">
-        <Rubro derecha={obras.length === 1 && contratoDe.get(obras[0].id) != null
-          ? `contrato ${pesos(contratoDe.get(obras[0].id) ?? null)}`
-          : undefined}>
-          LO QUE SIGUE
-        </Rubro>
+        <Rubro derecha={contratoDeLaUnica(bloques, contratos, montos)}>LO QUE SIGUE</Rubro>
         {siguen.length ? (
           siguen.map((p) => (
             <Fila key={p.id}>
               <IconoEstado estado={estadoDePago(p, hoy)} />
               <span className="min-w-0 flex-1 truncate text-sm">{p.rotulo}</span>
-              {obras.length > 1 ? (
+              {variasObras ? (
                 <span className="hidden w-[150px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
               ) : null}
               <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(p.fechaPrevista)}</span>
-              <span className="tnum w-[120px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+              {montos ? (
+                <span className="tnum w-[120px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+              ) : null}
             </Fila>
           ))
         ) : (
@@ -152,6 +173,17 @@ export default async function Inicio() {
       </div>
     </section>
   )
+}
+
+/** El contrato al costado del rubro, sólo con UNA obra y con permiso de montos. */
+function contratoDeLaUnica(
+  bloques: { obraId: string | null }[],
+  contratos: Map<string, number | null>,
+  montos: boolean,
+): string | undefined {
+  if (!montos || bloques.length !== 1 || bloques[0].obraId === null) return undefined
+  const c = contratos.get(bloques[0].obraId)
+  return c == null ? undefined : `contrato ${pesos(c)}`
 }
 
 function LineaResumen({ rotulo, monto, estado }: { rotulo: string; monto: number | null; estado: 'vencido' | 'programado' | 'pagado' }) {

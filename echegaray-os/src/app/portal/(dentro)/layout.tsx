@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Shell } from '../Shell'
 import { sesionDelPortal } from '../sesion'
-import { obrasDelClientePara } from '../datos'
+import { accesoDelPortal, obrasDelCliente } from '../datos'
 
 // EL PORTAL ES OTRA APLICACIÓN. Vive fuera de `(main)` a propósito: no hereda el header del OS, ni el
 // sidebar, ni el buscador global. Un cliente que ve un pedazo del chrome interno ve algo que no es
@@ -13,6 +13,11 @@ import { obrasDelClientePara } from '../datos'
 // Quién es se decide en la puerta y viaja en la cookie firmada. Adentro no hay selector de cliente ni
 // nada distinto para el dueño: el pedido fue «quiero verlo como lo ve el cliente, no algo adaptado a
 // mí», y una pantalla que se comporta distinto según quién mira no prueba nada de lo que muestra.
+//
+// ═══ EL ACCESO SE VUELVE A PREGUNTAR ACÁ ═══
+//
+// La cookie dice quién es; `cliente_acceso` dice si todavía puede entrar. Un acceso revocado en la
+// ficha del cliente cae a la puerta en la pantalla siguiente, sin esperar a que venza la cookie.
 
 export const metadata = { title: 'Echegaray Construcciones · Su obra' }
 
@@ -23,11 +28,12 @@ export default async function LayoutPortal({ children }: { children: ReactNode }
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
 
-  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
-  // El nombre sale de las obras y no de una consulta aparte: si el mail perdió el alcance a este
-  // cliente, no hay obras, no hay nombre, y la pantalla lo dice en vez de dibujar un encabezado vacío.
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
+
+  const obras = await obrasDelCliente(acceso)
   return (
-    <Shell cliente={obras[0]?.clienteNombre ?? 'Su obra'} obras={obras.length}>
+    <Shell cliente={acceso.clienteNombre} obras={obras.length}>
       {children}
     </Shell>
   )

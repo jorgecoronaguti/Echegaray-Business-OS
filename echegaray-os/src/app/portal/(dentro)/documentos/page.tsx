@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelClientePara } from '../../datos'
+import { accesoDelPortal, obrasDelCliente } from '../../datos'
 import { obraDetalle } from '../datosObra'
 import { documentosDeObra } from './drive'
 import { haceCuanto, type Documento } from '../../documentos'
@@ -19,7 +19,15 @@ export const dynamic = 'force-dynamic'
 export default async function Documentos() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  if (!acceso) redirect('/portal/login')
+
+  // `puede_ver_obra` GOBIERNA ESTA PANTALLA. Sin ese permiso no se dibuja una lista vacía —que se
+  // leería «no hay papeles»—: se dice que el acceso no los incluye.
+  if (!acceso.puedeVerObra) {
+    return <Vacio>Su acceso no incluye los documentos de la obra. Escribinos y lo revisamos.</Vacio>
+  }
+  const obras = await obrasDelCliente(acceso)
   if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
 
   return (
