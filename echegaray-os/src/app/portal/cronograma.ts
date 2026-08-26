@@ -95,42 +95,79 @@ export type ResumenCobro = {
   /** De lo cobrado, cuánto es neto y cuánto IVA. `null` cuando no hay ninguna línea que los aporte. */
   netoPagado: number | null
   ivaPagado: number | null
-  /** De lo pendiente, cuánto es neto. El contrato se pacta en neto: «U$S 63.000 más IVA». */
+  /** De lo pendiente, cuánto es neto y cuánto IVA. El contrato se pacta en neto: «U$S 63.000 más IVA». */
   netoPendiente: number | null
+  ivaPendiente: number | null
+  /**
+   * ═══ DE CUÁNTOS COBROS SALE CADA NÚMERO (26/08/2026) ═══
+   *
+   * «Los filtros de la sección Pagos deben indicar qué es lo que muestra cada concepto del footer.»
+   * Un total sin su conteo no se puede cruzar contra la lista de arriba: el cliente ve «$ 18 M
+   * pendiente» y no sabe si son las dos filas que está mirando o las once del cronograma entero.
+   * Con el conteo al lado, el pie y el listado se verifican mutuamente sin sacar la calculadora.
+   */
+  nPagado: number
+  nPendiente: number
   /** Del contrato, lo que todavía no entró al cronograma. `null` si la obra no tiene contrato cargado. */
   faltaCertificar: number | null
   contrato: number | null
   /**
-   * Cuántos pagos quedaron FUERA de las sumas de arriba: los que no tienen monto y los que están en
-   * otra moneda. Se cuentan juntos porque para el total son lo mismo —no entran— pero la pantalla
-   * no puede decir «sin monto cargado» de una línea en dólares que sí lo tiene.
+   * Cuántos pagos quedaron FUERA de las sumas de arriba POR NO TENER MONTO. Las líneas en otra
+   * moneda NO se cuentan acá: tienen su propia columna en el pie y decir que «no entran» era falso
+   * —a Quattropani, cuyo cronograma entero está en dólares, le avisaba que sus trece cobros
+   * quedaban afuera mientras los trece estaban dibujados en la columna de al lado—.
    */
   sinMonto: number
+  /** Cuántas líneas quedaron fuera POR ESTAR EN OTRA MONEDA. Lo usa la pantalla para saber si tiene
+   *  que dibujar la otra columna, no para escribir una advertencia. */
+  enOtraMoneda: number
 }
 
 /**
  * NÚCLEO PURO: los totales de la obra.
  *
- * `faltaCertificar` = contrato − lo que ya está en el cronograma (pagado + pendiente). El fondo de
- * reparo no entra: es una retención sobre lo certificado, no una certificación más — contarlo haría
- * que «falta certificar» bajara por retener plata.
+ * ═══ LA CUENTA ES EN NETO, PORQUE EL CONTRATO ES NETO (26/08/2026) ═══
+ *
+ * `obra_canonica.monto_contratado` guarda el neto SIN IVA, y el pie sumaba los importes CON IVA. El
+ * resultado era un pie que no cerraba en ningún cliente y que le decía al cliente que debía más de
+ * lo contratado. Medido contra los datos reales:
+ *
+ *   Limpieza de Escombros   contrato 5.008.661   pie decía 6.060.479   neto 5.008.661   ← exacto
+ *   Relevamiento            contrato   900.000   pie decía 1.089.000   neto   900.000   ← exacto
+ *   Pisos 120m2             contrato 7.108.887   pie decía 8.601.752   neto 7.108.886   ← al peso
+ *   Galpón 9                contrato 49.737.709  pie decía 56.469.516  neto 49.527.368  ← 0,4 %
+ *
+ * Los netos cierran contra el contrato; los brutos no cierran nunca, y no es un defecto de carga:
+ * es que son dos magnitudes distintas. El IVA sigue publicándose —el cliente lo necesita para su
+ * libro de compras— pero al lado del neto, no en su lugar. Es el mismo criterio que el dueño ya
+ * fijó para el contrato en dólares: «que diga eso, 63 más IVA en el footer».
+ *
+ * `faltaCertificar` = contrato − lo que ya está en el cronograma, TODO en neto. El fondo de reparo
+ * no entra: es una retención sobre lo certificado, no una certificación más.
  */
 export function resumenDeCobro(
   pagos: Pago[],
   contrato: number | null,
   hoyISO: string,
-  /** En qué moneda se hace la cuenta. Las otras quedan fuera y se cuentan en `sinMonto`. */
+  /** En qué moneda se hace la cuenta. Las otras quedan fuera y se cuentan en `enOtraMoneda`. */
   moneda: 'ARS' | 'USD' = 'ARS',
 ): ResumenCobro {
-  let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
-  // Los tres números del pie salen de la MISMA pasada: neto e IVA de lo cobrado, para que el cliente
-  // pueda cruzar el total pagado contra su libro de IVA compras sin sacar la calculadora.
-  let netoPagado = 0, ivaPagado = 0, netoPendiente = 0
+  let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0, enOtraMoneda = 0
+  // Los números del pie salen de la MISMA pasada: neto e IVA de lo cobrado y de lo pendiente, para
+  // que el cliente pueda cruzarlos contra su libro de IVA compras sin sacar la calculadora.
+  let netoPagado = 0, ivaPagado = 0, netoPendiente = 0, ivaPendiente = 0
   // CUÁNTAS LÍNEAS DE ESTA MONEDA ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
   // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
   // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
   // y eso se escribe con ausencia, no con un cero.
   let nPendiente = 0, nPagado = 0
+  // ═══ CERO REAL vs «NO SABEMOS» (26/08/2026) ═══
+  //
+  // Las dos cosas se escriben distinto y son distintas. Una obra con cobros en pesos y ninguno
+  // pagado todavía tiene PAGADO $ 0 —es un hecho, no pagó nada— y el pie escribía «sin cargar»,
+  // que se lee como que el dato falta. La ausencia sólo corresponde cuando NINGUNA línea de esta
+  // moneda existe: ahí sí, lo único cierto es que este total no aplica.
+  let enLaMoneda = 0
   for (const p of pagos) {
     // LOS DE OBRAS ANTERIORES NO ENTRAN. Son cobros de trabajo previo para el mismo cliente y el
     // contrato contra el que se comparan estos totales es el de las obras EN CURSO. Sumarlos hacía
@@ -138,43 +175,48 @@ export function resumenDeCobro(
     // ninguna de esas obras. Tienen su propio subtotal, abajo y aparte.
     if (p.historico) continue
     // LAS MONEDAS NO SE SUMAN. Una línea en dólares metida en un total en pesos lo arruina sin dar
-    // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
-    if (p.moneda !== moneda) { sinMonto++; continue }
+    // error; se cuenta aparte para que la pantalla sepa que tiene que dibujar la otra columna.
+    if (p.moneda !== moneda) { enOtraMoneda++; continue }
     if (p.monto == null) { sinMonto++; continue }
+    enLaMoneda++
     if (p.fechaPago) {
       pagado += p.monto
       nPagado++
-      // Sólo suma lo que TIENE el dato: un neto ausente no vale cero.
-      if (p.neto != null) netoPagado += p.neto
+      // EL NETO CAE AL TOTAL CUANDO NO ESTÁ CARGADO, y no a cero. Una fila en efectivo sin IVA
+      // discriminado tiene neto = total, y tratarla como «sin neto» sacaría del pie plata que sí
+      // está cobrada. Cero sería peor todavía: afirmaría que ese cobro no valió nada.
+      netoPagado += p.neto ?? p.monto
       if (p.iva != null) ivaPagado += p.iva
       continue
     }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
-    if (p.neto != null) netoPendiente += p.neto
+    netoPendiente += p.neto ?? p.monto
+    if (p.iva != null) ivaPendiente += p.iva
     nPendiente++
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto
   }
   return {
     hayPlan: pagos.length > 0,
-    netoPagado: nPagado ? netoPagado : null,
-    netoPendiente: nPendiente ? netoPendiente : null,
-    ivaPagado: nPagado ? ivaPagado : null,
-    vencido: nPendiente ? vencido : null,
-    pendiente: nPendiente ? pendiente : null,
-    pagado: nPagado ? pagado : null,
-    sinMonto, contrato,
+    netoPagado: enLaMoneda ? netoPagado : null,
+    netoPendiente: enLaMoneda ? netoPendiente : null,
+    ivaPagado: enLaMoneda ? ivaPagado : null,
+    ivaPendiente: enLaMoneda ? ivaPendiente : null,
+    nPagado, nPendiente,
+    vencido: enLaMoneda ? vencido : null,
+    pendiente: enLaMoneda ? pendiente : null,
+    pagado: enLaMoneda ? pagado : null,
+    sinMonto, enOtraMoneda, contrato,
     // Sin plan cargado, «falta certificar» sería el contrato entero — cierto por aritmética y falso
     // como afirmación: no es que no se certificó nada, es que no cargamos el plan.
     // NUNCA UN NEGATIVO. «Falta certificar −$40 M» no significa nada para el cliente: significa que
-    // el cronograma cargado supera al contrato —porque incluye algo que el contrato no cuenta, como
-    // los materiales de Quattropani, o porque el contrato está en otra moneda—. Se devuelve null y
-    // la pantalla dice «sin cargar» en vez de publicar un número imposible.
+    // el cronograma cargado supera al contrato. Se devuelve null y la pantalla no publica un
+    // número imposible. La resta es EN NETO, que es la moneda del contrato.
     faltaCertificar: (() => {
       if (contrato == null || pagos.length === 0) return null
       // Con todo el cronograma en otra moneda no hay resto que calcular: `null`, no el contrato entero.
-      if (!nPagado && !nPendiente) return null
-      const resto = contrato - (pagado + pendiente)
+      if (!enLaMoneda) return null
+      const resto = contrato - (netoPagado + netoPendiente)
       return resto < 0 ? null : resto
     })(),
   }
@@ -194,6 +236,20 @@ export function loQueSigue(pagos: Pago[], cuantos = 2): Pago[] {
 export function pesos(n: number | null, moneda: 'ARS' | 'USD' = 'ARS'): string {
   if (n == null) return 'sin cargar'
   return `${moneda === 'USD' ? 'U$S' : '$'} ${Math.round(n).toLocaleString('es-AR')}`
+}
+
+/**
+ * EL MISMO IMPORTE, ABREVIADO: `9034356` → `$ 9,0 M`.
+ *
+ * Para donde el número entero no entra —la celda del calendario en un teléfono, la pastilla de un
+ * filtro— y donde igual hace falta el orden de magnitud. El exacto está siempre en el listado y en
+ * el pie: esto acompaña, no reemplaza.
+ */
+export function corto(n: number | null, moneda: 'ARS' | 'USD' = 'ARS'): string {
+  if (n == null) return ''
+  if (moneda === 'USD') return `U$S ${Math.round(n / 1000).toLocaleString('es-AR')}k`
+  if (Math.abs(n) < 1_000_000) return `$ ${Math.round(n / 1000).toLocaleString('es-AR')}k`
+  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
 }
 
 /** dd/mm. `null` es «sin fecha», nunca una fecha inventada ni un guion suelto. */

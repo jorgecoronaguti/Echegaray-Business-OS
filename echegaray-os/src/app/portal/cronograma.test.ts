@@ -7,7 +7,8 @@ import {
 const HOY = '2026-08-26'
 const p = (x: Partial<Pago>): Pago => ({
   id: x.id ?? 'x', orden: x.orden ?? 1, tipo: x.tipo ?? 'certificado', rotulo: x.rotulo ?? 'C',
-  monto: x.monto === undefined ? 100 : x.monto, neto: null, iva: null, historico: x.historico ?? false, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
+  monto: x.monto === undefined ? 100 : x.monto, neto: x.neto === undefined ? null : x.neto,
+  iva: x.iva === undefined ? null : x.iva, historico: x.historico ?? false, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
   facturaNumero: x.facturaNumero ?? null, reciboNumero: x.reciboNumero ?? null,
   devolucionEn: null, devueltoEn: null, estadoFijado: x.estadoFijado ?? null,
 })
@@ -133,7 +134,48 @@ test('las monedas NO se suman — una línea en dólares no entra al total en pe
     p({ monto: 15_400, moneda: 'USD', fechaPago: '2026-08-01' }),
   ], 5_000_000, HOY)
   assert.equal(r.pagado, 1_000_000)
-  assert.equal(r.sinMonto, 1, 'y la pantalla dice que hay una línea afuera de la suma')
+  // La línea en dólares queda contada APARTE de las que no tienen importe: el pie le dedica su
+  // propia columna, así que llamarla «no entra en estos totales» era falso.
+  assert.equal(r.enOtraMoneda, 1)
+  assert.equal(r.sinMonto, 0)
+})
+
+// ── EL PIE CUENTA EN NETO, PORQUE EL CONTRATO ES NETO ────────────────────────────────────────
+//
+// `obra_canonica.monto_contratado` guarda el neto sin IVA y el pie sumaba los importes CON IVA: no
+// cerraba en ningún cliente. Los tres casos de abajo salen de datos reales del 26/08/2026.
+
+test('el neto cierra contra el contrato donde el bruto no cerraba nunca', () => {
+  // Messina · Limpieza de Escombros: un solo cobro pendiente. Contrato 5.008.661, importe 6.060.479.
+  const r = resumenDeCobro([p({ monto: 6_060_479, neto: 5_008_661, iva: 1_051_818 })], 5_008_661, HOY)
+  assert.equal(r.netoPendiente, 5_008_661, 'el neto ES el contrato: no falta certificar nada')
+  assert.equal(r.pendiente, 6_060_479, 'y el total con IVA sigue publicado, aparte')
+  assert.equal(r.faltaCertificar, 0)
+  assert.equal(r.ivaPendiente, 1_051_818)
+})
+
+test('un cobro sin IVA discriminado aporta su importe al neto, no un cero', () => {
+  // Los pagos en efectivo de San Francisco llegan con iva = 0 y neto = total. Tratar el neto ausente
+  // como cero sacaría del pie plata realmente cobrada.
+  const r = resumenDeCobro([p({ monto: 16_200_000, neto: null, iva: 0, fechaPago: '2026-07-10' })], null, HOY)
+  assert.equal(r.netoPagado, 16_200_000)
+  assert.equal(r.pagado, 16_200_000)
+  assert.equal(r.ivaPagado, 0)
+})
+
+test('cada cifra del pie dice de cuántos cobros sale', () => {
+  // «Los filtros de la sección Pagos deben indicar qué es lo que muestra cada concepto del footer.»
+  const r = resumenDeCobro([
+    p({ monto: 100, neto: 100, fechaPago: '2026-08-01' }),
+    p({ monto: 200, neto: 200, fechaPago: '2026-08-02' }),
+    p({ monto: 300, neto: 300 }),
+    // El fondo de reparo no es deuda del cliente: no suma ni se cuenta como pendiente.
+    p({ monto: 900, neto: 900, tipo: 'fondo_reparo' }),
+  ], null, HOY)
+  assert.equal(r.nPagado, 2)
+  assert.equal(r.nPendiente, 1)
+  assert.equal(r.netoPagado, 300)
+  assert.equal(r.netoPendiente, 300)
 })
 
 test('«falta certificar» nunca se publica en negativo', () => {
@@ -148,4 +190,20 @@ test('el signo de la moneda sale en el importe', () => {
   assert.equal(pesos(15_400, 'USD'), 'U$S 15.400')
   assert.equal(pesos(15_400), '$ 15.400')
   assert.equal(pesos(null, 'USD'), 'sin cargar')
+})
+
+test('cero real y «sin cargar» no son lo mismo', () => {
+  // Messina · Limpieza de Escombros: un cobro en pesos, todavía sin pagar. PAGADO es CERO —es un
+  // hecho: no pagó nada de esa obra— y el pie escribía «sin cargar», que se lee como que falta el
+  // dato. La ausencia corresponde cuando no hay NINGUNA línea de esa moneda, no cuando hay cero.
+  const conPlan = resumenDeCobro([p({ monto: 6_060_479, neto: 5_008_661 })], 5_008_661, HOY)
+  assert.equal(conPlan.pagado, 0)
+  assert.equal(conPlan.netoPagado, 0)
+  assert.equal(conPlan.nPagado, 0)
+
+  // Quattropani: el cronograma entero en dólares. En la columna de PESOS no hay nada que decir, y
+  // «$ 0» ahí afirmaría que no debe nada — teniendo nueve certificados por delante.
+  const otraMoneda = resumenDeCobro([p({ monto: 15_400, moneda: 'USD' })], null, HOY)
+  assert.equal(otraMoneda.pagado, null)
+  assert.equal(otraMoneda.pendiente, null)
 })

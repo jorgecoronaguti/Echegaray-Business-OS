@@ -211,44 +211,65 @@ export function agruparPorObra(pagos: PagoConObra[]): BloqueDeObra[] {
   )
 }
 
-/**
- * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
- *
- * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
- * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
- *
- * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
- * todo el conjunto no lo tenga.
- */
 /** Lo contratado de una obra, en la moneda en que se firmó. */
 export type ContratoDeObra = { monto: number | null; moneda: 'ARS' | 'USD' }
 
+/** El contrato del conjunto, y de cuántas obras salió. */
+export type ContratoDelConjunto = ContratoDeObra & {
+  /** Cuántas obras aportaron su contrato a la suma. */
+  obras: number
+  /** Cuántas quedaron afuera por no tener contrato cargado. La pantalla lo DICE en vez de callarlo. */
+  sinContrato: number
+}
+
 /**
- * El contrato del conjunto, y `null` si las obras no comparten moneda.
+ * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS EN CURSO.
  *
- * Sumar un contrato en dólares con uno en pesos daría un número que no existe. Cuando el cliente
- * tiene obras en las dos, no hay un «contrato total» que se pueda escribir: la pantalla no lo dibuja
- * en vez de dibujar uno inventado.
+ * ═══ TRES REGLAS, LAS TRES APRENDIDAS DE UN PIE QUE MENTÍA (26/08/2026) ═══
+ *
+ * 1 · UNA OBRA SIN CONTRATO NO ANULA A LAS OTRAS. Devolvía `null` en cuanto una faltaba, y a La
+ *     Estrella —Galpón 9 por $49,7 M y Oficina y Fábrica de Palitos por $246,1 M, las dos cargadas—
+ *     le escribía «CONTRATO sin cargar» porque una tercera obra vieja no lo tiene. Callar dos
+ *     contratos ciertos para no publicar uno incompleto deja al cliente con menos verdad, no con
+ *     más. Ahora se suman los que hay y se DICE cuántos faltan: un total con su cobertura al lado no
+ *     se confunde con un total completo.
+ *
+ * 2 · LAS OBRAS ANTERIORES NO SUMAN. `resumenDeCobro` descarta sus cobros —son trabajo previo— así
+ *     que meter su contrato en la suma comparaba un contrato con los pagos de otro. En San Francisco
+ *     eran los $204,4 M de «Galpones, Mampostería, Cancha de Padel»: el pie publicaba $299,7 M
+ *     contratados contra un «pagado» que no incluía sus cinco cobros históricos.
+ *
+ * 3 · QUE UN COBRO NO TENGA OBRA NO DICE NADA SOBRE EL CONTRATO. Los bloques sin obra —«Saldo obras
+ *     San Francisco», «de todas las obras»— se ignoran acá; ya estaban ignorados y sigue igual.
+ *
+ * `null` sólo cuando NINGUNA obra tiene contrato, o cuando las que lo tienen no comparten moneda:
+ * sumar dólares con pesos daría un número que no existe.
  */
-export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, ContratoDeObra>): ContratoDeObra | null {
-  // EL CONTRATO ES DE LAS OBRAS, NO DE LOS PAGOS (26/08/2026). Antes bastaba UN bloque sin obra para
-  // devolver `null`, y desde que los cobros que no nombran obra se publican —«Saldo obras San
-  // Francisco», «de todas las obras»— ese bloque existe casi siempre: el portal escribía «CONTRATO
-  // sin cargar» a un cliente cuyo contrato la ficha muestra en $299,68 M. Que un COBRO no tenga obra
-  // no dice nada sobre cuánto se contrató.
-  //
-  // Lo que sí lo anula sigue en pie: una OBRA sin contrato cargado. Sumar las que están y callar la
-  // que falta daría un contrato más chico que el real con cara de dato cierto.
-  const conObra = bloques.filter((b) => b.obraId !== null)
+export function contratoDelConjunto(
+  bloques: BloqueDeObra[],
+  contratos: Map<string, ContratoDeObra>,
+): ContratoDelConjunto | null {
+  // Una obra cuyos cobros son TODOS históricos está fuera de los totales: su contrato también. Se
+  // pregunta por «ninguno en curso» y no por «alguno en curso» a propósito: un bloque sin cobros
+  // todavía no es una obra anterior — es una obra cuyo cronograma no se cargó, y su contrato cuenta.
+  // (`[].every()` es `true` por vacuidad: preguntar sólo por «todos históricos» descartaría también
+  //  los bloques vacíos, que es el caso opuesto. Se pide explícitamente que no queden cobros.)
+  const conObra = bloques.filter(
+    (b) => b.obraId !== null && (b.pagos.length === 0 || b.pagos.some((p) => !p.historico)),
+  )
   if (!conObra.length) return null
   let total = 0
   let moneda: 'ARS' | 'USD' | null = null
+  let obras = 0
+  let sinContrato = 0
   for (const b of conObra) {
     const c = contratos.get(b.obraId as string)
-    if (!c || c.monto == null) return null
+    if (!c || c.monto == null) { sinContrato++; continue }
+    // Monedas distintas entre obras: no hay un total que se pueda escribir.
     if (moneda && c.moneda !== moneda) return null
     moneda = c.moneda
     total += c.monto
+    obras++
   }
-  return moneda ? { monto: total, moneda } : null
+  return moneda ? { monto: total, moneda, obras, sinContrato } : null
 }

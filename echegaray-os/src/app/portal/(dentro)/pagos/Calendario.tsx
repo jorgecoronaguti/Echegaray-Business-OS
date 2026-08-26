@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { estadoDePago, pesos, type Pago } from '../../cronograma'
+import { corto, estadoDePago, pesos, type Pago } from '../../cronograma'
 import { TINTA } from '../../Piezas'
 
 // EL CRONOGRAMA EN UN MES — la otra cara de la misma lista.
@@ -44,14 +44,6 @@ export function mesVecino(ym: string, paso: 1 | -1): string {
 // siguiente de su misma fila y lo dice con «(sáb)» al lado. Esconder plata para ganar ancho sería
 // cambiar una molestia por un defecto.
 const DIAS = ['L', 'M', 'M', 'J', 'V']
-
-/** `9034356` → `$ 9,0 M`. Para la celda del teléfono, donde el importe entero no entra. */
-function corto(n: number | null, moneda: 'ARS' | 'USD'): string {
-  if (n == null) return ''
-  if (moneda === 'USD') return `U$S ${Math.round(n / 1000)}k`
-  if (Math.abs(n) < 1_000_000) return `$ ${Math.round(n / 1000)}k`
-  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
-}
 
 export function Calendario({
   pagos, mes, semanas, hoy, montos, enlaceDeMes,

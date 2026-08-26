@@ -65,16 +65,19 @@ test('cobrado usa la fecha como fecha de pago Y como la del cronograma', () => {
   assert.equal(p.fechaPrevista, '2026-08-21')
   assert.equal(estadoDePago(p, '2026-08-26'), 'pagado')
   // Y no aparece como pendiente: un cobrado que además vence sería la misma plata contada dos veces.
-  // `null` y no `0`: ninguna línea alimentó «pendiente», y un cero ahí afirmaría que no debe nada.
-  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, null)
+  // CERO, no `null`: hay una línea en pesos y está cobrada, así que «no debe nada» es un HECHO y se
+  // escribe. `null` es para cuando no hay ninguna línea de esta moneda — ahí no sabemos, no es cero.
+  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, 0)
 })
 
 test('retenido es el fondo de reparo y NO suma a pendiente', () => {
   assert.equal(tipoDelPago({ estado: 'retenido', concepto: 'Fondo de reparo' }), 'fondo_reparo')
   const p = aPagoDelPortal(fila({ estado: 'retenido', monto: '1000000' }), 'Pisos Industriales')
   assert.equal(p.tipo, 'fondo_reparo')
-  // `null` y no `0`: ninguna línea alimentó «pendiente», y un cero ahí afirmaría que no debe nada.
-  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, null)
+  // CERO: el fondo de reparo es plata que la empresa RETIENE, así que de esta obra el cliente no
+  // debe nada — y eso es un hecho que el pie puede escribir, no un dato que falte.
+  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, 0)
+  assert.equal(resumenDeCobro([p], null, '2026-08-26').nPendiente, 0)
   assert.equal(proximoPago([p]), null)
 })
 
@@ -131,7 +134,10 @@ test('sin la columna moneda se asume ARS; con USD no se mezcla en el total en pe
   // NI SIQUIERA CERO. Quattropani tiene todo su cronograma en dólares y leía «Pendiente $ 0»
   // teniendo nueve certificados por delante: cero es una afirmación y dice que no debe nada.
   assert.equal(r.pendiente, null)
-  assert.equal(r.sinMonto, 1)
+  // Y NO se cuenta como «no entra en estos totales»: entra, en la columna de dólares del pie. El
+  // aviso de `sinMonto` es para lo que de verdad quedó afuera — un cobro sin importe cargado.
+  assert.equal(r.sinMonto, 0)
+  assert.equal(r.enOtraMoneda, 1)
 })
 
 // ── `puede_ver_montos = false` ───────────────────────────────────────────────────────────────
@@ -185,15 +191,44 @@ test('un cobro sin obra NO borra el contrato del cliente', () => {
     { obraId: 'electrica', nombre: 'Eléctrica', pagos: [] },
     { obraId: null, nombre: '', pagos: [] },
   ] as never
-  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_728_254, moneda: 'ARS' })
+  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_728_254, moneda: 'ARS', obras: 2, sinContrato: 0 })
 
-  // Lo que sí lo anula: una OBRA sin contrato. Sumar las que están daría un número más chico que el
-  // real con cara de dato cierto.
+  // ═══ UNA OBRA SIN CONTRATO YA NO ANULA A LAS OTRAS (26/08/2026) ═══
+  //
+  // Devolvía `null` en cuanto faltaba una, y a La Estrella —Galpón 9 por $49,7 M y Oficina y Fábrica
+  // de Palitos por $246,1 M, las dos cargadas— le escribía «CONTRATO sin cargar» por una tercera
+  // obra vieja sin contrato. Callar dos contratos ciertos deja al cliente con menos verdad. Se suma
+  // lo que hay y se DICE cuántas faltan: el pie lo escribe al lado de la cifra.
   const falta = new Map([['pisos', { monto: 40_000_000, moneda: 'ARS' as const }], ['electrica', { monto: null, moneda: 'ARS' as const }]])
-  assert.equal(contratoDelConjunto(bloques, falta), null)
+  assert.deepEqual(contratoDelConjunto(bloques, falta), { monto: 40_000_000, moneda: 'ARS', obras: 1, sinContrato: 1 })
+
+  // Lo que sigue dando `null`: que NINGUNA obra tenga contrato. Ahí no hay nada que publicar.
+  const ninguno = new Map([['pisos', { monto: null, moneda: 'ARS' as const }], ['electrica', { monto: null, moneda: 'ARS' as const }]])
+  assert.equal(contratoDelConjunto(bloques, ninguno), null)
 
   // Sin ninguna obra no hay contra qué contrato comparar.
   assert.equal(contratoDelConjunto([{ obraId: null, nombre: '', pagos: [] }] as never, contratos), null)
+})
+
+test('el contrato de una obra ANTERIOR no entra en el total del conjunto', () => {
+  // San Francisco: el pie publicaba $299,7 M contratados sumando los $204,4 M de «Galpones,
+  // Mampostería, Cancha de Padel», cuyos cobros son históricos y NO están en «pagado». Un contrato
+  // comparado contra los pagos de otro no cierra nunca.
+  const contratos = new Map([
+    ['pisos', { monto: 47_590_272, moneda: 'ARS' as const }],
+    ['galpones', { monto: 204_361_104, moneda: 'ARS' as const }],
+  ])
+  const enCurso = { historico: false } as never
+  const viejo = { historico: true } as never
+  const bloques = [
+    { obraId: 'pisos', nombre: 'Pisos', pagos: [enCurso] },
+    { obraId: 'galpones', nombre: 'Galpones', pagos: [viejo, viejo] },
+  ] as never
+  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_590_272, moneda: 'ARS', obras: 1, sinContrato: 0 })
+
+  // Una obra con cobros de las dos clases SÍ cuenta: sigue en curso.
+  const mixto = [{ obraId: 'galpones', nombre: 'Galpones', pagos: [viejo, enCurso] }] as never
+  assert.equal(contratoDelConjunto(mixto, contratos)?.monto, 204_361_104)
 })
 
 test('un cobro de obra ANTERIOR no suma al contrato en curso', () => {

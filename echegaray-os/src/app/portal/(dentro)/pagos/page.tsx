@@ -4,7 +4,7 @@ import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
 import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
-import { estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
+import { corto, estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
 import { grillaDelMes } from '@/features/clientes/services/reglasEsquema'
 import { Calendario } from './Calendario'
@@ -112,10 +112,17 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // de tabla se lee como el total DE LA TABLA que tiene arriba.
   //
   // Ahora sigue a la obra elegida —y dice cuál—, y el contrato pasa a ser el de ESA obra. Lo que NO
-  // lo mueve es el filtro de estado: si «Pagado» cambiara al tocar «Pendiente», el número dejaría de
-  // significar algo.
+  // lo mueve es el filtro de ESTADO, a propósito: si «Pagado» se pusiera en cero al tocar
+  // «Pendiente», el número dejaría de significar algo. Lo que faltaba no era que cambiara, era que
+  // se DIJERA — y eso lo hacen ahora las pastillas, que llevan su propio importe, y el rótulo del
+  // pie, que declara su alcance.
   const deLaObra = porObra(pagos)
-  const contratoDelFiltro = obra ? (contratos.get(obra) ?? null) : contratoDelConjunto(bloques, contratos)
+  // Con una obra elegida el contrato es el suyo y la cobertura es trivial; sin filtro, el del
+  // conjunto, que además dice de cuántas obras salió. Son dos formas distintas y se mantienen
+  // separadas: fundirlas obligaba a fingir que una obra sola tiene «cobertura».
+  const contratoDeUnaObra = obra ? (contratos.get(obra) ?? null) : null
+  const contratoDeTodas = obra ? null : contratoDelConjunto(bloques, contratos)
+  const contratoDelFiltro = contratoDeUnaObra ?? contratoDeTodas
   // ═══ UNA CUENTA POR MONEDA (26/08/2026) ═══
   //
   // El contrato de Quattropani es en dólares y sus doce cobros también. El pie mostraba un contrato
@@ -129,9 +136,27 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const contratoUSD = contratoDelFiltro?.moneda === 'USD' ? contratoDelFiltro.monto : null
   const total = resumenDeCobro(deLaObra, contratoARS, hoy)
   const enDolares = resumenDeCobro(deLaObra, contratoUSD, hoy, 'USD')
-  const hayPesos = deLaObra.some((p) => p.moneda === 'ARS')
-  const hayDolares = deLaObra.some((p) => p.moneda === 'USD')
+  // QUÉ COLUMNAS SE DIBUJAN — sobre los NO históricos, que son los que alimentan las sumas. Con
+  // `pagos` a secas, una obra cuyos únicos cobros en pesos son de trabajo anterior dibujaba una
+  // columna «PAGADO» que decía «sin cargar»: una columna vacía pidiendo explicación.
+  const enCurso = deLaObra.filter((p) => !p.historico)
+  const hayPesos = enCurso.some((p) => p.moneda === 'ARS')
+  const hayDolares = enCurso.some((p) => p.moneda === 'USD')
   const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
+  // De cuántas obras salió el contrato, y cuántas quedaron sin él. Con una obra elegida es esa sola.
+  const cobertura = obra
+    ? { obras: contratoDeUnaObra?.monto != null ? 1 : 0, sinContrato: contratoDeUnaObra?.monto == null ? 1 : 0 }
+    : { obras: contratoDeTodas?.obras ?? 0, sinContrato: contratoDeTodas?.sinContrato ?? 0 }
+
+  // LO QUE DICE CADA PASTILLA. Es el MISMO número que el pie —el neto de esa moneda— para que el
+  // filtro y el total se puedan atar a ojo. Cuando hay dos monedas no se escribe importe en la
+  // pastilla: no hay un número solo que las represente y sumarlas sería inventarlo.
+  const importeDeFiltro = (cuantos: 'pagado' | 'pendiente'): string | null => {
+    if (!montos || (hayPesos && hayDolares)) return null
+    const r = hayDolares ? enDolares : total
+    const n = cuantos === 'pagado' ? r.netoPagado : r.netoPendiente
+    return n == null ? null : corto(n, hayDolares ? 'USD' : 'ARS')
+  }
 
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
 
@@ -159,14 +184,22 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
       {/* Sólo bajo el listado: en el calendario la distinción ya la da la fecha. */}
       {pagos.length && !enCalendario ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {/* ═══ CADA PASTILLA LLEVA SU IMPORTE (26/08/2026) ═══
+              «Los filtros de la sección Pagos deben indicar qué es lo que muestra cada concepto del
+              footer.» El filtro decía cuántas filas y el pie cuánta plata, y no había forma de atar
+              uno con otro sin sumar a mano. Ahora la pastilla escribe EL MISMO número que su columna
+              del pie —el neto—, así que «Pendiente 10 · $ 109,6 M» y «PENDIENTE $ 109.592.878» se
+              leen como lo que son: el conteo y el total de las mismas filas. */}
           <Pastilla a={con({ ver: null })} activa={ver === 'todos'}>{`Todos ${delEstado.length}`}</Pastilla>
-          <Pastilla a={con({ ver: 'pendientes' })} activa={ver === 'pendientes'}>
+          <Pastilla a={con({ ver: 'pendientes' })} activa={ver === 'pendientes'} monto={importeDeFiltro('pendiente')}>
             {/* «PENDIENTE», NO «POR COBRAR». El portal lo lee el CLIENTE: para él eso no es algo que
                 va a cobrar, es algo que tiene que pagar. Y es la palabra que usa la pestaña Cobranzas
                 y la ficha del cliente — el mismo estado no puede llamarse distinto según la pantalla. */}
             {`Pendiente ${delEstado.length - nPagados}`}
           </Pastilla>
-          <Pastilla a={con({ ver: 'pagados' })} activa={ver === 'pagados'}>{`Pagados ${nPagados}`}</Pastilla>
+          <Pastilla a={con({ ver: 'pagados' })} activa={ver === 'pagados'} monto={importeDeFiltro('pagado')}>
+            {`Pagados ${nPagados}`}
+          </Pastilla>
         </div>
       ) : null}
 
@@ -303,62 +336,82 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         </>
       )}
 
-      {/* LOS TOTALES, AL PIE Y EN LAS DOS VISTAS. Estaban dentro de la rama del listado, así que en
-          el calendario no salían: «que al final de los pagos salga lo total, pagado y pendiente en
-          cada uno de los portales del cliente». Son del cronograma COMPLETO —no del filtro—: si
-          cambiaran al tocar una pastilla, el número dejaría de significar algo. */}
+      {/* ═══ EL PIE: TRES NÚMEROS Y DE DÓNDE SALE CADA UNO ═══
+          Está en las dos vistas —«que al final de los pagos salga lo total, pagado y pendiente en
+          cada uno de los portales del cliente»— y sigue al filtro POR OBRA, no al de estado.
+          Cada cifra dice ahora de cuántos cobros sale y cuál es su total con IVA: un número solo,
+          sin su origen, obliga a sumar la lista a mano para saber si es el mismo. */}
       {montos ? (
         <>
-          <p className="mt-6 text-[11px] tracking-[.09em] text-faint">
-            {nombreDelFiltro ? nombreDelFiltro.toUpperCase() : 'TODAS SUS OBRAS'}
-          </p>
+          <div className="mt-8 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p className="text-[11px] tracking-[.09em] text-faint">
+              TOTALES DE {nombreDelFiltro ? nombreDelFiltro.toUpperCase() : 'TODAS SUS OBRAS'}
+            </p>
+            {/* EL ALCANCE SE DECLARA, no se deduce. Con un filtro de estado puesto, el pie muestra
+                más filas que la lista de arriba: decirlo es la diferencia entre un total que no
+                cierra y un total cuyo alcance el cliente entiende. */}
+            {ver !== 'todos' ? (
+              <p className="text-[11.5px] text-faint">
+                del cronograma completo — arriba está filtrado por «{ver === 'pagados' ? 'Pagados' : 'Pendiente'}»
+              </p>
+            ) : null}
+          </div>
+          {/* LOS IMPORTES SON NETOS, SIN IVA, PORQUE EL CONTRATO ES NETO. Sumar los importes con IVA
+              contra un contrato sin IVA daba un pie que no cerraba en ningún cliente: a Messina le
+              decía «Contrato $5.008.661 · Pendiente $6.060.479» por la misma obra, que se lee como
+              que debe más de lo que contrató. El total con impuesto sigue publicado, abajo y en
+              letra chica, que es donde el cliente lo busca para su libro de IVA compras. */}
           <div className="mt-2 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
-            {/* LA MONEDA SE DICE EN EL RÓTULO cuando hay dos en la pantalla. Un «$» junto a un
-                «U$S» obliga a mirar dos veces cuál es cuál, y en un pie de plata eso no se pregunta:
-                se lee. Con una sola moneda el rótulo queda limpio. */}
-            {hayPesos && contratoARS != null ? <Total rotulo={hayDolares ? 'Contrato ARS$' : 'Contrato'} monto={total.contrato} /> : null}
+            {hayPesos ? (
+              <Cifra
+                rotulo={hayDolares ? 'CONTRATO ARS$' : 'CONTRATO'}
+                neto={contratoARS}
+                pie={contratoARS == null ? null : deQuienEsElContrato(cobertura)}
+              />
+            ) : null}
             {/* ═══ «U$S 63.000 + IVA», COMO LO DICE EL CONTRATO ═══
                 El contrato de Quattropani se firmó por U$S 63.000 MÁS IVA, y así es como el cliente
                 lo leyó. Publicar U$S 76.230 sería correcto de aritmética y ajeno al papel que él
-                tiene: el número que reconoce es el neto, y el «+ IVA» es parte de cómo se pactó.
-                Lo mismo vale para lo pagado y lo pendiente: neto, y el IVA dicho al lado. */}
+                tiene: el número que reconoce es el neto, y el «+ IVA» es parte de cómo se pactó. */}
             {contratoUSD != null ? (
-              <div>
-                <p className="text-[11px] tracking-[.09em] text-faint">CONTRATO US$</p>
-                <p className="tnum mt-1 font-mono text-[19px] font-semibold">
-                  {pesos(contratoUSD, 'USD')} <span className="text-[13px] font-normal text-muted">+ IVA</span>
-                </p>
-              </div>
+              <Cifra rotulo="CONTRATO US$" neto={contratoUSD} moneda="USD" pie={deQuienEsElContrato(cobertura)} />
             ) : null}
-        {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
-                compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
-                van en letra chica debajo y no como dos columnas más. */}
             {hayPesos ? (
-              <div>
-                <p className="text-[11px] tracking-[.09em] text-faint">{hayDolares ? 'PAGADO ARS$' : 'PAGADO'}</p>
-                <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
-                <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
-                  neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
-                </p>
-              </div>
+              <>
+                <Cifra
+                  rotulo={hayDolares ? 'PAGADO ARS$' : 'PAGADO'}
+                  neto={total.netoPagado}
+                  conIva={total.pagado}
+                  pie={cuantos(total.nPagado, 'cobrado')}
+                />
+                <Cifra
+                  rotulo={hayDolares ? 'PENDIENTE ARS$' : 'PENDIENTE'}
+                  neto={total.netoPendiente}
+                  conIva={total.pendiente}
+                  pie={cuantos(total.nPendiente, 'por pagar')}
+                />
+              </>
             ) : null}
-            {/* «FALTA CERTIFICAR» SE RETIRÓ (26/08/2026, pedido del dueño). Es una cuenta interna
-                —contrato menos lo que ya entró al cronograma— y al cliente le decía poco: no es plata
-                que deba ni que le vayan a cobrar en una fecha. El pie del portal contesta las tres
-                preguntas que sí son suyas: cuánto se contrató, cuánto pagó, cuánto le falta pagar. */}
-            {hayPesos ? <Total rotulo={hayDolares ? 'Pendiente ARS$' : 'Pendiente'} monto={total.hayPlan ? total.pendiente : null} /> : null}
-            {/* EN DÓLARES, sin contrato al lado: el que guarda el registro está en pesos y ponerlo
-                acá afirmaría una equivalencia que nadie calculó. */}
             {hayDolares ? (
               <>
-                <EnDolares rotulo="PAGADO US$" neto={enDolares.netoPagado} bruto={enDolares.pagado} />
-                <EnDolares rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} bruto={enDolares.pendiente} />
+                <Cifra rotulo="PAGADO US$" neto={enDolares.netoPagado} conIva={enDolares.pagado} moneda="USD" pie={cuantos(enDolares.nPagado, 'cobrado')} />
+                <Cifra rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} conIva={enDolares.pendiente} moneda="USD" pie={cuantos(enDolares.nPendiente, 'por pagar')} />
               </>
             ) : null}
           </div>
-          {total.sinMonto ? (
+          {/* SÓLO LO QUE DE VERDAD QUEDÓ AFUERA. Las líneas en otra moneda ya tienen su columna acá
+              al lado: contarlas como «no entran» le avisaba a Quattropani que sus trece cobros
+              quedaban fuera de un pie donde estaban los trece. */}
+          {total.sinMonto + enDolares.sinMonto ? (
             <p className="mt-3 text-[12.5px] text-faint">
-              {total.sinMonto === 1 ? '1 pago no entra en estos totales' : `${total.sinMonto} pagos no entran en estos totales`} — sin monto cargado o en otra moneda.
+              {total.sinMonto + enDolares.sinMonto === 1
+                ? '1 cobro no entra en estos totales'
+                : `${total.sinMonto + enDolares.sinMonto} cobros no entran en estos totales`} — todavía sin importe cargado.
+            </p>
+          ) : null}
+          {anteriores.length ? (
+            <p className="mt-1.5 text-[12.5px] text-faint">
+              Los {anteriores.length === 1 ? 'cobros' : `${anteriores.length} cobros`} de obras anteriores no están en estos totales.
             </p>
           ) : null}
         </>
@@ -367,18 +420,64 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   )
 }
 
+/** «de 1 obra» · «de 2 obras · 1 sin contrato cargado». El total nunca sale sin su cobertura. */
+function deQuienEsElContrato({ obras, sinContrato }: { obras: number; sinContrato: number }): string {
+  const base = obras === 1 ? 'de 1 obra' : `de ${obras} obras`
+  return sinContrato ? `${base} · ${sinContrato === 1 ? '1 obra sin contrato cargado' : `${sinContrato} obras sin contrato cargado`}` : base
+}
+
+/** «3 cobros cobrados» — el conteo que ata la cifra del pie con las filas de arriba. */
+const cuantos = (n: number, que: string): string => `${n === 1 ? '1 cobro' : `${n} cobros`} ${que}`
+
+/**
+ * UNA CIFRA DEL PIE: el neto grande, el «+ IVA», y debajo de dónde sale.
+ *
+ * El neto es el número que se compara con el contrato —que está en neto— y el que el cliente
+ * reconoce del papel que firmó. El total con IVA va abajo, en chico, para quien concilia contra su
+ * libro de compras. Sin el neto el pie no se puede comparar con el contrato; sin el total, no se
+ * puede comparar con lo que transfirió. Los dos hacen falta y no son intercambiables.
+ */
+function Cifra({
+  rotulo, neto, conIva, moneda = 'ARS', pie,
+}: {
+  rotulo: string
+  neto: number | null
+  conIva?: number | null
+  moneda?: 'ARS' | 'USD'
+  pie?: string | null
+}) {
+  return (
+    <div>
+      <p className="text-[11px] tracking-[.09em] text-faint">{rotulo}</p>
+      <p className="tnum mt-1 font-mono text-[19px] font-semibold">
+        {pesos(neto, moneda)}
+        {neto != null ? <span className="text-[13px] font-normal text-muted"> + IVA</span> : null}
+      </p>
+      {/* El total con IVA sólo cuando aporta algo: si es igual al neto —un cobro en efectivo sin
+          factura— repetirlo haría dudar de cuál de los dos es el bueno. */}
+      {neto != null && conIva != null && Math.round(conIva) !== Math.round(neto) ? (
+        <p className="tnum mt-1 font-mono text-[11.5px] text-faint">total {pesos(conIva, moneda)}</p>
+      ) : null}
+      {pie ? <p className="mt-1 text-[11.5px] text-faint">{pie}</p> : null}
+    </div>
+  )
+}
+
 /** Una pastilla de filtro: el mismo patrón que los filtros de la cartera del OS. */
-function Pastilla({ a, activa, children }: { a: string; activa: boolean; children: string }) {
+function Pastilla({ a, activa, monto, children }: { a: string; activa: boolean; monto?: string | null; children: string }) {
   return (
     <Link
       href={a}
       aria-current={activa ? 'page' : undefined}
       className={
-        'flex min-h-9 items-center rounded-full px-3.5 text-[12.5px] transition-colors ' +
+        'flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] transition-colors ' +
         (activa ? 'bg-ink font-semibold text-canvas' : 'border border-line text-muted hover:text-ink')
       }
     >
       {children}
+      {/* El importe en la misma pastilla, separado por un punto medio y en mono: es una cifra, y
+          alineada con la del pie tiene que leerse como la misma. */}
+      {monto ? <span className={`tnum font-mono ${activa ? 'opacity-80' : 'text-faint'}`}>· {monto}</span> : null}
     </Link>
   )
 }
@@ -395,36 +494,5 @@ function Solapa({ a, activa, children }: { a: string; activa: boolean; children:
     >
       {children}
     </Link>
-  )
-}
-
-/**
- * Un total en dólares escrito como el contrato: el NETO, y el «+ IVA» al lado.
- *
- * Se muestra el neto porque es el número que el cliente reconoce de su contrato —«U$S 63.000 más
- * IVA»—, y debajo el total con impuesto para el que necesita conciliar. Sin el neto, el pie no se
- * puede comparar con el papel firmado; sin el total, no se puede comparar con lo que se transfirió.
- */
-function EnDolares({ rotulo, neto, bruto }: { rotulo: string; neto: number | null; bruto: number | null }) {
-  return (
-    <div>
-      <p className="text-[11px] tracking-[.09em] text-faint">{rotulo}</p>
-      <p className="tnum mt-1 font-mono text-[19px] font-semibold">
-        {pesos(neto ?? bruto, 'USD')}
-        {neto != null ? <span className="text-[13px] font-normal text-muted"> + IVA</span> : null}
-      </p>
-      {neto != null && bruto != null && bruto !== neto ? (
-        <p className="tnum mt-1 font-mono text-[11.5px] text-faint">total {pesos(bruto, 'USD')}</p>
-      ) : null}
-    </div>
-  )
-}
-
-function Total({ rotulo, monto }: { rotulo: string; monto: number | null }) {
-  return (
-    <div>
-      <p className="text-[11px] tracking-[.09em] text-faint">{rotulo.toUpperCase()}</p>
-      <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(monto)}</p>
-    </div>
   )
 }
