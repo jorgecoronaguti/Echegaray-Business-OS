@@ -120,7 +120,7 @@ async function runDaemon() {
     concurrency: cfg.CONCURRENCY,
     razonador: cfg.AI_ENGINE_DEFAULT,
     constructor: 'claude-cli (sólo code_change)',
-    engine_legado: cfg.ENGINE ?? null,
+    engine_legado: process.env.ORQ_ENGINE ?? null,
   })
   let ticks = 0
   while (accepting) {

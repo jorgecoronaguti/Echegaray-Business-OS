@@ -24,6 +24,7 @@ scripts · 14 timers en producción.
 | jornales, quincenas, UOCRA | `orquestador/scripts/jornales-pestana.mjs` (2.835 líneas — **leé el tramo, no el archivo**) |
 | obras, avance, partes | `src/features/obras/` + `src/features/control-obras/` · grilla en `lib/obras-grilla.mjs` |
 | permisos, roles, quién ve qué | `src/features/auth/` · y **la verdad final es RLS en Postgres**, no el front |
+| la inteligencia: modelos, proveedores, costo, degradación | `orquestador/lib/ia/` — **la única puerta**. El port del Work Fabric es `engines/index.mjs` |
 
 ## Fuentes de verdad — cuál manda
 
@@ -39,6 +40,7 @@ scripts · 14 timers en producción.
 ## Comandos
 
 ```bash
+node orquestador/scripts/verificar-independencia-ia.mjs   # ¿el OS sigue siendo del OS? 9 controles, 0 tokens
 npm run typecheck                 # ~2 s
 npx eslint .                      # ~33 s · 44 warnings preexistentes en orquestador/*.mjs, 0 errores
 npm run orq:test                  # suite completa, reporter dot · UNA corrida por VM
@@ -69,6 +71,21 @@ reiniciar `comunicacion-worker`, `comunicacion-ws` y `asistencia-http`. Mergear 
 llegó. La prueba de que el código nuevo está vivo es un dato del proceso (la línea de arranque del
 worker enumera `fajos_mudos_ms`, que sólo existe en el código nuevo), no `is-active`.
 `orq-worker` y `orq-interactive` sí corren del árbol principal: verificá `WorkingDirectory`.
+
+## La inteligencia — dónde vive cada cosa
+
+| Concepto | Dónde | Nunca |
+|---|---|---|
+| identidad, permisos y límites de un agente | `orq.agents` (25 filas) | pedírselos al proveedor |
+| qué herramientas puede usar el razonador | la lista blanca del handler (`Read,Glob,Grep`) | ampliarla para «que funcione» |
+| qué modelo usa cada trabajo | `lib/ia/capacidad.mjs` — se declara SIMPLE/NORMAL/COMPLEX | nombrar un modelo en el caller |
+| todo lo que sabe de Anthropic | `lib/ia/proveedores/anthropic.mjs` | un `fetch` a la API en otro lado |
+| si el razonador puede | `estado-cerebro.mjs` → `public.os_runtime` | asumir que hay saldo |
+| cuánto cuesta y de quién es | `orq.chat_cost` → vista `orq.v_costo_ia` | guardar el prompt |
+
+`claude-cli` es el **Builder**: sólo el handler `code_change` y los agentes `implementer` y
+`software-architect`. Cualquier otro agente con ese motor es una dependencia del negocio con la
+cuota de una herramienta de desarrollo, y el control de arriba lo caza.
 
 ## Trampas ya pagadas (no volver a descubrirlas)
 
