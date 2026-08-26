@@ -37,21 +37,32 @@ export type ObraDelPortal = { id: string; nombre: string }
 type Props = {
   /** El nombre del cliente: es de quién es TODO lo que se ve abajo. */
   cliente: string
+  /** Dirección está mirando desde la ficha, no un contacto del cliente. */
+  previa?: boolean
   /** Cuántas obras suyas hay. Sólo para el subtítulo — la lista vive en el contenido. */
   obras: number
   children: ReactNode
 }
 
-export function Shell({ cliente, obras, children }: Props) {
+export function Shell({ cliente, obras, previa = false, children }: Props) {
   const ruta = usePathname() ?? '/portal'
   const activo = destinoActivo(ruta)
 
   return (
     <div className="flex min-h-dvh bg-canvas text-ink">
+      {/* EL AVISO DE LA PREVIA. Es lo ÚNICO que se agrega cuando mira Dirección: el resto de la
+          pantalla es idéntica a la del cliente, porque un portal que se comporta distinto según
+          quién mira no prueba nada de lo que muestra. Existe para poder volver a la ficha. */}
+      {previa ? (
+        <div className="fixed inset-x-0 top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink px-4 py-2 text-[12px] text-canvas">
+          <span>Estás viendo el portal como lo ve <strong className="font-semibold">{cliente}</strong>.</span>
+          <a href="/clientes" className="underline underline-offset-2">Volver a Clientes</a>
+        </div>
+      ) : null}
       {/* ── BARRA LATERAL · sólo escritorio ─────────────────────────────────────────────────── */}
       <nav
         aria-label="Secciones"
-        className="hidden w-[88px] shrink-0 flex-col items-center gap-[5px] border-r border-line bg-surface py-4 md:flex"
+        className={`hidden w-[88px] shrink-0 flex-col items-center gap-[5px] border-r border-line bg-surface py-4 md:flex${previa ? ' pt-12' : ''}`}
       >
         <span className="mb-[14px] grid h-[26px] w-[26px] place-items-center rounded-[6px] bg-marca text-[11px] font-semibold text-ink">
           E
@@ -70,7 +81,7 @@ export function Shell({ cliente, obras, children }: Props) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── QUIÉN ES ─────────────────────────────────────────────────────────────────────── */}
-        <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]">
+        <header className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]${previa ? ' mt-9 md:mt-0' : ''}`}>
           <span className="min-h-[22px] text-[14px] font-semibold text-ink">{cliente}</span>
           <span className="text-[12.5px] text-faint">
             {obras === 0 ? 'sin obras' : obras === 1 ? '1 obra' : `${obras} obras`}

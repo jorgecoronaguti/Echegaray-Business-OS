@@ -24,7 +24,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
 
   // EL ALCANCE SE COMPRUEBA CONTRA LA BASE, no contra la URL. Cambiar el id a mano no abre la obra
   // de otro cliente.
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
   const permitidas = await obrasDelCliente(acceso)
   if (!permitidas.some((o) => o.id === obraId)) notFound()

@@ -28,12 +28,12 @@ export default async function LayoutPortal({ children }: { children: ReactNode }
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
 
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
   const obras = await obrasDelCliente(acceso)
   return (
-    <Shell cliente={acceso.clienteNombre} obras={obras.length}>
+    <Shell cliente={acceso.clienteNombre} obras={obras.length} previa={sesion.previa === true}>
       {children}
     </Shell>
   )

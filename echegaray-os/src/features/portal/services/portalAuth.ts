@@ -44,11 +44,16 @@ export async function pedirLinkPortal(email: string): Promise<ResultadoAccion> {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('cliente_acceso')
-      .select('id, revocado_at')
+      .select('id')
       .eq('email', mail)
-      .maybeSingle()
+      .is('revocado_at', null)
+      .limit(1)
     if (error) throw new Error(error.message)
-    habilitado = Boolean(data && !data.revocado_at)
+    // `limit(1)` Y NO `maybeSingle()`: desde el 26/08/2026 un mail puede estar habilitado en VARIOS
+    // clientes —es como el dueño mira lo que ve cada uno— y `maybeSingle()` con dos filas devuelve
+    // error, o sea que dejaría de entrar justamente quien tiene más de un acceso. Acá sólo hace falta
+    // saber si hay AL MENOS uno vigente; a cuál de sus clientes entra se decide después de la sesión.
+    habilitado = Boolean(data?.length)
   } catch (e) {
     // Falla CERRADA: si no se puede confirmar la habilitación, no se manda ningún enlace. Un
     // permiso que se afloja cuando se cae la base no es un permiso.
@@ -107,13 +112,17 @@ export async function completarIngresoPortal(): Promise<ResultadoAccion> {
   const email = user.email.trim().toLowerCase()
   const admin = createAdminClient()
 
-  const { data: acceso, error: errAcceso } = await admin
+  // Vigentes primero y `limit(1)`: un mail habilitado en varios clientes tiene varias filas, y
+  // `maybeSingle()` con más de una devuelve error — dejaría afuera a quien tiene más de un acceso.
+  const { data: accesos, error: errAcceso } = await admin
     .from('cliente_acceso')
     .select('id, cliente_id, revocado_at, auth_user_id, primer_ingreso_at')
     .eq('email', email)
-    .maybeSingle()
+    .order('revocado_at', { ascending: true, nullsFirst: true })
+    .limit(1)
 
   if (errAcceso) return { ok: false, error: 'No pude verificar tu acceso' }
+  const acceso = accesos?.[0] ?? null
 
   // ═══ «NO ES UN CLIENTE» NO ES «ES UN CLIENTE RECHAZADO» ═══
   //

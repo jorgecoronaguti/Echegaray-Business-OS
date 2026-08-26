@@ -23,7 +23,7 @@ export default async function Terminadas() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
 
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
   // EL ALCANCE SALE DE `cliente_acceso`, NO DE LA COOKIE. Antes esta consulta filtraba por el

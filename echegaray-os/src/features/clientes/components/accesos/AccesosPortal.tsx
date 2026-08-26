@@ -97,6 +97,25 @@ export function AccesosPortal({
           </div>
         )}
 
+        {/* VER EL PORTAL COMO LO VE ESTE CLIENTE. Va arriba de la lista de invitados y no abajo:
+            la pregunta «¿qué le estoy mostrando?» se hace ANTES de decidir a quién invitar. Abre en
+            otra pestaña para no perder la ficha, y no crea ningún acceso — la autorización es la
+            sesión del OS. */}
+        <a
+          href={`/portal/vista-previa/${clienteId}`}
+          target="_blank"
+          rel="noreferrer"
+          data-testid="ver-como-el-cliente"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start',
+            minHeight: '38px', padding: '0 14px', borderRadius: '8px', background: C.marca,
+            color: C.tinta, fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
+          }}
+        >
+          <Ico d={P.ojo ?? P.info} s={15} w={1.8} />
+          Ver el portal como lo ve este cliente
+        </a>
+
         <TablaAccesos
           accesos={accesos} totalObras={obras.length} hoy={hoy} elegido={editando}
           onEditar={setEditando}

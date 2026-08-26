@@ -1,5 +1,6 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { SesionPortal } from './sesion'
 import type { ObraDelPortal } from './Shell'
 import { accesoVigente, alcanzaLaObra, limpiarNombre, type AccesoDelPortal, type FilaAcceso } from './permisos'
 
@@ -77,8 +78,31 @@ export async function accesosDelMail(mail: string): Promise<AccesoDelPortal[]> {
  * contra los accesos reales del mail. Aunque se rompiera la firma de la cookie, un cliente que el
  * mail no alcanza devuelve `null` y la pantalla no dibuja nada suyo.
  */
-export async function accesoDelPortal(mail: string, clienteId: string): Promise<AccesoDelPortal | null> {
-  return (await accesosDelMail(mail)).find((a) => a.clienteId === clienteId) ?? null
+export async function accesoDelPortal(sesion: SesionPortal): Promise<AccesoDelPortal | null> {
+  // LA VISTA PREVIA NO PASA POR LA LISTA DE INVITADOS. La autorización ya la dio el OS —sesión viva
+  // más permiso económico, comprobado en la ruta que firma esta cookie— y el dueño no es un contacto
+  // del cliente: no tiene ni debe tener fila en `cliente_acceso`.
+  if (sesion.previa) return await accesoDeVistaPrevia(sesion.clienteId)
+  return (await accesosDelMail(sesion.mail)).find((a) => a.clienteId === sesion.clienteId) ?? null
+}
+
+/**
+ * El acceso sintético de la previa: TODOS los permisos y TODAS las obras.
+ *
+ * Es lo correcto y no una comodidad: la previa existe para contestar «¿qué le estoy mostrando a este
+ * cliente?», y recortarla mostraría menos de lo que el cliente ve — que es justo la pregunta que no
+ * quedaría contestada. Lo que cada contacto ve de verdad se decide en su propia fila.
+ */
+async function accesoDeVistaPrevia(clienteId: string): Promise<AccesoDelPortal | null> {
+  const { data } = await createAdminClient()
+    .from('clientes').select('id, nombre_comercial, razon_social').eq('id', clienteId).maybeSingle()
+  if (!data) return null
+  return {
+    accesoId: `previa:${clienteId}`,
+    clienteId: String(data.id),
+    clienteNombre: limpiarNombre(String(data.nombre_comercial ?? data.razon_social ?? 'Cliente')),
+    puedeVerObra: true, puedeVerMontos: true, puedeAprobar: false, obras: null,
+  }
 }
 
 /** Una obra del alcance, con el cliente al que pertenece. */

@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 export default async function Documentos() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
   // `puede_ver_obra` GOBIERNA ESTA PANTALLA. Sin ese permiso no se dibuja una lista vacía —que se

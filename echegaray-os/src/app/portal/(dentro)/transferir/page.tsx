@@ -21,7 +21,7 @@ export default async function Transferir() {
   if (!sesion) redirect('/portal/login')
   // EL PRÓXIMO PAGO DEL CLIENTE, no el de una obra: el que transfiere paga lo que vence primero, sin
   // importar de cuál de sus obras sea.
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
   // SIN `puede_ver_montos` NO SE ENTRA ACÁ. Esta pantalla existe para pagar un importe; quien no
   // puede ver la plata no puede transferirla, y dibujarla sin el monto sería pedirle que pague algo

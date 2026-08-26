@@ -31,7 +31,7 @@ export const dynamic = 'force-dynamic'
 export default async function Facturas() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   if (!acceso) redirect('/portal/login')
 
   const { pagos, bloques } = await esquemaDelPortal(acceso)

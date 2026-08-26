@@ -19,7 +19,7 @@ export async function registrarAdjunto(
   if (!sesion) return { hecho: false, error: 'La sesión venció' }
 
   const obraId = String(form.get('obraId') ?? '')
-  const acceso = await accesoDelPortal(sesion.mail, sesion.clienteId)
+  const acceso = await accesoDelPortal(sesion)
   // Sin acceso vigente, o sin `puede_ver_obra`, no hay dónde adjuntar: la misma respuesta que para
   // una obra ajena, porque distinguirlas convertiría el formulario en un oráculo de qué obras hay.
   if (!acceso?.puedeVerObra) return { hecho: false, error: 'Esa obra no es suya' }

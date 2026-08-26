@@ -27,6 +27,19 @@ const VIDA_HORAS = 12
 export type SesionPortal = {
   mail: string
   clienteId: string
+  /**
+   * VISTA PREVIA: quien mira es Dirección desde la ficha del cliente, no un contacto del cliente.
+   *
+   * Existe porque la alternativa era peor. Para que el dueño pudiera ver el portal de sus cinco
+   * clientes, le había cargado su mail como acceso en los cinco — y eso lo dejaba figurando como
+   * contacto de todos ellos en la solapa «Acceso al portal», que es la lista de invitados reales.
+   * Textual: «no q ese sea el mail por defecto de todos los clientes».
+   *
+   * La previa NO crea ninguna fila: se firma en la cookie después de comprobar la sesión del OS y el
+   * permiso económico. Y NO altera lo que se ve — un portal que se comporta distinto según quién
+   * mira no prueba nada de lo que muestra—: sólo agrega un aviso arriba para poder volver.
+   */
+  previa?: boolean
   /** Para poder atar los registros de acceso a una sesión concreta sin exponer el mail en los logs. */
   sid: string
   /** Epoch en segundos. */
