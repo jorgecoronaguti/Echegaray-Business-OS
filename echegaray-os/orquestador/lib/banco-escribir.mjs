@@ -15,6 +15,38 @@
 import { CUENTA } from './banco-santander.mjs'
 
 /**
+ * MARCA DE LA FILA PROVISORIA. Un cobro probado por comprobante —el dueño manda la transferencia y el
+ * dinero YA está en la cuenta— no puede esperar al próximo extracto para existir: mientras tanto CAJA
+ * publica un saldo menor al real. Entra al banco con este prefijo en `origen` y, cuando llega el
+ * extracto que lo contiene, se borra solo (`purgarProvisorios`, abajo).
+ *
+ * POR QUÉ ASÍ Y NO SUMANDO EN UNA PESTAÑA. El saldo de la cuenta tiene UNA fuente: la réplica del
+ * banco. Un cobro sumado aparte queda dos veces el día que el extracto lo trae, y ese doble conteo no
+ * da error: infla la caja en silencio.
+ */
+export const PROVISORIO = 'PROVISORIO · comprobante'
+
+/**
+ * Saca las filas provisorias que caen dentro de la ventana del extracto que se está cargando.
+ *
+ * LA CLAVE ES QUE CORRE ANTES DEL INSERT, NO DESPUÉS. El extracto trae el movimiento con su
+ * referencia real y su saldo corrido; la fila provisoria tiene una referencia inventada por nosotros,
+ * así que el índice único NO las junta. Si la provisoria sobreviviera, el mismo peso quedaría dos
+ * veces y la cadena de saldos dejaría de cerrar.
+ *
+ * @returns {Promise<number>} cuántas provisorias se dieron de baja
+ */
+export async function purgarProvisorios(port, movs = [], { cuenta = CUENTA.numero } = {}) {
+  const fechas = movs.map((m) => aFecha(m.fecha)).filter(Boolean).sort()
+  if (!fechas.length) return 0
+  const { rowCount } = await port.query(
+    `delete from public.banco_movimientos
+      where cuenta = $1 and origen like $2 and fecha >= $3::date and fecha <= $4::date`,
+    [cuenta, `${PROVISORIO}%`, fechas[0], fechas[fechas.length - 1]])
+  return rowCount ?? 0
+}
+
+/**
  * Inserta movimientos ignorando los que ya están: la deduplicación la impone el índice único
  * `(cuenta, referencia, importe)` de la base.
  *
@@ -27,6 +59,9 @@ import { CUENTA } from './banco-santander.mjs'
  * @returns {Promise<{insertados:number, ids:number[]}>}
  */
 export async function insertarMovimientos(port, movs = [], origen = null, { cuenta = CUENTA.numero } = {}) {
+  // El extracto manda sobre lo provisorio: si trae la ventana donde vive un cobro cargado por
+  // comprobante, esa fila deja de hacer falta y su permanencia sería un duplicado.
+  const purgados = String(origen ?? '').startsWith(PROVISORIO) ? 0 : await purgarProvisorios(port, movs, { cuenta })
   const ids = []
   for (const m of movs) {
     const r = await port.query(
@@ -38,7 +73,7 @@ export async function insertarMovimientos(port, movs = [], origen = null, { cuen
     )
     if (r.rows?.[0]?.id != null) ids.push(r.rows[0].id)
   }
-  return { insertados: ids.length, ids }
+  return { insertados: ids.length, ids, provisoriosDadosDeBaja: purgados }
 }
 
 /** Trae de la tabla las filas que quedaron. Es la EVIDENCIA: se lee el destino, no el intento. */
