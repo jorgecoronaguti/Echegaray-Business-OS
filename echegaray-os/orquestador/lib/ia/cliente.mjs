@@ -156,10 +156,12 @@ export async function pedirTexto({
         ultimo = err
         logger?.warn?.('ia: falló la llamada', { proveedor: proveedor.nombre, modelo: modeloId, kind: c.kind, status: c.status, intento })
 
-        if (apagaElRazonadorLocal(c)) {
-          const ec = await estadoCerebro()
-          ec?.marcarSinCredito?.(`${c.kind} ${c.status ?? ''}`).catch?.(() => {})
-        }
+        // SE ESPERA A QUE EL AVISO SE ESCRIBA. Era fire-and-forget y perdía la carrera: en un
+        // proceso corto —un script del OS, un job de un timer— el proceso terminaba antes de que la
+        // marca llegara a la base y el resto del OS seguía creyendo que había saldo. Se descubrió
+        // validando la degradación contra la base real: el ruteo degradaba bien y el estado no se
+        // enteraba. La escritura es una fila y sólo ocurre en la transición.
+        await avisarEstado(c)
         await registrarUso({
           modelo: modeloId, usd: null, agente, funcion, proveedor: proveedor.nombre, capacidad: cap,
           tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false, errorKind: c.kind, fallbackDe,
