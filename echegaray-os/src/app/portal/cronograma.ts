@@ -124,6 +124,24 @@ export type ResumenCobro = {
 }
 
 /**
+ * EL NETO DE UN COBRO CUANDO LA LÍNEA NO LO TRAE.
+ *
+ * Se RESTA el IVA del total, que es aritmética, en vez de dar el total por neto, que es una
+ * suposición. La diferencia la puso a la vista una línea real: «IVA de Factura 220», $6.510.000 de
+ * los cuales el importe entero ES el impuesto. Sin la resta, el pie publicaba ese IVA como si fuera
+ * obra facturada y le sumaba $6,5 M al neto cobrado.
+ *
+ * Sin IVA declarado el neto ES el total: un cobro en efectivo sin factura no lleva impuesto, y
+ * tratarlo como «sin neto» sacaría del pie plata que sí está cobrada. Cero sería peor todavía:
+ * afirmaría que ese cobro no valió nada.
+ */
+function netoDe(p: Pago): number {
+  if (p.neto != null) return p.neto
+  if (p.monto == null) return 0
+  return p.iva != null ? p.monto - p.iva : p.monto
+}
+
+/**
  * NÚCLEO PURO: los totales de la obra.
  *
  * ═══ LA CUENTA ES EN NETO, PORQUE EL CONTRATO ES NETO (26/08/2026) ═══
@@ -182,16 +200,13 @@ export function resumenDeCobro(
     if (p.fechaPago) {
       pagado += p.monto
       nPagado++
-      // EL NETO CAE AL TOTAL CUANDO NO ESTÁ CARGADO, y no a cero. Una fila en efectivo sin IVA
-      // discriminado tiene neto = total, y tratarla como «sin neto» sacaría del pie plata que sí
-      // está cobrada. Cero sería peor todavía: afirmaría que ese cobro no valió nada.
-      netoPagado += p.neto ?? p.monto
+      netoPagado += netoDe(p)
       if (p.iva != null) ivaPagado += p.iva
       continue
     }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
-    netoPendiente += p.neto ?? p.monto
+    netoPendiente += netoDe(p)
     if (p.iva != null) ivaPendiente += p.iva
     nPendiente++
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto

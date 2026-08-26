@@ -5,6 +5,7 @@ import {
   estadoDelSheet, estadoPublicado, fueCobrada,
   terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio, parteDeclaradaUsd,
   totalDeclaradoUsd, fusionarImportes, numerarRepetidos, depurarRotulo, abarcaVariasObras,
+  netoDeclaradoUsd,
 } from './portal-siembra.mjs'
 
 test('el importe es-AR: el punto es miles y el paréntesis es negativo', () => {
@@ -406,4 +407,31 @@ test('una fila sin concepto NO se numera: «Efectivo (1 de 5)» afirma un orden 
   // líneas que de verdad se llaman igual.
   const con = [{ rotulo: 'Anticipo' }, { rotulo: 'Anticipo' }]
   assert.deepEqual(numerarRepetidos(con).map((l) => l.rotulo), ['Anticipo (1 de 2)', 'Anticipo (2 de 2)'])
+})
+
+// ── EL NETO QUE EL CONCEPTO DECLARA ──────────────────────────────────────────────────────────
+//
+// El anticipo de Quattropani se publicaba en U$S 29.504 cuando es exactamente la mitad del contrato
+// de U$S 63.000. La fila lleva los materiales en pesos DENTRO de su propio neto
+// (`=36454685,38+(11500*1550)`), así que el prorrateo `usd/total` achicaba los U$S 11.500 a 9.504.
+
+test('«U$S 11.500 + IVA» declara el NETO, no el total', () => {
+  assert.equal(netoDeclaradoUsd('U$S 11.500 + IVA — 36,5 % del anticipo 50 % + Materiales'), 11500)
+  assert.equal(netoDeclaradoUsd('U$S 3.500 + IVA'), 3500)
+  // Sin el «+ IVA» el concepto NO dice cuál de los dos es, y se sigue tratando como hasta ahora.
+  assert.equal(netoDeclaradoUsd('U$S 20.000 — 63,5 % del anticipo 50 %'), null)
+  assert.equal(netoDeclaradoUsd('Certificación 1/9'), null)
+  assert.equal(netoDeclaradoUsd(''), null)
+  assert.equal(netoDeclaradoUsd(null), null)
+})
+
+test('el anticipo de Quattropani da los U$S 31.500 que son la mitad del contrato', () => {
+  // Las tres partes tal como están en Cobranzas: la que declara su neto y las dos del segundo pago.
+  const partes = [
+    netoDeclaradoUsd('U$S 11.500 + IVA — 36,5 % del anticipo 50 % + Materiales'),
+    15400,  // fila en USD
+    4600,   // $7.130.000 ÷ 1.550
+  ]
+  assert.equal(partes.reduce((a, b) => a + b, 0), 31500)
+  assert.equal(31500 * 2, 63000, 'y 31.500 es exactamente el 50 % del contrato firmado')
 })

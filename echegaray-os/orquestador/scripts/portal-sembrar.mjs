@@ -22,6 +22,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import {
+  netoDeclaradoUsd,
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoPublicado,
   fueCobrada, seDescarta, terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio,
   fusionarImportes, numerarRepetidos, depurarRotulo, totalDeclaradoUsd, parteDeclaradaUsd,
@@ -185,9 +186,19 @@ function lineaDeFila(valores, formulas, nroFila) {
   const usd = montoUsdPorTipoDeCambio({ formulaNeto: f?.[9], neto: netoCrudo, total })
     ?? parteDeclaradaUsd(concepto)
     ?? totalDeclaradoUsd(concepto)
+  // ═══ CUÁNDO EL CONCEPTO DECLARA EL NETO Y NO HAY NADA QUE PRORRATEAR (26/08/2026) ═══
+  //
+  // «U$S 11.500 + IVA» dice que 11.500 es el NETO. Esa fila tiene además los materiales en pesos
+  // adentro de su propio neto (`=36454685,38+(11500*1550)`), así que repartir por la proporción
+  // `usd/total` daba U$S 9.504: el anticipo cobrado se publicaba en U$S 29.504 cuando es, exacto,
+  // la mitad del contrato de U$S 63.000. Se toma el declarado y el IVA sale de él.
+  const netoUsd = netoDeclaradoUsd(concepto)
   // En dólares el total viene convertido; neto e IVA se convierten con el MISMO tipo de cambio
   // implícito (total ÷ usd), para que las tres cifras sigan cerrando entre sí.
   const aUsd = (x) => (usd == null || !total || x == null ? x : Math.round((x * usd / total) * 100) / 100)
+  // La alícuota sale de la PROPIA fila —IVA ÷ neto en pesos—, no de un 21 % supuesto: hay cobros al
+  // 10,5 % y otros sin IVA, y fijar la tasa acá inventaría un impuesto que la fila no declara.
+  const alicuota = netoCrudo ? ivaCrudo / netoCrudo : 0
   // EL ESTADO LO DECLARA EL SHEET Y SE LEE UNA SOLA VEZ. Nadie lo vuelve a decidir río abajo: ni
   // `escribir()`, ni el informe en seco, ni la pantalla del cliente.
   const prevista = fecha(v?.[16])
@@ -197,9 +208,11 @@ function lineaDeFila(valores, formulas, nroFila) {
     clienteSheet: String(v?.[6] ?? '').trim(),
     conceptoCrudo: String(v?.[8] ?? '').trim(),
     concepto, ordenCompra, tipo, rotulo, sinConcepto: sinConcepto === true,
-    monto: usd ?? total,
-    neto: usd != null ? aUsd(netoCrudo) : netoCrudo,
-    iva: usd != null ? aUsd(ivaCrudo) : ivaCrudo,
+    // Con el neto declarado, el TOTAL de la línea es ese neto más su IVA — no el número suelto del
+    // concepto, que es sólo la mitad de lo que el cliente transfirió.
+    monto: netoUsd != null ? Math.round(netoUsd * (1 + alicuota) * 100) / 100 : (usd ?? total),
+    neto: netoUsd ?? (usd != null ? aUsd(netoCrudo) : netoCrudo),
+    iva: netoUsd != null ? Math.round(netoUsd * alicuota * 100) / 100 : (usd != null ? aUsd(ivaCrudo) : ivaCrudo),
     moneda: usd != null ? 'USD' : (String(v?.[26] ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS'),
     factura: v?.[4] ? `${v?.[3] ?? ''} ${v?.[4]}`.trim() : null,
     prevista,

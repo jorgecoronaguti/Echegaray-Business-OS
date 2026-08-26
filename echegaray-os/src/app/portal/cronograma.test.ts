@@ -217,3 +217,12 @@ test('la abreviatura no redondea lo que entra entero', () => {
   assert.equal(corto(852_300), '$ 852k')
   assert.equal(corto(null), '', 'sin dato no se dibuja un cero')
 })
+
+test('una línea que es toda IVA no suma al neto cobrado', () => {
+  // «IVA de Factura 220»: $6.510.000 donde el importe entero es el impuesto del anticipo en dólares.
+  // Dar el total por neto le sumaba $6,5 M de obra facturada que no existe.
+  const r = resumenDeCobro([p({ monto: 6_510_000, neto: null, iva: 6_510_000, fechaPago: '2026-08-19' })], null, HOY)
+  assert.equal(r.netoPagado, 0)
+  assert.equal(r.ivaPagado, 6_510_000)
+  assert.equal(r.pagado, 6_510_000, 'el cobro sigue estando: lo que cambia es cómo se reparte')
+})

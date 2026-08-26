@@ -361,6 +361,27 @@ export function totalDeclaradoUsd(concepto) {
 }
 
 /**
+ * NÚCLEO PURO: ¿el importe en dólares del concepto es el NETO, o el total con IVA?
+ *
+ * ═══ LA FILA QUE MEZCLA DOS MONEDAS EN SU PROPIO NETO (26/08/2026) ═══
+ *
+ * El anticipo de Quattropani se cobró en una fila cuyo neto es `=36454685,38+(11500*1550)`: los
+ * materiales en PESOS más la mano de obra en DÓLARES. El total de la fila —$65.678.419— no es
+ * proporcional a los U$S 11.500, así que repartir el neto por la proporción `usd/total` publicaba
+ * U$S 9.504 donde el papel dice 11.500. Sumado a las otras dos partes daba U$S 29.504 cobrados de
+ * un anticipo que es, exactamente, la mitad del contrato: U$S 31.500.
+ *
+ * Cuando el concepto escribe «U$S 11.500 + IVA», ese número ES EL NETO y lo dice con todas las
+ * letras. No hay nada que prorratear: se toma el declarado y el IVA se calcula sobre él. Sin el
+ * «+ IVA» el importe se sigue tratando como hasta ahora —puede ser el total— porque el concepto no
+ * declara cuál de los dos es.
+ */
+export function netoDeclaradoUsd(concepto) {
+  const m = String(concepto ?? '').match(/\bU\$S\s*([\d.,]+)\s*\+\s*IVA\b/i)
+  return m ? monto(m[1]) : null
+}
+
+/**
  * NÚCLEO PURO: varias filas del Sheet que son UN SOLO cobro para el cliente.
  *
  * Pasa dos veces: una certificación partida en B y N, y un anticipo cobrado en dos monedas el mismo
