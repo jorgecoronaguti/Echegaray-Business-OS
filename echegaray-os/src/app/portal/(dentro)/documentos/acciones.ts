@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelCliente } from '../../datos'
+import { obrasDelMail } from '../../datos'
 
 // LO QUE SUBE EL CLIENTE — se registra, y administración se entera.
 //
@@ -19,7 +19,7 @@ export async function registrarAdjunto(
   if (!sesion) return { hecho: false, error: 'La sesión venció' }
 
   const obraId = String(form.get('obraId') ?? '')
-  const permitidas = await obrasDelCliente(sesion.clienteId)
+  const permitidas = await obrasDelMail(sesion.mail)
   if (!permitidas.some((o) => o.id === obraId)) return { hecho: false, error: 'Esa obra no es suya' }
 
   const archivo = form.get('archivo')

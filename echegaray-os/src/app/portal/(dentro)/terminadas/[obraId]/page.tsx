@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../../sesion'
-import { obrasDelCliente } from '../../../datos'
+import { obrasDelMail } from '../../../datos'
 import { obraDetalle, pagosDeObra } from '../../datosObra'
 import { documentosDeObra } from '../../documentos/drive'
 import { cierreDeObra } from '../cierre'
@@ -24,7 +24,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
 
   // EL ALCANCE SE COMPRUEBA CONTRA LA BASE, no contra la URL. Cambiar el id a mano no abre la obra
   // de otro cliente.
-  const permitidas = await obrasDelCliente(sesion.clienteId)
+  const permitidas = await obrasDelMail(sesion.mail)
   if (!permitidas.some((o) => o.id === obraId)) notFound()
 
   const [obra, pagos, cierre] = await Promise.all([obraDetalle(obraId), pagosDeObra(obraId), cierreDeObra(obraId)])

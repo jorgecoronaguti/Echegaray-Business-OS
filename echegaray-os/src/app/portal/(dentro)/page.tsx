@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { sesionDelPortal } from '../sesion'
-import { obrasDelCliente, obraElegida } from '../datos'
+import { obrasDelMail, obraElegida } from '../datos'
 import { obraDetalle, pagosDeObra, hoyEnObra } from './datosObra'
 import { proximoPago, resumenDeCobro, loQueSigue, estadoDePago, pesos, diaMes } from '../cronograma'
 import { IconoEstado, Rubro, Vacio, Fila } from '../Piezas'
@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic'
 export default async function Inicio({ searchParams }: { searchParams: Promise<{ obra?: string }> }) {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelCliente(sesion.clienteId)
+  const obras = await obrasDelMail(sesion.mail)
   const elegida = obraElegida(obras, (await searchParams).obra)
   if (!elegida) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail. Escribinos y lo resolvemos.</Vacio>
 
