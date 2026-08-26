@@ -100,7 +100,7 @@ test('la misma hora, cargada una vez, se lee desde la obra y desde la persona', 
   // ── 4 · LA MISMA FILA, DESDE LA PERSONA ──────────────────────────────────
   await page.goto('/administracion/personas')
   await page.getByRole('link', { name: persona, exact: true }).first().click()
-  await page.getByTestId('nav-ficha-horas').click()
+  await page.getByTestId('solapa-horas').click()
 
   // Período: la quincena de la empresa, que es la que se liquida.
   await page.getByTestId('periodo-quincena').click()

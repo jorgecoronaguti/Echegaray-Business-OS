@@ -44,14 +44,14 @@ test('capturas de Administración', async ({ page }) => {
   if (await fila.count()) {
     await fila.click()
     await page.waitForURL(/\/administracion\/personas\/[^/?]+$/, { timeout: 30000 })
-    // CAMBIO DE REGLA DECLARADO (Design 23/08): la ficha de la persona dejó de coronarse con el
-    // `EntityHeader` blanco y pasó al slab de identidad grafito —`COMPONENTS.md` §Anatomía de ficha
-    // de entidad—, el mismo componente que ya usa la ficha del proveedor. El testid cambia con él.
-    await page.getByTestId('slab-persona').waitFor({ timeout: 30000 })
+    // CAMBIO DE REGLA DECLARADO (20 v2): la ficha dejó de coronarse con un slab —primero blanco,
+    // después grafito— y pasó a la anatomía de segundo nivel del v2: miga, nombre a 24px y cifras
+    // sin tarjeta. El testid cambia con ella.
+    await page.getByTestId('titulo-ficha').waitFor({ timeout: 30000 })
     await page.waitForTimeout(1200)
     await page.screenshot({ path: `${DIR}/1536-legajo.png`, fullPage: true })
     for (const v of ['asignaciones', 'horas', 'documentos']) {
-      await page.getByTestId(`nav-ficha-${v}`).click()
+      await page.getByTestId(`solapa-${v}`).click()
       await page.waitForTimeout(1500)
       await page.screenshot({ path: `${DIR}/1536-legajo-${v}.png`, fullPage: true })
     }
