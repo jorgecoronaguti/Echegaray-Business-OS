@@ -91,7 +91,15 @@ test('la categoría sale del nombre real, incluido el que le pone ARCA', () => {
   assert.equal(categoriaDe('Estructura San Francisco del Monte Entrepiso.pdf'), 'plano')
   // Sin nombre útil, decide la carpeta — y sólo entonces.
   assert.equal(categoriaDe('escaneo 3.pdf', 'CERTIFICADOS'), 'certificado')
+  assert.equal(categoriaDe('oc-495.pdf', 'OC - FACTURAS'), 'factura')
   assert.equal(categoriaDe('escaneo 3.pdf'), 'otro')
+})
+
+test('el nombre del archivo le gana a la carpeta que lo contiene', () => {
+  // Existe hoy en «OC - FACTURAS» de BSA. Dejando decidir a la carpeta, al cliente le aparecía un
+  // certificado de avance publicado como FACTURA: un comprobante que no existe.
+  assert.equal(categoriaDe('CERTIFICADOS N°1 - OC 32-2-279.pdf', 'OC - FACTURAS'), 'certificado')
+  assert.equal(categoriaDe('Contrato de obra.pdf', 'PLANOS FINALES'), 'contrato')
 })
 
 test('el espejo baja un nivel y sólo a las carpetas del cliente', () => {

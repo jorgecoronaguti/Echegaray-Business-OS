@@ -52,14 +52,17 @@ const sinTildes = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 export function categoriaDe(nombre: string, carpeta = ''): Categoria {
   const n = sinTildes(nombre)
   const c = sinTildes(carpeta)
-  if (/^\d{11}[_-]\d{3,5}[_-]\d{4,6}[_-]\d{6,10}/.test(n) || /factura/.test(n) || /factura/.test(c)) return 'factura'
+  // EL NOMBRE DEL ARCHIVO GANA SIEMPRE. La carpeta es el desempate, nunca el criterio: dentro de
+  // «OC - FACTURAS» vive «CERTIFICADOS N°1 - OC 32-2-279.pdf», y dejar decidir a la carpeta lo
+  // publicaba como factura — al cliente le aparecería una factura que no existe.
+  if (/^\d{11}[_-]\d{3,5}[_-]\d{4,6}[_-]\d{6,10}/.test(n) || /factura/.test(n)) return 'factura'
   if (/\brecibo/.test(n)) return 'recibo'
   if (/certificad/.test(n)) return 'certificado'
   if (/contrato/.test(n)) return 'contrato'
   if (/cotizacion|presupuesto|\bppto\b/.test(n)) return 'cotizacion'
   if (/plano|\.dwg$/.test(n) || revisionDe(nombre) !== null || disciplinaDe(nombre) !== 'otra') return 'plano'
-  // La carpeta decide sólo cuando el nombre del archivo no dijo nada. «Recibo 3.pdf» dentro de
-  // «CERTIFICADOS» es un recibo; un PDF sin nombre útil ahí adentro, un certificado.
+  // Recién ahora la carpeta: «oc-495.pdf» no dice nada de sí mismo, pero está en «OC - FACTURAS».
+  if (/factura/.test(c)) return 'factura'
   if (/certificad/.test(c)) return 'certificado'
   if (/plano/.test(c)) return 'plano'
   if (/contrato/.test(c)) return 'contrato'
