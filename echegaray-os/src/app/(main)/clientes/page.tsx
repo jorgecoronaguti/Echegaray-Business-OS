@@ -187,7 +187,24 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
               <TablaClientes
                 clientes={visibles}
                 seleccionado={seleccionado?.cliente_id}
-                hrefDe={(id) => armarHref(sp, { c: id, nuevo: undefined })}
+                // ═══ LA FILA ABRE LA FICHA, NO EL PANEL (26/08/2026) ═══
+                //
+                // Abría el panel lateral con `?c=<id>`. El panel es un buen resumen —quién es, sus
+                // obras, sus datos faltantes— pero es un PASO INTERMEDIO: el cronograma de cobros y
+                // el acceso al portal, que son las dos pantallas por las que se entra a este módulo,
+                // viven en solapas de la ficha, un clic más adentro y sin nombrar desde acá. El dueño
+                // lo probó y no encontró nada: «nunca encuentro nada».
+                //
+                // La ficha, en cambio, abre con sus siete solapas escritas —Obras · Presupuestos ·
+                // Documentos · Actividad · Cuenta corriente · Esquema de pago · Acceso al portal—. No
+                // hay que adivinar qué hay adentro: está a la vista.
+                //
+                // El panel NO se retiró: sigue abriéndose con `?c=<id>`, así que los enlaces
+                // compartidos con ese parámetro siguen mostrando lo mismo que mostraban.
+                hrefDe={(id) => {
+                  const slug = visibles.find((c) => c.cliente_id === id)?.slug
+                  return slug ? `/clientes/${slug}` : armarHref(sp, { c: id, nuevo: undefined })
+                }}
                 veEconomia={veEconomia}
                 obrasNoLeidas={obras === null}
                 limpiarHref={armarHref(sp, { q: undefined, vista: undefined, c: undefined })}
