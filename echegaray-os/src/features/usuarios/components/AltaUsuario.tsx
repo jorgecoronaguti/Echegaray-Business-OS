@@ -16,6 +16,7 @@
 // contraseña del panel, que es el mismo hecho —una clave recién generada que hay que pasarle a una
 // persona— y no puede decir dos cosas distintas según por dónde se haya llegado.
 
+import Link from 'next/link'
 import { useActionState } from 'react'
 import { Campo, CTRL } from '@/shared/components/ui'
 import { Boton } from '@/shared/components/ds'
@@ -27,7 +28,11 @@ import { Credencial } from './Credencial'
 
 const INICIAL: ResultadoAlta = { ok: false }
 
-export function AltaUsuario({ alCerrar }: { alCerrar: () => void }) {
+export function AltaUsuario({ cerrarHref }: {
+  /** DÓNDE VUELVE AL CERRAR, como dirección y no como función: quien lo abre es un Server Component
+   *  y una arrow pasada desde allá deja la pantalla en blanco en producción (React #419). */
+  cerrarHref: string
+}) {
   const [estado, crear, creando] = useActionState(crearUsuario, INICIAL)
 
   // NO USA `PanelDetalle` DEL DESIGN SYSTEM, y no es por gusto: su botón de cierre lleva el
@@ -38,8 +43,8 @@ export function AltaUsuario({ alCerrar }: { alCerrar: () => void }) {
   // escritorio— y se deja anotado el cambio pendiente.
   return (
     <>
-      <button
-        type="button" aria-label="Cerrar el panel" onClick={alCerrar}
+      <Link
+        href={cerrarHref} scroll={false} aria-label="Cerrar el panel"
         className="fixed inset-0 z-30 bg-ink/20 lg:hidden"
       />
       <aside
@@ -49,10 +54,10 @@ export function AltaUsuario({ alCerrar }: { alCerrar: () => void }) {
         <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
         <div className="flex items-baseline gap-2.5">
           <h2 className="min-w-0 flex-1 text-[16px] font-semibold text-ink">Invitar usuario</h2>
-          <button
-            type="button" onClick={alCerrar} data-testid="cerrar-alta" aria-label="Cerrar el panel"
+          <Link
+            href={cerrarHref} scroll={false} data-testid="cerrar-alta" aria-label="Cerrar el panel"
             className="shrink-0 text-[12px] leading-none text-faint transition-colors hover:text-ink"
-          >✕</button>
+          >✕</Link>
         </div>
         <p className="mt-1 text-[12.5px] text-muted">
           Se crea con una clave temporal que hay que pasarle a la persona.

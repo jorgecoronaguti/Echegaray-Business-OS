@@ -14,6 +14,7 @@
 // nombre de la tabla no le sirve a nadie que use esta pantalla, y al que sí le sirve lo tiene en el
 // código.
 
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion } from '@/shared/components/ui'
 import { Estado, Eyebrow, Nulo, PanelDetalle } from '@/shared/components/ds'
@@ -211,7 +212,7 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 }
 
 export function PanelUsuario({
-  usuario, obras, personas, esUnoMismo, rolActor, alCerrar,
+  usuario, obras, personas, esUnoMismo, rolActor, cerrarHref,
 }: {
   usuario: UsuarioGestion
   obras: ObraElegible[]
@@ -220,8 +221,14 @@ export function PanelUsuario({
   esUnoMismo: boolean
   /** El rol del que MIRA, no el de la fila. Sólo Dirección regenera contraseñas. */
   rolActor: Rol | null
-  alCerrar: () => void
+  /**
+   * DÓNDE VUELVE AL CERRAR, como DIRECCIÓN y no como función. La página que abre este panel es un
+   * Server Component: una arrow creada allá y pasada como prop compila, pasa `build` y revienta en
+   * producción con React #419. La arrow se crea ACÁ, que es cliente.
+   */
+  cerrarHref: string
 }) {
+  const router = useRouter()
   const u = usuario
   const activo = u.estado === 'activo'
 
@@ -240,7 +247,7 @@ export function PanelUsuario({
       estado={activo
         ? <Estado tono="pos" clave="activa">activa</Estado>
         : <Estado tono="warn" clave="sin_acceso">sin acceso</Estado>}
-      onCerrar={alCerrar}
+      onCerrar={() => router.push(cerrarHref, { scroll: false })}
       ancho={340}
       testid="panel-usuario"
     >
