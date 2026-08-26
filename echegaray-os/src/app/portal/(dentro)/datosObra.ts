@@ -106,25 +106,48 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
   return { pagos, bloques: agruparPorObra(pagos), contratos }
 }
 
-/**
- * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
- *
- * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
- * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
- *
- * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
- * todo el conjunto no lo tenga.
- */
-export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
-  if (!bloques.length) return null
-  let total = 0
-  for (const b of bloques) {
-    if (b.obraId === null) return null
-    const c = contratos.get(b.obraId)
-    if (c == null) return null
-    total += c
-  }
-  return total
+
+// `contratoDelConjunto` vive en `esquema.ts` —módulo puro, sin `server-only`— para poder
+// probarlo con `node --test`. Se re-exporta desde acá porque es donde lo buscan las pantallas.
+export { contratoDelConjunto } from '../esquema'
+export type { BloqueDeObra, PagoConObra }
+
+/** Una obra del cliente para el Inicio: sin un peso, sólo qué es y cómo va. */
+export type ObraDelInicio = {
+  id: string
+  nombre: string
+  /** `'en ejecución'`, `'terminada'`… tal como lo declara el registro. `null` = sin declarar. */
+  estado: string | null
+  /** `null` = SIN FECHA DE INICIO cargada. No se rellena con la de creación del registro. */
+  desde: string | null
 }
 
-export type { BloqueDeObra, PagoConObra }
+/**
+ * LAS OBRAS DEL CLIENTE PARA EL INICIO — desde `obra_canonica`, el registro real.
+ *
+ * No usa `obrasDelCliente` (que lee `public.obras`) a propósito: el alcance de un acceso —
+ * `cliente_acceso.obras` — guarda ids de `obra_canonica`, así que preguntarle a la otra tabla obliga
+ * a fallar cerrado cuando el acceso está acotado. Acá el filtro es exacto y un contacto con acceso a
+ * dos obras ve exactamente esas dos.
+ */
+export async function obrasParaElInicio(acceso: AccesoDelPortal): Promise<ObraDelInicio[]> {
+  const { data } = await createAdminClient()
+    .from('obra_canonica')
+    .select('id, nombre, estado, fecha_inicio_real, fecha_inicio_plan')
+    .eq('cliente_id', acceso.clienteId)
+    .order('nombre')
+
+  type Fila = { id: string; nombre: string; estado: string | null; fecha_inicio_real: string | null; fecha_inicio_plan: string | null }
+  return ((data ?? []) as Fila[])
+    .filter((o) => alcanzaLaObra(acceso.obras, String(o.id)))
+    .map((o) => ({
+      id: String(o.id),
+      nombre: String(o.nombre),
+      estado: o.estado ?? null,
+      // La REAL manda sobre la planificada: es cuándo arrancó de verdad. Sin ninguna de las dos,
+      // `null` — y la pantalla no escribe una fecha inventada.
+      desde: o.fecha_inicio_real ?? o.fecha_inicio_plan ?? null,
+    }))
+    // Las cerradas al final: el cliente entra a ver lo que está en curso.
+    .sort((a, b) => Number(a.estado === 'cerrada') - Number(b.estado === 'cerrada'))
+}

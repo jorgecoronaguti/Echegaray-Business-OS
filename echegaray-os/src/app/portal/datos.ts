@@ -25,7 +25,7 @@ import { accesoVigente, alcanzaLaObra, limpiarNombre, type AccesoDelPortal, type
 // Un permiso que viaja en el navegador es un permiso que se puede editar.
 
 const COLUMNAS_ACCESO =
-  'id, cliente_id, puede_ver_obra, puede_ver_montos, puede_aprobar, obras, revocado_at,'
+  'id, cliente_id, persona_contacto, puede_ver_obra, puede_ver_montos, puede_aprobar, obras, revocado_at,'
   + ' clientes(nombre_comercial, razon_social)'
 
 type FilaConCliente = FilaAcceso & {
@@ -59,6 +59,9 @@ export async function accesosDelMail(mail: string): Promise<AccesoDelPortal[]> {
       return {
         accesoId: String(f.id),
         clienteId: String(f.cliente_id),
+        // CON QUÉ NOMBRE SE LO SALUDA. `null` = administración no lo cargó, y entonces el portal
+        // saluda con el nombre del cliente: cierto, aunque menos cálido. No se deriva del mail.
+        persona: (f as { persona_contacto?: string | null }).persona_contacto?.trim() || null,
         clienteNombre: limpiarNombre(String(c?.nombre_comercial ?? c?.razon_social ?? 'Cliente')),
         puedeVerObra: f.puede_ver_obra === true,
         puedeVerMontos: f.puede_ver_montos === true,
@@ -101,6 +104,8 @@ async function accesoDeVistaPrevia(clienteId: string): Promise<AccesoDelPortal |
     accesoId: `previa:${clienteId}`,
     clienteId: String(data.id),
     clienteNombre: limpiarNombre(String(data.nombre_comercial ?? data.razon_social ?? 'Cliente')),
+    // La previa la mira Dirección, no una persona del cliente: no hay a quién saludar por su nombre.
+    persona: null,
     puedeVerObra: true, puedeVerMontos: true, puedeAprobar: false, obras: null,
   }
 }

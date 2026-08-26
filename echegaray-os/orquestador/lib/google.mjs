@@ -121,6 +121,32 @@ export function resolveKeyPath(config) {
   return candidates[candidates.length - 1]
 }
 
+/**
+ * EL JSON DEL SERVICE ACCOUNT, si viene por entorno. `null` cuando no está.
+ *
+ * Se acepta el JSON crudo y también en base64: pegar un JSON multilínea en un panel de variables de
+ * entorno rompe en la mitad de los paneles, y base64 es una sola línea.
+ *
+ * Si la variable está pero no parsea, se FALLA con un mensaje claro en vez de caer silenciosamente
+ * al archivo: una credencial mal pegada tiene que gritar, no comportarse como si no existiera.
+ */
+export function credencialDelEntorno(env = process.env) {
+  const crudo = env.GOOGLE_SA_KEY_JSON ?? env.GOOGLE_SA_KEY_JSON_B64
+  if (!crudo || !String(crudo).trim()) return null
+  const texto = String(crudo).trim().startsWith('{')
+    ? String(crudo)
+    : Buffer.from(String(crudo), 'base64').toString('utf8')
+  let json
+  try { json = JSON.parse(texto) } catch {
+    throw new Error('GOOGLE_SA_KEY_JSON está definida pero no es un JSON válido (ni en base64)')
+  }
+  if (!json.client_email || !json.private_key) {
+    throw new Error('GOOGLE_SA_KEY_JSON no tiene client_email o private_key: no es el key de un service account')
+  }
+  // Los paneles de entorno suelen guardar los saltos de línea escapados; sin esto la clave no firma.
+  return { ...json, private_key: String(json.private_key).replace(/\\n/g, '\n') }
+}
+
 // Dominio interno por defecto (Echegaray). Configurable por env. Se usa para COMPLETAR
 // destinatarios que el dueño escribe abreviados: "rodrigo" → rodrigo@ecsas.com.ar,
 // "rodrigo@ecsas" (sin TLD) → rodrigo@ecsas.com.ar. Sin esto, Gmail devuelve
@@ -282,10 +308,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       throw err
     }
     if (!_auth) {
-      const keyPath = resolveKeyPath(config)
-      if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
-      const ga = new GoogleAuth({ keyFile: keyPath, scopes: authScopes, clientOptions: subject ? { subject } : {} })
-      _auth = await ga.getClient()
+      // ═══ LA CREDENCIAL TAMBIÉN PUEDE VENIR POR ENTORNO (26/08/2026) ═══
+      //
+      // Hasta hoy sólo se leía de un ARCHIVO, y eso ata el OS a la VM: en Vercel —donde corre la
+      // web— no hay sistema de archivos donde poner el JSON, así que el portal del cliente no podía
+      // leer Drive y su pantalla de Documentos decía «no pudimos leer la carpeta ahora», siempre.
+      //
+      // El archivo sigue teniendo prioridad: es lo que usa la VM y no se cambia por un despliegue.
+      // El env es el camino para los entornos que no tienen disco. Nunca en git — ni el archivo ni
+      // el JSON entran al repositorio.
+      const credenciales = credencialDelEntorno()
+      if (credenciales) {
+        const ga = new GoogleAuth({ credentials: credenciales, scopes: authScopes, clientOptions: subject ? { subject } : {} })
+        _auth = await ga.getClient()
+      } else {
+        const keyPath = resolveKeyPath(config)
+        if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
+        const ga = new GoogleAuth({ keyFile: keyPath, scopes: authScopes, clientOptions: subject ? { subject } : {} })
+        _auth = await ga.getClient()
+      }
     }
     const t = await _auth.getAccessToken()
     return typeof t === 'string' ? t : t?.token

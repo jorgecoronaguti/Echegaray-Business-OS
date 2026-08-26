@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoDeCobranza, seDescarta,
   terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio, parteDeclaradaUsd,
-  totalDeclaradoUsd, fusionarImportes, numerarRepetidos, depurarRotulo,
+  totalDeclaradoUsd, fusionarImportes, numerarRepetidos, depurarRotulo, abarcaVariasObras,
 } from './portal-siembra.mjs'
 
 test('el importe es-AR: el punto es miles y el paréntesis es negativo', () => {
@@ -265,4 +265,47 @@ test('el rótulo no le repite al cliente el nombre de la obra que está mirando'
   // Y lo que agrega información se conserva entero.
   assert.equal(depurarRotulo('Mampostería y cancha de padel', 'MAMPOSTERÍA'), 'Mampostería y cancha de padel')
   assert.equal(depurarRotulo('Certificado 3', 'PLAYÓN DE AZUFRE'), 'Certificado 3')
+})
+
+// ── LA OBRA ESTÁ NOMBRADA, PERO EN OTRO LUGAR ────────────────────────────────────────────────
+//
+// 42 filas de Cobranzas quedaban sin imputar y el dueño pidió que aparecieran en su obra: «encargate
+// de q aparezcan las futuras pendientes y las pasadas cobradas de las obras acá señaladas». No hacía
+// falta adivinar ninguna: el dato estaba, en dos lugares que el buscador no miraba.
+
+test('la obra se reconoce por su ID, no sólo por el nombre cargado', () => {
+  // `san-francisco` se llama «Galpones, Mampostería, Cancha de Padel». Cuatro filas por $47,66 M
+  // dicen «Saldo obras San Francisco — 1/4»: nombraban la obra y el buscador no la reconocía.
+  const suyas = [
+    { id: 'san-francisco', palabras: palabrasDeObra('Galpones, Mampostería, Cancha de Padel', 'san-francisco') },
+    { id: 'pisos-industriales', palabras: palabrasDeObra('Pisos Industriales', 'pisos-industriales') },
+  ]
+  assert.equal(imputarObra({ concepto: 'Saldo obras San Francisco — cuota 1/4' }, suyas).obra.id, 'san-francisco')
+  // Y el nombre cargado sigue funcionando igual.
+  assert.equal(imputarObra({ concepto: 'Anticipo inicio obra Pisos Industriales' }, suyas).obra.id, 'pisos-industriales')
+})
+
+test('cuando el concepto no dice nada, el rótulo del cliente nombra la obra', () => {
+  // En Cobranzas el cliente se escribe «IMOTOR/San Francisco/JAVI SANCHEZ». Por eso «Certificado 2»
+  // y seis pagos en efectivo —$104,77 M ya cobrados— no nombraban obra: para quien carga es obvia.
+  const suyas = [
+    { id: 'san-francisco', palabras: palabrasDeObra('Galpones, Mampostería, Cancha de Padel', 'san-francisco') },
+    { id: 'pisos-industriales', palabras: palabrasDeObra('Pisos Industriales', 'pisos-industriales') },
+  ]
+  const fila = { concepto: 'Certificado 2', clienteSheet: 'IMOTOR/San Francisco/JAVI SANCHEZ' }
+  assert.equal(imputarObra(fila, suyas).obra.id, 'san-francisco')
+})
+
+test('una fila que abarca VARIAS obras no se mete en una sola', () => {
+  // Es el freno del respaldo anterior: sin él, «Saldo 50% de todas las obras» entraba entero en
+  // `san-francisco` por el rótulo del cliente — plata de todas las obras en el cronograma de una.
+  const suyas = [
+    { id: 'san-francisco', palabras: palabrasDeObra('Galpones, Mampostería, Cancha de Padel', 'san-francisco') },
+    { id: 'pisos-industriales', palabras: palabrasDeObra('Pisos Industriales', 'pisos-industriales') },
+  ]
+  const cliente = 'IMOTOR/San Francisco/JAVI SANCHEZ'
+  assert.equal(imputarObra({ concepto: 'Saldo 50% de todas las obras — cuota quincenal 1 de 4', clienteSheet: cliente }, suyas), null)
+  assert.equal(imputarObra({ concepto: 'Anticipos quincenales de todas las obras — 1ª de 2', clienteSheet: cliente }, suyas), null)
+  assert.equal(abarcaVariasObras('Saldo 50% de todas las obras'), true)
+  assert.equal(abarcaVariasObras('Certificado 2'), false)
 })

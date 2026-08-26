@@ -97,20 +97,66 @@ export function imputarObra(fila, obrasDelCliente) {
     if (!mejor || señal.length > mejor.palabra.length) mejor = { obra, palabra: señal }
     else if (señal.length === mejor.palabra.length && mejor.obra !== obra) mejor = { ...mejor, empate: true }
   }
-  if (!mejor || mejor.empate) return null
-  return { obra: mejor.obra, palabra: mejor.palabra }
+  if (mejor && !mejor.empate) return { obra: mejor.obra, palabra: mejor.palabra }
+
+  // ═══ EL RESPALDO: EL RÓTULO DEL CLIENTE NOMBRA LA OBRA ═══
+  //
+  // En Cobranzas el cliente se escribe «IMOTOR/San Francisco/JAVI SANCHEZ»: la obra está ahí, no en
+  // el concepto. Por eso «Certificado 2», «Certificado 3» y seis pagos en efectivo —$104,77 M ya
+  // COBRADOS— no nombraban obra: para quien carga la planilla es obvia.
+  //
+  // SÓLO CUANDO EL CONCEPTO NO DIJO NADA, y NUNCA para una fila que abarca varias obras: ahí el
+  // rótulo del cliente metería en una sola obra plata que es de todas. Esas quedan a nivel cliente.
+  if (abarcaVariasObras(`${fila.concepto ?? ''} ${fila.ordenCompra ?? ''}`)) return null
+  const delCliente = sinTildes(fila.clienteSheet ?? '')
+  if (!delCliente) return null
+  let porCliente = null
+  for (const obra of obrasDelCliente) {
+    for (const palabra of (obra.palabras ?? []).map(sinTildes)) {
+      // Sólo la obra dicha ENTERA. Una palabra suelta del rótulo del cliente no alcanza: «IMOTOR»
+      // calzaría con cualquier cosa.
+      if (!palabra || !palabra.includes(' ') || !delCliente.includes(palabra)) continue
+      if (!porCliente || palabra.length > porCliente.palabra.length) porCliente = { obra, palabra }
+      else if (palabra.length === porCliente.palabra.length && porCliente.obra !== obra) porCliente = { ...porCliente, empate: true }
+    }
+  }
+  if (!porCliente || porCliente.empate) return null
+  return { obra: porCliente.obra, palabra: `${porCliente.palabra} (del rótulo del cliente)` }
 }
 
 /**
- * NÚCLEO PURO: las palabras con las que una obra se reconoce, sacadas de su propio nombre.
+ * NÚCLEO PURO: las palabras con las que una obra se reconoce, por su nombre Y por su id.
  *
  * «PISOS INDUSTRIALES» → ['pisos industriales', 'pisos']. La palabra entera primero: es la que
  * desempata contra otra obra del mismo cliente que comparta un término.
+ *
+ * ═══ EL ID TAMBIÉN NOMBRA A LA OBRA (26/08/2026) ═══
+ *
+ * La obra `san-francisco` se llama «Galpones, Mampostería, Cancha de Padel», y cuatro filas de
+ * Cobranzas por $47,66 M dicen «Saldo obras San Francisco — 1/4». El concepto SÍ nombraba la obra;
+ * lo que no la reconocía era el buscador, que sólo miraba el nombre cargado. Quedaban sin imputar
+ * por una diferencia de rótulo entre dos lugares del mismo sistema.
  */
-export function palabrasDeObra(nombre) {
-  const limpio = sinTildes(nombre).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
-  const partes = limpio.split(' ').filter((w) => w.length > 3 && !['para', 'sobre', 'obra', 'salon'].includes(w))
-  return [limpio, ...partes]
+export function palabrasDeObra(nombre, id) {
+  const deTexto = (t) => sinTildes(String(t ?? '')).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  const limpio = deTexto(nombre)
+  const porId = deTexto(String(id ?? '').replace(/-/g, ' '))
+  const util = (w) => w.length > 3 && !['para', 'sobre', 'obra', 'obras', 'salon'].includes(w)
+  const partes = [...new Set([...limpio.split(' '), ...porId.split(' ')])].filter(util)
+  // El id entero va junto al nombre entero: los dos son «la obra dicha completa» y ganan el desempate.
+  return [...new Set([limpio, porId, ...partes].filter(Boolean))]
+}
+
+/**
+ * ¿ESTA FILA HABLA DE VARIAS OBRAS A LA VEZ? Entonces no es de ninguna.
+ *
+ * «Anticipos quincenales de todas las obras», «Saldo 50% de todas las obras». Sin este freno, el
+ * respaldo por el rótulo del cliente —que abajo manda «IMOTOR/San Francisco» a la obra
+ * `san-francisco`— las metería enteras en una sola obra, que es exactamente repartir plata de una
+ * obra al cronograma de otra.
+ */
+export function abarcaVariasObras(texto) {
+  return /\btodas las obras\b|\bde todas\b|\bvarias obras\b/.test(sinTildes(texto))
 }
 
 /** El estado de la fila de Cobranzas, traducido al del cronograma del portal. */

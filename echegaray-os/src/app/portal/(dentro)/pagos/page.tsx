@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
@@ -5,6 +6,8 @@ import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
 import { estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
+import { grillaDelMes } from '@/features/clientes/services/reglasEsquema'
+import { Calendario } from './Calendario'
 
 // PAGOS — UN SOLO LISTADO, ordenado por fecha. El mismo que ve administración en la ficha.
 //
@@ -28,7 +31,8 @@ import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Pagos() {
+export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string }> }) {
+  const q = await searchParams
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
   const acceso = await accesoDelPortal(sesion)
@@ -39,6 +43,12 @@ export default async function Pagos() {
   const montos = acceso.puedeVerMontos
   const total = resumenDeCobro(pagos, contratoDelConjunto(bloques, contratos), hoy)
   const proximo = proximoPago(pagos)
+  const enCalendario = q.vista === 'calendario'
+  // EL MES QUE ABRE: el del próximo pago, y si no queda ninguno, el de hoy. Abrir siempre en el mes
+  // corriente le mostraría un calendario vacío a quien tiene todo por delante o todo pagado.
+  const mes = /^\d{4}-\d{2}$/.test(q.mes ?? '')
+    ? q.mes as string
+    : (proximo?.fechaPrevista ?? hoy).slice(0, 7)
 
   // POR FECHA, que es como se lee un cronograma. Lo que no tiene fecha —el fondo de reparo, un pago
   // todavía sin programar— va al final: es lo único que no se puede ubicar en el tiempo.
@@ -63,11 +73,42 @@ export default async function Pagos() {
 
       {!montos ? <p className="mt-4 text-[13.5px] text-muted">{loQueSiPuedeVer(acceso)}</p> : null}
 
+      {/* LISTADO · CALENDARIO — el mismo interruptor de la pantalla 32. Son dos preguntas distintas:
+          el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
+      {pagos.length ? (
+        <div className="mt-4 flex items-center gap-1 self-start rounded-[8px] border border-line p-[3px]">
+          <Solapa a="/portal/pagos" activa={!enCalendario}>Listado</Solapa>
+          <Solapa a={`/portal/pagos?vista=calendario&mes=${mes}`} activa={enCalendario}>Calendario</Solapa>
+        </div>
+      ) : null}
+
       {pagos.length === 0 ? (
         <div className="mt-6"><Vacio>Todavía no publicamos el plan de pagos.</Vacio></div>
+      ) : enCalendario ? (
+        <Calendario
+          pagos={pagos}
+          mes={mes}
+          semanas={grillaDelMes(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)))}
+          hoy={hoy}
+          montos={montos}
+        />
       ) : (
         <>
-          <div className="mt-5">
+          {/* EL ENCABEZADO EXISTE PORQUE AHORA HAY TRES NÚMEROS EN LA FILA. Con uno solo se entendía
+              sin rótulo; con tres, sin encabezado hay que adivinar cuál es cuál. */}
+          {montos ? (
+            <div className="mt-5 hidden items-center gap-3 border-b border-line pb-1.5 text-[10.5px] tracking-[.08em] text-faint lg:flex">
+              <span className="w-[19px]" />
+              <span className="flex-1 basis-[38%]">CONCEPTO</span>
+              <span className="w-[74px]">FECHA</span>
+              <span className="w-[112px] text-right">NETO</span>
+              <span className="w-[96px] text-right">IVA</span>
+              <span className="w-[118px] text-right">TOTAL</span>
+              <span className="w-[112px]" />
+            </div>
+          ) : null}
+
+          <div className="mt-5 lg:mt-0">
             {enOrden.map((p) => {
               const estado = estadoDePago(p, hoy)
               const esProximo = p.id === proximo?.id
@@ -85,8 +126,19 @@ export default async function Pagos() {
                   <span className="tnum w-[74px] font-mono text-[13px] text-muted">
                     {p.tipo === 'fondo_reparo' && !p.fechaPrevista ? 'al final' : diaMes(p.fechaPrevista)}
                   </span>
+                  {/* NETO · IVA · TOTAL. El cliente factura con IVA discriminado y un solo importe no
+                      le sirve para conciliar contra su contabilidad. En pantalla angosta el neto y el
+                      IVA se ocultan —el total es lo que no puede faltar— y siguen en el detalle. */}
                   {montos ? (
-                    <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                    <>
+                      <span className="tnum hidden w-[112px] text-right font-mono text-[13px] text-muted lg:block">
+                        {pesos(p.neto, p.moneda)}
+                      </span>
+                      <span className="tnum hidden w-[96px] text-right font-mono text-[13px] text-muted lg:block">
+                        {pesos(p.iva, p.moneda)}
+                      </span>
+                      <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                    </>
                   ) : null}
                   {/* Una factura pagada muestra su RECIBO: es el comprobante que le sirve al cliente. */}
                   <span className={`w-[112px] text-right text-[12.5px] ${esProximo ? 'font-semibold text-ink' : TINTA[estado]}`}>
@@ -102,7 +154,16 @@ export default async function Pagos() {
             <>
               <div className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
                 <Total rotulo="Contrato" monto={total.contrato} />
-                <Total rotulo="Pagado" monto={total.hayPlan ? total.pagado : null} />
+                {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
+                    compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
+                    van en letra chica debajo y no como dos columnas más. */}
+                <div>
+                  <p className="text-[11px] tracking-[.09em] text-faint">PAGADO</p>
+                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
+                  <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
+                    neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
+                  </p>
+                </div>
                 <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
                 <Total rotulo="Falta certificar" monto={total.faltaCertificar} />
               </div>
@@ -116,6 +177,21 @@ export default async function Pagos() {
         </>
       )}
     </>
+  )
+}
+
+function Solapa({ a, activa, children }: { a: string; activa: boolean; children: string }) {
+  return (
+    <Link
+      href={a}
+      aria-current={activa ? 'page' : undefined}
+      className={
+        'flex min-h-9 items-center rounded-[6px] px-3 text-[12.5px] ' +
+        (activa ? 'bg-marca font-semibold text-ink' : 'text-muted hover:text-ink')
+      }
+    >
+      {children}
+    </Link>
   )
 }
 

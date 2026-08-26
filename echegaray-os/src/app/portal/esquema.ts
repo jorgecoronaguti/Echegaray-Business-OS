@@ -31,6 +31,8 @@ export interface FilaEsquema {
   obra_id: string | null
   concepto: string
   fecha: string | null
+  neto?: string | number | null
+  iva?: string | number | null
   monto: number | string | null
   reparo: number | string | null
   estado: string
@@ -106,6 +108,10 @@ export function aPagoDelPortal(f: FilaEsquema, obraNombre: string): PagoConObra 
     tipo: tipoDelPago(f),
     rotulo: f.concepto,
     monto: aNumero(f.monto),
+    // El cliente factura con IVA discriminado: un único importe no le sirve para conciliar contra su
+    // propia contabilidad. Se publican los tres y la pantalla los muestra juntos.
+    neto: aNumero(f.neto),
+    iva: aNumero(f.iva),
     // Sin la columna `moneda` (migración sin aplicar) se asume ARS, que es su default declarado.
     moneda: f.moneda === 'USD' ? 'USD' : 'ARS',
     // `esquema_pago` guarda UNA fecha: la del pago. Cuando está cobrado ES la fecha en que se pagó,
@@ -156,7 +162,9 @@ export function pagosDelEsquema(
  * la pantalla que lo recibe no imprime ningún número.
  */
 export const sinImportes = (pagos: PagoConObra[]): PagoConObra[] =>
-  pagos.map((p) => ({ ...p, monto: null }))
+  // NETO E IVA TAMBIÉN SON PLATA. Retirar sólo el total dejaba el importe publicado en la columna de
+  // al lado a un contacto que justamente no puede verlo.
+  pagos.map((p) => ({ ...p, monto: null, neto: null, iva: null }))
 
 export interface BloqueDeObra {
   /** `null` = las filas que el esquema dejó sin obra. */
@@ -187,4 +195,33 @@ export function agruparPorObra(pagos: PagoConObra[]): BloqueDeObra[] {
   return [...bloques.values()].sort(
     (a, b) => Number(a.obraId === null) - Number(b.obraId === null) || a.nombre.localeCompare(b.nombre, 'es'),
   )
+}
+
+/**
+ * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
+ *
+ * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
+ * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
+ *
+ * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
+ * todo el conjunto no lo tenga.
+ */
+export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
+  // EL CONTRATO ES DE LAS OBRAS, NO DE LOS PAGOS (26/08/2026). Antes bastaba UN bloque sin obra para
+  // devolver `null`, y desde que los cobros que no nombran obra se publican —«Saldo obras San
+  // Francisco», «de todas las obras»— ese bloque existe casi siempre: el portal escribía «CONTRATO
+  // sin cargar» a un cliente cuyo contrato la ficha muestra en $299,68 M. Que un COBRO no tenga obra
+  // no dice nada sobre cuánto se contrató.
+  //
+  // Lo que sí lo anula sigue en pie: una OBRA sin contrato cargado. Sumar las que están y callar la
+  // que falta daría un contrato más chico que el real con cara de dato cierto.
+  const conObra = bloques.filter((b) => b.obraId !== null)
+  if (!conObra.length) return null
+  let total = 0
+  for (const b of conObra) {
+    const c = contratos.get(b.obraId as string)
+    if (c == null) return null
+    total += c
+  }
+  return total
 }

@@ -21,6 +21,11 @@ export type Pago = {
   tipo: TipoPago
   rotulo: string
   monto: number | null
+  /** El neto, sin IVA. `null` = no se cargó — que NO es cero. */
+  neto: number | null
+  /** El IVA. CERO cuando el cobro no lleva —un pago en efectivo sin factura— y `null` cuando no se
+   *  sabe: son cosas distintas y la pantalla las escribe distinto. */
+  iva: number | null
   /** ARS salvo que el contrato diga otra cosa. Dibujar dólares con signo peso es un error de cuatro
    *  órdenes de magnitud que el cliente ve. */
   moneda: 'ARS' | 'USD'
@@ -84,6 +89,9 @@ export type ResumenCobro = {
   pendiente: number | null
   /** Lo cobrado. `null` = ninguna línea en pesos alimentó este total. */
   pagado: number | null
+  /** De lo cobrado, cuánto es neto y cuánto IVA. `null` cuando no hay ninguna línea que los aporte. */
+  netoPagado: number | null
+  ivaPagado: number | null
   /** Del contrato, lo que todavía no entró al cronograma. `null` si la obra no tiene contrato cargado. */
   faltaCertificar: number | null
   contrato: number | null
@@ -104,6 +112,9 @@ export type ResumenCobro = {
  */
 export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: string): ResumenCobro {
   let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
+  // Los tres números del pie salen de la MISMA pasada: neto e IVA de lo cobrado, para que el cliente
+  // pueda cruzar el total pagado contra su libro de IVA compras sin sacar la calculadora.
+  let netoPagado = 0, ivaPagado = 0
   // CUÁNTAS LÍNEAS EN PESOS ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
   // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
   // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
@@ -114,7 +125,14 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
     // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
     if (p.moneda !== 'ARS') { sinMonto++; continue }
     if (p.monto == null) { sinMonto++; continue }
-    if (p.fechaPago) { pagado += p.monto; nPagado++; continue }
+    if (p.fechaPago) {
+      pagado += p.monto
+      nPagado++
+      // Sólo suma lo que TIENE el dato: un neto ausente no vale cero.
+      if (p.neto != null) netoPagado += p.neto
+      if (p.iva != null) ivaPagado += p.iva
+      continue
+    }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
     nPendiente++
@@ -122,6 +140,8 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
   }
   return {
     hayPlan: pagos.length > 0,
+    netoPagado: nPagado ? netoPagado : null,
+    ivaPagado: nPagado ? ivaPagado : null,
     vencido: nPendiente ? vencido : null,
     pendiente: nPendiente ? pendiente : null,
     pagado: nPagado ? pagado : null,
