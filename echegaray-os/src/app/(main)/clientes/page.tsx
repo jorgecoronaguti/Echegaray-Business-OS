@@ -138,6 +138,23 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
           vacio="Ningún cliente sin CUIT ni sin teléfono, y ninguna obra en ejecución sin contrato."
         />
 
+        {/* LA PUERTA AL PORTAL. Existía la pantalla y no existía cómo llegar a ella: el dueño la
+            describió como inalcanzable salvo tecleando la URL. Va acá, arriba y no al pie, porque la
+            pregunta «¿este cliente puede ver su obra?» se hace mirando la cartera, no después.
+            Sólo para quien ve economía: al jefe de obra el middleware lo rebota de esa ruta, y un
+            enlace que lleva a un redirect mudo es un botón que lleva a nada. */}
+        {veEconomia && (
+          <div style={{ padding: '12px 20px 0' }}>
+            <Link
+              href="/administracion/portal"
+              data-testid="ir-acceso-portal"
+              style={{ fontSize: '13px', color: V.tinta, textDecoration: 'underline' }}
+            >
+              Acceso al portal — quién de cada cliente puede entrar a ver sus obras y sus cobros
+            </Link>
+          </div>
+        )}
+
         <CabeceraSeccion
           testid="vistas-clientes"
           espacioPanel={hayPanel}

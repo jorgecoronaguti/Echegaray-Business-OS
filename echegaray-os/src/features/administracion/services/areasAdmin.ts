@@ -64,7 +64,15 @@ export const DESTINOS: readonly Destino[] = [
     clave: 'trabajo', titulo: 'Trabajo', href: '/administracion', grupo: 'trabajo',
     absorbe: ['/administracion/pendientes', '/administracion/asistencia'],
   },
-  { clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien' },
+  // Clientes ABSORBE las dos pantallas del portal del cliente. No son un octavo destino: la barra
+  // tiene siete y el mockup manda. Y no son hermanas de Clientes — son lo que se le hace A un
+  // cliente: a quién de él se le da acceso, y qué cobros ve de cada obra. Con solapa propia, la
+  // barra diría que hay nueve áreas; sin absorción, se apagaría entera adentro de ellas y la
+  // pantalla dejaría de decir dónde está parado el que la mira.
+  {
+    clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien',
+    absorbe: ['/administracion/portal', '/administracion/cronograma'],
+  },
   // «Personal» y no «Personas»: es el rótulo del canónico 19 y el del mockup. La clave sigue siendo
   // `personas` porque es la que nombra la ruta y los identificadores de prueba.
   { clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien' },
@@ -111,16 +119,23 @@ export function hayFiloAntes(destinos: readonly Destino[], i: number): boolean {
  *
  * El orden importa: el destino más específico gana. `/administracion` es prefijo de todas las demás
  * rutas del área, así que sólo enciende Trabajo cuando es la ruta exacta o una de las absorbidas.
+ *
+ * `absorbe` se mira en TODOS los destinos, no sólo en Trabajo. Hasta el 26/08/2026 el campo estaba
+ * declarado para cualquiera y leído para uno solo: agregar una pantalla que colgara de otra solapa
+ * exigía un octavo destino —que el mockup no tiene y que un test prohíbe—, así que la única salida
+ * era dejarla sin solapa. Ese es el defecto que apagaba la barra entera dentro del cronograma.
  */
 export function areaActiva(pathname: string | null | undefined): string | null {
   const ruta = (pathname ?? '').split('?')[0].replace(/\/+$/, '') || '/'
   const dentroDe = (base: string) => ruta === base || ruta.startsWith(`${base}/`)
+  const enciende = (d: Destino) => dentroDe(d.href) || (d.absorbe?.some(dentroDe) ?? false)
+  // Trabajo va al final: su `href` es prefijo de todas las rutas del área y ganaría siempre.
   for (const d of DESTINOS) {
     if (d.clave === 'trabajo') continue
-    if (dentroDe(d.href)) return d.clave
+    if (enciende(d)) return d.clave
   }
   const trabajo = DESTINOS[0]
-  if (ruta === trabajo.href) return trabajo.clave
-  if (trabajo.absorbe?.some(dentroDe)) return trabajo.clave
+  // Para Trabajo el `href` se compara EXACTO, no por prefijo, por lo mismo.
+  if (ruta === trabajo.href || trabajo.absorbe?.some(dentroDe)) return trabajo.clave
   return null
 }
