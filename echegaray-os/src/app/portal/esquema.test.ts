@@ -56,20 +56,24 @@ test('el filtro por obra se aplica sobre lo publicado', () => {
 
 // ── LA LECTURA DE UNA FILA ───────────────────────────────────────────────────────────────────
 
-test('cobrado usa la fecha como fecha de pago, no como prevista', () => {
+test('cobrado usa la fecha como fecha de pago Y como la del cronograma', () => {
   const p = aPagoDelPortal(fila({ estado: 'cobrado', fecha: '2026-08-21' }), 'Pisos Industriales')
   assert.equal(p.fechaPago, '2026-08-21')
-  assert.equal(p.fechaPrevista, null)
+  // `esquema_pago` guarda UNA fecha y es el mismo día: el cronograma la mostraba «sin fecha»
+  // para todo lo ya pagado, y el cliente no podía decir cuándo pagó su anticipo.
+  assert.equal(p.fechaPrevista, '2026-08-21')
   assert.equal(estadoDePago(p, '2026-08-26'), 'pagado')
   // Y no aparece como pendiente: un cobrado que además vence sería la misma plata contada dos veces.
-  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, 0)
+  // `null` y no `0`: ninguna línea alimentó «pendiente», y un cero ahí afirmaría que no debe nada.
+  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, null)
 })
 
 test('retenido es el fondo de reparo y NO suma a pendiente', () => {
   assert.equal(tipoDelPago({ estado: 'retenido', concepto: 'Fondo de reparo' }), 'fondo_reparo')
   const p = aPagoDelPortal(fila({ estado: 'retenido', monto: '1000000' }), 'Pisos Industriales')
   assert.equal(p.tipo, 'fondo_reparo')
-  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, 0)
+  // `null` y no `0`: ninguna línea alimentó «pendiente», y un cero ahí afirmaría que no debe nada.
+  assert.equal(resumenDeCobro([p], null, '2026-08-26').pendiente, null)
   assert.equal(proximoPago([p]), null)
 })
 
@@ -103,7 +107,9 @@ test('sin la columna moneda se asume ARS; con USD no se mezcla en el total en pe
   const dolar = aPagoDelPortal(fila({ moneda: 'USD', monto: '4235' }), 'x')
   assert.equal(dolar.moneda, 'USD')
   const r = resumenDeCobro([dolar], null, '2026-08-26')
-  assert.equal(r.pendiente, 0)
+  // NI SIQUIERA CERO. Quattropani tiene todo su cronograma en dólares y leía «Pendiente $ 0»
+  // teniendo nueve certificados por delante: cero es una afirmación y dice que no debe nada.
+  assert.equal(r.pendiente, null)
   assert.equal(r.sinMonto, 1)
 })
 

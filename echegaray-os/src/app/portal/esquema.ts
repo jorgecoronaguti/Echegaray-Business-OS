@@ -108,7 +108,11 @@ export function aPagoDelPortal(f: FilaEsquema, obraNombre: string): PagoConObra 
     monto: aNumero(f.monto),
     // Sin la columna `moneda` (migración sin aplicar) se asume ARS, que es su default declarado.
     moneda: f.moneda === 'USD' ? 'USD' : 'ARS',
-    fechaPrevista: cobrado ? null : f.fecha,
+    // `esquema_pago` guarda UNA fecha: la del pago. Cuando está cobrado ES la fecha en que se pagó,
+    // y también es la que ese pago tenía prevista — no son dos hechos distintos, es el mismo día.
+    // Ponerla sólo en `fechaPago` dejaba la columna de fechas del cronograma en «sin fecha» para
+    // todo lo ya pagado: el cliente veía su anticipo cobrado sin poder decir cuándo lo pagó.
+    fechaPrevista: f.fecha,
     fechaPago: cobrado ? f.fecha : null,
     facturaNumero: f.factura_numero ?? null,
     reciboNumero: f.recibo_numero ?? null,

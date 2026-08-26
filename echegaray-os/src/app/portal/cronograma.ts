@@ -77,11 +77,13 @@ export type ResumenCobro = {
    * y sin plan cargado lo único cierto es que no sabemos. La pantalla escribe «sin cargar».
    */
   hayPlan: boolean
-  /** Lo no pagado con fecha ya vencida. Es un SUBCONJUNTO de `pendiente`, no un sumando aparte. */
-  vencido: number
-  /** Todo lo no pagado del cronograma, sin el fondo de reparo. */
-  pendiente: number
-  pagado: number
+  /** Lo no pagado con fecha ya vencida — SUBCONJUNTO de `pendiente`, no un sumando aparte.
+   *  `null` = ninguna línea EN PESOS alimentó este total: nunca es un cero fabricado. */
+  vencido: number | null
+  /** Todo lo no pagado del cronograma, sin el fondo de reparo. `null` = nada en pesos. */
+  pendiente: number | null
+  /** Lo cobrado. `null` = ninguna línea en pesos alimentó este total. */
+  pagado: number | null
   /** Del contrato, lo que todavía no entró al cronograma. `null` si la obra no tiene contrato cargado. */
   faltaCertificar: number | null
   contrato: number | null
@@ -102,19 +104,28 @@ export type ResumenCobro = {
  */
 export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: string): ResumenCobro {
   let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
+  // CUÁNTAS LÍNEAS EN PESOS ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
+  // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
+  // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
+  // y eso se escribe con ausencia, no con un cero.
+  let nPendiente = 0, nPagado = 0
   for (const p of pagos) {
     // LAS MONEDAS NO SE SUMAN. Una línea en dólares metida en un total en pesos lo arruina sin dar
     // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
     if (p.moneda !== 'ARS') { sinMonto++; continue }
     if (p.monto == null) { sinMonto++; continue }
-    if (p.fechaPago) { pagado += p.monto; continue }
+    if (p.fechaPago) { pagado += p.monto; nPagado++; continue }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
+    nPendiente++
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto
   }
   return {
     hayPlan: pagos.length > 0,
-    vencido, pendiente, pagado, sinMonto, contrato,
+    vencido: nPendiente ? vencido : null,
+    pendiente: nPendiente ? pendiente : null,
+    pagado: nPagado ? pagado : null,
+    sinMonto, contrato,
     // Sin plan cargado, «falta certificar» sería el contrato entero — cierto por aritmética y falso
     // como afirmación: no es que no se certificó nada, es que no cargamos el plan.
     // NUNCA UN NEGATIVO. «Falta certificar −$40 M» no significa nada para el cliente: significa que
@@ -123,6 +134,8 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
     // la pantalla dice «sin cargar» en vez de publicar un número imposible.
     faltaCertificar: (() => {
       if (contrato == null || pagos.length === 0) return null
+      // Con todo el cronograma en otra moneda no hay resto que calcular: `null`, no el contrato entero.
+      if (!nPagado && !nPendiente) return null
       const resto = contrato - (pagado + pendiente)
       return resto < 0 ? null : resto
     })(),
