@@ -27,7 +27,7 @@ export type LecturaDeRecibos = {
  */
 export async function recibosDelCliente(acceso: AccesoDelPortal): Promise<LecturaDeRecibos> {
   const sb = createAdminClient()
-  // ═══ SÓLO LOS RECIBOS QUE SON UN RECIBO (26/08/2026) ═══
+  // ═══ LA LISTA DE RECIBOS ENVIADOS, SIN INVENTAR UN IMPORTE (26/08/2026) ═══
   //
   // Los PDF de la carpeta de Drive llamados «Recibo 10», «Recibo 11»… se abrieron y NO son
   // comprobantes: son el ESTADO DE CUENTA del cliente. Adentro hay veinte filas —«Pago 1 · LINEA B ·
@@ -41,8 +41,7 @@ export async function recibosDelCliente(acceso: AccesoDelPortal): Promise<Lectur
   //
   // El día que se emita un recibo de verdad —o que administración cargue su número en la línea del
   // pago— entra por acá solo, sin tocar una línea: la costura ya está hecha y probada.
-  const { data, error } = await sb.from('recibo_cliente').select('*')
-    .eq('cliente_id', acceso.clienteId).not('monto', 'is', null)
+  const { data, error } = await sb.from('recibo_cliente').select('*').eq('cliente_id', acceso.clienteId)
   if (error) return { recibos: [], noSePudoLeer: true }
 
   const filas = (data ?? []) as unknown as FilaRecibo[]

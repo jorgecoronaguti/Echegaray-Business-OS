@@ -124,35 +124,48 @@ export default async function Facturas() {
         </div>
       ) : null}
 
+      {/* ═══ LOS RECIBOS ENVIADOS: UNA LISTA DE ARCHIVOS ═══
+          Se intentó sacarles el importe y la fecha del PDF y NO SE PUDO con certeza: son la foto del
+          estado de cuenta al momento de cada cobro, y de doce sólo tres cerraron contra la resta de
+          saldos. Publicar los otros nueve habría puesto un importe equivocado en el portal de un
+          cliente, que es peor que no poner ninguno.
+          Decisión del dueño, textual: «armá una lista con los recibos que ya están enviados, que de
+          ahí se vea, y si el cliente quiere descargarlo o compartirlo que lo haga; no reflejes nada
+          más». Así que es exactamente eso — el papel, abierto de un toque. Sin una columna de
+          importe que sólo podría decir «sin importe» doce veces. */}
       {sueltos.length ? (
         <>
-          {/* EL RECIBO QUE NO ESTÁ PEGADO A NINGUNA FACTURA IGUAL SE MUESTRA. Es un papel real que la
-              empresa le dio al cliente; esconderlo porque el esquema todavía no lo nombra lo haría
-              desaparecer, que es exactamente el estado del que venimos. */}
-          <Rubro derecha={facturas.length ? 'no atados a una factura' : undefined}>RECIBOS</Rubro>
+          <Rubro derecha="tocá para verlo">RECIBOS ENVIADOS</Rubro>
           <div>
             {sueltos.map((r) => (
-              <Fila key={r.id}>
-                <IconoEstado estado="pagado" />
-                <span className="min-w-0 flex-1 basis-[38%] truncate font-mono text-sm">
-                  {/* SIN NÚMERO NO SE INVENTA UNO: se muestra el nombre del archivo, que es lo que
-                      de verdad se sabe de ese papel. */}
-                  {r.numero ? `Recibo ${r.numero}` : r.nombreArchivo}
-                </span>
-                <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(r.fecha)}</span>
-                {/* SIN OBRA NO HAY RENGLÓN DE OBRA. Un rótulo fabricado se lee como el nombre real. */}
-                {variasObras ? (
-                  <span className="hidden w-[150px] truncate text-[12.5px] text-faint sm:block">{r.obraNombre}</span>
-                ) : null}
-                <span className="w-[118px] text-[12.5px]" />
-                {montos ? (
-                  <span className="tnum w-[118px] text-right font-mono text-[15px] text-muted">
-                    {/* NULL NO ES 0. El comprobante no declara un importe único y así se dice. */}
-                    {r.monto == null ? 'sin importe' : pesos(r.monto, r.moneda)}
+              <div key={r.id} className="flex min-h-11 items-center gap-3 border-b border-line">
+                <a
+                  href={r.descargaEn ?? '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-w-0 flex-1 items-center gap-3 py-[15px]"
+                >
+                  <IconoEstado estado="pagado" />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {/* SIN NÚMERO NO SE INVENTA UNO: va el nombre del archivo, que es lo que de
+                        verdad se sabe de ese papel. */}
+                    {r.numero ? `Recibo ${r.numero}` : r.nombreArchivo}
                   </span>
+                  {r.fecha ? (
+                    <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(r.fecha)}</span>
+                  ) : null}
+                </a>
+                {r.descargaEn ? (
+                  <a
+                    href={`${r.descargaEn}?descargar=1`}
+                    aria-label={`Descargar ${r.numero ? `recibo ${r.numero}` : r.nombreArchivo}`}
+                    title="Descargar"
+                    className="grid min-h-11 min-w-11 place-items-center rounded-[6px] text-faint hover:bg-surface-quiet hover:text-ink"
+                  >
+                    <IconoDescarga tamano={18} />
+                  </a>
                 ) : null}
-                <Descarga recibo={r} />
-              </Fila>
+              </div>
             ))}
           </div>
         </>

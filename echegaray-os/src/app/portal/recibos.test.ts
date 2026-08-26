@@ -123,10 +123,13 @@ test('dos archivos con el mismo número: el segundo no desaparece', () => {
 })
 
 test('el archivo se baja con su nombre real, aunque tenga tildes y dos puntos', () => {
+  // `inline` POR DEFECTO desde el 26/08/2026: el cliente toca el recibo para MIRARLO, y bajarlo es
+  // la excepción («no quiero q se descargue, quiero q el archivo se pueda ver»). El nombre real sigue
+  // viajando en las dos formas, que es lo que este test cuida.
   // EL DEFECTO QUE ATRAPA: sin `Content-Disposition` el navegador guarda el PDF con el nombre de la
   // URL —el uuid— y el cliente termina con doce archivos que no puede distinguir.
   const h = nombreDeDescarga('RECIBO 10 - 30:6:26.pdf')
-  assert.match(h, /^attachment; filename="RECIBO 10 - 30:6:26\.pdf"/)
+  assert.match(h, /^inline; filename="RECIBO 10 - 30:6:26\.pdf"/)
   assert.match(h, /filename\*=UTF-8''RECIBO%2010/)
   // Una comilla o un salto de línea en el nombre cortaría el encabezado: quedan sólo las dos que
   // el propio encabezado pone, y ningún salto de línea.
@@ -163,4 +166,11 @@ test('un acceso acotado no baja un recibo sin obra, y sí el de su obra', () => 
   assert.equal(puedeBajarElRecibo(acotado, ARCHIVO), false)
   assert.equal(puedeBajarElRecibo(acotado, { ...ARCHIVO, obra_id: 'la-estrella' }), true)
   assert.equal(puedeBajarElRecibo(acotado, { ...ARCHIVO, obra_id: 'otra' }), false)
+})
+
+test('bajarlo sigue siendo posible, pero es la excepción', () => {
+  // La fila abre el archivo; el iconito de la derecha manda `?descargar=1`. Dos gestos distintos
+  // para dos intenciones distintas, y el nombre real viaja igual en los dos.
+  assert.match(nombreDeDescarga('RECIBO 10 - 30:6:26.pdf', true), /^attachment; filename="RECIBO 10 - 30:6:26\.pdf"/)
+  assert.match(nombreDeDescarga('RECIBO 10 - 30:6:26.pdf'), /^inline;/)
 })

@@ -180,8 +180,10 @@ export function puedeBajarElRecibo(
  * ASCII para el que no habla RFC 5987 y `filename*` en UTF-8 para el que sí. Las comillas y las
  * barras se sacan porque cortan el encabezado.
  */
-export function nombreDeDescarga(nombre: string): string {
+export function nombreDeDescarga(nombre: string, bajar = false): string {
   const limpio = String(nombre || 'recibo.pdf').replace(/[\r\n"\\/]+/g, ' ').trim() || 'recibo.pdf'
   const ascii = limpio.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '_')
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(limpio)}`
+  // `inline` POR DEFECTO: el cliente toca el recibo para MIRARLO. Bajarlo es la excepción y viaja en
+  // `?descargar=1`. Antes siempre era `attachment` y para ver un papel había que guardarlo primero.
+  return `${bajar ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(limpio)}`
 }

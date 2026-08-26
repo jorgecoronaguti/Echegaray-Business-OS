@@ -37,11 +37,12 @@ type FilaMinima = {
   nombre_archivo: string
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   // `id` es uuid: pedirle a PostgREST un texto cualquiera devuelve un ERROR de tipo, no cero filas.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return noHay()
 
+  const bajar = new URL(req.url).searchParams.get('descargar') === '1'
   const sesion = await sesionDelPortal()
   if (!sesion) return noHay()
   const acceso = await accesoDelPortal(sesion)
@@ -74,7 +75,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       headers: {
         'Content-Type': meta.mimeType || 'application/pdf',
         'Content-Length': String(bytes.length),
-        'Content-Disposition': nombreDeDescarga(fila.nombre_archivo || meta.name),
+        'Content-Disposition': nombreDeDescarga(fila.nombre_archivo || meta.name, bajar),
         // Es el papel de un cobro de un cliente: no lo cachea ningún intermediario.
         'Cache-Control': 'private, no-store',
       },
