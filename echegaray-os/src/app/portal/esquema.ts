@@ -71,18 +71,30 @@ export function tipoDelPago(f: Pick<FilaEsquema, 'estado' | 'concepto'>): TipoPa
 }
 
 /**
- * EL ESTADO QUE FIJA LA BASE, y sólo cuando fija algo que la fecha no puede decir.
+ * EL ESTADO QUE FIJA LA BASE — que es el que declaró la columna O de Cobranzas.
  *
- * `a_vencer` y `vencido` NO se fijan: son la misma fila con la fecha de un lado o del otro de hoy, y
- * `estadoDePago` los deriva de la fecha —que es la palanca que administración acaba de mover—. Es la
- * misma decisión que ya toma `estadoVigente` en la pantalla 32; tomarla distinto acá haría que la
- * ficha y el portal pintaran de dos colores la misma fila.
+ * ═══ LA PANTALLA NO PUEDE CONTRADECIR AL SHEET (26/08/2026) ═══
  *
- * `previsto` sí se fija: es «acordado pero todavía sin emitir», y una fecha pasada de algo que
- * nosotros no facturamos no es una mora del cliente.
+ * El estado se decidía en TRES lugares: el Sheet lo declaraba, el sembrador lo tiraba y volvía a
+ * derivarlo de la fecha, y acá se derivaba una tercera vez. El resultado es que la columna O no
+ * llegaba nunca al cliente: las filas marcadas «Proyectado» —acordadas y todavía sin facturar— se
+ * publicaban con la misma cara que una deuda exigible. Ahora `esquema_pago.estado` ES lo que dice el
+ * Sheet, y acá sólo se traduce.
+ *
+ * `a_vencer` y `vencido` son la ÚNICA excepción, y no es una segunda opinión: son la misma fila con
+ * la fecha de un lado o del otro de hoy, el propio Sheet los calcula así en su columna V
+ * (`Q<TODAY()`), y la fecha es la palanca que administración mueve en la ficha del cliente. Si acá
+ * se leyera el estado guardado, una fecha corrida al futuro dejaría la fila en rojo hasta la próxima
+ * corrida del sync. Es la misma decisión que toma `estadoVigente` en la pantalla 32.
+ *
+ * `retenido` es el fondo de reparo: plata que la empresa retiene, no una deuda que el cliente tenga
+ * que pagar. Pintarlo «vencido» porque pasó su fecha le reclamaría algo que nadie le está pidiendo.
  */
 export function estadoFijadoDe(f: Pick<FilaEsquema, 'estado'>): EstadoPago | null {
-  return f.estado === 'previsto' ? 'sin_factura' : null
+  if (f.estado === 'cobrado') return 'pagado'
+  if (f.estado === 'previsto') return 'sin_factura'
+  if (f.estado === 'retenido') return 'programado'
+  return null
 }
 
 /** `numeric` de Postgres llega como string. `null` sigue siendo `null`, nunca 0. */

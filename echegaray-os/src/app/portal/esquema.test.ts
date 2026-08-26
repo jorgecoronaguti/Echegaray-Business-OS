@@ -98,6 +98,26 @@ test('vencido y a_vencer NO se fijan: los decide la fecha, que es la palanca que
   assert.equal(estadoDePago(movido, '2026-08-26'), 'programado')
 })
 
+// ── EL ESTADO QUE DECLARA EL SHEET LLEGA A LA PANTALLA ───────────────────────────────────────
+//
+// El defecto: la pantalla recalculaba por fecha estados que el Sheet ya había declarado, así que la
+// columna O de Cobranzas no llegaba nunca al cliente.
+
+test('cobrado se fija: no se vuelve a derivar de la fecha', () => {
+  assert.equal(estadoFijadoDe({ estado: 'cobrado' }), 'pagado')
+  const p = aPagoDelPortal(fila({ estado: 'cobrado', fecha: '2026-01-15' }), 'x')
+  assert.equal(estadoDePago(p, '2026-08-26'), 'pagado')
+})
+
+test('el fondo de reparo NO se pinta vencido: es plata retenida, no una deuda del cliente', () => {
+  assert.equal(estadoFijadoDe({ estado: 'retenido' }), 'programado')
+  // Con la fecha de devolución ya pasada, derivar por fecha le reclamaba al cliente un pago que
+  // nadie le está pidiendo — la plata la tiene la empresa.
+  const p = aPagoDelPortal(fila({ estado: 'retenido', fecha: '2026-01-01' }), 'x')
+  assert.equal(estadoDePago(p, '2026-08-26'), 'programado')
+  assert.equal(p.tipo, 'fondo_reparo')
+})
+
 test('monto NULL sigue siendo NULL, nunca 0', () => {
   assert.equal(aPagoDelPortal(fila({ monto: null }), 'x').monto, null)
   assert.equal(aPagoDelPortal(fila({ monto: '0' }), 'x').monto, 0)
