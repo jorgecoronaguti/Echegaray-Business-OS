@@ -19,8 +19,10 @@
 //   · barra lateral de 88px, ítems de 68px, activo en amarillo con texto grafito
 //   · «Avance» en gris, sin `href`, con el rótulo «Más adelante» — presente para que el cliente sepa
 //     que viene; esconderlo lo convertiría en una sorpresa
-//   · la barra de obras NO se dibuja cuando el mail alcanza una sola obra: una solapa que no elige
-//     nada es ruido
+//   · la barra de arriba dice de QUIÉN es lo que se está mirando — ya no elige obra: todas las obras
+//     del cliente se muestran juntas en el contenido (26/08/2026, pedido del dueño: «me sirve por
+//     cliente y q cada cliente tenga todas sus obras»). Elegir una obra para ver el total obligaba al
+//     cliente a sumar de memoria cuatro pantallas.
 //   · en el teléfono el menú son CINCO — Avance y Salir suben a la barra de arriba, como en la maqueta
 
 import Link from 'next/link'
@@ -33,17 +35,16 @@ import { IconoUsuario } from './iconos'
 export type ObraDelPortal = { id: string; nombre: string }
 
 type Props = {
-  obras: ObraDelPortal[]
-  obraActivaId: string | null
+  /** El nombre del cliente: es de quién es TODO lo que se ve abajo. */
   cliente: string
+  /** Cuántas obras suyas hay. Sólo para el subtítulo — la lista vive en el contenido. */
+  obras: number
   children: ReactNode
 }
 
-export function Shell({ obras, obraActivaId, cliente, children }: Props) {
+export function Shell({ cliente, obras, children }: Props) {
   const ruta = usePathname() ?? '/portal'
   const activo = destinoActivo(ruta)
-  // UNA SOLA OBRA NO SE ELIGE. La barra aparece recién cuando el mail alcanza más de una.
-  const hayQueElegir = obras.length > 1
 
   return (
     <div className="flex min-h-dvh bg-canvas text-ink">
@@ -68,39 +69,17 @@ export function Shell({ obras, obraActivaId, cliente, children }: Props) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* ── BARRA DE OBRAS ────────────────────────────────────────────────────────────────── */}
-        <header className="flex flex-wrap items-stretch gap-[2px] border-b border-line bg-surface px-[14px] md:px-[26px]">
-          {hayQueElegir
-            ? obras.map((o) => (
-                <Link
-                  key={o.id}
-                  href={`${ruta}?obra=${encodeURIComponent(o.id)}`}
-                  // DOS DIBUJOS PARA LA MISMA COSA, porque las maquetas los dibujan distinto y con
-                  // razón: en escritorio la solapa vive pegada al borde de una barra y el subrayado
-                  // alcanza; en el teléfono no hay barra que subrayar y la seleccionada tiene que
-                  // leerse de un vistazo, así que es una pastilla amarilla.
-                  className={
-                    'flex min-h-[44px] items-center gap-2 text-[13.5px] transition-colors ' +
-                    'my-1.5 rounded-[7px] px-[11px] md:my-0 md:rounded-none md:px-3 ' +
-                    (o.id === obraActivaId
-                      ? 'bg-marca font-semibold text-ink md:bg-transparent md:shadow-[inset_0_-2px_0_var(--os-marca)]'
-                      : 'text-muted hover:text-ink')
-                  }
-                >
-                  {o.nombre}
-                </Link>
-              ))
-            : (
-              <span className="flex min-h-[44px] items-center text-[13.5px] font-semibold text-ink">
-                {obras[0]?.nombre ?? 'Sin obra asignada'}
-              </span>
-            )}
+        {/* ── QUIÉN ES ─────────────────────────────────────────────────────────────────────── */}
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]">
+          <span className="min-h-[22px] text-[14px] font-semibold text-ink">{cliente}</span>
+          <span className="text-[12.5px] text-faint">
+            {obras === 0 ? 'sin obras' : obras === 1 ? '1 obra' : `${obras} obras`}
+          </span>
           <div className="ml-auto flex items-center gap-[9px] text-[12.5px] text-muted">
             <IconoUsuario tamano={17} />
-            <span className="hidden sm:inline">{cliente}</span>
             {/* En el teléfono no hay barra lateral: salir vive acá, y se ESCRIBE. Un chevron a la
                 derecha se lee «siguiente», no «cerrar sesión». */}
-            <Link href="/portal/salir" className="ml-1 flex min-h-11 items-center px-2 text-[12.5px] text-muted hover:text-ink md:hidden">
+            <Link href="/portal/salir" className="flex min-h-11 items-center px-2 text-[12.5px] text-muted hover:text-ink md:hidden">
               Salir
             </Link>
           </div>

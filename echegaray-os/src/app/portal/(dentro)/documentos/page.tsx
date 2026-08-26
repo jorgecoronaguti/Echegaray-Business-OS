@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelMail, obraElegida } from '../../datos'
+import { obrasDelClientePara } from '../../datos'
 import { obraDetalle } from '../datosObra'
 import { documentosDeObra } from './drive'
 import { haceCuanto, type Documento } from '../../documentos'
@@ -16,30 +16,42 @@ import { Adjuntar } from './Adjuntar'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Documentos({ searchParams }: { searchParams: Promise<{ obra?: string }> }) {
+export default async function Documentos() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelMail(sesion.mail)
-  const elegida = obraElegida(obras, (await searchParams).obra)
-  if (!elegida) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
-
-  const obra = await obraDetalle(elegida.id)
-  const { datos, al, error } = await documentosDeObra(obra?.driveCarpetaId ?? null)
+  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
+  if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
 
   return (
     <>
+      <h1 className="text-xl font-semibold tracking-[-.01em]">Documentos</h1>
+      {/* UNA SECCIÓN POR OBRA. Los papeles viven en la carpeta de SU obra —el contrato de una no es el
+          de la otra— así que se muestran separados aunque el cliente los vea todos de una vez. */}
+      {obras.map((o) => (
+        <DeUnaObra key={o.id} obraId={o.id} nombre={o.nombre} conTitulo={obras.length > 1} />
+      ))}
+    </>
+  )
+}
+
+async function DeUnaObra({ obraId, nombre, conTitulo }: { obraId: string; nombre: string; conTitulo: boolean }) {
+  const obra = await obraDetalle(obraId)
+  const { datos, al, error } = await documentosDeObra(obra?.driveCarpetaId ?? null)
+
+  return (
+    <section className={conTitulo ? 'mt-9 first:mt-6' : 'mt-2'}>
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold tracking-[-.01em]">Documentos</h1>
+        {conTitulo ? <h2 className="text-[15px] font-semibold tracking-[-.01em]">{nombre}</h2> : null}
         {/* LA FRESCURA SIEMPRE A LA VISTA: un cache mudo no se distingue de un dato congelado. */}
         <span className="flex items-center gap-1.5 text-[12px] text-faint">
           <IconoCarpeta tamano={15} />
           Drive · {haceCuanto(al)}
         </span>
-        <div className="ml-auto"><Adjuntar obraId={elegida.id} /></div>
+        <div className="ml-auto"><Adjuntar obraId={obraId} /></div>
       </div>
 
       {error === 'sin_carpeta' ? (
-        <div className="mt-6">
+        <div className="mt-4">
           <Vacio>Todavía no conectamos la carpeta de esta obra. Pedínosla y te la compartimos.</Vacio>
         </div>
       ) : error === 'sin_conexion' && !al ? (
@@ -105,7 +117,7 @@ export default async function Documentos({ searchParams }: { searchParams: Promi
           </p>
         </>
       )}
-    </>
+    </section>
   )
 }
 

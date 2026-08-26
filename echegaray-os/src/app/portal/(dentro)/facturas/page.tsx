@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelMail, obraElegida } from '../../datos'
-import { pagosDeObra, hoyEnObra } from '../datosObra'
+import { obrasDelClientePara } from '../../datos'
+import { pagosDeObras, hoyEnObra } from '../datosObra'
 import { estadoDePago, pesos, diaMes } from '../../cronograma'
 import { IconoEstado, Vacio, Fila } from '../../Piezas'
 import { IconoDescarga } from '../../iconos'
@@ -14,19 +14,27 @@ import { IconoDescarga } from '../../iconos'
 //
 // Sólo aparece lo que TIENE número de factura. Un certificado todavía sin facturar no es una factura
 // vacía: no está en esta pantalla, está en Pagos como «sin factura».
+//
+// SON LAS FACTURAS DEL CLIENTE, DE TODAS SUS OBRAS (26/08/2026). Antes mostraba las de la obra elegida
+// arriba; el dueño lo rechazó —«me sirve por cliente y q cada cliente tenga todas sus obras»—: quien
+// busca una factura busca un NÚMERO, y no tiene por qué acordarse de en qué obra la emitimos.
 
 export const dynamic = 'force-dynamic'
 
-export default async function Facturas({ searchParams }: { searchParams: Promise<{ obra?: string }> }) {
+export default async function Facturas() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelMail(sesion.mail)
-  const elegida = obraElegida(obras, (await searchParams).obra)
-  if (!elegida) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
+  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
+  if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
 
   const hoy = hoyEnObra()
-  const todos = await pagosDeObra(elegida.id)
-  const facturas = todos.filter((p) => p.facturaNumero)
+  const porObra = await pagosDeObras(obras)
+  const todos = obras.flatMap((o) => porObra.get(o.id) ?? [])
+  // POR FECHA, NO POR OBRA. La lista se lee para encontrar una factura, y lo que uno recuerda de una
+  // factura es cuándo fue, no de qué obra era. Las que no tienen fecha van al final, no al principio.
+  const facturas = todos.filter((p) => p.facturaNumero).sort((a, b) =>
+    (b.fechaPago ?? b.fechaPrevista ?? '').localeCompare(a.fechaPago ?? a.fechaPrevista ?? ''))
+  const variasObras = obras.length > 1
   const sinFacturar = todos.length - facturas.length
 
   return (
@@ -42,8 +50,8 @@ export default async function Facturas({ searchParams }: { searchParams: Promise
         <div className="mt-6">
           <Vacio>
             {todos.length
-              ? 'Todavía no emitimos ninguna factura de esta obra.'
-              : 'Todavía no cargamos el plan de pagos de esta obra.'}
+              ? 'Todavía no emitimos ninguna factura.'
+              : 'Todavía no cargamos el plan de pagos.'}
           </Vacio>
         </div>
       ) : (
@@ -57,6 +65,11 @@ export default async function Facturas({ searchParams }: { searchParams: Promise
                 <span className="tnum w-[70px] font-mono text-[13px] text-muted">
                   {diaMes(p.fechaPago ?? p.fechaPrevista)}
                 </span>
+                {/* CON VARIAS OBRAS HAY QUE DECIR DE CUÁL ES. Se oculta en pantalla angosta, donde la
+                    fila no entra: ahí manda el número de factura, que es por lo que se busca. */}
+                {variasObras ? (
+                  <span className="hidden w-[150px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
+                ) : null}
                 {/* El recibo va pegado a su factura: es la respuesta a «¿ésta ya la pagué?». */}
                 <span className="w-[118px] text-[12.5px] text-pos">
                   {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}

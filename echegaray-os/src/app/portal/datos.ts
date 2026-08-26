@@ -101,3 +101,43 @@ export function obraElegida<T extends { id: string }>(obras: T[], pedida: string
   // Una obra pedida que no está en el alcance no da error ni pantalla vacía: cae en la primera suya.
   return halla ?? obras[0] ?? null
 }
+
+// ── EL PORTAL SE ORGANIZA POR CLIENTE, NO POR OBRA (26/08/2026) ──────────────────────────────
+//
+// La maqueta ponía arriba una barra de OBRAS y cada pantalla mostraba UNA. El dueño lo probó y lo
+// rechazó: «por obra ingresar no me sirve, me sirve por cliente y q cada cliente tenga todas sus
+// obras». Tiene razón y el motivo es del negocio, no de la pantalla: un cliente con cuatro obras no
+// quiere saber cuánto debe en la Mampostería —quiere saber cuánto debe—. Elegir una obra para ver el
+// total lo obliga a sumar de memoria cuatro pantallas.
+//
+// Ahora lo que se elige es el CLIENTE (y sólo cuando el mail alcanza más de uno, que es el caso del
+// dueño mirando lo que ve cada uno). Todas las obras de ese cliente se muestran juntas, agrupadas.
+
+export type ClienteDelPortal = { id: string; nombre: string; obras: ObraAlcanzada[] }
+
+/**
+ * LAS OBRAS DE UN CLIENTE, PARA ESTE MAIL. El portal entero se dibuja con esto.
+ *
+ * El `clienteId` viene de la cookie —lo eligió en la puerta— pero NO es una credencial: se filtra
+ * contra el alcance real del mail. Editar la cookie no alcanza para ver otro cliente porque la cookie
+ * está firmada, y aunque se rompiera la firma, un cliente que el mail no alcanza devuelve lista vacía.
+ */
+export async function obrasDelClientePara(mail: string, clienteId: string): Promise<ObraAlcanzada[]> {
+  return (await obrasDelMail(mail)).filter((o) => o.clienteId === clienteId)
+}
+
+/** Los clientes que este mail alcanza, cada uno con TODAS sus obras. Deriva de `obrasDelMail`. */
+export function clientesDelMail(obras: ObraAlcanzada[]): ClienteDelPortal[] {
+  const porCliente = new Map<string, ClienteDelPortal>()
+  for (const o of obras) {
+    const previo = porCliente.get(o.clienteId)
+    if (previo) previo.obras.push(o)
+    else porCliente.set(o.clienteId, { id: o.clienteId, nombre: o.clienteNombre, obras: [o] })
+  }
+  return [...porCliente.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+}
+
+/** El cliente elegido por la URL, acotado SIEMPRE a los que este mail alcanza. */
+export function clienteElegido(clientes: ClienteDelPortal[], pedido: string | undefined): ClienteDelPortal | null {
+  return (pedido ? clientes.find((c) => c.id === pedido) : null) ?? clientes[0] ?? null
+}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { entrar, type EstadoLogin } from './acciones'
+import { entrar, entrarComo, type EstadoLogin } from './acciones'
 import { IconoMail, IconoFlecha, IconoAlerta, IconoReloj } from '../iconos'
 
 // LA ENTRADA — el mail y nada más.
@@ -19,6 +19,9 @@ const MENSAJE: Record<NonNullable<EstadoLogin['error']>, string> = {
 
 export function Formulario() {
   const [estado, enviar, pendiente] = useActionState(entrar, INICIAL)
+  // Un mail que alcanza varios clientes elige acá, en la PUERTA. Adentro el portal es idéntico para
+  // todos: un cliente de verdad alcanza uno solo y nunca ve este paso.
+  if (estado.elegir?.length) return <Elegir mail={estado.mail!} clientes={estado.elegir} />
   const hayError = Boolean(estado.error)
   return (
     <form action={enviar} className="flex flex-col">
@@ -56,6 +59,32 @@ export function Formulario() {
 
       {/* Cuando el mail no está habilitado el botón sigue ahí: el cliente corrige y reintenta. */}
       <BotonPrimario pendiente={pendiente}>Entrar</BotonPrimario>
+    </form>
+  )
+}
+
+function Elegir({ mail, clientes }: { mail: string; clientes: { id: string; nombre: string }[] }) {
+  const [, enviar, pendiente] = useActionState(entrarComo, {} as EstadoLogin)
+  return (
+    <form action={enviar} className="flex flex-col">
+      <Cabecera />
+      <input type="hidden" name="mail" value={mail} />
+      <p className="mt-5 max-w-[420px] text-[13.5px] text-muted">Su mail alcanza más de un cliente. ¿Cuál quiere ver?</p>
+      <div className="mt-4 flex max-w-[380px] flex-col gap-2">
+        {clientes.map((c) => (
+          <button
+            key={c.id}
+            type="submit"
+            name="cliente"
+            value={c.id}
+            disabled={pendiente}
+            className="flex min-h-[50px] items-center justify-between gap-3 rounded-[8px] border border-line-strong px-[14px] text-left text-[15px] text-ink transition-colors hover:border-ink disabled:opacity-60"
+          >
+            <span className="min-w-0 truncate">{c.nombre}</span>
+            <IconoFlecha tamano={18} />
+          </button>
+        ))}
+      </div>
     </form>
   )
 }

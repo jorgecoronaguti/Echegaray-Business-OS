@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { obrasDelMail, obraElegida } from '../../datos'
-import { pagosDeObra } from '../datosObra'
+import { obrasDelClientePara } from '../../datos'
+import { pagosDeObras } from '../datosObra'
 import { proximoPago, pesos, diaMes } from '../../cronograma'
 import { Vacio, Rubro } from '../../Piezas'
 import { CUENTA_PARA_COBRAR, FALTAN_DATOS_BANCARIOS } from '../../datosBancarios'
@@ -16,19 +16,22 @@ import { CUENTA_PARA_COBRAR, FALTAN_DATOS_BANCARIOS } from '../../datosBancarios
 
 export const dynamic = 'force-dynamic'
 
-export default async function Transferir({ searchParams }: { searchParams: Promise<{ obra?: string }> }) {
+export default async function Transferir() {
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
-  const obras = await obrasDelMail(sesion.mail)
-  const elegida = obraElegida(obras, (await searchParams).obra)
-  const proximo = elegida ? proximoPago(await pagosDeObra(elegida.id)) : null
+  // EL PRÓXIMO PAGO DEL CLIENTE, no el de una obra: el que transfiere paga lo que vence primero, sin
+  // importar de cuál de sus obras sea.
+  const obras = await obrasDelClientePara(sesion.mail, sesion.clienteId)
+  const porObra = await pagosDeObras(obras)
+  const proximo = proximoPago(obras.flatMap((o) => porObra.get(o.id) ?? []))
+  const variasObras = obras.length > 1
 
   return (
     <>
       <h1 className="text-xl font-semibold tracking-[-.01em]">Transferir</h1>
       {proximo ? (
         <p className="mt-2 text-sm text-muted">
-          {proximo.rotulo} · vence {diaMes(proximo.fechaPrevista)} ·{' '}
+          {proximo.rotulo}{variasObras ? ` · ${(proximo as { obraNombre?: string }).obraNombre ?? ''}` : ''} · vence {diaMes(proximo.fechaPrevista)} ·{' '}
           <span className="tnum font-mono text-ink">{pesos(proximo.monto)}</span>
         </p>
       ) : null}

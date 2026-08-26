@@ -34,7 +34,12 @@ import { normalizarMail, pareceMail } from './acceso'
 // TODO INTENTO QUEDA REGISTRADO en `portal_acceso`. Es lo único que convierte «alguien entró» en un
 // hecho verificable, y la señal temprana de un mail que golpea sin estar habilitado.
 
-export type EstadoLogin = { mail?: string; error?: 'no_habilitado' | 'mail_invalido' }
+export type EstadoLogin = {
+  mail?: string
+  error?: 'no_habilitado' | 'mail_invalido'
+  /** Sólo cuando el mail alcanza MÁS de un cliente: hay que elegir como cuál se entra. */
+  elegir?: { id: string; nombre: string }[]
+}
 
 async function huella() {
   const h = await headers()
@@ -51,18 +56,30 @@ export async function entrar(_previo: EstadoLogin, form: FormData): Promise<Esta
   const sb = createAdminClient()
   const { data } = await sb
     .from('cliente_mail')
-    .select('cliente_id')
+    .select('cliente_id, clientes(nombre_comercial, razon_social)')
     .eq('mail', mail)
     .eq('activo', true)
-    .limit(1)
 
   const { ip, agente } = await huella()
-  const clienteId = data?.[0]?.cliente_id
-  if (!clienteId) {
+  if (!data?.length) {
     await sb.from('portal_acceso').insert({ mail, resultado: 'no_habilitado', ip, agente })
     return { mail, error: 'no_habilitado' }
   }
 
+  // UN MAIL PUEDE ALCANZAR VARIOS CLIENTES —es el caso del dueño, que entra a ver lo que ve cada uno—.
+  // Se elige en la PUERTA y no adentro: el pedido fue «quiero verlo como lo ve el cliente, no algo
+  // adaptado a mí», y un selector de cliente dentro del portal sería justamente eso. Un cliente de
+  // verdad tiene uno solo y nunca ve este paso.
+  const clientes = [...new Map(data.map((r) => {
+    const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
+    const crudo = String(c?.nombre_comercial ?? c?.razon_social ?? 'Cliente').trim()
+    // Los paréntesis de «(IMOTOR / Javier Sánchez)» son una anotación interna de administración.
+    return [String(r.cliente_id), { id: String(r.cliente_id), nombre: crudo.replace(/^\((.*)\)$/, '$1').trim() }]
+  })).values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+
+  if (clientes.length > 1) return { mail, elegir: clientes }
+
+  const clienteId = clientes[0].id
   await sb.from('portal_acceso').insert({ mail, resultado: 'entro', ip, agente })
 
   // El `clienteId` va en la cookie sólo para saber por dónde entró. QUÉ puede ver lo decide
@@ -78,4 +95,35 @@ export async function entrar(_previo: EstadoLogin, form: FormData): Promise<Esta
 export async function salir() {
   ;(await cookies()).delete({ name: NOMBRE_COOKIE, path: '/portal' })
   redirect('/portal/login')
+}
+
+/**
+ * ENTRAR COMO UNO DE LOS CLIENTES que este mail alcanza.
+ *
+ * El `clienteId` que llega del formulario NO se cree: se vuelve a buscar contra `cliente_mail`. El
+ * campo viaja por el navegador y ahí se puede escribir cualquier cosa; sin esta comprobación,
+ * cambiarlo a mano entraría a un cliente que el mail no alcanza.
+ */
+export async function entrarComo(_previo: EstadoLogin, form: FormData): Promise<EstadoLogin> {
+  const mail = normalizarMail(String(form.get('mail') ?? ''))
+  const clienteId = String(form.get('cliente') ?? '')
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('cliente_mail')
+    .select('cliente_id')
+    .eq('mail', mail).eq('cliente_id', clienteId).eq('activo', true)
+    .limit(1)
+
+  const { ip, agente } = await huella()
+  if (!data?.length) {
+    await sb.from('portal_acceso').insert({ mail, resultado: 'no_habilitado', ip, agente })
+    return { mail, error: 'no_habilitado' }
+  }
+  await sb.from('portal_acceso').insert({ mail, resultado: 'entro', ip, agente })
+
+  const { valor, maxAge } = armarCookie({ mail, clienteId })
+  ;(await cookies()).set(NOMBRE_COOKIE, valor, {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/portal', maxAge,
+  })
+  redirect('/portal')
 }
