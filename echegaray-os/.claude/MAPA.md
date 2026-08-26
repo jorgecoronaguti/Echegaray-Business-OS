@@ -20,6 +20,7 @@ scripts · 14 timers en producción.
 | el libro canónico de movimientos | `orquestador/lib/libro-*.mjs` · las sumas del Sheet, `lib/libro-sumas.mjs` (`terminoLibro`) |
 | banco, extracto, conciliación | `orquestador/lib/banco-*.mjs` · la puerta es `scripts/importar-banco.mjs` |
 | cobranzas, certificados, portal del cliente | `src/features/clientes/` + `src/app/(portal)/` · sync en `scripts/portal-esquema-sync.mjs` |
+| los recibos del cliente (el PDF de Drive) | `public.recibo_cliente` · barrido `orquestador/scripts/recibos-drive-sembrar.mjs` + reglas en `lib/recibos-drive.mjs` · pantalla `src/app/portal/(dentro)/facturas/` · la descarga la sirve `src/app/portal/recibo/[id]/route.ts` con la credencial del OS |
 | el bot, el Director, los especialistas | `orquestador/comunicacion/` · el WS es `mattermost-ws-consumer.mjs` |
 | jornales, quincenas, UOCRA | `orquestador/scripts/jornales-pestana.mjs` (2.835 líneas — **leé el tramo, no el archivo**) |
 | obras, avance, partes | `src/features/obras/` + `src/features/control-obras/` · grilla en `lib/obras-grilla.mjs` |
