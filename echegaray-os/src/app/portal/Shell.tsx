@@ -49,7 +49,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
   const activo = destinoActivo(ruta)
 
   return (
-    <div className="flex min-h-dvh bg-canvas text-ink">
+    <div className="flex min-h-dvh flex-col bg-canvas text-ink">
       {/* EL AVISO DE LA PREVIA. Es lo ÚNICO que se agrega cuando mira Dirección: el resto de la
           pantalla es idéntica a la del cliente, porque un portal que se comporta distinto según
           quién mira no prueba nada de lo que muestra. Existe para poder volver a la ficha. */}
@@ -59,18 +59,33 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
           <Link href="/clientes" className="underline underline-offset-2">Volver a Clientes</Link>
         </div>
       ) : null}
+      {/* ── LA MARCA, ARRIBA DE TODO Y EN TODAS LAS PANTALLAS ───────────────────────────────
+          Antes había sólo un isotipo de 26px en el rincón de la barra lateral. El dueño lo miró y
+          dijo lo único que importa: «así es genérico, con un logo arriba a la izquierda de una
+          empresa random». Tenía razón — un símbolo sin nombre no dice de quién es el portal, y este
+          portal es la cara de la empresa frente a un cliente.
+          Ahora es una franja propia, a todo el ancho y sobre todo lo demás, con el isotipo Y el
+          nombre escrito. Es exactamente el patrón del header del OS (`AppHeader`), con su mismo
+          tamaño e interletrado: una sola manera de firmar, no dos. */}
+      <header
+        className={`flex h-[44px] shrink-0 items-center gap-2.5 border-b border-line bg-surface px-[14px] md:px-[26px]${previa ? ' mt-9' : ''}`}
+      >
+        <img src="/marca/isotipo.png" alt="" width={24} height={24} className="h-[24px] w-[24px]" />
+        {/* «ECHEGARAY CONSTRUCCIONES» es UN nombre, no una marca con su bajada: mismo peso, mismo
+            color, mismo interletrado. La segunda palabra se retira por debajo de `sm`, donde compite
+            con el nombre del cliente. */}
+        <span className="text-[11.5px] font-semibold tracking-[.04em] text-ink">
+          ECHEGARAY<span className="hidden sm:inline"> CONSTRUCCIONES</span>
+        </span>
+        <span className="ml-auto text-[11px] text-faint">Portal del cliente</span>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
       {/* ── BARRA LATERAL · sólo escritorio ─────────────────────────────────────────────────── */}
       <nav
         aria-label="Secciones"
-        className={`hidden w-[88px] shrink-0 flex-col items-center gap-[5px] border-r border-line bg-surface py-4 md:flex${previa ? ' pt-12' : ''}`}
+        className="hidden w-[88px] shrink-0 flex-col items-center gap-[5px] border-r border-line bg-surface py-4 md:flex"
       >
-        {/* LA MARCA REAL, NO SU INICIAL. Era una «E» amarilla dibujada con texto: el cliente entra
-            a un portal de SU proveedor y lo primero que ve tiene que ser el logo de la empresa, no
-            un cuadradito. Es el mismo archivo oficial que usa el header del OS —una sola fuente de
-            marca— y va con `img` y no con `next/image`: son 24px de un PNG chico, y el optimizador
-            agrega un salto de red por nada (medido: 243 ms). */}
-        <img src="/marca/isotipo.png" alt="Echegaray Construcciones" width={26} height={26}
-          className="mb-[14px] h-[26px] w-[26px]" />
         {DESTINOS.map((d) => (
           <ItemLateral key={d.href} destino={d} activo={activo?.href === d.href} />
         ))}
@@ -85,11 +100,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── QUIÉN ES ─────────────────────────────────────────────────────────────────────── */}
-        <header className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]${previa ? ' mt-9 md:mt-0' : ''}`}>
-          {/* EN EL TELÉFONO NO HAY BARRA LATERAL: el isotipo vive acá, o el portal no tendría marca
-              en ninguna parte de la pantalla más chica. */}
-          <img src="/marca/isotipo.png" alt="Echegaray Construcciones" width={22} height={22}
-            className="h-[22px] w-[22px] md:hidden" />
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]">
           <span className="min-h-[22px] text-[14px] font-semibold text-ink">{cliente}</span>
           <span className="text-[12.5px] text-faint">
             {obras === 0 ? 'sin obras' : obras === 1 ? '1 obra' : `${obras} obras`}
@@ -111,6 +122,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
               flotando en el medio de la pantalla, lejos del menú que lo gobierna. */}
           <div className="w-full max-w-[880px] px-5 py-7 md:px-[34px] md:pb-12 md:pt-10">{children}</div>
         </main>
+      </div>
       </div>
 
       {/* ── MENÚ INFERIOR · sólo teléfono ───────────────────────────────────────────────────── */}
