@@ -1,5 +1,11 @@
 // LA BARRA DE NIVEL 3 DE «TRABAJO» — PORTE LITERAL de la banda que repiten los mockups 03, 05 y 06.
 //
+// ES LA ÚNICA. Hasta el 25/08/2026 había una segunda, `SubTabsTrabajo`, construida sobre `SubTabs`
+// del design system y usada por UNA pantalla —Subcontratos—, que por eso se veía distinta de las
+// otras cuatro del mismo nivel. Cuando el mockup y el design system difieren manda el mockup, así
+// que sobrevivió ésta y la otra se retiró. Los ítems ya no se escriben acá: salen de
+// `pantallasDeTrabajo`, que los emite una sola vez para toda la obra.
+//
 //   banda     `background:#FAFAF8; borderBottom:1px solid #E7E6E2; padding:0 20px; gap:14px`
 //   solapa    12,5px, `padding:9px 10px`; activa 600 con `boxShadow:inset 0 -2px 0 #30302F`
 //
@@ -15,25 +21,15 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { C } from './canon/tokens'
-import { hrefSubcontratos, SUBS_TAREAS, type SubTareas } from '../services/vistasObra'
+import { pantallasDeTrabajo, type PantallaDeTrabajo } from '../services/vistasObra'
 
 export function SubNavTrabajo({ obraId, sub, derecha }: {
   obraId: string
-  /** `null` = ninguna sub-vista activa (Subcontratos, que es otra URL y no otra sub-vista). */
-  sub: SubTareas | null
+  /** Cuál de las cuatro se está mirando. `null` cuando ninguna lo está. */
+  sub: PantallaDeTrabajo | null
   derecha?: ReactNode
 }) {
-  const items: { href: string; label: string; id: string; activo: boolean }[] = [
-    ...SUBS_TAREAS.map((s) => ({
-      href: `/obras/${obraId}?vista=tareas&sub=${s.id}`,
-      label: s.label,
-      id: s.id,
-      activo: sub === s.id,
-    })),
-    // LA PANTALLA 10 ENTRA POR ACÁ y nunca queda activa desde el workspace: es otra URL, no otra
-    // sub-vista. Es el MISMO alcance de la obra mirado desde el lado del tercero que lo ejecuta.
-    { href: hrefSubcontratos(obraId), label: 'Subcontratos', id: 'subcontratos', activo: false },
-  ]
+  const items = pantallasDeTrabajo(obraId, sub)
   return (
     <div data-testid="subnav-trabajo" style={{
       background: C.tenueFondo, borderBottom: `1px solid ${C.borde}`, display: 'flex',

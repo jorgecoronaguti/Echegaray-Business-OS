@@ -18,6 +18,20 @@ function Seccion({ titulo, items, testid }: { titulo: string; items: string[]; t
   )
 }
 
+/**
+ * Qué es cada línea del bloque de confianza, en el orden en que se lee: primero lo que está
+ * probado, al final lo que falta. `tono` sólo se despega del gris cuando la línea pide una acción
+ * —una fuente que se congeló o un dato que no existe—, nunca para decorar.
+ */
+const CATEGORIAS_DE_CONFIANZA = [
+  { clave: 'confirmados', rotulo: 'Confirmado', tono: 'text-emerald-700' },
+  { clave: 'calculados', rotulo: 'Calculado', tono: 'text-gray-500' },
+  { clave: 'estimados', rotulo: 'Estimado', tono: 'text-gray-500' },
+  { clave: 'parciales', rotulo: 'Parcial', tono: 'text-gray-500' },
+  { clave: 'fuentes_atrasadas', rotulo: 'Fuente atrasada', tono: 'text-amber-700' },
+  { clave: 'gaps', rotulo: 'Gap', tono: 'text-amber-700' },
+] as const
+
 export function ReporteVista({ reporte, definicion }: { reporte: ReporteGenerado; definicion: ReporteDefinicion }) {
   const c = reporte.contenido
   const conf = reporte.confianza
@@ -64,25 +78,19 @@ export function ReporteVista({ reporte, definicion }: { reporte: ReporteGenerado
 
       <div className="mt-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600" data-testid="reporte-confianza">
         <span className="font-semibold uppercase">Confianza y fuentes</span>
+        {/* Las seis categorías son las de las reglas de oro —HECHO · CÁLCULO · ESTIMACIÓN— y por eso
+            se NOMBRAN. Antes cada una era un emoji distinto (✅ 🧮 ≈ ◔ ⏰ ⚠️): quien lee un reporte
+            no decodifica ese vocabulario, y el Design System no admite emojis. El rótulo dice la
+            categoría, que es justamente lo que la regla de oro exige que no se confunda. */}
         <ul className="mt-1 space-y-0.5">
-          {conf.confirmados.map((x, i) => (
-            <li key={`c${i}`}>✅ {x}</li>
-          ))}
-          {conf.calculados.map((x, i) => (
-            <li key={`k${i}`}>🧮 {x}</li>
-          ))}
-          {conf.estimados.map((x, i) => (
-            <li key={`e${i}`}>≈ {x}</li>
-          ))}
-          {conf.parciales.map((x, i) => (
-            <li key={`p${i}`}>◔ Parcial: {x}</li>
-          ))}
-          {conf.fuentes_atrasadas.map((x, i) => (
-            <li key={`a${i}`}>⏰ Fuente atrasada: {x}</li>
-          ))}
-          {conf.gaps.map((x, i) => (
-            <li key={`g${i}`}>⚠️ Gap: {x}</li>
-          ))}
+          {CATEGORIAS_DE_CONFIANZA.map(({ clave, rotulo, tono }) =>
+            conf[clave].map((x, i) => (
+              <li key={`${clave}${i}`} className="flex gap-1.5">
+                <span className={`shrink-0 font-semibold uppercase tracking-wide ${tono}`}>{rotulo}</span>
+                <span>{x}</span>
+              </li>
+            )),
+          )}
         </ul>
         <p className="mt-1 text-[11px] text-gray-400">Fuentes: {reporte.fuentes_usadas.join(', ')}</p>
       </div>

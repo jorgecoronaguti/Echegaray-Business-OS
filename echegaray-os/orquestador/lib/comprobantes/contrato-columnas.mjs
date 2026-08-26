@@ -19,7 +19,7 @@
 // Lo que este archivo NO es: una descripción bonita. Es de acá de donde salen `GRUPOS_FORMULA` y la
 // lista de letras que el cargador tiene permitido escribir. Cambiar el contrato cambia el
 // comportamiento; que se separe de la pestaña lo caza `contrato-columnas.test.mjs` (la medición
-// congelada) y `scripts/reparar-formulas-compras.mjs --auditar` (contra el Sheet vivo).
+// congelada) y `scripts/reparar-formulas-compras.mjs` (que abre el Sheet vivo y no escribe nada).
 //
 // ═══ LA DISTINCIÓN QUE MANDA: FÓRMULA POR FILA vs ARRAYFORMULA ═══
 //
@@ -81,10 +81,13 @@ export const CONTRATO = Object.freeze([
   { letra: 'O', rotulo: 'Total', naturaleza: NATURALEZA.FORMULA_FILA },
   { letra: 'P', rotulo: 'Tipo pago', naturaleza: NATURALEZA.CARGADOR, rol: 'formaPago' },
   // Q DERIVA LA FECHA PREVISTA DE LA MODALIDAD: `=IF(F="pago";C;"Pendiente")`. El cargador NO la
-  // escribe —verificado por construcción en `valoresInput`— y sin embargo 37 de 92 filas del bloque
-  // medido la tienen pisada con un serial de fecha. 36 de esas 37 llevan una fecha DISTINTA de la de
-  // la factura (de 1 a 35 días después): es la fecha real de vencimiento del echeq o del cheque, que
-  // ni la fórmula ni el cargador pueden saber. La pone una persona. Ver el informe del 25/08.
+  // escribe —verificado por construcción en `valoresInput`— y sin embargo tiene un serial pegado
+  // encima en 524 de las 897 filas de la pestaña, **arrancando en la fila 4**: desde el origen, años
+  // antes de que existiera el cargador. En 353 de esas 524 la fecha es DISTINTA de la que la fórmula
+  // daría — es el vencimiento real del echeq o del cheque, que ni la fórmula ni el cargador pueden
+  // saber, y lo pone una persona. Q pegada es el estado normal de esta pestaña, no un daño: quien
+  // "repare" esta columna en masa borra 353 vencimientos reales. Medido el 25/08/2026 con
+  // `scripts/reparar-formulas-compras.mjs`.
   { letra: 'Q', rotulo: 'Fecha prevista de pago (día)', naturaleza: NATURALEZA.FORMULA_FILA },
   { letra: 'R', rotulo: 'Fecha prevista de pago (mes)', naturaleza: NATURALEZA.FORMULA_FILA },
   { letra: 'S', rotulo: 'Total o Parcial', naturaleza: NATURALEZA.CARGADOR, rol: 'totalParcial' },

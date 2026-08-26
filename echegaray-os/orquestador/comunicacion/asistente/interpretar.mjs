@@ -22,8 +22,14 @@ import { INTENCION, CAPACIDAD, zSolicitud, TZ_EMPRESA } from './contratos.mjs'
 import { parseCuando, quitarTiempo } from './tiempo.mjs'
 import { parseCadence } from '../../lib/schedule-intent.mjs'
 import { tokenizar, VERBOS_PEDIDO } from '../../lib/drive-busqueda/normalizar.mjs'
+// `CAPACIDAD` ya significa otra cosa en este archivo —las capacidades del asistente, que es
+// justamente lo que el modelo tiene que reconocer—, así que la del cliente entra con su apellido.
+import { CAPACIDAD as CAPACIDAD_IA, pedirTextoONull } from '../../lib/ia/cliente.mjs'
 
-const MODELO = process.env.ORQ_ASISTENTE_MODELO || 'claude-haiku-4-5-20251001'
+// EL MODELO YA NO SE ELIGE ACÁ (25/08/2026): se declara la capacidad —clasificar un pedido en una
+// lista cerrada es NORMAL— y `lib/ia/cliente.mjs` resuelve cuál. `ORQ_ASISTENTE_MODELO` sigue siendo
+// la escotilla, pero pasa por la puerta única y su costo queda atribuido al asistente.
+const MODELO = process.env.ORQ_ASISTENTE_MODELO || null
 const MAX_TOKENS = 300
 
 /** La pregunta que se hace cuando el pedido es "creá algo con fecha" y nada más. */
@@ -425,16 +431,21 @@ export async function interpretarConModelo(texto, ctx = {}) {
     ESQUEMA,
   ].join('\n')
 
-  try {
-    const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: modelo, max_tokens: MAX_TOKENS, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
-    })
-    if (!res.ok) return null
-    const j = await res.json()
-    return desdeModelo(j?.content?.[0]?.text, texto, ctx)
-  } catch { return null }
+  // Sigue devolviendo null ante cualquier problema —el asistente responde «desconocido» y nunca una
+  // capacidad adivinada—, pero el motivo ya no se pierde: queda clasificado, registrado con su costo
+  // y, si era saldo, el OS entero lo sabe.
+  const crudo = await pedirTextoONull({
+    capacidad: CAPACIDAD_IA.NORMAL,
+    mensajes: [{ role: 'user', content: prompt }],
+    maxTokens: MAX_TOKENS,
+    temperatura: 0,
+    agente: 'asistente',
+    funcion: 'interpretar',
+    modelo,
+    apiKey,
+    fetchImpl,
+  })
+  return crudo == null ? null : desdeModelo(crudo, texto, ctx)
 }
 
 /** Salida cruda del modelo → solicitud válida, o null. La fecha se recalcula acá. */

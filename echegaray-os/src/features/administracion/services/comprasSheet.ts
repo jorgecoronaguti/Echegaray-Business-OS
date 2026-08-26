@@ -54,6 +54,26 @@ export function pastillaDe(estado: string | null): Pastilla {
 }
 
 /** Lo mínimo que necesita saberse de una fila para contarla, filtrarla y sumarla. */
+/**
+ * LAS TRES «OBRAS» QUE NO SON OBRAS — costo de estructura de la empresa.
+ *
+ * `24 · Compras v2` las marca con un chip al lado del destino, y el motivo es económico: un gasto
+ * imputado a `F931`, `Taller` o `Almacen` no encarece ninguna obra, encarece la empresa. Leerlos
+ * como obra al comparar presupuesto contra realidad castiga a la obra equivocada.
+ *
+ * NO es una constante inventada en el front: los tres son valores REALES de la columna
+ * «Cliente / Asignación» de la pestaña, medidos el 25/08/2026 — F931 15 filas, Taller 58,
+ * Almacen 24. La lista vive acá y no en el componente porque es una regla de negocio, no un estilo.
+ * `Almacén` con tilde no está en la pestaña; se acepta igual porque el día que alguien lo escriba
+ * así el chip tiene que seguir apareciendo.
+ */
+const ESTRUCTURA = new Set(['f931', 'taller', 'almacen', 'almacén'])
+
+/** ¿Este destino es costo de la empresa y no de una obra? */
+export function esEstructura(obra: string | null | undefined): boolean {
+  return ESTRUCTURA.has(String(obra ?? '').trim().toLowerCase())
+}
+
 export interface Filtrable {
   estado: string | null
   obra_texto: string | null

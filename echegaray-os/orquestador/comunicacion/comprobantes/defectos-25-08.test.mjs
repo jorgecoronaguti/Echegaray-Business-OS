@@ -32,6 +32,7 @@ import { repoMemoria, portGuarda, mmFalso, LISTAS_COMPRAS, filaCompras } from '.
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { parteVacia } from '../../lib/comprobantes/parte.mjs'
+import { textoCargado } from './escritura.mjs'
 
 const URL = 'https://chat.ecsas.com.ar/comprobantes/accion?t=SECRETO'
 const ACTOR = { plataforma_user_id: 'u_jorge', plataforma_username: 'jorge', channel_type: 'P', channel_id: 'c_comprobantes' }
@@ -413,4 +414,34 @@ test('si Mattermost rechaza la REESCRITURA del resumen, tampoco se declara silen
 
   assert.notEqual(r.silencioso, true, 'el canal se quedó con el mensaje viejo y el handler dijo que había publicado')
   assert.match(r.texto, /Cargué \*\*4 comprobantes\*\*/, 'y por el outbox tiene que salir el acumulado, no un texto vacío')
+})
+
+// ═══ EL BOT NO PUEDE ANUNCIAR UN ALTA QUE NO OCURRIÓ (25/08) ═══
+//
+// El cargador da de alta al proveedor que el CUIT identifica. El mensaje del chat se armaba con el
+// PLAN (`altas.altas`) —lo que se iba a crear—, no con lo que la base devolvió. Con la escritura del
+// Sheet frenada, o con otra corrida ganando la carrera del CUIT, el dueño leería "Proveedor NUEVO
+// dado de alta" sobre una ficha que no existe, y dejaría de buscarla.
+//
+// La evidencia del alta es la fila que volvió de Postgres, nunca el plan que la pidió.
+test('el chat anuncia el proveedor que la BASE creó, no el que el plan pensaba crear', () => {
+  const plan = { altas: [{ cuit: '30999999995', nombre: 'Metalúrgica del Oeste' }], existentes: [], alias: [], conflictos: [], ambiguos: [], sinIdentidad: [] }
+
+  const sinEfecto = textoCargado([{ fila: 900, proveedor: 'X' }], [], { altas: plan, altasAplicadas: null })
+  assert.ok(!/dado de alta/i.test(sinEfecto), 'sin respuesta de la base no se afirma ningún alta')
+
+  const conEfecto = textoCargado([{ fila: 900, proveedor: 'X' }], [], {
+    altas: plan,
+    altasAplicadas: { creados: [{ cuit: '30999999995', nombre: 'Metalúrgica del Oeste', id: 'p1' }], yaEstaban: [], alias: [], rechazos: [] },
+  })
+  assert.match(conEfecto, /Proveedor NUEVO dado de alta: \*\*Metalúrgica del Oeste\*\* \(CUIT 30999999995\)/)
+})
+
+test('lo que nadie pudo resolver se nombra igual: un pendiente que no se dice no se mira', () => {
+  const t = textoCargado([{ fila: 900, proveedor: 'X' }], [], {
+    altas: { altas: [], existentes: [], alias: [], conflictos: [{ nombreLeido: 'EL PUENTE', motivo: 'nombre_ocupado' }], ambiguos: ['DOS CUIT'], sinIdentidad: [] },
+    altasAplicadas: { creados: [], yaEstaban: [], alias: [], rechazos: [] },
+  })
+  assert.match(t, /No pude resolver "EL PUENTE" \(nombre_ocupado\)/)
+  assert.match(t, /"DOS CUIT" apareció con dos CUIT distintos/)
 })

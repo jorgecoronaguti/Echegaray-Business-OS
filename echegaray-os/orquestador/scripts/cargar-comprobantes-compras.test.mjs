@@ -315,10 +315,60 @@ test('el CUIT resuelve al proveedor del desplegable también desde el cargador',
   assert.equal(r.plan[0].valores.E, 'DUPEC', 'se escribe el nombre del desplegable, no la razón social')
 })
 
-test('sin el mapa de CUIT se comporta exactamente como antes: nadie se rompe por el parámetro nuevo', async () => {
+// ═══ Y SI NADIE CONOCE ESE CUIT, EL PROVEEDOR SE DA DE ALTA (25/08) ═══
+//
+// Antes esto declaraba el proveedor «nuevo», escribía la razón social en una columna con desplegable
+// ESTRICTO y ahí terminaba: la celda quedaba fuera del vocabulario de Proveedores, Cash Flow y CAJA,
+// y el gasto entraba sin dueño. El dueño lo pidió al revés: «que lo cree y lo cargue».
+//
+// EL LÍMITE DECLARADO, que este test deja escrito a propósito: si ese CUIT pertenece a un proveedor
+// que YA está en el desplegable pero cuyo CUIT no está anotado en ningún lado, el alta lo duplica.
+// La única defensa contra eso es tener el CUIT cargado —en `public.proveedores` o en la pestaña
+// `Proveedores`—, que es exactamente lo que el alta deja hecho para la próxima vez.
+test('sin nadie que conozca el CUIT, el proveedor se da de alta en vez de quedar en rojo', async () => {
   const r = await prepararPlan([{
     proveedor: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20-28773782-4',
     fecha: '04/08/2026', tipo: 'A', numero: '00009-00003204', total: 469564.7, iva: 81494.7,
   }], { lista: ['DUPEC'] })
-  assert.deepEqual(r.nuevos, ['DUBOS UGARTE PEDRO LUIS RAUL'], 'sin CUIT no hay forma de saberlo y se declara nuevo')
+  assert.deepEqual(r.nuevos, [], 'ya no queda como un nombre suelto fuera del desplegable')
+  assert.equal(r.altas.altas.length, 1)
+  assert.equal(r.altas.altas[0].cuit, '20287737824')
+  assert.deepEqual(r.altas.nombres, ['DUBOS UGARTE PEDRO LUIS RAUL'], 'el nombre entra al desplegable')
+})
+
+test('el maestro de app.ecsas identifica al proveedor aunque el Sheet no tenga el CUIT', async () => {
+  const r = await prepararPlan([{
+    proveedor: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20-28773782-4',
+    fecha: '04/08/2026', tipo: 'A', numero: '00009-00003204', total: 469564.7, iva: 81494.7,
+  }], { lista: ['DUPEC'], conocidos: { ok: true, proveedores: [{ id: 'p1', nombre: 'DUPEC', cuit: '20287737824' }], alias: [] } })
+  assert.equal(r.altas.altas.length, 0, 'NO se crea un proveedor que ya existe')
+  assert.equal(r.plan[0].valores.E, 'DUPEC', 'a la celda va el nombre canónico, no la razón social')
+  assert.equal(r.altas.alias.length, 1, 'la variante queda registrada')
+})
+
+test('el proveedor sin CUIT legible sigue quedando declarado y no se inventa nada', async () => {
+  const r = await prepararPlan([{
+    proveedor: 'FERRETERIA SIN CUIT', fecha: '04/08/2026', tipo: 'A', numero: '0001-00000001', total: 1000, iva: 0,
+  }], { lista: ['DUPEC'] })
+  assert.deepEqual(r.nuevos, ['FERRETERIA SIN CUIT'])
+  assert.equal(r.altas.altas.length, 0, 'sin identidad no hay alta')
+  assert.deepEqual(r.altas.nombres, [], 'y no entra al desplegable estricto por su cuenta')
+})
+
+test('dos comprobantes del mismo proveedor nuevo en la misma tanda dan de alta UNA vez', async () => {
+  const uno = { proveedor: 'Metalúrgica del Oeste', cuit: '20-28773782-4', fecha: '04/08/2026', tipo: 'A', total: 1000, iva: 0 }
+  const r = await prepararPlan([
+    { ...uno, numero: '0001-00000001' },
+    { ...uno, numero: '0001-00000002' },
+  ], { lista: ['DUPEC'] })
+  assert.equal(r.plan.length, 2, 'los dos comprobantes se cargan')
+  assert.equal(r.altas.altas.length, 1, 'pero el proveedor nace una sola vez')
+})
+
+test('un comprobante rechazado NO da de alta a su proveedor', async () => {
+  const r = await prepararPlan([{
+    proveedor: 'Metalúrgica del Oeste', cuit: '20-28773782-4', fecha: null, tipo: 'A', total: null, iva: null,
+  }], { lista: ['DUPEC'] })
+  assert.equal(r.plan.length, 0, 'el comprobante no se puede cargar')
+  assert.equal(r.altas.altas.length, 0, 'y entonces no deja una ficha de proveedor que nadie pidió')
 })

@@ -3,6 +3,23 @@
 // `echegaray-design-v2/24 · Compras.dc.html`, línea 156:
 //   `62px minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1.1fr) 116px 116px 26px`
 //
+// ═══ LO QUE AGREGA LA v2 (25/08/2026) ═══
+//
+// `24 · Compras v2` declara que la tabla «conserva la estructura real del Sheet Flujo de Fondos:
+// Unidad de Negocio · Cliente/Asignación · Forma de Pago · Deuda Parcial · Tipo de Costo». No son
+// cinco columnas nuevas —la tabla se volvería ilegible—: la v2 las APILA dentro de las celdas que
+// ya existen, igual que el número de comprobante bajo el concepto. Acá se portan las dos que van en
+// la fila:
+//
+//   · la UNIDAD DE NEGOCIO delante del destino, en 11px apagado (897 de 897 filas la tienen: Civil
+//     540, Estructura 219, Impuestos 72, Mantenimiento 54, Financiero 12);
+//   · la DEUDA PARCIAL bajo el importe, en ámbar y sólo cuando es mayor que cero — 22 filas.
+//
+// Y el chip «estructura» al lado de `F931`, `Taller` y `Almacen`, que no son obras sino costo de la
+// empresa (la regla vive en `services/comprasSheet.ts`, no acá).
+//
+// Forma de Pago y Tipo de Costo NO entran a la fila: la v2 las pone en el panel de detalle.
+//
 // ═══ AHORA LA TERCERA COLUMNA SÍ DICE «CONCEPTO» ═══
 //
 // La versión anterior de esta tabla la rotulaba «COMPROBANTE» con un motivo correcto: el libro de
@@ -24,7 +41,7 @@ import {
   ALTO, C, CeldaTexto, EncabezadoCanon, FilaCanon, PieCanon, TarjetaTabla, VacioCanon,
   IcoAlerta, diaMes, entero, pesos,
 } from '@/shared/components/canon'
-import { pastillaDe, totalesDe } from '../services/comprasSheet'
+import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
 
@@ -108,7 +125,10 @@ export function TablaComprasSheet({
               {/* «Sin imputar» en rojo con su ⚠, igual que el canónico (líneas 106-112). Hoy las 882
                   filas tienen obra, así que este camino no se ve — existe porque el día que alguien
                   cargue una sin imputar tiene que gritarlo, no esconderlo. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0 }}>
+                {f.unidad_negocio && (
+                  <span style={{ fontSize: 11, color: C.tenue, flexShrink: 0 }}>{f.unidad_negocio}</span>
+                )}
                 <CeldaTexto color={obra ? C.tinta : '#B42318'}>
                   {obra || 'sin imputar'}
                 </CeldaTexto>
@@ -117,13 +137,35 @@ export function TablaComprasSheet({
                     <IcoAlerta s={13} />
                   </span>
                 )}
+                {esEstructura(obra) && (
+                  <span
+                    title="Costo de la empresa, no de una obra"
+                    style={{
+                      fontSize: 10, color: C.apagado, border: `1px solid ${C.linea}`,
+                      borderRadius: 5, padding: '1px 5px', flexShrink: 0, whiteSpace: 'nowrap',
+                    }}
+                  >
+                    estructura
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                 <Pastilla estado={f.estado} />
               </div>
-              <span style={{ fontFamily: 'var(--font-plex-mono)', fontSize: 12, textAlign: 'right' }}>
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0,
+                fontFamily: 'var(--font-plex-mono)', fontSize: 12, textAlign: 'right',
+              }}
+              >
                 <Importe f={f} />
-              </span>
+                {/* LO QUE TODAVÍA SE DEBE, y sólo cuando se debe algo. `saldo_pendiente` en 0 no es
+                    «debe 0»: es que no debe nada, y dibujarlo diría lo contrario de lo que pasa. */}
+                {f.saldo_pendiente != null && f.saldo_pendiente > 0 && (
+                  <span title="Deuda parcial" style={{ fontSize: 10.5, color: '#B54708' }}>
+                    debe {pesos(f.saldo_pendiente)}
+                  </span>
+                )}
+              </div>
             </Link>
             <CeldaComprobante adjuntos={f.adjuntos} />
           </FilaCanon>
