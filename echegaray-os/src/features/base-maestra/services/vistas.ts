@@ -17,22 +17,32 @@ import { coincide, desvioObservado, type Frescura } from './reglas.ts'
 
 // ═══ 17 · LOS CORTES DE TAREAS ═════════════════════════════════════════════════════════════════
 
-export const CORTES_TAREA = ['todo', 'desvio', 'sinDato'] as const
+export const CORTES_TAREA = ['todo', 'desvio', 'sinDato', 'sinAnalisis'] as const
 export type CorteTarea = (typeof CORTES_TAREA)[number]
 
 export const ROTULO_CORTE: Record<CorteTarea, string> = {
   todo: 'Todo',
   desvio: 'Con desvío',
   sinDato: 'Sin dato real',
+  // El corte que el 17 v2 agrega (`filtro: "sin"`), y es donde aterriza la primera señal de la
+  // pantalla. NO es «sin dato real»: aquél es sin rendimiento MEDIDO en obra —la tarea cotiza
+  // igual—; éste es sin análisis, o sea sin costo unitario, y esa tarea no se puede presupuestar.
+  sinAnalisis: 'Sin análisis',
 }
 
-export type SenalesTarea = { hs_unitarias: number | null; hs_observado: number | null }
+export type SenalesTarea = {
+  hs_unitarias: number | null
+  hs_observado: number | null
+  /** `null` = no tiene análisis vigente. Sin él no hay costo unitario. */
+  analisis_id: string | null
+}
 
 export function corteDe(v: string | undefined): CorteTarea {
   return (CORTES_TAREA as readonly string[]).includes(v ?? '') ? (v as CorteTarea) : 'todo'
 }
 
 export function cumpleCorte(t: SenalesTarea, corte: CorteTarea): boolean {
+  if (corte === 'sinAnalisis') return t.analisis_id === null
   // «Sin dato real» es sin OBSERVADO **o** sin base: las dos dejan la comparación sin hacer, que es
   // lo que este corte junta. Es literal del canónico (`t.real === null || t.hh === null`).
   if (corte === 'sinDato') return t.hs_observado == null || t.hs_unitarias == null
@@ -50,7 +60,7 @@ export function cumpleCorte(t: SenalesTarea, corte: CorteTarea): boolean {
 // razón escrita). Con el umbral del mockup, «Con problema» traería casi la lista entera y el chip
 // dejaría de señalar algo. Sin fecha SÍ entra: una antigüedad desconocida no se puede defender.
 
-export const CORTES_RECURSO = ['todo', 'mano_obra', 'material', 'problema'] as const
+export const CORTES_RECURSO = ['todo', 'mano_obra', 'material', 'problema', 'sin_precio'] as const
 export type CorteRecurso = (typeof CORTES_RECURSO)[number]
 
 export const ROTULO_CORTE_RECURSO: Record<CorteRecurso, string> = {
@@ -58,6 +68,11 @@ export const ROTULO_CORTE_RECURSO: Record<CorteRecurso, string> = {
   mano_obra: 'Mano de obra',
   material: 'Materiales',
   problema: 'Con problema',
+  // El corte del 17 v2 (`filtro: "sin"`). Es un SUBCONJUNTO de «Con problema», que junta tres
+  // avisos: sin precio, precio viejo y precio sin fecha. La señal de arriba cuenta sólo el
+  // primero, así que necesita su propio recorte — mandarla a «Con problema» la haría aterrizar
+  // en una lista más grande que el número que acaba de leer.
+  sin_precio: 'Sin precio',
 }
 
 export type SenalesRecurso = { tipo: string; costo_base: number | null; frescura: Frescura }
@@ -74,6 +89,7 @@ export function cumpleCorteRecurso(r: SenalesRecurso, corte: CorteRecurso): bool
   if (corte === 'mano_obra') return r.tipo === 'mano_obra' || r.tipo === 'carga_social'
   if (corte === 'material') return r.tipo === 'material'
   if (corte === 'problema') return tieneProblema(r)
+  if (corte === 'sin_precio') return r.costo_base == null
   return true
 }
 

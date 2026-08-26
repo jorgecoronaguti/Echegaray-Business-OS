@@ -28,17 +28,32 @@ import { TareasTipo } from '@/features/base-maestra/components/TareasTipo'
 import { FichaTarea, solapaDe, type Solapa } from '@/features/base-maestra/components/FichaTarea'
 import { CamposTareaTipo } from '@/features/base-maestra/components/CamposTareaTipo'
 import { getFichaTarea, getTareasTipo } from '@/features/base-maestra/services/tareasService'
-import { getCuentasBaseMaestra } from '@/features/base-maestra/services/cuentas'
+import { corteDe } from '@/features/base-maestra/services/vistas'
+import { contadores, getCuentasBaseMaestra } from '@/features/base-maestra/services/cuentas'
+import { IconoCompra, IconoPresupuesto } from '@/shared/components/iconos'
+import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
+import { senalesDeBaseMaestra } from '@/features/base-maestra/services/senalesBaseMaestra'
+
 import { archivarTareaTipo, crearTareaTipo, editarTareaTipo } from '@/features/base-maestra/services/tareasActions'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { q?: string; t?: string; s?: string; nueva?: string; editar?: string }
+/** Los dos iconos que esta sección mezcla: una tarea tipo y un recurso comprado. */
+const ICONOS_BM = { presupuesto: IconoPresupuesto, compra: IconoCompra }
+
+/** Los dos destinos de la primera línea: el recorte que produjo cada número. */
+const HREFS_BM = {
+  sinAnalisis: '/administracion/base-maestra/tareas?c=sinAnalisis',
+  sinPrecio: '/administracion/base-maestra/recursos?tipo=sin_precio',
+}
+
+
+type Busqueda = { q?: string; t?: string; s?: string; nueva?: string; editar?: string; c?: string }
 
 function href(sp: Busqueda, cambios: Partial<Busqueda>): string {
   const p = new URLSearchParams()
   const final = { ...sp, ...cambios }
-  for (const k of ['q', 't', 's', 'nueva', 'editar'] as const) {
+  for (const k of ['q', 't', 's', 'nueva', 'editar', 'c'] as const) {
     const v = final[k]
     if (v) p.set(k, v)
   }
@@ -75,7 +90,7 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
     return (
       <Marco>
         <NavAdministracion />
-        <BandaBaseMaestra activa="tareas" cuentas={cuentas} />
+        <BandaBaseMaestra activa="tareas" cuentas={contadores(cuentas)} />
         <div style={{ padding: '14px 20px' }} data-testid="tareas-error">
           <Aviso tono="neg" titulo="No pude leer la base maestra">{listado.error}</Aviso>
         </div>
@@ -88,12 +103,32 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
     (a, b) => a.localeCompare(b, 'es'),
   )
 
+  const senales = senalesDeBaseMaestra({
+    tareas: cuentas.analisis, recursos: cuentas.precios, economia, hrefs: HREFS_BM,
+  })
   const ficha = sp.t ? await getFichaTarea(supabase, sp.t, economia) : null
   const solapa: Solapa = solapaDe(sp.s, economia)
 
   return (
     <Marco>
       <NavAdministracion />
+
+      {/* ═══ CRITERIO 1: LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO (`17v2:40-56`) ═══
+
+          Lo primero que se ve no es la biblioteca: es lo que impide cotizar con ella. Las dos
+          señales son las del mockup y las dos tienen fuente — «sin análisis» es `analisis_id` en
+          null y «sin precio» es `costo_base` en null—, y cada verbo aterriza en el recorte que
+          produjo su número. La de precio NO se le dibuja a quien no ve economía: `recurso_precio`
+          le devuelve cero filas sin error, así que su cifra diría que hay 409 precios por cargar
+          que están cargados. */}
+      <TrabajoDeSeccion
+        senales={senales}
+        icono={IconoPresupuesto}
+        iconos={ICONOS_BM}
+        vacio={economia
+          ? 'Todas las tareas tipo tienen análisis y todos los recursos tienen precio.'
+          : 'Todas las tareas tipo tienen análisis.'}
+      />
 
       {/* EL PERMISO SE DICE UNA VEZ Y EN UNA LÍNEA. Lo que el jefe de obra necesita saber es que la
           columna de costo no está vacía sino cerrada — el resto de la pantalla ya le muestra que las
@@ -118,13 +153,14 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
         q={sp.q ?? ''}
         seleccionada={sp.t ?? null}
         economia={economia}
-        cuentas={{ tareas: cuentas.tareas, recursos: cuentas.recursos, plantillas: cuentas.plantillas }}
+        cuentas={contadores(cuentas)}
         ruta={RUTA_TAREAS}
         otros={{ t: sp.t, s: sp.s }}
         // «+ Nueva tarea» del canónico, y CREA DE VERDAD: hasta hoy las tareas sólo podían entrar por
         // la importación de la Planilla para Cotizar. El alta vive en la URL (`?nueva=1`) como el
         // resto de los paneles del área: se comparte, se recarga y se cierra con el botón de atrás.
         hrefNueva={href(sp, { nueva: '1' })}
+        corteInicial={corteDe(sp.c)}
         panel={
           <>
             {ficha?.data && (

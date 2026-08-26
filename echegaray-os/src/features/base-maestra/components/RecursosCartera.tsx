@@ -57,6 +57,8 @@ const ICONO_CHIP: Record<CorteRecurso, ReactNode> = {
   mano_obra: <IcoCuadrilla s={13} />,
   material: <IcoMaterial s={13} />,
   problema: <IcoAlerta s={13} />,
+  // Mismo icono que «Con problema» y no uno nuevo: es un subconjunto suyo, no otra clase de aviso.
+  sin_precio: <IcoAlerta s={13} />,
 }
 
 /** El color de la fecha dice cuánto se puede confiar en el precio de al lado. Sin fecha NO es viejo:
@@ -83,7 +85,12 @@ export function RecursosCartera({
   const [consulta, setConsulta] = useState(q)
   const [corte, setCorte] = useState<CorteRecurso>(corteInicial)
 
-  const cortes = economia ? CORTES_RECURSO : CORTES_RECURSO.filter((c) => c !== 'problema')
+  // «Con problema» y «Sin precio» son los dos hechos de PRECIO: a quien no ve economía no se le
+  // ofrecen, porque `recurso_precio` le devuelve cero filas y los dos recortes le traerían la
+  // cartera entera diciendo que está todo sin cargar.
+  const cortes = economia
+    ? CORTES_RECURSO
+    : CORTES_RECURSO.filter((c) => c !== 'problema' && c !== 'sin_precio')
   const visibles = recursos.filter((r) => coincideRecurso(r, consulta) && cumpleCorteRecurso(r, corte))
   const cols = economia ? COLS : COLS_SIN_ECONOMIA
 
