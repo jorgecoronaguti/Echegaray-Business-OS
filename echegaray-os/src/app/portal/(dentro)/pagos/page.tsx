@@ -41,7 +41,6 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const { pagos, bloques, contratos } = await esquemaDelPortal(acceso)
   const hoy = hoyEnObra()
   const montos = acceso.puedeVerMontos
-  const total = resumenDeCobro(pagos, contratoDelConjunto(bloques, contratos), hoy)
   const proximo = proximoPago(pagos)
   /** La misma URL con UN parámetro cambiado. Conserva el resto: elegir una obra no puede tirar el
    *  filtro de estado ni sacarte del calendario. */
@@ -99,12 +98,27 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     .sort((a, b) => a[1].localeCompare(b[1], 'es'))
   const obra = conPagos.some(([id]) => id === q.obra) ? q.obra : null
 
-  const porObra = (lista: typeof enOrden) => (obra ? lista.filter((p) => p.obraId === obra) : lista)
+  const porObra = <T extends { obraId: string | null }>(lista: T[]) => (obra ? lista.filter((p) => p.obraId === obra) : lista)
   const delEstado = porObra(enOrden)
   const visibles = ver === 'pagados' ? delEstado.filter((p) => p.fechaPago)
     : ver === 'pendientes' ? delEstado.filter((p) => !p.fechaPago)
     : delEstado
   const nPagados = delEstado.filter((p) => p.fechaPago).length
+
+  // ═══ LOS TOTALES SIGUEN AL FILTRO POR OBRA (26/08/2026) ═══
+  //
+  // «El total pagado que se muestra en el footer es confuso: ¿representa las obras que están siendo
+  // mostradas?» No lo representaba, y por eso confundía: eran siempre los del cliente entero. Un pie
+  // de tabla se lee como el total DE LA TABLA que tiene arriba.
+  //
+  // Ahora sigue a la obra elegida —y dice cuál—, y el contrato pasa a ser el de ESA obra. Lo que NO
+  // lo mueve es el filtro de estado: si «Pagado» cambiara al tocar «Pendiente», el número dejaría de
+  // significar algo.
+  const deLaObra = porObra(pagos)
+  const contratoDelFiltro = obra ? (contratos.get(obra) ?? null) : contratoDelConjunto(bloques, contratos)
+  const total = resumenDeCobro(deLaObra, contratoDelFiltro, hoy)
+  const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
+
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
 
   return (
@@ -281,7 +295,10 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           cambiaran al tocar una pastilla, el número dejaría de significar algo. */}
       {montos ? (
         <>
-          <div className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
+          <p className="mt-6 text-[11px] tracking-[.09em] text-faint">
+            {nombreDelFiltro ? nombreDelFiltro.toUpperCase() : 'TODAS SUS OBRAS'}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
             <Total rotulo="Contrato" monto={total.contrato} />
         {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
                 compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
