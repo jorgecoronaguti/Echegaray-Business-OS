@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { Shell } from './Shell'
-import { sesionDelPortal } from './sesion'
-import { obrasDelCliente, nombreDelCliente, obraElegida } from './datos'
+import { Shell } from '../Shell'
+import { sesionDelPortal } from '../sesion'
+import { obrasDelCliente, nombreDelCliente, obraElegida } from '../datos'
 
 // EL PORTAL ES OTRA APLICACIÓN. Vive fuera de `(main)` a propósito: no hereda el header del OS, ni el
 // sidebar, ni el buscador global. Un cliente que ve un pedazo del chrome interno ve algo que no es
