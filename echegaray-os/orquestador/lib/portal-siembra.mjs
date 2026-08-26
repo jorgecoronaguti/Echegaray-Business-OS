@@ -81,6 +81,22 @@ export function imputarObra(fila, obrasDelCliente) {
     return { obra: obrasDelCliente[0], palabra: '(única obra del cliente)' }
   }
   const texto = sinTildes(`${fila.concepto ?? ''} ${fila.detalle ?? ''} ${fila.ordenCompra ?? ''}`)
+
+  // ═══ UNA FILA DE VARIAS OBRAS NO ES DE NINGUNA — Y ESTO VA ANTES DE BUSCAR (26/08/2026) ═══
+  //
+  // El freno estaba abajo, sólo para el respaldo por el rótulo del cliente. Tarde: «Saldo obras San
+  // Francisco — 1/4» y «Anticipos San Francisco — 2ª cuota» calzaban ARRIBA, en la búsqueda por
+  // palabras, porque la obra «Galpones, Mampostería, Cancha de Padel» tiene el id `san-francisco` y
+  // el texto dice «San Francisco».
+  //
+  // Pero ahí «San Francisco» es el CLIENTE —se llama «IMOTOR/San Francisco/JAVI SANCHEZ»—, no la
+  // obra. Resultado: $79,6 M de cobros que son de las cuatro obras se publicaban como pendientes de
+  // Galpones/Mampostería, que el dueño tiene cobrada por completo. Lo vio dos veces.
+  //
+  // Su propia orden de compra lo declara: «de todas las obras». Eso se mira PRIMERO, antes de
+  // cualquier coincidencia de palabras, y esas filas van al cliente con `obra_id` nulo.
+  if (abarcaVariasObras(`${fila.concepto ?? ''} ${fila.ordenCompra ?? ''}`)) return null
+
   let mejor = null
   for (const obra of obrasDelCliente) {
     const [completo, ...partes] = (obra.palabras ?? []).map(sinTildes)
