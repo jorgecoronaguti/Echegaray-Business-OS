@@ -188,3 +188,32 @@ export function agruparPorObra(pagos: PagoConObra[]): BloqueDeObra[] {
     (a, b) => Number(a.obraId === null) - Number(b.obraId === null) || a.nombre.localeCompare(b.nombre, 'es'),
   )
 }
+
+/**
+ * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
+ *
+ * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
+ * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
+ *
+ * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
+ * todo el conjunto no lo tenga.
+ */
+export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
+  // EL CONTRATO ES DE LAS OBRAS, NO DE LOS PAGOS (26/08/2026). Antes bastaba UN bloque sin obra para
+  // devolver `null`, y desde que los cobros que no nombran obra se publican —«Saldo obras San
+  // Francisco», «de todas las obras»— ese bloque existe casi siempre: el portal escribía «CONTRATO
+  // sin cargar» a un cliente cuyo contrato la ficha muestra en $299,68 M. Que un COBRO no tenga obra
+  // no dice nada sobre cuánto se contrató.
+  //
+  // Lo que sí lo anula sigue en pie: una OBRA sin contrato cargado. Sumar las que están y callar la
+  // que falta daría un contrato más chico que el real con cara de dato cierto.
+  const conObra = bloques.filter((b) => b.obraId !== null)
+  if (!conObra.length) return null
+  let total = 0
+  for (const b of conObra) {
+    const c = contratos.get(b.obraId as string)
+    if (c == null) return null
+    total += c
+  }
+  return total
+}

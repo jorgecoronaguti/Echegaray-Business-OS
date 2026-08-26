@@ -5,6 +5,7 @@ import {
   sinImportes, tipoDelPago, SIN_OBRA, type FilaEsquema,
 } from './esquema.ts'
 import { estadoDePago, proximoPago, resumenDeCobro } from './cronograma.ts'
+import { contratoDelConjunto } from './esquema.ts'
 
 /** Una fila de `esquema_pago` publicada. Los tests cambian sólo lo que están probando. */
 function fila(cambios: Partial<FilaEsquema> = {}): FilaEsquema {
@@ -152,4 +153,25 @@ test('el orden es `orden` y la fecha desempata — el mismo que lee la pantalla 
     fila({ id: 'b', orden: 1, fecha: '2026-02-02' }),
   ]
   assert.deepEqual(pagosDelEsquema(filas, NOMBRES, TODAS).map((p) => p.id), ['b', 'a', 'c'])
+})
+
+test('un cobro sin obra NO borra el contrato del cliente', () => {
+  // Desde que los cobros que no nombran obra se publican —«Saldo obras San Francisco», «de todas las
+  // obras»— el bloque sin obra existe casi siempre. Con la regla vieja bastaba para escribir
+  // «CONTRATO sin cargar» a un cliente cuyo contrato la ficha muestra en $299,68 M.
+  const contratos = new Map<string, number | null>([['pisos', 40_000_000], ['electrica', 7_728_254]])
+  const bloques = [
+    { obraId: 'pisos', nombre: 'Pisos', pagos: [] },
+    { obraId: 'electrica', nombre: 'Eléctrica', pagos: [] },
+    { obraId: null, nombre: '', pagos: [] },
+  ] as never
+  assert.equal(contratoDelConjunto(bloques, contratos), 47_728_254)
+
+  // Lo que sí lo anula: una OBRA sin contrato. Sumar las que están daría un número más chico que el
+  // real con cara de dato cierto.
+  const falta = new Map<string, number | null>([['pisos', 40_000_000], ['electrica', null]])
+  assert.equal(contratoDelConjunto(bloques, falta), null)
+
+  // Sin ninguna obra no hay contra qué contrato comparar.
+  assert.equal(contratoDelConjunto([{ obraId: null, nombre: '', pagos: [] }] as never, contratos), null)
 })

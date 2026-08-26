@@ -106,27 +106,10 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
   return { pagos, bloques: agruparPorObra(pagos), contratos }
 }
 
-/**
- * EL CONTRATO DEL CLIENTE ES LA SUMA DE LOS DE SUS OBRAS — y `null` si falta alguno.
- *
- * Sumar los que están y callar los que no daría un contrato más chico que el real, presentado con la
- * misma cara de dato cierto. Prefiere no decir nada antes que decir un número al que le falta una obra.
- *
- * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
- * todo el conjunto no lo tenga.
- */
-export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
-  if (!bloques.length) return null
-  let total = 0
-  for (const b of bloques) {
-    if (b.obraId === null) return null
-    const c = contratos.get(b.obraId)
-    if (c == null) return null
-    total += c
-  }
-  return total
-}
 
+// `contratoDelConjunto` vive en `esquema.ts` —módulo puro, sin `server-only`— para poder
+// probarlo con `node --test`. Se re-exporta desde acá porque es donde lo buscan las pantallas.
+export { contratoDelConjunto } from '../esquema'
 export type { BloqueDeObra, PagoConObra }
 
 /** Una obra del cliente para el Inicio: sin un peso, sólo qué es y cómo va. */
