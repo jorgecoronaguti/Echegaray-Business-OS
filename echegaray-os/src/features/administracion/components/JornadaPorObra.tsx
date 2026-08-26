@@ -34,47 +34,6 @@ const PALABRA: Record<GenteEnObra['estado'], string> = {
   sin_registrar: 'sin marca',
 }
 
-/**
- * EL NÚMERO POR EL QUE SE ABRE ESTA PANTALLA. `19b:57-72`.
- *
- * Publica FICHADOS sobre esperados y nunca ausencias: hasta que la jornada cierre, sin marca están
- * el que no tiene teléfono, el que le negó el permiso al GPS y el que faltó.
- */
-export function TitularDeLaJornada({ fichados, plantel, resumen, fecha }: {
-  fichados: number
-  plantel: number
-  resumen: string
-  fecha: string
-}) {
-  return (
-    <div
-      style={{ display: 'flex', alignItems: 'flex-end', gap: 16, padding: '14px 20px 18px' }}
-      data-testid="titular-jornada"
-    >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 11 }}>
-        <span
-          className="font-mono tabular-nums"
-          style={{ fontSize: '38px', fontWeight: 600, lineHeight: 0.9, color: V.tinta, letterSpacing: '-.02em' }}
-          data-testid="fichados-hoy"
-        >
-          {fichados}
-        </span>
-        <div>
-          <h1 style={{ fontSize: '17px', fontWeight: 600, color: V.tinta, lineHeight: 1.2 }}>
-            de {plantel} fichados hoy
-          </h1>
-          <div style={{ fontSize: '12.5px', color: V.apagado, marginTop: 2 }} data-testid="resumen-presencia">
-            {resumen}
-          </div>
-        </div>
-      </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 9 }}>
-        <span className="font-mono" style={{ fontSize: '12px', color: V.tenue }}>{fecha}</span>
-      </div>
-    </div>
-  )
-}
-
 export function GrupoDeLaJornada({
   titulo, nota, gente, conteo, fraccion, completo, tono, apagado, verbo, testid,
 }: {

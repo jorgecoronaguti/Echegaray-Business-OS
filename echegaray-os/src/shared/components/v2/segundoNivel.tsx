@@ -456,3 +456,60 @@ export function BarraDeCostado({ fraccion, color = V.inerte }: { fraccion: numbe
     </span>
   )
 }
+
+/**
+ * EL TITULAR DE UNA COLA: UN NÚMERO GRANDE Y LO QUE SIGNIFICA. `19b:57-72`, `19c:59-68`.
+ *
+ * Dos pantallas de segundo nivel abren así y ninguna con un `h1` de ficha: lo que se viene a saber
+ * NO es cómo se llama la pantalla —eso ya lo dijo la miga— sino cuánto falta. El número va primero,
+ * a 38px y en mono, y el título es la frase que lo completa («de 16 fichados hoy», «pedidos sin
+ * resolver»).
+ *
+ * EL NÚMERO NUNCA CUENTA UNA CONCLUSIÓN. En las dos pantallas cuenta HECHOS —marcas hechas, pedidos
+ * abiertos— y jamás ausencias ni faltas, que son interpretaciones que ninguna de las dos puede hacer.
+ */
+export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid = 'titular-cola' }: {
+  numero: number
+  titulo: string
+  resumen: string
+  /** La aclaración contra el margen derecho: quién resuelve, o la fecha de lo que se está mirando. */
+  derecha?: ReactNode
+  tono?: 'warn' | 'neg'
+  testid?: string
+}) {
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'flex-end', gap: 16, padding: '14px 20px 18px' }}
+      data-testid={testid}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 11 }}>
+        <span
+          className="font-mono tabular-nums"
+          style={{
+            fontSize: '38px', fontWeight: 600, lineHeight: 0.9, letterSpacing: '-.02em',
+            color: tono === 'neg' ? V.neg : tono === 'warn' ? V.warn : V.tinta,
+          }}
+          data-testid="titular-numero"
+        >
+          {numero}
+        </span>
+        <div>
+          <h1 style={{ fontSize: '17px', fontWeight: 600, color: V.tinta, lineHeight: 1.2 }}>{titulo}</h1>
+          <div style={{ fontSize: '12.5px', color: V.apagado, marginTop: 2 }} data-testid="titular-resumen">
+            {resumen}
+          </div>
+        </div>
+      </div>
+      {derecha != null && (
+        <div
+          style={{
+            marginLeft: 'auto', fontSize: '11.5px', lineHeight: 1.55, color: V.tenue,
+            maxWidth: 330, textAlign: 'right', textWrap: 'pretty',
+          }}
+        >
+          {derecha}
+        </div>
+      )}
+    </div>
+  )
+}

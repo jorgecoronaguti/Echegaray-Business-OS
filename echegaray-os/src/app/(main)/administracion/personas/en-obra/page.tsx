@@ -41,8 +41,8 @@ import { Aviso } from '@/shared/components/ds'
 import { BuscadorFilo } from '@/shared/components/v2/BuscadorFilo'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { V } from '@/shared/components/v2/patron'
-import { Migas } from '@/shared/components/v2/segundoNivel'
-import { GrupoDeLaJornada, TitularDeLaJornada } from '@/features/administracion/components/JornadaPorObra'
+import { Migas, TitularDeCola } from '@/shared/components/v2/segundoNivel'
+import { GrupoDeLaJornada } from '@/features/administracion/components/JornadaPorObra'
 import {
   getEsperados, getObrasConGente, getPresencia,
 } from '@/features/administracion/services/presenciaService'
@@ -112,11 +112,14 @@ export default async function EnObraPage({
     <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
       <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
 
-      <TitularDeLaJornada
-        fichados={jornada.fichados}
-        plantel={jornada.plantel}
+      {/* EL NÚMERO CUENTA MARCAS HECHAS, no ausencias: hasta que cierre la jornada, sin marca están
+          el que no tiene teléfono, el que le negó el permiso al GPS y el que faltó. */}
+      <TitularDeCola
+        testid="titular-jornada"
+        numero={jornada.fichados}
+        titulo={`de ${jornada.plantel} fichados hoy`}
         resumen={hayAlgo ? titularDeLaJornada(jornada) : 'Todavía no marcó nadie hoy'}
-        fecha={`${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`}
+        derecha={`${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 12px', flexWrap: 'wrap', rowGap: 8 }}>

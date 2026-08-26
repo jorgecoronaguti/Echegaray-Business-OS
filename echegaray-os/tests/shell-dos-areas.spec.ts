@@ -147,11 +147,21 @@ test('Administración tiene sus SIETE destinos, y ni uno de otro nivel', async (
 
   // Y LO QUE «TRABAJO» ABSORBIÓ SIGUE ENCENDIENDO SU SOLAPA: sin esto, entrar a Pendientes apaga la
   // barra entera y la pantalla deja de decir dónde está parado el que la mira.
-  for (const ruta of ['/administracion/pendientes', '/administracion/asistencia']) {
-    const res = await page.goto(ruta)
-    expect(res?.status(), `${ruta} dejó de responder`).toBeLessThan(400)
+  {
+    const res = await page.goto('/administracion/pendientes')
+    expect(res?.status(), '/administracion/pendientes dejó de responder').toBeLessThan(400)
     await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Trabajo' }))
       .toHaveAttribute('aria-current', 'page')
+  }
+
+  // CORRECCIONES DE ASISTENCIA ES DE SEGUNDO NIVEL (19c v2) y por eso NO lleva la barra del área:
+  // con ella habría tres niveles de navegación a la vista, que es lo que prohíbe el handoff. Dice
+  // dónde está parado con la miga, y la miga vuelve a Trabajo.
+  {
+    const res = await page.goto('/administracion/asistencia')
+    expect(res?.status(), '/administracion/asistencia dejó de responder').toBeLessThan(400)
+    await expect(page.getByTestId('nav-admin-secciones')).toHaveCount(0)
+    await expect(page.getByTestId('migas')).toContainText('Trabajo')
   }
 })
 
