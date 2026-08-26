@@ -72,6 +72,7 @@ import {
   filtroDe, obrasFrecuentes, ROTULO_FILTRO, type FiltroCompras,
 } from '@/features/administracion/services/comprasEstado'
 import { TablaComprasSheet } from '@/features/administracion/components/TablaComprasSheet'
+import { PanelCompraSheet } from '@/features/administracion/components/PanelCompraSheet'
 import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
 import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
 import {
@@ -116,7 +117,7 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
 export default async function ComprasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string }>
+  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string; s?: string }>
 }) {
   const sp = await searchParams
   if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
@@ -124,7 +125,7 @@ export default async function ComprasPage({
 }
 
 /** LA PESTAÑA COMPRAS, entera. La lista que pidió el dueño. */
-async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string } }) {
+async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string; s?: string } }) {
   const filtro = filtroSheetDe(sp.f)
   const q = sp.q?.trim().toLowerCase() || undefined
 
@@ -167,13 +168,24 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
       .some((v) => v?.toLowerCase().includes(q))
   })
 
-  const href = (f: FiltroSheet) => {
+  /**
+   * LA URL DE LA VISTA DE LA PESTAÑA. Todo el estado viaja acá —filtro, búsqueda y la fila abierta—
+   * para que el panel se comparta con un link y vuelva con «atrás». `s` es la fila del Sheet, y es
+   * una llave distinta de la `c` del control ARCA a propósito: son dos poblaciones y abrir una no
+   * puede dejar abierta la otra.
+   */
+  const urlSheet = ({ f = filtro, s: filaSel }: { f?: FiltroSheet; s?: number | null } = {}) => {
     const p = new URLSearchParams()
     if (f !== 'todo') p.set('f', f)
     if (sp.q) p.set('q', sp.q)
+    if (filaSel != null) p.set('s', String(filaSel))
     const t = p.toString()
     return t ? `${RUTA}?${t}` : RUTA
   }
+  const href = (f: FiltroSheet) => urlSheet({ f, s: null })
+
+  // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
+  const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
 
   return (
     <Marco>
@@ -218,7 +230,22 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
           </div>
         ) : (
           <>
-            <TablaComprasSheet filas={visibles} hrefDe={() => RUTA} />
+            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <TablaComprasSheet
+                  filas={visibles}
+                  seleccionada={filaAbierta?.fila}
+                  hrefDe={(fila) => urlSheet({ s: fila === filaAbierta?.fila ? null : fila })}
+                />
+              </div>
+              {filaAbierta && (
+                <PanelCompraSheet
+                  fila={filaAbierta}
+                  cerrarHref={urlSheet({ s: null })}
+                  hrefFiltro={(f) => urlSheet({ f: f as FiltroSheet, s: null })}
+                />
+              )}
+            </div>
             <p className="mt-3 max-w-[820px] text-[11px] text-faint">
               <Num className="text-faint">{visibles.length}</Num> de{' '}
               <Num className="text-faint">{todas.length}</Num>
@@ -246,7 +273,7 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
 async function ControlArca({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string }>
+  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string; s?: string }>
 }) {
   const sp = await searchParams
   const filtro = filtroDe(sp.fa)
