@@ -7,8 +7,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  alertasDelPlantel, estadoHoy, hayControlDeVencimientos, hhPorPersona, horasVisibles,
-  lecturaDePapeles, marcasPorPersona, mesCorriente, papelesPorPersona, partirCifra,
+  estadoHoy, hayControlDeVencimientos, hhPorPersona, horasVisibles,
+  marcasPorPersona, mesCorriente, papelesPorPersona,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -95,31 +95,18 @@ test('las horas se escriben en es-AR', () => {
 
 // ── PAPELES ─────────────────────────────────────────────────────────────────────────────────────
 
-test('sin ninguna fila de legajo NO es «al día»', () => {
-  // El defecto: contar 0 vencidos y escribir «al día» para alguien cuyo legajo nadie abrió nunca.
-  assert.deepEqual(lecturaDePapeles(undefined), { texto: 'sin legajo', tono: 'nulo' })
-  assert.deepEqual(
-    lecturaDePapeles({ vencidos: 0, porVencer: 0, faltan: 0, total: 0 }),
-    { texto: 'sin legajo', tono: 'nulo' },
-  )
-  assert.deepEqual(
-    lecturaDePapeles({ vencidos: 0, porVencer: 0, faltan: 0, total: 4 }),
-    { texto: 'al día', tono: 'pos' },
-  )
-})
-
 test('847 papeles sin un solo vencimiento cargado NO son un control de vencimientos', () => {
   // ES EL ESTADO REAL DE LA BASE (sonda 24/08/2026): 847 filas, 0 con `fecha_vencimiento`, 0 con
-  // `presente = false`. Si esto devolviera true, la columna escribiría «al día» en 61 filas y
-  // afirmaría un control que nadie está haciendo. Que la COLUMNA exista no prueba que el control
-  // exista: eso lo prueba el dato.
+  // `presente = false`. Si esto devolviera true, la primera línea de Personal publicaría una señal
+  // de «papeles vencidos» calculada sobre un control que nadie está haciendo. Que la COLUMNA exista
+  // en la base no prueba que el control exista: eso lo prueba el dato.
   const comoEstaHoy = Array.from({ length: 847 }, (_, i) => ({
     persona_id: `p${i % 62}`, presente: true, fecha_vencimiento: null,
   }))
   assert.equal(hayControlDeVencimientos(comoEstaHoy), false)
   assert.equal(hayControlDeVencimientos([]), false)
 
-  // Un solo vencimiento cargado ya enciende la columna: no hace falta tocar código.
+  // Un solo vencimiento cargado ya enciende la señal: no hace falta tocar código.
   assert.equal(hayControlDeVencimientos(
     [...comoEstaHoy, { persona_id: 'p0', presente: true, fecha_vencimiento: '2027-01-01' }]), true)
   // Y un papel que Administración declaró ausente también: es una afirmación de alguien.
@@ -144,98 +131,12 @@ test('vencido, por vencer y faltante se cuentan por separado', () => {
     { persona_id: 'a', presente: false, fecha_vencimiento: null },         // Administración: no está
   ], HOY)
   assert.deepEqual(p.get('a'), { vencidos: 1, porVencer: 1, faltan: 1, total: 4 })
-  // El vencido gana la celda: es el único de los tres que ya es un problema.
-  assert.deepEqual(lecturaDePapeles(p.get('a')), { texto: '1 vencido', tono: 'neg' })
 })
 
-// ── LOS BANNERS ─────────────────────────────────────────────────────────────────────────────────
-
-const PLANTEL = [
-  { id: 'a', obra_actual_id: 'o1', en_la_empresa: true },
-  { id: 'b', obra_actual_id: null, en_la_empresa: true },
-  { id: 'c', obra_actual_id: 'o1', en_la_empresa: false },
-]
-
-test('los banners cuentan lo que dice su rótulo', () => {
-  const alertas = alertasDelPlantel({
-    personas: PLANTEL,
-    marcas: marcasPorPersona([{ persona_id: 'a', estado: 'activo' }]),
-    papeles: papelesPorPersona([
-      { persona_id: 'b', presente: true, fecha_vencimiento: '2026-08-01' },
-    ], HOY),
-    hoyDisponible: true,
-    papelesDisponible: true,
-  })
-  const por = (k: string) => alertas.find((x) => x.clave === k)
-  // «c» está fuera de la empresa: no ficha, no tiene obra y no cuenta en ningún banner.
-  assert.equal(por('sin_fichar')?.texto, '1 sin fichar hoy')
-  assert.equal(por('sin_obra')?.texto, '1 sin obra asignada')
-  assert.equal(por('papeles')?.texto, '1 persona con papeles vencidos')
-})
-
-test('sin nada que avisar no hay un solo banner', () => {
-  const alertas = alertasDelPlantel({
-    personas: [{ id: 'a', obra_actual_id: 'o1', en_la_empresa: true }],
-    marcas: marcasPorPersona([{ persona_id: 'a', estado: 'activo' }]),
-    papeles: papelesPorPersona([{ persona_id: 'a', presente: true, fecha_vencimiento: null }], HOY),
-    hoyDisponible: true,
-    papelesDisponible: true,
-  })
-  assert.deepEqual(alertas, [])
-})
-
-test('la fuente que no se pudo leer NO publica un conteo', () => {
-  // El defecto: `presencia_del_dia` rechazada por RLS ⇒ cero marcas ⇒ «17 sin fichar hoy». Un
-  // control que no pudo mirar no dice «no está».
-  const alertas = alertasDelPlantel({
-    personas: PLANTEL,
-    marcas: new Map(),
-    papeles: new Map(),
-    hoyDisponible: false,
-    papelesDisponible: false,
-  })
-  assert.deepEqual(alertas.map((a) => a.clave), ['sin_obra'])
-})
-
-// ── LA BANDA DEL CANÓNICO 19 ────────────────────────────────────────────────────────────────────
+// ═══ LOS BANNERS Y LA BANDA SE FUERON CON EL PORTE 19 v2 ═══
 //
-// La banda pinta la CIFRA y deja el rótulo en tinta. Si `partirCifra` se escribiera con el
-// `texto.split(' ')` que uno teclea sin pensar, cada una de estas se pone roja: el rótulo se
-// quedaría con el número («7 7 papeles vencidos»), o un texto sin cifra devolvería un rótulo vacío
-// y la alerta aparecería como una pastilla en blanco.
-
-test('la cifra se separa del rótulo y NINGUNO se queda con el otro', () => {
-  assert.deepEqual(partirCifra('3 sin obra asignada'), { cifra: '3', rotulo: 'sin obra asignada' })
-  assert.deepEqual(
-    partirCifra('7 personas con papeles vencidos'),
-    { cifra: '7', rotulo: 'personas con papeles vencidos' },
-  )
-})
-
-test('una alerta sin número conserva su texto ENTERO como rótulo', () => {
-  // El defecto que atrapa: partir a ciegas por el primer espacio se comería la primera palabra de
-  // cualquier alerta futura que no cuente nada, y la pastilla diría algo distinto de lo escrito.
-  assert.deepEqual(partirCifra('sin lectura de presencia'), { cifra: null, rotulo: 'sin lectura de presencia' })
-})
-
-test('los tres banners reales pasan por la banda sin perder su número', () => {
-  // No es una prueba de la función sola: es el contrato entre `alertasDelPlantel` (quien escribe el
-  // texto) y la banda (quien lo parte). Si alguien reescribe un texto poniendo el número al final
-  // —«papeles vencidos: 7»— la pastilla se queda sin cifra y esto lo dice acá, no en producción.
-  const alertas = alertasDelPlantel({
-    personas: PLANTEL,
-    marcas: marcasPorPersona([]),
-    papeles: papelesPorPersona(
-      [{ persona_id: 'a', presente: true, fecha_vencimiento: '2026-08-01' }],
-      HOY,
-    ),
-    hoyDisponible: true,
-    papelesDisponible: true,
-  })
-  assert.ok(alertas.length > 0, 'el plantel de prueba tiene que producir alertas')
-  for (const a of alertas) {
-    const { cifra, rotulo } = partirCifra(a.texto)
-    assert.ok(cifra !== null, `«${a.texto}» tiene que empezar por su número`)
-    assert.ok(rotulo.length > 0 && !rotulo.startsWith(cifra), `«${a.texto}» duplica su cifra en el rótulo`)
-  }
-})
+// Lo que probaban —que cada aviso cuente lo que dice su rótulo, que una fuente sin leer no publique
+// un conteo, y que la cifra no se duplique en el texto— lo prueba ahora
+// `senalesPersonal.test.ts` sobre `senalesDePersonal`, que devuelve la cifra y el rótulo POR
+// SEPARADO. La mitad de aquellas pruebas existía para vigilar que `partirCifra` volviera a partir
+// una frase que `alertasDelPlantel` acababa de armar; ese ida y vuelta ya no existe.

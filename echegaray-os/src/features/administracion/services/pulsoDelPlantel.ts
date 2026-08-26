@@ -186,105 +186,13 @@ export function hayControlDeVencimientos(papeles: PapelDeLegajo[]): boolean {
   return papeles.some((p) => p.fecha_vencimiento != null || p.presente === false)
 }
 
-/** Lo que se escribe en la celda, y con qué tono. `undefined` (sin legajo) NO devuelve «al día». */
-export function lecturaDePapeles(e: EstadoDePapeles | undefined): {
-  texto: string
-  tono: 'neg' | 'warn' | 'pos' | 'nulo'
-} {
-  if (!e || e.total === 0) return { texto: 'sin legajo', tono: 'nulo' }
-  if (e.vencidos > 0) return { texto: `${e.vencidos} vencido${e.vencidos > 1 ? 's' : ''}`, tono: 'neg' }
-  if (e.faltan > 0) return { texto: `${e.faltan} sin presentar`, tono: 'warn' }
-  if (e.porVencer > 0) return { texto: `${e.porVencer} por vencer`, tono: 'warn' }
-  return { texto: 'al día', tono: 'pos' }
-}
-
-// ── LOS BANNERS ─────────────────────────────────────────────────────────────────────────────────
-
-export interface AlertaDelPlantel {
-  clave: 'papeles' | 'sin_fichar' | 'sin_obra'
-  texto: string
-  detalle: string
-  tono: 'neg' | 'warn'
-}
-
-/**
- * PARTE EL TEXTO DE UNA ALERTA EN CIFRA Y RÓTULO, para que la banda del canónico 19 pinte sólo el
- * número y deje el rótulo en tinta normal.
- *
- * No es cosmética: si esto devolviera la cifra vacía o se comiera un dígito, la banda diría
- * «personas con papeles vencidos» sin decir cuántas — un aviso sin magnitud no se puede priorizar
- * contra los otros dos. Y si el rótulo se quedara con el número, la pantalla mostraría «7 7 papeles
- * vencidos». Por eso se parte acá, con prueba, y no con un `split(' ')` escrito en la vista.
- *
- * Un texto que NO empieza con un número se devuelve entero como rótulo, sin cifra: es lo que tiene
- * que pasar el día que alguien agregue una alerta que no cuenta nada.
- */
-export function partirCifra(texto: string): { cifra: string | null; rotulo: string } {
-  const m = /^(\d[\d.]*)\s+(.+)$/.exec(texto.trim())
-  if (!m) return { cifra: null, rotulo: texto.trim() }
-  return { cifra: m[1], rotulo: m[2] }
-}
-
-/** Una fila del listado, acotada a lo que cuentan los banners. */
-export interface FilaDelPulso {
-  id: string
-  obra_actual_id: string | null
-  en_la_empresa: boolean
-}
-
-/**
- * Los banners de arriba. Cuentan sobre las filas que la pantalla ESTÁ MOSTRANDO — no hay una segunda
- * consulta, así que no puede haber una segunda verdad— y por eso quien llama sólo los dibuja cuando
- * el conjunto mostrado ES el plantel activo (ver el comentario de la página).
- *
- * `hoyDisponible` en false apaga el banner de fichadas en vez de contar catorce «sin fichar» que en
- * realidad son «no pude leer la presencia». Un control que no pudo mirar no dice «no está».
- */
-export function alertasDelPlantel({
-  personas, marcas, papeles, hoyDisponible, papelesDisponible,
-}: {
-  personas: FilaDelPulso[]
-  marcas: Map<string, MarcaDeHoy>
-  papeles: Map<string, EstadoDePapeles>
-  hoyDisponible: boolean
-  papelesDisponible: boolean
-}): AlertaDelPlantel[] {
-  const alertas: AlertaDelPlantel[] = []
-  const activas = personas.filter((p) => p.en_la_empresa)
-
-  if (papelesDisponible) {
-    const conVencidos = activas.filter((p) => (papeles.get(p.id)?.vencidos ?? 0) > 0).length
-    if (conVencidos > 0) {
-      alertas.push({
-        clave: 'papeles',
-        texto: conVencidos === 1 ? '1 persona con papeles vencidos' : `${conVencidos} personas con papeles vencidos`,
-        detalle: 'Una libreta del IERIC o un apto médico vencido es riesgo laboral real, no un pendiente administrativo.',
-        tono: 'neg',
-      })
-    }
-  }
-
-  if (hoyDisponible) {
-    const sinFichar = activas.filter((p) => estadoHoy(marcas.get(p.id)) === 'sin_fichar').length
-    if (sinFichar > 0) {
-      alertas.push({
-        clave: 'sin_fichar',
-        texto: sinFichar === 1 ? '1 sin fichar hoy' : `${sinFichar} sin fichar hoy`,
-        detalle: 'No es una ausencia: es que no hay marca. Quién faltó lo declara el jefe de obra.',
-        tono: 'warn',
-      })
-    }
-  }
-
-  const sinObra = activas.filter((p) => p.obra_actual_id == null).length
-  if (sinObra > 0) {
-    alertas.push({
-      clave: 'sin_obra',
-      texto: sinObra === 1 ? '1 sin obra asignada' : `${sinObra} sin obra asignada`,
-      detalle: 'Se asigna desde la solapa Personal de la obra. Sin asignación no cuentan para la capacidad.',
-      tono: 'warn',
-    })
-  }
-
-  return alertas
-}
+// ═══ LO QUE SE FUE CON EL PORTE 19 v2 (25/08/2026) ═══
+//
+// `lecturaDePapeles`, `partirCifra`, `alertasDelPlantel` y `AlertaDelPlantel` vivían acá para
+// alimentar dos cosas que la pantalla ya no dibuja: la columna PAPELES de la fila —que decía «al
+// día» sobre un control que nadie está haciendo— y la banda de tres pastillas de alerta.
+//
+// Las mismas cuentas las hace ahora `senalesPersonal.senalesDePersonal`, que devuelve la cifra, qué
+// bloquea y el verbo por separado: eso es lo que el bloque de trabajo necesita, y era exactamente
+// lo que `partirCifra` intentaba recuperar partiendo una frase ya armada. Una función que deshace
+// lo que la de al lado acaba de juntar es la señal de que el dato nace con la forma equivocada.

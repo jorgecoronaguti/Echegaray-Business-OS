@@ -19,11 +19,23 @@ export interface SenalDeTrabajo {
   texto: string
   /** Qué se pierde mientras esto siga así, en consecuencia de negocio y no en jerga de base. */
   bloquea: string
-  /** El verbo, sin flecha: la flecha la pone la fila. */
+  /**
+   * El verbo, sin flecha: la flecha la pone la fila. Vacío = esta señal NO se resuelve desde acá.
+   *
+   * Pasa de verdad: «sin fichar hoy» se resuelve desde el celular o lo carga el jefe de obra, y no
+   * hay ningún recorte de esta pantalla que muestre a esos tres. Un verbo que no lleva a ninguna
+   * parte enseña a no hacer clic en la fila de al lado, que sí lleva.
+   */
   accion: string
-  href: string
+  /** Dónde se resuelve. `undefined` = la fila informa y no es clicable (`19v2:104-107`). */
+  href?: string
   /** Qué icono lleva la fila. Ausente = el que la sección declara por defecto. */
   icono?: string
+  /**
+   * `neg` = ya está costando plata o sacando a alguien de la obra; `warn` (el defecto) = falta un
+   * dato. Si todo fuera rojo, el rojo no diría nada.
+   */
+  tono?: 'warn' | 'neg'
 }
 
 /**

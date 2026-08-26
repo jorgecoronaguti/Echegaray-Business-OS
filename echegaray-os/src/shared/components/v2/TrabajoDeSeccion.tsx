@@ -53,24 +53,12 @@ export function TrabajoDeSeccion({ senales, icono, iconos, vacio, testid = 'lo-q
           )
         : senales.map((s, i) => {
             const Icono = (s.icono && iconos?.[s.icono]) || icono
-            return (
-              <Link
-                key={s.clave}
-                href={s.href}
-                data-testid={`senal-${s.clave}`}
-                className={`grid cursor-pointer items-center gap-[14px] ${CAJA_CONTENIDO} grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px] hover:bg-[#F2F1ED]`}
-                style={{
-                  height: ALTO_V2.trabajo,
-                  borderTop: `1px solid ${V.lineaFila}`,
-                  // Sólo la última cierra abajo: entre filas el filo superior de la siguiente alcanza,
-                  // y duplicarlo dibujaría una línea de 2px que el mockup no tiene.
-                  borderBottom: i === senales.length - 1 ? `1px solid ${V.lineaFila}` : 'none',
-                  boxShadow: FILO_BLOQUEA,
-                }}
-              >
+            const color = s.tono === 'neg' ? V.neg : V.warn
+            const cuerpo = (
+              <>
                 <span
                   className="font-mono tabular-nums"
-                  style={{ fontSize: '15px', fontWeight: 600, color: V.warn, textAlign: 'right' }}
+                  style={{ fontSize: '15px', fontWeight: 600, color, textAlign: 'right' }}
                   data-testid={`senal-${s.clave}-n`}
                 >
                   {s.numero ?? '—'}
@@ -82,11 +70,38 @@ export function TrabajoDeSeccion({ senales, icono, iconos, vacio, testid = 'lo-q
                   <span className="truncate" style={{ fontSize: '12.5px', color: V.tinta }}>{s.texto}</span>
                 </span>
                 <span className="truncate" style={{ fontSize: '12px', color: V.apagado }}>{s.bloquea}</span>
-                <span style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta, textAlign: 'right', paddingRight: 2 }}>
-                  {s.accion} →
+                {/* SIN VERBO NO HAY FLECHA. Una fila que informa y una que resuelve tienen que
+                    verse distinto antes del clic, no después. */}
+                <span
+                  style={{
+                    fontSize: '12.5px', fontWeight: 500, textAlign: 'right', paddingRight: 2,
+                    color: s.href ? V.tinta : V.lupa,
+                  }}
+                >
+                  {s.accion ? `${s.accion} →` : ''}
                 </span>
-              </Link>
+              </>
             )
+            const clases = `grid items-center gap-[14px] ${CAJA_CONTENIDO} grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px]`
+            const estilo: React.CSSProperties = {
+              height: ALTO_V2.trabajo,
+              borderTop: `1px solid ${V.lineaFila}`,
+              // Sólo la última cierra abajo: entre filas el filo superior de la siguiente alcanza,
+              // y duplicarlo dibujaría una línea de 2px que el mockup no tiene.
+              borderBottom: i === senales.length - 1 ? `1px solid ${V.lineaFila}` : 'none',
+              boxShadow: s.tono === 'neg' ? `inset 2px 0 0 ${V.neg}` : FILO_BLOQUEA,
+            }
+            return s.href
+              ? (
+                  <Link key={s.clave} href={s.href} data-testid={`senal-${s.clave}`} className={`${clases} cursor-pointer hover:bg-[#F2F1ED]`} style={estilo}>
+                    {cuerpo}
+                  </Link>
+                )
+              : (
+                  <div key={s.clave} data-testid={`senal-${s.clave}`} className={clases} style={estilo}>
+                    {cuerpo}
+                  </div>
+                )
           })}
     </section>
   )

@@ -65,7 +65,7 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
   // resuelven el teléfono de otra manera —una media query que SUELTA columnas secundarias por
   // debajo de 1250px y nunca estrangula el nombre—, así que no entran en esta regla. Bajar el piso
   // de a uno por cada porte es deliberado: si se desploma de golpe, algo se rompió.
-  assert.ok(archivos.length >= 9, `esperaba las tablas del canon, encontré ${archivos.length}`)
+  assert.ok(archivos.length >= 8, `esperaba las tablas del canon, encontré ${archivos.length}`)
 
   let cajas = 0
   for (const { ruta, src } of archivos) {
@@ -87,7 +87,7 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
       )
     }
   }
-  assert.ok(cajas >= 9, `esperaba ≥9 cajas del canon, miré ${cajas}`)
+  assert.ok(cajas >= 8, `esperaba ≥8 cajas del canon, miré ${cajas}`)
 })
 
 test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso', () => {
