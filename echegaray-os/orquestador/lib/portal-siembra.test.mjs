@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoDeCobranza, seDescarta,
+  terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio, parteDeclaradaUsd,
+  totalDeclaradoUsd, fusionarImportes, numerarRepetidos, depurarRotulo,
 } from './portal-siembra.mjs'
 
 test('el importe es-AR: el punto es miles y el paréntesis es negativo', () => {
@@ -81,15 +83,179 @@ test('cobrado es pagado; lo demás lo decide la fecha, como en el portal', () =>
   assert.equal(estadoDeCobranza('Proyectado', null), 'sin_factura')
 })
 
-test('un cliente con UNA sola obra no tiene ambigüedad: todo cae ahí', () => {
-  const una = [{ id: 'salon', palabras: palabrasDeObra('SALÓN COMERCIAL') }]
-  // Sin esta regla, Quattropani —obra única— se quedaba con el cronograma vacío porque ninguna fila
-  // de Cobranzas repite el nombre de la obra que ya es obvia.
-  assert.equal(imputarObra({ concepto: 'Anticipo 50% inicio obra' }, una).obra.id, 'salon')
+test('el atajo de obra única sólo vale si el Sheet la declara en curso', () => {
+  const declarada = [{ id: 'salon', declaradaEnElSheet: true, palabras: palabrasDeObra('SALÓN COMERCIAL') }]
+  // Sin esta regla, Quattropani —obra única declarada— se quedaba con el cronograma vacío porque
+  // ninguna fila de Cobranzas repite el nombre de la obra que ya es obvia.
+  assert.equal(imputarObra({ concepto: 'Anticipo 50% inicio obra' }, declarada).obra.id, 'salon')
+
+  // ARCOR tiene UNA obra vieja en Postgres y ninguna declarada en el bloque OBRAS. Con el atajo
+  // suelto, sus trece cobranzas —bacheo, cortinas, camión regador— caían todas ahí dentro. Eso es
+  // literalmente «mezcla todas las obras».
+  const vieja = [{ id: 'pisos-rrhh', declaradaEnElSheet: false, palabras: palabrasDeObra('Cambio de Pisos - RRHH') }]
+  assert.equal(imputarObra({ concepto: 'Camión Regador' }, vieja), null)
+  assert.equal(imputarObra({ concepto: 'Cambio de pisos RRHH - 20% restante' }, vieja).obra.id, 'pisos-rrhh')
+})
+
+test('una palabra suelta no alcanza cuando la obra tiene varias', () => {
+  // «Rep de pisos - canalizacion» y «Cambio de Pisos - RRHH» comparten «pisos» y son dos trabajos
+  // distintos del mismo cliente. Con la regla vieja la reparación entraba en la obra equivocada.
+  const arcor = [{ id: 'pisos-rrhh', palabras: palabrasDeObra('Cambio de Pisos - RRHH') }]
+  assert.equal(imputarObra({ concepto: 'Rep de pisos - "canalizacion"' }, arcor), null)
+  // Dos palabras sí alcanzan aunque el nombre entero no aparezca.
+  assert.equal(imputarObra({ concepto: 'Cambio de cortina en pisos' }, arcor).obra.id, 'pisos-rrhh')
+})
+
+test('una obra de una sola palabra se reconoce con esa palabra', () => {
+  const messina = [{ id: 'bsa', palabras: palabrasDeObra('BSA') }, { id: 'playon', palabras: palabrasDeObra('PLAYÓN DE AZUFRE') }]
+  assert.equal(imputarObra({ concepto: 'PLANTA DE BSA - 50%' }, messina).obra.id, 'bsa')
+  assert.equal(imputarObra({ concepto: 'Playon Azufre - Certificación 1/2' }, messina).obra.id, 'playon')
+  // Y lo que no nombra ninguna de las dos NO se reparte: PILON y BASES TANQUE SO2 son otras obras.
+  assert.equal(imputarObra({ concepto: 'PILON - Anticipo' }, messina), null)
+  assert.equal(imputarObra({ concepto: 'BASES TANQUE SO2' }, messina), null)
+  assert.equal(imputarObra({ concepto: 'Relevamiento topográfico' }, messina), null)
+})
+
+test('la orden de compra también nombra la obra', () => {
+  const sf = [{ id: 'pisos', palabras: palabrasDeObra('PISOS INDUSTRIALES') }, { id: 'elec', palabras: palabrasDeObra('INSTALACIÓN ELÉCTRICA') }]
+  assert.equal(imputarObra({ concepto: '', ordenCompra: 'Anticipo inicio obra Pisos Industriales' }, sf).obra.id, 'pisos')
 })
 
 test('las tildes del Sheet no rompen la imputación', () => {
   const dos = [{ id: 'playon', palabras: palabrasDeObra('PLAYÓN DE AZUFRE') }, { id: 'bsa', palabras: palabrasDeObra('BSA') }]
   assert.equal(imputarObra({ detalle: 'Playon Azufre - Blanco' }, dos).obra.id, 'playon')
   assert.equal(imputarObra({ detalle: 'PLAYÓN DE AZUFRE' }, dos).obra.id, 'playon')
+})
+
+// ═══ LA CONTABILIDAD INTERNA NO SALE AL PORTAL ═══════════════════════════════════════════════
+//
+// La columna B de Cobranzas vale B o N —facturado o efectivo no declarado— y el concepto que
+// escribe una persona repite esos términos. El portal lo mira gente de AFUERA de la empresa.
+
+test('el término prohibido se detecta venga como venga', () => {
+  assert.equal(terminoProhibido('Playon Azufre - Blanco - Certificación 1/2'), 'Blanco')
+  assert.equal(terminoProhibido('Playon Azufre - Negro - Certificación 2/2'), 'Negro')
+  assert.equal(terminoProhibido('cobro en negro de julio'), 'negro')
+  assert.equal(terminoProhibido('Categoría N'), 'Categoría N')
+  assert.equal(terminoProhibido('Playon Azufre - N - Certificación 1/2'), '- N')
+  assert.equal(terminoProhibido('efectivo no declarado'), 'no declarado')
+  assert.equal(terminoProhibido('Certificado 3'), null)
+  assert.equal(terminoProhibido('Anticipo (1 de 2)'), null)
+})
+
+test('la categoría contable se saca del texto sin llevarse el resto', () => {
+  assert.equal(sinCategoriaContable('Playon Azufre - Blanco - Certificación 1/2'), 'Playon Azufre - Certificación 1/2')
+  assert.equal(sinCategoriaContable('Playon Azufre - Negro - Certificación 2/2'), 'Playon Azufre - Certificación 2/2')
+  assert.equal(sinCategoriaContable('Anticipo inicio de obra 50% Blanco $65.000.000 Playon de Azufre'),
+    'Anticipo inicio de obra 50% $65.000.000 Playon de Azufre')
+  assert.equal(sinCategoriaContable('Certificado 3'), 'Certificado 3')
+})
+
+// EL TEST QUE NO PUEDE FALTAR. Si alguien vuelve a mandar el concepto crudo al rótulo, esto se pone
+// rojo antes de que lo vea un cliente. Los conceptos son los que HAY en la pestaña Cobranzas.
+test('ningún rótulo generado lleva la categoría contable al portal', () => {
+  const delSheet = [
+    ['Playon Azufre - Blanco - Certificación 1/2', 'Resto 50% s/ total 65.000.000 — certificación quincenal 1/2'],
+    ['Playon Azufre - Negro - Certificación 2/2', 'Resto 50% s/ total 37.500.000 — certificación quincenal 1/2'],
+    ['Playon Azufre', 'Anticipo inicio de obra 50% Blanco $65.000.000 Playon de Azufre. Cargar OC'],
+    ['Playon Azufre', 'Anticipo inicio de obra 50% Negro $37.500.000 Playon de Azufre. Cargar OC'],
+    ['Cobro efectivo - pago total julio - NO CONSIDERAR', ''],
+    ['Pago efectivo — julio 2026', ''],
+    // SIN PALABRA DE CATEGORÍA el rótulo cae al concepto: ésta es la vía por la que el término se
+    // cuela. Hoy ninguna fila del Sheet es así; mañana sí, y el rótulo saldría crudo al portal.
+    ['Playon Azufre - Blanco', ''],
+    ['Trabajos varios - Negro', ''],
+    ['', 'Playon Azufre - Blanco'],
+  ]
+  for (const [concepto, orden] of delSheet) {
+    const { rotulo } = clasificar(concepto, orden)
+    assert.equal(terminoProhibido(rotulo), null, `el rótulo «${rotulo}» sale de «${concepto}»`)
+    // La NOTA se arma con el concepto depurado: mismo riesgo, misma exigencia.
+    assert.equal(terminoProhibido(sinCategoriaContable(concepto)), null, `la nota sale de «${concepto}»`)
+    assert.equal(terminoProhibido(sinCategoriaContable(orden)), null, `la nota sale de «${orden}»`)
+  }
+})
+
+test('el rótulo dice QUÉ cobro es, no repite el nombre de la obra', () => {
+  assert.deepEqual(clasificar('Playon Azufre - Blanco - Certificación 1/2', ''), { tipo: 'certificado', rotulo: 'Certificado 1' })
+  assert.deepEqual(clasificar('Salón Comercial - Certificación 9/9', ''), { tipo: 'certificado', rotulo: 'Certificado 9' })
+  // La categoría suele estar en la orden de compra cuando el concepto sólo tiene la obra.
+  assert.deepEqual(clasificar('Pisos Industriales', 'Anticipo inicio obra Pisos Industriales - Total Obra: $47.590.272'),
+    { tipo: 'anticipo', rotulo: 'Anticipo' })
+  assert.deepEqual(clasificar('', 'Certificado 3'), { tipo: 'certificado', rotulo: 'Certificado 3' })
+  assert.deepEqual(clasificar('ADICIONAL - BASE DE TANQUE SO2', ''), { tipo: 'otro', rotulo: 'Adicional' })
+  assert.equal(clasificar('Retención fondo de reparo', '').tipo, 'fondo_reparo')
+})
+
+test('sin categoría reconocible manda el concepto, acotado', () => {
+  assert.deepEqual(clasificar('IVA de Factura 220', ''), { tipo: 'otro', rotulo: 'IVA de Factura 220' })
+  assert.deepEqual(clasificar('', ''), { tipo: 'otro', rotulo: 'Cobro' })
+  const largo = clasificar('Cambio de pisos RRHH - se facturó el 80% $ 7.520.000 y el 20% restante queda para el cierre de la obra', '')
+  assert.ok(largo.rotulo.length <= 80, `el rótulo mide ${largo.rotulo.length}`)
+  assert.ok(largo.rotulo.endsWith('…'))
+})
+
+// ═══ QUATTROPANI: UN CONTRATO EN DÓLARES NO SE PUBLICA EN PESOS DE HOY ════════════════════════
+
+test('el neto calculado sobre el tipo de cambio se publica en dólares', () => {
+  // `=3500*TIPO_CAMBIO_USD` con neto $5.296.466 y total $6.408.723,86 ⇒ TC 1.513,28 ⇒ U$S 4.235.
+  // El VALOR no cambia: cambia la unidad, y el tipo de cambio sale de la propia fila.
+  assert.equal(montoUsdPorTipoDeCambio({ formulaNeto: '=3500*TIPO_CAMBIO_USD', neto: 5296466, total: 6408723.86 }), 4235)
+  // Una fila que NO se calcula contra el tipo de cambio se queda en pesos. La del anticipo mezcla
+  // materiales en pesos con mano de obra en dólares: publicarla en dólares sería inventar.
+  assert.equal(montoUsdPorTipoDeCambio({ formulaNeto: '=36454685,38+(11500*1550)', neto: 54279685.38, total: 65678419.31 }), null)
+  assert.equal(montoUsdPorTipoDeCambio({ formulaNeto: '15400', neto: 15400, total: 15400 }), null)
+})
+
+test('las partes de un cobro declaran su valor en dólares', () => {
+  assert.equal(parteDeclaradaUsd('U$S 20.000 — 63,5 % del anticipo 50 % · parte U$S 15.400 en dólares'), 15400)
+  assert.equal(parteDeclaradaUsd('U$S 20.000 — 63,5 % del anticipo 50 % · parte U$S 4.600 = $ 7.130.000 a TC 1.550'), 4600)
+  assert.equal(parteDeclaradaUsd('Certificado 3'), null)
+  assert.equal(totalDeclaradoUsd('U$S 20.000 — 63,5 % del anticipo 50 %'), 20000)
+  assert.equal(totalDeclaradoUsd('Playon Azufre'), null)
+})
+
+test('dos filas del mismo cobro se fusionan en UNA línea por el total', () => {
+  // La certificación partida en dos: para el cliente es un solo cobro por la suma.
+  assert.deepEqual(fusionarImportes([
+    { monto: 19662500, moneda: 'ARS', concepto: 'Playon Azufre - Certificación 1/2' },
+    { monto: 9400000, moneda: 'ARS', concepto: 'Playon Azufre - Certificación 1/2' },
+  ]), { monto: 29062500, moneda: 'ARS' })
+  // NULL NO ES CERO: sin ningún importe cargado, el cobro sigue sin importe.
+  assert.deepEqual(fusionarImportes([{ monto: null, moneda: 'ARS', concepto: 'x' }]), { monto: null, moneda: 'ARS' })
+})
+
+test('un cobro pagado en dos monedas se fusiona sólo si las partes cierran', () => {
+  const partes = [
+    { monto: 15400, moneda: 'USD', concepto: 'U$S 20.000 — 63,5 % del anticipo 50 % · parte U$S 15.400 en dólares' },
+    { monto: 7130000, moneda: 'ARS', concepto: 'U$S 20.000 — 63,5 % del anticipo 50 % · parte U$S 4.600 = $ 7.130.000 a TC 1.550' },
+  ]
+  // 15.400 + 4.600 = 20.000, y es lo que el propio concepto declara. UNA línea, no dos que digan
+  // «U$S 20.000» cada una —ni una de U$S 15.400 y otra de $ 7.130.000, que es lo que veía el cliente.
+  assert.deepEqual(fusionarImportes(partes), { monto: 20000, moneda: 'USD' })
+
+  // Si no cierra contra lo declarado, no se publica un número inventado: se informa.
+  const roto = [partes[0], { ...partes[1], concepto: 'U$S 20.000 — … · parte U$S 9.999' }]
+  assert.match(fusionarImportes(roto).conflicto, /declara U\$S 20000/)
+  // Y sin equivalencia declarada tampoco se suma a ojo.
+  const mudo = [{ monto: 100, moneda: 'USD', concepto: 'x' }, { monto: 200, moneda: 'ARS', concepto: 'y' }]
+  assert.match(fusionarImportes(mudo).conflicto, /ninguna fila declara la equivalencia/)
+})
+
+test('dos líneas con el mismo rótulo se distinguen por su lugar', () => {
+  const lineas = numerarRepetidos([
+    { rotulo: 'Anticipo' }, { rotulo: 'Certificado 1' }, { rotulo: 'Anticipo' },
+  ])
+  assert.deepEqual(lineas.map((l) => l.rotulo), ['Anticipo (1 de 2)', 'Certificado 1', 'Anticipo (2 de 2)'])
+})
+
+test('el rótulo no le repite al cliente el nombre de la obra que está mirando', () => {
+  // Una línea que dice «Galpón 9» dentro de la obra «Galpón 9» no dice qué cobro es.
+  assert.equal(depurarRotulo('Galpon 9', 'Galpón 9'), 'Cobro')
+  assert.equal(depurarRotulo('Faltante - GALPON 9', 'Galpón 9'), 'Faltante')
+  // En el medio se deja: «PLANTA DE BSA - 50%» sin el «BSA» queda mutilado.
+  assert.equal(depurarRotulo('PLANTA DE BSA - 50%', 'BSA'), 'PLANTA DE BSA - 50%')
+  // Y lo que agrega información se conserva entero.
+  assert.equal(depurarRotulo('Mampostería y cancha de padel', 'MAMPOSTERÍA'), 'Mampostería y cancha de padel')
+  assert.equal(depurarRotulo('Certificado 3', 'PLAYÓN DE AZUFRE'), 'Certificado 3')
 })
