@@ -16,7 +16,7 @@ import { Ico, P } from '../canon/Iconos'
 import { BotonIcono, Interruptor, Vacio } from '../canon/Piezas'
 import { CeldaEstado } from '../cuenta/estados'
 import { FechaEnLaFila } from './FechaEnLaFila'
-import { enMillones, montoM } from '../../services/cobranzaFormato'
+import { enMillones, montoConMoneda, montoM } from '../../services/cobranzaFormato'
 import { cuadreDelContrato, detalleDePago, estadoVigente, totalEsquema } from '../../services/reglasEsquema'
 import type { CambioPago } from '../../services/entradasCobranza'
 import type { PagoEsquema } from '../../types/cobranzas'
@@ -92,7 +92,7 @@ export function ListadoEsquema({ pagos, contratoTotal, hoy, elegido, onElegir, o
             <span style={{
               fontFamily: MONO, fontSize: '12.5px', textAlign: 'right',
               color: apagado ? C.tintaSuave : C.tinta,
-            }}>{montoM(p.monto)}</span>
+            }}>{montoConMoneda(p.monto, p.moneda)}</span>
 
             {p.reparo == null
               ? <span style={{ fontSize: '11.5px', color: C.fantasma, textAlign: 'right' }}>—</span>
@@ -137,7 +137,13 @@ export function ListadoEsquema({ pagos, contratoTotal, hoy, elegido, onElegir, o
           <span style={{
             fontFamily: MONO, fontSize: '11.5px', color: C.tintaSuave, textAlign: 'right',
           }}>{total.reparo > 0 ? enMillones(total.reparo) : '—'}</span>
-          <span /><span /><span />
+          {/* LO QUE EL TOTAL NO ESTÁ CONTANDO SE DICE. Un total al que le falta una moneda y no lo
+              declara se lee como si estuvieran todos los pagos adentro. */}
+          <span style={{ fontSize: '11px', color: C.tenue, gridColumn: 'span 3' }}>
+            {total.sinSumar > 0
+              ? `${total.sinSumar === 1 ? '1 pago' : `${total.sinSumar} pagos`} en otra moneda, fuera del total`
+              : ''}
+          </span>
         </div>
       )}
 

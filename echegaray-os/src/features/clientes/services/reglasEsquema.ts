@@ -9,11 +9,21 @@
 import { diasEntre } from './cobranzaFormato.ts'
 import type { PagoEsquema } from '../types/cobranzas.ts'
 
-/** La fila «Total del esquema» (`32:283`): lo que suman los pagos y lo que suman sus reparos. */
-export function totalEsquema(pagos: PagoEsquema[]): { monto: number; reparo: number } {
+/**
+ * La fila «Total del esquema» (`32:283`): lo que suman los pagos y lo que suman sus reparos.
+ *
+ * NO SUMA MONEDAS DISTINTAS. El contrato de Quattropani es en dólares y sus nueve certificados están
+ * en U$S: sumarlos con los pesos daba un total al que le entraban 38.115 dólares como si fueran
+ * treinta y ocho mil pesos — un total que se lee bien y está mal. Las filas en otra moneda quedan
+ * FUERA y se cuentan en `sinSumar`, que la pantalla escribe al lado: un total al que le falta algo y
+ * no lo dice es peor que no tener total.
+ */
+export function totalEsquema(pagos: PagoEsquema[]): { monto: number; reparo: number; sinSumar: number } {
+  const enPesos = pagos.filter((p) => (p.moneda ?? 'ARS') === 'ARS')
   return {
-    monto: pagos.reduce((s, p) => s + p.monto, 0),
-    reparo: pagos.reduce((s, p) => s + (p.reparo ?? 0), 0),
+    monto: enPesos.reduce((s, p) => s + p.monto, 0),
+    reparo: enPesos.reduce((s, p) => s + (p.reparo ?? 0), 0),
+    sinSumar: pagos.length - enPesos.length,
   }
 }
 
@@ -31,6 +41,9 @@ export type Cuadre =
  *  gritar por el redondeo de un porcentaje de reparo. */
 export function cuadreDelContrato(contratoTotal: number | null, pagos: PagoEsquema[]): Cuadre {
   if (contratoTotal == null) return { estado: 'sin_contrato' }
+  // CON PAGOS EN OTRA MONEDA NO SE PUEDE AFIRMAR QUE FALTE NI QUE SOBRE: el total en pesos deja
+  // afuera esas filas, así que «falta asignar $ X» estaría contando como faltante algo ya asignado.
+  if (pagos.some((p) => (p.moneda ?? 'ARS') !== 'ARS')) return { estado: 'sin_contrato' }
   const dif = contratoTotal - totalEsquema(pagos).monto
   if (Math.abs(dif) < 1) return { estado: 'cuadra' }
   return dif > 0 ? { estado: 'falta', monto: dif } : { estado: 'excede', monto: -dif }

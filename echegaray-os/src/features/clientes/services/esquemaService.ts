@@ -6,7 +6,8 @@ import type { EsquemaCliente, PagoEsquema } from '../types'
 import { nombresDeObra } from './nombresDeObra.ts'
 
 const COLUMNAS =
-  'id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, reparo, estado, medio,'
+  'id, cliente_id, obra_id, cobranza_fila, concepto, fecha, monto, moneda, factura_numero,'
+  + ' recibo_numero, reparo, estado, medio,'
   + ' visible_portal, aviso_dias, mostrar_reprogramaciones, nota_interna, reprogramaciones,'
   + ' publicado_at, cambio_pendiente, orden'
 

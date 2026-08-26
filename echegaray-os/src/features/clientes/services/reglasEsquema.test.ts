@@ -10,6 +10,7 @@ import {
   cambiosDelEsquema, cambiosSinPublicar, cuadreDelContrato, detalleDePago, estadoVigente,
   grillaDelMes, montoBloqueado, pagosDelDia, totalEsquema,
 } from './reglasEsquema.ts'
+import { montoConMoneda } from './cobranzaFormato.ts'
 import type { PagoEsquema } from '../types/cobranzas.ts'
 
 const HOY = '2026-08-24'
@@ -18,6 +19,7 @@ function pago(p: Partial<PagoEsquema> & { monto: number }): PagoEsquema {
   return {
     id: p.concepto ?? String(p.monto), cliente_id: 'c1', obra_id: null, obra_nombre: null,
     cobranza_fila: null, concepto: p.concepto ?? 'Pago', fecha: null, reparo: null,
+    moneda: 'ARS', factura_numero: null, recibo_numero: null,
     estado: 'a_vencer', medio: null, visible_portal: true, aviso_dias: null,
     mostrar_reprogramaciones: false, nota_interna: null, reprogramaciones: [], publicado_at: null,
     cambio_pendiente: false, orden: 0, ...p,
@@ -135,4 +137,35 @@ test('el renglón de detalle se arma con lo que la fila ya dice', () => {
   // un « · » suelto. La pantalla cae al nombre de la obra.
   assert.equal(detalleDePago(pago({ monto: 1, estado: 'a_vencer' })), null)
   assert.equal(detalleDePago(pago({ monto: 1, estado: 'a_vencer', medio: 'cheque' })), 'cheque')
+})
+
+// ── UN ESQUEMA EN DOS MONEDAS ────────────────────────────────────────────────────────────────
+//
+// El contrato de Quattropani es en dólares por ajuste alzado y sus nueve certificados están en U$S.
+// Con el total sumando todo, esos 38.115 dólares entraban como treinta y ocho mil pesos: un total
+// que se lee bien y está mal. Estos tres tests se ponen ROJOS si se vuelve a sumar sin mirar.
+
+test('el total NO suma los pagos en otra moneda, y dice cuántos dejó afuera', () => {
+  const mezcla = [
+    pago({ concepto: 'Anticipo', monto: 65_678_419, estado: 'cobrado' }),
+    pago({ concepto: 'Certificado 1', monto: 4_235, moneda: 'USD' }),
+    pago({ concepto: 'Certificado 2', monto: 4_235, moneda: 'USD' }),
+  ]
+  const t = totalEsquema(mezcla)
+  assert.equal(t.monto, 65_678_419, 'los dólares no entran al total en pesos')
+  assert.equal(t.sinSumar, 2)
+})
+
+test('con pagos en otra moneda NO se afirma cuánto falta asignar', () => {
+  // El total en pesos deja afuera esas filas: decir «falta asignar $ X» contaría como faltante algo
+  // que ya está asignado, sólo que en dólares.
+  const mezcla = [pago({ monto: 1_000_000 }), pago({ monto: 4_235, moneda: 'USD' })]
+  assert.equal(cuadreDelContrato(50_000_000, mezcla).estado, 'sin_contrato')
+})
+
+test('un monto en dólares NO se escribe con la escala de millones de pesos', () => {
+  // `montoM(4235)` da «$ 0,00 M»: dibuja en cero un pago que existe, y le pone `$` a lo que no es.
+  assert.equal(montoConMoneda(4_235, 'USD'), 'U$S 4.235')
+  assert.equal(montoConMoneda(8_200_000, 'ARS'), '$ 8,20 M')
+  assert.equal(montoConMoneda(null, 'USD'), '—')
 })

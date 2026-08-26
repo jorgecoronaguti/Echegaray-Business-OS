@@ -153,6 +153,13 @@ export interface PagoEsquema {
   /** ISO. Es la palanca: mover esto es mover la columna Q de Cobranzas. */
   fecha: string | null
   monto: number
+  /** `'ARS'` o `'USD'`. El contrato de Quattropani es en dólares por ajuste alzado y sus certificados
+   *  están en U$S: sin esta columna, U$S 4.235 se dibujaba «$ 0,00 M» y entraba al total como pesos. */
+  moneda: 'ARS' | 'USD'
+  /** El número de la factura emitida. `null` = todavía no se facturó, que NO es una factura vacía. */
+  factura_numero: string | null
+  /** El recibo del cobro. Es lo que el portal le muestra al cliente pegado a su factura. */
+  recibo_numero: string | null
   reparo: number | null
   estado: EstadoPago
   medio: MedioPago | null

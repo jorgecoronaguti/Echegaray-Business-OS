@@ -21,7 +21,7 @@ test('con permiso, un importe ausente sigue siendo null y no se convierte en 0',
 })
 
 const pago = (p: Partial<PagoEsquema>): PagoEsquema => ({
-  id: 'p', cliente_id: 'c', obra_id: null, obra_nombre: null, cobranza_fila: null,
+  id: 'p', cliente_id: 'c', obra_id: null, obra_nombre: null, cobranza_fila: null, moneda: 'ARS', factura_numero: null, recibo_numero: null,
   concepto: 'x', fecha: null,
   monto: 100, reparo: null, estado: 'a_vencer', medio: null, visible_portal: false,
   aviso_dias: null, mostrar_reprogramaciones: false, nota_interna: null, reprogramaciones: [],

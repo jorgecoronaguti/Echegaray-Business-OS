@@ -29,6 +29,23 @@ export function montoM(n: number | null | undefined): string {
   return m === null ? '—' : `$ ${m} M`
 }
 
+/**
+ * EL MONTO CON SU MONEDA. La escala M es de PESOS y sólo de pesos.
+ *
+ * Un certificado de U$S 4.235 pasado por `montoM` sale «$ 0,00 M»: la escala fija de millones, que
+ * en pesos es correcta, en dólares dibuja cero un pago que existe. Y encima le pone el signo `$` a
+ * algo que no son pesos. Es el defecto más caro que puede tener una columna de plata, porque no
+ * parece un error: parece un pago sin monto.
+ *
+ * En dólares se escribe el número ENTERO —`U$S 4.235`—: son cantidades de tres o cuatro cifras, la
+ * escala no aporta nada y el número exacto sí es el dato.
+ */
+export function montoConMoneda(n: number | null | undefined, moneda: string | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  if ((moneda ?? 'ARS') === 'USD') return `U$S ${Math.round(n).toLocaleString('es-AR')}`
+  return montoM(n)
+}
+
 /** `3100000` → `$ 3.100.000` — el monto exacto del panel del pago (`32:433`). */
 export function pesos(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
