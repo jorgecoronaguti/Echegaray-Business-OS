@@ -41,8 +41,18 @@ export async function documentosDeObra(carpetaId: string | null): Promise<Lectur
       import('../../../../../orquestador/lib/config.mjs') as unknown as Promise<{ loadConfig(): unknown }>,
     ])
     const g = google.makeGoogleClient({ config: config.loadConfig(), scopes: google.READ_SCOPES ?? google.WRITE_SCOPES })
-    const archivos = await g.listarCarpeta(carpetaId, { campos: 'id,name,mimeType,modifiedTime,size' })
-    const datos = clasificar(archivos ?? [])
+    const crudos = await g.listarCarpeta(carpetaId, { campos: 'id,name,mimeType,modifiedTime,size' })
+    // SE COPIAN LOS CAMPOS, NO EL OBJETO. Lo que devuelve el cliente de Google arrastra estructuras
+    // que no cruzan la frontera servidor→cliente de React: la página moría con «ArrayBuffer is not
+    // detachable and could not be cloned» y devolvía 500. Quedarse con cuatro strings lo resuelve y
+    // además fija qué es lo único que el portal usa de Drive.
+    const archivos: ArchivoDrive[] = (crudos ?? []).map((a) => ({
+      id: String(a.id),
+      name: String(a.name ?? ''),
+      mimeType: String(a.mimeType ?? ''),
+      modifiedTime: a.modifiedTime ? String(a.modifiedTime) : null,
+    }))
+    const datos = clasificar(archivos)
     const al = new Date()
     CACHE.set(carpetaId, { al, datos })
     return { datos, al, error: null }

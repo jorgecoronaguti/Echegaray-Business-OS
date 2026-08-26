@@ -43,7 +43,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
           {proximo ? (
             <>
               <p className="tnum mt-1.5 font-mono text-[38px] font-semibold leading-none tracking-[-.025em] md:text-[40px]">
-                {pesos(proximo.monto)}
+                {pesos(proximo.monto, proximo.moneda)}
               </p>
               <p className="mt-2.5 flex items-center gap-2 text-[13.5px] text-muted">
                 <IconoPagos tamano={17} />
@@ -88,7 +88,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
       {r.sinMonto ? (
         // LO QUE LA SUMA NO ESTÁ CONTANDO SE DICE. Callarlo haría que el total parezca completo.
         <p className="order-2 mt-2 text-[12.5px] text-faint md:order-none">
-          {r.sinMonto === 1 ? 'Hay 1 pago sin monto cargado' : `Hay ${r.sinMonto} pagos sin monto cargado`}, no está en estas sumas.
+          {r.sinMonto === 1 ? 'Hay 1 pago que no entra en estas sumas' : `Hay ${r.sinMonto} pagos que no entran en estas sumas`} — sin monto cargado o en otra moneda.
         </p>
       ) : null}
 
@@ -102,7 +102,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<{
             <IconoEstado estado={estadoDePago(p, hoy)} />
             <span className="min-w-0 flex-1 truncate text-sm">{p.rotulo}</span>
             <span className="tnum w-[70px] font-mono text-[13px] text-muted">{diaMes(p.fechaPrevista)}</span>
-            <span className="tnum w-[120px] text-right font-mono text-[15px]">{pesos(p.monto)}</span>
+            <span className="tnum w-[120px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
           </Fila>
         ))
       ) : (

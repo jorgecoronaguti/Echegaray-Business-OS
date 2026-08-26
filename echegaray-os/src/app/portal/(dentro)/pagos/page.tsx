@@ -51,7 +51,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                 <span className="tnum w-[74px] font-mono text-[13px] text-muted">
                   {p.tipo === 'fondo_reparo' && !p.fechaPrevista ? 'al final' : diaMes(p.fechaPrevista)}
                 </span>
-                <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto)}</span>
+                <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
                 {/* Una factura pagada muestra su RECIBO: es el comprobante que le sirve al cliente. */}
                 <span className={`w-[112px] text-right text-[12.5px] ${esProximo ? 'font-semibold text-ink' : TINTA[estado]}`}>
                   {p.reciboNumero ? `Recibo ${p.reciboNumero}` : esProximo ? 'próximo' : ROTULO_ESTADO[estado]}
@@ -69,7 +69,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
       </div>
       {r.sinMonto ? (
         <p className="mt-3 text-[12.5px] text-faint">
-          {r.sinMonto === 1 ? '1 pago sin monto cargado' : `${r.sinMonto} pagos sin monto cargado`} — no entran en estos totales.
+          {r.sinMonto === 1 ? '1 pago no entra en estos totales' : `${r.sinMonto} pagos no entran en estos totales`} — sin monto cargado o en otra moneda.
         </p>
       ) : null}
     </>

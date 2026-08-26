@@ -35,7 +35,7 @@ export async function obraDetalle(obraId: string): Promise<ObraDetalle | null> {
 export async function pagosDeObra(obraId: string): Promise<Pago[]> {
   const { data } = await createAdminClient()
     .from('pago_programado')
-    .select('id, orden, tipo, rotulo, monto, fecha_prevista, fecha_pago, factura_numero, recibo_numero, devolucion_en, devuelto_en, estado')
+    .select('id, orden, tipo, rotulo, monto, moneda, fecha_prevista, fecha_pago, factura_numero, recibo_numero, devolucion_en, devuelto_en, estado')
     .eq('obra_id', obraId).order('orden')
   return (data ?? []).map((r) => ({
     id: String(r.id),
@@ -43,6 +43,7 @@ export async function pagosDeObra(obraId: string): Promise<Pago[]> {
     tipo: r.tipo as Pago['tipo'],
     rotulo: String(r.rotulo),
     monto: r.monto == null ? null : Number(r.monto),
+    moneda: (r.moneda === 'USD' ? 'USD' : 'ARS') as 'ARS' | 'USD',
     fechaPrevista: r.fecha_prevista ?? null,
     fechaPago: r.fecha_pago ?? null,
     facturaNumero: r.factura_numero ?? null,

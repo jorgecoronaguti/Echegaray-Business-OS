@@ -162,3 +162,11 @@ alter table public.obra_adjunto_cliente  enable row level security;
 -- Lo detectó `orquestador/lib/columnas-comerciales-cerradas.test.mjs`, que existe exactamente para
 -- esto y que se puso en rojo en cuanto se aplicó la primera mitad de esta migración.
 grant select (drive_carpeta_id, fecha_cierre) on public.obras to authenticated;
+
+-- ── LA MONEDA DE CADA LÍNEA ───────────────────────────────────────────────────────────────────
+--
+-- El contrato de Quattropani está en DÓLARES (U$S 63.000 + IVA) y se cobra en pesos al blue de cada
+-- pago, salvo la parte en billete. Sin esta columna el portal dibujaba «$ 15.400» donde el contrato
+-- dice «U$S 15.400»: un error de moneda que el cliente ve, y por cuatro órdenes de magnitud.
+alter table public.pago_programado add column if not exists moneda text not null default 'ARS'
+  check (moneda in ('ARS', 'USD'));

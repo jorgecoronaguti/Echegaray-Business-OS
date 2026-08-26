@@ -61,7 +61,7 @@ export default async function Facturas({ searchParams }: { searchParams: Promise
                 <span className="w-[118px] text-[12.5px] text-pos">
                   {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
                 </span>
-                <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto)}</span>
+                <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
                 <span className="grid min-h-11 min-w-11 place-items-center text-faint" aria-hidden>
                   <IconoDescarga tamano={18} />
                 </span>

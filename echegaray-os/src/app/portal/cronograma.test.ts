@@ -7,7 +7,7 @@ import {
 const HOY = '2026-08-26'
 const p = (x: Partial<Pago>): Pago => ({
   id: x.id ?? 'x', orden: x.orden ?? 1, tipo: x.tipo ?? 'certificado', rotulo: x.rotulo ?? 'C',
-  monto: x.monto === undefined ? 100 : x.monto, fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
+  monto: x.monto === undefined ? 100 : x.monto, moneda: x.moneda ?? 'ARS', fechaPrevista: x.fechaPrevista ?? null, fechaPago: x.fechaPago ?? null,
   facturaNumero: x.facturaNumero ?? null, reciboNumero: x.reciboNumero ?? null,
   devolucionEn: null, devueltoEn: null, estadoFijado: x.estadoFijado ?? null,
 })
@@ -112,4 +112,28 @@ test('con una sola línea cargada, el plan existe y los totales son reales', () 
   const r = resumenDeCobro([p({ monto: 5_726_423.6, fechaPago: '2026-08-21' })], 47_590_271.5, HOY)
   assert.equal(r.hayPlan, true)
   assert.equal(r.pagado, 5_726_423.6)
+})
+
+test('las monedas NO se suman — una línea en dólares no entra al total en pesos', () => {
+  // Sumarla arruina el total sin dar error: U$S 15.400 y $15.400 son el mismo número.
+  const r = resumenDeCobro([
+    p({ monto: 1_000_000, fechaPago: '2026-08-01' }),
+    p({ monto: 15_400, moneda: 'USD', fechaPago: '2026-08-01' }),
+  ], 5_000_000, HOY)
+  assert.equal(r.pagado, 1_000_000)
+  assert.equal(r.sinMonto, 1, 'y la pantalla dice que hay una línea afuera de la suma')
+})
+
+test('«falta certificar» nunca se publica en negativo', () => {
+  // Pasó de verdad: el cronograma de Quattropani suma $138 M contra un contrato de $97,6 M porque
+  // incluye los materiales, que el contrato cuenta aparte. «−$40.762.069» no significa nada para el
+  // cliente.
+  const r = resumenDeCobro([p({ monto: 138_000_000, fechaPago: '2026-08-01' })], 97_650_000, HOY)
+  assert.equal(r.faltaCertificar, null)
+})
+
+test('el signo de la moneda sale en el importe', () => {
+  assert.equal(pesos(15_400, 'USD'), 'U$S 15.400')
+  assert.equal(pesos(15_400), '$ 15.400')
+  assert.equal(pesos(null, 'USD'), 'sin cargar')
 })

@@ -21,6 +21,9 @@ export type Pago = {
   tipo: TipoPago
   rotulo: string
   monto: number | null
+  /** ARS salvo que el contrato diga otra cosa. Dibujar dólares con signo peso es un error de cuatro
+   *  órdenes de magnitud que el cliente ve. */
+  moneda: 'ARS' | 'USD'
   fechaPrevista: string | null
   fechaPago: string | null
   facturaNumero: string | null
@@ -82,7 +85,11 @@ export type ResumenCobro = {
   /** Del contrato, lo que todavía no entró al cronograma. `null` si la obra no tiene contrato cargado. */
   faltaCertificar: number | null
   contrato: number | null
-  /** Cuántos pagos tienen el monto sin cargar: lo que las sumas de arriba NO están contando. */
+  /**
+   * Cuántos pagos quedaron FUERA de las sumas de arriba: los que no tienen monto y los que están en
+   * otra moneda. Se cuentan juntos porque para el total son lo mismo —no entran— pero la pantalla
+   * no puede decir «sin monto cargado» de una línea en dólares que sí lo tiene.
+   */
   sinMonto: number
 }
 
@@ -96,6 +103,9 @@ export type ResumenCobro = {
 export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: string): ResumenCobro {
   let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
   for (const p of pagos) {
+    // LAS MONEDAS NO SE SUMAN. Una línea en dólares metida en un total en pesos lo arruina sin dar
+    // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
+    if (p.moneda !== 'ARS') { sinMonto++; continue }
     if (p.monto == null) { sinMonto++; continue }
     if (p.fechaPago) { pagado += p.monto; continue }
     if (p.tipo === 'fondo_reparo') continue
@@ -107,7 +117,15 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
     vencido, pendiente, pagado, sinMonto, contrato,
     // Sin plan cargado, «falta certificar» sería el contrato entero — cierto por aritmética y falso
     // como afirmación: no es que no se certificó nada, es que no cargamos el plan.
-    faltaCertificar: contrato == null || pagos.length === 0 ? null : contrato - (pagado + pendiente),
+    // NUNCA UN NEGATIVO. «Falta certificar −$40 M» no significa nada para el cliente: significa que
+    // el cronograma cargado supera al contrato —porque incluye algo que el contrato no cuenta, como
+    // los materiales de Quattropani, o porque el contrato está en otra moneda—. Se devuelve null y
+    // la pantalla dice «sin cargar» en vez de publicar un número imposible.
+    faltaCertificar: (() => {
+      if (contrato == null || pagos.length === 0) return null
+      const resto = contrato - (pagado + pendiente)
+      return resto < 0 ? null : resto
+    })(),
   }
 }
 
@@ -122,8 +140,9 @@ export function loQueSigue(pagos: Pago[], cuantos = 2): Pago[] {
 /* ── CÓMO SE ESCRIBE ─────────────────────────────────────────────────────────────────────────── */
 
 /** Pesos sin decimales, como en las maquetas. `null` no es «$ 0»: es «sin cargar». */
-export function pesos(n: number | null): string {
-  return n == null ? 'sin cargar' : `$ ${Math.round(n).toLocaleString('es-AR')}`
+export function pesos(n: number | null, moneda: 'ARS' | 'USD' = 'ARS'): string {
+  if (n == null) return 'sin cargar'
+  return `${moneda === 'USD' ? 'U$S' : '$'} ${Math.round(n).toLocaleString('es-AR')}`
 }
 
 /** dd/mm. `null` es «sin fecha», nunca una fecha inventada ni un guion suelto. */
