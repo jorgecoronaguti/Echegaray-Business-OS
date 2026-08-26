@@ -140,8 +140,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // `pagos` a secas, una obra cuyos únicos cobros en pesos son de trabajo anterior dibujaba una
   // columna «PAGADO» que decía «sin cargar»: una columna vacía pidiendo explicación.
   const enCurso = deLaObra.filter((p) => !p.historico)
-  const hayPesos = enCurso.some((p) => p.moneda === 'ARS')
   const hayDolares = enCurso.some((p) => p.moneda === 'USD')
+  // ═══ UNA MONEDA SE DIBUJA CUANDO TIENE ALGO QUE DECIR (26/08/2026) ═══
+  //
+  // A Quattropani —contrato en dólares— el pie le abría dos columnas de pesos que decían «PAGADO
+  // ARS$ $ 0» y «PENDIENTE ARS$ $ 0». Lo único suyo en pesos es el IVA de una factura cuyo cobro
+  // está en dólares: no hay obra facturada en pesos, y dos ceros al lado de un contrato en dólares
+  // se leen como que falta algo. El IVA no se esconde —va dicho en una línea, abajo— pero no ocupa
+  // una columna que no representa un neto.
+  //
+  // Con una sola moneda en la pantalla la columna se dibuja igual: ahí el cero SÍ es la respuesta.
+  const aportaEnPesos = (total.netoPagado ?? 0) !== 0 || (total.netoPendiente ?? 0) !== 0 || total.nPendiente > 0
+  const hayPesos = enCurso.some((p) => p.moneda === 'ARS') && (aportaEnPesos || !hayDolares)
+  /** IVA cobrado en pesos que no tiene columna propia porque su neto está en otra moneda. */
+  const ivaSueltoEnPesos = !hayPesos && (total.ivaPagado ?? 0) > 0 ? total.ivaPagado : null
   const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
   // De cuántas obras salió el contrato, y cuántas quedaron sin él. Con una obra elegida es esa sola.
   const cobertura = obra
@@ -407,6 +419,11 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
               {total.sinMonto + enDolares.sinMonto === 1
                 ? '1 cobro no entra en estos totales'
                 : `${total.sinMonto + enDolares.sinMonto} cobros no entran en estos totales`} — todavía sin importe cargado.
+            </p>
+          ) : null}
+          {ivaSueltoEnPesos ? (
+            <p className="mt-3 text-[12.5px] text-faint">
+              Además se cobraron {pesos(ivaSueltoEnPesos)} de IVA en pesos, correspondientes a los cobros de arriba.
             </p>
           ) : null}
           {anteriores.length ? (
