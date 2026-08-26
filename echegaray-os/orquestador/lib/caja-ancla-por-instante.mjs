@@ -174,6 +174,25 @@ export function entraALaVentana(mov = {}, ancla = {}) {
 // valen 46241,0 exacto, caerían del lado equivocado sin un solo error a la vista. `INT` fija la
 // unidad de la comparación en el DÍA, que es la única que el dato del otro lado tiene.
 
+// ═══ Y EL TOPE DE ARRIBA: HOY. UN PAGO CON FECHA FUTURA NO SALIÓ DEL CAJÓN (26/08/2026) ═══
+//
+// La ventana tenía piso y no tenía techo, así que descontaba del efectivo TODO lo que tuviera fecha
+// posterior al conteo — incluida la que todavía no llegó. El dueño lo reportó así: *"si yo
+// manualmente puse 18m debería volverse todo 18m y empezar a contar o descontar desde ahí"*.
+//
+// Medido ese día sobre su conteo de $18.000.000, la pestaña publicaba $14.795.500 y de los
+// $3.204.500 descontados, **$3.064.500 eran pagos con fecha FUTURA**:
+//
+//     Pedro Tello ....... $2.250.000  fecha de caja 28/08  (dos días adelante)
+//     sueldos OFICINA ...   $814.500  fecha de pago 01/09  (seis días adelante)
+//
+// Un pago programado es una PROYECCIÓN, no un billete que salió: el Cash Flow lo muestra como
+// compromiso y la caja física no puede descontarlo hasta que ocurra. Descontarlo antes es el mismo
+// error que contar un cheque librado como plata que ya se fue de la cuenta — sólo que al revés y
+// sobre el número con el que se decide si alcanza para pagar hoy.
+//
+// El tope va en LAS DOS direcciones: un cobro con fecha futura tampoco entró al cajón todavía.
+
 /** El comparador de la ventana según el criterio declarado. Entradas exclusivas, salidas inclusivas. */
 export const comparadorDeVentana = (entra) => (entra ? '>' : '>=')
 
@@ -193,8 +212,8 @@ export const comparadorDeVentana = (entra) => (entra ? '>' : '>=')
  */
 export const ventanaDelConteo = (fecha, ancla, entra = false) =>
   (entra
-    ? `(${fecha}>INT(${ancla}))`
-    : `(${fecha}>=INT(${ancla}))*(${fecha}>0)`)
+    ? `(${fecha}>INT(${ancla}))*(${fecha}<=TODAY())`
+    : `(${fecha}>=INT(${ancla}))*(${fecha}>0)*(${fecha}<=TODAY())`)
 
 /**
  * EL ANCLA CON LA QUE SE MIRA UNA SALIDA — la única definición, para que nadie la reescriba.

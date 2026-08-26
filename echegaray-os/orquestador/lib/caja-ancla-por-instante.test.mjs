@@ -121,13 +121,24 @@ test('diaDe y tieneHora toleran el flotante con el que viajan los seriales', () 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // 4 · EL LADO DE LAS FÓRMULAS
 
+test('LA VENTANA TIENE TECHO: un movimiento con fecha FUTURA no entra ni sale', () => {
+  // Reportado por el dueño el 26/08/2026: contó $18.000.000 y la pestaña publicaba $14.795.500.
+  // De los $3.204.500 descontados, $3.064.500 eran pagos que TODAVÍA NO OCURRIERON — Pedro Tello
+  // con fecha de caja 28/08 y los sueldos de oficina con fecha 01/09. Un pago programado es una
+  // proyección, no un billete que salió del cajón.
+  for (const entra of [true, false]) {
+    assert.match(ventanaDelConteo('FECHA', '$D$7', entra), /\(FECHA<=TODAY\(\)\)/,
+      entra ? 'un cobro futuro tampoco entró' : 'un pago futuro no salió')
+  }
+})
+
 test('la rama inclusiva arrastra `>0`: con `>=` un cero sería una fecha válida', () => {
   // El anexo pide el histórico completo pasando `0` como ancla. Con `>=INT(0)` y sin este guard, cada
   // fila SIN fecha —que se coacciona a 0 con N()— entraría a la ventana. El defecto no daría error:
   // devolvería un número más grande.
   const f = ventanaDelConteo('FECHA', '0', false)
-  assert.equal(f, '(FECHA>=INT(0))*(FECHA>0)')
-  assert.equal(ventanaDelConteo('FECHA', '$D$7', true), '(FECHA>INT($D$7))')
+  assert.equal(f, '(FECHA>=INT(0))*(FECHA>0)*(FECHA<=TODAY())')
+  assert.equal(ventanaDelConteo('FECHA', '$D$7', true), '(FECHA>INT($D$7))*(FECHA<=TODAY())')
   assert.equal(comparadorDeVentana(true), '>')
   assert.equal(comparadorDeVentana(false), '>=')
 })

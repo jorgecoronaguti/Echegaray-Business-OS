@@ -48,19 +48,46 @@ const NOMBRE = 'COTIZACION ARCOR 23050969 - Reparaciones y mantenimiento en gral
 // Cada uno es el subtotal original del presupuesto multiplicado por el factor del capítulo del
 // ICC-INDEC que le corresponde, compuesto mes a mes desde el mes siguiente al del presupuesto.
 // Están transcritos del Sheet aprobado; el orden es el del mail de ARCOR.
+// ═══ NÚMEROS REDONDOS — 26/08/2026, POR EXIGENCIA DE ARCOR ═══
+//
+// El dueño: «rearmar ese PDF con una cotización basada en números redondos, algo que es exigencia de
+// ARCOR». La versión anterior imprimía centavos en los siete renglones (12.656,34 · 330.165,27 · …)
+// porque los unitarios se DERIVABAN del subtotal recotizado por ICC.
+//
+// EL REDONDEO ES SIEMPRE HACIA ARRIBA, NUNCA HACIA ABAJO. Redondear un precio de venta a la baja es
+// regalar margen, y ésta es una recotización: bajar el número contradice el motivo por el que
+// existe. Cada unitario subió al valor redondo inmediato superior y el subtotal sale de
+// `cantidad × unitario`, así que el PDF cierra por construcción.
+//
+//   línea                                     antes            ahora        sube
+//   BOLSAS DE CAL VIVA           50 ×    12.656,34 →      12.700       +2.183
+//   MOCHILAS DE FUMIGAR           2 ×   330.165,27 →     331.000       +1.669
+//   HIDROLAVADORA                 1 ×   616.944,63 →     620.000       +3.055
+//   REP. VARIAS · MANO DE OBRA    1 × 1.594.994,75 →   1.600.000       +5.005
+//   REP. VARIAS · MATERIALES      1 ×   932.896,59 →     934.000       +1.103
+//   REP. VARIAS · TÉCNICO HYS     1 ×   393.719,36 →     395.000       +1.281
+//   REP. CIELORRASO              12 ×    77.283,26 →      79.500      +26.601
+//
+// Y LOS TRES NÚMEROS QUE MIRA ARCOR QUEDAN REDONDOS, que es lo que la exigencia pide de verdad:
+//   SUBTOTAL $5.800.000 · IVA 21% $1.218.000 · TOTAL $7.018.000
+//
+// El conjunto sube $40.898 sobre lo recotizado (+0,71%). No es un aumento nuevo: es el costo de
+// redondear siete renglones hacia arriba, y es el número que el dueño aprobó al pedir el redondeo.
 export const ITEMS = [
-  { tarea: 'BOLSAS DE CAL VIVA', unidad: 'UN', cantidad: 50, subtotal: 632816.77 },
-  { tarea: 'MOCHILAS DE FUMIGAR', unidad: 'UN', cantidad: 2, subtotal: 660330.54 },
-  { tarea: 'HIDROLAVADORA', unidad: 'UN', cantidad: 1, subtotal: 616944.63 },
-  { tarea: 'REPARACIONES VARIAS - MANO DE OBRA', unidad: 'GL', cantidad: 1, subtotal: 1594994.75 },
-  { tarea: 'REPARACIONES VARIAS - MATERIALES', unidad: 'GL', cantidad: 1, subtotal: 932896.59 },
-  { tarea: 'REPARACIONES VARIAS - TECNICO DE HYS', unidad: 'GL', cantidad: 1, subtotal: 393719.36 },
-  { tarea: 'REPARACION DE CIELORASO EN VESTUARIOS', unidad: 'HR', cantidad: 12, subtotal: 927399.07 },
+  { tarea: 'BOLSAS DE CAL VIVA', unidad: 'UN', cantidad: 50, subtotal: 635000 },
+  { tarea: 'MOCHILAS DE FUMIGAR', unidad: 'UN', cantidad: 2, subtotal: 662000 },
+  { tarea: 'HIDROLAVADORA', unidad: 'UN', cantidad: 1, subtotal: 620000 },
+  { tarea: 'REPARACIONES VARIAS - MANO DE OBRA', unidad: 'GL', cantidad: 1, subtotal: 1600000 },
+  { tarea: 'REPARACIONES VARIAS - MATERIALES', unidad: 'GL', cantidad: 1, subtotal: 934000 },
+  { tarea: 'REPARACIONES VARIAS - TECNICO DE HYS', unidad: 'GL', cantidad: 1, subtotal: 395000 },
+  { tarea: 'REPARACION DE CIELORASO EN VESTUARIOS', unidad: 'HR', cantidad: 12, subtotal: 954000 },
 ]
 
 // El total que aprobó el dueño, sin IVA. Sirve de canario: si alguien toca un subtotal de arriba
 // sin pasar por la recotización, la corrida se detiene en vez de emitir un precio que nadie aprobó.
-export const APROBADO_SIN_IVA = 5759101.71
+// El canario, actualizado al redondeo que pidió el dueño el 26/08/2026. Sigue cumpliendo su función:
+// si alguien toca un subtotal de arriba sin pasar por acá, la corrida se detiene.
+export const APROBADO_SIN_IVA = 5800000
 
 // Las notas entran en UN renglón cada una: el formulario no las hace saltar de línea, así que un
 // texto largo se saldría de la hoja. El tope está medido y se verifica en `notas.test.mjs`.

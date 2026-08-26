@@ -577,6 +577,11 @@ test('la fórmula de la fecha va en es-AR y usa el idioma de la casa para el arr
   // PROGRAMADO (OFICINA agosto con pago 01/09, medido en vivo el 24/08) entra al saldo por el
   // criterio conservador del piso, pero no es un movimiento ocurrido: sin el filtro, D7 publicaba
   // una fecha futura. Siete puertas: una por fuente, y Compras lleva dos (sus dos ramas).
-  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 7,
-    'cada fuente filtra el futuro: un pago programado no fecha el último movimiento')
+  // Eran SIETE hasta el 26/08/2026: una por fuente, con Compras aportando dos. Ahora son TRECE,
+  // porque `ventanaDelConteo` agrega la suya — el filtro del futuro dejó de estar sólo en la FECHA y
+  // pasó a estar también en el IMPORTE, que es donde hacía el daño. El comentario de arriba ya
+  // decía que un pago programado «entra al saldo por el criterio conservador del piso»: entraba, y
+  // por eso el conteo de $18.000.000 del dueño se publicaba como $14.795.500.
+  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 13,
+    'cada fuente filtra el futuro, en la fecha Y en el importe')
 })
