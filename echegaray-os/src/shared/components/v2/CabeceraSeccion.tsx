@@ -21,6 +21,8 @@ import { V } from './patron'
 export interface SubVista {
   clave: string
   titulo: string
+  /** Lo que la sección abarca, al lado del título y en 12px (`27v2:59`). No es una descripción. */
+  subtitulo?: string
   /** `null` = no se pudo contar. El conteo se omite, nunca se escribe 0. */
   cuenta: number | null
   activa: boolean
@@ -78,6 +80,9 @@ export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel,
             >
               {v.titulo}
             </span>
+            {v.subtitulo && (
+              <span style={{ fontSize: '12px', color: V.tenue }}>{v.subtitulo}</span>
+            )}
             {v.cuenta !== null && (
               <span
                 className="font-mono tabular-nums"

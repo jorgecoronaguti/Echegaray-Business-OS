@@ -50,28 +50,23 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
-  ENTIDADES, getCarpetasRaiz, getConteoEntidades, getDocumento, getDocumentos,
+  ENTIDADES, getCarpetasRaiz, getDocumento, getDocumentos,
   getResumenVencimientos, PAGINAS_MAX, TOPE,
 } from '@/features/documentos/services/documentosService'
 import { CATEGORIAS } from '@/features/documentos/services/categorias'
 import { TablaDocumentos } from '@/features/documentos/components/TablaDocumentos'
 import { PanelDocumento } from '@/features/documentos/components/PanelDocumento'
-import { BandaVencimientos } from '@/features/documentos/components/BandaVencimientos'
-import { FiltrosURL } from '@/features/administracion/components/Controles'
-import { Aviso, Ayuda, BuscadorURL } from '@/shared/components/ds'
+import { senalesDeDocumentos, silencioDeVencimientos } from '@/features/documentos/services/senalesDocumentos'
+import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { C, CuentaChip, FranjaCartera, PAGINA } from '@/shared/components/canon'
+import { IconoFecha } from '@/shared/components/iconos'
+import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
+import { NotaBloque, V } from '@/shared/components/v2/patron'
 
 export const dynamic = 'force-dynamic'
-
-/** Los tipos que el indexador escribe en `drive_index.tipo`. Son los suyos, no una taxonomía nueva. */
-const TIPOS = [
-  { valor: 'pdf', etiqueta: 'PDF' },
-  { valor: 'planilla', etiqueta: 'Planillas' },
-  { valor: 'documento', etiqueta: 'Documentos' },
-  { valor: 'imagen', etiqueta: 'Imágenes' },
-] as const
 
 // `cat` es la categoría derivada (`categorias.ts`), `vence` el recorte de la banda de alertas y
 // `pv` el visor embebido. LOS TRES VIVEN EN LA URL, no en estado de cliente: así la pantalla sigue
@@ -124,14 +119,13 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   // mano es una consulta de 3.599 filas con todos sus vínculos que cualquiera puede pedir.
   const paginas = Math.min(Math.max(1, Number.parseInt(sp.n ?? '1', 10) || 1), PAGINAS_MAX)
 
-  const [catalogo, carpetas, vencimientos, porEntidad] = await Promise.all([
+  const [catalogo, carpetas, vencimientos] = await Promise.all([
     getDocumentos(supabase, {
       q: sp.q, carpeta: sp.carpeta, tipo: sp.tipo, categoria: sp.cat, vence: sp.vence,
       entidad: sp.ent, hoy, paginas,
     }),
     getCarpetasRaiz(supabase),
     getResumenVencimientos(supabase, hoy),
-    getConteoEntidades(supabase),
   ])
   if (catalogo.error) return <EstadoError mensaje={catalogo.error} que="el archivo de documentos" />
 
@@ -142,133 +136,114 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   const abierto = sp.d ? await getDocumento(supabase, sp.d) : null
   const filtrando = Boolean(sp.q || sp.carpeta || sp.tipo || sp.cat || sp.vence || sp.ent)
 
+  const senales = senalesDeDocumentos(vencimientos.data, {
+    vencidos: filtrar(sp, { vence: 'vencido' }),
+    esteMes: filtrar(sp, { vence: 'mes' }),
+  })
+
   return (
-    // SIN `PageShell` (porte 24/08, canónico 27): el shell dibuja un `h1` de 22px y padding 16/24px;
-    // el canon dibuja el título de 19px en la misma línea que el subtítulo, el buscador y la acción,
-    // y padding de 20px. `SelloDatoBueno` venía del shell y se conserva.
-    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+    // SIN `PageShell` ni `FranjaCartera` (porte 27 v2): el shell dibuja un `h1` de 22px y padding
+    // 16/24px; el v2 dibuja el título de 19px con su subtítulo al lado, el buscador de filo, y la
+    // lista a 20px del borde sin caja. `SelloDatoBueno` venía del shell y se conserva: sin él,
+    // `error.tsx` pierde la hora del último dato bueno.
+    <div style={{ minHeight: '100vh', background: V.fondo, display: 'flex', flexDirection: 'column' }}>
       <SelloDatoBueno />
 
-      {/* El subtítulo va AL LADO del título y en 12px, como el canónico (`27:57`). Dice «de obras,
-          personas y clientes» y no «y proveedores»: no existe ninguna tabla que vincule un archivo
-          con un proveedor, y nombrarlos acá prometería un filtro que abajo no está. */}
-      <FranjaCartera
-        titulo="Documentos"
-        subtitulo="de obras, personas y clientes"
-        testid="franja-documentos"
-        accion={
-          <BuscadorURL
-            accion="/documentos"
-            q={sp.q}
-            placeholder="Buscar en todo"
-            oculto={{ carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence, ent: sp.ent }}
-            ancho="w-[236px] max-w-full"
-            variante="caja"
-            testid="buscar-documento"
-          />
-        }
+      {/* EL INTERLINEADO DEL MOCKUP, DECLARADO UNA VEZ. Ver `patron.tsx · CAJA_CONTENIDO`. */}
+      <div style={{ lineHeight: 'normal' }}>
+      {/* ═══ CRITERIO 1: LA PRIMERA LÍNEA ES TRABAJO ═══
+
+          Reemplaza a `BandaVencimientos`, que decía lo mismo con tres formas distintas según el
+          estado. Lo que se conservó entero es su argumento: con CERO fechas cargadas no se escribe
+          «0 vencidos» —eso se lee «está todo en orden» y sería falso—, se dice que el control no
+          está cargado y dónde se carga. Y un error de lectura dibuja las señales SIN cifra. */}
+      <TrabajoDeSeccion
+        senales={senales}
+        icono={IconoFecha}
+        vacio={silencioDeVencimientos(vencimientos.data)}
+        testid="banda-vencimientos"
+      />
+
+      <CabeceraSeccion
+        testid="vistas-documentos"
+        espacioPanel={Boolean(sp.d)}
+        vistas={[{
+          clave: 'documentos',
+          titulo: 'Documentos',
+          // «de obras, personas y clientes» y NO «y proveedores»: no existe ninguna tabla que
+          // vincule un archivo con un proveedor, y nombrarlos prometería un filtro que no está.
+          subtitulo: 'de obras, personas y clientes',
+          cuenta: null,
+          activa: true,
+          href: '/documentos',
+        }]}
+        buscador={{
+          accion: '/documentos',
+          q: sp.q,
+          placeholder: 'Buscar en todo',
+          oculto: { carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence, ent: sp.ent },
+          testid: 'buscar-documento',
+        }}
       />
 
       {carpetas.error && (
-        <div style={{ padding: '0 20px 12px' }}>
+        <div style={{ padding: '12px 20px 0' }}>
           <Aviso tono="warn" titulo="No pude leer las carpetas del índice">{carpetas.error}</Aviso>
         </div>
       )}
 
-      <div style={{ padding: '0 20px 12px' }}>
-      <BandaVencimientos
-        resumen={vencimientos.data}
-        error={vencimientos.error}
-        hrefVencidos={filtrar(sp, { vence: 'vencido' })}
-        hrefEsteMes={filtrar(sp, { vence: 'mes' })}
-        hrefTodo={filtrar(sp, { vence: undefined })}
-        recorte={sp.vence}
-      />
-      </div>
-
-      {/* ═══ DE QUIÉN CUELGA EL ARCHIVO — el filtro de cabecera del canónico 27 ═══
-
-          Va PRIMERO y en su propia línea porque es el que ordena la pregunta real: quien busca un
-          papel sabe de quién es antes que en qué carpeta está. Se resuelve en Postgres contra la
-          tabla de vínculo (ver `idsDeEntidad`), no descartando filas ya traídas.
-
-          NO HAY «DE PROVEEDORES», y no es un olvido: el canónico lo dibuja, pero en la base NO
-          EXISTE ninguna tabla que vincule un archivo con un proveedor —hay `obra_documento` (32),
-          `cliente_documento` (214) y `documentacion_legajo` (847), y nada más—. Un chip que
-          devolviera siempre cero enseñaría que el proveedor no tiene papeles, que es falso: los
-          tiene, sin vincular. */}
-      <div style={PAGINA.atencion}>
-        <FiltrosURL
-          testid="filtro-entidad"
-          opciones={[
-            { label: 'Todo', href: filtrar(sp, { ent: undefined }), activo: !sp.ent, testid: 'filtro-entidad-todo' },
-            ...ENTIDADES.map((e) => ({
-              label: (
-                <span className="inline-flex items-center gap-[5px]">
-                  {ROTULO_ENTIDAD[e]}
-                  {/* Sin número cuando la lectura del vínculo falló: un `0` ahí diría «no hay
-                      ninguno», que es lo contrario de «no lo pude contar». */}
-                  {porEntidad[e] !== null && <CuentaChip n={porEntidad[e]} activo={sp.ent === e} />}
-                </span>
-              ),
-              href: filtrar(sp, { ent: e }),
-              activo: sp.ent === e,
-              testid: `filtro-entidad-${e}`,
-            })),
-          ]}
-        />
-      </div>
-
-      <div style={PAGINA.atencion}>
-        <FiltrosURL
-          testid="filtro-carpeta"
-          opciones={[
-            { label: 'Todo', href: filtrar(sp, { carpeta: undefined }), activo: !sp.carpeta, testid: 'filtro-carpeta-todo' },
-            ...(carpetas.data ?? []).map((c) => ({
-              label: c.name,
-              href: filtrar(sp, { carpeta: c.path }),
-              activo: sp.carpeta === c.path,
-              testid: `filtro-carpeta-${c.path}`,
-            })),
-          ]}
-        />
-        <FiltrosURL
-          testid="filtro-tipo"
-          opciones={[
-            { label: 'Todos', href: filtrar(sp, { tipo: undefined }), activo: !sp.tipo, testid: 'filtro-tipo-todos' },
-            ...TIPOS.map((t) => ({
-              label: t.etiqueta,
-              href: filtrar(sp, { tipo: t.valor }),
-              activo: sp.tipo === t.valor,
-              testid: `filtro-tipo-${t.valor}`,
-            })),
-          ]}
-        />
-      </div>
-
-      {/* LAS CATEGORÍAS VAN EN SU PROPIA LÍNEA porque no son un filtro más: el de carpeta y el de
-          tipo dicen dónde vive el archivo y qué formato tiene; éste dice QUÉ ES. La taxonomía se
-          deriva de la ruta y del nombre —`categorias.ts` explica con qué reglas y qué NO puede— y
-          cada fila muestra la categoría que le tocó, para que el filtro se pueda auditar mirando
-          lo que devolvió. */}
-      <div style={PAGINA.atencion}>
-        <FiltrosURL
-          testid="filtro-categoria"
-          opciones={[
-            { label: 'Todas', href: filtrar(sp, { cat: undefined }), activo: !sp.cat, testid: 'filtro-categoria-todas' },
-            ...CATEGORIAS.map((c) => ({
-              label: c.etiqueta,
-              href: filtrar(sp, { cat: c.clave }),
-              activo: sp.cat === c.clave,
-              testid: `filtro-categoria-${c.clave}`,
-            })),
-            { label: 'Otros', href: filtrar(sp, { cat: 'otros' }), activo: sp.cat === 'otros', testid: 'filtro-categoria-otros' },
-          ]}
-        />
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start" style={{ padding: '0 20px 20px' }}>
+      <div style={{ padding: '10px 20px 24px' }}>
+        <div className="flex flex-col lg:flex-row lg:items-stretch">
         <div className="min-w-0 flex-1">
+          {/* ═══ DOS GRUPOS DE FILTRO EN UNA LÍNEA, CADA UNO CON SU RÓTULO (`27v2:78-98`) ═══
+
+              DE QUIÉN ordena la pregunta real —quien busca un papel sabe de quién es antes que en
+              qué carpeta está— y se resuelve en Postgres contra la tabla de vínculo (`idsDeEntidad`),
+              no descartando filas ya traídas. QUÉ ES es la taxonomía derivada de la ruta y del
+              nombre (`categorias.ts`), y cada fila muestra la que le tocó para poder auditarla.
+
+              NO HAY «DE PROVEEDORES», y no es un olvido: en la base NO EXISTE ninguna tabla que
+              vincule un archivo con un proveedor —hay `obra_documento` (32), `cliente_documento`
+              (214) y `documentacion_legajo` (847), y nada más—. Un chip que devolviera siempre cero
+              enseñaría que el proveedor no tiene papeles, que es falso: los tiene, sin vincular.
+
+              SE FUERON LOS CHIPS DE CARPETA Y DE FORMATO. El v2 no los dibuja: la carpeta es una
+              COLUMNA de la tabla —se lee, no se filtra— y el formato ya lo dice el icono de cada
+              fila. Los dos parámetros siguen funcionando por URL, así que ningún enlace guardado se
+              rompe; lo que se retiró son dos filas de pastillas que empujaban la primera fila del
+              archivo fuera de la pantalla. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2" style={{ marginBottom: 8 }}>
+            <RotuloGrupo>De quién</RotuloGrupo>
+            <FiltrosSuaves
+              testid="filtro-entidad"
+              conteo={{ n: documentos.length, total }}
+              opciones={[
+                { clave: 'todo', etiqueta: 'Todo', href: filtrar(sp, { ent: undefined }), activo: !sp.ent },
+                ...ENTIDADES.map((e) => ({
+                  clave: e,
+                  etiqueta: ROTULO_ENTIDAD[e],
+                  href: filtrar(sp, { ent: e }),
+                  activo: sp.ent === e,
+                })),
+              ]}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2" style={{ marginBottom: 8 }}>
+            <RotuloGrupo>Qué es</RotuloGrupo>
+            <FiltrosSuaves
+              testid="filtro-categoria"
+              conteo={{ n: documentos.length, total }}
+              opciones={[
+                { clave: 'todas', etiqueta: 'Todas', href: filtrar(sp, { cat: undefined }), activo: !sp.cat },
+                ...CATEGORIAS.map((c) => ({
+                  clave: c.clave, etiqueta: c.etiqueta,
+                  href: filtrar(sp, { cat: c.clave }), activo: sp.cat === c.clave,
+                })),
+                { clave: 'otros', etiqueta: 'Otros', href: filtrar(sp, { cat: 'otros' }), activo: sp.cat === 'otros' },
+              ]}
+            />
+          </div>
+
           <TablaDocumentos
             documentos={documentos}
             seleccionado={sp.d}
@@ -318,15 +293,17 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
               </span>
             )}
           </div>
-          <Ayuda titulo="De dónde salen estos documentos" testid="ayuda-documentos">
-            Los archivos no se copian ni se suben desde acá: se cargan en Drive y el indexador los
-            trae al índice en la corrida siguiente.
-          </Ayuda>
+          <NotaBloque testid="nota-documentos">
+            Los archivos no se suben desde acá: se cargan en Drive —o entran por el bot de
+            comprobantes— y el indexador los trae en la corrida siguiente. No hay filtro «de
+            proveedores» porque no existe ninguna tabla que vincule un archivo con un proveedor:
+            tienen papeles, sin vincular.
+          </NotaBloque>
         </div>
 
         {sp.d && (
           abierto?.error ? (
-            <div className="w-full lg:w-[360px]">
+            <div className="w-full lg:ml-6 lg:w-[360px]">
               <Aviso tono="neg" titulo="No pude abrir ese documento">{abierto.error}</Aviso>
             </div>
           ) : abierto?.data ? (
@@ -337,14 +314,25 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
               previewAbierto={sp.pv === '1'}
             />
           ) : (
-            <div className="w-full lg:w-[360px]">
+            <div className="w-full lg:ml-6 lg:w-[360px]">
               <Aviso tono="warn" titulo="Ese documento no está en el índice">
                 Puede haberse borrado de Drive, o todavía no lo alcanzó la indexación.
               </Aviso>
             </div>
           )
         )}
+        </div>
+      </div>
       </div>
     </div>
+  )
+}
+
+/** El rótulo de un grupo de filtros: 10px, versalitas, más apagado que el de una columna. `27v2:81`. */
+function RotuloGrupo({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.06em', color: V.lupa }}>
+      {children}
+    </span>
   )
 }
