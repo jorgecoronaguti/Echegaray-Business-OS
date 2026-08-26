@@ -59,7 +59,13 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
 
   // Si esto se desploma, la regla dejó de mirar lo que debe mirar (componentes movidos o
   // renombrados) y se estaría poniendo verde por vacía.
-  assert.ok(archivos.length >= 10, `esperaba las tablas del canon, encontré ${archivos.length}`)
+  //
+  // EL PISO BAJA A MEDIDA QUE AVANZA EL PORTE v2, y eso es lo esperado: la cartera de Clientes fue
+  // la primera en salir del canon (25/08/2026). Las tablas del v2 NO llevan caja de scroll porque
+  // resuelven el teléfono de otra manera —una media query que SUELTA columnas secundarias por
+  // debajo de 1250px y nunca estrangula el nombre—, así que no entran en esta regla. Bajar el piso
+  // de a uno por cada porte es deliberado: si se desploma de golpe, algo se rompió.
+  assert.ok(archivos.length >= 9, `esperaba las tablas del canon, encontré ${archivos.length}`)
 
   let cajas = 0
   for (const { ruta, src } of archivos) {
@@ -81,7 +87,7 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
       )
     }
   }
-  assert.ok(cajas >= 10, `esperaba ≥10 cajas del canon, miré ${cajas}`)
+  assert.ok(cajas >= 9, `esperaba ≥9 cajas del canon, miré ${cajas}`)
 })
 
 test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso', () => {

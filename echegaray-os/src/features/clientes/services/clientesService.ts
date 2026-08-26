@@ -52,47 +52,15 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
 }
 
 /**
- * QUÉ LE ESTAMOS EJECUTANDO A CADA CLIENTE — la columna «EN EJECUCIÓN» del canónico 25.
- *
- * `cliente_panel.n_obras_activas` dice CUÁNTAS, no CUÁLES, y el número solo no sirve para lo que la
- * columna contesta: «¿de qué me va a hablar si me llama?». Se resuelve con UNA lectura de
- * `obra_panel` para toda la cartera, no una por fila.
- *
- * `estado = 'activa'` y no `estado <> 'cerrada'`: MEDIDO el 24/08/2026 contra la base, la suma de
- * `n_obras_activas` (12) coincide exactamente con las obras en `activa`, no con las 13 que no están
- * cerradas —Quattropani tiene una `pausada` y el panel le cuenta 0—. Con el otro criterio, la
- * columna y el contador del filtro se contradirían en la misma fila.
- *
- * Un fallo NO tira la cartera: se devuelve el mapa vacío y la columna dice «sin cargar», que es lo
- * cierto, en vez de afirmar que el cliente no tiene nada en ejecución.
- */
-export async function getObrasEnEjecucion(
-  supabase: SupabaseClient,
-): Promise<Map<string, { obra_id: string; nombre: string }[]>> {
-  const { data } = await supabase
-    .from('obra_panel')
-    .select('obra_id, nombre, cliente_id')
-    .eq('estado', 'activa')
-    .order('orden', { ascending: true })
-    .order('nombre', { ascending: true })
-  const por = new Map<string, { obra_id: string; nombre: string }[]>()
-  for (const o of data ?? []) {
-    const cliente = o.cliente_id as string | null
-    if (!cliente) continue
-    por.set(cliente, [...(por.get(cliente) ?? []), { obra_id: o.obra_id as string, nombre: o.nombre as string }])
-  }
-  return por
-}
-
-/**
  * TODAS las obras de TODOS los clientes, en UNA consulta, para el panel lateral del canónico 00.
  *
  * El panel se abre al tocar una fila y tiene que dibujarse SIN VIAJE: con `?cliente=` cada fila que
  * alguien toca comparando dos clientes cuesta un round-trip y un esqueleto. Con una sola consulta
  * más —la misma vista que ya lee la lista, sin filtro de estado— la selección es instantánea.
  *
- * Distinto de `getObrasEnEjecucion`, que trae SÓLO `activa` porque alimenta la columna EN EJECUCIÓN.
- * Acá entran también las terminadas: el panel muestra la relación completa con ese cliente.
+ * Entran también las terminadas: el panel muestra la relación COMPLETA con ese cliente. Las que
+ * están en ejecución las trae `homeCartera.getObrasDeLaCartera`, que es la única definición de «en
+ * ejecución» del OS desde que la cartera del 25 v2 y la de la entrada dibujan las mismas filas.
  *
  * Un fallo devuelve el mapa vacío y el panel dice «sin obras cargadas» — nunca inventa cero.
  */

@@ -629,14 +629,18 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     // una GRILLA con `role="row"`, porque el canónico fija los anchos de columna en px mezclados con
     // fracciones y una `<table>` los reparte por contenido.
     await expect(page.getByTestId('fila-cliente')).toHaveCount(1)
+    // El buscador del v2 deja el filtro en la URL: se comparte por chat y el botón de atrás lo
+    // deshace. Antes filtraba sólo en el navegador y la dirección no decía qué se estaba mirando.
+    await expect(page).toHaveURL(/[?&]q=/)
     await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
     await page.getByTestId('buscar-cliente').fill('')
 
     const fila = page.getByTestId('fila-cliente').filter({ hasText: nombre })
     await expect(fila).not.toContainText(nombreResponsable)
     // Lo único que la fila lleva además del nombre es el conteo de obras: este cliente no tiene
-    // ninguna, y por eso el guion.
-    await expect(fila).toContainText('—')
+    // ninguna, y el v2 lo escribe con palabras. «0 obras» y «nadie le cargó ninguna» se leen igual
+    // y son cosas distintas.
+    await expect(fila).toContainText('sin obras')
 
     // ── UN EMAIL MAL ESCRITO NO LLEGA A LA BASE ────────────────────────────
     //

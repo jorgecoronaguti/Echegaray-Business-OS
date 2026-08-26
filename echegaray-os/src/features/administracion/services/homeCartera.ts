@@ -34,7 +34,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClientePanel } from '@/features/clientes/types'
-import { avisoDeDatos } from '../../clientes/services/cartera.ts'
+import { avisoDeDatos, faltaUnDatoQueFrena } from '../../clientes/services/cartera.ts'
 
 /** Una obra `activa`, tal como la lee la cartera. Es un subconjunto de `obra_panel`. */
 export interface ObraDeCartera {
@@ -72,6 +72,15 @@ export interface ClienteEnCartera {
   aviso: string | null
   /** El texto corto del aviso, para la etiqueta de la fila. */
   avisoCorto: string | null
+  /**
+   * ¿LE FALTA ALGO QUE FRENA EL COBRO? Es el MISMO conjunto que el recorte «Datos faltantes» de la
+   * pantalla 25 (`faltaUnDatoQueFrena`): CUIT, teléfono o contrato. Se calcula acá, donde ya están
+   * las obras, para que el filo ámbar de la fila y el recorte no puedan discrepar.
+   *
+   * NO es lo mismo que `avisoCorto`, que sigue nombrando una sola cosa: una fila con tres etiquetas
+   * ámbar deja de señalar nada.
+   */
+  faltaUnDato: boolean
   obras: number
   contratado: number | null
   /** El hecho más reciente que el OS conoce de este cliente. `null` = ninguno. */
@@ -253,6 +262,7 @@ export function armarCartera({
       // La etiqueta corta de la fila; la frase entera va en el `title`. El mockup escribe «sin CUIT»
       // y «obra sin contrato» — las dos son ciertas y las dos frenan el cobro.
       avisoCorto: avisoDeDatos(c) ? 'sin CUIT' : sinContrato ? 'obra sin contrato' : null,
+      faltaUnDato: faltaUnDatoQueFrena(c),
       obras: c.n_obras,
       contratado: c.contratado,
       ultimoMovimiento,
