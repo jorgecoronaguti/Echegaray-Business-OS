@@ -27,7 +27,22 @@ export type LecturaDeRecibos = {
  */
 export async function recibosDelCliente(acceso: AccesoDelPortal): Promise<LecturaDeRecibos> {
   const sb = createAdminClient()
-  const { data, error } = await sb.from('recibo_cliente').select('*').eq('cliente_id', acceso.clienteId)
+  // ═══ SÓLO LOS RECIBOS QUE SON UN RECIBO (26/08/2026) ═══
+  //
+  // Los PDF de la carpeta de Drive llamados «Recibo 10», «Recibo 11»… se abrieron y NO son
+  // comprobantes: son el ESTADO DE CUENTA del cliente. Adentro hay veinte filas —«Pago 1 · LINEA B ·
+  // EFECTIVO · 25-jun · $15.000.000», «SALDO PENDIENTE $55.814.174,70»— que cruzan tres obras. No
+  // tienen un monto ni una fecha propios: tienen veinte de cada uno.
+  //
+  // Mostrarlos acá los dibujaba con importe y fecha vacíos en una pantalla de plata, que es la peor
+  // forma de decir «no sé»: parece un cobro sin registrar. Un documento sin importe no es una
+  // factura incompleta — es un DOCUMENTO, y ya está publicado como tal en la pantalla de Documentos,
+  // donde se ve y se descarga entero.
+  //
+  // El día que se emita un recibo de verdad —o que administración cargue su número en la línea del
+  // pago— entra por acá solo, sin tocar una línea: la costura ya está hecha y probada.
+  const { data, error } = await sb.from('recibo_cliente').select('*')
+    .eq('cliente_id', acceso.clienteId).not('monto', 'is', null)
   if (error) return { recibos: [], noSePudoLeer: true }
 
   const filas = (data ?? []) as unknown as FilaRecibo[]

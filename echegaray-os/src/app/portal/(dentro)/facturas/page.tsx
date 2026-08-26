@@ -165,6 +165,12 @@ export default async function Facturas() {
       ) : null}
 
       {/* UN CERO POR ERROR DE LECTURA Y UN CERO REAL SE VEN IGUAL SI NO SE DICE. */}
+      {/* LOS ESTADOS DE CUENTA NO SE PIERDEN: se dice dónde están. Sacarlos de acá sin decirlo haría
+          creer que se borraron. */}
+      <p className="mt-2 text-[12.5px] text-faint">
+        Los estados de cuenta y los papeles de cada obra están en Documentos.
+      </p>
+
       {noSePudoLeer ? (
         <p className="mt-3 text-[12.5px] text-warn">
           No pudimos leer los recibos en este momento — lo que ves arriba puede estar incompleto.
