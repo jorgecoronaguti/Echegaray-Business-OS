@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
@@ -5,6 +6,8 @@ import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
 import { estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
+import { grillaDelMes } from '@/features/clientes/services/reglasEsquema'
+import { Calendario } from './Calendario'
 
 // PAGOS — UN SOLO LISTADO, ordenado por fecha. El mismo que ve administración en la ficha.
 //
@@ -28,7 +31,8 @@ import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Pagos() {
+export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string }> }) {
+  const q = await searchParams
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
   const acceso = await accesoDelPortal(sesion)
@@ -39,6 +43,12 @@ export default async function Pagos() {
   const montos = acceso.puedeVerMontos
   const total = resumenDeCobro(pagos, contratoDelConjunto(bloques, contratos), hoy)
   const proximo = proximoPago(pagos)
+  const enCalendario = q.vista === 'calendario'
+  // EL MES QUE ABRE: el del próximo pago, y si no queda ninguno, el de hoy. Abrir siempre en el mes
+  // corriente le mostraría un calendario vacío a quien tiene todo por delante o todo pagado.
+  const mes = /^\d{4}-\d{2}$/.test(q.mes ?? '')
+    ? q.mes as string
+    : (proximo?.fechaPrevista ?? hoy).slice(0, 7)
 
   // POR FECHA, que es como se lee un cronograma. Lo que no tiene fecha —el fondo de reparo, un pago
   // todavía sin programar— va al final: es lo único que no se puede ubicar en el tiempo.
@@ -63,8 +73,25 @@ export default async function Pagos() {
 
       {!montos ? <p className="mt-4 text-[13.5px] text-muted">{loQueSiPuedeVer(acceso)}</p> : null}
 
+      {/* LISTADO · CALENDARIO — el mismo interruptor de la pantalla 32. Son dos preguntas distintas:
+          el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
+      {pagos.length ? (
+        <div className="mt-4 flex items-center gap-1 self-start rounded-[8px] border border-line p-[3px]">
+          <Solapa a="/portal/pagos" activa={!enCalendario}>Listado</Solapa>
+          <Solapa a={`/portal/pagos?vista=calendario&mes=${mes}`} activa={enCalendario}>Calendario</Solapa>
+        </div>
+      ) : null}
+
       {pagos.length === 0 ? (
         <div className="mt-6"><Vacio>Todavía no publicamos el plan de pagos.</Vacio></div>
+      ) : enCalendario ? (
+        <Calendario
+          pagos={pagos}
+          mes={mes}
+          semanas={grillaDelMes(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)))}
+          hoy={hoy}
+          montos={montos}
+        />
       ) : (
         <>
           <div className="mt-5">
@@ -116,6 +143,21 @@ export default async function Pagos() {
         </>
       )}
     </>
+  )
+}
+
+function Solapa({ a, activa, children }: { a: string; activa: boolean; children: string }) {
+  return (
+    <Link
+      href={a}
+      aria-current={activa ? 'page' : undefined}
+      className={
+        'flex min-h-9 items-center rounded-[6px] px-3 text-[12.5px] ' +
+        (activa ? 'bg-marca font-semibold text-ink' : 'text-muted hover:text-ink')
+      }
+    >
+      {children}
+    </Link>
   )
 }
 
