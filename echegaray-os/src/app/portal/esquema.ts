@@ -31,6 +31,8 @@ export interface FilaEsquema {
   obra_id: string | null
   concepto: string
   fecha: string | null
+  neto?: string | number | null
+  iva?: string | number | null
   monto: number | string | null
   reparo: number | string | null
   estado: string
@@ -106,6 +108,10 @@ export function aPagoDelPortal(f: FilaEsquema, obraNombre: string): PagoConObra 
     tipo: tipoDelPago(f),
     rotulo: f.concepto,
     monto: aNumero(f.monto),
+    // El cliente factura con IVA discriminado: un único importe no le sirve para conciliar contra su
+    // propia contabilidad. Se publican los tres y la pantalla los muestra juntos.
+    neto: aNumero(f.neto),
+    iva: aNumero(f.iva),
     // Sin la columna `moneda` (migración sin aplicar) se asume ARS, que es su default declarado.
     moneda: f.moneda === 'USD' ? 'USD' : 'ARS',
     // `esquema_pago` guarda UNA fecha: la del pago. Cuando está cobrado ES la fecha en que se pagó,
@@ -156,7 +162,9 @@ export function pagosDelEsquema(
  * la pantalla que lo recibe no imprime ningún número.
  */
 export const sinImportes = (pagos: PagoConObra[]): PagoConObra[] =>
-  pagos.map((p) => ({ ...p, monto: null }))
+  // NETO E IVA TAMBIÉN SON PLATA. Retirar sólo el total dejaba el importe publicado en la columna de
+  // al lado a un contacto que justamente no puede verlo.
+  pagos.map((p) => ({ ...p, monto: null, neto: null, iva: null }))
 
 export interface BloqueDeObra {
   /** `null` = las filas que el esquema dejó sin obra. */

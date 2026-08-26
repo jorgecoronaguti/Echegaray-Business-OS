@@ -94,7 +94,21 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         />
       ) : (
         <>
-          <div className="mt-5">
+          {/* EL ENCABEZADO EXISTE PORQUE AHORA HAY TRES NÚMEROS EN LA FILA. Con uno solo se entendía
+              sin rótulo; con tres, sin encabezado hay que adivinar cuál es cuál. */}
+          {montos ? (
+            <div className="mt-5 hidden items-center gap-3 border-b border-line pb-1.5 text-[10.5px] tracking-[.08em] text-faint lg:flex">
+              <span className="w-[19px]" />
+              <span className="flex-1 basis-[38%]">CONCEPTO</span>
+              <span className="w-[74px]">FECHA</span>
+              <span className="w-[112px] text-right">NETO</span>
+              <span className="w-[96px] text-right">IVA</span>
+              <span className="w-[118px] text-right">TOTAL</span>
+              <span className="w-[112px]" />
+            </div>
+          ) : null}
+
+          <div className="mt-5 lg:mt-0">
             {enOrden.map((p) => {
               const estado = estadoDePago(p, hoy)
               const esProximo = p.id === proximo?.id
@@ -112,8 +126,19 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                   <span className="tnum w-[74px] font-mono text-[13px] text-muted">
                     {p.tipo === 'fondo_reparo' && !p.fechaPrevista ? 'al final' : diaMes(p.fechaPrevista)}
                   </span>
+                  {/* NETO · IVA · TOTAL. El cliente factura con IVA discriminado y un solo importe no
+                      le sirve para conciliar contra su contabilidad. En pantalla angosta el neto y el
+                      IVA se ocultan —el total es lo que no puede faltar— y siguen en el detalle. */}
                   {montos ? (
-                    <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                    <>
+                      <span className="tnum hidden w-[112px] text-right font-mono text-[13px] text-muted lg:block">
+                        {pesos(p.neto, p.moneda)}
+                      </span>
+                      <span className="tnum hidden w-[96px] text-right font-mono text-[13px] text-muted lg:block">
+                        {pesos(p.iva, p.moneda)}
+                      </span>
+                      <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
+                    </>
                   ) : null}
                   {/* Una factura pagada muestra su RECIBO: es el comprobante que le sirve al cliente. */}
                   <span className={`w-[112px] text-right text-[12.5px] ${esProximo ? 'font-semibold text-ink' : TINTA[estado]}`}>
@@ -129,7 +154,16 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             <>
               <div className="mt-6 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
                 <Total rotulo="Contrato" monto={total.contrato} />
-                <Total rotulo="Pagado" monto={total.hayPlan ? total.pagado : null} />
+                {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
+                    compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
+                    van en letra chica debajo y no como dos columnas más. */}
+                <div>
+                  <p className="text-[11px] tracking-[.09em] text-faint">PAGADO</p>
+                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
+                  <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
+                    neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
+                  </p>
+                </div>
                 <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
                 <Total rotulo="Falta certificar" monto={total.faltaCertificar} />
               </div>

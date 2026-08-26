@@ -157,7 +157,15 @@ function lineaDeFila(valores, formulas, nroFila) {
   const ordenCompra = sinCategoriaContable(v?.[7])
   const { tipo, rotulo } = clasificar(concepto, ordenCompra)
   const total = monto(v?.[12])
-  const usd = montoUsdPorTipoDeCambio({ formulaNeto: f?.[9], neto: monto(v?.[9]), total })
+  const netoCrudo = monto(v?.[9])
+  // EL IVA VACÍO ES CERO, NO «NO SE SABE». Una fila en efectivo sin factura no lleva IVA, y esa celda
+  // vacía lo dice. La distinción importa: el portal escribe «$ 0» donde hay un cero y «sin cargar»
+  // donde no hay dato — y acá el dato existe, vale cero.
+  const ivaCrudo = String(v?.[10] ?? '').trim() === '' ? 0 : (monto(v?.[10]) ?? 0)
+  const usd = montoUsdPorTipoDeCambio({ formulaNeto: f?.[9], neto: netoCrudo, total })
+  // En dólares el total viene convertido; neto e IVA se convierten con el MISMO tipo de cambio
+  // implícito (total ÷ usd), para que las tres cifras sigan cerrando entre sí.
+  const aUsd = (x) => (usd == null || !total || x == null ? x : Math.round((x * usd / total) * 100) / 100)
   const cobrado = String(v?.[14] ?? '').trim().toLowerCase() === 'cobrado'
   return {
     fila: nroFila,
@@ -165,6 +173,8 @@ function lineaDeFila(valores, formulas, nroFila) {
     conceptoCrudo: String(v?.[8] ?? '').trim(),
     concepto, ordenCompra, tipo, rotulo,
     monto: usd ?? total,
+    neto: usd != null ? aUsd(netoCrudo) : netoCrudo,
+    iva: usd != null ? aUsd(ivaCrudo) : ivaCrudo,
     moneda: usd != null ? 'USD' : (String(v?.[26] ?? '').trim().toUpperCase() === 'USD' ? 'USD' : 'ARS'),
     factura: v?.[4] ? `${v?.[3] ?? ''} ${v?.[4]}`.trim() : null,
     prevista: fecha(v?.[16]),
@@ -243,6 +253,11 @@ function lineasDeObra(filas, nombreObra) {
     const p = partes[0]
     lineas.push({
       tipo: p.tipo, rotulo: depurarRotulo(p.rotulo, nombreObra), monto: sumado.monto, moneda: sumado.moneda,
+      // Neto e IVA se suman igual que el total: una certificación partida en dos filas del Sheet es
+      // UN cobro con un neto y un IVA. `null` si a alguna parte le falta — sumar lo que hay daría un
+      // neto más chico que el real con cara de dato cierto.
+      neto: partes.some((x) => x.neto == null) ? null : partes.reduce((a, x) => a + x.neto, 0),
+      iva: partes.some((x) => x.iva == null) ? null : partes.reduce((a, x) => a + x.iva, 0),
       prevista: p.prevista, factura: partes.map((x) => x.factura).find(Boolean) ?? null,
       // PAGADO SÓLO SI TODAS LAS PARTES SE COBRARON: media certificación cobrada no es un cobro.
       pago: partes.every((x) => x.pago) ? p.pago : null,
@@ -303,13 +318,14 @@ async function escribir(obras, porObra) {
       await query(
         `insert into public.esquema_pago
            (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
-            nota_interna, origen, visible_portal, publicado_at, sincronizado_en)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas', true, now(), now())
+            nota_interna, neto, iva, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'sync_cobranzas', true, now(), now())
          on conflict (obra_id, orden) where origen = 'sync_cobranzas' do update set
            concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
            fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
-           nota_interna = excluded.nota_interna, sincronizado_en = now(), actualizado_at = now()`,
-        [o.cliente.id, o.id, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota])
+           nota_interna = excluded.nota_interna, neto = excluded.neto, iva = excluded.iva,
+           sincronizado_en = now(), actualizado_at = now()`,
+        [o.cliente.id, o.id, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva])
     }
     const { rowCount } = await query(
       `delete from public.esquema_pago where obra_id=$1 and orden>$2 and origen='sync_cobranzas'`, [o.id, orden])
@@ -341,13 +357,14 @@ async function escribirDelCliente(porCliente, todosLosClientes) {
       await query(
         `insert into public.esquema_pago
            (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
-            nota_interna, origen, visible_portal, publicado_at, sincronizado_en)
-         values ($1, null, $2,$3,$4,$5,$6,$7,$8,$9,'sync_cobranzas', true, now(), now())
+            nota_interna, neto, iva, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1, null, $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'sync_cobranzas', true, now(), now())
          on conflict (cliente_id, orden) where obra_id is null and origen = 'sync_cobranzas' do update set
            concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
            fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
-           nota_interna = excluded.nota_interna, sincronizado_en = now(), actualizado_at = now()`,
-        [clienteId, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota])
+           nota_interna = excluded.nota_interna, neto = excluded.neto, iva = excluded.iva,
+           sincronizado_en = now(), actualizado_at = now()`,
+        [clienteId, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota, l.neto, l.iva])
     }
     const { rowCount } = await query(
       `delete from public.esquema_pago
