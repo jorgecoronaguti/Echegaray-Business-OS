@@ -21,6 +21,23 @@ import { ALTO_V2, CAJA_CONTENIDO, FILO_BLOQUEA, V } from './patron'
 
 export type { SenalDeTrabajo }
 
+// ═══ EL BLOQUE ENTRA EN UN TELÉFONO SIN ESTRANGULAR LO QUE IDENTIFICA LA FILA (26/08/2026) ═══
+//
+// Medido a 390x844 en `/clientes` y `/administracion/personas`: 44 + 200 de columnas fijas más 42
+// de `gap` dejaban 64px para las DOS fraccionales, y la fila decía «5 · c. · Sin … · Completar».
+// «qué falta» reducido a dos letras no es una fila corta: es una fila que no dice nada.
+//
+// Se suelta en el mismo orden que el libro de trabajo de la entrada: «qué bloquea» —la
+// justificación— antes que la cifra, el texto o el verbo, que son con lo que se decide. La fila
+// sigue enlazando al lugar donde se resuelve.
+const COLS
+  = 'grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px]'
+  + ' max-[1249px]:grid-cols-[44px_minmax(0,1.2fr)_minmax(0,1fr)_150px]'
+  + ' max-[767px]:grid-cols-[36px_minmax(0,1fr)_120px]'
+
+/** «Qué bloquea»: en 350px no entran tres columnas de texto sin estrangular las otras dos. */
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
+
 /** El componente de icono: la misma firma que todo el §11. */
 type Icono = (p: { className?: string }) => React.ReactElement
 
@@ -69,7 +86,7 @@ export function TrabajoDeSeccion({ senales, icono, iconos, vacio, testid = 'lo-q
                   </span>
                   <span className="truncate" style={{ fontSize: '12.5px', color: V.tinta }}>{s.texto}</span>
                 </span>
-                <span className="truncate" style={{ fontSize: '12px', color: V.apagado }}>{s.bloquea}</span>
+                <span className={`truncate ${SUELTA_TELEFONO}`} style={{ fontSize: '12px', color: V.apagado }}>{s.bloquea}</span>
                 {/* SIN VERBO NO HAY FLECHA. Una fila que informa y una que resuelve tienen que
                     verse distinto antes del clic, no después. */}
                 <span
@@ -82,7 +99,7 @@ export function TrabajoDeSeccion({ senales, icono, iconos, vacio, testid = 'lo-q
                 </span>
               </>
             )
-            const clases = `grid items-center gap-[14px] ${CAJA_CONTENIDO} grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_200px]`
+            const clases = `grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS}`
             const estilo: React.CSSProperties = {
               height: ALTO_V2.trabajo,
               borderTop: `1px solid ${V.lineaFila}`,
