@@ -64,9 +64,13 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
         aria-label="Secciones"
         className={`hidden w-[88px] shrink-0 flex-col items-center gap-[5px] border-r border-line bg-surface py-4 md:flex${previa ? ' pt-12' : ''}`}
       >
-        <span className="mb-[14px] grid h-[26px] w-[26px] place-items-center rounded-[6px] bg-marca text-[11px] font-semibold text-ink">
-          E
-        </span>
+        {/* LA MARCA REAL, NO SU INICIAL. Era una «E» amarilla dibujada con texto: el cliente entra
+            a un portal de SU proveedor y lo primero que ve tiene que ser el logo de la empresa, no
+            un cuadradito. Es el mismo archivo oficial que usa el header del OS —una sola fuente de
+            marca— y va con `img` y no con `next/image`: son 24px de un PNG chico, y el optimizador
+            agrega un salto de red por nada (medido: 243 ms). */}
+        <img src="/marca/isotipo.png" alt="Echegaray Construcciones" width={26} height={26}
+          className="mb-[14px] h-[26px] w-[26px]" />
         {DESTINOS.map((d) => (
           <ItemLateral key={d.href} destino={d} activo={activo?.href === d.href} />
         ))}
@@ -82,6 +86,10 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── QUIÉN ES ─────────────────────────────────────────────────────────────────────── */}
         <header className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-[14px] py-[11px] md:px-[26px]${previa ? ' mt-9 md:mt-0' : ''}`}>
+          {/* EN EL TELÉFONO NO HAY BARRA LATERAL: el isotipo vive acá, o el portal no tendría marca
+              en ninguna parte de la pantalla más chica. */}
+          <img src="/marca/isotipo.png" alt="Echegaray Construcciones" width={22} height={22}
+            className="h-[22px] w-[22px] md:hidden" />
           <span className="min-h-[22px] text-[14px] font-semibold text-ink">{cliente}</span>
           <span className="text-[12.5px] text-faint">
             {obras === 0 ? 'sin obras' : obras === 1 ? '1 obra' : `${obras} obras`}

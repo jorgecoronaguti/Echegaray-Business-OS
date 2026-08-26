@@ -92,10 +92,11 @@ function Elegir({ mail, clientes }: { mail: string; clientes: { id: string; nomb
 function Cabecera() {
   return (
     <>
-      <span className="grid h-11 w-11 place-items-center rounded-[10px] bg-marca text-lg font-semibold text-ink">E</span>
-      <span className="mt-[14px] text-[11.5px] font-semibold tracking-[.05em] text-ink-soft">
-        ECHEGARAY CONSTRUCCIONES
-      </span>
+      {/* EL LOGO COMPLETO, no el isotipo: la puerta es donde hay lugar y donde más importa que se
+          reconozca de quién es la pantalla. El nombre escrito debajo se retira — el logo YA lo dice,
+          y repetirlo pone dos marcas donde hay una. */}
+      <img src="/marca/logo.png" alt="Echegaray Construcciones" width={196} height={44}
+        className="h-auto w-[196px] max-w-full" />
       <h1 className="mt-[26px] text-[28px] font-semibold tracking-[-.02em]">Ingresá</h1>
     </>
   )
