@@ -34,7 +34,7 @@ import { Aviso } from '@/shared/components/ds'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { ClientePanel, Responsable } from '../types'
 import { CamposCliente } from './CamposCliente'
-import { oFalta, Propiedad } from './Bloque'
+import { oFalta, Propiedad } from './Propiedad'
 
 export function BloqueInformacion({
   cliente, responsables, editar, vincularCarpeta, archivar, puedeEditar = true, edicionAbierta = false,

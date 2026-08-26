@@ -63,9 +63,12 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
   // EL PISO BAJA A MEDIDA QUE AVANZA EL PORTE v2, y eso es lo esperado: la cartera de Clientes fue
   // la primera en salir del canon (25/08/2026). Las tablas del v2 NO llevan caja de scroll porque
   // resuelven el teléfono de otra manera —una media query que SUELTA columnas secundarias por
-  // debajo de 1250px y nunca estrangula el nombre—, así que no entran en esta regla. Bajar el piso
-  // de a uno por cada porte es deliberado: si se desploma de golpe, algo se rompió.
-  assert.ok(archivos.length >= 7, `esperaba las tablas del canon, encontré ${archivos.length}`)
+  // debajo de 1250px y nunca estrangula el nombre—, así que no entran en esta regla.
+  //
+  // 26/08/2026 · el piso baja de 7 a 6: `21 · Cuadrillas` salió del canon con el porte de las
+  // pantallas de segundo nivel (su `ListaCanon` pasó a filas de 44px con `min-[1250px]:`). Bajarlo
+  // de a uno por cada porte es deliberado: si se desploma de golpe, la regla dejó de mirar.
+  assert.ok(archivos.length >= 6, `esperaba las tablas del canon, encontré ${archivos.length}`)
 
   let cajas = 0
   for (const { ruta, src } of archivos) {
@@ -87,7 +90,7 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
       )
     }
   }
-  assert.ok(cajas >= 7, `esperaba ≥7 cajas del canon, miré ${cajas}`)
+  assert.ok(cajas >= 6, `esperaba ≥6 cajas del canon, miré ${cajas}`)
 })
 
 test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso', () => {
@@ -116,10 +119,11 @@ test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso'
     }
   }
   // EL PISO BAJA CON CADA PANTALLA QUE SALE DEL CANON, y eso es lo esperado: `25 · Clientes`,
-  // `19 · Personal` y `27 · Documentos` ya están en el patrón v2, que resuelve el teléfono con una
-  // media query que SUELTA columnas en vez de con una caja que scrollea. Bajar el piso de a una por
-  // porte es deliberado; si se desploma de golpe, la regla dejó de mirar lo que debe mirar.
-  assert.ok(grillas >= 9, `esperaba ≥9 grillas canon declaradas, encontré ${grillas}`)
+  // `19 · Personal`, `27 · Documentos` y —desde el 26/08/2026— `21 · Cuadrillas`, `23 · Proveedor
+  // Ficha` y `26 · Cliente Ficha` ya están en el patrón v2, que resuelve el teléfono con una media
+  // query que SUELTA columnas en vez de con una caja que scrollea. Bajar el piso de a una por porte
+  // es deliberado; si se desploma de golpe, la regla dejó de mirar lo que debe mirar.
+  assert.ok(grillas >= 8, `esperaba ≥8 grillas canon declaradas, encontré ${grillas}`)
 })
 
 test('las DOS cajas del canon envuelven con scroll propio y ancho reservado', () => {

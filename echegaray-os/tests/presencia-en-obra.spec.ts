@@ -65,8 +65,10 @@ test('el jefe de obra ve quién está, desde qué hora y con el reloj corriendo'
   const minutos = Number(await activo.getByTestId('reloj-jornada').getAttribute('data-minutos'))
   expect(minutos).toBeLessThan(190)
 
-  // Y el que ya se fue no está entre los activos.
-  await expect(page.getByTestId('bloque-cerradas')).toContainText('ZZ-EMPLEADO Companero')
+  // Y el que ya se fue no está entre los activos. Desde el 19b v2 la jornada se agrupa POR OBRA y
+  // no por estado, así que el estado se afirma sobre la tarjeta de la persona.
+  const cerrada = page.getByTestId('fila-presencia').filter({ hasText: 'ZZ-EMPLEADO Companero' })
+  await expect(cerrada).toHaveAttribute('data-estado', 'cerrada')
 })
 
 test('LA UBICACIÓN QUE HAY SE MUESTRA, Y LA QUE NO HAY SE DICE — nunca se inventa', async ({ page }) => {
@@ -88,9 +90,11 @@ test('«sin registrar» NO se llama ausente, y lo dice la pantalla', async ({ pa
   // sería fabricar una novedad de liquidación con cara de dato.
   await entrarComo(page, ADMIN.email, ADMIN.password)
   await page.goto('/administracion/personas/en-obra')
-  const bloque = page.getByTestId('bloque-sin-registrar')
+  // El grupo se llama por el HECHO —«No fichó»— y no por la conclusión, y dice con todas las letras
+  // que no es una ausencia hasta que cierre la jornada.
+  const bloque = page.getByTestId('no-ficho')
   if (await bloque.count()) {
-    await expect(bloque).toContainText('No es una lista de ausentes')
+    await expect(bloque).toContainText('no es una ausencia hasta que cierre la jornada')
     await expect(bloque).not.toContainText('Ausente')
   }
 })

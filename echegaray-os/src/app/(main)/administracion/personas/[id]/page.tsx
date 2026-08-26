@@ -49,13 +49,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { BotonAccion, PageShell } from '@/shared/components/ui'
-import { Aviso, Vacio } from '@/shared/components/ds'
-import { Avatar } from '@/shared/components/Avatar'
+import { BotonAccion } from '@/shared/components/ui'
+import { Aviso } from '@/shared/components/ds'
+import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import {
-  CabeceraFicha, CuerpoDatos, DatoFicha, FilaTarjeta, HechoFicha, PastillaFicha, Punto,
-  TarjetaFicha, TiraMetricas,
-} from '@/features/administracion/components/FichaCanonica'
+  AccionPrimaria, AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha,
+  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
+} from '@/shared/components/v2/segundoNivel'
+import { CostadoLegajo, type DatoDeLegajo } from '@/features/administracion/components/CostadoLegajo'
+import { hhPorMes } from '@/features/administracion/services/hhPorMes'
+import { IconoEditar, IconoObra } from '@/shared/components/iconos'
 import { SemanaDeAsistencia } from '@/features/administracion/components/SemanaDeAsistencia'
 import { semanaDePersona, totalDeLaSemana } from '@/features/administracion/services/semanaDePersona'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
@@ -63,12 +66,11 @@ import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/admi
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
 import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
-import { AltaDocumento, Bloque, Dato } from '@/features/administracion/components/FichaPartes'
-import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/components/NavFicha'
+import { AltaDocumento } from '@/features/administracion/components/FichaPartes'
+import { LABEL_FICHA, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/services/vistasFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
-import { antiguedadEnAnios, DOCUMENTO_ESTADO, estadoDocumento, papelesPendientes } from '@/features/administracion/services/fichaPersona'
-import { rotuloDocumento } from '@/features/administracion/services/rotuloDocumento'
+import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
 import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
@@ -133,9 +135,10 @@ export default async function FichaPersonaPage({
   // permisos detrás de un 404, que ya costó media jornada en este repo.
   if (error) {
     return (
-      <PageShell title="No pude leer el legajo">
-        <div data-testid="ficha-error"><Aviso tono="neg">{error}</Aviso></div>
-      </PageShell>
+      <PantallaV2>
+        <Migas volverA="/administracion/personas" padre="Personal" actual="Legajo" />
+        <div style={{ padding: '16px 20px' }} data-testid="ficha-error"><Aviso tono="neg">{error}</Aviso></div>
+      </PantallaV2>
     )
   }
   if (!persona) notFound()
@@ -185,206 +188,248 @@ export default async function FichaPersonaPage({
   // completan el renglón cuando existen.
   const hhPorObra = new Map(anio.obras.map((o) => [o.clave, o.horas]))
 
-  return (
-    // SIN `PageShell`: su encabezado dibuja un `h1` propio y el slab dibuja el suyo. Dos `h1` en la
-    // misma pantalla no son un detalle de accesibilidad —son dos títulos compitiendo por decir qué
-    // es esta pantalla—. Lo que se reusa es el MARCO exacto de `PageShell` (canvas, 40px de padding
-    // en escritorio y 16 en el teléfono), que es lo único que hacía falta de él. El slab va FUERA
-    // de ese padding: es una franja de borde a borde, igual que en la ficha del proveedor.
-    <div className="min-h-screen bg-canvas">
-      {/* EL SLAB DE IDENTIDAD — `COMPONENTS.md` §Anatomía de ficha de entidad: «Cliente, Proveedor,
-          Persona, Obra y Herramienta usan la MISMA estructura: slab de identidad grafito con filo
-          amarillo · nivel 2 de solapas con contador mono · resumen de métricas · aside».
-          Era un `EntityHeader` blanco: correcto por sí solo, pero distinto del de Proveedor y del
-          de Obra, y una persona que va de una ficha a otra no debería tener que reaprender dónde
-          está el nombre. Se reusa `BarraContexto`, el mismo componente que ya corona al proveedor.
+  // HH POR MES DEL COSTADO: se arma sobre los registros YA leídos. Un `group by` más contra
+  // `registros_hh` daría un segundo total del mismo mes por otro camino, y el día que no coincidan
+  // nadie sabría cuál mirar. Sólo se calcula cuando las horas se leyeron.
+  const meses = horas ? hhPorMes(filasHH, hoy, 5) : []
 
-          LOS CINCO HECHOS SIGUEN SEPARADOS Y ROTULADOS: oficio (lo que sabe hacer) · categoría
-          UOCRA (lo que cobra) · rol en la obra · cuadrilla · obra. El canónico los apila en una
-          línea sin rótulos; acá cada uno dice su nombre porque tres de ellos se confundieron entre
-          sí en este mismo módulo hace dos semanas. */}
-      <CabeceraFicha
-        testid="slab-persona"
-        volverA="/administracion/personas"
-        volverLabel="Personal"
-        avatar={<Avatar nombre={persona.nombre_completo} url={null} lado={44} />}
-        // EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque
-        // así lo escriben las planillas de jornales; el canónico 20 lo pinta «Cristian Agüero». El
-        // DATO no se toca: `oracion` es de dibujo, y el nombre que viaja al recibo, al alta temprana
-        // y al IERIC sigue siendo el guardado.
+  const identidad: DatoDeLegajo[] = [
+    // SE MUESTRAN FORMATEADOS Y SE GUARDAN PELADOS: once cifras seguidas no se comparan de un
+    // vistazo contra el papel que alguien tiene en la mano. Ver `identidad.ts`.
+    { k: 'DNI', v: formatearDni(persona.dni), mono: true },
+    { k: 'CUIL', v: formatearCuit(persona.cuil), mono: true },
+    { k: 'Nacimiento', v: persona.fecha_nacimiento ? fecha(persona.fecha_nacimiento) : null, mono: true },
+    { k: 'Nacionalidad', v: persona.nacionalidad },
+    { k: 'Teléfono', v: persona.telefono, mono: true },
+    { k: 'Email', v: persona.email },
+    { k: 'Domicilio', v: persona.domicilio },
+    {
+      k: 'Emergencia',
+      v: [persona.contacto_emergencia, persona.contacto_emergencia_telefono].filter(Boolean).join(' · ') || null,
+    },
+  ]
+
+  const laboral: DatoDeLegajo[] = [
+    { k: 'Legajo', v: persona.legajo, mono: true },
+    { k: 'Ingreso', v: persona.fecha_ingreso ? fecha(persona.fecha_ingreso) : null, mono: true },
+    // SE FUE SIN FECHA NO ES LO MISMO QUE NO SE FUE: de los legajos cerrados, 22 no tienen baja
+    // documentada. Lo que falta es el papel, no la carga.
+    {
+      k: 'Baja',
+      v: persona.fecha_egreso ? fecha(persona.fecha_egreso) : (egresada ? 'sin papel de baja' : 'no egresó'),
+      mono: Boolean(persona.fecha_egreso),
+    },
+    // TRES HECHOS, TRES RÓTULOS. La CATEGORÍA es lo que la persona cobra (CCT, efecto económico); el
+    // OFICIO es lo que sabe hacer; el PUESTO es el cargo tal como lo escribe la nómina. El puesto se
+    // calla cuando NO agrega nada sobre la categoría.
+    { k: 'Convenio', v: persona.convenio_colectivo },
+    { k: 'Categoría', v: persona.categoria ? etiquetaCategoria(persona.categoria) : null },
+    { k: 'Oficio', v: persona.especialidad },
+    ...(pareceCategoria(persona.puesto) ? [] : [{ k: 'Puesto', v: persona.puesto }]),
+    { k: 'Modalidad', v: persona.modalidad_liquidacion },
+    { k: 'Notas', v: persona.notas },
+    // LA RETRIBUCIÓN NO LLEGA A ESTA PANTALLA, y no por decisión de diseño: `persona_legajo` no
+    // publica la columna. Se dice, en vez de dibujar «sin cargar» —que afirmaría que nadie la cargó—.
+    { k: 'Retribución', v: null, falta: 'no llega a esta pantalla' },
+  ]
+
+  const asignacion: DatoDeLegajo[] = vigente
+    ? [
+        { k: 'Obra', v: vigente.obra_nombre ?? vigente.obra_id },
+        { k: 'Actividad', v: vigente.actividad_nombre ?? 'toda la obra' },
+        { k: 'Cuadrilla', v: vigente.cuadrilla, falta: 'sin cuadrilla' },
+        { k: 'Rol', v: vigente.rol ?? 'integrante' },
+        { k: 'Desde', v: vigente.desde ? fecha(vigente.desde) : null, mono: true },
+      ]
+    // SIN ASIGNACIÓN VIGENTE no se dibujan cinco renglones vacíos: se dice la única cosa que hay que
+    // saber, que es dónde se resuelve.
+    : [{ k: 'Obra', v: null, falta: 'sin asignación vigente' }]
+
+  const cifras: CifraDeFicha[] = [
+    // El cuarto número del canónico es «Ausencias»; acá va «Papeles pendientes» porque una ausencia
+    // CON AVISO no existe como hecho cargado en `registros_hh` —hay tipo `ausencia`, pero no el
+    // aviso— y dibujar el rótulo sobre un conteo de otra cosa afirmaría algo que nadie registró.
+    {
+      rotulo: 'HH del mes',
+      // Sin las horas leídas la cifra NO dice 0: dice que no se leyeron. Un cero acá afirma que la
+      // persona no trabajó este mes.
+      valor: horas ? (mes.trabajadas || null) : null,
+      falta: horas ? 'sin imputar' : 'se lee en Horas',
+    },
+    {
+      rotulo: 'HH del año',
+      valor: horas ? (anio.trabajadas || null) : null,
+      falta: horas ? 'sin imputar' : 'se lee en Horas',
+    },
+    {
+      rotulo: 'Antigüedad',
+      valor: antiguedad === null
+        ? null
+        : `${antiguedad.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} a`,
+      falta: 'sin fecha de alta',
+    },
+    {
+      rotulo: 'Papeles pendientes',
+      valor: pendientes || null,
+      falta: persona.en_la_empresa ? 'ninguno' : 'legajo cerrado',
+      tono: 'neg',
+    },
+  ]
+
+  // EL SUBTÍTULO DEL MOCKUP: oficio · convenio · desde cuándo. El oficio es lo que sabe hacer y la
+  // categoría lo que cobra: cuando el oficio no está cargado, el que habla es la categoría.
+  const bajada = [
+    persona.especialidad?.trim()
+      ?? (persona.categoria ? etiquetaCategoria(persona.categoria) : 'sin oficio cargado'),
+    persona.convenio_colectivo?.trim() || null,
+    persona.fecha_ingreso ? `en la empresa desde ${fecha(persona.fecha_ingreso)}` : null,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <PantallaV2>
+      <Migas volverA="/administracion/personas" padre="Personal" actual={oracion(persona.nombre_completo)} />
+
+      {/* EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque así
+          lo escriben las planillas de jornales. El DATO no se toca: `oracion` es de dibujo, y el
+          nombre que viaja al recibo, al alta temprana y al IERIC sigue siendo el guardado. */}
+      <TituloDeFicha
         titulo={oracion(persona.nombre_completo)}
-        pastillas={
-          // EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron sin baja
-          // documentada y por la fecha figurarían activas.
+        bajada={bajada}
+        junto={
           <>
-            <PastillaFicha tono={egresada ? 'neg' : 'pos'} testid="pastilla-estado-persona">
-              {egresada
-                ? (persona.fecha_egreso ? `Inactiva desde ${fecha(persona.fecha_egreso)}` : 'Ya no está en la empresa')
-                : (vigente?.obra_nombre ? `En ${vigente.obra_nombre}` : 'Activa')}
-            </PastillaFicha>
-            {pendientes > 0 && (
-              <PastillaFicha tono="warn" testid="pastilla-papeles">
-                {pendientes} {pendientes === 1 ? 'papel pendiente' : 'papeles pendientes'}
-              </PastillaFicha>
+            <span className="font-mono" style={{ fontSize: '12px', color: V.lupa }} data-testid="legajo-numero">
+              legajo {persona.legajo ?? 'sin número'}
+            </span>
+            {/* EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron sin
+                baja documentada y por la fecha figurarían activas. */}
+            {egresada && (
+              <PastillaFilo testid="pastilla-estado-persona">
+                {persona.fecha_egreso ? `inactiva desde ${fecha(persona.fecha_egreso)}` : 'ya no está en la empresa'}
+              </PastillaFilo>
             )}
           </>
         }
-        hechos={
-          // LOS CINCO HECHOS DEL CANÓNICO, EN SU ORDEN: oficio · obra y cuadrilla · legajo. El
-          // oficio es lo que sabe hacer y la categoría lo que cobra: cuando el oficio no está
-          // cargado, el que habla es la categoría, y se dice cuál de los dos es.
+        acciones={
           <>
-            <HechoFicha>
-              {persona.especialidad?.trim()
-                ?? (persona.categoria ? etiquetaCategoria(persona.categoria) : 'sin oficio cargado')}
-            </HechoFicha>
-            <Punto />
-            <HechoFicha>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                <path d="M3 21h18M6 21V8l6-4 6 4v13" />
-              </svg>
-              {vigente
-                ? [vigente.obra_nombre ?? vigente.obra_id, vigente.cuadrilla].filter(Boolean).join(' · ')
-                : 'sin asignar'}
-            </HechoFicha>
-            <Punto />
-            <HechoFicha mono>legajo {persona.legajo ?? 'sin número'}</HechoFicha>
+            <AccionSecundaria
+              href={href(vista, 'identidad')} testid="editar-legajo"
+              icono={<IconoEditar className="h-[14px] w-[14px]" />}
+            >
+              Editar legajo
+            </AccionSecundaria>
+            {/* `args` y NO una función flecha: `accion={() => darDeBaja(id)}` crea una función nueva
+                que React rechaza en ejecución —«Functions cannot be passed directly to Client
+                Components»— y la pantalla queda EN BLANCO, sin que typecheck ni build lo vean. */}
+            {egresada
+              ? <BotonAccion accion={reincorporar} args={[id]} testid="reincorporar">Reincorporar</BotonAccion>
+              : <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja">Dar de baja</BotonAccion>}
+            {/* LA ÚNICA PRIMARIA, y sólo cuando hay algo que hacer con ella: una persona activa sin
+                obra no suma a la proyección de dotación de ninguna. Con asignación vigente el botón
+                no tendría nada que resolver, y un amarillo permanente deja de significar. */}
+            {!egresada && !vigente && (
+              <AccionPrimaria
+                href="/obras" testid="asignar-obra"
+                icono={<IconoObra className="h-[14px] w-[14px]" />}
+              >
+                Asignar a una obra
+              </AccionPrimaria>
+            )}
           </>
-        }
-        acciones={egresada
-          ? <BotonAccion accion={reincorporar} args={[id]} testid="reincorporar">Reincorporar</BotonAccion>
-          // `args` y NO una función flecha: `accion={() => darDeBaja(id)}` crea una función nueva que
-          // React rechaza en runtime —"Functions cannot be passed directly to Client Components"— y
-          // la pantalla queda EN BLANCO, sin que ni typecheck ni build lo detecten.
-          : <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja">Dar de baja</BotonAccion>}
-        solapas={
-          <NavFicha
-            activa={vista}
-            hrefDe={(v) => href(v)}
-            ocultar={veLaCuenta ? [] : ['usuario']}
-            cuentas={{ asignaciones: asignaciones?.data?.length ?? null, documentos: papeles.length }}
-          />
         }
       />
 
-      <div className="w-full px-4 py-3.5 lg:px-5">
-      {fallo && <div className="mb-4"><Aviso tono="neg">{fallo}</Aviso></div>}
+      {!egresada && !vigente && (
+        <AvisoDeFicha verbo="Asignar obra" href="/obras" testid="aviso-sin-obra">
+          Activo pero sin obra: no suma a la proyección de dotación de ninguna. Se asigna desde la
+          solapa Personal de la obra.
+        </AvisoDeFicha>
+      )}
+      {vigente && pendientes > 0 && (
+        <AvisoDeFicha verbo="Ver papeles" href={href('documentos')} testid="aviso-papeles">
+          {pendientes === 1
+            ? 'Falta un papel del legajo.'
+            : `Faltan ${pendientes} papeles del legajo.`}
+          {' '}Ninguno vence: `documento_legajo` no guarda fecha de vencimiento, así que lo que falta
+          es que estén, no que estén al día.
+        </AvisoDeFicha>
+      )}
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1 space-y-3">
-          {vista === 'resumen' && (
-            // LA TIRA DE MÉTRICAS DEL CANÓNICO. El cuarto número del canónico es «Ausencias»; acá va
-            // «Papeles pendientes» porque una ausencia con aviso NO existe como hecho cargado en
-            // `registros_hh` —hay tipo `ausencia`, pero no el aviso— y dibujar el rótulo sobre un
-            // conteo de otra cosa sería afirmar algo que nadie registró.
-            <TiraMetricas
-              testid="metricas-persona"
-              metricas={[
-                {
-                  rotulo: 'HH DEL MES',
-                  valor: mes.trabajadas || null,
-                  falta: 'sin imputar',
-                  detalle: mes.registros.length ? `${mes.registros.length} registros` : undefined,
-                },
-                {
-                  rotulo: 'HH DEL AÑO',
-                  valor: anio.trabajadas || null,
-                  falta: 'sin imputar',
-                  detalle: anio.obras.length ? `en ${anio.obras.length} ${anio.obras.length === 1 ? 'obra' : 'obras'}` : undefined,
-                },
-                {
-                  rotulo: 'ANTIGÜEDAD',
-                  valor: antiguedad === null
-                    ? null
-                    : `${antiguedad.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} a`,
-                  falta: 'sin fecha de alta',
-                  detalle: persona.fecha_ingreso ? `desde ${fecha(persona.fecha_ingreso)}` : undefined,
-                },
-                {
-                  rotulo: 'PAPELES PENDIENTES',
-                  valor: pendientes || null,
-                  falta: persona.en_la_empresa ? 'ninguno' : 'legajo cerrado',
-                  tono: 'neg',
-                  detalle: papeles.length ? `de ${papeles.length}` : undefined,
-                },
-              ]}
-            />
-          )}
+      <CifrasDeFicha cifras={cifras} testid="cifras-persona" />
+
+      <SolapasDeFicha
+        testid="nav-ficha-persona"
+        solapas={VISTAS_FICHA
+          .filter((v) => veLaCuenta || v !== 'usuario')
+          .map((v) => ({
+            clave: v,
+            titulo: LABEL_FICHA[v],
+            // Sólo el de las solapas cuyo número la página YA leyó. «Horas» no lo lleva a propósito:
+            // su fuente es `registros_hh` entera, y contarla para pintar un número al lado de una
+            // solapa que nadie abrió sería pagar la consulta cara en las seis vistas.
+            cuenta: v === 'asignaciones'
+              ? asignaciones?.data?.length ?? null
+              : v === 'documentos' ? papeles.length : null,
+            activa: v === vista,
+            href: href(v),
+          }))}
+      />
+
+      <CuerpoDeFicha>
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {fallo && <Aviso tono="neg">{fallo}</Aviso>}
 
           {vista === 'resumen' && (
-            <SemanaDeAsistencia dias={dias} total={totalDeLaSemana(dias)} jornadaSemanal={44} />
-          )}
+            <>
+              <SemanaDeAsistencia dias={dias} total={totalDeLaSemana(dias)} jornadaSemanal={44} />
 
-          {vista === 'resumen' && (
-            <TarjetaFicha
-              titulo="Asignación actual"
-              testid="bloque-asignacion-actual"
-              icono={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="3.2" /><path d="M22 21v-2a4 4 0 00-3-3.8" />
-                </svg>
-              }
-            >
-              {vigente
-                ? (
-                    <div className="grid gap-x-10 px-4 py-1 sm:grid-cols-2">
-                      <Dato k="Obra" v={vigente.obra_nombre ?? vigente.obra_id} />
-                      <Dato k="Actividad" v={vigente.actividad_nombre ?? 'toda la obra'} />
-                      <Dato k="Cuadrilla" v={vigente.cuadrilla} />
-                      <Dato k="Rol" v={vigente.rol ?? 'integrante'} />
-                      <Dato k="Desde" v={vigente.desde ? fecha(vigente.desde) : null} mono />
-                    </div>
-                  )
-                : (
-                    <div className="px-4 py-3">
-                      <Vacio accion={<Link href="/obras" className="text-ink hover:underline">Ir a Obras →</Link>}>
-                        Sin asignación vigente. Se asigna desde la solapa Personal de la obra.
-                      </Vacio>
-                    </div>
-                  )}
-            </TarjetaFicha>
-          )}
-
-          {/* EL HISTORIAL RECIENTE VA EN EL RESUMEN, y no porque hubiera lugar: la segunda pregunta
-              que se le hace a un legajo, después de «dónde está hoy», es «dónde estuvo». Ya está
-              leído para calcular la asignación vigente, así que no cuesta una consulta más. Las
-              cerradas completas viven en su solapa. */}
-          {vista === 'resumen' && cerradas.length > 0 && (
-            <Bloque
-              titulo="Estuvo antes en"
-              testid="bloque-historial"
-              ayuda={<Link href={href('asignaciones')} className="text-muted hover:text-ink">Ver el historial completo →</Link>}
-            >
-              <ul>
-                {cerradas.slice(0, 4).map((a) => (
-                  <li key={a.id} className="flex items-baseline justify-between gap-4 border-b border-[#EFEEEA] py-2.5 last:border-0">
-                    <Link href={`/obras/${a.obra_id}`} className="min-w-0 flex-1 truncate text-[13px] text-ink hover:underline">
-                      {a.obra_nombre ?? a.obra_id}
+              {/* LA SEGUNDA PREGUNTA QUE SE LE HACE A UN LEGAJO, después de «dónde está hoy», es
+                  «dónde estuvo». Ya está leído para calcular la asignación vigente, así que no
+                  cuesta una consulta más. El historial completo vive en su cara. */}
+              {cerradas.length > 0 && (
+                <div data-testid="bloque-historial">
+                  <RotuloPanel cuenta={cerradas.length}>Estuvo antes en</RotuloPanel>
+                  {cerradas.slice(0, 4).map((a) => (
+                    <Link
+                      key={a.id} href={`/obras/${a.obra_id}`} prefetch={false}
+                      className="flex items-baseline gap-4 hover:bg-[#F2F1ED]"
+                      style={{ height: 38, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`, alignItems: 'center' }}
+                    >
+                      <span className="min-w-0 flex-1 truncate" style={{ fontSize: '12.5px', color: V.tinta }}>
+                        {a.obra_nombre ?? a.obra_id}
+                      </span>
+                      <span className="font-mono tabular-nums shrink-0" style={{ fontSize: '11.5px', color: V.tenue }}>
+                        {a.desde ? fecha(a.desde) : 'sin fecha'} → {a.hasta ? fecha(a.hasta) : 'sin fecha'}
+                      </span>
                     </Link>
-                    <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-faint">
-                      {a.desde ? fecha(a.desde) : 'sin fecha'} → {a.hasta ? fecha(a.hasta) : 'sin fecha'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Bloque>
+                  ))}
+                  <Link
+                    href={href('asignaciones')} prefetch={false}
+                    style={{ display: 'inline-block', fontSize: '12.5px', fontWeight: 500, color: V.tinta, marginTop: 10 }}
+                  >
+                    Ver el historial completo →
+                  </Link>
+                </div>
+              )}
+            </>
           )}
 
           {vista === 'asignaciones' && (
-            <Bloque
-              titulo="Historial de asignaciones"
-              testid="bloque-asignaciones"
-              ayuda="La misma relación que muestra Obra → Personal."
-            >
+            <div data-testid="bloque-asignaciones">
               <BloqueAsignacion
                 asignaciones={asignaciones?.data ?? []}
                 cerrar={cerrarAsignacionDePersona.bind(null, id)}
               />
-            </Bloque>
+              {/* LAS HH DEL AÑO POR OBRA acompañan al historial: es lo que el canónico pone al lado.
+                  Una obra sin horas imputadas NO publica un cero — se calla. */}
+              <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
+                La misma relación que muestra Obra → Personal.
+                {hhPorObra.size > 0 && ` Con horas imputadas este año en ${hhPorObra.size} ${hhPorObra.size === 1 ? 'obra' : 'obras'}.`}
+              </p>
+            </div>
           )}
 
           {vista === 'horas' && (
-            <Bloque titulo="Horas imputadas" testid="bloque-horas">
+            <div data-testid="bloque-horas">
               <BloqueHoras
                 periodo={rotulo(ventana)}
                 horasPeriodo={resumen.trabajadas}
@@ -396,11 +441,11 @@ export default async function FichaPersonaPage({
                 periodoActivo={periodo}
                 hrefPeriodo={(p) => `${base}?${new URLSearchParams({ v: 'horas', p })}`}
               />
-            </Bloque>
+            </div>
           )}
 
           {vista === 'documentos' && (
-            <Bloque titulo="Documentos" testid="bloque-documentos" ayuda="Vínculos a Drive. El archivo no se copia.">
+            <div data-testid="bloque-documentos">
               <BloqueDocumentos
                 documentos={documentos?.data ?? []}
                 desvincular={desvincularDocumento.bind(null, id)}
@@ -408,7 +453,12 @@ export default async function FichaPersonaPage({
                 carpetaDrive={persona.drive_folder_id}
               />
               <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
-            </Bloque>
+              <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 12, maxWidth: 720 }}>
+                Vínculos a Drive: el archivo no se copia. Ninguno vence —`documento_legajo` no guarda
+                fecha de vencimiento—, así que esta cara nunca dice «al día»: sería una afirmación
+                sobre un control que nadie está haciendo.
+              </p>
+            </div>
           )}
 
           {/* LA SOLAPA SE ESCONDE Y ADEMÁS SE CIERRA. Esconder el tab evita ofrecer algo que rebota;
@@ -429,192 +479,51 @@ export default async function FichaPersonaPage({
               personaId={id}
               lectura={cuenta}
               rolActor={rolActor}
-              // NADIE SE SACA EL ACCESO A SÍ MISMO, y acá se sabe antes de apretar: la regla también
-              // vive en `reglas.ts` y la acción la vuelve a aplicar, pero un botón que rebota no
-              // explica por qué.
+              // NADIE SE SACA EL ACCESO A SÍ MISMO, y acá se sabe antes de apretar.
               esUnoMismo={cuenta.hay && cuenta.cuenta.usuarioId === actor?.id}
             />
           )}
 
           {vista === 'auditoria' && bitacora && (
-            <Bloque
-              titulo="Auditoría de cambios"
-              testid="bloque-auditoria"
-              ayuda="Cada cambio de la ficha, con quién y cuándo."
-            >
+            <div data-testid="bloque-auditoria">
               <BloqueAuditoria
                 bitacora={bitacora}
                 hrefMas={`${base}?${new URLSearchParams({ v: 'auditoria', n: String(cuantos + TRAMO) })}`}
               />
-            </Bloque>
+            </div>
           )}
         </div>
 
-        {/* EL ASIDE DE PROPIEDADES — `LAYOUT_RESPONSIVE.md`: «Fichas de entidad: columna ancha +
-            aside de 320–360px de propiedades». Está en las cuatro solapas a propósito: quién es esta
-            persona es el contexto de todo lo demás, y perderlo al mirar sus horas obliga a volver. */}
-        {!editar && (
-          <aside className="w-full shrink-0 space-y-3 lg:w-[372px]">
-            {/* «DATOS» — el bloque de propiedades del canónico 20. Sigue partido en dos tarjetas,
-                identidad y laboral, porque son los DOS grupos que el panel edita por separado:
-                fundirlos en una sola daría un único «Editar» que abre veinte campos, que es
-                exactamente lo que el panel lateral vino a evitar. */}
-            <TarjetaFicha
-              titulo="Datos"
-              testid="bloque-identidad"
-              indicador={
-                <Link href={href(vista, 'identidad')} data-testid="bloque-identidad-editar" className="font-sans text-[11.5px] text-muted transition-colors hover:text-ink">
-                  Editar
-                </Link>
-              }
-            >
-              <CuerpoDatos>
-                {/* SE MUESTRAN FORMATEADOS Y SE GUARDAN PELADOS: once cifras seguidas no se comparan
-                    de un vistazo contra el papel que alguien tiene en la mano. Ver `identidad.ts`. */}
-                <DatoFicha k="DNI" v={formatearDni(persona.dni)} mono />
-                <DatoFicha k="CUIL" v={formatearCuit(persona.cuil)} mono />
-                <DatoFicha k="Nacimiento" v={persona.fecha_nacimiento ? fecha(persona.fecha_nacimiento) : null} mono />
-                <DatoFicha k="Nacionalidad" v={persona.nacionalidad} />
-                <DatoFicha k="Teléfono" v={persona.telefono} mono />
-                <DatoFicha k="Email" v={persona.email} />
-                <DatoFicha k="Domicilio" v={persona.domicilio} />
-                <DatoFicha
-                  k="Emergencia"
-                  v={[persona.contacto_emergencia, persona.contacto_emergencia_telefono].filter(Boolean).join(' · ') || null}
+        {/* EL COSTADO ESTÁ EN LAS SEIS CARAS a propósito: quién es esta persona es el contexto de
+            todo lo demás, y perderlo al mirar sus horas obliga a volver. */}
+        {editar
+          ? (
+              <PanelEdicion
+                titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
+                subtitulo={oracion(persona.nombre_completo)}
+                accion={editarPersona.bind(null, id, editar)}
+                cerrarHref={href(vista)}
+                testid={`panel-editar-${editar}`}
+              >
+                {editar === 'identidad'
+                  ? <CamposIdentidad persona={persona} />
+                  : <CamposLaboral persona={persona} />}
+              </PanelEdicion>
+            )
+          : (
+              <CostadoDeFicha testid="costado-legajo">
+                <CostadoLegajo
+                  identidad={identidad}
+                  laboral={laboral}
+                  asignacion={asignacion}
+                  meses={meses}
+                  hrefIdentidad={href(vista, 'identidad')}
+                  hrefLaboral={href(vista, 'laboral')}
+                  puedeEditar
                 />
-                <DatoFicha k="Cuadrilla" v={vigente?.cuadrilla ?? null} falta="sin cuadrilla" />
-              </CuerpoDatos>
-            </TarjetaFicha>
-
-            <TarjetaFicha
-              titulo="Laboral"
-              testid="bloque-laboral"
-              indicador={
-                <Link href={href(vista, 'laboral')} data-testid="bloque-laboral-editar" className="font-sans text-[11.5px] text-muted transition-colors hover:text-ink">
-                  Editar
-                </Link>
-              }
-            >
-              <CuerpoDatos>
-                <DatoFicha k="Legajo" v={persona.legajo} mono />
-                <DatoFicha k="Ingreso" v={persona.fecha_ingreso ? fecha(persona.fecha_ingreso) : null} mono />
-                {/* SE FUE SIN FECHA NO ES LO MISMO QUE NO SE FUE: de los legajos cerrados, 22 no
-                    tienen baja documentada. Lo que falta es el papel, no la carga. */}
-                <DatoFicha
-                  k="Baja"
-                  v={persona.fecha_egreso ? fecha(persona.fecha_egreso) : (egresada ? 'sin papel de baja' : 'no egresó')}
-                  mono={Boolean(persona.fecha_egreso)}
-                />
-                {/* TRES HECHOS, TRES RÓTULOS. La CATEGORÍA es lo que la persona cobra (CCT, efecto
-                    económico); el OFICIO es lo que sabe hacer; el PUESTO es el cargo tal como lo
-                    escribe la nómina. Los tres decían casi lo mismo y en los legajos donde la nómina
-                    cargó «OFICIAL» en el puesto, la ficha mostraba la categoría dos veces con
-                    nombres distintos. El puesto se calla cuando NO agrega nada sobre la categoría. */}
-                <DatoFicha k="Convenio" v={persona.convenio_colectivo} />
-                <DatoFicha k="Categoría" v={persona.categoria ? etiquetaCategoria(persona.categoria) : null} />
-                <DatoFicha k="Oficio" v={persona.especialidad} />
-                {!pareceCategoria(persona.puesto) && <DatoFicha k="Puesto" v={persona.puesto} />}
-                <DatoFicha k="Modalidad" v={persona.modalidad_liquidacion} />
-                <DatoFicha k="Notas" v={persona.notas} />
-                {/* LA RETRIBUCIÓN NO LLEGA A ESTA PANTALLA, y no por decisión de diseño:
-                    `persona_legajo` no publica la columna. Se dice, en vez de dibujar «sin cargar»
-                    —que afirmaría que nadie la cargó—. */}
-                <DatoFicha k="Retribución" v={null} falta="no llega a esta pantalla" />
-              </CuerpoDatos>
-            </TarjetaFicha>
-
-            <TarjetaFicha
-              titulo="Documentación"
-              testid="aside-documentacion"
-              tonoIndicador={pendientes > 0 ? 'neg' : 'ink'}
-              indicador={papeles.length === 0
-                ? <span className="font-sans text-[11.5px] text-faint">sin papeles</span>
-                : (pendientes > 0
-                    ? <span className="font-sans text-[11.5px] text-neg">{pendientes} {pendientes === 1 ? 'falta' : 'faltan'}</span>
-                    : <span className="font-sans text-[11.5px] text-pos">al día</span>)}
-              icono={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" />
-                </svg>
-              }
-            >
-              {papeles.length === 0
-                ? <p className="px-3.5 py-3 text-[12px] text-faint">Todavía no hay documentos vinculados al legajo.</p>
-                : papeles.slice(0, 6).map((d) => {
-                    const estado = estadoDocumento(d)
-                    // EL RÓTULO CURADO, NO EL NOMBRE DEL ARCHIVO (canónico 20 · 24/08/2026). Acá se
-                    // dibujaba «Recibo 2026-07 Q2 - AGUERO CRISTIAN (firmado).pdf» —seis de ésos no
-                    // contestan qué papeles tiene la persona, que es para lo que existe la lista—.
-                    // La regla y el período viven en `rotuloDocumento.ts`, con su prueba.
-                    const { titulo, archivo } = rotuloDocumento(d)
-                    const palabra = estado === 'cargado'
-                      ? (d.fecha_documento ? `cargado ${fecha(d.fecha_documento)}` : 'cargado')
-                      : DOCUMENTO_ESTADO[estado].palabra
-                    return (
-                      <FilaTarjeta
-                        key={d.id}
-                        href={href('documentos')}
-                        testid={`aside-doc-${d.id}`}
-                        titulo={titulo}
-                        // NO HAY VENCIMIENTO QUE MOSTRAR: `documento_legajo` no guarda fecha de
-                        // vencimiento, así que la fecha que se escribe es la del documento y se
-                        // rotula como tal. Pintar «vence en 20 días» sería inventarlo.
-                        //
-                        // EL NOMBRE DEL ARCHIVO NO SE TIRA: es lo único que permite encontrarlo en
-                        // Drive cuando algo no cuadra. Viaja en el `title`, fuera del camino de
-                        // quien barre la lista y a mano para quien se detiene.
-                        detalle={<span title={archivo ?? undefined}>{palabra}</span>}
-                        tonoDetalle={estado === 'cargado' ? 'faint' : 'neg'}
-                      />
-                    )
-                  })}
-            </TarjetaFicha>
-
-            <TarjetaFicha
-              titulo="Obras donde trabajó"
-              testid="aside-obras"
-              icono={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M3 21h18M6 21V8l6-4 6 4v13" /><path d="M10 21v-6h4v6" />
-                </svg>
-              }
-            >
-              {(asignaciones?.data ?? []).length === 0
-                ? <p className="px-3.5 py-3 text-[12px] text-faint">Sin asignaciones registradas.</p>
-                : (asignaciones?.data ?? []).slice(0, 6).map((a) => (
-                    <FilaTarjeta
-                      key={a.id}
-                      href={`/obras/${a.obra_id}`}
-                      testid={`aside-obra-${a.id}`}
-                      punto={a.hasta ? 'faint' : 'pos'}
-                      titulo={a.obra_nombre ?? a.obra_id}
-                      detalle={a.hasta
-                        ? `${a.desde ? fecha(a.desde) : 'sin fecha'} → ${fecha(a.hasta)}`
-                        : ['actual', a.cuadrilla].filter(Boolean).join(' · ')}
-                      // LAS HH SON LAS DEL AÑO EN CURSO, que es la ventana que la tira ya leyó. Una
-                      // obra sin horas imputadas NO publica un cero: se calla.
-                      valor={hhPorObra.get(a.obra_id) ?? undefined}
-                    />
-                  ))}
-            </TarjetaFicha>
-          </aside>
-        )}
-
-        {editar && (
-          <PanelEdicion
-            titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
-            subtitulo={oracion(persona.nombre_completo)}
-            accion={editarPersona.bind(null, id, editar)}
-            cerrarHref={href(vista)}
-            testid={`panel-editar-${editar}`}
-          >
-            {editar === 'identidad'
-              ? <CamposIdentidad persona={persona} />
-              : <CamposLaboral persona={persona} />}
-          </PanelEdicion>
-        )}
-      </div>
-      </div>
-    </div>
+              </CostadoDeFicha>
+            )}
+      </CuerpoDeFicha>
+    </PantallaV2>
   )
 }

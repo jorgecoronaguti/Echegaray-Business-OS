@@ -52,7 +52,7 @@ export function BloqueContactos({
   puedeEditar?: boolean
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="contactos-cliente">
       {/* EL ALTA VA ARRIBA. Debajo de una lista larga, «agregar un contacto» no la encuentra nadie
           —y el bloque se queda vacío para siempre—. */}
       {puedeEditar && (

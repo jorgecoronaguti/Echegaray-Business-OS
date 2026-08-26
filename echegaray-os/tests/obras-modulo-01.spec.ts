@@ -93,15 +93,18 @@ test('clientes → cliente → sus obras → la obra', async ({ page }) => {
   // Y se puede CARGAR desde el record, sin cambiar de pantalla: el alta de cada bloque está a la
   // vista, arriba de su lista, no enterrada al final de una tabla de 60 filas.
   await expect(page.getByTestId('alta-contacto')).toBeVisible()
+  // Los documentos y la actividad son CARAS en el v2 (26 v2): el costado guarda lo que identifica al
+  // cliente, y la historia de la relación es contenido. Se las exige donde están.
+  await page.getByTestId('solapa-documentos').click()
   await expect(page.getByTestId('alta-documento')).toBeVisible()
   // Los documentos son los de Drive: vínculo, nunca copia.
   await expect(page.getByText(/en Drive/i).first()).toBeVisible()
-  // La actividad también, que era la quinta solapa.
-  await expect(page.getByTestId('bloque-actividad')).toBeVisible()
+  await page.getByTestId('solapa-actividad').click()
+  await expect(page.getByTestId('tabla-actividad')).toBeVisible()
 
-  // Y NINGUNA solapa quedó viva: un resto de la navegación vieja significaría que hay dos caminos
-  // para la misma información y que uno de los dos muestra menos.
-  await expect(page.getByTestId('solapa-obras')).toHaveCount(0)
+  // Y la cara «Resumen» NO volvió: repetía la tabla de Obras con los presupuestos apilados debajo,
+  // o sea dos caras con otro nombre. Un resto de ella significaría dos caminos para lo mismo.
+  await expect(page.getByTestId('solapa-resumen')).toHaveCount(0)
   await expect(page.getByTestId('solapa-informacion')).toHaveCount(0)
 
   // Y desde la obra se vuelve a SU cliente: la jerarquía se navega en los dos sentidos.

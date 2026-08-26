@@ -139,59 +139,48 @@ test('la ficha del cliente muestra identidad, contactos y actividad desde cualqu
   await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
   const url = page.url()
 
-  // LA IDENTIDAD NO ENTRA EN NINGUNA SOLAPA: se ve al abrir, sin un clic.
+  // LA IDENTIDAD NO ENTRA EN NINGUNA CARA: se ve al abrir, sin un clic.
   await expect(page.getByTestId('panel-informacion')).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'CUIT' })).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
-  await expect(page.getByTestId('bloque-actividad')).toBeVisible()
-  await expect(page.getByTestId('tabla-actividad')).toBeVisible()
-  await expect(page.getByTestId('bloque-contactos')).toBeVisible()
-  // Y el Resumen abre con las obras y su avance, que es la respuesta a «¿cómo va este cliente?».
+  await expect(page.getByTestId('contactos-cliente')).toBeVisible()
+  // Y la ficha abre por OBRAS, con su avance: la respuesta a «¿cómo va este cliente?».
   await expect(page.getByTestId('obras-del-cliente')).toBeVisible()
 
   // Y la dirección NO cambió: lo anterior no fue una navegación disfrazada.
   expect(page.url()).toBe(url)
 
-  // ═══ LA ANATOMÍA DE FICHA DE ENTIDAD (Design 23/08, COMPONENTS.md) ═══
+  // ═══ LA ANATOMÍA DE SEGUNDO NIVEL DEL v2 (26 · Cliente Ficha v2) ═══
   //
-  // «Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA estructura»: cabecera BLANCA de
-  // ficha de entidad —avatar, nombre a 21px, pastilla de estado, línea de identidad y solapas
-  // pegadas abajo—, con las métricas en su tira sobre el cuerpo.
-  //
-  // EL DEFECTO QUE ATRAPA (24/08/2026): la ficha del cliente se coronaba con el slab GRAFITO
-  // (`BarraContexto`), una cabecera oscura que no existe en ningún mockup del zip. Se exige que la
-  // identidad y las solapas estén dentro de la cabecera y que la tira de métricas exista aparte;
-  // si alguien devuelve el slab, `metricas-cliente` desaparece y esto se pone rojo.
-  //
-  // LAS SOLAPAS CAMBIAN DE VISTA Y EL ESTADO VIAJA EN LA URL. Se exige que cada una LLEVE a su cara
+  // Miga arriba, nombre a 24px, cifras sin tarjeta y solapas con filo. EL DEFECTO QUE ATRAPA es la
+  // vuelta atrás: el slab —primero grafito, después blanco con avatar— y la tira de métricas en
+  // celdas. Si alguien los devuelve, `migas` o `cifras-cliente` desaparecen y esto se pone rojo.
+  await expect(page.getByTestId('migas')).toBeVisible()
+  await expect(page.getByTestId('migas').getByTestId('volver')).toBeVisible()
+  await expect(page.getByTestId('vistas-cliente')).toBeVisible()
+  // `Obras` es la cifra que siempre está, con o sin permiso económico.
+  await expect(page.getByTestId('cifras-cliente').getByTestId('cifra-obras')).toBeVisible()
+
+  // LAS SOLAPAS CAMBIAN DE CARA Y EL ESTADO VIAJA EN LA URL. Se exige que cada una LLEVE a su cara
   // —una solapa que no cambia nada es un enlace muerto que nadie nota— y que la identidad siga
   // visible en todas: ése es el precio que el 19/08 no quería pagar y que acá queda acotado.
-  const slab = page.getByTestId('slab-cliente')
-  await expect(slab).toBeVisible()
-  // La miga de pan y el nombre viven en la cabecera; las solapas, adentro de ella.
-  await expect(slab.getByTestId('ficha-volver')).toBeVisible()
-  await expect(slab.getByTestId('solapas-cliente')).toBeVisible()
-  // Las métricas bajaron a su tira. `Obras` es la que siempre está, con o sin permiso económico.
-  await expect(page.getByTestId('metricas-cliente').locator('[data-metrica="Obras"]')).toBeVisible()
-  for (const [solapa, bloque] of [
-    ['solapa-obras', 'bloque-obras'],
-    ['solapa-documentos', 'bloque-documentos'],
+  for (const [solapa, cara] of [
+    ['solapa-obras', 'obras-del-cliente'],
+    ['solapa-documentos', 'documentos-cliente'],
+    ['solapa-actividad', 'tabla-actividad'],
   ] as const) {
     await page.getByTestId(solapa).click()
-    await expect(page.getByTestId(bloque), `${solapa} no abre ${bloque}`).toBeVisible()
-    // La identidad sobrevive al cambio de solapa. Sin esto, partir el record habría escondido
-    // justo lo que el dueño exigió que estuviera siempre.
+    await expect(page.getByTestId(cara), `${solapa} no abre ${cara}`).toBeVisible()
+    // La identidad sobrevive al cambio de cara. Sin esto, partir el record habría escondido justo
+    // lo que el dueño exigió que estuviera siempre.
     await expect(page.getByTestId('panel-informacion')).toBeVisible()
-    await expect(page.getByTestId('bloque-contactos')).toBeVisible()
+    await expect(page.getByTestId('contactos-cliente')).toBeVisible()
   }
 
-  // ═══ LA SOLAPA «CUENTA» SE CONVIRTIÓ EN «CUENTA CORRIENTE» (25/08/2026) ═══
+  // ═══ LA CARA «CUENTA CORRIENTE» VA A SANGRE ═══
   //
-  // Hasta hoy `solapa-cuenta` abría `bloque-cuenta`: contratado y costo por obra, que es lo mismo
-  // que ya muestra la solapa Obras y que existía porque cobranzas no tenía fuente. El mockup 28 la
-  // reemplaza por la cuenta corriente entera —saldo, antigüedad, certificados, plan del día— y esa
-  // cara va A SANGRE, sin el aside de identidad: su columna derecha es el panel del certificado.
-  // Manda el mockup (BRIEFING), así que se afirma la pantalla nueva y NO se exige el aside acá.
+  // El mockup 28 usa su columna derecha para el panel del certificado, así que esa cara NO lleva el
+  // costado de identidad. Manda el mockup: se afirma la pantalla nueva y no se exige el costado.
   await page.getByTestId('solapa-cuenta').click()
   await expect(page.getByTestId('vista-cuenta-corriente')).toBeVisible()
   await expect(page.getByTestId('metricas-cuenta')).toBeVisible()
@@ -199,18 +188,18 @@ test('la ficha del cliente muestra identidad, contactos y actividad desde cualqu
   await page.getByTestId('solapa-obras').click()
   await expect(page.getByTestId('panel-informacion')).toBeVisible()
 
-  // UN SOLO `h1`: el slab trae el suyo y `PageShell` no puede dibujar otro con el mismo nombre.
-  // Si alguien saca `encabezado={false}`, esto se pone rojo antes que nadie mire la pantalla.
+  // UN SOLO `h1`: lo trae el título de la ficha. Sin `PageShell` no puede haber un segundo con el
+  // mismo nombre a 60px de distancia.
   await expect(page.locator('h1')).toHaveCount(1)
 
-  // Las altas de cada bloque están A LA VISTA, arriba de su lista. Enterradas al final de una tabla
-  // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre. Con solapas, cada
-  // alta se exige EN SU CARA: la de documentos vive en la solapa Documentos, que es donde está su
-  // lista — pedirla en todas obligaría a dibujar cuatro formularios en cada vista.
+  // Las altas están A LA VISTA. El alta de OBRA subió a la acción primaria de la cabecera —enterrada
+  // arriba de una tabla de 60 filas no la encontraba nadie—; las otras dos siguen en su cara.
+  await page.getByTestId('solapa-documentos').click()
   await expect(page.getByTestId('alta-documento')).toBeVisible()
-  await page.getByTestId('solapa-resumen').click()
+  await page.getByTestId('nueva-obra').click()
   await expect(page.getByTestId('alta-obra')).toBeVisible()
-  await expect(page.getByTestId('alta-contacto')).toBeVisible()
+  await expect(page.getByTestId('contactos-cliente').getByTestId('alta-contacto')).toBeVisible()
+  await page.getByTestId('solapa-actividad').click()
   await expect(page.getByTestId('alta-nota')).toBeVisible()
 
   // ═══ EL RECORD ENTRA EN UN TELÉFONO SIN CORRERSE DE COSTADO ═══

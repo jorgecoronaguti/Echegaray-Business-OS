@@ -64,7 +64,7 @@ export function BloqueDocumentos({
   const visibles = documentos.slice(0, tope)
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="documentos-cliente">
       <div className="flex flex-wrap items-center gap-3">
         {puedeEditar && <Vincular accion={vincular} />}
         {carpetaDriveId ? (

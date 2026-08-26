@@ -102,6 +102,19 @@ export function cumpleCorteRecurso(r: SenalesRecurso, corte: CorteRecurso): bool
 // dibuja un chip de equipos, así que cae en la lista entera —donde los equipos están, con su TIPO
 // a la vista— en lugar de estrenar un quinto chip que el zip no tiene.
 
+// ═══ «PLANTILLAS» ACÁ SON LAS DE SECUENCIA, NO LAS DE OBRA (26/08/2026) ═══
+//
+// La vista `plantillas` de esta pantalla lee `plantilla_secuencia`: los PASOS PONDERADOS de una
+// actividad —replanteo 10 %, encofrado 35 %…—, que es lo que hace medible un avance por pasos.
+//
+// El artboard `17b · Plantillas de obra` es OTRA COSA con el mismo nombre: el ESQUELETO de una obra
+// —sectores, frentes, actividades y sus dependencias—, el que se elige al convertir un presupuesto
+// para que el plan nazca armado. Esa entidad NO EXISTE en la base: no hay tabla, no hay servicio y
+// no hay migración. Dibujar su pantalla sobre `plantilla_secuencia` mostraría pasos de una actividad
+// bajo los rótulos «Estructura», «Usada» y «Últ. obra», que es inventar tres columnas.
+//
+// Queda declarado acá, que es donde el próximo va a buscar: la pantalla es del Paso 6 y arranca por
+// una migración, no por el front.
 export const VISTAS_RECURSOS = ['recursos', 'mano-obra', 'plantillas', 'precios'] as const
 export type VistaRecursos = (typeof VISTAS_RECURSOS)[number]
 

@@ -1,20 +1,14 @@
-import Link from 'next/link'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
-import { PageShell } from '@/shared/components/ui'
-import { Aviso, BuscadorURL, Estado, Eyebrow, Vacio } from '@/shared/components/ds'
-import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { RelojDeJornada, PuntoActivo } from '@/features/administracion/components/RelojDeJornada'
-import {
-  getEsperados, getObrasConGente, getPresencia,
-} from '@/features/administracion/services/presenciaService'
-import {
-  agrupar, filtrarGrupos, lecturaDePunto, mapa, resumen, type Esperado, type FilaPresencia,
-} from '@/features/administracion/services/presencia'
-
-// «EN OBRA AHORA» — quién está, desde qué hora y dónde arrancó el día.
+// 19b v2 · «EN OBRA AHORA» — quién está, desde qué hora y dónde arrancó el día.
+//
+// ═══ QUÉ CAMBIÓ CONTRA LA VERSIÓN DE AGOSTO ═══
+//
+// El AGRUPADO. Antes: por estado —«en obra», «sin cerrar», «ya cerraron», «sin registrar»—, que
+// contesta «¿quién tiene la jornada abierta?», una pregunta administrativa. El v2 agrupa POR OBRA,
+// que es la pregunta que se hace a las siete de la mañana: «¿está completo el equipo del Depósito
+// Norte?». El estado no se pierde: viaja en el punto y en la hora de cada tarjeta.
+//
+// Y el titular pasó a ser un número grande —«12 de 16 fichados hoy»— en vez de una línea de
+// subtítulo: es el dato por el que se abre esta pantalla.
 //
 // ═══ QUIÉN LA VE ═══
 //
@@ -25,25 +19,52 @@ import {
 //
 // ═══ LO QUE ESTA PANTALLA NO AFIRMA ═══
 //
-// «Sin registrar» no es «ausente», y no se cuenta como falta en ningún lado. Un operario sin
-// teléfono, uno que le negó el permiso al GPS y uno que faltó se ven idénticos desde acá. Convertir
-// esa ignorancia en una ausencia sería fabricar una novedad de liquidación con cara de dato.
+// «No fichó» no es «ausente», y no se cuenta como falta en ningún lado. Un operario sin teléfono,
+// uno que le negó el permiso al GPS y uno que faltó se ven idénticos desde acá. Convertir esa
+// ignorancia en una ausencia sería fabricar una novedad de liquidación con cara de dato — y por eso
+// el titular publica FICHADOS y nunca ausencias.
 //
 // Y donde no hay coordenada dice «sin ubicación». Nunca el punto de la obra: un dato inventado se
 // ve exactamente igual que uno real, y éste decide discusiones sobre si alguien estaba donde dijo.
+//
+// ═══ LO QUE EL MOCKUP PIDE Y NO SE DIBUJA ═══
+//
+//   JEFE DE OBRA al lado del nombre de la obra. Ni `presencia_del_dia` ni `persona_directorio`
+//   publican quién la conduce, y ponerlo exigiría una consulta más para un rótulo. Queda pendiente.
+
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
+import { Aviso } from '@/shared/components/ds'
+import { BuscadorFilo } from '@/shared/components/v2/BuscadorFilo'
+import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
+import { V } from '@/shared/components/v2/patron'
+import { Migas, TitularDeCola, PantallaV2 } from '@/shared/components/v2/segundoNivel'
+import { GrupoDeLaJornada } from '@/features/administracion/components/JornadaPorObra'
+import {
+  getEsperados, getObrasConGente, getPresencia,
+} from '@/features/administracion/services/presenciaService'
+import { agrupar, filtrarGrupos } from '@/features/administracion/services/presencia'
+import { jornadaPorObra, titularDeLaJornada } from '@/features/administracion/services/presenciaPorObra'
 
 export const dynamic = 'force-dynamic'
 
-const hora = (iso: string | null) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const RUTA = '/administracion/personas/en-obra'
 
 const hoyISO = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** El filtro de obra CONSERVA la búsqueda: cambiar de obra no puede vaciar el buscador a espaldas
+ *  de quien lo escribió. */
+function hrefObra(obraId: string | undefined, q: string | undefined): string {
+  const p = new URLSearchParams()
+  if (obraId) p.set('obra', obraId)
+  if (q) p.set('q', q)
+  const qs = p.toString()
+  return `${RUTA}${qs ? `?${qs}` : ''}`
+}
 
 export default async function EnObraPage({
   searchParams,
@@ -67,226 +88,135 @@ export default async function EnObraPage({
 
   if (presencia.error) {
     return (
-      <PageShell title="En obra ahora">
-        <NavAdministracion />
-        <Aviso tono="neg" titulo="No pude leer la presencia" testid="presencia-error">{presencia.error}</Aviso>
-      </PageShell>
+      <PantallaV2>
+        <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
+        <div style={{ padding: '16px 20px' }}>
+          <Aviso tono="neg" titulo="No pude leer la presencia" testid="presencia-error">{presencia.error}</Aviso>
+        </div>
+      </PantallaV2>
     )
   }
 
-  // DOS CONTEOS DISTINTOS. `hayAlgo` dice si HAY jornada de la que hablar; `hayResultado`, si la
-  // búsqueda encontró a alguien. Sin esa separación, escribir un apellido que no está mostraría el
-  // texto de «nadie marcó asistencia hoy» —que es una afirmación sobre la obra, no sobre la
-  // búsqueda— y eso es exactamente el tipo de conclusión que esta pantalla no puede inducir.
+  // DOS CONTEOS DISTINTOS. `todos` dice si HAY jornada de la que hablar; `g`, si la búsqueda
+  // encontró a alguien. Sin esa separación, escribir un apellido que no está mostraría el texto de
+  // «nadie marcó asistencia hoy» —que es una afirmación sobre la obra, no sobre la búsqueda—.
   const todos = agrupar(presencia.data ?? [], esperados.data ?? [])
   const g = filtrarGrupos(todos, q ?? '')
-  const cuenta = (x: typeof todos) => x.enObra.length + x.cerradas.length + x.faltaSalida.length + x.sinRegistrar.length
-  const hayAlgo = cuenta(todos) > 0
-  const hayResultado = cuenta(g) > 0
+  const marcas = [...g.enObra, ...g.faltaSalida, ...g.cerradas]
+  const jornada = jornadaPorObra(marcas, g.sinRegistrar)
+  const hayAlgo = todos.enObra.length + todos.faltaSalida.length + todos.cerradas.length
+    + todos.sinRegistrar.length > 0
+  const hayResultado = jornada.plantel > 0
 
   return (
-    <PageShell
-      title="En obra ahora"
-      subtitle={
-        <span data-testid="resumen-presencia">
-          {hayAlgo ? resumen(g) : 'Todavía no marcó nadie hoy'}
-          <span className="text-faint"> · {fecha.slice(8, 10)}/{fecha.slice(5, 7)}</span>
-        </span>
-      }
-    >
-      <NavAdministracion />
+    <PantallaV2>
+      <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <BuscadorURL
-          accion="/administracion/personas/en-obra"
+      {/* EL NÚMERO CUENTA MARCAS HECHAS, no ausencias: hasta que cierre la jornada, sin marca están
+          el que no tiene teléfono, el que le negó el permiso al GPS y el que faltó. */}
+      <TitularDeCola
+        testid="titular-jornada"
+        numero={jornada.fichados}
+        titulo={`de ${jornada.plantel} fichados hoy`}
+        resumen={hayAlgo ? titularDeLaJornada(jornada) : 'Todavía no marcó nadie hoy'}
+        derecha={`${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 12px', flexWrap: 'wrap', rowGap: 8 }}>
+        <BuscadorFilo
+          accion={RUTA}
           q={q}
           placeholder="Buscar persona, categoría u obra"
           oculto={{ obra }}
-          ancho="w-full sm:w-[240px]"
           testid="buscar-presencia"
         />
-        <nav className="flex flex-wrap gap-1" data-testid="filtro-obra">
-          <FiltroObra href={hrefObra(undefined, q)} activo={!obra}>Todas las obras</FiltroObra>
-          {(obras.data ?? []).map((o) => (
-            <FiltroObra
-              key={o.id}
-              href={hrefObra(o.id, q)}
-              activo={obra === o.id}
-            >
-              {o.nombre}
-            </FiltroObra>
-          ))}
-        </nav>
-        <Link href="/administracion/personas" className="ml-auto text-[12.5px] text-muted hover:text-ink">
-          Personal →
-        </Link>
+        <FiltrosSuaves
+          testid="filtro-obra"
+          // El conteo es el de la jornada VISIBLE sobre la esperada: dice cuánto de la gente que se
+          // esperaba hoy ya está, sin un bloque de totales.
+          conteo={{ n: jornada.fichados, total: jornada.plantel }}
+          opciones={[
+            { clave: 'todas', etiqueta: 'Todas las obras', href: hrefObra(undefined, q), activo: !obra },
+            ...(obras.data ?? []).map((o) => ({
+              clave: o.id, etiqueta: o.nombre, href: hrefObra(o.id, q), activo: obra === o.id,
+            })),
+          ]}
+        />
       </div>
 
-      {!hayAlgo && (
-        <Vacio>
-          Nadie marcó asistencia hoy y no hay nadie con asignación vigente en esta obra. La marca la
-          hace cada persona desde su teléfono, en «Hoy»; las asignaciones las carga Administración
-          desde la solapa Personal de la obra.
-        </Vacio>
-      )}
-
-      {hayAlgo && !hayResultado && (
-        <div data-testid="presencia-sin-resultado">
-          <Vacio>Nadie de los que hoy están en la jornada coincide con «{q}».</Vacio>
-        </div>
-      )}
-
-      {g.enObra.length > 0 && (
-        <Bloque titulo="EN OBRA" cuenta={g.enObra.length} testid="bloque-en-obra">
-          {g.enObra.map((f) => <Fila key={f.persona_id} f={f} activo />)}
-        </Bloque>
-      )}
-
-      {g.faltaSalida.length > 0 && (
-        <Bloque titulo="SIN CERRAR" cuenta={g.faltaSalida.length} testid="bloque-sin-cerrar">
-          <p className="mb-2 text-[11.5px] leading-relaxed text-faint">
-            Entraron y nunca marcaron la salida. No están trabajando: falta el dato, y lo corrige
-            Administración.
+      <div style={{ padding: '0 20px 24px' }}>
+        {!hayAlgo && (
+          <p style={{ fontSize: '12.5px', color: V.apagado, maxWidth: 720, lineHeight: 1.6 }} data-testid="jornada-vacia">
+            Nadie marcó asistencia hoy y no hay nadie con asignación vigente en esta obra. La marca la
+            hace cada persona desde su teléfono, en «Hoy»; las asignaciones las carga Administración
+            desde la solapa Personal de la obra.
           </p>
-          {g.faltaSalida.map((f) => <Fila key={`${f.persona_id}-${f.fecha}`} f={f} />)}
-        </Bloque>
-      )}
-
-      {g.cerradas.length > 0 && (
-        <Bloque titulo="YA CERRARON" cuenta={g.cerradas.length} testid="bloque-cerradas">
-          {g.cerradas.map((f) => <Fila key={f.persona_id} f={f} />)}
-        </Bloque>
-      )}
-
-      {g.sinRegistrar.length > 0 && (
-        <Bloque titulo="SIN REGISTRAR" cuenta={g.sinRegistrar.length} testid="bloque-sin-registrar">
-          <p className="mb-2 text-[11.5px] leading-relaxed text-faint">
-            Tienen asignación vigente y hoy no hay marca suya. <strong className="font-medium">No es
-            una lista de ausentes</strong>: acá entra igual el que no tiene teléfono y el que no le
-            dio permiso a la ubicación. Quién faltó lo declara el jefe de obra.
-          </p>
-          {g.sinRegistrar.map((e) => <FilaEsperado key={e.id} e={e} />)}
-        </Bloque>
-      )}
-    </PageShell>
-  )
-}
-
-/** El filtro de obra CONSERVA la búsqueda: cambiar de obra no puede vaciar el buscador a espaldas
- *  de quien lo escribió. */
-function hrefObra(obraId: string | undefined, q: string | undefined): string {
-  const p = new URLSearchParams()
-  if (obraId) p.set('obra', obraId)
-  if (q) p.set('q', q)
-  const qs = p.toString()
-  return `/administracion/personas/en-obra${qs ? `?${qs}` : ''}`
-}
-
-function FiltroObra({ href, activo, children }: { href: string; activo: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      aria-current={activo ? 'page' : undefined}
-      className={`rounded-control px-2.5 py-1 text-[12.5px] ${
-        activo ? 'bg-surface-quiet font-medium text-ink' : 'text-muted hover:text-ink'
-      }`}
-    >
-      {children}
-    </Link>
-  )
-}
-
-function Bloque({
-  titulo, cuenta, testid, children,
-}: { titulo: string; cuenta: number; testid: string; children: React.ReactNode }) {
-  return (
-    <section className="mb-7" data-testid={testid}>
-      <div className="flex items-baseline gap-2">
-        <Eyebrow>{titulo}</Eyebrow>
-        <span className="font-mono text-[11.5px] tabular-nums text-faint">{cuenta}</span>
-      </div>
-      <div className="mt-2 border-t border-line">{children}</div>
-    </section>
-  )
-}
-
-function Fila({ f, activo = false }: { f: FilaPresencia; activo?: boolean }) {
-  const punto = lecturaDePunto(f)
-  const enlace = mapa(f.lat, f.lon)
-  return (
-    <div
-      data-testid="fila-presencia"
-      data-persona={f.persona_id}
-      data-estado={f.estado}
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[#EFEEEA] py-2.5"
-    >
-      <span className="flex min-w-[190px] flex-1 items-center gap-2">
-        {activo && <PuntoActivo />}
-        <span className="min-w-0">
-          <span className="block truncate text-[14px] text-ink">{f.nombre_completo}</span>
-          <span className="block text-[11.5px] text-faint">
-            {f.categoria ?? f.puesto ?? 'sin categoría'}
-            {f.obra ? ` · ${f.obra}` : ' · sin obra en la marca'}
-          </span>
-        </span>
-      </span>
-
-      <span className="w-[74px] text-right">
-        <span className="block text-[10.5px] text-faint">entrada</span>
-        <span className="font-mono text-[14px] tabular-nums text-ink">{hora(f.entrada)}</span>
-      </span>
-
-      <span className="w-[74px] text-right">
-        <span className="block text-[10.5px] text-faint">{f.salida ? 'salida' : 'lleva'}</span>
-        {f.salida
-          ? <span className="font-mono text-[14px] tabular-nums text-ink">{hora(f.salida)}</span>
-          : <RelojDeJornada entrada={f.entrada} />}
-      </span>
-
-      <span className="w-[112px]">
-        <Estado
-          tono={f.estado === 'activo' ? 'pos' : f.estado === 'falta_salida' ? 'warn' : 'nulo'}
-          clave={f.estado}
-        >
-          {f.estado === 'activo' ? 'Activo' : f.estado === 'falta_salida' ? 'Falta salida' : 'Cerrada'}
-        </Estado>
-      </span>
-
-      <span className="w-[168px] text-[12px]">
-        {enlace ? (
-          <a
-            href={enlace}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="ubicacion-marca"
-            className={`underline ${punto.fiable ? 'text-muted hover:text-ink' : 'text-warn'}`}
-          >
-            Dónde arrancó <span className="text-faint">· {punto.texto}</span>
-          </a>
-        ) : (
-          <span className="text-faint" data-testid="sin-ubicacion">{punto.texto}</span>
         )}
-      </span>
-    </div>
-  )
-}
 
-function FilaEsperado({ e }: { e: Esperado }) {
-  return (
-    <div
-      data-testid="fila-esperado"
-      data-persona={e.id}
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[#EFEEEA] py-2.5"
-    >
-      <span className="min-w-[190px] flex-1">
-        <span className="block truncate text-[14px] text-ink-soft">{e.nombre_completo}</span>
-        <span className="block text-[11.5px] text-faint">
-          {e.categoria ?? 'sin categoría'}
-          {e.obra_actual ? ` · ${e.obra_actual}` : ''}
-          {e.cuadrilla ? ` · ${e.cuadrilla}` : ''}
-        </span>
-      </span>
-      <span className="w-[112px]"><Estado tono="nulo" clave="sin_registrar">Sin marca</Estado></span>
-    </div>
+        {hayAlgo && !hayResultado && (
+          <p style={{ fontSize: '12.5px', color: V.apagado }} data-testid="presencia-sin-resultado">
+            Nadie de los que hoy están en la jornada coincide con «{q}».
+          </p>
+        )}
+
+        {jornada.obras.map((o) => (
+          <GrupoDeLaJornada
+            key={o.obraId ?? o.nombre}
+            titulo={o.nombre}
+            gente={o.gente}
+            conteo={`${o.gente.length} de ${o.esperados}`}
+            fraccion={o.esperados === 0 ? 0 : o.gente.length / o.esperados}
+            completo={o.gente.length === o.esperados}
+            testid="obra-de-la-jornada"
+          />
+        ))}
+
+        {jornada.sinObra.length > 0 && (
+          <GrupoDeLaJornada
+            titulo="Fichó sin obra asignada"
+            // LA CONSECUENCIA, NO EL ESTADO: la persona está trabajando y su hora no le pesa a
+            // ninguna obra, así que el costo de esa obra sale más barato de lo que fue.
+            nota="Está trabajando, pero sus horas no van a ninguna obra"
+            gente={jornada.sinObra}
+            conteo={String(jornada.sinObra.length)}
+            tono="warn"
+            verbo={{ texto: 'Asignar', href: '/obras' }}
+            testid="ficho-sin-obra"
+          />
+        )}
+
+        {jornada.sinFichar.length > 0 && (
+          <GrupoDeLaJornada
+            titulo="No fichó"
+            nota="Puede no haber marcado todavía: no es una ausencia hasta que cierre la jornada"
+            conteo={String(jornada.sinFichar.length)}
+            apagado
+            gente={jornada.sinFichar.map((e) => ({
+              personaId: e.id,
+              nombre: e.nombre_completo,
+              rol: [e.categoria, e.obra_actual, e.cuadrilla].filter(Boolean).join(' · ') || null,
+              entrada: null,
+              estado: 'sin_registrar' as const,
+              marca: null,
+            }))}
+            testid="no-ficho"
+          />
+        )}
+
+        <p
+          style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 18, maxWidth: 780, textWrap: 'pretty' }}
+          data-testid="nota-jornada"
+        >
+          Cada tarjeta es una marca real hecha desde el celular de la persona o cargada por el jefe de
+          obra. «No fichó» no es «ausente»: la ausencia se declara al cerrar la jornada, y hasta
+          entonces afirmarla sería inventar una falta. El jefe de cada obra no se dibuja porque
+          ninguna de las dos vistas que alimentan esta pantalla lo publica.
+          {' '}
+          <Link href="/administracion/personas" style={{ color: V.tinta, fontWeight: 500 }}>
+            Ir a Personal →
+          </Link>
+        </p>
+      </div>
+    </PantallaV2>
   )
 }
