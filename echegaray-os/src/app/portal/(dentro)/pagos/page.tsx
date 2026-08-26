@@ -31,7 +31,7 @@ import { Calendario } from './Calendario'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string }> }) {
+export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string; ver?: string }> }) {
   const q = await searchParams
   const sesion = await sesionDelPortal()
   if (!sesion) redirect('/portal/login')
@@ -64,6 +64,21 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // —los pagó y tiene derecho a verlos— pero abajo, en gris, y sin sumar al contrato en curso.
   const enOrden = porFecha(pagos.filter((p) => !p.historico))
   const anteriores = porFecha(pagos.filter((p) => p.historico))
+
+  // ═══ EL FILTRO: TODOS · POR COBRAR · PAGADOS ═══
+  //
+  // Con 21 pagos el cronograma se lee para dos cosas distintas: «qué me falta» y «qué ya pagué». En
+  // una lista sola hay que barrerla entera para cualquiera de las dos. El filtro va en la URL —no en
+  // estado del navegador— para que sobreviva a un refresco y se pueda compartir.
+  //
+  // LOS TOTALES NO SE FILTRAN. Son del cronograma completo: recalcularlos sobre lo filtrado haría
+  // que «Pagado» cambiara al tocar una pastilla, que es la forma más rápida de perderle la confianza
+  // a un número.
+  const ver = q.ver === 'pagados' || q.ver === 'pendientes' ? q.ver : 'todos'
+  const visibles = ver === 'pagados' ? enOrden.filter((p) => p.fechaPago)
+    : ver === 'pendientes' ? enOrden.filter((p) => !p.fechaPago)
+    : enOrden
+  const nPagados = enOrden.filter((p) => p.fechaPago).length
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
 
   return (
@@ -82,8 +97,19 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
       {pagos.length ? (
         <div className="mt-4 flex items-center gap-1 self-start rounded-[8px] border border-line p-[3px]">
-          <Solapa a="/portal/pagos" activa={!enCalendario}>Listado</Solapa>
+          <Solapa a={`/portal/pagos${ver === 'todos' ? '' : `?ver=${ver}`}`} activa={!enCalendario}>Listado</Solapa>
           <Solapa a={`/portal/pagos?vista=calendario&mes=${mes}`} activa={enCalendario}>Calendario</Solapa>
+        </div>
+      ) : null}
+
+      {/* Sólo bajo el listado: en el calendario la distinción ya la da la fecha. */}
+      {pagos.length && !enCalendario ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Pastilla a="/portal/pagos" activa={ver === 'todos'}>{`Todos ${enOrden.length}`}</Pastilla>
+          <Pastilla a="/portal/pagos?ver=pendientes" activa={ver === 'pendientes'}>
+            {`Por cobrar ${enOrden.length - nPagados}`}
+          </Pastilla>
+          <Pastilla a="/portal/pagos?ver=pagados" activa={ver === 'pagados'}>{`Pagados ${nPagados}`}</Pastilla>
         </div>
       ) : null}
 
@@ -113,8 +139,13 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             </div>
           ) : null}
 
+          {visibles.length === 0 ? (
+            <div className="mt-6">
+              <Vacio>{ver === 'pagados' ? 'Todavía no hay ningún pago cobrado.' : 'No queda ningún pago por cobrar.'}</Vacio>
+            </div>
+          ) : null}
           <div className="mt-5 lg:mt-0">
-            {enOrden.map((p) => {
+            {visibles.map((p) => {
               const estado = estadoDePago(p, hoy)
               const esProximo = p.id === proximo?.id
               return (
@@ -230,6 +261,22 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         </>
       )}
     </>
+  )
+}
+
+/** Una pastilla de filtro: el mismo patrón que los filtros de la cartera del OS. */
+function Pastilla({ a, activa, children }: { a: string; activa: boolean; children: string }) {
+  return (
+    <Link
+      href={a}
+      aria-current={activa ? 'page' : undefined}
+      className={
+        'flex min-h-9 items-center rounded-full px-3.5 text-[12.5px] transition-colors ' +
+        (activa ? 'bg-ink font-semibold text-canvas' : 'border border-line text-muted hover:text-ink')
+      }
+    >
+      {children}
+    </Link>
   )
 }
 
