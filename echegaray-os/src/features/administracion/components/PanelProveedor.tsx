@@ -35,7 +35,7 @@ import { CamposProveedor } from './proveedores/CamposProveedor'
 import { IconoCerrar, IconoEditar, IconoProblema } from '@/shared/components/iconos'
 import { pesos } from '@/shared/components/canon/formato'
 import { formatearCuit } from '../services/identidad'
-import { PanelFilo, RotuloPanel, V } from './proveedores/patron'
+import { PanelFilo, RotuloPanel, V } from '@/shared/components/v2/patron'
 import type { ComprasDelProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
