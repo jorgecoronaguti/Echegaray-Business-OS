@@ -74,11 +74,13 @@ export function Shell({ cliente, obras, children }: Props) {
         className="flex h-[44px] shrink-0 items-center gap-2.5 border-b border-line bg-surface px-[14px] md:px-[26px]"
       >
         <img src="/marca/isotipo.png" alt="" width={24} height={24} className="h-[24px] w-[24px]" />
-        {/* «ECHEGARAY CONSTRUCCIONES» es UN nombre, no una marca con su bajada: mismo peso, mismo
-            color, mismo interletrado. La segunda palabra se retira por debajo de `sm`, donde compite
-            con el nombre del cliente. */}
+        {/* EL NOMBRE ENTERO, SIEMPRE. La empresa se llama ECHEGARAY CONSTRUCCIONES —así figura en
+            toda la plataforma— y recortarlo a «ECHEGARAY» en el teléfono la dejaba a medio nombrar
+            justo en la pantalla que más se usa. Se retiraba porque competía con el nombre del
+            cliente al lado; ese nombre ya no está en la barra, así que el motivo desapareció.
+            Es UN nombre, no una marca con su bajada: un solo peso, un solo color, un interletrado. */}
         <span className="text-[11.5px] font-semibold tracking-[.04em] text-ink">
-          ECHEGARAY<span className="hidden sm:inline"> CONSTRUCCIONES</span>
+          ECHEGARAY CONSTRUCCIONES
         </span>
         <span className="ml-auto text-[11px] text-faint">Portal del cliente</span>
         {/* En el teléfono no hay barra lateral: «Salir» vive acá, y se ESCRIBE. Un chevron a la
