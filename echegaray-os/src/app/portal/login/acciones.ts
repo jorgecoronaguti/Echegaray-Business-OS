@@ -115,7 +115,10 @@ export async function entrar(_previo: EstadoLogin, form: FormData): Promise<Esta
 
 export async function salir() {
   ;(await cookies()).delete({ name: NOMBRE_COOKIE, path: '/portal' })
-  redirect('/portal/login')
+  // A LA DESPEDIDA DEL PORTAL, no a la puerta. Volver directo al formulario de ingreso hace que
+  // «cerrar sesión» parezca que falló —la pantalla se ve casi igual— y no confirma que la sesión se
+  // cerró de verdad. La despedida lo dice y ofrece volver a entrar.
+  redirect('/portal/chau')
 }
 
 /**

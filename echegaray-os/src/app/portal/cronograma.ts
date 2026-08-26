@@ -113,12 +113,18 @@ export type ResumenCobro = {
  * reparo no entra: es una retención sobre lo certificado, no una certificación más — contarlo haría
  * que «falta certificar» bajara por retener plata.
  */
-export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: string): ResumenCobro {
+export function resumenDeCobro(
+  pagos: Pago[],
+  contrato: number | null,
+  hoyISO: string,
+  /** En qué moneda se hace la cuenta. Las otras quedan fuera y se cuentan en `sinMonto`. */
+  moneda: 'ARS' | 'USD' = 'ARS',
+): ResumenCobro {
   let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
   // Los tres números del pie salen de la MISMA pasada: neto e IVA de lo cobrado, para que el cliente
   // pueda cruzar el total pagado contra su libro de IVA compras sin sacar la calculadora.
   let netoPagado = 0, ivaPagado = 0
-  // CUÁNTAS LÍNEAS EN PESOS ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
+  // CUÁNTAS LÍNEAS DE ESTA MONEDA ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
   // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
   // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
   // y eso se escribe con ausencia, no con un cero.
@@ -131,7 +137,7 @@ export function resumenDeCobro(pagos: Pago[], contrato: number | null, hoyISO: s
     if (p.historico) continue
     // LAS MONEDAS NO SE SUMAN. Una línea en dólares metida en un total en pesos lo arruina sin dar
     // error; se cuenta como «sin monto» para que la pantalla diga que no está en la suma.
-    if (p.moneda !== 'ARS') { sinMonto++; continue }
+    if (p.moneda !== moneda) { sinMonto++; continue }
     if (p.monto == null) { sinMonto++; continue }
     if (p.fechaPago) {
       pagado += p.monto

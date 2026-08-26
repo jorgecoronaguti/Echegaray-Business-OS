@@ -116,7 +116,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // significar algo.
   const deLaObra = porObra(pagos)
   const contratoDelFiltro = obra ? (contratos.get(obra) ?? null) : contratoDelConjunto(bloques, contratos)
+  // ═══ UNA CUENTA POR MONEDA (26/08/2026) ═══
+  //
+  // El contrato de Quattropani es en dólares y sus doce cobros también. El pie mostraba un contrato
+  // en PESOS —el que guarda el registro de obras— y «Pendiente: sin cargar», porque ninguna línea en
+  // pesos alimentaba la suma. Un contrato en una moneda al lado de cobros en otra no es un total: es
+  // dos números que no se pueden comparar puestos uno al lado del otro.
+  //
+  // Ahora se cuenta cada moneda por separado y se dibuja la que tiene contenido. El CONTRATO sólo
+  // acompaña a los pesos: el que guarda `obra_canonica` está en pesos, y ponerlo arriba de una
+  // columna en dólares afirmaría una equivalencia que nadie calculó.
   const total = resumenDeCobro(deLaObra, contratoDelFiltro, hoy)
+  const enDolares = resumenDeCobro(deLaObra, null, hoy, 'USD')
+  const hayPesos = deLaObra.some((p) => p.moneda === 'ARS')
+  const hayDolares = deLaObra.some((p) => p.moneda === 'USD')
   const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
 
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
@@ -299,22 +312,41 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             {nombreDelFiltro ? nombreDelFiltro.toUpperCase() : 'TODAS SUS OBRAS'}
           </p>
           <div className="mt-2 flex flex-wrap gap-x-12 gap-y-5 border-t-2 border-ink pt-5">
-            <Total rotulo="Contrato" monto={total.contrato} />
+            {/* LA MONEDA SE DICE EN EL RÓTULO cuando hay dos en la pantalla. Un «$» junto a un
+                «U$S» obliga a mirar dos veces cuál es cuál, y en un pie de plata eso no se pregunta:
+                se lee. Con una sola moneda el rótulo queda limpio. */}
+            {hayPesos ? <Total rotulo={hayDolares ? 'Contrato ARS$' : 'Contrato'} monto={total.contrato} /> : null}
         {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
                 compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
                 van en letra chica debajo y no como dos columnas más. */}
-            <div>
-              <p className="text-[11px] tracking-[.09em] text-faint">PAGADO</p>
-              <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
-              <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
-                neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
-              </p>
-            </div>
+            {hayPesos ? (
+              <div>
+                <p className="text-[11px] tracking-[.09em] text-faint">{hayDolares ? 'PAGADO ARS$' : 'PAGADO'}</p>
+                <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(total.hayPlan ? total.pagado : null)}</p>
+                <p className="tnum mt-1 font-mono text-[11.5px] text-faint">
+                  neto {pesos(total.netoPagado)} · IVA {pesos(total.ivaPagado)}
+                </p>
+              </div>
+            ) : null}
             {/* «FALTA CERTIFICAR» SE RETIRÓ (26/08/2026, pedido del dueño). Es una cuenta interna
                 —contrato menos lo que ya entró al cronograma— y al cliente le decía poco: no es plata
                 que deba ni que le vayan a cobrar en una fecha. El pie del portal contesta las tres
                 preguntas que sí son suyas: cuánto se contrató, cuánto pagó, cuánto le falta pagar. */}
-            <Total rotulo="Pendiente" monto={total.hayPlan ? total.pendiente : null} />
+            {hayPesos ? <Total rotulo={hayDolares ? 'Pendiente ARS$' : 'Pendiente'} monto={total.hayPlan ? total.pendiente : null} /> : null}
+            {/* EN DÓLARES, sin contrato al lado: el que guarda el registro está en pesos y ponerlo
+                acá afirmaría una equivalencia que nadie calculó. */}
+            {hayDolares ? (
+              <>
+                <div>
+                  <p className="text-[11px] tracking-[.09em] text-faint">PAGADO US$</p>
+                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(enDolares.pagado, 'USD')}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] tracking-[.09em] text-faint">PENDIENTE US$</p>
+                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(enDolares.pendiente, 'USD')}</p>
+                </div>
+              </>
+            ) : null}
           </div>
           {total.sinMonto ? (
             <p className="mt-3 text-[12.5px] text-faint">

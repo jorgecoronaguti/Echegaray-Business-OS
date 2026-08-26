@@ -66,6 +66,12 @@ export function destinoPorRol(
   // ESTO ES LA PUERTA, NO LA CERRADURA: acá sólo se mira que la cookie EXISTA. Que sea válida, que
   // esté firmada y que ese cliente exista lo decide el servidor en cada pantalla.
   if (esRutaVistaPrevia(pathname)) return null
+  // LA PUERTA Y LA SALIDA SON DE TODOS. `/portal/login` no muestra un solo dato de ningún cliente —es
+  // un campo de mail— y `/portal/salir` sólo borra una cookie. Rebotarlas tenía un efecto concreto y
+  // malo: al cerrar la sesión de una vista previa, el dueño terminaba dentro de SU sistema en vez de
+  // en la pantalla de salida del portal. «La splash page de cuando el cliente sale de su sesión
+  // tiene que ser un logout externo; ahora está llevando a una pantalla de mi propio sistema.»
+  if ([`${RUTA_PORTAL}/login`, `${RUTA_PORTAL}/salir`, `${RUTA_PORTAL}/chau`].includes(pathname)) return null
   if (esRutaPortal(pathname) && conSesionDePortal) return null
 
   // Y el portal sólo existe para el cliente. Incluye al rol nulo: un usuario autenticado sin perfil

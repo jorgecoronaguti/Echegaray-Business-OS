@@ -38,7 +38,31 @@ export default async function Facturas() {
   const montos = acceso.puedeVerMontos
   const variasObras = bloques.length > 1
 
-  const facturas = pagos.filter((p) => p.facturaNumero)
+  // ═══ UNA FILA POR FACTURA, NO POR COBRO (26/08/2026) ═══
+  //
+  // «La factura 220 está repetida tres veces.» Y era cierto: tres cobros del cronograma llevan ese
+  // número —el anticipo partido en dos monedas y su IVA— y la pantalla dibujaba uno por cobro. Pero
+  // el cliente recibió UNA factura: acá se lista el COMPROBANTE, no la línea del plan.
+  //
+  // Los importes se suman POR MONEDA. Sumar pesos con dólares daría un número que no existe, y el
+  // anticipo de Quattropani está declarado justamente así: una parte en cada una.
+  const porFactura = new Map<string, typeof pagos>()
+  for (const p of pagos.filter((x) => x.facturaNumero)) {
+    const k = p.facturaNumero as string
+    porFactura.set(k, [...(porFactura.get(k) ?? []), p])
+  }
+  const facturas = [...porFactura.values()].map((lineas) => {
+    const enPesos = lineas.filter((l) => l.moneda === 'ARS' && l.monto != null)
+    const enDolares = lineas.filter((l) => l.moneda === 'USD' && l.monto != null)
+    return {
+      ...lineas[0],
+      montoARS: enPesos.length ? enPesos.reduce((a, l) => a + (l.monto as number), 0) : null,
+      montoUSD: enDolares.length ? enDolares.reduce((a, l) => a + (l.monto as number), 0) : null,
+      // La fecha del comprobante es la del cobro más viejo que lo lleva: el IVA se factura después.
+      fechaPrevista: lineas.map((l) => l.fechaPago ?? l.fechaPrevista).filter(Boolean).sort()[0] ?? null,
+      cuantas: lineas.length,
+    }
+  })
   const recibos = papeles.filter((p) => p.categoria === 'recibo')
   const archivosDeFactura = papeles.filter((p) => p.categoria === 'factura')
   const sinFacturar = pagos.length - facturas.length
@@ -96,12 +120,12 @@ export default async function Facturas() {
                     <span className="flex min-w-0 items-baseline justify-between gap-3 sm:flex-1">
                       <span className="tnum min-w-0 truncate font-mono text-[13.5px] sm:text-sm">{p.facturaNumero}</span>
                       {montos ? (
-                        <span className="tnum shrink-0 font-mono text-[15px] sm:hidden">{pesos(p.monto, p.moneda)}</span>
+                        <span className="tnum shrink-0 font-mono text-[15px] sm:hidden">{importe(p)}</span>
                       ) : null}
                     </span>
                     <span className="flex min-w-0 items-center gap-2 text-[11.5px] text-faint sm:contents">
                       <span className="tnum shrink-0 font-mono sm:w-[70px] sm:text-[13px] sm:text-muted">
-                        {diaMes(p.fechaPago ?? p.fechaPrevista)}
+                        {diaMes(p.fechaPrevista)}
                       </span>
                       {variasObras && p.obraNombre ? (
                         <span className="min-w-0 truncate sm:w-[140px] sm:text-[12.5px]">{p.obraNombre}</span>
@@ -118,8 +142,8 @@ export default async function Facturas() {
                       ) : null}
                     </span>
                     {montos ? (
-                      <span className="tnum hidden w-[118px] text-right font-mono text-[15px] sm:block">
-                        {pesos(p.monto, p.moneda)}
+                      <span className="tnum hidden w-[150px] text-right font-mono text-[15px] sm:block">
+                        {importe(p)}
                       </span>
                     ) : null}
                   </span>
@@ -162,6 +186,21 @@ export default async function Facturas() {
       ) : null}
     </>
   )
+}
+
+/**
+ * EL IMPORTE DE UNA FACTURA, con las dos monedas si las tiene.
+ *
+ * «U$S 15.400 + $ 7.130.000» no es una suma sin hacer: es el anticipo de Quattropani tal como se
+ * cobró, una parte en cada moneda. Convertirlo a un solo número necesitaría un tipo de cambio que
+ * nadie declaró para ese día.
+ */
+function importe(f: { montoARS: number | null; montoUSD: number | null }): string {
+  const partes = [
+    f.montoUSD == null ? null : pesos(f.montoUSD, 'USD'),
+    f.montoARS == null ? null : pesos(f.montoARS),
+  ].filter(Boolean)
+  return partes.length ? partes.join(' + ') : '—'
 }
 
 /** La fila entera abre el papel cuando lo hay; cuando no, es texto y no finge ser un botón. */
