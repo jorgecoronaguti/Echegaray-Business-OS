@@ -37,14 +37,15 @@ export type ObraDelPortal = { id: string; nombre: string }
 type Props = {
   /** El nombre del cliente: es de quién es TODO lo que se ve abajo. */
   cliente: string
-  /** Dirección está mirando desde la ficha, no un contacto del cliente. */
+  /** Dirección está mirando desde la ficha. Ya no cambia NADA de lo que se dibuja —el portal es
+   *  idéntico para los dos— y se conserva por si alguna pantalla necesitara saberlo. */
   previa?: boolean
   /** Cuántas obras suyas hay. Sólo para el subtítulo — la lista vive en el contenido. */
   obras: number
   children: ReactNode
 }
 
-export function Shell({ cliente, obras, previa = false, children }: Props) {
+export function Shell({ cliente, obras, children }: Props) {
   const ruta = usePathname() ?? '/portal'
   const activo = destinoActivo(ruta)
 
@@ -53,12 +54,14 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
       {/* EL AVISO DE LA PREVIA. Es lo ÚNICO que se agrega cuando mira Dirección: el resto de la
           pantalla es idéntica a la del cliente, porque un portal que se comporta distinto según
           quién mira no prueba nada de lo que muestra. Existe para poder volver a la ficha. */}
-      {previa ? (
-        <div className="fixed inset-x-0 top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 bg-ink px-4 py-2 text-[12px] text-canvas">
-          <span>Estás viendo el portal como lo ve <strong className="font-semibold">{cliente}</strong>.</span>
-          <Link href="/clientes" className="underline underline-offset-2">Volver a Clientes</Link>
-        </div>
-      ) : null}
+      {/* LA FRANJA DE LA VISTA PREVIA SE RETIRÓ (26/08/2026). Decía «estás viendo el portal como lo
+          ve X» con un enlace para volver. En el iPhone su texto se partía en tres líneas y tapaba la
+          marca de la empresa, y el dueño la evaluó por lo que aportaba: «no sirve». Tenía razón —
+          quien abre la previa acaba de tocar el botón en la ficha del cliente y sabe perfectamente
+          qué está mirando; para volver está el botón del navegador.
+          `previa` NO se retira: sigue siendo lo que autoriza a Dirección a entrar sin ser un
+          contacto del cliente. Lo que se fue es su cartel. Y así el portal es EXACTAMENTE el mismo
+          para el dueño y para el cliente, que es lo que se pidió desde el principio. */}
       {/* ── LA MARCA, ARRIBA DE TODO Y EN TODAS LAS PANTALLAS ───────────────────────────────
           Antes había sólo un isotipo de 26px en el rincón de la barra lateral. El dueño lo miró y
           dijo lo único que importa: «así es genérico, con un logo arriba a la izquierda de una
@@ -68,7 +71,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
           nombre escrito. Es exactamente el patrón del header del OS (`AppHeader`), con su mismo
           tamaño e interletrado: una sola manera de firmar, no dos. */}
       <header
-        className={`flex h-[44px] shrink-0 items-center gap-2.5 border-b border-line bg-surface px-[14px] md:px-[26px]${previa ? ' mt-9' : ''}`}
+        className="flex h-[44px] shrink-0 items-center gap-2.5 border-b border-line bg-surface px-[14px] md:px-[26px]"
       >
         <img src="/marca/isotipo.png" alt="" width={24} height={24} className="h-[24px] w-[24px]" />
         {/* «ECHEGARAY CONSTRUCCIONES» es UN nombre, no una marca con su bajada: mismo peso, mismo
@@ -116,7 +119,9 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
         </header>
 
         {/* `pb` deja libre la altura del menú inferior del teléfono; en escritorio no hay menú abajo. */}
-        <main className="min-w-0 flex-1 overflow-x-hidden pb-[86px] md:pb-0">
+        {/* El hueco del menú inferior incluye la barra de gestos: en un iPhone sin ella el último
+              renglón de la lista quedaba debajo del menú. */}
+        <main className="min-w-0 flex-1 overflow-x-hidden pb-[calc(86px+env(safe-area-inset-bottom))] md:pb-0">
           {/* Anclado a la IZQUIERDA, no centrado: la maqueta pone `padding:40px 34px;maxWidth:880px` sin
               margen automático. Centrarlo despega el contenido de la barra lateral y a 2560px lo deja
               flotando en el medio de la pantalla, lejos del menú que lo gobierna. */}
@@ -128,7 +133,7 @@ export function Shell({ cliente, obras, previa = false, children }: Props) {
       {/* ── MENÚ INFERIOR · sólo teléfono ───────────────────────────────────────────────────── */}
       <nav
         aria-label="Secciones"
-        className="fixed inset-x-0 bottom-0 z-20 flex items-stretch border-t border-line bg-surface px-[6px] pb-5 pt-2 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 flex items-stretch border-t border-line bg-surface px-[6px] pt-2 md:hidden pb-[max(1.25rem,env(safe-area-inset-bottom))]"
       >
         {NAVEGABLES.map((d) => {
           const encendido = activo?.href === d.href

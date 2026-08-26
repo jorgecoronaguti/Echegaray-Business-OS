@@ -1,8 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sesionDelPortal } from '../../../../sesion'
-import { accesoDelPortal } from '../../../../datos'
-import { papelesVisibles } from '../../../../papeles'
-import { papelParaDescargar } from '../../datos'
+import { sesionDelPortal } from '../../../sesion'
+import { accesoDelPortal } from '../../../datos'
+import { papelesVisibles } from '../../../papeles'
+import { papelParaDescargar } from '../datos'
 
 // LA DESCARGA DE VERDAD — el botón que hasta hoy era un icono y no hacía nada.
 //
@@ -27,7 +27,7 @@ const noExiste = () => new Response('No encontramos ese documento.', { status: 4
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ papelId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ papelId: string }> }) {
   const sesion = await sesionDelPortal()
   if (!sesion) return noExiste()
   const acceso = await accesoDelPortal(sesion)
@@ -47,11 +47,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ papelId
   // respaldo. Se dice; no se devuelve un cuerpo vacío que el navegador guarda como PDF roto.
   if (error || !data) return new Response('No pudimos abrir el archivo ahora.', { status: 503 })
 
+  // ═══ SE ABRE, NO SE BAJA (26/08/2026) ═══
+  //
+  // Devolvía siempre `attachment`: tocar un plano descargaba un archivo a la carpeta de descargas y
+  // el cliente tenía que ir a buscarlo para mirarlo. Pedido textual: «no quiero q se descargue,
+  // quiero q el archivo se pueda ver, y si el cliente quiere q lo descargue».
+  //
+  // Por defecto `inline`: el navegador lo abre con su visor —un PDF se lee en la pestaña, una foto
+  // se ve—. `?descargar=1` sigue devolviendo `attachment` para quien SÍ lo quiere guardar, y ese es
+  // el único lugar donde el nombre real importa.
+  const bajar = new URL(req.url).searchParams.get('descargar') === '1'
   return new Response(await data.arrayBuffer(), {
     headers: {
       'content-type': papel.mime ?? 'application/octet-stream',
-      // `attachment` con el nombre real: el cliente recibe «Contrato de obra.pdf», no un uuid.
-      'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(papel.titulo)}`,
+      // El nombre real en las dos formas: el cliente recibe «Contrato de obra.pdf», no un uuid.
+      'content-disposition': `${bajar ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(papel.titulo)}`,
       // Es un papel de un cliente detrás de una sesión: no lo cachea ningún intermediario.
       'cache-control': 'private, no-store',
     },

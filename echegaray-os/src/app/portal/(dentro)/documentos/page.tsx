@@ -188,19 +188,37 @@ function detalleDe(doc: Papel): string {
   return partes.join(' · ')
 }
 
+/**
+ * UNA FILA DE PAPEL: se toca y SE ABRE. Bajarlo es la excepción, no lo normal.
+ *
+ * Antes la fila no era clicable y el único botón descargaba: para mirar un plano había que bajarlo y
+ * después ir a buscarlo a la carpeta de descargas. Pedido textual del dueño: «no quiero q se
+ * descargue, quiero q el archivo se pueda ver, y si el cliente quiere q lo descargue».
+ *
+ * La fila entera es el área de toque —en un teléfono apuntarle a un icono de 18px es pedirle
+ * puntería a alguien que mira un plano— y abre en otra pestaña, así el cliente no pierde la lista.
+ * El icono de la derecha queda para bajarlo, con `?descargar=1`, que es lo único que la ruta
+ * necesita para cambiar de `inline` a `attachment`.
+ */
 function FilaDoc({ doc, rotulo, icono = 'factura' }: { doc: Papel; rotulo: string; icono?: 'factura' | 'check' }) {
   return (
-    <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-[15px]">
-      <span className={icono === 'check' ? 'text-pos' : 'text-faint'}>
-        {icono === 'check' ? <IconoCheck tamano={19} /> : <IconoFactura tamano={19} />}
-      </span>
-      <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{rotulo}</span>
-      <span className="text-[12.5px] text-muted">{detalleDe(doc)}</span>
-      {/* EL BOTÓN BAJA EL ARCHIVO. Era un icono decorativo: la ruta comprueba la sesión y el alcance
-          otra vez —el id viaja en la URL— y devuelve los bytes desde el bucket privado. */}
+    <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line">
       <a
-        href={`/portal/documentos/descargar/${doc.id}`}
+        href={`/portal/documentos/${doc.id}`}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-[15px] hover:text-ink"
+      >
+        <span className={icono === 'check' ? 'text-pos' : 'text-faint'}>
+          {icono === 'check' ? <IconoCheck tamano={19} /> : <IconoFactura tamano={19} />}
+        </span>
+        <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{rotulo}</span>
+        <span className="text-[12.5px] text-muted">{detalleDe(doc)}</span>
+      </a>
+      <a
+        href={`/portal/documentos/${doc.id}?descargar=1`}
         aria-label={`Descargar ${rotulo}`}
+        title="Descargar"
         className="grid min-h-11 min-w-11 place-items-center rounded-[6px] text-faint hover:bg-surface-quiet hover:text-ink"
       >
         <IconoDescarga tamano={18} />
