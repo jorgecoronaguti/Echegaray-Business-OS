@@ -71,11 +71,12 @@ test.describe('las dos pantallas, con los datos que hay', () => {
     await page.goto('/administracion/proveedores')
     await page.getByTestId('abrir-proveedor').first().click()
     await page.getByTestId('abrir-ficha-proveedor').click()
-    await expect(page.getByTestId('slab-proveedor')).toBeVisible()
-    // El CUIT del slab no puede dibujarse vacío: o está, o dice «sin CUIT».
-    await expect(page.getByTestId('slab-proveedor')).toContainText(/CUIT/)
-    await page.getByTestId('vista-comprobantes').click()
-    await expect(page.getByTestId('vistas-proveedor')).toBeVisible()
+    await expect(page.getByTestId('titulo-ficha')).toBeVisible()
+    // El CUIT no puede dibujarse vacío: o está, o dice «sin CUIT». El v2 lo pone bajo el nombre y
+    // repetido en el costado, que es el renglón que se afirma acá.
+    await expect(page.getByTestId('dato-cuit')).toContainText(/\d|sin CUIT/)
+    await page.getByTestId('solapa-nombres').click()
+    await expect(page.getByTestId('nombres-proveedor')).toBeVisible()
   })
 
   test('un proveedor que no existe NO se dibuja como uno vacío', async ({ page }) => {
