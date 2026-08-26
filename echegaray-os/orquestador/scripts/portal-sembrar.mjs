@@ -112,7 +112,18 @@ async function universoDeObras(delSheet) {
   const universo = [...delSheet]
   for (const r of rows) {
     const ya = universo.find((o) => o.cliente.id === r.cliente_id && o.nombre.toLowerCase() === String(r.nombre).toLowerCase())
-    if (ya) { ya.id = ya.id ?? r.id; continue }
+    if (ya) {
+      // LA MARCA VIAJA CON EL ID. Una obra del Sheet que YA existe en el registro se fusiona con la
+      // canónica: sin este `canonica = true` se quedaba con el id pero sin permiso de escritura, y
+      // sus líneas se calculaban para no publicarse nunca — en silencio.
+      // EL ID CANÓNICO GANA, sin `??`. Con `--aplicar`, `bajarObras` ya le había puesto a esa obra
+      // del Sheet el uuid de `public.obras`; conservarlo escribía un uuid en `esquema_pago.obra_id`,
+      // que es FK contra `obra_canonica` — la corrida se caía a la mitad con un error de clave.
+      ya.id = r.id
+      ya.canonica = true
+      ya.palabras = [...new Set([...(ya.palabras ?? []), ...palabrasDeObra(r.nombre, r.id)])]
+      continue
+    }
     universo.push({
       cliente: { id: r.cliente_id, nombre_comercial: r.nombre_comercial },
       // LAS CERRADAS ENTRAN, y no es un descuido. ARCOR es un cliente de mantenimiento: su única obra
@@ -125,7 +136,7 @@ async function universoDeObras(delSheet) {
       // cuánto cae en ella— pero no se guarda, y el informe lo dice en vez de romper con un error
       // de clave foránea a mitad de la corrida.
       canonica: true,
-      nombre: r.nombre, id: r.id, palabras: palabrasDeObra(r.nombre), declaradaEnElSheet: false,
+      nombre: r.nombre, id: r.id, palabras: palabrasDeObra(r.nombre, r.id), declaradaEnElSheet: false,
     })
   }
   return universo
@@ -313,8 +324,13 @@ async function escribir(obras, porObra) {
  * nunca con el de una obra del mismo cliente y para que la ficha los muestre al final, después de
  * los cobros que sí tienen obra.
  */
-async function escribirDelCliente(porCliente) {
-  for (const [clienteId, lineas] of porCliente) {
+async function escribirDelCliente(porCliente, todosLosClientes) {
+  // EL BARRIDO ALCANZA A TODOS LOS CLIENTES, no sólo a los que hoy tienen líneas sin obra. Un cliente
+  // cuyas filas pasaron a tener obra —Javier Sánchez, cuando el buscador aprendió a leer «Saldo obras
+  // San Francisco»— deja de aparecer en `porCliente`, y sin este barrido sus quince líneas viejas
+  // quedaban vivas al lado de las nuevas: 36 pagos por $435 M contra un contrato de $299,68 M.
+  for (const clienteId of todosLosClientes) {
+    const lineas = porCliente.get(clienteId) ?? []
     let orden = 1000
     for (const l of lineas) {
       orden += 1
@@ -450,7 +466,7 @@ async function main() {
   conciliar(porObra, sinImputar)
   if (!APLICAR) { console.log('\n(en seco: no se escribió nada — agregá --aplicar)'); return }
   await escribir(obras, porObra)
-  await escribirDelCliente(porCliente)
+  await escribirDelCliente(porCliente, [...new Set(obras.map((o) => o.cliente.id))])
   await releerDeLaBase()
 }
 
