@@ -3,7 +3,8 @@ import { notFound, redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../../sesion'
 import { accesoDelPortal, obrasDelCliente } from '../../../datos'
 import { obraDetalle } from '../../datosObra'
-import { documentosDeObra } from '../../documentos/drive'
+import { papelesDelCliente, corridasDelEspejo, obrasCanonicasDeCarpeta } from '../../documentos/datos'
+import { papelesVisibles, vistaDeObra } from '../../../papeles'
 import { cierreDeObra } from '../cierre'
 import { pesos } from '../../../cronograma'
 import { haceCuanto } from '../../../documentos'
@@ -31,7 +32,22 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
 
   const [obra, cierre] = await Promise.all([obraDetalle(obraId), cierreDeObra(obraId)])
   if (!obra) notFound()
-  const { datos, al } = await documentosDeObra(obra.driveCarpetaId)
+
+  // LOS PAPELES SALEN DEL ESPEJO, NO DE DRIVE. Esta pantalla también leía Google en vivo y en Vercel
+  // eso nunca funcionó: no hay disco donde vive la credencial de la cuenta de servicio. El puente
+  // entre `public.obras` (donde vive esta obra) y `obra_canonica` (donde escribe el espejo) es la
+  // MISMA CARPETA DE DRIVE — un hecho, no un mapeo por nombre.
+  const canonicas = await obrasCanonicasDeCarpeta(obra.driveCarpetaId)
+  const [todos, corridas] = await Promise.all([
+    papelesDelCliente(acceso.clienteId),
+    corridasDelEspejo(canonicas.map((id) => `obra:${id}`)),
+  ])
+  const datos = vistaDeObra(
+    papelesVisibles(todos, acceso).filter((p) => p.obraId !== null && canonicas.includes(p.obraId)),
+  )
+  // La más reciente de las corridas que alimentan esta carpeta. `null` = el espejo nunca pasó.
+  const al = [...corridas.values()].map((c) => c.al).filter((d) => d !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
 
   return (
     <>
@@ -70,7 +86,7 @@ export default async function ObraTerminada({ params }: { params: Promise<{ obra
           {datos.contrato ? <FilaLectura nombre="Contrato firmado" detalle={detalle(datos.contrato.revision, datos.contrato.fecha)} /> : null}
         </>
       ) : (
-        <div className="mt-4"><Vacio>{obra.driveCarpetaId ? 'Sin cotización ni contrato en la carpeta.' : 'Todavía no conectamos la carpeta de esta obra.'}</Vacio></div>
+        <div className="mt-4"><Vacio>{!obra.driveCarpetaId ? 'Todavía no conectamos la carpeta de esta obra.' : al ? 'Sin cotización ni contrato en la carpeta.' : 'Todavía no sincronizamos los papeles de esta obra.'}</Vacio></div>
       )}
 
       <Rubro derecha={datos.hojasTotales != null ? `${datos.hojasTotales} hojas` : 'hojas sin contar'}>

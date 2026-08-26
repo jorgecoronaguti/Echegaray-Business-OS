@@ -1,18 +1,30 @@
 import { redirect } from 'next/navigation'
 import { sesionDelPortal } from '../../sesion'
-import { accesoDelPortal, obrasDelCliente } from '../../datos'
-import { obraDetalle } from '../datosObra'
-import { documentosDeObra } from './drive'
-import { haceCuanto, type Documento } from '../../documentos'
+import { accesoDelPortal } from '../../datos'
+import { obrasParaElInicio } from '../datosObra'
+import { haceCuanto } from '../../documentos'
+import { papelesVisibles, vistaDeObra, hayAlgoQueMostrar, type Papel, type VistaDeObra } from '../../papeles'
+import { papelesDelCliente, corridasDelEspejo, type CorridaDelEspejo } from './datos'
 import { Rubro, Vacio } from '../../Piezas'
 import { IconoCarpeta, IconoFactura, IconoDescarga, IconoCheck, IconoClip } from '../../iconos'
 import { Adjuntar } from './Adjuntar'
 
 // DOCUMENTOS — la carpeta de la obra, contada como la entiende el cliente.
 //
-// Cotización y contrato arriba (SU TRABAJO), planos por disciplina con su revisión y sus hojas,
-// certificados, y al final lo que sube el cliente. Todo sale de Drive: el portal no guarda una copia
-// que se desincronice.
+// ═══ QUÉ CAMBIÓ EL 26/08/2026 Y POR QUÉ ═══
+//
+// Esta pantalla leía Drive EN VIVO. La credencial de la cuenta de servicio es un archivo en el disco
+// de la VM y el portal corre en Vercel, donde no hay disco: los CINCO clientes veían «No pudimos
+// leer la carpeta ahora» y ni un solo enlace de descarga. Ahora lee `public.documento_cliente`, que
+// llena `orquestador/scripts/documentos-espejo.mjs` desde la VM, y el botón de descarga baja el
+// archivo de verdad desde un bucket privado.
+//
+// ═══ LAS OBRAS SALEN DE `obra_canonica`, NO DE `public.obras` ═══
+//
+// `public.obras` tiene carpeta de Drive en 3 de 10 filas; `obra_canonica` en 11 de 16 — y es el
+// registro cuyos ids nombra `cliente_acceso.obras`. Con `public.obras` había que fallar cerrado y
+// devolver CERO obras a todo acceso acotado, porque no existe mapeo entre los dos registros. Acá el
+// alcance se aplica exacto, que es lo que el resto del portal ya hacía.
 
 export const dynamic = 'force-dynamic'
 
@@ -27,131 +39,172 @@ export default async function Documentos() {
   if (!acceso.puedeVerObra) {
     return <Vacio>Su acceso no incluye los documentos de la obra. Escribinos y lo revisamos.</Vacio>
   }
-  const obras = await obrasDelCliente(acceso)
-  if (!obras.length) return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
+
+  const [obras, todos] = await Promise.all([obrasParaElInicio(acceso), papelesDelCliente(acceso.clienteId)])
+  const visibles = papelesVisibles(todos, acceso)
+  const corridas = await corridasDelEspejo([
+    ...obras.map((o) => `obra:${o.id}`),
+    `cliente:${acceso.clienteId}`,
+  ])
+
+  // Los papeles que cuelgan de la carpeta del CLIENTE y no de una obra. Es un estado real —hay
+  // clientes cuyo contrato vive un nivel más arriba— y esconderlos los haría desaparecer.
+  const sueltos = visibles.filter((p) => p.obraId === null)
+
+  if (!obras.length && !sueltos.length) {
+    return <Vacio>Todavía no tenemos ninguna obra asociada a su mail.</Vacio>
+  }
+
+  const conTitulo = obras.length + (sueltos.length ? 1 : 0) > 1
 
   return (
     <>
       <h1 className="text-xl font-semibold tracking-[-.01em]">Documentos</h1>
-      {/* UNA SECCIÓN POR OBRA. Los papeles viven en la carpeta de SU obra —el contrato de una no es el
-          de la otra— así que se muestran separados aunque el cliente los vea todos de una vez. */}
+      {/* UNA SECCIÓN POR OBRA. Los papeles viven en la carpeta de SU obra —el contrato de una no es
+          el de la otra— así que se muestran separados aunque el cliente los vea todos de una vez. */}
       {obras.map((o) => (
-        <DeUnaObra key={o.id} obraId={o.id} nombre={o.nombre} conTitulo={obras.length > 1} />
+        <DeUnaObra
+          key={o.id}
+          nombre={o.nombre}
+          conTitulo={conTitulo}
+          papeles={visibles.filter((p) => p.obraId === o.id)}
+          corrida={corridas.get(`obra:${o.id}`) ?? null}
+          obraId={o.id}
+        />
       ))}
+      {sueltos.length ? (
+        <DeUnaObra
+          nombre="Papeles generales"
+          conTitulo={conTitulo}
+          papeles={sueltos}
+          corrida={corridas.get(`cliente:${acceso.clienteId}`) ?? null}
+          obraId={null}
+        />
+      ) : null}
     </>
   )
 }
 
-async function DeUnaObra({ obraId, nombre, conTitulo }: { obraId: string; nombre: string; conTitulo: boolean }) {
-  const obra = await obraDetalle(obraId)
-  const { datos, al, error } = await documentosDeObra(obra?.driveCarpetaId ?? null)
+function DeUnaObra({
+  nombre, conTitulo, papeles, corrida, obraId,
+}: {
+  nombre: string; conTitulo: boolean; papeles: Papel[]; corrida: CorridaDelEspejo | null; obraId: string | null
+}) {
+  const datos = vistaDeObra(papeles)
 
   return (
     <section className={conTitulo ? 'mt-9 first:mt-6' : 'mt-2'}>
       <div className="flex flex-wrap items-center gap-3">
         {conTitulo ? <h2 className="text-[15px] font-semibold tracking-[-.01em]">{nombre}</h2> : null}
-        {/* LA FRESCURA SIEMPRE A LA VISTA: un cache mudo no se distingue de un dato congelado. */}
+        {/* LA FRESCURA SIEMPRE A LA VISTA: un espejo mudo no se distingue de uno que dejó de correr. */}
         <span className="flex items-center gap-1.5 text-[12px] text-faint">
           <IconoCarpeta tamano={15} />
-          Drive · {haceCuanto(al)}
+          Drive · {haceCuanto(corrida?.al ?? null)}
         </span>
-        <div className="ml-auto"><Adjuntar obraId={obraId} /></div>
+        {obraId ? <div className="ml-auto"><Adjuntar obraId={obraId} /></div> : null}
       </div>
 
-      {error === 'sin_carpeta' ? (
-        <div className="mt-4">
-          <Vacio>Todavía no conectamos la carpeta de esta obra. Pedínosla y te la compartimos.</Vacio>
-        </div>
-      ) : error === 'sin_conexion' && !al ? (
-        <div className="mt-6"><Vacio>No pudimos leer la carpeta ahora. Volvé a probar en un minuto.</Vacio></div>
+      {/* LOS TRES VACÍOS SON DISTINTOS y se dicen distinto. Uno se resuelve solo, otro hay que
+          reclamarlo, y el tercero es que no hay nada. Un único «sin documentos» los tapa a los tres. */}
+      {!corrida ? (
+        <div className="mt-6"><Vacio>Todavía no sincronizamos los papeles de esta obra. Si los necesita ahora, escribinos.</Vacio></div>
+      ) : corrida.error ? (
+        <div className="mt-6"><Vacio>No pudimos leer la carpeta de esta obra en la última pasada. Ya lo estamos mirando.</Vacio></div>
+      ) : !hayAlgoQueMostrar(datos) ? (
+        <div className="mt-6"><Vacio>Todavía no hay papeles publicados para esta obra.</Vacio></div>
       ) : (
-        <>
-          {error === 'sin_conexion' ? (
-            <p className="mt-3 text-[12.5px] text-warn">No pudimos actualizar ahora: esto es lo último que leímos.</p>
-          ) : null}
-
-          <Rubro>SU TRABAJO</Rubro>
-          {datos.cotizacion || datos.contrato ? (
-            <>
-              {datos.cotizacion ? <FilaDoc doc={datos.cotizacion} rotulo="Cotización" /> : null}
-              {datos.contrato ? <FilaDoc doc={datos.contrato} rotulo="Contrato" /> : null}
-            </>
-          ) : (
-            <div className="mt-4"><Vacio>Sin cotización ni contrato en la carpeta.</Vacio></div>
-          )}
-
-          <Rubro derecha={datos.hojasTotales != null ? `${datos.hojasTotales} hojas` : 'hojas sin contar'}>
-            PLANOS
-          </Rubro>
-          {datos.planos.length ? (
-            datos.planos.map((p) => (
-              <div key={p.disciplina} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-[15px]">
-                <span className="text-faint"><IconoFactura tamano={19} /></span>
-                <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{p.rotulo}</span>
-                <span className="text-[12.5px] text-muted">
-                  {resumenPlanos(p.docs)}
-                </span>
-                <span className="grid min-h-11 min-w-11 place-items-center text-faint"><IconoDescarga tamano={18} /></span>
-              </div>
-            ))
-          ) : (
-            <div className="mt-4"><Vacio>Todavía no hay planos cargados.</Vacio></div>
-          )}
-
-          {datos.certificados.length ? (
-            <>
-              <Rubro>CERTIFICADOS</Rubro>
-              <div className="flex min-h-11 items-center gap-3 border-b border-line py-[15px]">
-                <span className="text-pos"><IconoCheck tamano={19} /></span>
-                <span className="flex-1 text-sm">
-                  {datos.certificados.length === 1 ? '1 certificado' : `${datos.certificados.length} certificados`}
-                </span>
-                <span className="grid min-h-11 min-w-11 place-items-center text-faint"><IconoDescarga tamano={18} /></span>
-              </div>
-            </>
-          ) : null}
-
-          {datos.otros.length ? (
-            <>
-              <Rubro>OTROS PAPELES</Rubro>
-              {datos.otros.map((d) => <FilaDoc key={d.id} doc={d} rotulo={d.nombre} />)}
-            </>
-          ) : null}
-
-          <Rubro>LO QUE USTED SUBE</Rubro>
-          <p className="mt-4 flex items-center gap-2 text-[13px] text-muted">
-            <IconoClip tamano={17} />
-            Lo que suba cae en una carpeta propia de esta obra y avisamos a administración.
-          </p>
-        </>
+        <Pila datos={datos} />
       )}
+
+      <Rubro>LO QUE USTED SUBE</Rubro>
+      <p className="mt-4 flex items-center gap-2 text-[13px] text-muted">
+        <IconoClip tamano={17} />
+        {obraId
+          ? 'Lo que suba cae en una carpeta propia de esta obra y avisamos a administración.'
+          : 'Para adjuntar algo, elegí la obra a la que corresponde.'}
+      </p>
     </section>
   )
 }
 
-/** «rev 4 · 6 hojas · 02/07» — y cada pedazo desaparece si no hay dato, en vez de escribir un cero. */
-function resumenPlanos(docs: Documento[]): string {
-  const revs = [...new Set(docs.map((d) => d.revision).filter(Boolean))]
-  const hojas = docs.map((d) => d.hojas)
-  const fechas = docs.map((d) => d.fecha).filter(Boolean).sort()
-  const partes: string[] = []
-  partes.push(revs.length === 1 ? revs[0]! : revs.length ? `${revs.length} revisiones` : 'sin revisión')
-  if (hojas.every((h) => h != null) && hojas.length) partes.push(`${(hojas as number[]).reduce((s, h) => s + h, 0)} hojas`)
-  else partes.push(docs.length === 1 ? '1 archivo' : `${docs.length} archivos`)
-  const ultima = fechas.at(-1)
-  if (ultima) partes.push(`${ultima.slice(8, 10)}/${ultima.slice(5, 7)}`)
+function Pila({ datos }: { datos: VistaDeObra }) {
+  return (
+    <>
+      <Rubro>SU TRABAJO</Rubro>
+      {datos.cotizacion || datos.contrato ? (
+        <>
+          {datos.cotizacion ? <FilaDoc doc={datos.cotizacion} rotulo="Cotización" /> : null}
+          {datos.contrato ? <FilaDoc doc={datos.contrato} rotulo="Contrato" /> : null}
+        </>
+      ) : (
+        <div className="mt-4"><Vacio>Sin cotización ni contrato en la carpeta.</Vacio></div>
+      )}
+
+      <Rubro derecha={datos.hojasTotales != null ? `${datos.hojasTotales} hojas` : 'hojas sin contar'}>
+        PLANOS
+      </Rubro>
+      {datos.planos.length ? (
+        datos.planos.map((p) => (
+          <div key={p.disciplina}>
+            <p className="mt-3.5 text-[12px] font-semibold tracking-[.04em] text-faint">{p.rotulo.toUpperCase()}</p>
+            {p.docs.map((d) => <FilaDoc key={d.id} doc={d} rotulo={d.titulo} />)}
+          </div>
+        ))
+      ) : (
+        <div className="mt-4"><Vacio>Todavía no hay planos cargados.</Vacio></div>
+      )}
+
+      {datos.certificados.length ? (
+        <>
+          <Rubro derecha={`${datos.certificados.length}`}>CERTIFICADOS Y RECIBOS</Rubro>
+          {datos.certificados.map((d) => <FilaDoc key={d.id} doc={d} rotulo={d.titulo} icono="check" />)}
+        </>
+      ) : null}
+
+      {datos.facturas.length ? (
+        <>
+          <Rubro derecha={`${datos.facturas.length}`}>FACTURAS</Rubro>
+          {datos.facturas.map((d) => <FilaDoc key={d.id} doc={d} rotulo={d.titulo} />)}
+        </>
+      ) : null}
+
+      {datos.otros.length ? (
+        <>
+          <Rubro>OTROS PAPELES</Rubro>
+          {datos.otros.map((d) => <FilaDoc key={d.id} doc={d} rotulo={d.titulo} />)}
+        </>
+      ) : null}
+    </>
+  )
+}
+
+/** «rev 4 · 02/07 · 1,2 MB» — y cada pedazo desaparece si no hay dato, en vez de escribir un cero. */
+function detalleDe(doc: Papel): string {
+  const partes = [doc.revision ?? 'sin revisión']
+  if (doc.hojas != null) partes.push(doc.hojas === 1 ? '1 hoja' : `${doc.hojas} hojas`)
+  partes.push(doc.fecha ? `${doc.fecha.slice(8, 10)}/${doc.fecha.slice(5, 7)}` : 'sin fecha')
+  // NULL no se dibuja como 0 MB: un archivo de cero bytes no se puede abrir y eso no es lo que pasa.
+  if (doc.bytes != null) partes.push(`${(doc.bytes / 1048576).toFixed(1)} MB`)
   return partes.join(' · ')
 }
 
-function FilaDoc({ doc, rotulo }: { doc: Documento; rotulo: string }) {
+function FilaDoc({ doc, rotulo, icono = 'factura' }: { doc: Papel; rotulo: string; icono?: 'factura' | 'check' }) {
   return (
     <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line py-[15px]">
-      <span className="text-faint"><IconoFactura tamano={19} /></span>
-      <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{rotulo}</span>
-      <span className="text-[12.5px] text-muted">
-        {[doc.revision ?? 'sin revisión', doc.fecha ? `${doc.fecha.slice(8, 10)}/${doc.fecha.slice(5, 7)}` : 'sin fecha'].join(' · ')}
+      <span className={icono === 'check' ? 'text-pos' : 'text-faint'}>
+        {icono === 'check' ? <IconoCheck tamano={19} /> : <IconoFactura tamano={19} />}
       </span>
-      <span className="grid min-h-11 min-w-11 place-items-center text-faint"><IconoDescarga tamano={18} /></span>
+      <span className="min-w-0 flex-1 basis-[45%] truncate text-sm">{rotulo}</span>
+      <span className="text-[12.5px] text-muted">{detalleDe(doc)}</span>
+      {/* EL BOTÓN BAJA EL ARCHIVO. Era un icono decorativo: la ruta comprueba la sesión y el alcance
+          otra vez —el id viaja en la URL— y devuelve los bytes desde el bucket privado. */}
+      <a
+        href={`/portal/documentos/descargar/${doc.id}`}
+        aria-label={`Descargar ${rotulo}`}
+        className="grid min-h-11 min-w-11 place-items-center rounded-[6px] text-faint hover:bg-surface-quiet hover:text-ink"
+      >
+        <IconoDescarga tamano={18} />
+      </a>
     </div>
   )
 }
