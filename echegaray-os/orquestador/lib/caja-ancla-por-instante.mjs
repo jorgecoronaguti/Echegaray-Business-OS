@@ -233,7 +233,20 @@ export const ventanaDelConteo = (fecha, ancla, entra = false) =>
  * @param {string} ancla la referencia al ancla (o el literal '0', que es "sin ventana")
  * @returns {string} la expresión de ancla que corresponde a una SALIDA
  */
-export const anclaDeSalida = (ancla) => (ancla === '0' ? '0' : `(${ancla}-1)`)
+export const anclaDeSalida = (ancla) => (ancla === '0'
+  ? '0'
+  // EL DÍA DE GRACIA SE APLICA SÓLO SI EL SELLO NO TRAE HORA (26/08/2026). Restar un día siempre
+  // era correcto cuando el ancla era un día pelado: ahí no se puede saber si la corrida vio el
+  // conteo el mismo día en que se tipeó o al siguiente, y mirar un día atrás es el lado que sólo
+  // muestra de menos. Pero desde que el centinela estampa el INSTANTE (`46259,708` = 25/08 16:59),
+  // esa ambigüedad no existe: el sello dice exactamente cuándo se vio el conteo.
+  //
+  // El dueño lo confirmó ese día: contó el 25 y el sello dice 25. Con el día de gracia puesto igual,
+  // la ventana arrancaba el 24 y descontaba $100.000 de un pago que YA estaba dentro de su conteo.
+  //
+  // `INT(ancla)=ancla` es cierto sólo para un serial sin parte horaria. Un sello viejo —o uno
+  // rescatado por rótulo, que llega como día— conserva el día de gracia; uno con instante, no.
+  : `IF(INT(${ancla})=${ancla};${ancla}-1;${ancla})`)
 
 /**
  * El trozo que aísla EL EMPATE: los movimientos que caen exactamente el día del conteo.

@@ -11,8 +11,8 @@ import {
   HORA_EN_LAS_FUENTES, HAY_HORA_EN_LOS_MOVIMIENTOS, CRITERIO_MISMO_DIA,
   clasificar, entraALaVentana, diaDe, tieneHora,
   ventanaDelConteo, comparadorDeVentana, mismoDiaQueElConteo,
-  instanteDelSello, ventanaDelSello,
-} from './caja-ancla-por-instante.mjs'
+  instanteDelSello, ventanaDelSello, anclaDeSalida,
+}  from './caja-ancla-por-instante.mjs'
 import { formulaComprasEfectivoPosteriores, formulaCobrosEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
 
 // Seriales reales del archivo: 07/08/2026 = 46241, 08/08 = 46242, 06/08 = 46240.
@@ -190,4 +190,13 @@ test('sin marca de la corrida anterior el intervalo queda ABIERTO y lo dice', ()
   // Una marca posterior al instante visto es basura (reloj movido, celda pisada): no acota nada.
   assert.equal(ventanaDelSello({ visto, vistoPrevio: visto + 1 }).acotado, false)
   assert.throws(() => ventanaDelSello({}), /instante en que se vio/)
+})
+
+test('el día de gracia sólo corre cuando el sello NO trae hora', () => {
+  // Con instante (`46259,708` = 25/08 16:59) no hay ambigüedad de medianoche: el sello dice cuándo
+  // se vio el conteo. Con día pelado sí la hay, y ahí el día de gracia protege.
+  const e = anclaDeSalida('$F$20')
+  assert.match(e, /INT\(\$F\$20\)=\$F\$20/, 'la condición mira si el ancla tiene parte horaria')
+  assert.match(e, /\$F\$20-1/, 'sin hora, sigue mirando un día antes')
+  assert.equal(anclaDeSalida('0'), '0', 'sin ventana sigue sin ventana')
 })
