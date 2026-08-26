@@ -179,17 +179,17 @@ test('un cobro sin obra NO borra el contrato del cliente', () => {
   // Desde que los cobros que no nombran obra se publican —«Saldo obras San Francisco», «de todas las
   // obras»— el bloque sin obra existe casi siempre. Con la regla vieja bastaba para escribir
   // «CONTRATO sin cargar» a un cliente cuyo contrato la ficha muestra en $299,68 M.
-  const contratos = new Map<string, number | null>([['pisos', 40_000_000], ['electrica', 7_728_254]])
+  const contratos = new Map([['pisos', { monto: 40_000_000, moneda: 'ARS' as const }], ['electrica', { monto: 7_728_254, moneda: 'ARS' as const }]])
   const bloques = [
     { obraId: 'pisos', nombre: 'Pisos', pagos: [] },
     { obraId: 'electrica', nombre: 'Eléctrica', pagos: [] },
     { obraId: null, nombre: '', pagos: [] },
   ] as never
-  assert.equal(contratoDelConjunto(bloques, contratos), 47_728_254)
+  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_728_254, moneda: 'ARS' })
 
   // Lo que sí lo anula: una OBRA sin contrato. Sumar las que están daría un número más chico que el
   // real con cara de dato cierto.
-  const falta = new Map<string, number | null>([['pisos', 40_000_000], ['electrica', null]])
+  const falta = new Map([['pisos', { monto: 40_000_000, moneda: 'ARS' as const }], ['electrica', { monto: null, moneda: 'ARS' as const }]])
   assert.equal(contratoDelConjunto(bloques, falta), null)
 
   // Sin ninguna obra no hay contra qué contrato comparar.

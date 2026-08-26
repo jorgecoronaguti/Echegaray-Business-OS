@@ -4,7 +4,7 @@ import type { AccesoDelPortal } from '../permisos'
 import { alcanzaLaObra } from '../permisos'
 import {
   agruparPorObra, pagosDelEsquema, sinImportes,
-  type BloqueDeObra, type FilaEsquema, type PagoConObra,
+  type BloqueDeObra, type FilaEsquema, type PagoConObra, type ContratoDeObra,
 } from '../esquema'
 
 // LO QUE SE LE PREGUNTA A LA BASE. Una sola vez, para las tres pantallas de plata.
@@ -68,7 +68,7 @@ export type EsquemaDelPortal = {
   /** Los mismos, agrupados por obra, con las filas sin obra al final. */
   bloques: BloqueDeObra[]
   /** `Map<obra_canonica.id, monto_contratado>`. Sin la obra en el mapa: no hay contrato cargado. */
-  contratos: Map<string, number | null>
+  contratos: Map<string, ContratoDeObra>
 }
 
 /**
@@ -90,15 +90,24 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
 
   const idsDeObra = [...new Set(filas.map((f) => f.obra_id).filter((id): id is string => !!id))]
   const { data: obras } = idsDeObra.length
-    ? await sb.from('obra_canonica').select('id, nombre, monto_contratado').in('id', idsDeObra)
+    ? await sb.from('obra_canonica').select('id, nombre, monto_contratado, contrato_moneda, contrato_monto').in('id', idsDeObra)
     : { data: [] as { id: string; nombre: string; monto_contratado: number | null }[] }
 
-  const filasObra = (obras ?? []) as { id: string; nombre: string; monto_contratado: number | null }[]
+  type FilaObra = { id: string; nombre: string; monto_contratado: number | null; contrato_moneda?: string | null; contrato_monto?: number | null }
+  const filasObra = (obras ?? []) as FilaObra[]
   const nombres = new Map(filasObra.map((o) => [String(o.id), String(o.nombre)]))
-  const contratos = new Map<string, number | null>(
-    // NULL no es cero: una obra sin contrato cargado entra al mapa como `null` y la pantalla escribe
-    // «sin cargar» en vez de publicar un contrato de $ 0.
-    filasObra.map((o) => [String(o.id), o.monto_contratado == null ? null : Number(o.monto_contratado)]),
+  // EL CONTRATO EN LA MONEDA EN QUE SE FIRMÓ. Quattropani se firmó en U$S 63.000 por ajuste alzado:
+  // publicar su equivalente en pesos publica un número que mañana está mal. `monto_contratado` queda
+  // para los tableros internos, que suman en pesos; el portal usa el declarado cuando existe.
+  // NULL no es cero: una obra sin contrato entra como `null` y la pantalla escribe «sin cargar».
+  const contratos = new Map<string, { monto: number | null; moneda: 'ARS' | 'USD' }>(
+    filasObra.map((o) => {
+      const propio = o.contrato_monto == null ? null : Number(o.contrato_monto)
+      const moneda = o.contrato_moneda === 'USD' ? 'USD' as const : 'ARS' as const
+      return [String(o.id), propio != null
+        ? { monto: propio, moneda }
+        : { monto: o.monto_contratado == null ? null : Number(o.monto_contratado), moneda: 'ARS' as const }]
+    }),
   )
 
   const visibles = pagosDelEsquema(filas, nombres, (obraId) => alcanzaLaObra(acceso.obras, obraId))
@@ -110,7 +119,7 @@ export async function esquemaDelPortal(acceso: AccesoDelPortal): Promise<Esquema
 // `contratoDelConjunto` vive en `esquema.ts` —módulo puro, sin `server-only`— para poder
 // probarlo con `node --test`. Se re-exporta desde acá porque es donde lo buscan las pantallas.
 export { contratoDelConjunto } from '../esquema'
-export type { BloqueDeObra, PagoConObra }
+export type { BloqueDeObra, PagoConObra, ContratoDeObra }
 
 /** Una obra del cliente para el Inicio: sin un peso, sólo qué es y cómo va. */
 export type ObraDelInicio = {

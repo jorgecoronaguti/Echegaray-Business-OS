@@ -95,6 +95,8 @@ export type ResumenCobro = {
   /** De lo cobrado, cuánto es neto y cuánto IVA. `null` cuando no hay ninguna línea que los aporte. */
   netoPagado: number | null
   ivaPagado: number | null
+  /** De lo pendiente, cuánto es neto. El contrato se pacta en neto: «U$S 63.000 más IVA». */
+  netoPendiente: number | null
   /** Del contrato, lo que todavía no entró al cronograma. `null` si la obra no tiene contrato cargado. */
   faltaCertificar: number | null
   contrato: number | null
@@ -123,7 +125,7 @@ export function resumenDeCobro(
   let vencido = 0, pendiente = 0, pagado = 0, sinMonto = 0
   // Los tres números del pie salen de la MISMA pasada: neto e IVA de lo cobrado, para que el cliente
   // pueda cruzar el total pagado contra su libro de IVA compras sin sacar la calculadora.
-  let netoPagado = 0, ivaPagado = 0
+  let netoPagado = 0, ivaPagado = 0, netoPendiente = 0
   // CUÁNTAS LÍNEAS DE ESTA MONEDA ALIMENTARON CADA TOTAL. Sin esto, un cliente cuyo cronograma está entero
   // en dólares —Quattropani— leía «Pendiente $ 0» teniendo nueve certificados por delante. Cero es
   // una afirmación: dice que no debe nada. Lo que corresponde decir ahí es que no hay nada EN PESOS,
@@ -149,12 +151,14 @@ export function resumenDeCobro(
     }
     if (p.tipo === 'fondo_reparo') continue
     pendiente += p.monto
+    if (p.neto != null) netoPendiente += p.neto
     nPendiente++
     if (estadoDePago(p, hoyISO) === 'vencido') vencido += p.monto
   }
   return {
     hayPlan: pagos.length > 0,
     netoPagado: nPagado ? netoPagado : null,
+    netoPendiente: nPendiente ? netoPendiente : null,
     ivaPagado: nPagado ? ivaPagado : null,
     vencido: nPendiente ? vencido : null,
     pendiente: nPendiente ? pendiente : null,

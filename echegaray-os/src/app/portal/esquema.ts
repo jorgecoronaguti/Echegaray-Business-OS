@@ -220,7 +220,17 @@ export function agruparPorObra(pagos: PagoConObra[]): BloqueDeObra[] {
  * Un bloque sin obra (`obraId === null`) NO tiene contra qué contrato compararse: alcanza para que
  * todo el conjunto no lo tenga.
  */
-export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, number | null>): number | null {
+/** Lo contratado de una obra, en la moneda en que se firmó. */
+export type ContratoDeObra = { monto: number | null; moneda: 'ARS' | 'USD' }
+
+/**
+ * El contrato del conjunto, y `null` si las obras no comparten moneda.
+ *
+ * Sumar un contrato en dólares con uno en pesos daría un número que no existe. Cuando el cliente
+ * tiene obras en las dos, no hay un «contrato total» que se pueda escribir: la pantalla no lo dibuja
+ * en vez de dibujar uno inventado.
+ */
+export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<string, ContratoDeObra>): ContratoDeObra | null {
   // EL CONTRATO ES DE LAS OBRAS, NO DE LOS PAGOS (26/08/2026). Antes bastaba UN bloque sin obra para
   // devolver `null`, y desde que los cobros que no nombran obra se publican —«Saldo obras San
   // Francisco», «de todas las obras»— ese bloque existe casi siempre: el portal escribía «CONTRATO
@@ -232,10 +242,13 @@ export function contratoDelConjunto(bloques: BloqueDeObra[], contratos: Map<stri
   const conObra = bloques.filter((b) => b.obraId !== null)
   if (!conObra.length) return null
   let total = 0
+  let moneda: 'ARS' | 'USD' | null = null
   for (const b of conObra) {
     const c = contratos.get(b.obraId as string)
-    if (c == null) return null
-    total += c
+    if (!c || c.monto == null) return null
+    if (moneda && c.moneda !== moneda) return null
+    moneda = c.moneda
+    total += c.monto
   }
-  return total
+  return moneda ? { monto: total, moneda } : null
 }

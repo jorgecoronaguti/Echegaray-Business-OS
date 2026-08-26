@@ -123,11 +123,12 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // pesos alimentaba la suma. Un contrato en una moneda al lado de cobros en otra no es un total: es
   // dos números que no se pueden comparar puestos uno al lado del otro.
   //
-  // Ahora se cuenta cada moneda por separado y se dibuja la que tiene contenido. El CONTRATO sólo
-  // acompaña a los pesos: el que guarda `obra_canonica` está en pesos, y ponerlo arriba de una
-  // columna en dólares afirmaría una equivalencia que nadie calculó.
-  const total = resumenDeCobro(deLaObra, contratoDelFiltro, hoy)
-  const enDolares = resumenDeCobro(deLaObra, null, hoy, 'USD')
+  // Ahora se cuenta cada moneda por separado y el CONTRATO acompaña a la columna de SU moneda: uno
+  // en dólares arriba de una suma en pesos afirmaría una equivalencia que nadie calculó.
+  const contratoARS = contratoDelFiltro?.moneda === 'ARS' ? contratoDelFiltro.monto : null
+  const contratoUSD = contratoDelFiltro?.moneda === 'USD' ? contratoDelFiltro.monto : null
+  const total = resumenDeCobro(deLaObra, contratoARS, hoy)
+  const enDolares = resumenDeCobro(deLaObra, contratoUSD, hoy, 'USD')
   const hayPesos = deLaObra.some((p) => p.moneda === 'ARS')
   const hayDolares = deLaObra.some((p) => p.moneda === 'USD')
   const nombreDelFiltro = obra ? (conPagos.find(([id]) => id === obra)?.[1] ?? '') : null
@@ -315,7 +316,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             {/* LA MONEDA SE DICE EN EL RÓTULO cuando hay dos en la pantalla. Un «$» junto a un
                 «U$S» obliga a mirar dos veces cuál es cuál, y en un pie de plata eso no se pregunta:
                 se lee. Con una sola moneda el rótulo queda limpio. */}
-            {hayPesos ? <Total rotulo={hayDolares ? 'Contrato ARS$' : 'Contrato'} monto={total.contrato} /> : null}
+            {hayPesos && contratoARS != null ? <Total rotulo={hayDolares ? 'Contrato ARS$' : 'Contrato'} monto={total.contrato} /> : null}
+            {/* ═══ «U$S 63.000 + IVA», COMO LO DICE EL CONTRATO ═══
+                El contrato de Quattropani se firmó por U$S 63.000 MÁS IVA, y así es como el cliente
+                lo leyó. Publicar U$S 76.230 sería correcto de aritmética y ajeno al papel que él
+                tiene: el número que reconoce es el neto, y el «+ IVA» es parte de cómo se pactó.
+                Lo mismo vale para lo pagado y lo pendiente: neto, y el IVA dicho al lado. */}
+            {contratoUSD != null ? (
+              <div>
+                <p className="text-[11px] tracking-[.09em] text-faint">CONTRATO US$</p>
+                <p className="tnum mt-1 font-mono text-[19px] font-semibold">
+                  {pesos(contratoUSD, 'USD')} <span className="text-[13px] font-normal text-muted">+ IVA</span>
+                </p>
+              </div>
+            ) : null}
         {/* PAGADO, ABIERTO EN NETO E IVA: es lo que el cliente cruza contra su libro de IVA
                 compras. Los dos de abajo son PARTES del de arriba, no sumandos aparte, y por eso
                 van en letra chica debajo y no como dos columnas más. */}
@@ -337,14 +351,8 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                 acá afirmaría una equivalencia que nadie calculó. */}
             {hayDolares ? (
               <>
-                <div>
-                  <p className="text-[11px] tracking-[.09em] text-faint">PAGADO US$</p>
-                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(enDolares.pagado, 'USD')}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] tracking-[.09em] text-faint">PENDIENTE US$</p>
-                  <p className="tnum mt-1 font-mono text-[19px] font-semibold">{pesos(enDolares.pendiente, 'USD')}</p>
-                </div>
+                <EnDolares rotulo="PAGADO US$" neto={enDolares.netoPagado} bruto={enDolares.pagado} />
+                <EnDolares rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} bruto={enDolares.pendiente} />
               </>
             ) : null}
           </div>
@@ -387,6 +395,28 @@ function Solapa({ a, activa, children }: { a: string; activa: boolean; children:
     >
       {children}
     </Link>
+  )
+}
+
+/**
+ * Un total en dólares escrito como el contrato: el NETO, y el «+ IVA» al lado.
+ *
+ * Se muestra el neto porque es el número que el cliente reconoce de su contrato —«U$S 63.000 más
+ * IVA»—, y debajo el total con impuesto para el que necesita conciliar. Sin el neto, el pie no se
+ * puede comparar con el papel firmado; sin el total, no se puede comparar con lo que se transfirió.
+ */
+function EnDolares({ rotulo, neto, bruto }: { rotulo: string; neto: number | null; bruto: number | null }) {
+  return (
+    <div>
+      <p className="text-[11px] tracking-[.09em] text-faint">{rotulo}</p>
+      <p className="tnum mt-1 font-mono text-[19px] font-semibold">
+        {pesos(neto ?? bruto, 'USD')}
+        {neto != null ? <span className="text-[13px] font-normal text-muted"> + IVA</span> : null}
+      </p>
+      {neto != null && bruto != null && bruto !== neto ? (
+        <p className="tnum mt-1 font-mono text-[11.5px] text-faint">total {pesos(bruto, 'USD')}</p>
+      ) : null}
+    </div>
   )
 }
 

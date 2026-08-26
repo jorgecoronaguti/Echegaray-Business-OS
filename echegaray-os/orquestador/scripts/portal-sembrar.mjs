@@ -24,7 +24,7 @@ import { query, closePool } from '../lib/db.mjs'
 import {
   monto, fecha, partirRotuloDeObra, fechaCorta, imputarObra, palabrasDeObra, estadoPublicado,
   fueCobrada, seDescarta, terminoProhibido, sinCategoriaContable, clasificar, montoUsdPorTipoDeCambio,
-  fusionarImportes, numerarRepetidos, depurarRotulo,
+  fusionarImportes, numerarRepetidos, depurarRotulo, totalDeclaradoUsd, parteDeclaradaUsd,
 } from '../lib/portal-siembra.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -167,7 +167,24 @@ function lineaDeFila(valores, formulas, nroFila) {
   // vacía lo dice. La distinción importa: el portal escribe «$ 0» donde hay un cero y «sin cargar»
   // donde no hay dato — y acá el dato existe, vale cero.
   const ivaCrudo = String(v?.[10] ?? '').trim() === '' ? 0 : (monto(v?.[10]) ?? 0)
+  // ═══ EL CONCEPTO DECLARA LOS DÓLARES (26/08/2026) ═══
+  //
+  // «U$S 11.500 + IVA — 36,5 % del anticipo» y «U$S 20.000 — 63,5 % del anticipo» dicen su importe
+  // en dólares con todas las letras. Se publicaban en pesos —$65,7 M y $7,1 M— porque el número de
+  // la columna M está en pesos, y el pie del portal terminaba mezclando un contrato en dólares con
+  // cobros en pesos. El contrato de Quattropani es por ajuste alzado e inmune al tipo de cambio:
+  // publicar su equivalente en pesos de hoy publica un número que mañana está mal.
+  //
+  // La fórmula del neto sigue mandando cuando existe (`=3500*TIPO_CAMBIO_USD`): ahí el dólar sale
+  // del cálculo. Esto es el respaldo para las filas donde el dólar está escrito en el texto.
+  //
+  // LA PARTE MANDA SOBRE EL TOTAL. Un cobro partido en dos filas declara las dos cosas: «U$S 20.000
+  // — 63,5 % del anticipo · parte U$S 15.400». Tomar el TOTAL en cada parte publicaba U$S 20.000 dos
+  // veces —U$S 40.000 cobrados donde hay 20.000— y además rompía la fusión, que justamente comprueba
+  // que las partes sumen el total declarado.
   const usd = montoUsdPorTipoDeCambio({ formulaNeto: f?.[9], neto: netoCrudo, total })
+    ?? parteDeclaradaUsd(concepto)
+    ?? totalDeclaradoUsd(concepto)
   // En dólares el total viene convertido; neto e IVA se convierten con el MISMO tipo de cambio
   // implícito (total ÷ usd), para que las tres cifras sigan cerrando entre sí.
   const aUsd = (x) => (usd == null || !total || x == null ? x : Math.round((x * usd / total) * 100) / 100)
