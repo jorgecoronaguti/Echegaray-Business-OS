@@ -79,23 +79,44 @@ export default async function Facturas() {
             const estado = estadoDePago(p, hoy)
             const papel = archivoDe(p.facturaNumero)
             return (
-              <div key={p.id} className="flex min-h-11 items-center gap-3 border-b border-line">
+              // ═══ EN EL TELÉFONO, DOS RENGLONES; EN ESCRITORIO, UNA FILA ═══
+              //
+              // Seis columnas en 390px no entran: el número de factura se recortaba, el importe
+              // quedaba pegado al borde y el icono de descarga se salía de la pantalla — «la UI se
+              // corta, la UX es confusa y no se pueden ver ni descargar las facturas».
+              //
+              // Abajo de `sm` la fila se apila: arriba el número y el importe, que es lo que se
+              // busca; abajo la fecha, la obra y el recibo, en letra chica. El botón de descarga
+              // queda SIEMPRE a la derecha y con 44px de lado, que es lo mínimo que un pulgar
+              // acierta. Nada se oculta: cambia de lugar.
+              <div key={p.id} className="flex min-h-11 items-start gap-2 border-b border-line sm:items-center sm:gap-3">
                 <Envoltorio href={papel?.verEn}>
-                  <IconoEstado estado={estado} />
-                  <span className="tnum min-w-0 flex-1 basis-[34%] truncate font-mono text-sm">{p.facturaNumero}</span>
-                  <span className="tnum w-[70px] font-mono text-[13px] text-muted">
-                    {diaMes(p.fechaPago ?? p.fechaPrevista)}
+                  <span className="mt-[3px] shrink-0 sm:mt-0"><IconoEstado estado={estado} /></span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                    <span className="flex min-w-0 items-baseline justify-between gap-3 sm:flex-1">
+                      <span className="tnum min-w-0 truncate font-mono text-[13.5px] sm:text-sm">{p.facturaNumero}</span>
+                      {montos ? (
+                        <span className="tnum shrink-0 font-mono text-[15px] sm:hidden">{pesos(p.monto, p.moneda)}</span>
+                      ) : null}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-2 text-[11.5px] text-faint sm:contents">
+                      <span className="tnum shrink-0 font-mono sm:w-[70px] sm:text-[13px] sm:text-muted">
+                        {diaMes(p.fechaPago ?? p.fechaPrevista)}
+                      </span>
+                      {variasObras && p.obraNombre ? (
+                        <span className="min-w-0 truncate sm:w-[140px] sm:text-[12.5px]">{p.obraNombre}</span>
+                      ) : null}
+                      {/* El recibo va pegado a su factura: es la respuesta a «¿ésta ya la pagué?». */}
+                      <span className="shrink-0 text-pos sm:w-[110px] sm:text-[12.5px]">
+                        {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
+                      </span>
+                    </span>
+                    {montos ? (
+                      <span className="tnum hidden w-[118px] text-right font-mono text-[15px] sm:block">
+                        {pesos(p.monto, p.moneda)}
+                      </span>
+                    ) : null}
                   </span>
-                  {variasObras && p.obraNombre ? (
-                    <span className="hidden w-[140px] truncate text-[12.5px] text-faint sm:block">{p.obraNombre}</span>
-                  ) : null}
-                  {/* El recibo va pegado a su factura: es la respuesta a «¿ésta ya la pagué?». */}
-                  <span className="hidden w-[110px] text-[12.5px] text-pos sm:block">
-                    {p.reciboNumero ? `Recibo ${p.reciboNumero}` : ''}
-                  </span>
-                  {montos ? (
-                    <span className="tnum w-[118px] text-right font-mono text-[15px]">{pesos(p.monto, p.moneda)}</span>
-                  ) : null}
                 </Envoltorio>
                 <Bajar en={papel?.verEn} que={`factura ${p.facturaNumero}`} />
               </div>
@@ -139,7 +160,7 @@ export default async function Facturas() {
 
 /** La fila entera abre el papel cuando lo hay; cuando no, es texto y no finge ser un botón. */
 function Envoltorio({ href, children }: { href?: string; children: React.ReactNode }) {
-  const clase = 'flex min-w-0 flex-1 items-center gap-3 py-[15px]'
+  const clase = 'flex min-w-0 flex-1 items-start gap-2 py-[13px] sm:items-center sm:gap-3 sm:py-[15px]'
   if (!href) return <div className={clase}>{children}</div>
   return <a href={href} target="_blank" rel="noreferrer" className={`${clase} hover:text-ink`}>{children}</a>
 }
