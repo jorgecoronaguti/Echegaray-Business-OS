@@ -54,7 +54,7 @@ import { Aviso } from '@/shared/components/ds'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import {
   AccionPrimaria, AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha,
-  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha,
+  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
 import { CostadoLegajo, type DatoDeLegajo } from '@/features/administracion/components/CostadoLegajo'
 import { hhPorMes } from '@/features/administracion/services/hhPorMes'
@@ -135,10 +135,10 @@ export default async function FichaPersonaPage({
   // permisos detrás de un 404, que ya costó media jornada en este repo.
   if (error) {
     return (
-      <main className="min-h-screen" style={{ background: V.fondo }}>
+      <PantallaV2>
         <Migas volverA="/administracion/personas" padre="Personal" actual="Legajo" />
         <div style={{ padding: '16px 20px' }} data-testid="ficha-error"><Aviso tono="neg">{error}</Aviso></div>
-      </main>
+      </PantallaV2>
     )
   }
   if (!persona) notFound()
@@ -286,7 +286,7 @@ export default async function FichaPersonaPage({
   ].filter(Boolean).join(' · ')
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/administracion/personas" padre="Personal" actual={oracion(persona.nombre_completo)} />
 
       {/* EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque así
@@ -524,6 +524,6 @@ export default async function FichaPersonaPage({
               </CostadoDeFicha>
             )}
       </CuerpoDeFicha>
-    </main>
+    </PantallaV2>
   )
 }

@@ -73,7 +73,7 @@ import { IconoCrear, IconoEditar } from '@/shared/components/iconos'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import {
   AccionPrimaria, AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha,
-  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha,
+  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
 import { money } from '@/shared/utils/format'
 
@@ -205,7 +205,7 @@ export default async function ClientePage({ params, searchParams }: {
   const tasa = tasaDeConversion(presupuestos)
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/clientes" padre="Clientes" actual={cliente.nombre_comercial} />
 
       <TituloDeFicha
@@ -459,6 +459,6 @@ export default async function ClientePage({ params, searchParams }: {
           </CostadoDeFicha>
         </CuerpoDeFicha>
       )}
-    </main>
+    </PantallaV2>
   )
 }

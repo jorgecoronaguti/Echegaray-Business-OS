@@ -37,7 +37,7 @@ import { IconoCrear } from '@/shared/components/iconos'
 import { BuscadorFilo } from '@/shared/components/v2/BuscadorFilo'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { PanelFilo, V } from '@/shared/components/v2/patron'
-import { AccionPrimaria, Migas, TituloDeFicha } from '@/shared/components/v2/segundoNivel'
+import { AccionPrimaria, Migas, TituloDeFicha, PantallaV2 } from '@/shared/components/v2/segundoNivel'
 import {
   listarObrasElegibles, listarPersonasVinculables, listarUsuarios,
 } from '@/features/usuarios/services/usuariosService'
@@ -63,11 +63,11 @@ const href = (sp: Busqueda, cambios: Busqueda = {}) => {
 /** El marco de las tres salidas cortas: sin permiso, sin configuración y la pantalla real. */
 function Marco({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       {/* «Mi cuenta» y no la barra del área: el screen map baja Usuarios al menú de la cuenta. */}
       <Migas volverA="/mi-cuenta" padre="Mi cuenta" actual="Usuarios y accesos" />
       {children}
-    </main>
+    </PantallaV2>
   )
 }
 

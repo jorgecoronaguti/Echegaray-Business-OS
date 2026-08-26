@@ -31,7 +31,7 @@ import { Aviso } from '@/shared/components/ds'
 import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
 import {
-  AccionPrimaria, AccionTerciaria, CostadoDeFicha, CuerpoDeFicha, Migas, SolapasDeFicha, TituloDeFicha,
+  AccionPrimaria, AccionTerciaria, CostadoDeFicha, CuerpoDeFicha, Migas, SolapasDeFicha, TituloDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
 import { V } from '@/shared/components/v2/patron'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
@@ -99,12 +99,12 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
 
   if (listado.error) {
     return (
-      <main className="min-h-screen" style={{ background: V.fondo }}>
+      <PantallaV2>
         <Migas volverA="/administracion/personas" padre="Personal" actual="Cuadrillas y HH" />
         <div style={{ padding: '16px 20px' }} data-testid="cuadrillas-error">
           <Aviso tono="neg" titulo="No pude leer las cuadrillas">{listado.error}</Aviso>
         </div>
-      </main>
+      </PantallaV2>
     )
   }
 
@@ -140,7 +140,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   )
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/administracion/personas" padre="Personal" actual="Cuadrillas y HH" />
 
       <TituloDeFicha
@@ -291,7 +291,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
                 </CostadoDeFicha>
               )}
       </CuerpoDeFicha>
-    </main>
+    </PantallaV2>
   )
 }
 

@@ -41,7 +41,7 @@ import { Aviso } from '@/shared/components/ds'
 import { BuscadorFilo } from '@/shared/components/v2/BuscadorFilo'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { V } from '@/shared/components/v2/patron'
-import { Migas, TitularDeCola } from '@/shared/components/v2/segundoNivel'
+import { Migas, TitularDeCola, PantallaV2 } from '@/shared/components/v2/segundoNivel'
 import { GrupoDeLaJornada } from '@/features/administracion/components/JornadaPorObra'
 import {
   getEsperados, getObrasConGente, getPresencia,
@@ -88,12 +88,12 @@ export default async function EnObraPage({
 
   if (presencia.error) {
     return (
-      <main className="min-h-screen" style={{ background: V.fondo }}>
+      <PantallaV2>
         <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
         <div style={{ padding: '16px 20px' }}>
           <Aviso tono="neg" titulo="No pude leer la presencia" testid="presencia-error">{presencia.error}</Aviso>
         </div>
-      </main>
+      </PantallaV2>
     )
   }
 
@@ -109,7 +109,7 @@ export default async function EnObraPage({
   const hayResultado = jornada.plantel > 0
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/administracion/personas" padre="Personal" actual="En obra ahora" />
 
       {/* EL NÚMERO CUENTA MARCAS HECHAS, no ausencias: hasta que cierre la jornada, sin marca están
@@ -217,6 +217,6 @@ export default async function EnObraPage({
           </Link>
         </p>
       </div>
-    </main>
+    </PantallaV2>
   )
 }

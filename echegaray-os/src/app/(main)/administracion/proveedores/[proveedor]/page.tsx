@@ -55,7 +55,7 @@ import { IconoEditar } from '@/shared/components/iconos'
 import { RotuloPanel, V } from '@/shared/components/v2/patron'
 import {
   AccionSecundaria, AvisoDeFicha, CifrasDeFicha, CostadoDeFicha, CuerpoDeFicha, DatoDeCostado,
-  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha,
+  Migas, PastillaFilo, SolapasDeFicha, TituloDeFicha, type CifraDeFicha, PantallaV2,
 } from '@/shared/components/v2/segundoNivel'
 import { pesos } from '@/shared/components/canon/formato'
 
@@ -131,7 +131,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
   ]
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/administracion/proveedores" padre="Proveedores" actual={proveedor.nombre} />
 
       <TituloDeFicha
@@ -269,6 +269,6 @@ export default async function ProveedorFichaPage({ params, searchParams }: {
           </p>
         </CostadoDeFicha>
       </CuerpoDeFicha>
-    </main>
+    </PantallaV2>
   )
 }

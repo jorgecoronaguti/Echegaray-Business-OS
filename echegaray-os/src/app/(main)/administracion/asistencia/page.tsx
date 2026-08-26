@@ -30,7 +30,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { Aviso } from '@/shared/components/ds'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
 import { PanelFilo, V } from '@/shared/components/v2/patron'
-import { Migas, TitularDeCola } from '@/shared/components/v2/segundoNivel'
+import { Migas, TitularDeCola, PantallaV2 } from '@/shared/components/v2/segundoNivel'
 import { ColaDeCorrecciones, PanelCorreccion } from '@/features/administracion/components/BandejaCorrecciones'
 import { getCorrecciones } from '@/features/administracion/services/correccionAsistenciaService'
 import { titularDeLaBandeja } from '@/features/administracion/services/bandejaCorrecciones'
@@ -62,12 +62,12 @@ export default async function CorreccionesAsistenciaPage({ searchParams }: {
   // nivel campo una pantalla que le va a salir vacía.
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
-      <main className="min-h-screen" style={{ background: V.fondo }}>
+      <PantallaV2>
         <Migas volverA="/administracion" padre="Trabajo" actual="Correcciones de asistencia" />
         <div style={{ padding: '16px 20px' }}>
           <Aviso tono="info">Esta pantalla es de Administración.</Aviso>
         </div>
-      </main>
+      </PantallaV2>
     )
   }
 
@@ -87,7 +87,7 @@ export default async function CorreccionesAsistenciaPage({ searchParams }: {
   const t = titularDeLaBandeja(pendientes.data ?? [])
 
   return (
-    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }}>
+    <PantallaV2>
       <Migas volverA="/administracion" padre="Trabajo" actual="Correcciones de asistencia" />
 
       {/* EL NÚMERO GRANDE ES LA COLA, NO LO RESUELTO: se abre esta pantalla para saber cuánto falta. */}
@@ -160,6 +160,6 @@ export default async function CorreccionesAsistenciaPage({ searchParams }: {
           </PanelFilo>
         )}
       </div>
-    </main>
+    </PantallaV2>
   )
 }

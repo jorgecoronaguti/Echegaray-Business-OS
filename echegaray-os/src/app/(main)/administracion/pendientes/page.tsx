@@ -26,8 +26,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { resolverImputacion } from '@/features/obras/services/actionsImputacion'
-import { PageShell } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
+import { PantallaV2, TitularDeCola } from '@/shared/components/v2/segundoNivel'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { PendientesTrabajo } from '@/features/administracion/components/PendientesTrabajo'
 import {
@@ -36,12 +36,23 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * EL MARCO. `PantallaV2` y no `PageShell`: el encabezado del shell dibuja un `h1` de 22px y esta
+ * pantalla abre con el número grande del artboard (`33:56-66`). El sello de «acá hubo datos» —lo
+ * que le da al `error.tsx` la hora del último dato bueno— viaja en `PantallaV2`.
+ *
+ * LA BARRA DEL ÁREA SE QUEDA, y no es una excepción al «tres niveles nunca»: el artboard 33 la
+ * dibuja y no tiene miga. Ésta es una SECCIÓN de Administración —la absorbió «Trabajo»—, no una
+ * pantalla de segundo nivel como Correcciones de asistencia.
+ */
 function Marco({ children }: { children: React.ReactNode }) {
   return (
-    <PageShell title="Pendientes de imputación" encabezado={false}>
-      <NavAdministracion />
+    <PantallaV2>
+      <div style={{ padding: '0 20px' }}>
+        <NavAdministracion />
+      </div>
       {children}
-    </PageShell>
+    </PantallaV2>
   )
 }
 
@@ -63,13 +74,19 @@ export default async function PendientesPage({ searchParams }: { searchParams: P
   ])
 
   if (!esAdministracion(perfil.data?.rol ?? null)) {
-    return <Marco><Aviso tono="info">Esta pantalla es de Administración.</Aviso></Marco>
+    return (
+      <Marco>
+        <div style={{ padding: '16px 20px' }}>
+          <Aviso tono="info">Esta pantalla es de Administración.</Aviso>
+        </div>
+      </Marco>
+    )
   }
 
   if (pendientes.error || !pendientes.data) {
     return (
       <Marco>
-        <div data-testid="pendientes-error">
+        <div style={{ padding: '16px 20px' }} data-testid="pendientes-error">
           <Aviso tono="neg" titulo="No pude leer las fuentes">{pendientes.error}</Aviso>
         </div>
       </Marco>
@@ -88,29 +105,16 @@ export default async function PendientesPage({ searchParams }: { searchParams: P
       {/* LA CIFRA ES LO QUE HAY QUE HACER, Y ES EL ÚNICO COLOR DE LA PANTALLA. Cuenta TEXTOS, no
           filas: dos filas que dicen lo mismo se resuelven de una sola vez, y contarlas por separado
           haría parecer la cola más larga de lo que es. */}
-      <div className="mb-4 flex flex-wrap items-end gap-4">
-        <div className="flex items-baseline gap-[11px]">
-          <span
-            data-testid="textos-pendientes"
-            className={`font-mono text-[38px] font-semibold leading-[.9] tracking-[-0.02em] tabular-nums ${
-              grupos.length ? 'text-warn' : 'text-pos'
-            }`}
-          >{grupos.length}</span>
-          <div>
-            <h1 className="text-[17px] font-semibold leading-tight text-ink">
-              {grupos.length === 1 ? 'texto espera una decisión' : 'textos esperan una decisión'}
-            </h1>
-            <div className="mt-0.5 text-[12.5px] text-muted">
-              {mil(clasificadas)} de {mil(totalFilas)} filas ya están clasificadas
-            </div>
-          </div>
-        </div>
-        <p className="ml-auto max-w-[330px] text-right text-[11.5px] leading-relaxed text-faint text-pretty">
-          Un texto resuelto escribe una fila en el diccionario de obras y vale para todas las filas
-          que digan lo mismo — hoy y mañana.
-        </p>
-      </div>
+      <TitularDeCola
+        testid="titular-pendientes"
+        numero={grupos.length}
+        titulo={grupos.length === 1 ? 'texto espera una decisión' : 'textos esperan una decisión'}
+        resumen={`${mil(clasificadas)} de ${mil(totalFilas)} filas ya están clasificadas`}
+        tono={grupos.length ? 'warn' : 'pos'}
+        derecha="Un texto resuelto escribe una fila en el diccionario de obras y vale para todas las filas que digan lo mismo — hoy y mañana."
+      />
 
+      <div style={{ padding: '0 20px 24px' }}>
       <PendientesTrabajo
         grupos={grupos}
         resumen={resumen}
@@ -118,6 +122,7 @@ export default async function PendientesPage({ searchParams }: { searchParams: P
         resolver={resolverImputacion}
         claveInicial={sp.c ?? null}
       />
+      </div>
     </Marco>
   )
 }

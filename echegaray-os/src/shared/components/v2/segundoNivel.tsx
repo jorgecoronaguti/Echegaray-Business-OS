@@ -17,6 +17,7 @@
 
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { V } from './patron'
 
 /** El chevron de la miga y el de volver. 15px, el mismo trazo del §11. `23v2:50`. */
@@ -474,7 +475,8 @@ export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid =
   resumen: string
   /** La aclaración contra el margen derecho: quién resuelve, o la fecha de lo que se está mirando. */
   derecha?: ReactNode
-  tono?: 'warn' | 'neg'
+  /** `pos` es el verde de «no queda nada»: la cola vacía es una buena noticia y se dice. */
+  tono?: 'warn' | 'neg' | 'pos'
   testid?: string
 }) {
   return (
@@ -487,7 +489,7 @@ export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid =
           className="font-mono tabular-nums"
           style={{
             fontSize: '38px', fontWeight: 600, lineHeight: 0.9, letterSpacing: '-.02em',
-            color: tono === 'neg' ? V.neg : tono === 'warn' ? V.warn : V.tinta,
+            color: tono === 'neg' ? V.neg : tono === 'warn' ? V.warn : tono === 'pos' ? '#067647' : V.tinta,
           }}
           data-testid="titular-numero"
         >
@@ -511,5 +513,29 @@ export function TitularDeCola({ numero, titulo, resumen, derecha, tono, testid =
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * EL MARCO DE UNA PANTALLA v2 — el fondo, la columna y EL SELLO.
+ *
+ * ═══ POR QUÉ EXISTE, Y QUÉ SE PERDÍA SIN ÉL ═══
+ *
+ * `PageShell` monta `SelloDatoBueno`, que es lo que le da al `error.tsx` la hora del último dato
+ * bueno: si la página lanza, el marco no llega a dibujarse y el sello conserva la hora de la última
+ * vez que hubo datos de verdad. Las pantallas del v2 no usan `PageShell` —su encabezado dibuja un
+ * `h1` de 22px donde el v2 pide la miga y el nombre a 24px—, así que sin este marco cada porte se
+ * llevaba el sello puesto y el cartel de error empezaba a decir «sin lectura previa» para siempre.
+ *
+ * Es lo ÚNICO que este componente hace de más que un `<main>`: el padding lo pone cada bloque
+ * —14/20 la miga, 12/20 el título, 20/20 las cifras—, porque en el v2 el aire es de la anatomía y
+ * no del contenedor.
+ */
+export function PantallaV2({ children, testid }: { children: ReactNode; testid?: string }) {
+  return (
+    <main className="flex min-h-screen flex-col" style={{ background: V.fondo }} data-testid={testid}>
+      <SelloDatoBueno />
+      {children}
+    </main>
   )
 }
