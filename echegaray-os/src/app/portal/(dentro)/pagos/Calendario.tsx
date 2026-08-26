@@ -35,6 +35,14 @@ export function mesVecino(ym: string, paso: 1 | -1): string {
 
 const DIAS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
+/** `9034356` → `$ 9,0 M`. Para la celda del teléfono, donde el importe entero no entra. */
+function corto(n: number | null, moneda: 'ARS' | 'USD'): string {
+  if (n == null) return ''
+  if (moneda === 'USD') return `U$S ${Math.round(n / 1000)}k`
+  if (Math.abs(n) < 1_000_000) return `$ ${Math.round(n / 1000)}k`
+  return `$ ${(n / 1_000_000).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`
+}
+
 export function Calendario({
   pagos, mes, semanas, hoy, montos,
 }: {
@@ -55,13 +63,19 @@ export function Calendario({
         <Paso a={`?vista=calendario&mes=${mesVecino(mes, 1)}`} rotulo="Mes siguiente">›</Paso>
       </div>
 
-      {/* La grilla scrollea dentro de su caja: en un teléfono siete columnas no entran, y el que
-          tiene que scrollear es el calendario, nunca la página entera. */}
-      <div className="mt-3 overflow-x-auto">
-        <div className="min-w-[560px]">
+      {/* ═══ ENTRA EN LA PANTALLA, NO SE SCROLLEA (26/08/2026, iPhone 14) ═══
+          Tenía `min-w-[560px]` dentro de un `overflow-x-auto`: en un teléfono de 390px el mes
+          quedaba cortado y había que arrastrar de costado para ver el jueves. Un calendario existe
+          para verlo ENTERO de un vistazo — si hay que scrollearlo deja de contestar «cómo me cae el
+          mes», que es su única razón de ser.
+          Ahora las siete columnas se reparten el ancho que haya. Lo que se achica es la celda y su
+          letra, no la información: el monto sigue estando y el rótulo se recorta, que es lo que
+          sobra cuando el día ya lo dice. */}
+      <div className="mt-3">
+        <div>
           <div className="grid grid-cols-7">
             {DIAS.map((d, i) => (
-              <span key={i} className="px-1.5 pb-1.5 text-[10.5px] tracking-[.08em] text-faint">{d}</span>
+              <span key={i} className="pb-1.5 text-center text-[10px] tracking-[.06em] text-faint sm:px-1.5 sm:text-left sm:text-[10.5px]">{d}</span>
             ))}
           </div>
           {semanas.map((semana, f) => (
@@ -73,13 +87,13 @@ export function Calendario({
                   <div
                     key={dia.iso}
                     className={
-                      'min-h-[74px] border-r border-line px-1.5 py-1.5 last:border-r-0 ' +
+                      'min-h-[62px] min-w-0 border-r border-line px-0.5 py-1 last:border-r-0 sm:min-h-[74px] sm:px-1.5 sm:py-1.5 ' +
                       (dia.delMes ? '' : 'bg-surface-sunken')
                     }
                   >
                     <span
                       className={
-                        'tnum inline-block rounded-full px-1.5 text-[11px] ' +
+                        'tnum inline-block rounded-full px-1 text-[10.5px] sm:px-1.5 sm:text-[11px] ' +
                         (esHoy ? 'bg-marca font-semibold text-ink' : dia.delMes ? 'text-muted' : 'text-faint')
                       }
                     >
@@ -92,12 +106,22 @@ export function Calendario({
                           {/* El monto arriba y el rótulo abajo: en una celda de 74px lo que se
                               busca de un vistazo es cuánto cae ese día. Sin permiso de montos no se
                               dibuja un guión —eso se lee «este pago no tiene importe»—: sólo el rótulo. */}
+                          {/* EN EL TELÉFONO, EL MONTO EN MILLONES: «$ 9.034.356» no entra en una
+                              celda de 52px y se recorta justo donde está la cifra que importa;
+                              «$ 9,0 M» entra entero. El exacto está en el listado. */}
                           {montos ? (
-                            <span className={`tnum block truncate font-mono text-[11px] ${TINTA[estado]}`}>
-                              {pesos(p.monto, p.moneda)}
-                            </span>
+                            <>
+                              <span className={`tnum block truncate font-mono text-[9.5px] sm:hidden ${TINTA[estado]}`}>
+                                {corto(p.monto, p.moneda)}
+                              </span>
+                              <span className={`tnum hidden truncate font-mono text-[11px] sm:block ${TINTA[estado]}`}>
+                                {pesos(p.monto, p.moneda)}
+                              </span>
+                            </>
                           ) : null}
-                          <span className="block truncate text-[10.5px] text-faint">{p.rotulo}</span>
+                          {/* El rótulo sólo desde `sm`: en 52px de ancho no entra ni una palabra, y
+                              media palabra recortada no informa — informa el monto. */}
+                          <span className="hidden truncate text-[10.5px] text-faint sm:block">{p.rotulo}</span>
                         </span>
                       )
                     })}
