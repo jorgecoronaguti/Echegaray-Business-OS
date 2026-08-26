@@ -28,6 +28,8 @@ import {
 } from '../lib/portal-siembra.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+/** Hoy en San Juan: comparar un vencimiento contra UTC lo corre tres horas. */
+const HOY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 const APLICAR = process.argv.includes('--aplicar')
 const ANIO = 2026
 const $ = (n, m = 'ARS') => (n == null ? 'sin cargar' : `${m === 'USD' ? 'U$S' : '$'}${Math.round(n).toLocaleString('es-AR')}`)
@@ -101,15 +103,28 @@ async function bajarObras(obras) {
  * quedan fuera a propósito: una obra terminada no absorbe un cobro nuevo.
  */
 async function universoDeObras(delSheet) {
-  const { rows } = await query(`select o.id, o.nombre, o.cliente_id, c.nombre_comercial
-                                from public.obras o join public.clientes c on c.id = o.cliente_id
-                                where o.estado in ('activa','pausada')`)
+  // `obra_canonica` Y NO `public.obras` (26/08/2026). El esquema de pago que administración edita en
+  // la ficha del cliente apunta ahí —`esquema_pago.obra_id` es FK a `obra_canonica`—, así que sembrar
+  // contra otra tabla dejaba dos registros de obra y un cronograma que la ficha no podía mostrar.
+  const { rows } = await query(`select o.id, o.nombre, o.estado, o.cliente_id, c.nombre_comercial
+                                from public.obra_canonica o join public.clientes c on c.id = o.cliente_id
+                                where coalesce(o.estado,'activa') <> 'cancelada'`)
   const universo = [...delSheet]
   for (const r of rows) {
     const ya = universo.find((o) => o.cliente.id === r.cliente_id && o.nombre.toLowerCase() === String(r.nombre).toLowerCase())
     if (ya) { ya.id = ya.id ?? r.id; continue }
     universo.push({
       cliente: { id: r.cliente_id, nombre_comercial: r.nombre_comercial },
+      // LAS CERRADAS ENTRAN, y no es un descuido. ARCOR es un cliente de mantenimiento: su única obra
+      // está cerrada y sus trece cobranzas son órdenes de compra sueltas. Excluirlas hacía
+      // desaparecer $49,8 M del portal sin que nadie lo viera. Una obra terminada sigue teniendo
+      // historia que el cliente puede mirar, y el portal ya tiene su pantalla para eso.
+      cerrada: String(r.estado ?? 'activa') === 'cerrada',
+      // SÓLO LAS DE `obra_canonica` SE PUEDEN ESCRIBIR: `esquema_pago.obra_id` es FK contra esa
+      // tabla. Una obra que el Sheet declara y el registro no tiene existe para IMPUTAR —así se ve
+      // cuánto cae en ella— pero no se guarda, y el informe lo dice en vez de romper con un error
+      // de clave foránea a mitad de la corrida.
+      canonica: true,
       nombre: r.nombre, id: r.id, palabras: palabrasDeObra(r.nombre), declaradaEnElSheet: false,
     })
   }
@@ -237,35 +252,45 @@ function revisarQueNadaInternoSalga(porObra) {
  */
 async function escribir(obras, porObra) {
   for (const o of obras) {
-    if (!o.id) continue
+    if (!o.id || !o.canonica) continue
     const lineas = porObra.get(o) ?? []
     let orden = 0
     for (const l of lineas) {
       orden += 1
+      // LOS CINCO ESTADOS DE `esquema_pago` son otros que los del portal: se traduce acá, una vez.
+      const estado = l.pago ? 'cobrado'
+        : l.tipo === 'fondo_reparo' ? 'retenido'
+        : !l.prevista ? 'previsto'
+        : l.prevista < HOY ? 'vencido' : 'a_vencer'
+      // `visible_portal` NO se pisa si la fila ya existe: apagar una línea es una decisión de
+      // administración y una corrida del sembrador no puede deshacerla en silencio.
       await query(
-        `insert into public.pago_programado (obra_id, orden, tipo, rotulo, monto, fecha_prevista, fecha_pago, factura_numero, estado, nota, moneda)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         on conflict (obra_id, orden) do update set
-           tipo = excluded.tipo, rotulo = excluded.rotulo, monto = excluded.monto,
-           fecha_prevista = excluded.fecha_prevista, fecha_pago = excluded.fecha_pago,
-           factura_numero = excluded.factura_numero, estado = excluded.estado,
-           nota = excluded.nota, moneda = excluded.moneda, updated_at = now()`,
-        [o.id, orden, l.tipo, l.rotulo, l.monto, l.prevista, l.pago, l.factura, l.estado, l.nota, l.moneda])
+        `insert into public.esquema_pago
+           (cliente_id, obra_id, orden, concepto, monto, moneda, fecha, estado, factura_numero,
+            nota_interna, origen, visible_portal, publicado_at, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas', true, now(), now())
+         on conflict (obra_id, orden) where origen = 'sync_cobranzas' do update set
+           concepto = excluded.concepto, monto = excluded.monto, moneda = excluded.moneda,
+           fecha = excluded.fecha, estado = excluded.estado, factura_numero = excluded.factura_numero,
+           nota_interna = excluded.nota_interna, sincronizado_en = now(), actualizado_at = now()`,
+        [o.cliente.id, o.id, orden, l.rotulo, l.monto, l.moneda, l.prevista, estado, l.factura, l.nota])
     }
-    const { rowCount } = await query('delete from public.pago_programado where obra_id=$1 and orden>$2', [o.id, orden])
+    const { rowCount } = await query(
+      `delete from public.esquema_pago where obra_id=$1 and orden>$2 and origen='sync_cobranzas'`, [o.id, orden])
     if (rowCount) console.log(`  · ${o.nombre}: ${rowCount} línea(s) vieja(s) borrada(s)`)
   }
 }
 
 /** LA EVIDENCIA ES EL DATO LEÍDO EN SU DESTINO, no el «ok» de la escritura. */
 async function releerDeLaBase() {
-  const { rows } = await query(`select c.nombre_comercial cli, o.nombre obra, p.orden, p.tipo, p.rotulo,
-                                       p.moneda, p.monto, p.fecha_prevista, p.fecha_pago
-                                from public.pago_programado p
-                                join public.obras o on o.id = p.obra_id
-                                join public.clientes c on c.id = o.cliente_id
+  const { rows } = await query(`select c.nombre_comercial cli, o.nombre obra, p.orden, p.estado tipo,
+                                       p.concepto rotulo, p.moneda, p.monto,
+                                       p.fecha fecha_prevista, null::date fecha_pago
+                                from public.esquema_pago p
+                                join public.obra_canonica o on o.id = p.obra_id
+                                join public.clientes c on c.id = p.cliente_id
                                 order by c.nombre_comercial, o.nombre, p.orden`)
-  console.log('\n══ LEÍDO DE pago_programado ══════════════════════════════════════════════════════')
+  console.log('\n══ LEÍDO DE esquema_pago ═════════════════════════════════════════════════════════')
   const d = (x) => (x ? new Date(x).toISOString().slice(0, 10) : '—')
   let obra = null
   for (const r of rows) {
@@ -282,7 +307,7 @@ function informar(obras, porObra, sinImputar, conflictos) {
   console.log('\n══ CRONOGRAMA por obra ═══════════════════════════════════════════════════════════')
   for (const o of obras) {
     const lineas = porObra.get(o) ?? []
-    const marca = o.id ? '' : '  ⚠ la obra NO existe en Postgres (el Sheet no declara contrato): no se escribe'
+    const marca = o.canonica ? '' : '  ⚠ NO está en el registro de obras del OS: se imputa pero no se publica'
     console.log(`\n  ${o.cliente.nombre_comercial} · ${o.nombre} — ${lineas.length} línea(s)${marca}`)
     for (const l of lineas) {
       console.log(`   ${l.tipo.padEnd(12)} ${l.rotulo.slice(0, 36).padEnd(38)} ${$(l.monto, l.moneda).padStart(16)}  ${l.prevista ?? 'sin fecha'}  ${l.pago ? 'cobrado' : (l.estado ?? 'a vencer')}  [fila ${l.filas.join('+')}]`)

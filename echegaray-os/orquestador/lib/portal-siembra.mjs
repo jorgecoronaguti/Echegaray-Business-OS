@@ -67,12 +67,18 @@ export function fechaCorta(ddmm, anio) {
  * @returns {{obra: object, palabra: string}|null}
  */
 export function imputarObra(fila, obrasDelCliente) {
-  // EL ATAJO DE OBRA ÚNICA SÓLO VALE PARA LO QUE EL SHEET DECLARA EN CURSO. Un cliente con una sola
-  // obra en el bloque OBRAS no tiene ambigüedad: es la única posibilidad. Pero un cliente que tiene
-  // una obra vieja en Postgres y ninguna declarada —ARCOR, con trece cobranzas de bacheo, cortinas y
-  // camión regador— se comía TODO en esa obra. Eso es exactamente «mezcla todas las obras».
-  if (obrasDelCliente.length === 1 && obrasDelCliente[0].declaradaEnElSheet) {
-    return { obra: obrasDelCliente[0], palabra: '(única obra declarada del cliente)' }
+  // EL ATAJO DE OBRA ÚNICA: un cliente con UNA sola obra en todo el universo no tiene ambigüedad
+  // posible — no hay una segunda a la que la fila pudiera pertenecer.
+  //
+  // La versión anterior exigía además que estuviera declarada en el bloque OBRAS del Sheet, para
+  // evitar que un cliente con una obra vieja se comiera todo. Con el universo apuntando a
+  // `obra_canonica` —el registro real de obras del OS— esa exigencia dejaba a ARCOR sin nada: es un
+  // cliente de MANTENIMIENTO, sus trece cobranzas son órdenes de compra sueltas (bacheo,
+  // compactación, cortinas) y su única obra no se declara en curso porque no es una obra en curso.
+  // El resultado era $49,8 M que no aparecían en ningún lado. Con una sola obra no hay nada que
+  // mezclar; el riesgo real vuelve recién con la segunda.
+  if (obrasDelCliente.length === 1) {
+    return { obra: obrasDelCliente[0], palabra: '(única obra del cliente)' }
   }
   const texto = sinTildes(`${fila.concepto ?? ''} ${fila.detalle ?? ''} ${fila.ordenCompra ?? ''}`)
   let mejor = null

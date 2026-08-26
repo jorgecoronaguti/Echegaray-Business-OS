@@ -83,24 +83,31 @@ test('cobrado es pagado; lo demás lo decide la fecha, como en el portal', () =>
   assert.equal(estadoDeCobranza('Proyectado', null), 'sin_factura')
 })
 
-test('el atajo de obra única sólo vale si el Sheet la declara en curso', () => {
-  const declarada = [{ id: 'salon', declaradaEnElSheet: true, palabras: palabrasDeObra('SALÓN COMERCIAL') }]
-  // Sin esta regla, Quattropani —obra única declarada— se quedaba con el cronograma vacío porque
-  // ninguna fila de Cobranzas repite el nombre de la obra que ya es obvia.
-  assert.equal(imputarObra({ concepto: 'Anticipo 50% inicio obra' }, declarada).obra.id, 'salon')
+test('con UNA sola obra no hay nada que mezclar: la fila va ahí', () => {
+  // Quattropani: ninguna fila de Cobranzas repite el nombre de la obra, porque es la única y es obvia.
+  const una = [{ id: 'salon', palabras: palabrasDeObra('SALÓN COMERCIAL') }]
+  assert.equal(imputarObra({ concepto: 'Anticipo 50% inicio obra' }, una).obra.id, 'salon')
 
-  // ARCOR tiene UNA obra vieja en Postgres y ninguna declarada en el bloque OBRAS. Con el atajo
-  // suelto, sus trece cobranzas —bacheo, cortinas, camión regador— caían todas ahí dentro. Eso es
-  // literalmente «mezcla todas las obras».
-  const vieja = [{ id: 'pisos-rrhh', declaradaEnElSheet: false, palabras: palabrasDeObra('Cambio de Pisos - RRHH') }]
-  assert.equal(imputarObra({ concepto: 'Camión Regador' }, vieja), null)
-  assert.equal(imputarObra({ concepto: 'Cambio de pisos RRHH - 20% restante' }, vieja).obra.id, 'pisos-rrhh')
+  // ARCOR es un cliente de MANTENIMIENTO: su única obra se llama como él y sus cobranzas son órdenes
+  // de compra sueltas (bacheo, compactación, cortinas). Exigir que el concepto nombrara la obra dejaba
+  // $49,8 M sin aparecer en ningún lado, en silencio.
+  //
+  // EL COSTO ESTÁ DECLARADO: si esa obra única fuera una obra vieja y específica, entraría ahí trabajo
+  // que no le corresponde. Se acepta porque la alternativa —descartar la fila— no la pone en otro
+  // lado: la hace desaparecer. Y el riesgo vuelve solo en cuanto el cliente tenga una segunda obra,
+  // que es donde empieza a haber una decisión que tomar.
+  const arcor = [{ id: 'arcor', palabras: palabrasDeObra('ARCOR') }]
+  assert.equal(imputarObra({ concepto: 'BACHEO' }, arcor).obra.id, 'arcor')
 })
 
 test('una palabra suelta no alcanza cuando la obra tiene varias', () => {
   // «Rep de pisos - canalizacion» y «Cambio de Pisos - RRHH» comparten «pisos» y son dos trabajos
   // distintos del mismo cliente. Con la regla vieja la reparación entraba en la obra equivocada.
-  const arcor = [{ id: 'pisos-rrhh', palabras: palabrasDeObra('Cambio de Pisos - RRHH') }]
+  // DOS obras: acá sí hay una decisión que tomar, y una palabra suelta no alcanza para tomarla.
+  const arcor = [
+    { id: 'pisos-rrhh', palabras: palabrasDeObra('Cambio de Pisos - RRHH') },
+    { id: 'bacheo', palabras: palabrasDeObra('Bacheo de Playa') },
+  ]
   assert.equal(imputarObra({ concepto: 'Rep de pisos - "canalizacion"' }, arcor), null)
   // Dos palabras sí alcanzan aunque el nombre entero no aparezca.
   assert.equal(imputarObra({ concepto: 'Cambio de cortina en pisos' }, arcor).obra.id, 'pisos-rrhh')
