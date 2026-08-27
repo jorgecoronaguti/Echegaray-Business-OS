@@ -12,80 +12,14 @@
 // de playbooks/reglas/objetivos quedan vacías a propósito y se llenan con casos reales.
 //
 // Idempotente: se puede correr las veces que haga falta (upsert por clave).
-import { readdir, readFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { query, closePool } from '../lib/db.mjs'
+import { sincronizarCatalogo } from './xsas-skills-sync.mjs'
 
-
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
-const SKILLS_DIR = path.join(REPO, '.claude', 'skills')
-
-// Skill → área dueña. Sólo las que tienen dueño INEQUÍVOCO. Las metodológicas (prp, supabase,
-// playwright…) no son de un área de negocio: quedan fuera del catálogo en vez de forzarles una.
-const SKILL_AREA = {
-  'costos-presupuestacion': 'comercial',
-  'derecho-construccion-contratos': 'contabilidad_legales',
-  'contabilidad-constructoras': 'contabilidad_legales',
-  'impuestos-construccion': 'contabilidad_legales',
-  'derecho-laboral-construccion': 'personas',
-  'seguridad-higiene-art': 'personas',
-  'finanzas-tesoreria-construccion': 'administracion_finanzas',
-  'administracion-operativa-construccion': 'administracion_finanzas',
-  'cash-flow-operativo': 'administracion_finanzas',
-  'arquitectura-integracion-finanzas-obras': 'administracion_finanzas',
-  'google-sheets-business-systems': 'administracion_finanzas',
-  'compras-abastecimiento-subcontratacion': 'compras',
-  'equipos-flota-construccion': 'compras',
-  'ingenieria-civil-construccion': 'obras',
-  'direccion-obra': 'obras',
-  'planificacion-produccion': 'obras',
-  'calidad-obra': 'calidad',
-  'gestion-empresarial-riesgos': 'gestion_general',
-  'orquestador-de-razonamiento-y-skills': 'gestion_general',
-  'reportes-automaticos-y-comunicaciones': 'gestion_general',
-  'orden-documental-dataroom': 'gestion_general',
-  'lectura-drive-documentos-multiformato': 'gestion_general',
-  'integraciones-apis-sistemas-externos': 'gestion_general',
-  'web-ux-deploy-operacion-producto': 'gestion_general',
-  'discovery-drive-echegaray': 'gestion_general',
-  'appsheet-desarrollo': 'gestion_general',
-}
-
-/** Primera línea con contenido de la SKILL.md, como objetivo. No se inventa un resumen. */
-async function objetivoDeSkill(clave) {
-  try {
-    const txt = await readFile(path.join(SKILLS_DIR, clave, 'SKILL.md'), 'utf8')
-    for (const l of txt.split('\n')) {
-      const s = l.trim()
-      if (s && !s.startsWith('#') && !s.startsWith('---') && !s.startsWith('name:') && !s.startsWith('description:')) {
-        return s.slice(0, 300)
-      }
-    }
-  } catch { /* si no se puede leer, queda null: no se inventa */ }
-  return null
-}
-
-async function seedFrameworks() {
-  let n = 0
-  let sinArea = 0
-  const dirs = await readdir(SKILLS_DIR, { withFileTypes: true })
-  for (const d of dirs) {
-    if (!d.isDirectory()) continue
-    const area = SKILL_AREA[d.name]
-    if (!area) { sinArea++; continue }   // metodológica: no es de un área de negocio
-    const objetivo = await objetivoDeSkill(d.name)
-    await query(
-      `insert into public.knowledge_frameworks (clave, nombre, objetivo, area, ruta)
-       values ($1,$2,$3,$4,$5)
-       on conflict (clave) do update set nombre=excluded.nombre, objetivo=excluded.objetivo,
-         area=excluded.area, ruta=excluded.ruta, updated_at=now()`,
-      [d.name, d.name.replace(/-/g, ' '), objetivo, area, `.claude/skills/${d.name}/SKILL.md`],
-    )
-    n++
-  }
-  return { n, sinArea }
-}
+// Los frameworks del catálogo (las skills) los sincroniza `xsas-skills-sync.mjs`, que lee el
+// frontmatter de cada SKILL.md y deja la tabla igual al disco. Antes se hacía acá con un mapa
+// propio de áreas y sólo entraban las 26 que ese mapa nombraba: las otras 18 no existían para el
+// OS. Dos escritores de la misma tabla con criterios distintos es la trampa de las dos
+// definiciones — ahora hay uno solo y este seed lo llama.
 
 // KPIs: la capacidad que YA los calcula. `base_contable` sólo se declara donde es inequívoca por el
 // dominio; donde no lo es queda NULL y el KPI nace en 'borrador' — mezclar devengado con percibido
@@ -202,14 +136,14 @@ async function seedLecciones() {
 }
 
 async function main() {
-  const fw = await seedFrameworks()
+  const fw = await sincronizarCatalogo()
   const kpis = await seedKpis()
   const chk = await seedChecklists()
   const reu = await seedReuniones()
   const lec = await seedLecciones()
 
   console.log('SEED DE INTELIGENCIA ORGANIZACIONAL')
-  console.log(`  frameworks   : ${fw.n} desde .claude/skills (${fw.sinArea} metodológicas fuera del catálogo, no son de un área)`)
+  console.log(`  frameworks   : ${fw.total} desde .claude/skills (${fw.nuevas.length} nuevas, ${fw.actualizadas.length} actualizadas, ${fw.sinCambio} sin cambio)`)
   console.log(`  KPIs         : ${kpis} con base contable declarada y decisión asociada`)
   console.log(`  checklists   : ${chk} (los que ya corren solos)`)
   console.log(`  reuniones    : ${reu}`)
