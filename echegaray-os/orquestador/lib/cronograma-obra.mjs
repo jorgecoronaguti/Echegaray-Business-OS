@@ -22,6 +22,10 @@
 // informe y una alerta.
 
 import { query } from './db.mjs'
+// EL FALLBACK NO PUEDE SER UN 8 ESCRITO ACÁ. Decía `|| 8` en los dos lugares, y el 8 era la jornada
+// vieja: cuando la del dueño pasó a 44 h semanales (27/08), una obra sin `jornada_horas` cargada
+// habría seguido estirando cada actividad un 10%. La jornada vive en un solo archivo.
+import { HORAS_POR_DIA_HABIL } from './jornada-uocra.mjs'
 import { calcular, simularMovimiento, conflictosDeCuadrilla } from './cronograma.mjs'
 import { CalendarioObra, aISO } from './calendario-obra.mjs'
 
@@ -118,7 +122,7 @@ export function hhRestantes(act) {
 /** El cronograma de la obra, en fechas. `vista` = 'plan' | 'proyeccion'. */
 export async function cronogramaDeLaObra(obraId, vista = 'plan') {
   const { obra, actividades, dependencias, calendario } = await insumosDeLaObra(obraId)
-  const jornada = Number(obra.jornada_horas) || 8
+  const jornada = Number(obra.jornada_horas) || HORAS_POR_DIA_HABIL
   const origen = origenDelCronograma(obra, actividades, calendario)
 
   // Los contenedores no se planifican: agregan. Su ventana es la de sus hijas.
@@ -190,7 +194,7 @@ export async function cronogramaDeLaObra(obraId, vista = 'plan') {
 /** Qué pasa si alguien arrastra una actividad. Devuelve fechas, no índices. */
 export async function simularArrastre(obraId, actividadId, deltaDias) {
   const { obra, actividades, dependencias, calendario } = await insumosDeLaObra(obraId)
-  const jornada = Number(obra.jornada_horas) || 8
+  const jornada = Number(obra.jornada_horas) || HORAS_POR_DIA_HABIL
   const origen = origenDelCronograma(obra, actividades, calendario)
   const nombres = new Map(actividades.map((a) => [a.id, a.nombre]))
   const paraElMotor = actividades

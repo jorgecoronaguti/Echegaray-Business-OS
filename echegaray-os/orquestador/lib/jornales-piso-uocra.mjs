@@ -53,21 +53,26 @@ export const CATEGORIAS_POR_HORA = CATEGORIAS.filter((c) => !CATEGORIAS_POR_MES.
 // y la obligación no baja: el convenio no descuenta por ausentismo, y las horas que no se trabajan
 // se pagan igual cuando el que no dio trabajo fue el empleador.
 //
-// Las dos preguntas son distintas y las dos hacen falta, así que la pestaña publica las dos horas una
-// al lado de la otra: la MEDIDA gobierna lo que va a salir de la caja este mes (el pactado, la caja
-// comprometida) y la JORNADA gobierna la obligación proyectada. Con 7,18 en vez de 8 la proyección
-// quedaba 10,25% corta, todos los meses, sin que ninguna celda lo dijera.
-/** Horas por persona y día con las que se valúa la OBLIGACIÓN. Decisión del dueño (27/08/2026). */
-export const JORNADA_PISO_HORAS = 8
+// Las dos preguntas son distintas y las dos hacen falta, así que la pestaña publica las dos una al
+// lado de la otra: la MEDIDA gobierna lo que va a salir de la caja este mes (el pactado, la caja
+// comprometida) y la JORNADA gobierna la obligación proyectada.
+//
+// CUÁNTAS HORAS TIENE LA JORNADA NO SE DECIDE ACÁ. Nació valiendo 8 h parejas —una constante en este
+// archivo— y era 10% menos que la jornada real, con la limitación declarada al lado. El dueño la
+// contestó el 27/08 (9 h de lunes a jueves, 8 el viernes, y el sábado se trabaja) y el número dejó de
+// ser una constante para pasar a ser una tabla por día de la semana, que además la consumen el
+// cronograma y la provisión de vacaciones. Vive en `lib/jornada-uocra.mjs`, una sola vez.
+
 /**
- * EL LÍMITE QUE ESTE NÚMERO TIENE, DECLARADO DONDE SE USA. 8 h × días hábiles de lunes a viernes son
- * 40 h semanales. El CCT 76/75 se liquida sobre una semana MAYOR (la construcción trabaja el sábado a
- * la mañana, y el propio espejo registra jornadas de 9 h), así que este piso es un piso DEL piso: la
- * obligación real está por encima. No se sube el número sin la norma verificada al lado — la escala
- * se verifica, no se recuerda (ver la política de fuentes de derecho-laboral-construccion).
+ * EL LÍMITE QUE ESTE PISO SIGUE TENIENDO, DECLARADO DONDE SE USA.
+ *
+ * La jornada de lunes a viernes es la regla del dueño y se puede afirmar. Las 4 h del sábado son un
+ * SUPUESTO leído del espejo, no una norma verificada: la carga real del sábado varía (en diciembre
+ * son 4 h para todo el plantel, en agosto hay un sábado en blanco y otro con 8 h). Y sigue sin haber
+ * calendario de feriados en ninguna pestaña. El número no se toca sin la norma verificada al lado.
  */
-export const GAP_JORNADA = 'el piso se valúa a 8 h × días hábiles de lunes a viernes (40 h semanales): '
-  + 'sin sábados ni horas extra, es un PISO del piso'
+export const GAP_JORNADA = 'L-J 9 h y V 8 h son la regla del dueño; el sábado de 4 h es un SUPUESTO '
+  + 'leído del espejo, y no hay calendario de feriados'
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
 

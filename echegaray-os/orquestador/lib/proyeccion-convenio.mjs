@@ -390,17 +390,36 @@ export function formulaSigmaDelMes(celdaDesde, esc, celdaPago = null) {
  * Misma firma, mismo criterio, una sola definición de la frontera del mes en curso.
  */
 export function expresionSigmaDelMes(celdaDesde, esc, celdaPago = null) {
-  const { f0, f1, alConvenio = false, celdaSigmaBase = null, rAnclaBase = null } = esc
-  const mes = `MATCH(EOMONTH(${celdaDesde};0);$A$${f0}:$A$${f1};0)`
-  const delCuadro = `INDEX($F$${f0}:$F$${f1};${mes})`
+  const { delCuadro, pactada } = piezasSigmaDelMes(celdaDesde, esc)
   // Sin convenio el cuadro YA publica la Σ pactada: no hay dos bases entre las cuales elegir.
-  if (!alConvenio || !celdaPago || !celdaSigmaBase || !rAnclaBase) return delCuadro
+  if (!pactada || !celdaPago) return delCuadro
   // La Σ pactada del mes no está en ninguna columna del cuadro cuando éste va al convenio, así que se
   // arma con las piezas que el cuadro SÍ publica: la Σ pactada del plantel (1.1) escalada por el mismo
   // factor acumulado de la columna E, dividido por el factor de SU mes ancla —el de la última quincena
   // cerrada de obra—. Es la misma expresión que usa la columna F cuando la base es la pactada.
-  const pactada = `${celdaSigmaBase}*INDEX($E$${f0}:$E$${f1};${mes})/$E$${rAnclaBase}`
   return `IF(${expresionCajaComprometida(celdaPago)};${pactada};${delCuadro})`
+}
+
+/**
+ * NÚCLEO PURO: LAS DOS Σ DEL MES, SIN DECIDIR TODAVÍA CUÁL SE USA.
+ *
+ * Se extrajo el 27/08 porque las dos bases dejaron de multiplicarse por lo mismo: el PACTADO se valúa
+ * con las horas MEDIDAS por día hábil (es el pronóstico de lo que va a salir de la caja) y el CONVENIO
+ * con la jornada real, que cambia según el día de la semana — 9 h de lunes a jueves, 8 el viernes, 4
+ * el sábado. Con estructuras distintas ya no alcanza un `IF` adentro de la Σ: el `IF` tiene que
+ * envolver el producto entero, y para eso hacen falta las piezas por separado.
+ *
+ * Devolver `pactada: null` cuando el cuadro no está al convenio NO es un caso de borde: es la señal
+ * de que no hay dos bases entre las cuales elegir, y quien la reciba debe multiplicar una sola vez.
+ *
+ * @returns {{delCuadro:string, pactada:string|null}}
+ */
+export function piezasSigmaDelMes(celdaDesde, esc) {
+  const { f0, f1, alConvenio = false, celdaSigmaBase = null, rAnclaBase = null } = esc
+  const mes = `MATCH(EOMONTH(${celdaDesde};0);$A$${f0}:$A$${f1};0)`
+  const delCuadro = `INDEX($F$${f0}:$F$${f1};${mes})`
+  if (!alConvenio || !celdaSigmaBase || !rAnclaBase) return { delCuadro, pactada: null }
+  return { delCuadro, pactada: `${celdaSigmaBase}*INDEX($E$${f0}:$E$${f1};${mes})/$E$${rAnclaBase}` }
 }
 
 /**
@@ -424,23 +443,41 @@ export function expresionCajaComprometida(celdaPago) {
 }
 
 /**
- * NÚCLEO PURO: CON CUÁNTAS HORAS POR PERSONA Y DÍA SE VALÚA ESTA QUINCENA.
+ * NÚCLEO PURO: LA MASA DE UNA QUINCENA PROYECTADA — LA BASE Y LAS HORAS, DECIDIDAS POR LA MISMA FECHA.
  *
- * La misma frontera que elige la base elige las horas, y por el mismo motivo:
+ * La frontera de la caja comprometida decide DOS cosas a la vez, y tiene que decidirlas juntas:
  *
- *   pago ≤ fin del mes en curso  → HORAS MEDIDAS  (lo que se va a trabajar y a pagar: caja comprometida)
- *   pago  > fin del mes en curso → JORNADA        (la obligación: el convenio no descuenta ausentismo)
+ *   pago ≤ fin del mes en curso  → Σ PACTADA × horas MEDIDAS × días hábiles
+ *       es la plata que va a salir. Las horas medidas son el pronóstico honesto de lo que se va a
+ *       trabajar, ausentismo incluido; proyectar la caja con la jornada plena la infla.
  *
- * Medir el piso con la asistencia real es lo que dejaba la proyección 10,25% corta todos los meses —
- * 7,18 h contra 8. El porqué completo y el límite de las 8 h viven en `lib/jornales-piso-uocra.mjs`.
+ *   pago  > fin del mes en curso → Σ CONVENIO × horas de JORNADA
+ *       es la obligación. El convenio no descuenta por ausentismo, y la jornada no es un promedio por
+ *       día: son 9 h de lunes a jueves, 8 el viernes y 4 el sábado (ver lib/jornada-uocra.mjs). Por
+ *       eso este término NO multiplica por una cuenta de días — las horas ya vienen contadas.
  *
- * Sin celda de jornada devuelve las medidas y nada más: es el comportamiento anterior, que es el
- * correcto para un llamador que todavía no publica la jornada.
+ * ═══ POR QUÉ EL `IF` ENVUELVE EL PRODUCTO Y NO SÓLO LA Σ (27/08) ═══
  *
- * @param {{celdaPago:string, celdaMedidas:string, celdaJornada?:string|null}} d
- * @returns {string} la expresión (sin `=`)
+ * Hasta hoy la fórmula era `Σ(con IF adentro) × horas × días`, y las horas eran una sola celda. Con la
+ * jornada real las dos ramas dejaron de tener la misma forma: una multiplica por días y la otra no.
+ * Un `IF` que sólo elige la Σ obligaría a elegir las horas en un segundo `IF` con la MISMA condición
+ * escrita otra vez — y dos copias de una frontera se separan el día que alguien corrige una. Cuando
+ * eso pasa, la celda valúa con la base de un lado y las horas del otro, y el resultado es un número
+ * plausible. Una sola condición, un solo lugar.
+ *
+ * @param {{esc:object, celdaDesde:string, celdaHasta:string, celdaPago:string,
+ *          celdaHorasMedidas:string, exprDias:string, exprHorasJornada:string}} d
+ * @returns {string} la expresión (sin `=`), separador es-AR
  */
-export function expresionHorasDeLaQuincena({ celdaPago, celdaMedidas, celdaJornada = null }) {
-  if (!celdaJornada || !celdaPago) return celdaMedidas
-  return `IF(${expresionCajaComprometida(celdaPago)};${celdaMedidas};${celdaJornada})`
+export function expresionMasaDeLaQuincena({
+  esc, celdaDesde, celdaPago, celdaHorasMedidas, exprDias, exprHorasJornada,
+}) {
+  const { delCuadro, pactada } = piezasSigmaDelMes(celdaDesde, esc)
+  const alPactado = `${celdaHorasMedidas}*${exprDias}`
+  // Sin convenio no hay obligación que valuar aparte: el cuadro ya publica la Σ pactada y la fórmula
+  // es EXACTAMENTE la de siempre. El diff en ese caso es cero, que es lo que lo hace seguro.
+  if (!pactada || !celdaPago || !exprHorasJornada) return `${delCuadro}*${alPactado}`
+  return `IF(${expresionCajaComprometida(celdaPago)};`
+    + `${pactada}*${alPactado};`
+    + `${delCuadro}*${exprHorasJornada})`
 }

@@ -36,10 +36,12 @@ const INGESTA = '2026-08-22'
 
 // ═══ LA JORNADA CON LA QUE SE CONVIERTE TIEMPO EN HH ═══
 // El libro convive con tres jornadas: 8 h en el costeo laboral (`MO Lu-Vi 8 a 16`), 7,5 h en
-// `DIAGRAMACION` y 7 h en `ALAMBRADO`. Acá se usa 8 porque es la del costeo formal y la que hoy
-// rige en el OS (`obra_canonica.jornada_horas` y el default de `produccion_diaria`). Queda escrita
-// en `composicion.jornada_horas` de cada fila: quien decida que rige 7,5 no tiene que volver al
-// Excel, reconvierte multiplicando por 8/7,5.
+// `DIAGRAMACION` y 7 h en `ALAMBRADO`. Acá se usa 8 porque es la del COSTEO FORMAL DEL PROPIO LIBRO
+// («MO Lu-Vi 8 a 16»): esta cifra convierte el tiempo que dice el Excel, así que tiene que ser la del
+// Excel y no la del OS. NO es `obra_canonica.jornada_horas` —que desde el 27/08 vale 8,8, la jornada
+// real del dueño (ver lib/jornada-uocra.mjs)— y confundirlas reescribiría la evidencia sembrada con
+// una jornada que su fuente no usó. Queda escrita en `composicion.jornada_horas` de cada fila: quien
+// decida que rige otra no tiene que volver al Excel, reconvierte multiplicando.
 const JORNADA = 8
 
 // ═══ TIEMPO DE OBRA = DÍAS ═══

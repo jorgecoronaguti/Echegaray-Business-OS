@@ -82,7 +82,7 @@ export {
   lineaSupuestoConvenio, sigmaConvenioDelPlantel,
   // La frontera de la caja comprometida decide desde el 27/08 dos cosas —la base y las horas—: la
   // segunda sale por la misma puerta que la primera, para que no puedan quedar en desacuerdo.
-  expresionCajaComprometida, expresionHorasDeLaQuincena,
+  expresionCajaComprometida, expresionMasaDeLaQuincena, piezasSigmaDelMes,
 } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 export { ROTULO_SIGMA }

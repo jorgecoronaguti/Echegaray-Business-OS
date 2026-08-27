@@ -883,8 +883,12 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   // para lo que se proyecta. Se controla que las DOS estén y que sigan multiplicando los días L-V:
   // con una sola, una de las dos preguntas queda contestada con la respuesta de la otra.
   const [fMed, fJor] = gm.cantidades
-  assert.match(String(q[3]), new RegExp(`\\*IF\\(.*\\$B\\$${fMed};\\$B\\$${fJor}\\)\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
-    `la celda de obra dejó de elegir horas medidas/jornada × días lunes a viernes: ${q[3]}`)
+  // La rama del PACTADO: horas medidas × días lunes a viernes. Es lo que va a salir de la caja.
+  assert.match(String(q[3]), new RegExp(`\\*\\$B\\$${fMed}\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
+    `la rama del pactado dejó de valuarse con horas medidas × días L-V: ${q[3]}`)
+  // La rama del CONVENIO: las horas de la jornada, contadas por día de la semana, sin días aparte.
+  assert.match(String(q[3]), new RegExp(`NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000111"\\)\\*\\$B\\$${fJor}`),
+    `la rama del convenio dejó de usar la jornada real: ${q[3]}`)
   // 6 · …y esa columna es la que publica el rango que consumen Cargas Sociales, el Libro, CAJA y los
   //     cash flows. APUNTA A "Obreros", NO AL "TOTAL" del calendario: el TOTAL ya trae oficina y
   //     dirección, que viajan por sus propios rangos, y sumarlas de nuevo las contaría dos veces.
@@ -1023,7 +1027,10 @@ test('LA FRONTERA DEL MES EN CURSO VIVE EN LA CELDA: lo que se paga este mes va 
     // base de OBRA. Si se anclara en otra fila, la quincena se comería un tramo de paritaria entero.
     assert.match(s, new RegExp(`\\$C\\$${gm.plantel.fTotal}\\*INDEX\\(\\$E\\$${gm.esc.f0}:\\$E\\$${gm.esc.f1};`),
       `la rama del pactado no sale del plantel de 1.1: ${s}`)
-    assert.match(s, new RegExp(`/\\$E\\$${gm.esc.rAnclaBase};`), `la Σ pactada quedó anclada fuera del mes de obra: ${s}`)
+    // El `*` y no `;` desde el 27/08: la rama del pactado sigue multiplicando por sus horas DENTRO
+    // del mismo IF, porque las dos bases dejaron de multiplicarse por lo mismo (ver
+    // `expresionMasaDeLaQuincena`). Con `;` este control dejaría de mirar la rama que le importa.
+    assert.match(s, new RegExp(`/\\$E\\$${gm.esc.rAnclaBase}\\*`), `la Σ pactada quedó anclada fuera del mes de obra: ${s}`)
     // …y la del convenio sigue siendo la columna F del cuadro 1.2.
     assert.match(s, new RegExp(`INDEX\\(\\$F\\$${gm.esc.f0}:\\$F\\$${gm.esc.f1};`), `se perdió la rama del convenio: ${s}`)
     assert.doesNotMatch(s, /,/, 'separador es-AR')
@@ -1796,27 +1803,37 @@ test('RANGOS · cada nombre publicado CRECE con su bloque — no se queda en la 
 
 test('la pestaña publica la JORNADA al lado de las horas medidas, no en su lugar', () => {
   const medidas = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas por persona y día — medidas'))
-  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('día — jornada'))
+  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas de jornada'))
   assert.ok(medidas >= 0, 'se fue la fila de horas medidas')
   assert.ok(jornada >= 0, 'falta la fila de la jornada: el piso vuelve a medirse con la asistencia')
   assert.equal(jornada, medidas + 1, 'la jornada va pegada a las medidas — la brecha se lee de un vistazo')
-  assert.equal(gm.filas[jornada][1], 8, 'la jornada tiene que ser un número, no una fórmula que pueda apagarse')
-  // Y el límite viaja con el número: 8 h × lunes a viernes son 40 h semanales.
-  assert.match(String(gm.filas[jornada][2] ?? ''), /piso del piso/)
+  // LAS TRES, Y COMO NÚMEROS. La jornada del dueño es 9 h de lunes a jueves y 8 el viernes; el sábado
+  // de 4 h es el supuesto. Una fórmula acá se puede apagar sola y el piso volvería a caer en silencio.
+  assert.deepEqual(gm.filas[jornada].slice(1, 4), [9, 8, 4])
+  // Y el supuesto viaja con el número, en la misma fila: 44 h son la regla, el sábado no.
+  assert.match(String(gm.filas[jornada][4] ?? ''), /44h\/sem · sábado supuesto/)
 })
 
 test('EL DEFECTO: la columna «Obreros» valuaba la obligación con las horas MEDIDAS', () => {
-  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('día — jornada')) + 1
+  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas de jornada')) + 1
   const medidas = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas por persona y día — medidas')) + 1
   const enc = gm.filas.findIndex((f) => f[0] === 'Período' && f[3] === 'Obreros')
   assert.ok(enc >= 0, 'no está el encabezado del calendario')
   const proyectada = String(gm.filas[enc + 1][3] ?? '')
-  // Las dos celdas tienen que estar en la fórmula: la medida para lo que se paga este mes, la jornada
-  // para lo que se proyecta. Con una sola, una de las dos preguntas se contesta con la otra respuesta.
-  assert.ok(proyectada.includes(`$B$${jornada}`), `la proyección no usa la jornada: ${proyectada.slice(0, 120)}`)
-  assert.ok(proyectada.includes(`$B$${medidas}`), 'y tampoco puede perder las horas medidas del pactado')
-  // La frontera que elige entre las dos es la MISMA que elige la base, y se reclasifica sola.
+  // LAS TRES CELDAS DE LA JORNADA, cada una con SU máscara de día de semana. Si una se pierde, el
+  // término deja de contar ese día y el faltante es silencioso: la fórmula sigue dando un número.
+  for (const [celda, mascara] of [[`$B$${jornada}`, '"0000111"'], [`$C$${jornada}`, '"1111011"'], [`$D$${jornada}`, '"1111101"']]) {
+    assert.ok(proyectada.includes(`${mascara})*${celda}`),
+      `la proyección perdió ${celda} con su máscara ${mascara}: ${proyectada.slice(0, 200)}`)
+  }
+  // Y las horas MEDIDAS no se pueden perder: son las que valúan lo que sale de la caja este mes.
+  assert.ok(proyectada.includes(`$B$${medidas}`), 'se fueron las horas medidas del pactado')
+  // La frontera que elige entre las dos ramas es la MISMA que elige la base, y se reclasifica sola.
   assert.ok(proyectada.includes('EOMONTH(TODAY();0)'))
+  // EL TÉRMINO DEL CONVENIO NO MULTIPLICA POR DÍAS. Las horas de jornada ya vienen contadas por día
+  // de la semana; multiplicarlas otra vez por una cuenta de días es el error que este test caza.
+  const ramaConvenio = proyectada.slice(proyectada.indexOf('"0000111"'))
+  assert.ok(!ramaConvenio.includes('"0000011"'), `el término del convenio volvió a multiplicar por días L-V: ${ramaConvenio}`)
 })
 
 test('EL DEFECTO: el ✓ del piso se firmaba sin mirar el plantel ni las horas', () => {

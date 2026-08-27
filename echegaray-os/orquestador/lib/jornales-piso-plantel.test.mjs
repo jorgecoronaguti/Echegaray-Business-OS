@@ -16,9 +16,11 @@
 //     proyectado. Σ $/hora de convenio: $91.424 con 15 · $103.171 con 17. −11,4%.
 //   · las HORAS eran el promedio REAL medido sobre las cerradas —7,18 h/persona/día— y no la jornada.
 //     Un piso construido con la asistencia deja de ser un piso: si el mes que viene la gente falta
-//     más, la obligación "baja". −10,25%.
+//     más, la obligación "baja". Y la jornada real no es un promedio: 9 h de lunes a jueves, 8 el
+//     viernes y 4 el sábado (respuesta del dueño, 27/08) — 48 h semanales contra las ~35,9 que
+//     resultaban de 7,18 × 5.
 //
-// Los dos factores se multiplican: el término convenio valía el 79,5% del piso. Y el control que lo
+// Los dos factores se multiplican: el término convenio valía el 66,2% del piso. Y el control que lo
 // vigilaba preguntaba sólo «¿cada categoría tiene básico?» —sí, las cuatro— o sea que se validaba con
 // las dos entradas que NO miraba. Por eso firmaba el ✓ con $16,2M de faltante abajo.
 //
@@ -27,9 +29,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  bloqueDelPiso, rotuloDelPiso, formulaControlPiso, JORNADA_PISO_HORAS,
+  bloqueDelPiso, rotuloDelPiso, formulaControlPiso,
 } from './jornales-piso-uocra.mjs'
-import { sigmaConvenioDelPlantel, expresionHorasDeLaQuincena } from './proyeccion-convenio.mjs'
+import { sigmaConvenioDelPlantel, expresionMasaDeLaQuincena } from './proyeccion-convenio.mjs'
+import {
+  horasDeJornada, HORAS_SEMANA_DECLARADA, HORAS_SEMANA_CON_SABADO, HORAS_POR_DIA_HABIL,
+} from './jornada-uocra.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -116,44 +121,67 @@ const PENDIENTES = [
 /** El promedio medido de las quincenas cerradas: lo que la pestaña usaba para valuar la OBLIGACIÓN. */
 const HORAS_MEDIDAS = 7.18
 
-const proyectar = (grid, bloque, horasPorDia) => PENDIENTES.map((q) => {
+/** Lo que la pestaña publicaba: Σ × horas MEDIDAS × días hábiles L-V. */
+const comoPublicaba = (grid, bloque, horasPorDia) => PENDIENTES.map((q) => {
   const s = sigmaConvenioDelPlantel(grid, bloque, ESCALON)
   const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
-  const dias = diasHabilesObra(q.desde, q.hasta)
-  return { total: s.total * factor * horasPorDia * dias, dias }
+  return { total: s.total * factor * horasPorDia * diasHabilesObra(q.desde, q.hasta) }
+})
+/** La obligación: Σ × las horas de JORNADA del tramo, contadas por día de la semana. */
+const alPiso = (grid, bloque) => PENDIENTES.map((q) => {
+  const s = sigmaConvenioDelPlantel(grid, bloque, ESCALON)
+  const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
+  return { total: s.total * factor * horasDeJornada(q.desde, q.hasta) }
 })
 
-test('EL DEFECTO, EN PESOS: la proyección valía el 79% del piso — el plantel corto y la asistencia', () => {
+test('EL DEFECTO, EN PESOS: la proyección valía el 66% del piso — el plantel corto y la asistencia', () => {
   const { grid, cerrada, vigente } = espejoDeDosBloques()
   const suma = (xs) => xs.reduce((a, x) => a + x.total, 0)
   // Lo que publicaba: plantel de la cerrada × horas MEDIDAS.
-  const antes = suma(proyectar(grid, cerrada, HORAS_MEDIDAS))
-  // La obligación: plantel VIGENTE × la jornada. Ninguna de las dos entradas se mide sobre la otra.
-  const piso = suma(proyectar(grid, vigente, JORNADA_PISO_HORAS))
+  const antes = suma(comoPublicaba(grid, cerrada, HORAS_MEDIDAS))
+  // La obligación: plantel VIGENTE × la jornada real. Ninguna entrada se mide sobre la otra.
+  const piso = suma(alPiso(grid, vigente))
 
   assert.ok(antes < piso, 'el término convenio quedaba POR DEBAJO del piso que decía estar cubriendo')
-  // $91.424/$103.171 de Σ × 7,18/8 h = 0,7953. Los dos factores se MULTIPLICAN, y por eso el agujero
-  // es mayor que cualquiera de los dos por separado: −20,5% sobre la obligación del cuatrimestre.
-  // (No es 15/17: la Σ pesa por categoría, y las dos altas fueron un Oficial y un Ayudante.)
-  assert.equal(Number((antes / piso).toFixed(4)), 0.7953)
+  // Σ $91.424/$103.171 (plantel) × 7,18 h por día hábil contra la jornada real (9/8/4): la proyección
+  // valía el 66,2% de la obligación. Los factores se MULTIPLICAN, y por eso el agujero es mayor que
+  // cualquiera de los dos por separado. (La razón del plantel no es 15/17: la Σ pesa por categoría, y
+  // las dos altas fueron un Oficial y un Ayudante.)
+  assert.equal(Number((antes / piso).toFixed(4)), 0.6623)
   // El faltante en pesos de las ocho quincenas que se PAGAN de septiembre a diciembre — el importe
   // exacto, no un umbral: un `>` se sigue cumpliendo cuando el arreglo se revierte a medias.
   assert.equal(Math.round(antes), 54_052_195)
-  assert.equal(Math.round(piso), 67_963_587)
-  assert.equal(Math.round(piso - antes), 13_911_393)
+  assert.equal(Math.round(piso), 81_614_538)
+  // Se redondea la RESTA de los dos redondeados, no la resta cruda: si no, el test se cae por un peso
+  // de acarreo y manda a buscar un defecto que no existe.
+  assert.equal(Math.round(piso) - Math.round(antes), 27_562_343)
 })
 
-test('EL DEFECTO: la obligación se valuaba con la asistencia — las horas las decide la fecha de pago', () => {
-  // Lo que se paga DENTRO del mes en curso es caja comprometida y va con las horas medidas: es lo que
-  // efectivamente va a salir. Lo de después es la obligación proyectada y va con la jornada.
-  const e = expresionHorasDeLaQuincena({
-    celdaPago: 'C40', celdaMedidas: '$B$12', celdaJornada: '$B$13',
+test('EL DEFECTO: la obligación se valuaba con la asistencia — una sola frontera decide base y horas', () => {
+  const esc = { f0: 101, f1: 103, alConvenio: true, celdaSigmaBase: '$C$95', rAnclaBase: 101 }
+  const e = expresionMasaDeLaQuincena({
+    esc,
+    celdaDesde: 'A40',
+    celdaPago: 'C40',
+    celdaHorasMedidas: '$B$33',
+    exprDias: 'NETWORKDAYS.INTL(A40;B40;"0000011")',
+    exprHorasJornada: '(NETWORKDAYS.INTL(A40;B40;"0000111")*$B$34+NETWORKDAYS.INTL(A40;B40;"1111011")*$C$34+NETWORKDAYS.INTL(A40;B40;"1111101")*$D$34)',
   })
-  assert.equal(e, 'IF(AND(N(C40)>0;C40<=EOMONTH(TODAY();0));$B$12;$B$13)')
-  // Sin celda de jornada se comporta como antes: las medidas y nada más.
-  assert.equal(expresionHorasDeLaQuincena({ celdaPago: 'C40', celdaMedidas: '$B$12' }), '$B$12')
-  // Y la frontera es UNA sola: la misma expresión que elige la base elige las horas.
-  assert.ok(e.includes('EOMONTH(TODAY();0)'), 'la frontera se reclasifica sola el 1° de cada mes')
+  // UNA sola condición para las dos decisiones. Dos copias de la frontera se separan el día que
+  // alguien corrige una, y ahí la celda valúa con la base de un lado y las horas del otro.
+  assert.equal(e.split('EOMONTH(TODAY();0)').length - 1, 1, 'la frontera aparece más de una vez')
+  assert.ok(e.startsWith('IF(AND(N(C40)>0;C40<=EOMONTH(TODAY();0));'))
+  // Lo que se paga dentro del mes: pactado × horas MEDIDAS × días hábiles.
+  assert.ok(e.includes('$B$33*NETWORKDAYS.INTL(A40;B40;"0000011")'))
+  // Lo que se proyecta: convenio × horas de jornada, SIN volver a multiplicar por días.
+  const rama = e.slice(e.indexOf('"0000111"'))
+  assert.ok(!rama.includes('"0000011"'), 'el término del convenio volvió a multiplicar por días L-V')
+  // Sin convenio la fórmula es EXACTAMENTE la de siempre: el diff en ese caso es cero.
+  const sinConvenio = expresionMasaDeLaQuincena({
+    esc: { f0: 101, f1: 103 }, celdaDesde: 'A40', celdaPago: 'C40',
+    celdaHorasMedidas: '$B$33', exprDias: 'D', exprHorasJornada: 'X',
+  })
+  assert.equal(sinConvenio, 'INDEX($F$101:$F$103;MATCH(EOMONTH(A40;0);$A$101:$A$103;0))*$B$33*D')
 })
 
 test('EL CONTROL YA NO SE FIRMA A SÍ MISMO: mira el plantel y las horas, no sólo los básicos', () => {
@@ -178,9 +206,17 @@ test('EL CONTROL YA NO SE FIRMA A SÍ MISMO: mira el plantel y las horas, no só
   assert.ok(!viejo.includes('faltan '))
 })
 
-test('la jornada del piso es un PISO del piso, y el número está declarado — no escondido', () => {
-  assert.equal(JORNADA_PISO_HORAS, 8)
-  // 8 h × días hábiles de lunes a viernes son 40 h semanales: la construcción trabaja más que eso.
-  // Que el límite esté escrito es lo que impide que este número se lea como "la obligación completa".
-  assert.ok(JORNADA_PISO_HORAS > HORAS_MEDIDAS, 'la jornada no puede ser menor que la asistencia medida')
+test('LA JORNADA ES LA DEL DUEÑO: 44 h de lunes a viernes, y el sábado va declarado como supuesto', () => {
+  // La respuesta del dueño (27/08): 9 h de lunes a jueves y 8 el viernes. Es regla general, no varía
+  // por obra. Con 8 h parejas —como nació esta constante— la proyección quedaba 10% corta.
+  assert.equal(HORAS_SEMANA_DECLARADA, 44)
+  assert.equal(HORAS_SEMANA_CON_SABADO, 48, 'el sábado de 4 h es supuesto, pero se trabaja y se paga')
+  // Una semana entera de lunes a domingo tiene que dar exactamente eso, no un promedio.
+  assert.equal(horasDeJornada(new Date(2026, 7, 3), new Date(2026, 7, 9)), 48)
+  // Y una semana SIN sábado ni domingo, las 44 declaradas.
+  assert.equal(horasDeJornada(new Date(2026, 7, 3), new Date(2026, 7, 7)), 44)
+  // El cronograma convierte HH en duración sobre días hábiles L-V: le corresponde el PROMEDIO, 8,8.
+  // No las 9 del lunes ni las 8 del viernes, que describen días distintos.
+  assert.equal(HORAS_POR_DIA_HABIL, 8.8)
+  assert.ok(HORAS_POR_DIA_HABIL > HORAS_MEDIDAS, 'la jornada no puede ser menor que la asistencia medida')
 })

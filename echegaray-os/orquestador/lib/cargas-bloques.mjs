@@ -18,9 +18,11 @@ import { MES, cm, REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 import { formulaProvisionVacaciones, formulaSinFechaDeIngreso } from './vacaciones-construccion.mjs'
-// La jornada con la que se valúa un día de vacaciones es la MISMA con la que se valúa el piso del
-// convenio en Jornales: dos definiciones de «un día de trabajo» en dos pestañas no pueden convivir.
-import { JORNADA_PISO_HORAS } from './jornales-piso-uocra.mjs'
+// LA JORNADA SALE DEL MISMO ARCHIVO QUE LA DEL PISO DEL CONVENIO: dos definiciones de «un día de
+// trabajo» en dos pestañas no pueden convivir. Acá va el PROMEDIO del día hábil (44/5 = 8,8) y no las
+// 9 del lunes: las vacaciones se cuentan en días corridos, así que lo que corresponde valuar es un día
+// promedio, no el más largo de la semana.
+import { HORAS_POR_DIA_HABIL } from './jornada-uocra.mjs'
 
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 
@@ -387,7 +389,7 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy, bloqueBase = null }) {
   // que la empresa no debe vacaciones. El día que el contador carga los días en Parámetros, el número
   // aparece solo. El porqué completo, en lib/vacaciones-construccion.mjs.
   const fVac = G.push([sub('   Vacaciones devengadas del plantel de obra'),
-    formulaProvisionVacaciones({ hoja: '_J_OBREROS', bloque: bloqueBase, jornada: JORNADA_PISO_HORAS }),
+    formulaProvisionVacaciones({ hoja: '_J_OBREROS', bloque: bloqueBase, jornada: HORAS_POR_DIA_HABIL }),
     ...Array(12).fill(VACIO),
     'Días por tramo de antigüedad (Parámetros, los confirma el contador) × $/hora de cada persona en _J_OBREROS × la jornada. Vacío = la escala todavía está en cero, NO que no se deba nada.'])
   // LAS QUE NO SE PUDIERON MEDIR, CONTADAS. Es el número con el que se arregla el faltante, y va en su

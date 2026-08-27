@@ -99,7 +99,7 @@ import {
   // caracteres en una celda del medio. El parámetro sigue creándose por `PARAMETROS_MOTOR`.
   PARAMETROS_MOTOR, RANGO_MESES_BASE,
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
-  mesesDelMotor, filasPlantel, filasEscalon, expresionSigmaDelMes, expresionHorasDeLaQuincena,
+  mesesDelMotor, filasPlantel, filasEscalon, expresionMasaDeLaQuincena,
   formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
   formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
@@ -134,8 +134,12 @@ import {
 const SIN_DATO = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
 import {
-  formulaControlPiso, bloqueDelPiso, rotuloDelPiso, JORNADA_PISO_HORAS, GAP_JORNADA,
+  formulaControlPiso, bloqueDelPiso, rotuloDelPiso, GAP_JORNADA,
 } from '../lib/jornales-piso-uocra.mjs'
+import {
+  HORAS_LUNES_A_JUEVES, HORAS_VIERNES, HORAS_SABADO_SUPUESTO,
+  HORAS_SEMANA_DECLARADA, HORAS_SEMANA_CON_SABADO, expresionHorasDeJornada,
+} from '../lib/jornada-uocra.mjs'
 import {
   LINEA_DRIVER_OFICINA, estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe,
 } from '../lib/oficina-escalon.mjs'
@@ -693,10 +697,20 @@ export function grilla({
   // dos: la proyección salía valuada a la asistencia. Puestas una debajo de la otra, la brecha se ve.
   // «jornada» y no «jornada del convenio»: nada gremial va arriba de la sección 4 (orden del dueño,
   // *"en el medio hay cuestiones gremiales q confunden"*), y el cuadro que la usa está acá.
-  const fJornada = push([sub('Horas por persona y día — jornada'), JORNADA_PISO_HORAS,
-    // El límite en 45 caracteres, que es lo que entra sin desparramar la fila (`LARGO_NOTA`). El
-    // texto largo vive en `GAP_JORNADA` y sale por el log de la corrida, no por una celda del medio.
-    sub('la que proyecta · 40 h/sem, piso del piso')])
+  //
+  // ═══ TRES CELDAS Y NO UNA (27/08) ═══
+  //
+  // Nació con un solo número —8 h parejas— y eso dejaba la proyección 10% corta: la jornada real es
+  // 9 h de lunes a jueves y 8 el viernes (regla del dueño), más 4 h el sábado (SUPUESTO, la mejor
+  // lectura del espejo). Tres números distintos no caben en una celda, y meterlos como literales
+  // adentro de la fórmula haría que el sábado —que es lo único discutible de los tres— sólo se pueda
+  // corregir tocando código. Las tres son celdas: el dueño ajusta la que quiera y la proyección se
+  // mueve sola. Que la del sábado sea un supuesto lo dice la glosa, en la misma fila.
+  const fJornada = push([sub('Horas de jornada — L-J · V · S'),
+    HORAS_LUNES_A_JUEVES, HORAS_VIERNES, HORAS_SABADO_SUPUESTO,
+    // 45 caracteres es lo que entra sin desparramar la fila (`LARGO_NOTA`). El texto largo vive en
+    // `GAP_JORNADA` y sale por el log de la corrida, no por una celda del medio.
+    sub(`${HORAS_SEMANA_DECLARADA}h/sem · sábado supuesto`)])
   // ═══ EL SHARE MEDIDO Y LA BRECHA CONTRA EL ACUERDO SE FUERON (14/08) ═══
   //
   // Acá vivían dos líneas: «En efectivo — el resto, por recibo» (el canal REAL medido sobre el
@@ -1542,16 +1556,31 @@ export function grilla({
   // calcula por el otro camino.
   pendientes.forEach((q, i) => {
     const r = p0 + i
-    const sigma = expresionSigmaDelMes(`A${r}`, esc, `C${r}`)
-    // Σ $/hora × horas por persona y día × días laborables de LUNES A VIERNES. El calendario lo decide
-    // `expresionDias`, no `NETWORKDAYS` a secas: el criterio de la semana de obra vive en un solo lugar.
-    // Las horas las decide la MISMA frontera que decide la base (ver `expresionHorasDeLaQuincena`):
-    // lo que se paga este mes, con las horas medidas; lo que se proyecta, con la jornada. Escribir acá
-    // `$B$${fHpd}` a secas era valuar la obligación con el ausentismo del trimestre adentro.
-    const horas = expresionHorasDeLaQuincena({
-      celdaPago: `C${r}`, celdaMedidas: `$B$${fHpd}`, celdaJornada: `$B$${fJornada}`,
+    // LA BASE Y LAS HORAS LAS DECIDE LA MISMA FRONTERA, EN UN SOLO `IF` (ver `expresionMasaDeLaQuincena`):
+    //
+    //   · lo que se PAGA este mes → Σ pactada × horas MEDIDAS × días L-V. Es la caja comprometida, y
+    //     las horas medidas son el pronóstico honesto de lo que se va a trabajar.
+    //   · lo que se PROYECTA     → Σ convenio × horas de JORNADA, contadas por día de la semana.
+    //
+    // El segundo término NO multiplica por una cuenta de días: 9 h de lunes a jueves, 8 el viernes y
+    // 4 el sábado no son un promedio, y `expresionHorasDeJornada` ya devuelve las horas del tramo.
+    // Valuar la obligación con un promedio por día hábil la dejaba 10% corta, todos los meses.
+    const convenio = expresionMasaDeLaQuincena({
+      esc,
+      celdaDesde: `A${r}`,
+      celdaPago: `C${r}`,
+      celdaHorasMedidas: `$B$${fHpd}`,
+      // El criterio de la semana de obra para el PACTADO sigue viviendo en `expresionDias`, no en un
+      // `NETWORKDAYS` suelto: es el mismo lugar que usa el reparto de la demanda.
+      exprDias: expresionDias(`A${r}`, `B${r}`),
+      exprHorasJornada: expresionHorasDeJornada({
+        celdaDesde: `A${r}`,
+        celdaHasta: `B${r}`,
+        celdaLJ: `$B$${fJornada}`,
+        celdaV: `$C$${fJornada}`,
+        celdaS: `$D$${fJornada}`,
+      }),
     })
-    const convenio = `${sigma}*${horas}*${expresionDias(`A${r}`, `B${r}`)}`
     // Sin demanda para esta quincena es el piso de convenio solo; con demanda, MAX(convenio;
     // constante del insumo del dueño), gateado por la MISMA frontera de caja comprometida.
     filas[r - 1][3] = formulaProyectadoQuincena({ convenio, celdaPago: `C${r}` },
@@ -1581,7 +1610,11 @@ export function grilla({
     celdaPersonasPago: `$B$${fPago.obra}`,
     celdaPersonasPiso: `$B$${fPlantel}`,
     celdaHoras: `$B$${fHpd}`,
-    celdaJornada: `$B$${fJornada}`,
+    // La jornada del VIERNES es la más baja de las tres, así que es la comparación exigente: si las
+    // horas medidas llegan a superarla, el piso se está midiendo con menos horas que la jornada más
+    // corta de la semana y hay que decirlo. Comparar contra la de lunes a jueves dejaría pasar el
+    // tramo entre 8 y 9 h sin avisar.
+    celdaJornada: `$C$${fJornada}`,
   })
 
   // ══ EL SUBTÍTULO DEL CUADRO DE PAGO Y SUS TRES AVISOS ══
@@ -1963,7 +1996,8 @@ async function main() {
   // EL LÍMITE DE LA JORNADA VA EN EL LOG Y NO EN UNA CELDA DEL MEDIO: en la pestaña entran 45
   // caracteres sin desparramar la fila, y este texto son 120. La celda dice la versión corta; acá,
   // donde el que corre la corrida sí lo lee, va entero.
-  console.log(`  · jornada del piso: ${JORNADA_PISO_HORAS} h — ${GAP_JORNADA}`)
+  console.log(`  · jornada del piso: ${HORAS_LUNES_A_JUEVES} h L-J · ${HORAS_VIERNES} h V · `
+    + `${HORAS_SABADO_SUPUESTO} h S = ${HORAS_SEMANA_CON_SABADO} h/semana (${HORAS_SEMANA_DECLARADA} sin sábado) — ${GAP_JORNADA}`)
 
   const rawUocra = await google.readSheetValues(ID, `${UOCRA_HOJA}!A1:K300`).catch(() => [])
   const { escalones, problemas } = parsearAcuerdos(rawUocra ?? [])
