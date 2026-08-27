@@ -87,9 +87,14 @@ async function main() {
     console.log('node_modules ausente: enlazando desde el árbol de desarrollo…')
     sh('cp', ['-al', path.join(DIR_DEV, APP, 'node_modules'), nm])
   }
-  const lockProd = fs.readFileSync(path.join(DIR_PROD, APP, 'package-lock.json'), 'utf8')
-  const lockDev = fs.readFileSync(path.join(DIR_DEV, APP, 'package-lock.json'), 'utf8')
-  if (lockProd !== lockDev) console.log('AVISO: package-lock.json difiere del árbol de desarrollo — correr `npm ci` en producción.')
+  // El lock NO está versionado en este repo, así que la comparación es contra el que hay en el árbol
+  // de desarrollo y sólo si existe: un aviso, no un bloqueo.
+  const lockProd = path.join(DIR_PROD, APP, 'package-lock.json')
+  const lockDev = path.join(DIR_DEV, APP, 'package-lock.json')
+  if (fs.existsSync(lockProd) && fs.existsSync(lockDev)
+      && fs.readFileSync(lockProd, 'utf8') !== fs.readFileSync(lockDev, 'utf8')) {
+    console.log('AVISO: package-lock.json difiere del árbol de desarrollo — correr `npm ci` en producción.')
+  }
 
   fs.writeFileSync(REGISTRO, `${JSON.stringify({
     sha: objetivo,
