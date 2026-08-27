@@ -52,6 +52,11 @@ export const especialista = {
   // qué PEDIDO arma este archivo sin depender de la base ni de una tool real. En producción es
   // siempre la puerta de verdad.
   async atender({ texto, intencion, port, actor, correlationId, xsas = atenderXsas }) {
+    // EL DIRECTOR ENTREGA LO QUE DEVOLVIÓ `reconoce`, NO SU CAMPO. `director.mjs` guarda el objeto
+    // entero (`{ intencion, confianza }`) y lo pasa tal cual como `intencion` — igual que se lo pasa
+    // a `asistente.mjs`, que por eso hace `intencion?.intencion`. Mandar el objeto al gateway lo
+    // rechazaba con «intencion — Expected string, received object» y el mensaje moría en el canal.
+    const capacidad = typeof intencion === 'string' ? intencion : (intencion?.intencion ?? null)
     // EL ACTOR SE RESUELVE DE LA BASE, NO DEL MENSAJE. Quien escribe dice su `user_id` de
     // Mattermost y nada más; el rol —y con él los permisos— salen de `perfiles`.
     const quien = await actorDeMattermost(port, {
@@ -63,8 +68,8 @@ export const especialista = {
       origen: actor?.channel_id ?? null,
       // El atajo ya identificó la capacidad: se pide POR SU NOMBRE en vez de mandar el texto a
       // clasificar de nuevo. Es el mismo Core, entrando por su camino más barato.
-      intencion,
-      mensaje: intencion ? null : sinMencion(texto),
+      intencion: capacidad,
+      mensaje: capacidad ? null : sinMencion(texto),
       correlation_id: correlationId ?? null,
       // El canal ES contexto operativo declarado en el OS (`comunicacion.canales_area`), así que
       // quien lo firma es el OS y no el navegador de nadie.
@@ -79,7 +84,7 @@ export const especialista = {
     }
   },
 
-  skillDe(intencion) { return `xsas.${intencion ?? 'gateway'}` },
+  skillDe(intencion) { return `xsas.${(typeof intencion === 'string' ? intencion : intencion?.intencion) ?? 'gateway'}` },
 }
 
 /** La respuesta común, en markdown. Una degradación NO se esconde: se dice debajo del contenido. */
