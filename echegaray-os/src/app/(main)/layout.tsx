@@ -16,11 +16,17 @@ import { HeaderEsqueleto } from '@/shared/components/carga'
 // navegación para usuarios"*. Toda esa estructura se fue a `AppHeader`, que dibuja UNA línea con las
 // dos áreas de producto.
 //
-// LAS RUTAS SIGUEN TODAS VIVAS. `/os`, `/chat`, `/aprobaciones`, `/ingenieria-financiera`,
-// `/calendario-financiero`, `/scorecard-finanzas`, `/calendario-caja`, `/flujo-caja`, `/reportes`,
-// `/integraciones`, `/descargas`, `/operarios`: ninguna se borró y ninguna cambió. Lo único que
-// cambió es que ya no ocupan la navegación principal. El dueño lo pidió así, textual: *"No borrar
-// rutas ni funcionalidades. Sólo retirarlas de la navegación principal"*.
+// EN AQUEL MOMENTO NO SE BORRÓ NINGUNA. El dueño lo pidió así, textual: *"No borrar rutas ni
+// funcionalidades. Sólo retirarlas de la navegación principal"* — retirar un link es reversible en
+// una línea y borrar una ruta no, así que primero se retiraron y se dejó pasar el tiempo.
+//
+// NUEVE MESES DESPUÉS, EL 27/08/2026, SE BORRARON LAS QUE NADIE VOLVIÓ A ENLAZAR: `/chat`,
+// `/ingenieria-financiera`, `/scorecard-finanzas`, `/calendario-caja`, `/comunicacion`,
+// `/control-obras`, `/operarios` y `/descargar`. La evidencia de que estaban muertas es que en todo
+// `src/` no quedaba un solo `href`, `Link`, `router.push` ni `redirect` apuntándoles: no eran
+// pantallas retiradas de la navegación, eran pantallas a las que sólo se llegaba escribiendo la URL
+// a mano. Siguen vivas `/os`, `/aprobaciones`, `/calendario-financiero`, `/flujo-caja`,
+// `/reportes`, `/integraciones` y `/descargas`.
 //
 // Las que siguen siendo parte del trabajo diario —Pedidos de materiales, Herramientas, Movimientos—
 // no desaparecieron: bajaron al lugar donde se usan, que es adentro del área (ver `/administracion`

@@ -25,10 +25,15 @@ import { join } from 'node:path'
 //
 // LÍMITE DECLARADO: esto prueba que la clase prohibida no está y que el control del DS sí está. No
 // prueba el píxel renderizado — eso lo tiene que mirar alguien con la pantalla delante.
+//
+// ERAN CUATRO Y SON TRES (27/08/2026). `SignupForm.tsx` se fue con `/signup`: era el alta libre
+// conviviendo con el alta gobernada de `/administracion/usuarios`. El conteo sigue siendo exacto y
+// no «al menos»: lo que este primer test protege es que un renombrado o una mudanza no dejen a las
+// reglas de abajo pasando en verde sobre una lista vacía.
 
 const DIR = new URL('.', import.meta.url).pathname
 
-/** Los formularios de las cuatro rutas sin sesión: login, alta, recuperar, contraseña nueva. */
+/** Los formularios de las tres rutas sin sesión: login, recuperar, contraseña nueva. */
 const FORMULARIOS = readdirSync(DIR).filter((n) => n.endsWith('Form.tsx'))
 
 // Clases de utilidad que afirman un color o una medida FUERA de los tokens del OS. `bg-black` y
@@ -45,10 +50,10 @@ const PROHIBIDAS = [
   /className="rounded border/,
 ]
 
-test('hay cuatro formularios sin sesión que mirar', () => {
+test('hay tres formularios sin sesión que mirar', () => {
   // Si alguien los renombra o los mueve, las reglas de abajo pasarían en verde sin mirar nada.
   assert.equal(
-    FORMULARIOS.length, 4,
+    FORMULARIOS.length, 3,
     `se encontraron ${FORMULARIOS.length} formularios sin sesión: ${FORMULARIOS.join(', ')}`,
   )
 })

@@ -20,7 +20,7 @@ import { puedeVerRuta, areaDe, esAdministracion, areasDe, veEconomia } from './a
 test('Dirección y Administración abren todo', () => {
   for (const rol of ['direccion', 'administracion'] as const) {
     for (const r of ['/administracion', '/administracion/usuarios', '/clientes', '/clientes/arcor',
-      '/obras', '/flujo-caja', '/scorecard-finanzas']) {
+      '/obras', '/flujo-caja', '/calendario-financiero']) {
       assert.equal(puedeVerRuta(rol, r), true, `${rol} no pudo abrir ${r}`)
     }
   }
@@ -38,8 +38,7 @@ test('EL JEFE DE OBRA ENTRA A ADMINISTRACIÓN', () => {
 })
 
 test('PERO NO ENTRA A LAS RUTAS DEL DINERO', () => {
-  for (const r of ['/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
-    '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones']) {
+  for (const r of ['/flujo-caja', '/calendario-financiero', '/reportes', '/aprobaciones']) {
     assert.equal(puedeVerRuta('jefe_obra', r), false, `un jefe de obra pudo abrir ${r}`)
   }
   assert.equal(veEconomia('jefe_obra'), false)

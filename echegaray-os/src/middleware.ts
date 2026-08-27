@@ -71,7 +71,9 @@ export async function middleware(request: NextRequest) {
   // operativas. Si intenta entrar a cualquier otra (caja, reportes, dirección…), lo mandamos a
   // «Hoy», que desde el 20/08/2026 es su pantalla de inicio: es la que contesta las tres preguntas
   // con las que abre el OS —dónde trabajo, qué tengo que hacer, tengo algo pendiente—.
-  const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
+  // `/signup` salió de la condición el 27/08/2026 junto con la ruta: el alta libre se fue y la
+  // gobernada vive en `/administracion/usuarios`, que SÍ pasa por el portero de abajo.
+  const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login')
   if (user && !esApiOAuth) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
 

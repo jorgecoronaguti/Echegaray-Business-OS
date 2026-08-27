@@ -22,9 +22,13 @@ import { iniciales } from './iniciales'
 // "voy a Conexiones"; piensa "voy a mi obra". Eran 17 links en dos filas, con las categorías escritas
 // arriba en versalitas, ocupando ~90px de alto en cada pantalla del sistema.
 //
-// NINGUNA RUTA SE BORRÓ. `/os`, `/chat`, `/flujo-caja`, `/ingenieria-financiera`, `/reportes`,
-// `/integraciones`… siguen vivas y accesibles por URL; lo que se retiró es su lugar en la navegación
-// principal. Retirar un link es reversible en una línea; borrar una ruta no.
+// EN AQUEL MOMENTO NO SE BORRÓ NINGUNA: se retiraron de acá y quedaron accesibles por URL. Retirar
+// un link es reversible en una línea; borrar una ruta no.
+//
+// LO QUE ESO DEJÓ SIN VER (27/08/2026). Nueve meses después, ocho de esas rutas seguían sin un solo
+// enlace en todo `src/` y se borraron. Pero una de ellas no estaba retirada por decisión: `/flujo-caja`
+// es el destino del redirect de `/` —la HOME— y tampoco tenía enlace. Se entraba, se aterrizaba ahí,
+// y al tocar cualquier solapa no había vuelta. Lo arregla la MARCA, acá abajo.
 //
 // ═══ POR QUÉ DOS ÁREAS Y NO UN MENÚ ═══
 //
@@ -68,9 +72,15 @@ export function AppHeader({
             dueño —Drive · "logo y colores de la empresa" · `LOGO REDONDO.png`, con transparencia—,
             no un redibujo mío: una marca redibujada a ojo es una marca distinta.
             El logotipo va al lado en grafito, que es exactamente como está compuesto el logo. */}
+        {/* EL ISOTIPO VA AL INICIO DE VERDAD (27/08/2026). Llevaba a `solapas[0]`, que es la entrada
+            del ÁREA: el `aria-label` decía «inicio» y el `href` iba a otra cosa, y como la primera
+            solapa es la que está pegada al isotipo, el clic más grande del header duplicaba al
+            vecino. Ahora va a `/`, que reparte por nivel (`destinoDeLaHome`) — y con eso la home
+            del OS deja de ser inalcanzable desde la barra. Es una ruta, no una lista de solapas:
+            el componente no necesita saber cuál es la home de cada rol. */}
         <Link
           prefetch={false}
-          href={solapas[0]?.href ?? '/obras'}
+          href="/"
           className="mr-3 flex shrink-0 items-center gap-2"
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"

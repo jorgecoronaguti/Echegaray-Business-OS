@@ -57,11 +57,43 @@ export function solapasDeNav(rol: Rol | null | undefined): SolapaNav[] {
  * Con una sola solapa visible, esa es la activa: quien sólo ve Obras está siempre en Obras, incluso
  * en `/campo` o en `/mi-informacion`, que no empiezan con `/obras`.
  */
+/**
+ * ═══ LA HOME ERA INALCANZABLE, Y HACÍA NUEVE MESES QUE LO ERA (27/08/2026) ═══
+ *
+ * `/` redirige a `/flujo-caja` desde el 09/07/2026 —*«el OS se enfoca en Flujo de Caja: el home es
+ * el espejo del Sheet»*—, y `/flujo-caja` no está en ninguna barra: no es una de las tres solapas de
+ * nivel 1 (el mockup 00 v2 dibuja tres y un test lo fija) ni uno de los siete destinos de
+ * Administración (ídem). Efecto medido en el árbol: en todo `src/` no hay un solo `<Link>` que
+ * lleve ahí. Se entra al sistema y se aterriza en la home; en cuanto se toca cualquier solapa, no
+ * hay forma de volver salvo escribir la URL.
+ *
+ * SE ARREGLA POR LA MARCA, NO CON UNA CUARTA SOLAPA. El isotipo ya se anuncia como
+ * `«Echegaray Construcciones — inicio»` y llevaba a `solapas[0]`, que es la entrada del ÁREA, no el
+ * inicio: el aria-label decía una cosa y el `href` hacía otra. Ahora apunta a `/` y esta función
+ * decide qué es «inicio» para cada nivel. Agregar una cuarta solapa habría cambiado un contrato de
+ * diseño que el dueño aprobó, y eso no lo decide una limpieza de rutas.
+ *
+ * ES ROL A ROL PORQUE UN REDIRECT FIJO REBOTA. Con `/` → `/flujo-caja` para todos, un jefe de obra
+ * hacía dos saltos (`/` → `/flujo-caja` → `/obras`, porque la ruta está en `RUTAS_SOLO_ECONOMIA`) y
+ * un empleado tres. El destino se decide con el MISMO portero que el middleware: si `puedeVerRuta`
+ * dice que no, no se lo manda ahí.
+ */
+export function destinoDeLaHome(rol: Rol | null | undefined): string {
+  // El empleado no entra por el área: entra por su día. `/obras` —que sería su primera solapa— no
+  // está en `CAMPO_RUTAS_PERMITIDAS` y el middleware lo rebotaría igual.
+  if (rol === 'campo') return '/hoy'
+  if (puedeVerRuta(rol, HOME_ECONOMICA)) return HOME_ECONOMICA
+  return solapasDeNav(rol)[0].href
+}
+
+/** La home que fijó el dueño el 09/07/2026. La abre quien puede abrirla, y nadie más. */
+const HOME_ECONOMICA = '/flujo-caja'
+
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
   if (/^\/presupuestos(\/|$)/.test(pathname)) return 'presupuestos'
   if (/^\/(administracion|clientes|documentos|flujo-caja)(\/|$)/.test(pathname)) return 'administracion'
-  if (/^\/(obras|obra|control-obras|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
+  if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'
   }
   return null
