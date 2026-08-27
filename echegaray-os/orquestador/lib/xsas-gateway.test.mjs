@@ -387,3 +387,30 @@ test('una LECTURA no deja fila en el registro de escrituras', async () => {
   })
   assert.deepEqual(filas, [])
 })
+
+test('si la obra de la pantalla no existe para la lectura por obra, contesta la empresa y lo DICE', async () => {
+  const corridas = []
+  const mapa = new Map([
+    ['os.estado_empresa', {
+      capability: 'drive.read',
+      schema: { name: 'estado_empresa', input_schema: { type: 'object', properties: {} } },
+      async run(a) { corridas.push(['os.estado_empresa', a]); return { resumen_texto: 'venimos así' } },
+    }],
+    ['os.salud_obra', {
+      capability: 'drive.read',
+      schema: { name: 'salud_obra', input_schema: { type: 'object', properties: { obra: { type: 'string' } }, required: ['obra'] } },
+      // Así contesta la tool real cuando el nombre no está en su universo: ok, con `error` adentro.
+      async run(a) { corridas.push(['os.salud_obra', a]); return { error: `"${a.obra}" no resuelve a una obra` } },
+    }],
+  ])
+  const r = await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.read'] },
+    canal: 'app', mensaje: 'cómo venimos',
+    entidad: { obra_id: 'o-1' }, contexto: { obra: 'PLAYÓN DE AZUFRE' },
+    verificado_por: 'app-server',
+  }, { registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia() })
+  assert.equal(r.ok, true)
+  assert.equal(r.estado, 'degradado')
+  assert.match(r.degradacion, /PLAYÓN DE AZUFRE/)
+  assert.deepEqual(corridas.map((c) => c[0]), ['os.salud_obra', 'os.estado_empresa'])
+})

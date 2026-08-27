@@ -255,17 +255,38 @@ async function despachar(pedido, deps, t0) {
   // NOMBRE en el contexto (que es lo que las tools del OS reciben — leen el Sheet, no la base). Con
   // el id solo, `argumentosPara` llenaría `obra` con un UUID y la lectura por obra devolvería «no
   // encontré esa obra»: una respuesta peor que la de empresa.
+  let obraNoResuelta = null
   if (pedido.entidad?.obra_id && pedido.contexto?.obra) {
     const enObra = ATAJOS_EN_OBRA[normalizarFrase(texto)]
     const tool = enObra ? mapa.get(enObra) : null
     if (tool && puedeUsar(pedido.actor, tool, enObra) && !argumentosPara(tool, pedido).falta.length) {
-      return resolverConTool({ pedido, clave: enObra, tool, nivel: NIVEL.DETERMINISTICO, via: 'atajo_en_obra', t0, query: deps.query ?? null })
+      const r = await correrTool({ clave: enObra, tool, pedido, query: deps.query ?? null })
+      // ═══ LA OBRA DE LA PANTALLA PUEDE NO EXISTIR PARA LA LECTURA POR OBRA ═══
+      //
+      // Hay DOS registros de obra sin mapeo entre sí: `public.obras` (las pantallas, con uuid) y las
+      // del Sheet (las que leen las tools económicas). Una obra de la pantalla puede no estar en el
+      // Sheet — probado el 27/08 con «PLAYÓN DE AZUFRE». Si eso pasa NO se devuelve el error: se
+      // contesta la lectura de empresa y se DICE por qué, porque el contexto es una mejora y una
+      // mejora que rompe la respuesta de siempre es una regresión.
+      if (r.ok && !r.datos?.error) {
+        return respuestaOk(pedido, {
+          respuesta: textoDeDatos(r.datos),
+          datos: r.datos,
+          capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [enObra], via: 'atajo_en_obra', confianza: 'alta', motivo: 'atajo_en_obra' },
+          accionesEjecutadas: [{ tool: enObra, args: r.args }],
+          evidencia: [{ que: 'resultado', fuente: `tool ${enObra}`, cuando: new Date().toISOString() }],
+          ms: Date.now() - t0,
+        })
+      }
+      obraNoResuelta = `la obra "${pedido.contexto.obra}" no está en la lectura por obra; se responde el estado de la empresa`
     }
   }
 
   const atajo = atajoPara(texto)
   if (atajo && mapa.has(atajo)) {
-    return resolverConTool({ pedido, clave: atajo, tool: mapa.get(atajo), nivel: NIVEL.DETERMINISTICO, via: 'atajo_exacto', t0, query: deps.query ?? null })
+    const r = await resolverConTool({ pedido, clave: atajo, tool: mapa.get(atajo), nivel: NIVEL.DETERMINISTICO, via: 'atajo_exacto', t0, query: deps.query ?? null })
+    if (obraNoResuelta && r.ok && !r.degradacion) { r.degradacion = obraNoResuelta; r.estado = 'degradado' }
+    return r
   }
 
   // ── N1 · EL RUTEO XSAS QUE YA EXISTE ──────────────────────────────────────────────────────
