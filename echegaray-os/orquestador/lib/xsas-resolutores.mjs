@@ -38,6 +38,10 @@ const FABRICAS_0API = Object.freeze([
   // «sin dato» y sigue dando el resto del cuadro. Por eso vive del lado 0-API — «¿cómo venimos?» es
   // la pregunta que menos puede depender de que Workspace conteste.
   ['./tools/estado-empresa-tool.mjs', 'estadoEmpresaTools'],
+  // Internet NO necesita Google: `web-search` habla con su propio proveedor y `web_leer`/`web_navegar`
+  // bajan la página. Entra del lado 0-API porque su dependencia es la red, no Workspace, y porque
+  // lo que devuelve ya sale marcado como REFERENCIA_EXTERNA por `web/contenido-externo.mjs`.
+  ['./tools/web.mjs', 'webSearchTools'],
 ])
 
 /** Fábricas que reciben un cliente de Google. Sin cliente NO se cargan: una tool que va a fallar
@@ -45,6 +49,9 @@ const FABRICAS_0API = Object.freeze([
 const FABRICAS_GOOGLE = Object.freeze([
   ['./tools/ingenieria-financiera-tool.mjs', 'ingenieriaFinancieraTools'],
   ['./tools/tesoreria-tool.mjs', 'tesoreriaTools'],
+  // Slides. `crear_presentacion_google_slides` es de ESCRITURA (`drive.write`): sin esa capability
+  // en el pedido, `puedeUsar` la rechaza antes de correrla. Sin cliente de Google no se registra.
+  ['./tools/presentacion-tool.mjs', 'presentacionTools'],
 ])
 
 /** `./tools/x.mjs` → `orquestador/lib/tools/x.mjs`, que es como el catálogo nombra los módulos. */
