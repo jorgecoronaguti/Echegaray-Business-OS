@@ -13,8 +13,19 @@
 //
 // ═══ ESCUCHA EN LOOPBACK, NO EN 0.0.0.0 (27/08/2026) ═══
 //
-// Escuchaba en `0.0.0.0` y era alcanzable desde internet: medido desde afuera —un cliente que no
-// es esta VM— `http://64.176.22.159:8790/health` contestaba `{"ok":true,"ready":true}`.
+// Escuchaba en `0.0.0.0`, es decir en TODAS las interfaces, incluida la pública.
+//
+// Lo que hoy lo tapaba NO era este código: es un cortafuegos delante de la VM. Medido desde un
+// cliente que no es esta máquina —una sonda efímera en el borde de Cloudflare, con control
+// positivo—: `chat.ecsas.com.ar:443` contestó 200; un puerto abierto a propósito en `0.0.0.0:8799`
+// dio TIMEOUT desde afuera y contestaba local; y la misma sonda alcanza puertos no estándar en
+// otros hosts, así que el timeout es del filtro, no de la sonda. O sea: la exposición era LATENTE
+// —el socket estaba abierto al mundo y sólo un filtro que este repo no controla lo salvaba—, no
+// activa. (Una auditoría anterior la reportó como alcanzable con un 200 desde la IP pública: eso
+// se midió DESDE la propia VM, donde el filtro no interviene. No era cierto.)
+//
+// Igual se cierra, y por la razón de fondo: un bind es la única defensa que viaja con el proceso.
+// Un filtro vive en la consola del proveedor, lo puede cambiar cualquiera y no deja rastro acá.
 //
 // La exposición NO hacía falta para nada. Los tres clientes reales entran por loopback:
 //   · el túnel saliente de cloudflared, que se conecta a `http://localhost:8790`;

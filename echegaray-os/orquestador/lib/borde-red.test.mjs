@@ -2,8 +2,10 @@
 //
 // ═══ POR QUÉ ESTE TEST EXISTE (27/08/2026) ═══
 //
-// `interactive-server.mjs` escuchaba en `0.0.0.0` y era alcanzable desde internet: un cliente
-// externo —Vercel, no esta VM— recibía `{"ok":true,"ready":true}` de `http://64.176.22.159:8790`.
+// `interactive-server.mjs` escuchaba en `0.0.0.0` —todas las interfaces, incluida la pública—.
+// Medido desde afuera, un cortafuegos delante de la VM lo tapaba, así que la exposición era
+// LATENTE y no activa; pero ese filtro vive en la consola del proveedor, no en este repo, y el día
+// que alguien lo cambie o la VM se mude, el borde queda abierto sin que nadie toque una línea.
 // Nadie lo había pedido y nadie lo usaba: el túnel de cloudflared entra por `localhost` y el resto
 // de los clientes pasan por Vercel. Fue un default que quedó.
 //

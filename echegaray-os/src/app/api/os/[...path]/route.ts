@@ -2,8 +2,9 @@
 //
 // La extensión (contexto seguro chrome-extension://) no puede hablar por HTTP plano, y el motor
 // interactivo escucha en loopback: desde afuera no hay puerto al que llegar. (Este comentario decía
-// «el server no acepta tráfico entrante salvo SSH» y era FALSO hasta el 27/08/2026 — :8790 escuchaba
-// en 0.0.0.0 y contestaba desde la IP pública. Ahora es cierto porque se cerró el bind.)
+// «el server no acepta tráfico entrante salvo SSH». Lo que filtra es un cortafuegos delante de la
+// VM, no el server, y hasta el 27/08/2026 :8790 escuchaba igual en 0.0.0.0 detrás de él. Ahora el
+// bind cierra el borde por su cuenta.)
 // Este proxy en Vercel es la URL fija y pública: descubre dónde está hoy el OS (túnel saliente, cuya URL
 // se publica en `os_runtime`) y reenvía la directiva. Así la extensión apunta
 // siempre al frente estable `/api/os/*` — hoy `https://echegaray-business-os.vercel.app`
