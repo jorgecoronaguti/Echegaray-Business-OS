@@ -99,8 +99,14 @@ export const AREA_HREF: Record<Area, string> = {
  * `/administracion/usuarios` SÍ queda cerrada, y no por económica: es la puerta a cambiar roles.
  */
 export const RUTAS_SOLO_ECONOMIA = [
-  '/administracion/usuarios', '/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
-  '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones', '/operarios',
+  '/administracion/usuarios', '/flujo-caja', '/calendario-financiero',
+  '/reportes', '/aprobaciones',
+  // CUATRO SALIERON DE ACÁ PORQUE SALIERON DEL REPOSITORIO (27/08/2026):
+  // `/ingenieria-financiera` (superconjunto de `/calendario-financiero`), `/calendario-caja`,
+  // `/scorecard-finanzas` y `/operarios` (reemplazada por `/administracion/usuarios`). Ninguna
+  // estaba enlazada desde ningún lado. Una entrada acá para una ruta que no existe hace creer que
+  // hay una puerta cerrada donde no hay ninguna puerta, y el próximo que busque dónde se decide ese
+  // acceso va a mirar acá.
   // `/presupuestos` entra el 21/08/2026 con el módulo. Un presupuesto ES precio: costo unitario,
   // margen, cascada y precio de venta. La base ya lo cierra —`cotizaciones_select` exige
   // `ve_economia()`— y esta lista es lo que hace que el jefe de obra ni siquiera vea la solapa.

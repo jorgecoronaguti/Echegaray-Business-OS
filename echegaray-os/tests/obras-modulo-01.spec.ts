@@ -32,7 +32,7 @@ async function entrar(page: import('@playwright/test').Page) {
 // RLS, que tapaba al resto de casualidad, no la cubría. Esto es el regreso de esa falla.
 
 test('sin sesión, las pantallas con datos de la empresa mandan al login', async ({ page }) => {
-  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/san-francisco', '/flujo-caja', '/control-obras', '/chat']) {
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/san-francisco', '/flujo-caja']) {
     const respuesta = await page.goto(ruta)
     await page.waitForURL(/\/login/, { timeout: 15000 })
     // Y no alcanza con terminar en /login: lo que no puede haber es el dato en el camino.
@@ -42,8 +42,10 @@ test('sin sesión, las pantallas con datos de la empresa mandan al login', async
 })
 
 test('sin sesión, la descarga pública de la extensión sigue abierta', async ({ page }) => {
-  // El guard es una lista BLANCA, y al cerrarla se llevó puesto el .zip que la landing ofrece:
-  // /descargar quedaba en 200 con su único botón mandando al login.
+  // El guard es una lista BLANCA, y al cerrarla se llevó puesto el .zip que la landing ofrecía.
+  // LA LANDING YA NO ESTÁ (27/08/2026): `/descargar` tenía la versión escrita a mano en `v0.8.2` y
+  // la viva es `/descargas`, que le pregunta la versión a la VM. El .zip SÍ sigue público, y por
+  // eso este test sigue: es la única descarga que funciona sin sesión y sin el túnel arriba.
   // Se pide por HTTP y no con `goto`: el navegador lo descarga en vez de navegarlo, y una descarga
   // no es una navegación. Lo que importa es el 200 y que sea un zip de verdad.
   const r = await page.request.get('/echegaray-os-extension.zip')
@@ -219,8 +221,19 @@ test('ninguna pantalla del módulo empuja la página de costado en el teléfono'
 })
 
 // ── UN SOLO AVANCE PARA TODO EL OS ──────────────────────────────────────────
+//
+// ═══ QUEDARON DOS CONSUMIDORES DE TRES (27/08/2026) ═══
+//
+// Este test medía que el portafolio, el chat y `/control-obras` publicaran el MISMO número —«dos
+// cálculos del mismo número fue el defecto que obligó a unificarlo en la vista `obra_avance`»—. Las
+// dos últimas pantallas se borraron por huérfanas, así que la comparación se hace ahora entre las
+// dos caras web que quedan: la fila del portafolio y el titular de la ficha.
+//
+// LO QUE DEJÓ DE MEDIRSE, y es lo que hay que reponer: el CHAT sigue leyendo `obra_avance` desde el
+// orquestador y ya nadie comprueba que diga lo mismo que la web. La pantalla se fue; el consumidor,
+// no. Mientras no exista otra superficie de chat, eso se prueba contra el orquestador, no acá.
 
-test('el avance que publica /obras es el mismo que responde el chat', async ({ page }) => {
+test('el avance que publica el portafolio es el mismo que muestra la ficha de la obra', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
 
@@ -229,30 +242,17 @@ test('el avance que publica /obras es el mismo que responde el chat', async ({ p
   // cuatro obras— y el modo estricto de Playwright corta. El id no se repite y no lo cambia un
   // renombrado.
   const fila = page.locator('tr[data-obra="san-francisco"]')
-  const nombreDeLaObra = (await fila.getByRole('link').first().innerText()).trim()
   const enPortafolio = (await fila.innerText()).match(/(\d+)%/)?.[1]
   expect(enPortafolio, 'el portafolio tiene que publicar un avance').toBeTruthy()
 
-  await page.goto('/chat')
-  await page.getByTestId('chat-input').fill(`avance de la obra ${nombreDeLaObra}`)
-  await page.getByTestId('chat-enviar').click()
-  const respuesta = page.getByTestId('chat-respuesta').first()
-  await expect(respuesta).toBeVisible({ timeout: 30000 })
-  // EL NOMBRE SALE DEL PORTAFOLIO, no de un literal: los dos consumidores tienen que nombrar la
-  // obra igual, y eso es justamente lo que este test existe para probar. Buscar «San Francisco»
-  // probaba que alguien había escrito ese texto en el test, no que las dos caras coinciden.
-  await expect(respuesta).toContainText(nombreDeLaObra, { timeout: 30000 })
-  // El avance de ESTA obra dentro de la respuesta, no el primero de la lista: el chat contesta con
-  // todas las obras y el primer «avance NN%» sería el de otra.
-  const enChat = (await respuesta.innerText())
-    .split(nombreDeLaObra)[1]?.match(/avance (\d+)%/)?.[1]
+  await page.goto('/obras/san-francisco')
+  const titular = page.getByTestId('titular-obra')
+  await expect(titular).toBeVisible({ timeout: 30000 })
+  // El «Avance físico» del titular, no el primer porcentaje del bloque: ahí conviven el avance, el
+  // consumido del contrato y el margen, y los tres se escriben con el mismo signo.
+  const enFicha = (await titular.innerText())
+    .split('Avance físico')[1]?.match(/(\d+)%/)?.[1]
 
-  // Los dos leen `obra_avance`. Si esto se rompe, volvieron a existir dos cálculos del mismo número.
-  expect(enChat, 'el chat y la web tienen que decir el MISMO avance').toBe(enPortafolio)
-
-  // Y el tercer consumidor, el control de obras, que hasta ahora publicaba el otro número.
-  await page.goto('/control-obras/' + encodeURIComponent(nombreDeLaObra))
-  await expect(page.getByText(/% físico/).first()).toBeVisible({ timeout: 30000 })
-  const enControl = (await page.getByText(/% físico/).first().innerText()).match(/(\d+)%/)?.[1]
-  expect(enControl, 'control de obras tiene que decir el MISMO avance').toBe(enPortafolio)
+  // Las dos leen `obra_avance`. Si esto se rompe, volvieron a existir dos cálculos del mismo número.
+  expect(enFicha, 'la ficha y el portafolio tienen que decir el MISMO avance').toBe(enPortafolio)
 })

@@ -41,7 +41,6 @@ const PANTALLAS: { nombre: string; url: string; movil?: boolean }[] = [
   { nombre: 'operacion-pedidos', url: '/integraciones/pedidos-materiales' },
   { nombre: 'operacion-movimientos', url: '/integraciones/movimientos' },
   { nombre: 'herramientas', url: '/integraciones/herramientas' },
-  { nombre: 'chat', url: '/chat' },
   { nombre: 'campo', url: '/campo', movil: true },
   // ═══ PERFIL EMPLEADO (delta del 20/08/2026) ═══
   //

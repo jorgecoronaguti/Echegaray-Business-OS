@@ -35,9 +35,6 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/obras/nueva', que: 'el alta de obra', cartera: OBRAS },
   { prefijo: '/obras/', que: 'la ficha de la obra', cartera: OBRAS },
   { prefijo: '/obras', que: 'la cartera de obras' },
-  { prefijo: '/control-obras/costos', que: 'los costos por obra', cartera: { href: '/control-obras', texto: 'Control de obras' } },
-  { prefijo: '/control-obras/', que: 'el control económico de la obra', cartera: { href: '/control-obras', texto: 'Control de obras' } },
-  { prefijo: '/control-obras', que: 'el control de obras' },
   { prefijo: '/clientes/', que: 'la ficha del cliente', cartera: CLIENTES },
   // Presupuestos: tres niveles y los tres vuelven a la cartera de presupuestos, no al inicio. Si se
   // cayó el análisis de una partida, el lugar al que quiere ir la persona es su presupuesto.
@@ -53,10 +50,7 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/administracion/pendientes', que: 'los pendientes de Administración', cartera: ADMIN },
   { prefijo: '/administracion', que: 'Administración' },
   { prefijo: '/flujo-caja', que: 'el flujo de caja' },
-  { prefijo: '/calendario-caja', que: 'el calendario de caja' },
   { prefijo: '/calendario-financiero', que: 'el calendario financiero' },
-  { prefijo: '/ingenieria-financiera', que: 'la ingeniería financiera' },
-  { prefijo: '/scorecard-finanzas', que: 'el tablero de finanzas' },
   { prefijo: '/aprobaciones', que: 'las aprobaciones' },
   { prefijo: '/integraciones/pedidos-materiales', que: 'los pedidos de materiales', cartera: { href: '/integraciones', texto: 'Integraciones' } },
   { prefijo: '/integraciones/movimientos', que: 'los movimientos', cartera: { href: '/integraciones', texto: 'Integraciones' } },
@@ -77,11 +71,8 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/campo/parte', que: 'el parte de obra', cartera: { href: '/campo', texto: 'Campo' } },
   { prefijo: '/campo/impedimento', que: 'la carga del impedimento', cartera: { href: '/campo', texto: 'Campo' } },
   { prefijo: '/campo', que: 'la pantalla de campo' },
-  { prefijo: '/operarios', que: 'los operarios' },
-  { prefijo: '/comunicacion', que: 'la comunicación' },
   { prefijo: '/descargas', que: 'las descargas' },
   { prefijo: '/reportes', que: 'los reportes' },
-  { prefijo: '/chat', que: 'el chat del OS' },
   { prefijo: '/os', que: 'el tablero del OS' },
 ]
 
@@ -93,6 +84,16 @@ function coincide(pathname: string, prefijo: string): boolean {
   if (prefijo.endsWith('/')) return pathname.startsWith(prefijo) && pathname.length > prefijo.length
   return pathname === prefijo || pathname.startsWith(`${prefijo}/`)
 }
+
+/**
+ * LAS PANTALLAS QUE ESTE MAPA DICE CONOCER — para poder comprobarlas contra el árbol de rutas.
+ *
+ * Un prefijo que sobrevive a su pantalla no rompe nada: nunca coincide con ningún `pathname`, así
+ * que el cartel de error cae en el default y sigue leyéndose bien. Lo que lo vuelve caro es la
+ * vuelta: el día que esa URL exista otra vez —con otro dueño y otro significado— el cartel afirma
+ * el nombre viejo sin que nadie lo haya escrito de nuevo. `rutas-existen.test.ts` lo mira.
+ */
+export const PREFIJOS_DE_PANTALLA: readonly string[] = MAPA.map((e) => e.prefijo)
 
 export function ubicarPantalla(pathname: string | null | undefined): Ubicacion {
   const ruta = (pathname ?? '').split('?')[0].replace(/\/+$/, '') || '/'

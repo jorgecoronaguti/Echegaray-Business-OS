@@ -70,7 +70,6 @@ const ENLACES_MULTIPLICADOS: { archivo: string; ancla: string; porque: string }[
   { archivo: 'features/clientes/components/TablaClientes.tsx', ancla: 'href={`/obras/${o.obra_id}`}', porque: 'una obra en ejecución por cliente' },
   { archivo: 'features/presupuestos/components/ListaPresupuestos.tsx', ancla: 'href={`/presupuestos/${p.id}`}', porque: 'un presupuesto por fila' },
   { archivo: 'features/presupuestos/components/TablaPartidas.tsx', ancla: 'href={`${base}?partida=${p.partida_id}`}', porque: 'una partida por fila' },
-  { archivo: 'app/(main)/control-obras/page.tsx', ancla: 'href={`/control-obras/${encodeURIComponent(o.obra)}`}', porque: 'una obra por tarjeta' },
 ]
 
 /** El bloque de atributos del `<Link>` que contiene ese `href`: del `<Link` anterior al `>` que cierra. */

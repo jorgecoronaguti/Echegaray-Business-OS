@@ -92,8 +92,13 @@ test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page 
   await entrarComo(page, EMAIL, PASSWORD)
   // Retirar un link no es borrar una ruta. Si alguna de éstas empieza a dar 404, se rompió algo que
   // el dueño pidió expresamente conservar.
-  for (const ruta of ['/os', '/chat', '/aprobaciones', '/ingenieria-financiera', '/calendario-financiero',
-    '/scorecard-finanzas', '/calendario-caja', '/flujo-caja', '/reportes', '/integraciones', '/descargas']) {
+  // OCHO SE FUERON DEL TODO EL 27/08/2026, y ninguna se llevó una funcionalidad puesta: `/chat`,
+  // `/ingenieria-financiera`, `/scorecard-finanzas`, `/calendario-caja`, `/comunicacion`,
+  // `/control-obras`, `/operarios` y `/descargar` no tenían un solo enlace en `src/`. Retirar el
+  // link las dejó vivas nueve meses; lo que este test protege es lo que el dueño pidió conservar,
+  // no una URL que sólo se abría escribiéndola a mano.
+  for (const ruta of ['/os', '/aprobaciones', '/calendario-financiero',
+    '/flujo-caja', '/reportes', '/integraciones', '/descargas']) {
     const r = await page.goto(ruta)
     expect(r?.status(), `${ruta} dejó de responder`).toBeLessThan(400)
     expect(await page.content(), `${ruta} rompió`).not.toContain('Application error')
