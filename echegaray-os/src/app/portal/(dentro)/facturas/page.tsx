@@ -7,6 +7,7 @@ import { estadoDePago, pesos, diaMes } from '../../cronograma'
 import { IconoEstado, Vacio, Rubro } from '../../Piezas'
 import { IconoDescarga } from '../../iconos'
 import { papelesDePlata, type PapelDePlata } from './datos'
+import { porNumeroDeFactura, porNumeroDeRecibo } from '../../comprobantes'
 
 // FACTURAS Y RECIBOS — lo que la empresa le emitió, con el papel al lado.
 //
@@ -63,7 +64,14 @@ export default async function Facturas() {
       cuantas: lineas.length,
     }
   })
-  const recibos = papeles.filter((p) => p.categoria === 'recibo')
+    // ═══ EN ORDEN DE SERIE, NO EN EL ORDEN DEL CRONOGRAMA (27/08/2026) ═══
+    //
+    // Salían en el orden en que aparecen las líneas del plan —por `orden` y después por fecha—, que
+    // no tiene nada que ver con la numeración de ARCA: a Inter Motor le publicaba 201, 228, 211. El
+    // cliente busca «la 211», no «la tercera de la lista». El comparador y por qué el número manda
+    // sobre el punto de venta, en `comprobantes.ts`.
+    .sort(porNumeroDeFactura)
+  const recibos = papeles.filter((p) => p.categoria === 'recibo').sort(porNumeroDeRecibo)
   const archivosDeFactura = papeles.filter((p) => p.categoria === 'factura')
   const sinFacturar = pagos.length - facturas.length
 

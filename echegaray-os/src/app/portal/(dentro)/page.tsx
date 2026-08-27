@@ -41,8 +41,8 @@ export default async function Inicio() {
         Bienvenido, {acceso.persona ?? acceso.clienteNombre}
       </h1>
       <p className="mt-2 max-w-[520px] text-[14px] leading-relaxed text-muted">
-        Acá está lo que estamos construyendo para usted. Sus pagos, sus facturas y los papeles de cada
-        obra están en el menú.
+        Acá está lo que estamos construyendo para usted. Toque una obra para ver su cronograma de
+        pagos; sus facturas y los papeles de cada obra están en el menú.
       </p>
 
       <h2 className="mt-11 text-[11px] tracking-[.09em] text-faint">
@@ -78,6 +78,21 @@ function desdeCuando(iso: string | null): string | null {
   return m ? `desde ${m} ${iso.slice(0, 4)}` : null
 }
 
+/**
+ * UNA OBRA DEL INICIO LLEVA A SUS PAGOS (27/08/2026).
+ *
+ * «Hacer clic en una obra tiene que llevar a la pantalla de Pagos de esa obra.» No llevaba a ningún
+ * lado: era texto con cara de fila tocable. El enlace arrastra el filtro —`?obra=` es el mismo
+ * parámetro que usan las pastillas de Pagos— así que el cliente cae en su cronograma ya acotado a
+ * la obra que tocó, y de ahí puede sacar el filtro con «Todas las obras».
+ *
+ * `obra_canonica.id` es el MISMO id que guarda `esquema_pago.obra_id`: por eso el filtro engancha.
+ * Y si esa obra todavía no tiene cronograma publicado, Pagos lo dice en vez de mostrar todo como si
+ * el filtro hubiera funcionado.
+ *
+ * ESTO NO ES PLATA EN EL INICIO: la fila sigue sin mostrar un peso. Lo único que cambia es que
+ * ahora se puede tocar.
+ */
 function FilaObra({ obra }: { obra: ObraDelInicio }) {
   const cerrada = obra.estado === 'cerrada'
   // El renglón de abajo se arma con lo que HAY. Sin estado y sin fecha no se escribe nada: una obra
@@ -85,12 +100,20 @@ function FilaObra({ obra }: { obra: ObraDelInicio }) {
   const detalle = [cerrada ? 'terminada' : obra.estado, desdeCuando(obra.desde)].filter(Boolean).join(' · ')
 
   return (
-    <li className="flex min-h-[58px] items-center gap-3.5 border-b border-line py-3.5">
-      <span className={cerrada ? 'text-faint' : 'text-muted'}><IconoInicio tamano={19} /></span>
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[15px] ${cerrada ? 'text-muted' : 'text-ink'}`}>{obra.nombre}</span>
-        {detalle ? <span className="mt-0.5 block truncate text-[12.5px] text-faint">{detalle}</span> : null}
-      </span>
+    <li className="border-b border-line">
+      <Link
+        href={`/portal/pagos?obra=${encodeURIComponent(obra.id)}`}
+        className="flex min-h-[58px] items-center gap-3.5 py-3.5"
+      >
+        <span className={cerrada ? 'text-faint' : 'text-muted'}><IconoInicio tamano={19} /></span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[15px] ${cerrada ? 'text-muted' : 'text-ink'}`}>{obra.nombre}</span>
+          {detalle ? <span className="mt-0.5 block truncate text-[12.5px] text-faint">{detalle}</span> : null}
+        </span>
+        {/* La flecha dice que la fila lleva a algún lado. Sin ella, una fila tocable se toca por
+            accidente y no se toca a propósito. */}
+        <span className="shrink-0 text-faint"><IconoFlecha tamano={15} /></span>
+      </Link>
     </li>
   )
 }

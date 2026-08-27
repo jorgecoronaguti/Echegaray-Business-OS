@@ -36,6 +36,8 @@ import { fileURLToPath } from 'node:url'
 import { cerebroDisponible } from './estado-cerebro.mjs'
 import { CAPACIDAD, modeloPara } from './ia/capacidad.mjs'
 import { OBRAS_NO_REALES } from './xsas-aprendizaje.mjs'
+import { resumirAprendizajePosible } from './xsas-que-se-aprende.mjs'
+import { capasDeSalud } from './xsas-salud.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..')
@@ -100,6 +102,12 @@ export const CIRCUITOS = Object.freeze([
     sql: 'select count(*)::int n, max(registrado_en)::text ultimo from public.finanzas_caja_negra' },
   { dominio: 'presupuesto', mide: 'las horas cotizadas contra las que costó hacerlo',
     sql: 'select count(*)::int n, max(actualizado_en)::text ultimo from public.rendimiento_historico where hs_unitarias_plan is not null' },
+  // Las otras dos métricas del ciclo de obra. Sin ellas acá, un circuito que dejara de recibir
+  // hechos no avisaría: por fuera se ve igual que uno sano, simplemente deja de aprender.
+  { dominio: 'duracion', mide: 'cuántos días tardó cada tarea contra lo planificado',
+    sql: 'select count(*)::int n, max(actualizado_en)::text ultimo from public.duracion_historica' },
+  { dominio: 'dotacion', mide: 'cuánta gente imputó horas contra la prevista',
+    sql: 'select count(*)::int n, max(actualizado_en)::text ultimo from public.dotacion_historica' },
 ])
 
 /** Corre los circuitos. Uno que no se puede leer se declara así, nunca como «cero hechos». */
@@ -255,23 +263,50 @@ export async function estadoDeXsas() {
              count(fin_real)::int con_fin_real,
              count(*) filter (where terminada)::int terminadas
         from public.xsas_actividad`)
-    // ═══ QUÉ LE FALTA A CADA ACTIVIDAD PARA PODER ENSEÑAR ═══
+    // ═══ QUÉ PUEDE ENSEÑAR CADA ACTIVIDAD, Y QUÉ LA FRENA ═══
     //
-    // La pregunta que el dueño necesita para actuar no es «cuántas aprenden» sino «qué las frena».
-    // Sin esto, un 2 de 279 se lee como un defecto del OS cuando en realidad son obras que entraron
-    // como cronograma —sin presupuesto de HH detrás— y horas que se imputan por jornal de obra.
-    const e4 = await query(`
-      select case
-        when plan_hh is null  then 'sin HH planificadas'
-        when hh_real is null  then 'sin horas imputadas a la actividad'
-        when cantidad_real is null and not terminada then 'sin cantidad ejecutada ni cierre'
-        when tarea_tipo_id is null then 'sin tipo de tarea: no se puede reutilizar'
-        else 'aprende' end as freno,
-       count(*)::int n
-        from public.xsas_actividad where obra_id <> all($1::text[]) group by 1 order by 2 desc`,
+    // La pregunta que el dueño necesita para actuar no es «cuántas aprenden» sino «qué las frena, y
+    // qué se puede aprender igual». El SQL trae los hechos; la regla de qué requiere cada métrica
+    // vive UNA vez, en `xsas-que-se-aprende.mjs`, y es la misma que usan los que aprenden.
+    const e4 = await query(
+      `select actividad_id, es_trabajo, terminada, avance_pct, plan_dias, dias_real, plan_cantidad,
+              cantidad_real, hh_real, dotacion_por_hh, avance_sumado
+         from public.xsas_actividad where obra_id <> all($1::text[])`,
       // La lista de obras que no son obras vive en UN lugar. Repetir el literal acá era una segunda
       // definición del mismo concepto dentro del trabajo que existe para eliminarlas.
       [OBRAS_NO_REALES])
+
+    // ═══ CUÁNTO DE ESO YA ES REUTILIZABLE ═══
+    //
+    // Un hecho medido en UNA obra es un dato; la próxima cotización necesita una tarea con dos. La
+    // cuenta sale de `experiencia_por_tarea`, que es donde esa regla está definida — acá sólo se
+    // suma, no se vuelve a decidir qué significa reutilizable.
+    //
+    // EN SU PROPIO `try`: una migración que todavía no se aplicó tiene que degradar ESTE número, no
+    // el estado entero. El día que `dotacion_historica` no exista, el cuadro tiene que seguir
+    // diciendo cuántos agentes hay y si la base contesta — no apagarse completo. Ya pasó una vez.
+    let experiencia = null
+    try {
+      const e5 = await query(`
+        select
+          (select count(*)::int from public.duracion_historica where estado <> 'DESCARTADO') hechos_duracion,
+          (select count(*)::int from public.rendimiento_historico
+            where estado not in ('DESCARTADO', 'REFERENCIA')) hechos_rendimiento,
+          (select count(*)::int from public.dotacion_historica where estado <> 'DESCARTADO') hechos_dotacion,
+          (select count(*)::int from public.experiencia_por_tarea
+            where duracion_reutilizable or rendimiento_reutilizable or dotacion_reutilizable) tareas_reutilizables`)
+      experiencia = {
+        hechosDuracion: e5.rows[0]?.hechos_duracion ?? 0,
+        hechosRendimiento: e5.rows[0]?.hechos_rendimiento ?? 0,
+        hechosDotacion: e5.rows[0]?.hechos_dotacion ?? 0,
+        tareasReutilizables: e5.rows[0]?.tareas_reutilizables ?? 0,
+        costo: 'no disponible: costos_reales se imputa por obra, no por actividad',
+      }
+    } catch (e) {
+      // `null` y no ceros: «no pude contar» y «no hay nada» son dos cosas distintas, y sólo una de
+      // las dos significa que el aprendizaje está parado.
+      experiencia = { noSePudoLeer: String(e?.message ?? e).slice(0, 120) }
+    }
 
     // El aprendizaje de obra, por estado. `REFERENCIA` es la tabla con la que se venía cotizando;
     // el resto es lo que la ejecución enseñó.
@@ -281,7 +316,11 @@ export async function estadoDeXsas() {
       ...e1.rows[0],
       ...e2.rows[0],
       rendimientos: Object.fromEntries(e3.rows.map((r) => [r.estado, r.n])),
-      frenos: e4.rows.map((r) => ({ freno: r.freno, actividades: r.n })),
+      // Por métrica: cuántas pueden enseñar, cuántas no, y qué las frena. `costo` sale declarado
+      // como no disponible — no es un dato que falte cargar, es uno que el OS no tiene de dónde
+      // sacar, y confundir las dos cosas es lo que convierte una ausencia en un cero.
+      aprendizajePosible: resumirAprendizajePosible(e4.rows),
+      experiencia,
       circuitos: await circuitosDeAprendizaje(query),
     }
 
@@ -305,10 +344,24 @@ export async function estadoDeXsas() {
 
   const nivel = nivelDeOperacion({ razonador: motor.disponible, base, agentes: agentes?.total > 0 })
 
+  const parcial = {
+    nivel, motor, agentes, conocimiento, empresa, trabajos, costo,
+    noSePudoLeer: porQueNo, herramientas: herramientasDelOs(), skills: skillsDelOs(),
+  }
+  // ═══ EL NIVEL NO ES LA SALUD ═══
+  //
+  // `nivel` dice si el OS PUEDE razonar; `salud` dice si está aprendiendo, si tiene datos y si su
+  // infraestructura anda. Publicar sólo el primero fue el defecto: el cuadro decía FULL con dos
+  // rendimientos aprendidos y ninguno validado, y quien lo leía entendía que la inteligencia estaba
+  // bien. Los timers corriendo no son que el sistema esté aprendiendo.
+  const salud = capasDeSalud(parcial)
+
   return {
     nombre: 'XSAS',
     de: 'Echegaray Business OS',
     nivel,
+    veredicto: salud.veredicto,
+    capas: salud.capas,
     // EL MOTOR ES INFRAESTRUCTURA, Y SE DICE ASÍ. Cambiarlo no cambia nada de lo de arriba.
     motor: {
       disponible: motor.disponible,
@@ -345,7 +398,8 @@ export async function estadoDeXsas() {
 /** El estado en una línea, para un log o un healthcheck. */
 export function resumirEstado(e) {
   const partes = [
-    `XSAS ${e.nivel}`,
+    // Las DOS palabras, siempre juntas. Con una sola, «FULL» tapaba que el aprendizaje no rendía.
+    `XSAS ${e.nivel}${e.veredicto ? ` · salud ${e.veredicto}` : ''}`,
     `motor ${e.motor.disponible ? 'ok' : 'CAÍDO'}`,
     e.agentes ? `${e.agentes.deNegocio} agentes de negocio` : 'agentes: no se pudo leer',
     `${e.herramientas} herramientas`,

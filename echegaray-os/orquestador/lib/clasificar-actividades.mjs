@@ -9,22 +9,29 @@
 //
 // ═══ LOS CUATRO VEREDICTOS ═══
 //
-//   EXACTO     el nombre normalizado coincide con el de un tipo. Se asigna.
-//   ALTA       una sola candidata fuerte, sin competencia cerca y con la unidad compatible. Se asigna.
+//   EXACTO     la partida cotizada o el análisis lo dicen, o el nombre es el mismo. Se asigna.
+//   ALTA       una sola candidata sobreviviente, fuerte, sin competencia cerca. Se asigna.
 //   CANDIDATO  la zona gris que resolvió un modelo eligiendo entre candidatas concretas. Se asigna
 //              MARCADA como tal: es una inferencia con nombre y apellido, y se puede deshacer.
 //   AMBIGUO / SIN MATCH   no se asigna nada.
 //
+// ═══ LA EVIDENCIA NO ES SÓLO EL NOMBRE ═══
+//
+// El parecido de dos textos PROPONE candidatas y no decide nada solo. Quién queda afuera y quién
+// sobrevive lo deciden las señales de `clasificar-senales.mjs`: la unidad, el rubro del cronograma,
+// la partida cotizada, el análisis de precios, las actividades vecinas del mismo frente y el nombre
+// de la obra. Los vetos mandan sobre el parecido; las corroboraciones sólo bajan el umbral.
+//
 // La regla que gobierna: **no se sacrifica calidad para subir cobertura**. Una clasificación mal
 // puesta contamina el rendimiento de una tarea y después una cotización; una actividad sin
-// clasificar no le hace daño a nadie, sólo espera.
+// clasificar no le hace daño a nadie, sólo espera. Por eso dos candidatas razonables dan AMBIGUO
+// aunque las dos estén corroboradas: sumar señales para desempatar es cómo se contamina.
 
-/** Normalización para comparar nombres: mayúsculas, sin acentos, espacios colapsados. */
-export function normalizar(s) {
-  return String(s ?? '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toUpperCase().replace(/\s+/g, ' ').trim()
-}
+import { normalizar, tokens, vetosDe, corroboracionesDe, pruebaDirecta } from './clasificar-senales.mjs'
+
+// `normalizar` vive en el módulo de señales —es la base de toda la comparación de nombres— y se
+// re-exporta acá porque éste sigue siendo el módulo público del clasificador.
+export { normalizar }
 
 /** Umbrales. Están acá y no repartidos por el SQL para poder discutirlos en un solo lugar. */
 export const UMBRAL = Object.freeze({
@@ -32,6 +39,11 @@ export const UMBRAL = Object.freeze({
   MIRAR: 0.5,
   // Una sola candidata de acá para arriba, y sin competencia cerca, se asigna sola.
   ALTA: 0.75,
+  // El mismo paso, pero cuando además hay evidencia INDEPENDIENTE del nombre: la unidad, el rubro
+  // del cronograma, una vecina del mismo frente ya clasificada. Baja el listón del parecido porque
+  // deja de ser lo único que sostiene la decisión. Nunca alcanza sola: la candidata tiene que haber
+  // sobrevivido a todos los vetos y no tener competencia cerca.
+  ALTA_CORROBORADA: 0.6,
   // Cuánto tiene que sacarle la primera a la segunda para que «una sola candidata» sea cierto.
   VENTAJA: 0.15,
 })
@@ -48,49 +60,110 @@ export function unidadCompatible(unidadActividad, unidadTarea) {
 }
 
 /**
- * NÚCLEO PURO: el veredicto para una actividad, dadas sus candidatas ordenadas por similitud.
+ * ¿HAY UN SOLO NOMBRE IDÉNTICO? Idéntico en dos niveles, y los dos valen igual:
  *
- * `candidatas`: [{ tareaTipoId, nombre, unidad, similitud }] de mayor a menor.
+ *   letra a letra   «REPLANTEO» = «Replanteo»
+ *   palabra a palabra   «EXCAVACION» = «EXCAVACIONES», «Nivelacion de terreno» = «NIVELACION TERRENO»
+ *
+ * El segundo nivel es lo que agrega la normalización fuerte —sin acentos, sin conectores, sin
+ * plurales— y no afloja nada: sigue exigiendo que las DOS tengan exactamente las mismas palabras.
+ * Lo que la aflojaría sería aceptar que una contenga a la otra, y eso es justo lo que se veta.
  */
-export function veredictoDe({ nombre, unidad }, candidatas = []) {
-  const cs = candidatas.filter((c) => c.similitud >= UMBRAL.MIRAR)
-  if (!cs.length) return { veredicto: 'SIN MATCH', porQue: 'ningún tipo de tarea se parece lo suficiente' }
+function unicaIdentica(vivas, nombre, comparar) {
+  const k = comparar(nombre)
+  const iguales = vivas.filter((c) => comparar(c.nombre) === k)
+  if (iguales.length === 1) return { unica: iguales[0] }
+  if (iguales.length > 1) return { ambiguas: iguales }
+  return {}
+}
 
-  const k = normalizar(nombre)
-  const exactas = cs.filter((c) => normalizar(c.nombre) === k)
-  if (exactas.length === 1) {
-    return {
-      veredicto: 'EXACTO', tareaTipoId: exactas[0].tareaTipoId, confianza: 'EXACTO', origen: 'nombre-exacto',
-      porQue: `el nombre coincide exactamente con «${exactas[0].nombre}»`,
-      evidencia: { similitud: 1, candidata: exactas[0].nombre },
+const porLetra = (s) => normalizar(s)
+const porPalabra = (s) => [...tokens(s)].sort().join(' ')
+
+/** Cada candidata con sus vetos y sus corroboraciones. La unidad entra como un veto más para que
+ *  haya UNA sola lista de razones por las que una candidata queda afuera. */
+function evaluar(candidatas, contexto) {
+  return candidatas.map((c) => {
+    const vetos = [...vetosDe(c, contexto)]
+    if (!unidadCompatible(contexto.unidad, c.unidad)) {
+      vetos.push(`se mide en ${c.unidad} y la actividad en ${contexto.unidad}`)
     }
-  }
-  if (exactas.length > 1) {
-    return { veredicto: 'AMBIGUO', porQue: `${exactas.length} tipos distintos tienen ese mismo nombre` }
-  }
+    return { ...c, vetos, corroboraciones: corroboracionesDe(c, contexto) }
+  })
+}
 
-  const [primera, segunda] = cs
-  const compatible = unidadCompatible(unidad, primera.unidad)
+/** La decisión entre las candidatas que ningún veto tumbó. */
+function decidirEntreVivas(vivas) {
+  const [primera, segunda] = vivas
+  const corroborada = primera.corroboraciones.length > 0
+  const umbral = corroborada ? UMBRAL.ALTA_CORROBORADA : UMBRAL.ALTA
   const sola = !segunda || primera.similitud - segunda.similitud >= UMBRAL.VENTAJA
 
-  if (primera.similitud >= UMBRAL.ALTA && sola && compatible) {
+  if (primera.similitud >= umbral && sola) {
+    const respaldo = primera.corroboraciones.map((x) => x.porQue).join(' · ')
     return {
       veredicto: 'ALTA', tareaTipoId: primera.tareaTipoId, confianza: 'ALTA', origen: 'similitud',
-      porQue: `«${primera.nombre}» con ${primera.similitud.toFixed(2)} de similitud y sin otra candidata cerca`,
-      evidencia: { similitud: primera.similitud, candidata: primera.nombre, segunda: segunda?.nombre ?? null },
+      porQue: `«${primera.nombre}» con ${primera.similitud.toFixed(2)} de similitud, sin otra candidata cerca`
+        + (corroborada ? ` y con evidencia independiente: ${respaldo}` : ''),
+      evidencia: {
+        similitud: primera.similitud, candidata: primera.nombre, segunda: segunda?.nombre ?? null,
+        corroboraciones: primera.corroboraciones,
+      },
     }
   }
-  if (primera.similitud >= UMBRAL.ALTA && !compatible) {
-    return { veredicto: 'AMBIGUO', porQue: `el nombre se parece a «${primera.nombre}» pero se mide en ${primera.unidad} y la actividad en ${unidad}` }
+  if (!sola && segunda.similitud >= UMBRAL.ALTA_CORROBORADA) {
+    return {
+      veredicto: 'AMBIGUO',
+      porQue: `«${primera.nombre}» y «${segunda.nombre}» se parecen casi igual`,
+      candidatas: vivas.slice(0, 4),
+    }
   }
-  if (primera.similitud >= UMBRAL.ALTA && !sola) {
-    return { veredicto: 'AMBIGUO', porQue: `«${primera.nombre}» y «${segunda.nombre}» se parecen casi igual` }
-  }
-  // Zona gris: hay algo, no alcanza para decidir con una regla. Es lo único que va al modelo.
   return {
-    veredicto: 'ZONA GRIS', candidatas: cs.slice(0, 4),
+    veredicto: 'ZONA GRIS', candidatas: vivas.slice(0, 4),
     porQue: `la mejor candidata es «${primera.nombre}» con ${primera.similitud.toFixed(2)}: hay señal, no certeza`,
   }
+}
+
+/**
+ * NÚCLEO PURO: el veredicto para una actividad, dadas sus candidatas ordenadas por similitud.
+ *
+ * `contexto`: { nombre, unidad, seccion, obra, hermanas, partidaTareaTipoId, analisisTareaTipoId }
+ * `candidatas`: [{ tareaTipoId, nombre, unidad, similitud }] de mayor a menor.
+ *
+ * El orden no es cosmético. Primero lo que NO es una inferencia —la partida cotizada, el análisis—;
+ * después la identidad de nombre; recién después el parecido, y sólo entre las candidatas que
+ * ningún veto tumbó. Una candidata vetada no vuelve por más corroboraciones que junte.
+ */
+export function veredictoDe(contexto, candidatas = []) {
+  const directa = pruebaDirecta(contexto)
+  if (directa) return directa
+
+  const cs = evaluar(candidatas.filter((c) => c.similitud >= UMBRAL.MIRAR), contexto)
+  if (!cs.length) return { veredicto: 'SIN MATCH', porQue: 'ningún tipo de tarea se parece lo suficiente' }
+
+  const vivas = cs.filter((c) => !c.vetos.length).sort((a, b) => b.similitud - a.similitud)
+  if (!vivas.length) {
+    const mejor = cs[0]
+    return {
+      veredicto: 'AMBIGUO', vetadas: cs.map((c) => ({ nombre: c.nombre, vetos: c.vetos })),
+      porQue: `la única parecida era «${mejor.nombre}» y no corresponde: ${mejor.vetos[0]}`,
+    }
+  }
+
+  for (const [comparar, origen, como] of [[porLetra, 'nombre-exacto', 'exactamente'],
+    [porPalabra, 'nombre-exacto', 'palabra por palabra']]) {
+    const { unica, ambiguas } = unicaIdentica(vivas, contexto.nombre, comparar)
+    if (ambiguas) return { veredicto: 'AMBIGUO', porQue: `${ambiguas.length} tipos distintos se llaman igual` }
+    if (unica) {
+      return {
+        veredicto: 'EXACTO', tareaTipoId: unica.tareaTipoId, confianza: 'EXACTO', origen,
+        porQue: `el nombre coincide ${como} con «${unica.nombre}»`,
+        evidencia: { similitud: unica.similitud, candidata: unica.nombre, corroboraciones: unica.corroboraciones },
+      }
+    }
+  }
+
+  return decidirEntreVivas(vivas)
 }
 
 /** El veredicto del modelo, convertido en decisión. Sólo puede elegir entre las candidatas que se

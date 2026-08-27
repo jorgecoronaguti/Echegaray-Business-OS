@@ -141,6 +141,9 @@ export async function observaciones({ query }, { obras = null } = {}) {
     `select * from public.xsas_actividad
       where obra_id <> all($1::text[])
         and ($2::text[] is null or obra_id = any($2::text[]))
+        -- SÓLO TRABAJO. Un encabezado de frente hereda el avance y las fechas de sus hijas: su
+        -- rendimiento sería el de todas juntas atribuido a una tarea sola.
+        and es_trabajo
         and (hh_real is not null or cantidad_real is not null or avance_pct is not null)`,
     [OBRAS_NO_REALES, obras])
   return rows.map(analizarFila)
@@ -333,6 +336,10 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
        from public.xsas_actividad
       where obra_id <> all($1::text[])
         and ($2::text[] is null or obra_id = any($2::text[]))
+        -- SÓLO TRABAJO. Una fila que agrupa a otras tiene por fechas la envolvente de sus hijas:
+        -- guardar eso como la duración de una tarea mete en la Base Maestra un número que no
+        -- corresponde a ningún trabajo. Dos de los 117 hechos venían de ahí.
+        and es_trabajo
         -- UN PLAN DE CERO DÍAS NO ES UN PLAN. Son hitos del cronograma importado, no trabajo
         -- planificado: contra cero no hay desvío que calcular y la fila entraría con el número
         -- vacío. Se dejan afuera en vez de guardarlas rotas.
@@ -343,9 +350,22 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
   const { rows: [d] } = await query(
     `select count(*)::int n from public.xsas_actividad
       where obra_id <> all($1::text[]) and ($2::text[] is null or obra_id = any($2::text[]))
-        and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
+        and es_trabajo and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
     [OBRAS_NO_REALES, obras])
   const descartadas = d?.n ?? 0
+
+  // ═══ LO QUE DEJÓ DE CALIFICAR SE RETIRA, NO SE QUEDA ═══
+  //
+  // Una actividad que hoy es una tarea puede pasar a agrupar a otras mañana, y ahí sus fechas dejan
+  // de ser las de un trabajo y pasan a ser la envolvente de sus hijas. El aprendizaje es idempotente
+  // por actividad: sin este paso, la fila vieja se queda para siempre con el número que ya no
+  // corresponde — la capa fósil de siempre. Se marca DESCARTADO en vez de borrar: el hecho de que
+  // alguna vez se midió es parte de la historia, y todos los consumidores ya filtran ese estado.
+  const retiradas = dry ? { rowCount: 0 } : await query(
+    `update public.duracion_historica d set estado = 'DESCARTADO', actualizado_en = now()
+       where d.estado <> 'DESCARTADO'
+         and exists (select 1 from public.xsas_actividad v
+                      where v.actividad_id = d.actividad_id and v.es_trabajo is false)`)
 
   // Lo ya conocido de esas tareas, para decidir si un caso confirma a otro.
   const tipos = [...new Set(rows.map((r) => r.tarea_tipo_id).filter(Boolean))]
@@ -413,6 +433,9 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
     // cero no es un plan— pero descartarlas en silencio hace que el total publicado parezca la
     // totalidad de lo que había.
     descartadasSinPlan: descartadas,
+    // Las que se retiraron porque la actividad dejó de ser trabajo. Se cuenta: un retiro silencioso
+    // hace que el total publicado parezca que siempre fue ése.
+    retiradasPorNoSerTrabajo: retiradas.rowCount ?? 0,
     filas: salida,
   }
 }
