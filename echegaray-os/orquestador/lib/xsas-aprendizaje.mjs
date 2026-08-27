@@ -40,7 +40,39 @@ export function diasEntre(desde, hasta) {
  *  · el costo por actividad NO EXISTE hoy: `costos_reales` se imputa por obra. Sale `null`, y el
  *    faltante queda escrito en la comparación.
  */
+/**
+ * LA CANTIDAD EJECUTADA QUE NO SE CARGÓ PERO SE PUEDE DEMOSTRAR.
+ *
+ * Una actividad medida por partes no registra metros: registra porcentaje. Cuando el sistema la da
+ * por TERMINADA y la actividad tiene cantidad objetivo, la cantidad ejecutada es esa: terminar
+ * significa haber hecho lo que había que hacer. No es una estimación, es lo que «terminada» quiere
+ * decir — y por eso queda marcado en la evidencia como derivado, con de dónde salió.
+ *
+ * Fuera de ese caso no se deduce nada: un 60% de avance NO son 60% de los metros salvo que alguien
+ * lo haya medido, y multiplicar el objetivo por el porcentaje sería inventar la medición.
+ */
+export function cantidadEjecutadaDe(f) {
+  const cargada = num(f.cantidad_real)
+  if (cargada !== null) return { cantidad: cargada, derivada: false }
+  const objetivo = num(f.plan_cantidad)
+  if (f.terminada === true && objetivo !== null) {
+    return { cantidad: objetivo, derivada: true, porQue: 'actividad terminada: lo ejecutado es la cantidad objetivo' }
+  }
+  return { cantidad: null, derivada: false }
+}
+
+/**
+ * DE UNA FILA DE `xsas_actividad` A UNA COMPARACIÓN. Puro: se le da la fila, devuelve el análisis.
+ *
+ * Todo lo real —avance, HH, fechas, cierre— viene YA RESUELTO por la vista canónica. Este módulo no
+ * vuelve a decidir ninguna de esas cosas: el día que lo hizo publicó «ninguna actividad tiene fecha
+ * real» mientras el sistema tenía 152.
+ *
+ * Lo único que no está y no se inventa: el costo por actividad. `costos_reales` se imputa por obra,
+ * así que sale `null` y el faltante queda escrito en la comparación.
+ */
 export function analizarFila(f) {
+  const ejecutada = cantidadEjecutadaDe(f)
   const plan = {
     unidad: f.unidad,
     cantidad: f.plan_cantidad,
@@ -50,12 +82,13 @@ export function analizarFila(f) {
     costo: null,
   }
   const real = {
-    cantidad: f.cantidad_real,
-    avancePct: num(f.avance_medido) ?? num(f.avance_declarado),
+    cantidad: ejecutada.cantidad,
+    avancePct: f.avance_pct,
     hh: f.hh_real,
     hhImproductivas: f.hh_improductivas,
-    dias: num(f.dias_real) ?? diasEntre(f.primera_hh, f.ultima_hh),
-    dotacion: num(f.personas_con_hh) || num(f.dotacion_real),
+    dias: f.dias_real,
+    dotacion: f.dotacion_real,
+    terminada: f.terminada ?? null,
     costo: null,
   }
   const c = compararPlanReal(plan, real)
@@ -77,19 +110,34 @@ export function analizarFila(f) {
     hsUnitarias: c.real.hsUnitarias,
     hsUnitariasPlan: c.plan.hsUnitarias ?? hsUnitariasPresupuesto,
     hsUnitariasPresupuesto,
-    partes: f.partes,
-    conEvidencia: f.con_evidencia,
-    ultimoHecho: [f.ultima_ejecucion, f.ultima_hh].filter(Boolean).sort().at(-1) ?? null,
+    terminada: f.terminada ?? null,
+    origenAvance: f.origen_avance ?? null,
+    cantidadDerivada: ejecutada.derivada,
+    porQueLaCantidad: ejecutada.porQue ?? null,
+    partes: f.n_partes,
+    inicioReal: f.inicio_real ?? null,
+    finReal: f.fin_real ?? null,
+    origenInicioReal: f.origen_inicio_real ?? null,
+    origenFinReal: f.origen_fin_real ?? null,
+    ultimoHecho: f.fin_real ?? f.ultimo_parte ?? null,
+    // POR QUÉ y CON QUIÉN. Un rendimiento sin la causa del desvío y sin la composición de la
+    // cuadrilla es un número que no se puede discutir ni comparar con otra obra.
+    causas: f.causas ?? null,
+    composicion: f.composicion ?? null,
+    cuadrillaId: f.cuadrilla_id ?? null,
   }
 }
 
 /** Las observaciones de todas las actividades reales, ya comparadas. Sólo lee. */
-export async function observaciones({ query }) {
+export async function observaciones({ query }, { obras = null } = {}) {
+  // `obras` acota la corrida a un conjunto — lo usan las pruebas para trabajar sobre su obra de
+  // fixture sin tocar el resto. En producción va en null y se miran todas.
   const { rows } = await query(
     `select * from public.xsas_actividad
       where obra_id <> all($1::text[])
-        and (hh_real is not null or cantidad_real is not null or avance_declarado is not null)`,
-    [OBRAS_NO_REALES])
+        and ($2::text[] is null or obra_id = any($2::text[]))
+        and (hh_real is not null or cantidad_real is not null or avance_pct is not null)`,
+    [OBRAS_NO_REALES, obras])
   return rows.map(analizarFila)
 }
 
@@ -103,8 +151,8 @@ export async function observaciones({ query }) {
  * Idempotente por actividad: correr esto tres veces en un día no crea tres casos. Lo que cambia es
  * el hecho observado, no el reloj.
  */
-export async function aprender({ query }, { dry = false } = {}) {
-  const obs = await observaciones({ query })
+export async function aprender({ query }, { dry = false, obras = null } = {}) {
+  const obs = await observaciones({ query }, { obras })
   const aprendibles = obs.filter((o) => o.aprendible && o.tareaTipoId)
   const sinTipo = obs.filter((o) => o.aprendible && !o.tareaTipoId)
 
@@ -128,8 +176,18 @@ export async function aprender({ query }, { dry = false } = {}) {
       actividad_id: o.actividadId,
       obra: o.obraId,
       partes_de_ejecucion: o.partes,
-      partes_con_evidencia: o.conEvidencia,
+      origen_del_avance: o.origenAvance,
+      terminada: o.terminada,
+      causas: o.causas,
+      inicio_real: o.inicioReal,
+      fin_real: o.finReal,
+      origen_inicio_real: o.origenInicioReal,
+      origen_fin_real: o.origenFinReal,
       cantidad_real: o.real.cantidad,
+      // Un número derivado dice que lo es y por qué. Sin esto no hay forma de distinguir después
+      // una cantidad medida de una deducida del cierre.
+      cantidad_derivada: o.cantidadDerivada,
+      cantidad_derivada_porque: o.porQueLaCantidad,
       hh_real: o.real.hh,
       avance_pct: o.avancePct,
       hs_unitarias_plan: o.hsUnitariasPlan,
@@ -155,8 +213,8 @@ export async function aprender({ query }, { dry = false } = {}) {
          (tarea_tipo_id, analisis_id, obra_id, actividad_id, unidad, cantidad, hh_reales,
           hh_improductivas, hs_unitarias_plan, desvio_hs_unitarias_pct, avance_pct,
           dotacion, dias, fecha_desde, fecha_hasta, fuente, evidencia, estado, confianza,
-          veces_confirmado, clave, actualizado_en)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'ejecucion-real',$16,$17,$18,$19,$20, now())
+          veces_confirmado, clave, causas, composicion, cuadrilla_id, actualizado_en)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'ejecucion-real',$16,$17,$18,$19,$20,$21,$22,$23, now())
        -- El índice único es PARCIAL (where actividad_id is not null): sin repetir el predicado,
        -- Postgres no puede elegirlo y el insert falla con «no unique index matching».
        on conflict (actividad_id) where actividad_id is not null do update set
@@ -170,13 +228,21 @@ export async function aprender({ query }, { dry = false } = {}) {
          hs_unitarias_plan = excluded.hs_unitarias_plan,
          desvio_hs_unitarias_pct = excluded.desvio_hs_unitarias_pct,
          avance_pct = excluded.avance_pct, dotacion = excluded.dotacion, dias = excluded.dias,
-         fecha_hasta = excluded.fecha_hasta, evidencia = excluded.evidencia,
+         fecha_desde = excluded.fecha_desde, fecha_hasta = excluded.fecha_hasta,
+         evidencia = excluded.evidencia,
          estado = excluded.estado, confianza = excluded.confianza,
-         veces_confirmado = excluded.veces_confirmado, clave = excluded.clave, actualizado_en = now()`,
+         veces_confirmado = excluded.veces_confirmado, clave = excluded.clave,
+         causas = excluded.causas, composicion = excluded.composicion,
+         cuadrilla_id = excluded.cuadrilla_id, actualizado_en = now()`,
       [o.tareaTipoId, o.analisisId, o.obraId, o.actividadId, o.unidad, o.real.cantidad, o.real.hh,
         o.real.hhImproductivas, o.hsUnitariasPlan, o.derivado.desvioProductividadPct,
-        o.avancePct, o.real.dotacion, o.real.dias, null, o.ultimoHecho,
-        JSON.stringify(evidencia), veredicto.estado, veredicto.confianza, veredicto.vecesConfirmado, clave])
+        // La ventana del hecho: desde la primera evidencia hasta la última. Las dos salen de la
+        // vista canónica, no de la fecha en que corrió el ciclo.
+        o.avancePct, o.real.dotacion, o.real.dias, o.inicioReal, o.ultimoHecho,
+        JSON.stringify(evidencia), veredicto.estado, veredicto.confianza, veredicto.vecesConfirmado, clave,
+        o.causas ? JSON.stringify(o.causas) : null,
+        o.composicion ? JSON.stringify(o.composicion) : null,
+        o.cuadrillaId])
 
     // ── LA FRASE ──
     //

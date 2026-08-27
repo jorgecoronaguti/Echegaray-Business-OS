@@ -239,15 +239,36 @@ export async function estadoDeXsas() {
       select count(*)::int obras,
              count(*) filter (where estado = 'activa')::int activas,
              count(distinct cliente_id)::int clientes,
-             count(*) filter (where avance_ponderado_pct is not null)::int con_avance
+             count(*) filter (where avance_ponderado_pct is not null)::int con_avance_ponderado,
+             count(*) filter (where avance_simple_pct is not null)::int con_avance
         from public.xsas_obra`)
     const e2 = await query(`
       select count(*)::int actividades,
              count(*) filter (where plan_hh is not null or plan_cantidad is not null)::int con_plan,
              count(*) filter (where hh_real is not null or cantidad_real is not null)::int con_real,
              count(*) filter (where (plan_hh is not null and hh_real is not null))::int comparables,
-             count(*) filter (where tarea_tipo_id is not null)::int con_tarea_tipo
+             count(*) filter (where tarea_tipo_id is not null)::int con_tarea_tipo,
+             -- Lo que el circuito operativo SÍ produce: fechas reales derivadas de la evidencia y
+             -- cierres. Se publica porque el día que se leyó mal se concluyó que no existía.
+             count(inicio_real)::int con_inicio_real,
+             count(fin_real)::int con_fin_real,
+             count(*) filter (where terminada)::int terminadas
         from public.xsas_actividad`)
+    // ═══ QUÉ LE FALTA A CADA ACTIVIDAD PARA PODER ENSEÑAR ═══
+    //
+    // La pregunta que el dueño necesita para actuar no es «cuántas aprenden» sino «qué las frena».
+    // Sin esto, un 2 de 279 se lee como un defecto del OS cuando en realidad son obras que entraron
+    // como cronograma —sin presupuesto de HH detrás— y horas que se imputan por jornal de obra.
+    const e4 = await query(`
+      select case
+        when plan_hh is null  then 'sin HH planificadas'
+        when hh_real is null  then 'sin horas imputadas a la actividad'
+        when cantidad_real is null and not terminada then 'sin cantidad ejecutada ni cierre'
+        when tarea_tipo_id is null then 'sin tipo de tarea: no se puede reutilizar'
+        else 'aprende' end as freno,
+       count(*)::int n
+        from public.xsas_actividad where obra_id <> 'prueba-e2e' group by 1 order by 2 desc`)
+
     // El aprendizaje de obra, por estado. `REFERENCIA` es la tabla con la que se venía cotizando;
     // el resto es lo que la ejecución enseñó.
     const e3 = await query(`
@@ -256,6 +277,7 @@ export async function estadoDeXsas() {
       ...e1.rows[0],
       ...e2.rows[0],
       rendimientos: Object.fromEntries(e3.rows.map((r) => [r.estado, r.n])),
+      frenos: e4.rows.map((r) => ({ freno: r.freno, actividades: r.n })),
       circuitos: await circuitosDeAprendizaje(query),
     }
 

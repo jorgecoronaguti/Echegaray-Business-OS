@@ -22,6 +22,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from './db.mjs'
+import { aprender } from './xsas-aprendizaje.mjs'
 import { censoDeTablas, sembrarCasoControlado, TABLAS_TOCADAS, verificarCircuitoAplicado }
   from './caso-controlado-circuito.apoyo.mjs'
 
@@ -328,8 +329,17 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
       assert.equal(n(v.hh_improductivas), 15)
       assert.equal(n(v.hs_unitarias_observado), 2.833, '170 h productivas / 60 m²')
 
-      const cuantas = await uno(`select public.capturar_rendimientos($1) as n`, [OBRA])
-      assert.equal(n(cuantas.n), 1, 'capturó el paso técnico o los frentes sin ejecutar')
+      // Desde el 27/08/2026 la captura la hace el ciclo de XSAS; `capturar_rendimientos` está
+      // retirada para que no queden dos sistemas aprendiendo con reglas distintas. El savepoint es
+      // obligatorio: una excepción de Postgres aborta la transacción entera.
+      await c.query('savepoint sp_retirada')
+      await assert.rejects(
+        () => c.query(`select public.capturar_rendimientos($1)`, [OBRA]),
+        /retirado/, 'la función vieja sigue pudiendo escribir')
+      await c.query('rollback to savepoint sp_retirada')
+
+      const salida = await aprender({ query: (sql, params) => c.query(sql, params) }, { obras: [OBRA] })
+      assert.equal(salida.aprendidas, 1, 'capturó el paso técnico o los frentes sin ejecutar')
 
       const r = await uno(`select * from rendimiento_historico where actividad_id=$1`, [ejecA.id])
       // EL DEFECTO QUE ESTO MIDE: con las 185 horas totales daría 3,083 y la falta de material se
@@ -338,13 +348,18 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
       assert.equal(n(r.hh_reales), 185)
       assert.equal(n(r.hh_improductivas), 15)
       assert.deepEqual(r.causas, { falta_material: 1 }, 'la causa no viajó con el aprendizaje')
-      assert.equal(iso(r.fecha_desde), '2026-09-02', 'la ventana no salió de los partes')
-      assert.equal(iso(r.fecha_hasta), '2026-09-08')
-      const otra = await uno(`select public.capturar_rendimientos($1) as n`, [OBRA])
-      assert.equal(n(otra.n), 0, 'una segunda corrida duplicó la muestra')
+      // LA VENTANA SALE DE LA EVIDENCIA YA OCURRIDA. `actividad_fechas` sólo mira partes e
+      // imputaciones con `fecha <= current_date`: un parte fechado la semana que viene no es un
+      // hecho todavía. Este caso siembra septiembre de 2026, así que hoy no hay inicio real —y eso
+      // es lo correcto, no un dato perdido: cuando esas fechas lleguen, la ventana aparece sola.
+      assert.equal(r.fecha_desde, null, 'tomó como ocurrida una evidencia con fecha futura')
+      assert.equal(iso(r.fecha_hasta), '2026-09-08', 'el último parte sí queda como corte del hecho')
+      await aprender({ query: (sql, params) => c.query(sql, params) }, { obras: [OBRA] })
+      const otra = await uno(`select count(*)::int n from rendimiento_historico where actividad_id=$1`, [ejecA.id])
+      assert.equal(n(otra.n), 1, 'una segunda corrida duplicó la muestra')
       ev('captura', { cantidad: n(r.cantidad), hh_reales: n(r.hh_reales), hh_improductivas: n(r.hh_improductivas),
         hs_unitarias_aprendidas: n(r.hs_unitarias), causas: r.causas,
-        desde: iso(r.fecha_desde), hasta: iso(r.fecha_hasta), segunda_corrida: n(otra.n) })
+        desde: r.fecha_desde, hasta: iso(r.fecha_hasta), filas_tras_la_segunda_corrida: n(otra.n) })
     })
 
     await t.test('9 · RECOMENDACIÓN — con dos obras hay recomendación, y dice con qué evidencia', async () => {

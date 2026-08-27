@@ -20,6 +20,12 @@ if (process.argv.includes('--json')) {
   const marca = { [NIVEL.FULL]: '✔', [NIVEL.DEGRADED]: '▲', [NIVEL.NO_LLM]: '⊘' }[e.nivel]
   console.log(`\n${marca} XSAS · ${e.nivel} — la inteligencia del ${e.de}\n`)
 
+  // EL MOTIVO SE IMPRIME SIEMPRE QUE EXISTA, no sólo cuando se cayó el bloque de agentes. Hoy
+  // mismo una consulta rota dejó el cuadro en DEGRADED sin una sola línea que dijera por qué: hubo
+  // que pedir el JSON para enterarse. Un estado degradado que no dice su causa obliga a investigar
+  // lo que ya se sabe.
+  if (e.noSePudoLeer) console.log(`  ▲ ALGO NO SE PUDO LEER  ${e.noSePudoLeer}\n`)
+
   console.log(`  MOTOR       ${e.motor.disponible ? 'disponible' : `CAÍDO desde ${e.motor.sinCreditoDesde ?? 'hace rato'}`}`)
   console.log(`              puerta única: ${e.motor.puerta}`)
   console.log(`              simple→${e.motor.porCapacidad.simple} · normal→${e.motor.porCapacidad.normal} · complex→${e.motor.porCapacidad.complex}`)
@@ -38,10 +44,15 @@ if (process.argv.includes('--json')) {
     const m = e.empresa
     console.log(`\n  ECHEGARAY   ${m.obras} obras (${m.activas} activas) · ${m.clientes} clientes · ${m.con_avance} con avance medido`)
     console.log(`              ${m.actividades} actividades · ${m.con_plan} con plan · ${m.con_real} con real · ${m.comparables} comparables plan↔real`)
+    console.log(`              ${m.con_inicio_real} con inicio real · ${m.con_fin_real} con fin real · ${m.terminadas} terminadas (derivado de la evidencia)`)
     const r = m.rendimientos ?? {}
     console.log(`              rendimientos: ${r.REFERENCIA ?? 0} de referencia · ${r.CANDIDATO ?? 0} candidatos · ${r.VALIDADO ?? 0} validados`)
     if (!r.VALIDADO) {
       console.log('                 — validar pide DOS obras distintas con la misma tarea. Todavía no pasó.')
+    }
+    for (const f of m.frenos ?? []) {
+      if (f.freno === 'aprende') continue
+      console.log(`              ${String(f.actividades).padStart(4)} actividades no enseñan: ${f.freno}`)
     }
     for (const c of m.circuitos ?? []) {
       const cuenta = c.hechos == null ? `no se pudo leer (${c.noSePudoLeer})` : `${c.hechos} hechos`

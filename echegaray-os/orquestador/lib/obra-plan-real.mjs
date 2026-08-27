@@ -72,10 +72,17 @@ export function avanceDe(plan, real) {
  */
 export const MINIMO_APRENDIBLE = 20
 
-export function confianzaDe({ avance, cantidadReal, hhReal }) {
+export function confianzaDe({ avance, cantidadReal, hhReal, terminada }) {
   const completo = num(cantidadReal) !== null && num(hhReal) !== null
   const a = num(avance)
-  if (!completo || a === null) return 'baja'
+  if (!completo) return 'baja'
+  // TERMINADA LO DICE EL SISTEMA, NO EL PORCENTAJE. `estado_fecha = 'terminada'` sale de la vista
+  // canónica —`estado = 'hecha'` O avance ≥ 100— y es la misma condición con la que la app cierra
+  // una actividad. Un 96% no es el final de nada; una actividad marcada hecha al 100% sí lo es.
+  if (terminada === true) return 'alta'
+  if (a === null) return 'baja'
+  if (terminada === false) return a >= 50 ? 'media' : 'baja'
+  // Sin el dato de cierre —un llamador viejo, un test— se cae al criterio anterior.
   if (a >= 95) return 'alta'
   if (a >= 50) return 'media'
   return 'baja'
@@ -97,6 +104,7 @@ export function compararPlanReal(plan = {}, real = {}) {
   const hhPlan = num(plan.hh)
   const hhReal = num(real.hh)
   const avance = avanceDe(plan, real)
+  const terminada = real.terminada ?? null
 
   // ═══ HORAS POR UNIDAD — Y CUÁLES HORAS ═══
   //
@@ -137,6 +145,7 @@ export function compararPlanReal(plan = {}, real = {}) {
       dotacion: num(real.dotacion), costo: num(real.costo),
       hhImproductivas: hhImprod,
       hhProductivas,
+      terminada,
       hsUnitarias: rendReal,
     },
     derivado: {
@@ -148,7 +157,7 @@ export function compararPlanReal(plan = {}, real = {}) {
       desvioDotacionPct: desvioPct(real.dotacion, plan.dotacion),
       desvioCostoPct: desvioPct(real.costo, plan.costo),
     },
-    confianza: confianzaDe({ avance, cantidadReal: cantReal, hhReal }),
+    confianza: confianzaDe({ avance, cantidadReal: cantReal, hhReal, terminada: real.terminada }),
     faltantes,
     // Un rendimiento sólo es APRENDIBLE si existe, y si la actividad avanzó lo suficiente como para
     // que el número signifique algo. Lo demás se observa igual, pero no enseña nada todavía.

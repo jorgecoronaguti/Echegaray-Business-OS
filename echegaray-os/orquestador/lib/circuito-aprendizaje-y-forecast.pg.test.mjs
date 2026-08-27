@@ -19,6 +19,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from './db.mjs'
 import { aplicarMigracionesDelCircuito } from './circuito-productivo-migraciones.mjs'
+import { aprender } from './xsas-aprendizaje.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -78,22 +79,40 @@ test('captura, recomendación aceptada y forecast', { skip: !hayBase }, async (t
       assert.equal(v.fecha_desde.toISOString().slice(0, 10), '2026-06-01')
       assert.equal(v.fecha_hasta.toISOString().slice(0, 10), '2026-06-10')
 
-      const capturadas = await uno(`select public.capturar_rendimientos($1) as n`, [OBRA])
-      assert.equal(n(capturadas.n), 1)
+      // ═══ QUIÉN CAPTURA, DESDE EL 27/08/2026 ═══
+      //
+      // `capturar_rendimientos()` está retirada: aprendía sólo al 100% y escribía sin estado, sin
+      // confianza y sin evidencia. Ahora captura el ciclo de XSAS, que hace lo mismo y además dice
+      // cuánto vale lo que aprendió. Dos sistemas aprendiendo rendimientos con reglas distintas era
+      // el problema; esto lo prueba resuelto por los dos lados.
+      // El savepoint es obligatorio: una excepción de Postgres aborta la transacción entera y todo
+      // lo que viene después falla con «current transaction is aborted».
+      await c.query('savepoint sp_retirada')
+      await assert.rejects(
+        () => c.query(`select public.capturar_rendimientos($1)`, [OBRA]),
+        /retirado/, 'la función vieja sigue pudiendo escribir')
+      await c.query('rollback to savepoint sp_retirada')
+
+      // `aprender` espera el contrato de `db.mjs` —un objeto con `rows`—, no el helper del test.
+      const salida = await aprender({ query: (sql, params) => c.query(sql, params) }, { obras: [OBRA] })
+      assert.equal(salida.aprendidas, 1)
 
       const r = await uno(`select * from rendimiento_historico where actividad_id=$1`, [act.id])
-      // EL DEFECTO: con el total de horas daría 300/120 = 2,5 y el estándar se llevaría la avería
-      // del equipo puesta.
+      // EL DEFECTO QUE ESTE NÚMERO CUIDA: con el total de horas daría 300/120 = 2,5 y el estándar se
+      // llevaría la avería del equipo puesta.
       assert.equal(n(r.hs_unitarias), 2.083, 'el rendimiento aprendido incluye las horas improductivas')
       assert.equal(n(r.hh_reales), 300)
       assert.equal(n(r.hh_improductivas), 50)
       assert.deepEqual(r.causas, { espera_equipo: 1 }, 'la causa no viajó con el aprendizaje')
       assert.equal(r.fecha_desde.toISOString().slice(0, 10), '2026-06-01')
       assert.equal(r.fecha_hasta.toISOString().slice(0, 10), '2026-06-10')
+      assert.equal(r.estado, 'CANDIDATO', 'un caso único no puede entrar como verdad establecida')
+      assert.equal(r.confianza, 'alta', 'terminada y con los dos números: la medición vale')
 
-      // Idempotente: correrlo de nuevo no infla la muestra.
-      const otra = await uno(`select public.capturar_rendimientos($1) as n`, [OBRA])
-      assert.equal(n(otra.n), 0, 'una segunda corrida duplicó la muestra')
+      // Idempotente: correrlo de nuevo no infla la muestra ni crea un caso nuevo.
+      await aprender({ query: (sql, params) => c.query(sql, params) }, { obras: [OBRA] })
+      const cuantas = await uno(`select count(*)::int n from rendimiento_historico where actividad_id=$1`, [act.id])
+      assert.equal(n(cuantas.n), 1, 'una segunda corrida duplicó la muestra')
     })
 
     await t.test('T4800 · con UNA sola obra no hay recomendación; con dos, sí', async () => {
