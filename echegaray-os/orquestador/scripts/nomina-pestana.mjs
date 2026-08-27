@@ -36,6 +36,7 @@ import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fcl
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { convenioDe } from '../lib/uocra-paritaria.mjs'
+import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
@@ -93,33 +94,65 @@ function personasDe(grid, sector, col) {
  * manda su número. Cuando la celda no trae total se cae a `horas × $/hora`, que es la misma cuenta
  * que hace la planilla.
  */
-function quincenaEnCurso(grid, bloques, clave) {
+function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO } = {}) {
   const b = bloques[bloques.length - 1]
   const out = new Map()
-  if (!b) return { porClave: out, desde: null, hasta: null }
+  if (!b) return { porClave: out, desde: null, hasta: null, horasPendientes: 0, diasPendientes: [] }
   const fechas = grid[b.filaFecha - 1] ?? []
+
+  // ═══ LOS DÍAS QUE TODAVÍA NO SE CARGARON SE COMPLETAN CON LA JORNADA ═══
+  //
+  // El dueño lo pidió dos veces: *"se completara los dias q faltaban en cantidad de hs como 8hs los
+  // viernes y 9 los otros"*. Sin esto el cuadro muestra lo que hay CARGADO —77 h de una quincena de
+  // 103— y contesta la pregunta equivocada: él no necesita saber cuánto lleva devengado a mitad de
+  // la quincena, necesita saber cuánto va a firmar el día de pago.
+  //
+  // SÓLO SE COMPLETAN LOS DÍAS DE HOY EN ADELANTE. Un día pasado sin horas para nadie es un feriado
+  // o un día de lluvia, y rellenarlo inventaría jornadas que no ocurrieron; un día futuro sin horas
+  // es, simplemente, un día que todavía no llegó. La jornada es la declarada: 9 h de lunes a jueves,
+  // 8 h el viernes.
   const dias = []
+  const pendientes = []
+  const corte = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   for (let c = 5; c <= 20; c++) {
     const d = diaDeCelda(fechas[c])
-    if (d) dias.push(`${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`)
+    if (!d) continue
+    dias.push(`${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`)
+    let cargado = false
+    for (let r = b.inicio; r <= b.fin && !cargado; r++) if (Number((grid[r - 1] ?? [])[c]) > 0) cargado = true
+    const fechaDia = new Date(anio, d.mes - 1, d.dia)
+    // EL SÁBADO NO SE COMPLETA. Las 4 h del sábado son un SUPUESTO declarado en `jornada-uocra.mjs`,
+    // no la jornada normal: rellenarlo sumaba 4 h por persona que nadie va a trabajar. El dueño
+    // contó los días que faltaban a mano —27, 28 y 31 = 26 h— y ahí está la diferencia.
+    const esFinDeSemana = fechaDia.getDay() === 0 || fechaDia.getDay() === 6
+    if (!cargado && !esFinDeSemana && fechaDia >= corte) {
+      pendientes.push({ etiqueta: `${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`, horas: HORAS_POR_DIA_DE_SEMANA[fechaDia.getDay()] ?? 0 })
+    }
   }
+  const horasPendientes = pendientes.reduce((a, x) => a + x.horas, 0)
+
   for (let r = b.inicio; r <= b.fin; r++) {
     const f = grid[r - 1] ?? []
     const nombre = String(f[1] ?? '').trim()
     if (!nombre) continue
-    const horas = Number(f[21]) || 0
+    const cargadas = Number(f[21]) || 0
     const jornal = Number(f[22]) || 0
+    const horas = cargadas + horasPendientes
     out.set(clave(nombre), {
       nombre,
       categoria: String(f[3] ?? '').trim(),
+      cargadas,
+      pendientes: horasPendientes,
       horas,
       jornal,
       banco: Number(f[23]) || 0,
       adelanto: Number(f[24]) || 0,
-      total: Number(f[26]) || horas * jornal,
+      // El total de la planilla vale para las horas CARGADAS; la quincena completa se valoriza acá.
+      totalCargado: Number(f[26]) || cargadas * jornal,
+      total: horas * jornal,
     })
   }
-  return { porClave: out, desde: dias[0] ?? null, hasta: dias[dias.length - 1] ?? null }
+  return { porClave: out, desde: dias[0] ?? null, hasta: dias[dias.length - 1] ?? null, horasPendientes, diasPendientes: pendientes }
 }
 
 /** El costo de desvincular a UNA persona, con el mismo núcleo del bloque 6 de Jornales. */
@@ -161,10 +194,13 @@ function grilla(activos, { hoy, quincena, escala }) {
   // más, y es información.
   fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
   fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. Piso de convenio: ${escala.rotulo ?? 'sin escala'}.`)
-  fila('Persona', 'Cat.', 'Convenio', 'Horas', 'Adelanto',
+  fila(quincena.diasPendientes.length
+    ? `Horas = lo cargado + los días que faltan a jornada completa (9 h L-J, 8 h viernes): ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h.`
+    : 'La quincena está cargada entera: no se completó ninguna jornada.')
+  fila('Persona', 'Cat.', 'Convenio', 'Hs cargadas', 'Hs a completar', 'Horas', 'Adelanto',
     '$/h HOY', 'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
     '$/h PISO', 'Banco PISO', 'Efectivo PISO', 'TOTAL PISO', 'Diferencia')
-  const T = { horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0 }
+  const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0, totalCargado: 0 }
   const sinConvenio = []
   for (const p of activos) {
     const q = quincena.porClave.get(p.clave)
@@ -180,12 +216,13 @@ function grilla(activos, { hoy, quincena, escala }) {
     const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
     const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null
 
-    T.horas += q.horas; T.adelanto += q.adelanto
+    T.cargadas += q.cargadas; T.horas += q.horas; T.adelanto += q.adelanto; T.totalCargado += q.totalCargado
     T.bancoHoy += hoyR.banco; T.efHoy += hoyR.efectivo; T.totHoy += hoyR.total
     if (pisoR) { T.bancoPiso += pisoR.banco; T.efPiso += pisoR.efectivo; T.totPiso += pisoR.total; T.sube += pisoR.total - hoyR.total }
 
     fila(p.nombre, q.categoria || SIN_DATO, conv ?? SIN_DATO,
-      Math.round(q.horas), q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
+      Math.round(q.cargadas), q.pendientes ? Math.round(q.pendientes) : SIN_DATO, Math.round(q.horas),
+      q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
       Math.round(q.jornal), Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
       jornalPiso != null ? Math.round(jornalPiso) : SIN_DATO,
       pisoR ? Math.round(pisoR.banco) : SIN_DATO,
@@ -194,10 +231,16 @@ function grilla(activos, { hoy, quincena, escala }) {
       pisoR ? (Math.round(pisoR.total - hoyR.total) || SIN_DATO) : SIN_DATO)
   }
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave)).length} persona(s)`), '', '',
-    Math.round(T.horas), Math.round(T.adelanto),
+    Math.round(T.cargadas), Math.round(T.horas - T.cargadas), Math.round(T.horas), Math.round(T.adelanto),
     '', Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
     '', Math.round(T.bancoPiso), Math.round(T.efPiso), Math.round(T.totPiso), Math.round(T.sube))
   fila(sub(`Llevar a todos al piso de convenio cuesta ${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena.`))
+  // ═══ POR QUÉ ESTE TOTAL NO ES EL DE «JORNALES POR QUINCENA» ═══
+  //
+  // Aquella pestaña publica la quincena con las horas CARGADAS —es lo correcto para conciliar contra
+  // la planilla— y ésta la publica COMPLETA, que es lo que se va a firmar el día de pago. Los dos
+  // números son ciertos y miden cosas distintas; el que se calla es el que después no cierra.
+  fila(sub(`«Jornales por Quincena» publica ${Math.round(T.totalCargado).toLocaleString('es-AR')} para esta quincena: son las ${Math.round(T.cargadas)} h cargadas. Acá se completan las ${Math.round(T.horas - T.cargadas)} h que faltan.`))
   if (sinConvenio.length) fila(sub(`${sinConvenio.length} sin equivalencia de convenio declarada: ${sinConvenio.join(' · ')}. No se les mide el piso.`))
   fila()
 
@@ -335,7 +378,7 @@ async function main() {
   // cuánto hay que pagar esta quincena.
   const activos = [...a.personas, ...b.personas].filter((p) => p.activo)
     .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'))
-  const quincena = quincenaEnCurso(obrerosNum ?? [], a.bloques, claveNombre)
+  const quincena = quincenaEnCurso(obrerosNum ?? [], a.bloques, claveNombre, { hoy })
 
   // LA ESCALA DEL CONVENIO, del período de la quincena. Si no hay escalón para ese mes NO se estira
   // el anterior: la columna del piso queda vacía y la pestaña lo dice.
