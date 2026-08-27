@@ -16,6 +16,15 @@ import { execSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// ═══ ESTE CONTROL NO ENSUCIA LA CONTABILIDAD QUE OTROS LEEN (26/08/2026) ═══
+//
+// Los escenarios de degradación usan dobles que devuelven el error que se quiere probar. Está bien
+// —no gasta un token—, pero esas llamadas simuladas se guardaban en `orq.chat_cost` junto a las de
+// verdad: cada corrida agregaba cuatro fallos y el reporte de costos terminaba diciendo que el
+// ruteo del Director falla 11 de 12 veces. Una afirmación falsa producida por el propio control.
+// Medido: 14 fallos antes de correrlo, 18 después.
+process.env.ORQ_IA_SIN_REGISTRO = '1'
+
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const resultados = []
 const anotar = (ok, titulo, detalle) => { resultados.push({ ok, titulo, detalle }); return ok }
@@ -58,14 +67,27 @@ function codigo(ruta) {
 }
 
 // ── 2 · UNA SOLA PUERTA HACIA EL PROVEEDOR ───────────────────────────────────────────────────
+//
+// ═══ EL AGUJERO QUE ESTE CONTROL TUVO HASTA HOY (26/08/2026) ═══
+//
+// Buscaba únicamente la URL —`api.anthropic.com`— y daba verde. Pero al proveedor se llega de DOS
+// formas, y la otra no escribe la URL en ningún lado: `new Anthropic()` del SDK oficial la lleva
+// adentro. `lib/web-search.mjs` hace exactamente eso desde hace tiempo, con su propio modelo
+// hardcodeado, sin registrar costo, sin mirar `estado-cerebro` y sin breaker — y pasaba el control
+// sin ser vista. El guardián tenía un agujero del tamaño exacto de la dependencia que debía
+// encontrar.
+//
+// Ahora se buscan las dos puertas: la URL y el SDK. Un control que sólo mira una de las dos formas
+// de entrar no está verificando la puerta, está verificando un cartel.
 {
   const permitidos = ['lib/ia/proveedores/anthropic.mjs', 'engines/anthropic-api.mjs']
+  const PUERTAS = /api\.anthropic\.com|generativelanguage|api\.openai\.com|@anthropic-ai\/sdk|from ['"]openai['"]/
   const culpables = ARCHIVOS
     .filter((f) => !permitidos.some((p) => f.endsWith(p)))
-    .filter((f) => /api\.anthropic\.com|generativelanguage|api\.openai\.com/.test(codigo(f)))
+    .filter((f) => PUERTAS.test(codigo(f)))
     .map((f) => f.replace(RAIZ + '/', ''))
   anotar(culpables.length === 0, 'Nadie llama a un proveedor por fuera de la capa `lib/ia`',
-    culpables.length ? culpables.join(', ') : 'sólo el proveedor y el port del Work Fabric')
+    culpables.length ? `POR FUERA DE LA PUERTA: ${culpables.join(', ')}` : 'sólo el proveedor y el port del Work Fabric')
 }
 
 // ── 3 · EL RAZONADOR DEL NEGOCIO NO ES CLAUDE CODE ───────────────────────────────────────────

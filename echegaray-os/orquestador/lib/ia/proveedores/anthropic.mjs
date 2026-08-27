@@ -46,13 +46,20 @@ export const anthropic = {
     return Boolean(apiKey)
   },
 
+  /**
+   * @param herramientas  Herramientas SERVER-SIDE del proveedor —hoy sólo `web_search`—. Se pasan
+   *   tal cual. NO son las tools del OS: aquéllas las ejecuta el Work Fabric con los permisos de
+   *   `orq.agents` y no pasan por acá. Éstas las corre el proveedor de su lado y tienen su propio
+   *   cargo, así que la llamada tiene que quedar registrada igual que cualquier otra.
+   */
   async completar({
-    modelo, sistema, mensajes, maxTokens = 1024, temperatura,
+    modelo, sistema, mensajes, maxTokens = 1024, temperatura, herramientas = null,
     señal, apiKey = process.env.ANTHROPIC_API_KEY, fetchImpl = globalThis.fetch,
   }) {
     const cuerpo = { model: modelo, max_tokens: maxTokens, messages: mensajes }
     if (sistema) cuerpo.system = sistema
     if (temperatura != null) cuerpo.temperature = temperatura
+    if (Array.isArray(herramientas) && herramientas.length) cuerpo.tools = herramientas
 
     const res = await fetchImpl(`${HOST}/v1/messages`, {
       method: 'POST',
@@ -79,6 +86,9 @@ export const anthropic = {
         in: json?.usage?.input_tokens ?? null,
         out: json?.usage?.output_tokens ?? null,
       },
+      // CUÁNTAS BÚSQUEDAS HIZO EL PROVEEDOR DE SU LADO. Cada una tiene cargo propio ADEMÁS de los
+      // tokens: sin este número el costo de una búsqueda se subestima siempre.
+      busquedas: (json?.content ?? []).filter((b) => b?.type === 'server_tool_use').length,
     }
   },
 }

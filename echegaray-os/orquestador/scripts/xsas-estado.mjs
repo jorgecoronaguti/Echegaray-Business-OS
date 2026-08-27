@@ -45,6 +45,19 @@ if (process.argv.includes('--json')) {
     console.log(`\n  TRABAJO     ${e.trabajos.activos} activos · ${e.trabajos.completados} completados · ${e.trabajos.trabados} trabados esperando a una persona`)
   }
 
+  if (e.costo) {
+    const $ = (x) => (x == null ? 'sin precio' : `U$S ${Number(x).toFixed(4)}`)
+    console.log(`\n  COSTO       ${e.costo.llamadas} llamadas en ${e.costo.ventana} · ${$(e.costo.usd)}`)
+    if (e.costo.sinAtribuir) {
+      console.log(`              ▲ ${e.costo.sinAtribuir} llamadas (${$(e.costo.usdSinAtribuir)}) NO dicen qué agente las pidió`)
+      console.log('                 — son las del camino viejo, que no atribuye. Es lo que falta migrar a la puerta.')
+    }
+    for (const a of e.costo.porAgente.slice(0, 6)) {
+      const f = a.fallidas ? ` · ${a.fallidas} fallidas` : ''
+      console.log(`              ${String(a.agente).slice(0, 14).padEnd(15)} ${String(a.funcion).slice(0, 14).padEnd(15)} ${String(a.llamadas).padStart(4)} llam  ${$(a.usd)}${f}`)
+    }
+  }
+
   console.log('\n  SIN RAZONADOR SIGUE ANDANDO:')
   for (const x of e.sinRazonador) console.log(`     · ${x}`)
   console.log()

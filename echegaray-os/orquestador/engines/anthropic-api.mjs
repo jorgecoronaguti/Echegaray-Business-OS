@@ -38,7 +38,9 @@ const PRICES = {
   'claude-opus-4-7': { in: 5, out: 25 },
   'claude-opus-4-6': { in: 5, out: 25 },
   'claude-opus-4-5': { in: 5, out: 25 },
+  'claude-opus-5': { in: 5, out: 25 },
   'claude-sonnet-5': { in: 3, out: 15 },
+  'claude-haiku-5': { in: 1, out: 5 },
   'claude-sonnet-4-6': { in: 3, out: 15 },
   'claude-sonnet-4-5': { in: 3, out: 15 },
   'claude-haiku-4-5': { in: 1, out: 5 },
@@ -55,9 +57,25 @@ export function resolveModelId(alias, cfg) {
   return alias // ya es un ID completo
 }
 
+/**
+ * EL ID QUE LA API DEVUELVE TRAE LA FECHA; LA TABLA NO (26/08/2026).
+ *
+ * `claude-haiku-4-5-20251001` no está en `PRICES` —ahí vive `claude-haiku-4-5`— así que el costo
+ * daba `null` para TODO lo que pasa por la puerta nueva, que registra el `model` tal como lo
+ * devuelve la respuesta. Medido: una búsqueda en internet de 10.791 tokens de entrada quedó con
+ * `usd = null`. No era un modelo sin precio: era el mismo modelo con el sufijo de versión.
+ *
+ * Se recorta el sufijo `-AAAAMMDD` y se reintenta. Si aun así no está, sigue devolviendo `null`:
+ * inventar un precio sería peor que no tenerlo.
+ */
+export function precioDe(modelId) {
+  const id = String(modelId ?? '')
+  return PRICES[id] ?? PRICES[id.replace(/-\d{8}$/, '')] ?? null
+}
+
 /** Costo estimado en USD a partir del usage. Devuelve null si no hay precio. */
 export function estimateCostUsd(modelId, usage) {
-  const p = PRICES[modelId]
+  const p = precioDe(modelId)
   if (!p || !usage) return null
   const input = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0)
   const output = usage.output_tokens || 0

@@ -225,7 +225,11 @@ export function mmFalso({ archivos = {}, miembros = {}, miembrosRoto = false, us
 export function lecturaBarcelo(over = {}) {
   return {
     emisor: 'COMBUSTIBLES BARCELO S.A.',
-    cuit: '30-71234567-8',
+    // EL CUIT DEL DOBLE TIENE QUE SER ARITMÉTICAMENTE POSIBLE (26/08/2026). Era '…567-8', que no
+    // cierra el módulo-11: desde que la lectura valida el dígito verificador —porque este número
+    // entra en la clave de idempotencia y un typo de OCR duplica el gasto— un CUIT imposible se
+    // descarta, y el doble dejaba de probar el camino que decía probar.
+    cuit: '30-71234567-1',
     letra: 'A',
     es_nota_credito: false,
     numero: '0113-00010489',

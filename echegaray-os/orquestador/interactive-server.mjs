@@ -11,6 +11,7 @@
 // Auth: header 'authorization: Bearer <INTERACTIVE_TOKEN>' (env). CORS abierto para
 // que la extensión pueda llamarlo. Corre como servicio systemd aparte del worker.
 import http from 'node:http'
+import { bloqueUocra } from './lib/uocra-bloque-prompt.mjs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -961,9 +962,11 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
     CACHE_STATS.misses++
   }
   const needsUocra = isBudgeting || /jornal|uocra|categor[ií]a|oficial|ayudante|medio oficial|mano de obra|costo.*(hora|mo)\b/i.test(directive)
-  const uocraRates = needsUocra
-    ? '\n\nJORNALES UOCRA ZONA A VIGENTES (jul-2026, CCT 76/75, VERIFICADO — usá ESTOS, NO los de un archivo viejo): Oficial Especializado $6.800/h · Oficial $5.817/h · Medio Oficial $5.375/h · Ayudante $4.948/h. Sumas no remunerativas jul: Of.Esp $72.900 · Of $67.100 · M.Of $61.500 · Ayudante $57.900. Sobre el jornal van cargas sociales + adicionales de convenio (asistencia, Art.56 hormigonado 15%, EPP, ropa).'
-    : ''
+  // LA ESCALA SALE DE LA FUENTE, NO DE ESTE TEXTO (26/08/2026). Estaba pegada acá con los valores
+  // de JULIO y el rótulo «VIGENTES … VERIFICADO»; la canónica de agosto es 9,1 % más alta, así que
+  // todo presupuesto que el chat ayudó a armar este mes subestimó la mano de obra. Un dato dentro de
+  // un prompt no da error, no rompe un test y no se entera de que cambió el mes.
+  const uocraRates = needsUocra ? bloqueUocra() : ''
   // APRENDIZAJE COMPUESTO (misión): antes de cotizar, traer los desvíos REALES de las
   // obras YA CERRADAS para no repetir el error. Determinístico (0 API). Si Galpones cerró
   // 23% sobre-costo, el presupuestador lo tiene delante al armar una obra parecida.

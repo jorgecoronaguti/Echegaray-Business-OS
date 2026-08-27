@@ -263,6 +263,19 @@ async function main() {
   }
 
   console.log(`anthropic-api.test: ${ok} OK, ${fail} FALLA`)
+  // --- EL SUFIJO DE VERSIÓN NO PUEDE BORRAR EL PRECIO (26/08/2026) ---
+  // La API devuelve `claude-haiku-4-5-20251001` y la tabla tiene `claude-haiku-4-5`. Todo lo que
+  // pasa por `lib/ia` registra el modelo tal como vuelve, así que el costo daba null: una búsqueda
+  // en internet de 10.791 tokens de entrada quedó sin importe. No era un modelo sin precio: era el
+  // mismo modelo con el sufijo de versión.
+  const M = { input_tokens: 1_000_000, output_tokens: 0 }
+  check('precio del ID sin fecha', estimateCostUsd('claude-haiku-4-5', M) === 1)
+  check('el ID CON fecha cuesta lo mismo', estimateCostUsd('claude-haiku-4-5-20251001', M) === 1)
+  check('los Claude 5 están en la tabla', estimateCostUsd('claude-opus-5', M) === 5)
+  // Y lo que de verdad no está sigue sin precio: inventar uno sería peor que no tenerlo.
+  check('un modelo ajeno no inventa precio', estimateCostUsd('modelo-de-otro-proveedor', M) === null)
+  check('sin usage no hay costo', estimateCostUsd('claude-haiku-4-5', null) === null)
+
   process.exit(fail ? 1 : 0)
 }
 

@@ -186,7 +186,7 @@ test('PROVEEDOR DESCONOCIDO con CUIT y número: entra igual, con la celda vacía
   assert.equal(llamadas.length, 1, 'se escribe: el CUIT y el número lo identifican solos')
   const fajo = aFajoJson(llamadas[0].items)
   assert.equal(fajo[0].proveedor, undefined, 'la celda E queda VACÍA, nunca en rojo')
-  assert.match(fajo[0].concepto, /proveedor s\/lista: "FERRETERIA EL TORNILLO SRL" CUIT 30712345678/,
+  assert.match(fajo[0].concepto, /proveedor s\/lista: "FERRETERIA EL TORNILLO SRL" CUIT 30712345671/,
     'el nombre del papel no se pierde: se transcribe al concepto')
   assert.doesNotMatch(r.texto, /no está en el desplegable de Compras/)
 })
@@ -232,7 +232,7 @@ testConBotones('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bl
 
 testConBotones('un comprobante YA CARGADO se avisa con su fila, y no se ofrece cargarlo de nuevo', async () => {
   const repo = repoMemoria()
-  repo._cargados.set('c:30712345678|0113-00010489', { clave: 'c:30712345678|0113-00010489', fila: 412, hoja: 'Compras' })
+  repo._cargados.set('c:30712345671|0113-00010489', { clave: 'c:30712345671|0113-00010489', fila: 412, hoja: 'Compras' })
   const { d } = armar({ repo })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /Ya está cargado\*\* — fila 412/)
@@ -824,7 +824,7 @@ test('si la escritura revienta, el fajo vuelve a abierto y se avisa', async () =
 test('si el dueño borró la fila, la pestaña le gana al registro y se vuelve a cargar', async () => {
   const repo = repoMemoria()
   const { d } = armar({ repo })
-  const clave = 'c:30712345678|0113-00010489'
+  const clave = 'c:30712345671|0113-00010489'
   // El registro dice que está en la 810…
   repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
   // …y Compras, leída de verdad, no lo tiene.
@@ -841,7 +841,7 @@ test('si el dueño borró la fila, la pestaña le gana al registro y se vuelve a
 test('si la fila SÍ está en Compras, sigue sin duplicarse', async () => {
   const repo = repoMemoria()
   const { d } = armar({ repo })
-  const clave = 'c:30712345678|0113-00010489'
+  const clave = 'c:30712345671|0113-00010489'
   repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
   const enCompras = { ok: true, ...indexarCompras([
     ...Array.from({ length: 808 }, () => []),
@@ -860,7 +860,7 @@ test('si la fila SÍ está en Compras, sigue sin duplicarse', async () => {
 test('si no se pudo leer Compras, el registro se respeta', async () => {
   const repo = repoMemoria()
   const { d } = armar({ repo })
-  const clave = 'c:30712345678|0113-00010489'
+  const clave = 'c:30712345671|0113-00010489'
   repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
   const { escribir, llamadas } = conEscritor()
   await procesarPost({ ...d, escribir, comprasDe: async () => ({ ok: false, error: 'Google no contesta' }) }, post())
@@ -886,7 +886,7 @@ test('si no se pudo leer Compras, el registro se respeta', async () => {
 test('un duplicado PROBABLE no borra la clave de idempotencia: dudar no es haber mirado', async () => {
   const repo = repoMemoria()
   const { d } = armar({ repo })
-  const clave = 'c:30712345678|0113-00010489'
+  const clave = 'c:30712345671|0113-00010489'
   repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
   // La misma factura en Compras con el número a UN DÍGITO de distancia: `…10489` contra `…10480`.
   // Es el hallazgo PROBABLE, no el CARGADO.

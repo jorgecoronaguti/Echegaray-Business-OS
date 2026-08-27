@@ -36,6 +36,7 @@
 // existe: es la regla de oro #1 del OS.
 
 import { aNumero, redondear2, normalizar } from '../carga-comprobantes.mjs'
+import { valido as cuitValido } from '../cuit.mjs'
 import { matchUnico } from './imputacion.mjs'
 
 /** Formatos que un modelo de visión puede mirar TAL CUAL. La API no acepta ningún otro. */
@@ -361,7 +362,16 @@ export function normalizar_lectura(crudo = {}) {
       // decide cuál vale es el desplegable ESTRICTO de Compras, no el modelo: `armarItem` prueba las
       // dos y se queda con la que matchea.
       proveedorAlt: textoODefault(crudo.emisor_alt),
-      cuit: cuit.length === 11 && cuit !== CUIT_EMPRESA ? cuit : null,
+      // ═══ EL DÍGITO VERIFICADOR, PORQUE ESTE CUIT ES PARTE DE UNA CLAVE (26/08/2026) ═══
+      //
+      // La única validación era «tiene 11 dígitos». Un dígito mal leído por OCR pasa ese filtro, y
+      // este CUIT entra en `claveComprobante()`: con un dígito cambiado la clave es OTRA, la barrera
+      // de duplicados no ve el duplicado, y el mismo gasto se carga dos veces. Encima `faltantes.mjs`
+      // deja pasar una fila sin nombre de proveedor confiando justamente en este número.
+      //
+      // `valido()` corre el módulo-11 y ya existía, testeado, en `lib/cuit.mjs`. Un CUIT que no cierra
+      // se descarta como si no se hubiera leído —que es la verdad— en vez de propagarse como dato.
+      cuit: cuit.length === 11 && cuit !== CUIT_EMPRESA && cuitValido(cuit) ? cuit : null,
       tipo,
       esNotaCredito: esNC,
       esNotaDebito: esND,

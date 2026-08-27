@@ -132,8 +132,8 @@ test('el mismo número de OTRO proveedor no es un duplicado: cada uno numera su 
 test('el CUIT manda sobre el nombre cuando alguien puede aportarlo', () => {
   // Compras no tiene columna de CUIT: se lo aporta quien lo sepa, y ahí la identidad deja de
   // depender de cómo esté escrito el nombre en el desplegable.
-  const conCuit = { ok: true, ...indexarCompras(BARCELO, { cuitPorProveedor: { 'combustibles barcelo': '30-70912345-3' } }) }
-  const r = buscarEnCompras(tique({ emisor: 'ESTACION DE SERVICIO SA', cuit: '30709123453' }), conCuit)
+  const conCuit = { ok: true, ...indexarCompras(BARCELO, { cuitPorProveedor: { 'combustibles barcelo': '30-70912345-5' } }) }
+  const r = buscarEnCompras(tique({ emisor: 'ESTACION DE SERVICIO SA', cuit: '30709123455' }), conCuit)
   assert.equal(r.que, HALLAZGO.CARGADO)
   assert.equal(r.via, 'cuit+numero')
 })

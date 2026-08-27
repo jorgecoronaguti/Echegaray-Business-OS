@@ -184,10 +184,21 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   // aparece o no como deuda en el Flujo de Fondos. La impresa la puso el proveedor al emitir; la
   // manuscrita la puso la empresa al recibir, y es posterior.
   //
-  // Se prueban DOS fuentes, en orden: lo que la visión aisló como condición manuscrita, y —si no
-  // aisló nada— la transcripción literal completa, donde el `c/c` viaja pegado a la obra. Sin marca
-  // inequívoca no se toca nada: queda la impresa, que es lo que había antes de este arreglo.
-  const cond = condicionDeAnotacion(comprobante.condicionManuscrita) ?? condicionDeAnotacion(comprobante.anotacion)
+  // ═══ MANDA LA TINTA, NO LA INTERPRETACIÓN (26/08/2026) ═══
+  //
+  // Se prueban DOS fuentes y el ORDEN es el arreglo. Antes iba primero `condicionManuscrita` —el
+  // campo donde el modelo ya clasificó— y la transcripción literal quedaba de respaldo. O sea: la
+  // lectura del modelo PISABA a `condicionDeAnotacion()`, que es núcleo puro, con tests, y que
+  // clasifica las mismas abreviaturas («c/c», «cta cte», «contado») desde `imputacion.mjs`.
+  //
+  // El riesgo no era teórico: el propio prompt de visión advierte que la condición impresa y la
+  // manuscrita «pueden contradecirse». Si el modelo metía la IMPRESA en el campo de la manuscrita,
+  // un «Contado» falso entraba como Pagado — y una deuda que existe deja de aparecer en el Flujo de
+  // Fondos. Esa es la peor forma de equivocarse acá: no da error, da un pasivo invisible.
+  //
+  // Ahora primero la transcripción LITERAL de lo que dice la tinta —el hecho— y la clasificación
+  // del modelo sólo si la literal no alcanzó. Hecho antes que inferencia, como en todo el OS.
+  const cond = condicionDeAnotacion(comprobante.anotacion) ?? condicionDeAnotacion(comprobante.condicionManuscrita)
   if (cond) {
     comprobante.condicion = cond
     comprobante.condicionVia = 'manuscrita'

@@ -80,6 +80,17 @@ async function precio(modeloId, tokens) {
  * No lanza jamás: que la telemetría falle no puede tumbar la operación que la produjo.
  */
 export async function registrarUso(fila) {
+  // ═══ UN CONTROL NO ENSUCIA LA CONTABILIDAD QUE OTROS LEEN (26/08/2026) ═══
+  //
+  // `verificar-independencia-ia.mjs` prueba la degradación con dobles que devuelven el error que se
+  // quiere probar —bien, así no gasta un token—, pero esas llamadas simuladas se estaban guardando
+  // en `orq.chat_cost` junto a las de verdad. Cada corrida agregaba cuatro fallos, y el reporte de
+  // costos terminaba diciendo que el ruteo del Director falla 11 de 12 veces: una afirmación falsa
+  // producida por el propio control. Medido: 14 fallos antes de correrlo, 18 después.
+  //
+  // Quien simula lo declara. La variable la pone el verificador y nadie más; sin ella, todo se
+  // registra como siempre — un olvido no puede apagar la telemetría en silencio.
+  if (process.env.ORQ_IA_SIN_REGISTRO === '1') return
   try {
     const { query } = await import('../db.mjs')
     await query(
@@ -102,7 +113,11 @@ export async function registrarUso(fila) {
  * @param agente     quién pide: el slug de `orq.agents`, o el circuito («comprobantes», «ruteo»).
  * @param funcion    qué se está haciendo dentro de ese agente («leer-comprobante»).
  * @param modelo     escotilla para las variables de entorno que el dueño ya usa. Queda registrada.
- * @returns { texto, modelo, proveedor, tokens, usd, ms, intentos }
+ * @param herramientas Herramientas SERVER-SIDE del proveedor (hoy sólo `web_search`). NO son las
+ *   tools del OS —ésas las ejecuta el Work Fabric con los permisos de `orq.agents` y jamás pasan
+ *   por acá—. Se aceptan para que la búsqueda en internet entre por la puerta en vez de abrirse la
+ *   suya: tiene cargo propio por búsqueda y tiene que quedar contada.
+ * @returns { texto, modelo, proveedor, tokens, usd, ms, intentos, busquedas }
  * @throws  el último error, con `.clasificacion` puesta.
  */
 export async function pedirTexto({
@@ -111,6 +126,7 @@ export async function pedirTexto({
   mensajes,
   maxTokens = 1024,
   temperatura,
+  herramientas = null,
   agente = null,
   funcion = null,
   modelo = null,
@@ -138,7 +154,7 @@ export async function pedirTexto({
     for (let intento = 0; intento <= reintentos; intento++) {
       try {
         const r = await proveedor.completar({
-          modelo: modeloId, sistema, mensajes, maxTokens, temperatura, señal, apiKey, fetchImpl,
+          modelo: modeloId, sistema, mensajes, maxTokens, temperatura, herramientas, señal, apiKey, fetchImpl,
         })
         const ms = Date.now() - t0
         const usd = await precio(r.modeloUsado, r.tokens)
@@ -149,7 +165,10 @@ export async function pedirTexto({
         // Una respuesta buena es la prueba de que hay saldo: si el OS estaba degradado, vuelve.
         const ec = await estadoCerebro()
         ec?.marcarCerebroOk?.().catch?.(() => {})
-        return { texto: r.texto, modelo: r.modeloUsado, proveedor: proveedor.nombre, tokens: r.tokens, usd, ms, intentos: intento + 1 }
+        return {
+          texto: r.texto, modelo: r.modeloUsado, proveedor: proveedor.nombre, tokens: r.tokens,
+          usd, ms, intentos: intento + 1, busquedas: r.busquedas ?? 0,
+        }
       } catch (err) {
         const c = clasificarError(err)
         err.clasificacion = c

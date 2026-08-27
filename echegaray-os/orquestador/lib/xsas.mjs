@@ -106,6 +106,7 @@ export async function estadoDeXsas() {
   let agentes = null
   let conocimiento = null
   let trabajos = null
+  let costo = null
   // POR QUÉ NO SE PUDO LEER, cuando no se pudo. Un `catch` mudo deja el estado en `null` sin decir
   // si la base está caída o si la consulta está mal escrita — y son dos emergencias distintas.
   // Este archivo se estrenó con ese defecto: `array_length` sobre una columna `text` tiraba, el
@@ -153,6 +154,40 @@ export async function estadoDeXsas() {
       porArea: k.rows.map((r) => ({ area: r.area, afirmaciones: r.n, confirmadas: r.confirmadas })),
     }
 
+    // ═══ CUÁNTO CUESTA LA INTELIGENCIA, Y DE QUIÉN ES EL GASTO ═══
+    //
+    // La pregunta que el dueño pidió poder contestar: «¿qué funciones/agentes están consumiendo IA
+    // y cuánto?». Hasta hoy no se podía: 346 de 365 llamadas no decían qué agente las pidió, porque
+    // el camino viejo no lo registra. Lo que falta se DICE —`sinAtribuir`— en vez de repartirlo.
+    const c = await query(`
+      select coalesce(agente, '(sin atribuir)') agente,
+             coalesce(funcion, '(sin atribuir)') funcion,
+             count(*)::int llamadas,
+             sum(usd) usd,
+             count(*) filter (where ok is false)::int fallidas,
+             count(*) filter (where usd is null)::int sin_precio
+        from orq.chat_cost
+       where ts > now() - interval '30 days'
+       group by 1, 2 order by sum(usd) desc nulls last limit 10`)
+    const tot = await query(`
+      select count(*)::int llamadas, sum(usd) usd,
+             count(*) filter (where agente is null)::int sin_atribuir,
+             sum(usd) filter (where agente is null) usd_sin_atribuir
+        from orq.chat_cost where ts > now() - interval '30 days'`)
+    const T = tot.rows[0] ?? {}
+    costo = {
+      ventana: '30 días',
+      llamadas: T.llamadas ?? 0,
+      usd: T.usd == null ? null : Number(T.usd),
+      // Lo que se gastó SIN saber quién lo pidió. Es la medida de cuánto falta migrar a la puerta.
+      sinAtribuir: T.sin_atribuir ?? 0,
+      usdSinAtribuir: T.usd_sin_atribuir == null ? null : Number(T.usd_sin_atribuir),
+      porAgente: c.rows.map((r) => ({
+        agente: r.agente, funcion: r.funcion, llamadas: r.llamadas,
+        usd: r.usd == null ? null : Number(r.usd), fallidas: r.fallidas, sinPrecio: r.sin_precio,
+      })),
+    }
+
     const t = await query(`select state, count(*)::int n from orq.tasks group by 1`)
     const por = Object.fromEntries(t.rows.map((r) => [r.state, r.n]))
     trabajos = {
@@ -192,6 +227,7 @@ export async function estadoDeXsas() {
     noSePudoLeer: porQueNo,
     conocimiento,
     trabajos,
+    costo,
     herramientas: herramientasDelOs(),
     skills: skillsDelOs(),
     // Lo que sigue andando en cada nivel. No es decorativo: es la respuesta a «¿qué pierdo si se

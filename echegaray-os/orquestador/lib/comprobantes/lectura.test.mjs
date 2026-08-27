@@ -21,7 +21,7 @@ import { valoresInput, COL } from '../carga-comprobantes.mjs'
 // corto y el total del Sheet no cerraría con la plata que salió.
 const BARCELO = {
   emisor: 'COMBUSTIBLES BARCELO S.A.',
-  cuit: '30-71234567-8',
+  cuit: '30-71234567-1',
   letra: 'A',
   es_nota_credito: false,
   numero: '0113-00010489',
@@ -43,7 +43,10 @@ test('parseo de un comprobante real: importes es-AR, tipo, fecha y condición', 
   const { comprobante: c, faltantes } = normalizarLectura(BARCELO)
   assert.deepEqual(faltantes, [])
   assert.equal(c.proveedor, 'COMBUSTIBLES BARCELO S.A.')
-  assert.equal(c.cuit, '30712345678', 'el CUIT se guarda sin guiones')
+  // El dígito verificador cierra: desde el 26/08/2026 un CUIT que no pasa el módulo-11 se descarta
+  // —entra en la clave de idempotencia, y un dígito mal leído por OCR duplica el gasto—. Este
+  // fixture tenía un CUIT inventado que no cerraba, así que probaba el camino que ya no existe.
+  assert.equal(c.cuit, '30712345671', 'el CUIT se guarda sin guiones')
   assert.equal(c.tipo, 'A')
   assert.equal(c.numero, '0113-00010489')
   assert.equal(c.fecha, '05/01/2026')
@@ -270,4 +273,17 @@ test('un CUIT que NO está en la pestaña no inventa un proveedor', () => {
 test('un nombre que el desplegable no tiene no entra ni con el CUIT correcto', () => {
   const m = matchProveedor('DUBOS UGARTE', ['Alumetal'], { cuit: '20287737824', porCuit: new Map([['20287737824', 'DUPEC']]) })
   assert.equal(m.esNuevo, true, 'DUPEC no está en la lista: no se escribe')
+})
+
+test('un CUIT que no cierra el módulo-11 NO se propaga: rompería la clave de idempotencia', () => {
+  // El CUIT viaja dentro de `claveComprobante()`. Un dígito mal leído por OCR pasa el filtro de
+  // «11 dígitos», produce una clave distinta, y la barrera de duplicados deja entrar el mismo gasto
+  // dos veces. Se descarta como si no se hubiera leído, que es la verdad.
+  const { comprobante: conTypo } = normalizarLectura({ ...BARCELO, cuit: '30-71234567-8' })
+  assert.equal(conTypo.cuit, null, 'un CUIT imposible no es un CUIT')
+
+  // Y uno que sí cierra pasa entero. (No se usa el de Echegaray: ése se descarta por ser el
+  // propio, que es otra regla y ya estaba.)
+  const { comprobante: bueno } = normalizarLectura({ ...BARCELO, cuit: '20-28773782-4' })
+  assert.equal(bueno.cuit, '20287737824')
 })
