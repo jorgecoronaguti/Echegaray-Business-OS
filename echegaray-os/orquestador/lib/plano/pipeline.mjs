@@ -24,6 +24,9 @@ import { computarElementos } from './computo.mjs'
 import { mapearPartidas } from './partidas.mjs'
 import { seleccionarTodas, huella } from './seleccion.mjs'
 import { procesosDeTodos } from './procesos.mjs'
+import { controlar } from './control.mjs'
+import { omisionesPotenciales } from '../circot/referencia.mjs'
+import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
 import { FUENTE } from './fuente.mjs'
@@ -137,7 +140,34 @@ export async function composiciones({ query }, tareaIds = []) {
  * EL PIPELINE ENTERO. Devuelve el resultado estructurado; no escribe nada y no imprime nada.
  * Quien lo llama decide qué hacer con eso —persistirlo, resumirlo para Mattermost, exportarlo—.
  */
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, logger = null } = {}) {
+/** La publicación del CIRCOT más reciente que haya en el repo. Es un archivo local: no cuesta nada
+ *  y si no está, el control sale sin referencia externa y lo dice. */
+export function cargarReferenciaCircot(dir = path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'datos', 'circot')) {
+  try {
+    const archivos = fs.readdirSync(dir).filter((f) => f.startsWith('mano-de-obra-') && f.endsWith('.json')).sort()
+    if (!archivos.length) return null
+    return JSON.parse(fs.readFileSync(path.join(dir, archivos[archivos.length - 1]), 'utf8'))
+  } catch { return null }
+}
+
+/** ¿La documentación dice que esto es un galpón industrial? El checklist del Modelo III se aplica
+ *  sólo si alguien lo dijo — el plano o el usuario—, con su evidencia. PURA. */
+export function tipoObraDe(laminas = [], declarado = null, nombresDeArchivo = []) {
+  const ES_GALPON = /galp[oó]n|nave industrial/i
+  if (declarado) return { tipo: String(declarado), esGalpon: ES_GALPON.test(String(declarado)), fuente: 'declarado por quien pidió el análisis' }
+  for (const l of laminas) {
+    const texto = [l?.proyecto?.destino, l?.proyecto?.nombre, l?.lamina?.titulo].filter(Boolean).join(' · ')
+    if (ES_GALPON.test(texto)) return { tipo: 'GALPON_INDUSTRIAL', esGalpon: true, fuente: FUENTE.EXTRAIDO_PLANO, textoLiteral: texto.slice(0, 120), archivo: l?.archivo ?? null }
+  }
+  // EL NOMBRE DEL ARCHIVO ES LA ÚLTIMA SEÑAL Y LA MÁS DÉBIL: ya costó caro creerle a un nombre en
+  // este repo. Se usa igual porque lo único que dispara es un CHECKLIST DE PREGUNTAS —no agrega
+  // ninguna partida ni ningún peso— y se marca INFERIDO para que nadie la lea como un hecho.
+  const archivo = nombresDeArchivo.find((n) => ES_GALPON.test(String(n)))
+  if (archivo) return { tipo: 'GALPON_INDUSTRIAL', esGalpon: true, fuente: FUENTE.INFERIDO, textoLiteral: String(archivo), porQue: 'lo dice el NOMBRE de un archivo del proyecto, no su contenido: alcanza para hacer las preguntas del checklist y no para afirmar nada' }
+  return { tipo: null, esGalpon: false, fuente: FUENTE.FALTA_DATO, porQue: 'la documentación no declara el tipo de obra, así que no se aplica ningún checklist tipológico' }
+}
+
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, logger = null } = {}) {
   const t0 = Date.now()
   const filas = await documentosDelProyecto({ query }, termino)
   const raiz = carpetaRaiz(filas)
@@ -195,6 +225,17 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const seleccion = seleccionarTodas(computo.items, catalogo, { vetos })
   const mapeo = { ...seleccion, correcciones, desacuerdos }
   const procesos = procesosDeTodos(computo.items)
+
+  // ═══ EL CONTROL VA ANTES QUE EL TOTAL ═══
+  // El CIRCOT y el checklist del Modelo III entran como CONTROL ADVERSARIAL: proponen lo que
+  // falta, no lo agregan. Y el checklist sólo se aplica si la documentación DICE que es un galpón:
+  // aplicarlo por las dudas convierte una verificación en ruido.
+  const referenciaCircot = cargarReferenciaCircot()
+  const tipo = tipoObraDe(laminas, tipoObra, filas.filter((f) => !f.is_folder).map((f) => f.name))
+  const checklist = tipo.esGalpon ? evaluarChecklist({ computadas: computo.items.map((i) => ({ nombre: i.nombre, unidad: i.unidad })) }) : []
+  const partidasParaControl = mapeo.mapeos.filter((m) => m.tarea).map((m) => ({ nombre: m.tarea.nombre, unidad: m.tarea.unidad }))
+  const omisionesCircot = referenciaCircot ? omisionesPotenciales(partidasParaControl, referenciaCircot) : []
+  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot })
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
   const comps = await composiciones({ query }, ids)
 
@@ -202,6 +243,8 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     termino, carpeta: raiz, ms: Date.now() - t0,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
+    control, checklist, tipoObra: tipo,
+    referenciaCircot: referenciaCircot ? { periodo: referenciaCircot.periodo, items: referenciaCircot.total } : null,
     // La huella es lo que se compara entre dos corridas para decir si dieron lo mismo. Va en el
     // resultado y no en un script aparte porque una reproducibilidad que hay que reconstruir a mano
     // no se verifica nunca.

@@ -39,6 +39,12 @@ const cot = armar({
 })
 
 console.log(`\n═══ ${termino.toUpperCase()} · PLANO → COTIZACIÓN ═══`)
+// EL CONTROL VA PRIMERO Y NO AL FINAL: leer el total antes cambia lo que uno cree del resto.
+console.log(`\n▸ ${r.control.resumen}`)
+console.log(`  ${r.control.porQue}`)
+if (r.tipoObra?.tipo) console.log(`  tipo de obra: ${r.tipoObra.tipo}${r.tipoObra.textoLiteral ? ` — «${r.tipoObra.textoLiteral}»` : ''} [${r.tipoObra.fuente}]`)
+else console.log(`  tipo de obra: ${r.tipoObra?.porQue ?? 'sin declarar'}`)
+
 console.log(`documentos en Drive      ${r.documentos.total}  (insumos ${r.documentos.insumos.length} · reservados para validar ${r.documentos.reservados.length})`)
 console.log(`planos interpretados     ${r.documentos.planos.legibles.length}${r.documentos.planos.noLegibles.length ? `  (${r.documentos.planos.noLegibles.length} no legibles: ${r.documentos.planos.noLegibles.map((d) => d.name).join(', ')})` : ''}`)
 console.log(`elementos detectados     ${r.computo.detectados}`)
@@ -47,6 +53,25 @@ console.log(`partidas de la cotización ${cot.partidas.length}   (candidatas sin
 for (const l of r.laminas) if (l.medicion) console.log(`segunda pasada           ${l.archivo}: ${l.medicion.resueltos}/${l.medicion.pendientes} resueltos${l.medicion.deCache ? ' (caché)' : ''}`)
 console.log(`llamadas al modelo       ${r.ia.llamadas}${r.ia.deCache ? ` (${r.ia.deCache} láminas de caché)` : ''}  costo USD ${r.ia.usos.reduce((a, u) => a + (u.usd ?? 0), 0).toFixed(4)}`)
 console.log(`tiempo                   ${(r.ms / 1000).toFixed(1)} s`)
+
+if (r.control.preguntas.length) {
+  console.log(`\n── LAS ${Math.min(8, r.control.preguntas.length)} PREGUNTAS QUE MÁS DESTRABAN (de ${r.control.preguntas.length}) ──`)
+  for (const p of r.control.preguntas.slice(0, 8)) console.log(`   [${String(p.destraba.length).padStart(2)}] ${p.pregunta}\n        → ${p.quienLoTiene} · ${p.origen} · ${p.destraba.slice(0, 6).join(', ')}`)
+}
+
+if (r.control.omisionesCircot.length) {
+  console.log(`\n── OMISIONES POTENCIALES QUE SEÑALA EL CIRCOT ${r.referenciaCircot?.periodo ?? ''} (${r.control.omisionesCircot.length}, todas a confirmar) ──`)
+  for (const o of r.control.omisionesCircot.slice(0, 12)) console.log(`   ${o.rubro.padEnd(30)} ${o.descripcion} (${o.unidad})`)
+}
+
+if (r.checklist?.length) {
+  const porEstado = {}
+  for (const c of r.checklist) porEstado[c.estado] = (porEstado[c.estado] ?? 0) + 1
+  console.log(`\n── CHECKLIST CONSTRUCTIVO ${r.tipoObra.tipo} (CIRCOT Modelo III) ── ${Object.entries(porEstado).map(([k, v]) => `${k} ${v}`).join(' · ')}`)
+  for (const c of r.checklist.filter((x) => x.estado === 'APLICA')) console.log(`   APLICA y no está: ${c.partida} (${c.unidad}) — ${c.incidencia}% del costo directo en el modelo`)
+}
+
+console.log(`\n── PROCESOS DERIVADOS ── ${r.procesos.procesos.length} tareas (${r.procesos.conCantidad} con cantidad derivada, ${r.procesos.sinCantidad} con la cantidad abierta), todas PENDIENTE_CONFIRMACION`)
 
 console.log('\n── PARTIDAS ──')
 let rubro = null

@@ -24,6 +24,8 @@
 // del costo directo), 0,2% y 0,5%. No se corrige ni se elige uno: se registra como CONFLICTO y se
 // reproduce el número impreso, que es el que la publicación efectivamente usó.
 
+import { piezaDe } from '../plano/atributos.mjs'
+
 /** Los tres bloques del cómputo del Modelo III, con su peso sobre el costo directo. */
 export const GRUPO = Object.freeze({ OBRA_GRUESA: 'OBRA_GRUESA', TERMINACIONES: 'TERMINACIONES', INSTALACIONES: 'INSTALACIONES' })
 
@@ -113,11 +115,21 @@ export function condicionDe(item) {
  */
 export function evaluarChecklist({ computadas = [], respuestas = {} } = {}) {
   const dicho = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  const presentes = computadas.map((c) => dicho(typeof c === 'string' ? c : c?.nombre))
+  const presentes = computadas.map((c) => (typeof c === 'string' ? { nombre: c, unidad: null } : { nombre: c?.nombre, unidad: c?.unidad ?? null }))
+    .map((c) => ({ texto: dicho(c.nombre), pieza: piezaDe(c.nombre)?.valor ?? null, unidad: String(c.unidad ?? '').toLowerCase() }))
   return MODELO_III.map((item) => {
     const { condicion, dato } = condicionDe(item)
     const clave = dicho(item.partida).split(/[^a-z0-9]+/).filter((w) => w.length > 4)
-    const yaEsta = clave.length > 0 && presentes.some((p) => clave.filter((w) => p.includes(w)).length >= Math.min(2, clave.length))
+    // ═══ POR QUÉ NO ALCANZA COMPARAR PALABRAS ═══
+    // «BASES AISLADAS» y «Base de hormigón armado tipo B0» comparten UNA palabra de cinco; «TECHO
+    // METÁLICO» y «Techo de chapa metálica» comparten una de tres. Con un umbral de palabras las
+    // dos salían APLICA —«corresponde y no está»— estando computadas: el checklist gritaba por
+    // partidas que sí estaban, que es la forma más rápida de que se lo deje de mirar.
+    // El tipo de pieza más la unidad las reconoce sin ambigüedad, y es el mismo atributo
+    // determinístico con el que se eligen las partidas.
+    const pieza = piezaDe(item.partida)?.valor ?? null
+    const porPieza = pieza !== null && presentes.some((p) => p.pieza === pieza && (!p.unidad || !item.unidad || p.unidad === item.unidad))
+    const yaEsta = porPieza || (clave.length > 0 && presentes.some((p) => clave.filter((w) => p.texto.includes(w)).length >= Math.min(2, clave.length)))
     const manual = respuestas[item.n]
     if (manual) return { ...item, condicion, estado: manual, porQue: 'respondido explícitamente para este proyecto' }
     if (yaEsta) return { ...item, condicion, estado: ESTADO_CHECK.CONFIRMADO, porQue: 'el proyecto ya la tiene computada' }

@@ -459,9 +459,9 @@
       "clasificacion": "REFERENCIA_EXTERNA_LOCAL"
     },
     {
-      "codigo": "CIRCOT-fundaciones-col-hormigon-on",
+      "codigo": "CIRCOT-fundaciones-col-hormigon",
       "rubro": "FUNDACIONES",
-      "descripcion": "Col. Hormigón. ón",
+      "descripcion": "Col. Hormigón",
       "unidad": "m3",
       "unidadCruda": "m3",
       "mo_min": 20493,
@@ -471,7 +471,7 @@
       "fuente": "CIRCOT · Centro de Investigación para la Racionalización de la Construcción Tradicional, FI-UNSJ",
       "archivo": "JULIO_2026_MANO DE OBRA_CIRCOT.pdf",
       "pagina": 2,
-      "observaciones": "MO s/ elevaci",
+      "observaciones": "MO s/ elevación",
       "clasificacion": "REFERENCIA_EXTERNA_LOCAL"
     },
     {

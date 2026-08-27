@@ -39,7 +39,10 @@ export function codigoDe(rubro, descripcion) {
 /** Los calificativos que el CIRCOT mete DENTRO de la descripción y que cambian qué incluye el
  *  precio. Se extraen aparte porque «Hierro sobre encofrado. MO-» y «Hierro sobre encofrado» no
  *  cotizan lo mismo, y el que compara tiene que verlo. PURA. */
-const CALIFICATIVOS = /(solo\s+MO|MO\s*-|MO\s+s\/\s*\w+|incluido\s+[\w\s]+|c\/\s*molinete\s+manual|\(s\/\s*[^)]+\))/i
+// `\w` NO incluye las acentuadas: con él, «Col. Hormigón. MO s/ elevación» perdía «elevaci» y
+// quedaba como «Col. Hormigón. ón». Un calificativo mal recortado deja una descripción rota en la
+// tabla de referencia y contra eso se comparan después nuestras partidas.
+const CALIFICATIVOS = /(solo\s+MO|MO\s*-|MO\s+s\/\s*[^\s.,;]+|incluido\s+[^.,;]+|c\/\s*molinete\s+manual|\(s\/\s*[^)]+\))/i
 
 /** Una descripción → { descripcion limpia, observaciones }. PURA. */
 export function partirDescripcion(cruda) {
