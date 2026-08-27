@@ -234,3 +234,43 @@ test('la duración sólo VALIDA con otra OBRA que tenga la misma tarea', async (
   assert.equal((await aprenderDuracion({ query: conPrevio('obra-nueva') }, { dry: true })).validadas, 0,
     'dos frentes de la misma obra comparten cuadrilla, encargado y clima: no se confirman')
 })
+
+// ── LA CAPA FÓSIL DEL RENDIMIENTO ─────────────────────────────────────────────
+//
+// La auditoría adversarial del 27/08/2026: `aprenderDuracion` retiraba lo que dejaba de calificar y
+// `aprender` no. Una actividad que pasa a agrupar a otras deja de ser un trabajo, y su fila de
+// rendimiento se quedaba publicando un número que ya no corresponde — en silencio, y visible en
+// `rendimiento_recomendado` como si fuera experiencia vigente.
+
+test('lo que dejó de ser trabajo se retira: el número Y la frase', async () => {
+  const escrituras = []
+  const query = async (sql, params) => {
+    escrituras.push({ sql, params })
+    if (/update public\.rendimiento_historico/.test(sql)) return { rowCount: 3 }
+    if (/update public\.conocimiento_empresa/.test(sql)) return { rowCount: 3 }
+    return { rows: [] }
+  }
+  const r = await aprender({ query })
+
+  const numero = escrituras.find((e) => /update public\.rendimiento_historico/.test(e.sql))
+  assert.ok(numero, 'el número no se retira: la fila vieja sigue publicando un rendimiento muerto')
+  assert.match(numero.sql, /estado = 'DESCARTADO'/, 'se descarta, no se borra: haberlo medido es historia')
+  assert.match(numero.sql, /es_trabajo is false/, 'la condición es dejar de ser trabajo, la misma que duración')
+
+  const frase = escrituras.find((e) => /update public\.conocimiento_empresa/.test(e.sql))
+  assert.ok(frase, 'la frase no se retira: el chat seguiría afirmando lo que la base descartó')
+  assert.match(frase.sql, /vigente = false/)
+  assert.match(frase.sql, /plan-real:/, 'sólo las frases de este circuito, no las de otra fuente')
+
+  assert.equal(r.retiradasPorNoSerTrabajo, 3, 'un retiro que no se cuenta es un retiro que nadie audita')
+  assert.equal(r.frasesRetiradas, 3)
+})
+
+test('en dry no se retira nada — igual que no se escribe nada', async () => {
+  const escrituras = []
+  const query = async (sql, params) => { escrituras.push({ sql, params }); return { rows: [] } }
+  const r = await aprender({ query }, { dry: true })
+  assert.ok(!escrituras.some((e) => /^\s*update public\./m.test(e.sql)), 'un dry que retira no es un dry')
+  assert.equal(r.retiradasPorNoSerTrabajo, 0)
+  assert.equal(r.frasesRetiradas, 0)
+})

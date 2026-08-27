@@ -164,6 +164,31 @@ export async function aprender({ query }, { dry = false, obras = null } = {}) {
   const aprendibles = obs.filter((o) => o.aprendible && o.tareaTipoId)
   const sinTipo = obs.filter((o) => o.aprendible && !o.tareaTipoId)
 
+  // ═══ LO QUE DEJÓ DE CALIFICAR SE RETIRA, NO SE QUEDA (auditoría adversarial, 27/08/2026) ═══
+  //
+  // `aprenderDuracion` ya tenía este paso; acá faltaba, y la asimetría es justamente el defecto: una
+  // actividad que hoy es una tarea puede pasar mañana a agrupar a otras, y ahí su cantidad y sus HH
+  // dejan de ser las de un trabajo y pasan a ser la envolvente de sus hijas. El ciclo es idempotente
+  // POR ACTIVIDAD: si nadie la retira, la fila vieja se queda para siempre publicando un rendimiento
+  // que ya no corresponde, y lo peor es que se queda **en silencio** — sigue apareciendo en
+  // `rendimiento_recomendado` como si fuera experiencia vigente.
+  //
+  // Se retiran las DOS caras del mismo hecho: el NÚMERO en `rendimiento_historico` (estado
+  // DESCARTADO, no borrado: que alguna vez se midió es parte de la historia y todos los consumidores
+  // ya filtran ese estado) y la FRASE en `conocimiento_empresa` (`vigente = false`, que es lo que el
+  // Director y el chat leen). Retirar sólo el número dejaría al chat afirmando lo que la base ya
+  // descartó.
+  const retiradas = dry ? { rowCount: 0 } : await query(
+    `update public.rendimiento_historico r set estado = 'DESCARTADO', actualizado_en = now()
+       where r.estado <> 'DESCARTADO' and r.fuente = 'ejecucion-real'
+         and exists (select 1 from public.xsas_actividad v
+                      where v.actividad_id = r.actividad_id and v.es_trabajo is false)`)
+  const frasesRetiradas = dry ? { rowCount: 0 } : await query(
+    `update public.conocimiento_empresa c set vigente = false, updated_at = now()
+       where c.vigente and c.fuente = 'xsas:plan-real'
+         and exists (select 1 from public.xsas_actividad v
+                      where c.clave = 'plan-real:' || v.actividad_id and v.es_trabajo is false)`)
+
   // Lo ya conocido para esas tareas — incluida la referencia del xlsm, que se lee para NO pisarla.
   const tipos = [...new Set(aprendibles.map((o) => o.tareaTipoId))]
   const previos = tipos.length
@@ -284,6 +309,11 @@ export async function aprender({ query }, { dry = false, obras = null } = {}) {
     // rendimiento no se puede reutilizar en otra obra, así que no se guarda. Se cuenta para que el
     // hueco se vea.
     sinTipoDeTarea: sinTipo.length,
+    // Un retiro que no se cuenta es un retiro que nadie audita: si mañana esto retira 40 filas de
+    // golpe, el número tiene que aparecer en la corrida y no en un `select` que a nadie se le ocurra
+    // hacer. Igual que en `aprenderDuracion`.
+    retiradasPorNoSerTrabajo: retiradas.rowCount ?? 0,
+    frasesRetiradas: frasesRetiradas.rowCount ?? 0,
     filas: resultado,
   }
 }

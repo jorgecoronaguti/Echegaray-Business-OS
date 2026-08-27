@@ -93,3 +93,31 @@ test('un trabajo trabado esperando a una persona no es infraestructura sana', ()
   const e = { ...sano, trabajos: { activos: 1, trabados: 2, completados: 5 } }
   assert.equal(capasDeSalud(e).capas.infraestructura.veredicto, VEREDICTO.PARCIAL)
 })
+
+// ── EL FALLO PARCIAL: leer una consulta y no la otra NO es un OK ───────────────
+//
+// Lo encontró la auditoría adversarial del 27/08/2026. Con los agentes leídos y los trabajos en
+// null, esta capa devolvía OK diciendo «no hay trabajos trabados» — sin haberlos podido contar.
+
+test('trabajos ilegibles: la capa dice que no pudo leer, no que está sana', () => {
+  const c = capasDeSalud({ motor: { disponible: true }, agentes: { total: 23 }, trabajos: null }).capas.infraestructura
+  assert.equal(c.veredicto, VEREDICTO.NO_SE_PUDO_LEER)
+  assert.match(c.porQue, /los trabajos/)
+  assert.ok(!/no hay trabajos trabados/.test(c.porQue), 'no puede afirmar lo que no contó')
+})
+
+test('agentes ilegibles con trabajos sanos: tampoco es OK', () => {
+  const c = capasDeSalud({ motor: { disponible: true }, agentes: null, trabajos: { activos: 2, trabados: 0 } }).capas.infraestructura
+  assert.equal(c.veredicto, VEREDICTO.NO_SE_PUDO_LEER)
+  assert.match(c.porQue, /los agentes/)
+})
+
+test('el motivo de la lectura fallida viaja al veredicto, no se pierde', () => {
+  const c = capasDeSalud({ motor: { disponible: true }, agentes: { total: 23 }, trabajos: null, noSePudoLeer: 'timeout de orq.tasks' }).capas.infraestructura
+  assert.match(c.porQue, /timeout de orq\.tasks/)
+})
+
+test('con las dos consultas leídas y sin trabados sigue siendo OK', () => {
+  const c = capasDeSalud({ motor: { disponible: true }, agentes: { total: 23 }, trabajos: { activos: 4, trabados: 0, completados: 9 } }).capas.infraestructura
+  assert.equal(c.veredicto, VEREDICTO.OK)
+})

@@ -100,8 +100,22 @@ export async function clasificarPorRegla({ query }, { aplicar = false, obras = n
   const filas = await actividadesSinClasificar({ query }, { obras })
   const resueltas = filas.map((f) => ({ ...f, decision: veredictoDe(f, f.candidatas) }))
   const aAsignar = resueltas.filter((r) => r.decision.tareaTipoId)
+  const sinResolver = resueltas.filter((r) => !r.decision.tareaTipoId)
 
-  if (aplicar) for (const r of aAsignar) await asignar({ query }, r)
+  if (aplicar) {
+    for (const r of aAsignar) await asignar({ query }, r)
+    // ═══ EL MOTIVO DE UN «NO PUDE» TAMBIÉN ES UN RESULTADO (auditoría, 27/08/2026) ═══
+    //
+    // Antes, un AMBIGUO se devolvía en memoria y se perdía al terminar la corrida. La pantalla que
+    // mira la persona —`actividades_sin_clasificar`— mostraba la actividad con la evidencia vacía:
+    // ni una palabra de por qué el OS no pudo decidir. La persona tenía que redescubrir a mano
+    // exactamente el razonamiento que el OS ya había hecho cuatro veces ese día.
+    //
+    // Ahora se escribe el motivo, y sólo el motivo: `propuesta_tarea_tipo_id` sigue en null porque
+    // no hay propuesta que hacer. Que el OS diga «la única parecida era X y no corresponde porque
+    // agrega condiciones que la actividad no dice» convierte un vacío en media decisión tomada.
+    for (const r of sinResolver) await registrarSinResolver({ query }, r)
+  }
 
   const porVeredicto = {}
   for (const r of resueltas) porVeredicto[r.decision.veredicto] = (porVeredicto[r.decision.veredicto] ?? 0) + 1
@@ -110,7 +124,7 @@ export async function clasificarPorRegla({ query }, { aplicar = false, obras = n
     asignadas: aAsignar.length,
     porVeredicto,
     // Las que ninguna regla resolvió: son la materia prima de las propuestas de tarea maestra.
-    sinResolver: resueltas.filter((r) => !r.decision.tareaTipoId),
+    sinResolver,
     filas: resueltas,
   }
 }
@@ -137,4 +151,25 @@ export async function proponer({ query }, r) {
       where id = $1 and tarea_tipo_id is null`,
     [r.actividadId, r.decision.tareaTipoId,
       JSON.stringify({ ...(r.decision.evidencia ?? {}), por_que: r.decision.porQue })])
+}
+
+/**
+ * DEJA ESCRITO POR QUÉ NO SE PUDO — sin proponer nada.
+ *
+ * `propuesta_tarea_tipo_id` se queda en null a propósito: no hay una tarea que sugerir, hay una
+ * explicación que dar. Y no pisa una propuesta ya hecha por el modelo: esa es una decisión de otro
+ * camino y la persona la tiene que ver como está.
+ */
+export async function registrarSinResolver({ query }, r) {
+  await query(
+    `update public.obra_actividad
+        set propuesta_evidencia = $2, propuesta_en = now()
+      where id = $1 and tarea_tipo_id is null and propuesta_tarea_tipo_id is null`,
+    [r.actividadId, JSON.stringify({
+      ...(r.decision.evidencia ?? {}),
+      veredicto: r.decision.veredicto,
+      por_que: r.decision.porQue,
+      vetadas: r.decision.vetadas ?? undefined,
+      sin_propuesta: true,
+    })])
 }
