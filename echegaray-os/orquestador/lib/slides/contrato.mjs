@@ -78,6 +78,23 @@ export const Lamina = z.discriminatedUnion('tipo', [
       estado: z.enum(['hecho', 'en_curso', 'pendiente']).default('pendiente'),
     })).min(2).max(6),
   }),
+  // FLUJO — un proceso encadenado. `gate` es lo que hay que cumplir para pasar al paso siguiente:
+  // sin él, la cadena muestra el orden pero no lo que la gobierna.
+  z.object({
+    ...Comun,
+    tipo: z.literal('flujo'),
+    pasos: z.array(z.object({
+      titulo: texto(40), gate: opcional(30), destacado: z.boolean().optional(),
+    })).min(2).max(6),
+  }),
+  // IMAGEN — la URL tiene que ser pública: `createImage` la baja Google, sin credenciales nuestras.
+  // Se exige https por la misma razón por la que el contenido externo pasa por su propia puerta.
+  z.object({
+    ...Comun,
+    tipo: z.literal('imagen'),
+    imagen_url: z.string().url().startsWith('https://'),
+    epigrafe: opcional(120),
+  }),
   z.object({ tipo: z.literal('cierre'), titulo: texto(90), mensaje: opcional(220), contacto: opcional(160) }),
 ])
 

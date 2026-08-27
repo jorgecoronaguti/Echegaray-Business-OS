@@ -8,8 +8,8 @@
 // PURO.
 
 import { COLOR, GRILLA, SLACK_UNA_LINEA, TIPO } from './marca.mjs'
-import { ajustarTamano, medirBullets, medirTexto, repartirEnFila } from './layout.mjs'
-import { bullets, rect, regla, tabla, texto } from './cajas.mjs'
+import { ajustarTamano, anchoTexto, medirBullets, medirTexto, repartirEnFila } from './layout.mjs'
+import { bullets, imagen, rect, regla, tabla, texto } from './cajas.mjs'
 
 const TONO = { neutro: COLOR.amarillo, positivo: COLOR.positivo, negativo: COLOR.negativo, alerta: COLOR.alerta }
 const TONO_TEXTO = { neutro: COLOR.tinta, positivo: COLOR.positivo, negativo: COLOR.negativo, alerta: COLOR.alerta }
@@ -154,6 +154,92 @@ export function cuerpoHitos({ lamina, x, y, ancho }) {
   return cajas
 }
 
+
+/**
+ * FLUJO — el proceso como una cadena de pasos, no como una lista de viñetas.
+ *
+ * ═══ POR QUÉ HACÍA FALTA ═══
+ *
+ * Un modelo de trabajo con etapas encadenadas se explicaba con `puntos`, y una lista no dice que el
+ * paso 3 viene DESPUÉS del 2 ni que hay algo que valida el pase. El dueño lo dijo mirando el
+ * resultado: «muchas palabras por slide, no hay imágenes que siempre sirven para facilitar
+ * comprensión». Un diagrama de proceso no es decoración: es la única forma de que se vea la
+ * secuencia sin leerla.
+ *
+ * Cada paso es una caja con su número, su nombre y —si se declara— la compuerta que hay que cumplir
+ * para pasar al siguiente. Entre paso y paso, una flecha.
+ */
+export function cuerpoFlujo({ lamina, x, y, ancho, alto }) {
+  const pasos = lamina.pasos ?? []
+  const cajas = []
+  const CANAL = 22
+  const anchoPaso = (ancho - CANAL * (pasos.length - 1)) / pasos.length
+  const altoCaja = Math.min(72, Math.max(52, alto * 0.30))
+  const yPaso = y + 6
+
+  // ═══ EL NOMBRE VA DEBAJO DE LA CAJA, NO ADENTRO ═══
+  //
+  // Adentro tenía 24 pt de sangría más los 14 que Slides le suma a toda caja de texto: sobre una
+  // columna de 105 pt quedaban 67, y ahí «Preparación» y «Ejecución» se partían al medio por más que
+  // se les bajara el cuerpo. Se vio en la lámina renderizada, tres veces seguidas, hasta entender que
+  // el problema no era el tamaño sino el lugar. Afuera el nombre dispone de la columna entera, la
+  // caja queda como un bloque limpio con su número, y el conjunto se lee mejor.
+  pasos.forEach((p, i) => {
+    const px = x + i * (anchoPaso + CANAL)
+    const activo = p.destacado === true
+    cajas.push(rect({ x: px, y: yPaso, ancho: anchoPaso, alto: altoCaja, relleno: activo ? COLOR.tinta : COLOR.fondo, borde: activo ? null : COLOR.linea }))
+    cajas.push(rect({ x: px, y: yPaso, ancho: anchoPaso, alto: 3, relleno: COLOR.amarillo }))
+    cajas.push(texto({
+      x: px, y: yPaso + altoCaja / 2 - 15, ancho: anchoPaso, alto: 30,
+      contenido: String(i + 1).padStart(2, '0'),
+      estilo: { tamano: 22, negrita: true, alto: 1.1, color: activo ? COLOR.amarillo : COLOR.suave },
+      alineacion: 'CENTER',
+    }))
+    if (i < pasos.length - 1) {
+      cajas.push(texto({
+        x: px + anchoPaso, y: yPaso + altoCaja / 2 - 9, ancho: CANAL, alto: 18,
+        contenido: '→', estilo: { tamano: 13, negrita: true, alto: 1, color: COLOR.suave }, alineacion: 'CENTER',
+      }))
+    }
+    const rotulo = String(p.titulo ?? '')
+    const yNombre = yPaso + altoCaja + 12
+    const t = ajustarTamano(rotulo, { ancho: anchoPaso - 8, altoDisponible: 34, tamano: 12.5, alto: 1.2, negrita: true })
+    cajas.push(texto({
+      x: px, y: yNombre, ancho: anchoPaso, alto: 34,
+      contenido: rotulo, estilo: { tamano: t.tamano, negrita: true, alto: 1.2, color: COLOR.tinta },
+    }))
+    if (p.gate) {
+      cajas.push(rect({ x: px, y: yNombre + 40, ancho: Math.min(anchoPaso, 40), alto: 2, relleno: COLOR.amarillo }))
+      cajas.push(texto({
+        x: px, y: yNombre + 48, ancho: anchoPaso, alto: 26,
+        contenido: String(p.gate), estilo: { ...TIPO.kicker, tamano: 8, color: COLOR.suave },
+      }))
+    }
+  })
+  return cajas
+}
+
+/**
+ * IMAGEN — una imagen que ocupa la lámina, con su epígrafe.
+ *
+ * `createImage` va en el lote separado del motor: si Google no puede bajar la URL, se pierde la
+ * imagen y no la lámina entera. Por eso el epígrafe se dibuja igual: una lámina sin la foto pero con
+ * su texto sigue diciendo algo.
+ */
+export function cuerpoImagen({ lamina, x, y, ancho, alto }) {
+  const epigrafe = String(lamina.epigrafe ?? '')
+  const altoEpigrafe = epigrafe ? 18 : 0
+  const altoImagen = Math.max(60, alto - altoEpigrafe - (epigrafe ? 8 : 0))
+  const cajas = [imagen({ x, y, ancho, alto: altoImagen, url: String(lamina.imagen_url ?? ''), capa: 'contenido' })]
+  if (epigrafe) {
+    cajas.push(texto({
+      x, y: y + altoImagen + 8, ancho, alto: altoEpigrafe,
+      contenido: epigrafe, estilo: { ...TIPO.pie, color: COLOR.suave },
+    }))
+  }
+  return cajas
+}
+
 export const CUERPOS = {
   puntos: cuerpoPuntos,
   dos_columnas: cuerpoDosColumnas,
@@ -161,4 +247,6 @@ export const CUERPOS = {
   tabla: cuerpoTabla,
   barras: cuerpoBarras,
   hitos: cuerpoHitos,
+  flujo: cuerpoFlujo,
+  imagen: cuerpoImagen,
 }

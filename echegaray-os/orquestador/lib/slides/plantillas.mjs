@@ -43,11 +43,11 @@ function bandaIdentidad({ derecha = null }) {
     rect({ x: 0, y, ancho: PAGINA.ancho, alto: BANDA_ALTO, relleno: COLOR.papel }),
     rect({ x: 0, y, ancho: PAGINA.ancho, alto: 3, relleno: COLOR.amarillo }),
   ]
-  if (LOGO_URL) {
-    cajas.push(imagen({ x: MARGEN.izq, y: y + (BANDA_ALTO - LOGO.alto * 1.35) / 2, ancho: LOGO.ancho * 1.35, alto: LOGO.alto * 1.35, url: LOGO_URL }))
-  } else {
-    cajas.push(...marcaEcsas({ x: MARGEN.izq, y: y + (BANDA_ALTO - 30) / 2, alto: 30 }).cajas)
-  }
+  // SIEMPRE `marcaEcsas`, y no una u otra cosa según haya URL: esa bifurcación hacía que con logo
+  // remoto la banda quedara SÓLO con la imagen, y una imagen que Google no baja deja la banda vacía.
+  // `marcaEcsas` compone el isotipo real —imagen, en el lote separado— con el nombre escrito al
+  // lado: si la imagen falla, la banda sigue firmando.
+  cajas.push(...marcaEcsas({ x: MARGEN.izq, y: y + (BANDA_ALTO - 30) / 2, alto: 30 }).cajas)
   if (derecha) {
     cajas.push(texto({
       x: PAGINA.ancho / 2, y: y + BANDA_ALTO / 2 - 7, ancho: PAGINA.ancho / 2 - MARGEN.der, alto: 14,

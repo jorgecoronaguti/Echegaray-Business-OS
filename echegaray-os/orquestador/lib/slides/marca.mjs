@@ -143,8 +143,22 @@ export const TIPO = Object.freeze({
  *
  * Si algún día hay una URL pública de verdad, se pone en `ORQ_SLIDES_LOGO_URL` y el motor la usa.
  */
-export const LOGO_URL = process.env.ORQ_SLIDES_LOGO_URL || null
-export const LOGO = Object.freeze({ ancho: 86, alto: 22 })
+// ═══ EL LOGO OFICIAL, QUE SÍ EXISTE (27/08/2026) ═══
+//
+// Esto estaba en `null` porque la única URL conocida —`/logo-ecsas.png`— devolvía un 307 al login y
+// Google contestaba `400: There was a problem retrieving the image`. Con `null`, el motor dibujaba
+// una marca hecha con formas: un cuadrado amarillo y dos palabras. El dueño lo dijo en una línea:
+// «no hay uso de los logos oficiales de la empresa».
+//
+// El logo real vive en `public/marca/logo.png` —el mismo archivo que la empresa guarda en Drive como
+// «Logo sin fondo.png», byte por byte— y esa ruta SÍ es pública: probado con curl (200) y probado
+// contra la API de Slides, que lo bajó sin error. Es el isotipo de tres barras, no un cuadrado.
+export const LOGO_URL = process.env.ORQ_SLIDES_LOGO_URL || 'https://app.ecsas.com.ar/marca/logo.png'
+// LA PROPORCIÓN ES UN HECHO DEL ARCHIVO, NO UNA PREFERENCIA: `logo.png` mide 578×432 (1,338) y el
+// isotipo solo es cuadrado (261×261). Poner un logo de 1,338 en una caja de 86×22 —3,9:1— lo aplasta
+// hasta volverlo ilegible, y un logo deformado es peor que ningún logo.
+export const LOGO = Object.freeze({ ancho: 44, alto: 33, proporcion: 578 / 432 })
+export const ISOTIPO_URL = process.env.ORQ_SLIDES_ISOTIPO_URL || 'https://app.ecsas.com.ar/marca/isotipo.png'
 
 /** '#30302F' → {red,green,blue} 0..1, que es como los quiere la Slides API. PURA. */
 export function rgb(hex) {

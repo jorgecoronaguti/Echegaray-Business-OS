@@ -169,15 +169,19 @@ test('ninguna imagen viaja en el lote principal: si una URL falla, no se cae el 
   assert.equal(imagenes.every((r) => r.createImage), true)
 })
 
-test('la marca de la portada se DIBUJA: no depende de que una URL conteste', () => {
-  // El PNG del portal devuelve 307 a /login y Google no lo puede bajar. La identidad no puede
-  // depender de eso: se dibuja con formas y texto medido.
+test('la marca lleva el isotipo REAL, y el nombre sigue escrito por si la imagen no baja', () => {
+  // La regla cambió el 27/08/2026 y este test dice la nueva. Antes la marca se dibujaba con un
+  // cuadrado amarillo porque la única URL conocida devolvía 307 al login; el dueño lo vio y lo dijo:
+  // «no hay uso de los logos oficiales». Ahora se usa el archivo real —probado: Google lo baja—,
+  // PERO el nombre se sigue escribiendo, porque una identidad que depende de que un servidor
+  // conteste es una identidad que un día no aparece.
   const prep = prepararDeck(deck([{ tipo: 'puntos', titulo: 'Puntos', puntos: ['x'] }]))
   const portada = prep.compuesto.laminas[0]
-  assert.ok(portada.cajas.some((c) => c.contenido === 'ECHEGARAY'))
+  assert.ok(portada.cajas.some((c) => c.contenido === 'ECHEGARAY'), 'sin la imagen la portada tiene que seguir firmando')
   assert.ok(portada.cajas.some((c) => c.contenido === 'CONSTRUCCIONES'))
-  assert.equal(portada.cajas.some((c) => c.tipo === 'imagen'), false)
-  assert.equal(requestsDelDeck(prep.compuesto).imagenes.length, 0)
+  assert.ok(portada.cajas.some((c) => c.tipo === 'imagen' && /isotipo|logo/.test(c.url)), 'el logo oficial no está')
+  // Y sigue viajando en el lote separado: si la URL falla, se pierde el logo, nunca el mazo.
+  assert.equal(requestsDelDeck(prep.compuesto).principales.some((r) => r.createImage), false)
 })
 
 test('el interlineado se traduce a porcentaje del simple, no al número crudo', () => {

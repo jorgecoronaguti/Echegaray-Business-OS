@@ -7,7 +7,7 @@
 //
 // PURO.
 
-import { COLOR, CONTENIDO, LOGO, LOGO_URL, MARGEN, ORIGEN, PAGINA, SLACK_UNA_LINEA, TIPO } from './marca.mjs'
+import { COLOR, CONTENIDO, ISOTIPO_URL, LOGO, LOGO_URL, MARGEN, ORIGEN, PAGINA, SLACK_UNA_LINEA, TIPO } from './marca.mjs'
 import { anchoTexto, medirTexto } from './layout.mjs'
 
 let contador = 0
@@ -89,12 +89,17 @@ export function encabezado({ kicker = null, titulo, ancho = CONTENIDO.ancho, x =
  * espacio se llevó. PURA.
  */
 export function marcaEcsas({ x, y, alto = 22, sobreOscuro = false }) {
+  // ═══ EL LOGO DE VERDAD CUANDO EXISTE (27/08/2026) ═══
+  //
+  // Lo de abajo —un cuadrado amarillo y dos palabras— nació como respaldo de cuando ninguna URL del
+  // logo servía, y terminó siendo lo único que se veía. No es la marca: la marca es el isotipo de
+  // tres barras. Con el archivo accesible se usa el archivo, y se respeta su proporción real.
   const NOMBRE = 'ECHEGARAY'
   const BAJADA = 'CONSTRUCCIONES'
-  const cuadrado = alto * 0.52
+  const cuadrado = alto * 0.92
   const tamano = alto * 0.46
   const tamanoBajada = tamano * 0.6
-  const sangria = cuadrado + 8
+  const sangria = cuadrado + 10
   // Se MIDEN las dos palabras: un ancho a ojo dejaba «ECHEGARAY» partido en dos líneas, que es el
   // mismo defecto que este módulo existe para evitar.
   const anchoNombre = anchoTexto(NOMBRE, tamano, { negrita: true })
@@ -104,7 +109,12 @@ export function marcaEcsas({ x, y, alto = 22, sobreOscuro = false }) {
     ancho: sangria + anchoLetras,
     alto,
     cajas: [
-      rect({ x, y: y + (alto - cuadrado) / 2, ancho: cuadrado, alto: cuadrado, relleno: COLOR.amarillo }),
+      // El isotipo REAL de tres barras, no un cuadrado amarillo que lo representaba. Es cuadrado
+      // (261×261), así que la caja también. Si Google no lo baja, quedan las dos palabras: la
+      // identidad nunca depende de una sola cosa.
+      ISOTIPO_URL
+        ? imagen({ x, y: y + (alto - cuadrado) / 2, ancho: cuadrado, alto: cuadrado, url: ISOTIPO_URL, capa: 'contenido' })
+        : rect({ x, y: y + (alto - cuadrado) / 2, ancho: cuadrado, alto: cuadrado, relleno: COLOR.amarillo }),
       texto({
         x: x + sangria, y, ancho: anchoLetras, alto: tamano * 1.15,
         contenido: NOMBRE, estilo: { tamano, negrita: true, alto: 1.1, color: sobreOscuro ? COLOR.papel : COLOR.tinta },
@@ -131,9 +141,13 @@ export function pie({ numero, total, obra = null, cliente = null, conLogo = true
   // En las láminas de contenido el nombre de la empresa ya está escrito al pie: repetir la marca
   // sería ruido. El logo remoto sólo entra si alguien configuró una URL pública de verdad.
   if (conLogo && LOGO_URL) {
+    // ARRIBA de la línea del pie, no debajo: bajo la línea quedan 30 pt y el logo mide 33 de alto —
+    // se salía de la lámina, y el control lo cazó antes de publicar nada. El alto sale de la
+    // proporción del archivo; el ancho se deriva, nunca al revés.
+    const altoPie = 16
     cajas.push(imagen({
-      x: CONTENIDO.x + CONTENIDO.ancho - LOGO.ancho, y: CHROME.pieLinea - LOGO.alto - 8,
-      ancho: LOGO.ancho, alto: LOGO.alto, url: LOGO_URL,
+      x: CONTENIDO.x + CONTENIDO.ancho - altoPie, y: CHROME.pieLinea - altoPie - 7,
+      ancho: altoPie, alto: altoPie, url: ISOTIPO_URL,
     }))
   }
   return cajas
