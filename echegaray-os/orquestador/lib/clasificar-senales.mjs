@@ -116,6 +116,29 @@ export function relacionDeNombres(nombreActividad, nombreCandidata) {
  * que hace esta actividad, y da igual cuánto se parezcan los nombres. Es la secuencia constructiva
  * hablando: esta obra parte esa tarea en dos, así que la tarea entera no es ninguna de las dos.
  */
+/**
+ * ¿LOS DOS NOMBRES SON EL MISMO SALVO POR UNAS POCAS PALABRAS QUE SE SUSTITUYEN?
+ *
+ * Devuelve las palabras que difieren de cada lado, o `null` si no es una sustitución — si uno
+ * contiene al otro (eso ya lo veta la contención) o si comparten poco.
+ *
+ * La condición «comparten la mayoría» es lo que hace la regla segura: dos nombres que apenas se
+ * parecen no caen acá, y de todos modos nunca llegarían al umbral.
+ */
+export function sustitucion(a, b) {
+  const A = tokens(a), B = tokens(b)
+  if (!A.size || !B.size) return null
+  const soloA = [...A].filter((t) => !B.has(t))
+  const soloB = [...B].filter((t) => !A.has(t))
+  // Contención: uno es el otro más condiciones. Tiene su propio veto y su propio mensaje.
+  if (!soloA.length || !soloB.length) return null
+  const comunes = [...A].filter((t) => B.has(t)).length
+  // Se exige que compartan MÁS de lo que difieren: si no, no son «el mismo nombre con una palabra
+  // cambiada», son dos nombres distintos y el umbral ya los deja afuera.
+  if (comunes <= Math.max(soloA.length, soloB.length)) return null
+  return { mias: soloA.join(', '), suyas: soloB.join(', '), comunes }
+}
+
 export function vetosDe(candidata, contexto = {}) {
   const vetos = []
   const rel = relacionDeNombres(contexto.nombre, candidata.nombre)
@@ -124,6 +147,28 @@ export function vetosDe(candidata, contexto = {}) {
   }
   if (rel === 'ACTIVIDAD_MAS_ESPECIFICA') {
     vetos.push(`la actividad agrega condiciones que «${candidata.nombre}» no tiene: es una parte o una variante, no la tarea`)
+  }
+  // ═══ EL VETO POR SUSTITUCIÓN — el que faltaba (27/08/2026, auditoría) ═══
+  //
+  // Sacar CON/SIN/SOBRE de los conectores impidió que estos pares salieran IGUAL **por palabras**,
+  // pero no impidió que se asignaran: caían por el otro camino, ALTA por similitud, que no mira
+  // palabras. Y su similitud es ALTA justamente porque difieren en una sola palabra de muchas:
+  //
+  //   PINTURA AL LATEX EN MUROS EXTERNOS  →  ... INTERNOS            0,83
+  //   CONTRAPISO PARA MOSAICO e = 0,15 m  →  ... e = 0,10 m          0,88
+  //   DEMOLICION DE BACHE - 2M2           →  ... - 1M2               0,76
+  //   APLICACION DE ESMALTE ... A PINCEL  →  ... A SOPLETE           0,74
+  //
+  // Las cuatro son otro trabajo, otro rendimiento y otro precio. La regla es de sentido común y por
+  // eso vale: **si dos nombres son casi el mismo y difieren en una palabra, esa palabra ES la
+  // diferencia** — es lo único que los distingue, así que es lo último que se puede ignorar.
+  //
+  // La contención ya tenía su veto; ésta es la otra mitad. No se listan las palabras «peligrosas»
+  // —externo, pincel, 0,15— porque esa lista nunca está completa: se veta la FORMA de la diferencia.
+  const sust = sustitucion(contexto.nombre, candidata.nombre)
+  if (sust) {
+    vetos.push(`«${candidata.nombre}» dice ${sust.suyas} donde la actividad dice ${sust.mias}: `
+      + 'es la única palabra que las distingue, así que es la que decide si son la misma tarea')
   }
   const ct = tokens(candidata.nombre)
   for (const h of contexto.hermanas ?? []) {
@@ -150,13 +195,19 @@ export function corroboracionesDe(candidata, contexto = {}) {
   if (contexto.unidad && candidata.unidad && normalizar(contexto.unidad) === normalizar(candidata.unidad)) {
     out.push({ senal: 'unidad', porQue: `las dos se miden en ${candidata.unidad}` })
   }
+  // ═══ EL RUBRO Y LA OBRA NO SON EVIDENCIA INDEPENDIENTE (27/08/2026, auditoría) ═══
+  //
+  // «el rubro MUROS nombra MURO» es la misma palabra del mismo nombre reapareciendo en el
+  // encabezado de su propia sección: un control validado contra la información que produce. Servían
+  // para bajar el umbral de 0,75 a 0,60, y con eso el par «MAMPOSTERÍA e=0,20 m / e=0,30 m» se
+  // asignaba solo. Se conservan como CONTEXTO —se ven en la evidencia— pero no corroboran.
   const rubro = compartido(contexto.seccion)
   if (rubro.length) {
-    out.push({ senal: 'rubro', porQue: `el rubro «${contexto.seccion}» nombra ${rubro.join(', ')}` })
+    out.push({ senal: 'rubro', independiente: false, porQue: `el rubro «${contexto.seccion}» nombra ${rubro.join(', ')} — sale del propio nombre, no corrobora` })
   }
   const porObra = compartido(contexto.obra)
   if (porObra.length) {
-    out.push({ senal: 'obra', porQue: `la obra «${contexto.obra}» nombra ${porObra.join(', ')}` })
+    out.push({ senal: 'obra', independiente: false, porQue: `la obra «${contexto.obra}» nombra ${porObra.join(', ')} — sale del propio nombre, no corrobora` })
   }
   const vecina = (contexto.hermanas ?? []).find((h) => h.tareaTipoId && h.tareaTipoId === candidata.tareaTipoId)
   if (vecina) {

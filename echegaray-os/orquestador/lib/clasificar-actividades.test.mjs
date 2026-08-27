@@ -24,18 +24,34 @@ test('el mismo nombre en plural es el mismo nombre', () => {
   assert.equal(v.evidencia.candidata, 'EXCAVACIONES')
 })
 
-test('una sola candidata fuerte y sin competencia: se asigna con ALTA', () => {
+test('ALISADO no es PULIDO por más que se parezcan: no se asigna', () => {
+  // ═══ ESTE TEST AFIRMABA LO CONTRARIO (27/08/2026, auditoría) ═══
+  //
+  // Decía «una sola candidata fuerte y sin competencia: se asigna con ALTA» con este mismo par. Y
+  // alisado y pulido son dos terminaciones distintas: otro trabajo, otro rendimiento, otro precio.
+  // El defecto estaba encodado como test, que es la forma más cara de tenerlo — el arreglo se veía
+  // como una regresión.
   const v = veredictoDe({ nombre: 'PISO DE HORMIGON ALISADO' },
     [c('PISO DE HORMIGON PULIDO', 0.82), c('CONTRAPISO', 0.52)])
-  assert.equal(v.veredicto, 'ALTA')
-  assert.equal(v.confianza, 'ALTA')
+  assert.notEqual(v.veredicto, 'ALTA')
+  assert.equal(v.tareaTipoId, undefined)
+  // Y la que sobrevive es la floja (CONTRAPISO, 0,52), que no alcanza para decidir: zona gris.
+  assert.equal(v.veredicto, 'ZONA GRIS')
 })
 
-test('dos candidatas casi iguales: AMBIGUO, no la primera', () => {
+test('dos candidatas que sólo cambian la terminación: ninguna se lleva la actividad', () => {
   const v = veredictoDe({ nombre: 'PISO DE HORMIGON ALISADO' },
     [c('PISO DE HORMIGON PULIDO', 0.82), c('PISO DE HORMIGON FRATAZADO', 0.80)])
+  assert.notEqual(v.veredicto, 'ALTA')
+  assert.equal(v.tareaTipoId, undefined)
+})
+
+test('si la ÚNICA candidata está vetada, es AMBIGUO — y no se gasta una llamada al modelo', () => {
+  // No va a la zona gris: la regla ya sabe por qué no corresponde, y decirlo cuesta cero. La zona
+  // gris es para cuando hay señal y NO hay certeza, no para cuando hay certeza de que no.
+  const v = veredictoDe({ nombre: 'PISO DE HORMIGON ALISADO' }, [c('PISO DE HORMIGON PULIDO', 0.82)])
   assert.equal(v.veredicto, 'AMBIGUO')
-  assert.match(v.porQue, /casi igual/)
+  assert.equal(v.tareaTipoId, undefined)
 })
 
 test('la unidad manda sobre el parecido del nombre', () => {

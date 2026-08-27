@@ -2,7 +2,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {
+import { veredictoDe } from './clasificar-actividades.mjs'
+import { sustitucion,
   singular, tokens, relacionDeNombres, vetosDe, corroboracionesDe, pruebaDirecta,
 } from './clasificar-senales.mjs'
 
@@ -80,4 +81,54 @@ test('la partida cotizada es una prueba, no una inferencia', () => {
   assert.equal(d.confianza, 'EXACTO')
   // Y sin ninguna de las dos, no hay prueba directa: no se inventa una.
   assert.equal(pruebaDirecta({}), null)
+})
+
+// ═══ EL VETO POR SUSTITUCIÓN — los cinco pares reales que la auditoría encontró ═══
+//
+// El defecto: sacar CON/SIN/SOBRE de los conectores impidió que salieran IGUAL por palabras, pero
+// NO impidió que se asignaran — caían por ALTA por similitud, que no mira palabras. Y su similitud
+// es alta justamente porque difieren en una sola palabra de muchas. El timer los escribía 4 veces
+// por día, con confianza ALTA y sin que interviniera una persona.
+//
+// Se prueba sobre `veredictoDe` —el efecto— y no sobre `relacionDeNombres`, que era lo que el test
+// anterior medía: probaba la palabra, no lo que la palabra provocaba.
+
+const par = (actividad, candidata, similitud, unidad = 'M2') =>
+  veredictoDe({ nombre: actividad, unidad, seccion: null, obra: null, hermanas: [] },
+    [{ tareaTipoId: 't1', nombre: candidata, unidad, similitud }])
+
+test('dos nombres que difieren en la palabra que cambia el trabajo NO se asignan', () => {
+  const casos = [
+    ['PINTURA AL LATEX EN MUROS EXTERNOS', 'PINTURA AL LATEX EN MUROS INTERNOS', 0.83],
+    ['CONTRAPISO PARA MOSAICO e = 0,15 m', 'CONTRAPISO PARA MOSAICO e = 0,10 m', 0.88],
+    ['DEMOLICION DE BACHE - 2M2', 'DEMOLICION DE BACHE - 1M2', 0.76],
+    ['APLICACION DE ESMALTE SINTETICO 3:1 A PINCEL', 'APLICACION DE ESMALTE SINTETICO 3:1 A SOPLETE', 0.74],
+    ['MAMPOSTERIA LADRILLON CERAMICO e = 0,30 m', 'MAMPOSTERIA LADRILLON CERAMICO e = 0,20 m', 0.63],
+  ]
+  for (const [a, b, sim] of casos) {
+    const v = par(a, b, sim)
+    assert.notEqual(v.veredicto, 'ALTA', `«${a}» se asignó sola a «${b}» con ${sim} de similitud`)
+    assert.equal(v.tareaTipoId, undefined, `«${a}» quedó vinculada a «${b}»`)
+  }
+})
+
+test('la sustitución se detecta por la FORMA de la diferencia, no por una lista de palabras', () => {
+  // Una lista de palabras peligrosas nunca está completa. Se veta que dos nombres casi iguales
+  // difieran en una palabra, sea cual sea.
+  assert.ok(sustitucion('MURO INTERIOR DE LADRILLO', 'MURO EXTERIOR DE LADRILLO'))
+  assert.ok(sustitucion('VIGA H17 FE 100', 'VIGA H17 FE 130'))
+  // Contención: NO es sustitución, tiene su propio veto y su propio mensaje.
+  assert.equal(sustitucion('HORMIGONADO', 'HORMIGONADO A MANO'), null)
+  // Dos nombres que apenas se parecen tampoco: no comparten más de lo que difieren.
+  assert.equal(sustitucion('REPLANTEO', 'PINTURA DE CIELORRASO'), null)
+})
+
+test('el rubro y la obra ya no bajan el umbral: salen del propio nombre', () => {
+  // «el rubro MUROS nombra MURO» es un control validado contra la información que produce. Con eso
+  // el umbral caía de 0,75 a 0,60 y el par de mampostería 0,20/0,30 se asignaba solo.
+  const c = corroboracionesDe({ nombre: 'MURO DE LADRILLO', unidad: 'M2' },
+    { nombre: 'MURO DE LADRILLO HUECO', unidad: 'M2', seccion: 'MUROS', obra: 'MURO PERIMETRAL' })
+  const independientes = c.filter((x) => x.independiente !== false)
+  assert.equal(independientes.every((x) => x.senal !== 'rubro' && x.senal !== 'obra'), true)
+  assert.ok(c.some((x) => x.senal === 'rubro' && x.independiente === false), 'el rubro se sigue viendo, pero no corrobora')
 })

@@ -95,12 +95,15 @@ function evaluar(candidatas, contexto) {
 /** La decisión entre las candidatas que ningún veto tumbó. */
 function decidirEntreVivas(vivas) {
   const [primera, segunda] = vivas
-  const corroborada = primera.corroboraciones.length > 0
+  // Sólo las señales INDEPENDIENTES del nombre bajan el umbral. El rubro y la obra viajan en la
+  // evidencia pero no corroboran: son la misma palabra del nombre reapareciendo en su encabezado.
+  const respaldos = primera.corroboraciones.filter((c) => c.independiente !== false)
+  const corroborada = respaldos.length > 0
   const umbral = corroborada ? UMBRAL.ALTA_CORROBORADA : UMBRAL.ALTA
   const sola = !segunda || primera.similitud - segunda.similitud >= UMBRAL.VENTAJA
 
   if (primera.similitud >= umbral && sola) {
-    const respaldo = primera.corroboraciones.map((x) => x.porQue).join(' · ')
+    const respaldo = respaldos.map((x) => x.porQue).join(' · ')
     return {
       veredicto: 'ALTA', tareaTipoId: primera.tareaTipoId, confianza: 'ALTA', origen: 'similitud',
       porQue: `«${primera.nombre}» con ${primera.similitud.toFixed(2)} de similitud, sin otra candidata cerca`
