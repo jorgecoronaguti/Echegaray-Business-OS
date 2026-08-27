@@ -31,7 +31,8 @@ export function archivoObjetivo(input = {}, fileId) {
 // snapshotearlas sería ruido y costo sin beneficio.
 const SIN_SNAPSHOT = new Set([
   'drive_create', 'drive_copy', 'drive_move', 'drive_rename', 'drive_trash', 'drive_delete',
-  'drive_add_tab', 'drive_delete_tab', 'drive_rename_tab', 'crear_presentacion', 'exportar_a_pdf',
+  'drive_add_tab', 'drive_delete_tab', 'drive_rename_tab', 'exportar_a_pdf',
+  'crear_presentacion_google_slides', 'previsualizar_presentacion', 'ver_presentacion',
   'drive_write_doc', 'drive_doc_insert_image', 'drive_doc_insert_table', 'drive_doc_replace_text',
   'drive_doc_style_text', 'drive_freeze', 'drive_auto_resize',
   // La propia tool de deshacer NO se snapshotea desde el ejecutor: restaurarSnapshot ya guarda el

@@ -65,6 +65,8 @@ export const SKILL_AREA = {
   'tesoreria-inversiones-corporativas': 'administracion_finanzas',
   // El contrato de diseño de app.ecsas.com.ar: es del producto interno, no de un área de obra.
   'diseno-ui-ux-producto-os': 'gestion_general',
+  // Cómo el OS arma una presentación: sirve a todas las áreas, no es de ninguna.
+  'crear-presentacion-google-slides': 'gestion_general',
 }
 
 // ── Skills que NO son de este OS ────────────────────────────────────────────────────────────
