@@ -14,8 +14,20 @@
 // intento de conseguir lo contrario queda REPORTADO, no borrado en silencio. Es el mismo diseño que
 // `lib/web/contenido-externo.mjs`, donde lo externo nunca asciende a HECHO aunque el caller lo pida.
 //
-// ESCRITURA (`drive.write`): la imagen se guarda en el Drive del dueño y puede publicarse por link,
-// así que la tool se ENCOLA y la ejecuta `handlers/operation_execute.mjs` después de la aprobación.
+// ═══ ESCRITURA (`drive.write`): DOS CAMINOS, Y NO TIENEN EL MISMO CONTROL ═══
+//
+// La imagen se guarda en el Drive del dueño y, con `publicar_para_slides`, queda legible por link.
+//
+//   · Por el WORK FABRIC la tool se ENCOLA y la ejecuta `handlers/operation_execute.mjs` después de
+//     la aprobación.
+//   · Por el GATEWAY DE XSAS se ejecuta SINCRÓNICA: `correrTool` la corre y la firma después. No hay
+//     cola ni aprobación en ese camino.
+//
+// Este encabezado decía sólo lo primero, y la auditoría del 27/08 lo marcó con razón: afirmaba un
+// control que el camino que se usa no tiene. Lo que SÍ protege el camino de XSAS son las dos
+// cerraduras de `xsas-permisos.mjs` —la capability la tiene un solo rol, y la tool está nombrada en
+// la lista de autorizadas— más la firma en `public.xsas_escritura`. Encolar también el camino de
+// XSAS es una decisión del dueño, no un arreglo: cambia la experiencia de pedir una imagen por chat.
 
 import { TIPOS_IMAGEN, validarPedido } from '../imagen/contrato.mjs'
 import { producirImagen } from '../imagen/motor.mjs'

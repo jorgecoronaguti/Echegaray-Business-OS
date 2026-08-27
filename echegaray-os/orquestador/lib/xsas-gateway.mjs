@@ -70,7 +70,17 @@ async function correrTool({ clave, tool, pedido, query = null, argsResueltos = n
   if (falta.length) return { ok: false, motivo: `falta ${falta.join(', ')} para ${clave}`, tipo: 'falta_dato' }
   try {
     const datos = await tool.run(args)
-    await firmarEscritura({ query, clave, tool, pedido, datos, error: null })
+    // ═══ UNA TOOL QUE FALLA NO SIEMPRE LANZA ═══
+    //
+    // `imagen.generar` devuelve `{error: …}` y el motor devuelve `{ok:false, falta, motivo}` sin
+    // lanzar nunca. La firma miraba sólo la excepción, así que diecinueve escrituras quedaron
+    // registradas como «ok» y la tabla nunca pudo tomar el valor «error» que su propio CHECK
+    // permite. Un control que sólo puede decir que sí no es un control.
+    const falló = datos?.ok === false || Boolean(datos?.error)
+    await firmarEscritura({
+      query, clave, tool, pedido, datos,
+      error: falló ? String(datos.error ?? datos.motivo ?? 'la tool devolvió ok:false').slice(0, 300) : null,
+    })
     return { ok: true, datos, args }
   } catch (e) {
     const motivo = `${clave} falló: ${String(e?.message ?? e).slice(0, 200)}`
@@ -104,8 +114,12 @@ async function firmarEscritura({ query, clave, tool, pedido, datos, error }) {
         pedido.canal ?? null,
         clave,
         tool.capability,
-        datos?.id ?? null,
-        datos?.link ?? null,
+        // CADA TOOL NOMBRA SU ARCHIVO A SU MANERA: `slides.crear` devuelve `{id, link}` y
+        // `imagen.generar` devuelve `{archivo:{id}, drive_url}`. Con un solo nombre, dieciocho
+        // escrituras reales quedaron firmadas con el archivo en NULL — la traza decía quién y
+        // cuándo, y no decía SOBRE QUÉ, que es la mitad que sirve para auditar.
+        datos?.id ?? datos?.archivo?.id ?? null,
+        datos?.link ?? datos?.drive_url ?? datos?.imagen_url ?? null,
         error ? 'error' : 'ok',
         error ?? null,
       ],

@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { decidirDespliegue, DAEMONS } from '../lib/despliegue.mjs'
+import { decidirDespliegue, DAEMONS, unidadesARepuntar } from '../lib/despliegue.mjs'
 
 const DIR_PROD = process.env.ORQ_DEPLOY_DIR || '/home/jorge/echegaray-os/produccion'
 const DIR_DEV = '/home/jorge/echegaray-os/app'
@@ -21,6 +21,28 @@ const REGISTRO = path.join(os.homedir(), '.config', 'echegaray-orq', 'DESPLEGADO
 const APP = 'echegaray-os'
 
 const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8' }).trim()
+
+const UNIDADES = path.join(os.homedir(), '.config', 'systemd', 'user')
+const DIR_DEV_APP = '/home/jorge/echegaray-os/app/echegaray-os'
+
+/**
+ * ¿QUEDÓ ALGUNA UNIDAD MIRANDO AL ÁRBOL DE DESARROLLO?
+ *
+ * `unidadesARepuntar` existía y la usaba sólo su test — o sea, el BLOCKER que este despliegue dice
+ * cerrar no tenía guardián ejecutable, y un `WorkingDirectory` que volviera al árbol de trabajo
+ * pasaba el despliegue en verde. Lo marcó la auditoría del 27/08. Ahora se comprueba antes de tocar
+ * nada: es barato, es determinístico, y es exactamente lo que el despliegue promete.
+ */
+function unidadesQueMiranADesarrollo() {
+  let archivos = []
+  try { archivos = fs.readdirSync(UNIDADES).filter((f) => f.endsWith('.service')) } catch { return [] }
+  const unidades = archivos.map((nombre) => {
+    let texto = ''
+    try { texto = fs.readFileSync(path.join(UNIDADES, nombre), 'utf8') } catch { /* ilegible */ }
+    return { nombre, texto }
+  })
+  return unidadesARepuntar(unidades, { dirDesarrollo: DIR_DEV_APP })
+}
 const git = (args, cwd = DIR_PROD) => sh('git', args, cwd)
 const systemctl = (args) => sh('systemctl', ['--user', ...args])
 
@@ -29,6 +51,10 @@ function registroLeer() {
 }
 
 function estado() {
+  const sueltas = unidadesQueMiranADesarrollo()
+  console.log(sueltas.length
+    ? `ATENCIÓN: ${sueltas.length} unidad(es) miran al árbol de desarrollo: ${sueltas.join(', ')}`
+    : 'unidades: ninguna mira al árbol de desarrollo (salvo las declaradas de desarrollo)')
   const r = registroLeer()
   const vivo = git(['rev-parse', 'HEAD'])
   console.log(`checkout productivo: ${DIR_PROD}`)
@@ -52,6 +78,13 @@ async function main() {
   if (!fs.existsSync(path.join(DIR_PROD, '.git'))) {
     console.error(`no existe el checkout productivo en ${DIR_PROD}`)
     process.exit(2)
+  }
+
+  const sueltas = unidadesQueMiranADesarrollo()
+  if (sueltas.length) {
+    console.error(`estas unidades apuntan al árbol de desarrollo y no deberían: ${sueltas.join(', ')}`)
+    console.error('desplegar así deja producción ejecutando el árbol donde se edita. NO avanzo.')
+    process.exit(1)
   }
 
   git(['fetch', '--quiet', 'origin', 'main'])

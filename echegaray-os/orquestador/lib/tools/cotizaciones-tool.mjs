@@ -5,7 +5,9 @@ import { registrarCotizacion, estadoCotizaciones, desvioCotizacionObra } from '.
 export function cotizacionesTools() {
   return {
     'cotizacion.registrar': {
-      capability: 'drive.read',
+      // ESCRIBE: hace un INSERT en `public.cotizaciones`. Declaraba `drive.read` y por eso las dos
+      // cerraduras de `xsas-permisos.mjs` no se enteraban — un `jefe_obra` llegaba a ejecutarla.
+      capability: 'os.write',
       account: 'ecsas',
       schema: {
         name: 'registrar_cotizacion',
