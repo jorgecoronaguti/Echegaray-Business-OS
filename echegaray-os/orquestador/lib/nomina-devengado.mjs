@@ -14,9 +14,16 @@
 
 const texto = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
-/** Las columnas del espejo de jornales. Mismas que usa `desvinculacion-plantel.mjs`: si la planilla
- *  cambia de forma, cambian en los dos lados y el test lo dice. */
-const COL = { nombre: 1, ingreso: 2, categoria: 3, hora: 22 }
+/**
+ * LAS COLUMNAS, QUE NO SON LAS MISMAS EN LAS DOS PLANILLAS.
+ *
+ * `_J_OBREROS` y `_J_OFICINA` se ven iguales y no lo son: en la de obra el `$/hora` está en la
+ * columna 22 y hay una columna de categoría; en la de oficina el `$/hora` está en la 21 y la
+ * columna 3 es «DÍAS TRABAJADO», no la categoría. Leer la de oficina con el mapa de la de obra da
+ * un jornal de $1.365.000 y una categoría «69» — probado el 27/08. El mapa se pasa, no se supone.
+ */
+export const COL_OBRA = Object.freeze({ nombre: 1, ingreso: 2, categoria: 3, hora: 22 })
+export const COL_OFICINA = Object.freeze({ nombre: 1, ingreso: 2, categoria: null, hora: 21 })
 const DIA_DESDE = 5
 const DIA_HASTA = 20
 
@@ -43,22 +50,24 @@ export function jornal(v) {
  *
  * PURA.
  */
-export function devengadoPorMes(grid = [], bloques = [], { anio = 2026, clave } = {}) {
+export function devengadoPorMes(grid = [], bloques = [], { anio = 2026, clave, col = COL_OBRA } = {}) {
   const out = new Map()
   bloques.forEach((b) => {
     const fechas = grid[b.filaFecha - 1] ?? []
     for (let r = b.inicio; r <= b.fin; r++) {
       const fila = grid[r - 1] ?? []
-      const nombre = texto(fila[COL.nombre])
+      const nombre = texto(fila[col.nombre])
       if (!nombre) continue
       const k = clave(nombre)
       if (!k) continue
       // El $/hora de ESTA fila, o sea de este bloque. Una fila sin precio no se puede valorizar: sus
       // horas se cuentan igual y su importe queda declarado como no medible, nunca en cero silencioso.
-      const precio = jornal(fila[COL.hora])
+      const precio = jornal(fila[col.hora])
       let p = out.get(k)
-      if (!p) { p = { nombre, meses: new Map(), jornalPorMes: new Map(), horasSinPrecio: 0 }; out.set(k, p) }
+      if (!p) { p = { nombre, categoria: '', jornal: 0, meses: new Map(), jornalPorMes: new Map(), horasSinPrecio: 0 }; out.set(k, p) }
       p.nombre = nombre
+      if (col.categoria != null && texto(fila[col.categoria])) p.categoria = texto(fila[col.categoria])
+      if (precio > 0) p.jornal = precio
       for (let c = DIA_DESDE; c <= DIA_HASTA; c++) {
         const m = /^(\d{1,2})\/(\d{1,2})$/.exec(texto(fechas[c]))
         if (!m) continue
