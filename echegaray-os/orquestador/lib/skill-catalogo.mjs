@@ -67,6 +67,8 @@ export const SKILL_AREA = {
   'diseno-ui-ux-producto-os': 'gestion_general',
   // Cómo el OS arma una presentación: sirve a todas las áreas, no es de ninguna.
   'crear-presentacion-google-slides': 'gestion_general',
+  // Cómo el OS genera una imagen original. Misma naturaleza que la de Slides: transversal.
+  'generar-imagen': 'gestion_general',
 }
 
 // ── Skills que NO son de este OS ────────────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ export const SKILL_AREA = {
 export const SKILLS_AJENAS = {
   'ai': 'plantilla genérica (Vercel AI SDK + OpenRouter); el OS usa orquestador/lib/ia/cliente.mjs',
   'add-login': 'plantilla genérica de auth; el OS ya tiene Supabase Auth + RLS en producción',
-  'image-generation': 'plantilla genérica (OpenRouter + Gemini); ninguna capacidad del OS la usa',
+  'image-generation': 'plantilla genérica (OpenRouter + Gemini); la capacidad canónica del OS es `generar-imagen` (orquestador/lib/imagen/)',
 }
 
 // Skills que gobiernan el trabajo de Claude Code (no del negocio) y NO declaran `metadata.type`.

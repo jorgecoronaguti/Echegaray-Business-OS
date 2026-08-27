@@ -1705,6 +1705,32 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         await ownerToken(), // op a nivel-archivo: la hace el dueño del archivo, no el robot
       )
     },
+    /**
+     * PUBLICA un archivo con LINK DE LECTURA (`anyone: reader`).
+     *
+     * POR QUÉ EXISTE, y por qué es opt-in: `createImage` de Google Slides baja la URL de la imagen
+     * SIN NUESTRAS CREDENCIALES. Un archivo en el Drive privado del dueño devuelve 404 para ese
+     * downloader, así que una imagen guardada en Drive NO se puede insertar en una lámina por su
+     * link de Drive. Publicarla es el único mecanismo que Google ofrece, y es una decisión con
+     * efecto hacia afuera: nadie la toma por defecto. Quien la pide, la pide explícitamente.
+     *
+     * Devuelve las URLs que sirven para bajar los BYTES (la de `webViewLink` es una PÁGINA HTML,
+     * no la imagen: pasarle esa a Slides falla en silencio).
+     */
+    async publicarLectura(fileId) {
+      const id = String(fileId)
+      await apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}/permissions?sendNotificationEmail=false&supportsAllDrives=true`,
+        'POST',
+        { type: 'anyone', role: 'reader' },
+        await ownerToken(), // op a nivel-archivo: la hace el dueño del archivo, no el robot
+      )
+      return {
+        id,
+        url_bytes: `https://lh3.googleusercontent.com/d/${id}`,
+        url_alternativa: `https://drive.google.com/uc?export=view&id=${id}`,
+      }
+    },
     /** Prepara los adjuntos de un mail RESPETANDO el formato: un archivo NATIVO de Google
      *  (Doc/Sheet/Slides) NO se puede adjuntar como binario → va como LINK al documento real
      *  (y se comparte con el destinatario). Un binario (docx/xlsx/pdf subido) se adjunta tal

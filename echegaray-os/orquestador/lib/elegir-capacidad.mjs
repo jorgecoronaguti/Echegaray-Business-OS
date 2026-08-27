@@ -58,6 +58,11 @@ export const SKILL_KEYWORDS = {
   // `advise.*` la nombra. Las frases son literales de su propia `description` («armame una
   // presentación», «preparame las slides para la reunión con X»), no de mi criterio.
   'crear-presentacion-google-slides': ['presentacion', 'presentación', 'slides', 'diapositiva', 'diapositivas', 'armame una presentacion', 'armame una presentación', 'preparame las slides', 'google slides'],
+  // Mismo método: las frases son literales de la `description` de la skill («hacé una imagen», «una
+  // portada para», «un render de cómo quedaría», «un esquema de»), no de mi criterio. `imagen` a
+  // secas NO entra: aparece en pedidos que no son de generar nada («leé la imagen del comprobante»),
+  // y una señal ambigua le robaría el ruteo a carga-gastos-multimedia.
+  'generar-imagen': ['generar una imagen', 'genera una imagen', 'generá una imagen', 'hacer una imagen', 'hace una imagen', 'hacé una imagen', 'crear una imagen', 'crea una imagen', 'creá una imagen', 'render', 'ilustracion', 'ilustración', 'infografia', 'infografía', 'una portada para', 'imagen conceptual', 'concepto arquitectonico', 'concepto arquitectónico'],
 }
 
 // Señales inequívocas: una sola alcanza para decidir. "appsheet" o "lecap" no pueden ser de otro
@@ -65,6 +70,8 @@ export const SKILL_KEYWORDS = {
 const FUERTES_SKILL = new Set([
   'appsheet', 'lecap', 'caucion', 'caución', 'plazo fijo', 'money market', 'descubierto', 'extracto',
   'home banking', 'balanz', 'discovery', 'mockup', 'fajo', 'slides', 'google slides', 'diapositiva',
+  // Pedir un render, una infografía o un concepto arquitectónico no puede significar otra cosa.
+  'render', 'infografia', 'infografía', 'concepto arquitectonico', 'concepto arquitectónico', 'imagen conceptual',
   // Frases enteras que sólo pueden significar una cosa. Van acá porque medido sobre pedidos reales
   // ("qué pago primero esta semana", "cargar el comprobante de la factura de X") la skill dueña
   // quedaba afuera: el dominio ganaba la clasificación y la señal específica pesaba 1 punto.
