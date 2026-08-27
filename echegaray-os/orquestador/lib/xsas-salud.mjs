@@ -50,6 +50,25 @@ function infraestructura(e) {
   }
   const t = e.trabajos ?? {}
   const medidas = { activos: t.activos ?? null, trabados: t.trabados ?? null, completados: t.completados ?? null }
+
+  // ═══ EL FALLO PARCIAL NO ES UN OK (hallazgo de la auditoría adversarial, 27/08/2026) ═══
+  //
+  // Con `agentes` leído y `trabajos` en null —una consulta de las dos que falla— `t` quedaba en `{}`,
+  // `t.trabados > 0` daba false, y esta capa devolvía **OK: «la base contesta y no hay trabajos
+  // trabados»**. Afirmaba que no hay trabajos trabados sin haber podido contarlos.
+  //
+  // Es el mismo modo de fallar que ya costó seis falsos faltantes en control de documentación: un
+  // control que no pudo mirar NO dice «está todo bien», dice que no pudo mirar. La diferencia
+  // importa porque el OS decide distinto: ante OK no se hace nada; ante NO SE PUDO LEER se va a
+  // buscar por qué.
+  const falta = [e.agentes == null ? 'los agentes' : null, e.trabajos == null ? 'los trabajos' : null].filter(Boolean)
+  if (falta.length) {
+    return {
+      veredicto: VEREDICTO.NO_SE_PUDO_LEER,
+      porQue: `no se pudo leer ${falta.join(' ni ')}${e.noSePudoLeer ? `: ${e.noSePudoLeer}` : ''} — no se puede afirmar que esté sana`,
+      medidas,
+    }
+  }
   if (t.trabados > 0) {
     return {
       veredicto: VEREDICTO.PARCIAL,
