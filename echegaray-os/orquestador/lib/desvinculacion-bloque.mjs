@@ -32,6 +32,8 @@ import {
 const SIN_DATO = '—'
 /** La columna «Concepto» de la pestaña Compras. El contrato A→AN vive en comprobantes/contrato-columnas. */
 export const COL_CONCEPTO_COMPRAS = 'L'
+/** La columna del bloque 6.2 donde va el rastro del pago (0-based, relativa a la A). */
+export const COL_RASTRO = 11
 
 const fecha = (d) => (d instanceof Date
   ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
@@ -176,18 +178,28 @@ export function bloqueDesvinculacion({ activos = [], desafectados = [], hoy = ne
 
   filas.push([seccion('6.1', 'Plantel activo — qué sale de la caja')])
   filas.push(['Persona', 'Ingreso', 'Antigüedad', 'Cat.', 'Jornal conv.', 'Hs del mes',
-    'Jornales del mes', 'Vacaciones prop.', 'SAC prop.', 'FCL directo', 'Costo de desvincular',
-    'Total a desembolsar', 'FCL devengado 2026'])
+    'Jornales del mes', 'Vacaciones prop.', 'SAC prop.', 'FCL directo', 'Costo desvincular',
+    'A desembolsar', 'FCL devengado'])
+  // ═══ LAS FECHAS PIDEN SU FORMATO O SALEN COMO PLATA (27/08, visto en la pestaña viva) ═══
+  //
+  // La pestaña repinta de MONEDA todo lo que va de la B a la M. "26/05/2025" entra como fecha, y con
+  // formato de moneda encima se dibuja "$45.803" — el número de serie. No da error y no se puede ver
+  // leyendo celdas: hay que mirar la pestaña. Se devuelven las filas para que el formateador les pida
+  // DATE, igual que hace con las del registro.
+  const aPrimera = filas.length + 1
   for (const l of la) filas.push(filaActivo(l))
+  const aUltima = filas.length
   filas.push([rotuloTotal(`Si se fueran los ${la.length} — al ${fecha(hoy)}`), ...Array(5).fill(VACIO),
     ta.haberes, ta.vacaciones, ta.sac + ta.sacSobreVacaciones, ta.fclPagoDirecto, costoA,
     ta.desembolso, ta.fclDevengadoAcumulado])
 
   filas.push([seccion('6.2', 'Desafectados del año — la liquidación final')])
   filas.push(['Persona', 'Ingreso', 'Egreso', 'Antigüedad', 'Cat.', 'Jornal conv.',
-    'Vacaciones prop.', 'SAC prop.', 'FCL directo', 'Costo de desvincular', 'FCL devengado 2026',
+    'Vacaciones prop.', 'SAC prop.', 'FCL directo', 'Costo desvincular', 'FCL devengado',
     'Rastro del pago'])
+  const dPrimera = filas.length + 1
   for (const l of ld) filas.push(filaDesafectado(l, compras))
+  const dUltima = filas.length
   filas.push([rotuloTotal(`Los ${ld.length} que ya se fueron`), ...Array(5).fill(VACIO),
     td.vacaciones, td.sac + td.sacSobreVacaciones, td.fclPagoDirecto, costoD, td.fclDevengadoAcumulado])
 
@@ -195,5 +207,15 @@ export function bloqueDesvinculacion({ activos = [], desafectados = [], hoy = ne
   if (sinValuar.length) {
     filas.push([sub(`${ALERTA} ${sinValuar.length} sin categoría del convenio — no se valúan`)])
   }
-  return { filas, activos: la, desafectados: ld, sinValuar: sinValuar.length, totales: { ta, td, costoA, costoD } }
+  return {
+    filas, activos: la, desafectados: ld, sinValuar: sinValuar.length,
+    totales: { ta, td, costoA, costoD },
+    // Relativas a la PRIMERA fila de este bloque (1-based). El llamador les suma su desplazamiento:
+    // acá no se sabe —ni hace falta saber— en qué fila de la pestaña arranca la sección.
+    fechas: { activos: [aPrimera, aUltima], desafectados: [dPrimera, dUltima] },
+    // La columna «Rastro del pago» RINDE prosa por fórmula. Sin declararla, el barrido de moneda la
+    // alinea a la derecha y en 112px la frase se corta por la IZQUIERDA — se leía "rastro en Compras",
+    // que dice lo contrario de "▲ sin rastro en Compras".
+    prosa: { fila0: dPrimera, filaFin: dUltima, col: COL_RASTRO },
+  }
 }
