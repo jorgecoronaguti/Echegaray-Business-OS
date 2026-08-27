@@ -6,12 +6,22 @@
 // desde la fuente real —el rol de `public.perfiles`, contra el que ya están escritas las policies—
 // nunca desde lo que diga un cliente.
 //
-// ═══ POR QUÉ EN P0 NADIE ESCRIBE POR ACÁ ═══
+// ═══ LA ESCRITURA EN DRIVE — AUTORIZADA EL 27/08/2026, Y ACOTADA ═══
 //
-// Las tools del núcleo declaran `drive.read`, que es LECTURA. Ninguna capability de escritura entra
-// en esta tabla, a propósito: la puerta se abre primero para leer, y una capacidad que escribe se
-// habilita cuando exista quien firme el efecto de esa escritura. Agregar una acá es una decisión
-// del dueño, no un descuido de configuración.
+// El dueño autorizó `drive.write` con una condición textual: *"NO significa acceso de escritura
+// irrestricto para cualquier request… Una consulta común de chat NO obtiene drive.write por existir
+// el permiso."*
+//
+// Por eso hay DOS cerraduras y hay que pasar las dos:
+//
+//   1. EL ROL  — sólo `direccion` la tiene. Es el único rol que hoy firma un efecto externo.
+//   2. LA TOOL — una capability de escritura sólo vale para una tool que esté NOMBRADA abajo. Una
+//      tool nueva que declare `drive.write` no escribe por declararlo: hay que agregarla acá, y
+//      agregarla es una decisión que queda en el diff.
+//
+// La segunda cerradura es la que importa. Sin ella, «autorizar drive.write» significaría que
+// cualquier tool futura hereda la escritura por poner una línea en su registro — que es exactamente
+// el modo de falla que el dueño describió.
 //
 // ═══ POR QUÉ `campo` NO LEE ═══
 //
@@ -22,11 +32,36 @@
 
 /** Lo que cada rol de `perfiles.rol` puede pedirle a XSAS. Fail-closed: lo que no está, no puede. */
 export const PERMISOS_POR_ROL = Object.freeze({
-  direccion: Object.freeze(['drive.read', 'os.read']),
+  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write']),
   administracion: Object.freeze(['drive.read', 'os.read']),
   jefe_obra: Object.freeze(['drive.read', 'os.read']),
   campo: Object.freeze([]),
 })
+
+/** Las capabilities que producen un efecto FUERA del OS. Escribir un archivo en el Drive de la
+ *  empresa no es un cálculo: queda, lo ve gente, y hay que poder decir quién lo hizo. */
+export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write'])
+
+/**
+ * LAS ÚNICAS TOOLS QUE PUEDEN ESCRIBIR, POR NOMBRE.
+ *
+ * No es una lista de conveniencia: es la diferencia entre «XSAS tiene permiso de escritura» y «esta
+ * capacidad concreta, que alguien revisó, puede escribir». Agregar una tool acá es una decisión del
+ * dueño y queda en el historial del repositorio.
+ */
+export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
+  'slides.crear',   // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
+])
+
+/** ¿Esta capability escribe afuera? PURA. */
+export function escribeAfuera(capability) {
+  return CAPACIDADES_DE_ESCRITURA.includes(String(capability ?? ''))
+}
+
+/** ¿Esta tool está autorizada a usar una capability de escritura? PURA y fail-closed. */
+export function autorizadaAEscribir(clave) {
+  return TOOLS_AUTORIZADAS_A_ESCRIBIR.includes(String(clave ?? ''))
+}
 
 /** Los permisos de un rol. PURA. Un rol desconocido no hereda nada. */
 export function permisosDeRol(rol) {

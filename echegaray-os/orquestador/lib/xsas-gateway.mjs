@@ -40,8 +40,9 @@ import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pe
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza } from './xsas-traza.mjs'
 import {
-  toolsDelNucleo, atajoPara, argumentosPara, puedeUsar, toolsDeSkill,
+  toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
 } from './xsas-resolutores.mjs'
+import { escribeAfuera } from './xsas-permisos.mjs'
 
 /** La capacidad de modelo que corresponde a cada nivel de la política. El nivel lo decide el ruteo
  *  determinístico; acá sólo se traduce. Un nivel 2 JAMÁS toma el modelo potente. */
@@ -58,17 +59,56 @@ const SISTEMA = [
 ].join(' ')
 
 /** Ejecuta una tool con los permisos y el contexto del pedido. Nunca lanza: devuelve el motivo. */
-async function correrTool({ clave, tool, pedido }) {
-  if (!puedeUsar(pedido.actor, tool)) {
+async function correrTool({ clave, tool, pedido, query = null }) {
+  if (!puedeUsar(pedido.actor, tool, clave)) {
     return { ok: false, motivo: `sin permiso para ${clave} (requiere ${tool.capability})`, tipo: 'sin_permiso' }
   }
   const { args, falta } = argumentosPara(tool, pedido)
   if (falta.length) return { ok: false, motivo: `falta ${falta.join(', ')} para ${clave}`, tipo: 'falta_dato' }
   try {
     const datos = await tool.run(args)
+    await firmarEscritura({ query, clave, tool, pedido, datos, error: null })
     return { ok: true, datos, args }
   } catch (e) {
-    return { ok: false, motivo: `${clave} falló: ${String(e?.message ?? e).slice(0, 200)}`, tipo: 'tool_fallo' }
+    const motivo = `${clave} falló: ${String(e?.message ?? e).slice(0, 200)}`
+    await firmarEscritura({ query, clave, tool, pedido, datos: null, error: motivo })
+    return { ok: false, motivo, tipo: 'tool_fallo' }
+  }
+}
+
+/**
+ * LA FIRMA DE UNA ESCRITURA CON EFECTO AFUERA.
+ *
+ * Sólo las capabilities que escriben fuera del OS. Se registra el INTENTO: una escritura que falló
+ * también dice que alguien la pidió, y esa es justamente la fila que se quiere tener el día que hay
+ * que explicar qué pasó. Nunca lanza — perder la traza es malo, tumbar la respuesta por perderla es
+ * peor, y una traza que se pierde deja el aviso en el log.
+ */
+async function firmarEscritura({ query, clave, tool, pedido, datos, error }) {
+  if (!escribeAfuera(tool?.capability)) return
+  if (!query) return
+  try {
+    await query(
+      `insert into public.xsas_escritura
+         (correlation_id, actor_id, actor_nombre, actor_rol, canal, tool, capability,
+          archivo_id, archivo_link, resultado, motivo)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        pedido.correlationId ?? null,
+        String(pedido.actor?.id ?? 'desconocido'),
+        pedido.actor?.nombre ?? null,
+        pedido.actor?.rol ?? null,
+        pedido.canal ?? null,
+        clave,
+        tool.capability,
+        datos?.id ?? null,
+        datos?.link ?? null,
+        error ? 'error' : 'ok',
+        error ?? null,
+      ],
+    )
+  } catch (e) {
+    console.warn(`[xsas] no se pudo firmar la escritura de ${clave}: ${String(e?.message ?? e).slice(0, 160)}`)
   }
 }
 
@@ -82,8 +122,8 @@ function textoDeDatos(datos) {
 }
 
 /** N0/N1: correr la tool y armar la respuesta. `via` dice cómo se llegó, y queda en la traza. */
-async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t0 }) {
-  const r = await correrTool({ clave, tool, pedido })
+async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t0, query = null }) {
+  const r = await correrTool({ clave, tool, pedido, query })
   const capacidades = { nivel, skills, tools: [clave], via, confianza: 'alta', motivo: via }
   if (!r.ok) {
     return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades })
@@ -191,7 +231,7 @@ async function despachar(pedido, deps, t0) {
   if (pedido.tipo === TIPO.INTENCION || pedido.tipo === TIPO.EVENTO) {
     const clave = pedido.tipo === TIPO.INTENCION ? pedido.intencion : pedido.evento?.nombre
     const tool = mapa.get(clave)
-    if (tool) return resolverConTool({ pedido, clave, tool, nivel: NIVEL.DETERMINISTICO, via: 'intencion_exacta', t0 })
+    if (tool) return resolverConTool({ pedido, clave, tool, nivel: NIVEL.DETERMINISTICO, via: 'intencion_exacta', t0, query: deps.query ?? null })
     if (pedido.tipo === TIPO.INTENCION) {
       return respuestaError(pedido, {
         tipo: 'capacidad_desconocida',
@@ -205,9 +245,27 @@ async function despachar(pedido, deps, t0) {
   const texto = textoDePedido(pedido)
 
   // ── N0 · LA FRASE EXACTA QUE YA SABEMOS QUÉ SIGNIFICA ─────────────────────────────────────
+  //
+  // Parado en una obra, la misma frase significa otra cosa. Se prueba PRIMERO la lectura por obra y
+  // sólo se usa si esa tool existe, el actor puede correrla y el contexto alcanza para sus
+  // argumentos: si algo de eso falla, la pregunta cae en la lectura de empresa, que es la respuesta
+  // de siempre. Un contexto que no se puede honrar no puede convertir una respuesta buena en un error.
+  //
+  // Se exigen LAS DOS cosas: el `obra_id` verificado (que es lo que prueba que la obra es suya) y el
+  // NOMBRE en el contexto (que es lo que las tools del OS reciben — leen el Sheet, no la base). Con
+  // el id solo, `argumentosPara` llenaría `obra` con un UUID y la lectura por obra devolvería «no
+  // encontré esa obra»: una respuesta peor que la de empresa.
+  if (pedido.entidad?.obra_id && pedido.contexto?.obra) {
+    const enObra = ATAJOS_EN_OBRA[normalizarFrase(texto)]
+    const tool = enObra ? mapa.get(enObra) : null
+    if (tool && puedeUsar(pedido.actor, tool, enObra) && !argumentosPara(tool, pedido).falta.length) {
+      return resolverConTool({ pedido, clave: enObra, tool, nivel: NIVEL.DETERMINISTICO, via: 'atajo_en_obra', t0, query: deps.query ?? null })
+    }
+  }
+
   const atajo = atajoPara(texto)
   if (atajo && mapa.has(atajo)) {
-    return resolverConTool({ pedido, clave: atajo, tool: mapa.get(atajo), nivel: NIVEL.DETERMINISTICO, via: 'atajo_exacto', t0 })
+    return resolverConTool({ pedido, clave: atajo, tool: mapa.get(atajo), nivel: NIVEL.DETERMINISTICO, via: 'atajo_exacto', t0, query: deps.query ?? null })
   }
 
   // ── N1 · EL RUTEO XSAS QUE YA EXISTE ──────────────────────────────────────────────────────
@@ -220,9 +278,9 @@ async function despachar(pedido, deps, t0) {
       const ficha = catalogo.find((f) => f.clave === skill)
       for (const clave of toolsDeSkill(ficha, porArchivo)) {
         const tool = mapa.get(clave)
-        if (!tool || !puedeUsar(pedido.actor, tool)) continue
+        if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
         if (argumentosPara(tool, pedido).falta.length) continue
-        return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0 })
+        return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
       }
     }
     // La skill aplica pero no hay tool ejecutable con lo que tenemos. NO se responde «no puedo»:

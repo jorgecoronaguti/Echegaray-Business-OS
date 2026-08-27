@@ -57,6 +57,8 @@ const FABRICAS_GOOGLE = Object.freeze([
 /** `./tools/x.mjs` → `orquestador/lib/tools/x.mjs`, que es como el catálogo nombra los módulos. */
 const comoLoNombraElCatalogo = (ruta) => ruta.replace(/^\.\//, 'orquestador/lib/')
 
+import { autorizadaAEscribir, escribeAfuera } from './xsas-permisos.mjs'
+
 let _cache = null
 
 /**
@@ -112,6 +114,26 @@ export const ATAJOS = Object.freeze({
   'costos por obra': 'os.costos_obras',
 })
 
+/**
+ * LOS MISMOS ATAJOS, CUANDO LA PANTALLA YA DIJO EN QUÉ OBRA ESTÁ.
+ *
+ * «¿Cómo venimos?» parado en una obra no pregunta por la empresa: pregunta por ESA obra. Hasta el
+ * 27/08/2026 la frase caía siempre en `os.estado_empresa`, así que la app mandaba el `obra_id`
+ * verificado, el gateway lo recibía… y contestaba exactamente lo mismo que sin contexto. El contexto
+ * llegaba y no cambiaba nada, que para el que mira la pantalla es indistinguible de que no llegara.
+ *
+ * Sólo están acá las frases que CAMBIAN de significado dentro de una obra. «¿Cómo viene el negocio?»
+ * sigue siendo de la empresa aunque se pregunte parado en una obra, y por eso no figura.
+ */
+export const ATAJOS_EN_OBRA = Object.freeze({
+  'como venimos': 'os.salud_obra',
+  'como estamos': 'os.salud_obra',
+  'dame el panorama': 'os.salud_obra',
+  'como viene la obra': 'os.salud_obra',
+  'como va la obra': 'os.salud_obra',
+  'estado de la obra': 'os.salud_obra',
+})
+
 /** Sin tildes, sin signos, sin espacios de más. Lo mínimo para que «¿Cómo venimos?» y «como
  *  venimos» sean la misma llave. No hay stemming: un atajo es exacto o no es. */
 export function normalizarFrase(t) {
@@ -148,12 +170,22 @@ export function argumentosPara(tool, { contexto = {}, entidad = {} } = {}) {
   return { args, falta: requeridos.filter((r) => args[r] == null) }
 }
 
-/** ¿Este actor puede correr esta tool? Falla cerrado: sin la capability en `permisos`, no corre.
- *  Los permisos los llena el ADAPTER desde la fuente real; el gateway sólo los compara. */
-export function puedeUsar(actor, tool) {
+/**
+ * ¿ESTE ACTOR PUEDE CORRER ESTA TOOL? Falla cerrado en cada paso.
+ *
+ * Dos cerraduras, y una capability de ESCRITURA tiene que pasar las dos:
+ *   · el actor tiene la capability (la llena el adapter desde el rol real, no el que pide);
+ *   · y, si esa capability escribe afuera, la tool está NOMBRADA en la lista de autorizadas.
+ *
+ * Sin `clave` no se puede verificar la segunda, así que una tool de escritura sin clave no corre:
+ * un control que no puede mirar no dice «está bien», dice que no pudo mirar.
+ */
+export function puedeUsar(actor, tool, clave = null) {
   const cap = tool?.capability
   if (!cap) return false
-  return Array.isArray(actor?.permisos) && actor.permisos.includes(cap)
+  if (!Array.isArray(actor?.permisos) || !actor.permisos.includes(cap)) return false
+  if (escribeAfuera(cap)) return autorizadaAEscribir(clave)
+  return true
 }
 
 /** Las tools de una skill, DERIVADAS de los módulos que la skill cita y que existen. PURA. */

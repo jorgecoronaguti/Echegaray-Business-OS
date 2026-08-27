@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { atender } from './xsas-gateway.mjs'
 import { normalizarPedido, PedidoInvalido } from './xsas-pedido.mjs'
 import { filaDeTraza } from './xsas-traza.mjs'
-import { toolsDelNucleo, ATAJOS, argumentosPara } from './xsas-resolutores.mjs'
+import { toolsDelNucleo, ATAJOS, ATAJOS_EN_OBRA, argumentosPara } from './xsas-resolutores.mjs'
 import { NIVEL } from './elegir-capacidad.mjs'
 
 // ── DOBLES ────────────────────────────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ test('la traza distingue el pedido que pagó modelo del que no — es toda la me
 test('los atajos apuntan a tools que EXISTEN en el registro real (un atajo huérfano no rutea nada)', async () => {
   const { mapa, fallaron } = await toolsDelNucleo({ refrescar: true })
   assert.deepEqual(fallaron, [], 'ninguna fábrica de tools del núcleo puede fallar al importarse')
-  for (const [frase, clave] of Object.entries(ATAJOS)) {
+  for (const [frase, clave] of Object.entries({ ...ATAJOS, ...ATAJOS_EN_OBRA })) {
     assert.ok(mapa.has(clave), `el atajo "${frase}" apunta a ${clave}, que no está en el registro`)
   }
 })
@@ -247,4 +247,143 @@ test('el contexto no puede inyectar un parámetro que la tool no declaró', () =
   const { args, falta } = argumentosPara(tool, { contexto: { obra: 'ARCOR', borrar_todo: true }, entidad: {} })
   assert.deepEqual(args, { obra: 'ARCOR' })
   assert.deepEqual(falta, [])
+})
+
+// ── EL CONTEXTO DE PANTALLA CAMBIA QUÉ SIGNIFICA LA PREGUNTA ──────────────────────────────────
+
+test('parado en una obra, «¿cómo venimos?» lee ESA obra y no la empresa', async () => {
+  const corridas = []
+  const r = await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.read'] },
+    canal: 'app',
+    mensaje: '¿cómo venimos?',
+    entidad: { obra_id: 'o-1' },
+    contexto: { obra: 'PLAYÓN DE AZUFRE' },
+    verificado_por: 'app-server',
+  }, { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() })
+  assert.equal(r.ok, true)
+  assert.deepEqual(corridas, [['os.salud_obra', { obra: 'PLAYÓN DE AZUFRE' }]])
+  assert.equal(r.capacidades.via, 'atajo_en_obra')
+})
+
+test('sin obra en la pantalla, la misma frase sigue leyendo la empresa', async () => {
+  const corridas = []
+  const r = await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.read'] },
+    canal: 'app', mensaje: '¿cómo venimos?',
+  }, { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() })
+  assert.equal(r.ok, true)
+  assert.deepEqual(corridas, [['os.estado_empresa', {}]])
+})
+
+test('con obra pero SIN el nombre, no se rompe: cae en la lectura de empresa', async () => {
+  // El `obra_id` viaja verificado pero el nombre no llegó. `os.salud_obra` pide `obra` y no lo
+  // tiene: antes que devolver «falta obra», se contesta lo que sí se puede contestar.
+  const corridas = []
+  const r = await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.read'] },
+    canal: 'app', mensaje: 'cómo venimos',
+    entidad: { obra_id: 'o-1' },
+    verificado_por: 'app-server',
+  }, { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() })
+  assert.equal(r.ok, true)
+  assert.deepEqual(corridas, [['os.estado_empresa', {}]])
+})
+
+test('sin permiso para la lectura por obra, la pregunta no falla: cae en la de empresa', async () => {
+  const corridas = []
+  const r = await atender({
+    actor: { id: 'u1', rol: 'CAMPO', permisos: [] },
+    canal: 'app', mensaje: 'cómo venimos',
+    entidad: { obra_id: 'o-1' }, contexto: { obra: 'PLAYÓN DE AZUFRE' },
+    verificado_por: 'app-server',
+  }, { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() })
+  // No corre la de obra; la de empresa tampoco, porque este actor tampoco tiene `drive.read`.
+  assert.deepEqual(corridas, [])
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'sin_permiso')
+})
+
+// ── LA ESCRITURA EN DRIVE: DOS CERRADURAS Y UNA FIRMA ─────────────────────────────────────────
+
+function registroConEscritura(corridas, { falla = false } = {}) {
+  const mapa = new Map([
+    ['slides.crear', {
+      capability: 'drive.write',
+      schema: { name: 'crear_presentacion_google_slides', input_schema: { type: 'object', properties: {} } },
+      async run(a) {
+        corridas.push(['slides.crear', a])
+        if (falla) throw new Error('Google dijo que no')
+        return { ok: true, id: 'ARCHIVO-1', link: 'https://docs.google.com/presentation/d/ARCHIVO-1/edit' }
+      },
+    }],
+    // Una tool que declara la MISMA capability y NO está en la lista de autorizadas.
+    ['otra.escribe', {
+      capability: 'drive.write',
+      schema: { name: 'otra_que_escribe', input_schema: { type: 'object', properties: {} } },
+      async run(a) { corridas.push(['otra.escribe', a]); return { ok: true } },
+    }],
+  ])
+  return { mapa, porArchivo: new Map(), fallaron: [] }
+}
+
+test('una tool NO nombrada en la lista de autorizadas no escribe aunque el actor tenga drive.write', async () => {
+  const corridas = []
+  const r = await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'otra.escribe',
+  }, { registro: registroConEscritura(corridas), catalogo: [], ia: iaEspia() })
+  assert.deepEqual(corridas, [])
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'sin_permiso')
+})
+
+test('la tool autorizada sí escribe, y la escritura queda firmada con actor, archivo y correlation id', async () => {
+  const corridas = []
+  const filas = []
+  const r = await atender({
+    actor: { id: 'u1', nombre: 'Jorge', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'slides.crear', correlation_id: 'corr-9',
+  }, {
+    registro: registroConEscritura(corridas), catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.equal(r.ok, true)
+  assert.equal(filas.length, 1)
+  const [correlation, actorId, nombre, rol, canal, tool, cap, archivoId, link, resultado] = filas[0]
+  assert.equal(correlation, 'corr-9')
+  assert.equal(actorId, 'u1')
+  assert.equal(nombre, 'Jorge')
+  assert.equal(rol, 'DUENO')
+  assert.equal(canal, 'app')
+  assert.equal(tool, 'slides.crear')
+  assert.equal(cap, 'drive.write')
+  assert.equal(archivoId, 'ARCHIVO-1')
+  assert.ok(link.includes('ARCHIVO-1'))
+  assert.equal(resultado, 'ok')
+})
+
+test('una escritura que FALLA también queda firmada — el intento es lo que hay que poder auditar', async () => {
+  const filas = []
+  await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'slides.crear',
+  }, {
+    registro: registroConEscritura([], { falla: true }), catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0][9], 'error')
+})
+
+test('una LECTURA no deja fila en el registro de escrituras', async () => {
+  const filas = []
+  await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.read'] },
+    canal: 'app', mensaje: 'cómo venimos',
+  }, {
+    registro: registroDoble([]), catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.deepEqual(filas, [])
 })
