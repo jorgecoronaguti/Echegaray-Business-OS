@@ -158,10 +158,45 @@ export function pagosDelEsquema(
   nombres: Map<string, string>,
   alcanza: (obraId: string | null) => boolean,
 ): PagoConObra[] {
-  return filas
+  return historicoEsDeLaObra(filas
     .filter((f) => publicadoAlPortal(f) && alcanza(f.obra_id))
     .sort((a, b) => a.orden - b.orden || (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
-    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? ''))
+    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? '')))
+}
+
+/**
+ * `historico` ES UNA PROPIEDAD DE LA OBRA, NO DE LA FILA.
+ *
+ * ═══ EL CONTRATO Y LOS COBROS TIENEN QUE SER DEL MISMO UNIVERSO (27/08/2026) ═══
+ *
+ * La base marca `historico` fila por fila: `portal-sembrar.mjs` compara la fecha del cobro contra
+ * `clientes.portal_cobros_desde`, el corte que fijó el dueño. Eso funciona cuando una obra entera
+ * quedó de un lado del corte, y se rompe cuando el cronograma de UNA obra lo cruza.
+ *
+ * Inter Motor lo puso a la vista. Su corte es el 01/07/2026 y «Galpones, Mampostería, Cancha de
+ * Padel» tiene cobros a los dos lados: cinco antes (Certificado 2, Certificado 3 y tres pagos en
+ * efectivo, $77.350.000) y cuatro después ($36.689.222). `contratoDelConjunto` ya decide POR OBRA
+ * —una obra con algún cobro en curso aporta su contrato entero— así que el pie publicaba los
+ * $204.361.104 de esa obra contra $36.689.222 de «pagado», dejando los otros $77.350.000 abajo, en
+ * una sección rotulada «obras anteriores» que nombraba a la MISMA obra que el filtro estaba
+ * mostrando. Con el filtro puesto en esa obra la pantalla se contradecía a sí misma.
+ *
+ * Un contrato sólo se compara contra TODOS los cobros de su obra: comparar un contrato completo
+ * contra una parte de sus cobros no exagera la deuda por un redondeo, la exagera por los $77 M que
+ * el cliente ya pagó. Acá se alinea el lado de los cobros con el lado del contrato, que es el que ya
+ * estaba decidido: si la obra está en curso, TODOS sus cobros están en curso.
+ *
+ * Las filas SIN obra conservan su marca: no hay obra a la que preguntarle, y el corte del dueño es
+ * lo único que se sabe de ellas.
+ *
+ * Lo que NO cambia: una obra cuyos cobros son todos anteriores al corte sigue siendo una obra
+ * anterior —ni su contrato ni sus cobros entran en los totales— y `resumenDeCobro` sigue leyendo la
+ * marca fila por fila. Acá se corrige quién la lleva, no qué significa.
+ */
+export function historicoEsDeLaObra(pagos: PagoConObra[]): PagoConObra[] {
+  const enCurso = new Set<string>()
+  for (const p of pagos) if (p.obraId && !p.historico) enCurso.add(p.obraId)
+  return pagos.map((p) => (p.historico && p.obraId && enCurso.has(p.obraId) ? { ...p, historico: false } : p))
 }
 
 /**
@@ -209,6 +244,58 @@ export function agruparPorObra(pagos: PagoConObra[]): BloqueDeObra[] {
   return [...bloques.values()].sort(
     (a, b) => Number(a.obraId === null) - Number(b.obraId === null) || a.nombre.localeCompare(b.nombre, 'es'),
   )
+}
+
+/** Las obras que puede elegir el filtro: `[id, nombre]`, ordenadas por nombre. */
+export type ObraQueFiltra = [id: string, nombre: string]
+
+/**
+ * LAS OBRAS QUE OFRECE EL FILTRO — las que tienen pagos EN CURSO.
+ *
+ * Ofrecer una obra que filtra a cero es un botón que lleva a nada, y una obra anterior no tiene
+ * pastilla propia: sus pagos viven en la sección de abajo, que existe justamente para eso.
+ */
+export function obrasQueFiltran(pagos: PagoConObra[]): ObraQueFiltra[] {
+  const vistas = new Map<string, string>()
+  for (const p of pagos) if (p.obraId && !p.historico && !vistas.has(p.obraId)) vistas.set(p.obraId, p.obraNombre)
+  return [...vistas.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+}
+
+/** Las tres listas que la pantalla de Pagos dibuja, todas del mismo alcance. */
+export type PagosEnPantalla = {
+  /** TODO lo del alcance elegido: es la base de los totales del pie y del calendario. */
+  todos: PagoConObra[]
+  /** Lo de las obras en curso — el listado principal. */
+  enCurso: PagoConObra[]
+  /** Lo de obras anteriores — la sección gris de abajo. */
+  anteriores: PagoConObra[]
+}
+
+/**
+ * EL ALCANCE DE LA PANTALLA, DECIDIDO UNA SOLA VEZ.
+ *
+ * ═══ CON UNA OBRA ELEGIDA, TODO ES DE ESA OBRA (27/08/2026) ═══
+ *
+ * Textual del dueño: «no podemos mezclar lo que dice pagos de obras anteriores cuando se está
+ * filtrando para ver lo específico de cada obra». El filtro se aplicaba tarde y por partes: el
+ * listado principal sí lo respetaba, pero la sección de obras anteriores, su total, el conteo del
+ * encabezado y el «próximo pago» seguían siendo del cliente entero. En un cliente con cuatro obras
+ * eso significa que al pedir una, la pantalla seguía mostrando plata de otra.
+ *
+ * Las tres listas salen de acá y de un solo `filter`, para que no exista la posibilidad de que una
+ * se olvide del filtro. Que `anteriores` quede vacía con una obra elegida no es casualidad ni un
+ * caso a mano: `historicoEsDeLaObra` ya decidió que los pagos de una obra en curso son de una obra
+ * en curso, y `obrasQueFiltran` sólo ofrece obras en curso. El invariante se prueba, no se supone.
+ *
+ * @param obraId `null` = sin filtro: entran todas las obras Y los pagos que no cuelgan de ninguna.
+ */
+export function pagosEnPantalla(pagos: PagoConObra[], obraId: string | null): PagosEnPantalla {
+  const todos = obraId ? pagos.filter((p) => p.obraId === obraId) : pagos
+  return {
+    todos,
+    enCurso: todos.filter((p) => !p.historico),
+    anteriores: todos.filter((p) => p.historico),
+  }
 }
 
 /** Lo contratado de una obra, en la moneda en que se firmó. */
