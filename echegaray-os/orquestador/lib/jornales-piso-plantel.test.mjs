@@ -27,7 +27,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  bloqueDelPiso, rotuloDelPiso, pisoDeQuincena, formulaControlPiso, JORNADA_PISO_HORAS,
+  bloqueDelPiso, rotuloDelPiso, formulaControlPiso, JORNADA_PISO_HORAS,
 } from './jornales-piso-uocra.mjs'
 import { sigmaConvenioDelPlantel, expresionHorasDeLaQuincena } from './proyeccion-convenio.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'

@@ -1917,6 +1917,10 @@ async function main() {
   // que sólo habla cuando hay novedad no distingue "no hubo altas" de "no se midió".
   console.log(`  · última quincena cerrada al ${cerradaBase ? fecha(cerradaBase.hasta) : '—'}: ${nCerrada} persona(s)`
     + ` · el piso se proyectaba sobre ${nCerrada} y la nómina tiene ${personasBase}`)
+  // EL LÍMITE DE LA JORNADA VA EN EL LOG Y NO EN UNA CELDA DEL MEDIO: en la pestaña entran 45
+  // caracteres sin desparramar la fila, y este texto son 120. La celda dice la versión corta; acá,
+  // donde el que corre la corrida sí lo lee, va entero.
+  console.log(`  · jornada del piso: ${JORNADA_PISO_HORAS} h — ${GAP_JORNADA}`)
 
   const rawUocra = await google.readSheetValues(ID, `${UOCRA_HOJA}!A1:K300`).catch(() => [])
   const { escalones, problemas } = parsearAcuerdos(rawUocra ?? [])

@@ -454,3 +454,30 @@ test('UNA SOLA DEFINICIÓN DE "PAGADO" EN TODA LA PESTAÑA', () => {
       `«${rotulo}» mide "pagado" por un criterio distinto al del hero, en la misma pestaña`)
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS VACACIONES DEJARON DE SER UN AVISO Y PASARON A SER UNA PROVISIÓN (27/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Desde el 06/08 la sección 6 tenía un pie diciendo "falta la escala" y ni una fila que calculara.
+// Las vacaciones devengan todos los meses: un aviso de tres semanas no es una provisión. La regla y
+// sus guards viven en lib/vacaciones-construccion.mjs; lo que se prueba acá es el CABLEADO, que es
+// donde el arreglo se pierde sin que nada se ponga rojo.
+
+test('la sección 6 provisiona vacaciones contra la antigüedad real, y cuenta a quien no puede medir', () => {
+  const gv = grilla({ periodos, conceptos, ps: [], C, bloqueBase: { inicio: 527, fin: 543 } })
+  const rot = gv.filas.map((f) => String(f[0] ?? ''))
+  const iProv = rot.findIndex((s) => s.includes('Vacaciones devengadas del plantel'))
+  assert.ok(iProv >= 0, 'se fue la fila de provisión de vacaciones: volvió a quedar sólo el aviso')
+  const f = String(gv.filas[iProv][1] ?? '')
+  // Sale de la columna C del espejo —la antigüedad real— y de los cuatro tramos de Parámetros.
+  assert.ok(f.includes("'_J_OBREROS'!$C$527:$C$543"), 'la provisión dejó de mirar las fechas de ingreso')
+  assert.ok(f.includes('VACACIONES_DIAS_HASTA_5'), 'los días dejaron de salir del parámetro que confirma el contador')
+  // EL GUARD QUE NO SE PUEDE PERDER: con la escala en cero rinde VACÍO, nunca 0. Un 0 acá afirma que
+  // la empresa no debe vacaciones, que es lo contrario de lo que pasa.
+  assert.ok(f.includes(')=0;"";'), 'la escala en cero volvió a publicar un número en vez de decir que falta')
+  // Y las personas sin fecha de ingreso se cuentan en su propia celda, no adentro de un mensaje.
+  const iSin = rot.findIndex((s) => s.includes('sin fecha de ingreso cargada'))
+  assert.ok(iSin > iProv, 'falta la cuenta de quiénes quedaron fuera de la provisión')
+  assert.ok(String(gv.filas[iSin][1] ?? '').includes('SUMPRODUCT'))
+})

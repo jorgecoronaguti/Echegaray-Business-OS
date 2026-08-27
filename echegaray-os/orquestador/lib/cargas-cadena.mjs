@@ -29,6 +29,7 @@
 // aspecto de dato.
 
 import { ALERTA } from './glifos.mjs'
+import { TRAMOS as TRAMOS_VACACIONES } from './vacaciones-construccion.mjs'
 
 /** Los parámetros normativos que esta cadena necesita y que el repositorio no puede verificar solo. */
 export const RANGO_FCL_PRIMER_ANIO = 'FCL_ALICUOTA_PRIMER_ANIO'
@@ -84,6 +85,31 @@ export const PARAMETROS_CARGAS = [
       + 'Compras (moda: día 10) y confirmado por las previsiones que cargó el dueño. Si el calendario de '
       + 'ARCA para tu terminación de CUIT dice otro día, corregí esta celda: la serie se refecha sola.',
   },
+  // ═══ LOS CUATRO TRAMOS DE VACACIONES (27/08) ═══
+  //
+  // Las vacaciones devengan todos los meses y no estaban provisionadas en NINGUNA pestaña: lo único
+  // que había era un pie diciendo que faltaban, desde el 06/08. La antigüedad SÍ está —columna C de
+  // `_J_OBREROS`, la misma que ya pondera el FCL—; lo que falta son los DÍAS por tramo, que son
+  // normativos y que esta corrida no pudo verificar contra fuente oficial.
+  //
+  // Van en 0 A PROPÓSITO, igual que IERIC y FODECO: con la escala en cero la provisión no publica un
+  // número, publica qué falta. Un valor citado de memoria multiplicado por 17 jornales entra al
+  // cuadro económico con cara de hecho. El día que el contador escribe los días, la provisión se
+  // calcula sola contra las fechas de ingreso reales.
+  ...TRAMOS_VACACIONES.map((t, i) => ({
+    rango: t.rango,
+    rotulo: `Vacaciones — días por antigüedad, ${t.rotulo}`,
+    valor: 0,
+    nota: `${A_VERIFICAR}. Los obreros están bajo UOCRA — Ley 22.250 (construcción), que es un `
+      + 'régimen propio: las vacaciones se rigen por las reglas generales SÓLO en lo no modificado por '
+      + 'el estatuto, así que son dos cuerpos normativos y no uno. Esta corrida NO tuvo acceso a fuente '
+      + 'oficial para verificar la escala vigente y no la inventa. '
+      + (i === 0
+        ? 'EN 0 la provisión de la sección 6 dice que falta en vez de publicar un total incompleto. '
+          + 'Cargá los cuatro tramos con lo que confirme el contador y la provisión aparece sola, '
+          + 'calculada contra la fecha de ingreso de cada persona en _J_OBREROS.'
+        : 'Ídem la fila del primer tramo. La ANTIGÜEDAD es un dato real y medido; el que falta es el día.'),
+  })),
 ]
 
 /**

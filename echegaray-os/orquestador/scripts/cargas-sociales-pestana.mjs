@@ -40,7 +40,8 @@ import { CONCEPTOS_CADENA, PARAMETROS_CARGAS } from '../lib/cargas-cadena.mjs'
 import { rangosDeCargas, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mjs'
 import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
-import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
+import { ultimaQuincenaCerrada, personasDelBloque } from '../lib/motor-salarial.mjs'
+import { bloqueDelPiso } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
 import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
@@ -159,7 +160,7 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
   const caja = bloqueCaja(G, {
     anio: AÑO, desdeProy, proyMeses: proy.proyMeses, fDeclTot: decl.fDeclTot, fProyTot: proy.fProyTot, C,
   })
-  const sac = bloqueSac(G, { anio: AÑO, C, fRem: decl.fRem, fRemProy: proy.fRemProy })
+  const sac = bloqueSac(G, { anio: AÑO, C, fRem: decl.fRem, fRemProy: proy.fRemProy, bloqueBase })
   const planes = bloquePlanes(G, { ps, C })
 
   // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
@@ -258,16 +259,27 @@ async function main() {
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`Compras por encabezado: Total=${C.total} · Cliente=${C.cliente} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
 
-  // ── EL BLOQUE DE LA ÚLTIMA QUINCENA CERRADA — de ahí sale la antigüedad del plantel ──
+  // ── EL BLOQUE DEL PLANTEL — de ahí sale la antigüedad que pondera el Fondo de Cese ──
   //
   // La fecha de ingreso de cada persona vive en la columna C de `_J_OBREROS` y no tenía un solo
   // consumidor. Es lo que pondera las dos alícuotas del Fondo de Cese, así que el generador resuelve
   // el bloque en cada corrida —igual que Jornales— y emite el rango ya apuntado.
+  //
+  // ES LA MISMA ELECCIÓN QUE HACE JORNALES, Y POR ESO SALE DE LA MISMA FUNCIÓN (27/08). Acá decía
+  // `cerrada?.bloque` y allá también; cuando Jornales pasó al bloque VIGENTE —porque el piso se le
+  // debe a quien trabaja hoy— esta pestaña se habría quedado ponderando el FCL con el plantel de la
+  // quincena anterior. Dos definiciones de «el plantel» en dos pestañas que multiplican la misma masa
+  // es exactamente lo que REALIDAD ÚNICA prohíbe, y la divergencia no da error: da un porcentaje
+  // plausible sobre otra gente.
   const espejo = await google.readSheetValues(ID, '_J_OBREROS!A1:AC990').catch(() => [])
   const bloquesJ = detectarQuincenas(espejo ?? [])
   const cerrada = ultimaQuincenaCerrada(bloquesJ, (b) => ultimoDiaCargado(espejo[b.filaFecha - 1] ?? []), new Date())
-  const bloqueBase = cerrada?.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null
-  if (!bloqueBase) console.warn('  ⚠ no pude ubicar la última quincena cerrada en _J_OBREROS: la alícuota de FCL queda sin ponderar por antigüedad')
+  const plantel = bloqueDelPiso({
+    bloques: bloquesJ, cerrada: cerrada?.bloque ?? null, personasDe: (b) => personasDelBloque(espejo, b),
+  })
+  const bloqueBase = plantel.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null
+  if (!bloqueBase) console.warn('  ⚠ no pude ubicar el plantel en _J_OBREROS: la alícuota de FCL queda sin ponderar por antigüedad')
+  else console.log(`plantel para el FCL: ${plantel.origen} · ${plantel.personas} persona(s) · filas ${bloqueBase.inicio}-${bloqueBase.fin}`)
 
   // ── CON QUÉ BASE VIENE LA MASA QUE ESTA PESTAÑA MULTIPLICA ──
   //

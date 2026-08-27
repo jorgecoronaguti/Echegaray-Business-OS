@@ -17,6 +17,10 @@ import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './l
 import { MES, cm, REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
+import { formulaProvisionVacaciones, formulaSinFechaDeIngreso } from './vacaciones-construccion.mjs'
+// La jornada con la que se valúa un día de vacaciones es la MISMA con la que se valúa el piso del
+// convenio en Jornales: dos definiciones de «un día de trabajo» en dos pestañas no pueden convivir.
+import { JORNADA_PISO_HORAS } from './jornales-piso-uocra.mjs'
 
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 
@@ -220,7 +224,7 @@ export function bloqueProyeccion(G, {
   // estaba en la fuente que se lee todos los días y no tenía un solo consumidor.
   const fAntig = G.push([sub('   del plantel de obra, en su primer año de antigüedad'),
     formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase), ...Array(12).fill(VACIO),
-    'Fecha de ingreso de cada persona en _J_OBREROS, sobre la última quincena cerrada. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
+    'Fecha de ingreso de cada persona en _J_OBREROS, sobre el mismo plantel con el que Jornales proyecta el piso del convenio. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
   const sinBase = []
   /**
    * UN BLOQUE DE LA PROYECCIÓN, CON SU SUBTOTAL. Se arma en dos pasadas —lo que declara la DDJJ y lo
@@ -327,7 +331,7 @@ export function bloqueCaja(G, { anio, desdeProy, proyMeses, fDeclTot, fProyTot, 
 // 6 · SAC Y VACACIONES — lo devengado que todavía no se pagó
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
+export function bloqueSac(G, { anio, C, fRem, fRemProy, bloqueBase = null }) {
   G.push([seccion(6, 'SAC y vacaciones — lo devengado que todavía no se pagó')])
   G.cabecera()
   // ═══ PAGADO ES PAGADO: SÓLO HASTA HOY, ACÁ TAMBIÉN (06/08) ═══
@@ -371,7 +375,27 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
   // entera al mismo peso tipográfico que los importes: cuatro muros de letra chica que le ganan el ojo
   // a los números. Se condensan sin perder ni una limitación —una limitación borrada es una mentira
   // por omisión— y la piel las dibuja como nota al pie: apagadas, 9 puntos, sin regla.
-  const pieVac = G.push([`${ALERTA} Vacaciones — devengan mes a mes y no están provisionadas: falta la escala de días por antigüedad, que confirma el contador. No se inventa.`])
+  // ═══ LA PROVISIÓN, YA NO SÓLO EL AVISO (27/08) ═══
+  //
+  // El aviso de abajo estaba encendido desde el 06/08 y no provisionaba un peso. Tres semanas de
+  // "falta la escala" no son una provisión: las vacaciones devengan todos los meses y el cuadro
+  // económico no las veía. Lo que faltaba —y sigue faltando— son los DÍAS por tramo, que son
+  // normativos; la ANTIGÜEDAD está en la columna C del espejo, la misma que ya pondera el FCL.
+  //
+  // Ahora la fila calcula: Σ(días del tramo × $/hora de la persona × jornada), contra las fechas de
+  // ingreso REALES. Con los cuatro tramos en 0 —como nacen— rinde VACÍO y no cero: un 0 acá afirma
+  // que la empresa no debe vacaciones. El día que el contador carga los días en Parámetros, el número
+  // aparece solo. El porqué completo, en lib/vacaciones-construccion.mjs.
+  const fVac = G.push([sub('   Vacaciones devengadas del plantel de obra'),
+    formulaProvisionVacaciones({ hoja: '_J_OBREROS', bloque: bloqueBase, jornada: JORNADA_PISO_HORAS }),
+    ...Array(12).fill(VACIO),
+    'Días por tramo de antigüedad (Parámetros, los confirma el contador) × $/hora de cada persona en _J_OBREROS × la jornada. Vacío = la escala todavía está en cero, NO que no se deba nada.'])
+  // LAS QUE NO SE PUDIERON MEDIR, CONTADAS. Es el número con el que se arregla el faltante, y va en su
+  // propia celda: adentro de un mensaje no se puede comparar contra el plantel de arriba.
+  G.push([sub('   del plantel, sin fecha de ingreso cargada'),
+    formulaSinFechaDeIngreso({ hoja: '_J_OBREROS', bloque: bloqueBase }), ...Array(12).fill(VACIO),
+    `Nombre presente y columna C vacía en _J_OBREROS: esas personas NO entran en la provisión de la fila ${fVac}. Un total que las ignora en silencio es un total corto.`])
+  const pieVac = G.push([`${ALERTA} Vacaciones — la provisión sale de la antigüedad REAL, pero los días por tramo son normativos y esta corrida no pudo verificar la norma vigente: cargalos en Parámetros con lo que confirme el contador. No se inventan.`])
   // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
   //
   // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el

@@ -16,6 +16,7 @@ import {
   RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO, RANGO_DIA_PAGO_F931,
   expresionAlicuotaFCL, formulaProporcionPrimerAnio, proyeccionDeConcepto,
 } from './cargas-cadena.mjs'
+import { RANGOS_VACACIONES } from './vacaciones-construccion.mjs'
 
 const ref = {
   fRem: 20, fEmp: 19, reales: (f) => `$B$${f}:$G$${f}`, colMes: (m) => String.fromCharCode(65 + m),
@@ -69,11 +70,14 @@ test('la fórmula de la alícuota de FCL es es-AR: una coma la parte al medio', 
   assert.doesNotMatch(e, /,/)
 })
 
-test('LO NORMATIVO ESTÁ DECLARADO COMO NO VERIFICADO — los cinco parámetros', () => {
+test('LO NORMATIVO ESTÁ DECLARADO COMO NO VERIFICADO — los nueve parámetros', () => {
   // El quinto entró el 06/08: el DÍA en que el F931 sale de la caja. Es lo que fecha la serie que
   // ahora lee el Libro Canónico, y el calendario de ARCA para la seguridad social no está cableado en
   // el OS — así que viaja como parámetro medido de los pagos reales, igual que las alícuotas.
-  const esperados = [RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO, RANGO_DIA_PAGO_F931]
+  // Y los cuatro tramos de VACACIONES entraron el 27/08, por el mismo motivo que IERIC y FODECO: la
+  // antigüedad es un dato real y medido, los DÍAS por tramo son normativos y no se citan de memoria.
+  const esperados = [RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO,
+    RANGO_DIA_PAGO_F931, ...RANGOS_VACACIONES]
   assert.deepEqual(PARAMETROS_CARGAS.map((p) => p.rango), esperados)
   for (const p of PARAMETROS_CARGAS) {
     assert.ok(p.nota.startsWith(A_VERIFICAR),
@@ -83,6 +87,9 @@ test('LO NORMATIVO ESTÁ DECLARADO COMO NO VERIFICADO — los cinco parámetros'
   // IERIC y FODECO nacen en CERO a propósito: un valor inventado se usaría como si fuera la norma.
   assert.equal(PARAMETROS_CARGAS.find((p) => p.rango === RANGO_IERIC).valor, 0)
   assert.equal(PARAMETROS_CARGAS.find((p) => p.rango === RANGO_FODECO).valor, 0)
+  // Los cuatro tramos de vacaciones, también: con la escala en cero la provisión DICE que falta en vez
+  // de publicar un total incompleto, que es lo que un 0 sumado sin ruido produce.
+  for (const r of RANGOS_VACACIONES) assert.equal(PARAMETROS_CARGAS.find((p) => p.rango === r).valor, 0)
 })
 
 test('los seis conceptos de la DDJJ siguen casándose por CÓDIGO, no por rótulo', () => {
