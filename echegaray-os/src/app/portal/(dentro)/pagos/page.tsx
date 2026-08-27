@@ -4,6 +4,7 @@ import { sesionDelPortal } from '../../sesion'
 import { accesoDelPortal } from '../../datos'
 import { loQueSiPuedeVer } from '../../permisos'
 import { contratoDelConjunto, esquemaDelPortal, hoyEnObra } from '../datosObra'
+import { obrasQueFiltran, pagosEnPantalla } from '../../esquema'
 import { corto, estadoDePago, proximoPago, resumenDeCobro, pesos, diaMes, ROTULO_ESTADO } from '../../cronograma'
 import { IconoEstado, Vacio, Fila, TINTA } from '../../Piezas'
 import { grillaDelMes } from '@/features/clientes/services/reglasEsquema'
@@ -41,7 +42,6 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const { pagos, bloques, contratos } = await esquemaDelPortal(acceso)
   const hoy = hoyEnObra()
   const montos = acceso.puedeVerMontos
-  const proximo = proximoPago(pagos)
   /** La misma URL con UN parámetro cambiado. Conserva el resto: elegir una obra no puede tirar el
    *  filtro de estado ni sacarte del calendario. */
   const con = (cambio: Record<string, string | null>) => {
@@ -52,11 +52,6 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     return s ? `/portal/pagos?${s}` : '/portal/pagos'
   }
   const enCalendario = q.vista === 'calendario'
-  // EL MES QUE ABRE: el del próximo pago, y si no queda ninguno, el de hoy. Abrir siempre en el mes
-  // corriente le mostraría un calendario vacío a quien tiene todo por delante o todo pagado.
-  const mes = /^\d{4}-\d{2}$/.test(q.mes ?? '')
-    ? q.mes as string
-    : (proximo?.fechaPrevista ?? hoy).slice(0, 7)
 
   // POR FECHA, que es como se lee un cronograma. Lo que no tiene fecha —el fondo de reparo, un pago
   // todavía sin programar— va al final: es lo único que no se puede ubicar en el tiempo.
@@ -68,38 +63,53 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     if (!fb) return -1
     return fa.localeCompare(fb) || a.orden - b.orden
   })
-  // LAS OBRAS ANTERIORES, APARTE. Son cobros de trabajo previo para el mismo cliente: se le muestran
-  // —los pagó y tiene derecho a verlos— pero abajo, en gris, y sin sumar al contrato en curso.
-  const enOrden = porFecha(pagos.filter((p) => !p.historico))
-  const anteriores = porFecha(pagos.filter((p) => p.historico))
 
-  // ═══ EL FILTRO: TODOS · POR COBRAR · PAGADOS ═══
+  // ═══ EL FILTRO POR OBRA — SE APLICA PRIMERO, Y A TODO (27/08/2026) ═══
+  //
+  // «No podemos mezclar lo que dice pagos de obras anteriores cuando se está filtrando para ver lo
+  // específico de cada obra.» Con la obra elegida, TODO lo que sigue sale de `delFiltro`: la lista,
+  // el pie, el calendario, el próximo pago, el mes que abre, el conteo del encabezado y la sección
+  // de obras anteriores. Antes el filtro se aplicaba tarde y por partes —la sección de abajo y el
+  // «próximo» seguían siendo del cliente entero—, así que la pantalla mezclaba dos obras a la vez.
+  //
+  // La obra se elige de las que REALMENTE tienen pagos en curso, no de todas las del cliente:
+  // ofrecer una obra que filtra a cero es un botón que lleva a nada. Viaja en la URL, así que «los
+  // pagos pendientes de Pisos» es una dirección que se comparte, y es también la que abre el Inicio
+  // cuando el cliente toca una de sus obras.
+  const conPagos = obrasQueFiltran(pagos)
+  const obra = conPagos.some(([id]) => id === q.obra) ? q.obra as string : null
+  /** Vino un `?obra=` que no filtra nada: se DICE, en vez de mostrar todo como si nada hubiera
+   *  pasado. Pasa cuando el Inicio enlaza una obra cuyo cronograma todavía no se publicó. */
+  const obraSinPagos = Boolean(q.obra) && !obra
+
+  // LAS OBRAS ANTERIORES, APARTE. Son pagos de trabajo previo para el mismo cliente: se le muestran
+  // —los hizo y tiene derecho a verlos— pero abajo, en gris, y sin sumar al contrato en curso. Las
+  // tres listas salen del mismo `pagosEnPantalla` para que ninguna pueda olvidarse del filtro.
+  const { todos: delFiltro, enCurso, anteriores: previos } = pagosEnPantalla(pagos, obra)
+  const enOrden = porFecha(enCurso)
+  const anteriores = porFecha(previos)
+  const proximo = proximoPago(enOrden)
+  // EL MES QUE ABRE: el del próximo pago DEL FILTRO, y si no queda ninguno, el de hoy. Abrir siempre
+  // en el mes corriente le mostraría un calendario vacío a quien tiene todo por delante o todo
+  // pagado; abrirlo en el próximo pago de OTRA obra es peor todavía — el mes que se abre no tiene
+  // nada de la obra que se pidió ver.
+  const mes = /^\d{4}-\d{2}$/.test(q.mes ?? '')
+    ? q.mes as string
+    : (proximo?.fechaPrevista ?? hoy).slice(0, 7)
+
+  // ═══ EL FILTRO: TODOS · PENDIENTE · PAGADOS ═══
   //
   // Con 21 pagos el cronograma se lee para dos cosas distintas: «qué me falta» y «qué ya pagué». En
   // una lista sola hay que barrerla entera para cualquiera de las dos. El filtro va en la URL —no en
   // estado del navegador— para que sobreviva a un refresco y se pueda compartir.
   //
-  // LOS TOTALES NO SE FILTRAN. Son del cronograma completo: recalcularlos sobre lo filtrado haría
-  // que «Pagado» cambiara al tocar una pastilla, que es la forma más rápida de perderle la confianza
-  // a un número.
+  // LOS TOTALES NO SIGUEN A ESTE FILTRO. Son del cronograma completo de la obra elegida:
+  // recalcularlos sobre lo filtrado haría que «Pagado» cambiara al tocar una pastilla, que es la
+  // forma más rápida de perderle la confianza a un número. El de OBRA sí los mueve — ese cambia de
+  // qué se está hablando, no de qué se está mirando.
   const ver = q.ver === 'pagados' || q.ver === 'pendientes' ? q.ver : 'todos'
 
-  // ═══ EL FILTRO POR OBRA ═══
-  //
-  // Con cuatro obras en una sola lista, «¿cómo viene Pisos Industriales?» obliga a barrer 21 filas
-  // leyendo el renglón chico de cada una. La obra se elige de las que REALMENTE tienen pagos, no de
-  // todas las del cliente: ofrecer una obra que filtra a cero es un botón que lleva a nada.
-  //
-  // Se cruza con el filtro de estado y viaja en la URL, así que «los pagos pendientes de Pisos» es
-  // una dirección que se comparte. Y vale para las dos vistas: en el calendario, filtrar por obra es
-  // justamente «cómo me cae el mes de ESTA obra».
-  const conPagos = [...new Map(enOrden.filter((p) => p.obraId)
-    .map((p) => [p.obraId as string, p.obraNombre])).entries()]
-    .sort((a, b) => a[1].localeCompare(b[1], 'es'))
-  const obra = conPagos.some(([id]) => id === q.obra) ? q.obra : null
-
-  const porObra = <T extends { obraId: string | null }>(lista: T[]) => (obra ? lista.filter((p) => p.obraId === obra) : lista)
-  const delEstado = porObra(enOrden)
+  const delEstado = enOrden
   const visibles = ver === 'pagados' ? delEstado.filter((p) => p.fechaPago)
     : ver === 'pendientes' ? delEstado.filter((p) => !p.fechaPago)
     : delEstado
@@ -116,7 +126,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // «Pendiente», el número dejaría de significar algo. Lo que faltaba no era que cambiara, era que
   // se DIJERA — y eso lo hacen ahora las pastillas, que llevan su propio importe, y el rótulo del
   // pie, que declara su alcance.
-  const deLaObra = porObra(pagos)
+  const deLaObra = delFiltro
   // Con una obra elegida el contrato es el suyo y la cobertura es trivial; sin filtro, el del
   // conjunto, que además dice de cuántas obras salió. Son dos formas distintas y se mantienen
   // separadas: fundirlas obligaba a fingir que una obra sola tiene «cobertura».
@@ -137,9 +147,8 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const total = resumenDeCobro(deLaObra, contratoARS, hoy)
   const enDolares = resumenDeCobro(deLaObra, contratoUSD, hoy, 'USD')
   // QUÉ COLUMNAS SE DIBUJAN — sobre los NO históricos, que son los que alimentan las sumas. Con
-  // `pagos` a secas, una obra cuyos únicos cobros en pesos son de trabajo anterior dibujaba una
+  // `pagos` a secas, una obra cuyos únicos pagos en pesos son de trabajo anterior dibujaba una
   // columna «PAGADO» que decía «sin cargar»: una columna vacía pidiendo explicación.
-  const enCurso = deLaObra.filter((p) => !p.historico)
   const hayDolares = enCurso.some((p) => p.moneda === 'USD')
   // ═══ UNA MONEDA SE DIBUJA CUANDO TIENE ALGO QUE DECIR (26/08/2026) ═══
   //
@@ -166,8 +175,13 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   const importeDeFiltro = (cuantos: 'pagado' | 'pendiente'): string | null => {
     if (!montos || (hayPesos && hayDolares)) return null
     const r = hayDolares ? enDolares : total
+    // SIN FILAS NO SE ESCRIBE IMPORTE. Con la obra filtrada aparecía «Pagados 0 · $ 0k»: el conteo
+    // ya dijo que no hay ninguna, y «$ 0k» es un importe abreviado de algo que no existe. Se ve
+    // seguido desde que el pie sigue al filtro por obra — casi toda obra tiene una de las dos
+    // pastillas en cero.
     const n = cuantos === 'pagado' ? r.netoPagado : r.netoPendiente
-    return n == null ? null : corto(n, hayDolares ? 'USD' : 'ARS')
+    if (n == null || (cuantos === 'pagado' ? r.nPagado : r.nPendiente) === 0) return null
+    return corto(n, hayDolares ? 'USD' : 'ARS')
   }
 
   const totalAnterior = anteriores.reduce((a, p) => a + (p.moneda === 'ARS' && p.monto != null ? p.monto : 0), 0)
@@ -176,13 +190,24 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
     <>
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-xl font-semibold tracking-[-.01em]">Cronograma de pagos</h1>
+        {/* EL CONTEO ES EL DE LO QUE SE ESTÁ MIRANDO. Con la obra filtrada decía «20 pagos · 5
+            obras» arriba de una lista de dos: el primer número de la pantalla contradecía a la
+            pantalla. Con filtro puesto se nombra la obra, que es de lo único que se está hablando. */}
         <span className="text-[12.5px] text-faint">
-          {pagos.length === 1 ? '1 pago' : `${pagos.length} pagos`}
-          {bloques.length > 1 ? ` · ${bloques.length} obras` : ''}
+          {delFiltro.length === 1 ? '1 pago' : `${delFiltro.length} pagos`}
+          {obra ? ` · ${nombreDelFiltro}` : bloques.length > 1 ? ` · ${bloques.length} obras` : ''}
         </span>
       </div>
 
       {!montos ? <p className="mt-4 text-[13.5px] text-muted">{loQueSiPuedeVer(acceso)}</p> : null}
+
+      {/* Un `?obra=` que no existe o cuyo cronograma no está publicado: se dice, y se muestra todo.
+          Callarlo dejaría al cliente creyendo que está viendo una obra sola. */}
+      {obraSinPagos ? (
+        <p className="mt-4 text-[13.5px] text-muted">
+          Todavía no publicamos el plan de pagos de esa obra. Abajo está el cronograma completo.
+        </p>
+      ) : null}
 
       {/* LISTADO · CALENDARIO — el mismo interruptor de la pantalla 32. Son dos preguntas distintas:
           el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
@@ -229,7 +254,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         <div className="mt-6"><Vacio>Todavía no publicamos el plan de pagos.</Vacio></div>
       ) : enCalendario ? (
         <Calendario
-          pagos={porObra(pagos)}
+          pagos={delFiltro}
           mes={mes}
           semanas={grillaDelMes(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)))}
           hoy={hoy}
@@ -254,7 +279,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
 
           {visibles.length === 0 ? (
             <div className="mt-6">
-              <Vacio>{ver === 'pagados' ? 'Todavía no hay ningún pago cobrado.' : 'No queda ningún pago por cobrar.'}</Vacio>
+              <Vacio>{ver === 'pagados' ? 'Todavía no hay ningún pago hecho.' : 'No queda ningún pago pendiente.'}</Vacio>
             </div>
           ) : null}
           <div className="mt-5 lg:mt-0">
@@ -298,15 +323,19 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
             })}
           </div>
 
-          {/* ── COBROS DE OBRAS ANTERIORES ─────────────────────────────────────────────────────
+          {/* ── PAGOS DE OBRAS ANTERIORES ──────────────────────────────────────────────────────
               En gris, como los destinos que todavía no navegan: dice «esto ya pasó y no es de lo que
-              estamos haciendo» sin esconderlo y sin necesitar la pantalla de Terminadas. */}
+              estamos haciendo» sin esconderlo y sin necesitar la pantalla de Terminadas.
+
+              «COBROS» ERA LA PALABRA DE LA EMPRESA. Acá el que lee es el CLIENTE y para él son
+              PAGOS: los hizo él. Es el mismo criterio que ya cambió «por cobrar» por «pendiente» en
+              las pastillas — el portal habla desde el lado del que mira. */}
           {anteriores.length ? (
             <section className="mt-10 opacity-60">
               <div className="flex flex-wrap items-baseline gap-2.5 border-b border-line pb-2">
-                <h2 className="text-[13px] font-semibold tracking-[-.01em] text-muted">Cobros de obras anteriores</h2>
+                <h2 className="text-[13px] font-semibold tracking-[-.01em] text-muted">Pagos de obras anteriores</h2>
                 <span className="text-[11.5px] text-faint">
-                  {anteriores.length === 1 ? '1 cobro' : `${anteriores.length} cobros`} · ya pagados
+                  {anteriores.length === 1 ? '1 pago' : `${anteriores.length} pagos`} · ya hechos
                 </span>
                 {montos ? (
                   <span className="tnum ml-auto font-mono text-[13px] text-muted">{pesos(totalAnterior)}</span>
@@ -351,7 +380,7 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
       {/* ═══ EL PIE: TRES NÚMEROS Y DE DÓNDE SALE CADA UNO ═══
           Está en las dos vistas —«que al final de los pagos salga lo total, pagado y pendiente en
           cada uno de los portales del cliente»— y sigue al filtro POR OBRA, no al de estado.
-          Cada cifra dice ahora de cuántos cobros sale y cuál es su total con IVA: un número solo,
+          Cada cifra dice ahora de cuántos pagos sale y cuál es su total con IVA: un número solo,
           sin su origen, obliga a sumar la lista a mano para saber si es el mismo. */}
       {montos ? (
         <>
@@ -394,20 +423,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
                   rotulo={hayDolares ? 'PAGADO ARS$' : 'PAGADO'}
                   neto={total.netoPagado}
                   conIva={total.pagado}
-                  pie={cuantos(total.nPagado, 'cobrado', 'cobrados')}
+                  pie={cuantos(total.nPagado, 'hecho', 'hechos')}
                 />
                 <Cifra
                   rotulo={hayDolares ? 'PENDIENTE ARS$' : 'PENDIENTE'}
                   neto={total.netoPendiente}
                   conIva={total.pendiente}
-                  pie={cuantos(total.nPendiente, 'por pagar', 'por pagar')}
+                  pie={cuantos(total.nPendiente, 'pendiente', 'pendientes')}
                 />
               </>
             ) : null}
             {hayDolares ? (
               <>
-                <Cifra rotulo="PAGADO US$" neto={enDolares.netoPagado} conIva={enDolares.pagado} moneda="USD" pie={cuantos(enDolares.nPagado, 'cobrado', 'cobrados')} />
-                <Cifra rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} conIva={enDolares.pendiente} moneda="USD" pie={cuantos(enDolares.nPendiente, 'por pagar', 'por pagar')} />
+                <Cifra rotulo="PAGADO US$" neto={enDolares.netoPagado} conIva={enDolares.pagado} moneda="USD" pie={cuantos(enDolares.nPagado, 'hecho', 'hechos')} />
+                <Cifra rotulo="PENDIENTE US$" neto={enDolares.netoPendiente} conIva={enDolares.pendiente} moneda="USD" pie={cuantos(enDolares.nPendiente, 'pendiente', 'pendientes')} />
               </>
             ) : null}
           </div>
@@ -417,18 +446,18 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
           {total.sinMonto + enDolares.sinMonto ? (
             <p className="mt-3 text-[12.5px] text-faint">
               {total.sinMonto + enDolares.sinMonto === 1
-                ? '1 cobro no entra en estos totales'
-                : `${total.sinMonto + enDolares.sinMonto} cobros no entran en estos totales`} — todavía sin importe cargado.
+                ? '1 pago no entra en estos totales'
+                : `${total.sinMonto + enDolares.sinMonto} pagos no entran en estos totales`} — todavía sin importe cargado.
             </p>
           ) : null}
           {ivaSueltoEnPesos ? (
             <p className="mt-3 text-[12.5px] text-faint">
-              Además se cobraron {pesos(ivaSueltoEnPesos)} de IVA en pesos, correspondientes a los cobros de arriba.
+              Además pagó {pesos(ivaSueltoEnPesos)} de IVA en pesos, correspondiente a los pagos de arriba.
             </p>
           ) : null}
           {anteriores.length ? (
             <p className="mt-1.5 text-[12.5px] text-faint">
-              Los {anteriores.length === 1 ? 'cobros' : `${anteriores.length} cobros`} de obras anteriores no están en estos totales.
+              {anteriores.length === 1 ? 'El pago' : `Los ${anteriores.length} pagos`} de obras anteriores no {anteriores.length === 1 ? 'está' : 'están'} en estos totales.
             </p>
           ) : null}
         </>
@@ -443,9 +472,10 @@ function deQuienEsElContrato({ obras, sinContrato }: { obras: number; sinContrat
   return sinContrato ? `${base} · ${sinContrato === 1 ? '1 obra sin contrato cargado' : `${sinContrato} obras sin contrato cargado`}` : base
 }
 
-/** «3 cobros cobrados» · «1 cobro por pagar» — el conteo que ata la cifra del pie con las filas. */
+/** «6 pagos hechos» · «1 pago pendiente» — el conteo que ata la cifra del pie con las filas de
+ *  arriba. Se cuenta en PAGOS, no en «cobros»: el que lee el portal es el que paga. */
 const cuantos = (n: number, uno: string, varios: string): string =>
-  n === 1 ? `1 cobro ${uno}` : `${n} cobros ${varios}`
+  n === 1 ? `1 pago ${uno}` : `${n} pagos ${varios}`
 
 /**
  * UNA CIFRA DEL PIE: el neto grande, el «+ IVA», y debajo de dónde sale.

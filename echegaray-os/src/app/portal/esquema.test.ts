@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agruparPorObra, aPagoDelPortal, estadoFijadoDe, pagosDelEsquema, publicadoAlPortal,
-  sinImportes, tipoDelPago, SIN_OBRA, type FilaEsquema,
+  agruparPorObra, aPagoDelPortal, estadoFijadoDe, obrasQueFiltran, pagosDelEsquema, pagosEnPantalla,
+  publicadoAlPortal, sinImportes, tipoDelPago, SIN_OBRA, type FilaEsquema,
 } from './esquema.ts'
-import { estadoDePago, proximoPago, resumenDeCobro } from './cronograma.ts'
+import { estadoDePago, proximoPago, resumenDeCobro, type ResumenCobro } from './cronograma.ts'
 import { contratoDelConjunto } from './esquema.ts'
 
 /** Una fila de `esquema_pago` publicada. Los tests cambian sólo lo que están probando. */
@@ -246,4 +246,185 @@ test('un cobro de obra ANTERIOR no suma al contrato en curso', () => {
 test('el histórico llega marcado desde la base, y por defecto NO lo es', () => {
   assert.equal(aPagoDelPortal(fila({}), 'x').historico, false)
   assert.equal(aPagoDelPortal({ ...fila({}), historico: true } as never, 'x').historico, true)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CRONOGRAMA REAL DE INTER MOTOR SRL — cuatro obras y un corte que las cruza
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Leído de `esquema_pago` el 27/08/2026. Es el cliente donde el dueño vio el defecto: «no está
+// reflejando bien lo que sale el contrato de cada obra, lo pagado y lo pendiente a medida que toco
+// los filtros». Su corte (`clientes.portal_cobros_desde`) es el 01/07/2026 y «Galpones, Mampostería,
+// Cancha de Padel» tiene pagos a los dos lados.
+
+/** `[obra, orden, monto, neto, iva, fecha, cobrado, historico]` tal como está en la base. */
+const INTER_MOTOR: [string | null, number, number, number, number, string, boolean, boolean][] = [
+  ['pisos-industriales', 1, 5_726_423.6, 5_726_423.6, 0, '2026-08-21', true, false],
+  ['pisos-industriales', 2, 9_034_356.2, 9_034_356.2, 0, '2026-09-04', false, false],
+  ['pisos-industriales', 3, 9_034_356.2, 9_034_356.2, 0, '2026-09-11', false, false],
+  ['entrepiso-y-escalera', 1, 1_932_063.5, 1_932_063.5, 0, '2026-09-04', false, false],
+  ['entrepiso-y-escalera', 2, 1_932_063.5, 1_932_063.5, 0, '2026-09-11', false, false],
+  ['instalacion-electrica', 1, 12_100_000, 10_000_000, 2_100_000, '2026-08-26', true, false],
+  ['instalacion-electrica', 2, 10_000_000, 10_000_000, 0, '2026-09-15', false, false],
+  // San Francisco: cinco pagos arriba del corte y cuatro abajo. La base marca `historico` fila por
+  // fila, comparando la fecha del pago contra el 01/07/2026.
+  ['san-francisco', 1, 18_150_000, 15_000_000, 3_150_000, '2026-01-15', true, true],
+  ['san-francisco', 2, 24_200_000, 20_000_000, 4_200_000, '2026-05-08', true, true],
+  ['san-francisco', 3, 20_000_000, 20_000_000, 0, '2026-05-08', true, true],
+  ['san-francisco', 4, 10_000_000, 10_000_000, 0, '2026-06-12', true, true],
+  ['san-francisco', 5, 5_000_000, 5_000_000, 0, '2026-06-26', true, true],
+  ['san-francisco', 6, 5_000_000, 5_000_000, 0, '2026-07-08', true, false],
+  ['san-francisco', 7, 6_215_646, 6_215_646, 0, '2026-07-16', true, false],
+  ['san-francisco', 8, 16_200_000, 16_200_000, 0, '2026-07-17', true, false],
+  ['san-francisco', 9, 9_273_576.4, 9_273_576.4, 0, '2026-08-21', true, false],
+  // «Saldo obras San Francisco — 1/4 … 4/4»: acordados con el cliente y sin obra asignada.
+  [null, 1001, 11_914_816, 11_914_816, 0, '2026-09-30', false, false],
+  [null, 1002, 11_914_816, 11_914_816, 0, '2026-10-15', false, false],
+  [null, 1003, 11_914_816, 11_914_816, 0, '2026-10-30', false, false],
+  [null, 1004, 11_914_815, 11_914_815, 0, '2026-11-13', false, false],
+]
+
+const NOMBRES_IM = new Map([
+  ['pisos-industriales', 'Pisos Industriales'],
+  ['entrepiso-y-escalera', 'Entrepiso y Escalera'],
+  ['instalacion-electrica', 'Instalación Eléctrica'],
+  ['san-francisco', 'Galpones, Mampostería, Cancha de Padel'],
+])
+
+const CONTRATOS_IM = new Map([
+  ['pisos-industriales', { monto: 47_590_272, moneda: 'ARS' as const }],
+  ['entrepiso-y-escalera', { monto: 7_728_254, moneda: 'ARS' as const }],
+  ['instalacion-electrica', { monto: 40_000_000, moneda: 'ARS' as const }],
+  ['san-francisco', { monto: 204_361_104, moneda: 'ARS' as const }],
+])
+
+const interMotor = () => pagosDelEsquema(
+  INTER_MOTOR.map(([obra, orden, monto, neto, iva, fecha, cobrado, historico]) => ({
+    ...fila({ orden, fecha }),
+    id: `${obra ?? 'sin-obra'}-${orden}`,
+    obra_id: obra,
+    monto: String(monto), neto: String(neto), iva: String(iva),
+    estado: cobrado ? 'cobrado' : 'a_vencer',
+    historico,
+  })),
+  NOMBRES_IM, TODAS,
+)
+
+/** Los centavos de `9_273_576.4` sumados nueve veces no se comparan con `===`. */
+const redondo = (n: number | null) => (n == null ? null : Math.round(n))
+
+// ── EL DEFECTO 1: EL CONTRATO ENTERO CONTRA UNA PARTE DE SUS PAGOS ──────────────────────────
+
+test('un pago anterior al corte de una obra EN CURSO cuenta contra el contrato de esa obra', () => {
+  // ANTES: `resumenDeCobro` descartaba las cinco filas marcadas y el pie publicaba «PAGADO
+  // $36.689.222» debajo de «CONTRATO $204.361.104» — el contrato entero de la obra contra cuatro de
+  // sus nueve pagos. Los otros $77.350.000 quedaban abajo, en una sección rotulada «obras
+  // anteriores» que nombraba a la MISMA obra que el filtro estaba mostrando.
+  const sf = pagosEnPantalla(interMotor(), 'san-francisco')
+  assert.equal(sf.todos.length, 9)
+  assert.deepEqual(sf.anteriores, [], 'ningún pago de una obra EN CURSO queda rotulado «obra anterior»')
+
+  const r = resumenDeCobro(sf.todos, 204_361_104, '2026-08-27')
+  assert.equal(redondo(r.pagado), 114_039_222)
+  assert.equal(redondo(r.netoPagado), 106_689_222)
+  assert.equal(r.nPagado, 9)
+  // Y por eso «falta certificar» deja de exagerar en los $77 M que el cliente ya pagó.
+  assert.equal(redondo(r.faltaCertificar), 97_671_882)
+})
+
+test('una obra cuyos pagos son TODOS anteriores al corte sigue siendo una obra anterior', () => {
+  // La marca de la base no se ignora: se corrige sólo cuando la obra tiene vida después del corte.
+  const viejos = pagosDelEsquema([
+    { ...fila({ orden: 1 }), id: 'v1', obra_id: 'obra-vieja', estado: 'cobrado', historico: true },
+    { ...fila({ orden: 2 }), id: 'v2', obra_id: 'obra-vieja', estado: 'cobrado', historico: true },
+    { ...fila({ orden: 1 }), id: 'n1', obra_id: 'pisos-industriales' },
+  ], new Map([...NOMBRES_IM, ['obra-vieja', 'Obra vieja']]), TODAS)
+  assert.deepEqual(viejos.filter((p) => p.historico).map((p) => p.id).sort(), ['v1', 'v2'])
+  // Y su contrato sigue fuera del total del conjunto — que es la otra mitad de la misma regla.
+  const contratos = new Map([
+    ['obra-vieja', { monto: 204_361_104, moneda: 'ARS' as const }],
+    ['pisos-industriales', { monto: 47_590_272, moneda: 'ARS' as const }],
+  ])
+  assert.equal(contratoDelConjunto(agruparPorObra(viejos), contratos)?.monto, 47_590_272)
+})
+
+test('un pago SIN obra conserva la marca de la base: no hay obra a la que preguntarle', () => {
+  const sueltos = pagosDelEsquema([
+    { ...fila({ orden: 1 }), id: 's1', obra_id: null, estado: 'cobrado', historico: true },
+    { ...fila({ orden: 2 }), id: 'n1', obra_id: 'pisos-industriales' },
+  ], NOMBRES_IM, TODAS)
+  assert.equal(sueltos.find((p) => p.id === 's1')?.historico, true)
+})
+
+// ── EL DEFECTO 2: CON UN FILTRO PUESTO, LA PANTALLA SEGUÍA MOSTRANDO OTRA OBRA ───────────────
+
+test('con una obra elegida NO sobrevive ni un pago de otra obra', () => {
+  const pagos = interMotor()
+  for (const [id] of obrasQueFiltran(pagos)) {
+    const v = pagosEnPantalla(pagos, id)
+    for (const lista of [v.todos, v.enCurso, v.anteriores]) {
+      assert.ok(lista.every((p) => p.obraId === id), `«${id}» dejó pasar un pago ajeno`)
+    }
+    assert.ok(v.todos.length > 0, `«${id}» filtra a cero y no debería estar ofrecida`)
+  }
+})
+
+test('el próximo pago del filtro es de la obra filtrada, no del cliente entero', () => {
+  const pagos = interMotor()
+  // Sin filtro, lo próximo es el 04/09 (Entrepiso — `orden` 1 desempata contra Pisos).
+  assert.equal(proximoPago(pagosEnPantalla(pagos, null).enCurso)?.fechaPrevista, '2026-09-04')
+  // Con Instalación Eléctrica elegida es el 15/09, el suyo. Antes seguía siendo el 04/09 de otra
+  // obra: ninguna fila de la lista quedaba resaltada como «próximo» y el calendario abría en un mes
+  // que no tenía nada de la obra pedida.
+  const soloElectrica = pagosEnPantalla(pagos, 'instalacion-electrica').enCurso
+  const electrica = proximoPago(soloElectrica)
+  assert.equal(electrica?.fechaPrevista, '2026-09-15')
+  assert.equal(soloElectrica.find((p) => p.id === electrica?.id)?.obraId, 'instalacion-electrica')
+})
+
+test('el filtro sólo ofrece obras con pagos en curso, y las ofrece por nombre', () => {
+  assert.deepEqual(obrasQueFiltran(interMotor()).map(([, n]) => n), [
+    'Entrepiso y Escalera', 'Galpones, Mampostería, Cancha de Padel', 'Instalación Eléctrica', 'Pisos Industriales',
+  ])
+})
+
+test('cada combinación del filtro publica el contrato, lo pagado y lo pendiente de SU obra', () => {
+  const pagos = interMotor()
+  const hoy = '2026-08-27'
+  const esperado: Record<string, [contrato: number, pagado: number, pendiente: number, falta: number]> = {
+    'pisos-industriales': [47_590_272, 5_726_424, 18_068_712, 23_795_136],
+    'entrepiso-y-escalera': [7_728_254, 0, 3_864_127, 3_864_127],
+    'instalacion-electrica': [40_000_000, 10_000_000, 10_000_000, 20_000_000],
+    'san-francisco': [204_361_104, 106_689_222, 0, 97_671_882],
+  }
+  for (const [id, [contrato, pagado, pendiente, falta]] of Object.entries(esperado)) {
+    const r = resumenDeCobro(pagosEnPantalla(pagos, id).todos, contrato, hoy)
+    assert.equal(redondo(r.netoPagado), pagado, `${id}: pagado`)
+    assert.equal(redondo(r.netoPendiente), pendiente, `${id}: pendiente`)
+    assert.equal(redondo(r.faltaCertificar), falta, `${id}: falta certificar`)
+  }
+})
+
+test('LA PRUEBA CRUZADA: la suma de los pies por obra es el pie sin filtro', () => {
+  // Si el filtro dejara pasar plata de otra obra —o la escondiera— los dos lados dejarían de dar lo
+  // mismo. Es el control que el cliente hace a ojo cuando toca las pastillas una por una.
+  const pagos = interMotor()
+  const hoy = '2026-08-27'
+  const todo = resumenDeCobro(pagosEnPantalla(pagos, null).todos, null, hoy)
+  const trozos = [...obrasQueFiltran(pagos).map(([id]) => id), null]
+    .map((id) => resumenDeCobro(
+      id === null ? pagos.filter((p) => !p.obraId) : pagosEnPantalla(pagos, id).todos, null, hoy))
+  const sumar = (leer: (r: ResumenCobro) => number | null) =>
+    Math.round(trozos.reduce((a, r) => a + (leer(r) ?? 0), 0))
+
+  assert.equal(redondo(todo.netoPagado), 122_415_646)
+  assert.equal(redondo(todo.netoPendiente), 79_592_102)
+  assert.equal(sumar((r) => r.netoPagado), redondo(todo.netoPagado))
+  assert.equal(sumar((r) => r.netoPendiente), redondo(todo.netoPendiente))
+  assert.equal(trozos.reduce((a, r) => a + r.nPagado, 0), todo.nPagado)
+  assert.equal(trozos.reduce((a, r) => a + r.nPendiente, 0), todo.nPendiente)
+
+  // Y el contrato del conjunto sigue siendo la suma de los cuatro, con su cobertura declarada.
+  assert.deepEqual(contratoDelConjunto(agruparPorObra(pagos), CONTRATOS_IM),
+    { monto: 299_679_630, moneda: 'ARS', obras: 4, sinContrato: 0 })
 })
