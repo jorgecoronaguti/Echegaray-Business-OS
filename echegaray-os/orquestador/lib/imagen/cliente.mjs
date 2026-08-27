@@ -34,7 +34,7 @@ import { SCOPE_VERTEX, proyectoDe, vertexImagen } from './proveedores/vertex-ima
 //   3. COMPATIBLE — si alguna vez se contrata un proveedor del dialecto OpenAI.
 //   4. ABIERTO — sin credencial, gratis, y de calidad claramente menor (medido). Último a propósito:
 //      existe para que la capacidad RESPONDA, no para que responda bien.
-const PROVEEDORES = [imagenCloudflare, vertexImagen, imagenCompatible, imagenAbierta]
+export const PROVEEDORES = [imagenCloudflare, vertexImagen, imagenCompatible, imagenAbierta]
 
 /** Lee el JSON del service account por los MISMOS dos caminos que `lib/google.mjs`: el env
  *  (entornos sin disco) y el archivo (la VM). Devuelve `{credencial, keyFile}` o `{}`. */

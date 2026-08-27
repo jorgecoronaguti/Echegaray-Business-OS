@@ -17,6 +17,8 @@ import { producirImagen } from '../imagen/motor.mjs'
 import { validarPedido } from '../imagen/contrato.mjs'
 import { elegirCapacidad } from '../elegir-capacidad.mjs'
 import { generarImagen } from '../imagen/cliente.mjs'
+import { vertexImagen } from '../imagen/proveedores/vertex-imagen.mjs'
+import { imagenCloudflare } from '../imagen/proveedores/cloudflare.mjs'
 
 // ── un PNG real, para que el QA del motor tenga bytes de verdad que medir ────────────────────
 function chunk(tipo, datos) {
@@ -118,7 +120,12 @@ test('SIN proveedor habilitado, el circuito llega hasta el borde y el error dice
   const v = validarPedido({ tipo: 'diagrama', pedido: 'un esquema de tres etapas encadenadas' })
   const r = await producirImagen(googleFalso(), v.pedido, {
     fetchImpl,
-    generar: (o) => generarImagen({ ...o, fetchImpl, obtenerToken: async () => 'token-de-prueba' }),
+    // SE INYECTA LA FILA DE PROVEEDORES, y no es un detalle del test: desde el 27/08 el primero de
+    // la fila es Cloudflare, así que sin acotarla lo que se mide es «falta la credencial de
+    // Cloudflare» y no lo que este test existe para probar — que el adapter de Vertex traduce su
+    // 403 a una acción concreta. Un test que mide el primer proveedor de la fila se pone rojo cada
+    // vez que la fila cambia, que es ruido, no defecto.
+    generar: (o) => generarImagen({ ...o, fetchImpl, obtenerToken: async () => 'token-de-prueba', proveedores: [vertexImagen] }),
   })
 
   assert.equal(r.ok, false, JSON.stringify(r).slice(0, 300))
@@ -267,4 +274,31 @@ test('el ruteo lleva un pedido de imagen a esta skill, y NO le roba el suyo a ot
   assert.ok(comprobante.includes('carga-gastos-multimedia'))
   assert.equal(comprobante.includes('generar-imagen'), false)
   assert.equal(elegirCapacidad('leeme la imagen del extracto del banco', { asesoria: true }).skills.includes('generar-imagen'), false)
+})
+
+test('EL ORDEN DE LA FILA ES LA POLÍTICA: primero el gratuito con calidad, y Vertex —que se cobra— después', async () => {
+  // El dueño descartó Vertex por el costo. Si alguien lo vuelve a poner primero, esto se pone rojo:
+  // el efecto no sería un error sino una factura, que es peor porque no avisa.
+  const { PROVEEDORES } = await import('../imagen/cliente.mjs')
+  assert.equal(PROVEEDORES[0].nombre, imagenCloudflare.nombre, 'el gratuito con calidad va primero')
+  assert.ok(PROVEEDORES.findIndex((p) => p.nombre === vertexImagen.nombre) > 0, 'Vertex se cobra: no puede ir primero')
+  assert.equal(PROVEEDORES.at(-1).nombre, 'imagenes-abierto', 'el de menor calidad va último')
+})
+
+test('sin ninguna credencial de Cloudflare, el error nombra la credencial y NO sale a la red', async () => {
+  const previo = process.env.CLOUDFLARE_ACCOUNT_ID
+  delete process.env.CLOUDFLARE_ACCOUNT_ID
+  let pedidos = 0
+  try {
+    const r = await generarImagen({
+      prompt: 'SUJETO: una obra',
+      proveedores: [imagenCloudflare],
+      fetchImpl: async () => { pedidos++; return { ok: false, status: 500, text: async () => '' } },
+    })
+    assert.equal(r.ok, false)
+    assert.equal(r.falta, 'credencial')
+    assert.equal(pedidos, 0, 'sin cuenta no se hace un solo pedido')
+  } finally {
+    if (previo !== undefined) process.env.CLOUDFLARE_ACCOUNT_ID = previo
+  }
 })
