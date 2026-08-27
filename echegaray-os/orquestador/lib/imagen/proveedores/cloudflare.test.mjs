@@ -1,7 +1,7 @@
 // WORKERS AI. Los tests cubren los dos dialectos de respuesta y cada modo de falla con su acción.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cuerpoDe, imagenCloudflare, medidaDe, urlDeModelo } from './cloudflare.mjs'
+import { aceptaMedida, cuerpoDe, imagenCloudflare, medidaDe, urlDeModelo } from './cloudflare.mjs'
 
 const conCredencial = (fn) => async () => {
   const prev = [process.env.CLOUDFLARE_ACCOUNT_ID, process.env.CLOUDFLARE_API_TOKEN]
@@ -32,6 +32,17 @@ test('16:9 pide una medida 16:9', () => {
 
 test('la URL lleva la cuenta escapada y el modelo tal cual', () => {
   assert.equal(urlDeModelo('c 1', '@cf/x/y'), 'https://api.cloudflare.com/client/v4/accounts/c%201/ai/run/@cf/x/y')
+})
+
+test('a FLUX no se le manda la medida — con width/height contesta 400 y no genera nada', () => {
+  assert.equal(aceptaMedida('@cf/black-forest-labs/flux-1-schnell'), false)
+  assert.equal(aceptaMedida('@cf/stabilityai/stable-diffusion-xl-base-1.0'), true)
+  const flux = cuerpoDe({ prompt: 'x', modelo: '@cf/black-forest-labs/flux-1-schnell' })
+  assert.equal('width' in flux, false)
+  assert.equal('height' in flux, false)
+  const sd = cuerpoDe({ prompt: 'x', aspecto: '16:9', modelo: '@cf/stabilityai/stable-diffusion-xl-base-1.0' })
+  assert.equal(sd.width, 1024)
+  assert.equal(sd.height, 576)
 })
 
 test('el negativo sólo viaja si existe', () => {

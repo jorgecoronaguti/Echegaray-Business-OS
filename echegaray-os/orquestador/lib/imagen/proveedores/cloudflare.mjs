@@ -7,14 +7,12 @@
 // paga"*. Workers AI tiene un tramo gratuito diario y no pide tarjeta para empezar: es la única
 // opción que cumple las dos condiciones —calidad usable y costo cero— al mismo tiempo.
 //
-// ═══ QUÉ FALTA PARA QUE FUNCIONE, Y POR QUÉ NO LO PUEDO PONER YO ═══
+// ═══ CÓMO ENTRA (27/08/2026) ═══
 //
-// Dos valores: `CLOUDFLARE_ACCOUNT_ID` y `CLOUDFLARE_API_TOKEN`. No existen en esta máquina —
-// buscado el 27/08 en todo el entorno, en `~/.config` y en el repo: no hay ninguna credencial de
-// Cloudflare (el túnel del OS usa túneles rápidos, que justamente no piden cuenta). Crear la cuenta
-// es aceptar términos a nombre de la empresa, y eso no lo hago solo.
-//
-// El adapter queda ENTERO y apagado. El día que estén las dos variables, funciona sin tocar código.
+// El dueño autorizó la identidad UNA vez, por el flujo de dispositivo de Wrangler. De ahí sale un
+// token que vence en una hora y se renueva solo: la renovación vive en `cloudflare-credencial.mjs`,
+// que además prefiere `CLOUDFLARE_API_TOKEN` si algún día existe un token de servicio de verdad.
+// El `CLOUDFLARE_ACCOUNT_ID` sí es una variable de entorno común: no es un secreto, es una dirección.
 //
 // ═══ LOS DOS DIALECTOS DE RESPUESTA ═══
 //
@@ -22,6 +20,8 @@
 // `result.image`, y los Stable Diffusion devuelven los BYTES del PNG directo. Un adapter que asuma
 // uno solo funciona hasta que alguien cambia el modelo por env — y falla con «respuesta inválida»,
 // que no dice nada. Se soportan los dos y se decide por el `content-type`.
+
+import { tokenCloudflare } from './cloudflare-credencial.mjs'
 
 const env = (k, d = null) => {
   const v = process.env[k]
@@ -39,11 +39,23 @@ export function urlDeModelo(cuenta, modelo) {
   return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cuenta)}/ai/run/${modelo}`
 }
 
+/**
+ * ¿ESTE MODELO ACEPTA QUE LE PIDAN LA MEDIDA?
+ *
+ * FLUX schnell NO: mandarle `width`/`height` devuelve `400 · Additional or unevaluated properties
+ * '/width, /height' at '/' not allowed` y la generación entera se cae — probado el 27/08. Sale
+ * siempre 1024×1024. Los Stable Diffusion sí las aceptan. Un adapter que manda los mismos campos a
+ * todos funciona hasta que alguien cambia el modelo, y falla con un 400 que no dice qué sobra. PURA.
+ */
+export function aceptaMedida(modelo) {
+  return !/flux/i.test(String(modelo ?? ''))
+}
+
 /** El cuerpo del pedido. Separado y PURO: es lo único que hay que mirar cuando la imagen sale
  *  distinta de lo pedido. */
-export function cuerpoDe({ prompt, negativo = null, aspecto = '16:9' } = {}) {
-  const { width, height } = medidaDe(aspecto)
-  const cuerpo = { prompt: String(prompt ?? '').slice(0, 2048), steps: PASOS, width, height }
+export function cuerpoDe({ prompt, negativo = null, aspecto = '16:9', modelo = MODELO_POR_DEFECTO } = {}) {
+  const cuerpo = { prompt: String(prompt ?? '').slice(0, 2048), steps: PASOS }
+  if (aceptaMedida(modelo)) Object.assign(cuerpo, medidaDe(aspecto))
   if (negativo) cuerpo.negative_prompt = String(negativo).slice(0, 1024)
   return cuerpo
 }
@@ -62,15 +74,18 @@ export function medidaDe(aspecto) {
 export const imagenCloudflare = {
   nombre: 'cloudflare-workers-ai',
 
+  // La cuenta se declara por entorno; el token puede venir del entorno O de la credencial que dejó
+  // el login del dueño. Que `configurado()` no consulte el disco es a propósito: es síncrona y la
+  // llama el cliente en la fila de proveedores. Si la credencial no está, `generar` lo dice.
   configurado() {
-    return Boolean(env('CLOUDFLARE_ACCOUNT_ID') && env('CLOUDFLARE_API_TOKEN'))
+    return Boolean(env('CLOUDFLARE_ACCOUNT_ID'))
   },
 
   modelo() { return env('CLOUDFLARE_MODELO_IMAGEN', MODELO_POR_DEFECTO) },
 
   async generar({ prompt, negativo = null, aspecto = '16:9', fetchImpl = globalThis.fetch, señal } = {}) {
     const cuenta = env('CLOUDFLARE_ACCOUNT_ID')
-    const clave = env('CLOUDFLARE_API_TOKEN')
+    const clave = await tokenCloudflare({ fetchImpl })
     if (!cuenta || !clave) {
       const err = new Error(`${imagenCloudflare.nombre}: sin credencial`)
       err.status = 401
@@ -81,7 +96,7 @@ export const imagenCloudflare = {
     const res = await fetchImpl(urlDeModelo(cuenta, modelo), {
       method: 'POST',
       headers: { authorization: `Bearer ${clave}`, 'content-type': 'application/json' },
-      body: JSON.stringify(cuerpoDe({ prompt, negativo, aspecto })),
+      body: JSON.stringify(cuerpoDe({ prompt, negativo, aspecto, modelo })),
       signal: señal,
     })
 
