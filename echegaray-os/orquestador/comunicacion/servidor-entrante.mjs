@@ -17,6 +17,9 @@ import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
 import { crearManejadorXsas } from './xsas-http.mjs'
 import { atender } from '../lib/xsas-gateway.mjs'
 import { query } from '../lib/db.mjs'
+import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
+import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
+import { loadConfig } from '../lib/config.mjs'
 import { MattermostCliente, crearLog } from '../../../communication-service/src/index.mjs'
 
 const HOST = process.env.COMM_HTTP_HOST ?? '127.0.0.1' // nunca 0.0.0.0 por defecto
@@ -29,6 +32,28 @@ const MAX_BYTES = Number(process.env.COMM_HTTP_MAX_BYTES ?? 64 * 1024)
 const RUTA_XSAS = process.env.XSAS_HTTP_PATH ?? '/xsas'
 const BODY_TIMEOUT_MS = Number(process.env.COMM_HTTP_BODY_TIMEOUT_MS ?? 5000)
 const log = crearLog()
+
+/**
+ * EL CLIENTE DE GOOGLE DE LA PUERTA — el mismo criterio que `os.mjs` y el motor interactivo.
+ *
+ * Sin esto la puerta cargaba SÓLO el registro 0-API, y las capacidades de Workspace (Slides,
+ * tesorería sobre el Sheet) quedaban registradas pero inalcanzables desde HTTP: existían en el
+ * código y no existían para quien entra. Se resuelve UNA vez al arrancar, no por pedido — pedir
+ * el token del operador en cada request agrega latencia a todo, incluso a lo que no toca Google.
+ *
+ * Si nadie autorizó la cuenta operadora devuelve `null` y la puerta sigue contestando con el
+ * núcleo 0-API. Degradar es perder una capacidad, no perder el sistema.
+ */
+async function googleDeLaPuerta() {
+  try {
+    const op = await operadorPara()
+    if (!op) { log.warn('xsas: sin cuenta operadora autorizada — la puerta arranca sin Google'); return null }
+    return makeGoogleClient({ config: loadConfig(), scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
+  } catch (e) {
+    log.warn('xsas: no se pudo armar el cliente de Google', { motivo: String(e?.message ?? e).slice(0, 120) })
+    return null
+  }
+}
 
 /** IP real detrás de Caddy: primer valor de X-Forwarded-For (que setea el proxy),
  *  o la IP de socket si no hay proxy. La allowlist final la aplica el verificador. */
@@ -70,7 +95,7 @@ async function main() {
   const manejarXsas = crearManejadorXsas({
     atender,
     secreto: process.env.XSAS_GATEWAY_SECRET || null,
-    gateway: { query },
+    gateway: { query, google: await googleDeLaPuerta() },
     ruta: RUTA_XSAS,
   })
 
