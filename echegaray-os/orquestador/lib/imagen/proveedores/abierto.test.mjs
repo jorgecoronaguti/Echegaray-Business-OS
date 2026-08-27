@@ -1,7 +1,7 @@
 // EL PROVEEDOR SIN CREDENCIAL. Cada test acá prueba un modo de falla real, no que el código exista.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { imagenAbierta, medidaDe, semillaDe, urlDePedido } from './abierto.mjs'
+import { imagenAbierta, medidaDe, promptCorto, semillaDe, urlDePedido } from './abierto.mjs'
 
 const respuesta = (bytes, { status = 200, tipo = 'image/jpeg' } = {}) => ({
   ok: status >= 200 && status < 300,
@@ -83,4 +83,26 @@ test('se puede apagar con una variable, y apagado el cliente lo salta', () => {
     if (previo === undefined) delete process.env.ORQ_IMG_ABIERTO
     else process.env.ORQ_IMG_ABIERTO = previo
   }
+})
+
+test('del prompt estructurado del motor sale el SUJETO, no el bloque entero', () => {
+  const largo = [
+    'SUJETO: un equipo de obra revisando un plano al pie de una estructura de hormigón',
+    'PARA QUÉ: apoyar la lámina de planificación',
+    'DIRECCIÓN DE ARTE: sujeto descentrado, fondo simple',
+    'COLOR: gris grafito #30302F y blanco',
+  ].join('\n')
+  const corto = promptCorto(largo)
+  assert.ok(corto.startsWith('un equipo de obra revisando un plano'))
+  assert.ok(!corto.includes('DIRECCIÓN DE ARTE'))
+  assert.ok(!corto.includes('#30302F'))
+  assert.ok(/documentary photograph/.test(corto), 'la cola fotográfica va siempre')
+})
+
+test('un prompt sin rótulos se usa igual, no se pierde', () => {
+  assert.ok(promptCorto('una excavadora moviendo tierra').startsWith('una excavadora moviendo tierra'))
+})
+
+test('la semilla se calcula sobre el prompt ORIGINAL: dos pedidos distintos no colisionan al acortarse', () => {
+  assert.notEqual(semillaDe('SUJETO: x\nPARA QUÉ: a'), semillaDe('SUJETO: x\nPARA QUÉ: b'))
 })

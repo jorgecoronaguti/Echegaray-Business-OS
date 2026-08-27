@@ -44,6 +44,28 @@ export function medidaDe(aspecto) {
 }
 
 /**
+ * EL PROMPT QUE ESTE MODELO ENTIENDE — y por qué no es el que arma el motor.
+ *
+ * El motor produce un prompt estructurado y largo (SUJETO / PARA QUÉ / DIRECCIÓN DE ARTE / COLOR /
+ * NEGATIVO), que es lo correcto para un modelo grande. Este proveedor expone uno chico, y medido el
+ * 27/08 con el mismo pedido: con el prompt completo devolvió un holograma azul de una casa; con el
+ * sujeto solo más una cola fotográfica en inglés, devolvió una escena de obra usable.
+ *
+ * Adaptar el prompt al modelo es trabajo DEL ADAPTER, no de la skill: quien pide sigue describiendo
+ * en castellano llano y no se entera de qué proveedor le tocó. PURA.
+ */
+export function promptCorto(prompt) {
+  const texto = String(prompt ?? '')
+  // El motor rotula el sujeto; si el rótulo no está (otro caller, un test), se usa el texto entero.
+  const sujeto = (texto.match(/SUJETO:\s*([^\n]+)/i)?.[1] ?? texto.split('\n')[0] ?? texto).trim()
+  return `${sujeto.slice(0, 400)}. ${COLA_FOTOGRAFICA}`
+}
+
+/** La cola va en inglés a propósito: es el idioma en el que estos modelos aprendieron los términos
+ *  fotográficos, y es lo único del prompt que no describe QUÉ se ve sino CÓMO se ve. */
+const COLA_FOTOGRAFICA = 'documentary photograph, real construction site, realistic, natural daylight, sharp focus, 35mm, no text, no watermark'
+
+/**
  * La URL del pedido. Separada y PURA porque es lo único que hay que revisar cuando la imagen sale
  * distinta de lo pedido: acá se ve el prompt exacto, la medida exacta y la semilla.
  */
@@ -80,7 +102,7 @@ export const imagenAbierta = {
       err.falta = 'prompt'
       throw err
     }
-    const url = urlDePedido({ prompt, aspecto, semilla: semillaDe(prompt) })
+    const url = urlDePedido({ prompt: promptCorto(prompt), aspecto, semilla: semillaDe(prompt) })
     const res = await fetchImpl(url, { signal: señal })
     if (!res.ok) {
       const err = new Error(`${imagenAbierta.nombre}: HTTP ${res.status}`)
