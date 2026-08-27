@@ -96,6 +96,10 @@ const MATERIALES = Object.freeze([
   ['madera', /\bmadera\b|tiranteria/],
   ['aluminio', /\baluminio\b/],
   ['pvc', /\bpvc\b/],
+  // El genérico va ÚLTIMO: «PLATEA DE HORMIGON» no dice armado, simple ni ciclópeo, y forzarlo a
+  // una de las tres sería afirmar algo que el nombre no dice. Pero decir «hormigón» ya alcanza para
+  // que una correa metálica no entre ahí, que es lo que este atributo tiene que impedir.
+  ['hormigon', /hormigon/],
 ])
 
 /** La familia de material. PURA. */
@@ -166,6 +170,10 @@ export function atributosDe(...textos) {
 const COMPATIBLES = Object.freeze([
   ['hormigon_armado', 'acero'], ['hormigon_armado', 'hormigon_simple'], ['hormigon_armado', 'cemento'],
   ['metalico', 'acero'], ['ceramico', 'ladrillo_ceramico'], ['cal', 'cemento'], ['yeso', 'placa_yeso'],
+  // El genérico nunca contradice a su específico: «hormigón» y «hormigón armado» son el mismo hecho
+  // constructivo dicho con distinta precisión, y tratarlos como conflicto descarta la partida buena.
+  ['hormigon', 'hormigon_armado'], ['hormigon', 'hormigon_simple'], ['hormigon', 'hormigon_ciclopeo'],
+  ['hormigon', 'hormigon_pobre'], ['hormigon', 'cemento'],
 ])
 
 const mismoMaterial = (a, b) => a === b || COMPATIBLES.some(([x, y]) => (a === x && b === y) || (a === y && b === x))
@@ -175,28 +183,49 @@ const mismoMaterial = (a, b) => a === b || COMPATIBLES.some(([x, y]) => (a === x
 const mismoEspesor = (a, b) => Math.abs(a - b) <= 0.005
 
 /**
+ * LOS ATRIBUTOS QUE BLOQUEAN UNA CONFIRMACIÓN cuando la partida los exige y el elemento no los
+ * demuestra. Son los que afirman un HECHO CONSTRUCTIVO MEDIBLE que tiene que estar en el proyecto:
+ * cuánto mide, de qué resistencia, con qué método, con qué terminación, dónde y con qué armadura.
+ * Ante cualquiera de ésos, la respuesta correcta es la pregunta.
+ *
+ * `material` queda AFUERA a propósito y la razón es de ingeniería, no de conveniencia: el material
+ * de un elemento suele estar implícito en su propio nombre —una platea es de hormigón, un revoque
+ * es de mortero— y exigir que el plano lo escriba bloquea partidas correctas sin agregar seguridad.
+ * Sigue sirviendo para DESCARTAR: si el elemento SÍ declara un material y contradice al de la
+ * partida, eso es conflicto y la partida se cae. Discrimina, no bloquea.
+ */
+export const BLOQUEAN = Object.freeze(['espesor_m', 'seccion', 'resistencia', 'metodo', 'terminacion', 'ubicacion', 'armadura'])
+
+/**
  * COMPARAR LOS ATRIBUTOS DE UN ELEMENTO CONTRA LOS DE UNA PARTIDA. PURA.
  *
  * Devuelve tres cosas distintas que NO hay que confundir:
  *  · `conflictos`  — los dos lo declaran y no coinciden. La partida no es ésta: se descarta.
- *  · `sinRespaldo` — la partida lo exige y el elemento no lo demuestra. NO se descarta la partida:
- *                    se bloquea la confirmación, porque la respuesta correcta es una pregunta.
+ *  · `sinRespaldo` — la partida exige un atributo de `BLOQUEAN` que el elemento no demuestra. NO se
+ *                    descarta la partida: se bloquea la confirmación, porque la respuesta correcta
+ *                    es una pregunta.
+ *  · `noDeclarados` — la partida lo dice y el elemento no, pero no bloquea (hoy, sólo el material).
  *  · `coincidencias` — los dos lo declaran y coinciden. Es lo único que suma puntaje.
  */
 export function comparar(delElemento, deLaPartida) {
   const conflictos = []
   const sinRespaldo = []
+  const noDeclarados = []
   const coincidencias = []
   for (const clave of Object.keys(deLaPartida ?? {})) {
     const p = deLaPartida[clave]
     const e = delElemento?.[clave]
     if (!p) continue
-    if (!e) { sinRespaldo.push({ atributo: clave, exige: p.valor, literal: p.literal }); continue }
+    if (!e) {
+      if (BLOQUEAN.includes(clave)) sinRespaldo.push({ atributo: clave, exige: p.valor, literal: p.literal })
+      else noDeclarados.push({ atributo: clave, exige: p.valor, literal: p.literal })
+      continue
+    }
     const igual = clave === 'espesor_m' ? mismoEspesor(e.valor, p.valor)
       : clave === 'material' ? mismoMaterial(e.valor, p.valor)
         : String(e.valor) === String(p.valor)
     if (igual) coincidencias.push({ atributo: clave, valor: p.valor })
     else conflictos.push({ atributo: clave, elemento: e.valor, partida: p.valor, literalElemento: e.literal, literalPartida: p.literal })
   }
-  return { conflictos, sinRespaldo, coincidencias }
+  return { conflictos, sinRespaldo, noDeclarados, coincidencias }
 }
