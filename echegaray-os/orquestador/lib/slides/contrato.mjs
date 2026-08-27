@@ -33,7 +33,11 @@ export const Fuente = z.object({
 
 const Punto = z.string().trim().min(1).max(300)
 
-const Comun = { kicker: opcional(60), titulo: texto(140), nota: opcional(240), origen: Origen, fuentes: z.array(Fuente).max(4).optional() }
+const Comun = { kicker: opcional(60), titulo: texto(140), nota: opcional(240), origen: Origen, fuentes: z.array(Fuente).max(4).optional(),
+  // ÉNFASIS: la lámina se dibuja sobre grafito. Un mazo entero en blanco se lee plano; una lámina
+  // oscura cada tantas da ritmo y marca lo que hay que recordar. Es lo ÚNICO parecido a una decisión
+  // visual que el contenido puede pedir, y ni siquiera elige el color: elige la jerarquía.
+  enfasis: z.boolean().optional() }
 
 export const Lamina = z.discriminatedUnion('tipo', [
   z.object({ tipo: z.literal('seccion'), titulo: texto(90), bajada: opcional(180) }),

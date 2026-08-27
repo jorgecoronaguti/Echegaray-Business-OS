@@ -69,15 +69,15 @@ export const CHROME = Object.freeze({
  * Encabezado: devuelve `{cajas, y}` — `y` es donde puede empezar el cuerpo. El título se mide de
  * verdad: un título de dos líneas empuja el cuerpo, no lo pisa.
  */
-export function encabezado({ kicker = null, titulo, ancho = CONTENIDO.ancho, x = CONTENIDO.x }) {
+export function encabezado({ kicker = null, titulo, ancho = CONTENIDO.ancho, x = CONTENIDO.x, sobreOscuro = false }) {
   const cajas = []
   let y = CHROME.kickerY
   if (kicker) {
-    cajas.push(texto({ x, y, ancho, alto: 12, contenido: kicker.toUpperCase(), estilo: TIPO.kicker }))
+    cajas.push(texto({ x, y, ancho, alto: 12, contenido: kicker.toUpperCase(), estilo: { ...TIPO.kicker, color: sobreOscuro ? COLOR.amarillo : TIPO.kicker.color } }))
     y += 15
   } else { y = CHROME.tituloY }
   const m = medirTexto(titulo, { ancho, tamano: TIPO.titulo.tamano, alto: TIPO.titulo.alto, negrita: TIPO.titulo.negrita })
-  cajas.push(texto({ x, y, ancho, alto: m.altoPt + 4, contenido: titulo, estilo: TIPO.titulo }))
+  cajas.push(texto({ x, y, ancho, alto: m.altoPt + 4, contenido: titulo, estilo: { ...TIPO.titulo, color: sobreOscuro ? COLOR.papel : TIPO.titulo.color } }))
   y += m.altoPt + 10
   cajas.push(rect({ x, y, ancho: CHROME.reglaAncho, alto: CHROME.reglaGrosor, relleno: COLOR.amarillo }))
   return { cajas, y: y + CHROME.reglaGrosor + 18 }
@@ -128,19 +128,22 @@ export function marcaEcsas({ x, y, alto = 22, sobreOscuro = false }) {
 }
 
 /** Pie: línea, identidad + obra a la izquierda, número de lámina a la derecha, logo si hay URL. */
-export function pie({ numero, total, obra = null, cliente = null, conLogo = true }) {
+export function pie({ numero, total, obra = null, cliente = null, conLogo = true, sobreOscuro = false }) {
   const izquierda = ['ECHEGARAY CONSTRUCCIONES', obra, cliente].filter(Boolean).join('  ·  ')
+  const estiloPie = { ...TIPO.pie, color: sobreOscuro ? '#A8A8A3' : TIPO.pie.color }
   const cajas = [
-    regla({ x: CONTENIDO.x, y: CHROME.pieLinea, ancho: CONTENIDO.ancho }),
-    texto({ x: CONTENIDO.x, y: CHROME.pieTexto, ancho: CONTENIDO.ancho - 120, alto: 12, contenido: izquierda, estilo: TIPO.pie }),
+    regla({ x: CONTENIDO.x, y: CHROME.pieLinea, ancho: CONTENIDO.ancho, color: sobreOscuro ? '#4A4A48' : COLOR.linea }),
+    texto({ x: CONTENIDO.x, y: CHROME.pieTexto, ancho: CONTENIDO.ancho - 120, alto: 12, contenido: izquierda, estilo: estiloPie }),
     texto({
       x: CONTENIDO.x + CONTENIDO.ancho - 60, y: CHROME.pieTexto, ancho: 60, alto: 12,
-      contenido: `${numero} / ${total}`, estilo: TIPO.pie, alineacion: 'END',
+      contenido: `${numero} / ${total}`, estilo: estiloPie, alineacion: 'END',
     }),
   ]
   // En las láminas de contenido el nombre de la empresa ya está escrito al pie: repetir la marca
   // sería ruido. El logo remoto sólo entra si alguien configuró una URL pública de verdad.
-  if (conLogo && LOGO_URL) {
+  // Sobre grafito no va: el isotipo tiene sus barras en negro y sobre fondo oscuro sólo se ve la
+  // amarilla — se lee como un recorte, no como una marca. En esas láminas el nombre al pie alcanza.
+  if (conLogo && LOGO_URL && !sobreOscuro) {
     // ARRIBA de la línea del pie, no debajo: bajo la línea quedan 30 pt y el logo mide 33 de alto —
     // se salía de la lámina, y el control lo cazó antes de publicar nada. El alto sale de la
     // proporción del archivo; el ancho se deriva, nunca al revés.
@@ -187,10 +190,10 @@ export function citaFuentes({ fuentes, x, y, ancho }) {
 }
 
 /** La nota al pie del cuerpo (aclaración del autor, no fuente externa). */
-export function nota({ contenido, x, y, ancho }) {
+export function nota({ contenido, x, y, ancho, sobreOscuro = false }) {
   if (!contenido) return []
   const m = medirTexto(contenido, { ancho, tamano: TIPO.kpiNota.tamano, alto: TIPO.kpiNota.alto })
-  return [texto({ x, y, ancho, alto: m.altoPt + 2, contenido, estilo: TIPO.kpiNota })]
+  return [texto({ x, y, ancho, alto: m.altoPt + 2, contenido, estilo: { ...TIPO.kpiNota, color: sobreOscuro ? '#B9B9B4' : TIPO.kpiNota.color } })]
 }
 
 /** Alto del cuerpo disponible desde `y`, descontando el pie. PURA. */

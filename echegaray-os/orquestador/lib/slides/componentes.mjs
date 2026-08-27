@@ -16,43 +16,43 @@ const TONO_TEXTO = { neutro: COLOR.tinta, positivo: COLOR.positivo, negativo: CO
 
 /** Texto corrido + lista de puntos. El caso más común y el más fácil de arruinar: doce bullets de
  *  tres líneas. El reparto en láminas ya pasó antes de llegar acá (ver `plantillas.mjs`). */
-export function cuerpoPuntos({ lamina, x, y, ancho, alto }) {
+export function cuerpoPuntos({ lamina, x, y, ancho, alto, oscuro = false }) {
   const cajas = []
   let cursor = y
   if (lamina.bajada) {
     const m = medirTexto(lamina.bajada, { ancho: ancho * 0.86, tamano: TIPO.subtitulo.tamano, alto: TIPO.subtitulo.alto })
-    cajas.push(texto({ x, y: cursor, ancho: ancho * 0.86, alto: m.altoPt + 2, contenido: lamina.bajada, estilo: TIPO.subtitulo }))
+    cajas.push(texto({ x, y: cursor, ancho: ancho * 0.86, alto: m.altoPt + 2, contenido: lamina.bajada, estilo: { ...TIPO.subtitulo, color: oscuro ? '#B9B9B4' : TIPO.subtitulo.color } }))
     cursor += m.altoPt + 16
   }
   const m = medirBullets(lamina.puntos, { ancho, tamano: TIPO.bullet.tamano, alto: TIPO.bullet.alto })
-  cajas.push(bullets({ x, y: cursor, ancho, alto: Math.min(m.altoPt + 6, alto - (cursor - y)), items: lamina.puntos, estilo: TIPO.bullet }))
+  cajas.push(bullets({ x, y: cursor, ancho, alto: Math.min(m.altoPt + 6, alto - (cursor - y)), items: lamina.puntos, estilo: { ...TIPO.bullet, color: oscuro ? COLOR.papel : TIPO.bullet.color } }))
   return cajas
 }
 
 /** Dos bloques de 6 columnas. Comparar dos cosas es la mitad de las láminas de una reunión, y
  *  ponerlas una debajo de la otra las convierte en una secuencia en vez de una comparación. */
-export function cuerpoDosColumnas({ lamina, x, y, ancho, alto }) {
+export function cuerpoDosColumnas({ lamina, x, y, ancho, alto, oscuro = false }) {
   const [izq, der] = repartirEnFila(2, { x, ancho, canaleta: GRILLA.canaleta * 2 })
   const cajas = []
   for (const [col, datos] of [[izq, lamina.izquierda], [der, lamina.derecha]]) {
     // La regla va 22 pt abajo del tope de la caja, no 17: el renderer baja la línea base y a 17
     // el amarillo cruzaba las letras — se leía como un tachado, no como un subrayado.
-    cajas.push(texto({ x: col.x, y, ancho: col.ancho, alto: 14, contenido: datos.titulo.toUpperCase(), estilo: { ...TIPO.kicker, color: COLOR.tinta, tamano: 10 } }))
+    cajas.push(texto({ x: col.x, y, ancho: col.ancho, alto: 14, contenido: datos.titulo.toUpperCase(), estilo: { ...TIPO.kicker, color: oscuro ? COLOR.amarillo : COLOR.tinta, tamano: 10 } }))
     cajas.push(regla({ x: col.x, y: y + 22, ancho: 28, grosor: 2, color: COLOR.amarillo }))
     const m = medirBullets(datos.puntos, { ancho: col.ancho, tamano: TIPO.bullet.tamano, alto: TIPO.bullet.alto })
-    cajas.push(bullets({ x: col.x, y: y + 36, ancho: col.ancho, alto: Math.min(m.altoPt + 6, alto - 36), items: datos.puntos, estilo: TIPO.bullet }))
+    cajas.push(bullets({ x: col.x, y: y + 36, ancho: col.ancho, alto: Math.min(m.altoPt + 6, alto - 36), items: datos.puntos, estilo: { ...TIPO.bullet, color: oscuro ? COLOR.papel : TIPO.bullet.color } }))
   }
   return cajas
 }
 
 /** Tarjetas de indicador. La franja de color arriba es lo único que cambia entre tarjetas: si
  *  cambiara el fondo entero, cuatro tarjetas serían cuatro carteles y ninguno se leería. */
-export function cuerpoIndicadores({ lamina, x, y, ancho, alto }) {
+export function cuerpoIndicadores({ lamina, x, y, ancho, alto, oscuro = false }) {
   const cajas = []
   let cursor = y
   if (lamina.bajada) {
     const m = medirTexto(lamina.bajada, { ancho: ancho * 0.86, tamano: TIPO.subtitulo.tamano, alto: TIPO.subtitulo.alto })
-    cajas.push(texto({ x, y: cursor, ancho: ancho * 0.86, alto: m.altoPt + 2, contenido: lamina.bajada, estilo: TIPO.subtitulo }))
+    cajas.push(texto({ x, y: cursor, ancho: ancho * 0.86, alto: m.altoPt + 2, contenido: lamina.bajada, estilo: { ...TIPO.subtitulo, color: oscuro ? '#B9B9B4' : TIPO.subtitulo.color } }))
     cursor += m.altoPt + 18
   }
   const cols = repartirEnFila(lamina.indicadores.length, { x, ancho })
@@ -169,7 +169,7 @@ export function cuerpoHitos({ lamina, x, y, ancho }) {
  * Cada paso es una caja con su número, su nombre y —si se declara— la compuerta que hay que cumplir
  * para pasar al siguiente. Entre paso y paso, una flecha.
  */
-export function cuerpoFlujo({ lamina, x, y, ancho, alto }) {
+export function cuerpoFlujo({ lamina, x, y, ancho, alto, oscuro = false }) {
   const pasos = lamina.pasos ?? []
   const cajas = []
   const CANAL = 22
@@ -187,18 +187,19 @@ export function cuerpoFlujo({ lamina, x, y, ancho, alto }) {
   pasos.forEach((p, i) => {
     const px = x + i * (anchoPaso + CANAL)
     const activo = p.destacado === true
-    cajas.push(rect({ x: px, y: yPaso, ancho: anchoPaso, alto: altoCaja, relleno: activo ? COLOR.tinta : COLOR.fondo, borde: activo ? null : COLOR.linea }))
+    const rellenoCaja = oscuro ? (activo ? COLOR.papel : COLOR.grafitoClaro) : (activo ? COLOR.tinta : COLOR.fondo)
+    cajas.push(rect({ x: px, y: yPaso, ancho: anchoPaso, alto: altoCaja, relleno: rellenoCaja, borde: oscuro ? null : (activo ? null : COLOR.linea) }))
     cajas.push(rect({ x: px, y: yPaso, ancho: anchoPaso, alto: 3, relleno: COLOR.amarillo }))
     cajas.push(texto({
       x: px, y: yPaso + altoCaja / 2 - 15, ancho: anchoPaso, alto: 30,
       contenido: String(i + 1).padStart(2, '0'),
-      estilo: { tamano: 22, negrita: true, alto: 1.1, color: activo ? COLOR.amarillo : COLOR.suave },
+      estilo: { tamano: 22, negrita: true, alto: 1.1, color: oscuro ? (activo ? COLOR.tinta : COLOR.amarillo) : (activo ? COLOR.amarillo : COLOR.suave) },
       alineacion: 'CENTER',
     }))
     if (i < pasos.length - 1) {
       cajas.push(texto({
         x: px + anchoPaso, y: yPaso + altoCaja / 2 - 9, ancho: CANAL, alto: 18,
-        contenido: '→', estilo: { tamano: 13, negrita: true, alto: 1, color: COLOR.suave }, alineacion: 'CENTER',
+        contenido: '→', estilo: { tamano: 13, negrita: true, alto: 1, color: oscuro ? '#A8A8A3' : COLOR.suave }, alineacion: 'CENTER',
       }))
     }
     const rotulo = String(p.titulo ?? '')
@@ -206,13 +207,13 @@ export function cuerpoFlujo({ lamina, x, y, ancho, alto }) {
     const t = ajustarTamano(rotulo, { ancho: anchoPaso - 8, altoDisponible: 34, tamano: 12.5, alto: 1.2, negrita: true })
     cajas.push(texto({
       x: px, y: yNombre, ancho: anchoPaso, alto: 34,
-      contenido: rotulo, estilo: { tamano: t.tamano, negrita: true, alto: 1.2, color: COLOR.tinta },
+      contenido: rotulo, estilo: { tamano: t.tamano, negrita: true, alto: 1.2, color: oscuro ? COLOR.papel : COLOR.tinta },
     }))
     if (p.gate) {
       cajas.push(rect({ x: px, y: yNombre + 40, ancho: Math.min(anchoPaso, 40), alto: 2, relleno: COLOR.amarillo }))
       cajas.push(texto({
         x: px, y: yNombre + 48, ancho: anchoPaso, alto: 26,
-        contenido: String(p.gate), estilo: { ...TIPO.kicker, tamano: 8, color: COLOR.suave },
+        contenido: String(p.gate), estilo: { ...TIPO.kicker, tamano: 8, color: oscuro ? '#A8A8A3' : COLOR.suave },
       }))
     }
   })

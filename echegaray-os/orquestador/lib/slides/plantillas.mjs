@@ -147,20 +147,22 @@ export function laminaFuentes(fuentes, { numero, total, deck } = {}) {
 function laminaContenido(lamina, { deck, numero, total }) {
   const { cajas: cabeza, y } = encabezado({
     kicker: lamina.kicker || null, titulo: lamina.titulo, ancho: CONTENIDO.ancho - espacioPastilla(lamina.origen),
+    sobreOscuro: lamina.enfasis === true,
   })
   const base = CHROME.pieLinea - 12
   const cita = citaFuentes({ fuentes: lamina.fuentes, x: CONTENIDO.x, y: 0, ancho: CONTENIDO.ancho })
   const altoCita = cita.reduce((n, c) => n + c.alto, 0)
-  const anotacion = nota({ contenido: lamina.nota, x: CONTENIDO.x, y: 0, ancho: CONTENIDO.ancho })
+  const anotacion = nota({ contenido: lamina.nota, x: CONTENIDO.x, y: 0, ancho: CONTENIDO.ancho, sobreOscuro: lamina.enfasis === true })
   const altoNota = anotacion.reduce((n, c) => n + c.alto, 0)
   const yCita = base - altoCita
   const yNota = yCita - (altoCita ? 6 : 0) - altoNota
   const techoPie = altoCita || altoNota ? Math.min(yNota, yCita) : base
   const alto = Math.max(40, techoPie - 14 - y)
-  const cuerpo = CUERPOS[lamina.tipo]({ lamina, x: CONTENIDO.x, y, ancho: CONTENIDO.ancho, alto })
+  const cuerpo = CUERPOS[lamina.tipo]({ lamina, x: CONTENIDO.x, y, ancho: CONTENIDO.ancho, alto, oscuro: lamina.enfasis === true })
+  const oscuro = lamina.enfasis === true
   return {
     nombre: lamina.tipo,
-    fondo: COLOR.papel,
+    fondo: oscuro ? COLOR.grafito : COLOR.papel,
     lamina,
     cajas: [
       ...cabeza,
@@ -168,7 +170,7 @@ function laminaContenido(lamina, { deck, numero, total }) {
       ...cuerpo,
       ...anotacion.map((c) => ({ ...c, y: yNota })),
       ...cita.map((c) => ({ ...c, y: yCita })),
-      ...pie({ numero, total, obra: deck.obra, cliente: deck.cliente }),
+      ...pie({ numero, total, obra: deck.obra, cliente: deck.cliente, sobreOscuro: oscuro }),
     ],
   }
 }
