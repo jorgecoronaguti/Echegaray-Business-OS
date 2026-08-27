@@ -1069,6 +1069,56 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return { id, link: `https://docs.google.com/presentation/d/${id}/edit` }
     },
 
+    // ═══ PRIMITIVAS DE SLIDES ═══
+    //
+    // `createSlides` (arriba) arma la presentación con los LAYOUTS PREDEFINIDOS de Google. Eso da
+    // exactamente lo que se quería evitar: la lámina genérica de siempre. El motor de plantillas
+    // (`lib/slides/`) necesita poner cada caja donde decide su grilla, y para eso hacen falta estas
+    // cuatro puertas — nada más. No duplican OAuth ni cliente: son este mismo cliente.
+
+    /** Presentación VACÍA (una lámina en blanco que el motor borra). Devuelve {id, link, laminaInicial}. */
+    async crearPresentacionVacia(name, { parentId } = {}) {
+      const pres = await apiSend('https://slides.googleapis.com/v1/presentations', 'POST', { title: name }, await ownerToken())
+      const id = pres.presentationId
+      if (parentId) {
+        await apiSend(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?addParents=${encodeURIComponent(parentId)}&supportsAllDrives=true`, 'PATCH', {}, await ownerToken()).catch(() => {})
+      }
+      return { id, link: `https://docs.google.com/presentation/d/${id}/edit`, laminaInicial: pres.slides?.[0]?.objectId ?? null }
+    },
+
+    /** batchUpdate genérico de la Slides API — el único camino de escritura del motor de plantillas. */
+    async slidesBatchUpdate(fileId, requests) {
+      if (!requests?.length) return { replies: [] }
+      return apiSend(`https://slides.googleapis.com/v1/presentations/${encodeURIComponent(fileId)}:batchUpdate`, 'POST', { requests }, await ownerToken())
+    },
+
+    /** La presentación como la ve Google (ids de lámina, tamaño de página). Sirve para verificar el
+     *  EFECTO: cuántas láminas quedaron de verdad, no cuántas se pidieron. */
+    async leerPresentacion(fileId) {
+      return apiGet(`https://slides.googleapis.com/v1/presentations/${encodeURIComponent(fileId)}`, await ownerToken())
+    },
+
+    /** PNG de UNA lámina, renderizado por Google. Es la evidencia visual: no es lo que el motor cree
+     *  que dibujó, es lo que el lector va a ver. Devuelve {url, ancho, alto}. */
+    async miniaturaDeLamina(fileId, laminaId, { tamano = 'LARGE' } = {}) {
+      const r = await apiGet(`https://slides.googleapis.com/v1/presentations/${encodeURIComponent(fileId)}/pages/${encodeURIComponent(laminaId)}/thumbnail?thumbnailProperties.mimeType=PNG&thumbnailProperties.thumbnailSize=${encodeURIComponent(tamano)}`, await ownerToken())
+      return { url: r?.contentUrl ?? null, ancho: r?.width ?? null, alto: r?.height ?? null }
+    },
+
+    /** PDF de un archivo nativo EN MEMORIA (no lo sube a Drive). `exportarComoPdf` deja copia en
+     *  Drive, que para un control de calidad interno es basura que queda. */
+    async exportarPdfBytes(fileId) {
+      const token = await ownerToken()
+      const res = await withRetry(() => doFetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`,
+        { headers: { Authorization: `Bearer ${token}` } }))
+      if (!res.ok) {
+        const t = String(await res.text()).slice(0, 200)
+        const e = new Error(`google export pdf ${res.status}: ${t}`); e.status = res.status; throw e
+      }
+      return Buffer.from(await res.arrayBuffer())
+    },
+
     /** Inserta una imagen (por URL pública accesible por Google) en un Google Doc. */
     async insertImageInDoc(fileId, imageUrl, { index = 1 } = {}) {
       return apiSend(
