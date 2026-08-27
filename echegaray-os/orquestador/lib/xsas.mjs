@@ -281,14 +281,32 @@ export async function estadoDeXsas() {
     // Un hecho medido en UNA obra es un dato; la próxima cotización necesita una tarea con dos. La
     // cuenta sale de `experiencia_por_tarea`, que es donde esa regla está definida — acá sólo se
     // suma, no se vuelve a decidir qué significa reutilizable.
-    const e5 = await query(`
-      select
-        (select count(*)::int from public.duracion_historica where estado <> 'DESCARTADO') hechos_duracion,
-        (select count(*)::int from public.rendimiento_historico
-          where estado not in ('DESCARTADO', 'REFERENCIA')) hechos_rendimiento,
-        (select count(*)::int from public.dotacion_historica where estado <> 'DESCARTADO') hechos_dotacion,
-        (select count(*)::int from public.experiencia_por_tarea
-          where duracion_reutilizable or rendimiento_reutilizable or dotacion_reutilizable) tareas_reutilizables`)
+    //
+    // EN SU PROPIO `try`: una migración que todavía no se aplicó tiene que degradar ESTE número, no
+    // el estado entero. El día que `dotacion_historica` no exista, el cuadro tiene que seguir
+    // diciendo cuántos agentes hay y si la base contesta — no apagarse completo. Ya pasó una vez.
+    let experiencia = null
+    try {
+      const e5 = await query(`
+        select
+          (select count(*)::int from public.duracion_historica where estado <> 'DESCARTADO') hechos_duracion,
+          (select count(*)::int from public.rendimiento_historico
+            where estado not in ('DESCARTADO', 'REFERENCIA')) hechos_rendimiento,
+          (select count(*)::int from public.dotacion_historica where estado <> 'DESCARTADO') hechos_dotacion,
+          (select count(*)::int from public.experiencia_por_tarea
+            where duracion_reutilizable or rendimiento_reutilizable or dotacion_reutilizable) tareas_reutilizables`)
+      experiencia = {
+        hechosDuracion: e5.rows[0]?.hechos_duracion ?? 0,
+        hechosRendimiento: e5.rows[0]?.hechos_rendimiento ?? 0,
+        hechosDotacion: e5.rows[0]?.hechos_dotacion ?? 0,
+        tareasReutilizables: e5.rows[0]?.tareas_reutilizables ?? 0,
+        costo: 'no disponible: costos_reales se imputa por obra, no por actividad',
+      }
+    } catch (e) {
+      // `null` y no ceros: «no pude contar» y «no hay nada» son dos cosas distintas, y sólo una de
+      // las dos significa que el aprendizaje está parado.
+      experiencia = { noSePudoLeer: String(e?.message ?? e).slice(0, 120) }
+    }
 
     // El aprendizaje de obra, por estado. `REFERENCIA` es la tabla con la que se venía cotizando;
     // el resto es lo que la ejecución enseñó.
@@ -302,13 +320,7 @@ export async function estadoDeXsas() {
       // como no disponible — no es un dato que falte cargar, es uno que el OS no tiene de dónde
       // sacar, y confundir las dos cosas es lo que convierte una ausencia en un cero.
       aprendizajePosible: resumirAprendizajePosible(e4.rows),
-      experiencia: {
-        hechosDuracion: e5.rows[0]?.hechos_duracion ?? 0,
-        hechosRendimiento: e5.rows[0]?.hechos_rendimiento ?? 0,
-        hechosDotacion: e5.rows[0]?.hechos_dotacion ?? 0,
-        tareasReutilizables: e5.rows[0]?.tareas_reutilizables ?? 0,
-        costo: 'no disponible: costos_reales se imputa por obra, no por actividad',
-      },
+      experiencia,
       circuitos: await circuitosDeAprendizaje(query),
     }
 

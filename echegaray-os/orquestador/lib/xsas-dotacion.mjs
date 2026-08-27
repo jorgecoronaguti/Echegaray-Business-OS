@@ -94,6 +94,15 @@ export async function aprenderDotacion({ query }, { dry = false, obras = null } 
          from public.dotacion_historica where tarea_tipo_id = any($1::uuid[])`, [tipos])).rows
     : []
 
+  // Lo que dejó de calificar se retira. Una actividad que hoy es una tarea puede pasar a agrupar a
+  // otras, y ahí «cuánta gente imputó» pasa a ser la suma de sus hijas. Se marca DESCARTADO en vez
+  // de borrar: todos los consumidores ya filtran ese estado y el hecho medido no se pierde.
+  const retiradas = dry ? { rowCount: 0 } : await query(
+    `update public.dotacion_historica x set estado = 'DESCARTADO', actualizado_en = now()
+       where x.estado <> 'DESCARTADO'
+         and exists (select 1 from public.xsas_actividad v
+                      where v.actividad_id = x.actividad_id and v.es_trabajo is false)`)
+
   const salida = []
   for (const r of rows) {
     const fila = medir(r, previos)
@@ -114,6 +123,7 @@ export async function aprenderDotacion({ query }, { dry = false, obras = null } 
     sinTipo: rows.filter((r) => !r.tarea_tipo_id).length,
     conPlan: salida.filter((x) => x.desvio !== null).length,
     sinHorasImputadas: s?.n ?? 0,
+    retiradasPorNoSerTrabajo: retiradas.rowCount ?? 0,
     filas: salida,
   }
 }

@@ -27,6 +27,21 @@ test('los conectores no cuentan: «Nivelacion de terreno» = «NIVELACION TERREN
   assert.equal(relacionDeNombres('Nivelacion de terreno', 'NIVELACION TERRENO'), 'IGUAL')
 })
 
+test('CON y SIN no son ruido: cambian el trabajo y el precio', () => {
+  // Con «CON», «SIN» y «SOBRE» tratados como conectores, «MURO SIN REVOQUE» y «MURO CON REVOQUE»
+  // salían IGUAL y se clasificaban como la misma tarea. Dos trabajos distintos con dos costos
+  // distintos, fundidos en un rendimiento.
+  assert.equal(relacionDeNombres('MURO SIN REVOQUE', 'MURO CON REVOQUE'), 'DISTINTAS')
+  assert.equal(relacionDeNombres('PISO SOBRE LOSA', 'PISO DE HORMIGON'), 'DISTINTAS')
+})
+
+test('una letra suelta puede ser una designación, no un conector', () => {
+  // «MURO TIPO A» y «MURO TIPO B» quedaban con las mismas palabras al descartar «A» y «TIPO».
+  assert.equal(relacionDeNombres('MURO TIPO A', 'MURO TIPO B'), 'DISTINTAS')
+  // Y no hace falta descartarlas para que el veto de especificidad siga funcionando.
+  assert.equal(relacionDeNombres('Hormigonado', 'HORMIGONADO A MANO'), 'CANDIDATA_MAS_ESPECIFICA')
+})
+
 test('contener no es ser: la relación se declara en vez de resolverse por parecido', () => {
   assert.equal(relacionDeNombres('Hormigonado', 'HORMIGONADO A MANO'), 'CANDIDATA_MAS_ESPECIFICA')
   assert.equal(relacionDeNombres('Solicitud de Programa de Seguridad', 'PROGRAMA DE SEGURIDAD'), 'ACTIVIDAD_MAS_ESPECIFICA')

@@ -9,6 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from './db.mjs'
 import { aprenderDotacion } from './xsas-dotacion.mjs'
+import { aprenderDuracion } from './xsas-aprendizaje.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -116,4 +117,50 @@ test('el costo por tarea se declara no disponible, no sale NULL', { skip: !hayBa
   const { rows } = await getPool().query(
     'select count(*)::int n from public.experiencia_por_tarea where costo_por_tarea is null')
   assert.equal(rows[0].n, 0)
+})
+
+test('dos corridas a la vez no pueden abrir dos propuestas de la misma tarea', { skip: !hayBase }, async () => {
+  // La deduplicación en código lee primero y escribe después: entre las dos cosas hay una ventana, y
+  // el timer y el script de a mano pueden estar corriendo juntos. La garantía la tiene que dar la
+  // base, que es la única que ve las dos transacciones.
+  await enTransaccion(async (c) => {
+    const fila = (t) => c.query(
+      `insert into public.backlog_autonomo
+         (tipo, area, titulo, evidencia, fuente, confianza, impacto, urgencia, esfuerzo,
+          recomendacion, nivel_autonomia_permitido, estado)
+       values ('gap_dato','obras',$1,'e','xsas:tarea-maestra:TEST DUP','confirmado','media','media',
+               'bajo','r','C','abierto')`, [t])
+    await fila('uno')
+    await assert.rejects(() => fila('dos'), /duplicate key|unique/i)
+  })
+})
+
+test('una fila que deja de ser trabajo se RETIRA, no se queda con el número viejo', { skip: !hayBase }, async () => {
+  // La capa fósil: el aprendizaje es idempotente por actividad, así que una fila que deja de
+  // calificar sobrevive con su número. Acá se convierte una actividad en agrupadora colgándole una
+  // hija y se comprueba que el ciclo la retira.
+  await enTransaccion(async (c) => {
+    const { rows: [d] } = await c.query(
+      `select d.id, d.actividad_id, a.obra_id from public.duracion_historica d
+         join public.obra_actividad a on a.id = d.actividad_id
+        where d.estado <> 'DESCARTADO' limit 1`)
+    if (!d) return
+    // La base no deja que una actividad ejecutable tenga hijas sin pasar antes a resumen: es la
+    // misma transición que hace un jefe de obra cuando abre un frente en sub-tareas. La hija se crea
+    // acá y no se reutiliza una existente, para no cerrar un ciclo con una que ya sea ancestro.
+    await c.query("update public.obra_actividad set tipo = 'resumen' where id = $1", [d.actividad_id])
+    await c.query(
+      `insert into public.obra_actividad (obra_id, nombre, tipo, actividad_padre_id, clave)
+       values ($1, 'sub-tarea de prueba', 'tarea', $2, $3)`, [d.obra_id, d.actividad_id, `test:sub:${d.actividad_id}`])
+
+    const { rows: [v] } = await c.query(
+      'select es_trabajo from public.xsas_actividad where actividad_id = $1', [d.actividad_id])
+    assert.equal(v.es_trabajo, false, 'la vista tiene que verla como agrupadora')
+
+    const { rows: [antes] } = await c.query('select estado from public.duracion_historica where id = $1', [d.id])
+    assert.notEqual(antes.estado, 'DESCARTADO')
+    await aprenderDuracion({ query: (sql, params) => c.query(sql, params) })
+    const { rows: [despues] } = await c.query('select estado from public.duracion_historica where id = $1', [d.id])
+    assert.equal(despues.estado, 'DESCARTADO', 'el número viejo siguió contando')
+  })
 })

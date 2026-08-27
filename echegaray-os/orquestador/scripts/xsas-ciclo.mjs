@@ -72,6 +72,7 @@ if (JSON_OUT) {
   console.log(`\n  DURACIÓN — ${d.medidas} actividades terminadas con plan y real · ${d.validadas} VALIDADAS · ${d.tardaronMas} tardaron más`)
   if (d.descartadasSinPlan) console.log(`     ▲ ${d.descartadasSinPlan} terminadas quedaron afuera: su plan era de cero días y contra cero no hay desvío.`)
   if (d.sinTipo) console.log(`     ▲ ${d.sinTipo} sin tipo de tarea: el hecho se guarda, pero no se puede reutilizar en otra obra todavía.`)
+  if (d.retiradasPorNoSerTrabajo) console.log(`     ▲ ${d.retiradasPorNoSerTrabajo} se retiraron: la actividad pasó a agrupar a otras y su duración ya no es la de una tarea.`)
 
   console.log(`\n  DOTACIÓN — ${o.medidas} actividades con personas que imputaron horas · ${o.validadas} VALIDADAS`)
   console.log(`     ${o.conPlan} tienen dotación prevista con la cual compararse`)
@@ -79,6 +80,7 @@ if (JSON_OUT) {
     console.log(`     ▲ ${o.sinHorasImputadas} actividades sin una sola hora imputada: no se puede saber quién estuvo.`)
     console.log('        — «nadie imputó» NO es «trabajaron cero personas», y la asignación no prueba presencia.')
   }
+  if (o.retiradasPorNoSerTrabajo) console.log(`     ▲ ${o.retiradasPorNoSerTrabajo} se retiraron: la actividad pasó a agrupar a otras.`)
   console.log('     ⊘ COSTO por actividad: no disponible. costos_reales se imputa por obra.')
 
   console.log(`\n  BASE MAESTRA — ${p.grupos} tareas distintas sin clasificar · ${p.propuestas} propuestas`)

@@ -102,6 +102,12 @@ function aprendizaje(e) {
   const m = e.empresa
   if (!m) return { veredicto: VEREDICTO.NO_SE_PUDO_LEER, porQue: e.noSePudoLeer ?? 'no se pudo leer', medidas: {} }
   const x = m.experiencia ?? {}
+  // Un control que no pudo mirar no dice «está bien» NI «está mal»: dice que no pudo mirar. Contar
+  // cero hechos porque la consulta falló publicaría «el circuito no recibió nada», que es una
+  // emergencia distinta a «la tabla no existe todavía».
+  if (x.noSePudoLeer) {
+    return { veredicto: VEREDICTO.NO_SE_PUDO_LEER, porQue: `no se pudo contar la experiencia: ${x.noSePudoLeer}`, medidas: {} }
+  }
   const hechos = Number(x.hechosDuracion ?? 0) + Number(x.hechosRendimiento ?? 0) + Number(x.hechosDotacion ?? 0)
   const reutilizables = Number(x.tareasReutilizables ?? 0)
   const medidas = {

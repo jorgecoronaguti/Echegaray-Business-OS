@@ -32,10 +32,21 @@ export function normalizar(s) {
     .toUpperCase().replace(/\s+/g, ' ').trim()
 }
 
-/** Palabras que no aportan identidad a una tarea. Se sacan antes de comparar conjuntos. */
+/**
+ * PALABRAS QUE NO APORTAN IDENTIDAD A UNA TAREA. Se sacan antes de comparar conjuntos.
+ *
+ * ═══ LAS QUE NO ESTÁN, Y POR QUÉ ═══
+ *
+ * **CON · SIN · SOBRE** cambian el trabajo, no la redacción: «MURO SIN REVOQUE» y «MURO CON
+ * REVOQUE» salían IGUAL con estas tres adentro, y eso es un match inventado con dos precios
+ * distintos detrás. «PISO SOBRE LOSA» tampoco es «PISO DE LOSA».
+ *
+ * **A · O · U · TIPO** porque en un catálogo de obra son designaciones, no conectores: «MURO TIPO A»
+ * y «MURO TIPO B» quedaban con las mismas palabras. Sacar una letra suelta cuesta más de lo que
+ * ahorra — y no hace falta: «HORMIGONADO A MANO» sigue conteniendo a «Hormigonado» con la A adentro.
+ */
 export const CONECTORES = Object.freeze(new Set([
-  'DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'Y', 'E', 'O', 'U', 'CON', 'SIN', 'PARA', 'POR',
-  'A', 'AL', 'EN', 'UN', 'UNA', 'SOBRE', 'SEGUN', 'TIPO',
+  'DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'Y', 'E', 'PARA', 'POR', 'AL', 'EN', 'UN', 'UNA', 'SEGUN',
 ]))
 
 /**

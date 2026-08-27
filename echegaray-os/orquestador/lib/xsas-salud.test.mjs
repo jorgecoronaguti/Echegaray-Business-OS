@@ -42,6 +42,15 @@ test('sin un solo hecho medido el aprendizaje es INSUFICIENTE, no PARCIAL', () =
   assert.equal(capasDeSalud(e).capas.aprendizaje.veredicto, VEREDICTO.INSUFICIENTE)
 })
 
+test('si no se pudo contar la experiencia, el aprendizaje NO dice «cero hechos»', () => {
+  // Una migración sin aplicar hacía que la cuenta fallara. Rellenar con ceros publicaría «el
+  // circuito no recibió nada», que es una emergencia distinta a «la tabla todavía no existe».
+  const e = { ...sano, empresa: { ...sano.empresa, experiencia: { noSePudoLeer: 'relation ... does not exist' } } }
+  const c = capasDeSalud(e).capas.aprendizaje
+  assert.equal(c.veredicto, VEREDICTO.NO_SE_PUDO_LEER)
+  assert.match(c.porQue, /does not exist/)
+})
+
 test('una obra activa sin avance medido baja DATOS a PARCIAL', () => {
   const e = { ...sano, empresa: { ...sano.empresa, activas: 14, con_avance: 6 } }
   const c = capasDeSalud(e).capas.datos

@@ -354,6 +354,19 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
     [OBRAS_NO_REALES, obras])
   const descartadas = d?.n ?? 0
 
+  // ═══ LO QUE DEJÓ DE CALIFICAR SE RETIRA, NO SE QUEDA ═══
+  //
+  // Una actividad que hoy es una tarea puede pasar a agrupar a otras mañana, y ahí sus fechas dejan
+  // de ser las de un trabajo y pasan a ser la envolvente de sus hijas. El aprendizaje es idempotente
+  // por actividad: sin este paso, la fila vieja se queda para siempre con el número que ya no
+  // corresponde — la capa fósil de siempre. Se marca DESCARTADO en vez de borrar: el hecho de que
+  // alguna vez se midió es parte de la historia, y todos los consumidores ya filtran ese estado.
+  const retiradas = dry ? { rowCount: 0 } : await query(
+    `update public.duracion_historica d set estado = 'DESCARTADO', actualizado_en = now()
+       where d.estado <> 'DESCARTADO'
+         and exists (select 1 from public.xsas_actividad v
+                      where v.actividad_id = d.actividad_id and v.es_trabajo is false)`)
+
   // Lo ya conocido de esas tareas, para decidir si un caso confirma a otro.
   const tipos = [...new Set(rows.map((r) => r.tarea_tipo_id).filter(Boolean))]
   const previos = tipos.length
@@ -420,6 +433,9 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
     // cero no es un plan— pero descartarlas en silencio hace que el total publicado parezca la
     // totalidad de lo que había.
     descartadasSinPlan: descartadas,
+    // Las que se retiraron porque la actividad dejó de ser trabajo. Se cuenta: un retiro silencioso
+    // hace que el total publicado parezca que siempre fue ése.
+    retiradasPorNoSerTrabajo: retiradas.rowCount ?? 0,
     filas: salida,
   }
 }
