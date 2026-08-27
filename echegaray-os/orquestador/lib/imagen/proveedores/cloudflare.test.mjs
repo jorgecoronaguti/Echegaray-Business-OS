@@ -1,7 +1,7 @@
 // WORKERS AI. Los tests cubren los dos dialectos de respuesta y cada modo de falla con su acción.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aceptaMedida, cuerpoDe, imagenCloudflare, medidaDe, urlDeModelo } from './cloudflare.mjs'
+import { aceptaMedida, aceptaNegativo, cuerpoDe, imagenCloudflare, medidaDe, urlDeModelo } from './cloudflare.mjs'
 
 const conCredencial = (fn) => async () => {
   const prev = [process.env.CLOUDFLARE_ACCOUNT_ID, process.env.CLOUDFLARE_API_TOKEN]
@@ -45,9 +45,13 @@ test('a FLUX no se le manda la medida — con width/height contesta 400 y no gen
   assert.equal(sd.height, 576)
 })
 
-test('el negativo sólo viaja si existe', () => {
+test('el negativo sólo viaja si existe Y si el modelo lo acepta', () => {
   assert.equal('negative_prompt' in cuerpoDe({ prompt: 'x' }), false)
-  assert.equal(cuerpoDe({ prompt: 'x', negativo: 'texto' }).negative_prompt, 'texto')
+  // FLUX lo rechaza con un 400 que tumba la generación entera.
+  assert.equal(aceptaNegativo('@cf/black-forest-labs/flux-1-schnell'), false)
+  assert.equal('negative_prompt' in cuerpoDe({ prompt: 'x', negativo: 'texto', modelo: '@cf/black-forest-labs/flux-1-schnell' }), false)
+  const sd = cuerpoDe({ prompt: 'x', negativo: 'texto', modelo: '@cf/stabilityai/stable-diffusion-xl-base-1.0' })
+  assert.equal(sd.negative_prompt, 'texto')
 })
 
 test('dialecto JSON: la imagen sale de result.image', conCredencial(async () => {

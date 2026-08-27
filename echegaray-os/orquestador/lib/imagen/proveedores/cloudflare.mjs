@@ -51,12 +51,25 @@ export function aceptaMedida(modelo) {
   return !/flux/i.test(String(modelo ?? ''))
 }
 
+/**
+ * ¿ACEPTA `negative_prompt`?
+ *
+ * Misma historia que la medida y el mismo día: FLUX schnell contesta `400 · Additional or
+ * unevaluated properties '/negative_prompt'`. El motor SIEMPRE arma un negativo (texto ilegible,
+ * manos deformes, marcas de agua) porque para la mayoría de los modelos mejora mucho el resultado;
+ * a éste hay que no mandárselo, y la consecuencia —que su negativo no se aplica— queda dicha acá y
+ * no descubierta en la lámina. PURA.
+ */
+export function aceptaNegativo(modelo) {
+  return !/flux/i.test(String(modelo ?? ''))
+}
+
 /** El cuerpo del pedido. Separado y PURO: es lo único que hay que mirar cuando la imagen sale
  *  distinta de lo pedido. */
 export function cuerpoDe({ prompt, negativo = null, aspecto = '16:9', modelo = MODELO_POR_DEFECTO } = {}) {
   const cuerpo = { prompt: String(prompt ?? '').slice(0, 2048), steps: PASOS }
   if (aceptaMedida(modelo)) Object.assign(cuerpo, medidaDe(aspecto))
-  if (negativo) cuerpo.negative_prompt = String(negativo).slice(0, 1024)
+  if (negativo && aceptaNegativo(modelo)) cuerpo.negative_prompt = String(negativo).slice(0, 1024)
   return cuerpo
 }
 
