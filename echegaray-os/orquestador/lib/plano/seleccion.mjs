@@ -27,8 +27,8 @@
 // datos. Por eso el orden de los candidatos es TOTAL —puntaje, después código— y no depende de en
 // qué orden vino el catálogo.
 
-import { unidadCompatible, puntaje } from './partidas.mjs'
-import { atributosDe, comparar } from './atributos.mjs'
+import { unidadCompatible, puntaje, palabras } from './partidas.mjs'
+import { atributosDe, comparar, raiz } from './atributos.mjs'
 import { FUENTE } from './fuente.mjs'
 
 /** El resultado de intentar asignarle una partida a un elemento. */
@@ -59,24 +59,38 @@ const textoDelElemento = (c) => [c?.nombre, c?.material, c?.especificacion, c?.e
  */
 export function candidatosDe(computo, tareaTipos = []) {
   const attrE = atributosDe(...textoDelElemento(computo))
+  const vocabularioElemento = new Set(textoDelElemento(computo).flatMap((t) => palabras(t)).map(raiz))
   const evaluados = []
+  const descartadosPorVocabulario = []
   for (const t of tareaTipos) {
     if (!unidadCompatible(computo?.unidad, t.unidad)) continue
     const attrP = atributosDe(t.nombre)
     const cmp = comparar(attrE, attrP)
     if (cmp.conflictos.length) continue
     const base = puntaje(computo, t)
+    // ═══ EL BONO DE SISTEMA NO PUEDE CONFIRMAR SOLO ═══
+    // Medido: «MATAFUEGO» y «LUZ DE EMERGENCIA» llegaban a 1,0 contra «INSTALACIÓN ELÉCTRICA» sin
+    // compartir UNA sola palabra — el puntaje venía entero de que las dos son del sistema
+    // «instalación». Compartir familia no es ser lo mismo, y sin una palabra en común no hay nada
+    // que defender delante de un cliente.
+    //
+    // Y no bloquea: DESCARTA. Una partida sin una palabra en común no es un candidato peor, no es
+    // un candidato — dejarla en la lista la ponía primera por el bono y tapaba a la que sí servía.
+    // Medido: «Columna de hormigón C1» quedaba sin partida porque el primer lugar se lo llevaba una
+    // que no dice «columna» en ninguna parte.
+    const comunes = palabras(t.nombre).map(raiz).filter((w) => vocabularioElemento.has(w)).length
+    if (!comunes) { descartadosPorVocabulario.push(t.codigo); continue }
     const score = Math.round((base + cmp.coincidencias.length * PESO_ATRIBUTO) * 1000) / 1000
     evaluados.push({
       id: t.id, codigo: t.codigo, nombre: t.nombre, unidad: t.unidad,
-      puntaje: score, puntajeVocabulario: base,
+      puntaje: score, puntajeVocabulario: base, palabrasEnComun: comunes,
       coincidencias: cmp.coincidencias, sinRespaldo: cmp.sinRespaldo,
     })
   }
   // EL DESEMPATE POR CÓDIGO ES LO QUE HACE ESTO REPRODUCIBLE. Sin él, dos partidas con el mismo
   // puntaje quedan en el orden en que las devolvió la consulta, y ese orden no es una decisión.
   evaluados.sort((a, b) => b.puntaje - a.puntaje || String(a.codigo).localeCompare(String(b.codigo)))
-  return { atributos: attrE, candidatos: evaluados }
+  return { atributos: attrE, candidatos: evaluados, descartadosPorVocabulario }
 }
 
 /** Por qué no se pudo confirmar, dicho como se le dice a una persona. PURA. */

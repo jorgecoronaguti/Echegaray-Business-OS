@@ -22,6 +22,8 @@ import { partirDocumentos, planosDe } from './documentos.mjs'
 import { PROMPT, extraerJson, validarLamina, llaveDeCache } from './interpretar.mjs'
 import { computarElementos } from './computo.mjs'
 import { mapearPartidas } from './partidas.mjs'
+import { seleccionarTodas, huella } from './seleccion.mjs'
+import { procesosDeTodos } from './procesos.mjs'
 import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
 import { FUENTE } from './fuente.mjs'
@@ -135,7 +137,7 @@ export async function composiciones({ query }, tareaIds = []) {
  * EL PIPELINE ENTERO. Devuelve el resultado estructurado; no escribe nada y no imprime nada.
  * Quien lo llama decide qué hacer con eso —persistirlo, resumirlo para Mattermost, exportarlo—.
  */
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, logger = null } = {}) {
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, logger = null } = {}) {
   const t0 = Date.now()
   const filas = await documentosDelProyecto({ query }, termino)
   const raiz = carpetaRaiz(filas)
@@ -167,23 +169,43 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const elementos = laminas.flatMap((l) => l.elementos)
   const computo = computarElementos(elementos)
   const catalogo = await baseMaestra({ query })
-  const bruto = mapearPartidas(computo.items, catalogo)
-  // EL CRITERIO TÉCNICO REVISA LO QUE EL VOCABULARIO PROPUSO. Una llamada para todos los elementos.
-  const revision = await elegir({ pedir, mapeos: bruto.mapeos, logger })
-  anotar(revision.uso)
-  const mapeo = {
-    mapeos: revision.mapeos,
-    mapeadas: revision.mapeos.filter((m) => m.estado === 'MAPEADA').length,
-    candidatas: revision.mapeos.filter((m) => m.estado === 'PARTIDA_CANDIDATA').length,
-    correcciones: revision.cambios,
+  // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
+  //
+  // Acá estaba el defecto que hacía que dos corridas idénticas dieran partidas distintas: `elegir`
+  // podía CAMBIAR la elección del código («T1023 → T1075: …»), y una llamada al modelo no devuelve
+  // lo mismo dos veces. Ahora la decisión es `seleccionarTodas`, que es pura, y el criterio técnico
+  // del modelo entra sólo si se lo pide y SÓLO PUEDE VETAR: cuando descarta todas las candidatas de
+  // un elemento, se veta la que iba primera. Si en cambio propone OTRA, eso no promueve nada —
+  // queda anotado como desacuerdo para que lo mire una persona.
+  const vetos = {}
+  const desacuerdos = []
+  let correcciones = []
+  if (conVeto) {
+    const bruto = mapearPartidas(computo.items, catalogo)
+    const revision = await elegir({ pedir, mapeos: bruto.mapeos, logger })
+    anotar(revision.uso)
+    correcciones = revision.cambios ?? []
+    for (const m of revision.mapeos) {
+      const primera = m.candidatos?.[0]?.codigo
+      if (!primera) continue
+      if (m.estado !== 'MAPEADA') vetos[m.elemento] = [primera]
+      else if (m.tarea?.codigo && m.tarea.codigo !== primera) desacuerdos.push({ elemento: m.elemento, codigo: primera, propuso: m.tarea.codigo, porQue: m.porQue })
+    }
   }
+  const seleccion = seleccionarTodas(computo.items, catalogo, { vetos })
+  const mapeo = { ...seleccion, correcciones, desacuerdos }
+  const procesos = procesosDeTodos(computo.items)
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
   const comps = await composiciones({ query }, ids)
 
   return {
     termino, carpeta: raiz, ms: Date.now() - t0,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
-    laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps,
+    laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
+    // La huella es lo que se compara entre dos corridas para decir si dieron lo mismo. Va en el
+    // resultado y no en un script aparte porque una reproducibilidad que hay que reconstruir a mano
+    // no se verifica nunca.
+    huella: huella(seleccion),
     ia: { llamadas: usos.length, usos, deCache: laminas.filter((l) => l.deCache).length },
     fuentePrecios: FUENTE.BASE_MAESTRA,
   }

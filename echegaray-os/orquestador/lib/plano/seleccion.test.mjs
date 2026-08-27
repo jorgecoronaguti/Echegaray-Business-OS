@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { seleccionar, seleccionarTodas, candidatosDe, huella, ESTADO } from './seleccion.mjs'
-import { atributosDe, comparar, espesorDe, materialDe, terminacionDe, metodoDe } from './atributos.mjs'
+import { atributosDe, comparar, espesorDe, materialDe, terminacionDe, metodoDe, seccionDe, piezaDe, numeroAr, raiz } from './atributos.mjs'
 import { SISTEMA } from './interpretar.mjs'
 
 const CATALOGO = [
@@ -119,7 +119,7 @@ test('el recuento separa MAPEADA de AMBIGUO: una cotización con empates no es u
 test('los atributos se leen con su literal, para poder citarlos', () => {
   assert.equal(espesorDe('PLATEA DE HORMIGON - 50CM').valor, 0.5)
   assert.equal(espesorDe('CONTRAPISO e = 0,10 m').valor, 0.1)
-  assert.equal(espesorDe('tabique tipo Durlock 12,5 mm').valor, 0.013)
+  assert.equal(espesorDe('tabique tipo Durlock 12,5 mm').valor, 0.0125, '12,5 mm son 0,0125 m: redondear el milímetro convierte una placa en otra')
   assert.equal(espesorDe('Platea s/Calculo'), null, 'lo que no está no se completa')
   assert.equal(materialDe('HºAº p/bases').valor, 'hormigon_armado', 'el CIRCOT escribe con ordinal masculino')
   assert.equal(materialDe('H°A° p/bases').valor, 'hormigon_armado', 'los planos escriben con grado')
@@ -137,4 +137,53 @@ test('comparar separa las tres cosas que NO son lo mismo: conflicto, sin respald
 
   const choque = comparar(atributosDe('Piso de hormigón e = 0,10 m'), atributosDe('PLATEA DE HORMIGON - 50CM'))
   assert.ok(choque.conflictos.some((x) => x.atributo === 'espesor_m'))
+})
+
+test('EN UN PLANO EL PUNTO ES DECIMAL, no separador de miles — «0.40» es 0,40 y no 40', () => {
+  // Medido sobre Quattropani: la columna C1 mide 0,40 × 0,20 m y salía con sección «40x20», y el
+  // caño de 3,2 mm salía con 32 mm de espesor. Un plano no escribe plata: escribe medidas.
+  assert.equal(numeroAr('0.40'), 0.4)
+  assert.equal(numeroAr('3.2'), 3.2)
+  assert.equal(numeroAr('0,30'), 0.3, 'la coma sigue siendo decimal')
+  assert.equal(numeroAr('1.234,56'), 1234.56, 'con coma presente, los puntos SÍ son miles')
+  assert.equal(seccionDe('C1 H=3.50m, sección 0.40x0.20 con 2Ø16').valor, '0.4x0.2')
+  assert.equal(espesorDe('Espesor 3.2mm; caño 100-3.2').valor, 0.0032)
+})
+
+test('EL ESPACIADO DE LA ARMADURA NO ES UN ESPESOR: «Estr. Ø8c/15cm» no hace una columna de 15 cm', () => {
+  assert.equal(espesorDe('C1 H=3.50m, sección 0.40x0.20, Estr. Ø8c/15cm'), null)
+  assert.equal(espesorDe('Muerto 120x50x50cm, armadura Ø6 c/20cm tipo canasta'), null)
+  assert.equal(espesorDe('CONTRAPISO e = 0,10 m, malla c/15cm').valor, 0.1, 'el espesor declarado con «e =» sigue leyéndose')
+})
+
+test('la sección se lee aunque la unidad venga pegada: «120x50x50cm»', () => {
+  assert.equal(seccionDe('Muerto 120x50x50cm').valor, '120x50x50')
+  assert.equal(seccionDe('mampost. de bloques de Hº 20x20x40').valor, '20x20x40')
+})
+
+test('EL TIPO DE PIEZA ES EL SUSTANTIVO, no el lugar: «base de escalera» es una base', () => {
+  assert.equal(piezaDe('Base de hormigón escalera BE').valor, 'base')
+  assert.equal(piezaDe('LOSA DE HORMIGON ARMADO ESCALERA').valor, 'losa')
+  assert.equal(piezaDe('Escalera metálica').valor, 'escalera')
+  assert.equal(piezaDe('Correa metálica C140').valor, 'correa')
+  assert.equal(piezaDe('CERCHA P/TECHO METALICO').valor, 'cercha')
+})
+
+test('LA CERCHA, GENERALIZADA: siete piezas metálicas distintas no pueden caer en la misma partida', () => {
+  // El defecto medido en el piloto: la cercha, la viga 2C200, las correas C140 y KL, el perfil 2K1,
+  // el cordón CM1 y la columna CMe iban todas a «T1110 CERCHA P/TECHO METALICO» — 300,82 ml y
+  // $ 22,9 M. Todas son de acero y ninguna más es una cercha.
+  const cercha = { id: 'T', codigo: 'T1110', nombre: 'CERCHA P/TECHO METALICO', unidad: 'ML' }
+  const base = { unidad: 'm', cantidad: { valor: 1 }, sistema: SISTEMA.METALICA }
+  const cae = (nombre) => candidatosDe({ ...base, id: nombre, nombre }, [cercha]).candidatos.length
+  assert.equal(cae('Cercha metálica CE1'), 1, 'la cercha sí es una cercha')
+  for (const otra of ['Correa metálica C140', 'Viga metálica 2C200', 'Columna metálica escalera CMe', 'Tensor Ø12 cruz de San Andrés']) {
+    assert.equal(cae(otra), 0, `«${otra}» no es una cercha y no puede cotizarse como una`)
+  }
+})
+
+test('la raíz vive en un solo lugar y hace que el plural del catálogo matchee el singular del plano', () => {
+  assert.equal(raiz('bases'), 'base')
+  assert.equal(raiz('vigas'), 'viga')
+  assert.equal(raiz('mas'), 'mas', 'las palabras cortas no se tocan')
 })

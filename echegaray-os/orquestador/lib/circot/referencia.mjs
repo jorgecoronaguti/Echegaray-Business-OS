@@ -19,7 +19,7 @@
 // siempre. Lo que los separa —terminación, ubicación, espesor, material, método— son ATRIBUTOS, y
 // por eso el matcheo pasa primero por `comparar` y sólo después mira las palabras.
 
-import { atributosDe, comparar } from '../plano/atributos.mjs'
+import { atributosDe, comparar, raiz } from '../plano/atributos.mjs'
 
 /** Las unidades que son la misma cosa escritas distinto. Fuera de esta tabla, dos unidades
  *  distintas no se comparan: contrastar un m³ contra un precio por m² no da un aviso, da ruido. */
@@ -28,13 +28,8 @@ const mismaUnidad = (a, b) => (EQUIVALENTES[String(a ?? '').toLowerCase()] ?? []
 
 const RUIDO = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'con', 'para', 'en', 'a', 'por', 'gral', 'general', 'completo'])
 
-/** La raíz de una palabra: sólo se le saca la «s» final. Es la diferencia entre que «HºAº p/bases»
- *  matchee con «base de hormigón armado» y que no matchee con nada — medido sobre la tabla real.
- *  No se hace nada más agresivo a propósito: un stemmer que corta de más junta «revoque» con
- *  «revestimiento» y ahí el control empieza a mentir. PURA. */
-export const raiz = (w) => (w.length >= 5 && w.endsWith('s') ? w.slice(0, -1) : w)
-
-/** Palabras significativas, sin tildes ni signos, reducidas a su raíz. PURA. */
+/** Palabras significativas, sin tildes ni signos, reducidas a su raíz (definida en `atributos`,
+ *  una sola vez para todo el circuito). PURA. */
 export function palabras(t) {
   return String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 2 && !RUIDO.has(w)).map(raiz)
