@@ -18,7 +18,20 @@ if (process.argv.includes('--json')) {
   console.log(resumirEstado(e))
 } else {
   const marca = { [NIVEL.FULL]: '✔', [NIVEL.DEGRADED]: '▲', [NIVEL.NO_LLM]: '⊘' }[e.nivel]
-  console.log(`\n${marca} XSAS · ${e.nivel} — la inteligencia del ${e.de}\n`)
+  console.log(`\n${marca} XSAS · operación ${e.nivel} · salud ${e.veredicto} — la inteligencia del ${e.de}\n`)
+
+  // ═══ LAS CINCO CAPAS, CADA UNA CON SU VEREDICTO ═══
+  //
+  // Van primero porque son la respuesta a «¿en qué estado está?». El detalle de abajo es para
+  // discutir un número; esto es para decidir qué hacer, y cada capa se arregla distinto: la primera
+  // con un servicio, la segunda cargando obra, la tercera esperando ejecución, la cuarta con
+  // código y la quinta pagando una factura.
+  const SIGNO = { OK: '✔', PARCIAL: '▲', INSUFICIENTE: '▲', 'NO DISPONIBLE': '⊘', 'NO SE PUDO LEER': '?', 'CAÍDA': '✖' }
+  for (const [nombre, c] of Object.entries(e.capas ?? {})) {
+    const rotulo = nombre === 'iaExterna' ? 'IA EXTERNA' : nombre.toUpperCase()
+    console.log(`  ${SIGNO[c.veredicto] ?? ' '} ${rotulo.padEnd(16)} ${String(c.veredicto).padEnd(16)} ${c.porQue}`)
+  }
+  console.log()
 
   // EL MOTIVO SE IMPRIME SIEMPRE QUE EXISTA, no sólo cuando se cayó el bloque de agentes. Hoy
   // mismo una consulta rota dejó el cuadro en DEGRADED sin una sola línea que dijera por qué: hubo
@@ -50,10 +63,22 @@ if (process.argv.includes('--json')) {
     if (!r.VALIDADO) {
       console.log('                 — validar pide DOS obras distintas con la misma tarea. Todavía no pasó.')
     }
-    for (const f of m.frenos ?? []) {
-      if (f.freno === 'aprende') continue
-      console.log(`              ${String(f.actividades).padStart(4)} actividades no enseñan: ${f.freno}`)
+    // QUÉ SE PUEDE APRENDER Y QUÉ LO FRENA, MÉTRICA POR MÉTRICA. Una actividad sin horas imputadas
+    // no enseña productividad y SÍ enseña duración: un solo contador de «no aprenden» borraba esa
+    // diferencia, y es justamente la que dice qué pedirle a la obra.
+    for (const [metrica, r] of Object.entries(m.aprendizajePosible ?? {})) {
+      if (r.noDisponible) {
+        console.log(`              ${metrica.padEnd(12)} NO DISPONIBLE — ${r.frenos[0]?.falta ?? 'sin fuente en el OS'}`)
+        continue
+      }
+      console.log(`              ${metrica.padEnd(12)} ${String(r.puede).padStart(4)} pueden enseñar · ${r.noPuede} no`)
+      for (const f of r.frenos.slice(0, 2)) {
+        console.log(`                           ${String(f.actividades).padStart(4)} por falta de ${f.falta}`)
+      }
     }
+    const x = m.experiencia ?? {}
+    console.log(`              hechos: ${x.hechosDuracion ?? 0} de duración · ${x.hechosRendimiento ?? 0} de rendimiento · ${x.hechosDotacion ?? 0} de dotación`)
+    console.log(`              ${x.tareasReutilizables ?? 0} tareas con experiencia REUTILIZABLE (dos obras o más)`)
     for (const c of m.circuitos ?? []) {
       const cuenta = c.hechos == null ? `no se pudo leer (${c.noSePudoLeer})` : `${c.hechos} hechos`
       console.log(`              ${String(c.dominio).padEnd(12)} ${cuenta.padEnd(18)} ${c.ultimo ? `último ${String(c.ultimo).slice(0, 16)}` : 'sin fecha'}`)
