@@ -93,8 +93,15 @@ async function main() {
 function transaccionaSola(sql) {
   const limpio = sql
     .replace(/\/\*[\s\S]*?\*\//g, ' ')   // comentarios de bloque
-    .replace(/^[ \t]*--.*$/gm, " ")         // comentarios de línea
-    .replace(/\$\$[\s\S]*?\$\$/g, ' ')   // cuerpos de do $$ … $$
+    .replace(/^[ \t]*--.*$/gm, ' ')         // comentarios de línea
+    // ═══ CUALQUIER DOLLAR-QUOTE, NO SÓLO `$$` (27/08/2026) ═══
+    //
+    // Sólo se limpiaba `$$ … $$`, y `pg_get_functiondef` devuelve el cuerpo entre etiquetas
+    // —`$function$ … $function$`—. Ahí adentro el `BEGIN … END;` de plpgsql **no es una
+    // transacción**, es el bloque de la función; pero la prueba lo veía y rechazaba la migración.
+    // Resultado: ninguna migración que redefina una función plpgsql podía pasar el ensayo, que es
+    // justo la clase de migración que más conviene ensayar.
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1?\$/g, ' ')
   return /(^|;|\s)(begin|commit|end)\s*;/i.test(limpio)
 }
 
