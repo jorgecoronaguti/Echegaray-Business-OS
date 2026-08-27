@@ -25,6 +25,10 @@ scripts · 14 timers en producción.
 | jornales, quincenas, UOCRA | `orquestador/scripts/jornales-pestana.mjs` (2.835 líneas — **leé el tramo, no el archivo**) |
 | obras, avance, partes | `src/features/obras/` + `src/features/control-obras/` · grilla en `lib/obras-grilla.mjs` |
 | permisos, roles, quién ve qué | `src/features/auth/` · y **la verdad final es RLS en Postgres**, no el front |
+| documentación técnica del cliente → cómputo → cotización (XSAS) | `orquestador/lib/plano/` — el borde es `pipeline.mjs`; **la partida la decide `seleccion.mjs`, que es PURO, y no el modelo** · corridas: `scripts/plano-a-cotizacion.mjs` y `scripts/plano-reproducibilidad.mjs` |
+| abrir un archivo que llegó del cliente (PDF, DXF, DWG, imagen, planilla) | `orquestador/lib/ingesta/` — un adaptador por formato detrás de `registro.mjs`. **El `.dwg` necesita un conversor que hoy no está en la VM y sale `REQUIERE_CONVERSION`** |
+| las referencias del CIRCOT (mano de obra, Modelo III galpón) | `orquestador/lib/circot/` + el dataset versionado en `orquestador/datos/circot/` · se importa con `scripts/circot-importar.mjs` |
+| cuántas HH, qué cuadrilla, cuántos días | `orquestador/lib/plano/cuadrilla.mjs` (método Navas/CIRCOT 2012, verificado contra el ejemplo publicado) |
 | la inteligencia: modelos, proveedores, costo, degradación | `orquestador/lib/ia/` — **la única puerta**. El port del Work Fabric es `engines/index.mjs` |
 
 ## Fuentes de verdad — cuál manda
@@ -101,6 +105,12 @@ cuota de una herramienta de desarrollo, y el control de arriba lo caza.
   en producción (React #419). Sólo `npm run build` lo atrapa.
 - **`count: 'exact'` con RLS** recorre la tabla evaluando la policy fila por fila. Y una policy con
   `auth.uid()` suelto se evalúa por fila; envuelta en `(select auth.uid())` pasa a InitPlan.
+- **`orq:test` mientras otra cosa toca Postgres** da `deadlock detected` en
+  `escritura-economica.pg.test.mjs`. No es un defecto del test: es contención. Una corrida por VM, y
+  nada más consultando la base al mismo tiempo.
+- **En un plano el punto es DECIMAL, no separador de miles.** «0.40» son 40 cm, no 40 m. La
+  convención argentina del dinero no aplica a una medida — ya convirtió una columna de 0,40 × 0,20
+  en una de 40 × 20.
 - **La medición desde esta VM**: el resolver falla y suma hasta 1 s; para medir contra producción,
   `curl -4` o Chromium con `--host-resolver-rules`.
 

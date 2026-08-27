@@ -28,6 +28,8 @@ export function resumen({ r, cot, cascada, numero }) {
   return [
     `**${(cot.obraNombre ?? '').toUpperCase()}** — cotización borrador ${numero}`,
     '',
+    // EL ESTADO VA ARRIBA DEL TOTAL. Quien lee un número primero ya no lee igual lo que sigue.
+    `🚦 **${r.control?.estado ?? 'SIN CONTROL'}** — ${r.control?.porQue ?? 'no se pudo evaluar la cobertura'}`,
     `📐 ${r.documentos.planos.legibles.length} plano(s) interpretados de ${r.documentos.total} documentos en Drive` +
       (noLegibles.length ? ` · ${noLegibles.length} no los puedo abrir (${noLegibles.map((d) => d.name).join(', ')})` : ''),
     `🔍 ${r.computo.detectados} elementos detectados · ${r.computo.computados} computados · ${r.computo.conHueco} sin medida en la documentación`,
@@ -36,6 +38,10 @@ export function resumen({ r, cot, cascada, numero }) {
     '',
     `⚠️ **ES UN TECHO, NO UNA OFERTA.** Sale sólo del plano: no incluye el alcance (¿mano de obra sola o con materiales? ¿qué queda afuera?) ni las tareas que ningún plano dibuja (replanteo, excavación, limpieza final). Falta definir ${faltantes.length} medida(s) y ${cot.candidatas.length} partida(s).`,
     faltantes.length ? `\nLo primero que necesito del proyectista: ${faltantes.slice(0, 5).map((f) => f.nombre).join(' · ')}${faltantes.length > 5 ? ` (+${faltantes.length - 5})` : ''}` : '',
+    // Las preguntas agrupadas: las tres que destraban más partidas, no las veintidós sueltas.
+    r.control?.preguntas?.length ? `\n❓ Las ${Math.min(3, r.control.preguntas.length)} respuestas que más destraban (de ${r.control.preguntas.length} pendientes):\n${r.control.preguntas.slice(0, 3).map((q) => `· [${q.destraba.length}] ${q.pregunta} → ${q.quienLoTiene}`).join('\n')}` : '',
+    r.control?.omisionesCircot?.length ? `\n🔎 El CIRCOT ${r.referenciaCircot?.periodo ?? ''} señala ${r.control.omisionesCircot.length} partida(s) que suelen ir en estos rubros y no están — a confirmar, no las agrego solo.` : '',
+    (r.checklist ?? []).some((c) => c.estado === 'APLICA') ? `\n📑 Checklist ${r.tipoObra?.tipo}: falta(n) ${r.checklist.filter((c) => c.estado === 'APLICA').map((c) => c.partida).slice(0, 6).join(' · ')}` : '',
   ].filter(Boolean).join('\n')
 }
 
@@ -87,6 +93,10 @@ export function planoTools(google) {
             numero,
             planos: r.documentos.planos.legibles.map((d) => d.name),
             planos_no_legibles: r.documentos.planos.noLegibles.map((d) => d.name),
+            control: r.control ? { estado: r.control.estado, cobertura: r.control.cobertura, supuestos_ocultos: r.control.supuestosOcultos.length, preguntas: r.control.preguntas } : null,
+            procesos_derivados: r.procesos ?? null,
+            checklist: r.checklist ?? [],
+            huella: r.huella ?? null,
             elementos_detectados: r.computo.detectados,
             elementos_computados: r.computo.computados,
             partidas: cot.partidas.length,
