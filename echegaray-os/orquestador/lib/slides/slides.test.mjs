@@ -162,12 +162,22 @@ test('todo objectId cumple el mínimo de 5 caracteres que exige la Slides API', 
   assert.equal(oid('r_1').length >= 5, true)
 })
 
-test('las imágenes salen en su propio lote: si el logo falla, no se cae el mazo', () => {
+test('ninguna imagen viaja en el lote principal: si una URL falla, no se cae el mazo', () => {
   const prep = prepararDeck(deck([{ tipo: 'puntos', titulo: 'Puntos', puntos: ['x'] }]))
   const { principales, imagenes } = requestsDelDeck(prep.compuesto)
-  assert.ok(imagenes.length > 0)
   assert.equal(principales.some((r) => r.createImage), false)
   assert.equal(imagenes.every((r) => r.createImage), true)
+})
+
+test('la marca de la portada se DIBUJA: no depende de que una URL conteste', () => {
+  // El PNG del portal devuelve 307 a /login y Google no lo puede bajar. La identidad no puede
+  // depender de eso: se dibuja con formas y texto medido.
+  const prep = prepararDeck(deck([{ tipo: 'puntos', titulo: 'Puntos', puntos: ['x'] }]))
+  const portada = prep.compuesto.laminas[0]
+  assert.ok(portada.cajas.some((c) => c.contenido === 'ECHEGARAY'))
+  assert.ok(portada.cajas.some((c) => c.contenido === 'CONSTRUCCIONES'))
+  assert.equal(portada.cajas.some((c) => c.tipo === 'imagen'), false)
+  assert.equal(requestsDelDeck(prep.compuesto).imagenes.length, 0)
 })
 
 test('el interlineado se traduce a porcentaje del simple, no al número crudo', () => {
@@ -203,4 +213,23 @@ test('el motor se niega a publicar contenido que no entra, en vez de dejar un li
   // Puede entrar o no según la corrección; lo que NO puede pasar es publicar con bloqueantes.
   if (!prep.ok) assert.ok(prep.motivo && prep.qa)
   else assert.equal(prep.qa.bloqueantes, 0)
+})
+
+test('el texto que tiene que entrar en UNA línea se dimensiona con margen, no al ras', () => {
+  // El defecto medido el 27/08/2026 mirando la lámina: con el ancho justo, «$ 84,2 M» se partía en
+  // dos y «ECHEGARAY» salía «ECHEGARA / Y». La medición erra ~1% y acá el 1% se ve.
+  const prep = prepararDeck(deck([{
+    tipo: 'indicadores', titulo: 'Caja',
+    indicadores: [{ rotulo: 'Caja', valor: '$ 84,2 M' }, { rotulo: 'Descubierto', valor: '$ 31,0 M' },
+      { rotulo: 'Cheques', valor: '$ 57,4 M' }, { rotulo: 'IVA', valor: '$ 12,8 M' }],
+  }]))
+  const valores = prep.compuesto.laminas[1].cajas.filter((c) => String(c.contenido).includes('$ '))
+  assert.equal(valores.length, 4)
+  for (const v of valores) {
+    const usado = anchoTexto(v.contenido, v.estilo.tamano, { negrita: v.estilo.negrita })
+    assert.ok(usado <= v.ancho / 1.06, `«${v.contenido}» ocupa ${usado.toFixed(0)} de ${v.ancho.toFixed(0)} pt: sin margen`)
+  }
+  const marca = prep.compuesto.laminas[0].cajas.find((c) => c.contenido === 'ECHEGARAY')
+  const usado = anchoTexto(marca.contenido, marca.estilo.tamano, { negrita: true })
+  assert.ok(usado <= marca.ancho / 1.06, `la marca ocupa ${usado.toFixed(0)} de ${marca.ancho.toFixed(0)} pt`)
 })

@@ -16,8 +16,8 @@
 import { CONTENIDO, COLOR, LOGO, LOGO_URL, MARGEN, PAGINA, TIPO } from './marca.mjs'
 import { medirBullets, medirTexto, repartirBullets } from './layout.mjs'
 import {
-  altoDisponible, bullets, CHROME, citaFuentes, encabezado, imagen, nota, pastillaOrigen, pie,
-  rect, reiniciarIds, texto,
+  altoDisponible, bullets, CHROME, citaFuentes, encabezado, espacioPastilla, imagen, marcaEcsas,
+  nota, pastillaOrigen, pie, rect, reiniciarIds, texto,
 } from './cajas.mjs'
 import { CUERPOS } from './componentes.mjs'
 
@@ -45,6 +45,8 @@ function bandaIdentidad({ derecha = null }) {
   ]
   if (LOGO_URL) {
     cajas.push(imagen({ x: MARGEN.izq, y: y + (BANDA_ALTO - LOGO.alto * 1.35) / 2, ancho: LOGO.ancho * 1.35, alto: LOGO.alto * 1.35, url: LOGO_URL }))
+  } else {
+    cajas.push(...marcaEcsas({ x: MARGEN.izq, y: y + (BANDA_ALTO - 30) / 2, alto: 30 }).cajas)
   }
   if (derecha) {
     cajas.push(texto({
@@ -61,13 +63,13 @@ export function portada(deck) {
   const perfil = PERFIL[deck.tipo]
   const contexto = [deck.cliente, deck.obra].filter(Boolean).join('  ·  ')
   const anchoTitulo = PAGINA.ancho - MARGEN.izq - 150
-  const mT = medirTexto(deck.titulo, { ancho: anchoTitulo, tamano: TIPO.portadaTitulo.tamano, alto: TIPO.portadaTitulo.alto })
+  const mT = medirTexto(deck.titulo, { ancho: anchoTitulo, tamano: TIPO.portadaTitulo.tamano, alto: TIPO.portadaTitulo.alto, negrita: true })
   const yTitulo = PAGINA.alto - BANDA_ALTO - 44 - mT.altoPt - (deck.subtitulo ? 42 : 0)
   const cajas = [
     rect({ x: 0, y: 0, ancho: PAGINA.ancho, alto: PAGINA.alto, relleno: COLOR.grafito }),
-    rect({ x: MARGEN.izq, y: yTitulo - 30, ancho: 54, alto: 4, relleno: COLOR.amarillo }),
+    rect({ x: MARGEN.izq, y: yTitulo - 62, ancho: 54, alto: 4, relleno: COLOR.amarillo }),
     texto({
-      x: MARGEN.izq, y: yTitulo - 52, ancho: anchoTitulo, alto: 14,
+      x: MARGEN.izq, y: yTitulo - 46, ancho: anchoTitulo, alto: 14,
       contenido: [perfil.etiqueta, contexto].filter(Boolean).join('  ·  ').toUpperCase(),
       estilo: { ...TIPO.kicker, color: COLOR.amarillo },
     }),
@@ -109,7 +111,7 @@ export function cierre(lamina, deck) {
 }
 
 /** LÁMINA DE FUENTES. La arma el motor, no el modelo. */
-export function laminaFuentes(fuentes) {
+export function laminaFuentes(fuentes, { numero, total, deck } = {}) {
   const { cajas, y } = encabezado({ kicker: 'Referencias externas', titulo: 'De dónde salió la información de afuera' })
   const items = fuentes.map((f) => `${f.titulo} — ${f.url}${f.obtenido_en ? `  ·  leído ${f.obtenido_en}` : ''}${f.frescura ? `  ·  ${f.frescura}` : ''}`)
   const AVISO = 'Estas referencias NO son datos de Echegaray: se citan con su origen y su fecha, y hay que verificarlas antes de usarlas para decidir.'
@@ -127,18 +129,35 @@ export function laminaFuentes(fuentes) {
         alto: Math.min(m.altoPt + 6, altoDisponible(yLista)), items,
         estilo: { ...TIPO.cuerpo, tamano: 10.5, color: COLOR.externo },
       }),
+      // Lleva el mismo pie que el resto: una lámina sin numerar dentro de un mazo numerado se lee
+      // como pegada de otro lado, que es justo lo contrario de lo que esta lámina quiere decir.
+      ...(numero ? pie({ numero, total, obra: deck?.obra, cliente: deck?.cliente }) : []),
     ],
   }
 }
 
-/** Lámina de contenido con su marco. */
+/**
+ * Lámina de contenido con su marco.
+ *
+ * EL PIE SE ARMA DE ABAJO HACIA ARRIBA, y no es un capricho: la cita de una fuente externa con una
+ * URL larga ocupa dos líneas, no las 22 pt que se le reservaban a ojo. Con la reserva fija, la
+ * primera lámina de prueba con fuente puso la cita encima del cuerpo. Ahora se MIDE la cita, se la
+ * apoya sobre la línea del pie, y el cuerpo recibe lo que queda arriba.
+ */
 function laminaContenido(lamina, { deck, numero, total }) {
-  const { cajas: cabeza, y } = encabezado({ kicker: lamina.kicker || null, titulo: lamina.titulo })
-  const reservaFuente = lamina.fuentes?.length ? 22 : 0
-  const reservaNota = lamina.nota ? 18 : 0
-  const alto = altoDisponible(y, { reservaPie: reservaFuente + reservaNota })
+  const { cajas: cabeza, y } = encabezado({
+    kicker: lamina.kicker || null, titulo: lamina.titulo, ancho: CONTENIDO.ancho - espacioPastilla(lamina.origen),
+  })
+  const base = CHROME.pieLinea - 12
+  const cita = citaFuentes({ fuentes: lamina.fuentes, x: CONTENIDO.x, y: 0, ancho: CONTENIDO.ancho })
+  const altoCita = cita.reduce((n, c) => n + c.alto, 0)
+  const anotacion = nota({ contenido: lamina.nota, x: CONTENIDO.x, y: 0, ancho: CONTENIDO.ancho })
+  const altoNota = anotacion.reduce((n, c) => n + c.alto, 0)
+  const yCita = base - altoCita
+  const yNota = yCita - (altoCita ? 6 : 0) - altoNota
+  const techoPie = altoCita || altoNota ? Math.min(yNota, yCita) : base
+  const alto = Math.max(40, techoPie - 14 - y)
   const cuerpo = CUERPOS[lamina.tipo]({ lamina, x: CONTENIDO.x, y, ancho: CONTENIDO.ancho, alto })
-  const yPie = CHROME.pieLinea - 14 - reservaFuente - reservaNota
   return {
     nombre: lamina.tipo,
     fondo: COLOR.papel,
@@ -147,8 +166,8 @@ function laminaContenido(lamina, { deck, numero, total }) {
       ...cabeza,
       ...pastillaOrigen({ origen: lamina.origen, x: CONTENIDO.x + CONTENIDO.ancho, y: MARGEN.sup }),
       ...cuerpo,
-      ...nota({ contenido: lamina.nota, x: CONTENIDO.x, y: yPie, ancho: CONTENIDO.ancho }),
-      ...citaFuentes({ fuentes: lamina.fuentes, x: CONTENIDO.x, y: yPie + reservaNota, ancho: CONTENIDO.ancho }),
+      ...anotacion.map((c) => ({ ...c, y: yNota })),
+      ...cita.map((c) => ({ ...c, y: yCita })),
       ...pie({ numero, total, obra: deck.obra, cliente: deck.cliente }),
     ],
   }
@@ -163,9 +182,13 @@ export function expandirLaminas(laminas) {
   const salida = []
   for (const l of laminas) {
     if (l.tipo !== 'puntos') { salida.push(l); continue }
-    const { y } = encabezado({ kicker: l.kicker || null, titulo: l.titulo })
+    const { y } = encabezado({ kicker: l.kicker || null, titulo: l.titulo, ancho: CONTENIDO.ancho - espacioPastilla(l.origen) })
     const bajada = l.bajada ? medirTexto(l.bajada, { ancho: CONTENIDO.ancho * 0.86, tamano: TIPO.subtitulo.tamano, alto: TIPO.subtitulo.alto }).altoPt + 16 : 0
-    const disponible = altoDisponible(y + bajada, { reservaPie: (l.fuentes?.length ? 22 : 0) + (l.nota ? 18 : 0) })
+    // La misma cuenta que `laminaContenido`: si acá se reservara menos, el reparto dejaría láminas
+    // que después no entran y el control de calidad las rebotaría sin que nadie sepa por qué.
+    const altoCita = citaFuentes({ fuentes: l.fuentes, x: 0, y: 0, ancho: CONTENIDO.ancho }).reduce((n, c) => n + c.alto, 0)
+    const altoNota = nota({ contenido: l.nota, x: 0, y: 0, ancho: CONTENIDO.ancho }).reduce((n, c) => n + c.alto, 0)
+    const disponible = altoDisponible(y + bajada, { reservaPie: altoCita + altoNota + (altoCita && altoNota ? 6 : 0) + 2 })
     const grupos = repartirBullets(l.puntos, { ancho: CONTENIDO.ancho, altoDisponible: disponible, tamano: TIPO.bullet.tamano, alto: TIPO.bullet.alto })
     grupos.forEach((g, i) => salida.push({
       ...l,
@@ -191,7 +214,7 @@ export function componerDeck(deck) {
   const laminas = [portada(deck)]
   let seccionN = 0
   conFuentes.forEach((l, i) => {
-    if (l === null) { laminas.push(laminaFuentes(fuentes)); return }
+    if (l === null) { laminas.push(laminaFuentes(fuentes, { numero: i + 2, total: total + 1, deck })); return }
     if (l.tipo === 'seccion') { seccionN += 1; laminas.push(seccion(l, seccionN)); return }
     if (l.tipo === 'cierre') { laminas.push(cierre(l, deck)); return }
     laminas.push(laminaContenido(l, { deck, numero: i + 2, total: total + 1 }))

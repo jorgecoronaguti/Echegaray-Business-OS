@@ -44,6 +44,20 @@ export function columnaX(i) {
   return CONTENIDO.x + (ANCHO_COLUMNA + GRILLA.canaleta) * Math.max(0, i)
 }
 
+/**
+ * MARGEN PARA EL TEXTO QUE TIENE QUE ENTRAR EN UNA SOLA LÍNEA.
+ *
+ * La medición de `layout.mjs` quedó buena: erra alrededor del 1%. Eso alcanza para repartir
+ * viñetas y no alcanza para un número grande, porque ahí un 1% decide si «$ 84,2 M» entra o se
+ * parte — y una lámina con el importe partido en dos líneas es un error visible desde el fondo de
+ * la sala. Medido el 27/08/2026: con el ancho justo, tres de cuatro tarjetas entraban y la cuarta
+ * no, porque los dígitos de esta tipografía no son todos igual de anchos.
+ *
+ * Todo componente que ajuste un texto para que entre en UNA línea reserva este margen. No es
+ * desconfiar de la medición: es que el costo de errar por poco no es simétrico.
+ */
+export const SLACK_UNA_LINEA = 1.07
+
 /** Ritmo vertical. Todo alto y todo salto es múltiplo de 6: es lo que hace que dos láminas
  *  distintas se vean de la misma familia sin que nadie pueda decir por qué. */
 export const RITMO = 6
@@ -114,9 +128,22 @@ export const TIPO = Object.freeze({
   fuenteNota: { tamano: 8, negrita: false, alto: 1.3, color: COLOR.externo },
 })
 
-/** El logo. Sale de la misma URL pública que usa el portal del cliente; si no está accesible, el
- *  motor dibuja el monograma en formas y la lámina sale igual (no se cuelga por una imagen). */
-export const LOGO_URL = process.env.ORQ_PORTAL_LOGO_URL || 'https://app.ecsas.com.ar/logo-ecsas.png'
+/**
+ * LA IDENTIDAD SE DIBUJA, NO SE TRAE.
+ *
+ * La primera versión usaba el mismo PNG que el portal del cliente
+ * (`https://app.ecsas.com.ar/logo-ecsas.png`) y Google respondió `400: There was a problem
+ * retrieving the image`. El motivo, verificado con curl: esa URL devuelve **307 a /login** — el
+ * middleware de la app la protege. Google no tiene sesión, así que no la puede bajar. (Es una
+ * dependencia que también afecta al mail del portal, y no se toca desde acá.)
+ *
+ * Depender de una imagen remota para que la marca aparezca es depender de que un servidor ajeno
+ * conteste en el momento exacto en que se arma la presentación. La marca denominativa se dibuja
+ * con formas y texto: no falla nunca, y se ve igual.
+ *
+ * Si algún día hay una URL pública de verdad, se pone en `ORQ_SLIDES_LOGO_URL` y el motor la usa.
+ */
+export const LOGO_URL = process.env.ORQ_SLIDES_LOGO_URL || null
 export const LOGO = Object.freeze({ ancho: 86, alto: 22 })
 
 /** '#30302F' → {red,green,blue} 0..1, que es como los quiere la Slides API. PURA. */

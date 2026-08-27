@@ -23,15 +23,31 @@ import { alRitmo } from './marca.mjs'
 /** Ancho de cada familia de glifo, en múltiplos del tamaño de fuente (em), para una sans
  *  humanista tipo Inter. Medidos sobre los avances reales de la familia, redondeados hacia arriba. */
 const ANCHOS = [
-  [/[ ]/, 0.26],
+  [/[ ]/, 0.28],
   [/[iIl.,;:'`!|]/, 0.30],
   [/[jftr()[\]{}/\\-]/, 0.37],
   [/[mwMW@]/, 0.90],
-  [/[A-ZÁÉÍÓÚÑÜ]/, 0.68],
-  [/[0-9$%]/, 0.58],
+  [/[A-ZÁÉÍÓÚÑÜ]/, 0.70],
+  [/[0-9$%]/, 0.60],
 ]
 const ANCHO_POR_DEFECTO = 0.55
+
+// ═══ LOS TRES FACTORES, Y DE DÓNDE SALIERON ═══
+//
+// HOLGURA es el margen conservador de siempre. Los otros dos se agregaron el 27/08/2026 MIRANDO
+// una presentación real: «$ 84,2 M» a 28 pt entraba según esta tabla (118 pt disponibles) y en la
+// lámina renderizada por Google se partió en dos líneas y se comió la nota de abajo.
+//
+//   NEGRITA — la tabla se armó con los avances del peso regular. El bold de una humanista pesa
+//             entre 5% y 8% más, y los números grandes de una presentación son SIEMPRE bold.
+//   DISPLAY — a 30 pt un 4% de error son 5 pt; a 12 pt son 0,5. El texto grande no tiene dónde
+//             equivocarse, así que se lo mide con más margen que al cuerpo.
+//
+// Nada de esto reemplaza mirar el resultado: es lo que hace que mirarlo casi nunca encuentre nada.
 const HOLGURA = 1.04
+const NEGRITA = 1.06
+const DISPLAY = 1.04
+const DESDE_DISPLAY = 20
 
 // La búsqueda por regex se hace UNA vez por carácter distinto. Sin esto, medir un texto largo
 // vuelve a recorrer seis expresiones regulares por letra y por intento de corte.
@@ -47,20 +63,21 @@ function anchoGlifo(ch) {
 }
 
 /** Ancho de un texto en PT a un tamaño dado. PURA. */
-export function anchoTexto(texto, tamano) {
+export function anchoTexto(texto, tamano, { negrita = false } = {}) {
   let em = 0
   for (const ch of String(texto ?? '')) em += anchoGlifo(ch)
-  return em * tamano * HOLGURA
+  const factor = HOLGURA * (negrita ? NEGRITA : 1) * (tamano >= DESDE_DISPLAY ? DISPLAY : 1)
+  return em * tamano * factor
 }
 
 /** Cuántos caracteres de `s` entran en `ancho`. Búsqueda binaria: la variante que descontaba de a
  *  uno era cuadrática y una URL de 4.000 caracteres colgaba la composición varios minutos. PURA. */
-function cuantosEntran(s, ancho, tamano) {
+function cuantosEntran(s, ancho, tamano, negrita) {
   let bajo = 1
   let alto = s.length
   while (bajo < alto) {
     const medio = Math.ceil((bajo + alto) / 2)
-    if (anchoTexto(s.slice(0, medio), tamano) <= ancho) bajo = medio
+    if (anchoTexto(s.slice(0, medio), tamano, { negrita }) <= ancho) bajo = medio
     else alto = medio - 1
   }
   return Math.max(1, bajo)
@@ -70,19 +87,19 @@ function cuantosEntran(s, ancho, tamano) {
  * Parte un texto en las líneas que le van a salir dentro de `ancho`. Respeta los saltos que ya
  * traía y corta la palabra que sola no entra (una URL larga, un código de obra). PURA.
  */
-export function partirEnLineas(texto, { ancho, tamano }) {
+export function partirEnLineas(texto, { ancho, tamano, negrita = false }) {
   const lineas = []
   for (const parrafo of String(texto ?? '').split('\n')) {
     if (!parrafo.trim()) { lineas.push(''); continue }
     let actual = ''
     for (const palabra of parrafo.trim().split(/\s+/)) {
       const tentativa = actual ? `${actual} ${palabra}` : palabra
-      if (anchoTexto(tentativa, tamano) <= ancho) { actual = tentativa; continue }
+      if (anchoTexto(tentativa, tamano, { negrita }) <= ancho) { actual = tentativa; continue }
       if (actual) { lineas.push(actual); actual = '' }
       // La palabra sola tampoco entra: se parte por caracter, que es lo que hace el renderer.
       let resto = palabra
-      while (anchoTexto(resto, tamano) > ancho && resto.length > 1) {
-        const corte = cuantosEntran(resto, ancho, tamano)
+      while (anchoTexto(resto, tamano, { negrita }) > ancho && resto.length > 1) {
+        const corte = cuantosEntran(resto, ancho, tamano, negrita)
         lineas.push(resto.slice(0, corte))
         resto = resto.slice(corte)
       }
@@ -94,8 +111,8 @@ export function partirEnLineas(texto, { ancho, tamano }) {
 }
 
 /** Alto que va a ocupar un texto. `alto` es el interlineado (1,42 = 142%). PURA. */
-export function medirTexto(texto, { ancho, tamano, alto = 1.35 }) {
-  const lineas = partirEnLineas(texto, { ancho, tamano })
+export function medirTexto(texto, { ancho, tamano, alto = 1.35, negrita = false }) {
+  const lineas = partirEnLineas(texto, { ancho, tamano, negrita })
   return { lineas: lineas.length, altoPt: lineas.length * tamano * alto, textoLineas: lineas }
 }
 
@@ -104,12 +121,12 @@ export function medirTexto(texto, { ancho, tamano, alto = 1.35 }) {
  * mitad del interlineado: menos que eso y la lista se lee como un bloque, más y se desarma.
  * PURA.
  */
-export function medirBullets(items, { ancho, tamano, alto = 1.42, sangria = 16 }) {
+export function medirBullets(items, { ancho, tamano, alto = 1.42, sangria = 16, negrita = false }) {
   const util = ancho - sangria
   let total = 0
   const detalle = []
   for (const it of items || []) {
-    const m = medirTexto(String(it ?? ''), { ancho: util, tamano, alto })
+    const m = medirTexto(String(it ?? ''), { ancho: util, tamano, alto, negrita })
     detalle.push(m)
     total += m.altoPt
   }
@@ -122,10 +139,10 @@ export function medirBullets(items, { ancho, tamano, alto = 1.42, sangria = 16 }
  * Devuelve `{tamano, entra}`. Si `entra` es false, el motor NO achica más: parte el contenido en
  * otra lámina. Achicar sin piso es como se llega a la lámina de cuerpo 7 que nadie lee. PURA.
  */
-export function ajustarTamano(texto, { ancho, altoDisponible, tamano, alto = 1.42, piso = 0.82 }) {
+export function ajustarTamano(texto, { ancho, altoDisponible, tamano, alto = 1.42, piso = 0.82, negrita = false }) {
   const minimo = Math.max(9, tamano * piso)
   for (let t = tamano; t >= minimo - 0.001; t -= 0.5) {
-    if (medirTexto(texto, { ancho, tamano: t, alto }).altoPt <= altoDisponible) return { tamano: Number(t.toFixed(1)), entra: true }
+    if (medirTexto(texto, { ancho, tamano: t, alto, negrita }).altoPt <= altoDisponible) return { tamano: Number(t.toFixed(1)), entra: true }
   }
   return { tamano: Number(minimo.toFixed(1)), entra: false }
 }

@@ -7,7 +7,7 @@
 //
 // PURO.
 
-import { COLOR, GRILLA, TIPO } from './marca.mjs'
+import { COLOR, GRILLA, SLACK_UNA_LINEA, TIPO } from './marca.mjs'
 import { ajustarTamano, medirBullets, medirTexto, repartirEnFila } from './layout.mjs'
 import { bullets, rect, regla, tabla, texto } from './cajas.mjs'
 
@@ -35,10 +35,12 @@ export function cuerpoDosColumnas({ lamina, x, y, ancho, alto }) {
   const [izq, der] = repartirEnFila(2, { x, ancho, canaleta: GRILLA.canaleta * 2 })
   const cajas = []
   for (const [col, datos] of [[izq, lamina.izquierda], [der, lamina.derecha]]) {
-    cajas.push(texto({ x: col.x, y, ancho: col.ancho, alto: 13, contenido: datos.titulo.toUpperCase(), estilo: { ...TIPO.kicker, color: COLOR.tinta, tamano: 10 } }))
-    cajas.push(regla({ x: col.x, y: y + 17, ancho: 28, grosor: 2, color: COLOR.amarillo }))
+    // La regla va 22 pt abajo del tope de la caja, no 17: el renderer baja la línea base y a 17
+    // el amarillo cruzaba las letras — se leía como un tachado, no como un subrayado.
+    cajas.push(texto({ x: col.x, y, ancho: col.ancho, alto: 14, contenido: datos.titulo.toUpperCase(), estilo: { ...TIPO.kicker, color: COLOR.tinta, tamano: 10 } }))
+    cajas.push(regla({ x: col.x, y: y + 22, ancho: 28, grosor: 2, color: COLOR.amarillo }))
     const m = medirBullets(datos.puntos, { ancho: col.ancho, tamano: TIPO.bullet.tamano, alto: TIPO.bullet.alto })
-    cajas.push(bullets({ x: col.x, y: y + 27, ancho: col.ancho, alto: Math.min(m.altoPt + 6, alto - 27), items: datos.puntos, estilo: TIPO.bullet }))
+    cajas.push(bullets({ x: col.x, y: y + 36, ancho: col.ancho, alto: Math.min(m.altoPt + 6, alto - 36), items: datos.puntos, estilo: TIPO.bullet }))
   }
   return cajas
 }
@@ -62,7 +64,8 @@ export function cuerpoIndicadores({ lamina, x, y, ancho, alto }) {
   // se calcula contra el ancho REAL de la tarjeta, que es lo único que lo determina.
   const anchoUtil = cols[0].ancho - AIRE * 2
   const tamanoValor = Math.min(...lamina.indicadores.map((ind) => ajustarTamano(ind.valor, {
-    ancho: anchoUtil, altoDisponible: ALTO_VALOR, tamano: TIPO.kpiValor.tamano, alto: TIPO.kpiValor.alto, piso: 0.55,
+    ancho: anchoUtil / SLACK_UNA_LINEA, altoDisponible: ALTO_VALOR, tamano: TIPO.kpiValor.tamano,
+    alto: TIPO.kpiValor.alto, piso: 0.55, negrita: TIPO.kpiValor.negrita,
   }).tamano))
   lamina.indicadores.forEach((ind, i) => {
     const c = cols[i]

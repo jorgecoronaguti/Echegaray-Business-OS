@@ -26,8 +26,8 @@ const CARACTERES_MAXIMO = 460
 
 /** Alto real que va a ocupar el contenido de una caja de texto o de bullets. PURA. */
 export function altoReal(c) {
-  if (c.tipo === 'texto') return medirTexto(c.contenido, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto }).altoPt
-  if (c.tipo === 'bullets') return medirBullets(c.items, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto }).altoPt
+  if (c.tipo === 'texto') return medirTexto(c.contenido, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto, negrita: c.estilo.negrita }).altoPt
+  if (c.tipo === 'bullets') return medirBullets(c.items, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto, negrita: c.estilo.negrita }).altoPt
   return c.alto
 }
 
