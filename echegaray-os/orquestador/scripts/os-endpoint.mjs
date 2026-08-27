@@ -10,11 +10,18 @@
 //
 // Uso:
 //   node orquestador/scripts/os-endpoint.mjs ensure-table
-//   node orquestador/scripts/os-endpoint.mjs set https://xxxx.trycloudflare.com
-//   node orquestador/scripts/os-endpoint.mjs get
+//   node orquestador/scripts/os-endpoint.mjs set https://xxxx.trycloudflare.com [clave]
+//   node orquestador/scripts/os-endpoint.mjs get [clave]
+//
+// Hay DOS endpoints y no uno: `interactive_endpoint` (el motor interactivo, :8790, que usan la
+// extensión y `/api/os/*`) y `xsas_endpoint` (la puerta única de XSAS, :8791, que usa `/api/xsas`).
+// Comparten tabla y mecanismo; no comparten puerto ni autenticación, y por eso no comparten clave.
 import { query, closePool } from '../lib/db.mjs'
 
-const KEY = 'interactive_endpoint'
+const CLAVE_POR_DEFECTO = 'interactive_endpoint'
+/** Las claves válidas, declaradas: un typo en el script del túnel publicaba un endpoint que nadie
+ *  leía nunca, y el síntoma era «XSAS no contesta desde la app» sin nada roto a la vista. */
+const CLAVES = new Set([CLAVE_POR_DEFECTO, 'xsas_endpoint'])
 
 async function ensureTable() {
   await query(`
@@ -43,29 +50,30 @@ async function ensureTable() {
   await query(`grant select on public.os_runtime to anon, authenticated;`)
 }
 
-async function set(url) {
+async function set(url, clave = CLAVE_POR_DEFECTO) {
   if (!/^https:\/\/\S+$/.test(url)) throw new Error(`URL inválida: ${url}`)
+  if (!CLAVES.has(clave)) throw new Error(`clave desconocida: ${clave} (válidas: ${[...CLAVES].join(', ')})`)
   await ensureTable()
   await query(
     `insert into public.os_runtime (key, value, updated_at) values ($1, $2, now())
      on conflict (key) do update set value = excluded.value, updated_at = now()`,
-    [KEY, url.trim()],
+    [clave, url.trim()],
   )
-  console.log(`[os-endpoint] publicado: ${url}`)
+  console.log(`[os-endpoint] publicado ${clave}: ${url}`)
 }
 
-async function get() {
-  const { rows } = await query(`select value, updated_at from public.os_runtime where key = $1`, [KEY])
+async function get(clave = CLAVE_POR_DEFECTO) {
+  const { rows } = await query(`select value, updated_at from public.os_runtime where key = $1`, [clave])
   if (!rows[0]) { console.log('(sin endpoint publicado)'); return }
   console.log(`${rows[0].value}  (actualizado ${rows[0].updated_at.toISOString()})`)
 }
 
-const [cmd, arg] = process.argv.slice(2)
+const [cmd, arg, clave] = process.argv.slice(2)
 try {
   if (cmd === 'ensure-table') await ensureTable()
-  else if (cmd === 'set') await set(arg)
-  else if (cmd === 'get') await get()
-  else { console.error('uso: os-endpoint.mjs <ensure-table|set <url>|get>'); process.exit(2) }
+  else if (cmd === 'set') await set(arg, clave || CLAVE_POR_DEFECTO)
+  else if (cmd === 'get') await get(arg || CLAVE_POR_DEFECTO)
+  else { console.error('uso: os-endpoint.mjs <ensure-table|set <url> [clave]|get [clave]>'); process.exit(2) }
 } catch (e) {
   console.error('[os-endpoint] error:', e.message)
   process.exitCode = 1

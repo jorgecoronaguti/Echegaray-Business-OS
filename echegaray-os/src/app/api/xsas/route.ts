@@ -19,12 +19,10 @@
 // el navegador diciendo qué puede hacer.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { olvidarPuerta, resolverPuerta } from '@/shared/xsas/puerta'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
-
-const GATEWAY_URL = process.env.XSAS_GATEWAY_URL
-const GATEWAY_SECRETO = process.env.XSAS_GATEWAY_SECRET
 
 interface EntradaXsas {
   mensaje?: string
@@ -65,12 +63,6 @@ async function entidadAutorizada(
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!GATEWAY_URL || !GATEWAY_SECRETO) {
-    // Fail-closed y RUIDOSO. Sin la puerta configurada no hay a dónde ir; contestar algo inventado
-    // sería peor que decir que falta configuración.
-    return NextResponse.json({ error: 'XSAS no está configurado en este entorno (falta XSAS_GATEWAY_URL/SECRET)' }, { status: 503 })
-  }
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'sin sesión' }, { status: 401 })
@@ -100,13 +92,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     correlation_id: entrada.correlation_id ?? null,
   }
 
+  // La puerta se resuelve DESPUÉS de identificar al usuario: sin sesión no se toca la base por un
+  // secreto. Fail-closed y ruidoso — sin puerta no hay a dónde ir, y contestar algo inventado sería
+  // peor que decir que falta configuración.
+  let puerta = await resolverPuerta()
+  if (!puerta) {
+    return NextResponse.json({ error: 'XSAS no está publicado ahora mismo (no hay endpoint ni secreto de la puerta)' }, { status: 503 })
+  }
+
+  const postear = (destino: { url: string; secreto: string }) => fetch(destino.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-xsas-secreto': destino.secreto },
+    body: JSON.stringify(pedido),
+    signal: AbortSignal.timeout(55_000),
+  })
+
   try {
-    const upstream = await fetch(GATEWAY_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-xsas-secreto': GATEWAY_SECRETO },
-      body: JSON.stringify(pedido),
-      signal: AbortSignal.timeout(55_000),
-    })
+    let upstream: Response
+    try {
+      upstream = await postear(puerta)
+    } catch (primera) {
+      // El túnel rota su URL en cada reinicio. Un fallo de conexión casi siempre significa que la
+      // URL que teníamos ya no existe: se olvida, se vuelve a descubrir y se reintenta UNA vez. Sin
+      // esto, cada reinicio del túnel dejaba la app contestando 502 hasta el próximo despliegue.
+      olvidarPuerta()
+      const denuevo = await resolverPuerta()
+      if (!denuevo || denuevo.url === puerta.url) throw primera
+      puerta = denuevo
+      upstream = await postear(puerta)
+    }
     const cuerpo = (await upstream.json()) as Record<string, unknown>
     // Lo que la pantalla pidió y no puede ver se DICE. Un contexto ignorado en silencio produce una
     // respuesta que parece de la obra y no lo es.
