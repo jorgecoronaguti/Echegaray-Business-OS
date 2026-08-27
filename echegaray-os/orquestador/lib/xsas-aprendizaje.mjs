@@ -141,6 +141,9 @@ export async function observaciones({ query }, { obras = null } = {}) {
     `select * from public.xsas_actividad
       where obra_id <> all($1::text[])
         and ($2::text[] is null or obra_id = any($2::text[]))
+        -- SÓLO TRABAJO. Un encabezado de frente hereda el avance y las fechas de sus hijas: su
+        -- rendimiento sería el de todas juntas atribuido a una tarea sola.
+        and es_trabajo
         and (hh_real is not null or cantidad_real is not null or avance_pct is not null)`,
     [OBRAS_NO_REALES, obras])
   return rows.map(analizarFila)
@@ -333,6 +336,10 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
        from public.xsas_actividad
       where obra_id <> all($1::text[])
         and ($2::text[] is null or obra_id = any($2::text[]))
+        -- SÓLO TRABAJO. Una fila que agrupa a otras tiene por fechas la envolvente de sus hijas:
+        -- guardar eso como la duración de una tarea mete en la Base Maestra un número que no
+        -- corresponde a ningún trabajo. Dos de los 117 hechos venían de ahí.
+        and es_trabajo
         -- UN PLAN DE CERO DÍAS NO ES UN PLAN. Son hitos del cronograma importado, no trabajo
         -- planificado: contra cero no hay desvío que calcular y la fila entraría con el número
         -- vacío. Se dejan afuera en vez de guardarlas rotas.
@@ -343,7 +350,7 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
   const { rows: [d] } = await query(
     `select count(*)::int n from public.xsas_actividad
       where obra_id <> all($1::text[]) and ($2::text[] is null or obra_id = any($2::text[]))
-        and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
+        and es_trabajo and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
     [OBRAS_NO_REALES, obras])
   const descartadas = d?.n ?? 0
 

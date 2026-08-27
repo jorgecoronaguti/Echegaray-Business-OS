@@ -15,21 +15,33 @@ test('dos tipos con el mismo nombre: nadie decide por adivinanza', () => {
   assert.equal(v.veredicto, 'AMBIGUO')
 })
 
-test('una sola candidata fuerte y sin competencia: se asigna', () => {
+test('el mismo nombre en plural es el mismo nombre', () => {
+  // «EXCAVACION» y «EXCAVACIONES» son la misma tarea escrita distinto, y dejarla sin clasificar por
+  // una S era perder la experiencia. Que la otra candidata agregue una palabra («MANUAL») no la
+  // vuelve ambigua: agregar una palabra es ser OTRA tarea, y por eso queda vetada.
   const v = veredictoDe({ nombre: 'EXCAVACION' }, [c('EXCAVACIONES', 0.9), c('EXCAVACION MANUAL', 0.6)])
+  assert.equal(v.veredicto, 'EXACTO')
+  assert.equal(v.evidencia.candidata, 'EXCAVACIONES')
+})
+
+test('una sola candidata fuerte y sin competencia: se asigna con ALTA', () => {
+  const v = veredictoDe({ nombre: 'PISO DE HORMIGON ALISADO' },
+    [c('PISO DE HORMIGON PULIDO', 0.82), c('CONTRAPISO', 0.52)])
   assert.equal(v.veredicto, 'ALTA')
   assert.equal(v.confianza, 'ALTA')
 })
 
 test('dos candidatas casi iguales: AMBIGUO, no la primera', () => {
-  const v = veredictoDe({ nombre: 'HORMIGONADO' }, [c('HORMIGONADO A MANO', 0.9), c('HORMIGONADO CON BOMBA', 0.85)])
+  const v = veredictoDe({ nombre: 'PISO DE HORMIGON ALISADO' },
+    [c('PISO DE HORMIGON PULIDO', 0.82), c('PISO DE HORMIGON FRATAZADO', 0.80)])
   assert.equal(v.veredicto, 'AMBIGUO')
   assert.match(v.porQue, /casi igual/)
 })
 
 test('la unidad manda sobre el parecido del nombre', () => {
-  // Un trabajo medido en m² no puede ser una tarea que se cobra por hora, por más que se llamen igual.
-  const v = veredictoDe({ nombre: 'BOBCAT', unidad: 'm2' }, [c('ALQUILER BOBCAT', 0.9, 'HR')])
+  // Un trabajo medido en m² no puede ser una tarea que se cobra por hora, por más que se llamen
+  // igual. Acá los nombres son idénticos: lo único que decide es la unidad.
+  const v = veredictoDe({ nombre: 'BOBCAT', unidad: 'm2' }, [c('BOBCAT', 1, 'HR')])
   assert.equal(v.veredicto, 'AMBIGUO')
   assert.match(v.porQue, /se mide en/)
   // Y si la actividad no declara unidad, no bloquea: no se puede contradecir lo que no se dijo.
@@ -43,17 +55,62 @@ test('sin ninguna candidata por encima del piso: SIN MATCH', () => {
 })
 
 test('la zona gris no decide: junta candidatas para que las mire otro', () => {
-  const v = veredictoDe({ nombre: 'Compactación' }, [c('RELLENO Y COMPACTACIÓN', 0.57)])
+  // Parecido real sin contención: ninguna de las dos contiene a la otra, y el parecido no alcanza.
+  const v = veredictoDe({ nombre: 'PISO DE HORMIGON' }, [c('PUENTE DE HORMIGON', 0.57)])
   assert.equal(v.veredicto, 'ZONA GRIS')
   assert.equal(v.candidatas.length, 1)
   assert.equal(v.tareaTipoId, undefined, 'la zona gris no asigna nada por sí sola')
 })
 
+// ── LOS DOS CASOS QUE NO PUEDEN CLASIFICARSE NUNCA ───────────────────────────────────────────
+
+test('«Hormigonado» NO es «HORMIGONADO A MANO», ni siquiera con el rubro a favor', () => {
+  // Hormigonar a mano y hormigonar con bomba comparten la palabra y no la productividad. El rubro
+  // del cronograma dice «Hormigonado» y corrobora — y aun así no alcanza: una corroboración baja el
+  // umbral del parecido, nunca levanta un veto.
+  const v = veredictoDe({ nombre: 'Hormigonado', seccion: 'Hormigonado', obra: 'Messina' },
+    [c('HORMIGONADO A MANO', 0.63, 'M3')])
+  assert.equal(v.veredicto, 'AMBIGUO')
+  assert.equal(v.tareaTipoId, undefined)
+  assert.match(v.porQue, /más específica/)
+})
+
+test('«Compactación» NO es «RELLENO Y COMPACTACIÓN» cuando la obra tiene «Relleno» aparte', () => {
+  // La secuencia constructiva lo prueba: esta obra parte esa tarea en dos, así que la tarea entera
+  // no es ninguna de las dos. El veto por hermana es el único que aporta la obra y ninguna otra
+  // fuente, y acá se suma al de especificidad.
+  const v = veredictoDe({
+    nombre: 'Compactación', seccion: 'GALPÓN 1',
+    hermanas: [{ nombre: 'Relleno', tareaTipoId: null }, { nombre: 'Tendido de malla', tareaTipoId: null }],
+  }, [c('RELLENO Y COMPACTACIÓN', 0.57, 'M3')])
+  assert.equal(v.veredicto, 'AMBIGUO')
+  assert.equal(v.tareaTipoId, undefined)
+  assert.ok(v.vetadas[0].vetos.some((x) => /Relleno/.test(x)), 'el veto por hermana quedó escrito')
+})
+
+// ── LA EVIDENCIA QUE NO ESTÁ EN EL NOMBRE ────────────────────────────────────────────────────
+
+test('la partida cotizada decide sin mirar un nombre', () => {
+  const v = veredictoDe({ nombre: 'cualquier cosa', partidaTareaTipoId: 't9', partidaCodigo: '1.2' }, [])
+  assert.equal(v.veredicto, 'EXACTO')
+  assert.equal(v.tareaTipoId, 't9')
+  assert.equal(v.origen, 'presupuesto')
+})
+
+test('con evidencia independiente baja el umbral del parecido, pero no el de la competencia', () => {
+  const contexto = { nombre: 'MURO PORTANTE', seccion: 'MURO', unidad: 'M2' }
+  // 0,66 no alcanza sola (el umbral sin respaldo es 0,75); con el rubro y la unidad a favor, sí.
+  const sola = veredictoDe(contexto, [c('MURO CIEGO', 0.66, 'M2')])
+  assert.equal(sola.veredicto, 'ALTA')
+  assert.ok(sola.evidencia.corroboraciones.length >= 1)
+  // Pero con una segunda candidata pegada, las corroboraciones NO desempatan.
+  const conCompetencia = veredictoDe(contexto, [c('MURO CIEGO', 0.66, 'M2'), c('MURO DOBLE', 0.64, 'M2')])
+  assert.equal(conCompetencia.veredicto, 'AMBIGUO')
+})
+
 // ── EL MODELO PROPONE, NO DECIDE ─────────────────────────────────────────────────────────────
 
 test('«se parece» no alcanza: sólo «es la misma tarea» clasifica', () => {
-  // «Compactación» dentro de «RELLENO Y COMPACTACIÓN» es media tarea. Aprenderla como la tarea
-  // entera deja el rendimiento de esa tarea contaminado para siempre.
   const cands = [c('RELLENO Y COMPACTACIÓN', 0.57, null, 't1')]
   const v = decisionDelModelo({ tarea_tipo_id: 't1', certeza: 'parecida', motivo: 'es parte de' }, cands)
   assert.equal(v.veredicto, 'AMBIGUO')

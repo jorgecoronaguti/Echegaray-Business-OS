@@ -5,55 +5,32 @@
 //   node orquestador/scripts/xsas-clasificar-actividades.mjs --aplicar  asigna
 //   ... --sin-modelo                                                    sólo lo determinístico
 //
-// El grueso lo resuelve SQL: similitud de nombres contra el catálogo de la Base Maestra. Al modelo
-// va únicamente la zona gris —lo que tiene señal pero no certeza—, en UNA llamada con todos los
-// casos juntos, y su decisión entra marcada como CANDIDATO. Nunca convierte una inferencia en dato
-// maestro sin decir que lo es.
+// ═══ QUÉ HACE ACÁ QUE EL TIMER NO HACE ═══
+//
+// El paso determinístico es EL MISMO que corre el ciclo de XSAS cuatro veces por día
+// (`clasificar-borde.mjs`): reglas, similitud y las señales de la obra. Lo único que agrega este
+// script es la zona gris —lo que tiene señal y no certeza— en UNA llamada con todos los casos
+// juntos, y su decisión NO se asigna: queda como propuesta, marcada, deshacible, esperando a una
+// persona. Nunca convierte una inferencia en dato maestro sin decir que lo es.
+//
+// Y si el proveedor no contesta, el script sigue haciendo todo lo determinístico: la zona gris
+// queda sin clasificar, que es exactamente donde estaba.
 
 import { query, closePool } from '../lib/db.mjs'
 import { pedirTexto } from '../lib/ia/cliente.mjs'
 import { CAPACIDAD } from '../lib/ia/capacidad.mjs'
-import { veredictoDe, decisionDelModelo, UMBRAL } from '../lib/clasificar-actividades.mjs'
+import { decisionDelModelo } from '../lib/clasificar-actividades.mjs'
+import { clasificarPorRegla, proponer } from '../lib/clasificar-borde.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
 const SIN_MODELO = process.argv.includes('--sin-modelo')
 
-/** Las actividades sin clasificar, cada una con sus candidatas. Una sola consulta. */
-async function candidatas() {
-  const { rows } = await query(`
-    with a as (
-      select a.id, a.nombre, a.unidad, a.obra_id
-        from public.obra_actividad a
-       where a.tarea_tipo_id is null and a.archivada is not true and a.obra_id <> 'prueba-e2e'),
-    c as (
-      select a.id, a.nombre, a.unidad, a.obra_id,
-             t.id tid, t.nombre tnombre, t.unidad tunidad,
-             similarity(upper(a.nombre), upper(t.nombre)) s,
-             row_number() over (partition by a.id order by similarity(upper(a.nombre), upper(t.nombre)) desc, t.codigo) rn
-        from a join public.tarea_tipo t on t.activo is not false
-       where similarity(upper(a.nombre), upper(t.nombre)) >= $1)
-    select id, nombre, unidad, obra_id,
-           jsonb_agg(jsonb_build_object('tareaTipoId', tid, 'nombre', tnombre, 'unidad', tunidad, 'similitud', s)
-                     order by s desc) filter (where rn <= 6) candidatas
-      from c group by id, nombre, unidad, obra_id`, [UMBRAL.MIRAR])
-  return rows
-}
-
-/** Las que ni siquiera tienen una candidata por encima del piso: se cuentan, no se consultan. */
-async function sinNingunaCandidata() {
-  const { rows } = await query(`
-    select count(*)::int n from public.obra_actividad a
-     where a.tarea_tipo_id is null and a.archivada is not true and a.obra_id <> 'prueba-e2e'
-       and not exists (select 1 from public.tarea_tipo t
-                        where t.activo is not false and similarity(upper(a.nombre), upper(t.nombre)) >= $1)`,
-  [UMBRAL.MIRAR])
-  return rows[0].n
-}
-
 async function preguntarAlModelo(grises) {
   const lista = grises.map((g, i) => {
     const cs = g.decision.candidatas.map((c) => `      ${c.tareaTipoId} · ${c.nombre} [${c.unidad ?? '?'}] (${c.similitud.toFixed(2)})`).join('\n')
-    return `${i + 1}. ACTIVIDAD: "${g.nombre}"${g.unidad ? ` [${g.unidad}]` : ''}\n    candidatas:\n${cs}`
+    const contexto = [g.seccion ? `frente: ${g.seccion}` : null, g.obra ? `obra: ${g.obra}` : null]
+      .filter(Boolean).join(' · ')
+    return `${i + 1}. ACTIVIDAD: "${g.nombre}"${g.unidad ? ` [${g.unidad}]` : ''}${contexto ? `\n    ${contexto}` : ''}\n    candidatas:\n${cs}`
   }).join('\n')
 
   const sistema = [
@@ -79,73 +56,55 @@ async function preguntarAlModelo(grises) {
   return JSON.parse(m[0])
 }
 
+/** La zona gris, resuelta por el modelo y guardada como PROPUESTA. Devuelve las que propuso. */
+async function resolverZonaGris(grises) {
+  console.log(`[modelo] ${grises.length} casos en zona gris — una sola llamada`)
+  let respuestas = []
+  try {
+    respuestas = await preguntarAlModelo(grises)
+  } catch (e) {
+    console.log(`[modelo] no se pudo consultar (${String(e.message).slice(0, 80)}): la zona gris queda sin clasificar`)
+    return []
+  }
+  const propuestas = []
+  for (const [i, g] of grises.entries()) {
+    const x = respuestas.find((y) => Number(y.n) === i + 1)
+    if (!x) continue
+    const decision = decisionDelModelo(x, g.decision.candidatas)
+    if (!decision.tareaTipoId) continue
+    propuestas.push({ ...g, decision })
+    if (APLICAR) await proponer({ query }, { ...g, decision })
+  }
+  return propuestas
+}
+
 async function main() {
-  const filas = await candidatas()
-  const sinCandidata = await sinNingunaCandidata()
-
-  const resueltas = []
-  const grises = []
-  for (const f of filas) {
-    const cs = (f.candidatas ?? []).map((c) => ({ ...c, similitud: Number(c.similitud) }))
-    const d = veredictoDe({ nombre: f.nombre, unidad: f.unidad }, cs)
-    if (d.veredicto === 'ZONA GRIS') grises.push({ ...f, decision: d })
-    else resueltas.push({ ...f, decision: d })
-  }
-
-  if (grises.length && !SIN_MODELO) {
-    console.log(`[modelo] ${grises.length} casos en zona gris — una sola llamada`)
-    let respuestas = []
-    try { respuestas = await preguntarAlModelo(grises) } catch (e) {
-      console.log(`[modelo] no se pudo consultar (${String(e.message).slice(0, 80)}): la zona gris queda sin clasificar`)
-    }
-    for (const [i, g] of grises.entries()) {
-      const r = respuestas.find((x) => Number(x.n) === i + 1)
-      resueltas.push({ ...g, decision: r ? decisionDelModelo(r, g.decision.candidatas) : { veredicto: 'SIN MATCH', porQue: 'el modelo no contestó por este caso' } })
-    }
-  } else {
-    for (const g of grises) resueltas.push({ ...g, decision: { veredicto: 'AMBIGUO', porQue: g.decision.porQue } })
-  }
-
-  const porVeredicto = {}
-  for (const r of resueltas) porVeredicto[r.decision.veredicto] = (porVeredicto[r.decision.veredicto] ?? 0) + 1
-
-  // SE ASIGNA lo que decidió una regla; se PROPONE lo que decidió el modelo. La diferencia no es de
-  // calidad del modelo: es que una regla se puede leer y auditar, y una inferencia hay que aceptarla.
-  const aAsignar = resueltas.filter((r) => r.decision.tareaTipoId && r.decision.origen !== 'modelo')
-  const aProponer = resueltas.filter((r) => r.decision.tareaTipoId && r.decision.origen === 'modelo')
-  if (APLICAR) {
-    for (const r of aProponer) {
-      await query(
-        `update public.obra_actividad
-            set propuesta_tarea_tipo_id = $2, propuesta_evidencia = $3, propuesta_en = now()
-          where id = $1 and tarea_tipo_id is null`,
-        [r.id, r.decision.tareaTipoId, JSON.stringify({ ...r.decision.evidencia, por_que: r.decision.porQue })])
-    }
-    for (const r of aAsignar) {
-      // SÓLO estas cuatro columnas. Ni el nombre, ni el avance, ni las HH, ni las fechas.
-      await query(
-        `update public.obra_actividad
-            set tarea_tipo_id = $2, tarea_tipo_origen = $3, tarea_tipo_confianza = $4,
-                tarea_tipo_evidencia = $5, tarea_tipo_asignado_en = now()
-          where id = $1 and tarea_tipo_id is null`,
-        [r.id, r.decision.tareaTipoId, r.decision.origen, r.decision.confianza,
-          JSON.stringify({ ...r.decision.evidencia, por_que: r.decision.porQue })])
-    }
-  }
+  const c = await clasificarPorRegla({ query }, { aplicar: APLICAR })
+  const grises = c.filas.filter((f) => f.decision.veredicto === 'ZONA GRIS')
+  const propuestas = grises.length && !SIN_MODELO ? await resolverZonaGris(grises) : []
 
   console.log(`\nCLASIFICACIÓN DE ACTIVIDADES${APLICAR ? '' : ' (ENSAYO — no escribe)'}\n`)
-  console.log(`  ${filas.length + sinCandidata} actividades sin clasificar`)
-  console.log(`  ${sinCandidata} sin ninguna candidata por encima de ${UMBRAL.MIRAR} de similitud`)
-  for (const [v, n] of Object.entries(porVeredicto).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(4)} ${v}`)
-  console.log(`\n  ${aAsignar.length} ${APLICAR ? 'ASIGNADAS' : 'se asignarían'} (por regla):`)
-  for (const r of aAsignar) {
+  console.log(`  ${c.miradas} actividades sin clasificar`)
+  for (const [v, n] of Object.entries(c.porVeredicto).sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(n).padStart(4)} ${v}`)
+  }
+
+  console.log(`\n  ${c.asignadas} ${APLICAR ? 'ASIGNADAS' : 'se asignarían'} (por regla):`)
+  for (const r of c.filas.filter((f) => f.decision.tareaTipoId)) {
     console.log(`     [${r.decision.confianza}] ${r.nombre}  →  ${r.decision.evidencia?.candidata ?? '?'}`)
     console.log(`               ${r.decision.porQue}`)
   }
-  console.log(`\n  ${aProponer.length} ${APLICAR ? 'PROPUESTAS' : 'se propondrían'} (las decidió el modelo; las acepta una persona):`)
-  for (const r of aProponer) {
+
+  console.log(`\n  ${propuestas.length} ${APLICAR ? 'PROPUESTAS' : 'se propondrían'} (las decidió el modelo; las acepta una persona):`)
+  for (const r of propuestas) {
     console.log(`     ${r.nombre}  →  ${r.decision.evidencia?.candidata ?? '?'}   · ${r.decision.porQue}`)
   }
+
+  // LO QUE NO SE PUDO CLASIFICAR NO SE ESCONDE. Cada AMBIGUO tiene su motivo escrito, y esos
+  // motivos son la materia prima de las propuestas de tarea maestra que abre el ciclo.
+  const ambiguas = c.filas.filter((f) => f.decision.veredicto === 'AMBIGUO')
+  console.log(`\n  ${ambiguas.length} AMBIGUAS — se dejan sin clasificar a propósito:`)
+  for (const r of ambiguas.slice(0, 20)) console.log(`     ${r.obraId} · ${r.nombre}: ${r.decision.porQue}`)
   console.log()
   return 0
 }
