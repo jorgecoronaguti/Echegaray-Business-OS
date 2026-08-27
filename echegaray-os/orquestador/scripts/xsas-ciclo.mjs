@@ -43,6 +43,7 @@ if (JSON_OUT) {
     if (o.faltantes.length) console.log(`      falta: ${o.faltantes.join(' · ')}`)
   }
   console.log(`  DURACIÓN — ${d.medidas} actividades terminadas con plan y real · ${d.validadas} VALIDADAS · ${d.tardaronMas} tardaron más`)
+  if (d.descartadasSinPlan) console.log(`     ▲ ${d.descartadasSinPlan} terminadas quedaron afuera: su plan era de cero días y contra cero no hay desvío.`)
   if (d.sinTipo) console.log(`     ▲ ${d.sinTipo} sin tipo de tarea: el hecho se guarda, pero no se puede reutilizar en otra obra todavía.`)
   console.log()
 }

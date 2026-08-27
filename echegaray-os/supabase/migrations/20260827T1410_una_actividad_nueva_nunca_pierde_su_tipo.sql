@@ -19,7 +19,20 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if new.tarea_tipo_id is not null and new.tarea_tipo_origen is null then
+  -- ═══ SE MIRA SI EL TIPO CAMBIÓ, NO SI EL ORIGEN ESTÁ VACÍO ═══
+  --
+  -- Con la condición sobre `tarea_tipo_origen is null`, re-vincular una actividad ya clasificada
+  -- dejaba las cuatro columnas describiendo el tipo ANTERIOR: la actividad pasaba a decir que es
+  -- EXCAVACIONES con la evidencia de que su nombre coincide exactamente con REPLANTEO, y confianza
+  -- EXACTO. Una evidencia que sobrevive al hecho que explicaba es peor que ninguna — y hay un camino
+  -- de la web que lo dispara (`vinculacionEstandar.ts` re-vincula contra el estándar).
+  if new.tarea_tipo_id is not null
+     and (tg_op = 'INSERT' or old.tarea_tipo_id is distinct from new.tarea_tipo_id
+          or new.tarea_tipo_origen is null) then
+    -- El vínculo es nuevo, así que su rastro también: lo que explicaba al anterior no vale para éste.
+    if tg_op = 'UPDATE' and old.tarea_tipo_id is distinct from new.tarea_tipo_id then
+      new.tarea_tipo_evidencia := null;
+    end if;
     new.tarea_tipo_origen := case
       when new.cotizacion_partida_id is not null then 'presupuesto'
       when new.analisis_id is not null           then 'plantilla'

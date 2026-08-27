@@ -339,6 +339,14 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
         and terminada and plan_dias > 0 and dias_real is not null`,
     [OBRAS_NO_REALES, obras])
 
+  // Cuántas quedaron afuera por no tener un plan contra el cual medir.
+  const { rows: [d] } = await query(
+    `select count(*)::int n from public.xsas_actividad
+      where obra_id <> all($1::text[]) and ($2::text[] is null or obra_id = any($2::text[]))
+        and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
+    [OBRAS_NO_REALES, obras])
+  const descartadas = d?.n ?? 0
+
   // Lo ya conocido de esas tareas, para decidir si un caso confirma a otro.
   const tipos = [...new Set(rows.map((r) => r.tarea_tipo_id).filter(Boolean))]
   const previos = tipos.length
@@ -368,6 +376,14 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
       sin_tipo_de_tarea: !r.tarea_tipo_id,
     }
     salida.push({ clave, actividad: r.actividad, obra: r.obra_id, diasPlan: Number(r.plan_dias), diasReal: Number(r.dias_real), desvio, estado, confianza })
+
+    // LO RECIÉN MEDIDO ENTRA EN LA COMPARACIÓN DE LAS SIGUIENTES. Sin esto —el defecto que la
+    // función de rendimiento ya tenía resuelto y ésta no copió— el estado dependía de cuántas veces
+    // se hubiera corrido el ciclo y no de la evidencia: tres actividades del mismo tipo en tres
+    // obras distintas salían CANDIDATO en la primera corrida y VALIDADO en la segunda, con los
+    // mismos hechos. Y vaciar la tabla borraba todos los VALIDADO sin que cambiara un solo dato.
+    previos.push({ actividad_id: r.actividad_id, obra_id: r.obra_id, tarea_tipo_id: r.tarea_tipo_id,
+      dias_plan: r.plan_dias, dias_real: r.dias_real, confianza, estado })
     if (dry) continue
 
     await query(
@@ -393,6 +409,10 @@ export async function aprenderDuracion({ query }, { dry = false, obras = null } 
     validadas: salida.filter((s) => s.estado === 'VALIDADO').length,
     sinTipo: rows.filter((r) => !r.tarea_tipo_id).length,
     tardaronMas: salida.filter((s) => (s.desvio ?? 0) > 0).length,
+    // EL HUECO SE CUENTA. Las terminadas con plan de cero días se descartan a propósito —un plan de
+    // cero no es un plan— pero descartarlas en silencio hace que el total publicado parezca la
+    // totalidad de lo que había.
+    descartadasSinPlan: descartadas,
     filas: salida,
   }
 }

@@ -146,17 +146,25 @@ left join lateral (
   select count(*)::int casos, count(distinct obra_id)::int obras,
          percentile_cont(0.5) within group (order by dias_plan)  as dias_plan_mediana,
          percentile_cont(0.5) within group (order by dias_real)  as dias_real_mediana,
-         percentile_cont(0.5) within group (order by desvio_pct) as desvio_pct_mediana,
-         min(case confianza when 'baja' then 0 when 'media' then 1 else 2 end) conf
+         -- EL DESVÍO SÓLO SE PUBLICA CONTRA UN PLAN QUE SIGNIFIQUE ALGO. Un plan de 1 día que tardó
+         -- 41 produce +4000%, y con un solo caso por tarea la mediana ES ese número: el que cotiza
+         -- leería que la tarea tarda cuarenta veces más de lo previsto. Los casos siguen guardados
+         -- —el hecho es cierto— pero no salen al cotizador como si fueran una referencia.
+         percentile_cont(0.5) within group (order by desvio_pct)
+           filter (where dias_plan >= 3)                    as desvio_pct_mediana,
+         count(*) filter (where dias_plan < 3)::int          as casos_plan_corto,
+         -- Una confianza sin declarar es lo MENOS confiable que hay, no lo más: el `else` que la
+         -- mandaba al 2 la publicaba como 'alta'.
+         min(case confianza when 'alta' then 2 when 'media' then 1 else 0 end) conf
     from public.duracion_historica x where x.tarea_tipo_id = t.id and x.estado <> 'DESCARTADO'
 ) dd on true
 left join lateral (select dd.casos, dd.obras, dd.dias_plan_mediana, dd.dias_real_mediana,
-                         dd.desvio_pct_mediana,
+                         dd.desvio_pct_mediana, dd.casos_plan_corto,
                          (array['baja','media','alta'])[dd.conf + 1] as confianza_minima) d on true
 left join lateral (
   select count(*)::int casos, count(distinct obra_id)::int obras,
          percentile_cont(0.5) within group (order by hs_unitarias) as hs_unitarias_mediana,
-         min(case confianza when 'baja' then 0 when 'media' then 1 else 2 end) conf
+         min(case confianza when 'alta' then 2 when 'media' then 1 else 0 end) conf
     from public.rendimiento_historico x
    where x.tarea_tipo_id = t.id and x.estado <> 'DESCARTADO' and x.hs_unitarias is not null
 ) rr on true
