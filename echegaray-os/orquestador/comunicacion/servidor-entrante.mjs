@@ -14,12 +14,19 @@ import http from 'node:http'
 import { crearConector } from './conector.mjs'
 import { crearManejadorWebhook } from './endpoint-entrante.mjs'
 import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
+import { crearManejadorXsas } from './xsas-http.mjs'
+import { atender } from '../lib/xsas-gateway.mjs'
+import { query } from '../lib/db.mjs'
 import { MattermostCliente, crearLog } from '../../../communication-service/src/index.mjs'
 
 const HOST = process.env.COMM_HTTP_HOST ?? '127.0.0.1' // nunca 0.0.0.0 por defecto
 const PORT = Number(process.env.COMM_HTTP_PORT ?? 8791)
 const RUTA = process.env.COMM_HTTP_PATH ?? '/integrations/mattermost/events'
 const MAX_BYTES = Number(process.env.COMM_HTTP_MAX_BYTES ?? 64 * 1024)
+// LA PUERTA DE XSAS COMPARTE ESTE PROCESO, NO ABRE OTRO. Es el mismo borde 127.0.0.1 detrás de
+// Caddy, con su propio secreto y su propia ruta: un segundo servidor sería un segundo lugar donde
+// olvidarse de cerrar algo.
+const RUTA_XSAS = process.env.XSAS_HTTP_PATH ?? '/xsas'
 const BODY_TIMEOUT_MS = Number(process.env.COMM_HTTP_BODY_TIMEOUT_MS ?? 5000)
 const log = crearLog()
 
@@ -60,8 +67,25 @@ async function main() {
     allowlist: (process.env.MM_INCOMING_ALLOWLIST || '').split(',').map((s) => s.trim()).filter(Boolean),
   })
   const manejar = crearManejadorWebhook(con, { maxBytes: MAX_BYTES, autenticador })
+  const manejarXsas = crearManejadorXsas({
+    atender,
+    secreto: process.env.XSAS_GATEWAY_SECRET || null,
+    gateway: { query },
+    ruta: RUTA_XSAS,
+  })
 
   const server = http.createServer(async (req, res) => {
+    const camino = String(req.url ?? '').split('?')[0]
+    if (camino === RUTA_XSAS) {
+      let cuerpo = ''
+      try {
+        cuerpo = await leerBody(req, 256 * 1024, BODY_TIMEOUT_MS)
+      } catch (e) {
+        return responder(res, e.message === 'too_large' ? 413 : 408, { error: e.message })
+      }
+      const rx = await manejarXsas({ method: req.method, url: req.url, headers: req.headers, rawBody: cuerpo })
+      return responder(res, rx.status, rx.body)
+    }
     if (req.url !== RUTA) return responder(res, 404, { error: 'not_found' })
     let rawBody = ''
     try {
@@ -77,7 +101,7 @@ async function main() {
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))
 
-  server.listen(PORT, HOST, () => log.info('endpoint entrante escuchando', { host: HOST, port: PORT, ruta: RUTA }))
+  server.listen(PORT, HOST, () => log.info('endpoint entrante escuchando', { host: HOST, port: PORT, ruta: RUTA, xsas: RUTA_XSAS }))
 }
 
 function responder(res, status, obj) {
