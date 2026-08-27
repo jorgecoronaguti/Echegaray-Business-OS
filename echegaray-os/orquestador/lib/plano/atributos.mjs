@@ -24,7 +24,11 @@
  *  cero, es una pregunta abierta. */
 const leido = (valor, literal) => (valor === null || valor === undefined ? null : Object.freeze({ valor, literal: String(literal) }))
 
-const limpio = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+// El ordinal masculino «º» (U+00BA) y el grado «°» (U+00B0) se ven igual y se escriben distinto: el
+// CIRCOT usa el primero («HºAº p/bases») y los planos el segundo («H°A°»). Sin unificarlos, la misma
+// abreviatura de hormigón armado se reconoce en un documento y no en el otro — medido: «HºAº
+// p/bases» salía SIN material y por eso no matcheaba contra «base de hormigón armado».
+const limpio = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u00ba/g, '\u00b0')
 
 /** Un número argentino («0,30», «12.5», «0.10») a Number. PURA. */
 export function numeroAr(t) {
@@ -72,10 +76,12 @@ export function seccionDe(texto) {
 /** Familias de material. El orden importa: la primera que aparece manda, y las más específicas van
  *  antes que las genéricas para que «hormigón ciclópeo» no salga como «hormigón armado». */
 const MATERIALES = Object.freeze([
-  ['hormigon_ciclopeo', /\bh(?:ormigon)?\s?°?\s?c(?:iclopeo)?°?\b|ciclopeo/],
-  ['hormigon_pobre', /\bh(?:ormigon)?\s?°?\s?de\s+limpieza|hormigon\s+pobre/],
-  ['hormigon_armado', /\bh\s?°?\s?a\s?°?\b|hormigon\s+armado|\bh(?:17|21|25|30)\b/],
-  ['hormigon_simple', /hormigon\s+simple|\bh\s?°?\s?s\s?°?\b/],
+  // El límite final NO puede ser `\b`: después de «°» no hay transición de palabra y la abreviatura
+  // queda sin reconocer. Va un lookahead negativo de letra, que es lo que se quiere decir.
+  ['hormigon_ciclopeo', /(?<![a-z])h\s?°?\s?c\s?°?(?![a-z])|ciclopeo/],
+  ['hormigon_pobre', /(?:hormigon|h\s?°?)\s*de\s+limpieza|hormigon\s+pobre/],
+  ['hormigon_armado', /(?<![a-z])h\s?°?\s?a\s?°?(?![a-z])|hormigon\s+armado|\bh(?:17|21|25|30)\b/],
+  ['hormigon_simple', /hormigon\s+simple|(?<![a-z])h\s?°?\s?s\s?°?(?![a-z])/],
   ['acero', /\bacero\b|\bhierro\b|adn\s?420|\bmalla\b/],
   ['metalico', /metalic[ao]|\bchapa\b|perfil|cercha|correa|reticulad[ao]|\bcano\b|tubo\s+estructural/],
   ['ladrillo_ceramico', /ladrillo\s+ceramico|ceramico\s+portante|\bceramico\s+\d/],
