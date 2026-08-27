@@ -97,3 +97,16 @@ test('el alias se CONFIGURA, no se adivina: nadie le elige el modelo al dueño',
 test('una respuesta que sólo trae tool_calls no rompe el lector de texto', () => {
   assert.equal(textoDe({ choices: [{ message: { content: null, tool_calls: [] } }] }), '')
 })
+
+test('EL DEFECTO: el proveedor APAGADO pisaba el error del que sí intentó', async () => {
+  // Sin credenciales del alternativo, un 402 del primario salía como «sin credencial» con
+  // clasificación `auth`. El OS habría marcado credencial vencida —que arregla una persona— en vez
+  // de saldo agotado, y habría mandado a mirar el lugar equivocado.
+  delete process.env.ORQ_IA_ALT_BASE_URL
+  delete process.env.ORQ_IA_ALT_API_KEY
+  const sinSaldo = async () => ({ ok: false, status: 402, text: async () => 'credit balance is too low' })
+  await assert.rejects(
+    pedirTexto({ mensajes: [{ role: 'user', content: 'x' }], apiKey: 'k', fetchImpl: sinSaldo, reintentos: 0 }),
+    (e) => e.clasificacion?.kind === 'credit',
+  )
+})

@@ -157,7 +157,14 @@ export async function pedirTexto({
 
   for (const proveedor of PROVEEDORES) {
     if (!proveedor.configurado(apiKey)) {
-      ultimo = Object.assign(new Error(`${proveedor.nombre}: sin credencial`), { clasificacion: { kind: 'auth', hard: true, reintentable: false } })
+      // ═══ UN PROVEEDOR APAGADO NO PISA EL ERROR DEL QUE SÍ INTENTÓ (27/08/2026) ═══
+      //
+      // Al sumar el segundo proveedor, un 402 del primario terminaba saliendo como
+      // «openai-compatible: sin credencial» con clasificación `auth`: el OS habría marcado
+      // credencial vencida —que arregla una persona— en vez de saldo agotado, y la degradación
+      // habría apuntado al lugar equivocado. «No está configurado» sólo describe la falla cuando
+      // NINGUNO llegó a intentar.
+      ultimo ??= Object.assign(new Error(`${proveedor.nombre}: sin credencial`), { clasificacion: { kind: 'auth', hard: true, reintentable: false } })
       continue
     }
     const modeloId = proveedor.idDeModelo(alias, cfg)
