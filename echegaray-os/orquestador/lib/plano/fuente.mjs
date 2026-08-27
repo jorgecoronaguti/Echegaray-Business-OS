@@ -1,0 +1,125 @@
+// DE DÓNDE SALIÓ CADA NÚMERO — la taxonomía única del circuito PLANO → COTIZACIÓN.
+//
+// ═══ POR QUÉ NO ALCANZABA CON `CLASE` DE `computo-constructivo.mjs` ═══
+//
+// Aquel módulo clasifica cómo se OBTUVO un número (extraído, calculado, inferido, supuesto) y en
+// qué se apoya (fórmula, experiencia, inferencia). Es la clasificación correcta para un cómputo
+// aislado, donde la entrada ya está sobre la mesa. Acá la entrada NO está sobre la mesa: hay que
+// ir a buscarla a un plano, a un pliego, a la Base Maestra o a internet, y esas cuatro cosas no se
+// pueden defender igual delante de un cliente. `CALCULADO` no dice si el ancho de la viga lo leyó
+// un modelo de una lámina o lo puso alguien de memoria.
+//
+// Por eso `FUENTE` responde una pregunta distinta —¿en qué documento del mundo está escrito esto?—
+// y viaja PEGADA a `CLASE`, no en su lugar. Un mismo número lleva las dos: el volumen de una viga
+// es `CALCULADO` (clase) sobre dimensiones `EXTRAIDO_PLANO` (fuente).
+//
+// ═══ LA REGLA QUE HACE QUE ESTO SIRVA ═══
+//
+// Un dato sin `evidencia` no puede llevar `EXTRAIDO_PLANO`. Si no se puede citar archivo + lámina +
+// el texto literal que lo dice, no se leyó de un plano: se dedujo, y entonces es `INFERIDO`. La
+// diferencia parece de matiz y es la que separa una cotización defendible de una inventada.
+
+/** Las diez fuentes posibles de un dato técnico. No se agregan a gusto: cada una implica una forma
+ *  distinta de verificarla, y esa forma está escrita en `COMO_SE_VERIFICA`. */
+export const FUENTE = Object.freeze({
+  EXTRAIDO_PLANO: 'EXTRAIDO_PLANO',
+  CALCULADO: 'CALCULADO',
+  BASE_MAESTRA: 'BASE_MAESTRA',
+  EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',
+  DOCUMENTO_TECNICO: 'DOCUMENTO_TECNICO',
+  NORMA: 'NORMA',
+  WEB: 'WEB',
+  INFERIDO: 'INFERIDO',
+  SUPUESTO: 'SUPUESTO',
+  FALTA_DATO: 'FALTA_DATO',
+})
+
+/** Cómo se verifica cada fuente. Es lo que contesta «¿de dónde salió este número?» sin que el que
+ *  pregunta tenga que saber cómo funciona el OS. */
+export const COMO_SE_VERIFICA = Object.freeze({
+  EXTRAIDO_PLANO: 'abrir el archivo en la lámina y vista citadas y leer el texto literal',
+  CALCULADO: 'rehacer la fórmula con las entradas declaradas',
+  BASE_MAESTRA: 'public.tarea_tipo + public.analisis vigente',
+  EXPERIENCIA_ECSAS: 'public.rendimiento_historico / public.conocimiento_empresa, con su cantidad de casos',
+  DOCUMENTO_TECNICO: 'abrir el documento citado en la página indicada',
+  NORMA: 'la norma citada, con su número y año',
+  WEB: 'la URL citada, con su fecha de consulta',
+  INFERIDO: 'seguir el razonamiento declarado desde los datos que sí tienen fuente',
+  SUPUESTO: 'no se verifica: lo tiene que definir una persona',
+  FALTA_DATO: 'no hay número — el hueco está declarado',
+})
+
+/** Las fuentes que NO pueden sostener un número en la cotización cerrada. Un dato con una de éstas
+ *  se muestra, pero cuenta como faltante de cobertura. */
+export const NO_CONFIRMADAS = Object.freeze([FUENTE.SUPUESTO, FUENTE.FALTA_DATO, FUENTE.INFERIDO])
+
+/** ¿Este dato entra en la parte confirmada del presupuesto? PURA. */
+export const esConfirmada = (fuente) => Boolean(fuente) && !NO_CONFIRMADAS.includes(fuente)
+
+/**
+ * LA EVIDENCIA DE UN DATO LEÍDO DE UN DOCUMENTO. Sin `textoLiteral` no hay evidencia: citar el
+ * archivo y la lámina sin decir QUÉ dice ahí es una referencia, no una prueba, y una referencia no
+ * se puede contrastar. Devuelve `null` cuando no alcanza para citar — y el que llama tiene que
+ * degradar la fuente, no rellenar el hueco.
+ */
+export function evidencia({ archivo, archivoId = null, lamina = null, vista = null, textoLiteral, ubicacion = null } = {}) {
+  if (!archivo || !textoLiteral) return null
+  return Object.freeze({
+    archivo: String(archivo),
+    archivoId: archivoId ? String(archivoId) : null,
+    lamina: lamina ? String(lamina) : null,
+    vista: vista ? String(vista) : null,
+    textoLiteral: String(textoLiteral).slice(0, 300),
+    ubicacion: ubicacion ? String(ubicacion) : null,
+  })
+}
+
+/**
+ * UN DATO CON SU PROCEDENCIA. Es el sobre en el que viaja todo lo que este circuito produce.
+ *
+ * La regla dura está acá y en un solo lugar: pedir `EXTRAIDO_PLANO` o `DOCUMENTO_TECNICO` sin
+ * evidencia NO devuelve el dato con la fuente pedida — lo devuelve degradado a `INFERIDO` y con el
+ * motivo escrito. Así una lectura floja del modelo no puede disfrazarse de lectura del plano
+ * simplemente declarándose tal: la degradación la aplica el código, no la buena voluntad.
+ */
+export function dato({ valor, unidad = null, fuente, evidencia: ev = null, formula = null, entradas = null, nota = null } = {}) {
+  const pideEvidencia = fuente === FUENTE.EXTRAIDO_PLANO || fuente === FUENTE.DOCUMENTO_TECNICO
+  const degradado = pideEvidencia && !ev
+  return Object.freeze({
+    valor: valor ?? null,
+    unidad,
+    fuente: degradado ? FUENTE.INFERIDO : fuente,
+    evidencia: ev,
+    formula,
+    entradas,
+    nota: degradado ? `se declaró ${fuente} pero no vino con evidencia citable — degradado a INFERIDO` : nota,
+  })
+}
+
+/** El hueco declarado. No es cero y no es un supuesto: es una pregunta abierta con dueño. */
+export function faltaDato({ que, porque, quienLoTiene = 'proyecto / dirección técnica', unidad = null } = {}) {
+  return Object.freeze({
+    valor: null, unidad, fuente: FUENTE.FALTA_DATO, evidencia: null, formula: null, entradas: null,
+    que: String(que ?? 'dato sin nombre'), porque: String(porque ?? 'no se encontró en la documentación disponible'),
+    quienLoTiene: String(quienLoTiene),
+  })
+}
+
+/** ¿Es un hueco declarado? PURA. */
+export const esFalta = (d) => d?.fuente === FUENTE.FALTA_DATO
+
+/**
+ * LA GENEALOGÍA DE UN NÚMERO, en castellano y en una sola línea por eslabón.
+ *
+ * Existe para contestar «¿de dónde salió esto?» sin que nadie tenga que leer JSON. Recorre la
+ * cadena PLANO → ELEMENTO → CÓMPUTO → PARTIDA → RECURSO → PRECIO tal como quedó armada, sin
+ * reconstruir nada: si un eslabón no está, se dice que no está.
+ */
+export function genealogia(cadena = []) {
+  return cadena.filter(Boolean).map((paso, i) => {
+    const ev = paso.evidencia
+    const cita = ev ? `${ev.archivo}${ev.lamina ? ` · lámina ${ev.lamina}` : ''}${ev.vista ? ` · ${ev.vista}` : ''} → «${ev.textoLiteral}»` : null
+    const como = paso.formula ? `${paso.formula}${paso.entradas ? ` con ${JSON.stringify(paso.entradas)}` : ''}` : null
+    return `${i + 1}. ${paso.etapa ?? 'paso'}: ${paso.que ?? ''}${paso.valor != null ? ` = ${paso.valor}${paso.unidad ? ` ${paso.unidad}` : ''}` : ''} [${paso.fuente}] ${cita ?? como ?? COMO_SE_VERIFICA[paso.fuente] ?? ''}`.trim()
+  })
+}
