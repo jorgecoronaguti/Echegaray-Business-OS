@@ -1,0 +1,250 @@
+// LA PUERTA DE XSAS. Cada test acá prueba un DEFECTO concreto, no que el código exista:
+// revertir el arreglo tiene que poner uno rojo.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import { atender } from './xsas-gateway.mjs'
+import { normalizarPedido, PedidoInvalido } from './xsas-pedido.mjs'
+import { filaDeTraza } from './xsas-traza.mjs'
+import { toolsDelNucleo, ATAJOS, argumentosPara } from './xsas-resolutores.mjs'
+import { NIVEL } from './elegir-capacidad.mjs'
+
+// ── DOBLES ────────────────────────────────────────────────────────────────────────────────────
+function registroDoble(corridas) {
+  const mapa = new Map([
+    ['os.estado_empresa', {
+      capability: 'drive.read',
+      schema: { name: 'estado_empresa', input_schema: { type: 'object', properties: {} } },
+      async run(a) { corridas.push(['os.estado_empresa', a]); return { resumen_texto: 'venimos así', semaforo: 'ambar' } },
+    }],
+    ['os.salud_obra', {
+      capability: 'drive.read',
+      schema: { name: 'salud_obra', input_schema: { type: 'object', properties: { obra: { type: 'string' } }, required: ['obra'] } },
+      async run(a) { corridas.push(['os.salud_obra', a]); return { resumen_texto: `salud de ${a.obra}` } },
+    }],
+  ])
+  return { mapa, porArchivo: new Map([['orquestador/lib/tools/os-data.mjs', ['os.estado_empresa', 'os.salud_obra']]]), fallaron: [] }
+}
+
+const iaEspia = (respuesta) => {
+  const llamadas = []
+  return {
+    llamadas,
+    pedirTexto: async (o) => {
+      llamadas.push(o)
+      if (respuesta instanceof Error) throw respuesta
+      return { texto: 'respondió el modelo', modelo: 'modelo-x', proveedor: 'proveedor-x', tokens: { in: 10, out: 5 }, usd: 0.001, ms: 12, intentos: 1, fallbackDe: null, ...respuesta }
+    },
+  }
+}
+
+const ACTOR = { id: 'u-jorge', rol: 'direccion', permisos: ['drive.read'] }
+
+// ── EL PEDIDO ─────────────────────────────────────────────────────────────────────────────────
+
+test('un mensaje vacío no es un pedido, y el gateway NO lanza: devuelve el error como dato', async () => {
+  const r = await atender({ actor: ACTOR, canal: 'app', mensaje: '   ' })
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'pedido_invalido')
+  assert.match(r.error.mensaje, /mensaje vacío/)
+})
+
+test('sin actor el pedido se rechaza — un pedido anónimo no puede correr una tool', () => {
+  assert.throws(() => normalizarPedido({ canal: 'app', mensaje: 'hola' }), PedidoInvalido)
+})
+
+test('EL DEFECTO: el navegador manda obra_id de otro. Sin firma del servidor se descarta y se DICE', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', intencion: 'os.estado_empresa', entidad: { obra_id: 'obra-ajena' } },
+    { registro: registroDoble(corridas), catalogo: [], ia },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.estado, 'degradado')
+  assert.match(r.degradacion, /contexto no verificado, ignorado: obra_id/)
+})
+
+test('con la firma del servidor, el contexto viaja y llega a la tool', async () => {
+  const corridas = []
+  const r = await atender(
+    {
+      actor: ACTOR, canal: 'app', intencion: 'os.salud_obra',
+      contexto: { obra: 'San Francisco' }, entidad: { obra_id: 'o-1' }, verificado_por: 'app-server',
+    },
+    { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.estado, 'ok')
+  assert.deepEqual(corridas[0], ['os.salud_obra', { obra: 'San Francisco' }])
+})
+
+// ── N0 · DETERMINÍSTICO, SIN UN TOKEN ─────────────────────────────────────────────────────────
+
+test('(A) app.ecsas → XSAS → tool → respuesta SIN LLM', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', origen: '/dashboard', intencion: 'os.estado_empresa' },
+    { registro: registroDoble(corridas), catalogo: [], ia },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.llm, null, 'una intención por su nombre NO puede pagar un modelo')
+  assert.equal(ia.llamadas.length, 0)
+  assert.equal(r.capacidades.nivel, NIVEL.DETERMINISTICO)
+  assert.deepEqual(r.capacidades.tools, ['os.estado_empresa'])
+  assert.equal(r.respuesta, 'venimos así')
+  assert.deepEqual(r.datos, { resumen_texto: 'venimos así', semaforo: 'ambar' })
+})
+
+test('la frase exacta que ya sabemos qué significa tampoco paga un modelo', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const r = await atender(
+    { actor: ACTOR, canal: 'mattermost', mensaje: '¿Cómo venimos?' },
+    { registro: registroDoble(corridas), catalogo: [], ia },
+  )
+  assert.equal(ia.llamadas.length, 0)
+  assert.equal(r.capacidades.via, 'atajo_exacto')
+  assert.equal(r.capacidades.nivel, NIVEL.DETERMINISTICO)
+})
+
+test('FALLA CERRADO: sin la capability en permisos la tool no corre', async () => {
+  const corridas = []
+  const r = await atender(
+    { actor: { id: 'u-campo', rol: 'campo', permisos: [] }, canal: 'app', intencion: 'os.estado_empresa' },
+    { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'sin_permiso')
+  assert.equal(corridas.length, 0, 'la tool no se ejecutó')
+})
+
+test('una capacidad que no existe se dice, no se adivina con un modelo', async () => {
+  const ia = iaEspia()
+  const r = await atender(
+    { actor: ACTOR, canal: 'timer', intencion: 'os.no_existe' },
+    { registro: registroDoble([]), catalogo: [], ia },
+  )
+  assert.equal(r.error.tipo, 'capacidad_desconocida')
+  assert.equal(ia.llamadas.length, 0)
+})
+
+// ── N1 · LA SKILL CON MOTOR ───────────────────────────────────────────────────────────────────
+
+test('(H) una skill existente invocada desde el Gateway ejecuta SU tool, sin modelo', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const catalogo = [{ clave: 'contabilidad-constructoras', modulos: ['orquestador/lib/tools/os-data.mjs'], tools: [] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['contabilidad-constructoras'], capacidades: ['advise.finance'], confianza: 'alta', motivo: 'doble' })
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', mensaje: 'algo de plata', contexto: { obra: 'ARCOR' }, verificado_por: 'app-server' },
+    { registro: registroDoble(corridas), catalogo, elegir, ia },
+  )
+  assert.equal(ia.llamadas.length, 0)
+  assert.equal(r.capacidades.nivel, NIVEL.CAPACIDAD)
+  assert.equal(r.capacidades.via, 'skill_con_motor')
+  assert.deepEqual(r.capacidades.skills, ['contabilidad-constructoras'])
+})
+
+// ── N2 / N3 · EL MODELO, Y QUÉ PASA CUANDO NO ESTÁ ────────────────────────────────────────────
+
+test('lo ambiguo escala al modelo y se registra QUIÉN respondió, no quién se pidió', async () => {
+  const ia = iaEspia()
+  const elegir = () => ({ resolucion: 'ambiguo', skills: [], capacidades: [], candidatas: ['a', 'b'], confianza: null, motivo: 'dos débiles' })
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', mensaje: 'no se entiende qué quiere' },
+    { registro: registroDoble([]), catalogo: [], elegir, ia },
+  )
+  assert.equal(ia.llamadas.length, 1)
+  assert.equal(ia.llamadas[0].capacidad, 'complex', 'lo ambiguo va al modelo potente, no al barato')
+  assert.equal(r.llm.proveedor, 'proveedor-x')
+  assert.equal(r.llm.modelo, 'modelo-x')
+  assert.equal(r.capacidades.nivel, NIVEL.RAZONAMIENTO)
+})
+
+test('(E) el primario falla y contesta el fallback: la respuesta dice de quién venía', async () => {
+  const ia = iaEspia({ proveedor: 'openai-compatible', modelo: 'alt-1', fallbackDe: 'anthropic' })
+  const elegir = () => ({ resolucion: 'ambiguo', skills: [], capacidades: [], candidatas: ['a', 'b'], confianza: null, motivo: 'dos débiles' })
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', mensaje: 'algo ambiguo' },
+    { registro: registroDoble([]), catalogo: [], elegir, ia },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.llm.proveedor, 'openai-compatible')
+  assert.equal(r.llm.fallbackDe, 'anthropic')
+  assert.equal(filaDeTraza(normalizarPedido({ actor: ACTOR, canal: 'app', mensaje: 'x' }), r).fallback_de, 'anthropic')
+})
+
+test('(F) TODOS los proveedores caídos: no rompe, degrada y dice qué sigue andando', async () => {
+  const err = Object.assign(new Error('402 sin saldo'), { clasificacion: { kind: 'credit', hard: true } })
+  const ia = iaEspia(err)
+  const elegir = () => ({ resolucion: 'ambiguo', skills: [], capacidades: [], candidatas: ['a', 'b'], confianza: null, motivo: 'dos débiles' })
+  const r = await atender(
+    { actor: ACTOR, canal: 'mattermost', mensaje: 'algo ambiguo' },
+    { registro: registroDoble([]), catalogo: [], elegir, ia },
+  )
+  assert.equal(r.ok, true, 'el OS no se cae porque se cayó el proveedor')
+  assert.equal(r.estado, 'degradado')
+  assert.match(r.degradacion, /sin razonador \(credit\)/)
+  assert.match(r.respuesta, /los cálculos, el SQL y las reglas de negocio/)
+})
+
+test('(F) con TODOS los LLM caídos, lo determinístico sigue contestando igual', async () => {
+  const corridas = []
+  const err = Object.assign(new Error('502'), { clasificacion: { kind: 'server' } })
+  const r = await atender(
+    { actor: ACTOR, canal: 'worker', intencion: 'os.estado_empresa' },
+    { registro: registroDoble(corridas), catalogo: [], ia: iaEspia(err) },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(r.estado, 'ok')
+  assert.equal(r.respuesta, 'venimos así')
+})
+
+// ── (B)(P) LAS DOS CARAS, EL MISMO CORE ───────────────────────────────────────────────────────
+
+test('(B)(P) app.ecsas y Mattermost comparten Core: mismo pedido, misma capacidad, misma respuesta', async () => {
+  const corridas = []
+  const comun = { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() }
+  const app = await atender({ actor: ACTOR, canal: 'app', origen: '/obras/1', mensaje: '¿cómo venimos?' }, comun)
+  const mm = await atender({ actor: ACTOR, canal: 'mattermost', origen: 'direccion', mensaje: '¿cómo venimos?' }, comun)
+  assert.deepEqual(app.capacidades.tools, mm.capacidades.tools)
+  assert.equal(app.capacidades.nivel, mm.capacidades.nivel)
+  assert.equal(app.respuesta, mm.respuesta)
+  assert.notEqual(app.correlationId, mm.correlationId, 'cada pedido tiene su propio hilo de seguimiento')
+  assert.equal(app.canal, 'app')
+  assert.equal(mm.canal, 'mattermost')
+})
+
+// ── TRAZABILIDAD ──────────────────────────────────────────────────────────────────────────────
+
+test('la traza distingue el pedido que pagó modelo del que no — es toda la medida', async () => {
+  const corridas = []
+  const p = normalizarPedido({ actor: ACTOR, canal: 'app', intencion: 'os.estado_empresa' })
+  const sinModelo = await atender({ ...p, actor: ACTOR, canal: 'app', intencion: 'os.estado_empresa' }, { registro: registroDoble(corridas), catalogo: [], ia: iaEspia() })
+  const fila = filaDeTraza(p, sinModelo)
+  assert.equal(fila.llm, false)
+  assert.equal(fila.modelo, null)
+  assert.equal(fila.nivel, NIVEL.DETERMINISTICO)
+  assert.deepEqual(fila.tools, ['os.estado_empresa'])
+  assert.equal(fila.canal, 'app')
+  assert.equal(fila.actor_rol, 'direccion')
+})
+
+// ── EL REGISTRO REAL ──────────────────────────────────────────────────────────────────────────
+
+test('los atajos apuntan a tools que EXISTEN en el registro real (un atajo huérfano no rutea nada)', async () => {
+  const { mapa, fallaron } = await toolsDelNucleo({ refrescar: true })
+  assert.deepEqual(fallaron, [], 'ninguna fábrica de tools del núcleo puede fallar al importarse')
+  for (const [frase, clave] of Object.entries(ATAJOS)) {
+    assert.ok(mapa.has(clave), `el atajo "${frase}" apunta a ${clave}, que no está en el registro`)
+  }
+})
+
+test('el contexto no puede inyectar un parámetro que la tool no declaró', () => {
+  const tool = { schema: { input_schema: { type: 'object', properties: { obra: { type: 'string' } }, required: ['obra'] } } }
+  const { args, falta } = argumentosPara(tool, { contexto: { obra: 'ARCOR', borrar_todo: true }, entidad: {} })
+  assert.deepEqual(args, { obra: 'ARCOR' })
+  assert.deepEqual(falta, [])
+})

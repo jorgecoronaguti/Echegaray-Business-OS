@@ -54,13 +54,17 @@ export const SKILL_KEYWORDS = {
   'web-ux-deploy-operacion-producto': ['deploy', 'desplegar', 'staging', 'produccion', 'producción', 'navegacion', 'navegación', 'permiso visible'],
   'reportes-automaticos-y-comunicaciones': ['reporte automatico', 'reporte automático', 'reporte periodico', 'reporte periódico', 'mandame todos los', 'enviar el reporte'],
   'discovery-drive-echegaray': ['discovery', 'que hay en el drive', 'qué hay en el drive', 'mapear el drive'],
+  // Llegó a `main` DESPUÉS de que se fijara el alcance de la puerta y quedó huérfana: ninguna
+  // `advise.*` la nombra. Las frases son literales de su propia `description` («armame una
+  // presentación», «preparame las slides para la reunión con X»), no de mi criterio.
+  'crear-presentacion-google-slides': ['presentacion', 'presentación', 'slides', 'diapositiva', 'diapositivas', 'armame una presentacion', 'armame una presentación', 'preparame las slides', 'google slides'],
 }
 
 // Señales inequívocas: una sola alcanza para decidir. "appsheet" o "lecap" no pueden ser de otro
 // dominio; "pantalla" o "ticket" sí (por eso NO están acá y necesitan una segunda coincidencia).
 const FUERTES_SKILL = new Set([
   'appsheet', 'lecap', 'caucion', 'caución', 'plazo fijo', 'money market', 'descubierto', 'extracto',
-  'home banking', 'balanz', 'discovery', 'mockup', 'fajo',
+  'home banking', 'balanz', 'discovery', 'mockup', 'fajo', 'slides', 'google slides', 'diapositiva',
   // Frases enteras que sólo pueden significar una cosa. Van acá porque medido sobre pedidos reales
   // ("qué pago primero esta semana", "cargar el comprobante de la factura de X") la skill dueña
   // quedaba afuera: el dominio ganaba la clasificación y la señal específica pesaba 1 punto.
