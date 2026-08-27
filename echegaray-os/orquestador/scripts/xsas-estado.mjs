@@ -111,6 +111,28 @@ if (process.argv.includes('--json')) {
     }
   }
 
+  // ═══ LA PUERTA: CUÁNTO DE LO QUE HACE EL OS NECESITA UN MODELO ═══
+  //
+  // Va justo debajo del costo porque es la otra mitad de la misma pregunta. `COSTO` cuenta llamadas
+  // al proveedor; acá se cuentan PEDIDOS, que es lo único que permite decir la proporción. Un cero
+  // no se esconde: significa que las caras todavía no entran por la puerta, y eso hay que verlo.
+  if (e.puerta) {
+    const p = e.puerta
+    if (p.noSePudoLeer) {
+      console.log(`\n  PUERTA      ▲ no se pudo leer orq.xsas_requests: ${p.noSePudoLeer}`)
+    } else {
+      const pct = p.pedidos ? Math.round((p.sinLlm / p.pedidos) * 100) : null
+      console.log(`\n  PUERTA      ${p.pedidos} pedidos en ${p.ventana} · ${p.sinLlm} sin modelo${pct == null ? '' : ` (${pct}%)`} · ${p.conLlm} con modelo`)
+      if (!p.pedidos) console.log('                 — todavía ninguna cara entra por la puerta única. Es lo que falta migrar.')
+      if (p.degradados || p.errores || p.porFallback) {
+        console.log(`              ${p.degradados} degradados · ${p.errores} con error · ${p.porFallback} servidos por el proveedor de fallback`)
+      }
+      for (const c of p.porCanal) {
+        console.log(`              ${String(c.canal).padEnd(12)} ${String(c.pedidos).padStart(5)} pedidos · ${c.conLlm} con modelo`)
+      }
+    }
+  }
+
   console.log('\n  SIN RAZONADOR SIGUE ANDANDO:')
   for (const x of e.sinRazonador) console.log(`     · ${x}`)
   console.log()

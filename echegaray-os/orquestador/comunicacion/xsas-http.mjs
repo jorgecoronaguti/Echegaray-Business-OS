@@ -18,6 +18,7 @@
 // Por eso: SIN SECRETO NO ATIENDE. No hay modo dev que lo relaje. Un borde que se abre "para
 // probar" es un borde abierto.
 import { igualEnTiempoConstante } from './secreto-compartido.mjs'
+import { permisosDeRol } from '../lib/xsas-permisos.mjs'
 
 const NO_ENCONTRADO = { status: 404, body: { error: 'not_found' } }
 
@@ -55,7 +56,15 @@ export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxB
       return { status: 400, body: { error: 'json inválido' } }
     }
 
-    const r = await atender(bruto, gateway)
+    // ═══ LOS PERMISOS LOS DERIVA EL OS, NO LOS DECLARA QUIEN PIDE ═══
+    //
+    // El cuerpo puede traer `permisos`; se PISAN con los del rol. Dos motivos, y el segundo es el
+    // que importa: (1) la tabla rol→capacidad tiene que estar definida UNA vez y del lado del OS,
+    // no copiada en TypeScript donde se quedaría vieja; (2) si el emisor pudiera declarar sus
+    // permisos, un secreto filtrado no sería «puede leer lo que su rol lee» sino «puede todo».
+    const actor = { ...(bruto?.actor ?? {}) }
+    actor.permisos = permisosDeRol(actor.rol)
+    const r = await atender({ ...bruto, actor }, gateway)
     // El código HTTP sigue al ESTADO, no al `ok`: una respuesta degradada es 200 con su motivo
     // adentro —el consumidor tiene que verla, no reintentarla—, y un pedido mal armado es 400
     // porque reintentarlo igual no lo va a arreglar.

@@ -177,7 +177,7 @@ test('(E) el primario falla y contesta el fallback: la respuesta dice de quién 
 })
 
 test('(F) TODOS los proveedores caídos: no rompe, degrada y dice qué sigue andando', async () => {
-  const err = Object.assign(new Error('402 sin saldo'), { clasificacion: { kind: 'quota', hard: true } })
+  const err = Object.assign(new Error('402 sin saldo'), { clasificacion: { kind: 'credit', hard: true } })
   const ia = iaEspia(err)
   const elegir = () => ({ resolucion: 'ambiguo', skills: [], capacidades: [], candidatas: ['a', 'b'], confianza: null, motivo: 'dos débiles' })
   const r = await atender(
@@ -186,13 +186,13 @@ test('(F) TODOS los proveedores caídos: no rompe, degrada y dice qué sigue and
   )
   assert.equal(r.ok, true, 'el OS no se cae porque se cayó el proveedor')
   assert.equal(r.estado, 'degradado')
-  assert.match(r.degradacion, /sin razonador \(quota\)/)
+  assert.match(r.degradacion, /sin razonador \(credit\)/)
   assert.match(r.respuesta, /los cálculos, el SQL y las reglas de negocio/)
 })
 
 test('(F) con TODOS los LLM caídos, lo determinístico sigue contestando igual', async () => {
   const corridas = []
-  const err = Object.assign(new Error('502'), { clasificacion: { kind: 'unavailable' } })
+  const err = Object.assign(new Error('502'), { clasificacion: { kind: 'server' } })
   const r = await atender(
     { actor: ACTOR, canal: 'worker', intencion: 'os.estado_empresa' },
     { registro: registroDoble(corridas), catalogo: [], ia: iaEspia(err) },

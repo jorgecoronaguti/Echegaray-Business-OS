@@ -38,6 +38,7 @@ import { CAPACIDAD, modeloPara } from './ia/capacidad.mjs'
 import { OBRAS_NO_REALES } from './xsas-aprendizaje.mjs'
 import { resumirAprendizajePosible } from './xsas-que-se-aprende.mjs'
 import { capasDeSalud } from './xsas-salud.mjs'
+import { resumenDeLaPuerta } from './xsas-traza.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..')
@@ -171,6 +172,10 @@ export async function estadoDeXsas() {
   let empresa = null
   let trabajos = null
   let costo = null
+  // LA PUERTA: cuántos PEDIDOS entraron y cuántos necesitaron un modelo. `costo` cuenta llamadas al
+  // proveedor y por eso nunca puede contestar esa proporción — los pedidos que resuelve una tool no
+  // dejan una sola fila ahí.
+  let puerta = null
   // POR QUÉ NO SE PUDO LEER, cuando no se pudo. Un `catch` mudo deja el estado en `null` sin decir
   // si la base está caída o si la consulta está mal escrita — y son dos emergencias distintas.
   // Este archivo se estrenó con ese defecto: `array_length` sobre una columna `text` tiraba, el
@@ -257,6 +262,8 @@ export async function estadoDeXsas() {
         usd: r.usd == null ? null : Number(r.usd), fallidas: r.fallidas, sinPrecio: r.sin_precio,
       })),
     }
+
+    puerta = await resumenDeLaPuerta(query)
 
     // ═══ LO QUE XSAS SABE DE ECHEGARAY ═══
     //
@@ -363,7 +370,7 @@ export async function estadoDeXsas() {
   const nivel = nivelDeOperacion({ razonador: motor.disponible, base, agentes: agentes?.total > 0 })
 
   const parcial = {
-    nivel, motor, agentes, conocimiento, empresa, trabajos, costo,
+    nivel, motor, agentes, conocimiento, empresa, trabajos, costo, puerta,
     noSePudoLeer: porQueNo, herramientas: herramientasDelOs(), skills: skillsDelOs(),
   }
   // ═══ EL NIVEL NO ES LA SALUD ═══
@@ -397,6 +404,9 @@ export async function estadoDeXsas() {
     empresa,
     trabajos,
     costo,
+    // LA PUERTA ÚNICA, MEDIDA. `motor.puerta` dice DÓNDE está la puerta hacia el modelo; esto dice
+    // qué pasó por la puerta de XSAS: cuántos pedidos, cuántos necesitaron modelo, por qué canal.
+    puerta,
     herramientas: herramientasDelOs(),
     skills: skillsDelOs(),
     sinRazonador: SIN_RAZONADOR,

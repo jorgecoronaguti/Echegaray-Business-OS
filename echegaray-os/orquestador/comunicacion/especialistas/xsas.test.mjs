@@ -112,6 +112,6 @@ test('(P) el pedido que arma Mattermost es el MISMO contrato que atiende la app'
 })
 
 test('una respuesta degradada NO se publica como si fuera normal', () => {
-  const txt = render({ respuesta: 'algo', degradacion: 'sin razonador (quota)', estado: 'degradado' })
-  assert.match(txt, /▲ sin razonador \(quota\)/)
+  const txt = render({ respuesta: 'algo', degradacion: 'sin razonador (credit)', estado: 'degradado' })
+  assert.match(txt, /▲ sin razonador \(credit\)/)
 })
