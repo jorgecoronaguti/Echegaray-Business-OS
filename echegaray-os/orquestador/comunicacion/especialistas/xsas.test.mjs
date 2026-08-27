@@ -115,3 +115,33 @@ test('una respuesta degradada NO se publica como si fuera normal', () => {
   const txt = render({ respuesta: 'algo', degradacion: 'sin razonador (credit)', estado: 'degradado' })
   assert.match(txt, /▲ sin razonador \(credit\)/)
 })
+
+test('(P) el director entrega el RECLAMO ENTERO, no su campo: la capacidad se desenvuelve acá', async () => {
+  // El defecto que atrapa: `director.mjs` guarda `{ especialista, intencion: r }` con `r` = lo que
+  // devolvió `reconoce()`, o sea `{ intencion, confianza }`, y lo pasa tal cual a `atender`. Este
+  // archivo lo trataba como string y le mandaba el OBJETO al gateway, que lo rechazaba con
+  // «intencion — Expected string, received object». En producción el mensaje moría en el canal.
+  //
+  // Se alimenta EXACTAMENTE lo que produce `reconoce`, no su `.intencion`: probar con el string
+  // es probar el código contra sí mismo, que es cómo esto pasó a producción verde.
+  const reclamo = especialista.reconoce('@xsas cómo venimos')
+  assert.equal(typeof reclamo, 'object', 'el reclamo es un objeto: si dejara de serlo, este test sobra')
+
+  const pedidos = []
+  await especialista.atender({
+    texto: '@xsas cómo venimos',
+    intencion: reclamo,
+    port: portConPerfil('direccion'),
+    actor: { plataforma_user_id: 'u-1', channel_id: 'c-1' },
+    correlationId: 'corr-obj',
+    xsas: async (bruto) => {
+      pedidos.push(bruto)
+      return { ok: true, estado: 'ok', respuesta: 'ok', degradacion: null, correlationId: bruto.correlation_id, llm: null, capacidades: { nivel: 0, tools: [] } }
+    },
+  })
+
+  const [p] = pedidos
+  assert.equal(p.intencion, 'os.estado_empresa', 'al gateway va la capacidad, no el reclamo')
+  assert.equal(p.mensaje, null, 'con capacidad identificada no se manda el texto a re-clasificar')
+  assert.equal(especialista.skillDe(reclamo), 'xsas.os.estado_empresa', 'la skill tampoco puede quedar "[object Object]"')
+})
