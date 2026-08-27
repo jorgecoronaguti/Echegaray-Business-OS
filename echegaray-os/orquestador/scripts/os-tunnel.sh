@@ -8,7 +8,10 @@
 # nuevo arranque vuelve a publicar la URL nueva: auto-reparable.
 set -euo pipefail
 
-APP_DIR=/home/jorge/echegaray-os/app/echegaray-os
+# El directorio de la app sale de DÓNDE ESTÁ ESTE SCRIPT, no de una constante. Con la ruta escrita
+# a mano, la copia productiva del script publicaba el endpoint corriendo el código del árbol de
+# desarrollo: el servicio decía «producción» y ejecutaba otra cosa.
+APP_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 NODE=/home/jorge/.nvm/versions/node/v24.18.0/bin/node
 CF=${CLOUDFLARED_BIN:-/home/jorge/bin/cloudflared}
 LOG=$(mktemp /tmp/os-tunnel.XXXXXX.log)

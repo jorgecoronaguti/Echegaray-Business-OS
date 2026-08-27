@@ -1,10 +1,10 @@
 [Unit]
 Description=Echegaray OS - XSAS · sonda de recuperación del razonador
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/xsas-sonda-razonador.mjs
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/xsas-sonda-razonador.mjs
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/anthropic.env
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/xsas-sonda-razonador.mjs

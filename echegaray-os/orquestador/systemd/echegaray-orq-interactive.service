@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
 EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/interactive-server.mjs

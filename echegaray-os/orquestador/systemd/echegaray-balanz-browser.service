@@ -10,14 +10,14 @@
 # `RemainAfterExit`: no tiene sentido que systemd vigile un proceso que Docker ya vigila, y duplicar
 # la supervisión produce las dos peleándose por reiniciar.
 Description=Echegaray OS — Navegador dedicado de Balanz (Chromium + escritorio en la VM)
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/docs/tesoreria/RUNBOOK.md
 After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/balanz.env

@@ -8,7 +8,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=echegaray
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=/etc/echegaray/comunicacion.env
 ExecStart=/usr/bin/node orquestador/comunicacion/servidor-entrante.mjs
 Restart=on-failure

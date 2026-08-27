@@ -3,7 +3,7 @@ Description=Echegaray OS - Work Fabric limpieza de worktrees huérfanos (oneshot
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/cleanup-worktrees.mjs
 SyslogIdentifier=orq-cleanup

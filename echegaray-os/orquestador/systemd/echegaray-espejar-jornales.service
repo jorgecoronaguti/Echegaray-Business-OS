@@ -1,12 +1,12 @@
 [Unit]
 Description=Echegaray OS — refresca el espejo de JORNALES (_J_OBREROS/_J_OFICINA) y registra su frescura
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/espejar-jornales.mjs
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/espejar-jornales.mjs
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/espejar-jornales.mjs
 StandardOutput=journal

@@ -1,6 +1,6 @@
 [Unit]
 Description=Echegaray OS — Tesorero Inversor IA: excedente de caja y oportunidades (solo lectura, 0 API)
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/docs/tesoreria/RUNBOOK.md
 After=network-online.target echegaray-balanz-browser.service
 Wants=network-online.target
 # `Wants`, NO `Requires`: si el navegador no está, el Tesorero tiene que correr IGUAL y publicar el
@@ -11,7 +11,7 @@ Wants=echegaray-balanz-browser.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
 # EL TOKEN DEL BOT VIVE EN OTRO ARCHIVO, y este unit no lo cargaba.

@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
-ExecStart=/home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/os-tunnel.sh
+ExecStart=/home/jorge/echegaray-os/produccion/echegaray-os/orquestador/scripts/os-tunnel.sh
 Restart=always
 RestartSec=5
 StandardOutput=journal

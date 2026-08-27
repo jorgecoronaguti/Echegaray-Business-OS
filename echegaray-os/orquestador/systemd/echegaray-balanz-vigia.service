@@ -9,7 +9,7 @@ After=network-online.target echegaray-balanz-browser.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/balanz.env

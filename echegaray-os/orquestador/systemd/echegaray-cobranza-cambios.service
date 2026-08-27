@@ -8,13 +8,13 @@
 # con el nombre de quien apretó el botón en la app (cobranza_cambio.pedido_por), que se loguea en
 # CADA escritura. Sin un usuario con nombre, el cambio se rechaza y no se escribe nada.
 Description=Echegaray OS - Cola de cambios a la pestana Cobranzas (app -> Sheet)
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/comunicacion/cobranzas/cola-cambios.mjs
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/orquestador/comunicacion/cobranzas/cola-cambios.mjs
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/procesar-cobranza-cambios.mjs

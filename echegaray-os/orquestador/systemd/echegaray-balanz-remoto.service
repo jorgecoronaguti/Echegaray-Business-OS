@@ -5,13 +5,13 @@
 # socket unix que ya usa la pantalla de asistencia. No abre ningún puerto: Caddy sigue siendo lo
 # único que mira a Internet.
 Description=Echegaray OS — Pantalla remota del navegador de Balanz (login manual)
-Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
+Documentation=file:///home/jorge/echegaray-os/produccion/echegaray-os/docs/tesoreria/RUNBOOK.md
 After=network-online.target echegaray-balanz-browser.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+WorkingDirectory=/home/jorge/echegaray-os/produccion/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
 # El secreto que firma los enlaces vive acá. Sin él, el servidor arranca y deniega todo: falla
