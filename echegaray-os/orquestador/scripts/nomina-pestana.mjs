@@ -456,6 +456,22 @@ async function main() {
   const buscar = async () => { try { return hallarPestana(await google.getSheetMeta(ID), PESTANA) } catch { return null } }
   let hoja = await buscar()
 
+  // ═══ DÓNDE VA LA PESTAÑA LO DECIDE EL DUEÑO, NO EL GENERADOR ═══
+  //
+  // Rehacerla la mandaba al final del archivo en cada corrida. Él la había movido a mano y se lo
+  // volví a pisar tres veces; textual: *«respetá la ubicación q YO le asigno […] si yo hago algo,
+  // después no se toca»*. `getSheetMeta` no devuelve el índice, así que se pide aparte y se repone
+  // al crearla. Es el mismo criterio que gobierna el contenido de las celdas, aplicado al orden de
+  // las solapas — que también es algo que él acomodó.
+  let indicePrevio = null
+  if (hoja) {
+    try {
+      const meta = await google.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ID)}?fields=sheets.properties(sheetId,index,title)`)
+      indicePrevio = (meta.sheets ?? []).find((x) => x.properties?.sheetId === hoja.sheetId)?.properties?.index ?? null
+      console.log(`  posición actual de ${PESTANA}: ${indicePrevio}`)
+    } catch { indicePrevio = null }
+  }
+
   // ═══ SE BORRA Y SE REHACE, Y ES LA ÚNICA FORMA CORRECTA ACÁ ═══
   //
   // La regla NO-BORRAR del OS es absoluta: ninguna escritura puede dejar vacía una celda que tenga
@@ -473,7 +489,13 @@ async function main() {
     hoja = null
   }
   await google.spreadsheetBatchUpdate(ID, [{
-    addSheet: { properties: { title: PESTANA, gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 } } },
+    addSheet: {
+      properties: {
+        title: PESTANA,
+        ...(indicePrevio == null ? {} : { index: indicePrevio }),
+        gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 },
+      },
+    },
   }])
   hoja = await buscar()
   console.log(`  ✚ creé la pestaña ${PESTANA}`)
