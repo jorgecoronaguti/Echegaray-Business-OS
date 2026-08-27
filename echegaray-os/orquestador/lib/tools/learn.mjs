@@ -29,9 +29,12 @@ export function learnTools() {
         if (af.length < 4) return { error: 'afirmacion muy corta o vacía' }
         const clave = af.toLowerCase().replace(/\s+/g, ' ').slice(0, 200)
         const area = String(input?.area || 'general').slice(0, 40)
+        // TIPO HECHO: la herramienta se dispara con lo que el dueño enseña, no con lo que el
+        // modelo concluye. Un aprendizaje que el modelo saca por su cuenta va por otro camino y
+        // entra como CANDIDATO.
         const { rows } = await query(
-          `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza)
-           values ($1, $2, $3, 'alta')
+          `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza, tipo, fuente)
+           values ($1, $2, $3, 'alta', 'HECHO', 'dueño:tool-learn')
            on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true
            returning veces_confirmado`,
           [area, af.slice(0, 1000), clave],

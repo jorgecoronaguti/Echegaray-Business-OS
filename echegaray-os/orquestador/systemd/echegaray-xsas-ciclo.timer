@@ -1,0 +1,18 @@
+[Unit]
+Description=Echegaray OS - XSAS · mide plan contra real cuatro veces por día
+
+[Timer]
+# CUATRO VECES POR DÍA, Y NO CUESTA UN TOKEN.
+#
+# El ciclo es aritmética sobre datos propios: no llama al proveedor ni al Sheet. Lo único que lo
+# despierta es que alguien haya cargado un parte de avance o una hora de trabajo, y eso pasa durante
+# la jornada — de ahí la cadencia. Con el proveedor caído corre igual.
+#
+# Idempotente por actividad: correrlo cuatro veces no crea cuatro casos ni infla `veces_confirmado`.
+# Lo que cambia es el hecho observado, no el reloj.
+OnBootSec=15min
+OnCalendar=*-*-* 08,12,16,20:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

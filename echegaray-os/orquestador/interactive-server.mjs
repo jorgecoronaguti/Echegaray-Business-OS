@@ -50,6 +50,7 @@ import { slidesPdfTools } from './lib/tools/slides-pdf-tool.mjs'
 import { noConformidadesTools } from './lib/tools/no-conformidades-tool.mjs'
 import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
+import { rendimientoTools } from './lib/tools/rendimiento.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
 import { workspaceTools } from './lib/tools/workspace.mjs'
@@ -136,6 +137,9 @@ let DIRECTOR_PRINCIPAL = null
 
 async function boot() {
   CTX = { logger: log, config: cfg, context: await resolveContext() }
+  // TIPO HECHO: esto no lo dedujo un modelo, lo dijo el dueño («recordá que…»). Es la única vía
+  // por la que una afirmación entra como hecho desde el chat, y por eso es la única que suma
+  // `veces_confirmado` cuando se repite: que el dueño lo diga dos veces sí es confirmación.
   const { rows } = await query("select id from orq.principals where slug = 'agent:director-general' limit 1")
   DIRECTOR_PRINCIPAL = rows[0]?.id ?? CTX.context.systemPrincipalId
   log.info('motor interactivo listo', { port: PORT, tenant: CTX.context.tenantId })
@@ -154,7 +158,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...cuitTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null), ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(op ? google : null), ...cargasSocialesTools(op ? google : null), ...nominaSyncTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...cuitTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...rendimientoTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null), ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(op ? google : null), ...cargasSocialesTools(op ? google : null), ...nominaSyncTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -366,8 +370,8 @@ async function saveKnowledge(area, afirmacion) {
   const clave = String(afirmacion).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200)
   if (!clave) return
   const { rows } = await query(
-    `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza)
-     values ($1, $2, $3, 'alta')
+    `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza, tipo, fuente)
+     values ($1, $2, $3, 'alta', 'HECHO', 'dueño:chat')
      on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true
      returning veces_confirmado`,
     [area, String(afirmacion).slice(0, 1000), clave],

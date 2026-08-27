@@ -437,7 +437,16 @@ export function mediana(valores: readonly number[]): number | null {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2
 }
 
-export type RegistroDeObra = { obra_id: string | null; obra_nombre: string; hs_unitarias: number | null }
+export type RegistroDeObra = {
+  obra_id: string | null
+  obra_nombre: string
+  hs_unitarias: number | null
+  /** REFERENCIA (la tabla del xlsm con la que se venía cotizando) · CANDIDATO (un caso real, sin
+   *  confirmar) · VALIDADO (dos obras que coinciden). Desde que XSAS mide la obra, esta tabla tiene
+   *  filas de las tres clases y una barra que no diga cuál es está mezclando cosas distintas. */
+  estado?: string | null
+  confianza?: string | null
+}
 
 export type RendimientoDeObra = {
   obra_id: string | null
@@ -450,19 +459,42 @@ export type RendimientoDeObra = {
   direccion: DireccionDesvio | null
   /** 0–100. Relativo a la obra que más horas pidió, nunca a la base. */
   ancho: number
+  /** De qué clase son los registros de esta obra. `mixto` cuando conviven varias: es una señal, no
+   *  un detalle — significa que la barra promedia una referencia con una medición. */
+  naturaleza: 'REFERENCIA' | 'CANDIDATO' | 'VALIDADO' | 'mixto' | null
+  /** La peor confianza de los registros que la sostienen. */
+  confianza: string | null
+}
+
+/** Una sola clase ⇒ esa clase. Varias ⇒ `mixto`, que es información: la barra está promediando una
+ *  referencia con una medición real. Ninguna ⇒ null, no un valor por defecto. */
+function naturalezaDe(estados: readonly string[]): RendimientoDeObra['naturaleza'] {
+  const u = [...new Set(estados)]
+  if (u.length === 0) return null
+  if (u.length > 1) return 'mixto'
+  const x = u[0]
+  return x === 'REFERENCIA' || x === 'CANDIDATO' || x === 'VALIDADO' ? x : 'mixto'
+}
+
+const ORDEN_CONFIANZA = ['baja', 'media', 'alta']
+function peorConfianzaDe(cs: readonly string[]): string | null {
+  const i = cs.map((c) => ORDEN_CONFIANZA.indexOf(c)).filter((x) => x >= 0)
+  return i.length ? ORDEN_CONFIANZA[Math.min(...i)] : null
 }
 
 export function rendimientoPorObra(
   registros: readonly RegistroDeObra[],
   baseHsUnidad: number | null | undefined,
 ): RendimientoDeObra[] {
-  type Grupo = { nombre: string; obra_id: string | null; valores: number[] }
+  type Grupo = { nombre: string; obra_id: string | null; valores: number[]; estados: string[]; confianzas: string[] }
   const porObra = new Map<string, Grupo>()
   for (const r of registros) {
     if (r.hs_unitarias == null || !Number.isFinite(r.hs_unitarias)) continue
     const clave = r.obra_id ?? r.obra_nombre
-    const g: Grupo = porObra.get(clave) ?? { nombre: r.obra_nombre, obra_id: r.obra_id, valores: [] }
+    const g: Grupo = porObra.get(clave) ?? { nombre: r.obra_nombre, obra_id: r.obra_id, valores: [], estados: [], confianzas: [] }
     g.valores.push(r.hs_unitarias)
+    if (r.estado) g.estados.push(r.estado)
+    if (r.confianza) g.confianzas.push(r.confianza)
     porObra.set(clave, g)
   }
 
@@ -485,6 +517,8 @@ export function rendimientoPorObra(
       direccion: d?.direccion ?? null,
       // Con una sola obra la barra va llena: es el 100 % de lo que hay para comparar, no un desvío.
       ancho: peor > 0 ? Math.round((m / peor) * 100) : 0,
+      naturaleza: naturalezaDe(g.estados),
+      confianza: peorConfianzaDe(g.confianzas),
     }
   })
 }

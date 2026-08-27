@@ -41,8 +41,17 @@ async function contextoAbierto() {
       where coalesce(estado,'') not in ('resuelta','cerrada','cancelada')
         and (bloqueada or fecha_limite < now() or responsable is null)
       order by fecha_limite asc nulls last limit 15`)
-  // CEREBRO — acumular: subo a la base de conocimiento las conclusiones de las últimas
-  // consolidaciones (dedup por clave normalizada; si se repite, sube veces_confirmado).
+  // CEREBRO — acumular: subo las conclusiones del Director a la base de conocimiento.
+  //
+  // ═══ LO QUE ACÁ SE ESCRIBE ES INFERENCIA, Y SE GUARDA COMO TAL (27/08/2026) ═══
+  //
+  // `key_points` es la salida de un modelo razonando sobre los datos del día. Puede ser excelente y
+  // no es un hecho. Hasta hoy entraba sin marca, y como la vigilancia corre a diario, el mismo
+  // párrafo volvía a caer y le sumaba `veces_confirmado` — que es el número con el que el OS decide
+  // qué sabe mejor. Un modelo repitiéndose a sí mismo se convertía en «confirmado 6 veces».
+  //
+  // Ahora: entra con tipo INFERENCIA, y una repetición NO confirma nada. Sólo un HECHO —medido en
+  // obra o declarado por el dueño— sube el contador.
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 220)
   const cierres = await safe(
     `select id, result->'key_points' as puntos from orq.tasks
@@ -52,15 +61,21 @@ async function contextoAbierto() {
       const af = String(p).trim().slice(0, 400); const clave = norm(af)
       if (af.length < 8) continue
       await query(
-        `insert into public.conocimiento_empresa (area, afirmacion, clave, origen_task_id) values ('direccion',$1,$2,$3)
-         on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true`,
-        [af, clave, c.id]).catch(() => {})
+        `insert into public.conocimiento_empresa (area, afirmacion, clave, origen_task_id, tipo, fuente, evidencia)
+              values ('direccion', $1, $2, $3, 'INFERENCIA', 'director:vigilancia-autonoma', $4)
+         on conflict (clave) do update set updated_at = now(), vigente = true`,
+        [af, clave, c.id, JSON.stringify({ tarea: c.id, tipo_tarea: 'direction_consolidate' })]).catch(() => {})
     }
   }
   // CEREBRO — recordar: lo que el OS ya sabe (más confirmado primero).
+  // Y lo que se le devuelve al Director como «lo que el OS ya sabe» va ORDENADO POR NATURALEZA: un
+  // hecho medido primero, su propia hipótesis de ayer última. Sin este orden el Director leía sus
+  // propias conclusiones como si fueran la realidad de la empresa y razonaba encima de ellas.
   const saber = await safe(
-    `select afirmacion, veces_confirmado from public.conocimiento_empresa
-      where vigente order by veces_confirmado desc, updated_at desc limit 14`)
+    `select afirmacion, veces_confirmado, tipo from public.conocimiento_empresa
+      where vigente
+      order by case tipo when 'HECHO' then 0 when 'VALIDADO' then 1 when 'CANDIDATO' then 2 else 3 end,
+               veces_confirmado desc, updated_at desc limit 14`)
 
   // DESVÍOS DE OBRA YA CALCULADOS (determinístico, 0 API): le damos al Director los
   // números concretos en vez de pedirle que "vaya a buscar el desvío". Grounding real.
@@ -83,7 +98,9 @@ async function contextoAbierto() {
   if (!admin && !backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length && !avance.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
-  const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
+  // Cada afirmación va ROTULADA con su naturaleza. Un modelo que lee «[INFERENCIA] …» sabe que eso
+  // es una hipótesis —posiblemente suya, de ayer— y no la trata como un dato de la empresa.
+  const m = saber.map((r) => `  - [${r.tipo ?? 'CANDIDATO'}] ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
   const d = desvios.map((x) => `  - ${x}`).join('\n')
   const cj = caja.map((x) => `  - ${x}`).join('\n')
   const av = avance.map((a) => `  - ${formatAvance(a).replace(/\*\*/g, '')}`).join('\n')

@@ -34,8 +34,25 @@ if (process.argv.includes('--json')) {
 
   console.log(`\n  CAPACIDAD   ${e.herramientas} herramientas propias · ${e.skills} skills de dominio`)
 
+  if (e.empresa) {
+    const m = e.empresa
+    console.log(`\n  ECHEGARAY   ${m.obras} obras (${m.activas} activas) · ${m.clientes} clientes · ${m.con_avance} con avance medido`)
+    console.log(`              ${m.actividades} actividades · ${m.con_plan} con plan · ${m.con_real} con real · ${m.comparables} comparables plan↔real`)
+    const r = m.rendimientos ?? {}
+    console.log(`              rendimientos: ${r.REFERENCIA ?? 0} de referencia · ${r.CANDIDATO ?? 0} candidatos · ${r.VALIDADO ?? 0} validados`)
+    if (!r.VALIDADO) {
+      console.log('                 — validar pide DOS obras distintas con la misma tarea. Todavía no pasó.')
+    }
+    for (const c of m.circuitos ?? []) {
+      const cuenta = c.hechos == null ? `no se pudo leer (${c.noSePudoLeer})` : `${c.hechos} hechos`
+      console.log(`              ${String(c.dominio).padEnd(12)} ${cuenta.padEnd(18)} ${c.ultimo ? `último ${String(c.ultimo).slice(0, 16)}` : 'sin fecha'}`)
+    }
+  }
+
   if (e.conocimiento) {
-    console.log(`\n  APRENDIDO   ${e.conocimiento.afirmaciones} afirmaciones · ${e.conocimiento.confirmadas} confirmadas ≥2 veces · ${e.conocimiento.retiradas} retiradas`)
+    const t = e.conocimiento.porTipo ?? {}
+    console.log(`\n  APRENDIDO   ${e.conocimiento.afirmaciones} afirmaciones · ${e.conocimiento.retiradas} retiradas`)
+    console.log(`              ${t.HECHO ?? 0} HECHO · ${t.VALIDADO ?? 0} VALIDADO · ${t.CANDIDATO ?? 0} CANDIDATO · ${t.INFERENCIA ?? 0} INFERENCIA (salida de un modelo, no es un dato)`)
     for (const a of e.conocimiento.porArea.slice(0, 6)) {
       console.log(`              ${String(a.area ?? '(sin área)').padEnd(24)} ${String(a.afirmaciones).padStart(4)}  (${a.confirmadas} confirmadas)`)
     }

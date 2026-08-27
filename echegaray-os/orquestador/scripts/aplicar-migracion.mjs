@@ -81,6 +81,31 @@ async function main() {
     if (p.hash === hash && !args.includes('--forzar')) { await pool.end(); return }
   }
 
+// ═══ UN ENSAYO QUE APLICA NO ES UN ENSAYO (27/08/2026) ═══
+//
+// El ensayo envuelve la migración en `begin … rollback`. Si el ARCHIVO trae su propio `commit;`, ese
+// commit cierra la transacción de afuera y el `rollback` posterior no deshace nada: la migración
+// quedó aplicada y la pantalla dijo «NO se aplicó». Pasó con dos archivos, y hay 8 más en el repo
+// escritos así.
+//
+// No se corrigen solos borrándoles el `commit` desde acá: una migración que se auto-transacciona
+// puede estar contando con eso. Se rechaza, se nombra el problema y la escribe quien la manda.
+function transaccionaSola(sql) {
+  const limpio = sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')   // comentarios de bloque
+    .replace(/^[ \t]*--.*$/gm, " ")         // comentarios de línea
+    .replace(/\$\$[\s\S]*?\$\$/g, ' ')   // cuerpos de do $$ … $$
+  return /(^|;|\s)(begin|commit|end)\s*;/i.test(limpio)
+}
+
+  if (transaccionaSola(sql)) {
+    console.log(`✗ ${nombre} maneja su propia transacción (begin/commit). Sacale el begin/commit: este`)
+    console.log('  script ya envuelve la migración, y un commit adentro rompe el ensayo — se aplicaría de verdad.')
+    await pool.end()
+    process.exitCode = 1
+    return
+  }
+
   const cliente = await pool.connect()
   try {
     await cliente.query('begin')

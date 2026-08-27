@@ -270,7 +270,7 @@ async function getRendimientoPorObra(
 ): Promise<RendimientoDeObra[]> {
   const { data, error } = await supabase
     .from('rendimiento_historico')
-    .select('obra_id, hs_unitarias, obra:obra_canonica(nombre)')
+    .select('obra_id, hs_unitarias, estado, confianza, obra:obra_canonica(nombre)')
     .eq('tarea_tipo_id', tareaId)
   if (error) {
     avisos.push(`No pude leer el rendimiento por obra: ${error.message}`)
@@ -281,6 +281,8 @@ async function getRendimientoPorObra(
       obra_id: s(r.obra_id),
       obra_nombre: s((r.obra as Fila | null)?.nombre) ?? s(r.obra_id) ?? 'obra sin identificar',
       hs_unitarias: n(r.hs_unitarias),
+      estado: s(r.estado),
+      confianza: s(r.confianza),
     })),
     base,
   )

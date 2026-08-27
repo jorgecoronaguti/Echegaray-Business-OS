@@ -251,10 +251,21 @@ function Resumen({ ficha }: { ficha: Ficha }) {
           obras.map((o) => (
             <div key={`${o.obra_id}-${o.obra_nombre}`} style={FILA_PANEL}>
               <span
-                title={`${o.muestra} ${o.muestra === 1 ? 'registro' : 'registros'}`}
+                title={`${o.muestra} ${o.muestra === 1 ? 'registro' : 'registros'}${o.confianza ? ` · confianza ${o.confianza}` : ''}`}
                 style={{ fontSize: '12px', color: C.tinta, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               >
                 {o.obra_nombre}
+                {/* DE QUÉ CLASE ES EL DATO. Desde que XSAS mide la obra conviven la referencia con
+                    la que se venía cotizando y lo medido en ejecución, y una barra sin rótulo las
+                    presenta como si fueran lo mismo. */}
+                {o.naturaleza && (
+                  <span style={{ fontSize: '10px', color: C.tenue, marginLeft: 6 }}>
+                    {o.naturaleza === 'REFERENCIA' ? 'referencia'
+                      : o.naturaleza === 'VALIDADO' ? 'real · validado'
+                        : o.naturaleza === 'CANDIDATO' ? 'real · 1 caso'
+                          : 'mezcla'}
+                  </span>
+                )}
               </span>
               <div style={{ width: 74, height: 5, background: C.pista, borderRadius: 3, overflow: 'hidden', flexShrink: 0 }}>
                 <div style={{ height: '100%', width: `${o.ancho}%`, background: o.direccion === 'peor' ? C.warn : o.direccion === 'mejor' ? C.pos : C.info }} />

@@ -56,6 +56,7 @@ import { cargasSocialesTools } from './lib/tools/cargas-sociales-tool.mjs'
 import { nominaSyncTools } from './lib/tools/nomina-sync-tool.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
+import { rendimientoTools } from './lib/tools/rendimiento.mjs'
 import { sheetsFormatTools } from './lib/tools/sheets-format.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
 import { aliasPendientesTools } from './lib/tools/alias-pendientes-tool.mjs'
@@ -82,7 +83,7 @@ async function construirRegistro() {
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
     ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...ingenieriaFinancieraTools(google), ...tesoreriaTools(google), ...obraTools(),
-    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...nominaSyncTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google), ...sheetDropdownTools(google), ...aliasPendientesTools(google), ...indicesTools(), ...rodadosTools(),
+    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...nominaSyncTools(google), ...sheetRenderTools(google), ...learnTools(), ...rendimientoTools(), ...sheetsFormatTools(google), ...sheetDropdownTools(google), ...aliasPendientesTools(google), ...indicesTools(), ...rodadosTools(),
   }
 }
 

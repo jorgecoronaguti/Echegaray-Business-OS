@@ -80,6 +80,42 @@ export function skillsDelOs() {
 }
 
 /**
+ * LOS CIRCUITOS PLAN → REAL QUE HOY ESTÁN VIVOS.
+ *
+ * ═══ POR QUÉ ESTÁ ACÁ Y NO EN UN MÓDULO NUEVO ═══
+ *
+ * Ninguno de estos circuitos se construyó hoy: finanzas ya congelaba cada predicción del motor en
+ * `finanzas_caja_negra` para medirla después, y obra ya tenía una tabla de rendimientos. Lo que
+ * faltaba era que XSAS SUPIERA que existen y pudiera decir si están alimentándose o secos — un
+ * circuito de aprendizaje que dejó de recibir hechos no avisa: simplemente deja de aprender, y por
+ * fuera se ve igual que uno sano.
+ *
+ * Cada entrada trae de dónde sale su cuenta, así que discutir el número lleva a una tabla.
+ */
+export const CIRCUITOS = Object.freeze([
+  { dominio: 'obra', mide: 'HH y rendimiento planificados contra los ejecutados',
+    sql: "select count(*)::int n, max(actualizado_en)::text ultimo from public.rendimiento_historico where fuente = 'ejecucion-real'" },
+  { dominio: 'finanzas', mide: 'lo que el motor de tesorería predijo contra la caja real',
+    sql: 'select count(*)::int n, max(registrado_en)::text ultimo from public.finanzas_caja_negra' },
+  { dominio: 'presupuesto', mide: 'las horas cotizadas contra las que costó hacerlo',
+    sql: 'select count(*)::int n, max(actualizado_en)::text ultimo from public.rendimiento_historico where hs_unitarias_plan is not null' },
+])
+
+/** Corre los circuitos. Uno que no se puede leer se declara así, nunca como «cero hechos». */
+export async function circuitosDeAprendizaje(query) {
+  const out = []
+  for (const c of CIRCUITOS) {
+    try {
+      const { rows } = await query(c.sql)
+      out.push({ dominio: c.dominio, mide: c.mide, hechos: rows[0]?.n ?? 0, ultimo: rows[0]?.ultimo ?? null })
+    } catch (e) {
+      out.push({ dominio: c.dominio, mide: c.mide, hechos: null, noSePudoLeer: String(e?.message ?? e).slice(0, 80) })
+    }
+  }
+  return out
+}
+
+/**
  * NÚCLEO PURO: el nivel de operación a partir de lo que se pudo leer.
  *
  * Se decide acá —y no en la consulta— para poder probarlo sin base. El orden importa: sin razonador
@@ -105,6 +141,7 @@ export async function estadoDeXsas() {
   let base = null
   let agentes = null
   let conocimiento = null
+  let empresa = null
   let trabajos = null
   let costo = null
   // POR QUÉ NO SE PUDO LEER, cuando no se pudo. Un `catch` mudo deja el estado en `null` sin decir
@@ -147,11 +184,17 @@ export async function estadoDeXsas() {
              count(*) filter (where veces_confirmado >= 2)::int confirmadas,
              count(*) filter (where vigente is false)::int retiradas
         from public.conocimiento_empresa group by area order by n desc`)
+    // POR NATURALEZA, que es la distinción que gobierna todo lo demás: un hecho medido y una
+    // hipótesis de un modelo no son la misma clase de cosa y el total que las suma no dice nada.
+    const kt = await query(`
+      select tipo, count(*)::int n from public.conocimiento_empresa
+       where vigente is not false group by tipo`)
     conocimiento = {
       afirmaciones: k.rows.reduce((s, r) => s + r.n, 0),
       confirmadas: k.rows.reduce((s, r) => s + r.confirmadas, 0),
       retiradas: k.rows.reduce((s, r) => s + r.retiradas, 0),
       porArea: k.rows.map((r) => ({ area: r.area, afirmaciones: r.n, confirmadas: r.confirmadas })),
+      porTipo: Object.fromEntries(kt.rows.map((r) => [r.tipo, r.n])),
     }
 
     // ═══ CUÁNTO CUESTA LA INTELIGENCIA, Y DE QUIÉN ES EL GASTO ═══
@@ -186,6 +229,34 @@ export async function estadoDeXsas() {
         agente: r.agente, funcion: r.funcion, llamadas: r.llamadas,
         usd: r.usd == null ? null : Number(r.usd), fallidas: r.fallidas, sinPrecio: r.sin_precio,
       })),
+    }
+
+    // ═══ LO QUE XSAS SABE DE ECHEGARAY ═══
+    //
+    // No es una copia: se cuenta sobre las vistas que componen las fuentes canónicas. Sirve para
+    // contestar «¿de cuánto de la empresa tiene estado real?» sin abrir siete tablas.
+    const e1 = await query(`
+      select count(*)::int obras,
+             count(*) filter (where estado = 'activa')::int activas,
+             count(distinct cliente_id)::int clientes,
+             count(*) filter (where avance_ponderado_pct is not null)::int con_avance
+        from public.xsas_obra`)
+    const e2 = await query(`
+      select count(*)::int actividades,
+             count(*) filter (where plan_hh is not null or plan_cantidad is not null)::int con_plan,
+             count(*) filter (where hh_real is not null or cantidad_real is not null)::int con_real,
+             count(*) filter (where (plan_hh is not null and hh_real is not null))::int comparables,
+             count(*) filter (where tarea_tipo_id is not null)::int con_tarea_tipo
+        from public.xsas_actividad`)
+    // El aprendizaje de obra, por estado. `REFERENCIA` es la tabla con la que se venía cotizando;
+    // el resto es lo que la ejecución enseñó.
+    const e3 = await query(`
+      select estado, count(*)::int n from public.rendimiento_historico group by estado`)
+    empresa = {
+      ...e1.rows[0],
+      ...e2.rows[0],
+      rendimientos: Object.fromEntries(e3.rows.map((r) => [r.estado, r.n])),
+      circuitos: await circuitosDeAprendizaje(query),
     }
 
     const t = await query(`select state, count(*)::int n from orq.tasks group by 1`)
@@ -226,6 +297,7 @@ export async function estadoDeXsas() {
     agentes,
     noSePudoLeer: porQueNo,
     conocimiento,
+    empresa,
     trabajos,
     costo,
     herramientas: herramientasDelOs(),
@@ -238,6 +310,7 @@ export async function estadoDeXsas() {
       'los permisos, la RLS y el aislamiento por obra',
       'los timers, los generadores del Sheet y los sincronizadores',
       'el Work Fabric para trabajos que no razonan',
+      'el ciclo de obra: plan contra real y el rendimiento que aprende de la ejecución',
     ],
     leido_en: new Date().toISOString(),
   }
