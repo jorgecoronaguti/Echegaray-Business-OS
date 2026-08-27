@@ -29,3 +29,33 @@ test('un estado transitorio no es una ejecución: no cuenta de ningún lado', ()
     assert.equal(resolucionDeRespuesta(m), null, String(m))
   }
 })
+
+test('si la migración todavía no se aplicó, el pedido se registra igual (degradado, no perdido)', async () => {
+  // La trampa que este repo ya pagó: el .sql en el repo no es el .sql aplicado. Con el insert
+  // nuevo fallando, TODA la telemetría del chat se apagaría en silencio — el instrumento roto
+  // justo por venir a mejorarlo.
+  const { registrarPedidoDelChat } = await import('./skill-metricas.mjs')
+  const vistas = []
+  const ejecutar = async (sql, params) => {
+    vistas.push({ n: params.length })
+    if (sql.includes('skills')) throw new Error('column "skills" of relation "chat_request" does not exist')
+    return { rows: [] }
+  }
+  const valores = ['rid', 'que tengo vencido', 'jorge', 'web', 'advise.finance', 'briefing', 0, 120, 'normal', null, ['finanzas-tesoreria-construccion'], 'determinista', 0]
+  assert.equal(await registrarPedidoDelChat(valores, ejecutar), 'degradado')
+  assert.deepEqual(vistas.map((v) => v.n), [13, 10], 'primero el completo, después el de siempre')
+})
+
+test('con el esquema al día se registra completo, sin segunda escritura', async () => {
+  const { registrarPedidoDelChat } = await import('./skill-metricas.mjs')
+  let veces = 0
+  const ejecutar = async () => { veces++; return { rows: [] } }
+  assert.equal(await registrarPedidoDelChat(new Array(13).fill(null), ejecutar), 'completo')
+  assert.equal(veces, 1)
+})
+
+test('si la base entera está caída, la telemetría no lanza', async () => {
+  const { registrarPedidoDelChat } = await import('./skill-metricas.mjs')
+  const ejecutar = async () => { throw new Error('sin conexión') }
+  assert.equal(await registrarPedidoDelChat(new Array(13).fill(null), ejecutar), 'perdido')
+})

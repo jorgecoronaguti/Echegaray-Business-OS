@@ -90,7 +90,7 @@ import { enqueuePendingOperation, listPendingOperations, decidePendingOperation,
 import { classifyDirective, classifyDirectiveMulti, textoParaRutear, esContinuacion } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability, skillsParaDirectiva, skillsSegunProfundidad, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
-import { resolucionDeRespuesta, nivelDeLaRespuesta } from './lib/skill-metricas.mjs'
+import { resolucionDeRespuesta, nivelDeLaRespuesta, registrarPedidoDelChat } from './lib/skill-metricas.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
@@ -311,19 +311,14 @@ function logChatRequest({ rid, directive, user, surface, out, latencyMs, extVers
   // costo del chat pero no cuánto se usa cada skill ni cuánta de esa demanda se resolvió sin pagar
   // un modelo. Van en la misma fila y en el mismo insert: no cuesta una escritura más.
   // El `nivel` sale del catálogo (cacheado en memoria), por eso la fila se arma en una promesa.
-  // Sigue siendo fire-and-forget: la telemetría nunca demora ni rompe la respuesta al dueño.
-  nivelDeLaRespuesta(out?.model, skills).then((nivel) => query(
-    `insert into orq.chat_request
-           (rid, directive, user_email, surface, capability, model, cost_usd, latency_ms, outcome, ext_version, skills, resolucion, nivel)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         on conflict (rid) do update set
-           capability=excluded.capability, model=excluded.model, cost_usd=excluded.cost_usd,
-           latency_ms=excluded.latency_ms, outcome=excluded.outcome,
-           skills=excluded.skills, resolucion=excluded.resolucion, nivel=excluded.nivel`,
-    [rid, String(directive || '').slice(0, 2000), user || 'anon', surface || 'extension',
-      out?.capability || null, out?.model || null, out?.cost ?? null,
-      latencyMs ?? null, outcomeDe(out), extVersion || null,
-      skills, resolucionDeRespuesta(out?.model), nivel])).catch(() => {})
+  // Sigue siendo fire-and-forget: la telemetría nunca demora ni rompe la respuesta al dueño. El
+  // insert (y su degradación si la migración todavía no se aplicó) vive en lib/skill-metricas.mjs.
+  nivelDeLaRespuesta(out?.model, skills).then((nivel) => registrarPedidoDelChat([
+    rid, String(directive || '').slice(0, 2000), user || 'anon', surface || 'extension',
+    out?.capability || null, out?.model || null, out?.cost ?? null,
+    latencyMs ?? null, outcomeDe(out), extVersion || null,
+    skills, resolucionDeRespuesta(out?.model), nivel,
+  ])).catch(() => {})
 }
 function friendlyStep(name, input) {
   const i = input || {}

@@ -49,6 +49,41 @@ export async function nivelDeLaRespuesta(model, skills) {
   } catch { return null }
 }
 
+// Las dos formas del mismo registro. La segunda existe por una trampa que este repo ya pagó: una
+// migración en el repo NO es una migración aplicada. Si el server sale antes que 20260827T1420, las
+// tres columnas nuevas no existen, el insert falla y —como toda la telemetría vive detrás de un
+// catch— el OS dejaría de registrar TODOS los pedidos sin que nadie se entere: el instrumento se
+// apagaría justo por venir a mejorarlo.
+const COLUMNAS_NUEVAS = `insert into orq.chat_request
+     (rid, directive, user_email, surface, capability, model, cost_usd, latency_ms, outcome, ext_version, skills, resolucion, nivel)
+   values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+   on conflict (rid) do update set
+     capability=excluded.capability, model=excluded.model, cost_usd=excluded.cost_usd,
+     latency_ms=excluded.latency_ms, outcome=excluded.outcome,
+     skills=excluded.skills, resolucion=excluded.resolucion, nivel=excluded.nivel`
+const COLUMNAS_VIEJAS = `insert into orq.chat_request
+     (rid, directive, user_email, surface, capability, model, cost_usd, latency_ms, outcome, ext_version)
+   values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+   on conflict (rid) do update set
+     capability=excluded.capability, model=excluded.model, cost_usd=excluded.cost_usd,
+     latency_ms=excluded.latency_ms, outcome=excluded.outcome`
+
+/**
+ * Registra el pedido del chat con su capacidad, su resolución y su nivel. Si el esquema todavía no
+ * tiene las columnas nuevas, reintenta con el insert de siempre: se pierde la instrumentación
+ * nueva, NO el registro. Nunca lanza.
+ * @param {Array} valores  los 13 parámetros, en el orden del insert
+ * @param {Function} [ejecutar]  puerto a la base (inyectable en tests)
+ */
+export async function registrarPedidoDelChat(valores, ejecutar = query) {
+  try {
+    await ejecutar(COLUMNAS_NUEVAS, valores)
+    return 'completo'
+  } catch {
+    try { await ejecutar(COLUMNAS_VIEJAS, valores.slice(0, 10)); return 'degradado' } catch { return 'perdido' }
+  }
+}
+
 /**
  * Uso real por capacidad: ejecuciones, cuánto se resolvió sin modelo, errores, latencia y costo.
  * Lee `public.v_capacidades_xsas` (catálogo + uso). Devuelve las filas tal cual.
