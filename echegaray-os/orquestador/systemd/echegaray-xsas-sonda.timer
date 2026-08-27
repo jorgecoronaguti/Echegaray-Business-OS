@@ -1,0 +1,22 @@
+[Unit]
+Description=Echegaray OS - XSAS · reintenta el razonador cada 20 min mientras esté caído
+
+[Timer]
+# CADA 20 MINUTOS, Y NO CUESTA NADA MIENTRAS TODO ANDE.
+#
+# La sonda sale del paso en la primera línea si el flag está arriba: con el razonador sano no hace
+# una sola llamada. Sólo gasta —cuatro tokens del modelo más barato— cuando el OS está degradado,
+# que es exactamente cuando hace falta preguntar.
+#
+# Por qué existe: `marcarSinCredito` persiste el flag y todo el OS deja de llamar al proveedor; el
+# flag se levanta cuando una llamada sale bien, pero ya no hay llamadas que puedan salir bien. El
+# 26/08/2026 el flag quedó caído a las 07:00 y el proveedor contestaba HTTP 200 a las 22:00: quince
+# horas de OS degradado sin motivo y sin forma de notarlo desde adentro.
+#
+# Veinte minutos es el techo de cuánto puede durar una degradación fantasma.
+OnBootSec=5min
+OnUnitActiveSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
