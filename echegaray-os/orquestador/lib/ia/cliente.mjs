@@ -31,6 +31,7 @@
 import { CAPACIDAD, modeloPara, normalizarCapacidad } from './capacidad.mjs'
 import { apagaElRazonador as apagaElRazonadorLocal, clasificarError } from './clasificar-error.mjs'
 import { anthropic } from './proveedores/anthropic.mjs'
+import { openaiCompatible } from './proveedores/openai-compatible.mjs'
 
 export { CAPACIDAD }
 export { clasificarError, clasificarRespuesta, apagaElRazonador } from './clasificar-error.mjs'
@@ -49,9 +50,19 @@ export async function avisarEstado(clasificacion) {
   await ec?.marcarSinCredito?.(`${clasificacion.kind} ${clasificacion.status ?? ''}`).catch?.(() => {})
 }
 
-/** Los proveedores que el OS sabe usar, en orden de preferencia. Hoy hay uno; el orden ya existe
- *  para que sumar el segundo sea agregarlo a esta lista y nada más. */
-const PROVEEDORES = [anthropic]
+/**
+ * LOS PROVEEDORES QUE EL OS SABE USAR, EN ORDEN DE PREFERENCIA.
+ *
+ * El segundo es el FALLBACK: entra cuando el primero agota sus reintentos —quota, 5xx, timeout,
+ * credencial vencida—. `configurado()` decide si existe: sin `ORQ_IA_ALT_BASE_URL` y
+ * `ORQ_IA_ALT_API_KEY`, `openai-compatible` se salta y el comportamiento es exactamente el de
+ * antes. Dejar el adapter listo y apagado es distinto de inventar una credencial.
+ *
+ * El ORDEN es la política y vive acá, no en cada caller: nadie pide «el de OpenAI», piden una
+ * capacidad. Y quien responde queda anotado en `orq.chat_cost.proveedor` junto a `fallback_de`,
+ * así que el reporte dice qué atendió de verdad y no qué se intentó primero.
+ */
+const PROVEEDORES = [anthropic, openaiCompatible]
 
 const TOPE_REINTENTOS = Math.min(4, Math.max(0, Number(process.env.ORQ_IA_REINTENTOS ?? 2)))
 const ESPERA_BASE_MS = Number(process.env.ORQ_IA_ESPERA_MS ?? 700)
@@ -168,6 +179,10 @@ export async function pedirTexto({
         return {
           texto: r.texto, modelo: r.modeloUsado, proveedor: proveedor.nombre, tokens: r.tokens,
           usd, ms, intentos: intento + 1, busquedas: r.busquedas ?? 0,
+          // QUIÉN FALLÓ ANTES QUE ÉSTE. Ya se guardaba en `chat_cost.fallback_de` pero no salía
+          // hacia el caller, así que una respuesta servida por el fallback se veía idéntica a una
+          // normal: el gateway no podía decir «el primario está caído y esto lo contestó el otro».
+          fallbackDe: fallbackDe ?? null,
         }
       } catch (err) {
         const c = clasificarError(err)

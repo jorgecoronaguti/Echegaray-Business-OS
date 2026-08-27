@@ -60,6 +60,24 @@ export const NIVEL = Object.freeze({ FULL: 'FULL', DEGRADED: 'DEGRADED', NO_LLM:
  *  desarrollo — lo verifica `verificar-independencia-ia.mjs`, control 8. */
 export const AGENTES_DEL_BUILDER = Object.freeze(['implementer', 'software-architect'])
 
+/**
+ * LO QUE SIGUE ANDANDO SIN RAZONADOR. No es decorativo: es la respuesta a «¿qué pierdo si se cae el
+ * proveedor?», y está acá para que nadie tenga que deducirla.
+ *
+ * Se exporta —antes vivía suelta dentro de `estadoDeXsas()`— porque la puerta de XSAS la necesita
+ * para contestar cuando el modelo no está, y leerla no puede costar una consulta a la base: si
+ * enterarse de qué sobrevive a la caída dependiera de la base, no se podría contestar justo en el
+ * momento en que hace falta. Una sola definición, dos lectores.
+ */
+export const SIN_RAZONADOR = Object.freeze([
+  'el portal del cliente y toda la web',
+  'los cálculos, el SQL y las reglas de negocio',
+  'los permisos, la RLS y el aislamiento por obra',
+  'los timers, los generadores del Sheet y los sincronizadores',
+  'el Work Fabric para trabajos que no razonan',
+  'el ciclo de obra: plan contra real y el rendimiento que aprende de la ejecución',
+])
+
 /** Cuenta archivos de un directorio que cumplan un filtro. Ausente = 0, nunca una excepción: el
  *  estado de XSAS tiene que poder leerse en una VM donde falte una carpeta. */
 function contar(ruta, filtro) {
@@ -381,16 +399,7 @@ export async function estadoDeXsas() {
     costo,
     herramientas: herramientasDelOs(),
     skills: skillsDelOs(),
-    // Lo que sigue andando en cada nivel. No es decorativo: es la respuesta a «¿qué pierdo si se
-    // cae el proveedor?», y está acá para que nadie tenga que deducirla.
-    sinRazonador: [
-      'el portal del cliente y toda la web',
-      'los cálculos, el SQL y las reglas de negocio',
-      'los permisos, la RLS y el aislamiento por obra',
-      'los timers, los generadores del Sheet y los sincronizadores',
-      'el Work Fabric para trabajos que no razonan',
-      'el ciclo de obra: plan contra real y el rendimiento que aprende de la ejecución',
-    ],
+    sinRazonador: SIN_RAZONADOR,
     leido_en: new Date().toISOString(),
   }
 }
