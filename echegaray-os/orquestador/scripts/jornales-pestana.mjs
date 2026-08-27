@@ -1806,10 +1806,20 @@ export function grilla({
     filas[fAnioTotal - 1][c] = `=SUM(${L}${fAnio.obra}:${L}${fAnio.direccion})`
   }
 
-  // ══ 6 · EL COSTO DE DESVINCULAR ══
+  // ══ 6 · EL COSTO DE DESVINCULAR — SE MUDÓ A LA PESTAÑA «Nómina» (27/08/2026) ══
   //
-  // Va al final a propósito: primero cuánto se paga por trabajar, después cuánto cuesta dejar de
-  // hacerlo. Y va en la MISMA pestaña porque la pregunta se hace mirando el plantel, no aparte.
+  // Estaba acá por una razón que era buena: la pregunta se hace mirando el plantel. Desde hoy el
+  // plantel se mira en «Nómina», que además cruza el legajo de Drive, el régimen probado con el
+  // papel y el reparto entre lo que cubre el recibo y lo que hay que completar en efectivo. El
+  // dueño lo pidió en una línea: *"no has quitado lo referente a desvinculación de la pestaña
+  // jornales por quincena, dado q ya se considera en pestaña nómina"*.
+  //
+  // El CÁLCULO no se movió: sigue en `lib/desvinculacion-22250.mjs` y `lib/desvinculacion-plantel.mjs`,
+  // y es el mismo que consume `scripts/nomina-pestana.mjs`. Lo que se retiró es el CUADRO, para que
+  // no haya dos lugares publicando el mismo número — que es como empiezan las dos verdades.
+  //
+  // `bloqueDesvinculacion` queda en su archivo, con sus tests: retirar un cuadro no es borrar la
+  // capacidad de dibujarlo, y el día que el dueño lo quiera de vuelta acá es pasarle `desvinculacion`.
   //
   // El básico sale de la réplica viva del convenio y sólo cae en la escala verificada del repo si la
   // réplica no trajo esa categoría: una constante del código no puede ganarle a un acuerdo posterior,
@@ -2103,8 +2113,11 @@ async function main() {
   // fantasmas con $0.
   // EL PLANTEL DEL AÑO ENTERO, no el de la quincena: la sección 6 tiene que poder liquidar también a
   // quien ya no está, y ésos sólo existen en los bloques viejos del espejo.
+  // EL COSTO DE DESVINCULAR SE PUBLICA EN «Nómina», NO ACÁ. Se sigue calculando el plantel porque
+  // otras partes de esta pestaña lo usan, pero no se le pasa a `grilla`: sin él, la sección 6 no se
+  // dibuja. Dos pestañas publicando el mismo número es como empiezan las dos verdades.
   const desvinculacion = separarPlantel(plantelDelEspejo(espejo ?? [], bloques, { anio: AÑO }), bloques)
-  console.log(`desvinculación: ${desvinculacion.activos.length} activo(s) · ${desvinculacion.desafectados.length} desafectado(s) en el año`)
+  console.log(`plantel del año: ${desvinculacion.activos.length} activo(s) · ${desvinculacion.desafectados.length} desafectado(s) — el costo de desvincular se publica en «Nómina»`)
   const personasPago = filasDePersonas(espejo ?? [], bloques[bloques.length - 1])
   if (!personasPago.length) console.warn('  ⚠ el último bloque del espejo no tiene personas: el cuadro de pago sale vacío')
   const g = grilla({
@@ -2112,7 +2125,7 @@ async function main() {
     escalones, bloqueBase, categorias, personasBase, origenPiso: piso.origen ?? 'cerrada',
     escalonVigente, meses, hoy, periodoBase, demanda,
     personasPago,
-    desvinculacion,
+    desvinculacion: null,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
