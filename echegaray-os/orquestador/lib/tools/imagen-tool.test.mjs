@@ -15,6 +15,7 @@ import { validarPresentacion } from '../slides/contrato.mjs'
 import { prepararDeck } from '../slides/motor.mjs'
 import { producirImagen } from '../imagen/motor.mjs'
 import { validarPedido } from '../imagen/contrato.mjs'
+import { elegirCapacidad } from '../elegir-capacidad.mjs'
 import { generarImagen } from '../imagen/cliente.mjs'
 
 // ── un PNG real, para que el QA del motor tenga bytes de verdad que medir ────────────────────
@@ -249,4 +250,21 @@ test('la tool de Slides le dice al modelo que la imagen la pide a generar_imagen
   const generadoras = [...Object.values(presentacionTools(null)), ...Object.values(imagenTools(null))]
     .filter((t) => /^(generar|crear)_imagen/i.test(t.schema.name))
   assert.equal(generadoras.length, 1, generadoras.map((t) => t.schema.name).join(', '))
+})
+
+test('el ruteo lleva un pedido de imagen a esta skill, y NO le roba el suyo a otra', () => {
+  // LÍMITE CONOCIDO, no un olvido: cuando el pedido ADEMÁS trae una señal fuerte de dominio
+  // («una infografía del circuito de compras»), la capacidad de dominio gana la clasificación y el
+  // tope de 4 skills deja `generar-imagen` afuera. Es la política de `skill-map.mjs` y no se cambia
+  // desde acá. No impide nada: la TOOL `generar_imagen` está registrada en el gateway pase lo que
+  // pase con las skills — lo que se pierde es el criterio de esta skill, no la capacidad.
+  for (const q of ['hacé una imagen para la portada de la propuesta', 'necesito un render de cómo quedaría la fachada', 'un concepto arquitectónico del galpón', 'una ilustración para el comunicado']) {
+    assert.ok(elegirCapacidad(q, { asesoria: true }).skills.includes('generar-imagen'), `no rutea: ${q}`)
+  }
+  // «imagen» a secas aparece en pedidos que NO son de generar nada. Si estuviera como palabra
+  // clave, le robaría el ruteo a la skill que carga comprobantes desde una foto.
+  const comprobante = elegirCapacidad('cargá el comprobante de la factura', { asesoria: true }).skills
+  assert.ok(comprobante.includes('carga-gastos-multimedia'))
+  assert.equal(comprobante.includes('generar-imagen'), false)
+  assert.equal(elegirCapacidad('leeme la imagen del extracto del banco', { asesoria: true }).skills.includes('generar-imagen'), false)
 })
