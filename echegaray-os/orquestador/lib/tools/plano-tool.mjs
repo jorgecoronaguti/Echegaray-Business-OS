@@ -1,0 +1,105 @@
+// Tool: ANALIZAR LOS PLANOS DE UN PROYECTO Y ARMAR LA COTIZACIÓN BORRADOR.
+//
+// Es la MISMA capacidad que corre `scripts/plano-a-cotizacion.mjs`: las dos llaman a
+// `lib/plano/pipeline.mjs`. Mattermost es una cara, la app va a ser otra y el script es la tercera;
+// la lógica vive en una sola. Por eso esta tool no sabe nada de chat: arma el resultado estructurado
+// y un `resumen_texto` de pocas líneas, que es lo que el gateway entrega a quien haya preguntado.
+//
+// ═══ POR QUÉ EL RESUMEN ES CORTO Y EL DETALLE VIVE EN LA COTIZACIÓN ═══
+//
+// Un cómputo de 46 elementos no se lee en un chat. Lo que una persona necesita en el canal es si
+// puede confiar en el número y qué le falta para cerrarlo; el detalle —partida por partida, con la
+// lámina y el texto del plano de donde salió cada cantidad— queda en `cotizacion_partida` y en
+// `public.computo`, que es donde se puede auditar y desde donde después se adjudica la obra.
+//
+// `drive.read` y no `drive.write`: lee planos de Drive y escribe en Postgres una cotización en
+// BORRADOR. No toca Drive, no toca el Sheet y no crea ninguna obra.
+
+import { query } from '../db.mjs'
+import { correr } from '../plano/pipeline.mjs'
+import { agruparPartidas, armar, persistir, cascadaDe } from '../plano/cotizacion-v0.mjs'
+
+const money = (n) => (n === null || n === undefined ? 'sin dato' : `$ ${Math.round(Number(n)).toLocaleString('es-AR')}`)
+
+/** El resumen ejecutivo. Ocho renglones: qué leyó, qué computó, cuánto da y qué falta definir. */
+export function resumen({ r, cot, cascada, numero }) {
+  const faltantes = r.computo.items.filter((i) => i.cantidad === null)
+  const noLegibles = r.documentos.planos.noLegibles
+  return [
+    `**${(cot.obraNombre ?? '').toUpperCase()}** — cotización borrador ${numero}`,
+    '',
+    `📐 ${r.documentos.planos.legibles.length} plano(s) interpretados de ${r.documentos.total} documentos en Drive` +
+      (noLegibles.length ? ` · ${noLegibles.length} no los puedo abrir (${noLegibles.map((d) => d.name).join(', ')})` : ''),
+    `🔍 ${r.computo.detectados} elementos detectados · ${r.computo.computados} computados · ${r.computo.conHueco} sin medida en la documentación`,
+    `📋 ${cot.partidas.length} partidas de la Base Maestra · ${cot.candidatas.length} elementos sin partida que la cubra`,
+    `💰 costo directo ${money(cascada?.costo_directo)} · **venta sin IVA ${money(cascada?.venta_sin_iva)}** · ${Math.round(cascada?.hh_previstas ?? 0)} HH`,
+    '',
+    `⚠️ **ES UN TECHO, NO UNA OFERTA.** Sale sólo del plano: no incluye el alcance (¿mano de obra sola o con materiales? ¿qué queda afuera?) ni las tareas que ningún plano dibuja (replanteo, excavación, limpieza final). Falta definir ${faltantes.length} medida(s) y ${cot.candidatas.length} partida(s).`,
+    faltantes.length ? `\nLo primero que necesito del proyectista: ${faltantes.slice(0, 5).map((f) => f.nombre).join(' · ')}${faltantes.length > 5 ? ` (+${faltantes.length - 5})` : ''}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+export function planoTools(google) {
+  return {
+    'plano.cotizar': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'analizar_planos_y_cotizar',
+        description:
+          'LEE LOS PLANOS de un cliente u obra en Drive, los INTERPRETA visualmente (láminas, vistas, cortes, cotas, planillas), CUENTA y MIDE los elementos, los mapea contra la Base Maestra de análisis de precios y devuelve una COTIZACIÓN BORRADOR con su cascada de precio. USALO cuando el dueño diga "analizá los planos de [cliente]", "armame una cotización de [obra]", "computá los planos de [X]", "¿cuánto sale [obra] según los planos?". Cada cantidad queda trazada al archivo de Drive, la lámina y el texto literal del plano del que salió. NUNCA inventa una medida: lo que el plano no dice sale como faltante con nombre propio. La cotización queda en BORRADOR — no crea obras, no toca cotizaciones existentes y no manda nada al cliente.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            proyecto: { type: 'string', description: 'cliente, obra o proyecto cuyos planos hay que analizar (ej. "Quattropani", "San Francisco")' },
+            numero: { type: 'string', description: 'número para la cotización borrador (opcional; se genera solo)' },
+          },
+          required: ['proyecto'],
+        },
+      },
+      async run(input) {
+        const proyecto = String(input?.proyecto ?? '').trim()
+        if (!proyecto) return { error: 'necesito de qué cliente u obra son los planos' }
+        try {
+          const r = await correr({ query, google, termino: proyecto })
+          if (!r.documentos.planos.legibles.length) {
+            return {
+              error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
+              documentos_encontrados: r.documentos.total,
+              planos_no_legibles: r.documentos.planos.noLegibles.map((d) => d.name),
+              resumen_texto: `Busqué «${proyecto}» en el índice de Drive: ${r.documentos.total} documentos, ninguno es un plano que pueda abrir${r.documentos.planos.noLegibles.length ? ` (${r.documentos.planos.noLegibles.length} son DWG/CAD, que el OS no lee)` : ''}.`,
+            }
+          }
+          const { partidas, candidatas } = agruparPartidas(r.mapeo.mapeos)
+          const cot = armar({
+            cliente: r.laminas[0]?.proyecto?.propietario ?? null,
+            obraNombre: r.laminas[0]?.proyecto?.nombre ?? proyecto,
+            partidas, composiciones: r.composiciones, candidatas,
+          })
+          const numero = String(input?.numero ?? `COT-XSAS-${proyecto.toUpperCase().slice(0, 12).replace(/\s+/g, '-')}-${Date.now().toString(36).slice(-4)}`)
+          const { cotizacionId } = await persistir({ query }, cot, {
+            numero,
+            notas: `generada por XSAS desde ${r.documentos.planos.legibles.map((d) => d.name).join(' + ')}`,
+          })
+          const cascada = await cascadaDe({ query }, cotizacionId)
+          return {
+            cotizacion_id: cotizacionId,
+            numero,
+            planos: r.documentos.planos.legibles.map((d) => d.name),
+            planos_no_legibles: r.documentos.planos.noLegibles.map((d) => d.name),
+            elementos_detectados: r.computo.detectados,
+            elementos_computados: r.computo.computados,
+            partidas: cot.partidas.length,
+            sin_partida: cot.candidatas.length,
+            faltantes: r.computo.items.filter((i) => i.cantidad === null).map((i) => ({ elemento: i.id, nombre: i.nombre, falta: i.faltan })),
+            cascada,
+            llamadas_ia: r.ia.llamadas,
+            resumen_texto: resumen({ r, cot, cascada, numero }),
+          }
+        } catch (e) {
+          return { error: `no pude analizar los planos de ${proyecto}: ${String(e?.message ?? e).slice(0, 200)}` }
+        }
+      },
+    },
+  }
+}

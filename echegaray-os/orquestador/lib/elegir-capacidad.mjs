@@ -62,6 +62,11 @@ export const SKILL_KEYWORDS = {
   // portada para», «un render de cómo quedaría», «un esquema de»), no de mi criterio. `imagen` a
   // secas NO entra: aparece en pedidos que no son de generar nada («leé la imagen del comprobante»),
   // y una señal ambigua le robaría el ruteo a carga-gastos-multimedia.
+  // Cotizar desde planos. Las frases son literales de la `description` de la tool
+  // `analizar_planos_y_cotizar` («analizá los planos de X», «armame una cotización de X», «computá
+  // los planos»), que es el mismo método con el que se sacaron las demás. `plano` a secas NO entra:
+  // «el plano de seguridad» y «según el plano municipal» son otra cosa.
+  'costos-presupuestacion': ['analiza los planos', 'analizá los planos', 'analizar los planos', 'analizame los planos', 'computa los planos', 'computá los planos', 'computar los planos', 'computo de los planos', 'cómputo de los planos', 'lee los planos', 'leé los planos', 'leer los planos', 'armame una cotizacion', 'armame una cotización', 'armar una cotizacion', 'armar una cotización', 'cotizacion desde los planos', 'cotización desde los planos', 'cotizar desde los planos'],
   'generar-imagen': ['generar una imagen', 'genera una imagen', 'generá una imagen', 'hacer una imagen', 'hace una imagen', 'hacé una imagen', 'crear una imagen', 'crea una imagen', 'creá una imagen', 'render', 'ilustracion', 'ilustración', 'infografia', 'infografía', 'una portada para', 'imagen conceptual', 'concepto arquitectonico', 'concepto arquitectónico'],
 }
 
@@ -72,6 +77,10 @@ const FUERTES_SKILL = new Set([
   'home banking', 'balanz', 'discovery', 'mockup', 'fajo', 'slides', 'google slides', 'diapositiva',
   // Pedir un render, una infografía o un concepto arquitectónico no puede significar otra cosa.
   'render', 'infografia', 'infografía', 'concepto arquitectonico', 'concepto arquitectónico', 'imagen conceptual',
+  // Pedir que se lean o se computen LOS PLANOS no puede significar otra cosa que cotizar la obra.
+  'analiza los planos', 'analizá los planos', 'analizar los planos', 'analizame los planos',
+  'computa los planos', 'computá los planos', 'computar los planos', 'computo de los planos', 'cómputo de los planos',
+  'armame una cotizacion', 'armame una cotización', 'cotizar desde los planos',
   // Frases enteras que sólo pueden significar una cosa. Van acá porque medido sobre pedidos reales
   // ("qué pago primero esta semana", "cargar el comprobante de la factura de X") la skill dueña
   // quedaba afuera: el dominio ganaba la clasificación y la señal específica pesaba 1 punto.
@@ -82,6 +91,23 @@ const FUERTES_SKILL = new Set([
   'reporte automatico', 'reporte automático', 'redisenar la pestana', 'rediseñar la pestaña',
   'rediseñá la pestaña', 'rediseña la pestaña',
 ])
+
+/**
+ * ¿EL TEXTO TRAE UNA SEÑAL INEQUÍVOCA? La frase exacta de `FUERTES_SKILL` que matcheó, o `null`.
+ *
+ * Existe para que una cara —el bot en un canal— pueda decidir si RECLAMA un mensaje sin volver a
+ * clasificar. Un atajo exacto no alcanza cuando la frase lleva un nombre propio adentro («analizá
+ * los planos de Quattropani»), y estas frases están en esa lista justamente porque no pueden
+ * significar otra cosa. PURA.
+ */
+export function senalFuerteEn(necesidad) {
+  const texto = String(necesidad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  for (const f of FUERTES_SKILL) {
+    const plano = f.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    if (texto.includes(plano)) return f
+  }
+  return null
+}
 
 /** Puntúa las skills del índice propio contra el texto. PURA. */
 function puntuarSkillsDirectas(texto) {
