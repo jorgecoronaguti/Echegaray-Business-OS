@@ -412,6 +412,27 @@ test('la tool autorizada sí escribe, y la escritura queda firmada con actor, ar
   assert.equal(resultado, 'ok')
 })
 
+test('la firma encuentra el archivo aunque la tool lo nombre distinto', async () => {
+  // `imagen.generar` devuelve `{archivo:{id}, drive_url}` en vez de `{id, link}`: con un solo nombre
+  // dieciocho escrituras reales quedaron con el archivo en NULL.
+  const filas = []
+  const mapa = new Map([['imagen.generar', {
+    capability: 'drive.write',
+    schema: { name: 'generar_imagen', input_schema: { type: 'object', properties: {} } },
+    async run() { return { ok: true, archivo: { id: 'IMG-9' }, drive_url: 'https://drive.google.com/file/d/IMG-9/view' } },
+  }]])
+  await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'imagen.generar',
+  }, {
+    registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0][7], 'IMG-9', 'el archivo tiene que quedar en la fila')
+  assert.match(filas[0][8], /IMG-9/)
+})
+
 test('una escritura que FALLA también queda firmada — el intento es lo que hay que poder auditar', async () => {
   const filas = []
   await atender({

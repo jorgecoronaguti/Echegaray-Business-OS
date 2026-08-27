@@ -104,8 +104,12 @@ async function firmarEscritura({ query, clave, tool, pedido, datos, error }) {
         pedido.canal ?? null,
         clave,
         tool.capability,
-        datos?.id ?? null,
-        datos?.link ?? null,
+        // CADA TOOL NOMBRA SU ARCHIVO A SU MANERA: `slides.crear` devuelve `{id, link}` y
+        // `imagen.generar` devuelve `{archivo:{id}, drive_url}`. Con un solo nombre, dieciocho
+        // escrituras reales quedaron firmadas con el archivo en NULL — la traza decía quién y
+        // cuándo, y no decía SOBRE QUÉ, que es la mitad que sirve para auditar.
+        datos?.id ?? datos?.archivo?.id ?? null,
+        datos?.link ?? datos?.drive_url ?? datos?.imagen_url ?? null,
         error ? 'error' : 'ok',
         error ?? null,
       ],
