@@ -28,7 +28,7 @@
 // la misma lámina en cada etapa fue el gasto que este archivo existe para no repetir.
 
 import crypto from 'node:crypto'
-import { FUENTE, dato, faltaDato, evidencia } from './fuente.mjs'
+import { FUENTE, dato, evidencia } from './fuente.mjs'
 
 /** Cómo se mide un elemento. Determina qué fórmula le aplica `computo.mjs` y qué unidad sale.
  *  No es una lista abierta: si un elemento no encaja en ninguna, se declara y no se computa. */

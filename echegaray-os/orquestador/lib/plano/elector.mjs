@@ -62,7 +62,12 @@ export function pedido(mapeos = []) {
     '   presupuesto se vea completo es peor que dejarlo pendiente: se cotiza un precio que no es.',
     '3. Mirá el MATERIAL y el ESPESOR/SECCIÓN antes que el nombre. «Columna» sola no dice si es de',
     '   hormigón o metálica; el elemento sí lo dice.',
-    '4. "porque" en una línea, concreta, en castellano.',
+    '4. SI LA PARTIDA LLEVA UNA DIMENSIÓN EN EL NOMBRE («PLATEA 50CM», «CONTRAPISO e=0,10 m»,',
+    '   «PISO DE HORMIGON - 20CM») y el elemento del plano NO declara ese espesor, la respuesta es',
+    '   null. Elegirla haría que la partida afirme por su cuenta un espesor que nadie leyó, y el',
+    '   espesor es casi todo el costo. Medido: «Platea s/Calculo» → «PLATEA 50CM» sobre 191,92 m²',
+    '   metió $ 29,6 M inventados en una cotización.',
+    '5. "porque" en una línea, concreta, en castellano.',
   ].join('\n')
 }
 

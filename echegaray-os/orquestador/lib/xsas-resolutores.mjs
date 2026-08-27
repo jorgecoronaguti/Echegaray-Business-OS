@@ -57,6 +57,10 @@ const FABRICAS_GOOGLE = Object.freeze([
   // sabe devolver el base64, pero la tool no se registra: una capacidad que no puede persistir lo
   // que produce figuraría disponible y dejaría la imagen en ningún lado.
   ['./tools/imagen-tool.mjs', 'imagenTools'],
+  // Planos. LEE de Drive y escribe una cotización BORRADOR en Postgres, así que es `drive.read`:
+  // no toca Drive ni el Sheet. Necesita el cliente de Google para bajar los PDF de las láminas —
+  // sin él la capacidad existiría y no podría abrir un solo plano.
+  ['./tools/plano-tool.mjs', 'planoTools'],
 ])
 
 /** `./tools/x.mjs` → `orquestador/lib/tools/x.mjs`, que es como el catálogo nombra los módulos. */

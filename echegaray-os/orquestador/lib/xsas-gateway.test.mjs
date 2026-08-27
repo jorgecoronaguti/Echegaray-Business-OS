@@ -147,6 +147,55 @@ test('(H) una skill existente invocada desde el Gateway ejecuta SU tool, sin mod
   assert.deepEqual(r.capacidades.skills, ['contabilidad-constructoras'])
 })
 
+test('(27/08) el argumento que vino en la FRASE hace correr la tool que el contexto no podia llenar', async () => {
+  // Antes: «analiza los planos de Quattropani» ruteaba bien, `argumentosPara` decia «falta
+  // proyecto» y el gateway contestaba con un parrafo del modelo. Toda tool con parametros era
+  // inalcanzable desde el chat.
+  const corridas = []
+  const catalogo = [{ clave: 'costos-presupuestacion', modulos: ['orquestador/lib/tools/plano.mjs'], tools: [] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['costos-presupuestacion'], capacidades: ['advise.estimating'], confianza: 'alta', motivo: 'doble' })
+  // La extraccion usa `pedirTextoONull`, que devuelve el TEXTO pelado y no un objeto con `.texto`.
+  const ia = { ...iaEspia(), pedirTextoONull: async () => '{"proyecto":"Quattropani"}' }
+  const registro = registroDoble(corridas)
+  registro.mapa.set('plano.cotizar', {
+    capability: 'drive.read',
+    schema: { name: 'analizar_planos_y_cotizar', input_schema: { type: 'object', properties: { proyecto: { type: 'string', description: 'cliente u obra' } }, required: ['proyecto'] } },
+    async run(a) { corridas.push(['plano.cotizar', a]); return { resumen_texto: 'cotizacion de ' + a.proyecto } },
+  })
+  registro.porArchivo.set('orquestador/lib/tools/plano.mjs', ['plano.cotizar'])
+
+  const r = await atender(
+    { actor: ACTOR, canal: 'mattermost', mensaje: 'analiza los planos de Quattropani y armame una cotizacion', verificado_por: 'canal-mattermost' },
+    { registro, catalogo, elegir, ia },
+  )
+  assert.equal(r.capacidades.via, 'skill_con_motor_argumento_de_la_frase')
+  assert.deepEqual(corridas.at(-1), ['plano.cotizar', { proyecto: 'Quattropani' }])
+  assert.match(r.respuesta, /cotizacion de Quattropani/)
+})
+
+test('(27/08) si el argumento NO esta en la frase, se escala como siempre: no se inventa', async () => {
+  const corridas = []
+  const catalogo = [{ clave: 'costos-presupuestacion', modulos: ['orquestador/lib/tools/plano.mjs'], tools: [] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['costos-presupuestacion'], capacidades: ['advise.estimating'], confianza: 'alta', motivo: 'doble' })
+  const espia = iaEspia()
+  const ia = { ...espia, pedirTextoONull: async () => '{"proyecto":null}' }
+  const registro = registroDoble(corridas)
+  registro.mapa.set('plano.cotizar', {
+    capability: 'drive.read',
+    schema: { name: 'analizar_planos_y_cotizar', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
+    async run(a) { corridas.push(['plano.cotizar', a]); return { resumen_texto: 'no deberia correr' } },
+  })
+  registro.porArchivo.set('orquestador/lib/tools/plano.mjs', ['plano.cotizar'])
+
+  const r = await atender(
+    { actor: ACTOR, canal: 'mattermost', mensaje: 'armame una cotizacion', verificado_por: 'canal-mattermost' },
+    { registro, catalogo, elegir, ia },
+  )
+  assert.ok(!corridas.some(([c]) => c === 'plano.cotizar'), 'la tool NO corre sin su argumento')
+  assert.equal(espia.llamadas.length, 1, 'se contesta con el modelo, como antes')
+  assert.ok(r.ok)
+})
+
 // ── N2 / N3 · EL MODELO, Y QUÉ PASA CUANDO NO ESTÁ ────────────────────────────────────────────
 
 test('lo ambiguo escala al modelo y se registra QUIÉN respondió, no quién se pidió', async () => {

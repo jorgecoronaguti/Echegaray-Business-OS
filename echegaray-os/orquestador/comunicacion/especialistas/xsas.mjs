@@ -19,12 +19,18 @@
 
 import { atender as atenderXsas } from '../../lib/xsas-gateway.mjs'
 import { atajoPara } from '../../lib/xsas-resolutores.mjs'
+import { senalFuerteEn } from '../../lib/elegir-capacidad.mjs'
 import { actorDeMattermost } from '../../lib/xsas-permisos.mjs'
 import { sinMencion } from '../identidad-bot.mjs'
 
 /** Una coincidencia LITERAL no es una corazonada: por eso la confianza es alta y no la neutra.
  *  Es la que decide el empate en el Director cuando otro especialista roza una palabra. */
 const CONFIANZA_LITERAL = 0.9
+
+/** Una señal inequívoca sin frase exacta: alta, pero por debajo del literal. Si otro especialista
+ *  reconoce la frase entera, esa lectura gana — acá sólo se afirma que la frase no puede ser de
+ *  otro dominio, no que este especialista la conozca palabra por palabra. */
+const CONFIANZA_SENAL_FUERTE = 0.8
 
 export const especialista = {
   slug: 'xsas',
@@ -44,8 +50,23 @@ export const especialista = {
     // La mención al bot se saca ANTES de buscar el atajo: por el canal el mensaje llega como
     // «@xsas cómo venimos», y un atajo que sólo matchea el texto pelado nunca se dispararía en
     // producción aunque el test con el texto pelado pase.
-    const clave = atajoPara(sinMencion(texto))
-    return clave ? { intencion: clave, confianza: CONFIANZA_LITERAL } : null
+    const pelado = sinMencion(texto)
+    const clave = atajoPara(pelado)
+    if (clave) return { intencion: clave, confianza: CONFIANZA_LITERAL }
+
+    // ═══ LA SEGUNDA COSA QUE RECLAMA, Y POR QUÉ SE AMPLIÓ (27/08/2026) ═══
+    //
+    // Un atajo es una frase EXACTA, y eso deja afuera toda capacidad con parámetro: «analizá los
+    // planos de Quattropani» no puede ser un atajo porque lleva el nombre del proyecto adentro.
+    // Con sólo atajos, el motor que abre los planos y devuelve el cómputo era inalcanzable desde
+    // el canal por más que existiera.
+    //
+    // La ampliación es NARROW a propósito: sólo las frases de `FUERTES_SKILL`, que están en esa
+    // lista precisamente porque no pueden significar otra cosa. No se reclama lenguaje natural
+    // general —eso le sacaría mensajes a los especialistas que ya funcionan— y la confianza es
+    // menor que la del atajo literal, así que un especialista con coincidencia exacta le gana.
+    const fuerte = senalFuerteEn(pelado)
+    return fuerte ? { intencion: null, confianza: CONFIANZA_SENAL_FUERTE, senal: fuerte } : null
   },
 
   // `xsas` se INYECTA —igual que `razonarRuteo` o `google` en el resto del ctx— para poder probar

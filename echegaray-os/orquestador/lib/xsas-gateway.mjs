@@ -43,6 +43,7 @@ import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
+import { completarArgumentos } from './xsas-argumentos.mjs'
 
 /** La capacidad de modelo que corresponde a cada nivel de la política. El nivel lo decide el ruteo
  *  determinístico; acá sólo se traduce. Un nivel 2 JAMÁS toma el modelo potente. */
@@ -59,11 +60,13 @@ const SISTEMA = [
 ].join(' ')
 
 /** Ejecuta una tool con los permisos y el contexto del pedido. Nunca lanza: devuelve el motivo. */
-async function correrTool({ clave, tool, pedido, query = null }) {
+async function correrTool({ clave, tool, pedido, query = null, argsResueltos = null }) {
   if (!puedeUsar(pedido.actor, tool, clave)) {
     return { ok: false, motivo: `sin permiso para ${clave} (requiere ${tool.capability})`, tipo: 'sin_permiso' }
   }
-  const { args, falta } = argumentosPara(tool, pedido)
+  // `argsResueltos` llega sólo cuando el gateway ya completó desde la frase lo que el contexto no
+  // traía. El permiso se verificó igual arriba: completar un argumento no saltea ninguna cerradura.
+  const { args, falta } = argsResueltos ?? argumentosPara(tool, pedido)
   if (falta.length) return { ok: false, motivo: `falta ${falta.join(', ')} para ${clave}`, tipo: 'falta_dato' }
   try {
     const datos = await tool.run(args)
@@ -122,8 +125,8 @@ function textoDeDatos(datos) {
 }
 
 /** N0/N1: correr la tool y armar la respuesta. `via` dice cómo se llegó, y queda en la traza. */
-async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t0, query = null }) {
-  const r = await correrTool({ clave, tool, pedido, query })
+async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t0, query = null, argsResueltos = null }) {
+  const r = await correrTool({ clave, tool, pedido, query, argsResueltos })
   const capacidades = { nivel, skills, tools: [clave], via, confianza: 'alta', motivo: via }
   if (!r.ok) {
     return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades })
@@ -295,15 +298,8 @@ async function despachar(pedido, deps, t0) {
   const nivel = nivelDeRuteo(catalogo, eleccion)
 
   if (nivel <= NIVEL.CAPACIDAD) {
-    for (const skill of eleccion.skills) {
-      const ficha = catalogo.find((f) => f.clave === skill)
-      for (const clave of toolsDeSkill(ficha, porArchivo)) {
-        const tool = mapa.get(clave)
-        if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
-        if (argumentosPara(tool, pedido).falta.length) continue
-        return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
-      }
-    }
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 })
+    if (conMotor) return conMotor
     // La skill aplica pero no hay tool ejecutable con lo que tenemos. NO se responde «no puedo»:
     // se escala, porque la política dice que menos modelo no puede significar peor respuesta.
     return resolverConModelo({
@@ -312,8 +308,65 @@ async function despachar(pedido, deps, t0) {
     })
   }
 
+  // ═══ UN MOTOR QUE PRODUCE EL DATO GANA A UN PÁRRAFO QUE LO DESCRIBE (27/08/2026) ═══
+  //
+  // `nivelDeRuteo` manda a RAZONAMIENTO todo lo multidominio, y eso está bien para una pregunta que
+  // hay que pensar. Pero «analizá los planos de Quattropani» cae en cuatro skills a la vez —costos,
+  // ingeniería, planificación, compras— y la primera tiene un motor que abre los planos y devuelve
+  // el cómputo con sus números. Contestarla con un párrafo sobre cómo se cotiza una obra, teniendo
+  // el motor al lado, es exactamente la regla de este archivo al revés.
+  //
+  // Sólo cuando el ruteo fue DETERMINISTA y con confianza ALTA: si dudó, la duda manda y se razona.
+  if (eleccion.resolucion === 'determinista' && eleccion.confianza === 'alta') {
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 })
+    if (conMotor) return conMotor
+  }
+
   // ── N2 / N3 ───────────────────────────────────────────────────────────────────────────────
   return resolverConModelo({ pedido, nivel, skills: eleccion.skills, motivo: eleccion.motivo, ia: await puertaIa(deps), t0 })
+}
+
+/**
+ * ¿HAY UN MOTOR DEL OS QUE RESUELVA ESTO? Devuelve la respuesta, o `null` si no lo hay.
+ *
+ * Recorre las tools que las skills elegidas CITAN y que el actor puede correr. La primera que tiene
+ * todos sus argumentos gana. Si a una le falta un argumento, se guarda: puede estar en la frase.
+ */
+async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 }) {
+  const conArgumentoEnLaFrase = []
+  for (const skill of eleccion.skills) {
+    const ficha = catalogo.find((f) => f.clave === skill)
+    for (const clave of toolsDeSkill(ficha, porArchivo)) {
+      const tool = mapa.get(clave)
+      if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
+      const resuelto = argumentosPara(tool, pedido)
+      if (resuelto.falta.length) { conArgumentoEnLaFrase.push({ clave, tool, resuelto }); continue }
+      return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
+    }
+  }
+
+  // ═══ EL ARGUMENTO ESTABA EN LA FRASE, NO EN EL CONTEXTO (27/08/2026) ═══
+  //
+  // «Analizá los planos de Quattropani» rutea perfecto a la capacidad correcta y hasta acá se
+  // descartaba por «falta proyecto»: el dato estaba dicho y no estaba en ningún `contexto`. El
+  // resultado era el peor de los dos mundos —el ruteo acertaba y la capacidad no corría—, y hacía
+  // que TODA tool con parámetros fuera inalcanzable desde el chat.
+  //
+  // Se intenta sólo con la PRIMERA candidata: si el ruteo eligió mal, completar argumentos de cinco
+  // tools distintas sería pagar cinco veces por adivinar. Si el argumento sigue sin aparecer, esto
+  // no cambia nada — devuelve `null` y el gateway sigue su camino de siempre.
+  const candidata = conArgumentoEnLaFrase[0]
+  if (!candidata) return null
+  const ia = await puertaIa(deps)
+  const completo = await completarArgumentos({
+    ia, texto, tool: candidata.tool, args: candidata.resuelto.args, falta: candidata.resuelto.falta, logger: deps.logger ?? null,
+  })
+  if (completo.falta.length) return null
+  return resolverConTool({
+    pedido, clave: candidata.clave, tool: candidata.tool, nivel: NIVEL.CAPACIDAD,
+    via: 'skill_con_motor_argumento_de_la_frase', skills: eleccion.skills, t0,
+    query: deps.query ?? null, argsResueltos: { args: completo.args, falta: [] },
+  })
 }
 
 /** La puerta hacia el modelo. Se importa PEREZOSO: un pedido que se resuelve en N0 no carga el

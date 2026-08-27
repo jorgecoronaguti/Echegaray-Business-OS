@@ -83,6 +83,29 @@ export function puntaje(elemento, tarea) {
   return Math.round(s * 1000) / 1000
 }
 
+/** Una partida que DECLARA UNA DIMENSIÓN en su nombre: «PLATEA DE HORMIGON - 50CM», «CONTRAPISO
+ *  e = 0,10 m», «MAMPOSTERÍA LADRILLON e = 0,20 m», «PISO DE HORMIGON - 20CM». PURA. */
+export const declaraDimension = (nombre) => /(^|[^a-z0-9])(e\s*=\s*0?[.,]\d+|\d+(?:[.,]\d+)?\s*(?:cm|mm)\b)/i.test(String(nombre ?? ''))
+
+/** ¿El elemento leído del plano declara su espesor o su sección? PURA. */
+export const elementoDeclaraEspesor = (c) =>
+  c?.dimensiones?.espesor?.valor != null || c?.dimensiones?.alto?.valor != null ||
+  /(e\s*=|\d+\s*(?:cm|mm)|\d+\s*x\s*\d+)/i.test(String(c?.especificacion ?? '') + String(c?.material ?? ''))
+
+/**
+ * LA CERRADURA DEL ESPESOR — aprendida de Quattropani, medida en $ 29,6 M.
+ *
+ * El plano decía «Platea s/Calculo» sin un solo espesor y el matcheo eligió «PLATEA DE HORMIGON -
+ * 50CM»: la partida afirmó por su cuenta medio metro de hormigón sobre 191,92 m², que era casi todo
+ * el costo de la cotización. El histórico había cotizado ahí un piso de hormigón alisado.
+ *
+ * Cuando la partida lleva la dimensión en el nombre y el elemento no la trae, no son la misma cosa
+ * y la pregunta correcta es «¿de qué espesor?», no un precio. PURA.
+ */
+export function espesorSinRespaldo(computo, tarea) {
+  return declaraDimension(tarea?.nombre) && !elementoDeclaraEspesor(computo)
+}
+
 const UMBRAL = 0.9
 const DISTANCIA = 0.25
 
@@ -103,7 +126,8 @@ export function mapearPartida(computo, tareaTipos = []) {
 
   const top = compatibles[0]
   const segundo = compatibles[1]
-  const decidido = Boolean(top) && top.puntaje >= UMBRAL && (!segundo || top.puntaje - segundo.puntaje >= DISTANCIA)
+  const sinEspesor = Boolean(top) && espesorSinRespaldo(computo, top.tarea)
+  const decidido = Boolean(top) && !sinEspesor && top.puntaje >= UMBRAL && (!segundo || top.puntaje - segundo.puntaje >= DISTANCIA)
 
   const candidatos = compatibles.slice(0, 6).map((c) => ({ id: c.tarea.id, codigo: c.tarea.codigo, nombre: c.tarea.nombre, unidad: c.tarea.unidad, puntaje: c.puntaje }))
   if (!decidido) {
@@ -114,7 +138,9 @@ export function mapearPartida(computo, tareaTipos = []) {
       candidatos,
       porQue: !top
         ? `no hay ninguna tarea de la Base Maestra en ${computo?.unidad ?? 'esa unidad'} que comparta vocabulario con «${computo?.nombre}»`
-        : top.puntaje < UMBRAL
+        : sinEspesor
+          ? `«${top.tarea.codigo}» declara una dimensión en su nombre («${top.tarea.nombre}») y el plano no la declara para este elemento: hay que preguntar el espesor, no elegir un precio que lo supone`
+          : top.puntaje < UMBRAL
           ? `el mejor candidato (${top.tarea.codigo}) apenas se parece — ${top.puntaje} sobre ${UMBRAL} exigido`
           : `«${top.tarea.codigo}» y «${segundo.tarea.codigo}» empatan (${top.puntaje} vs ${segundo.puntaje}): la diferencia la tiene que decidir una persona`,
       fuente: FUENTE.FALTA_DATO,
