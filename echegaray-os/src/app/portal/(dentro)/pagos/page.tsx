@@ -32,6 +32,11 @@ import { Calendario } from './Calendario'
 
 export const dynamic = 'force-dynamic'
 
+/** El nombre de la obra tal como viaja en sus pagos. Si no aparece, el id — feo y cierto. */
+function nombreDeObra(pagos: { obraId: string | null; obraNombre: string }[], id: string): string {
+  return pagos.find((p) => p.obraId === id)?.obraNombre || id
+}
+
 export default async function Pagos({ searchParams }: { searchParams: Promise<{ vista?: string; mes?: string; ver?: string; obra?: string }> }) {
   const q = await searchParams
   const sesion = await sesionDelPortal()
@@ -77,10 +82,23 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // pagos pendientes de Pisos» es una dirección que se comparte, y es también la que abre el Inicio
   // cuando el cliente toca una de sus obras.
   const conPagos = obrasQueFiltran(pagos)
-  const obra = conPagos.some(([id]) => id === q.obra) ? q.obra as string : null
+  // ═══ EL FILTRO ACEPTA CUALQUIER OBRA QUE TENGA PAGOS, NO SÓLO LAS QUE TIENEN PENDIENTES ═══
+  //
+  // Las pastillas ofrecen las obras EN CURSO —ofrecer una terminada como si hubiera algo que cobrar
+  // sería un botón que engaña—, pero el Inicio lista TODAS las obras del cliente y enlaza cada una.
+  // Al tocar una terminada, la validación anterior descartaba el `?obra=` y la pantalla mostraba
+  // todo, sin filtro y sin decir nada: el cliente tocaba «Galpones» y le aparecían las cuatro obras.
+  // Un filtro que se ignora en silencio es peor que un filtro que no existe.
+  //
+  // Ahora vale cualquier obra con pagos publicados. Si está terminada, se filtra igual y la pantalla
+  // lo dice; si no tiene ni un pago, se dice eso otro.
+  const conAlgunPago = new Set(pagos.map((p) => p.obraId).filter((id): id is string => !!id))
+  const obra = q.obra && conAlgunPago.has(q.obra) ? q.obra as string : null
   /** Vino un `?obra=` que no filtra nada: se DICE, en vez de mostrar todo como si nada hubiera
    *  pasado. Pasa cuando el Inicio enlaza una obra cuyo cronograma todavía no se publicó. */
   const obraSinPagos = Boolean(q.obra) && !obra
+  /** La obra elegida está terminada y cobrada: se muestra, y se dice que ya no hay nada que cobrar. */
+  const obraTerminada = Boolean(obra) && !conPagos.some(([id]) => id === obra)
 
   // LAS OBRAS ANTERIORES, APARTE. Son pagos de trabajo previo para el mismo cliente: se le muestran
   // —los hizo y tiene derecho a verlos— pero abajo, en gris, y sin sumar al contrato en curso. Las
@@ -218,6 +236,15 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         </p>
       ) : null}
 
+      {/* La obra está terminada y cobrada. Se muestra igual —el cliente la pidió y tiene derecho a
+          ver lo que pagó— pero se dice que no queda nada, en vez de dejarlo buscando un pendiente
+          que no existe. */}
+      {obraTerminada && obra ? (
+        <p className="mt-4 text-[13.5px] text-muted">
+          {nombreDeObra(pagos, obra)} está terminada y cobrada por completo: no queda ningún pago pendiente.
+        </p>
+      ) : null}
+
       {/* LISTADO · CALENDARIO — el mismo interruptor de la pantalla 32. Son dos preguntas distintas:
           el listado contesta «qué me toca pagar», el calendario «cómo me cae el mes». */}
       {pagos.length ? (
@@ -249,13 +276,20 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
         </div>
       ) : null}
 
-      {/* POR OBRA — sólo con más de una: una pastilla que no elige nada es ruido. */}
-      {conPagos.length > 1 ? (
+      {/* POR OBRA — sólo con más de una: una pastilla que no elige nada es ruido.
+          LA OBRA ELEGIDA SIEMPRE TIENE SU PASTILLA, esté o no en curso. El Inicio enlaza TODAS las
+          obras del cliente, incluidas las terminadas; sin esto, tocar una terminada dejaba la barra
+          sin ninguna pastilla encendida —ni siquiera «Todas»— y el cliente no tenía cómo volver ni
+          cómo saber qué estaba viendo. */}
+      {conPagos.length > 1 || obraTerminada ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Pastilla a={con({ obra: null })} activa={!obra}>Todas las obras</Pastilla>
           {conPagos.map(([id, nombre]) => (
             <Pastilla key={id} a={con({ obra: id })} activa={obra === id}>{nombre}</Pastilla>
           ))}
+          {obraTerminada && obra ? (
+            <Pastilla a={con({ obra })} activa>{nombreDeObra(pagos, obra)}</Pastilla>
+          ) : null}
         </div>
       ) : null}
 
