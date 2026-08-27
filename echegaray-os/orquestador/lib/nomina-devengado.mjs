@@ -27,6 +27,26 @@ export const COL_OFICINA = Object.freeze({ nombre: 1, ingreso: 2, categoria: nul
 const DIA_DESDE = 5
 const DIA_HASTA = 20
 
+/**
+ * EL DÍA DE UNA CELDA DE LA FILA DE FECHAS — venga como venga.
+ *
+ * La misma celda es «24/08» leída con FORMATTED_VALUE y `46258` leída con UNFORMATTED_VALUE, que es
+ * como hay que leer la planilla cuando además se necesitan los importes sin el símbolo de pesos.
+ * Un lector que sólo entiende el texto devuelve cero meses con el otro render, y el síntoma es una
+ * pestaña con todas las columnas vacías y ningún error. PURA.
+ *
+ * @returns {{dia:number, mes:number}|null}
+ */
+export function diaDeCelda(v) {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 20000) {
+    // Serial de Sheets: días desde el 30/12/1899, en UTC para no arrastrar el huso.
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.trunc(v) * 86400000)
+    return { dia: d.getUTCDate(), mes: d.getUTCMonth() + 1 }
+  }
+  const m = /^(\d{1,2})\/(\d{1,2})$/.exec(String(v ?? '').replace(/\s+/g, ' ').trim())
+  return m ? { dia: Number(m[1]), mes: Number(m[2]) } : null
+}
+
 /** Horas de una celda: acepta coma decimal y descarta lo que no sea número. PURA. */
 export function horas(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0
@@ -69,11 +89,11 @@ export function devengadoPorMes(grid = [], bloques = [], { anio = 2026, clave, c
       if (col.categoria != null && texto(fila[col.categoria])) p.categoria = texto(fila[col.categoria])
       if (precio > 0) p.jornal = precio
       for (let c = DIA_DESDE; c <= DIA_HASTA; c++) {
-        const m = /^(\d{1,2})\/(\d{1,2})$/.exec(texto(fechas[c]))
-        if (!m) continue
+        const d = diaDeCelda(fechas[c])
+        if (!d) continue
         const h = horas(fila[c])
         if (!h) continue
-        const mes = `${anio}-${String(Number(m[2])).padStart(2, '0')}`
+        const mes = `${anio}-${String(d.mes).padStart(2, '0')}`
         const acc = p.meses.get(mes) ?? { horas: 0, importe: 0 }
         acc.horas += h
         if (precio > 0) { acc.importe += h * precio; p.jornalPorMes.set(mes, precio) } else { p.horasSinPrecio += h }

@@ -1,7 +1,7 @@
 // EL DEVENGADO MES A MES. El defecto que atrapa: valorizar enero con el precio de agosto.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { COL_OBRA, COL_OFICINA, devengadoPorMes, horas, jornal, mesesDe, totalAnio } from './nomina-devengado.mjs'
+import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, horas, jornal, mesesDe, totalAnio } from './nomina-devengado.mjs'
 
 const clave = (s) => String(s).toLowerCase().trim()
 
@@ -60,4 +60,21 @@ test('los doce meses salen en orden y con el año pedido', () => {
 test('el mapa de obra y el de oficina NO son el mismo', () => {
   assert.notEqual(COL_OBRA.hora, COL_OFICINA.hora)
   assert.equal(COL_OFICINA.categoria, null)
+})
+
+test('la fila de fechas se entiende en los DOS renders: «24/08» y su serial', () => {
+  assert.deepEqual(diaDeCelda('24/08'), { dia: 24, mes: 8 })
+  assert.deepEqual(diaDeCelda(46258), { dia: 24, mes: 8 })
+  assert.equal(diaDeCelda(''), null)
+  assert.equal(diaDeCelda('sábado'), null)
+  assert.equal(diaDeCelda(8), null, 'un 8 suelto es una hora, no una fecha')
+})
+
+test('con la grilla en serial el devengado sale igual que con el texto', () => {
+  const g = espejo()
+  g[0][5] = 46027   // 05/01/2026
+  g[3][5] = 46245   // 11/08/2026
+  const p = devengadoPorMes(g, BLOQUES, { anio: 2026, clave }).get('perez juan')
+  assert.equal(p.meses.get('2026-01').importe, 10_000)
+  assert.equal(p.meses.get('2026-08').importe, 20_000)
 })

@@ -34,7 +34,10 @@ import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
-import { COL_OBRA, COL_OFICINA, devengadoPorMes, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
+import { repartoPersona } from '../lib/jornales-reparto-pago.mjs'
+import { convenioDe } from '../lib/uocra-paritaria.mjs'
+import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
+import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
 // ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
 //
@@ -82,6 +85,43 @@ function personasDe(grid, sector, col) {
   return { personas, bloques }
 }
 
+/**
+ * LA QUINCENA QUE SE ESTÁ PAGANDO: el ÚLTIMO bloque del espejo, persona por persona.
+ *
+ * Las columnas son las de `jornales-reparto-pago.mjs` (V horas · W $/hora · X banco · Y adelanto ·
+ * AA total). Se lee el TOTAL de la planilla y no se recalcula: si el dueño corrigió una hora a mano,
+ * manda su número. Cuando la celda no trae total se cae a `horas × $/hora`, que es la misma cuenta
+ * que hace la planilla.
+ */
+function quincenaEnCurso(grid, bloques, clave) {
+  const b = bloques[bloques.length - 1]
+  const out = new Map()
+  if (!b) return { porClave: out, desde: null, hasta: null }
+  const fechas = grid[b.filaFecha - 1] ?? []
+  const dias = []
+  for (let c = 5; c <= 20; c++) {
+    const d = diaDeCelda(fechas[c])
+    if (d) dias.push(`${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`)
+  }
+  for (let r = b.inicio; r <= b.fin; r++) {
+    const f = grid[r - 1] ?? []
+    const nombre = String(f[1] ?? '').trim()
+    if (!nombre) continue
+    const horas = Number(f[21]) || 0
+    const jornal = Number(f[22]) || 0
+    out.set(clave(nombre), {
+      nombre,
+      categoria: String(f[3] ?? '').trim(),
+      horas,
+      jornal,
+      banco: Number(f[23]) || 0,
+      adelanto: Number(f[24]) || 0,
+      total: Number(f[26]) || horas * jornal,
+    })
+  }
+  return { porClave: out, desde: dias[0] ?? null, hasta: dias[dias.length - 1] ?? null }
+}
+
 /** El costo de desvincular a UNA persona, con el mismo núcleo del bloque 6 de Jornales. */
 function costoDe(p, cese) {
   const horasPorMes = new Map([...p.devengado.meses].map(([m, v]) => [m, v.horas]))
@@ -99,109 +139,106 @@ function costoDe(p, cese) {
   })
 }
 
-function grilla(personas, { hoy }) {
+function grilla(activos, { hoy, quincena, escala }) {
   const meses = mesesDe(ANIO)
   const f = []
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
-  // ═══ LOS DOS GRUPOS NO SE MEZCLAN ═══
-  //
-  // La primera versión ponía a todos en una lista con una columna «Situación», y el dueño la
-  // rechazó en una línea: *"es confusa y no respeta a activos de inactivos o desvinculados"*. Tenía
-  // razón — una columna no separa nada: el ojo sigue leyendo una sola tabla, los totales suman gente
-  // que ya no está, y el número que decide (cuánto cuesta la nómina de hoy) queda diluido entre
-  // treinta y seis filas de las cuales veinte son historia.
-  const activos = personas.filter((p) => p.activo)
-  const fuera = personas.filter((p) => !p.activo)
-
   fila(PESTANA)
-  fila('Los que están y los que ya no, separados. Lo que cobra cada uno, mes a mes, y lo que costaría desvincular a los que siguen.')
-  fila(`Sale del espejo de la planilla de jornales. Cada mes se valoriza con el $/hora de esa quincena, no con el de hoy. Al ${fecha(hoy)}.`)
+  fila('El plantel de hoy: cuánto hay que pagarle a cada uno esta quincena, y cuánto costaría desvincularlo.')
+  fila(`Sale del espejo de la planilla de jornales. Al ${fecha(hoy)}.`)
   fila()
 
-  /** El cuadro de identidad de un grupo. Mismas columnas para los dos, para poder compararlos. */
-  const cuadroQuienes = (grupo, { conUltimoDia }) => {
-    fila('Persona', 'Sector', 'Cat.', 'Ingreso', conUltimoDia ? 'Último día' : 'Antigüedad',
-      '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
-    let horasT = 0
-    let importeT = 0
-    for (const p of grupo) {
-      const t = totalAnio(p.devengado)
-      horasT += t.horas
-      importeT += t.importe
-      const cese = p.activo ? hoy : (p.ultimoDia ?? hoy)
-      const ant = antiguedad(p.ingreso, cese)
-      const mesesConHoras = [...p.devengado.meses.values()].filter((v) => v.importe > 0).length
-      fila(p.nombre, p.sector, p.categoria || SIN_DATO,
-        p.ingreso ? fecha(p.ingreso) : SIN_DATO,
-        conUltimoDia ? (p.ultimoDia ? fecha(p.ultimoDia) : SIN_DATO) : (ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO),
-        p.jornalPactado || SIN_DATO,
-        Math.round(t.horas), Math.round(t.importe),
-        mesesConHoras ? Math.round(t.importe / mesesConHoras) : SIN_DATO)
-    }
-    fila(rotuloTotal(`${grupo.length} persona(s)`), '', '', '', '', '', Math.round(horasT), Math.round(importeT))
-    return { horasT, importeT }
-  }
-
-  // ── 1 · LOS QUE ESTÁN ────────────────────────────────────────────────────────────────────
-  fila(seccion(1, 'activos — el plantel de hoy'))
-  const tActivos = cuadroQuienes(activos, { conUltimoDia: false })
-  fila()
-
-  // ── 2 · LOS QUE YA NO ESTÁN ──────────────────────────────────────────────────────────────
-  fila(seccion(2, `desvinculados durante ${ANIO} — ya no están en el plantel`))
-  fila('No suman al costo de hoy. Están acá porque su devengado del año sí ocurrió y hay que poder explicarlo.')
-  const tFuera = cuadroQuienes(fuera, { conUltimoDia: true })
-  fila()
-
-  // ── 3 · EL AÑO, MES A MES ────────────────────────────────────────────────────────────────
-  /** El cuadro mes a mes de un grupo, con su propia fila de total. */
-  const cuadroMeses = (grupo) => {
-    fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
-    const porMes = new Array(12).fill(0)
-    let tot = 0
-    let horas = 0
-    for (const p of grupo) {
-      const cel = meses.map((m, i) => {
-        const v = p.devengado.meses.get(m)
-        if (!v || !v.importe) return SIN_DATO
-        porMes[i] += v.importe
-        return Math.round(v.importe)
-      })
-      const t = totalAnio(p.devengado)
-      tot += t.importe
-      horas += t.horas
-      fila(p.nombre, ...cel, Math.round(t.importe), Math.round(t.horas))
-    }
-    fila(rotuloTotal('TOTAL'), ...porMes.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tot), Math.round(horas))
-    return porMes
-  }
-
-  fila(seccion(3, `lo devengado mes a mes · activos · ${ANIO}`))
-  const mesesActivos = cuadroMeses(activos)
-  fila()
-
-  fila(seccion(4, `lo devengado mes a mes · desvinculados · ${ANIO}`))
-  const mesesFuera = cuadroMeses(fuera)
-  fila()
-
-  fila(seccion(5, `el año completo · ${ANIO}`))
-  fila('Concepto', ...MES_CORTO, 'TOTAL AÑO')
-  fila(sub('Activos'), ...mesesActivos.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tActivos.importeT))
-  fila(sub('Desvinculados'), ...mesesFuera.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tFuera.importeT))
-  fila(rotuloTotal('TOTAL NÓMINA'), ...mesesActivos.map((v, i) => Math.round(v + mesesFuera[i]) || SIN_DATO),
-    Math.round(tActivos.importeT + tFuera.importeT))
-  const sinPrecio = personas.filter((p) => p.devengado.horasSinPrecio > 0)
-  if (sinPrecio.length) {
-    fila(sub(`${sinPrecio.length} persona(s) con horas cargadas sin $/hora en su fila: esas horas se cuentan y NO se valorizan`))
-  }
-  fila()
-
-  // ── 6 · QUÉ CUESTA DESVINCULAR — SÓLO A LOS QUE SIGUEN ───────────────────────────────────
+  // ═══ 1 · LO QUE HAY QUE PAGAR, EN LOS DOS ESCENARIOS ═══
   //
-  // A quien ya salió no se le puede volver a liquidar: su costo de salida ocurrió, no es una
-  // decisión abierta. Ponerlo en el mismo cuadro inflaba un total que nadie va a pagar.
-  fila(seccion(6, 'qué cuesta desvincular a cada uno de los que siguen'))
+  // El dueño lo pidió así: *"cuanto le tengo q pagar este mes a cada uno, segun el acuerdo 50 y 50,
+  // cubriendo el piso de uocra vs lo q le pagamos hoy"*. Son DOS columnas de plata al lado, no dos
+  // cuadros: la decisión es «cuánto me sale llevar a todos al piso», y esa resta tiene que estar
+  // escrita, no que la haga el que mira.
+  //
+  // EL 50/50 NO ES UNA REGLA DE ESTA PESTAÑA: es `repartoPersona`, el mismo núcleo con el que se
+  // paga la quincena. Y el efectivo NO se recorta en cero — un efectivo negativo es un adelanto de
+  // más, y es información.
+  fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
+  fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. Piso de convenio: ${escala.rotulo ?? 'sin escala'}.`)
+  fila('Persona', 'Cat.', 'Convenio', 'Horas', 'Adelanto',
+    '$/h HOY', 'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
+    '$/h PISO', 'Banco PISO', 'Efectivo PISO', 'TOTAL PISO', 'Diferencia')
+  const T = { horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0 }
+  const sinConvenio = []
+  for (const p of activos) {
+    const q = quincena.porClave.get(p.clave)
+    if (!q) continue
+    const conv = convenioDe(q.categoria || p.categoria)
+    const basico = conv ? escala.porCategoria[conv] ?? null : null
+    if (!conv) sinConvenio.push(p.nombre)
+
+    const hoyR = repartoPersona({ total: q.total, adelanto: q.adelanto, banco: q.banco })
+    // EL PISO NO BAJA A NADIE. Si el jornal pactado ya es mayor que el del convenio, el escenario
+    // «piso» es el mismo que el de hoy: el convenio es un mínimo, no una tarifa.
+    const jornalPiso = basico != null ? Math.max(q.jornal, basico) : null
+    const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
+    const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null
+
+    T.horas += q.horas; T.adelanto += q.adelanto
+    T.bancoHoy += hoyR.banco; T.efHoy += hoyR.efectivo; T.totHoy += hoyR.total
+    if (pisoR) { T.bancoPiso += pisoR.banco; T.efPiso += pisoR.efectivo; T.totPiso += pisoR.total; T.sube += pisoR.total - hoyR.total }
+
+    fila(p.nombre, q.categoria || SIN_DATO, conv ?? SIN_DATO,
+      Math.round(q.horas), q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
+      Math.round(q.jornal), Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
+      jornalPiso != null ? Math.round(jornalPiso) : SIN_DATO,
+      pisoR ? Math.round(pisoR.banco) : SIN_DATO,
+      pisoR ? Math.round(pisoR.efectivo) : SIN_DATO,
+      pisoR ? Math.round(pisoR.total) : SIN_DATO,
+      pisoR ? (Math.round(pisoR.total - hoyR.total) || SIN_DATO) : SIN_DATO)
+  }
+  fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave)).length} persona(s)`), '', '',
+    Math.round(T.horas), Math.round(T.adelanto),
+    '', Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
+    '', Math.round(T.bancoPiso), Math.round(T.efPiso), Math.round(T.totPiso), Math.round(T.sube))
+  fila(sub(`Llevar a todos al piso de convenio cuesta ${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena.`))
+  if (sinConvenio.length) fila(sub(`${sinConvenio.length} sin equivalencia de convenio declarada: ${sinConvenio.join(' · ')}. No se les mide el piso.`))
+  fila()
+
+  // ═══ 2 · QUIÉNES SON ═══
+  fila(seccion(2, 'quiénes son'))
+  fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
+  let horasT = 0
+  let importeT = 0
+  for (const p of activos) {
+    const t = totalAnio(p.devengado)
+    horasT += t.horas; importeT += t.importe
+    const ant = antiguedad(p.ingreso, hoy)
+    const conHoras = [...p.devengado.meses.values()].filter((v) => v.importe > 0).length
+    fila(p.nombre, p.sector, p.categoria || SIN_DATO, p.ingreso ? fecha(p.ingreso) : SIN_DATO,
+      ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO, p.jornalPactado || SIN_DATO,
+      Math.round(t.horas), Math.round(t.importe), conHoras ? Math.round(t.importe / conHoras) : SIN_DATO)
+  }
+  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', Math.round(horasT), Math.round(importeT))
+  fila()
+
+  // ═══ 3 · EL AÑO, MES A MES ═══
+  fila(seccion(3, `lo devengado mes a mes · ${ANIO}`))
+  fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
+  const porMes = new Array(12).fill(0)
+  for (const p of activos) {
+    const cel = meses.map((m, i) => {
+      const v = p.devengado.meses.get(m)
+      if (!v || !v.importe) return SIN_DATO
+      porMes[i] += v.importe
+      return Math.round(v.importe)
+    })
+    const t = totalAnio(p.devengado)
+    fila(p.nombre, ...cel, Math.round(t.importe), Math.round(t.horas))
+  }
+  fila(rotuloTotal('TOTAL'), ...porMes.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(importeT), Math.round(horasT))
+  const sinPrecio = activos.filter((p) => p.devengado.horasSinPrecio > 0)
+  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas cargadas sin $/hora: esas horas se cuentan y NO se valorizan`))
+  fila()
+
+  // ═══ 4 · QUÉ CUESTA DESVINCULAR ═══
+  fila(seccion(4, 'qué cuesta desvincular a cada uno'))
   fila('Estas dos columnas NUNCA se suman: el fondo de cese es plata del trabajador que se entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
   let saleTotal = 0
@@ -212,8 +249,7 @@ function grilla(personas, { hoy }) {
     saleTotal += sale
     const fondo = l.fclDevengadoAcumulado ?? null
     if (typeof fondo === 'number') fondoTotal += fondo
-    fila(p.nombre,
-      l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
+    fila(p.nombre, l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
       Math.round(l.vacaciones || 0), Math.round(l.sac || 0), Math.round(l.sacSobreVacaciones || 0),
       Math.round(l.fclPagoDirecto || 0), Math.round(sale),
       typeof fondo === 'number' ? Math.round(fondo) : SIN_DATO)
@@ -222,12 +258,13 @@ function grilla(personas, { hoy }) {
   fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
   fila()
 
-  // ── 7 · LO QUE NO SE PUEDE MEDIR ACÁ ─────────────────────────────────────────────────────
-  fila(seccion(7, 'lo que esta pestaña NO puede decir'))
-  fila(sub('Los acuerdos particulares (adelantos pactados, premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
-  fila(sub('Los legajos de Drive todavía no se cruzan acá: fecha de nacimiento, CUIL, obra social y familia siguen en la carpeta de cada uno.'))
-  fila(sub('Las cargas sociales de cada persona no se abren: la planilla las tiene por total, no por legajo.'))
-  fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga puede leerse como desvinculado: la planilla no distingue.'))
+  // ═══ 5 · LO QUE NO SE PUEDE DECIR ═══
+  fila(seccion(5, 'lo que esta pestaña NO puede decir'))
+  fila(sub('Sólo el plantel ACTIVO. Los desvinculados se sacaron por pedido del dueño: su devengado histórico vive en la planilla de jornales.'))
+  fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
+  fila(sub('Los legajos de Drive todavía no se cruzan acá: CUIL, obra social y familia siguen en la carpeta de cada uno.'))
+  fila(sub('Las cargas sociales no se abren por persona: la planilla las tiene por total.'))
+  fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja: la planilla no las distingue.'))
   return f
 }
 
@@ -278,27 +315,50 @@ async function formatear(google, hoja, filas) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const hoy = new Date()
-  const [obreros, oficina] = await Promise.all([
+  // ═══ LA MISMA PLANILLA, LEÍDA DE LAS DOS FORMAS, Y CADA UNA PARA LO SUYO ═══
+  //
+  // Con FORMATTED_VALUE la fecha de ingreso llega como «26/05/2025» —que es lo que el lector del
+  // plantel sabe parsear— y los importes llegan como «$ 431.200», que no son un número. Con
+  // UNFORMATTED_VALUE pasa exactamente lo contrario. Pedir las dos cuesta una llamada más y evita la
+  // clase entera de defectos: la primera versión leyó todo sin formato y dejó la columna Ingreso en
+  // «—» para las diecinueve personas, sin un solo error a la vista.
+  const [obreros, obrerosNum, oficina, uocra] = await Promise.all([
     google.readSheetValues(ID, '_J_OBREROS!A1:AC990'),
+    google.readSheetValues(ID, '_J_OBREROS!A1:AC990', { render: 'UNFORMATTED_VALUE' }),
     google.readSheetValues(ID, '_J_OFICINA!A1:AA990'),
+    google.readSheetValues(ID, '_UOCRA_RAW!A1:J400', { render: 'UNFORMATTED_VALUE' }),
   ])
   const a = personasDe(obreros, 'Obra', COL_OBRA)
   const b = personasDe(oficina, 'Oficina', COL_OFICINA)
-  const personas = [...a.personas, ...b.personas]
-    .sort((x, y) => (x.activo === y.activo ? x.nombre.localeCompare(y.nombre, 'es') : (x.activo ? -1 : 1)))
-  console.log(`obra: ${a.personas.length} persona(s) en ${a.bloques.length} quincena(s) · oficina: ${b.personas.length} en ${b.bloques.length}`)
-  if (!personas.length) { console.error('no leí ninguna persona de los espejos: NO escribo'); process.exit(1) }
+  // SÓLO EL PLANTEL DE HOY. El dueño: *"los inactivos quitar"*. La historia de los que se fueron no
+  // desaparece —vive en la planilla de jornales, que es la fuente— pero no ensucia la decisión de
+  // cuánto hay que pagar esta quincena.
+  const activos = [...a.personas, ...b.personas].filter((p) => p.activo)
+    .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'))
+  const quincena = quincenaEnCurso(obrerosNum ?? [], a.bloques, claveNombre)
 
-  const filas = grilla(personas, { hoy })
+  // LA ESCALA DEL CONVENIO, del período de la quincena. Si no hay escalón para ese mes NO se estira
+  // el anterior: la columna del piso queda vacía y la pestaña lo dice.
+  const { escalones } = parsearAcuerdos(uocra ?? [])
+  const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+  const esc = escalonDe(escalones, periodo)
+  const escala = {
+    rotulo: esc ? `${esc.rotulo} (${esc.periodo})` : null,
+    porCategoria: Object.fromEntries(Object.entries(esc?.categorias ?? {}).map(([k, v]) => [k, v.zonaA ?? v.basico])),
+  }
+
+  console.log(`activos: ${activos.length} · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} con ${quincena.porClave.size} persona(s) · escala ${escala.rotulo ?? 'SIN ESCALA'}`)
+  if (!activos.length) { console.error('no leí ninguna persona activa: NO escribo'); process.exit(1) }
+  if (!esc) console.warn('  ⚠ sin escalón de convenio para el período: el cuadro del piso sale vacío')
+
+  const filas = grilla(activos, { hoy, quincena, escala })
   console.log(`${PESTANA}: ${filas.length} filas × ${ANCHO} columnas`)
-  for (const f of filas.slice(0, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 22)).join(' | '))
+  for (const f of filas.slice(5, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
 
   const malas = filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
   if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
 
-  // `hallarPestana` LANZA cuando no encuentra: es lo correcto para un generador que edita una
-  // pestaña existente, y acá justamente el caso normal la primera vez es que no exista.
   const buscar = async () => { try { return hallarPestana(await google.getSheetMeta(ID), PESTANA) } catch { return null } }
   let hoja = await buscar()
 
@@ -318,18 +378,12 @@ async function main() {
     console.log(`  ✂ borré la ${PESTANA} anterior para rehacerla sin cola`)
     hoja = null
   }
-  if (!hoja) {
-    await google.spreadsheetBatchUpdate(ID, [{
-      addSheet: { properties: { title: PESTANA, gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 } } },
-    }])
-    hoja = await buscar()
-    console.log(`  ✚ creé la pestaña ${PESTANA}`)
-  }
-  if ((hoja.rows ?? 0) < filas.length + 10) {
-    await google.spreadsheetBatchUpdate(ID, [{
-      updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: filas.length + 20 } }, fields: 'gridProperties.rowCount' },
-    }])
-  }
+  await google.spreadsheetBatchUpdate(ID, [{
+    addSheet: { properties: { title: PESTANA, gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 } } },
+  }])
+  hoja = await buscar()
+  console.log(`  ✚ creé la pestaña ${PESTANA}`)
+
   await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas, { yaGuardado: true })
   await formatear(google, hoja, filas)
 
