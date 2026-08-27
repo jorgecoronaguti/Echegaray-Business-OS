@@ -85,7 +85,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     origen: entrada.origen ?? null,
     mensaje: entrada.mensaje ?? null,
     intencion: entrada.intencion ?? null,
-    contexto: { ...contexto, ...(entrada.contexto ?? {}) },
+    // ═══ EL CONTEXTO DEL SERVIDOR VA ÚLTIMO, Y ES A PROPÓSITO ═══
+    //
+    // Estaba al revés: `{...contexto, ...(entrada.contexto ?? {})}`. El encabezado de este archivo
+    // explica que el nombre de la obra se lee con la sesión del usuario y «sale de la base, nunca
+    // del navegador» — y una línea más abajo el navegador lo pisaba. Del otro lado, `contexto` es lo
+    // PRIMERO que `argumentosPara` usa para llenar los argumentos de una tool, y a diferencia de
+    // `entidad` no pasa por ninguna verificación. Con el orden invertido, mandar `contexto.obra` a
+    // mano bastaba para que la lectura por obra corriera sobre la obra que eligiera el navegador.
+    contexto: { ...(entrada.contexto ?? {}), ...contexto },
     entidad,
     // La firma sólo se pone cuando ALGO se verificó de verdad. Sin contexto no hay nada que firmar.
     ...(Object.keys(entidad).length ? { verificado_por: 'app-server' as const } : {}),

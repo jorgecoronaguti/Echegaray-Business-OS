@@ -30,11 +30,10 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
-import { repartoPersona } from '../lib/jornales-reparto-pago.mjs'
+import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { convenioDe } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
@@ -181,6 +180,24 @@ function costoDe(p, cese) {
  * no toca la red. La carpeta de cada persona cuelga de «1. ACTIVOS»; los que ya no están tienen la
  * suya en «2. INACTIVOS», y esta pestaña no los mira porque no los muestra.
  */
+/**
+ * LO QUE LA BASE SABE DE CADA PERSONA — para completar lo que la planilla no trae.
+ *
+ * `_J_OFICINA` no tiene fecha de alta: los dos de oficina salían con antigüedad «—», vacaciones en
+ * cero y sin fondo, que no es «no le corresponde» sino «no lo pude calcular». `public.personas` sí
+ * la tiene, y además declara el CONVENIO de cada uno — que es el dato que decide si una liquidación
+ * se arma por la ley 22.250 o por la LCT, y son dos números muy distintos.
+ *
+ * Se empareja con la MISMA regla que las carpetas de Drive: dos tokens en común o no hay match.
+ */
+async function fichasDeLaBase() {
+  const { rows } = await query(
+    `select nombre_completo, fecha_ingreso, fecha_egreso, categoria, convenio_colectivo
+       from public.personas where nombre_completo is not null`,
+  )
+  return rows
+}
+
 async function legajosDeDrive() {
   const BASE = 'administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/1. ACTIVOS/'
   const { rows } = await query(
@@ -306,24 +323,63 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   fila()
 
   // ═══ 4 · QUÉ CUESTA DESVINCULAR ═══
+  //
+  // ═══ LA LIQUIDACIÓN CUBRE LA MITAD, Y ESO TIENE QUE VERSE ═══
+  //
+  // El dueño lo pidió textual: *"la liq sólo contempla el 50%, el restante se tiene que completar
+  // con efectivo"*. Es el mismo acuerdo con el que se paga cada quincena —`ACUERDO_BANCO`, la
+  // política que él fijó— aplicado al día que alguien se va: el recibo formal se arma sobre la mitad
+  // registrada, y para que la persona cobre lo que realmente le corresponde, la otra mitad se
+  // entrega en efectivo.
+  //
+  // POR QUÉ VA EN DOS COLUMNAS Y NO EN UNA NOTA: un total único contesta «cuánto sale» y esconde
+  // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
+  // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
+  // de una desvinculación a la mitad exacta.
   fila(seccion(4, 'qué cuesta desvincular a cada uno'))
-  fila('Estas dos columnas NUNCA se suman: el fondo de cese es plata del trabajador que se entrega con la libreta, no un desembolso nuevo.')
-  fila('Persona', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
+  fila(`La liquidación formal cubre el ${Math.round(ACUERDO_BANCO * 100)}% —la parte registrada—; el resto se completa en efectivo. Las dos columnas SUMAN: juntas son lo que sale de la caja.`)
+  fila('El fondo de cese va aparte y NUNCA se suma: es plata del trabajador que se le entrega con la libreta, no un desembolso nuevo.')
+  fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
+    'Liquidación (por recibo)', 'A completar en efectivo', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
   let saleTotal = 0
+  let porReciboTotal = 0
+  let enEfectivoTotal = 0
   let fondoTotal = 0
   for (const p of activos) {
     const l = costoDe(p, hoy)
     const sale = (l.vacaciones || 0) + (l.sac || 0) + (l.sacSobreVacaciones || 0) + (l.fclPagoDirecto || 0)
+    const porRecibo = sale * ACUERDO_BANCO
+    const enEfectivo = sale - porRecibo
     saleTotal += sale
+    porReciboTotal += porRecibo
+    enEfectivoTotal += enEfectivo
     const fondo = l.fclDevengadoAcumulado ?? null
     if (typeof fondo === 'number') fondoTotal += fondo
-    fila(p.nombre, l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
+    fila(p.nombre,
+      p.convenio ? (/22\.250/.test(p.convenio) ? 'Ley 22.250' : p.convenio) : 'sin declarar',
+      l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
       Math.round(l.vacaciones || 0), Math.round(l.sac || 0), Math.round(l.sacSobreVacaciones || 0),
-      Math.round(l.fclPagoDirecto || 0), Math.round(sale),
+      Math.round(l.fclPagoDirecto || 0),
+      Math.round(porRecibo), Math.round(enEfectivo), Math.round(sale),
       typeof fondo === 'number' ? Math.round(fondo) : SIN_DATO)
   }
-  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', Math.round(saleTotal), Math.round(fondoTotal))
+  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', '',
+    Math.round(porReciboTotal), Math.round(enEfectivoTotal), Math.round(saleTotal), Math.round(fondoTotal))
+  fila(sub(`Si se fueran todos hoy: ${Math.round(porReciboTotal).toLocaleString('es-AR')} por recibo + ${Math.round(enEfectivoTotal).toLocaleString('es-AR')} en efectivo = ${Math.round(saleTotal).toLocaleString('es-AR')} de la caja.`))
   fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
+  // ═══ LOS DOS DE OFICINA: EL RÉGIMEN DECIDE, Y NO LO DECIDE ESTA PESTAÑA ═══
+  //
+  // La base declara a los dos bajo la ley 22.250, igual que a los obreros, y con ese régimen el
+  // cálculo de arriba es el que corresponde. Pero si el personal de oficina estuviera bajo la LCT
+  // —que es lo habitual para administración— habría que sumar preaviso (art. 231/232), integración
+  // del mes (art. 233) e indemnización por antigüedad (art. 245), que acá son cero. La diferencia es
+  // de millones y no la decide un generador: la decide el dueño con su contador.
+  const oficina = activos.filter((p) => p.sector === 'Oficina')
+  if (oficina.length) {
+    fila(sub(`Oficina (${oficina.map((p) => p.nombre).join(' · ')}): la base los declara bajo ley 22.250, y con ese régimen no hay preaviso ni indemnización por antigüedad. Si estuvieran bajo LCT habría que sumarlos — es una definición del dueño, no del sistema.`))
+    const sinIngreso = oficina.filter((p) => !p.ingreso)
+    if (sinIngreso.length) fila(sub(`Sin fecha de ingreso en la planilla ni en la base: ${sinIngreso.map((p) => p.nombre).join(' · ')}. Sin ella no hay antigüedad, ni vacaciones proporcionales, ni fondo.`))
+  }
   fila()
 
   // ═══ 5 · EL LEGAJO EN DRIVE ═══
@@ -356,6 +412,7 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
   fila(sub('Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia siguen adentro de los PDF.'))
   fila(sub('Las cargas sociales no se abren por persona: la planilla las tiene por total.'))
+  fila(sub('El fondo de cese acumulado se calcula sobre el jornal de la planilla. Si los aportes se depositaron sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — no lo puedo verificar desde acá.'))
   fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja: la planilla no las distingue.'))
   return f
 }
@@ -443,6 +500,19 @@ async function main() {
   if (!activos.length) { console.error('no leí ninguna persona activa: NO escribo'); process.exit(1) }
   if (!esc) console.warn('  ⚠ sin escalón de convenio para el período: el cuadro del piso sale vacío')
 
+  // LO QUE LA PLANILLA NO TRAE Y LA BASE SÍ: la fecha de ingreso y el convenio declarado.
+  const fichas = await fichasDeLaBase()
+  const nombresFicha = fichas.map((f) => f.nombre_completo)
+  for (const p of activos) {
+    const m = carpetaDe(p.nombre, nombresFicha)
+    const f = m.seguro ? fichas.find((x) => x.nombre_completo === m.carpeta) : null
+    p.convenio = f?.convenio_colectivo ?? null
+    p.fichaDe = f?.nombre_completo ?? null
+    if (!p.ingreso && f?.fecha_ingreso) {
+      p.ingreso = new Date(f.fecha_ingreso)
+      p.ingresoDeLaBase = true
+    }
+  }
   const legajos = await legajosDeDrive()
   console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
   const filas = grilla(activos, { hoy, quincena, escala, legajos })
@@ -453,7 +523,13 @@ async function main() {
   const malas = filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
   if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
 
-  const buscar = async () => { try { return hallarPestana(await google.getSheetMeta(ID), PESTANA) } catch { return null } }
+  // ═══ EL TÍTULO SE COMPARA EXACTO, NUNCA POR PREFIJO ═══
+  //
+  // `hallarPestana` prueba exacto y DESPUÉS por prefijo: si no existiera una pestaña llamada
+  // exactamente «Nómina» pero sí una sola que empiece así —«Nómina 2026», «Nómina (copia)»— la
+  // devolvería, y acá abajo hay un `deleteSheet`. El dueño ya movió esta pestaña a mano; duplicarla
+  // o renombrarla es el gesto siguiente, y con el prefijo eso terminaba en un borrado.
+  const buscar = async () => (await google.getSheetMeta(ID)).find((h) => h.title === PESTANA) ?? null
   let hoja = await buscar()
 
   // ═══ DÓNDE VA LA PESTAÑA LO DECIDE EL DUEÑO, NO EL GENERADOR ═══
@@ -484,11 +560,19 @@ async function main() {
   // volver a crearla deja el archivo exactamente en el estado que describe el generador, sin cola.
   // El día que el dueño anote algo acá, esta decisión hay que revisarla — y por eso está escrita.
   if (hoja) {
-    await google.spreadsheetBatchUpdate(ID, [{ deleteSheet: { sheetId: hoja.sheetId } }])
+    const borrado = await google.spreadsheetBatchUpdate(ID, [{ deleteSheet: { sheetId: hoja.sheetId } }])
+    // NO SE ANUNCIA UN BORRADO QUE NO SE CONFIRMÓ. La guarda puede devolver `{protegido:true}` sin
+    // lanzar: seguir de largo dejaba el mensaje «✂ borré la Nómina anterior» sobre una pestaña que
+    // sigue entera, y el paso siguiente crearía una segunda con el mismo nombre.
+    if (borrado?.protegido) {
+      console.error(`no pude borrar ${PESTANA} (${borrado.motivo ?? 'la guarda lo frenó'}): NO sigo.`)
+      process.exit(1)
+    }
+    if (await buscar()) { console.error(`${PESTANA} sigue existiendo después del borrado: NO sigo.`); process.exit(1) }
     console.log(`  ✂ borré la ${PESTANA} anterior para rehacerla sin cola`)
     hoja = null
   }
-  await google.spreadsheetBatchUpdate(ID, [{
+  const creada = await google.spreadsheetBatchUpdate(ID, [{
     addSheet: {
       properties: {
         title: PESTANA,
@@ -498,6 +582,12 @@ async function main() {
     },
   }])
   hoja = await buscar()
+  // BORRADA Y SIN REPONER es el peor estado posible de esta secuencia, y el `catch` de `main` sólo
+  // imprimía. Se comprueba que la pestaña EXISTE antes de dar por hecho que se creó.
+  if (creada?.protegido || !hoja) {
+    console.error(`no pude crear ${PESTANA} (${creada?.motivo ?? 'no aparece en el archivo'}): la pestaña quedó BORRADA. Volvé a correr esto.`)
+    process.exit(1)
+  }
   console.log(`  ✚ creé la pestaña ${PESTANA}`)
 
   // ═══ LA REGLA 0, DECIDIDA EN VOZ ALTA: `respetar: false` ═══

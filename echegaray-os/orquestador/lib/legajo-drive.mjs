@@ -38,12 +38,30 @@ export function tokensDe(nombre) {
  *
  * @returns {{carpeta:string|null, tokens:number, seguro:boolean, candidatos:string[]}}
  */
+/**
+ * ¿SON EL MISMO TOKEN? Igualdad, o uno es prefijo del otro con al menos tres letras.
+ *
+ * En estas planillas los nombres se escriben cortados: «Emi Maldonado» en la de oficina y
+ * «MALDONADO BATISTA EMILIANO» en la base; «Reta Sebastian» y «RETA RAMON HECTOR SEBAST»; «Zogber»
+ * y «ZOGBE». Exigir igualdad exacta deja a esas personas sin fecha de ingreso y sin convenio, que se
+ * lee como «no le corresponde» cuando en realidad es «no lo pude emparejar».
+ *
+ * TRES LETRAS Y PREFIJO, no «contiene»: con «contiene» cualquier sílaba común ata dos apellidos
+ * distintos. Y «gonzalez» contra «gonzales» sigue SIN emparejar —difieren en la última letra, no es
+ * un prefijo— que es lo correcto: son dos apellidos y en la planilla hay gente con los dos. PURA.
+ */
+export function mismoToken(a, b) {
+  if (a === b) return true
+  const [corto, largo] = a.length <= b.length ? [a, b] : [b, a]
+  return corto.length >= 3 && largo.startsWith(corto)
+}
+
 export function carpetaDe(nombre, carpetas = []) {
-  const t = new Set(tokensDe(nombre))
+  const t = tokensDe(nombre)
   let max = 0
   let mejores = []
   for (const c of carpetas) {
-    const comunes = tokensDe(c).filter((x) => t.has(x)).length
+    const comunes = tokensDe(c).filter((x) => t.some((y) => mismoToken(x, y))).length
     if (comunes > max) { max = comunes; mejores = [c] } else if (comunes === max && max > 0) mejores.push(c)
   }
   if (max >= 2 && mejores.length === 1) return { carpeta: mejores[0], tokens: max, seguro: true, candidatos: [] }

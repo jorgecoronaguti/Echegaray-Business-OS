@@ -1,7 +1,7 @@
 // EL LEGAJO EN DRIVE. Cada test acá es un emparejamiento que ya salió mal en el archivo real.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { carpetaDe, papelesDe, periodoDeRecibo, tokensDe } from './legajo-drive.mjs'
+import { carpetaDe, mismoToken, papelesDe, periodoDeRecibo, tokensDe } from './legajo-drive.mjs'
 
 const CARPETAS = ['AGUERO CRISTIAN', 'ALANIZ EMANUEL', 'EMILIANO MALDONADO', 'GONZALES TOBARES JUAN GUILLERMO',
   'GONZALEZ CARLOS SAMUEL', 'GONZALEZ TOBARES EMILIANO', 'NIEVAS JUAN PABLO', 'OCHOA EDUARDO', 'PASTRAN MARCELO',
@@ -33,11 +33,15 @@ test('cuando dos carpetas empatan NO se elige la primera del array', () => {
   assert.ok(g.candidatos.includes('TELLO JUAN'), 'la equivocada también')
 })
 
-test('una letra de diferencia en el apellido tampoco alcanza sola', () => {
-  // «Zogber» contra «ZOGBE»: comparten sólo el nombre de pila.
+// CAMBIO DE CONTRATO (27/08/2026): un apellido CORTADO empareja; uno DISTINTO sigue sin emparejar.
+// Este test decía que «Zogber Leonardo» no podía emparejar con «ZOGBE LEONARDO» —y era verdad con
+// la regla vieja de igualdad exacta—, pero lo que dejaba afuera era a la persona correcta: en la
+// planilla el apellido está escrito completo y en Drive está cortado. Lo que el test protegía —que
+// no se emparejen dos personas distintas— sigue protegido, y lo prueba el caso de abajo.
+test('un apellido cortado SÍ empareja: «ZOGBE» es «Zogber» escrito corto', () => {
   const z = carpetaDe('Zogber Leonardo', CARPETAS)
-  assert.equal(z.seguro, false)
-  assert.deepEqual(z.candidatos, ['ZOGBE LEONARDO'])
+  assert.equal(z.seguro, true)
+  assert.equal(z.carpeta, 'ZOGBE LEONARDO')
 })
 
 test('sin ningún token en común no se propone ningún candidato', () => {
@@ -74,4 +78,24 @@ test('una carpeta vacía dice que faltan los cuatro, no que esté todo bien', ()
 
 test('un nombre de recibo sin período no inventa uno', () => {
   assert.equal(periodoDeRecibo('Recibo viejo.pdf'), null)
+})
+
+test('un nombre cortado empareja: «Emi» con «EMILIANO», «ZOGBE» con «Zogber»', () => {
+  const BASE = ['MALDONADO BATISTA EMILIANO', 'ZOGBE LEONARDO', 'RETA RAMON HECTOR SEBAST', 'GONZALEZ CARLOS SAMUEL']
+  assert.equal(carpetaDe('Emi Maldonado', BASE).carpeta, 'MALDONADO BATISTA EMILIANO')
+  assert.equal(carpetaDe('Zogber Leonardo', BASE).carpeta, 'ZOGBE LEONARDO')
+  assert.equal(carpetaDe('Reta Sebastian', BASE).carpeta, 'RETA RAMON HECTOR SEBAST')
+})
+
+test('«gonzalez» y «gonzales» NO son el mismo token: difieren en la última letra', () => {
+  assert.equal(mismoToken('gonzalez', 'gonzales'), false)
+  assert.equal(mismoToken('emi', 'emiliano'), true)
+  assert.equal(mismoToken('se', 'sebastian'), false, 'dos letras no alcanzan')
+  assert.equal(mismoToken('lopez', 'lopezcito'), true)
+})
+
+test('el prefijo no vuelve a emparejar a los que ya se negaban', () => {
+  const BASE = ['GONZALEZ CARLOS SAMUEL', 'GONZALES TOBARES JUAN GUILLERMO', 'TELLO JUAN']
+  assert.equal(carpetaDe('Castillo Carlos', BASE).carpeta, null)
+  assert.equal(carpetaDe('Gonzalez Juan', BASE).carpeta, null)
 })

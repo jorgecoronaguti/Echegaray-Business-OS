@@ -484,3 +484,42 @@ test('si la obra de la pantalla no existe para la lectura por obra, contesta la 
   assert.match(r.degradacion, /PLAYÓN DE AZUFRE/)
   assert.deepEqual(corridas.map((c) => c[0]), ['os.salud_obra', 'os.estado_empresa'])
 })
+
+test('una tool que devuelve {error} SIN lanzar queda firmada como error, no como ok', async () => {
+  // `imagen.generar` nunca lanza: devuelve `{error: …}`. La firma miraba sólo la excepción y
+  // diecinueve escrituras reales quedaron registradas como «ok».
+  const filas = []
+  const mapa = new Map([['imagen.generar', {
+    capability: 'drive.write',
+    schema: { name: 'generar_imagen', input_schema: { type: 'object', properties: {} } },
+    async run() { return { error: 'no pude generar la imagen: sin proveedor' } },
+  }]])
+  await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'imagen.generar',
+  }, {
+    registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.equal(filas.length, 1)
+  assert.equal(filas[0][9], 'error')
+  assert.match(filas[0][10], /sin proveedor/)
+})
+
+test('un {ok:false} del motor también se firma como error', async () => {
+  const filas = []
+  const mapa = new Map([['imagen.generar', {
+    capability: 'drive.write',
+    schema: { name: 'generar_imagen', input_schema: { type: 'object', properties: {} } },
+    async run() { return { ok: false, falta: 'credencial', motivo: 'sin cuenta de Cloudflare' } },
+  }]])
+  await atender({
+    actor: { id: 'u1', rol: 'DUENO', permisos: ['drive.write'] },
+    canal: 'app', intencion: 'imagen.generar',
+  }, {
+    registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia(),
+    query: async (sql, args) => { if (/xsas_escritura/.test(sql)) filas.push(args); return { rows: [] } },
+  })
+  assert.equal(filas[0][9], 'error')
+  assert.match(filas[0][10], /Cloudflare/)
+})

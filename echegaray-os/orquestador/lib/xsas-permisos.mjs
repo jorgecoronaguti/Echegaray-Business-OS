@@ -32,15 +32,31 @@
 
 /** Lo que cada rol de `perfiles.rol` puede pedirle a XSAS. Fail-closed: lo que no está, no puede. */
 export const PERMISOS_POR_ROL = Object.freeze({
-  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write']),
+  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write', 'os.write']),
   administracion: Object.freeze(['drive.read', 'os.read']),
   jefe_obra: Object.freeze(['drive.read', 'os.read']),
   campo: Object.freeze([]),
 })
 
-/** Las capabilities que producen un efecto FUERA del OS. Escribir un archivo en el Drive de la
- *  empresa no es un cálculo: queda, lo ve gente, y hay que poder decir quién lo hizo. */
-export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write'])
+/**
+ * QUÉ CAPABILITIES ESCRIBEN — por su forma, no por una lista.
+ *
+ * ═══ POR QUÉ DEJÓ DE SER UNA LISTA (27/08/2026, auditoría) ═══
+ *
+ * Era `['drive.write']`, y la auditoría encontró el agujero en diez minutos: `cotizacion.registrar`
+ * declaraba `drive.read` y su `run` hace un `INSERT` en `public.cotizaciones`. Como la capability no
+ * estaba en la lista, `escribeAfuera` decía que no escribía, las dos cerraduras no se enteraban y la
+ * firma tampoco. Probado contra el gateway vivo: un `jefe_obra` —el rol descripto como sólo lectura—
+ * llegó a ejecutar el cuerpo de la tool con HTTP 200.
+ *
+ * Una lista blanca de capabilities de escritura tiene el mismo defecto que cualquier defensa por
+ * enumeración: alcanza hasta que aparece la que nadie enumeró. El sufijo es una REGLA, y cubre a las
+ * que todavía no existen. Lo que NO cubre —y por eso además hay un test que enumera el registro
+ * real— es una tool que escribe declarando una capability de lectura: eso no lo puede ver ninguna
+ * regla sobre el nombre.
+ */
+export const SUFIJO_DE_ESCRITURA = /\.(write|delete|send|modify|trash|draft)$/
+export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write', 'os.write'])
 
 /**
  * LAS ÚNICAS TOOLS QUE PUEDEN ESCRIBIR, POR NOMBRE.
@@ -50,13 +66,14 @@ export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write'])
  * dueño y queda en el historial del repositorio.
  */
 export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
-  'slides.crear',    // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
-  'imagen.generar',  // generar_imagen — deja el PNG generado en el Drive, sellado como GENERADA
+  'slides.crear',          // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
+  'imagen.generar',        // generar_imagen — deja el PNG generado en el Drive, sellado como GENERADA
+  'cotizacion.registrar',  // registrar_cotizacion — INSERT en public.cotizaciones (la biblioteca comercial)
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */
 export function escribeAfuera(capability) {
-  return CAPACIDADES_DE_ESCRITURA.includes(String(capability ?? ''))
+  return SUFIJO_DE_ESCRITURA.test(String(capability ?? ''))
 }
 
 /** ¿Esta tool está autorizada a usar una capability de escritura? PURA y fail-closed. */

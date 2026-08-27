@@ -59,6 +59,33 @@ export const NEGATIVOS = Object.freeze([
   'logotipos, isotipos o marcas de cualquier empresa, incluida la propia',
 ])
 
+/**
+ * ═══ EL FILTRO CUBRÍA EL CAMPO EQUIVOCADO (27/08/2026, auditoría) ═══
+ *
+ * Estos dos patrones se aplicaban SÓLO a `contexto.datos[]`, y el prompt lo escriben `pedido` y
+ * `objetivo`: texto libre, obligatorio, y lo que más pesa en lo que se manda. Un pedido como
+ * «portada para la propuesta de $48,5M a Quattropani» salía entero hacia el proveedor.
+ *
+ * Y el proveedor puede ser el abierto, que es un servicio público sin contrato y sin borrado
+ * garantizado. La mitigación declarada en ese archivo —«describe conceptos, nunca datos»— sólo es
+ * cierta si algo la hace cierta.
+ *
+ * NO se rechaza el pedido: se TACHA el importe y se dice cuál. Rechazar convierte un dato de más en
+ * una capacidad que no responde, y quien pide vuelve a intentar sin el número igual; tachar deja la
+ * imagen hecha y el aviso escrito.
+ */
+const TACHADO = '[dato de la empresa]'
+
+/** Saca de un texto libre todo lo que parezca plata o un identificador. PURA. */
+export function tacharDatos(texto) {
+  const original = String(texto ?? '')
+  let salida = original.replace(new RegExp(VALORES_CON_PLATA.source, 'gi'), TACHADO)
+  // Un importe escrito «48,5M» o «$48.5 millones» no entra en el patrón de miles: se cubre aparte.
+  salida = salida.replace(/(\$|u\$s|usd|ars)?\s*\d+([.,]\d+)?\s*(m|mm|k|millones|mil)\b/gi, TACHADO)
+  salida = salida.replace(/\b\d{2}-?\d{8}-?\d\b/g, TACHADO)   // CUIT / CUIL
+  return { texto: salida, tachado: salida !== original }
+}
+
 /** Campos del contexto que JAMÁS salen de la empresa dentro de un prompt. */
 const ROTULOS_PROHIBIDOS = /\b(monto|importe|precio|costo|margen|saldo|total|iva|cuit|cuil|dni|honorario|sueldo|jornal|deuda|cheque)\b/i
 const VALORES_CON_PLATA = /(\$|u\$s|usd|ars)\s*[\d.,]|\b\d{1,3}(\.\d{3})+(,\d+)?\b/i
@@ -116,10 +143,12 @@ export function instruccionDeMarca(politica) {
 export function construirPrompt(pedido) {
   const politica = marcaDe(pedido)
   const { lineas, descartados, inyeccion } = recortarContexto(pedido?.contexto ?? {})
+  const sujeto = tacharDatos(pedido?.pedido ?? '')
+  const objetivo = tacharDatos(pedido?.objetivo ?? '')
   const marca = instruccionDeMarca(politica)
   const secciones = [
-    `SUJETO: ${String(pedido?.pedido ?? '').trim()}`,
-    pedido?.objetivo ? `PARA QUÉ: ${String(pedido.objetivo).trim()}` : null,
+    `SUJETO: ${sujeto.texto.trim()}`,
+    objetivo.texto ? `PARA QUÉ: ${objetivo.texto.trim()}` : null,
     lineas.length ? `CONTEXTO: ${lineas.join(' · ')}` : null,
     `DIRECCIÓN DE ARTE: ${DIRECCION[pedido?.tipo] ?? DIRECCION.comercial}`,
     marca ? `COLOR: ${marca}` : 'COLOR: paleta natural del material, sin color corporativo',
@@ -133,6 +162,9 @@ export function construirPrompt(pedido) {
     marca: politica,
     contexto_usado: lineas,
     contexto_descartado: descartados,
+    // Que se tachó un importe NO se calla: quien pidió la imagen tiene que ver que su texto llevaba
+    // un dato de la empresa, y que ese dato no salió.
+    datos_tachados: sujeto.tachado || objetivo.tachado,
     contexto_sospechoso: inyeccion,
     intento: pideSerEvidencia(`${pedido?.pedido ?? ''} ${pedido?.objetivo ?? ''}`),
   }
