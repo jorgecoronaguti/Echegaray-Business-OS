@@ -144,41 +144,14 @@ test.describe('los buscadores con estado en la URL', () => {
   })
 })
 
-// ═══ LOS BUSCADORES EN MEMORIA ═══
+// ═══ LOS BUSCADORES EN MEMORIA SE FUERON CON SUS PANTALLAS (27/08/2026) ═══
 //
-// Operarios y «Costo por obra» filtran sobre listas que ya viajaron enteras al navegador: es la
-// MISMA caja del design system, pero sin debounce y sin URL, porque no hay ningún viaje que
-// ahorrar. La prueba es la misma —escribir y nada más—, sin esperar navegación.
-
-test.describe('los buscadores en memoria', () => {
-  test('Operarios —que no tenía buscador— filtra al teclear, sin recargar', async ({ page }) => {
-    await entrar(page)
-    await page.goto('/operarios')
-    const total = await page.getByTestId('fila-operario').count()
-    test.skip(total < 2, 'con una sola cuenta de campo el buscador no se dibuja, y está bien')
-
-    const antes = page.url()
-    await teclear(page, 'buscar-operario', 'zzq')
-    await expect(page.getByTestId('fila-operario')).toHaveCount(0)
-    await expect(page.getByTestId('operarios-vacio')).toContainText('coincide con «zzq»')
-    // SIN NAVEGAR: filtrar en memoria no toca la URL ni pide nada al servidor.
-    expect(page.url()).toBe(antes)
-
-    await page.getByTestId('buscar-operario').fill('')
-    await expect(page.getByTestId('fila-operario')).toHaveCount(total)
-  })
-
-  test('«Costo por obra» —que no tenía buscador— filtra al teclear', async ({ page }) => {
-    await entrar(page)
-    await page.goto('/control-obras/costos')
-    const total = await page.getByTestId('fila-comprobante').count()
-    test.skip(total < 2, 'no hay comprobantes sin asignar: no hay lista que filtrar')
-
-    await teclear(page, 'buscar-comprobante', 'zzq')
-    await expect(page.getByTestId('fila-comprobante')).toHaveCount(0)
-    await expect(page.getByTestId('comprobantes-sin-resultado')).toContainText('coincide con «zzq»')
-
-    await page.getByTestId('buscar-comprobante').fill('')
-    await expect(page.getByTestId('fila-comprobante')).toHaveCount(total)
-  })
-})
+// Acá se medían los dos filtros que corrían sin debounce y sin URL: el de `/operarios` y el de
+// «Costo por obra» (`/control-obras/costos`). Las dos rutas eran huérfanas —ningún `href` en todo
+// `src/` llegaba a ellas— y se borraron: `/operarios` la reemplazó `/administracion/usuarios` y la
+// asignación de comprobantes a obra vive ahora en `/administracion/compras`.
+//
+// LO QUE ESTO DEJA SIN MEDIR, y es lo que hay que reponer cuando esa pantalla tenga su buscador:
+// el filtrado EN MEMORIA, o sea que escribir no navegue ni pida nada al servidor. Los buscadores
+// que quedan arriba son los de servidor, con debounce y con la búsqueda en la URL — el otro modo
+// no tiene hoy ninguna pantalla donde probarse.

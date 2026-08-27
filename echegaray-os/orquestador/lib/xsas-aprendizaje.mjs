@@ -284,3 +284,135 @@ export async function aprender({ query }, { dry = false, obras = null } = {}) {
     filas: resultado,
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA OTRA MÉTRICA: CUÁNTO TARDÓ
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El rendimiento (hs/unidad) necesita HH imputadas a la actividad, y de 277 actividades reales sólo
+// 4 las tienen. La DURACIÓN sólo necesita fechas, y hay 119 actividades terminadas con duración
+// planificada y duración real. Son 119 hechos medidos sobre cuánto tarda el trabajo de Echegaray
+// que estaban ahí sin que nadie los mirara.
+//
+// No se mezclan con el rendimiento: dos métricas con dos requisitos y dos usos. Un solo número que
+// las promediara escondería que de una tarea sabemos la duración por seis casos y el rendimiento
+// por ninguno.
+
+/** Desvío de duración en %. Positivo = tardó MÁS que lo planificado. */
+export function desvioDuracion(diasPlan, diasReal) {
+  const p = num(diasPlan), r = num(diasReal)
+  if (p === null || r === null || p === 0) return null
+  return ((r - p) / p) * 100
+}
+
+/**
+ * ¿CUÁNTO VALE ESTA MEDICIÓN DE DURACIÓN?
+ *
+ *   alta   terminada, con fechas reales derivadas de la evidencia y un cierre que no salió de una suma.
+ *   media  terminada pero con el cierre armado sumando dos declaraciones.
+ *   baja   sin fecha real de inicio o de fin: la ventana no la sostiene ningún hecho.
+ */
+export function confianzaDuracion({ terminada, inicioReal, finReal, avanceSumado }) {
+  if (!inicioReal || !finReal) return 'baja'
+  if (terminada !== true) return 'baja'
+  return avanceSumado === true ? 'media' : 'alta'
+}
+
+/**
+ * EL PASO QUE APRENDE DURACIÓN. Independiente del de rendimiento: corre aunque no haya una sola
+ * hora imputada.
+ *
+ * El hecho se guarda **aunque la actividad no tenga tipo de tarea**: el dato es cierto igual, y el
+ * día que alguien la clasifique la experiencia pasa a ser reutilizable sin volver a medirla. Lo que
+ * el tipo habilita es la comparación entre obras, y por eso sin tipo nunca se VALIDA.
+ */
+export async function aprenderDuracion({ query }, { dry = false, obras = null } = {}) {
+  const { rows } = await query(
+    `select actividad_id, obra_id, actividad, tarea_tipo_id, plan_dias, dias_real,
+            inicio_plan, fin_plan, inicio_real, fin_real, terminada, avance_sumado, dotacion_real
+       from public.xsas_actividad
+      where obra_id <> all($1::text[])
+        and ($2::text[] is null or obra_id = any($2::text[]))
+        -- UN PLAN DE CERO DÍAS NO ES UN PLAN. Son hitos del cronograma importado, no trabajo
+        -- planificado: contra cero no hay desvío que calcular y la fila entraría con el número
+        -- vacío. Se dejan afuera en vez de guardarlas rotas.
+        and terminada and plan_dias > 0 and dias_real is not null`,
+    [OBRAS_NO_REALES, obras])
+
+  // Cuántas quedaron afuera por no tener un plan contra el cual medir.
+  const { rows: [d] } = await query(
+    `select count(*)::int n from public.xsas_actividad
+      where obra_id <> all($1::text[]) and ($2::text[] is null or obra_id = any($2::text[]))
+        and terminada and dias_real is not null and coalesce(plan_dias, 0) <= 0`,
+    [OBRAS_NO_REALES, obras])
+  const descartadas = d?.n ?? 0
+
+  // Lo ya conocido de esas tareas, para decidir si un caso confirma a otro.
+  const tipos = [...new Set(rows.map((r) => r.tarea_tipo_id).filter(Boolean))]
+  const previos = tipos.length
+    ? (await query(
+      `select actividad_id, obra_id, tarea_tipo_id, dias_plan, dias_real, confianza, estado
+         from public.duracion_historica where tarea_tipo_id = any($1::uuid[])`, [tipos])).rows
+    : []
+
+  const salida = []
+  for (const r of rows) {
+    const desvio = desvioDuracion(r.plan_dias, r.dias_real)
+    const confianza = confianzaDuracion({
+      terminada: r.terminada, inicioReal: r.inicio_real, finReal: r.fin_real, avanceSumado: r.avance_sumado,
+    })
+    // VALIDA sólo con otra OBRA que tenga la misma tarea: dos frentes de la misma obra comparten
+    // cuadrilla, encargado y clima, igual que en el rendimiento.
+    const otras = r.tarea_tipo_id
+      ? previos.filter((p) => p.tarea_tipo_id === r.tarea_tipo_id && p.obra_id !== r.obra_id && p.estado !== 'DESCARTADO')
+      : []
+    const estado = otras.length >= 1 ? 'VALIDADO' : 'CANDIDATO'
+    const clave = `duracion:${r.actividad_id}`
+    const evidencia = {
+      vista: 'public.xsas_actividad', actividad_id: r.actividad_id, obra: r.obra_id,
+      inicio_plan: r.inicio_plan, fin_plan: r.fin_plan,
+      inicio_real: r.inicio_real, fin_real: r.fin_real,
+      cierre_sumado: r.avance_sumado === true,
+      sin_tipo_de_tarea: !r.tarea_tipo_id,
+    }
+    salida.push({ clave, actividad: r.actividad, obra: r.obra_id, diasPlan: Number(r.plan_dias), diasReal: Number(r.dias_real), desvio, estado, confianza })
+
+    // LO RECIÉN MEDIDO ENTRA EN LA COMPARACIÓN DE LAS SIGUIENTES. Sin esto —el defecto que la
+    // función de rendimiento ya tenía resuelto y ésta no copió— el estado dependía de cuántas veces
+    // se hubiera corrido el ciclo y no de la evidencia: tres actividades del mismo tipo en tres
+    // obras distintas salían CANDIDATO en la primera corrida y VALIDADO en la segunda, con los
+    // mismos hechos. Y vaciar la tabla borraba todos los VALIDADO sin que cambiara un solo dato.
+    previos.push({ actividad_id: r.actividad_id, obra_id: r.obra_id, tarea_tipo_id: r.tarea_tipo_id,
+      dias_plan: r.plan_dias, dias_real: r.dias_real, confianza, estado })
+    if (dry) continue
+
+    await query(
+      `insert into public.duracion_historica
+         (actividad_id, obra_id, tarea_tipo_id, actividad_nombre, dias_plan, dias_real, desvio_pct,
+          inicio_plan, fin_plan, inicio_real, fin_real, dotacion_real, estado, confianza,
+          veces_confirmado, evidencia, clave, actualizado_en)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+       on conflict (clave) do update set
+         tarea_tipo_id = excluded.tarea_tipo_id, dias_plan = excluded.dias_plan,
+         dias_real = excluded.dias_real, desvio_pct = excluded.desvio_pct,
+         inicio_real = excluded.inicio_real, fin_real = excluded.fin_real,
+         dotacion_real = excluded.dotacion_real, estado = excluded.estado,
+         confianza = excluded.confianza, veces_confirmado = excluded.veces_confirmado,
+         evidencia = excluded.evidencia, actualizado_en = now()`,
+      [r.actividad_id, r.obra_id, r.tarea_tipo_id, r.actividad, r.plan_dias, r.dias_real, desvio,
+        r.inicio_plan, r.fin_plan, r.inicio_real, r.fin_real, r.dotacion_real, estado, confianza,
+        otras.length + 1, JSON.stringify(evidencia), clave])
+  }
+
+  return {
+    medidas: salida.length,
+    validadas: salida.filter((s) => s.estado === 'VALIDADO').length,
+    sinTipo: rows.filter((r) => !r.tarea_tipo_id).length,
+    tardaronMas: salida.filter((s) => (s.desvio ?? 0) > 0).length,
+    // EL HUECO SE CUENTA. Las terminadas con plan de cero días se descartan a propósito —un plan de
+    // cero no es un plan— pero descartarlas en silencio hace que el total publicado parezca la
+    // totalidad de lo que había.
+    descartadasSinPlan: descartadas,
+    filas: salida,
+  }
+}

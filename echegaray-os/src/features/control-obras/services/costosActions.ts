@@ -40,14 +40,16 @@ export async function asignarComprobanteObraAction(_prev: ActionState, formData:
     .update({ obra_texto: parsed.data.obra_texto, obra_asignada_por: por, obra_asignada_en: new Date().toISOString() })
     .eq('id', parsed.data.id)
   if (error) return { error: error.message }
-  revalidatePath('/control-obras/costos')
-  revalidatePath(`/control-obras/${encodeURIComponent(parsed.data.obra_texto)}`)
+  // LA PANTALLA QUE MUESTRA ESTO ES `/administracion/compras` (27/08/2026). `/control-obras/costos`
+  // —donde la asignación vivía escondida— y `/control-obras/<obra>` se retiraron; revalidar una
+  // ruta que no existe no falla, y ése es el problema: la asignación se guardaba y la pantalla que
+  // sí la muestra seguía sirviendo la versión anterior.
+  revalidatePath('/administracion/compras')
   return { error: null, ok: true }
 }
 
 export async function desasignarComprobanteObraAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get('id') || '').trim()
-  const obraPrevia = String(formData.get('obra_texto') || '').trim()
   if (!id) return { error: 'falta el comprobante' }
 
   const c = await client()
@@ -57,7 +59,6 @@ export async function desasignarComprobanteObraAction(_prev: ActionState, formDa
     .update({ obra_texto: null, obra_asignada_por: null, obra_asignada_en: null })
     .eq('id', id)
   if (error) return { error: error.message }
-  revalidatePath('/control-obras/costos')
-  if (obraPrevia) revalidatePath(`/control-obras/${encodeURIComponent(obraPrevia)}`)
+  revalidatePath('/administracion/compras')
   return { error: null, ok: true }
 }

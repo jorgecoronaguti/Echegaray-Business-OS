@@ -14,7 +14,10 @@ import { skillsSegunProfundidad } from '../lib/skill-map.mjs'
 
 // El vocabulario es el REAL del dueño (voseo, sin tildes a veces, abreviado), no español de manual.
 // `debe` = skills que tienen que estar sí o sí. `criterio` = es consulta de asesoría (carga hasta 4).
-const AREAS = {
+// Se EXPORTA porque es el único corpus de pedidos REALES del dueño que vive en el repo (52 casos
+// con su skill esperada). `xsas-ruteo-medir.mjs` mide la política de ruteo contra él: inventar un
+// benchmark sintético mediría el benchmark, no el OS.
+export const AREAS = {
   'Administración y Finanzas': [
     ['como deberia estar armado el flujo de fondos', ['finanzas-tesoreria-construccion', 'google-sheets-business-systems'], true],
     ['cuanta caja tengo hoy', ['finanzas-tesoreria-construccion'], false],
@@ -95,37 +98,45 @@ const filtroArea = (() => {
   return i > -1 ? process.argv[i + 1] : null
 })()
 
-let total = 0
-let fallas = 0
-const huecos = []
+/** Corre la auditoría e imprime el detalle. Devuelve la cantidad de huecos. */
+export function auditarRuteo() {
+  let total = 0
+  let fallas = 0
+  const huecos = []
 
-for (const [area, casos] of Object.entries(AREAS)) {
-  if (filtroArea && area !== filtroArea) continue
-  const lineas = []
-  for (const [pregunta, debe, criterio] of casos) {
-    total++
-    const caps = classifyDirectiveMulti(pregunta)
-    const skills = skillsSegunProfundidad(caps, pregunta, { asesoria: !!criterio })
-    const faltan = debe.filter((d) => !skills.includes(d))
-    // Una skill "debe" satisfecha alcanza con que aparezca UNA de las alternativas cuando el caso
-    // lista varias equivalentes (ej. obra puede resolverse por dirección o por planificación).
-    const cumple = debe.length > 1 ? debe.some((d) => skills.includes(d)) : faltan.length === 0
-    if (!cumple) {
-      fallas++
-      huecos.push({ area, pregunta, esperaba: debe, cargo: skills, caps })
-      lineas.push(`  ✖ ${pregunta}\n      esperaba: ${debe.join(' | ')}\n      cargó:    ${skills.join(', ') || '(NADA — cae a general)'}`)
-    } else {
-      lineas.push(`  ✔ ${pregunta} → ${skills.join(', ')}`)
+  for (const [area, casos] of Object.entries(AREAS)) {
+    if (filtroArea && area !== filtroArea) continue
+    const lineas = []
+    for (const [pregunta, debe, criterio] of casos) {
+      total++
+      const caps = classifyDirectiveMulti(pregunta)
+      const skills = skillsSegunProfundidad(caps, pregunta, { asesoria: !!criterio })
+      const faltan = debe.filter((d) => !skills.includes(d))
+      // Una skill "debe" satisfecha alcanza con que aparezca UNA de las alternativas cuando el caso
+      // lista varias equivalentes (ej. obra puede resolverse por dirección o por planificación).
+      const cumple = debe.length > 1 ? debe.some((d) => skills.includes(d)) : faltan.length === 0
+      if (!cumple) {
+        fallas++
+        huecos.push({ area, pregunta, esperaba: debe, cargo: skills, caps })
+        lineas.push(`  ✖ ${pregunta}\n      esperaba: ${debe.join(' | ')}\n      cargó:    ${skills.join(', ') || '(NADA — cae a general)'}`)
+      } else {
+        lineas.push(`  ✔ ${pregunta} → ${skills.join(', ')}`)
+      }
     }
+    console.log(`\n=== ${area} ===`)
+    console.log(lineas.join('\n'))
   }
-  console.log(`\n=== ${area} ===`)
-  console.log(lineas.join('\n'))
+
+  console.log(`\n${'='.repeat(60)}`)
+  console.log(`RUTEO POR ÁREA: ${total - fallas}/${total} correctas, ${fallas} huecos`)
+  if (huecos.length) {
+    console.log('\nHUECOS (cada uno es una pregunta real que el dueño va a hacer y el OS contesta sin el experto):')
+    for (const h of huecos) console.log(`  [${h.area}] "${h.pregunta}" → caps=${JSON.stringify(h.caps)}`)
+  }
+  return fallas
+
 }
 
-console.log(`\n${'='.repeat(60)}`)
-console.log(`RUTEO POR ÁREA: ${total - fallas}/${total} correctas, ${fallas} huecos`)
-if (huecos.length) {
-  console.log('\nHUECOS (cada uno es una pregunta real que el dueño va a hacer y el OS contesta sin el experto):')
-  for (const h of huecos) console.log(`  [${h.area}] "${h.pregunta}" → caps=${JSON.stringify(h.caps)}`)
-}
-process.exit(fallas ? 1 : 0)
+// Sólo audita cuando se lo invoca como programa: importarlo (para reusar el corpus) no puede
+// imprimir 52 líneas ni cortar el proceso del que lo importa.
+if (import.meta.url === `file://${process.argv[1]}`) process.exit(auditarRuteo() ? 1 : 0)

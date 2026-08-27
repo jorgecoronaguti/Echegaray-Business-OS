@@ -26,16 +26,21 @@ test('la vista devuelve EXACTAMENTE las actividades de la tabla', { skip: SIN_BA
 })
 
 test('la vista publica todo lo que la tabla tiene y la aplicación usa', { skip: SIN_BASE }, async () => {
-  // Sólo las cuatro columnas de bookkeeping del sincronizador pueden faltar: la aplicación no las
-  // lee y publicarlas sería exponer el mecanismo del import en la pantalla.
+  // Sólo pueden faltar las columnas de BOOKKEEPING: las cuatro del sincronizador y, desde el
+  // 27/08/2026, las siete de la clasificación por tipo de tarea. Ninguna de las once es un dato de
+  // la obra —son el rastro de cómo llegó la fila y de quién le puso su tipo— y la pantalla de obra
+  // no las lee. Lo que sí se ve, se ve por `actividades_sin_clasificar`, que existe para eso.
   const { rows } = await query(
     `select column_name from information_schema.columns
       where table_schema = 'public' and table_name = 'obra_actividad'
         and column_name not in (
           select column_name from information_schema.columns
            where table_schema = 'public' and table_name = 'obra_actividad_control')`)
-  assert.deepEqual(rows.map((r) => r.column_name).sort(),
-    ['creado_en', 'fuente', 'fuente_fila', 'sincronizado_en'])
+  assert.deepEqual(rows.map((r) => r.column_name).sort(), [
+    'creado_en', 'fuente', 'fuente_fila', 'sincronizado_en',
+    'propuesta_en', 'propuesta_evidencia', 'propuesta_tarea_tipo_id',
+    'tarea_tipo_asignado_en', 'tarea_tipo_confianza', 'tarea_tipo_evidencia', 'tarea_tipo_origen',
+  ].sort())
 })
 
 test('el avance calculado nunca se pasa de 100 ni sale de la nada', { skip: SIN_BASE }, async () => {

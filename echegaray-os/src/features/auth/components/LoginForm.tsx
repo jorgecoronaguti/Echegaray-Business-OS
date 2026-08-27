@@ -131,17 +131,13 @@ export function LoginForm() {
         Olvidé mi contraseña
       </Link>
 
-      {/* ═══ POR QUÉ SIGUE HABIENDO «CREAR UNA» ═══
-          El artboard no dibuja alta pública, y con razón: acá no hay usuarios externos. Pero
-          `/signup` EXISTE como ruta, `signupAction` llama a `supabase.auth.signUp` y
-          `supabase/config.toml` declara `enable_signup = true`. Sacar el enlace no cierra nada
-          —deja una puerta abierta y sin cartel, que es peor que una puerta con cartel—. Se queda,
-          apagado y al pie, hasta que el registro se apague donde de verdad se apaga: la
-          configuración de auth del proyecto. */}
-      <p style={{ marginTop: 18, fontSize: 12, color: C.faint }}>
-        El acceso lo da Administración. ¿No tenés cuenta?{' '}
-        <Link href="/signup" style={{ textDecoration: 'underline' }}>Crear una</Link>.
-      </p>
+      {/* EL ALTA LIBRE SE FUE (27/08/2026). Acá había un enlace a `/signup` que se conservaba con
+          este argumento: la ruta existía igual, así que sacar el cartel dejaba «una puerta abierta y
+          sin cartel, que es peor que una puerta con cartel». Ahora la ruta tampoco existe: el alta
+          es la de `/administracion/usuarios`, que crea persona, perfil y rol en un solo acto.
+          LA PUERTA DE VERDAD SIGUE ABIERTA y no se cierra desde acá: `enable_signup = true` está en
+          la configuración de auth del proyecto, y con la clave anónima se le pide un alta a
+          `/auth/v1/signup` sin pasar por ninguna pantalla. Ver `features/auth/services/actions.ts`. */}
     </form>
   )
 }

@@ -78,7 +78,9 @@ export function esRutaCampoPermitida(pathname: string): boolean {
 // y el modo de fallar de una lista negra es publicar; el de una lista blanca, pedir login.
 export const RUTAS_PUBLICAS = [
   '/login',
-  '/signup',
+  // `/signup` SE FUE (27/08/2026) y con él su entrada acá: era el alta libre conviviendo con el
+  // alta gobernada de `/administracion/usuarios`. Que la lista sea blanca es lo que hace barata
+  // esta clase de limpieza — se saca la línea y la ruta vuelve a exigir sesión sola.
   // ═══ LAS DOS MITADES DE LA RECUPERACIÓN (21/08/2026) ═══
   //
   // Quien pide recuperar la contraseña NO TIENE SESIÓN —ése es el problema que vino a resolver— y
@@ -105,13 +107,15 @@ export const RUTAS_PUBLICAS = [
   // cada carga. Lo que se saca acá es la exigencia de una credencial que el cliente no puede tener,
   // no la credencial.
   '/portal',
-  '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
   '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
                       // devolvía un 307 al login y el consentimiento no arrancaba nunca
   '/api/oauth/callback', // el retorno de Google: llega sin sesión por definición
   '/api/os', // el proxy que consume la extensión, con su propia autorización
-  '/echegaray-os-extension.zip', // el archivo que descarga la landing pública: sin él, /descargar
-                                 // renderiza 200 y su único botón manda al login
+  // EL .ZIP SE QUEDA PÚBLICO AUNQUE SU LANDING SE HAYA IDO (27/08/2026). `/descargar` era una
+  // página congelada —la versión estaba escrita a mano en `v0.8.2`— y la viva es `/descargas`, que
+  // le pregunta la versión a la VM y sirve el archivo por el proxy. Este .zip sigue siendo la única
+  // descarga que funciona sin sesión y sin el túnel arriba: es el plan B cuando la VM no contesta.
+  '/echegaray-os-extension.zip',
   // ═══ LA MARCA (18/08/2026) ═══
   //
   // El logo y el isotipo viven en `public/marca/`. El matcher del middleware sólo exceptúa
@@ -151,13 +155,6 @@ export const loginInputSchema = z.object({
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
 })
 export type LoginInput = z.infer<typeof loginInputSchema>
-
-export const signupInputSchema = z.object({
-  email: z.string().trim().email('Email inválido'),
-  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  nombre: z.string().trim().min(1, 'Indicá tu nombre'),
-})
-export type SignupInput = z.infer<typeof signupInputSchema>
 
 /** Pedir el correo de recuperación. Sólo el email: pedir algo más sería pedírselo a alguien que ya
  *  demostró que no se acuerda de nada. */

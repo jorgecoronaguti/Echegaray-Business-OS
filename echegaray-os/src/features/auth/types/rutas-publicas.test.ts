@@ -18,7 +18,12 @@ test('las dos mitades del OAuth de Google se abren sin sesión', () => {
 })
 
 test('lo que NO está en la lista blanca sigue pidiendo sesión', () => {
-  for (const r of ['/api/oauth', '/api/oauth-start', '/flujo-caja', '/obras', '/api/otra-cosa', '/']) {
+  // `/signup` y `/descargar` estaban en la lista hasta el 27/08/2026, y se fueron con sus páginas:
+  // el alta libre (que convivía con el alta gobernada de `/administracion/usuarios`) y la landing
+  // congelada de la extensión (la viva es `/descargas`). Si alguien devuelve una de las dos
+  // entradas sin la pantalla, deja abierta una URL que ya no explica nada.
+  for (const r of ['/api/oauth', '/api/oauth-start', '/flujo-caja', '/obras', '/api/otra-cosa', '/',
+    '/signup', '/descargar']) {
     assert.equal(esRutaPublica(r), false, `${r} quedó pública sin que nadie lo decidiera`)
   }
 })

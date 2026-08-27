@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { siteUrl } from '@/lib/site-url'
 import {
-  contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema, signupInputSchema,
+  contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema,
 } from '../types'
 import { urlDeRecuperacion } from './recuperacion'
 
@@ -49,28 +49,18 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
   redirect(rol === 'campo' ? '/hoy' : '/obras')
 }
 
-// Signup crea la cuenta en auth.users pero NO le asigna rol -- eso lo hace Jorge
-// manualmente en Supabase (perfiles). Sin perfil, current_rol() devuelve null y
-// ninguna policy de escritura por rol lo deja pasar -- lectura sigue disponible.
-export async function signupAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = signupInputSchema.safeParse({
-    email: formData.get('email'),
-    password: formData.get('password'),
-    nombre: formData.get('nombre'),
-  })
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
-
-  const supabase = await createClient()
-  const { error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: { data: { nombre: parsed.data.nombre } },
-  })
-  if (error) return { error: mensajeDeAuth(error.message) }
-
-  revalidatePath('/', 'layout')
-  redirect('/login?registrado=1')
-}
+// ═══ EL ALTA LIBRE SE FUE (27/08/2026), Y LA PUERTA DE VERDAD SIGUE ABIERTA ═══
+//
+// Acá vivía `signupAction`, que llamaba a `supabase.auth.signUp` y creaba una cuenta sin rol para
+// que alguien la promoviera después a mano. Convivía con el alta GOBERNADA de
+// `/administracion/usuarios`, que crea la persona, el perfil y el rol en un solo acto y sólo la
+// abre quien ve economía. Dos altas para lo mismo, y la libre era la que no dejaba rastro.
+//
+// LO QUE ESTO NO CIERRA, Y HAY QUE CERRAR EN OTRO LADO: `enable_signup = true` sigue en la
+// configuración de auth del proyecto. Con la clave anónima —que viaja en el navegador— cualquiera
+// le pide un alta a `/auth/v1/signup` sin pasar por ninguna pantalla de este repositorio. Borrar el
+// formulario saca el cartel; la puerta se apaga en la configuración del proyecto de Supabase, que
+// es una acción sobre un sistema externo y no la decide este archivo.
 
 // ═══ RECUPERAR LA CONTRASEÑA (M01) ═══
 
