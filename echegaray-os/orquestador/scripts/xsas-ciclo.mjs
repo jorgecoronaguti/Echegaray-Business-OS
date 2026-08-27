@@ -13,7 +13,7 @@
 // anda igual — es aritmética sobre datos propios.
 
 import { query, closePool } from '../lib/db.mjs'
-import { aprender } from '../lib/xsas-aprendizaje.mjs'
+import { aprender, aprenderDuracion } from '../lib/xsas-aprendizaje.mjs'
 
 const DRY = process.argv.includes('--dry')
 const JSON_OUT = process.argv.includes('--json')
@@ -22,9 +22,11 @@ const pct = (x) => (x == null ? '—' : `${x > 0 ? '+' : ''}${x.toFixed(1)}%`)
 const hs = (x) => (x == null ? '—' : x.toFixed(4))
 
 const r = await aprender({ query }, { dry: DRY })
+// La duración es la OTRA métrica y corre aparte: no necesita una sola hora imputada.
+const d = await aprenderDuracion({ query }, { dry: DRY })
 
 if (JSON_OUT) {
-  console.log(JSON.stringify(r, null, 2))
+  console.log(JSON.stringify({ rendimiento: r, duracion: d }, null, 2))
 } else {
   console.log(`\nXSAS · ciclo de obra${DRY ? ' (ENSAYO — no escribe)' : ''}\n`)
   console.log(`  ${r.miradas} actividades con algún dato real · ${r.aprendidas} enseñan un rendimiento`)
@@ -40,6 +42,8 @@ if (JSON_OUT) {
     console.log(`      ${f.veredicto.porQue}`)
     if (o.faltantes.length) console.log(`      falta: ${o.faltantes.join(' · ')}`)
   }
+  console.log(`  DURACIÓN — ${d.medidas} actividades terminadas con plan y real · ${d.validadas} VALIDADAS · ${d.tardaronMas} tardaron más`)
+  if (d.sinTipo) console.log(`     ▲ ${d.sinTipo} sin tipo de tarea: el hecho se guarda, pero no se puede reutilizar en otra obra todavía.`)
   console.log()
 }
 
