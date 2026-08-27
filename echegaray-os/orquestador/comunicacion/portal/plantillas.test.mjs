@@ -24,7 +24,11 @@ test('la fecha va DD/MM/AAAA, nunca el ISO', () => {
 
 test('la habilitación NO lleva el link de acceso adentro: un reenvío daría entrada a cualquiera', () => {
   const m = habilitacionPortal({ para: 'maria@arcor.com', persona_contacto: 'María', cliente_nombre: 'ARCOR', acceso_id: 'a-1' })
-  assert.match(m.html, /ingresar/)
+  // LA RUTA VIVA, no una palabra que estaba en el texto. El test anterior pedía /ingresar/ y pasaba
+  // en verde mientras el botón apuntaba a `/portal/ingresar`, que en producción es 404.
+  assert.match(m.html, /href="https?:\/\/[^"]*\/portal\/login"/)
+  assert.ok(!/\/portal\/ingresar/.test(m.html), 'esa ruta no existe: da 404')
+  assert.ok(!/enlace de acceso|c[oó]digo/i.test(m.html), 'ya no se manda ni enlace ni código: se entra con el mail')
   assert.ok(!/token|otp|magic|access_token/i.test(m.html), 'ningún credencial viaja en el mail')
   assert.match(m.html, /Hola María:/)
   assert.match(m.html, /ARCOR/)

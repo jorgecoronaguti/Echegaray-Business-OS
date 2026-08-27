@@ -66,8 +66,16 @@ const saludo = (persona) => (persona ? `Hola ${esc(persona)}:` : 'Hola:')
 
 /**
  * HABILITACIÓN (pantalla 31, «Habilitar y avisarle por mail»).
- * No lleva link mágico adentro: el link lo pide la propia persona en /portal/ingresar. Un enlace de
- * acceso viajando por mail es un enlace que sirve para cualquiera que reenvíe el mensaje.
+ *
+ * El botón lleva a la PUERTA, `/portal/login`, y no a un enlace de acceso: un link que entra solo
+ * sirve para cualquiera que reenvíe el mensaje, y los mails de un cliente se reenvían siempre.
+ *
+ * ═══ LO QUE ESTA PLANTILLA DECÍA Y YA NO ERA CIERTO (27/08/2026) ═══
+ *
+ * Apuntaba a `${PORTAL}/ingresar` —**404 en producción**— y prometía «te mandamos un enlace de
+ * acceso». El 26/08 el dueño retiró el código de un solo uso: hoy se entra con el mail y nada más.
+ * El mail seguía anunciando un paso que ya no existe y mandando a una página que tampoco. Un texto
+ * de este tipo no falla en un test ni da error: falla en la bandeja del cliente.
  */
 export function habilitacionPortal({ para, persona_contacto, cliente_nombre, acceso_id }) {
   const cuerpo =
@@ -75,11 +83,11 @@ export function habilitacionPortal({ para, persona_contacto, cliente_nombre, acc
     + `<p>Habilitamos el acceso al portal de clientes de Echegaray Construcciones para `
     + `<strong>${esc(cliente_nombre)}</strong>. Desde ahí vas a poder ver el avance de la obra, los `
     + `certificados y el esquema de pagos.</p>`
-    + `<p>Para entrar, ingresá tu correo <strong>${esc(para)}</strong> y te mandamos un enlace de acceso. `
-    + `No hace falta contraseña.</p>`
+    + `<p>Para entrar alcanza con tu correo <strong>${esc(para)}</strong>: no hay contraseña ni registro. `
+    + `Si querés que entre otra persona de tu equipo, decinos su mail y lo agregamos.</p>`
   return {
     asunto: 'Tu acceso al portal de Echegaray Construcciones',
-    html: envoltorio({ titulo: 'Ya tenés acceso al portal', cuerpo, boton: { href: `${PORTAL}/ingresar`, texto: 'Entrar al portal' } }),
+    html: envoltorio({ titulo: 'Ya tenés acceso al portal', cuerpo, boton: { href: `${PORTAL}/login`, texto: 'Entrar al portal' } }),
     // Una habilitación por acceso. Un segundo click en el botón no manda un segundo mail.
     clave_unica: acceso_id ? `habilitacion:${acceso_id}` : null,
     plantilla: 'habilitacion_portal',
