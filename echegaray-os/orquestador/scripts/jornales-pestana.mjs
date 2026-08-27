@@ -136,7 +136,12 @@ import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
 import {
   LINEA_DRIVER_OFICINA, estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe,
 } from '../lib/oficina-escalon.mjs'
-import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
+import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe, convenioDe, ESCALA_VERIFICADA } from '../lib/uocra-paritaria.mjs'
+// EL COSTO DE ECHAR A CADA UNO (sección 6). El régimen —Ley 22.250, sin indemnización por
+// antigüedad ni preaviso— y cada artículo citado viven en `lib/desvinculacion-22250.mjs`; leer el
+// plantel del año del espejo, en `lib/desvinculacion-plantel.mjs`. Acá sólo se lo enchufa.
+import { plantelDelEspejo, separarPlantel } from '../lib/desvinculacion-plantel.mjs'
+import { bloqueDesvinculacion } from '../lib/desvinculacion-bloque.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
 import { claveQuincena, formulaProyectadoQuincena, glosaDemanda } from '../lib/jornales-demanda-obras.mjs'
 import { demandaParaJornales } from '../lib/jornales-demanda-fuente.mjs'
@@ -435,6 +440,9 @@ export function grilla({
   // (`filasDePersonas`) porque hace falta la grilla del espejo para saber cuáles tienen nombre, y acá
   // sólo llegan los bloques. Vacío = el cuadro de pago lo dice en vez de emitir renglones fantasma.
   personasPago = [],
+  // EL PLANTEL DEL AÑO, ya separado en quien sigue y quien se fue. Se resuelve en `main()` porque
+  // necesita el espejo entero y acá sólo llegan los bloques — la misma razón que `personasPago`.
+  desvinculacion = null,
 }) {
   // El bloque base por defecto es el último del espejo: mantiene el comportamiento anterior cuando
   // el llamador no resolvió la última quincena cerrada (sólo pasa en tests viejos).
@@ -1732,8 +1740,31 @@ export function grilla({
     filas[fAnioTotal - 1][c] = `=SUM(${L}${fAnio.obra}:${L}${fAnio.direccion})`
   }
 
+  // ══ 6 · EL COSTO DE DESVINCULAR ══
+  //
+  // Va al final a propósito: primero cuánto se paga por trabajar, después cuánto cuesta dejar de
+  // hacerlo. Y va en la MISMA pestaña porque la pregunta se hace mirando el plantel, no aparte.
+  //
+  // El básico sale de la réplica viva del convenio y sólo cae en la escala verificada del repo si la
+  // réplica no trajo esa categoría: una constante del código no puede ganarle a un acuerdo posterior,
+  // pero tampoco puede dejar el cuadro mudo cuando el IMPORTHTML se cayó.
+  let desv = null
+  if (desvinculacion) {
+    const basicoDe = (codigo) => {
+      const cat = convenioDe(codigo)
+      if (!cat) return null
+      const basico = escalonVigente?.categorias?.[cat]?.basico ?? ESCALA_VERIFICADA[cat] ?? 0
+      return basico > 0 ? { categoria: cat, basico } : null
+    }
+    blanco()
+    desv = bloqueDesvinculacion({ ...desvinculacion, hoy, basicoDe })
+    for (const f of desv.filas) push(f)
+  }
+
   return {
     filas,
+    // La sección 6, para el formato y para que un test pueda afirmar sus totales sin releer la grilla.
+    desvinculacion: desv,
     // ═══ EL TITULAR YA NO ES UNA CELDA SUELTA EN 13 pt (13/08) ═══
     //
     // `skinRequests` dibuja el titular a 13 puntos en las columnas A y B, y eso servía cuando el hero
@@ -1975,12 +2006,17 @@ async function main() {
   // qué filas tienen nombre — un bloque trae filas numeradas que no son gente (la de totales, alguna
   // intermedia con importes y sin nombre) y emitir un renglón por cada una llenaría el cuadro de
   // fantasmas con $0.
+  // EL PLANTEL DEL AÑO ENTERO, no el de la quincena: la sección 6 tiene que poder liquidar también a
+  // quien ya no está, y ésos sólo existen en los bloques viejos del espejo.
+  const desvinculacion = separarPlantel(plantelDelEspejo(espejo ?? [], bloques, { anio: AÑO }), bloques)
+  console.log(`desvinculación: ${desvinculacion.activos.length} activo(s) · ${desvinculacion.desafectados.length} desafectado(s) en el año`)
   const personasPago = filasDePersonas(espejo ?? [], bloques[bloques.length - 1])
   if (!personasPago.length) console.warn('  ⚠ el último bloque del espejo no tiene personas: el cuadro de pago sale vacío')
   const g = grilla({
     bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
     escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy, periodoBase, demanda,
     personasPago,
+    desvinculacion,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
