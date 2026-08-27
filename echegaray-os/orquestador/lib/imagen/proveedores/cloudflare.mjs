@@ -97,8 +97,11 @@ export const imagenCloudflare = {
   modelo() { return env('CLOUDFLARE_MODELO_IMAGEN', MODELO_POR_DEFECTO) },
 
   async generar({ prompt, negativo = null, aspecto = '16:9', fetchImpl = globalThis.fetch, señal } = {}) {
+    // LA CUENTA SE MIRA ANTES DE PEDIR EL TOKEN. Al revés, un entorno sin cuenta igual salía a la
+    // red a renovar una credencial que no iba a usar — y el test que prueba «sin credencial no se
+    // hace un solo pedido» contaba ese pedido.
     const cuenta = env('CLOUDFLARE_ACCOUNT_ID')
-    const clave = await tokenCloudflare({ fetchImpl })
+    const clave = cuenta ? await tokenCloudflare({ fetchImpl }) : null
     if (!cuenta || !clave) {
       const err = new Error(`${imagenCloudflare.nombre}: sin credencial`)
       err.status = 401

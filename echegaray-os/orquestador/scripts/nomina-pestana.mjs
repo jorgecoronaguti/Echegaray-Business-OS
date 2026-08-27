@@ -427,8 +427,26 @@ async function main() {
   hoja = await buscar()
   console.log(`  ✚ creé la pestaña ${PESTANA}`)
 
-  await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas, { yaGuardado: true })
-  await formatear(google, hoja, filas)
+  // ═══ LA REGLA 0, DECIDIDA EN VOZ ALTA: `respetar: false` ═══
+  //
+  // La regla del OS es no pisar nunca lo que escribió el dueño, y por eso cada generador tiene que
+  // declarar qué hace con sus ediciones. Acá se apaga, y el motivo es verificable: la pestaña se
+  // borra y se vuelve a crear en cada corrida, con lo cual no puede haber una celda de nadie más —
+  // y si alguna vez la hubiera, se habría perdido en el `deleteSheet` de arriba, no acá.
+  //
+  // ESTA DECISIÓN CADUCA EL DÍA QUE EL DUEÑO ANOTE ALGO EN LA PESTAÑA. Cuando eso pase hay que
+  // cambiar el borrado por una fusión y esta línea por `escribirPreservando`. Queda escrito para
+  // que quien lo lea sepa que fue una decisión y no un descuido.
+  const escritura = await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas, { yaGuardado: true, respetar: false })
+  // ═══ SI LA ESCRITURA NO PASÓ, NO SE FORMATEA ═══
+  //
+  // El desastre de CAJA fue exactamente esto: la guarda frenó los VALORES y el generador siguió
+  // aplicando su formato encima, así que la pestaña quedó con los datos viejos vestidos de nuevos —
+  // que es peor que no haber corrido, porque parece que corrió.
+  const salteada = Boolean(escritura?.protegido)
+  if (salteada) console.error(`la escritura quedó frenada (${escritura.motivo ?? 'sin motivo'}): NO formateo.`)
+  if (!salteada) await formatear(google, hoja, filas)
+  if (salteada) process.exit(1)
 
   // RELEER EL DESTINO: lo que prueba una escritura es el dato leído en su destino.
   const releido = await google.readSheetValues(ID, `${PESTANA}!A1:A${filas.length}`)
