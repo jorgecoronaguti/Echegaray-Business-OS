@@ -25,6 +25,7 @@ import { crearLog } from '../../../communication-service/src/index.mjs'
 import { canalesDeArea } from '../lib/canal-de-area.mjs'
 import { mattermostDelOs } from '../lib/mattermost-os.mjs'
 import { query } from '../lib/db.mjs'
+import { nombresDelBot } from './identidad-bot.mjs'
 
 const PLATAFORMA = 'mattermost'
 
@@ -199,14 +200,18 @@ export function tieneAdjuntos(post) {
 /** GUARDA de relevancia. Acepta SÓLO: DM al bot, mención directa a @os (por
  *  user_id en mentions o por texto), o un post CON ADJUNTOS en un canal de ingesta.
  *  Rechaza el eco del propio bot. Todo lo demás se ignora ANTES de crear un evento ⇒ cero costo. */
-export function esRelevante(info, { botUserId = null, botUsername = 'os', canalesAdjuntos = null } = {}) {
+export function esRelevante(info, { botUserId = null, botUsername = null, botUsernames = null, canalesAdjuntos = null } = {}) {
   if (!info?.post) return false
   const { post, channelType, channelName, mentions } = info
   if (botUserId && post.user_id === botUserId) return false // eco propio (anti-loop)
   if (post.type && post.type !== '') return false // posts de sistema (join/leave/header) no son mensajes
   if (channelType === 'D') return true // mensaje directo al bot
   const porId = Boolean(botUserId && mentions.includes(botUserId))
-  const porTexto = new RegExp(`(^|\\s)@${escaparRegex(botUsername)}\\b`, 'i').test(post.message ?? '')
+  // EL BOT PASÓ DE `@os` A `@xsas` Y LOS DOS TIENEN QUE ENTRAR MIENTRAS DURE LA COSTUMBRE. Es UN
+  // bot con UN `user_id`: los nombres son alias del mismo, no dos identidades. `botUsername` (en
+  // singular) se conserva porque lo pasan los tests y algún caller viejo.
+  const nombres = botUsernames ?? (botUsername ? [botUsername] : nombresDelBot())
+  const porTexto = nombres.some((n) => new RegExp(`(^|\\s)@${escaparRegex(n)}\\b`, 'i').test(post.message ?? ''))
   if (porId || porTexto) return true
   const canales = canalesAdjuntos ?? canalesDeAdjuntos()
   // Por SLUG (lo que viaja en el frame) o por CHANNEL_ID (inmutable). Cualquiera de los dos alcanza:
@@ -257,14 +262,14 @@ export class Deduplicador {
  * @param {object} opts
  * @param {{recibir:Function}} opts.con   conector (o stub) con `recibir(payload,ctx)`
  * @param {string} opts.wsUrl @param {string} opts.token  URL WS + token del bot
- * @param {string} [opts.botUserId] @param {string} [opts.botUsername]
+ * @param {string} [opts.botUserId] @param {string[]} [opts.botUsernames]  los nombres del bot (@xsas + alias)
  * @param {Function} [opts.WebSocketImpl] impl de WebSocket (default: nativa de Node)
  * @param {object} [opts.log] @param {()=>number} [opts.ahora]
  * @param {number} [opts.pingMs] @param {number} [opts.backoffBaseMs] @param {number} [opts.backoffMaxMs]
  */
 export function crearConsumidorWS(opts) {
   const {
-    con, wsUrl, token, botUserId = null, botUsername = 'os',
+    con, wsUrl, token, botUserId = null, botUsernames = nombresDelBot(),
     WebSocketImpl = globalThis.WebSocket, log = crearLog(),
     pingMs = 30_000, backoffBaseMs = 1000, backoffMaxMs = 30_000, dedupMax = 5000,
     // Se resuelve UNA vez al construir el consumidor, no en cada mensaje: es configuración, y
@@ -291,7 +296,7 @@ export function crearConsumidorWS(opts) {
     // Los canales de ingesta se piden por mensaje, pero se releen por minuto: adentro hay una
     // caché con TTL. Así atar un canal nuevo al área lo habilita sin reiniciar el servicio.
     const canalesAhora = await canalesDeIngesta()
-    if (!esRelevante(info, { botUserId, botUsername, canalesAdjuntos: canalesAhora })) {
+    if (!esRelevante(info, { botUserId, botUsernames, canalesAdjuntos: canalesAhora })) {
       // POR QUÉ SE IGNORÓ, NO SÓLO QUE SE IGNORÓ. Una foto de factura que no llega a ningún lado y
       // deja un log que dice "ignorado por guarda" manda a buscar el problema a ciegas: pasó el
       // 03/08 y costó media hora descubrir que el canal viaja por SLUG y no por nombre visible.
@@ -379,7 +384,7 @@ async function main() {
   const wsUrl = process.env.MM_WS_URL ?? 'ws://127.0.0.1:8065/api/v4/websocket'
   const token = process.env.MM_BOT_TOKEN
   const botUserId = process.env.MM_BOT_USER_ID ?? null
-  const botUsername = process.env.MM_BOT_USERNAME ?? 'os'
+  const botUsernames = nombresDelBot()
   // El token es imprescindible para el handshake WS (authentication_challenge).
   if (!token) { console.error('mattermost-ws-consumer: falta MM_BOT_TOKEN (fail-closed)'); process.exit(1) }
 
@@ -403,10 +408,10 @@ async function main() {
   verificarCanalesDeIngesta({ mattermost: mattermostDelOs({ log }), canales: canalesDeAdjuntos(), botUserId, log })
     .catch((e) => log.warn?.('ws: la verificación de canales falló', { detalle: String(e?.message ?? e).slice(0, 160) }))
 
-  const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsername, log, port: { query } })
+  const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsernames, log, port: { query } })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); consumidor.cerrar(); process.exit(0) })
   consumidor.conectar()
-  log.info('mattermost-ws-consumer arrancado', { url: ofuscarUrl(wsUrl), bot: botUsername })
+  log.info('mattermost-ws-consumer arrancado', { url: ofuscarUrl(wsUrl), bot: botUsernames.join(', ') })
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e); process.exit(1) })
