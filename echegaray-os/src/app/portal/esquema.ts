@@ -163,45 +163,40 @@ export function pagosDelEsquema(
   // ese criterio. Reescribir esa marca —«si la obra sigue viva, todos sus pagos son actuales»— le
   // devolvía al cliente los cinco cobros anteriores al 01/07 que el corte existía para no mostrar.
   // Lo que se ajusta es el CONTRATO, no los pagos: ver `contratoDelConjunto`.
-  return filas
+  return terminadaEsAnterior(filas
     .filter((f) => publicadoAlPortal(f) && alcanza(f.obra_id))
     .sort((a, b) => a.orden - b.orden || (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
-    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? ''))
+    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? '')))
 }
 
 /**
- * `historico` ES UNA PROPIEDAD DE LA OBRA, NO DE LA FILA.
+ * UNA OBRA SIN PAGOS PENDIENTES ES UNA OBRA ANTERIOR.
  *
- * ═══ EL CONTRATO Y LOS COBROS TIENEN QUE SER DEL MISMO UNIVERSO (27/08/2026) ═══
+ * ═══ LA REGLA, DEL DUEÑO Y TEXTUAL (27/08/2026) ═══
  *
- * La base marca `historico` fila por fila: `portal-sembrar.mjs` compara la fecha del cobro contra
- * `clientes.portal_cobros_desde`, el corte que fijó el dueño. Eso funciona cuando una obra entera
- * quedó de un lado del corte, y se rompe cuando el cronograma de UNA obra lo cruza.
+ * *«tomá sólo lo pendiente, sólo esas obras»*. «Galpones, Mampostería, Cancha de Padel» se terminó y
+ * se cobró entera —el último cobro es del 21/08— y seguía ocupando el pie con sus $204.361.104 de
+ * contrato y sus nueve pagos, encima de un cliente que tiene otras TRES obras abiertas. El pie
+ * hablaba de una obra cerrada y de tres vivas al mismo tiempo.
  *
- * Inter Motor lo puso a la vista. Su corte es el 01/07/2026 y «Galpones, Mampostería, Cancha de
- * Padel» tiene cobros a los dos lados: cinco antes (Certificado 2, Certificado 3 y tres pagos en
- * efectivo, $77.350.000) y cuatro después ($36.689.222). `contratoDelConjunto` ya decide POR OBRA
- * —una obra con algún cobro en curso aporta su contrato entero— así que el pie publicaba los
- * $204.361.104 de esa obra contra $36.689.222 de «pagado», dejando los otros $77.350.000 abajo, en
- * una sección rotulada «obras anteriores» que nombraba a la MISMA obra que el filtro estaba
- * mostrando. Con el filtro puesto en esa obra la pantalla se contradecía a sí misma.
+ * Se pregunta por PAGOS PENDIENTES y no por `obra_canonica.estado`: ese estado lo mantiene otra
+ * gente para otra cosa —la obra figura «activa», etapa «terminación»— y el portal habla de plata. La
+ * plata la dice el cronograma. El día que se le agregue un pago, la obra vuelve sola.
  *
- * Un contrato sólo se compara contra TODOS los cobros de su obra: comparar un contrato completo
- * contra una parte de sus cobros no exagera la deuda por un redondeo, la exagera por los $77 M que
- * el cliente ya pagó. Acá se alinea el lado de los cobros con el lado del contrato, que es el que ya
- * estaba decidido: si la obra está en curso, TODOS sus cobros están en curso.
- *
- * Las filas SIN obra conservan su marca: no hay obra a la que preguntarle, y el corte del dueño es
- * lo único que se sabe de ellas.
- *
- * Lo que NO cambia: una obra cuyos cobros son todos anteriores al corte sigue siendo una obra
- * anterior —ni su contrato ni sus cobros entran en los totales— y `resumenDeCobro` sigue leyendo la
- * marca fila por fila. Acá se corrige quién la lleva, no qué significa.
+ * Una obra SIN ningún pago no entra acá: su cronograma no se cargó todavía, que es lo contrario de
+ * estar terminada.
  */
-export function historicoEsDeLaObra(pagos: PagoConObra[]): PagoConObra[] {
-  const enCurso = new Set<string>()
-  for (const p of pagos) if (p.obraId && !p.historico) enCurso.add(p.obraId)
-  return pagos.map((p) => (p.historico && p.obraId && enCurso.has(p.obraId) ? { ...p, historico: false } : p))
+export function terminadaEsAnterior(pagos: PagoConObra[]): PagoConObra[] {
+  const conPendiente = new Set<string>()
+  // Cobrado = tiene fecha de pago, o alguien lo fijó como pagado a mano. No se usa `estadoDePago`
+  // porque necesitaría la fecha de hoy y esto no depende de cuándo se mire: un pago cobrado en junio
+  // sigue cobrado en agosto.
+  const cobrado = (p: PagoConObra) => p.fechaPago != null || p.estadoFijado === 'pagado'
+  for (const p of pagos) if (p.obraId && !p.historico && !cobrado(p)) conPendiente.add(p.obraId)
+  const conAlgo = new Set<string>()
+  for (const p of pagos) if (p.obraId) conAlgo.add(p.obraId)
+  return pagos.map((p) =>
+    p.obraId && conAlgo.has(p.obraId) && !conPendiente.has(p.obraId) ? { ...p, historico: true } : p)
 }
 
 /**
@@ -289,7 +284,7 @@ export type PagosEnPantalla = {
  *
  * Las tres listas salen de acá y de un solo `filter`, para que no exista la posibilidad de que una
  * se olvide del filtro. Que `anteriores` quede vacía con una obra elegida no es casualidad ni un
- * caso a mano: `historicoEsDeLaObra` ya decidió que los pagos de una obra en curso son de una obra
+ * caso a mano: `terminadaEsAnterior` ya decidió que los pagos de una obra terminada son de una obra
  * en curso, y `obrasQueFiltran` sólo ofrece obras en curso. El invariante se prueba, no se supone.
  *
  * @param obraId `null` = sin filtro: entran todas las obras Y los pagos que no cuelgan de ninguna.
@@ -315,6 +310,29 @@ export type ContratoDelConjunto = ContratoDeObra & {
   /** Lo cobrado ANTES del corte del portal, que ya se descontó del contrato de arriba. La pantalla
    *  lo dice: un contrato que aparece más chico sin explicación es un contrato que nadie reconoce. */
   cobradoAntes: number
+}
+
+/**
+ * ¿ESTA OBRA SIGUE EN JUEGO? — la pregunta que decide qué ve el cliente.
+ *
+ * ═══ LA REGLA, DEL DUEÑO Y TEXTUAL (27/08/2026) ═══
+ *
+ * *«tomá sólo lo pendiente, sólo esas obras»*. Una obra sin un solo pago pendiente está terminada y
+ * cobrada: no tiene por qué ocupar el pie con su contrato ni con lo que se cobró. «Galpones,
+ * Mampostería, Cancha de Padel» se cerró el 21/08 con su último cobro y arrastraba $204.361.104 de
+ * contrato a un pie que debía hablar de las TRES obras que siguen abiertas.
+ *
+ * Se pregunta por PAGOS PENDIENTES y no por `obra_canonica.estado` a propósito: ese estado lo
+ * mantiene otra gente para otra cosa —la obra figura «activa», etapa «terminación»— y el portal
+ * habla de plata. La plata la dice el cronograma: mientras quede algo por cobrar la obra está en
+ * juego, y cuando no queda nada, se terminó. El día que se le agregue un pago, vuelve sola.
+ *
+ * Un bloque SIN pagos es una obra cuyo cronograma todavía no se cargó, no una obra terminada: su
+ * contrato cuenta. (`[].every()` es `true` por vacuidad y confundiría los dos casos.)
+ */
+export function obraEnCurso(b: BloqueDeObra): boolean {
+  if (!b.pagos.length) return true
+  return b.pagos.some((p) => !p.historico && p.fechaPago == null && p.estadoFijado !== 'pagado')
 }
 
 /**
@@ -349,9 +367,7 @@ export function contratoDelConjunto(
   // todavía no es una obra anterior — es una obra cuyo cronograma no se cargó, y su contrato cuenta.
   // (`[].every()` es `true` por vacuidad: preguntar sólo por «todos históricos» descartaría también
   //  los bloques vacíos, que es el caso opuesto. Se pide explícitamente que no queden cobros.)
-  const conObra = bloques.filter(
-    (b) => b.obraId !== null && (b.pagos.length === 0 || b.pagos.some((p) => !p.historico)),
-  )
+  const conObra = bloques.filter((b) => b.obraId !== null && obraEnCurso(b))
   if (!conObra.length) return null
   let total = 0
   let moneda: 'ARS' | 'USD' | null = null
