@@ -22,13 +22,19 @@
 
 import { imagenCompatible } from './proveedores/compatible.mjs'
 import { imagenAbierta } from './proveedores/abierto.mjs'
+import { imagenCloudflare } from './proveedores/cloudflare.mjs'
 import { SCOPE_VERTEX, proyectoDe, vertexImagen } from './proveedores/vertex-imagen.mjs'
 
-// EL ORDEN ES LA POLÍTICA. Primero el proveedor de la empresa (Vertex, con la credencial que el OS
-// ya tiene), después el compatible si alguien contrató uno, y ÚLTIMO el abierto — que no pide
-// credencial, funciona hoy y tiene menos calidad. Que el peor esté al final no lo hace decorativo:
-// es la diferencia entre una capacidad escrita y una capacidad que responde.
-const PROVEEDORES = [vertexImagen, imagenCompatible, imagenAbierta]
+// EL ORDEN ES LA POLÍTICA, y la política la fijó el dueño: calidad usable a costo cero.
+//
+//   1. CLOUDFLARE WORKERS AI — tramo gratuito diario y calidad de FLUX. Primero porque cumple las
+//      dos condiciones. Apagado hasta que existan CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN.
+//   2. VERTEX — el OS ya tiene la credencial, pero se cobra por imagen: el dueño lo descartó por eso.
+//      Queda en la fila para el día que haga falta calidad y el costo no importe.
+//   3. COMPATIBLE — si alguna vez se contrata un proveedor del dialecto OpenAI.
+//   4. ABIERTO — sin credencial, gratis, y de calidad claramente menor (medido). Último a propósito:
+//      existe para que la capacidad RESPONDA, no para que responda bien.
+const PROVEEDORES = [imagenCloudflare, vertexImagen, imagenCompatible, imagenAbierta]
 
 /** Lee el JSON del service account por los MISMOS dos caminos que `lib/google.mjs`: el env
  *  (entornos sin disco) y el archivo (la VM). Devuelve `{credencial, keyFile}` o `{}`. */
