@@ -71,7 +71,10 @@ function matchKw(t, kw) {
   if (!re) { re = new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); _kwCache.set(kw, re) }
   return re.test(t)
 }
-function contarMatches(t, kws) { let s = 0; for (const kw of kws) if (matchKw(t, kw)) s += FUERTES.has(kw) ? 2 : 1; return s }
+// Se EXPORTA (no se copia) para que el ruteo de capacidades de `elegir-capacidad.mjs` puntúe con
+// la MISMA regla que el chat: una segunda implementación del matcher sería una segunda definición
+// del mismo criterio, y la corrección siguiente arreglaría sólo una de las dos.
+export function contarMatches(t, kws, fuertes = FUERTES) { let s = 0; for (const kw of kws) if (matchKw(t, kw)) s += fuertes.has(kw) ? 2 : 1; return s }
 
 /** Devuelve un slug de CAPABILITY_SKILLS o 'general'. Síncrono, instantáneo. */
 export function classifyDirective(directive) {

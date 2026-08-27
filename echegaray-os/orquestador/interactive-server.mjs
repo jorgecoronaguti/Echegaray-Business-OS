@@ -90,6 +90,7 @@ import { enqueuePendingOperation, listPendingOperations, decidePendingOperation,
 import { classifyDirective, classifyDirectiveMulti, textoParaRutear, esContinuacion } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability, skillsParaDirectiva, skillsSegunProfundidad, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
+import { resolucionDeRespuesta, nivelDeLaRespuesta, registrarPedidoDelChat } from './lib/skill-metricas.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
@@ -229,13 +230,12 @@ const CACHE_STATS = { hits: 0, misses: 0 }
 // Eficiencia global del cerebro: respuestas resueltas SIN modelo (detecciones determinísticas
 // + caché) vs. respuestas que pagaron API. Es la métrica de "cuánto se autoabastece el OS".
 const USAGE = { zeroApi: 0 }
-const PAID_MODEL = /^(haiku|sonnet|opus|agente)/i
 // Cuenta cada respuesta REAL una sola vez (se llama en el .then del askPromise). Los estados
 // transitorios (trabajando/cancelado/error) no cuentan. Lo pago ya lo cuenta trackCost (COST.n).
 function countAnswer(model) {
-  const m = String(model || '')
-  if (!m || m === 'trabajando' || m === 'cancelado' || m === 'error') return
-  if (!PAID_MODEL.test(m)) USAGE.zeroApi++
+  // La regla vive en lib/skill-metricas.mjs (la misma que etiqueta `resolucion` en chat_request):
+  // dos copias de "esto pagó un modelo" se corrigen una sola vez y la vieja miente sin avisar.
+  if (resolucionDeRespuesta(model) === 'determinista') USAGE.zeroApi++
 }
 async function costSummary() {
   const hrs = Math.max(0.01, (Date.now() - COST.since) / 3.6e6)
@@ -303,15 +303,22 @@ function outcomeDe(out) {
 }
 function logChatRequest({ rid, directive, user, surface, out, latencyMs, extVersion }) {
   if (!rid) return
-  query(`insert into orq.chat_request
-           (rid, directive, user_email, surface, capability, model, cost_usd, latency_ms, outcome, ext_version)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         on conflict (rid) do update set
-           capability=excluded.capability, model=excluded.model, cost_usd=excluded.cost_usd,
-           latency_ms=excluded.latency_ms, outcome=excluded.outcome`,
-    [rid, String(directive || '').slice(0, 2000), user || 'anon', surface || 'extension',
-      out?.capability || null, out?.model || null, out?.cost ?? null,
-      latencyMs ?? null, outcomeDe(out), extVersion || null]).catch(() => {})
+  // Cuando el pedido se despacha a un especialista, `out.skills` trae el SLUG DEL AGENTE, no una
+  // skill. Guardarlo en la misma columna mezclaría dos vocabularios y la métrica por capacidad
+  // contaría un agente como si fuera una skill; quién atendió ya queda en `capability`.
+  const skills = /^agente/i.test(String(out?.model || '')) ? [] : (Array.isArray(out?.skills) ? out.skills : [])
+  // `skills` y `resolucion` son la instrumentación por CAPACIDAD: sin ellas se podía medir el
+  // costo del chat pero no cuánto se usa cada skill ni cuánta de esa demanda se resolvió sin pagar
+  // un modelo. Van en la misma fila y en el mismo insert: no cuesta una escritura más.
+  // El `nivel` sale del catálogo (cacheado en memoria), por eso la fila se arma en una promesa.
+  // Sigue siendo fire-and-forget: la telemetría nunca demora ni rompe la respuesta al dueño. El
+  // insert (y su degradación si la migración todavía no se aplicó) vive en lib/skill-metricas.mjs.
+  nivelDeLaRespuesta(out?.model, skills).then((nivel) => registrarPedidoDelChat([
+    rid, String(directive || '').slice(0, 2000), user || 'anon', surface || 'extension',
+    out?.capability || null, out?.model || null, out?.cost ?? null,
+    latencyMs ?? null, outcomeDe(out), extVersion || null,
+    skills, resolucionDeRespuesta(out?.model), nivel,
+  ])).catch(() => {})
 }
 function friendlyStep(name, input) {
   const i = input || {}
