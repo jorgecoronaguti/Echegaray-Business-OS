@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { navegar, validarGuion } from './navegador-web.mjs'
+import { entornoNavegador, librerias, navegar, validarGuion } from './navegador-web.mjs'
 
 test('el navegador no completa credenciales, lo pida quien lo pida', () => {
   const casos = [
@@ -44,4 +44,20 @@ test('un guión rechazado NUNCA llega a abrir un navegador', async () => {
   // Si la barrera se saltease, esto tardaría segundos y levantaría Chromium. Devuelve el motivo.
   const r = await navegar([{ accion: 'ir', url: 'file:///etc/passwd' }])
   assert.match(r.error, /guión rechazado/)
+})
+
+test('las librerías locales del navegador entran solas en su entorno', () => {
+  // Chromium se instaló sin root y sus dependencias viven en el HOME. Sin esto el proceso muere
+  // apenas arranca y Playwright lo informa como «browser has been closed», que no dice nada.
+  const previo = process.env.ORQ_PW_LIBS
+  try {
+    process.env.ORQ_PW_LIBS = '/ruta/de/prueba/pw-libs'
+    assert.equal(librerias(), '/ruta/de/prueba/pw-libs')
+    const env = entornoNavegador({ LD_LIBRARY_PATH: '/ya/estaba' })
+    assert.equal(env.LD_LIBRARY_PATH, '/ruta/de/prueba/pw-libs:/ya/estaba')
+    assert.equal(entornoNavegador({}).LD_LIBRARY_PATH, '/ruta/de/prueba/pw-libs')
+  } finally {
+    if (previo === undefined) delete process.env.ORQ_PW_LIBS
+    else process.env.ORQ_PW_LIBS = previo
+  }
 })

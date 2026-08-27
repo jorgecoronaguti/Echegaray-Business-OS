@@ -18,8 +18,36 @@
 // adentro a propósito: la mayoría de las corridas del OS no lo necesitan y no tienen por qué pagar
 // su carga.
 
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { aplicarPoliticaContenidoExterno, ORIGEN_EXTERNO } from './contenido-externo.mjs'
 import { htmlATexto, urlPermitida, MAX_CARACTERES } from './web-lectura.mjs'
+
+/**
+ * LAS LIBRERÍAS DEL NAVEGADOR, QUE EN ESTA VM NO ESTÁN DONDE EL NAVEGADOR LAS BUSCA.
+ *
+ * Chromium se instaló sin root, así que sus dependencias (`libatk`, `libnss`…) viven en un
+ * directorio del usuario en vez de `/usr/lib`. Sin esto, el proceso muere apenas arranca con
+ * «error while loading shared libraries: libatk-1.0.so.0», y Playwright lo reporta como
+ * «Target page, context or browser has been closed» — un mensaje que no dice nada de lo que pasó.
+ * Costó un rato la primera vez; no lo tiene que volver a costar.
+ *
+ * Se resuelve acá y no en el shell de quien llama a propósito: la capacidad tiene que funcionar
+ * desde el worker, desde el chat y desde un test, sin que ninguno sepa de esto.
+ */
+export function librerias() {
+  const propio = process.env.ORQ_PW_LIBS
+  if (propio) return propio
+  const local = join(process.env.HOME || '/root', '.local', 'lib', 'pw-libs')
+  return existsSync(local) ? local : null
+}
+
+/** El entorno del proceso del navegador, con las librerías locales al frente si hacen falta. */
+export function entornoNavegador(env = process.env) {
+  const libs = librerias()
+  if (!libs) return undefined
+  return { ...env, LD_LIBRARY_PATH: [libs, env.LD_LIBRARY_PATH].filter(Boolean).join(':') }
+}
 
 export const ACCIONES = Object.freeze(['ir', 'esperar', 'click', 'escribir', 'captura'])
 export const MAX_PASOS = 12
@@ -84,7 +112,7 @@ export async function navegar(pasos, { maxCaracteres = MAX_CARACTERES, timeoutMs
   const hechos = []
   let captura = null
   try {
-    navegador = await chromium.launch({ headless: true })
+    navegador = await chromium.launch({ headless: true, env: entornoNavegador() })
     const contexto = await navegador.newContext({ userAgent: 'EchegarayOS/1.0 (+https://app.ecsas.com.ar)' })
     const pagina = await contexto.newPage()
     pagina.setDefaultTimeout(Math.min(timeoutMs, 30_000))
