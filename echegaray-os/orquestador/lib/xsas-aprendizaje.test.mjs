@@ -107,6 +107,32 @@ test('la duración real sale de las fechas derivadas', () => {
   assert.equal(diasEntre(null, '2026-08-05'), null)
 })
 
+test('sin plan de obra, el rendimiento con el que se comparó es el del presupuesto', () => {
+  const o = analizarFila(fila({ plan_hh: null }))
+  assert.equal(o.plan.hsUnitarias, null)
+  assert.equal(o.hsUnitariasPlan, 0.12, 'la partida cotizada es el plan que quedó')
+})
+
+test('la dotación real la resuelve la vista: personas que imputaron horas, si no las asignadas', () => {
+  // La regla se mudó al SQL, pero el módulo la transporta y tiene que seguir haciéndolo.
+  assert.equal(analizarFila(fila({ dotacion_real: 3 })).real.dotacion, 3)
+  assert.equal(analizarFila(fila({ dotacion_real: null })).real.dotacion, null)
+})
+
+// ── UN CIERRE QUE SALIÓ DE UNA SUMA NO ES UN CIERRE MEDIDO ───────────────────────────────────
+
+test('avance armado sumando declarado + partes: ni cantidad inventada ni confianza alta', () => {
+  // «Armado armadura de VF» tiene 75 declarado + 75 de partes y la canónica publica 100.
+  const r = cantidadEjecutadaDe({ cantidad_real: null, plan_cantidad: '120', terminada: true, avance_sumado: true })
+  assert.equal(r.cantidad, null, 'le inventó la cantidad objetivo a una actividad al 75%')
+  assert.equal(analizarFila(fila({ avance_sumado: true })).confianza, 'media')
+})
+
+test('terminada con MENOS cantidad que la objetivo no llega a confianza alta', () => {
+  // O el objetivo cambió o la medición está incompleta: en los dos casos el rendimiento sale alto.
+  assert.equal(analizarFila(fila({ cantidad_real: '200', plan_cantidad: '258.77' })).confianza, 'media')
+})
+
 test('la obra de pruebas no puede enseñarle nada al OS', async () => {
   const vistas = []
   const query = async (sql, params) => { vistas.push({ sql, params }); return { rows: [] } }
@@ -136,5 +162,11 @@ test('un parte duplicado no duplica el rendimiento: la clave es la actividad', a
   const ins = escrituras.filter((e) => /insert into public\.rendimiento_historico/.test(e.sql))
   assert.equal(ins.length, 2, 'se intenta escribir las dos')
   assert.match(ins[0].sql, /on conflict \(actividad_id\)/, 'y la base deja una sola')
-  assert.equal(ins[0].params.at(-1), ins[1].params.at(-1), 'misma clave')
+  // LA CLAVE, buscada por su forma y no por su posición. `params.at(-1)` era `cuadrilla_id` —null en
+  // las dos filas— así que el assert pasaba aunque la clave llevara un timestamp, que es el defecto
+  // exacto que este test dice cuidar.
+  const claveDe = (p) => p.find((x) => typeof x === 'string' && x.startsWith('plan-real:'))
+  assert.ok(claveDe(ins[0].params), 'no encontré la clave entre los parámetros')
+  assert.equal(claveDe(ins[0].params), claveDe(ins[1].params), 'misma clave')
+  assert.match(claveDe(ins[0].params), /^plan-real:[^:]+$/, 'la clave lleva algo más que la actividad')
 })

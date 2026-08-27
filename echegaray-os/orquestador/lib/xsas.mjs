@@ -35,6 +35,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cerebroDisponible } from './estado-cerebro.mjs'
 import { CAPACIDAD, modeloPara } from './ia/capacidad.mjs'
+import { OBRAS_NO_REALES } from './xsas-aprendizaje.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..')
@@ -267,7 +268,10 @@ export async function estadoDeXsas() {
         when tarea_tipo_id is null then 'sin tipo de tarea: no se puede reutilizar'
         else 'aprende' end as freno,
        count(*)::int n
-        from public.xsas_actividad where obra_id <> 'prueba-e2e' group by 1 order by 2 desc`)
+        from public.xsas_actividad where obra_id <> all($1::text[]) group by 1 order by 2 desc`,
+      // La lista de obras que no son obras vive en UN lugar. Repetir el literal acá era una segunda
+      // definición del mismo concepto dentro del trabajo que existe para eliminarlas.
+      [OBRAS_NO_REALES])
 
     // El aprendizaje de obra, por estado. `REFERENCIA` es la tabla con la que se venía cotizando;
     // el resto es lo que la ejecución enseñó.

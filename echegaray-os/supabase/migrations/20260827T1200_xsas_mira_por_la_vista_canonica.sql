@@ -68,6 +68,15 @@ select
   c.avance_pct,
   c.origen_avance,
   (c.estado_fecha = 'terminada')         as terminada,
+  -- ═══ UN AVANCE QUE SE ARMÓ SUMANDO DOS DECLARACIONES NO ES UNA MEDICIÓN ═══
+  --
+  -- Para `metodo_avance = 'manual'`, la vista canónica calcula el avance como
+  -- `LEAST(100, pct declarado + avance de los partes)`. Hay 7 actividades vivas con las dos fuentes
+  -- cargadas: «Armado armadura de VF» tiene 75 declarado + 75 de partes y sale 100 — TERMINADA al
+  -- 75% real. Eso está bien para pintar una barra y está mal para aprender un rendimiento: si esa
+  -- actividad recibe una hora imputada, el ciclo le inventaría la cantidad objetivo entera con
+  -- confianza alta y ese número entraría a cotizar.
+  (c.metodo_avance = 'manual' and c.pct is not null and c.avance_partes is not null) as avance_sumado,
   c.estado_fecha,
   c.n_partes,
   c.ultimo_parte,
@@ -202,5 +211,16 @@ left join lateral (
 comment on view public.xsas_obra is
   'La obra vista desde XSAS: cliente, contrato, avance ponderado por HH planificadas, actividades terminadas y costo cargado. El resultado es PARCIAL y el nombre de la columna lo dice.';
 
+-- ═══ QUIÉN PUEDE LEER CADA UNA, DE VERDAD ═══
+--
+-- `xsas_actividad` sí se lee como `authenticated`: `security_invoker` la hace respetar exactamente
+-- la RLS de `obra_actividad` — verificado, un jefe de obra ve por acá lo mismo que por la canónica.
+--
+-- `xsas_obra` NO: toca `obra_canonica.monto_contratado` y `public.obras`, sobre las que `authenticated`
+-- no tiene privilegio, así que con `security_invoker` falla con «permission denied» para cualquiera
+-- que no sea el OS. El grant de abajo era una promesa que la base no cumple. Se retira y se declara:
+-- **`xsas_obra` es de uso interno del orquestador**. Abrirla a la web exige decidir antes quién puede
+-- ver el monto de contrato de una obra, y eso es una decisión del dueño, no un grant de paso.
 grant select on public.xsas_actividad to authenticated, service_role;
-grant select on public.xsas_obra      to authenticated, service_role;
+grant select on public.xsas_obra      to service_role;
+revoke select on public.xsas_obra from authenticated;

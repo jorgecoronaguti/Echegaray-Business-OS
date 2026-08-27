@@ -55,7 +55,11 @@ export function cantidadEjecutadaDe(f) {
   const cargada = num(f.cantidad_real)
   if (cargada !== null) return { cantidad: cargada, derivada: false }
   const objetivo = num(f.plan_cantidad)
-  if (f.terminada === true && objetivo !== null) {
+  // NO SE DERIVA SOBRE UN CIERRE QUE SALIÓ DE UNA SUMA. `avance_sumado` marca las actividades cuyo
+  // 100% es «porcentaje declarado + porcentaje de los partes»: pueden estar terminadas en la barra
+  // y al 75% en la obra. Inventarles la cantidad objetivo sería fabricar el dato más caro del
+  // circuito — el que después se cotiza.
+  if (f.terminada === true && objetivo !== null && f.avance_sumado !== true) {
     return { cantidad: objetivo, derivada: true, porQue: 'actividad terminada: lo ejecutado es la cantidad objetivo' }
   }
   return { cantidad: null, derivada: false }
@@ -89,6 +93,7 @@ export function analizarFila(f) {
     dias: f.dias_real,
     dotacion: f.dotacion_real,
     terminada: f.terminada ?? null,
+    avanceSumado: f.avance_sumado === true,
     costo: null,
   }
   const c = compararPlanReal(plan, real)

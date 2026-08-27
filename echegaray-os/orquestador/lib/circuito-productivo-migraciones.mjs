@@ -29,7 +29,7 @@ export const DIR_MIGRACIONES = join(AQUI, '..', '..', 'supabase', 'migrations')
  * que los reconcilia. Si el test aplicara sólo las 4xxx, mediría un estado que en producción no va a
  * existir nunca, y el pisado silencioso de la conversión pasaría en verde.
  */
-export const PREFIJOS_CIRCUITO = /^20260821T4[0-9]00_|^20260821T5450_|^20260822T1000_/
+export const PREFIJOS_CIRCUITO = /^20260821T4[0-9]00_|^20260821T5450_|^20260822T1000_|^20260827T1210_/
 
 /**
  * Los archivos del circuito, ordenados por nombre — que es el orden de aplicación, porque el

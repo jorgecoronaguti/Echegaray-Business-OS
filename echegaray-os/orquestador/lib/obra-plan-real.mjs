@@ -72,10 +72,16 @@ export function avanceDe(plan, real) {
  */
 export const MINIMO_APRENDIBLE = 20
 
-export function confianzaDe({ avance, cantidadReal, hhReal, terminada }) {
+export function confianzaDe({ avance, cantidadReal, hhReal, terminada, avanceSumado, cantidadPlan }) {
   const completo = num(cantidadReal) !== null && num(hhReal) !== null
   const a = num(avance)
   if (!completo) return 'baja'
+  // Un cierre armado sumando dos declaraciones no vale como cierre medido: llega hasta 'media'.
+  if (avanceSumado === true) return 'media'
+  // Y una actividad dada por terminada que ejecutó MENOS cantidad que la objetivo tampoco: o el
+  // objetivo cambió o la medición está incompleta, y en los dos casos el rendimiento sale inflado.
+  const cr = num(cantidadReal), cp = num(cantidadPlan)
+  if (terminada === true && cr !== null && cp !== null && cr < cp * 0.95) return 'media'
   // TERMINADA LO DICE EL SISTEMA, NO EL PORCENTAJE. `estado_fecha = 'terminada'` sale de la vista
   // canónica —`estado = 'hecha'` O avance ≥ 100— y es la misma condición con la que la app cierra
   // una actividad. Un 96% no es el final de nada; una actividad marcada hecha al 100% sí lo es.
@@ -157,7 +163,10 @@ export function compararPlanReal(plan = {}, real = {}) {
       desvioDotacionPct: desvioPct(real.dotacion, plan.dotacion),
       desvioCostoPct: desvioPct(real.costo, plan.costo),
     },
-    confianza: confianzaDe({ avance, cantidadReal: cantReal, hhReal, terminada: real.terminada }),
+    confianza: confianzaDe({
+      avance, cantidadReal: cantReal, hhReal, terminada: real.terminada,
+      avanceSumado: real.avanceSumado, cantidadPlan: cantPlan,
+    }),
     faltantes,
     // Un rendimiento sólo es APRENDIBLE si existe, y si la actividad avanzó lo suficiente como para
     // que el número signifique algo. Lo demás se observa igual, pero no enseña nada todavía.

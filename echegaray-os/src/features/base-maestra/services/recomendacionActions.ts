@@ -4,7 +4,8 @@
 //
 // ═══ LA DECISIÓN ES DE UNA PERSONA, SIEMPRE ═══
 //
-// `capturar_rendimientos()` corre solo todos los días a las 11:20 porque registrar un hecho —esta
+// El rendimiento lo registra solo el ciclo de XSAS (`capturar_rendimientos()` está retirada desde el
+// 27/08/2026) porque registrar un hecho —esta
 // actividad terminó, costó estas horas productivas— no requiere el juicio de nadie. CAMBIAR EL
 // ANÁLISIS sí lo requiere y por eso pasa por acá: un sistema que se recalibra solo con la última
 // obra medida termina cotizando con el rendimiento de la obra más rara que hizo.
