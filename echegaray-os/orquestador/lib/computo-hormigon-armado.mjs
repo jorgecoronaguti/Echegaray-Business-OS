@@ -332,3 +332,80 @@ export function computarVigaHA(entrada = {}, opciones = {}) {
     imposibles: hormigon.imposibles ?? [],
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUANTÍA — el único camino de volumen a kilos que ECSAS tiene DOCUMENTADO, y no es una norma.
+//
+// ═══ DE DÓNDE SALE ═══
+//
+// De los propios análisis de la empresa, congelados en `cotizacion_partida_composicion`. Las
+// partidas se llaman literalmente «VIGA DE ENCADENADO H17 - FE 100 KG/M3» y «COLUMNA DE CARGA H17 -
+// FE 190 KG/M3», y su composición lleva HIERRO TORSIONADO en kg por m³ de hormigón. Es decir: la
+// empresa ya cotiza el acero por cuantía, y lo hace hace años.
+//
+// ═══ POR QUÉ NO ES UN ATAJO PARA SALTEARSE EL DETALLADO ═══
+//
+// Una cuantía es un promedio de otro proyecto. Sirve para PRESUPUESTAR —y ahí es legítima y es lo
+// que se usa—, no para saber cuántas barras van ni cómo se doblan. Por eso este camino sale marcado
+// `EXPERIENCIA ECSAS` + `REQUIERE_VALIDACION`, nunca `NORMA/FORMULA`, y por eso NO reemplaza a
+// `armaduraViga`: los dos conviven y dicen cosas distintas. Confundirlos es cómo un presupuesto
+// termina siendo tratado como un plano.
+//
+// Y la cuantía **no se inventa**: o la declara quien computa, o se lee de un análisis que ya la
+// tiene. Sin ninguna de las dos, hueco.
+
+/**
+ * KILOS DE ACERO POR CUANTÍA: volumen de hormigón × kg/m³.
+ *
+ * `cuantiaKgM3` tiene que venir declarada con su origen. `origen` es obligatorio en los hechos: sin
+ * él no se puede distinguir «la cuantía de esta obra» de «la cuantía de otra parecida», y ésa es
+ * justo la diferencia que decide si el número sirve.
+ */
+export function aceroPorCuantia({ volumenHormigon, cuantiaKgM3, origen = null } = {}) {
+  const v = num(volumenHormigon?.valor ?? volumenHormigon)
+  const q = num(cuantiaKgM3)
+  if (q === null) {
+    return requiereDefinicion({
+      que: 'cuantía de acero, en kg por m³ de hormigón',
+      unidad: 'kg/m3',
+      porque: 'la cuantía es un promedio de proyecto: sale del análisis de la partida o del cálculo estructural, y no se deduce de las medidas de la viga. ECSAS la declara en el nombre de sus propias partidas — de ahí se lee, no de una tabla general.',
+      quienDefine: DEFINE.DUENO,
+    })
+  }
+  if (v === null) return requiereDefinicion({ que: 'volumen de hormigón', unidad: 'm3', porque: 'sin volumen no hay a qué aplicarle la cuantía.', quienDefine: DEFINE.CARGA })
+  return magnitud({
+    valor: v * q,
+    unidad: 'kg',
+    // REQUIERE_VALIDACION Y NO CALCULADO: la multiplicación es exacta, pero el número que entra es
+    // un promedio prestado. Lo que hay que validar no es la cuenta, es que la cuantía aplique acá.
+    clase: CLASE.REQUIERE_VALIDACION,
+    respaldo: RESPALDO.EXPERIENCIA,
+    formula: 'volumen de hormigón × cuantía de acero',
+    entradas: { volumenM3: v, cuantiaKgM3: q },
+    fuente: origen ?? 'cuantía declarada sin origen — decir de qué obra o análisis salió',
+  })
+}
+
+/**
+ * LA CUANTÍA QUE YA ESTÁ EN UN ANÁLISIS DE LA EMPRESA: kg de acero por unidad, cuando la unidad de
+ * la partida es m³. Se lee de la composición congelada, no se propone.
+ *
+ * Devuelve `null` —y no un hueco— cuando el análisis no tiene hierro: eso no es una definición que
+ * falte, es una partida que no lleva acero.
+ */
+export function cuantiaDeLaComposicion(composicion = [], { unidadPartida = 'm3', patronAcero = /hierro|acero|malla/i } = {}) {
+  if (unidadPartida !== 'm3') return null
+  const kg = composicion
+    .filter((l) => l.tipo === 'material' && (l.unidad ?? '').toLowerCase() === 'kg' && patronAcero.test(l.recurso_nombre ?? l.nombre ?? ''))
+    .reduce((a, l) => a + (num(l.cantidad) ?? 0) * (1 + (num(l.desperdicio) ?? 0)), 0)
+  if (kg <= 0) return null
+  return magnitud({
+    valor: kg,
+    unidad: 'kg/m3',
+    clase: CLASE.EXTRAIDO,
+    respaldo: RESPALDO.EXPERIENCIA,
+    formula: 'suma de los materiales de acero del análisis, en kg por unidad de partida',
+    entradas: { unidadPartida },
+    fuente: 'composición congelada del presupuesto — análisis propio de ECSAS',
+  })
+}

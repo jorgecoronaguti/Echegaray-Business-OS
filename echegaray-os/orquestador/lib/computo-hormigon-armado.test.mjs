@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { CLASE, DEFINE, RESPALDO, esHueco, huecosDe } from './computo-constructivo.mjs'
 import {
   SUBTIPO_VIGA, computarVigaHA, volumenViga, masaLinealBarra, estriboDesarrollado, estribosEnZona, armaduraViga,
+  aceroPorCuantia, cuantiaDeLaComposicion,
 } from './computo-hormigon-armado.mjs'
 
 // ═══ (L) UNA VIGA PRODUCE SU VOLUMEN GEOMÉTRICO, SIN MODELO ═══
@@ -156,4 +157,47 @@ test('con todas las definiciones declaradas el peso total de acero se calcula y 
   const esperado = 2 * 5 * masaLinealBarra(12).valor * 2 + 35 * 1.12 * masaLinealBarra(6).valor
   assert.equal(Number(a.pesoTotal.valor.toFixed(4)), Number(esperado.toFixed(4)))
   assert.equal(a.pesoTotal.respaldo, RESPALDO.NORMA)
+})
+
+// ═══ LA CUANTÍA: EL CAMINO DOCUMENTADO DE ECSAS, Y NO SE DISFRAZA DE NORMA ═══
+
+test('(M) sin cuantía declarada no se propone ninguna: es un hueco del dueño, no de la norma', () => {
+  const h = aceroPorCuantia({ volumenHormigon: 2.08 })
+  assert.ok(esHueco(h))
+  assert.equal(h.requiereDefinicion.quienDefine, DEFINE.DUENO)
+  assert.match(h.requiereDefinicion.porque, /promedio de proyecto/)
+})
+
+test('el acero por cuantía sale como EXPERIENCIA ECSAS y REQUIERE_VALIDACION, nunca como NORMA', () => {
+  const kg = aceroPorCuantia({ volumenHormigon: 2.08, cuantiaKgM3: 100, origen: 'análisis VIGA DE ENCADENADO H17 - FE 100 KG/M3' })
+  assert.equal(kg.valor, 208)
+  assert.equal(kg.respaldo, RESPALDO.EXPERIENCIA)
+  assert.equal(kg.clase, CLASE.REQUIERE_VALIDACION)
+  assert.match(kg.fuente, /ENCADENADO/)
+})
+
+test('la cuantía se LEE del análisis propio, con la composición real de una viga de encadenado', () => {
+  // Estas líneas son las que están congeladas en la base para «VIGA DE ENCADENADO H17 - FE 100 KG/M3».
+  const composicion = [
+    { recurso_nombre: 'CEMENTO PORTLAND LOMA NEGRA', tipo: 'material', unidad: 'kg', cantidad: 300, desperdicio: 0 },
+    { recurso_nombre: 'ALAMBRE NEGRO Nº14', tipo: 'material', unidad: 'kg', cantidad: 0.7, desperdicio: 0.1 },
+    { recurso_nombre: 'HIERRO TORSIONADO ø 10', tipo: 'material', unidad: 'kg', cantidad: 100, desperdicio: 0.05 },
+    { recurso_nombre: 'OFICIAL', tipo: 'mano_obra', unidad: 'hs', cantidad: 18.1 },
+  ]
+  const q = cuantiaDeLaComposicion(composicion)
+  // 100 kg × 1,05 de desperdicio. El cemento y el alambre no son acero y no entran.
+  assert.equal(q.valor, 105)
+  assert.equal(q.unidad, 'kg/m3')
+  assert.equal(q.respaldo, RESPALDO.EXPERIENCIA)
+  assert.match(q.fuente, /ECSAS/)
+})
+
+test('una partida sin acero no devuelve un hueco: devuelve null, porque no le falta nada', () => {
+  const q = cuantiaDeLaComposicion([{ recurso_nombre: 'ARENA GRUESA', tipo: 'material', unidad: 'm3', cantidad: 0.4 }])
+  assert.equal(q, null)
+})
+
+test('una partida que no se mide en m³ no tiene cuantía que leer', () => {
+  const q = cuantiaDeLaComposicion([{ recurso_nombre: 'HIERRO ø 8', tipo: 'material', unidad: 'kg', cantidad: 3 }], { unidadPartida: 'm2' })
+  assert.equal(q, null)
 })
