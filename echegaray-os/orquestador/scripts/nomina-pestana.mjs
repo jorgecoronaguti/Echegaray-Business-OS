@@ -33,9 +33,18 @@ import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
-import { liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
+import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
+// ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
+//
+// El centinela significa «esta celda es mía y va vacía», y se resuelve DENTRO de la fusión. Esta
+// pestaña no se fusiona: el generador es dueño del 100% de ella y la reescribe entera. Al escribirlo
+// por esta puerta quedó LITERAL en el archivo —«::VACIO::» en cientos de celdas, probado el
+// 27/08— que es exactamente lo que el propio módulo advierte. Acá se escribe vacío de verdad y la
+// guarda se saltea con `yaGuardado`, que es la puerta declarada para el escritor que ya evaluó de
+// quién es la pestaña. La condición para poder usarla es la que se cumple acá y en pocos lugares
+// más: NADIE que no sea este script escribió jamás una celda de esta pestaña.
 
 const ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Nómina'
@@ -95,78 +104,130 @@ function grilla(personas, { hoy }) {
   const f = []
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
+  // ═══ LOS DOS GRUPOS NO SE MEZCLAN ═══
+  //
+  // La primera versión ponía a todos en una lista con una columna «Situación», y el dueño la
+  // rechazó en una línea: *"es confusa y no respeta a activos de inactivos o desvinculados"*. Tenía
+  // razón — una columna no separa nada: el ojo sigue leyendo una sola tabla, los totales suman gente
+  // que ya no está, y el número que decide (cuánto cuesta la nómina de hoy) queda diluido entre
+  // treinta y seis filas de las cuales veinte son historia.
+  const activos = personas.filter((p) => p.activo)
+  const fuera = personas.filter((p) => !p.activo)
+
   fila(PESTANA)
-  fila('Todos los que trabajaron en 2026 — obra y oficina —, lo devengado mes a mes y lo que costaría desvincular a cada uno.')
+  fila('Los que están y los que ya no, separados. Lo que cobra cada uno, mes a mes, y lo que costaría desvincular a los que siguen.')
   fila(`Sale del espejo de la planilla de jornales. Cada mes se valoriza con el $/hora de esa quincena, no con el de hoy. Al ${fecha(hoy)}.`)
   fila()
 
-  // ── 1 · QUIÉNES SON ──────────────────────────────────────────────────────────────────────
-  fila(seccion(1, 'quiénes son y qué se les paga'))
-  fila('Persona', 'Sector', 'Categoría', 'Ingreso', 'Situación', 'Último día', '$/hora hoy', 'Reingreso')
-  for (const p of personas) {
-    fila(p.nombre, p.sector, p.categoria || SIN_DATO, p.ingreso ? fecha(p.ingreso) : SIN_DATO,
-      p.activo ? 'Activo' : 'Desafectado', p.ultimoDia ? fecha(p.ultimoDia) : SIN_DATO,
-      p.jornalPactado || SIN_DATO, p.reingreso ? 'sí' : '')
+  /** El cuadro de identidad de un grupo. Mismas columnas para los dos, para poder compararlos. */
+  const cuadroQuienes = (grupo, { conUltimoDia }) => {
+    fila('Persona', 'Sector', 'Cat.', 'Ingreso', conUltimoDia ? 'Último día' : 'Antigüedad',
+      '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
+    let horasT = 0
+    let importeT = 0
+    for (const p of grupo) {
+      const t = totalAnio(p.devengado)
+      horasT += t.horas
+      importeT += t.importe
+      const cese = p.activo ? hoy : (p.ultimoDia ?? hoy)
+      const ant = antiguedad(p.ingreso, cese)
+      const mesesConHoras = [...p.devengado.meses.values()].filter((v) => v.importe > 0).length
+      fila(p.nombre, p.sector, p.categoria || SIN_DATO,
+        p.ingreso ? fecha(p.ingreso) : SIN_DATO,
+        conUltimoDia ? (p.ultimoDia ? fecha(p.ultimoDia) : SIN_DATO) : (ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO),
+        p.jornalPactado || SIN_DATO,
+        Math.round(t.horas), Math.round(t.importe),
+        mesesConHoras ? Math.round(t.importe / mesesConHoras) : SIN_DATO)
+    }
+    fila(rotuloTotal(`${grupo.length} persona(s)`), '', '', '', '', '', Math.round(horasT), Math.round(importeT))
+    return { horasT, importeT }
   }
-  fila(rotuloTotal(`${personas.length} persona(s)`), '',
-    `${personas.filter((p) => p.activo).length} activa(s)`, '',
-    `${personas.filter((p) => !p.activo).length} desafectada(s)`)
+
+  // ── 1 · LOS QUE ESTÁN ────────────────────────────────────────────────────────────────────
+  fila(seccion(1, 'activos — el plantel de hoy'))
+  const tActivos = cuadroQuienes(activos, { conUltimoDia: false })
   fila()
 
-  // ── 2 · DEVENGADO MES A MES ──────────────────────────────────────────────────────────────
-  fila(seccion(2, `lo devengado mes a mes · ${ANIO}`))
-  fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
-  const totalMes = new Array(12).fill(0)
-  let totalGeneral = 0
-  let totalHoras = 0
-  for (const p of personas) {
-    const cel = meses.map((m, i) => {
-      const v = p.devengado.meses.get(m)
-      if (!v || !v.importe) return SIN_DATO
-      totalMes[i] += v.importe
-      return Math.round(v.importe)
-    })
-    const t = totalAnio(p.devengado)
-    totalGeneral += t.importe
-    totalHoras += t.horas
-    fila(p.nombre, ...cel, Math.round(t.importe), Math.round(t.horas))
+  // ── 2 · LOS QUE YA NO ESTÁN ──────────────────────────────────────────────────────────────
+  fila(seccion(2, `desvinculados durante ${ANIO} — ya no están en el plantel`))
+  fila('No suman al costo de hoy. Están acá porque su devengado del año sí ocurrió y hay que poder explicarlo.')
+  const tFuera = cuadroQuienes(fuera, { conUltimoDia: true })
+  fila()
+
+  // ── 3 · EL AÑO, MES A MES ────────────────────────────────────────────────────────────────
+  /** El cuadro mes a mes de un grupo, con su propia fila de total. */
+  const cuadroMeses = (grupo) => {
+    fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
+    const porMes = new Array(12).fill(0)
+    let tot = 0
+    let horas = 0
+    for (const p of grupo) {
+      const cel = meses.map((m, i) => {
+        const v = p.devengado.meses.get(m)
+        if (!v || !v.importe) return SIN_DATO
+        porMes[i] += v.importe
+        return Math.round(v.importe)
+      })
+      const t = totalAnio(p.devengado)
+      tot += t.importe
+      horas += t.horas
+      fila(p.nombre, ...cel, Math.round(t.importe), Math.round(t.horas))
+    }
+    fila(rotuloTotal('TOTAL'), ...porMes.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tot), Math.round(horas))
+    return porMes
   }
-  fila(rotuloTotal('TOTAL'), ...totalMes.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(totalGeneral), Math.round(totalHoras))
+
+  fila(seccion(3, `lo devengado mes a mes · activos · ${ANIO}`))
+  const mesesActivos = cuadroMeses(activos)
+  fila()
+
+  fila(seccion(4, `lo devengado mes a mes · desvinculados · ${ANIO}`))
+  const mesesFuera = cuadroMeses(fuera)
+  fila()
+
+  fila(seccion(5, `el año completo · ${ANIO}`))
+  fila('Concepto', ...MES_CORTO, 'TOTAL AÑO')
+  fila(sub('Activos'), ...mesesActivos.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tActivos.importeT))
+  fila(sub('Desvinculados'), ...mesesFuera.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(tFuera.importeT))
+  fila(rotuloTotal('TOTAL NÓMINA'), ...mesesActivos.map((v, i) => Math.round(v + mesesFuera[i]) || SIN_DATO),
+    Math.round(tActivos.importeT + tFuera.importeT))
   const sinPrecio = personas.filter((p) => p.devengado.horasSinPrecio > 0)
   if (sinPrecio.length) {
     fila(sub(`${sinPrecio.length} persona(s) con horas cargadas sin $/hora en su fila: esas horas se cuentan y NO se valorizan`))
   }
   fila()
 
-  // ── 3 · QUÉ CUESTA DESVINCULAR ───────────────────────────────────────────────────────────
-  fila(seccion(3, 'qué cuesta desvincular a cada uno'))
+  // ── 6 · QUÉ CUESTA DESVINCULAR — SÓLO A LOS QUE SIGUEN ───────────────────────────────────
+  //
+  // A quien ya salió no se le puede volver a liquidar: su costo de salida ocurrió, no es una
+  // decisión abierta. Ponerlo en el mismo cuadro inflaba un total que nadie va a pagar.
+  fila(seccion(6, 'qué cuesta desvincular a cada uno de los que siguen'))
   fila('Estas dos columnas NUNCA se suman: el fondo de cese es plata del trabajador que se entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
   let saleTotal = 0
   let fondoTotal = 0
-  for (const p of personas) {
-    const cese = p.activo ? hoy : (p.ultimoDia ?? hoy)
-    const l = costoDe(p, cese)
+  for (const p of activos) {
+    const l = costoDe(p, hoy)
     const sale = (l.vacaciones || 0) + (l.sac || 0) + (l.sacSobreVacaciones || 0) + (l.fclPagoDirecto || 0)
     saleTotal += sale
     const fondo = l.fclDevengadoAcumulado ?? null
     if (typeof fondo === 'number') fondoTotal += fondo
     fila(p.nombre,
-      // `antiguedad` es `{anios, meses, dias}` — sin esto la celda decía «[object Object]».
       l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
       Math.round(l.vacaciones || 0), Math.round(l.sac || 0), Math.round(l.sacSobreVacaciones || 0),
       Math.round(l.fclPagoDirecto || 0), Math.round(sale),
       typeof fondo === 'number' ? Math.round(fondo) : SIN_DATO)
   }
-  fila(rotuloTotal(`${personas.length} persona(s)`), '', '', '', '', '', Math.round(saleTotal), Math.round(fondoTotal))
+  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', Math.round(saleTotal), Math.round(fondoTotal))
   fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
   fila()
 
-  // ── 4 · LO QUE NO SE PUEDE MEDIR ACÁ ─────────────────────────────────────────────────────
-  fila(seccion(4, 'lo que esta pestaña NO puede decir'))
+  // ── 7 · LO QUE NO SE PUEDE MEDIR ACÁ ─────────────────────────────────────────────────────
+  fila(seccion(7, 'lo que esta pestaña NO puede decir'))
   fila(sub('Los acuerdos particulares (adelantos pactados, premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
   fila(sub('Los legajos de Drive todavía no se cruzan acá: fecha de nacimiento, CUIL, obra social y familia siguen en la carpeta de cada uno.'))
   fila(sub('Las cargas sociales de cada persona no se abren: la planilla las tiene por total, no por legajo.'))
+  fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga puede leerse como desvinculado: la planilla no distingue.'))
   return f
 }
 
@@ -189,11 +250,22 @@ async function formatear(google, hoja, filas) {
   const esTotal = (i) => /^⇒/.test(String(filas[i]?.[0] ?? ''))
   const reqs = [
     { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 190 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 92 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 108 }, fields: 'pixelSize' } },
     { repeatCell: { range: rango(0, 1, 0, 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 13 } } }, fields: 'userEnteredFormat.textFormat(bold,fontSize)' } },
-    // Los pesos: de la columna B a la última, en todas las filas de datos.
-    { repeatCell: { range: rango(4, filas.length, 1, ANCHO), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '#,##0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
   ]
+  // EL PATRÓN DE MILES VA SÓLO DONDE HAY UN NÚMERO, celda por celda. Aplicarlo a un bloque entero
+  // convertía la fecha de ingreso en «45.803»: una fecha es un número para la planilla, y el patrón
+  // de pesos la muestra como su serial. Se recorren las corridas contiguas de números de cada fila.
+  for (let i = 0; i < filas.length; i++) {
+    let j = 0
+    while (j < ANCHO) {
+      if (typeof filas[i][j] !== 'number') { j++; continue }
+      let k = j
+      while (k < ANCHO && typeof filas[i][k] === 'number') k++
+      reqs.push({ repeatCell: { range: rango(i, i + 1, j, k), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '#,##0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } })
+      j = k
+    }
+  }
   for (let i = 0; i < filas.length; i++) {
     if (esTitulo(i) || esCabecera(i) || esTotal(i)) {
       reqs.push({ repeatCell: { range: rango(i, i + 1, 0, ANCHO), cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } })
@@ -229,6 +301,23 @@ async function main() {
   // pestaña existente, y acá justamente el caso normal la primera vez es que no exista.
   const buscar = async () => { try { return hallarPestana(await google.getSheetMeta(ID), PESTANA) } catch { return null } }
   let hoja = await buscar()
+
+  // ═══ SE BORRA Y SE REHACE, Y ES LA ÚNICA FORMA CORRECTA ACÁ ═══
+  //
+  // La regla NO-BORRAR del OS es absoluta: ninguna escritura puede dejar vacía una celda que tenga
+  // algo, porque no puede probar que ese algo no lo escribió el dueño. Es correcta y no se saltea.
+  // Pero convierte una pestaña 100% generada en un sedimento: si una corrida es más corta que la
+  // anterior, la cola de la vieja queda viva debajo de la nueva. Ya pasó dos veces acá.
+  //
+  // La salida no es debilitar la guarda: es no pedirle que resuelva algo que no puede. Esta pestaña
+  // la crea y la rehace ESTE script, entera, y nadie más escribió nunca una celda suya. Borrarla y
+  // volver a crearla deja el archivo exactamente en el estado que describe el generador, sin cola.
+  // El día que el dueño anote algo acá, esta decisión hay que revisarla — y por eso está escrita.
+  if (hoja) {
+    await google.spreadsheetBatchUpdate(ID, [{ deleteSheet: { sheetId: hoja.sheetId } }])
+    console.log(`  ✂ borré la ${PESTANA} anterior para rehacerla sin cola`)
+    hoja = null
+  }
   if (!hoja) {
     await google.spreadsheetBatchUpdate(ID, [{
       addSheet: { properties: { title: PESTANA, gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 } } },
@@ -241,7 +330,7 @@ async function main() {
       updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: filas.length + 20 } }, fields: 'gridProperties.rowCount' },
     }])
   }
-  await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas)
+  await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas, { yaGuardado: true })
   await formatear(google, hoja, filas)
 
   // RELEER EL DESTINO: lo que prueba una escritura es el dato leído en su destino.
