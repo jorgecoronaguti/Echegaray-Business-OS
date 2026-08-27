@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { analizarFila, cantidadEjecutadaDe, diasEntre, aprender, OBRAS_NO_REALES } from './xsas-aprendizaje.mjs'
+import {
+  analizarFila, cantidadEjecutadaDe, diasEntre, aprender, OBRAS_NO_REALES,
+  aprenderDuracion, desvioDuracion, confianzaDuracion,
+} from './xsas-aprendizaje.mjs'
 
 // Una fila como la devuelve `public.xsas_actividad`, que ahora LEE de `obra_actividad_control`. Los
 // numéricos vienen como STRING desde Postgres: es el modo de falla que más veces rompió este repo.
@@ -169,4 +172,65 @@ test('un parte duplicado no duplica el rendimiento: la clave es la actividad', a
   assert.ok(claveDe(ins[0].params), 'no encontré la clave entre los parámetros')
   assert.equal(claveDe(ins[0].params), claveDe(ins[1].params), 'misma clave')
   assert.match(claveDe(ins[0].params), /^plan-real:[^:]+$/, 'la clave lleva algo más que la actividad')
+})
+
+// ═══ DURACIÓN — LA OTRA MÉTRICA, QUE NO NECESITA UNA SOLA HORA IMPUTADA ═══
+
+test('el desvío de duración es relativo al plan, y sin plan no existe', () => {
+  assert.equal(desvioDuracion(10, 15), 50)
+  assert.equal(desvioDuracion(10, 5), -50)
+  assert.equal(desvioDuracion(null, 5), null)
+  assert.equal(desvioDuracion(0, 5), null, 'no se divide por un plan de cero días')
+})
+
+test('la confianza de la duración exige fechas reales y un cierre que no salió de una suma', () => {
+  const base = { terminada: true, inicioReal: '2026-08-01', finReal: '2026-08-05' }
+  assert.equal(confianzaDuracion(base), 'alta')
+  assert.equal(confianzaDuracion({ ...base, avanceSumado: true }), 'media')
+  assert.equal(confianzaDuracion({ ...base, finReal: null }), 'baja')
+  assert.equal(confianzaDuracion({ ...base, terminada: false }), 'baja')
+})
+
+test('el hecho de duración se guarda aunque la actividad no tenga tipo — pero nunca VALIDA', async () => {
+  const escrituras = []
+  const query = async (sql, params) => {
+    if (/from public\.xsas_actividad/.test(sql)) {
+      return { rows: [{
+        actividad_id: 'a1', obra_id: 'le-galpon-9', actividad: 'ARMADO DE PLATINA',
+        tarea_tipo_id: null, plan_dias: '1', dias_real: '3', terminada: true,
+        inicio_plan: '2026-07-01', fin_plan: '2026-07-01', inicio_real: '2026-07-14', fin_real: '2026-07-16',
+        avance_sumado: false, dotacion_real: 2,
+      }] }
+    }
+    escrituras.push({ sql, params }); return { rows: [] }
+  }
+  const r = await aprenderDuracion({ query })
+  assert.equal(r.medidas, 1)
+  assert.equal(r.validadas, 0, 'sin tipo de tarea no hay con qué comparar entre obras')
+  assert.equal(r.sinTipo, 1)
+  assert.equal(r.tardaronMas, 1)
+  const ins = escrituras.find((e) => /insert into public\.duracion_historica/.test(e.sql))
+  assert.ok(ins, 'el hecho no se guardó')
+  assert.match(ins.sql, /on conflict \(clave\)/, 'sin clave estable, cada corrida crearía un caso nuevo')
+  const ev = JSON.parse(ins.params.find((p) => typeof p === 'string' && p.startsWith('{')))
+  assert.equal(ev.sin_tipo_de_tarea, true)
+})
+
+test('la duración sólo VALIDA con otra OBRA que tenga la misma tarea', async () => {
+  const fila = (obra) => ({
+    actividad_id: 'a-' + obra, obra_id: obra, actividad: 'REPLANTEO', tarea_tipo_id: 't1',
+    plan_dias: '2', dias_real: '2', terminada: true,
+    inicio_plan: '2026-07-01', fin_plan: '2026-07-02', inicio_real: '2026-07-01', fin_real: '2026-07-02',
+    avance_sumado: false, dotacion_real: 1,
+  })
+  const conPrevio = (obraPrevia) => async (sql) => {
+    if (/from public\.xsas_actividad/.test(sql)) return { rows: [fila('obra-nueva')] }
+    if (/from public\.duracion_historica/.test(sql)) {
+      return { rows: [{ actividad_id: 'x', obra_id: obraPrevia, tarea_tipo_id: 't1', dias_plan: 2, dias_real: 2, confianza: 'alta', estado: 'CANDIDATO' }] }
+    }
+    return { rows: [] }
+  }
+  assert.equal((await aprenderDuracion({ query: conPrevio('otra-obra') }, { dry: true })).validadas, 1)
+  assert.equal((await aprenderDuracion({ query: conPrevio('obra-nueva') }, { dry: true })).validadas, 0,
+    'dos frentes de la misma obra comparten cuadrilla, encargado y clima: no se confirman')
 })
