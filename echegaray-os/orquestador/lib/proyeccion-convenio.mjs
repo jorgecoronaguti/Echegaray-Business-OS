@@ -400,5 +400,47 @@ export function expresionSigmaDelMes(celdaDesde, esc, celdaPago = null) {
   // factor acumulado de la columna E, dividido por el factor de SU mes ancla —el de la última quincena
   // cerrada de obra—. Es la misma expresión que usa la columna F cuando la base es la pactada.
   const pactada = `${celdaSigmaBase}*INDEX($E$${f0}:$E$${f1};${mes})/$E$${rAnclaBase}`
-  return `IF(AND(N(${celdaPago})>0;${celdaPago}<=EOMONTH(TODAY();0));${pactada};${delCuadro})`
+  return `IF(${expresionCajaComprometida(celdaPago)};${pactada};${delCuadro})`
+}
+
+/**
+ * NÚCLEO PURO: LA FRONTERA DE LA CAJA COMPROMETIDA, EN UNA SOLA DEFINICIÓN.
+ *
+ * ¿Esta quincena sale de la caja ANTES de fin de mes? De ese lado se valúa al pactado —es la plata que
+ * va a salir— y del otro al 100% del convenio, que es planificación. El porqué está arriba, en
+ * `quincenaAlConvenio`, que es la misma regla en JavaScript.
+ *
+ * Se extrajo el 27/08 porque la frontera pasó a decidir DOS cosas y no una: además de la base ($/hora
+ * pactada o de convenio) decide con qué horas se multiplica esa base — las medidas para lo que se paga,
+ * la jornada para lo que se debe. Escrita dos veces, el día que alguien corrija el `EOMONTH` en un lado
+ * la pestaña empezaría a valuar una quincena con la base de un lado y las horas del otro, y el
+ * resultado sería un número plausible.
+ *
+ * `N(pago)>0` primero: en Sheets un texto es MAYOR que cualquier número, y sin fecha de pago la
+ * comparación sola diría "se paga después de fin de mes" por accidente.
+ */
+export function expresionCajaComprometida(celdaPago) {
+  return `AND(N(${celdaPago})>0;${celdaPago}<=EOMONTH(TODAY();0))`
+}
+
+/**
+ * NÚCLEO PURO: CON CUÁNTAS HORAS POR PERSONA Y DÍA SE VALÚA ESTA QUINCENA.
+ *
+ * La misma frontera que elige la base elige las horas, y por el mismo motivo:
+ *
+ *   pago ≤ fin del mes en curso  → HORAS MEDIDAS  (lo que se va a trabajar y a pagar: caja comprometida)
+ *   pago  > fin del mes en curso → JORNADA        (la obligación: el convenio no descuenta ausentismo)
+ *
+ * Medir el piso con la asistencia real es lo que dejaba la proyección 10,25% corta todos los meses —
+ * 7,18 h contra 8. El porqué completo y el límite de las 8 h viven en `lib/jornales-piso-uocra.mjs`.
+ *
+ * Sin celda de jornada devuelve las medidas y nada más: es el comportamiento anterior, que es el
+ * correcto para un llamador que todavía no publica la jornada.
+ *
+ * @param {{celdaPago:string, celdaMedidas:string, celdaJornada?:string|null}} d
+ * @returns {string} la expresión (sin `=`)
+ */
+export function expresionHorasDeLaQuincena({ celdaPago, celdaMedidas, celdaJornada = null }) {
+  if (!celdaJornada || !celdaPago) return celdaMedidas
+  return `IF(${expresionCajaComprometida(celdaPago)};${celdaMedidas};${celdaJornada})`
 }

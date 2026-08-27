@@ -80,6 +80,9 @@ import { expresionClaveConvenio } from './jornales-piso-uocra.mjs'
 export {
   formulaSigmaConvenio, formulaSigmaDelMes, expresionSigmaDelMes,
   lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  // La frontera de la caja comprometida decide desde el 27/08 dos cosas —la base y las horas—: la
+  // segunda sale por la misma puerta que la primera, para que no puedan quedar en desacuerdo.
+  expresionCajaComprometida, expresionHorasDeLaQuincena,
 } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 export { ROTULO_SIGMA }
@@ -272,7 +275,14 @@ export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
  *
  * @returns {{filas:any[][], fPrimera:number, fUltima:number, fTotal:number, canario:string}}
  */
-export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, escalonVigente, tabla = CONVENIO_POR_CODIGO }) {
+export function filasPlantel({
+  hoja, bloque, categorias, personas, filaInicio, escalonVigente, tabla = CONVENIO_POR_CODIGO,
+  // EL RÓTULO DEL ⇒ LO DECIDE QUIÉN ELIGIÓ EL BLOQUE, NO ESTE ARCHIVO. Estaba estampado como "la
+  // última quincena cerrada" y el 27/08 el plantel pasó a salir del bloque VIGENTE: la fila habría
+  // seguido nombrando una quincena que no es la que tiene adentro. El default preserva el texto
+  // anterior para los llamadores que todavía no lo pasan.
+  rotulo = 'Plantel base — la última quincena cerrada',
+}) {
   const R = (c) => `'${hoja}'!$${c}$${bloque.inicio}:$${c}$${bloque.fin}`
   const D = R('D'); const W = R('W')
   const filas = []
@@ -334,7 +344,7 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   })
   const fUltima = fPrimera + categorias.length - 1
   const fTotal = fUltima + 1
-  filas.push([rotuloTotal('Plantel base — la última quincena cerrada'),
+  filas.push([rotuloTotal(rotulo),
     `=SUM($B$${fPrimera}:$B$${fUltima})`, `=SUM($C$${fPrimera}:$C$${fUltima})`,
     `=IFERROR(MINIFS(${W};${W};">0");"")`, VACIO, VACIO, VACIO,
     // EL CANARIO DEL ESPEJO. Las filas del bloque las resuelve el generador en cada corrida; si la

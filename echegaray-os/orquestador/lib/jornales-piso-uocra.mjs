@@ -45,7 +45,68 @@ import { CATEGORIAS, CATEGORIAS_POR_MES } from './uocra-acuerdos.mjs'
 /** Las categorías que se cotizan POR HORA: son las únicas contra las que un jornal se puede comparar. */
 export const CATEGORIAS_POR_HORA = CATEGORIAS.filter((c) => !CATEGORIAS_POR_MES.includes(c))
 
+// ═══ EL PISO SE MIDE CON LA JORNADA, NO CON LA ASISTENCIA (27/08) ═══
+//
+// El término convenio de la proyección se armaba con `Σ$/hora × HORAS MEDIDAS × días`, y las horas
+// medidas son el promedio real de las quincenas cerradas: 7,18 h/persona/día en el archivo vivo. Eso
+// convierte un PISO en un pronóstico. Si el mes que viene la gente falta más, el "piso" baja solo —
+// y la obligación no baja: el convenio no descuenta por ausentismo, y las horas que no se trabajan
+// se pagan igual cuando el que no dio trabajo fue el empleador.
+//
+// Las dos preguntas son distintas y las dos hacen falta, así que la pestaña publica las dos horas una
+// al lado de la otra: la MEDIDA gobierna lo que va a salir de la caja este mes (el pactado, la caja
+// comprometida) y la JORNADA gobierna la obligación proyectada. Con 7,18 en vez de 8 la proyección
+// quedaba 10,25% corta, todos los meses, sin que ninguna celda lo dijera.
+/** Horas por persona y día con las que se valúa la OBLIGACIÓN. Decisión del dueño (27/08/2026). */
+export const JORNADA_PISO_HORAS = 8
+/**
+ * EL LÍMITE QUE ESTE NÚMERO TIENE, DECLARADO DONDE SE USA. 8 h × días hábiles de lunes a viernes son
+ * 40 h semanales. El CCT 76/75 se liquida sobre una semana MAYOR (la construcción trabaja el sábado a
+ * la mañana, y el propio espejo registra jornadas de 9 h), así que este piso es un piso DEL piso: la
+ * obligación real está por encima. No se sube el número sin la norma verificada al lado — la escala
+ * se verifica, no se recuerda (ver la política de fuentes de derecho-laboral-construccion).
+ */
+export const GAP_JORNADA = 'el piso se valúa a 8 h × días hábiles de lunes a viernes (40 h semanales): '
+  + 'sin sábados ni horas extra, es un PISO del piso'
+
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * NÚCLEO PURO: DE QUÉ BLOQUE DEL ESPEJO SALE EL PLANTEL QUE FIJA EL PISO.
+ *
+ * ═══ EL PISO SE MEDÍA SOBRE GENTE QUE YA NO ERA EL PLANTEL (27/08) ═══
+ *
+ * `ultimaQuincenaCerrada` es el criterio correcto para las HORAS y para el mes ancla del factor: la
+ * quincena en curso está a medio cargar y basar un semestre en un bloque con un día de horas es
+ * frágil. Pero el plantel no son horas. Los nombres, la categoría y el $/hora de un bloque están
+ * completos desde el día que la planilla lo abre — y la quincena en curso es la única que sabe quién
+ * está trabajando HOY.
+ *
+ * Medido en el archivo vivo el 27/08: la última cerrada tenía 15 personas y la en curso 17 (Ochoa y
+ * Castillo entraron el 19/8). El mismo cuadro publicaba «Obreros · UOCRA · 17» arriba y proyectaba el
+ * piso de 15 abajo: dos personas en la nómina sin un peso de piso de convenio proyectado, −11,8% sobre
+ * la Σ $/hora del plantel. Ninguna celda lo decía, porque el control del piso preguntaba otra cosa.
+ *
+ * Es la regla de REALIDAD ÚNICA: «el plantel» se define UNA vez. El bloque vigente manda; la cerrada
+ * queda como respaldo para el caso real en que la planilla abrió el bloque y todavía no cargó a nadie.
+ *
+ * @param {{bloques:Array, cerrada:object|null, personasDe:(b:object)=>number}} d
+ * @returns {{bloque:object|null, origen:'vigente'|'cerrada'|null, personas:number}}
+ */
+export function bloqueDelPiso({ bloques = [], cerrada = null, personasDe = () => 0 } = {}) {
+  const vigente = bloques.length ? bloques[bloques.length - 1] : null
+  const nVigente = vigente ? Number(personasDe(vigente)) || 0 : 0
+  if (vigente && nVigente > 0) return { bloque: vigente, origen: 'vigente', personas: nVigente }
+  if (!cerrada) return { bloque: null, origen: null, personas: 0 }
+  return { bloque: cerrada, origen: 'cerrada', personas: Number(personasDe(cerrada)) || 0 }
+}
+
+/** El rótulo del cuadro 4.1 lo decide de dónde salió el plantel: un título que miente es un dato falso. */
+export function rotuloDelPiso(origen) {
+  return origen === 'cerrada'
+    ? 'Plantel base — última quincena cerrada'
+    : 'Plantel vigente — la quincena en curso'
+}
 
 /**
  * NÚCLEO PURO: contra qué categoría de la escala se mide una fila del plantel.
@@ -178,11 +239,51 @@ export function expresionSinEscala(celdasPersonas, celdasBasico) {
  * Acá el aviso dice las dos cosas que importan: que el piso NO se está aplicando, y CUÁNTAS personas
  * quedaron sin escala — que es el número con el que se arregla (cargar su categoría en «Convenio»).
  *
- * @param {{celdasPersonas:string, celdasBasico:string, nQuincenas:number}} d rangos del bloque 1.1
+ * ═══ EL ✓ SE FIRMABA A SÍ MISMO (27/08) ═══
+ *
+ * La celda decía *"✓ las 9 quincenas proyectadas cubren el piso UOCRA"* mientras la proyección estaba
+ * $16,2M corta de septiembre a diciembre. No mintió: contestaba OTRA pregunta. Preguntaba «¿cada
+ * categoría del cuadro tiene básico?» —y sí, las cuatro lo tenían— cuando el piso se estaba cayendo
+ * por las otras dos entradas del producto: el plantel (15 personas del cuadro contra 17 en la nómina)
+ * y las horas (7,18 medidas contra la jornada). Las dos entradas que el control NO miraba son las
+ * mismas dos con las que se construye el número que el control aprueba: UN CONTROL NUNCA SE VALIDA
+ * CONTRA LA MISMA INFORMACIÓN QUE PRODUCE.
+ *
+ * Ahora mira las tres, y las dos nuevas las mira por el OTRO camino: las personas del cuadro de pago
+ * (`celdaPersonasPago`, que las cuenta sobre el bloque VIGENTE del espejo) contra las del cuadro del
+ * piso, y las horas medidas contra la jornada. Son números que la pestaña ya publica y que salen de
+ * fuentes distintas: si empatan, empatan por el hecho, no por construcción.
+ *
+ * @param {{celdasPersonas:string, celdasBasico:string, nQuincenas:number,
+ *          celdaPersonasPago?:string, celdaPersonasPiso?:string,
+ *          celdaHoras?:string, celdaJornada?:string}} d rangos del bloque 4.1 y las celdas testigo
  */
-export function formulaControlPiso({ celdasPersonas, celdasBasico, nQuincenas }) {
+export function formulaControlPiso({
+  celdasPersonas, celdasBasico, nQuincenas,
+  celdaPersonasPago = null, celdaPersonasPiso = null, celdaHoras = null, celdaJornada = null,
+}) {
   const sinEscala = expresionSinEscala(celdasPersonas, celdasBasico)
-  return `=IF(${sinEscala}=0;`
-    + `"✓ las ${nQuincenas} quincenas proyectadas cubren el piso UOCRA";`
+  // El orden de los avisos es el del tamaño del agujero: gente sin escala apaga la Σ entera; gente
+  // fuera del piso se la lleva en proporción; horas cortas la recortan parejo. El primero que dispare
+  // es el que hay que arreglar, y por eso se dice UNO, no los tres juntos.
+  const faltan = celdaPersonasPago && celdaPersonasPiso ? `N(${celdaPersonasPago})-N(${celdaPersonasPiso})` : null
+  const cortas = celdaHoras && celdaJornada ? `N(${celdaJornada})-N(${celdaHoras})` : null
+  const ok = `"✓ las ${nQuincenas} quincenas proyectadas cubren el piso UOCRA"`
+  let f = `IF(${sinEscala}=0;${ok};`
     + `"${ALERTA} SIN piso UOCRA: "&${sinEscala}&" persona(s) sin escala — la proyección sale de la demanda")`
+  if (cortas) {
+    f = `IF(${cortas}>0.01;`
+      + `"${ALERTA} el piso se mide con "&TEXT(${celdaHoras};"0,00")&" h y la jornada es "&TEXT(${celdaJornada};"0,00")&" h";`
+      + `${f})`
+  }
+  if (faltan) {
+    f = `IF(${faltan}>0;`
+      + `"${ALERTA} el piso proyecta "&N(${celdaPersonasPiso})&" persona(s) y la nómina tiene "&N(${celdaPersonasPago})`
+      // "sin piso UOCRA" y no "sin piso de convenio": la celda vive ARRIBA de la sección 4 y ninguna
+      // palabra gremial va en el medio (orden del dueño). Es la misma cadena que ya usaba el aviso de
+      // al lado, así que además los dos avisos de esta celda hablan igual.
+      + `&" — faltan "&${faltan}&" sin piso UOCRA";`
+      + `${f})`
+  }
+  return `=${f}`
 }

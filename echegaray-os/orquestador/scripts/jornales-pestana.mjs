@@ -99,7 +99,8 @@ import {
   // caracteres en una celda del medio. El parámetro sigue creándose por `PARAMETROS_MOTOR`.
   PARAMETROS_MOTOR, RANGO_MESES_BASE,
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
-  mesesDelMotor, filasPlantel, filasEscalon, expresionSigmaDelMes, formulaFactorDelMes,
+  mesesDelMotor, filasPlantel, filasEscalon, expresionSigmaDelMes, expresionHorasDeLaQuincena,
+  formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
   formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
 } from '../lib/motor-salarial.mjs'
@@ -132,7 +133,9 @@ import {
 // único lugar de este cuadro donde puede no haber nada que contar.
 const SIN_DATO = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
-import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
+import {
+  formulaControlPiso, bloqueDelPiso, rotuloDelPiso, JORNADA_PISO_HORAS, GAP_JORNADA,
+} from '../lib/jornales-piso-uocra.mjs'
 import {
   LINEA_DRIVER_OFICINA, estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe,
 } from '../lib/oficina-escalon.mjs'
@@ -424,6 +427,10 @@ export function grilla({
   // ── LO QUE EL MOTOR NECESITA. Todo se resuelve en `main()` leyendo las fuentes; acá sólo se arma
   // la grilla, que es lo que los tests pueden ejercitar sin red.
   escalones = [], bloqueBase = null, categorias = [], personasBase = 0,
+  // DE DÓNDE SALIÓ EL PLANTEL DEL PISO ('vigente' | 'cerrada'). No cambia un solo importe: cambia el
+  // RÓTULO del cuadro 4.1, y un rótulo que dice "última quincena cerrada" sobre el plantel de hoy es
+  // un dato falso escrito en la pestaña. Lo resuelve `bloqueDelPiso` en main().
+  origenPiso = 'vigente',
   escalonVigente = null, meses = [], hoy = new Date(),
   // EL MES DE LA ÚLTIMA QUINCENA CERRADA DE OBRA. No siempre es el primero del cuadro 1.2: cuando la
   // planilla de Oficina va atrasada, su mes entra antes y ancla la tabla. Ver `filasEscalon`.
@@ -672,6 +679,16 @@ export function grilla({
   // supuesto de cálculo — no entra en ninguna celda de importe.
   push([sub(LINEA_SABADOS)])
   const fHpd = push([sub('Horas por persona y día — medidas')])
+  // LA JORNADA VA AL LADO DE LAS HORAS MEDIDAS, NO EN LUGAR DE ELLAS (27/08). Son dos preguntas: con
+  // cuántas horas se TRABAJA (medidas, y es lo que va a salir de la caja este mes) y con cuántas se
+  // DEBE (la jornada, que es la que fija la obligación proyectada). Una sola cifra contestaba mal las
+  // dos: la proyección salía valuada a la asistencia. Puestas una debajo de la otra, la brecha se ve.
+  // «jornada» y no «jornada del convenio»: nada gremial va arriba de la sección 4 (orden del dueño,
+  // *"en el medio hay cuestiones gremiales q confunden"*), y el cuadro que la usa está acá.
+  const fJornada = push([sub('Horas por persona y día — jornada'), JORNADA_PISO_HORAS,
+    // El límite en 45 caracteres, que es lo que entra sin desparramar la fila (`LARGO_NOTA`). El
+    // texto largo vive en `GAP_JORNADA` y sale por el log de la corrida, no por una celda del medio.
+    sub('la que proyecta · 40 h/sem, piso del piso')])
   // ═══ EL SHARE MEDIDO Y LA BRECHA CONTRA EL ACUERDO SE FUERON (14/08) ═══
   //
   // Acá vivían dos líneas: «En efectivo — el resto, por recibo» (el canal REAL medido sobre el
@@ -1149,18 +1166,19 @@ export function grilla({
   const ultAc = ultimoEscalon(escalones)
   push([sub(`Paritaria UOCRA${ultAc ? ` · ${ultAc.rotulo} hasta ${VIGENCIA_HASTA}` : ''}`)])
 
-  // ── 4.1 · EL PLANTEL BASE ──
-  // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. "La última
-  // quincena CERRADA" se queda porque es el criterio de qué dato se está mirando, y no está en
-  // ninguna celda.
-  push([seccion('4.1', 'Plantel base — última quincena cerrada')])
+  // ── 4.1 · EL PLANTEL DEL PISO ──
+  // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. De qué quincena
+  // sale el plantel se queda porque es el criterio de qué dato se está mirando, y no está en ninguna
+  // celda — pero lo decide `bloqueDelPiso`, no una cadena escrita a mano que el 27/08 decía "última
+  // quincena cerrada" sobre un cuadro que ya no era ése.
+  push([seccion('4.1', rotuloDelPiso(origenPiso))])
   // LO QUE FALTA PARA QUE EL CONTROL HABLE, UNA SOLA VEZ Y CONTADO. Estaba una vez por fila, adentro
   // de la columna "Estado": cuatro renglones idénticos pidiendo lo mismo. Se resuelve más abajo,
   // cuando se conocen las filas de las categorías.
   const fConvenio = push([VACIO])
   const plantel = filasPlantel({
     hoja: ESPEJO, bloque: bloqueBase, categorias, personas: personasBase,
-    filaInicio: filas.length + 1, escalonVigente,
+    filaInicio: filas.length + 1, escalonVigente, rotulo: rotuloDelPiso(origenPiso),
   })
   for (const f of plantel.filas) push(f)
   filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
@@ -1519,7 +1537,13 @@ export function grilla({
     const sigma = expresionSigmaDelMes(`A${r}`, esc, `C${r}`)
     // Σ $/hora × horas por persona y día × días laborables de LUNES A VIERNES. El calendario lo decide
     // `expresionDias`, no `NETWORKDAYS` a secas: el criterio de la semana de obra vive en un solo lugar.
-    const convenio = `${sigma}*$B$${fHpd}*${expresionDias(`A${r}`, `B${r}`)}`
+    // Las horas las decide la MISMA frontera que decide la base (ver `expresionHorasDeLaQuincena`):
+    // lo que se paga este mes, con las horas medidas; lo que se proyecta, con la jornada. Escribir acá
+    // `$B$${fHpd}` a secas era valuar la obligación con el ausentismo del trimestre adentro.
+    const horas = expresionHorasDeLaQuincena({
+      celdaPago: `C${r}`, celdaMedidas: `$B$${fHpd}`, celdaJornada: `$B$${fJornada}`,
+    })
+    const convenio = `${sigma}*${horas}*${expresionDias(`A${r}`, `B${r}`)}`
     // Sin demanda para esta quincena es el piso de convenio solo; con demanda, MAX(convenio;
     // constante del insumo del dueño), gateado por la MISMA frontera de caja comprometida.
     filas[r - 1][3] = formulaProyectadoQuincena({ convenio, celdaPago: `C${r}` },
@@ -1537,10 +1561,19 @@ export function grilla({
   // arman la Σ al convenio —personas y básico—, que es donde el piso se enciende o se apaga. Un
   // control que preguntara "¿el total es alto?" no puede distinguir una proyección con piso de una
   // que quedó colgada de la demanda de obras.
+  //
+  // Y DESDE EL 27/08 MIRA TAMBIÉN LAS OTRAS DOS ENTRADAS DEL PRODUCTO, por caminos distintos de los
+  // que las produjeron: las personas del cuadro de PAGO (que las cuenta sobre el registro del espejo)
+  // contra las del cuadro del piso, y las horas medidas contra la jornada. Con sólo la primera
+  // pregunta, la celda firmó "✓ cubren el piso" sobre una proyección $16,2M corta.
   filas[fControlPiso - 1][0] = formulaControlPiso({
     celdasPersonas: `$B$${plantel.fPrimera}:$B$${plantel.fUltima}`,
     celdasBasico: `$F$${plantel.fPrimera}:$F$${plantel.fUltima}`,
     nQuincenas: pendientes.length,
+    celdaPersonasPago: `$B$${fPago.obra}`,
+    celdaPersonasPiso: `$B$${fPlantel}`,
+    celdaHoras: `$B$${fHpd}`,
+    celdaJornada: `$B$${fJornada}`,
   })
 
   // ══ EL SUBTÍTULO DEL CUADRO DE PAGO Y SUS TRES AVISOS ══
@@ -1749,7 +1782,9 @@ export function grilla({
       ...pendientes.map((_, i) => p0 + i), ...bloques.map((_, i) => f0 + i),
     ],
     // Horas con un decimal · cantidades enteras · el único porcentaje de la pestaña.
-    cantidades: [fHpd],
+    // La jornada va con las horas medidas: dos cifras de la misma naturaleza dibujadas distinto se
+    // leen como dos magnitudes distintas, que es exactamente lo que NO son.
+    cantidades: [fHpd, fJornada],
     // Prosa que RINDE una fórmula: el pase por contenido la saltea (empieza con '='). Se declara acá
     // y el formato la pinta TEXTO. col 0-based.
     // …y el CANARIO del plantel (última fila del bloque 4.1, col H): rinde "✓ el bloque del
@@ -1862,16 +1897,26 @@ async function main() {
   const cargaAlDia = conHoras ? fecha(conHoras).slice(0, 5) : null
   console.log(`obra: ${bloques.length} quincena(s) · último día del encabezado ${ultimoDia ? fecha(ultimoDia) : '—'} · con horas cargadas hasta ${cargaAlDia ?? '—'} · ${pendientes.length} por proyectar`)
 
-  // ── EL MOTOR: LA ÚLTIMA QUINCENA CERRADA Y LA ESCALA DEL CONVENIO ──
+  // ── EL MOTOR: EL PLANTEL VIGENTE Y LA ESCALA DEL CONVENIO ──
   //
-  // La base NO es la última fila del registro (defecto A2): esa es la quincena a medio cargar. Es la
-  // última CERRADA, y su plantel se abre por categoría desde la columna D del espejo — la que hasta
-  // hoy no tenía un solo consumidor.
+  // La ÚLTIMA CERRADA sigue mandando en lo que depende de horas (el ritmo medido, el mes ancla del
+  // factor): la quincena en curso está a medio cargar y basar un semestre en un bloque con un día de
+  // horas es el defecto A2. Pero QUIÉNES SON y en qué categoría están no depende de las horas —esas
+  // tres columnas están completas desde que la planilla abre el bloque— y el piso del convenio se le
+  // debe a la gente que trabaja HOY. El porqué medido, en `bloqueDelPiso`.
   const cerradaBase = ultimaQuincenaCerrada(bloques, (b) => ultimoDiaCargado(espejo[b.filaFecha - 1] ?? []), hoy)
-  const bloqueBase = cerradaBase?.bloque ?? ult
+  const piso = bloqueDelPiso({
+    bloques, cerrada: cerradaBase?.bloque ?? null, personasDe: (b) => personasDelBloque(espejo, b),
+  })
+  const bloqueBase = piso.bloque ?? cerradaBase?.bloque ?? ult
   const categorias = categoriasDelBloque(espejo, bloqueBase)
   const personasBase = personasDelBloque(espejo, bloqueBase)
-  console.log(`plantel base: quincena cerrada al ${cerradaBase ? fecha(cerradaBase.hasta) : '—'} · filas ${bloqueBase.inicio}-${bloqueBase.fin} · ${personasBase} persona(s) · categorías ${categorias.join(', ') || '—'}`)
+  const nCerrada = cerradaBase ? personasDelBloque(espejo, cerradaBase.bloque) : 0
+  console.log(`plantel del piso: ${piso.origen ?? '—'} · filas ${bloqueBase.inicio}-${bloqueBase.fin} · ${personasBase} persona(s) · categorías ${categorias.join(', ') || '—'}`)
+  // LA DIFERENCIA CONTRA LA CERRADA ES EL AGUJERO QUE ESTO CIERRA, Y SE IMPRIME AUNQUE SEA 0: un log
+  // que sólo habla cuando hay novedad no distingue "no hubo altas" de "no se midió".
+  console.log(`  · última quincena cerrada al ${cerradaBase ? fecha(cerradaBase.hasta) : '—'}: ${nCerrada} persona(s)`
+    + ` · el piso se proyectaba sobre ${nCerrada} y la nómina tiene ${personasBase}`)
 
   const rawUocra = await google.readSheetValues(ID, `${UOCRA_HOJA}!A1:K300`).catch(() => [])
   const { escalones, problemas } = parsearAcuerdos(rawUocra ?? [])
@@ -1979,7 +2024,8 @@ async function main() {
   if (!personasPago.length) console.warn('  ⚠ el último bloque del espejo no tiene personas: el cuadro de pago sale vacío')
   const g = grilla({
     bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
-    escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy, periodoBase, demanda,
+    escalones, bloqueBase, categorias, personasBase, origenPiso: piso.origen ?? 'cerrada',
+    escalonVigente, meses, hoy, periodoBase, demanda,
     personasPago,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)

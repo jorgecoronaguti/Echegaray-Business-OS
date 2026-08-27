@@ -661,7 +661,10 @@ test('RESPUESTA 3 · LO GREMIAL NO ESTÁ EN EL MEDIO: entero, junto, y debajo de
     assert.ok(!intruso, `"${String(intruso).slice(0, 50)}" es material gremial arriba del calendario`)
   }
   // Y la información NO se perdió: los tres sub-bloques siguen existiendo, con sus cuadros.
-  for (const re of [/^4\.1 · PLANTEL BASE/, /^4\.2 · EL ESCALÓN/, /^4\.3 · CONTROL DE PISO/]) {
+  // «4.1 · PLANTEL» y no «PLANTEL BASE»: desde el 27/08 el título dice de qué quincena sale el plantel
+  // (vigente o cerrada) y eso lo decide `bloqueDelPiso`. Lo que este test cuida es que el sub-bloque
+  // siga adentro de la sección 4, no cómo se llama la quincena que lo alimenta.
+  for (const re of [/^4\.1 · PLANTEL/, /^4\.2 · EL ESCALÓN/, /^4\.3 · CONTROL DE PISO/]) {
     assert.ok(filaDe(re) > gremial, `falta el sub-bloque ${re} dentro de la sección del convenio`)
   }
   assert.ok(gm.plantel.fPrimera > gremial && gm.esc.f0 > gremial, 'los cuadros del motor no bajaron con sus títulos')
@@ -872,8 +875,16 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   // `cantidades[0]` es la fila «Horas por persona y día — medidas»: se lee del contrato de la grilla y
   // no de un offset. Decía `gm.fShare - 1` —la fila de arriba de otra línea— y cuando esa línea se fue
   // el test quedó apuntando a cualquier lado: es el mismo defecto que anclar en la posición.
-  assert.match(String(q[3]), new RegExp(`\\*\\$B\\$${gm.cantidades[0]}\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
-    `la celda de obra dejó de multiplicar horas medidas × días lunes a viernes: ${q[3]}`)
+  // ═══ LAS HORAS DEJARON DE SER UNA SOLA CELDA (27/08) ═══
+  //
+  // Era `…*$B$<medidas>*NETWORKDAYS…`. Valuar la OBLIGACIÓN con el promedio de asistencia dejaba la
+  // proyección 10,25% corta todos los meses (ver lib/jornales-piso-uocra.mjs). Ahora la celda elige:
+  // horas medidas para lo que se paga dentro del mes —es lo que va a salir de la caja— y la jornada
+  // para lo que se proyecta. Se controla que las DOS estén y que sigan multiplicando los días L-V:
+  // con una sola, una de las dos preguntas queda contestada con la respuesta de la otra.
+  const [fMed, fJor] = gm.cantidades
+  assert.match(String(q[3]), new RegExp(`\\*IF\\(.*\\$B\\$${fMed};\\$B\\$${fJor}\\)\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
+    `la celda de obra dejó de elegir horas medidas/jornada × días lunes a viernes: ${q[3]}`)
   // 6 · …y esa columna es la que publica el rango que consumen Cargas Sociales, el Libro, CAJA y los
   //     cash flows. APUNTA A "Obreros", NO AL "TOTAL" del calendario: el TOTAL ya trae oficina y
   //     dirección, que viajan por sus propios rangos, y sumarlas de nuevo las contaría dos veces.
@@ -1772,4 +1783,56 @@ test('RANGOS · cada nombre publicado CRECE con su bloque — no se queda en la 
       assert.equal(r.r1, r1, `${r.nombre} no termina donde su bloque`)
     }
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PISO DEL CONVENIO, CABLEADO: que las dos entradas nuevas lleguen a la celda (27/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las reglas viven en lib/jornales-piso-uocra.mjs y su test las prueba. Lo que se prueba ACÁ es el
+// cableado, que es donde el arreglo se puede perder sin que nada se ponga rojo: la fila de la jornada,
+// que la columna «Obreros» la use, y que el control mire las celdas testigo. Un revert de la llamada
+// deja las libs intactas y el número corto — exactamente el modo en que este defecto llegó a agosto.
+
+test('la pestaña publica la JORNADA al lado de las horas medidas, no en su lugar', () => {
+  const medidas = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas por persona y día — medidas'))
+  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('día — jornada'))
+  assert.ok(medidas >= 0, 'se fue la fila de horas medidas')
+  assert.ok(jornada >= 0, 'falta la fila de la jornada: el piso vuelve a medirse con la asistencia')
+  assert.equal(jornada, medidas + 1, 'la jornada va pegada a las medidas — la brecha se lee de un vistazo')
+  assert.equal(gm.filas[jornada][1], 8, 'la jornada tiene que ser un número, no una fórmula que pueda apagarse')
+  // Y el límite viaja con el número: 8 h × lunes a viernes son 40 h semanales.
+  assert.match(String(gm.filas[jornada][2] ?? ''), /piso del piso/)
+})
+
+test('EL DEFECTO: la columna «Obreros» valuaba la obligación con las horas MEDIDAS', () => {
+  const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('día — jornada')) + 1
+  const medidas = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas por persona y día — medidas')) + 1
+  const enc = gm.filas.findIndex((f) => f[0] === 'Período' && f[3] === 'Obreros')
+  assert.ok(enc >= 0, 'no está el encabezado del calendario')
+  const proyectada = String(gm.filas[enc + 1][3] ?? '')
+  // Las dos celdas tienen que estar en la fórmula: la medida para lo que se paga este mes, la jornada
+  // para lo que se proyecta. Con una sola, una de las dos preguntas se contesta con la otra respuesta.
+  assert.ok(proyectada.includes(`$B$${jornada}`), `la proyección no usa la jornada: ${proyectada.slice(0, 120)}`)
+  assert.ok(proyectada.includes(`$B$${medidas}`), 'y tampoco puede perder las horas medidas del pactado')
+  // La frontera que elige entre las dos es la MISMA que elige la base, y se reclasifica sola.
+  assert.ok(proyectada.includes('EOMONTH(TODAY();0)'))
+})
+
+test('EL DEFECTO: el ✓ del piso se firmaba sin mirar el plantel ni las horas', () => {
+  const control = gm.filas.map((f) => String(f[0] ?? '')).find((s) => s.includes('cubren el piso UOCRA'))
+  assert.ok(control, 'se fue el control del piso')
+  assert.ok(control.includes('— faltan '),
+    'el control volvió a preguntar sólo por los básicos: firma el ✓ con gente de la nómina afuera del piso')
+  assert.ok(control.includes('la jornada es'),
+    'el control dejó de comparar las horas del piso contra la jornada')
+})
+
+test('el plantel del piso sale de la quincena EN CURSO y el cuadro 4.1 lo dice', () => {
+  const t = gm.filas.map((f) => String(f[0] ?? ''))
+  assert.ok(t.some((s) => s.includes('Plantel vigente — la quincena en curso')),
+    'el título del 4.1 volvió a nombrar la quincena cerrada sobre el plantel de hoy')
+  // Y con el bloque abierto sin gente el rótulo cambia: un título fijo miente en uno de los dos casos.
+  const gc = conMotor({ origenPiso: 'cerrada' })
+  assert.ok(gc.filas.map((f) => String(f[0] ?? '')).some((s) => s.includes('Plantel base — última quincena cerrada')))
 })
