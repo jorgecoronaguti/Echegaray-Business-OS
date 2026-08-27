@@ -50,7 +50,8 @@ export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write'])
  * dueño y queda en el historial del repositorio.
  */
 export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
-  'slides.crear',   // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
+  'slides.crear',    // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
+  'imagen.generar',  // generar_imagen — deja el PNG generado en el Drive, sellado como GENERADA
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */

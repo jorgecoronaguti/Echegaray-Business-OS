@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { urlDePuerta } from './puerta'
+import { urlDePuerta } from './url.ts'
 
 test('la ruta /xsas se pega a la base del túnel sin duplicar la barra', () => {
   assert.equal(urlDePuerta('https://algo.trycloudflare.com'), 'https://algo.trycloudflare.com/xsas')

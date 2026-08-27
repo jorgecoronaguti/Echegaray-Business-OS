@@ -17,6 +17,7 @@
 // Si algún día hay endpoint con nombre fijo, se ponen `XSAS_GATEWAY_URL`/`XSAS_GATEWAY_SECRET` en el
 // entorno y ganan: el entorno tiene prioridad sobre el descubrimiento.
 import { createAdminClient } from '@/lib/supabase/admin'
+import { urlDePuerta } from './url'
 
 export interface Puerta { url: string; secreto: string; via: 'entorno' | 'descubrimiento' }
 
@@ -30,11 +31,6 @@ let cache: { puerta: Puerta; vence: number } | null = null
 /** Tira la resolución cacheada. Se llama cuando el upstream no contestó: casi siempre significa que
  *  el túnel se reinició y la URL que teníamos ya no existe. */
 export function olvidarPuerta(): void { cache = null }
-
-/** La URL completa a la que se postea, a partir de la base del túnel. PURA. */
-export function urlDePuerta(base: string, ruta = '/xsas'): string {
-  return `${base.replace(/\/+$/, '')}${ruta}`
-}
 
 export async function resolverPuerta(): Promise<Puerta | null> {
   const urlEnv = process.env.XSAS_GATEWAY_URL

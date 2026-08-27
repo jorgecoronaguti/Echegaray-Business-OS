@@ -21,9 +21,14 @@
 // que la regla de procedencia existe para evitar.
 
 import { imagenCompatible } from './proveedores/compatible.mjs'
+import { imagenAbierta } from './proveedores/abierto.mjs'
 import { SCOPE_VERTEX, proyectoDe, vertexImagen } from './proveedores/vertex-imagen.mjs'
 
-const PROVEEDORES = [vertexImagen, imagenCompatible]
+// EL ORDEN ES LA POLÍTICA. Primero el proveedor de la empresa (Vertex, con la credencial que el OS
+// ya tiene), después el compatible si alguien contrató uno, y ÚLTIMO el abierto — que no pide
+// credencial, funciona hoy y tiene menos calidad. Que el peor esté al final no lo hace decorativo:
+// es la diferencia entre una capacidad escrita y una capacidad que responde.
+const PROVEEDORES = [vertexImagen, imagenCompatible, imagenAbierta]
 
 /** Lee el JSON del service account por los MISMOS dos caminos que `lib/google.mjs`: el env
  *  (entornos sin disco) y el archivo (la VM). Devuelve `{credencial, keyFile}` o `{}`. */
@@ -60,7 +65,10 @@ export function queHacer(falta) {
     proyecto: 'No se conoce el proyecto de Google Cloud: definir ORQ_VERTEX_PROJECT o usar un key de service account que traiga project_id.',
     modelo: 'Revisar ORQ_VERTEX_MODELO_IMAGEN y ORQ_VERTEX_REGION: el modelo pedido no existe en esa región.',
     contenido_bloqueado: 'El proveedor bloqueó el prompt por su filtro de contenido. Reformular el pedido.',
-    sin_proveedor: 'No hay ningún generador de imágenes disponible. El principal es Vertex AI con el service account que ya existe; el alternativo se enciende con ORQ_IMG_ALT_BASE_URL + ORQ_IMG_ALT_API_KEY.',
+    sin_proveedor: 'No hay ningún generador de imágenes disponible. El principal es Vertex AI con el service account que ya existe; el alternativo se enciende con ORQ_IMG_ALT_BASE_URL + ORQ_IMG_ALT_API_KEY; el abierto está encendido salvo ORQ_IMG_ABIERTO=off.',
+    cuota: 'El generador abierto llegó a su límite de pedidos. Reintentar más tarde, o configurar un proveedor con credencial.',
+    proveedor: 'El generador abierto no devolvió una imagen usable. Reintentar, o configurar un proveedor con credencial.',
+    prompt: 'El pedido llegó sin descripción de la imagen.',
   }[falta] ?? 'Revisar el detalle del error del proveedor.'
 }
 

@@ -26,6 +26,7 @@ function frame(message, { mentions = [BOT] } = {}) {
 const portConPerfil = (rol) => ({
   query: async (sql) => (/perfiles/.test(sql) ? { rows: [{ rol, nombre: 'Jorge' }] } : { rows: [] }),
 })
+import { permisosDeRol } from '../../lib/xsas-permisos.mjs'
 
 test('@xsas y @os entran los dos: es UN bot con UN user_id, no dos identidades', () => {
   const nombres = nombresDelBot({})
@@ -80,7 +81,11 @@ test('(B) Mattermost → Gateway → Core: el pedido que arma el canal es el con
   assert.equal(p.mensaje, null)
   assert.equal(p.verificado_por, 'canal-mattermost')
   assert.equal(p.correlation_id, 'corr-mm-1', 'el hilo de seguimiento del canal es el del pedido')
-  assert.deepEqual(p.actor.permisos, ['drive.read', 'os.read'], 'los permisos salieron del rol, no del texto')
+  // Se compara contra la TABLA, no contra una lista escrita acá: lo que este test protege es que
+  // los permisos salgan del rol y no del texto del mensaje. Congelar la lista lo convertía en un
+  // test que se pone rojo cada vez que el dueño autoriza una capacidad — que es ruido, no defecto.
+  assert.deepEqual(p.actor.permisos, permisosDeRol('direccion'), 'los permisos salieron del rol, no del texto')
+  assert.ok(p.actor.permisos.length > 0)
   assert.equal(r.datos.llm, false, 'un atajo literal NO puede pagar un modelo')
   assert.equal(r.datos.nivel, 0)
 })

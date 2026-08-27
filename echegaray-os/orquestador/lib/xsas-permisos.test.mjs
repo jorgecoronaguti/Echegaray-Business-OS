@@ -2,7 +2,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { permisosDeRol, actorDeMattermost, PERMISOS_POR_ROL } from './xsas-permisos.mjs'
+import {
+  permisosDeRol, actorDeMattermost, PERMISOS_POR_ROL,
+  TOOLS_AUTORIZADAS_A_ESCRIBIR, escribeAfuera, autorizadaAEscribir,
+} from './xsas-permisos.mjs'
 
 test('un rol desconocido NO hereda los permisos del vecino: se queda sin ninguno', () => {
   assert.deepEqual(permisosDeRol('gerente-de-nada'), [])
@@ -14,15 +17,41 @@ test('campo no lee por el chat lo que la web le cierra', () => {
   assert.deepEqual(permisosDeRol('campo'), [])
 })
 
-test('EN P0 NADIE ESCRIBE POR LA PUERTA — ninguna capability de escritura está habilitada', () => {
-  const todas = Object.values(PERMISOS_POR_ROL).flat()
-  assert.deepEqual(todas.filter((c) => /write|delete|create|update/i.test(c)), [])
+// El 27/08/2026 el dueño autorizó `drive.write`. Este test decía «nadie escribe» y era correcto
+// hasta ese día; lo que protegía —que la escritura no se cuele por descuido de configuración— sigue
+// protegido, pero por la regla nueva: escribe UN rol, y sólo por tools nombradas.
+test('la escritura la tiene UN solo rol, y no es un rol operativo', () => {
+  const conEscritura = Object.entries(PERMISOS_POR_ROL)
+    .filter(([, caps]) => caps.some((c) => escribeAfuera(c)))
+    .map(([rol]) => rol)
+  assert.deepEqual(conEscritura, ['direccion'])
+  for (const rol of ['administracion', 'jefe_obra', 'campo']) {
+    assert.equal(permisosDeRol(rol).some(escribeAfuera), false, `${rol} no puede escribir afuera`)
+  }
+})
+
+test('una capability de escritura sólo vale para una tool NOMBRADA — fail-closed', () => {
+  assert.equal(autorizadaAEscribir('slides.crear'), true)
+  assert.equal(autorizadaAEscribir('imagen.generar'), true)
+  assert.equal(autorizadaAEscribir('una.tool.nueva'), false)
+  assert.equal(autorizadaAEscribir(null), false)
+  assert.equal(autorizadaAEscribir(undefined), false)
+})
+
+test('la lista de tools que escriben es corta y explícita: crecer es una decisión, no un accidente', () => {
+  assert.deepEqual([...TOOLS_AUTORIZADAS_A_ESCRIBIR], ['slides.crear', 'imagen.generar'])
+})
+
+test('lo que NO escribe afuera no queda marcado como escritura', () => {
+  assert.equal(escribeAfuera('drive.read'), false)
+  assert.equal(escribeAfuera('os.read'), false)
+  assert.equal(escribeAfuera(null), false)
 })
 
 test('la lista devuelta es una copia: mutarla no le agrega permisos a un rol', () => {
-  const p = permisosDeRol('direccion')
+  const p = permisosDeRol('jefe_obra')
   p.push('drive.write')
-  assert.equal(permisosDeRol('direccion').includes('drive.write'), false)
+  assert.equal(permisosDeRol('jefe_obra').includes('drive.write'), false)
 })
 
 test('sin identidad registrada en Mattermost no hay permisos, y el actor igual existe', async () => {
