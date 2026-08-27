@@ -49,6 +49,23 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * EL TEXTO DE UN DXF, CON SU CODIFICACIÓN RESUELTA. PURA salvo que recibe bytes.
+ *
+ * LibreDWG escribe UTF-8 cuando el DWG es R2007 o posterior, y ANSI/latin1 cuando es más viejo.
+ * Leerlo con la codificación equivocada no rompe nada y arruina todo lo que se puede citar: la capa
+ * «Carpintería» pasa a llamarse «CarpinterÃ­a» y deja de matchear con nada. Se decide MIDIENDO: si
+ * al interpretar como UTF-8 aparecen caracteres de reemplazo, es que no era UTF-8.
+ */
+export function textoDeDxf(bytes) {
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)
+  const utf8 = buf.toString('utf8')
+  const rotos = (utf8.match(/\uFFFD/g) ?? []).length
+  if (rotos === 0) return { texto: utf8, codificacion: 'utf8' }
+  const latin = buf.toString('latin1')
+  return { texto: latin, codificacion: 'latin1', porQue: `${rotos} caracteres no eran UTF-8 válido: el DWG de origen es anterior a R2007` }
+}
+
 /** Los códigos que describen geometría y que se guardan tal cual en la entidad.
  *  El 90 se llama `cantidadVertices` y NO `vertices` a propósito: `vertices` es el array que se va
  *  acumulando con los 10/20, y pisarlo con el número declarado deja la entidad sin geometría. */
@@ -56,7 +73,16 @@ const CAMPO = Object.freeze({
   8: 'capa', 2: 'nombre', 1: 'texto', 3: 'textoExtra', 6: 'tipoLinea', 62: 'color',
   10: 'x', 20: 'y', 30: 'z', 11: 'x2', 21: 'y2', 31: 'z2',
   40: 'radio', 41: 'escalaX', 42: 'escalaY', 43: 'escalaZ', 50: 'anguloInicio', 51: 'anguloFin', 70: 'banderas', 90: 'cantidadVertices',
+  // 67 = 1 significa PAPER SPACE. Medir el espacio papel suma el marco de la lámina, la carátula y
+  // las líneas del rótulo a la longitud de la obra: son dibujo de presentación, no construcción.
+  67: 'espacioPapel',
 })
+
+/** En una DIMENSION, el código 42 NO es una escala: es LA MEDIDA que el proyectista acotó, y el 1
+ *  es el texto con el que decidió mostrarla («18.30», «VER DETALLE», o vacío = usar la medida). Es
+ *  el dato más confiable de un plano —lo escribió una persona a propósito— y con el mapeo genérico
+ *  se perdía como «escalaY». */
+const CAMPO_DIMENSION = Object.freeze({ 42: 'medida', 1: 'textoDimension', 3: 'estiloDimension' })
 
 /**
  * LAS ENTIDADES DE UN DXF, con sus vértices. PURA.
@@ -91,7 +117,7 @@ export function entidades(paresDxf = []) {
       actual.y ??= num(v)
       continue
     }
-    const campo = CAMPO[codigo]
+    const campo = (actual.tipo === 'DIMENSION' ? CAMPO_DIMENSION[codigo] : null) ?? CAMPO[codigo]
     if (!campo) continue
     const n = num(v)
     actual[campo] = codigo === 8 || codigo === 2 || codigo === 1 || codigo === 3 || codigo === 6 ? v : (n ?? v)
@@ -176,7 +202,9 @@ export function medirDxf(texto) {
   const porCapa = new Map()
   const bloques = new Map()
   const textos = []
+  const cotas = []
   const sinSoporte = new Map()
+  let enPapel = 0
 
   // La geometría de la sección BLOCKS es la DEFINICIÓN de un bloque, no una copia dibujada: sumarla
   // a las capas contaría una vez la plantilla además de cada instancia. Se mide aparte.
@@ -190,6 +218,15 @@ export function medirDxf(texto) {
   }
 
   for (const e of ents.filter((x) => x.seccion === 'ENTITIES')) {
+    // El espacio papel es la LÁMINA: marco, carátula, escalas, viñetas. Sumarlo a las capas mete
+    // el borde de la hoja adentro del cómputo de la obra. Se cuenta y no se mide.
+    if (Number(e.espacioPapel ?? 0) === 1) { enPapel++; continue }
+    if (e.tipo === 'DIMENSION') {
+      // La cota es lo que el proyectista AFIRMÓ que mide algo. Vale más que cualquier medición
+      // nuestra sobre la misma geometría, y por eso sale aparte y con su texto literal.
+      cotas.push({ capa: e.capa ?? null, medida: e.medida ?? null, texto: e.textoDimension || null, x: e.x ?? null, y: e.y ?? null })
+      continue
+    }
     if (SIN_SOPORTE.includes(e.tipo)) { sinSoporte.set(e.tipo, (sinSoporte.get(e.tipo) ?? 0) + 1); continue }
     if (e.tipo === 'INSERT') {
       const b = e.nombre ?? '(sin nombre)'
@@ -239,6 +276,12 @@ export function medirDxf(texto) {
       }
     }).sort((a, b) => a.bloque.localeCompare(b.bloque)),
     textos,
+    // Las cotas medidas, en unidades de dibujo y en metros. `texto` vacío significa que el plano
+    // muestra la medida tal cual la calculó el CAD; con texto, el proyectista la escribió a mano y
+    // manda lo que escribió.
+    cotas: cotas.map((c) => ({ ...c, medida_m: factor && c.medida !== null ? redondear(c.medida * factor, 6) : null })),
+    enPapel,
+    porQueEnPapel: enPapel ? `${enPapel} entidades están en espacio papel (marco, carátula, rótulo) y no se miden: son dibujo de presentación, no construcción` : null,
     entidades: ents.length,
     sinSoporte: [...sinSoporte.entries()].map(([tipo, cantidad]) => ({ tipo, cantidad, porQue: 'este parser no mide esa entidad — la cantidad está declarada para que su ausencia no se lea como cero' })).sort((a, b) => a.tipo.localeCompare(b.tipo)),
   }
