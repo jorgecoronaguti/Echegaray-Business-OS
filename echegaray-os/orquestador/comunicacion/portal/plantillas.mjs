@@ -17,7 +17,17 @@
 /** Grafito y amarillo del logo real. Los mismos que usa la app. */
 const GRAFITO = '#30302F'
 const AMARILLO = '#FDC900'
-const LOGO = process.env.ORQ_PORTAL_LOGO_URL || 'https://app.ecsas.com.ar/logo-ecsas.png'
+// ═══ ESTA URL ESTUVO ROTA DESDE EL PRIMER MAIL (encontrado el 27/08/2026) ═══
+//
+// Apuntaba a `/logo-ecsas.png`, un archivo que **nunca existió**: el logo vive en `/marca/logo.png`.
+// Y aunque hubiera existido, el middleware protege todo lo que no sea `_next/static`, así que la
+// petición terminaba en un **307 al login** — Google, Gmail y cualquier lector de correo bajan la
+// imagen sin sesión y recibían la redirección.
+//
+// El mail no falla por esto: muestra el `alt` y sigue. Por eso nadie lo vio. Un logo roto en el
+// primer mail que un cliente recibe de la empresa es exactamente el detalle que no se puede probar
+// con un test de HTML — hay que pedir la URL. Verificado con curl: `/marca/logo.png` → 200.
+const LOGO = process.env.ORQ_PORTAL_LOGO_URL || 'https://app.ecsas.com.ar/marca/logo.png'
 const PORTAL = process.env.ORQ_PORTAL_URL || 'https://app.ecsas.com.ar/portal'
 
 /** Escapa lo que viene de la base. Un nombre de cliente con `<` rompería el HTML del mail. */

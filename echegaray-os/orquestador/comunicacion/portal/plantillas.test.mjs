@@ -103,3 +103,9 @@ test('sin identificador no hay clave de idempotencia — mejor null que una clav
   assert.equal(habilitacionPortal({ para: 'x@y.com', cliente_nombre: 'X' }).clave_unica, null)
   assert.equal(esquemaPublicado({ cliente_nombre: 'X' }).clave_unica, null)
 })
+
+test('el logo apunta a un archivo que existe y no a la ruta que devolvía 307 al login', () => {
+  const m = habilitacionPortal({ para: 'x@y.com', cliente_nombre: 'ARCOR', acceso_id: '1' })
+  assert.match(m.html, /src="https:\/\/app\.ecsas\.com\.ar\/marca\/logo\.png"/)
+  assert.ok(!/logo-ecsas\.png/.test(m.html), 'ese archivo nunca existió: el mail mostraba el alt')
+})
