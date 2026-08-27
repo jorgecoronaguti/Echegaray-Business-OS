@@ -158,10 +158,15 @@ export function pagosDelEsquema(
   nombres: Map<string, string>,
   alcanza: (obraId: string | null) => boolean,
 ): PagoConObra[] {
-  return historicoEsDeLaObra(filas
+  // EL CORTE DEL DUEÑO MANDA, FILA POR FILA. `clientes.portal_cobros_desde` es una fecha que él puso
+  // a mano para decidir DESDE CUÁNDO el cliente ve sus pagos, y el sembrador marca `historico` con
+  // ese criterio. Reescribir esa marca —«si la obra sigue viva, todos sus pagos son actuales»— le
+  // devolvía al cliente los cinco cobros anteriores al 01/07 que el corte existía para no mostrar.
+  // Lo que se ajusta es el CONTRATO, no los pagos: ver `contratoDelConjunto`.
+  return filas
     .filter((f) => publicadoAlPortal(f) && alcanza(f.obra_id))
     .sort((a, b) => a.orden - b.orden || (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
-    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? '')))
+    .map((f) => aPagoDelPortal(f, (f.obra_id ? nombres.get(f.obra_id) : null) ?? ''))
 }
 
 /**
@@ -307,6 +312,9 @@ export type ContratoDelConjunto = ContratoDeObra & {
   obras: number
   /** Cuántas quedaron afuera por no tener contrato cargado. La pantalla lo DICE en vez de callarlo. */
   sinContrato: number
+  /** Lo cobrado ANTES del corte del portal, que ya se descontó del contrato de arriba. La pantalla
+   *  lo dice: un contrato que aparece más chico sin explicación es un contrato que nadie reconoce. */
+  cobradoAntes: number
 }
 
 /**
@@ -349,14 +357,32 @@ export function contratoDelConjunto(
   let moneda: 'ARS' | 'USD' | null = null
   let obras = 0
   let sinContrato = 0
+  // ═══ EL CONTRATO SE MUESTRA NETO DE LO QUE SE COBRÓ ANTES DEL CORTE ═══
+  //
+  // Si el cliente no ve los pagos anteriores al corte, tampoco puede ver el contrato que esos pagos
+  // ya cancelaron: la resta le quedaría como saldo pendiente y le estaríamos reclamando algo que
+  // pagó. Los dos lados del pie hablan de la MISMA ventana — desde el corte hasta hoy.
+  let cobradoAntes = 0
   for (const b of conObra) {
     const c = contratos.get(b.obraId as string)
     if (!c || c.monto == null) { sinContrato++; continue }
     // Monedas distintas entre obras: no hay un total que se pueda escribir.
     if (moneda && c.moneda !== moneda) return null
     moneda = c.moneda
-    total += c.monto
+    const previo = b.pagos.filter((p) => p.historico).reduce((s, p) => s + netoDelPago(p), 0)
+    cobradoAntes += previo
+    // Nunca negativo: si lo cobrado antes del corte supera el contrato cargado, el contrato está mal
+    // y publicar un número negativo sería propagar el error a la cara del cliente.
+    total += Math.max(0, c.monto - previo)
     obras++
   }
-  return moneda ? { monto: total, moneda, obras, sinContrato } : null
+  return moneda ? { monto: total, moneda, obras, sinContrato, cobradoAntes } : null
+}
+
+/** El neto de un pago: sin IVA. El contrato de `obra_canonica` es NETO, así que la resta tiene que
+ *  ser contra netos o compara peras con manzanas. */
+function netoDelPago(p: { neto?: number | null; monto?: number | null; iva?: number | null }): number {
+  if (p.neto != null) return p.neto
+  if (p.monto == null) return 0
+  return p.iva != null ? p.monto - p.iva : p.monto
 }

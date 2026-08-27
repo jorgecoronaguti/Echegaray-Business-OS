@@ -191,7 +191,7 @@ test('un cobro sin obra NO borra el contrato del cliente', () => {
     { obraId: 'electrica', nombre: 'Eléctrica', pagos: [] },
     { obraId: null, nombre: '', pagos: [] },
   ] as never
-  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_728_254, moneda: 'ARS', obras: 2, sinContrato: 0 })
+  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_728_254, moneda: 'ARS', obras: 2, sinContrato: 0, cobradoAntes: 0 })
 
   // ═══ UNA OBRA SIN CONTRATO YA NO ANULA A LAS OTRAS (26/08/2026) ═══
   //
@@ -200,7 +200,7 @@ test('un cobro sin obra NO borra el contrato del cliente', () => {
   // obra vieja sin contrato. Callar dos contratos ciertos deja al cliente con menos verdad. Se suma
   // lo que hay y se DICE cuántas faltan: el pie lo escribe al lado de la cifra.
   const falta = new Map([['pisos', { monto: 40_000_000, moneda: 'ARS' as const }], ['electrica', { monto: null, moneda: 'ARS' as const }]])
-  assert.deepEqual(contratoDelConjunto(bloques, falta), { monto: 40_000_000, moneda: 'ARS', obras: 1, sinContrato: 1 })
+  assert.deepEqual(contratoDelConjunto(bloques, falta), { monto: 40_000_000, moneda: 'ARS', obras: 1, sinContrato: 1, cobradoAntes: 0 })
 
   // Lo que sigue dando `null`: que NINGUNA obra tenga contrato. Ahí no hay nada que publicar.
   const ninguno = new Map([['pisos', { monto: null, moneda: 'ARS' as const }], ['electrica', { monto: null, moneda: 'ARS' as const }]])
@@ -224,7 +224,7 @@ test('el contrato de una obra ANTERIOR no entra en el total del conjunto', () =>
     { obraId: 'pisos', nombre: 'Pisos', pagos: [enCurso] },
     { obraId: 'galpones', nombre: 'Galpones', pagos: [viejo, viejo] },
   ] as never
-  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_590_272, moneda: 'ARS', obras: 1, sinContrato: 0 })
+  assert.deepEqual(contratoDelConjunto(bloques, contratos), { monto: 47_590_272, moneda: 'ARS', obras: 1, sinContrato: 0, cobradoAntes: 0 })
 
   // Una obra con cobros de las dos clases SÍ cuenta: sigue en curso.
   const mixto = [{ obraId: 'galpones', nombre: 'Galpones', pagos: [viejo, enCurso] }] as never
@@ -315,21 +315,36 @@ const redondo = (n: number | null) => (n == null ? null : Math.round(n))
 
 // ── EL DEFECTO 1: EL CONTRATO ENTERO CONTRA UNA PARTE DE SUS PAGOS ──────────────────────────
 
-test('un pago anterior al corte de una obra EN CURSO cuenta contra el contrato de esa obra', () => {
-  // ANTES: `resumenDeCobro` descartaba las cinco filas marcadas y el pie publicaba «PAGADO
-  // $36.689.222» debajo de «CONTRATO $204.361.104» — el contrato entero de la obra contra cuatro de
-  // sus nueve pagos. Los otros $77.350.000 quedaban abajo, en una sección rotulada «obras
-  // anteriores» que nombraba a la MISMA obra que el filtro estaba mostrando.
+test('el corte del dueño manda: lo anterior no se muestra, y el contrato se achica en esa medida', () => {
+  // ═══ LA DECISIÓN, DEL DUEÑO Y POR ESCRITO (27/08/2026) ═══
+  //
+  // `clientes.portal_cobros_desde` es una fecha que él puso a mano para decidir DESDE CUÁNDO el
+  // cliente ve sus pagos. Inter Motor la tiene en el 01/07 y la obra la cruza: 5 cobros antes
+  // ($70.000.000 netos) y 4 después.
+  //
+  // Hubo una versión que resolvía el desfasaje al revés —«si la obra sigue viva, todos sus pagos son
+  // actuales»— y le devolvía al cliente los cinco cobros que el corte existía para no mostrarle. El
+  // dueño lo rechazó: **el corte manda**. Lo que se ajusta es el CONTRATO.
+  //
+  // Los dos lados del pie tienen que hablar de la MISMA ventana. Si el cliente no ve los pagos
+  // anteriores, tampoco puede ver el contrato que esos pagos cancelaron: la resta le quedaría como
+  // saldo pendiente y le estaríamos reclamando algo que ya pagó.
   const sf = pagosEnPantalla(interMotor(), 'san-francisco')
   assert.equal(sf.todos.length, 9)
-  assert.deepEqual(sf.anteriores, [], 'ningún pago de una obra EN CURSO queda rotulado «obra anterior»')
+  assert.equal(sf.anteriores.length, 5, 'los cinco anteriores al corte siguen rotulados como tales')
 
-  const r = resumenDeCobro(sf.todos, 204_361_104, '2026-08-27')
-  assert.equal(redondo(r.pagado), 114_039_222)
-  assert.equal(redondo(r.netoPagado), 106_689_222)
-  assert.equal(r.nPagado, 9)
-  // Y por eso «falta certificar» deja de exagerar en los $77 M que el cliente ya pagó.
+  // El contrato que ve el cliente: el cargado menos lo que ya cobró antes del corte.
+  const c = contratoDelConjunto([{ obraId: 'san-francisco', nombre: 'San Francisco', pagos: sf.todos }],
+    new Map([['san-francisco', { monto: 204_361_104, moneda: 'ARS' as const }]]))
+  assert.ok(c)
+  assert.equal(redondo(c.cobradoAntes), 70_000_000, 'lo cobrado antes del corte, dicho y no escondido')
+  assert.equal(redondo(c.monto), 134_361_104, 'el contrato que se publica va neto de eso')
+
+  // Y el pie cierra: pagado desde el corte + lo que falta = el contrato publicado.
+  const r = resumenDeCobro(sf.enCurso, c.monto, '2026-08-27')
+  assert.equal(redondo(r.netoPagado), 36_689_222)
   assert.equal(redondo(r.faltaCertificar), 97_671_882)
+  assert.equal(redondo((r.netoPagado ?? 0) + (r.faltaCertificar ?? 0)), redondo(c.monto), 'el pie tiene que cerrar')
 })
 
 test('una obra cuyos pagos son TODOS anteriores al corte sigue siendo una obra anterior', () => {
@@ -395,7 +410,9 @@ test('cada combinación del filtro publica el contrato, lo pagado y lo pendiente
     'pisos-industriales': [47_590_272, 5_726_424, 18_068_712, 23_795_136],
     'entrepiso-y-escalera': [7_728_254, 0, 3_864_127, 3_864_127],
     'instalacion-electrica': [40_000_000, 10_000_000, 10_000_000, 20_000_000],
-    'san-francisco': [204_361_104, 106_689_222, 0, 97_671_882],
+    // El contrato va NETO de los $70.000.000 cobrados antes del corte del 01/07, y lo pagado cuenta
+    // sólo desde el corte. Los dos lados hablan de la misma ventana y el pie cierra.
+    'san-francisco': [134_361_104, 36_689_222, 0, 97_671_882],
   }
   for (const [id, [contrato, pagado, pendiente, falta]] of Object.entries(esperado)) {
     const r = resumenDeCobro(pagosEnPantalla(pagos, id).todos, contrato, hoy)
@@ -417,14 +434,17 @@ test('LA PRUEBA CRUZADA: la suma de los pies por obra es el pie sin filtro', () 
   const sumar = (leer: (r: ResumenCobro) => number | null) =>
     Math.round(trozos.reduce((a, r) => a + (leer(r) ?? 0), 0))
 
-  assert.equal(redondo(todo.netoPagado), 122_415_646)
+  // $52.415.646 y no $122.415.646: los $70.000.000 anteriores al corte del dueño no se le muestran
+  // al cliente, ni con filtro ni sin él.
+  assert.equal(redondo(todo.netoPagado), 52_415_646)
   assert.equal(redondo(todo.netoPendiente), 79_592_102)
   assert.equal(sumar((r) => r.netoPagado), redondo(todo.netoPagado))
   assert.equal(sumar((r) => r.netoPendiente), redondo(todo.netoPendiente))
   assert.equal(trozos.reduce((a, r) => a + r.nPagado, 0), todo.nPagado)
   assert.equal(trozos.reduce((a, r) => a + r.nPendiente, 0), todo.nPendiente)
 
-  // Y el contrato del conjunto sigue siendo la suma de los cuatro, con su cobertura declarada.
+  // Y el contrato del conjunto: la suma de los cuatro NETA de lo cobrado antes del corte, que se
+  // declara aparte en vez de esconderse dentro del total.
   assert.deepEqual(contratoDelConjunto(agruparPorObra(pagos), CONTRATOS_IM),
-    { monto: 299_679_630, moneda: 'ARS', obras: 4, sinContrato: 0 })
+    { monto: 229_679_630, moneda: 'ARS', obras: 4, sinContrato: 0, cobradoAntes: 70_000_000 })
 })

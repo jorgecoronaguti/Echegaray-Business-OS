@@ -130,7 +130,16 @@ export default async function Pagos({ searchParams }: { searchParams: Promise<{ 
   // Con una obra elegida el contrato es el suyo y la cobertura es trivial; sin filtro, el del
   // conjunto, que además dice de cuántas obras salió. Son dos formas distintas y se mantienen
   // separadas: fundirlas obligaba a fingir que una obra sola tiene «cobertura».
-  const contratoDeUnaObra = obra ? (contratos.get(obra) ?? null) : null
+  // El contrato de la obra, NETO de lo cobrado antes del corte del portal — igual que en el conjunto.
+  // El cliente no ve esos pagos; mostrarle el contrato entero le dejaría esa plata como saldo a
+  // pagar, reclamándole algo que ya pagó.
+  const cobradoAntesDeLaObra = obra
+    ? previos.reduce((s, p) => s + (p.neto ?? (p.monto == null ? 0 : p.monto - (p.iva ?? 0))), 0)
+    : 0
+  const bruto = obra ? (contratos.get(obra) ?? null) : null
+  const contratoDeUnaObra = bruto && bruto.monto != null
+    ? { ...bruto, monto: Math.max(0, bruto.monto - cobradoAntesDeLaObra) }
+    : bruto
   const contratoDeTodas = obra ? null : contratoDelConjunto(bloques, contratos)
   const contratoDelFiltro = contratoDeUnaObra ?? contratoDeTodas
   // ═══ UNA CUENTA POR MONEDA (26/08/2026) ═══
