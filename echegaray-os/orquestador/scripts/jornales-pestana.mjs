@@ -1749,6 +1749,8 @@ export function grilla({
   // réplica no trajo esa categoría: una constante del código no puede ganarle a un acuerdo posterior,
   // pero tampoco puede dejar el cuadro mudo cuando el IMPORTHTML se cayó.
   let desv = null
+  // Las celdas de la sección 6 que RINDEN prosa por fórmula: se juntan acá y viajan con el resto.
+  const prosaDelBloque6 = []
   if (desvinculacion) {
     const basicoDe = (codigo) => {
       const cat = convenioDe(codigo)
@@ -1758,7 +1760,16 @@ export function grilla({
     }
     blanco()
     desv = bloqueDesvinculacion({ ...desvinculacion, hoy, basicoDe })
+    const base = filas.length
     for (const f of desv.filas) push(f)
+    // Las filas de fecha, ya en coordenadas de la pestaña, para que `requestsDeFormato` les pida DATE.
+    desv.rangos = {
+      activos: desv.fechas.activos.map((r) => r + base),
+      desafectados: desv.fechas.desafectados.map((r) => r + base),
+    }
+    for (let f = desv.prosa.fila0 + base; f <= desv.prosa.filaFin + base; f++) {
+      prosaDelBloque6.push({ fila: f, col: desv.prosa.col })
+    }
   }
 
   return {
@@ -1794,6 +1805,7 @@ export function grilla({
       // El control del calendario vive en la columna A y rinde texto por fórmula: sin declararlo, el
       // barrido de moneda no lo toca (empieza en la B) pero el pase por contenido tampoco lo clasifica.
       { fila: fControlCal, col: 0 }, { fila: fControlPiso, col: 0 }, { fila: fBaja, col: 0 },
+      ...prosaDelBloque6,
       // EL SUBTÍTULO DEL CUADRO DE PAGO Y SUS TRES AVISOS: los cuatro viven en la columna A y rinden
       // texto por fórmula. El barrido de moneda no llega a la A, pero el pase por contenido tampoco
       // los clasifica y quedarían con el formato que hubiera dejado el layout anterior.
@@ -2599,6 +2611,23 @@ export function requestsDeFormato(sheetId, filas, g) {
       repeatCell: {
         range: rg(f - 1, f, 0, 3),
         cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'LEFT' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      },
+    })
+  }
+  // MISMO DEFECTO, MISMA CURA, EN LA SECCIÓN 6. Ingreso y Egreso entran como fechas y el barrido de
+  // moneda las dibujaba «$45.803». Se alinean a la DERECHA, no a la izquierda como el registro: acá la
+  // columna mide 112px y a su lado hay números, así que una fecha a la izquierda queda desalineada de
+  // toda la tabla.
+  for (const [r0, r1, c1] of [
+    [...(g.desvinculacion?.rangos?.activos ?? []), 2],
+    [...(g.desvinculacion?.rangos?.desafectados ?? []), 3],
+  ]) {
+    if (!r0 || !r1 || r1 < r0) continue
+    reqs.push({
+      repeatCell: {
+        range: rg(r0 - 1, r1, 1, c1),
+        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT' } },
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
     })

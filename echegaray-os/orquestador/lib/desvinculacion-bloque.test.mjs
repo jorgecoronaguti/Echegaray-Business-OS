@@ -110,3 +110,26 @@ test('la fila del activo publica antigüedad y categoría, no sólo plata', () =
   assert.equal(f[4], ESCALA_VERIFICADA.Oficial)
   assert.equal(f[5], '176 h')
 })
+
+test('el bloque declara DÓNDE están sus fechas — si no, salen como plata', () => {
+  const b = bloqueDesvinculacion({ activos: ACTIVOS, desafectados: DESAFECTADOS, hoy: HOY, basicoDe })
+  const [a0, aFin] = b.fechas.activos
+  const [d0, dFin] = b.fechas.desafectados
+  // Las filas señaladas son exactamente las de personas: ni el encabezado ni el total.
+  assert.equal(aFin - a0 + 1, b.activos.length)
+  assert.equal(dFin - d0 + 1, b.desafectados.length)
+  assert.equal(b.filas[a0 - 1][0], b.activos[0].nombre)
+  assert.equal(b.filas[aFin - 1][0], b.activos[b.activos.length - 1].nombre)
+  assert.equal(b.filas[d0 - 1][0], b.desafectados[0].nombre)
+  // Y lo que hay en esas celdas es una fecha dd/mm/aaaa, que es lo que el formato DATE espera.
+  assert.match(String(b.filas[a0 - 1][1]), /^\d{2}\/\d{2}\/\d{4}$/)
+  assert.match(String(b.filas[d0 - 1][2]), /^\d{2}\/\d{2}\/\d{4}$/)
+})
+
+test('la columna del rastro se declara como prosa — si no, la frase se corta al revés', () => {
+  const b = bloqueDesvinculacion({ activos: ACTIVOS, desafectados: DESAFECTADOS, hoy: HOY, basicoDe })
+  assert.deepEqual([b.prosa.fila0, b.prosa.filaFin], b.fechas.desafectados)
+  for (let f = b.prosa.fila0; f <= b.prosa.filaFin; f++) {
+    assert.ok(String(b.filas[f - 1][b.prosa.col]).startsWith('='), `fila ${f} no tiene fórmula`)
+  }
+})
