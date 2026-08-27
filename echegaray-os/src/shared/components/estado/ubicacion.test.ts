@@ -29,7 +29,6 @@ test('desde una ficha se vuelve a su cartera, nunca al inicio', () => {
 test('la raíz de un área no ofrece volver a sí misma', () => {
   assert.equal(ubicarPantalla('/obras').volver, null)
   assert.equal(ubicarPantalla('/administracion').volver, null)
-  assert.equal(ubicarPantalla('/flujo-caja').volver, null)
 })
 
 test('la barra final no cambia la pantalla', () => {

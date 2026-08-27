@@ -22,7 +22,7 @@ test('lo que NO está en la lista blanca sigue pidiendo sesión', () => {
   // el alta libre (que convivía con el alta gobernada de `/administracion/usuarios`) y la landing
   // congelada de la extensión (la viva es `/descargas`). Si alguien devuelve una de las dos
   // entradas sin la pantalla, deja abierta una URL que ya no explica nada.
-  for (const r of ['/api/oauth', '/api/oauth-start', '/flujo-caja', '/obras', '/api/otra-cosa', '/',
+  for (const r of ['/api/oauth', '/api/oauth-start', '/obras', '/api/otra-cosa', '/',
     '/signup', '/descargar']) {
     assert.equal(esRutaPublica(r), false, `${r} quedó pública sin que nadie lo decidiera`)
   }

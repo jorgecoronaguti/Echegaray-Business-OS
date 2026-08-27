@@ -20,7 +20,7 @@ import { puedeVerRuta, areaDe, esAdministracion, areasDe, veEconomia } from './a
 test('Dirección y Administración abren todo', () => {
   for (const rol of ['direccion', 'administracion'] as const) {
     for (const r of ['/administracion', '/administracion/usuarios', '/clientes', '/clientes/arcor',
-      '/obras', '/flujo-caja', '/calendario-financiero']) {
+      '/obras', '/calendario-financiero']) {
       assert.equal(puedeVerRuta(rol, r), true, `${rol} no pudo abrir ${r}`)
     }
   }
@@ -38,7 +38,7 @@ test('EL JEFE DE OBRA ENTRA A ADMINISTRACIÓN', () => {
 })
 
 test('PERO NO ENTRA A LAS RUTAS DEL DINERO', () => {
-  for (const r of ['/flujo-caja', '/calendario-financiero', '/reportes', '/aprobaciones']) {
+  for (const r of ['/calendario-financiero', '/reportes', '/aprobaciones']) {
     assert.equal(puedeVerRuta('jefe_obra', r), false, `un jefe de obra pudo abrir ${r}`)
   }
   assert.equal(veEconomia('jefe_obra'), false)
@@ -78,7 +78,7 @@ test('el rol CAMPO sigue afuera de todo lo administrativo', () => {
   // Abrir Administración fue para el jefe de obra y sólo para él: `campo` no cambió.
   assert.equal(areaDe('campo'), 'obras')
   assert.equal(esAdministracion('campo'), false)
-  assert.equal(puedeVerRuta('campo', '/flujo-caja'), false)
+  assert.equal(puedeVerRuta('campo', '/calendario-financiero'), false)
 })
 
 test('sin perfil se cae al nivel MENOS privilegiado', () => {
@@ -87,5 +87,5 @@ test('sin perfil se cae al nivel MENOS privilegiado', () => {
   assert.equal(esAdministracion(undefined), false)
   assert.equal(veEconomia(null), false)
   assert.deepEqual(areasDe(null), ['obras'])
-  assert.equal(puedeVerRuta(null, '/flujo-caja'), false)
+  assert.equal(puedeVerRuta(null, '/calendario-financiero'), false)
 })

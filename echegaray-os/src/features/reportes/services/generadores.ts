@@ -60,8 +60,8 @@ export async function generarDiarioDireccion(supabase: SupabaseClient): Promise<
       principales_cambios: [],
       numeros_clave: [
         { label: 'Acciones vencidas', valor: String(vencidas?.length ?? 0), link: '/os' },
-        { label: 'Saldo disponible hoy', valor: calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato', link: '/flujo-caja' },
-        { label: 'Cobros vencidos sin ejecutar', valor: pesos.format(montoCobrosVencidos), link: '/flujo-caja' },
+        { label: 'Saldo disponible hoy', valor: calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato', link: '/calendario-financiero' },
+        { label: 'Cobros vencidos sin ejecutar', valor: pesos.format(montoCobrosVencidos), link: '/calendario-financiero' },
         { label: 'Hallazgos de impacto alto abiertos', valor: String(backlog?.length ?? 0), link: '/backlog-autonomo' },
       ],
       riesgos: (backlog ?? []).map((b) => b.titulo),
@@ -73,7 +73,7 @@ export async function generarDiarioDireccion(supabase: SupabaseClient): Promise<
         ? [`Gestionar hoy los cobros vencidos: ${cobrosVencidos.map((c) => `${c.quien} ${pesos.format(c.monto)}`).join(', ')}`]
         : [],
       links_os: [
-        { label: 'Calendario de cobros y pagos', href: '/flujo-caja' },
+        { label: 'Calendario de cobros y pagos', href: '/calendario-financiero' },
         { label: 'Centro de Acción', href: '/os' },
       ],
     },
@@ -165,11 +165,11 @@ export async function generarFinancieroSemanal(supabase: SupabaseClient): Promis
       resumen_ejecutivo: `Próximos 7 días: cobros ${pesos.format(totalCobros7)}, pagos ${pesos.format(totalPagos7)}, saldo proyectado al cierre ${pesos.format(saldoFinSemana)}. ${vencidos.length} movimientos vencidos sin ejecutar.`,
       principales_cambios: [],
       numeros_clave: [
-        { label: 'Saldo disponible hoy', valor: calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato', link: '/flujo-caja' },
+        { label: 'Saldo disponible hoy', valor: calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato', link: '/calendario-financiero' },
         { label: 'Cobros próximos 7 días', valor: pesos.format(totalCobros7) },
         { label: 'Pagos próximos 7 días', valor: pesos.format(totalPagos7) },
         { label: 'Saldo proyectado al cierre', valor: pesos.format(saldoFinSemana) },
-        { label: 'Vencidos sin ejecutar', valor: String(vencidos.length), link: '/flujo-caja' },
+        { label: 'Vencidos sin ejecutar', valor: String(vencidos.length), link: '/calendario-financiero' },
       ],
       riesgos: saldoFinSemana < 0 ? [`La semana cierra con caja proyectada negativa (${pesos.format(saldoFinSemana)})`] : [],
       decisiones_requeridas: vencidos.filter((m) => m.monto > 0).map((m) => `Gestionar cobro vencido: ${m.quien} ${pesos.format(m.monto)} (${m.fecha})`),
@@ -177,7 +177,7 @@ export async function generarFinancieroSemanal(supabase: SupabaseClient): Promis
       recomendaciones: (obligaciones ?? []).length
         ? [`Obligaciones que vencen esta semana: ${(obligaciones ?? []).map((o) => `${o.concepto} ${pesos.format(Number(o.monto_total))} (${o.fecha_vencimiento})`).join('; ')}`]
         : [],
-      links_os: [{ label: 'Calendario de cobros y pagos', href: '/flujo-caja' }],
+      links_os: [{ label: 'Calendario de cobros y pagos', href: '/calendario-financiero' }],
     },
   }
 }

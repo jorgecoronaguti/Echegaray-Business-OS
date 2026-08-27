@@ -92,7 +92,7 @@ export async function cargarSaldoCajaAction(
   if (saJson) {
     try {
       await appendSaldoAlSheet(saJson, { fecha: hoy, cuenta, saldo, cargadoPor: user.email ?? 'usuario OS', notas })
-      revalidatePath('/flujo-caja')
+      revalidatePath('/calendario-financiero')
       return { ok: `Saldo de ${cuenta} cargado en el Sheet.`, error: null }
     } catch {
       // sin conexión al Sheet: mejor encolado que perdido -- cae a la cola
@@ -111,7 +111,7 @@ export async function cargarSaldoCajaAction(
     responsable: user.email ?? null,
   })
   if (error) return { ok: null, error: `No se pudo encolar la carga: ${error.message}` }
-  revalidatePath('/flujo-caja')
+  revalidatePath('/calendario-financiero')
   return {
     ok: `Saldo de ${cuenta} registrado. Pasa al Sheet en la próxima sincronización automática (≤4 h).`,
     error: null,

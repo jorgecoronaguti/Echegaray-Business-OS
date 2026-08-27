@@ -61,7 +61,7 @@ test('cada permiso dice QUÉ abre: una lista de claves sin detalle no se puede a
 
 test('las rutas cerradas salen del guard, no de una copia', () => {
   const cerradas = rutasCerradasPara('jefe_obra')
-  assert.ok(cerradas.includes('/flujo-caja'))
+  assert.ok(cerradas.includes('/calendario-financiero'))
   assert.ok(cerradas.includes('/administracion/usuarios'))
   assert.ok(cerradas.includes('/presupuestos'))
   // Dirección no tiene ninguna cerrada: si esta lista dejara de estar vacía, el guard cambió.

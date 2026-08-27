@@ -49,7 +49,6 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/administracion/usuarios', que: 'los usuarios', cartera: ADMIN },
   { prefijo: '/administracion/pendientes', que: 'los pendientes de Administración', cartera: ADMIN },
   { prefijo: '/administracion', que: 'Administración' },
-  { prefijo: '/flujo-caja', que: 'el flujo de caja' },
   { prefijo: '/calendario-financiero', que: 'el calendario financiero' },
   { prefijo: '/aprobaciones', que: 'las aprobaciones' },
   { prefijo: '/integraciones/pedidos-materiales', que: 'los pedidos de materiales', cartera: { href: '/integraciones', texto: 'Integraciones' } },

@@ -170,7 +170,7 @@ export default async function OsPage() {
           { href: '/obras', label: 'Dirección' },
           { href: '/obras', label: 'Organización IA' },
           { href: '/aprobaciones', label: 'Aprobaciones' },
-          { href: '/flujo-caja', label: 'Flujo de Caja' },
+          { href: '/calendario-financiero', label: 'Calendario financiero' },
           { href: '/reportes', label: 'Reportes' },
         ].map((l) => (
           <Link key={`${l.href}-${l.label ?? ''}`} href={l.href} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">

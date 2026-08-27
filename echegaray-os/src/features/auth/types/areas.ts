@@ -99,7 +99,7 @@ export const AREA_HREF: Record<Area, string> = {
  * `/administracion/usuarios` SÍ queda cerrada, y no por económica: es la puerta a cambiar roles.
  */
 export const RUTAS_SOLO_ECONOMIA = [
-  '/administracion/usuarios', '/flujo-caja', '/calendario-financiero',
+  '/administracion/usuarios', '/calendario-financiero',
   '/reportes', '/aprobaciones',
   // CUATRO SALIERON DE ACÁ PORQUE SALIERON DEL REPOSITORIO (27/08/2026):
   // `/ingenieria-financiera` (superconjunto de `/calendario-financiero`), `/calendario-caja`,

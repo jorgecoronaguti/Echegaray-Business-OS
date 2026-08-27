@@ -82,17 +82,19 @@ export function destinoDeLaHome(rol: Rol | null | undefined): string {
   // El empleado no entra por el área: entra por su día. `/obras` —que sería su primera solapa— no
   // está en `CAMPO_RUTAS_PERMITIDAS` y el middleware lo rebotaría igual.
   if (rol === 'campo') return '/hoy'
-  if (puedeVerRuta(rol, HOME_ECONOMICA)) return HOME_ECONOMICA
+  // ═══ YA NO HAY HOME ECONÓMICA (27/08/2026) ═══
+  //
+  // Hasta hoy esto devolvía `/flujo-caja` a quien pudiera abrirla, por la decisión del 09/07. El
+  // dueño la retiró: *«hay una de flujo-caja que está deprecada y se accede por error o saliendo de
+  // una página»*. Sin destino especial, cada nivel entra por la primera solapa de su área — que es
+  // la que la barra ya pinta como activa, así que entrar y volver son el mismo lugar.
   return solapasDeNav(rol)[0].href
 }
-
-/** La home que fijó el dueño el 09/07/2026. La abre quien puede abrirla, y nadie más. */
-const HOME_ECONOMICA = '/flujo-caja'
 
 export function solapaActiva(pathname: string, solapas: SolapaNav[]): string | null {
   if (solapas.length === 1) return solapas[0].clave
   if (/^\/presupuestos(\/|$)/.test(pathname)) return 'presupuestos'
-  if (/^\/(administracion|clientes|documentos|flujo-caja)(\/|$)/.test(pathname)) return 'administracion'
+  if (/^\/(administracion|clientes|documentos)(\/|$)/.test(pathname)) return 'administracion'
   if (/^\/(obras|obra|integraciones|campo|hoy|mi-trabajo|mi-informacion)(\/|$)/.test(pathname)) {
     return 'obras'
   }

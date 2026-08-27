@@ -32,7 +32,6 @@ test('cada ruta de primer nivel dice dónde estás', () => {
   assert.equal(activa('/presupuestos/casa-luna/partida/3'), 'presupuestos')
   // LO QUE NO CAMBIA de la corrección del 24/08: estas tres siguen pintando Administración.
   assert.equal(activa('/documentos'), 'administracion')
-  assert.equal(activa('/flujo-caja'), 'administracion')
   assert.equal(activa('/clientes/la-estrella'), 'administracion')
   assert.equal(activa('/administracion/pendientes'), 'administracion')
   // Y `/obra` (el workspace del jefe) sigue pintando Obras.
@@ -77,11 +76,21 @@ test('nadie aterriza en una pantalla que su rol no puede abrir', () => {
   }
 })
 
-test('quien ve economía sigue aterrizando en el Flujo de Caja', () => {
-  // La decisión del dueño del 09/07/2026 —«el home es el espejo del Sheet»— no cambió: lo que
-  // cambió es que ahora sólo la recibe quien puede abrirla.
-  assert.equal(destinoDeLaHome('direccion'), '/flujo-caja')
-  assert.equal(destinoDeLaHome('administracion'), '/flujo-caja')
+// ═══ `/flujo-caja` SE RETIRÓ (27/08/2026) ═══
+//
+// El dueño: *«hay una de flujo-caja que está deprecada y se accede por error o saliendo de una
+// página»*. Era el destino del redirect de `/` y no tenía un solo enlace: se entraba sin querer y
+// no había vuelta. La decisión del 09/07 —«el home es el espejo del Sheet»— queda sin efecto.
+test('nadie aterriza en /flujo-caja: la ruta se retiró', () => {
+  for (const rol of ['direccion', 'administracion', 'jefe_obra', 'campo'] as const) {
+    assert.notEqual(destinoDeLaHome(rol), '/flujo-caja', `${rol} todavía aterriza en la ruta retirada`)
+  }
+  assert.equal(destinoDeLaHome(null), '/obras')
+})
+
+test('quien administra aterriza en su área', () => {
+  assert.equal(destinoDeLaHome('direccion'), '/administracion')
+  assert.equal(destinoDeLaHome('administracion'), '/administracion')
 })
 
 test('el resto aterriza en su propia entrada, no en la del dinero', () => {

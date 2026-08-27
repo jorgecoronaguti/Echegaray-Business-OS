@@ -69,7 +69,7 @@ export async function registrarCobro(entrada: EntradaCobro): Promise<ResultadoAc
   if (error) return { ok: false, error: traducir(error.message) }
 
   revalidatePath('/clientes')
-  revalidatePath('/flujo-caja')
+  revalidatePath('/calendario-financiero')
   return { ok: true }
 }
 
