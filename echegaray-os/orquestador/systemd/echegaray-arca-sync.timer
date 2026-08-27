@@ -28,7 +28,24 @@ Description=Echegaray OS - Sync ARCA semanal (lunes 03:00) — el plan free da 1
 # /api/v1/automations`, un verbo que ese endpoint contesta 401 siempre, y el sync leía ese 401 como
 # token vencido. El token estaba sano. Ahora la sonda usa el mismo verbo y el mismo endpoint que la
 # descarga real (POST con cuerpo vacío, que no crea nada y no consume cuota).
-OnCalendar=Mon 03:00:00
+# ═══ LA CADENCIA SIGUE AL CALENDARIO FISCAL, NO AL LUNES (26/08/2026) ═══
+#
+# Semanal parecía prudente y no lo era. La ventana de cuota corre del 10 al 10 y da 5 corridas; el
+# lunes las gasta en las primeras tres semanas y llega a CERO justo en el tramo que importa. Medido:
+# 17/08 gastó 2, 24/08 gastó 2 → 8 de 10, y las corridas del 31/08 y del 07/09 iban a fallar por
+# cuota. Peor: agosto cierra el 31/08 y la última descarga posible había sido la del 24 — el mes se
+# publicaba incompleto en el Cuadro 4 de IVA justo cuando hay que decidir cuánta plata tener.
+#
+# Los tres días que importan de verdad:
+#   · 01 — el mes anterior ya cerró: es la única corrida que lo captura ENTERO.
+#   · 11 — la ventana de cuota se renovó el 10: la primera del período nuevo.
+#   · 18 — TRES DÍAS ANTES del vencimiento de la DDJJ (el 21): llega a tiempo para decidir
+#          cuánta plata hay que tener, no el mismo día en que ya hay que pagarla.
+#
+# Son 3 corridas = 6 automatizaciones por ventana, con 4 de margen para una corrida manual del dueño
+# —el doble de la reserva que el presupuesto ya exige—. El guardián de cuota sigue siendo el que
+# manda: si no alcanza, el script se niega antes de gastar.
+OnCalendar=*-*-01,11,18 03:00:00
 Persistent=true
 
 [Install]
