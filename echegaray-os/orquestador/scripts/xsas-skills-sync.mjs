@@ -111,7 +111,7 @@ async function reportarUso() {
   console.log(`  con modelo             : ${g.con_llm} — US$${g.usd ?? 0}`)
   if (!g.total) {
     console.log('\n  Sin datos todavía: `skills`/`resolucion` se empiezan a escribir con la migración')
-    console.log('  20260827T1400 aplicada. Un cero acá NO significa que nadie usó el OS.')
+    console.log('  20260827T1420 aplicada. Un cero acá NO significa que nadie usó el OS.')
     return
   }
   const filas = await usoPorCapacidad({ soloUsadas: true })
