@@ -114,13 +114,17 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
   // 8 h el viernes.
   const dias = []
   const pendientes = []
+  const columnas = []
   const corte = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  let ultimaColumnaCargada = -1
   for (let c = 5; c <= 20; c++) {
     const d = diaDeCelda(fechas[c])
     if (!d) continue
     dias.push(`${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`)
+    columnas.push({ col: c, etiqueta: `${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}` })
     let cargado = false
     for (let r = b.inicio; r <= b.fin && !cargado; r++) if (Number((grid[r - 1] ?? [])[c]) > 0) cargado = true
+    if (cargado) ultimaColumnaCargada = c
     const fechaDia = new Date(anio, d.mes - 1, d.dia)
     // EL SÁBADO NO SE COMPLETA. Las 4 h del sábado son un SUPUESTO declarado en `jornada-uocra.mjs`,
     // no la jornada normal: rellenarlo sumaba 4 h por persona que nadie va a trabajar. El dueño
@@ -138,12 +142,30 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
     if (!nombre) continue
     const cargadas = Number(f[21]) || 0
     const jornal = Number(f[22]) || 0
-    const horas = cargadas + horasPendientes
+
+    // ═══ AL QUE YA NO ESTÁ NO SE LE COMPLETAN LOS DÍAS QUE FALTAN ═══
+    //
+    // Completar la jornada tiene sentido para quien va a seguir yendo. Sosa Raúl tiene horas hasta el
+    // 25/08 y baja registrada ese mismo día; Jofre Ismael tampoco cargó el 26 cuando cargaron los
+    // otros quince. Sumarles los tres días que faltan les inventa 26 h que nadie va a trabajar, y en
+    // una liquidación final ese invento se paga.
+    //
+    // El criterio sale de la planilla y no de una lista: si el último día con horas de una persona es
+    // ANTERIOR al último día que cargó el resto, esa persona ya no está en el frente. Es el mismo
+    // dato que el dueño mira cuando abre la grilla.
+    let ultimaSuya = -1
+    for (const { col } of columnas) if (Number(f[col]) > 0) ultimaSuya = col
+    const dejoDeCargar = ultimaSuya >= 0 && ultimaColumnaCargada >= 0 && ultimaSuya < ultimaColumnaCargada
+    const ultimoDiaSuyo = columnas.find((x) => x.col === ultimaSuya)?.etiqueta ?? null
+    const pendientesSuyas = dejoDeCargar ? 0 : horasPendientes
+    const horas = cargadas + pendientesSuyas
     out.set(clave(nombre), {
       nombre,
       categoria: String(f[3] ?? '').trim(),
       cargadas,
-      pendientes: horasPendientes,
+      pendientes: pendientesSuyas,
+      dejoDeCargar,
+      ultimoDiaSuyo,
       horas,
       jornal,
       banco: Number(f[23]) || 0,
@@ -262,7 +284,8 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     T.bancoHoy += hoyR.banco; T.efHoy += hoyR.efectivo; T.totHoy += hoyR.total
     if (pisoR) { T.bancoPiso += pisoR.banco; T.efPiso += pisoR.efectivo; T.totPiso += pisoR.total; T.sube += pisoR.total - hoyR.total }
 
-    fila(p.nombre, q.categoria || SIN_DATO, conv ?? SIN_DATO,
+    fila(q.dejoDeCargar ? `${p.nombre}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : p.nombre,
+      q.categoria || SIN_DATO, conv ?? SIN_DATO,
       Math.round(q.cargadas), q.pendientes ? Math.round(q.pendientes) : SIN_DATO, Math.round(q.horas),
       q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
       Math.round(q.jornal), Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
@@ -277,6 +300,10 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     '', Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
     '', Math.round(T.bancoPiso), Math.round(T.efPiso), Math.round(T.totPiso), Math.round(T.sube))
   fila(sub(`Llevar a todos al piso de convenio cuesta ${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena.`))
+  const bajas = activos.filter((p) => quincena.porClave.get(p.clave)?.dejoDeCargar)
+  if (bajas.length) {
+    fila(sub(`${bajas.length} sin horas desde antes del cierre —${bajas.map((p) => `${p.nombre} (${quincena.porClave.get(p.clave).ultimoDiaSuyo})`).join(' · ')}—: se les paga lo cargado y NO se les completan los días que faltan. Si es una baja, su liquidación final va en el cuadro 4.`))
+  }
   // ═══ POR QUÉ ESTE TOTAL NO ES EL DE «JORNALES POR QUINCENA» ═══
   //
   // Aquella pestaña publica la quincena con las horas CARGADAS —es lo correcto para conciliar contra
@@ -367,18 +394,23 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     Math.round(porReciboTotal), Math.round(enEfectivoTotal), Math.round(saleTotal), Math.round(fondoTotal))
   fila(sub(`Si se fueran todos hoy: ${Math.round(porReciboTotal).toLocaleString('es-AR')} por recibo + ${Math.round(enEfectivoTotal).toLocaleString('es-AR')} en efectivo = ${Math.round(saleTotal).toLocaleString('es-AR')} de la caja.`))
   fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
-  // ═══ LOS DOS DE OFICINA: EL RÉGIMEN DECIDE, Y NO LO DECIDE ESTA PESTAÑA ═══
+  // ═══ LOS DOS DE «OFICINA» SON CONSTRUCCIÓN, Y ESTÁ PROBADO CON EL PAPEL ═══
   //
-  // La base declara a los dos bajo la ley 22.250, igual que a los obreros, y con ese régimen el
-  // cálculo de arriba es el que corresponde. Pero si el personal de oficina estuviera bajo la LCT
-  // —que es lo habitual para administración— habría que sumar preaviso (art. 231/232), integración
-  // del mes (art. 233) e indemnización por antigüedad (art. 245), que acá son cero. La diferencia es
-  // de millones y no la decide un generador: la decide el dueño con su contador.
+  // La duda era real y cara: bajo la LCT una liquidación suma preaviso (art. 231/232), integración
+  // del mes (art. 233) e indemnización por antigüedad (art. 245) — millones que bajo la 22.250 no
+  // existen. Aparecen en `_J_OFICINA` sólo porque ahí se cargan sus horas, no por su régimen.
+  //
+  // Se resolvió leyendo sus legajos, no razonando:
+  //   · MALDONADO BATISTA EMILIANO — «Libreta de Fondo de Cese Laboral, Ley 22.250», IERIC.
+  //   · NIEVAS (VILLEGAS) JUAN PABLO — formulario FWEB 1988796 ante el IERIC (nº 173621/4):
+  //     ingreso 07/02/2026, OFICIAL ESPECIALIZADO, albañil. De ahí salió su fecha de ingreso, que
+  //     hasta hoy no estaba en ningún lado y le dejaba la antigüedad, las vacaciones y el fondo en
+  //     cero — que no es «no le corresponde», es «no lo pude calcular».
   const oficina = activos.filter((p) => p.sector === 'Oficina')
   if (oficina.length) {
-    fila(sub(`Oficina (${oficina.map((p) => p.nombre).join(' · ')}): la base los declara bajo ley 22.250, y con ese régimen no hay preaviso ni indemnización por antigüedad. Si estuvieran bajo LCT habría que sumarlos — es una definición del dueño, no del sistema.`))
+    fila(sub(`Los ${oficina.length} de «Oficina» (${oficina.map((p) => p.nombre).join(' · ')}) están bajo la ley 22.250 igual que los obreros: probado con la libreta del IERIC de uno y el formulario de alta del otro. Por eso no llevan preaviso ni indemnización por antigüedad.`))
     const sinIngreso = oficina.filter((p) => !p.ingreso)
-    if (sinIngreso.length) fila(sub(`Sin fecha de ingreso en la planilla ni en la base: ${sinIngreso.map((p) => p.nombre).join(' · ')}. Sin ella no hay antigüedad, ni vacaciones proporcionales, ni fondo.`))
+    if (sinIngreso.length) fila(sub(`Sin fecha de ingreso en ningún lado: ${sinIngreso.map((p) => p.nombre).join(' · ')}. Sin ella no hay antigüedad, ni vacaciones proporcionales, ni fondo.`))
   }
   fila()
 
