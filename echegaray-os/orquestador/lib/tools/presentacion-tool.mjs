@@ -26,7 +26,7 @@ import { TIPOS_DECK } from '../slides/contrato.mjs'
 const ESQUEMA_LAMINA = {
   type: 'object',
   properties: {
-    tipo: { type: 'string', enum: ['seccion', 'puntos', 'dos_columnas', 'indicadores', 'tabla', 'barras', 'hitos', 'cierre'] },
+    tipo: { type: 'string', enum: ['seccion', 'puntos', 'dos_columnas', 'indicadores', 'tabla', 'barras', 'hitos', 'imagen', 'cierre'] },
     titulo: { type: 'string' },
     kicker: { type: 'string', description: 'rótulo corto arriba del título (ej. "Caja", "Riesgos")' },
     bajada: { type: 'string', description: 'una o dos oraciones bajo el título' },
@@ -49,6 +49,8 @@ const ESQUEMA_LAMINA = {
     unidad: { type: 'string', description: 'tipo "barras": en qué unidad están los valores' },
     series: { type: 'array', description: 'tipo "barras": 2 a 8 barras', items: { type: 'object', properties: { rotulo: { type: 'string' }, valor: { type: 'number' }, texto: { type: 'string', description: 'el valor como se escribe, ej. "$ 84,2 M"' }, tono: { type: 'string', enum: ['neutro', 'positivo', 'negativo', 'alerta'] } }, required: ['rotulo', 'valor'] } },
     hitos: { type: 'array', description: 'tipo "hitos": 2 a 6 hitos en el tiempo', items: { type: 'object', properties: { fecha: { type: 'string' }, titulo: { type: 'string' }, detalle: { type: 'string' }, estado: { type: 'string', enum: ['hecho', 'en_curso', 'pendiente'] } }, required: ['fecha', 'titulo'] } },
+    imagen_url: { type: 'string', description: 'tipo "imagen": URL https PÚBLICA. Google la baja SIN nuestras credenciales, así que un link de Drive privado NO sirve: pedile la imagen a generar_imagen con publicar_para_slides:true y usá el imagen_url que devuelve.' },
+    epigrafe: { type: 'string', description: 'tipo "imagen": el pie de la imagen. Si es una imagen generada, decilo acá.' },
     mensaje: { type: 'string', description: 'tipo "cierre"' },
     contacto: { type: 'string', description: 'tipo "cierre"' },
   },
@@ -75,7 +77,14 @@ const COMO_SE_USA =
   + 'Traé los números con las capacidades del OS ANTES de armar las láminas y usá los reales: nunca inventes una cifra para llenar una lámina. '
   + 'Todo dato que NO salga del OS va con origen:"EXTERNO" y su fuente con URL (buscalo con web_search y leelo con web_leer): se dibuja distinto y se lista al final. '
   + 'Empezá por un corte de sección, poné los números en "indicadores" (2 a 4, los que deciden algo), las comparaciones en "tabla" o "barras", los plazos en "hitos", y cerrá con "cierre". '
-  + 'Máximo 7 viñetas por lámina; si mandás más, el motor las reparte solo.'
+  + 'Máximo 7 viñetas por lámina; si mandás más, el motor las reparte solo. '
+  // LA CONEXIÓN CON `generar_imagen`, DICHA ACÁ Y NO DUPLICADA ALLÁ. El motor de Slides no genera
+  // imágenes ni sabe hacerlo: cuando una lámina necesita una imagen original, el modelo llama a la
+  // capacidad canónica y trae la URL. Si esto se resolviera adentro del motor de presentaciones
+  // habría dos generadores de imagen en el OS, que es exactamente el problema que `generar_imagen`
+  // vino a cerrar.
+  + 'Si una lámina necesita una IMAGEN ORIGINAL (una portada, un concepto, una pieza de apoyo), NO la describas con palabras: llamá a generar_imagen con publicar_para_slides:true ANTES de crear la presentación y poné el imagen_url que devuelve en una lámina de tipo "imagen". '
+  + 'Una imagen generada NO es una foto de la obra: si el epígrafe puede confundir, aclará que es conceptual.'
 
 export function presentacionTools(google) {
   return {

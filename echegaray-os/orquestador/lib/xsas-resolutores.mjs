@@ -52,6 +52,11 @@ const FABRICAS_GOOGLE = Object.freeze([
   // Slides. `crear_presentacion_google_slides` es de ESCRITURA (`drive.write`): sin esa capability
   // en el pedido, `puedeUsar` la rechaza antes de correrla. Sin cliente de Google no se registra.
   ['./tools/presentacion-tool.mjs', 'presentacionTools'],
+  // Imágenes. `generar_imagen` deja el archivo en el Drive del dueño y puede publicarlo por link,
+  // así que es `drive.write` y se encola igual que la presentación. Sin cliente de Google el motor
+  // sabe devolver el base64, pero la tool no se registra: una capacidad que no puede persistir lo
+  // que produce figuraría disponible y dejaría la imagen en ningún lado.
+  ['./tools/imagen-tool.mjs', 'imagenTools'],
 ])
 
 /** `./tools/x.mjs` → `orquestador/lib/tools/x.mjs`, que es como el catálogo nombra los módulos. */

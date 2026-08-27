@@ -89,6 +89,9 @@ export async function producirImagen(google, pedido, {
     },
     contexto_usado: armado.contexto_usado,
     contexto_descartado: armado.contexto_descartado,
+    // Si el contexto trae texto que intenta dar órdenes, sale marcado: quien lea el resultado tiene
+    // que enterarse de que el documento del que salió ese nombre intentó manipular al OS.
+    contexto_sospechoso: armado.contexto_sospechoso,
     fecha: ahora.toISOString(),
     correlation_id: correlationId,
   }

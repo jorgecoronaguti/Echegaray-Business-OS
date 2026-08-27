@@ -62,7 +62,9 @@ const PATRONES = Object.freeze([
   { categoria: 'pasar_por_evidencia', re: /\b(relevamiento|acta|certificad[oa])\s+(real|fotogr[áa]fico|de\s+obra)\b/i },
   { categoria: 'pasar_por_plano', re: /\b(plano|croquis|replanteo)\s+(real|ejecutivo|aprobado|municipal|de\s+obra)\b/i },
   { categoria: 'ocultar_origen', re: /\b(no\s+)?(marques|aclares|digas|indiques|menciones)\s+.{0,25}\b(generad[oa]|conceptual|ia|artificial)\b/i },
-  { categoria: 'ocultar_origen', re: /\b(sin|sac[aá]|quit[aá]|elimin[aá]|remov[eé])\s+(la\s+)?(marca\s+de\s+agua|watermark|aclaraci[óo]n|leyenda|disclaimer)\b/i },
+  // Los pronombres enclíticos son la forma normal del pedido en castellano rioplatense —«sacale»,
+  // «quitale», «borralo»— y sin ellos la detección se pierde justo el caso real.
+  { categoria: 'ocultar_origen', re: /\b(sin|sac[aá]|quit[aá]|elimin[aá]|remov[eé]|borr[aá])(le|la|lo|selo)?\s+(la\s+|el\s+)?(marca\s+de\s+agua|watermark|aclaraci[óo]n|leyenda|disclaimer|advertencia)\b/i },
   { categoria: 'ocultar_origen', re: /\b(hac[eé]la|que\s+)?pas(e|ar)\s+por\s+(real|aut[eé]ntica|una\s+foto)\b/i },
 ])
 

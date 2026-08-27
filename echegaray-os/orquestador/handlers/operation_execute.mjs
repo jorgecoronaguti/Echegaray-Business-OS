@@ -19,6 +19,7 @@ import { appsheetPedidosTools } from '../lib/tools/appsheet-pedidos.mjs'
 import { sheetRenderTools } from '../lib/tools/sheet-render.mjs'
 import { slidesPdfTools } from '../lib/tools/slides-pdf-tool.mjs'
 import { presentacionTools } from '../lib/tools/presentacion-tool.mjs'
+import { imagenTools } from '../lib/tools/imagen-tool.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
 async function markFailed(opId, error) {
@@ -67,7 +68,7 @@ export async function operationExecuteHandler(task, ctx) {
   // `presentacionTools` y `slidesPdfTools` entran acá porque sus tools son de ESCRITURA y por lo
   // tanto se encolan: si el registro de ejecución no las tuviera, la operación aprobada por el
   // dueño no encontraría con qué correr y quedaría aprobada sin efecto — el peor de los estados.
-  const registry = { ...driveWriteTools(google), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }), ...sheetRenderTools(op_email ? google : null), ...slidesPdfTools(op_email ? google : null), ...presentacionTools(op_email ? google : null) }
+  const registry = { ...driveWriteTools(google), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }), ...sheetRenderTools(op_email ? google : null), ...slidesPdfTools(op_email ? google : null), ...presentacionTools(op_email ? google : null), ...imagenTools(op_email ? google : null) }
   const entry = Object.values(registry).find((t) => t.schema.name === toolName)
   if (!entry) {
     await markFailed(opId, `tool desconocida en la operación: ${toolName}`)
