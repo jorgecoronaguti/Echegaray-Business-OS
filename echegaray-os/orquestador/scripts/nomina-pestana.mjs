@@ -37,6 +37,8 @@ import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion
 import { repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { convenioDe } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
+import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
+import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
@@ -172,7 +174,30 @@ function costoDe(p, cese) {
   })
 }
 
-function grilla(activos, { hoy, quincena, escala }) {
+/**
+ * LOS LEGAJOS DEL DRIVE, leídos del índice y no de Drive.
+ *
+ * `public.drive_index` ya tiene los 3.627 archivos con su ruta: preguntar ahí cuesta una consulta y
+ * no toca la red. La carpeta de cada persona cuelga de «1. ACTIVOS»; los que ya no están tienen la
+ * suya en «2. INACTIVOS», y esta pestaña no los mira porque no los muestra.
+ */
+async function legajosDeDrive() {
+  const BASE = 'administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/1. ACTIVOS/'
+  const { rows } = await query(
+    `select name, path, is_folder from public.drive_index where path like $1`, [`${BASE}%`],
+  )
+  const carpetas = rows.filter((r) => r.is_folder && !r.path.slice(BASE.length).includes('/')).map((r) => r.name)
+  const porCarpeta = new Map(carpetas.map((c) => [c, []]))
+  for (const r of rows) {
+    if (r.is_folder) continue
+    const resto = r.path.slice(BASE.length)
+    const carpeta = resto.split('/')[0]
+    if (porCarpeta.has(carpeta)) porCarpeta.get(carpeta).push(r.name)
+  }
+  return { carpetas, porCarpeta }
+}
+
+function grilla(activos, { hoy, quincena, escala, legajos }) {
   const meses = mesesDe(ANIO)
   const f = []
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
@@ -301,11 +326,35 @@ function grilla(activos, { hoy, quincena, escala }) {
   fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
   fila()
 
-  // ═══ 5 · LO QUE NO SE PUEDE DECIR ═══
-  fila(seccion(5, 'lo que esta pestaña NO puede decir'))
+  // ═══ 5 · EL LEGAJO EN DRIVE ═══
+  fila(seccion(5, 'el legajo de cada uno en Drive'))
+  fila('Mira el NOMBRE de los archivos de su carpeta, no el contenido: un «alta.pdf» que adentro tenga otra cosa se cuenta como alta igual.')
+  fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
+  const sinCarpeta = []
+  let completos = 0
+  for (const p of activos) {
+    const m = carpetaDe(p.nombre, legajos.carpetas)
+    if (!m.seguro) {
+      sinCarpeta.push(`${p.nombre}${m.candidatos.length ? ` (¿${m.candidatos.slice(0, 3).join(' o ')}?)` : ''}`)
+      fila(p.nombre, m.candidatos.length ? 'sin emparejar' : 'SIN CARPETA',
+        ...PAPELES.map(() => SIN_DATO), SIN_DATO, SIN_DATO,
+        m.candidatos.length ? 'no se pudo emparejar con certeza' : 'no tiene carpeta en 1. ACTIVOS')
+      continue
+    }
+    const pa = papelesDe(legajos.porCarpeta.get(m.carpeta) ?? [])
+    if (!pa.falta.length) completos += 1
+    fila(p.nombre, m.carpeta, ...PAPELES.map((x) => (pa[x.clave] ? 'sí' : SIN_DATO)),
+      pa.recibos || SIN_DATO, pa.ultimoRecibo ?? SIN_DATO, pa.falta.length ? pa.falta.join(' · ') : 'completo')
+  }
+  fila(rotuloTotal(`${completos} de ${activos.length} con los cuatro papeles`))
+  if (sinCarpeta.length) fila(sub(`${sinCarpeta.length} sin carpeta emparejada: ${sinCarpeta.join(' · ')}`))
+  fila()
+
+  // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══
+  fila(seccion(6, 'lo que esta pestaña NO puede decir'))
   fila(sub('Sólo el plantel ACTIVO. Los desvinculados se sacaron por pedido del dueño: su devengado histórico vive en la planilla de jornales.'))
   fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
-  fila(sub('Los legajos de Drive todavía no se cruzan acá: CUIL, obra social y familia siguen en la carpeta de cada uno.'))
+  fila(sub('Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia siguen adentro de los PDF.'))
   fila(sub('Las cargas sociales no se abren por persona: la planilla las tiene por total.'))
   fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja: la planilla no las distingue.'))
   return f
@@ -394,7 +443,9 @@ async function main() {
   if (!activos.length) { console.error('no leí ninguna persona activa: NO escribo'); process.exit(1) }
   if (!esc) console.warn('  ⚠ sin escalón de convenio para el período: el cuadro del piso sale vacío')
 
-  const filas = grilla(activos, { hoy, quincena, escala })
+  const legajos = await legajosDeDrive()
+  console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
+  const filas = grilla(activos, { hoy, quincena, escala, legajos })
   console.log(`${PESTANA}: ${filas.length} filas × ${ANCHO} columnas`)
   for (const f of filas.slice(5, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
@@ -453,4 +504,4 @@ async function main() {
   console.log(`✓ releído del archivo: ${(releido ?? []).filter((r) => String(r?.[0] ?? '').trim()).length} filas con contenido en la columna A`)
 }
 
-main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1) })
+main().then(() => closePool()).catch(async (e) => { console.error(String(e?.message ?? e)); await closePool().catch(() => {}); process.exit(1) })
