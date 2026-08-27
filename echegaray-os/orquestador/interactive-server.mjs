@@ -10,6 +10,25 @@
 //
 // Auth: header 'authorization: Bearer <INTERACTIVE_TOKEN>' (env). CORS abierto para
 // que la extensión pueda llamarlo. Corre como servicio systemd aparte del worker.
+//
+// ═══ ESCUCHA EN LOOPBACK, NO EN 0.0.0.0 (27/08/2026) ═══
+//
+// Escuchaba en `0.0.0.0` y era alcanzable desde internet: medido desde afuera —un cliente que no
+// es esta VM— `http://64.176.22.159:8790/health` contestaba `{"ok":true,"ready":true}`.
+//
+// La exposición NO hacía falta para nada. Los tres clientes reales entran por loopback:
+//   · el túnel saliente de cloudflared, que se conecta a `http://localhost:8790`;
+//   · `handlers/scheduled_directive.mjs`, que corre en esta misma VM;
+//   · la extensión y el OAuth de Google, que van a Vercel y Vercel entra por el túnel.
+// Ninguno se rompe al cerrar el borde, porque ninguno lo usaba.
+//
+// Y el borde abierto tenía superficie ANTES del token: `/`, `/extension.zip`, `/version`,
+// `/oauth/start` y `/oauth/exchange` contestan sin `authorization`. Que la API exija Bearer no
+// alcanza cuando cinco rutas no lo piden; el arreglo es no estar en la red pública, no confiar en
+// que cada ruta se acuerde de chequear.
+//
+// `ORQ_INTERACTIVE_HOST` existe para un despliegue detrás de un proxy en otra máquina. El DEFAULT
+// es loopback: quien quiera abrirlo tiene que escribirlo.
 import http from 'node:http'
 import { bloqueUocra } from './lib/uocra-bloque-prompt.mjs'
 import { readFile } from 'node:fs/promises'
@@ -109,11 +128,14 @@ import { route } from './lib/router.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
+const HOST = process.env.ORQ_INTERACTIVE_HOST ?? '127.0.0.1' // nunca 0.0.0.0 por defecto
 const PORT = Number(process.env.ORQ_INTERACTIVE_PORT ?? 8790)
 const TOKEN = process.env.ORQ_INTERACTIVE_TOKEN ?? ''
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ZIP_PATH = path.join(REPO, 'extension.zip')
-const PUBLIC_URL = process.env.ORQ_PUBLIC_URL || `http://64.176.22.159:${PORT}`
+// El frente estable de cara al mundo es Vercel, no esta VM: el puerto local ya no es alcanzable
+// desde afuera y publicarlo en una página sería mandar al usuario a una puerta cerrada.
+const PUBLIC_URL = process.env.ORQ_PUBLIC_URL || 'https://app.ecsas.com.ar/api/os'
 
 // Página simple de descarga de la extensión (servida desde la propia VM).
 const DOWNLOAD_PAGE = () => `<!doctype html><html lang="es"><head><meta charset="utf-8">
@@ -1505,5 +1527,5 @@ const server = http.createServer(async (req, res) => {
   })
 })
 
-boot().then(() => server.listen(PORT, '0.0.0.0', () => log.info('escuchando (público)', { port: PORT, url: PUBLIC_URL })))
+boot().then(() => server.listen(PORT, HOST, () => log.info('escuchando', { host: HOST, port: PORT, frente: PUBLIC_URL })))
   .catch((e) => { log.error('boot falló', { error: e.message }); process.exit(1) })

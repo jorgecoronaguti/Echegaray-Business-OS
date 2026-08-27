@@ -4,11 +4,11 @@
 # El OS se expone con túneles SALIENTES (cloudflared). Son DOS, porque son dos puertas distintas con
 # autenticación distinta:
 #
-# CORRECCIÓN (27/08/2026, auditoría): la versión anterior de este comentario decía «el server no
-# acepta tráfico entrante salvo SSH», y es FALSO — medido desde afuera, `:8790` escucha en 0.0.0.0 y
-# contesta 200 desde la IP pública de la VM. Su API exige token, así que no es una puerta abierta,
-# pero el comentario afirmaba un aislamiento que no existe. El túnel no está para sortear un firewall
-# que no está: está para dar una URL HTTPS estable a Vercel sin publicar la IP de la VM.
+# CORRECCIÓN (27/08/2026, auditoría): este comentario decía «el server no acepta tráfico entrante
+# salvo SSH» y era FALSO — medido desde afuera, `:8790` escuchaba en 0.0.0.0 y contestaba 200 desde
+# la IP pública. Se cerró: los dos servicios escuchan ahora en 127.0.0.1 y el túnel se conecta por
+# loopback, que es lo único que necesitaba. El túnel no está para sortear un firewall (este server no
+# tiene uno que filtre): está para dar una URL HTTPS estable a Vercel sin publicar la IP de la VM.
 #
 #   :8790  motor interactivo  → os_runtime.interactive_endpoint  (extensión, /api/os/*)
 #   :8791  puerta de XSAS     → os_runtime.xsas_endpoint         (/api/xsas)

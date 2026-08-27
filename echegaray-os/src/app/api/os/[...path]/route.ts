@@ -1,8 +1,10 @@
 // Frente HTTPS estable del OS interactivo.
 //
-// La extensión (contexto seguro chrome-extension://) no puede hablar por HTTP
-// plano ni el server acepta tráfico entrante salvo SSH. Este proxy en Vercel es
-// la URL fija y pública: descubre dónde está hoy el OS (túnel saliente, cuya URL
+// La extensión (contexto seguro chrome-extension://) no puede hablar por HTTP plano, y el motor
+// interactivo escucha en loopback: desde afuera no hay puerto al que llegar. (Este comentario decía
+// «el server no acepta tráfico entrante salvo SSH» y era FALSO hasta el 27/08/2026 — :8790 escuchaba
+// en 0.0.0.0 y contestaba desde la IP pública. Ahora es cierto porque se cerró el bind.)
+// Este proxy en Vercel es la URL fija y pública: descubre dónde está hoy el OS (túnel saliente, cuya URL
 // se publica en `os_runtime`) y reenvía la directiva. Así la extensión apunta
 // siempre al frente estable `/api/os/*` — hoy `https://echegaray-business-os.vercel.app`
 // y, tras la migración de dominio, también `https://app.ecsas.com.ar` (Vercel sirve
