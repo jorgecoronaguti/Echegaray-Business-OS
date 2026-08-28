@@ -258,17 +258,24 @@ export function porcentajeDelRotulo(rotulo) {
 export function leerGastosGenerales(filas = [], { columnaRotulo = 1, columnaCoeficiente = 6, columnaImporte = 7 } = {}) {
   const conceptos = []
   const hitos = {}
+  let bloque = null
   for (let i = 0; i < filas.length; i++) {
     const fila = filas[i] ?? []
     const rotulo = String(fila[columnaRotulo] ?? '').replace(/\s+/g, ' ').trim()
     const titulo = normalizar(fila[0])
     if (titulo) hitos[titulo] = { fila: i, valores: fila.map((v, c) => ({ valor: numero(v), celda: refCelda(c, i) })).filter((x) => x.valor !== null) }
+    // Un rótulo terminado en «:» abre un BLOQUE. No es cosmético: en «Gastos Comunes de obra» la
+    // columna G guarda una CANTIDAD (meses de baño químico, raciones de comida) y en «Gastos
+    // Generales de la Empresa» guarda un PORCENTAJE de costo directo. Es la misma columna con dos
+    // significados, y sin el bloque se promedian meses con porcentajes.
+    if (rotulo.endsWith(':')) { bloque = rotulo; continue }
     if (!rotulo) continue
     const aplicado = numero(fila[columnaCoeficiente])
     const importe = numero(fila[columnaImporte])
     if (aplicado === null && importe === null) continue
     conceptos.push({
       concepto: rotulo,
+      bloque,
       prometidoPorElRotulo: porcentajeDelRotulo(rotulo),
       aplicado, importe,
       celdaRotulo: refCelda(columnaRotulo, i),

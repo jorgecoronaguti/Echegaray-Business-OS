@@ -86,7 +86,9 @@ function libroDeCotizacion({
     [0], [], [],
     ['COSTOS DIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 100000],
     [], ['COSTOS INDIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 50000],
-    [], [null, 'Gastos Generales de la Empresa:'],
+    [], [null, 'Gastos Comunes de obra:'],
+    [null, 'BAÑO QUIMICO', null, null, 50000, 'por mes', 3, 150000],
+    [null, 'Gastos Generales de la Empresa:'],
     [null, rotuloGG, null, null, null, 1, coeficienteGG, importeGG],
     [], [], [], [], [], [], [], [], [], [], [], [], [], [], [],
     ['BENEFICIO', null, null, 0.15, 0.02, 0.17],
@@ -196,7 +198,7 @@ test('ROTULO_CONTRADICE_COEFICIENTE: el rótulo promete 0,6% y la planilla aplic
   const h = malo.hallazgos.filter((x) => x.tipo === TIPO.ROTULO_CONTRADICE_COEFICIENTE)
   assert.equal(h.length, 1)
   assert.equal(Math.round(h[0].monto), 3400, 'la plata es la diferencia de coeficiente aplicada al costo directo')
-  assert.match(h[0].evidencia[1].ubicacion, /hoja GG · G9$/, 'sin la celda no es un hallazgo, es una impresión')
+  assert.match(h[0].evidencia[1].ubicacion, /hoja GG · G11$/, 'sin la celda no es un hallazgo, es una impresión')
   const bueno = await estudiar([libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/b.xlsx', { coeficienteGG: 0.006 })])
   assert.equal(bueno.hallazgos.filter((x) => x.tipo === TIPO.ROTULO_CONTRADICE_COEFICIENTE).length, 0)
 })
@@ -256,6 +258,21 @@ test('una corrida que saltea NO borra los hallazgos de lo salteado', () => {
   assert.deepEqual(fusion.map((h) => h.clave).sort(), ['compartida', 'nueva', 'vieja'])
   assert.equal(fusion.find((h) => h.clave === 'compartida').gravedad, 'ALTA', 'lo nuevo pisa lo viejo con la misma clave')
   assert.deepEqual(fusionarHallazgos(previos, nuevos, { salteados: 0 }), nuevos, 'sin salteados la lista nueva es completa y reemplaza')
+})
+
+test('lo que la columna G guarda para un rótulo sin porcentaje NO se publica como coeficiente', async () => {
+  const r = await estudiar([
+    libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA A/a.xlsx'),
+    libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA B/b.xlsx'),
+  ])
+  const bano = r.practicas.find((p) => p.clave.startsWith('cotizacion.indirectos.bano_quimico'))
+  assert.ok(bano, 'el concepto tiene que salir igual: lo que no puede es salir mal nombrado')
+  assert.equal(bano.clave.endsWith('.valor_de_columna'), true)
+  assert.match(bano.afirmacion, /NO es un coeficiente/)
+  assert.equal(bano.unidad, null)
+  const contables = r.practicas.find((p) => p.clave.startsWith('cotizacion.indirectos.gastos_contables'))
+  assert.equal(contables.clave.endsWith('.coeficiente'), true)
+  assert.equal(contables.unidad, 'fracción')
 })
 
 test('porcentajeDelRotulo lee lo que el rótulo promete, y null cuando no promete nada', () => {

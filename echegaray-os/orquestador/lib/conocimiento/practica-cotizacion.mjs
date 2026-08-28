@@ -172,26 +172,42 @@ export function practicasDePrecio(cotizaciones = []) {
   return [...salida, ...practicasDeIndirectos(cotizaciones)]
 }
 
-/** Cada concepto de gastos generales con el coeficiente que se le aplicó, cotización por cotización. */
+/**
+ * CADA CONCEPTO DE GASTOS GENERALES CON EL NÚMERO QUE SE LE APLICÓ.
+ *
+ * ═══ POR QUÉ NO TODOS SON COEFICIENTES ═══
+ *
+ * La columna G de la hoja GG guarda un PORCENTAJE de costo directo en el bloque «Gastos Generales de
+ * la Empresa» y una CANTIDAD en el de «Gastos Comunes de obra»: meses de baño químico, raciones de
+ * comida, personas de vigilancia. La primera versión los mezclaba y publicaba «ECSAS aplica BAÑO
+ * QUIMICO con coeficiente 3,24» — que no significa nada, porque 3,24 son meses.
+ *
+ * Se separan por lo que el propio rótulo declara: si dice «(0,6 % de CD)» es un coeficiente; si no
+ * lo dice, sale como el VALOR de la columna, sin llamarlo coeficiente.
+ */
 export function practicasDeIndirectos(cotizaciones = []) {
   const porConcepto = new Map()
   for (const c of cotizaciones) {
     for (const x of c.gg?.conceptos ?? []) {
       if (typeof x.aplicado !== 'number') continue
-      const k = slug(x.concepto)
-      if (!k) continue
-      if (!porConcepto.has(k)) porConcepto.set(k, { rotulo: x.concepto, casos: [] })
-      porConcepto.get(k).casos.push({ cotizacion: c.id, obra: c.obra, valor: x.aplicado, cita: `${x.concepto} → coeficiente ${x.aplicado}`, ubicacion: `${c.nombre} · hoja GG · ${x.celdaCoeficiente}` })
+      const esCoeficiente = x.prometidoPorElRotulo !== null
+      const k = `${slug(x.concepto)}.${esCoeficiente ? 'coeficiente' : 'valor_de_columna'}`
+      if (!slug(x.concepto)) continue
+      if (!porConcepto.has(k)) porConcepto.set(k, { rotulo: x.concepto, esCoeficiente, bloque: x.bloque, casos: [] })
+      porConcepto.get(k).casos.push({ cotizacion: c.id, obra: c.obra, valor: x.aplicado, cita: `${x.concepto} → ${x.aplicado}`, ubicacion: `${c.nombre} · hoja GG · ${x.celdaCoeficiente}` })
     }
   }
   return [...porConcepto.entries()]
     .filter(([, v]) => v.casos.length >= 2)
     .map(([k, v]) => {
       const est = estadistica(v.casos.map((x) => x.valor))
+      const rango = `(mín ${est.min}, máx ${est.max}, dispersión ${est.dispersion ?? 'sin calcular'})`
       return practica({
         clave: `cotizacion.indirectos.${k}`,
-        afirmacion: `ECSAS aplica «${v.rotulo}» con coeficiente ${est.media} en promedio sobre ${v.casos.length} cotizaciones (mín ${est.min}, máx ${est.max}, dispersión ${est.dispersion ?? 'sin calcular'})`,
-        casos: v.casos, unidad: 'fracción',
+        afirmacion: v.esCoeficiente
+          ? `ECSAS aplica «${v.rotulo}» con coeficiente ${est.media} en promedio sobre ${v.casos.length} cotizaciones ${rango}`
+          : `la columna de coeficiente de «${v.rotulo}»${v.bloque ? ` (bloque «${v.bloque}»)` : ''} vale ${est.media} en promedio sobre ${v.casos.length} cotizaciones ${rango}; el rótulo no declara un porcentaje, así que ese número NO es un coeficiente y probablemente sea una cantidad`,
+        casos: v.casos, unidad: v.esCoeficiente ? 'fracción' : null,
       })
     })
 }
