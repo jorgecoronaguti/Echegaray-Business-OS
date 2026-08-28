@@ -258,3 +258,47 @@ test('A-bis · una tool sin texto propio sigue devolviendo null, no una respuest
   })
   assert.equal(respuesta, null, 'null es «no trae texto»; «» parecería una respuesta vacía')
 })
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// E · EL CONTEXTO QUE NOMBRA UNA ENTIDAD NO SE CREE SIN FIRMA (auditoría independiente, 27/08)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test('E · sin firma, `contexto.obra` NO viaja: nombrar una obra es nombrar una entidad', async () => {
+  const { normalizarPedido } = await import('./xsas-pedido.mjs')
+  const p = normalizarPedido({
+    canal: 'app', mensaje: '¿cuánto va costando?', actor: actor('jefe_obra'),
+    contexto: { obra: 'Quattropani', pantalla: 'obras/detalle' },
+  })
+  assert.equal(p.contexto.obra, undefined, 'sin `verificado_por` no puede elegir la obra')
+  assert.equal(p.contexto.pantalla, 'obras/detalle', 'lo que describe la pantalla sí pasa')
+  assert.deepEqual([...p.contextoDescartado], ['obra'], 'y se declara lo que se tiró')
+})
+
+test('E · con firma del servidor, el contexto verificado sí viaja', async () => {
+  const { normalizarPedido } = await import('./xsas-pedido.mjs')
+  const p = normalizarPedido({
+    canal: 'app', mensaje: '¿cuánto va costando?', actor: actor('direccion'),
+    contexto: { obra: 'Quattropani' }, entidad: { obra_id: 'abc' }, verificado_por: 'app-server',
+  })
+  assert.equal(p.contexto.obra, 'Quattropani')
+  assert.deepEqual([...p.contextoDescartado], [])
+})
+
+test('E · el atajo por nombre tampoco alcanza una obra sin firma', async () => {
+  const corridas = []
+  const mapa = new Map([['obra.cuadro_economico', {
+    capability: 'os.read',
+    schema: { name: 'cuadro_economico', description: 'Costo y margen de una obra.', input_schema: { type: 'object', properties: { obra: { type: 'string' } }, required: ['obra'] } },
+    async run(a) { corridas.push(a); return { resumen_texto: 'costo $ 74.758.214' } },
+  }]])
+  const registro = { mapa, porArchivo: new Map([['orquestador/lib/tools/obra.mjs', ['obra.cuadro_economico']]]), porLib: new Map() }
+  const catalogo = [{ clave: 'costos-presupuestacion', modulos: ['orquestador/lib/tools/obra.mjs'] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['costos-presupuestacion'], capacidades: [], confianza: 'alta', motivo: 'fijado' })
+  const ia = { pedirTextoONull: async () => '{"obra":null}', pedirTexto: async () => ({ texto: 'no', proveedor: 'x', modelo: 'y', tokens: {}, usd: 0, intentos: 1, ms: 1 }) }
+  const r = await atender({
+    canal: 'app', tipo: 'mensaje', mensaje: '¿cuánto va costando?', actor: actor('jefe_obra'),
+    contexto: { obra: 'Quattropani' },
+  }, { registro, catalogo, elegir, ia })
+  assert.deepEqual(corridas, [], 'sin firma no hay obra con la que correr')
+  assert.ok(!/74\.758\.214/.test(r.respuesta ?? ''))
+})
