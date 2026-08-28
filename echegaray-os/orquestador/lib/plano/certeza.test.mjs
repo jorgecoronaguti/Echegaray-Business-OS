@@ -166,12 +166,41 @@ test('SIN COMPOSICIÓN NO HAY HH NI COSTO, y las dos reglas lo dicen por separad
   assert.ok(c.queFalta.some((f) => f.regla === 'economica'))
 })
 
-test('UN PRECIO VIEJO FRENA COTIZABLE, y uno fresco no', () => {
+test('LO QUE FRENA COTIZABLE ES LA PLATA APOYADA EN PRECIOS VIEJOS, no el insumo más viejo', () => {
+  // Medido el 28/08/2026 sobre la Base Maestra real: de 389 precios «vigentes», 112 tienen más de
+  // cinco años. Con un semáforo binario sobre el más antiguo, TODA cotización quedaba en rojo para
+  // siempre — y un control que siempre está en rojo se mira una vez y después se ignora.
   const viejo = certeza({ ...proyectoDe(diez(), { comp: composicion('2025-10-01') }), hoy: HOY })
-  assert.equal(viejo.metricas.vigencia.dias, 332)
+  assert.equal(viejo.metricas.vigencia.dias, 332, 'la fecha se sigue midiendo y se sigue informando')
+  assert.equal(viejo.metricas.plataVieja.fraccion, 1, 'acá el 100% del costo está sobre precios viejos')
   assert.equal(viejo.estado, CERTEZA.REQUIERE_DEFINICION)
-  assert.match(viejo.queFalta[0].falta, /decidir si se re-precia/)
+  assert.match(viejo.queFalta[0].falta, /re-preciar antes de mandarla/)
   assert.equal(certeza({ ...proyectoDe(diez()), hoy: HOY }).estado, CERTEZA.COTIZABLE)
+})
+
+test('NEGATIVO: un insumo viejo que pesa poco NO frena la cotización — el caso real de la cercha', () => {
+  // Sobre Quattropani: «el precio más viejo tiene 974 días» convivía con que esa línea pesa
+  // $ 202 de $ 73.895 del unitario. Cierto como dato, falso como conclusión.
+  const casi = new Map([['t-cp', [
+    { codigo: 'M1', nombre: 'Cemento', tipo: 'material', unidad: 'kg', cantidad: 8, desperdicio: 0.05, costoUnitario: 100, fechaPrecio: AYER, moneda: 'ARS', fuentePrecio: 'proveedor' },
+    { codigo: 'H1', nombre: 'Oficial albañil', tipo: 'mano_obra', unidad: 'hs', cantidad: 1.2, desperdicio: 0, costoUnitario: 5000, fechaPrecio: AYER, moneda: 'ARS', fuentePrecio: 'CIRCOT' },
+    { codigo: 'X1', nombre: 'Alambre de atar', tipo: 'material', unidad: 'kg', cantidad: 0.02, desperdicio: 0, costoUnitario: 500, fechaPrecio: '2023-12-28', moneda: 'ARS', fuentePrecio: 'proveedor' },
+  ]]])
+  const c = certeza({ ...proyectoDe(diez(), { comp: casi }), hoy: HOY })
+  assert.ok(c.metricas.vigencia.dias > 900, 'el insumo de 2023 sigue estando y se sigue informando')
+  assert.ok(c.metricas.plataVieja.fraccion < 0.01, `pesa ${c.metricas.plataVieja.fraccion}: menos del 1% del costo`)
+  assert.equal(c.estado, CERTEZA.COTIZABLE, 'y por eso NO frena: si frenara, el control sería ruido')
+})
+
+test('NEGATIVO: un renglón SIN fecha de precio cuenta como viejo — no poder saber no es estar al día', () => {
+  const sinFecha = new Map([['t-cp', [
+    { codigo: 'M1', nombre: 'Cemento', tipo: 'material', unidad: 'kg', cantidad: 8, desperdicio: 0.05, costoUnitario: 100, fechaPrecio: null, moneda: 'ARS', fuentePrecio: 'proveedor' },
+    { codigo: 'H1', nombre: 'Oficial albañil', tipo: 'mano_obra', unidad: 'hs', cantidad: 1.2, desperdicio: 0, costoUnitario: 5000, fechaPrecio: AYER, moneda: 'ARS', fuentePrecio: 'CIRCOT' },
+  ]]])
+  const c = certeza({ ...proyectoDe(diez(), { comp: sinFecha }), hoy: HOY })
+  assert.ok(c.metricas.plataVieja.sinFecha > 0)
+  assert.ok(c.metricas.plataVieja.fraccion > 0.1, 'el cemento sin fecha pesa lo suficiente para frenar')
+  assert.equal(c.estado, CERTEZA.REQUIERE_DEFINICION)
 })
 
 test('UNA FECHA QUE NO ES UNA FECHA NO PUEDE LEERSE COMO VIGENTE', () => {

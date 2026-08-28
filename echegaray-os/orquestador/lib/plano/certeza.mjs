@@ -52,7 +52,13 @@ export const UMBRAL = Object.freeze({
   partidas: 0.9,
   economica: 0.95,
   composicion: 0.95,
-  diasPrecio: 30,
+  // `diasPrecio` es el corte de «viejo» y `plataEnPreciosViejos` cuánto de eso se tolera. Los dos son
+  // CONVENCIONES declaradas, no datos: nadie publica cuántos días vale un precio de obra, y el
+  // segundo no puede salir de una medición porque es una decisión de riesgo comercial. El dueño los
+  // tiene que fijar; mientras tanto son 180 días y 10% del costo, y se reportan siempre con la
+  // fracción real al lado para que el número se pueda discutir con evidencia.
+  diasPrecio: 180,
+  plataEnPreciosViejos: 0.10,
 })
 
 const frac = (n, d) => (d ? Math.round((n / d) * 1000) / 1000 : 0)
@@ -93,6 +99,58 @@ export function plataEnSupuestos({ supuestosOcultos = [], cotizacion = null } = 
   }
 }
 
+/**
+ * CUÁNTA PLATA DE ESTA COTIZACIÓN SE APOYA EN PRECIOS VIEJOS. PURA.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON EL PRECIO MÁS VIEJO ═══
+ *
+ * Medido el 28/08/2026 sobre la Base Maestra real: de 389 precios marcados vigentes, **112 tienen
+ * más de cinco años** y sólo 83 tienen menos de seis meses. Con ese catálogo, un semáforo binario
+ * sobre el insumo más antiguo queda en ROJO PARA SIEMPRE, y un control que siempre está en rojo se
+ * mira una vez y después se ignora — deja de ser un control.
+ *
+ * Y al revés, el número solo engaña en la otra dirección: sobre Quattropani, «el precio más viejo
+ * tiene 974 días» convivía con que esa línea pesa **$ 202 de $ 73.895** del unitario. Cierto como
+ * dato, falso como conclusión.
+ *
+ * Lo que sí decide es CUÁNTA PLATA. Se reparte el subtotal de cada partida entre sus renglones en
+ * proporción a lo que cada uno aporta al costo unitario, que es como se armó el subtotal.
+ */
+export function plataEnPreciosViejos(cotizacion, { hoy = new Date(), diasLimite = 180 } = {}) {
+  if (!cotizacion) return { pesos: null, total: null, fraccion: null, partidas: [], porQue: 'sin cotización valorizada no se puede saber cuánta plata se apoya en precios viejos: el control no puede afirmar que sea cero' }
+  const partidas = []
+  let pesos = 0
+  let total = 0
+  let sinFecha = 0
+  for (const p of cotizacion.partidas ?? []) {
+    if (p.subtotal === null || !(p.subtotal > 0)) continue
+    total += p.subtotal
+    const lineas = p.composicion ?? []
+    const aporte = (l) => Number(l.cantidad ?? 0) * Number(l.costoUnitario ?? 0) * (1 + Number(l.desperdicio ?? 0))
+    const base = lineas.reduce((a, l) => a + aporte(l), 0)
+    if (!(base > 0)) continue
+    const viejas = lineas.filter((l) => {
+      if (!l.fechaPrecio) { sinFecha += 1; return true } // sin fecha NO es «al día»: no se puede afirmar
+      const d = dias(l.fechaPrecio, hoy)
+      return d === null || d > diasLimite
+    })
+    if (!viejas.length) continue
+    const monto = Math.round(p.subtotal * (viejas.reduce((a, l) => a + aporte(l), 0) / base) * 100) / 100
+    pesos += monto
+    partidas.push({ codigo: p.codigo, descripcion: p.descripcion, monto, lineas: viejas.length, de: lineas.length })
+  }
+  pesos = Math.round(pesos * 100) / 100
+  total = Math.round(total * 100) / 100
+  return {
+    pesos, total, sinFecha,
+    fraccion: total > 0 ? Math.round((pesos / total) * 10000) / 10000 : null,
+    partidas: partidas.sort((a, b) => b.monto - a.monto),
+    porQue: total > 0
+      ? `$ ${pesos.toLocaleString('es-AR')} de $ ${total.toLocaleString('es-AR')} (${Math.round((pesos / total) * 1000) / 10}%) se apoya en precios de más de ${diasLimite} días${sinFecha ? `, y ${sinFecha} renglón(es) no tienen fecha` : ''}`
+      : 'ninguna partida tiene subtotal: no hay plata sobre la que medir exposición',
+  }
+}
+
 /** El precio más viejo que entra en la cotización, y cuántos días tiene. PURA. */
 export function vigenciaDePrecios(cotizacion, hoy = new Date()) {
   const fechas = (cotizacion?.partidas ?? []).flatMap((p) => (p.composicion ?? []).map((l) => l.fechaPrecio)).filter(Boolean)
@@ -120,6 +178,7 @@ export function metricas({ control = {}, items = null, cotizacion = null, proyec
   const conComposicion = partidas.filter((p) => (p.composicion ?? []).length > 0)
   const sup = plataEnSupuestos({ supuestosOcultos: control.supuestosOcultos ?? [], cotizacion })
   const vig = vigenciaDePrecios(cotizacion, hoy)
+  const plataVieja = plataEnPreciosViejos(cotizacion, { hoy, diasLimite: UMBRAL.diasPrecio })
   return {
     elementos: { detectados: cob.detectados ?? 0, conCantidad: cob.conCantidad ?? 0, conPartida: cob.conPartida ?? 0, resueltos: cob.resueltos ?? 0 },
     coberturaCantidades: cob.coberturaComputo ?? 0,
@@ -135,6 +194,7 @@ export function metricas({ control = {}, items = null, cotizacion = null, proyec
     datosFaltantes: { huecos: (control.preguntas ?? []).length, decisiones: (control.decisiones ?? []).length, sueltas: (control.preguntasSueltas ?? []).length },
     fuentes: { clases: Object.keys(proyecto?.porClase ?? {}).length, hechos: (proyecto?.hechos ?? []).length, sinCitaLiteral: sinCitaLiteral(items) },
     vigencia: vig,
+    plataVieja,
   }
 }
 
@@ -219,11 +279,14 @@ export const REGLAS = Object.freeze([
   },
   {
     clave: 'vigencia', tope: CERTEZA.REQUIERE_DEFINICION,
-    exige: `ningún precio de más de ${UMBRAL.diasPrecio} días`,
-    pasa: (m) => m.vigencia.dias !== null && m.vigencia.dias <= UMBRAL.diasPrecio,
-    falta: (m) => m.vigencia.dias === null
-      ? 'poner fecha a los precios de la Base Maestra: sin fecha la vigencia no se puede afirmar ni negar'
-      : `decidir si se re-precia: el precio más viejo del total es del ${m.vigencia.masViejo} y tiene ${m.vigencia.dias} días`,
+    // La regla mira la PLATA EXPUESTA, no el insumo más viejo. Con el catálogo real —112 de 389
+    // precios con más de cinco años— la versión binaria quedaba en rojo para siempre, y un control
+    // que siempre está en rojo se mira una vez y después se ignora.
+    exige: `menos del ${UMBRAL.plataEnPreciosViejos * 100}% del costo apoyado en precios de más de ${UMBRAL.diasPrecio} días`,
+    pasa: (m) => m.plataVieja.fraccion !== null && m.plataVieja.fraccion < UMBRAL.plataEnPreciosViejos,
+    falta: (m) => (m.plataVieja.fraccion === null
+      ? 'valorizar la cotización: sin subtotales no se puede medir cuánta plata se apoya en precios viejos'
+      : `re-preciar antes de mandarla: ${m.plataVieja.porQue}${m.vigencia.masViejo ? ` · el más viejo es del ${m.vigencia.masViejo} (${m.vigencia.dias} días)` : ''}`),
   },
 ])
 
