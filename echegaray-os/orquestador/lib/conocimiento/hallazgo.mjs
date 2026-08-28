@@ -71,6 +71,22 @@ export const hallazgo = ({ tipo, gravedad, clave, afirmacion, evidencia = [], mo
 
 export const suma = (xs) => xs.reduce((a, x) => a + x, 0)
 
+/** Las claves que NO nombran una cotización: son hallazgos que comparan varias entre sí. */
+export const PREFIJOS_CRUZADOS = Object.freeze(['partida.', 'gg.'])
+
+/**
+ * EL id DE DRIVE QUE NOMBRA LA CLAVE DE UN HALLAZGO, o `null` si la clave es cruzada. PURA.
+ *
+ * Vive con el vocabulario y no con el dataset porque la forma de la clave la deciden las reglas:
+ * `<driveId>.oferta.iva` cuando el hallazgo es de UNA cotización y `partida.T1147.unidad` cuando
+ * compara varias. Quien lea una clave necesita esto, sea el dataset o el aprendizaje.
+ */
+export const cotizacionDeLaClave = (clave) => {
+  const s = String(clave ?? '')
+  if (PREFIJOS_CRUZADOS.some((p) => s.startsWith(p))) return null
+  return s.split('.')[0] || null
+}
+
 /** El orden en que se leen: primero lo grave, y adentro de cada gravedad primero la plata. */
 const ORDEN = Object.freeze({ ALTA: 0, MEDIA: 1, BAJA: 2 })
 

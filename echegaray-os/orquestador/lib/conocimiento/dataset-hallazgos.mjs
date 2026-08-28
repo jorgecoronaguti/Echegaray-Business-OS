@@ -33,7 +33,9 @@ import { HUECO, hueco } from './biblioteca.mjs'
 import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
 import { porcentajeDelRotulo } from './cotizacion-ecsas.mjs'
 import { controlDe } from './controles-cotizacion.mjs'
-import { TIPO } from './hallazgo.mjs'
+import { TIPO, cotizacionDeLaClave } from './hallazgo.mjs'
+
+export { cotizacionDeLaClave }
 
 /** El ciclo de vida de un hallazgo. Sólo `DETECTADO` lo escribe una máquina. */
 export const ESTADO_HALLAZGO = Object.freeze({
@@ -57,17 +59,6 @@ export const CAMPOS = Object.freeze([
 export const CAMPOS_CON_HUECO = Object.freeze([
   'archivo', 'hoja', 'celda_o_rango', 'cliente', 'presupuesto', 'valor_encontrado', 'valor_esperado_o_condicion',
 ])
-
-/** Las claves que NO nombran una cotización: son hallazgos que comparan varias entre sí. */
-const PREFIJOS_CRUZADOS = Object.freeze(['partida.', 'gg.'])
-
-/** El id de Drive que nombra la clave de un hallazgo, o `null` si la clave es cruzada. PURA. */
-export const cotizacionDeLaClave = (clave) => {
-  const s = String(clave ?? '')
-  if (PREFIJOS_CRUZADOS.some((p) => s.startsWith(p))) return null
-  const primero = s.split('.')[0]
-  return primero || null
-}
 
 /**
  * PARTE UNA UBICACIÓN EN SUS TRES PEDAZOS. PURA.

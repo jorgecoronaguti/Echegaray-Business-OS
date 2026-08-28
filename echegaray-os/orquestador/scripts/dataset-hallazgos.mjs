@@ -19,6 +19,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { cargar } from '../lib/conocimiento/biblioteca.mjs'
 import { dataset, indiceDesdeBiblioteca } from '../lib/conocimiento/dataset-hallazgos.mjs'
+import { aprendizajes, patrones, resumenDeAprendizaje } from '../lib/conocimiento/aprendizaje-cotizacion.mjs'
 import { RUTA_HALLAZGOS, leerHallazgos } from './estudiar-cotizaciones-drive.mjs'
 
 export const RUTA_DATASET = path.join(path.dirname(RUTA_HALLAZGOS), 'dataset-hallazgos.json')
@@ -44,6 +45,20 @@ function main() {
   console.log(`\nseveridad: ${Object.entries(porSeveridad).map(([k, v]) => `${k} ${v}`).join(' · ')}`)
   const sinControl = d.filas.filter((f) => !f.control_que_lo_detecto)
   if (sinControl.length) console.log(`⚠ ${sinControl.length} fila(s) sin control asociado: ${[...new Set(sinControl.map((f) => f.tipo_anomalia))].join(', ')}`)
+
+  // ═══ EL APRENDIZAJE SE INFORMA, NO SE GUARDA ACÁ ═══
+  //
+  // Los candidatos que salen de estos hallazgos viven en la biblioteca, y a la biblioteca la
+  // escribe el estudio. Este comando los calcula para poder decir cuántos son y de qué forma, y no
+  // los persiste: si los escribiera en su propio archivo habría dos bases del mismo conocimiento y
+  // una de las dos quedaría vieja.
+  const ps = patrones(hallazgos)
+  const r = resumenDeAprendizaje(aprendizajes(hallazgos))
+  console.log(`\naprendizaje (entra a la biblioteca en la próxima corrida del estudio):`)
+  console.log(`  candidatos ${r.generados} · validados ${r.validados} · rechazados ${r.rechazados} · pendientes ${r.pendientes}`)
+  for (const p of ps.slice(0, 5)) {
+    console.log(`  ${String(p.casos).padStart(4)} casos · ${p.tipo}${p.concepto ? ` · «${String(p.concepto).slice(0, 60)}»` : ''} → control ${p.controlSugerido}`)
+  }
 
   if (bandera('dry')) { console.log('\n--dry: no se escribió nada'); return }
   fs.writeFileSync(RUTA_DATASET, `${JSON.stringify({ generado: new Date().toISOString(), origen: path.basename(RUTA_HALLAZGOS), ...d }, null, 1)}\n`)

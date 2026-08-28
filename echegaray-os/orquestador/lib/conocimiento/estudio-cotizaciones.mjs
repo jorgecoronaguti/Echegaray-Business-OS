@@ -18,6 +18,7 @@ import { aConocimientoHistorico, aConocimientoInsuficienciaMetalica, registrosHi
 import { hallazgos } from './hallazgos-cotizacion.mjs'
 import { celdasRotasDe } from './hallazgos-celdas.mjs'
 import { resumen } from './hallazgo.mjs'
+import { aprendizajes } from './aprendizaje-cotizacion.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -181,6 +182,9 @@ export async function estudiarTanda(archivos = [], {
       // Emitirlo siempre estamparía la biblioteca con algo que la corrida no miró.
       ...(cotizaciones.some((c) => OBRA_DEL_CASO_METALICO.test(String(c.obra ?? '')))
         ? [aConocimientoInsuficienciaMetalica({ fecha: obtenidoEn })] : []),
+      // Y lo que se aprende de los defectos, que NUNCA es su número: la forma del defecto, con el
+      // control que lo detecta. Va a la MISMA biblioteca; no hay una segunda base de aprendizajes.
+      ...aprendizajes(h, { fecha: obtenidoEn }),
     ],
     documentos: cotizaciones.map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0, obtenidoEn }))
       .concat(noLeidos.filter((c) => c.hash).map((c) => documentoDe(c, { hubuoConocimiento: false, obtenidoEn }))),
