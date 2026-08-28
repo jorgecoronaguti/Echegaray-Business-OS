@@ -1,5 +1,5 @@
 {
- "version": 10,
+ "version": 11,
  "documentos": [
   {
    "id": "doc:03498b26f42aaa17",
@@ -2230,7 +2230,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Me dirijo a Ud. con el fin de realizar entrega formal de la nueva Re-adecuación del Plan de Trabajo, Curva de Avance Físico y Curva de Inversión, correspondiente a la nueva ampliación de plazo de obra aprobada bajo DECESIÓN 0492/20.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -2574,7 +2575,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El cliente se compromete a garantizar un flujo de provisión continuo y coordinado con los encargados de la empresa, evitando tiempos muertos o interrupciones en el cronograma de ejecución material.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -2647,7 +2649,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá presentar y mantener en obra muestras de todos los materiales a utilizar en la obra, tanto de obra húmeda como de instalaciones.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -2875,7 +2878,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Durante la ejecución de la obra de referencia la Contratista deberá observar y hacer cumplir en todas las etapas y en todos los frentes de trabajo las Leyes de Seguridad e Higiene en el Trabajo, Nº 19587 y su Decreto Reglamentario 351/79, el decreto 911/96 como así también la Resolución Nº 1069/91 de Salud y Seguridad en la Construcción, todas las resoluciones de la Superintendencia de Riesgos de ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -3588,7 +3592,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Los materiales detallados en el Anexo II serán adquiridos por el Locador, utilizando para ello los fondos provistos por el Locatario conforme a lo establecido en el presente contrato.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -3709,7 +3714,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La cotización aprobada forma parte integrante del presente contrato y contiene el alcance de los trabajos, materiales, precios, plazos y demás condiciones particulares de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -3859,7 +3865,8 @@
       "unidad": "m",
       "literal": "1,15m"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -3924,7 +3931,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La cotización aprobada forma parte integrante del presente contrato y comprende exclusivamente la ejecución de la mano de obra necesaria para la construcción de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -3949,7 +3957,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4178,7 +4187,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Cliente deberá facilitar el acceso a la obra, suministrar la información necesaria para su ejecución, cumplir con las condiciones de pago acordadas y con la entrega pactada de los materiales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4528,9 +4538,10 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Contame si necesitás que te ayude a confeccionar una plantilla de planilla de certificación quincenal para llevar el control diario del presentismo y las penalizaciones por desvíos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "NOTA_INTERNA"
    },
-   "confianza": "MEDIA",
+   "confianza": "BAJA",
    "estado": "CANDIDATO",
    "version": 1,
    "fecha": null,
@@ -4553,7 +4564,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Todo lo enumerado precedentemente deberá ser apto para la tarea a realizar, lo que no cumpla con esta condición será rechazado por la Dirección Técnica de Obra y deberá retirarse de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4578,7 +4590,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4832,7 +4845,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista suministrará servicio de transporte para sacar los escombros que hayan sido depositados en los recipientes designados.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4863,7 +4877,8 @@
       "unidad": "mm",
       "literal": "Ø 110 mm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -4992,7 +5007,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Para los elementos que requieran elaboración previa en taller, la Inspección Técnica de Obra podrá inspeccionarlos en los lugares donde se ejecuten y, si ésos se encontraran a más de 60 (sesenta) kilómetros de la ubicación de la obra, la Contratista deberá cubrir los gastos de traslado y estadía del personal de la Inspección Técnica de Obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5112,7 +5128,8 @@
       "unidad": "cm",
       "literal": "20 cm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5227,7 +5244,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Según se indica en planos de proyecto se deberán realizar las siguientes tareas de demolición y desmontaje:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5404,7 +5422,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá cumplir y hacer cumplir a su personal y subcontratistas las Disposiciones de las oficinas de MAHPl (Departamento de Medio Ambiente Higiene y Protección Industrial) y RRHH (Recursos Humanos).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5474,7 +5493,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Cada Contratista deberá tomar las medidas necesarias para las adecuadas operaciones de recibo, descarga, traslado y almacenaje de sus envíos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5613,7 +5633,8 @@
       "unidad": "m",
       "literal": "0,30m"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5730,7 +5751,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El cliente se compromete a garantizar un flujo de provisión continuo y coordinado con los encargados de la empresa, evitando tiempos muertos o interrupciones en el cronograma de ejecución material.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5912,7 +5934,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "El Locador declara y garantiza que todo el personal afectado a la ejecución de la obra se encontrará debidamente registrado conforme a la legislación laboral vigente, contando con cobertura de Aseguradora de Riesgos del Trabajo (ART), seguros obligatorios, aportes previsionales, contribuciones y demás obligaciones legales que resulten aplicables.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -5995,7 +6018,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6020,7 +6044,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Bases Aisladas Sismorresistentes:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6045,7 +6070,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo según cálculo de presión de viento) y puertas de acceso pivotantes de idénticas características con herrajes de acero inoxidable.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6272,7 +6298,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Es responsabilidad de la Contratista cobrar al Subcontratista los daños sin que ello altere la primaria y directa responsabilidad de la Contratista con el Propietario.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6297,7 +6324,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá mantener limpio y libre de residuos el recinto de la obra, estando obligado además a efectuar limpiezas periódicas de eliminación de hierbas y malezas en todos los sectores comprendidos dentro de las zonas cercadas de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6322,7 +6350,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo según cálculo de presión de viento) y puertas de acceso pivotantes de idénticas características con herrajes de acero inoxidable.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6481,7 +6510,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6512,7 +6542,8 @@
       "unidad": "cm",
       "literal": "20 cm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6789,7 +6820,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "IRAM - Instituto Argentino de Racionalización de Materiales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -6881,7 +6913,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7039,7 +7072,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Cliente deberá facilitar el acceso a la obra, suministrar la información necesaria para su ejecución, cumplir con las condiciones de pago acordadas y con la entrega pactada de los materiales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7064,7 +7098,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Los adicionales deberán ser aprobados por escrito por el Cliente antes de su ejecución.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7134,7 +7169,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "No habrá visita técnica a obra, pero se encomienda a todos los oferentes que concurran al terreno para evaluar las tareas a realizar.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7209,9 +7245,10 @@
       "unidad": "%",
       "literal": "82%"
      }
-    ]
+    ],
+    "clase": "NOTA_INTERNA"
    },
-   "confianza": "MEDIA",
+   "confianza": "BAJA",
    "estado": "CANDIDATO",
    "version": 1,
    "fecha": null,
@@ -7373,7 +7410,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Alcance Operativo de la Empresa Constructora:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7904,7 +7942,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Las vigas se construirán de acuerdo al plano de estructura aprobado por la DPDU.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -7996,9 +8035,10 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Notarás que tu planilla tiene una columna de Cargas Sociales casi idéntica o muy cercana al neto de mano de obra (lo cual es correcto por el peso de los aportes previsionales, ART y fondo de cese laboral de la UOCRA).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "NOTA_INTERNA"
    },
-   "confianza": "MEDIA",
+   "confianza": "BAJA",
    "estado": "CANDIDATO",
    "version": 1,
    "fecha": null,
@@ -8021,7 +8061,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Asimismo, será responsabilidad del Locador gestionar la totalidad de las inspecciones técnicas, responder las observaciones que formulen los organismos competentes y obtener el correspondiente Certificado Final de Obra, entregándolo al Locatario una vez concluidos los trabajos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8193,7 +8234,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Se ratifica que las estructuras correspondientes al entrepiso como su escalera metálica asociada, quedan completamente excluidas de los trabajos a ejecutar por la empresa constructora en esta etapa.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8320,7 +8362,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Los trabajos adicionales al proyecto inicial no ampliarán el plazo de obra por lo que la Contratista deberá incrementar su capacidad operativa para afrontar los mismos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8345,7 +8388,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Durante la ejecución de la obra de referencia la Contratista deberá observar y hacer cumplir en todas las etapas y en todos los frentes de trabajo las Leyes de Seguridad e Higiene en el Trabajo, Nº 19587 y su Decreto Reglamentario 351/79, el decreto 911/96 como así también la Resolución Nº 1069/91 de Salud y Seguridad en la Construcción, todas las resoluciones de la Superintendencia de Riesgos de ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8370,7 +8414,8 @@
     "alcance": null,
     "categoria": "SIN_DEFINIR",
     "textoLiteral": "El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo según cálculo de presión de viento) y puertas de acceso pivotantes de idénticas características con herrajes de acero inoxidable.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8443,7 +8488,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Ignacio de la Rosa Oeste 130, Rivadavia, San Juan, conforme a los planos entregados oportunamente, siguiendo la Memoria Descriptiva detallada en el Anexo I del presente contrato y a la Cotización de fecha 27 de mayo de 2026 aprobada por el locatario.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8812,7 +8858,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Las reglas del arte de acuerdo al último estado de la técnica.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -8837,7 +8884,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Para cualquier controversia derivada del presente contrato, las partes se someten a la jurisdicción de los tribunales competentes de la Provincia de San Juan.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9127,7 +9175,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El día de la visita al sitio de obra el contratista deberá hacer firmar la constancia de inspección del sitio que se adjunta en el presente pliego por la persona que ARCOR S.A.I.C. defina oportunamente.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9280,7 +9329,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Aunque sin limitarse solamente a estos aspectos, cualquier daño causado por la Contratista a las instalaciones del Propietario, tales como pavimentos, aceras, jardines, muros, estructuras, cercas, edificios nuevos y existentes, etc., que deban ser conservados o que ya estén terminadas y que puedan dañarse durante la ejecución del trabajo correspondiente a la Orden de Compra, deberá ser adecuadamen",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9354,7 +9404,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Normas IRAM - Instituto Argentino de Racionalización de Materiales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9379,7 +9430,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La cotización aprobada forma parte integrante del presente contrato y contiene el alcance de solo mano de obra, precios, plazos y demás condiciones particulares de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9498,7 +9550,8 @@
       "unidad": "%",
       "literal": "50%"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9523,7 +9576,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El proyecto ha sido diseñado bajo los criterios de optimización de espacios, seguridad estructural sismorresistente y eficiencia material.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9637,7 +9691,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Si la Inspección Técnica le notifica a la Contratista sobre cualquier incumplimiento relacionado con los Programas de Prevención de Accidentes, Reglamento de Seguridad y de Manejo de Residuos Peligrosos, o con las estipulaciones contenidas y referidas en éstos, la Contratista hará todos los esfuerzos necesarios para corregir esta situación tomando inmediatamente todas las acciones correctivas que ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9846,7 +9901,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locador será el único y exclusivo empleador del personal afectado a la obra, asumiendo íntegramente todas las obligaciones laborales, previsionales, sindicales, civiles, comerciales, tributarias y de seguridad e higiene derivadas de la ejecución del presente contrato.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9871,7 +9927,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Cuando el trabajo sea terminado en un área, la Contratista deberá retirar todas las herramientas, andamios, equipos y materiales sobrantes y limpiar al área con escobas.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -9896,7 +9953,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Locador tendrá a su exclusivo cargo la gestión integral de todas las tramitaciones técnicas y administrativas necesarias para la ejecución de la obra, incluyendo la obtención del Permiso de Edificación, visado de planos, autorizaciones municipales, presentaciones ante la Dirección de Planeamiento y Desarrollo Urbano (DPDU), Municipalidad de Rivadavia y demás organismos competentes que resulten ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10038,7 +10096,8 @@
       "unidad": "m²",
       "literal": "284.43 m²"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10228,7 +10287,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "En la obra, dentro del horario de trabajo y mientras duren las tareas, la Contratista deberá contar con un profesional competente que la represente y un capataz responsable en cada frente de trabajo.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10361,7 +10421,8 @@
     "alcance": null,
     "categoria": "SIN_DEFINIR",
     "textoLiteral": "Se deberá demoler el tabique lateral del canal, abriendo los vanos en planos, con dimensiones aproximadas según se indica en planos (a verificar en obra).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10386,7 +10447,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Los adicionales deberán ser aprobados por escrito por el locatario antes de su ejecución.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10557,7 +10619,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá suministrar listas de empleados a fin de cumplir con el sistema de identificación.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10786,7 +10849,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10875,7 +10939,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista tendrá a su cargo la provisión, transporte y colocación en obra de todos los materiales, como así también la mano de obra y todo personal necesario para la realización correcta y completa de la obra contratada, el empleo a su costo de todos los implementos, planteles y equipos para la ejecución de las obras, el alejamiento del material sobrante de las remociones, excavaciones, relle",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -10964,7 +11029,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "El cerramiento superior y lateral de la nave se ejecuta con estructura metálica según plano.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11034,7 +11100,8 @@
       "unidad": "%",
       "literal": "50%"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11228,7 +11295,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Las vigas se construirán de acuerdo al plano de estructura aprobado por la DPDU.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11343,7 +11411,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Locador tendrá a su exclusivo cargo la gestión integral de todas las tramitaciones técnicas y administrativas necesarias para la ejecución de la obra, incluyendo la obtención del Permiso de Edificación, visado de planos, autorizaciones municipales, presentaciones ante la Dirección de Planeamiento y Desarrollo Urbano (DPDU), Municipalidad de Rivadavia y demás organismos competentes que resulten ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11368,7 +11437,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá presentar muestras de los materiales y/o elementos por adquirir, y requerir la previa aprobación de la Inspección Técnica de Obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11393,7 +11463,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Los servicios públicos que resulten dañados durante la ejecución del trabajo serán reparados, modificados o reemplazados de acuerdo con las instrucciones de las autoridades de aplicación, exclusivamente a cargo de la Contratista.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11418,7 +11489,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Reglamento de empresa de teléfonos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11443,7 +11515,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locatario únicamente deberá proporcionar la documentación de su titularidad que resulte necesaria para dichas gestiones y abonar las tasas, derechos o tributos que legalmente correspondan al propietario del inmueble, cuando ello sea exigido por la normativa vigente.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11468,7 +11541,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Se ratifica que las estructuras correspondientes al entrepiso como su escalera metálica asociada, quedan completamente excluidas de los trabajos a ejecutar por la empresa constructora en esta etapa.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11493,7 +11567,8 @@
     "alcance": null,
     "categoria": "SIN_DEFINIR",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11666,7 +11741,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "c.- Tareas a Realizar:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11691,7 +11767,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Hormigón Estructural Sismorresistente H21",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -11898,7 +11975,8 @@
       "unidad": "m²",
       "literal": "284.43 m²"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12015,7 +12093,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Cliente deberá facilitar el acceso a la obra, suministrar la información necesaria para su ejecución, cumplir con las condiciones de pago acordadas y con la entrega pactada de los materiales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12157,7 +12236,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Saldo: el monto restante es de (U$S 31500 + IVA), el mismo será abonado mediante certificaciones quincenales de avance de obra, conforme a lo ejecutado.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12182,7 +12262,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El diseño arquitectónico se encuadra estrictamente dentro de las prescripciones normativas del Código de Edificación del Departamento de Rivadavia para la Zona C3 (Distrito Comercial Central), verificando los siguientes indicadores de ocupación del suelo y límites de parcela:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12207,7 +12288,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Bases Aisladas Sismorresistentes:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12286,7 +12368,8 @@
     "alcance": null,
     "categoria": "SIN_DEFINIR",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12590,7 +12673,8 @@
       "unidad": "%",
       "literal": "50%"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12615,7 +12699,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12640,7 +12725,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá demarcar el sector que comprenderá la obra, incluido el espacio necesario para el acopio de materiales y equipos, el cual deberá realizarse a pie de obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12665,7 +12751,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -12896,7 +12983,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Si la Contratista o sus Subcontratistas rehúsan cumplir con los Programas de Prevención de Accidentes, Reglamento de Seguridad o Manejo de Residuos Peligrosos, la Inspección Técnica de Obra procederá con una o más de las siguientes acciones:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13149,7 +13237,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "En caso de rescisión por causa imputable al Cliente, la Empresa tendrá derecho al cobro de los trabajos ejecutados.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13174,7 +13263,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "— No se contempla entrepiso ni escalera.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13199,7 +13289,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13224,7 +13315,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "La firma del acta de referencia habilitará a la Contratista a presentar la factura correspondiente al fondo de reparo retenido la que será abonada en las condiciones preestablecidas.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13544,7 +13636,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El personal de la Contratista deberá ser competente y en cantidad suficiente para ejecutar cada una de las tareas motivo de la Orden de Compra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13727,7 +13820,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Se dará cumplimiento a todas aquellas leyes, decretos, ordenanzas y resoluciones de orden Nacional y Municipal en materia de Seguridad e Higiene, vigentes a la fecha de iniciación del Contrato o que pudiesen ser dictadas durante el lapso de duración del mismo.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13752,7 +13846,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Las vigas se construirán de acuerdo al plano de estructura aprobado por la DPDU.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13835,7 +13930,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La presente memoria tiene por objeto definir las tareas a realizar para la obra de la referencia.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -13860,7 +13956,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Por este medio damos a conocer el alcance de las tareas a realizar en la obra de limpieza y nivelación del emprendimiento mencionado.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14205,7 +14302,8 @@
       "unidad": "mm",
       "literal": "Ø 110 mm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14338,7 +14436,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14471,7 +14570,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Las reglas del arte de acuerdo al último estado de la técnica.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14560,7 +14660,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La presente Memoria Descriptiva tiene por objeto establecer las especificaciones técnico-constructivas, las soluciones de ingeniería y el alcance operativo para la construcción de un edificio comercial.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14585,7 +14686,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá arbitrar todos los medios y herramientas necesarios para la extracción, corte, demolición, transporte y deposición final del material resultante de dichas tareas, de acuerdo a las normativas municipales, provinciales y nacionales vigentes.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -14978,7 +15080,8 @@
     "alcance": null,
     "categoria": "SIN_DEFINIR",
     "textoLiteral": "El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo según cálculo de presión de viento) y puertas de acceso pivotantes de idénticas características con herrajes de acero inoxidable.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15003,7 +15106,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "En virtud a lo requerido por la Inspección de obra relacionado a la necesidad de llevar a cabo dentro de la obra indicada en la referencia reparaciones de calzadas asfálticas en el Departamento de Jáchal, situación no contemplada al cotizar, ya que los trabajos debían circunscribirse al Gran San Juan, es que solicitamos un reconocimiento por los mayores costos ocasionados.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15295,7 +15399,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Me dirijo a Ud. con el fin de solicitarle ampliación de plazo de obra, debido a que el inicio de la misma se vió retrasada por cuestiones ajenas a nuestra empresa y eso nos va a complicar a futuro para poder dar cumplimiento a lo que se había estipulado.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15320,7 +15425,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "(*) Colocar jurisdicción.-",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15366,7 +15472,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locatario únicamente deberá proporcionar la documentación de su titularidad que resulte necesaria para dichas gestiones y abonar las tasas, derechos o tributos que legalmente correspondan al propietario del inmueble, cuando ello sea exigido por la normativa vigente.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15459,7 +15566,8 @@
       "unidad": "meses",
       "literal": "ocho (8) meses"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15545,7 +15653,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá presentar, a requerimiento de ARCOR S.A.I.C. cada vez que le sea solicitado, los comprobantes de pago de las obligaciones de las leyes sociales.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15570,7 +15679,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Toda reparación o reposición resultante de daños o rotura de instalaciones existentes, producidos durante los trabajos de demolición y desmontaje, quedarán a cargo de la contratista.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15595,7 +15705,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Asimismo, será responsabilidad del Locador gestionar la totalidad de las inspecciones técnicas, responder las observaciones que formulen los organismos competentes y obtener el correspondiente Certificado Final de Obra, entregándolo al Locatario una vez concluidos los trabajos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15620,7 +15731,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Para cualquier controversia derivada del presente contrato, las partes se someten a la jurisdicción de los tribunales competentes de la Provincia de San Juan.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15686,7 +15798,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios de carga estándar para comercio minorista y se ejecutarán en estricta conformidad con el Reglamento de la AEA (Asociación Electrotécnica Argentina) una vez que el cliente defina la ubicación final de las bocas y luminari",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -15825,7 +15938,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -16169,7 +16283,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -16427,7 +16542,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista tendrá a su cargo la provisión, transporte y colocación en obra de todos los materiales y equipos, como así también la mano de obra y todo personal necesario para la realización correcta y completa de la obra contratada, el empleo a su costo de todos los implementos, planteles y equipos para la ejecución de las obras, el alejamiento del material sobrante de las remociones y cualquie",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -16612,7 +16728,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -16906,7 +17023,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Ignacio de la Rosa Oeste 130, Rivadavia, San Juan, conforme a los planos entregados oportunamente, siguiendo la Memoria Descriptiva detallada en el Anexo I del presente contrato y a la Cotización de fecha 27 de mayo de 2026 aprobada por el locatario.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -16931,7 +17049,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá consultar con la Inspección Técnica de Obra lo referente al uso de los servicios existentes en relación con el trabajo descrito en las Especificaciones.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17064,7 +17183,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Los materiales detallados en el Anexo II serán adquiridos por el Locador, utilizando para ello los fondos provistos por el Locatario conforme a lo establecido en el presente contrato.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17089,7 +17209,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Utilizado para elementos de anclaje, contrapeso o soportes auxiliares que no forman parte del pórtico sismorresistente principal de la edificación.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17222,7 +17343,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El diseño arquitectónico se encuadra estrictamente dentro de las prescripciones normativas del Código de Edificación del Departamento de Rivadavia para la Zona C3 (Distrito Comercial Central), verificando los siguientes indicadores de ocupación del suelo y límites de parcela:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17247,7 +17369,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Se deberá demoler el tabique lateral del canal, abriendo los vanos en planos, con dimensiones aproximadas según se indica en planos (a verificar en obra).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17360,7 +17483,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17429,7 +17553,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Hormigón Estructural Sismorresistente H21",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17503,7 +17628,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "NO SE INCLUYE LA COLOCACIÓN DE LA REJA NI EL TAMIZ, LO CUAL SERÁ REALIZADO POR TERCEROS UNA VEZ FINALIZADA LA OBRA.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17528,7 +17654,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "Se ratifica que las estructuras correspondientes al entrepiso como su escalera metálica asociada, quedan completamente excluidas de los trabajos a ejecutar por la empresa constructora en esta etapa.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17692,7 +17819,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "No se contempla revoques ni pintura en los muros.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17717,7 +17845,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La contratista deberá notificar por escrito a la Dirección Técnica de cualquier condición imprevista que pudiera afectar la ejecución del trabajo.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -17845,7 +17974,8 @@
       "unidad": "cm",
       "literal": "25 cm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18068,7 +18198,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Es responsabilidad de la Contratista prever y proveer todas las instalaciones necesarias para el cumplimiento de su trabajo, tales como depósitos de materiales, vestuarios y baños para el personal, casilla de guardia y todo elemento necesario.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18093,7 +18224,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Los adicionales deberán ser aprobados por escrito por el locatario antes de su ejecución.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18226,7 +18358,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Código de Edificación de la localidad en donde se emplazan las obras y Reglamento del Parque Industrial (si lo hubiere) en particular.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18410,7 +18543,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "Se ratifica que las estructuras correspondientes al entrepiso como su escalera metálica asociada, quedan completamente excluidas de los trabajos a ejecutar por la empresa constructora en esta etapa.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18568,7 +18702,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18638,7 +18773,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Instalación sanitaria — baños: agua fría y desagües cloacales y pluviales según normativa municipal.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18684,7 +18820,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "Importante mencionar que no se incluye entrepiso ni escalera; en caso de ser requeridos, se cotizarán como adicional.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18709,7 +18846,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá realizar todas las tareas que impliquen la demolición y desmontaje indicados en planos y planillas.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18803,7 +18941,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La presente Memoria Descriptiva tiene por objeto establecer las especificaciones técnico-constructivas, las soluciones de ingeniería y el alcance operativo para la construcción de un edificio comercial.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18828,9 +18967,10 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Fondo de Cese Laboral (IERIC):",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "NOTA_INTERNA"
    },
-   "confianza": "MEDIA",
+   "confianza": "BAJA",
    "estado": "CANDIDATO",
    "version": 1,
    "fecha": null,
@@ -18853,7 +18993,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "La Contratista tendrá a su cargo la provisión, transporte y colocación en obra de todos los materiales, como así también la mano de obra y todo personal necesario para la realización correcta y completa de la obra contratada, el empleo a su costo de todos los implementos, planteles y equipos para la ejecución de las obras, el alejamiento del material sobrante de las remociones, excavaciones, relle",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -18878,7 +19019,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá visitar el sitio de obra para observar las condiciones existentes de emplazamiento previo al inicio de las obras.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19003,7 +19145,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Contratista deberá preparar informes sobre recibo de dichos materiales y equipo, describiendo su cantidad y condición, y adjuntará al informe la lista de materiales o recibo de empaque antes de presentar el informe a la Inspección Técnica de Obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19271,7 +19414,8 @@
       "unidad": "días",
       "literal": "treinta (30) días"
      }
-    ]
+    ],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19641,7 +19785,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Previo a los inicios de las obras se deberán verificar cada uno de los sectores a intervenir a los fines de detectar aquellas interferencias presentes en planta, y se deberán arbitrar los medios, personal y trabajos necesarios que se requieran para que aquellas no impidan el desarrollo de las tareas a realizar.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19666,7 +19811,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Para cualquier controversia derivada del presente contrato, las partes se someten a la jurisdicción de los tribunales competentes de la Provincia de San Juan.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19691,7 +19837,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Cualquiera de estos servicios o líneas subterráneas cuya remoción no esté indicada y que pueda dañarse durante la ejecución de los trabajos cubiertos por la Orden de Compra, deberá ser restaurado, reemplazado o reparado a cargo de la Contratista.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -19716,7 +19863,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "El cerramiento superior y lateral de la nave se ejecuta con estructura metálica según plano.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20107,7 +20255,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Utilizado para elementos de anclaje, contrapeso o soportes auxiliares que no forman parte del pórtico sismorresistente principal de la edificación.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20386,7 +20535,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Los planos sobre las tareas a realizar, y la planilla de cómputo serán entregadas por ARCOR S.A.I.C.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20508,7 +20658,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Se deja expresa constancia que todos los impuestos nuevos que pudieran producirse, como asimismo las rebajas y/o aumentos de las alícuotas de los existentes al momento de la apertura de las ofertas y a cargo de la Contratista, no serán reconocidos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20641,7 +20792,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Reglamento de la empresa proveedora de Gas.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20711,7 +20863,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locador será el único y exclusivo empleador del personal afectado a la obra, asumiendo íntegramente todas las obligaciones laborales, previsionales, sindicales, civiles, comerciales, tributarias y de seguridad e higiene derivadas de la ejecución del presente contrato.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20796,7 +20949,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "En caso de rescisión por causa imputable al Cliente, la Empresa tendrá derecho al cobro de los trabajos ejecutados.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20821,7 +20975,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Todo el equipo de la Contratista deberá estar clara y visiblemente identificado como pertenencia de la Contratista.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20846,7 +21001,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá tener en cuenta que estará a su cargo tanto la provisión del material y equipos como la mano de obra necesaria para la materialización y la puesta en funcionamiento del Proyecto “MODIFICACIÓN DE CANAL PARA NUEVO TAMIZ” que ARCOR S.A.I.C. ha proyectado la localidad de Rawson, Provincia de San Juan, República Argentina, República Argentina.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -20871,7 +21027,8 @@
     "alcance": null,
     "categoria": "EXCLUSION",
     "textoLiteral": "No se contempla revoques ni pintura en los muros.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -21024,7 +21181,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Saldo: será abonado mediante certificaciones quincenales de avance de obra, conforme al avance efectivamente ejecutado.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -21248,7 +21406,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "El Locador declara y garantiza que todo el personal afectado a la ejecución de la obra se encontrará debidamente registrado conforme a la legislación laboral vigente, contando con cobertura de Aseguradora de Riesgos del Trabajo (ART), seguros obligatorios, aportes previsionales, contribuciones y demás obligaciones legales que resulten aplicables.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -21273,7 +21432,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "El Cliente deberá facilitar el acceso a la obra, suministrar la información necesaria para su ejecución y cumplir con las condiciones de pago acordadas.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -21848,7 +22008,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Los trabajos adicionales al proyecto inicial no ampliarán el plazo de obra por lo que la Contratista deberá incrementar su capacidad operativa para afrontar los mismos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -21987,7 +22148,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá haber contemplado en su oferta, lo requerido para Condiciones y Medio Ambiente de Trabajo, del reglamento interno en la misma, del Programa de Prevención a desarrollar y de la organización de su Servicio de Medicina e Higiene y Seguridad del Trabajo.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22018,7 +22180,8 @@
       "unidad": "meses",
       "literal": "ocho (8) meses"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22049,7 +22212,8 @@
       "unidad": "por",
       "literal": "uno (1) por"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22317,7 +22481,8 @@
       "unidad": "meses",
       "literal": "ocho (8) meses"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22546,7 +22711,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Nómina de personal registrado en ART.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22818,7 +22984,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá construir un obrador provisorio durante el tiempo que dure la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22887,7 +23054,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El proyecto ha sido diseñado bajo los criterios de optimización de espacios, seguridad estructural sismorresistente y eficiencia material.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22918,7 +23086,8 @@
       "unidad": "%",
       "literal": "50%"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -22943,7 +23112,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "Los hormigones indicados en el presente pliego están referidos al Reglamento CIRSOC 201- 2005- Capítulo 2, vigente a la fecha.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23089,7 +23259,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "En caso de rescisión por causa imputable al Cliente, la Empresa tendrá derecho al cobro de los trabajos ejecutados.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23114,7 +23285,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Si en cualquier momento de la construcción se hace necesario movilizar: materiales, equipo o protecciones que han sido colocados provisionalmente, la Contratista como responsable del suministro de estos elementos deberá, cuando así lo indique la Inspección Técnica de Obra, moverlos o hacerlos trasladar a cargo de la Contratista.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23160,7 +23332,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "Alcance Operativo de la Empresa Constructora:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23185,7 +23358,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "Para cualquier controversia derivada del presente contrato, las partes se someten a la jurisdicción de los tribunales competentes de la Provincia de San Juan.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23251,7 +23425,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locador tendrá a su exclusivo cargo la gestión integral de todas las tramitaciones técnicas y administrativas necesarias para la ejecución de la obra, incluyendo la obtención del Permiso de Edificación, visado de planos, autorizaciones municipales, presentaciones ante la Dirección de Planeamiento y Desarrollo Urbano (DPDU), Municipalidad de Rivadavia y demás organismos competentes que resulten ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23320,7 +23495,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La cotización aprobada forma parte integrante del presente contrato y comprende exclusivamente la ejecución de la mano de obra necesaria para la construcción de la obra.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23561,7 +23737,8 @@
       "unidad": "m",
       "literal": "0,5M"
      }
-    ]
+    ],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23802,7 +23979,8 @@
     "alcance": null,
     "categoria": "ALCANCE",
     "textoLiteral": "La responsabilidad de la empresa constructora se circunscribe de forma única y exclusiva a la ejecución material e instalación en obra de los componentes detallados en esta memoria (con las exclusiones explícitas de escalera y entrepiso), respetando las reglas del arte del buen construir, las dosificaciones de ingeniería y los planos ejecutivos provistos.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23974,7 +24152,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "El Locador tendrá a su exclusivo cargo la gestión integral de todas las tramitaciones técnicas y administrativas necesarias para la ejecución de la obra, incluyendo la obtención del Permiso de Edificación, visado de planos, autorizaciones municipales, presentaciones ante la Dirección de Planeamiento y Desarrollo Urbano (DPDU), Municipalidad de Rivadavia y demás organismos competentes que resulten ",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -23999,7 +24178,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "En consecuencia, el Locador se obliga a mantener plenamente indemne al Locatario frente a cualquier reclamo, demanda, acción judicial o administrativa, multa, sanción, indemnización, gasto, costo o responsabilidad de cualquier naturaleza, promovido por empleados, ex empleados, contratistas, subcontratistas, organismos públicos o terceros, que guarde relación directa o indirecta con el objeto del p",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24024,7 +24204,8 @@
     "alcance": null,
     "categoria": "REQUISITO_CONTRACTUAL",
     "textoLiteral": "\"ARTÍCULO 7° - ÓRGANO DE ADMINISTRACIÓN:",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "SIN_CLASIFICAR"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24055,7 +24236,8 @@
       "unidad": "%",
       "literal": "5%"
      }
-    ]
+    ],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24153,7 +24335,8 @@
       "unidad": "cm",
       "literal": "25 cm"
      }
-    ]
+    ],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24222,7 +24405,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "La Contratista deberá cumplir y hacer cumplir a su personal y subcontratistas las Disposiciones de las oficinas de MAHPl (Departamento de Medio Ambiente Higiene y Protección Industrial).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24351,7 +24535,8 @@
     "alcance": null,
     "categoria": "REFERENCIA_PLANO",
     "textoLiteral": "Las vigas se construirán de acuerdo al plano de estructura aprobado por la DPDU.",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "MEMORIA"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24376,7 +24561,8 @@
     "alcance": null,
     "categoria": "CRITERIO_TECNICO",
     "textoLiteral": "La Contratista tendrá a su cargo la provisión, transporte y colocación en obra de todos los materiales y equipos, como así también la mano de obra y todo personal necesario para la realización correcta y completa de la obra contratada, el empleo a su costo de todos los implementos, planteles y equipos para la ejecución de las obras, el alejamiento del material sobrante de las remociones y cualquie",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",
@@ -24616,7 +24802,8 @@
     "alcance": null,
     "categoria": "RESPONSABILIDAD",
     "textoLiteral": "Los precios de la oferta deberán incluir todos los gastos e impuestos a cargo de la Contratista, es decir, cargas sociales, ganancias, impuestos internos, patentes, ingresos brutos, etc., conforme a todas las obligaciones legales establecidas en el lugar de asentamiento de las obras (tasas municipales de Comercio e Industria, entre otros).",
-    "cantidades": []
+    "cantidades": [],
+    "clase": "PLIEGO"
    },
    "confianza": "MEDIA",
    "estado": "CANDIDATO",

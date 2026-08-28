@@ -157,7 +157,10 @@ export function leerDocx(bytes, { minUtiles = DOCX_MIN_CARACTERES_UTILES } = {})
   const bloques = bloquesDeXml(c.datos.toString('utf8'))
   const texto = textoDeBloques(bloques)
   const utiles = utilesDe(texto)
-  const imagenes = ix.entradas.filter((e) => e.nombre.startsWith('word/media/')).length
+  // La ENTRADA de directorio `word/media/` también empieza con `word/media/`, y pesa 0 bytes. Si se
+  // la cuenta, un documento corto pero completo —menos de `minUtiles` caracteres— sale como FALLO
+  // «lo que dice está adentro de las imágenes» sin tener ninguna. Una imagen es un archivo con bytes.
+  const imagenes = ix.entradas.filter((e) => e.nombre.startsWith('word/media/') && !e.nombre.endsWith('/') && e.original > 0).length
   if (utiles === 0) {
     return { ok: false, soloImagenes: imagenes > 0, utiles, imagenes, bloques, texto, porQue: `el .docx se abrió (${bloques.length} bloque(s), ${imagenes} imagen(es) incrustada(s)) y no dejó un solo carácter de texto${imagenes ? ': todo lo que dice está adentro de las imágenes y haría falta OCR' : ': el documento está vacío'}` }
   }

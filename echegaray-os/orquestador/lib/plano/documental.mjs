@@ -37,9 +37,15 @@ export function claseDocumental(nombre) {
   // un borrador. Los nombres salen de los que hay: «Charlar de diagrama de GANT», «Diagrama IA».
   if (/charlar|borrador|apunte|minuta|diagrama|whatsapp/.test(n)) return CLASE_FUENTE.NOTA_INTERNA
   if (/memoria|calculo|cálculo/.test(n)) return CLASE_FUENTE.MEMORIA
+  // El contrato define el ALCANCE y es lo que se puede oponer al cliente. Antes llegaba a PLIEGO
+  // por el `return` final —o sea, por descarte—: si mañana alguien cambia el default, el contrato
+  // se movía con él sin que nadie lo decidiera. Va escrito.
+  if (/contrato|convenio|adenda|locacion de obra|locación de obra/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/pliego|especificacion|especificación|condiciones/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/planilla|computo|cómputo|listado/.test(n)) return CLASE_FUENTE.PLANILLA
-  return CLASE_FUENTE.PLIEGO
+  // NO es PLIEGO. Que el nombre no diga qué es no lo convierte en la especificación del proyecto:
+  // el borrador que no se llame «borrador» entraba con peso 4 y le ganaba a la planilla del cliente.
+  return CLASE_FUENTE.SIN_CLASIFICAR
 }
 
 /** Los archivos CAD de un conjunto de insumos. Dejan de ser «no legibles»: son la mejor fuente

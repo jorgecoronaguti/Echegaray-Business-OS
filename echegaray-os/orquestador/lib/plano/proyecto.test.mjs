@@ -10,6 +10,25 @@ import {
   hecho, consolidar, mismoValor, frases, hechosDeTexto, hechosDeCad, armarProyecto, hechosDe,
   CLASE_FUENTE, ESTADO_HECHO, alcanceDe,
 } from './proyecto.mjs'
+import { claseDocumental } from './documental.mjs'
+
+test('un documento que el nombre no identifica NO entra como pliego', () => {
+  // El default era PLIEGO: peso 4, por encima de la planilla del cliente. Con eso, «Reunión
+  // 12-08.docx» —un apunte que no dice «borrador» en el nombre— discutía de igual a igual con la
+  // especificación del proyecto. Lo que el nombre no dice no se adivina: se declara SIN_CLASIFICAR.
+  assert.equal(claseDocumental('Reunion 12-08.docx').id, 'SIN_CLASIFICAR')
+  assert.equal(claseDocumental('v2 final.docx').id, 'SIN_CLASIFICAR')
+  assert.ok(claseDocumental('Reunion 12-08.docx').peso > CLASE_FUENTE.PLANILLA.peso, 'no le puede ganar a una planilla entregada')
+  // Y las reglas que SÍ existen no se movieron.
+  assert.equal(claseDocumental('Charlar de diagrama de GANT.docx').id, 'NOTA_INTERNA')
+  assert.equal(claseDocumental('Memoria de calculo.pdf').id, 'MEMORIA')
+  assert.equal(claseDocumental('Pliego de condiciones.pdf').id, 'PLIEGO')
+  assert.equal(claseDocumental('Planilla de computo.xlsx').id, 'PLANILLA')
+  // El contrato llegaba a PLIEGO por descarte. Ahora está escrito, así que cambiar el default no
+  // se lo lleva puesto.
+  assert.equal(claseDocumental('Contrato de Locacion de Obra Salones Comerciales.docx').id, 'PLIEGO')
+})
+
 
 const delPlano = (atributo, valor, elemento = 'V1') => hecho({ elemento, atributo, valor, clase: CLASE_FUENTE.PLANO, documento: 'Plano de Estructura.pdf', textoLiteral: `${elemento} ${valor}` })
 const deLaMemoria = (atributo, valor, elemento = 'V1') => hecho({ elemento, atributo, valor, clase: CLASE_FUENTE.MEMORIA, documento: 'Memoria de cálculo.pdf', textoLiteral: `las ${elemento} se ejecutan en ${valor}` })

@@ -148,6 +148,15 @@ test('un .docx que sólo tiene imágenes NO pasa por leído', () => {
   assert.match(r.porQue, /adentro de las imágenes/)
 })
 
+test('el directorio «word/media/» vacío NO es una imagen: un corto completo no es un FALLO', () => {
+  // Un `.docx` guardado con la carpeta de medios creada y sin nada adentro trae la ENTRADA de
+  // directorio `word/media/`, de 0 bytes. Contarla empujaba un documento corto pero COMPLETO al
+  // camino de «lo que dice está adentro de las imágenes y haría falta OCR»: un fallo inventado.
+  const r = leerDocx(docx(P('Carátula de obra'), [['word/media/', '']]))
+  assert.equal(r.ok, true, r.porQue)
+  assert.equal(r.imagenes, 0)
+})
+
 test('un documento corto SIN imágenes se leyó entero: no se lo declara ilegible', () => {
   // La contraparte del test de arriba. Sin ella, bajar el umbral «por las dudas» convertiría 46
   // documentos leídos en 46 fracasos declarados, que es la falla opuesta y cuesta lo mismo.

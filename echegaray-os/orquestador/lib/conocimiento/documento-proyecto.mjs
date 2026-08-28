@@ -196,6 +196,10 @@ export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE
   for (const h of hallazgos) porCategoria[h.categoria] = (porCategoria[h.categoria] ?? 0) + 1
   return {
     documento,
+    // La clase VIAJA con la lectura. Sin esto, `aConocimientos` no tenía cómo saber que las frases
+    // venían de un borrador propio: el blindaje existía sólo en `cruzarHechos` y las notas internas
+    // quedaban en la biblioteca indistinguibles de las del contrato.
+    clase: clase?.id ?? String(clase ?? CLASE_FUENTE.MEMORIA.id),
     frases: frases.length,
     hallazgos,
     tecnicos,
@@ -269,6 +273,10 @@ export const slug = (s) => String(s ?? 'documento').normalize('NFD').replace(/[�
  */
 export function aConocimientos(lectura, { conocimiento, fecha = null } = {}) {
   const base = slug(lectura?.documento)
+  const clase = lectura?.clase ?? CLASE_FUENTE.MEMORIA.id
+  // Un apunte propio no puede entrar con la misma confianza que un contrato firmado. Lo que sigue
+  // probado es que el documento lo dice; lo que cambia es cuánto pesa quién lo dijo.
+  const confianza = clase === CLASE_FUENTE.NOTA_INTERNA.id ? 'BAJA' : 'MEDIA'
   const candidatos = []
   const rechazados = []
   const porCategoria = new Map()
@@ -281,10 +289,10 @@ export function aConocimientos(lectura, { conocimiento, fecha = null } = {}) {
         afirmacion: h.textoLiteral,
         procedencia: 'DOCUMENTO_PROYECTO',
         area: h.categoria.toLowerCase(),
-        confianza: 'MEDIA',
+        confianza,
         fecha,
         valor: h.cantidades[0] ? `${h.cantidades[0].valor} ${h.cantidades[0].unidad}` : null,
-        evidencia: { archivo: h.documento, seccion: h.seccion, alcance: h.alcance, categoria: h.categoria, textoLiteral: h.textoLiteral, cantidades: h.cantidades },
+        evidencia: { archivo: h.documento, clase, seccion: h.seccion, alcance: h.alcance, categoria: h.categoria, textoLiteral: h.textoLiteral, cantidades: h.cantidades },
       }))
     } catch (e) { rechazados.push({ clave: `${base}.${h.categoria}.${n}`, porQue: String(e?.message ?? e).slice(0, 200) }) }
   }

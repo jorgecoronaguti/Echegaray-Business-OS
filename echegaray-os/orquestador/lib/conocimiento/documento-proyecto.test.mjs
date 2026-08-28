@@ -6,7 +6,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CATEGORIA, cantidadesDe, categoriasDe, frasesConSeccion, hallazgo, huecosDeclarados, leerDocumentoDeProyecto,
+  CATEGORIA, aConocimientos, cantidadesDe, categoriasDe, frasesConSeccion, hallazgo, huecosDeclarados,
+  leerDocumentoDeProyecto,
 } from './documento-proyecto.mjs'
 import {
   CRUCE, contrastar, cruzarHechos, estaMedido, exclusionesContraComputo, raiz, terminosDeExclusion, terminosDiscriminantes,
@@ -126,6 +127,25 @@ test('un borrador propio NO contradice al contrato del cliente', () => {
   assert.match(r[0].porQue, /un borrador propio no contradice a un contrato/)
 })
 
+test('la CLASE llega a la biblioteca: si no, la nota interna es indistinguible del contrato', () => {
+  // El blindaje de `cruzarHechos` cubría el CRUCE y nada más. Las frases del borrador igual se
+  // grababan con procedencia DOCUMENTO_PROYECTO y confianza MEDIA, o sea con la misma cara que las
+  // del contrato firmado: quien después leyera la biblioteca no tenía cómo saber cuál era cuál.
+  const conocimiento = (k) => k
+  const delContrato = leerDocumentoDeProyecto(MEMORIA, { documento: 'Contrato de Obra.docx', clase: CLASE_FUENTE.PLIEGO })
+  const delBorrador = leerDocumentoDeProyecto(MEMORIA, { documento: 'Charlar de diagrama de GANT.docx', clase: CLASE_FUENTE.NOTA_INTERNA })
+  assert.equal(delContrato.clase, 'PLIEGO')
+  assert.equal(delBorrador.clase, 'NOTA_INTERNA')
+
+  const a = aConocimientos(delContrato, { conocimiento })
+  const b = aConocimientos(delBorrador, { conocimiento })
+  assert.ok(a.candidatos.length > 0 && b.candidatos.length > 0)
+  assert.equal(a.candidatos[0].evidencia.clase, 'PLIEGO')
+  assert.equal(a.candidatos[0].confianza, 'MEDIA')
+  assert.equal(b.candidatos[0].evidencia.clase, 'NOTA_INTERNA')
+  assert.equal(b.candidatos[0].confianza, 'BAJA', 'un apunte propio no puede entrar con la confianza de un contrato')
+})
+
 test('lo que sólo dice el documento se APORTA, no corrige nada', () => {
   const r = cruzarHechos({ delMotor: [], delDocumento: [delDoc('muro', 'terminacion', 'visto')] })
   assert.equal(r[0].cruce, CRUCE.APORTA)
@@ -153,6 +173,37 @@ test('un término corto no puede disparar una exclusión', () => {
   assert.ok(t.includes('entrepiso'))
   assert.ok(t.includes('escalera'))
   assert.ok(!t.includes('piso'))
+})
+
+test('el VERBO de la exclusión no es un término suyo: «excluidas» sólo encuentra otra exclusión', () => {
+  // Pasaba el filtro de largo y salía como discriminante. Buscar «excluidas» en el cómputo no puede
+  // señalar una partida: si aparece, aparece en otra frase de exclusión.
+  const t = terminosDeExclusion('Se ratifica que las estructuras del entrepiso quedan completamente excluidas de los trabajos.')
+  assert.ok(t.includes('entrepiso'))
+  assert.ok(!t.includes('excluidas'), `el verbo se coló: ${t.join(', ')}`)
+  assert.ok(!terminosDeExclusion('No se incluye entrepiso ni escalera; de ser requeridos, se cotizaran como adicional.').includes('requeridos'))
+})
+
+test('«no se pudo medir» no puede salir igual que «los medí y ninguno era genérico»', () => {
+  // Con menos partidas que el mínimo el corte no corre, y `estructuras`/`metalica` pasaban como
+  // discriminantes sin que nadie supiera que el filtro no había mirado. El hallazgo más caro del
+  // circuito estaba apoyado en un filtro que podía no haberse ejecutado, y no lo decía.
+  const terminos = ['entrepiso', 'escalera', 'metalica', 'estructuras']
+  const pocos = [{ descripcion: 'Estructuras metálicas de cubierta' }, { descripcion: 'Entrepiso de losa' }]
+  const chico = terminosDiscriminantes(terminos, pocos)
+  assert.equal(chico.medido, false)
+  assert.deepEqual(chico.discriminantes, terminos, 'no se descarta nada: no hay con qué')
+  assert.match(chico.porQue, /NO corrió/)
+
+  const muchos = Array.from({ length: 12 }, (_, i) => ({ descripcion: `Provisión y montaje de estructuras metálicas ${i}` }))
+  const grande = terminosDiscriminantes(terminos, muchos)
+  assert.equal(grande.medido, true)
+  assert.deepEqual(grande.discriminantes, ['entrepiso', 'escalera'])
+  // Y el que no pudo medir tiene que llegar hasta arriba: si se queda en la función, no sirve.
+  const l = leerDocumentoDeProyecto(MEMORIA, { documento: 'contrato.docx' })
+  const r = contrastar({ lecturas: [l], itemsDelComputo: pocos })
+  assert.ok(r.exclusionesSinMedir.length > 0)
+  assert.match(r.resumen, /el filtro de términos genéricos NO pudo medir/)
 })
 
 test('un término que nombra media obra deja de señalar una exclusión, y se dice', () => {

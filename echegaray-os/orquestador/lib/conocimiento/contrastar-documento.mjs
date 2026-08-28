@@ -119,7 +119,16 @@ export function cruzarHechos({ delMotor = [], delDocumento = [] } = {}) {
 }
 
 /** Las palabras que no distinguen nada: están en cualquier frase de cualquier contrato. */
-export const VACIAS = new Set('de la el los las del que se por para con una como sus este esta estas estos su al en obra trabajos empresa presente etapa forma parte ejecutar ejecutados ejecutadas seran sera quedan queda completamente expresamente totalmente contempla incluye correspondientes asociada constructora'.split(' '))
+export const VACIAS = new Set([
+  'de la el los las del que se por para con una como sus este esta estas estos su al en',
+  'obra trabajos empresa presente etapa forma parte ejecutar ejecutados ejecutadas seran sera',
+  'quedan queda completamente expresamente totalmente contempla incluye correspondientes asociada constructora',
+  // El VERBO de la exclusión no es una partida. `excluidas` pasaba el filtro de largo y salía como
+  // término discriminante de sí misma: buscarlo en el cómputo sólo puede encontrar otra exclusión.
+  'excluida excluidas excluido excluidos excluye excluyen exclusion exclusiones excluir',
+  'incluida incluidas incluido incluidos incluyen incluir incluyendo contemplan contemplado contemplada',
+  'requerido requeridos requerida requeridas cotizaran cotizara mencionar importante',
+].join(' ').split(' '))
 
 /**
  * LOS TÉRMINOS QUE HACEN RECONOCIBLE UNA EXCLUSIÓN. PURA.
@@ -163,11 +172,20 @@ export const MINIMO_PARA_MEDIR_FRECUENCIA = 12
 export function terminosDiscriminantes(terminos = [], items = []) {
   const textos = items.map((it) => norm(it?.descripcion ?? it?.elemento ?? ''))
   const frecuencia = (t) => textos.filter((x) => x.includes(raiz(t))).length / (textos.length || 1)
-  if (textos.length < MINIMO_PARA_MEDIR_FRECUENCIA) return { discriminantes: terminos, genericos: [] }
+  // ═══ NO MEDIDO NO ES «TODOS PASAN» ═══
+  // Con menos partidas que el mínimo el corte no se aplica, y hasta acá eso salía igual que «los
+  // medí a todos y ninguno era genérico»: `estructuras` y `metalica` pasaban como discriminantes sin
+  // que nadie supiera que el filtro no había corrido. `medido: false` lo dice.
+  if (textos.length < MINIMO_PARA_MEDIR_FRECUENCIA) {
+    return {
+      discriminantes: terminos, genericos: [], medido: false,
+      porQue: `el cómputo trae ${textos.length} partida(s) y hacen falta ${MINIMO_PARA_MEDIR_FRECUENCIA} para que una frecuencia signifique algo: el filtro de términos genéricos NO corrió y los ${terminos.length} término(s) pasaron sin medir`,
+    }
+  }
   const genericos = terminos.filter((t) => frecuencia(t) > MAX_FRECUENCIA_TERMINO)
     .map((t) => ({ termino: t, frecuencia: Math.round(frecuencia(t) * 100) / 100, porQue: `nombra el ${Math.round(frecuencia(t) * 100)}% de las partidas del cómputo: no señala ninguna` }))
   const fuera = new Set(genericos.map((g) => g.termino))
-  return { discriminantes: terminos.filter((t) => !fuera.has(t)), genericos }
+  return { discriminantes: terminos.filter((t) => !fuera.has(t)), genericos, medido: true }
 }
 
 /**
@@ -181,9 +199,11 @@ export function exclusionesContraComputo(hallazgos = [], items = []) {
   const exclusiones = hallazgos.filter((h) => h.categoria === CATEGORIA.EXCLUSION)
   const salida = []
   const descartados = []
+  const sinMedir = []
   for (const ex of exclusiones) {
-    const { discriminantes, genericos } = terminosDiscriminantes(terminosDeExclusion(ex.textoLiteral), items)
+    const { discriminantes, genericos, medido, porQue } = terminosDiscriminantes(terminosDeExclusion(ex.textoLiteral), items)
     for (const g of genericos) descartados.push({ ...g, exclusion: ex.textoLiteral.slice(0, 120) })
+    if (!medido) sinMedir.push({ exclusion: ex.textoLiteral.slice(0, 120), terminos: discriminantes, porQue })
     if (!discriminantes.length) continue
     for (const it of items) {
       const texto = norm(it?.descripcion ?? it?.elemento ?? '')
@@ -199,6 +219,7 @@ export function exclusionesContraComputo(hallazgos = [], items = []) {
     }
   }
   salida.descartados = descartados
+  salida.sinMedir = sinMedir
   return salida
 }
 
@@ -215,11 +236,12 @@ export function contrastar({ hechosDelMotor = [], lecturas = [], itemsDelComputo
   const cruces = cruzarHechos({ delMotor: hechosDelMotor, delDocumento })
   const alcance = exclusionesContraComputo(hallazgos, itemsDelComputo)
   const genericos = alcance.descartados ?? []
+  const sinMedir = alcance.sinMedir ?? []
   const todos = [...cruces, ...alcance]
   const cuenta = Object.fromEntries(Object.values(CRUCE).map((c) => [c, todos.filter((x) => x.cruce === c).length]))
   return {
-    cruces, alcance, cuenta, terminosGenericos: genericos,
+    cruces, alcance, cuenta, terminosGenericos: genericos, exclusionesSinMedir: sinMedir,
     conflictos: todos.filter((x) => x.cruce === CRUCE.CONFLICTO || x.cruce === CRUCE.CONFLICTO_DE_ALCANCE),
-    resumen: `${delDocumento.length} hecho(s) técnicos del documento contra ${hechosDelMotor.length} del motor · ${cuenta[CRUCE.CONFIRMA_MEDIDO]} confirmación(es) sobre algo MEDIDO · ${cuenta[CRUCE.COINCIDE_CON_INFERENCIA]} coincidencia(s) con algo que el motor NO midió · ${cuenta[CRUCE.CONFLICTO]} conflicto(s) de valor · ${cuenta[CRUCE.SOLO_MENCIONES]} par(es) de menciones sueltas que no alcanzan para contradecirse · ${cuenta[CRUCE.APORTA]} dato(s) que sólo dice el documento · ${cuenta[CRUCE.CONFLICTO_DE_ALCANCE]} choque(s) entre el cómputo y una exclusión`,
+    resumen: `${delDocumento.length} hecho(s) técnicos del documento contra ${hechosDelMotor.length} del motor · ${cuenta[CRUCE.CONFIRMA_MEDIDO]} confirmación(es) sobre algo MEDIDO · ${cuenta[CRUCE.COINCIDE_CON_INFERENCIA]} coincidencia(s) con algo que el motor NO midió · ${cuenta[CRUCE.CONFLICTO]} conflicto(s) de valor · ${cuenta[CRUCE.SOLO_MENCIONES]} par(es) de menciones sueltas que no alcanzan para contradecirse · ${cuenta[CRUCE.APORTA]} dato(s) que sólo dice el documento · ${cuenta[CRUCE.CONFLICTO_DE_ALCANCE]} choque(s) entre el cómputo y una exclusión${sinMedir.length ? ` · ⚠ en ${sinMedir.length} exclusión(es) el filtro de términos genéricos NO pudo medir: ${sinMedir[0].porQue}` : ''}`,
   }
 }
