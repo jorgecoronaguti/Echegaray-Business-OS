@@ -25,6 +25,7 @@ import { abrirDwg } from '../ingesta/dwg.mjs'
 import { segmentar } from '../ingesta/segmentar.mjs'
 import { recortarRegiones, hashDe } from '../ingesta/recortes.mjs'
 import { formatoDe, FORMATO } from '../ingesta/registro.mjs'
+import { leerWord } from '../ingesta/word.mjs'
 import { hechosDeCad, hechosDeTexto, CLASE_FUENTE } from './proyecto.mjs'
 
 /** Qué clase de documento del proyecto es, para saber cuánto pesa lo que diga. El nombre es la
@@ -118,6 +119,17 @@ export async function textoDe(doc, bytes, { google } = {}) {
       const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
       const texto = (x.rows ?? []).map((f) => (Array.isArray(f) ? f.filter(Boolean).join(' | ') : String(f))).join('\n')
       return { ok: true, texto, formato, pestana: x.sheet }
+    }
+    // ═══ EL DOCUMENTO DE WORD ES DONDE VIVE EL ALCANCE ═══
+    // Hasta acá este `return` decía «todavía no hay lector de texto para DOCUMENTO» y con esa frase
+    // quedó afuera del proyecto de QUATTROPANI el CONTRATO DE OBRA con su memoria descriptiva —el
+    // único papel que dice qué está EXCLUIDO (entrepiso y escalera), quién contrata la estructura
+    // metálica y qué muros no llevan revoque—. El motor computaba el plano sin saber nada de eso.
+    if (formato === FORMATO.DOCUMENTO) {
+      const w = leerWord(bytes, { nombre: doc.name })
+      return w.ok
+        ? { ok: true, texto: w.texto, formato, variante: w.variante, tablas: w.bloques?.filter((b) => b.tipo === 'tabla') ?? [] }
+        : { ok: false, formato, porQue: w.porQue }
     }
     return { ok: false, formato, porQue: `todavía no hay lector de texto para ${formato}: el archivo queda declarado, no ignorado` }
   } catch (e) {
