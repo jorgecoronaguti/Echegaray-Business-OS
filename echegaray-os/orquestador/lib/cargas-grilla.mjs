@@ -26,8 +26,32 @@ export const COL_ORIGEN = 'O'
 export const MES = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 /** La columna del mes N. Enero es B en TODOS los cuadros de la pestaña: ése es el punto. */
 export const cm = (m) => String.fromCharCode(65 + m)
-/** El rango de los seis meses con F931 presentado — sobre el que se miden las alícuotas reales. */
-export const REALES = (fila) => `$B$${fila}:$G$${fila}`
+/**
+ * EL RANGO DE LOS MESES CON F931 PRESENTADO — sobre el que se miden las alícuotas reales.
+ *
+ * ═══ ESTABA CONGELADO EN ENERO–JUNIO (27/08/2026, auditoría de la pestaña) ═══
+ *
+ * Era `$B$fila:$G$fila` fijo, con el comentario «los seis meses». Julio ya tiene DDJJ presentada
+ * —la propia pestaña la muestra: $8.235.742, 21 empleados— y quedaba afuera de TODO lo que se mide
+ * acá: la dotación proyectada, la relación entre remuneración declarada y jornales netos, y las
+ * cinco alícuotas medidas. El sesgo no se corrige solo: en agosto habría seguido midiendo sobre
+ * enero–junio sin que nadie se entere.
+ *
+ * Que el defecto era conocido lo prueba el propio test suite, que ya lo parchó para la fila
+ * COMPROMETIDO leyendo la fila entera. El arreglo se hizo en un lugar y no en los otros cuatro.
+ *
+ * `desdeProy` es el primer mes SIN declarar, así que el último real es el anterior. Es obligatorio a
+ * propósito: un default lo volvería a congelar en silencio.
+ */
+export const REALES = (fila, desdeProy) => {
+  if (!Number.isInteger(desdeProy) || desdeProy < 2 || desdeProy > 13) {
+    throw new Error(`REALES necesita desdeProy (2..13) y recibió ${desdeProy}`)
+  }
+  return `$B$${fila}:$${cm(desdeProy - 1)}$${fila}`
+}
+
+/** Los meses que YA tienen DDJJ: 1..desdeProy-1. El denominador de lo que se mide sobre lo real. */
+export const MESES_REALES = (desdeProy) => Array.from({ length: desdeProy - 1 }, (_, i) => i + 1)
 
 /** El constructor de la grilla: las tres formas de fila que usa la pestaña, y nada más. */
 export function crearGrilla(anio) {

@@ -14,7 +14,7 @@ import {
   formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
-import { MES, cm, REALES } from './cargas-grilla.mjs'
+import { MES, cm, REALES, MESES_REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 import { formulaProvisionVacaciones, formulaSinFechaDeIngreso } from './vacaciones-construccion.mjs'
@@ -192,8 +192,8 @@ export function bloqueProyeccion(G, {
   G.cabecera()
   const proyMeses = Array.from({ length: 12 - desdeProy + 1 }, (_, i) => desdeProy + i)
   const fRelacion = G.mensual('Remuneración declarada ÷ jornales netos', (m) => (m === desdeProy
-    ? `=IFERROR(SUM(${REALES(fRem)})/(${[1, 2, 3, 4, 5, 6].map((x) => jornalesDelMes(`DATE(${anio};${x};1)`)).join('+')});"")` : VACIO),
-  'Medido sobre los seis meses que tienen las dos cifras. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.', { meses: proyMeses, totaliza: false })
+    ? `=IFERROR(SUM(${REALES(fRem, desdeProy)})/(${MESES_REALES(desdeProy).map((x) => jornalesDelMes(`DATE(${anio};${x};1)`)).join('+')});"")` : VACIO),
+  `Medido sobre los ${desdeProy - 1} meses que tienen las dos cifras. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.`, { meses: proyMeses, totaliza: false })
   // EL SUPUESTO DEL 100% DEL CONVENIO SE DECLARA ACÁ TAMBIÉN, Y NO ES REDUNDANCIA (07/08): esta fila no
   // muestra la masa, la MULTIPLICA — y sobre ella corren contribuciones, IERIC, FODECO y FCL. El
   // supuesto llega compuesto hasta la última fila de esta pestaña; declararlo sólo en Jornales lo deja
@@ -214,7 +214,7 @@ export function bloqueProyeccion(G, {
   // Y AL LADO, EL CONTROL CONTRA OTRA FUENTE. La regla del archivo: un control nunca se valida contra
   // la misma información que produce. La dotación de la DDJJ y el plantel de la planilla de jornales
   // vienen de dos lugares distintos; si se separan mucho, uno de los dos está mal.
-  const fDot = G.mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp)};COUNT(${REALES(fEmp)}));"")`,
+  const fDot = G.mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp, desdeProy)};COUNT(${REALES(fEmp, desdeProy)}));"")`,
     'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona.', { meses: proyMeses, totaliza: false })
   const fPlantel = G.n() + 1
   G.push([sub('   control: plantel de la última quincena'),
@@ -246,7 +246,9 @@ export function bloqueProyeccion(G, {
       // porcentajes en la misma columna— y la regla sigue siendo auditable de un vistazo, con el valor
       // que efectivamente se aplicó y no el que había el día que corrió el generador.
       const p = proyeccionDeConcepto(c, {
-        filaOrigen: origen, fRem, fEmp, reales: REALES, colMes: cm, fRemProy, fDot,
+        // El rango real llega YA atado al mes desde el que se proyecta: la cadena mide sus cinco
+        // alícuotas sobre él y no tiene por qué saber cuántos meses hay declarados.
+        filaOrigen: origen, fRem, fEmp, reales: (fila) => REALES(fila, desdeProy), colMes: cm, fRemProy, fDot,
         celdaProporcion: `$B$${fAntig}`,
       })
       G.mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses })
