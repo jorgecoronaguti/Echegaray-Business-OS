@@ -48,6 +48,23 @@ test('ningún servidor de orquestador/ escucha en 0.0.0.0 escrito a mano', async
   assert.deepEqual(culpables, [], `escuchan en la red pública: ${culpables.join(', ')}`)
 })
 
+test('el servidor de Next tampoco nace escuchando en la red', async () => {
+  // ═══ EL GUARDIÁN MIRABA SÓLO `orquestador/` (27/08/2026, auditoría) ═══
+  //
+  // Y `next dev` escucha en 0.0.0.0 por defecto. El auditor midió seis `next-server` en
+  // `*:3111, 3220, 3230, 3311, 3312, 3318` —los servidores de desarrollo que levantan los agentes en
+  // sus worktrees— y uno de ellos contestaba desde la IP pública. Un puerto de desarrollo abierto al
+  // mundo sirve una app entera con los datos de la empresa y sin la autenticación pensada para
+  // producción, que es peor que cualquier API con token.
+  //
+  // El repo no puede controlar cómo lo arranca cada quien, pero sí cómo lo arranca su propio script.
+  const pkg = JSON.parse(await readFile(path.join(RAIZ, '..', 'package.json'), 'utf8'))
+  for (const script of ['dev', 'start']) {
+    assert.match(pkg.scripts?.[script] ?? '', /--hostname 127\.0\.0\.1/,
+      `npm run ${script} tiene que fijar el host: sin eso Next escucha en 0.0.0.0`)
+  }
+})
+
 test('los dos servidores HTTP declaran su host y el default es loopback', async () => {
   const servidores = ['interactive-server.mjs', 'comunicacion/servidor-entrante.mjs']
   for (const rel of servidores) {

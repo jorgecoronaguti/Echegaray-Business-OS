@@ -32,6 +32,12 @@ import { expresionTieneNumero } from './cheques-cobertura.mjs'
 import { comparaMarca, variantesDeMarca } from './glifos.mjs'
 // La fila del encabezado de "Cheques Emitidos" vive en UN solo archivo. Ver la nota de INSTRUMENTOS.
 import { FILA_HDR as FILA_HDR_CHEQUES } from './cheques-emitidos-geometria.mjs'
+// Gemelo del de cheques, y por el mismo motivo: la fila donde arranca el registro de la tarjeta
+// estaba escrita a mano acá y en el generador de la pestaña, y NADA las ataba. El 28/08 la banda
+// pasó de 31 a 52 filas para contestar las cinco preguntas del dueño: con el 31 cableado, este
+// rango se habría comido 21 filas de rótulos y habría dejado afuera las primeras cuotas del
+// registro — sin dar error, porque un rango corrido devuelve cero.
+import { BANDA as BANDA_TARJETA } from './tarjeta-geometria.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -109,13 +115,19 @@ export const INSTRUMENTOS = {
   // números, pero cualquier criterio que mire texto o cuente filas contaba la banda como cheques.
   // Ahora sale de `cheques-emitidos-geometria.mjs`, que es el único lugar donde ese número existe.
   cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: FILA_HDR_CHEQUES, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colComprobante: 'H', colMarca: 12 },
+  // `filaCab` = BANDA (28/08). Ojo: acá `filaCab` no es el encabezado del registro
+  // sino la fila del TÍTULO que lo abre ("6 · EL DETALLE…"), que es donde `cheques-cobertura-sheet.mjs`
+  // estampa "Estado en el OS" y desde donde arrancan los rangos (`filaCab + 1`). El encabezado real
+  // queda una fila más abajo; incluirlo en un SUMIFS es inofensivo (es texto) y sacarlo obligaría a
+  // tocar los tres consumidores a la vez.
+  //
   // `filaCab` 2 → 31 (04/08). El encabezado del registro de la tarjeta está en la fila 31, no en la 2:
   // arriba vive la banda de la pestaña. Con el 2, `cheques-cobertura-sheet.mjs` estampaba su rótulo
   // "Estado en el OS · al …" en la fila del SUBTÍTULO y colgaba las marcas por debajo, encima de la
   // banda. Era un error preexistente que no se veía porque el bloque de arriba era distinto; el
   // rediseño lo dejó a la vista. También corrige el rango de `cash-flow-rehacer` (MAX de fechas),
   // que arrancaba en la 3 —dentro de la banda— en vez de en la primera fila de datos.
-  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 31, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colComprobante: 'G', colMarca: 11 },
+  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: BANDA_TARJETA, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colComprobante: 'G', colMarca: 11 },
 }
 
 /** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (105 y 29).

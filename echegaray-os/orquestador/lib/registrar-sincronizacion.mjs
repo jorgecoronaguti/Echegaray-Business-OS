@@ -174,6 +174,22 @@ export const FUENTES_INGESTA = {
     capability_dependiente: 'posicion_financiera',
     notas: 'Entra por importar-banco.mjs (CSV o pegado). No hay API de banca empresa: el dato entra a mano.',
   },
+  // El resumen de la tarjeta. Llega UNA vez por mes y por mail: si un mes no llega, nada avisa —y la
+  // pestaña sigue publicando el resumen viejo como si fuera el vigente. Catalogarlo hace que el
+  // atraso lo levante `recalcular_frescura_fuentes()` sin que nadie se acuerde de mirar.
+  tarjeta: {
+    nombre: 'Resumen de tarjeta Visa Santander (PDF del banco)',
+    tipo_archivo: 'externo_no_conectado',
+    proceso_negocio: 'Tesorería — obligación de la tarjeta: cuánto se debita, cuándo y qué cargos trae',
+    area: 'Finanzas',
+    frecuencia_actualizacion: 'mensual',
+    naturaleza_dato: 'confirmado',
+    criticidad: 'alta',
+    mecanismo_integracion: 'ingesta_incremental',
+    destino_supabase: 'tarjeta_resumen',
+    capability_dependiente: 'posicion_financiera',
+    notas: 'Entra por importar-tarjeta.mjs desde el PDF (PyMuPDF). No hay API: el resumen llega por mail.',
+  },
   arcaCompras: {
     nombre: 'Comprobantes ARCA — Compras (Libro IVA Compras)',
     tipo_archivo: 'externo_no_conectado',

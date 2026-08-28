@@ -90,7 +90,16 @@ export function tesoreriaTools(google) {
     },
 
     'tesoreria.analisis_inversion': {
-      capability: 'os.read',
+      // ═══ `externo.navegar` — MANDA EL EFECTO, NO LA LETRA (27/08/2026, auditoría) ═══
+      //
+      // Decía `os.read` y es cierto que no escribe en la base. Pero su propia descripción dice
+      // «ENTRA A BALANZ»: levanta un navegador contra la cuenta del broker con la sesión de la
+      // empresa. `os.read` lo tiene `jefe_obra`, y en la auditoría un jefe de obra la ejecutó.
+      //
+      // Un efecto sobre un sistema externo no es una lectura del OS, aunque no escriba una fila.
+      // La capability nombra el efecto, y con eso pasa las dos cerraduras y queda firmada.
+      // `tesoreria.excedente_invertible` se queda en `os.read`: sólo lee el Flujo y la base.
+      capability: 'externo.navegar',
       schema: {
         name: 'analisis_inversion',
         description:

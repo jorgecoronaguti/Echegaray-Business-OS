@@ -48,7 +48,12 @@ export { PESTANA_ANEXO }
 // LAS SIETE NUEVAS VAN DESPUÉS DE LA PROSA, no antes. La G es la columna de nota y de contadores, y
 // el formateador la ubica como «la última» (`ANCHO_ANEXO - 1`); meter las series en el medio le
 // corría el rótulo y dejaba los conteos sin formato de número. Ver el test de `fCuantos`.
-export const ANCHO_ANEXO = 15
+//
+// Y DIECISÉIS DESDE EL 28/08/2026: la necesidad diaria partió sus salidas en «Ya salió» (REAL) y los
+// cinco rubros de lo que falta pagar, así que el bloque ocupa una columna más. El ancho NO se escribe
+// dos veces: `COL_NECESIDAD` lo cuenta sobre `SALIDAS` y el test falla si esta constante se queda
+// corta — que es exactamente el 400 de arriba, el que deja la pestaña SIN NINGÚN gráfico.
+export const ANCHO_ANEXO = 16
 /** La columna de prosa y contadores. Era «la última»; con la serie nueva atrás, hay que nombrarla. */
 export const COL_NOTA = 7
 
@@ -224,7 +229,7 @@ export const HISTORICO_EFECTIVO = HISTORICO_EFECTIVO_BASE
 export const claveDeRotulo = (r) => String(r ?? '').trim()
 
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
-export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 124, 124, 124, 124, 124, 140, 140]
+export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 124, 124, 124, 124, 124, 124, 140, 140]
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
@@ -552,17 +557,27 @@ function bloqueCredito(h) {
       `=IF(ISNUMBER(C${f});C${f}*IF(D${f}="";1;D${f});"")`, fecha, origen])
   }
   const T = BANCO.TARJETA
-  const fLim = linea(CARGA.limiteTarjeta, 'ARS', T.limite, `${BANCO.ORIGEN} · ${T.cuenta}`)
+  // ═══ CADA LÍNEA CON LA FECHA DE SU FUENTE, NO CON LA DEL EXTRACTO (28/08) ═══
+  //
+  // `linea()` fecha por defecto con el corte del EXTRACTO DE LA CUENTA (22/07). La tarjeta tiene sus
+  // propios documentos y sus propias fechas: el resumen cerrado el 20/08 (consumos, cuotas, lo que se
+  // debita) y la captura del homebanking del 29/07 (el disponible, que el resumen no publica). Con la
+  // fecha de la cuenta, la columna "Fecha" del anexo declaraba un origen que ninguno de los dos tiene.
+  const alResumen = T.al || BANCO.CORTE
+  const fLim = linea(CARGA.limiteTarjeta, 'ARS', T.limite, `Resumen Nro. ${T.resumen.numero} · ${T.cuenta}`, alResumen)
   linea('   · consumos del período, en pesos', 'ARS', T.consumidoPesos,
-    `Cierra el ${T.cierra}, vence el ${T.vence} · débito automático: ${T.debitoAutomatico}`)
+    `Cierra el ${T.cierra}, vence el ${T.vence} · débito automático: ${T.debitoAutomatico} · ${ars(T.resumen.aDebitarPesos)} con impuestos`, alResumen)
   // UN SOLO CUPO, CON CONSUMOS EN DOS MONEDAS: modelarlo como dos límites mostraba un aire que no existe.
   linea('   · consumos del período, en dólares', 'USD', T.consumidoDolares,
-    'Suscripciones. Se pagan contra el MISMO cupo de pesos, al tipo de cambio del cierre')
+    'Suscripciones. Se debitan EN DÓLARES el mismo día que el resumen en pesos',
+    T.consumidoDolaresAl || alResumen)
   linea('   · cuotas de compras anteriores que caen en períodos futuros', 'ARS', T.cuotasPendientes.restante,
-    `Ya tomado: ${ars(T.cuotas.consumido)} en cuotas · ${ars(T.cuotasPendientes.proximoPeriodo)} caen en el próximo resumen`)
+    `${ars(T.cuotasPendientes.proximoPeriodo)} más caen en el próximo débito, el ${T.vence}`,
+    T.cuotasPendientes.al || alResumen)
   // EL QUE DECLARA EL BANCO, no uno calculado: límite menos consumido daría otro número y no se
-  // inventa la aritmética del resumen.
-  const fDisp = linea('⇒ Disponible para comprar', 'ARS', T.disponible, `${BANCO.ORIGEN} · lo declara el resumen`)
+  // inventa la aritmética del resumen. Y es del HOMEBANKING, no del resumen: el resumen no lo trae.
+  const fDisp = linea('⇒ Disponible para comprar', 'ARS', T.disponible,
+    'Lo declara el homebanking; el resumen del banco no publica el disponible', T.disponibleAl || alResumen)
   const fCtrl = push(['   Control contra la pestaña Tarjeta de Credito', 'ARS',
     `=SUMPRODUCT((UPPER('${refs.tarjeta}'!$J$3:$J$400)<>"SI")*IF(ISNUMBER('${refs.tarjeta}'!$E$3:$E$400);'${refs.tarjeta}'!$E$3:$E$400;0))`,
     '', `=C${h.n + 1}`, '', `${refs.tarjeta}, columna DEBITADO distinta de SI`])
