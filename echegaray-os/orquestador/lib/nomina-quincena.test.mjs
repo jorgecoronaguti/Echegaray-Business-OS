@@ -6,6 +6,7 @@
 // o sea imposible de probar sin tocar ninguno de los dos. Vive acá, pura, y acá se prueba.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { ultimaColumnaHabilCargada, dejoDeCargar } from './nomina-devengado.mjs'
 
 /** Quincena 17→31/08/2026: 17 lunes … 22 sábado, 23 domingo, 24 lunes … 29 sábado, 30 domingo, 31 lunes. */
@@ -50,4 +51,34 @@ test('si nadie cargó todavía, nadie dejó de cargar', () => {
 test('un sábado no puede ser el último día de nadie a los efectos de esta regla', () => {
   // Alguien que SÓLO cargó el sábado: no tiene día hábil, así que no se lo marca de baja.
   assert.equal(ultimaColumnaHabilCargada(COLUMNAS, cargóEn([10])), -1)
+})
+
+// ═══ LA PESTAÑA TIENE QUE DIBUJAR LA PROCEDENCIA, NO SÓLO LA CATEGORÍA (28/08/2026) ═══
+//
+// `rotuloConvenio` y `lineaEquivalenciasInferidas` están probadas en `uocra-paritaria.test.mjs`: lo
+// que este test cuida es el CABLE. La columna «Convenio» dibujaba `conv`, que es la categoría pelada,
+// y con eso `M OF → Medio Oficial` —una lectura del OS que el jornal de Castillo contradice— se veía
+// idéntica al `OF → Oficial` que declaró el dueño. Volver a `conv ?? SIN_DATO` pone rojo esto.
+//
+// Es un test sobre el TEXTO del script, con el mismo criterio que `ancla-registro.test.mjs`: la
+// pestaña sólo se puede generar leyendo y escribiendo el Sheet real, así que la alternativa era no
+// probar el cable en absoluto.
+const NOMINA = readFileSync(new URL('../scripts/nomina-pestana.mjs', import.meta.url), 'utf8')
+
+test('la columna «Convenio» de la Nómina se dibuja con la marca de procedencia', () => {
+  assert.match(NOMINA, /rotuloConvenio\(codigo\) \?\? SIN_DATO/,
+    'volvió a dibujar la categoría pelada: una inferencia del OS se ve igual que una decisión del dueño')
+  assert.match(NOMINA, /if \(conv && esInferida\(codigo\)\) conInferencia\.push/)
+  assert.match(NOMINA, /const inferidas = lineaEquivalenciasInferidas\(conInferencia\)/,
+    'la línea al pie que nombra las inferencias dejó de armarse')
+  assert.match(NOMINA, /if \(inferidas\) fila\(sub\(inferidas\)\)/, 'se arma la línea pero no se escribe')
+})
+
+test('los comentarios de la Nómina no describen un código que ya no existe', () => {
+  // El `Math.max(q.jornal, objetivo)` se borró y dos comentarios lo siguieron describiendo: "LO QUE SE
+  // PAGA ES EL PISO × FACTOR" y "Si el jornal pactado ya es mayor…". En un módulo de nómina un
+  // comentario que miente es una trampa armada para el que venga a tocarlo.
+  assert.doesNotMatch(NOMINA, /LO QUE SE PAGA ES EL PISO × FACTOR/)
+  assert.doesNotMatch(NOMINA, /Math\.max\(q\.jornal/)
+  assert.doesNotMatch(NOMINA, /el escenario\n\s*\/\/ «piso» es el mismo que el de hoy/)
 })

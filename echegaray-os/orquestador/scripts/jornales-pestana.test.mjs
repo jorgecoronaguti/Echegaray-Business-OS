@@ -849,8 +849,12 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   // cualquier eslabón, la proyección vuelve al jornal PACTADO —que está ~15% abajo de la escala— y el
   // total sigue siendo un número plausible que nadie puede distinguir a ojo.
   const p = gm.plantel
-  // 1 · las personas por categoría salen del espejo por COUNTIFS, no de una lista en el código.
-  assert.match(String(gm.filas[p.fPrimera - 1][1]), /COUNTIFS\('_J_OBREROS'!\$D\$\d+:\$D\$\d+/)
+  // 1 · las personas por categoría salen del espejo —de la columna D—, no de una lista en el código.
+  //     Era un COUNTIFS y desde el 28/08 es un SUMPRODUCT sobre `TRIM(D)`: el COUNTIFS comparaba la
+  //     clave ya recortada contra el rango SIN recortar y nueve personas contaban cero. Lo que este
+  //     eslabón cuida no cambió —que el conteo salga del espejo— pero la forma sí, y tiene que decir
+  //     TRIM: sin él vuelve el defecto (ver `jornales-plantel-clave-recortada.test.mjs`).
+  assert.match(String(gm.filas[p.fPrimera - 1][1]), /SUMPRODUCT\(--\(TRIM\('_J_OBREROS'!\$D\$\d+:\$D\$\d+\)=/)
   // 2 · el básico de cada categoría sale de la réplica del convenio.
   assert.match(String(gm.filas[p.fPrimera - 1][5]), /INDEX\('_UOCRA_RAW'!/)
   // 3 · la Σ del cuadro 1.2 es el producto escalar de esas dos columnas — y de NINGÚN número pegado.
@@ -942,7 +946,12 @@ test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
   // la que prueba que el supuesto no es gratis.
   const estado = String(gm.filas[gm.plantel.fPrimera - 1][7])
   assert.match(estado, /por debajo del convenio/)
-  assert.match(String(gm.filas[gm.plantel.fPrimera - 1][2]), /SUMIFS\('_J_OBREROS'!\$W/, 'el pactado dejó de leerse del espejo')
+  // El pactado sigue saliendo de la columna W del espejo; el SUMIFS pasó a SUMPRODUCT por la misma
+  // razón que el conteo, y `N()` está para que un texto en la columna de importes valga cero en vez
+  // de romper la fila entera con #VALUE!.
+  assert.match(String(gm.filas[gm.plantel.fPrimera - 1][2]),
+    /SUMPRODUCT\(--\(TRIM\('_J_OBREROS'!\$D\$\d+:\$D\$\d+\)="[^"]*"\);N\('_J_OBREROS'!\$W/,
+    'el pactado dejó de leerse del espejo')
 })
 
 test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido usar', () => {
