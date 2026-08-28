@@ -343,6 +343,27 @@ export function filasPlantel({
     // #VALUE! —multiplicar por texto rompe aunque el otro factor sea 0— y `N` lo lee como cero. En el
     // mínimo, `ISNUMBER(W)` cumple el mismo papel: sin él, un texto pasa el `>0` (en Sheets el texto
     // ordena después de los números) y contamina el mínimo.
+    //
+    // ═══ LO QUE ESTE ARREGLO **NO** VERIFICÓ (28/08) — LEER ANTES DE LA PRIMERA CORRIDA REAL ═══
+    //
+    // Se escribió y se probó desde un worktree, donde tocar el Sheet está prohibido. Las tres cosas
+    // que faltan son de la corrida desde el árbol principal, y ninguna la puede contestar un test:
+    //
+    // 1 · NADIE VIO EL EFECTO. La afirmación «la Σ pasa de $29.842 a $106.731» está calculada sobre
+    //     una grilla sintética, no leída del archivo. Hasta que alguien mire la celda, es una
+    //     proyección — y la evidencia es del efecto, no del intento.
+    //
+    // 2 · NADIE PROBÓ QUE SHEETS ACEPTE ESTAS FÓRMULAS. `TRIM(rango)`, `N(rango)` e `ISNUMBER(rango)`
+    //     dependen de que Sheets los evalúe en contexto de array dentro de `SUMPRODUCT`/`FILTER`. El
+    //     precedente es fuerte —`expresionSinEscala` usa `ISNUMBER(rango)` dentro de un `SUMPRODUCT`
+    //     y está vivo en esta misma pestaña— pero es precedente, no verificación. Si alguna de las
+    //     tres celdas sale `#VALUE!` o `#N/A`, es acá.
+    //
+    // 3 · EL RIESGO DE LA HUELLA, QUE ES EL QUE PUEDE HACER QUE EL ARREGLO NO LLEGUE. Cambian de
+    //     FORMA 18 celdas que YA EXISTEN en la pestaña (3 columnas × 6 categorías). Si el régimen de
+    //     preservación las considera ajenas —editadas por una persona— en vez de propias, se
+    //     preservan las viejas y el COUNTIFS sigue vivo en el archivo con todo el código arreglado.
+    //     ES LO PRIMERO QUE HAY QUE MIRAR: abrir la celda y ver si dice SUMPRODUCT o COUNTIFS.
     filas.push([
       cat,
       `=SUMPRODUCT(--(TRIM(${D})=${q}))`,

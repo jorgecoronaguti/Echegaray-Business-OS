@@ -35,7 +35,7 @@ import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fcl
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import {
-  convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
+  claveDeCategoria, convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
   jornalConAumento, PORCENTAJE_DE_AUMENTO,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
@@ -165,7 +165,7 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
     const horas = cargadas + pendientesSuyas
     out.set(clave(nombre), {
       nombre,
-      categoria: String(f[3] ?? '').trim(),
+      categoria: claveDeCategoria(f[3]),
       cargadas,
       pendientes: pendientesSuyas,
       dejoDeCargar,
@@ -293,6 +293,11 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     // LA FILA DICE SI SU EQUIVALENCIA LA DECLARÓ ALGUIEN O LA DEDUJO EL OS. Sin la marca, `M OF →
     // Medio Oficial` (una lectura del OS que el jornal de Castillo contradice) se dibuja idéntico al
     // `OF → Oficial` que declaró el dueño, y la inferencia pasa a ser un hecho silencioso.
+    //
+    // LÍMITE DECLARADO (28/08): la marca se probó sobre el TEXTO de este archivo y sobre las funciones
+    // puras, no viéndola en la pestaña — generarla exige escribir el Sheet real. Y la celda pasa de
+    // ~13 a ~22 caracteres: la de al lado tiene dato, así que debería truncar en vez de desparramar,
+    // pero eso se confirma mirando el PDF, no razonándolo.
     if (conv && esInferida(codigo)) conInferencia.push({ nombre: p.nombre, codigo })
 
     const hoyR = repartoPersona({ total: q.total, adelanto: q.adelanto, banco: q.banco })
@@ -300,6 +305,11 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     // confundir: el aumento SUMA sobre lo que cada uno cobra hoy (nadie puede quedar por debajo de su
     // propio jornal), y además `jornalConAumento` no devuelve nunca menos que el básico de convenio,
     // que es el mínimo legal. Acá ya no hay `Math.max` contra el jornal de hoy: sería redundante.
+    //
+    // LO QUE TODAVÍA MIENTE ACÁ, DICHO: `jornalPiso`, `pisoR` y las claves `T.*Piso` se llaman «piso»
+    // y ya no lo son —son el escenario CON AUMENTO, que es piso + decisión de la empresa—. Los
+    // encabezados de la pestaña sí dicen «CON AUMENTO». No se renombraron para no mezclar un rename
+    // de diez líneas con el arreglo del piso de convenio; queda como deuda, no como descuido.
     const jornalPiso = objetivo
     const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
     const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null

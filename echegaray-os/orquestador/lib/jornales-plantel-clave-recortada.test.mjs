@@ -21,7 +21,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { categoriasDelBloque, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
-import { CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { CONVENIO_POR_CODIGO, claveDeCategoria } from './uocra-paritaria.mjs'
 
 // ── LA GRILLA SINTÉTICA: EL PLANTEL DE LA QUINCENA 17/08–31/08, CON SUS CÓDIGOS ──
 //
@@ -198,4 +199,78 @@ test('las fórmulas se escriben en locale es-AR: el separador es ";" y nunca ","
       assert.match(String(celda), /^=/)
     }
   }
+})
+
+// ═══ EL BARRIDO: NINGUNA PUNTA NUEVA PUEDE NORMALIZAR DISTINTO (28/08) ═══
+//
+// El primer intento de arreglo movió la asimetría en vez de matarla: `categoriasDelBloque` pasó a
+// `claveDeCategoria` y `sigmaConvenioDelPlantel` —el control que valida la misma Σ por el otro
+// camino— se quedó con `.trim()`. Antes eran consistentes en el error; después quedaron divergentes,
+// que es peor: la pestaña publicaba $10.866 y el log $11.781.
+//
+// Este test recorre el árbol y prohíbe la forma que lo causó: leer la COLUMNA DE CATEGORÍA con un
+// `.trim()` pelado. No prueba que todo el repo esté bien —no puede—; prueba que la puerta por la que
+// entró este defecto tres veces esté cerrada, y que la normalización siga teniendo UNA definición.
+const RAIZ = new URL('../', import.meta.url)
+const fuentes = () => {
+  const out = []
+  const caminar = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const url = new URL(`${e.name}${e.isDirectory() ? '/' : ''}`, dir)
+      if (e.isDirectory()) { if (e.name !== 'node_modules') caminar(url); continue }
+      if (e.name.endsWith('.mjs') && !e.name.includes('.test.')) out.push(url)
+    }
+  }
+  caminar(RAIZ)
+  return out
+}
+
+// LOS ARCHIVOS DONDE LA COLUMNA 3 ES LA CATEGORÍA. El barrido va acotado a propósito: `[3]` en otro
+// archivo del repo es una factura, un «activo» o un nombre, y un guardián que grita por siete cosas
+// que no son el defecto es un guardián que alguien borra en la próxima corrida. En estos ocho, la D
+// del espejo `_J_OBREROS` es el código de categoría y nada más.
+const LEEN_LA_COLUMNA_D = [
+  'lib/motor-salarial.mjs', 'lib/proyeccion-convenio.mjs', 'lib/jornales-piso-uocra.mjs',
+  'lib/desvinculacion-plantel.mjs', 'lib/nomina-devengado.mjs', 'lib/nomina-replica.mjs',
+  'scripts/jornales-pestana.mjs', 'scripts/nomina-pestana.mjs',
+]
+
+test('nadie lee la columna de categoría con un .trim() pelado', () => {
+  const POR_INDICE = /\[3\][^\n]*\.trim\(\)/
+  // El nombre de la constante SÍ se puede barrer en todo el árbol: si una llama a la columna por su
+  // nombre, está hablando de esta columna.
+  const POR_NOMBRE = /\[(?:COL_CATEGORIA|COL\.categoria|col\.categoria)\][^\n]*\.trim\(\)/
+  const culpables = []
+  for (const f of fuentes()) {
+    const rel = f.pathname.split('/orquestador/')[1]
+    const re = LEEN_LA_COLUMNA_D.includes(rel) ? new RegExp(`${POR_INDICE.source}|${POR_NOMBRE.source}`) : POR_NOMBRE
+    for (const [i, linea] of readFileSync(f, 'utf8').split('\n').entries()) {
+      if (re.test(linea)) culpables.push(`${rel}:${i + 1}  ${linea.trim()}`)
+    }
+  }
+  assert.deepEqual(culpables, [],
+    'una punta más que normaliza distinto de claveDeCategoria: la clave se recorta de un solo lado otra vez')
+})
+
+test('los ocho archivos de la lista siguen siendo los que leen esa columna', () => {
+  // Si uno se renombra o se borra, el barrido de arriba se apaga en silencio para ese archivo. Esto
+  // es lo que hace que la lista no pueda envejecer sin que nadie se entere.
+  for (const rel of LEEN_LA_COLUMNA_D) {
+    assert.ok(existsSync(new URL(rel, RAIZ)), `${rel} ya no existe: el barrido dejó de cubrirlo`)
+  }
+})
+
+test('la normalización de una categoría tiene UNA definición, y las copias que quedan son idénticas', () => {
+  // `desvinculacion-plantel.mjs` y `nomina-devengado.mjs` tienen su propio `texto()`, que hoy hace
+  // EXACTAMENTE lo mismo que `claveDeCategoria` y por eso no rompe nada. No se unificaron porque ahí
+  // `texto` normaliza también nombres y fechas —importar una función llamada «clave de categoría»
+  // para limpiar un apellido sería mentir en la otra dirección—. Lo que este test impide es que
+  // alguien las simplifique a un `.trim()`: ese día sus categorías dejan de encontrar su equivalencia.
+  for (const rel of ['lib/desvinculacion-plantel.mjs', 'lib/nomina-devengado.mjs']) {
+    const src = readFileSync(new URL(rel, RAIZ), 'utf8')
+    assert.match(src, /const texto = \(v\) => String\(v \?\? ''\)\.replace\(\/\\s\+\/g, ' '\)\.trim\(\)/,
+      `${rel}: su normalización dejó de ser la misma que claveDeCategoria`)
+  }
+  // Y la definición canónica es la que colapsa los espacios internos, como TRIM en Sheets.
+  assert.equal(claveDeCategoria(' OF   M '), 'OF M')
 })

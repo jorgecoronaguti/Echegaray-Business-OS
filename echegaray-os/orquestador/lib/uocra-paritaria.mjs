@@ -152,8 +152,10 @@ export const CONVENIO_POR_CODIGO = {
     origen: INFERENCIA_OS,
     decididoPor: 'OS · la M adelante se lee Medio Oficial',
     decididoEn: '2026-08-28',
-    nota: 'Castillo Carlos. Lo contradice su jornal: cobra $5.600/h, tarifa de Oficial. Si es Oficial, '
-      + 'su piso con aumento es $8.774 y no $8.533.',
+    nota: 'Castillo Carlos. LÍMITE DECLARADO: lo contradice su jornal —cobra $5.600/h, la misma tarifa '
+      + 'que los Oficiales Aguero y Ochoa, más que Petina y Rosales que son Oficiales—. La marca lo hace '
+      + 'visible; NO lo resuelve: la categoría la decide el dueño. Si es Oficial, su piso con aumento es '
+      + '$8.774 y no $8.533 — $12.773 en una quincena de 53 h.',
   },
 }
 

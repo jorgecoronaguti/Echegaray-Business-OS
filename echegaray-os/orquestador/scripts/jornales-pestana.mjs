@@ -143,7 +143,9 @@ import {
 import {
   LINEA_DRIVER_OFICINA, estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe,
 } from '../lib/oficina-escalon.mjs'
-import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe, convenioDe, ESCALA_VERIFICADA } from '../lib/uocra-paritaria.mjs'
+import {
+  VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe, convenioDe, claveDeCategoria, ESCALA_VERIFICADA,
+} from '../lib/uocra-paritaria.mjs'
 // EL COSTO DE ECHAR A CADA UNO (sección 6). El régimen —Ley 22.250, sin indemnización por
 // antigüedad ni preaviso— y cada artículo citado viven en `lib/desvinculacion-22250.mjs`; leer el
 // plantel del año del espejo, en `lib/desvinculacion-plantel.mjs`. Acá sólo se lo enchufa.
@@ -2041,9 +2043,14 @@ async function main() {
   // POR RÓTULO, NO POR OFFSET: la fila de cada categoría se busca por su código en la columna A, que es
   // lo que el bloque escribe. Contar filas desde el título es lo que ya rompió tres enlaces acá.
   const colAE = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:E400`).catch(() => [])
+  // Y LA BÚSQUEDA NORMALIZA IGUAL QUE LA CLAVE QUE BUSCA. `cat` viene de `claveDeCategoria`; el rótulo
+  // de la columna A lo escribió una corrida ANTERIOR, y las corridas viejas dejaban ahí la clave a
+  // medio normalizar (`"OF  M"`). Con `.trim()` de este lado ese rótulo no matchea, `escrito` queda
+  // vacío y la columna «Convenio» del dueño se ignora EN EL CONTROL mientras la fórmula sí la
+  // respeta: el control terminaría contestando una pregunta distinta de la que publica la pestaña.
   const escritoPorCodigo = Object.fromEntries(categorias.map((cat) => {
-    const f = (colAE ?? []).find((x) => String(x?.[0] ?? '').trim() === cat)
-    return [cat, f ? String(f[4] ?? '').trim() : '']
+    const f = (colAE ?? []).find((x) => claveDeCategoria(x?.[0]) === cat)
+    return [cat, f ? claveDeCategoria(f[4]) : '']
   }))
   const sigmaConv = sigmaConvenioDelPlantel(espejo, bloqueBase, escalonVigente, undefined, escritoPorCodigo)
   for (const d of sigmaConv.descartados) {
