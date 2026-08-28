@@ -102,6 +102,55 @@ export const CONVENIO_POR_CODIGO = {
   'OF M': 'Oficial',
   A: 'Ayudante',
   'A M': 'Ayudante',
+  // ═══ LOS DOS CÓDIGOS QUE APARECIERON EN LA QUINCENA 17/08–31/08 (28/08/2026) ═══
+  //
+  // El dueño: *"revisa bien el sheet jornales porque algunos empleados tienen aumento de categoria"*.
+  // Los tenía razón: en el bloque 526-543 de «Obreros 26» hay dos códigos que esta tabla no conocía,
+  // y sin ellos `convenioDe` devuelve null, la persona se queda SIN PISO y el control de convenio no
+  // la puede mirar. Tres personas quedaban afuera.
+  //
+  // · `OF E` — Pastran Marcelo y Quiroga Sebastián SUBIERON de Oficial a Oficial Especializado.
+  //   La lectura es directa: E = Especializado, y la escala UOCRA tiene esa categoría.
+  //
+  // · `M OF` — Castillo Carlos, alta del 19/08. **ESTO ES UNA INFERENCIA, NO UN HECHO.** Se lee como
+  //   Medio Oficial —la escala la tiene, y la M va ADELANTE, al revés de `OF M`/`A M` donde la M del
+  //   final era el gremio metalúrgico— pero nadie lo declaró. Se aplicó bajo pedido explícito del
+  //   dueño de aplicar el cuadro, con la lectura declarada en el mensaje del 28/08 y sin respuesta
+  //   en contra. **Define el piso de una persona: si es otra cosa, se corrige acá y se rehace.**
+  'OF E': 'Oficial Especializado',
+  'M OF': 'Medio Oficial',
+}
+
+/**
+ * ═══ CUÁNTO SE PAGA LA HORA SOBRE EL PISO DEL CONVENIO — DECISIÓN DEL DUEÑO, 28/08/2026 ═══
+ *
+ * *"en lugar de el calculo de la quincena sea con el 100% del piso q dice uocra, le aumentemos la
+ * hora un 50% del piso de uocra"*.
+ *
+ * Esto NO es un dato de la paritaria: es una política de la empresa que se apoya en ella. La escala
+ * dice el MÍNIMO legal; este factor dice cuánto por encima de ese mínimo se decide pagar. Separar
+ * las dos cosas es lo que permite que, cuando UOCRA firme el próximo tramo, el jornal se mueva solo
+ * sin que nadie tenga que acordarse de este número.
+ *
+ * MAGNITUD, medida sobre la quincena 17/08–31/08 real (17 personas, 1.496 h): la masa pasa de
+ * $8.049.700 a $14.009.037, +$5.959.337 por quincena. Anualizado sobre 24 quincenas y con las cargas
+ * sociales del 38,62% que sale del F931 real: **+$198.259.991**. No es un ajuste de forma.
+ */
+export const FACTOR_SOBRE_PISO = 1.5
+
+/**
+ * NÚCLEO PURO: qué se paga la hora de una categoría del convenio.
+ *
+ * `basico` es el de la escala vigente (Zona A). Devuelve `null` cuando no hay básico — y `null` NO
+ * es cero: "no sé cuánto le corresponde" y "le corresponde nada" son afirmaciones distintas, y la
+ * segunda sería falsa.
+ */
+export function jornalSobrePiso(basico, factor = FACTOR_SOBRE_PISO) {
+  if (basico == null || !Number.isFinite(Number(basico))) return null
+  if (!Number.isFinite(Number(factor)) || Number(factor) <= 0) {
+    throw new TypeError(`un factor sobre el piso de ${factor} no describe ningún acuerdo salarial`)
+  }
+  return Number(basico) * Number(factor)
 }
 
 /** NÚCLEO PURO: a qué categoría del convenio equivale un código de la planilla, o null. */
