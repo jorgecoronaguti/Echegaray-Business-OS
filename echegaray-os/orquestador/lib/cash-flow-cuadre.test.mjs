@@ -54,7 +54,7 @@ test('EL DESVÍO REAL DEL 13/08 PONE EL CONTROL EN ROJO Y LO NOMBRA', () => {
   const r = cuadre(sem, mes)
   assert.equal(r.ok, false)
   assert.equal(r.fuera.length, 2)
-  assert.equal(r.peor.rotulo, 'Resultado')
+  assert.equal(r.peor.rotulo, 'Variación de caja del período')
   assert.equal(Math.round(r.peor.delta), -13073318)
   assert.equal(r.lineas.find((l) => l.clave === 'egresoProyectado').delta, 13073317)
 })

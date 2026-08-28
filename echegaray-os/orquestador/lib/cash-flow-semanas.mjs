@@ -65,6 +65,7 @@ import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './ca
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
 import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
+import { expresionInvertido, glosaConInvertido, muestraSemanal } from './cash-flow-invertido.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_SEMANAL = 'Cash Flow Semanal'
@@ -79,6 +80,15 @@ const TITULO = 'Cash Flow Semanal'
 
 /** Dónde arranca cada una de las cuatro cifras del hero. Ver `bloqueHero`. */
 const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
+
+/**
+ * LOS CUATRO RÓTULOS DEL TITULAR, en una sola lista para que el auditor de ancho los mida sin raspar
+ * la grilla. NO son las cuatro del Mensual y no tienen por qué serlo: el Semanal contesta "¿con qué
+ * arranco, cuál es el punto más bajo del recorrido y qué dos movimientos lo mueven?".
+ */
+export const ROTULOS_HERO = Object.freeze([
+  'CAJA HOY', 'PISO DEL PERÍODO', 'MAYOR PAGO · PRÓXIMOS 7 DÍAS', 'MAYOR COBRO · PRÓXIMOS 7 DÍAS',
+])
 
 /**
  * NÚCLEO PURO: la grilla entera de la pestaña. No toca la red: se prueba fórmula por fórmula.
@@ -151,6 +161,22 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 }
 
 /**
+ * LA GLOSA DE CAJA HOY — la tarjeta decía la MITAD de la caja (28/08/2026).
+ *
+ * Publicaba $28.319.557: la caja OPERATIVA de `CAJA_TOTAL_DISPONIBLE`, que excluye lo invertido por la
+ * decisión del 06/08. El número es el correcto para decidir un pago —una cuenta comitente no cubre un
+ * cheque mañana— y el problema no era el número: la pestaña no declaraba en ningún lado que hay
+ * $45.015.210 más en Balanz. Discriminar no es esconder.
+ *
+ * Sale de la MISMA fuente que la del Mensual (`cash-flow-invertido`), así que las dos vistas no pueden
+ * decir dos cosas distintas sobre la misma plata.
+ */
+function glosaCajaHoy(refFecha, refCaja) {
+  if (!refFecha) return 'Falta el saldo declarado de CAJA'
+  return glosaConInvertido(`"al "&TEXT(${refFecha};"d/mm")`, expresionInvertido(refCaja))
+}
+
+/**
  * LAS CUATRO CIFRAS DEL TITULAR, en horizontal: rótulo en la fila 4, número en la 5.
  *
  * Cada una ocupa un "slot" que arranca en su columna y se extiende sobre las vacías de la derecha —el
@@ -162,7 +188,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
  * TODAS SALEN DEL PROPIO CUADRO O DEL LIBRO. Ninguna repite un cálculo que ya está abajo.
  */
 function bloqueHero(poner, meta, refs) {
-  const { saldo: refSaldo = null, fecha: refFecha = null } = refs
+  const { saldo: refSaldo = null, fecha: refFecha = null, caja: refCaja = null } = refs
   const [s1, s2, s3, s4] = meta.hero.slots
   const R = meta.hero.rotulo
   const V = meta.hero.valor
@@ -175,14 +201,14 @@ function bloqueHero(poner, meta, refs) {
   const rangoFinal = rangoFila(meta.fila.saldoFinal, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
   const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
 
-  poner(R, s1, 'CAJA HOY')
+  poner(R, s1, ROTULOS_HERO[0])
   poner(V, s1, refSaldo ? `=N(${refSaldo})` : '')
-  poner(G, s1, refFecha ? `="al "&TEXT(${refFecha};"d/mm")` : 'Falta el saldo declarado de CAJA')
+  poner(G, s1, glosaCajaHoy(refFecha, refCaja))
 
   // El piso del horizonte y CUÁNDO ocurre. `INDEX(rango;1;MATCH(…))` con la fila explícita: sobre un
   // rango de una sola fila, `INDEX(rango;n)` significa "la fila n" y no "la columna n" — devolvería
   // #REF! en vez de la fecha, y esa forma ambigua ya rompió un control de este archivo.
-  poner(R, s2, 'PISO DEL PERÍODO')
+  poner(R, s2, ROTULOS_HERO[1])
   poner(V, s2, `=MIN(${rangoFinal})`)
   poner(G, s2, `="la semana del "&TEXT(INDEX(${rangoCab};1;MATCH(MIN(${rangoFinal});${rangoFinal};0));"d/mm")`)
 
@@ -192,14 +218,23 @@ function bloqueHero(poner, meta, refs) {
   const desde = 'TODAY()'
   const hasta = 'TODAY()+7'
   const est = [...ESTADOS_PENDIENTES]
-  poner(R, s3, 'MAYOR PAGO · PRÓXIMOS 7 DÍAS')
+  poner(R, s3, ROTULOS_HERO[2])
   poner(V, s3, formulaMayorImporte(desde, hasta, -1, est))
   poner(G, s3, formulaMayorContraparte(desde, hasta, -1, est, celda(s3, V)))
-  poner(R, s4, 'MAYOR COBRO · PRÓXIMOS 7 DÍAS')
+  poner(R, s4, ROTULOS_HERO[3])
   poner(V, s4, formulaMayorImporte(desde, hasta, 1, est))
   poner(G, s4, formulaMayorContraparte(desde, hasta, 1, est, celda(s4, V)))
   // El piso se compara contra la caja mínima por FORMATO CONDICIONAL (cash-flow-piel-matriz), no con
   // una quinta cifra: el dato ya está, lo que faltaba era verlo.
+
+  // LO QUE EL AUDITOR DE ANCHO PUEDE MEDIR, declarado por el generador. Los rótulos y la glosa de CAJA
+  // HOY tienen texto acotado; las otras tres glosas terminan en un nombre de proveedor o de cliente que
+  // sale del libro y no tiene tope conocido, así que declararlas con una muestra inventada mediría una
+  // ficción. Se miden las que se pueden afirmar: un auditor que promete de más no es un auditor.
+  meta.hero.piezas = [
+    ...ROTULOS_HERO.map((texto, i) => ({ slot: i, pieza: 'rotulo', texto })),
+    { slot: 0, pieza: 'nota', texto: muestraSemanal() },
+  ]
 }
 
 /** Una columna de semana: las cuatro medidas del libro, el resultado y los dos saldos. */

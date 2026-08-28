@@ -7,7 +7,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaSemanal, vinculoHoy, PESTANA_SEMANAL } from './cash-flow-semanas.mjs'
+import { grillaSemanal, vinculoHoy, PESTANA_SEMANAL, ROTULOS_HERO } from './cash-flow-semanas.mjs'
+import { CRITERIO_INVERTIDO, GLOSA_SIN_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 import {
   conceptosDe, colTotal, footprintDe, letra, semanasDelAnio, serialDeFecha,
 } from './cash-flow-matriz.mjs'
@@ -16,7 +17,7 @@ import { auditarPatron } from './patron-pestana.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
 const ANIO = 2026
-const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
+const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA', caja: 'CAJA' }
 const armar = (opts = {}) => grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS, ...opts })
 const en = (filas, f, c) => String((filas[f - 1] || [])[c] ?? '')
 /** El texto de una fórmula sin lo que va entre comillas: los patrones de número llevan comas legítimas. */
@@ -164,6 +165,26 @@ test('cero números pegados: toda celda de plata es fórmula', () => {
   }
 })
 
+test('CAJA HOY dice que es sólo la caja OPERATIVA: la glosa suma lo que está invertido', () => {
+  // El dueño mira este número para decidir un pago, y $28.319.557 es el número correcto para eso: la
+  // caja disponible es banco y efectivo por la decisión del 06/08. Lo que faltaba era decir que hay
+  // $45.015.210 más en Balanz — discriminar no es esconder. La cifra NO cambia: cambia lo que declara.
+  const { filas, meta } = armar()
+  const s1 = meta.hero.slots[0]
+  assert.equal(en(filas, meta.hero.valor, s1), '=N(CAJA_TOTAL_DISPONIBLE)', 'la tarjeta dejó de publicar la caja operativa')
+  const glosa = en(filas, meta.hero.nota, s1)
+  assert.ok(glosa.includes('al "&TEXT(CAJA_FECHA_SALDO'), glosa)
+  assert.ok(glosa.includes(`SUMIF('CAJA'!$A:$A;"${CRITERIO_INVERTIDO}";'CAJA'!$C:$C)`), glosa)
+  assert.ok(glosa.includes('invertido en Balanz'), glosa)
+  // Y si no lo puede leer, lo dice: nunca calla y deja creer que no hay nada invertido.
+  assert.ok(glosa.includes(GLOSA_SIN_INVERTIDO), glosa)
+
+  // EL SEMANAL NO COPIA LAS CUATRO DEL MENSUAL: contesta otras preguntas y sus otros tres rótulos no
+  // se tocan. Copiarlas sería tener la misma vista dos veces con dos geometrías distintas.
+  assert.deepEqual(meta.hero.slots.map((s) => en(filas, meta.hero.rotulo, s)), [...ROTULOS_HERO])
+  assert.ok(!ROTULOS_HERO.some((r) => /EN EL AÑO|31\/12/.test(r)), 'al Semanal le entraron las cifras anuales del Mensual')
+})
+
 test('el hero: el mayor pago y el mayor cobro llevan el MISMO filtro de estados que la medida que representan', () => {
   const { filas, meta } = armar()
   const [, , s3, s4] = meta.hero.slots
@@ -214,19 +235,40 @@ test('ninguna fórmula derrama: un ARRAYFORMULA suelto se rompe con #REF! cuando
 })
 
 test('todo importe sale del libro o de una celda de la propia vista', () => {
-  const { filas } = armar()
-  const otras = new Set()
-  for (const f of filas) {
-    for (const c of f || []) {
-      const s = String(c ?? '')
-      if (!s.startsWith('=')) continue
-      for (const m of s.matchAll(/(?:'([^']+)'|\b([A-Za-z_][\w ]*))!/g)) {
-        const pest = m[1] ?? m[2]
-        if (pest !== '_MOVIMIENTOS') otras.add(pest)
-      }
+  // ═══ EL CUADRO LEE EL LIBRO. EL TITULAR PUEDE CITAR A CAJA, Y NADA MÁS (28/08/2026) ═══
+  //
+  // La regla de siempre —una sola fuente para toda la plata del cuadro— no cambia: ninguna fila de la
+  // matriz puede leer otra pestaña, porque ahí es donde nacen las dos versiones de la misma cifra.
+  //
+  // El titular es otra cosa y ya lo era: `CAJA HOY` cita `CAJA_TOTAL_DISPONIBLE` desde siempre. Eso no
+  // aparecía acá porque un rango con nombre no lleva el `'Pestaña'!` adelante, no porque no lo leyera.
+  // Desde hoy la glosa suma además lo INVERTIDO, que CAJA no publica bajo ningún nombre: se lee por
+  // rótulo sobre sus columnas (ver `cash-flow-invertido.mjs`). El perímetro se acota en vez de
+  // ensancharse: sólo la fila de la glosa, sólo la pestaña de CAJA, y NUNCA citando una fila suya.
+  const { filas, meta } = armar()
+  const otras = []
+  filas.forEach((f, i) => (f || []).forEach((c) => {
+    const s = String(c ?? '')
+    if (!s.startsWith('=')) return
+    for (const m of s.matchAll(/(?:'([^']+)'|\b([A-Za-z_][\w ]*))!/g)) {
+      const pest = m[1] ?? m[2]
+      if (pest === '_MOVIMIENTOS') continue
+      if (pest === REFS.caja && i + 1 === meta.hero.nota) continue
+      otras.push(`fila ${i + 1}: ${pest}`)
     }
+  }))
+  assert.deepEqual(otras, [], 'la matriz semanal sólo puede leer el libro de movimientos')
+
+  // Y LA ÚNICA CITA A CAJA ES POR RÓTULO — MIRANDO LA FILA ENTERA, no la primera columna.
+  //
+  // La versión anterior de esta guarda inspeccionaba la columna 0 de la fila de glosas, y el primer
+  // chequeo exime la fila entera para la pestaña de CAJA: una referencia posicional metida en
+  // cualquiera de los otros TRES slots del titular no la veía nadie. Se probó y daba 20/20 en verde.
+  // Es el mismo control que el del Mensual y ahora es literalmente el mismo código (`citaUnaFilaDe`).
+  for (const fila of [meta.hero.rotulo, meta.hero.valor, meta.hero.nota]) {
+    const entera = (filas[fila - 1] || []).map((x) => String(x ?? '')).join(' § ')
+    assert.ok(!citaUnaFilaDe(REFS.caja, entera), `la fila ${fila} del titular cita una FILA de CAJA: ${entera}`)
   }
-  assert.deepEqual([...otras], [], 'la matriz semanal sólo puede leer el libro de movimientos')
 })
 
 test('el patrón de la pestaña se cumple, salvo la única excepción declarada: una matriz no tiene secciones', () => {

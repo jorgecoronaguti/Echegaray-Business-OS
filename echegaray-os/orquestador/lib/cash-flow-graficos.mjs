@@ -342,7 +342,8 @@ export function graficoTendencia(sheetId, meta) {
     {
       basicChart: {
         chartType: 'LINE', legendPosition: 'NO_LEGEND',
-        axis: ejes('Resultado del mes'),
+        // El eje nombra lo que la fila mide: caja percibida, no resultado devengado (ver el TRONCO).
+        axis: ejes('Variación de caja del mes'),
         domains: [{ domain: filaMatriz(sheetId, meta, meta.cab.fila) }],
         series: [{ series: filaMatriz(sheetId, meta, meta.fila.resultado), targetAxis: 'LEFT_AXIS', color: INK, lineStyle: { width: 2, type: 'SOLID' } }],
         headerCount: 0,
