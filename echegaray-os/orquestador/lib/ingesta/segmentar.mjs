@@ -161,8 +161,27 @@ export function interseccion(a, b) {
 /** Cuánto de esta región cabe adentro de aquélla, de 0 a 1. PURA. */
 export const contenidaEn = (chica, grande) => (areaDe(chica) > 0 ? interseccion(chica, grande) / areaDe(chica) : 0)
 
-/** A partir de cuánto una región deja de ser una vista propia y pasa a ser parte de otra. */
-export const UMBRAL_CONTENIDA = 0.7
+/**
+ * CUÁNDO DOS REGIONES SON LA MISMA REGIÓN.
+ *
+ * ═══ DOS INTENTOS EQUIVOCADOS ANTES DE ÉSTE, LOS DOS MEDIDOS ═══
+ *
+ * 1. «absorber lo que esté 70% adentro de otra» se comió vistas enteras: en un plano real, «CORTE
+ *    E-E», «CORTE F-F» y «PLANTA ALTA» caían dentro de la envolvente inflada de «PLANTA BAJA» y la
+ *    lámina se quedaba con UNA vista de cinco.
+ * 2. «además, que sea mucho más chica» arregló eso y se comió los DETALLES: tres «Detalle de
+ *    secciones metálicas», «Detalle soldadura perfiles» y «Detalle techo metálico T2» quedaban
+ *    adentro de «ESTRUCTURA TECHO». Y un detalle chico dibujado adentro de una planta es
+ *    EXACTAMENTE lo que hay que recortar aparte: es la única forma de verlo a 400 dpi. Absorberlo
+ *    tira el motivo por el que existe la segmentación.
+ *
+ * Lo que sí es redundante es la MISMA región con dos títulos: dos cajas que se contienen
+ * mutuamente. Eso es una vista contada dos veces, y es lo único que se absorbe. El duplicado que
+ * queda —el detalle aparece adentro del recorte grande Y en el suyo— lo resuelve la fusión de
+ * elementos aguas abajo, que deduplica por identidad y declara lo que no puede decidir.
+ */
+export const UMBRAL_CONTENIDA = 0.9
+export const UMBRAL_RECIPROCO = 0.7
 
 /** Qué fracción de las cajas de una vista entra en su envolvente. El resto son las más lejanas al
  *  título, que casi siempre son un llamado o una cota que se estiró hasta el otro dibujo. */
@@ -214,13 +233,13 @@ export function absorberContenidas(regiones = [], { umbral = UMBRAL_CONTENIDA } 
   const quedan = []
   const absorbidas = []
   for (const r of porArea) {
-    const dentroDe = quedan.find((g) => contenidaEn(r.caja, g.caja) >= umbral)
+    const dentroDe = quedan.find((g) => contenidaEn(r.caja, g.caja) >= umbral && contenidaEn(g.caja, r.caja) >= UMBRAL_RECIPROCO)
     if (dentroDe) {
       absorbidas.push({
         titulo: r.titulo ?? null, tipo: r.tipo, caja: r.caja,
         dentroDe: dentroDe.titulo ?? dentroDe.n,
         fraccion: Math.round(contenidaEn(r.caja, dentroDe.caja) * 100) / 100,
-        porQue: `«${r.titulo ?? `región ${r.n}`}» está ${Math.round(contenidaEn(r.caja, dentroDe.caja) * 100)}% adentro de «${dentroDe.titulo ?? `región ${dentroDe.n}`}»: no es una vista aparte, es una parte de ésa. Mirarla por separado paga dos veces por el mismo dibujo`,
+        porQue: `«${r.titulo ?? `región ${r.n}`}» y «${dentroDe.titulo ?? `región ${dentroDe.n}`}» ocupan prácticamente la MISMA caja (${Math.round(contenidaEn(r.caja, dentroDe.caja) * 100)}% y ${Math.round(contenidaEn(dentroDe.caja, r.caja) * 100)}%): es una sola vista con dos títulos, y mirarla dos veces paga dos veces por el mismo dibujo`,
       })
       continue
     }
@@ -281,11 +300,31 @@ export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos =
     g.miembros++
   }
   const areaHoja = areaPapel
+  // ═══ LA ENVOLVENTE ROBUSTA SÓLO DONDE HAY SOLAPE ═══
+  // Recortar el rabo de una vista que no se pisa con ninguna otra no arregla nada y sí pierde
+  // dibujo. Medido: aplicándola a todas, el segundo proyecto pasó de 12 vistas a 5 y de 72
+  // elementos detectados a 29 — la envolvente achicada caía por debajo del área mínima y la vista
+  // desaparecía. Se calcula la envolvente completa, se mira QUIÉN se pisa con quién, y sólo a
+  // ésas se les saca el rabo.
   let dejadasFuera = 0
   for (const g of grupos) {
+    if (!g.asignadas.length) { g.caja = null; continue }
+    let caja = [...g.asignadas[0]]
+    for (const c of g.asignadas) caja = union(caja, c)
+    g.caja = dentroDeLaHoja(caja, ancho, alto)
+  }
+  const conCaja = grupos.filter((g) => g.caja)
+  for (const g of conCaja) {
+    const sePisa = conCaja.some((o) => o !== g && interseccion(g.caja, o.caja) > 0)
+    if (!sePisa) continue
     const r = cajaRobusta(g.asignadas, g.titulo)
+    if (!r.caja) continue
+    const recortada = dentroDeLaHoja(r.caja, ancho, alto)
+    // Y no se recorta si el recorte deja la vista por debajo del mínimo: preferimos una vista que
+    // se pisa un poco a una vista que desaparece.
+    if (areaDe(recortada) < areaHoja * areaMinima) continue
     dejadasFuera += r.dejadas
-    g.caja = r.caja ? dentroDeLaHoja(r.caja, ancho, alto) : null
+    g.caja = recortada
   }
   const conGeometria = grupos.filter((g) => g.caja && areaDe(g.caja) >= areaHoja * areaMinima)
   const regiones = conGeometria.map((g, i) => ({

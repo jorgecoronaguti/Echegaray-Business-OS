@@ -192,16 +192,25 @@ test('G1 · con una sola caja no se descarta nada — el percentil nunca deja un
   assert.equal(r.dejadas, 0)
 })
 
-test('G1 · una región 70% adentro de otra NO es una vista aparte: se absorbe y se declara', () => {
-  const grande = { n: 1, titulo: 'PLANTA BAJA', tipo: 'planta', caja: [0, 0, 100, 100] }
-  const adentro = { n: 2, titulo: 'DETALLE', tipo: 'detalle', caja: [10, 10, 40, 40] }
-  const aparte = { n: 3, titulo: 'CORTE A-A', tipo: 'corte', caja: [200, 0, 300, 100] }
-  const r = absorberContenidas([grande, adentro, aparte])
+test('G1 · LA MISMA CAJA CON DOS TÍTULOS es una vista repetida: se absorbe y se declara', () => {
+  const a = { n: 1, titulo: 'ESTRUCTURA TECHO', tipo: 'planta', caja: [0, 0, 100, 100] }
+  const b = { n: 2, titulo: 'PLANTA DE TECHOS', tipo: 'planta', caja: [2, 2, 98, 98] }
+  const otra = { n: 3, titulo: 'CORTE A-A', tipo: 'corte', caja: [200, 0, 300, 100] }
+  const r = absorberContenidas([a, b, otra])
   assert.equal(r.regiones.length, 2)
   assert.equal(r.absorbidas.length, 1)
-  assert.equal(r.absorbidas[0].titulo, 'DETALLE')
-  assert.match(r.absorbidas[0].porQue, /paga dos veces por el mismo dibujo/)
-  assert.equal(contenidaEn([10, 10, 40, 40], [0, 0, 100, 100]), 1)
+  assert.match(r.absorbidas[0].porQue, /una sola vista con dos títulos/)
+})
+
+test('G1 · UN DETALLE CHICO ADENTRO DE UNA PLANTA NO SE ABSORBE — es el motivo por el que se segmenta', () => {
+  // Absorberlo tira el motivo entero: un detalle de 8 mm en el papel sólo se puede leer recortado
+  // y ampliado. Medido: la regla anterior se comió tres «Detalle …» adentro de «ESTRUCTURA TECHO».
+  const planta = { n: 1, titulo: 'ESTRUCTURA TECHO', tipo: 'planta', caja: [0, 0, 100, 100] }
+  const detalle = { n: 2, titulo: 'Detalle soldadura perfiles', tipo: 'detalle', caja: [10, 10, 40, 40] }
+  const r = absorberContenidas([planta, detalle])
+  assert.equal(r.regiones.length, 2)
+  assert.equal(r.absorbidas.length, 0)
+  assert.equal(contenidaEn([10, 10, 40, 40], [0, 0, 100, 100]), 1, 'está 100% adentro y aun así es una vista propia')
 })
 
 test('G1 · dos vistas que apenas se rozan NO se absorben', () => {
