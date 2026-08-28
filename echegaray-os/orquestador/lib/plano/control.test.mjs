@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { controlar, medirCobertura, supuestosOcultos, preguntas, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
+import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
 import { ESTADO } from './seleccion.mjs'
 import { FUENTE } from './fuente.mjs'
 
@@ -123,4 +123,51 @@ test('el resumen entra en una línea y no esconde ninguno de los cinco números'
 test('DOS CONTROLES IDÉNTICOS dan exactamente lo mismo', () => {
   const entrada = { computo: { detectados: 3, items: [item('A', 1), item('B', 2)] }, mapeo: { mapeos: [mapeo('A', ESTADO.MAPEADA), mapeo('B', ESTADO.AMBIGUO)] } }
   assert.deepEqual(controlar(entrada), controlar(entrada))
+})
+
+test('UNA DECISIÓN CIERRA CUATRO PREGUNTAS QUE NO ERAN CUATRO PREGUNTAS', () => {
+  // «¿cuánto pesa el perfil?», «¿qué equipo de izaje?», «¿cuánta superficie de antióxido?» y
+  // «¿cómo se transporta?» son UNA sola decisión: cómo se contrata la estructura metálica.
+  const p = [
+    { pregunta: 'Provisión y fabricación en taller (kg): sin el peso por metro del perfil no hay kilos', destraba: ['CERCHA', 'K1'], origen: 'proceso derivado', quienLoTiene: 'x' },
+    { pregunta: 'Izaje y montaje (gl): depende del equipo de izaje', destraba: ['CERCHA'], origen: 'proceso derivado', quienLoTiene: 'x' },
+    { pregunta: 'Transporte a obra (gl): depende de la distancia', destraba: ['CERCHA'], origen: 'proceso derivado', quienLoTiene: 'x' },
+    { pregunta: 'Tratamiento anticorrosivo (m2): superficie desarrollada del perfil', destraba: ['K1'], origen: 'proceso derivado', quienLoTiene: 'x' },
+  ]
+  const d = decisiones(p)
+  assert.equal(d.decisiones.length, 1)
+  assert.equal(d.decisiones[0].preguntasQueCierra, 4)
+  assert.deepEqual(d.decisiones[0].destraba.sort(), ['CERCHA', 'K1'])
+  assert.equal(d.sueltas.length, 0)
+})
+
+test('LO QUE NINGUNA DECISIÓN CIERRA SALE SUELTO — meterlo a la fuerza esconde el hueco', () => {
+  const d = decisiones([{ pregunta: '¿Con qué partida se cotiza «Portón corredizo»? No hay ninguna compatible', destraba: ['P1'], origen: 'sin partida', quienLoTiene: 'x' }])
+  assert.equal(d.decisiones.length, 0)
+  assert.equal(d.sueltas.length, 1, 'una decisión que no cierra la pregunta es un rótulo, no una decisión')
+})
+
+test('las decisiones se ordenan por cuántos elementos destraban, no por cuántas preguntas junta', () => {
+  const d = decisiones([
+    { pregunta: '¿Qué espesor tiene la platea? La partida exige «50cm»', destraba: ['A'], origen: 'atributo sin respaldo', quienLoTiene: 'x' },
+    { pregunta: 'Armadura elaborada (kg): sin cuantía no hay kilos', destraba: ['B', 'C', 'D'], origen: 'proceso derivado', quienLoTiene: 'x' },
+  ])
+  assert.equal(d.decisiones[0].clave, 'armadura_cuantia_o_planilla')
+  assert.equal(d.decisiones[1].clave, 'espesores_no_declarados')
+})
+
+test('CADA DECISIÓN DICE QUÉ CIERRA Y QUIÉN LA TOMA — sin eso es un título', () => {
+  for (const d of DECISIONES) {
+    assert.ok(d.pregunta && d.porQueCierra && d.quienLoDecide, `${d.clave} está incompleta`)
+    assert.equal(typeof d.cuando, 'function')
+  }
+})
+
+test('el control expone las decisiones y las sueltas por separado', () => {
+  const r = controlar({
+    computo: { detectados: 3, items: [item('A', 1)] },
+    mapeo: { mapeos: [mapeo('A', ESTADO.PARTIDA_CANDIDATA, { faltan: [{ atributo: 'espesor_m', literal: '50cm' }] })] },
+  })
+  assert.equal(r.decisiones.length, 1)
+  assert.match(r.resumen, /1 decisiones \+ 0 preguntas sueltas/)
 })

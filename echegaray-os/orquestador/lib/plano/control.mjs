@@ -122,6 +122,96 @@ export function preguntas({ mapeos = [], procesos = [], checklist = [] } = {}) {
   return [...mapa.values()].sort(porImpacto)
 }
 
+/**
+ * DE 55 PREGUNTAS A UN PUÑADO DE DECISIONES.
+ *
+ * ═══ POR QUÉ AGRUPAR POR TEXTO NO ALCANZA ═══
+ *
+ * Colapsar preguntas idénticas bajó de 143 a 55 y 55 sigue sin ser una experiencia de producto.
+ * Y el problema no es la cantidad: es que las preguntas están planteadas al nivel equivocado.
+ * «¿Cuánto pesa por metro el perfil de la cercha?», «¿qué equipo de izaje?», «¿cuánta superficie
+ * hay que pintar con antióxido?» y «¿cómo se transporta?» NO son cuatro preguntas: son UNA
+ * —«¿cómo se contrata la estructura metálica?»— y la respuesta las cierra a las cuatro, porque si
+ * va llave en mano el taller, el transporte, el izaje y la protección son del proveedor.
+ *
+ * Cada decisión de acá dice QUÉ RESUELVE. Si una decisión no cierra las preguntas que agrupa, no es
+ * una decisión: es un rótulo, y agrupar por rótulo esconde el trabajo en vez de reducirlo.
+ */
+export const DECISIONES = Object.freeze([
+  {
+    clave: 'contratacion_estructura_metalica',
+    cuando: (p) => p.origen === 'proceso derivado' && /taller|izaje|montaje|transporte|anticorrosivo/i.test(p.pregunta),
+    pregunta: '¿Cómo se contrata la estructura metálica: provisión y montaje llave en mano, o sólo el montaje con material del cliente?',
+    porQueCierra: 'si va llave en mano, el peso del perfil, el transporte, el izaje y la protección anticorrosiva son del proveedor y no se computan por separado; si es sólo montaje, hay que pedirle al proyectista el peso por metro y definir el equipo de izaje',
+    quienLoDecide: 'dirección / comercial, con el proyectista',
+  },
+  {
+    clave: 'armadura_cuantia_o_planilla',
+    cuando: (p) => /armadura|cuantía|cuantia|planilla de doblado/i.test(p.pregunta),
+    pregunta: '¿Existe planilla de doblado, o se adopta una cuantía (kg/m³) por tipo de elemento?',
+    porQueCierra: 'es la única entrada que falta para pasar de metros cúbicos de hormigón a kilos de acero en TODOS los elementos de hormigón armado a la vez',
+    quienLoDecide: 'proyectista / calculista',
+  },
+  {
+    clave: 'movimiento_de_suelo',
+    cuando: (p) => /excavaci|sobreancho|talud|relleno|compactaci/i.test(p.pregunta),
+    pregunta: '¿Qué sobreancho de excavación y qué talud se adoptan, y el suelo excavado se retira o se reutiliza en relleno?',
+    porQueCierra: 'con eso quedan determinados los m³ de excavación, los de relleno y los de retiro, que hoy salen abiertos en cada fundación',
+    quienLoDecide: 'dirección técnica',
+  },
+  {
+    clave: 'alcance_terminaciones',
+    cuando: (p) => p.origen === 'checklist constructivo',
+    pregunta: '¿Qué alcance tiene la oferta: obra gruesa sola, o incluye terminaciones e instalaciones?',
+    porQueCierra: 'cierra de una vez todas las líneas del checklist tipológico que hoy quedan en FALTA_DATO por no saber si el galpón lleva núcleo sanitario, tanque y gas',
+    quienLoDecide: 'comercial / cliente',
+  },
+  {
+    clave: 'dimensiones_de_elementos',
+    cuando: (p) => p.origen === 'proceso derivado' && /faltan dimensiones del elemento/i.test(p.pregunta),
+    pregunta: '¿Se piden las planillas de vigas, columnas y bases al proyectista, o se adoptan dimensiones típicas por tipo de elemento?',
+    porQueCierra: 'el encofrado, el hormigonado, el curado y el desencofrado de CADA elemento de hormigón se derivan de su geometría; sin las tres dimensiones no hay superficie de contacto ni volumen que calcular, y con la planilla salen todos juntos',
+    quienLoDecide: 'proyectista / dirección técnica',
+  },
+  {
+    clave: 'alcance_cubierta',
+    cuando: (p) => p.origen === 'proceso derivado' && /canaleta|cenefa|bajada pluvial|aislaci[oó]n t[eé]rmica|desag[üu]e/i.test(p.pregunta),
+    pregunta: '¿La oferta incluye el sistema de desagüe pluvial y la aislación térmica de la cubierta, o sólo la cubierta?',
+    porQueCierra: 'canaletas, bajadas, cenefas y aislación son partidas propias que ningún plano de arquitectura dibuja: o entran las cuatro o quedan explícitamente excluidas',
+    quienLoDecide: 'comercial / cliente',
+  },
+  {
+    clave: 'espesores_no_declarados',
+    cuando: (p) => p.origen === 'atributo sin respaldo' && /espesor/i.test(p.pregunta),
+    pregunta: '¿Qué espesores se adoptan donde el plano dice «s/cálculo» (platea, contrapisos, muros)?',
+    porQueCierra: 'cada espesor sin definir bloquea la partida más cara de su rubro — la platea de Quattropani fueron $ 29,6 M en la corrida del piloto',
+    quienLoDecide: 'proyectista / calculista',
+  },
+])
+
+/**
+ * LAS DECISIONES QUE DESTRABAN LAS PREGUNTAS. PURA.
+ *
+ * Lo que no encaja en ninguna decisión NO se fuerza adentro: sale como pregunta suelta. Meter a la
+ * fuerza una pregunta en un grupo que no la resuelve es la forma de que la respuesta llegue y el
+ * hueco siga abierto.
+ */
+export function decisiones(preguntas = []) {
+  const grupos = new Map()
+  const sueltas = []
+  for (const p of preguntas) {
+    const d = DECISIONES.find((x) => x.cuando(p))
+    if (!d) { sueltas.push(p); continue }
+    const g = grupos.get(d.clave) ?? { ...d, cuando: undefined, preguntas: [], destraba: [] }
+    g.preguntas.push(p.pregunta)
+    g.destraba.push(...p.destraba)
+    grupos.set(d.clave, g)
+  }
+  const lista = [...grupos.values()].map((g) => ({ ...g, destraba: [...new Set(g.destraba)], preguntasQueCierra: g.preguntas.length }))
+  lista.sort((a, b) => b.destraba.length - a.destraba.length || a.clave.localeCompare(b.clave))
+  return { decisiones: lista, sueltas, total: lista.length + sueltas.length }
+}
+
 /** El estado con el que se entrega una cotización. No hay un tercero. */
 export const ESTADO_COTIZACION = Object.freeze({ COMPLETA: 'COMPLETA', INCOMPLETA: 'INCOMPLETA' })
 
@@ -136,6 +226,7 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
   const cob = medirCobertura({ items: computo.items ?? [], mapeos: mapeo.mapeos ?? [], detectados: computo.detectados })
   const ocultos = supuestosOcultos(computo.items ?? [])
   const abiertas = preguntas({ mapeos: mapeo.mapeos ?? [], procesos: procesos.procesos ?? [], checklist })
+  const dec = decisiones(abiertas)
   // UN CONFLICTO DOCUMENTAL SIN RESOLVER TAMBIÉN DEJA LA COTIZACIÓN INCOMPLETA. Si el plano dice
   // H-21 y la memoria dice H-25, el precio de esa partida no está determinado por más cobertura que
   // haya: cotizarlo es elegir en silencio el resultado de una discusión que no ocurrió.
@@ -145,6 +236,8 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
     cobertura: cob,
     supuestosOcultos: ocultos,
     preguntas: abiertas,
+    decisiones: dec.decisiones,
+    preguntasSueltas: dec.sueltas,
     omisionesCircot,
     conflictos,
     porQue: estado === ESTADO_COTIZACION.COMPLETA
@@ -155,6 +248,6 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
         ? `hay ${ocultos.length} cantidad(es) con una fuente que no se puede confirmar y que no está declarada como supuesto`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · preguntas abiertas ${abiertas.length}${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
   }
 }

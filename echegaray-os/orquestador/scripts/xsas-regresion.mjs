@@ -77,8 +77,16 @@ if (r.checklist?.length) {
 console.log('\n── EL CIERRE ──')
 console.log(`  ${r.control.resumen}`)
 console.log(`  ${r.control.porQue}`)
-console.log(`\n  LAS ${Math.min(6, r.control.preguntas.length)} RESPUESTAS QUE MÁS DESTRABAN (de ${r.control.preguntas.length}):`)
-for (const p of r.control.preguntas.slice(0, 6)) console.log(`   [${String(p.destraba.length).padStart(2)}] ${String(p.pregunta).slice(0, 130)}\n        → ${p.quienLoTiene} · ${p.origen}`)
+console.log(`\n  LAS ${r.control.decisiones.length} DECISIONES QUE CIERRAN ${r.control.preguntas.length - r.control.preguntasSueltas.length} DE LOS ${r.control.preguntas.length} HUECOS:`)
+for (const d of r.control.decisiones) {
+  console.log(`   [${String(d.destraba.length).padStart(3)} elementos · ${String(d.preguntasQueCierra).padStart(2)} preguntas] ${d.pregunta}`)
+  console.log(`        cierra porque: ${d.porQueCierra}`)
+  console.log(`        la decide: ${d.quienLoDecide}`)
+}
+if (r.control.preguntasSueltas.length) {
+  console.log(`\n  Y ${r.control.preguntasSueltas.length} pregunta(s) suelta(s) que ninguna decisión cierra:`)
+  for (const p of r.control.preguntasSueltas.slice(0, 6)) console.log(`   [${String(p.destraba.length).padStart(2)}] ${String(p.pregunta).slice(0, 120)}`)
+}
 
 console.log('\n── A vs B ──')
 for (const c of corridas) console.log(`  corrida ${c.n}: ${c.r.computo.computados}/${c.r.computo.detectados} computados · ${c.r.mapeo.mapeadas} mapeadas · ${c.r.ia.llamadas} llamadas · USD ${c.usd.toFixed(4)} · ${(c.ms / 1000).toFixed(1)} s`)
