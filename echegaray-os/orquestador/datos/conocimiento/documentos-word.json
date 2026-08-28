@@ -1,5 +1,5 @@
 {
- "generado": "2026-08-28T20:00:01.804Z",
+ "generado": "2026-08-28T20:53:26.913Z",
  "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
  "filtro": null,
  "fichas": [
@@ -829,16 +829,18 @@
    },
    "INTERPRETADO": {
     "ok": true,
-    "cuanto": 46,
+    "cuanto": 1,
     "porQue": "160 frase(s) · 46 hallazgo(s) documentales (0 partida(s) de tabla) · 67 hecho(s) técnicos"
    },
    "INTEGRADO_PROYECTO": {
     "ok": true,
-    "cuanto": 46,
-    "porQue": "46 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
    },
    "rechazados": [],
-   "huecos": 2
+   "huecos": 2,
+   "versionDe": "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+   "solape": 0.971
   },
   {
    "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Diagramacion de Obra/Charlar de diagrama de GANT.docx",
@@ -1549,6 +1551,16 @@
    "porQue": "contenido idéntico a «PLANTILLA PARA INFORME.docx»: es la misma copia con otro nombre y sus frases ya entraron"
   }
  ],
+ "versiones": [
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Contrato de Obra/CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
+   "original": "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+   "solape": 0.971,
+   "comunes": 34,
+   "divergencias": 2,
+   "porQue": "el más corto tiene 34 de sus 35 frase(s) también en el otro (97 %), y el corte para llamarlos el mismo documento es 85 %"
+  }
+ ],
  "huecos": [
   {
    "id": "h:5bd671879fd7669a",
@@ -1587,8 +1599,32 @@
    "fuentesEnConflicto": null
   },
   {
-   "id": "h:18f9f99e36886023",
-   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.5",
+   "id": "h:afc13bf0b89f5b3c",
+   "clave": "documento-proyecto.version.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE",
+   "tipo": "CONFLICTO",
+   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» dice: «Saldo: el monto restante es de (U$S 31500 + IVA), el mismo será abonado mediante certificaciones quincenales de avance de obra, conforme a lo ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
+   "quienLoTiene": "el dueño",
+   "opciones": null,
+   "fuentesEnConflicto": [
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx"
+   ]
+  },
+  {
+   "id": "h:96837b4b5a6c4563",
+   "clave": "documento-proyecto.version.SALDO: SERÁ ABONADO MEDIANTE CERTIFICACIONES QUINCENALES DE AVANCE DE OBRA, CONF",
+   "tipo": "CONFLICTO",
+   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» dice: «Saldo: será abonado mediante certificaciones quincenales de avance de obra, conforme al avance efectivamente ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
+   "quienLoTiene": "el dueño",
+   "opciones": null,
+   "fuentesEnConflicto": [
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani"
+   ]
+  },
+  {
+   "id": "h:8ce6be8c111413e0",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.7",
    "tipo": "FALTA_DATO",
    "porQue": "el propio documento declara que este dato todavía no está definido — «El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo »",
    "quienLoTiene": "la dirección técnica del proyecto",
@@ -1596,8 +1632,8 @@
    "fuentesEnConflicto": null
   },
   {
-   "id": "h:fa719b8e3a71e2c1",
-   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.6",
+   "id": "h:fa6805585d7b05d8",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.8",
    "tipo": "FALTA_DATO",
    "porQue": "el propio documento declara que este dato todavía no está definido — «Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios »",
    "quienLoTiene": "el cliente",

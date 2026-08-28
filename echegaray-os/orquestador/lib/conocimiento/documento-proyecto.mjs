@@ -22,7 +22,9 @@
 // Ningún hallazgo de este módulo es un precio ni una cantidad de cómputo. Son afirmaciones de
 // alcance y de condición, con su cita. Lo que hacen es habilitar o bloquear una partida y explicar
 // por qué, no reemplazar la medición.
+import { createHash } from 'node:crypto'
 import { alcanceDe, hechosDeTexto, CLASE_FUENTE } from '../plano/proyecto.mjs'
+import { claveDeFrase } from './documento-version.mjs'
 import { leerPlanillaSemantica } from './planilla-semantica.mjs'
 
 /** Las categorías del pedido. Cada una responde una pregunta distinta y no se mezclan.
@@ -179,7 +181,12 @@ export function hallazgo({ categoria, documento, seccion = null, textoLiteral, c
  * sobre el mismo texto es exactamente cómo terminan conviviendo dos definiciones del mismo concepto.
  */
 export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE.MEMORIA, tablas = [] } = {}) {
-  const frases = frasesConSeccion(texto)
+  // ═══ EL TEXTO ENTRA EN NFC, SIEMPRE ═══
+  // `categoriasDe` reconoce las categorías con literales acentuados («ejecución», «exclusión»). Un
+  // documento guardado en forma DESCOMPUESTA —«ejecucio» + acento combinante— se ve idéntico en
+  // pantalla y no matchea ninguno: medido, el mismo contrato pasó de 10 hallazgos a 5. Perdía la
+  // mitad de sus cláusulas sin un solo error. Se normaliza acá, en el borde, y no en cada regex.
+  const frases = frasesConSeccion(String(texto ?? '').normalize('NFC'))
   const hallazgos = [...partidasDeTablas(tablas, { documento })]
   for (const f of frases) {
     const cats = categoriasDe(f.texto)
@@ -190,7 +197,7 @@ export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE
       if (h) hallazgos.push(h)
     }
   }
-  const tecnicos = hechosDeTexto(texto, { documento, clase })
+  const tecnicos = hechosDeTexto(String(texto ?? '').normalize('NFC'), { documento, clase })
   const partidas = hallazgos.filter((h) => h.categoria === CATEGORIA.PARTIDA).length
   const porCategoria = {}
   for (const h of hallazgos) porCategoria[h.categoria] = (porCategoria[h.categoria] ?? 0) + 1
@@ -262,6 +269,24 @@ export const slug = (s) => String(s ?? 'documento').normalize('NFD').replace(/[�
   .toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
 
 /**
+ * LA HUELLA DE UNA FRASE — el sufijo de la clave. PURA.
+ *
+ * ═══ POR QUÉ NO PUEDE SER EL ORDINAL ═══
+ *
+ * La clave era `…{categoria}.{n}`, con `n` la posición dentro de su categoría. Eso empareja por
+ * POSICIÓN, que es el error que este repo ya pagó en el cuadro 5 de OBRAS (ver
+ * `materiales-fusion.mjs`). Reproducido acá: si el documento se reingiere con una cláusula
+ * INTERCALADA, todo lo que sigue se corre un lugar y cada clave queda apuntando a otra cláusula —
+ * la biblioteca conserva la vieja bajo esa clave y la nueva se pierde. En silencio.
+ *
+ * La huella sale del TEXTO normalizado con el criterio de `documento-version.mjs`: el ruido de
+ * formato no cambia la clave, y un cambio de contenido —una cifra, una palabra— sí la cambia, que
+ * es exactamente lo que se quiere: otra cláusula es otra clave.
+ */
+export const huellaDeFrase = (texto) => createHash('sha256')
+  .update(claveDeFrase(texto)).digest('hex').slice(0, 12)
+
+/**
  * DE LOS HALLAZGOS A CONOCIMIENTOS DE LA BIBLIOTECA. PURA salvo por el constructor que valida.
  *
  * Todo nace CANDIDATO y con procedencia `DOCUMENTO_PROYECTO`, que es la que exige cita literal: la
@@ -279,10 +304,9 @@ export function aConocimientos(lectura, { conocimiento, fecha = null } = {}) {
   const confianza = clase === CLASE_FUENTE.NOTA_INTERNA.id ? 'BAJA' : 'MEDIA'
   const candidatos = []
   const rechazados = []
-  const porCategoria = new Map()
   for (const h of lectura?.hallazgos ?? []) {
-    const n = (porCategoria.get(h.categoria) ?? 0) + 1
-    porCategoria.set(h.categoria, n)
+    // La clave sale del CONTENIDO de la frase, no de su posición: ver `huellaDeFrase`.
+    const n = huellaDeFrase(h.textoLiteral)
     try {
       candidatos.push(conocimiento({
         clave: `documento-proyecto.${base}.${h.categoria.toLowerCase()}.${n}`,

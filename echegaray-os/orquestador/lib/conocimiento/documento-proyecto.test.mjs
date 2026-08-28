@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CATEGORIA, aConocimientos, cantidadesDe, categoriasDe, frasesConSeccion, hallazgo, huecosDeclarados,
-  leerDocumentoDeProyecto,
+  huellaDeFrase, leerDocumentoDeProyecto,
 } from './documento-proyecto.mjs'
 import {
   CRUCE, contrastar, cruzarHechos, estaMedido, exclusionesContraComputo, raiz, terminosDeExclusion, terminosDiscriminantes,
@@ -125,6 +125,51 @@ test('un borrador propio NO contradice al contrato del cliente', () => {
   const r = cruzarHechos({ delMotor: [nota], delDocumento: [delDoc('columna', 'material', 'hormigon_armado')] })
   assert.equal(r[0].cruce, CRUCE.SOLO_MENCIONES)
   assert.match(r[0].porQue, /un borrador propio no contradice a un contrato/)
+})
+
+test('la clave sale del CONTENIDO de la cláusula, no de su posición', () => {
+  // ═══ EL MISMO ERROR QUE `materiales-fusion.mjs` ARREGLÓ EN EL CUADRO 5 DE OBRAS ═══
+  // La clave era `…{categoria}.{n}` con `n` la posición dentro de su categoría. Reingerir el
+  // documento con una cláusula INTERCALADA corre todo lo que sigue: cada clave queda apuntando a
+  // otra cláusula, la biblioteca conserva la vieja bajo esa clave y la nueva se pierde. En silencio
+  // y sin un solo error. Emparejar por POSICIÓN en vez de por IDENTIDAD.
+  //
+  // MUTACIÓN QUE LO PONE ROJO: volver `n` al ordinal en `aConocimientos`.
+  const conocimiento = (k) => k
+  const lectura = leerDocumentoDeProyecto(MEMORIA, { documento: 'Contrato.docx', clase: CLASE_FUENTE.PLIEGO })
+  const claveDe = (r) => new Map(aConocimientos(r, { conocimiento }).candidatos.map((k) => [k.afirmacion, k.clave]))
+  const antes = claveDe(lectura)
+
+  // La MISMA lectura con una cláusula nueva intercalada ANTES de las que ya existían de su
+  // categoría — que es lo que pasa cuando el contrato se corrige agregando un párrafo arriba.
+  const primera = lectura.hallazgos.find((h) => h.categoria === CATEGORIA.EXCLUSION)
+  const intercalada = hallazgo({
+    categoria: CATEGORIA.EXCLUSION,
+    documento: 'Contrato.docx',
+    seccion: primera.seccion,
+    textoLiteral: 'No se incluye la provisión ni la colocación de aberturas de aluminio.',
+    cantidades: [],
+  })
+  const i = lectura.hallazgos.indexOf(primera)
+  const reingerido = { ...lectura, hallazgos: [...lectura.hallazgos.slice(0, i), intercalada, ...lectura.hallazgos.slice(i)] }
+  const despues = claveDe(reingerido)
+
+  assert.equal(despues.size, antes.size + 1, 'la cláusula nueva tiene que sumar un conocimiento')
+  // ═══ LO QUE IMPORTA NO ES QUE LA CLAVE EXISTA: ES A QUÉ CLÁUSULA APUNTA ═══
+  // Con el ordinal, `exclusion.1` sigue existiendo después de la reingesta — pero apunta a OTRA
+  // cláusula. La biblioteca conserva el conocimiento viejo bajo esa clave (gana el que ya estaba) y
+  // las cláusulas corridas no entran nunca. Nada falla, nada avisa.
+  const mudadas = [...antes].filter(([texto, clave]) => despues.get(texto) !== clave)
+  assert.deepEqual(mudadas.map(([t, c]) => `${c} ← «${t.slice(0, 60)}»`), [],
+    `${mudadas.length} cláusula(s) cambiaron de clave al reingerir: cada una queda emparejada con la que no es`)
+  // Y la intercalada entra con una clave que antes no existía.
+  const nuevas = [...despues].filter(([texto]) => !antes.has(texto))
+  assert.equal(nuevas.length, 1)
+  assert.ok(![...antes.values()].includes(nuevas[0][1]), 'la cláusula nueva no puede pisar la clave de otra')
+
+  // La huella ignora el ruido de formato y NO ignora el contenido.
+  assert.equal(huellaDeFrase('No se contempla revoques ni pintura.'), huellaDeFrase(' No se  contempla revoques ni pintura. '))
+  assert.notEqual(huellaDeFrase('U$S 31500 + IVA'), huellaDeFrase('U$S 3150 + IVA'))
 })
 
 test('la CLASE llega a la biblioteca: si no, la nota interna es indistinguible del contrato', () => {

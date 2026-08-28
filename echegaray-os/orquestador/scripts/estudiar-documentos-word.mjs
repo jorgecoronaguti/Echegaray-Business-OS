@@ -37,6 +37,7 @@ import { claseDocumental } from '../lib/plano/documental.mjs'
 import { ETAPA, cargar, conocimiento, documento, guardar, hueco, incorporar, inventario } from '../lib/conocimiento/biblioteca.mjs'
 import { conCache } from '../lib/conocimiento/cache.mjs'
 import { hashDe } from '../lib/conocimiento/leer-archivo.mjs'
+import { conflictosDeVersion, soloLoNuevo, versionPreviaDe } from '../lib/conocimiento/documento-version.mjs'
 
 export const RUTA_INFORME = path.join(
   path.dirname(new URL(import.meta.url).pathname), '..', 'datos', 'conocimiento', 'documentos-word.json',
@@ -158,6 +159,10 @@ async function main() {
   const documentos = []
   const vistos = new Map()
   const duplicados = []
+  // Las lecturas ya procesadas, para reconocer OTRA VERSIÓN del mismo documento. El hash de bytes no
+  // alcanza: el Doc nativo exportado y el .docx subido tienen el mismo texto y bytes distintos.
+  const lecturas = []
+  const versiones = []
   for (const a of word) {
     const r = await estudiarUno(google, a, { refrescar })
     if (r.fallo) { fichas.push({ ...estadosDe({ archivo: a, porQue: r.fallo }), fallo: r.fallo }); continue }
@@ -169,8 +174,27 @@ async function main() {
       continue
     }
     if (r.hash) vistos.set(r.hash, a.nombre)
-    const { candidatos, rechazados } = r.lectura.ok ? aConocimientos(r.interpretacion, { conocimiento }) : { candidatos: [], rechazados: [] }
-    fichas.push({ ...estadosDe({ archivo: a, lectura: r.lectura, interpretacion: r.lectura.ok ? r.interpretacion : null, candidatos }), rechazados, huecos: r.huecos?.length ?? 0 })
+
+    // ═══ OTRA VERSIÓN DEL MISMO DOCUMENTO: LAS COMUNES NO ENTRAN DOS VECES, LAS QUE DIFIEREN SE
+    //     DECLARAN ═══
+    // Deduplicar no puede significar elegir una versión y tirar la otra en silencio: qué contrato
+    // rige es una decisión del dueño. Entran sólo las frases que esta versión agrega, y cada
+    // divergencia sale como hueco CONFLICTO con las dos citas.
+    const v = r.lectura.ok ? versionPreviaDe(r.interpretacion, lecturas) : null
+    const interpretacion = v ? soloLoNuevo(r.interpretacion, v.relacion) : r.interpretacion
+    if (v) {
+      const conflictos = conflictosDeVersion({ original: v.original, nueva: r.interpretacion, relacion: v.relacion, hueco })
+      huecosTodos.push(...conflictos)
+      versiones.push({
+        archivo: a.ruta ?? a.nombre, original: v.original.documento, solape: v.relacion.solape,
+        comunes: v.relacion.comunes, divergencias: conflictos.length,
+        porQue: v.relacion.porQue,
+      })
+    }
+    if (r.lectura.ok) lecturas.push(r.interpretacion)
+
+    const { candidatos, rechazados } = r.lectura.ok ? aConocimientos(interpretacion, { conocimiento }) : { candidatos: [], rechazados: [] }
+    fichas.push({ ...estadosDe({ archivo: a, lectura: r.lectura, interpretacion: r.lectura.ok ? interpretacion : null, candidatos }), rechazados, huecos: r.huecos?.length ?? 0, ...(v ? { versionDe: v.original.documento, solape: v.relacion.solape } : {}) })
     candidatosTodos.push(...candidatos)
     for (const h of r.huecos ?? []) {
       huecosTodos.push(hueco({ clave: `documento-proyecto.${h.documento}.sin-definir.${huecosTodos.length + 1}`, tipo: h.tipo, porQue: `${h.porQue} — «${h.textoLiteral.slice(0, 180)}»`, quienLoTiene: h.quienLoTiene }))
@@ -196,6 +220,13 @@ async function main() {
     console.log(`  ${'COPIA DUPLICADA'.padEnd(20)} ${duplicados.length} de ${fichas.length} — no se estudian dos veces`)
     for (const d of duplicados) console.log(`     = ${d.archivo} — ${d.porQue}`)
   }
+  if (versiones.length) {
+    console.log(`  ${'OTRA VERSIÓN'.padEnd(20)} ${versiones.length} de ${fichas.length} — sus frases comunes NO entran de nuevo`)
+    for (const v of versiones) {
+      console.log(`     ≈ ${v.archivo}`)
+      console.log(`       versión de «${v.original}» · ${v.comunes} frase(s) en común (${Math.round(v.solape * 100)} %) · ${v.divergencias} divergencia(s) declaradas como CONFLICTO`)
+    }
+  }
   for (const f of fichas.filter((x) => !x.PARSEADO.ok)) console.log(`     ✗ ${f.nombre} — ${f.PARSEADO.porQue.slice(0, 130)}`)
   console.log(`\n  hallazgos documentales   ${fichas.reduce((a, f) => a + f.INTERPRETADO.cuanto, 0)}`)
   console.log(`  huecos declarados por el propio documento   ${huecosTodos.length}`)
@@ -203,7 +234,7 @@ async function main() {
 
   fs.mkdirSync(path.dirname(RUTA_INFORME), { recursive: true })
   if (dry) { console.log('\n--dry: no se escribió nada'); return }
-  fs.writeFileSync(RUTA_INFORME, `${JSON.stringify({ generado: new Date().toISOString(), raiz, filtro, fichas, duplicados, huecos: huecosTodos }, null, 1)}\n`)
+  fs.writeFileSync(RUTA_INFORME, `${JSON.stringify({ generado: new Date().toISOString(), raiz, filtro, fichas, duplicados, versiones, huecos: huecosTodos }, null, 1)}\n`)
   const bib = cargar()
   const nueva = incorporar(bib, { documentos, conocimientos: candidatosTodos, huecos: huecosTodos })
   const version = guardar(nueva)
