@@ -15,8 +15,9 @@ import { ESTADO, PROCEDENCIA, ascensoProhibido, conocimiento, incorporar } from 
 import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
 import { practicas } from './practica-cotizacion.mjs'
 import {
-  AREA, INSUFICIENCIA_METALICA, aConocimientoHistorico, aConocimientoInsuficienciaMetalica,
-  archivoDeLaUbicacion, clienteDeLaObra, partidasDelCasoMetalico, registroHistorico, registrosHistoricos,
+  ADVERTENCIA, AREA, AREA_ANTERIOR, INSUFICIENCIA_METALICA, aConocimientoHistorico,
+  aConocimientoInsuficienciaMetalica, archivoDeLaUbicacion, clienteDeLaObra, partidasDelCasoMetalico,
+  practicasSuperadas, registroHistorico, registrosHistoricos, retirarPracticasSuperadas,
 } from './practica-historica.mjs'
 
 const RUTA = (cliente, obra, archivo) => `administracion/PRESUPUESTOS - CLIENTES/${cliente}/${obra}/${archivo}`
@@ -260,4 +261,67 @@ test('el caso metálico entra a la biblioteca sólo si esa cotización está en 
   assert.equal(sin.conocimientos.some((k) => k.clave === INSUFICIENCIA_METALICA.clave), false)
   const con = await estudiar([{ ...libro('e.xlsx', RUTA('JAVIER SANCHEZ', 'Entrepiso', 'e.xlsx')), modificado: '2025-05-05' }])
   assert.equal(con.conocimientos.some((k) => k.clave === INSUFICIENCIA_METALICA.clave), true)
+})
+
+// ═══════════════════ LAS 190 FANTASMA: DOS ENTRADAS VIVAS BAJO LA MISMA CLAVE ═══════════════════
+
+/** Una práctica tal como la escribía la versión anterior del circuito: EXPERIENCIA_ECSAS y el área
+ *  vieja. Es lo que hay HOY en `biblioteca.json`, 190 veces. */
+const practicaVieja = (clave = 'cotizacion.precio.beneficio.total') => conocimiento({
+  clave,
+  afirmacion: 'la cotización aplica 17 % de beneficio en 12 de 12 cotizaciones',
+  procedencia: PROCEDENCIA.EXPERIENCIA_ECSAS,
+  estado: ESTADO.CANDIDATO,
+  valor: 0.17,
+  condicion: ADVERTENCIA,
+  area: AREA_ANTERIOR,
+  evidencia: { casos: 12, obras: ['FIMA SA'], ubicacion: 'a.xlsx · hoja GG' },
+})
+
+test('sin retirar, la procedencia nueva NO pisa la vieja: quedan dos entradas vivas bajo la misma clave', () => {
+  const vieja = practicaVieja()
+  const bib = incorporar(VACIA, { conocimientos: [vieja] })
+  const nueva = { ...vieja, procedencia: PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, area: AREA }
+  // No tira: cambiar EXPERIENCIA_ECSAS por PRACTICA_HISTORICA_ECSAS es un DESCENSO de categoría, y
+  // `ascensoProhibido` sólo mira los ascensos. Por eso hacía falta retirarlas, no prohibirlas.
+  const conLasDos = incorporar(bib, { conocimientos: [nueva] })
+  const vivas = conLasDos.conocimientos.filter((k) => k.clave === vieja.clave && k.estado === ESTADO.CANDIDATO)
+  assert.equal(vivas.length, 2, 'el escenario no reproduce el defecto que se está arreglando')
+  assert.deepEqual(vivas.map((k) => k.procedencia).sort(), ['EXPERIENCIA_ECSAS', 'PRACTICA_HISTORICA_ECSAS'])
+
+  const { biblioteca, retirados } = retirarPracticasSuperadas(conLasDos, { cuando: '2026-08-28' })
+  assert.equal(retirados.length, 1)
+  const quedan = biblioteca.conocimientos.filter((k) => k.clave === vieja.clave && k.estado === ESTADO.CANDIDATO)
+  assert.deepEqual(quedan.map((k) => k.procedencia), ['PRACTICA_HISTORICA_ECSAS'], 'quedó viva la que dice «lo medimos ejecutando»')
+  const retirada = biblioteca.conocimientos.find((k) => k.id === vieja.id)
+  assert.equal(retirada.estado, ESTADO.REEMPLAZADO, 'la vieja se borró en vez de retirarse: sin ella no se explica una cotización anterior')
+  assert.equal(retirada.reemplazadoPor, quedan[0].id)
+  assert.equal(retirada.procedencia, PROCEDENCIA.EXPERIENCIA_ECSAS, 'se reescribió la procedencia en el lugar')
+})
+
+test('el id que la migración anticipa es EXACTAMENTE el que va a producir el estudio', async () => {
+  // La entrada nueva todavía no existe —el estudio no volvió a correr—, así que el reemplazo apunta
+  // a un id calculado. Que ese id sea el mismo que produce `aConocimientoHistorico()` es lo que
+  // hace que apuntarlo no sea una suposición.
+  const { registros } = await historicos(dosClientes())
+  const r = registros.find((x) => x.clave === 'cotizacion.precio.beneficio.total')
+  assert.ok(r, 'la práctica de referencia dejó de producirse: hay que elegir otra clave')
+  const delEstudio = aConocimientoHistorico(r, { fecha: '2026-08-28' })
+  const soloVieja = incorporar(VACIA, { conocimientos: [practicaVieja(r.clave)] })
+  const [anticipado] = practicasSuperadas(soloVieja)
+  assert.equal(anticipado.yaEsta, false)
+  assert.equal(anticipado.nuevoId, delEstudio.id, 'el reemplazo apunta a un id que el estudio no va a usar')
+})
+
+test('retirar es idempotente y no toca lo que no es una práctica histórica vieja', () => {
+  const ajena = conocimiento({
+    clave: 'mano_obra.rendimiento.hormigon', afirmacion: 'x', procedencia: PROCEDENCIA.EXPERIENCIA_ECSAS,
+    area: 'mano_obra', evidencia: { casos: 3, obras: ['OBRA'] },
+  })
+  const bib = incorporar(VACIA, { conocimientos: [practicaVieja(), ajena] })
+  const una = retirarPracticasSuperadas(bib)
+  assert.equal(una.retirados.length, 1, 'se retiró algo que no es una práctica de cotización')
+  assert.equal(una.biblioteca.conocimientos.find((k) => k.id === ajena.id).estado, ESTADO.CANDIDATO)
+  const dos = retirarPracticasSuperadas(una.biblioteca)
+  assert.deepEqual(dos.retirados, [], 'correrla dos veces retira dos veces')
 })

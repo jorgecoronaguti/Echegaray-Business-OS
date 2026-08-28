@@ -39,6 +39,7 @@ import { CLASE, inventariar, subarbol } from '../lib/conocimiento/inventario-dri
 import { formatoDe } from '../lib/ingesta/registro.mjs'
 import { cargar, guardar, incorporar, inventario, yaEstudiado } from '../lib/conocimiento/biblioteca.mjs'
 import { estudiarTanda } from '../lib/conocimiento/estudio-cotizaciones.mjs'
+import { retirarPracticasSuperadas } from '../lib/conocimiento/practica-historica.mjs'
 import { conCache } from '../lib/conocimiento/cache.mjs'
 import { resumen } from '../lib/conocimiento/hallazgos-cotizacion.mjs'
 
@@ -135,11 +136,20 @@ async function main() {
 
   if (dry) { console.log('\n--dry: no se escribió nada'); return }
   const nueva = incorporar(bib, { documentos: r.documentos, conocimientos: r.conocimientos })
-  const version = guardar(nueva)
+  // ═══ LA VERSIÓN VIEJA DE UNA PRÁCTICA SE RETIRA EN LA MISMA CORRIDA QUE ENTRA LA NUEVA ═══
+  //
+  // Las prácticas salían como EXPERIENCIA_ECSAS y ahora salen como PRACTICA_HISTORICA_ECSAS. La
+  // procedencia entra en el `id`, así que `incorporar()` no pisa la vieja: la deja al lado, y
+  // `saber()` devuelve las dos —una de ellas diciendo «lo medimos ejecutando» sobre un coeficiente
+  // tipeado—. Retirarlas acá y no sólo en el script de migración es lo que hace que la convivencia
+  // no pueda volver a aparecer con una base restaurada de un backup.
+  const { biblioteca, retirados } = retirarPracticasSuperadas(nueva, { cuando: new Date().toISOString().slice(0, 10) })
+  if (retirados.length) console.log(`\n↺ ${retirados.length} práctica(s) con la procedencia anterior quedaron retiradas (REEMPLAZADO)`)
+  const version = guardar(biblioteca)
   fs.mkdirSync(path.dirname(RUTA_HALLAZGOS), { recursive: true })
   const fusionados = fusionarHallazgos(leerHallazgos(), r.hallazgos, { salteados: r.salteados.length })
   fs.writeFileSync(RUTA_HALLAZGOS, `${JSON.stringify({ generado: new Date().toISOString(), raiz, resumen: resumen(fusionados), hallazgos: fusionados }, null, 1)}\n`)
-  console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(nueva))}`)
+  console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(biblioteca))}`)
   console.log(`✓ hallazgos en ${RUTA_HALLAZGOS}`)
 }
 

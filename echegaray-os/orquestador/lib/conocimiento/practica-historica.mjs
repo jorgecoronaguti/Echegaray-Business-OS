@@ -21,7 +21,7 @@
 //
 // Un coeficiente que va de 0,006 a 0,04 entre cotizaciones no tiene media útil: publicar «0,023»
 // sin la dispersión al lado convierte dos costumbres distintas en una tercera que nunca existió.
-import { ESTADO, PROCEDENCIA, conocimiento } from './biblioteca.mjs'
+import { ESTADO, PROCEDENCIA, conocimiento, reemplazar } from './biblioteca.mjs'
 
 /** Lo que se le agrega a TODA práctica para que nadie la lea como una regla. Vive acá y no en
  *  `practica-cotizacion.mjs` porque es la advertencia de la PROCEDENCIA, no del cálculo: cualquier
@@ -31,6 +31,11 @@ export const ADVERTENCIA = 'práctica observada en cotizaciones internas de ECSA
 /** La marca que lleva TODA práctica histórica. Está en el `area` y en la `condicion` para que
  *  aparezca en cualquier consulta a la biblioteca, no sólo en la que la busca. */
 export const AREA = 'practica-historica-de-cotizacion'
+
+/** El `area` con el que estas mismas prácticas entraban ANTES, cuando salían como
+ *  `EXPERIENCIA_ECSAS`. Ya no lo escribe nadie: sirve para reconocer las entradas viejas que
+ *  quedaron en el disco y retirarlas. */
+export const AREA_ANTERIOR = 'practica-de-cotizacion'
 
 /** Qué significa cada nivel de confianza acá. Es cuán bien DESCRIPTA está la costumbre. */
 export const CONFIANZA_DESCRIPTIVA = Object.freeze({
@@ -249,3 +254,66 @@ export const aConocimientoInsuficienciaMetalica = ({ fecha = null } = {}) => con
     objetivo: INSUFICIENCIA_METALICA.objetivo,
   },
 })
+
+/**
+ * LAS PRÁCTICAS VIEJAS QUE LA PROCEDENCIA NUEVA DEJA SIN LUGAR. PURA.
+ *
+ * ═══ EL PROBLEMA QUE RESUELVE ═══
+ *
+ * En el disco quedaron 190 prácticas con procedencia `EXPERIENCIA_ECSAS`, escritas por la versión
+ * anterior de este mismo circuito. El código nuevo estampa `PRACTICA_HISTORICA_ECSAS`, y la
+ * procedencia entra en el `id` (`huella({clave, procedencia, version})`): la próxima corrida del
+ * estudio no las pisa, agrega 190 entradas nuevas al lado. `incorporar()` no puede detenerlo —el
+ * cambio es un DESCENSO de categoría, no un ascenso— así que las dos conviven bajo la misma clave y
+ * `saber()` devuelve las dos, una de ellas diciendo «lo medimos ejecutando» sobre un coeficiente
+ * tipeado en una planilla de 2021.
+ *
+ * ═══ POR QUÉ NO SE CAMBIA LA PROCEDENCIA EN EL LUGAR ═══
+ *
+ * Porque ninguna función de `biblioteca.mjs` escribe `procedencia`, y esa es la invariante que hace
+ * que un dato no pueda mejorar de categoría por edición. Reescribir el campo la rompería para
+ * ahorrarse un paso. Lo que corresponde es lo que la biblioteca ya sabe hacer: RETIRAR la entrada
+ * vieja con `reemplazar()`, que la deja en el archivo —sin ella no se puede explicar una cotización
+ * hecha con el criterio anterior— y fuera de `saber()`.
+ *
+ * ═══ POR QUÉ EL id DEL REEMPLAZO SE PUEDE ANTICIPAR ═══
+ *
+ * El `id` es una función pura de `{clave, procedencia, version}`. Si la entrada nueva todavía no
+ * está en la base —porque el estudio no volvió a correr—, el id al que apunta el reemplazo se
+ * calcula construyéndola, y va a ser exactamente el mismo que produzca el estudio. No es una
+ * suposición: hay un test que lo compara contra `aConocimientoHistorico()`.
+ */
+export function practicasSuperadas(bib) {
+  const conocimientos = bib?.conocimientos ?? []
+  const vivo = (k) => k.estado !== ESTADO.REEMPLAZADO && k.estado !== ESTADO.RECHAZADO
+  const nuevas = new Map(conocimientos
+    .filter((k) => k.procedencia === PROCEDENCIA.PRACTICA_HISTORICA_ECSAS && vivo(k))
+    .map((k) => [k.clave, k]))
+  return conocimientos
+    .filter((k) => k.procedencia === PROCEDENCIA.EXPERIENCIA_ECSAS && k.area === AREA_ANTERIOR && vivo(k))
+    .map((viejo) => {
+      const presente = nuevas.get(viejo.clave) ?? null
+      return {
+        viejo,
+        // `estado: CANDIDATO` en la reconstrucción: el `id` no depende del estado, y reconstruir uno
+        // ya validado chocaría contra la regla del firmante por un id que iba a salir igual.
+        nuevoId: presente ? presente.id : conocimiento({
+          ...viejo, procedencia: PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, area: AREA,
+          condicion: ADVERTENCIA, estado: ESTADO.CANDIDATO,
+        }).id,
+        yaEsta: Boolean(presente),
+      }
+    })
+}
+
+/**
+ * RETIRA LAS PRÁCTICAS SUPERADAS. PURA e IDEMPOTENTE.
+ *
+ * Devuelve la biblioteca nueva y el detalle de lo retirado. Correrla dos veces no cambia nada: la
+ * segunda vez ya no quedan entradas vivas que retirar.
+ */
+export function retirarPracticasSuperadas(bib, { cuando = null } = {}) {
+  const superadas = practicasSuperadas(bib)
+  const biblioteca = superadas.reduce((b, s) => reemplazar(b, s.viejo.id, { porId: s.nuevoId, cuando }), bib)
+  return { biblioteca, retirados: superadas.map((s) => ({ clave: s.viejo.clave, de: s.viejo.id, a: s.nuevoId, yaEsta: s.yaEsta })) }
+}

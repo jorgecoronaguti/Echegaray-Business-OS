@@ -1,5 +1,5 @@
 {
- "version": 8,
+ "version": 9,
  "documentos": [
   {
    "id": "doc:03498b26f42aaa17",
@@ -1588,10 +1588,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e1698c03a3167553",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:016cdb1475e3470e",
@@ -1691,10 +1693,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:195ea298d6853685",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:01af727aed974abf",
@@ -1799,10 +1803,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:549565bf55e55e0f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:03481563ae8b73c0",
@@ -1847,10 +1853,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:999a258898a1d7e6",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:07493704196fe0d5",
@@ -1897,10 +1905,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:04d2f300f8990aaa",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:07c97ac3f8bd2956",
@@ -1968,10 +1978,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ee605ca541c0da38",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0971a693931d9083",
@@ -2039,10 +2051,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:59154fc320bb48d2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:097633b4f36a6a2d",
@@ -2147,10 +2161,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:97885d1049fc8c74",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0bd7d297da1abb2e",
@@ -2196,10 +2212,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:5b28693c38a410aa",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0c388616caa1c515",
@@ -2267,10 +2285,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f8030a51899a803f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0c4300fd5a93a2d5",
@@ -2356,10 +2376,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:29a56069e444af0a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0df4f227870d2c9b",
@@ -2429,10 +2451,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ccf41ded09bf75c3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0e108121e1cd12d4",
@@ -2503,10 +2527,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:37637a2989ca9c1d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:0f78cc55e942deac",
@@ -2575,10 +2601,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ad8b2a07e4de0f33",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:105a4f31c12228ba",
@@ -2623,10 +2651,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:19a800055be75fc3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:10e8f0637463b472",
@@ -2671,10 +2701,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:47aa2ff2f9fc32c2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1154ddbe94efffa6",
@@ -2716,10 +2748,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3ed2677a510f2d38",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1158e97c0344355a",
@@ -2790,10 +2824,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f122e79e29f94f8a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:13e56f5f58ddbd60",
@@ -2857,10 +2893,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:74880d4407d6715b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:142d1b90b043ed1f",
@@ -2905,10 +2943,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:14d8d76116145741",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1457e30ecc1710d3",
@@ -2954,10 +2994,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:5d8333941744c10d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:150445219d1ab13b",
@@ -3012,10 +3054,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:a382d434cbc81c63",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1507e68918e0a721",
@@ -3084,10 +3128,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:dbfd1f283a911b70",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:156b4020d45d4047",
@@ -3188,10 +3234,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:02f31fc69ecda690",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:15778aa9866e8a76",
@@ -3233,10 +3281,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:052479c2a94491b3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:160c37d73285884d",
@@ -3337,10 +3387,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e48615807ff16b74",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1683fecf31d75744",
@@ -3416,10 +3468,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:61bb890de7aa6a25",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:181bfe21b1a7bee1",
@@ -3520,10 +3574,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:368f76fe3adda024",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:19a01f6db1798ea1",
@@ -3570,10 +3626,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6d5e97893795ad76",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:19faadc60142db11",
@@ -3660,10 +3718,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:424335781ef4a631",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1afc25d141492a67",
@@ -3768,10 +3828,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4a2dc1e4a4dac51e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1b78d1b8cb42c34a",
@@ -3812,10 +3874,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3d4f4bee1e76f32b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:1fd1454274ff598e",
@@ -3920,10 +3984,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:023487842c983984",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:21d4876c981934bc",
@@ -3999,10 +4065,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:8dd353c3bd272799",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2308a91df63b04eb",
@@ -4057,10 +4125,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:92a447ef48f809db",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:24844c68efc27a76",
@@ -4111,10 +4181,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c4b32f9de40fa89f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2515d1de74ef78ce",
@@ -4219,10 +4291,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e665aa42b95d9292",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2836684d71a6f68f",
@@ -4293,10 +4367,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4d3bd33b57db53da",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:28585085ba4ab285",
@@ -4387,10 +4463,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:fa4e378ee2ea70a7",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:29812757fea7f3b7",
@@ -4495,10 +4573,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:cb525220b242646b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:29ac3e2ab00c9027",
@@ -4566,10 +4646,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:b4a00004885f8b31",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2a10ba48690f8797",
@@ -4633,10 +4715,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:443a9b1904a8f4d7",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2a6467885ba068ce",
@@ -4686,10 +4770,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:5c3bb484145925ff",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2c4ab1a716a7a725",
@@ -4731,10 +4817,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:cd589513917e908a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2ec27f4d41f5986b",
@@ -4798,10 +4886,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9427ba07818f1535",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:2f79ab8c7f20eb66",
@@ -4870,10 +4960,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:1471ad2b51dedfaa",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3015d4abe68344f4",
@@ -4978,10 +5070,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:534a032ae0c21bf1",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:30b86226ed796e69",
@@ -5022,10 +5116,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:2488ba60871e1d7d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:317313071c30fce4",
@@ -5095,10 +5191,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ee868f0bd474d682",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3370df916ff69d14",
@@ -5203,10 +5301,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:739369073ae18c16",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:33abe84ce6cf5cdd",
@@ -5247,10 +5347,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:25de0106d7a30250",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:33d4600e5aac407f",
@@ -5355,10 +5457,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:428bc685885eadff",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:349bce9b3ea9f485",
@@ -5443,10 +5547,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:db33288a30f34016",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:35b1d49f230ee28c",
@@ -5551,10 +5657,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:2aa0020712cbd364",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:36506bf26ac94e1d",
@@ -5653,10 +5761,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d6d5188d172dccfc",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:39268c5ce143fd0d",
@@ -5701,10 +5811,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4f27bbf73b381da2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:394cc1c69ec4d669",
@@ -5809,10 +5921,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:558abb0ef056840f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3a0cbea2b50a1c02",
@@ -5862,10 +5976,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0081e097a0feed0f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3a63ba5a29c5896b",
@@ -5957,10 +6073,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:8f3f7ddf5e1ec26a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3d94bbb32af7d545",
@@ -6021,10 +6139,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:dd9c75bebbb6bcac",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:3e5de832e278627d",
@@ -6129,10 +6249,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0a1b5aad91ff7f2f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:40e3009231a34e60",
@@ -6173,10 +6295,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6b37a877d798f76a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:41799a9924af1f5b",
@@ -6218,10 +6342,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e6042daaa7d0a00d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:420e1777724a3a1a",
@@ -6267,10 +6393,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:73a9b895677b5a6d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4322f3c5cee9638c",
@@ -6316,10 +6444,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f5cf6b07d54c94bf",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:455efbb771293255",
@@ -6360,10 +6490,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:74416ee53fe5571b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:46213deb0d646631",
@@ -6405,10 +6537,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:1844235dba585b32",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:472a2fdfcfee8534",
@@ -6464,10 +6598,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c59eda0259d06a04",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:479fabb1bf3b62eb",
@@ -6536,10 +6672,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c842c6f206546244",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:47aaea9e5e092810",
@@ -6589,10 +6727,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3c542d519ce33e67",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:494a213129a209bc",
@@ -6656,10 +6796,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e2c6bb877c7778b0",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4a10fd9b271082db",
@@ -6700,10 +6842,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7bf062b5dc31241b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4a8bc3ed3a1dcdde",
@@ -6761,10 +6905,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c937dec70bc3efbd",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4c73734806365668",
@@ -6825,10 +6971,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:a4bd586a5733aa19",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4dc371d672a7bfba",
@@ -6933,10 +7081,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:06d2d3a9f2d10d54",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4e52097503db8142",
@@ -7041,10 +7191,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:de65f22bcc5a971b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:4f0464e288a798ab",
@@ -7085,10 +7237,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7ef50627fca55fb1",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:51082eb15e5ca4aa",
@@ -7192,10 +7346,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4728295b7eccaf62",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:5161c0e466b327c2",
@@ -7245,10 +7401,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:1f41311fdcf2c2c9",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:522fe90bf2c3e8f8",
@@ -7309,10 +7467,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6eb9c4538b608184",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:5534f18fb01b338d",
@@ -7373,10 +7533,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9fdaaae45cc00a0e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:59445a0425a09e67",
@@ -7446,10 +7608,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7f7598f49c78d78f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:59850d2798d1fa36",
@@ -7501,10 +7665,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6be8592e5bf3935d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:631d7662f81afd74",
@@ -7562,10 +7728,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e09682bca334e9e7",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:633351f0b4a138d9",
@@ -7607,10 +7775,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ac84aeeed83bc134",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:65e7c912d1c22b4e",
@@ -7665,10 +7835,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:57705457053f3127",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:66331fc6be5a9704",
@@ -7744,10 +7916,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:65855c6a0f63d46f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:67d730d6037f095e",
@@ -7797,10 +7971,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3105bd5165966a2e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:69df0905b8ddc6d4",
@@ -7869,10 +8045,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:1f6cbf8cab62f5c3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:6a7a711b96f4f7ee",
@@ -7914,10 +8092,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d5b8ce28795ebb3c",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:6c67fe1256ba19db",
@@ -7968,10 +8148,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:df8237556a12b014",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:6d362a984f0f214f",
@@ -8070,10 +8252,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0d668b9362e0396e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:72e4b0af19eaa871",
@@ -8128,10 +8312,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4eaabcd24f4cb122",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:737cb9700b3f783a",
@@ -8235,10 +8421,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c146364fe2b532f8",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:761a30eb22e0904e",
@@ -8279,10 +8467,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:da7f2c6d06acbc2b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:77d5461d31c4e144",
@@ -8382,10 +8572,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:75a5990cfc5788bd",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:7cd04f1b76263817",
@@ -8487,10 +8679,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:393f10dace6053b2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:7d156e60b4d712d8",
@@ -8595,10 +8789,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:8f311d2cdfe9d00a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:7f636764bfcf6288",
@@ -8667,10 +8863,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f93e28efb89ba082",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:801ac36b1b827822",
@@ -8711,10 +8909,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:5bf4a086197563a8",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:80b128171e6f6946",
@@ -8769,10 +8969,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:dfce2eb6b2856638",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:81f19f847c6e7ffb",
@@ -8841,10 +9043,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d749a3de253845d0",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:83044e4e9ba50df0",
@@ -8890,10 +9094,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:2b35c0cfccdced5a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:83cf99c4c1251991",
@@ -8935,10 +9141,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:48e5f2ec68e6f228",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8559acf0cd0344ce",
@@ -9043,10 +9251,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9ea37cc5cd5b6027",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8653d5c9e4ba445e",
@@ -9151,10 +9361,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:62663268dc6d4b77",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:86b2aa85f4b35fce",
@@ -9215,10 +9427,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:978c63bfde7896c8",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8a659175ae1b07ff",
@@ -9287,10 +9501,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4757e80985815fd9",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8bba2734e08f82f7",
@@ -9376,10 +9592,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:34a7d7f69cbe534d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8ccf29139c5c6943",
@@ -9484,10 +9702,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:bcf5171b1e04a742",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8e5d648e53b2a3cd",
@@ -9528,10 +9748,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3ff2c78ec907adac",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8ef9d3c75dcd893c",
@@ -9636,10 +9858,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:8ee62ed9b959f14e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8f2f2475cf6551dd",
@@ -9684,10 +9908,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f7f992530b885a50",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8f3c99ac4d0aa1cc",
@@ -9751,10 +9977,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0f568667966dd2bc",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:8fd7ce0fefc84403",
@@ -9833,10 +10061,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:a9a724702e67c7b4",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:94dc58c93b5d91d1",
@@ -9886,10 +10116,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:dc6a5f16c2be65d5",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:96b1d34e462ddbe9",
@@ -9958,10 +10190,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:573ad742ae3523d2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:9758283684389b18",
@@ -10011,10 +10245,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:cca3820979bdf07e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:997800783ef88d9f",
@@ -10119,10 +10355,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:a825fbf6b5ae902b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:9b6145220dc08ece",
@@ -10223,10 +10461,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c8f85ef8ac694262",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:9d8822501365d5ea",
@@ -10267,10 +10507,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:fabdebb3eafe72b1",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:9f41d05ea370c8b5",
@@ -10341,10 +10583,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0adc6446f26e976e",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a0e51912cfba5b23",
@@ -10394,10 +10638,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:015e86b2220ca430",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a1461bc46f4d22f8",
@@ -10438,10 +10684,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:30e055d9d902581c",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a38fc3859aab23ad",
@@ -10486,10 +10734,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:08f61de09c689843",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a5bfc04c6da434f3",
@@ -10594,10 +10844,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:1e077dba39640992",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a74460767249df44",
@@ -10642,10 +10894,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c45b7fc4d79b8a12",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a81c796c4c900b6e",
@@ -10686,10 +10940,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ac5c8f8e90a6407a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:a8e807957580acdc",
@@ -10735,10 +10991,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:186de6cf39a600a3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:aab80a261a112794",
@@ -10807,10 +11065,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:af8822ac1ebcd152",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ab2b0f65045e093f",
@@ -10874,10 +11134,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:93b70f799db3c433",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:adfb2504c1575696",
@@ -10918,10 +11180,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:680141bce55f6009",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:af54516811e60534",
@@ -10971,10 +11235,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7749949b70ea15e2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:aff5c160fb9dd8e0",
@@ -11079,10 +11345,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d3dd150a41b80e21",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:affb2a22de587e9e",
@@ -11129,10 +11397,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:5c8f361fd30b763b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:b05a62cab13cf99e",
@@ -11237,10 +11507,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0edd8531663f95b9",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:b11491481c550333",
@@ -11290,10 +11562,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:aa29fd96a8ffb358",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:b25401d6a0eb6e49",
@@ -11357,10 +11631,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:56ae3d885d8e1209",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:b8dfa00de522069d",
@@ -11402,10 +11678,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6acb1f19224abf9b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ba2817aaa0469f88",
@@ -11492,10 +11770,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f2f7aea3966e53a1",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:bc6af88ec90a1714",
@@ -11537,10 +11817,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:91bfcc257432b340",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:bcbb9e5e086ae554",
@@ -11592,10 +11874,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7b3b2831aa386b02",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:be2a8ad7cc7b2879",
@@ -11721,10 +12005,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:850f151cf8093537",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:beeaba8fdd6bdaa0",
@@ -11829,10 +12115,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7fab8d42e044bcb6",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c0404402d3871c94",
@@ -11937,10 +12225,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d3ba74820266910b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c1e6269820ec4426",
@@ -12045,10 +12335,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c3d90fbe710bfac3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c24b7cee225a4d5a",
@@ -12089,10 +12381,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ed03ede25d7c35e2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c6e8c7c1ed88788a",
@@ -12197,10 +12491,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9750db693debd4f6",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c6f81962418182db",
@@ -12299,10 +12595,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:2a31f686a8859954",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c7461354ef9a6ca8",
@@ -12371,10 +12669,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c5a40d6b0e912c4f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c90d595ddfff0ff0",
@@ -12429,10 +12729,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0654c4fd98027902",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c98f072e9d688be7",
@@ -12513,10 +12815,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:fdb5ba29cb5f3edb",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:c9a1b5da4fc3a4ef",
@@ -12580,10 +12884,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:80e14067a7473530",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:cb0a11838c54a427",
@@ -12625,10 +12931,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d682da25663c383c",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:cb86ead26b32ceb7",
@@ -12683,10 +12991,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:77f85d1ad71cbf6d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:d0e78104f4e2328b",
@@ -12791,10 +13101,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0d88a1ae80a91885",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:d2e1d3718c9acbb5",
@@ -12836,10 +13148,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:096ee326e735ed30",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:d7a7e8cf403b2249",
@@ -12884,10 +13198,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7e31171034f5ef9a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:daf90ad05ac64b9d",
@@ -12956,10 +13272,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d12b6a0ef12d0b83",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:dca1386ef4a0ac5c",
@@ -13000,10 +13318,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:39c89af5f385a226",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:dcd1f81375a75b63",
@@ -13090,10 +13410,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:52319257c0d55bd2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ddf523489ac81a5a",
@@ -13135,10 +13457,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:8a004896266865f3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:de5cc9e866618fa9",
@@ -13189,10 +13513,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9b076b51c78ce6f7",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:deb710aef75887b6",
@@ -13237,10 +13563,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:aa9a8dab5dd1bed3",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:dee61b228192f840",
@@ -13345,10 +13673,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ee75ba79c9ed2746",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:df19e99b78ca9f74",
@@ -13417,10 +13747,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:7da4ec4ef2800a1d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:df37b8d24ba2a688",
@@ -13462,10 +13794,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:b64c321d5719008f",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e037518fac559414",
@@ -13534,10 +13868,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ee5754516bc921c1",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e26baefa275a5993",
@@ -13579,10 +13915,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f919fbfe2b5ed576",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e2919a4b668c8639",
@@ -13687,10 +14025,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d8e8be9bc5b386c9",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e327e4a680a94e3d",
@@ -13795,10 +14135,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:f353209f714e77d4",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e348fe646b4578f8",
@@ -13843,10 +14185,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:229567f3a58692ab",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e585c697c0877ce8",
@@ -13896,10 +14240,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:d350f691f5892839",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e650e3ad293b419d",
@@ -14004,10 +14350,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:19178d3b36a506dc",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:e7e4dd1a0dffa00f",
@@ -14048,10 +14396,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6efb5681ccee4ad2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ea04c1784f6fb276",
@@ -14122,10 +14472,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:9801180a93c1d85b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:eb94077c5b0b221e",
@@ -14187,10 +14539,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:b843e19552d41e4a",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:edd26b2ef2a0d173",
@@ -14231,10 +14585,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:54d53702b4e52908",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ee2e04ce7dad025a",
@@ -14298,10 +14654,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:e32cac87fad05f93",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:ef895520b2977a9f",
@@ -14348,10 +14706,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:3de06696e6e0211b",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f110dfede5da34c2",
@@ -14397,10 +14757,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0dc34f32549e54b5",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f130e2139e3cf128",
@@ -14457,10 +14819,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:6e69ad3564118a04",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f2f5ba0831f42adb",
@@ -14524,10 +14888,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:c02c629cc7751587",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f3b56a002d89bba4",
@@ -14632,10 +14998,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:222f9336f95c5146",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f7b2c898e3882ae2",
@@ -14699,10 +15067,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:259400c40ca30cbe",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f8a3d620ae1c49fb",
@@ -14743,10 +15113,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:4e52e81b5440fb18",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:f98f8a6b9a7206f3",
@@ -14807,10 +15179,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:0d07d4ebae569553",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:fb158ab429dfd50e",
@@ -14851,10 +15225,12 @@
     ]
    },
    "confianza": "BAJA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ecfbd729f5059a6d",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:fdd0169defd420b7",
@@ -14943,10 +15319,12 @@
     ]
    },
    "confianza": "MEDIA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:41e10d29f6c451e2",
+   "reemplazadoEn": "2026-08-28"
   },
   {
    "id": "k:fe9b773e7b80ab14",
@@ -15047,10 +15425,12 @@
     ]
    },
    "confianza": "ALTA",
-   "estado": "CANDIDATO",
+   "estado": "REEMPLAZADO",
    "version": 1,
    "fecha": "2026-08-28",
-   "reemplazaA": null
+   "reemplazaA": null,
+   "reemplazadoPor": "k:ebcb4e1e4b7cac8e",
+   "reemplazadoEn": "2026-08-28"
   }
  ],
  "huecos": []
