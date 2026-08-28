@@ -13,7 +13,8 @@
     "orq:health": "node orquestador/worker.mjs --health",
     "orq:enqueue": "node orquestador/scripts/enqueue.mjs",
     "orq:smoke": "node orquestador/scripts/smoke-anthropic.mjs",
-    "orq:test": "node --test --test-reporter=dot 'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' 'src/**/*.test.ts' && node orquestador/scripts/auditar-ruteo-areas.mjs > /dev/null && node orquestador/scripts/verificar-extension-zip.mjs > /dev/null",
+    "orq:test": "node orquestador/scripts/una-corrida-por-maquina.mjs npm run orq:test:corrida",
+    "orq:test:corrida": "node --test --test-reporter=dot 'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' 'src/**/*.test.ts' && node orquestador/scripts/auditar-ruteo-areas.mjs > /dev/null && node orquestador/scripts/verificar-extension-zip.mjs > /dev/null",
     "orq:test:detalle": "node --test 'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' 'src/**/*.test.ts'"
   },
   "dependencies": {
