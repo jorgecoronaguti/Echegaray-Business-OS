@@ -116,3 +116,34 @@ export function totalAnio(persona) {
 export function mesesDe(anio) {
   return Array.from({ length: 12 }, (_, i) => `${anio}-${String(i + 1).padStart(2, '0')}`)
 }
+
+/**
+ * ¿ESTA PERSONA SIGUE EN EL FRENTE? — la regla que decide si se le completan los días que faltan.
+ *
+ * El criterio sale de la planilla y no de una lista: si el último día con horas de una persona es
+ * ANTERIOR al último día que cargó el resto, esa persona ya no está. Sumarle los días que faltan le
+ * inventaría horas que nadie va a trabajar, y en una liquidación final ese invento se paga.
+ *
+ * ═══ EL SÁBADO ROMPÍA LA COMPARACIÓN (27/08/2026, auditoría) ═══
+ *
+ * `ultimaColumnaCargada` era el último día con horas de CUALQUIERA, sábados incluidos. Con dos
+ * personas cargadas un sábado —una guardia, una descarga, un hormigonado— las otras catorce quedaban
+ * con su último día ANTES de ese sábado: perdían las horas pendientes y salían rotuladas «▲ sin
+ * cargar desde el …» en la pestaña que se firma el día de pago.
+ *
+ * La comparación tiene que ser entre iguales. Los días que se completan son hábiles —el sábado no se
+ * completa, es un supuesto declarado, no la jornada normal—, así que el día contra el que se mide
+ * también tiene que ser hábil.
+ *
+ * PURA. `columnas` son `{col, habil}`; `horasPorColumna(col)` dice si esa persona cargó ahí.
+ */
+export function ultimaColumnaHabilCargada(columnas, hayHorasEn) {
+  let ultima = -1
+  for (const { col, habil } of columnas) if (habil && hayHorasEn(col)) ultima = col
+  return ultima
+}
+
+/** ¿Dejó de cargar antes que el resto? PURA. */
+export function dejoDeCargar({ ultimaSuya, ultimaDelResto }) {
+  return ultimaSuya >= 0 && ultimaDelResto >= 0 && ultimaSuya < ultimaDelResto
+}

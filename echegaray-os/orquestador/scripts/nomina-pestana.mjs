@@ -39,7 +39,7 @@ import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
-import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio } from '../lib/nomina-devengado.mjs'
+import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
 // ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
 //
@@ -121,15 +121,17 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
     const d = diaDeCelda(fechas[c])
     if (!d) continue
     dias.push(`${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`)
-    columnas.push({ col: c, etiqueta: `${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}` })
+    const diaSemana = new Date(anio, d.mes - 1, d.dia).getDay()
+    columnas.push({ col: c, etiqueta: `${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`, habil: diaSemana !== 0 && diaSemana !== 6 })
     let cargado = false
     for (let r = b.inicio; r <= b.fin && !cargado; r++) if (Number((grid[r - 1] ?? [])[c]) > 0) cargado = true
-    if (cargado) ultimaColumnaCargada = c
+    // El día contra el que se mide «dejó de cargar» tiene que ser HÁBIL: ver `ultimaColumnaHabilCargada`.
     const fechaDia = new Date(anio, d.mes - 1, d.dia)
     // EL SÁBADO NO SE COMPLETA. Las 4 h del sábado son un SUPUESTO declarado en `jornada-uocra.mjs`,
     // no la jornada normal: rellenarlo sumaba 4 h por persona que nadie va a trabajar. El dueño
     // contó los días que faltaban a mano —27, 28 y 31 = 26 h— y ahí está la diferencia.
     const esFinDeSemana = fechaDia.getDay() === 0 || fechaDia.getDay() === 6
+    if (cargado && !esFinDeSemana) ultimaColumnaCargada = c
     if (!cargado && !esFinDeSemana && fechaDia >= corte) {
       pendientes.push({ etiqueta: `${String(d.dia).padStart(2, '0')}/${String(d.mes).padStart(2, '0')}`, horas: HORAS_POR_DIA_DE_SEMANA[fechaDia.getDay()] ?? 0 })
     }
@@ -153,9 +155,8 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
     // El criterio sale de la planilla y no de una lista: si el último día con horas de una persona es
     // ANTERIOR al último día que cargó el resto, esa persona ya no está en el frente. Es el mismo
     // dato que el dueño mira cuando abre la grilla.
-    let ultimaSuya = -1
-    for (const { col } of columnas) if (Number(f[col]) > 0) ultimaSuya = col
-    const dejoDeCargar = ultimaSuya >= 0 && ultimaColumnaCargada >= 0 && ultimaSuya < ultimaColumnaCargada
+    const ultimaSuya = ultimaColumnaHabilCargada(columnas, (col) => Number(f[col]) > 0)
+    const dejoDeCargar = dejoAntesQueElResto({ ultimaSuya, ultimaDelResto: ultimaColumnaCargada })
     const ultimoDiaSuyo = columnas.find((x) => x.col === ultimaSuya)?.etiqueta ?? null
     const pendientesSuyas = dejoDeCargar ? 0 : horasPendientes
     const horas = cargadas + pendientesSuyas

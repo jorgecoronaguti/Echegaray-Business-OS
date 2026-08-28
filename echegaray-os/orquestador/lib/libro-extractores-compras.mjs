@@ -132,6 +132,22 @@ export function esFacturaCargada({ estado, comprobante } = {}) {
  */
 export function pendienteDeCompra({ importe, pagado, montoPagado, parcial2 }, aviso = () => {}) {
   const ya = pagadoDeTramos({ pagado: montoPagado, parcial2 })
+  // ═══ LA FILA CERRADA QUE NO LLEGA A SU TOTAL: SE AVISA Y NO SE PARTE (28/08/2026) ═══
+  //
+  // Caso vivo, f834: Estado="Pagado", Total $4.200.000, Monto Pagado $2.250.000, «Total o Parcial» =
+  // Parcial. Las tres celdas se contradicen. Este movimiento sale REAL por el TOTAL, así que el
+  // gráfico de «¿alcanza la caja?» dice que ya salieron $4,2M cuando la planilla también dice que
+  // sólo se entregaron $2,25M.
+  //
+  // NO SE PARTE ACÁ, y es deliberado: para la fila cerrada este extractor asume que el instrumento se
+  // entregó por el total (ver el bloque de `deCompras`), y restar el tramo declarado volvería a abrir
+  // el agujero de la compra pagada con cheque que todavía no debitó. Además la planilla no dice cuál
+  // de las tres celdas es la verdadera — deducirlo sería fabricar el dato. Lo que sí se puede hacer
+  // sin inventar nada es GRITARLO: la corrección es de una celda y la hace quien cargó la fila.
+  if (pagado && importe > 0 && ya > 0 && ya < importe) {
+    aviso(`Estado="Pagado" pero lo pagado ${ya} no llega al Total ${importe}: la fila se contradice. `
+      + 'Va el total como REAL (ya salió). Si el resto todavía se debe, la fila va "Pendiente".')
+  }
   if (pagado || !(importe > 0) || !(ya > 0)) return importe
   if (ya >= importe) {
     aviso(`lo pagado ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `

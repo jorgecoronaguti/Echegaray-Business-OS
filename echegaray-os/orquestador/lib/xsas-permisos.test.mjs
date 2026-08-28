@@ -39,7 +39,14 @@ test('una capability de escritura sólo vale para una tool NOMBRADA — fail-clo
 })
 
 test('la lista de tools que escriben es corta y explícita: crecer es una decisión, no un accidente', () => {
-  assert.deepEqual([...TOOLS_AUTORIZADAS_A_ESCRIBIR], ['slides.crear', 'imagen.generar', 'cotizacion.registrar'])
+  // `plano.cotizar` entró el 27/08/2026: declaraba `drive.read` y hace INSERT en `public.cotizaciones`,
+  // `cotizacion_partida` y `public.computo`. La capability describía de dónde LEE en vez de qué DEJA,
+  // y por eso ni las cerraduras ni la firma se enteraban. Este test es el lugar donde ese cambio
+  // queda dicho: la lista no crece sola.
+  // `tesoreria.analisis_inversion` entró el 27/08/2026 al cierre: no escribe una fila, abre el
+  // navegador contra Balanz con la sesión de la empresa. Manda el efecto, no la letra.
+  assert.deepEqual([...TOOLS_AUTORIZADAS_A_ESCRIBIR],
+    ['slides.crear', 'imagen.generar', 'cotizacion.registrar', 'plano.cotizar', 'tesoreria.analisis_inversion', 'web.browser'])
 })
 
 test('lo que NO escribe afuera no queda marcado como escritura', () => {
