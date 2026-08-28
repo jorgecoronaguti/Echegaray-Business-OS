@@ -14,7 +14,9 @@ import { HOJA, leerAnalisis, leerGastosGenerales, leerOferta, leerPresupuesto } 
 import { leerArchivo } from './leer-archivo.mjs'
 import { ETAPA, documento } from './biblioteca.mjs'
 import { aConocimientos, practicas } from './practica-cotizacion.mjs'
-import { hallazgos, resumen } from './hallazgos-cotizacion.mjs'
+import { hallazgos } from './hallazgos-cotizacion.mjs'
+import { celdasRotasDe } from './hallazgos-celdas.mjs'
+import { resumen } from './hallazgo.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -61,6 +63,10 @@ export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, 
     modificado,
     pestanas: leido.pestanas,
     formulas: leido.formulas,
+    // El inventario de celdas rotas se calcula ACÁ y no río abajo porque es el único punto donde
+    // están las hojas enteras en memoria. Guardar las hojas para calcularlo después serían 3,5 MB
+    // por cotización viviendo hasta el final de la corrida; el inventario son unas decenas de filas.
+    celdasRotas: celdasRotasDe(leido.hojas),
     oferta: leerOferta(leido.hojas[HOJA.OFERTA] ?? []),
     presupuesto: leerPresupuesto(leido.hojas[HOJA.PRESUPUESTO] ?? []),
     analisis: leerAnalisis(leido.hojas[HOJA.ANALISIS] ?? []),
