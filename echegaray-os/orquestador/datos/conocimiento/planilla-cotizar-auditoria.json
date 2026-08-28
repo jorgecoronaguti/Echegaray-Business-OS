@@ -1,0 +1,1060 @@
+{
+  "hash": "0353cf88729ccdcf3a38c6ef87af52069a73fd4281c1b1f4b4006d29d5a7794a",
+  "libro": "/home/jorge/Planilla para Cotizar (2).xlsm",
+  "ingestadoEn": "2026-08-28T18:55:58.906Z",
+  "deCache": false,
+  "hojas": [
+    {
+      "nombre": "MO Lu-Vi 8 a 16",
+      "formulas": 156,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "ManoObra",
+      "formulas": 135,
+      "errores": 0,
+      "oculta": true
+    },
+    {
+      "nombre": "GG",
+      "formulas": 88,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "Presupuesto",
+      "formulas": 746,
+      "errores": 21,
+      "oculta": false
+    },
+    {
+      "nombre": "NN (2)",
+      "formulas": 32,
+      "errores": 32,
+      "oculta": true
+    },
+    {
+      "nombre": "OFERTA",
+      "formulas": 162,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "OFERTA ARCOR",
+      "formulas": 9,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "OFERTA SG",
+      "formulas": 14,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "ALAMBRADO",
+      "formulas": 59,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "NN",
+      "formulas": 32,
+      "errores": 0,
+      "oculta": true
+    },
+    {
+      "nombre": "Recursos",
+      "formulas": 410,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "Análisis",
+      "formulas": 8397,
+      "errores": 24,
+      "oculta": false
+    },
+    {
+      "nombre": "GastosMA",
+      "formulas": 5,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "DESCRIPCION DE TAREAS",
+      "formulas": 15,
+      "errores": 0,
+      "oculta": false
+    },
+    {
+      "nombre": "Costo MO",
+      "formulas": 66,
+      "errores": 62,
+      "oculta": true
+    },
+    {
+      "nombre": "DIAGRAMACION",
+      "formulas": 81,
+      "errores": 74,
+      "oculta": true
+    }
+  ],
+  "monedas": {
+    "ARS": 396,
+    "USD": 6,
+    "AMBIGUA": 4
+  },
+  "tipoDeCambio": {
+    "valor": 1500,
+    "fecha": "2025-10-01",
+    "fuente": "BCO NACION",
+    "moneda": "USD",
+    "codigo": "330",
+    "origen": "Recursos!341 · DOLAR BCO NACION - VENTA"
+  },
+  "recursosUSD": [
+    {
+      "fila": 6,
+      "codigo": "0.1",
+      "nombre": "OFICIAL ESPECIALIZADO - EN DOLARES",
+      "costo": 4.5,
+      "unidad": "hs"
+    },
+    {
+      "fila": 265,
+      "codigo": "255.1",
+      "nombre": "CARGA SOCIAL OF E - DOLAR",
+      "costo": 4,
+      "unidad": "hr"
+    },
+    {
+      "fila": 289,
+      "codigo": "278.1",
+      "nombre": "GAS OIL - DOLAR",
+      "costo": 1.5,
+      "unidad": "Lt"
+    },
+    {
+      "fila": 345,
+      "codigo": "334",
+      "nombre": "COSTO HORA BOBCAT S650 - DOLAR",
+      "costo": 16.58,
+      "unidad": "DOLAR"
+    },
+    {
+      "fila": 346,
+      "codigo": "335",
+      "nombre": "COSTO PUNTA MARTILLO - DOLAR",
+      "costo": 478,
+      "unidad": "DOLAR"
+    },
+    {
+      "fila": 347,
+      "codigo": "336",
+      "nombre": "COSTO HORA MARTILLO BOBCAT - DOLAR",
+      "costo": 5,
+      "unidad": "DOLAR"
+    }
+  ],
+  "recursosAmbiguos": [
+    {
+      "fila": 341,
+      "codigo": "330",
+      "nombre": "DOLAR BCO NACION - VENTA",
+      "costo": 1500,
+      "porque": "el nombre menciona dólares pegados a una cifra: documenta una referencia, no declara la moneda del precio"
+    },
+    {
+      "fila": 343,
+      "codigo": "332",
+      "nombre": "ALQUILER MINI EXCAVADORA - 275 DOLARES EL DIAL",
+      "costo": 308270,
+      "porque": "el nombre menciona dólares pegados a una cifra: documenta una referencia, no declara la moneda del precio"
+    },
+    {
+      "fila": 366,
+      "codigo": "355",
+      "nombre": "MINI EXCAVADORA - 367 DOLAR EL DIA",
+      "costo": 532150,
+      "porque": "el nombre menciona dólares pegados a una cifra: documenta una referencia, no declara la moneda del precio"
+    },
+    {
+      "fila": 370,
+      "codigo": "359",
+      "nombre": "VIBRO COMPACTADOR NIWA 643 - EN DOLARES 10 mil dolares",
+      "costo": 7350,
+      "porque": "el nombre menciona dólares pegados a una cifra: documenta una referencia, no declara la moneda del precio"
+    }
+  ],
+  "recursosSinPrecio": 17,
+  "nRecursos": 406,
+  "nComposiciones": 199,
+  "nLineas": 1355,
+  "ajustes": {
+    "total": 29,
+    "porTipo": {
+      "NEUTRO": 25,
+      "UNKNOWN": 3,
+      "FX": 1
+    },
+    "sinResolver": [
+      {
+        "donde": "Presupuesto!G31",
+        "valor": 2,
+        "porque": "2 no es 1 y nada en la hoja ni en la composición dice por qué"
+      },
+      {
+        "donde": "Presupuesto!G32",
+        "valor": 3,
+        "porque": "3 no es 1 y nada en la hoja ni en la composición dice por qué"
+      },
+      {
+        "donde": "Presupuesto!G42",
+        "valor": 1.2,
+        "porque": "1.2 no es 1 y nada en la hoja ni en la composición dice por qué"
+      }
+    ],
+    "bloquea": true
+  },
+  "partidas": [
+    {
+      "codigo": "T1001",
+      "tarea": "REPLANTEO",
+      "unidad": "M2",
+      "cantidad": 258.77,
+      "nLineas": 7,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 1219.74,
+      "costoUnitarioXSAS": 1219.7459999999999,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G10"
+      },
+      "convertido": {
+        "valor": 1219.7459999999999,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1002",
+      "tarea": "EXCAVACIONES DE BASES Y ZANJAS PARA FUNDACIONES",
+      "unidad": "M3",
+      "cantidad": 46.74,
+      "nLineas": 4,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 31047.3,
+      "costoUnitarioXSAS": 31047.3,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G11"
+      },
+      "convertido": {
+        "valor": 31047.3,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1003",
+      "tarea": "HORMIGON DE LIMPIEZA    e = 0,05 m",
+      "unidad": "M3",
+      "cantidad": 1,
+      "nLineas": 5,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 13624.2,
+      "costoUnitarioXSAS": 13624.2,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G12"
+      },
+      "convertido": {
+        "valor": 13624.2,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1004",
+      "tarea": "HORMIGON CICLOPEO PARA CIMIENTOS",
+      "unidad": "M3",
+      "cantidad": 13.23,
+      "nLineas": 5,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 114057,
+      "costoUnitarioXSAS": 114057,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G13"
+      },
+      "convertido": {
+        "valor": 114057,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1006",
+      "tarea": "BASES AISLADAS con #8 c/15",
+      "unidad": "M3",
+      "cantidad": 18,
+      "nLineas": 6,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 173446.8,
+      "costoUnitarioXSAS": 173446.8,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G14"
+      },
+      "convertido": {
+        "valor": 173446.8,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1007",
+      "tarea": "VIGA DE FUNDACIÓN H17 - FE 100 KG/M3",
+      "unidad": "M3",
+      "cantidad": 5.67,
+      "nLineas": 11,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 499169.1,
+      "costoUnitarioXSAS": 499169.1,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G15"
+      },
+      "convertido": {
+        "valor": 499169.1,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1008",
+      "tarea": "VIGA DE ARRIOSTRAMIENTO H17 - FE 120 KG/M3",
+      "unidad": "M3",
+      "cantidad": 7.5,
+      "nLineas": 7,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 604705.5,
+      "costoUnitarioXSAS": 604705.5,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G16"
+      },
+      "convertido": {
+        "valor": 604705.5,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1009",
+      "tarea": "COLUMNA DE ENCADENADO H17 - FE 85 KG/M3",
+      "unidad": "M3",
+      "cantidad": 2.16,
+      "nLineas": 13,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 589004.75,
+      "costoUnitarioXSAS": 589004.75,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G17"
+      },
+      "convertido": {
+        "valor": 589004.75,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1010",
+      "tarea": "COLUMNA DE CARGA H17 - FE 190 KG/M3",
+      "unidad": "M3",
+      "cantidad": 4.8,
+      "nLineas": 13,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 773895.5,
+      "costoUnitarioXSAS": 773895.5,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G18"
+      },
+      "convertido": {
+        "valor": 773895.5,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1049",
+      "tarea": "VIGA DE ENCADENADO H17 - FE 100 KG/M3",
+      "unidad": "M3",
+      "cantidad": 2.08,
+      "nLineas": 13,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 633557.9,
+      "costoUnitarioXSAS": 633557.9,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G19"
+      },
+      "convertido": {
+        "valor": 633557.9,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1017",
+      "tarea": "CAPA AISLADORA HORIZONTAL EN MUROS",
+      "unidad": "ML",
+      "cantidad": 52,
+      "nLineas": 7,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 16750.36,
+      "costoUnitarioXSAS": 16750.3625,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G20"
+      },
+      "convertido": {
+        "valor": 16750.3625,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1018",
+      "tarea": "MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
+      "unidad": "M2",
+      "cantidad": 182,
+      "nLineas": 8,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 39331.5,
+      "costoUnitarioXSAS": 39331.5,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G21"
+      },
+      "convertido": {
+        "valor": 39331.5,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1028.1",
+      "tarea": "TABIQUES DE YESO (DURLOCK)",
+      "unidad": "M2",
+      "cantidad": 14.1,
+      "nLineas": 12,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 85979.92,
+      "costoUnitarioXSAS": 85979.907,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G22"
+      },
+      "convertido": {
+        "valor": 85979.907,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1031",
+      "tarea": "REVESTIMIENTO DE AZULEJOS - CERAMICO",
+      "unidad": "M2",
+      "cantidad": 14.1,
+      "nLineas": 7,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 40445.5,
+      "costoUnitarioXSAS": 40445.526750000005,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G23"
+      },
+      "convertido": {
+        "valor": 40445.526750000005,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1075.1",
+      "tarea": "TECHO METÁLICO - Panel Autoportante",
+      "unidad": "M2",
+      "cantidad": 191.92,
+      "nLineas": 12,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 121731.36,
+      "costoUnitarioXSAS": 121731.355277,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G24"
+      },
+      "convertido": {
+        "valor": 121731.355277,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1111.1",
+      "tarea": "COLUMNAS METALICAS",
+      "unidad": "UN",
+      "cantidad": 8,
+      "nLineas": 10,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 248374.72,
+      "costoUnitarioXSAS": 248374.71325,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G25"
+      },
+      "convertido": {
+        "valor": 248374.71325,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1124.1",
+      "tarea": "CERRAMIENTO VERTICAL METALICO",
+      "unidad": "ML",
+      "cantidad": 74,
+      "nLineas": 12,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 207158.85,
+      "costoUnitarioXSAS": 207158.845279,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G26"
+      },
+      "convertido": {
+        "valor": 207158.845279,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1100",
+      "tarea": "COMPACTACION DE TERRENO CON NIWA 643",
+      "unidad": "HR",
+      "cantidad": 30,
+      "nLineas": 4,
+      "monedaComposicion": "MIXTA",
+      "costoUnitarioExcel": 18834.9,
+      "costoUnitarioXSAS": 18834.9,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G27"
+      },
+      "convertido": {
+        "valor": 18834.9,
+        "moneda": "MIXTA",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1107.1",
+      "tarea": "PISO DE HORMIGON ALISADO MECÁNICO - MANO DE OBRA",
+      "unidad": "M2",
+      "cantidad": 240,
+      "nLineas": 7,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 17550.9,
+      "costoUnitarioXSAS": 17550.9,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G28"
+      },
+      "convertido": {
+        "valor": 17550.9,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1107.2",
+      "tarea": "PISO DE HORMIGON ALISADO MECÁNICO - MATERIALES H17, 15cm y #6 15-15",
+      "unidad": "M2",
+      "cantidad": 240,
+      "nLineas": 3,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 28939.5,
+      "costoUnitarioXSAS": 28939.5,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G29"
+      },
+      "convertido": {
+        "valor": 28939.5,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1058",
+      "tarea": "INSTALACIÓN ELECTRICA",
+      "unidad": "UN",
+      "cantidad": 1,
+      "nLineas": 12,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 1308480,
+      "costoUnitarioXSAS": 1308480,
+      "ajuste": {
+        "tipo": "UNKNOWN",
+        "valor": 2,
+        "porque": "2 no es 1 y nada en la hoja ni en la composición dice por qué",
+        "donde": "Presupuesto!G31"
+      },
+      "convertido": {
+        "valor": 1308480,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1059",
+      "tarea": "INSTALACIÓN SANITARIA - BAÑOS",
+      "unidad": "UN",
+      "cantidad": 1,
+      "nLineas": 37,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 719689.31,
+      "costoUnitarioXSAS": 719689.3069999996,
+      "ajuste": {
+        "tipo": "UNKNOWN",
+        "valor": 3,
+        "porque": "3 no es 1 y nada en la hoja ni en la composición dice por qué",
+        "donde": "Presupuesto!G32"
+      },
+      "convertido": {
+        "valor": 719689.3069999996,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1077",
+      "tarea": "COLOCACION DE LUMINARIAS",
+      "unidad": "UN",
+      "cantidad": 1,
+      "nLineas": 6,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 491830,
+      "costoUnitarioXSAS": 400030,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G33"
+      },
+      "convertido": {
+        "valor": 400030,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1078",
+      "tarea": "LUZ DE EMERGENCIA - SALIDA LED",
+      "unidad": "UN",
+      "cantidad": 2,
+      "nLineas": 3,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 114240,
+      "costoUnitarioXSAS": 102000,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G34"
+      },
+      "convertido": {
+        "valor": 102000,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1126.1",
+      "tarea": "ALQUILER BOBCAT con MARTILLO - HORA",
+      "unidad": "HR",
+      "cantidad": 32,
+      "nLineas": 6,
+      "monedaComposicion": "USD",
+      "costoUnitarioExcel": 38.27,
+      "costoUnitarioXSAS": 38.25559,
+      "ajuste": {
+        "tipo": "FX",
+        "valor": 1450,
+        "porque": "la composición está entera en USD y 1450 cae en la banda de la cotización del libro (1500 al 2025-10-01)",
+        "donde": "Presupuesto!G37"
+      },
+      "convertido": {
+        "valor": 55470.6055,
+        "moneda": "ARS",
+        "aplicado": true
+      }
+    },
+    {
+      "codigo": "T1122",
+      "tarea": "RETIRO DE ESCOMBROS con RSU",
+      "unidad": "UN",
+      "cantidad": 14,
+      "nLineas": 1,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 180000,
+      "costoUnitarioXSAS": 180000,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G38"
+      },
+      "convertido": {
+        "valor": 180000,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "T1167",
+      "tarea": "ENTREPISO",
+      "unidad": "M2",
+      "cantidad": null,
+      "nLineas": 13,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 0,
+      "costoUnitarioXSAS": 96957.4115,
+      "ajuste": {
+        "tipo": "UNKNOWN",
+        "valor": 1.2,
+        "porque": "1.2 no es 1 y nada en la hoja ni en la composición dice por qué",
+        "donde": "Presupuesto!G42"
+      },
+      "convertido": {
+        "valor": 96957.4115,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "t1089",
+      "tarea": "REVOQUE GRUESO 2cm con CEMENTO DE ALBAÑILERIA",
+      "unidad": "M2",
+      "cantidad": null,
+      "nLineas": 6,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 0,
+      "costoUnitarioXSAS": 22258.2,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G43"
+      },
+      "convertido": {
+        "valor": 22258.2,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    },
+    {
+      "codigo": "t1109",
+      "tarea": "REVOQUE FINO con CEMENTO DE ALBAÑILERIA",
+      "unidad": "M2",
+      "cantidad": null,
+      "nLineas": 6,
+      "monedaComposicion": "ARS",
+      "costoUnitarioExcel": 0,
+      "costoUnitarioXSAS": 10939.800000000001,
+      "ajuste": {
+        "tipo": "NEUTRO",
+        "valor": 1,
+        "porque": "el coeficiente es 1: no ajusta nada",
+        "donde": "Presupuesto!G44"
+      },
+      "convertido": {
+        "valor": 10939.800000000001,
+        "moneda": "ARS",
+        "aplicado": false
+      }
+    }
+  ],
+  "oferta": {
+    "puedeEmitirse": false,
+    "bloqueos": [
+      {
+        "tipo": "PARTIDA_SIN_GENEALOGIA",
+        "donde": "A39",
+        "que": "PERSIANAS METALICAS",
+        "importe": 8400000,
+        "porque": "la descripción no existe en el presupuesto interno y el renglón no trae código"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "G7",
+        "que": "MANUFACTURAS QUIMICAS JUAN MESSINAS",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "K7",
+        "que": "FIMA S.A.",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "O7",
+        "que": "JAVIER SANCHEZ",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "S7",
+        "que": "ORICA ARGENTINA SAIC",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "G8",
+        "que": "Dominguito s/n - Sarmiento, San Juan - Argentina",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "K8",
+        "que": "Avda Argentina 1774 sur",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "O8",
+        "que": "SAN FRANCISCO DEL MONTE OESTE 76",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "S8",
+        "que": "Santiago del Estero y Av Libertador",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "G10",
+        "que": "ACTUALIZACION DE PRECIOS - PLANTA DE BISULFITO DE AMONIO",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "K10",
+        "que": "TRABAJOS DE DEMOLICION",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "O10",
+        "que": "CLOACAS Y POZOS PARA AGUAS BLANCAS",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      },
+      {
+        "tipo": "CROSS_CLIENT_DATA_LEAK",
+        "donde": "S10",
+        "que": "REPARACION PORTON COCHERA",
+        "importe": null,
+        "porque": "hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente"
+      }
+    ],
+    "conciliacion": {
+      "conGenealogia": 154888969.04000002,
+      "sinGenealogia": 8400000,
+      "sumaDeRenglones": 163288969.04000002,
+      "declarado": 163288969.04,
+      "cierre": "VALUE",
+      "diferencia": 0,
+      "noNumericos": []
+    }
+  },
+  "cotejo": {
+    "total": 14,
+    "porClase": {
+      "MATCH": 13,
+      "CAMBIO_DE_MODELO": 1
+    },
+    "conflictos": [],
+    "pasa": true
+  },
+  "cotejoDetalle": [
+    {
+      "que": "T1001 · costo unitario · REPLANTEO",
+      "excel": 1219.74,
+      "xsas": 1219.7459999999999,
+      "diferencia": 0.006,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 1.21974)"
+    },
+    {
+      "que": "T1001 · subtotal · REPLANTEO",
+      "excel": 315632.12,
+      "xsas": 315633.67241999996,
+      "diferencia": 1.55242,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 315.63212)"
+    },
+    {
+      "que": "T1007 · costo unitario · VIGA DE FUNDACIÓN H17 - FE 100 KG/M3",
+      "excel": 499169.1,
+      "xsas": 499169.1,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 499.1691)"
+    },
+    {
+      "que": "T1007 · subtotal · VIGA DE FUNDACIÓN H17 - FE 100 KG/M3",
+      "excel": 2830288.8,
+      "xsas": 2830288.797,
+      "diferencia": -0.003,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 2830.2888)"
+    },
+    {
+      "que": "T1018 · costo unitario · MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
+      "excel": 39331.5,
+      "xsas": 39331.5,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 39.3315)"
+    },
+    {
+      "que": "T1018 · subtotal · MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
+      "excel": 7158333,
+      "xsas": 7158333,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 7158.3330000000005)"
+    },
+    {
+      "que": "T1107.2 · costo unitario · PISO DE HORMIGON ALISADO MECÁNICO - MATERIALES H17, 15cm y #6 15-15",
+      "excel": 28939.5,
+      "xsas": 28939.5,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 28.9395)"
+    },
+    {
+      "que": "T1107.2 · subtotal · PISO DE HORMIGON ALISADO MECÁNICO - MATERIALES H17, 15cm y #6 15-15",
+      "excel": 6945480,
+      "xsas": 6945480,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 6945.4800000000005)"
+    },
+    {
+      "que": "T1058 · costo unitario · INSTALACIÓN ELECTRICA",
+      "excel": 1308480,
+      "xsas": 1308480,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 1308.48)"
+    },
+    {
+      "que": "T1058 · subtotal · INSTALACIÓN ELECTRICA",
+      "excel": 2616960,
+      "xsas": 1308480,
+      "diferencia": -1308480,
+      "cotejo": "CAMBIO_DE_MODELO",
+      "porque": "el Excel multiplica por un coeficiente 2 que no se pudo explicar (Presupuesto!G31) y acá NO se aplica: la partida queda en su costo sin ajustar hasta que alguien diga qué es ese número"
+    },
+    {
+      "que": "T1126.1 · costo unitario · ALQUILER BOBCAT con MARTILLO - HORA",
+      "excel": 38.27,
+      "xsas": 38.25559,
+      "diferencia": -0.01441,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 0.038270000000000005)"
+    },
+    {
+      "que": "T1126.1 · subtotal · ALQUILER BOBCAT con MARTILLO - HORA",
+      "excel": 1775728,
+      "xsas": 1775059.376,
+      "diferencia": -668.624,
+      "cotejo": "MATCH",
+      "porque": "el Excel redondea a dos decimales el costo de cada línea antes de convertir; acá se convierte con precisión completa a 1450 $/USD"
+    },
+    {
+      "que": "T1122 · costo unitario · RETIRO DE ESCOMBROS con RSU",
+      "excel": 180000,
+      "xsas": 180000,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 180)"
+    },
+    {
+      "que": "T1122 · subtotal · RETIRO DE ESCOMBROS con RSU",
+      "excel": 2520000,
+      "xsas": 2520000,
+      "diferencia": 0,
+      "cotejo": "MATCH",
+      "porque": "los dos llegan al mismo número (margen 2520)"
+    }
+  ]
+}
