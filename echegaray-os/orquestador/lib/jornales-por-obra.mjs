@@ -8,7 +8,7 @@
 // TODO ACA ES PURO. Entra la grilla que ya devolvio readSheetGrid y un mapa de nombres; sale la
 // estructura. Sin red, sin base, sin fecha del sistema - por eso se puede testear entero.
 //
-// LAS TRES REGLAS QUE GOBIERNAN ESTE ARCHIVO
+// LAS CUATRO REGLAS QUE GOBIERNAN ESTE ARCHIVO
 //
 // 1. NINGUNA COORDENADA SE ASUME. El ancho de los bloques cambia -se vieron 10, 11, 12, 13 y 16
 //    columnas de fecha- y las columnas de plata se mueven con el. La columna de horas y la de valor
@@ -18,10 +18,18 @@
 //    leer, el resultado NO es "todos desconocidos": es NO_VERIFICABLE, que es otra cosa y bloquea.
 // 3. UN ROTULO NO SE RESUELVE POR PARECIDO. "MESSINA" y "MESSINAS" difieren en una letra y en
 //    $ 1.333.000. Lo que no esta en el mapa sale DESCONOCIDO y se informa; nunca se adivina.
+// 4. NINGUN PESO QUEDA SIN NOMBRE. Cada fila cae en una clase, cada clase tiene su lista y su
+//    contador, y `control.cuadra` exige que las clases sumen el total. Antes existia la clase
+//    SIN_ROTULO sin lista ni contador: se midieron $ 161.200 que no aparecian en ningun lado y el
+//    resultado igual se leia completo. Un residuo sin nombre es plata perdida, no un detalle.
 
 import {
-  normalizarClave, parseHoras, detectarBloques, trabajadoresDeBloque, letraColumna,
+  normalizarClave, parseHoras, detectarBloques, trabajadoresDeBloque, letraColumna, indiceColumna,
 } from './jornales-estructura.mjs'
+
+// La conversion letra->indice vive en el parser estructural junto a su inversa. Se re-exporta para
+// que quien ya la importaba de aca la siga encontrando, pero definicion hay UNA sola.
+export { indiceColumna }
 
 /** Como quedo resuelto el rotulo de la columna CLIENTE de una fila. */
 export const CLASE = Object.freeze({
@@ -59,15 +67,6 @@ export function resolverCliente(rotulo, mapa) {
 
 const RE_SUMA_HORAS = /^=SUM\(([A-Z]+)(\d+):([A-Z]+)\d+\)$/i
 const RE_PRODUCTO = /^=([A-Z]+)(\d+)\s*\*\s*([A-Z]+)\2$/i
-
-/** Letra de columna A1 a indice 0. 'A' da 0, 'AA' da 26. null si no es una letra de columna. */
-export function indiceColumna(letra) {
-  const s = String(letra ?? '').toUpperCase()
-  if (!/^[A-Z]+$/.test(s)) return null
-  let n = 0
-  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 64)
-  return n - 1
-}
 
 /**
  * NUCLEO PURO: donde estan las horas y el valor hora de ESTA fila, derivados de sus propias formulas.
@@ -110,78 +109,103 @@ function horasDeCelda(c) {
   return { valor: n, escrita: true }
 }
 
-/**
- * NUCLEO PURO: el costo de mano de obra de una ventana, abierto por obra.
- *
- * `factorCargas` se aplica SOLO si viene un numero finito mayor o igual a cero. No tiene valor por
- * omision a proposito: un recargo de cargas sociales que aparece por default es exactamente el
- * numero que despues nadie puede rastrear. Sin factor, `cargas` queda en null y el total es el
- * jornal solo.
- */
-export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, anio = 2026 } = {}) {
-  const conCargas = typeof factorCargas === 'number' && Number.isFinite(factorCargas) && factorCargas >= 0
-  const filas = []
-  const huecos = []
-  let diasEnVentana = 0
-
-  for (const b of detectarBloques(grid, { anio })) {
-    const dentro = (b.fechas || []).filter((f) => f.iso >= desde && f.iso <= hasta)
-    if (!dentro.length) continue
-    diasEnVentana += dentro.length
-    for (const t of trabajadoresDeBloque(grid, b)) {
-      const fila = grid.filas[t.fila] || []
-      const { colHoras, colValorHora } = columnasDeDinero(fila)
-      const vh = colValorHora == null ? null : fila[colValorHora]?.numero
-      const valorHoraValido = typeof vh === 'number' && Number.isFinite(vh)
-      let horas = 0
-      let diasConHoras = 0
-      for (const f of dentro) {
-        const h = horasDeCelda(fila[f.col])
-        if (!h.escrita) continue
-        if (h.ilegible) {
-          huecos.push({
-            tipo: HUECO.CELDA_ILEGIBLE,
-            fila: t.fila1,
-            columna: letraColumna(f.col),
-            fecha: f.iso,
-            contenido: String(fila[f.col]?.valor ?? fila[f.col]?.formula ?? '').slice(0, 40),
-          })
-          continue
-        }
-        horas += h.valor
-        if (h.valor > 0) diasConHoras++
-      }
-      if (colHoras == null) huecos.push({ tipo: HUECO.SIN_COLUMNA_HORAS, fila: t.fila1, persona: t.nombre_original })
-      if (!valorHoraValido) huecos.push({ tipo: HUECO.SIN_VALOR_HORA, fila: t.fila1, persona: t.nombre_original })
-
-      const jornal = valorHoraValido ? horas * vh : null
-      const r = resolverCliente(t.cliente_original, mapa)
-      filas.push({
-        ref: t.ref,
-        fila: t.fila1,
-        bloque: b.fila1,
-        persona: t.nombre_original,
-        categoria: t.categoria ?? null,
-        rotuloCliente: t.cliente_original,
-        cliente: r.cliente,
-        clase: r.clase,
-        motivo: r.motivo ?? null,
-        obra: t.obra_original || null,
-        horas,
-        diasTrabajados: diasConHoras,
-        valorHora: valorHoraValido ? vh : null,
-        jornal,
-        cargas: jornal == null || !conCargas ? null : jornal * factorCargas,
-        costo: jornal == null ? null : jornal * (conCargas ? 1 + factorCargas : 1),
+/** Horas de una persona en las fechas de la ventana. Los huecos se ANOTAN, nunca se rellenan. */
+function horasEnVentana(fila, dentro, filaHoja, huecos) {
+  let horas = 0
+  const conHoras = []
+  for (const f of dentro) {
+    const h = horasDeCelda(fila[f.col])
+    if (!h.escrita) continue
+    if (h.ilegible) {
+      huecos.push({
+        tipo: HUECO.CELDA_ILEGIBLE,
+        fila: filaHoja,
+        columna: letraColumna(f.col),
+        fecha: f.iso,
+        contenido: String(fila[f.col]?.valor ?? fila[f.col]?.formula ?? '').slice(0, 40),
       })
+      continue
     }
+    horas += h.valor
+    if (h.valor > 0) conHoras.push(f.iso)
   }
+  return { horas, conHoras }
+}
 
+/** Una persona de un bloque, valuada. `jornal: null` cuando no hay valor hora — jamas 0. */
+function filaValuada(grid, bloque, t, dentro, { mapa, conCargas, factorCargas }, huecos) {
+  const fila = grid.filas[t.fila] || []
+  const { colHoras, colValorHora } = columnasDeDinero(fila)
+  const vh = colValorHora == null ? null : fila[colValorHora]?.numero
+  const valorHoraValido = typeof vh === 'number' && Number.isFinite(vh)
+  const { horas, conHoras } = horasEnVentana(fila, dentro, t.fila1, huecos)
+  if (colHoras == null) huecos.push({ tipo: HUECO.SIN_COLUMNA_HORAS, fila: t.fila1, persona: t.nombre_original })
+  if (!valorHoraValido) huecos.push({ tipo: HUECO.SIN_VALOR_HORA, fila: t.fila1, persona: t.nombre_original })
+
+  const jornal = valorHoraValido ? horas * vh : null
+  const r = resolverCliente(t.cliente_original, mapa)
+  return {
+    ref: t.ref,
+    fila: t.fila1,
+    bloque: bloque.fila1,
+    persona: t.nombre_original,
+    personaClave: t.nombre_clave,
+    categoria: t.categoria ?? null,
+    rotuloCliente: t.cliente_original,
+    cliente: r.cliente,
+    clase: r.clase,
+    motivo: r.motivo ?? null,
+    obra: t.obra_original || null,
+    // La clave normalizada de la obra existe desde el parser y no se usaba: agrupar por el texto
+    // crudo partia "GALPON 9", "GALPON 9 " (el espacio final es real) y "Galpon 9" en tres obras.
+    obraClave: t.obra_clave || '',
+    horas,
+    diasTrabajados: conHoras.length,
+    fechasConHoras: conHoras,
+    valorHora: valorHoraValido ? vh : null,
+    jornal,
+    cargas: jornal == null || !conCargas ? null : jornal * factorCargas,
+    costo: jornal == null ? null : jornal * (conCargas ? 1 + factorCargas : 1),
+  }
+}
+
+/**
+ * CONTROL DE CUADRE: cada peso del total cae en una clase con nombre, o se declara residuo.
+ *
+ * Es una funcion aparte y exportada para poder probar que PUEDE dar rojo: un control que no puede
+ * decir que no es una constante disfrazada. Con una fila de clase desconocida, `cuadra` da false.
+ */
+export function cuadreDeClases(filas) {
+  const porClase = new Map(Object.values(CLASE).map((c) => [c, 0]))
+  let total = 0
+  let sinClase = 0
+  for (const f of filas || []) {
+    const j = f?.jornal ?? 0
+    total += j
+    if (porClase.has(f?.clase)) porClase.set(f.clase, porClase.get(f.clase) + j)
+    else sinClase += j
+  }
+  const suma = [...porClase.values()].reduce((a, b) => a + b, 0)
+  const residuo = total - suma
+  return {
+    total,
+    porClase: Object.fromEntries(porClase),
+    residuo,
+    // Tolerancia de un centavo: horas por valor hora en punto flotante no cierra al bit.
+    cuadra: Math.abs(residuo) < 0.01 && sinClase === 0,
+  }
+}
+
+/** Agrupa por CLIENTE CANONICO + clave de obra. La clave lleva separador: sin el, cliente "A B" con
+ *  obra "C" y cliente "A" con obra "B C" caian en el mismo grupo. El texto que se muestra es el
+ *  original de la primera aparicion, que es el que el jefe de obra reconoce. */
+function agruparPorObra(filas, conCargas) {
   const porObra = new Map()
   for (const f of filas) {
     if (f.clase !== CLASE.CLIENTE) continue
-    const k = `${f.cliente} ${f.obra ?? ''}`
+    const k = `${normalizarClave(f.cliente)}|${f.obraClave}`
     const a = porObra.get(k) ?? {
+      clave: k,
       cliente: f.cliente,
       obra: f.obra,
       horas: 0,
@@ -201,20 +225,115 @@ export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, an
     a.personas.add(f.ref)
     porObra.set(k, a)
   }
+  return [...porObra.values()]
+    .map((a) => ({ ...a, personas: a.personas.size }))
+    .sort((x, y) => y.costo - x.costo)
+}
 
-  const jornalDe = (pred) => filas.filter(pred).reduce((a, f) => a + (f.jornal ?? 0), 0)
+/**
+ * DOS BLOQUES QUE COMPARTEN FECHAS DUPLICAN LA PLATA, Y NADA LO GRITABA.
+ *
+ * `diasEnVentana` sumaba las columnas de cada bloque: una ventana de 3 dias con dos bloques que las
+ * tienen a las dos daba 6, y el total salia el doble del real. Ahora los dias son los DISTINTOS, y
+ * la coincidencia se informa: una fecha en dos bloques, o una persona con horas en dos bloques de
+ * la misma ventana, es ambiguedad estructural. No se elige una: se declara.
+ *
+ * Dos filas con el mismo nombre en el MISMO bloque no se marcan: los homonimos existen en esta
+ * planilla y estan resueltos por identidad estructural (bloque + fila), no por nombre.
+ */
+function solapes(enVentana, filas) {
+  const porFecha = new Map()
+  for (const { bloque, dentro } of enVentana) {
+    for (const f of dentro) {
+      if (!porFecha.has(f.iso)) porFecha.set(f.iso, new Set())
+      porFecha.get(f.iso).add(bloque.fila1)
+    }
+  }
+  const fechasDuplicadas = [...porFecha.entries()]
+    .filter(([, b]) => b.size > 1)
+    .map(([iso, b]) => ({ fecha: iso, bloques: [...b].sort((x, y) => x - y) }))
+
+  // Una persona esta repetida cuando tiene horas EL MISMO DIA en dos bloques: eso es la plata
+  // contada dos veces. Aparecer en dos quincenas distintas es lo normal y no se marca.
+  const porPersona = new Map()
+  for (const f of filas) {
+    for (const iso of f.fechasConHoras) {
+      const k = `${f.personaClave}|${iso}`
+      if (!porPersona.has(k)) porPersona.set(k, [])
+      porPersona.get(k).push(f)
+    }
+  }
+  const repetidas = new Map()
+  for (const [k, fs] of porPersona) {
+    if (fs.length < 2) continue
+    const persona = k.slice(0, k.lastIndexOf('|'))
+    const e = repetidas.get(persona) ?? { persona, fechas: [], bloques: new Set(), filas: new Set() }
+    e.fechas.push(k.slice(k.lastIndexOf('|') + 1))
+    for (const f of fs) { e.bloques.add(f.bloque); e.filas.add(f.fila) }
+    repetidas.set(persona, e)
+  }
+  const personasRepetidas = [...repetidas.values()]
+    .map((e) => ({ persona: e.persona, fechas: e.fechas, bloques: [...e.bloques], filas: [...e.filas] }))
+
+  return { dias: porFecha.size, fechasDuplicadas, personasRepetidas }
+}
+
+/**
+ * NUCLEO PURO: el costo de mano de obra de una ventana, abierto por obra.
+ *
+ * `factorCargas` se aplica SOLO si viene un numero finito mayor o igual a cero. No tiene valor por
+ * omision a proposito: un recargo de cargas sociales que aparece por default es exactamente el
+ * numero que despues nadie puede rastrear. Sin factor, `cargas` queda en null y el total es el
+ * jornal solo.
+ */
+export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, anio = 2026 } = {}) {
+  const conCargas = typeof factorCargas === 'number' && Number.isFinite(factorCargas) && factorCargas >= 0
+  const filas = []
+  const huecos = []
+  const enVentana = []
+
+  // UN BLOQUE TERMINA DONDE EMPIEZA EL SIGUIENTE. Sin este limite, `trabajadoresDeBloque` barre
+  // hasta el final de la hoja: la fila del bloque de abajo dice "Obrero" en la columna de nombre y
+  // eso NO corta (se saltea como no-trabajador), asi que las personas de la quincena siguiente
+  // entraban tambien en la anterior, valuadas con las columnas de fecha de la anterior. Depender de
+  // que siempre exista una fila de totales que corte es depender de una costumbre, no de la
+  // estructura.
+  const bloques = detectarBloques(grid, { anio })
+  for (let k = 0; k < bloques.length; k++) {
+    const bloque = bloques[k]
+    const hastaFila = bloques[k + 1]?.fila ?? (grid.filas?.length ?? 0)
+    const dentro = (bloque.fechas || []).filter((f) => f.iso >= desde && f.iso <= hasta)
+    if (!dentro.length) continue
+    enVentana.push({ bloque, dentro })
+    for (const t of trabajadoresDeBloque(grid, bloque, { hastaFila })) {
+      filas.push(filaValuada(grid, bloque, t, dentro, { mapa, conCargas, factorCargas }, huecos))
+    }
+  }
+
+  const cuadre = cuadreDeClases(filas)
+  const { dias, fechasDuplicadas, personasRepetidas } = solapes(enVentana, filas)
+  const deClase = (clase) => filas.filter((f) => f.clase === clase)
+
   return {
-    ventana: { desde, hasta, diasEnVentana },
+    ventana: { desde, hasta, diasEnVentana: dias, bloques: enVentana.map((e) => e.bloque.fila1) },
     filas,
-    porObra: [...porObra.values()]
-      .map((a) => ({ ...a, personas: a.personas.size }))
-      .sort((x, y) => y.costo - x.costo),
-    sinObra: filas.filter((f) => f.clase === CLASE.NO_ES_CLIENTE).map((f) => ({
+    porObra: agruparPorObra(filas, conCargas),
+    sinObra: deClase(CLASE.NO_ES_CLIENTE).map((f) => ({
       persona: f.persona, rotulo: f.rotuloCliente, motivo: f.motivo, horas: f.horas, jornal: f.jornal, costo: f.costo,
     })),
-    desconocidos: filas.filter((f) => f.clase === CLASE.DESCONOCIDO).map((f) => ({
+    desconocidos: deClase(CLASE.DESCONOCIDO).map((f) => ({
       persona: f.persona, rotulo: f.rotuloCliente, fila: f.fila, jornal: f.jornal,
     })),
+    // LA LISTA QUE FALTABA. Una fila sin nada escrito en CLIENTE tiene horas, tiene valor hora y
+    // tiene plata: sin esta lista esa plata desaparecia del informe sin una sola marca.
+    sinRotulo: deClase(CLASE.SIN_ROTULO).map((f) => ({
+      persona: f.persona, fila: f.fila, bloque: f.bloque, horas: f.horas, jornal: f.jornal,
+    })),
+    noVerificables: deClase(CLASE.NO_VERIFICABLE).map((f) => ({
+      persona: f.persona, rotulo: f.rotuloCliente, fila: f.fila, jornal: f.jornal,
+    })),
+    fechasDuplicadas,
+    personasRepetidas,
     huecos,
     factorCargas: conCargas ? factorCargas : null,
     control: {
@@ -222,97 +341,17 @@ export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, an
       personas: filas.length,
       celdasIlegibles: huecos.filter((h) => h.tipo === HUECO.CELDA_ILEGIBLE).length,
       personasSinValuar: filas.filter((f) => f.jornal == null).length,
-      jornalTotal: jornalDe(() => true),
-      jornalAtribuido: jornalDe((f) => f.clase === CLASE.CLIENTE),
-      jornalSinObra: jornalDe((f) => f.clase === CLASE.NO_ES_CLIENTE),
-      jornalDesconocido: jornalDe((f) => f.clase === CLASE.DESCONOCIDO),
+      jornalTotal: cuadre.total,
+      jornalAtribuido: cuadre.porClase[CLASE.CLIENTE],
+      jornalSinObra: cuadre.porClase[CLASE.NO_ES_CLIENTE],
+      jornalDesconocido: cuadre.porClase[CLASE.DESCONOCIDO],
+      jornalSinRotulo: cuadre.porClase[CLASE.SIN_ROTULO],
+      jornalNoVerificable: cuadre.porClase[CLASE.NO_VERIFICABLE],
+      residuo: cuadre.residuo,
+      cuadra: cuadre.cuadra,
+      // La ventana es consistente cuando ningun dia y ninguna persona se cuenta dos veces. Si es
+      // false, los totales de arriba estan inflados y no se pueden presentar como el costo.
+      ventanaConsistente: fechasDuplicadas.length === 0 && personasRepetidas.length === 0,
     },
-  }
-}
-
-const RE_SUMIFS = /^=SUMIFS?\(/i
-
-/**
- * NUCLEO PURO Y CONTROL DE VERDAD: el resumen por cliente que la planilla calcula sola, llega a
- * todos los clientes que tiene cargados?
- *
- * ESTE CONTROL EXISTE PORQUE FALLO EN LA VIDA REAL. En la quincena del 17/08/2026 el resumen busca
- * "MESSINAS" y las filas de las personas dicen "MESSINA": la formula devolvio $ 0,00 con $ 1.333.000
- * cargados arriba. Y "QUATTROPANI" directamente no tenia fila en el resumen: otros $ 1.152.000
- * invisibles. El 37% de la quincena no llegaba al total, sin un solo error a la vista.
- *
- * Devuelve huerfanos -rotulos del resumen que ninguna fila usa, o sea que siempre van a dar cero- y
- * faltantes -clientes cargados en las filas que el resumen no busca, o sea plata que no aparece.
- */
-/**
- * NUCLEO PURO: la celda que el SUMIFS usa como CRITERIO, leida de la propia formula.
- *
- * POR QUE NO SE MIRA "LA CELDA DE AL LADO". Es lo primero que uno escribe y es falso: en el archivo
- * real el rotulo esta en V552 y la formula en X552 -hay una columna vacia en el medio-, asi que
- * buscar en j-1 no encontraba nada y el control informaba "ningun huerfano" sobre una planilla que
- * tenia uno. La formula, en cambio, dice exactamente que celda es el criterio:
- * =SUMIFS(AA527:AA544;AB527:AB544;V552) -> V552. Eso es derivar de la planilla en vez de suponer.
- *
- * Devuelve { fila, col } en indices de grilla (0-based), o null si el ultimo argumento no es una
- * referencia simple -por ejemplo un literal entre comillas-, en cuyo caso el llamador cae al vecino.
- */
-export function celdaDelCriterio(formula) {
-  const f = String(formula ?? '')
-  const abre = f.indexOf('(')
-  if (abre < 0 || !f.trimEnd().endsWith(')')) return null
-  const dentro = f.slice(abre + 1, f.lastIndexOf(')'))
-  const args = dentro.split(/[;,]/)
-  const ultimo = args[args.length - 1]?.trim()
-  const m = /^\$?([A-Z]+)\$?(\d+)$/i.exec(ultimo ?? '')
-  if (!m) return null
-  const col = indiceColumna(m[1].toUpperCase())
-  const fila = Number(m[2]) - 1
-  if (col == null || !Number.isInteger(fila) || fila < 0) return null
-  return { fila, col }
-}
-
-
-export function auditarResumenPorCliente(grid, bloque, { hastaFila } = {}) {
-  const filas = grid?.filas || []
-  const cols = bloque?.columnas || {}
-  const enFilas = new Map()
-  for (const t of trabajadoresDeBloque(grid, bloque)) {
-    const clave = normalizarClave(t.cliente_original)
-    if (clave) enFilas.set(clave, t.cliente_original.trim())
-  }
-  const fin = Math.min(hastaFila ?? filas.length, filas.length)
-  const letraCliente = cols.cliente == null ? null : letraColumna(cols.cliente)
-  const rotulos = []
-  for (let i = bloque.fila + 1; i < fin; i++) {
-    const fila = filas[i] || []
-    for (let j = 1; j < fila.length; j++) {
-      const f = fila[j]?.formula
-      if (typeof f !== 'string' || !RE_SUMIFS.test(f)) continue
-      // La formula tiene que mirar la columna CLIENTE: si no, es cualquier otro SUMIFS del bloque.
-      // OJO CON EL LIMITE DE PALABRA: /\bAB\b/ NO matchea "AB527:AB544", porque despues de la B
-      // viene un digito, que tambien es caracter de palabra. Con esa version el control no
-      // encontraba NUNCA el resumen y devolvia "todo limpio" sobre una planilla rota.
-      if (letraCliente && !new RegExp(`(^|[^A-Za-z])\\$?${letraCliente}\\$?\\d`, 'i').test(f)) continue
-      const ref = celdaDelCriterio(f)
-      const celda = ref == null ? null : filas[ref.fila]?.[ref.col]
-      const etiqueta = celda?.valor ?? fila[j - 1]?.valor
-      if (!etiqueta || !String(etiqueta).trim()) continue
-      rotulos.push({
-        rotulo: String(etiqueta).trim(),
-        clave: normalizarClave(etiqueta),
-        fila: (ref?.fila ?? i) + 1,
-        columna: letraColumna(ref?.col ?? (j - 1)),
-        formulaEn: `${letraColumna(j)}${i + 1}`,
-      })
-      break
-    }
-  }
-  const claves = new Set(rotulos.map((r) => r.clave))
-  return {
-    rotulos,
-    huerfanos: rotulos.filter((r) => !enFilas.has(r.clave)),
-    faltantes: [...enFilas.entries()]
-      .filter(([k]) => !claves.has(k))
-      .map(([clave, rotulo]) => ({ clave, rotulo })),
   }
 }

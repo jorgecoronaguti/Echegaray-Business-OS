@@ -36,6 +36,15 @@ const RE_CIERRE = /\b(UOCRA|UOM|BANCO|TOTAL\s+SEMANA|TOTAL\s+MO|SALDO\s+C|acumul
  *  del convenio que viven en el bloque de referencia debajo de los totales). */
 const RE_NO_TRABAJADOR = /^(oficial|medio\s+oficial|ayudante|operario|obrero|nombre|apellido|categoria|uocra|uom)\b/i
 
+/**
+ * Rótulos que ocupan la CELDA DE NOMBRE de una fila de cierre. `esFilaTotales` sólo reconoce el
+ * total cuando esa celda está VACÍA, y `RE_CIERRE` no conoce «TOTALES» a secas — así que una
+ * quincena que rotula su fila de totales entra como una persona más: se midió 3 trabajadores donde
+ * hay 2 y 104 horas donde hay 52, porque la fila de totales suma la columna y esa suma se vuelve a
+ * sumar. La plata zafó de casualidad (esa fila no tiene valor hora); las horas y el plantel no.
+ */
+const RE_ROTULO_CIERRE = /^(sub\s*)?totale?s?\b|^suma\b|^total\s/i
+
 /** Índice de columna (0-based) → letra A1. */
 export function letraColumna(i) {
   let s = ''
@@ -46,6 +55,16 @@ export function letraColumna(i) {
     n = Math.floor(n / 26) - 1
   }
   return s
+}
+
+/** Letra de columna A1 → índice 0-based. 'A' da 0, 'AA' da 26. null si no es una letra.
+ *  Es la inversa exacta de `letraColumna`: viven juntas para que no se separen. */
+export function indiceColumna(letra) {
+  const s = String(letra ?? '').toUpperCase()
+  if (!/^[A-Z]+$/.test(s)) return null
+  let n = 0
+  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n - 1
 }
 
 /** Rango A1 de UNA celda, con la pestaña citada (los nombres tienen espacios). */
@@ -133,6 +152,23 @@ const RE_HORAS = new RegExp(`^-?${RE_NUM_HORAS}$`)
  */
 export const filaSheet = (grid, i) => i + 1 + (grid?.offset?.fila ?? 0)
 export const colSheet = (grid, j) => j + (grid?.offset?.col ?? 0)
+
+/**
+ * LAS INVERSAS, y viven pegadas a las de arriba a propósito. Cuando una fórmula de la planilla
+ * nombra una celda («…;V552»), esa coordenada es de la HOJA, no de la grilla leída: convertirla a
+ * índice es restar el offset. Faltando esto, un rango leído desde la fila 401 buscaba el rótulo del
+ * criterio 400 filas más arriba, no lo encontraba, y el control informaba «todo limpio» sobre la
+ * misma planilla rota que con offset 0 sí delataba. Devuelven null cuando la celda queda FUERA del
+ * rango leído: eso no es «no hay rótulo», es «no lo pude mirar», y quien llama tiene que declararlo.
+ */
+export function filaGrid(grid, fila1) {
+  const i = Number(fila1) - 1 - (grid?.offset?.fila ?? 0)
+  return Number.isInteger(i) && i >= 0 ? i : null
+}
+export function colGrid(grid, colHoja) {
+  const j = Number(colHoja) - (grid?.offset?.col ?? 0)
+  return Number.isInteger(j) && j >= 0 ? j : null
+}
 
 /** ¿La celda tiene contenido escrito por alguien (valor o fórmula)? Una celda vacía
  *  NO es 0 — esta distinción es la que evita inventar ausencias. */
@@ -244,6 +280,9 @@ export function trabajadoresDeBloque(grid, bloque, { hastaFila } = {}) {
     const nombre = valor(celda(grid, i, cols.nombre))
     if (nombre.length <= 2) continue
     if (RE_NO_TRABAJADOR.test(nombre)) continue
+    // Una fila rotulada «TOTALES» CIERRA el bloque: lo que venga después ya no son personas de
+    // esta quincena. Se corta, no se saltea, porque saltearla dejaría entrar lo que la sigue.
+    if (RE_ROTULO_CIERRE.test(nombre)) break
     const clienteOrig = cols.cliente == null ? '' : crudo(celda(grid, i, cols.cliente))
     const obraOrig = cols.obra == null ? '' : crudo(celda(grid, i, cols.obra))
     out.push({
