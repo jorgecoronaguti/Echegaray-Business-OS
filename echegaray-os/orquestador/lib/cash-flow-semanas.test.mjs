@@ -169,7 +169,9 @@ test('el hero: el mayor pago y el mayor cobro llevan el MISMO filtro de estados 
   const [, , s3, s4] = meta.hero.slots
   for (const s of [s3, s4]) {
     const imp = en(filas, meta.hero.valor, s)
-    const quien = en(filas, meta.hero.valor, s + 1)
+    // LA GLOSA BAJÓ A SU PROPIA FILA (28/08): estaba en la celda de al lado y le comía el ancho al
+    // importe. La contraparte sigue colgando del MISMO slot, una fila abajo.
+    const quien = en(filas, meta.hero.nota, s)
     for (const e of ESTADOS_PENDIENTES) {
       assert.ok(imp.includes(`="${e}"`), `el importe del hero no filtra ${e}: mostraría un pago YA hecho como si viniera`)
       assert.ok(quien.includes(`="${e}"`), `la contraparte del hero no filtra ${e}: contradice al importe de al lado`)
@@ -184,7 +186,7 @@ test('el hero lee el propio cuadro: el piso sale de la fila de saldo final, no d
   const ultima = letra(meta.cab.col0 + meta.cab.n - 1)
   const piso = en(filas, meta.hero.valor, meta.hero.slots[1])
   assert.equal(piso, `=MIN($B$${meta.fila.saldoFinal}:$${ultima}$${meta.fila.saldoFinal})`)
-  const cuando = en(filas, meta.hero.valor, meta.hero.slots[1] + 1)
+  const cuando = en(filas, meta.hero.nota, meta.hero.slots[1])
   // INDEX con la FILA explícita: sobre un rango de una sola fila, INDEX(rango;n) es "la fila n" y da #REF!.
   assert.ok(cuando.includes(`INDEX($B$${meta.cab.fila}:$${ultima}$${meta.cab.fila};1;MATCH(`), cuando)
 })
@@ -268,7 +270,7 @@ test('sin los rangos con nombre de CAJA, el ancla va VACÍA en vez de apuntar a 
   const { filas, meta } = grillaSemanal({ hoy: HOY, anio: ANIO, refs: {} })
   assert.equal(en(filas, meta.fila.saldoInicial, meta.cab.col0), '')
   assert.equal(en(filas, meta.hero.valor, 0), '')
-  assert.match(en(filas, meta.hero.valor, 1), /Falta el saldo declarado/)
+  assert.match(en(filas, meta.hero.nota, 0), /Falta el saldo declarado/)
 })
 
 test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el dueño lo pida', () => {

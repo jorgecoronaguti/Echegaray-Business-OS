@@ -106,7 +106,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   const meta = {
     pestana: PESTANA_SEMANAL, tipo: TIPO, anio: ejercicio, ancho: footprint.cols, footprint,
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
-    fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
+    fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, nota: FILA.heroNota, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
@@ -166,19 +166,25 @@ function bloqueHero(poner, meta, refs) {
   const [s1, s2, s3, s4] = meta.hero.slots
   const R = meta.hero.rotulo
   const V = meta.hero.valor
+  // LA GLOSA BAJÓ A SU PROPIA FILA (28/08/2026). El cambio nace del Mensual —donde un importe de nueve
+  // cifras salía cortado por tener una sola columna de 95 px— y se aplica igual acá porque las dos
+  // vistas comparten la geometría a propósito: quien abre una y después la otra no tiene que volver a
+  // buscar dónde está cada cosa. Y el Semanal tiene el mismo riesgo: CAJA HOY y el PISO DEL PERÍODO son
+  // los dos importes del mismo tamaño.
+  const G = meta.hero.nota
   const rangoFinal = rangoFila(meta.fila.saldoFinal, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
   const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
 
   poner(R, s1, 'CAJA HOY')
   poner(V, s1, refSaldo ? `=N(${refSaldo})` : '')
-  poner(V, s1 + 1, refFecha ? `="al "&TEXT(${refFecha};"d/mm")` : 'Falta el saldo declarado de CAJA')
+  poner(G, s1, refFecha ? `="al "&TEXT(${refFecha};"d/mm")` : 'Falta el saldo declarado de CAJA')
 
   // El piso del horizonte y CUÁNDO ocurre. `INDEX(rango;1;MATCH(…))` con la fila explícita: sobre un
   // rango de una sola fila, `INDEX(rango;n)` significa "la fila n" y no "la columna n" — devolvería
   // #REF! en vez de la fecha, y esa forma ambigua ya rompió un control de este archivo.
   poner(R, s2, 'PISO DEL PERÍODO')
   poner(V, s2, `=MIN(${rangoFinal})`)
-  poner(V, s2 + 1, `="la semana del "&TEXT(INDEX(${rangoCab};1;MATCH(MIN(${rangoFinal});${rangoFinal};0));"d/mm")`)
+  poner(G, s2, `="la semana del "&TEXT(INDEX(${rangoCab};1;MATCH(MIN(${rangoFinal});${rangoFinal};0));"d/mm")`)
 
   // Los dos mayores movimientos del período que se decide, CON el filtro de estado de la medida que
   // representan: son los que todavía NO ocurrieron. Un "mayor pago" sin ese filtro traía el pago más
@@ -188,10 +194,10 @@ function bloqueHero(poner, meta, refs) {
   const est = [...ESTADOS_PENDIENTES]
   poner(R, s3, 'MAYOR PAGO · PRÓXIMOS 7 DÍAS')
   poner(V, s3, formulaMayorImporte(desde, hasta, -1, est))
-  poner(V, s3 + 1, formulaMayorContraparte(desde, hasta, -1, est, celda(s3, V)))
+  poner(G, s3, formulaMayorContraparte(desde, hasta, -1, est, celda(s3, V)))
   poner(R, s4, 'MAYOR COBRO · PRÓXIMOS 7 DÍAS')
   poner(V, s4, formulaMayorImporte(desde, hasta, 1, est))
-  poner(V, s4 + 1, formulaMayorContraparte(desde, hasta, 1, est, celda(s4, V)))
+  poner(G, s4, formulaMayorContraparte(desde, hasta, 1, est, celda(s4, V)))
   // El piso se compara contra la caja mínima por FORMATO CONDICIONAL (cash-flow-piel-matriz), no con
   // una quinta cifra: el dato ya está, lo que faltaba era verlo.
 }

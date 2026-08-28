@@ -79,12 +79,44 @@ export function rolesDeLaGrilla(inicios = [], fechaSaldo, finDe) {
  * Es la traducción literal de `rolDelPeriodo` a fórmula de Sheets, con `;` de separador porque el
  * archivo está en locale es_AR (ver memoria: "Fórmula por API va en locale").
  *
+ * ═══ LOS PERÍODOS ANTERIORES AL CORTE: DE VACÍOS A RECONSTRUIDOS (28/08/2026) ═══
+ *
+ * Iban vacíos, y con razón declarada: "no hay con qué reconstruirlo hacia atrás". Sí lo hay, y es la
+ * misma identidad que la cadena usa hacia adelante, leída al revés:
+ *
+ *     inicio(mes) = inicio(mes+1) − resultado(mes)
+ *
+ * porque cierre(mes) = inicio(mes+1) por definición de la cadena. No entra un dato nuevo: se despeja
+ * la MISMA aritmética que ya publica el cuadro, encadenada desde el único mes con ancla. Verificable
+ * al peso — reconstruida a mano sobre el archivo real, la cadena hacia atrás desde agosto da
+ * $50.630.171 al 1/1/2026 y $50.630.171 + $19.535.570 (ene→jul) = $70.165.741, exactamente el inicio
+ * de agosto que el cuadro publica.
+ *
+ * ⚠ LÍMITE, Y ES EL QUE HAY QUE LEER ANTES DE CREERLE AL NÚMERO. Esto es un CÁLCULO, no un hecho: el
+ * saldo de enero no está registrado en ningún lado, se despeja. Si al libro de movimientos le falta
+ * un movimiento de marzo, el error NO se reparte: se absorbe entero en los saldos anteriores a marzo,
+ * y enero queda con la diferencia acumulada de todo el año adentro. Por eso el mes ANCLA sigue siendo
+ * el único saldo verificable contra el banco, y por eso la pestaña lo DICE en su subtítulo en vez de
+ * dejar que el lector suponga que enero se leyó de algún lado.
+ *
+ * POR QUÉ SE ENGANCHA AL INICIO DEL MES SIGUIENTE Y NO AL CIERRE DEL PROPIO MES. Son el mismo número,
+ * pero `cierre(mes) = inicio(mes) + resultado(mes)` ya existe: si `inicio(mes)` leyera `cierre(mes)`,
+ * las dos celdas se referenciarían mutuamente. Google Sheets detecta la circularidad por el GRAFO de
+ * referencias, no por la rama que se evalúa, así que las dos filas darían #REF! aunque los `IF`
+ * nunca tomaran los dos caminos a la vez. Apuntando al inicio del mes siguiente la cadena queda
+ * acíclica: inicio(ene) → inicio(feb) → … → inicio(ancla) → CAJA_TOTAL_DISPONIBLE.
+ *
  * @param {object} p
  * @param {string} p.desde   expresión del primer día del período (normalmente `B$3`)
  * @param {string} p.hasta   expresión del primer día del siguiente (`B$3+7` o `EOMONTH(B$3;0)+1`)
  * @param {string} p.refSaldo   celda/rango con nombre del saldo real (`CAJA_TOTAL_DISPONIBLE`)
  * @param {string} p.refFecha   celda/rango con nombre de su fecha (`CAJA_FECHA_SALDO`)
  * @param {string|null} p.anterior celda del cierre del período anterior, o null en la primera columna
+ * @param {string|null} [p.siguiente] celda del INICIO del período siguiente. Con ella (y con
+ *   `resultadoDelPeriodo`) los períodos anteriores al corte se reconstruyen hacia atrás; sin ella
+ *   van vacíos, que es el comportamiento histórico y el que conserva el semanal —que arranca en la
+ *   semana corriente y no tiene columnas anteriores al corte.
+ * @param {string|null} [p.resultadoDelPeriodo] celda del resultado (entra − sale) del propio período.
  * @param {string} [p.yaVividoEnElAncla] expresión de lo que YA se movió dentro del período ancla antes
  *   de la fecha del saldo. Se RESTA sólo en ese período y por una razón aritmética: el saldo declarado
  *   está fechado en el MEDIO del período, así que si el período arranca con ese saldo y después suma
@@ -92,12 +124,21 @@ export function rolesDeLaGrilla(inicios = [], fechaSaldo, finDe) {
  *   cuadro semanal la distorsión es de días; en uno mensual, de hasta un mes entero de movimientos.
  *   Vacío (default) = comportamiento histórico, para no cambiar en silencio los cuadros que ya lo usan.
  */
-export function expresionInicio({ desde, hasta, refSaldo, refFecha, anterior = null, yaVividoEnElAncla = '' }) {
+export function expresionInicio({
+  desde, hasta, refSaldo, refFecha,
+  anterior = null, siguiente = null, resultadoDelPeriodo = null, yaVividoEnElAncla = '',
+}) {
   // El vacío de la primera columna se escribe como "" y no como la celda de la izquierda: a la
   // izquierda de la primera columna está el rótulo, y N("Efectivo…") daría 0 sin avisar.
   const encadena = anterior ? `IF(N(${anterior})=0;"";${anterior})` : '""'
   const ancla = yaVividoEnElAncla ? `N(${refSaldo})-(${yaVividoEnElAncla})` : `N(${refSaldo})`
-  return `=IF(${hasta}<=${refFecha};"";IF(${desde}<=${refFecha};${ancla};${encadena}))`
+  // El último período de la grilla no tiene "siguiente": si además cayera antes del corte —un ancla
+  // fuera del ejercicio— no hay de dónde despejar nada y va vacío. El vacío se propaga solo hacia la
+  // izquierda, porque `N("")` es 0 y la guarda lo convierte otra vez en "".
+  const antes = siguiente && resultadoDelPeriodo
+    ? `IF(N(${siguiente})=0;"";N(${siguiente})-N(${resultadoDelPeriodo}))`
+    : '""'
+  return `=IF(${hasta}<=${refFecha};${antes};IF(${desde}<=${refFecha};${ancla};${encadena}))`
 }
 
 /**
@@ -140,22 +181,41 @@ export function expresionInicioCorrido({ refSaldo, yaVivido, puestaAlDia }) {
  * y cierre desde los netos y el saldo declarado. Un control validado contra su propia fuente no es
  * un control.
  *
+ * ═══ LOS PERÍODOS ANTERIORES AL ANCLA SE DESPEJAN HACIA ATRÁS (28/08/2026) ═══
+ *
+ * Con `inicio(p) = inicio(p+1) − neto(p)`, encadenado desde el ancla hacia la izquierda. Cada uno de
+ * esos períodos sale marcado `calculado: true`, y esa marca NO es decorativa: es la diferencia entre
+ * un saldo que se puede contrastar contra el banco y uno que se dedujo de que el libro esté completo.
+ * Si al libro le falta un movimiento, el faltante no se reparte — se absorbe entero en los saldos
+ * calculados que quedan a la izquierda de ese movimiento.
+ *
  * @param {Array<{desde:Date, hasta:Date, neto:number}>} periodos
  * @param {{saldo:number, fecha:Date|string|number}} ancla
- * @returns {Array<{desde:Date, rol:string, inicio:number|null, cierre:number|null}>}
+ * @param {{reconstruirHaciaAtras?:boolean}} [opciones]
+ * @returns {Array<{desde:Date, rol:string, inicio:number|null, cierre:number|null, calculado:boolean}>}
  */
-export function cadenaEsperada(periodos = [], ancla) {
+export function cadenaEsperada(periodos = [], ancla, { reconstruirHaciaAtras = true } = {}) {
   const out = []
   let anterior = null
   for (const p of periodos) {
     const rol = rolDelPeriodo(p.desde, p.hasta, ancla.fecha)
-    if (rol === ROL.ANTES) { out.push({ desde: p.desde, rol, inicio: null, cierre: null }); continue }
+    if (rol === ROL.ANTES) { out.push({ desde: p.desde, rol, inicio: null, cierre: null, calculado: false }); continue }
     const inicio = rol === ROL.ANCLA ? Number(ancla.saldo) : anterior
     // Un encadenado sin cierre anterior no puede inventarse un inicio: se declara nulo y se ve.
-    if (inicio === null || inicio === undefined) { out.push({ desde: p.desde, rol, inicio: null, cierre: null }); continue }
+    if (inicio === null || inicio === undefined) { out.push({ desde: p.desde, rol, inicio: null, cierre: null, calculado: false }); continue }
     const cierre = inicio + Number(p.neto || 0)
-    out.push({ desde: p.desde, rol, inicio, cierre })
+    out.push({ desde: p.desde, rol, inicio, cierre, calculado: false })
     anterior = cierre
+  }
+  if (!reconstruirHaciaAtras) return out
+  // De derecha a izquierda, y arrancando en el ANTEÚLTIMO: el último período de la grilla no tiene
+  // "siguiente" del que despejar. Si el ancla cae fuera de la grilla, ninguno tiene inicio y el
+  // barrido no escribe nada — no se inventa una cadena donde no hay de dónde.
+  for (let i = out.length - 2; i >= 0; i--) {
+    if (out[i].rol !== ROL.ANTES || out[i].inicio !== null) continue
+    const cierre = out[i + 1].inicio
+    if (cierre === null || cierre === undefined) continue
+    out[i] = { ...out[i], inicio: cierre - Number(periodos[i].neto || 0), cierre, calculado: true }
   }
   return out
 }
