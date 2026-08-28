@@ -120,3 +120,32 @@ test('el recuento separa lo que tiene cantidad de lo que quedó abierto', () => 
 test('DOS CORRIDAS IDÉNTICAS derivan exactamente los mismos procesos', () => {
   assert.deepEqual(procesosDe(BASE), procesosDe(BASE))
 })
+
+// ═══════════════ EL CERO QUE NO ERA UNA MEDICIÓN ═══════════════
+
+test('NEGATIVO: una dimensión AUSENTE no es una dimensión CERO', () => {
+  // El defecto medido: `Number(null)` es 0 y es finito, así que un ancho que el plano no dice
+  // entraba como ancho = 0. De ahí salían cinco tareas derivadas con `cantidad: 0` acompañadas de
+  // su fórmula y sus entradas — un cero CALCULADO, que se lee como «midió cero» y no como «falta».
+  assert.deepEqual(
+    dimensionesDe({ dimensiones: { largo: 2.5, ancho: null, alto: undefined } }),
+    { largo: 2.5, ancho: null, alto: null },
+  )
+  assert.deepEqual(
+    dimensionesDe({ dimensiones: { largo: { valor: 2.5 }, ancho: { valor: '' }, alto: { valor: null } } }),
+    { largo: 2.5, ancho: null, alto: null },
+  )
+  // Y el caso contrario, sin el cual esto no sería un control: un cero MEDIDO sí es un número.
+  assert.deepEqual(
+    dimensionesDe({ dimensiones: { largo: 2.5, ancho: 0, alto: 0.3 } }),
+    { largo: 2.5, ancho: 0, alto: 0.3 },
+  )
+})
+
+test('NEGATIVO: sin dimensiones, los procesos derivados salen SIN cantidad — no con cantidad cero', () => {
+  const sinAncho = procesosDe({ id: 'B1', nombre: 'Base de hormigón B1', sistema: 'hormigon_armado', dimensiones: { largo: 2.5, ancho: null, alto: null }, cantidad: { valor: 1 } })
+  const conCero = sinAncho.filter((p) => p?.cantidad?.valor === 0)
+  assert.deepEqual(conCero, [], `salieron ${conCero.length} tarea(s) con cantidad 0 calculada: ${conCero.map((p) => p.nombre).join(', ')}`)
+  assert.ok(sinAncho.length > 0, 'las tareas igual se derivan: lo que falta es la cantidad, no la tarea')
+  assert.ok(sinAncho.every((p) => p.cantidad === null || p.cantidad?.valor === null || p.cantidad?.valor > 0))
+})

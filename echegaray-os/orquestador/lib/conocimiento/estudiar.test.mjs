@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 import * as B from './biblioteca.mjs'
 import * as F from './fuentes.mjs'
 import { CLASE, clasificar, extraerConReglas, segmentar } from './clasificar.mjs'
-import { ORDEN, ORDEN_TEXTO, PASO, PROCEDENCIAS_AL_ESTUDIAR, RESULTADO, estudiar, estudiarTexto, verificarCitas } from './estudiar.mjs'
+import { ORDEN, ORDEN_TEXTO, PASO, PROCEDENCIAS_AL_ESTUDIAR, RESULTADO, armarCandidatos, estudiar, estudiarTexto, verificarCitas } from './estudiar.mjs'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'estudiar-'))
 
@@ -216,4 +216,46 @@ test('NEGATIVO: usar una fuente NO es revisarla — diez consultas no la ponen a
 
 test('revisar exige la fecha: sin ella no hay revisión que caduque', () => {
   assert.throws(() => F.revisar(F.SEMILLA, 'indec', {}), /necesita la fecha/)
+})
+
+// ═══════════════ LOS DOS AGUJEROS QUE ENCONTRÓ LA AUDITORÍA ═══════════════
+
+test('NEGATIVO: una cita de dos letras no respalda nada — «de» está en cualquier documento', () => {
+  const texto = 'El hormigon debe alcanzar una resistencia caracteristica de 25 MPa a los 28 dias segun el articulo 4.'
+  const { buenos, inventadas } = verificarCitas({
+    hallados: [
+      { campo: 'resistencia', valor: '45 MPa', textoLiteral: 'de' },
+      { campo: 'resistencia', valor: '45 MPa', textoLiteral: 'una resistencia caracteristica de 45 MPa' },
+      { campo: 'resistencia', valor: '25 MPa', textoLiteral: 'una resistencia caracteristica de 25 MPa a los 28 dias' },
+    ],
+    texto,
+  })
+  assert.equal(buenos.length, 1, 'la única que sobrevive es la que dice el valor Y está en el documento')
+  assert.equal(buenos[0].valor, '25 MPa')
+  assert.match(inventadas[0].porQue, /caracteres y hacen falta/)
+  assert.match(inventadas[1].porQue, /no aparece en el documento/)
+})
+
+test('NEGATIVO: una cita larga y real que NO contiene el valor tampoco alcanza', () => {
+  const texto = 'El hormigon debe alcanzar una resistencia caracteristica de 25 MPa a los 28 dias segun el articulo 4.'
+  const { buenos, inventadas } = verificarCitas({
+    hallados: [{ campo: 'resistencia', valor: '45 MPa', textoLiteral: 'El hormigon debe alcanzar una resistencia caracteristica' }],
+    texto,
+  })
+  assert.equal(buenos.length, 0)
+  assert.match(inventadas[0].porQue, /no contiene «45 MPa»/)
+})
+
+test('NEGATIVO: estudiar un documento NO puede producir NORMA ni EXPERIENCIA_ECSAS, ni pasándolas por parámetro', () => {
+  // El agujero: la lista blanca se consultaba sólo dentro de `procedenciaDe()`, y quedaba salteada
+  // cuando el documento ya traía `procedencia`. Dos de las procedencias que este módulo declara
+  // inalcanzables se alcanzaban pasando un campo.
+  const base = { hallados: [], clase: CLASE.REGLAMENTO, doc: { id: 'doc:x', url: 'https://a.gob.ar/x.pdf' } }
+  for (const p of ['NORMA', 'EXPERIENCIA_ECSAS', 'HECHO_PROYECTO', 'BASE_MAESTRA']) {
+    assert.throws(() => armarCandidatos({ ...base, procedencia: p }), /no puede producir procedencia/, `${p} entró`)
+  }
+  // Y las dos que SÍ corresponden entran: si tirara siempre, no sería un control.
+  for (const p of ['WEB', 'REFERENCIA_TECNICA']) {
+    assert.doesNotThrow(() => armarCandidatos({ ...base, procedencia: p }))
+  }
 })

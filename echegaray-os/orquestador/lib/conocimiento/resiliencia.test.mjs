@@ -82,8 +82,12 @@ test('E · la cadena de estudio corre ENTERA sin proveedor de razonamiento y dec
 test('E · CASO CONTRARIO: con el modelo encendido la MISMA extracción deja de estar degradada', async () => {
   const { bytes, dir } = pdfCon(FICHA)
   const campos = ['uso', 'compatibilidad', 'limitaciones', 'metodo', 'fuente']
+  // El valor tiene que salir DE la frase citada, no acompañarla: el control de citas exige que
+  // `textoLiteral` contenga el valor. Un fixture con «valor de uso» respaldado por una frase que
+  // no lo dice probaría que el control no existe.
+  const CITA = 'No aplicar sobre superficies humedas ni con temperatura menor a 5 grados.'
   const pedir = async () => ({
-    texto: JSON.stringify(campos.map((campo) => ({ campo, valor: `valor de ${campo}`, textoLiteral: 'No aplicar sobre superficies humedas ni con temperatura menor a 5 grados.', pagina: 1 }))),
+    texto: JSON.stringify(campos.map((campo) => ({ campo, valor: 'temperatura menor a 5 grados', textoLiteral: CITA, pagina: 1 }))),
   })
   const r = await estudiar({
     url: 'https://www.fabricante.example.com/ficha.pdf', dir, pedir,
@@ -128,17 +132,31 @@ test('E · resolver() sale a la web sin modelo, trae las lecturas y DECLARA que 
   assert.ok(r.degradado.loQueQuedoSinRazonamiento.length >= 1)
 })
 
-test('E · CASO CONTRARIO: con el modelo permitido la misma resolución NO se declara degradada', async () => {
+test('E · CASO CONTRARIO: con el modelo permitido la cascada NO se corta en la web — sigue al modelo', async () => {
+  // La versión anterior de este test afirmaba `ok:true · via:BUSQUEDA_WEB · degradado:null` con el
+  // modelo encendido, y eso ERA el defecto: el escalón cortaba la cascada, así que con el modelo
+  // disponible nunca se llegaba a él y la respuesta salía «resuelta» sin un solo valor adentro.
   const dir = tmp()
   const fetchImpl = async (url) => (String(url).includes('duckduckgo') ? { ok: true, text: async () => HTML_DDG } : htmlOk(String(url)))
-  const r = await resolver({
+  const base = {
     necesidad: { clave: 'reglamento.cirsoc.vigencia', consulta: 'cirsoc 201 vigencia' },
-    fuentes: F.SEMILLA.map((f) => ({ ...f })), fetchImpl, dir,
-    permitirWeb: true, permitirModelo: true,
-  })
-  assert.equal(r.ok, true)
-  assert.equal(r.via, VIA.BUSQUEDA_WEB)
-  assert.equal(r.degradado, null, 'si `degradado` fuera siempre distinto de null, no sería una medición')
+    fuentes: F.SEMILLA.map((f) => ({ ...f })), fetchImpl, dir, permitirWeb: true, permitirModelo: true,
+  }
+
+  // Sin nadie que interprete: el resultado es un HUECO, no un «ok» vacío — pero las lecturas
+  // citables viajan adjuntas, que no es lo mismo que no haber traído nada.
+  const sinLector = await resolver(base)
+  assert.equal(sinLector.ok, false, `salió ok con valor ${JSON.stringify(sinLector.valor)}`)
+  assert.equal(sinLector.via, VIA.HUECO)
+  assert.ok(sinLector.lecturas?.length, 'lo que la web trajo no se tira')
+  assert.ok(sinLector.recorrido.some((x) => x.via === VIA.BUSQUEDA_WEB && x.resultado === 'TRAJO_LECTURAS'))
+
+  // Con el modelo conectado, la misma necesidad se resuelve DE VERDAD y sin degradación.
+  const conLector = await resolver({ ...base, resolvedores: { [VIA.MODELO]: async () => ({ ok: true, valor: 'CIRSOC 201-2025' }) } })
+  assert.equal(conLector.ok, true)
+  assert.equal(conLector.via, VIA.MODELO)
+  assert.equal(conLector.valor, 'CIRSOC 201-2025')
+  assert.equal(conLector.degradado, null, 'si `degradado` fuera siempre distinto de null, no sería una medición')
 })
 
 // ═══════════════════════ F · UNA FUENTE EXTERNA CAÍDA ═══════════════════════

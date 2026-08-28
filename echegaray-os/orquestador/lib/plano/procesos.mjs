@@ -30,7 +30,7 @@
 // ECSAS registre la suya, gana la de ECSAS y estas reglas pasan a ser el piso.
 
 import { SISTEMA } from './interpretar.mjs'
-import { FUENTE } from './fuente.mjs'
+import { FUENTE, tieneNumero } from './fuente.mjs'
 
 /** De dónde sale la afirmación «esto también hay que hacerlo». */
 export const ORIGEN = Object.freeze({
@@ -68,10 +68,28 @@ const DERIVAR = Object.freeze({
     : null),
 })
 
-/** Las dimensiones del elemento, en la forma que esperan los derivadores. PURA. */
+/**
+ * LAS DIMENSIONES DEL ELEMENTO, en la forma que esperan los derivadores. PURA.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA, Y POR QUÉ ERA EL PEOR DE SU FAMILIA ═══
+ *
+ * `Number(null)` es 0 y `Number('')` también, y los dos son finitos. Con `Number.isFinite(Number(x))`
+ * un ancho AUSENTE entraba como ancho CERO, y de ahí salían cinco tareas derivadas —replanteo,
+ * hormigón de limpieza, encofrado, hormigonado, curado— con `cantidad: 0` **acompañadas de su
+ * fórmula y sus entradas**. O sea un cero CALCULADO: se lee como una medición que dio cero, no como
+ * un dato que falta. Es la misma trampa que ya había vaciado `horasNecesarias` y que después infló
+ * el contador de elementos computados, pero acá no adulteraba un indicador: fabricaba una cantidad
+ * de obra, que es la que después lleva un precio.
+ *
+ * Sin dimensión no hay cantidad, y eso se dice con `null` — que es lo que los derivadores ya saben
+ * tratar como hueco.
+ */
 export function dimensionesDe(computo) {
   const d = computo?.dimensiones ?? {}
-  const num = (x) => (typeof x === 'object' && x !== null ? (Number.isFinite(Number(x.valor)) ? Number(x.valor) : null) : (Number.isFinite(Number(x)) ? Number(x) : null))
+  const num = (x) => {
+    const v = (typeof x === 'object' && x !== null) ? x.valor : x
+    return tieneNumero(v) ? Number(v) : null
+  }
   return { largo: num(d.largo ?? d.largo_m), ancho: num(d.ancho ?? d.ancho_m), alto: num(d.alto ?? d.alto_m ?? d.espesor ?? d.espesor_m) }
 }
 

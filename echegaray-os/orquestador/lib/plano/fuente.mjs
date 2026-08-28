@@ -176,3 +176,16 @@ export function dimension({ valor, unidad = null, evidencia: ev = null, formula 
       : 'no hay texto literal que sostenga esta dimensión',
   })
 }
+
+/**
+ * ¿ESTO ES UN NÚMERO DE VERDAD? PURA.
+ *
+ * `Number(null)` es 0, `Number('')` es 0, y `Number.isFinite` dice que sí a los dos. Preguntar sólo
+ * por `isFinite` convierte un dato AUSENTE en un cero MEDIDO — y en este circuito eso ya vació las
+ * horas de una cuadrilla, infló el contador de elementos computados, y llegó a fabricar cinco
+ * tareas de obra con cantidad 0 acompañadas de su fórmula, o sea un cero que se lee como medición.
+ *
+ * Vive acá, con la taxonomía de procedencia, porque la usan `computo`, `procesos` y `pipeline`, y
+ * es el módulo que los tres ya importan sin crear un ciclo.
+ */
+export const tieneNumero = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))

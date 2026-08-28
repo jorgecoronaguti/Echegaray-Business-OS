@@ -248,7 +248,7 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
  * medir. Es el mismo `Number(null)` que ya había hecho que `horasNecesarias(null)` devolviera 0
  * horas en vez de un hueco. Lo encontró el test de regresión de `elementosComputados`.
  */
-export const tieneNumero = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))
+export { tieneNumero } from './fuente.mjs'
 
 /**
  * POR QUÉ VÍA SE RESOLVIÓ UNA CANTIDAD. PURA — y exportada para poder probarla por la ruta real.

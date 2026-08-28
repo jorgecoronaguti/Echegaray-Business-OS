@@ -160,13 +160,29 @@ export async function extraerConModelo({ segmentos = [], clase, pedir = null, ca
  * no, y ahí es donde una frase plausible que el PDF nunca dijo entraría a la biblioteca con
  * apariencia de procedencia citable.
  */
+export const CITA_MINIMA = 25
+
 export function verificarCitas({ hallados = [], texto = '' } = {}) {
   const doc = norm(texto)
   const buenos = []
   const inventadas = []
   for (const h of hallados) {
-    if (h.textoLiteral && doc.includes(norm(h.textoLiteral))) buenos.push(h)
-    else inventadas.push({ ...h, porQue: 'la frase citada no aparece en el documento: sin cita verificable no hay procedencia citable' })
+    const cita = String(h.textoLiteral ?? '')
+    const rechazar = (porQue) => inventadas.push({ ...h, porQue })
+    if (!cita.trim()) { rechazar('no trae ninguna frase que lo diga'); continue }
+    // ═══ TRES CONTROLES, NO UNO ═══
+    // El primero solo se evadía con un carácter: `textoLiteral: 'de'` está en cualquier documento
+    // en castellano, así que un modelo podía inventar el valor y respaldarlo con una preposición.
+    if (cita.trim().length < CITA_MINIMA) { rechazar(`la cita tiene ${cita.trim().length} caracteres y hacen falta ${CITA_MINIMA}: una preposición está en cualquier documento y no respalda nada`); continue }
+    if (!doc.includes(norm(cita))) { rechazar('la frase citada no aparece en el documento: sin cita verificable no hay procedencia citable'); continue }
+    // Y el que faltaba: que el VALOR salga de la frase. Verificar que la cita esté en el documento
+    // no verifica que el número venga de ahí — que es lo único que se quiere saber.
+    const valor = h.valor === null || h.valor === undefined ? '' : String(h.valor).trim()
+    if (valor && !norm(cita).includes(norm(valor))) {
+      rechazar(`la cita existe en el documento pero no contiene «${valor}»: la frase no respalda ESE valor`)
+      continue
+    }
+    buenos.push(h)
   }
   return { buenos, inventadas }
 }
@@ -181,6 +197,14 @@ export function verificarCitas({ hallados = [], texto = '' } = {}) {
  * sigue encontrándolos por prefijo y ninguno pisa al otro.
  */
 export function armarCandidatos({ hallados = [], clase, doc, procedencia, jurisdiccion = null, cuando = null, version = 1, sospechoso = false } = {}) {
+  // ═══ LA LISTA BLANCA SE CONSULTA ACÁ, QUE ES DONDE LA PROCEDENCIA SE USA ═══
+  // Estaba sólo adentro de `procedenciaDe()`, y `estudiar` la salteaba cuando el documento YA traía
+  // `procedencia`. Con eso, leer un documento producía NORMA o EXPERIENCIA_ECSAS pasando un campo —
+  // dos de las procedencias que el encabezado de este archivo declara imposibles de alcanzar
+  // leyendo. Una invariante que se evade con un parámetro no es estructural.
+  if (!PROCEDENCIAS_AL_ESTUDIAR.includes(procedencia)) {
+    throw new Error(`estudiar un documento no puede producir procedencia ${procedencia}: sólo ${PROCEDENCIAS_AL_ESTUDIAR.join(' o ')}`)
+  }
   const slug = trozo(doc?.titulo || doc?.url || doc?.id || 'documento')
   const base = `${String(clase).toLowerCase()}.${slug}`
   const candidatos = []

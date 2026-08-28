@@ -156,6 +156,9 @@ export async function resolver({
 } = {}) {
   const recorrido = []
   let padron = fuentes
+  // Lo que la web trajo y todavía no se interpretó. Viaja hasta el final: si nadie lo convierte en
+  // un valor, el hueco sale igual pero con el material citable adjunto, que no es lo mismo que nada.
+  let lecturasWeb = null
 
   for (const esc of ESCALONES) {
     if (esc.via === VIA.MODELO && !permitirModelo) { recorrido.push({ via: esc.via, resultado: 'APAGADO', porQue: 'no hay proveedor de razonamiento disponible' }); continue }
@@ -178,19 +181,31 @@ export async function resolver({
       if (r.ok) {
         medidor?.decidio({ que: necesidad.clave, via: VIA.BUSQUEDA_WEB })
         const leidas = r.lecturas.filter((l) => l.ok)
-        // ═══ HAY WEB PERO NO HAY RAZONAMIENTO (escenario E) ═══
+        // ═══ TRAER TEXTO NO ES RESOLVER ═══
+        //
         // La investigación llegó entera: bajó los documentos y los dejó citables. Lo que NO pasó es
-        // que alguien los leyera para sacar un valor. Devolver esto con `degradado: null` —como
-        // hacía— presentaba un montón de texto crudo como si fuera una respuesta resuelta, que es
-        // justo la forma de fallar que este repo llama fabricar cobertura.
+        // que alguien los leyera para sacar un valor. Este escalón devolvía `ok: true` y cortaba la
+        // cascada — o sea que con el modelo DISPONIBLE nunca se llegaba a él, y la respuesta salía
+        // `ok:true · valor:null · degradado:null`: una resolución que no resolvió nada, declarada
+        // limpia. Es la misma forma de fallar que este repo llama fabricar cobertura, en la rama
+        // opuesta a la que ya se había corregido.
+        //
+        // Ahora: si el modelo está disponible, las lecturas se guardan y la cascada SIGUE hasta él,
+        // que es quien las convierte en un valor. Si no lo está, se devuelven con la degradación
+        // declarada — porque texto citable es más que nada, y decir de qué se trata es el trabajo.
+        if (permitirModelo) {
+          lecturasWeb = r.lecturas
+          recorrido.push({ via: esc.via, resultado: 'TRAJO_LECTURAS', cuantas: leidas.length, porQue: 'texto citable, todavía sin interpretar: sigue al modelo' })
+          continue
+        }
         return {
           ok: true, via: VIA.BUSQUEDA_WEB, valor: null, lecturas: r.lecturas,
           recorrido: [...recorrido, { via: esc.via, resultado: 'TRAJO_LECTURAS', cuantas: leidas.length }],
           fuentes: padron,
-          degradado: permitirModelo ? null : {
+          degradado: {
             porQue: `la búsqueda trajo ${leidas.length} lectura(s) citable(s) y ninguna se interpretó: sin proveedor de razonamiento no se pasa de texto a valor`,
             escalones: [VIA.MODELO],
-            loQueQuedoSinRazonamiento: leidas.map((l) => ({ url: l.url, caracteres: l.caracteres })),
+            loQueQuedoSinRazonamiento: leidas.map((l) => l.url),
           },
         }
       }
@@ -217,6 +232,7 @@ export async function resolver({
     ok: false,
     via: VIA.HUECO,
     hueco: hueco({ clave: necesidad.clave, tipo: HUECO.FALTA_DATO, porQue: `ningún escalón pudo resolver «${necesidad.clave}»`, quienLoTiene: necesidad.quienLoTiene ?? null }),
+    lecturas: lecturasWeb,
     recorrido, fuentes: padron,
     degradado: apagados.length ? { porQue: apagados.map((a) => `${a.via}: ${a.porQue}`).join(' · '), escalones: apagados.map((a) => a.via) } : null,
   }
