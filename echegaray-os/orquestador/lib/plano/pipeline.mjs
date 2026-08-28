@@ -34,6 +34,7 @@ import { piezaDe } from './atributos.mjs'
 import { obraDesdeCotizacion } from './genealogia.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
+import { VIA, medidor as nuevoMedidor } from '../conocimiento/metricas.mjs'
 import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
 import { FUENTE, faltaDato } from './fuente.mjs'
@@ -569,6 +570,12 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // leído con su motivo. Una cotización que sale igual de completa sin el modelo estaría mintiendo;
   // una que se cae no sirve para nada. La tercera opción —degradar y decirlo— es la única honesta.
   const { pedirSeguro, degradacion } = pedirConDegradacion(pedir, { permitirModelo })
+  // ═══ LAS MÉTRICAS SE TOMAN ADENTRO, NO SE DEDUCEN AL FINAL ═══
+  // Un resumen calculado sobre el resultado puede quedar coherente y ser falso: mide lo que quedó,
+  // no lo que pasó. Cada decisión se anota EN EL MOMENTO en que se resuelve, con la vía que la
+  // resolvió — que es la única forma de que «lo resolvió el caché» no se pueda confundir con
+  // «lo resolvió el modelo y el resultado dio igual».
+  const met = nuevoMedidor()
   const filas = await documentosDelProyecto({ query }, termino)
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
@@ -584,6 +591,8 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     const bytes = await google.descargarBytes(doc.drive_file_id)
     const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
     anotar(lam.uso)
+    met.decidio({ que: `lámina ${doc.name}`, via: lam.deCache ? VIA.CACHE : (lam.error ? VIA.HUECO : VIA.MODELO) })
+    if (lam.uso && !lam.uso.degradado) met.llamo({ proveedor: 'ia', modelo: lam.uso.modelo, tokensIn: lam.uso.tokens?.in ?? null, tokensOut: lam.uso.tokens?.out ?? null, usd: lam.uso.usd, ms: lam.uso.ms, funcion: 'interpretar-plano' })
     // LA SEGUNDA PASADA VA SOBRE LA MISMA LÁMINA Y SÓLO SI QUEDÓ ALGO SIN MEDIR. Su resultado se
     // cachea junto al inventario: dos pasadas se pagan una vez por contenido, no una por corrida.
     const llave = `${llaveDeCache(bytes)}:medicion`
@@ -614,6 +623,8 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
           if (!rec.ok || !REGIONES_QUE_SE_MIRAN.includes(rec.region?.tipo)) continue
           const r = await interpretarRegion(rec, { pedir: pedirSeguro, refrescar, archivo: seg.archivo, logger })
           anotar(r.uso)
+          met.decidio({ que: `vista ${rec.region?.titulo ?? rec.region?.n}`, via: r.deCache ? VIA.CACHE : (r.error ? VIA.HUECO : VIA.MODELO) })
+          if (r.uso && !r.uso.degradado) met.llamo({ proveedor: 'ia', modelo: r.uso.modelo, tokensIn: r.uso.tokens?.in ?? null, tokensOut: r.uso.tokens?.out ?? null, usd: r.uso.usd, ms: r.uso.ms, funcion: 'interpretar-region' })
           porRegion.push({ archivo: seg.archivo, ...r })
         }
       }
@@ -628,6 +639,17 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // se toca. Contar INSERT es exacto y no cuesta un token.
   const medidoConCad = resolverConCad(fusionados, documental.cad)
   const computo = computarElementos(medidoConCad.elementos)
+  // Una cantidad la resolvió el CAD (conteo exacto de bloques), la resolvió la cita del plano, o no
+  // la resolvió nadie. Las tres son decisiones y las tres se cuentan.
+  //
+  // OJO CON EL «TIENE»: estar en `computo.items` NO es tener cantidad. Todos los elementos entran a
+  // la lista; los que quedaron sin medir entran con `cantidad` en null. Preguntar por la presencia
+  // en la lista daba 111 cantidades resueltas donde hay 28 — un contador incapaz de decir «no».
+  const idsPorCad = new Set((medidoConCad.resueltos ?? []).map((x) => x?.id ?? x))
+  const conCantidad = new Set(computo.items.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).map((i) => i.id))
+  for (const e of medidoConCad.elementos ?? []) {
+    met.decidio({ que: `cantidad ${e.id}`, via: !conCantidad.has(e.id) ? VIA.HUECO : (idsPorCad.has(e.id) ? VIA.DOCUMENTO_LOCAL : VIA.REGLA) })
+  }
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
   //
@@ -653,6 +675,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     }
   }
   const seleccion = seleccionarTodas(computo.items, catalogo, { vetos })
+  for (const m of seleccion.mapeos ?? []) met.decidio({ que: `partida ${m.computo?.id ?? m.elemento ?? '?'}`, via: m.estado === 'MAPEADA' ? VIA.BASE_MAESTRA : VIA.HUECO })
   const mapeo = { ...seleccion, correcciones, desacuerdos }
   const procesos = procesosDeTodos(computo.items)
 
@@ -694,6 +717,9 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
      *  porque recorre todos los elementos y casi ningún consumidor la necesita. */
     obraDesdeCotizacion() { return obraDesdeCotizacion({ termino, computo, mapeo, procesos, composiciones: comps }) },
     ia: { llamadas: usos.length, usos, deCache: laminas.filter((l) => l.deCache).length },
+    // El Claude Avoidance Rate y sus hermanos, medidos y no estimados. `null` cuando no hubo
+    // ninguna decisión comparable: una corrida vacía no es 100% de autonomía.
+    metricas: met.resumen(),
     // ═══ EL CONTRATO DE DEGRADACIÓN ═══
     // `hubo: false` significa que NADA se resolvió con el modelo apagado o roto. `hubo: true` dice
     // qué falló, cuántas veces y en qué función, y qué láminas quedaron sin leer por eso. Una

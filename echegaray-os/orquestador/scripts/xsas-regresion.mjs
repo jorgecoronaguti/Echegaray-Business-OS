@@ -110,6 +110,17 @@ if (obra.actividades[0]) {
 // Va ANTES del A/B a propósito: si la corrida se resolvió sin el modelo, eso cambia cómo se lee
 // TODO lo de arriba, y enterarse al final es enterarse tarde.
 const deg = r.degradacion ?? {}
+const m = r.metricas ?? {}
+console.log('\n── AUTONOMÍA Y COSTO (medido adentro, no deducido) ──')
+console.log(`  decisiones                   ${m.decisiones ?? 0}  ${JSON.stringify(m.porVia ?? {})}`)
+console.log(`  comparables                  ${m.comparables ?? 0} (las que un modelo también podría haber contestado; la aritmética NO cuenta)`)
+console.log(`  resueltas sin modelo         ${m.resueltasSinModelo ?? 0}   ·  con modelo ${m.resueltasConModelo ?? 0}  ·  sin resolver ${m.noResueltas ?? 0}`)
+console.log(`  Claude Avoidance Rate        ${m.claudeAvoidanceRate === null || m.claudeAvoidanceRate === undefined ? '— (ninguna decisión comparable: no es 100%)' : `${Math.round(m.claudeAvoidanceRate * 1000) / 10}%`}`)
+console.log(`  Autonomous Resolution Rate   ${m.autonomousResolutionRate === null || m.autonomousResolutionRate === undefined ? '—' : `${Math.round(m.autonomousResolutionRate * 1000) / 10}%`}`)
+console.log(`  Knowledge Reuse Rate         ${m.knowledgeReuseRate === null || m.knowledgeReuseRate === undefined ? '—' : `${Math.round(m.knowledgeReuseRate * 1000) / 10}%`}`)
+console.log(`  llamadas al modelo           ${m.llamadasModelo ?? 0}  ·  tokens ${m.tokensIn ?? 0} in / ${m.tokensOut ?? 0} out  ·  USD ${m.usd === null ? 'desconocido (hubo llamadas sin precio)' : (m.usd ?? 0)}`)
+console.log(`  búsquedas web                ${m.busquedasWeb ?? 0} (${m.busquedasDeCache ?? 0} de caché · ${m.busquedasConModelo ?? 0} con modelo)`)
+
 console.log('\n── SIN PROVEEDOR DE RAZONAMIENTO ──')
 if (!deg.hubo) {
   console.log(`  no hizo falta degradar${deg.permitirModelo === false ? ' — y el modelo estaba APAGADO: todo salió del caché, del CAD y de la Base Maestra' : ''}`)
