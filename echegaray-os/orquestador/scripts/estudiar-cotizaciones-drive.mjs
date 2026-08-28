@@ -145,5 +145,16 @@ async function main() {
 const resumirMadurez = (ps) => Object.entries(ps.reduce((a, p) => { a[p.madurez] = (a[p.madurez] ?? 0) + 1; return a }, {}))
   .sort().map(([k, v]) => `${k}:${v}`).join(' · ')
 
-main().then(() => closePool()).then(() => process.exit(0))
-  .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// ═══ UN MÓDULO SE IMPORTA; UN COMANDO SE EJECUTA ═══
+//
+// Sin esta guarda, `import { fusionarHallazgos } from '...'` corría `main()`: bastaba con abrir
+// `cotizaciones.test.mjs` para que un `node --test` saliera a Drive, recorriera 2.653 archivos y
+// REESCRIBIERA `biblioteca.json` y `hallazgos-cotizaciones.json`. Los tests no se salvaron por
+// diseño sino por suerte —la biblioteca actuó de memoria de idempotencia y todo se salteó—, pero
+// una corrida con `--refrescar`, un archivo movido o un corte de red habrían dejado la base
+// pisada por un test. Es la misma trampa que ya costó trabajo tres veces: correr el pipeline para
+// validar.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().then(() => closePool()).then(() => process.exit(0))
+    .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}
