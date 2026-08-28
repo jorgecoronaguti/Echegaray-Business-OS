@@ -137,11 +137,21 @@ export function aConocimientoHistorico(registro, { fecha = null } = {}) {
  * un coeficiente de ajuste distinto de 1: ×1,5 y ×1,4. No hay una tercera partida ajustada, y no
  * hay ninguna metálica sin ajustar.
  *
- * ═══ LO QUE SE PUEDE DECIR ═══
+ * ═══ LO QUE SE PUEDE DECIR, Y LO QUE EL ARTEFACTO NO SOSTIENE ═══
  *
- * Que las partidas metálicas recibieron un ajuste adicional que ninguna otra recibió. Eso SUGIERE
- * que el análisis y la composición históricos de estructura metálica se sabían cortos y se los
- * tapó con un multiplicador.
+ * En «Entrepiso» —el caso que declaró el dueño y que NO está en el artefacto— las dos partidas
+ * ajustadas son metálicas. Ahí la exclusividad se puede afirmar, y es un dicho, no un dato.
+ *
+ * En «Instalacion Electrica» —el caso que SÍ está en el artefacto— el ×4 NO es exclusivo de lo
+ * metálico: de las 7 partidas ajustadas, 6 son T1095 «COTIZACION DE HORA - 1 OF/ 1 AY», que es una
+ * hora de cuadrilla y no una partida metálica, y las 7 llevan el MISMO 4. Decir que las metálicas
+ * recibieron un ajuste que otras no recibieron es exactamente lo que ese caso no muestra.
+ *
+ * Y el propio control que lo detectó —`coeficiente-de-ajuste-sin-criterio`— dice que fuera del
+ * rango 0,5–3 «lo más probable es que sea una cantidad tipeada en la columna equivocada». Así que
+ * el ×4 puede no ser un ajuste de precio: puede ser una cantidad en la celda de al lado. Lo que
+ * sostiene el artefacto es que el precio de esas 7 partidas salió multiplicado por 4 sin nada que
+ * explique por qué, y que una de las 7 es T1180, de las partidas nuevas a contrastar.
  *
  * ═══ LO QUE NO SE PUEDE DECIR ═══
  *
@@ -163,9 +173,11 @@ export const INSUFICIENCIA_METALICA = Object.freeze({
   casos: Object.freeze([
     Object.freeze({
       obra: 'JAVIER SANCHEZ · Entrepiso',
+      // `metalica` no es decorativo: sin él la afirmación junta T1095 —una hora de cuadrilla— con
+      // las partidas de estructura y afirma sobre «las metálicas» algo que incluye lo que no lo es.
       partidasAjustadas: Object.freeze([
-        Object.freeze({ tarea: 'ESCALERA METÁLICA', coeficiente: 1.5 }),
-        Object.freeze({ tarea: 'ENTREPISO', coeficiente: 1.4 }),
+        Object.freeze({ tarea: 'ESCALERA METÁLICA', coeficiente: 1.5, metalica: true }),
+        Object.freeze({ tarea: 'ENTREPISO', coeficiente: 1.4, metalica: true }),
       ]),
       // ═══ ESTE CASO NO ESTÁ VERIFICADO CONTRA EL ARTEFACTO ═══
       // Los dos coeficientes los declaró el dueño. La cotización «JAVIER SANCHEZ · Entrepiso» NO
@@ -177,8 +189,10 @@ export const INSUFICIENCIA_METALICA = Object.freeze({
     Object.freeze({
       obra: 'JAVIER SANCHEZ · Instalacion Electrica',
       partidasAjustadas: Object.freeze([
-        Object.freeze({ tarea: 'T1180 · PLATAFORMA DE TRABAJO - 8M', coeficiente: 4 }),
-        Object.freeze({ tarea: 'T1095 · COTIZACION DE HORA - 1 OF/ 1 AY', coeficiente: 4 }),
+        Object.freeze({ tarea: 'T1180 · PLATAFORMA DE TRABAJO - 8M', coeficiente: 4, metalica: true }),
+        // Aparece 6 veces en el artefacto, siempre con el mismo 4. Es una hora de cuadrilla: entra
+        // acá porque es la que impide leer el ×4 como «ajuste de lo metálico».
+        Object.freeze({ tarea: 'T1095 · COTIZACION DE HORA - 1 OF/ 1 AY', coeficiente: 4, metalica: false }),
       ]),
       // Éste SÍ está en el artefacto, con su archivo y sus filas, y pesa más que el otro: T1180 es
       // una de las partidas metálicas nuevas contra las que había que contrastar, y ya viene con un
@@ -187,7 +201,7 @@ export const INSUFICIENCIA_METALICA = Object.freeze({
       porQueNoSeVerifico: null,
     }),
   ]),
-  interpretacionPermitida: 'hay evidencia de que partidas de estructura y equipamiento metálico recibieron ajustes adicionales que otras partidas no recibieron, lo que SUGIERE que el análisis y la composición históricos de esas partidas eran insuficientes',
+  interpretacionPermitida: 'hay partidas de estructura y equipamiento metálico cuyo precio salió multiplicado por un coeficiente de ajuste sin nada que explique por qué —T1180 «PLATAFORMA DE TRABAJO - 8M» ×4 en el caso verificado—, lo que SUGIERE que el análisis y la composición históricos de esas partidas eran insuficientes y se los tapó con un multiplicador. NO se puede decir que el ajuste sea exclusivo de lo metálico: en la cotización verificada las 7 partidas ajustadas llevan el mismo ×4 y 6 de las 7 son T1095 «COTIZACION DE HORA - 1 OF/ 1 AY», que no es una partida metálica. Y como 4 cae fuera del rango 0,5–3, el propio control que lo detectó advierte que puede ser una cantidad tipeada en la columna equivocada y no un ajuste de precio',
   interpretacionProhibida: '«1,4, 1,5 o 4 son los coeficientes correctos para estructura metálica»: no hay medición, ni composición, ni HH reales que lo sostengan; aprenderlo convertiría un parche en método',
   aContrastarCon: Object.freeze([
     'las partidas metálicas nuevas T1180–T1185',
@@ -209,7 +223,7 @@ export const partidasDelCasoMetalico = () =>
  *  una evidencia, y `CANDIDATO` porque nadie la validó. PURA. */
 export const aConocimientoInsuficienciaMetalica = ({ fecha = null } = {}) => conocimiento({
   clave: INSUFICIENCIA_METALICA.clave,
-  afirmacion: `en ${INSUFICIENCIA_METALICA.casos.length} cotizaciones de «${INSUFICIENCIA_METALICA.cliente}» hay partidas metálicas con un coeficiente de ajuste distinto de 1 (${partidasDelCasoMetalico().map((p) => `${p.tarea} ×${p.coeficiente}`).join(', ')}): es evidencia de POSIBLE insuficiencia del análisis histórico de estructura metálica, no de que esos coeficientes sean correctos`,
+  afirmacion: `en ${INSUFICIENCIA_METALICA.casos.length} cotizaciones de «${INSUFICIENCIA_METALICA.cliente}» hay partidas con un coeficiente de ajuste distinto de 1 (${partidasDelCasoMetalico().map((p) => `${p.tarea} ×${p.coeficiente}${p.metalica ? '' : ' [NO metálica]'}`).join(', ')}): es evidencia de POSIBLE insuficiencia del análisis histórico de estructura metálica, no de que esos coeficientes sean correctos ni de que el ajuste haya sido exclusivo de las partidas metálicas`,
   procedencia: PROCEDENCIA.INFERIDO,
   estado: ESTADO.CANDIDATO,
   valor: null,
@@ -220,6 +234,10 @@ export const aConocimientoInsuficienciaMetalica = ({ fecha = null } = {}) => con
   fecha,
   evidencia: {
     textoLiteral: partidasDelCasoMetalico().map((p) => `${p.tarea} × ${p.coeficiente}`).join(' | '),
+    // Cuántas de las partidas ajustadas son metálicas de verdad. Es el número que impide leer el
+    // caso como «lo metálico se ajustó y el resto no».
+    metalicas: partidasDelCasoMetalico().filter((p) => p.metalica).length,
+    noMetalicas: partidasDelCasoMetalico().filter((p) => !p.metalica).map((p) => p.tarea),
     ubicacion: INSUFICIENCIA_METALICA.casos.map((c) => c.verificadoEn ?? `${c.obra} · SIN VERIFICAR`).join(' || '),
     casos: INSUFICIENCIA_METALICA.casos,
     // Qué parte de esto se pudo cruzar contra el artefacto y qué parte no. Sin esta línea, el caso

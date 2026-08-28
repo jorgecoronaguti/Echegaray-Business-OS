@@ -9,6 +9,7 @@
 // frecuencia, el período y los clientes salen de donde tienen que salir.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { estudiar, libro } from './cotizacion-fixture.mjs'
 import { ESTADO, PROCEDENCIA, ascensoProhibido, conocimiento, incorporar } from './biblioteca.mjs'
 import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
@@ -19,6 +20,25 @@ import {
 } from './practica-historica.mjs'
 
 const RUTA = (cliente, obra, archivo) => `administracion/PRESUPUESTOS - CLIENTES/${cliente}/${obra}/${archivo}`
+
+/**
+ * EL ARTEFACTO CONTRA EL QUE SE CRUZA EL CASO METÁLICO.
+ *
+ * Es el dataset que produjo el estudio de las 237 cotizaciones, versionado en el repo. Se lee de
+ * disco a propósito: un test que afirme sobre la constante `INSUFICIENCIA_METALICA` está mirándose
+ * al espejo —si alguien cambia el 4 por 40, la constante y la afirmación cambian juntas y nada se
+ * pone rojo—. Lo único que puede desmentir al 4 es el archivo del que salió.
+ */
+const DATASET = new URL('../../datos/conocimiento/dataset-hallazgos.json', import.meta.url)
+const ARCHIVO_DEL_CASO = 'Cotizacion Interna - Instalacion Electrica.xlsm'
+
+const filaDelCasoMetalico = () => {
+  const d = JSON.parse(readFileSync(DATASET, 'utf8'))
+  return d.filas.find((f) => f.archivo === ARCHIVO_DEL_CASO && f.tipo_anomalia === 'COEFICIENTE_AJUSTE_IMPLAUSIBLE')
+}
+
+/** El coeficiente que la cita del artefacto declara para una partida: «T1180 «…» × 4» → 4. */
+const coeficienteDeLaCita = (cita) => Number(/×\s*([\d.,]+)\s*$/.exec(String(cita))?.[1]?.replace(',', '.'))
 
 const VACIA = Object.freeze({ version: 0, documentos: [], conocimientos: [], huecos: [] })
 
@@ -191,6 +211,39 @@ test('T1180 —una de las partidas metálicas nuevas— ya viene con un multipli
   assert.ok(t1180, 'se perdió el caso de T1180, que es el que se puede citar')
   assert.equal(t1180.coeficiente, 4)
   assert.ok(t1180.verificadoEn, 'el caso de T1180 tiene que ser el verificado')
+})
+
+test('el ×4 de T1180 se cruza contra el dataset, no contra la constante que lo declara', () => {
+  const fila = filaDelCasoMetalico()
+  assert.ok(fila, `el artefacto ya no tiene la fila de ${ARCHIVO_DEL_CASO}: el caso metálico se quedó sin fuente`)
+  const cita = fila.evidencia.find((e) => e.cita.startsWith('T1180'))
+  assert.ok(cita, 'la evidencia del artefacto ya no cita T1180')
+  const declarado = partidasDelCasoMetalico().find((p) => p.tarea.startsWith('T1180'))
+  assert.equal(coeficienteDeLaCita(cita.cita), declarado.coeficiente, 'el coeficiente que dice el código no es el que dice el artefacto')
+  // Y la ubicación que publica el conocimiento tiene que ser la del artefacto, no una parecida.
+  const caso = INSUFICIENCIA_METALICA.casos.find((c) => c.verificadoEn)
+  assert.ok(caso.verificadoEn.startsWith(`${fila.archivo} · hoja ${fila.hoja}`), `la ubicación declarada no coincide con el artefacto: ${caso.verificadoEn}`)
+  for (const n of ['19', '25']) assert.ok(fila.celda_o_rango.includes(`fila ${n}`), `el artefacto ya no cita la fila ${n}`)
+})
+
+test('el ×4 no es exclusivo de lo metálico, y la interpretación no puede decir que lo sea', () => {
+  const fila = filaDelCasoMetalico()
+  // Lo que el artefacto muestra, contado sobre el artefacto: 7 partidas ajustadas, 6 de ellas T1095
+  // —una hora de cuadrilla— y las 7 con el MISMO coeficiente. Ahí no hay ninguna exclusividad.
+  const citas = fila.evidencia.map((e) => e.cita)
+  const horas = citas.filter((c) => c.startsWith('T1095'))
+  assert.equal(citas.length, 7)
+  assert.equal(horas.length, 6, 'cambió la composición del caso: hay que releer la interpretación, no ajustar el número')
+  assert.equal(new Set(citas.map(coeficienteDeLaCita)).size, 1, 'las partidas ajustadas ya no llevan todas el mismo coeficiente')
+  // Por eso la interpretación permitida NO puede afirmar que otras partidas no lo recibieron.
+  assert.doesNotMatch(INSUFICIENCIA_METALICA.interpretacionPermitida, /que otras partidas no recibieron|que ninguna otra recibió/)
+  assert.match(INSUFICIENCIA_METALICA.interpretacionPermitida, /NO se puede decir que el ajuste sea exclusivo/)
+  assert.match(INSUFICIENCIA_METALICA.interpretacionPermitida, /T1095/)
+  // Y el conocimiento que va a la biblioteca cuenta cuántas eran metálicas de verdad.
+  const k = aConocimientoInsuficienciaMetalica()
+  assert.equal(k.evidencia.metalicas, 3)
+  assert.deepEqual(k.evidencia.noMetalicas, ['T1095 · COTIZACION DE HORA - 1 OF/ 1 AY'])
+  assert.match(k.afirmacion, /NO metálica/)
 })
 
 test('el caso metálico dice contra qué hay que contrastarlo, y contra qué lo va a reemplazar', () => {
