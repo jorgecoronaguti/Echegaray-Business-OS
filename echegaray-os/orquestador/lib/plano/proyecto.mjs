@@ -89,6 +89,7 @@ export const ESTADO_HECHO = Object.freeze({
   CONFIRMADO: 'CONFIRMADO',   // varias fuentes y todas de acuerdo
   COMPLETADO: 'COMPLETADO',   // lo aporta una sola fuente y nadie la contradice
   CONFLICTO: 'CONFLICTO',     // dos fuentes legítimas dicen cosas distintas
+  SOLO_MENCIONES: 'SOLO_MENCIONES', // varias frases sueltas dicen cosas distintas y ninguna sabe de qué habla
 })
 
 /**
@@ -113,12 +114,23 @@ export function consolidar(hechos = []) {
     const orden = [...lista].sort((a, b) => a.peso - b.peso || String(a.documento).localeCompare(String(b.documento)) || String(a.textoLiteral).localeCompare(String(b.textoLiteral)))
     const principal = orden[0]
     const discrepan = orden.filter((h) => !mismoValor(h.valor, principal.valor))
-    if (discrepan.length) {
+    // ═══ UNA FRASE SUELTA NO CONTRADICE A NADIE ═══
+    // Un hecho de confianza BAJA es una frase que no nombró pieza, no declaró alcance y no se dijo
+    // universal: es contexto. Trece frases de un pliego que mencionan un método de trabajo caen
+    // todas en la misma clave y no son trece fuentes discutiendo — medido sobre Quattropani, eran
+    // el 100% del ruido nuevo. Se guardan (pueden completar un dato que falta) y no pueden abrir un
+    // conflicto solas: para eso hace falta que al menos una fuente sepa DE QUÉ está hablando.
+    const conPeso = orden.filter((h) => h.confianza !== 'baja')
+    const debiles = orden.filter((h) => h.confianza === 'baja')
+    if (discrepan.length && conPeso.length) {
       const c = {
         que, elemento: principal.elemento, atributo: principal.atributo,
         estado: ESTADO_HECHO.CONFLICTO,
-        versiones: orden.map((h) => ({ valor: h.valor, unidad: h.unidad, clase: h.clase, documento: h.documento, lamina: h.lamina, textoLiteral: h.textoLiteral })),
-        porQue: `${orden.length} fuentes dicen cosas distintas sobre ${principal.atributo}${principal.elemento ? ` de ${principal.elemento}` : ''}: ${orden.map((h) => `${h.clase} dice «${h.valor}»`).join(' · ')}`,
+        versiones: conPeso.map((h) => ({ valor: h.valor, unidad: h.unidad, clase: h.clase, documento: h.documento, lamina: h.lamina, textoLiteral: h.textoLiteral })),
+        mencionesSueltas: debiles.length,
+        // Se listan las fuentes CON PESO, no las trece menciones sueltas: un conflicto que se lee
+        // como una pared de repeticiones no se resuelve, se ignora. Las débiles se cuentan aparte.
+        porQue: `${conPeso.length} fuente(s) con peso dicen cosas distintas sobre ${principal.atributo}${principal.elemento ? ` de ${principal.elemento}` : ''}: ${[...new Set(conPeso.map((h) => `${h.clase} dice «${h.valor}»`))].join(' · ')}${debiles.length ? ` (+${debiles.length} mención(es) sueltas del mismo atributo: ${[...new Set(debiles.map((h) => h.valor))].join(', ')})` : ''}`,
         quienLoResuelve: 'dirección técnica / proyectista — las dos fuentes están escritas y elegir una en silencio inventa el resultado de una discusión que no ocurrió',
         fuente: FUENTE.FALTA_DATO,
       }
@@ -128,8 +140,11 @@ export function consolidar(hechos = []) {
     }
     resueltos.push({
       que, elemento: principal.elemento, atributo: principal.atributo,
-      estado: orden.length > 1 ? ESTADO_HECHO.CONFIRMADO : ESTADO_HECHO.COMPLETADO,
-      valor: principal.valor, unidad: principal.unidad,
+      // Si discrepan pero ninguna fuente tiene peso, NO es un hecho consolidado: es un conjunto de
+      // menciones sueltas. Se marca como tal para que nadie lo lea como una definición del proyecto.
+      estado: discrepan.length ? ESTADO_HECHO.SOLO_MENCIONES : (orden.length > 1 ? ESTADO_HECHO.CONFIRMADO : ESTADO_HECHO.COMPLETADO),
+      menciones: discrepan.length ? orden.map((h) => ({ valor: h.valor, documento: h.documento, textoLiteral: h.textoLiteral })) : undefined,
+      valor: discrepan.length ? null : principal.valor, unidad: principal.unidad,
       clase: principal.clase, documento: principal.documento, lamina: principal.lamina,
       textoLiteral: principal.textoLiteral,
       respaldo: orden.map((h) => `${h.clase}:${h.documento}`),
@@ -169,6 +184,41 @@ const EXTRAIBLES = Object.freeze(['resistencia', 'material', 'espesor_m', 'termi
 const CUANTIFICADOR_UNIVERSAL = /\b(todo|toda|todos|todas|en\s+general|generalidad|salvo\s+indicaci|salvo\s+especificaci|la\s+totalidad|para\s+toda\s+la\s+obra)\b/i
 
 /**
+ * EL ALCANCE QUE UNA FRASE SE DA A SÍ MISMA, cuando no nombra una pieza. PURA.
+ *
+ * ═══ POR QUÉ HIZO FALTA AGREGAR ESTO ═══
+ *
+ * Exigir pieza o cuantificador universal arregló el ruido y ROMPIÓ la cobertura, que es peor: una
+ * auditoría midió que se descartaban frases como «El hormigón de los elementos estructurales será
+ * H-21» y «Se exige terminación fratasada» —y `terminacion` está en `BLOQUEAN`, o sea que su
+ * ausencia impide confirmar una partida—. Los conflictos habían bajado de 67 a 3 EN PARTE POR
+ * DEJAR DE MIRAR, que no es lo mismo que por dejar de equivocarse.
+ *
+ * El arreglo no es volver atrás: es que una frase sin pieza puede igual tener ALCANCE propio
+ * —«los elementos estructurales», «los muros exteriores»—, y ese alcance es una clave distinta de
+ * `*`. Así la frase entra, y dos frases sobre alcances distintos dejan de chocar entre sí.
+ */
+const ALCANCES = Object.freeze([
+  ['elementos_estructurales', /elementos?\s+estructural|estructura\s+resistente|elementos?\s+portantes?/i],
+  ['fundaciones', /fundacion|cimentacion|submuraci/i],
+  ['cubierta', /cubierta|techo/i],
+  ['contrapisos_y_pisos', /contrapiso|solado|\bpiso/i],
+  ['exteriores', /exterior(es)?\b/i],
+  ['interiores', /interior(es)?\b/i],
+])
+
+/** El alcance declarado por la frase, o null. PURA. */
+export function alcanceDe(frase) {
+  for (const [nombre, re] of ALCANCES) if (re.test(String(frase ?? ''))) return nombre
+  return null
+}
+
+/** Los atributos que entran AUNQUE la frase no nombre pieza ni se declare universal, porque su
+ *  ausencia BLOQUEA una confirmación de partida: si el pliego los dice, hay que verlos. El
+ *  `material` NO está — es el que producía el choque de 27 — y sigue exigiendo pieza o universal. */
+const ENTRAN_CON_ALCANCE = Object.freeze(['resistencia', 'espesor_m', 'terminacion', 'metodo', 'ubicacion', 'armadura'])
+
+/**
  * LOS HECHOS TÉCNICOS QUE DICE UN DOCUMENTO DE TEXTO. PURA.
  *
  * Recorre frase por frase; si la frase nombra una PIEZA y declara un atributo, sale un hecho atado a
@@ -180,12 +230,35 @@ export function hechosDeTexto(texto, { documento, clase = CLASE_FUENTE.PLIEGO } 
   for (const f of frases(texto)) {
     const pieza = piezaDe(f)?.valor ?? null
     const universal = CUANTIFICADOR_UNIVERSAL.test(f)
-    if (!pieza && !universal) continue
+    const alcance = alcanceDe(f)
     const attr = atributosDe(f)
     for (const k of EXTRAIBLES) {
       const a = attr[k]
       if (!a) continue
-      salida.push(hecho({ elemento: pieza, atributo: k, valor: a.valor, clase, documento, textoLiteral: f.slice(0, 200), confianza: pieza ? 'alta' : 'media' }))
+      // Tres puertas, de la más fuerte a la más débil, y ninguna es «todo entra»:
+      //   1. la frase nombra la PIEZA  → el hecho es de esa pieza;
+      //   2. la frase se declara UNIVERSAL → el hecho vale para todo el proyecto;
+      //   3. la frase tiene ALCANCE propio y el atributo BLOQUEA una confirmación → el hecho vale
+      //      para ese alcance, que es una clave distinta de `*` y no choca con las demás.
+      // El ALCANCE le gana al cuantificador universal cuando la frase tiene los dos: «H-30 en la
+      // totalidad de los elementos estructurales» y «el hormigón de los elementos estructurales
+      // será H-21» hablan de LO MISMO, y si una cae en `*` y la otra en su alcance, la
+      // contradicción —que está escrita en el texto— no se detecta nunca.
+      const bloqueante = ENTRAN_CON_ALCANCE.includes(k)
+      const destino = pieza
+        ?? (alcance && (universal || bloqueante) ? alcance
+          : universal ? null
+            : bloqueante ? null
+              : undefined)
+      if (destino === undefined) continue
+      salida.push(hecho({
+        elemento: destino, atributo: k, valor: a.valor, clase, documento,
+        textoLiteral: f.slice(0, 200),
+        // Una frase con ALCANCE declarado NO es contexto: dice de qué habla, aunque no nombre la
+        // pieza. Dejarla en «baja» la volvía incapaz de abrir un conflicto y la contradicción del
+        // hormigón estructural (H-21 contra H-30) se perdía igual que antes, con otro mecanismo.
+        confianza: pieza ? 'alta' : ((universal || alcance) ? 'media' : 'baja'),
+      }))
     }
   }
   return salida.filter(Boolean)

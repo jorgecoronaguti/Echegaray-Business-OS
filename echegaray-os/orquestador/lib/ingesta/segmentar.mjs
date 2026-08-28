@@ -151,6 +151,88 @@ export function titulosDe(textos = [], { factorAltura = 1.35, largoMinimo = 4 } 
 
 const centro = (c) => [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2]
 
+/** El área en que dos cajas se pisan. PURA. */
+export function interseccion(a, b) {
+  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0])
+  const h = Math.min(a[3], b[3]) - Math.max(a[1], b[1])
+  return w > 0 && h > 0 ? w * h : 0
+}
+
+/** Cuánto de esta región cabe adentro de aquélla, de 0 a 1. PURA. */
+export const contenidaEn = (chica, grande) => (areaDe(chica) > 0 ? interseccion(chica, grande) / areaDe(chica) : 0)
+
+/** A partir de cuánto una región deja de ser una vista propia y pasa a ser parte de otra. */
+export const UMBRAL_CONTENIDA = 0.7
+
+/** Qué fracción de las cajas de una vista entra en su envolvente. El resto son las más lejanas al
+ *  título, que casi siempre son un llamado o una cota que se estiró hasta el otro dibujo. */
+export const PERCENTIL_ENVOLVENTE = 0.92
+
+/**
+ * LA ENVOLVENTE ROBUSTA DE UNA VISTA. PURA.
+ *
+ * ═══ POR QUÉ NO ALCANZA LA ENVOLVENTE DE TODO ═══
+ *
+ * La caja de una vista era la unión de TODAS las cajas que quedaron más cerca de su título. Una
+ * sola línea de cota estirada hasta el dibujo vecino agranda esa unión hasta taparlo, y entonces
+ * dos vistas se pisan: medido, 13 de 28 pares en una lámina real y una suma de áreas de 1,11 veces
+ * la hoja — o sea, pedazos del plano recortados y mirados DOS VECES, con dos títulos distintos, que
+ * es el motor del doble cómputo.
+ *
+ * La envolvente robusta deja afuera el 8% de cajas más lejanas al título. No se pierde el dibujo:
+ * se pierde el rabo. Y lo que queda afuera se cuenta, para que el recorte no se achique en silencio.
+ */
+export function cajaRobusta(cajas = [], titulo, { percentil = PERCENTIL_ENVOLVENTE } = {}) {
+  if (!cajas.length) return { caja: null, dejadas: 0 }
+  const conD = cajas.map((c) => {
+    const [cx, cy] = centro(c)
+    return { c, d: Math.hypot(cx - titulo.x, cy - titulo.y) }
+  }).sort((a, b) => a.d - b.d)
+  const corte = Math.max(1, Math.ceil(conD.length * percentil))
+  const dentro = conD.slice(0, corte)
+  let caja = [...dentro[0].c]
+  for (const x of dentro) caja = union(caja, x.c)
+  return { caja, dejadas: conD.length - dentro.length }
+}
+
+/**
+ * ABSORBER LAS REGIONES QUE ESTÁN ADENTRO DE OTRA. PURA.
+ *
+ * ═══ POR QUÉ HACE FALTA ═══
+ *
+ * Cada región es la UNIÓN de las cajas que quedaron más cerca de su título, y una caja asignada al
+ * título A puede caer geográficamente adentro del rectángulo que abarca el conjunto de B. Medido
+ * sobre una lámina real: 13 de 28 pares de vistas se pisaban y la suma de áreas daba 1,17 veces la
+ * hoja — o sea que partes del plano se recortaban DOS VECES, se miraban dos veces (dos llamadas de
+ * visión) y volvían como dos elementos con nombres distintos. Es el motor del doble cómputo.
+ *
+ * Una región que está 70% adentro de otra NO es una vista aparte: es un pedazo de ésa, y mirarla
+ * por separado paga dos veces por lo mismo. Se absorbe y se DECLARA — no desaparece del recuento.
+ */
+export function absorberContenidas(regiones = [], { umbral = UMBRAL_CONTENIDA } = {}) {
+  const porArea = [...regiones].sort((a, b) => areaDe(b.caja) - areaDe(a.caja) || String(a.titulo ?? a.n).localeCompare(String(b.titulo ?? b.n)))
+  const quedan = []
+  const absorbidas = []
+  for (const r of porArea) {
+    const dentroDe = quedan.find((g) => contenidaEn(r.caja, g.caja) >= umbral)
+    if (dentroDe) {
+      absorbidas.push({
+        titulo: r.titulo ?? null, tipo: r.tipo, caja: r.caja,
+        dentroDe: dentroDe.titulo ?? dentroDe.n,
+        fraccion: Math.round(contenidaEn(r.caja, dentroDe.caja) * 100) / 100,
+        porQue: `«${r.titulo ?? `región ${r.n}`}» está ${Math.round(contenidaEn(r.caja, dentroDe.caja) * 100)}% adentro de «${dentroDe.titulo ?? `región ${dentroDe.n}`}»: no es una vista aparte, es una parte de ésa. Mirarla por separado paga dos veces por el mismo dibujo`,
+      })
+      continue
+    }
+    quedan.push(r)
+  }
+  // Se renumeran para que el orden siga siendo total y legible después de absorber.
+  return {
+    regiones: quedan.sort((a, b) => b.caja[3] - a.caja[3] || a.caja[0] - b.caja[0]).map((r, i) => ({ ...r, n: i + 1 })),
+    absorbidas: absorbidas.sort((a, b) => String(a.titulo).localeCompare(String(b.titulo))),
+  }
+}
+
 /** Un trazo que tapa media hoja NO es un dibujo: es el marco de la lámina, la grilla o un rayado que
  *  cruza todo. Repartido por cercanía se le cuelga a alguna vista y le infla la caja hasta la hoja
  *  entera — medido: la región «ENTRE PISO» salía ocupando el 93% del plano. Se cuentan y se dicen. */
@@ -181,7 +263,7 @@ export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos =
     ...trazos.filter((c) => areaDe(c) < areaPapel * FRACCION_MARCO).map((c) => ({ caja: c, texto: null })),
     ...textos.map((t) => ({ caja: [t.x, t.y, t.x + (t.ancho ?? 0), t.y + (t.alto ?? 8)], texto: t.texto })),
   ]
-  const grupos = titulos.map((t) => ({ titulo: t, caja: null, miembros: 0 }))
+  const grupos = titulos.map((t) => ({ titulo: t, caja: null, miembros: 0, asignadas: [] }))
   let sueltas = 0
   for (const c of cajas) {
     const [cx, cy] = centro(c.caja)
@@ -195,11 +277,16 @@ export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos =
     }
     if (mejor < 0 || mejorD > r) { sueltas++; continue }
     const g = grupos[mejor]
-    g.caja = g.caja ? union(g.caja, c.caja) : [...c.caja]
+    g.asignadas.push(c.caja)
     g.miembros++
   }
   const areaHoja = areaPapel
-  for (const g of grupos) if (g.caja) g.caja = dentroDeLaHoja(g.caja, ancho, alto)
+  let dejadasFuera = 0
+  for (const g of grupos) {
+    const r = cajaRobusta(g.asignadas, g.titulo)
+    dejadasFuera += r.dejadas
+    g.caja = r.caja ? dentroDeLaHoja(r.caja, ancho, alto) : null
+  }
   const conGeometria = grupos.filter((g) => g.caja && areaDe(g.caja) >= areaHoja * areaMinima)
   const regiones = conGeometria.map((g, i) => ({
     n: i + 1,
@@ -212,10 +299,14 @@ export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos =
     titulo: g.titulo.texto,
     anclaje: { x: Math.round(g.titulo.x * 100) / 100, y: Math.round(g.titulo.y * 100) / 100 },
   }))
+  const absorcion = absorberContenidas(regiones)
   return {
     metodo: 'TITULOS',
     radio: Math.round(r * 100) / 100,
-    regiones,
+    regiones: absorcion.regiones,
+    absorbidas: absorcion.absorbidas,
+    cajasLejanasDejadasFuera: dejadasFuera,
+    porQueAbsorbidas: absorcion.absorbidas.length ? `${absorcion.absorbidas.length} región(es) estaban adentro de otra y se absorbieron: recortarlas por separado interpretaba el mismo dibujo dos veces` : null,
     descartadas: grupos.length - conGeometria.length,
     porQueDescartadas: grupos.length > conGeometria.length ? `${grupos.length - conGeometria.length} título(s) no juntaron geometría suficiente: son referencias dentro de otro dibujo, no vistas propias` : null,
     sueltas,

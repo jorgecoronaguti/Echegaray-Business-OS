@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { registrar, inventariar, formatoDe, FORMATO, ESTADO, hashDe } from './registro.mjs'
-import { segmentar, agrupar, clasificarRegion, seTocan, TIPO_REGION } from './segmentar.mjs'
+import { segmentar, agrupar, clasificarRegion, seTocan, cajaRobusta, absorberContenidas, contenidaEn, TIPO_REGION } from './segmentar.mjs'
 import { clasificarPagina, renglones, transformarCaja, componer, CLASE_PDF } from './pdf.mjs'
 import { CONVERSORES, convertirADxf, conversoresDisponibles, versionDeDwg } from './dwg.mjs'
 
@@ -166,4 +166,49 @@ test('PDF: la caja de un trazo se lleva a coordenadas de hoja con la matriz corr
   const escala2 = [2, 0, 0, 2, 10, 20]
   assert.deepEqual(transformarCaja(escala2, [0, 0, 1, 1]), [10, 20, 12, 22])
   assert.deepEqual(componer([1, 0, 0, 1, 0, 0], escala2), escala2, 'componer con la identidad no cambia nada')
+})
+
+// ═══ G1 · DOS VISTAS QUE SE PISAN SE RECORTAN Y SE MIRAN DOS VECES ═══
+//
+// Medido sobre una lámina real: 13 de 28 pares de vistas se pisaban y la suma de áreas daba 1,11
+// veces la hoja. Cada solape es un pedazo del plano recortado dos veces, mirado dos veces (dos
+// llamadas de visión) y devuelto como dos elementos con nombres distintos: es el motor del doble
+// cómputo. Con la envolvente robusta la suma bajó a 0,99 y 0,93.
+
+test('G1 · UNA COTA ESTIRADA NO AGRANDA LA VISTA HASTA TAPAR A LA DE AL LADO', () => {
+  const titulo = { x: 100, y: 100 }
+  const cerca = Array.from({ length: 20 }, (_, i) => [90 + i, 90 + i, 110 + i, 110 + i])
+  const lejana = [900, 900, 950, 950]
+  const conTodo = cajaRobusta([...cerca, lejana], titulo, { percentil: 1 })
+  const robusta = cajaRobusta([...cerca, lejana], titulo)
+  assert.ok(conTodo.caja[2] >= 950, 'con todas, el rabo estira la caja hasta el otro dibujo')
+  assert.ok(robusta.caja[2] < 300, 'la envolvente robusta deja el rabo afuera')
+  assert.equal(robusta.dejadas, 1, 'y lo que quedó afuera se cuenta: el recorte no se achica en silencio')
+})
+
+test('G1 · con una sola caja no se descarta nada — el percentil nunca deja una vista vacía', () => {
+  const r = cajaRobusta([[10, 10, 20, 20]], { x: 15, y: 15 })
+  assert.deepEqual(r.caja, [10, 10, 20, 20])
+  assert.equal(r.dejadas, 0)
+})
+
+test('G1 · una región 70% adentro de otra NO es una vista aparte: se absorbe y se declara', () => {
+  const grande = { n: 1, titulo: 'PLANTA BAJA', tipo: 'planta', caja: [0, 0, 100, 100] }
+  const adentro = { n: 2, titulo: 'DETALLE', tipo: 'detalle', caja: [10, 10, 40, 40] }
+  const aparte = { n: 3, titulo: 'CORTE A-A', tipo: 'corte', caja: [200, 0, 300, 100] }
+  const r = absorberContenidas([grande, adentro, aparte])
+  assert.equal(r.regiones.length, 2)
+  assert.equal(r.absorbidas.length, 1)
+  assert.equal(r.absorbidas[0].titulo, 'DETALLE')
+  assert.match(r.absorbidas[0].porQue, /paga dos veces por el mismo dibujo/)
+  assert.equal(contenidaEn([10, 10, 40, 40], [0, 0, 100, 100]), 1)
+})
+
+test('G1 · dos vistas que apenas se rozan NO se absorben', () => {
+  const r = absorberContenidas([
+    { n: 1, titulo: 'A', caja: [0, 0, 100, 100] },
+    { n: 2, titulo: 'B', caja: [90, 0, 190, 100] },
+  ])
+  assert.equal(r.regiones.length, 2)
+  assert.equal(r.absorbidas.length, 0)
 })

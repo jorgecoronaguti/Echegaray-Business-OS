@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   hecho, consolidar, mismoValor, frases, hechosDeTexto, hechosDeCad, armarProyecto, hechosDe,
-  CLASE_FUENTE, ESTADO_HECHO,
+  CLASE_FUENTE, ESTADO_HECHO, alcanceDe,
 } from './proyecto.mjs'
 
 const delPlano = (atributo, valor, elemento = 'V1') => hecho({ elemento, atributo, valor, clase: CLASE_FUENTE.PLANO, documento: 'Plano de Estructura.pdf', textoLiteral: `${elemento} ${valor}` })
@@ -147,4 +147,63 @@ test('lo propio del elemento gana sobre lo general — eso es lo que significa u
 test('DOS CONSOLIDACIONES IDÉNTICAS dan exactamente lo mismo, en el mismo orden', () => {
   const hs = [deLaMemoria('resistencia', 'H25'), delPlano('material', 'hormigon_armado'), delPlano('espesor_m', 0.2)]
   assert.deepEqual(consolidar(hs), consolidar([...hs].reverse()))
+})
+
+// ═══ G4 · LOS CONFLICTOS NO PUEDEN BAJAR POR DEJAR DE MIRAR ═══
+//
+// Una auditoría midió que la regla «pieza o cuantificador universal» descartaba frases como «El
+// hormigón de los elementos estructurales será H-21» y «Se exige terminación fratasada» —y
+// `terminacion` BLOQUEA una confirmación de partida—. Los conflictos habían bajado de 67 a 3 en
+// parte por eso, que no es lo mismo que por dejar de equivocarse.
+
+test('G4 · una frase con ALCANCE propio entra aunque no nombre la pieza', () => {
+  const h = hechosDeTexto('El hormigón de los elementos estructurales será H-21.', { documento: 'Pliego.pdf' })
+  const r = h.find((x) => x.atributo === 'resistencia')
+  assert.ok(r, 'antes se descartaba entera')
+  assert.equal(r.elemento, 'elementos_estructurales')
+  assert.equal(r.valor, 'H21')
+  assert.equal(alcanceDe('los muros exteriores'), 'exteriores')
+})
+
+test('G4 · un atributo BLOQUEANTE entra aunque la frase no tenga pieza ni alcance', () => {
+  const h = hechosDeTexto('Se exige terminación fratasada en la obra completa.', { documento: 'Pliego.pdf' })
+  assert.ok(h.some((x) => x.atributo === 'terminacion' && x.valor === 'fratasada'))
+})
+
+test('G4 · EL ALCANCE LE GANA AL CUANTIFICADOR: si no, la contradicción no se detecta nunca', () => {
+  const h = [
+    ...hechosDeTexto('El hormigón será H-30 en la totalidad de los elementos estructurales.', { documento: 'A.pdf' }),
+    ...hechosDeTexto('El hormigón de los elementos estructurales será H-21.', { documento: 'B.pdf' }),
+  ]
+  const c = consolidar(h).conflictos.find((x) => x.atributo === 'resistencia')
+  assert.ok(c, 'una en `*` y la otra en su alcance nunca chocan')
+  assert.equal(c.elemento, 'elementos_estructurales')
+  assert.deepEqual(c.versiones.map((v) => v.valor).sort(), ['H21', 'H30'])
+})
+
+test('G4 · UNA FRASE SUELTA NO CONTRADICE A NADIE: hacen falta fuentes que sepan de qué hablan', () => {
+  // Trece frases de un pliego que mencionan un método caen en la misma clave y NO son trece
+  // fuentes discutiendo: es contexto. Medido — eran el 100% del ruido nuevo sobre Quattropani.
+  const sueltas = [
+    ...hechosDeTexto('El trabajo se hará a mano donde convenga.', { documento: 'A.pdf' }),
+    ...hechosDeTexto('La tarea se hará con máquina.', { documento: 'A.pdf' }),
+  ]
+  const r = consolidar(sueltas)
+  assert.equal(r.conflictos.length, 0)
+  const g = r.hechos.find((x) => x.atributo === 'metodo')
+  assert.equal(g.estado, ESTADO_HECHO.SOLO_MENCIONES)
+  assert.equal(g.valor, null, 'un conjunto de menciones sueltas NO deja un valor usable')
+})
+
+test('G4 · con UNA fuente con peso, las menciones sueltas se cuentan aparte y no tapan el conflicto', () => {
+  const h = [
+    ...hechosDeTexto('Todo se ejecutará con máquina.', { documento: 'A.pdf' }),
+    ...hechosDeTexto('El zanjeo se hará a mano.', { documento: 'B.pdf' }),
+    ...hechosDeTexto('El destape se hará a mano.', { documento: 'C.pdf' }),
+  ]
+  const c = consolidar(h).conflictos.find((x) => x.atributo === 'metodo')
+  assert.ok(c)
+  assert.ok(c.versiones.length <= 2, 'se listan las fuentes con peso, no la pared de repeticiones')
+  assert.ok(c.mencionesSueltas >= 1)
+  assert.match(c.porQue, /mención\(es\) sueltas/)
 })
