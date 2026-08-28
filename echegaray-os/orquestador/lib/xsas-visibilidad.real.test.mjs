@@ -197,3 +197,41 @@ test('y las cantidades siguen pasando aunque vengan como texto', () => {
   assert.deepEqual(r.datos, { cantidad: '46', metros: '1240', hh: '1200', anio: '2026', id: '900123' })
   assert.deepEqual(r.campos, [])
 })
+
+// ═══ EL VETO BAJA POR EL CAMINO, NO SE EVALÚA EN LA HOJA (28/08/2026, auditoría) ═══
+//
+// El array heredaba la clave del padre y el objeto no: `{tna: ['0.55']}` se tachaba y
+// `{tna: {actual: 0.55}}` pasaba. El mismo defecto en el contenedor de al lado — la hoja se llama
+// `actual`, `vigente`, `obra`, y ninguna de las tres nombra plata.
+test('la plata chica anidada bajo una clave de plata se tacha igual', () => {
+  const r = tacharComercial({
+    tna: { actual: 0.55 },
+    cft: { vigente: 0.6278 },
+    margen: { obra: 0.23 },
+    condiciones: { tna: { actual: 0.55 } },
+  })
+  assert.equal(r.datos.tna.actual, TACHADO)
+  assert.equal(r.datos.cft.vigente, TACHADO)
+  assert.equal(r.datos.margen.obra, TACHADO)
+  assert.equal(r.datos.condiciones.tna.actual, TACHADO, 'y a cualquier profundidad')
+})
+
+test('una clave de plata tacha cualquier escalar, lo sepa leer o no', () => {
+  // `1,234.56` es formato US y `0x4E20` es hexadecimal: `comoNumero` no los resuelve, y al no ser
+  // números el veto por clave ni llegaba a correr. Que no sepa leerlo no lo vuelve inofensivo.
+  const r = tacharComercial({ saldo: '1,234.56', tna: '0x4E20', importe: 'aprox. mil quinientos' })
+  assert.equal(r.datos.saldo, TACHADO)
+  assert.equal(r.datos.tna, TACHADO)
+  assert.equal(r.datos.importe, TACHADO)
+})
+
+test('y la salida sigue existiendo: una cantidad bajo un ancestro de plata se muestra', () => {
+  // Es la única forma de escaparse de la herencia, y tiene que seguir funcionando: si no, el
+  // cómputo entero desaparecería en cuanto colgara de un objeto llamado `costos`.
+  const r = tacharComercial({ costos: { cantidad: 46, importe: 800, detalle: { unidad: 'u', metros: 1240, precio: 12 } } })
+  assert.equal(r.datos.costos.cantidad, 46)
+  assert.equal(r.datos.costos.detalle.unidad, 'u')
+  assert.equal(r.datos.costos.detalle.metros, 1240)
+  assert.equal(r.datos.costos.importe, TACHADO)
+  assert.equal(r.datos.costos.detalle.precio, TACHADO)
+})

@@ -154,11 +154,14 @@ export function tacharPlataEnTexto(texto) {
  *
  * El paso 2 sólo agrega protección: si falta un nombre, el paso 4 lo cubre igual.
  */
-export function esPlata(clave, valor) {
+export function esPlata(clave, valor, herencia = false) {
   if (typeof valor !== 'number' || !Number.isFinite(valor)) return false
   if (IDENTIFICADOR.test(clave)) return false
+  // El veto de la clave PROPIA gana sobre la cantidad: `entra_7_dias` nombra las dos cosas y es
+  // plata. La cantidad sólo cancela la plata HEREDADA, que es una señal más débil por definición.
   if (TOKEN_DE_PLATA.test(clave)) return true
   if (CANTIDAD_VISIBLE.test(clave)) return false
+  if (herencia) return true
   return Math.abs(valor) >= UMBRAL
 }
 
@@ -193,7 +196,7 @@ export function comoNumero(valor) {
   return NaN
 }
 
-export function tacharComercial(datos, ruta = '', clave = '') {
+export function tacharComercial(datos, ruta = '', clave = '', herencia = false) {
   const campos = []
 
   if (datos === null || datos === undefined) return { datos, campos }
@@ -204,12 +207,22 @@ export function tacharComercial(datos, ruta = '', clave = '') {
 
   const n = comoNumero(datos)
   if (Number.isFinite(n) && typeof datos !== 'object') {
-    if (esPlata(clave, n)) { campos.push(ruta); return { datos: TACHADO, campos } }
+    if (esPlata(clave, n, herencia)) { campos.push(ruta); return { datos: TACHADO, campos } }
     return { datos, campos }
   }
   if (typeof datos === 'number' || typeof datos === 'bigint') return { datos, campos }
   if (typeof datos === 'string') {
     if (IDENTIFICADOR.test(clave)) return { datos, campos }
+    // ═══ UNA CLAVE DE PLATA TACHA CUALQUIER ESCALAR, PARSEE O NO (28/08/2026) ═══
+    //
+    // `saldo: '1,234.56'` (formato US) y `tna: '0x4E20'` no los resuelve `comoNumero`, y al no ser
+    // números el veto por clave ni llegaba a correr. Que no sepa leerlo no lo vuelve inofensivo.
+    //
+    // Pero SÓLO cuando la clave nombra plata ELLA MISMA, no cuando la hereda: bajo `caja` cuelga
+    // `cuenta: "Efectivo en pesos"`, que es el rótulo de la cuenta y no su saldo. La herencia sirve
+    // para los NÚMEROS anidados —`{tna: {actual: 0.55}}`—, no para borrar los nombres que hacen
+    // legible lo que queda. Tachar el rótulo dejaría cinco «[restringido]: [restringido]».
+    if (esPlataPorNombre(clave)) { campos.push(ruta); return { datos: TACHADO, campos } }
     // ═══ LA PLATA LLEGA COMO TEXTO (27/08/2026, cierre) ═══
     //
     // Una columna `numeric` de Postgres vuelve como STRING, así que `tna: "0.55"`, `cft: "0.6278"` y
@@ -227,21 +240,35 @@ export function tacharComercial(datos, ruta = '', clave = '') {
   if (Array.isArray(datos)) {
     const salida = datos.map((v, i) => {
       // Un array hereda la clave de su padre: `saldos: [16490000, …]` son saldos, no anónimos.
-      const r = tacharComercial(v, `${ruta}[${i}]`, clave)
+      const r = tacharComercial(v, `${ruta}[${i}]`, clave, herencia)
       campos.push(...r.campos)
       return r.datos
     })
     return { datos: salida, campos }
   }
 
+  // ═══ LA HERENCIA VALE PARA EL OBJETO IGUAL QUE PARA EL ARRAY (28/08/2026, auditoría) ═══
+  //
+  // El array heredaba la clave del padre y el objeto no, así que `{tna: {actual: 0.55}}` pasaba
+  // mientras `{tna: ['0.55']}` se tachaba. Es el mismo defecto en el contenedor de al lado: el veto
+  // se evaluaba en la hoja, y la hoja se llama `actual`, `vigente`, `obra`. Una vez que un ancestro
+  // ES plata, todo lo de abajo lo es — salvo que una clave lo declare cantidad, que es la única
+  // forma de salir y sigue estando disponible.
+  const heredaAbajo = herencia || (TOKEN_DE_PLATA.test(clave) && !CANTIDAD_VISIBLE.test(clave))
   const salida = {}
   for (const [k, valor] of Object.entries(datos)) {
     const r = ruta ? `${ruta}.${k}` : k
-    const hijo = tacharComercial(valor, r, k)
+    const hijo = tacharComercial(valor, r, k, heredaAbajo)
     campos.push(...hijo.campos)
     salida[k] = hijo.datos
   }
   return { datos: salida, campos }
+}
+
+/** ¿La clave nombra plata, o la hereda de un ancestro que la nombra? PURA. */
+export function esPlataPorNombre(clave, herencia = false) {
+  if (IDENTIFICADOR.test(clave) || CANTIDAD_VISIBLE.test(clave)) return false
+  return TOKEN_DE_PLATA.test(clave) || herencia
 }
 
 /** ¿Este actor puede ver plata? PURA y fail-closed: sin permisos declarados, no ve. */
