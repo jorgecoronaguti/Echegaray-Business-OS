@@ -278,16 +278,9 @@ function solapes(enVentana, filas) {
   return { dias: porFecha.size, fechasDuplicadas, personasRepetidas }
 }
 
-/**
- * NUCLEO PURO: el costo de mano de obra de una ventana, abierto por obra.
- *
- * `factorCargas` se aplica SOLO si viene un numero finito mayor o igual a cero. No tiene valor por
- * omision a proposito: un recargo de cargas sociales que aparece por default es exactamente el
- * numero que despues nadie puede rastrear. Sin factor, `cargas` queda en null y el total es el
- * jornal solo.
- */
-export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, anio = 2026 } = {}) {
-  const conCargas = typeof factorCargas === 'number' && Number.isFinite(factorCargas) && factorCargas >= 0
+/** Valua persona por persona los bloques que tocan la ventana. Devuelve las filas, los huecos
+ *  declarados y que bloque aporto que fechas — que es lo que despues permite ver los solapes. */
+function valuarVentana(grid, { desde, hasta, anio, ...opciones }) {
   const filas = []
   const huecos = []
   const enVentana = []
@@ -306,10 +299,23 @@ export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, an
     if (!dentro.length) continue
     enVentana.push({ bloque, dentro })
     for (const t of trabajadoresDeBloque(grid, bloque, { hastaFila })) {
-      filas.push(filaValuada(grid, bloque, t, dentro, { mapa, conCargas, factorCargas }, huecos))
+      filas.push(filaValuada(grid, bloque, t, dentro, opciones, huecos))
     }
   }
+  return { filas, huecos, enVentana }
+}
 
+/**
+ * NUCLEO PURO: el costo de mano de obra de una ventana, abierto por obra.
+ *
+ * `factorCargas` se aplica SOLO si viene un numero finito mayor o igual a cero. No tiene valor por
+ * omision a proposito: un recargo de cargas sociales que aparece por default es exactamente el
+ * numero que despues nadie puede rastrear. Sin factor, `cargas` queda en null y el total es el
+ * jornal solo.
+ */
+export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, anio = 2026 } = {}) {
+  const conCargas = typeof factorCargas === 'number' && Number.isFinite(factorCargas) && factorCargas >= 0
+  const { filas, huecos, enVentana } = valuarVentana(grid, { desde, hasta, anio, mapa, conCargas, factorCargas })
   const cuadre = cuadreDeClases(filas)
   const { dias, fechasDuplicadas, personasRepetidas } = solapes(enVentana, filas)
   const deClase = (clase) => filas.filter((f) => f.clase === clase)
