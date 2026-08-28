@@ -91,7 +91,11 @@ if (r.control.preguntasSueltas.length) {
 const obra = r.obraDesdeCotizacion()
 console.log('\n── GENEALOGÍA HACIA OBRA ──')
 console.log(`  ${obra.porQue}`)
-console.log(`  cada actividad conserva su origen: ${obra.conservaOrigen}`)
+console.log(`  cada actividad conserva su origen CITABLE (documento + lámina + texto literal): ${obra.conservaOrigen}`)
+if (obra.sinOrigenCitable.length) {
+  console.log(`  ${obra.sinOrigenCitable.length} actividad(es) nacen SIN con qué volver al documento:`)
+  for (const x of obra.sinOrigenCitable.slice(0, 8)) console.log(`     ${String(x.elemento).padEnd(22)} ${x.codigo}  falta: ${x.faltantes.join(', ')}`)
+}
 if (obra.actividades[0]) {
   console.log('  ejemplo de una actividad que puede nacer:')
   for (const l of obra.actividades[0].origen.cadena) console.log(`     ${l}`)
@@ -111,7 +115,7 @@ if (!igual) {
 const aps = aprendizajesDeIngesta(r, { proyecto: termino })
 console.log('\n── APRENDIZAJE ──')
 if (args.includes('--aprender')) {
-  const escritos = await persistirAprendizajes({ query }, aps, { fuente: 'xsas:ingesta-documental' })
+  const escritos = await persistirAprendizajes({ query }, aps, { fuente: 'xsas:ingesta-documental', proyecto: termino })
   console.log(`  ${escritos.length} candidato(s) persistidos en public.conocimiento_empresa (tipo CANDIDATO):`)
 } else {
   console.log(`  ${aps.length} candidato(s) listos (correr con --aprender para persistirlos):`)

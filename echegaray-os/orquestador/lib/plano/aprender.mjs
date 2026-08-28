@@ -162,17 +162,32 @@ export function aprendizajesDeIngesta(r, { proyecto = null } = {}) {
  * de `obra-plan-real.mjs` exige dos casos comparables de obras distintas para VALIDADO. Que la
  * comparación contra un histórico haya salido parecida no valida nada — el histórico es UN caso.
  */
-export async function persistirAprendizajes({ query }, aprendizajes = [], { fuente = 'xsas:plano-cotizacion' } = {}) {
+export async function persistirAprendizajes({ query }, aprendizajes = [], { fuente = 'xsas:plano-cotizacion', proyecto = null } = {}) {
   const escritos = []
   for (const a of aprendizajes) {
+    const nombreProyecto = String(proyecto ?? a.evidencia?.proyecto ?? 'sin-proyecto')
+    // ═══ `veces_confirmado` CUENTA OBRAS, NO CORRIDAS ═══
+    // Antes subía en cada `on conflict`, así que correr `--aprender` dos veces sobre el MISMO
+    // proyecto hacía que el OS reportara la regla como confirmada dos veces. Eso contradice la
+    // gobernanza que este archivo cita —hacen falta dos casos comparables de OBRAS DISTINTAS— y es
+    // la forma más barata de fabricar confianza. Ahora el incremento pasa sólo si el proyecto no
+    // estaba ya en la lista, y la lista queda guardada en la evidencia para poder auditarla.
     await query(
       `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza, tipo, fuente, evidencia, veces_confirmado)
-            values ($1, $2, $3, 'media', 'CANDIDATO', $4, $5, 1)
+            values ($1, $2, $3, 'media', 'CANDIDATO', $4, $5::jsonb || jsonb_build_object('proyectos', jsonb_build_array($6::text)), 1)
        on conflict (clave) do update set
-         afirmacion = excluded.afirmacion, evidencia = excluded.evidencia,
-         veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1,
+         afirmacion = excluded.afirmacion,
+         evidencia = excluded.evidencia || jsonb_build_object(
+           'proyectos',
+           case when public.conocimiento_empresa.evidencia->'proyectos' @> to_jsonb($6::text)
+                then public.conocimiento_empresa.evidencia->'proyectos'
+                else coalesce(public.conocimiento_empresa.evidencia->'proyectos', '[]'::jsonb) || to_jsonb($6::text) end),
+         veces_confirmado = case
+           when public.conocimiento_empresa.evidencia->'proyectos' @> to_jsonb($6::text)
+             then public.conocimiento_empresa.veces_confirmado
+           else public.conocimiento_empresa.veces_confirmado + 1 end,
          updated_at = now(), vigente = true`,
-      [a.area, a.afirmacion, a.clave, fuente, JSON.stringify({ condicion: a.condicion, porQue: a.porQue, ...a.evidencia })])
+      [a.area, a.afirmacion, a.clave, fuente, JSON.stringify({ condicion: a.condicion, porQue: a.porQue, ...a.evidencia }), nombreProyecto])
     escritos.push(a.clave)
   }
   return escritos

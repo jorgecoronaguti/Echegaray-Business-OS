@@ -130,6 +130,20 @@ export function obraDesdeCotizacion(resultado, { obraId = null } = {}) {
     actividades: listas,
     bloqueadas,
     porQue: `${listas.length} actividad(es) pueden nacer con su origen completo; ${bloqueadas.length} no pueden porque les falta partida o cantidad`,
-    conservaOrigen: listas.every((a) => a.origen?.elemento && a.origen?.fuente),
+    // ═══ `conservaOrigen` ERA UNA CONSTANTE ═══
+    // Exigía `elemento` y `fuente`, que están SIEMPRE porque los pone esta misma función: la
+    // afirmación no podía dar `false`. Lo que hace que una actividad se pueda volver a rastrear es
+    // poder ABRIR el documento y releer la frase: sin `documento`, `lamina` y `textoLiteral`, el
+    // origen es un rótulo. Ahora se exigen los tres, y las que no los tienen salen listadas.
+    conservaOrigen: listas.length > 0 && listas.every((a) => a.origen?.documento && a.origen?.lamina && a.origen?.textoLiteral),
+    sinOrigenCitable: listas
+      .filter((a) => !(a.origen?.documento && a.origen?.lamina && a.origen?.textoLiteral))
+      .map((a) => ({
+        elemento: a.origen?.elemento ?? null,
+        codigo: a.codigo,
+        faltantes: ['documento', 'lamina', 'textoLiteral'].filter((k) => !a.origen?.[k]),
+        porQue: 'la actividad puede nacer pero su cantidad no se va a poder rastrear: falta con qué volver al documento',
+      }))
+      .sort((a, b) => String(a.elemento).localeCompare(String(b.elemento))),
   }
 }

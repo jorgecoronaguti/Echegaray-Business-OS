@@ -11,7 +11,7 @@ import { unidadCompatible, puntaje, mapearPartida, espesorSinRespaldo, declaraDi
 import { fusionar, sinResolver } from './conteo.mjs'
 import { comparar, CAUSA } from './comparar.mjs'
 import { agruparPartidas, valorizar } from './cotizacion-v0.mjs'
-import { dato, faltaDato, FUENTE, evidencia } from './fuente.mjs'
+import { dato, faltaDato, FUENTE, evidencia, respalda } from './fuente.mjs'
 
 const RAIZ = 'administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI'
 
@@ -244,4 +244,43 @@ test('un hueco declarado no es cero y dice quién lo tiene', () => {
   assert.equal(f.valor, null)
   assert.equal(f.fuente, FUENTE.FALTA_DATO)
   assert.match(f.quienLoTiene, /proyecto|dirección/)
+})
+
+
+// ═══ C2 · LA EVIDENCIA SE CUELGA DE LA DIMENSIÓN, NO DEL ELEMENTO ═══
+//
+// Una auditoría midió 7 dimensiones con fuente EXTRAIDO_PLANO cuyo número no figura en su cita, y
+// la regla 1 del PROMPT ya exigía texto literal POR DIMENSIÓN — sólo que el esquema no tenía dónde
+// ponerlo, así que la regla no se podía cumplir ni comprobar.
+
+test('C2 · cada dimensión usa SU cita, y con el número adentro queda EXTRAIDO_PLANO', () => {
+  const e = validarElemento({
+    id: 'C1', nombre: 'Columna C1', sistema: 'hormigon_armado', forma: 'prisma',
+    dimensiones: { ancho_m: 0.3, alto_m: 0.5, largo_m: 3.5 },
+    dimensiones_texto: { ancho_m: 'C1(30-50)', alto_m: 'C1(30-50)', largo_m: 'H=3.50m' },
+    evidencia: { vista: 'PLANILLA', texto_literal: 'C1(30-50)' },
+  }, { archivo: 'E-01.pdf', archivoId: 'x', lamina: 'E-01' })
+  assert.equal(e.dimensiones.ancho.fuente, FUENTE.EXTRAIDO_PLANO)
+  assert.equal(e.dimensiones.largo.fuente, FUENTE.EXTRAIDO_PLANO, 'su propia cita dice H=3.50m')
+  assert.equal(e.dimensiones.largo.evidencia.textoLiteral, 'H=3.50m')
+})
+
+test('C2 · una dimensión cuyo número NO está en su cita se DEGRADA a INFERIDO con el motivo', () => {
+  const e = validarElemento({
+    id: 'PLATEA', nombre: 'Platea', sistema: 'hormigon_armado', forma: 'superficie',
+    dimensiones: { area_m2: 191.92 },
+    evidencia: { vista: 'PLANTA', texto_literal: '01 Platea s/Calculo' },
+  }, { archivo: 'A-01.pdf', archivoId: 'x', lamina: 'A-01' })
+  assert.equal(e.dimensiones.area.fuente, FUENTE.INFERIDO)
+  assert.match(e.dimensiones.area.nota, /NO aparece en la cita/)
+  assert.equal(e.dimensiones.area.valor, 191.92, 'el número no se descarta: deja de hacerse pasar por leído')
+})
+
+test('C2 · una cota en centímetros respalda una dimensión en metros; una conversión que el texto no muestra, no', () => {
+  assert.equal(respalda(0.3, 'C1(30-50)'), true, '30 cm respalda 0,30 m')
+  assert.equal(respalda(3.5, 'H=3.50m'), true)
+  assert.equal(respalda(3.5, 'H=3,50m'), true, 'la coma decimal argentina')
+  assert.equal(respalda(0.0254, 'Entablonado 1" C/Pintura Ignifuga'), false, '1 pulgada NO muestra 0,0254: eso es una inferencia')
+  assert.equal(respalda(191.92, '01 Platea s/Calculo'), false)
+  assert.equal(respalda(5, ''), false, 'sin cita no hay respaldo')
 })

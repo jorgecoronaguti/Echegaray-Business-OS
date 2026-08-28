@@ -7,6 +7,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
+import { computarElemento } from './computo.mjs'
+import { validarElemento } from './interpretar.mjs'
 import { ESTADO } from './seleccion.mjs'
 import { FUENTE } from './fuente.mjs'
 
@@ -49,7 +51,7 @@ test('UN SUPUESTO OCULTO TIRA LA COTIZACIÓN ABAJO aunque la cobertura sea perfe
   assert.equal(r.estado, ESTADO_COTIZACION.INCOMPLETA)
   assert.equal(r.supuestosOcultos.length, 1)
   assert.equal(r.supuestosOcultos[0].elemento, 'E3')
-  assert.match(r.porQue, /no está declarada como supuesto/)
+  assert.match(r.porQue, /sin que la cita los respalde/)
 })
 
 test('un supuesto DECLARADO no es un supuesto oculto: se ve, y por eso no rompe nada', () => {
@@ -170,4 +172,96 @@ test('el control expone las decisiones y las sueltas por separado', () => {
   })
   assert.equal(r.decisiones.length, 1)
   assert.match(r.resumen, /1 decisiones \+ 0 preguntas sueltas/)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTROL SE PRUEBA CON LO QUE EL SISTEMA PRODUCE, NO CON LO QUE YO ESCRIBO A MANO
+//
+// Una auditoría desarmó la versión anterior de `supuestosOcultos`: miraba `item.cantidad.fuente` y
+// `computarElemento` asigna SIEMPRE `CALCULADO`, así que la función era estructuralmente incapaz de
+// devolver otra cosa que cero. Y ningún test se ponía rojo, porque los tests fabricaban los items a
+// mano con `FUENTE.INFERIDO` — un valor que el circuito NO PRODUCE JAMÁS. El control se validaba
+// contra una entrada que el sistema no puede generar.
+//
+// Por eso los tests de acá abajo arman el elemento con `validarElemento` + `computarElemento`, que
+// es exactamente el camino de producción.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Un elemento como sale del modelo, pasado por el circuito real de interpretación y cómputo. */
+const delCircuito = (crudo) => computarElemento(validarElemento(crudo, { archivo: 'Plano.pdf', archivoId: 'x', lamina: 'L1' }))
+
+test('C1 · UNA CITA QUE NO CONTIENE EL NÚMERO ES UN SUPUESTO OCULTO — el caso de la platea', () => {
+  // Éste es el caso real: el plano dice «s/Cálculo» —o sea que el dato NO está— y el área salió de
+  // la superficie del salón. Es la partida que este mismo archivo nombra como $ 29,6 M.
+  const item = delCircuito({
+    id: 'PLATEA', nombre: 'Platea de fundación', sistema: 'hormigon_armado', forma: 'superficie',
+    dimensiones: { area_m2: 191.92 },
+    repeticion: { modo: 'conteo_directo', cantidad: 1 },
+    evidencia: { vista: 'PLANTA', texto_literal: '01 Platea s/Calculo' },
+  })
+  const o = supuestosOcultos([item])
+  assert.equal(o.length, 1, 'la cita existe y no contiene 191,92: el número no está leído del plano')
+  assert.equal(o[0].que, 'area')
+  assert.equal(o[0].valor, 191.92)
+  assert.match(o[0].porQue, /NO aparece en la cita/)
+})
+
+test('C1 · CON LA CITA QUE SÍ CONTIENE EL NÚMERO, no hay supuesto', () => {
+  const item = delCircuito({
+    id: 'SALON', nombre: 'Salón', sistema: 'piso', forma: 'superficie',
+    dimensiones: { area_m2: 191.92 },
+    dimensiones_texto: { area_m2: 'Salon 191.92m²' },
+    repeticion: { modo: 'conteo_directo', cantidad: 1 },
+    evidencia: { vista: 'PLANTA', texto_literal: 'Salon 191.92m²' },
+  })
+  assert.equal(supuestosOcultos([item]).length, 0)
+  assert.equal(item.dimensiones.area.fuente, FUENTE.EXTRAIDO_PLANO)
+})
+
+test('C1 · EL CONTROL NO PUEDE DEVOLVER CERO POR CONSTRUCCIÓN: mira la evidencia, no la etiqueta', () => {
+  // Si alguien vuelve a mirar sólo `cantidad.fuente`, este test se pone rojo: la cantidad de este
+  // item tiene fuente CALCULADO —la única que el circuito produce— y el hueco está en la dimensión.
+  const item = delCircuito({
+    id: 'X', nombre: 'Viga X', sistema: 'hormigon_armado', forma: 'prisma',
+    dimensiones: { ancho_m: 0.2, alto_m: 0.4, largo_m: 6 },
+    dimensiones_texto: { ancho_m: 'V(20-40)', alto_m: 'V(20-40)' },
+    repeticion: { modo: 'conteo_directo', cantidad: 2 },
+    evidencia: { vista: 'CORTE', texto_literal: 'V(20-40)' },
+  })
+  assert.equal(item.cantidad.fuente, FUENTE.CALCULADO, 'la etiqueta que la versión rota miraba')
+  const o = supuestosOcultos([item])
+  assert.equal(o.length, 1, 'el largo 6 no está en ninguna cita')
+  assert.equal(o[0].que, 'largo')
+})
+
+test('G2 · EL «+1» SIN DECLARAR NO PRODUCE CANTIDAD: produce la pregunta', () => {
+  // La correa real de Quattropani: 18,30 m cada 1,63 m. Con `incluye_extremos` sin declarar, el
+  // código ponía 13 donde el techo da 12 — +8,3% sobre la partida, con fuente CALCULADO.
+  const sinDeclarar = delCircuito({
+    id: 'CORREA', nombre: 'Correa C140', sistema: 'estructura_metalica', forma: 'lineal',
+    dimensiones: { largo_m: 18.3 }, dimensiones_texto: { largo_m: '18.30' },
+    repeticion: { modo: 'por_separacion', longitud_tramo_m: 18.3, separacion_m: 1.63 },
+    evidencia: { vista: 'PLANTA', texto_literal: '18.30 · 1.63' },
+  })
+  assert.equal(sinDeclarar.cantidad, null)
+  assert.ok(sinDeclarar.faltan.some((f) => /DOS EXTREMOS/.test(f)))
+
+  const declarado = delCircuito({
+    id: 'CORREA', nombre: 'Correa C140', sistema: 'estructura_metalica', forma: 'lineal',
+    dimensiones: { largo_m: 18.3 }, dimensiones_texto: { largo_m: '18.30' },
+    repeticion: { modo: 'por_separacion', longitud_tramo_m: 18.3, separacion_m: 1.63, incluye_extremos: false },
+    evidencia: { vista: 'PLANTA', texto_literal: '18.30 · 1.63' },
+  })
+  assert.equal(declarado.cantidadElementos, 12, 'techo(18,30 ÷ 1,63) = 12, sin el +1 que nadie pidió')
+})
+
+test('G2 · declarado en true, el +1 entra y queda en las entradas de la fórmula', () => {
+  const e = delCircuito({
+    id: 'C', nombre: 'Correa', sistema: 'estructura_metalica', forma: 'lineal',
+    dimensiones: { largo_m: 18.3 }, dimensiones_texto: { largo_m: '18.30' },
+    repeticion: { modo: 'por_separacion', longitud_tramo_m: 18.3, separacion_m: 1.63, incluye_extremos: true },
+    evidencia: { vista: 'PLANTA', texto_literal: '18.30 · 1.63' },
+  })
+  assert.equal(e.cantidadElementos, 13)
+  assert.equal(e.cantidad.entradas.cantidadElementos, 13)
 })

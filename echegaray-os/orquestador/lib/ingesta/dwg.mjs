@@ -10,8 +10,8 @@
 //
 // PROBADO CONTRA LOS DOS DWG REALES DE QUATTROPANI, que son de versiones distintas a propósito:
 //   · `01-ESTRUCTURA Galpon FRANCO_.dwg` — AC1032 (AutoCAD 2018), 16,75 MB → 75.854 entidades,
-//     71 capas, 966 cotas con medida, unidad `m` declarada;
-//   · `Galpon_2.dwg` — AC1027 (AutoCAD 2013), 1,66 MB → 6.172 entidades, 28 capas, 130 cotas.
+//     66 capas medidas, 966 cotas con medida, unidad `m` declarada;
+//   · `Galpon_2.dwg` — AC1027 (AutoCAD 2013), 1,66 MB → 6.172 entidades, 23 capas, 130 cotas.
 // Las primeras cotas que devuelve el CAD —6,08 · 6,00 · 1,92— son EXACTAMENTE las que el modelo
 // había leído mirando el PDF del mismo galpón. El CAD confirma la lectura de visión, y esa
 // coincidencia es la prueba de que la conversión no devolvió ruido con forma de plano.
@@ -137,7 +137,13 @@ export async function convertirADxf(rutaDwg, { directorio = null } = {}) {
  */
 export function correrConversor(conversor, entrada, salida, { timeoutMs = 600_000, maxCola = 4000 } = {}) {
   return new Promise((resolver) => {
-    const hijo = spawn(conversor.comando === 'ODAFileConverter' ? conversor.comando : path.join(BIN_LOCAL, conversor.comando), conversor.argumentos(entrada, salida), { stdio: ['ignore', 'ignore', 'pipe'] })
+    // LA RUTA ES LA QUE `existeComando` YA RESOLVIÓ, no una armada de nuevo. Armarla con
+    // `path.join(BIN_LOCAL, …)` ignoraba el hallazgo: con el conversor instalado en el PATH y NO en
+    // `~/.local/bin` —que es exactamente el resultado de seguir el `comoSeResuelve` que este mismo
+    // archivo recomienda— TODOS los DWG salían ilegibles, y el mensaje mandaba a mirar el archivo
+    // del cliente en vez de la instalación.
+    const ejecutable = conversor.ruta ?? conversor.comando
+    const hijo = spawn(ejecutable, conversor.argumentos(entrada, salida), { stdio: ['ignore', 'ignore', 'pipe'] })
     let errores = 0
     let cola = ''
     let resto = ''

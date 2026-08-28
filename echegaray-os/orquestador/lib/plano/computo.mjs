@@ -107,6 +107,12 @@ export function cantidadDeElementos(rep) {
   }
   const L = rep.longitudTramo, s = rep.separacion
   if (L === null || s === null || s <= 0) return { valor: null, porQue: 'se declaró por separación pero falta la longitud del tramo o la separación' }
+  // EL «+1» NO LO DECIDE EL CÓDIGO. Es la diferencia entre 12 correas y 13 —+8,3% sobre la partida
+  // en la correa real de Quattropani— y depende de si los dos extremos del tramo llevan elemento,
+  // que lo sabe el plano y no el motor. Sin declarar, la cantidad no existe: existe la pregunta.
+  if (rep.incluyeExtremos === null || rep.incluyeExtremos === undefined) {
+    return { valor: null, porQue: 'se declaró por separación pero el plano no dice si los DOS EXTREMOS del tramo llevan elemento: es la diferencia entre n y n+1, y la decide el plano, no el código' }
+  }
   const n = Math.ceil(L / s) + (rep.incluyeExtremos ? 1 : 0)
   return {
     valor: n,

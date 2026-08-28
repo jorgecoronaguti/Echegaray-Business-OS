@@ -23,7 +23,7 @@
 // espesor de platea destraba la partida más cara de la obra. El orden correcto no es el del
 // listado: es el de cuántas partidas destraba cada respuesta.
 
-import { FUENTE, esConfirmada } from './fuente.mjs'
+import { FUENTE, esConfirmada, respalda } from './fuente.mjs'
 import { ESTADO } from './seleccion.mjs'
 
 /** El piso de cobertura para poder decir que una cotización está lista. Por debajo de esto el
@@ -63,22 +63,63 @@ export function medirCobertura({ items = [], mapeos = [], detectados = null } = 
 /**
  * LOS SUPUESTOS OCULTOS. PURA — y el resultado tiene que ser CERO.
  *
- * Un supuesto no es un pecado: es un dato que puso alguien porque hacía falta. Lo que no puede
- * existir es un supuesto que NO ESTÉ MARCADO, porque entonces viaja dentro del precio con aspecto
- * de medición. Esta función recorre el cómputo y saca todo lo que tiene una fuente no confirmable
- * SIN estar declarado como tal.
+ * ═══ POR QUÉ ESTA FUNCIÓN ESTABA ROTA, Y CÓMO ═══
+ *
+ * La versión anterior miraba UNA cosa: `item.cantidad.fuente`. Y `computarElemento` asigna SIEMPRE
+ * `FUENTE.CALCULADO` a esa cantidad —es la única asignación en todo el circuito—, así que la
+ * primera guarda cortaba y la lista salía vacía SIEMPRE. «0 supuestos ocultos» no era una
+ * medición: era una constante, y una auditoría la desarmó colando tres elementos con evidencia
+ * falsa que pasaron con cobertura 100%.
+ *
+ * El error de fondo es de método: el control miraba la ETIQUETA que el propio circuito se pone, y
+ * un control no se valida contra la información que produce. Ahora mira la EVIDENCIA —el número
+ * contra el texto que dice sostenerlo— que es lo único que un tercero puede volver a verificar.
+ *
+ * Tres cosas se revisan, y las tres pueden meter un número en un precio:
+ *   1. la cantidad cuya FUENTE no se puede confirmar y no está declarada como supuesto;
+ *   2. toda DIMENSIÓN cuyo número no figure en su propia cita — «Platea s/Cálculo» no respalda
+ *      191,92 m², y ésa es la partida de $ 29,6 M;
+ *   3. toda ENTRADA de la fórmula que el CÓDIGO puso por su cuenta y el plano no declaró.
  */
 export function supuestosOcultos(items = []) {
   const ocultos = []
   for (const i of items) {
     const c = i.cantidad
     if (!c || c.valor === null) continue
-    if (esConfirmada(c.fuente)) continue
-    if (c.fuente === FUENTE.FALTA_DATO || c.fuente === FUENTE.SUPUESTO) continue // declarados: se ven
-    ocultos.push({ elemento: i.id, nombre: i.nombre, valor: c.valor, unidad: i.unidad, fuente: c.fuente, porQue: 'tiene cantidad con una fuente que no se puede confirmar y no está declarada como supuesto' })
+
+    if (!esConfirmada(c.fuente) && c.fuente !== FUENTE.FALTA_DATO && c.fuente !== FUENTE.SUPUESTO) {
+      ocultos.push({ elemento: i.id, nombre: i.nombre, que: 'cantidad', valor: c.valor, unidad: i.unidad, fuente: c.fuente, porQue: 'la cantidad tiene una fuente que no se puede confirmar y no está declarada como supuesto' })
+    }
+
+    for (const [nombre, d] of Object.entries(i.dimensiones ?? {})) {
+      if (!d || d.valor === null || d.valor === undefined) continue
+      const cita = d.evidencia?.textoLiteral ?? null
+      if (respalda(d.valor, cita)) continue
+      ocultos.push({
+        elemento: i.id, nombre: i.nombre, que: nombre, valor: d.valor, unidad: d.unidad ?? null, fuente: d.fuente,
+        cita: cita ? String(cita).slice(0, 140) : null,
+        porQue: cita
+          ? `el número ${d.valor} NO aparece en la cita que dice sostenerlo: «${String(cita).slice(0, 90)}»`
+          : `${nombre} entró sin ningún texto literal que la sostenga`,
+      })
+    }
+
+    for (const [clave, valor] of Object.entries(c.entradas ?? {})) {
+      if (!SUPUESTAS_POR_EL_CODIGO.includes(clave)) continue
+      if (i.repeticion?.[`${clave}Declarado`] === true) continue
+      ocultos.push({
+        elemento: i.id, nombre: i.nombre, que: `entrada:${clave}`, valor, unidad: null, fuente: c.fuente,
+        porQue: `«${clave}» lo puso el código y el plano no lo declaró: cambia la cantidad y no se puede objetar`,
+      })
+    }
   }
-  return ocultos
+  // Orden total: dos corridas listan los mismos huecos en el mismo orden.
+  return ocultos.sort((a, b) => String(a.elemento).localeCompare(String(b.elemento)) || String(a.que).localeCompare(String(b.que)))
 }
+
+/** Las entradas de una fórmula que NO salen del plano sino de una decisión del motor. Si alguna
+ *  entra sin estar declarada, el número que produce es un supuesto con aspecto de cálculo. */
+export const SUPUESTAS_POR_EL_CODIGO = Object.freeze(['incluyeExtremos'])
 
 /** Cuánto pesa destrabar cada cosa: primero lo que libera más partidas, y a igualdad, lo que libera
  *  la partida más cara. La plata no se conoce acá, así que el segundo criterio es el orden del
@@ -222,7 +263,7 @@ export const ESTADO_COTIZACION = Object.freeze({ COMPLETA: 'COMPLETA', INCOMPLET
  * que uno cree del resto. Y declara `porQue` incluso cuando está completa: «alcanzó el 94% sin
  * supuestos ocultos» es una afirmación verificable; «lista» no lo es.
  */
-export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [], conflictos = [] } = {}) {
+export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [], conflictos = [], identidadesAmbiguas = [] } = {}) {
   const cob = medirCobertura({ items: computo.items ?? [], mapeos: mapeo.mapeos ?? [], detectados: computo.detectados })
   const ocultos = supuestosOcultos(computo.items ?? [])
   const abiertas = preguntas({ mapeos: mapeo.mapeos ?? [], procesos: procesos.procesos ?? [], checklist })
@@ -230,7 +271,11 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
   // UN CONFLICTO DOCUMENTAL SIN RESOLVER TAMBIÉN DEJA LA COTIZACIÓN INCOMPLETA. Si el plano dice
   // H-21 y la memoria dice H-25, el precio de esa partida no está determinado por más cobertura que
   // haya: cotizarlo es elegir en silencio el resultado de una discusión que no ocurrió.
-  const estado = cob.alcanza && !ocultos.length && !conflictos.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
+  // Una identidad ambigua NO es un conflicto entre documentos —es el mismo circuito nombrando dos
+  // veces la misma pieza— pero bloquea igual: mientras no se sepa si son una o dos, la cantidad no
+  // está determinada. Va en su propio balde para no tapar los conflictos documentales, que son
+  // otra cosa y se resuelven preguntándole a otra persona.
+  const estado = cob.alcanza && !ocultos.length && !conflictos.length && !identidadesAmbiguas.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
   return {
     estado,
     cobertura: cob,
@@ -240,14 +285,17 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
     preguntasSueltas: dec.sueltas,
     omisionesCircot,
     conflictos,
+    identidadesAmbiguas,
     porQue: estado === ESTADO_COTIZACION.COMPLETA
       ? `${Math.round(cob.cobertura * 100)}% de los elementos detectados quedaron con cantidad y con partida, sin conflictos documentales y sin ningún número con fuente no declarada`
-      : conflictos.length
+      : ocultos.length
+        ? `hay ${ocultos.length} número(s) que entran al precio sin que la cita los respalde: ${ocultos.slice(0, 3).map((o) => `${o.elemento}.${o.que}=${o.valor}`).join(', ')}`
+        : conflictos.length
         ? `hay ${conflictos.length} conflicto(s) entre documentos del proyecto sin resolver: ${conflictos.slice(0, 2).map((c) => c.que).join(', ')}`
-        : ocultos.length
-        ? `hay ${ocultos.length} cantidad(es) con una fuente que no se puede confirmar y que no está declarada como supuesto`
+        : identidadesAmbiguas.length
+        ? `hay ${identidadesAmbiguas.length} pieza(s) que aparecen con más de un identificador y no se sabe si son una o varias`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · identidades ambiguas ${identidadesAmbiguas.length} · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
   }
 }

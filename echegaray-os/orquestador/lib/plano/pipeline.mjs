@@ -30,6 +30,7 @@ import { controlar } from './control.mjs'
 import { ingerir } from './documental.mjs'
 import { armarProyecto } from './proyecto.mjs'
 import { resolverConCad } from './medicion-cad.mjs'
+import { piezaDe } from './atributos.mjs'
 import { obraDesdeCotizacion } from './genealogia.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
@@ -226,31 +227,151 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
 /**
  * FUSIONAR LO LEÍDO EN LA LÁMINA COMPLETA CON LO LEÍDO EN CADA VISTA. PURA.
  *
- * La misma columna aparece en la planta, en el corte y en la planilla de columnas. Sumarlas sin
- * más multiplica el cómputo por tres. Se deduplica por `id` —que es la marca que el proyectista le
- * puso: C1, B0, VF— y gana la lectura con MÁS dimensiones resueltas, que es la del dibujo donde
- * mejor se veía. Lo que la otra lectura sí tenía se copia encima: dos vistas parciales completan
- * una entera, y ése es exactamente el punto de recortar.
+ * ═══ EL DEFECTO QUE ESTO ARREGLA, MEDIDO ═══
+ *
+ * La versión anterior deduplicaba por `String(e.id)` EXACTO, y el `id` lo escribe el modelo mirando
+ * cada vista por separado. La misma pieza vuelve con otro nombre según la vista: `PUERTA_BLINDEX` y
+ * `PUERTA-BLINDEX`, `TANQUE` y `TANQUE-RES`, `PORT-CORR` y `PORTON`, `CE-VE-VF` y `CE=VE=VF` —que
+ * difieren en UN carácter—. Sobre la corrida real de Quattropani: 20 grupos con el mismo nombre y
+ * distinto id sobrevivían a la fusión y CINCO llegaban a tener cantidad computada dos veces —cuatro
+ * puertas blindex donde hay dos, dos tanques, dos rampas, dos portones, dos garitas—. Además
+ * inflaban el denominador de la cobertura.
+ *
+ * Ahora la identidad se normaliza —sin tildes, sin signos, en minúsculas— y se compara también por
+ * NOMBRE, que es lo que el modelo escribe igual aunque le cambie la marca.
+ *
+ * ═══ Y CUANDO LA COLISIÓN NO ES SEGURA, NO SE RESUELVE SOLA ═══
+ *
+ * Dos ids distintos que caen en el mismo nombre normalizado PUEDEN ser la misma pieza vista dos
+ * veces, o dos piezas que el proyectista llamó parecido. Fusionar en silencio esconde el segundo
+ * caso; contar las dos esconde el primero. Sale UNA sola —la lectura con más dimensiones
+ * resueltas, que es la del dibujo donde mejor se veía— y la colisión queda DECLARADA para que la
+ * mire una persona.
  */
 export function fusionarElementos(elementos = []) {
+  const normal = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '')
   const cuantasDimensiones = (e) => Object.values(e?.dimensiones ?? {}).filter((d) => d?.valor !== null && d?.valor !== undefined).length
-  const porId = new Map()
+
+  // DOS ELEMENTOS SON EL MISMO SI COMPARTEN EL ID NORMALIZADO **O** EL NOMBRE NORMALIZADO, y eso
+  // se propaga: `CORREAS` ≡ `correas-C140` por nombre, y `correas-C140` ≡ `CORR140` por id, así que
+  // los tres son uno. Con una sola clave no se propaga, y cambiar de clave sin unir las dos
+  // ROMPE la fusión que ya funcionaba: probado — pasar de id a nombre subió los detectados de 143
+  // a 162 porque dejaron de juntarse los que compartían id.
+  const padre = new Map()
+  const raizDe = (k) => { let x = k; while (padre.get(x) !== x) x = padre.get(x); return x }
+  const unir = (a, b) => { const ra = raizDe(a); const rb = raizDe(b); if (ra !== rb) padre.set(ra, rb) }
+  const conId = []
   for (const e of elementos) {
     const id = String(e?.id ?? '').trim()
     if (!id) continue
-    const previo = porId.get(id)
-    if (!previo) { porId.set(id, e); continue }
-    const ganador = cuantasDimensiones(e) > cuantasDimensiones(previo) ? e : previo
-    const perdedor = ganador === e ? previo : e
-    const dimensiones = { ...(perdedor.dimensiones ?? {}) }
-    for (const [k, v] of Object.entries(ganador.dimensiones ?? {})) if (v?.valor !== null && v?.valor !== undefined) dimensiones[k] = v
-    porId.set(id, { ...ganador, dimensiones, vistoEn: [...new Set([...(previo.vistoEn ?? []), ...(e.vistoEn ?? []), previo.evidencia?.vista, e.evidencia?.vista].filter(Boolean))] })
+    const ki = `id:${normal(id)}`
+    const kn = normal(e?.nombre) ? `nombre:${normal(e.nombre)}` : ki
+    for (const k of [ki, kn]) if (!padre.has(k)) padre.set(k, k)
+    unir(ki, kn)
+    conId.push({ e, ki, kn })
   }
-  // Orden total por id: dos corridas producen la misma lista en el mismo orden.
-  return [...porId.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+
+  const grupos = new Map()
+  for (const { e, ki } of conId) {
+    const g = raizDe(ki)
+    const lista = grupos.get(g) ?? []
+    lista.push(e)
+    grupos.set(g, lista)
+  }
+
+  const salida = []
+  const ambiguos = []
+  for (const [clave, lista] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const ordenados = [...lista].sort((a, b) => cuantasDimensiones(b) - cuantasDimensiones(a) || String(a.id).localeCompare(String(b.id)))
+    const ganador = ordenados[0]
+    const dimensiones = {}
+    // Se completa de atrás para adelante: la lectura con MÁS dimensiones queda arriba y las otras
+    // sólo llenan lo que a esa le faltaba. Dos vistas parciales completan una entera.
+    for (const e of [...ordenados].reverse()) {
+      for (const [k, v] of Object.entries(e?.dimensiones ?? {})) if (v?.valor !== null && v?.valor !== undefined) dimensiones[k] = v
+    }
+    salida.push({
+      ...ganador, dimensiones,
+      vistoEn: [...new Set(lista.map((e) => e?.evidencia?.vista).filter(Boolean))].sort(),
+    })
+    const ids = [...new Set(lista.map((e) => String(e.id)))].sort()
+    if (ids.length > 1) {
+      // Dos ids distintos que caen en el mismo grupo PUEDEN ser la misma pieza vista dos veces o
+      // dos piezas que el proyectista llamó parecido. Se computa UNA sola —contar las dos era el
+      // doble cómputo medido: cuatro puertas blindex donde hay dos— y la duda queda declarada.
+      ambiguos.push({
+        clave, nombre: ganador?.nombre ?? ids[0], ids,
+        vistas: [...new Set(lista.map((e) => e?.evidencia?.vista).filter(Boolean))].sort(),
+        porQue: `«${ganador?.nombre ?? ids[0]}» aparece con ${ids.length} identificadores distintos (${ids.join(', ')}): puede ser la misma pieza vista en varias vistas, o piezas distintas que el plano llamó parecido. Se computó UNA sola`,
+        quienLoResuelve: 'dirección técnica — mirando las vistas donde aparece',
+      })
+    }
+  }
+  const lista = salida.sort((a, b) => String(a.id).localeCompare(String(b.id)))
+  lista.ambiguos = [...ambiguos, ...parecidosSinFusionar(lista)].sort((a, b) => a.clave.localeCompare(b.clave))
+  return lista
 }
 
-/** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
+/** Palabras que no distinguen nada al comparar dos nombres de elemento. */
+const RUIDO_NOMBRE = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'con', 'para', 'por', 'metalico', 'metalica'])
+
+/**
+ * LOS QUE SE PARECEN DEMASIADO Y NO SE FUSIONAN. PURA.
+ *
+ * ═══ POR QUÉ NO ALCANZA NORMALIZAR ═══
+ *
+ * Normalizar caza `PUERTA_BLINDEX` con `PUERTA-BLINDEX`, que difieren en un signo. NO caza
+ * «Tanque de reserva 600 litros» con «Tanque de agua 600 litros» con «2 tanques de 600 litros»:
+ * son paráfrasis del mismo objeto y quedaron como CUATRO elementos con cantidad, cada uno contando
+ * uno. El doble cómputo se fue de los cinco grupos medidos y quedó en éste.
+ *
+ * Y acá NO se fusiona, a propósito. Dos nombres parecidos pueden ser dos piezas distintas —«Viga
+ * VA1» y «Viga VA2» comparten todo salvo un dígito— y fusionarlas borraría una partida entera. Lo
+ * que corresponde es DECLARAR la duda: mismo tipo de pieza, misma unidad, y dos palabras
+ * significativas en común es suficiente para que una persona mire; no es suficiente para que el
+ * código decida.
+ */
+export function parecidosSinFusionar(elementos = []) {
+  const sig = (t) => [...new Set(String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 2 && !RUIDO_NOMBRE.has(w)))]
+  const conCantidad = elementos.filter((e) => e?.nombre)
+  const salida = []
+  for (let i = 0; i < conCantidad.length; i++) {
+    for (let j = i + 1; j < conCantidad.length; j++) {
+      const a = conCantidad[i]
+      const b = conCantidad[j]
+      if ((a.forma ?? null) !== (b.forma ?? null)) continue
+      const pa = piezaDe(a.nombre)?.valor ?? null
+      const pb = piezaDe(b.nombre)?.valor ?? null
+      if (!pa || pa !== pb) continue
+      const wa = sig(a.nombre)
+      const wb = sig(b.nombre)
+      const comunes = wa.filter((w) => wb.includes(w))
+      if (comunes.length < 2) continue
+      // Si además difieren en algún NÚMERO propio (VA1 vs VA2, C1 vs C2), son piezas distintas y
+      // no hay nada que dudar: el proyectista las separó a propósito.
+      const nums = (t) => (String(t).match(/\d+/g) ?? []).join('-')
+      if (nums(a.nombre) !== nums(b.nombre)) continue
+      // El PARECIDO se reporta como número para que quien mire empiece por los que casi seguro son
+      // el mismo objeto. Este balde tiene falsos positivos a propósito: «Base de hormigón escalera»
+      // y «Muerto de hormigón escalera» comparten dos palabras y son piezas distintas. Preferimos
+      // que sobre una pregunta a que falte una partida contada dos veces.
+      const parecido = Math.round((comunes.length / Math.min(wa.length, wb.length)) * 100) / 100
+      salida.push({
+        clave: `parecidos:${[a.id, b.id].sort().join('~')}`,
+        parecido,
+        nombre: a.nombre, ids: [a.id, b.id].sort(),
+        vistas: [...new Set([a.evidencia?.vista, b.evidencia?.vista].filter(Boolean))].sort(),
+        porQue: `«${a.nombre}» (${a.id}) y «${b.nombre}» (${b.id}) son la misma pieza (${pa}), en la misma unidad, y comparten ${comunes.join(', ')}: pueden ser el mismo objeto nombrado distinto en dos vistas. NO se fusionaron —fusionar dos piezas parecidas borra una partida— y las dos se computaron`,
+        quienLoResuelve: 'dirección técnica — si son el mismo objeto, hay que borrar uno',
+        fusionadas: false,
+      })
+    }
+  }
+  return salida.sort((x, y) => (y.parecido ?? 0) - (x.parecido ?? 0) || x.clave.localeCompare(y.clave))
+}
+
+/** Las regiones que vale la pena mirar./** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
@@ -311,6 +432,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // EL CAD LLENA LO QUE LA VISTA NO PUDO CONTAR, y sólo eso: un elemento que ya tenía cantidad no
   // se toca. Contar INSERT es exacto y no cuesta un token.
   const medidoConCad = resolverConCad(fusionados, documental.cad)
+  const identidadesAmbiguas = fusionados.ambiguos ?? []
   const computo = computarElementos(medidoConCad.elementos)
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
@@ -355,7 +477,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     laminas,
     cad: documental.cad,
   })
-  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos })
+  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos, identidadesAmbiguas })
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
   const comps = await composiciones({ query }, ids)
 
@@ -365,6 +487,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
     control, checklist, tipoObra: tipo,
     documental: { ...documental, segmentaciones: documental.segmentaciones },
+    identidadesAmbiguas,
     medicionCad: { resueltos: medidoConCad.resueltos, ambiguos: medidoConCad.ambiguos, bloquesDisponibles: medidoConCad.bloquesDisponibles, cotas: medidoConCad.cotas, porQueLasCotasNoSeUsan: medidoConCad.porQueLasCotasNoSeUsan },
     proyecto,
     porRegion: porRegion.map((r) => ({ archivo: r.archivo, region: r.region?.titulo ?? null, tipo: r.region?.tipo ?? null, elementos: r.elementos.length, deCache: r.deCache, error: r.error ?? null })),

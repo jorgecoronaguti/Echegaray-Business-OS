@@ -28,7 +28,7 @@
 // la misma lámina en cada etapa fue el gasto que este archivo existe para no repetir.
 
 import crypto from 'node:crypto'
-import { FUENTE, dato, evidencia } from './fuente.mjs'
+import { FUENTE, dato, dimension, evidencia } from './fuente.mjs'
 
 /** Cómo se mide un elemento. Determina qué fórmula le aplica `computo.mjs` y qué unidad sale.
  *  No es una lista abierta: si un elemento no encaja en ninguna, se declara y no se computa. */
@@ -74,6 +74,7 @@ export const PROMPT = [
   '    "id":"C1", "nombre":"Columna de hormigón C1", "sistema":"hormigon_armado",',
   '    "forma":"prisma",',
   '    "dimensiones":{"ancho_m":0.30,"alto_m":0.50,"largo_m":3.50,"espesor_m":null,"area_m2":null},',
+  '    "dimensiones_texto":{"ancho_m":"C1(30-50)","alto_m":"C1(30-50)","largo_m":"H=3.50m"},',
   '    "repeticion":{"modo":"conteo_directo","cantidad":8,"longitud_tramo_m":null,"separacion_m":null,',
   '                  "incluye_extremos":null,"texto_literal":"se ven 8 símbolos C1 en ESTRUCTURA FUNDACION"},',
   '    "material":"H21", "especificacion":"acero ADN 420, estribos Ø8 c/15",',
@@ -84,7 +85,12 @@ export const PROMPT = [
   '}',
   '',
   'REGLAS QUE NO SE NEGOCIAN:',
-  '1. CADA dimensión que declarás tiene que estar SOSTENIDA por "texto_literal": lo que dice el',
+  '1. CADA dimensión que declarás tiene que estar SOSTENIDA por SU PROPIA cita en',
+  '   "dimensiones_texto": el texto del plano DONDE ESTÁ ESE NÚMERO, copiado letra por letra. No',
+  '   sirve una cita del elemento que no contenga la medida: si ponés largo_m 3.50, la cita de',
+  '   largo_m tiene que decir 3.50 (o 350, o 3,50). Una dimensión cuya cita no contiene su número',
+  '   se marca sola como INFERIDA y deja de valer como leída del plano.',
+  '1bis. Y "texto_literal" del elemento sigue siendo obligatorio: lo que dice el',
   '   plano, copiado letra por letra («C1(30-50)», «2PC-240-80-25-3.2», «Estr. Ø8c/15cm»). Si no',
   '   podés citar de dónde sacaste una medida, NO la pongas: dejala en null y anotala en "faltan".',
   '2. NO CALCULES NADA. No multipliques, no sumes, no estimes volúmenes ni superficies. Sólo leés',
@@ -144,13 +150,34 @@ const CLAVES_DIM = Object.freeze([['ancho_m', 'ancho'], ['alto_m', 'alto'], ['la
 
 /** Las dimensiones de un elemento, cada una con su procedencia. Las que el modelo no trajo salen
  *  como `FALTA_DATO` explícito y no como ausencia — un campo que no está se lee como cero. */
+/**
+ * LAS DIMENSIONES, CADA UNA CON SU PROPIA CITA. PURA.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA, MEDIDO ═══
+ *
+ * Antes había UNA evidencia por elemento y se le pegaba la misma a las cinco dimensiones. La regla
+ * 1 del PROMPT exige texto literal POR DIMENSIÓN y el esquema no tenía dónde ponerlo, así que la
+ * regla no se podía cumplir ni comprobar. Sobre las interpretaciones cacheadas reales: 7
+ * dimensiones con fuente `EXTRAIDO_PLANO` cuyo número no aparece en su cita. La peor,
+ * `PLATEA area_m2 = 191,92` citando «Platea s/Calculo | s/Cálculo»: el plano dice que el dato NO
+ * está y el número salió de la superficie del salón — y ésa es la partida de $ 29,6 M.
+ *
+ * Ahora cada dimensión busca su cita propia (`ancho_m_texto`, o el mapa `dimensiones_texto`) y cae
+ * a la del elemento sólo si no hay. Después `dimension()` comprueba que el número esté ahí: si no
+ * está, la dimensión sale `INFERIDO` con el motivo. No se descarta —el número puede ser correcto—
+ * pero deja de hacerse pasar por una lectura del plano.
+ */
 function dimensionesDe(crudo, ev) {
   const out = {}
+  const mapa = crudo?.dimensiones_texto ?? {}
   for (const [clave, nombre] of CLAVES_DIM) {
     const v = num(crudo?.dimensiones?.[clave])
-    out[nombre] = v === null
-      ? null
-      : dato({ valor: v, unidad: clave.endsWith('m2') ? 'm2' : 'm', fuente: FUENTE.EXTRAIDO_PLANO, evidencia: ev })
+    if (v === null) { out[nombre] = null; continue }
+    const propia = mapa?.[clave] ?? crudo?.dimensiones?.[`${clave}_texto`] ?? null
+    const evDim = propia
+      ? evidencia({ archivo: ev?.archivo, archivoId: ev?.archivoId, lamina: ev?.lamina, vista: ev?.vista, textoLiteral: String(propia), ubicacion: ev?.ubicacion })
+      : ev
+    out[nombre] = dimension({ valor: v, unidad: clave.endsWith('m2') ? 'm2' : 'm', evidencia: evDim })
   }
   return out
 }
@@ -179,7 +206,14 @@ export function repeticionDe(crudo, ev) {
     cantidad: num(r?.cantidad) ?? num(crudo?.cantidad),
     longitudTramo: num(r?.longitud_tramo_m),
     separacion: num(r?.separacion_m),
-    incluyeExtremos: r?.incluye_extremos === null || r?.incluye_extremos === undefined ? true : Boolean(r.incluye_extremos),
+    // ═══ SIN DEFAULT, Y ÉSTE ES EL PUNTO ═══
+    // `computo.mjs` dice, textualmente, que «el plano tiene que declarar `incluyeExtremos` en vez
+    // de que el código lo decida», y acá había un `?? true` que lo decidía. Medido sobre la correa
+    // real de Quattropani: 13 elementos donde el techo da 12, +8,3% sobre la partida, con fuente
+    // CALCULADO y sin que nada lo declarara. Ahora `null` significa null, y la cantidad sale
+    // FALTA_DATO con su pregunta.
+    incluyeExtremos: r?.incluye_extremos === null || r?.incluye_extremos === undefined ? null : Boolean(r.incluye_extremos),
+    incluyeExtremosDeclarado: r?.incluye_extremos === null || r?.incluye_extremos === undefined ? false : true,
     textoLiteral: r?.texto_literal ? String(r.texto_literal).slice(0, 300) : null,
     evidencia: ev,
   }
