@@ -64,10 +64,18 @@ export function procedenciaDe(origen) {
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
 const trozo = (s, n = 60) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, n)
 
-/** Completa las etapas que no se corrieron. Una cadena cortada tiene que verse cortada. PURA. */
-export function completar(pasos, porQue) {
+/** Las etapas que NO tocan la red: las que corre `estudiarTexto` con un texto ya en la mano. */
+export const ORDEN_TEXTO = Object.freeze(ORDEN.slice(3))
+
+/**
+ * COMPLETA LAS ETAPAS QUE NO SE CORRIERON. Una cadena cortada tiene que verse cortada. PURA.
+ *
+ * `deLas` acota el universo: quien estudia un texto suelto no adquirió nada, y marcarle ADQUISICIÓN
+ * como «omitida» sería reportar una etapa que nunca le tocó correr.
+ */
+export function completar(pasos, porQue, deLas = ORDEN) {
   const hechos = new Set(pasos.map((p) => p.paso))
-  return [...pasos, ...ORDEN.filter((p) => !hechos.has(p)).map((paso) => ({ paso, resultado: RESULTADO.OMITIDO, porQue }))]
+  return [...pasos, ...deLas.filter((p) => !hechos.has(p)).map((paso) => ({ paso, resultado: RESULTADO.OMITIDO, porQue }))]
 }
 
 /**
@@ -205,14 +213,14 @@ export async function estudiarTexto({
   if (!doc.procedencia) doc.procedencia = procedenciaDe(doc.archivo ? 'archivo' : 'url')
   const segmentos = segmentar(texto)
   pasos.push({ paso: PASO.PARSING, resultado: segmentos.length ? RESULTADO.LOGRO : RESULTADO.NO_LOGRO, porQue: `${segmentos.length} segmento(s) citable(s)${segmentos.some((s) => s.pagina) ? ' con página' : ' sin numeración de página'}`, segmentos: segmentos.length })
-  if (!segmentos.length) return { ok: false, pasos: completar(pasos, 'el documento no dejó ningún segmento citable'), candidatos: [], huecos: [] }
+  if (!segmentos.length) return { ok: false, pasos: completar(pasos, 'el documento no dejó ningún segmento citable', ORDEN_TEXTO), candidatos: [], huecos: [] }
 
   const cl = clase ? { clase, porQue: 'la clase la impuso quien llamó', puntaje: null, marcas: {}, pistas: [] } : clasificar({ texto, url: doc?.url ?? null, tipoFuente })
   const clasificable = ![CLASE.AMBIGUO, CLASE.INDETERMINADO].includes(cl.clase)
   pasos.push({ paso: PASO.CLASIFICACION, resultado: clasificable ? RESULTADO.LOGRO : RESULTADO.NO_LOGRO, porQue: cl.porQue, clase: cl.clase, opciones: cl.opciones ?? [], puntaje: cl.puntaje })
   if (!clasificable) {
     const h = hueco({ clave: `documento.${trozo(doc?.titulo || doc?.url || 'documento')}.clase`, tipo: cl.clase === CLASE.AMBIGUO ? HUECO.AMBIGUO : HUECO.FALTA_DATO, porQue: cl.porQue, opciones: cl.opciones ?? null, quienLoTiene: 'dirección técnica — decir de qué clase es este documento' })
-    return { ok: false, pasos: completar(pasos, 'sin clase no se sabe qué campos preguntarle al documento'), candidatos: [], huecos: [h], clasificacion: cl }
+    return { ok: false, pasos: completar(pasos, 'sin clase no se sabe qué campos preguntarle al documento', ORDEN_TEXTO), candidatos: [], huecos: [h], clasificacion: cl }
   }
 
   const porRegla = extraerConReglas({ segmentos, clase: cl.clase })
