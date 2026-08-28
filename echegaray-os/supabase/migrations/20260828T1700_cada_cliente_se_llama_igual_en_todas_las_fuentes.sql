@@ -23,6 +23,11 @@ create table if not exists public.cliente_alias (
   rotulo            text not null,                 -- tal cual está escrito en la fuente
   rotulo_clave      text not null,                 -- normalizado: sin acentos, sin dobles espacios, en mayúsculas
   cliente_canonico  text not null,
+  -- QUIEN LO DECIDIO, Y CON QUE AUTORIDAD. No es texto libre a proposito: escribir 'dueño' en una
+  -- fila que en realidad salio de un match por parecido es fabricar la procedencia dentro de la
+  -- tabla de procedencia, que es peor que no tener la tabla. Paso: 15 de las 16 filas semilla
+  -- decian 'dueño' y solo una lo era.
+  origen            text not null check (origen in ('DECISION_DUENO', 'INFERENCIA_OS')),
   decidido_por      text not null,
   decidido_en       date not null,
   nota              text,
@@ -33,35 +38,43 @@ comment on table public.cliente_alias is
   'Cómo se llama cada cliente en cada fuente. Un rótulo que no esté acá es DESCONOCIDO, nunca se resuelve por parecido: MESSINA y MESSINAS difieren en una letra y en $ 1.333.000.';
 comment on column public.cliente_alias.rotulo_clave is
   'Clave de comparación normalizada. La escritura original se conserva en `rotulo` porque es lo que el jefe de obra reconoce.';
+comment on column public.cliente_alias.origen is
+  'DECISION_DUENO = lo resolvió el dueño, con fecha rastreable. INFERENCIA_OS = lo dedujo el sistema y NADIE lo confirmó: sirve para trabajar, no para afirmar.';
 comment on column public.cliente_alias.decidido_por is
   'Quién resolvió la equivalencia. Sin esto, la tabla se vuelve un diccionario que cualquiera amplía de memoria.';
 
-insert into public.cliente_alias (fuente, rotulo, rotulo_clave, cliente_canonico, decidido_por, decidido_en, nota) values
-  ('JORNALES', 'JAVIER SANCHEZ', 'JAVIER SANCHEZ', 'SAN FRANCISCO', 'dueño', '2026-08-24',
-   'San Francisco = Javier Sánchez / IMOTOR. Decisión registrada en las definiciones de Cobranzas del 24/08/2026.'),
-  ('COMPRAS',  'San Francisco',  'SAN FRANCISCO',  'SAN FRANCISCO', 'dueño', '2026-08-24', null),
-  ('OS',       'san-francisco',  'SAN-FRANCISCO',  'SAN FRANCISCO', 'dueño', '2026-08-24',
-   'Galpones, Mampostería, Cancha de Padel. Las otras obras del mismo cliente: pisos-industriales, instalacion-electrica, entrepiso-y-escalera.'),
+insert into public.cliente_alias (fuente, rotulo, rotulo_clave, cliente_canonico, origen, decidido_por, decidido_en, nota) values
+  -- LA UNICA QUE DECIDIO EL DUENO. Registrada en las definiciones de Cobranzas del 24/08/2026.
+  ('JORNALES', 'JAVIER SANCHEZ', 'JAVIER SANCHEZ', 'SAN FRANCISCO', 'DECISION_DUENO', 'dueño', '2026-08-24',
+   'San Francisco = Javier Sánchez / IMOTOR.'),
+  ('COMPRAS',  'San Francisco',  'SAN FRANCISCO',  'SAN FRANCISCO', 'DECISION_DUENO', 'dueño', '2026-08-24', null),
+  ('OS',       'san-francisco',  'SAN-FRANCISCO',  'SAN FRANCISCO', 'DECISION_DUENO', 'dueño', '2026-08-24',
+   'Galpones, Mampostería, Cancha de Padel. Otras obras del mismo cliente: pisos-industriales, instalacion-electrica, entrepiso-y-escalera.'),
 
-  ('JORNALES', 'LA ESTRELLA', 'LA ESTRELLA', 'LA ESTRELLA', 'dueño', '2026-08-24', null),
-  ('COMPRAS',  'LA ESTRELLA', 'LA ESTRELLA', 'LA ESTRELLA', 'dueño', '2026-08-24', null),
-  ('OS',       'la-estrella',  'LA-ESTRELLA', 'LA ESTRELLA', 'dueño', '2026-08-24',
+  -- LAS DEMAS LAS DEDUJO EL SISTEMA Y NADIE LAS CONFIRMO. Sirven para trabajar; no para afirmar.
+  ('JORNALES', 'LA ESTRELLA', 'LA ESTRELLA', 'LA ESTRELLA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('COMPRAS',  'LA ESTRELLA', 'LA ESTRELLA', 'LA ESTRELLA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('OS',       'la-estrella',  'LA-ESTRELLA', 'LA ESTRELLA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28',
    'La venta vive a nivel sub-obra (le-galpon-9, le-comedor), no a nivel cliente.'),
 
-  ('JORNALES', 'MESSINA',  'MESSINA',  'MESSINA', 'dueño', '2026-08-24', null),
-  ('JORNALES', 'MESSINAS', 'MESSINAS', 'MESSINA', 'dueño', '2026-08-24',
-   'La planilla escribe las dos formas. El resumen por cliente busca MESSINAS y las filas dicen MESSINA: en la quincena del 17/08 eso dejó $ 1.333.000 fuera del total.'),
-  ('COMPRAS',  'MESSINA',  'MESSINA',  'MESSINA', 'dueño', '2026-08-24', null),
-  ('OS',       'messina',  'MESSINA',  'MESSINA', 'dueño', '2026-08-24',
+  ('JORNALES', 'MESSINA',  'MESSINA',  'MESSINA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  -- PENDIENTE DE CONFIRMACION DEL DUENO. Su origen real es un match por nombre normalizado en
+  -- getCostosPorObra (17/07/2026): una resolucion POR PARECIDO, justo lo que esta tabla prohibe.
+  -- Mueve $ 8.977.890 de jornal 2026. No se afirma como decidida hasta que el dueño diga que si.
+  ('JORNALES', 'MESSINAS', 'MESSINAS', 'MESSINA', 'INFERENCIA_OS', 'OS · match por parecido (getCostosPorObra 17/07)', '2026-07-17',
+   'PENDIENTE DE CONFIRMACION. La planilla escribe las dos formas. El resumen busca MESSINAS y las filas dicen MESSINA: en la quincena del 17/08 eso dejó $ 1.333.000 fuera del total.'),
+  ('COMPRAS',  'MESSINA',  'MESSINA',  'MESSINA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('OS',       'messina',  'MESSINA',  'MESSINA', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28',
    'BSA es obra de Messina, no cliente propio: los 11 comprobantes de BSA de 2026 están todos bajo obra_texto = MESSINA.'),
 
-  ('JORNALES', 'QUATTROPANI', 'QUATTROPANI', 'QUATTROPANI', 'dueño', '2026-08-24', null),
-  ('COMPRAS',  'Quattropani - Melisa García SAS', 'QUATTROPANI - MELISA GARCIA SAS', 'QUATTROPANI', 'dueño', '2026-08-24', null),
-  ('OS',       'quattropani', 'QUATTROPANI', 'QUATTROPANI', 'dueño', '2026-08-24', 'Salón Comercial.'),
+  ('JORNALES', 'QUATTROPANI', 'QUATTROPANI', 'QUATTROPANI', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('COMPRAS',  'Quattropani - Melisa García SAS', 'QUATTROPANI - MELISA GARCIA SAS', 'QUATTROPANI', 'INFERENCIA_OS', 'OS · razón social contiene el rótulo', '2026-08-28',
+   'PENDIENTE DE CONFIRMACION: el rótulo de Compras trae la razón social completa.'),
+  ('OS',       'quattropani', 'QUATTROPANI', 'QUATTROPANI', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', 'Salón Comercial.'),
 
-  ('JORNALES', 'ARCOR', 'ARCOR', 'ARCOR', 'dueño', '2026-08-24', null),
-  ('COMPRAS',  'ARCOR', 'ARCOR', 'ARCOR', 'dueño', '2026-08-24', null),
-  ('OS',       'arcor', 'ARCOR', 'ARCOR', 'dueño', '2026-08-24', null)
+  ('JORNALES', 'ARCOR', 'ARCOR', 'ARCOR', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('COMPRAS',  'ARCOR', 'ARCOR', 'ARCOR', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null),
+  ('OS',       'arcor', 'ARCOR', 'ARCOR', 'INFERENCIA_OS', 'OS · rótulo idéntico', '2026-08-28', null)
 on conflict (fuente, rotulo_clave) do nothing;
 
 -- RÓTULOS QUE NO SON UN CLIENTE. Existen en la columna CLIENTE de JORNALES y no hay que
