@@ -37,6 +37,20 @@ export const TIPO = Object.freeze({
 })
 
 /** Quién puede firmar que un contexto de entidad es de verdad de ese actor. */
+/**
+ * CLAVES DE `contexto` QUE NOMBRAN UNA ENTIDAD. Sin firma, no viajan.
+ *
+ * La lista es de nombres, no de formas, porque lo que las hace peligrosas es que una tool las pueda
+ * recibir como argumento: `argumentosPara` busca en `contexto` por el NOMBRE del parámetro. Agregar
+ * un parámetro llamado `obra` a cualquier tool futura la vuelve alcanzable desde acá.
+ */
+export const CLAVES_DE_ENTIDAD_EN_CONTEXTO = Object.freeze([
+  'obra', 'obra_id', 'obra_nombre',
+  'cliente', 'cliente_id', 'comitente',
+  'proveedor', 'proveedor_id', 'cuit',
+  'proyecto', 'presupuesto', 'cotizacion', 'persona', 'legajo',
+])
+
 export const VERIFICADOR = Object.freeze({
   APP_SERVER: 'app-server',       // Next comprobó contra Supabase CON la sesión del usuario (RLS)
   CANAL_MATTERMOST: 'canal-mattermost', // el binding canal→área, que es dato del OS
@@ -116,6 +130,22 @@ export function normalizarPedido(bruto, { nuevoId = randomUUID } = {}) {
   // ese contexto y dice por qué. Tapar la diferencia sería peor que no tener contexto.
   const hayEntidad = Object.keys(p.entidad).length > 0
   const verificado = Boolean(p.verificado_por)
+  // ═══ Y ACÁ TAMBIÉN, QUE ES DONDE FALTABA (27/08/2026, auditoría independiente) ═══
+  //
+  // La regla del encabezado se aplicaba SÓLO a `entidad`. `contexto` es un objeto libre y pasaba
+  // entero, y del otro lado `argumentosPara` lo usa como PRIMERA fuente para llenar los argumentos
+  // de una tool. Un caller que simplemente NO manda `entidad.obra_id` y manda `contexto.obra` no
+  // tenía nada que verificar: nombraba la obra que quisiera. La auditoría lo probó contra la puerta
+  // viva y sacó el costo real de una obra con un rol que no debía verlo.
+  //
+  // Nombrar una entidad es nombrar una entidad, venga por el campo que venga. Mismo criterio,
+  // misma firma.
+  const contextoFiltrado = {}
+  const contextoDescartado = []
+  for (const [clave, valor] of Object.entries(p.contexto)) {
+    if (!verificado && CLAVES_DE_ENTIDAD_EN_CONTEXTO.includes(clave)) { contextoDescartado.push(clave); continue }
+    contextoFiltrado[clave] = valor
+  }
   return Object.freeze({
     actor: Object.freeze({ ...p.actor, nombre: p.actor.nombre ?? null }),
     canal: p.canal,
@@ -124,7 +154,8 @@ export function normalizarPedido(bruto, { nuevoId = randomUUID } = {}) {
     mensaje: mensaje || null,
     intencion: p.intencion ?? null,
     evento: p.evento ?? null,
-    contexto: Object.freeze({ ...p.contexto }),
+    contexto: Object.freeze(contextoFiltrado),
+    contextoDescartado: Object.freeze(contextoDescartado),
     entidad: Object.freeze(hayEntidad && verificado ? { ...p.entidad } : {}),
     entidadDescartada: hayEntidad && !verificado ? Object.keys(p.entidad) : [],
     verificadoPor: p.verificado_por ?? null,

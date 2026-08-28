@@ -132,10 +132,33 @@ test('los únicos números pegados son los tres del resumen del banco, y llevan 
     TARJETA.cuotas.disponible,
     TARJETA.cuotasPendientes.proximoPeriodo + TARJETA.cuotasPendientes.restante,
   ], 'apareció un número pegado que no viene del resumen del banco')
-  // Y ninguno queda mudo: el disponible y el pendiente declaran de qué foto salen.
-  for (const re of [/^⇒ Disponible para comprar/, /^Pendiente según el resumen/]) {
-    assert.match(String(banda[filaDe(re) - 1][2]), /resumen al/)
-  }
+  // ═══ Y CADA UNO DECLARA DE QUÉ FOTO SALE — NO DE LA DE AL LADO (28/08) ═══
+  //
+  // Desde que entró el resumen del 20/08 hay DOS documentos en la misma banda: el resumen (cuotas,
+  // consumos, lo que se debita) y la captura del homebanking del 29/07 (el disponible y el cupo en
+  // cuotas, que el resumen no publica). Antes acá alcanzaba con "que diga una fecha"; eso lo cumplía
+  // igual una banda que fechara TODO con `TARJETA.al` — y así el titular de la pestaña, el número con
+  // el que se decide una compra, se publicaría como si fuera de hoy teniendo un mes.
+  const dmy = (iso) => String(iso).split('-').reverse().join('/')
+  assert.match(String(banda[filaDe(/^⇒ Disponible para comprar/) - 1][2]),
+    new RegExp(`homebanking al ${dmy(TARJETA.disponibleAl)}`), 'el disponible tiene que llevar la fecha de SU foto')
+  assert.match(String(banda[filaDe(/^Pendiente según el resumen/) - 1][2]),
+    new RegExp(`resumen al ${dmy(TARJETA.al)}`), 'el pendiente tiene que llevar la fecha del resumen')
+  // El cupo en cuotas es del mismo homebanking y también se fecha: es el otro número que envejece.
+  assert.match(String(banda[filaDe(/en cuotas el cupo es otro/) - 1][2]),
+    new RegExp(`homebanking al ${dmy(TARJETA.cuotas.al)}`), 'el cupo en cuotas tiene que llevar su fecha')
+})
+
+// El caso que prueba que el control de arriba PUEDE dar rojo: si las dos fotos tuvieran la misma
+// fecha no probaría nada. Acá se separan a propósito y se verifica que la banda NO le presta al
+// disponible la frescura del resumen — que es el defecto exacto que se está evitando.
+test('el disponible no hereda la fecha del resumen aunque estén en la misma banda', () => {
+  const dosFotos = { ...TARJETA, al: '2026-08-20', disponibleAl: '2026-07-29' }
+  const r = bandaFilas(HDR, { TARJETA: dosFotos, CORTE })
+  const a = r.filas.map((f) => String(f[0] ?? ''))
+  const celda = String(r.filas[a.findIndex((x) => /^⇒ Disponible para comprar/.test(x))][2])
+  assert.match(celda, /DATE\(2026;7;29\)/, 'el semáforo del disponible cuenta los días desde SU foto')
+  assert.ok(!celda.includes('20/08/2026'), 'el disponible no puede publicarse con la fecha del resumen')
 })
 
 test('la foto del banco no puede envejecer en silencio', () => {

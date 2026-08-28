@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { olvidarPuerta, resolverPuerta } from '@/shared/xsas/puerta'
+import { contextoDelCliente } from '@/shared/xsas/contexto'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { entidad, contexto, rechazadas } = await entidadAutorizada(supabase, entrada.entidad)
+  // El contexto del navegador entra FILTRADO, no ordenado. Ver `shared/xsas/contexto.ts`.
+  const delCliente = contextoDelCliente(entrada.contexto)
 
   const pedido = {
     actor: { id: user.id, nombre: perfil.nombre ?? null, rol: perfil.rol },
@@ -85,15 +88,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     origen: entrada.origen ?? null,
     mensaje: entrada.mensaje ?? null,
     intencion: entrada.intencion ?? null,
-    // ═══ EL CONTEXTO DEL SERVIDOR VA ÚLTIMO, Y ES A PROPÓSITO ═══
+    // ═══ EL CONTEXTO DE ENTIDAD LO PRODUCE EL SERVIDOR, Y SÓLO EL SERVIDOR ═══
     //
-    // Estaba al revés: `{...contexto, ...(entrada.contexto ?? {})}`. El encabezado de este archivo
-    // explica que el nombre de la obra se lee con la sesión del usuario y «sale de la base, nunca
-    // del navegador» — y una línea más abajo el navegador lo pisaba. Del otro lado, `contexto` es lo
-    // PRIMERO que `argumentosPara` usa para llenar los argumentos de una tool, y a diferencia de
-    // `entidad` no pasa por ninguna verificación. Con el orden invertido, mandar `contexto.obra` a
-    // mano bastaba para que la lectura por obra corriera sobre la obra que eligiera el navegador.
-    contexto: { ...(entrada.contexto ?? {}), ...contexto },
+    // Primero estuvo al revés —`{...contexto, ...(entrada.contexto ?? {})}`— y el navegador pisaba
+    // el nombre que el servidor había leído con la RLS. Invertir el spread tapó ese caso y dejó el
+    // otro abierto: un cliente que NO manda `entidad.obra_id` y manda `contexto: {obra: "…"}` no
+    // tiene nada que pisar, porque el servidor no verificó nada. La auditoría independiente lo probó
+    // contra la puerta viva y sacó el costo real de una obra con un rol que no debía verlo.
+    //
+    // Ahora el navegador sólo puede aportar dónde está parado. El resto se descarta y se declara.
+    contexto: { ...delCliente.permitido, ...contexto },
     entidad,
     // La firma sólo se pone cuando ALGO se verificó de verdad. Sin contexto no hay nada que firmar.
     ...(Object.keys(entidad).length ? { verificado_por: 'app-server' as const } : {}),
@@ -133,6 +137,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Lo que la pantalla pidió y no puede ver se DICE. Un contexto ignorado en silencio produce una
     // respuesta que parece de la obra y no lo es.
     if (rechazadas.length) cuerpo.contextoRechazado = rechazadas
+    if (delCliente.descartado.length) cuerpo.contextoDescartado = delCliente.descartado
     return NextResponse.json(cuerpo, { status: upstream.status })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'error de conexión'

@@ -268,3 +268,38 @@ export async function traerPdf(url, { fetchImpl = fetch, stats = null, refrescar
 
 /** ¿Esta dirección promete un PDF? Por la extensión o por el tipo que el buscador declaró. PURA. */
 export const pareceriaPdf = (url, tipo = null) => /\.pdf(\?|#|$)/i.test(String(url)) || /\bpdf\b/i.test(String(tipo ?? ''))
+
+/**
+ * SACARLE EL TEXTO A UN PDF QUE YA ESTÁ EN EL DISCO. Sin red, sin modelo.
+ *
+ * Es la misma extracción que usa `traerPdf` —el mismo guion, los mismos topes, el mismo control de
+ * «esto está escaneado y no tiene capa de texto»— para el caso en que el documento no viene de una
+ * URL sino de un archivo: un pliego que mandó el cliente, una ficha que bajó alguien a mano.
+ *
+ * NO envuelve el texto en la política de contenido externo: eso lo hace quien llama, que es el que
+ * sabe con qué origen declararlo. Devuelve el motivo en vez de tirar cuando no se puede leer.
+ */
+export async function leerPdfLocal(ruta, { maxPaginas = PDF_MAX_PAGINAS } = {}) {
+  let bytes
+  try { bytes = fs.readFileSync(ruta) } catch (e) { return { ok: false, porQue: `no pude abrir «${ruta}»: ${String(e?.message ?? e).slice(0, 120)}` } }
+  if (!bytes.subarray(0, 5).toString('latin1').startsWith('%PDF')) return { ok: false, porQue: `«${ruta}» no empieza con %PDF: no es un PDF` }
+  if (bytes.length > PDF_MAX_BYTES) return { ok: false, porQue: `el PDF pesa ${bytes.length} bytes, más de los ${PDF_MAX_BYTES} que se leen por esta vía` }
+  let salida
+  try {
+    const { stdout } = await correr('python3', [GUION_PDF, ruta, String(maxPaginas)], { maxBuffer: 64 * 1024 * 1024, timeout: 120_000 })
+    salida = JSON.parse(stdout)
+  } catch (e) { return { ok: false, porQue: `no pude leer el PDF: ${String(e?.message ?? e).slice(0, 160)}` } }
+  if (salida.error) return { ok: false, porQue: salida.error }
+  const utiles = Number(salida.utiles ?? 0)
+  if (utiles < PDF_MIN_CARACTERES_UTILES) {
+    return { ok: false, porQue: `el PDF se abrió (${salida.paginas} páginas, ${salida.leidas} leídas) pero dejó ${utiles} caracteres de texto en ${salida.paginasConTexto ?? 0} página(s): no tiene capa de texto y haría falta OCR` }
+  }
+  const texto = String(salida.texto ?? '')
+  return {
+    ok: true, texto: texto.slice(0, PDF_MAX_CARACTERES), formato: 'pdf',
+    paginas: salida.paginas, paginasLeidas: salida.leidas, utiles, paginasConTexto: salida.paginasConTexto ?? null,
+    truncado: texto.length > PDF_MAX_CARACTERES || salida.leidas < salida.paginas,
+    caracteres: Math.min(texto.length, PDF_MAX_CARACTERES),
+    hash: crypto.createHash('sha256').update(bytes).digest('hex'),
+  }
+}

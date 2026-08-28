@@ -481,3 +481,25 @@ test('la sección 6 provisiona vacaciones contra la antigüedad real, y cuenta a
   assert.ok(iSin > iProv, 'falta la cuenta de quiénes quedaron fuera de la provisión')
   assert.ok(String(gv.filas[iSin][1] ?? '').includes('SUMPRODUCT'))
 })
+
+// ═══ EL RANGO REAL SIGUE AL ÚLTIMO MES DECLARADO (27/08/2026, auditoría de la pestaña) ═══
+//
+// `REALES` estaba congelado en `$B$:$G$` —enero a junio— con julio ya presentado al lado. De ese
+// rango salen la dotación proyectada, la relación entre remuneración declarada y jornales netos, y
+// las cinco alícuotas medidas de la cadena. El defecto ya se conocía: está parchado para la fila
+// COMPROMETIDO y no se generalizó. Este test es la generalización.
+test('el rango de los meses reales crece con desdeProy y no se queda en junio', async () => {
+  const { REALES, MESES_REALES } = await import('../lib/cargas-grilla.mjs')
+  assert.equal(REALES(20, 7), '$B$20:$G$20', 'con junio declarado, B..G')
+  assert.equal(REALES(20, 8), '$B$20:$H$20', 'con julio declarado, B..H — el defecto medido')
+  assert.equal(REALES(20, 13), '$B$20:$M$20', 'con el año entero declarado, B..M')
+  assert.deepEqual(MESES_REALES(8), [1, 2, 3, 4, 5, 6, 7], 'el denominador acompaña al numerador')
+  assert.deepEqual(MESES_REALES(7), [1, 2, 3, 4, 5, 6])
+})
+
+test('REALES no tiene default: un rango congelado en silencio es el defecto que se está arreglando', async () => {
+  const { REALES } = await import('../lib/cargas-grilla.mjs')
+  assert.throws(() => REALES(20), /desdeProy/)
+  assert.throws(() => REALES(20, null), /desdeProy/)
+  assert.throws(() => REALES(20, 1), /desdeProy/)
+})

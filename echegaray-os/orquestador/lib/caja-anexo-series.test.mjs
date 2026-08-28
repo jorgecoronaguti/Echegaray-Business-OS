@@ -8,13 +8,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  bloqueSeries, ubicarSeries, saldoHistorico, saldoProyectado, topContraparte,
-  ingresosDelMes, egresosDelMes,
-  ROTULOS, LARGO, COL, DIAS_HISTORIA, DIAS_PROYECCION, TOP_N, MESES,
+  bloqueSeries, ubicarSeries, saldoHistorico, saldoProyectado, saldoSinCobrar, topContraparte,
+  ingresosDelMes, egresosDelMes, necesidadDelDia,
+  ROTULOS, LARGO, COL, DIAS_HISTORIA, DIAS_PROYECCION, DIAS_NECESIDAD, TOP_N, MESES,
 } from './caja-anexo-series.mjs'
+import {
+  COL_NECESIDAD, SALIDAS, PENDIENTES, BALDES, EJECUTADO, baldeDeSalida, repartirSalidas,
+} from './caja-necesidad-baldes.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
+import { ANCHO_ANEXO, ANCHOS_ANEXO } from './caja-anexo.mjs'
 
 /** Un constructor de grilla mínimo, con la misma forma que el del anexo (`push` devuelve la fila). */
 const hojaFalsa = (desde = 0) => {
@@ -222,4 +226,135 @@ test('NINGUNA fórmula usa la coma como separador de argumentos fuera de un lite
       assert.doesNotMatch(sospechosas, /,/, `fila ${i + 1}: ${s.slice(0, 120)}`)
     }
   }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE YA SALIÓ CONTRA LO QUE FALTA PAGAR (28/08/2026)
+//
+// El defecto que estos tests protegen es el del 28/08: el gráfico dibujó $4.200.000 de «Proveedores»
+// para HOY, y eran una compra en efectivo ya pagada. La plata estaba bien sumada y contestaba la
+// pregunta equivocada — nadie tiene que conseguir lo que ya salió.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL BALDE DE LO EJECUTADO SUMA SÓLO REAL, Y LOS CINCO RUBROS SÓLO LO QUE FALTA PAGAR', () => {
+  // Es la regla absoluta de tesorería: "nunca se suman dos categorías distintas en la misma columna
+  // sin distinguirlas". Sin el filtro, un pago hecho y una deuda viva caen en la misma barra.
+  const ventana = { desde: 'TODAY()+2', hasta: 'TODAY()+3', medida: 'magnitud', signo: -1 }
+  assert.equal(necesidadDelDia(2, 'sueldos'),
+    `=${terminoLibro({ ...ventana, estados: NO_REAL, rubros: [...BALDES.sueldos] })}`)
+  assert.equal(necesidadDelDia(2, 'cheques'),
+    `=${terminoLibro({ ...ventana, estados: NO_REAL, instrumentos: [...BALDES.cheques] })}`)
+  assert.equal(necesidadDelDia(2, EJECUTADO), `=${terminoLibro({ ...ventana, estados: ['REAL'] })}`)
+  // Y ningún balde pendiente deja pasar un REAL, ni el de lo ejecutado un COMPROMETIDO.
+  for (const b of PENDIENTES) assert.ok(!necesidadDelDia(0, b.clave).includes('="REAL"'), b.clave)
+  assert.ok(!necesidadDelDia(0, EJECUTADO).includes('="COMPROMETIDO"'))
+})
+
+test('EL RESTO SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS', () => {
+  // «Proveedores» es el resto de lo PENDIENTE, no el resto de todo: restarle un cheque ya debitado
+  // daría un negativo inventado, y una barra negativa en una pila apilada corrompe el día entero.
+  const f = necesidadDelDia(0, 'proveedores')
+  const ventana = { desde: 'TODAY()', hasta: 'TODAY()+1', medida: 'magnitud', signo: -1, estados: NO_REAL }
+  const esperado = `=${terminoLibro(ventana)}`
+    + `-${terminoLibro({ ...ventana, instrumentos: [...BALDES.cheques] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.sueldos] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.cargas] })}`
+    + `-${terminoLibro({ ...ventana, rubros: [...BALDES.impuestos] })}`
+  assert.equal(f, esperado)
+})
+
+test('UN BALDE QUE NO EXISTE FALLA FUERTE: una barra que falta se lee como un día sin vencimientos', () => {
+  assert.throws(() => necesidadDelDia(0, 'proveedorez'), /no existe el balde/)
+})
+
+test('LA CURVA DEL PISO NO RESTA LO QUE YA SALIÓ: eso es pedir dos veces la misma plata', () => {
+  // EL DEFECTO (28/08): `saldoSinCobrar` restaba TODOS los egresos del tramo, sin mirar el estado.
+  // Un REAL ya está descontado adentro de CAJA_TOTAL_DISPONIBLE (el extracto, la línea de posteriores
+  // al corte o el arqueo lo absorben — ver caja-canales.mjs), así que restarlo otra vez hunde la
+  // curva del piso por plata que nadie tiene que conseguir. Si alguien saca este filtro, el gráfico
+  // vuelve a decir "no alcanza" un día que alcanza.
+  assert.equal(saldoSinCobrar(4),
+    `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: 'TODAY()+5', signo: -1, estados: NO_REAL, medida: 'magnitud' })}`)
+  assert.ok(!saldoSinCobrar(4).includes('="REAL"'))
+})
+
+test('LAS BARRAS QUE SE COMPARAN CONTRA EL SALDO SON EXACTAMENTE LAS QUE LO MUEVEN', () => {
+  // La coherencia que hace legible el gráfico: lo que las dos curvas descuentan en el tramo [hoy, d]
+  // es la suma de los baldes PENDIENTES de esos días — misma medida, mismo signo, mismos estados.
+  // Si una barra usara un grupo de estados distinto del de la curva, el día que la línea cruza el
+  // cero no sería el día que muestran las barras, y no habría forma de darse cuenta mirando.
+  const filtroDeEstados = (f) => [...f.matchAll(/\$H\$2:\$H="([A-Z]+)"/g)].map((m) => m[1]).sort()
+  for (const b of PENDIENTES) {
+    assert.deepEqual(new Set(filtroDeEstados(necesidadDelDia(0, b.clave))), new Set(NO_REAL), b.clave)
+  }
+  assert.deepEqual(new Set(filtroDeEstados(saldoSinCobrar(0))), new Set(NO_REAL))
+  assert.deepEqual(new Set(filtroDeEstados(saldoProyectado(0))), new Set(NO_REAL))
+  assert.deepEqual(filtroDeEstados(necesidadDelDia(0, EJECUTADO)), ['REAL'])
+})
+
+test('EL DÍA CON UN PAGO HECHO Y DEUDA VIVA MUESTRA LOS DOS, Y NINGUNO EN CERO', () => {
+  // EL TEST NEGATIVO, con los números del caso que lo originó. Si el reparto vuelve a ignorar el
+  // estado, «ya salió» cae a 0 y los $4,2M se suman a «Proveedores» pendiente: el gráfico pide
+  // $10,6M el mismo día en que hacen falta $6,4M. Los dos totales tienen que poder ser distintos de
+  // cero a la vez — un control que no puede mostrar las dos cosas no separa nada.
+  const dia = [
+    // f834 de Compras: PEDRO TELLO, efectivo, Estado = Pagado. Plata que YA SALIÓ.
+    { signo: -1, importe: 4200000, estado: 'REAL', rubro: 'Materiales', instrumento: 'efectivo' },
+    // Y deuda comercial viva del mismo día, la que sí hay que conseguir.
+    { signo: -1, importe: 6462880.16, estado: 'COMPROMETIDO', rubro: 'Materiales', instrumento: 'transferencia' },
+    { signo: -1, importe: 1000000, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'transferencia' },
+    { signo: -1, importe: 500000, estado: 'COMPROMETIDO', rubro: 'Materiales', instrumento: 'echeq' },
+    // Una cobranza del día: no es una salida y no cae en ningún balde.
+    { signo: 1, importe: 9000000, estado: 'COMPROMETIDO', rubro: 'Cobranzas', instrumento: 'transferencia' },
+  ]
+  const r = repartirSalidas(dia)
+  assert.equal(r.yaSalio, 4200000, 'lo ejecutado del día, en su propia barra')
+  assert.equal(r.faltaPagar, 7962880.16, 'lo que todavía hay que conseguir')
+  assert.ok(r.yaSalio > 0 && r.faltaPagar > 0, 'los dos a la vez: es el caso que el gráfico no distinguía')
+  assert.equal(r.por.ejecutado, 4200000)
+  assert.equal(r.por.proveedores, 6462880.16, 'el pago ya hecho NO engorda el balde de proveedores')
+  assert.equal(r.por.sueldos, 1000000)
+  assert.equal(r.por.cheques, 500000, 'el echeq se separa por INSTRUMENTO, no por rubro')
+  assert.equal(r.por.impuestos, 0)
+  // Y la suma de las seis barras sigue siendo TODO lo que sale ese día: se separó, no se borró.
+  const suma = Object.values(r.por).reduce((a, b) => a + b, 0)
+  assert.equal(Math.round(suma * 100) / 100, 12162880.16)
+})
+
+test('EL REPARTO NO DEJA UNA SALIDA AFUERA NI LA CUENTA DOS VECES', () => {
+  // Los baldes tienen que ser mutuamente excluyentes Y exhaustivos: si una fila cae en dos, el total
+  // del día miente hacia arriba; si no cae en ninguna, se pierde un vencimiento sin que nada avise.
+  const casos = [
+    [{ signo: -1, importe: 1, estado: 'VENCIDO', rubro: 'Impuestos', instrumento: 'transferencia' }, 'impuestos'],
+    [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Nómina · Cargas sociales', instrumento: '' }, 'cargas'],
+    [{ signo: -1, importe: 1, estado: 'REAL', rubro: 'Impuestos', instrumento: 'cheque' }, EJECUTADO],
+    [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Un rubro que nadie enumeró', instrumento: '' }, 'proveedores'],
+    // Un sueldo pagado con cheque cae en CHEQUES, no en sueldos: el instrumento manda, y así lo suma
+    // también la fórmula (el resto le resta los cheques). Si no coincidieran, el día contaría de más.
+    [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'cheque' }, 'cheques'],
+  ]
+  for (const [mov, esperado] of casos) assert.equal(baldeDeSalida(mov), esperado, JSON.stringify(mov))
+  assert.equal(baldeDeSalida({ signo: 1, importe: 1, estado: 'REAL' }), null, 'una cobranza no es una salida')
+  // Un estado que el libro no emite no se inventa un balde: quedaría sumado en una barra equivocada.
+  assert.equal(baldeDeSalida({ signo: -1, importe: 1, estado: '' }), null)
+})
+
+test('EL BLOQUE PUBLICA UNA COLUMNA POR BALDE Y EL ANEXO ES LO BASTANTE ANCHO', () => {
+  // EL MODO DE FALLA QUE ATRAPA: agregar un balde y no agrandar la grilla. `addChart` devuelve
+  // «exceeds grid limits» y NINGÚN gráfico se dibuja —el lote es uno solo—, así que el síntoma no es
+  // "falta una barra": es una pestaña sin gráficos y sin explicación.
+  const h = hojaFalsa()
+  const r = bloqueSeries(h)
+  assert.equal(r.fNec1 - r.fNec0 + 1, DIAS_NECESIDAD)
+  const cab = h.filas[r.fNec0 - 2]
+  assert.equal(cab[COL_NECESIDAD.dia - 1], 'Día')
+  SALIDAS.forEach((b, i) => assert.equal(cab[COL_NECESIDAD.salidas[i] - 1], b.rotulo, b.clave))
+  assert.equal(cab[COL_NECESIDAD.saldoCobrando - 1], 'Saldo si cobra')
+  assert.equal(cab[COL_NECESIDAD.saldoSinCobrar - 1], 'Saldo si NO cobra')
+  const fila = h.filas[r.fNec0 - 1]
+  SALIDAS.forEach((b, i) => assert.equal(fila[COL_NECESIDAD.salidas[i] - 1], necesidadDelDia(0, b.clave)))
+  assert.equal(fila[COL_NECESIDAD.saldoSinCobrar - 1], saldoSinCobrar(0))
+  assert.ok(ANCHO_ANEXO >= COL_NECESIDAD.saldoSinCobrar,
+    `el anexo tiene ${ANCHO_ANEXO} columnas y el bloque llega a la ${COL_NECESIDAD.saldoSinCobrar}`)
+  assert.equal(ANCHOS_ANEXO.length, ANCHO_ANEXO, 'cada columna declara su ancho en píxeles')
 })

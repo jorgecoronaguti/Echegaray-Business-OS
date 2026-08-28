@@ -99,9 +99,10 @@ export function contrastar(lecturas = [], { tolerancia = 0.02 } = {}) {
  */
 export async function investigarWeb({
   consulta, fuentes = [], stats = null, medidor = null, max = 6, aTraer = 3,
-  pistasFabricante = [], jurisdiccion = null, fetchImpl = fetch, cuando = null,
+  pistasFabricante = [], jurisdiccion = null, fetchImpl = fetch, cuando = null, dir = undefined,
 } = {}) {
-  const r = await buscar(consulta, { stats, max, fetchImpl })
+  const conDir = dir === undefined ? {} : { dir }
+  const r = await buscar(consulta, { stats, max, fetchImpl, ...conDir })
   medidor?.busco({ consulta, motor: r.motor, deCache: r.deCache, resultados: r.resultados.length, conModelo: false })
   if (!r.ok) return { ok: false, lecturas: [], fuentes, porQue: r.porQue, sinModelo: true }
 
@@ -122,8 +123,8 @@ export async function investigarWeb({
     // lector de HTML devuelve «no sé leer ese tipo de contenido» y deja al motor leyendo blogs.
     const esPdf = pareceriaPdf(c.url, c.titulo)
     const t = esPdf
-      ? await traerPdf(c.url, { stats, consulta, fetchImpl })
-      : await traer(c.url, { stats, consulta, fetchImpl })
+      ? await traerPdf(c.url, { stats, consulta, fetchImpl, ...conDir })
+      : await traer(c.url, { stats, consulta, fetchImpl, ...conDir })
     const idFuente = padron.find((f) => f.dominio === c.dominio)?.id
     if (idFuente) padron = anotarUso(padron, idFuente, { sirvio: t.ok, que: t.ok ? consulta : null, cuando })
     lecturas.push({
@@ -151,7 +152,7 @@ export async function investigarWeb({
  */
 export async function resolver({
   necesidad, resolvedores = {}, bib = null, fuentes = [], medidor = null, stats = null,
-  permitirModelo = true, permitirWeb = true, jurisdiccion = null, cuando = null, fetchImpl = fetch,
+  permitirModelo = true, permitirWeb = true, jurisdiccion = null, cuando = null, fetchImpl = fetch, dir = undefined,
 } = {}) {
   const recorrido = []
   let padron = fuentes
@@ -172,11 +173,26 @@ export async function resolver({
     }
 
     if (esc.via === VIA.BUSQUEDA_WEB) {
-      const r = await investigarWeb({ consulta: necesidad.consulta ?? necesidad.clave, fuentes: padron, stats, medidor, jurisdiccion, cuando, fetchImpl, pistasFabricante: necesidad.pistasFabricante ?? [] })
+      const r = await investigarWeb({ consulta: necesidad.consulta ?? necesidad.clave, fuentes: padron, stats, medidor, jurisdiccion, cuando, fetchImpl, dir, pistasFabricante: necesidad.pistasFabricante ?? [] })
       padron = r.fuentes
       if (r.ok) {
         medidor?.decidio({ que: necesidad.clave, via: VIA.BUSQUEDA_WEB })
-        return { ok: true, via: VIA.BUSQUEDA_WEB, valor: null, lecturas: r.lecturas, recorrido: [...recorrido, { via: esc.via, resultado: 'TRAJO_LECTURAS', cuantas: r.lecturas.filter((l) => l.ok).length }], fuentes: padron, degradado: null }
+        const leidas = r.lecturas.filter((l) => l.ok)
+        // ═══ HAY WEB PERO NO HAY RAZONAMIENTO (escenario E) ═══
+        // La investigación llegó entera: bajó los documentos y los dejó citables. Lo que NO pasó es
+        // que alguien los leyera para sacar un valor. Devolver esto con `degradado: null` —como
+        // hacía— presentaba un montón de texto crudo como si fuera una respuesta resuelta, que es
+        // justo la forma de fallar que este repo llama fabricar cobertura.
+        return {
+          ok: true, via: VIA.BUSQUEDA_WEB, valor: null, lecturas: r.lecturas,
+          recorrido: [...recorrido, { via: esc.via, resultado: 'TRAJO_LECTURAS', cuantas: leidas.length }],
+          fuentes: padron,
+          degradado: permitirModelo ? null : {
+            porQue: `la búsqueda trajo ${leidas.length} lectura(s) citable(s) y ninguna se interpretó: sin proveedor de razonamiento no se pasa de texto a valor`,
+            escalones: [VIA.MODELO],
+            loQueQuedoSinRazonamiento: leidas.map((l) => ({ url: l.url, caracteres: l.caracteres })),
+          },
+        }
       }
       recorrido.push({ via: esc.via, resultado: 'NO_SABE', porQue: r.porQue })
       continue
