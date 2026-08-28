@@ -48,6 +48,21 @@ const letraACol = (l) => l.charCodeAt(0) - 'A'.charCodeAt(0)
 // LA SEMÁNTICA DEL CRITERIO — lo que de verdad decide qué filas entran en la suma
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+// ═══ EL ESCAPE QUE FALTABA: `~~` ES LA TILDE LITERAL DE SHEETS ═══
+//
+// `~*` y `~?` andaban; `~~` tiraba `SyntaxError: Invalid regular expression: /^\~$/iu` porque con el
+// flag `u` la tilde NO es un identity escape válido. Lo encontró la auditoría, no el autor: de los
+// seis comportamientos que este módulo documenta, era el único que la verificación contra Sheets vivo
+// no había cubierto. Hoy el criterio publicado no lleva tildes — pero un módulo que dice implementar
+// la semántica de Sheets no puede reventar en uno de los casos que dice implementar.
+test('los tres escapes de Sheets son literales, y la tilde no revienta', () => {
+  assert.equal(emparejaCriterio('~*', '*'), true, 'asterisco literal')
+  assert.equal(emparejaCriterio('~?', '?'), true, 'signo de pregunta literal')
+  assert.equal(emparejaCriterio('~~', '~'), true, 'tilde literal — esto tiraba SyntaxError')
+  assert.equal(emparejaCriterio('~~', 'x'), false, 'y sigue siendo una igualdad, no un comodín')
+  assert.equal(emparejaCriterio('~*', 'cualquier cosa'), false, 'escapado NO es comodín')
+})
+
 test('el criterio se interpreta como lo interpreta Sheets, no como una expresión regular', () => {
   // `*` cualquier cosa · `?` un carácter · `~*` el asterisco literal · sin comodines, IGUALDAD.
   assert.equal(emparejaCriterio('*x', 'una x'), true)

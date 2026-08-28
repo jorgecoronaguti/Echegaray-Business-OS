@@ -104,7 +104,10 @@ export const IMPORTE_MUESTRA = '$ 1.234.567.890'
 export function emparejaCriterio(criterio, texto) {
   const patron = String(criterio ?? '').replace(/~([*?~])|([.+^${}()|[\]\\])|([*?])/g,
     (_, escapado, especial, comodin) => {
-      if (escapado) return `\\${escapado}`
+      // `\~` NO es un escape válido con el flag `u` y revienta con SyntaxError; `~` no necesita
+      // escaparse en una expresión regular, así que va literal. Lo encontró la auditoría probando
+      // `~~`, que es el escape de Sheets para la tilde: los otros dos (`~*`, `~?`) sí funcionaban.
+      if (escapado) return escapado === '~' ? '~' : `\\${escapado}`
       if (especial) return `\\${especial}`
       return comodin === '*' ? '.*' : '.'
     })

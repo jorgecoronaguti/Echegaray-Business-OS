@@ -257,30 +257,34 @@ export const OBRAS_FUTURAS = [
     // 14/08: "playon" y "azufre" dan 0 filas en K. Coherente con que la obra arranca el 24/08 — pero
     // el cuadro no lo AFIRMA por la fecha, lo afirma porque Compras no la nombra.
     comprasObra: null,
-    inicio: '2026-08-24',
-    fin: '2026-09-25',
+    // INICIO REAL, dado por el dueño el 28/08/2026. Antes decía 24/08 y era una estimación: ni la
+    // OC 00002-00002173, ni las tres cotizaciones, ni el informe de nivelación fijan una fecha. El
+    // fin sale del inicio + los 25 días hábiles que declara la cotización de agosto (07/09 → 09/10),
+    // que además conserva los 32 días corridos que tenía la ventana anterior.
+    inicio: '2026-09-07',
+    fin: '2026-10-09',
     plantelFullTime: 4,
     plantelTemporales: 0,
     pctEjecutado: 0,
     horas: { oficialEspecializado: 40, oficial: 1676.6, ayudante: 1725.2 },
     moCargasPesos: 37_042_907,
     egresos: [
-      { concepto: 'Materiales', proveedor: 'FEMENIA', familia: 'Materiales', monto: 7_372_050, fechaEstimada: '2026-08-24' },
-      { concepto: 'Materiales', proveedor: 'Bedini', familia: 'Materiales', monto: 1_524_200, fechaEstimada: '2026-08-24' },
-      { concepto: 'Aditivos', proveedor: 'Sika', familia: 'Químicos y aditivos', monto: 482_040, fechaEstimada: '2026-08-24' },
-      { concepto: 'Materiales', proveedor: 'Alumetal', familia: 'Materiales', monto: 113_025, fechaEstimada: '2026-08-24' },
+      { concepto: 'Materiales', proveedor: 'FEMENIA', familia: 'Materiales', monto: 7_372_050, fechaEstimada: '2026-09-07' },
+      { concepto: 'Materiales', proveedor: 'Bedini', familia: 'Materiales', monto: 1_524_200, fechaEstimada: '2026-09-07' },
+      { concepto: 'Aditivos', proveedor: 'Sika', familia: 'Químicos y aditivos', monto: 482_040, fechaEstimada: '2026-09-07' },
+      { concepto: 'Materiales', proveedor: 'Alumetal', familia: 'Materiales', monto: 113_025, fechaEstimada: '2026-09-07' },
       {
         concepto: 'Gasoil', proveedor: 'ACA', familia: 'Combustible', monto: 565_493,
         cuotas: [
-          { fecha: '2026-08-24', monto: 282_746.5 },
-          { fecha: '2026-09-10', monto: 282_746.5 },
+          { fecha: '2026-09-07', monto: 282_746.5 },
+          { fecha: '2026-09-24', monto: 282_746.5 },
         ],
-        nota: 'mitad el 24/08, mitad el 10/09',
+        nota: 'mitad al inicio (07/09), mitad a mitad de obra (24/09)',
       },
-      { concepto: 'Nafta', proveedor: 'VILLA DEL PINO', familia: 'Combustible', monto: 186_244, fechaEstimada: '2026-08-24' },
-      { concepto: 'Pintura', proveedor: 'Pintureria Cordoba', familia: 'Pintura', monto: 47_775, fechaEstimada: '2026-08-24' },
-      { concepto: 'Ferretería', proveedor: 'Ferretec', familia: 'Ferretería', monto: 95_550, fechaEstimada: '2026-08-24' },
-      { concepto: 'Alambrón', proveedor: 'Mercado Libre', familia: 'Hierro y malla', monto: 129_523, fechaEstimada: '2026-08-24' },
+      { concepto: 'Nafta', proveedor: 'VILLA DEL PINO', familia: 'Combustible', monto: 186_244, fechaEstimada: '2026-09-07' },
+      { concepto: 'Pintura', proveedor: 'Pintureria Cordoba', familia: 'Pintura', monto: 47_775, fechaEstimada: '2026-09-07' },
+      { concepto: 'Ferretería', proveedor: 'Ferretec', familia: 'Ferretería', monto: 95_550, fechaEstimada: '2026-09-07' },
+      { concepto: 'Alambrón', proveedor: 'Mercado Libre', familia: 'Hierro y malla', monto: 129_523, fechaEstimada: '2026-09-07' },
     ],
     noCaja: { maquinaPropia: 2_356_187 },
     notas: null,
