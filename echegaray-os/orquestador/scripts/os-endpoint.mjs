@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Registro del endpoint público actual del OS interactivo.
 //
-// El motor interactivo (:8790) no es alcanzable desde internet entrante (el
-// firewall del server solo deja SSH). El único camino hacia adentro es un túnel
-// SALIENTE (cloudflared). Ese túnel tiene una URL que cambia cada vez que se
+// El motor interactivo (:8790) escucha en LOOPBACK, así que no es alcanzable desde internet
+// entrante. No lo cierra un firewall —este server no tiene uno que filtre: 22, 80 y 443 están
+// abiertos—: lo cierra el bind, que es la defensa que no depende de una regla en otro lado. El
+// único camino hacia adentro es un túnel SALIENTE (cloudflared), cuya URL cambia cada vez que se
 // reinicia. Para que el frente estable (Vercel) y la extensión no dependan de
 // esa URL volátil, la publicamos acá, en una tabla de Supabase, y quien quiera
 // hablar con el OS la lee primero.
