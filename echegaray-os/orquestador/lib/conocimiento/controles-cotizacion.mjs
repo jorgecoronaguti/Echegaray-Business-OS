@@ -36,7 +36,7 @@ import {
   ivaEscritoAMano, ofertasRotas, aritmeticaQueNoCierra, partidasSinDatos, referenciasRotas,
   rotuloContradiceCoeficiente, unidadesContradictorias,
 } from './hallazgos-cotizacion.mjs'
-import { celdasEnError, formulasSobreCeldaRota, renglonesIncoherentes, tieneInventarioDeCeldas } from './hallazgos-celdas.mjs'
+import { celdasEnError, coberturaDeRenglones, formulasSobreCeldaRota, renglonesIncoherentes, tieneInventarioDeCeldas } from './hallazgos-celdas.mjs'
 import { TIPO, ordenar, resumen } from './hallazgo.mjs'
 
 export const RESULTADO = Object.freeze({
@@ -87,6 +87,42 @@ const necesitaFormulasDeOferta = porCotizacion((c) => {
   return null
 })
 
+/**
+ * EL CONTROL DE LA FÓRMULA ROTA TAMPOCO PUEDE MIRAR SIN FÓRMULAS.
+ *
+ * `formulasSobreCeldaRota` recorre `c.formulas`: sin fórmulas no tiene qué recorrer y devuelve una
+ * lista vacía SIEMPRE, con cualquier planilla. Declaraba `necesitaCeldas` —que sólo mira el
+ * inventario de celdas rotas—, así que una cotización con el inventario y sin fórmulas salía LIMPIA
+ * con `sinMirar` vacío. Es el mismo defecto que ya se había arreglado en el IVA con
+ * `necesitaFormulasDeOferta`, un control más allá.
+ */
+const necesitaFormulasDelLibro = porCotizacion((c) => {
+  if (!c.formulas) return 'no se leyeron las fórmulas del libro: sin ellas no se puede ver qué fórmula se apoya en una celda rota'
+  const cuantas = Object.values(c.formulas).reduce((a, f) => a + Object.keys(f ?? {}).length, 0)
+  return cuantas ? null : 'el libro no dejó NINGUNA fórmula legible: no hay dónde buscar la que se apoya en una celda rota'
+})
+
+/**
+ * EL CONTROL DEL RENGLÓN NECESITA RENGLONES CON LOS TRES NÚMEROS.
+ *
+ * `renglonesIncoherentes` sólo compara cuando cantidad, precio y subtotal son números finitos —un
+ * NULL no es un 0—, así que sobre una hoja donde ningún renglón trae los tres devuelve 0 hallazgos
+ * pase lo que pase. `coberturaDeRenglones()` existe exactamente para contestar eso y no estaba
+ * cableada a nada: la llamaban dos tests y nadie más.
+ *
+ * El corte es POR HOJA y no por cotización: 40 renglones comparados en Presupuesto no son evidencia
+ * de nada sobre la OFERTA, que es la hoja que ve el cliente. Lo que NO corta es el renglón suelto —
+ * una hoja con 39 renglones comparables y 1 sin cantidad sigue mirándose, y ese 1 se cuenta en
+ * `coberturaDeRenglones()`; declararlo NO_SE_PUDO_MIRAR dejaría al control mudo sobre el corpus real.
+ */
+const necesitaRenglonesComparables = porCotizacion((c) => {
+  const { porHoja } = coberturaDeRenglones([c])
+  const ciegas = Object.entries(porHoja).filter(([, x]) => x.mirados === 0 && x.salteados > 0).map(([h]) => h)
+  return ciegas.length
+    ? `en ${ciegas.join(' y ')} ningún renglón trae los tres números: no hay nada que multiplicar y «0 incoherentes» no significa nada`
+    : null
+})
+
 /** La cobertura de un control CRUZADO: mira el conjunto, no cada cotización. Debajo del mínimo no
  *  puede encontrar nada aunque el defecto exista, así que no mira. */
 const necesitaConjunto = (minimo, que) => (cotizaciones) => {
@@ -122,8 +158,8 @@ export const CONTROLES = Object.freeze([
   { id: 'coeficiente-de-ajuste-sin-criterio', que: 'la columna COEF. AJUSTE distinta de 1 sin nada que explique por qué', regla: coeficienteDeAjusteSinCriterio, cobertura: necesitaPresupuesto, tipos: [TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO, TIPO.COEFICIENTE_AJUSTE_IMPLAUSIBLE] },
   { id: 'referencia-rota-en-el-presupuesto', que: 'las filas del presupuesto interno cuyo nombre de tarea es un error de fórmula', regla: referenciasRotas, cobertura: necesitaPresupuesto, tipos: [TIPO.REFERENCIA_ROTA] },
   { id: 'celdas-en-error', que: '#REF!, #N/A, #NAME?, #DIV/0!, #VALUE! y #NUM! en CUALQUIER hoja del libro', regla: celdasEnError, cobertura: necesitaCeldas, tipos: [TIPO.CELDA_EN_ERROR] },
-  { id: 'formula-sobre-celda-rota', que: 'las fórmulas sanas que se apoyan en una celda que está en error', regla: formulasSobreCeldaRota, cobertura: necesitaCeldas, tipos: [TIPO.FORMULA_SOBRE_CELDA_ROTA] },
-  { id: 'renglon-que-no-multiplica', que: 'precio × cantidad × coeficiente contra el subtotal que declara el renglón', regla: renglonesIncoherentes, cobertura: y(necesitaOferta, necesitaPresupuesto), tipos: [TIPO.RENGLON_INCOHERENTE] },
+  { id: 'formula-sobre-celda-rota', que: 'las fórmulas sanas que se apoyan en una celda que está en error', regla: formulasSobreCeldaRota, cobertura: y(necesitaCeldas, necesitaFormulasDelLibro), tipos: [TIPO.FORMULA_SOBRE_CELDA_ROTA] },
+  { id: 'renglon-que-no-multiplica', que: 'precio × cantidad × coeficiente contra el subtotal que declara el renglón', regla: renglonesIncoherentes, cobertura: y(necesitaOferta, necesitaPresupuesto, necesitaRenglonesComparables), tipos: [TIPO.RENGLON_INCOHERENTE] },
 ])
 
 /** Qué control emite cada tipo de hallazgo. Es lo que llena `control_que_lo_detecto` del dataset. */
@@ -134,12 +170,33 @@ export const CONTROL_POR_TIPO = Object.freeze(Object.fromEntries(
 /** El control que detectó un hallazgo de este tipo, o `null` si el tipo no lo emite ninguno. PURA. */
 export const controlDe = (tipo) => CONTROL_POR_TIPO[tipo] ?? null
 
-/** Corre UN control. PURA. */
+/**
+ * CORRE UN CONTROL. PURA.
+ *
+ * ═══ LIMPIO EXIGE HABER MIRADO TODO, NO HABER MIRADO ALGO ═══
+ *
+ * La versión anterior decidía `LIMPIO` con `cobertura.mirados > 0`: bastaba UNA cotización legible
+ * para que el control se declarara limpio sobre la tanda entera. Medido con 5 cotizaciones y 4 con
+ * la hoja OFERTA ilegible, `paso()` devolvía `true` con 20 entradas en `sinMirar`; sobre las 237
+ * reales alcanzaba con que una sola se pudiera abrir. Es el mismo defecto que este archivo existe
+ * para matar —«0 hallazgos» leído como «limpio»— reaparecido un nivel más arriba.
+ *
+ * Se arregla acá, en el ESTADO, y no en `paso()`: `paso()` es un agregado, y un consumidor que
+ * mire un control suelto —la corrida por cotización, un tablero, el dataset— tiene que recibir la
+ * misma verdad que el agregado. Arreglar sólo `paso()` dejaba `LIMPIO` mintiendo para todos los
+ * demás. Como corolario, `paso()` no necesita tocarse: si ningún control quedó en
+ * NO_SE_PUDO_MIRAR, entonces ninguno dejó nada sin mirar.
+ *
+ * Un control que miró 3 de 5 y encontró algo SIGUE siendo HALLAZGO: lo que no se puede afirmar es
+ * la ausencia de defecto, nunca su presencia. Y el detalle no se pierde: `cobertura.mirados` dice
+ * cuántas pudo abrir y `cobertura.sinMirar` cuáles no y por qué.
+ */
 export function correrControl(control, cotizaciones = [], opciones = {}) {
   const cobertura = control.cobertura(cotizaciones)
   const hallazgos = cobertura.mirados > 0 ? control.regla(cotizaciones, opciones) : []
+  const miroTodo = cobertura.mirados > 0 && cobertura.sinMirar.length === 0
   const estado = hallazgos.length ? RESULTADO.HALLAZGO
-    : cobertura.mirados > 0 ? RESULTADO.LIMPIO
+    : miroTodo ? RESULTADO.LIMPIO
       : RESULTADO.NO_SE_PUDO_MIRAR
   return { id: control.id, que: control.que, estado, hallazgos, cobertura }
 }
@@ -170,7 +227,11 @@ export function pasarControles(cotizaciones = [], opciones = {}) {
 /**
  * ¿ESTA TANDA PASÓ LIMPIA? PURA.
  *
- * Devuelve `true` SÓLO si todos los controles miraron y ninguno encontró nada. Un control que no
- * pudo mirar rompe el limpio, y esa es la diferencia entera entre este circuito y el anterior.
+ * Devuelve `true` SÓLO si todos los controles miraron TODO y ninguno encontró nada. Un control que
+ * no pudo mirar rompe el limpio, y esa es la diferencia entera entre este circuito y el anterior.
+ *
+ * No hace falta mirar `sinMirar` acá: ningún control puede quedar en LIMPIO con algo sin mirar
+ * —lo garantiza `correrControl`—, así que `noSePudoMirar === 0` ya implica `sinMirar` vacío. La
+ * comprobación vive en el test, para que si alguien afloja el estado esto se ponga rojo.
  */
 export const paso = (r) => r.resumen.conHallazgo === 0 && r.resumen.noSePudoMirar === 0

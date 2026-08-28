@@ -239,22 +239,30 @@ export function renglonesIncoherentes(cotizaciones = []) {
  * Es el control inverso, y sin él «0 renglones incoherentes» no significa nada: puede ser que
  * estén todos bien o que ninguno tuviera los tres números. Un renglón sin cantidad no es un
  * renglón sano — es un renglón que este control NO PUDO MIRAR, y así sale declarado.
+ *
+ * ═══ POR QUÉ EL CONTEO VIENE TAMBIÉN POR HOJA ═══
+ *
+ * El total no alcanza para decidir si el control corrió: 40 renglones mirados en Presupuesto y 0 en
+ * OFERTA dan `mirados: 40` y esconden que la hoja que ve el cliente quedó sin mirar. `porHoja` es lo
+ * que consume la cobertura de `renglon-que-no-multiplica` en `controles-cotizacion.mjs`.
  */
 export function coberturaDeRenglones(cotizaciones = []) {
   let mirados = 0
   let salteados = 0
   const motivos = {}
+  const porHoja = Object.fromEntries(RENGLONES.map((r) => [r.hoja, { mirados: 0, salteados: 0 }]))
   for (const c of cotizaciones) {
     for (const r of RENGLONES) {
       const items = r.de(c)
       if (!items) { motivos[`${r.hoja}: la hoja no se pudo leer`] = (motivos[`${r.hoja}: la hoja no se pudo leer`] ?? 0) + 1; continue }
       for (const i of items) {
-        if (finitos([...r.operandos(i), r.declarado(i)])) { mirados += 1; continue }
+        if (finitos([...r.operandos(i), r.declarado(i)])) { mirados += 1; porHoja[r.hoja].mirados += 1; continue }
         salteados += 1
+        porHoja[r.hoja].salteados += 1
         const k = `${r.hoja}: al renglón le falta alguno de los números de ${r.comoSeArma} o el subtotal`
         motivos[k] = (motivos[k] ?? 0) + 1
       }
     }
   }
-  return { mirados, salteados, motivos }
+  return { mirados, salteados, motivos, porHoja }
 }

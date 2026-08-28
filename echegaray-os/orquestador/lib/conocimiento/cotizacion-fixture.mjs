@@ -58,12 +58,16 @@ export function libroDeCotizacion({
   codigosUsados = ['T1001'], unidadesPresupuesto = ['M2'], coeficientesAjuste = [1], tareasExtra = [], rotuloGG = 'Gastos contables (0.6 % de CD)',
   coeficienteGG = 0.006, importeGG = 600, cliente = 'CLIENTE UNO', bloquesAjenos = [], notas = ['Nota 1: solo mano de obra'],
   erroresExtra = [], formulasExtra = [], filasPresupuesto = null,
+  // Con `[]` la hoja OFERTA queda SIN encabezado y `leerOferta` la declara ilegible, que es el caso
+  // real medido en Drive: la planilla existe, tiene las cuatro pestañas y aun así no se puede leer.
+  // Es la única forma de probar que un control no se declara limpio sobre lo que no pudo abrir.
+  encabezadoDeOferta = ['TAREA', 'UN', 'Cant', 'Precio Unicario', 'Sub Total'],
 } = {}) {
   const oferta = [
     [], [], [], [], [], [],
     [cliente, null, null, null, null, ...bloquesAjenos],
     [], [], [], [],
-    ['TAREA', 'UN', 'Cant', 'Precio Unicario', 'Sub Total'],
+    encabezadoDeOferta,
     [],
     ...items,
     [],

@@ -22,7 +22,7 @@
 // dependa de que alguien se acuerde.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { estudiar, libro } from './cotizacion-fixture.mjs'
+import { ENCABEZADO_PRESUPUESTO, estudiar, libro } from './cotizacion-fixture.mjs'
 import { CONTROLES, RESULTADO, controlDe, correrControl, pasarControles, paso } from './controles-cotizacion.mjs'
 import { coberturaDeRenglones, referenciasDe } from './hallazgos-celdas.mjs'
 import { TIPO } from './hallazgo.mjs'
@@ -187,6 +187,29 @@ test('el motivo de lo que no se pudo mirar viaja con el control, no se pierde', 
   assert.match(motivos[0].porQue, /hacen falta al menos 3/)
 })
 
+test('4 de 5 cotizaciones ilegibles NO son una tanda limpia: LIMPIO exige haber mirado TODO', async () => {
+  // El caso medido que puso la auditoría en FAIL: con `mirados > 0` alcanzaba UNA cotización legible
+  // para que los 14 controles se declararan limpios sobre las otras cuatro y `paso()` devolviera
+  // true con 20 entradas en `sinMirar`. Sobre las 237 reales, una sola planilla abrible bastaba.
+  const libros = [libro('ok.xlsx', RUTA('OBRA OK', 'ok.xlsx'), {}), ...Array.from({ length: 4 }, (_, i) => libro(
+    `x${i}.xlsx`, RUTA(`OBRA X${i}`, `x${i}.xlsx`), { encabezadoDeOferta: [] },
+  ))]
+  const r = await correr(libros)
+  assert.equal(r.cotizaciones ?? 5, 5)
+  const ciegas = r.sinMirar.filter((s) => /OFERTA no tiene el encabezado/.test(s.porQue))
+  assert.ok(ciegas.length >= 4, `las 4 ofertas ilegibles tienen que quedar declaradas: quedaron ${ciegas.length}`)
+  assert.equal(paso(r), false, 'la tanda «pasó» con 4 de 5 cotizaciones sin mirar')
+  // Y ningún control que haya dejado algo sin mirar puede figurar como limpio.
+  const mintiendo = r.corridas.filter((c) => c.estado === RESULTADO.LIMPIO && c.cobertura.sinMirar.length > 0)
+  assert.deepEqual(mintiendo.map((c) => c.id), [], 'hay controles LIMPIOS con cotizaciones sin mirar')
+})
+
+test('paso() y el estado dicen lo mismo: si nada quedó sin mirar, sinMirar está vacío', async () => {
+  const r = await correr(tanda(5))
+  assert.equal(paso(r), true, 'cinco planillas sanas y completas tienen que pasar: si no, el control es inútil')
+  assert.deepEqual(r.sinMirar, [], 'la tanda pasó pero algo quedó sin mirar')
+})
+
 test('sin lista de cotizaciones NINGÚN control dice LIMPIO: una lista vacía no es una planilla sana', () => {
   const r = pasarControles([])
   const verdes = r.corridas.filter((c) => c.estado !== RESULTADO.NO_SE_PUDO_MIRAR)
@@ -215,6 +238,40 @@ test('una cotización estudiada sin inventario de celdas no pasa por limpia en l
   }
 })
 
+test('sin FÓRMULAS, «formula-sobre-celda-rota» no puede mirar aunque tenga el inventario de celdas', async () => {
+  const { cotizaciones } = await estudiar(tanda(1, { erroresExtra: [{ hoja: 'Análisis', celda: 'G6', texto: '#REF!' }] }))
+  // Se le saca lo que la regla recorre —`formulas`— y se le DEJA el inventario de celdas rotas, que
+  // es lo único que la cobertura declarada miraba. Sin este caso el control devolvía LIMPIO con
+  // `sinMirar` vacío sin haber visto una sola fórmula: una lista vacía leída como evidencia.
+  const sinFormulas = cotizaciones.map((c) => { const copia = { ...c }; delete copia.formulas; return copia })
+  const c = correrControl(CONTROLES.find((x) => x.id === 'formula-sobre-celda-rota'), sinFormulas)
+  assert.equal(c.estado, RESULTADO.NO_SE_PUDO_MIRAR, 'se declaró limpio sin ver una sola fórmula')
+  assert.match(c.cobertura.sinMirar[0].porQue, /no se leyeron las fórmulas/)
+  // Y con el libro entero sin ninguna fórmula legible, tampoco: `{}` no es «no hay defectos».
+  const vacias = cotizaciones.map((c2) => ({ ...c2, formulas: { OFERTA: {}, Análisis: {} } }))
+  assert.equal(correrControl(CONTROLES.find((x) => x.id === 'formula-sobre-celda-rota'), vacias).estado, RESULTADO.NO_SE_PUDO_MIRAR)
+})
+
+test('«renglon-que-no-multiplica» no dice LIMPIO cuando NINGÚN renglón tiene los tres números', async () => {
+  // Ni la oferta ni el presupuesto traen cantidad. Las dos hojas se leen —el control cree que puede
+  // mirar— y sin embargo no hay un solo renglón que se pueda multiplicar. Antes: LIMPIO.
+  const sinCantidades = [libro('a.xlsx', RUTA('OBRA A', 'a.xlsx'), {
+    items: [['REPLANTEO', 'M2', null, 100, 1000]],
+    filasPresupuesto: [
+      ['PRESUPUESTO GENERAL'], [], [], [], [], [],
+      ENCABEZADO_PRESUPUESTO, ['ESTRUCTURA'],
+      [1, 'T1001', 'TAREA T1001', 'M2', null, 100, 1, 1000, 46000, 500, 500, 0],
+    ],
+  })]
+  const r = await correr(sinCantidades)
+  const c = control(r, 'renglon-que-no-multiplica')
+  assert.equal(c.estado, RESULTADO.NO_SE_PUDO_MIRAR, '«0 renglones incoherentes» se publicó como limpio sin haber comparado ninguno')
+  assert.equal(paso(r), false)
+  const cobertura = coberturaDeRenglones((await estudiar(sinCantidades)).cotizaciones)
+  assert.equal(cobertura.mirados, 0, 'el escenario no reproduce el caso: algún renglón sí se pudo comparar')
+  assert.ok(cobertura.salteados >= 2)
+})
+
 // ═══════════════════ LAS CINCO REGLAS DEL DUEÑO ═══════════════════
 
 test('un valor 0 NO es un error: un indirecto en cero en UNA cotización de cinco no dispara nada', async () => {
@@ -231,8 +288,12 @@ test('NULL no es cero: el renglón sin cantidad no se compara, se cuenta como no
   assert.ok(cobertura.salteados >= 1, 'el renglón sin cantidad se comparó como si la cantidad valiera 0')
   assert.ok(Object.keys(cobertura.motivos).some((m) => m.startsWith('OFERTA')), 'no se declaró por qué no se miró')
   const r = pasarControles(cotizaciones)
-  assert.equal(control(r, 'renglon-que-no-multiplica').estado, RESULTADO.LIMPIO)
-  assert.deepEqual(control(r, 'renglon-que-no-multiplica').hallazgos, [], 'el renglón sin cantidad se denunció como incoherente')
+  const c = control(r, 'renglon-que-no-multiplica')
+  assert.deepEqual(c.hallazgos, [], 'el renglón sin cantidad se denunció como incoherente')
+  // Y tampoco se declara limpio: el único renglón de la OFERTA no tenía los tres números, así que
+  // sobre esa hoja el control no comparó NADA. Antes decía LIMPIO, que es afirmar que miró.
+  assert.equal(c.estado, RESULTADO.NO_SE_PUDO_MIRAR, 'la hoja sin un solo renglón comparable se declaró limpia')
+  assert.match(c.cobertura.sinMirar[0].porQue, /ningún renglón trae los tres números/)
 })
 
 test('una celda vacía no significa que el control se realizó: el renglón mirado se cuenta aparte', async () => {
