@@ -120,6 +120,19 @@ export async function baseMaestra({ query }) {
 /** La composición unitaria de un conjunto de tareas, con el precio VIGENTE de cada recurso.
  *  Un recurso sin precio vigente sale con `costoUnitario: null` y hace que la partida entera salga
  *  sin costo — la regla ya está en `cadenaDeCosto` y no se repite acá. */
+/** Una fecha de Postgres a `YYYY-MM-DD`. PURA.
+ *
+ * `String(fecha).slice(0, 10)` daba «Fri May 01»: `pg` devuelve las columnas `date` como `Date` de
+ * JavaScript, y su `toString()` es el formato largo en inglés. Ese string no se puede ordenar ni
+ * restar, así que la vigencia del precio salía como `NaN` días y nadie lo notaba porque el campo
+ * igual «tenía valor». Y no se usa `toISOString()` porque el `Date` viene en hora local: a las 00:00
+ * de un huso negativo el ISO retrocede un día. */
+export function isoFecha(v) {
+  if (!v) return null
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`
+  return String(v).slice(0, 10)
+}
+
 export async function composiciones({ query }, tareaIds = []) {
   if (!tareaIds.length) return new Map()
   const r = await query(
@@ -138,7 +151,7 @@ export async function composiciones({ query }, tareaIds = []) {
       codigo: x.codigo, nombre: x.nombre, tipo: x.tipo, unidad: x.unidad,
       cantidad: Number(x.cantidad), desperdicio: Number(x.desperdicio ?? 0),
       costoUnitario: x.costo === null ? null : Number(x.costo),
-      fechaPrecio: x.fecha_precio ? String(x.fecha_precio).slice(0, 10) : null,
+      fechaPrecio: isoFecha(x.fecha_precio),
       moneda: x.moneda ?? 'ARS', fuentePrecio: x.fuente ?? null,
     })
     mapa.set(x.tarea_tipo_id, lista)
