@@ -80,10 +80,28 @@ test('la partición detecta un hueco: si un día se cae, el test se pone rojo', 
 /** El tronco: ni las sub-líneas de rubro, ni la sección por cliente que cuelga del final. */
 const troncoDe = (tipo) => conceptosDe(tipo).filter((c) => !c.sub && !c.cli && !c.tituloSeccion)
 
+test('ninguna fila del cuadro se llama «Resultado»: esto es caja percibida, no resultado devengado', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST MANTIENE MUERTO (28/08/2026) ═══
+  //
+  // El 28/08 se sacó del titular la tarjeta "VARIACIÓN DE CAJA DEL AÑO" porque el dueño leía su
+  // $(23.136.331) como una pérdida —*"la empresa no termina perdiendo tampoco como marca el
+  // resultado"*—. Esa tarjeta era literalmente `=N($N$resultado)`: la CELDA que la alimentaba siguió
+  // publicando el mismo número una fila más abajo, bajo el rótulo "Resultado", en un cuadro percibido.
+  // Reglas de oro 4, 5 y 7: el resultado es devengado y vive en el P&L. Sacar el titular y dejar el
+  // número con la palabra que lo produjo no arregla el reclamo: lo esconde.
+  for (const tipo of ['mes', 'semana']) {
+    for (const c of conceptosDe(tipo)) {
+      assert.ok(!/^\s*Resultado\b/i.test(c.rotulo ?? ''),
+        `${tipo}: la fila "${c.rotulo}" volvió a llamarse resultado en un cuadro por criterio percibido`)
+    }
+    assert.equal(troncoDe(tipo).find((c) => c.clave === 'resultado').rotulo, 'Variación de caja del período')
+  }
+})
+
 test('el TRONCO está en el orden que pidió el dueño, y el saldo final en la misma fila en las dos vistas', () => {
   assert.deepEqual(troncoDe('semana').map((c) => c.rotulo), [
     'Saldo inicial', 'Ingresos reales', 'Ingresos proyectados', 'Egresos reales', 'Egresos proyectados',
-    'Resultado', 'Saldo final',
+    'Variación de caja del período', 'Saldo final',
   ])
   assert.deepEqual(troncoDe('mes').map((c) => c.rotulo).slice(7), [
     'Variación vs presupuesto', 'Variación vs mes anterior',
