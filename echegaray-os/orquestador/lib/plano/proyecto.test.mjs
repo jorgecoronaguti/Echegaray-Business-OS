@@ -84,14 +84,40 @@ test('las frases cortas se descartan: «H-21» suelto no es una especificación'
   assert.equal(frases('Las columnas serán H-21 según cálculo').length, 1)
 })
 
-test('EL CAD APORTA LO QUE NINGÚN OTRO DOCUMENTO TIENE: la unidad de dibujo y las cotas acotadas', () => {
-  const h = hechosDeCad({ unidadDibujo: 'm', cotas: [{ x: 10, y: 20, medida_m: 6.08, capa: '0', texto: null }, { x: 30, y: 20, medida_m: null }] }, { documento: 'ESTRUCTURA.dwg' })
-  assert.equal(h.length, 2, 'la unidad y UNA cota: la cota sin medida no entra')
+test('EL CAD APORTA LA UNIDAD DE DIBUJO Y CUÁNTOS HAY DE CADA BLOQUE', () => {
+  const h = hechosDeCad({
+    unidadDibujo: 'm',
+    bloques: [{ bloque: 'CORREA', cantidad: 12, capas: ['ESTRUCTURA'] }, { bloque: '*U22', cantidad: 6 }, { bloque: 'VACIO', cantidad: 0 }],
+    cotas: [{ x: 10, y: 20, medida_m: 6.08 }],
+  }, { documento: 'ESTRUCTURA.dwg' })
+  assert.equal(h.length, 2, 'la unidad y UN bloque real')
   assert.equal(h[0].atributo, 'unidad_dibujo')
-  assert.equal(h[0].valor, 'm')
-  assert.equal(h[1].valor, 6.08)
-  assert.equal(h[1].unidad, 'm')
-  assert.match(h[1].textoLiteral, /cota medida 6.08 m/)
+  assert.equal(h[1].elemento, 'CORREA')
+  assert.equal(h[1].valor, 12)
+  assert.match(h[1].textoLiteral, /12 inserción\(es\) del bloque «CORREA»/)
+})
+
+test('LAS COTAS NO ENTRAN COMO HECHOS: son evidencia de una medida, no una afirmación sobre un atributo', () => {
+  // Medido: metiendo las 966 cotas del DWG de Quattropani con la coordenada por clave, salían 67
+  // CONFLICTOS FALSOS —dos cotas de dibujos distintos en coordenadas cercanas leídas como dos
+  // fuentes contradiciéndose—, y como un conflicto bloquea la cotización, el ruido tapaba los
+  // conflictos de verdad.
+  const h = hechosDeCad({ unidadDibujo: 'm', cotas: [{ x: 1418, y: 2180, medida_m: 2.0095 }, { x: 1422, y: 2180, medida_m: 2.352 }] }, { documento: 'X.dwg' })
+  assert.equal(h.length, 1, 'sólo la unidad de dibujo')
+  assert.equal(consolidar(h).conflictos.length, 0)
+})
+
+test('los bloques ANÓNIMOS de AutoCAD no son piezas del proyecto', () => {
+  const h = hechosDeCad({ bloques: [{ bloque: '*U22', cantidad: 6 }, { bloque: '*D3', cantidad: 4 }] }, { documento: 'X.dwg' })
+  assert.equal(h.length, 0, '«*U22» es geometría agrupada por el editor, no una partida')
+})
+
+test('DOS CAD QUE DICEN CANTIDADES DISTINTAS DEL MISMO BLOQUE sí es un conflicto real', () => {
+  const a = hechosDeCad({ bloques: [{ bloque: 'CORREA', cantidad: 12 }] }, { documento: 'A.dwg' })
+  const b = hechosDeCad({ bloques: [{ bloque: 'CORREA', cantidad: 14 }] }, { documento: 'B.dwg' })
+  const r = consolidar([...a, ...b])
+  assert.equal(r.conflictos.length, 1)
+  assert.match(r.conflictos[0].porQue, /cantidad_insertada de CORREA/)
 })
 
 test('el proyecto entero se arma con sus conflictos AFUERA y visibles', () => {

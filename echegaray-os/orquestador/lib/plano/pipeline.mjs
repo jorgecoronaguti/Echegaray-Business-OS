@@ -15,7 +15,9 @@
 // alguien multiplique peor.
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { CAPACIDAD, pedirTexto } from '../ia/cliente.mjs'
 import { bloqueAdjunto } from '../comprobantes/vision.mjs'
 import { partirDocumentos, planosDe } from './documentos.mjs'
@@ -25,6 +27,8 @@ import { mapearPartidas } from './partidas.mjs'
 import { seleccionarTodas, huella } from './seleccion.mjs'
 import { procesosDeTodos } from './procesos.mjs'
 import { controlar } from './control.mjs'
+import { ingerir } from './documental.mjs'
+import { armarProyecto } from './proyecto.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { medir } from './conteo.mjs'
@@ -167,7 +171,88 @@ export function tipoObraDe(laminas = [], declarado = null, nombresDeArchivo = []
   return { tipo: null, esGalpon: false, fuente: FUENTE.FALTA_DATO, porQue: 'la documentación no declara el tipo de obra, así que no se aplica ningún checklist tipológico' }
 }
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, logger = null } = {}) {
+/** Deja los bytes de un archivo en disco UNA vez por contenido. El recortador trabaja sobre un
+ *  archivo —MuPDF abre rutas, no buffers— y bajar el mismo plano dos veces sería pagar dos veces
+ *  el mismo byte. */
+export function escritorTemporal(dir = path.join(os.tmpdir(), 'xsas-fuentes')) {
+  return async (bytes, nombre) => {
+    fs.mkdirSync(dir, { recursive: true })
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 24)
+    const ruta = path.join(dir, `${hash}${path.extname(String(nombre ?? '')) || '.pdf'}`)
+    if (!fs.existsSync(ruta) || fs.statSync(ruta).size !== bytes.length) fs.writeFileSync(ruta, bytes)
+    return ruta
+  }
+}
+
+/**
+ * INTERPRETAR UNA REGIÓN RECORTADA. Una llamada de visión por VISTA, no por lámina.
+ *
+ * ═══ POR QUÉ VALE LA PENA PAGAR VARIAS EN VEZ DE UNA ═══
+ *
+ * La lámina entera llega al modelo a ~141 dpi: un símbolo de columna de 8 mm ocupa cuatro píxeles y
+ * no se puede contar. La misma vista recortada llega a 226–400 dpi. Y además la respuesta deja de
+ * mezclar: preguntar «qué elementos hay» sobre CORTE A-A no puede devolver cotas de la planta,
+ * porque la planta no está en la imagen.
+ *
+ * El caché es por hash del PNG, así que el costo se paga una vez por contenido y una lámina que no
+ * cambió no se vuelve a mirar nunca.
+ */
+export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar = false, archivo = null, logger = null } = {}) {
+  const bytes = fs.readFileSync(recorte.ruta)
+  const llave = `v3region:${crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 32)}`
+  const contexto = { archivo: `${archivo ?? 'lámina'} · ${recorte.region?.titulo ?? `región ${recorte.region?.n}`}`, archivoId: null }
+  if (!refrescar) {
+    const cacheado = leerCache(llave)
+    if (cacheado) return { ...validarLamina(cacheado.crudo, contexto), region: recorte.region, deCache: true, uso: null }
+  }
+  const bloque = bloqueAdjunto({ data: bytes.toString('base64'), mediaType: 'image/png' })
+  const r = await pedir({
+    capacidad: CAPACIDAD.COMPLEX,
+    sistema: 'Sos un ingeniero civil computando una obra. Devolvés SÓLO JSON válido, sin markdown.',
+    mensajes: [{ role: 'user', content: [bloque, { type: 'text', text: `${PROMPT}\n\nESTA IMAGEN ES UNA SOLA VISTA de la lámina, recortada y ampliada: «${recorte.region?.titulo ?? ''}» (${recorte.region?.tipo ?? 'vista'}). Computá SÓLO lo que se ve acá. Si un dato está en otra vista, anotalo en "referencias_a_otras_laminas" y dejalo en null.` }] }],
+    maxTokens: 12000,
+    agente: 'xsas-ingenieria',
+    funcion: 'interpretar-region',
+    logger,
+  })
+  const crudo = extraerJson(r.texto)
+  if (!crudo) return { ...validarLamina({}, contexto), region: recorte.region, deCache: false, uso: r, error: 'el modelo no devolvió JSON interpretable' }
+  guardarCache(llave, { crudo, region: recorte.region?.titulo ?? null, cuando: new Date().toISOString() })
+  return { ...validarLamina(crudo, contexto), region: recorte.region, deCache: false, uso: r }
+}
+
+/**
+ * FUSIONAR LO LEÍDO EN LA LÁMINA COMPLETA CON LO LEÍDO EN CADA VISTA. PURA.
+ *
+ * La misma columna aparece en la planta, en el corte y en la planilla de columnas. Sumarlas sin
+ * más multiplica el cómputo por tres. Se deduplica por `id` —que es la marca que el proyectista le
+ * puso: C1, B0, VF— y gana la lectura con MÁS dimensiones resueltas, que es la del dibujo donde
+ * mejor se veía. Lo que la otra lectura sí tenía se copia encima: dos vistas parciales completan
+ * una entera, y ése es exactamente el punto de recortar.
+ */
+export function fusionarElementos(elementos = []) {
+  const cuantasDimensiones = (e) => Object.values(e?.dimensiones ?? {}).filter((d) => d?.valor !== null && d?.valor !== undefined).length
+  const porId = new Map()
+  for (const e of elementos) {
+    const id = String(e?.id ?? '').trim()
+    if (!id) continue
+    const previo = porId.get(id)
+    if (!previo) { porId.set(id, e); continue }
+    const ganador = cuantasDimensiones(e) > cuantasDimensiones(previo) ? e : previo
+    const perdedor = ganador === e ? previo : e
+    const dimensiones = { ...(perdedor.dimensiones ?? {}) }
+    for (const [k, v] of Object.entries(ganador.dimensiones ?? {})) if (v?.valor !== null && v?.valor !== undefined) dimensiones[k] = v
+    porId.set(id, { ...ganador, dimensiones, vistoEn: [...new Set([...(previo.vistoEn ?? []), ...(e.vistoEn ?? []), previo.evidencia?.vista, e.evidencia?.vista].filter(Boolean))] })
+  }
+  // Orden total por id: dos corridas producen la misma lista en el mismo orden.
+  return [...porId.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+}
+
+/** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
+ *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
+export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
+
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null } = {}) {
   const t0 = Date.now()
   const filas = await documentosDelProyecto({ query }, termino)
   const raiz = carpetaRaiz(filas)
@@ -196,7 +281,31 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     laminas.push({ ...lam, elementos: m.elementos, medicion })
   }
 
-  const elementos = laminas.flatMap((l) => l.elementos)
+  // ═══ LA CARPETA ENTERA, ABIERTA COMO UN SOLO PROYECTO ═══
+  // El CAD deja de ser «un archivo que no puedo abrir» y pasa a ser la mejor fuente geométrica; el
+  // pliego y la memoria dejan de ser documentos sueltos y pasan a COMPLETAR lo que el plano no dice.
+  const escribirTemporal = escritorTemporal()
+  const documental = await ingerir({ google, insumos, planosLegibles: planos.legibles, escribirTemporal, limite: limiteRegiones, logger })
+
+  // ═══ UNA MIRADA POR VISTA, NO UNA POR LÁMINA ═══
+  const porRegion = []
+  if (porRegiones) {
+    for (const seg of documental.segmentaciones) {
+      for (const lam of seg.laminas) {
+        for (const rec of lam.recortes) {
+          if (!rec.ok || !REGIONES_QUE_SE_MIRAN.includes(rec.region?.tipo)) continue
+          const r = await interpretarRegion(rec, { pedir, refrescar, archivo: seg.archivo, logger })
+          anotar(r.uso)
+          porRegion.push({ archivo: seg.archivo, ...r })
+        }
+      }
+    }
+  }
+
+  // Los elementos de las vistas recortadas se SUMAN a los de la lámina completa y se deduplican por
+  // id: una columna vista en la planta y en el corte es UNA columna, no dos. Gana la lectura con
+  // más dimensiones resueltas, que es la que vio el dibujo más grande.
+  const elementos = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
   const computo = computarElementos(elementos)
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
@@ -235,7 +344,13 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const checklist = tipo.esGalpon ? evaluarChecklist({ computadas: computo.items.map((i) => ({ nombre: i.nombre, unidad: i.unidad })) }) : []
   const partidasParaControl = mapeo.mapeos.filter((m) => m.tarea).map((m) => ({ nombre: m.tarea.nombre, unidad: m.tarea.unidad }))
   const omisionesCircot = referenciaCircot ? omisionesPotenciales(partidasParaControl, referenciaCircot) : []
-  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot })
+  const proyecto = armarProyecto({
+    documentos: filas.filter((f) => !f.is_folder),
+    hechos: documental.hechos,
+    laminas,
+    cad: documental.cad,
+  })
+  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos })
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
   const comps = await composiciones({ query }, ids)
 
@@ -244,6 +359,9 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
     control, checklist, tipoObra: tipo,
+    documental: { ...documental, segmentaciones: documental.segmentaciones },
+    proyecto,
+    porRegion: porRegion.map((r) => ({ archivo: r.archivo, region: r.region?.titulo ?? null, tipo: r.region?.tipo ?? null, elementos: r.elementos.length, deCache: r.deCache, error: r.error ?? null })),
     referenciaCircot: referenciaCircot ? { periodo: referenciaCircot.periodo, items: referenciaCircot.total } : null,
     // La huella es lo que se compara entre dos corridas para decir si dieron lo mismo. Va en el
     // resultado y no en un script aparte porque una reproducibilidad que hay que reconstruir a mano

@@ -156,16 +156,31 @@ export function frases(texto) {
 const EXTRAIBLES = Object.freeze(['resistencia', 'material', 'espesor_m', 'terminacion', 'metodo', 'ubicacion', 'armadura'])
 
 /**
+ * LAS PALABRAS QUE CONVIERTEN UNA FRASE EN UNA REGLA DE TODO EL PROYECTO.
+ *
+ * MEDIDO Y POR ESO ESTÁ ACÁ: sin esta condición, toda frase que mencionaba un material sin nombrar
+ * la pieza caía en el mismo balde `*:material`, y un documento que habla de acero en un renglón y
+ * de hormigón en otro se leía como 27 fuentes contradiciéndose consigo mismas. Un documento no se
+ * contradice por mencionar dos materiales: se contradice cuando dice DOS VECES qué es LO MISMO.
+ *
+ * Una frase sin pieza y sin cuantificador no es una especificación general: es contexto, y el
+ * contexto no entra al proyecto como hecho.
+ */
+const CUANTIFICADOR_UNIVERSAL = /\b(todo|toda|todos|todas|en\s+general|generalidad|salvo\s+indicaci|salvo\s+especificaci|la\s+totalidad|para\s+toda\s+la\s+obra)\b/i
+
+/**
  * LOS HECHOS TÉCNICOS QUE DICE UN DOCUMENTO DE TEXTO. PURA.
  *
  * Recorre frase por frase; si la frase nombra una PIEZA y declara un atributo, sale un hecho atado a
- * esa pieza. Si declara un atributo sin nombrar pieza, sale atado a `*` —vale para todo el proyecto,
- * que es exactamente lo que significa «el hormigón será H-21 en toda la obra»—.
+ * esa pieza. Si NO nombra pieza, sólo sale como regla de proyecto (`*`) cuando la frase se declara
+ * universal —«todo el hormigón de la obra será H-30»—; el resto se descarta como contexto.
  */
 export function hechosDeTexto(texto, { documento, clase = CLASE_FUENTE.PLIEGO } = {}) {
   const salida = []
   for (const f of frases(texto)) {
     const pieza = piezaDe(f)?.valor ?? null
+    const universal = CUANTIFICADOR_UNIVERSAL.test(f)
+    if (!pieza && !universal) continue
     const attr = atributosDe(f)
     for (const k of EXTRAIBLES) {
       const a = attr[k]
@@ -179,22 +194,40 @@ export function hechosDeTexto(texto, { documento, clase = CLASE_FUENTE.PLIEGO } 
 /**
  * LOS HECHOS QUE APORTA UN CAD. PURA.
  *
- * Un DXF no dice «la viga es H-21»: dice que hay 966 cotas, 66 capas y 31 bloques. Lo que aporta al
- * proyecto documental son DOS cosas que ningún otro documento tiene: la UNIDAD de dibujo declarada
- * —sin la cual ninguna longitud se puede llamar metro— y las MEDIDAS ACOTADAS, que son las únicas
- * dimensiones del proyecto que escribió una persona a propósito.
+ * ═══ UNA COTA NO ES UN HECHO CONSOLIDABLE, Y CONFUNDIRLO SALE CARO ═══
+ *
+ * La primera versión metía las 966 cotas del DWG de Quattropani como hechos, con la coordenada
+ * redondeada por clave. Resultado medido: 67 CONFLICTOS FALSOS, porque dos cotas de dibujos
+ * distintos que caen en coordenadas cercanas se leían como dos fuentes contradiciéndose sobre la
+ * misma cosa. Y como un conflicto bloquea la cotización, el ruido tapaba los conflictos de verdad.
+ *
+ * Una cota es EVIDENCIA de una medida en un lugar, no una afirmación sobre el atributo de un
+ * elemento con nombre. Vive en `medicion.cotas` y la usa la etapa de medición para resolver
+ * dimensiones; acá no entra.
+ *
+ * Lo que SÍ es un hecho del proyecto:
+ *   · la UNIDAD de dibujo declarada — sin ella ninguna longitud se puede llamar metro;
+ *   · CUÁNTOS hay de cada bloque insertado, que es la pregunta más cara de todo el cómputo y la
+ *     única fuente que la contesta sin contar símbolos a ojo. Y si dos CAD dicen cantidades
+ *     distintas del mismo bloque, ESO sí es un conflicto que hay que ver.
  */
 export function hechosDeCad(medicion, { documento } = {}) {
   const salida = []
   if (medicion?.unidadDibujo) {
     salida.push(hecho({ atributo: 'unidad_dibujo', valor: medicion.unidadDibujo, clase: CLASE_FUENTE.CAD, documento, textoLiteral: `$INSUNITS = ${medicion.unidadDibujo}`, confianza: 'alta' }))
   }
-  for (const c of medicion?.cotas ?? []) {
-    if (c.medida_m === null || c.medida_m === undefined) continue
+  for (const b of medicion?.bloques ?? []) {
+    if (!b?.bloque || !(b.cantidad > 0)) continue
+    // Los bloques anónimos de AutoCAD (`*U22`, `*D3`) no son piezas del proyecto: son geometría
+    // agrupada por el editor. Contarlos como cantidades produce partidas que no existen.
+    // `*U22` son bloques anónimos del editor; `_Dot`, `_Oblique`, `_OPEN90` son las puntas de
+    // flecha y los símbolos de acotación que AutoCAD trae de fábrica. Ni unos ni otros son piezas
+    // del proyecto, y contarlos produce «4 unidades de _Dot» adentro de un presupuesto.
+    if (/^[*_]/.test(b.bloque)) continue
     salida.push(hecho({
-      elemento: null, atributo: `cota@${Math.round(c.x ?? 0)},${Math.round(c.y ?? 0)}`,
-      valor: c.medida_m, unidad: 'm', clase: CLASE_FUENTE.CAD, documento,
-      textoLiteral: c.texto ? `cota con texto «${c.texto}»` : `cota medida ${c.medida_m} m en capa ${c.capa ?? '0'}`,
+      elemento: b.bloque, atributo: 'cantidad_insertada', valor: b.cantidad, unidad: 'un',
+      clase: CLASE_FUENTE.CAD, documento,
+      textoLiteral: `${b.cantidad} inserción(es) del bloque «${b.bloque}»${b.capas?.length ? ` en ${b.capas.join(', ')}` : ''}`,
       confianza: 'alta',
     }))
   }

@@ -126,23 +126,29 @@ export const ESTADO_COTIZACION = Object.freeze({ COMPLETA: 'COMPLETA', INCOMPLET
  * que uno cree del resto. Y declara `porQue` incluso cuando está completa: «alcanzó el 94% sin
  * supuestos ocultos» es una afirmación verificable; «lista» no lo es.
  */
-export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [] } = {}) {
+export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [], conflictos = [] } = {}) {
   const cob = medirCobertura({ items: computo.items ?? [], mapeos: mapeo.mapeos ?? [], detectados: computo.detectados })
   const ocultos = supuestosOcultos(computo.items ?? [])
   const abiertas = preguntas({ mapeos: mapeo.mapeos ?? [], procesos: procesos.procesos ?? [], checklist })
-  const estado = cob.alcanza && !ocultos.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
+  // UN CONFLICTO DOCUMENTAL SIN RESOLVER TAMBIÉN DEJA LA COTIZACIÓN INCOMPLETA. Si el plano dice
+  // H-21 y la memoria dice H-25, el precio de esa partida no está determinado por más cobertura que
+  // haya: cotizarlo es elegir en silencio el resultado de una discusión que no ocurrió.
+  const estado = cob.alcanza && !ocultos.length && !conflictos.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
   return {
     estado,
     cobertura: cob,
     supuestosOcultos: ocultos,
     preguntas: abiertas,
     omisionesCircot,
+    conflictos,
     porQue: estado === ESTADO_COTIZACION.COMPLETA
-      ? `${Math.round(cob.cobertura * 100)}% de los elementos detectados quedaron con cantidad y con partida, y no hay ningún número con fuente no declarada`
-      : ocultos.length
+      ? `${Math.round(cob.cobertura * 100)}% de los elementos detectados quedaron con cantidad y con partida, sin conflictos documentales y sin ningún número con fuente no declarada`
+      : conflictos.length
+        ? `hay ${conflictos.length} conflicto(s) entre documentos del proyecto sin resolver: ${conflictos.slice(0, 2).map((c) => c.que).join(', ')}`
+        : ocultos.length
         ? `hay ${ocultos.length} cantidad(es) con una fuente que no se puede confirmar y que no está declarada como supuesto`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cobertura ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · preguntas abiertas ${abiertas.length}${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cobertura ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · preguntas abiertas ${abiertas.length}${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
   }
 }
