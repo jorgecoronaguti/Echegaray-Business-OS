@@ -124,25 +124,71 @@ export function permisosDeRol(rol) {
  * Devuelve `{rol, verificado, declarado}`: la diferencia entre lo declarado y lo real no se tapa.
  * PURA no es —lee la base—, pero falla cerrado: si la consulta rompe, no otorga nada nuevo.
  */
-export async function rolVerificado(port, actor) {
+/**
+ * EL ROL DE QUIEN NO SE PUDO VERIFICAR. No está en `PERMISOS_POR_ROL`, así que `permisosDeRol` le
+ * devuelve la lista vacía — que es la respuesta correcta y la que el resto del gateway ya sabe
+ * tratar. Se usa un rótulo y no `null` porque el contrato pide un string: un `null` acá salía como
+ * «pedido inválido: actor.rol esperaba un string», que describe la forma y esconde la razón.
+ */
+export const ROL_NO_VERIFICADO = 'no_verificado'
+
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * LOS ACTORES DE SERVICIO — declarados por el SERVIDOR, nunca por el pedido.
+ *
+ * `XSAS_ACTORES_DE_SERVICIO="os:worker=direccion,os:timer=administracion"`. Es la única forma de que
+ * un emisor sin persona detrás tenga rol, y vive en la configuración del proceso: quien manda el
+ * pedido no puede agregarse a esta lista.
+ */
+export function actoresDeServicio(env = process.env) {
+  const crudo = String(env.XSAS_ACTORES_DE_SERVICIO ?? '').trim()
+  const mapa = new Map()
+  for (const par of crudo.split(',')) {
+    const [id, rol] = par.split('=').map((x) => String(x ?? '').trim())
+    if (id && rol && PERMISOS_POR_ROL[rol]) mapa.set(id, rol)
+  }
+  return mapa
+}
+
+export async function rolVerificado(port, actor, { servicios = actoresDeServicio() } = {}) {
   const declarado = String(actor?.rol ?? '').trim() || null
   const id = String(actor?.id ?? '').trim()
-  const email = String(actor?.email ?? '').trim()
-  const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-  if (!port?.query || (!esUuid && !email)) return { rol: declarado, verificado: false, declarado }
-  try {
-    const { rows } = esUuid
-      ? await port.query('select rol from public.perfiles where id = $1 limit 1', [id])
-      : await port.query(
-        `select p.rol from public.perfiles p
-           join auth.users u on u.id = p.id
-          where lower(u.email) = lower($1) limit 1`, [email])
-    // Un actor que dice ser alguien y no existe NO hereda lo que declaró: se queda sin rol.
-    if (!rows.length) return { rol: null, verificado: true, declarado }
-    return { rol: rows[0].rol, verificado: true, declarado }
-  } catch {
-    return { rol: declarado, verificado: false, declarado }
+  // El email puede venir en su campo o —como lo mandaba la app— dentro de `id`.
+  const email = EMAIL.test(String(actor?.email ?? '').trim()) ? String(actor.email).trim()
+    : (EMAIL.test(id) ? id : '')
+
+  // 1. Un actor de servicio: su rol lo fija el proceso, no el cuerpo.
+  if (servicios.has(id)) return { rol: servicios.get(id), verificado: true, via: 'servicio', declarado }
+
+  // 2. Una persona identificable: manda la base.
+  if (port?.query && (UUID.test(id) || email)) {
+    try {
+      const { rows } = UUID.test(id)
+        ? await port.query('select rol from public.perfiles where id = $1 limit 1', [id])
+        : await port.query(
+          `select p.rol from public.perfiles p
+             join auth.users u on u.id = p.id
+            where lower(u.email) = lower($1) limit 1`, [email])
+      if (!rows.length) return { rol: ROL_NO_VERIFICADO, verificado: true, via: 'base', declarado }
+      return { rol: rows[0].rol, verificado: true, via: 'base', declarado }
+    } catch {
+      // La base caída NO otorga: sin poder verificar, no hay rol. Un error de infraestructura no
+      // puede convertirse en permisos.
+      return { rol: ROL_NO_VERIFICADO, verificado: false, via: 'base_caida', declarado }
+    }
   }
+
+  // 3. Nadie más. Y ACÁ ESTABA LA ESCALADA (27/08/2026, auditoría, round 3): antes se conservaba lo
+  // declarado «porque no hay a quién preguntarle». No era eso: quien no quiere que le pregunten
+  // ELIGE no ser preguntable — bastaba un `id` que no fuera UUID para que `rol: "direccion"` pasara
+  // entero. Probado dos veces contra la puerta viva, una con el email real de una cuenta jefe_obra.
+  //
+  // Mientras el rol sea un campo del cuerpo, verificarlo mejor no alcanza: hay que cambiar QUIÉN lo
+  // declara. Un emisor sin persona identificable y sin estar en la lista de servicios del proceso se
+  // queda sin rol y sin permisos. Puede pedir lo que no necesita ninguno.
+  return { rol: ROL_NO_VERIFICADO, verificado: true, via: 'sin_identidad', declarado }
 }
 
 /**

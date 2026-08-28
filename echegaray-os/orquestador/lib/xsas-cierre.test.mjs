@@ -316,26 +316,45 @@ test('F · con el secreto en la mano, declarar «direccion» ya no alcanza', asy
   assert.equal(r.verificado, true)
 })
 
-test('F · un actor que dice ser alguien y no existe no hereda lo que declaró', async () => {
-  const { rolVerificado } = await import('./xsas-permisos.mjs')
+test('F · un actor que dice ser alguien y no existe se queda sin rol', async () => {
+  const { rolVerificado, ROL_NO_VERIFICADO } = await import('./xsas-permisos.mjs')
   const port = { query: async () => ({ rows: [] }) }
   const r = await rolVerificado(port, { email: 'nadie@ecsas.com.ar', rol: 'direccion' })
-  assert.equal(r.rol, null)
+  assert.equal(r.rol, ROL_NO_VERIFICADO)
+  assert.deepEqual(permisosDeRol(r.rol), [], 'y sin rol no hay permisos')
 })
 
-test('F · sin nadie a quien preguntarle —worker, timer— se conserva lo declarado', async () => {
+test('F · el email escondido en `id` tampoco escapa a la verificación', async () => {
+  // El auditor lo probó viva así: `{"actor":{"id":"qa.jefe.obra@ecsas.com.ar","rol":"direccion"}}`.
+  // El email viajaba en `id`, `rolVerificado` miraba `email`, y la escalada pasaba sin aviso.
   const { rolVerificado } = await import('./xsas-permisos.mjs')
-  const r = await rolVerificado({ query: async () => ({ rows: [] }) }, { id: 'os:worker', rol: 'direccion' })
-  assert.equal(r.rol, 'direccion')
-  assert.equal(r.verificado, false, 'y se dice que no se verificó')
+  const vistos = []
+  const port = { query: async (_q, args) => { vistos.push(args[0]); return { rows: [{ rol: 'jefe_obra' }] } } }
+  const r = await rolVerificado(port, { id: 'qa.jefe.obra@ecsas.com.ar', rol: 'direccion' })
+  assert.equal(r.rol, 'jefe_obra')
+  assert.deepEqual(vistos, ['qa.jefe.obra@ecsas.com.ar'])
 })
 
-test('F · si la base falla, no se otorga nada nuevo', async () => {
+test('F · un id que no es de nadie NO conserva lo declarado: ahí estaba la escalada', async () => {
+  const { rolVerificado, ROL_NO_VERIFICADO } = await import('./xsas-permisos.mjs')
+  const r = await rolVerificado({ query: async () => ({ rows: [] }) }, { id: 'worker-audit', rol: 'direccion' })
+  assert.equal(r.rol, ROL_NO_VERIFICADO, 'quien no quiere que le pregunten elegía no ser preguntable')
+  assert.equal(r.via, 'sin_identidad')
+})
+
+test('F · un actor de servicio lo declara el PROCESO, no el cuerpo', async () => {
   const { rolVerificado } = await import('./xsas-permisos.mjs')
+  const servicios = new Map([['os:worker', 'administracion']])
+  const r = await rolVerificado({}, { id: 'os:worker', rol: 'direccion' }, { servicios })
+  assert.equal(r.rol, 'administracion', 'el cuerpo pedía direccion y el proceso dice otra cosa')
+  assert.equal(r.via, 'servicio')
+})
+
+test('F · si la base falla, no se otorga nada', async () => {
+  const { rolVerificado, ROL_NO_VERIFICADO } = await import('./xsas-permisos.mjs')
   const port = { query: async () => { throw new Error('sin base') } }
   const r = await rolVerificado(port, { id: '11111111-2222-3333-4444-555555555555', rol: 'direccion' })
-  assert.equal(r.rol, 'direccion')
-  assert.equal(r.verificado, false)
+  assert.equal(r.rol, ROL_NO_VERIFICADO, 'un error de infraestructura no puede convertirse en permisos')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -356,4 +375,14 @@ test('G · la ruta de la app filtra el contexto del navegador y el del servidor 
     'y el del servidor va ÚLTIMO: invertirlo dejaría que el navegador pise lo que se leyó con la RLS')
   assert.ok(!/\.\.\.\(entrada\.contexto \?\? \{\}\)/.test(texto),
     'el contexto crudo del navegador no puede volver a entrar')
+})
+
+test('E · un contexto sin firma no llena NINGÚN argumento, ni siquiera los que no nombran una entidad', async () => {
+  const { argumentosPara } = await import('./xsas-resolutores.mjs')
+  const tool = { schema: { input_schema: { properties: { sheet: {}, url: {}, notas: {} }, required: ['sheet'] } } }
+  const sinFirma = argumentosPara(tool, { contexto: { sheet: 'la-planilla-que-yo-elija', url: 'http://afuera', notas: 'x' } })
+  assert.deepEqual(sinFirma.args, {}, 'el caller no elige a qué fuente externa apunta el OS')
+  assert.deepEqual(sinFirma.falta, ['sheet'])
+  const conFirma = argumentosPara(tool, { contexto: { sheet: 'la-del-servidor' }, verificadoPor: 'app-server' })
+  assert.equal(conFirma.args.sheet, 'la-del-servidor')
 })

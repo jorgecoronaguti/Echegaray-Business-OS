@@ -18,10 +18,37 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { toolsDelNucleo } from './xsas-resolutores.mjs'
-import { permisosDeRol } from './xsas-permisos.mjs'
-import { filtrarPorVisibilidad, UMBRAL, CANTIDAD_VISIBLE, IDENTIFICADOR, TACHADO } from './xsas-visibilidad.mjs'
+import { permisosDeRol, escribeAfuera } from './xsas-permisos.mjs'
+import { filtrarPorVisibilidad, TACHADO } from './xsas-visibilidad.mjs'
 
 const JEFE = { id: 'jefe@ecsas.com.ar', rol: 'jefe_obra', permisos: permisosDeRol('jefe_obra') }
+const DIRECCION = { id: 'jorge@ecsas.com.ar', rol: 'direccion', permisos: permisosDeRol('direccion') }
+
+/**
+ * ═══ EL ORÁCULO NO PUEDE COMPARTIR LA DEFINICIÓN CON LO QUE PRUEBA (auditoría round 3) ═══
+ *
+ * La primera versión de este archivo decidía qué era una fuga importando `UMBRAL`,
+ * `CANTIDAD_VISIBLE` e `IDENTIFICADOR` del módulo bajo prueba: el día que entrara `saldo` a la lista
+ * blanca, el filtro dejaría de tachar Y el detector dejaría de detectar — verde con la plata afuera.
+ * Es el espejo un piso más arriba.
+ *
+ * El oráculo de acá abajo no sabe nada del filtro. Compara la salida de un rol que VE plata contra
+ * la del que NO la ve, y exige que todo número grande que el primero recibe esté cambiado en el
+ * segundo. No hay lista que ampliar para hacerlo pasar: para engañarlo habría que dejar de tachar,
+ * que es exactamente lo que tiene que detectar.
+ */
+function numerosGrandes(x, ruta = '', out = new Map()) {
+  if (typeof x === 'number' && Number.isFinite(x) && Math.abs(x) >= 1000) out.set(ruta, x)
+  // En un texto sólo cuentan las corridas de CINCO dígitos y los importes con símbolo o separador:
+  // un año («2026-06») tiene cuatro y no es plata, y tratarlo como fuga haría que el oráculo pidiera
+  // tachar la fecha de un período fiscal.
+  else if (typeof x === 'string') {
+    for (const m of x.matchAll(/-?\b\d{5,}\b|(\$|u\$s|usd)\s*[\d.,]+|-?\b\d{1,3}(\.\d{3})+\b/gi)) out.set(`${ruta}«${m.index}»`, m[0])
+  }
+  else if (Array.isArray(x)) x.forEach((v, i) => numerosGrandes(v, `${ruta}[${i}]`, out))
+  else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) numerosGrandes(v, ruta ? `${ruta}.${k}` : k, out)
+  return out
+}
 
 /** Recorre lo filtrado y devuelve las rutas donde quedó un número que sólo puede ser plata. */
 function fugas(datos, ruta = '', clave = '') {
@@ -48,35 +75,42 @@ function fugas(datos, ruta = '', clave = '') {
 }
 
 test('ninguna tool real le filtra un número de plata a un rol sin comercial.read', async () => {
-  const { mapa } = await toolsDelNucleo({ google: null })
+  // Con un cliente de Google de mentira entran también las tools que lo exigen —entre ellas
+  // `briefing.caja`, que es la que se fugó—. Sin él ni siquiera estaba registrada y el invariante
+  // no cubría el caso que lo motivó.
+  const google = { readSheetValues: async () => [], listarArchivos: async () => [], descargarBytes: async () => Buffer.alloc(0) }
+  const { mapa } = await toolsDelNucleo({ google, refrescar: true })
   const corridas = []
   const noCorrieron = []
 
   for (const [clave, tool] of mapa) {
-    // Sólo las que corren sin argumentos: pedirles uno inventado sería probar otra cosa.
     if ((tool?.schema?.input_schema?.required ?? []).length) continue
+    // NINGUNA TOOL DE ESCRITURA SE CORRE EN UN TEST. Hoy `cotizacion.registrar` no inserta porque
+    // valida sus argumentos antes; el día que una tenga defaults, esta suite escribiría en la base
+    // de producción. Un test no puede tener efectos afuera.
+    if (escribeAfuera(tool.capability)) continue
     let datos
-    try { datos = await tool.run({}) } catch (e) { noCorrieron.push(`${clave}: ${String(e?.message ?? e).slice(0, 80)}`); continue }
+    try { datos = await tool.run({}) } catch (e) { noCorrieron.push(`${clave}: ${String(e?.message ?? e).slice(0, 60)}`); continue }
     if (datos == null) { noCorrieron.push(`${clave}: devolvió null`); continue }
     corridas.push(clave)
 
-    const visto = filtrarPorVisibilidad({
-      actor: JEFE, datos,
-      respuesta: typeof datos?.resumen_texto === 'string' ? datos.resumen_texto : (datos?.texto ?? null),
-    })
-    const fuga = fugas(visto.datos).concat(visto.respuesta ? fugas(visto.respuesta, 'respuesta') : [])
-    assert.deepEqual(fuga, [], `${clave} dejó pasar plata: ${fuga.join(' · ')}`)
+    const texto = typeof datos?.resumen_texto === 'string' ? datos.resumen_texto : (datos?.texto ?? null)
+    const ve = filtrarPorVisibilidad({ actor: DIRECCION, datos, respuesta: texto })
+    const noVe = filtrarPorVisibilidad({ actor: JEFE, datos, respuesta: texto })
 
-    // Y si tachó algo, tiene que DECIRLO. Declarar una protección que no ocurrió sería peor que no
-    // filtrar; no declarar la que sí ocurrió deja al que lee creyendo que vio todo.
-    const hayTachado = JSON.stringify(visto.datos ?? '').includes(TACHADO) || String(visto.respuesta ?? '').includes(TACHADO)
-    if (hayTachado) assert.match(visto.degradacion ?? '', /tachada/, `${clave} tachó y no lo declaró`)
+    const antes = numerosGrandes({ datos: ve.datos, respuesta: ve.respuesta })
+    const despues = numerosGrandes({ datos: noVe.datos, respuesta: noVe.respuesta })
+    const sobrevivientes = [...antes].filter(([ruta, valor]) => despues.get(ruta) === valor)
+    assert.deepEqual(sobrevivientes.map(([r, v]) => `${r} = ${v}`), [],
+      `${clave}: el jefe de obra recibió el mismo número grande que la dirección`)
+
+    const hayTachado = JSON.stringify(noVe.datos ?? '').includes(TACHADO) || String(noVe.respuesta ?? '').includes(TACHADO)
+    if (hayTachado) assert.match(noVe.degradacion ?? '', /tachada/, `${clave} tachó y no lo declaró`)
   }
 
-  // Un invariante que no corrió sobre nada pasa siempre. Se exige piso, y lo que no pudo correr se
-  // declara: «no pude mirar» no es «está bien».
   assert.ok(corridas.length >= 3,
     `el invariante corrió sobre ${corridas.length} tools reales; no alcanza. No corrieron: ${noCorrieron.join(' | ')}`)
+  console.log(`   [invariante] tools reales cubiertas: ${corridas.join(', ')}`)
 })
 
 test('el caso exacto que se fugó en producción: el total tachado y los sumandos publicados', () => {
@@ -96,7 +130,7 @@ test('el caso exacto que se fugó en producción: el total tachado y los sumando
     proyeccion_7dias: { caja_hoy: 33670574, proyectado: 38480796 },
   }
   const r = filtrarPorVisibilidad({ actor: JEFE, datos: briefing, respuesta: null })
-  assert.deepEqual(fugas(r.datos), [], 'los sumandos son tan plata como el total')
+  assert.deepEqual([...numerosGrandes(r.datos).keys()], [], 'los sumandos son tan plata como el total')
   assert.equal(r.datos.caja.cuentas[0].saldo, TACHADO)
   assert.equal(r.datos.cobranzas_mes.cobrado, TACHADO)
   assert.equal(r.datos.proyeccion_7dias.caja_hoy, TACHADO)

@@ -18,7 +18,7 @@
 // Por eso: SIN SECRETO NO ATIENDE. No hay modo dev que lo relaje. Un borde que se abre "para
 // probar" es un borde abierto.
 import { igualEnTiempoConstante } from './secreto-compartido.mjs'
-import { permisosDeRol, rolVerificado } from '../lib/xsas-permisos.mjs'
+import { permisosDeRol, rolVerificado, ROL_NO_VERIFICADO } from '../lib/xsas-permisos.mjs'
 
 const NO_ENCONTRADO = { status: 404, body: { error: 'not_found' } }
 
@@ -36,7 +36,7 @@ function secretoDelHeader(headers = {}) {
  * @param {number} [deps.maxBytes]
  * @returns {(req:{method:string, url:string, headers:object, rawBody:string}) => Promise<{status:number, body:object}>}
  */
-export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxBytes = 256 * 1024, ruta = '/xsas' } = {}) {
+export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxBytes = 256 * 1024, ruta = '/xsas', servicios = undefined } = {}) {
   return async function manejar({ method, url, headers = {}, rawBody = '' } = {}) {
     const camino = String(url ?? '').split('?')[0]
     if (camino !== ruta) return NO_ENCONTRADO
@@ -68,19 +68,18 @@ export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxB
     // MANDABA EL EMISOR, así que con el secreto en la mano bastaba con escribir `rol: "direccion"`.
     // Ahora, si el actor se identifica contra `public.perfiles`, manda la base.
     const actor = { ...(bruto?.actor ?? {}) }
-    const rol = await rolVerificado(gateway, actor)
+    const rol = await rolVerificado(gateway, actor, servicios ? { servicios } : {})
     // Un actor identificable que no existe en `perfiles` no es un pedido mal armado: es una cuenta
     // que no está. Decirlo así evita que el error de forma («actor.rol esperaba un string») tape la
     // razón real, que es la que quien pide necesita para arreglarlo.
-    if (rol.verificado && !rol.rol) {
-      return { status: 403, body: { ok: false, estado: 'error', error: { tipo: 'sin_permiso', mensaje: 'esa cuenta no existe en el OS: no tiene perfil ni rol' } } }
-    }
     actor.rol = rol.rol
     actor.permisos = permisosDeRol(rol.rol)
     const r = await atender({ ...bruto, actor }, gateway)
     // Que lo declarado no coincida con lo real no se calla: es información sobre quien pide.
-    if (rol.verificado && rol.declarado && rol.declarado !== rol.rol) {
-      r.degradacion = [r.degradacion, `el rol declarado («${rol.declarado}») no es el que tiene esta cuenta`].filter(Boolean).join(' · ')
+    if (rol.declarado && rol.declarado !== rol.rol) {
+      r.degradacion = [r.degradacion, rol.rol === ROL_NO_VERIFICADO
+        ? `el rol declarado («${rol.declarado}») no se pudo verificar (${rol.via}): este pedido corrió SIN permisos`
+        : `el rol declarado («${rol.declarado}») no es el que tiene esta cuenta`].filter(Boolean).join(' · ')
       r.estado = 'degradado'
     }
     // El código HTTP sigue al ESTADO, no al `ok`: una respuesta degradada es 200 con su motivo

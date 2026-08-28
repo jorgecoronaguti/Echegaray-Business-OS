@@ -65,7 +65,32 @@ export const UMBRAL = 1000
  * Se compara contra la clave completa o contra su último tramo (`cantidad_total` → `total` no, pero
  * `hh_previstas` → `hh` sí), por eso el patrón lleva bordes de palabra sobre `_`.
  */
-export const CANTIDAD_VISIBLE = /(^|_)(cantidad|cantidades|unidad|unidades|hh|horas|hora|jornadas|dias|dia|semanas|meses|mes|anio|ano|year|personas|empleados|dotacion|plantel|piezas|elementos|items|documentos|comprobantes|movimientos|registros|filas|count|cuenta_de|n|nro|numero_de|metros|ml|m2|m3|kg|tn|litros|km|avance|porcentaje|pct|dias_mora|antiguedad|orden|indice|version|revision|pagina|paginas|lamina|laminas)($|_)/i
+export const CANTIDAD_VISIBLE = /(^|_)(cantidad|cantidades|unidad|unidades|hh|hs|horas|hora|jornadas|dias|dia|semanas|meses|mes|anio|ano|year|personas|empleados|dotacion|plantel|piezas|elementos|items|documentos|comprobantes|movimientos|registros|filas|count|cuenta_de|n|nro|numero_de|metros|ml|m2|m3|kg|kilos|tn|toneladas|litros|km|superficie|area|volumen|peso|longitud|distancia|capacidad|ladrillos|bolsas|tornillos|avance|porcentaje|dias_mora|antiguedad|orden|indice|version|revision|pagina|paginas|lamina|laminas)($|_)/i
+
+/**
+ * LOS TOKENS QUE HACEN QUE UNA CLAVE SEA PLATA, VALGA LO QUE VALGA.
+ *
+ * ═══ POR QUÉ VUELVE UNA LISTA DE NOMBRES, Y POR QUÉ ESTA VEZ NO ES EL MISMO ERROR ═══
+ *
+ * La primera versión tachaba SÓLO por nombre y por eso se fugó la caja: lo que no estaba en la
+ * lista pasaba. Ésta es lo contrario: la regla del importe ya protege sola, y esta lista sólo puede
+ * AGREGAR protección, nunca quitarla. Si me olvido de un nombre, el número grande se tacha igual por
+ * el umbral; lo único que se pierde es tachar un importe chico.
+ *
+ * Cubre las dos cosas que el umbral no puede ver, las dos medidas por el auditor:
+ *
+ *   · LA PLATA CHICA — `margen 0,23`, `tasa 0,045`, `precio_unitario 800`, `tna 0,62`,
+ *     `coeficiente 1,68`, `jornal_hora 950`. Un margen es información comercial aunque sea 0,23.
+ *   · EL NOMBRE COMPUESTO — `costo_hora`, `precio_m2`, `saldo_mes`, `venta_mes`, `total_dia`.
+ *     `CANTIDAD_VISIBLE` mira cualquier tramo de la clave, así que «hora» o «mes» alcanzaban para
+ *     mostrar un costo de 5.000.000. El veto corre ANTES: si la clave nombra plata en algún tramo,
+ *     no hay tramo que la rescate.
+ */
+// `total`, `subtotal` y `totales` NO están en el veto a propósito: un `documentos.total = 33` es un
+// conteo, y vetarlo tacharía el cómputo del jefe de obra, que es justo lo que este filtro protege.
+// Un total de plata es siempre grande, así que lo agarra el umbral igual — el veto sólo hace falta
+// para lo que es plata SIENDO chico, que un total nunca es.
+export const TOKEN_DE_PLATA = /(^|_)(precio|precios|costo|costos|venta|ventas|vendido|margen|markup|utilidad|rentabilidad|ganancia|ganancias|beneficio|cascada|importe|importes|monto|montos|iva|honorario|honorarios|arancel|tarifa|tasa|tna|tea|cft|coeficiente|valorizacion|valorizado|cotizado|saldo|saldos|caja|cobrado|cobrar|pagado|pagar|deuda|deudas|facturado|certificado|anticipo|retencion|descuento|neto|bruto|jornal|jornales|sueldo|sueldos|liquidacion|fondo_cese|disponible|descubierto|capital|interes|intereses|cuota|cuotas|usd|ars|pesos|dolares|plata|dinero|efectivo|proyectado|entra|sale)($|_)/i
 
 /** Claves cuyo valor es un identificador y no una magnitud: nunca se tachan aunque sean largos. */
 export const IDENTIFICADOR = /(^|_)(id|ids|uuid|clave|codigo|hash|correlation_id|request_id|drive_id|file_id|sheet_id|spreadsheet_id)($|_)/i
@@ -84,10 +109,21 @@ export const TACHADO = '[restringido]'
  * magnitudes escritas en palabras. Los porcentajes van aparte: un margen del 23% es información
  * comercial y no llega al umbral por ser un número chico.
  */
+/** Las unidades que, escritas justo después de un número, lo convierten en una cantidad y no en
+ *  plata. Sin esto el texto se contradecía con la estructura: `hh_previstas: 1200` se mostraba y
+ *  «1.200 HH» se tachaba en la misma respuesta. */
+const UNIDADES = 'hh|hs|horas?|jornadas?|d[ií]as?|personas?|unidades?|piezas?|elementos?|items?|documentos?|comprobantes?|m2|m3|ml|metros?|km|kg|kilos?|tn|toneladas?|litros?|ladrillos?|bolsas?|tornillos?|l[áa]minas?|p[áa]ginas?'
+const NO_SEGUIDO_DE_UNIDAD = `(?!\\s*(${UNIDADES})\\b)`
+
 const PLATA_EN_TEXTO = [
-  /(\$|u\$s|usd|ars|€)\s*-?[\d., ]+/gi,
-  /-?\b\d{1,3}([.\s]\d{3})+(,\d+)?\b/g,
-  /-?\b\d{5,}(,\d+)?\b/g,
+  // El CUIT/CUIL primero: lleva ocho dígitos seguidos adentro y la regla del importe lo partía en
+  // «20[restringido]-9», que es un identificador tachado por la mitad. Mismo defecto que ya se
+  // corrigió en el prompt de imágenes, vivo también acá.
+  /\b\d{2}-\d{8}-\d\b|\b\d{11}\b/g,
+  new RegExp(`(\\$|u\\$s|usd|ars|€)\\s*-?[\\d., ]+`, 'gi'),
+  // Con `i`: la unidad se escribe «HH» tanto como «hh», y sin la bandera el negativo no la veía.
+  new RegExp(`-?\\b\\d{1,3}([.\\s]\\d{3})+(,\\d+)?\\b${NO_SEGUIDO_DE_UNIDAD}`, 'gi'),
+  new RegExp(`-?\\b\\d{5,}(,\\d+)?\\b${NO_SEGUIDO_DE_UNIDAD}`, 'gi'),
   /-?\b\d+([.,]\d+)?\s*(millones|millon|mil|palos|m|mm|k)\b/gi,
   /-?\b\d+([.,]\d+)?\s*%/g,
 ]
@@ -103,10 +139,21 @@ export function tacharPlataEnTexto(texto) {
   return { texto: salida, tachado: salida !== texto }
 }
 
-/** ¿Este valor, bajo esta clave, es plata? PURA — es la regla entera en cuatro líneas. */
+/**
+ * ¿Este valor, bajo esta clave, es plata? PURA — la regla entera, en orden, y el orden importa:
+ *
+ *   1. un identificador nunca es una magnitud;
+ *   2. si la clave NOMBRA plata, es plata valga lo que valga (la plata chica y el nombre compuesto);
+ *   3. si la clave nombra una cantidad del trabajo, se muestra;
+ *   4. y si no la nombra nadie, un número grande es plata mientras no se demuestre lo contrario.
+ *
+ * El paso 2 sólo agrega protección: si falta un nombre, el paso 4 lo cubre igual.
+ */
 export function esPlata(clave, valor) {
   if (typeof valor !== 'number' || !Number.isFinite(valor)) return false
-  if (IDENTIFICADOR.test(clave) || CANTIDAD_VISIBLE.test(clave)) return false
+  if (IDENTIFICADOR.test(clave)) return false
+  if (TOKEN_DE_PLATA.test(clave)) return true
+  if (CANTIDAD_VISIBLE.test(clave)) return false
   return Math.abs(valor) >= UMBRAL
 }
 

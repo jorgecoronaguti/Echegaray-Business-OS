@@ -246,12 +246,25 @@ export function atajoPara(texto, atajos = ATAJOS) {
  *
  * @returns {{args:object, falta:string[]}}
  */
-export function argumentosPara(tool, { contexto = {}, entidad = {} } = {}) {
+export function argumentosPara(tool, { contexto = {}, entidad = {}, verificadoPor = null } = {}) {
   const props = tool?.schema?.input_schema?.properties ?? {}
   const requeridos = tool?.schema?.input_schema?.required ?? []
   const args = {}
+  // ═══ UN CONTEXTO SIN FIRMA NO LLENA NINGÚN ARGUMENTO (27/08/2026, auditoría round 3) ═══
+  //
+  // `contexto` era la PRIMERA fuente para llenar argumentos, y venía del caller. Se cerró primero
+  // filtrando las claves que nombran una entidad —`obra`, `cliente`, `proveedor`…—, y el auditor
+  // cruzó esa lista contra los `input_schema` de las 37 tools: quedaban 40 parámetros que el caller
+  // seguía pudiendo imponer, entre ellos `sheet` (a qué planilla mira tesorería), `carpeta_id` (a qué
+  // carpeta de Drive escribe), `url` (a qué página sale el OS), `notas`, `estado`.
+  //
+  // Enumerar claves peligrosas es la quinta lista de esta familia y falla por lo mismo. El corte
+  // correcto es el otro: si nadie firmó el contexto, no llena NADA. Un pedido sin firma sigue
+  // pudiendo correr una tool —el argumento se saca de la frase, que es lo que deja la decisión a la
+  // vista— y `entidad` sólo existe cuando ya está verificada.
+  const fuente = verificadoPor ? contexto : {}
   for (const prop of Object.keys(props)) {
-    const v = contexto[prop] ?? entidad[prop] ?? entidad[`${prop}_id`]
+    const v = fuente[prop] ?? entidad[prop] ?? entidad[`${prop}_id`]
     if (v != null && v !== '') args[prop] = v
   }
   return { args, falta: requeridos.filter((r) => args[r] == null) }
