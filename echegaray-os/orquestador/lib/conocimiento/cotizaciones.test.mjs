@@ -25,90 +25,11 @@ import { TIPO, hallazgos } from './hallazgos-cotizacion.mjs'
 import { aConocimientos, practicas } from './practica-cotizacion.mjs'
 import { ESTADO, PROCEDENCIA, incorporar } from './biblioteca.mjs'
 import { fusionarHallazgos } from '../../scripts/estudiar-cotizaciones-drive.mjs'
+import { DIV_CERO, estudiar, filaAnalisis, libro, libroDeCotizacion } from './cotizacion-fixture.mjs'
 
 const require = createRequire(import.meta.url)
 const XLSX = require('xlsx')
 
-/** El código numérico con el que Excel guarda `#DIV/0!`. Su valor cacheado es 7, y ese 7 es el que
- *  se coló como si fuera plata hasta que el lector aprendió a distinguirlo. */
-const DIV_CERO = 0x07
-
-/** Un renglón de análisis: código, descripción, unidad y las horas por unidad al final. */
-const filaAnalisis = (cod, desc, un, ofH, ayH) => [cod, null, desc, un, null, null, 1000, 500, 500, 0, 46000, null, ofH, ayH]
-
-const ENCABEZADO_ANALISIS = ['COD T', 'COD R', 'DESCRIPCION', 'UN', 'CANTIDAD', 'COSTO', 'TOTAL', 'MO', 'MA', 'CS', 'FECHA', 'CONSIDERACIONES', 'OF E - OF', 'AY']
-const ENCABEZADO_PRESUPUESTO = ['ID TAREA', 'ID', 'TAREA', 'U.', 'CANT.', 'COSTO U TOTAL', 'COEF. AJUSTE', 'SUBTOTAL', 'FECHA', 'COSTO MO', 'COSTO MA', 'COSTO CS']
-
-/**
- * ARMA UN LIBRO CON LA MISMA FORMA QUE LA PLANTILLA REAL DE ECSAS.
- *
- * `ivaConFormula` y `subtotalRoto` existen para poder producir los dos casos que se encontraron en
- * Drive: el IVA tipeado a mano al lado de un error, y el cierre entero en `#DIV/0!`.
- */
-function libroDeCotizacion({
-  items = [['REPLANTEO', 'M2', 10, 100, 1000]], subtotal = 1000, iva = 210, total = 1210,
-  ivaConFormula = true, subtotalRoto = false, partidas = [filaAnalisis('T1001', 'REPLANTEO', 'M2', 0.06, 0.06)],
-  codigosUsados = ['T1001'], unidadesPresupuesto = ['M2'], coeficientesAjuste = [1], tareasExtra = [], rotuloGG = 'Gastos contables (0.6 % de CD)',
-  coeficienteGG = 0.006, importeGG = 600, cliente = 'CLIENTE UNO', bloquesAjenos = [], notas = ['Nota 1: solo mano de obra'],
-} = {}) {
-  const oferta = [
-    [], [], [], [], [], [],
-    [cliente, null, null, null, null, ...bloquesAjenos],
-    [], [], [], [],
-    ['TAREA', 'UN', 'Cant', 'Precio Unicario', 'Sub Total'],
-    [],
-    ...items,
-    [],
-    [null, null, 'SUB TOTAL ', null, subtotal],
-    [null, null, 'IVA', null, iva],
-    [null, null, 'TOTAL', null, total],
-    [],
-    ...notas.map((n) => [n]),
-    ['Forma de Pago: Anticipo 40%'],
-  ]
-  const hOferta = XLSX.utils.aoa_to_sheet(oferta)
-  // 1-based: encabezado en la 12, una fila en blanco, los ítems, otra en blanco y ahí el SUB TOTAL.
-  const filaCierre = 15 + items.length
-  if (subtotalRoto) {
-    hOferta[`E${filaCierre}`] = { t: 'e', v: DIV_CERO, w: '#DIV/0!' }
-    hOferta[`E${filaCierre + 2}`] = { t: 'e', v: DIV_CERO, w: '#DIV/0!' }
-  }
-  if (ivaConFormula) hOferta[`E${filaCierre + 1}`] = { t: 'n', v: iva, f: `E${filaCierre}*0.21` }
-
-  const presupuesto = [
-    ['PRESUPUESTO GENERAL'], [], [], [], [], [],
-    ENCABEZADO_PRESUPUESTO,
-    ['ESTRUCTURA'],
-    ...codigosUsados.map((c, i) => [1, c, `TAREA ${c}`, unidadesPresupuesto[i] ?? 'M2', 10, 100, coeficientesAjuste[i] ?? 1, 1000, 46000, 500, 500, 0]),
-    ...tareasExtra.map((t) => [null, 'T9999', t, 'M2', 1, 1, 1, 1, 46000, 0, 0, 0]),
-  ]
-  const gg = [
-    [0], [], [],
-    ['COSTOS DIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 100000],
-    [], ['COSTOS INDIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 50000],
-    [], [null, 'Gastos Comunes de obra:'],
-    [null, 'BAÑO QUIMICO', null, null, 50000, 'por mes', 3, 150000],
-    [null, 'Gastos Generales de la Empresa:'],
-    [null, rotuloGG, null, null, null, 1, coeficienteGG, importeGG],
-    [], [], [], [], [], [], [], [], [], [], [], [], [], [], [],
-    ['BENEFICIO', null, null, 0.15, 0.02, 0.17],
-  ]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, hOferta, 'OFERTA')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(presupuesto), 'Presupuesto')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['ANALISIS DE COSTOS'], [], [], [], ENCABEZADO_ANALISIS, ...partidas]), 'Análisis')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gg), 'GG')
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-}
-
-/** Corre el circuito ENTERO —bytes, hash, parseo, lectura, práctica, hallazgos— igual que el comando. */
-async function estudiar(libros) {
-  const archivos = libros.map((l, i) => ({ driveId: `id${i}`, nombre: l.nombre, ruta: l.ruta, modificado: '2026-08-01' }))
-  const porId = new Map(archivos.map((a, i) => [a.driveId, libros[i].bytes]))
-  return estudiarTanda(archivos, { traer: (a) => porId.get(a.driveId), obtenidoEn: '2026-08-28' })
-}
-
-const libro = (nombre, ruta, opciones) => ({ nombre, ruta, bytes: libroDeCotizacion(opciones) })
 
 // ═══════════════════ EL TRAMO QUE VA DE LOS BYTES A LOS OBJETOS ═══════════════════
 
