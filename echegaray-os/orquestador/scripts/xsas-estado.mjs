@@ -1,142 +1,87 @@
 #!/usr/bin/env node
-// ¿EN QUÉ ESTADO ESTÁ LA INTELIGENCIA DEL OS? — en un comando y sin gastar un token.
+// EL ESTADO DE UN PROYECTO XSAS: qué formato llegó hasta dónde, y cuánto se puede apoyar en el precio.
 //
-//   node orquestador/scripts/xsas-estado.mjs           el cuadro completo
-//   node orquestador/scripts/xsas-estado.mjs --linea    una línea, para un log o un healthcheck
-//   node orquestador/scripts/xsas-estado.mjs --json     para otro programa
+// Son las dos preguntas que un total no contesta y que hasta ahora se contestaban con adjetivos:
+// «soportamos DWG» y «la cotización está bien». Acá salen los dos cuadros con números por archivo y
+// por regla, sobre una corrida real.
 //
-// Contesta igual con el proveedor apagado, y ahí es cuando importa que conteste: si describir el
-// estado de la inteligencia necesitara la inteligencia, no habría forma de saber que está caída.
+//   node orquestador/scripts/xsas-estado.mjs quattropani
+//   node orquestador/scripts/xsas-estado.mjs quattropani --sin-modelo   # 0 API: sólo caché y CAD
+//
+// `--sin-modelo` no cambia el cuadro de formatos salvo en lo que dependa de una mirada nueva, y esa
+// dependencia se ve: el bloque de degradación dice qué no se pudo leer y por qué.
 
-import { estadoDeXsas, resumirEstado, NIVEL } from '../lib/xsas.mjs'
+import { loadConfig } from '../lib/config.mjs'
+import { query } from '../lib/db.mjs'
+import { makeGoogleClient } from '../lib/google.mjs'
+import { correr } from '../lib/plano/pipeline.mjs'
+import { cuadroDeFormatos, ETAPAS } from '../lib/ingesta/capacidades.mjs'
+import { agruparPartidas, armar } from '../lib/plano/cotizacion-v0.mjs'
+import { certeza } from '../lib/plano/certeza.mjs'
 
-const e = await estadoDeXsas()
+const config = loadConfig()
+const args = process.argv.slice(2)
+const termino = args.find((a) => !a.startsWith('--'))
+if (!termino) {
+  console.error('uso: xsas-estado.mjs <termino> [--sin-modelo] [--sin-regiones] [--detalle]')
+  process.exit(1)
+}
+const google = makeGoogleClient({ config })
+const r = await correr({
+  query, google, termino,
+  porRegiones: !args.includes('--sin-regiones'),
+  permitirModelo: !args.includes('--sin-modelo'),
+})
 
-if (process.argv.includes('--json')) {
-  console.log(JSON.stringify(e, null, 2))
-} else if (process.argv.includes('--linea')) {
-  console.log(resumirEstado(e))
-} else {
-  const marca = { [NIVEL.FULL]: '✔', [NIVEL.DEGRADED]: '▲', [NIVEL.NO_LLM]: '⊘' }[e.nivel]
-  console.log(`\n${marca} XSAS · operación ${e.nivel} · salud ${e.veredicto} — la inteligencia del ${e.de}\n`)
+const cuadro = cuadroDeFormatos(r)
+const pad = (s, n) => String(s).padEnd(n)
+const marca = (b) => (b ? ' ✔ ' : ' — ')
 
-  // ═══ LAS CINCO CAPAS, CADA UNA CON SU VEREDICTO ═══
-  //
-  // Van primero porque son la respuesta a «¿en qué estado está?». El detalle de abajo es para
-  // discutir un número; esto es para decidir qué hacer, y cada capa se arregla distinto: la primera
-  // con un servicio, la segunda cargando obra, la tercera esperando ejecución, la cuarta con
-  // código y la quinta pagando una factura.
-  const SIGNO = { OK: '✔', PARCIAL: '▲', INSUFICIENTE: '▲', 'NO DISPONIBLE': '⊘', 'NO SE PUDO LEER': '?', 'CAÍDA': '✖' }
-  for (const [nombre, c] of Object.entries(e.capas ?? {})) {
-    const rotulo = nombre === 'iaExterna' ? 'IA EXTERNA' : nombre.toUpperCase()
-    console.log(`  ${SIGNO[c.veredicto] ?? ' '} ${rotulo.padEnd(16)} ${String(c.veredicto).padEnd(16)} ${c.porQue}`)
+console.log(`\n═══ ${termino.toUpperCase()} · ESTADO DE INGESTA Y DE CERTEZA ═══\n`)
+console.log('── EL ESTADO DE CADA FORMATO, POR SEPARADO ──')
+console.log(`  ${cuadro.resumen}\n`)
+console.log(`  ${pad('formato', 26)}${pad('eje', 12)}${pad('arch', 6)}${ETAPAS.map((e) => pad(e.slice(0, 11), 13)).join('')}`)
+for (const f of cuadro.filas) {
+  const cel = ETAPAS.map((e) => pad(f.archivos ? `${marca(f[e] === f.archivos)}${f[e]}/${f.archivos}` : '   —', 13)).join('')
+  console.log(`  ${pad(f.formato, 26)}${pad(f.eje, 12)}${pad(f.archivos, 6)}${cel}`)
+  console.log(`      ${f.porQue}`)
+}
+if (cuadro.sinFila.length) console.log(`\n  ${cuadro.sinFila.length} archivo(s) sin fila en el cuadro: ${cuadro.sinFila.slice(0, 6).join(' | ')}`)
+
+if (args.includes('--detalle')) {
+  console.log('\n  ARCHIVO POR ARCHIVO:')
+  for (const a of cuadro.archivos) {
+    console.log(`   ${pad(a.archivo.slice(0, 52), 54)}${ETAPAS.map((e) => marca(a.etapas[e].ok)).join('')}  ${a.contenedor ?? '?'}${a.rol ? ` + ${a.rol}` : ''}`)
+    for (const e of ETAPAS) if (!a.etapas[e].ok) { console.log(`       ${e}: ${a.etapas[e].porQue}`); break }
   }
-  console.log()
-
-  // EL MOTIVO SE IMPRIME SIEMPRE QUE EXISTA, no sólo cuando se cayó el bloque de agentes. Hoy
-  // mismo una consulta rota dejó el cuadro en DEGRADED sin una sola línea que dijera por qué: hubo
-  // que pedir el JSON para enterarse. Un estado degradado que no dice su causa obliga a investigar
-  // lo que ya se sabe.
-  if (e.noSePudoLeer) console.log(`  ▲ ALGO NO SE PUDO LEER  ${e.noSePudoLeer}\n`)
-
-  console.log(`  MOTOR       ${e.motor.disponible ? 'disponible' : `CAÍDO desde ${e.motor.sinCreditoDesde ?? 'hace rato'}`}`)
-  console.log(`              puerta única: ${e.motor.puerta}`)
-  console.log(`              simple→${e.motor.porCapacidad.simple} · normal→${e.motor.porCapacidad.normal} · complex→${e.motor.porCapacidad.complex}`)
-
-  if (e.agentes) {
-    console.log(`\n  AGENTES     ${e.agentes.total} en orq.agents · ${e.agentes.habilitados} habilitados`)
-    console.log(`              ${e.agentes.deNegocio} del negocio · ${e.agentes.delBuilder} del Builder`)
-    console.log(`              ${e.agentes.conClaudeCode} razonan con Claude Code (deben ser sólo los ${e.agentes.delBuilder} del Builder)`)
-  } else {
-    console.log(`\n  AGENTES     ▲ no se pudo leer la base: ${e.noSePudoLeer ?? 'sin motivo'}`)
-  }
-
-  console.log(`\n  CAPACIDAD   ${e.herramientas} herramientas propias · ${e.skills} skills de dominio`)
-
-  if (e.empresa) {
-    const m = e.empresa
-    console.log(`\n  ECHEGARAY   ${m.obras} obras (${m.activas} activas) · ${m.clientes} clientes · ${m.con_avance} con avance medido`)
-    console.log(`              ${m.actividades} actividades · ${m.con_plan} con plan · ${m.con_real} con real · ${m.comparables} comparables plan↔real`)
-    console.log(`              ${m.con_inicio_real} con inicio real · ${m.con_fin_real} con fin real · ${m.terminadas} terminadas (derivado de la evidencia)`)
-    const r = m.rendimientos ?? {}
-    console.log(`              rendimientos: ${r.REFERENCIA ?? 0} de referencia · ${r.CANDIDATO ?? 0} candidatos · ${r.VALIDADO ?? 0} validados`)
-    if (!r.VALIDADO) {
-      console.log('                 — validar pide DOS obras distintas con la misma tarea. Todavía no pasó.')
-    }
-    // QUÉ SE PUEDE APRENDER Y QUÉ LO FRENA, MÉTRICA POR MÉTRICA. Una actividad sin horas imputadas
-    // no enseña productividad y SÍ enseña duración: un solo contador de «no aprenden» borraba esa
-    // diferencia, y es justamente la que dice qué pedirle a la obra.
-    for (const [metrica, r] of Object.entries(m.aprendizajePosible ?? {})) {
-      if (r.noDisponible) {
-        console.log(`              ${metrica.padEnd(12)} NO DISPONIBLE — ${r.frenos[0]?.falta ?? 'sin fuente en el OS'}`)
-        continue
-      }
-      console.log(`              ${metrica.padEnd(12)} ${String(r.puede).padStart(4)} pueden enseñar · ${r.noPuede} no`)
-      for (const f of r.frenos.slice(0, 2)) {
-        console.log(`                           ${String(f.actividades).padStart(4)} por falta de ${f.falta}`)
-      }
-    }
-    const x = m.experiencia ?? {}
-    console.log(`              hechos: ${x.hechosDuracion ?? 0} de duración · ${x.hechosRendimiento ?? 0} de rendimiento · ${x.hechosDotacion ?? 0} de dotación`)
-    console.log(`              ${x.tareasReutilizables ?? 0} tareas con experiencia REUTILIZABLE (dos obras o más)`)
-    for (const c of m.circuitos ?? []) {
-      const cuenta = c.hechos == null ? `no se pudo leer (${c.noSePudoLeer})` : `${c.hechos} hechos`
-      console.log(`              ${String(c.dominio).padEnd(12)} ${cuenta.padEnd(18)} ${c.ultimo ? `último ${String(c.ultimo).slice(0, 16)}` : 'sin fecha'}`)
-    }
-  }
-
-  if (e.conocimiento) {
-    const t = e.conocimiento.porTipo ?? {}
-    console.log(`\n  APRENDIDO   ${e.conocimiento.afirmaciones} afirmaciones · ${e.conocimiento.retiradas} retiradas`)
-    console.log(`              ${t.HECHO ?? 0} HECHO · ${t.VALIDADO ?? 0} VALIDADO · ${t.CANDIDATO ?? 0} CANDIDATO · ${t.INFERENCIA ?? 0} INFERENCIA (salida de un modelo, no es un dato)`)
-    for (const a of e.conocimiento.porArea.slice(0, 6)) {
-      console.log(`              ${String(a.area ?? '(sin área)').padEnd(24)} ${String(a.afirmaciones).padStart(4)}  (${a.confirmadas} confirmadas)`)
-    }
-  }
-
-  if (e.trabajos) {
-    console.log(`\n  TRABAJO     ${e.trabajos.activos} activos · ${e.trabajos.completados} completados · ${e.trabajos.trabados} trabados esperando a una persona`)
-  }
-
-  if (e.costo) {
-    const $ = (x) => (x == null ? 'sin precio' : `U$S ${Number(x).toFixed(4)}`)
-    console.log(`\n  COSTO       ${e.costo.llamadas} llamadas en ${e.costo.ventana} · ${$(e.costo.usd)}`)
-    if (e.costo.sinAtribuir) {
-      console.log(`              ▲ ${e.costo.sinAtribuir} llamadas (${$(e.costo.usdSinAtribuir)}) NO dicen qué agente las pidió`)
-      console.log('                 — son las del camino viejo, que no atribuye. Es lo que falta migrar a la puerta.')
-    }
-    for (const a of e.costo.porAgente.slice(0, 6)) {
-      const f = a.fallidas ? ` · ${a.fallidas} fallidas` : ''
-      console.log(`              ${String(a.agente).slice(0, 14).padEnd(15)} ${String(a.funcion).slice(0, 14).padEnd(15)} ${String(a.llamadas).padStart(4)} llam  ${$(a.usd)}${f}`)
-    }
-  }
-
-  // ═══ LA PUERTA: CUÁNTO DE LO QUE HACE EL OS NECESITA UN MODELO ═══
-  //
-  // Va justo debajo del costo porque es la otra mitad de la misma pregunta. `COSTO` cuenta llamadas
-  // al proveedor; acá se cuentan PEDIDOS, que es lo único que permite decir la proporción. Un cero
-  // no se esconde: significa que las caras todavía no entran por la puerta, y eso hay que verlo.
-  if (e.puerta) {
-    const p = e.puerta
-    if (p.noSePudoLeer) {
-      console.log(`\n  PUERTA      ▲ no se pudo leer orq.xsas_requests: ${p.noSePudoLeer}`)
-    } else {
-      const pct = p.pedidos ? Math.round((p.sinLlm / p.pedidos) * 100) : null
-      console.log(`\n  PUERTA      ${p.pedidos} pedidos en ${p.ventana} · ${p.sinLlm} sin modelo${pct == null ? '' : ` (${pct}%)`} · ${p.conLlm} con modelo`)
-      if (!p.pedidos) console.log('                 — todavía ninguna cara entra por la puerta única. Es lo que falta migrar.')
-      if (p.degradados || p.errores || p.porFallback) {
-        console.log(`              ${p.degradados} degradados · ${p.errores} con error · ${p.porFallback} servidos por el proveedor de fallback`)
-      }
-      for (const c of p.porCanal) {
-        console.log(`              ${String(c.canal).padEnd(12)} ${String(c.pedidos).padStart(5)} pedidos · ${c.conLlm} con modelo`)
-      }
-    }
-  }
-
-  console.log('\n  SIN RAZONADOR SIGUE ANDANDO:')
-  for (const x of e.sinRazonador) console.log(`     · ${x}`)
-  console.log()
 }
 
-// El pool de Postgres deja el proceso vivo si no se cierra.
-try { const { closePool } = await import('../lib/db.mjs'); await closePool() } catch { /* la base no estaba */ }
+// ═══ LA CERTEZA ═══
+// La cotización se ARMA acá y no en el pipeline: el pipeline devuelve partidas y composiciones, y
+// valorizarlas es una decisión de quien las consume. Sin este paso las cuatro métricas económicas
+// salen en `null`, que es lo correcto — no en cero.
+const { partidas, candidatas } = agruparPartidas(r.mapeo.mapeos)
+const cotizacion = armar({ cliente: null, obraNombre: termino, partidas, composiciones: r.composiciones, candidatas })
+const c = certeza({ control: r.control, items: r.computo.items, cotizacion, proyecto: r.proyecto })
+
+console.log('\n── LA CERTEZA DE LA COTIZACIÓN ──')
+console.log(`  ${c.resumen}`)
+console.log(`  costo directo ${c.metricas.costoDirecto === null ? '— (ninguna partida cerró su costo)' : `$ ${c.metricas.costoDirecto.toLocaleString('es-AR')}`} · HH ${c.metricas.hh ?? '—'} · ${c.metricas.vigencia.porQue}`)
+console.log('\n  LAS REGLAS:')
+for (const g of c.reglas) console.log(`   ${marca(g.pasa)} ${pad(g.clave, 20)} ${pad(`techo si falla: ${g.tope}`, 40)} ${g.exige}`)
+console.log(`\n  ESTADO: ${c.estado}${c.estado === c.porMedicion ? '' : ` (por medición: ${c.porMedicion})`}`)
+console.log(`  PARA SUBIR A ${c.paraSubir.siguiente ?? '—'}: ${c.paraSubir.porQue}`)
+for (const f of c.paraSubir.falta) console.log(`     · ${f}`)
+if (c.queFalta.length > c.paraSubir.falta.length) {
+  console.log('\n  Y LO QUE ADEMÁS HAY QUE ARREGLAR MÁS ARRIBA:')
+  for (const f of c.queFalta) if (!c.paraSubir.falta.includes(f.falta)) console.log(`     [${f.tope}] ${f.falta}`)
+}
+if (c.metricas.supuestos.partidas?.length) {
+  console.log('\n  LA PLATA QUE SE APOYA EN UN SUPUESTO OCULTO:')
+  for (const p of c.metricas.supuestos.partidas) console.log(`     $ ${pad(p.monto.toLocaleString('es-AR'), 16)} ${p.codigo} ${p.descripcion} — ${p.elementos.join(', ')}`)
+}
+
+const deg = r.degradacion ?? {}
+console.log(`\n── CÓMO SE OBTUVIERON ESTOS NÚMEROS ──`)
+console.log(`  ${deg.hubo ? `⚠ corrida DEGRADADA: ${deg.fallos} pedido(s) al modelo no se resolvieron` : 'corrida sin degradación'} · ${r.ia.llamadas} llamada(s) al modelo · ${r.ia.deCache} lámina(s) de caché`)
+process.exit(0)

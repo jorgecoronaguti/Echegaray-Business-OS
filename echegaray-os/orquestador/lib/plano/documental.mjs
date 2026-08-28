@@ -89,7 +89,11 @@ export async function segmentarLamina(doc, bytes, { escribirTemporal, limite = 1
     const s = segmentar({ ancho: pg.ancho, alto: pg.alto, trazos: pg.trazos, textos: pg.textos })
     const ruta = await escribirTemporal(bytes, doc.name)
     const rec = await recortarRegiones(ruta, s.regiones, { hashArchivo: hash, pagina: pg.numero, limite })
-    salida.push({ pagina: pg.numero, clase: pg.clase, rotacion: pg.rotacion, ancho: pg.ancho, alto: pg.alto, ...s, ...rec })
+    // Los tres recuentos viajan con la lámina porque son la EVIDENCIA de que se pudo parsear algo:
+    // una hoja escaneada abre bien, devuelve una página y trae cero trazos y cero caracteres. Sin
+    // estos números, «se abrió el PDF» y «salió estructura» se confunden, y ahí es donde un plano
+    // raster se declara soportado.
+    salida.push({ pagina: pg.numero, clase: pg.clase, rotacion: pg.rotacion, ancho: pg.ancho, alto: pg.alto, caracteres: pg.caracteres, trazos: pg.trazos.length, imagenes: pg.imagenes.length, ...s, ...rec })
   }
   return { archivo: doc.name, hash, paginas: doc_.paginas, laminas: salida }
 }
@@ -101,7 +105,14 @@ export async function textoDe(doc, bytes, { google } = {}) {
     if (formato === FORMATO.PDF) {
       const d = await leerPdf(bytes, { conGeometria: false })
       const texto = d.leidas.map((p) => renglones(p.textos).map((r) => r.texto).join('\n')).join('\n')
-      return { ok: true, texto, formato }
+      // ═══ CERO CARACTERES NO ES «NO TIENE TEXTO»: PUEDE SER UN ESCANEO ═══
+      // La lectura de un documento de especificación apaga la geometría porque recorrer los
+      // operadores de un PDF grande cuesta y a nadie le importa el dibujo de un pliego. Pero cuando
+      // NO SALE UN SOLO CARÁCTER, la diferencia entre «pliego vacío» y «pliego escaneado» es
+      // exactamente el dato que hay que reportar, y sin geometría no se puede distinguir. Se vuelve
+      // a leer sólo en ese caso, que es el único donde la respuesta cambia.
+      const clasePdf = texto.trim() ? d.clase : (await leerPdf(bytes, { conGeometria: true, hasta: 1 })).clase
+      return { ok: true, texto, formato, clasePdf }
     }
     if (formato === FORMATO.PLANILLA && google?.readExcel) {
       const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
@@ -141,7 +152,7 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
     const t = await textoDe(doc, bytes, { google })
     if (!t.ok) { noLeidos.push({ archivo: doc.name, porQue: t.porQue }); continue }
     const clase = claseDocumental(doc.name)
-    documentales.push({ archivo: doc.name, clase: clase.id, caracteres: t.texto.length })
+    documentales.push({ archivo: doc.name, clase: clase.id, caracteres: t.texto.length, clasePdf: t.clasePdf ?? null })
     hechos.push(...hechosDeTexto(t.texto, { documento: doc.name, clase }))
   }
 
