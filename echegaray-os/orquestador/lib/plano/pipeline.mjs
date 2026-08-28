@@ -248,11 +248,39 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
  * resueltas, que es la del dibujo donde mejor se veía— y la colisión queda DECLARADA para que la
  * mire una persona.
  */
-/** Los números que DISCRIMINAN una pieza de otra dentro de su id y su nombre: «C1» contra «C2»,
- *  «2C200» contra «C200» —un 2C200 son DOS perfiles C200—, «VA1» contra «VA2». Es el mismo guard
- *  que `parecidosSinFusionar` ya aplicaba para no reportar, y que faltaba para no FUSIONAR. PURA. */
+/** Los números que aparecen en el id y el nombre de un elemento, deduplicados y ordenados. PURA. */
 export const firmaNumerica = (e) => [...new Set(String(`${e?.id ?? ''} ${e?.nombre ?? ''}`).match(/\d+/g) ?? [])]
   .map(Number).sort((a, b) => a - b).join('-')
+
+const numerosDe = (firma) => String(firma ?? '').split('-').filter(Boolean)
+
+/**
+ * ¿ESTAS DOS FIRMAS DISCRIMINAN UNA PIEZA DE OTRA? PURA.
+ *
+ * ═══ EL DEFECTO QUE ESTA FUNCIÓN EXISTE PARA IMPEDIR ═══
+ *
+ * Comparar firmas por igualdad exacta trataba un sufijo de serie que puso EL MODELO —`MAT1`,
+ * `GAR-2`, `TQ1`— igual que una designación del proyectista —`C1` contra `C2`—. Medido:
+ * `MATAFUEGO` (sin número, 4 unidades) contra `MAT1` (número «1», 3 unidades) salían como dos
+ * piezas distintas, con el texto «el proyectista los separó a propósito» y un
+ * `quienLoResuelve: 'nadie'`.
+ *
+ * Y el problema no es que cuente dos veces: es que EL SISTEMA DICE QUE SABE. Un elemento sin
+ * número no puede haber sido separado a propósito de uno con número — no hay nada que separar—, y
+ * afirmar lo contrario le dice al que revisa que no mire. Lo mismo cuando una firma está CONTENIDA
+ * en la otra: `600` dentro de `1-600` no es una designación distinta, es la misma con un sufijo.
+ *
+ * Sólo discriminan dos conjuntos de números NO VACÍOS donde ninguno contiene al otro: «1» contra
+ * «2», «VA1» contra «VA2». Todo lo demás es indecidible, y decir «no sé» es la respuesta correcta.
+ */
+export function firmasDiscriminan(a, b) {
+  const na = numerosDe(a)
+  const nb = numerosDe(b)
+  if (!na.length || !nb.length) return false
+  const contenida = (x, y) => x.every((n) => y.includes(n))
+  if (contenida(na, nb) || contenida(nb, na)) return false
+  return true
+}
 
 /** ¿Dos valores de la misma dimensión dicen lo mismo? Tolerancia relativa: una lectura de 3,50 y
  *  otra de 3,4999 son la misma medida; 0,1 y 0,8 no. PURA. */
@@ -330,9 +358,23 @@ export function fusionarElementos(elementos = []) {
     // Dos columnas que el proyectista llamó C1 y C2 con el mismo nombre genérico NO son la misma
     // pieza, y fusionarlas borraba una entera —su sección, su altura, sus unidades y su partida—.
     // Salen las DOS. Es la misma regla que `parecidosSinFusionar` ya aplicaba para no reportar.
+    // Las firmas se agrupan por lo que DISCRIMINA, no por igualdad: una firma vacía o contenida en
+    // otra no separa nada, así que sus elementos quedan en la MISMA clase y se resuelven por la vía
+    // de la contradicción —que puede terminar en «no sé»— en vez de por una afirmación de certeza.
+    const firmas = [...new Set(lista.map(firmaNumerica))]
+    const padreF = new Map(firmas.map((f) => [f, f]))
+    const raizF = (f) => { let x = f; while (padreF.get(x) !== x) x = padreF.get(x); return x }
+    for (const a of firmas) {
+      for (const b of firmas) {
+        if (a === b || firmasDiscriminan(a, b)) continue
+        const ra = raizF(a)
+        const rb = raizF(b)
+        if (ra !== rb) padreF.set(ra, rb)
+      }
+    }
     const porFirma = new Map()
     for (const e of lista) {
-      const f = firmaNumerica(e)
+      const f = raizF(firmaNumerica(e))
       porFirma.set(f, [...(porFirma.get(f) ?? []), e])
     }
     if (porFirma.size > 1) {
@@ -340,8 +382,8 @@ export function fusionarElementos(elementos = []) {
         clave, tipo: 'PIEZAS_DISTINTAS', nombre: lista[0]?.nombre ?? clave,
         ids: [...new Set(lista.map((e) => String(e.id)))].sort(),
         vistas: [...new Set(lista.map((e) => e?.evidencia?.vista).filter(Boolean))].sort(),
-        firmas: [...porFirma.keys()].sort(),
-        porQue: `«${lista[0]?.nombre ?? clave}» agrupa identificadores con NUMERACIÓN distinta (${[...porFirma.keys()].map((f) => f || '(sin número)').join(' vs ')}): el proyectista los separó a propósito, así que NO se fusionan y salen todos`,
+        firmas: firmas.map((f) => f || '(sin número)').sort(),
+        porQue: `«${lista[0]?.nombre ?? clave}» agrupa identificadores con NUMERACIÓN que discrimina (${[...porFirma.keys()].map((f) => f || '(sin número)').join(' vs ')}): ningún conjunto de números contiene al otro, así que son designaciones distintas del proyectista. NO se fusionan y salen todos`,
         quienLoResuelve: 'nadie — se computan por separado, que es lo correcto',
         fusionadas: false,
       })
@@ -383,16 +425,29 @@ export function fusionarElementos(elementos = []) {
       salida.push({ ...ganador, dimensiones, repeticion, vistoEn: vistas })
 
       if (ids.length > 1) {
-        const tipo = choque.geometria.length ? 'GEOMETRIA_INCOMPATIBLE' : choque.cantidad ? 'CANTIDAD_DISTINTA' : 'SOLO_NOMBRE'
+        // Si la clase juntó firmas DISTINTAS —una vacía, o una contenida en la otra— el sistema no
+        // sabe si eran una pieza o dos, y decirlo es la respuesta correcta. `SOLO_NOMBRE` afirmaría
+        // que están resueltas, que es la certeza que no tenemos.
+        const firmasDelSub = [...new Set(sub.map(firmaNumerica))]
+        const tipo = choque.geometria.length ? 'GEOMETRIA_INCOMPATIBLE'
+          : choque.cantidad ? 'CANTIDAD_DISTINTA'
+            : firmasDelSub.length > 1 ? 'NUMERACION_INDECIDIBLE'
+              : 'SOLO_NOMBRE'
         const detalle = choque.geometria.length
           ? `las lecturas se CONTRADICEN en ${choque.geometria.map((g) => `${g.dimension} (${g.valores.map((v) => v.valor).join(' vs ')})`).join(', ')}: esa(s) medida(s) salen como hueco y el elemento no computa hasta que alguien mire`
           : choque.cantidad
             ? `las lecturas se CONTRADICEN en la cantidad (${choque.cantidad.map((c) => c.valor).join(' vs ')}): la cantidad sale como hueco`
-            : 'las lecturas no se contradicen en ninguna medida: es el mismo objeto escrito de varias formas, y se computó una sola vez'
+            : firmasDelSub.length > 1
+              ? `sus numeraciones (${firmasDelSub.map((f) => f || '(sin número)').join(' vs ')}) NO discriminan —una está vacía o contenida en la otra, y eso es un sufijo de serie, no una designación del proyectista—, así que NO SE SABE si son una pieza o dos. Se computó UNA y las lecturas no se contradicen en ninguna medida`
+              : 'las lecturas no se contradicen en ninguna medida: es el mismo objeto escrito de varias formas, y se computó una sola vez'
         ambiguos.push({
           clave: `${clave}#${firma}`, tipo, nombre: ganador?.nombre ?? ids[0], ids, vistas,
           porQue: `«${ganador?.nombre ?? ids[0]}» aparece con ${ids.length} identificadores (${ids.join(', ')}). ${detalle}`,
-          quienLoResuelve: tipo === 'SOLO_NOMBRE' ? 'nadie — está resuelto' : 'dirección técnica — mirando las vistas donde aparece',
+          quienLoResuelve: tipo === 'SOLO_NOMBRE'
+            ? 'nadie — está resuelto'
+            : tipo === 'NUMERACION_INDECIDIBLE'
+              ? 'dirección técnica — sólo para confirmar que es una pieza y no dos; el cómputo no cambia si lo es'
+              : 'dirección técnica — mirando las vistas donde aparece',
           fusionadas: true,
         })
       }

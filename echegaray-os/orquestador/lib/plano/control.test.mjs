@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
+import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, AMBIGUEDADES_QUE_BLOQUEAN, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
 import { computarElemento } from './computo.mjs'
 import { validarElemento } from './interpretar.mjs'
 import { ESTADO } from './seleccion.mjs'
@@ -264,4 +264,53 @@ test('G2 · declarado en true, el +1 entra y queda en las entradas de la fórmul
   })
   assert.equal(e.cantidadElementos, 13)
   assert.equal(e.cantidad.entradas.cantidadElementos, 13)
+})
+
+
+// ═══ UN CONTROL QUE NUNCA PUEDE DAR VERDE INFORMA TAN POCO COMO UNO QUE NUNCA DA ROJO ═══
+//
+// El control exigía CERO identidades ambiguas y entraban todas, incluidas las que el propio módulo
+// declara resueltas: una `SOLO_NOMBRE` con `quienLoResuelve: 'nadie — está resuelto'` dejaba la
+// cotización INCOMPLETA. Medido sobre un caché real: 70 de 132. Si INCOMPLETA es el único estado
+// posible en cualquier proyecto real, deja de distinguir el proyecto listo del que no lo está.
+
+const perfecto = () => {
+  const items = Array.from({ length: 10 }, (_, i) => item(`E${i}`, i + 1))
+  return { computo: { detectados: 10, items }, mapeo: { mapeos: items.map((i) => mapeo(i.id, ESTADO.MAPEADA)) } }
+}
+
+test('B · una ambigüedad DECLARADA RESUELTA no puede dejar la cotización incompleta', () => {
+  const r = controlar({ ...perfecto(), identidadesAmbiguas: [{ tipo: 'SOLO_NOMBRE', nombre: 'Puerta Blindex', quienLoResuelve: 'nadie — está resuelto' }] })
+  assert.equal(r.estado, ESTADO_COTIZACION.COMPLETA)
+  assert.equal(r.identidadesAmbiguas.length, 1, 'se sigue mostrando')
+  assert.equal(r.ambiguedadesQueBloquean.length, 0)
+})
+
+test('B · PIEZAS_DISTINTAS tampoco bloquea: el resultado es el correcto, se computan por separado', () => {
+  const r = controlar({ ...perfecto(), identidadesAmbiguas: [{ tipo: 'PIEZAS_DISTINTAS', nombre: 'Columna' }] })
+  assert.equal(r.estado, ESTADO_COTIZACION.COMPLETA)
+})
+
+test('B · NUMERACION_INDECIDIBLE se muestra y no bloquea: el cómputo no cambia si son una o dos', () => {
+  const r = controlar({ ...perfecto(), identidadesAmbiguas: [{ tipo: 'NUMERACION_INDECIDIBLE', nombre: 'Garita de gas' }] })
+  assert.equal(r.estado, ESTADO_COTIZACION.COMPLETA)
+  assert.match(r.resumen, /identidades ambiguas 1 \(0 bloquean\)/)
+})
+
+test('B · LAS QUE SÍ BLOQUEAN son las dos donde el número NO ESTÁ DETERMINADO', () => {
+  assert.deepEqual([...AMBIGUEDADES_QUE_BLOQUEAN].sort(), ['CANTIDAD_DISTINTA', 'GEOMETRIA_INCOMPATIBLE'])
+  for (const tipo of AMBIGUEDADES_QUE_BLOQUEAN) {
+    const r = controlar({ ...perfecto(), identidadesAmbiguas: [{ tipo, nombre: 'Columna CMe' }] })
+    assert.equal(r.estado, ESTADO_COTIZACION.INCOMPLETA, `${tipo} tiene que bloquear`)
+    assert.match(r.porQue, /se contradicen en la medida o en la cantidad/)
+  }
+})
+
+test('B · el resumen dice cuántas hay Y cuántas bloquean, que son dos números distintos', () => {
+  const r = controlar({
+    ...perfecto(),
+    identidadesAmbiguas: [{ tipo: 'SOLO_NOMBRE' }, { tipo: 'PIEZAS_DISTINTAS' }, { tipo: 'CANTIDAD_DISTINTA', nombre: 'X' }],
+  })
+  assert.match(r.resumen, /identidades ambiguas 3 \(1 bloquean\)/)
+  assert.equal(r.estado, ESTADO_COTIZACION.INCOMPLETA)
 })

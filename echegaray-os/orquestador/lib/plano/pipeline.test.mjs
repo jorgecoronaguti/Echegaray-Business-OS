@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, contradiccionesDe, mismaMedida } from './pipeline.mjs'
+import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida } from './pipeline.mjs'
 import { FUENTE } from './fuente.mjs'
 
 const el = (id, nombre, dims = {}, vista = 'PLANTA', forma = 'conteo') => ({
@@ -108,15 +108,25 @@ test('PÉRDIDA · dos columnas que el proyectista separó a propósito SALEN LAS
   assert.equal(r.ambiguos[0].tipo, 'PIEZAS_DISTINTAS')
 })
 
-test('PÉRDIDA · el guard numérico que `parecidosSinFusionar` ya aplicaba vale también para FUSIONAR', () => {
-  // Un 2C200 son DOS perfiles C200: fusionarlos es perder uno.
+test('PÉRDIDA · el guard numérico vale también para FUSIONAR, con números que DISCRIMINAN', () => {
   assert.equal(firmaNumerica({ id: '2C200', nombre: 'Perfil 2C200' }), '2-200', 'los números se deduplican: id y nombre repiten los mismos')
   assert.equal(firmaNumerica({ id: 'C200', nombre: 'Perfil C200' }), '200')
-  const r = fusionarElementos([
+  // Números disjuntos: son dos designaciones del proyectista y salen las dos.
+  const disjuntos = fusionarElementos([
+    { id: 'VA1', nombre: 'Viga', forma: 'lineal', dimensiones: {}, repeticion: {} },
+    { id: 'VA2', nombre: 'Viga', forma: 'lineal', dimensiones: {}, repeticion: {} },
+  ])
+  assert.equal(disjuntos.elementos.length, 2)
+
+  // `200` CONTENIDO en `2-200` NO discrimina: no se afirma que sean dos, se declara que no se sabe.
+  // La primera versión de este test exigía que salieran dos, y eso era afirmar una certeza que la
+  // evidencia no da — un «2» adelante puede ser un perfil doble o un sufijo que puso el modelo.
+  const contenidos = fusionarElementos([
     { id: '2C200', nombre: 'Perfil', forma: 'lineal', dimensiones: {}, repeticion: {} },
     { id: 'C200', nombre: 'Perfil', forma: 'lineal', dimensiones: {}, repeticion: {} },
   ])
-  assert.equal(r.elementos.length, 2)
+  assert.equal(contenidos.elementos.length, 1)
+  assert.equal(contenidos.ambiguos[0].tipo, 'NUMERACION_INDECIDIBLE')
 })
 
 test('PÉRDIDA · misma pieza con lecturas que se CONTRADICEN: la medida sale como HUECO, no elegida', () => {
@@ -166,4 +176,55 @@ test('contradiccionesDe sólo mira donde LAS DOS lecturas declaran: completar no
   assert.equal(c.cantidad, null)
   assert.equal(mismaMedida(3.5, 3.4999), true)
   assert.equal(mismaMedida(0.1, 0.8), false)
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL GUARD NUMÉRICO NO PUEDE AFIRMAR QUE SABE CUANDO UN LADO NO TIENE NÚMERO
+//
+// Los tests de C3 anclaban `PUERTA_BLINDEX`/`PUERTA-BLINDEX`, que no tiene números de NINGÚN lado,
+// así que ninguno se ponía rojo si el guard empeoraba justo donde falla: cuando UNA de las dos
+// firmas está vacía o contenida en la otra. Un elemento sin número no puede haber sido «separado a
+// propósito» de uno con número — no hay nada que separar—, y afirmarlo le dice al que revisa que
+// no mire. Estos tres casos salen del caché real.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const cont = (id, nombre, n) => ({ id, nombre, forma: 'conteo', dimensiones: {}, repeticion: { modo: 'conteo_directo', cantidad: n }, evidencia: { vista: 'V' } })
+
+test('GUARD · sólo discriminan dos conjuntos de números NO VACÍOS donde ninguno contiene al otro', () => {
+  assert.equal(firmasDiscriminan('1', '2'), true, 'C1 contra C2: designaciones del proyectista')
+  assert.equal(firmasDiscriminan('', '1'), false, 'un lado sin número no separa nada')
+  assert.equal(firmasDiscriminan('600', '1-600'), false, '«600» dentro de «1-600» es un sufijo de serie')
+  assert.equal(firmasDiscriminan('2-200', '200'), false)
+  assert.equal(firmasDiscriminan('1-2', '3-4'), true)
+})
+
+test('GUARD · MATAFUEGO (4) contra MAT1 (3) NO se declara «piezas distintas»: se declara que NO SE SABE', () => {
+  const r = fusionarElementos([cont('MATAFUEGO', 'Matafuego triclase ABC 5Kg', 4), cont('MAT1', 'Matafuego triclase ABC 5Kg', 3)])
+  assert.equal(r.ambiguos[0].tipo, 'CANTIDAD_DISTINTA', 'antes salía PIEZAS_DISTINTAS con «el proyectista los separó a propósito»')
+  assert.equal(r.elementos[0].repeticion.cantidad, null, 'cuatro en planta baja y tres en el entrepiso PUEDEN ser siete: el sistema no lo sabe')
+  assert.notEqual(r.ambiguos[0].quienLoResuelve, 'nadie — se computan por separado, que es lo correcto')
+})
+
+test('GUARD · un sufijo de serie sin contradicción sale NUMERACION_INDECIDIBLE, no SOLO_NOMBRE', () => {
+  // `SOLO_NOMBRE` afirmaría que está resuelta, y no lo está: no sabemos si «garita-gas» y «GAR-2»
+  // son una garita o dos. Lo que sí sabemos es que el cómputo no cambia si lo son.
+  const r = fusionarElementos([cont('garita-gas', 'Garita de gas', 1), cont('GAR-2', 'Garita de gas', 1)])
+  assert.equal(r.elementos.length, 1)
+  assert.equal(r.ambiguos[0].tipo, 'NUMERACION_INDECIDIBLE')
+  assert.match(r.ambiguos[0].porQue, /NO SE SABE si son una pieza o dos/)
+  assert.match(r.ambiguos[0].quienLoResuelve, /sólo para confirmar/)
+})
+
+test('GUARD · una firma contenida en otra tampoco separa: «600» dentro de «1-600»', () => {
+  const r = fusionarElementos([cont('tanque-600', 'Tanque de reserva 600 litros', 2), cont('TQ1', 'Tanque de reserva 600 litros', 2)])
+  assert.equal(r.elementos.length, 1)
+  assert.equal(r.ambiguos[0].tipo, 'NUMERACION_INDECIDIBLE')
+})
+
+test('GUARD · y C1 contra C2 SIGUE saliendo como dos piezas: el arreglo no aflojó el caso real', () => {
+  const r = fusionarElementos([cont('C1', 'Columna', 8), cont('C2', 'Columna', 4)])
+  assert.equal(r.elementos.length, 2)
+  assert.equal(r.ambiguos[0].tipo, 'PIEZAS_DISTINTAS')
+  assert.deepEqual(r.elementos.map((e) => e.repeticion.cantidad).sort(), [4, 8])
 })

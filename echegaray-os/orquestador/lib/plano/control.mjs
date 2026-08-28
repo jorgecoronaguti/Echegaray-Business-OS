@@ -253,6 +253,18 @@ export function decisiones(preguntas = []) {
   return { decisiones: lista, sueltas, total: lista.length + sueltas.length }
 }
 
+/**
+ * LAS AMBIGÜEDADES DE IDENTIDAD QUE BLOQUEAN UNA COTIZACIÓN.
+ *
+ * Sólo las dos donde el número NO ESTÁ DETERMINADO: si dos lecturas de la misma pieza dan medidas
+ * o cantidades distintas, no hay precio que poner. `PIEZAS_DISTINTAS` no bloquea porque el
+ * resultado es correcto —se computan por separado, que es lo que corresponde— y `SOLO_NOMBRE`
+ * tampoco, porque el propio registro dice que está resuelta. `NUMERACION_INDECIDIBLE` se muestra
+ * y no bloquea: el cómputo no cambia si son una pieza o dos, y lo que hace falta es que alguien
+ * confirme, no que la cotización se frene.
+ */
+export const AMBIGUEDADES_QUE_BLOQUEAN = Object.freeze(['GEOMETRIA_INCOMPATIBLE', 'CANTIDAD_DISTINTA'])
+
 /** El estado con el que se entrega una cotización. No hay un tercero. */
 export const ESTADO_COTIZACION = Object.freeze({ COMPLETA: 'COMPLETA', INCOMPLETA: 'INCOMPLETA' })
 
@@ -271,11 +283,17 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
   // UN CONFLICTO DOCUMENTAL SIN RESOLVER TAMBIÉN DEJA LA COTIZACIÓN INCOMPLETA. Si el plano dice
   // H-21 y la memoria dice H-25, el precio de esa partida no está determinado por más cobertura que
   // haya: cotizarlo es elegir en silencio el resultado de una discusión que no ocurrió.
-  // Una identidad ambigua NO es un conflicto entre documentos —es el mismo circuito nombrando dos
-  // veces la misma pieza— pero bloquea igual: mientras no se sepa si son una o dos, la cantidad no
-  // está determinada. Va en su propio balde para no tapar los conflictos documentales, que son
-  // otra cosa y se resuelven preguntándole a otra persona.
-  const estado = cob.alcanza && !ocultos.length && !conflictos.length && !identidadesAmbiguas.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
+  // ═══ NO TODAS LAS AMBIGÜEDADES BLOQUEAN, Y METERLAS TODAS ROMPÍA EL CONTROL ═══
+  //
+  // Exigir `!identidadesAmbiguas.length` metía en el bloqueo a las que el propio módulo declara
+  // RESUELTAS: una `SOLO_NOMBRE` cuyo `quienLoResuelve` dice literalmente «nadie — está resuelto»
+  // dejaba la cotización INCOMPLETA. Medido sobre un caché real: 70 de 132. Y un control que nunca
+  // puede dar verde informa tan poco como uno que nunca da rojo — si INCOMPLETA es el único estado
+  // posible en cualquier proyecto real, deja de distinguir el proyecto listo del que no lo está.
+  //
+  // Bloquean las dos donde la cantidad o la medida NO ESTÁN DETERMINADAS. Las otras se muestran.
+  const bloqueantes = identidadesAmbiguas.filter((a) => AMBIGUEDADES_QUE_BLOQUEAN.includes(a?.tipo))
+  const estado = cob.alcanza && !ocultos.length && !conflictos.length && !bloqueantes.length ? ESTADO_COTIZACION.COMPLETA : ESTADO_COTIZACION.INCOMPLETA
   return {
     estado,
     cobertura: cob,
@@ -286,16 +304,17 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
     omisionesCircot,
     conflictos,
     identidadesAmbiguas,
+    ambiguedadesQueBloquean: bloqueantes,
     porQue: estado === ESTADO_COTIZACION.COMPLETA
       ? `${Math.round(cob.cobertura * 100)}% de los elementos detectados quedaron con cantidad y con partida, sin conflictos documentales y sin ningún número con fuente no declarada`
       : ocultos.length
         ? `hay ${ocultos.length} número(s) que entran al precio sin que la cita los respalde: ${ocultos.slice(0, 3).map((o) => `${o.elemento}.${o.que}=${o.valor}`).join(', ')}`
         : conflictos.length
         ? `hay ${conflictos.length} conflicto(s) entre documentos del proyecto sin resolver: ${conflictos.slice(0, 2).map((c) => c.que).join(', ')}`
-        : identidadesAmbiguas.length
-        ? `hay ${identidadesAmbiguas.length} pieza(s) que aparecen con más de un identificador y no se sabe si son una o varias`
+        : bloqueantes.length
+        ? `hay ${bloqueantes.length} pieza(s) cuyas lecturas se contradicen en la medida o en la cantidad: ${bloqueantes.slice(0, 2).map((a) => a.nombre).join(', ')}`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · identidades ambiguas ${identidadesAmbiguas.length} · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · identidades ambiguas ${identidadesAmbiguas.length} (${bloqueantes.length} bloquean) · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
   }
 }
