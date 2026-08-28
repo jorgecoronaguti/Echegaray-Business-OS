@@ -128,9 +128,11 @@ test('con UN resumen, el piso son las cuotas comprometidas y la recurrencia qued
   assert.match(p.componentes[0].evidencia, /Cuotas a vencer/)
   // Lo que NO se sabe se dice, y no se rellena con un número: los dólares del período se nombran
   // como observación aislada, fuera del piso.
-  assert.ok(p.huecos.some((h) => /observación aislada/.test(h)))
+  // Y SE ESCRIBEN CORTOS: van a la pestaña, y un párrafo en el medio de la grilla desparrama la
+  // fila (lo mide `auditarPatron`). El argumento largo vive en el informe del importador.
+  assert.ok(p.huecos.some((h) => /recurrencia observable/.test(h)))
   assert.ok(p.huecos.some((h) => /período en curso/.test(h)))
-  assert.ok(p.huecos.some((h) => /sellos/.test(h)))
+  for (const h of p.huecos) assert.ok(h.length <= 60, h)
 })
 
 test('un consumo observado UNA vez no entra en el piso: eso sería inventar plata', () => {

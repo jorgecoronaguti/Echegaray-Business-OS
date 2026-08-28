@@ -186,6 +186,9 @@ export function proyectarProxima(resumenes = [], { minMeses = 2 } = {}) {
       concepto: `Cuotas ya comprometidas de ${MES[Number(fila.mes.slice(5, 7))]}/${fila.mes.slice(2, 4)}`,
       importe: c(fila.importe), moneda: 'ARS', procedencia: 'HECHO',
       evidencia: `tabla "Cuotas a vencer" del resumen ${r0.numero}, cerrado el ${dmy(r0.cierre)}`,
+      // La versión corta es la que entra en la pestaña: la columna de procedencia es un dato, no una
+      // explicación. La larga vive acá para el informe y para el log del importador.
+      corta: 'HECHO · tabla del resumen',
     })
   } else {
     huecos.push('el resumen no publica la tabla de cuotas a vencer: sin ella no hay piso')
@@ -216,17 +219,19 @@ export function proyectarProxima(resumenes = [], { minMeses = 2 } = {}) {
     componentes.push({
       concepto: `${o.comercio} — se repite`, importe: o.promedio, moneda: o.moneda, procedencia: 'ESTIMADO',
       evidencia: `observado en ${o.meses} resúmenes; promedio ${ars(o.promedio)}`,
+      corta: `ESTIMADO · ${o.meses} resúmenes`,
     })
   }
   if (!recurrentes.length) {
-    const usd = c(observados.filter((o) => o.moneda === 'USD').reduce((s, o) => s + o.promedio, 0))
+    // LOS HUECOS SE ESCRIBEN EN LA PESTAÑA, así que se escriben CORTOS: una línea que se lee, no un
+    // párrafo que se saltea. El detalle de por qué (cuántos dólares se observaron, en cuántos
+    // resúmenes) sale en el informe del importador, que es donde hay lugar para argumentar.
     huecos.push(orden.length < minMeses
-      ? `con ${orden.length} resumen cargado no hay con qué observar recurrencia: los servicios en dólares del período sumaron U$S ${ars(usd)} y podrían repetirse, pero eso todavía es una observación aislada`
+      ? `con ${orden.length} resumen no hay recurrencia observable`
       : 'ningún comercio se repitió en los resúmenes cargados')
   }
 
-  huecos.push('las compras del período en curso no las puede saber nadie todavía: el piso no las incluye')
-  huecos.push('sellos, percepción RG 5617 e IVA se calculan sobre lo que se consuma, así que tampoco entran en el piso')
+  huecos.push('no incluye los consumos del período en curso')
 
   const piso = c(componentes.filter((x) => x.procedencia === 'HECHO' && x.moneda === 'ARS').reduce((s, x) => s + x.importe, 0))
   return { componentes, piso, huecos, resumenes: orden.length, proximoCierre: r0.proximoCierre, proximoVencimiento: r0.proximoVencimiento }

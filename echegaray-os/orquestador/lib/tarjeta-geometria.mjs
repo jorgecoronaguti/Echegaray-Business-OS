@@ -27,7 +27,7 @@
 // 400 desaparece de ese control sin que nada avise.
 
 /** Alto exacto de la banda superior (filas 1..BANDA). La escribe `scripts/tarjeta-pestana.mjs`. */
-export const BANDA = 52
+export const BANDA = 31
 
 /** Fila del encabezado del registro ("Fecha de Compra", "Monto"…). */
 export const FILA_HDR = BANDA + 1
