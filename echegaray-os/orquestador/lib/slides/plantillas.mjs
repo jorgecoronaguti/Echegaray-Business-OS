@@ -212,14 +212,16 @@ export function componerDeck(deck) {
   const fuentes = []
   for (const l of cuerpo) for (const f of l.fuentes || []) if (!fuentes.some((x) => x.url === f.url)) fuentes.push(f)
   const conFuentes = fuentes.length ? [...cuerpo, null] : cuerpo
+  // El +1 ES la portada: `total` ya es el mazo entero. Se pasaba `total + 1` a cada lámina y los
+  // pies numeraban sobre un mazo con una lámina de más («18 / 19» en un mazo de 18).
   const total = conFuentes.length + 1
   const laminas = [portada(deck)]
   let seccionN = 0
   conFuentes.forEach((l, i) => {
-    if (l === null) { laminas.push(laminaFuentes(fuentes, { numero: i + 2, total: total + 1, deck })); return }
+    if (l === null) { laminas.push(laminaFuentes(fuentes, { numero: i + 2, total, deck })); return }
     if (l.tipo === 'seccion') { seccionN += 1; laminas.push(seccion(l, seccionN)); return }
     if (l.tipo === 'cierre') { laminas.push(cierre(l, deck)); return }
-    laminas.push(laminaContenido(l, { deck, numero: i + 2, total: total + 1 }))
+    laminas.push(laminaContenido(l, { deck, numero: i + 2, total }))
   })
   return {
     laminas,

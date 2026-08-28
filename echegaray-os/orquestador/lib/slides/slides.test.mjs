@@ -279,3 +279,86 @@ test('el texto que tiene que entrar en UNA línea se dimensiona con margen, no a
   const usado = anchoTexto(marca.contenido, marca.estilo.tamano, { negrita: true })
   assert.ok(usado <= marca.ancho / 1.06, `la marca ocupa ${usado.toFixed(0)} de ${marca.ancho.toFixed(0)} pt`)
 })
+
+// ── La tabla, que no ocupa el alto que se le declara ────────────────────────────────────────
+const filasLargas = Array.from({ length: 9 }, (_, i) => [
+  `Obligación ${i + 1} de la quincena con su detalle`,
+  'Vence contra la certificación aprobada y el acta firmada por el cliente en obra',
+  `$ ${i + 1},4 M`,
+])
+const tablaLarga = { tipo: 'tabla', titulo: 'Obligaciones', nota: 'Al 27/08.', columnas: ['Concepto', 'Detalle', 'Importe'], filas: filasLargas, alinear_derecha: [2] }
+const filasCortas = Array.from({ length: 9 }, (_, i) => [`Concepto ${i + 1}`, `0${i + 1}/09`, `$ ${i + 1},4 M`])
+const tablaCorta = { tipo: 'tabla', titulo: 'Obligaciones', nota: 'Al 27/08.', columnas: ['Concepto', 'Vence', 'Importe'], filas: filasCortas, alinear_derecha: [2] }
+const laTabla = (compuesto) => compuesto.laminas[1].cajas.find((c) => c.tipo === 'tabla')
+
+test('nueve filas que envuelven NO pasan como buenas: el QA las bloquea en vez de dejar la nota pisada', () => {
+  // El defecto: `alto: Math.min(filas × 24, disponible)` recortaba la caja declarada, pero Slides
+  // estira la fila hasta que el texto entre y la tabla renderizada bajaba sobre la nota al pie.
+  const prep = prepararDeck(deck([tablaLarga]))
+  assert.equal(prep.ok, false, 'publicó una lámina cuya tabla no entra')
+  const desborde = prep.qa.detalle.filter((d) => /desborde/.test(d) && /tabla/.test(d))
+  assert.equal(desborde.length, 1, JSON.stringify(prep.qa.detalle))
+  // Y el texto de las celdas sigue COMPLETO: acortar la celda para que entre es esconder el defecto.
+  const t = laTabla(prep.compuesto)
+  assert.deepEqual(t.filas, filasLargas)
+})
+
+test('nueve filas cortas entran achicando el cuerpo, y la tabla dibujada no llega a la nota', () => {
+  const prep = prepararDeck(deck([tablaCorta]))
+  assert.equal(prep.ok, true, JSON.stringify(prep.qa?.detalle))
+  const t = laTabla(prep.compuesto)
+  const nota = prep.compuesto.laminas[1].cajas.find((c) => c.contenido === 'Al 27/08.')
+  // Lo medido no puede exceder lo declarado…
+  assert.ok(altoReal(t) <= t.alto + 1.5, `la tabla mide ${altoReal(t).toFixed(0)} pt en una caja de ${t.alto.toFixed(0)}`)
+  // …y lo que se le manda a Google tampoco: es el número que Slides usa de piso para las filas.
+  const { principales } = requestsDelDeck(prep.compuesto)
+  const ct = principales.find((r) => r.createTable).createTable.elementProperties
+  const abajo = ct.transform.translateY + ct.size.height.magnitude
+  assert.ok(abajo <= nota.y, `la tabla dibujada termina en ${abajo.toFixed(0)} y la nota empieza en ${nota.y.toFixed(0)}`)
+  assert.ok(t.celda.tamano < TIPO.tablaCelda.tamano, 'no bajó el cuerpo: entró de casualidad')
+  assert.ok(t.celda.tamano >= 8.5, `cuerpo ${t.celda.tamano}: por debajo del mínimo legible`)
+  assert.deepEqual(t.filas, filasCortas)
+})
+
+test('una celda vacía no genera ninguna petición: `updateTextStyle` sin texto es un 400 que tumba el lote', () => {
+  // `400 · The object has no text`. Se emitía el estilo igual sobre la celda salteada, y una fila
+  // más corta que la cabecera —que el componente completa con ''— tiraba el publish entero.
+  const prep = prepararDeck(deck([{
+    tipo: 'tabla', titulo: 'Pagos', columnas: ['Proveedor', 'Vence', 'Importe'],
+    filas: [['Hormigonera SJ', '', '$ 4,1 M'], ['Solo el proveedor'], ['', '05/09', '']],
+  }]))
+  assert.equal(prep.ok, true, JSON.stringify(prep.qa?.detalle))
+  const { principales } = requestsDelDeck(prep.compuesto)
+  const clave = (loc) => `${loc.rowIndex},${loc.columnIndex}`
+  const conTexto = new Set()
+  for (const r of principales) {
+    if (!r.insertText?.cellLocation) continue
+    assert.ok(r.insertText.text, 'insertText con texto vacío')
+    conTexto.add(clave(r.insertText.cellLocation))
+  }
+  for (const r of principales) {
+    for (const nombre of ['updateTextStyle', 'updateParagraphStyle']) {
+      const loc = r[nombre]?.cellLocation
+      if (loc) assert.ok(conTexto.has(clave(loc)), `${nombre} sobre la celda ${clave(loc)}, que no tiene texto`)
+    }
+  }
+  assert.equal(conTexto.size, 3 + 2 + 1 + 1, 'se perdió alguna celda con texto')
+})
+
+test('el pie numera sobre el mazo que existe, no sobre uno con una lámina de más', () => {
+  // Verificado contra una presentación real de 18 láminas: los pies decían «18 / 19».
+  const denominadores = (compuesto) => compuesto.laminas
+    .flatMap((l) => l.cajas.filter((c) => /^\d+ \/ \d+$/.test(String(c.contenido))))
+    .map((c) => Number(String(c.contenido).split('/')[1]))
+  const sinFuentes = componerDeck(validarPresentacion(deck([
+    { tipo: 'puntos', titulo: 'Desvíos', puntos: ['Uno'] },
+    tablaCorta,
+  ])).deck)
+  assert.ok(denominadores(sinFuentes).length > 0)
+  for (const d of denominadores(sinFuentes)) assert.equal(d, sinFuentes.laminas.length)
+  const conFuentes = componerDeck(validarPresentacion(deck([
+    { tipo: 'puntos', titulo: 'Inflación', puntos: ['El IPC de agosto'], origen: 'EXTERNO', fuentes: [{ titulo: 'INDEC', url: 'https://www.indec.gob.ar/' }] },
+  ])).deck)
+  assert.ok(denominadores(conFuentes).length > 0)
+  for (const d of denominadores(conFuentes)) assert.equal(d, conFuentes.laminas.length)
+})

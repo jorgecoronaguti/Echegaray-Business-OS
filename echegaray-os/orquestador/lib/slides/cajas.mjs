@@ -48,8 +48,17 @@ export function imagen({ x, y, ancho, alto, url, capa = 'fondo' }) {
   return { id: nuevoId('i'), tipo: 'imagen', x, y, ancho, alto, url, capa }
 }
 
-export function tabla({ x, y, ancho, alto, columnas, filas, anchoColumnas, alinearDerecha = [] }) {
-  return { id: nuevoId('tb'), tipo: 'tabla', x, y, ancho, alto, columnas, filas, anchoColumnas, alinearDerecha, capa: 'contenido' }
+/** Tabla. Lleva encima el estilo con el que fue MEDIDA y el alto de cada fila: sin eso, el control
+ *  de calidad no puede saber cuánto va a ocupar de verdad y `requests.mjs` dibujaría con otro
+ *  cuerpo que el que se midió — que es como una tabla «que entra» termina pisando la nota al pie. */
+export function tabla({
+  x, y, ancho, alto, columnas, filas, anchoColumnas, alinearDerecha = [],
+  cabecera = TIPO.tablaCabecera, celda = TIPO.tablaCelda, altoFilas = [],
+}) {
+  return {
+    id: nuevoId('tb'), tipo: 'tabla', x, y, ancho, alto, columnas, filas, anchoColumnas,
+    alinearDerecha, cabecera, celda, altoFilas, capa: 'contenido',
+  }
 }
 
 // ── El marco común de las láminas de contenido ──────────────────────────────────────────────

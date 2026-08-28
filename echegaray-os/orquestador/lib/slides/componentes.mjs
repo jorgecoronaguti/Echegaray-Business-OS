@@ -8,7 +8,7 @@
 // PURO.
 
 import { COLOR, GRILLA, SLACK_UNA_LINEA, TIPO } from './marca.mjs'
-import { ajustarTamano, anchoTexto, medirBullets, medirTexto, repartirEnFila } from './layout.mjs'
+import { ajustarTabla, ajustarTamano, medirBullets, medirTexto, repartirEnFila } from './layout.mjs'
 import { bullets, imagen, rect, regla, tabla, texto } from './cajas.mjs'
 
 const TONO = { neutro: COLOR.amarillo, positivo: COLOR.positivo, negativo: COLOR.negativo, alerta: COLOR.alerta }
@@ -94,10 +94,23 @@ export function cuerpoTabla({ lamina, x, y, ancho, alto }) {
   const resto = (ancho - primera) / (n - 1)
   const anchoColumnas = [primera, ...Array.from({ length: n - 1 }, () => resto)]
   const filas = lamina.filas.map((f) => Array.from({ length: n }, (_, i) => String(f[i] ?? '')))
-  const altoFila = 24
+  // ═══ EL ALTO NO ES (FILAS × 24) ═══
+  //
+  // Era eso, y el `Math.min` contra el alto disponible sólo achicaba la caja DECLARADA: Slides
+  // estira igual la fila hasta que entre el texto. Con nueve filas que envuelven, la tabla
+  // renderizada bajaba por encima de la nota al pie. La versión anterior de una presentación lo
+  // esquivó acortando cada celda a una línea — o sea, escondiendo el defecto en el contenido.
+  //
+  // Ahora se mide cada celda contra el ancho de su columna y se baja el cuerpo hasta que el total
+  // entre. Si ni al mínimo legible entra, la caja se queda con el alto disponible y el alto REAL
+  // —el que vuelve a medir el QA— la bloquea. Ninguna celda se recorta nunca.
+  const ajuste = ajustarTabla(lamina.columnas, filas, {
+    anchoColumnas, altoDisponible: alto, cabecera: TIPO.tablaCabecera, celda: TIPO.tablaCelda,
+  })
   return [tabla({
-    x, y, ancho, alto: Math.min((filas.length + 1) * altoFila, alto),
+    x, y, ancho, alto: Math.min(ajuste.altoPt, alto),
     columnas: lamina.columnas, filas, anchoColumnas, alinearDerecha: [...derecha],
+    cabecera: ajuste.cabecera, celda: ajuste.celda, altoFilas: ajuste.altoFilas,
   })]
 }
 

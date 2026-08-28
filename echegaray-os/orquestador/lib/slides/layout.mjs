@@ -175,6 +175,60 @@ export function repartirBullets(items, { ancho, altoDisponible, tamano, alto = 1
   return grupos
 }
 
+// ═══ TABLAS: EL ALTO NO SE DECLARA, SE MIDE ═══
+//
+// Una tabla no ocupa el alto que se le pide: ocupa el que le pide su texto. La Slides API ESTIRA
+// la fila hasta que la celda entre y no avisa — la altura que se manda en `createTable` es un
+// piso, nunca un techo. Con nueve filas que envuelven a dos o tres líneas, la tabla renderizada
+// baja por encima de la nota al pie de la lámina. El defecto se vio así, en el PDF.
+//
+// El relleno interno de la celda no se puede tocar: `TableCellProperties` sólo expone fondo y
+// alineación. Es un dato del renderer, no una decisión de este motor, y se lo mide como tal:
+// conservador, por el mismo motivo que existe `HOLGURA`.
+export const TABLA_PADDING_H = 5
+export const TABLA_PADDING_V = 5
+export const TABLA_TAMANO_MINIMO = 8.5
+
+/**
+ * Alto de cada fila y del total, medido celda por celda contra el ancho de SU columna. `columnas`
+ * es la fila de cabecera. PURA.
+ */
+export function medirTabla(columnas, filas, { anchoColumnas, cabecera, celda }) {
+  const altoFilas = [columnas, ...filas].map((fila, f) => {
+    const estilo = f === 0 ? cabecera : celda
+    let texto = 0
+    anchoColumnas.forEach((w, i) => {
+      const util = Math.max(8, w - TABLA_PADDING_H * 2)
+      const m = medirTexto(String(fila[i] ?? ''), { ancho: util, tamano: estilo.tamano, alto: estilo.alto, negrita: estilo.negrita })
+      if (m.altoPt > texto) texto = m.altoPt
+    })
+    return texto + TABLA_PADDING_V * 2
+  })
+  return { altoFilas, altoPt: altoFilas.reduce((a, b) => a + b, 0) }
+}
+
+/**
+ * AUTOAJUSTE DE TABLA. Baja el cuerpo en escalones de 0,5 pt —la cabecera acompaña— hasta que el
+ * alto medido entra en `altoDisponible`. Devuelve `{altoFilas, altoPt, cabecera, celda, entra}`.
+ *
+ * `entra:false` significa que ni al mínimo legible entra, y ahí NO se recorta ninguna celda: eso
+ * es esconder el defecto: la versión anterior de una presentación lo hizo y volvió a aparecer.
+ * Se devuelve la medida real para que el control de calidad la bloquee. PURA.
+ */
+export function ajustarTabla(columnas, filas, { anchoColumnas, altoDisponible, cabecera, celda, piso = 0.8 }) {
+  const minimo = Math.max(TABLA_TAMANO_MINIMO, celda.tamano * piso)
+  let ultimo = null
+  for (let t = Math.max(celda.tamano, minimo); t >= minimo - 0.001; t -= 0.5) {
+    const bajado = Number((celda.tamano - t).toFixed(1))
+    const c = { ...celda, tamano: Number(t.toFixed(1)) }
+    const h = { ...cabecera, tamano: Number(Math.max(TABLA_TAMANO_MINIMO, cabecera.tamano - bajado).toFixed(1)) }
+    const m = medirTabla(columnas, filas, { anchoColumnas, cabecera: h, celda: c })
+    ultimo = { ...m, cabecera: h, celda: c, entra: m.altoPt <= altoDisponible }
+    if (ultimo.entra) return ultimo
+  }
+  return ultimo
+}
+
 /**
  * Reparte `n` cajas iguales a lo ancho de un tramo, con canaleta. Es la geometría de las tarjetas
  * de KPI y de las columnas. Devuelve `[{x, ancho}]`. PURA.

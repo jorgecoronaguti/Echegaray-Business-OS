@@ -125,20 +125,32 @@ function deBullets(paginaId, c, fuente) {
 
 const ALTO_FILA = 24
 
-/** Tabla: cabecera en grafito, filas con separador horizontal y nada de líneas verticales. */
+/** Tabla: cabecera en grafito, filas con separador horizontal y nada de líneas verticales.
+ *
+ *  El alto sale de `c.altoFilas` —lo que MIDIÓ `componentes.mjs` celda por celda—, no de un
+ *  `filas × 24` que Slides ignora estirando la fila hasta que el texto entre. Además se fija
+ *  `minRowHeight` por fila: es lo único que la API deja decir sobre el alto de una fila, y hace
+ *  que lo dibujado y lo medido sean el mismo número. */
 function deTabla(paginaId, c, fuente, paleta) {
   const id = oid(c.id)
+  const cabecera = c.cabecera ?? paleta.cabecera
+  const celda = c.celda ?? paleta.celda
   const filas = c.filas.length + 1
+  const altoFilas = c.altoFilas?.length === filas ? c.altoFilas : Array.from({ length: filas }, () => ALTO_FILA)
+  const altoTotal = altoFilas.reduce((a, b) => a + b, 0)
   const req = [{
     createTable: {
       objectId: id,
-      elementProperties: { pageObjectId: paginaId, size: { width: pt(c.ancho), height: pt(filas * ALTO_FILA) }, transform: { scaleX: 1, scaleY: 1, translateX: c.x, translateY: c.y, unit: 'PT' } },
+      elementProperties: { pageObjectId: paginaId, size: { width: pt(c.ancho), height: pt(altoTotal) }, transform: { scaleX: 1, scaleY: 1, translateX: c.x, translateY: c.y, unit: 'PT' } },
       rows: filas,
       columns: c.columnas.length,
     },
   }]
   c.anchoColumnas.forEach((w, i) => req.push({
     updateTableColumnProperties: { objectId: id, columnIndices: [i], tableColumnProperties: { columnWidth: pt(w) }, fields: 'columnWidth' },
+  }))
+  altoFilas.forEach((h, i) => req.push({
+    updateTableRowProperties: { objectId: id, rowIndices: [i], tableRowProperties: { minRowHeight: pt(h) }, fields: 'minRowHeight' },
   }))
   req.push({
     updateTableCellProperties: {
@@ -173,10 +185,19 @@ function deTabla(paginaId, c, fuente, paleta) {
   const derecha = new Set(c.alinearDerecha || [])
   const celdas = [c.columnas, ...c.filas]
   celdas.forEach((fila, f) => fila.forEach((valor, col) => {
-    const loc = { rowIndex: f, columnIndex: col }
     const txt = String(valor ?? '')
-    if (txt) req.push({ insertText: { objectId: id, cellLocation: loc, text: txt, insertionIndex: 0 } })
-    const est = f === 0 ? paleta.cabecera : paleta.celda
+    // ═══ UNA CELDA VACÍA NO LLEVA NINGUNA PETICIÓN ═══
+    //
+    // Antes salteaba el `insertText` pero mandaba igual el estilo, y `updateTextStyle` con
+    // `textRange: ALL` sobre una celda sin texto devuelve `400 · The object has no text` y tumba
+    // el lote ENTERO: la presentación queda a medio dibujar. Una fila más corta que la cabecera
+    // —que el componente completa con ''— alcanzaba para que el publish fallara.
+    // Sin texto no hay nada que estilar: la celda queda con el formato de la tabla, que es
+    // exactamente lo que se ve.
+    if (!txt) return
+    const loc = { rowIndex: f, columnIndex: col }
+    const est = f === 0 ? cabecera : celda
+    req.push({ insertText: { objectId: id, cellLocation: loc, text: txt, insertionIndex: 0 } })
     req.push({
       updateTextStyle: {
         objectId: id, cellLocation: loc, textRange: { type: 'ALL' },
@@ -187,7 +208,9 @@ function deTabla(paginaId, c, fuente, paleta) {
     req.push({
       updateParagraphStyle: {
         objectId: id, cellLocation: loc, textRange: { type: 'ALL' },
-        style: { alignment: derecha.has(col) || (f > 0 && derecha.has(col)) ? 'END' : 'START', lineSpacing: 100 },
+        // El interlineado es el MISMO con el que se midió la fila, no un 100 fijo: si el dibujo
+        // y la medición usan números distintos, la medición no prueba nada.
+        style: { alignment: derecha.has(col) ? 'END' : 'START', lineSpacing: Number(((est.alto / LINEA_SIMPLE) * 100).toFixed(1)) },
         fields: 'alignment,lineSpacing',
       },
     })

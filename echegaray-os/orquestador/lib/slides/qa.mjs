@@ -14,7 +14,7 @@
 // PURO.
 
 import { CONTENIDO, COLOR, MARGEN, PAGINA, contraste } from './marca.mjs'
-import { medirBullets, medirTexto, seSuperponen } from './layout.mjs'
+import { medirBullets, medirTabla, medirTexto, seSuperponen } from './layout.mjs'
 
 export const SEVERIDAD = { BLOQUEANTE: 'bloqueante', AVISO: 'aviso' }
 
@@ -24,10 +24,13 @@ const CONTRASTE_MINIMO_GRANDE = 3.0   // WCAG: a partir de 18 pt en negrita alca
 const BULLETS_MAXIMO = 7
 const CARACTERES_MAXIMO = 460
 
-/** Alto real que va a ocupar el contenido de una caja de texto o de bullets. PURA. */
+/** Alto real que va a ocupar el contenido de una caja. Para la tabla se vuelve a medir con el
+ *  estilo con el que quedó: el alto declarado de una tabla es un piso —Slides estira la fila hasta
+ *  que la celda entre—, así que creerle es exactamente el defecto que hay que cazar. PURA. */
 export function altoReal(c) {
   if (c.tipo === 'texto') return medirTexto(c.contenido, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto, negrita: c.estilo.negrita }).altoPt
   if (c.tipo === 'bullets') return medirBullets(c.items, { ancho: c.ancho, tamano: c.estilo.tamano, alto: c.estilo.alto, negrita: c.estilo.negrita }).altoPt
+  if (c.tipo === 'tabla') return medirTabla(c.columnas, c.filas, { anchoColumnas: c.anchoColumnas, cabecera: c.cabecera, celda: c.celda }).altoPt
   return c.alto
 }
 
@@ -69,6 +72,17 @@ export function revisarLamina(lamina) {
     }
   }
 
+  // La tabla no entra en el bucle de arriba —no tiene un `estilo` propio ni contrasta contra un
+  // fondo suelto—, pero sí puede desbordar: sus filas se estiran sobre lo que va abajo.
+  for (const t of lamina.cajas.filter((c) => c.tipo === 'tabla')) {
+    const alto = altoReal(t)
+    if (alto > t.alto + TOLERANCIA) {
+      out.push(hallazgo(SEVERIDAD.BLOQUEANTE, 'desborde', lamina,
+        `la tabla «${t.columnas.join(' · ').slice(0, 50)}» necesita ${alto.toFixed(0)} pt y tiene ${t.alto.toFixed(0)}: sus filas se estiran sobre lo que va abajo`,
+        { caja: t.id, falta: Number((alto - t.alto).toFixed(1)) }))
+    }
+  }
+
   for (const c of lamina.cajas) {
     if (c.x < -0.5 || c.y < -0.5 || c.x + c.ancho > PAGINA.ancho + 0.5 || c.y + c.alto > PAGINA.alto + 0.5) {
       out.push(hallazgo(SEVERIDAD.BLOQUEANTE, 'fuera_de_lamina', lamina,
@@ -79,11 +93,16 @@ export function revisarLamina(lamina) {
     }
   }
 
+  // Se compara con el alto REAL del texto, no con el declarado. La tabla queda afuera de esa
+  // inflación a propósito: cuando se estira ya lo dijo el control de desborde de arriba, con el
+  // detalle de cuánto le falta — inflarla acá agregaría un segundo hallazgo que manda a arreglar
+  // la plantilla cuando lo que hay que hacer es acortar el contenido.
+  const inflado = (c) => (c.tipo === 'texto' || c.tipo === 'bullets' ? Math.max(c.alto, altoReal(c)) : c.alto)
   const contenido = lamina.cajas.filter((c) => c.capa === 'contenido')
   for (let i = 0; i < contenido.length; i += 1) {
     for (let j = i + 1; j < contenido.length; j += 1) {
-      const a = { ...contenido[i], alto: Math.max(contenido[i].alto, altoReal(contenido[i])) }
-      const b = { ...contenido[j], alto: Math.max(contenido[j].alto, altoReal(contenido[j])) }
+      const a = { ...contenido[i], alto: inflado(contenido[i]) }
+      const b = { ...contenido[j], alto: inflado(contenido[j]) }
       if (seSuperponen(a, b, 1.5)) {
         out.push(hallazgo(SEVERIDAD.BLOQUEANTE, 'superposicion', lamina,
           `${a.tipo} ${a.id} se pisa con ${b.tipo} ${b.id}`, { caja: a.id, contra: b.id }))
