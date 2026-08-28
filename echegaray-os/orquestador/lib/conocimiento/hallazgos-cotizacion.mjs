@@ -34,6 +34,7 @@ export const TIPO = Object.freeze({
   DATOS_DE_OTRO_CLIENTE: 'DATOS_DE_OTRO_CLIENTE',
   INDIRECTO_SIEMPRE_EN_CERO: 'INDIRECTO_SIEMPRE_EN_CERO',
   COEFICIENTE_AJUSTE_SIN_CRITERIO: 'COEFICIENTE_AJUSTE_SIN_CRITERIO',
+  COEFICIENTE_AJUSTE_IMPLAUSIBLE: 'COEFICIENTE_AJUSTE_IMPLAUSIBLE',
   REFERENCIA_ROTA: 'REFERENCIA_ROTA',
 })
 
@@ -47,6 +48,11 @@ export const TOLERANCIA_FRACCION = 0.0005
 /** La alícuota general de IVA que la plantilla aplica en todas las ofertas medidas. Está acá para
  *  poder decir CUÁNTO se desvía un IVA tipeado, no para afirmar qué alícuota corresponde. */
 export const ALICUOTA_IVA = 0.21
+
+/** Hasta dónde un «coeficiente de ajuste» se puede leer como un multiplicador de riesgo o de plazo.
+ *  Arriba de 3 o abajo de 0,5 ya no ajusta un precio: lo reemplaza, y lo más probable es que sea una
+ *  cantidad tipeada en la columna equivocada. Medido: hay valores de 15 y de 1015. */
+export const AJUSTE_PLAUSIBLE = Object.freeze({ min: 0.5, max: 3 })
 
 /**
  * UN HALLAZGO. `monto` es EL DINERO EN JUEGO, no el dinero perdido — y la diferencia no es retórica:
@@ -274,17 +280,35 @@ export function indirectosSiempreEnCero(cotizaciones = [], { minimo = 5 } = {}) 
  */
 export function coeficienteDeAjusteSinCriterio(cotizaciones = []) {
   const salida = []
+  const plausible = (v) => v >= AJUSTE_PLAUSIBLE.min && v <= AJUSTE_PLAUSIBLE.max
   for (const c of cotizaciones) {
     const ajustadas = (c.presupuesto?.items ?? []).filter((i) => typeof i.coeficienteAjuste === 'number' && i.coeficienteAjuste !== 1 && i.coeficienteAjuste !== 0 && i.codigo)
     if (!ajustadas.length) continue
-    const monto = suma(ajustadas.map((i) => (typeof i.subtotal === 'number' ? i.subtotal - i.subtotal / i.coeficienteAjuste : 0)))
-    salida.push(hallazgo({
-      tipo: TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO, gravedad: GRAVEDAD.MEDIA, clave: `${c.id}.presupuesto.coeficientes`,
-      afirmacion: `en «${c.obra}» ${ajustadas.length} partida(s) llevan un coeficiente de ajuste distinto de 1 (${ajustadas.map((i) => `${i.codigo}: ${i.coeficienteAjuste}`).join(', ')}) y la planilla no dice por qué`,
-      monto: monto || null,
-      evidencia: ajustadas.map((i) => ({ cita: `${i.codigo} «${i.tarea}» × ${i.coeficienteAjuste}`, ubicacion: `${c.nombre} · hoja Presupuesto · fila ${i.fila + 1}` })),
-      porQue: 'el multiplicador entra al precio y no queda registrado como decisión: dentro de un año nadie va a poder decir si fue riesgo, plazo o un análisis que se sabía corto',
-    }))
+    const cita = (i) => ({ cita: `${i.codigo} «${i.tarea}» × ${i.coeficienteAjuste}`, ubicacion: `${c.nombre} · hoja Presupuesto · fila ${i.fila + 1}` })
+    const multiplicadores = ajustadas.filter((i) => plausible(i.coeficienteAjuste))
+    const disparatados = ajustadas.filter((i) => !plausible(i.coeficienteAjuste))
+    if (multiplicadores.length) {
+      // La plata acá SÍ se puede calcular: es la parte del precio que aporta el multiplicador.
+      const monto = suma(multiplicadores.map((i) => (typeof i.subtotal === 'number' ? i.subtotal - i.subtotal / i.coeficienteAjuste : 0)))
+      salida.push(hallazgo({
+        tipo: TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO, gravedad: GRAVEDAD.MEDIA, clave: `${c.id}.presupuesto.coeficientes`,
+        afirmacion: `en «${c.obra}» ${multiplicadores.length} partida(s) llevan un coeficiente de ajuste distinto de 1 (${multiplicadores.map((i) => `${i.codigo}: ${i.coeficienteAjuste}`).join(', ')}) y la planilla no dice por qué`,
+        monto: monto || null,
+        evidencia: multiplicadores.map(cita),
+        porQue: 'el multiplicador entra al precio y no queda registrado como decisión: dentro de un año nadie va a poder decir si fue riesgo, plazo o un análisis que se sabía corto',
+      }))
+    }
+    if (disparatados.length) {
+      // Y acá NO se calcula. Un «coeficiente» de 1015 multiplicado por el subtotal daría una cifra
+      // que se lee como plata y no lo es: lo que hay es una columna usada para otra cosa.
+      salida.push(hallazgo({
+        tipo: TIPO.COEFICIENTE_AJUSTE_IMPLAUSIBLE, gravedad: GRAVEDAD.ALTA, clave: `${c.id}.presupuesto.coeficientes_implausibles`,
+        afirmacion: `en «${c.obra}» ${disparatados.length} partida(s) tienen en la columna COEF. AJUSTE un valor que no se puede leer como multiplicador (${disparatados.map((i) => `${i.codigo}: ${i.coeficienteAjuste}`).join(', ')})`,
+        monto: null,
+        evidencia: disparatados.map(cita),
+        porQue: `fuera del rango ${AJUSTE_PLAUSIBLE.min}–${AJUSTE_PLAUSIBLE.max} lo más probable es que sea una cantidad tipeada en la columna equivocada; el precio de esa partida sale multiplicado por ese número igual`,
+      }))
+    }
   }
   return salida
 }

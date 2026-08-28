@@ -244,6 +244,15 @@ test('COEFICIENTE_AJUSTE_SIN_CRITERIO: da rojo con un multiplicador distinto de 
   assert.equal(sin.hallazgos.filter((x) => x.tipo === TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO).length, 0)
 })
 
+test('un «coeficiente» de 1015 no se convierte en plata: sale aparte y sin monto', async () => {
+  const r = await estudiar([libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/a.xlsx', { coeficientesAjuste: [1015] })])
+  const imp = r.hallazgos.filter((x) => x.tipo === TIPO.COEFICIENTE_AJUSTE_IMPLAUSIBLE)
+  assert.equal(imp.length, 1)
+  assert.equal(imp[0].monto, null, 'multiplicar el subtotal por 1015 daría una cifra que se lee como plata y no lo es')
+  assert.equal(imp[0].gravedad, 'ALTA')
+  assert.equal(r.hallazgos.filter((x) => x.tipo === TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO).length, 0)
+})
+
 test('REFERENCIA_ROTA: da rojo con un #REF! en el presupuesto y verde sin él', async () => {
   const con = await estudiar([libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/a.xlsx', { tareasExtra: ['#REF!'] })])
   assert.equal(con.hallazgos.filter((x) => x.tipo === TIPO.REFERENCIA_ROTA).length, 1)
