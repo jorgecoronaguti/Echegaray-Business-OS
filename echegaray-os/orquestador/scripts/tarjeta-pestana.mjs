@@ -238,7 +238,7 @@ function previsualizar(g, datos, previo, ubic, bandaActual) {
   console.log(`  fila ${g.fDeb} · débito en el extracto entre ${e.ventana.desde} y ${e.ventana.hasta}: ${e.debitos.length ? $(e.pagado) : '$0 — todavía no aparece'}`)
   console.log(`  fila ${g.fDif} · estado: ${e.estado}${e.hallazgo ? ` — ${e.hallazgo}` : ''}`)
   console.log(`  fila ${g.fCargado} · cargado en el registro para ${r.vencimiento.slice(0, 7)}: ${$(cargado)}`)
-  console.log(`  fila ${g.fBrecha} · brecha sin proyectar: ${$(r.aDebitarPesos - cargado)}${r.aDebitarDolares ? ` + U$S ${r.aDebitarDolares}` : ''}`)
+  console.log(`  fila ${g.fBrecha} · brecha sin proyectar: ${$(r.aDebitarPesos - cargado)}${r.aDebitarDolares ? ` + U$S ${r.aDebitarDolares.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''}`)
 }
 
 /**
