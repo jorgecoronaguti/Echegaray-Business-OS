@@ -41,6 +41,7 @@
 
 import { ALERTA } from './glifos.mjs'
 import { CATEGORIAS, CATEGORIAS_POR_MES } from './uocra-acuerdos.mjs'
+import { claveDeCategoria } from './uocra-paritaria.mjs'
 
 /** Las categorías que se cotizan POR HORA: son las únicas contra las que un jornal se puede comparar. */
 export const CATEGORIAS_POR_HORA = CATEGORIAS.filter((c) => !CATEGORIAS_POR_MES.includes(c))
@@ -74,7 +75,9 @@ export const CATEGORIAS_POR_HORA = CATEGORIAS.filter((c) => !CATEGORIAS_POR_MES.
 export const GAP_JORNADA = 'L-J 9 h y V 8 h son la regla del dueño; el sábado de 4 h es un SUPUESTO '
   + 'leído del espejo, y no hay calendario de feriados'
 
-const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+// La normalización de una categoría se define UNA vez —es la misma que aplica `TRIM` en la fórmula—
+// y vive en `uocra-paritaria.mjs`, al lado de la tabla que se consulta con ella.
+const norm = claveDeCategoria
 
 /**
  * NÚCLEO PURO: DE QUÉ BLOQUE DEL ESPEJO SALE EL PLANTEL QUE FIJA EL PISO.

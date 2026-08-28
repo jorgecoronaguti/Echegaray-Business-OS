@@ -61,7 +61,7 @@
 // el resto la hereda por rango con nombre. Ninguna pestaña necesita una celda nueva.
 
 import { sub } from './patron-pestana.mjs'
-import { convenioDe, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
+import { convenioDe, claveDeCategoria, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
 import { categoriaDelConvenio, expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { ALERTA } from './glifos.mjs'
 
@@ -321,7 +321,19 @@ export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null
     const fila = grid[r - 1] ?? []
     if (!String(fila[COL_NOMBRE] ?? '').trim()) continue
     personas++
-    const codigo = String(fila[COL_CATEGORIA] ?? '').trim()
+    // LA MISMA CLAVE QUE LA PESTAÑA, O ESTE CONTROL SE VALIDA CONTRA OTRA NORMALIZACIÓN QUE LA QUE
+    // PRODUCE EL NÚMERO. Acá había un `.trim()`, que saca los espacios de las puntas y deja los del
+    // medio, mientras la fórmula compara contra `TRIM(D)` —que además los colapsa— y
+    // `categoriasDelBloque` arma sus filas con `claveDeCategoria`. Con un `"OF  M"` en el espejo, este
+    // control abría DOS filas (una por `"OF  M"` y otra por `"OF M"`), el lookup de la columna del
+    // dueño fallaba —`escritoPorCodigo` está indexado por la clave normalizada—, y la Σ del log salía
+    // $11.781 contra los $10.866 que publica la pestaña. Dos números del mismo concepto y nadie con
+    // qué decidir cuál miente.
+    //
+    // LÍMITE DECLARADO: que este camino y la fórmula den lo MISMO está probado sobre grillas
+    // sintéticas, no contra el archivo vivo. La comparación de verdad es el log de la corrida real
+    // contra la celda de la pestaña, y ésa la hace quien corra el generador desde el árbol principal.
+    const codigo = claveDeCategoria(fila[COL_CATEGORIA])
     const res = categoriaDelConvenio(escritoPorCodigo?.[codigo], convenioDe(codigo, tabla))
     if (res.descartado && !descartados.some((d) => d.codigo === codigo)) {
       descartados.push({ codigo, escrito: res.descartado, usada: res.categoria })

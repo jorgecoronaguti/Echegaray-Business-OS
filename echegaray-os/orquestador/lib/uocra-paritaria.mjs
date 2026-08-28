@@ -39,6 +39,7 @@
 //
 // UN CONTROL NUNCA SE VALIDA CONTRA LA MISMA INFORMACIÓN QUE PRODUCE: por eso el número está acá y no
 // se deriva de `_UOCRA_RAW`.
+import { ALERTA } from './glifos.mjs'
 
 /** El convenio y la zona que aplican a Echegaray. San Juan es Zona A. */
 export const CCT = '76/75'
@@ -85,40 +86,77 @@ export const GAP_SUMAS_NR = 'el acuerdo prevé sumas no remunerativas en cuotas 
   + 'no tenemos: la proyección por el % de paritaria es un PISO, no un techo'
 
 /**
- * LA EQUIVALENCIA ENTRE LA CATEGORÍA DE LA PLANILLA Y LA DEL CONVENIO — DECLARADA POR EL DUEÑO.
+ * LA EQUIVALENCIA ENTRE LA CATEGORÍA DE LA PLANILLA Y LA DEL CONVENIO — Y DE DÓNDE SALIÓ CADA UNA.
  *
- * Hasta hoy esta tabla NO EXISTÍA y el motor se negaba a inventarla: dejaba una columna vacía para que
- * el dueño la cargara a mano, y mientras tanto el control contra el convenio no podía hablar. El
- * 07/08 el dueño mandó el plantel con su categoría al lado, y eso es la tabla.
+ * Hasta el 07/08 esta tabla NO EXISTÍA y el motor se negaba a inventarla: dejaba una columna vacía
+ * para que el dueño la cargara a mano, y mientras tanto el control contra el convenio no podía
+ * hablar. Ese día el dueño mandó el plantel con su categoría al lado, y eso es la tabla.
  *
  * El sufijo "M" es obra metalúrgica (UOM Rama 17) — otro gremio y otro convenio. Se mapea igual, por
  * orden explícita: *"por mas q no esten en ese gremio y convenio"*. Lo que se toma prestado es el
  * ESCALÓN, no el piso legal: por eso el control de convenio muestra el margen y no dice "en falta".
  *
  * Un código que no esté acá NO se adivina: la fila queda sin equivalente y el bloque lo dice contado.
+ *
+ * ═══ POR QUÉ CADA FILA LLEVA SU PROCEDENCIA (28/08/2026) ═══
+ *
+ * Esta tabla era `código → categoría` y las cinco filas se leían igual. Pero NO son iguales: cuatro
+ * las declaró el dueño y `M OF` la dedujo el OS. Al agregarla, el único control que hacía visible un
+ * código desconocido —`sinConvenio` en la pestaña «Nómina», que sólo dispara cuando `convenioDe`
+ * devuelve `null`— se apagó: Castillo Carlos pasó de figurar como «sin equivalencia declarada» a
+ * dibujarse `M OF | Medio Oficial`, exactamente igual que el `OF → Oficial` del dueño. La inferencia
+ * se volvió un hecho silencioso, y encima define el piso de una persona (Medio Oficial $5.866/h
+ * contra Oficial $6.348/h: $8.533 vs $8.774 con el aumento, $12.773 en una quincena de 53 h).
+ *
+ * Es el mismo problema que ya resolvió `public.cliente_alias` y se resuelve igual, con la misma
+ * enumeración: `origen in ('DECISION_DUENO','INFERENCIA_OS')` + quién y cuándo. La procedencia deja
+ * de vivir en un comentario —que ningún control puede leer— y pasa a ser un DATO que la pestaña
+ * marca y los tests exigen.
+ *
+ * SIN PROCEDENCIA NO HAY EQUIVALENCIA: `convenioDe` devuelve `null` para una fila que no la declare,
+ * así que un código agregado con el atajo viejo (`'X': 'Oficial'`) NO se cuela como declarado —cae
+ * en el control de «sin equivalencia declarada», que es donde tiene que caer— y además pone rojo el
+ * test de `codigosSinProcedencia`.
  */
+export const DECISION_DUENO = 'DECISION_DUENO'
+export const INFERENCIA_OS = 'INFERENCIA_OS'
+export const ORIGENES_EQUIVALENCIA = [DECISION_DUENO, INFERENCIA_OS]
+
 export const CONVENIO_POR_CODIGO = {
-  OF: 'Oficial',
-  'OF M': 'Oficial',
-  A: 'Ayudante',
-  'A M': 'Ayudante',
+  OF: { categoria: 'Oficial', origen: DECISION_DUENO, decididoPor: 'dueño', decididoEn: '2026-08-07', nota: null },
+  'OF M': { categoria: 'Oficial', origen: DECISION_DUENO, decididoPor: 'dueño', decididoEn: '2026-08-07', nota: 'Obra metalúrgica: se toma prestado el escalón, no el piso legal.' },
+  A: { categoria: 'Ayudante', origen: DECISION_DUENO, decididoPor: 'dueño', decididoEn: '2026-08-07', nota: null },
+  'A M': { categoria: 'Ayudante', origen: DECISION_DUENO, decididoPor: 'dueño', decididoEn: '2026-08-07', nota: 'Obra metalúrgica: se toma prestado el escalón, no el piso legal.' },
   // ═══ LOS DOS CÓDIGOS QUE APARECIERON EN LA QUINCENA 17/08–31/08 (28/08/2026) ═══
   //
   // El dueño: *"revisa bien el sheet jornales porque algunos empleados tienen aumento de categoria"*.
-  // Los tenía razón: en el bloque 526-543 de «Obreros 26» hay dos códigos que esta tabla no conocía,
-  // y sin ellos `convenioDe` devuelve null, la persona se queda SIN PISO y el control de convenio no
-  // la puede mirar. Tres personas quedaban afuera.
+  // Tenía razón: en el bloque 526-543 de «Obreros 26» hay dos códigos que esta tabla no conocía, y
+  // sin ellos `convenioDe` devuelve null, la persona se queda SIN PISO y el control de convenio no la
+  // puede mirar. Tres personas quedaban afuera. Pero las dos filas NO valen lo mismo, y por eso una
+  // dice DECISION_DUENO y la otra INFERENCIA_OS.
   //
-  // · `OF E` — Pastran Marcelo y Quiroga Sebastián SUBIERON de Oficial a Oficial Especializado.
-  //   La lectura es directa: E = Especializado, y la escala UOCRA tiene esa categoría.
+  // · `OF E` — Pastran Marcelo y Quiroga Sebastián SUBIERON de Oficial a Oficial Especializado. El
+  //   ascenso lo declaró el dueño en el mensaje del 28/08; la escala UOCRA tiene esa categoría y la
+  //   E de Especializado no admite otra lectura.
   //
-  // · `M OF` — Castillo Carlos, alta del 19/08. **ESTO ES UNA INFERENCIA, NO UN HECHO.** Se lee como
+  // · `M OF` — Castillo Carlos, alta del 19/08. **NADIE DECLARÓ QUÉ SIGNIFICA.** El OS la lee como
   //   Medio Oficial —la escala la tiene, y la M va ADELANTE, al revés de `OF M`/`A M` donde la M del
-  //   final era el gremio metalúrgico— pero nadie lo declaró. Se aplicó bajo pedido explícito del
-  //   dueño de aplicar el cuadro, con la lectura declarada en el mensaje del 28/08 y sin respuesta
-  //   en contra. **Define el piso de una persona: si es otra cosa, se corrige acá y se rehace.**
-  'OF E': 'Oficial Especializado',
-  'M OF': 'Medio Oficial',
+  //   final era el gremio metalúrgico—. Y hay un dato que la CONTRADICE: Castillo cobra $5.600/h, lo
+  //   mismo que los Oficiales Aguero y Ochoa y más que Petina ($5.300) y Rosales ($5.400), que son
+  //   Oficiales. La empresa le paga tarifa de Oficial. Queda como INFERENCIA_OS: sirve para trabajar
+  //   —sin ella no tiene piso—, no para afirmar, y la pestaña «Nómina» la marca en su fila y la
+  //   nombra al pie hasta que el dueño la confirme o la corrija.
+  'OF E': { categoria: 'Oficial Especializado', origen: DECISION_DUENO, decididoPor: 'dueño', decididoEn: '2026-08-28', nota: 'Ascenso de Pastran Marcelo y Quiroga Sebastián.' },
+  'M OF': {
+    categoria: 'Medio Oficial',
+    origen: INFERENCIA_OS,
+    decididoPor: 'OS · la M adelante se lee Medio Oficial',
+    decididoEn: '2026-08-28',
+    nota: 'Castillo Carlos. LÍMITE DECLARADO: lo contradice su jornal —cobra $5.600/h, la misma tarifa '
+      + 'que los Oficiales Aguero y Ochoa, más que Petina y Rosales que son Oficiales—. La marca lo hace '
+      + 'visible; NO lo resuelve: la categoría la decide el dueño. Si es Oficial, su piso con aumento es '
+      + '$8.774 y no $8.533 — $12.773 en una quincena de 53 h.',
+  },
 }
 
 /**
@@ -166,11 +204,90 @@ export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUME
 }
 
 
+/**
+ * NÚCLEO PURO: LA CLAVE CON LA QUE SE COMPARA UNA CATEGORÍA — la misma de los dos lados.
+ *
+ * Colapsa los espacios internos y saca los de las puntas, que es EXACTAMENTE lo que hace `TRIM` en
+ * Sheets. No es una coincidencia cómoda: es el contrato. La columna D del espejo la escribe el dueño
+ * y trae `"OF "` con un espacio al final; si JS normaliza y la fórmula no —o al revés— la clave
+ * recortada busca contra un rango sin recortar y no encuentra a nadie. Esa asimetría dejó 9 de 17
+ * personas sin piso de convenio (28/08). Las dos puntas normalizan igual o el control miente.
+ */
+export const claveDeCategoria = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * NÚCLEO PURO: la fila entera de la equivalencia —categoría Y procedencia— o null.
+ *
+ * SIN PROCEDENCIA VÁLIDA DEVUELVE NULL, aunque la categoría esté escrita. Es lo que impide que un
+ * código agregado con el atajo viejo (`'X': 'Oficial'`) entre como si lo hubiera declarado el dueño:
+ * cae en el control de «sin equivalencia declarada», que es donde se ve.
+ */
+export function equivalenciaDe(codigo, tabla = CONVENIO_POR_CODIGO) {
+  const k = claveDeCategoria(codigo).toUpperCase()
+  if (!k) return null
+  const hit = Object.entries(tabla).find(([c]) => c.toUpperCase() === k)
+  if (!hit) return null
+  const e = hit[1]
+  return procedenciaCompleta(e) ? e : null
+}
+
+/** Una fila está completa cuando dice QUÉ, DE DÓNDE, QUIÉN y CUÁNDO — como `public.cliente_alias`. */
+function procedenciaCompleta(e) {
+  return !!e && typeof e === 'object'
+    && typeof e.categoria === 'string' && e.categoria.trim() !== ''
+    && ORIGENES_EQUIVALENCIA.includes(e.origen)
+    && typeof e.decididoPor === 'string' && e.decididoPor.trim() !== ''
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(e.decididoEn ?? ''))
+}
+
 /** NÚCLEO PURO: a qué categoría del convenio equivale un código de la planilla, o null. */
 export function convenioDe(codigo, tabla = CONVENIO_POR_CODIGO) {
-  const k = String(codigo ?? '').replace(/\s+/g, ' ').trim().toUpperCase()
-  const hit = Object.entries(tabla).find(([c]) => c.toUpperCase() === k)
-  return hit ? hit[1] : null
+  return equivalenciaDe(codigo, tabla)?.categoria ?? null
+}
+
+/** NÚCLEO PURO: ¿esta equivalencia la dedujo el OS y nadie la confirmó? */
+export function esInferida(codigo, tabla = CONVENIO_POR_CODIGO) {
+  return equivalenciaDe(codigo, tabla)?.origen === INFERENCIA_OS
+}
+
+/**
+ * NÚCLEO PURO: los códigos de la tabla que NO declaran de dónde salieron.
+ *
+ * Es el guardián de la tabla: su test exige que esté vacío. Sin él, la próxima categoría que aparezca
+ * en la planilla se agrega en una línea, se dibuja igual que las declaradas por el dueño, y nadie se
+ * entera de que el piso de una persona lo decidió un modelo.
+ */
+export function codigosSinProcedencia(tabla = CONVENIO_POR_CODIGO) {
+  return Object.entries(tabla).filter(([, e]) => !procedenciaCompleta(e)).map(([c]) => c)
+}
+
+/**
+ * NÚCLEO PURO: cómo se escribe la categoría del convenio en una fila de la pestaña.
+ *
+ * Una equivalencia inferida se dibuja marcada. La marca no es decoración: es la diferencia entre
+ * «esto lo decidió el dueño» y «esto lo dedujo el OS y define igual lo que se le paga a alguien».
+ */
+export function rotuloConvenio(codigo, tabla = CONVENIO_POR_CODIGO) {
+  const e = equivalenciaDe(codigo, tabla)
+  if (!e) return null
+  return e.origen === INFERENCIA_OS ? `${e.categoria} ${ALERTA} inferida` : e.categoria
+}
+
+/**
+ * NÚCLEO PURO: la línea al pie que nombra las inferencias que están gobernando un piso.
+ *
+ * Devuelve null cuando no hay ninguna — un control que dibuja siempre lo mismo no es un control.
+ *
+ * @param {Array<{nombre:string, codigo:string}>} personas las del cuadro, con su código de planilla
+ */
+export function lineaEquivalenciasInferidas(personas = [], tabla = CONVENIO_POR_CODIGO) {
+  const marcadas = personas
+    .filter((p) => esInferida(p?.codigo, tabla))
+    .map((p) => `${p.nombre} (${claveDeCategoria(p.codigo)} → ${convenioDe(p.codigo, tabla)})`)
+  if (!marcadas.length) return null
+  return `${ALERTA} ${marcadas.length} equivalencia(s) de convenio las INFIRIÓ el OS y nadie las declaró: `
+    + `${marcadas.join(' · ')}. Definen el piso que se les mide y se les paga. `
+    + 'Si la lectura es otra, se corrige en CONVENIO_POR_CODIGO (lib/uocra-paritaria.mjs).'
 }
 
 const ES_PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/

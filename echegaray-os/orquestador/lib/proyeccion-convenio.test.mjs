@@ -305,3 +305,41 @@ test('LA SEÑAL SE LEE DE LO QUE JORNALES PUBLICÓ — el encabezado, no una seg
   assert.equal(baseDeJornales([]), null, 'sin lectura no se adivina una base')
   assert.equal(baseDeJornales([['Σ $/hora']]), null, 'un rótulo parecido no es el rótulo')
 })
+
+// ═══ EL CONTROL Y LA PESTAÑA TIENEN QUE NORMALIZAR IGUAL — SI NO, PUBLICAN DOS NÚMEROS (28/08) ═══
+//
+// `sigmaConvenioDelPlantel` es el OTRO camino con el que se controla la misma Σ que la pestaña calcula
+// por fórmula. Leía la columna D con `.trim()` —puntas sí, medio no— mientras `categoriasDelBloque`
+// usa `claveDeCategoria` y la fórmula compara contra `TRIM(D)`, que colapsa también los espacios
+// internos. Con un `"OF  M"` en el espejo el control abría DOS filas, el lookup de la columna del
+// dueño fallaba (`escritoPorCodigo` viene indexado por la clave normalizada) y el log imprimía
+// $11.781 contra los $10.866 de la pestaña: dos números del mismo concepto, sin forma de decidir cuál
+// miente. UN CONTROL NUNCA SE VALIDA CONTRA UNA NORMALIZACIÓN DISTINTA DE LA QUE PRODUCE EL NÚMERO.
+//
+// LA MUTACIÓN: volver la línea a `String(fila[COL_CATEGORIA] ?? '').trim()` pone rojos los dos tests.
+test('un espacio de más en el espejo NO parte la categoría en dos filas del control', () => {
+  const { grid, bloque } = espejoCon(['OF  M'])
+  const s = sigmaConvenioDelPlantel(grid, bloque, AGOSTO)
+  assert.equal(s.porCategoria.length, 1, 'la misma categoría se contó dos veces con dos claves distintas')
+  assert.equal(s.porCategoria[0].codigo, 'OF M', 'el código del log tiene que ser el mismo que el de la pestaña')
+  assert.equal(s.personas, 1)
+  assert.equal(s.total, 6348)
+})
+
+test('la columna «Convenio» del dueño gana también en el control, no sólo en la fórmula', () => {
+  // La sonda de la auditoría, literal: "OF  M" en el espejo y «Ayudante» escrito por el dueño. La
+  // pestaña respeta esa celda —lo hace `expresionClaveConvenio`— y el control tiene que llegar al
+  // mismo número. Con el `.trim()` viejo el lookup no encontraba la clave y el control valuaba al
+  // Oficial: $6.348 contra los $5.399 que publica la pestaña.
+  const { grid, bloque } = espejoCon(['OF  M'])
+  const s = sigmaConvenioDelPlantel(grid, bloque, AGOSTO, undefined, { 'OF M': 'Ayudante' })
+  assert.equal(s.porCategoria.length, 1)
+  assert.equal(s.porCategoria[0].convenio, 'Ayudante', 'se ignoró la celda del dueño: el lookup usó otra clave')
+  assert.equal(s.total, 5399)
+  // Y el plantel entero con la misma mezcla: la Σ no puede depender de cómo se tipeó el espacio.
+  const sucio = espejoCon(PLANTEL.map((c) => (c === 'OF M' ? 'OF  M ' : `${c} `)))
+  const limpio = espejoCon(PLANTEL)
+  assert.equal(sigmaConvenioDelPlantel(sucio.grid, sucio.bloque, AGOSTO).total,
+    sigmaConvenioDelPlantel(limpio.grid, limpio.bloque, AGOSTO).total)
+  assert.equal(sigmaConvenioDelPlantel(sucio.grid, sucio.bloque, AGOSTO).porCategoria.length, 4)
+})
