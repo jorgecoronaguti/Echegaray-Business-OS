@@ -46,7 +46,10 @@
 // equivocados. Un gráfico huérfano que sigue pintando algo que ya no significa nada es peor que uno
 // que falta. Esto vale para CAJA, que es íntegramente generada, y no es un permiso general.
 
-import { COL, DIAS_NECESIDAD, DIAS_PROYECCION, DIAS_TOP, TOP_N } from './caja-anexo-series.mjs'
+import {
+  COL, DIAS_NECESIDAD, DIAS_PROYECCION, DIAS_TOP, TOP_N,
+} from './caja-anexo-series.mjs'
+import { COL_NECESIDAD, SALIDAS } from './caja-necesidad-baldes.mjs'
 
 /**
  * DÓNDE SE ANCLAN. Los gráficos flotan, pero el ANCLA es una celda REAL: si la hoja no llega a esa
@@ -80,6 +83,11 @@ const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
 // LA SALIDA de plata, una serie entera y una sola. Es apagado a propósito: un rojo saturado grita en
 // los doce meses, y lo que tiene que gritar es el mes donde le pasa por arriba al azul.
 const ROJO = { red: 0.60, green: 0.24, blue: 0.22 }
+// EL OCRE ERA UN LITERAL ADENTRO DE LA LISTA DE COLORES; se nombra porque ahora la lista es un mapa.
+const OCRE = { red: 0.45, green: 0.40, blue: 0.30 }
+// Y EL GRIS CLARO ES EL DE LO QUE YA PASÓ. Un color apagado no es decoración: en esta pila significa
+// "esto no se decide", y por eso es el único que no está en la escala de la paleta viva.
+const GRIS_CLARO = { red: 0.85, green: 0.85, blue: 0.85 }
 
 const rango = (sheetId, f0, f1, c0, c1) => ({ sheetId, startRowIndex: f0 - 1, endRowIndex: f1, startColumnIndex: c0 - 1, endColumnIndex: c1 })
 /**
@@ -125,38 +133,55 @@ function base(titulo, subtitulo, basicChart, sheetId, posicion) {
  * dinero —cheques, proveedores, sueldos, cargas sociales, impuestos— con montos y fechas, y poner las
  * cobranzas totales en el mismo gráfico para ver si cubrimos día a día esa necesidad"*.
  *
- * Cinco columnas APILADAS —lo que sale, abierto por rubro— y la cobranza como LÍNEA por encima. El
- * día en que la línea queda por debajo de la pila es el día que hay que ir a resolver, y se ve sin
- * leer un número. Un total del mes no contesta esto: la plata no falta en el mes, falta el martes.
+ * Columnas APILADAS —lo que sale, abierto por rubro— y el saldo como LÍNEA. El día en que la línea
+ * cruza el cero es el día que hay que ir a resolver, y se ve sin leer un número. Un total del mes no
+ * contesta esto: la plata no falta en el mes, falta el martes.
  *
- * Es COMBO y no COLUMN porque `type` por serie —la línea de cobranzas sobre las barras— sólo lo
- * respeta ese tipo de gráfico; con COLUMN la API acepta el request y dibuja seis barras.
+ * Es COMBO y no COLUMN porque `type` por serie —las líneas de saldo sobre las barras— sólo lo
+ * respeta ese tipo de gráfico; con COLUMN la API acepta el request y dibuja todo como barras.
+ *
+ * ═══ LA PRIMERA BARRA NO ES NECESIDAD: ES LO QUE YA SALIÓ (28/08/2026) ═══
+ *
+ * *"Necesito que el gráfico muestre la información tal cual es, en tiempo y forma"*. La pila arranca
+ * con lo EJECUTADO del día —`REAL`, plata que ya pasó por el banco— en GRIS CLARO, y sigue con los
+ * cinco rubros de lo que FALTA PAGAR, en la paleta de siempre. El gris claro es deliberado: lo que
+ * ya salió no admite decisión, así que tiene que leerse como piso y no competir por la atención con
+ * lo que sí hay que ir a conseguir.
+ *
+ * Y LO QUE SE COMPARA CONTRA EL SALDO SON LAS OTRAS CINCO, no la pila entera: las dos curvas parten
+ * de `CAJA_TOTAL_DISPONIBLE`, que YA tiene descontada la barra gris. Sumarla otra vez sería pedir dos
+ * veces la misma plata. Por eso la barra gris no mueve ninguna de las dos líneas — y no es un olvido,
+ * es la aritmética de la pregunta. Ver `saldoSinCobrar` en caja-anexo-series.mjs.
  */
 function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
   const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
-  const COLORES = [GRIS, INK, ACENTO, { red: 0.45, green: 0.40, blue: 0.30 }, ROJO]
+  // UN COLOR POR BALDE, EN EL ORDEN DE `SALIDAS`. El gris claro es el de lo ejecutado: ver arriba.
+  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
   return base(titulo, subtitulo, {
     chartType: 'COMBO',
     stackedType: 'STACKED',
     legendPosition: 'BOTTOM_LEGEND',
     headerCount: 1,
-    domains: [{ domain: fuente(col(8)) }],
+    domains: [{ domain: fuente(col(COL_NECESIDAD.dia)) }],
     series: [
-      // I..M (9..13): las cinco salidas del día, apiladas. Eje IZQUIERDO, en la escala del día.
-      ...[9, 10, 11, 12, 13].map((c, i) => ({
-        series: fuente(col(c)), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: COLORES[i],
+      // Las salidas del día, apiladas. Eje IZQUIERDO, en la escala del día. Las columnas las cuenta
+      // `COL_NECESIDAD` sobre la misma lista que las escribió: acá no se tipea un número de columna.
+      ...COL_NECESIDAD.salidas.map((c, i) => ({
+        series: fuente(col(c)), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: COLORES[SALIDAS[i].clave] ?? GRIS,
       })),
       // ═══ Y LAS DOS CURVAS DE SALDO, EN EL EJE DERECHO ═══
       //
       // Van en el OTRO eje porque son otra magnitud: el saldo se mide en decenas de millones y lo que
       // sale un día, en unidades. En el mismo eje las barras quedaban aplastadas contra el piso y el
       // gráfico dejaba de mostrar lo que sale, que es la mitad de la pregunta.
-      { series: fuente(col(14)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
-      { series: fuente(col(15)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
+      { series: fuente(col(COL_NECESIDAD.saldoCobrando)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
+      { series: fuente(col(COL_NECESIDAD.saldoSinCobrar)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
     ],
     axis: [
       { position: 'BOTTOM_AXIS', format: texto(9) },
-      { position: 'LEFT_AXIS', title: 'Sale ese día', format: texto(9) },
+      // EL TÍTULO DEL EJE NOMBRA LAS DOS COSAS QUE HAY EN LA PILA. Si la leyenda se corta —pasa con
+      // seis series en un gráfico de este ancho—, el eje sigue diciendo qué se está midiendo.
+      { position: 'LEFT_AXIS', title: 'Sale ese día: lo ya pagado + lo que falta pagar', format: texto(9) },
       { position: 'RIGHT_AXIS', title: 'Saldo acumulado', format: texto(9) },
     ],
   }, sheetId, posicion)
@@ -235,7 +260,10 @@ export function graficos(sheetId, anexo, series = {}) {
   const cuadros = [
     ['necesidad', (r, posicion) => necesidadDiaria({
       titulo: TITULO_NECESIDAD,
-      subtitulo: 'Barras: lo que sale ese día, abierto por rubro. Curvas (eje derecho): el saldo que queda — la llena cobrando lo previsto, la punteada sin cobrar un peso. El día que cruzan el cero, no alcanza.',
+      // EL SUBTÍTULO LO DICE CON PALABRAS, y no es redundante con la leyenda: la leyenda nombra las
+      // series, el subtítulo dice cuál de las dos mitades es la que hay que conseguir. Sin esa frase,
+      // «Ya salió» se lee como una necesidad más y el gráfico vuelve a pedir dos veces la misma plata.
+      subtitulo: 'Barras: lo que sale ese día. La gris clara es lo que YA SALIÓ (ya está descontado del saldo, no hay que conseguirlo); las otras cinco son lo que FALTA PAGAR, abierto por rubro. Curvas (eje derecho): el saldo que queda descontando sólo lo que falta pagar — la llena cobrando lo previsto, la punteada sin cobrar un peso. El día que cruzan el cero, no alcanza.',
       sheetId, anexo, rango: r, posicion,
     })],
     ['equilibrio', (r, posicion) => cruce({

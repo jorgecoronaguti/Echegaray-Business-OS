@@ -116,6 +116,19 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   // se cae al corte de la cuenta cuando la foto de la tarjeta no trae fecha propia.
   const corte = ymd(T.al || banco.CORTE)
   const dmy = `${String(corte.d).padStart(2, '0')}/${String(corte.m).padStart(2, '0')}/${corte.a}`
+  // ═══ CADA NÚMERO CON LA FECHA DE SU PROPIA FUENTE (28/08) ═══
+  //
+  // Con el resumen del 20/08 adentro del núcleo hay DOS documentos en la misma banda: el resumen
+  // (consumos, cuotas, lo que se debita) y la captura del homebanking del 29/07 (el disponible y el
+  // cupo de cuotas, que el resumen no publica). Fechar todo con `TARJETA.al` haría pasar por fresco
+  // el número MÁS importante de la pestaña —el titular, con el que se decide una compra— cuando en
+  // realidad tiene un mes. `foto()` toma la fecha del campo, no la de la banda: si el dato es viejo,
+  // el semáforo lo dice ahí mismo.
+  const foto = (iso, rotulo) => frescura(ymd(iso), dmyDe(iso), DIAS_FRESCURA, rotulo)
+  const fechaDisp = T.disponibleAl || T.al || banco.CORTE
+  const otraFoto = T.disponibleAl && T.disponibleAl !== (T.al || banco.CORTE)
+    ? `; el disponible y el cupo en cuotas, del homebanking al ${dmyDe(T.disponibleAl)}`
+    : ''
 
   // ── Los rangos del registro. ABIERTOS hacia abajo a propósito ───────────────────────────────────
   // Se puede porque este rediseño subió TODO a la banda: debajo del registro ya no vive ningún
@@ -154,17 +167,17 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   push('Tarjeta de crédito')
   // TODA la trazabilidad, una sola vez y acá. En el cuerpo no va una sola línea de prosa: el dueño
   // borra siempre las columnas de aclaraciones, y tiene razón — compiten con los números.
-  push(`${T.cuenta} · Santander · débito automático de la ${T.debitoAutomatico} · lo que declara el banco es del resumen al ${dmy}; lo demás se calcula del registro de abajo y del extracto en _BANCO_RAW`)
+  push(`${T.cuenta} · Santander · débito automático de la ${T.debitoAutomatico} · lo que declara el banco es del resumen al ${dmy}${otraFoto}; lo demás se calcula del registro de abajo y del extracto en _BANCO_RAW`)
   push()
 
   // ── HERO: la línea de crédito. El disponible es el titular ──────────────────────────────────────
   push('LA LÍNEA — CUÁNTO SE PUEDE GASTAR HOY')
   push('Concepto', 'Monto', 'Cuándo')
   const fLim = push('Límite de compra', T.limite, 'acordado')
-  const fDisp = push(total('Disponible para comprar'), T.disponible, frescura(corte, dmy))
+  const fDisp = push(total('Disponible para comprar'), T.disponible, foto(fechaDisp, 'homebanking al'))
   // El cupo de cuotas es OTRO cupo y es menor. Va pegado al titular, no en un bloque aparte: es la
   // corrección que evita comprometer una compra que la tarjeta no aprueba.
-  push(sub('en cuotas el cupo es otro, y manda'), T.cuotas.disponible, 'de un límite aparte')
+  push(sub('en cuotas el cupo es otro, y manda'), T.cuotas.disponible, foto(T.cuotas.al || fechaDisp, 'homebanking al'))
   // ═══ LO CONSUMIDO EN DÓLARES TIENE QUE VERSE (04/08) ═══
   //
   // El primer rediseño lo dejó afuera y el dueño lo cazó de una: "¿por qué no veo los consumos en
@@ -185,7 +198,7 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   let fUsd = 0
   if (T.consumidoDolares > 0) {
     fUsd = push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
-      frescura(ymd(T.consumidoDolaresAl || T.al || banco.CORTE), dmyDe(T.consumidoDolaresAl || T.al || banco.CORTE)))
+      foto(T.consumidoDolaresAl || T.al || banco.CORTE, 'resumen al'))
   }
   push()
 
@@ -253,8 +266,8 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
  * Un número de origen pegado no puede envejecer en silencio: la celda de al lado dice de qué corte
  * es, y cuando el corte pasa de tres semanas deja de decir la fecha y pasa a pedir una foto nueva.
  */
-export function frescura({ a, m, d }, dmy, dias = DIAS_FRESCURA) {
-  return `=LET(dd_;TODAY()-DATE(${a};${m};${d});IF(dd_>${dias};"${ALERTA} foto de hace "&dd_&" días";"resumen al ${dmy}"))`
+export function frescura({ a, m, d }, dmy, dias = DIAS_FRESCURA, rotulo = 'resumen al') {
+  return `=LET(dd_;TODAY()-DATE(${a};${m};${d});IF(dd_>${dias};"${ALERTA} foto de hace "&dd_&" días";"${rotulo} ${dmy}"))`
 }
 
 /** Una fecha dd/m/aaaa como la muestra el Sheet en es-AR. */

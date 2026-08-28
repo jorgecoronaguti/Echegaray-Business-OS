@@ -288,6 +288,20 @@ async function main() {
       updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto } }, fields: 'gridProperties.rowCount' },
     }])
   }
+  // ═══ Y EL ANCHO SE ASEGURA IGUAL QUE EL ALTO (28/08/2026) ═══
+  //
+  // El bloque de la necesidad diaria ya creció dos veces (7 → 15 columnas el 20/08, 15 → 16 hoy, al
+  // separar «Ya salió» de lo que falta pagar) y hasta ahora el ancho se SUPONÍA: alcanzaba porque la
+  // grilla tenía columnas de sobra. Una grilla corta no devuelve una celda vacía — devuelve «exceeds
+  // grid limits» y ABORTA el lote entero, incluido el de los gráficos, que es uno solo: la pestaña se
+  // queda sin NINGÚN gráfico y nada dice por qué. El generador es dueño de todo su ancho.
+  if ((hoja.cols ?? 0) < ANCHO_ANEXO) {
+    await google.spreadsheetBatchUpdate(ID, [{
+      updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { columnCount: ANCHO_ANEXO } }, fields: 'gridProperties.columnCount' },
+    }])
+    console.log(`  ↔ ensanché ${PESTANA_ANEXO} a ${ANCHO_ANEXO} columnas (tenía ${hoja.cols ?? '?'})`)
+    hoja = { ...hoja, cols: ANCHO_ANEXO }
+  }
 
   // LO QUE PUEDE FALLAR VA PRIMERO: borrar es irreversible y escribir puede fallar. Una fila más ancha
   // que la tabla hace que la API rechace el batch ENTERO, y eso ya dejó una pestaña vacía una vez.
@@ -477,9 +491,13 @@ export async function formatear(google, sheetId, g) {
   for (const gr of grupos) req.push({ deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: gr.startIndex, endIndex: gr.endIndex } } })
 
   // El "$" es del TOTAL, no de cada celda: un símbolo repetido en cien filas no distingue nada.
-  // LAS COLUMNAS DE PLATA. La 6 y la 7 (G y H) entraron con la serie de necesidad diaria: sin ellas
-  // «Cargas sociales» e «Impuestos» salían como número crudo al lado de columnas formateadas.
-  for (const c of [2, 3, 4, 8, 9, 10, 11, 12, 13, 14]) {
+  // LAS COLUMNAS DE PLATA. Las de la derecha entraron con la serie de necesidad diaria: sin ellas
+  // «Cargas sociales» e «Impuestos» salían como número crudo al lado de columnas formateadas. Se
+  // enumeran hasta el ancho declarado —y no hasta un número escrito— porque el bloque de necesidad
+  // creció el 28/08 con «Ya salió» y la última columna se quedaba sin formato sin que nada avisara:
+  // un importe crudo en un anexo oculto no lo ve nadie hasta que sale mal en el gráfico.
+  const PLATA = [2, 3, 4, ...Array.from({ length: ANCHO_ANEXO - 8 }, (_, i) => 8 + i)]
+  for (const c of PLATA) {
     fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   }

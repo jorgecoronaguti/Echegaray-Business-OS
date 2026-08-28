@@ -18,7 +18,7 @@
 // Por eso: SIN SECRETO NO ATIENDE. No hay modo dev que lo relaje. Un borde que se abre "para
 // probar" es un borde abierto.
 import { igualEnTiempoConstante } from './secreto-compartido.mjs'
-import { permisosDeRol } from '../lib/xsas-permisos.mjs'
+import { permisosDeRol, rolVerificado, ROL_NO_VERIFICADO } from '../lib/xsas-permisos.mjs'
 
 const NO_ENCONTRADO = { status: 404, body: { error: 'not_found' } }
 
@@ -36,7 +36,7 @@ function secretoDelHeader(headers = {}) {
  * @param {number} [deps.maxBytes]
  * @returns {(req:{method:string, url:string, headers:object, rawBody:string}) => Promise<{status:number, body:object}>}
  */
-export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxBytes = 256 * 1024, ruta = '/xsas' } = {}) {
+export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxBytes = 256 * 1024, ruta = '/xsas', servicios = undefined } = {}) {
   return async function manejar({ method, url, headers = {}, rawBody = '' } = {}) {
     const camino = String(url ?? '').split('?')[0]
     if (camino !== ruta) return NO_ENCONTRADO
@@ -62,9 +62,26 @@ export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxB
     // que importa: (1) la tabla rol→capacidad tiene que estar definida UNA vez y del lado del OS,
     // no copiada en TypeScript donde se quedaría vieja; (2) si el emisor pudiera declarar sus
     // permisos, un secreto filtrado no sería «puede leer lo que su rol lee» sino «puede todo».
+    //
+    // (27/08/2026) Y EL ROL TAMPOCO LO DECLARA QUIEN PIDE, cuando se lo puede verificar. El comentario
+    // de arriba era cierto para `permisos` y falso para `rol`: se derivaban los permisos DEL DATO QUE
+    // MANDABA EL EMISOR, así que con el secreto en la mano bastaba con escribir `rol: "direccion"`.
+    // Ahora, si el actor se identifica contra `public.perfiles`, manda la base.
     const actor = { ...(bruto?.actor ?? {}) }
-    actor.permisos = permisosDeRol(actor.rol)
+    const rol = await rolVerificado(gateway, actor, servicios ? { servicios } : {})
+    // Un actor identificable que no existe en `perfiles` no es un pedido mal armado: es una cuenta
+    // que no está. Decirlo así evita que el error de forma («actor.rol esperaba un string») tape la
+    // razón real, que es la que quien pide necesita para arreglarlo.
+    actor.rol = rol.rol
+    actor.permisos = permisosDeRol(rol.rol)
     const r = await atender({ ...bruto, actor }, gateway)
+    // Que lo declarado no coincida con lo real no se calla: es información sobre quien pide.
+    if (rol.declarado && rol.declarado !== rol.rol) {
+      r.degradacion = [r.degradacion, rol.rol === ROL_NO_VERIFICADO
+        ? `el rol declarado («${rol.declarado}») no se pudo verificar (${rol.via}): este pedido corrió SIN permisos`
+        : `el rol declarado («${rol.declarado}») no es el que tiene esta cuenta`].filter(Boolean).join(' · ')
+      r.estado = 'degradado'
+    }
     // El código HTTP sigue al ESTADO, no al `ok`: una respuesta degradada es 200 con su motivo
     // adentro —el consumidor tiene que verla, no reintentarla—, y un pedido mal armado es 400
     // porque reintentarlo igual no lo va a arreglar.

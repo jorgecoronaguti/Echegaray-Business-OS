@@ -35,7 +35,7 @@ import { esMovimientoDeCheques } from './cheques-debito-banco.mjs'
 
 /** El día y la hora de la foto. Todo lo de abajo es verdad A ESTA FECHA, no hoy. */
 export const CORTE = '2026-07-22'
-export const ORIGEN = 'Santander Empresas · extracto 22/06→22/07/2026 (descarga del 22/07 11:20) + captura del 21/07 para tarjeta, acuerdo y saldo USD'
+export const ORIGEN = 'Santander Empresas · extracto 22/06→22/07/2026 (descarga del 22/07 11:20) + captura del 21/07 para acuerdo y saldo USD · la tarjeta tiene su propio documento y su propia fecha (ver TARJETA)'
 
 /** La cuenta operativa. Es la única del banco. */
 export const CUENTA = {
@@ -133,38 +133,208 @@ export const ACUERDO = {
 // SIGUE SIENDO UNA CONSTANTE CAPTURADA A MANO — el gap declarado. No hay puerta de carga para el
 // resumen de la tarjeta como sí la hay para los movimientos (importar-banco.mjs). Por eso `al`:
 // la pestaña muestra la antigüedad y avisa cuando la foto envejece.
+// ═══ LLEGÓ EL RESUMEN CERRADO EL 20/08 Y NO REEMPLAZA TODO (28/08) ═══
+//
+// Hasta hoy esto era UNA foto: la del homebanking del 29/07. Ahora hay DOS FUENTES CON DOS FECHAS
+// —el resumen del banco (20/08) y esa captura (29/07)— y la tentación era pisar la vieja entera.
+// No se puede: el resumen liquida un período cerrado (consumos, impuestos, cuotas, cuánto debita y
+// cuándo) y NO dice cuánto queda para gastar. Un `al` solo ya no alcanza, así que cada campo que
+// sobrevive de la foto anterior lleva SU fecha (`disponibleAl`, `cuotas.al`, …) y la pestaña la
+// muestra. Mezclarlas bajo una sola fecha haría pasar por fresco un número de hace un mes, que es
+// justo el número con el que se decide una compra.
+//
 export const TARJETA = {
   cuenta: 'Visa terminada en 3319 · Business',
   contrato: 'Visa 921127486',
   titular: 'Echegaray, Oviedo Ro',
-  al: '2026-07-29',
+
+  // ══════════ LO QUE DICE EL RESUMEN CERRADO EL 20/08/2026 (Nro. 202120) ══════════
+  // Fuente: PDF "RESUMEN DE CUENTA VISA" del Santander, cuenta 921127486, tarjeta 3319.
+  // Todo lo que está entre este rótulo y el siguiente sale de ese documento y es del 20/08.
+  al: '2026-08-20',
   limite: 10000000,
-  consumidoPesos: 24000,
-  // EL RESUMEN DEL 29/07 NO TRAE LÍNEA EN DÓLARES, Y ESO NO ES UN CERO. El último dato que el banco
-  // reportó es el del 22/07: U$S 193,25 sin debitar. Ponerlo en 0 sería afirmar que se pagó, que es
-  // un hecho que nadie declaró — y de hecho hacía desaparecer la línea de la pestaña. Se conserva
-  // con SU fecha, que es distinta de la del resto de la foto y por eso se declara aparte.
-  consumidoDolares: 193.25,
-  consumidoDolaresAl: '2026-07-22',
-  // El resumen del 29/07 los separa: lo consumido y lo que todavía no confirmó el comercio.
-  pendienteDeConfirmacion: 32500,
-  disponible: 8693073.70,
+  // Total de consumos del período de la tarjeta 3319, tal como los totaliza el resumen. NO es lo
+  // mismo que el "consumido" del homebanking del 29/07 ($24.000): aquél era el acumulado del período
+  // en curso a ese día; éste es el período ya cerrado, con las cuotas de compras anteriores adentro.
+  consumidoPesos: 1949747.67,
+  // AHORA SÍ HAY LÍNEA EN DÓLARES, Y ES DEL MISMO DÍA QUE EL RESTO. Hasta el 04/08 este dato venía
+  // del 22/07 porque el resumen del 29/07 no lo traía; el del 20/08 lo declara: U$S 544,99. Por eso
+  // `consumidoDolaresAl` deja de ser una fecha aparte — pero el campo se conserva, que es lo que
+  // permite volver a separarlo el día que otro resumen omita la línea.
+  consumidoDolares: 544.99,
+  consumidoDolaresAl: '2026-08-20',
   cierra: '2026-08-20',
   vence: '2026-09-01',
+  proximoCierre: '2026-09-24',
+  proximoVence: '2026-10-05',
   debitoAutomatico: 'CC en pesos 179-000091383/6, por el total',
-  // Los tres cupos internos que el resumen separa. El de cuotas es el que compromete meses futuros.
-  adelantoEfectivo: { limite: 2000000, disponible: 2000000 },
-  cuotas: { limite: 10000000, consumido: 3554133.30, disponible: 6445866.70 },
-  // ═══ NO PONER ESTO EN CERO PORQUE LA CUOTA YA SE DEBITÓ (04/08) ═══
+
+  /**
+   * EL RESUMEN COMO DOCUMENTO: los cuatro sumandos y el importe que el banco va a debitar.
+   *
+   * "DEBITAREMOS DE SU C.C. 00000000913836 LA SUMA DE $ 2.208.958,42 + U$S 544,99" (hoja 5), y el
+   * talón de la hoja 6 lo repite como SALDO ACTUAL. Es la ÚNICA cifra de este archivo que es una
+   * obligación con fecha cierta: sale de la cuenta corriente el 01/09/2026, sin que nadie la mande.
+   *
+   * LA IDENTIDAD QUE LO PRUEBA (y que verifica el test):
+   *     1.949.747,67 (consumos) + 10.533,61 (sellos) + 3.922,14 (sellos P) + 244.755,00 (RG 5617)
+   *   = 2.208.958,42  EXACTO
+   * Un typo en cualquiera de los cuatro rompe la suma. Sin esa identidad, esto sería una lista de
+   * números que parecen ciertos.
+   *
+   * Y LA PERCEPCIÓN VERIFICA LOS DÓLARES DESDE OTRA COLUMNA: la base de la RG 5617 declarada por el
+   * banco, $815.850,03, es exactamente U$S 544,99 × 1.497,00, y el 30% de esa base es $244.755,00.
+   * O sea: el consumo en dólares queda controlado por un número escrito en pesos. Dos lecturas
+   * independientes del mismo hecho — que es lo único que convierte una transcripción en un dato.
+   *
+   * EL TC 1.497,00 ES DEDUCIDO, NO DECLARADO: el resumen no lo imprime. Sale de dividir la base por
+   * el consumo en dólares y da redondo al centavo, así que se anota como lo que es (CÁLCULO), y por
+   * eso NO se usa para convertir nada: los U$S 544,99 se debitan en dólares, no en pesos.
+   */
+  resumen: {
+    numero: '202120',
+    cuentaTarjeta: '921127486',
+    cierreAnterior: '2026-07-23',
+    vencimientoAnterior: '2026-08-03',
+    saldoAnteriorPesos: 1090924.47,
+    saldoAnteriorDolares: 193.25,
+    // El pago del 03/08 canceló los DOS saldos anteriores (el resumen los muestra en negativo). Es el
+    // mismo débito que el extracto de la cuenta registra ese día: los U$S 193,25 que arrastraba este
+    // archivo desde el 22/07 están pagados, y por eso el consumo en dólares de arriba no los incluye.
+    pago: { fecha: '2026-08-03', importe: 1384664.47, tc: 1520 },
+    sellos: 10533.61,
+    sellosProvinciales: 3922.14,
+    rg5617: { base: 815850.03, alicuota: 0.30, importe: 244755, tcDeducido: 1497 },
+    aDebitarPesos: 2208958.42,
+    debitaEl: '2026-09-01',
+    cuentaDebito: '00000000913836',
+    limiteCuotas: 10000000,
+    limiteFinanciacion: 7000000,
+  },
+
+  /**
+   * LAS CUOTAS QUE TODAVÍA NO SE FACTURARON, MES A MES, COMO LAS PUBLICA EL RESUMEN.
+   *
+   * ═══ "A PARTIR DE MARZO/27 $1.421.653,32" NO ES UNA CUOTA MENSUAL: ES EL TOTAL ═══
+   *
+   * 1.421.653,32 = 4 × 355.413,33 EXACTO, y $355.413,33 es justo la cuota del plan
+   * MERPAGO*MODICAMOTOS C.08/18 — que arranca en enero/26 con 18 cuotas y termina en junio/27, o sea
+   * cuatro cuotas de marzo/27 en adelante. Leerlo como cuota mensual multiplicaría por N un
+   * compromiso que ya terminó, y el error crecería con cada mes que se proyecte.
+   *
+   * CONTROL POR PLAN (independiente de la tabla del banco, que es lo que lo hace un control):
+   *   MODICAMOTOS 10 × 355.413,33 = 3.554.133,30 · PINTURERÍAS C.02/03 1 × 263.813,91
+   *   GRÚAS SAN BLAS 5 × 854.068,60 = 4.270.343,00 · MERPAGO*BAIRES4 5 × 73.315,55 = 366.577,75
+   *   Total = 8.454.867,96 contra 8.454.867,66 de la tabla: 30 centavos, que son los 6 centavos de
+   *   redondeo por mes que el propio banco arrastra en cinco de sus columnas. No hay cuota perdida.
+   */
+  cuotasAVencer: {
+    porMes: [
+      { mes: '2026-09', importe: 1546611.33 },
+      { mes: '2026-10', importe: 1282797.42 },
+      { mes: '2026-11', importe: 1282797.42 },
+      { mes: '2026-12', importe: 1282797.42 },
+      { mes: '2027-01', importe: 1282797.42 },
+      { mes: '2027-02', importe: 355413.33 },
+    ],
+    desdeMarzo27: { desde: '2027-03', total: 1421653.32, cuotas: 4, importe: 355413.33 },
+    total: 8454867.66,
+  },
+
+  // ═══ QUÉ ESTABA PENDIENTE AL 20/08 — LA MISMA REGLA QUE SALVÓ ESTO EL 04/08 ═══
   //
-  // Se probó y el control de la pestaña lo cazó en la primera corrida: `proximoPeriodo` en 0 dejaba
-  // la diferencia en exactamente $965.864 y la pestaña marcaba "⚠ revisar la carga".
+  // Una foto se transcribe con lo que decía el día que se sacó. Al 20/08 las cuotas facturadas EN
+  // ESTE resumen ($1.893.247,67) todavía NO se debitaron: salen el 01/09. Están pendientes, igual
+  // que el 29/07 lo estaban las que se debitaron el 03/08. Ponerlas en cero "porque ya se
+  // liquidaron" dejaría al control de la pestaña $1,89M corto contra el registro, que las tiene
+  // cargadas sin marcar DEBITADO — y el rojo saldría del lado equivocado.
   //
-  // El razonamiento equivocado era "la cuota de agosto se debitó el 03/08, así que ya no está
-  // pendiente". Pero esta constante es LA FOTO DEL 29/07, y al 29/07 esa cuota SÍ estaba pendiente.
-  // Una foto se transcribe con lo que decía el día que se sacó; corregirla con lo que pasó después
-  // la convierte en otra cosa —ni la foto ni el hoy— y rompe el único control que la verifica.
-  cuotasPendientes: { proximoPeriodo: 965863.53, restante: 4783810.75 },
+  //   proximoPeriodo = las 6 cuotas facturadas el 20/08, que se debitan el 01/09:
+  //     MODICAMOTOS 355.413,33 + PINTURERÍAS 266.181,37 + 80.454,91 + 263.813,91
+  //     + GRÚAS SAN BLAS 854.068,60 + BAIRES4 73.315,55 = 1.893.247,67
+  //     (y 1.893.247,67 + 24.000 CORREOARG + 32.500 STARLINK = 1.949.747,67, el total de consumos:
+  //      la parte del débito del 01/09 que NO es cuota son $56.500 de compras en un pago.)
+  //   restante = la tabla "Cuotas a vencer" completa = 8.454.867,66.
+  //
+  // PUENTE CONTRA LA FOTO ANTERIOR (control entre dos documentos de fechas distintas):
+  //   5.749.674,28 (pendiente al 29/07) + 5.564.304,90 (GRÚAS 6×854.068,60 y BAIRES4 6×73.315,55,
+  //   compras nuevas de agosto) − 965.863,52 (las cuotas que se debitaron el 03/08) = 10.348.115,66
+  //   contra 10.348.115,33 de acá: 33 centavos de redondeo del banco. Las dos fotos cierran.
+  cuotasPendientes: { proximoPeriodo: 1893247.67, restante: 8454867.66, al: '2026-08-20' },
+
+  // ══════════ LO QUE EL RESUMEN NO TRAE: SIGUE SIENDO LA FOTO DEL 29/07 ══════════
+  //
+  // El resumen del banco y la captura del homebanking son DOS FUENTES CON DOS FECHAS. El resumen
+  // liquida un período cerrado: dice consumos, impuestos, cuotas y cuánto va a debitar. NO dice
+  // cuánto queda para gastar hoy, ni el cupo de adelanto, ni qué compras están sin confirmar — y en
+  // esta copia los recuadros "SALDO ACTUAL" y "PAGO MINIMO" de las hojas 1 a 5 vienen vacíos.
+  //
+  // Nada de esto se recalcula del límite: $10.000.000 − $1.949.747,67 daría $8.050.252,33 y sería
+  // un número inventado, porque el disponible del banco descuenta además las cuotas comprometidas y
+  // lo pendiente de confirmar. Se conserva lo declarado el 29/07 CON SU FECHA, y la pestaña muestra
+  // la antigüedad de cada dato por separado: al 28/08 el disponible se publica con el aviso "foto de
+  // hace 30 días", que es exactamente lo que hay que saber antes de decidir una compra.
+  disponible: 8693073.70,
+  disponibleAl: '2026-07-29',
+  // El resumen del 20/08 factura DLO*STARLINK por $32.500 el 28/07 — es decir, lo que el 29/07
+  // figuraba sin confirmar ya se confirmó. Aun así el campo NO se pone en cero: describe la foto del
+  // 29/07, y el 20/08 el banco no publica "pendiente de confirmación" para poder reemplazarlo.
+  pendienteDeConfirmacion: 32500,
+  pendienteDeConfirmacionAl: '2026-07-29',
+  adelantoEfectivo: { limite: 2000000, disponible: 2000000, al: '2026-07-29' },
+  // El límite de cuotas lo reconfirma el resumen del 20/08 ($10.000.000). Consumido y disponible del
+  // CUPO son del homebanking del 29/07 y no tienen equivalente en el resumen: se conservan fechados.
+  // ADVERTENCIA VIVA: al 20/08 las cuotas comprometidas suman $8.454.867,66 contra un cupo de $10M,
+  // así que este "disponible en cuotas" de $6,4M es de otro momento. No se corrige acá porque no hay
+  // fuente que lo declare: se muestra con su fecha para que se lea como lo que es.
+  cuotas: { limite: 10000000, consumido: 3554133.30, disponible: 6445866.70, al: '2026-07-29' },
+}
+
+/**
+ * NÚCLEO PURO: ¿la transcripción del resumen cierra contra lo que el banco dijo que va a debitar?
+ *
+ * EL CONTROL QUE CAZA UN TYPO EN CUALQUIERA DE LOS CUATRO SUMANDOS. El resumen no es una lista de
+ * números sueltos: consumos + sellos + sellos provinciales + percepción RG 5617 tiene que dar
+ * EXACTAMENTE el importe de la frase "DEBITAREMOS DE SU C.C. ... LA SUMA DE $ 2.208.958,42". Los
+ * cinco números vienen de renglones distintos del PDF, así que la identidad no se puede cumplir por
+ * casualidad: si alguno se tipeó mal, no cierra.
+ *
+ * SIN CENTAVOS DE PUNTO FLOTANTE: se compara redondeado al centavo, como la cadena de saldos.
+ *
+ * @param {object} t la foto de la tarjeta (por defecto la del archivo)
+ * @returns {{suma:number, declarado:number, diferencia:number, cierra:boolean}}
+ */
+export function verificarResumenTarjeta(t = TARJETA) {
+  const r = t.resumen || {}
+  const c = (x) => Math.round((Number(x) || 0) * 100) / 100
+  const suma = c(c(t.consumidoPesos) + c(r.sellos) + c(r.sellosProvinciales) + c(r.rg5617?.importe))
+  const diferencia = c(suma - c(r.aDebitarPesos))
+  return { suma, declarado: c(r.aDebitarPesos), diferencia, cierra: diferencia === 0 }
+}
+
+/**
+ * NÚCLEO PURO: ¿la tabla "Cuotas a vencer" suma su propio total, y el total es el que se publica?
+ *
+ * EL RENGLÓN QUE MIENTE SI SE LEE RÁPIDO: "A partir de Marzo/27 $1.421.653,32" NO es una cuota
+ * mensual, es el TOTAL de las cuatro que quedan (4 × 355.413,33 exacto). Leerlo como cuota mensual
+ * infla el compromiso con cada mes que se proyecte, y nada avisa. Por eso se guarda abierto
+ * (`cuotas` y `importe`) y este control exige que las dos formas coincidan.
+ *
+ * @returns {{suma:number, declarado:number, diferencia:number, cierra:boolean, colaEsTotal:boolean}}
+ */
+export function verificarCuotasAVencer(t = TARJETA) {
+  const q = t.cuotasAVencer || {}
+  const c = (x) => Math.round((Number(x) || 0) * 100) / 100
+  const cola = q.desdeMarzo27 || {}
+  const suma = c((q.porMes || []).reduce((a, m) => a + (Number(m.importe) || 0), 0) + (Number(cola.total) || 0))
+  const diferencia = c(suma - c(q.total))
+  return {
+    suma,
+    declarado: c(q.total),
+    diferencia,
+    cierra: diferencia === 0,
+    colaEsTotal: c(cola.cuotas * cola.importe) === c(cola.total),
+  }
 }
 
 /**
