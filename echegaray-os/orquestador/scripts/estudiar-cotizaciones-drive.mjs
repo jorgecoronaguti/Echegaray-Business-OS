@@ -125,9 +125,17 @@ async function main() {
     obtenidoEn: new Date().toISOString().slice(0, 10),
   })
 
-  console.log(`cotizaciones leídas: ${r.cotizaciones.length} · ya estudiadas: ${r.salteados.length} · no leídas: ${r.noLeidos.length}`)
+  console.log(`cotizaciones con la plantilla interna: ${r.cotizaciones.length} · en formato del cliente: ${r.cliente.length} · ya estudiadas: ${r.salteados.length} · no leídas: ${r.noLeidos.length}`)
+  const porClase = r.cliente.reduce((a, c) => { a[c.clase] = (a[c.clase] ?? 0) + 1; return a }, {})
+  if (r.cliente.length) console.log(`  formato del cliente por clase: ${Object.entries(porClase).map(([k, v]) => `${k} ${v}`).join(' · ')}`)
+  for (const c of r.cliente.filter((x) => x.discrepancia)) console.log(`  AMBIGUO  ${c.nombre} — ${c.discrepancia}`)
   for (const n of r.noLeidos) console.log(`  ✗ ${n.nombre} — ${n.porQue}`)
-  console.log(`\nprácticas observadas: ${r.practicas.length} (${resumirMadurez(r.practicas)})`)
+  console.log(`\nprácticas observadas (plantilla interna): ${r.practicas.length} (${resumirMadurez(r.practicas)})`)
+  console.log(`prácticas observadas (formato del cliente): ${r.practicasCliente.practicas.length} (${resumirMadurez(r.practicasCliente.practicas)}) — ${r.practicasCliente.resumen}`)
+  for (const p of r.practicasCliente.practicas.filter((x) => x.clave.startsWith('cotizacion_cliente.cierre.'))) {
+    console.log(`  ${p.clave.split('.').pop().padEnd(20)} n=${p.casos.length} obras=${p.obrasDistintas} media=${p.estadistica.media} min=${p.estadistica.min} max=${p.estadistica.max} dispersión=${p.estadistica.dispersion} madurez=${p.madurez}`)
+  }
+  for (const s of r.practicasCliente.sinCoeficiente.slice(0, 8)) console.log(`  sin coeficiente: ${s.concepto} en ${s.cotizacion} — ${s.porQue.slice(0, 90)}`)
   console.log(`hallazgos: ${JSON.stringify(r.resumen, null, 1)}`)
   for (const h of r.hallazgos.filter((x) => x.gravedad === 'ALTA')) console.log(`  [ALTA] ${h.tipo} · ${h.afirmacion}`)
 

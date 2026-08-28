@@ -15,6 +15,9 @@ import { leerArchivo } from './leer-archivo.mjs'
 import { ETAPA, documento } from './biblioteca.mjs'
 import { aConocimientos, practicas } from './practica-cotizacion.mjs'
 import { hallazgos, resumen } from './hallazgos-cotizacion.mjs'
+import { CLASE_PLANILLA, leerLibro } from './planilla-semantica.mjs'
+import { practicasCliente } from './practica-cotizacion-cliente.mjs'
+import { aConocimientos as aConocimientosPractica } from './practica-cotizacion.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -53,10 +56,24 @@ export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, 
   if (!leido.ok) return { ...base, ok: false, porQue: leido.porQue, necesitaOcr: Boolean(leido.necesitaOcr) }
   if (!leido.hojas) return { ...base, ok: false, porQue: 'no es una planilla: la cotización interna de ECSAS vive en un libro de Excel' }
   if (!esCotizacionInterna(leido.pestanas)) {
-    return { ...base, ok: false, pestanas: leido.pestanas, porQue: `la planilla no tiene las pestañas ${HOJA.ANALISIS}/${HOJA.PRESUPUESTO}/${HOJA.GG}: no es la plantilla de cotización interna` }
+    // ═══ NO ES LA PLANTILLA DE ECSAS: NO ES LO MISMO QUE NO SER UNA COTIZACIÓN ═══
+    // Acá terminaban las 48 de ARCOR, con «formato diferente». El lector semántico busca el
+    // encabezado por lo que DICE y lee la planilla venga como venga; lo que no reconoce sale con el
+    // detalle de qué encabezados encontró, que es un motivo con el que se puede hacer algo.
+    const cliente = leerLibro(leido.hojas, { nombre })
+    if (!cliente.ok) {
+      return { ...base, ok: false, pestanas: leido.pestanas, porQue: `no tiene las pestañas ${HOJA.ANALISIS}/${HOJA.PRESUPUESTO}/${HOJA.GG} de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ${cliente.porQue}` }
+    }
+    return {
+      ...base, ok: true, formatoCotizacion: 'CLIENTE',
+      obra: obraDe(ruta ?? nombre), modificado, pestanas: leido.pestanas, formulas: leido.formulas,
+      hoja: cliente.hoja, clase: cliente.clase, discrepancia: cliente.discrepancia,
+      items: cliente.items, rubros: cliente.rubros, cierre: cliente.cierre, notas: cliente.notas,
+      porQue: cliente.porQue,
+    }
   }
   return {
-    ...base, ok: true,
+    ...base, ok: true, formatoCotizacion: 'ECSAS',
     obra: obraDe(ruta ?? nombre),
     modificado,
     pestanas: leido.pestanas,
@@ -93,6 +110,7 @@ export async function estudiarTanda(archivos = [], {
   obtenidoEn = null, opciones = {},
 } = {}) {
   const cotizaciones = []
+  const cliente = []
   const noLeidos = []
   const salteados = []
   for (const a of archivos) {
@@ -108,16 +126,25 @@ export async function estudiarTanda(archivos = [], {
     const r = await estudiarUno({ ...a, bytes })
     await recordarHash(a, r.hash)
     if (r.hash && yaEstudiado(r.hash)) { salteados.push({ ...a, hash: r.hash, porQue: 'ya estudiado: el contenido es idéntico al de otra corrida' }); continue }
-    if (r.ok) cotizaciones.push(r)
-    else noLeidos.push(r)
+    if (!r.ok) { noLeidos.push(r); continue }
+    if (r.formatoCotizacion === 'CLIENTE') cliente.push(r)
+    else cotizaciones.push(r)
   }
+  // Las dos familias NO se mezclan: la plantilla interna enseña cómo se arma el precio por dentro y
+  // la planilla entregada enseña con qué coeficientes se cerró. Meterlas en la misma lista obligaría
+  // a `practicas()` a entender dos formas distintas del mismo objeto, que es como se rompen las dos.
   const p = practicas(cotizaciones, opciones)
   const h = hallazgos(cotizaciones, opciones)
+  // Sólo las que el lector semántico clasificó COTIZACION: un CERTIFICADO tiene la misma forma y sus
+  // cantidades son las EJECUTADAS, así que enseñaría una práctica que nadie decidió al cotizar.
+  const soloCotizaciones = cliente.filter((c) => c.clase === CLASE_PLANILLA.COTIZACION)
+  const pc = practicasCliente(soloCotizaciones)
   return {
-    cotizaciones, noLeidos, salteados,
+    cotizaciones, cliente, noLeidos, salteados,
     practicas: p,
-    conocimientos: aConocimientos(p, { fecha: obtenidoEn }),
-    documentos: cotizaciones.map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0, obtenidoEn }))
+    practicasCliente: pc,
+    conocimientos: [...aConocimientos(p, { fecha: obtenidoEn }), ...aConocimientosPractica(pc.practicas, { fecha: obtenidoEn })],
+    documentos: [...cotizaciones, ...cliente].map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0 || pc.practicas.length > 0, obtenidoEn }))
       .concat(noLeidos.filter((c) => c.hash).map((c) => documentoDe(c, { hubuoConocimiento: false, obtenidoEn }))),
     hallazgos: h,
     resumen: resumen(h),
