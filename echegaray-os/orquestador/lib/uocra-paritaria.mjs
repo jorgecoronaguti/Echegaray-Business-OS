@@ -122,36 +122,49 @@ export const CONVENIO_POR_CODIGO = {
 }
 
 /**
- * ═══ CUÁNTO SE PAGA LA HORA SOBRE EL PISO DEL CONVENIO — DECISIÓN DEL DUEÑO, 28/08/2026 ═══
+ * ═══ CUÁNTO SE AUMENTA LA HORA — DECISIÓN DEL DUEÑO, 28/08/2026 ═══
  *
- * *"en lugar de el calculo de la quincena sea con el 100% del piso q dice uocra, le aumentemos la
- * hora un 50% del piso de uocra"*.
+ * *"quiero aumentarles el 50% de lo q pide el piso de uocra"*, después de rechazar explícitamente la
+ * primera lectura: *"te pedi el 50% del piso no el 1,5, hiciste todo lo contrario"*.
  *
- * Esto NO es un dato de la paritaria: es una política de la empresa que se apoya en ella. La escala
- * dice el MÍNIMO legal; este factor dice cuánto por encima de ese mínimo se decide pagar. Separar
- * las dos cosas es lo que permite que, cuando UOCRA firme el próximo tramo, el jornal se mueva solo
- * sin que nadie tenga que acordarse de este número.
+ * EL AUMENTO ES UN MONTO, NO UN MULTIPLICADOR DEL PISO. A lo que cada uno cobra HOY se le suma el
+ * 50% del básico de convenio de SU categoría. No es `piso × 1,5` —eso borraría lo que cada uno
+ * negoció y le daría lo mismo al que cobra 4.500 que al que cobra 6.500— y tampoco es `piso × 0,5`,
+ * que sería una rebaja del 42% y dejaría a los 17 por debajo del mínimo legal.
+ *
+ * Que el aumento se calcule sobre el PISO y no sobre el sueldo de cada uno es lo que lo hace parejo
+ * dentro de una categoría: dos oficiales reciben el mismo monto aunque partan de jornales distintos.
  *
  * MAGNITUD, medida sobre la quincena 17/08–31/08 real (17 personas, 1.496 h): la masa pasa de
- * $8.049.700 a $14.009.037, +$5.959.337 por quincena. Anualizado sobre 24 quincenas y con las cargas
- * sociales del 38,62% que sale del F931 real: **+$198.259.991**. No es un ajuste de forma.
+ * $8.049.700 a $12.719.379, **+$4.669.679 por quincena**. Anualizado sobre 24 quincenas y con las
+ * cargas sociales del 38,62% que sale del F931 real: **+$155.379.240**.
  */
-export const FACTOR_SOBRE_PISO = 1.5
+export const PORCENTAJE_DE_AUMENTO = 0.5
 
 /**
- * NÚCLEO PURO: qué se paga la hora de una categoría del convenio.
+ * NÚCLEO PURO: la hora que se paga después del aumento.
  *
- * `basico` es el de la escala vigente (Zona A). Devuelve `null` cuando no hay básico — y `null` NO
- * es cero: "no sé cuánto le corresponde" y "le corresponde nada" son afirmaciones distintas, y la
- * segunda sería falsa.
+ * `jornal` es lo que la persona cobra hoy; `basico` es el de su categoría en la escala vigente.
+ * Devuelve `null` cuando no hay básico — y `null` NO es cero: "no sé cuánto le corresponde" y "le
+ * corresponde nada" son afirmaciones distintas, y publicar la segunda sería falso.
+ *
+ * EL PISO SIGUE SIENDO UN PISO. El resultado nunca puede quedar por debajo del básico de convenio:
+ * el aumento es una decisión de la empresa, el mínimo es una obligación legal. Hoy ninguno de los 17
+ * queda cerca de esa frontera, pero un jornal bajo lo suficiente la cruzaría sin que nadie mire.
  */
-export function jornalSobrePiso(basico, factor = FACTOR_SOBRE_PISO) {
+export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
   if (basico == null || !Number.isFinite(Number(basico))) return null
-  if (!Number.isFinite(Number(factor)) || Number(factor) <= 0) {
-    throw new TypeError(`un factor sobre el piso de ${factor} no describe ningún acuerdo salarial`)
+  // `Number(null)` es 0 y `Number('')` también: sin esta línea, un porcentaje NO DECLARADO entraba
+  // como "cero por ciento" y la pestaña publicaba "aumento aplicado" con aumento de cero. Lo detectó
+  // el test negativo, no yo. NULL NO ES CERO, tampoco cuando JavaScript insiste en que sí.
+  if (porcentaje == null || porcentaje === '' || typeof porcentaje === 'boolean'
+    || !Number.isFinite(Number(porcentaje)) || Number(porcentaje) < 0) {
+    throw new TypeError(`un aumento de ${porcentaje} sobre el piso no describe ningún acuerdo salarial`)
   }
-  return Number(basico) * Number(factor)
+  const base = Number.isFinite(Number(jornal)) ? Number(jornal) : 0
+  return Math.max(base + Number(basico) * Number(porcentaje), Number(basico))
 }
+
 
 /** NÚCLEO PURO: a qué categoría del convenio equivale un código de la planilla, o null. */
 export function convenioDe(codigo, tabla = CONVENIO_POR_CODIGO) {

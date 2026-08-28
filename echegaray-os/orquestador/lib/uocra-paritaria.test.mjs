@@ -11,8 +11,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ESCALA_VERIFICADA, MENSUAL_VERIFICADO, ORIGEN_ACUERDO, ORIGEN_PROYECCION, PERIODO_VERIFICADO,
-  FACTOR_SOBRE_PISO, TRAMOS_FIRMADOS, ULTIMO_TRAMO, contrastarEscala, convenioDe, factorUocraEntre,
-  jornalSobrePiso, periodosEntre, tramoDe,
+  PORCENTAJE_DE_AUMENTO, TRAMOS_FIRMADOS, ULTIMO_TRAMO, contrastarEscala, convenioDe, factorUocraEntre,
+  jornalConAumento, periodosEntre, tramoDe,
 } from './uocra-paritaria.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 
@@ -140,29 +140,44 @@ test('las categorías nuevas de la planilla tienen equivalencia, y la que se inf
   assert.equal(convenioDe('OF ESP'), null, 'tampoco una variante que nadie declaró')
 })
 
-test('la hora objetivo es el piso por el factor, y un básico que no existe no se convierte en cero', () => {
-  assert.equal(jornalSobrePiso(6348), 9522, 'Oficial agosto 2026 Zona A')
-  assert.equal(jornalSobrePiso(7420), 11130, 'Oficial Especializado')
-  assert.equal(jornalSobrePiso(5399), 8098.5, 'Ayudante')
-  assert.equal(jornalSobrePiso(5866), 8799, 'Medio Oficial')
-  // NULL NO ES CERO. Si la escala no trae el básico de una categoría, la respuesta es "no sé",
-  // no "$0" — un cero acá se publicaría como un jornal y nadie lo miraría dos veces.
-  assert.equal(jornalSobrePiso(null), null)
-  assert.equal(jornalSobrePiso(undefined), null)
-  assert.equal(jornalSobrePiso('no es un número'), null)
-  // El factor tiene que estar declarado y ser el de la decisión del dueño, no cualquiera.
-  assert.equal(FACTOR_SOBRE_PISO, 1.5)
-  assert.equal(jornalSobrePiso(6348, 1), 6348, 'con factor 1 vuelve a ser el piso legal pelado')
+test('el aumento es el 50% del básico sumado a lo que cobra hoy, no un múltiplo del piso', () => {
+  // El dueño rechazó explícitamente la lectura «piso × 1,5»: *"te pedi el 50% del piso no el 1,5"*.
+  // Lo que pidió: *"quiero aumentarles el 50% de lo q pide el piso de uocra"* — un MONTO, sumado.
+  assert.equal(jornalConAumento(5600, 6348), 8774, 'Oficial que hoy cobra 5.600: +3.174')
+  assert.equal(jornalConAumento(4500, 5399), 7199.5, 'Ayudante que hoy cobra 4.500: +2.699,50')
+  assert.equal(jornalConAumento(6500, 7420), 10210, 'Of. Especializado que hoy cobra 6.500: +3.710')
+  // Lo que hace parejo al aumento: DOS OFICIALES DISTINTOS RECIBEN EL MISMO MONTO. Si el 50% se
+  // calculara sobre el sueldo de cada uno, el que más cobra se llevaría más y la brecha se abriría.
+  assert.equal(jornalConAumento(6200, 6348) - 6200, jornalConAumento(5300, 6348) - 5300)
+  // Y NO es piso × 1,5 ni piso × 0,5: las dos lecturas que el dueño descartó.
+  assert.notEqual(jornalConAumento(5600, 6348), 6348 * 1.5)
+  assert.notEqual(jornalConAumento(5600, 6348), 6348 * 0.5)
+  // NULL NO ES CERO: sin básico la respuesta es "no sé", no "$0" — un cero se publicaría como jornal.
+  assert.equal(jornalConAumento(5600, null), null)
+  assert.equal(jornalConAumento(5600, 'no es un número'), null)
+  assert.equal(PORCENTAJE_DE_AUMENTO, 0.5)
+})
+
+// ═══ EL PISO SIGUE SIENDO UN PISO ═══
+//
+// El aumento es una decisión de la empresa; el básico de convenio es una obligación legal. Un jornal
+// bajo lo suficiente cruzaría esa frontera sin que nadie mire: 2.000 + 50% de 6.348 = 5.174, que está
+// DEBAJO del mínimo del Oficial. La función tiene que devolver el mínimo, no la cuenta.
+test('el resultado nunca queda por debajo del básico de convenio', () => {
+  assert.equal(jornalConAumento(2000, 6348), 6348, 'la cuenta daba 5.174: gana el piso legal')
+  assert.equal(jornalConAumento(0, 5399), 5399)
+  assert.equal(jornalConAumento(null, 6348), 6348, 'sin jornal cargado, el piso igual se respeta')
 })
 
 // ═══ EL TEST NEGATIVO: ESTE CONTROL PUEDE DAR ROJO ═══
 //
-// Un factor que no describe un acuerdo salarial —cero, negativo, texto— tiene que ROMPER, no
-// devolver un número. Si `jornalSobrePiso` degradara a 0 en vez de tirar, la pestaña publicaría
-// jornales de cero pesos para todo el plantel y el cuadro seguiría "cuadrando".
-test('un factor que no describe ningún acuerdo salarial rompe en vez de publicar un jornal falso', () => {
-  for (const malo of [0, -1, -0.5, 'mitad', null, NaN, Infinity]) {
-    assert.throws(() => jornalSobrePiso(6348, malo), TypeError,
-      `un factor ${String(malo)} tendría que ser rechazado, no convertido en un jornal`)
+// Un porcentaje que no describe un acuerdo salarial —negativo, texto, infinito— tiene que ROMPER.
+// Si degradara a 0 en vez de tirar, la pestaña publicaría "aumento aplicado" con aumento cero y el
+// cuadro seguiría cuadrando.
+test('un aumento que no describe ningún acuerdo salarial rompe en vez de publicar un jornal falso', () => {
+  for (const malo of [-1, -0.5, 'mitad', null, NaN, Infinity]) {
+    assert.throws(() => jornalConAumento(5600, 6348, malo), TypeError,
+      `un aumento de ${String(malo)} tendría que ser rechazado, no convertido en un jornal`)
   }
 })
+

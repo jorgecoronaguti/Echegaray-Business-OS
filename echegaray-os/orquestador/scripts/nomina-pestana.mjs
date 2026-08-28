@@ -34,7 +34,7 @@ import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
-import { convenioDe, jornalSobrePiso, FACTOR_SOBRE_PISO } from '../lib/uocra-paritaria.mjs'
+import { convenioDe, jornalConAumento, PORCENTAJE_DE_AUMENTO } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
@@ -259,14 +259,14 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   // más, y es información.
   fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
   fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. `
-    + `Piso de convenio: ${escala.rotulo ?? 'sin escala'} · la hora objetivo es ese piso × ${FACTOR_SOBRE_PISO}.`)
+    + `Piso de convenio: ${escala.rotulo ?? 'sin escala'} · a cada hora se le suma el `
+    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de su categoría.`)
   fila(quincena.diasPendientes.length
     ? `Horas = lo cargado + los días que faltan a jornada completa (9 h L-J, 8 h viernes): ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h.`
     : 'La quincena está cargada entera: no se completó ninguna jornada.')
   fila('Persona', 'Cat.', 'Convenio', 'Hs cargadas', 'Hs a completar', 'Horas', 'Adelanto',
     '$/h HOY', 'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
-    `$/h ×${FACTOR_SOBRE_PISO}`, `Banco ×${FACTOR_SOBRE_PISO}`, `Efectivo ×${FACTOR_SOBRE_PISO}`,
-    `TOTAL ×${FACTOR_SOBRE_PISO}`, 'Diferencia')
+    '$/h CON AUMENTO', 'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0, totalCargado: 0 }
   const sinConvenio = []
   for (const p of activos) {
@@ -277,13 +277,13 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     // Se guardan los dos: el básico es lo que la ley exige y tiene que seguir siendo legible, porque
     // es contra ESE número que se mide si la empresa está en falta — no contra el que decidió pagar.
     const basico = conv ? escala.porCategoria[conv] ?? null : null
-    const objetivo = jornalSobrePiso(basico)
+    const objetivo = jornalConAumento(q.jornal, basico)
     if (!conv) sinConvenio.push(p.nombre)
 
     const hoyR = repartoPersona({ total: q.total, adelanto: q.adelanto, banco: q.banco })
     // EL PISO NO BAJA A NADIE. Si el jornal pactado ya es mayor que el del convenio, el escenario
     // «piso» es el mismo que el de hoy: el convenio es un mínimo, no una tarifa.
-    const jornalPiso = objetivo != null ? Math.max(q.jornal, objetivo) : null
+    const jornalPiso = objetivo
     const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
     const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null
 
@@ -306,8 +306,9 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     Math.round(T.cargadas), Math.round(T.horas - T.cargadas), Math.round(T.horas), Math.round(T.adelanto),
     '', Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
     '', Math.round(T.bancoPiso), Math.round(T.efPiso), Math.round(T.totPiso), Math.round(T.sube))
-  fila(sub(`Llevar la hora al piso de convenio × ${FACTOR_SOBRE_PISO} cuesta ${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. `
-    + `El piso legal es el básico de la escala; el × ${FACTOR_SOBRE_PISO} es la decisión de la empresa, no una obligación.`))
+  fila(sub(`Sumarle a cada hora el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de SU categoría cuesta `
+    + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. El básico de la escala es el mínimo legal; `
+    + `el aumento es la decisión de la empresa, no una obligación — y el resultado nunca baja de ese mínimo.`))
   const bajas = activos.filter((p) => quincena.porClave.get(p.clave)?.dejoDeCargar)
   if (bajas.length) {
     fila(sub(`${bajas.length} sin horas desde antes del cierre —${bajas.map((p) => `${p.nombre} (${quincena.porClave.get(p.clave).ultimoDiaSuyo})`).join(' · ')}—: se les paga lo cargado y NO se les completan los días que faltan. Si es una baja, su liquidación final va en el cuadro 4.`))
