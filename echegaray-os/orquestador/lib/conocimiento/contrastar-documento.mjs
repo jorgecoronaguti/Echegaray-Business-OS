@@ -30,10 +30,18 @@ export const CRUCE = Object.freeze({
   CONFLICTO: 'CONFLICTO',
   APORTA: 'APORTA',
   CONFLICTO_DE_ALCANCE: 'CONFLICTO_DE_ALCANCE',
+  SOLO_MENCIONES: 'SOLO_MENCIONES',
 })
+
+/** El orden de la confianza, de la que más pesa a la que menos. PURA. */
+const RANGO = Object.freeze({ alta: 0, media: 1, baja: 2 })
 
 /** Las clases de fuente que MIDEN. El resto afirma, que es otra cosa. */
 export const MIDEN = Object.freeze(['CAD', 'PLANO'])
+
+/** La clase que NO está en condiciones de contradecir a un documento del proyecto: un apunte propio
+ *  o un borrador. Aporta cuando nadie más dice nada; no le gana a nadie. */
+export const NO_CONTRADICE = 'NOTA_INTERNA'
 
 /** ¿Este hecho del motor está MEDIDO o DEDUCIDO? PURA.
  *
@@ -44,30 +52,68 @@ export const estaMedido = (h) => MIDEN.includes(String(h?.clase)) && h?.confianz
 
 const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
+/** Agrupa por `elemento:atributo` y ordena cada grupo por peso de la fuente y confianza: el primero
+ *  es el que representa al grupo. Mismo desempate que `consolidar()` para que las dos partes del OS
+ *  llamen «principal» al mismo hecho. PURA. */
+export function porClave(hechos = []) {
+  const m = new Map()
+  for (const h of hechos) if (h?.que) m.set(h.que, [...(m.get(h.que) ?? []), h])
+  for (const [k, v] of m) {
+    m.set(k, [...v].sort((a, b) => a.peso - b.peso
+      || (RANGO[a.confianza] ?? 9) - (RANGO[b.confianza] ?? 9)
+      || String(a.documento).localeCompare(String(b.documento))
+      || String(a.textoLiteral).localeCompare(String(b.textoLiteral))))
+  }
+  return m
+}
+
 /**
  * CRUZAR LOS HECHOS TÉCNICOS DEL DOCUMENTO CONTRA LOS DEL MOTOR. PURA.
  *
- * Se cruza por `elemento:atributo`, que es la misma clave con la que el motor consolida. Lo que el
- * documento dice y el motor no tiene sale como APORTA: es conocimiento nuevo con procedencia del
- * documento del proyecto, no una corrección de nada.
+ * ═══ UN RESULTADO POR CLAVE, NO UNO POR PAR ═══
+ *
+ * Cruzar cada hecho del documento contra cada hecho del motor con la misma clave produce el producto
+ * cartesiano: medido sobre QUATTROPANI, 166 hechos del documento contra 158 del motor daban 220
+ * «conflictos» que en realidad eran seis, repetidos. Un conflicto que se lee como una pared de
+ * repeticiones no se resuelve: se ignora. Se compara el hecho PRINCIPAL de cada lado —el mismo
+ * criterio de desempate que usa `consolidar()`— y se sale un resultado por clave.
+ *
+ * ═══ UNA FRASE SUELTA NO CONTRADICE A NADIE ═══
+ *
+ * La misma regla que ya está adentro de `consolidar()`, y por el mismo motivo medido en esta obra:
+ * un hecho de confianza BAJA es una frase que no nombró pieza ni declaró alcance. Dos frases sueltas
+ * que dicen cosas distintas no son un conflicto: son `SOLO_MENCIONES`, y se reportan como tales en
+ * vez de bloquear una cotización.
  */
 export function cruzarHechos({ delMotor = [], delDocumento = [] } = {}) {
-  const porClave = new Map()
-  for (const h of delMotor) if (h?.que) porClave.set(h.que, [...(porClave.get(h.que) ?? []), h])
+  const motor = porClave(delMotor)
+  const doc = porClave(delDocumento)
   const salida = []
-  for (const d of delDocumento) {
-    if (!d?.que) continue
-    const suyos = porClave.get(d.que)
-    if (!suyos?.length) { salida.push({ cruce: CRUCE.APORTA, que: d.que, documento: d, porQue: `el motor no tiene ningún valor para «${d.que}»: el documento lo aporta` }); continue }
-    for (const m of suyos) {
-      if (!mismoValor(m.valor, d.valor)) {
-        salida.push({ cruce: CRUCE.CONFLICTO, que: d.que, motor: m, documento: d, porQue: `el motor leyó «${m.valor}» en ${m.documento} (${m.clase}) y el documento dice «${d.valor}»: dos fuentes legítimas se contradicen y elegir una sería arbitrario` })
-        continue
-      }
+  for (const [que, suyos] of [...doc.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const d = suyos[0]
+    const delOtro = motor.get(que)
+    if (!delOtro?.length) { salida.push({ cruce: CRUCE.APORTA, que, documento: d, cuantos: suyos.length, porQue: `el motor no tiene ningún valor para «${que}»: el documento lo aporta` }); continue }
+    const m = delOtro[0]
+    if (mismoValor(m.valor, d.valor)) {
       salida.push(estaMedido(m)
-        ? { cruce: CRUCE.CONFIRMA_MEDIDO, que: d.que, motor: m, documento: d, porQue: `${m.clase} lo MIDIÓ y el documento dice lo mismo: dos fuentes independientes` }
-        : { cruce: CRUCE.COINCIDE_CON_INFERENCIA, que: d.que, motor: m, documento: d, porQue: `el motor no lo midió (${m.clase}, confianza ${m.confianza}) y el documento coincide: el valor vale POR EL DOCUMENTO — la lectura del motor sigue sin estar medida y no se convierte en medición por coincidir` })
+        ? { cruce: CRUCE.CONFIRMA_MEDIDO, que, motor: m, documento: d, porQue: `${m.clase} lo MIDIÓ y el documento dice lo mismo: dos fuentes independientes` }
+        : { cruce: CRUCE.COINCIDE_CON_INFERENCIA, que, motor: m, documento: d, porQue: `el motor no lo midió (${m.clase}, confianza ${m.confianza}) y el documento coincide: el valor vale POR EL DOCUMENTO — la lectura del motor sigue sin estar medida y no se convierte en medición por coincidir` })
+      continue
     }
+    if (m.clase === NO_CONTRADICE) {
+      salida.push({ cruce: CRUCE.SOLO_MENCIONES, que, motor: m, documento: d, porQue: `la única lectura del motor para «${que}» sale de «${m.documento}», que es una nota de trabajo propia y no documentación del proyecto: dice «${m.valor}» donde el documento dice «${d.valor}», y un borrador propio no contradice a un contrato` })
+      continue
+    }
+    const conPeso = [m, d].filter((h) => h.confianza !== 'baja')
+    if (!conPeso.length) {
+      salida.push({ cruce: CRUCE.SOLO_MENCIONES, que, motor: m, documento: d, porQue: `las dos lecturas son frases sueltas que no nombraron la pieza (confianza baja de los dos lados): «${m.valor}» y «${d.valor}» no alcanzan para contradecirse` })
+      continue
+    }
+    salida.push({
+      cruce: CRUCE.CONFLICTO, que, motor: m, documento: d,
+      versiones: [...new Set([...delOtro, ...suyos].filter((h) => h.confianza !== 'baja').map((h) => `${h.clase} («${h.documento}») dice «${h.valor}»`))],
+      porQue: `el motor leyó «${m.valor}» en ${m.documento} (${m.clase}, confianza ${m.confianza}) y el documento dice «${d.valor}» (${d.clase}, confianza ${d.confianza}): dos fuentes legítimas se contradicen y elegir una sería arbitrario`,
+    })
   }
   return salida
 }
@@ -174,6 +220,6 @@ export function contrastar({ hechosDelMotor = [], lecturas = [], itemsDelComputo
   return {
     cruces, alcance, cuenta, terminosGenericos: genericos,
     conflictos: todos.filter((x) => x.cruce === CRUCE.CONFLICTO || x.cruce === CRUCE.CONFLICTO_DE_ALCANCE),
-    resumen: `${delDocumento.length} hecho(s) técnicos del documento contra ${hechosDelMotor.length} del motor · ${cuenta[CRUCE.CONFIRMA_MEDIDO]} confirmación(es) sobre algo MEDIDO · ${cuenta[CRUCE.COINCIDE_CON_INFERENCIA]} coincidencia(s) con algo que el motor NO midió · ${cuenta[CRUCE.CONFLICTO]} conflicto(s) de valor · ${cuenta[CRUCE.APORTA]} dato(s) que sólo dice el documento · ${cuenta[CRUCE.CONFLICTO_DE_ALCANCE]} choque(s) entre el cómputo y una exclusión`,
+    resumen: `${delDocumento.length} hecho(s) técnicos del documento contra ${hechosDelMotor.length} del motor · ${cuenta[CRUCE.CONFIRMA_MEDIDO]} confirmación(es) sobre algo MEDIDO · ${cuenta[CRUCE.COINCIDE_CON_INFERENCIA]} coincidencia(s) con algo que el motor NO midió · ${cuenta[CRUCE.CONFLICTO]} conflicto(s) de valor · ${cuenta[CRUCE.SOLO_MENCIONES]} par(es) de menciones sueltas que no alcanzan para contradecirse · ${cuenta[CRUCE.APORTA]} dato(s) que sólo dice el documento · ${cuenta[CRUCE.CONFLICTO_DE_ALCANCE]} choque(s) entre el cómputo y una exclusión`,
   }
 }

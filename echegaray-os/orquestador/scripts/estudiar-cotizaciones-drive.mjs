@@ -34,15 +34,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
-import { CLASE, inventariar, subarbol } from '../lib/conocimiento/inventario-drive.mjs'
+import { CLASE, RAIZ_ADMINISTRACION, inventariar, subarbol } from '../lib/conocimiento/inventario-drive.mjs'
 import { formatoDe } from '../lib/ingesta/registro.mjs'
 import { cargar, guardar, incorporar, inventario, yaEstudiado } from '../lib/conocimiento/biblioteca.mjs'
 import { estudiarTanda } from '../lib/conocimiento/estudio-cotizaciones.mjs'
 import { conCache } from '../lib/conocimiento/cache.mjs'
 import { resumen } from '../lib/conocimiento/hallazgos-cotizacion.mjs'
 
-/** La carpeta `administracion` de Drive: la que señaló el dueño. */
-export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
+export { RAIZ_ADMINISTRACION }
 
 /** Las clases del inventario que este comando estudia. El resto queda inventariado y declarado. */
 export const CLASES_QUE_ESTUDIA = Object.freeze([CLASE.COTIZACION_ECSAS, CLASE.RENDIMIENTO, CLASE.MEDICION])

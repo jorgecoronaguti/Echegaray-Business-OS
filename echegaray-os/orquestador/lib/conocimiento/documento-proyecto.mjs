@@ -23,8 +23,14 @@
 // alcance y de condición, con su cita. Lo que hacen es habilitar o bloquear una partida y explicar
 // por qué, no reemplazar la medición.
 import { alcanceDe, hechosDeTexto, CLASE_FUENTE } from '../plano/proyecto.mjs'
+import { leerPlanillaSemantica } from './planilla-semantica.mjs'
 
-/** Las categorías del pedido. Cada una responde una pregunta distinta y no se mezclan. */
+/** Las categorías del pedido. Cada una responde una pregunta distinta y no se mezclan.
+ *
+ *  `PARTIDA` no sale de la prosa y por eso no tiene marcadores: en un documento de Word las partidas
+ *  con su unidad y su cantidad viven en TABLAS, y las lee el mismo detector semántico que lee las
+ *  planillas de Excel (`planilla-semantica.mjs`). Buscarlas con una expresión regular sobre el texto
+ *  produciría partidas que nadie escribió. */
 export const CATEGORIA = Object.freeze({
   ALCANCE: 'ALCANCE',
   EXCLUSION: 'EXCLUSION',
@@ -57,6 +63,9 @@ export const MARCADORES = Object.freeze({
     /\bse\s+circunscribe\b/i, /\bobjeto\s+del\s+presente\s+contrato/i,
     /\bla\s+cotizaci[oó]n\s+aprobada\s+(?:forma\s+parte|comprende)/i,
     /\btrabajos?\s+a\s+ejecutar\b/i,
+    // De la memoria de NATANIA: «damos a conocer el alcance de las tareas a realizar en la obra».
+    /\balcance\s+de\s+l[ao]s\s+(?:tareas|trabajos|prestaciones)/i,
+    /\btareas?\s+a\s+realizar\b/i,
   ],
   [CATEGORIA.RESPONSABILIDAD]: [
     /\b(?:ser[aá]|es)\s+(?:de\s+)?responsabilidad\s+d/i, /\btendr[aá]\s+a\s+su\s+(?:exclusivo\s+)?cargo/i,
@@ -77,6 +86,9 @@ export const MARCADORES = Object.freeze({
     /\bzona\s+s[ií]smica|zona\s+4\b|sismorresistente/i, /\breglamento\s+d/i,
     /\bc[oó]digo\s+de\s+edificaci[oó]n/i, /\bnormativa\s+(?:vigente|de\s+drenaje|municipal)/i,
     /\bseg[uú]n\s+(?:norma|c[aá]lculo|reglamento)/i, /\breglas\s+del\s+arte/i,
+    // De la memoria de NATANIA: «leyes, decretos, ordenanzas y resoluciones de orden Nacional y
+    // Municipal en materia de Seguridad e Higiene».
+    /\bleyes,?\s+decretos|ordenanzas\s+y\s+resoluciones/i, /\bseguridad\s+e\s+higiene\b/i,
   ],
   [CATEGORIA.REFERENCIA_PLANO]: [
     /\bseg[uú]n\s+(?:se\s+indica\s+en\s+)?(?:el\s+|los\s+)?plano/i, /\bs\/\s?plano/i,
@@ -166,9 +178,9 @@ export function hallazgo({ categoria, documento, seccion = null, textoLiteral, c
  * `plano/proyecto.mjs`: no se duplica esa lógica: se la llama. Dos extractores del mismo atributo
  * sobre el mismo texto es exactamente cómo terminan conviviendo dos definiciones del mismo concepto.
  */
-export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE.MEMORIA } = {}) {
+export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE.MEMORIA, tablas = [] } = {}) {
   const frases = frasesConSeccion(texto)
-  const hallazgos = []
+  const hallazgos = [...partidasDeTablas(tablas, { documento })]
   for (const f of frases) {
     const cats = categoriasDe(f.texto)
     if (!cats.length) continue
@@ -179,6 +191,7 @@ export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE
     }
   }
   const tecnicos = hechosDeTexto(texto, { documento, clase })
+  const partidas = hallazgos.filter((h) => h.categoria === CATEGORIA.PARTIDA).length
   const porCategoria = {}
   for (const h of hallazgos) porCategoria[h.categoria] = (porCategoria[h.categoria] ?? 0) + 1
   return {
@@ -187,8 +200,35 @@ export function leerDocumentoDeProyecto(texto, { documento, clase = CLASE_FUENTE
     hallazgos,
     tecnicos,
     porCategoria,
-    resumen: `${frases.length} frase(s) · ${hallazgos.length} hallazgo(s) documentales · ${tecnicos.length} hecho(s) técnicos`,
+    resumen: `${frases.length} frase(s) · ${hallazgos.length} hallazgo(s) documentales (${partidas} partida(s) de tabla) · ${tecnicos.length} hecho(s) técnicos`,
   }
+}
+
+/**
+ * LAS PARTIDAS QUE TRAEN LAS TABLAS DE UN DOCUMENTO DE WORD. PURA.
+ *
+ * Una memoria descriptiva y un listado de tareas ponen las partidas en una tabla, no en la prosa. La
+ * tabla se lee con EL MISMO detector semántico que las planillas de Excel: si «ítem · descripción ·
+ * unidad · cantidad» significa lo mismo en un `.xlsx` de ARCOR y en un `.docx` de ECSAS, tener dos
+ * definiciones de qué es una partida garantiza que en algún momento digan cosas distintas.
+ */
+export function partidasDeTablas(tablas = [], { documento } = {}) {
+  const salida = []
+  for (const [i, t] of tablas.entries()) {
+    const r = leerPlanillaSemantica(t?.filas ?? [], { hoja: `tabla ${i + 1}`, nombre: documento })
+    if (!r.ok) continue
+    for (const it of r.items) {
+      const h = hallazgo({
+        categoria: CATEGORIA.PARTIDA,
+        documento,
+        seccion: it.rubro ?? `tabla ${i + 1}`,
+        textoLiteral: [it.item, it.descripcion, it.unidad, it.cantidad].filter((x) => x !== null && x !== '').join(' | '),
+        cantidades: it.cantidad === null ? [] : [{ valor: String(it.cantidad), unidad: it.unidad ?? 'sin unidad', literal: `${it.cantidad} ${it.unidad ?? ''}`.trim() }],
+      })
+      if (h) salida.push(h)
+    }
+  }
+  return salida
 }
 
 /**
@@ -209,4 +249,44 @@ export function huecosDeclarados(lectura) {
       porQue: 'el propio documento declara que este dato todavía no está definido',
       quienLoTiene: /cliente|comitente|locatario|propietario/i.test(h.textoLiteral) ? 'el cliente' : 'la dirección técnica del proyecto',
     }))
+}
+
+/** Un identificador estable a partir del nombre del documento. Entra en la clave, así que dos
+ *  corridas sobre el mismo archivo tienen que producir la MISMA clave o la biblioteca acumula
+ *  duplicados con distinto nombre. PURA. */
+export const slug = (s) => String(s ?? 'documento').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+
+/**
+ * DE LOS HALLAZGOS A CONOCIMIENTOS DE LA BIBLIOTECA. PURA salvo por el constructor que valida.
+ *
+ * Todo nace CANDIDATO y con procedencia `DOCUMENTO_PROYECTO`, que es la que exige cita literal: la
+ * frase entera viaja en la evidencia y por eso cada afirmación se puede discutir contra el papel.
+ *
+ * La confianza es MEDIA y no ALTA aunque la frase sea textual: lo que está probado es que el
+ * documento LO DICE, no que la regla que se le atribuye sea la correcta. Subirla a ALTA por venir de
+ * un contrato es exactamente confundir «está escrito» con «está validado».
+ */
+export function aConocimientos(lectura, { conocimiento, fecha = null } = {}) {
+  const base = slug(lectura?.documento)
+  const candidatos = []
+  const rechazados = []
+  const porCategoria = new Map()
+  for (const h of lectura?.hallazgos ?? []) {
+    const n = (porCategoria.get(h.categoria) ?? 0) + 1
+    porCategoria.set(h.categoria, n)
+    try {
+      candidatos.push(conocimiento({
+        clave: `documento-proyecto.${base}.${h.categoria.toLowerCase()}.${n}`,
+        afirmacion: h.textoLiteral,
+        procedencia: 'DOCUMENTO_PROYECTO',
+        area: h.categoria.toLowerCase(),
+        confianza: 'MEDIA',
+        fecha,
+        valor: h.cantidades[0] ? `${h.cantidades[0].valor} ${h.cantidades[0].unidad}` : null,
+        evidencia: { archivo: h.documento, seccion: h.seccion, alcance: h.alcance, categoria: h.categoria, textoLiteral: h.textoLiteral, cantidades: h.cantidades },
+      }))
+    } catch (e) { rechazados.push({ clave: `${base}.${h.categoria}.${n}`, porQue: String(e?.message ?? e).slice(0, 200) }) }
+  }
+  return { candidatos, rechazados }
 }

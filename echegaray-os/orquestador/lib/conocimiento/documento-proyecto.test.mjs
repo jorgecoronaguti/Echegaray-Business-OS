@@ -116,6 +116,16 @@ test('dos valores distintos son CONFLICTO, nunca un promedio ni una elección', 
   assert.match(r[0].porQue, /elegir una sería arbitrario/)
 })
 
+test('un borrador propio NO contradice al contrato del cliente', () => {
+  // Apareció al abrir los `.docx`: «Charlar de diagrama de GANT.docx» y «Diagrama IA.docx» —una
+  // nota de trabajo y una salida de un modelo— entraban como PLIEGO con confianza alta y discutían
+  // de igual a igual con el contrato firmado. De los 8 conflictos medidos en QUATTROPANI, 5 eran eso.
+  const nota = hecho({ elemento: 'columna', atributo: 'material', valor: 'metalico', clase: CLASE_FUENTE.NOTA_INTERNA, documento: 'Charlar de diagrama de GANT.docx', textoLiteral: 'columnas metálicas del galpón', confianza: 'alta' })
+  const r = cruzarHechos({ delMotor: [nota], delDocumento: [delDoc('columna', 'material', 'hormigon_armado')] })
+  assert.equal(r[0].cruce, CRUCE.SOLO_MENCIONES)
+  assert.match(r[0].porQue, /un borrador propio no contradice a un contrato/)
+})
+
 test('lo que sólo dice el documento se APORTA, no corrige nada', () => {
   const r = cruzarHechos({ delMotor: [], delDocumento: [delDoc('muro', 'terminacion', 'visto')] })
   assert.equal(r[0].cruce, CRUCE.APORTA)

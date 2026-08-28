@@ -33,6 +33,9 @@ import { hechosDeCad, hechosDeTexto, CLASE_FUENTE } from './proyecto.mjs'
  *  «memoria» y «cálculo» pesan más que «pliego», y «pliego» más que una planilla del cliente. PURA. */
 export function claseDocumental(nombre) {
   const n = String(nombre ?? '').toLowerCase()
+  // Lo INTERNO se aparta primero, y antes que «memoria»: un archivo puede llamarse «memoria» y ser
+  // un borrador. Los nombres salen de los que hay: «Charlar de diagrama de GANT», «Diagrama IA».
+  if (/charlar|borrador|apunte|minuta|diagrama|whatsapp/.test(n)) return CLASE_FUENTE.NOTA_INTERNA
   if (/memoria|calculo|cálculo/.test(n)) return CLASE_FUENTE.MEMORIA
   if (/pliego|especificacion|especificación|condiciones/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/planilla|computo|cómputo|listado/.test(n)) return CLASE_FUENTE.PLANILLA

@@ -1,0 +1,1602 @@
+{
+ "generado": "2026-08-28T15:48:42.034Z",
+ "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
+ "filtro": null,
+ "fichas": [
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/CARATULAS PARA FACTURAS.docx",
+   "nombre": "CARATULAS PARA FACTURAS.docx",
+   "driveId": "1yOHtwtEyNtCqXsp_3CfMfJlULPOYseLx",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "el .docx se abrió y dejó 7 caracteres de texto junto a 2 imagen(es) incrustada(s): lo que dice está adentro de las imágenes y haría falta OCR para leerlo"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "no se llegó a interpretar porque no se pudo parsear"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/CARATULAS PARA OBRAS.docx",
+   "nombre": "CARATULAS PARA OBRAS.docx",
+   "driveId": "1KRUh3wBByn91fZNRljhoSFvoT8C1pnnK",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 125,
+    "porQue": "125 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "0 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/Contrato Social - Constitucion ECSAS/Acta ECSAS 7.7.26.docx",
+   "nombre": "Acta ECSAS 7.7.26.docx",
+   "driveId": "11z60OBLIP7acU9l8E6Od5UlXkUbbP08g",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 9266,
+    "porQue": "9266 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "70 frase(s) · 1 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/Estrategia/ANRs/Check list pre-elegibilidad ANR personas juridicas.docx",
+   "nombre": "Check list pre-elegibilidad ANR personas juridicas.docx",
+   "driveId": "1-att91P8lV-_kwN6KdA-s4B67jYqgrTc",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2591,
+    "porQue": "2591 caracteres útiles, 1 tabla(s) con 12 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "35 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/Estrategia/ANRs/DDJJ ACTUALIZADA 2026.docx",
+   "nombre": "DDJJ ACTUALIZADA 2026.docx",
+   "driveId": "1iMlbmK_-ioZrZv56E6sOqx7AU-qMxL6P",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1321,
+    "porQue": "1321 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "16 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/Estrategia/ANRs/Presupuesto Jorge Corona Gutierrez - Echegaray Construcciones SAS.docx",
+   "nombre": "Presupuesto Jorge Corona Gutierrez - Echegaray Construcciones SAS.docx",
+   "driveId": "1b41kfFRsfKJgpOHdySvRcKf3-zXBcTKN",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2008,
+    "porQue": "2008 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "18 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/Archivos GESTIÓN ECSAS/Registro Constructores/Formularios completos/Archivo_Formulario_3_DDJJ_RT.docx",
+   "nombre": "Archivo_Formulario_3_DDJJ_RT.docx",
+   "driveId": "1dKovmnCd2z4VrLbj9F7tkq9HKTGELDdh",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1261,
+    "porQue": "1261 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "11 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/LOGO SAS/formato de hoja de trabajo.docx",
+   "nombre": "formato de hoja de trabajo.docx",
+   "driveId": "1JcnbXPREScNYltJXvK-kNX9HJ_sxc2o4",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "el .docx se abrió (0 bloque(s), 2 imagen(es) incrustada(s)) y no dejó un solo carácter de texto: todo lo que dice está adentro de las imágenes y haría falta OCR"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "no se llegó a interpretar porque no se pudo parsear"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/9. ADMINISTRACION (no es legajo)/CARATULAS EMPLEADOS (RECUPERADO AUTOMATICAMENTE)/CARATULAS EMPLEADOS (Recuperado automáticamente).docx",
+   "nombre": "CARATULAS EMPLEADOS (Recuperado automáticamente).docx",
+   "driveId": "1SGOf1VbwgHVVbZ-MPxRnppDX2j6xc1yb",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 260,
+    "porQue": "260 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "0 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PERSONAL: ALTAS - BAJAS - HM - EPP - DNI/9. ADMINISTRACION (no es legajo)/FONDO DE CESE/ACUERDO/ACUERDO DE LIQUIDACIÓN FINAL Y CONFORMIDAD DE HABERES.docx",
+   "nombre": "ACUERDO DE LIQUIDACIÓN FINAL Y CONFORMIDAD DE HABERES.docx",
+   "driveId": "1Y-W-JmsQrVgohu0_usGCFrEqin9ukMa_",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1893,
+    "porQue": "1893 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "21 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/ADECUACION DE CANAL PARA REJA/Pliego Cond_SJ_Modificacion Canal para nuevo Tamiz.doc",
+   "nombre": "Pliego Cond_SJ_Modificacion Canal para nuevo Tamiz.doc",
+   "driveId": "1hM5yjxJ9TmMdls_jjd7laPrwkoQwTgGN",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 45987,
+    "porQue": "45987 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "355 frase(s) · 46 hallazgo(s) documentales (0 partida(s) de tabla) · 8 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "46 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/ADECUACION DE CANAL PARA REJA/Pliego espec tec_SJ_Modificacion Canal para nuevo Tamiz.doc",
+   "nombre": "Pliego espec tec_SJ_Modificacion Canal para nuevo Tamiz.doc",
+   "driveId": "1idbkpyqf-tAm6Urmhw9_CHuIRphrieE2",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 12745,
+    "porQue": "12745 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 18,
+    "porQue": "101 frase(s) · 18 hallazgo(s) documentales (0 partida(s) de tabla) · 23 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 18,
+    "porQue": "18 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 2
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/ARCOR/CORREOS Y CONTRASEÑAS PARA AUTOGESTIÓN DE ARCOR.docx",
+   "nombre": "CORREOS Y CONTRASEÑAS PARA AUTOGESTIÓN DE ARCOR.docx",
+   "driveId": "152GOIpWn_Q6hyTGiedLuro8u02MnA4LV",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 647,
+    "porQue": "647 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "12 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/DOCUMENTACION PARA INGRESO A PLANTA/Cronograma de trabajo.docx",
+   "nombre": "Cronograma de trabajo.docx",
+   "driveId": "1nBtVg40AWj4MDpPS4fa9NOZHzHdfLYyU",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 703,
+    "porQue": "703 caracteres útiles, 2 tabla(s) con 8 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "12 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/NOTA PARA SECONDI.docx",
+   "nombre": "NOTA PARA SECONDI.docx",
+   "driveId": "15gjV8uKIsfPj-oKHqDbop-QRx_YAmdGr",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 446,
+    "porQue": "446 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "9 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/NOTAS - RETENCIONES MAL HECHAS/Modelo_DDJJ.docx",
+   "nombre": "Modelo_DDJJ.docx",
+   "driveId": "1JoPWI5YgzlDIMyg6B18WOkf4oRlJUomm",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 669,
+    "porQue": "669 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "9 frase(s) · 1 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/PUENTE DE PLAYA/DOCUMENTACION PRESENTADA/MEGLIOLI/04. LISTADO DE HERRAMIENTAS.docx",
+   "nombre": "04. LISTADO DE HERRAMIENTAS.docx",
+   "driveId": "1uG--jUz4iwetjE4-YmIFGbcakam5L6Ob",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 677,
+    "porQue": "677 caracteres útiles, 1 tabla(s) con 10 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "8 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/PUENTE DE PLAYA/Memoria Descriptiva ECSAS - PUENTE DE PLAYA.docx",
+   "nombre": "Memoria Descriptiva ECSAS - PUENTE DE PLAYA.docx",
+   "driveId": "1YJ2hyS1JzQW8J_uxekEjYm6k4l-jO_kl",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 446,
+    "porQue": "446 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "9 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/Contrato de Obra",
+   "nombre": "Contrato de Obra",
+   "driveId": "1Rt7eZ4N7bbpPLSdQzV3sphK9v9F3vcP5OO_4NJP3xNY",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «application/vnd.google-apps.document» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1911,
+    "porQue": "1911 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 3,
+    "porQue": "18 frase(s) · 3 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 3,
+    "porQue": "3 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/DATOS CONFECCION PS.docx",
+   "nombre": "DATOS CONFECCION PS.docx",
+   "driveId": "19Q9F5qvpPAntYtvQ6nkNv4IQnQGo95vZ",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 685,
+    "porQue": "685 caracteres útiles, 3 tabla(s) con 13 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "4 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 1 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE 16:9:2022/NOTA ACTA DE MEDICION.docx",
+   "nombre": "NOTA ACTA DE MEDICION.docx",
+   "driveId": "1xe6IKo3aT2Sx39TG-pgkZQPBtbKvuIKR",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 439,
+    "porQue": "439 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "6 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Archivos Viejos/Notas de Pedido MODELO.docx",
+   "nombre": "Notas de Pedido MODELO.docx",
+   "driveId": "1qy4UgoL2UQyOVKiMUSc-mAVxHP7IRud2",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 12370,
+    "porQue": "12370 caracteres útiles, 28 tabla(s) con 43 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "123 frase(s) · 1 hallazgo(s) documentales (0 partida(s) de tabla) · 14 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Certificados de Calidad/Datos Técnicos CF12R.docx",
+   "nombre": "Datos Técnicos CF12R.docx",
+   "driveId": "1HGZFeSQl8UIEFZqlwv-CkqPCLRNCNgGY",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 882,
+    "porQue": "882 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "13 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 7 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Nota DPV.docx",
+   "nombre": "Nota DPV.docx",
+   "driveId": "1WsorKHEcwbUb9iAR10kTd11yCcYzyD5T",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 508,
+    "porQue": "508 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "9 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Nota Laboratorio de Suelos.docx",
+   "nombre": "Nota Laboratorio de Suelos.docx",
+   "driveId": "1D8NOrgStpObGKcCrnrbVIxmVFpHSGXth",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1289,
+    "porQue": "1289 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "20 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 6 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Nota Transito.docx",
+   "nombre": "Nota Transito.docx",
+   "driveId": "18-bnatJmAM9mx_fguX-hXMTWfbCnn3VX",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2704,
+    "porQue": "2704 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "51 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/NOTAS DE PEDIDO.docx",
+   "nombre": "NOTAS DE PEDIDO.docx",
+   "driveId": "1BV_RTq1VcKkQE-HYUwF5Uxsn8iysffL6",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 42494,
+    "porQue": "42494 caracteres útiles, 86 tabla(s) con 129 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 3,
+    "porQue": "467 frase(s) · 3 hallazgo(s) documentales (0 partida(s) de tabla) · 62 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 3,
+    "porQue": "3 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/OBRA OSSE/Protocolo Corte de Calle.docx",
+   "nombre": "Protocolo Corte de Calle.docx",
+   "driveId": "1j9gB0gGIRSFU2oYwFegT6Dy8wZzws4Al",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2640,
+    "porQue": "2640 caracteres útiles, 2 tabla(s) con 3 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "29 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 3 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Contrato de Obra/CONTRATO DE LOCACIÓN DE OBRA — Salones Comerciales — QUATTROPANI FRANCO",
+   "nombre": "CONTRATO DE LOCACIÓN DE OBRA — Salones Comerciales — QUATTROPANI FRANCO",
+   "driveId": "1Cn1Zp8vwh7FY5XbviB699bWePINLypqA5NaFRfP_tQE",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «application/vnd.google-apps.document» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 5450,
+    "porQue": "5450 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 11,
+    "porQue": "70 frase(s) · 11 hallazgo(s) documentales (0 partida(s) de tabla) · 32 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 11,
+    "porQue": "11 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Contrato de Obra/CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+   "nombre": "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+   "driveId": "1hfZgRD-q_95bycUnOJAwSB6uV85tm7NvSWvQoJx8xBo",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «application/vnd.google-apps.document» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 20182,
+    "porQue": "20182 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "160 frase(s) · 46 hallazgo(s) documentales (0 partida(s) de tabla) · 67 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "46 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 2
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Contrato de Obra/CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
+   "nombre": "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
+   "driveId": "1glixkTWr5HDDKdzsniqoBJLZias5DLn9",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 20098,
+    "porQue": "20098 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "160 frase(s) · 46 hallazgo(s) documentales (0 partida(s) de tabla) · 67 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 46,
+    "porQue": "46 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 2
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Diagramacion de Obra/Charlar de diagrama de GANT.docx",
+   "nombre": "Charlar de diagrama de GANT.docx",
+   "driveId": "12uyxKg3EBXNx7NtdZV2rNrprtub41vN4",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 18257,
+    "porQue": "18257 caracteres útiles, 2 tabla(s) con 42 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 4,
+    "porQue": "268 frase(s) · 4 hallazgo(s) documentales (0 partida(s) de tabla) · 60 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 4,
+    "porQue": "4 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/FRANCO QUATTROPANI/Diagramacion de Obra/Diagrama IA.docx",
+   "nombre": "Diagrama IA.docx",
+   "driveId": "11fcT4PFIzki7liYIwRUIJVjSI9tt3Ny0",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 4187,
+    "porQue": "4187 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "59 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 25 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/DOC TECNICA/RFQ_O_0002_ Memoria descriptiva.docx",
+   "nombre": "RFQ_O_0002_ Memoria descriptiva.docx",
+   "driveId": "1bUHK8S6Z06Jff8gDZ2o78J9OJPQHtl6-",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 4014,
+    "porQue": "4014 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 5,
+    "porQue": "34 frase(s) · 5 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 5,
+    "porQue": "5 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/PO_O_0002 Acuerdo de Confidencialidad.doc",
+   "nombre": "PO_O_0002 Acuerdo de Confidencialidad.doc",
+   "driveId": "1CAXKBQGOP0kSOxH4GJfy6lgPQPbPQxQZ",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 658,
+    "porQue": "658 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "7 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/PO_O_0003 DDJJ Aceptacion de Condiciones Contractuales.doc",
+   "nombre": "PO_O_0003 DDJJ Aceptacion de Condiciones Contractuales.doc",
+   "driveId": "1AySQU4vKHAQBHQsg04VaytUOa4BtaKMh",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 697,
+    "porQue": "697 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "6 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/PO_O_0004 Constancia de Visita.doc",
+   "nombre": "PO_O_0004 Constancia de Visita.doc",
+   "driveId": "1o9K9S4qNX0G1swQ00zyJ8LtVLq6N97Q5",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 640,
+    "porQue": "640 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "3 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/PO_O_0009 Modelo de Circular de Licitacion.doc",
+   "nombre": "PO_O_0009 Modelo de Circular de Licitacion.doc",
+   "driveId": "1ui-vyxuq-fhJyZKiBmOUgCoHa4dKXGDL",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 568,
+    "porQue": "568 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "9 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/GRUPO NATANIA/PO_O_0011 Alta de Proveedores.doc",
+   "nombre": "PO_O_0011 Alta de Proveedores.doc",
+   "driveId": "19gBy7jf8RhAPRJjoMXEjNRf0r6yZvntI",
+   "variante": "OLE2",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.doc» es un documento y la firma dice OLE2"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 592,
+    "porQue": "592 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "13 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/JOSEMARIA/Anexo A - Acuerdo Mutuo de Confidencialidad Rev.3docx.docx",
+   "nombre": "Anexo A - Acuerdo Mutuo de Confidencialidad Rev.3docx.docx",
+   "driveId": "14tRIstiyllBcC6_ztqnMch1hN3-6aDuV",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 15921,
+    "porQue": "15921 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "77 frase(s) · 1 hallazgo(s) documentales (0 partida(s) de tabla) · 1 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/LA ESTRELLA/PLANOS GALPON 7/DATOS CONFECCION PS-NASSER.docx",
+   "nombre": "DATOS CONFECCION PS-NASSER.docx",
+   "driveId": "1TeJ3xdB8wnFfCg_G_mEo9h_aJLwJstKf",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1255,
+    "porQue": "1255 caracteres útiles, 3 tabla(s) con 13 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "16 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 7 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/MESSINA/Informe de Nivelacion/Informe de Nivelacion de Terreno",
+   "nombre": "Informe de Nivelacion de Terreno",
+   "driveId": "1zgLngkC-CE67iWJQpnecLf81DDw3I-CVKgqkDHclncw",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «application/vnd.google-apps.document» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2714,
+    "porQue": "2714 caracteres útiles"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "35 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 15 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/MESSINA/LOSA PARA TANQUE DE GAS/DATOS CONFECCION PS.docx",
+   "nombre": "DATOS CONFECCION PS.docx",
+   "driveId": "1uCjb1YR5Mb6Gk0sz-nRu6eHrAKqP8RBq",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 1012,
+    "porQue": "1012 caracteres útiles, 3 tabla(s) con 13 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "10 frase(s) · 1 hallazgo(s) documentales (0 partida(s) de tabla) · 6 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": true,
+    "cuanto": 1,
+    "porQue": "1 candidato(s) entraron a la biblioteca con procedencia DOCUMENTO_PROYECTO"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/ORICA/ALTA PROVEEDOR/Orica Vendor Application Form Spanish.docx",
+   "nombre": "Orica Vendor Application Form Spanish.docx",
+   "driveId": "1-DiXuLqpJAwWyVr7rA0gAokVSJiQ_ri7",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 2501,
+    "porQue": "2501 caracteres útiles, 3 tabla(s) con 61 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "55 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2023-10-10/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "13yZQXCDNNunIQXWpHQHNyqvK49-YGGw6",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 383,
+    "porQue": "383 caracteres útiles, 1 tabla(s) con 8 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "2 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2023-11-29/INFORME 29:11.docx",
+   "nombre": "INFORME 29:11.docx",
+   "driveId": "1d5fiMRneWC7xk9RIgWpga1E6a4mXCu02",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 454,
+    "porQue": "454 caracteres útiles, 1 tabla(s) con 6 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "3 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-01-24/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1FPhjR2Y4si8cunjSQaoMWX6aXmkNaO7b",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 442,
+    "porQue": "442 caracteres útiles, 1 tabla(s) con 6 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "3 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-03-06/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1ElXahJD8ddiuImX7IHWih6fXZ5UWw902",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 644,
+    "porQue": "644 caracteres útiles, 2 tabla(s) con 10 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "6 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-04-05/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1Hfp4A7TlHJuu8rxiRq3ys0nHEiI90DBE",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 478,
+    "porQue": "478 caracteres útiles, 1 tabla(s) con 10 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "3 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-5-8/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1Yv8x1uWuRyqzGzWp-v5Xsb1EukktjhCV",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 496,
+    "porQue": "496 caracteres útiles, 1 tabla(s) con 9 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "3 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-6-5/INFORME.docx",
+   "nombre": "INFORME.docx",
+   "driveId": "1nSwmm_0HYW0glqjg21urpbUf7-rOlwUI",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 607,
+    "porQue": "607 caracteres útiles, 1 tabla(s) con 14 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "2 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/2024-7-3/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1GfzBLxzV8UX1f9kzvDSvViROL44HKY42",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 437,
+    "porQue": "437 caracteres útiles, 1 tabla(s) con 9 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "2 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1qQcwiWUq-zrdCd4bmtx1YrvPOF93ptqF",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 694,
+    "porQue": "694 caracteres útiles, 1 tabla(s) con 4 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "7 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-11-21/INFORME 21:11 - SL.docx",
+   "nombre": "INFORME 21:11 - SL.docx",
+   "driveId": "1OC4PGjUjN-C36MN0ZG486_I1Icyk_--u",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 522,
+    "porQue": "522 caracteres útiles, 1 tabla(s) con 3 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "6 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-11-21/PLANTILLA PARA INFORME.docx",
+   "nombre": "PLANTILLA PARA INFORME.docx",
+   "driveId": "1GaSvNnd5-O66hxceNDtz9s8qhd2m7OjO",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 694,
+    "porQue": "694 caracteres útiles, 1 tabla(s) con 4 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "7 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-6-30/Informe de relevamiento - 30:7.docx",
+   "nombre": "Informe de relevamiento - 30:7.docx",
+   "driveId": "1DgDWAVH6sAlQQZwMj6Q0HvX-8_fgq1sg",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 802,
+    "porQue": "802 caracteres útiles, 1 tabla(s) con 5 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "8 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  },
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/vuelo 26:4:23/Informe de relevamiento 26:4:23.docx",
+   "nombre": "Informe de relevamiento 26:4:23.docx",
+   "driveId": "1wHQhsxvUnYZIrGqnouKJZbqVQyOcl232",
+   "variante": "OOXML",
+   "DETECTADO": {
+    "ok": true,
+    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+   },
+   "PARSEADO": {
+    "ok": true,
+    "cuanto": 762,
+    "porQue": "762 caracteres útiles, 3 tabla(s) con 9 fila(s)"
+   },
+   "INTERPRETADO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "7 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+   },
+   "INTEGRADO_PROYECTO": {
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "ningún hallazgo se pudo convertir en candidato"
+   },
+   "rechazados": [],
+   "huecos": 0
+  }
+ ],
+ "huecos": [
+  {
+   "id": "h:5bd671879fd7669a",
+   "clave": "documento-proyecto.Pliego espec tec_SJ_Modificacion Canal para nuevo Tamiz.doc.sin-definir.1",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «Se deberá demoler el tabique lateral del canal, abriendo los vanos en planos, con dimensiones aproximadas según se indica en planos (a verificar en obra).»",
+   "quienLoTiene": "la dirección técnica del proyecto",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4a8993895044f558",
+   "clave": "documento-proyecto.Pliego espec tec_SJ_Modificacion Canal para nuevo Tamiz.doc.sin-definir.2",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «Cada compuerta tendrá una dimensión de 0,80x1,15m aprox (medidas a verificar en obra).»",
+   "quienLoTiene": "la dirección técnica del proyecto",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3d430e8ca9373359",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani.sin-definir.3",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo »",
+   "quienLoTiene": "la dirección técnica del proyecto",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fa9cd36eb1e3ad5d",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani.sin-definir.4",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios »",
+   "quienLoTiene": "el cliente",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:18f9f99e36886023",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.5",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «El frente comercial se jerarquiza mediante un sistema de carpintería institucional resuelto con paños fijos vidriados de seguridad de cristal templado tipo Blindex (espesor mínimo »",
+   "quienLoTiene": "la dirección técnica del proyecto",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fa719b8e3a71e2c1",
+   "clave": "documento-proyecto.CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx.sin-definir.6",
+   "tipo": "FALTA_DATO",
+   "porQue": "el propio documento declara que este dato todavía no está definido — «Dado que a la fecha no se dispone de un plano eléctrico de detalle por parte del comitente, los diámetros de cañerías, secciones de cables y circuitos se calcularán bajo criterios »",
+   "quienLoTiene": "el cliente",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  }
+ ]
+}

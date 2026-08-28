@@ -34,7 +34,12 @@ import { huella } from './cache.mjs'
 
 /** DE DÓNDE SALIÓ. Es un HECHO sobre el dato y no cambia nunca. */
 export const PROCEDENCIA = Object.freeze({
-  HECHO_PROYECTO: 'HECHO_PROYECTO',         // lo dice el plano/pliego de ESTA obra
+  HECHO_PROYECTO: 'HECHO_PROYECTO',         // lo dice el PLANO de ESTA obra
+  // Lo dice el CONTRATO, la MEMORIA o el PLIEGO de ESTA obra: el papel que define el alcance.
+  // Separado de HECHO_PROYECTO a propósito, y no por prolijidad: cuando el plano dibuja el entrepiso
+  // y el contrato dice que el entrepiso no se ejecuta, las dos afirmaciones son del proyecto y NO
+  // son la misma cosa. Con una sola procedencia esa contradicción se pierde adentro de una etiqueta.
+  DOCUMENTO_PROYECTO: 'DOCUMENTO_PROYECTO',
   EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',   // lo medimos nosotros ejecutando
   BASE_MAESTRA: 'BASE_MAESTRA',             // está en nuestro catálogo con análisis vigente
   NORMA: 'NORMA',                           // reglamento o norma, con número y año
@@ -74,7 +79,7 @@ export const NO_CONFIRMADAS = Object.freeze([PROCEDENCIA.INFERIDO, PROCEDENCIA.S
  * faltara era el agujero: entraba un hecho del proyecto sin una sola línea de respaldo.
  */
 export const EXIGEN_CITA_LITERAL = Object.freeze([
-  PROCEDENCIA.HECHO_PROYECTO, PROCEDENCIA.NORMA, PROCEDENCIA.REFERENCIA_TECNICA,
+  PROCEDENCIA.HECHO_PROYECTO, PROCEDENCIA.DOCUMENTO_PROYECTO, PROCEDENCIA.NORMA, PROCEDENCIA.REFERENCIA_TECNICA,
   PROCEDENCIA.REFERENCIA_CIRCOT, PROCEDENCIA.INVESTIGACION, PROCEDENCIA.FABRICANTE, PROCEDENCIA.WEB,
 ])
 
@@ -104,6 +109,8 @@ export const ASCENSOS_PROHIBIDOS = Object.freeze([
   [PROCEDENCIA.INVESTIGACION, PROCEDENCIA.NORMA],
   [PROCEDENCIA.FABRICANTE, PROCEDENCIA.NORMA],
   [PROCEDENCIA.INFERIDO, PROCEDENCIA.HECHO_PROYECTO], [PROCEDENCIA.SUPUESTO, PROCEDENCIA.HECHO_PROYECTO],
+  [PROCEDENCIA.WEB, PROCEDENCIA.DOCUMENTO_PROYECTO], [PROCEDENCIA.INFERIDO, PROCEDENCIA.DOCUMENTO_PROYECTO],
+  [PROCEDENCIA.SUPUESTO, PROCEDENCIA.DOCUMENTO_PROYECTO],
   [PROCEDENCIA.WEB, PROCEDENCIA.FABRICANTE],
 ])
 

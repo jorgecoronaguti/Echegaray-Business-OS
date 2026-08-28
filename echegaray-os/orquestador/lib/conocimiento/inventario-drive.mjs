@@ -13,6 +13,11 @@
 // un uso. Lo que NO es aceptable es que desaparezca del recuento: por eso cada archivo sale
 // clasificado y con el porqué, y la suma de las clases da el total.
 
+/** La carpeta `administracion` de Drive: la que señaló el dueño, y de la que cuelga todo lo demás.
+ *  Vive acá —y no en el script que la usó primero— porque ya son tres los comandos que la estudian y
+ *  un id de carpeta repetido en tres archivos es un id que en algún momento va a diferir. */
+export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
+
 /** Qué se le puede extraer a cada clase de archivo. Es el índice del circuito de estudio. */
 export const CLASE = Object.freeze({
   COTIZACION_ECSAS: 'COTIZACION_ECSAS',   // la práctica: rubros, unidades, coeficientes, notas
