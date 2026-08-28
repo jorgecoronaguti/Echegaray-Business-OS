@@ -73,7 +73,10 @@ export function formatoDe({ nombre = '', mime = null } = {}) {
 export const ADAPTADOR = Object.freeze({
   [FORMATO.PDF]: { modulo: 'ingesta/pdf.mjs', saca: ['texto con coordenadas', 'geometría de trazos', 'clase vectorial/raster'], estado: ESTADO.PENDIENTE },
   [FORMATO.DXF]: { modulo: 'ingesta/dxf.mjs', saca: ['capas', 'longitudes', 'áreas', 'conteo de bloques', 'textos'], estado: ESTADO.PENDIENTE },
-  [FORMATO.DWG]: { modulo: 'ingesta/dwg.mjs', saca: ['lo mismo que DXF, previa conversión'], estado: ESTADO.REQUIERE_CONVERSION },
+  // El DWG ya NO nace requiriendo intervención: `ingesta/dwg.mjs` lo convierte solo con el
+  // conversor local y cachea el DXF por hash. `REQUIERE_CONVERSION` quedó para el caso en que ese
+  // conversor no esté en la máquina, y eso se decide EN LA CORRIDA, no en esta tabla.
+  [FORMATO.DWG]: { modulo: 'ingesta/dwg.mjs', saca: ['capas', 'longitudes', 'áreas', 'conteo de bloques', 'cotas acotadas', 'textos'], estado: ESTADO.PENDIENTE },
   [FORMATO.IMAGEN]: { modulo: 'comprobantes/vision.mjs', saca: ['interpretación visual'], estado: ESTADO.PENDIENTE },
   [FORMATO.PLANILLA]: { modulo: 'google.readExcel', saca: ['pestañas', 'filas'], estado: ESTADO.PENDIENTE },
   [FORMATO.DOCUMENTO]: { modulo: 'google.exportarComoTexto', saca: ['texto'], estado: ESTADO.PENDIENTE },

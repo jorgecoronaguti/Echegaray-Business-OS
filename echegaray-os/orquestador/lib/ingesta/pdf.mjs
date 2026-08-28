@@ -148,20 +148,32 @@ export async function leerPdf(bytes, { conGeometria = true, desde = 1, hasta = n
   try {
     for (let n = Math.max(1, desde); n <= ultima; n++) {
       const page = await doc.getPage(n)
+      // ═══ EL ESPACIO DE LA GEOMETRÍA ES EL SIN ROTAR, Y NO ES UN DETALLE ═══
+      // `getViewport().width/height` aplica el /Rotate de la página; las coordenadas de los trazos y
+      // del texto NO. Medido sobre `Plano de Estructura.pdf` de Quattropani, que es A4 apaisado con
+      // /Rotate 90: la hoja se leía 842×595 y el marco del plano salía en 571×816 —más alto que la
+      // hoja—, así que TODA región tapaba «más del 100% de la hoja» y la segmentación devolvía una
+      // sola región para una lámina con seis dibujos. El `viewBox` es la caja sin rotar, que es
+      // donde viven de verdad los números.
       const vp = page.getViewport({ scale: 1 })
+      const [vx0, vy0, vx1, vy1] = vp.viewBox
+      const ancho = Math.abs(vx1 - vx0)
+      const alto = Math.abs(vy1 - vy0)
       const tc = await page.getTextContent()
       const textos = tc.items.filter((i) => 'str' in i).map(cajaDeTexto)
       const geo = conGeometria ? trazosDe(await page.getOperatorList(), nombrePorCodigo) : { trazos: [], imagenes: [] }
       const caracteres = textos.reduce((a, t) => a + t.texto.length, 0)
       paginas.push({
         numero: n,
-        ancho: vp.width,
-        alto: vp.height,
+        ancho,
+        alto,
+        rotacion: page.rotate ?? 0,
+        origen: [vx0, vy0],
         caracteres,
         textos,
         trazos: geo.trazos,
         imagenes: geo.imagenes,
-        clase: clasificarPagina({ caracteres, trazos: geo.trazos.length, imagenes: geo.imagenes, area: vp.width * vp.height }),
+        clase: clasificarPagina({ caracteres, trazos: geo.trazos.length, imagenes: geo.imagenes, area: ancho * alto }),
       })
       page.cleanup()
     }

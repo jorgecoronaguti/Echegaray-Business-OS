@@ -104,6 +104,136 @@ export function clasificarRegion(caja, textos = [], { ancho = 1, alto = 1 } = {}
 }
 
 /**
+ * ═══ POR QUÉ LA CONECTIVIDAD SOLA NO ALCANZA, MEDIDO ═══
+ *
+ * Sobre los dos planos reales de Quattropani, agrupar por espacio en blanco devuelve UNA región que
+ * tapa el 95% de la hoja, con holgura 16 y con holgura 0 por igual. No es un umbral mal elegido: en
+ * un PDF exportado de CAD, el marco de la lámina, las líneas de cota y los llamados CONECTAN todos
+ * los dibujos entre sí. No hay espacio en blanco que los separe.
+ *
+ * Pero el plano SÍ dice dónde empieza cada dibujo: lo escribe. «PLANTA BAJA», «CORTE A-A»,
+ * «ESTRUCTURA FUNDACION», «DETALLE ESCALERA METALICA» son los textos MÁS GRANDES de la lámina y
+ * están al pie de su vista. Anclar en ellos y repartir la geometría por cercanía usa la semántica
+ * que el proyectista ya puso, en vez de pelearle a la geometría.
+ *
+ * En esos dos planos: 7 vistas en el de arquitectura y 5 en el de estructura, contra 1 y 1.
+ */
+
+/** Un título de vista tiene que decir QUÉ VISTA ES. Sin este filtro, «H=6.10m» y «Zona: C3» —que
+ *  están en el mismo cuerpo de letra que los títulos— se vuelven anclas y parten la lámina por la
+ *  mitad en lugares donde no empieza ningún dibujo. */
+const VOCABULARIO_TITULO = /\b(planta|corte|secci[oó]n|vista|fachada|elevaci[oó]n|detalle|planimetr|implantaci|estructura|fundaci|entre\s?piso|cubierta|techo|escalera|croquis|planilla|cuadro|referencias?)\b/i
+
+/** La mediana de una lista de números. PURA. */
+const mediana = (xs) => {
+  const o = [...xs].filter(Number.isFinite).sort((a, b) => a - b)
+  return o.length ? o[Math.floor(o.length / 2)] : 0
+}
+
+/**
+ * LOS TÍTULOS DE VISTA DE UNA LÁMINA. PURA.
+ *
+ * Dos condiciones a la vez: cuerpo de letra por encima de la mediana —un título se escribe más
+ * grande que una cota— y vocabulario de vista. Una sola de las dos produce falsos: la altura sola
+ * agarra el número de plano y el vocabulario solo agarra cada «ver detalle» del dibujo.
+ */
+export function titulosDe(textos = [], { factorAltura = 1.35, largoMinimo = 4 } = {}) {
+  const alturas = textos.map((t) => t.alto).filter((h) => Number.isFinite(h) && h > 0)
+  const base = mediana(alturas)
+  if (!base) return []
+  return textos
+    .filter((t) => String(t.texto ?? '').trim().length >= largoMinimo)
+    .filter((t) => Number(t.alto) >= base * factorAltura)
+    .filter((t) => VOCABULARIO_TITULO.test(String(t.texto)))
+    .map((t) => ({ x: t.x, y: t.y, alto: t.alto, texto: String(t.texto).trim() }))
+    .sort((a, b) => b.y - a.y || a.x - b.x || a.texto.localeCompare(b.texto))
+}
+
+const centro = (c) => [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2]
+
+/** Un trazo que tapa media hoja NO es un dibujo: es el marco de la lámina, la grilla o un rayado que
+ *  cruza todo. Repartido por cercanía se le cuelga a alguna vista y le infla la caja hasta la hoja
+ *  entera — medido: la región «ENTRE PISO» salía ocupando el 93% del plano. Se cuentan y se dicen. */
+export const FRACCION_MARCO = 0.5
+
+/** Una caja recortada a los límites de la hoja. Una región no puede ser más grande que el papel, y
+ *  cuando lo es el recorte falla sin explicación. PURA. */
+export const dentroDeLaHoja = (c, ancho, alto) => [
+  Math.max(0, Math.min(c[0], ancho)), Math.max(0, Math.min(c[1], alto)),
+  Math.max(0, Math.min(c[2], ancho)), Math.max(0, Math.min(c[3], alto)),
+]
+
+/**
+ * SEGMENTAR ANCLANDO EN LOS TÍTULOS. PURA.
+ *
+ * Cada caja —trazo o texto— va al título MÁS CERCANO, dentro de un radio. El radio existe para que
+ * un sello en la otra punta de la hoja no se cuelgue de la planta: lo que queda afuera de todo radio
+ * se cuenta como `sueltas` y se dice, no se reparte a la fuerza.
+ */
+export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos = [] } = {}, { radio = null, areaMinima = AREA_MINIMA } = {}) {
+  const titulos = titulosDe(textos)
+  if (titulos.length < 2) return null
+  const diagonal = Math.hypot(ancho, alto) || 1
+  const r = radio ?? diagonal * 0.45
+  const areaPapel = (ancho * alto) || 1
+  const marco = trazos.filter((c) => areaDe(c) >= areaPapel * FRACCION_MARCO)
+  const cajas = [
+    ...trazos.filter((c) => areaDe(c) < areaPapel * FRACCION_MARCO).map((c) => ({ caja: c, texto: null })),
+    ...textos.map((t) => ({ caja: [t.x, t.y, t.x + (t.ancho ?? 0), t.y + (t.alto ?? 8)], texto: t.texto })),
+  ]
+  const grupos = titulos.map((t) => ({ titulo: t, caja: null, miembros: 0 }))
+  let sueltas = 0
+  for (const c of cajas) {
+    const [cx, cy] = centro(c.caja)
+    let mejor = -1
+    let mejorD = Infinity
+    for (let i = 0; i < titulos.length; i++) {
+      const d = Math.hypot(cx - titulos[i].x, cy - titulos[i].y)
+      // El desempate por índice mantiene el reparto igual entre corridas cuando dos títulos quedan
+      // exactamente a la misma distancia.
+      if (d < mejorD) { mejorD = d; mejor = i }
+    }
+    if (mejor < 0 || mejorD > r) { sueltas++; continue }
+    const g = grupos[mejor]
+    g.caja = g.caja ? union(g.caja, c.caja) : [...c.caja]
+    g.miembros++
+  }
+  const areaHoja = areaPapel
+  for (const g of grupos) if (g.caja) g.caja = dentroDeLaHoja(g.caja, ancho, alto)
+  const conGeometria = grupos.filter((g) => g.caja && areaDe(g.caja) >= areaHoja * areaMinima)
+  const regiones = conGeometria.map((g, i) => ({
+    n: i + 1,
+    caja: g.caja.map((v) => Math.round(v * 100) / 100),
+    ancho: Math.round((g.caja[2] - g.caja[0]) * 100) / 100,
+    alto: Math.round((g.caja[3] - g.caja[1]) * 100) / 100,
+    fraccionDeHoja: Math.round((areaDe(g.caja) / areaHoja) * 1000) / 1000,
+    elementos: g.miembros,
+    ...clasificarPorTitulo(g.titulo.texto),
+    titulo: g.titulo.texto,
+    anclaje: { x: Math.round(g.titulo.x * 100) / 100, y: Math.round(g.titulo.y * 100) / 100 },
+  }))
+  return {
+    metodo: 'TITULOS',
+    radio: Math.round(r * 100) / 100,
+    regiones,
+    descartadas: grupos.length - conGeometria.length,
+    porQueDescartadas: grupos.length > conGeometria.length ? `${grupos.length - conGeometria.length} título(s) no juntaron geometría suficiente: son referencias dentro de otro dibujo, no vistas propias` : null,
+    sueltas,
+    marco: marco.length,
+    porQueMarco: marco.length ? `${marco.length} trazo(s) tapan más del ${FRACCION_MARCO * 100}% de la hoja: son el marco y la carátula de la lámina, no dibujos, y se dejan afuera del reparto` : null,
+    cobertura: Math.round((conGeometria.reduce((a, g) => a + areaDe(g.caja), 0) / areaHoja) * 1000) / 1000,
+  }
+}
+
+/** Qué vista es, según lo que dice su propio título. PURA. */
+export function clasificarPorTitulo(texto) {
+  for (const [tipo, re] of TITULOS) {
+    if (re.test(String(texto ?? ''))) return { tipo, confianza: 'alta', porQue: `el plano titula esta vista «${String(texto).slice(0, 60)}»`, textoLiteral: String(texto).slice(0, 120) }
+  }
+  return { tipo: TIPO_REGION.INDETERMINADO, confianza: 'media', porQue: `«${String(texto).slice(0, 40)}» es un título pero no dice qué tipo de vista es`, textoLiteral: String(texto).slice(0, 120) }
+}
+
+/**
  * SEGMENTAR UNA LÁMINA. PURA — no abre archivos, no mira nada: recibe la geometría ya extraída.
  *
  * Devuelve las regiones con su caja, su tipo y las coordenadas EN LA HOJA, que es lo que después
@@ -111,7 +241,14 @@ export function clasificarRegion(caja, textos = [], { ancho = 1, alto = 1 } = {}
  * (x1,y1), corte A-A». Sin esa coordenada, la evidencia de un cómputo es «lo dice el plano», que no
  * se puede verificar.
  */
-export function segmentar({ ancho = 0, alto = 0, trazos = [], textos = [] } = {}, { holgura = null, areaMinima = AREA_MINIMA } = {}) {
+export function segmentar({ ancho = 0, alto = 0, trazos = [], textos = [] } = {}, { holgura = null, areaMinima = AREA_MINIMA, porTitulos = true } = {}) {
+  // PRIMERO LOS TÍTULOS. La conectividad queda de respaldo para las láminas que no titulan sus
+  // vistas —un croquis, una foto vectorizada, un detalle suelto—, donde el espacio en blanco sí
+  // separa porque no hay marco ni cadena de cotas que una todo.
+  if (porTitulos) {
+    const porTitulo = segmentarPorTitulos({ ancho, alto, trazos, textos }, { areaMinima })
+    if (porTitulo && porTitulo.regiones.length >= 2) return porTitulo
+  }
   const lado = Math.min(ancho, alto) || 1
   const h = holgura ?? lado * HOLGURA
   const cajasTexto = textos.map((t) => [t.x, t.y, t.x + (t.ancho ?? 0), t.y + (t.alto ?? 8)])
@@ -128,6 +265,7 @@ export function segmentar({ ancho = 0, alto = 0, trazos = [], textos = [] } = {}
     ...clasificarRegion(g.caja, textos, { ancho, alto }),
   }))
   return {
+    metodo: 'CONECTIVIDAD',
     holgura: Math.round(h * 100) / 100,
     regiones,
     descartadas: grupos.length - grandes.length,

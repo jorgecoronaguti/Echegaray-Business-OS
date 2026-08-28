@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { registrar, inventariar, formatoDe, FORMATO, ESTADO, hashDe } from './registro.mjs'
 import { segmentar, agrupar, clasificarRegion, seTocan, TIPO_REGION } from './segmentar.mjs'
 import { clasificarPagina, renglones, transformarCaja, componer, CLASE_PDF } from './pdf.mjs'
-import { CONVERSORES, convertirADxf } from './dwg.mjs'
+import { CONVERSORES, convertirADxf, conversoresDisponibles, versionDeDwg } from './dwg.mjs'
 
 const CARPETA = [
   { nombre: 'Plano de Arquitectura.pdf', mime: 'application/pdf' },
@@ -32,10 +32,10 @@ test('LA EXTENSIÓN MANDA SOBRE EL MIME: Drive devuelve octet-stream para casi t
 test('LO QUE NO SE PUDO LEER NO DESAPARECE DEL INVENTARIO', () => {
   const inv = inventariar(CARPETA)
   assert.equal(inv.total, 8)
-  assert.equal(inv.sinLeer.length, 3, 'el .dwg, el .zip y el archivo sin extensión')
+  assert.equal(inv.sinLeer.length, 2, 'el .zip y el archivo sin extensión — el .dwg ya se abre solo')
   assert.ok(inv.sinLeer.every((f) => f.porQue), 'cada uno dice POR QUÉ no se pudo')
-  assert.equal(inv.porEstado[ESTADO.REQUIERE_CONVERSION], 1)
   assert.equal(inv.porEstado[ESTADO.NO_LEGIBLE], 2)
+  assert.equal(inv.porEstado[ESTADO.REQUIERE_CONVERSION], undefined, 'el DWG dejó de requerir intervención del usuario')
 })
 
 test('el registro trae el hash del contenido, que es la llave del caché', () => {
@@ -46,14 +46,25 @@ test('el registro trae el hash del contenido, que es la llave del caché', () =>
   assert.equal(registrar({ nombre: 'plano.pdf' }).hash, null, 'inventariar sin descargar deja el hash en null, no en cadena vacía')
 })
 
-test('el .dwg se declara REQUIERE_CONVERSION y dice qué falta — no se ignora', async () => {
+test('EL .DWG SE ABRE SOLO: hay conversor local y el usuario no exporta nada', async () => {
   const f = registrar({ nombre: 'ESTRUCTURA.dwg' })
-  assert.equal(f.estado, ESTADO.REQUIERE_CONVERSION)
+  assert.equal(f.estado, ESTADO.PENDIENTE, 'ya no requiere intervención del usuario')
+  assert.equal(f.adaptador, 'ingesta/dwg.mjs')
+  assert.ok((await conversoresDisponibles()).length >= 1, 'sin conversor en la máquina esta capacidad no existe, y el test lo dice')
+  assert.ok(CONVERSORES.some((c) => c.libre), 'la primera opción es libre y local, no un servicio de terceros')
+})
+
+test('la versión del DWG se lee de sus seis primeros bytes, para no adivinar por qué falló', () => {
+  assert.equal(versionDeDwg(Buffer.from('AC1032xxx')).version, 'AutoCAD 2018')
+  assert.equal(versionDeDwg(Buffer.from('AC1027xxx')).version, 'AutoCAD 2013')
+  assert.equal(versionDeDwg(Buffer.from('NOPExxxxx')).conocida, false)
+})
+
+test('un DWG que no existe falla DECLARANDO el motivo, no con una medición vacía', async () => {
   const r = await convertirADxf('/no/existe/ESTRUCTURA.dwg')
   assert.equal(r.ok, false)
-  assert.match(r.comoSeResuelve, /libredwg|CONVERSORES/)
-  assert.ok(r.alternativas === undefined || r.alternativas.every((a) => a.quienDecide), 'cada alternativa dice quién la decide')
-  assert.ok(CONVERSORES.some((c) => c.libre), 'la primera opción es libre y local, no un servicio de terceros')
+  assert.ok(r.porQue)
+  assert.equal(r.estado, 'NO_LEGIBLE')
 })
 
 test('SEGMENTAR: dos dibujos separados por espacio en blanco son dos regiones, no una', () => {
