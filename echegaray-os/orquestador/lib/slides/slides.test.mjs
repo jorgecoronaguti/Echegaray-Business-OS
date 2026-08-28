@@ -5,6 +5,7 @@ import { CONTENIDO, COLOR, PAGINA, TIPO, columnas, contraste } from './marca.mjs
 import { ajustarTamano, anchoTexto, medirTexto, repartirBullets, seSuperponen } from './layout.mjs'
 import { validarPresentacion } from './contrato.mjs'
 import { componerDeck, expandirLaminas } from './plantillas.mjs'
+import { cuerpoHitos } from './componentes.mjs'
 import { altoReal, corregirDeck, fondoDetras, revisarDeck, revisarLamina } from './qa.mjs'
 import { prepararDeck, requestsDelDeck } from './motor.mjs'
 import { oid, requestsCrearLaminas } from './requests.mjs'
@@ -90,6 +91,47 @@ test('CUATRO indicadores con importes en millones NO desbordan la tarjeta', () =
   }])).deck)
   const r = revisarDeck(d)
   assert.equal(r.bloqueantes, 0, JSON.stringify(r.hallazgos, null, 1))
+})
+
+test('el riel de la línea de tiempo NO tacha los títulos que envuelven a dos líneas', () => {
+  // El defecto, visto en una presentación real: el riel y sus puntos se dibujaban a `y + 46` —donde
+  // termina un título de UNA línea—, así que con títulos de dos pasaban POR ENCIMA de la segunda
+  // línea y la tachaban, en las cuatro columnas a la vez. El QA no lo agarra: el riel es capa
+  // `fondo`, excluida a propósito del chequeo de superposición. Si la altura del riel vuelve a ser
+  // una constante, este test se pone rojo.
+  const hitos = [
+    { fecha: 'Semana 1', titulo: 'Dirección fija los umbrales', detalle: 'Margen mínimo, avance de la compuerta 3, vencido que frena obra nueva' },
+    { fecha: 'Semana 1', titulo: 'Un responsable por obra, por escrito', detalle: 'La línea del checklist que hoy más falta' },
+    { fecha: 'Semanas 2 y 3', titulo: 'Línea base en las obras que faltan', detalle: '218 de 380 actividades sin contra qué compararse' },
+    { fecha: 'Semana 4', titulo: 'Primera revisión semanal con PPC', detalle: 'Una obra piloto, no las dieciocho' },
+  ]
+  const y = 120
+  const cajas = cuerpoHitos({ lamina: { tipo: 'hitos', titulo: 'Las próximas cuatro semanas', hitos }, x: CONTENIDO.x, y, ancho: CONTENIDO.ancho, alto: 200 })
+
+  const titulos = cajas.filter((c) => c.tipo === 'texto' && hitos.some((h) => h.titulo === c.contenido))
+  assert.equal(titulos.length, 4)
+  // La premisa del caso: los cuatro títulos envuelven DE VERDAD. Sin esto el test podría pasar sin
+  // haber probado nada.
+  for (const t of titulos) {
+    assert.ok(altoReal(t) > t.estilo.tamano * t.estilo.alto * 1.5, `«${t.contenido}» no envolvió a dos líneas`)
+  }
+  // El fondo del bloque es el de la CAJA, no el de la última línea: se toma el mayor entre el alto
+  // declarado y el medido, igual que hace el QA para el chequeo de superposición.
+  const fondoTitulos = Math.max(...titulos.map((t) => t.y + Math.max(t.alto, altoReal(t))))
+
+  const riel = cajas.find((c) => c.tipo === 'rect' && c.forma === 'RECTANGLE' && c.ancho === CONTENIDO.ancho)
+  const puntos = cajas.filter((c) => c.tipo === 'rect' && c.forma === 'ELLIPSE')
+  assert.ok(riel, 'no se dibujó el riel')
+  assert.equal(puntos.length, 4)
+  assert.ok(riel.y >= fondoTitulos, `el riel (y=${riel.y.toFixed(1)}) cruza el bloque de títulos, que termina en ${fondoTitulos.toFixed(1)}`)
+  for (const p of puntos) {
+    assert.ok(p.y >= fondoTitulos, `un punto (y=${p.y.toFixed(1)}) cruza el bloque de títulos, que termina en ${fondoTitulos.toFixed(1)}`)
+  }
+
+  // Y el detalle cuelga del riel: si el riel baja, baja con él.
+  const detalles = cajas.filter((c) => c.tipo === 'texto' && hitos.some((h) => h.detalle === c.contenido))
+  assert.equal(detalles.length, 4)
+  for (const d of detalles) assert.ok(d.y > riel.y, `el detalle «${d.contenido}» quedó arriba del riel`)
 })
 
 test('un mazo de Dirección completo se compone sin un solo defecto bloqueante', () => {

@@ -137,14 +137,33 @@ export function cuerpoHitos({ lamina, x, y, ancho }) {
   const cajas = []
   const n = lamina.hitos.length
   const paso = ancho / n
-  const yLinea = y + 46
+  const anchoCol = paso - 12
+  const TITULO = { tamano: 11.5, negrita: true, alto: 1.25, color: COLOR.tinta }
+  const Y_TITULO = 17
+  const AIRE_RIEL = 13
+
+  // ═══ EL RIEL NO PUEDE IR A UNA ALTURA FIJA ═══
+  //
+  // Iba a `y + 46`: exactamente donde termina un título de UNA línea. Con un título de dos —sobre
+  // una columna de 146 pt, «Un responsable por obra, por escrito» son dos— la línea horizontal y
+  // su punto pasaban POR ENCIMA de la segunda línea del título y la tachaban. Se vio en una
+  // presentación real, en las cuatro columnas a la vez, y el control de calidad no lo agarra: el
+  // riel es un `rect` de capa `fondo`, y esa capa está excluida del chequeo de superposición a
+  // propósito (un texto arriba de su tarjeta no es un defecto).
+  //
+  // El riel se ubica ahora debajo del bloque de títulos MÁS ALTO de los n hitos —todos comparten
+  // la misma horizontal o deja de ser una línea de tiempo—, medido con la misma función con la que
+  // después se dibuja y con la negrita que el título lleva de verdad. Lo que va abajo —los puntos
+  // y el detalle— cuelga del riel, así que corre solo.
+  const medidas = lamina.hitos.map((h) => medirTexto(h.titulo, { ancho: anchoCol, tamano: TITULO.tamano, alto: TITULO.alto, negrita: TITULO.negrita }))
+  const altoTitulos = Math.max(...medidas.map((m) => m.altoPt))
+  const yLinea = y + Y_TITULO + altoTitulos + 2 + AIRE_RIEL
+
   cajas.push(regla({ x, y: yLinea, ancho, grosor: 1.5, color: COLOR.linea }))
   lamina.hitos.forEach((h, i) => {
     const cx = x + paso * i
-    const anchoCol = paso - 12
     cajas.push(texto({ x: cx, y, ancho: anchoCol, alto: 14, contenido: h.fecha.toUpperCase(), estilo: { ...TIPO.kicker, color: COLOR.suave } }))
-    const m = medirTexto(h.titulo, { ancho: anchoCol, tamano: 11.5, alto: 1.25 })
-    cajas.push(texto({ x: cx, y: y + 17, ancho: anchoCol, alto: m.altoPt + 2, contenido: h.titulo, estilo: { tamano: 11.5, negrita: true, alto: 1.25, color: COLOR.tinta } }))
+    cajas.push(texto({ x: cx, y: y + Y_TITULO, ancho: anchoCol, alto: medidas[i].altoPt + 2, contenido: h.titulo, estilo: TITULO }))
     cajas.push(rect({ x: cx, y: yLinea - 4.25, ancho: 10, alto: 10, relleno: ESTADO[h.estado] || COLOR.linea, forma: 'ELLIPSE' }))
     if (h.detalle) {
       const d = medirTexto(h.detalle, { ancho: anchoCol, tamano: TIPO.kpiNota.tamano, alto: TIPO.kpiNota.alto })
