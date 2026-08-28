@@ -68,6 +68,10 @@ export function contenidos({ oficial_h_u, ayudante_h_u } = {}) {
  * desperdicia, nunca el trabajo que hay que hacer.
  */
 export function horasNecesarias(produccion, cont) {
+  // `Number(null)` es 0 y `Number('')` también: sin este control, una cantidad AUSENTE producía
+  // «0 horas», que es un número y no un hueco. Es exactamente la forma en que una cotización
+  // incompleta se disfraza de completa.
+  if (produccion === null || produccion === undefined || produccion === '') return null
   const p = Number(produccion)
   if (!Number.isFinite(p) || p < 0 || !cont?.ok) return null
   return {
@@ -85,16 +89,31 @@ const mcd = (a, b) => (b === 0 ? a : mcd(b, a % b))
  * LAS CUADRILLAS BÁSICAS DEL ÁBACO — Figura 1 del paper. PURA.
  *
  * Son las conformaciones (oficiales × ayudantes) que NO son múltiplo entero de otra: [3*2] es
- * básica, [6*4] es dos veces [3*2]. El paper dibuja hasta 7×7 = 49 cruces y circula las básicas.
- * Los múltiplos existen y se pueden usar —terminan antes y cuestan lo mismo por unidad—, por eso
- * `incluirMultiplos` está y no está prendido por defecto: el ábaco original no los circula.
+ * básica, [6*4] es dos veces [3*2]. El paper dibuja hasta 7×7 = 49 cruces y circula las 35 básicas
+ * (los pares con máximo común divisor 1).
+ *
+ * LOS MÚLTIPLOS ENTRAN POR DEFECTO, y eso lo dice la fuente: la nota de la Tabla 2 del paper es
+ * explícita —«en las cuadrillas a seleccionar, también deben tenerse en cuenta las que son
+ * múltiplos enteros de las cuadrillas básicas»— y su propia conclusión termina recomendando la
+ * cuadrilla 9 [4*2], que es un múltiplo. Excluirlos hacía imposible reproducir el cierre del paper.
+ * Un múltiplo cuesta EXACTAMENTE lo mismo por unidad producida y termina k veces antes: lo que
+ * decide si conviene no es el costo, es si el frente de trabajo admite a toda esa gente junta —y
+ * para eso está `maxIntegrantes`.
  */
-export function cuadrillasBasicas({ max = 7, incluirMultiplos = false } = {}) {
+export function cuadrillasBasicas({ max = 7, incluirMultiplos = true } = {}) {
   const salida = []
   for (let of = 1; of <= max; of++) {
     for (let ay = 1; ay <= max; ay++) {
-      if (!incluirMultiplos && mcd(of, ay) !== 1) continue
-      salida.push({ oficiales: of, ayudantes: ay, relacion: redondear(of / ay) })
+      const k = mcd(of, ay)
+      if (!incluirMultiplos && k !== 1) continue
+      salida.push({
+        oficiales: of, ayudantes: ay, relacion: redondear(of / ay),
+        // De qué cuadrilla básica es múltiplo, y cuántas veces. `frentes: 2` no es «otra cuadrilla»:
+        // es LA MISMA trabajando en dos frentes a la vez, que es como el paper cierra su ejemplo
+        // («la cuadrilla 9 [4*2], o sea 2 cuadrillas [2*1] independientes una de otra»).
+        base: { oficiales: of / k, ayudantes: ay / k },
+        frentes: k,
+      })
     }
   }
   return salida.sort((a, b) => a.relacion - b.relacion || a.oficiales - b.oficiales)
@@ -107,7 +126,7 @@ export function cuadrillasBasicas({ max = 7, incluirMultiplos = false } = {}) {
  * horas, y como la cuadrilla es una unidad que entra y sale junta, manda el que tarda MÁS. El otro
  * está presente y no produce: eso es el desperdicio, y es lo que se paga sin recibir nada. PURA.
  */
-export function evaluarCuadrilla({ oficiales, ayudantes }, horas, { jornadaEfectiva_h = JORNADA_PAPER.efectiva_h, relacionSalarial } = {}) {
+export function evaluarCuadrilla({ oficiales, ayudantes, base = null, frentes = null }, horas, { jornadaEfectiva_h = JORNADA_PAPER.efectiva_h, relacionSalarial } = {}) {
   if (!horas || !Number.isFinite(relacionSalarial)) return null
   const jOf = horas.oficial_h / (oficiales * jornadaEfectiva_h)
   const jAy = horas.ayudante_h / (ayudantes * jornadaEfectiva_h)
@@ -117,8 +136,11 @@ export function evaluarCuadrilla({ oficiales, ayudantes }, horas, { jornadaEfect
   const dispAy = horasEjecucion * ayudantes
   const perdidoOf = dispOf - horas.oficial_h
   const perdidoAy = dispAy - horas.ayudante_h
+  const k = frentes ?? mcd(oficiales, ayudantes)
   return {
     oficiales, ayudantes,
+    base: base ?? { oficiales: oficiales / k, ayudantes: ayudantes / k },
+    frentes: k,
     relacion: redondear(oficiales / ayudantes),
     jornadasOficial: redondear(jOf, 2), jornadasAyudante: redondear(jAy, 2),
     jornadas: redondear(jornadas, 2),
@@ -166,7 +188,7 @@ export const DISTANCIA_COSTO = 0.02
  * en que el número no agota la decisión —«las características físicas de las viviendas hacen
  * imposible implementar las cuadrillas 8, 3 y 7»—, y forzar un ganador esconde esa conversación.
  */
-export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efectiva_h, relacionSalarial, max = 7, incluirMultiplos = false, maxIntegrantes = null } = {}) {
+export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efectiva_h, relacionSalarial, max = 7, incluirMultiplos = true, maxIntegrantes = null } = {}) {
   if (!horas) return { estado: 'FALTA_DATO', porQue: 'sin horas necesarias no hay cuadrilla que calcular' }
   if (!Number.isFinite(relacionSalarial)) {
     return { estado: 'FALTA_DATO', porQue: 'falta la relación salarial oficial/ayudante — sale de la paritaria UOCRA vigente y no se supone', quienLoTiene: 'administración / liquidación de sueldos' }
@@ -177,8 +199,14 @@ export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efect
     .sort((a, b) => a.costo_jornalesAyudante - b.costo_jornalesAyudante || a.jornadas - b.jornadas || a.oficiales - b.oficiales)
 
   const top = evaluadas[0]
-  const segundo = evaluadas[1]
   if (!top) return { estado: 'FALTA_DATO', porQue: 'ninguna conformación de cuadrilla cumple las restricciones dadas' }
+
+  // El primer competidor REAL. Una cuadrilla y su propio múltiplo no son dos alternativas: son la
+  // misma composición trabajando en k frentes, cuestan lo mismo por construcción y elegir entre
+  // ellas es decidir cuántos frentes se abren, no qué cuadrilla se arma. Declararlo AMBIGUO ahí
+  // sería inventar una duda que el método no tiene.
+  const mismaComposicion = (a, b) => a.oficiales * b.ayudantes === b.oficiales * a.ayudantes
+  const segundo = evaluadas.slice(1).find((c) => !mismaComposicion(top, c)) ?? null
   const empata = segundo && segundo.costo_jornalesAyudante - top.costo_jornalesAyudante < DISTANCIA_COSTO
   return {
     estado: empata ? 'AMBIGUO' : 'ELEGIDA',
@@ -186,7 +214,7 @@ export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efect
     ranking: evaluadas.slice(0, 5),
     porQue: empata
       ? `[${top.oficiales}*${top.ayudantes}] y [${segundo.oficiales}*${segundo.ayudantes}] cuestan prácticamente lo mismo (${top.costo_jornalesAyudante} vs ${segundo.costo_jornalesAyudante} jornales de ayudante): la elige quien conoce el frente de trabajo`
-      : `[${top.oficiales}*${top.ayudantes}] cuesta ${top.costo_jornalesAyudante} jornales de ayudante y termina en ${top.jornadas} jornadas; la siguiente cuesta ${segundo?.costo_jornalesAyudante ?? '—'}`,
+      : `[${top.oficiales}*${top.ayudantes}] cuesta ${top.costo_jornalesAyudante} jornales de ayudante y termina en ${top.jornadas} jornadas${top.frentes > 1 ? ` (son ${top.frentes} cuadrillas [${top.base.oficiales}*${top.base.ayudantes}] en paralelo)` : ''}; la siguiente composición distinta cuesta ${segundo?.costo_jornalesAyudante ?? '—'}`,
     fuente: 'INVESTIGACION · método Navas, Ridl & Torés (2012)',
   }
 }

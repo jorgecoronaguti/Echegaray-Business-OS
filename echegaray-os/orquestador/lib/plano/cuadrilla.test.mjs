@@ -66,11 +66,41 @@ test('paper p.158: la cuadrilla óptima del ejemplo es [5*2]', () => {
   assert.equal(r.elegida.ayudantes, 2)
 })
 
-test('el ábaco tiene las 49 conformaciones y 33 básicas hasta 7×7', () => {
-  assert.equal(cuadrillasBasicas({ max: 7, incluirMultiplos: true }).length, 49, 'Figura 1: 7×7 cruces')
-  const basicas = cuadrillasBasicas({ max: 7 })
+test('paper Figura 1: 49 cruces hasta 7×7, y 35 de ellos son cuadrillas básicas', () => {
+  assert.equal(cuadrillasBasicas({ max: 7 }).length, 49, 'Figura 1: 7×7 cruces, múltiplos incluidos')
+  const basicas = cuadrillasBasicas({ max: 7, incluirMultiplos: false })
+  // 35 = la cantidad de pares (of, ay) de 1 a 7 con máximo común divisor 1. Es aritmética, no un
+  // número copiado: por eso se recalcula acá en vez de escribirlo.
+  const mcd = (a, b) => (b === 0 ? a : mcd(b, a % b))
+  let coprimos = 0
+  for (let of = 1; of <= 7; of++) for (let ay = 1; ay <= 7; ay++) if (mcd(of, ay) === 1) coprimos += 1
+  assert.equal(coprimos, 35)
+  assert.equal(basicas.length, 35, 'las circuladas de la Figura 1 son los pares coprimos')
   assert.ok(basicas.some((c) => c.oficiales === 3 && c.ayudantes === 2), '[3*2] es básica')
   assert.ok(!basicas.some((c) => c.oficiales === 6 && c.ayudantes === 4), '[6*4] es múltiplo entero de [3*2] y no se circula')
+})
+
+test('paper Tabla 2 (nota) y conclusión: los múltiplos ENTRAN, y se declaran como frentes en paralelo', () => {
+  // «También deben tenerse en cuenta las que son múltiplos enteros de las cuadrillas básicas»
+  // —nota de la Tabla 2— y la conclusión termina eligiendo la cuadrilla 9 [4*2], que es 2 × [2*1].
+  const todas = cuadrillasBasicas({ max: 7 })
+  const cuatroPorDos = todas.find((c) => c.oficiales === 4 && c.ayudantes === 2)
+  assert.ok(cuatroPorDos, '[4*2] tiene que estar: es la cuadrilla que el paper termina recomendando')
+  assert.deepEqual(cuatroPorDos.base, { oficiales: 2, ayudantes: 1 })
+  assert.equal(cuatroPorDos.frentes, 2, 'son 2 cuadrillas [2*1] independientes una de otra')
+})
+
+test('una cuadrilla y su propio múltiplo NO son dos alternativas: no se declara AMBIGUO entre ellas', () => {
+  // [5*2] y [10*4] cuestan exactamente lo mismo por construcción. Si el desempate mirara al de
+  // al lado sin más, todo óptimo con múltiplo disponible saldría AMBIGUO — una duda inventada.
+  // Con el ábaco abierto hasta 22, la relación ideal 2,75 la clava [11*4] — y [22*8] es su doble,
+  // que cuesta exactamente lo mismo. Sin la regla, el desempate por costo los vería empatados y
+  // devolvería AMBIGUO sobre una duda que no existe.
+  const h = horasNecesarias(PRODUCCION, contenidos(EJEMPLO))
+  const r = cuadrillaOptima(h, { relacionSalarial: SALARIAL, max: 22 })
+  assert.equal(r.estado, 'ELEGIDA', r.porQue)
+  assert.equal(r.elegida.relacion, 2.75, 'la composición elegida clava la relación ideal')
+  assert.ok(r.ranking.some((c) => c.oficiales === 22 && c.ayudantes === 8), 'el múltiplo está en el ranking, sólo que no compite como alternativa')
 })
 
 test('SIN relación salarial no calcula: devuelve el hueco con dueño en vez de suponer una escala', () => {
