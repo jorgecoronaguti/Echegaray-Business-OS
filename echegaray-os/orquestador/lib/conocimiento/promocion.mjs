@@ -56,10 +56,15 @@ export function estadistica(valores = []) {
   const v = valores.map(Number).filter(Number.isFinite)
   if (!v.length) return { n: 0, media: null, min: null, max: null, desvio: null, dispersion: null }
   const media = v.reduce((a, x) => a + x, 0) / v.length
-  const desvio = v.length < 2 ? 0 : Math.sqrt(v.reduce((a, x) => a + (x - media) ** 2, 0) / (v.length - 1))
+  // Con UNA sola medición no hay desvío que calcular. Devolver 0 la hacía pasar por la muestra más
+  // consistente posible —«dispersión 0»— cuando lo cierto es que no se puede saber. `null` es el
+  // valor honesto, y `madurezDe` lo trata como lo que es: falta de información, no perfección.
+  const hayDispersion = v.length >= 2
+  const desvio = hayDispersion ? Math.sqrt(v.reduce((a, x) => a + (x - media) ** 2, 0) / (v.length - 1)) : null
   return {
     n: v.length, media: redondear(media), min: Math.min(...v), max: Math.max(...v),
-    desvio: redondear(desvio), dispersion: media === 0 ? null : redondear(desvio / Math.abs(media)),
+    desvio: hayDispersion ? redondear(desvio) : null,
+    dispersion: !hayDispersion || media === 0 ? null : redondear(desvio / Math.abs(media)),
   }
 }
 
@@ -96,10 +101,13 @@ export function candidato({
  * una muestra grande y desparramada NO sube — sube el ruido, no el conocimiento.
  */
 export function madurezDe({ n = 0, obrasDistintas = 0, dispersion = null } = {}) {
+  // Cero mediciones NO es una observación aislada: es ninguna observación. La versión anterior tenía
+  // `n >= 1 ? A : A` —una rama muerta— y le daba a la nada la misma madurez que a un dato medido.
+  if (n < 1) return null
   const base = obrasDistintas >= MUESTRA_MINIMA.D ? MADUREZ.D
     : obrasDistintas >= MUESTRA_MINIMA.C ? MADUREZ.C
       : obrasDistintas >= MUESTRA_MINIMA.B ? MADUREZ.B
-        : n >= 1 ? MADUREZ.A : MADUREZ.A
+        : MADUREZ.A
   if (dispersion !== null && dispersion > DISPERSION_MAXIMA) {
     // Se BAJA un escalón, no se anula: la observación sigue existiendo, lo que no existe es la regla.
     return base === MADUREZ.D ? MADUREZ.C : base === MADUREZ.C ? MADUREZ.B : MADUREZ.A
@@ -151,7 +159,8 @@ export function regresion({ casos = [], aplicar, reglaAnterior = null, reglaCand
 export function decidirPromocion({ candidato: c, regresion: reg, exigeMadurez = MADUREZ.D } = {}) {
   const motivos = []
   const orden = { A: 0, B: 1, C: 2, D: 3, E: 4 }
-  if (orden[c?.madurez] < orden[exigeMadurez]) {
+  if (!c?.madurez) motivos.push('no hay ninguna medición: no hay muestra que evaluar')
+  else if (orden[c.madurez] < orden[exigeMadurez]) {
     motivos.push(`la madurez alcanzada es ${c?.madurez} y hace falta ${exigeMadurez}: ${c?.obrasDistintas ?? 0} obra(s) distinta(s)${c?.estadistica?.dispersion !== null && c?.estadistica?.dispersion !== undefined ? `, dispersión ${c.estadistica.dispersion}` : ''}`)
   }
   if (!reg?.corrio) motivos.push('la regresión no corrió sobre ningún caso histórico: sin casos no hay nada probado')

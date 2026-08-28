@@ -211,15 +211,16 @@
     }
    ],
    "confianza": "MEDIA",
-   "porQue": "T1006 «BASES AISLADAS con #8 c/15» es la única partida de bloque de HºAº por m³, pero su armadura es #8 c/15 y el elemento especifica Ø6 tipo canasta. Mapearlo cambia el acero de la composición sin que nadie lo haya decidido — el mismo mecanismo que produjo la platea de $ 29,6 M, con dos órdenes de magnitud menos de plata.",
-   "quienLoTiene": "proyectista / calculista",
+   "porQue": "Verificado en `atributos.mjs`: el selector SÍ reconoce «muerto» como pieza=base, igual que T1006 «BASES AISLADAS con #8 c/15» — así que el bloqueo no es de vocabulario. Lo que bloquea es el atributo: T1006 lleva armadura #8 c/15 y el elemento especifica Ø6 tipo canasta. Mapearlo cambia el acero de la composición sin que nadie lo haya decidido, que es el mismo mecanismo que produjo la platea de $ 29,6 M con dos órdenes de magnitud menos de plata. La partida candidata queda NOMBRADA para que el calculista confirme o corrija en un minuto.",
+   "quienLoTiene": "proyectista / calculista — confirmar la armadura del bloque (Ø6 canasta vs #8 c/15)",
    "decisionOriginal": "MAPEAR_EXISTENTE",
    "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
    "candidataNombrada": {
     "codigo": "T1006",
     "nombre": "BASES AISLADAS con #8 c/15",
     "faltaConfirmar": "armadura"
-   }
+   },
+   "correccionDeEvidencia": "La primera redacción decía que el selector «no lo propuso porque su matching de vocabulario no conecta muerto con base». Se comprobó corriendo `piezaDe()`: sí conecta. El motivo real es la armadura. El veredicto no cambia; el diagnóstico sí, y con él quién tiene que resolverlo."
   },
   {
    "id": "CE",
@@ -254,14 +255,10 @@
    "fichaNueva": null,
    "evidencia": [
     {
-     "fuente": "candidatas.json (motor)",
-     "consulta": "candidatos de CONTRAPISO",
-     "resultado": "T1047 aparece en la lista de candidatos (puntaje 1.983), vetado solo por espesor_m no confirmado en el plano (e=0,10m)"
-    },
-    {
-     "fuente": "public.cotizaciones + public.cotizacion_partida",
-     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1047'",
-     "resultado": "T1047 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 191.92 M2 — el mismo valor exacto que trae el elemento actual"
+     "fuente": "public.cotizacion_partida ⋈ public.cotizaciones",
+     "consulta": "select c.numero, c.origen, cp.cantidad from cotizacion_partida cp join cotizaciones c on c.id=cp.cotizacion_id where cp.codigo='T1047'",
+     "resultado": "6 fila(s). las 6 son xsas:plano (V0, 421w, d0lo, edjp, u3nz y otra) · 191,92 M2 · CERO de una persona",
+     "verificadoEn": "2026-08-28, segunda lectura"
     }
    ],
    "confianza": "ALTA",
@@ -273,7 +270,8 @@
     "codigo": "T1047",
     "nombre": "EJECUCIÓN DE CONTRAPISO DE HORMIGÓN e = 0,10 m",
     "faltaConfirmar": "espesor_m"
-   }
+   },
+   "correccionDeEvidencia": "Evidencia recontada y verificada en segunda lectura: 6 fila(s) para T1047."
   },
   {
    "id": "ESC-huella",
@@ -410,14 +408,10 @@
    "fichaNueva": null,
    "evidencia": [
     {
-     "fuente": "candidatas.json (motor)",
-     "consulta": "candidato top de MED-LADRILLON",
-     "resultado": "T1018 único candidato (puntaje 3.283, coincide pieza=muro y material=ladrillon), vetado solo por espesor_m=0,20m no confirmado en el plano"
-    },
-    {
-     "fuente": "public.cotizaciones + public.cotizacion_partida",
-     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1018'",
-     "resultado": "T1018 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 270.84 M2 — el mismo valor exacto que trae el elemento actual"
+     "fuente": "public.cotizacion_partida ⋈ public.cotizaciones",
+     "consulta": "select c.numero, c.origen, cp.cantidad from cotizacion_partida cp join cotizaciones c on c.id=cp.cotizacion_id where cp.codigo='T1018'",
+     "resultado": "10 fila(s). 6 xsas:plano con 270,84 M2 + 4 de COT-2026-001 [os] con 182 M2 — estas últimas SÍ son de personas, pero de otra obra",
+     "verificadoEn": "2026-08-28, segunda lectura"
     }
    ],
    "confianza": "ALTA",
@@ -429,7 +423,8 @@
     "codigo": "T1018",
     "nombre": "MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
     "faltaConfirmar": "espesor_m"
-   }
+   },
+   "correccionDeEvidencia": "Evidencia recontada y verificada en segunda lectura: 10 fila(s) para T1018."
   },
   {
    "id": "MODULO-BANOS",
@@ -485,15 +480,16 @@
     }
    ],
    "confianza": "MEDIA",
-   "porQue": "Mismo caso que BE_esc: T1006 es la única partida de bloque de HºAº por m³ y su armadura (#8 c/15) no es la del elemento.",
-   "quienLoTiene": "proyectista / calculista",
+   "porQue": "Verificado en `atributos.mjs`: el selector SÍ reconoce «muerto» como pieza=base, igual que T1006 «BASES AISLADAS con #8 c/15» — así que el bloqueo no es de vocabulario. Lo que bloquea es el atributo: T1006 lleva armadura #8 c/15 y el elemento especifica Ø6 tipo canasta. Mapearlo cambia el acero de la composición sin que nadie lo haya decidido, que es el mismo mecanismo que produjo la platea de $ 29,6 M con dos órdenes de magnitud menos de plata. La partida candidata queda NOMBRADA para que el calculista confirme o corrija en un minuto.",
+   "quienLoTiene": "proyectista / calculista — confirmar la armadura del bloque (Ø6 canasta vs #8 c/15)",
    "decisionOriginal": "MAPEAR_EXISTENTE",
    "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
    "candidataNombrada": {
     "codigo": "T1006",
     "nombre": "BASES AISLADAS con #8 c/15",
     "faltaConfirmar": "armadura"
-   }
+   },
+   "correccionDeEvidencia": "La primera redacción decía que el selector «no lo propuso porque su matching de vocabulario no conecta muerto con base». Se comprobó corriendo `piezaDe()`: sí conecta. El motivo real es la armadura. El veredicto no cambia; el diagnóstico sí, y con él quién tiene que resolverlo."
   },
   {
    "id": "muerto_HA",
@@ -518,15 +514,16 @@
     }
    ],
    "confianza": "MEDIA",
-   "porQue": "Mismo caso que BE_esc y MUERTO_esc: la única partida compatible por unidad lleva otra armadura.",
-   "quienLoTiene": "proyectista / calculista",
+   "porQue": "Verificado en `atributos.mjs`: el selector SÍ reconoce «muerto» como pieza=base, igual que T1006 «BASES AISLADAS con #8 c/15» — así que el bloqueo no es de vocabulario. Lo que bloquea es el atributo: T1006 lleva armadura #8 c/15 y el elemento especifica Ø6 tipo canasta. Mapearlo cambia el acero de la composición sin que nadie lo haya decidido, que es el mismo mecanismo que produjo la platea de $ 29,6 M con dos órdenes de magnitud menos de plata. La partida candidata queda NOMBRADA para que el calculista confirme o corrija en un minuto.",
+   "quienLoTiene": "proyectista / calculista — confirmar la armadura del bloque (Ø6 canasta vs #8 c/15)",
    "decisionOriginal": "MAPEAR_EXISTENTE",
    "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
    "candidataNombrada": {
     "codigo": "T1006",
     "nombre": "BASES AISLADAS con #8 c/15",
     "faltaConfirmar": "armadura"
-   }
+   },
+   "correccionDeEvidencia": "La primera redacción decía que el selector «no lo propuso porque su matching de vocabulario no conecta muerto con base». Se comprobó corriendo `piezaDe()`: sí conecta. El motivo real es la armadura. El veredicto no cambia; el diagnóstico sí, y con él quién tiene que resolverlo."
   },
   {
    "id": "PLATEA",
@@ -540,14 +537,10 @@
    "fichaNueva": null,
    "evidencia": [
     {
-     "fuente": "candidatas.json (motor)",
-     "consulta": "candidatos de PLATEA",
-     "resultado": "T1166 único candidato con coincidencia de pieza=platea, vetado por espesor_m=0,5m no confirmado (el plano dice \"s/Cálculo\")"
-    },
-    {
-     "fuente": "public.cotizaciones + public.cotizacion_partida",
-     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1166'",
-     "resultado": "T1166 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 191.92 M2 — el mismo valor exacto que trae el elemento actual"
+     "fuente": "public.cotizacion_partida ⋈ public.cotizaciones",
+     "consulta": "select c.numero, c.origen, cp.cantidad from cotizacion_partida cp join cotizaciones c on c.id=cp.cotizacion_id where cp.codigo='T1166'",
+     "resultado": "1 fila(s). COT-XSAS-V0-QUATTROPANI [xsas:plano] · 191,92 M2",
+     "verificadoEn": "2026-08-28, segunda lectura"
     }
    ],
    "confianza": "ALTA",
@@ -559,7 +552,8 @@
     "codigo": "T1166",
     "nombre": "PLATEA DE HORMIGON - 50CM",
     "faltaConfirmar": "espesor_m"
-   }
+   },
+   "correccionDeEvidencia": "La primera redacción de esta decisión afirmaba «6 borradores previos» y listaba seis números de cotización. Corriendo la consulta, T1166 tiene 1 fila(s): la lista estaba copiada del registro de otra partida. El veredicto no cambia — el plano sigue sin decir el dato — pero la evidencia estaba mal y se corrigió. Una decisión sostenida por un dato inventado no vale aunque acierte."
   },
   {
    "id": "TANQUE-RES",

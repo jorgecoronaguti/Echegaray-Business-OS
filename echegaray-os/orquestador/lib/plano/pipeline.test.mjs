@@ -7,7 +7,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida } from './pipeline.mjs'
+import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida, viaDeCantidad, viaDePartida, pedirConDegradacion } from './pipeline.mjs'
+import { COMPARABLES, VIA, medidor } from '../conocimiento/metricas.mjs'
 import { FUENTE } from './fuente.mjs'
 
 const el = (id, nombre, dims = {}, vista = 'PLANTA', forma = 'conteo') => ({
@@ -227,4 +228,80 @@ test('GUARD · y C1 contra C2 SIGUE saliendo como dos piezas: el arreglo no aflo
   assert.equal(r.elementos.length, 2)
   assert.equal(r.ambiguos[0].tipo, 'PIEZAS_DISTINTAS')
   assert.deepEqual(r.elementos.map((e) => e.repeticion.cantidad).sort(), [4, 8])
+})
+
+// ═══════════════ LO QUE MIDE LA AUTONOMÍA ═══════════════
+//
+// Estos controles publican el Claude Avoidance Rate. Un indicador de autonomía que no se puede
+// poner en rojo es propaganda, así que cada uno tiene acá su caso contrario.
+
+test('una cantidad leída del plano NO es aritmética: entra al denominador del avoidance rate', () => {
+  // El defecto medido: se anotaba `REGLA`, y `REGLA` está fuera de COMPARABLES a propósito (nadie
+  // le pregunta a un modelo cuánto es 3+4). Con eso las 28 cantidades de Quattropani desaparecían
+  // del denominador y el indicador quedaba sesgado hacia arriba por construcción.
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: false }), VIA.MODELO, 'la leyó el modelo en esta corrida')
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: true }), VIA.CACHE, 'la leyó el modelo alguna vez y hoy salió del caché')
+  assert.notEqual(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: true }), VIA.REGLA)
+  assert.ok(COMPARABLES.includes(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: true })))
+})
+
+test('sólo el CAD resuelve una cantidad sin haber pasado nunca por un modelo', () => {
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: true, deCache: false }), VIA.DOCUMENTO_LOCAL)
+})
+
+test('NEGATIVO: sin cantidad es HUECO, y un hueco no cuenta como resuelto', () => {
+  assert.equal(viaDeCantidad({ tieneCantidad: false, porCad: true, deCache: true }), VIA.HUECO)
+  assert.ok(!COMPARABLES.includes(VIA.HUECO))
+})
+
+test('una partida que el modelo vetó no se cuenta como resuelta por la Base Maestra', () => {
+  assert.equal(viaDePartida({ mapeada: true, vetadaPorModelo: false }), VIA.BASE_MAESTRA)
+  assert.equal(viaDePartida({ mapeada: true, vetadaPorModelo: true }), VIA.MODELO)
+  assert.equal(viaDePartida({ mapeada: false, vetadaPorModelo: false }), VIA.HUECO)
+})
+
+test('el Claude Avoidance Rate BAJA cuando el modelo resuelve — probado con las dos corridas', () => {
+  const contar = (vias) => { const m = medidor({ ahora: () => 0 }); for (const v of vias) m.decidio({ que: 'x', via: v }); return m.resumen() }
+  // La misma obra, caché caliente: las 20 lecturas y las 28 cantidades salen del caché.
+  const caliente = contar([...Array(20).fill(VIA.CACHE), ...Array(28).fill(VIA.CACHE), ...Array(7).fill(VIA.BASE_MAESTRA), ...Array(104).fill(VIA.HUECO)])
+  // La misma obra, caché frío y modelo vivo: las mismas 48 las resuelve el modelo.
+  const frio = contar([...Array(20).fill(VIA.MODELO), ...Array(28).fill(VIA.MODELO), ...Array(7).fill(VIA.BASE_MAESTRA), ...Array(104).fill(VIA.HUECO)])
+  assert.equal(caliente.claudeAvoidanceRate, 1)
+  assert.equal(frio.claudeAvoidanceRate, Math.round((7 / 55) * 1000) / 1000, 'con el modelo trabajando el indicador tiene que caer, no quedarse en 100%')
+  assert.ok(frio.claudeAvoidanceRate < 0.13)
+  assert.equal(caliente.comparables, frio.comparables, 'el denominador no cambia entre las dos: lo que cambia es quién resolvió')
+})
+
+// ═══════════════ EL CONTRATO DE DEGRADACIÓN ═══════════════
+
+test('NEGATIVO: sin proveedor de razonamiento, la degradación se DECLARA — no se disimula', async () => {
+  const { pedirSeguro, degradacion } = pedirConDegradacion(null, { permitirModelo: false })
+  assert.equal(degradacion.hubo, false, 'todavía no pasó nada')
+  const r = await pedirSeguro({ funcion: 'interpretar-plano' })
+  assert.equal(r.texto, null)
+  assert.equal(r.degradado, 'modelo apagado')
+  assert.equal(degradacion.hubo, true, 'si esto siguiera en false, el contrato sería una constante')
+  assert.equal(degradacion.intentos, 0, 'apagado no intenta: por eso no suma intentos')
+  assert.equal(degradacion.fallos, 1)
+  assert.deepEqual(degradacion.motivos[0].funciones, ['interpretar-plano'])
+})
+
+test('un fallo REAL del proveedor también degrada, y trae el mensaje', async () => {
+  const { pedirSeguro, degradacion } = pedirConDegradacion(async () => { throw new Error('credit balance is too low') }, {})
+  const r = await pedirSeguro({ funcion: 'interpretar-region' })
+  assert.equal(r.texto, null)
+  assert.match(r.degradado, /credit balance/)
+  assert.equal(degradacion.hubo, true)
+  assert.equal(degradacion.intentos, 1, 'acá SÍ se intentó')
+  assert.equal(degradacion.fallos, 1)
+  assert.match(degradacion.motivos[0].motivo, /el proveedor de razonamiento falló/)
+})
+
+test('con el proveedor sano NO hay degradación — el control puede dar verde de verdad', async () => {
+  const { pedirSeguro, degradacion } = pedirConDegradacion(async () => ({ texto: '{"ok":1}', modelo: 'x' }), {})
+  const r = await pedirSeguro({ funcion: 'interpretar-plano' })
+  assert.equal(r.texto, '{"ok":1}')
+  assert.equal(degradacion.hubo, false)
+  assert.equal(degradacion.intentos, 1)
+  assert.equal(degradacion.fallos, 0)
 })

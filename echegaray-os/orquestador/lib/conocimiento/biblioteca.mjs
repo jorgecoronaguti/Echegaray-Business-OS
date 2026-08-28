@@ -67,10 +67,35 @@ export const HUECO = Object.freeze({
 export const NO_CONFIRMADAS = Object.freeze([PROCEDENCIA.INFERIDO, PROCEDENCIA.SUPUESTO, PROCEDENCIA.WEB])
 
 /**
- * LOS ASCENSOS PROHIBIDOS. Segunda defensa, no la primera.
+ * LAS QUE EXIGEN LA FRASE LITERAL QUE LO DICE.
  *
- * La primera es estructural: ninguna función de este archivo escribe `procedencia`. Ésta es la red
- * por si mañana alguien agrega una que sí lo haga — y está nombrada para que el error diga por qué.
+ * `HECHO_PROYECTO` está acá, y es el que más importa: es la afirmación más fuerte que se puede
+ * hacer —«lo dice el plano de ESTA obra»— y sin la cita no se puede defender delante de nadie. Que
+ * faltara era el agujero: entraba un hecho del proyecto sin una sola línea de respaldo.
+ */
+export const EXIGEN_CITA_LITERAL = Object.freeze([
+  PROCEDENCIA.HECHO_PROYECTO, PROCEDENCIA.NORMA, PROCEDENCIA.REFERENCIA_TECNICA,
+  PROCEDENCIA.REFERENCIA_CIRCOT, PROCEDENCIA.INVESTIGACION, PROCEDENCIA.FABRICANTE, PROCEDENCIA.WEB,
+])
+
+/** Las que exigen evidencia pero NO una cita textual: su verificación es una consulta, no una
+ *  lectura. `BASE_MAESTRA` se verifica en `public.tarea_tipo`; `EXPERIENCIA_ECSAS`, en las obras y
+ *  la cantidad de casos. Pedirles una frase literal sería pedirles algo que no existe. */
+export const EXIGEN_EVIDENCIA = Object.freeze([PROCEDENCIA.BASE_MAESTRA, PROCEDENCIA.EXPERIENCIA_ECSAS])
+
+/**
+ * LOS ASCENSOS PROHIBIDOS.
+ *
+ * ═══ QUÉ DEFIENDE CADA COSA, PARA NO SOBREVENDER NINGUNA ═══
+ *
+ * La defensa PRINCIPAL es estructural y no es esta lista: ninguna función de este archivo escribe
+ * `procedencia`, y además `procedencia` entra en el `id` (`k:huella({clave, procedencia, version})`),
+ * así que cambiarla produce OTRA entrada en vez de pisar la vieja. Eso sobrevive a que alguien se
+ * olvide de mantener una lista.
+ *
+ * Esta lista defiende otra cosa, más chica y real: que dos conocimientos con la MISMA clave no se
+ * sucedan uno a otro subiendo de categoría. `incorporar()` la consulta —si no la consultara nadie,
+ * sería decoración con nombre de control, que es peor que no tenerla.
  */
 export const ASCENSOS_PROHIBIDOS = Object.freeze([
   [PROCEDENCIA.WEB, PROCEDENCIA.HECHO_PROYECTO], [PROCEDENCIA.WEB, PROCEDENCIA.EXPERIENCIA_ECSAS],
@@ -120,9 +145,16 @@ export function conocimiento({
 } = {}) {
   if (!clave || !afirmacion) throw new Error('un conocimiento necesita clave y afirmación')
   if (!PROCEDENCIA[procedencia]) throw new Error(`procedencia desconocida: ${procedencia}`)
-  const citable = [PROCEDENCIA.NORMA, PROCEDENCIA.REFERENCIA_TECNICA, PROCEDENCIA.REFERENCIA_CIRCOT, PROCEDENCIA.INVESTIGACION, PROCEDENCIA.FABRICANTE, PROCEDENCIA.WEB]
-  if (citable.includes(procedencia) && !evidencia?.textoLiteral) {
+  if (EXIGEN_CITA_LITERAL.includes(procedencia) && !evidencia?.textoLiteral) {
     throw new Error(`«${clave}» dice venir de ${procedencia} y no trae la frase que lo dice: sin cita literal la procedencia honesta es INFERIDO`)
+  }
+  if (EXIGEN_EVIDENCIA.includes(procedencia) && !evidencia) {
+    throw new Error(`«${clave}» dice venir de ${procedencia} y no trae con qué verificarlo: sin la tarea, la obra o los casos que lo sostienen no se puede comprobar`)
+  }
+  // VALIDADO no se escribe: se firma. Aceptarlo como parámetro dejaba entrar por la puerta de atrás
+  // exactamente lo que `validar()` protege — y `saber()` lo devuelve PRIMERO por estar validado.
+  if (estado === ESTADO.VALIDADO && !arguments[0]?.validacion?.firmante) {
+    throw new Error(`«${clave}» llega con estado VALIDADO y sin firmante: la validación se hace con validar(), que exige quién firma y que no sea quien lo extrajo`)
   }
   return {
     id: `k:${huella({ clave, procedencia, version }).slice(0, 16)}`,
@@ -175,18 +207,45 @@ export function cambioDeVersion(bib, { fuenteId, hash }) {
   return { cambio: true, previo: ultimo, porQue: `el contenido de «${fuenteId}» cambió respecto de ${ultimo.id}` }
 }
 
-/** Incorpora documentos y conocimientos sin duplicar. PURA sobre la biblioteca (devuelve una nueva). */
+/**
+ * INCORPORA DOCUMENTOS Y CONOCIMIENTOS SIN DUPLICAR — y sin dejar entrar lo que `conocimiento()`
+ * habría rechazado. PURA sobre la biblioteca (devuelve una nueva).
+ *
+ * ═══ POR QUÉ VALIDA ACÁ TAMBIÉN ═══
+ *
+ * `conocimiento()` exige la cita literal para las procedencias citables, pero `incorporar()` es la
+ * PUERTA AL DISCO y aceptaba cualquier objeto con forma de conocimiento. Probado: entraba un
+ * `HECHO_PROYECTO` sin evidencia y con estado `VALIDADO`, y `saber()` lo devolvía primero por estar
+ * validado. La invariante se sostenía por convención de quien llama, no por estructura.
+ *
+ * Reconstruir cada entrada con `conocimiento()` es lo que la vuelve estructural: lo que no puede
+ * construirse tampoco puede guardarse.
+ */
 export function incorporar(bib, { documentos = [], conocimientos = [], huecos = [] } = {}) {
   const porId = (lista, nuevos) => {
     const m = new Map(lista.map((x) => [x.id, x]))
     for (const n of nuevos) if (!m.has(n.id)) m.set(n.id, n)
     return [...m.values()]
   }
+  const previos = bib.conocimientos ?? []
+  const revisados = conocimientos.map((k) => {
+    // Se reconstruye: si no pasa el constructor, no entra. `conocimiento()` tira con el motivo.
+    const limpio = conocimiento(k)
+    // Y no puede subir de categoría respecto de lo que ya hay bajo la misma clave.
+    for (const p of previos) {
+      if (p.clave !== limpio.clave || p.estado === ESTADO.RECHAZADO) continue
+      if (ascensoProhibido(p.procedencia, limpio.procedencia)) {
+        throw new Error(`«${limpio.clave}» ya está como ${p.procedencia} y esto lo entraría como ${limpio.procedencia}: eso es un ascenso prohibido, no una versión nueva`)
+      }
+    }
+    // Los campos que el constructor no lleva pero que sí son estado legítimo (validación, reemplazo).
+    return { ...limpio, ...(k.validacion ? { validacion: k.validacion } : {}), ...(k.reemplazadoPor ? { reemplazadoPor: k.reemplazadoPor, reemplazadoEn: k.reemplazadoEn ?? null } : {}) }
+  })
   return {
     ...bib,
-    documentos: porId(bib.documentos ?? [], documentos),
-    conocimientos: porId(bib.conocimientos ?? [], conocimientos),
-    huecos: porId(bib.huecos ?? [], huecos),
+    documentos: porId(bib.documentos ?? [], documentos.map((d) => documento(d))),
+    conocimientos: porId(previos, revisados),
+    huecos: porId(bib.huecos ?? [], huecos.map((h) => hueco(h))),
   }
 }
 

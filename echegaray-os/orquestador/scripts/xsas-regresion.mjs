@@ -125,7 +125,12 @@ console.log('\n── SIN PROVEEDOR DE RAZONAMIENTO ──')
 if (!deg.hubo) {
   console.log(`  no hizo falta degradar${deg.permitirModelo === false ? ' — y el modelo estaba APAGADO: todo salió del caché, del CAD y de la Base Maestra' : ''}`)
 } else {
-  console.log(`  ⚠ DEGRADADA · ${deg.fallos} fallo(s) sobre ${deg.intentos} intento(s)${deg.permitirModelo === false ? ' (modelo apagado a propósito)' : ''}`)
+  // «20 fallo(s) sobre 0 intento(s)» era un número imposible impreso en el bloque que más se lee:
+  // con el modelo apagado no se intenta nada, así que `intentos` no sube. Se dicen dos cosas
+  // distintas con dos frases distintas.
+  console.log(deg.permitirModelo === false
+    ? `  ⚠ DEGRADADA a propósito · el modelo estaba APAGADO: ${deg.fallos} pedido(s) no se hicieron`
+    : `  ⚠ DEGRADADA · ${deg.fallos} fallo(s) sobre ${deg.intentos} intento(s) al proveedor`)
   for (const m of deg.motivos ?? []) console.log(`     ${m.veces}× ${m.motivo}${m.funciones?.length ? ` [${m.funciones.join(', ')}]` : ''}`)
   console.log(`  láminas sin leer             ${deg.laminasNoLeidas?.length ?? 0}${(deg.laminasNoLeidas ?? []).map((x) => `\n     ${x.archivo ?? '?'} — ${x.porQue}`).join('')}`)
   console.log(`  vistas sin leer              ${deg.regionesNoLeidas ?? 0}`)
@@ -136,7 +141,14 @@ console.log(`  lo que salió IGUAL sin modelo: ${salioIgual.laminasDeCache ?? 0}
 console.log('\n── A vs B ──')
 for (const c of corridas) console.log(`  corrida ${c.n}: ${c.r.computo.computados}/${c.r.computo.detectados} computados · ${c.r.mapeo.mapeadas} mapeadas · ${c.r.ia.llamadas} llamadas · USD ${c.usd.toFixed(4)} · ${(c.ms / 1000).toFixed(1)} s`)
 const igual = A.r.huella === B.r.huella
-console.log(igual ? `  ✔ REPRODUCIBLE — misma huella (${A.r.huella.split('\n').length} elementos)` : '  ✖ NO REPRODUCIBLE:')
+// ═══ REPRODUCIBLE SOBRE NADA NO ES REPRODUCIBLE ═══
+// Dos corridas que no computaron un solo elemento tienen la misma huella por definición, y el ✔
+// verde sobre `0/0` decía que el circuito era estable cuando no había producido nada. Y el conteo
+// salía de contar líneas de la huella, que con la huella vacía da 1.
+const cuantos = A.r.computo?.computados ?? A.r.computo?.items?.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).length ?? 0
+console.log(cuantos === 0
+  ? `  ⊘ NO SE PUEDE JUZGAR LA REPRODUCIBILIDAD — las dos corridas computaron 0 elementos${igual ? '' : ' y encima difieren'}`
+  : (igual ? `  ✔ REPRODUCIBLE — misma huella (${cuantos} elementos computados)` : '  ✖ NO REPRODUCIBLE:'))
 if (!igual) {
   const filas = (h) => new Map(h.split('\n').map((l) => [l.split('|')[0], l]))
   const fa = filas(A.r.huella)

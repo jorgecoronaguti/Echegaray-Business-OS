@@ -22,9 +22,11 @@ import { PROCEDENCIA, conocimiento, documento, ETAPA } from './biblioteca.mjs'
 export const FUENTE_ID = 'navas-2012-cuadrilla'
 export const URL = 'https://www.revista.ingenieria.uady.mx/volumen16/mano.pdf'
 
-/** El hash del PDF tal como se bajó el 28/08/2026. Es lo que contesta «¿cambió la fuente?» sin
- *  volver a leerla entera, y lo que impide estudiar dos veces el mismo contenido. */
-export const HASH_PDF = 'sha256:pendiente-de-calcular-al-sembrar'
+/** El hash del PDF tal como se bajó el 28/08/2026 (sha256 del archivo entero, 6.214.040 bytes). Es
+ *  lo que contesta «¿cambió la fuente?» sin volver a leerla, y lo que impide estudiar dos veces el
+ *  mismo contenido. Lo calcula `conocimiento-sembrar.mjs --pdf`; acá queda el valor observado para
+ *  poder comparar sin el archivo a mano. */
+export const HASH_PDF = 'sha256:017a10cd6e4fd27203b0bb3b4ee17a847c741ece853a8d113d76619fc862e810'
 
 export const CITA = 'Navas R. F., Ridl M. R., Torés L. (2012). «Mano de obra en la construcción: determinación de la cuadrilla óptima por medio de una herramienta de simulación». Ingeniería, Revista Académica de la FI-UADY, 16-2, pp 151-163, ISSN 1665-529-X.'
 
@@ -38,7 +40,19 @@ export const documentoDelPaper = (hash) => documento({
 
 const k = (o) => conocimiento({ ...o, procedencia: PROCEDENCIA.INVESTIGACION, jurisdiccion: 'provincial', area: 'mano_obra', fecha: '2026-08-28' })
 
-/** LAS AFIRMACIONES. Cada una con la frase literal que la dice y su página. */
+/**
+ * LAS AFIRMACIONES. Cada una con la frase que la dice y su página.
+ *
+ * ═══ DÓNDE LA CITA NO ES LITERAL, Y POR QUÉ ═══
+ *
+ * El PDF tiene las fórmulas COMO IMÁGENES: la capa de texto trae los símbolos sueltos y fuera de
+ * orden. Donde eso pasa, la cita es una RECONSTRUCCIÓN legible de lo que la imagen muestra, y va
+ * marcada con `reconstruida: true`. Las tres afectadas son las de desperdicio horario y la relación
+ * ideal. Las demás son transcripción directa de la capa de texto.
+ *
+ * Decirlo importa: una cita que se presenta como literal y no lo es hace que quien la verifique
+ * busque una frase que no va a encontrar y concluya que la fuente no dice eso.
+ */
 export const CONOCIMIENTOS = Object.freeze([
   k({
     clave: 'cuadrilla.jornada_efectiva_h', valor: 7.5, unidad: 'h/jornada', confianza: 'ALTA',
@@ -58,7 +72,7 @@ export const CONOCIMIENTOS = Object.freeze([
   }),
   k({
     clave: 'cuadrilla.relacion_ideal', afirmacion: 'la relación ideal i es Cof/Cay, y equivale a la relación entre cantidad de oficiales y ayudantes de la cuadrilla ideal', confianza: 'ALTA',
-    evidencia: { pagina: 152, textoLiteral: 'la relación entre los contenidos de trabajo de oficial y ayudante, equivale a la relación entre la cantidad de oficiales y ayudantes integrantes de la cuadrilla ideal. A esta relación se la denomina i' },
+    evidencia: { pagina: 152, reconstruida: true, porQueReconstruida: 'en el PDF «γi» es una imagen y la capa de texto la deja como «i»', textoLiteral: 'la relación entre los contenidos de trabajo de oficial y ayudante, equivale a la relación entre la cantidad de oficiales y ayudantes integrantes de la cuadrilla ideal. A esta relación se la denomina i [γi]' },
   }),
   k({
     clave: 'cuadrilla.horas_necesarias', afirmacion: 'las horas necesarias son TN = P · C, y son independientes de la cuadrilla que se arme', confianza: 'ALTA',
@@ -70,11 +84,11 @@ export const CONOCIMIENTOS = Object.freeze([
   }),
   k({
     clave: 'cuadrilla.desperdicio_horario_oficial', afirmacion: 'el desperdicio horario de oficial es dof = OF − i · AY, y un signo negativo significa que NO hay desperdicio de oficial', confianza: 'ALTA',
-    evidencia: { pagina: 158, textoLiteral: 'dof = 5 − 2,75 · 2 = −0,50 h … El signo negativo de dof indica que no hay desperdicio de tiempo de oficial' },
+    evidencia: { pagina: 158, reconstruida: true, porQueReconstruida: 'la fórmula es una imagen; la frase del signo sí es literal, y en el PDF dice «dof (9)» con la referencia a la ecuación', textoLiteral: 'dof = 5 − 2,75 · 2 = −0,50 h … El signo negativo de dof (9) indica que no hay desperdicio de tiempo de oficial' },
   }),
   k({
     clave: 'cuadrilla.desperdicio_horario_ayudante', afirmacion: 'el desperdicio horario de ayudante es day = AY − OF / i', confianza: 'ALTA',
-    evidencia: { pagina: 158, textoLiteral: 'day = 2 − 5 / 2,75 = 0,18 h' },
+    evidencia: { pagina: 158, reconstruida: true, porQueReconstruida: 'la fórmula es una imagen: la capa de texto trae los símbolos sueltos y fuera de orden', textoLiteral: 'day = 2 − 5 / 2,75 = 0,18 h' },
   }),
   k({
     clave: 'cuadrilla.abaco', valor: 49, afirmacion: 'el ábaco tiene 49 conformaciones hasta 7×7, y las básicas son las que no son múltiplo entero de otra', confianza: 'ALTA',

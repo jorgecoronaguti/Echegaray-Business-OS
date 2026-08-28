@@ -228,6 +228,24 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
 }
 
 /**
+ * POR QUÉ VÍA SE RESOLVIÓ UNA CANTIDAD. PURA — y exportada para poder probarla por la ruta real.
+ *
+ * El CAD es la única vía que nunca pasó por un modelo: cuenta INSERTs de un DXF. Todo lo demás
+ * salió de una lectura del plano, y esa lectura la hizo el modelo — en esta corrida o la vez que
+ * llenó el caché. Llamarla `REGLA` la sacaba del denominador del Claude Avoidance Rate y dejaba el
+ * indicador sesgado hacia arriba por construcción.
+ */
+export function viaDeCantidad({ tieneCantidad, porCad, deCache }) {
+  if (!tieneCantidad) return VIA.HUECO
+  if (porCad) return VIA.DOCUMENTO_LOCAL
+  return deCache === false ? VIA.MODELO : VIA.CACHE
+}
+
+/** Por qué vía se resolvió una partida. PURA. Con `conVeto`, el modelo veta candidatas y eso cambia
+ *  la elección: anotarla como BASE_MAESTRA contaba una decisión del modelo como propia. */
+export const viaDePartida = ({ mapeada, vetadaPorModelo }) => (!mapeada ? VIA.HUECO : (vetadaPorModelo ? VIA.MODELO : VIA.BASE_MAESTRA))
+
+/**
  * EL PROVEEDOR DE RAZONAMIENTO, ENVUELTO PARA QUE SU AUSENCIA SEA UN DATO Y NO UNA EXCEPCIÓN.
  *
  * Devuelve un `pedirSeguro` con la misma firma y un registro de `degradacion` que va creciendo. Un
@@ -603,6 +621,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     }
     const m = await medir({ pedir: pedirSeguro, bloque: bloqueAdjunto({ data: bytes.toString('base64'), mediaType: doc.mime_type || 'application/pdf' }), elementos: lam.elementos, logger })
     anotar(m.uso)
+    if (m.uso && !m.uso.degradado) met.llamo({ proveedor: 'ia', modelo: m.uso.modelo, tokensIn: m.uso.tokens?.in ?? null, tokensOut: m.uso.tokens?.out ?? null, usd: m.uso.usd, ms: m.uso.ms, funcion: 'medir' })
     const medicion = { pendientes: m.pendientes, resueltos: m.resueltos, cambios: m.cambios, deCache: false }
     if (m.uso) guardarCache(llave, { elementos: m.elementos, medicion })
     laminas.push({ ...lam, elementos: m.elementos, medicion })
@@ -634,6 +653,17 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // Los elementos de las vistas recortadas se SUMAN a los de la lámina completa y se deduplican por
   // id: una columna vista en la planta y en el corte es UNA columna, no dos. Gana la lectura con
   // más dimensiones resueltas, que es la que vio el dibujo más grande.
+  // ═══ DE DÓNDE SALIÓ CADA LECTURA, ANTES DE FUSIONARLAS ═══
+  //
+  // Una cantidad que existe porque el modelo miró la lámina NO es aritmética, y contarla como
+  // `REGLA` la sacaba del denominador del Claude Avoidance Rate — el indicador quedaba sesgado
+  // hacia arriba por construcción. Acá se guarda, POR ELEMENTO, si la lectura que lo trajo salió
+  // del caché o de una mirada nueva. Si un id llegó por las dos vías, gana «mirada nueva»: lo que
+  // se mide es si esta corrida pudo evitar el modelo, y si lo llamó, no lo evitó.
+  const vinoDeCache = new Map()
+  for (const l of laminas) for (const e of l.elementos ?? []) if (!vinoDeCache.has(e.id) || vinoDeCache.get(e.id)) vinoDeCache.set(e.id, Boolean(l.deCache))
+  for (const r of porRegion) for (const e of r.elementos ?? []) if (!vinoDeCache.has(e.id) || vinoDeCache.get(e.id)) vinoDeCache.set(e.id, Boolean(r.deCache))
+
   const { elementos: fusionados, ambiguos: identidadesAmbiguas } = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
   // EL CAD LLENA LO QUE LA VISTA NO PUDO CONTAR, y sólo eso: un elemento que ya tenía cantidad no
   // se toca. Contar INSERT es exacto y no cuesta un token.
@@ -648,7 +678,9 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const idsPorCad = new Set((medidoConCad.resueltos ?? []).map((x) => x?.id ?? x))
   const conCantidad = new Set(computo.items.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).map((i) => i.id))
   for (const e of medidoConCad.elementos ?? []) {
-    met.decidio({ que: `cantidad ${e.id}`, via: !conCantidad.has(e.id) ? VIA.HUECO : (idsPorCad.has(e.id) ? VIA.DOCUMENTO_LOCAL : VIA.REGLA) })
+    // El CAD es la única vía que nunca pasó por un modelo: cuenta INSERTs. Lo demás salió de una
+    // lectura del plano, y esa lectura la hizo el modelo — hoy o la vez que llenó el caché.
+    met.decidio({ que: `cantidad ${e.id}`, via: viaDeCantidad({ tieneCantidad: conCantidad.has(e.id), porCad: idsPorCad.has(e.id), deCache: vinoDeCache.get(e.id) }) })
   }
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
@@ -666,6 +698,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     const bruto = mapearPartidas(computo.items, catalogo)
     const revision = await elegir({ pedir: pedirSeguro, mapeos: bruto.mapeos, logger })
     anotar(revision.uso)
+    if (revision.uso && !revision.uso.degradado) met.llamo({ proveedor: 'ia', modelo: revision.uso.modelo, tokensIn: revision.uso.tokens?.in ?? null, tokensOut: revision.uso.tokens?.out ?? null, usd: revision.uso.usd, ms: revision.uso.ms, funcion: 'elegir-partida' })
     correcciones = revision.cambios ?? []
     for (const m of revision.mapeos) {
       const primera = m.candidatos?.[0]?.codigo
@@ -675,7 +708,13 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     }
   }
   const seleccion = seleccionarTodas(computo.items, catalogo, { vetos })
-  for (const m of seleccion.mapeos ?? []) met.decidio({ que: `partida ${m.computo?.id ?? m.elemento ?? '?'}`, via: m.estado === 'MAPEADA' ? VIA.BASE_MAESTRA : VIA.HUECO })
+  // Con `conVeto`, el modelo veta candidatas y esos vetos cambian la partida elegida. Anotar esas
+  // como BASE_MAESTRA contaba una decisión del modelo como resuelta sin modelo.
+  const vetadosPorModelo = new Set(Object.keys(vetos))
+  for (const m of seleccion.mapeos ?? []) {
+    const id = m.computo?.id ?? m.elemento ?? '?'
+    met.decidio({ que: `partida ${id}`, via: viaDePartida({ mapeada: m.estado === 'MAPEADA', vetadaPorModelo: vetadosPorModelo.has(id) }) })
+  }
   const mapeo = { ...seleccion, correcciones, desacuerdos }
   const procesos = procesosDeTodos(computo.items)
 
@@ -733,7 +772,9 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
         laminasDeCache: laminas.filter((l) => l.deCache).length,
         cadMedido: documental.cad.length,
         catalogo: catalogo.length,
-        elementosComputados: computo.items.length,
+        // `computo.items.length` son TODOS los elementos, medidos o no — el mismo «ojo con el
+        // tiene» que se corrigió veinte líneas más arriba, repetido acá. Publicaba 111 donde hay 28.
+        elementosComputados: computo.computados ?? computo.items.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).length,
         partidasMapeadas: mapeo.mapeadas,
       },
     },

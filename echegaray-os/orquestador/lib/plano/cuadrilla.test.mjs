@@ -99,8 +99,34 @@ test('una cuadrilla y su propio múltiplo NO son dos alternativas: no se declara
   const h = horasNecesarias(PRODUCCION, contenidos(EJEMPLO))
   const r = cuadrillaOptima(h, { relacionSalarial: SALARIAL, max: 22 })
   assert.equal(r.estado, 'ELEGIDA', r.porQue)
-  assert.equal(r.elegida.relacion, 2.75, 'la composición elegida clava la relación ideal')
-  assert.ok(r.ranking.some((c) => c.oficiales === 22 && c.ayudantes === 8), 'el múltiplo está en el ranking, sólo que no compite como alternativa')
+  // La aserción va sobre la COMPOSICIÓN, no sobre la relación: [11*4] y [22*8] tienen la misma
+  // relación, así que `relacion === 2.75` pasaba igual con 30 personas trabajando. Un test que no
+  // distingue lo que el cambio cambia no está probando el cambio.
+  assert.equal(r.elegida.oficiales, 11)
+  assert.equal(r.elegida.ayudantes, 4)
+  assert.equal(r.elegida.frentes, 1, 'a igual costo gana la composición básica, no su múltiplo')
+  assert.ok(r.ranking.some((c) => c.oficiales === 22 && c.ayudantes === 8), 'el múltiplo está en el ranking')
+  assert.ok(r.frentesPosibles.some((f) => f.frentes === 2 && f.integrantes === 30), 'y se ofrece como decisión de obra, con su gente y sus días')
+})
+
+test('NEGATIVO: el múltiplo no puede ganar por terminar antes — cuesta lo mismo y lleva el doble de gente', () => {
+  // Medido: con el desempate por duración, Cof=Cay=0,50 devolvía [7*7] —CATORCE personas— donde la
+  // composición del método es [1*1]. El paper dice que los múltiplos ENTRAN a la selección, nunca
+  // que se elija el mayor; y su conclusión descarta las más rápidas por no caber en el frente.
+  const h = horasNecesarias(100, contenidos({ oficial_h_u: 0.5, ayudante_h_u: 0.5 }))
+  const r = cuadrillaOptima(h, { relacionSalarial: SALARIAL })
+  assert.equal(r.elegida.integrantes, 2, `eligió ${r.elegida.integrantes} personas: ${r.porQue}`)
+  assert.equal(r.elegida.frentes, 1)
+  const siete = r.frentesPosibles.find((f) => f.frentes === 7)
+  assert.ok(siete && siete.integrantes === 14, 'los 7 frentes existen y se ofrecen, pero como decisión')
+  assert.ok(siete.jornadas < r.elegida.jornadas, 'y se dice que terminan antes: no se esconde el dato, se deja elegir')
+})
+
+test('el frente físico sigue mandando: con un tope de gente, el múltiplo grande no entra', () => {
+  const h = horasNecesarias(100, contenidos({ oficial_h_u: 0.5, ayudante_h_u: 0.5 }))
+  const r = cuadrillaOptima(h, { relacionSalarial: SALARIAL, maxIntegrantes: 6 })
+  assert.ok(r.elegida.integrantes <= 6)
+  assert.ok(!r.frentesPosibles.some((f) => f.integrantes > 6), 'lo que no cabe no se ofrece')
 })
 
 test('SIN relación salarial no calcula: devuelve el hueco con dueño en vez de suponer una escala', () => {

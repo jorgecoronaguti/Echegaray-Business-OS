@@ -196,10 +196,27 @@ export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efect
   const evaluadas = cuadrillasBasicas({ max, incluirMultiplos })
     .filter((c) => maxIntegrantes === null || c.oficiales + c.ayudantes <= maxIntegrantes)
     .map((c) => evaluarCuadrilla(c, horas, { jornadaEfectiva_h, relacionSalarial }))
-    .sort((a, b) => a.costo_jornalesAyudante - b.costo_jornalesAyudante || a.jornadas - b.jornadas || a.oficiales - b.oficiales)
+    // ═══ EL DESEMPATE NO ES POR DURACIÓN ═══
+    //
+    // Un múltiplo cuesta EXACTAMENTE lo mismo por construcción y termina k veces antes. Desempatar
+    // por duración, entonces, elige SIEMPRE el múltiplo más grande que entre en el ábaco: con
+    // Cof=Cay=0,50 y 100 m² devolvía [7*7] —CATORCE personas— donde la composición es [1*1]. Eso no
+    // sale del método: el paper dice que los múltiplos ENTRAN A LA SELECCIÓN, nunca que se elija el
+    // mayor, y su propia conclusión descarta las cuadrillas más rápidas porque «las características
+    // físicas de las viviendas hacen imposible su implementación».
+    //
+    // A igual costo gana la composición BÁSICA, que es la respuesta del método. Cuántos frentes
+    // paralelos abrir es una decisión de obra —¿entra esa gente junta?— y se contesta con
+    // `maxIntegrantes` o mirando `frentesPosibles`, no adivinando.
+    .sort((a, b) => a.costo_jornalesAyudante - b.costo_jornalesAyudante || a.frentes - b.frentes || a.oficiales - b.oficiales)
 
   const top = evaluadas[0]
   if (!top) return { estado: 'FALTA_DATO', porQue: 'ninguna conformación de cuadrilla cumple las restricciones dadas' }
+  // Los múltiplos de la elegida, con lo único que los diferencia: cuánta gente y cuántos días.
+  const frentesPosibles = evaluadas
+    .filter((c) => c.oficiales * top.ayudantes === top.oficiales * c.ayudantes && c.frentes !== top.frentes)
+    .map((c) => ({ frentes: c.frentes, oficiales: c.oficiales, ayudantes: c.ayudantes, integrantes: c.integrantes, jornadas: c.jornadas }))
+    .sort((a, b) => a.frentes - b.frentes)
 
   // El primer competidor REAL. Una cuadrilla y su propio múltiplo no son dos alternativas: son la
   // misma composición trabajando en k frentes, cuestan lo mismo por construcción y elegir entre
@@ -212,9 +229,11 @@ export function cuadrillaOptima(horas, { jornadaEfectiva_h = JORNADA_PAPER.efect
     estado: empata ? 'AMBIGUO' : 'ELEGIDA',
     elegida: empata ? null : top,
     ranking: evaluadas.slice(0, 5),
+    frentesPosibles,
     porQue: empata
       ? `[${top.oficiales}*${top.ayudantes}] y [${segundo.oficiales}*${segundo.ayudantes}] cuestan prácticamente lo mismo (${top.costo_jornalesAyudante} vs ${segundo.costo_jornalesAyudante} jornales de ayudante): la elige quien conoce el frente de trabajo`
-      : `[${top.oficiales}*${top.ayudantes}] cuesta ${top.costo_jornalesAyudante} jornales de ayudante y termina en ${top.jornadas} jornadas${top.frentes > 1 ? ` (son ${top.frentes} cuadrillas [${top.base.oficiales}*${top.base.ayudantes}] en paralelo)` : ''}; la siguiente composición distinta cuesta ${segundo?.costo_jornalesAyudante ?? '—'}`,
+      : `[${top.oficiales}*${top.ayudantes}] cuesta ${top.costo_jornalesAyudante} jornales de ayudante y termina en ${top.jornadas} jornadas; la siguiente composición distinta cuesta ${segundo?.costo_jornalesAyudante ?? '—'}`
+        + (frentesPosibles.length ? ` · abrir ${frentesPosibles.map((f) => `${f.frentes} frentes (${f.integrantes} personas, ${f.jornadas} J)`).join(' o ')} cuesta lo mismo y termina antes: lo decide quien sabe si esa gente entra junta` : ''),
     fuente: 'INVESTIGACION · método Navas, Ridl & Torés (2012)',
   }
 }

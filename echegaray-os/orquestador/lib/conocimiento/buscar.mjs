@@ -50,6 +50,10 @@ export const PDF_MAX_BYTES = 40_000_000
 export const PDF_MAX_PAGINAS = 60
 export const PDF_MAX_CARACTERES = 120_000
 
+/** Debajo de esto, lo que salió no es una lectura: es ruido de márgenes o números de página. Un
+ *  reglamento escaneado sin OCR devuelve exactamente eso. */
+export const PDF_MIN_CARACTERES_UTILES = 40
+
 const ENTIDADES = { amp: '&', lt: '<', gt: '>', quot: '"', '#x27': "'", '#39': "'", nbsp: ' ' }
 const desescapar = (s) => String(s).replace(/&(#x27|#39|amp|lt|gt|quot|nbsp);/g, (_, e) => ENTIDADES[e] ?? ' ')
 const sinEtiquetas = (s) => desescapar(String(s).replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
@@ -210,16 +214,29 @@ export async function traerPdf(url, { fetchImpl = fetch, stats = null, refrescar
         const finalUrl = res.url || guarda.url
         const guardaFinal = urlPermitida(finalUrl)
         if (!guardaFinal.ok) return { ok: false, valor: { porQue: `redirigió a un destino no permitido: ${guardaFinal.motivo}` } }
+        // El tope se mira ANTES de bufferear: preguntarlo después obliga a traer el cuerpo entero a
+        // memoria para recién ahí rechazarlo, que es justo lo que un servidor hostil aprovecha.
+        // `leerUrl` ya lo hacía así; decir «los mismos topes» sin esto era falso.
+        const declarado = Number(res.headers?.get?.('content-length') || 0)
+        if (declarado && declarado > PDF_MAX_BYTES) return { ok: false, valor: { porQue: `el PDF declara ${declarado} bytes, más de los ${PDF_MAX_BYTES} que se leen por esta vía` } }
         const bytes = Buffer.from(await res.arrayBuffer())
         if (!bytes.subarray(0, 5).toString('latin1').startsWith('%PDF')) return { ok: false, valor: { porQue: 'lo que llegó no empieza con %PDF: no es un PDF' } }
         if (bytes.length > PDF_MAX_BYTES) return { ok: false, valor: { porQue: `el PDF pesa ${bytes.length} bytes, más de los ${PDF_MAX_BYTES} que se leen por esta vía` } }
-        tmp = path.join(os.tmpdir(), `conocimiento-${huella({ u: finalUrl }).slice(0, 20)}.pdf`)
-        fs.writeFileSync(tmp, bytes)
+        // Nombre IRREPETIBLE y creación exclusiva: el nombre predecible en un directorio compartido
+        // sigue symlinks, y dos lecturas simultáneas de la misma URL se pisaban el archivo.
+        tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'conocimiento-pdf-')), 'doc.pdf')
+        fs.writeFileSync(tmp, bytes, { flag: 'wx', mode: 0o600 })
         const { stdout } = await correr('python3', [GUION_PDF, tmp, String(maxPaginas)], { maxBuffer: 64 * 1024 * 1024, timeout: 120_000 })
         const salida = JSON.parse(stdout)
         if (salida.error) return { ok: false, valor: { porQue: salida.error } }
         const texto = String(salida.texto ?? '')
-        if (!texto.trim()) return { ok: false, valor: { porQue: `el PDF se abrió (${salida.paginas} páginas) pero no tiene capa de texto: haría falta OCR` } }
+        // NO se pregunta por `texto`: los marcadores «=== p.N ===» son texto y hacían que este
+        // control fuera incapaz de dispararse con cualquier PDF de una página o más. Se pregunta
+        // por los caracteres ÚTILES, que es lo que el extractor cuenta sin los marcadores.
+        const utiles = Number(salida.utiles ?? 0)
+        if (utiles < PDF_MIN_CARACTERES_UTILES) {
+          return { ok: false, valor: { porQue: `el PDF se abrió (${salida.paginas} páginas, ${salida.leidas} leídas) pero dejó ${utiles} caracteres de texto en ${salida.paginasConTexto ?? 0} página(s): no tiene capa de texto y haría falta OCR` } }
+        }
         const truncado = texto.length > PDF_MAX_CARACTERES || salida.leidas < salida.paginas
         const envuelto = aplicarPoliticaContenidoExterno({
           texto: texto.slice(0, PDF_MAX_CARACTERES), origen: ORIGEN_EXTERNO.WEB, url: finalUrl,
@@ -231,6 +248,7 @@ export async function traerPdf(url, { fetchImpl = fetch, stats = null, refrescar
           valor: {
             ...envuelto,
             formato: 'pdf', paginas: salida.paginas, paginasLeidas: salida.leidas, truncado,
+            utiles, paginasConTexto: salida.paginasConTexto ?? null,
             caracteres: Math.min(texto.length, PDF_MAX_CARACTERES),
             hash: crypto.createHash('sha256').update(bytes).digest('hex'),
             traidoEn: new Date().toISOString(),
@@ -240,7 +258,7 @@ export async function traerPdf(url, { fetchImpl = fetch, stats = null, refrescar
         return { ok: false, valor: { porQue: `no pude leer el PDF: ${String(e?.message ?? e).slice(0, 160)}` } }
       } finally {
         clearTimeout(t)
-        if (tmp) { try { fs.unlinkSync(tmp) } catch { /* ya no está */ } }
+        if (tmp) { try { fs.rmSync(path.dirname(tmp), { recursive: true, force: true }) } catch { /* ya no está */ } }
       }
     },
   })
