@@ -17,6 +17,7 @@
 // se duplica acá.
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { cargar } from '../lib/conocimiento/biblioteca.mjs'
 import { dataset, indiceDesdeBiblioteca } from '../lib/conocimiento/dataset-hallazgos.mjs'
 import { aprendizajes, patrones, resumenDeAprendizaje } from '../lib/conocimiento/aprendizaje-cotizacion.mjs'
@@ -66,4 +67,9 @@ function main() {
 }
 
 // Un módulo se importa; un comando se ejecuta.
-if (import.meta.url === `file://${process.argv[1]}`) main()
+//
+// `pathToFileURL` y no la plantilla `file://${...}`: la plantilla no escapa la ruta, así que un
+// espacio o un acento en el path la vuelve distinta de `import.meta.url` y el comando NO ARRANCA —
+// sale con código 0 sin hacer nada y sin imprimir un error. Un fallo silencioso en un generador es
+// peor que un fallo ruidoso: parece que corrió.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()
