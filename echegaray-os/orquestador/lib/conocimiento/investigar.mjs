@@ -20,7 +20,7 @@
 import { VIA } from './metricas.mjs'
 import { ESTADO as ESTADO_FUENTE, anotarUso, descubrir, ordenar } from './fuentes.mjs'
 import { HUECO, PROCEDENCIA, conocimiento, hueco, saber } from './biblioteca.mjs'
-import { buscar, traer } from './buscar.mjs'
+import { buscar, pareceriaPdf, traer, traerPdf } from './buscar.mjs'
 import { autoridadDe } from '../plano/investigacion.mjs'
 
 /** Los escalones, en orden. Cada uno declara si necesita red y si necesita modelo: es lo que
@@ -118,13 +118,19 @@ export async function investigarWeb({
 
   const lecturas = []
   for (const c of candidatas.slice(0, aTraer)) {
-    const t = await traer(c.url, { stats, consulta, fetchImpl })
+    // Un reglamento, una norma o una ficha de fabricante casi siempre son PDF. Mandarlos por el
+    // lector de HTML devuelve «no sé leer ese tipo de contenido» y deja al motor leyendo blogs.
+    const esPdf = pareceriaPdf(c.url, c.titulo)
+    const t = esPdf
+      ? await traerPdf(c.url, { stats, consulta, fetchImpl })
+      : await traer(c.url, { stats, consulta, fetchImpl })
     const idFuente = padron.find((f) => f.dominio === c.dominio)?.id
     if (idFuente) padron = anotarUso(padron, idFuente, { sirvio: t.ok, que: t.ok ? consulta : null, cuando })
     lecturas.push({
       url: c.url, titulo: c.titulo, fragmento: c.fragmento, dominio: c.dominio,
       autoridad: c.autoridad, porQueAutoridad: c.porQue,
       ok: t.ok, hash: t.hash ?? null, caracteres: t.caracteres ?? 0,
+      formato: t.formato ?? 'html', paginas: t.paginas ?? null, truncado: t.truncado ?? false,
       publicadoEn: t.publicado_en ?? null, frescura: t.frescura ?? null,
       contenido: t.contenido_externo ?? null, inyeccion: t.inyeccion ?? null,
       porQue: t.porQue ?? null, deCache: t.deCache ?? false,

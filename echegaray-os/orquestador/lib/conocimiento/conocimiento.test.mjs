@@ -4,18 +4,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 
 import { claveDe, conCache, contador, huella } from './cache.mjs'
 import * as F from './fuentes.mjs'
 import * as B from './biblioteca.mjs'
-import { MOTOR, buscar, parsearResultados, urlReal } from './buscar.mjs'
+import { MOTOR, buscar, pareceriaPdf, parsearResultados, traerPdf, urlReal } from './buscar.mjs'
 import * as M from './metricas.mjs'
 import * as P from './promocion.mjs'
 import { contrastar, hayQueInvestigar, investigarWeb, resolver } from './investigar.mjs'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'conocimiento-'))
+
 
 // ═══════════════════════ CACHÉ ═══════════════════════
 
@@ -466,4 +468,77 @@ test('investigarWeb ordena por autoridad: el organismo técnico antes que el for
   // Sirvió UNA vez: sube a EVALUADA, no a CURADA. Curarse cuesta dos.
   assert.equal(foro.estado, F.ESTADO.EVALUADA)
   assert.notEqual(foro.estado, F.ESTADO.CURADA)
+})
+
+// ═══════════════════════ LEER PDFs SIN MODELO ═══════════════════════
+//
+// Las fuentes que más valen —CIRSOC, INPRES, IRAM, las fichas de fabricante— son PDF. Medido: de
+// las dos fuentes con autoridad de organismo técnico que devolvió una búsqueda real de «CIRSOC 201
+// 2025», las DOS eran PDF y el lector de HTML las rechazaba.
+
+test('pareceríaPdf reconoce por extensión y por tipo, y NO dice que sí a todo', () => {
+  assert.equal(pareceriaPdf('https://a.gob.ar/x.pdf'), true)
+  assert.equal(pareceriaPdf('https://a.gob.ar/x.pdf?v=2'), true)
+  assert.equal(pareceriaPdf('https://a.gob.ar/x', 'application/pdf'), true)
+  assert.equal(pareceriaPdf('https://a.gob.ar/x.html'), false, 'si diera true siempre, no sería un control')
+  assert.equal(pareceriaPdf('https://a.gob.ar/pdfarchivo.html'), false, 'la palabra en el medio de otra no cuenta')
+})
+
+test('NEGATIVO: la guarda de destino vale igual para PDF — nada de red interna', async () => {
+  let toco = false
+  const r = await traerPdf('http://127.0.0.1:8065/x.pdf', { fetchImpl: async () => { toco = true }, dir: tmp() })
+  assert.equal(toco, false, 'no se sale a buscar siquiera')
+  assert.equal(r.ok, false)
+  assert.match(r.porQue, /red interna|no permitida|reservada/i)
+})
+
+test('NEGATIVO: lo que no empieza con %PDF no se acepta aunque la URL diga .pdf', async () => {
+  const fetchImpl = async () => ({ ok: true, url: 'https://a.gob.ar/x.pdf', arrayBuffer: async () => Buffer.from('<html>te engañé</html>') })
+  const r = await traerPdf('https://a.gob.ar/x.pdf', { fetchImpl, dir: tmp() })
+  assert.equal(r.ok, false)
+  assert.match(r.porQue, /no empieza con %PDF/)
+})
+
+test('NEGATIVO: un PDF que se abre pero no tiene capa de texto NO se cachea como vacío', async () => {
+  const dir = tmp()
+  let veces = 0
+  // Un PDF mínimo y válido, sin texto: PyMuPDF lo abre y devuelve cadena vacía.
+  const vacio = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')
+  const fetchImpl = async () => { veces += 1; return { ok: true, url: 'https://a.gob.ar/v.pdf', arrayBuffer: async () => vacio } }
+  const a = await traerPdf('https://a.gob.ar/v.pdf', { fetchImpl, dir })
+  const b = await traerPdf('https://a.gob.ar/v.pdf', { fetchImpl, dir })
+  assert.equal(a.ok, false)
+  assert.equal(veces, 2, 'se reintentó en vez de dar por cierto que la fuente está vacía')
+  assert.match(String(b.porQue), /capa de texto|no se pudo abrir|OCR/i)
+})
+
+test('el texto de un PDF sale como REFERENCIA_EXTERNA, no como hecho', async () => {
+  // El PDF se FABRICA acá, con PyMuPDF, en vez de depender de un archivo bajado: un test que
+  // necesita un fixture que puede no estar se salta en silencio, y un test que se salta en
+  // silencio es un control que no puede dar rojo.
+  const dir = tmp()
+  const ruta = path.join(dir, 'tres-paginas.pdf')
+  const guion = [
+    'import fitz, sys',
+    'd = fitz.open()',
+    'for i in range(3):',
+    '    p = d.new_page()',
+    '    p.insert_text((72, 100), "pagina %d: cuadrilla optima y rendimiento" % (i + 1))',
+    'd.save(sys.argv[1])',
+  ].join('\n')
+  execFileSync('python3', ['-c', guion, ruta])
+  const pdf = fs.readFileSync(ruta)
+
+  const fetchImpl = async () => ({ ok: true, url: 'https://www.inti.gob.ar/cirsoc/reglamento.pdf', arrayBuffer: async () => pdf })
+  const r = await traerPdf('https://www.inti.gob.ar/cirsoc/reglamento.pdf', { fetchImpl, dir, maxPaginas: 2 })
+  assert.equal(r.ok, true, r.porQue)
+  assert.equal(r.formato, 'pdf')
+  assert.equal(r.tipo, 'REFERENCIA_EXTERNA')
+  assert.equal(r.es_hecho_ecsas, false, 'bajarlo de un dominio de organismo técnico no lo convierte en un hecho de ECSAS')
+  assert.equal(r.paginas, 3)
+  assert.equal(r.paginasLeidas, 2)
+  assert.equal(r.truncado, true, 'leer 2 de 3 páginas se DECLARA, no se disimula')
+  assert.match(r.contenido_externo, /cuadrilla optima/i)
+  // El hash es del ARCHIVO: no cambia si mañana cambiamos el extractor de texto.
+  assert.match(r.hash, /^[0-9a-f]{64}$/)
 })
