@@ -31,10 +31,16 @@ import { FORMATO, formatoDe } from '../lib/ingesta/registro.mjs'
 import { leerWord } from '../lib/ingesta/word.mjs'
 import { leerDocumentoDeProyecto } from '../lib/conocimiento/documento-proyecto.mjs'
 import { CRUCE, contrastar } from '../lib/conocimiento/contrastar-documento.mjs'
+import { pathToFileURL } from 'node:url'
 
+// ═══ IMPORTAR ESTE ARCHIVO NO PUEDE SALIR A DRIVE NI MATAR EL PROCESO ═══
+// Sin la guarda del pie, `import()` corría el contraste entero. Y peor que eso: el `process.exit(1)`
+// de abajo corría en tiempo de IMPORT, así que un chequeo de link sobre este módulo mataba el
+// proceso sin decir por qué. Mismo defecto de 465b14f1, ya cerrado en los otros tres scripts.
+const ejecutadoDirecto = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 const args = process.argv.slice(2)
 const termino = args.find((a) => !a.startsWith('--'))
-if (!termino) { console.error('uso: xsas-contrastar-documentos.mjs <termino> [--con-computo=<archivo.json>]'); process.exit(1) }
+if (ejecutadoDirecto && !termino) { console.error('uso: xsas-contrastar-documentos.mjs <termino> [--con-computo=<archivo.json>]'); process.exit(1) }
 const rutaComputo = args.find((a) => a.startsWith('--con-computo='))?.split('=').slice(1).join('=') ?? null
 
 /** Los ítems del cómputo con los que se buscan choques de alcance. Cuando no se pasa ninguno se dice
@@ -100,5 +106,7 @@ async function main() {
   console.log(`  · por lo tanto el cómputo por vistas no está acá${rutaComputo ? '' : ', y sin --con-computo tampoco hay con qué buscar choques de alcance'}`)
 }
 
-main().then(() => closePool()).then(() => process.exit(0))
-  .catch((e) => { console.error('ERROR:', e.message, e.stack); process.exit(1) })
+if (ejecutadoDirecto) {
+  main().then(() => closePool()).then(() => process.exit(0))
+    .catch((e) => { console.error('ERROR:', e.message, e.stack); process.exit(1) })
+}

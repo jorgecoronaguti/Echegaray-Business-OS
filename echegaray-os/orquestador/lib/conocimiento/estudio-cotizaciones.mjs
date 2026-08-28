@@ -20,7 +20,7 @@ import { celdasRotasDe } from './hallazgos-celdas.mjs'
 import { resumen } from './hallazgo.mjs'
 import { aprendizajes } from './aprendizaje-cotizacion.mjs'
 import { CLASE_PLANILLA, leerLibro } from './planilla-semantica.mjs'
-import { practicasCliente } from './practica-cotizacion-cliente.mjs'
+import { ADVERTENCIA_CLIENTE, practicasCliente } from './practica-cotizacion-cliente.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -213,6 +213,7 @@ export async function estudiarTanda(archivos = [], {
   const historicosCliente = registrosHistoricos(pc.practicas, {
     porCotizacion: indiceDeCotizaciones(cliente),
     totalCotizaciones: soloCotizaciones.length,
+    advertencia: ADVERTENCIA_CLIENTE,
   })
   return {
     cotizaciones, cliente, noLeidos, salteados,

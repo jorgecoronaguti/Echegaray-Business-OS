@@ -29,6 +29,11 @@ import { practica } from './practica-cotizacion.mjs'
 // la misma cosa; lo que separa a las dos familias es el CORPUS, y eso vive en la clave.
 import { ADVERTENCIA } from './practica-historica.mjs'
 
+/** La misma advertencia, con el corpus correcto. La de `practica-historica.mjs` dice «cotizaciones
+ *  internas de ECSAS» y esta familia sale de la planilla que se ENTREGA al cliente: reusarla tal
+ *  cual publicaba 97 conocimientos citando un corpus que no era el suyo. */
+export const ADVERTENCIA_CLIENTE = ADVERTENCIA.replace('cotizaciones internas de ECSAS', 'las planillas de cotización que ECSAS entrega al cliente')
+
 const slug = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
 
@@ -107,9 +112,17 @@ export function practicasDeCierre(cotizaciones = []) {
   }
   const salida = []
   for (const [concepto, casos] of [...porConcepto.entries()].sort()) {
+    // ═══ EL RANGO VA EN LA AFIRMACIÓN, NO SÓLO EN LA EVIDENCIA ═══
+    // «IVA · coeficiente 0,147» con n=5 y madurez A es una media sin sentido de dos costumbres
+    // distintas, y leída sin abrir la evidencia dice «el IVA se cotiza al 14,7%», que es falso.
+    // Con el rango adelante, la afirmación no se puede confundir con una regla.
+    const v = casos.map((c) => c.valor).filter((x) => typeof x === 'number')
+    const rango = v.length > 1 && Math.min(...v) !== Math.max(...v)
+      ? `entre ${Math.min(...v)} y ${Math.max(...v)} según la obra (${v.length} caso(s))`
+      : `${v[0]} en ${v.length} caso(s)`
     salida.push(practica({
       clave: `cotizacion_cliente.cierre.${slug(concepto)}`,
-      afirmacion: `en la planilla que se entrega al cliente, «${concepto}» se cotiza como coeficiente — ${ADVERTENCIA}`,
+      afirmacion: `en la planilla que se entrega al cliente, «${concepto}» se cotizó ${rango} — ${ADVERTENCIA_CLIENTE}`,
       casos,
     }))
   }
@@ -131,7 +144,7 @@ export function practicasDeRubros(cotizaciones = []) {
     .sort((a, b) => b[1].length - a[1].length)
     .map(([k, casos]) => practica({
       clave: `cotizacion_cliente.rubro.${k}`,
-      afirmacion: `el rubro «${casos[0].cita}» aparece en ${casos.length} cotización(es) al cliente, en la posición ${casos.map((x) => x.valor).join('/')} — ${ADVERTENCIA}`,
+      afirmacion: `el rubro «${casos[0].cita}» aparece en ${casos.length} cotización(es) al cliente, en la posición ${casos.map((x) => x.valor).join('/')} — ${ADVERTENCIA_CLIENTE}`,
       casos,
       valorTextual: casos[0].cita,
     }))
@@ -160,7 +173,7 @@ export function practicasDeUnidad(cotizaciones = [], { minimoCasos = 3 } = {}) {
       const [verbo, u] = k.split('|')
       return practica({
         clave: `cotizacion_cliente.unidad.${verbo}`,
-        afirmacion: `las partidas que empiezan con «${verbo}» se cotizan en ${u} en ${casos.length} caso(s) — ${ADVERTENCIA}`,
+        afirmacion: `las partidas que empiezan con «${verbo}» se cotizan en ${u} en ${casos.length} caso(s) — ${ADVERTENCIA_CLIENTE}`,
         casos, unidad: u, valorTextual: u,
       })
     })
@@ -189,7 +202,7 @@ export function practicasDeAlcance(cotizaciones = []) {
   }
   return [...por.entries()].sort().map(([k, casos]) => practica({
     clave: `cotizacion_cliente.alcance.${k}`,
-    afirmacion: `«${k.replace(/_/g, ' ')}» se declara por escrito en ${casos.length} cotización(es) al cliente — ${ADVERTENCIA}`,
+    afirmacion: `«${k.replace(/_/g, ' ')}» se declara por escrito en ${casos.length} cotización(es) al cliente — ${ADVERTENCIA_CLIENTE}`,
     casos,
     valorTextual: casos[0].cita.slice(0, 200),
   }))

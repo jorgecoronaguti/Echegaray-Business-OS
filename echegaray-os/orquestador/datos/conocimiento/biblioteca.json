@@ -24,8 +24,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:082f055f2ce20d27",
@@ -102,8 +102,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:157127caa453d92e",
@@ -141,8 +141,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:1635cf6846b6816d",
@@ -167,8 +167,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:16cdcfe3fdbcc5c5",
@@ -193,8 +193,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:1dbc4f5d49d467d0",
@@ -246,7 +246,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 2: UNIDAD, CANTIDAD)"
   },
   {
    "id": "doc:23b7a127a2218f34",
@@ -284,8 +284,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:288e1e79aec372e2",
@@ -350,7 +350,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: CANTIDAD)"
   },
   {
    "id": "doc:2ffd0b0987a7a9ae",
@@ -362,8 +362,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:3312590b26cd890e",
@@ -388,8 +388,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:353fe113e22939af",
@@ -440,8 +440,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:39325101e52246a6",
@@ -453,8 +453,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:3b8c90ade580e80c",
@@ -466,8 +466,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:3ba4b707aae118b3",
@@ -518,8 +518,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:3e73d080b4071f90",
@@ -739,8 +739,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:58e906f3d1036b73",
@@ -753,7 +753,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 18 filas reconoce 3 encabezados de cotización (la mejor reconoció 0: ninguno)"
   },
   {
    "id": "doc:5a23d014a27fe038",
@@ -765,8 +765,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:5a49cbc906948df4",
@@ -869,8 +869,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:6891a55003b5c998",
@@ -895,8 +895,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:6b3f69caebed05be",
@@ -935,7 +935,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 2: DESCRIPCION, CANTIDAD)"
   },
   {
    "id": "doc:6dc30513b2846af1",
@@ -947,8 +947,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:6fa068218cb9e2cf",
@@ -999,8 +999,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:73ba19d76fb09ee0",
@@ -1103,8 +1103,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:84899a72921f2900",
@@ -1155,8 +1155,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:8cddc5ca1d34b1b4",
@@ -1220,8 +1220,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:90b7f6eb0fd5ce79",
@@ -1234,7 +1234,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: CANTIDAD)"
   },
   {
    "id": "doc:90faded001b5220e",
@@ -1273,7 +1273,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: CANTIDAD)"
   },
   {
    "id": "doc:953dee4d5ed2d6e6",
@@ -1324,8 +1324,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:9751f079b5e398e6",
@@ -1377,7 +1377,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 4 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 34 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: MANO_DE_OBRA) · «Hoja3»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: CANTIDAD) · «Hoja2»: ninguna de las primeras 40 filas reconoce 3 encabezados de "
   },
   {
    "id": "doc:9db2e800360fbb09",
@@ -1416,7 +1416,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 2 pestaña(s) tiene encabezado de cotización — «Real»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 2: CANTIDAD, UNIDAD) · «Presupuestado»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 2: CANTIDAD, UNIDAD)"
   },
   {
    "id": "doc:9e29bd8c9a94b598",
@@ -1428,8 +1428,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a0c4db3fa316f5d0",
@@ -1441,8 +1441,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a0dc73db0d302a7a",
@@ -1493,8 +1493,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a25bc8e1c179e45b",
@@ -1532,8 +1532,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a662d17803ed65cf",
@@ -1545,8 +1545,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a714e8b6e55d6ff8",
@@ -1571,8 +1571,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:a7c8c75288b8cfad",
@@ -1636,8 +1636,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:af30a8488869e918",
@@ -1663,7 +1663,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 1: CANTIDAD)"
   },
   {
    "id": "doc:afb25737e7a44395",
@@ -1675,8 +1675,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:b00d29f8930e930a",
@@ -1753,8 +1753,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:bcefb706da6b7e4e",
@@ -1858,7 +1858,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: la fila 7 reconoce 4 encabezados pero ninguno es DESCRIPCION: sin eso no se sabe qué se está cotizando"
   },
   {
    "id": "doc:cc1ae0048af6c862",
@@ -1883,8 +1883,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:d0868ef8f4747336",
@@ -1935,8 +1935,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:df6f086bac5147c6",
@@ -1948,8 +1948,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:e065eb0cd27622b3",
@@ -2000,8 +2000,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:e6dfc055808ddd56",
@@ -2104,8 +2104,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:f876ba6bf48b7b59",
@@ -2130,8 +2130,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:fa5b71d42c6db56f",
@@ -2143,8 +2143,8 @@
    "version": null,
    "paginas": null,
    "obtenidoEn": "2026-08-28",
-   "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "etapa": "ESTUDIADO",
+   "porQue": null
   },
   {
    "id": "doc:fb35275f21bb69c7",
@@ -2157,7 +2157,7 @@
    "paginas": null,
    "obtenidoEn": "2026-08-28",
    "etapa": "NO_LEIDO",
-   "porQue": "la planilla no tiene las pestañas Análisis/Presupuesto/GG: no es la plantilla de cotización interna"
+   "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de las primeras 40 filas reconoce 3 encabezados de cotización (la mejor reconoció 2: DESCRIPCION, CANTIDAD)"
   },
   {
    "id": "doc:fd0acf66f5e86949",
@@ -2401,11 +2401,11 @@
   {
    "id": "k:0145a38bf35635c9",
    "clave": "cotizacion_cliente.cierre.impuesto_al_cheque",
-   "afirmacion": "en la planilla que se entrega al cliente, «IMPUESTO_AL_CHEQUE» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «IMPUESTO_AL_CHEQUE» se cotizó entre 0.012 y 0.0125 según la obra (5 caso(s)) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.0123,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -3126,11 +3126,11 @@
   {
    "id": "k:05d2e6246590aca0",
    "clave": "cotizacion_cliente.unidad.muros",
-   "afirmacion": "las partidas que empiezan con «muros» se cotizan en m2 en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «muros» se cotizan en m2 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 94.4833,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -3759,11 +3759,11 @@
   {
    "id": "k:09a2aafbffca5e47",
    "clave": "cotizacion_cliente.unidad.capa",
-   "afirmacion": "las partidas que empiezan con «capa» se cotizan en ml en 10 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «capa» se cotizan en ml en 10 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 22.5,
    "unidad": "ml",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -4121,11 +4121,11 @@
   {
    "id": "k:0c6fadfe0379b493",
    "clave": "cotizacion_cliente.rubro.demoliciones_desmontajes_y_excavaciones",
-   "afirmacion": "el rubro «DEMOLICIONES, DESMONTAJES Y EXCAVACIONES» aparece en 5 cotización(es) al cliente, en la posición 2/2/2/2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «DEMOLICIONES, DESMONTAJES Y EXCAVACIONES» aparece en 5 cotización(es) al cliente, en la posición 2/2/2/2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -4645,11 +4645,11 @@
   {
    "id": "k:0e6d52e149231150",
    "clave": "cotizacion_cliente.unidad.limpieza",
-   "afirmacion": "las partidas que empiezan con «limpieza» se cotizan en gl en 40 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «limpieza» se cotizan en gl en 40 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -5164,11 +5164,11 @@
   {
    "id": "k:11389d0124546b04",
    "clave": "cotizacion_cliente.unidad.cumplimiento",
-   "afirmacion": "las partidas que empiezan con «cumplimiento» se cotizan en gl en 17 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «cumplimiento» se cotizan en gl en 17 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -5387,11 +5387,11 @@
   {
    "id": "k:127467bcb0014f10",
    "clave": "cotizacion_cliente.rubro.preliminares",
-   "afirmacion": "el rubro «PRELIMINARES» aparece en 6 cotización(es) al cliente, en la posición 1/1/1/1/1/1 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «PRELIMINARES» aparece en 6 cotización(es) al cliente, en la posición 1/1/1/1/1/1 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -5464,11 +5464,11 @@
   {
    "id": "k:13581a4158322d26",
    "clave": "cotizacion_cliente.rubro.carpinterias",
-   "afirmacion": "el rubro «CARPINTERIAS» aparece en 9 cotización(es) al cliente, en la posición 5/5/3/10/10/10/10/10/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «CARPINTERIAS» aparece en 9 cotización(es) al cliente, en la posición 5/5/3/10/10/10/10/10/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 7.3333,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -5908,11 +5908,11 @@
   {
    "id": "k:150588a832834706",
    "clave": "cotizacion_cliente.rubro.pisos",
-   "afirmacion": "el rubro «PISOS» aparece en 5 cotización(es) al cliente, en la posición 9/9/9/9/9 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «PISOS» aparece en 5 cotización(es) al cliente, en la posición 9/9/9/9/9 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 9,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -6262,11 +6262,11 @@
   {
    "id": "k:1607b6c947040348",
    "clave": "cotizacion_cliente.unidad.ayuda",
-   "afirmacion": "las partidas que empiezan con «ayuda» se cotizan en hs en 24 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «ayuda» se cotizan en hs en 24 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 87.5,
    "unidad": "hs",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -7263,11 +7263,11 @@
   {
    "id": "k:1aebac7eaf501583",
    "clave": "cotizacion_cliente.rubro.demoliciones_y_movimientos_de_suelo_todo_residuo_generado_de",
-   "afirmacion": "el rubro «DEMOLICIONES Y MOVIMIENTOS DE SUELO (Todo residuo generado deberá ser gestionado y retirado fuera del predio por el proveedor)» aparece en 5 cotización(es) al cliente, en la posición 2/2/2/2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «DEMOLICIONES Y MOVIMIENTOS DE SUELO (Todo residuo generado deberá ser gestionado y retirado fuera del predio por el proveedor)» aparece en 5 cotización(es) al cliente, en la posición 2/2/2/2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -7495,11 +7495,11 @@
   {
    "id": "k:1caa34e4fe56cd0e",
    "clave": "cotizacion_cliente.rubro.estructuras_hormigon_y_obra_civil",
-   "afirmacion": "el rubro «ESTRUCTURAS HORMIGON Y OBRA CIVIL» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «ESTRUCTURAS HORMIGON Y OBRA CIVIL» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -9000,11 +9000,11 @@
   {
    "id": "k:28b5b6a56710e7c2",
    "clave": "cotizacion_cliente.unidad.traslado",
-   "afirmacion": "las partidas que empiezan con «traslado» se cotizan en gl en 24 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «traslado» se cotizan en gl en 24 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -9130,11 +9130,11 @@
   {
    "id": "k:28e3fd7241bb3ec9",
    "clave": "cotizacion_cliente.unidad.restauracion",
-   "afirmacion": "las partidas que empiezan con «restauracion» se cotizan en un en 5 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «restauracion» se cotizan en un en 5 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 6,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -9932,11 +9932,11 @@
   {
    "id": "k:2b2291ec60d8a528",
    "clave": "cotizacion_cliente.unidad.griferia",
-   "afirmacion": "las partidas que empiezan con «griferia» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «griferia» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -10052,11 +10052,11 @@
   {
    "id": "k:2b8b2cb1964334d3",
    "clave": "cotizacion_cliente.unidad.provision",
-   "afirmacion": "las partidas que empiezan con «provision» se cotizan en m2 en 116 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «provision» se cotizan en m2 en 116 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 176.9997,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -10209,11 +10209,11 @@
   {
    "id": "k:2c32a808d6ea3ade",
    "clave": "cotizacion_cliente.rubro.estructuras_metalicas",
-   "afirmacion": "el rubro «ESTRUCTURAS METÁLICAS» aparece en 6 cotización(es) al cliente, en la posición 4/4/3/3/3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «ESTRUCTURAS METÁLICAS» aparece en 6 cotización(es) al cliente, en la posición 4/4/3/3/3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3.3333,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -10441,11 +10441,11 @@
   {
    "id": "k:2f6c9901692d7481",
    "clave": "cotizacion_cliente.unidad.tramite",
-   "afirmacion": "las partidas que empiezan con «tramite» se cotizan en gl en 5 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «tramite» se cotizan en gl en 5 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -10839,11 +10839,11 @@
   {
    "id": "k:312e7ca20b8a78d7",
    "clave": "cotizacion_cliente.rubro.estructuras_metalicas_canales_camaras_y_rejillas_todas_las_e",
-   "afirmacion": "el rubro «ESTRUCTURAS METÁLICAS: CANALES, CÁMARAS Y REJILLAS (Todas las estructuras metalicas recibiran un tratamiento de fosfatizado para su limpieza, aplicación de fondo antioxido epoxi y dos manos de esmalte epoxi aplicado con soplete)» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «ESTRUCTURAS METÁLICAS: CANALES, CÁMARAS Y REJILLAS (Todas las estructuras metalicas recibiran un tratamiento de fosfatizado para su limpieza, aplicación de fondo antioxido epoxi y dos manos de esmalte epoxi aplicado con soplete)» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -10998,11 +10998,11 @@
   {
    "id": "k:334adbb747830f36",
    "clave": "cotizacion_cliente.rubro.condiciones_comercielas",
-   "afirmacion": "el rubro «Condiciones comercielas:» aparece en 2 cotización(es) al cliente, en la posición 6/6 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Condiciones comercielas:» aparece en 2 cotización(es) al cliente, en la posición 6/6 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 6,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -11874,11 +11874,11 @@
   {
    "id": "k:374b34ee2cc8922c",
    "clave": "cotizacion_cliente.rubro.estructuras_de_hormigon",
-   "afirmacion": "el rubro «ESTRUCTURAS DE HORMIGON» aparece en 2 cotización(es) al cliente, en la posición 3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «ESTRUCTURAS DE HORMIGON» aparece en 2 cotización(es) al cliente, en la posición 3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -11968,11 +11968,11 @@
   {
    "id": "k:37884ac2253a8f1b",
    "clave": "cotizacion_cliente.unidad.revoque",
-   "afirmacion": "las partidas que empiezan con «revoque» se cotizan en m en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «revoque» se cotizan en m en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 97.2467,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -12043,11 +12043,11 @@
   {
    "id": "k:37c731a4a1da8667",
    "clave": "cotizacion_cliente.unidad.armaduras",
-   "afirmacion": "las partidas que empiezan con «armaduras» se cotizan en kg en 6 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «armaduras» se cotizan en kg en 6 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 344.8667,
    "unidad": "kg",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -12528,11 +12528,11 @@
   {
    "id": "k:3a42a996486eb582",
    "clave": "cotizacion_cliente.rubro.demoliciones_y_excavaciones",
-   "afirmacion": "el rubro «DEMOLICIONES Y EXCAVACIONES» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «DEMOLICIONES Y EXCAVACIONES» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -12882,11 +12882,11 @@
   {
    "id": "k:3dd2b9246b3423a7",
    "clave": "cotizacion_cliente.rubro.movimientos_de_suelo",
-   "afirmacion": "el rubro «MOVIMIENTOS DE SUELO» aparece en 3 cotización(es) al cliente, en la posición 2/2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «MOVIMIENTOS DE SUELO» aparece en 3 cotización(es) al cliente, en la posición 2/2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -13207,11 +13207,11 @@
   {
    "id": "k:4018946dc298bcd5",
    "clave": "cotizacion_cliente.alcance.plazo_de_obra",
-   "afirmacion": "«plazo de obra» se declara por escrito en 7 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«plazo de obra» se declara por escrito en 7 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "Plazo de obra: se estima un plazo de obra de 90 dias corridos como máximo",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -13260,11 +13260,11 @@
   {
    "id": "k:402139dc59955bb8",
    "clave": "cotizacion_cliente.unidad.estructura",
-   "afirmacion": "las partidas que empiezan con «estructura» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «estructura» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -13907,11 +13907,11 @@
   {
    "id": "k:446e931e6770db0b",
    "clave": "cotizacion_cliente.rubro.costo_oferta",
-   "afirmacion": "el rubro «COSTO OFERTA» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «COSTO OFERTA» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -14524,11 +14524,11 @@
   {
    "id": "k:47ac511c3dc11511",
    "clave": "cotizacion_cliente.rubro.precio_total_oferta_6_7_8",
-   "afirmacion": "el rubro «PRECIO TOTAL OFERTA ( 6 + 7 + 8 )» aparece en 2 cotización(es) al cliente, en la posición 5/5 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «PRECIO TOTAL OFERTA ( 6 + 7 + 8 )» aparece en 2 cotización(es) al cliente, en la posición 5/5 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -14738,11 +14738,11 @@
   {
    "id": "k:49885cb651b40ac0",
    "clave": "cotizacion_cliente.unidad.retiro",
-   "afirmacion": "las partidas que empiezan con «retiro» se cotizan en gl en 5 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «retiro» se cotizan en gl en 5 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -14787,11 +14787,11 @@
   {
    "id": "k:49b01f1d17b5ec5d",
    "clave": "cotizacion_cliente.unidad.perforacion",
-   "afirmacion": "las partidas que empiezan con «perforacion» se cotizan en m en 4 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «perforacion» se cotizan en m en 4 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 178,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -15550,11 +15550,11 @@
   {
    "id": "k:4e55b7c90343d85c",
    "clave": "cotizacion_cliente.cierre.gastos_generales",
-   "afirmacion": "en la planilla que se entrega al cliente, «GASTOS_GENERALES» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «GASTOS_GENERALES» se cotizó 0.15 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.15,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -15766,11 +15766,11 @@
   {
    "id": "k:4fcef0960ed978c6",
    "clave": "cotizacion_cliente.unidad.colado",
-   "afirmacion": "las partidas que empiezan con «colado» se cotizan en m en 9 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «colado» se cotizan en m en 9 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4.6778,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -16305,11 +16305,11 @@
   {
    "id": "k:537457bb32e46709",
    "clave": "cotizacion_cliente.unidad.relleno",
-   "afirmacion": "las partidas que empiezan con «relleno» se cotizan en m3 en 7 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «relleno» se cotizan en m3 en 7 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 74.1184,
    "unidad": "m3",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -17096,11 +17096,11 @@
   {
    "id": "k:59fb698bfa15eea3",
    "clave": "cotizacion_cliente.rubro.tareas_preliminares",
-   "afirmacion": "el rubro «TAREAS PRELIMINARES» aparece en 22 cotización(es) al cliente, en la posición 1/1/1/1/1/1/1/1/1/1/1/7/1/1/1/1/1/1/1/1/1/1 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «TAREAS PRELIMINARES» aparece en 22 cotización(es) al cliente, en la posición 1/1/1/1/1/1/1/1/1/1/1/7/1/1/1/1/1/1/1/1/1/1 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1.2727,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -17989,11 +17989,11 @@
   {
    "id": "k:63e032eaf635bdff",
    "clave": "cotizacion_cliente.rubro.muro_sala_de_capacitaciones",
-   "afirmacion": "el rubro «Muro sala de capacitaciones» aparece en 5 cotización(es) al cliente, en la posición 5/5/5/5/5 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Muro sala de capacitaciones» aparece en 5 cotización(es) al cliente, en la posición 5/5/5/5/5 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -18197,11 +18197,11 @@
   {
    "id": "k:660a8425d87a1bec",
    "clave": "cotizacion_cliente.unidad.aplicacion",
-   "afirmacion": "las partidas que empiezan con «aplicacion» se cotizan en m2 en 21 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «aplicacion» se cotizan en m2 en 21 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 87.2,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -18416,11 +18416,11 @@
   {
    "id": "k:67e91823cc57a9b1",
    "clave": "cotizacion_cliente.alcance.no_incluye_iva",
-   "afirmacion": "«no incluye iva» se declara por escrito en 6 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«no incluye iva» se declara por escrito en 6 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "NOTA 1: EL PRECIO FINAL NO INCLUYE IVA.",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -18538,11 +18538,11 @@
   {
    "id": "k:697020813f825a2d",
    "clave": "cotizacion_cliente.rubro.obra_metalurgica_y_obra_civil_todos_los_elementos_metalicos_",
-   "afirmacion": "el rubro «OBRA METALURGICA Y OBRA CIVIL (Todos los elementos metálicos deberán recibir un tratamiento de limpieza adecuado y la aplicación de una mano de fondo antióxido y dos manos de pintura esmalte epoxi aplicado con soplete).» aparece en 5 cotización(es) al cliente, en la posición 3/3/3/3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «OBRA METALURGICA Y OBRA CIVIL (Todos los elementos metálicos deberán recibir un tratamiento de limpieza adecuado y la aplicación de una mano de fondo antióxido y dos manos de pintura esmalte epoxi aplicado con soplete).» aparece en 5 cotización(es) al cliente, en la posición 3/3/3/3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -18661,11 +18661,11 @@
   {
    "id": "k:6a2850ad68008be5",
    "clave": "cotizacion_cliente.rubro.hormigones",
-   "afirmacion": "el rubro «HORMIGONES» aparece en 5 cotización(es) al cliente, en la posición 3/3/3/3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «HORMIGONES» aparece en 5 cotización(es) al cliente, en la posición 3/3/3/3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -18902,11 +18902,11 @@
   {
    "id": "k:6baa739e8e27f846",
    "clave": "cotizacion_cliente.unidad.enlucido",
-   "afirmacion": "las partidas que empiezan con «enlucido» se cotizan en m en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «enlucido» se cotizan en m en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 48.52,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -19419,11 +19419,11 @@
   {
    "id": "k:6f9e8953235a2cf9",
    "clave": "cotizacion_cliente.unidad.plegado",
-   "afirmacion": "las partidas que empiezan con «plegado» se cotizan en m2 en 10 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «plegado» se cotizan en m2 en 10 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 6.1387,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -20025,11 +20025,11 @@
   {
    "id": "k:75634deb07a19906",
    "clave": "cotizacion_cliente.unidad.colocacion",
-   "afirmacion": "las partidas que empiezan con «colocacion» se cotizan en m en 8 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «colocacion» se cotizan en m en 8 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 30,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -20475,11 +20475,11 @@
   {
    "id": "k:78a0b141210b9d32",
    "clave": "cotizacion_cliente.unidad.bacha",
-   "afirmacion": "las partidas que empiezan con «bacha» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «bacha» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -20521,11 +20521,11 @@
   {
    "id": "k:78c5777029872b80",
    "clave": "cotizacion_cliente.cierre.ganancias",
-   "afirmacion": "en la planilla que se entrega al cliente, «GANANCIAS» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «GANANCIAS» se cotizó 0.02 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.02,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -20652,11 +20652,11 @@
   {
    "id": "k:7b24fb9b1a8c3069",
    "clave": "cotizacion_cliente.unidad.conexion",
-   "afirmacion": "las partidas que empiezan con «conexion» se cotizan en gl en 4 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «conexion» se cotizan en gl en 4 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -21794,11 +21794,11 @@
   {
    "id": "k:82a195c289ebdd5f",
    "clave": "cotizacion_cliente.rubro.muro_de_cerramiento_sur_hacia_la_calle_agustin_gomez",
-   "afirmacion": "el rubro «Muro de cerramiento Sur (hacia la calle Agustín Gómez)» aparece en 6 cotización(es) al cliente, en la posición 6/6/6/6/6/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Muro de cerramiento Sur (hacia la calle Agustín Gómez)» aparece en 6 cotización(es) al cliente, en la posición 6/6/6/6/6/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 5.5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -21896,11 +21896,11 @@
   {
    "id": "k:832d366f871f67db",
    "clave": "cotizacion_cliente.unidad.juntas",
-   "afirmacion": "las partidas que empiezan con «juntas» se cotizan en ml en 8 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «juntas» se cotizan en ml en 8 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 40.975,
    "unidad": "ml",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -21946,11 +21946,11 @@
   {
    "id": "k:838e581f39244846",
    "clave": "cotizacion_cliente.unidad.losa",
-   "afirmacion": "las partidas que empiezan con «losa» se cotizan en m en 4 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «losa» se cotizan en m en 4 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 7.15,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -22287,11 +22287,11 @@
   {
    "id": "k:8613f0e3e6566ff7",
    "clave": "cotizacion_cliente.unidad.armadura",
-   "afirmacion": "las partidas que empiezan con «armadura» se cotizan en kg en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «armadura» se cotizan en kg en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 446.5,
    "unidad": "kg",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -22670,11 +22670,11 @@
   {
    "id": "k:88477c4961d1ccb5",
    "clave": "cotizacion_cliente.cierre.iva",
-   "afirmacion": "en la planilla que se entrega al cliente, «IVA» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «IVA» se cotizó entre 0.105 y 0.21 según la obra (5 caso(s)) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.147,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -23268,11 +23268,11 @@
   {
    "id": "k:8ed2956bbd0a9a0d",
    "clave": "cotizacion_cliente.unidad.pintura",
-   "afirmacion": "las partidas que empiezan con «pintura» se cotizan en gl en 8 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «pintura» se cotizan en gl en 8 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -24019,11 +24019,11 @@
   {
    "id": "k:9113017283850e86",
    "clave": "cotizacion_cliente.unidad.montaje",
-   "afirmacion": "las partidas que empiezan con «montaje» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «montaje» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1.6667,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -24136,11 +24136,11 @@
   {
    "id": "k:928b5c2f9cb3f919",
    "clave": "cotizacion_cliente.rubro.pinturas",
-   "afirmacion": "el rubro «PINTURAS» aparece en 2 cotización(es) al cliente, en la posición 4/13 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «PINTURAS» aparece en 2 cotización(es) al cliente, en la posición 4/13 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 8.5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -24530,11 +24530,11 @@
   {
    "id": "k:96389b1696604de5",
    "clave": "cotizacion_cliente.rubro.varios",
-   "afirmacion": "el rubro «VARIOS» aparece en 22 cotización(es) al cliente, en la posición 3/5/5/6/6/6/6/12/12/12/12/12/5/4/10/5/4/3/3/5/5/5 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «VARIOS» aparece en 22 cotización(es) al cliente, en la posición 3/5/5/6/6/6/6/12/12/12/12/12/5/4/10/5/4/3/3/5/5/5 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 6.6364,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -25241,11 +25241,11 @@
   {
    "id": "k:9ace498fa38b6d1f",
    "clave": "cotizacion_cliente.unidad.instalacion",
-   "afirmacion": "las partidas que empiezan con «instalacion» se cotizan en gl en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «instalacion» se cotizan en gl en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -25337,11 +25337,11 @@
   {
    "id": "k:9b0bec3c08a1b2bf",
    "clave": "cotizacion_cliente.rubro.limpieza_y_retiro_de_herramientas",
-   "afirmacion": "el rubro «LIMPIEZA Y RETIRO DE HERRAMIENTAS» aparece en 5 cotización(es) al cliente, en la posición 4/5/5/4/5 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «LIMPIEZA Y RETIRO DE HERRAMIENTAS» aparece en 5 cotización(es) al cliente, en la posición 4/5/5/4/5 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4.6,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -25552,11 +25552,11 @@
   {
    "id": "k:9b87b4773388664e",
    "clave": "cotizacion_cliente.rubro.sub_total_3_4_5",
-   "afirmacion": "el rubro «SUB TOTAL ( 3 + 4 + 5 )» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «SUB TOTAL ( 3 + 4 + 5 )» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -26407,11 +26407,11 @@
   {
    "id": "k:a71b7f4aa08a7567",
    "clave": "cotizacion_cliente.unidad.ejecucion",
-   "afirmacion": "las partidas que empiezan con «ejecucion» se cotizan en m3 en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «ejecucion» se cotizan en m3 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.4343,
    "unidad": "m3",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -26556,11 +26556,11 @@
   {
    "id": "k:a75d3bfce8b6320a",
    "clave": "cotizacion_cliente.rubro.instalaciones_artefactos_y_griferia",
-   "afirmacion": "el rubro «INSTALACIONES, ARTEFACTOS Y GRIFERÍA» aparece en 3 cotización(es) al cliente, en la posición 4/4/4 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «INSTALACIONES, ARTEFACTOS Y GRIFERÍA» aparece en 3 cotización(es) al cliente, en la posición 4/4/4 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -26867,11 +26867,11 @@
   {
    "id": "k:a86327bd80de1912",
    "clave": "cotizacion_cliente.unidad.demarcacion",
-   "afirmacion": "las partidas que empiezan con «demarcacion» se cotizan en m2 en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «demarcacion» se cotizan en m2 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 603.2,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -27042,11 +27042,11 @@
   {
    "id": "k:aa1843a11d1b6696",
    "clave": "cotizacion_cliente.unidad.sector",
-   "afirmacion": "las partidas que empiezan con «sector» se cotizan en gl en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «sector» se cotizan en gl en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -27282,11 +27282,11 @@
   {
    "id": "k:ab0598ca34e45103",
    "clave": "cotizacion_cliente.alcance.validez_de_la_oferta",
-   "afirmacion": "«validez de la oferta» se declara por escrito en 10 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«validez de la oferta» se declara por escrito en 10 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "NOTA 2 VALIDEZ DE LA OFERTA 20 DIAS",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -27410,11 +27410,11 @@
   {
    "id": "k:ab30ee9bd9467f72",
    "clave": "cotizacion_cliente.rubro.costo_costo_1_2",
-   "afirmacion": "el rubro «COSTO COSTO ( 1 + 2 )» aparece en 2 cotización(es) al cliente, en la posición 3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «COSTO COSTO ( 1 + 2 )» aparece en 2 cotización(es) al cliente, en la posición 3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -28326,11 +28326,11 @@
   {
    "id": "k:b2e37a5975a2e0d1",
    "clave": "cotizacion_cliente.unidad.delimitacion",
-   "afirmacion": "las partidas que empiezan con «delimitacion» se cotizan en gl en 7 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «delimitacion» se cotizan en gl en 7 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -28461,11 +28461,11 @@
   {
    "id": "k:b5009b0009b07836",
    "clave": "cotizacion_cliente.rubro.desmontajes_y_demoliciones",
-   "afirmacion": "el rubro «DESMONTAJES Y DEMOLICIONES» aparece en 6 cotización(es) al cliente, en la posición 2/2/2/2/1/1 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «DESMONTAJES Y DEMOLICIONES» aparece en 6 cotización(es) al cliente, en la posición 2/2/2/2/1/1 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1.6667,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -29502,11 +29502,11 @@
   {
    "id": "k:bfcd557c45a7302c",
    "clave": "cotizacion_cliente.cierre.anticipo",
-   "afirmacion": "en la planilla que se entrega al cliente, «ANTICIPO» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «ANTICIPO» se cotizó 0.4 en 4 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.4,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -29745,11 +29745,11 @@
   {
    "id": "k:c13278d37938cc85",
    "clave": "cotizacion_cliente.unidad.demolicion",
-   "afirmacion": "las partidas que empiezan con «demolicion» se cotizan en m2 en 19 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «demolicion» se cotizan en m2 en 19 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 36.1537,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -29914,11 +29914,11 @@
   {
    "id": "k:c1add42927188500",
    "clave": "cotizacion_cliente.cierre.ingresos_brutos",
-   "afirmacion": "en la planilla que se entrega al cliente, «INGRESOS_BRUTOS» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «INGRESOS_BRUTOS» se cotizó 0.024 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.024,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -29960,11 +29960,11 @@
   {
    "id": "k:c1baa9dc618206e7",
    "clave": "cotizacion_cliente.rubro.total_costo",
-   "afirmacion": "el rubro «TOTAL COSTO» aparece en 2 cotización(es) al cliente, en la posición 1/1 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «TOTAL COSTO» aparece en 2 cotización(es) al cliente, en la posición 1/1 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -30188,11 +30188,11 @@
   {
    "id": "k:c2fa48773112ff69",
    "clave": "cotizacion_cliente.unidad.hormigon",
-   "afirmacion": "las partidas que empiezan con «hormigon» se cotizan en m en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «hormigon» se cotizan en m en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 19.6667,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -30289,11 +30289,11 @@
   {
    "id": "k:c3b7a7f496d4d87d",
    "clave": "cotizacion_cliente.rubro.cubierta_de_techo",
-   "afirmacion": "el rubro «Cubierta de techo» aparece en 6 cotización(es) al cliente, en la posición 4/4/4/4/4/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Cubierta de techo» aparece en 6 cotización(es) al cliente, en la posición 4/4/4/4/4/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3.6667,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -30683,11 +30683,11 @@
   {
    "id": "k:c5daff467c0b0b6a",
    "clave": "cotizacion_cliente.alcance.taller_propio",
-   "afirmacion": "«taller propio» se declara por escrito en 3 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«taller propio» se declara por escrito en 3 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "NOTA 3: SE ARMARA TODA LA ESTRUCTURA METALICA EN TALLER PROPIO Y SOLO SE REALIZARA EL MONTAJE EN OBRA. LAS PUERTAS DE LA EMPRESA ESTAN ABIERTAS PARA CUALQUIER INSPECCION QUE SE QUIERA REALIZAR",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -30731,11 +30731,11 @@
   {
    "id": "k:c63b64c64f254c23",
    "clave": "cotizacion_cliente.rubro.movimiento_de_suelos",
-   "afirmacion": "el rubro «MOVIMIENTO DE SUELOS» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «MOVIMIENTO DE SUELOS» aparece en 2 cotización(es) al cliente, en la posición 2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -30991,11 +30991,11 @@
   {
    "id": "k:c719d96a7d90e481",
    "clave": "cotizacion_cliente.rubro.emplacado_y_revestimientos",
-   "afirmacion": "el rubro «EMPLACADO Y REVESTIMIENTOS» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «EMPLACADO Y REVESTIMIENTOS» aparece en 2 cotización(es) al cliente, en la posición 4/4 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 4,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -31561,11 +31561,11 @@
   {
    "id": "k:ca62f4ed25615e13",
    "clave": "cotizacion_cliente.rubro.restauracion_de_vestuario",
-   "afirmacion": "el rubro «RESTAURACIÓN DE VESTUARIO» aparece en 3 cotización(es) al cliente, en la posición 3/3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «RESTAURACIÓN DE VESTUARIO» aparece en 3 cotización(es) al cliente, en la posición 3/3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -31607,11 +31607,11 @@
   {
    "id": "k:cade65b238dc331f",
    "clave": "cotizacion_cliente.unidad.mesada",
-   "afirmacion": "las partidas que empiezan con «mesada» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «mesada» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -31894,11 +31894,11 @@
   {
    "id": "k:cba8dfa6d5e6410f",
    "clave": "cotizacion_cliente.rubro.cielorraso",
-   "afirmacion": "el rubro «CIELORRASO» aparece en 5 cotización(es) al cliente, en la posición 11/11/11/11/11 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «CIELORRASO» aparece en 5 cotización(es) al cliente, en la posición 11/11/11/11/11 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 11,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -32051,11 +32051,11 @@
   {
    "id": "k:ccfb5dd5a9ab189a",
    "clave": "cotizacion_cliente.unidad.espejos",
-   "afirmacion": "las partidas que empiezan con «espejos» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «espejos» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1.3333,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -32229,11 +32229,11 @@
   {
    "id": "k:d0ce9b0bff4bb590",
    "clave": "cotizacion_cliente.rubro.cerramiento_divisorio_metalico_hacia_deposito",
-   "afirmacion": "el rubro «Cerramiento divisorio metálico (hacia deposito)» aparece en 5 cotización(es) al cliente, en la posición 8/8/8/8/8 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Cerramiento divisorio metálico (hacia deposito)» aparece en 5 cotización(es) al cliente, en la posición 8/8/8/8/8 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 8,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -32547,11 +32547,11 @@
   {
    "id": "k:d349a0c4c3f5745a",
    "clave": "cotizacion_cliente.rubro.demoliciones_todo_residuo_generado_debera_ser_gestionado_y_r",
-   "afirmacion": "el rubro «DEMOLICIONES (Todo residuo generado deberá ser gestionado y retirado por el proveedor)» aparece en 3 cotización(es) al cliente, en la posición 2/2/2 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «DEMOLICIONES (Todo residuo generado deberá ser gestionado y retirado por el proveedor)» aparece en 3 cotización(es) al cliente, en la posición 2/2/2 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 2,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -32857,11 +32857,11 @@
   {
    "id": "k:d580321bfa7d5766",
    "clave": "cotizacion_cliente.unidad.excavaciones",
-   "afirmacion": "las partidas que empiezan con «excavaciones» se cotizan en m en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «excavaciones» se cotizan en m en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 16.1,
    "unidad": "m",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -33440,11 +33440,11 @@
   {
    "id": "k:da2ab1a64d434935",
    "clave": "cotizacion_cliente.unidad.excavacion",
-   "afirmacion": "las partidas que empiezan con «excavacion» se cotizan en m3 en 14 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «excavacion» se cotizan en m3 en 14 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 36.0146,
    "unidad": "m3",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -33971,11 +33971,11 @@
   {
    "id": "k:dd5e40a25a83e27e",
    "clave": "cotizacion_cliente.cierre.costo_financiero",
-   "afirmacion": "en la planilla que se entrega al cliente, «COSTO_FINANCIERO» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «COSTO_FINANCIERO» se cotizó entre 0.08 y 0.15 según la obra (4 caso(s)) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.0975,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -34936,11 +34936,11 @@
   {
    "id": "k:e100b58a2556cad1",
    "clave": "cotizacion_cliente.unidad.piso",
-   "afirmacion": "las partidas que empiezan con «piso» se cotizan en m2 en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «piso» se cotizan en m2 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 29.3333,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -35581,11 +35581,11 @@
   {
    "id": "k:e3740c66fc2bac54",
    "clave": "cotizacion_cliente.alcance.condicion_de_pago",
-   "afirmacion": "«condicion de pago» se declara por escrito en 13 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«condicion de pago» se declara por escrito en 13 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "CONDICION DE PAGO ANTICIPO FINANCIERO 30%, SALDO RESTANTE CON CERTIFICACION QUINCENAL Y PAGOS A 60 DIAS FECHA FACTURA",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -36526,11 +36526,11 @@
   {
    "id": "k:ec298a48b8e2040d",
    "clave": "cotizacion_cliente.unidad.puerta",
-   "afirmacion": "las partidas que empiezan con «puerta» se cotizan en un en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «puerta» se cotizan en un en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1.3333,
    "unidad": "un",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -37179,11 +37179,11 @@
   {
    "id": "k:ef67fd26dce5c766",
    "clave": "cotizacion_cliente.unidad.escarificado",
-   "afirmacion": "las partidas que empiezan con «escarificado» se cotizan en m2 en 3 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «escarificado» se cotizan en m2 en 3 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 29.3333,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -37277,11 +37277,11 @@
   {
    "id": "k:f0688e54b4f8ad1b",
    "clave": "cotizacion_cliente.alcance.computo_informativo",
-   "afirmacion": "«computo informativo» se declara por escrito en 5 cotización(es) al cliente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "«computo informativo» se declara por escrito en 5 cotización(es) al cliente — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": "NOTA 2: LOS COMPUTOS MÉTRICOS SON A TITULO INFORMATIVO. COTIZAR TAL COMO SE PRESENTA LA PLANILLA Y LAS DIFERENCIAS ENCONTRADAS DEBERAN EXPRESARSE AL FINAL DE LA MISMA.",
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -37543,11 +37543,11 @@
   {
    "id": "k:f2c90d5942da1459",
    "clave": "cotizacion_cliente.rubro.muro_de_cerramiento_lateral_este_hacia_estacionamiento",
-   "afirmacion": "el rubro «Muro de cerramiento lateral Este (hacia estacionamiento)» aparece en 6 cotización(es) al cliente, en la posición 7/7/7/7/7/4 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «Muro de cerramiento lateral Este (hacia estacionamiento)» aparece en 6 cotización(es) al cliente, en la posición 7/7/7/7/7/4 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 6.5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -37828,11 +37828,11 @@
   {
    "id": "k:f388fe93ce8bb337",
    "clave": "cotizacion_cliente.unidad.desmontaje",
-   "afirmacion": "las partidas que empiezan con «desmontaje» se cotizan en m2 en 26 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «desmontaje» se cotizan en m2 en 26 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 136.0462,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -38017,11 +38017,11 @@
   {
    "id": "k:f3f47c9b13e0052e",
    "clave": "cotizacion_cliente.unidad.fabricacion",
-   "afirmacion": "las partidas que empiezan con «fabricacion» se cotizan en kg en 4 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «fabricacion» se cotizan en kg en 4 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 242.82,
    "unidad": "kg",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -38087,11 +38087,11 @@
   {
    "id": "k:f51976bfb6c3a6e4",
    "clave": "cotizacion_cliente.unidad.remocion",
-   "afirmacion": "las partidas que empiezan con «remocion» se cotizan en m2 en 5 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «remocion» se cotizan en m2 en 5 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 101.05,
    "unidad": "m2",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -38439,11 +38439,11 @@
   {
    "id": "k:f87c1ca92b0e1755",
    "clave": "cotizacion_cliente.unidad.calculo",
-   "afirmacion": "las partidas que empiezan con «calculo» se cotizan en gl en 5 caso(s) — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "las partidas que empiezan con «calculo» se cotizan en gl en 5 caso(s) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 1,
    "unidad": "gl",
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -38639,11 +38639,11 @@
   {
    "id": "k:f9228b7ef127665b",
    "clave": "cotizacion_cliente.cierre.beneficio",
-   "afirmacion": "en la planilla que se entrega al cliente, «BENEFICIO» se cotiza como coeficiente — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "en la planilla que se entrega al cliente, «BENEFICIO» se cotizó entre 0.155 y 0.3 según la obra (5 caso(s)) — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 0.196,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -38841,11 +38841,11 @@
   {
    "id": "k:fa00b8a079e7b04d",
    "clave": "cotizacion_cliente.rubro.singeria",
-   "afirmacion": "el rubro «SINGERIA» aparece en 2 cotización(es) al cliente, en la posición 5/5 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «SINGERIA» aparece en 2 cotización(es) al cliente, en la posición 5/5 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",
@@ -39063,11 +39063,11 @@
   {
    "id": "k:fd09f68c295b918f",
    "clave": "cotizacion_cliente.rubro.obra_civil",
-   "afirmacion": "el rubro «OBRA CIVIL» aparece en 4 cotización(es) al cliente, en la posición 4/4/3/3 — práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "afirmacion": "el rubro «OBRA CIVIL» aparece en 4 cotización(es) al cliente, en la posición 4/4/3/3 — práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "procedencia": "PRACTICA_HISTORICA_ECSAS",
    "valor": 3.5,
    "unidad": null,
-   "condicion": "práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto",
+   "condicion": "práctica observada en las planillas de cotización que ECSAS entrega al cliente: describe cómo se viene cotizando, NO que sea correcto",
    "jurisdiccion": null,
    "vigencia": null,
    "area": "practica-historica-de-cotizacion",

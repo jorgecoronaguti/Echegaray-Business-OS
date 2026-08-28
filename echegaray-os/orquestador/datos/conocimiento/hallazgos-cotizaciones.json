@@ -1,5 +1,5 @@
 {
- "generado": "2026-08-28T19:06:29.144Z",
+ "generado": "2026-08-28T20:06:59.534Z",
  "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
  "resumen": {
   "total": 500,
@@ -254,6 +254,70 @@
     ]
    }
   ]
+ },
+ "corrida": {
+  "candidatas": 114,
+  "plantillaInterna": 64,
+  "formatoDelCliente": 38,
+  "formatoDelClientePorClase": {
+   "COTIZACION": 36,
+   "COMPUTO": 2
+  },
+  "yaEstudiadas": 0,
+  "noLeidas": 12,
+  "porQueNoSeLeyeron": [
+   {
+    "archivo": "Computos.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "computo de materiales.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "RECOTIZACIÓN ARCOR 23050969 — Reparaciones y mantenimiento",
+    "porQue": "no se pudo bajar: es un Google Sheet nativo, no un archivo: habría que exportarlo a xlsx y este circuito todavía no lo hace"
+   },
+   {
+    "archivo": "PRESUPUESTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: la fila 7 re"
+   },
+   {
+    "archivo": "Computo y Presupuesto de materiales.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 2 pestaña(s) tiene encabezado de cotización — «Real»: ninguna de la"
+   },
+   {
+    "archivo": "GASTO DE MANO DE OBRA .xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO DE MATERIALES.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "Computo de materiales .xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 4 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO DE MATERIALES - REAL.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "NUEVO GALPON - COMPUTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "computo.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   }
+  ],
+  "practicasPlantillaInterna": 190,
+  "practicasFormatoDelCliente": 111,
+  "cierresSinCoeficiente": 97
  },
  "hallazgos": [
   {

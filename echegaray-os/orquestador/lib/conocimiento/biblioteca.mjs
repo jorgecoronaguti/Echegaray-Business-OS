@@ -249,10 +249,56 @@ export function cambioDeVersion(bib, { fuenteId, hash }) {
  * Reconstruir cada entrada con `conocimiento()` es lo que la vuelve estructural: lo que no puede
  * construirse tampoco puede guardarse.
  */
+/**
+ * CUÁNTO LLEGÓ A APROVECHARSE UN DOCUMENTO. Es una ESCALERA, no un conjunto de etiquetas.
+ *
+ * `NO_LEIDO` va abajo de todo a propósito: significa «lo tenemos y no sacamos nada». Cualquier otra
+ * etapa aportó algo más.
+ */
+export const AVANCE_DE_ETAPA = Object.freeze({
+  [ETAPA.NO_LEIDO]: 0, [ETAPA.ADQUIRIDO]: 1, [ETAPA.PARSEADO]: 2,
+  [ETAPA.CLASIFICADO]: 3, [ETAPA.EXTRAIDO]: 4, [ETAPA.ESTUDIADO]: 5,
+})
+
+/**
+ * CUÁL DE LAS DOS FICHAS DEL MISMO DOCUMENTO QUEDA. PURA.
+ *
+ * ═══ POR QUÉ ESTO NO PUEDE SER «GANA LA VIEJA» ═══
+ *
+ * Para un CONOCIMIENTO, que gane el que ya estaba es la regla correcta: nada se pisa en silencio.
+ * Para la ficha de un documento es exactamente lo contrario, y costó 33 afirmaciones falsas.
+ *
+ * El `id` sale del hash del CONTENIDO. Cuando el circuito aprende a leer un formato que antes no
+ * sabía leer, el archivo no cambia: mismo hash, mismo id — y la ficha vieja, la que dice
+ * «NO_LEIDO: no es la plantilla de cotización interna», se quedaba para siempre. La biblioteca
+ * terminaba afirmando que no pudo leer los 33 archivos de los que sacó 97 prácticas.
+ *
+ * La ficha NO es una afirmación sobre el mundo: es el registro de cuánto llegó a aprovecharse ese
+ * contenido. Ese registro AVANZA. Y no retrocede: si una corrida nueva falla sobre un contenido que
+ * antes se estudió, eso es una regresión del código, no un dato nuevo del documento — se conserva
+ * lo mejor logrado y la corrida lo grita por su cuenta.
+ */
+export function fichaDeDocumento(vieja, nueva) {
+  if (!vieja) return nueva
+  if (!nueva) return vieja
+  const av = AVANCE_DE_ETAPA[vieja.etapa] ?? 0
+  const an = AVANCE_DE_ETAPA[nueva.etapa] ?? 0
+  if (an < av) return vieja
+  // A igual avance gana la nueva: trae la ruta, el formato y la fecha de esta corrida, y el motivo
+  // de un NO_LEIDO puede haber mejorado aunque el resultado siga siendo el mismo.
+  return nueva
+}
+
 export function incorporar(bib, { documentos = [], conocimientos = [], huecos = [] } = {}) {
   const porId = (lista, nuevos) => {
     const m = new Map(lista.map((x) => [x.id, x]))
     for (const n of nuevos) if (!m.has(n.id)) m.set(n.id, n)
+    return [...m.values()]
+  }
+  // La ficha de un DOCUMENTO no es un conocimiento: no se preserva, AVANZA. Ver `fichaDeDocumento`.
+  const fichas = (lista, nuevos) => {
+    const m = new Map(lista.map((x) => [x.id, x]))
+    for (const n of nuevos) m.set(n.id, fichaDeDocumento(m.get(n.id) ?? null, n))
     return [...m.values()]
   }
   const previos = bib.conocimientos ?? []
@@ -271,7 +317,7 @@ export function incorporar(bib, { documentos = [], conocimientos = [], huecos = 
   })
   return {
     ...bib,
-    documentos: porId(bib.documentos ?? [], documentos.map((d) => documento(d))),
+    documentos: fichas(bib.documentos ?? [], documentos.map((d) => documento(d))),
     conocimientos: porId(previos, revisados),
     huecos: porId(bib.huecos ?? [], huecos.map((h) => hueco(h))),
   }

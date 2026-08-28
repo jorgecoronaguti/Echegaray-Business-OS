@@ -193,6 +193,7 @@ async function main() {
     // entre corridas y los controles no, porque un control no puede afirmar nada sobre una planilla
     // que esta vez no abrió. Por eso viaja con `sobre` y `salteadas` al lado.
     controles: bloqueDeControles(r),
+    corrida: bloqueDeCorrida(r, { candidatas: todas.length }),
     hallazgos: fusionados,
   }, null, 1)}\n`)
   console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(biblioteca))}`)
@@ -206,6 +207,33 @@ async function main() {
  * 14 × 237 renglones y el dato que decide es CUÁNTAS no se pudieron mirar y POR QUÉ, no cuál fue la
  * número 143.
  */
+/**
+ * LO QUE LA CORRIDA LEYÓ, EN EL DISCO Y NO EN LA PANTALLA. PURA.
+ *
+ * ═══ POR QUÉ ESTO NO PODÍA SEGUIR VIVIENDO EN `stdout` ═══
+ *
+ * «114 candidatas · 64 con la plantilla interna · 38 en formato del cliente · 12 no leídas» era el
+ * respaldo de todo lo que la rama afirmaba, y sólo existía en la terminal de quien la corrió. Un
+ * número que no está en ningún archivo no lo puede verificar un tercero: es exactamente la clase de
+ * afirmación que este repo trata como incumplida.
+ *
+ * Va con el detalle de las NO LEÍDAS, que es el dato que impide leer «64 + 38» como «leí todo».
+ */
+export const bloqueDeCorrida = (r, { candidatas = null } = {}) => ({
+  candidatas,
+  plantillaInterna: r.cotizaciones.length,
+  formatoDelCliente: r.cliente.length,
+  formatoDelClientePorClase: r.cliente.reduce((a, c) => { a[c.clase] = (a[c.clase] ?? 0) + 1; return a }, {}),
+  yaEstudiadas: r.salteados.length,
+  noLeidas: r.noLeidos.length,
+  // Cada una con su motivo: sin esto, «12 no leídas» no permite saber si es un formato que falta
+  // soportar o un archivo roto.
+  porQueNoSeLeyeron: r.noLeidos.map((n) => ({ archivo: n.nombre, porQue: String(n.porQue ?? '').slice(0, 220) })),
+  practicasPlantillaInterna: r.practicas.length,
+  practicasFormatoDelCliente: r.practicasCliente.practicas.length,
+  cierresSinCoeficiente: r.practicasCliente.sinCoeficiente.length,
+})
+
 const bloqueDeControles = (r) => ({
   sobre: r.cotizaciones.length,
   salteadas: r.salteados.length,

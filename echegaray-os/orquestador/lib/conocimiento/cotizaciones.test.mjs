@@ -366,7 +366,10 @@ const PLANILLA_DEL_CLIENTE = [
   ['', 1.1, 'Traslado de equipos a obra', 'Gl', 1, null, 1000000, 1000000, 1000000],
   ['', 2, 'ESTRUCTURAS METALICAS', '', '', '', '', '', '', 4000000],
   ['', 2.1, 'Provisión y montaje de columnas C140', 'kg', 400, 7500, 2500, 10000, 4000000],
-  [], ['', '', '', 'Subtotal', '', '', '', '', 5000000],
+  // El 0,994 NO es decorativo: es el redondeo real que traen estas planillas, y es lo que hacía que
+  // `coeficienteDe()` publicara «SUBTOTAL se cotiza como coeficiente». Sin él, la fila no tiene
+  // ningún número entre 0 y 1 y el test pasa con y sin el arreglo — o sea, no prueba nada.
+  [], ['', '', '', 'Subtotal', '', '', '', 0.994, 5000000],
   ['', '', '', '', '', '', '', 'Gastos Generales', 0.15, 750000],
   ['', '', '', '', '', '', '', 'Beneficio', 0.18, 900000],
   ['', 'NOTA 1:', ' EL PRECIO FINAL NO INCLUYE IVA.'],
