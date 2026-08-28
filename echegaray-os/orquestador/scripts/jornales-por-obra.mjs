@@ -22,7 +22,7 @@ import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
-import { detectarBloques, letraColumna, filaSheet, colSheet } from '../lib/jornales-estructura.mjs'
+import { detectarBloques, letraColumna, filaSheet, colSheet, trabajadoresDeBloque } from '../lib/jornales-estructura.mjs'
 import { costoPorObra } from '../lib/jornales-por-obra.mjs'
 import { auditarResumenPorCliente } from '../lib/jornales-resumen.mjs'
 import { cargarMapaClientes } from '../lib/cliente-alias.mjs'
@@ -88,6 +88,17 @@ function bloquesDeLaVentana(grid, { desde, hasta, anio }) {
       // Las fechas del bloque que caen DENTRO de la ventana. Si no son todas, el testigo del bloque
       // —que suma la quincena entera— no es comparable contra lo que el OS leyó de la ventana.
       fechas: (b.fechas || []).filter((f) => f.iso >= desde && f.iso <= hasta),
+      // …PERO UN DÍA SIN UNA SOLA HORA ESCRITA NO ROMPE LA COMPARACIÓN: el «TOTAL MO» lo suma como
+      // cero igual. Sin esto, la quincena EN CURSO nunca puede dar ✓ —el bloque declara hasta el 31
+      // y el dueño pregunta al 28— y el único número que el OS no produjo se calla justo en el caso
+      // que se consulta todos los días.
+      afueraConCarga: (b.fechas || [])
+        .filter((f) => f.iso < desde || f.iso > hasta)
+        .filter((f) => trabajadoresDeBloque(grid, b, { hastaFila: bloques[k + 1]?.fila ?? grid.filas.length })
+          .some((tr) => {
+            const c = grid.filas[tr.fila]?.[f.col]
+            return c != null && (c.formula != null || c.valor != null)
+          })),
     }))
     .filter(({ fechas }) => fechas.length > 0)
 }
@@ -167,12 +178,12 @@ async function main() {
   const mapa = await cargarMapaClientes({ fuente: 'JORNALES' })
   const r = costoPorObra(grid, { desde: opt.desde, hasta: opt.hasta, mapa, factorCargas: opt.cargas, anio: opt.anio })
   const enVentana = bloquesDeLaVentana(grid, opt)
-  const testigos = enVentana.map(({ bloque, hastaFila, fechas }) => ({
+  const testigos = enVentana.map(({ bloque, hastaFila, afueraConCarga }) => ({
     bloque: bloque.fila1,
     testigo: testigoTotalMo(grid, bloque.fila + 1, hastaFila),
     // El testigo suma el bloque ENTERO. Sólo es comparable si la ventana lo cubre entero: con una
     // ventana parcial la diferencia marca ✗ sin que haya un solo defecto.
-    cubierto: (fechas?.length ?? 0) === (bloque.fechas?.length ?? 0),
+    cubierto: (afueraConCarga?.length ?? 0) === 0,
   }))
   const auditorias = enVentana.map(({ bloque, hastaFila, bloques }) => ({
     bloque: bloque.fila1,
