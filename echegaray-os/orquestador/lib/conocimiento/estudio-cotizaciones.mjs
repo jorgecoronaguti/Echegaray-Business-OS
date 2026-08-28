@@ -40,13 +40,27 @@ export const CARPETAS_GENERICAS = Object.freeze([
  * cotizaciones — o sea, UNA obra, y toda práctica habría quedado en madurez A para siempre.
  */
 export function obraDe(ruta = '') {
-  const partes = String(ruta).split('/').filter(Boolean).slice(0, -1)
-  const utiles = partes.filter((x) => !CARPETAS_GENERICAS.includes(x))
-  if (!utiles.length) return partes[partes.length - 1] ?? String(ruta)
-  const cliente = utiles[0]
-  const carpeta = utiles[utiles.length - 1]
+  const partes = carpetasUtiles(ruta)
+  if (!partes.utiles.length) return partes.todas[partes.todas.length - 1] ?? String(ruta)
+  const cliente = partes.utiles[0]
+  const carpeta = partes.utiles[partes.utiles.length - 1]
   return carpeta === cliente ? cliente : `${cliente} · ${carpeta}`
 }
+
+const carpetasUtiles = (ruta) => {
+  const todas = String(ruta).split('/').filter(Boolean).slice(0, -1)
+  return { todas, utiles: todas.filter((x) => !CARPETAS_GENERICAS.includes(x)) }
+}
+
+/**
+ * EL CLIENTE QUE NOMBRA ESTA RUTA, o `null` si la ruta no lo dice. PURA.
+ *
+ * Es la PRIMERA carpeta con nombre propio: en `administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN
+ * JUAN/NUEVA CALLE/x.xlsm` el cliente es ARCOR y la obra es NUEVA CALLE. Devuelve `null` en vez de
+ * quedarse con el cajón del archivo: un dataset que dice que el cliente se llama «PRESUPUESTOS -
+ * CLIENTES» es peor que uno que declara el hueco.
+ */
+export const clienteDe = (ruta = '') => carpetasUtiles(ruta).utiles[0] ?? null
 
 /** Estudia UN archivo. Devuelve la cotización leída, o el motivo por el que no se pudo. */
 export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, mime = null, modificado = null }) {
