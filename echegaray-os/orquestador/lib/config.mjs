@@ -28,6 +28,13 @@ loadEnvLocalInto(process.env, path.join(APP_DIR, '.env.local'))
 // `loadEnvLocalInto` NO pisa lo que ya está: en la VM el EnvironmentFile de systemd sigue mandando.
 loadEnvLocalInto(process.env, process.env.ORQ_ENV_FILE
   || path.join(os.homedir(), '.config', 'echegaray-orq', 'worker.env'))
+// Y la credencial del modelo, que vive en su PROPIO EnvironmentFile y que hasta ahora sólo veían
+// las units de systemd. MEDIDO (27/08): un script corrido desde un worktree —el circuito XSAS
+// investigando un dato técnico en internet— moría con «anthropic: sin credencial» aunque la
+// credencial estuviera en la VM, por el mismo agujero que este bloque ya había cerrado para
+// DATABASE_URL. No pisa lo que ya está: en la VM el EnvironmentFile de systemd sigue mandando.
+loadEnvLocalInto(process.env, process.env.ORQ_ANTHROPIC_ENV_FILE
+  || path.join(os.homedir(), '.config', 'echegaray-orq', 'anthropic.env'))
 
 const bool = (def) =>
   z.preprocess((v) => (v === undefined ? def : /^(1|true|yes|on)$/i.test(String(v))), z.boolean())
