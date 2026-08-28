@@ -54,11 +54,22 @@ const AÑO = Number(process.env.ORQ_CF_ANIO || 2026)
  * vista lo DICE en vez de referenciar una celda inventada — un ancla mal apuntada es un cuadro entero
  * mintiendo con cara de correcto.
  */
-async function refsDeCaja(google) {
+async function refsDeCaja(google, hojas) {
   const nombres = await google.getNamedRanges(ID).catch(() => [])
   const hay = (n) => (nombres.some((x) => x.name === n) ? n : null)
   const refs = { saldo: hay(N_CAJA.total), fecha: hay(N_CAJA.fecha), minima: hay(DESDE_CAJA.minima) }
   for (const [k, v] of Object.entries(refs)) if (!v) console.warn(`  ⚠ falta el rango con nombre de ${k}: la vista lo va a declarar vacío`)
+  // EL TÍTULO REAL DE LA PESTAÑA DE CAJA, no el que uno cree que tiene. Lo invertido en Balanz NO tiene
+  // rango con nombre —CAJA no publica ninguno— y hasta que lo tenga las vistas lo suman por RÓTULO
+  // sobre las columnas de CAJA (ver `cash-flow-invertido.mjs`), así que necesitan saber cómo se llama
+  // la hoja. Se resuelve igual que en `cash-flow-rehacer`: exacto primero y por prefijo después.
+  // Si no aparece, se declara null y la tarjeta DICE que no pudo leerlo — nunca publica un cero.
+  try {
+    refs.caja = hallarPestana(hojas, 'Caja').title
+  } catch (e) {
+    refs.caja = null
+    console.warn(`  ⚠ no encontré la pestaña de Caja (${e.message}): la tarjeta de liquidez total va a decir que no pudo leer lo invertido`)
+  }
   return refs
 }
 
@@ -363,8 +374,9 @@ async function cuadrarContraCobranzas(google, pestana) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const refs = await refsDeCaja(google)
-  console.log(`Ancla de saldo: ${refs.saldo ?? '⚠ sin rango con nombre'} · piso: ${refs.minima ?? '(sin caja mínima)'}`)
+  const refs = await refsDeCaja(google, await google.getSheetMeta(ID))
+  console.log(`Ancla de saldo: ${refs.saldo ?? '⚠ sin rango con nombre'} · piso: ${refs.minima ?? '(sin caja mínima)'}`
+    + ` · invertido: ${refs.caja ? `por rótulo sobre '${refs.caja}'` : '⚠ sin pestaña de Caja'}`)
 
   const hoy = new Date()
   // LAS DOS GRILLAS SE ARMAN ANTES DE ESCRIBIR NADA —son puras— PORQUE LA GUARDA MIRA SU GEOMETRÍA.

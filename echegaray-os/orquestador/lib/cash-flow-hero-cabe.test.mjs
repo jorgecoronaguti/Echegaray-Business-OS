@@ -9,7 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { auditarHero, anchoDeSlot, anchoEnPx, PADDING_CELDA, IMPORTE_MAS_LARGO } from './cash-flow-hero-cabe.mjs'
 import { ANCHOS } from './cash-flow-piel-matriz.mjs'
-import { grillaMeses, ROTULOS_HERO } from './cash-flow-meses.mjs'
+import { grillaMeses } from './cash-flow-meses.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { FILA } from './cash-flow-matriz.mjs'
 
@@ -24,19 +24,22 @@ const anchoCol = (cols) => (c) => {
 const CUERPO = { rotulo: 9, valor: 12, nota: 9 }
 
 /**
- * Las piezas del titular tal como quedan en la grilla, con el importe más largo en lugar de la
- * fórmula. Una fórmula no se puede medir: lo que se mide es lo que Sheets va a mostrar.
+ * Las piezas del titular, con el importe más largo en lugar de la cifra.
+ *
+ * ═══ POR QUÉ SALEN DE `meta.hero.piezas` Y NO DE RASPAR LA GRILLA (28/08/2026) ═══
+ *
+ * Una fórmula no se puede medir: lo que se mide es lo que Sheets va a MOSTRAR. La versión anterior
+ * raspaba las celdas y SALTEABA toda glosa que empezara con `=`, así que las tres glosas que llevan un
+ * importe adentro —las que pueden crecer— eran justamente las que no se medían. Ahora el generador
+ * DECLARA el peor caso ya renderizado de cada pieza y el auditor lo mide; el que no puede declarar una
+ * muestra honesta (una glosa que termina en un nombre de proveedor, sin tope conocido) no la declara,
+ * y así se ve qué queda sin medir en vez de creer que se midió todo.
  */
 function piezasDe(meta, filas, { importe = IMPORTE_MAS_LARGO } = {}) {
-  const texto = (fila, col) => String((filas[fila - 1] || [])[col] ?? '')
-  const out = []
-  meta.hero.slots.forEach((s, i) => {
-    out.push({ slot: i, pieza: 'rotulo', texto: texto(meta.hero.rotulo, s), tamano: CUERPO.rotulo, negrita: true })
-    out.push({ slot: i, pieza: 'valor', texto: importe, tamano: CUERPO.valor, negrita: true })
-    const glosa = texto(meta.hero.nota, s)
-    // Las glosas que son fórmula se miden por su parte literal más larga; las de texto, enteras.
-    if (glosa && !glosa.startsWith('=')) out.push({ slot: i, pieza: 'nota', texto: glosa, tamano: CUERPO.nota })
-  })
+  const out = meta.hero.slots.map((_, i) => ({ slot: i, pieza: 'valor', texto: importe, tamano: CUERPO.valor, negrita: true }))
+  for (const p of meta.hero.piezas ?? []) {
+    out.push({ ...p, tamano: p.pieza === 'rotulo' ? CUERPO.rotulo : CUERPO.nota, negrita: p.pieza === 'rotulo' })
+  }
   return out
 }
 
@@ -73,7 +76,7 @@ test('EL CONTROL PUEDE DAR ROJO: un slot angosto lo pone en rojo con los píxele
 })
 
 test('EL MENSUAL: el titular entero entra, con un importe de diez dígitos y el paréntesis del negativo', () => {
-  const { filas, meta } = grillaMeses({ anio: 2026, refs: { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO' } })
+  const { filas, meta } = grillaMeses({ anio: 2026, refs: { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', caja: 'CAJA' } })
   const cols = meta.footprint.cols
   const r = auditarHero({ slots: meta.hero.slots, cols, anchoCol: anchoCol(cols), piezas: piezasDe(meta, filas) })
   assert.equal(r.ok, true, JSON.stringify(r.desbordes, null, 2))
@@ -91,7 +94,7 @@ test('EL MENSUAL: el titular entero entra, con un importe de diez dígitos y el 
 test('EL SEMANAL: el mismo titular, la misma medida — las dos vistas comparten la geometría', () => {
   const { filas, meta } = grillaSemanal({
     hoy: new Date('2026-08-13T00:00:00Z'), anio: 2026,
-    refs: { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' },
+    refs: { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA', caja: 'CAJA' },
   })
   const cols = meta.footprint.cols
   const r = auditarHero({ slots: meta.hero.slots, cols, anchoCol: anchoCol(cols), piezas: piezasDe(meta, filas) })
@@ -102,12 +105,30 @@ test('EL SEMANAL: el mismo titular, la misma medida — las dos vistas comparten
   }
 })
 
-test('los rótulos del titular del Mensual también se miden: uno largo empujaría al de al lado', () => {
+test('EL SLOT MÁS ANGOSTO MANDA: la glosa de la liquidez total se mide contra sus 294 px', () => {
   const cols = 14
-  const piezas = Object.entries(ROTULOS_HERO).map(([k, texto], i) => ({
-    slot: i % 4, pieza: k, texto, tamano: /Nota$/.test(k) ? CUERPO.nota : CUERPO.rotulo, negrita: !/Nota$/.test(k),
-  }))
-  assert.equal(auditarHero({ slots: [0, 3, 7, 11], cols, anchoCol: anchoCol(cols), piezas }).ok, true)
-  // El slot más angosto es el último (L+M+N = 300 px menos el padding): es el que manda.
+  // El último slot (L+M+N = 300 px menos el padding) es el más chico de la pestaña, y es el que le
+  // tocó a LIQUIDEZ TOTAL AL 31/12, cuya glosa lleva un importe adentro ("incluye $ … en Balanz").
   assert.equal(anchoDeSlot([0, 3, 7, 11], 3, anchoCol(cols), cols), 294)
+  const { meta } = grillaMeses({ anio: 2026, refs: { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', caja: 'CAJA' } })
+  const nota = meta.hero.piezas.find((p) => p.slot === 3 && p.pieza === 'nota')
+  assert.ok(nota, 'el generador dejó de declarar la glosa de la última tarjeta: sin muestra no se mide')
+  const r = auditarHero({
+    slots: [0, 3, 7, 11],
+    cols,
+    anchoCol: anchoCol(cols),
+    piezas: [{ ...nota, tamano: CUERPO.nota }],
+  })
+  assert.equal(r.ok, true, JSON.stringify(r.desbordes))
+
+  // Y EL CONTROL PUEDE DAR ROJO: la misma glosa con la palabra que NO entró. "todavía por pagar" mide
+  // 377 px contra los 374 del slot de SALE EN EL AÑO — se probó y se descartó por eso, no por gusto.
+  const largo = auditarHero({
+    slots: [0, 3, 7, 11],
+    cols,
+    anchoCol: anchoCol(cols),
+    piezas: [{ slot: 1, pieza: 'nota', texto: '$ 1.234.567.890 ya pagado · $ 1.234.567.890 todavía por pagar', tamano: CUERPO.nota }],
+  })
+  assert.equal(largo.ok, false, 'un control que no puede decir que no es una constante disfrazada')
+  assert.ok(largo.desbordes[0].sobraPx > 0, JSON.stringify(largo.desbordes[0]))
 })
