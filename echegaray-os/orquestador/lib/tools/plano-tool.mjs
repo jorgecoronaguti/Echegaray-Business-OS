@@ -12,8 +12,17 @@
 // lámina y el texto del plano de donde salió cada cantidad— queda en `cotizacion_partida` y en
 // `public.computo`, que es donde se puede auditar y desde donde después se adjudica la obra.
 //
-// `drive.read` y no `drive.write`: lee planos de Drive y escribe en Postgres una cotización en
-// BORRADOR. No toca Drive, no toca el Sheet y no crea ninguna obra.
+// ═══ `os.write` — LA CAPABILITY DESCRIBE EL EFECTO, NO EL ORIGEN (27/08/2026) ═══
+//
+// Decía `drive.read` y el comentario de al lado admitía, en la misma frase, que «escribe en Postgres
+// una cotización en BORRADOR». La capability describía DE DÓNDE LEE en vez de QUÉ DEJA, y por eso
+// las dos cerraduras de `xsas-permisos.mjs` no se enteraban y la escritura no quedaba firmada:
+// `escribeAfuera('drive.read')` es false. Medido contra el gateway vivo: un `jefe_obra` ejecutó esta
+// tool y recibió la cascada comercial completa.
+//
+// Un borrador que queda en `public.cotizaciones` + `cotizacion_partida` + `public.computo` ES una
+// escritura, aunque nadie lo haya adjudicado. Sigue sin tocar Drive, sin tocar el Sheet y sin crear
+// ninguna obra — eso no la vuelve de lectura.
 
 import { query } from '../db.mjs'
 import { correr } from '../plano/pipeline.mjs'
@@ -42,7 +51,7 @@ export function resumen({ r, cot, cascada, numero }) {
 export function planoTools(google) {
   return {
     'plano.cotizar': {
-      capability: 'drive.read',
+      capability: 'os.write',
       account: 'ecsas',
       schema: {
         name: 'analizar_planos_y_cotizar',

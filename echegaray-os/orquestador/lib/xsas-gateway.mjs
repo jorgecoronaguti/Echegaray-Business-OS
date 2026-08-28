@@ -34,6 +34,7 @@
 
 import { CAPACIDAD } from './ia/capacidad.mjs'
 import { elegirCapacidad, nivelDeRuteo, NIVEL } from './elegir-capacidad.mjs'
+import { filtrarPorVisibilidad } from './xsas-visibilidad.mjs'
 import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
@@ -41,6 +42,7 @@ import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
+  ordenarPorAfinidad,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
 import { completarArgumentos } from './xsas-argumentos.mjs'
@@ -145,19 +147,41 @@ async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t
   if (!r.ok) {
     return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades })
   }
-  return respuestaOk(pedido, {
-    respuesta: textoDeDatos(r.datos),
+
+  // ═══ UNA TOOL QUE DEVUELVE `error` NO ES UNA RESPUESTA OK (27/08/2026) ═══
+  //
+  // Las tools del OS no lanzan: devuelven `{error: '...'}` para que quien pregunta se entere de qué
+  // pasó en vez de recibir un 500. Pero acá eso llegaba como `ok:true` con `respuesta: null` —
+  // `textoDeDatos` no encuentra `resumen_texto` y devuelve nada—, y la traza quedaba diciendo que
+  // todo salió bien. Un briefing de caja que no pudo leer el Cash Flow no puede parecerse a un
+  // briefing de caja vacío. Se declara la fuente que falló, con nombre.
+  const falloInterno = r.datos && typeof r.datos === 'object' && !Array.isArray(r.datos) && r.datos.error
+  const degradacionFuente = falloInterno
+    ? `la capacidad «${clave}» no pudo obtener su dato: ${String(r.datos.error).slice(0, 200)}`
+    : null
+
+  // ═══ PUEDE CALCULAR NO ES PUEDE VER ═══
+  // El tachado es del BACKEND y por eso vale para las tres caras. Ver `xsas-visibilidad.mjs`.
+  const visible = filtrarPorVisibilidad({
+    actor: pedido.actor,
     datos: r.datos,
+    respuesta: falloInterno ? `No pude obtener el dato: ${String(r.datos.error).slice(0, 200)}` : textoDeDatos(r.datos),
+  })
+
+  return respuestaOk(pedido, {
+    respuesta: visible.respuesta,
+    datos: visible.datos,
     capacidades,
     accionesEjecutadas: [{ tool: clave, args: r.args }],
     evidencia: [{ que: 'resultado', fuente: `tool ${clave}`, cuando: new Date().toISOString() }],
+    degradacion: [degradacionFuente, visible.degradacion].filter(Boolean).join(' · ') || null,
     ms: Date.now() - t0,
   })
 }
 
 /** N2/N3: el modelo. `ia.pedirTexto` es la ÚNICA puerta hacia un proveedor y ya trae reintentos,
  *  clasificación de error, fallback entre proveedores, costo y aviso de degradación. */
-async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0 }) {
+async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0, degradacion = null }) {
   const capacidad = CAPACIDAD_POR_NIVEL[nivel] ?? CAPACIDAD.SIMPLE
   const contexto = []
   if (Object.keys(pedido.entidad).length) contexto.push(`Contexto verificado: ${JSON.stringify(pedido.entidad)}.`)
@@ -174,6 +198,7 @@ async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0 }) {
     return respuestaOk(pedido, {
       respuesta: r.texto,
       capacidades: { nivel, skills, tools: [], via: 'modelo', confianza: 'media', motivo },
+      degradacion,
       llm: {
         proveedor: r.proveedor, modelo: r.modelo, tokens: r.tokens, usd: r.usd,
         intentos: r.intentos, fallbackDe: r.fallbackDe ?? null, ms: r.ms,
@@ -207,7 +232,7 @@ async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0 }) {
  * @param {object} [deps.ia]        la puerta hacia el modelo (default `lib/ia/cliente.mjs`)
  * @param {Function} [deps.query]   para la traza. Sin él no hay traza y el gateway funciona igual.
  * @param {object} [deps.google]    cliente de Workspace; suma las tools que lo necesitan
- * @param {object} [deps.registro]  {mapa, porArchivo} inyectable (tests)
+ * @param {object} [deps.registro]  {mapa, porArchivo, porLib} inyectable (tests)
  * @param {Array}  [deps.catalogo]  fichas de skills inyectables (tests)
  * @returns {Promise<object>} la respuesta estructurada común. NUNCA lanza.
  */
@@ -242,7 +267,7 @@ export async function atender(bruto, deps = {}) {
 /** El ruteo, separado de `atender` para que el manejo de error y la traza sean uno solo. */
 async function despachar(pedido, deps, t0) {
   const registro = deps.registro ?? await toolsDelNucleo({ google: deps.google ?? null })
-  const { mapa, porArchivo } = registro
+  const { mapa, porArchivo, porLib = null } = registro
 
   // ── N0 · LA INTENCIÓN PEDIDA POR SU NOMBRE ────────────────────────────────────────────────
   if (pedido.tipo === TIPO.INTENCION || pedido.tipo === TIPO.EVENTO) {
@@ -312,13 +337,14 @@ async function despachar(pedido, deps, t0) {
   const nivel = nivelDeRuteo(catalogo, eleccion)
 
   if (nivel <= NIVEL.CAPACIDAD) {
-    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 })
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, deps, texto, t0 })
     if (conMotor) return conMotor
     // La skill aplica pero no hay tool ejecutable con lo que tenemos. NO se responde «no puedo»:
     // se escala, porque la política dice que menos modelo no puede significar peor respuesta.
     return resolverConModelo({
       pedido, nivel: NIVEL.IA_LIVIANA, skills: eleccion.skills,
       motivo: `${eleccion.motivo}; sin tool ejecutable para esas skills`, ia: await puertaIa(deps), t0,
+      degradacion: sinMotorEsDegradacion(eleccion),
     })
   }
 
@@ -332,12 +358,33 @@ async function despachar(pedido, deps, t0) {
   //
   // Sólo cuando el ruteo fue DETERMINISTA y con confianza ALTA: si dudó, la duda manda y se razona.
   if (eleccion.resolucion === 'determinista' && eleccion.confianza === 'alta') {
-    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 })
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, deps, texto, t0 })
     if (conMotor) return conMotor
   }
 
   // ── N2 / N3 ───────────────────────────────────────────────────────────────────────────────
-  return resolverConModelo({ pedido, nivel, skills: eleccion.skills, motivo: eleccion.motivo, ia: await puertaIa(deps), t0 })
+  return resolverConModelo({
+    pedido, nivel, skills: eleccion.skills, motivo: eleccion.motivo, ia: await puertaIa(deps), t0,
+    degradacion: sinMotorEsDegradacion(eleccion),
+  })
+}
+
+/**
+ * ═══ CAER AL MODELO SABIENDO EL DOMINIO ES UNA DEGRADACIÓN (27/08/2026) ═══
+ *
+ * «¿cuánta plata hay en caja hoy?» ruteaba a finanzas con resolución DETERMINISTA y confianza ALTA,
+ * no encontraba motor, terminaba en el modelo y volvía «no tengo ese dato cargado» pidiéndole al
+ * dueño los saldos por cuenta — con `degradacion: null` y estado `ok`. Un «no tengo el dato» que no
+ * se declara degradado es peor que un error: parece una respuesta.
+ *
+ * Cuando el ruteo NO reconoció el dominio, que conteste el modelo es el camino normal y no hay nada
+ * que declarar. Cuando SÍ lo reconoció con confianza alta, que ninguna capacidad haya podido correr
+ * es información que el que preguntó necesita: le está contestando el razonador, no el OS. PURA.
+ */
+export function sinMotorEsDegradacion(eleccion) {
+  if (eleccion?.resolucion !== 'determinista' || eleccion?.confianza !== 'alta') return null
+  const dominios = (eleccion.skills ?? []).join(', ')
+  return `sin dato del OS: el ruteo reconoció ${dominios || 'el dominio'} con confianza alta y ninguna capacidad determinística pudo correr; contesta el razonador`
 }
 
 /**
@@ -346,17 +393,23 @@ async function despachar(pedido, deps, t0) {
  * Recorre las tools que las skills elegidas CITAN y que el actor puede correr. La primera que tiene
  * todos sus argumentos gana. Si a una le falta un argumento, se guarda: puede estar en la frase.
  */
-async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, deps, texto, t0 }) {
+async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib = null, deps, texto, t0 }) {
   const conArgumentoEnLaFrase = []
-  for (const skill of eleccion.skills) {
-    const ficha = catalogo.find((f) => f.clave === skill)
-    for (const clave of toolsDeSkill(ficha, porArchivo)) {
-      const tool = mapa.get(clave)
-      if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
-      const resuelto = argumentosPara(tool, pedido)
-      if (resuelto.falta.length) { conArgumentoEnLaFrase.push({ clave, tool, resuelto }); continue }
-      return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
-    }
+  // ═══ CUÁL DE LAS CAPACIDADES DE LA SKILL, Y POR QUÉ NO LA PRIMERA (27/08/2026) ═══
+  //
+  // Una skill de finanzas resuelve a tres motores —el briefing de caja, los vencimientos sin
+  // conciliar y el estado de la empresa— y los tres contestan preguntas distintas. Tomar la primera
+  // que la ficha nombra hacía que la respuesta dependiera del orden en que alguien escribió una
+  // lista en un markdown. `ordenarPorAfinidad` puntúa contra la `description` de cada tool, que es
+  // donde ya está escrito para qué sirve: determinístico, sin modelo y estable entre corridas.
+  const candidatas = eleccion.skills.flatMap((skill) =>
+    toolsDeSkill(catalogo.find((f) => f.clave === skill), porArchivo, porLib))
+  for (const clave of ordenarPorAfinidad(texto, [...new Set(candidatas)], (c) => mapa.get(c))) {
+    const tool = mapa.get(clave)
+    if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
+    const resuelto = argumentosPara(tool, pedido)
+    if (resuelto.falta.length) { conArgumentoEnLaFrase.push({ clave, tool, resuelto }); continue }
+    return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
   }
 
   // ═══ EL ARGUMENTO ESTABA EN LA FRASE, NO EN EL CONTEXTO (27/08/2026) ═══

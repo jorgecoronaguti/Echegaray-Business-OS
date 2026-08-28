@@ -32,11 +32,26 @@
 
 /** Lo que cada rol de `perfiles.rol` puede pedirle a XSAS. Fail-closed: lo que no está, no puede. */
 export const PERMISOS_POR_ROL = Object.freeze({
-  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write', 'os.write']),
-  administracion: Object.freeze(['drive.read', 'os.read']),
+  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write', 'os.write', 'comercial.read']),
+  administracion: Object.freeze(['drive.read', 'os.read', 'comercial.read']),
   jefe_obra: Object.freeze(['drive.read', 'os.read']),
   campo: Object.freeze([]),
 })
+
+// ═══ `comercial.read` — PUEDE CALCULAR NO ES PUEDE VER (27/08/2026) ═══
+//
+// Los permisos de arriba dicen qué capacidad se puede EJECUTAR. `comercial.read` dice otra cosa:
+// qué parte del resultado se puede VER. Nació de un caso medido — un `jefe_obra` corrió
+// `plano.cotizar`, que para su rol es razonable (leer los planos de su obra), y la respuesta le
+// trajo el costo directo, la venta sin IVA y la cascada comercial entera. Nadie le dio permiso de
+// ver el precio: se lo dio la tool, porque calcular y mostrar eran el mismo acto.
+//
+// El tachado lo aplica `xsas-visibilidad.mjs` en el gateway, sobre el resultado y sobre el texto,
+// antes de que salga por cualquiera de las tres caras. Ocultarlo en la pantalla no sirve: el JSON
+// viaja igual y Mattermost y los scripts no pasan por esa pantalla.
+//
+// `jefe_obra` conserva lo que es suyo —cantidades, HH, materiales, equipos, tareas, duraciones— y
+// se le tacha la plata DICIÉNDOLO. Un recorte silencioso miente por omisión.
 
 /**
  * QUÉ CAPABILITIES ESCRIBEN — por su forma, no por una lista.
@@ -69,6 +84,11 @@ export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
   'slides.crear',          // crear_presentacion_google_slides — deja el archivo en el Drive de la empresa
   'imagen.generar',        // generar_imagen — deja el PNG generado en el Drive, sellado como GENERADA
   'cotizacion.registrar',  // registrar_cotizacion — INSERT en public.cotizaciones (la biblioteca comercial)
+  // analizar_planos_y_cotizar — INSERT en public.cotizaciones + cotizacion_partida + computo.
+  // Declaraba `drive.read` y su propio comentario decía «escribe en Postgres una cotización en
+  // BORRADOR»: la capability describía de dónde LEE, no qué DEJA. Un borrador que queda en la
+  // biblioteca comercial es una escritura, aunque nadie lo haya adjudicado todavía.
+  'plano.cotizar',
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */
