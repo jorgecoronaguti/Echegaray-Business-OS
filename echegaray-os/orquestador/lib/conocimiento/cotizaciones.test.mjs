@@ -401,15 +401,100 @@ test('un archivo modificado en Drive SÍ se vuelve a estudiar: la idempotencia n
   assert.equal(bajadas, 2)
 })
 
-test('una planilla que no es la plantilla de ECSAS se declara, no se fuerza', async () => {
+test('una planilla que no es la plantilla de ECSAS ni una cotización se declara, no se fuerza', async () => {
   assert.equal(esCotizacionInterna(['Hoja1', 'Hoja2']), false)
   assert.equal(esCotizacionInterna(['Análisis', 'Presupuesto', 'GG', 'OFERTA']), true)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['a']]), 'Hoja1')
   const r = await estudiarTanda([{ driveId: 'x', nombre: 'otra.xlsx', ruta: 'administracion/x/otra.xlsx' }], { traer: () => XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) })
   assert.equal(r.noLeidos.length, 1)
-  assert.match(r.noLeidos[0].porQue, /no es la plantilla de cotización interna/)
+  // El motivo ya no puede ser sólo «no es la plantilla interna»: con eso se cerraron las 48 de ARCOR.
+  // Ahora tiene que decir también que el lector semántico miró y qué encontró, que es un motivo
+  // con el que se puede hacer algo.
+  assert.match(r.noLeidos[0].porQue, /no tiene las pestañas .* de la plantilla interna/)
+  assert.match(r.noLeidos[0].porQue, /el lector semántico tampoco reconoce una planilla de cotización/)
   assert.ok(r.noLeidos[0].hash, 'lo que no se pudo estudiar igual queda identificado')
+})
+
+// ═══ EL CABLEADO: `planilla-semantica` estuvo escrita y desconectada, y eso es código muerto ═══
+//
+// `estudiarTanda` es la MISMA función que corre el comando. Estos tres tests entran por ahí a
+// propósito: si alguien vuelve a dejar el lector semántico fuera de `estudiarUno`, la planilla de
+// ARCOR vuelve a caer en `noLeidos` y los tres se ponen rojos a la vez.
+
+/** La forma real de «ARSJ Planilla de Cotizacion»: encabezado en la fila 6, ítem en B, cierre con
+ *  coeficientes al pie. NO tiene ninguna de las pestañas de la plantilla interna de ECSAS. */
+const PLANILLA_DEL_CLIENTE = [
+  [], ['', 'PLANILLA DE COTIZACION'],
+  ['', 'Proyecto:', 'MURO CORTAFUEGO'], [], [],
+  ['', 'ITEM', 'DESCRIPCION', 'UNIDAD', 'CANTIDAD', 'MATERIAL', 'MANO DE OBRA', 'PRECIO UNITARIO', 'PRECIO DEL ITEM', 'PRECIO DEL RUBRO'],
+  ['', 1, 'TAREAS PRELIMINARES', '', '', '', '', '', '', 1000000],
+  ['', 1.1, 'Traslado de equipos a obra', 'Gl', 1, null, 1000000, 1000000, 1000000],
+  ['', 2, 'ESTRUCTURAS METALICAS', '', '', '', '', '', '', 4000000],
+  ['', 2.1, 'Provisión y montaje de columnas C140', 'kg', 400, 7500, 2500, 10000, 4000000],
+  [], ['', '', '', 'Subtotal', '', '', '', '', 5000000],
+  ['', '', '', '', '', '', '', 'Gastos Generales', 0.15, 750000],
+  ['', '', '', '', '', '', '', 'Beneficio', 0.18, 900000],
+  ['', 'NOTA 1:', ' EL PRECIO FINAL NO INCLUYE IVA.'],
+  ['', 'CONDICION DE PAGO:', 'ANTICIPO FINANCIERO 40%, SALDO CON CERTIFICACION QUINCENAL'],
+]
+
+const libroDelCliente = (filas = PLANILLA_DEL_CLIENTE, hoja = 'COTIZACION') => {
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filas), hoja)
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+}
+
+const tandaDelCliente = (opciones = {}) => estudiarTanda(
+  [{ driveId: 'arcor1', nombre: 'ARSJ Planilla de Cotizacion - Muro Cortafuego.xlsx', ruta: 'administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN JUAN/MURO CORTAFUEGO/ARSJ Planilla de Cotizacion.xlsx' }],
+  { traer: () => libroDelCliente(), ...opciones },
+)
+
+test('la planilla en formato del cliente entra al circuito, no muere en noLeídos', async () => {
+  const r = await tandaDelCliente()
+  assert.equal(r.noLeidos.length, 0, 'con el lector semántico desconectado ésta vuelve a caer acá')
+  assert.equal(r.cliente.length, 1)
+  assert.equal(r.cliente[0].formatoCotizacion, 'CLIENTE')
+  assert.equal(r.cliente[0].obra, 'ARCOR - SAN JUAN · MURO CORTAFUEGO')
+  assert.equal(r.cotizaciones.length, 0, 'las dos familias no se mezclan: practicas() lee otra forma')
+  assert.equal(r.cliente[0].items.length, 2)
+})
+
+test('la planilla del cliente produce conocimiento, no sólo un objeto leído', async () => {
+  const r = await tandaDelCliente()
+  assert.ok(r.practicasCliente.practicas.length > 0, 'leerla y no aprender nada de ella es leerla al pedo')
+  const claves = r.conocimientos.map((k) => k.clave)
+  assert.ok(claves.some((c) => c.startsWith('cotizacion_cliente.cierre.')), `sin coeficientes de cierre: ${claves.join(', ')}`)
+  // Lo que enseña es el COEFICIENTE, no el importe: un GG de 750.000 depende del tamaño de la obra.
+  const gg = r.conocimientos.find((k) => k.clave === 'cotizacion_cliente.cierre.gastos_generales')
+  assert.ok(gg, 'falta el coeficiente de gastos generales')
+  assert.equal(gg.valor, 0.15)
+  // Y la fila de SUBTOTAL, que sólo trae importes, no se resuelve eligiendo uno: se declara.
+  assert.ok(r.practicasCliente.sinCoeficiente.some((x) => x.concepto === 'SUBTOTAL'), 'una fila sin coeficiente legible tiene que quedar dicha, no descartada en silencio')
+  assert.ok(r.documentos.some((d) => d.titulo.includes('ARSJ Planilla de Cotizacion')), 'la planilla leída tiene que quedar registrada')
+})
+
+test('un CERTIFICADO no enseña cómo se cotiza: sus cantidades son las ejecutadas', async () => {
+  const filas = PLANILLA_DEL_CLIENTE.map((f, i) => (i === 1 ? ['', 'CERTIFICADO N° 3'] : f))
+  const r = await estudiarTanda(
+    [{ driveId: 'c1', nombre: 'CERTIFICADO 3.xlsx', ruta: 'administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/CERT/CERTIFICADO 3.xlsx' }],
+    { traer: () => libroDelCliente(filas, 'Hoja1') },
+  )
+  assert.equal(r.cliente.length, 1, 'igual se lee y se registra')
+  assert.equal(r.cliente[0].clase, 'CERTIFICADO')
+  assert.equal(r.practicasCliente.practicas.length, 0, 'pero no puede enseñar una práctica de cotización')
+})
+
+test('el nombre no alcanza para declarar CERTIFICADO, y esa contradicción se declara', async () => {
+  // LÍMITE CONOCIDO: la clase la decide la ESTRUCTURA. Un certificado cuyo título dice «PLANILLA DE
+  // COTIZACION» entra como COTIZACION y SÍ enseña práctica. Lo único que impide que eso pase en
+  // silencio es la discrepancia; si alguien la borra, este test se pone rojo.
+  const r = await estudiarTanda(
+    [{ driveId: 'c2', nombre: 'CERTIFICADO 1.xlsx', ruta: 'administracion/PRESUPUESTOS - CLIENTES/FERRER HNOS/CERT/CERTIFICADO 1.xlsx' }],
+    { traer: () => libroDelCliente() },
+  )
+  assert.equal(r.cliente[0].clase, 'COTIZACION')
+  assert.match(r.cliente[0].discrepancia ?? '', /el nombre «CERTIFICADO 1.xlsx» dice CERTIFICADO/)
 })
 
 test('el error de celda se puede nombrar, y un número no es un error', () => {

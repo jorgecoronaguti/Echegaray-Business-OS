@@ -39,6 +39,17 @@ const ARCOR_OTRO_ANO = [
   ['', '', '', '', '', '', '', 'iibb', '2.40%', 144000],
 ]
 
+test('«Subtotal» en singular es un concepto de cierre, no una nota suelta', () => {
+  // El `?` de `totales?` caía sobre la `s` y exigía el plural: la grafía más común de estas
+  // planillas —la singular— se perdía como nota y su fila no llegaba nunca al cierre económico.
+  assert.equal(conceptoDeCierre('Subtotal'), 'SUBTOTAL')
+  assert.equal(conceptoDeCierre('SUBTOTALES'), 'SUBTOTAL')
+  assert.equal(conceptoDeCierre('Sub Total'), 'SUBTOTAL')
+  assert.equal(conceptoDeCierre('Subtotal industrial'), 'SUBTOTAL')
+  assert.equal(conceptoDeCierre('subtotal de la etapa 2'), null, 'no es un rótulo de cierre: es texto')
+  assert.equal(clasificarFila(['', '', '', 'Subtotal', '', '', '', '', 5000000], {}).tipo, TIPO_FILA.CIERRE)
+})
+
 test('el encabezado se busca por lo que dice, no en una fila fija', () => {
   const a = detectarEncabezado(ARCOR)
   const b = detectarEncabezado(ARCOR_OTRO_ANO)

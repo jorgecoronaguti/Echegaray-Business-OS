@@ -245,7 +245,9 @@ export function clasePlanilla(filas = [], encabezado = {}, { nombre = null } = {
  * beneficio se cotizó esta obra?» sin abrir el archivo.
  */
 export const CONCEPTOS_DE_CIERRE = Object.freeze([
-  ['SUBTOTAL', /^(sub\s?totales?|subtotal(es)? industrial|costo directo)$/],
+  // `sub\s?totales?` NO matcheaba «Subtotal»: el `?` cae sobre la `s` de «totale-s», así que exigía
+  // el plural. La grafía más común de estas planillas es la singular, y caía como nota suelta.
+  ['SUBTOTAL', /^(sub\s?total(es)?|subtotal(es)? industrial|costo directo)$/],
   ['GASTOS_GENERALES', /^(gg|gastos generales|g generales)$/],
   ['BENEFICIO', /^(beneficio|utilidad|margen)$/],
   ['COSTO_FINANCIERO', /^(costo financiero|financiamiento|financiero)$/],
