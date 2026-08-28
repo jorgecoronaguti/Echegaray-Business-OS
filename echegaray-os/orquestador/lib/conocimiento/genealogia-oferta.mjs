@@ -166,9 +166,13 @@ export function auditarOferta({ oferta, presupuesto, filasDeLaOferta = null } = 
   }
 
   if (filasDeLaOferta && oferta?.encabezado) {
+    // Sin columnas conocidas no hay «derecha de la oferta» que mirar: se mira TODO lo que esté a
+    // la derecha de la primera. Un `Math.max()` sobre un objeto vacío da -Infinity y habría hecho
+    // que el barrido arrancara en la columna −∞, o sea que no barriera nada y dijera «limpio».
+    const columnas = Object.values(oferta.encabezado.columnas ?? {}).filter((c) => Number.isFinite(c))
     const fuga = fugaEntreClientes(filasDeLaOferta, {
       filaEncabezado: oferta.encabezado.fila,
-      ultimaColumna: Math.max(...Object.values(oferta.encabezado.columnas ?? { 0: 0 })),
+      ultimaColumna: columnas.length ? Math.max(...columnas) : 0,
     })
     for (const c of fuga.casos) {
       bloqueos.push({ tipo: BLOQUEO.CROSS_CLIENT_DATA_LEAK, donde: c.celda, que: c.texto, importe: null, porque: 'hay texto de otra oferta fuera del área de la oferta actual, en el mismo archivo que se manda al cliente' })

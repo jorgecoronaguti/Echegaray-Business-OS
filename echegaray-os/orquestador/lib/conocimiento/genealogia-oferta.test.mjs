@@ -178,3 +178,16 @@ test('OFERTA SG: cero referencias al presupuesto ⇒ TODOS los renglones bloquea
   assert.equal(r.conciliacion.conGenealogia, 0)
   assert.equal(r.conciliacion.sinGenealogia, 1030800)
 })
+
+test('un encabezado sin columnas no puede declarar la hoja limpia', () => {
+  // `Math.max()` sobre un objeto vacío da -Infinity: el barrido habría empezado en la columna −∞
+  // y no habría mirado ninguna celda, devolviendo «sin fuga» sin haber mirado.
+  const filas = []
+  filas[6] = ['QUATTOPANI FRANCO', 'ORICA ARGENTINA SAIC']
+  const r = auditarOferta({
+    oferta: { encabezado: { fila: 11, columnas: {} }, items: ITEMS_OFERTA.slice(0, 3), subtotal: { valor: SUMA_CON_GENEALOGIA, error: null, celda: 'F44' } },
+    presupuesto: PRESUPUESTO,
+    filasDeLaOferta: filas,
+  })
+  assert.equal(r.bloqueos.some((b) => b.tipo === BLOQUEO.CROSS_CLIENT_DATA_LEAK), true)
+})
