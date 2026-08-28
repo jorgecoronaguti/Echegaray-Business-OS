@@ -33,6 +33,8 @@ export const TIPO = Object.freeze({
   PARTIDA_SIN_DATOS: 'PARTIDA_SIN_DATOS',
   DATOS_DE_OTRO_CLIENTE: 'DATOS_DE_OTRO_CLIENTE',
   INDIRECTO_SIEMPRE_EN_CERO: 'INDIRECTO_SIEMPRE_EN_CERO',
+  COEFICIENTE_AJUSTE_SIN_CRITERIO: 'COEFICIENTE_AJUSTE_SIN_CRITERIO',
+  REFERENCIA_ROTA: 'REFERENCIA_ROTA',
 })
 
 /** Cuánto puede desviarse una suma y seguir siendo redondeo. Un peso sobre millones es redondeo;
@@ -261,6 +263,47 @@ export function indirectosSiempreEnCero(cotizaciones = [], { minimo = 5 } = {}) 
   })]
 }
 
+/**
+ * EL MULTIPLICADOR QUE NO DICE POR QUÉ.
+ *
+ * La columna «COEF. AJUSTE» del presupuesto interno vale 1 en casi todas las partidas. Donde no vale
+ * 1, el precio de esa partida sale multiplicado sin que nada explique por cuánto ni por qué. Medido
+ * en JAVIER SANCHEZ · Entrepiso: ESCALERA METALICA lleva 1,5 y ENTREPISO 1,4 — las DOS partidas
+ * metálicas de la cotización, y las únicas ajustadas. Eso no es un error de tipeo: es que el
+ * análisis de las partidas metálicas se sabe corto y se lo tapa con un multiplicador.
+ */
+export function coeficienteDeAjusteSinCriterio(cotizaciones = []) {
+  const salida = []
+  for (const c of cotizaciones) {
+    const ajustadas = (c.presupuesto?.items ?? []).filter((i) => typeof i.coeficienteAjuste === 'number' && i.coeficienteAjuste !== 1 && i.coeficienteAjuste !== 0 && i.codigo)
+    if (!ajustadas.length) continue
+    const monto = suma(ajustadas.map((i) => (typeof i.subtotal === 'number' ? i.subtotal - i.subtotal / i.coeficienteAjuste : 0)))
+    salida.push(hallazgo({
+      tipo: TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO, gravedad: GRAVEDAD.MEDIA, clave: `${c.id}.presupuesto.coeficientes`,
+      afirmacion: `en «${c.obra}» ${ajustadas.length} partida(s) llevan un coeficiente de ajuste distinto de 1 (${ajustadas.map((i) => `${i.codigo}: ${i.coeficienteAjuste}`).join(', ')}) y la planilla no dice por qué`,
+      monto: monto || null,
+      evidencia: ajustadas.map((i) => ({ cita: `${i.codigo} «${i.tarea}» × ${i.coeficienteAjuste}`, ubicacion: `${c.nombre} · hoja Presupuesto · fila ${i.fila + 1}` })),
+      porQue: 'el multiplicador entra al precio y no queda registrado como decisión: dentro de un año nadie va a poder decir si fue riesgo, plazo o un análisis que se sabía corto',
+    }))
+  }
+  return salida
+}
+
+/** Referencias rotas que quedaron dentro del presupuesto interno. PURA. */
+export function referenciasRotas(cotizaciones = []) {
+  const salida = []
+  for (const c of cotizaciones) {
+    const rotas = (c.presupuesto?.items ?? []).filter((i) => /^#(REF!|N\/A|VALUE!|NAME\?|DIV\/0!)$/.test(String(i.tarea ?? '').trim()))
+    if (!rotas.length) continue
+    salida.push(hallazgo({
+      tipo: TIPO.REFERENCIA_ROTA, gravedad: GRAVEDAD.MEDIA, clave: `${c.id}.presupuesto.referencias`,
+      afirmacion: `el presupuesto interno de «${c.obra}» arrastra ${rotas.length} fila(s) con la referencia rota (${[...new Set(rotas.map((r) => r.tarea))].join(', ')})`,
+      evidencia: rotas.map((r) => ({ cita: String(r.tarea), ubicacion: `${c.nombre} · hoja Presupuesto · fila ${r.fila + 1}` })),
+    }))
+  }
+  return salida
+}
+
 /** TODOS los hallazgos, ordenados por gravedad y por plata. PURA. */
 export function hallazgos(cotizaciones = [], opciones = {}) {
   const orden = { ALTA: 0, MEDIA: 1, BAJA: 2 }
@@ -274,6 +317,8 @@ export function hallazgos(cotizaciones = [], opciones = {}) {
     ...partidasSinDatos(cotizaciones),
     ...datosDeOtroCliente(cotizaciones),
     ...indirectosSiempreEnCero(cotizaciones, opciones),
+    ...coeficienteDeAjusteSinCriterio(cotizaciones),
+    ...referenciasRotas(cotizaciones),
   ].sort((a, b) => orden[a.gravedad] - orden[b.gravedad] || (b.monto ?? 0) - (a.monto ?? 0) || a.clave.localeCompare(b.clave))
 }
 

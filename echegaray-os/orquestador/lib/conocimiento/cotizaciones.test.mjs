@@ -24,6 +24,7 @@ import { estudiarTanda, esCotizacionInterna, obraDe } from './estudio-cotizacion
 import { TIPO, hallazgos } from './hallazgos-cotizacion.mjs'
 import { aConocimientos, practicas } from './practica-cotizacion.mjs'
 import { ESTADO, PROCEDENCIA, incorporar } from './biblioteca.mjs'
+import { fusionarHallazgos } from '../../scripts/estudiar-cotizaciones-drive.mjs'
 
 const require = createRequire(import.meta.url)
 const XLSX = require('xlsx')
@@ -47,7 +48,7 @@ const ENCABEZADO_PRESUPUESTO = ['ID TAREA', 'ID', 'TAREA', 'U.', 'CANT.', 'COSTO
 function libroDeCotizacion({
   items = [['REPLANTEO', 'M2', 10, 100, 1000]], subtotal = 1000, iva = 210, total = 1210,
   ivaConFormula = true, subtotalRoto = false, partidas = [filaAnalisis('T1001', 'REPLANTEO', 'M2', 0.06, 0.06)],
-  codigosUsados = ['T1001'], unidadesPresupuesto = ['M2'], rotuloGG = 'Gastos contables (0.6 % de CD)',
+  codigosUsados = ['T1001'], unidadesPresupuesto = ['M2'], coeficientesAjuste = [1], tareasExtra = [], rotuloGG = 'Gastos contables (0.6 % de CD)',
   coeficienteGG = 0.006, importeGG = 600, cliente = 'CLIENTE UNO', bloquesAjenos = [], notas = ['Nota 1: solo mano de obra'],
 } = {}) {
   const oferta = [
@@ -78,7 +79,8 @@ function libroDeCotizacion({
     ['PRESUPUESTO GENERAL'], [], [], [], [], [],
     ENCABEZADO_PRESUPUESTO,
     ['ESTRUCTURA'],
-    ...codigosUsados.map((c, i) => [1, c, `TAREA ${c}`, unidadesPresupuesto[i] ?? 'M2', 10, 100, 1, 1000, 46000, 500, 500, 0]),
+    ...codigosUsados.map((c, i) => [1, c, `TAREA ${c}`, unidadesPresupuesto[i] ?? 'M2', 10, 100, coeficientesAjuste[i] ?? 1, 1000, 46000, 500, 500, 0]),
+    ...tareasExtra.map((t) => [null, 'T9999', t, 'M2', 1, 1, 1, 1, 46000, 0, 0, 0]),
   ]
   const gg = [
     [0], [], [],
@@ -228,6 +230,32 @@ test('DATOS_DE_OTRO_CLIENTE: la oferta guarda el bloque de otro cliente a la der
   assert.equal(con.hallazgos.filter((x) => x.tipo === TIPO.DATOS_DE_OTRO_CLIENTE).length, 1)
   const sin = await estudiar([libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/b.xlsx')])
   assert.equal(sin.hallazgos.filter((x) => x.tipo === TIPO.DATOS_DE_OTRO_CLIENTE).length, 0)
+})
+
+test('COEFICIENTE_AJUSTE_SIN_CRITERIO: da rojo con un multiplicador distinto de 1 y verde con todos en 1', async () => {
+  const con = await estudiar([libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/a.xlsx', { coeficientesAjuste: [1.5] })])
+  const h = con.hallazgos.filter((x) => x.tipo === TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO)
+  assert.equal(h.length, 1)
+  assert.match(h[0].afirmacion, /T1001: 1\.5/)
+  assert.equal(Math.round(h[0].monto), 333, 'la plata es la parte del precio que sale del multiplicador')
+  const sin = await estudiar([libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/b.xlsx')])
+  assert.equal(sin.hallazgos.filter((x) => x.tipo === TIPO.COEFICIENTE_AJUSTE_SIN_CRITERIO).length, 0)
+})
+
+test('REFERENCIA_ROTA: da rojo con un #REF! en el presupuesto y verde sin él', async () => {
+  const con = await estudiar([libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/a.xlsx', { tareasExtra: ['#REF!'] })])
+  assert.equal(con.hallazgos.filter((x) => x.tipo === TIPO.REFERENCIA_ROTA).length, 1)
+  const sin = await estudiar([libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA/b.xlsx')])
+  assert.equal(sin.hallazgos.filter((x) => x.tipo === TIPO.REFERENCIA_ROTA).length, 0)
+})
+
+test('una corrida que saltea NO borra los hallazgos de lo salteado', () => {
+  const previos = [{ clave: 'vieja', tipo: 'X', gravedad: 'ALTA' }, { clave: 'compartida', tipo: 'X', gravedad: 'BAJA' }]
+  const nuevos = [{ clave: 'compartida', tipo: 'X', gravedad: 'ALTA' }, { clave: 'nueva', tipo: 'X', gravedad: 'MEDIA' }]
+  const fusion = fusionarHallazgos(previos, nuevos, { salteados: 3 })
+  assert.deepEqual(fusion.map((h) => h.clave).sort(), ['compartida', 'nueva', 'vieja'])
+  assert.equal(fusion.find((h) => h.clave === 'compartida').gravedad, 'ALTA', 'lo nuevo pisa lo viejo con la misma clave')
+  assert.deepEqual(fusionarHallazgos(previos, nuevos, { salteados: 0 }), nuevos, 'sin salteados la lista nueva es completa y reemplaza')
 })
 
 test('porcentajeDelRotulo lee lo que el rótulo promete, y null cuando no promete nada', () => {
