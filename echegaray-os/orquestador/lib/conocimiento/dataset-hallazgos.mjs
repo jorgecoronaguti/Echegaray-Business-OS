@@ -30,7 +30,7 @@
 // CONFIRMADO: si lo hiciera, el control se estaría validando contra la misma información que
 // produce.
 import { HUECO, hueco } from './biblioteca.mjs'
-import { clienteDe, obraDe } from './estudio-cotizaciones.mjs'
+import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
 import { porcentajeDelRotulo } from './cotizacion-ecsas.mjs'
 import { controlDe } from './controles-cotizacion.mjs'
 import { TIPO } from './hallazgo.mjs'
@@ -186,26 +186,10 @@ const leer = (h, cual) => {
   try { return LECTORES[h.tipo]?.[cual]?.(h) ?? null } catch { return null }
 }
 
-/**
- * EL ÍNDICE QUE PONE NOMBRE AL id DE DRIVE. PURA.
- *
- * Sin él, `1SCGIKahe….oferta` no dice de quién es. Se arma con las cotizaciones que devolvió el
- * estudio, o con los documentos de la biblioteca —cuya `url` termina en el mismo id—. El cliente
- * sale de la RUTA con la misma función que usa el estudio, no de leer la afirmación.
- */
-export function indiceDeCotizaciones(cotizaciones = []) {
-  const m = new Map()
-  for (const c of cotizaciones) {
-    const id = c.driveId ?? c.id
-    if (!id) continue
-    const ruta = c.ruta ?? c.titulo ?? null
-    m.set(id, { archivo: c.nombre ?? (ruta ? ruta.split('/').pop() : null), ruta, cliente: ruta ? clienteDe(ruta) : null, obra: c.obra ?? (ruta ? obraDe(ruta) : null) })
-  }
-  return m
-}
-
 /** El mismo índice, armado desde la biblioteca guardada. La `url` de un documento es
  *  `https://drive.google.com/file/d/<id>` y el `titulo` es la ruta completa. PURA. */
+export { indiceDeCotizaciones }
+
 export function indiceDesdeBiblioteca(biblioteca = {}) {
   return indiceDeCotizaciones((biblioteca.documentos ?? []).map((d) => ({
     driveId: String(d.url ?? '').split('/').pop() || null,

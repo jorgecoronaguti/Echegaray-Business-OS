@@ -13,7 +13,8 @@
 import { HOJA, leerAnalisis, leerGastosGenerales, leerOferta, leerPresupuesto } from './cotizacion-ecsas.mjs'
 import { leerArchivo } from './leer-archivo.mjs'
 import { ETAPA, documento } from './biblioteca.mjs'
-import { aConocimientos, practicas } from './practica-cotizacion.mjs'
+import { practicas } from './practica-cotizacion.mjs'
+import { aConocimientoHistorico, aConocimientoInsuficienciaMetalica, registrosHistoricos } from './practica-historica.mjs'
 import { hallazgos } from './hallazgos-cotizacion.mjs'
 import { celdasRotasDe } from './hallazgos-celdas.mjs'
 import { resumen } from './hallazgo.mjs'
@@ -61,6 +62,35 @@ const carpetasUtiles = (ruta) => {
  * CLIENTES» es peor que uno que declara el hueco.
  */
 export const clienteDe = (ruta = '') => carpetasUtiles(ruta).utiles[0] ?? null
+
+/**
+ * EL ÍNDICE QUE PONE NOMBRE AL id DE DRIVE. PURA.
+ *
+ * Sin él, `1SCGIKahe….oferta` no dice de quién es. Se arma con las cotizaciones que devolvió el
+ * estudio, o con los documentos de la biblioteca —cuya `url` termina en el mismo id—. El cliente
+ * sale de la RUTA con la misma función que usa el estudio, no de leer la afirmación.
+ */
+export function indiceDeCotizaciones(cotizaciones = []) {
+  const m = new Map()
+  for (const c of cotizaciones) {
+    const id = c.driveId ?? c.id
+    if (!id) continue
+    const ruta = c.ruta ?? c.titulo ?? null
+    m.set(id, {
+      archivo: c.nombre ?? (ruta ? ruta.split('/').pop() : null),
+      ruta,
+      cliente: ruta ? clienteDe(ruta) : null,
+      obra: c.obra ?? (ruta ? obraDe(ruta) : null),
+      // La fecha de modificación de Drive es la única que existe: la planilla no dice cuándo se
+      // cotizó. `practica-historica.mjs` arma el período con esto y lo declara con ese nombre.
+      modificado: c.modificado ?? null,
+    })
+  }
+  return m
+}
+
+/** La obra en la que se midió el caso de insuficiencia del análisis metálico. */
+const OBRA_DEL_CASO_METALICO = /JAVIER\s+SANCHEZ/i
 
 /** Estudia UN archivo. Devuelve la cotización leída, o el motivo por el que no se pudo. */
 export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, mime = null, modificado = null }) {
@@ -133,10 +163,25 @@ export async function estudiarTanda(archivos = [], {
   }
   const p = practicas(cotizaciones, opciones)
   const h = hallazgos(cotizaciones, opciones)
+  // Las prácticas salen con su procedencia propia —PRACTICA_HISTORICA_ECSAS— y con frecuencia,
+  // período, archivos, clientes y variabilidad. Antes salían como EXPERIENCIA_ECSAS, que significa
+  // «lo medimos ejecutando»: un coeficiente tipeado en una planilla no se midió ejecutando.
+  const historicos = registrosHistoricos(p, {
+    porCotizacion: indiceDeCotizaciones(cotizaciones),
+    totalCotizaciones: cotizaciones.length,
+  })
   return {
     cotizaciones, noLeidos, salteados,
     practicas: p,
-    conocimientos: aConocimientos(p, { fecha: obtenidoEn }),
+    historicos,
+    conocimientos: [
+      ...historicos.map((r) => aConocimientoHistorico(r, { fecha: obtenidoEn })),
+      // El caso metálico es una observación sobre UNA cotización medida, no una regla que valga
+      // para cualquier tanda: entra a la biblioteca sólo si esa cotización está en esta corrida.
+      // Emitirlo siempre estamparía la biblioteca con algo que la corrida no miró.
+      ...(cotizaciones.some((c) => OBRA_DEL_CASO_METALICO.test(String(c.obra ?? '')))
+        ? [aConocimientoInsuficienciaMetalica({ fecha: obtenidoEn })] : []),
+    ],
     documentos: cotizaciones.map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0, obtenidoEn }))
       .concat(noLeidos.filter((c) => c.hash).map((c) => documentoDe(c, { hubuoConocimiento: false, obtenidoEn }))),
     hallazgos: h,

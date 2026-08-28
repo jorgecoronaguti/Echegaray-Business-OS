@@ -35,7 +35,8 @@ import { huella } from './cache.mjs'
 /** DE DÓNDE SALIÓ. Es un HECHO sobre el dato y no cambia nunca. */
 export const PROCEDENCIA = Object.freeze({
   HECHO_PROYECTO: 'HECHO_PROYECTO',         // lo dice el plano/pliego de ESTA obra
-  EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',   // lo medimos nosotros ejecutando
+  EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',   // lo medimos nosotros EJECUTANDO
+  PRACTICA_HISTORICA_ECSAS: 'PRACTICA_HISTORICA_ECSAS', // así se venía COTIZANDO; no dice que esté bien
   BASE_MAESTRA: 'BASE_MAESTRA',             // está en nuestro catálogo con análisis vigente
   NORMA: 'NORMA',                           // reglamento o norma, con número y año
   REFERENCIA_TECNICA: 'REFERENCIA_TECNICA', // manual, guía, publicación técnica
@@ -81,7 +82,9 @@ export const EXIGEN_CITA_LITERAL = Object.freeze([
 /** Las que exigen evidencia pero NO una cita textual: su verificación es una consulta, no una
  *  lectura. `BASE_MAESTRA` se verifica en `public.tarea_tipo`; `EXPERIENCIA_ECSAS`, en las obras y
  *  la cantidad de casos. Pedirles una frase literal sería pedirles algo que no existe. */
-export const EXIGEN_EVIDENCIA = Object.freeze([PROCEDENCIA.BASE_MAESTRA, PROCEDENCIA.EXPERIENCIA_ECSAS])
+export const EXIGEN_EVIDENCIA = Object.freeze([
+  PROCEDENCIA.BASE_MAESTRA, PROCEDENCIA.EXPERIENCIA_ECSAS, PROCEDENCIA.PRACTICA_HISTORICA_ECSAS,
+])
 
 /**
  * LOS ASCENSOS PROHIBIDOS.
@@ -105,6 +108,19 @@ export const ASCENSOS_PROHIBIDOS = Object.freeze([
   [PROCEDENCIA.FABRICANTE, PROCEDENCIA.NORMA],
   [PROCEDENCIA.INFERIDO, PROCEDENCIA.HECHO_PROYECTO], [PROCEDENCIA.SUPUESTO, PROCEDENCIA.HECHO_PROYECTO],
   [PROCEDENCIA.WEB, PROCEDENCIA.FABRICANTE],
+  // ═══ LO QUE SE VENÍA HACIENDO NO ASCIENDE A LO QUE HAY QUE HACER ═══
+  //
+  // Los cuatro de abajo son los que el dueño escribió textual: una práctica histórica NO se
+  // convierte en NORMA ni en BASE_MAESTRA. Los otros dos están por el mismo motivo y no son
+  // menores: EXPERIENCIA_ECSAS es «lo medimos ejecutando» —un rendimiento real de obra— y un
+  // coeficiente tipeado en una planilla no es una medición; HECHO_PROYECTO es «lo dice el plano de
+  // ESTA obra», y lo que se le cotizó a otro cliente en 2021 no lo dice.
+  //
+  // Estas prácticas contestan «¿cómo se venía cotizando?». Nunca «¿cómo debe cotizarse?».
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.NORMA],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.BASE_MAESTRA],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.EXPERIENCIA_ECSAS],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.HECHO_PROYECTO],
 ])
 
 /** ¿Este cambio de procedencia está prohibido? PURA. */

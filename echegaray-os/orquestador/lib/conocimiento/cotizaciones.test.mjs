@@ -22,7 +22,8 @@ import { ERROR_DE_CELDA, textoDelError } from './celda.mjs'
 import { encabezado, leerOferta, numero, porcentajeDelRotulo, refCelda } from './cotizacion-ecsas.mjs'
 import { estudiarTanda, esCotizacionInterna, obraDe } from './estudio-cotizaciones.mjs'
 import { TIPO, hallazgos } from './hallazgos-cotizacion.mjs'
-import { aConocimientos, practicas } from './practica-cotizacion.mjs'
+import { practicas } from './practica-cotizacion.mjs'
+import { registrosHistoricos } from './practica-historica.mjs'
 import { ESTADO, PROCEDENCIA, incorporar } from './biblioteca.mjs'
 import { fusionarHallazgos } from '../../scripts/estudiar-cotizaciones-drive.mjs'
 import { DIV_CERO, estudiar, filaAnalisis, libro, libroDeCotizacion } from './cotizacion-fixture.mjs'
@@ -213,7 +214,7 @@ test('porcentajeDelRotulo lee lo que el rótulo promete, y null cuando no promet
 
 // ═══════════════════ LA PRÁCTICA: NADA ASCIENDE SOLO ═══════════════════
 
-test('la práctica sale CANDIDATO y EXPERIENCIA_ECSAS, nunca NORMA ni BASE_MAESTRA ni VALIDADO', async () => {
+test('la práctica sale CANDIDATO y PRACTICA_HISTORICA_ECSAS, nunca NORMA ni BASE_MAESTRA ni VALIDADO', async () => {
   const r = await estudiar([
     libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA A/a.xlsx'),
     libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA B/b.xlsx'),
@@ -221,8 +222,10 @@ test('la práctica sale CANDIDATO y EXPERIENCIA_ECSAS, nunca NORMA ni BASE_MAEST
   assert.ok(r.conocimientos.length > 0)
   for (const k of r.conocimientos) {
     assert.equal(k.estado, ESTADO.CANDIDATO)
-    assert.equal(k.procedencia, PROCEDENCIA.EXPERIENCIA_ECSAS)
-    assert.ok(k.evidencia?.textoLiteral, 'sin cita literal no entra')
+    // EXPERIENCIA_ECSAS significa «lo medimos ejecutando». Un coeficiente tipeado en una planilla
+    // no se midió ejecutando, y por eso tiene procedencia propia.
+    assert.equal(k.procedencia, PROCEDENCIA.PRACTICA_HISTORICA_ECSAS)
+    assert.ok(k.evidencia && Object.keys(k.evidencia).length, 'sin evidencia no entra')
     assert.match(k.condicion, /NO que sea correcto/)
   }
   // Y la puerta al disco lo acepta: si `incorporar` lo rechazara, nada llegaría a la biblioteca.
@@ -340,6 +343,6 @@ test('el error de celda se puede nombrar, y un número no es un error', () => {
 
 test('practicas() sobre una lista vacía devuelve una lista vacía, no una excepción', () => {
   assert.deepEqual(practicas([]), [])
-  assert.deepEqual(aConocimientos([]), [])
+  assert.deepEqual(registrosHistoricos([]), [])
   assert.deepEqual(hallazgos([]), [])
 })
