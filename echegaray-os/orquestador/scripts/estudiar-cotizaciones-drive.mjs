@@ -22,6 +22,14 @@
 //
 // Un archivo ya estudiado cuyo contenido no cambió no se vuelve a bajar ni a estudiar. Con
 // `--refrescar` se ignora ese recuerdo y se rehace todo.
+//
+// ═══ LO QUE ESTE COMANDO TODAVÍA NO SABE HACER, Y HAY QUE SABERLO ═══
+//
+// `incorporar()` agrega y nunca saca. Si cambia CÓMO se nombra una clave —pasó: los conceptos de
+// gastos generales pasaron de `cotizacion.indirectos.X` a `…X.coeficiente` o `…X.valor_de_columna`—
+// la entrada vieja queda en la biblioteca al lado de la nueva, y ahí conviven dos definiciones del
+// mismo concepto. Hasta que eso se resuelva con `reemplazar()`, un cambio de nomenclatura obliga a
+// volver la biblioteca a su versión anterior en git y correr `--refrescar`.
 import fs from 'node:fs'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
