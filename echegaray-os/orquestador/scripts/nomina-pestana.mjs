@@ -34,7 +34,10 @@ import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
-import { convenioDe, jornalConAumento, PORCENTAJE_DE_AUMENTO } from '../lib/uocra-paritaria.mjs'
+import {
+  convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
+  jornalConAumento, PORCENTAJE_DE_AUMENTO,
+} from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
@@ -269,20 +272,34 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     '$/h CON AUMENTO', 'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0, totalCargado: 0 }
   const sinConvenio = []
+  // QUIÉNES TIENEN UN PISO DECIDIDO POR UNA INFERENCIA. `sinConvenio` sólo ve los códigos que NADIE
+  // mapeó: el día que se agrega el mapeo, se apaga. Y ahí es cuando más hace falta mirar —la
+  // equivalencia empieza a gobernar plata—, así que esta lista toma la posta con los que quedaron
+  // mapeados por deducción del OS.
+  const conInferencia = []
   for (const p of activos) {
     const q = quincena.porClave.get(p.clave)
     if (!q) continue
-    const conv = convenioDe(q.categoria || p.categoria)
-    // EL PISO ES EL MÍNIMO LEGAL; LO QUE SE PAGA ES EL PISO × FACTOR (decisión del dueño, 28/08).
-    // Se guardan los dos: el básico es lo que la ley exige y tiene que seguir siendo legible, porque
-    // es contra ESE número que se mide si la empresa está en falta — no contra el que decidió pagar.
+    const codigo = q.categoria || p.categoria
+    const conv = convenioDe(codigo)
+    // EL PISO ES EL MÍNIMO LEGAL; LO QUE SE PAGA ES LO DE HOY + EL 50% DEL BÁSICO DE SU CATEGORÍA
+    // (decisión del dueño, 28/08 — el aumento es un MONTO sumado, no un múltiplo del piso; el
+    // `Math.max` contra el básico vive adentro de `jornalConAumento`). Se guardan los dos: el básico
+    // es lo que la ley exige y tiene que seguir siendo legible, porque es contra ESE número que se
+    // mide si la empresa está en falta — no contra el que se decidió pagar.
     const basico = conv ? escala.porCategoria[conv] ?? null : null
     const objetivo = jornalConAumento(q.jornal, basico)
     if (!conv) sinConvenio.push(p.nombre)
+    // LA FILA DICE SI SU EQUIVALENCIA LA DECLARÓ ALGUIEN O LA DEDUJO EL OS. Sin la marca, `M OF →
+    // Medio Oficial` (una lectura del OS que el jornal de Castillo contradice) se dibuja idéntico al
+    // `OF → Oficial` que declaró el dueño, y la inferencia pasa a ser un hecho silencioso.
+    if (conv && esInferida(codigo)) conInferencia.push({ nombre: p.nombre, codigo })
 
     const hoyR = repartoPersona({ total: q.total, adelanto: q.adelanto, banco: q.banco })
-    // EL PISO NO BAJA A NADIE. Si el jornal pactado ya es mayor que el del convenio, el escenario
-    // «piso» es el mismo que el de hoy: el convenio es un mínimo, no una tarifa.
+    // EL ESCENARIO «CON AUMENTO» NUNCA BAJA A NADIE, y por dos razones distintas que conviene no
+    // confundir: el aumento SUMA sobre lo que cada uno cobra hoy (nadie puede quedar por debajo de su
+    // propio jornal), y además `jornalConAumento` no devuelve nunca menos que el básico de convenio,
+    // que es el mínimo legal. Acá ya no hay `Math.max` contra el jornal de hoy: sería redundante.
     const jornalPiso = objetivo
     const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
     const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null
@@ -292,7 +309,7 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     if (pisoR) { T.bancoPiso += pisoR.banco; T.efPiso += pisoR.efectivo; T.totPiso += pisoR.total; T.sube += pisoR.total - hoyR.total }
 
     fila(q.dejoDeCargar ? `${p.nombre}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : p.nombre,
-      q.categoria || SIN_DATO, conv ?? SIN_DATO,
+      q.categoria || SIN_DATO, rotuloConvenio(codigo) ?? SIN_DATO,
       Math.round(q.cargadas), q.pendientes ? Math.round(q.pendientes) : SIN_DATO, Math.round(q.horas),
       q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
       Math.round(q.jornal), Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
@@ -320,6 +337,10 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   // números son ciertos y miden cosas distintas; el que se calla es el que después no cierra.
   fila(sub(`«Jornales por Quincena» publica ${Math.round(T.totalCargado).toLocaleString('es-AR')} para esta quincena: son las ${Math.round(T.cargadas)} h cargadas. Acá se completan las ${Math.round(T.horas - T.cargadas)} h que faltan.`))
   if (sinConvenio.length) fila(sub(`${sinConvenio.length} sin equivalencia de convenio declarada: ${sinConvenio.join(' · ')}. No se les mide el piso.`))
+  // Y LA OTRA MITAD DE LA MISMA PREGUNTA: los que SÍ tienen equivalencia, pero la puso el OS. La línea
+  // desaparece sola el día que el dueño las confirme — no hay nada que apagar a mano.
+  const inferidas = lineaEquivalenciasInferidas(conInferencia)
+  if (inferidas) fila(sub(inferidas))
   fila()
 
   // ═══ 2 · QUIÉNES SON ═══

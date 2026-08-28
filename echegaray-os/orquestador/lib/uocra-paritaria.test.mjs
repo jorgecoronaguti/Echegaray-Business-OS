@@ -10,9 +10,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ESCALA_VERIFICADA, MENSUAL_VERIFICADO, ORIGEN_ACUERDO, ORIGEN_PROYECCION, PERIODO_VERIFICADO,
-  PORCENTAJE_DE_AUMENTO, TRAMOS_FIRMADOS, ULTIMO_TRAMO, contrastarEscala, convenioDe, factorUocraEntre,
-  jornalConAumento, periodosEntre, tramoDe,
+  CONVENIO_POR_CODIGO, DECISION_DUENO, ESCALA_VERIFICADA, INFERENCIA_OS, MENSUAL_VERIFICADO,
+  ORIGEN_ACUERDO, ORIGEN_PROYECCION, PERIODO_VERIFICADO, PORCENTAJE_DE_AUMENTO, TRAMOS_FIRMADOS,
+  ULTIMO_TRAMO, claveDeCategoria, codigosSinProcedencia, contrastarEscala, convenioDe, equivalenciaDe,
+  esInferida, factorUocraEntre, jornalConAumento, lineaEquivalenciasInferidas, periodosEntre,
+  rotuloConvenio, tramoDe,
 } from './uocra-paritaria.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 
@@ -181,3 +183,70 @@ test('un aumento que no describe ningún acuerdo salarial rompe en vez de public
   }
 })
 
+
+// ═══ LA PROCEDENCIA DE CADA EQUIVALENCIA ES UN DATO, NO UN COMENTARIO (28/08/2026) ═══
+//
+// Agregar `'M OF' → 'Medio Oficial'` apagó el ÚNICO control que hacía visible un código desconocido:
+// `sinConvenio`, en la pestaña «Nómina», que sólo dispara cuando `convenioDe` devuelve null. Castillo
+// Carlos pasó de figurar como «sin equivalencia declarada» a dibujarse igual que el `OF → Oficial`
+// que declaró el dueño, y la inferencia se volvió un hecho silencioso que define su piso.
+//
+// La mutación de estos tests: si alguien agrega un código con el atajo viejo (`'X': 'Oficial'`) o le
+// escribe un origen inventado, `codigosSinProcedencia` lo nombra y `convenioDe` devuelve null.
+test('ninguna equivalencia puede existir sin decir de dónde salió', () => {
+  assert.deepEqual(codigosSinProcedencia(CONVENIO_POR_CODIGO), [],
+    'una fila sin procedencia se dibuja igual que una decisión del dueño')
+  for (const [cod, e] of Object.entries(CONVENIO_POR_CODIGO)) {
+    assert.ok([DECISION_DUENO, INFERENCIA_OS].includes(e.origen), `${cod} no declara un origen conocido`)
+    assert.match(e.decididoEn, /^\d{4}-\d{2}-\d{2}$/, `${cod} no dice cuándo se decidió`)
+    assert.ok(String(e.decididoPor).trim(), `${cod} no dice quién lo decidió`)
+  }
+})
+
+test('un código agregado sin procedencia NO se cuela como declarado: cae en «sin equivalencia»', () => {
+  // El atajo de siempre, el que había hasta hoy: una línea, `código: 'categoría'`.
+  const atajo = { ...CONVENIO_POR_CODIGO, 'X OF': 'Oficial' }
+  assert.deepEqual(codigosSinProcedencia(atajo), ['X OF'])
+  assert.equal(convenioDe('X OF', atajo), null,
+    'sin procedencia declarada la equivalencia no existe — y así el control de «sin equivalencia» la ve')
+  // Y un origen inventado tampoco alcanza: la enumeración es la misma que la de `public.cliente_alias`.
+  const inventado = { ...CONVENIO_POR_CODIGO, 'Y OF': { categoria: 'Oficial', origen: 'PORQUE_SI', decididoPor: 'yo', decididoEn: '2026-08-28' } }
+  assert.deepEqual(codigosSinProcedencia(inventado), ['Y OF'])
+  assert.equal(convenioDe('Y OF', inventado), null)
+  // Faltando el quién o el cuándo, tampoco: la procedencia completa es la que se puede auditar.
+  const aMedias = { ...CONVENIO_POR_CODIGO, 'Z OF': { categoria: 'Oficial', origen: INFERENCIA_OS } }
+  assert.deepEqual(codigosSinProcedencia(aMedias), ['Z OF'])
+})
+
+test('la que dedujo el OS se marca en la fila; la que declaró el dueño NO lleva marca', () => {
+  // El control tiene que poder encenderse Y apagarse: si dibuja siempre lo mismo, no es un control.
+  assert.equal(rotuloConvenio('OF'), 'Oficial')
+  assert.equal(rotuloConvenio('OF E'), 'Oficial Especializado', 'el ascenso lo declaró el dueño')
+  assert.equal(rotuloConvenio('M OF'), 'Medio Oficial ▲ inferida')
+  assert.equal(rotuloConvenio('ZZ'), null, 'lo que no está no se dibuja: no se inventa')
+  assert.equal(esInferida('M OF'), true)
+  assert.equal(esInferida('of e'), false, 'la planilla no respeta mayúsculas y la marca no puede depender de eso')
+  assert.equal(equivalenciaDe('M OF').origen, INFERENCIA_OS,
+    'si alguien la pasa a DECISION_DUENO sin que el dueño la declare, esto se pone rojo')
+  assert.equal(equivalenciaDe('OF').origen, DECISION_DUENO)
+})
+
+test('la línea al pie nombra las inferencias que están gobernando un piso — y desaparece sola', () => {
+  const conCastillo = lineaEquivalenciasInferidas([
+    { nombre: 'Aguero', codigo: 'OF ' }, { nombre: 'Castillo Carlos', codigo: 'M OF' },
+  ])
+  assert.match(conCastillo, /Castillo Carlos \(M OF → Medio Oficial\)/)
+  assert.match(conCastillo, /nadie las declaró/)
+  assert.doesNotMatch(conCastillo, /Aguero/, 'la del dueño no es una inferencia')
+  // Sin inferencias no hay línea: nada que apagar a mano el día que el dueño la confirme.
+  assert.equal(lineaEquivalenciasInferidas([{ nombre: 'Aguero', codigo: 'OF' }]), null)
+  assert.equal(lineaEquivalenciasInferidas([]), null)
+})
+
+test('la clave de una categoría se normaliza igual que TRIM en Sheets — las dos puntas o ninguna', () => {
+  assert.equal(claveDeCategoria('OF '), 'OF')
+  assert.equal(claveDeCategoria('  A M  '), 'A M')
+  assert.equal(claveDeCategoria('OF  M'), 'OF M', 'TRIM de Sheets colapsa también los espacios internos')
+  assert.equal(claveDeCategoria(null), '')
+  assert.equal(convenioDe('OF '), 'Oficial', 'el espacio al final dejó 9 de 17 personas sin piso')
+})

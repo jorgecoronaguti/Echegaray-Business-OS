@@ -66,7 +66,7 @@ import {
   escalonDe, escalonPromedio, estadoReplica, filasPorHora, rotuloDeAcuerdo, ultimoEscalon,
 } from './uocra-acuerdos.mjs'
 import {
-  CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA,
+  CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA, claveDeCategoria,
   convenioDe, factorUocraEntre, tramoDe,
 } from './uocra-paritaria.mjs'
 import { ROTULO_SIGMA } from './proyeccion-convenio.mjs'
@@ -176,6 +176,16 @@ export function ultimaQuincenaCerrada(bloques = [], ultimoDiaDe, hoy = new Date(
  * NÚCLEO PURO: los códigos de categoría que trae un bloque del espejo, en el orden en que aparecen.
  * Es la columna D de `_J_OBREROS` — la que tenía cero consumidores.
  *
+ * ═══ LA CLAVE SE NORMALIZA COMO LA NORMALIZA SHEETS, NO COMO QUEDE CÓMODO (28/08) ═══
+ *
+ * Acá había un `.trim()`, que saca los espacios de las puntas pero deja los del medio. Las fórmulas
+ * de abajo comparan esta clave contra `TRIM(columna D)`, y `TRIM` de Sheets ADEMÁS colapsa los
+ * espacios internos: con `.trim()`, un `"OF  M"` de la planilla producía la clave `"OF  M"` mientras
+ * la fórmula veía `"OF M"`, y esa categoría contaba cero personas sin dar un solo error. La misma
+ * asimetría —recortar de un lado solo— es la que dejó 9 de 17 personas sin piso de convenio.
+ * `claveDeCategoria` es la ÚNICA definición de esa normalización y la comparten `convenioDe`, este
+ * módulo y las fórmulas.
+ *
  * @param {any[][]} grid  el espejo completo
  * @param {{inicio:number, fin:number}} bloque
  * @returns {string[]}
@@ -184,7 +194,7 @@ export function categoriasDelBloque(grid = [], bloque) {
   if (!bloque) return []
   const out = []
   for (let r = bloque.inicio; r <= bloque.fin; r++) {
-    const c = String((grid[r - 1] ?? [])[3] ?? '').trim()
+    const c = claveDeCategoria((grid[r - 1] ?? [])[3])
     if (c && !out.includes(c)) out.push(c)
   }
   return out
@@ -312,11 +322,32 @@ export function filasPlantel({
     const clave = rangoCats
       ? expresionClaveConvenio({ celda: `$E${r}`, equivalencia: equiv, rangoCategorias: rangoCats })
       : (equiv ? `IF($E${r}="";"${equiv}";$E${r})` : `$E${r}`)
+    // ═══ POR QUÉ NO SON COUNTIFS/SUMIFS/MINIFS (28/08) ═══
+    //
+    // Lo eran, y contaban 5 de 17 personas. `cat` viene normalizado y la columna D del espejo NO: el
+    // dueño escribe `"OF "` con un espacio al final, `COUNTIFS` no normaliza su rango, y nueve
+    // personas contaban cero. Ningún error, ninguna celda roja: el término «convenio» del
+    // `MAX(convenio; demanda)` quedaba 3,58× subvaluado y viajaba a Cargas Sociales, _MOVIMIENTOS,
+    // CAJA y los dos Cash Flow.
+    //
+    // La familia *IFS no acepta un criterio calculado sobre el rango —no hay forma de escribir
+    // `COUNTIFS(TRIM(D);…)`—, así que la comparación cambia de forma: SUMPRODUCT para contar y sumar,
+    // FILTER para el mínimo. Las dos evalúan `TRIM(D)` en contexto de array y ahí las dos puntas
+    // normalizan igual.
+    //
+    // `TRIM` COLAPSA TAMBIÉN LOS ESPACIOS INTERNOS (`"OF  M"` → `"OF M"`). ES LO QUE QUEREMOS: es la
+    // misma normalización que aplica `claveDeCategoria` del lado JS y la que ya usaba `convenioDe`.
+    // Que sea la misma es el punto — si una punta colapsa y la otra no, vuelve el defecto.
+    //
+    // `N(W)` y no `W` a secas: un texto en la columna de importes haría explotar el producto con
+    // #VALUE! —multiplicar por texto rompe aunque el otro factor sea 0— y `N` lo lee como cero. En el
+    // mínimo, `ISNUMBER(W)` cumple el mismo papel: sin él, un texto pasa el `>0` (en Sheets el texto
+    // ordena después de los números) y contamina el mínimo.
     filas.push([
       cat,
-      `=COUNTIFS(${D};${q})`,
-      `=SUMIFS(${W};${D};${q})`,
-      `=IFERROR(MINIFS(${W};${D};${q};${W};">0");"")`,
+      `=SUMPRODUCT(--(TRIM(${D})=${q}))`,
+      `=SUMPRODUCT(--(TRIM(${D})=${q});N(${W}))`,
+      `=IFERROR(MIN(FILTER(${W};TRIM(${D})=${q};ISNUMBER(${W});${W}>0));"")`,
       // LA COLUMNA DEL DUEÑO. Cadena vacía = "no es mía, preservá lo que haya". Con el centinela, la
       // corrida siguiente le borraría lo que escribió — es el defecto que dejó OFICINA_BANCO ciego.
       '',
