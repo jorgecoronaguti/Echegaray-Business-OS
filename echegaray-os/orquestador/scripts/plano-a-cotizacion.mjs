@@ -112,10 +112,32 @@ if (tiene('--persistir')) {
 
 const salida = valor('--salida')
 if (tiene('--json') || salida) {
+  // ═══ EL ARTEFACTO LLEVA EL ESTADO, NO SÓLO EL TOTAL ═══
+  //
+  // Este archivo es el registro auditable de una cotización, y salía con el total y SIN la parte
+  // que dice si ese total se puede usar: ni el estado, ni la cobertura, ni los supuestos ocultos,
+  // ni los conflictos, ni las ambigüedades de identidad. Es la inversión exacta de lo que declara
+  // el primer párrafo de `control.mjs` —«acá la salida no es un total: es un ESTADO»—.
+  //
+  // Medido, y por eso está escrito acá: en el artefacto de Quattropani, $ 4.149.546 de la cercha
+  // —el 19% del costo directo— cuelgan de un largo de 10,9 m cuyo texto literal NO lo contiene.
+  // Está marcado como supuesto oculto y el marcado no viajaba en el archivo. Quien lo abra dentro
+  // de seis meses tiene que ver las dos cosas juntas o no está viendo la cotización.
   const artefacto = JSON.stringify({
     termino, carpeta: r.carpeta, generado: new Date().toISOString(),
+    // Primero el estado: quien lea el JSON de arriba hacia abajo se encuentra con el veredicto
+    // antes que con el número, igual que en la salida por pantalla.
+    control: r.control,
+    proyecto: r.proyecto,
+    identidadesAmbiguas: r.identidadesAmbiguas,
     documentos: { insumos: r.documentos.insumos, reservados: r.documentos.reservados },
-    laminas: r.laminas, computo: r.computo, cotizacion: cot, ia: r.ia,
+    documental: r.documental,
+    laminas: r.laminas, computo: r.computo,
+    mapeo: r.mapeo, procesos: r.procesos, medicionCad: r.medicionCad,
+    checklist: r.checklist, tipoObra: r.tipoObra,
+    obra: r.obraDesdeCotizacion(),
+    huella: r.huella,
+    cotizacion: cot, ia: r.ia,
   }, null, 2)
   if (salida) { fs.writeFileSync(salida, artefacto); console.log(`\nartefacto → ${salida}`) } else console.log(artefacto)
 }
