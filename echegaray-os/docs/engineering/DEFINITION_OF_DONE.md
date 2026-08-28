@@ -133,6 +133,16 @@ Se cumplen igual, pero es honesto decir de dónde vienen: **la firma del dueño 
 
 ---
 
+## DoD completados
+
+| Módulo | Archivo | Estado | Límites abiertos |
+|---|---|---|---|
+| Tesorero Inversor IA | [`dod/DOD-TESORERO-INVERSOR.md`](dod/DOD-TESORERO-INVERSOR.md) | ver su veredicto | ver su veredicto |
+| Balanz · navegador en la VM | [`dod/DOD-BALANZ-VM-BROWSER.md`](dod/DOD-BALANZ-VM-BROWSER.md) | ver su veredicto | ver su veredicto |
+| XSAS · controles históricos de cotización | [`dod/DOD-XSAS-CONOCIMIENTO.md`](dod/DOD-XSAS-CONOCIMIENTO.md) | **Cerrado con límites** (28/08/2026) | **6** — el estudio no se recorrió sobre las 237 cotizaciones (bloquea B1/E3) · los 3 controles de planilla nunca vieron el corpus (0 filas de sus tipos en las 430) · ninguna `.xlsm` se abrió para cruzar los `celda_o_rango` (bloquea A1) · el lector de referencias es un regex ciego a nombres definidos y a otro libro · `DECISION_COMERCIAL` y `CONOCIMIENTO_TECNICO` no las asigna nadie · `patrones()` no exige cotizaciones distintas |
+
+---
+
 ## Estados
 
 | Estado | Qué significa |

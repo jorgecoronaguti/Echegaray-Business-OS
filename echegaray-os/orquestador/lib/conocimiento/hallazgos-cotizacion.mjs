@@ -19,51 +19,15 @@
 // esté bien: está probando que no sabe mirar.
 import { DISPERSION_MAXIMA, estadistica } from './promocion.mjs'
 import { porcentajeDelRotulo } from './cotizacion-ecsas.mjs'
+import { celdasEnError, formulasSobreCeldaRota, renglonesIncoherentes } from './hallazgos-celdas.mjs'
+import {
+  AJUSTE_PLAUSIBLE, ALICUOTA_IVA, GRAVEDAD, TIPO, TOLERANCIA_FRACCION, TOLERANCIA_PESOS,
+  hallazgo, ordenar, resumen, suma,
+} from './hallazgo.mjs'
 
-export const GRAVEDAD = Object.freeze({ ALTA: 'ALTA', MEDIA: 'MEDIA', BAJA: 'BAJA' })
-
-export const TIPO = Object.freeze({
-  OFERTA_ROTA: 'OFERTA_ROTA',
-  IVA_ESCRITO_A_MANO: 'IVA_ESCRITO_A_MANO',
-  SUBTOTAL_NO_CIERRA: 'SUBTOTAL_NO_CIERRA',
-  TOTAL_NO_CIERRA: 'TOTAL_NO_CIERRA',
-  ROTULO_CONTRADICE_COEFICIENTE: 'ROTULO_CONTRADICE_COEFICIENTE',
-  COEFICIENTE_INESTABLE: 'COEFICIENTE_INESTABLE',
-  UNIDAD_CONTRADICTORIA: 'UNIDAD_CONTRADICTORIA',
-  PARTIDA_SIN_DATOS: 'PARTIDA_SIN_DATOS',
-  DATOS_DE_OTRO_CLIENTE: 'DATOS_DE_OTRO_CLIENTE',
-  INDIRECTO_SIEMPRE_EN_CERO: 'INDIRECTO_SIEMPRE_EN_CERO',
-  COEFICIENTE_AJUSTE_SIN_CRITERIO: 'COEFICIENTE_AJUSTE_SIN_CRITERIO',
-  COEFICIENTE_AJUSTE_IMPLAUSIBLE: 'COEFICIENTE_AJUSTE_IMPLAUSIBLE',
-  REFERENCIA_ROTA: 'REFERENCIA_ROTA',
-})
-
-/** Cuánto puede desviarse una suma y seguir siendo redondeo. Un peso sobre millones es redondeo;
- *  más que eso es otro número. */
-export const TOLERANCIA_PESOS = 1
-
-/** Cuánto puede desviarse una alícuota calculada y seguir siendo la misma. */
-export const TOLERANCIA_FRACCION = 0.0005
-
-/** La alícuota general de IVA que la plantilla aplica en todas las ofertas medidas. Está acá para
- *  poder decir CUÁNTO se desvía un IVA tipeado, no para afirmar qué alícuota corresponde. */
-export const ALICUOTA_IVA = 0.21
-
-/** Hasta dónde un «coeficiente de ajuste» se puede leer como un multiplicador de riesgo o de plazo.
- *  Arriba de 3 o abajo de 0,5 ya no ajusta un precio: lo reemplaza, y lo más probable es que sea una
- *  cantidad tipeada en la columna equivocada. Medido: hay valores de 15 y de 1015. */
-export const AJUSTE_PLAUSIBLE = Object.freeze({ min: 0.5, max: 3 })
-
-/**
- * UN HALLAZGO. `monto` es EL DINERO EN JUEGO, no el dinero perdido — y la diferencia no es retórica:
- * el monto de una oferta rota es lo que esa oferta vale, y el de un rótulo que contradice su
- * coeficiente es la diferencia entre lo que dice y lo que aplica. Sumarlos daría un número que se
- * lee como una pérdida y no lo es. Por eso el resumen los agrupa POR TIPO y no los suma todos.
- */
-const hallazgo = ({ tipo, gravedad, clave, afirmacion, evidencia = [], monto = null, porQue = null }) =>
-  ({ tipo, gravedad, clave, afirmacion, evidencia, monto, porQue })
-
-const suma = (xs) => xs.reduce((a, x) => a + x, 0)
+// El vocabulario se re-exporta desde acá porque es el módulo que los consumidores ya importaban.
+// Cambiarles el import a todos por una mudanza interna sería trabajo sin ningún efecto.
+export { AJUSTE_PLAUSIBLE, ALICUOTA_IVA, GRAVEDAD, TIPO, TOLERANCIA_FRACCION, TOLERANCIA_PESOS, resumen }
 
 /** La oferta cuyo cierre está en error: no tiene subtotal, ni IVA, ni total. PURA. */
 export function ofertasRotas(cotizaciones = []) {
@@ -330,8 +294,7 @@ export function referenciasRotas(cotizaciones = []) {
 
 /** TODOS los hallazgos, ordenados por gravedad y por plata. PURA. */
 export function hallazgos(cotizaciones = [], opciones = {}) {
-  const orden = { ALTA: 0, MEDIA: 1, BAJA: 2 }
-  return [
+  return ordenar([
     ...ofertasRotas(cotizaciones),
     ...ivaEscritoAMano(cotizaciones),
     ...aritmeticaQueNoCierra(cotizaciones),
@@ -343,20 +306,10 @@ export function hallazgos(cotizaciones = [], opciones = {}) {
     ...indirectosSiempreEnCero(cotizaciones, opciones),
     ...coeficienteDeAjusteSinCriterio(cotizaciones),
     ...referenciasRotas(cotizaciones),
-  ].sort((a, b) => orden[a.gravedad] - orden[b.gravedad] || (b.monto ?? 0) - (a.monto ?? 0) || a.clave.localeCompare(b.clave))
-}
-
-/** El resumen por tipo, para el informe. PURA. */
-export function resumen(lista = []) {
-  const porTipo = {}
-  const porGravedad = {}
-  const montoPorTipo = {}
-  for (const h of lista) {
-    porTipo[h.tipo] = (porTipo[h.tipo] ?? 0) + 1
-    porGravedad[h.gravedad] = (porGravedad[h.gravedad] ?? 0) + 1
-    if (typeof h.monto === 'number') montoPorTipo[h.tipo] = Math.round(((montoPorTipo[h.tipo] ?? 0) + h.monto) * 100) / 100
-  }
-  return { total: lista.length, porTipo, porGravedad, montoPorTipo }
+    ...celdasEnError(cotizaciones),
+    ...formulasSobreCeldaRota(cotizaciones),
+    ...renglonesIncoherentes(cotizaciones),
+  ])
 }
 
 export { porcentajeDelRotulo }

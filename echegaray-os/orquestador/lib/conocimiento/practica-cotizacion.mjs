@@ -19,15 +19,14 @@
 // Cada práctica numérica lleva su `estadistica` completa (n, media, mín, máx, desvío, dispersión).
 // Un coeficiente que va de 0,006 a 0,04 entre cotizaciones no tiene media útil: tiene un problema, y
 // eso lo dice la dispersión, no el promedio.
-import { ESTADO, PROCEDENCIA, conocimiento } from './biblioteca.mjs'
 import { candidato, estadistica, madurezDe } from './promocion.mjs'
+import { ADVERTENCIA } from './practica-historica.mjs'
+
+export { ADVERTENCIA }
 
 /** La confianza que se declara según la madurez de la muestra. Una práctica vista una vez no puede
  *  declararse ALTA por más que el número sea preciso. PURA. */
 export const CONFIANZA_POR_MADUREZ = Object.freeze({ A: 'BAJA', B: 'BAJA', C: 'MEDIA', D: 'ALTA', E: 'ALTA' })
-
-/** Lo que se le agrega a toda práctica para que nadie la lea como una regla. */
-export const ADVERTENCIA = 'práctica observada en cotizaciones internas de ECSAS: describe cómo se viene cotizando, NO que sea correcto'
 
 const slug = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
@@ -283,35 +282,9 @@ export function practicas(cotizaciones = [], opciones = {}) {
   ]
 }
 
-/**
- * DE PRÁCTICA A CONOCIMIENTO DE BIBLIOTECA.
- *
- * Todo sale `EXPERIENCIA_ECSAS` + `CANDIDATO`, con la advertencia en `condicion` y con la cita
- * textual del primer caso más el recuento de los demás. `incorporar()` reconstruye cada entrada con
- * `conocimiento()`, así que lo que no pase el constructor no llega al disco.
- */
-export function aConocimientos(lista = [], { fecha = null } = {}) {
-  return lista.map((p) => conocimiento({
-    clave: p.clave,
-    afirmacion: p.afirmacion,
-    procedencia: PROCEDENCIA.EXPERIENCIA_ECSAS,
-    estado: ESTADO.CANDIDATO,
-    valor: p.estadistica.n ? p.estadistica.media : p.valorTextual,
-    unidad: p.unidad,
-    condicion: ADVERTENCIA,
-    confianza: p.confianza,
-    area: 'practica-de-cotizacion',
-    fecha,
-    evidencia: {
-      textoLiteral: p.casos[0]?.cita ?? p.valorTextual ?? p.afirmacion,
-      ubicacion: p.casos[0]?.ubicacion ?? null,
-      casos: p.casos.length,
-      obras: p.obras,
-      madurez: p.madurez,
-      estadistica: p.estadistica,
-      citas: p.casos.slice(0, 8).map((c) => ({ cita: c.cita, ubicacion: c.ubicacion })),
-    },
-  }))
-}
+// Acá vivía `aConocimientos()`, que estampaba las prácticas como `EXPERIENCIA_ECSAS`. Se retiró:
+// «lo medimos ejecutando» y «así lo veníamos cotizando» no son la misma procedencia, y tener dos
+// caminos a la biblioteca haría que uno de los dos se quedara viejo sin que nadie se entere. El
+// único camino es `practica-historica.mjs → aConocimientoHistorico()`.
 
 export { candidato }

@@ -13,11 +13,14 @@
 import { HOJA, leerAnalisis, leerGastosGenerales, leerOferta, leerPresupuesto } from './cotizacion-ecsas.mjs'
 import { leerArchivo } from './leer-archivo.mjs'
 import { ETAPA, documento } from './biblioteca.mjs'
-import { aConocimientos, practicas } from './practica-cotizacion.mjs'
-import { hallazgos, resumen } from './hallazgos-cotizacion.mjs'
+import { practicas } from './practica-cotizacion.mjs'
+import { aConocimientoHistorico, aConocimientoInsuficienciaMetalica, registrosHistoricos } from './practica-historica.mjs'
+import { pasarControles, paso } from './controles-cotizacion.mjs'
+import { celdasRotasDe } from './hallazgos-celdas.mjs'
+import { resumen } from './hallazgo.mjs'
+import { aprendizajes } from './aprendizaje-cotizacion.mjs'
 import { CLASE_PLANILLA, leerLibro } from './planilla-semantica.mjs'
 import { practicasCliente } from './practica-cotizacion-cliente.mjs'
-import { aConocimientos as aConocimientosPractica } from './practica-cotizacion.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -41,13 +44,56 @@ export const CARPETAS_GENERICAS = Object.freeze([
  * cotizaciones — o sea, UNA obra, y toda práctica habría quedado en madurez A para siempre.
  */
 export function obraDe(ruta = '') {
-  const partes = String(ruta).split('/').filter(Boolean).slice(0, -1)
-  const utiles = partes.filter((x) => !CARPETAS_GENERICAS.includes(x))
-  if (!utiles.length) return partes[partes.length - 1] ?? String(ruta)
-  const cliente = utiles[0]
-  const carpeta = utiles[utiles.length - 1]
+  const partes = carpetasUtiles(ruta)
+  if (!partes.utiles.length) return partes.todas[partes.todas.length - 1] ?? String(ruta)
+  const cliente = partes.utiles[0]
+  const carpeta = partes.utiles[partes.utiles.length - 1]
   return carpeta === cliente ? cliente : `${cliente} · ${carpeta}`
 }
+
+const carpetasUtiles = (ruta) => {
+  const todas = String(ruta).split('/').filter(Boolean).slice(0, -1)
+  return { todas, utiles: todas.filter((x) => !CARPETAS_GENERICAS.includes(x)) }
+}
+
+/**
+ * EL CLIENTE QUE NOMBRA ESTA RUTA, o `null` si la ruta no lo dice. PURA.
+ *
+ * Es la PRIMERA carpeta con nombre propio: en `administracion/PRESUPUESTOS - CLIENTES/ARCOR - SAN
+ * JUAN/NUEVA CALLE/x.xlsm` el cliente es ARCOR y la obra es NUEVA CALLE. Devuelve `null` en vez de
+ * quedarse con el cajón del archivo: un dataset que dice que el cliente se llama «PRESUPUESTOS -
+ * CLIENTES» es peor que uno que declara el hueco.
+ */
+export const clienteDe = (ruta = '') => carpetasUtiles(ruta).utiles[0] ?? null
+
+/**
+ * EL ÍNDICE QUE PONE NOMBRE AL id DE DRIVE. PURA.
+ *
+ * Sin él, `1SCGIKahe….oferta` no dice de quién es. Se arma con las cotizaciones que devolvió el
+ * estudio, o con los documentos de la biblioteca —cuya `url` termina en el mismo id—. El cliente
+ * sale de la RUTA con la misma función que usa el estudio, no de leer la afirmación.
+ */
+export function indiceDeCotizaciones(cotizaciones = []) {
+  const m = new Map()
+  for (const c of cotizaciones) {
+    const id = c.driveId ?? c.id
+    if (!id) continue
+    const ruta = c.ruta ?? c.titulo ?? null
+    m.set(id, {
+      archivo: c.nombre ?? (ruta ? ruta.split('/').pop() : null),
+      ruta,
+      cliente: ruta ? clienteDe(ruta) : null,
+      obra: c.obra ?? (ruta ? obraDe(ruta) : null),
+      // La fecha de modificación de Drive es la única que existe: la planilla no dice cuándo se
+      // cotizó. `practica-historica.mjs` arma el período con esto y lo declara con ese nombre.
+      modificado: c.modificado ?? null,
+    })
+  }
+  return m
+}
+
+/** La obra en la que se midió el caso de insuficiencia del análisis metálico. */
+const OBRA_DEL_CASO_METALICO = /JAVIER\s+SANCHEZ/i
 
 /** Estudia UN archivo. Devuelve la cotización leída, o el motivo por el que no se pudo. */
 export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, mime = null, modificado = null }) {
@@ -78,6 +124,10 @@ export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, 
     modificado,
     pestanas: leido.pestanas,
     formulas: leido.formulas,
+    // El inventario de celdas rotas se calcula ACÁ y no río abajo porque es el único punto donde
+    // están las hojas enteras en memoria. Guardar las hojas para calcularlo después serían 3,5 MB
+    // por cotización viviendo hasta el final de la corrida; el inventario son unas decenas de filas.
+    celdasRotas: celdasRotasDe(leido.hojas),
     oferta: leerOferta(leido.hojas[HOJA.OFERTA] ?? []),
     presupuesto: leerPresupuesto(leido.hojas[HOJA.PRESUPUESTO] ?? []),
     analisis: leerAnalisis(leido.hojas[HOJA.ANALISIS] ?? []),
@@ -134,16 +184,56 @@ export async function estudiarTanda(archivos = [], {
   // la planilla entregada enseña con qué coeficientes se cerró. Meterlas en la misma lista obligaría
   // a `practicas()` a entender dos formas distintas del mismo objeto, que es como se rompen las dos.
   const p = practicas(cotizaciones, opciones)
-  const h = hallazgos(cotizaciones, opciones)
+  // ═══ LOS HALLAZGOS SALEN DE LOS CONTROLES, NO DE UNA SEGUNDA LLAMADA ═══
+  //
+  // `pasarControles()` corre las MISMAS 14 reglas que `hallazgos()` y además contesta, por control,
+  // si pudo mirar. Llamar a las dos dejaría dos caminos que calculan lo mismo y que se separan en
+  // silencio la primera vez que alguien agregue una regla a uno solo. Se llama a uno, y el otro
+  // —`hallazgos()`— queda para quien sólo quiera la lista.
+  //
+  // Diferencia declarada respecto de la corrida anterior: con `iva-escrito-a-mano` sin cobertura,
+  // este camino NO publica el hallazgo. Son los 12 de 13 falsos positivos que producía un lector
+  // sin `cellFormula`, y ahora salen contados como NO_SE_PUDO_MIRAR en vez de como defecto.
+  const controles = pasarControles(cotizaciones, opciones)
+  const h = controles.hallazgos
+  // Las prácticas salen con su procedencia propia —PRACTICA_HISTORICA_ECSAS— y con frecuencia,
+  // período, archivos, clientes y variabilidad. Antes salían como EXPERIENCIA_ECSAS, que significa
+  // «lo medimos ejecutando»: un coeficiente tipeado en una planilla no se midió ejecutando.
+  const historicos = registrosHistoricos(p, {
+    porCotizacion: indiceDeCotizaciones(cotizaciones),
+    totalCotizaciones: cotizaciones.length,
+  })
   // Sólo las que el lector semántico clasificó COTIZACION: un CERTIFICADO tiene la misma forma y sus
   // cantidades son las EJECUTADAS, así que enseñaría una práctica que nadie decidió al cotizar.
   const soloCotizaciones = cliente.filter((c) => c.clase === CLASE_PLANILLA.COTIZACION)
   const pc = practicasCliente(soloCotizaciones)
+  // La planilla entregada pasa por EL MISMO registro histórico que la plantilla interna. No es una
+  // comodidad: si tuviera su propio camino a la biblioteca, sería el segundo, y el segundo camino es
+  // exactamente lo que dejó 190 prácticas marcadas «lo medimos ejecutando» sin que nadie lo notara.
+  const historicosCliente = registrosHistoricos(pc.practicas, {
+    porCotizacion: indiceDeCotizaciones(cliente),
+    totalCotizaciones: soloCotizaciones.length,
+  })
   return {
     cotizaciones, cliente, noLeidos, salteados,
     practicas: p,
     practicasCliente: pc,
-    conocimientos: [...aConocimientos(p, { fecha: obtenidoEn }), ...aConocimientosPractica(pc.practicas, { fecha: obtenidoEn })],
+    historicosCliente,
+    historicos,
+    controles,
+    paso: paso(controles),
+    conocimientos: [
+      ...historicos.map((r) => aConocimientoHistorico(r, { fecha: obtenidoEn })),
+      // El caso metálico es una observación sobre UNA cotización medida, no una regla que valga
+      // para cualquier tanda: entra a la biblioteca sólo si esa cotización está en esta corrida.
+      // Emitirlo siempre estamparía la biblioteca con algo que la corrida no miró.
+      ...(cotizaciones.some((c) => OBRA_DEL_CASO_METALICO.test(String(c.obra ?? '')))
+        ? [aConocimientoInsuficienciaMetalica({ fecha: obtenidoEn })] : []),
+      // Y lo que se aprende de los defectos, que NUNCA es su número: la forma del defecto, con el
+      // control que lo detecta. Va a la MISMA biblioteca; no hay una segunda base de aprendizajes.
+      ...aprendizajes(h, { fecha: obtenidoEn }),
+      ...historicosCliente.map((r) => aConocimientoHistorico(r, { fecha: obtenidoEn })),
+    ],
     documentos: [...cotizaciones, ...cliente].map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0 || pc.practicas.length > 0, obtenidoEn }))
       .concat(noLeidos.filter((c) => c.hash).map((c) => documentoDe(c, { hubuoConocimiento: false, obtenidoEn }))),
     hallazgos: h,

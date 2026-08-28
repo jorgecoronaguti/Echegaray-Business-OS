@@ -18,10 +18,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
 import { readFileSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const aca = path.dirname(fileURLToPath(import.meta.url))
 const script = path.join(aca, 'estudiar-cotizaciones-drive.mjs')
@@ -82,3 +84,47 @@ test('correrlo directo SÍ ejecuta el punto de entrada, y --ayuda corta antes de
   assert.match(salida, /--ayuda/, '`--ayuda` tiene que imprimir la ayuda: si imprime otra cosa, arrancó el estudio real')
   assert.ok(ms < 10_000, `--ayuda tardó ${ms} ms: eso no es imprimir un texto, es haber salido a la red`)
 })
+
+// ═══════════════════ LOS OTROS DOS COMANDOS DE LA MISMA FAMILIA ═══════════════════
+//
+// `dataset-hallazgos.mjs` y `migrar-practicas-historicas.mjs` leen y ESCRIBEN los mismos artefactos.
+// Su guarda no estaba cubierta por nada: si mañana alguien vuelve a `file://${process.argv[1]}`,
+// nada se ponía rojo. Y ese cambio no rompe ruidosamente — el comando deja de arrancar y sale con
+// código 0 sin imprimir una línea, que es la peor forma de fallar que tiene un generador.
+
+const HERMANOS = ['dataset-hallazgos.mjs', 'migrar-practicas-historicas.mjs']
+
+for (const nombre of HERMANOS) {
+  test(`importar ${nombre} no lo ejecuta ni toca los artefactos`, () => {
+    const antes = Object.fromEntries(ARTEFACTOS.map((n) => [n, huella(n)]))
+    const salida = execFileSync(process.execPath, ['-e', `import(${JSON.stringify(path.join(aca, nombre))}).then(() => console.log('IMPORTADO'))`], {
+      encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    assert.match(salida, /IMPORTADO/)
+    assert.doesNotMatch(salida, /═══|✓/, 'importar arrancó el comando')
+    for (const n of ARTEFACTOS) assert.equal(huella(n)?.sha, antes[n]?.sha, `importar ${nombre} reescribió ${n}`)
+  })
+
+  test(`${nombre} arranca DESDE UNA RUTA CON ESPACIOS`, () => {
+    // El caso que la plantilla `file://${process.argv[1]}` no aguanta: con un espacio en la ruta,
+    // `import.meta.url` viene percent-encoded, la comparación da falso y el comando no arranca —
+    // sin error y con código 0. Se lo invoca por un enlace dentro de un directorio con espacio, que
+    // es exactamente lo que pasa en «.../mis documentos/...».
+    const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'con espacio '))
+    try {
+      // Copia y no enlace: node resuelve los symlinks antes de armar `import.meta.url`, así que el
+      // enlace probaría otra cosa. Las importaciones relativas se apuntan al directorio original,
+      // que es lo único que la copia no se lleva; lo que se ejercita es la guarda.
+      const copia = path.join(carpeta, nombre)
+      fs.writeFileSync(copia, readFileSync(path.join(aca, nombre), 'utf8')
+        .replace(/from '\.\.\//g, `from '${pathToFileURL(path.join(aca, '..')).href}/`)
+        .replace(/from '\.\//g, `from '${pathToFileURL(aca).href}/`))
+      let salida = ''
+      try {
+        salida = execFileSync(process.execPath, [copia, '--dry'], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] })
+      } catch (e) { salida = `${e.stdout ?? ''}${e.stderr ?? ''}` }
+      assert.notEqual(salida.trim(), '', `${nombre} no arrancó desde una ruta con espacios y salió sin decir nada`)
+      assert.match(salida, /═══/, `${nombre} arrancó pero no llegó a su salida: ${salida.slice(0, 200)}`)
+    } finally { fs.rmSync(carpeta, { recursive: true, force: true }) }
+  })
+}

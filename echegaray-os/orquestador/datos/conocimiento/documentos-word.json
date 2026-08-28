@@ -1,5 +1,5 @@
 {
- "generado": "2026-08-28T15:48:42.034Z",
+ "generado": "2026-08-28T18:53:32.558Z",
  "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
  "filtro": null,
  "fichas": [
@@ -1465,28 +1465,27 @@
    "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-11-21/PLANTILLA PARA INFORME.docx",
    "nombre": "PLANTILLA PARA INFORME.docx",
    "driveId": "1GaSvNnd5-O66hxceNDtz9s8qhd2m7OjO",
-   "variante": "OOXML",
+   "variante": null,
    "DETECTADO": {
     "ok": true,
-    "porQue": "la extensión «.docx» es un documento y la firma dice OOXML"
+    "porQue": "la extensión «.docx» es un documento y la firma dice que no se llegó a mirar"
    },
    "PARSEADO": {
-    "ok": true,
-    "cuanto": 694,
-    "porQue": "694 caracteres útiles, 1 tabla(s) con 4 fila(s)"
+    "ok": false,
+    "cuanto": 0,
+    "porQue": "contenido idéntico a «PLANTILLA PARA INFORME.docx»: es la misma copia con otro nombre y sus frases ya entraron"
    },
    "INTERPRETADO": {
     "ok": false,
     "cuanto": 0,
-    "porQue": "7 frase(s) · 0 hallazgo(s) documentales (0 partida(s) de tabla) · 0 hecho(s) técnicos"
+    "porQue": "no se llegó a interpretar porque no se pudo parsear"
    },
    "INTEGRADO_PROYECTO": {
     "ok": false,
     "cuanto": 0,
     "porQue": "ningún hallazgo se pudo convertir en candidato"
    },
-   "rechazados": [],
-   "huecos": 0
+   "duplicadoDe": "PLANTILLA PARA INFORME.docx"
   },
   {
    "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-6-30/Informe de relevamiento - 30:7.docx",
@@ -1541,6 +1540,13 @@
    },
    "rechazados": [],
    "huecos": 0
+  }
+ ],
+ "duplicados": [
+  {
+   "archivo": "administracion/PRESUPUESTOS - CLIENTES/VUELO PLACO/San Luis 2023-11-21/PLANTILLA PARA INFORME.docx",
+   "original": "PLANTILLA PARA INFORME.docx",
+   "porQue": "contenido idéntico a «PLANTILLA PARA INFORME.docx»: es la misma copia con otro nombre y sus frases ya entraron"
   }
  ],
  "huecos": [

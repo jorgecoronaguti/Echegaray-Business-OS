@@ -10,19 +10,48 @@
 // ═══ MISMA MAQUINARIA, NO UNA SEGUNDA ═══
 //
 // Las prácticas se construyen con `practica()` de `practica-cotizacion.mjs` —misma estadística,
-// misma escala de madurez A/B/C/D/E, misma advertencia— y salen a la biblioteca por `aConocimientos`
-// de ese mismo archivo. Duplicar la estadística acá habría producido dos definiciones de «cuántos
-// casos hacen falta para que algo sea una práctica».
+// misma escala de madurez A/B/C/D/E, misma advertencia— y salen a la biblioteca por el ÚNICO camino
+// que existe: `registroHistorico()` → `aConocimientoHistorico()`, con procedencia
+// PRACTICA_HISTORICA_ECSAS. Duplicar la estadística acá habría producido dos definiciones de
+// «cuántos casos hacen falta para que algo sea una práctica»; darle una procedencia propia habría
+// producido un segundo camino a la biblioteca, que es justo lo que main prohibió por escrito.
 //
 // ═══ UN PORCENTAJE NO ES UN IMPORTE ═══
 //
 // La fila de cierre trae los dos: `gg | 15% | 900.000`. El coeficiente es el que enseña algo —el
 // importe depende del tamaño de la obra— y confundirlos publica un «gasto general del 900.000%».
 // Por eso el coeficiente se toma sólo cuando hay un valor entre 0 y 1, y cuando no hay se dice.
-import { ADVERTENCIA, aConocimientos, practica } from './practica-cotizacion.mjs'
+import { practica } from './practica-cotizacion.mjs'
+// La advertencia y la procedencia salen de `practica-historica.mjs`, no de acá: «así se lo
+// cotizamos a este cliente» tiene EXACTAMENTE el mismo estatus epistémico que «así lo cotizábamos
+// por dentro» —los dos son un número TIPEADO en una planilla, no medido ejecutando—, y main creó
+// PRACTICA_HISTORICA_ECSAS justo para eso. Una procedencia propia sería un tercer vocabulario para
+// la misma cosa; lo que separa a las dos familias es el CORPUS, y eso vive en la clave.
+import { ADVERTENCIA } from './practica-historica.mjs'
 
 const slug = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
+
+/**
+ * UN CASO CON LOS NOMBRES QUE LA BIBLIOTECA LEE. PURA.
+ *
+ * ═══ NO ES COSMÉTICA: ERA LA CITA QUE SE TIRABA ═══
+ *
+ * Este módulo escribía `textoLiteral` y `celda`; `aConocimientoHistorico()` y el constructor de la
+ * biblioteca leen `cita` y `ubicacion`. Resultado medido: 458 citas guardadas y las 458 vacías, con
+ * la celda —que este módulo SÍ había calculado— tirada. Una afirmación cuya cita es `{}` no se
+ * puede contrastar contra el papel, que es exactamente lo que la procedencia exige.
+ *
+ * `cotizacion` es el ID de Drive y no el nombre, porque es la llave con la que
+ * `indiceDeCotizaciones()` encuentra el archivo, el cliente y la fecha de modificación.
+ */
+const caso = (c, { valor, cita, hoja, fila }) => ({
+  cotizacion: c.id ?? c.driveId ?? c.nombre,
+  obra: c.obra,
+  valor,
+  cita: String(cita ?? '').slice(0, 240),
+  ubicacion: `${c.nombre} · hoja ${hoja} · fila ${fila}`,
+})
 
 /**
  * EL COEFICIENTE DE UNA FILA DE CIERRE, O `null` CON EL MOTIVO. PURA.
@@ -31,7 +60,17 @@ const slug = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
  * millones. Cuando hay más de un candidato entre 0 y 1 no se elige: se declara ambiguo, porque
  * elegir el primero es exactamente la selección arbitraria que este repo prohíbe.
  */
-export function coeficienteDe(valores = []) {
+export const NUNCA_SON_COEFICIENTE = Object.freeze(['SUBTOTAL', 'TOTAL', 'PLAZO'])
+
+export function coeficienteDe(valores = [], concepto = null) {
+  // ═══ HAY CONCEPTOS QUE NO PUEDEN SER UN COEFICIENTE, MIRE LO QUE MIRE LA FILA ═══
+  // Un SUBTOTAL es la suma del costo directo: un importe, por definición. La regla «único número
+  // entre 0 y 1» le encontró un 0,994 —una celda de redondeo de la propia planilla— y publicó
+  // «SUBTOTAL se cotiza como coeficiente, valor 0,994». No era un caso escaso: era un caso FALSO.
+  // El PLAZO es días o meses, y el TOTAL es plata. Ninguno se lee como fracción.
+  if (concepto && NUNCA_SON_COEFICIENTE.includes(concepto)) {
+    return { valor: null, porQue: `«${concepto}» es un importe o una cantidad por definición, no una fracción: cualquier número entre 0 y 1 en su fila es un redondeo, no un coeficiente` }
+  }
   const candidatos = valores.filter((v) => typeof v === 'number' && v > 0 && v < 1)
   if (!candidatos.length) return { valor: null, porQue: `la fila no trae ningún valor entre 0 y 1: ${valores.length ? `sólo ${valores.map((v) => v).join(', ')}, que son importes` : 'no trae números'}` }
   if (candidatos.length > 1) return { valor: null, porQue: `la fila trae ${candidatos.length} valores entre 0 y 1 (${candidatos.join(', ')}) y no se sabe cuál es el coeficiente: elegir uno sería arbitrario` }
@@ -61,9 +100,9 @@ export function practicasDeCierre(cotizaciones = []) {
   const sinCoeficiente = []
   for (const c of cotizaciones) {
     for (const l of c.cierre ?? []) {
-      const { valor, porQue } = coeficienteDe(l.valores)
+      const { valor, porQue } = coeficienteDe(l.valores, l.concepto)
       if (valor === null) { sinCoeficiente.push({ cotizacion: c.nombre, concepto: l.concepto, porQue }); continue }
-      porConcepto.set(l.concepto, [...(porConcepto.get(l.concepto) ?? []), { cotizacion: c.nombre, obra: c.obra, valor, celda: `${l.hoja}!${l.fila}`, textoLiteral: l.literal }])
+      porConcepto.set(l.concepto, [...(porConcepto.get(l.concepto) ?? []), caso(c, { valor, cita: l.literal, hoja: l.hoja, fila: l.fila })])
     }
   }
   const salida = []
@@ -84,7 +123,7 @@ export function practicasDeRubros(cotizaciones = []) {
     for (const [i, r] of (c.rubros ?? []).entries()) {
       const k = slug(r.titulo)
       if (!k) continue
-      porRubro.set(k, [...(porRubro.get(k) ?? []), { cotizacion: c.nombre, obra: c.obra, valor: i + 1, celda: `${r.hoja}!${r.fila}`, textoLiteral: r.titulo }])
+      porRubro.set(k, [...(porRubro.get(k) ?? []), caso(c, { valor: i + 1, cita: r.titulo, hoja: r.hoja, fila: r.fila })])
     }
   }
   return [...porRubro.entries()]
@@ -92,9 +131,9 @@ export function practicasDeRubros(cotizaciones = []) {
     .sort((a, b) => b[1].length - a[1].length)
     .map(([k, casos]) => practica({
       clave: `cotizacion_cliente.rubro.${k}`,
-      afirmacion: `el rubro «${casos[0].textoLiteral}» aparece en ${casos.length} cotización(es) al cliente, en la posición ${casos.map((x) => x.valor).join('/')} — ${ADVERTENCIA}`,
+      afirmacion: `el rubro «${casos[0].cita}» aparece en ${casos.length} cotización(es) al cliente, en la posición ${casos.map((x) => x.valor).join('/')} — ${ADVERTENCIA}`,
       casos,
-      valorTextual: casos[0].textoLiteral,
+      valorTextual: casos[0].cita,
     }))
 }
 
@@ -111,7 +150,7 @@ export function practicasDeUnidad(cotizaciones = [], { minimoCasos = 3 } = {}) {
       const verbo = slug(String(it.descripcion ?? '').split(/\s+/)[0])
       if (!u || verbo.length < 4) continue
       const k = `${verbo}|${u}`
-      porTarea.set(k, [...(porTarea.get(k) ?? []), { cotizacion: c.nombre, obra: c.obra, valor: it.cantidad ?? null, celda: `${it.hoja}!${it.fila}`, textoLiteral: `${it.descripcion} — ${it.unidad}` }])
+      porTarea.set(k, [...(porTarea.get(k) ?? []), caso(c, { valor: it.cantidad ?? null, cita: `${it.descripcion} — ${it.unidad}`, hoja: it.hoja, fila: it.fila })])
     }
   }
   return [...porTarea.entries()]
@@ -144,7 +183,7 @@ export function practicasDeAlcance(cotizaciones = []) {
     for (const n of c.notas ?? []) {
       for (const [k, re] of ROTULOS_DE_ALCANCE) {
         if (!re.test(n.texto)) continue
-        por.set(k, [...(por.get(k) ?? []), { cotizacion: c.nombre, obra: c.obra, valor: null, celda: `${n.hoja}!${n.fila}`, textoLiteral: n.texto }])
+        por.set(k, [...(por.get(k) ?? []), caso(c, { valor: null, cita: n.texto, hoja: n.hoja, fila: n.fila })])
       }
     }
   }
@@ -152,7 +191,7 @@ export function practicasDeAlcance(cotizaciones = []) {
     clave: `cotizacion_cliente.alcance.${k}`,
     afirmacion: `«${k.replace(/_/g, ' ')}» se declara por escrito en ${casos.length} cotización(es) al cliente — ${ADVERTENCIA}`,
     casos,
-    valorTextual: casos[0].textoLiteral.slice(0, 200),
+    valorTextual: casos[0].cita.slice(0, 200),
   }))
 }
 
@@ -166,5 +205,3 @@ export function practicasCliente(cotizaciones = []) {
     resumen: `${practicas.length} práctica(s) sobre ${cotizaciones.length} cotización(es) en formato del cliente · ${cierre.sinCoeficiente.length} línea(s) de cierre sin coeficiente legible`,
   }
 }
-
-export { aConocimientos }

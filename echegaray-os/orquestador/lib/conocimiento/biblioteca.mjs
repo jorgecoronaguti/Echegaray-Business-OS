@@ -30,6 +30,7 @@
 // Por eso `validar()` toca `estado` y jamás `procedencia`, y hay un test que lo prueba al revés.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { huella } from './cache.mjs'
 
 /** DE DÓNDE SALIÓ. Es un HECHO sobre el dato y no cambia nunca. */
@@ -40,7 +41,8 @@ export const PROCEDENCIA = Object.freeze({
   // y el contrato dice que el entrepiso no se ejecuta, las dos afirmaciones son del proyecto y NO
   // son la misma cosa. Con una sola procedencia esa contradicción se pierde adentro de una etiqueta.
   DOCUMENTO_PROYECTO: 'DOCUMENTO_PROYECTO',
-  EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',   // lo medimos nosotros ejecutando
+  EXPERIENCIA_ECSAS: 'EXPERIENCIA_ECSAS',   // lo medimos nosotros EJECUTANDO
+  PRACTICA_HISTORICA_ECSAS: 'PRACTICA_HISTORICA_ECSAS', // así se venía COTIZANDO; no dice que esté bien
   BASE_MAESTRA: 'BASE_MAESTRA',             // está en nuestro catálogo con análisis vigente
   NORMA: 'NORMA',                           // reglamento o norma, con número y año
   REFERENCIA_TECNICA: 'REFERENCIA_TECNICA', // manual, guía, publicación técnica
@@ -86,7 +88,9 @@ export const EXIGEN_CITA_LITERAL = Object.freeze([
 /** Las que exigen evidencia pero NO una cita textual: su verificación es una consulta, no una
  *  lectura. `BASE_MAESTRA` se verifica en `public.tarea_tipo`; `EXPERIENCIA_ECSAS`, en las obras y
  *  la cantidad de casos. Pedirles una frase literal sería pedirles algo que no existe. */
-export const EXIGEN_EVIDENCIA = Object.freeze([PROCEDENCIA.BASE_MAESTRA, PROCEDENCIA.EXPERIENCIA_ECSAS])
+export const EXIGEN_EVIDENCIA = Object.freeze([
+  PROCEDENCIA.BASE_MAESTRA, PROCEDENCIA.EXPERIENCIA_ECSAS, PROCEDENCIA.PRACTICA_HISTORICA_ECSAS,
+])
 
 /**
  * LOS ASCENSOS PROHIBIDOS.
@@ -112,13 +116,29 @@ export const ASCENSOS_PROHIBIDOS = Object.freeze([
   [PROCEDENCIA.WEB, PROCEDENCIA.DOCUMENTO_PROYECTO], [PROCEDENCIA.INFERIDO, PROCEDENCIA.DOCUMENTO_PROYECTO],
   [PROCEDENCIA.SUPUESTO, PROCEDENCIA.DOCUMENTO_PROYECTO],
   [PROCEDENCIA.WEB, PROCEDENCIA.FABRICANTE],
+  // ═══ LO QUE SE VENÍA HACIENDO NO ASCIENDE A LO QUE HAY QUE HACER ═══
+  //
+  // Los cuatro de abajo son los que el dueño escribió textual: una práctica histórica NO se
+  // convierte en NORMA ni en BASE_MAESTRA. Los otros dos están por el mismo motivo y no son
+  // menores: EXPERIENCIA_ECSAS es «lo medimos ejecutando» —un rendimiento real de obra— y un
+  // coeficiente tipeado en una planilla no es una medición; HECHO_PROYECTO es «lo dice el plano de
+  // ESTA obra», y lo que se le cotizó a otro cliente en 2021 no lo dice.
+  //
+  // Estas prácticas contestan «¿cómo se venía cotizando?». Nunca «¿cómo debe cotizarse?».
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.NORMA],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.BASE_MAESTRA],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.EXPERIENCIA_ECSAS],
+  [PROCEDENCIA.PRACTICA_HISTORICA_ECSAS, PROCEDENCIA.HECHO_PROYECTO],
 ])
 
 /** ¿Este cambio de procedencia está prohibido? PURA. */
 export const ascensoProhibido = (de, a) => ASCENSOS_PROHIBIDOS.some(([x, y]) => x === de && y === a)
 
+// `fileURLToPath` y no `new URL(...).pathname`: el pathname viene percent-encoded, así que desde un
+// directorio con un espacio la ruta apunta a «…/mi%20carpeta/…», que no existe. `cargar()` devuelve
+// una biblioteca vacía sin error y todo lo que la lea concluye, en silencio, que no hay nada.
 export const RUTA_POR_DEFECTO = path.join(
-  path.dirname(new URL(import.meta.url).pathname), '..', '..', 'datos', 'conocimiento', 'biblioteca.json',
+  path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'datos', 'conocimiento', 'biblioteca.json',
 )
 
 /** El ciclo de un documento. `ESTUDIADO` es el único que significa que salió conocimiento de él. */

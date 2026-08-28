@@ -26,6 +26,7 @@
 // exactamente lo mismo.
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
 import { RAIZ_ADMINISTRACION, subarbol } from '../lib/conocimiento/inventario-drive.mjs'
@@ -43,7 +44,14 @@ export const RUTA_INFORME = path.join(
 
 /** La versión del productor entra en la clave del caché: cambiar el lector sin cambiarla sirve una
  *  lectura vieja con código nuevo, que es la peor forma de fallar. */
-export const VERSION_LECTOR = 2
+/** ═══ SE SUBE CADA VEZ QUE CAMBIA LO QUE ESTE SCRIPT GUARDA ═══
+ *
+ *  El caché guarda la RESPUESTA bajo el hash de la entrada y de esta versión. La v2 se escribió
+ *  cuando `leerDocumentoDeProyecto()` todavía no devolvía `clase`, así que servía respuestas sin
+ *  ese campo a un código que ya lo esperaba: las 187 frases salieron `MEMORIA` —incluidas las del
+ *  borrador— sin un solo error. Es la falla que el propio `cache.mjs` advierte en su encabezado.
+ *  v3: la lectura devuelve `clase`, y con ella una NOTA_INTERNA entra con confianza BAJA. */
+export const VERSION_LECTOR = 3
 
 const arg = (n, porDefecto = null) => {
   const m = process.argv.find((a) => a.startsWith(`--${n}=`))
@@ -68,6 +76,24 @@ export function estadosDe({ archivo, lectura = null, interpretacion = null, cand
 
 /** Los documentos de Word del subárbol. La lista se arma con `formatoDe`, la MISMA función que usa
  *  el circuito para elegir adaptador: dos tablas de extensiones se desincronizan. */
+/**
+ * ¿ESTE CONTENIDO YA ENTRÓ EN ESTA CORRIDA? PURA.
+ *
+ * ═══ 92 CONOCIMIENTOS DUPLICADOS QUE PRODUJO ESTE MISMO CIRCUITO ═══
+ *
+ * En Drive hay dos copias del contrato de Quattropani con distinto nombre. El circuito de
+ * cotizaciones ya deduplicaba por hash de contenido; éste no, así que las dos se estudiaron y las
+ * MISMAS 46 frases entraron dos veces con dos slugs distintos —`contrato-de-obra-y-memoria-
+ * descriptiva` y `...-ecsas-quattropani`—. Nada se pisó, porque el slug sale del NOMBRE: se
+ * duplicó. Y el conteo inflado se le informó al dueño como si fueran 187 hallazgos distintos.
+ *
+ * El hash es del CONTENIDO, así que dos copias con distinto nombre son una sola, y una copia
+ * editada vuelve a ser dos: la que se quiere distinguir se distingue sola.
+ *
+ * `vistos` es `hash → nombre del primero`. Devuelve el nombre del original, o `null` si es nuevo.
+ */
+export const yaEntroEnEstaCorrida = (hash, vistos) => (hash && vistos.has(hash) ? vistos.get(hash) : null)
+
 export const wordDe = (archivos = []) => archivos
   .filter((a) => !a.esCarpeta && formatoDe({ nombre: a.nombre, mime: a.mime }) === FORMATO.DOCUMENTO)
 
@@ -130,9 +156,19 @@ async function main() {
   const candidatosTodos = []
   const huecosTodos = []
   const documentos = []
+  const vistos = new Map()
+  const duplicados = []
   for (const a of word) {
     const r = await estudiarUno(google, a, { refrescar })
     if (r.fallo) { fichas.push({ ...estadosDe({ archivo: a, porQue: r.fallo }), fallo: r.fallo }); continue }
+    const original = yaEntroEnEstaCorrida(r.hash, vistos)
+    if (original) {
+      const porQue = `contenido idéntico a «${original}»: es la misma copia con otro nombre y sus frases ya entraron`
+      duplicados.push({ archivo: a.ruta ?? a.nombre, original, porQue })
+      fichas.push({ ...estadosDe({ archivo: a, porQue }), duplicadoDe: original })
+      continue
+    }
+    if (r.hash) vistos.set(r.hash, a.nombre)
     const { candidatos, rechazados } = r.lectura.ok ? aConocimientos(r.interpretacion, { conocimiento }) : { candidatos: [], rechazados: [] }
     fichas.push({ ...estadosDe({ archivo: a, lectura: r.lectura, interpretacion: r.lectura.ok ? r.interpretacion : null, candidatos }), rechazados, huecos: r.huecos?.length ?? 0 })
     candidatosTodos.push(...candidatos)
@@ -154,6 +190,12 @@ async function main() {
   console.log('\n── LOS CUATRO ESTADOS, POR SEPARADO ──')
   for (const e of ['DETECTADO', 'PARSEADO', 'INTERPRETADO', 'INTEGRADO_PROYECTO']) console.log(`  ${e.padEnd(20)} ${cuenta(e)} de ${fichas.length}`)
   console.log(`  ${'FALLO'.padEnd(20)} ${fichas.filter((f) => !f.PARSEADO.ok).length} de ${fichas.length}`)
+  // Un duplicado NO se calla: se cuenta aparte. Callarlo devuelve el mismo total inflado de antes,
+  // sólo que con el inflado escondido en vez de repetido.
+  if (duplicados.length) {
+    console.log(`  ${'COPIA DUPLICADA'.padEnd(20)} ${duplicados.length} de ${fichas.length} — no se estudian dos veces`)
+    for (const d of duplicados) console.log(`     = ${d.archivo} — ${d.porQue}`)
+  }
   for (const f of fichas.filter((x) => !x.PARSEADO.ok)) console.log(`     ✗ ${f.nombre} — ${f.PARSEADO.porQue.slice(0, 130)}`)
   console.log(`\n  hallazgos documentales   ${fichas.reduce((a, f) => a + f.INTERPRETADO.cuanto, 0)}`)
   console.log(`  huecos declarados por el propio documento   ${huecosTodos.length}`)
@@ -161,7 +203,7 @@ async function main() {
 
   fs.mkdirSync(path.dirname(RUTA_INFORME), { recursive: true })
   if (dry) { console.log('\n--dry: no se escribió nada'); return }
-  fs.writeFileSync(RUTA_INFORME, `${JSON.stringify({ generado: new Date().toISOString(), raiz, filtro, fichas, huecos: huecosTodos }, null, 1)}\n`)
+  fs.writeFileSync(RUTA_INFORME, `${JSON.stringify({ generado: new Date().toISOString(), raiz, filtro, fichas, duplicados, huecos: huecosTodos }, null, 1)}\n`)
   const bib = cargar()
   const nueva = incorporar(bib, { documentos, conocimientos: candidatosTodos, huecos: huecosTodos })
   const version = guardar(nueva)
@@ -169,5 +211,12 @@ async function main() {
   console.log(`✓ informe en ${RUTA_INFORME}`)
 }
 
-main().then(() => closePool()).then(() => process.exit(0))
-  .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// ═══ IMPORTAR ESTE ARCHIVO NO PUEDE SALIR A DRIVE ═══
+// Sin esta guarda, `import('./estudiar-documentos-word.mjs')` —desde un test, desde una consola—
+// ejecuta la corrida entera: baja 57 documentos y REESCRIBE `biblioteca.json`. Ya pasó en este repo
+// (465b14f1) y volvió a pasar acá. `estudiar-cotizaciones-drive.mjs` tiene la misma guarda.
+const ejecutadoDirecto = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (ejecutadoDirecto) {
+  main().then(() => closePool()).then(() => process.exit(0))
+    .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

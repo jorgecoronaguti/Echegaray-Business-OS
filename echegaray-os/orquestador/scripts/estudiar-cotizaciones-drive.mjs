@@ -31,7 +31,7 @@
 // mismo concepto. Hasta que eso se resuelva con `reemplazar()`, un cambio de nomenclatura obliga a
 // volver la biblioteca a su versión anterior en git y correr `--refrescar`.
 import fs from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
@@ -39,6 +39,7 @@ import { CLASE, RAIZ_ADMINISTRACION, inventariar, subarbol } from '../lib/conoci
 import { formatoDe } from '../lib/ingesta/registro.mjs'
 import { cargar, guardar, incorporar, inventario, yaEstudiado } from '../lib/conocimiento/biblioteca.mjs'
 import { estudiarTanda } from '../lib/conocimiento/estudio-cotizaciones.mjs'
+import { retirarPracticasSuperadas } from '../lib/conocimiento/practica-historica.mjs'
 import { conCache } from '../lib/conocimiento/cache.mjs'
 import { resumen } from '../lib/conocimiento/hallazgos-cotizacion.mjs'
 
@@ -47,8 +48,10 @@ export { RAIZ_ADMINISTRACION }
 /** Las clases del inventario que este comando estudia. El resto queda inventariado y declarado. */
 export const CLASES_QUE_ESTUDIA = Object.freeze([CLASE.COTIZACION_ECSAS, CLASE.RENDIMIENTO, CLASE.MEDICION])
 
+// `fileURLToPath` y no `new URL(...).pathname`: el pathname llega percent-encoded y una ruta con un
+// espacio termina apuntando a un archivo que no existe — el artefacto se lee vacío y sin error.
 export const RUTA_HALLAZGOS = path.join(
-  path.dirname(new URL(import.meta.url).pathname), '..', 'datos', 'conocimiento', 'hallazgos-cotizaciones.json',
+  path.dirname(fileURLToPath(import.meta.url)), '..', 'datos', 'conocimiento', 'hallazgos-cotizaciones.json',
 )
 
 /** Los hallazgos de la corrida anterior, si los hay. */
@@ -160,17 +163,63 @@ async function main() {
   }
   for (const s of r.practicasCliente.sinCoeficiente.slice(0, 8)) console.log(`  sin coeficiente: ${s.concepto} en ${s.cotizacion} — ${s.porQue.slice(0, 90)}`)
   console.log(`hallazgos: ${JSON.stringify(r.resumen, null, 1)}`)
+  // Los tres estados, uno por control. «12 controles pasados» sin decir cuántos ni siquiera
+  // pudieron mirar es la frase que dejó pasar $ 4.149.546 adentro de un precio.
+  console.log(`\ncontroles: ${r.controles.resumen.conHallazgo} con hallazgo · ${r.controles.resumen.limpios} limpios · ${r.controles.resumen.noSePudoMirar} no pudieron mirar → ${r.paso ? 'LA TANDA PASA' : 'LA TANDA NO PASA'}`)
+  for (const c of r.controles.corridas.filter((x) => x.estado === 'NO_SE_PUDO_MIRAR')) {
+    console.log(`  ✗ ${c.id}: ${c.cobertura.mirados} mirada(s), ${c.cobertura.sinMirar.length} sin mirar — ${c.cobertura.sinMirar[0]?.porQue ?? 'sin motivo declarado'}`)
+  }
   for (const h of r.hallazgos.filter((x) => x.gravedad === 'ALTA')) console.log(`  [ALTA] ${h.tipo} · ${h.afirmacion}`)
 
   if (dry) { console.log('\n--dry: no se escribió nada'); return }
   const nueva = incorporar(bib, { documentos: r.documentos, conocimientos: r.conocimientos })
-  const version = guardar(nueva)
+  // ═══ LA VERSIÓN VIEJA DE UNA PRÁCTICA SE RETIRA EN LA MISMA CORRIDA QUE ENTRA LA NUEVA ═══
+  //
+  // Las prácticas salían como EXPERIENCIA_ECSAS y ahora salen como PRACTICA_HISTORICA_ECSAS. La
+  // procedencia entra en el `id`, así que `incorporar()` no pisa la vieja: la deja al lado, y
+  // `saber()` devuelve las dos —una de ellas diciendo «lo medimos ejecutando» sobre un coeficiente
+  // tipeado—. Retirarlas acá y no sólo en el script de migración es lo que hace que la convivencia
+  // no pueda volver a aparecer con una base restaurada de un backup.
+  const { biblioteca, retirados } = retirarPracticasSuperadas(nueva, { cuando: new Date().toISOString().slice(0, 10) })
+  if (retirados.length) console.log(`\n↺ ${retirados.length} práctica(s) con la procedencia anterior quedaron retiradas (REEMPLAZADO)`)
+  const version = guardar(biblioteca)
   fs.mkdirSync(path.dirname(RUTA_HALLAZGOS), { recursive: true })
   const fusionados = fusionarHallazgos(leerHallazgos(), r.hallazgos, { salteados: r.salteados.length })
-  fs.writeFileSync(RUTA_HALLAZGOS, `${JSON.stringify({ generado: new Date().toISOString(), raiz, resumen: resumen(fusionados), hallazgos: fusionados }, null, 1)}\n`)
-  console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(nueva))}`)
+  fs.writeFileSync(RUTA_HALLAZGOS, `${JSON.stringify({
+    generado: new Date().toISOString(), raiz, resumen: resumen(fusionados),
+    // ═══ LOS TRES ESTADOS SE PUBLICAN, NO SÓLO LA LISTA ═══
+    //
+    // El bloque es de ESTA corrida y sólo de las cotizaciones que estudió: los hallazgos se fusionan
+    // entre corridas y los controles no, porque un control no puede afirmar nada sobre una planilla
+    // que esta vez no abrió. Por eso viaja con `sobre` y `salteadas` al lado.
+    controles: bloqueDeControles(r),
+    hallazgos: fusionados,
+  }, null, 1)}\n`)
+  console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(biblioteca))}`)
   console.log(`✓ hallazgos en ${RUTA_HALLAZGOS}`)
 }
+
+/**
+ * EL BLOQUE DE CONTROLES QUE VA AL ARTEFACTO. PURA.
+ *
+ * `sinMirar` se agrupa por control con sus motivos y unos pocos ejemplos: la lista cruda son hasta
+ * 14 × 237 renglones y el dato que decide es CUÁNTAS no se pudieron mirar y POR QUÉ, no cuál fue la
+ * número 143.
+ */
+const bloqueDeControles = (r) => ({
+  sobre: r.cotizaciones.length,
+  salteadas: r.salteados.length,
+  paso: r.paso,
+  resumen: r.controles.resumen,
+  corridas: r.controles.corridas.map((c) => ({
+    id: c.id, que: c.que, estado: c.estado,
+    hallazgos: c.hallazgos.length,
+    mirados: c.cobertura.mirados,
+    sinMirar: c.cobertura.sinMirar.length,
+    motivos: [...new Set(c.cobertura.sinMirar.map((s) => s.porQue))].slice(0, 3),
+    ejemplos: c.cobertura.sinMirar.slice(0, 5).map((s) => s.archivo ?? s.cotizacion).filter(Boolean),
+  })),
+})
 
 const resumirMadurez = (ps) => Object.entries(ps.reduce((a, p) => { a[p.madurez] = (a[p.madurez] ?? 0) + 1; return a }, {}))
   .sort().map(([k, v]) => `${k}:${v}`).join(' · ')

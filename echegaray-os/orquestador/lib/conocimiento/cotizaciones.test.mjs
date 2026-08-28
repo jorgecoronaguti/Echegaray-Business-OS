@@ -22,93 +22,15 @@ import { ERROR_DE_CELDA, textoDelError } from './celda.mjs'
 import { encabezado, leerOferta, numero, porcentajeDelRotulo, refCelda } from './cotizacion-ecsas.mjs'
 import { estudiarTanda, esCotizacionInterna, obraDe } from './estudio-cotizaciones.mjs'
 import { TIPO, hallazgos } from './hallazgos-cotizacion.mjs'
-import { aConocimientos, practicas } from './practica-cotizacion.mjs'
+import { practicas } from './practica-cotizacion.mjs'
+import { registrosHistoricos } from './practica-historica.mjs'
 import { ESTADO, PROCEDENCIA, incorporar } from './biblioteca.mjs'
 import { fusionarHallazgos } from '../../scripts/estudiar-cotizaciones-drive.mjs'
+import { estudiar, filaAnalisis, libro, libroDeCotizacion } from './cotizacion-fixture.mjs'
 
 const require = createRequire(import.meta.url)
 const XLSX = require('xlsx')
 
-/** El código numérico con el que Excel guarda `#DIV/0!`. Su valor cacheado es 7, y ese 7 es el que
- *  se coló como si fuera plata hasta que el lector aprendió a distinguirlo. */
-const DIV_CERO = 0x07
-
-/** Un renglón de análisis: código, descripción, unidad y las horas por unidad al final. */
-const filaAnalisis = (cod, desc, un, ofH, ayH) => [cod, null, desc, un, null, null, 1000, 500, 500, 0, 46000, null, ofH, ayH]
-
-const ENCABEZADO_ANALISIS = ['COD T', 'COD R', 'DESCRIPCION', 'UN', 'CANTIDAD', 'COSTO', 'TOTAL', 'MO', 'MA', 'CS', 'FECHA', 'CONSIDERACIONES', 'OF E - OF', 'AY']
-const ENCABEZADO_PRESUPUESTO = ['ID TAREA', 'ID', 'TAREA', 'U.', 'CANT.', 'COSTO U TOTAL', 'COEF. AJUSTE', 'SUBTOTAL', 'FECHA', 'COSTO MO', 'COSTO MA', 'COSTO CS']
-
-/**
- * ARMA UN LIBRO CON LA MISMA FORMA QUE LA PLANTILLA REAL DE ECSAS.
- *
- * `ivaConFormula` y `subtotalRoto` existen para poder producir los dos casos que se encontraron en
- * Drive: el IVA tipeado a mano al lado de un error, y el cierre entero en `#DIV/0!`.
- */
-function libroDeCotizacion({
-  items = [['REPLANTEO', 'M2', 10, 100, 1000]], subtotal = 1000, iva = 210, total = 1210,
-  ivaConFormula = true, subtotalRoto = false, partidas = [filaAnalisis('T1001', 'REPLANTEO', 'M2', 0.06, 0.06)],
-  codigosUsados = ['T1001'], unidadesPresupuesto = ['M2'], coeficientesAjuste = [1], tareasExtra = [], rotuloGG = 'Gastos contables (0.6 % de CD)',
-  coeficienteGG = 0.006, importeGG = 600, cliente = 'CLIENTE UNO', bloquesAjenos = [], notas = ['Nota 1: solo mano de obra'],
-} = {}) {
-  const oferta = [
-    [], [], [], [], [], [],
-    [cliente, null, null, null, null, ...bloquesAjenos],
-    [], [], [], [],
-    ['TAREA', 'UN', 'Cant', 'Precio Unicario', 'Sub Total'],
-    [],
-    ...items,
-    [],
-    [null, null, 'SUB TOTAL ', null, subtotal],
-    [null, null, 'IVA', null, iva],
-    [null, null, 'TOTAL', null, total],
-    [],
-    ...notas.map((n) => [n]),
-    ['Forma de Pago: Anticipo 40%'],
-  ]
-  const hOferta = XLSX.utils.aoa_to_sheet(oferta)
-  // 1-based: encabezado en la 12, una fila en blanco, los ítems, otra en blanco y ahí el SUB TOTAL.
-  const filaCierre = 15 + items.length
-  if (subtotalRoto) {
-    hOferta[`E${filaCierre}`] = { t: 'e', v: DIV_CERO, w: '#DIV/0!' }
-    hOferta[`E${filaCierre + 2}`] = { t: 'e', v: DIV_CERO, w: '#DIV/0!' }
-  }
-  if (ivaConFormula) hOferta[`E${filaCierre + 1}`] = { t: 'n', v: iva, f: `E${filaCierre}*0.21` }
-
-  const presupuesto = [
-    ['PRESUPUESTO GENERAL'], [], [], [], [], [],
-    ENCABEZADO_PRESUPUESTO,
-    ['ESTRUCTURA'],
-    ...codigosUsados.map((c, i) => [1, c, `TAREA ${c}`, unidadesPresupuesto[i] ?? 'M2', 10, 100, coeficientesAjuste[i] ?? 1, 1000, 46000, 500, 500, 0]),
-    ...tareasExtra.map((t) => [null, 'T9999', t, 'M2', 1, 1, 1, 1, 46000, 0, 0, 0]),
-  ]
-  const gg = [
-    [0], [], [],
-    ['COSTOS DIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 100000],
-    [], ['COSTOS INDIRECTOS (Sin IVA)', null, null, null, null, null, null, null, 50000],
-    [], [null, 'Gastos Comunes de obra:'],
-    [null, 'BAÑO QUIMICO', null, null, 50000, 'por mes', 3, 150000],
-    [null, 'Gastos Generales de la Empresa:'],
-    [null, rotuloGG, null, null, null, 1, coeficienteGG, importeGG],
-    [], [], [], [], [], [], [], [], [], [], [], [], [], [], [],
-    ['BENEFICIO', null, null, 0.15, 0.02, 0.17],
-  ]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, hOferta, 'OFERTA')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(presupuesto), 'Presupuesto')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['ANALISIS DE COSTOS'], [], [], [], ENCABEZADO_ANALISIS, ...partidas]), 'Análisis')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gg), 'GG')
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-}
-
-/** Corre el circuito ENTERO —bytes, hash, parseo, lectura, práctica, hallazgos— igual que el comando. */
-async function estudiar(libros) {
-  const archivos = libros.map((l, i) => ({ driveId: `id${i}`, nombre: l.nombre, ruta: l.ruta, modificado: '2026-08-01' }))
-  const porId = new Map(archivos.map((a, i) => [a.driveId, libros[i].bytes]))
-  return estudiarTanda(archivos, { traer: (a) => porId.get(a.driveId), obtenidoEn: '2026-08-28' })
-}
-
-const libro = (nombre, ruta, opciones) => ({ nombre, ruta, bytes: libroDeCotizacion(opciones) })
 
 // ═══════════════════ EL TRAMO QUE VA DE LOS BYTES A LOS OBJETOS ═══════════════════
 
@@ -178,10 +100,20 @@ test('OFERTA_ROTA: da rojo con el cierre en error y verde sin él', async () => 
 })
 
 test('IVA_ESCRITO_A_MANO: da rojo sin fórmula y verde con fórmula', async () => {
-  const mano = await estudiar([libro('mano.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/mano.xlsx', { ivaConFormula: false })])
+  // El IVA tipeado AL LADO de renglones que sí tienen fórmula. Sin esa fórmula del renglón la hoja
+  // no tiene ninguna, y entonces «no veo la fórmula del IVA» no distingue un IVA tipeado de un
+  // lector mal configurado: desde que el estudio publica lo que dicen los controles, ese caso sale
+  // como NO_SE_PUDO_MIRAR y no como hallazgo. Es el fin de los 12 falsos rojos de 13 ofertas.
+  const conRenglon = { formulasExtra: [{ hoja: 'OFERTA', celda: 'E14', formula: 'C14*D14', valor: 1000 }] }
+  const mano = await estudiar([libro('mano.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/mano.xlsx', { ivaConFormula: false, ...conRenglon })])
   assert.equal(mano.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 1)
   const conFormula = await estudiar([libro('ok.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/ok.xlsx', { ivaConFormula: true })])
   assert.equal(conFormula.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 0)
+
+  // Y la hoja sin NINGUNA fórmula no produce ni un hallazgo ni un verde: produce un «no miré».
+  const ciega = await estudiar([libro('c.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/c.xlsx', { ivaConFormula: false })])
+  assert.equal(ciega.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 0)
+  assert.equal(ciega.controles.corridas.find((c) => c.id === 'iva-escrito-a-mano').estado, 'NO_SE_PUDO_MIRAR')
 })
 
 test('SUBTOTAL_NO_CIERRA: da rojo cuando la suma de los ítems no es el subtotal', async () => {
@@ -292,7 +224,7 @@ test('porcentajeDelRotulo lee lo que el rótulo promete, y null cuando no promet
 
 // ═══════════════════ LA PRÁCTICA: NADA ASCIENDE SOLO ═══════════════════
 
-test('la práctica sale CANDIDATO y EXPERIENCIA_ECSAS, nunca NORMA ni BASE_MAESTRA ni VALIDADO', async () => {
+test('la práctica sale CANDIDATO y PRACTICA_HISTORICA_ECSAS, nunca NORMA ni BASE_MAESTRA ni VALIDADO', async () => {
   const r = await estudiar([
     libro('a.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA A/a.xlsx'),
     libro('b.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/CLI/OBRA B/b.xlsx'),
@@ -300,8 +232,10 @@ test('la práctica sale CANDIDATO y EXPERIENCIA_ECSAS, nunca NORMA ni BASE_MAEST
   assert.ok(r.conocimientos.length > 0)
   for (const k of r.conocimientos) {
     assert.equal(k.estado, ESTADO.CANDIDATO)
-    assert.equal(k.procedencia, PROCEDENCIA.EXPERIENCIA_ECSAS)
-    assert.ok(k.evidencia?.textoLiteral, 'sin cita literal no entra')
+    // EXPERIENCIA_ECSAS significa «lo medimos ejecutando». Un coeficiente tipeado en una planilla
+    // no se midió ejecutando, y por eso tiene procedencia propia.
+    assert.equal(k.procedencia, PROCEDENCIA.PRACTICA_HISTORICA_ECSAS)
+    assert.ok(k.evidencia && Object.keys(k.evidencia).length, 'sin evidencia no entra')
     assert.match(k.condicion, /NO que sea correcto/)
   }
   // Y la puerta al disco lo acepta: si `incorporar` lo rechazara, nada llegaría a la biblioteca.
@@ -469,8 +403,17 @@ test('la planilla del cliente produce conocimiento, no sólo un objeto leído', 
   const gg = r.conocimientos.find((k) => k.clave === 'cotizacion_cliente.cierre.gastos_generales')
   assert.ok(gg, 'falta el coeficiente de gastos generales')
   assert.equal(gg.valor, 0.15)
-  // Y la fila de SUBTOTAL, que sólo trae importes, no se resuelve eligiendo uno: se declara.
+  // ═══ LA PROCEDENCIA: hay UN camino a la biblioteca, y no es EXPERIENCIA_ECSAS ═══
+  // «Así se lo cotizamos a este cliente» es un número TIPEADO, no medido ejecutando. Con
+  // EXPERIENCIA_ECSAS estos 98 los barría `retirarPracticasSuperadas()` en la corrida siguiente.
+  assert.equal(gg.procedencia, 'PRACTICA_HISTORICA_ECSAS')
+  assert.equal(gg.area, 'practica-historica-de-cotizacion')
+  // Y la CITA tiene que llegar al disco: `cita`/`ubicacion`, que es lo que la biblioteca lee.
+  // Escribiendo `textoLiteral`/`celda` se guardaron 458 citas y las 458 salieron vacías.
+  assert.ok(gg.evidencia.archivos.some((a) => /ARSJ Planilla de Cotizacion/.test(a)), `sin archivo de evidencia: ${JSON.stringify(gg.evidencia.archivos)}`)
+  // Y la fila de SUBTOTAL no se lee como coeficiente NUNCA: es un importe por definición.
   assert.ok(r.practicasCliente.sinCoeficiente.some((x) => x.concepto === 'SUBTOTAL'), 'una fila sin coeficiente legible tiene que quedar dicha, no descartada en silencio')
+  assert.ok(!claves.includes('cotizacion_cliente.cierre.subtotal'), 'un SUBTOTAL de 0,994 es una celda de redondeo, no el coeficiente con el que se cotizó')
   assert.ok(r.documentos.some((d) => d.titulo.includes('ARSJ Planilla de Cotizacion')), 'la planilla leída tiene que quedar registrada')
 })
 
@@ -504,6 +447,6 @@ test('el error de celda se puede nombrar, y un número no es un error', () => {
 
 test('practicas() sobre una lista vacía devuelve una lista vacía, no una excepción', () => {
   assert.deepEqual(practicas([]), [])
-  assert.deepEqual(aConocimientos([]), [])
+  assert.deepEqual(registrosHistoricos([]), [])
   assert.deepEqual(hallazgos([]), [])
 })

@@ -40,7 +40,7 @@ export function claseDocumental(nombre) {
   // El contrato define el ALCANCE y es lo que se puede oponer al cliente. Antes llegaba a PLIEGO
   // por el `return` final —o sea, por descarte—: si mañana alguien cambia el default, el contrato
   // se movía con él sin que nadie lo decidiera. Va escrito.
-  if (/contrato|convenio|adenda|locacion de obra|locación de obra/.test(n)) return CLASE_FUENTE.PLIEGO
+  if (/contrato|convenio|acuerdo|adenda|locacion de obra|locación de obra/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/pliego|especificacion|especificación|condiciones/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/planilla|computo|cómputo|listado/.test(n)) return CLASE_FUENTE.PLANILLA
   // NO es PLIEGO. Que el nombre no diga qué es no lo convierte en la especificación del proyecto:
