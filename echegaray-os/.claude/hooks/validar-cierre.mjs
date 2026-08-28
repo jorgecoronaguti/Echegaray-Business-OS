@@ -29,7 +29,7 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs'
 import { join, dirname, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PROY = process.env.CLAUDE_PROJECT_DIR || resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -88,8 +88,36 @@ function cambiados(base) {
 }
 
 /** Huella del conjunto: si no cambió, no hay nada nuevo que validar. */
-function huella(archivos) {
-  return archivos.map((f) => { try { const s = statSync(f); return `${f}:${s.mtimeMs}:${s.size}` } catch { return `${f}:0` } }).sort().join('|')
+/**
+ * EL COMMIT ENTRA EN LA HUELLA (28/08/2026) — SIN ESTO, MERGEAR ES INVISIBLE.
+ *
+ * La huella se calculaba SÓLO con el contenido de los archivos sin commitear. El 28/08 el árbol pasó
+ * por ocho merges —nómina, cash flow, candado de tests— y el único archivo sin commitear no se tocó
+ * en todo el día: la huella no cambió NUNCA, así que el veredicto rojo guardado se sirvió otra vez en
+ * cada cierre, byte por byte idéntico (mismos PIDs, mismos 16844.034634 ms), mientras la suite real
+ * corría en verde. Seis avisos seguidos de un fallo que ya no existía.
+ *
+ * Un veredicto sobre el código tiene que caducar cuando el código cambia, y `HEAD` es lo que dice que
+ * cambió. Si no hay git, la huella sigue siendo la de antes: se degrada, no se rompe.
+ */
+export function huella(archivos, base) {
+  let head = ''
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { /* sin git, sólo los archivos */ }
+  const files = archivos.map((f) => { try { const s = statSync(f); return `${f}:${s.mtimeMs}:${s.size}` } catch { return `${f}:0` } }).sort().join('|')
+  return head ? `${head}|${files}` : files
+}
+
+/**
+ * ¿EL ROJO ES DEL CÓDIGO O DEL AMBIENTE? Un deadlock de Postgres (40P01) entre dos corridas de tests
+ * que atacan la misma base NO es un veredicto sobre el código: el mismo archivo pasa solo. Cachearlo
+ * como si lo fuera es lo que convierte un choque de dos minutos en seis avisos de un fallo inexistente.
+ *
+ * No se ignora —el aviso igual sale— pero no se GUARDA: la próxima vez se vuelve a correr en vez de
+ * repetir la foto. Desde que `orq:test` toma un candado por máquina esto debería ser raro; si vuelve
+ * a pasar, que cueste una corrida y no una jornada de ruido.
+ */
+export function esRojoDelAmbiente(salida) {
+  return /deadlock detected|40P01|ECONNREFUSED|ETIMEDOUT|too many clients/i.test(String(salida ?? ''))
 }
 
 /** Corre un comando y devuelve {ok, salida}. Nunca tira. */
@@ -130,7 +158,7 @@ async function main() {
   const sql = propios.filter((f) => /\.sql$/.test(f))
   if (!codigo.length && !sql.length) pasar()
 
-  const h = huella([...codigo, ...sql])
+  const h = huella([...codigo, ...sql], BASE)
   const previo = leerHuella()
   // Ya validado y verde con exactamente este contenido: no se repite.
   if (previo.ok && previo.huella === h) pasar()
@@ -173,7 +201,9 @@ async function main() {
   }
 
   const detalle = fallas.join('\n\n')
-  guardarHuella({ ok: false, huella: h, detalle, cuando: new Date().toISOString() })
+  // Un rojo del ambiente se avisa pero NO se guarda: la próxima vez se vuelve a correr en vez de
+  // repetir la foto de un choque que ya pasó. Ver `esRojoDelAmbiente`.
+  if (!esRojoDelAmbiente(detalle)) guardarHuella({ ok: false, huella: h, detalle, cuando: new Date().toISOString() })
   bloquear(
     `No puedo dar esto por terminado: hay validaciones que fallan sobre lo que se cambió en esta sesión.\n\n${detalle}\n\n`
     + 'Arreglá esto antes de cerrar. No commitees ni pushees con las validaciones en rojo. '
@@ -181,4 +211,9 @@ async function main() {
   )
 }
 
-main().catch(() => process.exit(0)) // Un hook roto NUNCA puede trabar la sesión.
+// GUARDA DE PUNTO DE ENTRADA: sin esto, importar el módulo para probarlo CORRE el hook y se queda
+// esperando stdin para siempre. `pathToFileURL` y no `new URL(import.meta.url).pathname`, que no
+// decodifica los espacios de una ruta — trampa ya pagada en este repo.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(() => process.exit(0)) // Un hook roto NUNCA puede trabar la sesión.
+}
