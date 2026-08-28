@@ -454,3 +454,58 @@ test('las tres exclusiones de diseño siguen excluidas, y cada una de SU lado', 
   assert.equal(r.devoluciones.length, 1)
   assert.equal(r.ok, true)
 })
+
+// ── UNA FILA EN DÓLARES QUE NO LO DICE EN LA COLUMNA "Moneda" (28/08/2026) ────────────────────────
+// El pipeline del Flujo de Caja quedó en `failed` desde el 25/08 con "el cuadro afirma un cobro que
+// Cobranzas no dice". No lo afirmaba: Cobranzas 78–86 (Quattropani, nueve quincenas proyectadas)
+// tienen la columna "Moneda" VACÍA y el importe escrito como `=3500*TIPO_CAMBIO_USD` más IVA. Los dos
+// lados la leían como pesos estáticos, el libro congelaba su valor al generarse y el cuadre relee la
+// pestaña dos minutos después con la cotización ya movida. Medido contra el archivo vivo: U$S 4.235
+// nominales por fila, valuados a 1.512,2180 en el libro y a 1.511,766 al releer — $1.914,22 por fila.
+
+/** La fila 78 real: pesos calculados, pero atados a `TIPO_CAMBIO_USD` por fórmula y sin declararlo. */
+const filaAtadaAlDolar = (pesos, cobro) => {
+  const f = fila({ total: pesos, cliente: 'Quattropani - Melisa García SAS', cobro })
+  // La fórmula vive en la columna del neto, tal cual el archivo. Es la ÚNICA marca de que estos pesos
+  // se mueven solos: la columna "Moneda" está vacía.
+  f[9] = { valor: '', numero: null, formula: '=3500*TIPO_CAMBIO_USD', formato: null, derivada: false }
+  return f
+}
+const USD_NOMINAL = 4235 // 3.500 + 21% de IVA
+const TC_LIBRO = 1512.2180 // con el que se congeló `_MOVIMIENTOS`
+const TC_AHORA = 1511.766 // el que devuelve el rango con nombre al releer la pestaña
+
+test('los pesos atados al dólar POR FÓRMULA cotizan, aunque la columna "Moneda" esté vacía', () => {
+  const f78 = filaAtadaAlDolar(USD_NOMINAL * TC_AHORA, '2026-08-19')
+  const c = leerCobro(f78, 78, { tipoCambio: TC_AHORA })
+  assert.equal(c.moneda, 'ARS', 'la columna "Moneda" está vacía de verdad: no se la inventa')
+  assert.equal(c.nominalUsd, USD_NOMINAL, 'el nominal se despeja de los pesos, que es donde está')
+  // La contraprueba: una fila de pesos de verdad no cotiza y no tiene nominal en dólares.
+  assert.equal(leerCobro(fila({ total: 5000000, cobro: '2026-08-19' }), 79, { tipoCambio: TC_AHORA }).nominalUsd,
+    null, 'una fila sin la fórmula sigue siendo pesos: `null`, no cero')
+})
+
+test('la deriva de cotización de una fila atada por fórmula NO descuadra el mes', () => {
+  const f78 = filaAtadaAlDolar(USD_NOMINAL * TC_AHORA, '2026-08-19')
+  // El cuadro muestra lo que valía cuando se generó el libro; el cuadre relee la pestaña ya movida.
+  const r = auditar([f78], cuadroConProyectado(0, USD_NOMINAL * TC_LIBRO), { tipoCambio: TC_AHORA })
+  const ago = r.porMes.find((m) => m.mes === '2026-08')
+  assert.equal(ago.lados.proyectado.usd, USD_NOMINAL, 'el nominal va al balde de dólares, no al de pesos')
+  assert.ok(Math.abs(ago.lados.proyectado.tcImplicito - TC_LIBRO) < 0.001,
+    'se despeja el TC con el que el cuadro la valuó')
+  assert.equal(Math.round(ago.lados.proyectado.dif * 100) / 100, -1914.22,
+    'la diferencia en pesos existe y es exactamente la que mostraba el archivo vivo…')
+  assert.equal(ago.ok, true, '…y es cotización, no un cobro inventado: el mes cierra')
+})
+
+test('…y el control SIGUE cayendo si el cuadro afirma un cobro que Cobranzas no dice', () => {
+  const f78 = filaAtadaAlDolar(USD_NOMINAL * TC_AHORA, '2026-08-19')
+  // Mismo mes, misma fila atada — pero el cuadro muestra ADEMÁS un cobro que la pestaña no tiene.
+  const inventado = USD_NOMINAL * TC_LIBRO + 6402329.01
+  const r = auditar([f78], cuadroConProyectado(0, inventado), { tipoCambio: TC_AHORA })
+  const ago = r.porMes.find((m) => m.mes === '2026-08')
+  assert.equal(ago.ok, false, 'tolerar la cotización no puede tolerar plata que no está en la fuente')
+  // Y se ve POR QUÉ cae: no es una deriva de cotización, es un implícito absurdo.
+  assert.ok(ago.lados.proyectado.tcImplicito > TC_AHORA * 1.5,
+    'un cobro de más no produce deriva: produce un tipo de cambio implícito imposible')
+})

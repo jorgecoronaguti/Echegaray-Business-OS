@@ -29,6 +29,9 @@ import { cruzarConElBanco } from './cobranzas-respaldo-banco.mjs'
 // de criterio en vez de medir el dato (ver el bloque de la fila 62 más abajo).
 import { valuarEnPesos, COL_MONEDA_COBRANZAS, instrumentoDeCobro } from './cobranzas-contrato.mjs'
 import { colIndex } from './rubro-caja.mjs'
+// El NOMBRE del rango con nombre del dólar, importado y no transcrito: es la marca por la que se
+// reconoce una fila atada a la cotización (ver `atadaAlDolar`).
+import { RANGO_TC } from './tipo-cambio.mjs'
 
 // Los dos conceptos que contienen cobranzas —lo ya cobrado y lo esperado— y los dos predicados que
 // parten el universo, re-exportados para que ningún llamador tenga que saber que se mudaron.
@@ -107,12 +110,26 @@ export function leerCobro(fila, nro, { tipoCambio = null } = {}) {
   const fechaCobro = aFecha(num(C.fechaCobro))
   const f = fechaCobro ?? aFecha(num(C.fechaVenta))
   const val = valuarEnPesos(bruto, fila[C.moneda]?.valor, tipoCambio)
+  const pesos = val.motivo ? bruto : val.pesos
+  // EL NOMINAL EN DÓLARES, POR LAS DOS PUERTAS: la columna "Moneda" (que ya trae el nominal crudo) y
+  // la fórmula atada a `TIPO_CAMBIO_USD` (donde el nominal hay que despejarlo de los pesos). Queda en
+  // UN solo campo para que `clasificar` no tenga que saber por cuál de las dos entró.
+  const nominalUsd = (() => {
+    if (val.moneda === 'USD') return val.motivo ? null : bruto
+    if (!val.motivo && atadaAlDolar(fila) && Number.isFinite(tipoCambio) && tipoCambio > 0) {
+      return pesos / tipoCambio
+    }
+    return null
+  })()
   const cobro = {
     fila: nro,
     // `monto` habla SIEMPRE en pesos —es lo que se compara contra el cuadro—; `montoOrigen` y
     // `moneda` guardan de dónde salió, para poder desmentir el número sin volver al Sheet.
-    monto: val.motivo ? bruto : val.pesos,
+    monto: pesos,
     montoOrigen: bruto,
+    // `null` cuando la fila es en pesos de verdad. NO es `0`: un cero se lee como "cero dólares", que
+    // es una afirmación, y acá lo que corresponde decir es "esta fila no cotiza".
+    nominalUsd,
     moneda: val.moneda,
     tipoCambio: val.tipoCambio ?? null,
     sinValuar: val.motivo ?? null,
@@ -142,6 +159,44 @@ export function leerCobro(fila, nro, { tipoCambio = null } = {}) {
   // que se olvide de excluir el endosado inventa un ingreso — y el cuadre mediría ese olvido.
   return { ...cobro, lado: ladoDeCobro(cobro, { esCobrado, esPendiente }) }
 }
+
+/**
+ * ¿LOS PESOS DE ESTA FILA SE MUEVEN CON EL DÓLAR, AUNQUE LA COLUMNA "Moneda" ESTÉ VACÍA?
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (28/08/2026) ═══
+ *
+ * El pipeline venía fallando desde el 25/08 con "el cuadro afirma un cobro que Cobranzas no dice", y
+ * el cuadro no afirmaba nada de más: cada peso salía de Cobranzas, fila por fila. Cobranzas 78–86
+ * (Quattropani, nueve quincenas proyectadas) tienen la columna "Moneda" VACÍA y su importe escrito
+ * como `=3500*TIPO_CAMBIO_USD` más IVA. Es una fila en dólares que no lo declara donde el OS mira.
+ *
+ * Como no lo declara, los dos lados la leían como pesos estáticos — y no lo es: el LIBRO congela el
+ * valor cuando se genera y el cuadre RELEE la pestaña dos minutos después, con la cotización ya
+ * movida. Medido: la misma celda M78 dio $6.404.243,23, $6.402.329,01 y $6.402.223,135 en tres
+ * lecturas de la misma mañana. La diferencia era $3.921,61 por mes (×1,5 en diciembre, que tiene tres
+ * quincenas en vez de dos): `nominal × Δtc`, ni un peso más.
+ *
+ * `DERIVA_TC` existe exactamente para eso y no se activaba, porque `veredictoDelLado` pregunta "¿este
+ * lado tiene dólares?" al acumulador `usd`, que se llena desde la columna "Moneda". Con la columna
+ * vacía el mes caía en la regla estricta de un peso — y contra 38.115 dólares nominales, un
+ * movimiento de la cotización de $0,000027 ya la rompe. El control no comparaba dos cifras en pesos:
+ * comparaba una foto contra la misma fórmula revaluada, creyendo que las dos eran estáticas.
+ *
+ * POR QUÉ SE MIRA LA FÓRMULA Y NO SE ARREGLA LA COLUMNA "Moneda". Porque marcar AA="USD" haría que
+ * `valuarEnPesos` multiplique OTRA VEZ por el tipo de cambio un importe que la fórmula ya convirtió:
+ * la fila quedaría valuada al cuadrado. El peso está declarado donde el dueño lo escribió —en la
+ * fórmula— y ahí es donde hay que leerlo.
+ *
+ * POR QUÉ ALCANZA CON QUE LO MENCIONE CUALQUIER CELDA DE LA FILA. `TIPO_CAMBIO_USD` es el único
+ * ancla al dólar del archivo: una fila que lo nombra es una fila cuyos pesos se mueven solos. Un
+ * falso positivo no afloja el control hasta dejarlo pasar cualquier cosa — sólo cambia la regla del
+ * mes de "un peso" a "el tipo de cambio implícito, dentro de `DERIVA_TC`", y un cobro imputado al mes
+ * equivocado sigue cayendo porque produce un implícito absurdo, no una deriva de cotización.
+ *
+ * @param {Array<object>} fila la fila de la grilla de Cobranzas (celdas con `.formula`)
+ */
+export const atadaAlDolar = (fila = []) =>
+  fila.some((c) => typeof c?.formula === 'string' && c.formula.includes(RANGO_TC))
 
 /**
  * NÚCLEO PURO: los meses que muestra el cuadro, leídos de su fila de encabezado.
@@ -264,7 +319,11 @@ export function clasificar(cobros = [], meses = []) {
     else if (c.monto < 0) { huecos.devoluciones.push({ ...c, motivo: 'cobro negativo: el libro lo emite como egreso' }); sumar(acum.devolucion, c.mes, lado, c.monto) }
     else {
       if (!c.unidad) huecos.sinUnidad.push({ ...c, motivo: 'la columna Unidad está vacía' })
-      sumar(c.moneda === 'USD' ? acum.usd : acum.ars, c.mes, lado, c.moneda === 'USD' ? c.montoOrigen : c.monto)
+      // EL BALDE LO DECIDE `nominalUsd`, NO LA COLUMNA "Moneda". Una fila atada a la cotización por
+      // fórmula cotiza igual que una que lo declara, y el balde `usd` es el que hace que el mes se
+      // juzgue por el tipo de cambio implícito (`DERIVA_TC`) en vez de por el peso exacto.
+      const enDolares = c.nominalUsd != null
+      sumar(enDolares ? acum.usd : acum.ars, c.mes, lado, enDolares ? c.nominalUsd : c.monto)
     }
     sumar(acum.bruto, c.mes, lado, c.monto)
   }
