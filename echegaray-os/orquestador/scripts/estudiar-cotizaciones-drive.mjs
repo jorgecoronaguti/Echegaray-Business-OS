@@ -91,7 +91,29 @@ const recuerdoDeHash = (refrescar) => ({
   },
 })
 
+/**
+ * LA AYUDA EXISTE PARA PODER PROBAR EL PUNTO DE ENTRADA SIN SALIR A DRIVE.
+ *
+ * El test negativo de la guarda necesita correr el script DIRECTO y ver que `main()` arranca. Sin
+ * una bandera que corte antes de la red, «probar que arranca» significa recorrer los 2.656 archivos
+ * del data room y empezar a bajar 237 planillas — en CADA `npm run orq:test`. El comentario del test
+ * decía que `--ayuda` existía «justamente para no salir a Drive» y no existía: era una bandera
+ * desconocida, así que el estudio corría entero durante 60 segundos hasta el timeout. Ahora existe.
+ */
+const AYUDA = `
+estudiar-cotizaciones-drive — estudia las cotizaciones históricas del data room.
+
+  --raiz <id>       carpeta de Drive por la que empezar (default: administración)
+  --limite <n>      estudiar sólo las primeras n planillas
+  --dry             no escribe la biblioteca ni los hallazgos
+  --refrescar       ignora la caché por hash y vuelve a leer todo
+  --ayuda           esto
+
+Sin --dry escribe orquestador/datos/conocimiento/{biblioteca,hallazgos-cotizaciones}.json.
+`
+
 async function main() {
+  if (bandera('ayuda')) { console.log(AYUDA.trim()); return }
   const raiz = arg('raiz', RAIZ_ADMINISTRACION)
   const dry = bandera('dry')
   const refrescar = bandera('refrescar')
