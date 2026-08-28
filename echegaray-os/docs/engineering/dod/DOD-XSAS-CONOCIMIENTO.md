@@ -14,7 +14,7 @@
 | **Auditó** | dos auditorías independientes de cierre (contexto nuevo); la segunda verificó por mutación |
 | **SHA inicio → cierre** | `0780cf41` → ver `git log feat/xsas-controles-historicos` |
 | **Autorizó** | **nadie todavía**. No alcanza nivel de autonomía E (no hay efecto externo), pero **el dueño no lo usó** y la corrida contra el corpus real no se rehizo |
-| **Estado** | **Cerrado con límites** — seis, escritos abajo como límites |
+| **Estado** | **Cerrado con límites** — ocho, escritos abajo como límites |
 | **Horas** | 1 sesión |
 
 ---
@@ -80,7 +80,7 @@
 
 | # | Criterio | Evidencia | Resultado |
 |---|---|---|---|
-| F1 | Cada afirmación de control tiene el comando que la verifica | Este documento: cada fila trae el comando o la lectura. Los seis límites de abajo traen la medición que los sostiene | CUMPLE |
+| F1 | Cada afirmación de control tiene el comando que la verifica | Este documento: cada fila trae el comando o la lectura. Los ocho límites de abajo traen la medición que los sostiene | CUMPLE |
 | F2 | Ningún comentario declara una condición futura sin cumplir | Los comentarios que anuncian futuro son dos y están cumplidos o declarados: «lo produce la próxima corrida del estudio» (Límite 1) y «a contrastar con T1180–T1185» (objetivo del caso metálico, no una condición del código) | CUMPLE |
 | F3 | Variables de entorno cruzadas en las dos direcciones | El módulo lee las credenciales de Google que ya usa el resto del OS; no agrega ninguna variable nueva | CUMPLE |
 | F4 | Lecciones producidas | **NO CUMPLE** — no se agregó ninguna lección a `LECCIONES_APRENDIDAS_ASISTENCIA.md`. Las tres que valen la pena están escritas en los encabezados del código y en este documento, que no es donde el catálogo las busca | **NO CUMPLE** |
@@ -110,7 +110,7 @@ node orquestador/scripts/migrar-practicas-historicas.mjs --dry   (segunda vez)
 
 ---
 
-## LOS SEIS LÍMITES
+## LOS OCHO LÍMITES
 
 > No son pendientes. Cada uno **bloquea** el criterio que toca, y está escrito acá y no al lado de un ✔.
 
@@ -135,6 +135,32 @@ Medido: `referenciasDe('SUM(Total_Costos)')` → `[]` (un nombre definido no se 
 ---
 
 ## Veredicto
+
+### Límite 7 — la corrección más importante del cierre no tiene test que la proteja
+
+La regla ya no se saltea cuando la cobertura es cero: **encontrar nunca miente; lo que necesita
+cobertura es la AUSENCIA**. Eso tiene efecto medible. Tanda con todas las OFERTAs ilegibles y un
+renglón del Presupuesto que declara 99999 donde 10 × 100 × 1 = 1000:
+
+    codigo actual  ->  mirados=0 · estado=HALLAZGO · 1 hallazgo
+    atajo viejo    ->  mirados=0 · estado=NO_SE_PUDO_MIRAR · 0 hallazgos
+
+**Y es reversible sin que nada se ponga rojo**: la auditoría devolvió el atajo
+(`cobertura.mirados > 0 ? regla() : []`) y la suite entera quedó verde. Falta el negative test en
+`orquestador/lib/conocimiento/controles-cotizacion.test.mjs`. Mientras no exista, esta corrección
+está viva por costumbre, no por control — que es exactamente lo que este módulo existe para evitar.
+
+### Límite 8 — `deduceDeLaAusencia` frena por TANDA, y el comentario dice otra cosa
+
+`controles-cotizacion.mjs:152` afirma «sin cobertura no puede afirmar ni siquiera el defecto», pero
+`controles-cotizacion.mjs:206` evalúa `cobertura.mirados === 0` sobre el AGREGADO de la tanda, no
+sobre cada cotización. Medido: tanda de 3 con una sola oferta con fórmulas →
+`iva-escrito-a-mano: estado HALLAZGO, mirados 1, sinMirar 2`, y el hallazgo ALTA con monto sale de
+`c1.xlsx`, que **ese mismo control declaró que no pudo mirar**.
+
+Sobre el corpus de hoy no cambia nada: la única fila de `IVA_ESCRITO_A_MANO` es de un archivo que sí
+tiene fórmulas. El día que llegue una planilla sin fórmulas entre otras que sí las tienen, se publica
+un rojo sobre un archivo declarado ilegible.
 
 **Cerrado con límites**, y **no cerrado** en el sentido fuerte del `CLAUDE.md`: no hay evidencia del efecto sobre el corpus real (B1), el dueño no lo usó (A3) y el catálogo de lecciones no se actualizó (F4). Lo que sí está probado, por mutación, es que ninguno de los 14 controles puede declararse limpio sobre lo que no pudo mirar, y que los tres comandos no se ejecutan al importarlos.
 
