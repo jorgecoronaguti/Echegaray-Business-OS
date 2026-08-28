@@ -15433,5 +15433,1716 @@
    "reemplazadoEn": "2026-08-28"
   }
  ],
- "huecos": []
+ "huecos": [
+  {
+   "id": "h:00526f66ad24c40a",
+   "clave": "cotizacion.plantilla.hoja.oferta_sg",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:534a032ae0c21bf1",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:006d13676e65da08",
+   "clave": "cotizacion.partida.t1107_3.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:df8237556a12b014",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:02009642f846bf50",
+   "clave": "cotizacion.partida.t1168.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e09682bca334e9e7",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:028fde7c37c67ecc",
+   "clave": "cotizacion.indirectos.costos_financieros_0_00_y_mantenim_de_bancos_0_2_de_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ee75ba79c9ed2746",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:050d6e8baca0248e",
+   "clave": "cotizacion.partida.t1167.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:1f41311fdcf2c2c9",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:06d79ea2b8e9c885",
+   "clave": "cotizacion.partida.t1075_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0dc34f32549e54b5",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:08c47f97dda707f6",
+   "clave": "cotizacion.partida.t1107_5.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ed03ede25d7c35e2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:08ef45f5e9fb65c4",
+   "clave": "cotizacion.partida.t1095.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4d3bd33b57db53da",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:0cfa07da780abfad",
+   "clave": "cotizacion.partida.t1013.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ee605ca541c0da38",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:0d68293a0053d8c7",
+   "clave": "cotizacion.plantilla.hoja.descripcion_de_tareas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ccf41ded09bf75c3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:0dee1497bc8fad28",
+   "clave": "cotizacion.indirectos.obrador_con_instalaciones.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4728295b7eccaf62",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:0e6250fd026a55a2",
+   "clave": "cotizacion.partida.t1019.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7e31171034f5ef9a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:10be9f9991406f76",
+   "clave": "cotizacion.partida.t1010.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9427ba07818f1535",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1218a7b546ba84f8",
+   "clave": "cotizacion.oferta.iva.alicuota",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d6d5188d172dccfc",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:144ce20eca6907cf",
+   "clave": "cotizacion.indirectos.gastos_contables_0_6_de_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0a1b5aad91ff7f2f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1494c793316b436a",
+   "clave": "cotizacion.partida.t1095.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:8f3f7ddf5e1ec26a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:153feccd787fbf8d",
+   "clave": "cotizacion.partida.t1170.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:aa9a8dab5dd1bed3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1607e8c7a4ad28fa",
+   "clave": "cotizacion.rubro.2_aulas_estructura_existente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f919fbfe2b5ed576",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:179e3772ea653393",
+   "clave": "cotizacion.partida.t1149.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7749949b70ea15e2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:18cf285b837ed1ac",
+   "clave": "cotizacion.partida.t1107_1.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:8dd353c3bd272799",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1aa866e2e6826e89",
+   "clave": "cotizacion.indirectos.adicional_encargado_de_deposito.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0edd8531663f95b9",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1ba993c1a2e8f5ec",
+   "clave": "cotizacion.partida.t1168.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:a9a724702e67c7b4",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1e3a002b20aee6fc",
+   "clave": "cotizacion.partida.t1001.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ad8b2a07e4de0f33",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:1e630330724d4065",
+   "clave": "cotizacion.partida.t1085.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:91bfcc257432b340",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:2131384bc556527a",
+   "clave": "cotizacion.indirectos.matriculas_profesionales_3x60_12_12meses_24casas.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c3d90fbe710bfac3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:214d2436f2d02887",
+   "clave": "cotizacion.partida.t1166.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4f27bbf73b381da2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:230ec8f4c7f9ffc9",
+   "clave": "cotizacion.plantilla.hoja.nn",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:8ee62ed9b959f14e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:23b54dc74e6cac3d",
+   "clave": "cotizacion.indirectos.amortizacion_de_maquinas_y_herramientas_0_5_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7fab8d42e044bcb6",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:269eb309d23249d5",
+   "clave": "cotizacion.partida.t1142.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c842c6f206546244",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:29b16142e1e5c8aa",
+   "clave": "cotizacion.partida.t1107_3.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9b076b51c78ce6f7",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:2b6d4d57727cc1fb",
+   "clave": "cotizacion.partida.t1003.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e32cac87fad05f93",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:2f23936110b4c77f",
+   "clave": "cotizacion.partida.t1151.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:37637a2989ca9c1d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:2f62b837bf610a3c",
+   "clave": "cotizacion.partida.t1003.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:74880d4407d6715b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:310f6611dfdb7c49",
+   "clave": "cotizacion.indirectos.sueldo_sereno.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d3ba74820266910b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:319f1b6308266587",
+   "clave": "cotizacion.rubro.costo_directo_total",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:023487842c983984",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:328e01b3021aa4ab",
+   "clave": "cotizacion.partida.t1026.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e6042daaa7d0a00d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:33eb1c1a506a2fc8",
+   "clave": "cotizacion.partida.t1078.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6b37a877d798f76a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3581b279c9eb3210",
+   "clave": "cotizacion.partida.t1028_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:2b35c0cfccdced5a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:37e37340ab477d3b",
+   "clave": "cotizacion.plantilla.hoja.oferta",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9ea37cc5cd5b6027",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:38628a6d229a2538",
+   "clave": "cotizacion.partida.t1006.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:1471ad2b51dedfaa",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:38e1428de1b815cd",
+   "clave": "cotizacion.indirectos.seguro_caucion_fondo_de_reparo.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f353209f714e77d4",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:39a88305f3ccfbe1",
+   "clave": "cotizacion.rubro.bases_messinas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6e69ad3564118a04",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3b4b7dc68507ed0b",
+   "clave": "cotizacion.partida.t1150.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:680141bce55f6009",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3d8ae9beaee42456",
+   "clave": "cotizacion.partida.t1169.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0081e097a0feed0f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3e75488d3e7cfd82",
+   "clave": "cotizacion.indirectos.capataz.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d3dd150a41b80e21",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:3ef02299f474595c",
+   "clave": "cotizacion.partida.t1148.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:fabdebb3eafe72b1",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:40845e7695185052",
+   "clave": "cotizacion.oferta.alcance_por_notas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:368f76fe3adda024",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:41f49e569b5f9dff",
+   "clave": "cotizacion.partida.t1003.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:93b70f799db3c433",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:432c7f647f3d2d82",
+   "clave": "cotizacion.partida.t1166.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:52319257c0d55bd2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:45164f3698d877b5",
+   "clave": "cotizacion.rubro.demolicion_de_pisos_patio_central",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d682da25663c383c",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:456edc42c0988071",
+   "clave": "cotizacion.partida.t1059.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:5d8333941744c10d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4645ea6c65f907ae",
+   "clave": "cotizacion.plantilla.hoja.gastosma",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e1698c03a3167553",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:479b05fe4be64524",
+   "clave": "cotizacion.plantilla.hoja.recursos",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:19178d3b36a506dc",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:490b8082a26ba1cc",
+   "clave": "cotizacion.partida.t1009.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0f568667966dd2bc",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:492e2efd9528e768",
+   "clave": "cotizacion.indirectos.poliza_de_caucion.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7b3b2831aa386b02",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4a5b6a6f9968b40b",
+   "clave": "cotizacion.plantilla.hoja.oferta_arcor",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:2a31f686a8859954",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4a995eb789b0b89f",
+   "clave": "cotizacion.plantilla.hoja.rubros",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:75a5990cfc5788bd",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4b0472e04c0ab27a",
+   "clave": "cotizacion.precio.beneficio.total",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:1e077dba39640992",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4b5fd521750ad61c",
+   "clave": "cotizacion.partida.t1095.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9801180a93c1d85b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4dd7f81e141161d5",
+   "clave": "cotizacion.partida.t1150.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7ef50627fca55fb1",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:4fb51c52d82db7eb",
+   "clave": "cotizacion.rubro.colocacion_de_chapa",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:dd9c75bebbb6bcac",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:50227a4b7030be2f",
+   "clave": "cotizacion.partida.t1148.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3d4f4bee1e76f32b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:502bc58392c263fa",
+   "clave": "cotizacion.partida.t1115.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7bf062b5dc31241b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:50ce073ac22a75ea",
+   "clave": "cotizacion.indirectos.libreria_0_15_de_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:739369073ae18c16",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:52625c058e45ced3",
+   "clave": "cotizacion.partida.t1008.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c5a40d6b0e912c4f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5301e0f574a084b6",
+   "clave": "cotizacion.partida.t1147.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:aa29fd96a8ffb358",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:543ea92d8f10ea2d",
+   "clave": "cotizacion.rubro.techo_comedor",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:052479c2a94491b3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:543fe3bc77f11c09",
+   "clave": "cotizacion.plantilla.hoja.alambrado",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0d88a1ae80a91885",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:55ed7c43d42d9484",
+   "clave": "cotizacion.rubro.6_aulas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:8a004896266865f3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5909161c7fd4633d",
+   "clave": "cotizacion.partida.t1109.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:25de0106d7a30250",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5a9b3ec9527b56ef",
+   "clave": "cotizacion.partida.t1058.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:74416ee53fe5571b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5ac09f403b90d4aa",
+   "clave": "cotizacion.partida.t1085.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d5b8ce28795ebb3c",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5b304225138e2adf",
+   "clave": "cotizacion.partida.t1155.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:1844235dba585b32",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:5f46ad8106c19cb1",
+   "clave": "cotizacion.partida.t1085.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:cd589513917e908a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:607bfe87db58f2e6",
+   "clave": "cotizacion.plantilla.hoja.mano_de_obra",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:54d53702b4e52908",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:62139c4371998dd7",
+   "clave": "cotizacion.partida.t1009.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e2c6bb877c7778b0",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:638980cfeeba0868",
+   "clave": "cotizacion.partida.t1053.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6be8592e5bf3935d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:6469e0aa5b3537c4",
+   "clave": "cotizacion.oferta.forma_de_pago",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c8f85ef8ac694262",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:65a5f48ecb15b424",
+   "clave": "cotizacion.partida.t1010.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:259400c40ca30cbe",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:680d8a652fb21876",
+   "clave": "cotizacion.partida.t1004.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:b4a00004885f8b31",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:69fba5267365fde5",
+   "clave": "cotizacion.rubro.techo_a_demoles_2_aulas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:096ee326e735ed30",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:6ba9b9ef80efcf75",
+   "clave": "cotizacion.partida.t1096.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:04d2f300f8990aaa",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:6d15b7ff2d2100ca",
+   "clave": "cotizacion.partida.t1167.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:08f61de09c689843",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:6d1ce41bbe7b40d9",
+   "clave": "cotizacion.partida.t1161.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:5b28693c38a410aa",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:6f0bb2d73196904a",
+   "clave": "cotizacion.partida.t1018.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:a382d434cbc81c63",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:70e90693535225d1",
+   "clave": "cotizacion.partida.t1170.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:14d8d76116145741",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:71d43ff6db9378c9",
+   "clave": "cotizacion.partida.t1096.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:5c8f361fd30b763b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:73aa19fb1b36f6ca",
+   "clave": "cotizacion.partida.t1170.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c45b7fc4d79b8a12",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:73f5828ac364af69",
+   "clave": "cotizacion.partida.t1107_2.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:fa4e378ee2ea70a7",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7774eb4e73689e79",
+   "clave": "cotizacion.indirectos.derechos_en_dir_transito_y_transporte.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e665aa42b95d9292",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7b05d38733689387",
+   "clave": "cotizacion.partida.t1017.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4eaabcd24f4cb122",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7c9123c9fdd4701c",
+   "clave": "cotizacion.partida.t1019.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:19a800055be75fc3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7da3eb44f0856cae",
+   "clave": "cotizacion.rubro.armdado_de_cercha",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:a4bd586a5733aa19",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7df99d5e35a1f04a",
+   "clave": "cotizacion.plantilla.hoja.diagramacion",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:a825fbf6b5ae902b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7e05808741f8a136",
+   "clave": "cotizacion.partida.t1147.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:cca3820979bdf07e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:7f4d661baf245c11",
+   "clave": "cotizacion.partida.t1002.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:1f6cbf8cab62f5c3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:81a0b1f0fc8c7066",
+   "clave": "cotizacion.oferta.columnas",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ebcb4e1e4b7cac8e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8457b9396604537e",
+   "clave": "cotizacion.partida.t1168.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c937dec70bc3efbd",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:84c63ca4c8f89357",
+   "clave": "cotizacion.partida.t1013.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6d5e97893795ad76",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:86a3c6120ac0d6d5",
+   "clave": "cotizacion.plantilla.hoja.gg",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9750db693debd4f6",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:86d76afce2408cc2",
+   "clave": "cotizacion.plantilla.hoja.manoobra",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:97885d1049fc8c74",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:89f2262b157e75bf",
+   "clave": "cotizacion.partida.t1077.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:2488ba60871e1d7d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8aeb1adde7079898",
+   "clave": "cotizacion.partida.t1096_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:b843e19552d41e4a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8afa226f64afe911",
+   "clave": "cotizacion.indirectos.alquiler_oficina_y_servicios_1_2_de_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:de65f22bcc5a971b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8bcc7870d3307e42",
+   "clave": "cotizacion.partida.t1004.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:59154fc320bb48d2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8ec37170de917fe6",
+   "clave": "cotizacion.partida.t1107_1.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:65855c6a0f63d46f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8ed23169fa1c204a",
+   "clave": "cotizacion.partida.t1096_1.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3ff2c78ec907adac",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8f1705b25788b0e5",
+   "clave": "cotizacion.precio.beneficio.neto",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:2aa0020712cbd364",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8f22ccbb55bd0463",
+   "clave": "cotizacion.partida.t1169.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:dc6a5f16c2be65d5",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:8fcec16ffa0b6c14",
+   "clave": "cotizacion.partida.t1007.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c02c629cc7751587",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:920649138edf8d1b",
+   "clave": "cotizacion.partida.t1124_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4e52e81b5440fb18",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:92cd0ee73a5210e9",
+   "clave": "cotizacion.partida.t1161.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:186de6cf39a600a3",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:9628652ae8db90a2",
+   "clave": "cotizacion.plantilla.hoja.mo_lu_vi_8_a_16",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:428bc685885eadff",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:97f671b1111fd57c",
+   "clave": "cotizacion.rubro.colocacion_de_k",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:978c63bfde7896c8",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:980eadcc3320cacc",
+   "clave": "cotizacion.partida.t1152.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:5c3bb484145925ff",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:9998faba5086450e",
+   "clave": "cotizacion.partida.t1019.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:999a258898a1d7e6",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:9d6d68a364dde98c",
+   "clave": "cotizacion.partida.t1002.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7da4ec4ef2800a1d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:9f53294c4bb61cc5",
+   "clave": "cotizacion.partida.t1075.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0adc6446f26e976e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:a48545ac8c1f2d81",
+   "clave": "cotizacion.partida.t1167.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:47aa2ff2f9fc32c2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:a504ceea81388d89",
+   "clave": "cotizacion.partida.t1006.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:dbfd1f283a911b70",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:a5e485652c944bae",
+   "clave": "cotizacion.indirectos.bano_quimico.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c146364fe2b532f8",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:a697de373c8eb30c",
+   "clave": "cotizacion.partida.t1100.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:92a447ef48f809db",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:a9362bc45dea47a1",
+   "clave": "cotizacion.partida.t1009.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:80e14067a7473530",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ab23be54ff0dd231",
+   "clave": "cotizacion.partida.t1031.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ecfbd729f5059a6d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ac4270f2b257f1ca",
+   "clave": "cotizacion.indirectos.seguro_caucion_garantia_de_contrato.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:02f31fc69ecda690",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:aef27630eaf147a4",
+   "clave": "cotizacion.plantilla.hoja.oferta_2",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f2f7aea3966e53a1",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:b08fa16c0c5f2d91",
+   "clave": "cotizacion.indirectos.registro_constructores_de_obras_publicas.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:fdb5ba29cb5f3edb",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:b1d78a1a8d2f2098",
+   "clave": "cotizacion.partida.t1115.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ac5c8f8e90a6407a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:b1eb26cf169c76b9",
+   "clave": "cotizacion.partida.t1107_3.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c4b32f9de40fa89f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:b9626587fb957305",
+   "clave": "cotizacion.partida.t1126.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f5cf6b07d54c94bf",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:b9e5bd2febd3cb9f",
+   "clave": "cotizacion.partida.t1139.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:48e5f2ec68e6f228",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:bd84b955a8c1e01d",
+   "clave": "cotizacion.partida.t1107_2.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ee868f0bd474d682",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:bf5399bd87529054",
+   "clave": "cotizacion.partida.t1049.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:77f85d1ad71cbf6d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:bf72bf9bd40d3358",
+   "clave": "cotizacion.partida.t1007.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:56ae3d885d8e1209",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c24138d4075b5eda",
+   "clave": "cotizacion.partida.t1096.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3de06696e6e0211b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c3cc3ff6d0adfe59",
+   "clave": "cotizacion.plantilla.hoja.nn_2",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4a2dc1e4a4dac51e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c8d46444bf0a0dcd",
+   "clave": "cotizacion.partida.t1142.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:4757e80985815fd9",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c912e11a5f3bf593",
+   "clave": "cotizacion.partida.t1149.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3105bd5165966a2e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c9d8e663054ea5f7",
+   "clave": "cotizacion.precio.beneficio.ingresos_brutos",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:62663268dc6d4b77",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:c9e483240b5d2c93",
+   "clave": "cotizacion.plantilla.hoja.analisis",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:bcf5171b1e04a742",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:cb39c78f44bc29cc",
+   "clave": "cotizacion.indirectos.aprobacion_planos_co_dpdu_osse_munic_ee.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:cb525220b242646b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ccbf6b315660d110",
+   "clave": "cotizacion.indirectos.gastos_administrativos_4_de_cd_con_amort_y_mant_de_bienes_de.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d8e8be9bc5b386c9",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:cdde932345d4fa90",
+   "clave": "cotizacion.indirectos.manten_y_amortizacion_de_vehiculos_1_de_cd.coeficiente",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:222f9336f95c5146",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ce5560ad5032ee49",
+   "clave": "cotizacion.partida.t1169.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:015e86b2220ca430",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d1ec9349bb2c8982",
+   "clave": "cotizacion.partida.t1002.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d12b6a0ef12d0b83",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d2902934ce99aad5",
+   "clave": "cotizacion.rubro.demolicion_y_aplicacion_de_mortero",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:424335781ef4a631",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d417a88fbad713b5",
+   "clave": "cotizacion.partida.t1008.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:af8822ac1ebcd152",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d45a8df34604a13f",
+   "clave": "cotizacion.partida.t1107_2.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:7f7598f49c78d78f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d462c55e87ca4a8c",
+   "clave": "cotizacion.plantilla.hoja.hoja1",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:195ea298d6853685",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d510fc5b362b43da",
+   "clave": "cotizacion.partida.t1126_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:c59eda0259d06a04",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d6dde5df4f14a710",
+   "clave": "cotizacion.indirectos.sueldo_jefe_de_obra_jorge.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:8f311d2cdfe9d00a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d7adb00778b3bd54",
+   "clave": "cotizacion.indirectos.varios_imprevistos_de_ci.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:558abb0ef056840f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d85ff0c68a32ad17",
+   "clave": "cotizacion.partida.t1089.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:da7f2c6d06acbc2b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d862520f92f22913",
+   "clave": "cotizacion.partida.t1152.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d350f691f5892839",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:d9c2b038de783599",
+   "clave": "cotizacion.partida.t1122.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:29a56069e444af0a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:db67a87238b21c41",
+   "clave": "cotizacion.partida.t1049.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0654c4fd98027902",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:dd20ea877854219a",
+   "clave": "cotizacion.plantilla.hoja.presupuesto",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:850f151cf8093537",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:dd879ed17ba90476",
+   "clave": "cotizacion.indirectos.sueldo_jefe_de_obra_rodrigo.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:393f10dace6053b2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ddb14e11c225ace9",
+   "clave": "cotizacion.partida.t1101.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:57705457053f3127",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:de1b641a384aa8d9",
+   "clave": "cotizacion.partida.t1165.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:b64c321d5719008f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:df32df1e2a43c2f4",
+   "clave": "cotizacion.rubro.colocacion_de_cercha",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6eb9c4538b608184",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:dfd57f4787c4246d",
+   "clave": "cotizacion.partida.t1052.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3ed2677a510f2d38",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e06084cd8b529ab5",
+   "clave": "cotizacion.indirectos.tecnico_de_hys.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0d668b9362e0396e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e1cc2fa8f19772c3",
+   "clave": "cotizacion.partida.t1004.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f8030a51899a803f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e1f1eee16e7f7aec",
+   "clave": "cotizacion.indirectos.comida.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f122e79e29f94f8a",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e2f1198b02c1586e",
+   "clave": "cotizacion.partida.t1155.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6acb1f19224abf9b",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e3547bdcdc0e68c1",
+   "clave": "cotizacion.partida.t1122.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:34a7d7f69cbe534d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e39a9da3fdaf875e",
+   "clave": "cotizacion.plantilla.hoja.costo_mo",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:06d2d3a9f2d10d54",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e73ca1047d414386",
+   "clave": "cotizacion.partida.t1166.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f7f992530b885a50",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e7ac741abfb61ef4",
+   "clave": "cotizacion.partida.t1010.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:443a9b1904a8f4d7",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:e889638b6c3e4d6a",
+   "clave": "cotizacion.plantilla.hoja.hoja2",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:e48615807ff16b74",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ea106f00c41285b2",
+   "clave": "cotizacion.partida.t1001.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:573ad742ae3523d2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ea41aa23d9135304",
+   "clave": "cotizacion.partida.t1008.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:d749a3de253845d0",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ee60c55ef363559f",
+   "clave": "cotizacion.partida.t1001.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ee5754516bc921c1",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ef98762b0da788ff",
+   "clave": "cotizacion.rubro.pintura",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:9fdaaae45cc00a0e",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f082104819491bf2",
+   "clave": "cotizacion.partida.t1013.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:41e10d29f6c451e2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f0939b21703938fb",
+   "clave": "cotizacion.partida.t1111_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:6efb5681ccee4ad2",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f28f28c7512dd2a8",
+   "clave": "cotizacion.partida.t1151.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:3c542d519ce33e67",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f4b6a49656c31aaf",
+   "clave": "cotizacion.partida.t1107_1.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:61bb890de7aa6a25",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f567b09be39fdf0d",
+   "clave": "cotizacion.indirectos.personal_oficina_tecnica.valor_de_columna",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:549565bf55e55e0f",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f660b3e6ca7bfafa",
+   "clave": "cotizacion.plantilla.hoja.computo",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:229567f3a58692ab",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f8528c205a4cf3cc",
+   "clave": "cotizacion.partida.t1096_1.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:5bf4a086197563a8",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f91eb793341fad47",
+   "clave": "cotizacion.partida.t1007.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:db33288a30f34016",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f92653050df4a01e",
+   "clave": "cotizacion.partida.t1006.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:f93e28efb89ba082",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:f9956d0a1c123eee",
+   "clave": "cotizacion.partida.t1161.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:73a9b895677b5a6d",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fa2cb1c8d3681afe",
+   "clave": "cotizacion.partida.t1107_5.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:30e055d9d902581c",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fc03bda8f393bda5",
+   "clave": "cotizacion.partida.t1155.unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:ac84aeeed83bc134",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fd535cb46cc18589",
+   "clave": "cotizacion.partida.t1149.ayudante_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:39c89af5f385a226",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:fd9576521e3eb3d1",
+   "clave": "cotizacion.partida.t1049.oficial_h_por_unidad",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:dfce2eb6b2856638",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:ff76e981f4d31e62",
+   "clave": "cotizacion.rubro.armado_de_k",
+   "tipo": "FALTA_DATO",
+   "porQue": "la práctica existía con procedencia EXPERIENCIA_ECSAS —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el 2026-08-28. La versión correcta (PRACTICA_HISTORICA_ECSAS) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en k:0d07d4ebae569553",
+   "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
+   "opciones": null,
+   "fuentesEnConflicto": null
+  }
+ ]
 }

@@ -31,7 +31,7 @@
 // mismo concepto. Hasta que eso se resuelva con `reemplazar()`, un cambio de nomenclatura obliga a
 // volver la biblioteca a su versión anterior en git y correr `--refrescar`.
 import fs from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
@@ -49,8 +49,10 @@ export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
 /** Las clases del inventario que este comando estudia. El resto queda inventariado y declarado. */
 export const CLASES_QUE_ESTUDIA = Object.freeze([CLASE.COTIZACION_ECSAS, CLASE.RENDIMIENTO, CLASE.MEDICION])
 
+// `fileURLToPath` y no `new URL(...).pathname`: el pathname llega percent-encoded y una ruta con un
+// espacio termina apuntando a un archivo que no existe — el artefacto se lee vacío y sin error.
 export const RUTA_HALLAZGOS = path.join(
-  path.dirname(new URL(import.meta.url).pathname), '..', 'datos', 'conocimiento', 'hallazgos-cotizaciones.json',
+  path.dirname(fileURLToPath(import.meta.url)), '..', 'datos', 'conocimiento', 'hallazgos-cotizaciones.json',
 )
 
 /** Los hallazgos de la corrida anterior, si los hay. */

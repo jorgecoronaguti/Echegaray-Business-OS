@@ -21,7 +21,7 @@
 //
 // Un coeficiente que va de 0,006 a 0,04 entre cotizaciones no tiene media útil: publicar «0,023»
 // sin la dispersión al lado convierte dos costumbres distintas en una tercera que nunca existió.
-import { ESTADO, PROCEDENCIA, conocimiento, reemplazar } from './biblioteca.mjs'
+import { ESTADO, HUECO, PROCEDENCIA, conocimiento, hueco, reemplazar } from './biblioteca.mjs'
 
 /** Lo que se le agrega a TODA práctica para que nadie la lea como una regla. Vive acá y no en
  *  `practica-cotizacion.mjs` porque es la advertencia de la PROCEDENCIA, no del cálculo: cualquier
@@ -314,6 +314,25 @@ export function practicasSuperadas(bib) {
  */
 export function retirarPracticasSuperadas(bib, { cuando = null } = {}) {
   const superadas = practicasSuperadas(bib)
-  const biblioteca = superadas.reduce((b, s) => reemplazar(b, s.viejo.id, { porId: s.nuevoId, cuando }), bib)
-  return { biblioteca, retirados: superadas.map((s) => ({ clave: s.viejo.clave, de: s.viejo.id, a: s.nuevoId, yaEsta: s.yaEsta })) }
+  const retirada = superadas.reduce((b, s) => reemplazar(b, s.viejo.id, { porId: s.nuevoId, cuando }), bib)
+  // ═══ RETIRAR SIN DECLARAR EL HUECO ES BORRAR ═══
+  //
+  // Si la entrada nueva todavía no existe, `saber()` sobre esa clave devuelve 0 conocimientos y 0
+  // huecos: idéntico a una clave que nunca existió. Quien consulte no puede distinguir «no lo
+  // supimos nunca» de «lo teníamos con la procedencia equivocada y está esperando el reestudio», y
+  // esas dos cosas se contestan distinto. El hueco es el mecanismo que la biblioteca ya tiene para
+  // decirlo, y desaparece solo: en cuanto la práctica correcta entra, la clave deja de estar hueca.
+  const nuevos = superadas.filter((s) => !s.yaEsta).map((s) => hueco({
+    clave: s.viejo.clave,
+    tipo: HUECO.FALTA_DATO,
+    porQue: `la práctica existía con procedencia ${PROCEDENCIA.EXPERIENCIA_ECSAS} —«lo medimos ejecutando», que no es lo que pasó— y quedó retirada el ${cuando ?? 'día de la migración'}. La versión correcta (${PROCEDENCIA.PRACTICA_HISTORICA_ECSAS}) la produce la próxima corrida de estudiar-cotizaciones-drive.mjs, y va a vivir en ${s.nuevoId}`,
+    quienLoTiene: 'las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo',
+  }))
+  const yaEstaban = new Set((retirada.huecos ?? []).map((h) => h.id))
+  const biblioteca = { ...retirada, huecos: [...(retirada.huecos ?? []), ...nuevos.filter((h) => !yaEstaban.has(h.id))] }
+  return {
+    biblioteca,
+    retirados: superadas.map((s) => ({ clave: s.viejo.clave, de: s.viejo.id, a: s.nuevoId, yaEsta: s.yaEsta })),
+    huecosDeclarados: nuevos.length,
+  }
 }

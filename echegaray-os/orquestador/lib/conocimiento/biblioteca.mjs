@@ -30,6 +30,7 @@
 // Por eso `validar()` toca `estado` y jamás `procedencia`, y hay un test que lo prueba al revés.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { huella } from './cache.mjs'
 
 /** DE DÓNDE SALIÓ. Es un HECHO sobre el dato y no cambia nunca. */
@@ -126,8 +127,11 @@ export const ASCENSOS_PROHIBIDOS = Object.freeze([
 /** ¿Este cambio de procedencia está prohibido? PURA. */
 export const ascensoProhibido = (de, a) => ASCENSOS_PROHIBIDOS.some(([x, y]) => x === de && y === a)
 
+// `fileURLToPath` y no `new URL(...).pathname`: el pathname viene percent-encoded, así que desde un
+// directorio con un espacio la ruta apunta a «…/mi%20carpeta/…», que no existe. `cargar()` devuelve
+// una biblioteca vacía sin error y todo lo que la lea concluye, en silencio, que no hay nada.
 export const RUTA_POR_DEFECTO = path.join(
-  path.dirname(new URL(import.meta.url).pathname), '..', '..', 'datos', 'conocimiento', 'biblioteca.json',
+  path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'datos', 'conocimiento', 'biblioteca.json',
 )
 
 /** El ciclo de un documento. `ESTUDIADO` es el único que significa que salió conocimiento de él. */

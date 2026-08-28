@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { estudiar, libro } from './cotizacion-fixture.mjs'
-import { ESTADO, PROCEDENCIA, ascensoProhibido, conocimiento, incorporar } from './biblioteca.mjs'
+import { ESTADO, HUECO, PROCEDENCIA, ascensoProhibido, conocimiento, incorporar, saber } from './biblioteca.mjs'
 import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
 import { practicas } from './practica-cotizacion.mjs'
 import {
@@ -324,4 +324,18 @@ test('retirar es idempotente y no toca lo que no es una práctica histórica vie
   assert.equal(una.biblioteca.conocimientos.find((k) => k.id === ajena.id).estado, ESTADO.CANDIDATO)
   const dos = retirarPracticasSuperadas(una.biblioteca)
   assert.deepEqual(dos.retirados, [], 'correrla dos veces retira dos veces')
+})
+
+test('retirar sin declarar el hueco sería borrar: la clave queda hueca hasta que el estudio la repone', () => {
+  const vieja = practicaVieja()
+  const bib = incorporar(VACIA, { conocimientos: [vieja] })
+  const { biblioteca, huecosDeclarados } = retirarPracticasSuperadas(bib, { cuando: '2026-08-28' })
+  assert.equal(huecosDeclarados, 1)
+  const s = saber(biblioteca, vieja.clave)
+  assert.equal(s.encontrados.length, 0, 'quedó viva una práctica con la procedencia equivocada')
+  assert.equal(s.huecos.length, 1, 'la clave quedó indistinguible de una que nunca existió')
+  assert.equal(s.huecos[0].tipo, HUECO.FALTA_DATO)
+  assert.match(s.huecos[0].porQue, /próxima corrida/)
+  // Y no se duplica al correrla de nuevo.
+  assert.equal(retirarPracticasSuperadas(biblioteca).biblioteca.huecos.length, 1)
 })
