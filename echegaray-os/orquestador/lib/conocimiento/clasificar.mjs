@@ -91,7 +91,7 @@ export const CAMPOS_POR_CLASE = Object.freeze({
     m('controles', 'qué controles se le exigen al estimado'),
   ],
   [CLASE.PAPER]: [
-    r('formulas', /\b([A-Za-z][A-Za-z0-9_]{0,12}\s*=\s*[^.\n;]{3,60})/),
+    r('formulas', /\b([A-Za-z][A-Za-z0-9_]{0,12}\s*=\s*[\d.,]+(?:\s*(?:hh?|hs|min|m[²³23]?|kg|g|lt?|%|d[ií]as?)\b)?)/),
     r('unidades', /\b(\d+[.,]\d+\s*(?:h(?:oras?)?|m[²23]|kg|min|d[ií]as?)\b)/i),
     m('metodo', 'el método que propone o aplica'),
     m('poblacion_contexto', 'sobre qué población, obra o contexto se midió'),
