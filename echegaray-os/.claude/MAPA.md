@@ -31,6 +31,7 @@ scripts · 14 timers en producción.
 | cruzar plano + CAD + pliego + memoria como UN proyecto | `orquestador/lib/plano/proyecto.mjs` — completar ≠ contradecir; los conflictos salen declarados y bloquean la cotización |
 | buscar un dato técnico que XSAS no tiene | `orquestador/lib/plano/investigacion.mjs` (cascada, la web es el ÚLTIMO paso) · `scripts/xsas-investigar.mjs` |
 | la regresión completa de un proyecto, A y B | `orquestador/scripts/xsas-regresion.mjs <termino> [--aprender]` |
+| hasta dónde llega cada FORMATO, y cuánto se puede apoyar en el precio | `orquestador/scripts/xsas-estado.mjs <termino> [--sin-modelo] [--detalle]` — el cuadro sale de `lib/ingesta/capacidades.mjs` (DETECTADO · PARSEADO · INTERPRETADO · INTEGRADO_PROYECTO, **las cuatro por separado: no son una escalera**) y el escalón de certeza de `lib/plano/certeza.mjs` (11 umbrales con TECHO, nada se promedia; `VALIDADO` lo firma una persona distinta de quien lo produjo) |
 | las referencias del CIRCOT (mano de obra, Modelo III galpón) | `orquestador/lib/circot/` + el dataset versionado en `orquestador/datos/circot/` · se importa con `scripts/circot-importar.mjs` |
 | cuántas HH, qué cuadrilla, cuántos días | `orquestador/lib/plano/cuadrilla.mjs` (método Navas/CIRCOT 2012, verificado contra el ejemplo publicado) |
 | la inteligencia: modelos, proveedores, costo, degradación | `orquestador/lib/ia/` — **la única puerta**. El port del Work Fabric es `engines/index.mjs` |
