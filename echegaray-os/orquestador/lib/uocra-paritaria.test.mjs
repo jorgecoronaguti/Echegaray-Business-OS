@@ -11,7 +11,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ESCALA_VERIFICADA, MENSUAL_VERIFICADO, ORIGEN_ACUERDO, ORIGEN_PROYECCION, PERIODO_VERIFICADO,
-  TRAMOS_FIRMADOS, ULTIMO_TRAMO, contrastarEscala, convenioDe, factorUocraEntre, periodosEntre, tramoDe,
+  FACTOR_SOBRE_PISO, TRAMOS_FIRMADOS, ULTIMO_TRAMO, contrastarEscala, convenioDe, factorUocraEntre,
+  jornalSobrePiso, periodosEntre, tramoDe,
 } from './uocra-paritaria.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 
@@ -124,4 +125,44 @@ test('los períodos entre dos meses excluyen el base e incluyen el final', () =>
   assert.deepEqual(periodosEntre('2026-09', '2026-08'), [], 'hacia atrás lo resuelve factorUocraEntre')
   assert.deepEqual(periodosEntre('agosto', '2026-08'), [], 'una entrada que no es un período no explota')
   assert.equal(factorUocraEntre('2026-13', '2026-08'), null, 'un mes 13 no existe: falla ruidoso')
+})
+
+// ═══ LOS DOS CÓDIGOS QUE TRAJO LA QUINCENA 17/08–31/08 (28/08/2026) ═══
+//
+// Sin ellos, `convenioDe` devolvía null para tres personas reales y el control de convenio se
+// quedaba mudo justo con las dos que ASCENDIERON. Un null acá no es "gana cero": es "no sé cuánto le
+// corresponde", y publicarlo como si fuera un piso sería inventar.
+test('las categorías nuevas de la planilla tienen equivalencia, y la que se infirió está marcada', () => {
+  assert.equal(convenioDe('OF E'), 'Oficial Especializado', 'Pastran y Quiroga Sebastián ascendieron')
+  assert.equal(convenioDe('of e'), 'Oficial Especializado', 'la planilla no respeta mayúsculas')
+  assert.equal(convenioDe('M OF'), 'Medio Oficial', 'Castillo Carlos — lectura declarada, no un hecho')
+  assert.equal(convenioDe('MO'), null, 'una abreviatura parecida NO se adivina')
+  assert.equal(convenioDe('OF ESP'), null, 'tampoco una variante que nadie declaró')
+})
+
+test('la hora objetivo es el piso por el factor, y un básico que no existe no se convierte en cero', () => {
+  assert.equal(jornalSobrePiso(6348), 9522, 'Oficial agosto 2026 Zona A')
+  assert.equal(jornalSobrePiso(7420), 11130, 'Oficial Especializado')
+  assert.equal(jornalSobrePiso(5399), 8098.5, 'Ayudante')
+  assert.equal(jornalSobrePiso(5866), 8799, 'Medio Oficial')
+  // NULL NO ES CERO. Si la escala no trae el básico de una categoría, la respuesta es "no sé",
+  // no "$0" — un cero acá se publicaría como un jornal y nadie lo miraría dos veces.
+  assert.equal(jornalSobrePiso(null), null)
+  assert.equal(jornalSobrePiso(undefined), null)
+  assert.equal(jornalSobrePiso('no es un número'), null)
+  // El factor tiene que estar declarado y ser el de la decisión del dueño, no cualquiera.
+  assert.equal(FACTOR_SOBRE_PISO, 1.5)
+  assert.equal(jornalSobrePiso(6348, 1), 6348, 'con factor 1 vuelve a ser el piso legal pelado')
+})
+
+// ═══ EL TEST NEGATIVO: ESTE CONTROL PUEDE DAR ROJO ═══
+//
+// Un factor que no describe un acuerdo salarial —cero, negativo, texto— tiene que ROMPER, no
+// devolver un número. Si `jornalSobrePiso` degradara a 0 en vez de tirar, la pestaña publicaría
+// jornales de cero pesos para todo el plantel y el cuadro seguiría "cuadrando".
+test('un factor que no describe ningún acuerdo salarial rompe en vez de publicar un jornal falso', () => {
+  for (const malo of [0, -1, -0.5, 'mitad', null, NaN, Infinity]) {
+    assert.throws(() => jornalSobrePiso(6348, malo), TypeError,
+      `un factor ${String(malo)} tendría que ser rechazado, no convertido en un jornal`)
+  }
 })
