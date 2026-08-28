@@ -106,8 +106,17 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
   })
   // El reset: todo el footprint parte de blanco y cuerpo base. Sin él, la negrita de la corrida
   // anterior aterriza sobre una fila que ahora significa otra cosa.
-  push(rango(0, alto, 0, ancho), 'userEnteredFormat(backgroundColor,textFormat,numberFormat,horizontalAlignment)',
-    { backgroundColor: BLANCO, textFormat: txt(INK, { size: 10 }), numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+  // `wrapStrategy` entra al reset (28/08/2026): sin él, la estrategia de la corrida anterior sobrevivía
+  // celda por celda y en el hero real convivían OVERFLOW_CELL y CLIP. Un formato que no se resetea no es
+  // el formato que este archivo declara: es el que quedó.
+  push(rango(0, alto, 0, ancho), 'userEnteredFormat(backgroundColor,textFormat,numberFormat,horizontalAlignment,wrapStrategy)',
+    {
+      backgroundColor: BLANCO,
+      textFormat: txt(INK, { size: 10 }),
+      numberFormat: { type: 'TEXT' },
+      horizontalAlignment: 'LEFT',
+      wrapStrategy: 'OVERFLOW_CELL',
+    })
   {
     const r = rango(0, alto, 0, ancho)
     if (r) {
@@ -208,17 +217,46 @@ function formatoEncabezado({ celdas, meta }) {
   }
 }
 
-/** Las cuatro cifras del titular: rótulo chico gris arriba, número en negrita debajo, glosa apagada. */
+/**
+ * Las TRES líneas del titular, apiladas: rótulo chico gris, número en negrita, glosa apagada.
+ *
+ * ═══ EL DESBORDE SE DECLARA, NO SE HEREDA (28/08/2026) ═══
+ *
+ * `readSheetFormats` sobre el hero real devolvía celdas en `OVERFLOW_CELL` y celdas en `CLIP` mezcladas
+ * —residuo de layouts anteriores, porque el reset de la piel nunca tocó `wrapStrategy`—. Las dos se ven
+ * mal de maneras distintas: `CLIP` corta el número a mitad de dígito y `OVERFLOW_CELL` lo derrama sobre
+ * lo que tenga al lado. Ahora las tres filas del hero se escriben en `OVERFLOW_CELL` explícito y la
+ * fila de la glosa quedó VACÍA a la derecha de cada número, así que desbordar es lo correcto: el texto
+ * corre sobre columnas vacías hasta el slot siguiente. Que ese ancho alcance lo mide
+ * `cash-flow-hero-cabe.mjs`; que la celda esté vacía lo garantizan las grillas.
+ *
+ * `WRAP` no sirve acá: partiría el importe en dos renglones dentro de una fila de 21 px de alto y
+ * escondería la mitad. Un número no se parte.
+ */
 function formatoHero({ celdas, reglaFina, meta }) {
+  const nota = meta.hero.nota ?? meta.hero.valor + 1
   for (const s of meta.hero.slots) {
-    celdas(meta.hero.rotulo, s, s + 1, 'userEnteredFormat.textFormat', { textFormat: txt(MUTED, { bold: true, size: 9 }) })
-    // Cuerpo 12: es lo más grande que entra en una columna de 95px con un importe de nueve cifras. En
-    // 14 Sheets lo tapa con "###" sin avisar, y en 18 —el tamaño de las tarjetas de CAJA, que viven en
-    // columnas anchas— no entra ni la mitad. La jerarquía la hacen la negrita y el color.
-    celdas(meta.hero.valor, s, s + 1, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment)',
-      { textFormat: txt(ACENTO, { bold: true, size: 12 }), numberFormat: MONEDA_TOTAL, horizontalAlignment: 'LEFT' })
-    celdas(meta.hero.valor, s + 1, s + 2, 'userEnteredFormat(textFormat,numberFormat)',
-      { textFormat: txt(TENUE, { size: 9 }), numberFormat: { type: 'TEXT' } })
+    celdas(meta.hero.rotulo, s, s + 1, 'userEnteredFormat(textFormat,wrapStrategy)',
+      { textFormat: txt(MUTED, { bold: true, size: 9 }), wrapStrategy: 'OVERFLOW_CELL' })
+    // CUERPO 12, Y AHORA CON EL ANCHO DEL SLOT ENTERO DETRÁS. Cuando la glosa compartía fila, el número
+    // tenía 89 px útiles y `$839.552.440` mide 116: salía cortado. Bajar el cuerpo hasta que entrara en
+    // 89 px pedía cuerpo 9 —el mismo de la glosa—, y un titular del tamaño de su propia nota deja de ser
+    // un titular. Se resolvió por el ancho, no por el tamaño: 14 seguiría tapándolo con "###" en una
+    // columna angosta y 18 —el de las tarjetas de CAJA, que viven en columnas anchas— tampoco entra.
+    celdas(meta.hero.valor, s, s + 1, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment,wrapStrategy)',
+      {
+        textFormat: txt(ACENTO, { bold: true, size: 12 }),
+        numberFormat: MONEDA_TOTAL,
+        horizontalAlignment: 'LEFT',
+        wrapStrategy: 'OVERFLOW_CELL',
+      })
+    celdas(nota, s, s + 1, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment,wrapStrategy)',
+      {
+        textFormat: txt(TENUE, { size: 9 }),
+        numberFormat: { type: 'TEXT' },
+        horizontalAlignment: 'LEFT',
+        wrapStrategy: 'OVERFLOW_CELL',
+      })
   }
   reglaFina(meta.hero.rotulo, 'top')
 }

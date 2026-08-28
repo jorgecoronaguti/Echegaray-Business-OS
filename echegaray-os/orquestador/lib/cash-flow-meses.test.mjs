@@ -191,9 +191,9 @@ test('el hero sale del propio cuadro: cuatro cifras, ninguna con aritmética pro
 test('el titular NO llama "resultado" a una variación de caja ni "proyectado" a un piso', () => {
   const { filas, meta } = armar()
   const r1 = en(filas, meta.hero.rotulo, meta.hero.slots[0])
-  const n1 = en(filas, meta.hero.valor, meta.hero.slots[0] + 1)
+  const n1 = en(filas, meta.hero.nota, meta.hero.slots[0])
   const r4 = en(filas, meta.hero.rotulo, meta.hero.slots[3])
-  const n4 = en(filas, meta.hero.valor, meta.hero.slots[3] + 1)
+  const n4 = en(filas, meta.hero.nota, meta.hero.slots[3])
 
   // (1) La cifra es entra − sale por criterio PERCIBIDO: eso es caja, no resultado. El resultado del
   // ejercicio es devengado y vive en el P&L (reglas de oro 4, 5 y 7).

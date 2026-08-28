@@ -101,7 +101,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   const meta = {
     pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: footprint.cols, footprint,
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
-    fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
+    fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, nota: FILA.heroNota, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
@@ -218,6 +218,10 @@ function bloqueHero(poner, meta) {
   const [s1, s2, s3, s4] = meta.hero.slots
   const R = meta.hero.rotulo
   const V = meta.hero.valor
+  // LA GLOSA VA UNA FILA ABAJO, EN LA MISMA COLUMNA. Estaba en la celda de al lado y le dejaba al
+  // importe una sola columna de 95 px: ver `FILA.heroNota` en cash-flow-matriz para el número cortado
+  // que eso produjo en la pestaña real.
+  const G = meta.hero.nota
   const T = (clave) => celda(meta.cab.colTotal, meta.fila[clave])
   const plata = (c) => `TEXT(${c};"$ #,##0")`
   // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
@@ -227,19 +231,19 @@ function bloqueHero(poner, meta) {
   poner(R, s1, ROTULOS_HERO.variacion)
   poner(V, s1, `=N(${T('resultado')})`)
   // Corto: el auditor de pantalla midió que 49 caracteres no entran en la columna del hero (37).
-  poner(V, s1 + 1, ROTULOS_HERO.variacionNota)
+  poner(G, s1, ROTULOS_HERO.variacionNota)
 
   poner(R, s2, 'ENTRA EN EL AÑO')
   poner(V, s2, `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`)
-  poner(V, s2 + 1, `=IF(N(${T('ingresoProyectado')})=0;"";"incluye "&${plata(T('ingresoProyectado'))}&" todavía a cobrar")`)
+  poner(G, s2, `=IF(N(${T('ingresoProyectado')})=0;"";"incluye "&${plata(T('ingresoProyectado'))}&" todavía a cobrar")`)
 
   poner(R, s3, 'SALE EN EL AÑO')
   poner(V, s3, `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`)
-  poner(V, s3 + 1, `=IF(N(${T('egresoProyectado')})=0;"";"incluye "&${plata(T('egresoProyectado'))}&" todavía a pagar")`)
+  poner(G, s3, `=IF(N(${T('egresoProyectado')})=0;"";"incluye "&${plata(T('egresoProyectado'))}&" todavía a pagar")`)
 
   poner(R, s4, ROTULOS_HERO.cierre)
   poner(V, s4, `=N(${diciembre})`)
-  poner(V, s4 + 1, ROTULOS_HERO.cierreNota)
+  poner(G, s4, ROTULOS_HERO.cierreNota)
 }
 
 /** Una columna de mes: el ancla o el eslabón, las cuatro medidas, el resultado, el saldo y las variaciones. */

@@ -161,8 +161,24 @@ export const medidasDeLaMatriz = () => CONCEPTOS.filter((c) => c.medida !== unde
  * abre una y después la otra no tiene que volver a buscar dónde está cada cosa.
  */
 export const FILA = Object.freeze({
-  titulo: 1, subtitulo: 2, botonHoy: 3, heroRotulo: 4, heroValor: 5, cabecera: 7, concepto: 8,
+  titulo: 1, subtitulo: 2, botonHoy: 3, heroRotulo: 4, heroValor: 5, heroNota: 6, cabecera: 7, concepto: 8,
 })
+
+// ═══ LA GLOSA BAJÓ A SU PROPIA FILA (28/08/2026), Y NO ES UNA PREFERENCIA ═══
+//
+// Estaba en la MISMA fila que el número, en la columna de al lado. Eso le dejaba al importe una sola
+// columna de 95 px, y `$839.552.440` en Arial bold 12 mide ~116 px: el PDF de la pestaña real mostraba
+// `$839.552.44(` —el último dígito cortado— y `$816.416.110incluye $ 319.686.218 todavía a cobrar`
+// —número y glosa pegados—. Los otros dos titulares se veían bien sólo porque sus cifras eran cortas.
+//
+// Con la glosa una fila abajo, el número desborda sobre las columnas VACÍAS de su slot y el ancho útil
+// pasa de 89 px a entre 294 y 444 según el slot. Entra `($1.234.567.890)` —diez dígitos y el paréntesis
+// del negativo— con 149 px de sobra en el peor slot, así que deja de depender de que la cifra sea
+// corta. Se descartó bajar el cuerpo: para que un importe de diez dígitos entrara en 89 px hacía falta
+// cuerpo 9, el mismo de la glosa, y un titular del tamaño de su propia nota deja de ser un titular.
+//
+// La fila 6 estaba vacía —era el aire entre el hero y el encabezado—. El aire lo hace ahora la banda
+// gris de la cabecera, que ya separaba sola. `cash-flow-hero-cabe.mjs` mide que esto siga siendo cierto.
 
 /**
  * EL RÓTULO DEL ATAJO, DECLARADO ACÁ PORQUE LO NECESITAN TRES: las dos grillas que lo escriben y el

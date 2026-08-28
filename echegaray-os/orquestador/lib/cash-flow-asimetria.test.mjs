@@ -11,7 +11,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  asimetriaDeLaProyeccion, ratioMaterialPorJornal, esMesProyectado, mesesDesdeLaPestana,
+  asimetriaDeLaProyeccion, esMesProyectado, mesesDesdeLaPestana,
   RUBROS_NOMINA, RUBRO_JORNALES,
 } from './cash-flow-asimetria.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
