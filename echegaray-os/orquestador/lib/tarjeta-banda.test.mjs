@@ -1,5 +1,10 @@
 // LA BANDA DE "Tarjeta de Credito": lo que NO se puede ver mirando la pestaña.
 //
+// El 28/08 la FORMA se rehizo entera. El dueño, sobre la primera versión: «inentendible el diseño…
+// less is more; como se vería en JP Morgan». Eran seis secciones numeradas apiladas, con el mismo
+// encabezado repetido cinco veces y 52 filas de alto. Ahora son tres tarjetas arriba y cuatro
+// bloques en dos pistas, en 31 filas. Los tests de forma de abajo son los que impiden que vuelva.
+//
 // Los defectos que esta pestaña YA tuvo, medidos sobre el archivo real:
 //   1. El bloque del OS vivía DEBAJO del registro, con su texto en la columna E — la misma columna
 //      que CAJA suma como consumo de tarjeta. Bastaba un importe ahí para inflar la caja en silencio.
@@ -11,7 +16,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { bandaFilas, datosDeLaBanda, frescura, veredicto, COLS, TITULAR, TOPES } from './tarjeta-banda.mjs'
+import { bandaFilas, datosDeLaBanda, frescura, veredicto, apilar, num, COLS, TITULAR, TOPES, PISTA } from './tarjeta-banda.mjs'
 import { BANDA, FILA_HDR, FILA_DATO0 } from './tarjeta-geometria.mjs'
 import { TOLERANCIA, BANDA_TC, VENTANA } from './tarjeta-estado.mjs'
 import { auditarPatron, ES_TOTAL } from './patron-pestana.mjs'
@@ -68,10 +73,24 @@ test('con las secciones variables LLENAS la banda sigue midiendo lo mismo', () =
 //    SUMPRODUCT((UPPER('Tarjeta de Credito'!$J$3:$J$400)<>"SI")*IF(ISNUMBER($E$3:$E$400);…))
 // sobre el rango de columna ENTERO, y la banda cae adentro.
 
-test('la banda NUNCA escribe fuera de A, B y C: E y J son el contrato con CAJA', () => {
+test('las canaletas E y J quedan SIEMPRE vacías: son el contrato con CAJA', () => {
+  // El contrato no es "no escribir más allá de la C" —eso era antes, con una sola pista— sino que la
+  // columna E no lleve NÚMEROS y la J no lleve "SI". Con dos pistas, E y J son justamente las
+  // canaletas que las separan, así que la regla se cumple por construcción y se mide igual.
   banda.forEach((f, i) => {
-    assert.deepEqual(f.slice(3), Array(COLS - 3).fill(''), `la fila ${i + 1} de la banda escribe más allá de la columna C`)
+    assert.equal(f[4], '', `la fila ${i + 1} escribe en la columna E, que CAJA suma como consumo`)
+    assert.equal(f[9], '', `la fila ${i + 1} escribe en la columna J, que CAJA lee como DEBITADO`)
   })
+})
+
+test('la banda escribe en dos pistas y en ninguna otra columna: A-B-C y F-G-H', () => {
+  banda.forEach((f, i) => {
+    for (const j of [3, 4, 8, 9, 10, 11]) {
+      assert.equal(f[j], '', `la fila ${i + 1} escribe en la columna ${String.fromCharCode(65 + j)}, que no es de ninguna pista`)
+    }
+  })
+  assert.equal(PISTA.izq, 0)
+  assert.equal(PISTA.der, 5)
 })
 
 // ═══ EL DEFECTO 2: DOS NUMERACIONES QUE SE PISAN ═══
@@ -86,41 +105,68 @@ test('la gramática del archivo se cumple: cero defectos de patrón', () => {
   assert.deepEqual(auditarPatron([...valores, ...registro]), [])
 })
 
-test('las secciones son 1..6 corridas y ninguna se repite', () => {
+test('las secciones son 1..3 corridas, y sólo numera la pista izquierda', () => {
+  // Seis bloques numerados con el mismo peso no dicen qué mirar primero. Numerar además los de la
+  // derecha obligaría a leer en zigzag: la numeración baja por la columna A, que es como se lee.
   const nums = colA.filter((a) => /^\d+ · /.test(a)).map((a) => Number(a.split(' ')[0]))
-  assert.deepEqual(nums, [1, 2, 3, 4, 5, 6])
+  assert.deepEqual(nums, [1, 2, 3])
+  const enF = banda.map((f) => String(f[5] ?? '')).filter((a) => /^\d+ · /.test(a))
+  assert.deepEqual(enF, [], 'la pista derecha no lleva número')
 })
 
 // ═══ LAS CINCO PREGUNTAS DEL DUEÑO, EN SU ORDEN ═══
 
-test('el titular es LO QUE HAY QUE PAGAR, no el disponible', () => {
-  assert.equal(g.fArs, TITULAR)
-  assert.match(colA[TITULAR - 1], /^⇒ A pagar en pesos/)
-  assert.equal(banda[TITULAR - 1][1], RESUMEN.aDebitarPesos)
+test('UNA SOLA cifra manda, y es lo que hay que pagar', () => {
+  // `dataviz/references/marks-and-anatomy.md`: «Hero figure… EXACTLY ONE per view». La cifra vive en
+  // la columna A de la fila del titular, con su rótulo arriba y su contexto abajo — no es una fila
+  // de tabla, y por eso no tiene encabezado.
+  assert.equal(g.fCif, TITULAR)
+  assert.equal(banda[TITULAR - 1][0], RESUMEN.aDebitarPesos)
+  assert.equal(String(banda[TITULAR - 2][0]), 'A PAGAR — PESOS')
+  assert.match(String(banda[TITULAR][0]), /^=LET\(dd_;TODAY\(\)/, 'debajo va el contexto, con su semáforo')
+})
+
+test('las tres tarjetas contestan las dos preguntas con las que se decide: cuánto y si ya se pagó', () => {
+  const rot = banda[g.fRot - 1]
+  assert.deepEqual([rot[0], rot[2], rot[5]], ['A PAGAR — PESOS', 'A PAGAR — DÓLARES', '¿YA SE PAGÓ?'])
+  assert.equal(banda[g.fCif - 1][2], RESUMEN.aDebitarDolares)
+  assert.ok(String(banda[g.fCif - 1][5]).startsWith('='), 'el estado se recalcula solo')
+})
+
+test('arriba no hay encabezado de tabla: tres cifras sueltas no son una tabla', () => {
+  // NN/g "Data Tables": una tabla existe para encontrar registros, compararlos y editarlos. Ninguna
+  // de esas cosas pasa con tres números, y el encabezado repetido era la mitad del ruido anterior.
+  for (const f of [g.fRot, g.fCif, g.fCif + 1]) {
+    assert.ok(!/^(concepto|monto|cuándo)$/i.test(String(banda[f - 1][1] ?? '')), `la fila ${f} tiene encabezado de tabla`)
+  }
+  const encabezados = colA.filter((a) => a === 'Concepto').length
+  assert.equal(encabezados, 2, 'un encabezado por bloque de la pista izquierda, y nada más')
 })
 
 test('los dólares se muestran aparte y NO se convierten a pesos', () => {
   // Un consumo en dólares se paga contra el mismo resumen pero es OTRA obligación: convertirla acá
   // al tipo de cambio de hoy sería fingir que ya se sabe a cuánto se va a debitar.
-  const fUsd = colA.findIndex((a) => /^⇒ A pagar en dólares/.test(a)) + 1
-  assert.ok(fUsd, 'falta la línea de dólares')
-  assert.equal(banda[fUsd - 1][1], RESUMEN.aDebitarDolares)
-  assert.ok(g.usd.includes(fUsd), 'el formateador tiene que saber cuáles filas son dólares, o se leen como pesos')
+  assert.equal(banda[g.fCif - 1][2], RESUMEN.aDebitarDolares)
+  const enDolares = [...g.usd, ...g.usdDer]
+  assert.ok(enDolares.length >= 2, 'el formateador tiene que saber cuáles filas son dólares, o se leen como pesos')
+  for (const f of g.usd) assert.equal(typeof banda[f - 1][1], 'number')
 })
 
-test('las cinco preguntas están, en el orden en que las hizo el dueño', () => {
-  const titulos = colA.filter((a) => /^(\d+ · |CUÁNTO HAY QUE PAGAR)/.test(a)).map((a) => a.toUpperCase())
-  assert.match(titulos[0], /CUÁNTO HAY QUE PAGAR/)
-  assert.match(titulos[1], /¿YA SE PAGÓ\?/)
-  assert.match(titulos[2], /QUÉ ME ESTÁN COBRANDO/)
-  assert.match(titulos[3], /CUÁNTO PUEDE VENIR LA PRÓXIMA/)
-  assert.match(titulos[5], /HISTORIAL/)
+test('las cinco preguntas siguen estando: menos no es sacar información, es jerarquía', () => {
+  const texto = banda.flat().map((c) => String(c ?? '')).join(' | ').toUpperCase()
+  assert.match(texto, /A PAGAR — PESOS/)          // cuánto hay que pagar
+  assert.match(texto, /A PAGAR — DÓLARES/)        // en las dos monedas
+  assert.match(texto, /¿YA SE PAGÓ\?/)            // si ya se pagó
+  assert.match(texto, /QUÉ ME ESTÁN COBRANDO/)    // qué me están cobrando
+  assert.match(texto, /CUÁNTO PUEDE VENIR LA PRÓXIMA/)
+  assert.match(texto, /HISTORIAL/)
+  assert.match(texto, /CASH FLOW NO ESPERA/)      // el hallazgo, que es lo que más plata mueve
 })
 
 // ═══ "¿YA SE PAGÓ?" SALE DEL BANCO, NO DEL RESUMEN ═══
 
 test('el débito se busca en _BANCO_RAW por naturaleza y por ventana, no se pega', () => {
-  const f = String(banda[g.fDeb - 1][1])
+  const f = String(banda[g.fCif][5])
   assert.match(f, /_BANCO_RAW/)
   assert.match(f, /"Pago de la tarjeta"/)
   // La ventana es la de `estadoDePago`, no una escrita a mano: 2 días antes y 10 después.
@@ -129,7 +175,7 @@ test('el débito se busca en _BANCO_RAW por naturaleza y por ventana, no se pega
 })
 
 test('el veredicto vive en el Sheet: si se pegara, diría "A VENCER" para siempre', () => {
-  const v = String(banda[g.fDif - 1][2])
+  const v = String(banda[g.fCif - 1][5])
   assert.ok(v.startsWith('='), 'el veredicto tiene que recalcularse solo cuando entre el extracto')
   assert.match(v, /IMPAGO/)
   assert.match(v, /A VENCER/)
@@ -141,17 +187,21 @@ test('la fórmula del veredicto usa LAS MISMAS constantes que la función que de
   // Es la costura de este diseño: el criterio se escribe dos veces —una en JS y otra como fórmula—
   // y lo único que las mantiene juntas son estas constantes. Si alguien cambia la tolerancia o la
   // banda de tipo de cambio en un lado y no en el otro, este test se cae.
-  const v = veredicto({ r: RESUMEN, fDeb: 12, hasta: '2026-09-11' })
+  const v = veredicto({ r: RESUMEN, debito: '-SUMIFS(x)', hasta: '2026-09-11' })
   assert.match(v, new RegExp(`ABS\\(dif_\\)<=${TOLERANCIA}`))
-  assert.ok(v.includes(`>=${(RESUMEN.tcCierre * BANDA_TC.piso).toFixed(2)}`), v)
-  assert.ok(v.includes(`<=${(RESUMEN.tcCierre * BANDA_TC.techo).toFixed(2)}`), v)
+  // Y el número embebido va EN LOCALE, como el separador: Sheets guarda 2208958.42 como
+  // 2208958,42 en un archivo es-AR, y la fórmula sellada nunca coincidía con la releída.
+  assert.match(v, /pag_-2208958,42/)
+  assert.equal(num(1497.9), '1497,9')
+  assert.ok(v.includes(`>=${num((RESUMEN.tcCierre * BANDA_TC.piso).toFixed(2))}`), v)
+  assert.ok(v.includes(`<=${num((RESUMEN.tcCierre * BANDA_TC.techo).toFixed(2))}`), v)
   assert.equal(VENTANA.antes, 2)
 })
 
 test('sin dólares, el veredicto no ofrece la explicación del tipo de cambio', () => {
   // Con `aDebitarDolares` en cero, cualquier diferencia es un hallazgo y punto: dejar la rama del TC
   // permitiría "explicar" una diferencia que no tiene con qué explicarse.
-  const v = veredicto({ r: { ...RESUMEN, aDebitarDolares: 0 }, fDeb: 12, hasta: '2026-09-11' })
+  const v = veredicto({ r: { ...RESUMEN, aDebitarDolares: 0 }, debito: '-SUMIFS(x)', hasta: '2026-09-11' })
   assert.doesNotMatch(v, /por dólar/)
   assert.match(v, /PAGADO POR OTRO IMPORTE/)
 })
@@ -169,7 +219,7 @@ test('la percepción RG 5617 se rotula como PAGO A CUENTA y no como gasto', () =
   // Tratarla como costo pierde el crédito fiscal: es recuperable en la DDJJ de Ganancias.
   const fila = banda.find((f) => /RG 5617/.test(String(f[0])))
   assert.ok(fila, 'falta la línea de la percepción')
-  assert.match(String(fila[2]), /PAGO A CUENTA de Ganancias/)
+  assert.match(String(fila[2]), /pago a cuenta, no gasto/)
 })
 
 test('el patrón de formato va en US aunque la fórmula vaya en es-AR', () => {
@@ -193,7 +243,7 @@ test('la brecha compara el débito del resumen contra lo cargado en el registro,
 })
 
 test('los dólares que ninguna línea del Cash Flow proyecta también se declaran', () => {
-  const f = banda.find((x) => /ninguna línea del Cash Flow/.test(String(x[0])))
+  const f = banda.find((x) => /ninguna línea proyecta/.test(String(x[0])))
   assert.ok(f, 'el hallazgo de los dólares sin proyectar no puede quedar sólo en el informe')
   assert.equal(f[1], RESUMEN.aDebitarDolares)
 })
@@ -201,16 +251,20 @@ test('los dólares que ninguna línea del Cash Flow proyecta también se declara
 // ═══ LA PROYECCIÓN ═══
 
 test('la próxima se rotula PROYECCIÓN y cada componente lleva su procedencia', () => {
-  const iSec = colA.findIndex((a) => /^3 · /.test(a))
-  assert.match(colA[iSec], /PROYECCIÓN, NO UN DATO/)
-  const comp = banda[iSec + 2]
-  assert.match(String(comp[2]), /^HECHO — tabla "Cuotas a vencer"/)
-  assert.match(colA[g.fPiso - 1], /^⇒ Piso de la próxima/)
+  const iSec = banda.findIndex((f) => /CUÁNTO PUEDE VENIR LA PRÓXIMA/.test(String(f[5])))
+  assert.match(String(banda[iSec][5]), /PROYECCIÓN/, 'una estimación presentada como hecho es la regla que más caro sale romper')
+  assert.match(String(banda[iSec + 2][7]), /^HECHO/)
+  assert.match(String(banda[g.fPiso - 1][5]), /^⇒ Piso de la próxima/)
 })
 
 test('lo que no se sabe se escribe: los huecos van en la pestaña, no en el informe', () => {
-  const huecos = colA.filter((a) => /^\s+· /.test(a) && /observación aislada|período en curso|se consuma/.test(a))
-  assert.ok(huecos.length >= 3, 'el piso sin sus huecos se lee como un pronóstico')
+  const huecos = banda.map((f) => String(f[5] ?? '')).filter((a) => /^\s+· /.test(a))
+  assert.ok(huecos.length >= 2, 'el piso sin sus huecos se lee como un pronóstico')
+  assert.ok(huecos.some((h) => /recurrencia/.test(h)))
+  assert.ok(huecos.some((h) => /período en curso/.test(h)))
+  // Y CORTOS: un texto largo en una columna del medio desparrama la fila, que es media mitad de lo
+  // que hacía inentendible la versión anterior. `auditarPatron` lo mide en el test de la gramática.
+  for (const h of huecos) assert.ok(h.length <= 60, `hueco de ${h.length} caracteres: "${h}"`)
 })
 
 // ═══ LOS RANGOS Y EL LOCALE ═══
@@ -226,7 +280,9 @@ test('separador es-AR: ni una coma separando argumentos', () => {
   // El archivo está en es-AR: una fórmula con comas entra como texto y la celda queda muda.
   for (const f of formulas) {
     const sinTextos = String(f).replace(/"[^"]*"/g, '""')
-    assert.doesNotMatch(sinTextos, /,/, `fórmula con coma: ${String(f).slice(0, 70)}`)
+    // Una coma ENTRE DÍGITOS es el separador decimal en es-AR y tiene que estar (ver `num`). La que
+    // no puede aparecer es la que separa argumentos: cualquier otra.
+    assert.doesNotMatch(sinTextos, /(?<!\d),|,(?!\d)/, `fórmula con coma de argumentos: ${String(f).slice(0, 70)}`)
   }
 })
 
@@ -235,6 +291,18 @@ test('los nombres de LET no pueden parecer una referencia A1', () => {
     const nombres = [...String(f).matchAll(/LET\(([^;]+);/g)].map((m) => m[1].trim())
     for (const n of nombres) assert.match(n, /_$/, `el nombre "${n}" tiene que terminar en _`)
   }
+})
+
+test('las dos pistas van en paralelo: el bloque más corto no corre al otro', () => {
+  // Es lo que hace que se lean como dos columnas y no como una lista larga. Si el bloque corto se
+  // completara con menos filas, el de al lado arrancaría más arriba y los encabezados no alinearían.
+  const { filas, alto } = apilar([['a1', 1, 'c1'], ['a2', 2, 'c2'], ['a3', 3, 'c3']], [['d1', 4, 'f1']], 0)
+  assert.equal(alto, 3)
+  assert.equal(filas.length, 3)
+  assert.deepEqual(filas[0].slice(0, 8), ['a1', 1, 'c1', '', '', 'd1', 4, 'f1'])
+  assert.deepEqual(filas[2].slice(0, 8), ['a3', 3, 'c3', '', '', '', '', ''])
+  // La canaleta E (índice 4) queda vacía SIEMPRE: es el contrato con CAJA.
+  for (const f of filas) assert.equal(f[4], '')
 })
 
 test('la banda es determinística: no estampa la fecha de la corrida', () => {
