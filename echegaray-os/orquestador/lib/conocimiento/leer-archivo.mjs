@@ -46,10 +46,13 @@ export const hashDe = (bytes) => crypto.createHash('sha256').update(bytes).diges
 export function filasDeHoja(XLSX, hoja) {
   if (!hoja?.['!ref']) return []
   const r = XLSX.utils.decode_range(hoja['!ref'])
+  // Se arranca en 0 y no en `r.s.r`: una hoja cuyo rango empieza en A3 devolvería el índice 0 para
+  // la fila 3, y todas las referencias de celda de la evidencia quedarían corridas dos filas. Una
+  // cita con la celda equivocada es peor que no tener cita.
   const filas = []
-  for (let f = r.s.r; f <= r.e.r; f++) {
+  for (let f = 0; f <= r.e.r; f++) {
     const fila = []
-    for (let c = r.s.c; c <= r.e.c; c++) {
+    for (let c = 0; c <= r.e.c; c++) {
       const celda = hoja[XLSX.utils.encode_cell({ r: f, c })]
       if (!celda) { fila.push(null); continue }
       fila.push(celda.t === 'e' ? errorDeCelda(celda.w || celda.v) : (celda.v ?? null))
@@ -59,18 +62,44 @@ export function filasDeHoja(XLSX, hoja) {
   return filas
 }
 
+/**
+ * QUÉ CELDAS TIENEN FÓRMULA. Sólo las que la tienen: la ausencia es el dato.
+ *
+ * Sirve para distinguir un número CALCULADO de uno ESCRITO A MANO en el mismo lugar. Medido: en la
+ * oferta de LA ESTRELLA el SUB TOTAL es `#NAME?` y el IVA de abajo es un número sin fórmula — a
+ * alguien se le rompió la planilla y escribió el impuesto a mano al lado del error.
+ */
+export function formulasDeHoja(XLSX, hoja) {
+  if (!hoja?.['!ref']) return {}
+  const r = XLSX.utils.decode_range(hoja['!ref'])
+  const salida = {}
+  for (let f = r.s.r; f <= r.e.r; f++) {
+    for (let c = r.s.c; c <= r.e.c; c++) {
+      const ref = XLSX.utils.encode_cell({ r: f, c })
+      const celda = hoja[ref]
+      if (celda?.f) salida[ref] = String(celda.f)
+    }
+  }
+  return salida
+}
+
 /** Las filas de todas las pestañas de una planilla, como arrays de arrays. */
 export async function leerPlanilla(bytes) {
   const XLSX = await import('xlsx')
-  const libro = XLSX.read(bytes, { type: 'buffer', cellFormula: false, cellHTML: false, cellDates: false })
+  // `cellFormula: true` NO es un detalle de performance: sin él `xlsx` no guarda `.f` y entonces
+  // TODA celda parece escrita a mano. El control de «el IVA está tipeado» daba rojo en 12 de 13
+  // ofertas — no porque lo estuvieran, sino porque el lector no podía ver ninguna fórmula.
+  const libro = XLSX.read(bytes, { type: 'buffer', cellFormula: true, cellHTML: false, cellDates: false })
   const hojas = {}
+  const formulas = {}
   for (const nombre of libro.SheetNames) {
     const hoja = libro.Sheets[nombre]
     if (!hoja) continue
     hojas[nombre] = filasDeHoja(XLSX, hoja)
+    formulas[nombre] = formulasDeHoja(XLSX, hoja)
   }
   if (!Object.keys(hojas).length) return { ok: false, porQue: 'la planilla se abrió y no tiene ninguna pestaña con celdas' }
-  return { ok: true, formato: FORMATO.PLANILLA, hojas, pestanas: libro.SheetNames }
+  return { ok: true, formato: FORMATO.PLANILLA, hojas, formulas, pestanas: libro.SheetNames }
 }
 
 /** El texto de un PDF, con el mismo control de «esto no tiene capa de texto» que la vía web. */
