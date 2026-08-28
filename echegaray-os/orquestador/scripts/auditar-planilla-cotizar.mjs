@@ -25,7 +25,8 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import XLSX from 'xlsx'
-import { aISO, ANA, REC, numero, texto, codigo } from '../lib/base-maestra-xlsm.mjs'
+import { aISO, ANA, REC, clasificarTipo, numero, texto, codigo } from '../lib/base-maestra-xlsm.mjs'
+import { contrastarConResumen, hhPorCategoria } from '../lib/base-maestra-hh.mjs'
 import { MONEDA, costoPresupuestario, monedaDe, monedaDeComposicion, tipoDeCambioDeLibro } from '../lib/base-maestra-moneda.mjs'
 import { TIPO_AJUSTE, aplicarAjuste, clasificarAjuste, repasoDeAjustes } from '../lib/base-maestra-ajuste.mjs'
 import { COTEJO, cotejar, resumirCotejo } from '../lib/base-maestra-cotejo.mjs'
@@ -65,6 +66,8 @@ function leerRecursos(wb) {
       fecha: aISO(celda(h, REC.fecha + f)),
       fuente: texto(celda(h, REC.fuente + f)),
       familia: texto(celda(h, REC.familia + f)),
+      division: texto(celda(h, REC.division + f)),
+      tipo: clasificarTipo({ unidad, familia: texto(celda(h, REC.familia + f)), division: texto(celda(h, REC.division + f)), nombre }).tipo,
       desperdicio: numero(celda(h, REC.desperdicio + f)) ?? 0,
       moneda: m.moneda, confianzaMoneda: m.confianza, porqueMoneda: m.porque,
     })
@@ -82,7 +85,7 @@ function leerComposiciones(wb, porCodigo) {
     const esLinea = /VLOOKUP/i.test(h[ANA.descripcion + f]?.f ?? '')
     const codT = codigo(celda(h, ANA.tarea + f))
     if (!esLinea && codT !== null) {
-      actual = { codigo: codT, nombre: texto(celda(h, ANA.descripcion + f)), unidad: texto(celda(h, ANA.unidad + f)), fila: f, lineas: [] }
+      actual = { codigo: codT, nombre: texto(celda(h, ANA.descripcion + f)), unidad: texto(celda(h, ANA.unidad + f)), fila: f, resumen: { M: numero(celda(h, 'M' + f)), N: numero(celda(h, 'N' + f)) }, lineas: [] }
       if (!tareas.has(codT)) tareas.set(codT, actual)
       continue
     }
@@ -92,7 +95,7 @@ function leerComposiciones(wb, porCodigo) {
     const cantidad = numero(celda(h, ANA.cantidad + f))
     if (!r || cantidad === null) continue
     const c = costoPresupuestario({ observado: r.costo ?? 0, desperdicio: r.desperdicio, moneda: r.moneda })
-    actual.lineas.push({ fila: f, codigoRecurso: codR, nombre: r.nombre, cantidad, moneda: r.moneda, ...c, importe: cantidad * c.presupuestario })
+    actual.lineas.push({ fila: f, codigoRecurso: codR, nombre: r.nombre, tipo: r.tipo, cantidad, moneda: r.moneda, ...c, importe: cantidad * c.presupuestario })
   }
   return tareas
 }
@@ -234,6 +237,7 @@ function auditar() {
     nComposiciones: composiciones.size,
     nLineas: [...composiciones.values()].reduce((s, t) => s + t.lineas.length, 0),
     ajustes: repasoDeAjustes(presupuesto.map((p) => p.ajuste)),
+    hh: medirHH(composiciones),
     partidas: presupuesto.map((p) => ({
       codigo: p.codigo, tarea: p.tarea, unidad: p.unidad, cantidad: p.cantidad, nLineas: p.nLineas,
       monedaComposicion: p.monedaComposicion,
@@ -256,6 +260,30 @@ function auditar() {
 
 const contar = (xs) => xs.reduce((a, x) => ({ ...a, [x]: (a[x] ?? 0) + 1 }), {})
 
+/**
+ * LAS HH DE CADA TAREA, Y CUÁNTO MIENTE LA COLUMNA DE RESUMEN.
+ *
+ * Las horas salen SIEMPRE de las líneas. El contraste contra `Análisis!M:N` no elige nada: mide
+ * el daño, que es la única forma de poder decir después «no se usó esa columna, y por esto».
+ */
+function medirHH(composiciones) {
+  const estados = { COINCIDE: 0, DIFIERE: 0, SIN_RESUMEN: 0 }
+  const sinManoDeObra = []
+  const ejemplos = []
+  let horasTotales = 0
+  for (const t of composiciones.values()) {
+    const hh = hhPorCategoria(t.lineas)
+    horasTotales += hh.total_h_u
+    if (hh.total_h_u === 0) { sinManoDeObra.push(t.codigo); continue }
+    const c = contrastarConResumen(hh, t.resumen)
+    estados[c.estado]++
+    if (c.estado === 'DIFIERE' && ejemplos.length < 6) {
+      ejemplos.push({ codigo: t.codigo, fila: t.fila, resumen: [t.resumen.M, t.resumen.N], composicion: [hh.oficial_h_u, hh.ayudante_h_u] })
+    }
+  }
+  return { estados, conManoDeObra: composiciones.size - sinManoDeObra.length, sinManoDeObra: sinManoDeObra.length, horasTotales: Number(horasTotales.toFixed(2)), ejemplos }
+}
+
 function imprimir(i) {
   if (JSON_CRUDO) { process.stdout.write(`${JSON.stringify(i, null, 2)}\n`); return }
   console.log(`\n═══ ${i.libro}`)
@@ -276,6 +304,11 @@ function imprimir(i) {
     console.log(`  ${' '.repeat(18)} ${p.ajuste.porque}`)
   }
   console.log(`  ${i.ajustes.bloquea ? `BLOQUEA: ${i.ajustes.sinResolver.length} ajuste(s) sin explicar` : 'todos los ajustes están explicados'}`)
+
+  console.log(`\n── HH POR CATEGORÍA (fuente: la composición, nunca Análisis!M:N) ──`)
+  console.log(`  ${i.hh.conManoDeObra} tareas con mano de obra · ${i.hh.sinManoDeObra} sin mano de obra`)
+  console.log(`  el resumen del libro: ${JSON.stringify(i.hh.estados)}`)
+  for (const e of i.hh.ejemplos) console.log(`    ${e.codigo.padEnd(9)} f${e.fila} resumen=${e.resumen.join('/')} composición=${e.composicion.join('/')}`)
 
   console.log('\n── OFERTA ──')
   const c = i.oferta.conciliacion

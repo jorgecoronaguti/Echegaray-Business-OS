@@ -1,7 +1,7 @@
 {
   "hash": "0353cf88729ccdcf3a38c6ef87af52069a73fd4281c1b1f4b4006d29d5a7794a",
   "libro": "/home/jorge/Planilla para Cotizar (2).xlsm",
-  "ingestadoEn": "2026-08-28T18:55:58.906Z",
+  "ingestadoEn": "2026-08-28T19:01:12.206Z",
   "deCache": false,
   "hojas": [
     {
@@ -217,6 +217,90 @@
       }
     ],
     "bloquea": true
+  },
+  "hh": {
+    "estados": {
+      "COINCIDE": 57,
+      "DIFIERE": 16,
+      "SIN_RESUMEN": 100
+    },
+    "conManoDeObra": 173,
+    "sinManoDeObra": 26,
+    "horasTotales": 3488.65,
+    "ejemplos": [
+      {
+        "codigo": "T1019",
+        "fila": 231,
+        "resumen": [
+          18.5,
+          18
+        ],
+        "composicion": [
+          2.08,
+          1.04
+        ]
+      },
+      {
+        "codigo": "T1023",
+        "fila": 284,
+        "resumen": [
+          0.9,
+          0.8
+        ],
+        "composicion": [
+          2.3,
+          2.2
+        ]
+      },
+      {
+        "codigo": "T1032",
+        "fila": 377,
+        "resumen": [
+          0.9,
+          0.7
+        ],
+        "composicion": [
+          0.8,
+          0.6
+        ]
+      },
+      {
+        "codigo": "T1034",
+        "fila": 397,
+        "resumen": [
+          0.5,
+          0.3
+        ],
+        "composicion": [
+          0.9,
+          0.7
+        ]
+      },
+      {
+        "codigo": "T1065",
+        "fila": 658,
+        "resumen": [
+          9,
+          9
+        ],
+        "composicion": [
+          3,
+          2
+        ]
+      },
+      {
+        "codigo": "T1067",
+        "fila": 669,
+        "resumen": [
+          19,
+          19
+        ],
+        "composicion": [
+          3,
+          2
+        ]
+      }
+    ]
   },
   "partidas": [
     {
