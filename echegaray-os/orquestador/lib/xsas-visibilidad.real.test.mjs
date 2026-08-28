@@ -19,7 +19,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { toolsDelNucleo } from './xsas-resolutores.mjs'
 import { permisosDeRol, escribeAfuera } from './xsas-permisos.mjs'
-import { filtrarPorVisibilidad, TACHADO } from './xsas-visibilidad.mjs'
+import { filtrarPorVisibilidad, tacharComercial, TACHADO } from './xsas-visibilidad.mjs'
 
 const JEFE = { id: 'jefe@ecsas.com.ar', rol: 'jefe_obra', permisos: permisosDeRol('jefe_obra') }
 const DIRECCION = { id: 'jorge@ecsas.com.ar', rol: 'direccion', permisos: permisosDeRol('direccion') }
@@ -156,4 +156,44 @@ test('los args de la acción ejecutada también se filtran', () => {
   assert.equal(r.args.monto_venta, TACHADO)
   assert.equal(r.args.cliente, 'Quattropani')
   assert.equal(r.args.cantidad, 46)
+})
+
+// ═══ LA CLASE ENTERA: PLATA QUE NO ES UN `number` DE JAVASCRIPT (28/08/2026) ═══
+//
+// Mordió una vez —`numeric` de Postgres vuelve como string y `tna: "0.55"` salía entera— y al
+// cerrarlo el auditor encontró cuatro formas más de lo mismo. Una clase se cierra de una vez o
+// vuelve: acá está enumerada la clase, no los casos.
+test('todo escalar que sea un número se trata como número, venga como venga', () => {
+  // Las claves son de plata a propósito: la clave dice QUÉ es y el tipo sólo dice cómo llegó. Un
+  // `0.6278` bajo una clave que no nombra plata y por debajo del umbral se muestra, y está bien.
+  const r = tacharComercial({
+    saldo: 16490000,
+    saldo_utilizado: 5000000n,   // pg con setTypeParser(20, BigInt), o plata en centavos
+    deuda: '+4500',
+    monto: '5e6',
+    cft: '0.6278',               // así vuelve una columna numeric de Postgres
+    importe: '1.234.567,89',
+    saldos: ['16490000', '4500', 0.55],
+  })
+  for (const k of Object.keys(r.datos)) {
+    const v = r.datos[k]
+    const todos = Array.isArray(v) ? v : [v]
+    for (const x of todos) assert.equal(x, TACHADO, `${k} salió sin tachar: ${JSON.stringify(x)}`)
+  }
+})
+
+test('una fecha NO se destruye: el defecto del numeric, en espejo', () => {
+  // `Object.entries(new Date())` es `[]`, así que la recursión de objetos la borraba entera para
+  // todo rol sin `comercial.read`. Aquel filtraba de menos; éste destruía.
+  const fecha = new Date('2026-08-28T03:00:00.000Z')
+  const r = tacharComercial({ vence: fecha, saldo: 16490000 })
+  assert.ok(r.datos.vence instanceof Date, 'la fecha tiene que seguir siendo una fecha')
+  assert.equal(r.datos.vence.toISOString(), fecha.toISOString())
+  assert.equal(r.datos.saldo, TACHADO)
+})
+
+test('y las cantidades siguen pasando aunque vengan como texto', () => {
+  const r = tacharComercial({ cantidad: '46', metros: '1240', hh: '1200', anio: '2026', id: '900123' })
+  assert.deepEqual(r.datos, { cantidad: '46', metros: '1240', hh: '1200', anio: '2026', id: '900123' })
+  assert.deepEqual(r.campos, [])
 })

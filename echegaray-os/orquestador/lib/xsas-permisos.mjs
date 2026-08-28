@@ -97,6 +97,8 @@ export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
   // Postgres: el efecto está afuera, en un sistema de un tercero, y por eso pasa las mismas dos
   // cerraduras y queda firmado igual que una escritura.
   'tesoreria.analisis_inversion',
+  // web.browser — `chromium.launch` en la VM, saliendo a internet con la IP de la empresa.
+  'web.browser',
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */

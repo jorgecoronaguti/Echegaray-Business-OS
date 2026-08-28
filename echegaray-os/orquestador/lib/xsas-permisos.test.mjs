@@ -46,7 +46,7 @@ test('la lista de tools que escriben es corta y explícita: crecer es una decisi
   // `tesoreria.analisis_inversion` entró el 27/08/2026 al cierre: no escribe una fila, abre el
   // navegador contra Balanz con la sesión de la empresa. Manda el efecto, no la letra.
   assert.deepEqual([...TOOLS_AUTORIZADAS_A_ESCRIBIR],
-    ['slides.crear', 'imagen.generar', 'cotizacion.registrar', 'plano.cotizar', 'tesoreria.analisis_inversion'])
+    ['slides.crear', 'imagen.generar', 'cotizacion.registrar', 'plano.cotizar', 'tesoreria.analisis_inversion', 'web.browser'])
 })
 
 test('lo que NO escribe afuera no queda marcado como escritura', () => {

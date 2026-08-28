@@ -73,7 +73,16 @@ export function webSearchTools() {
     },
 
     'web.browser': {
-      capability: 'drive.read',
+      // ═══ MISMO ARGUMENTO QUE BALANZ, UNA TOOL MÁS ALLÁ (28/08/2026, auditoría) ═══
+      //
+      // Declaraba `drive.read`, que además no describe nada: no lee Drive. Y `navegadorWeb` hace
+      // `chromium.launch`: levanta un navegador en la VM y sale a internet desde la IP de la empresa.
+      // Un efecto sobre un sistema de un tercero no es una lectura del OS aunque no escriba una fila
+      // — es la misma regla por la que `tesoreria.analisis_inversion` dejó de ser `os.read`.
+      //
+      // El peor caso interno ya estaba cerrado por `urlPermitida` (bloquea localhost, la red privada
+      // y el metadata server). Lo que faltaba era que el permiso nombrara el efecto.
+      capability: 'externo.navegar',
       account: 'ecsas',
       schema: {
         name: 'web_navegar',

@@ -170,14 +170,44 @@ export function esPlata(clave, valor) {
  * @returns {{datos:any, campos:string[]}} `campos` son las RUTAS tachadas, para poder declararlas.
  * PURA: no muta la entrada.
  */
+/**
+ * TODO ESCALAR QUE SEA UN NÚMERO, SEA DEL TIPO QUE SEA. Devuelve el número o `NaN`.
+ *
+ * ═══ POR QUÉ NO ALCANZA `typeof === 'number'` (28/08/2026, auditoría) ═══
+ *
+ * Ya había mordido una vez: una columna `numeric` de Postgres vuelve como STRING y `tna: "0.55"`
+ * salía entera. Al cerrarlo aparecieron cuatro formas más de la MISMA clase, y la lección es que la
+ * clase se cierra de una vez o vuelve: un `bigint` (lo que devuelve `pg` con `setTypeParser(20)`, o
+ * la plata guardada en centavos), un `'+4500'`, un `'5e6'`. El tipo de JavaScript no es la pregunta:
+ * la pregunta es si eso es un número.
+ */
+export function comoNumero(valor) {
+  if (typeof valor === 'number') return valor
+  if (typeof valor === 'bigint') return Number(valor)
+  if (typeof valor === 'string') {
+    const t = valor.trim()
+    // Acepta signo, decimal con coma o punto, y notación científica. NO acepta separador de miles:
+    // eso es texto y lo cubren las reglas de texto.
+    if (/^[+-]?(\d+([.,]\d+)?|\d*[.,]\d+)(e[+-]?\d+)?$/i.test(t)) return Number(t.replace(',', '.'))
+  }
+  return NaN
+}
+
 export function tacharComercial(datos, ruta = '', clave = '') {
   const campos = []
 
   if (datos === null || datos === undefined) return { datos, campos }
-  if (typeof datos === 'number') {
-    if (esPlata(clave, datos)) { campos.push(ruta); return { datos: TACHADO, campos } }
+  // Una fecha es un escalar opaco. Sin esto la recursión de objetos la recorría con
+  // `Object.entries`, que para un `Date` es `[]`, y la fecha SE BORRABA para todo rol sin
+  // `comercial.read`: el defecto del `numeric` en espejo — aquel filtraba de menos, éste destruía.
+  if (datos instanceof Date) return { datos, campos }
+
+  const n = comoNumero(datos)
+  if (Number.isFinite(n) && typeof datos !== 'object') {
+    if (esPlata(clave, n)) { campos.push(ruta); return { datos: TACHADO, campos } }
     return { datos, campos }
   }
+  if (typeof datos === 'number' || typeof datos === 'bigint') return { datos, campos }
   if (typeof datos === 'string') {
     if (IDENTIFICADOR.test(clave)) return { datos, campos }
     // ═══ LA PLATA LLEGA COMO TEXTO (27/08/2026, cierre) ═══
@@ -187,11 +217,7 @@ export function tacharComercial(datos, ruta = '', clave = '') {
     // llevan símbolo, ni separador de miles, ni cinco dígitos. Toda una clase de campos de plata
     // entraba por la puerta de al lado.
     //
-    // Si el string ES un número, se lo trata como número: la clave ya dice si es plata.
-    if (/^-?\d+([.,]\d+)?$/.test(datos.trim()) && esPlata(clave, Number(datos.trim().replace(',', '.')))) {
-      campos.push(ruta)
-      return { datos: TACHADO, campos }
-    }
+    // Un string que ES un número ya se resolvió arriba, con `comoNumero`.
     const t = tacharPlataEnTexto(datos)
     if (t.tachado) campos.push(ruta)
     return { datos: t.texto, campos }
