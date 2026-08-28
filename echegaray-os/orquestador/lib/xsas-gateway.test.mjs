@@ -293,9 +293,15 @@ test('los atajos apuntan a tools que EXISTEN en el registro real (un atajo huér
 
 test('el contexto no puede inyectar un parámetro que la tool no declaró', () => {
   const tool = { schema: { input_schema: { type: 'object', properties: { obra: { type: 'string' } }, required: ['obra'] } } }
-  const { args, falta } = argumentosPara(tool, { contexto: { obra: 'ARCOR', borrar_todo: true }, entidad: {} })
+  // Con firma: `obra` entra porque la tool la declara; `borrar_todo` no, porque no la declara.
+  const { args, falta } = argumentosPara(tool, { contexto: { obra: 'ARCOR', borrar_todo: true }, entidad: {}, verificadoPor: 'app-server' })
   assert.deepEqual(args, { obra: 'ARCOR' })
   assert.deepEqual(falta, [])
+  // Y SIN firma no entra ninguno (27/08/2026, auditoría round 3): que la tool declare el parámetro
+  // dice que lo acepta, no que quien lo manda pueda elegirlo.
+  const sinFirma = argumentosPara(tool, { contexto: { obra: 'ARCOR' }, entidad: {} })
+  assert.deepEqual(sinFirma.args, {})
+  assert.deepEqual(sinFirma.falta, ['obra'])
 })
 
 // ── EL CONTEXTO DE PANTALLA CAMBIA QUÉ SIGNIFICA LA PREGUNTA ──────────────────────────────────

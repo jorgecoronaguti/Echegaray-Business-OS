@@ -21,6 +21,7 @@
 // PURO: sin red, sin disco. Se testea entero.
 
 import { detectarInyeccion, quitarLlavesDeControl } from '../web/contenido-externo.mjs'
+import { tacharPlataEnTexto, TACHADO as TACHADO_GATEWAY } from '../xsas-visibilidad.mjs'
 import { aspectoDe, marcaDe } from './contrato.mjs'
 import { pideSerEvidencia } from './procedencia.mjs'
 
@@ -76,13 +77,27 @@ export const NEGATIVOS = Object.freeze([
  */
 const TACHADO = '[dato de la empresa]'
 
-/** Saca de un texto libre todo lo que parezca plata o un identificador. PURA. */
+/**
+ * ═══ TACHABA MEDIO NÚMERO (27/08/2026, auditoría) ═══
+ *
+ * `VALORES_CON_PLATA` termina en `[\d.,]` — UN carácter—, así que reemplazaba «$ 4» y dejaba el
+ * resto: `$ 48500000` salía `[dato de la empresa]8500000`, y `USD 120000` salía
+ * `[dato de la empresa]20000`. Un importe partido no está tachado: está partido. Y un número sin
+ * símbolo ni separador (`48500000`), un porcentaje (`margen del 23%`) y un sueldo escrito plano
+ * pasaban enteros.
+ *
+ * La redacción ahora es la MISMA que la del gateway (`xsas-visibilidad.mjs`): dos implementaciones
+ * de «qué parece plata» serían dos verdades que hay que corregir dos veces, y la que se olvide es
+ * justamente la que se filtra. Acá se agrega lo que es propio de un prompt que sale de la empresa:
+ * CUIT, CUIL y DNI.
+ */
 export function tacharDatos(texto) {
   const original = String(texto ?? '')
-  let salida = original.replace(new RegExp(VALORES_CON_PLATA.source, 'gi'), TACHADO)
-  // Un importe escrito «48,5M» o «$48.5 millones» no entra en el patrón de miles: se cubre aparte.
-  salida = salida.replace(/(\$|u\$s|usd|ars)?\s*\d+([.,]\d+)?\s*(m|mm|k|millones|mil)\b/gi, TACHADO)
-  salida = salida.replace(/\b\d{2}-?\d{8}-?\d\b/g, TACHADO)   // CUIT / CUIL
+  // Los identificadores PRIMERO: un CUIT lleva ocho dígitos seguidos adentro, y si corre antes la
+  // regla del importe queda «20[dato de la empresa]-9», que es un CUIT tachado por la mitad.
+  let salida = original.replace(/\b\d{2}-?\d{8}-?\d\b/g, TACHADO)     // CUIT / CUIL
+  salida = salida.replace(/\bdni\s*:?\s*[\d.]{7,11}\b/gi, TACHADO)    // DNI escrito con rótulo
+  salida = tacharPlataEnTexto(salida).texto.replaceAll(TACHADO_GATEWAY, TACHADO)
   return { texto: salida, tachado: salida !== original }
 }
 
@@ -112,8 +127,17 @@ export function recortarContexto(contexto = {}) {
   const limpio = quitarLlavesDeControl(contexto ?? {}) ?? {}
   const lineas = []
   const descartados = []
-  if (limpio?.obra) lineas.push(`obra: ${String(limpio.obra).slice(0, 120)}`)
-  if (limpio?.cliente) lineas.push(`comitente: ${String(limpio.cliente).slice(0, 120)}`)
+  // ═══ LA OBRA Y EL COMITENTE TAMBIÉN SE TACHAN (27/08/2026, auditoría) ═══
+  //
+  // Iban VERBATIM al proveedor externo. El auditor construyó el prompt real y salió
+  // «obra: … presupuesto $48.500.000 · comitente: FRANCO QUATTROPANI (DNI 25.123.456)» con
+  // `datos_tachados: false`. El nombre de la obra suele traer pegado el monto, y el del comitente
+  // trae la persona. El encabezado de este archivo dice que los montos y los CUIT nunca viajan: para
+  // dos campos no lo decía nadie.
+  const obra = tacharDatos(limpio?.obra)
+  const cliente = tacharDatos(limpio?.cliente)
+  if (limpio?.obra) lineas.push(`obra: ${obra.texto.slice(0, 120)}`)
+  if (limpio?.cliente) lineas.push(`comitente: ${cliente.texto.slice(0, 120)}`)
   for (const d of limpio?.datos ?? []) {
     const rotulo = String(d?.rotulo ?? '')
     const valor = String(d?.valor ?? '')
@@ -122,7 +146,7 @@ export function recortarContexto(contexto = {}) {
   }
   // El id del presupuesto y el del documento NO van al prompt: identifican un registro interno y no
   // cambian un solo pixel. Viajan en el resultado, para trazabilidad, y ahí sí sirven.
-  return { lineas, descartados, inyeccion: detectarInyeccion(lineas.join(' · ')) }
+  return { lineas, descartados, tachado: obra.tachado || cliente.tachado, inyeccion: detectarInyeccion(lineas.join(' · ')) }
 }
 
 /** La instrucción de color según la política de marca. PURA. */
@@ -142,7 +166,7 @@ export function instruccionDeMarca(politica) {
  */
 export function construirPrompt(pedido) {
   const politica = marcaDe(pedido)
-  const { lineas, descartados, inyeccion } = recortarContexto(pedido?.contexto ?? {})
+  const { lineas, descartados, tachado: tachadoEnContexto, inyeccion } = recortarContexto(pedido?.contexto ?? {})
   const sujeto = tacharDatos(pedido?.pedido ?? '')
   const objetivo = tacharDatos(pedido?.objetivo ?? '')
   const marca = instruccionDeMarca(politica)
@@ -164,7 +188,7 @@ export function construirPrompt(pedido) {
     contexto_descartado: descartados,
     // Que se tachó un importe NO se calla: quien pidió la imagen tiene que ver que su texto llevaba
     // un dato de la empresa, y que ese dato no salió.
-    datos_tachados: sujeto.tachado || objetivo.tachado,
+    datos_tachados: sujeto.tachado || objetivo.tachado || tachadoEnContexto,
     contexto_sospechoso: inyeccion,
     intento: pideSerEvidencia(`${pedido?.pedido ?? ''} ${pedido?.objetivo ?? ''}`),
   }

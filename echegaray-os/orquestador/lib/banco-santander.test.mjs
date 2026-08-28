@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento, verificarTripletesBancarios, NAT, compromisosPorBeneficiario } from './banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, verificarResumenTarjeta, verificarCuotasAVencer, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento, verificarTripletesBancarios, NAT, compromisosPorBeneficiario } from './banco-santander.mjs'
 import { DESTINOS } from './impacto-bancario.mjs'
 import { GRUPOS } from './conciliacion-por-naturaleza.mjs'
 
@@ -137,6 +137,104 @@ test('el acuerdo y la tarjeta tienen su costo y su vencimiento declarados', () =
   assert.ok(ACUERDO.importe > 0 && ACUERDO.cft > 0)
   assert.match(ACUERDO.vence, /^\d{4}-\d{2}-\d{2}$/)
   assert.ok(TARJETA.limite > 0 && TARJETA.vence)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL RESUMEN DE LA TARJETA CERRADO EL 20/08/2026 — LA IDENTIDAD QUE PRUEBA LA TRANSCRIPCIÓN
+//
+// Una constante pegada a mano no tiene quién la contradiga: si un dígito sale mal, el número igual
+// se ve razonable y viaja hasta el Cash Flow. Lo único que lo caza es una identidad entre cifras que
+// el banco imprimió en renglones distintos del PDF.
+
+test('el resumen cierra: consumos + sellos + sellos P + RG 5617 = lo que el banco va a debitar', () => {
+  const v = verificarResumenTarjeta()
+  assert.equal(v.declarado, 2208958.42, 'el importe de "DEBITAREMOS DE SU C.C." es el ancla')
+  assert.equal(v.suma, 2208958.42)
+  assert.equal(v.diferencia, 0)
+  assert.ok(v.cierra)
+})
+
+// EL CASO NEGATIVO: un control que no puede dar rojo no es un control. Se mueve UN sumando —un peso,
+// que es el error más difícil de ver a ojo— y la identidad tiene que romperse.
+test('el control del resumen se pone rojo si cualquiera de los cuatro sumandos se tipea mal', () => {
+  const base = TARJETA
+  const mutantes = [
+    { ...base, consumidoPesos: base.consumidoPesos + 1 },
+    { ...base, resumen: { ...base.resumen, sellos: base.resumen.sellos + 1 } },
+    { ...base, resumen: { ...base.resumen, sellosProvinciales: base.resumen.sellosProvinciales - 0.01 } },
+    { ...base, resumen: { ...base.resumen, rg5617: { ...base.resumen.rg5617, importe: 244755.1 } } },
+    { ...base, resumen: { ...base.resumen, aDebitarPesos: 2208958.24 } },
+  ]
+  for (const m of mutantes) {
+    const v = verificarResumenTarjeta(m)
+    assert.equal(v.cierra, false, 'la identidad tendría que haber dado rojo')
+    assert.notEqual(v.diferencia, 0)
+  }
+})
+
+// LA PERCEPCIÓN VERIFICA LOS DÓLARES DESDE OTRA COLUMNA. La base de la RG 5617 está escrita en pesos
+// y el consumo en dólares en otra moneda y en otro renglón: que 544,99 × 1.497,00 dé exactamente la
+// base, y que el 30% dé el importe, es un control cruzado sobre un dato que nadie más contradice.
+test('la percepción RG 5617 confirma el consumo en dólares desde el renglón de pesos', () => {
+  const r = TARJETA.resumen.rg5617
+  assert.equal(Math.round(TARJETA.consumidoDolares * r.tcDeducido * 100) / 100, r.base)
+  // EL BANCO TRUNCA EL CENTAVO, NO REDONDEA: 815.850,03 × 30% = 244.755,009 y cobró 244.755,00.
+  // Se mide con un centavo de tolerancia, que es la precisión que el propio documento tiene. Poner
+  // igualdad exacta acá obligaría a "arreglar" el importe declarado por el banco, que es el hecho.
+  assert.ok(Math.abs(r.base * r.alicuota - r.importe) <= 0.01, 'la percepción no es el 30% de la base')
+})
+
+// ═══ "A PARTIR DE MARZO/27 $1.421.653,32" ES UN TOTAL, NO UNA CUOTA ═══
+
+test('la tabla de cuotas a vencer suma su total y la cola está guardada como total', () => {
+  const v = verificarCuotasAVencer()
+  assert.equal(v.declarado, 8454867.66)
+  assert.equal(v.diferencia, 0)
+  assert.ok(v.colaEsTotal, '1.421.653,32 = 4 × 355.413,33: si no cierra, se leyó como cuota mensual')
+  // Y es el mismo número que la pestaña compara contra el registro.
+  assert.equal(TARJETA.cuotasPendientes.restante, v.declarado)
+})
+
+test('leer la cola como cuota mensual pone el control en rojo', () => {
+  // El error real: copiar 1.421.653,32 como si fuera la cuota de marzo/27 en adelante. Con `cuotas`
+  // declarado, la identidad 4 × importe = total deja de cumplirse.
+  const mal = { ...TARJETA, cuotasAVencer: { ...TARJETA.cuotasAVencer,
+    desdeMarzo27: { ...TARJETA.cuotasAVencer.desdeMarzo27, importe: 1421653.32 } } }
+  assert.equal(verificarCuotasAVencer(mal).colaEsTotal, false)
+  // Y si además se suma cuatro veces —el efecto de tratarla como cuota— el total se va $4,26M arriba.
+  const inflado = { ...TARJETA, cuotasAVencer: { ...TARJETA.cuotasAVencer,
+    desdeMarzo27: { ...TARJETA.cuotasAVencer.desdeMarzo27, total: 1421653.32 * 4 } } }
+  assert.equal(verificarCuotasAVencer(inflado).cierra, false)
+})
+
+// ═══ EL RESUMEN NO REEMPLAZA A LA CAPTURA DEL HOMEBANKING: DOS FUENTES, DOS FECHAS ═══
+//
+// El resumen liquida un período cerrado y NO publica el disponible, el cupo de adelanto ni lo
+// pendiente de confirmar. Esos campos siguen siendo del 29/07 y tienen que decirlo: sin su fecha,
+// un número de hace un mes se lee como si fuera del resumen.
+test('lo que el resumen no trae conserva su propia fecha, y no se recalcula del límite', () => {
+  assert.equal(TARJETA.al, '2026-08-20')
+  for (const [campo, fecha] of [
+    [TARJETA.disponible, TARJETA.disponibleAl],
+    [TARJETA.pendienteDeConfirmacion, TARJETA.pendienteDeConfirmacionAl],
+    [TARJETA.adelantoEfectivo.disponible, TARJETA.adelantoEfectivo.al],
+    [TARJETA.cuotas.disponible, TARJETA.cuotas.al],
+  ]) {
+    assert.equal(typeof campo, 'number')
+    assert.equal(fecha, '2026-07-29', 'un campo que no viene del resumen tiene que declarar SU fecha')
+  }
+  // Y no salió de una resta: límite − consumos del resumen daría otro número.
+  assert.notEqual(TARJETA.disponible, TARJETA.limite - TARJETA.consumidoPesos)
+})
+
+// El débito del 01/09 es la única cifra de este archivo con fecha cierta: sale sola de la cuenta.
+test('el débito automático tiene importe, fecha y cuenta declarados', () => {
+  const r = TARJETA.resumen
+  assert.equal(r.debitaEl, TARJETA.vence)
+  assert.equal(r.debitaEl, '2026-09-01')
+  assert.ok(r.cuentaDebito && r.aDebitarPesos > 0)
+  // Los dólares se debitan EN DÓLARES: son los consumos del período, no una conversión a pesos.
+  assert.equal(TARJETA.consumidoDolares, 544.99)
 })
 
 test('la foto sabe cuántos días tiene', () => {
