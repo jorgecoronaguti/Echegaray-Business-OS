@@ -255,8 +255,14 @@ export function auditarResumenPorCliente(grid, bloque, { hastaFila, bloques, map
     erroresDeRotulo,
     sinActividad,
     huerfanos: sinClasificar,
+    // FALTANTE ES UN CLIENTE QUE EL RESUMEN NO BUSCA — no cualquier rotulo que no este en el.
+    // `z. ENFERMEDAD` ocupa la columna CLIENTE sin ser un cliente, y la tabla lo declara asi: el
+    // resumen NO tiene por que sumarlo. Acusarlo produce un ✗ permanente, y una lista que siempre
+    // tiene un rojo es una lista que nadie mira. Se filtro para los huerfanos y se habia pasado por
+    // alto de este lado: mismo defecto, otro extremo.
     faltantes: [...enFilas.values()]
       .filter((e) => !claves.has(e.clave))
+      .filter((e) => resolverCliente(e.rotulo, mapa).clase === CLASE.CLIENTE)
       .map((e) => ({ clave: e.clave, rotulo: e.rotulo, jornal: e.completo ? e.jornal : null })),
   }
 }

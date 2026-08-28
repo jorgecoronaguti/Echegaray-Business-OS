@@ -81,8 +81,15 @@ function testigoTotalMo(grid, desdeFila, hastaFila) {
 function bloquesDeLaVentana(grid, { desde, hasta, anio }) {
   const bloques = detectarBloques(grid, { anio })
   return bloques
-    .map((b, k) => ({ bloque: b, hastaFila: bloques[k + 1]?.fila ?? grid.filas.length, bloques }))
-    .filter(({ bloque }) => (bloque.fechas || []).some((f) => f.iso >= desde && f.iso <= hasta))
+    .map((b, k) => ({
+      bloque: b,
+      hastaFila: bloques[k + 1]?.fila ?? grid.filas.length,
+      bloques,
+      // Las fechas del bloque que caen DENTRO de la ventana. Si no son todas, el testigo del bloque
+      // —que suma la quincena entera— no es comparable contra lo que el OS leyó de la ventana.
+      fechas: (b.fechas || []).filter((f) => f.iso >= desde && f.iso <= hasta),
+    }))
+    .filter(({ fechas }) => fechas.length > 0)
 }
 
 function imprimir(r, testigos, auditorias, mapa) {
@@ -110,11 +117,29 @@ function imprimir(r, testigos, auditorias, mapa) {
   console.log(`      + desconocido ${$(c.jornalDesconocido)} + sin rótulo ${$(c.jornalSinRotulo)} + no verificable ${$(c.jornalNoVerificable)}`)
   console.log(`    residuo ${$(c.residuo)} · ${c.cuadra ? '✓ cuadra' : '✗ NO CUADRA'} · ventana ${c.ventanaConsistente ? '✓ sin solapes' : '✗ CON SOLAPES: el total está inflado'}`)
 
+  // EL TESTIGO DE UN BLOQUE SE COMPARA CONTRA LO QUE EL OS LEYO DE ESE BLOQUE, no contra el total
+  // de la ventana. Comparar cada testigo contra el total global hacia que una ventana de dos
+  // quincenas gritara dos veces con los datos perfectos: 7.318.700 y 6.686.300 contra 14.005.000,
+  // cuando la suma de los dos testigos ES 14.005.000 exacto. El unico control externo del trabajo
+  // —el unico numero que el OS no produjo— mentia en el caso mas normal de todos: «el mes».
   console.log('\n  CONTRA EL TOTAL QUE ESCRIBIÓ LA PLANILLA')
+  let sumaTestigos = 0
+  let todosConTestigo = testigos.length > 0
   for (const t of testigos) {
-    if (!t.testigo) { console.log(`    bloque ${t.bloque}: sin «TOTAL MO» — este total no se puede contrastar`); continue }
-    const d = r.control.jornalTotal - t.testigo.valor
-    console.log(`    bloque ${t.bloque}: ${t.testigo.celda} = ${$(t.testigo.valor)} · OS ${$(r.control.jornalTotal)} · diferencia ${$(d)} ${Math.abs(d) < 1 ? '✓' : '✗'}`)
+    if (!t.testigo) {
+      todosConTestigo = false
+      console.log(`    bloque ${t.bloque}: sin «TOTAL MO» — este total no se puede contrastar`)
+      continue
+    }
+    sumaTestigos += t.testigo.valor
+    const leido = r.filas.filter((f) => f.bloque === t.bloque).reduce((a, f) => a + (f.jornal ?? 0), 0)
+    const d = leido - t.testigo.valor
+    const marca = !t.cubierto ? '— ventana parcial, no comparable' : Math.abs(d) < 1 ? '✓' : '✗'
+    console.log(`    bloque ${t.bloque}: ${t.testigo.celda} = ${$(t.testigo.valor)} · OS ${$(leido)} · diferencia ${$(d)} ${marca}`)
+  }
+  if (todosConTestigo && testigos.every((x) => x.cubierto) && testigos.length > 1) {
+    const d = r.control.jornalTotal - sumaTestigos
+    console.log(`    suma de los ${testigos.length} testigos = ${$(sumaTestigos)} · OS ${$(r.control.jornalTotal)} · diferencia ${$(d)} ${Math.abs(d) < 1 ? '✓' : '✗'}`)
   }
 
   console.log('\n  EL RESUMEN DE LA PLANILLA, POR BLOQUE')
@@ -142,9 +167,12 @@ async function main() {
   const mapa = await cargarMapaClientes({ fuente: 'JORNALES' })
   const r = costoPorObra(grid, { desde: opt.desde, hasta: opt.hasta, mapa, factorCargas: opt.cargas, anio: opt.anio })
   const enVentana = bloquesDeLaVentana(grid, opt)
-  const testigos = enVentana.map(({ bloque, hastaFila }) => ({
+  const testigos = enVentana.map(({ bloque, hastaFila, fechas }) => ({
     bloque: bloque.fila1,
     testigo: testigoTotalMo(grid, bloque.fila + 1, hastaFila),
+    // El testigo suma el bloque ENTERO. Sólo es comparable si la ventana lo cubre entero: con una
+    // ventana parcial la diferencia marca ✗ sin que haya un solo defecto.
+    cubierto: (fechas?.length ?? 0) === (bloque.fechas?.length ?? 0),
   }))
   const auditorias = enVentana.map(({ bloque, hastaFila, bloques }) => ({
     bloque: bloque.fila1,

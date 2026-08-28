@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { detectarBloques, trabajadoresDeBloque } from './jornales-estructura.mjs'
 import {
-  CLASE, HUECO, resolverCliente, columnasDeDinero, costoPorObra, cuadreDeClases,
+  CLASE, HUECO, resolverCliente, columnasDeDinero, costoPorObra, cuadreDeLoPublicado,
 } from './jornales-por-obra.mjs'
 import { planilla, MAPA, txt, frm, vacia } from './jornales-fixture-por-obra.mjs'
 
@@ -139,15 +139,46 @@ test('la plata de una fila con CLIENTE vacio se nombra: sale en sinRotulo y el c
   assert.equal(r.control.cuadra, true)
 })
 
-test('el control de cuadre PUEDE dar rojo: una clase que nadie declaro no se calla', () => {
-  // Un control que no puede decir que no es una constante disfrazada de control.
-  const conClaseRara = cuadreDeClases([
-    { clase: CLASE.CLIENTE, jornal: 100 },
-    { clase: 'INVENTADA', jornal: 50 },
-  ])
-  assert.equal(conClaseRara.cuadra, false)
-  assert.equal(conClaseRara.residuo, 50)
-  assert.equal(cuadreDeClases([{ clase: CLASE.CLIENTE, jornal: 100 }]).cuadra, true)
+test('el control de cuadre PUEDE dar rojo: la plata que no sale en ninguna lista se delata', () => {
+  // POR QUE ESTE TEST CAMBIO. La version anterior le pasaba a mano { clase: 'INVENTADA' }, que
+  // costoPorObra() NO PUEDE PRODUCIR: era un mutante inalcanzable, no una demostracion. Y el control
+  // que probaba sumaba el mismo enum del que sale `clase`, asi que su residuo era cero POR
+  // CONSTRUCCION. Una auditoria lo demostro reintroduciendo el defecto original —una clase con plata
+  // y sin lista— y el control seguia diciendo ✓ con $ 161.200 desaparecidos.
+  //
+  // Ahora el control suma LAS LISTAS QUE SE PUBLICAN, asi que la prueba es la que importa: plata que
+  // el informe no muestra en ningun lado tiene que poner `cuadra` en false.
+  const conTodo = cuadreDeLoPublicado(150, {
+    porObra: [{ jornal: 100 }],
+    sinObra: [{ jornal: 50 }],
+  })
+  assert.equal(conTodo.cuadra, true)
+  assert.equal(conTodo.residuo, 0)
+
+  // La misma plata leida, pero una de las listas no la muestra: eso es exactamente el defecto D1.
+  const conPlataPerdida = cuadreDeLoPublicado(150, { porObra: [{ jornal: 100 }] })
+  assert.equal(conPlataPerdida.cuadra, false)
+  assert.equal(conPlataPerdida.residuo, 50)
+})
+
+test('D1 por la RUTA DE PRODUCCION: la plata sin rotulo sale en una lista y el cuadre la ve', () => {
+  // El caso real: una fila con la celda CLIENTE sin llenar. Su plata tiene que aparecer en
+  // `sinRotulo` Y estar contada en el cuadre, y la suma de las listas publicadas tiene que dar el
+  // total leido. Si alguien saca la lista, el residuo la delata.
+  const p = planilla()
+  p.bloque(['17/8', '18/8', '19/8'])
+  p.persona({ nombre: 'Con obra', horas: [9, 9, 8], vh: 6200, cliente: 'LA ESTRELLA', obra: 'GALPON 9' })
+  p.persona({ nombre: 'Sin cliente', horas: [9, 9, 8], vh: 6200, cliente: '', obra: '' })
+  const r = costoPorObra(p.grid(), { ...VENTANA })
+  assert.equal(r.sinRotulo.length, 1)
+  assert.equal(r.sinRotulo[0].jornal, 26 * 6200)
+  assert.equal(r.control.cuadra, true, 'con la lista presente, cuadra')
+  const publicado = r.porObra.reduce((a, o) => a + o.jornal, 0)
+    + r.sinObra.reduce((a, x) => a + x.jornal, 0)
+    + r.desconocidos.reduce((a, x) => a + x.jornal, 0)
+    + r.sinRotulo.reduce((a, x) => a + x.jornal, 0)
+    + r.noVerificables.reduce((a, x) => a + x.jornal, 0)
+  assert.equal(publicado, r.control.jornalTotal, 'todo lo leido esta publicado en alguna lista')
 })
 
 // ───────────────── D4 · NINGUNA COORDENADA SE ASUME ─────────────────

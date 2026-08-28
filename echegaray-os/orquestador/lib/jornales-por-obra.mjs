@@ -175,24 +175,36 @@ function filaValuada(grid, bloque, t, dentro, { mapa, conCargas, factorCargas },
  * Es una funcion aparte y exportada para poder probar que PUEDE dar rojo: un control que no puede
  * decir que no es una constante disfrazada. Con una fila de clase desconocida, `cuadra` da false.
  */
-export function cuadreDeClases(filas) {
-  const porClase = new Map(Object.values(CLASE).map((c) => [c, 0]))
-  let total = 0
-  let sinClase = 0
-  for (const f of filas || []) {
-    const j = f?.jornal ?? 0
-    total += j
-    if (porClase.has(f?.clase)) porClase.set(f.clase, porClase.get(f.clase) + j)
-    else sinClase += j
+/**
+ * NUCLEO PURO: la plata que se PUBLICA, contra la plata que se leyo.
+ *
+ * POR QUE ASI, Y NO CONTRA LAS CLASES. La primera version sumaba `Object.values(CLASE)` sobre las
+ * mismas filas de las que sale `clase`, y `clase` sólo lo produce `resolverCliente()`, que nunca
+ * devuelve algo fuera de ese enum: el residuo era CERO POR CONSTRUCCION y `cuadra` una constante
+ * `true`. Una auditoría lo demostró reintroduciendo el defecto original —una clase con plata y sin
+ * lista— y el control seguía diciendo ✓ con $ 161.200 desaparecidos.
+ *
+ * Un control nunca se valida contra la misma información que produce. Por eso ahora suma las CINCO
+ * LISTAS QUE SALEN EN EL INFORME: si una clase nueva no tiene lista, su plata no aparece en ninguna
+ * y el residuo la delata. Es la única forma de que el control pueda decir que no.
+ */
+export function cuadreDeLoPublicado(jornalTotal, listas) {
+  const sumar = (xs, campo) => (xs || []).reduce((a, x) => a + (Number(x?.[campo]) || 0), 0)
+  const publicado = {
+    porObra: sumar(listas?.porObra, 'jornal'),
+    sinObra: sumar(listas?.sinObra, 'jornal'),
+    desconocidos: sumar(listas?.desconocidos, 'jornal'),
+    sinRotulo: sumar(listas?.sinRotulo, 'jornal'),
+    noVerificables: sumar(listas?.noVerificables, 'jornal'),
   }
-  const suma = [...porClase.values()].reduce((a, b) => a + b, 0)
-  const residuo = total - suma
+  const suma = Object.values(publicado).reduce((a, b) => a + b, 0)
+  const residuo = (Number(jornalTotal) || 0) - suma
   return {
-    total,
-    porClase: Object.fromEntries(porClase),
+    total: Number(jornalTotal) || 0,
+    publicado,
     residuo,
     // Tolerancia de un centavo: horas por valor hora en punto flotante no cierra al bit.
-    cuadra: Math.abs(residuo) < 0.01 && sinClase === 0,
+    cuadra: Math.abs(residuo) < 0.01,
   }
 }
 
@@ -316,13 +328,9 @@ function valuarVentana(grid, { desde, hasta, anio, ...opciones }) {
 export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, anio = 2026 } = {}) {
   const conCargas = typeof factorCargas === 'number' && Number.isFinite(factorCargas) && factorCargas >= 0
   const { filas, huecos, enVentana } = valuarVentana(grid, { desde, hasta, anio, mapa, conCargas, factorCargas })
-  const cuadre = cuadreDeClases(filas)
   const { dias, fechasDuplicadas, personasRepetidas } = solapes(enVentana, filas)
   const deClase = (clase) => filas.filter((f) => f.clase === clase)
-
-  return {
-    ventana: { desde, hasta, diasEnVentana: dias, bloques: enVentana.map((e) => e.bloque.fila1) },
-    filas,
+  const listas = {
     porObra: agruparPorObra(filas, conCargas),
     sinObra: deClase(CLASE.NO_ES_CLIENTE).map((f) => ({
       persona: f.persona, rotulo: f.rotuloCliente, motivo: f.motivo, horas: f.horas, jornal: f.jornal, costo: f.costo,
@@ -338,6 +346,16 @@ export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, an
     noVerificables: deClase(CLASE.NO_VERIFICABLE).map((f) => ({
       persona: f.persona, rotulo: f.rotuloCliente, fila: f.fila, jornal: f.jornal,
     })),
+  }
+  const jornalTotal = filas.reduce((a, f) => a + (f.jornal ?? 0), 0)
+  const cuadre = cuadreDeLoPublicado(jornalTotal, listas)
+
+  return {
+    ventana: { desde, hasta, diasEnVentana: dias, bloques: enVentana.map((e) => e.bloque.fila1) },
+    filas,
+    // Las mismas listas que se le pasaron al cuadre: si el informe publicara otra cosa que la
+    // que se controló, el control no estaría controlando el informe.
+    ...listas,
     fechasDuplicadas,
     personasRepetidas,
     huecos,
@@ -348,11 +366,13 @@ export function costoPorObra(grid, { desde, hasta, mapa, factorCargas = null, an
       celdasIlegibles: huecos.filter((h) => h.tipo === HUECO.CELDA_ILEGIBLE).length,
       personasSinValuar: filas.filter((f) => f.jornal == null).length,
       jornalTotal: cuadre.total,
-      jornalAtribuido: cuadre.porClase[CLASE.CLIENTE],
-      jornalSinObra: cuadre.porClase[CLASE.NO_ES_CLIENTE],
-      jornalDesconocido: cuadre.porClase[CLASE.DESCONOCIDO],
-      jornalSinRotulo: cuadre.porClase[CLASE.SIN_ROTULO],
-      jornalNoVerificable: cuadre.porClase[CLASE.NO_VERIFICABLE],
+      // Los cinco subtotales salen de LAS LISTAS PUBLICADAS, no de recorrer las clases otra vez: si
+      // salieran de otro lado, el cuadre estaria controlando un numero distinto del que se informa.
+      jornalAtribuido: cuadre.publicado.porObra,
+      jornalSinObra: cuadre.publicado.sinObra,
+      jornalDesconocido: cuadre.publicado.desconocidos,
+      jornalSinRotulo: cuadre.publicado.sinRotulo,
+      jornalNoVerificable: cuadre.publicado.noVerificables,
       residuo: cuadre.residuo,
       cuadra: cuadre.cuadra,
       // La ventana es consistente cuando ningun dia y ninguna persona se cuenta dos veces. Si es
