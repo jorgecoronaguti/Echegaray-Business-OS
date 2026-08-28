@@ -319,3 +319,19 @@ test('referenciasDe no confunde el nombre de una función con una celda', () => 
   assert.equal(referenciasDe("'Análisis'!G6*2")[0].hoja, 'Análisis')
   assert.equal(referenciasDe('G6*2', { hojaPropia: 'GG' })[0].hoja, 'GG')
 })
+
+// ═══════════════════ EL CONSUMIDOR DE PRODUCCIÓN ═══════════════════
+
+test('el ESTUDIO publica los tres estados: los controles no son una biblioteca sin usuarios', async () => {
+  // El circuito entero pasaba por `hallazgos()`, que devuelve dos estados, así que el artefacto no
+  // podía distinguir LIMPIO de NO_SE_PUDO_MIRAR y `pasarControles()` sólo lo importaba su test.
+  const r = await estudiar(tanda(1))
+  assert.ok(r.controles, 'estudiarTanda no publica los controles')
+  assert.equal(r.controles.corridas.length, CONTROLES.length)
+  assert.equal(r.paso, false, 'una sola cotización no puede pasar: los controles cruzados no miraron')
+  assert.ok(r.controles.corridas.some((c) => c.estado === RESULTADO.NO_SE_PUDO_MIRAR))
+  // Y la lista de hallazgos que publica el estudio es la de los controles, no una segunda cuenta.
+  const sano = await estudiar(tanda(5, (i) => ({ coeficienteGG: [0.006, 0.03, 0.06, 0.006, 0.03][i] })))
+  assert.deepEqual(sano.hallazgos, sano.controles.hallazgos, 'el estudio publica una lista distinta de la que miraron los controles')
+  assert.ok(sano.hallazgos.length > 0, 'el escenario no produce ningún hallazgo: no probaría la igualdad')
+})

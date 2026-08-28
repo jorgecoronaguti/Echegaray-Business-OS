@@ -147,7 +147,9 @@ const y = (...coberturas) => (cotizaciones) => {
  */
 export const CONTROLES = Object.freeze([
   { id: 'oferta-con-el-cierre-roto', que: 'el SUB TOTAL, el IVA y el TOTAL de la oferta que ve el cliente', regla: ofertasRotas, cobertura: necesitaOferta, tipos: [TIPO.OFERTA_ROTA] },
-  { id: 'iva-escrito-a-mano', que: 'si el IVA de la oferta se calcula o se tipea', regla: ivaEscritoAMano, cobertura: necesitaFormulasDeOferta, tipos: [TIPO.IVA_ESCRITO_A_MANO] },
+  // `deduceDeLaAusencia`: el único control cuyo hallazgo sale de lo que NO está («no hay fórmula,
+  // entonces el IVA se tipeó»). Sin cobertura no puede afirmar ni siquiera el defecto.
+  { id: 'iva-escrito-a-mano', que: 'si el IVA de la oferta se calcula o se tipea', regla: ivaEscritoAMano, cobertura: necesitaFormulasDeOferta, deduceDeLaAusencia: true, tipos: [TIPO.IVA_ESCRITO_A_MANO] },
   { id: 'aritmetica-de-la-oferta', que: 'que la suma de los ítems dé el subtotal y que subtotal + IVA dé el total', regla: aritmeticaQueNoCierra, cobertura: necesitaOferta, tipos: [TIPO.SUBTOTAL_NO_CIERRA, TIPO.TOTAL_NO_CIERRA] },
   { id: 'rotulo-contra-coeficiente', que: 'que el porcentaje que promete el rótulo de GG sea el que aplica la fórmula', regla: rotuloContradiceCoeficiente, cobertura: necesitaGG, tipos: [TIPO.ROTULO_CONTRADICE_COEFICIENTE] },
   { id: 'coeficiente-inestable', que: 'el mismo concepto de GG con coeficientes muy distintos entre cotizaciones', regla: coeficientesInestables, cobertura: y(necesitaGG, necesitaConjunto(MINIMO_CRUZADO.coeficiente, 'el coeficiente de un mismo concepto')), tipos: [TIPO.COEFICIENTE_INESTABLE] },
@@ -193,7 +195,15 @@ export const controlDe = (tipo) => CONTROL_POR_TIPO[tipo] ?? null
  */
 export function correrControl(control, cotizaciones = [], opciones = {}) {
   const cobertura = control.cobertura(cotizaciones)
-  const hallazgos = cobertura.mirados > 0 ? control.regla(cotizaciones, opciones) : []
+  // La regla corre aunque la cobertura sea cero: encontrar nunca miente, lo que necesita cobertura
+  // es afirmar la AUSENCIA de defecto, jamás su presencia. Con el atajo anterior —correrla sólo si
+  // `mirados > 0`— una tanda donde todas las ofertas quedaran ciegas escondía las incoherencias que
+  // la MISMA regla veía en el presupuesto.
+  //
+  // La excepción es la regla que DEDUCE el defecto de un dato que falta: sin cobertura, su hallazgo
+  // positivo ES el hueco. `ivaEscritoAMano` concluye «lo tipearon» de «no veo la fórmula», y así
+  // daba rojo en 12 de 13 ofertas por un lector mal configurado.
+  const hallazgos = control.deduceDeLaAusencia && cobertura.mirados === 0 ? [] : control.regla(cotizaciones, opciones)
   const miroTodo = cobertura.mirados > 0 && cobertura.sinMirar.length === 0
   const estado = hallazgos.length ? RESULTADO.HALLAZGO
     : miroTodo ? RESULTADO.LIMPIO

@@ -15,7 +15,7 @@ import { leerArchivo } from './leer-archivo.mjs'
 import { ETAPA, documento } from './biblioteca.mjs'
 import { practicas } from './practica-cotizacion.mjs'
 import { aConocimientoHistorico, aConocimientoInsuficienciaMetalica, registrosHistoricos } from './practica-historica.mjs'
-import { hallazgos } from './hallazgos-cotizacion.mjs'
+import { pasarControles, paso } from './controles-cotizacion.mjs'
 import { celdasRotasDe } from './hallazgos-celdas.mjs'
 import { resumen } from './hallazgo.mjs'
 import { aprendizajes } from './aprendizaje-cotizacion.mjs'
@@ -163,7 +163,18 @@ export async function estudiarTanda(archivos = [], {
     else noLeidos.push(r)
   }
   const p = practicas(cotizaciones, opciones)
-  const h = hallazgos(cotizaciones, opciones)
+  // ═══ LOS HALLAZGOS SALEN DE LOS CONTROLES, NO DE UNA SEGUNDA LLAMADA ═══
+  //
+  // `pasarControles()` corre las MISMAS 14 reglas que `hallazgos()` y además contesta, por control,
+  // si pudo mirar. Llamar a las dos dejaría dos caminos que calculan lo mismo y que se separan en
+  // silencio la primera vez que alguien agregue una regla a uno solo. Se llama a uno, y el otro
+  // —`hallazgos()`— queda para quien sólo quiera la lista.
+  //
+  // Diferencia declarada respecto de la corrida anterior: con `iva-escrito-a-mano` sin cobertura,
+  // este camino NO publica el hallazgo. Son los 12 de 13 falsos positivos que producía un lector
+  // sin `cellFormula`, y ahora salen contados como NO_SE_PUDO_MIRAR en vez de como defecto.
+  const controles = pasarControles(cotizaciones, opciones)
+  const h = controles.hallazgos
   // Las prácticas salen con su procedencia propia —PRACTICA_HISTORICA_ECSAS— y con frecuencia,
   // período, archivos, clientes y variabilidad. Antes salían como EXPERIENCIA_ECSAS, que significa
   // «lo medimos ejecutando»: un coeficiente tipeado en una planilla no se midió ejecutando.
@@ -175,6 +186,8 @@ export async function estudiarTanda(archivos = [], {
     cotizaciones, noLeidos, salteados,
     practicas: p,
     historicos,
+    controles,
+    paso: paso(controles),
     conocimientos: [
       ...historicos.map((r) => aConocimientoHistorico(r, { fecha: obtenidoEn })),
       // El caso metálico es una observación sobre UNA cotización medida, no una regla que valga

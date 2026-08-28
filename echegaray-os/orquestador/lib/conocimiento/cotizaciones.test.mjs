@@ -100,10 +100,20 @@ test('OFERTA_ROTA: da rojo con el cierre en error y verde sin él', async () => 
 })
 
 test('IVA_ESCRITO_A_MANO: da rojo sin fórmula y verde con fórmula', async () => {
-  const mano = await estudiar([libro('mano.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/mano.xlsx', { ivaConFormula: false })])
+  // El IVA tipeado AL LADO de renglones que sí tienen fórmula. Sin esa fórmula del renglón la hoja
+  // no tiene ninguna, y entonces «no veo la fórmula del IVA» no distingue un IVA tipeado de un
+  // lector mal configurado: desde que el estudio publica lo que dicen los controles, ese caso sale
+  // como NO_SE_PUDO_MIRAR y no como hallazgo. Es el fin de los 12 falsos rojos de 13 ofertas.
+  const conRenglon = { formulasExtra: [{ hoja: 'OFERTA', celda: 'E14', formula: 'C14*D14', valor: 1000 }] }
+  const mano = await estudiar([libro('mano.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/mano.xlsx', { ivaConFormula: false, ...conRenglon })])
   assert.equal(mano.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 1)
   const conFormula = await estudiar([libro('ok.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/ok.xlsx', { ivaConFormula: true })])
   assert.equal(conFormula.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 0)
+
+  // Y la hoja sin NINGUNA fórmula no produce ni un hallazgo ni un verde: produce un «no miré».
+  const ciega = await estudiar([libro('c.xlsx', 'administracion/PRESUPUESTOS - CLIENTES/A/OBRA/c.xlsx', { ivaConFormula: false })])
+  assert.equal(ciega.hallazgos.filter((x) => x.tipo === TIPO.IVA_ESCRITO_A_MANO).length, 0)
+  assert.equal(ciega.controles.corridas.find((c) => c.id === 'iva-escrito-a-mano').estado, 'NO_SE_PUDO_MIRAR')
 })
 
 test('SUBTOTAL_NO_CIERRA: da rojo cuando la suma de los ítems no es el subtotal', async () => {
