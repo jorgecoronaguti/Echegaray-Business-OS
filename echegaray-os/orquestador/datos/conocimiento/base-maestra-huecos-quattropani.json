@@ -1,0 +1,727 @@
+{
+ "generado": "2026-08-28",
+ "total": 20,
+ "resumen": {
+  "AGREGAR_NUEVA": 5,
+  "PENDIENTE": 11,
+  "RECHAZAR": 4
+ },
+ "decisiones": [
+  {
+   "id": "2K1",
+   "nombre": "Perfil metálico 2K1 (cordón)",
+   "unidad": "m",
+   "cantidad": 62.16,
+   "decision": "AGREGAR_NUEVA",
+   "actividadConstructiva": "provisión, corte y montaje de perfil metálico conformado en frío, doble C (2PC-240x80mm, e≈3,2mm, acero F24), usado como cordón de una estructura metálica",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": {
+    "nombreCanonico": "Cordón metálico conformado en frío 2PC-240x80",
+    "unidad": "m",
+    "familiaRubro": "Estructura Metálica",
+    "alcance": "provisión, corte, perforado y montaje del perfil metálico (cordón) en la posición indicada en el plano de estructura metálica",
+    "inclusiones": [
+     "perfil de acero F24 doble C (2PC-240-80, e≈3,2mm)",
+     "fijación/soldadura en los nudos de la estructura que recibe el cordón"
+    ],
+    "exclusiones": [
+     "pintura/protección anticorrosiva (si corresponde, se cotiza aparte)",
+     "anclajes a hormigón (ver InsertoU16)"
+    ],
+    "atributosDiscriminantes": [
+     "sección del perfil (240x80)",
+     "espesor de chapa",
+     "material (acero F24)",
+     "configuración simple/doble perfil"
+    ],
+    "metodoMedicion": "longitud acotada en el plano de estructura metálica × cantidad de elementos",
+    "composicion": null,
+    "procedencia": "plano de estructura Quattropani, elemento 2K1",
+    "confianza": "MEDIA",
+    "estado": "CANDIDATO"
+   },
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%cordon%'",
+     "resultado": "1 fila: T1046 \"CONSTRUCCIÓN DE CORDÓN\" (unidad M, descripcion='MUNICIPIO')"
+    },
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "T1046 detalle (id, descripcion)",
+     "resultado": "descripcion='MUNICIPIO' — es CORDÓN CUNETA (vereda municipal), no cordón de cercha/estructura metálica. Homónimo, no la misma actividad. El candidato T1110 CERCHA exige pieza='cercha' que el plano no demuestra (2K1 es un componente lineal, no la cercha completa)"
+    },
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%metalic%' or nombre ilike '%acero%' or nombre ilike '%perfil%'",
+     "resultado": "5 filas (T1075.2 COLUMNA METALICA, T1110 CERCHA, T1111.1 COLUMNAS METALICAS, T1124.1 CERRAMIENTO VERTICAL METALICO, T1174 PERSIANA METALICA) — ninguna es un perfil/cordón lineal genérico priceable por metro"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where rubro ilike '%ESTRUCTURA MET%'",
+     "resultado": "6 filas, todas T1110 CERCHA a 85,58 ML — ya cotizado en los 6 borradores previos de esta misma cotización Quattropani. Ningún otro código de \"ESTRUCTURA METÁLICA\" existe. ADVERTENCIA para quien cierre: si 2K1 es un componente ya incluido dentro del alcance de esa CERCHA de 85,58ml, sumarlo aparte sería doble cómputo — verificar contra los 8 elementos ya mapeados del cómputo actual, que no vi."
+    }
+   ],
+   "confianza": "MEDIA",
+   "porQue": "No existe en la Base Maestra ninguna partida que precie un perfil metálico lineal (cordón/chord) por metro. El único \"cordón\" (T1046) es municipal (cordón cuneta), homónimo sin relación. El único ítem de estructura metálica de este proyecto es T1110 CERCHA (85,58ml, ya cotizado en 6 borradores previos), que es un paquete integral por ml de techo, no un precio por componente individual (cordón/viga sueltos). Gap real de Base Maestra para estructura metálica desagregada.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "ANAFE",
+   "nombre": "Anafe",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "provisión y colocación de anafe (artefacto de cocina)",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%anafe%' or nombre ilike '%bacha%' or nombre ilike '%cocina%' or nombre ilike '%mesada%'",
+     "resultado": "1 fila: T1074 \"MESADA PARA COCINA\" (M2) — es la mesada, no el artefacto anafe. 0 filas para \"anafe\""
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%anafe%'",
+     "resultado": "0 filas — ECSAS nunca cotizó un anafe antes"
+    },
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "campo atributos de ANAFE",
+     "resultado": "todos los atributos (pieza, material, espesor, sección) vienen null — el plano no aporta ninguna especificación del artefacto ni confirma si su provisión está a cargo de ECSAS o es FF&E del cliente"
+    }
+   ],
+   "confianza": "BAJA",
+   "porQue": "La actividad constructiva (colocación de un anafe) es real, pero no hay ningún dato para decidir el alcance: falta saber si la PROVISIÓN del artefacto (compra) está dentro del contrato de Echegaray o si es FF&E que aporta el cliente y ECSAS solo conecta. Sin esa definición, cualquier ficha de partida nueva sería una suposición sobre alcance, no un dato. Nota aparte: se evaluó si ANAFE (2 un) y ANAFE-BACHA (1 un) son el mismo mueble leído dos veces, como sugiere la pista del pedido — la evidencia NO lo sostiene: las cantidades no coinciden (2 vs 1) y ninguno de los dos tiene un atributo compartido más allá del nombre (a diferencia de los tanques, que sí comparten pieza=\"tanque\" y cantidad idéntica). Se tratan como dos elementos distintos, no se fusionan.",
+   "quienLoTiene": "el contrato/pliego de Quattropani o el arquitecto del proyecto — necesitan confirmar si la provisión de artefactos de cocina (anafe, anafe+bacha) está en el alcance de Echegaray"
+  },
+  {
+   "id": "ANAFE-BACHA",
+   "nombre": "Anafe y bacha",
+   "unidad": "un",
+   "cantidad": 1,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "provisión y colocación de módulo combinado anafe + bacha (artefactos de cocina)",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%anafe%' or nombre ilike '%bacha%'",
+     "resultado": "0 filas"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%bacha%'",
+     "resultado": "0 filas — sin antecedente histórico"
+    },
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "comparación de atributos ANAFE vs ANAFE-BACHA",
+     "resultado": "ANAFE cantidad=2, ANAFE-BACHA cantidad=1, ambos sin atributos (pieza/material/sección todos null). No hay evidencia de que sean el mismo hecho leído dos veces (cantidades distintas, sin atributo compartido) — se mantienen como elementos separados"
+    }
+   ],
+   "confianza": "BAJA",
+   "porQue": "Mismo problema que ANAFE: la actividad es real (provisión y colocación de un módulo anafe+bacha) pero no hay dato de alcance (contratista vs FF&E) ni especificación técnica para armar una ficha seria. Verificado explícitamente: NO es duplicado de ANAFE — la cantidad no coincide (1 vs 2) y no comparten ningún atributo técnico en la evidencia del motor, a diferencia del caso de los tanques.",
+   "quienLoTiene": "el contrato/pliego de Quattropani o el arquitecto del proyecto"
+  },
+  {
+   "id": "ANCLAJE",
+   "nombre": "Anclaje en estructura de hormigón",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "RECHAZAR",
+   "actividadConstructiva": "anclaje de la estructura metálica (escalera) a una columna de hormigón existente",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "comparación de atributos ANCLAJE vs InsertoU16",
+     "resultado": "ANCLAJE: \"Anclaje en estructura de hormigón\", cantidadElementos=2, material=hormigon (la estructura que recibe el anclaje). InsertoU16: \"Inserto U Ø16 anclado en columna de hormigón\", cantidadElementos=2, pieza=columna, material=acero (la barra), armadura=true. Mismo conteo (2), mismo concepto (anclaje a columna de hormigón), sin ningún otro anclaje distinto en el resto de la lista de 20"
+    },
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%anclaje%' or nombre ilike '%inserto%'",
+     "resultado": "0 filas — no hay partida de anclaje en Base Maestra, consistente con que se trata del mismo hecho ya descripto en InsertoU16 y no de dos anclajes distintos que necesiten dos partidas"
+    }
+   ],
+   "confianza": "MEDIA",
+   "porQue": "ANCLAJE y InsertoU16 describen, con dos niveles de detalle distintos, el mismo par de anclajes (2 unidades en ambos) de la estructura metálica a la columna de hormigón: uno es la nota general del plano (\"Anclaje en estructura de hormigón\"), el otro es el detalle técnico del inserto (barra U Ø16, 90cm embebidos). Cotizarlos por separado duplicaría el mismo punto de anclaje. Se conserva InsertoU16 (tiene la especificación técnica real) y se rechaza ANCLAJE por duplicado. Confianza MEDIA porque no se pudo ver el plano original para confirmar 100% que no son dos conexiones físicamente distintas.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "BANO",
+   "nombre": "Baño",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "instalación sanitaria completa de un baño (artefactos, grifería, desagües)",
+   "partidaComercial": "T1059 — INSTALACIÓN SANITARIA - BAÑOS",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidato top para BANO",
+     "resultado": "T1059 \"INSTALACIÓN SANITARIA - BAÑOS\", puntaje 1.0, único faltante: atributo pieza=\"instalacion\" no demostrado"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where codigo='T1059'",
+     "resultado": "4 filas históricas, siempre 1 UN por cotización — confirma que T1059 es la partida real y activa usada por ECSAS para \"baño\" como unidad de instalación sanitaria"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "Acá NO hay circularidad: T1059 tiene 4 usos de origen 'os'. Pero mapearlo decide en silencio el ALCANCE de la oferta: «Baño» es un conteo de locales y «INSTALACIÓN SANITARIA - BAÑOS» es sólo la instalación, sin artefactos, sin revestimientos y sin albañilería. Esa decisión ya está planteada como la pregunta «¿la oferta es obra gruesa sola o incluye terminaciones e instalaciones?», y convertirla en un mapeo automático la haría desaparecer.",
+   "quienLoTiene": "comercial / cliente",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1059",
+    "nombre": "INSTALACIÓN SANITARIA - BAÑOS",
+    "faltaConfirmar": "alcance de la oferta"
+   }
+  },
+  {
+   "id": "BE_esc",
+   "nombre": "Base de hormigón escalera BE",
+   "unidad": "m3",
+   "cantidad": 0.125,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "base aislada de hormigón armado (50x50x50cm, armadura Ø6 c/20cm tipo canasta) para apoyo de la escalera metálica",
+   "partidaComercial": "T1006 — BASES AISLADAS con #8 c/15",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidatos de BE_esc",
+     "resultado": "selector top-score fue T1003 \"HORMIGON DE LIMPIEZA e=0,05m\" (hormigón pobre SIN armadura) por mayor puntaje de vocabulario, pero T1006 \"BASES AISLADAS con #8 c/15\" también está en la lista de candidatos con coincidencias pieza=base y armadura=true, y sinRespaldo=[] (sin ningún atributo bloqueado)"
+    },
+    {
+     "fuente": "public.cotizacion_partida_composicion",
+     "consulta": "select * from cotizacion_partida_composicion where partida_id en una fila de T1006",
+     "resultado": "composición real: 1,05 m3 HORMIGÓN H-17 + 6,4kg HIERRO TORSIONADO Ø8 + mano de obra, por m3 — receta genérica de \"base aislada de hormigón armado\", consistente con una base de escalera armada"
+    }
+   ],
+   "confianza": "MEDIA",
+   "porQue": "T1006 «BASES AISLADAS con #8 c/15» es la única partida de bloque de HºAº por m³, pero su armadura es #8 c/15 y el elemento especifica Ø6 tipo canasta. Mapearlo cambia el acero de la composición sin que nadie lo haya decidido — el mismo mecanismo que produjo la platea de $ 29,6 M, con dos órdenes de magnitud menos de plata.",
+   "quienLoTiene": "proyectista / calculista",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1006",
+    "nombre": "BASES AISLADAS con #8 c/15",
+    "faltaConfirmar": "armadura"
+   }
+  },
+  {
+   "id": "CE",
+   "nombre": "Elemento CE",
+   "unidad": "un",
+   "cantidad": 3,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": null,
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "atributos y especificación de CE",
+     "resultado": "material=null, especificacion=null, todos los atributos (pieza, material, espesor, sección, armadura) null. candidatos=[] y faltan=null"
+    }
+   ],
+   "confianza": "DESCONOCIDO",
+   "porQue": "\"CE\" es una sigla/referencia de plano sin ningún dato que la acompañe (ni material ni especificación). No hay forma de saber qué actividad constructiva es sin ver la leyenda o el detalle del plano que define qué significa \"CE\" en este proyecto — no es prudente adivinar (podría ser \"cámara eléctrica\", \"columna esquinera\", \"cielorraso especial\", etc.).",
+   "quienLoTiene": "el proyectista o jefe de obra que armó el cómputo de Quattropani — necesita indicar a qué elemento del plano corresponde la referencia \"CE\" (leyenda o detalle constructivo)"
+  },
+  {
+   "id": "CONTRAPISO",
+   "nombre": "Contrapiso",
+   "unidad": "m2",
+   "cantidad": 191.92,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "ejecución de contrapiso de hormigón e=0,10m",
+   "partidaComercial": "T1047 — EJECUCIÓN DE CONTRAPISO DE HORMIGÓN e = 0,10 m",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidatos de CONTRAPISO",
+     "resultado": "T1047 aparece en la lista de candidatos (puntaje 1.983), vetado solo por espesor_m no confirmado en el plano (e=0,10m)"
+    },
+    {
+     "fuente": "public.cotizaciones + public.cotizacion_partida",
+     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1047'",
+     "resultado": "T1047 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 191.92 M2 — el mismo valor exacto que trae el elemento actual"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "La evidencia que sostenía este mapeo eran «los borradores previos de esta misma cotización». Se verificó en public.cotizaciones: los 6 borradores llevan origen='xsas:plano' y se crearon el 27–28/08/2026 — los produjo ESTE MISMO motor. Usarlos como prueba es validar un control contra la información que él mismo produce, que es exactamente lo que este repo prohíbe. Evidencia RECHAZADA. Sin el espesor no se puede elegir entre T1047 (e=0,10 m) y otro: T1047 tiene 6 usos y los 6 son de XSAS, cero de una persona. FALTA el espesor del contrapiso.",
+   "quienLoTiene": "proyectista / dirección técnica",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1047",
+    "nombre": "EJECUCIÓN DE CONTRAPISO DE HORMIGÓN e = 0,10 m",
+    "faltaConfirmar": "espesor_m"
+   }
+  },
+  {
+   "id": "ESC-huella",
+   "nombre": "Escalones (huella y contrahuella) - escalera metálica",
+   "unidad": "un",
+   "cantidad": 21,
+   "decision": "RECHAZAR",
+   "actividadConstructiva": "escalones (huella/contrahuella) de la escalera metálica",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "comparación de especificacion ESC-huella vs ESCALERA-MET",
+     "resultado": "ESC-huella especificacion=\"Huella (H)=28cm, Contrahuella (P)=17.5cm; 2H+P=(61 a 63)\", material=\"madera dura c/ignífugo / entablonado 1\"\". ESCALERA-MET especificacion=\"...Cantidad de escalones=21. 2H+P=(61 a 63); 2 x 17.5+28=63. Huella 28cm, contrahuella 17.5cm\", material incluye \"madera dura c/ignífugo\". Los mismos 21 escalones, la misma huella/contrahuella y el mismo material de entablonado aparecen citados dentro de la propia especificación de ESCALERA-MET"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "ESC-huella no es un elemento adicional: es el mismo detalle de los 21 escalones que ya está descripto textualmente dentro de la especificación de ESCALERA-MET (mismas dimensiones de huella/contrahuella, mismo material). Cotizarlo aparte duplicaría el costo de los escalones, que forman parte del alcance de \"fabricación y montaje de escalera metálica completa\".",
+   "quienLoTiene": null
+  },
+  {
+   "id": "ESCALERA-MET",
+   "nombre": "Escalera metálica",
+   "unidad": "un",
+   "cantidad": 1,
+   "decision": "AGREGAR_NUEVA",
+   "actividadConstructiva": "fabricación y montaje de escalera metálica completa (estructura + 21 escalones de madera)",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": {
+    "nombreCanonico": "Escalera metálica (fabricación y montaje completo)",
+    "unidad": "un",
+    "familiaRubro": "Estructura Metálica",
+    "alcance": "fabricación, provisión y montaje completo de una escalera metálica (diferencia de nivel 3,85m, 21 escalones), incluyendo estructura y escalones",
+    "inclusiones": [
+     "caño estructural 150x50x2,5mm",
+     "PNL 50x30x3mm",
+     "21 escalones de madera dura c/ignífugo (entablonado 1\")",
+     "huella 28cm / contrahuella 17,5cm"
+    ],
+    "exclusiones": [
+     "anclajes a la estructura de hormigón (ver InsertoU16, partida separada)",
+     "pintura/terminación si no está especificada",
+     "los escalones NO se cotizan aparte (ver ESC-huella, rechazado por ser parte de este alcance)"
+    ],
+    "atributosDiscriminantes": [
+     "diferencia de niveles (3,85m)",
+     "cantidad de escalones (21)",
+     "dimensión huella/contrahuella (28cm/17,5cm)",
+     "material de estructura (caño+PNL) vs escalón (madera)"
+    ],
+    "metodoMedicion": "unidad (conjunto completo) según especificación de plano",
+    "composicion": null,
+    "procedencia": "plano Quattropani, elementos ESCALERA-MET y ESC-huella (este último RECHAZADO por ser el mismo alcance)",
+    "confianza": "ALTA",
+    "estado": "CANDIDATO"
+   },
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%escaler%' or nombre ilike '%pelda%' or nombre ilike '%huella%'",
+     "resultado": "2 filas: T1021 LOSA DE HORMIGON ARMADO ESCALERA (m3, hormigón), T1034 PISO CALCAREO EN ESCALERA (m2, revestimiento) — ninguna es una escalera METÁLICA, son de hormigón/revestimiento"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%escaler%'",
+     "resultado": "0 filas — ningún antecedente histórico de escalera metálica en ninguna cotización de ECSAS"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "No existe en toda la Base Maestra (199 tareas) ni en el historial de cotizaciones ninguna partida de escalera METÁLICA — las dos únicas \"escalera\" que existen son de hormigón (losa) y de revestimiento de piso. Es un gap real y confirmado por ausencia total de antecedente.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "InsertoU16",
+   "nombre": "Inserto U Ø16 anclado en columna de hormigón",
+   "unidad": "m",
+   "cantidad": 1.8,
+   "decision": "AGREGAR_NUEVA",
+   "actividadConstructiva": "provisión y colocación de inserto metálico en U de Ø16mm, embebido/anclado 90cm en columna de hormigón, para vincular la escalera metálica",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": {
+    "nombreCanonico": "Inserto metálico en U Ø16 anclado en columna de hormigón",
+    "unidad": "m",
+    "familiaRubro": "Estructura Metálica / frontera con Hormigón Armado",
+    "alcance": "provisión y colocación de 2 insertos de acero Ø16mm doblados en U, embebidos 90cm en columna de hormigón existente, para anclar la estructura metálica de la escalera",
+    "inclusiones": [
+     "barra de acero Ø16 doblada en U",
+     "anclaje químico o embebido según método constructivo definido en obra"
+    ],
+    "exclusiones": [
+     "la columna de hormigón en sí (ya ejecutada)",
+     "la estructura metálica que recibe el anclaje (ver ESCALERA-MET)"
+    ],
+    "atributosDiscriminantes": [
+     "diámetro de barra (Ø16)",
+     "longitud de anclaje (90cm)",
+     "método (embebido vs químico)"
+    ],
+    "metodoMedicion": "longitud total de barra (m) según plano — 2 insertos de 0,9m c/u",
+    "composicion": null,
+    "procedencia": "plano Quattropani, elemento InsertoU16. Ver ANCLAJE (rechazado por duplicado del mismo punto)",
+    "confianza": "MEDIA",
+    "estado": "CANDIDATO"
+   },
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%anclaje%' or nombre ilike '%inserto%' or nombre ilike '%broca%' or nombre ilike '%brocha%'",
+     "resultado": "0 filas — no existe ninguna partida de anclaje/inserto en toda la Base Maestra"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%inserto%' or descripcion ilike '%anclaje%'",
+     "resultado": "0 filas — sin antecedente histórico"
+    }
+   ],
+   "confianza": "ALTA en el gap (no existe partida), MEDIA en el alcance exacto de la ficha propuesta",
+   "porQue": "Confirmado por ausencia total en Base Maestra y en historial: ECSAS nunca cotizó un anclaje/inserto metálico a hormigón como partida propia. Es un gap real, típico de estructuras metálicas nuevas (escaleras, mezzanines) que antes no se construían.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "MED-LADRILLON",
+   "nombre": "Medianera de ladrillón",
+   "unidad": "m2",
+   "cantidad": 270.84,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "mampostería de medianera en ladrillón cerámico",
+   "partidaComercial": "T1018 — MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidato top de MED-LADRILLON",
+     "resultado": "T1018 único candidato (puntaje 3.283, coincide pieza=muro y material=ladrillon), vetado solo por espesor_m=0,20m no confirmado en el plano"
+    },
+    {
+     "fuente": "public.cotizaciones + public.cotizacion_partida",
+     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1018'",
+     "resultado": "T1018 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 270.84 M2 — el mismo valor exacto que trae el elemento actual"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "La evidencia que sostenía este mapeo eran «los borradores previos de esta misma cotización». Se verificó en public.cotizaciones: los 6 borradores llevan origen='xsas:plano' y se crearon el 27–28/08/2026 — los produjo ESTE MISMO motor. Usarlos como prueba es validar un control contra la información que él mismo produce, que es exactamente lo que este repo prohíbe. Evidencia RECHAZADA. T1018 SÍ tiene 4 usos de origen 'os' (personas), así que la partida es real y es la única de ladrillón en las 199 tareas — pero eso prueba que ECSAS la usa, no que ESTA medianera sea de 0,20 m. Falta el espesor.",
+   "quienLoTiene": "proyectista / dirección técnica",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1018",
+    "nombre": "MAMPOSTERÍA LADRILLON CERÁMICO e = 0,20 m",
+    "faltaConfirmar": "espesor_m"
+   }
+  },
+  {
+   "id": "MODULO-BANOS",
+   "nombre": "Módulo Baños 2 C200",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": null,
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "atributos de MODULO-BANOS",
+     "resultado": "material=acero, especificacion=\"Perfil C200\", pieza=null. Sin más contexto sobre qué es físicamente el módulo"
+    },
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%metalic%'",
+     "resultado": "incluye T1124.1 \"CERRAMIENTO VERTICAL METALICO\" (Saint Gobain, ML) — un sistema de tabique de placa sobre perfilería metálica (típico steel-framing/Durlock), unidad ML, NO compatible en unidad con el conteo \"2 un\" del elemento"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%modulo%bano%'",
+     "resultado": "0 filas — sin antecedente"
+    }
+   ],
+   "confianza": "DESCONOCIDO",
+   "porQue": "Hay dos lecturas posibles con la evidencia disponible, y no hay forma de elegir entre ellas sin el plano/detalle: (a) es un tabique de perfil C200 con placa (steel-framing) que encierra 2 baños — en ese caso la partida más cercana es T1124.1 CERRAMIENTO VERTICAL METALICO, pero está en ML y el elemento viene medido en \"un\" (2 módulos), sin metros lineales de tabique — habría que remedir; o (b) es una estructura/módulo prefabricado independiente, en cuyo caso no hay ninguna partida compatible y sería AGREGAR_NUEVA. Afirmar cualquiera de las dos sin el detalle del plano sería adivinar el alcance.",
+   "quienLoTiene": "el proyectista/arquitecto de Quattropani — necesita aclarar qué es físicamente el \"Módulo Baños 2 C200\" (tabique perimetral en steel-framing vs. estructura prefabricada) y, si es tabique, los metros lineales de perfil C200 involucrados"
+  },
+  {
+   "id": "MUERTO_esc",
+   "nombre": "Muerto de hormigón escalera",
+   "unidad": "m3",
+   "cantidad": 0.3,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "bloque de anclaje (\"muerto\") de hormigón armado (120x50x50cm, armadura Ø6 c/20cm tipo canasta) para la escalera metálica",
+   "partidaComercial": "T1006 — BASES AISLADAS con #8 c/15",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidatos de MUERTO_esc",
+     "resultado": "el selector solo propuso T1003 (hormigón de limpieza, sin armadura) porque su búsqueda por vocabulario nunca conectó \"muerto\" con \"base\" — T1006 no aparece en su lista de candidatos"
+    },
+    {
+     "fuente": "public.cotizacion_partida_composicion",
+     "consulta": "composición de T1006 (misma consultada para BE_esc)",
+     "resultado": "1,05 m3 HORMIGÓN H-17 + 6,4kg HIERRO Ø8 por m3 — receta genérica de hormigón armado en bloque aislado, aplicable a un \"muerto\" (bloque de anclaje) igual que a una base de columna"
+    }
+   ],
+   "confianza": "MEDIA",
+   "porQue": "Mismo caso que BE_esc: T1006 es la única partida de bloque de HºAº por m³ y su armadura (#8 c/15) no es la del elemento.",
+   "quienLoTiene": "proyectista / calculista",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1006",
+    "nombre": "BASES AISLADAS con #8 c/15",
+    "faltaConfirmar": "armadura"
+   }
+  },
+  {
+   "id": "muerto_HA",
+   "nombre": "Muerto de H°A° 1.5-0.5-0.5",
+   "unidad": "m3",
+   "cantidad": 0.75,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "bloque de anclaje (\"muerto\") de hormigón armado (2 unidades de 150x50x50cm, armado tipo canasta Ø6c/15)",
+   "partidaComercial": "T1006 — BASES AISLADAS con #8 c/15",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidatos de muerto_HA",
+     "resultado": "candidatos=[], vetados=[] — el selector no encontró NINGÚN candidato, ni siquiera T1003, por la misma falla de vocabulario (\"muerto\" no conecta con \"base\")"
+    },
+    {
+     "fuente": "public.cotizacion_partida_composicion",
+     "consulta": "composición de T1006",
+     "resultado": "misma receta genérica de hormigón armado en bloque aislado por m3 (ver evidencia de MUERTO_esc)"
+    }
+   ],
+   "confianza": "MEDIA",
+   "porQue": "Mismo caso que BE_esc y MUERTO_esc: la única partida compatible por unidad lleva otra armadura.",
+   "quienLoTiene": "proyectista / calculista",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1006",
+    "nombre": "BASES AISLADAS con #8 c/15",
+    "faltaConfirmar": "armadura"
+   }
+  },
+  {
+   "id": "PLATEA",
+   "nombre": "Platea de fundación s/Cálculo",
+   "unidad": "m2",
+   "cantidad": 191.92,
+   "decision": "PENDIENTE",
+   "actividadConstructiva": "platea de fundación de hormigón, 50cm de espesor",
+   "partidaComercial": "T1166 — PLATEA DE HORMIGON - 50CM",
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "candidatos de PLATEA",
+     "resultado": "T1166 único candidato con coincidencia de pieza=platea, vetado por espesor_m=0,5m no confirmado (el plano dice \"s/Cálculo\")"
+    },
+    {
+     "fuente": "public.cotizaciones + public.cotizacion_partida",
+     "consulta": "select c.numero, cp.codigo, cp.cantidad from cotizaciones c join cotizacion_partida cp on cp.cotizacion_id=c.id where c.cliente='FRANCO QUATTROPANI' and cp.codigo='T1166'",
+     "resultado": "T1166 aparece en 6 borradores previos de ESTA misma cotización (mismo cliente FRANCO QUATTROPANI, obra \"Comercio Minorista - Productos Generales\", numero COT-XSAS-V0/V1/421w/d0lo/edjp/u3nz, creados 2026-08-27 18:21 → 2026-08-28 01:54), siempre con cantidad 191.92 M2 — el mismo valor exacto que trae el elemento actual"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "La evidencia que sostenía este mapeo eran «los borradores previos de esta misma cotización». Se verificó en public.cotizaciones: los 6 borradores llevan origen='xsas:plano' y se crearon el 27–28/08/2026 — los produjo ESTE MISMO motor. Usarlos como prueba es validar un control contra la información que él mismo produce, que es exactamente lo que este repo prohíbe. Evidencia RECHAZADA. Y acá el costo de equivocarse ya está medido: es la platea de $ 29,6 M que la auditoría anterior marcó como el defecto más caro del circuito. El plano dice «s/Cálculo»: el espesor lo fija el calculista, no un borrador de ayer.",
+   "quienLoTiene": "proyectista / calculista",
+   "decisionOriginal": "MAPEAR_EXISTENTE",
+   "revisadoPor": "segunda lectura: se verificó el origen de la evidencia en public.cotizaciones",
+   "candidataNombrada": {
+    "codigo": "T1166",
+    "nombre": "PLATEA DE HORMIGON - 50CM",
+    "faltaConfirmar": "espesor_m"
+   }
+  },
+  {
+   "id": "TANQUE-RES",
+   "nombre": "Tanque de reserva 600 litros",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "AGREGAR_NUEVA",
+   "actividadConstructiva": "provisión y montaje de tanque de reserva de agua de 600 litros",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": {
+    "nombreCanonico": "Tanque de reserva de agua 600 litros (provisión y montaje)",
+    "unidad": "un",
+    "familiaRubro": "Instalación Sanitaria",
+    "alcance": "provisión, izaje y conexión de tanque de reserva de agua de 600 litros de capacidad, sobre soporte/base ya ejecutada",
+    "inclusiones": [
+     "el tanque",
+     "accesorios de conexión (flotante, llave de paso) si están especificados en el plano"
+    ],
+    "exclusiones": [
+     "la base o soporte estructural del tanque (partida aparte, si corresponde)",
+     "la cañería de alimentación/distribución"
+    ],
+    "atributosDiscriminantes": [
+     "capacidad (600 litros)",
+     "material del tanque (no especificado en el plano — falta confirmar polietileno/fibra)",
+     "cantidad de unidades"
+    ],
+    "metodoMedicion": "unidad (conteo)",
+    "composicion": null,
+    "procedencia": "plano Quattropani. El mismo elemento aparece descripto 3 veces (TANQUE-RES, TANQUES-600, TQ1) con idéntica cantidad (2 un) y el mismo atributo pieza=\"tanque\" — se conserva UNA sola partida (esta) y se RECHAZAN las otras dos por duplicado, para no sextuplicar el cómputo de tanques",
+    "confianza": "ALTA",
+    "estado": "CANDIDATO"
+   },
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%tanque%' or nombre ilike '%cisterna%' or nombre ilike '%reserva%'",
+     "resultado": "2 filas: T1086 BASE DE HORMIGON PARA TANQUE EXTERIORES (la base, no el tanque), T1172 BASES TANQUE - MESSINAS (ídem, base). Ninguna precia el tanque en sí"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%tanque%'",
+     "resultado": "0 filas — ECSAS nunca cotizó la provisión de un tanque como partida propia"
+    },
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "comparación TANQUE-RES vs TANQUES-600 vs TQ1",
+     "resultado": "los tres traen pieza=\"tanque\", cantidad=2, unidad=un, especificación equivalente (\"600 litros c/u\" / \"2 Tanques de 600 litros\"). Se interpretan como el mismo hecho leído 3 veces en el plano (nota general + leyenda + detalle), no como 6 tanques"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "Confirmado por ausencia total: en Base Maestra solo existen partidas para la BASE del tanque, nunca para el tanque en sí — gap real. Se eligió este id (TANQUE-RES) como el registro que se conserva porque trae la especificación más clara (\"Capacidad 600 litros c/u\"); TANQUES-600 y TQ1 se rechazan por duplicado del mismo hecho.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "TANQUES-600",
+   "nombre": "2 Tanques de 600 litros",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "RECHAZAR",
+   "actividadConstructiva": "provisión y montaje de tanque de reserva de agua de 600 litros (mismo hecho que TANQUE-RES)",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "atributos TANQUES-600 vs TANQUE-RES vs TQ1",
+     "resultado": "pieza=\"tanque\", cantidad=2, unidad=un, especificacion=\"600 litros c/u\" — idéntico en los tres registros"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "Duplicado de TANQUE-RES: mismo pieza, misma cantidad (2), mismo material implícito y especificación equivalente. Es el mismo par de tanques de 600 litros leído en otra parte del plano/cómputo (probablemente una leyenda o planilla resumen), no 2 tanques adicionales. Cotizarlo aparte llevaría el total de tanques de 2 a 6.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "TQ1",
+   "nombre": "Tanque de agua 600 litros",
+   "unidad": "un",
+   "cantidad": 2,
+   "decision": "RECHAZAR",
+   "actividadConstructiva": "provisión y montaje de tanque de reserva de agua de 600 litros (mismo hecho que TANQUE-RES)",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": null,
+   "evidencia": [
+    {
+     "fuente": "candidatas.json (motor)",
+     "consulta": "atributos TQ1 vs TANQUE-RES vs TANQUES-600",
+     "resultado": "pieza=\"tanque\", cantidad=2, unidad=un, especificacion=\"2 Tanques de 600 litros\" — idéntico en los tres registros (incluso el nombre del código \"TQ1\" con especificación que literalmente dice \"2 Tanques\" sugiere que es una referencia/callout de plano al mismo par ya contado)"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "Duplicado de TANQUE-RES por la misma razón que TANQUES-600: mismo pieza, misma cantidad (2), especificación equivalente. Es una tercera lectura del mismo par de tanques (probablemente el código de referencia del plano, \"TQ1\"), no 2 tanques adicionales.",
+   "quienLoTiene": null
+  },
+  {
+   "id": "VIGA-2C200",
+   "nombre": "Viga metálica 2C200",
+   "unidad": "m",
+   "cantidad": 66.72,
+   "decision": "AGREGAR_NUEVA",
+   "actividadConstructiva": "provisión, corte y montaje de viga metálica compuesta por doble perfil C200 conformado en frío",
+   "partidaComercial": null,
+   "tareaExistente": null,
+   "fichaNueva": {
+    "nombreCanonico": "Viga metálica doble perfil C200",
+    "unidad": "m",
+    "familiaRubro": "Estructura Metálica",
+    "alcance": "provisión, corte y montaje de viga metálica compuesta por doble perfil C200, incluyendo unión entre los dos perfiles (soldadura o bulonado)",
+    "inclusiones": [
+     "perfil C200 doble",
+     "material: acero estructural conformado en frío"
+    ],
+    "exclusiones": [
+     "apoyos/anclajes a otras estructuras (ver InsertoU16/ANCLAJE)",
+     "pintura anticorrosiva"
+    ],
+    "atributosDiscriminantes": [
+     "sección (2C200 doble)",
+     "longitud total (66,72m)",
+     "material (acero estructural conformado en frío)"
+    ],
+    "metodoMedicion": "longitud acotada en el plano × cantidad de elementos",
+    "composicion": null,
+    "procedencia": "plano Quattropani, elemento VIGA-2C200",
+    "confianza": "ALTA",
+    "estado": "CANDIDATO"
+   },
+   "evidencia": [
+    {
+     "fuente": "public.tarea_tipo",
+     "consulta": "select * from tarea_tipo where nombre ilike '%viga%'",
+     "resultado": "10 filas, TODAS son vigas de HORMIGÓN ARMADO medidas en M3 por kg de hierro/m3 (ej. T1007 VIGA DE FUNDACIÓN H17-FE100KG/M3) — sistema constructivo distinto (hormigón, no acero estructural por metro lineal)"
+    },
+    {
+     "fuente": "public.cotizacion_partida",
+     "consulta": "select * from cotizacion_partida where descripcion ilike '%viga metal%' or descripcion ilike '%C200%'",
+     "resultado": "0 filas — sin antecedente de viga metálica ni de perfil C200 en ninguna cotización histórica"
+    }
+   ],
+   "confianza": "ALTA",
+   "porQue": "Todas las \"viga\" de Base Maestra son de hormigón armado, medidas por m3/kg de hierro — un sistema constructivo incompatible con una viga de acero conformado en frío medida por metro lineal. No existe ninguna partida de estructura metálica lineal para vigas. Gap real y confirmado por ausencia total de antecedente.",
+   "quienLoTiene": null
+  }
+ ],
+ "resumenOriginal": {
+  "MAPEAR_EXISTENTE": 7,
+  "AGREGAR_NUEVA": 5,
+  "RECHAZAR": 4,
+  "PENDIENTE": 4
+ },
+ "correccion": {
+  "que": "siete de las decisiones se revisaron en segunda lectura y bajaron a PENDIENTE",
+  "porQue": "tres se apoyaban en «los borradores previos de esta misma cotización», que resultaron ser corridas de ESTE motor del 27–28/08/2026 (origen=xsas:plano). Una cuarta habría decidido en silencio el alcance de la oferta. Las otras tres mapeaban a una partida cuya armadura no es la del elemento.",
+  "consecuencia": "la cobertura NO sube por este trabajo. El cuello real son 11 decisiones de personas y 5 partidas que faltan en el catálogo."
+ },
+ "comoSeLee": {
+  "MAPEAR_EXISTENTE": "hay una partida de la Base Maestra que corresponde y el selector la descartó mal",
+  "AGREGAR_NUEVA": "la actividad existe y ninguna partida comercial de ECSAS la cubre — ficha propuesta, SIN precio",
+  "RECHAZAR": "no se cotiza como partida propia: duplicado, o parte del alcance de otra",
+  "PENDIENTE": "la evidencia no alcanza; se declara qué dato falta y quién lo tiene"
+ }
+}
