@@ -18,7 +18,7 @@
 // Por eso: SIN SECRETO NO ATIENDE. No hay modo dev que lo relaje. Un borde que se abre "para
 // probar" es un borde abierto.
 import { igualEnTiempoConstante } from './secreto-compartido.mjs'
-import { permisosDeRol } from '../lib/xsas-permisos.mjs'
+import { permisosDeRol, rolVerificado } from '../lib/xsas-permisos.mjs'
 
 const NO_ENCONTRADO = { status: 404, body: { error: 'not_found' } }
 
@@ -62,9 +62,21 @@ export function crearManejadorXsas({ atender, secreto = null, gateway = {}, maxB
     // que importa: (1) la tabla rol→capacidad tiene que estar definida UNA vez y del lado del OS,
     // no copiada en TypeScript donde se quedaría vieja; (2) si el emisor pudiera declarar sus
     // permisos, un secreto filtrado no sería «puede leer lo que su rol lee» sino «puede todo».
+    //
+    // (27/08/2026) Y EL ROL TAMPOCO LO DECLARA QUIEN PIDE, cuando se lo puede verificar. El comentario
+    // de arriba era cierto para `permisos` y falso para `rol`: se derivaban los permisos DEL DATO QUE
+    // MANDABA EL EMISOR, así que con el secreto en la mano bastaba con escribir `rol: "direccion"`.
+    // Ahora, si el actor se identifica contra `public.perfiles`, manda la base.
     const actor = { ...(bruto?.actor ?? {}) }
-    actor.permisos = permisosDeRol(actor.rol)
+    const rol = await rolVerificado(gateway, actor)
+    actor.rol = rol.rol
+    actor.permisos = permisosDeRol(rol.rol)
     const r = await atender({ ...bruto, actor }, gateway)
+    // Que lo declarado no coincida con lo real no se calla: es información sobre quien pide.
+    if (rol.verificado && rol.declarado && rol.declarado !== rol.rol) {
+      r.degradacion = [r.degradacion, `el rol declarado («${rol.declarado}») no es el que tiene esta cuenta`].filter(Boolean).join(' · ')
+      r.estado = 'degradado'
+    }
     // El código HTTP sigue al ESTADO, no al `ok`: una respuesta degradada es 200 con su motivo
     // adentro —el consumidor tiene que verla, no reintentarla—, y un pedido mal armado es 400
     // porque reintentarlo igual no lo va a arreglar.

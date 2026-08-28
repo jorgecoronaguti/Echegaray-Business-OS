@@ -112,12 +112,19 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
       fallaron.push(`${ruta}: ${String(e?.message ?? e).slice(0, 80)}`)
     }
   }
-  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo), fallaron } }
+  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo, mapa), fallaron } }
   return _cache.valor
 }
 
-/** El techo de importadores a partir del cual una lib deja de identificar una capacidad. */
-export const TOOLS_QUE_VUELVEN_INFRA_A_UNA_LIB = 4
+/**
+ * El techo de importadores a partir del cual una lib deja de identificar una capacidad.
+ *
+ * Bajó de 4 a 3 (27/08/2026, auditoría): el comentario de abajo decía que `db.mjs` la importaban
+ * cinco archivos de tools y el corte la dejaba afuera. Son TRES, así que el corte no disparaba y
+ * `db.mjs` —la conexión a Postgres, que no identifica nada— resolvía a siete tools. Ninguna skill la
+ * cita hoy, así que era latente; una sola línea en un markdown la habría activado.
+ */
+export const TOOLS_QUE_VUELVEN_INFRA_A_UNA_LIB = 3
 
 /**
  * QUÉ LIB RESUELVE CADA TOOL — el grafo de imports, leído del disco.
@@ -137,12 +144,20 @@ export const TOOLS_QUE_VUELVEN_INFRA_A_UNA_LIB = 4
  *
  * ═══ POR QUÉ UNA LIB MUY IMPORTADA NO CUENTA ═══
  *
- * `db.mjs` la importan cinco archivos de tools. Una lib así no identifica una capacidad: es
+ * `db.mjs` la importan tres archivos de tools. Una lib así no identifica una capacidad: es
  * infraestructura, y ligarla a una skill le daría a esa skill media docena de tools que no tienen
  * nada que ver. El corte no es una lista de excepciones —que habría que mantener— sino una
  * propiedad medible del grafo: lo que muchos usan, no distingue a ninguno.
+ *
+ * ═══ Y UNA TOOL DE ESCRITURA NUNCA SE DERIVA (27/08/2026, auditoría) ═══
+ *
+ * Un umbral atrapa la lib que usan muchos; no puede atrapar una lib genérica que usa una sola tool.
+ * Mientras eso sólo agrega capacidades de LECTURA, el costo de equivocarse es que el gateway
+ * considere una tool de más y la afinidad la descarte. Con una de ESCRITURA el costo es otro: una
+ * cita en un markdown alcanzaría para que una skill pudiera escribir. El vínculo con una capacidad
+ * que escribe se declara citando su archivo, no se deduce.
  */
-export function libsDeLasTools(porArchivo) {
+export function libsDeLasTools(porArchivo, mapa = null) {
   const porLib = new Map()
   const raiz = path.dirname(fileURLToPath(import.meta.url))
   for (const archivo of porArchivo.keys()) {
@@ -157,8 +172,9 @@ export function libsDeLasTools(porArchivo) {
   const salida = new Map()
   for (const [lib, archivos] of porLib) {
     if (archivos.size >= TOOLS_QUE_VUELVEN_INFRA_A_UNA_LIB) continue
-    const claves = [...archivos].flatMap((a) => porArchivo.get(a) ?? [])
-    if (claves.length) salida.set(lib, [...new Set(claves)])
+    const claves = [...new Set([...archivos].flatMap((a) => porArchivo.get(a) ?? []))]
+      .filter((clave) => !escribeAfuera(mapa?.get(clave)?.capability))
+    if (claves.length) salida.set(lib, claves)
   }
   return salida
 }

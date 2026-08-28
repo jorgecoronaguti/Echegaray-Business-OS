@@ -107,6 +107,45 @@ export function permisosDeRol(rol) {
 }
 
 /**
+ * EL ROL QUE DICE LA BASE, NO EL QUE DICE EL CUERPO DEL PEDIDO.
+ *
+ * ═══ POR QUÉ HIZO FALTA (27/08/2026, auditoría) ═══
+ *
+ * La puerta HTTP pisaba `permisos` con los del rol y dejaba el ROL tal como venía en el cuerpo, bajo
+ * un comentario que afirmaba «los permisos los deriva el OS». Los deriva, sí — del dato que manda
+ * quien pide. Con el secreto de la puerta en la mano, declarar `rol: "direccion"` alcanzaba.
+ *
+ * El secreto sigue siendo la frontera de confianza y esto no la reemplaza: la achica. Cuando el
+ * actor se puede identificar contra `public.perfiles` —una UUID de Supabase o un email—, manda lo
+ * que dice la base. Cuando no —el worker, un timer, un actor de Mattermost ya resuelto por
+ * `actorDeMattermost`—, se conserva lo declarado, porque ahí no hay a quién preguntarle y el
+ * emisor ya pasó por el secreto.
+ *
+ * Devuelve `{rol, verificado, declarado}`: la diferencia entre lo declarado y lo real no se tapa.
+ * PURA no es —lee la base—, pero falla cerrado: si la consulta rompe, no otorga nada nuevo.
+ */
+export async function rolVerificado(port, actor) {
+  const declarado = String(actor?.rol ?? '').trim() || null
+  const id = String(actor?.id ?? '').trim()
+  const email = String(actor?.email ?? '').trim()
+  const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  if (!port?.query || (!esUuid && !email)) return { rol: declarado, verificado: false, declarado }
+  try {
+    const { rows } = esUuid
+      ? await port.query('select rol from public.perfiles where id = $1 limit 1', [id])
+      : await port.query(
+        `select p.rol from public.perfiles p
+           join auth.users u on u.id = p.id
+          where lower(u.email) = lower($1) limit 1`, [email])
+    // Un actor que dice ser alguien y no existe NO hereda lo que declaró: se queda sin rol.
+    if (!rows.length) return { rol: null, verificado: true, declarado }
+    return { rol: rows[0].rol, verificado: true, declarado }
+  } catch {
+    return { rol: declarado, verificado: false, declarado }
+  }
+}
+
+/**
  * EL ACTOR DETRÁS DE UN USUARIO DE MATTERMOST.
  *
  * Cruza `comunicacion.identidades` (quién es ese `user_id` de la plataforma) con `auth.users` +

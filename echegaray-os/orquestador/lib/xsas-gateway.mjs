@@ -120,7 +120,7 @@ async function firmarEscritura({ query, clave, tool, pedido, datos, error }) {
         // `imagen.generar` devuelve `{archivo:{id}, drive_url}`. Con un solo nombre, dieciocho
         // escrituras reales quedaron firmadas con el archivo en NULL — la traza decía quién y
         // cuándo, y no decía SOBRE QUÉ, que es la mitad que sirve para auditar.
-        datos?.id ?? datos?.archivo?.id ?? null,
+        idDeLoEscrito(datos),
         datos?.link ?? datos?.drive_url ?? datos?.imagen_url ?? null,
         error ? 'error' : 'ok',
         error ?? null,
@@ -129,6 +129,30 @@ async function firmarEscritura({ query, clave, tool, pedido, datos, error }) {
   } catch (e) {
     console.warn(`[xsas] no se pudo firmar la escritura de ${clave}: ${String(e?.message ?? e).slice(0, 160)}`)
   }
+}
+
+/**
+ * EL ID DE LO QUE SE ESCRIBIÓ — sin enumerar las formas en que una tool lo puede llamar.
+ *
+ * Estaba escrito `datos?.id ?? datos?.archivo?.id`, que son dos formas conocidas. `plano.cotizar`
+ * devuelve una tercera (`cotizacion_id`) y la firma habría nacido con el id en NULL: quién y cuándo,
+ * sin sobre qué. Es el mismo defecto que ya se había arreglado una vez enumerando dos formas, y que
+ * volvió porque llegó la tercera.
+ *
+ * La regla: el primer valor escalar bajo una clave que TERMINA en `id`, buscando primero en la raíz
+ * y después un nivel adentro. No enumera nombres, enumera una forma. PURA.
+ */
+export function idDeLoEscrito(datos) {
+  if (!datos || typeof datos !== 'object') return null
+  const escalar = (v) => (typeof v === 'string' || typeof v === 'number') && String(v).trim() ? String(v) : null
+  const esId = (k) => /(^|_)id$/i.test(k)
+  for (const [k, v] of Object.entries(datos)) if (esId(k) && escalar(v)) return escalar(v)
+  for (const v of Object.values(datos)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      for (const [k2, v2] of Object.entries(v)) if (esId(k2) && escalar(v2)) return escalar(v2)
+    }
+  }
+  return null
 }
 
 /** El texto para una persona a partir de lo que devolvió una tool. Las tools del OS ya traen su
@@ -165,6 +189,9 @@ async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t
   const visible = filtrarPorVisibilidad({
     actor: pedido.actor,
     datos: r.datos,
+    // `args` también: hay tools que declaran parámetros de plata (`monto_venta`, `costo_estimado`,
+    // `margen_pct`, `importe`) y `acciones.ejecutadas` los devuelve tal cual.
+    args: r.args,
     respuesta: falloInterno ? `No pude obtener el dato: ${String(r.datos.error).slice(0, 200)}` : textoDeDatos(r.datos),
   })
 
@@ -172,7 +199,7 @@ async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t
     respuesta: visible.respuesta,
     datos: visible.datos,
     capacidades,
-    accionesEjecutadas: [{ tool: clave, args: r.args }],
+    accionesEjecutadas: [{ tool: clave, args: visible.args }],
     evidencia: [{ que: 'resultado', fuente: `tool ${clave}`, cuando: new Date().toISOString() }],
     degradacion: [degradacionFuente, visible.degradacion].filter(Boolean).join(' · ') || null,
     ms: Date.now() - t0,

@@ -302,3 +302,58 @@ test('E · el atajo por nombre tampoco alcanza una obra sin firma', async () => 
   assert.deepEqual(corridas, [], 'sin firma no hay obra con la que correr')
   assert.ok(!/74\.758\.214/.test(r.respuesta ?? ''))
 })
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// F · EL ROL NO LO DECLARA QUIEN PIDE, CUANDO SE LO PUEDE VERIFICAR
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test('F · con el secreto en la mano, declarar «direccion» ya no alcanza', async () => {
+  const { rolVerificado } = await import('./xsas-permisos.mjs')
+  const port = { query: async () => ({ rows: [{ rol: 'jefe_obra' }] }) }
+  const r = await rolVerificado(port, { id: '11111111-2222-3333-4444-555555555555', rol: 'direccion' })
+  assert.equal(r.rol, 'jefe_obra', 'manda lo que dice la base')
+  assert.equal(r.declarado, 'direccion', 'y la diferencia queda a la vista')
+  assert.equal(r.verificado, true)
+})
+
+test('F · un actor que dice ser alguien y no existe no hereda lo que declaró', async () => {
+  const { rolVerificado } = await import('./xsas-permisos.mjs')
+  const port = { query: async () => ({ rows: [] }) }
+  const r = await rolVerificado(port, { email: 'nadie@ecsas.com.ar', rol: 'direccion' })
+  assert.equal(r.rol, null)
+})
+
+test('F · sin nadie a quien preguntarle —worker, timer— se conserva lo declarado', async () => {
+  const { rolVerificado } = await import('./xsas-permisos.mjs')
+  const r = await rolVerificado({ query: async () => ({ rows: [] }) }, { id: 'os:worker', rol: 'direccion' })
+  assert.equal(r.rol, 'direccion')
+  assert.equal(r.verificado, false, 'y se dice que no se verificó')
+})
+
+test('F · si la base falla, no se otorga nada nuevo', async () => {
+  const { rolVerificado } = await import('./xsas-permisos.mjs')
+  const port = { query: async () => { throw new Error('sin base') } }
+  const r = await rolVerificado(port, { id: '11111111-2222-3333-4444-555555555555', rol: 'direccion' })
+  assert.equal(r.rol, 'direccion')
+  assert.equal(r.verificado, false)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// G · EL CABLEADO DE LA RUTA DE LA APP — un guardián, porque el archivo no se puede correr acá
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test('G · la ruta de la app filtra el contexto del navegador y el del servidor va último', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const path = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+  // Sin los comentarios: el archivo EXPLICA el defecto viejo citándolo, y un guardián que lee la
+  // explicación como si fuera código se pone rojo por la documentación.
+  const texto = (await readFile(path.join(raiz, 'src/app/api/xsas/route.ts'), 'utf8'))
+    .split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+  assert.match(texto, /contextoDelCliente\(entrada\.contexto\)/, 'el contexto del navegador entra filtrado')
+  assert.match(texto, /contexto: \{ \.\.\.delCliente\.permitido, \.\.\.contexto \}/,
+    'y el del servidor va ÚLTIMO: invertirlo dejaría que el navegador pise lo que se leyó con la RLS')
+  assert.ok(!/\.\.\.\(entrada\.contexto \?\? \{\}\)/.test(texto),
+    'el contexto crudo del navegador no puede volver a entrar')
+})
