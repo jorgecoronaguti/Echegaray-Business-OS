@@ -109,6 +109,16 @@ cuota de una herramienta de desarrollo, y el control de arriba lo caza.
   en producción (React #419). Sólo `npm run build` lo atrapa.
 - **`count: 'exact'` con RLS** recorre la tabla evaluando la policy fila por fila. Y una policy con
   `auth.uid()` suelto se evalúa por fila; envuelta en `(select auth.uid())` pasa a InitPlan.
+- **Un control no se valida contra la información que produce.** `supuestosOcultos` miraba
+  `cantidad.fuente` y el cómputo asigna SIEMPRE `CALCULADO`: «0 supuestos ocultos» era una
+  constante, no una medición, y ningún test lo veía porque fabricaban el item a mano con un valor
+  que el circuito no produce. Un control mira la EVIDENCIA —el número contra el texto que dice
+  sostenerlo—, y su test se construye con la función de producción.
+- **Una cita que existe puede no contener el número.** `PLATEA area = 191,92` citaba «Platea
+  s/Cálculo»: el plano declara que el dato NO está. La evidencia va POR DIMENSIÓN, no por elemento.
+- **Deduplicar por el `id` que escribe el modelo no deduplica nada.** `PUERTA_BLINDEX` y
+  `PUERTA-BLINDEX` difieren en un signo. Va identidad normalizada con union-find sobre id Y nombre;
+  y cambiar de clave sin unir las dos ROMPE la fusión que funcionaba.
 - **Una lámina de CAD NO se segmenta por espacio en blanco.** El marco, las cotas y los llamados
   conectan todos los dibujos: agrupar por cercanía devuelve una sola región que tapa la hoja, con
   cualquier holgura. Se segmenta por los TÍTULOS de vista, que son los textos de mayor cuerpo.
