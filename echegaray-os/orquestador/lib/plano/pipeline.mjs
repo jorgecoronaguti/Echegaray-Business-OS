@@ -576,7 +576,10 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
 
   const laminas = []
   const usos = []
-  const anotar = (u) => { if (u) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
+  // Una respuesta DEGRADADA no es una llamada al modelo: es una llamada que no se hizo. Contarla
+  // como llamada publicaba «20 llamadas · USD 0,0000» en una corrida donde el modelo estaba
+  // apagado — un número que se lee como «llamó y no cobró» cuando la verdad es «no llamó».
+  const anotar = (u) => { if (u && !u.degradado) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
   for (const doc of planos.legibles) {
     const bytes = await google.descargarBytes(doc.drive_file_id)
     const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
@@ -705,7 +708,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
         cadMedido: documental.cad.length,
         catalogo: catalogo.length,
         elementosComputados: computo.items.length,
-        partidasMapeadas: mapeo.mapeados,
+        partidasMapeadas: mapeo.mapeadas,
       },
     },
     fuentePrecios: FUENTE.BASE_MAESTRA,

@@ -13,6 +13,10 @@
 //   node orquestador/scripts/xsas-regresion.mjs quattropani
 //   node orquestador/scripts/xsas-regresion.mjs quattropani --sin-regiones   # sólo lámina completa
 //   node orquestador/scripts/xsas-regresion.mjs quattropani --aprender       # persiste candidatos
+//   node orquestador/scripts/xsas-regresion.mjs quattropani --sin-modelo     # CLAUDE = 0
+//
+// `--sin-modelo` no simula nada: apaga de verdad el escalón del proveedor de razonamiento y mide
+// qué sigue saliendo. Lo que quede sin resolver aparece en el bloque de DEGRADACIÓN, con el motivo.
 
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
@@ -24,16 +28,17 @@ const config = loadConfig()
 const args = process.argv.slice(2)
 const termino = args.find((a) => !a.startsWith('--'))
 if (!termino) {
-  console.error('uso: xsas-regresion.mjs <termino> [--sin-regiones] [--refrescar] [--aprender]')
+  console.error('uso: xsas-regresion.mjs <termino> [--sin-regiones] [--refrescar] [--aprender] [--sin-modelo]')
   process.exit(1)
 }
 const porRegiones = !args.includes('--sin-regiones')
+const permitirModelo = !args.includes('--sin-modelo')
 const google = makeGoogleClient({ config })
 
 const corridas = []
 for (const n of ['A', 'B']) {
   const t0 = Date.now()
-  const r = await correr({ query, google, termino, porRegiones, refrescar: args.includes('--refrescar') && n === 'A' })
+  const r = await correr({ query, google, termino, porRegiones, permitirModelo, refrescar: args.includes('--refrescar') && n === 'A' })
   corridas.push({ n, r, ms: Date.now() - t0, usd: r.ia.usos.reduce((a, u) => a + (u.usd ?? 0), 0) })
 }
 const [A, B] = corridas
@@ -100,6 +105,22 @@ if (obra.actividades[0]) {
   console.log('  ejemplo de una actividad que puede nacer:')
   for (const l of obra.actividades[0].origen.cadena) console.log(`     ${l}`)
 }
+
+// ═══ DEGRADACIÓN ═══
+// Va ANTES del A/B a propósito: si la corrida se resolvió sin el modelo, eso cambia cómo se lee
+// TODO lo de arriba, y enterarse al final es enterarse tarde.
+const deg = r.degradacion ?? {}
+console.log('\n── SIN PROVEEDOR DE RAZONAMIENTO ──')
+if (!deg.hubo) {
+  console.log(`  no hizo falta degradar${deg.permitirModelo === false ? ' — y el modelo estaba APAGADO: todo salió del caché, del CAD y de la Base Maestra' : ''}`)
+} else {
+  console.log(`  ⚠ DEGRADADA · ${deg.fallos} fallo(s) sobre ${deg.intentos} intento(s)${deg.permitirModelo === false ? ' (modelo apagado a propósito)' : ''}`)
+  for (const m of deg.motivos ?? []) console.log(`     ${m.veces}× ${m.motivo}${m.funciones?.length ? ` [${m.funciones.join(', ')}]` : ''}`)
+  console.log(`  láminas sin leer             ${deg.laminasNoLeidas?.length ?? 0}${(deg.laminasNoLeidas ?? []).map((x) => `\n     ${x.archivo ?? '?'} — ${x.porQue}`).join('')}`)
+  console.log(`  vistas sin leer              ${deg.regionesNoLeidas ?? 0}`)
+}
+const salioIgual = deg.loQueSalioIgual ?? {}
+console.log(`  lo que salió IGUAL sin modelo: ${salioIgual.laminasDeCache ?? 0} lámina(s) de caché · ${salioIgual.cadMedido ?? 0} CAD medido(s) · ${salioIgual.catalogo ?? 0} tareas de Base Maestra · ${salioIgual.elementosComputados ?? 0} elemento(s) computado(s) · ${salioIgual.partidasMapeadas ?? 0} partida(s) mapeada(s)`)
 
 console.log('\n── A vs B ──')
 for (const c of corridas) console.log(`  corrida ${c.n}: ${c.r.computo.computados}/${c.r.computo.detectados} computados · ${c.r.mapeo.mapeadas} mapeadas · ${c.r.ia.llamadas} llamadas · USD ${c.usd.toFixed(4)} · ${(c.ms / 1000).toFixed(1)} s`)
