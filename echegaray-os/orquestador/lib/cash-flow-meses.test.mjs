@@ -17,7 +17,7 @@ import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
 import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
-import { AVISO_SIN_INVERTIDO, GLOSA_SIN_INVERTIDO, CRITERIO_INVERTIDO } from './cash-flow-invertido.mjs'
+import { AVISO_SIN_INVERTIDO, GLOSA_SIN_INVERTIDO, CRITERIO_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 
 // `caja` es el TÍTULO de la pestaña de CAJA, que el generador resuelve contra el archivo. Sin él, la
 // tarjeta de liquidez total cae a su rama de "no pude leerlo" — que es un caso probado más abajo.
@@ -295,9 +295,11 @@ test('el cuadro lee el libro; sólo el TITULAR puede citar a CAJA, y nunca por f
     }
   }))
   assert.deepEqual(otras, [], 'la matriz mensual sólo puede leer el libro de movimientos')
-  for (const fila of permitidas) {
-    const celdas = (filas[fila - 1] || []).map((x) => String(x ?? '')).join(' ')
-    assert.ok(!new RegExp(`'${REFS.caja}'!\\$?[A-Z]\\$?\\d`).test(celdas), `el hero cita una FILA de CAJA: ${celdas}`)
+  // La fila ENTERA, las cuatro columnas del titular, y con el MISMO código que la guarda del Semanal:
+  // el mismo control escrito dos veces cerró una sola (ver `citaUnaFilaDe`).
+  for (const fila of [meta.hero.rotulo, ...permitidas]) {
+    const entera = (filas[fila - 1] || []).map((x) => String(x ?? '')).join(' § ')
+    assert.ok(!citaUnaFilaDe(REFS.caja, entera), `la fila ${fila} del titular cita una FILA de CAJA: ${entera}`)
   }
 })
 

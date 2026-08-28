@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { auditarHero, anchoDeSlot, anchoEnPx, PADDING_CELDA, IMPORTE_MAS_LARGO } from './cash-flow-hero-cabe.mjs'
 import { ANCHOS } from './cash-flow-piel-matriz.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
+import { IMPORTE_MUESTRA } from './cash-flow-invertido.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { FILA } from './cash-flow-matriz.mjs'
 
@@ -36,11 +37,53 @@ const CUERPO = { rotulo: 9, valor: 12, nota: 9 }
  * y así se ve qué queda sin medir en vez de creer que se midió todo.
  */
 function piezasDe(meta, filas, { importe = IMPORTE_MAS_LARGO } = {}) {
+  // SIN `?? []`. Ese operador convertía la AUSENCIA de declaración en un auditor que mide cero piezas
+  // y dice que todo entra: borrar `meta.hero.piezas` del Semanal dejaba la suite en verde con los
+  // cuatro rótulos y la glosa de CAJA HOY sin medir. Es el mismo defecto que este archivo corrigió
+  // —antes se salteaba lo que era fórmula, después lo que no se declaraba— mudado de lugar.
+  assert.ok(Array.isArray(meta.hero.piezas) && meta.hero.piezas.length,
+    `${meta.pestana}: el generador no declaró ninguna pieza del titular, así que no hay nada que medir`)
   const out = meta.hero.slots.map((_, i) => ({ slot: i, pieza: 'valor', texto: importe, tamano: CUERPO.valor, negrita: true }))
-  for (const p of meta.hero.piezas ?? []) {
+  for (const p of meta.hero.piezas) {
     out.push({ ...p, tamano: p.pieza === 'rotulo' ? CUERPO.rotulo : CUERPO.nota, negrita: p.pieza === 'rotulo' })
   }
   return out
+}
+
+/** El texto de una celda de la grilla. */
+const enGrilla = (filas, fila, col) => String((filas[fila - 1] || [])[col] ?? '')
+
+/**
+ * LO QUE EL GENERADOR TIENE QUE DECLARAR, CONTRASTADO CONTRA LO QUE ESCRIBIÓ.
+ *
+ * Un auditor que mide lo que le quieran declarar no audita: acredita. Acá se exige, por cada slot, el
+ * rótulo; y por cada glosa que RENDERIZA UN IMPORTE (`"$ #,##0"` adentro de la fórmula) una muestra
+ * que lleve el importe más largo. Las glosas que no rinden plata —una fecha, el nombre de un
+ * proveedor— quedan fuera de la medición A PROPÓSITO y por eso se enumeran: la lista es el límite
+ * declarado, y una glosa nueva sin medir la rompe.
+ */
+function exigirDeclaracion(meta, filas, { sinMedir = [] } = {}) {
+  const faltan = []
+  const noMedidas = []
+  meta.hero.slots.forEach((col, i) => {
+    const declaradas = (meta.hero.piezas ?? []).filter((p) => p.slot === i)
+    if (!declaradas.some((p) => p.pieza === 'rotulo' && p.texto === enGrilla(filas, meta.hero.rotulo, col))) {
+      faltan.push(`slot ${i + 1}: el rótulo no está declarado o no es el que se escribió`)
+    }
+    const glosa = enGrilla(filas, meta.hero.nota, col)
+    if (!glosa) return
+    const nota = declaradas.find((p) => p.pieza === 'nota')
+    const rindePlata = glosa.includes('"$ #,##0"')
+    if (!nota) { noMedidas.push(i + 1); if (rindePlata) faltan.push(`slot ${i + 1}: la glosa renderiza un importe y no declaró muestra`) ; return }
+    if (rindePlata && !nota.texto.includes(IMPORTE_MUESTRA)) {
+      faltan.push(`slot ${i + 1}: la muestra "${nota.texto}" no lleva el importe más largo, así que mide una cifra corta`)
+    }
+    if (!glosa.startsWith('=') && nota.texto !== glosa) {
+      faltan.push(`slot ${i + 1}: la glosa es texto fijo ("${glosa}") y se declaró otra cosa ("${nota.texto}")`)
+    }
+  })
+  assert.deepEqual(faltan, [], `${meta.pestana}: el titular declaró de menos`)
+  assert.deepEqual(noMedidas, sinMedir, `${meta.pestana}: cambió qué glosas quedan sin medir`)
 }
 
 test('LA MUTACIÓN QUE REPRODUCE EL DEFECTO: con la glosa en la celda de al lado, el número no entra', () => {
@@ -80,6 +123,8 @@ test('EL MENSUAL: el titular entero entra, con un importe de diez dígitos y el 
   const cols = meta.footprint.cols
   const r = auditarHero({ slots: meta.hero.slots, cols, anchoCol: anchoCol(cols), piezas: piezasDe(meta, filas) })
   assert.equal(r.ok, true, JSON.stringify(r.desbordes, null, 2))
+  // TODAS las piezas del Mensual se miden: cuatro rótulos y cuatro glosas, tres de ellas con importe.
+  exigirDeclaracion(meta, filas, { sinMedir: [] })
   // Y la glosa vive una fila DEBAJO del número, no al lado: es lo que le devuelve el ancho al importe.
   assert.equal(meta.hero.nota, FILA.heroNota)
   assert.equal(meta.hero.nota, meta.hero.valor + 1)
@@ -99,6 +144,10 @@ test('EL SEMANAL: el mismo titular, la misma medida — las dos vistas comparten
   const cols = meta.footprint.cols
   const r = auditarHero({ slots: meta.hero.slots, cols, anchoCol: anchoCol(cols), piezas: piezasDe(meta, filas) })
   assert.equal(r.ok, true, JSON.stringify(r.desbordes, null, 2))
+  // EL LÍMITE DECLARADO DEL SEMANAL: las glosas 2, 3 y 4 terminan en una fecha o en un nombre que sale
+  // del libro y no tiene tope conocido; medirlas con una muestra inventada mediría una ficción. Están
+  // enumeradas para que se vea qué NO se mide — y para que una cuarta sin medir ponga esto en rojo.
+  exigirDeclaracion(meta, filas, { sinMedir: [2, 3, 4] })
   assert.equal(meta.hero.nota, FILA.heroNota)
   for (const s of meta.hero.slots) {
     assert.equal((filas[meta.hero.valor - 1] || [])[s + 1] ?? '', '', `slot ${s + 1}: la celda de al lado se ocupó`)

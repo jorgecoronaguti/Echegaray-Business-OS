@@ -34,6 +34,20 @@
 // está vedado. Mientras tanto el SUMIF por rótulo da el mismo número sin tocar una sola celda de CAJA;
 // el día que el nombre exista, este módulo se reduce a devolverlo.
 //
+// ═══ LÍMITE DECLARADO: LO INVERTIDO TIENE HOY DOS DEFINICIONES ═══
+//
+// `caja-tarjetas.mjs` lo define como `N(invArs)+N(invUsd)` —dos celdas que `caja-grilla` ubica por el
+// campo `banco: 'balanzArs' | 'balanzUsd'`—, y este módulo lo define por la MARCA `‖ invertido`. Hoy
+// las dos seleccionan exactamente las mismas dos filas, y eso NO es una casualidad que haya que
+// confiar: lo fija un test que compara el resultado del criterio contra las filas que `caja-grilla`
+// cablea en la tarjeta INVERTIDO (`fBalanzArs`/`fBalanzUsd`).
+//
+// El día que haya una cuenta invertida que no sea de Balanz —un plazo fijo, una caución— las dos
+// definiciones se separan: CAJA seguiría mostrando sólo Balanz y los Cash Flow la incluirían. Dos
+// números distintos de la misma plata es exactamente lo que Realidad Única prohíbe. La unificación
+// correcta es que `caja-grilla` derive esas filas de la misma marca, y eso vive en el generador de
+// CAJA — que hoy no se toca. Mientras tanto el test se pone ROJO antes de que las dos se separen.
+//
 // NÚCLEO PURO: no toca la red, no lee el Sheet, no sabe de Google.
 
 import { ALERTA } from './glifos.mjs'
@@ -67,6 +81,50 @@ export const GLOSA_SIN_INVERTIDO = 'no pude leer lo invertido en CAJA'
  * es una cifra real: es la prueba de que el titular no depende de que el número sea corto.
  */
 export const IMPORTE_MUESTRA = '$ 1.234.567.890'
+
+/**
+ * NÚCLEO PURO: la semántica del criterio de Sheets, en JavaScript.
+ *
+ * ═══ POR QUÉ EXISTE (28/08/2026, hallazgo de la auditoría) ═══
+ *
+ * El test que verifica qué filas de CAJA entran en la suma simulaba el criterio con
+ * `rotulo.endsWith(MARCA_INVERTIDO)`: una SEGUNDA implementación, escrita a mano, de lo que hace la
+ * constante que se emite. No derivaba del criterio — lo reemplazaba. Con eso, aflojar
+ * `CRITERIO_INVERTIDO` a `*‖*` dejaba la suite entera en verde y la fórmula publicada se llevaba
+ * `Valores a depositar ‖ no suma al total` Y `Total disponibilidades ‖ percibido`: la caja operativa
+ * contada dos veces adentro de la liquidez total, sin un solo #REF!.
+ *
+ * Un control nunca se valida contra otra información que la que produce. Acá el matcher SALE del
+ * criterio, así que cualquier cambio en el criterio cambia lo que el test ve.
+ *
+ * LA SEMÁNTICA ES LA DE SHEETS, no la de una expresión regular: `*` es cualquier cosa, `?` es un
+ * carácter, `~*` y `~?` son los literales, la comparación NO distingue mayúsculas, y —lo que más
+ * importa acá— un criterio SIN comodines es IGUALDAD, no "contiene".
+ */
+export function emparejaCriterio(criterio, texto) {
+  const patron = String(criterio ?? '').replace(/~([*?~])|([.+^${}()|[\]\\])|([*?])/g,
+    (_, escapado, especial, comodin) => {
+      if (escapado) return `\\${escapado}`
+      if (especial) return `\\${especial}`
+      return comodin === '*' ? '.*' : '.'
+    })
+  return new RegExp(`^${patron}$`, 'iu').test(String(texto ?? ''))
+}
+
+/** ¿CAJA declaró esta cuenta como invertida? La respuesta la da el criterio que se publica. */
+export const esInvertido = (rotulo) => emparejaCriterio(CRITERIO_INVERTIDO, rotulo)
+
+/**
+ * NÚCLEO PURO: ¿este texto cita una FILA de esa pestaña (`'Caja'!$C$11`) en vez de una columna entera?
+ *
+ * Vive acá y no en cada test porque es UN control, y escrito dos veces cerró una sola: la versión del
+ * Semanal miraba una columna de las cuatro del titular y una referencia posicional en cualquiera de
+ * las otras tres pasaba en verde.
+ */
+export function citaUnaFilaDe(pestana, texto) {
+  const p = String(pestana ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`'?${p}'?!\\$?[A-Z]+\\$?\\d`, 'i').test(String(texto ?? ''))
+}
 
 /** Una pestaña citada en una fórmula. Las comillas simples internas se duplican, como en Sheets. */
 const citar = (titulo) => {
@@ -114,8 +172,23 @@ export function liquidezDeNumeros({ cierre, invertido }) {
 /** `#,##0` va en US, como todo patrón de formato del repo; los argumentos, en es-AR con `;`. */
 const plata = (expr) => `TEXT(${expr};"$ #,##0")`
 
+/**
+ * EL TEXTO DE LA GLOSA — y las tres palabras que declaran la ventana de tiempo.
+ *
+ * ═══ POR QUÉ "VALUADO HOY" (28/08/2026, hallazgo de la auditoría) ═══
+ *
+ * La tarjeta suma dos cosas de ventanas distintas: el saldo PROYECTADO al 31/12 y un `SUMIF` VIVO que
+ * vale hoy. Son $45.015.210 sobre $72.509.069 — el 62% de la cifra es un valor de hoy bajo un rótulo
+ * que dice "al 31/12", con el supuesto tácito de que lo invertido no se rescata ni rinde en cuatro
+ * meses. Regla de oro 3: nunca mezclar ventanas de tiempo incompatibles. No hay forma de proyectar la
+ * posición de Balanz sin inventarla —el OS no tiene su curva de rendimiento— así que el supuesto no se
+ * elimina: se DECLARA donde se lee la cifra. Es el mismo criterio con el que el subtítulo declara que
+ * los saldos anteriores al corte están calculados hacia atrás.
+ */
+const TEXTO_INCLUYE = 'en Balanz, valuado hoy'
+
 /** Lo que la glosa mide en el peor caso: lo que el auditor de ancho tiene que poder medir. */
-export const muestraIncluye = () => `incluye ${IMPORTE_MUESTRA} invertido en Balanz`
+export const muestraIncluye = () => `incluye ${IMPORTE_MUESTRA} ${TEXTO_INCLUYE}`
 
 /** Y la del Semanal, que cuelga de la fecha del saldo declarado. */
 export const muestraSemanal = (fecha = 'al 28/08') => `${fecha} · más ${IMPORTE_MUESTRA} invertido en Balanz`
@@ -133,7 +206,7 @@ export function formulasDeLiquidez({ refCierre, exprInvertido }) {
   const inv = `N(${exprInvertido})`
   return {
     valor: `=IF(${inv}=0;"${AVISO_SIN_INVERTIDO}";N(${refCierre})+${inv})`,
-    glosa: `=IF(${inv}=0;"${GLOSA_SIN_INVERTIDO}";"incluye "&${plata(exprInvertido)}&" invertido en Balanz")`,
+    glosa: `=IF(${inv}=0;"${GLOSA_SIN_INVERTIDO}";"incluye "&${plata(exprInvertido)}&" ${TEXTO_INCLUYE}")`,
     muestra: muestraIncluye(),
   }
 }

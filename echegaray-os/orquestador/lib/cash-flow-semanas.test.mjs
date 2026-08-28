@@ -8,7 +8,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grillaSemanal, vinculoHoy, PESTANA_SEMANAL, ROTULOS_HERO } from './cash-flow-semanas.mjs'
-import { CRITERIO_INVERTIDO, GLOSA_SIN_INVERTIDO } from './cash-flow-invertido.mjs'
+import { CRITERIO_INVERTIDO, GLOSA_SIN_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 import {
   conceptosDe, colTotal, footprintDe, letra, semanasDelAnio, serialDeFecha,
 } from './cash-flow-matriz.mjs'
@@ -258,10 +258,17 @@ test('todo importe sale del libro o de una celda de la propia vista', () => {
     }
   }))
   assert.deepEqual(otras, [], 'la matriz semanal sólo puede leer el libro de movimientos')
-  // Y la única cita a CAJA es POR RÓTULO: una referencia a una fila suya devuelve otro número el día
-  // que el panel gane una cuenta, sin un solo #REF!.
-  const glosa = String((filas[meta.hero.nota - 1] || [])[0] ?? '')
-  assert.ok(!new RegExp(`'${REFS.caja}'!\\$?[A-Z]\\$?\\d`).test(glosa), `la glosa cita una FILA de CAJA: ${glosa}`)
+
+  // Y LA ÚNICA CITA A CAJA ES POR RÓTULO — MIRANDO LA FILA ENTERA, no la primera columna.
+  //
+  // La versión anterior de esta guarda inspeccionaba la columna 0 de la fila de glosas, y el primer
+  // chequeo exime la fila entera para la pestaña de CAJA: una referencia posicional metida en
+  // cualquiera de los otros TRES slots del titular no la veía nadie. Se probó y daba 20/20 en verde.
+  // Es el mismo control que el del Mensual y ahora es literalmente el mismo código (`citaUnaFilaDe`).
+  for (const fila of [meta.hero.rotulo, meta.hero.valor, meta.hero.nota]) {
+    const entera = (filas[fila - 1] || []).map((x) => String(x ?? '')).join(' § ')
+    assert.ok(!citaUnaFilaDe(REFS.caja, entera), `la fila ${fila} del titular cita una FILA de CAJA: ${entera}`)
+  }
 })
 
 test('el patrón de la pestaña se cumple, salvo la única excepción declarada: una matriz no tiene secciones', () => {

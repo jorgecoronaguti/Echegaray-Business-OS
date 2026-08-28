@@ -87,7 +87,16 @@ const TRONCO = Object.freeze([
   { clave: 'ingresoProyectado', rotulo: 'Ingresos proyectados', medida: 1, total: true },
   { clave: 'egresoReal', rotulo: 'Egresos reales', medida: 2, total: true },
   { clave: 'egresoProyectado', rotulo: 'Egresos proyectados', medida: 3, total: true },
-  { clave: 'resultado', rotulo: 'Resultado', total: true },
+  // ═══ SE LLAMABA "RESULTADO", Y NO ES UN RESULTADO (28/08/2026) ═══
+  //
+  // Entra − sale por criterio PERCIBIDO es una VARIACIÓN DE CAJA. El resultado del ejercicio es
+  // DEVENGADO y vive en el P&L: reglas de oro 4, 5 y 7. El 28/08 se sacó del titular la tarjeta que
+  // publicaba esta misma celda —el dueño leía "$(23.136.331)" y buscaba una pérdida que no existe— y
+  // la fila que la alimentaba se quedó con la palabra que produjo el reclamo, una fila más abajo y en
+  // el mismo cuadro. Sacar el titular y dejar el número mal nombrado no arregla nada: lo esconde.
+  //
+  // "del período" y no "del mes": el TRONCO es el mismo en las dos vistas y una semana no es un mes.
+  { clave: 'resultado', rotulo: 'Variación de caja del período', total: true },
   { clave: 'saldoFinal', rotulo: 'Saldo final', total: false },
   // Las dos variaciones son del cuadro anual: una semana no tiene presupuesto cargado ni "semana
   // anterior" con la que compararse dentro del horizonte.
