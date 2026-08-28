@@ -345,8 +345,16 @@ test('BANCO: sólo emite los cargos del banco — el resto ya está en el saldo'
   assert.ok(ms.every((m) => m.rubro === 'Financiero'))
 })
 
-// ── Tarjeta de Crédito: registro con encabezado en la fila 31 ────────────────────────────────────
+// ── Tarjeta de Crédito ───────────────────────────────────────────────────────────────────────────
+//
+// EL FIXTURE SE ARMA RELATIVO A `filaCab`, NO EN LA FILA 31. Estaba clavado en la 31 —el alto que
+// tenía la banda hasta el 28/08— y el día que la pestaña se rehizo para contestar las cinco
+// preguntas del dueño, la banda pasó a 52 filas y las cuotas del fixture quedaron ARRIBA del
+// encabezado: el extractor las ignoró y los tres tests se pusieron rojos sin que su regla hubiera
+// cambiado. Un test atado a una geometría que no está probando se cae por algo que no mide.
 const T = INSTRUMENTOS.tarjeta
+/** El registro empieza en la fila siguiente a `filaCab` (índice `filaCab` en base 0). */
+const F0 = T.filaCab
 /** Una fila del registro de la tarjeta: monto E(4), fecha H(7), debitado J(9), marca L(11). */
 const cuota = (monto, fecha, debitado, marca) => {
   const f = []
@@ -355,11 +363,11 @@ const cuota = (monto, fecha, debitado, marca) => {
 }
 
 test('TARJETA: sólo la cuota SIN factura y NO debitada — la marca manda, no el rótulo', () => {
-  const filas = Array.from({ length: 31 }, () => [])
-  filas[31] = cuota(556899, 46010, '', MARCAS.falta)
-  filas[32] = cuota(300000, 46011, 'SI', MARCAS.falta) // ya salió de la cuenta
-  filas[33] = cuota(400000, 46012, '', MARCAS.ok) // su factura está en Compras
-  filas[34] = cuota(100000, null, '', MARCAS.falta) // sin fecha: pesa YA
+  const filas = Array.from({ length: F0 }, () => [])
+  filas[F0] = cuota(556899, 46010, '', MARCAS.falta)
+  filas[F0 + 1] = cuota(300000, 46011, 'SI', MARCAS.falta) // ya salió de la cuenta
+  filas[F0 + 2] = cuota(400000, 46012, '', MARCAS.ok) // su factura está en Compras
+  filas[F0 + 3] = cuota(100000, null, '', MARCAS.falta) // sin fecha: pesa YA
   const ms = deTarjetaSinFactura(filas, { filaCab: T.filaCab })
   assert.equal(ms.length, 2)
   assert.ok(ms.every((m) => m.instrumento === 'tarjeta' && m.estado === 'COMPROMETIDO' && m.signo === SALE))
@@ -373,10 +381,12 @@ test('TARJETA: sólo la cuota SIN factura y NO debitada — la marca manda, no e
 const CUOTA_PINTURERIA = 263813.91333333333
 const PAGOS_RESUMEN = [{ fecha: 46174, importe: 357119.31 }, { fecha: 46209, importe: 1264991.58 },
   { fecha: 46237, importe: 1384664.47 }]
+const FILA_VENCIDA = F0 + 14
+const FILA_PROXIMA = F0 + 18
 const tarjetaConLaCuota = () => {
-  const filas = Array.from({ length: 31 }, () => [])
-  filas[45] = cuota(CUOTA_PINTURERIA, 46236, '', MARCAS.falta) // vence 02/08, el resumen ya se pagó
-  filas[49] = cuota(CUOTA_PINTURERIA, 46267, '', MARCAS.falta) // vence 02/09, todavía no
+  const filas = Array.from({ length: F0 }, () => [])
+  filas[FILA_VENCIDA] = cuota(CUOTA_PINTURERIA, 46236, '', MARCAS.falta) // vence 02/08, el resumen ya se pagó
+  filas[FILA_PROXIMA] = cuota(CUOTA_PINTURERIA, 46267, '', MARCAS.falta) // vence 02/09, todavía no
   return filas
 }
 
@@ -386,10 +396,10 @@ test('TARJETA: la cuota que el resumen YA PAGÓ deja de estar comprometida — l
   // debitado con el resumen del 03/08 y seguían pesando porque la marca DEBITADO la pone una persona
   // cuota por cuota y se atrasa. El extracto no se atrasa.
   const ms = deTarjetaSinFactura(tarjetaConLaCuota(), { filaCab: T.filaCab, pagos: PAGOS_RESUMEN })
-  const cubierta = ms.find((m) => m.origen.fila === 46)
+  const cubierta = ms.find((m) => m.origen.fila === FILA_VENCIDA + 1)
   assert.equal(cubierta.estado, 'REAL', 'el resumen debitado la contiene')
   assert.equal(cubierta.fecha, 46237, 'la fecha es la del DÉBITO: es el día en que la plata salió')
-  const proxima = ms.find((m) => m.origen.fila === 50)
+  const proxima = ms.find((m) => m.origen.fila === FILA_PROXIMA + 1)
   assert.equal(proxima.estado, 'COMPROMETIDO', 'la cuota de 02/09 no la debitó nadie todavía')
   assert.equal(proxima.fecha, 46267)
   // Lo que la escalera suma en el tramo "Vencido" (NO-REAL con fecha anterior a hoy) queda en cero.
