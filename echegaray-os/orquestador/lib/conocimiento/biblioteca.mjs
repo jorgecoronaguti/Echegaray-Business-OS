@@ -148,7 +148,8 @@ export function conocimiento({
   if (EXIGEN_CITA_LITERAL.includes(procedencia) && !evidencia?.textoLiteral) {
     throw new Error(`«${clave}» dice venir de ${procedencia} y no trae la frase que lo dice: sin cita literal la procedencia honesta es INFERIDO`)
   }
-  if (EXIGEN_EVIDENCIA.includes(procedencia) && !evidencia) {
+  // `evidencia: {}` no es evidencia: un objeto vacío pasaba el control de presencia sin decir nada.
+  if (EXIGEN_EVIDENCIA.includes(procedencia) && (!evidencia || Object.keys(evidencia).length === 0)) {
     throw new Error(`«${clave}» dice venir de ${procedencia} y no trae con qué verificarlo: sin la tarea, la obra o los casos que lo sostienen no se puede comprobar`)
   }
   // VALIDADO no se escribe: se firma. Aceptarlo como parámetro dejaba entrar por la puerta de atrás

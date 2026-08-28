@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida, viaDeCantidad, viaDePartida, pedirConDegradacion } from './pipeline.mjs'
+import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida, tieneNumero, viaDeCantidad, viaDePartida, pedirConDegradacion } from './pipeline.mjs'
 import { COMPARABLES, VIA, medidor } from '../conocimiento/metricas.mjs'
 import { FUENTE } from './fuente.mjs'
 
@@ -304,4 +304,31 @@ test('con el proveedor sano NO hay degradación — el control puede dar verde d
   assert.equal(degradacion.hubo, false)
   assert.equal(degradacion.intentos, 1)
   assert.equal(degradacion.fallos, 0)
+})
+
+test('NEGATIVO: cuando no se sabe de dónde salió la lectura, NO se cuenta como caché', () => {
+  // Suponer caché ante la duda sube el Claude Avoidance Rate sin evidencia — la dirección exacta
+  // en la que este indicador ya mintió una vez.
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: undefined }), VIA.MODELO)
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: null }), VIA.MODELO)
+  assert.equal(viaDeCantidad({ tieneCantidad: true, porCad: false, deCache: true }), VIA.CACHE)
+})
+
+test('«lo que salió igual sin modelo» cuenta lo COMPUTADO, no todos los elementos', () => {
+  // Ésta era la única de las nueve correcciones sin guardia: revertirla a `computo.items.length`
+  // dejaba la suite en verde, y el bloque volvía a publicar 111 donde hay 28.
+  const items = [
+    { id: 'A', cantidad: { valor: 2.16 } },
+    { id: 'B', cantidad: { valor: null } },
+    { id: 'C' },
+    { id: 'D', cantidad: { valor: 0 } },
+  ]
+  const contados = items.filter((i) => tieneNumero(i?.cantidad?.valor)).length
+  assert.equal(contados, 2, 'A y D tienen número; B y C no. Si contara la lista entera daría 4')
+  assert.notEqual(contados, items.length)
+  // Y el motivo por el que este test encontró un defecto de verdad: `Number(null)` es 0 y es
+  // finito, así que el filtro anterior contaba a B —cantidad explícitamente en null— como medido.
+  assert.equal(Number.isFinite(Number(null)), true, 'la trampa, dicha en voz alta')
+  assert.equal(tieneNumero(null), false)
+  assert.equal(tieneNumero(0), true, 'un cero medido SÍ es un número: si dijera false, no sería un control')
 })

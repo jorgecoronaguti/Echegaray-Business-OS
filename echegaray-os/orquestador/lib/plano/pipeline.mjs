@@ -228,6 +228,16 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
 }
 
 /**
+ * ¿ESTO ES UN NÚMERO DE VERDAD? PURA.
+ *
+ * `Number(null)` es 0 y `Number.isFinite(0)` es `true`: preguntar sólo por `isFinite` contaba como
+ * MEDIDO todo elemento cuya cantidad está explícitamente en `null`, que es justo el que NO se pudo
+ * medir. Es el mismo `Number(null)` que ya había hecho que `horasNecesarias(null)` devolviera 0
+ * horas en vez de un hueco. Lo encontró el test de regresión de `elementosComputados`.
+ */
+export const tieneNumero = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))
+
+/**
  * POR QUÉ VÍA SE RESOLVIÓ UNA CANTIDAD. PURA — y exportada para poder probarla por la ruta real.
  *
  * El CAD es la única vía que nunca pasó por un modelo: cuenta INSERTs de un DXF. Todo lo demás
@@ -238,7 +248,11 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
 export function viaDeCantidad({ tieneCantidad, porCad, deCache }) {
   if (!tieneCantidad) return VIA.HUECO
   if (porCad) return VIA.DOCUMENTO_LOCAL
-  return deCache === false ? VIA.MODELO : VIA.CACHE
+  // `undefined` es «no sé de dónde salió esta lectura» —pasa cuando la fusión une un elemento de
+  // lámina cacheada con otro de una vista mirada de nuevo y el representante se queda con el id del
+  // cacheado—. Y ante la duda NO se cuenta a favor: suponer caché sube el Claude Avoidance Rate sin
+  // evidencia, que es la dirección exacta en la que este indicador ya estuvo mintiendo una vez.
+  return deCache === true ? VIA.CACHE : VIA.MODELO
 }
 
 /** Por qué vía se resolvió una partida. PURA. Con `conVeto`, el modelo veta candidatas y eso cambia
@@ -676,7 +690,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // la lista; los que quedaron sin medir entran con `cantidad` en null. Preguntar por la presencia
   // en la lista daba 111 cantidades resueltas donde hay 28 — un contador incapaz de decir «no».
   const idsPorCad = new Set((medidoConCad.resueltos ?? []).map((x) => x?.id ?? x))
-  const conCantidad = new Set(computo.items.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).map((i) => i.id))
+  const conCantidad = new Set(computo.items.filter((i) => tieneNumero(i?.cantidad?.valor)).map((i) => i.id))
   for (const e of medidoConCad.elementos ?? []) {
     // El CAD es la única vía que nunca pasó por un modelo: cuenta INSERTs. Lo demás salió de una
     // lectura del plano, y esa lectura la hizo el modelo — hoy o la vez que llenó el caché.
@@ -774,7 +788,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
         catalogo: catalogo.length,
         // `computo.items.length` son TODOS los elementos, medidos o no — el mismo «ojo con el
         // tiene» que se corrigió veinte líneas más arriba, repetido acá. Publicaba 111 donde hay 28.
-        elementosComputados: computo.computados ?? computo.items.filter((i) => Number.isFinite(Number(i?.cantidad?.valor))).length,
+        elementosComputados: computo.computados ?? computo.items.filter((i) => tieneNumero(i?.cantidad?.valor)).length,
         partidasMapeadas: mapeo.mapeadas,
       },
     },

@@ -202,12 +202,19 @@
     {
      "fuente": "candidatas.json (motor)",
      "consulta": "candidatos de BE_esc",
-     "resultado": "selector top-score fue T1003 \"HORMIGON DE LIMPIEZA e=0,05m\" (hormigón pobre SIN armadura) por mayor puntaje de vocabulario, pero T1006 \"BASES AISLADAS con #8 c/15\" también está en la lista de candidatos con coincidencias pieza=base y armadura=true, y sinRespaldo=[] (sin ningún atributo bloqueado)"
+     "resultado": "selector top-score fue T1003 \"HORMIGON DE LIMPIEZA e=0,05m\" (hormigón pobre SIN armadura) por mayor puntaje de vocabulario, pero T1006 \"BASES AISLADAS con #8 c/15\" también está en la lista de candidatos con coincidencias pieza=base y armadura=true, y sinRespaldo=[] (sin ningún atributo bloqueado)",
+     "REFUTADA": "Esta línea afirma una falla de vocabulario que NO existe. Se corrió `piezaDe()` sobre los tres nombres y el selector SÍ conecta «muerto» con «base», igual que T1006. El bloqueo real es la armadura. Se deja la afirmación original a la vista, tachada, en vez de borrarla: una evidencia que se corrige en silencio no se puede auditar."
     },
     {
      "fuente": "public.cotizacion_partida_composicion",
      "consulta": "select * from cotizacion_partida_composicion where partida_id en una fila de T1006",
      "resultado": "composición real: 1,05 m3 HORMIGÓN H-17 + 6,4kg HIERRO TORSIONADO Ø8 + mano de obra, por m3 — receta genérica de \"base aislada de hormigón armado\", consistente con una base de escalera armada"
+    },
+    {
+     "fuente": "orquestador/lib/plano/atributos.mjs · piezaDe()",
+     "consulta": "piezaDe('Muerto de hormigón escalera') · piezaDe('BASES AISLADAS con #8 c/15')",
+     "resultado": "las dos devuelven {valor:'base'} — el vocabulario SÍ conecta; lo que bloquea es la armadura (#8 c/15 vs Ø6 canasta)",
+     "verificadoEn": "2026-08-28, tercera lectura"
     }
    ],
    "confianza": "MEDIA",
@@ -471,12 +478,19 @@
     {
      "fuente": "candidatas.json (motor)",
      "consulta": "candidatos de MUERTO_esc",
-     "resultado": "el selector solo propuso T1003 (hormigón de limpieza, sin armadura) porque su búsqueda por vocabulario nunca conectó \"muerto\" con \"base\" — T1006 no aparece en su lista de candidatos"
+     "resultado": "el selector solo propuso T1003 (hormigón de limpieza, sin armadura) porque su búsqueda por vocabulario nunca conectó \"muerto\" con \"base\" — T1006 no aparece en su lista de candidatos",
+     "REFUTADA": "Esta línea afirma una falla de vocabulario que NO existe. Se corrió `piezaDe()` sobre los tres nombres y el selector SÍ conecta «muerto» con «base», igual que T1006. El bloqueo real es la armadura. Se deja la afirmación original a la vista, tachada, en vez de borrarla: una evidencia que se corrige en silencio no se puede auditar."
     },
     {
      "fuente": "public.cotizacion_partida_composicion",
      "consulta": "composición de T1006 (misma consultada para BE_esc)",
      "resultado": "1,05 m3 HORMIGÓN H-17 + 6,4kg HIERRO Ø8 por m3 — receta genérica de hormigón armado en bloque aislado, aplicable a un \"muerto\" (bloque de anclaje) igual que a una base de columna"
+    },
+    {
+     "fuente": "orquestador/lib/plano/atributos.mjs · piezaDe()",
+     "consulta": "piezaDe('Muerto de hormigón escalera') · piezaDe('BASES AISLADAS con #8 c/15')",
+     "resultado": "las dos devuelven {valor:'base'} — el vocabulario SÍ conecta; lo que bloquea es la armadura (#8 c/15 vs Ø6 canasta)",
+     "verificadoEn": "2026-08-28, tercera lectura"
     }
    ],
    "confianza": "MEDIA",
@@ -505,12 +519,19 @@
     {
      "fuente": "candidatas.json (motor)",
      "consulta": "candidatos de muerto_HA",
-     "resultado": "candidatos=[], vetados=[] — el selector no encontró NINGÚN candidato, ni siquiera T1003, por la misma falla de vocabulario (\"muerto\" no conecta con \"base\")"
+     "resultado": "candidatos=[], vetados=[] — el selector no encontró NINGÚN candidato, ni siquiera T1003, por la misma falla de vocabulario (\"muerto\" no conecta con \"base\")",
+     "REFUTADA": "Esta línea afirma una falla de vocabulario que NO existe. Se corrió `piezaDe()` sobre los tres nombres y el selector SÍ conecta «muerto» con «base», igual que T1006. El bloqueo real es la armadura. Se deja la afirmación original a la vista, tachada, en vez de borrarla: una evidencia que se corrige en silencio no se puede auditar."
     },
     {
      "fuente": "public.cotizacion_partida_composicion",
      "consulta": "composición de T1006",
      "resultado": "misma receta genérica de hormigón armado en bloque aislado por m3 (ver evidencia de MUERTO_esc)"
+    },
+    {
+     "fuente": "orquestador/lib/plano/atributos.mjs · piezaDe()",
+     "consulta": "piezaDe('Muerto de hormigón escalera') · piezaDe('BASES AISLADAS con #8 c/15')",
+     "resultado": "las dos devuelven {valor:'base'} — el vocabulario SÍ conecta; lo que bloquea es la armadura (#8 c/15 vs Ø6 canasta)",
+     "verificadoEn": "2026-08-28, tercera lectura"
     }
    ],
    "confianza": "MEDIA",
