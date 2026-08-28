@@ -126,16 +126,35 @@ test('paridad productiva contra Horas Hombre.xlsm', { skip: !hayBase }, async (t
             unidad, tarea_tipo_id, obra_id, hh_improductivas::float8 improd
        from public.rendimiento_historico where fuente = $1`, [FUENTE])).rows
   const porCelda = new Map(campo.map((r) => [String(r.composicion.origen).split('!')[1]?.split(' ')[0], r]))
+  // El catálogo, para poder verificar la REGLA de a qué tarea puede colgarse una medición en vez de
+  // exigir que no cuelgue de ninguna.
+  const catalogo = new Map((await query('select id, codigo, nombre, unidad from public.tarea_tipo')).rows.map((t) => [t.id, t]))
 
-  await t.test('B1 · están las 9 observaciones sembradas, sin obra y sin tarea inventadas', () => {
+  await t.test('B1 · están las 9 observaciones sembradas, sin obra, y sólo colgadas de una tarea que las cubre', () => {
     assert.equal(campo.length, 9,
       `hay ${campo.length} observaciones con fuente ${FUENTE}: la siembra no está aplicada o se duplicó`)
     for (const c of CAMPO) {
       const r = porCelda.get(c.celda)
       assert.ok(r, `falta la observación de DESCRIPCION DE TAREAS!${c.celda}`)
       assert.equal(r.obra_id, null, `${c.celda}: se le puso una obra que la hoja no nombra`)
-      assert.equal(r.tarea_tipo_id, null,
-        `${c.celda}: se la colgó de una tarea del catálogo — «${c.tarea}» no existe ahí y su unidad tampoco`)
+      // ═══ LA REGLA, NO EL ESTADO ═══
+      //
+      // Esto exigía `tarea_tipo_id === null` porque el 22/08 el catálogo no tenía ninguna partida
+      // que cubriera estas nueve actividades, y colgarlas de una equivocada habría sido inventar.
+      // El 28/08 las partidas se crearon (T1180 a T1185) A PARTIR de estas mismas mediciones, así
+      // que el null dejó de ser lo correcto — y el test, que afirmaba el estado del mundo, empezó a
+      // frenar el trabajo que él mismo pedía.
+      //
+      // Lo que hay que sostener es la REGLA: una medición se cuelga de una tarea sólo si esa tarea
+      // la cubre de verdad. Se verifica contra el catálogo, no contra una constante.
+      if (r.tarea_tipo_id !== null) {
+        const t = catalogo.get(r.tarea_tipo_id)
+        assert.ok(t, `${c.celda}: cuelga de una tarea que no existe en el catálogo`)
+        assert.equal(String(t.unidad).toUpperCase(), 'UN',
+          `${c.celda}: la tarea «${t.codigo} ${t.nombre}» no se mide por unidad, y la observación sí`)
+        assert.match(String(t.nombre).toUpperCase(), /METALICA|METÁLICA/,
+          `${c.celda}: «${c.tarea}» es estructura metálica y quedó colgada de «${t.nombre}»`)
+      }
       assert.equal(r.composicion.tiempo.unidad, 'dias')
       assert.equal(r.composicion.tiempo.confianza, 'inferida-fuerte',
         `${c.celda}: TIEMPO DE OBRA en días es inferencia, y tiene que seguir diciéndolo`)

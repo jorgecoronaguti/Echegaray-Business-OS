@@ -14,7 +14,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { certeza, metricas, plataEnSupuestos, vigenciaDePrecios, validacionDe, CERTEZA, REGLAS, UMBRAL } from './certeza.mjs'
+import { certeza, metricas, plataEnSupuestos, plataEnPreciosViejos, vigenciaDePrecios, validacionDe, CERTEZA, REGLAS, UMBRAL } from './certeza.mjs'
 import { controlar } from './control.mjs'
 import { computarElemento } from './computo.mjs'
 import { validarElemento } from './interpretar.mjs'
@@ -300,4 +300,26 @@ test('QUEFALTA LISTA TODAS LAS REGLAS ROTAS, no sólo la que decidió el estado'
 test('DOS CORRIDAS SOBRE LA MISMA COTIZACIÓN DAN EXACTAMENTE LO MISMO', () => {
   const p = proyectoDe(diez())
   assert.deepEqual(certeza({ ...p, hoy: HOY }), certeza({ ...p, hoy: HOY }))
+})
+
+test('NEGATIVO: una partida SIN composición no diluye el denominador — se cuenta como no verificable', () => {
+  // El agujero medido: una partida con subtotal y sin composición entraba al total y nunca al
+  // numerador, así que el mismo $1.000 sobre precio viejo pasaba del 100% de la exposición al
+  // 4,76% y la regla saltaba de rojo a verde. Y es justo la partida sobre la que NO se puede
+  // afirmar nada de vigencia. Ante la duda no se cuenta a favor.
+  const cot = {
+    partidas: [
+      { codigo: 'A', descripcion: 'con precio viejo', subtotal: 1000, composicion: [{ cantidad: 1, costoUnitario: 1000, fechaPrecio: '2020-01-01' }] },
+      { codigo: 'B', descripcion: 'sin composición', subtotal: 20000, composicion: [] },
+    ],
+  }
+  const r = plataEnPreciosViejos(cot, { hoy: HOY, diasLimite: 180 })
+  assert.equal(r.total, 21000)
+  assert.equal(r.pesos, 21000, 'los dos cuentan: el viejo porque lo es, el sin composición porque no se puede saber')
+  assert.equal(r.fraccion, 1)
+  assert.equal(r.sinComposicion, 1)
+  assert.match(r.porQue, /sin composición valorizada/)
+  // Y el caso contrario: con las dos valorizadas y frescas, la fracción es 0.
+  const sanas = { partidas: [{ codigo: 'A', subtotal: 1000, composicion: [{ cantidad: 1, costoUnitario: 1000, fechaPrecio: AYER }] }] }
+  assert.equal(plataEnPreciosViejos(sanas, { hoy: HOY, diasLimite: 180 }).fraccion, 0)
 })

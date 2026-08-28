@@ -41,10 +41,13 @@ const ESCALERA = Object.freeze([CERTEZA.BORRADOR_TECNICO, CERTEZA.INCOMPLETO, CE
 /**
  * LOS UMBRALES, TODOS JUNTOS Y TODOS DISCUTIBLES.
  *
- * `diasPrecio` es una CONVENCIÓN declarada, no un dato: nadie publica cuántos días vale un precio.
- * Se eligió 30 porque es el período de la paritaria y del IPC con el que después se reajusta, y se
- * reporta SIEMPRE junto a la fecha real del precio más viejo — para que la decisión no dependa de
- * creerle al umbral.
+ * `diasPrecio` (180) y `plataEnPreciosViejos` (10%) son CONVENCIONES declaradas, no datos: nadie publica cuántos días vale un precio.
+ * `diasPrecio` arrancó en 30 —el período de la paritaria y del IPC— y se llevó a 180 al medir el
+ * catálogo real: de 389 precios «vigentes», 112 tienen más de cinco años y sólo 83 menos de seis
+ * meses. Con 30, la regla quedaba en rojo para siempre y se volvía ruido. **Ninguno de los dos
+ * números tiene respaldo empírico**: el segundo es una decisión de riesgo comercial que no puede
+ * salir de ningún dato. Los dos se reportan SIEMPRE junto a la fracción real y a la fecha del
+ * precio más viejo, para que la decisión no dependa de creerle al umbral. Los fija el dueño.
  */
 export const UMBRAL = Object.freeze({
   cantidadesMinimas: 0.5,
@@ -122,13 +125,26 @@ export function plataEnPreciosViejos(cotizacion, { hoy = new Date(), diasLimite 
   let pesos = 0
   let total = 0
   let sinFecha = 0
+  let sinComposicion = 0
   for (const p of cotizacion.partidas ?? []) {
     if (p.subtotal === null || !(p.subtotal > 0)) continue
     total += p.subtotal
     const lineas = p.composicion ?? []
     const aporte = (l) => Number(l.cantidad ?? 0) * Number(l.costoUnitario ?? 0) * (1 + Number(l.desperdicio ?? 0))
     const base = lineas.reduce((a, l) => a + aporte(l), 0)
-    if (!(base > 0)) continue
+    // ═══ EL DENOMINADOR NO SE DILUYE HACIA EL VERDE ═══
+    //
+    // Una partida CON subtotal y SIN composición —o con un renglón sin precio— entraba al total y
+    // nunca al numerador: el mismo $ 1.000 sobre precio viejo pasaba de ser el 100% de la
+    // exposición al 4,76%, y la regla que estaba en rojo se ponía en verde. Y justamente sobre esa
+    // partida es sobre la que NO se puede afirmar nada de vigencia. Ante la duda no se cuenta a
+    // favor — que es la misma regla que gobierna `viaDeCantidad`.
+    if (!(base > 0)) {
+      sinComposicion += 1
+      pesos += p.subtotal
+      partidas.push({ codigo: p.codigo, descripcion: p.descripcion, monto: p.subtotal, lineas: 0, de: lineas.length, porQue: 'sin composición valorizada: no se puede afirmar que sus precios estén al día' })
+      continue
+    }
     const viejas = lineas.filter((l) => {
       if (!l.fechaPrecio) { sinFecha += 1; return true } // sin fecha NO es «al día»: no se puede afirmar
       const d = dias(l.fechaPrecio, hoy)
@@ -142,11 +158,11 @@ export function plataEnPreciosViejos(cotizacion, { hoy = new Date(), diasLimite 
   pesos = Math.round(pesos * 100) / 100
   total = Math.round(total * 100) / 100
   return {
-    pesos, total, sinFecha,
+    pesos, total, sinFecha, sinComposicion,
     fraccion: total > 0 ? Math.round((pesos / total) * 10000) / 10000 : null,
     partidas: partidas.sort((a, b) => b.monto - a.monto),
     porQue: total > 0
-      ? `$ ${pesos.toLocaleString('es-AR')} de $ ${total.toLocaleString('es-AR')} (${Math.round((pesos / total) * 1000) / 10}%) se apoya en precios de más de ${diasLimite} días${sinFecha ? `, y ${sinFecha} renglón(es) no tienen fecha` : ''}`
+      ? `$ ${pesos.toLocaleString('es-AR')} de $ ${total.toLocaleString('es-AR')} (${Math.round((pesos / total) * 1000) / 10}%) se apoya en precios de más de ${diasLimite} días o sin verificar${sinFecha ? ` · ${sinFecha} renglón(es) sin fecha` : ''}${sinComposicion ? ` · ${sinComposicion} partida(s) sin composición valorizada` : ''}`
       : 'ninguna partida tiene subtotal: no hay plata sobre la que medir exposición',
   }
 }

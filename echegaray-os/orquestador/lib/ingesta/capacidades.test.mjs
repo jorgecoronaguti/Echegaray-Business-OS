@@ -16,7 +16,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { cuadroDeFormatos, etapasDeArchivo, filaContenedor, filaRol, claseDominante, ETAPA, FILA } from './capacidades.mjs'
+import { cuadroDeFormatos, etapasDeArchivo, etapasDeCad, filaContenedor, filaRol, claseDominante, ETAPA, FILA } from './capacidades.mjs'
 import { leerPdf, CLASE_PDF } from './pdf.mjs'
 import { segmentarLamina } from '../plano/documental.mjs'
 import { partirDocumentos } from '../plano/documentos.mjs'
@@ -184,4 +184,16 @@ test('DOS CUADROS SOBRE LA MISMA CORRIDA DAN EXACTAMENTE LO MISMO', () => {
   const { insumos } = partirDocumentos([fila('A.pdf', { mime: 'application/pdf' }), fila('B.dwg')])
   const r = { documentos: { insumos }, documental: { cad: [{ archivo: 'B.dwg', medicion: { entidades: 10, capas: ['x'], cotas: [] } }] } }
   assert.deepEqual(cuadroDeFormatos(r), cuadroDeFormatos(r))
+})
+
+test('NEGATIVO: un CAD que ABRE con cero entidades no está PARSEADO — abrir no es parsear', () => {
+  // Del lado PDF esta regla ya tenía su test; del lado CAD no, y mutarla a `etapa(true, …)`
+  // sobrevivía: un DWG vacío se reportaba parseado y ningún control se ponía en rojo.
+  const ix = { hechosDePieza: new Map(), enProyecto: new Map(), cruzados: new Map() }
+  const vacio = etapasDeCad({ medicion: { entidades: 0, capas: [], cotas: [] } }, ix, 'planta.dwg')
+  assert.equal(vacio[ETAPA.PARSEADO].ok, false, 'si esto diera true, «PARSEADO» no mediría nada')
+  assert.match(vacio[ETAPA.PARSEADO].porQue, /0 entidad/)
+  // Y el caso contrario, sin el cual no sería un control: con entidades, sí parsea.
+  const lleno = etapasDeCad({ medicion: { entidades: 1240, capas: ['A'], cotas: [1, 2] } }, ix, 'planta.dwg')
+  assert.equal(lleno[ETAPA.PARSEADO].ok, true)
 })

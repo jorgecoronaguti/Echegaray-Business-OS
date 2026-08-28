@@ -141,8 +141,15 @@ function indexar(r = {}) {
   return { elementos, items, hechos, hechosDePieza, enProyecto, cruzados }
 }
 
-/** El CAD: entidades leídas → bloques con nombre propio → hechos consolidados. PURA. */
-function etapasDeCad(cad, ix, nombre) {
+/**
+ * El CAD: entidades leídas → bloques con nombre propio → hechos consolidados. PURA.
+ *
+ * `PARSEADO` exige ENTIDADES, no que el archivo se haya abierto — la misma regla que del lado PDF,
+ * donde un escaneado abre perfecto, informa páginas y tamaño, y devuelve cero trazos. Un DWG que
+ * abre con 0 entidades no está parseado: está abierto, que es otra cosa. La contraparte PDF tenía
+ * su test y ésta no: mutarla a `etapa(true, …)` sobrevivía.
+ */
+export function etapasDeCad(cad, ix, nombre) {
   const m = cad.medicion ?? {}
   const piezas = ix.hechosDePieza.get(nombre) ?? 0
   return {
