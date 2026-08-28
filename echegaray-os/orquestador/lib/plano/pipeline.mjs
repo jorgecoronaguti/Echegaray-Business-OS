@@ -29,6 +29,7 @@ import { procesosDeTodos } from './procesos.mjs'
 import { controlar } from './control.mjs'
 import { ingerir } from './documental.mjs'
 import { armarProyecto } from './proyecto.mjs'
+import { resolverConCad } from './medicion-cad.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { medir } from './conteo.mjs'
@@ -305,8 +306,11 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // Los elementos de las vistas recortadas se SUMAN a los de la lámina completa y se deduplican por
   // id: una columna vista en la planta y en el corte es UNA columna, no dos. Gana la lectura con
   // más dimensiones resueltas, que es la que vio el dibujo más grande.
-  const elementos = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
-  const computo = computarElementos(elementos)
+  const fusionados = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
+  // EL CAD LLENA LO QUE LA VISTA NO PUDO CONTAR, y sólo eso: un elemento que ya tenía cantidad no
+  // se toca. Contar INSERT es exacto y no cuesta un token.
+  const medidoConCad = resolverConCad(fusionados, documental.cad)
+  const computo = computarElementos(medidoConCad.elementos)
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══
   //
@@ -360,6 +364,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
     control, checklist, tipoObra: tipo,
     documental: { ...documental, segmentaciones: documental.segmentaciones },
+    medicionCad: { resueltos: medidoConCad.resueltos, ambiguos: medidoConCad.ambiguos, bloquesDisponibles: medidoConCad.bloquesDisponibles, cotas: medidoConCad.cotas, porQueLasCotasNoSeUsan: medidoConCad.porQueLasCotasNoSeUsan },
     proyecto,
     porRegion: porRegion.map((r) => ({ archivo: r.archivo, region: r.region?.titulo ?? null, tipo: r.region?.tipo ?? null, elementos: r.elementos.length, deCache: r.deCache, error: r.error ?? null })),
     referenciaCircot: referenciaCircot ? { periodo: referenciaCircot.periodo, items: referenciaCircot.total } : null,

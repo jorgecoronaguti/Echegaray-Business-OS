@@ -100,6 +100,64 @@ export function aprendizajesDe(comp, { proyecto = null, obra = null } = {}) {
 }
 
 /**
+ * LOS APRENDIZAJES QUE DEJA HABER ABIERTO LA DOCUMENTACIÓN. PURA.
+ *
+ * No salen de comparar contra un histórico —para eso está `aprendizajesDe`— sino de MEDIR la propia
+ * corrida: cuántas vistas tenía la lámina, cuántos bloques tenía el CAD, cuánto subió lo detectado
+ * al leer por vistas. Cada uno se emite SÓLO si la corrida lo demuestra, con el número medido
+ * adentro del `porQue`, y ninguno menciona el proyecto en la afirmación: la condición es la señal
+ * observable que lo dispara en cualquier obra.
+ */
+export function aprendizajesDeIngesta(r, { proyecto = null } = {}) {
+  const out = []
+  const seg = (r?.documental?.segmentaciones ?? []).flatMap((s) => s.laminas)
+  const porTitulos = seg.filter((l) => l.metodo === 'TITULOS')
+  if (porTitulos.length) {
+    const regiones = porTitulos.reduce((a, l) => a + l.regiones.length, 0)
+    out.push(aprendizaje({
+      clave: 'xsas:lamina-cad-se-segmenta-por-titulos',
+      area: 'computo',
+      condicion: 'una lámina viene de un PDF exportado de CAD y hay que separar sus vistas',
+      afirmacion: 'Una lámina exportada de CAD NO se puede partir en sus vistas por espacio en blanco: el marco, las líneas de cota y los llamados conectan todos los dibujos entre sí, y agrupar por cercanía devuelve una sola región que tapa la hoja entera. Se separa por los TÍTULOS que el propio proyectista escribió al pie de cada vista, que son los textos de mayor cuerpo de la lámina y llevan vocabulario de vista (planta, corte, detalle, estructura). El título sin el cuerpo de letra agarra cada «ver detalle» del dibujo; el cuerpo sin el título agarra el número de plano.',
+      porQue: `${porTitulos.length} lámina(s) segmentadas por título dieron ${regiones} vistas; el mismo material agrupado por espacio en blanco daba 1 por lámina, con cualquier holgura`,
+      evidencia: { proyecto, laminas: porTitulos.map((l) => ({ regiones: l.regiones.length, titulos: l.regiones.map((x) => x.titulo).slice(0, 12) })) },
+    }))
+  }
+  if ((r?.porRegion ?? []).length && r?.computo?.detectados) {
+    out.push(aprendizaje({
+      clave: 'xsas:leer-por-vistas-revela-lo-que-la-lamina-entera-esconde',
+      area: 'computo',
+      condicion: 'se computa una obra mirando la lámina completa en vez de cada vista por separado',
+      afirmacion: 'Mirar la lámina entera subestima el cómputo y no se nota: a la resolución en que entra una lámina A1, un símbolo de 8 mm ocupa cuatro píxeles y los elementos chicos directamente no se ven. Leer VISTA POR VISTA, recortada y ampliada, multiplica los elementos detectados. La cobertura RELATIVA puede bajar al hacerlo, y eso no es un retroceso: es que aparece lo que faltaba y antes no se contaba en el denominador.',
+      porQue: `leer por vistas detectó ${r.computo.detectados} elementos en ${r.porRegion.length} vistas y computó ${r.computo.computados}`,
+      evidencia: { proyecto, vistas: r.porRegion.length, detectados: r.computo.detectados, computados: r.computo.computados },
+    }))
+  }
+  const cad = r?.medicionCad
+  if (cad && cad.bloquesDisponibles !== undefined) {
+    out.push(aprendizaje({
+      clave: 'xsas:el-conteo-de-bloques-cad-sirve-si-la-estructura-usa-bloques',
+      area: 'computo',
+      condicion: 'el proyecto trae un DWG/DXF y hay elementos sin cantidad',
+      afirmacion: 'Contar los INSERT de un bloque resuelve una cantidad de forma exacta y sin costo, pero SÓLO sirve si la pieza está dibujada como bloque. Hay proyectos donde la estructura se dibuja con líneas sueltas y los únicos bloques son los artefactos sanitarios y los símbolos de acotación: ahí el CAD aporta cotas y capas, no cantidades. Antes de esperar que el CAD resuelva el conteo hay que mirar QUÉ bloques tiene, y si son de mobiliario o de anotación, la cantidad sigue faltando.',
+      porQue: `el CAD del proyecto tenía ${cad.bloquesDisponibles} bloque(s) con nombre propio y ${cad.cotas} cota(s) medidas; el conteo de bloques resolvió ${cad.resueltos.length} elemento(s)`,
+      evidencia: { proyecto, bloques: cad.bloquesDisponibles, cotas: cad.cotas, resueltos: cad.resueltos.length },
+    }))
+  }
+  if ((r?.proyecto?.conflictos ?? []).length) {
+    out.push(aprendizaje({
+      clave: 'xsas:cruzar-documentos-produce-conflictos-que-hay-que-declarar',
+      area: 'computo',
+      condicion: 'un proyecto trae más de un documento que habla de lo mismo (dos CAD, plano y memoria, pliego y planilla)',
+      afirmacion: 'Cruzar la documentación de un proyecto SIEMPRE produce contradicciones, y son información: dos CAD del mismo edificio con conteos distintos del mismo bloque, o un pliego que asigna dos materiales al mismo rubro. Ninguna se resuelve eligiendo la fuente de más peso — el peso sirve para saber a quién preguntarle primero. Un conflicto sin resolver deja la cotización INCOMPLETA, porque el precio de esa partida no está determinado.',
+      porQue: `${r.proyecto.conflictos.length} conflicto(s) entre documentos del mismo proyecto`,
+      evidencia: { proyecto, conflictos: r.proyecto.conflictos.map((c) => ({ que: c.que, versiones: c.versiones?.map((v) => `${v.clase}:${v.valor}`) })).slice(0, 10) },
+    }))
+  }
+  return out
+}
+
+/**
  * ESCRIBIRLOS. Siempre CANDIDATO: es la primera obra que atraviesa este circuito y la gobernanza
  * de `obra-plan-real.mjs` exige dos casos comparables de obras distintas para VALIDADO. Que la
  * comparación contra un histórico haya salido parecida no valida nada — el histórico es UN caso.

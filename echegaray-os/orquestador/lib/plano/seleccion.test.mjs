@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { seleccionar, seleccionarTodas, candidatosDe, huella, ESTADO } from './seleccion.mjs'
-import { atributosDe, comparar, espesorDe, materialDe, terminacionDe, metodoDe, seccionDe, piezaDe, numeroAr, raiz } from './atributos.mjs'
+import { atributosDe, comparar, espesorDe, materialDe, terminacionDe, metodoDe, seccionDe, piezaDe, numeroAr, raiz, BLOQUEAN } from './atributos.mjs'
 import { SISTEMA } from './interpretar.mjs'
 
 const CATALOGO = [
@@ -186,4 +186,41 @@ test('la raíz vive en un solo lugar y hace que el plural del catálogo matchee 
   assert.equal(raiz('bases'), 'base')
   assert.equal(raiz('vigas'), 'viga')
   assert.equal(raiz('mas'), 'mas', 'las palabras cortas no se tocan')
+})
+
+test('BLOQUEANTE vs DISCRIMINANTE: la lista es explícita y cambiarla para subir matches rompe el test', () => {
+  // La clasificación NO se decide para que dé mejor: bloquea lo que la partida AFIRMA sobre la obra
+  // y el proyecto no respalda —una dimensión, un método, una terminación, un lugar—, y discrimina
+  // lo que es especificación de NUESTRO propio análisis —el material, la resistencia, la armadura—.
+  assert.deepEqual([...BLOQUEAN].sort(), ['espesor_m', 'metodo', 'pieza', 'seccion', 'terminacion', 'ubicacion'])
+  for (const suelto of ['material', 'resistencia', 'armadura']) {
+    assert.ok(!BLOQUEAN.includes(suelto), `${suelto} discrimina pero NO bloquea: exigirlo dejaba a todas las columnas y bases de Quattropani sin partida`)
+  }
+})
+
+test('ADVERSARIAL: un atributo DISCRIMINANTE que se contradice DESCARTA la partida, no la baja de puesto', () => {
+  const catalogo = [{ id: 'a', codigo: 'T-H17', nombre: 'COLUMNA DE CARGA H17', unidad: 'M3' }]
+  const { candidatos } = candidatosDe(computo({ id: 'C9', nombre: 'Columna de carga', especificacion: 'hormigon H21' }), catalogo)
+  assert.equal(candidatos.length, 0, 'el plano pide H21 y solo tenemos analisis de H17: no es una candidata peor, no es candidata')
+})
+
+test('ADVERSARIAL: un atributo DISCRIMINANTE ausente NO bloquea — si no, no se cotiza ninguna columna', () => {
+  const catalogo = [{ id: 'a', codigo: 'T-H17', nombre: 'COLUMNA DE CARGA H17 - FE 190 KG/M3', unidad: 'M3' }]
+  const r = seleccionar(computo({ id: 'C9', nombre: 'Columna de carga de hormigon' }), catalogo)
+  assert.equal(r.estado, ESTADO.MAPEADA, 'la resistencia y la cuantia son la especificacion de NUESTRO analisis, no un requisito del plano')
+})
+
+test('ADVERSARIAL: un atributo BLOQUEANTE ausente devuelve la PREGUNTA, no un precio', () => {
+  const catalogo = [{ id: 'a', codigo: 'T-EXT', nombre: 'REVOQUE GRUESO EXTERIOR', unidad: 'M2' }]
+  const r = seleccionar(computo({ id: 'R1', nombre: 'Revoque grueso', unidad: 'm2', sistema: SISTEMA.TERMINACION }), catalogo)
+  assert.equal(r.estado, ESTADO.PARTIDA_CANDIDATA)
+  assert.ok(r.faltan.some((f) => f.atributo === 'ubicacion'), 'un revoque interior y uno exterior no cuestan lo mismo: hay que preguntar')
+})
+
+test('ADVERSARIAL: el guardian de la platea sigue en pie despues de todos los cambios', () => {
+  const catalogo = [{ id: 'a', codigo: 'T1166', nombre: 'PLATEA DE HORMIGON - 50CM', unidad: 'M2' }]
+  const r = seleccionar(computo({ id: 'PLATEA', nombre: 'Platea de fundacion', especificacion: 's/Calculo', unidad: 'm2' }), catalogo)
+  assert.equal(r.estado, ESTADO.PARTIDA_CANDIDATA)
+  assert.equal(r.tarea, null)
+  assert.ok(r.faltan.some((f) => f.atributo === 'espesor_m'))
 })

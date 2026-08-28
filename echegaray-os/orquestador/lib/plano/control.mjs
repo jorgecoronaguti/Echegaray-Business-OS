@@ -48,6 +48,12 @@ export function medirCobertura({ items = [], mapeos = [], detectados = null } = 
     conCantidad: conCantidad.length,
     conPartida: mapeadas.size,
     resueltos: resueltos.length,
+    // DOS COBERTURAS, PORQUE SON DOS PREGUNTAS DISTINTAS Y SE CONFUNDEN TODO EL TIEMPO.
+    // La del CÓMPUTO dice cuánto del proyecto está MEDIDO —que es el trabajo de ingeniería— y la de
+    // la COTIZACIÓN dice cuánto está medido Y con partida —que es lo que se puede poner en un
+    // precio—. Un proyecto puede estar bien computado y mal cotizado si a la Base Maestra le
+    // faltan partidas, y reportar un solo número esconde cuál de las dos cosas está fallando.
+    coberturaComputo: total ? Math.round((conCantidad.length / total) * 1000) / 1000 : 0,
     cobertura: pct,
     umbral: UMBRAL_COBERTURA,
     alcanza: pct >= UMBRAL_COBERTURA,
@@ -149,6 +155,6 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
         ? `hay ${ocultos.length} cantidad(es) con una fuente que no se puede confirmar y que no está declarada como supuesto`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cobertura ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · preguntas abiertas ${abiertas.length}${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · preguntas abiertas ${abiertas.length}${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
   }
 }

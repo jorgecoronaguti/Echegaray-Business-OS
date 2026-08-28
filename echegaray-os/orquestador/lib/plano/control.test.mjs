@@ -95,14 +95,27 @@ test('cada pregunta dice QUIÉN la contesta — una pregunta sin dueño no se co
   assert.ok(p.some((x) => x.origen === 'proceso derivado'))
 })
 
-test('el resumen entra en una línea y no esconde ninguno de los cuatro números', () => {
+test('LAS DOS COBERTURAS SON DISTINTAS: computado no es lo mismo que cotizable', () => {
+  // Un proyecto puede estar bien medido y mal cotizado si a la Base Maestra le faltan partidas.
+  // Reportar un solo número esconde cuál de las dos cosas está fallando.
+  const c = medirCobertura({
+    detectados: 10,
+    items: Array.from({ length: 8 }, (_, i) => item(`E${i}`, i + 1)),
+    mapeos: [mapeo('E0', ESTADO.MAPEADA), mapeo('E1', ESTADO.MAPEADA)],
+  })
+  assert.equal(c.coberturaComputo, 0.8, '8 de 10 medidos')
+  assert.equal(c.cobertura, 0.2, 'sólo 2 de 10 con partida')
+})
+
+test('el resumen entra en una línea y no esconde ninguno de los cinco números', () => {
   const r = controlar({
     computo: { detectados: 46, items: [item('A', 1)] },
     mapeo: { mapeos: [mapeo('A', ESTADO.MAPEADA)] },
     omisionesCircot: [{ codigo: 'X' }],
   })
   assert.match(r.resumen, /INCOMPLETA/)
-  assert.match(r.resumen, /cobertura 2% \(1\/46\)/)
+  assert.match(r.resumen, /cómputo 2% \(1\/46\)/)
+  assert.match(r.resumen, /cotización 2% \(1\/46\)/)
   assert.match(r.resumen, /supuestos ocultos 0/)
   assert.match(r.resumen, /omisiones CIRCOT a confirmar 1/)
 })
