@@ -15,7 +15,7 @@ import { indiceDeCotizaciones } from './estudio-cotizaciones.mjs'
 import { practicas } from './practica-cotizacion.mjs'
 import {
   AREA, INSUFICIENCIA_METALICA, aConocimientoHistorico, aConocimientoInsuficienciaMetalica,
-  archivoDeLaUbicacion, clienteDeLaObra, registroHistorico, registrosHistoricos,
+  archivoDeLaUbicacion, clienteDeLaObra, partidasDelCasoMetalico, registroHistorico, registrosHistoricos,
 } from './practica-historica.mjs'
 
 const RUTA = (cliente, obra, archivo) => `administracion/PRESUPUESTOS - CLIENTES/${cliente}/${obra}/${archivo}`
@@ -175,8 +175,26 @@ test('el caso JAVIER SANCHEZ se registra como posible insuficiencia, NUNCA como 
   assert.match(k.evidencia.textoLiteral, /ENTREPISO × 1\.4/)
 })
 
+test('lo que NO se pudo cruzar contra el artefacto sale marcado sin verificar, con su motivo', () => {
+  const k = aConocimientoInsuficienciaMetalica()
+  assert.equal(k.evidencia.verificados, 1, 'debería haber exactamente un caso con archivo, hoja y fila')
+  assert.equal(k.evidencia.sinVerificar.length, 1)
+  assert.match(k.evidencia.sinVerificar[0].obra, /Entrepiso/)
+  assert.match(k.evidencia.sinVerificar[0].porQue, /no está entre las 237 estudiadas/)
+  // Y el que sí se verificó cita el archivo y las filas: es la diferencia entre un dato y un dicho.
+  const verificado = INSUFICIENCIA_METALICA.casos.find((c) => c.verificadoEn)
+  assert.match(verificado.verificadoEn, /Instalacion Electrica\.xlsm · hoja Presupuesto · filas/)
+})
+
+test('T1180 —una de las partidas metálicas nuevas— ya viene con un multiplicador en el histórico', () => {
+  const t1180 = partidasDelCasoMetalico().find((p) => p.tarea.startsWith('T1180'))
+  assert.ok(t1180, 'se perdió el caso de T1180, que es el que se puede citar')
+  assert.equal(t1180.coeficiente, 4)
+  assert.ok(t1180.verificadoEn, 'el caso de T1180 tiene que ser el verificado')
+})
+
 test('el caso metálico dice contra qué hay que contrastarlo, y contra qué lo va a reemplazar', () => {
-  assert.deepEqual(INSUFICIENCIA_METALICA.partidasAjustadas.map((p) => p.coeficiente), [1.5, 1.4])
+  assert.deepEqual(partidasDelCasoMetalico().map((p) => p.coeficiente), [1.5, 1.4, 4, 4])
   assert.match(INSUFICIENCIA_METALICA.aContrastarCon.join(' '), /T1180–T1185/)
   for (const q of ['mediciones reales', 'composiciones', 'HH imputadas', 'materiales', 'procesos']) {
     assert.ok(INSUFICIENCIA_METALICA.aContrastarCon.some((x) => x.includes(q)), `falta contrastar contra ${q}`)

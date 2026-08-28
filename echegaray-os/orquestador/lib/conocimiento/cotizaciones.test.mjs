@@ -26,7 +26,7 @@ import { practicas } from './practica-cotizacion.mjs'
 import { registrosHistoricos } from './practica-historica.mjs'
 import { ESTADO, PROCEDENCIA, incorporar } from './biblioteca.mjs'
 import { fusionarHallazgos } from '../../scripts/estudiar-cotizaciones-drive.mjs'
-import { DIV_CERO, estudiar, filaAnalisis, libro, libroDeCotizacion } from './cotizacion-fixture.mjs'
+import { estudiar, filaAnalisis, libro, libroDeCotizacion } from './cotizacion-fixture.mjs'
 
 const require = createRequire(import.meta.url)
 const XLSX = require('xlsx')

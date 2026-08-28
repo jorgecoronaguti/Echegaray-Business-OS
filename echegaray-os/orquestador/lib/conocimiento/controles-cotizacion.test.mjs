@@ -206,7 +206,9 @@ test('una hoja OFERTA sin NINGUNA fórmula no se juzga: es el defecto que daba r
 
 test('una cotización estudiada sin inventario de celdas no pasa por limpia en los controles de celda', async () => {
   const { cotizaciones } = await estudiar(tanda(1))
-  const viejas = cotizaciones.map(({ celdasRotas: _q, ...resto }) => resto)
+  // `delete` sobre una copia y no una desestructuración con descarte: el descarte deja una variable
+  // sin usar que el lint marca, y silenciarla con un guión bajo esconde qué se está sacando.
+  const viejas = cotizaciones.map((c) => { const copia = { ...c }; delete copia.celdasRotas; return copia })
   for (const id of ['celdas-en-error', 'formula-sobre-celda-rota']) {
     const c = correrControl(CONTROLES.find((x) => x.id === id), viejas)
     assert.equal(c.estado, RESULTADO.NO_SE_PUDO_MIRAR, `${id} se declaró limpio sin inventario de celdas`)
