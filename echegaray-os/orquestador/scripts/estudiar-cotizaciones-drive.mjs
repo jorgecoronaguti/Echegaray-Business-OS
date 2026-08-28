@@ -31,6 +31,7 @@
 // mismo concepto. Hasta que eso se resuelva con `reemplazar()`, un cambio de nomenclatura obliga a
 // volver la biblioteca a su versión anterior en git y correr `--refrescar`.
 import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
@@ -145,5 +146,17 @@ async function main() {
 const resumirMadurez = (ps) => Object.entries(ps.reduce((a, p) => { a[p.madurez] = (a[p.madurez] ?? 0) + 1; return a }, {}))
   .sort().map(([k, v]) => `${k}:${v}`).join(' · ')
 
-main().then(() => closePool()).then(() => process.exit(0))
-  .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// SÓLO SE EJECUTA CUANDO SE CORRE DIRECTO.
+//
+// Sin esta guarda, `cotizaciones.test.mjs` —que importa `fusionarHallazgos` de acá, una función
+// pura— disparaba `main()` al cargar el módulo: un `node --test` recorría los 2.653 archivos de
+// Drive y REESCRIBÍA `biblioteca.json` y `hallazgos-cotizaciones.json`. Medido el 28/08/2026: los
+// dos archivos quedaron modificados a las 12:46:43, la hora exacta de una corrida de `orq:test`.
+// Esta vez no se perdió nada porque la biblioteca hace de memoria de idempotencia, pero con
+// `--refrescar`, un archivo movido o un corte de red, el test dejaba la base de conocimiento pisada.
+// Es el mismo patrón que ya usan `cash-flow-rehacer.mjs` y `cash-flow-vistas.mjs`.
+const ejecutadoDirecto = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (ejecutadoDirecto) {
+  main().then(() => closePool()).then(() => process.exit(0))
+    .catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}
