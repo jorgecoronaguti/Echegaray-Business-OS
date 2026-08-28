@@ -151,6 +151,43 @@ export function titulosDe(textos = [], { factorAltura = 1.35, largoMinimo = 4 } 
 
 const centro = (c) => [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2]
 
+/**
+ * CUÁNTO SE PISAN LAS VISTAS DE UNA LÁMINA. PURA.
+ *
+ * Devuelve el conteo Y la magnitud: cuántos pares se tocan, cuánto tapa el PEOR sobre la vista más
+ * chica del par, y la suma de áreas sobre el área de la hoja —que por encima de 1 significa que
+ * partes del plano se recortan más de una vez—. Un conteo sin magnitud hace parecer leve un solape
+ * que tapa el 61% de una vista.
+ */
+export function medirSolape(regiones = [], { ancho = 0, alto = 0 } = {}) {
+  let pares = 0
+  let pisan = 0
+  let peor = 0
+  let peorPar = null
+  for (let i = 0; i < regiones.length; i++) {
+    for (let j = i + 1; j < regiones.length; j++) {
+      pares++
+      const a = regiones[i].caja
+      const b = regiones[j].caja
+      const inter = interseccion(a, b)
+      if (inter <= 0) continue
+      pisan++
+      const frac = inter / Math.min(areaDe(a), areaDe(b))
+      if (frac > peor) { peor = frac; peorPar = [regiones[i].titulo ?? regiones[i].n, regiones[j].titulo ?? regiones[j].n] }
+    }
+  }
+  const areaHoja = ancho * alto
+  return {
+    pares, pisan,
+    peorFraccion: Math.round(peor * 100) / 100,
+    peorPar,
+    sumaSobreHoja: areaHoja ? Math.round((regiones.reduce((s, r) => s + areaDe(r.caja), 0) / areaHoja) * 100) / 100 : null,
+    porQue: pisan
+      ? `${pisan} de ${pares} pares de vistas se pisan; el peor tapa el ${Math.round(peor * 100)}% de la más chica del par${peorPar ? ` («${peorPar[0]}» con «${peorPar[1]}»)` : ''}`
+      : 'ninguna vista se pisa con otra',
+  }
+}
+
 /** El área en que dos cajas se pisan. PURA. */
 export function interseccion(a, b) {
   const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0])
@@ -339,12 +376,17 @@ export function segmentarPorTitulos({ ancho = 0, alto = 0, trazos = [], textos =
     anclaje: { x: Math.round(g.titulo.x * 100) / 100, y: Math.round(g.titulo.y * 100) / 100 },
   }))
   const absorcion = absorberContenidas(regiones)
+  // ═══ EL CONTEO DE SOLAPES SIN SU MAGNITUD SUENA LEVE Y NO LO ES ═══
+  // «12 pares se pisan» no dice nada; que el peor tape el 61% de la vista más chica, sí. Va el
+  // número al lado del conteo, porque es el que decide si el solape importa.
+  const solape = medirSolape(absorcion.regiones, { ancho, alto })
   return {
     metodo: 'TITULOS',
     radio: Math.round(r * 100) / 100,
     regiones: absorcion.regiones,
     absorbidas: absorcion.absorbidas,
     cajasLejanasDejadasFuera: dejadasFuera,
+    solape,
     porQueAbsorbidas: absorcion.absorbidas.length ? `${absorcion.absorbidas.length} región(es) estaban adentro de otra y se absorbieron: recortarlas por separado interpretaba el mismo dibujo dos veces` : null,
     descartadas: grupos.length - conGeometria.length,
     porQueDescartadas: grupos.length > conGeometria.length ? `${grupos.length - conGeometria.length} título(s) no juntaron geometría suficiente: son referencias dentro de otro dibujo, no vistas propias` : null,

@@ -36,7 +36,7 @@ import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
-import { FUENTE } from './fuente.mjs'
+import { FUENTE, faltaDato } from './fuente.mjs'
 
 /** Dónde queda la interpretación de una lámina. Fuera del repo: es caché, no fuente. */
 export const DIR_CACHE = process.env.ORQ_PLANO_CACHE || path.join(process.env.HOME || '/tmp', '.cache', 'echegaray-planos')
@@ -248,6 +248,50 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
  * resueltas, que es la del dibujo donde mejor se veía— y la colisión queda DECLARADA para que la
  * mire una persona.
  */
+/** Los números que DISCRIMINAN una pieza de otra dentro de su id y su nombre: «C1» contra «C2»,
+ *  «2C200» contra «C200» —un 2C200 son DOS perfiles C200—, «VA1» contra «VA2». Es el mismo guard
+ *  que `parecidosSinFusionar` ya aplicaba para no reportar, y que faltaba para no FUSIONAR. PURA. */
+export const firmaNumerica = (e) => [...new Set(String(`${e?.id ?? ''} ${e?.nombre ?? ''}`).match(/\d+/g) ?? [])]
+  .map(Number).sort((a, b) => a - b).join('-')
+
+/** ¿Dos valores de la misma dimensión dicen lo mismo? Tolerancia relativa: una lectura de 3,50 y
+ *  otra de 3,4999 son la misma medida; 0,1 y 0,8 no. PURA. */
+export const mismaMedida = (a, b, tol = 0.01) => {
+  const na = Number(a)
+  const nb = Number(b)
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return String(a) === String(b)
+  return Math.abs(na - nb) / Math.max(Math.abs(na), Math.abs(nb), 1e-9) <= tol
+}
+
+/**
+ * EN QUÉ SE CONTRADICEN DOS LECTURAS DE LO QUE DEBERÍA SER LA MISMA PIEZA. PURA.
+ *
+ * Devuelve las dimensiones y la cantidad donde DOS miembros del grupo declaran valores distintos.
+ * Sólo se mira donde los dos declaran: que uno tenga el largo y el otro no, no es contradicción —
+ * es justamente lo que la fusión sirve para completar.
+ */
+export function contradiccionesDe(lista = []) {
+  const dims = {}
+  for (const e of lista) {
+    for (const [k, d] of Object.entries(e?.dimensiones ?? {})) {
+      if (d?.valor === null || d?.valor === undefined) continue
+      const v = dims[k] ?? []
+      v.push({ id: e.id, valor: d.valor, vista: e?.evidencia?.vista ?? null })
+      dims[k] = v
+    }
+  }
+  const geometria = []
+  for (const [k, vs] of Object.entries(dims).sort()) {
+    const distintos = vs.filter((x) => !mismaMedida(x.valor, vs[0].valor))
+    if (distintos.length) geometria.push({ dimension: k, valores: vs })
+  }
+  const cants = lista
+    .map((e) => ({ id: e.id, valor: e?.repeticion?.cantidad?.valor ?? e?.repeticion?.cantidad ?? null }))
+    .filter((x) => x.valor !== null && x.valor !== undefined)
+  const cantidad = cants.some((x) => !mismaMedida(x.valor, cants[0].valor)) ? cants : null
+  return { geometria, cantidad }
+}
+
 export function fusionarElementos(elementos = []) {
   const normal = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '')
   const cuantasDimensiones = (e) => Object.values(e?.dimensiones ?? {}).filter((d) => d?.valor !== null && d?.valor !== undefined).length
@@ -282,34 +326,82 @@ export function fusionarElementos(elementos = []) {
   const salida = []
   const ambiguos = []
   for (const [clave, lista] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const ordenados = [...lista].sort((a, b) => cuantasDimensiones(b) - cuantasDimensiones(a) || String(a.id).localeCompare(String(b.id)))
-    const ganador = ordenados[0]
-    const dimensiones = {}
-    // Se completa de atrás para adelante: la lectura con MÁS dimensiones queda arriba y las otras
-    // sólo llenan lo que a esa le faltaba. Dos vistas parciales completan una entera.
-    for (const e of [...ordenados].reverse()) {
-      for (const [k, v] of Object.entries(e?.dimensiones ?? {})) if (v?.valor !== null && v?.valor !== undefined) dimensiones[k] = v
+    // ═══ PRIMERO SE PARTE POR LA FIRMA NUMÉRICA, Y ESTO NO ES OPCIONAL ═══
+    // Dos columnas que el proyectista llamó C1 y C2 con el mismo nombre genérico NO son la misma
+    // pieza, y fusionarlas borraba una entera —su sección, su altura, sus unidades y su partida—.
+    // Salen las DOS. Es la misma regla que `parecidosSinFusionar` ya aplicaba para no reportar.
+    const porFirma = new Map()
+    for (const e of lista) {
+      const f = firmaNumerica(e)
+      porFirma.set(f, [...(porFirma.get(f) ?? []), e])
     }
-    salida.push({
-      ...ganador, dimensiones,
-      vistoEn: [...new Set(lista.map((e) => e?.evidencia?.vista).filter(Boolean))].sort(),
-    })
-    const ids = [...new Set(lista.map((e) => String(e.id)))].sort()
-    if (ids.length > 1) {
-      // Dos ids distintos que caen en el mismo grupo PUEDEN ser la misma pieza vista dos veces o
-      // dos piezas que el proyectista llamó parecido. Se computa UNA sola —contar las dos era el
-      // doble cómputo medido: cuatro puertas blindex donde hay dos— y la duda queda declarada.
+    if (porFirma.size > 1) {
       ambiguos.push({
-        clave, nombre: ganador?.nombre ?? ids[0], ids,
+        clave, tipo: 'PIEZAS_DISTINTAS', nombre: lista[0]?.nombre ?? clave,
+        ids: [...new Set(lista.map((e) => String(e.id)))].sort(),
         vistas: [...new Set(lista.map((e) => e?.evidencia?.vista).filter(Boolean))].sort(),
-        porQue: `«${ganador?.nombre ?? ids[0]}» aparece con ${ids.length} identificadores distintos (${ids.join(', ')}): puede ser la misma pieza vista en varias vistas, o piezas distintas que el plano llamó parecido. Se computó UNA sola`,
-        quienLoResuelve: 'dirección técnica — mirando las vistas donde aparece',
+        firmas: [...porFirma.keys()].sort(),
+        porQue: `«${lista[0]?.nombre ?? clave}» agrupa identificadores con NUMERACIÓN distinta (${[...porFirma.keys()].map((f) => f || '(sin número)').join(' vs ')}): el proyectista los separó a propósito, así que NO se fusionan y salen todos`,
+        quienLoResuelve: 'nadie — se computan por separado, que es lo correcto',
+        fusionadas: false,
       })
+    }
+
+    for (const [firma, sub] of [...porFirma.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+      const ordenados = [...sub].sort((a, b) => cuantasDimensiones(b) - cuantasDimensiones(a) || String(a.id).localeCompare(String(b.id)))
+      const ganador = ordenados[0]
+      const ids = [...new Set(sub.map((e) => String(e.id)))].sort()
+      const vistas = [...new Set(sub.map((e) => e?.evidencia?.vista).filter(Boolean))].sort()
+      const choque = contradiccionesDe(sub)
+
+      const dimensiones = {}
+      for (const e of [...ordenados].reverse()) {
+        for (const [k, v] of Object.entries(e?.dimensiones ?? {})) if (v?.valor !== null && v?.valor !== undefined) dimensiones[k] = v
+      }
+      // ═══ LO QUE SE CONTRADICE NO SE ELIGE: SE ABRE ═══
+      // `proyecto.mjs` lo dice para los hechos documentales —«elegir una en silencio es inventar el
+      // resultado de una discusión que todavía no ocurrió»— y vale igual, o más, para las
+      // dimensiones y la cantidad, que es donde está el precio. Una dimensión en la que dos
+      // lecturas discrepan sale como HUECO con las dos versiones adentro; el elemento deja de
+      // computar y aparece en las preguntas, en vez de computar con la mitad de la verdad.
+      for (const g of choque.geometria) {
+        dimensiones[g.dimension] = faltaDato({
+          que: `${g.dimension} de ${ganador?.nombre ?? ids[0]}`,
+          porque: `dos lecturas de la misma pieza dan valores distintos: ${g.valores.map((v) => `${v.id}=${v.valor}${v.vista ? ` (${v.vista})` : ''}`).join(' vs ')}`,
+          quienLoTiene: 'dirección técnica — hay que mirar las dos vistas',
+        })
+      }
+      const repeticion = choque.cantidad
+        ? {
+          ...(ganador?.repeticion ?? {}),
+          modo: 'indeterminable',
+          cantidad: null,
+          textoLiteral: `dos lecturas dan cantidades distintas: ${choque.cantidad.map((c) => `${c.id}=${c.valor}`).join(' vs ')}`,
+        }
+        : ganador?.repeticion
+
+      salida.push({ ...ganador, dimensiones, repeticion, vistoEn: vistas })
+
+      if (ids.length > 1) {
+        const tipo = choque.geometria.length ? 'GEOMETRIA_INCOMPATIBLE' : choque.cantidad ? 'CANTIDAD_DISTINTA' : 'SOLO_NOMBRE'
+        const detalle = choque.geometria.length
+          ? `las lecturas se CONTRADICEN en ${choque.geometria.map((g) => `${g.dimension} (${g.valores.map((v) => v.valor).join(' vs ')})`).join(', ')}: esa(s) medida(s) salen como hueco y el elemento no computa hasta que alguien mire`
+          : choque.cantidad
+            ? `las lecturas se CONTRADICEN en la cantidad (${choque.cantidad.map((c) => c.valor).join(' vs ')}): la cantidad sale como hueco`
+            : 'las lecturas no se contradicen en ninguna medida: es el mismo objeto escrito de varias formas, y se computó una sola vez'
+        ambiguos.push({
+          clave: `${clave}#${firma}`, tipo, nombre: ganador?.nombre ?? ids[0], ids, vistas,
+          porQue: `«${ganador?.nombre ?? ids[0]}» aparece con ${ids.length} identificadores (${ids.join(', ')}). ${detalle}`,
+          quienLoResuelve: tipo === 'SOLO_NOMBRE' ? 'nadie — está resuelto' : 'dirección técnica — mirando las vistas donde aparece',
+          fusionadas: true,
+        })
+      }
     }
   }
   const lista = salida.sort((a, b) => String(a.id).localeCompare(String(b.id)))
-  lista.ambiguos = [...ambiguos, ...parecidosSinFusionar(lista)].sort((a, b) => a.clave.localeCompare(b.clave))
-  return lista
+  // Se devuelve un OBJETO y no un array con una propiedad colgada: un `.map()` o un `.filter()`
+  // entre medio borraba `ambiguos` en silencio y la cotización volvía a poder salir COMPLETA.
+  return { elementos: lista, ambiguos: [...ambiguos, ...parecidosSinFusionar(lista)].sort((a, b) => a.clave.localeCompare(b.clave)) }
 }
 
 /** Palabras que no distinguen nada al comparar dos nombres de elemento. */
@@ -371,7 +463,7 @@ export function parecidosSinFusionar(elementos = []) {
   return salida.sort((x, y) => (y.parecido ?? 0) - (x.parecido ?? 0) || x.clave.localeCompare(y.clave))
 }
 
-/** Las regiones que vale la pena mirar./** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
+/** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
@@ -428,11 +520,10 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // Los elementos de las vistas recortadas se SUMAN a los de la lámina completa y se deduplican por
   // id: una columna vista en la planta y en el corte es UNA columna, no dos. Gana la lectura con
   // más dimensiones resueltas, que es la que vio el dibujo más grande.
-  const fusionados = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
+  const { elementos: fusionados, ambiguos: identidadesAmbiguas } = fusionarElementos([...laminas.flatMap((l) => l.elementos), ...porRegion.flatMap((r) => r.elementos)])
   // EL CAD LLENA LO QUE LA VISTA NO PUDO CONTAR, y sólo eso: un elemento que ya tenía cantidad no
   // se toca. Contar INSERT es exacto y no cuesta un token.
   const medidoConCad = resolverConCad(fusionados, documental.cad)
-  const identidadesAmbiguas = fusionados.ambiguos ?? []
   const computo = computarElementos(medidoConCad.elementos)
   const catalogo = await baseMaestra({ query })
   // ═══ LA PARTIDA LA DECIDE EL CÓDIGO ═══

@@ -45,7 +45,7 @@ console.log(`\n═══ ${termino.toUpperCase()} · REGRESIÓN XSAS ═══\n
 console.log('── LO QUE ENCONTRÓ Y ABRIÓ ──')
 console.log(`  documentos en Drive          ${r.documentos.total} (insumos ${r.documentos.insumos.length} · reservados para validar ${r.documentos.reservados.length})`)
 console.log(`  CAD abiertos                 ${r.documental.cad.length}: ${r.documental.cad.map((c) => `${c.archivo} [${c.version?.firma ?? c.formato}] ${c.medicion.entidades} entidades · ${c.medicion.capas.length} capas · ${c.medicion.cotas.length} cotas · ${c.medicion.bloques.length} bloques`).join(' | ') || '—'}`)
-console.log(`  láminas PDF                  ${r.documental.segmentaciones.length}: ${r.documental.segmentaciones.map((s) => `${s.archivo} → ${s.laminas.map((l) => `${l.regiones.length} vistas (${l.metodo}), ${l.logrados} recortes`).join(', ')}`).join(' | ') || '—'}`)
+console.log(`  láminas PDF                  ${r.documental.segmentaciones.length}: ${r.documental.segmentaciones.map((s) => `${s.archivo} → ${s.laminas.map((l) => `${l.regiones.length} vistas (${l.metodo}), ${l.logrados} recortes${l.solape ? ` · solape: ${l.solape.porQue}, suma ${l.solape.sumaSobreHoja}× la hoja` : ''}`).join(', ')}`).join(' | ') || '—'}`)
 console.log(`  documentos de especificación ${r.documental.documentales.length}: ${r.documental.documentales.map((d) => `${d.archivo} [${d.clase}]`).join(' | ') || '—'}`)
 console.log(`  SIN LEER                     ${r.documental.noLeidos.length}${r.documental.noLeidos.length ? `: ${r.documental.noLeidos.map((x) => `${x.archivo} — ${String(x.porQue).slice(0, 70)}`).join(' | ')}` : ''}`)
 
