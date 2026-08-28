@@ -1,5 +1,5 @@
 {
- "generado": "2026-08-28T20:53:26.913Z",
+ "generado": "2026-08-28T22:45:56.148Z",
  "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
  "filtro": null,
  "fichas": [
@@ -1599,8 +1599,8 @@
    "fuentesEnConflicto": null
   },
   {
-   "id": "h:afc13bf0b89f5b3c",
-   "clave": "documento-proyecto.version.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE",
+   "id": "h:759ab7297b1eec8b",
+   "clave": "documento-proyecto.version.contrato-de-obra-y-memoria-descriptiva-ecsas-quattropani.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE",
    "tipo": "CONFLICTO",
    "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» dice: «Saldo: el monto restante es de (U$S 31500 + IVA), el mismo será abonado mediante certificaciones quincenales de avance de obra, conforme a lo ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
    "quienLoTiene": "el dueño",
@@ -1611,8 +1611,8 @@
    ]
   },
   {
-   "id": "h:96837b4b5a6c4563",
-   "clave": "documento-proyecto.version.SALDO: SERÁ ABONADO MEDIANTE CERTIFICACIONES QUINCENALES DE AVANCE DE OBRA, CONF",
+   "id": "h:bde71f571b63838b",
+   "clave": "documento-proyecto.version.contrato-de-obra-y-memoria-descriptiva.SALDO: SERÁ ABONADO MEDIANTE CERTIFICACIONES QUINCENALES DE AVANCE DE OBRA, CONF",
    "tipo": "CONFLICTO",
    "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» dice: «Saldo: será abonado mediante certificaciones quincenales de avance de obra, conforme al avance efectivamente ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
    "quienLoTiene": "el dueño",

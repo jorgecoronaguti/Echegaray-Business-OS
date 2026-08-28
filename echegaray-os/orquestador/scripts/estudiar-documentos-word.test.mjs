@@ -7,20 +7,23 @@
 // deduplicación rota, y de hecho pasó: el contrato de Quattropani entró dos veces y los tests
 // estuvieron verdes todo el tiempo.
 //
-// Ahora la fuente es la real: se leen dos documentos con `leerDocumentoDeProyecto` y se los compara
-// con `versionPreviaDe`. Cada control tiene su caso negativo, y la mutación que lo pone rojo está
-// escrita al lado.
+// Ahora la fuente es la real: se leen dos documentos con `leerDocumentoDeProyecto`, se los compara
+// con `versionPreviaDe` y —lo que faltaba— se corre el CABLEADO entero con `ingerirTanda`, mirando
+// lo que de verdad va a la biblioteca. Cada control tiene su caso negativo, y la mutación que lo
+// pone rojo está escrita al lado. Ninguna estructura se arma a mano para después preguntarle a la
+// función si la estructura es como se armó: eso es un espejo y es como pasó B1 entero.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { hashDe } from '../lib/conocimiento/leer-archivo.mjs'
 import { leerDocumentoDeProyecto } from '../lib/conocimiento/documento-proyecto.mjs'
-import { hueco } from '../lib/conocimiento/biblioteca.mjs'
+import { conocimiento, hueco } from '../lib/conocimiento/biblioteca.mjs'
 import {
   SOLAPE_MISMO_DOCUMENTO, claveDeFrase, conflictosDeVersion, relacionEntreDocumentos, soloLoNuevo,
   versionPreviaDe,
 } from '../lib/conocimiento/documento-version.mjs'
 
-import { yaEntroEnEstaCorrida } from './estudiar-documentos-word.mjs'
+import { ingerirTanda, yaEntroEnEstaCorrida } from './estudiar-documentos-word.mjs'
 
 // ═══════════════ EL PAR REAL DE QUATTROPANI, CON SU DIFERENCIA DE VERDAD ═══════════════
 //
@@ -155,7 +158,7 @@ test('NEGATIVO: un anexo corto contenido ENTERO en el contrato no es otra versi�
 })
 
 test('las 45 frases comunes entran UNA vez: eso es deduplicar', () => {
-  // MUTACIÓN QUE LO PONE ROJO: en el script, pasar `r.interpretacion` en vez de `soloLoNuevo(...)`.
+  // Éste prueba `soloLoNuevo` SOLA. La mutación del CABLEADO la atrapa el test de `ingerirTanda`.
   const a = elDocx()
   const b = elDocNativo()
   const v = versionPreviaDe(b, [a])
@@ -167,8 +170,7 @@ test('las 45 frases comunes entran UNA vez: eso es deduplicar', () => {
 })
 
 test('deduplicar NO es elegir una versión: la divergencia sale como CONFLICTO del dueño', () => {
-  // MUTACIÓN QUE LO PONE ROJO: no llamar a `conflictosDeVersion` en el script, o filtrar los huecos.
-  // Ahí el conteo queda lindo y la cláusula de U$S 31.500 desaparece sin que nadie la vea.
+  // Éste prueba `conflictosDeVersion` SOLA — que el script la llame lo prueba el de `ingerirTanda`.
   const a = elDocx()
   const b = elDocNativo()
   const v = versionPreviaDe(b, [a])
@@ -187,13 +189,20 @@ test('deduplicar NO es elegir una versión: la divergencia sale como CONFLICTO d
 
 test('la copia byte a byte se sigue atajando antes, sin leerla', () => {
   // El hash de bytes no cubre el caso de arriba, pero sí el suyo: dos rutas con el MISMO archivo.
-  // Encontró uno real (`PLANTILLA PARA INFORME.docx`). Se conserva porque es más barato: ataja
-  // antes de interpretar.
+  // Encontró uno real (`PLANTILLA PARA INFORME.docx`). Se conserva porque es más barato: ataja antes
+  // de interpretar.
+  //
+  // El `Map` se construye como lo construye el bucle —`vistos.set(hash, nombre)` sobre el hash real
+  // de los bytes— y no a mano: la versión anterior de este test armaba el Map con la clave que
+  // quería y le preguntaba si estaba, o sea verificaba su propio Map.
+  const bytesA = Buffer.from('PK\u0003\u0004 el contenido de la plantilla', 'utf8')
+  const bytesB = Buffer.from('PK\u0003\u0004 otro contenido distinto', 'utf8')
   const vistos = new Map()
-  assert.equal(yaEntroEnEstaCorrida('h1', vistos), null)
-  vistos.set('h1', 'PLANTILLA PARA INFORME.docx')
-  assert.equal(yaEntroEnEstaCorrida('h1', vistos), 'PLANTILLA PARA INFORME.docx')
-  assert.equal(yaEntroEnEstaCorrida('h2', vistos), null, 'contenido distinto: no se deduplica')
+  assert.equal(yaEntroEnEstaCorrida(hashDe(bytesA), vistos), null, 'la primera vez no hay con qué comparar')
+  vistos.set(hashDe(bytesA), 'PLANTILLA PARA INFORME.docx')
+  // La MISMA copia bajo otra ruta: los bytes son los mismos, así que el hash es el mismo.
+  assert.equal(yaEntroEnEstaCorrida(hashDe(Buffer.from(bytesA)), vistos), 'PLANTILLA PARA INFORME.docx')
+  assert.equal(yaEntroEnEstaCorrida(hashDe(bytesB), vistos), null, 'contenido distinto: no se deduplica')
   assert.equal(yaEntroEnEstaCorrida(null, vistos), null, 'sin hash no se adivina')
 })
 
@@ -201,4 +210,90 @@ test('importar este script NO corre la ingesta: la guarda de ejecución directa 
   const fuente = readFileSync(new URL('./estudiar-documentos-word.mjs', import.meta.url), 'utf8')
   assert.match(fuente, /const ejecutadoDirecto = process\.argv\[1\] && import\.meta\.url === pathToFileURL/)
   assert.ok(!/^main\(\)/m.test(fuente), 'main() no puede invocarse en el tope del módulo')
+})
+
+// ═══════════════ EL CABLEADO, QUE ES DONDE VIVÍAN LAS MUTACIONES SOBREVIVIENTES ═══════════════
+//
+// Los tests de arriba ejercitan las cuatro funciones por separado y las cuatro estaban bien. Las
+// tres mutaciones que reintroducen B1 ENTERO viven en cómo se las llama, y sobrevivieron con la
+// suite en verde: con una de ellas la cláusula de U$S 31.500 desaparecía del artefacto.
+//
+// `ingerirTanda` es el cableado extraído del bucle del comando. Estos tests miran lo que de verdad
+// va a la biblioteca —`candidatos` y `huecos`—, no lo que devuelven las piezas.
+
+/** Los constructores reales de la biblioteca: si el conocimiento o el hueco no se pueden construir,
+ *  tampoco entran. Usar dobles acá volvería a ser un espejo. */
+const constructores = { conocimiento, hueco }
+
+test('CABLEADO: la segunda versión no vuelve a grabar las frases comunes', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `ingerirLectura`, `const interpretacion = lectura` (o sea, pasar
+  // la lectura entera en vez de `soloLoNuevo(...)`). Probado: sin este test daba verde.
+  const solaA = ingerirTanda([elDocx()], constructores)
+  const ambas = ingerirTanda([elDocx(), elDocNativo()], constructores)
+  assert.ok(solaA.candidatos.length >= 8)
+  // La segunda versión sólo puede sumar lo que ella agrega: UNA cláusula, la del saldo.
+  assert.equal(ambas.candidatos.length, solaA.candidatos.length + 1,
+    `la segunda versión agregó ${ambas.candidatos.length - solaA.candidatos.length} conocimiento(s) en vez de 1`)
+  const delSaldo = ambas.candidatos.filter((k) => /monto restante/.test(k.afirmacion))
+  assert.equal(delSaldo.length, 1)
+  // Y ninguna CLAVE puede repetirse en lo que va a la biblioteca. Se mide por clave y no por
+  // afirmación a propósito: una misma frase que cae en dos categorías produce dos conocimientos con
+  // claves distintas, y eso es diseño —«no se contempla revoques» es exclusión Y criterio técnico—.
+  const repetidas = [...ambas.candidatos.reduce((m, k) => m.set(k.clave, (m.get(k.clave) ?? 0) + 1), new Map())]
+    .filter(([, n]) => n > 1)
+  assert.deepEqual(repetidas.map(([c]) => c), [], `${repetidas.length} clave(s) entraron dos veces`)
+  // Y la frase común no puede aparecer bajo los DOS documentos: ése era el duplicado de 46 + 46.
+  const bajoDosDocs = ambas.candidatos.filter((k) => /No se contempla revoques/.test(k.afirmacion))
+    .map((k) => k.clave.split('.')[1])
+  assert.equal(new Set(bajoDosDocs).size, 1, `la misma frase quedó bajo ${new Set(bajoDosDocs).size} documentos`)
+})
+
+test('CABLEADO: la divergencia sale como hueco CONFLICTO, con la obra en la clave', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `ingerirLectura`, `const huecos = []`. Con ella la cláusula de
+  // U$S 31.500 desaparece del artefacto y —hasta este test— la suite seguía verde.
+  const r = ingerirTanda([elDocx(), elDocNativo()], constructores)
+  const conflictos = r.huecos.filter((h) => h.tipo === 'CONFLICTO')
+  assert.equal(conflictos.length, 2, 'las dos redacciones del saldo, una por versión')
+  const saldo = conflictos.find((h) => /31500/.test(h.porQue))
+  assert.ok(saldo, `la cláusula que difiere tiene que llegar al artefacto: ${conflictos.map((h) => h.porQue.slice(0, 50)).join(' | ')}`)
+  assert.equal(saldo.quienLoTiene, 'el dueño')
+  // La clave nombra el DOCUMENTO: dos obras con la misma cláusula divergente colisionaban.
+  assert.ok(saldo.clave.includes('contrato-de-obra-y-memoria-descriptiva'), saldo.clave)
+})
+
+test('CABLEADO: sin versión previa no se inventa ni deduplicación ni conflicto', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `ingerirLectura`, `const v = vistas[0] ?? null` — o sea, tratar a
+  // cualquier documento anterior como versión. La contraparte de los dos de arriba: el cableado
+  // tiene que PODER no hacer nada.
+  const otro = leerDocumentoDeProyecto(
+    COMUN.replace('ocho (8) meses', 'tres (3) meses')
+      .replace('ladrillón macizo de 20 cm', 'bloque de hormigón de 19 cm')
+      .replace('600 litros', '1100 litros')
+      .replace(/quedan completamente excluidas.*$/m, 'quedan incluidas en esta etapa.')
+      .replace('un encadenado de refuerzo', 'un dintel premoldeado')
+      .replace('exclusivamente la ejecución de la mano de obra', 'la provisión de materiales y la mano de obra')
+      .replace('espesor de 12 cm', 'espesor de 15 cm')
+      .replace('calidad H-21', 'calidad H-30')
+      .replace('a cargo del comitente', 'a cargo de la empresa constructora')
+      .replace('chapa trapezoidal calibre 25', 'losa de hormigón armado'),
+    { documento: 'OTRA OBRA.docx' },
+  )
+  const r = ingerirTanda([elDocx(), otro], constructores)
+  assert.equal(r.versiones.length, 0)
+  assert.equal(r.huecos.filter((h) => h.tipo === 'CONFLICTO').length, 0)
+  const sueltos = ingerirTanda([elDocx()], constructores).candidatos.length + ingerirTanda([otro], constructores).candidatos.length
+  assert.equal(r.candidatos.length, sueltos, 'dos documentos distintos aportan todo lo suyo')
+})
+
+test('CABLEADO: si el defecto vuelve, vuelve por el ORDEN — y el resultado no puede depender de él', () => {
+  // LÍMITE CONOCIDO, declarado acá para que no se descubra de nuevo: la deduplicación es POR
+  // CORRIDA y el almacén acumula por slug del NOMBRE. Dentro de una corrida el orden no puede
+  // cambiar cuántas frases entran; entre corridas, si Drive devuelve el otro archivo primero, las
+  // frases entran bajo el otro slug y el duplicado vuelve. Eso NO lo resuelve este cableado.
+  const ab = ingerirTanda([elDocx(), elDocNativo()], constructores)
+  const ba = ingerirTanda([elDocNativo(), elDocx()], constructores)
+  assert.equal(ab.candidatos.length, ba.candidatos.length, 'el orden no puede cambiar cuánto entra')
+  assert.equal(ab.huecos.length, ba.huecos.length)
+  // Y lo que SÍ cambia con el orden —bajo qué documento quedan las frases comunes— queda escrito:
+  assert.notDeepEqual(ab.candidatos.map((k) => k.clave).sort(), ba.candidatos.map((k) => k.clave).sort())
 })

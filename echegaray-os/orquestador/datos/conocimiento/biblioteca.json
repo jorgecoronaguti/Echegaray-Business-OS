@@ -39012,6 +39012,18 @@
    "fuentesEnConflicto": null
   },
   {
+   "id": "h:759ab7297b1eec8b",
+   "clave": "documento-proyecto.version.contrato-de-obra-y-memoria-descriptiva-ecsas-quattropani.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE",
+   "tipo": "CONFLICTO",
+   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» dice: «Saldo: el monto restante es de (U$S 31500 + IVA), el mismo será abonado mediante certificaciones quincenales de avance de obra, conforme a lo ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
+   "quienLoTiene": "el dueño",
+   "opciones": null,
+   "fuentesEnConflicto": [
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx"
+   ]
+  },
+  {
    "id": "h:7774eb4e73689e79",
    "clave": "cotizacion.indirectos.derechos_en_dir_transito_y_transporte.valor_de_columna",
    "tipo": "FALTA_DATO",
@@ -39237,18 +39249,6 @@
    "fuentesEnConflicto": null
   },
   {
-   "id": "h:96837b4b5a6c4563",
-   "clave": "documento-proyecto.version.SALDO: SERÁ ABONADO MEDIANTE CERTIFICACIONES QUINCENALES DE AVANCE DE OBRA, CONF",
-   "tipo": "CONFLICTO",
-   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» dice: «Saldo: será abonado mediante certificaciones quincenales de avance de obra, conforme al avance efectivamente ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
-   "quienLoTiene": "el dueño",
-   "opciones": null,
-   "fuentesEnConflicto": [
-    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
-    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani"
-   ]
-  },
-  {
    "id": "h:97f671b1111fd57c",
    "clave": "cotizacion.rubro.colocacion_de_k",
    "tipo": "FALTA_DATO",
@@ -39366,18 +39366,6 @@
    "fuentesEnConflicto": null
   },
   {
-   "id": "h:afc13bf0b89f5b3c",
-   "clave": "documento-proyecto.version.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE",
-   "tipo": "CONFLICTO",
-   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» dice: «Saldo: el monto restante es de (U$S 31500 + IVA), el mismo será abonado mediante certificaciones quincenales de avance de obra, conforme a lo ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
-   "quienLoTiene": "el dueño",
-   "opciones": null,
-   "fuentesEnConflicto": [
-    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani",
-    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx"
-   ]
-  },
-  {
    "id": "h:b08fa16c0c5f2d91",
    "clave": "cotizacion.indirectos.registro_constructores_de_obras_publicas.valor_de_columna",
    "tipo": "FALTA_DATO",
@@ -39430,6 +39418,18 @@
    "quienLoTiene": "las cotizaciones de Drive ya estudiadas: el dato no se perdió, hay que volver a leerlo",
    "opciones": null,
    "fuentesEnConflicto": null
+  },
+  {
+   "id": "h:bde71f571b63838b",
+   "clave": "documento-proyecto.version.contrato-de-obra-y-memoria-descriptiva.SALDO: SERÁ ABONADO MEDIANTE CERTIFICACIONES QUINCENALES DE AVANCE DE OBRA, CONF",
+   "tipo": "CONFLICTO",
+   "porQue": "hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx» dice: «Saldo: será abonado mediante certificaciones quincenales de avance de obra, conforme al avance efectivamente ejecutado.». «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» no lo dice. Cuál versión rige es una decisión del dueño, no una lectura.",
+   "quienLoTiene": "el dueño",
+   "opciones": null,
+   "fuentesEnConflicto": [
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA.docx",
+    "CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani"
+   ]
   },
   {
    "id": "h:bf5399bd87529054",

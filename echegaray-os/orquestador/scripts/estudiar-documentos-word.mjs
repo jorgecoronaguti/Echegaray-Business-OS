@@ -95,6 +95,55 @@ export function estadosDe({ archivo, lectura = null, interpretacion = null, cand
  */
 export const yaEntroEnEstaCorrida = (hash, vistos) => (hash && vistos.has(hash) ? vistos.get(hash) : null)
 
+/**
+ * EL CABLEADO DE LA DEDUPLICACIÓN, EN UNA FUNCIÓN QUE SE PUEDE PROBAR. PURA salvo por los
+ * constructores que valida.
+ *
+ * ═══ POR QUÉ ESTO NO PODÍA SEGUIR SIENDO CUATRO LLAMADAS ADENTRO DEL BUCLE ═══
+ *
+ * `relacionEntreDocumentos`, `versionPreviaDe`, `soloLoNuevo` y `conflictosDeVersion` estaban las
+ * cuatro probadas por separado — y las tres mutaciones que reintroducen el defecto entero viven en
+ * el CABLEADO, no en ellas: pasar la lectura completa en vez de `soloLoNuevo(...)`, no buscar
+ * versión previa, o no declarar el conflicto. Las tres sobrevivían con la suite en verde, y la
+ * cláusula de U$S 31.500 desaparecía del artefacto sin que nada se pusiera rojo.
+ *
+ * `vistas` son las lecturas ya procesadas en esta corrida, en orden. Devuelve lo que va a la
+ * biblioteca: los conocimientos que entran (sin las frases que ya entraron por la otra versión) y
+ * los huecos CONFLICTO de lo que las dos versiones dicen distinto.
+ */
+export function ingerirLectura(lectura, vistas = [], { conocimiento, hueco } = {}) {
+  const v = versionPreviaDe(lectura, vistas)
+  // Si es otra versión, entran SÓLO las frases que agrega: las comunes ya están bajo el original.
+  const interpretacion = v ? soloLoNuevo(lectura, v.relacion) : lectura
+  const { candidatos, rechazados } = aConocimientos(interpretacion, { conocimiento })
+  // Y lo que difiere NO se resuelve acá: se declara. Callarlo dejaría el conteo lindo y perdería la
+  // cláusula que cambia la plata.
+  const huecos = v ? conflictosDeVersion({ original: v.original, nueva: lectura, relacion: v.relacion, hueco }) : []
+  return { version: v, interpretacion, candidatos, rechazados, huecos }
+}
+
+/** La tanda entera, en orden. Es lo que hace el bucle del comando, sin la parte que sale a Drive. */
+export function ingerirTanda(lecturas = [], { conocimiento, hueco } = {}) {
+  const vistas = []
+  const candidatos = []
+  const huecos = []
+  const versiones = []
+  for (const l of lecturas) {
+    const r = ingerirLectura(l, vistas, { conocimiento, hueco })
+    candidatos.push(...r.candidatos)
+    huecos.push(...r.huecos)
+    if (r.version) {
+      versiones.push({
+        documento: l.documento, original: r.version.original.documento,
+        solape: r.version.relacion.solape, comunes: r.version.relacion.comunes,
+        divergencias: r.huecos.length, porQue: r.version.relacion.porQue,
+      })
+    }
+    vistas.push(l)
+  }
+  return { candidatos, huecos, versiones }
+}
+
 export const wordDe = (archivos = []) => archivos
   .filter((a) => !a.esCarpeta && formatoDe({ nombre: a.nombre, mime: a.mime }) === FORMATO.DOCUMENTO)
 
@@ -180,20 +229,19 @@ async function main() {
     // Deduplicar no puede significar elegir una versión y tirar la otra en silencio: qué contrato
     // rige es una decisión del dueño. Entran sólo las frases que esta versión agrega, y cada
     // divergencia sale como hueco CONFLICTO con las dos citas.
-    const v = r.lectura.ok ? versionPreviaDe(r.interpretacion, lecturas) : null
-    const interpretacion = v ? soloLoNuevo(r.interpretacion, v.relacion) : r.interpretacion
+    const ing = r.lectura.ok
+      ? ingerirLectura(r.interpretacion, lecturas, { conocimiento, hueco })
+      : { version: null, interpretacion: null, candidatos: [], rechazados: [], huecos: [] }
+    const { version: v, interpretacion, candidatos, rechazados } = ing
+    huecosTodos.push(...ing.huecos)
     if (v) {
-      const conflictos = conflictosDeVersion({ original: v.original, nueva: r.interpretacion, relacion: v.relacion, hueco })
-      huecosTodos.push(...conflictos)
       versiones.push({
         archivo: a.ruta ?? a.nombre, original: v.original.documento, solape: v.relacion.solape,
-        comunes: v.relacion.comunes, divergencias: conflictos.length,
+        comunes: v.relacion.comunes, divergencias: ing.huecos.length,
         porQue: v.relacion.porQue,
       })
     }
     if (r.lectura.ok) lecturas.push(r.interpretacion)
-
-    const { candidatos, rechazados } = r.lectura.ok ? aConocimientos(interpretacion, { conocimiento }) : { candidatos: [], rechazados: [] }
     fichas.push({ ...estadosDe({ archivo: a, lectura: r.lectura, interpretacion: r.lectura.ok ? interpretacion : null, candidatos }), rechazados, huecos: r.huecos?.length ?? 0, ...(v ? { versionDe: v.original.documento, solape: v.relacion.solape } : {}) })
     candidatosTodos.push(...candidatos)
     for (const h of r.huecos ?? []) {
