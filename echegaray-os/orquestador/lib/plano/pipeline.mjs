@@ -97,7 +97,9 @@ export async function interpretarLamina(doc, bytes, { pedir = pedirTexto, refres
     logger,
   })
   const crudo = extraerJson(r.texto)
-  if (!crudo) return { ...validarLamina({}, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: r, error: 'el modelo no devolvió JSON interpretable' }
+  // «el modelo no devolvió JSON» y «no había modelo» son dos cosas distintas, y decir la primera
+  // cuando pasó la segunda esconde exactamente lo que hay que ver.
+  if (!crudo) return { ...validarLamina({}, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: r, degradado: r?.degradado ?? null, error: r?.degradado ? `no se pudo mirar la lámina: ${r.degradado}` : 'el modelo no devolvió JSON interpretable' }
   guardarCache(llave, { crudo, archivo: doc.name, cuando: new Date().toISOString() })
   return { ...validarLamina(crudo, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: r }
 }
@@ -219,9 +221,45 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
     logger,
   })
   const crudo = extraerJson(r.texto)
-  if (!crudo) return { ...validarLamina({}, contexto), region: recorte.region, deCache: false, uso: r, error: 'el modelo no devolvió JSON interpretable' }
+  if (!crudo) return { ...validarLamina({}, contexto), region: recorte.region, deCache: false, uso: r, degradado: r?.degradado ?? null, error: r?.degradado ? `no se pudo mirar la vista: ${r.degradado}` : 'el modelo no devolvió JSON interpretable' }
   guardarCache(llave, { crudo, region: recorte.region?.titulo ?? null, cuando: new Date().toISOString() })
   return { ...validarLamina(crudo, contexto), region: recorte.region, deCache: false, uso: r }
+}
+
+/**
+ * EL PROVEEDOR DE RAZONAMIENTO, ENVUELTO PARA QUE SU AUSENCIA SEA UN DATO Y NO UNA EXCEPCIÓN.
+ *
+ * Devuelve un `pedirSeguro` con la misma firma y un registro de `degradacion` que va creciendo. Un
+ * fallo del modelo se convierte en `{ texto: null, degradado: <motivo> }`: los llamadores ya saben
+ * qué hacer cuando no hay JSON, y ahora además saben POR QUÉ no lo hay.
+ *
+ * `permitirModelo: false` ni siquiera intenta — es el escenario que hay que poder probar sin
+ * romperle el saldo a nadie.
+ */
+export function pedirConDegradacion(pedir, { permitirModelo = true } = {}) {
+  const degradacion = { hubo: false, permitirModelo, intentos: 0, fallos: 0, motivos: [] }
+  const anotar = (motivo, funcion) => {
+    degradacion.hubo = true
+    degradacion.fallos += 1
+    const ya = degradacion.motivos.find((m) => m.motivo === motivo)
+    if (ya) { ya.veces += 1; if (funcion && !ya.funciones.includes(funcion)) ya.funciones.push(funcion) }
+    else degradacion.motivos.push({ motivo, veces: 1, funciones: funcion ? [funcion] : [] })
+  }
+  const pedirSeguro = async (args) => {
+    if (!permitirModelo) {
+      anotar('el proveedor de razonamiento está apagado para esta corrida', args?.funcion)
+      return { texto: null, degradado: 'modelo apagado' }
+    }
+    degradacion.intentos += 1
+    try {
+      return await pedir(args)
+    } catch (e) {
+      const m = String(e?.message ?? e).slice(0, 160)
+      anotar(`el proveedor de razonamiento falló: ${m}`, args?.funcion)
+      return { texto: null, degradado: m }
+    }
+  }
+  return { pedirSeguro, degradacion }
 }
 
 /**
@@ -522,8 +560,15 @@ export function parecidosSinFusionar(elementos = []) {
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null } = {}) {
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true } = {}) {
   const t0 = Date.now()
+  // ═══ CLAUDE = 0 ═══
+  // El proveedor de razonamiento puede no estar: sin saldo, sin API key, caído, o apagado a mano
+  // con `permitirModelo: false`. Eso NO puede tirar la corrida: lo que está cacheado se sirve igual,
+  // lo determinístico corre igual, y lo que necesitaba mirar una lámina queda DECLARADO como no
+  // leído con su motivo. Una cotización que sale igual de completa sin el modelo estaría mintiendo;
+  // una que se cae no sirve para nada. La tercera opción —degradar y decirlo— es la única honesta.
+  const { pedirSeguro, degradacion } = pedirConDegradacion(pedir, { permitirModelo })
   const filas = await documentosDelProyecto({ query }, termino)
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
@@ -534,7 +579,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const anotar = (u) => { if (u) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
   for (const doc of planos.legibles) {
     const bytes = await google.descargarBytes(doc.drive_file_id)
-    const lam = await interpretarLamina(doc, bytes, { pedir, refrescar, logger })
+    const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
     anotar(lam.uso)
     // LA SEGUNDA PASADA VA SOBRE LA MISMA LÁMINA Y SÓLO SI QUEDÓ ALGO SIN MEDIR. Su resultado se
     // cachea junto al inventario: dos pasadas se pagan una vez por contenido, no una por corrida.
@@ -544,7 +589,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
       laminas.push({ ...lam, elementos: guardado.elementos, medicion: { ...guardado.medicion, deCache: true } })
       continue
     }
-    const m = await medir({ pedir, bloque: bloqueAdjunto({ data: bytes.toString('base64'), mediaType: doc.mime_type || 'application/pdf' }), elementos: lam.elementos, logger })
+    const m = await medir({ pedir: pedirSeguro, bloque: bloqueAdjunto({ data: bytes.toString('base64'), mediaType: doc.mime_type || 'application/pdf' }), elementos: lam.elementos, logger })
     anotar(m.uso)
     const medicion = { pendientes: m.pendientes, resueltos: m.resueltos, cambios: m.cambios, deCache: false }
     if (m.uso) guardarCache(llave, { elementos: m.elementos, medicion })
@@ -564,7 +609,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
       for (const lam of seg.laminas) {
         for (const rec of lam.recortes) {
           if (!rec.ok || !REGIONES_QUE_SE_MIRAN.includes(rec.region?.tipo)) continue
-          const r = await interpretarRegion(rec, { pedir, refrescar, archivo: seg.archivo, logger })
+          const r = await interpretarRegion(rec, { pedir: pedirSeguro, refrescar, archivo: seg.archivo, logger })
           anotar(r.uso)
           porRegion.push({ archivo: seg.archivo, ...r })
         }
@@ -594,7 +639,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   let correcciones = []
   if (conVeto) {
     const bruto = mapearPartidas(computo.items, catalogo)
-    const revision = await elegir({ pedir, mapeos: bruto.mapeos, logger })
+    const revision = await elegir({ pedir: pedirSeguro, mapeos: bruto.mapeos, logger })
     anotar(revision.uso)
     correcciones = revision.cambios ?? []
     for (const m of revision.mapeos) {
@@ -646,6 +691,23 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
      *  porque recorre todos los elementos y casi ningún consumidor la necesita. */
     obraDesdeCotizacion() { return obraDesdeCotizacion({ termino, computo, mapeo, procesos, composiciones: comps }) },
     ia: { llamadas: usos.length, usos, deCache: laminas.filter((l) => l.deCache).length },
+    // ═══ EL CONTRATO DE DEGRADACIÓN ═══
+    // `hubo: false` significa que NADA se resolvió con el modelo apagado o roto. `hubo: true` dice
+    // qué falló, cuántas veces y en qué función, y qué láminas quedaron sin leer por eso. Una
+    // corrida degradada que devuelve un resultado de aspecto normal es la que este repo no acepta.
+    degradacion: {
+      ...degradacion,
+      laminasNoLeidas: laminas.filter((l) => l.error).map((l) => ({ archivo: l.archivo ?? null, porQue: l.error })),
+      regionesNoLeidas: porRegion.filter((r) => r.error).length,
+      // Con el modelo apagado, lo que igual salió: caché, CAD, Base Maestra, cómputo y control.
+      loQueSalioIgual: {
+        laminasDeCache: laminas.filter((l) => l.deCache).length,
+        cadMedido: documental.cad.length,
+        catalogo: catalogo.length,
+        elementosComputados: computo.items.length,
+        partidasMapeadas: mapeo.mapeados,
+      },
+    },
     fuentePrecios: FUENTE.BASE_MAESTRA,
   }
 }
