@@ -88,6 +88,15 @@ if (r.control.preguntasSueltas.length) {
   for (const p of r.control.preguntasSueltas.slice(0, 6)) console.log(`   [${String(p.destraba.length).padStart(2)}] ${String(p.pregunta).slice(0, 120)}`)
 }
 
+const obra = r.obraDesdeCotizacion()
+console.log('\n── GENEALOGÍA HACIA OBRA ──')
+console.log(`  ${obra.porQue}`)
+console.log(`  cada actividad conserva su origen: ${obra.conservaOrigen}`)
+if (obra.actividades[0]) {
+  console.log('  ejemplo de una actividad que puede nacer:')
+  for (const l of obra.actividades[0].origen.cadena) console.log(`     ${l}`)
+}
+
 console.log('\n── A vs B ──')
 for (const c of corridas) console.log(`  corrida ${c.n}: ${c.r.computo.computados}/${c.r.computo.detectados} computados · ${c.r.mapeo.mapeadas} mapeadas · ${c.r.ia.llamadas} llamadas · USD ${c.usd.toFixed(4)} · ${(c.ms / 1000).toFixed(1)} s`)
 const igual = A.r.huella === B.r.huella

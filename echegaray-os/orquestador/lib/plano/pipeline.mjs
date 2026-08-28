@@ -30,6 +30,7 @@ import { controlar } from './control.mjs'
 import { ingerir } from './documental.mjs'
 import { armarProyecto } from './proyecto.mjs'
 import { resolverConCad } from './medicion-cad.mjs'
+import { obraDesdeCotizacion } from './genealogia.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { medir } from './conteo.mjs'
@@ -372,6 +373,9 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     // resultado y no en un script aparte porque una reproducibilidad que hay que reconstruir a mano
     // no se verifica nunca.
     huella: huella(seleccion),
+    /** La obra que esta cotización puede crear, con el origen de cada cantidad. Se calcula a pedido
+     *  porque recorre todos los elementos y casi ningún consumidor la necesita. */
+    obraDesdeCotizacion() { return obraDesdeCotizacion({ termino, computo, mapeo, procesos, composiciones: comps }) },
     ia: { llamadas: usos.length, usos, deCache: laminas.filter((l) => l.deCache).length },
     fuentePrecios: FUENTE.BASE_MAESTRA,
   }

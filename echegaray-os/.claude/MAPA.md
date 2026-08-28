@@ -26,7 +26,11 @@ scripts · 14 timers en producción.
 | obras, avance, partes | `src/features/obras/` + `src/features/control-obras/` · grilla en `lib/obras-grilla.mjs` |
 | permisos, roles, quién ve qué | `src/features/auth/` · y **la verdad final es RLS en Postgres**, no el front |
 | documentación técnica del cliente → cómputo → cotización (XSAS) | `orquestador/lib/plano/` — el borde es `pipeline.mjs`; **la partida la decide `seleccion.mjs`, que es PURO, y no el modelo** · corridas: `scripts/plano-a-cotizacion.mjs` y `scripts/plano-reproducibilidad.mjs` |
-| abrir un archivo que llegó del cliente (PDF, DXF, DWG, imagen, planilla) | `orquestador/lib/ingesta/` — un adaptador por formato detrás de `registro.mjs`. **El `.dwg` necesita un conversor que hoy no está en la VM y sale `REQUIERE_CONVERSION`** |
+| abrir un archivo que llegó del cliente (PDF, DXF, DWG, imagen, planilla) | `orquestador/lib/ingesta/` — un adaptador por formato detrás de `registro.mjs`. El `.dwg` **se abre solo**: LibreDWG 0.14 compilado en `~/.local/bin/dwg2dxf`, probado contra AC1032 y AC1027 |
+| partir una lámina en sus vistas y recortarlas | `ingesta/segmentar.mjs` (por TÍTULO, no por espacio en blanco) + `ingesta/recortes.mjs` + `ingesta/recortar.py` (lo único que no es Node: rasterizar necesita MuPDF) |
+| cruzar plano + CAD + pliego + memoria como UN proyecto | `orquestador/lib/plano/proyecto.mjs` — completar ≠ contradecir; los conflictos salen declarados y bloquean la cotización |
+| buscar un dato técnico que XSAS no tiene | `orquestador/lib/plano/investigacion.mjs` (cascada, la web es el ÚLTIMO paso) · `scripts/xsas-investigar.mjs` |
+| la regresión completa de un proyecto, A y B | `orquestador/scripts/xsas-regresion.mjs <termino> [--aprender]` |
 | las referencias del CIRCOT (mano de obra, Modelo III galpón) | `orquestador/lib/circot/` + el dataset versionado en `orquestador/datos/circot/` · se importa con `scripts/circot-importar.mjs` |
 | cuántas HH, qué cuadrilla, cuántos días | `orquestador/lib/plano/cuadrilla.mjs` (método Navas/CIRCOT 2012, verificado contra el ejemplo publicado) |
 | la inteligencia: modelos, proveedores, costo, degradación | `orquestador/lib/ia/` — **la única puerta**. El port del Work Fabric es `engines/index.mjs` |
@@ -105,6 +109,15 @@ cuota de una herramienta de desarrollo, y el control de arriba lo caza.
   en producción (React #419). Sólo `npm run build` lo atrapa.
 - **`count: 'exact'` con RLS** recorre la tabla evaluando la policy fila por fila. Y una policy con
   `auth.uid()` suelto se evalúa por fila; envuelta en `(select auth.uid())` pasa a InitPlan.
+- **Una lámina de CAD NO se segmenta por espacio en blanco.** El marco, las cotas y los llamados
+  conectan todos los dibujos: agrupar por cercanía devuelve una sola región que tapa la hoja, con
+  cualquier holgura. Se segmenta por los TÍTULOS de vista, que son los textos de mayor cuerpo.
+- **El espacio de la geometría de un PDF es el `viewBox`, no `getViewport().width/height`**, que
+  aplica el `/Rotate`. Y del lado de MuPDF pasa al revés: `page.rect` ya viene rotado y hay que
+  cruzar con `rotation_matrix`. Los dos errores juntos daban regiones «más grandes que la hoja» y
+  recortes vacíos.
+- **`execFile` con un proceso hablador lo mata.** `dwg2dxf` emite 163.851 líneas para un DWG de
+  AutoCAD 2018 y el plano se perdía por «stderr maxBuffer length exceeded». Va `spawn`.
 - **`orq:test` mientras otra cosa toca Postgres** da `deadlock detected` en
   `escritura-economica.pg.test.mjs`. No es un defecto del test: es contención. Una corrida por VM, y
   nada más consultando la base al mismo tiempo.

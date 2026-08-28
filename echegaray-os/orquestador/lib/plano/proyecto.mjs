@@ -223,7 +223,12 @@ export function hechosDeCad(medicion, { documento } = {}) {
     // `*U22` son bloques anónimos del editor; `_Dot`, `_Oblique`, `_OPEN90` son las puntas de
     // flecha y los símbolos de acotación que AutoCAD trae de fábrica. Ni unos ni otros son piezas
     // del proyecto, y contarlos produce «4 unidades de _Dot» adentro de un presupuesto.
-    if (/^[*_]/.test(b.bloque)) continue
+    // `*U22` y `A$C051ae63b` son bloques anónimos del editor —AutoCAD usa los dos prefijos según
+    // la versión—; `_Dot`, `_Oblique` y `_OPEN90` son las puntas de flecha y los símbolos de
+    // acotación que trae de fábrica. Ninguno es una pieza del proyecto, y contarlos produce «4
+    // unidades de _Dot» adentro de un presupuesto. El `A$C` lo destapó el segundo proyecto: salía
+    // como un conflicto entre tres CAD sobre un bloque que no existe para la obra.
+    if (/^([*_]|A\$)/i.test(b.bloque)) continue
     salida.push(hecho({
       elemento: b.bloque, atributo: 'cantidad_insertada', valor: b.cantidad, unidad: 'un',
       clase: CLASE_FUENTE.CAD, documento,
