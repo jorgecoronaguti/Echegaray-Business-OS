@@ -27,6 +27,7 @@ import { ETAPA, PROCEDENCIA, conocimiento, documento, hueco, HUECO, ESTADO, camb
 import { CLASE, VIA_CAMPO, clasificar, cuerpoDelBloque, extraerConReglas, segmentar } from './clasificar.mjs'
 import { anotarUso, buscarFuente, descubrir } from './fuentes.mjs'
 import { leerPdfLocal, pareceriaPdf, traer, traerPdf } from './buscar.mjs'
+import path from 'node:path'
 import { ORIGEN_EXTERNO, aplicarPoliticaContenidoExterno } from '../web/contenido-externo.mjs'
 
 /** Las doce etapas, en orden. El orden ES el contrato: la salida las lista todas. */
@@ -90,8 +91,12 @@ export async function adquirir({ url = null, archivo = null, fetchImpl = fetch, 
   if (archivo) {
     const p = await leerPdfLocal(archivo)
     if (!p.ok) return { ok: false, origen: 'archivo', porQue: p.porQue }
-    const env = aplicarPoliticaContenidoExterno({ texto: p.texto, origen: ORIGEN_EXTERNO.DOCUMENTO, titulo: archivo, consulta })
-    return { ok: true, origen: 'archivo', url: null, titulo: archivo, texto: p.texto, hash: `sha256:${p.hash}`, formato: 'pdf', paginas: p.paginas, truncado: p.truncado, caracteres: p.caracteres, inyeccion: env.inyeccion, bloque: env.contenido_externo, deCache: false }
+    // El título es el NOMBRE del archivo, no su ruta: la ruta entra en la clave del conocimiento y
+    // deja claves ilegibles atadas al directorio temporal de quien lo corrió. La ruta completa sigue
+    // en la evidencia, que es donde sirve.
+    const titulo = path.basename(archivo)
+    const env = aplicarPoliticaContenidoExterno({ texto: p.texto, origen: ORIGEN_EXTERNO.DOCUMENTO, titulo, consulta })
+    return { ok: true, origen: 'archivo', url: null, titulo, texto: p.texto, hash: `sha256:${p.hash}`, formato: 'pdf', paginas: p.paginas, truncado: p.truncado, caracteres: p.caracteres, inyeccion: env.inyeccion, bloque: env.contenido_externo, deCache: false }
   }
   const esPdf = pareceriaPdf(url)
   const t = esPdf
