@@ -185,6 +185,24 @@ export function reemplazar(fuentes, id, { porId, cuando = null } = {}) {
   return fuentes.map((f) => (f.id === id ? { ...f, estado: ESTADO.REEMPLAZADA, notas: `${f.notas ? `${f.notas} · ` : ''}reemplazada por «${porId}»${cuando ? ` el ${cuando}` : ''}`, revisado: cuando ?? f.revisado } : f))
 }
 
+/**
+ * DEJAR CONSTANCIA DE QUE MIRAMOS LA FUENTE. PURA sobre la lista.
+ *
+ * `revisado` es lo único que apaga `vencidas()`, y hasta ahora no lo escribía nadie: la tarea de
+ * fondo volvía a proponer las mismas catorce fuentes en cada corrida, para siempre. Revisar NO es
+ * lo mismo que usar —`anotarUso` toca `consultada`—: una fuente se puede consultar diez veces sin
+ * que nadie haya mirado si sigue vigente, y confundir las dos cosas es cómo un dato viejo pasa por
+ * al día.
+ *
+ * `hash` queda guardado para poder contestar «¿cambió?» la próxima vez sin volver a bajarla entera.
+ */
+export function revisar(fuentes, id, { cuando, hash = null, vigencia = null, version = null } = {}) {
+  if (!cuando) throw new Error('revisar necesita la fecha en que se miró: sin fecha no hay revisión que caduque')
+  return fuentes.map((f) => (f.id === id
+    ? { ...f, revisado: cuando, hash: hash ?? f.hash, vigencia: vigencia ?? f.vigencia, version: version ?? f.version }
+    : f))
+}
+
 /** Cuánto pesa una fuente al ordenarla. Menor es mejor. El estado modifica la autoridad, no la
  *  reemplaza: una fuente OFICIAL degradada sigue pesando más que un foro curado. PURA. */
 export const AJUSTE_ESTADO = Object.freeze({ CURADA: -0.5, EVALUADA: 0, DESCUBIERTA: 0.25, DEGRADADA: 1.5, REEMPLAZADA: 3 })
