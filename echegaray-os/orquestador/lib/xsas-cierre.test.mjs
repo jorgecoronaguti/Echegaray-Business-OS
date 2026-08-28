@@ -9,7 +9,7 @@ import { atender } from './xsas-gateway.mjs'
 import { toolsDelNucleo, toolsDeSkill, ordenarPorAfinidad } from './xsas-resolutores.mjs'
 import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { permisosDeRol, escribeAfuera, autorizadaAEscribir } from './xsas-permisos.mjs'
-import { tacharComercial, veComercial } from './xsas-visibilidad.mjs'
+import { tacharComercial, veComercial, filtrarPorVisibilidad } from './xsas-visibilidad.mjs'
 
 const actor = (rol) => ({ id: `${rol}@ecsas.com.ar`, nombre: rol, rol, permisos: permisosDeRol(rol) })
 const pedir = (mensaje, rol, deps) => atender({ canal: 'app', tipo: 'mensaje', mensaje, actor: actor(rol) }, deps)
@@ -250,4 +250,11 @@ test('A · y al jefe de obra se le dice que NO PUEDE, en vez de improvisar una e
   assert.match(r.respuesta, /jefe_obra/)
   assert.match(r.respuesta, /plano\.cotizar/)
   assert.match(r.degradacion, /sin permiso/)
+})
+
+test('A-bis · una tool sin texto propio sigue devolviendo null, no una respuesta en blanco', () => {
+  const { respuesta } = filtrarPorVisibilidad({
+    actor: actor('jefe_obra'), datos: { costo: 1 }, respuesta: null,
+  })
+  assert.equal(respuesta, null, 'null es «no trae texto»; «» parecería una respuesta vacía')
 })

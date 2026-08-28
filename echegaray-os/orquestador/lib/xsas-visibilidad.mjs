@@ -49,11 +49,17 @@ export const TACHADO = '[restringido]'
  */
 const PLATA_EN_TEXTO = /(\$|u\$s|usd|ars)\s*-?[\d.]+(,\d+)?|\b-?\d{1,3}(\.\d{3})+(,\d+)?\b/gi
 
-/** Tacha los importes de un texto. Devuelve `{texto, tachado}`. PURA. */
+/**
+ * Tacha los importes de un texto. Devuelve `{texto, tachado}`. PURA.
+ *
+ * `null` sale `null` y no cadena vacía: una tool que no trae texto propio ya devolvía `null`, y
+ * convertirlo en `''` hacía que la respuesta pareciera existir y estar en blanco. Se vio en
+ * producción con `os.costos_obras`.
+ */
 export function tacharPlataEnTexto(texto) {
-  const original = String(texto ?? '')
-  const salida = original.replace(PLATA_EN_TEXTO, TACHADO)
-  return { texto: salida, tachado: salida !== original }
+  if (typeof texto !== 'string') return { texto: texto ?? null, tachado: false }
+  const salida = texto.replace(PLATA_EN_TEXTO, TACHADO)
+  return { texto: salida, tachado: salida !== texto }
 }
 
 /**
