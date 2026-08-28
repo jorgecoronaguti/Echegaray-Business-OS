@@ -88,15 +88,26 @@ export function documentoDe(cot, { hubuoConocimiento = true, obtenidoEn = null }
  * `traer` es una función `(archivo) => Promise<Buffer>`: quién baja los bytes no es asunto de este
  * módulo, y así el circuito entero se puede probar sin tocar Drive.
  */
-export async function estudiarTanda(archivos = [], { traer, yaEstudiado = () => false, obtenidoEn = null, opciones = {} } = {}) {
+export async function estudiarTanda(archivos = [], {
+  traer, yaEstudiado = () => false, hashConocido = () => null, recordarHash = () => {},
+  obtenidoEn = null, opciones = {},
+} = {}) {
   const cotizaciones = []
   const noLeidos = []
   const salteados = []
   for (const a of archivos) {
-    if (a.hash && yaEstudiado(a.hash)) { salteados.push({ ...a, porQue: 'ya estudiado: el contenido no cambió' }); continue }
+    // ═══ LA IDEMPOTENCIA BARATA VA ANTES DE BAJAR ═══
+    // El hash es del CONTENIDO y sólo se puede calcular con los bytes en la mano, así que saltear
+    // «después de bajar» ahorra el estudio pero no los 3,5 MB. `hashConocido` recuerda el hash de
+    // (archivo, fecha de modificación): si Drive dice que no se tocó, es el mismo contenido y no
+    // hace falta traerlo. Si la fecha cambió, se baja y se vuelve a mirar.
+    const conocido = await hashConocido(a)
+    if (conocido && yaEstudiado(conocido)) { salteados.push({ ...a, hash: conocido, porQue: 'ya estudiado y sin cambios desde la última corrida' }); continue }
     let bytes
     try { bytes = await traer(a) } catch (e) { noLeidos.push({ ...a, porQue: `no se pudo bajar: ${String(e?.message ?? e).slice(0, 160)}` }); continue }
     const r = await estudiarUno({ ...a, bytes })
+    await recordarHash(a, r.hash)
+    if (r.hash && yaEstudiado(r.hash)) { salteados.push({ ...a, hash: r.hash, porQue: 'ya estudiado: el contenido es idéntico al de otra corrida' }); continue }
     if (r.ok) cotizaciones.push(r)
     else noLeidos.push(r)
   }
