@@ -37,7 +37,7 @@ import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { VIA, medidor as nuevoMedidor } from '../conocimiento/metricas.mjs'
 import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
-import { FUENTE, faltaDato } from './fuente.mjs'
+import { FUENTE, faltaDato, tieneNumero } from './fuente.mjs'
 
 /** Dónde queda la interpretación de una lámina. Fuera del repo: es caché, no fuente. */
 export const DIR_CACHE = process.env.ORQ_PLANO_CACHE || path.join(process.env.HOME || '/tmp', '.cache', 'echegaray-planos')
@@ -248,7 +248,7 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
  * medir. Es el mismo `Number(null)` que ya había hecho que `horasNecesarias(null)` devolviera 0
  * horas en vez de un hueco. Lo encontró el test de regresión de `elementosComputados`.
  */
-export { tieneNumero } from './fuente.mjs'
+export { tieneNumero }
 
 /**
  * POR QUÉ VÍA SE RESOLVIÓ UNA CANTIDAD. PURA — y exportada para poder probarla por la ruta real.

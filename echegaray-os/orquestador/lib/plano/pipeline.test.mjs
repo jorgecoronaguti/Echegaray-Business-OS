@@ -332,3 +332,19 @@ test('«lo que salió igual sin modelo» cuenta lo COMPUTADO, no todos los eleme
   assert.equal(tieneNumero(null), false)
   assert.equal(tieneNumero(0), true, 'un cero medido SÍ es un número: si dijera false, no sería un control')
 })
+
+test('NEGATIVO: el módulo se puede IMPORTAR y sus funciones internas existen de verdad', async () => {
+  // El defecto: `export { X } from './otro.mjs'` publica el binding para quien importe, pero NO
+  // crea binding local. Los dos usos internos de `tieneNumero` tiraban `ReferenceError` en la
+  // primera corrida — y typecheck, eslint y los 11.000 tests seguían en VERDE, porque ningún test
+  // llamaba a `correr()` de punta a punta y los tests importaban la función re-exportada.
+  // Verde en todo y el producto muerto. Este test importa el módulo y ejerce la función.
+  const m = await import('./pipeline.mjs')
+  assert.equal(typeof m.tieneNumero, 'function')
+  assert.equal(m.tieneNumero(null), false)
+  assert.equal(m.tieneNumero(0), true)
+  // Y las tres funciones que `correr()` usa por dentro, ejercidas desde afuera.
+  assert.equal(typeof m.viaDeCantidad, 'function')
+  assert.equal(typeof m.viaDePartida, 'function')
+  assert.equal(typeof m.pedirConDegradacion, 'function')
+})
