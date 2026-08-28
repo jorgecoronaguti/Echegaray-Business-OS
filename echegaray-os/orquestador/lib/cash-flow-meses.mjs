@@ -51,6 +51,24 @@ export const mesesDelAnio = (anio) => ventanas(TIPO, { anio }).map((v) => v.desd
 const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
 
 /**
+ * LOS TEXTOS DEL TITULAR, EXPORTADOS PARA QUE EL TEST LOS FIJE DESDE ACÁ Y NO LOS TIPEE.
+ *
+ * Un test que repite la cadena literal prueba que alguien escribió la misma cadena dos veces. Lo que
+ * hay que fijar es el LÍMITE (37 caracteres) y lo que el rótulo NO puede volver a decir.
+ *
+ * Ninguno pasa de 37 caracteres — ver `bloqueHero` para por qué ese número manda.
+ */
+export const ROTULOS_HERO = Object.freeze({
+  variacion: 'VARIACIÓN DE CAJA DEL AÑO',
+  variacionNota: 'entra − sale · NO es el resultado',
+  cierre: 'CIERRE AL 31/12 CON LO YA VENDIDO',
+  cierreNota: 'sin ventas nuevas · es un piso',
+})
+
+/** El tope medido de la columna del hero. Lo verifica el test, no la buena voluntad. */
+export const ANCHO_HERO = 37
+
+/**
  * La celda del presupuesto de un mes, buscada POR FECHA y no por posición.
  *
  * PRESUPUESTO_MESES es un rango VERTICAL de doce filas, así que `INDEX(rango;n)` es inequívoco.
@@ -98,8 +116,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   }
 
   poner(FILA.titulo, 0, `Cash Flow Mensual ${anio}`)
-  poner(FILA.subtitulo, 0,
-    '="Cuánto entra, cuánto sale y cómo cierra cada mes · criterio percibido · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
+  poner(FILA.subtitulo, 0, formulaSubtitulo(refFecha, celda(COL.tiempo0, FILA.cabecera)))
   // EL MENSUAL TAMBIÉN MARCA DÓNDE ESTAMOS (13/08/2026). Tenía el atajo el semanal y no éste, y el
   // control del pipeline lo reclamaba igual en las dos pestañas — reclamaba un atajo que en el Mensual
   // no existía. Doce columnas se recorren de un vistazo, pero saber cuál es el mes en curso no es un
@@ -121,6 +138,36 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
 
   meta.filaFin = filas.length
   return { filas, meta }
+}
+
+/**
+ * EL SUBTÍTULO — la línea donde el cuadro declara con qué criterio está armado.
+ *
+ * ═══ POR QUÉ EL SALDO RECONSTRUIDO SE DECLARA ACÁ Y NO EN OTRO LADO (28/08/2026) ═══
+ *
+ * Desde hoy los meses anteriores al corte de CAJA publican un saldo inicial DESPEJADO hacia atrás
+ * (ver `expresionInicio`). Es aritmética sobre las propias cifras del cuadro, no un dato traído de
+ * ninguna parte — y por eso mismo NO es un hecho: es un CÁLCULO, y si al libro de movimientos le
+ * falta algo, el faltante se absorbe entero en esos saldos. Un número que se dedujo tiene que
+ * decirlo donde se lo lee, o el lector supone que alguien lo registró.
+ *
+ * Va en el subtítulo y no en el rótulo de la fila porque el rótulo de la columna A se corta contra
+ * la celda de enero; y no en una fila nueva porque el contrato del cuadro es que después de la última
+ * fila no va nada. El subtítulo es texto que desborda sobre una fila vacía: entra entero.
+ *
+ * Y APARECE SÓLO CUANDO HAY ALGO QUE DECLARAR. Si el corte de CAJA cae en el primer mes del cuadro
+ * no hay ningún saldo reconstruido, y una advertencia permanente sobre algo que no está pasando
+ * enseña a saltearla. La condición se evalúa en la hoja porque `CAJA_FECHA_SALDO` es un rango con
+ * nombre: el generador no sabe —ni tiene que saber— dónde está el corte al momento de escribir.
+ *
+ * @param {string|null} refFecha rango con nombre de la fecha del saldo declarado, o null
+ * @param {string} primerMes celda del encabezado del primer mes del cuadro
+ */
+export function formulaSubtitulo(refFecha, primerMes) {
+  const base = '"Cuánto entra, cuánto sale y cómo cierra cada mes · criterio percibido · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")'
+  if (!refFecha) return `=${base}`
+  const aviso = `" · los meses anteriores al "&TEXT(${refFecha};"d/mm")&" muestran un saldo CALCULADO hacia atrás, no registrado"`
+  return `=${base}&IF(${primerMes}<${refFecha};${aviso};"")`
 }
 
 /**
@@ -147,6 +194,25 @@ export function vinculoHoy(gid, meta) {
  *
  * Ninguna recalcula nada: si mañana cambia una fórmula del cuerpo, el hero cambia con ella. Un
  * titular con su propia aritmética es la forma más elegante de tener dos verdades en una pestaña.
+ *
+ * ═══ DOS RÓTULOS QUE NOMBRABAN OTRA COSA (28/08/2026) ═══
+ *
+ * "RESULTADO DEL AÑO" no era un resultado. La cifra es entra − sale por criterio PERCIBIDO: eso es
+ * una VARIACIÓN DE CAJA. El resultado del ejercicio es devengado y vive en el P&L —regla de oro 4 y
+ * 5, y la 6: nunca confundir facturación con rentabilidad ni rentabilidad con caja—. Que el número
+ * fuera correcto no salvaba al rótulo: el dueño leía "resultado $(23.136.331)" y buscaba una pérdida
+ * que no existe.
+ *
+ * "CIERRE PROYECTADO DEL AÑO" se lee como un pronóstico y es un PISO. Los ingresos proyectados salen
+ * únicamente de la pestaña Cobranzas, que es un libro de cuentas por cobrar: sólo tiene lo ya vendido
+ * y facturado, y no debe tener otra cosa —Cobranzas no es un pipeline comercial—. Los egresos, en
+ * cambio, se proyectan por calendario y están completos. Un cierre armado con TODOS los egresos
+ * futuros y SÓLO los ingresos ya contratados es, por construcción, el peor caso: el rótulo tiene que
+ * decir con qué se armó. La consecuencia medible de esa asimetría la reporta
+ * `cash-flow-asimetria.mjs`, que no vive acá porque el hero no calcula.
+ *
+ * EL LÍMITE DE LOS 37 CARACTERES no es una preferencia: el auditor de pantalla midió que la columna
+ * del hero corta ahí. Un rótulo más honesto pero truncado no dice nada.
  */
 function bloqueHero(poner, meta) {
   const [s1, s2, s3, s4] = meta.hero.slots
@@ -158,10 +224,10 @@ function bloqueHero(poner, meta) {
   // da un stock. Los meses anteriores al corte van vacíos, así que sumarlos daría cualquier cosa.
   const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
 
-  poner(R, s1, 'RESULTADO DEL AÑO')
+  poner(R, s1, ROTULOS_HERO.variacion)
   poner(V, s1, `=N(${T('resultado')})`)
   // Corto: el auditor de pantalla midió que 49 caracteres no entran en la columna del hero (37).
-  poner(V, s1 + 1, 'entra − sale, ejercicio 2026')
+  poner(V, s1 + 1, ROTULOS_HERO.variacionNota)
 
   poner(R, s2, 'ENTRA EN EL AÑO')
   poner(V, s2, `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`)
@@ -171,9 +237,9 @@ function bloqueHero(poner, meta) {
   poner(V, s3, `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`)
   poner(V, s3 + 1, `=IF(N(${T('egresoProyectado')})=0;"";"incluye "&${plata(T('egresoProyectado'))}&" todavía a pagar")`)
 
-  poner(R, s4, 'CIERRE PROYECTADO DEL AÑO')
+  poner(R, s4, ROTULOS_HERO.cierre)
   poner(V, s4, `=N(${diciembre})`)
-  poner(V, s4 + 1, 'Saldo proyectado al 31 de diciembre')
+  poner(V, s4 + 1, ROTULOS_HERO.cierreNota)
 }
 
 /** Una columna de mes: el ancla o el eslabón, las cuatro medidas, el resultado, el saldo y las variaciones. */
@@ -188,6 +254,13 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   poner(f.saldoInicial, col, refSaldo && refFecha
     ? expresionInicio({
       desde, hasta, refSaldo, refFecha,
+      // LOS MESES ANTERIORES AL CORTE YA NO VAN VACÍOS (28/08): se despejan de la propia cadena,
+      // `inicio(mes) = inicio(mes+1) − resultado(mes)`. Se engancha al INICIO del mes siguiente y no
+      // al cierre del propio mes para no cerrar un ciclo de referencias — el por qué está en
+      // `expresionInicio`, junto a la aritmética. El último mes no tiene siguiente: va vacío, y el
+      // vacío se propaga solo hacia la izquierda cuando el corte cae fuera del ejercicio.
+      siguiente: j === meta.cab.n - 1 ? null : celda(col + 1, f.saldoInicial),
+      resultadoDelPeriodo: celda(col, f.resultado),
       // SIN TECHO EN EL CORTE (06/08): la línea de "posteriores al corte" del total NO tiene techo,
       // así que un REAL fechado DESPUÉS del corte ya está adentro del saldo declarado. Restarlo sólo
       // hasta el corte lo dejaba en el inicio Y en la columna de su fecha: $11,1M contados dos veces
