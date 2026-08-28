@@ -9,7 +9,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL, vinculoHoy } from './cash-flow-meses.mjs'
+import {
+  grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL, vinculoHoy,
+  ROTULOS_HERO, ANCHO_HERO, formulaSubtitulo,
+} from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
 import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
@@ -80,13 +83,39 @@ test('el mes que ancla descuenta lo que ya está adentro del saldo declarado', (
   assert.match(f, /"REAL"/, 'el ancla descuenta lo REAL del período en adelante')
 })
 
-test('los meses anteriores al corte quedan sin cadena en vez de inventar un saldo', () => {
+test('LOS MESES ANTERIORES AL CORTE SE DESPEJAN HACIA ATRÁS, no quedan vacíos', () => {
+  // ═══ EL CONTRATO CAMBIÓ EL 28/08/2026 ═══
+  //
+  // Acá se exigía que enero fuera `""`. Iba vacío por una razón declarada —"no hay con qué
+  // reconstruirlo"— que resultó falsa: hay la MISMA identidad de la cadena, leída al revés. El efecto
+  // de dejarlo vacío era que el cierre del año no se podía seguir con el ojo desde enero, y el titular
+  // sumaba doce meses contra una cadena que arrancaba en agosto.
   const { filas, meta } = armar()
   const f = en(filas, meta.fila.saldoInicial, meta.cab.col0)
-  assert.ok(f.startsWith('=IF('), f)
-  assert.ok(f.includes('""'), 'un mes anterior al corte no se puede reconstruir: va vacío, no en cero')
-  // Y su saldo final tampoco: un cero se leería como "cerró el mes sin plata", que nadie afirmó.
+  const iniFeb = `$C$${meta.fila.saldoInicial}`
+  const resEne = `$B$${meta.fila.resultado}`
+  assert.ok(f.includes(`N(${iniFeb})-N(${resEne})`), `enero se despeja de febrero menos su resultado: ${f}`)
+  // Y NO del cierre del propio mes: `cierre = inicio + resultado` ya existe, así que apuntar ahí
+  // cerraría un ciclo de referencias y Sheets pondría #REF! en las dos filas.
+  assert.ok(!f.includes(`$B$${meta.fila.saldoFinal}`), 'referencia circular: inicio y cierre se leerían entre sí')
+  // El saldo final NO cambia: inicio + resultado ya da el inicio del mes siguiente por construcción.
   assert.ok(en(filas, meta.fila.saldoFinal, meta.cab.col0).startsWith(`=IF(N($B$${meta.fila.saldoInicial})=0;""`))
+})
+
+test('el ÚLTIMO mes no tiene de dónde despejar: si el corte cae fuera del año, va vacío', () => {
+  const { filas, meta } = armar()
+  const dic = en(filas, meta.fila.saldoInicial, meta.cab.col0 + meta.cab.n - 1)
+  // Su rama "anterior al corte" es `""` y no una referencia a la columna N, que no existe.
+  assert.ok(dic.startsWith('=IF(EOMONTH($M$7;0)+1<=CAJA_FECHA_SALDO;"";'), dic)
+})
+
+test('LA CADENA HACIA ATRÁS ES ACÍCLICA: ningún inicio anterior al corte lee su propio cierre', () => {
+  const { filas, meta } = armar()
+  for (let j = 0; j < meta.cab.n; j++) {
+    const propio = `$${letra(meta.cab.col0 + j)}$${meta.fila.saldoFinal}`
+    assert.ok(!en(filas, meta.fila.saldoInicial, meta.cab.col0 + j).includes(propio),
+      `el mes ${j + 1} lee su propio cierre: Sheets detecta la circularidad por el grafo, no por la rama`)
+  }
 })
 
 test('cada mes encadena con el cierre del anterior', () => {
@@ -153,7 +182,49 @@ test('el hero sale del propio cuadro: cuatro cifras, ninguna con aritmética pro
   // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
   // da un stock, y los meses anteriores al corte van vacíos.
   assert.equal(en(filas, meta.hero.valor, meta.hero.slots[3]), `=N($M$${meta.fila.saldoFinal})`)
-  assert.equal(en(filas, meta.hero.rotulo, meta.hero.slots[3]), 'CIERRE PROYECTADO DEL AÑO')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS RÓTULOS DEL TITULAR — que la cifra correcta no salve a un nombre que dice otra cosa
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el titular NO llama "resultado" a una variación de caja ni "proyectado" a un piso', () => {
+  const { filas, meta } = armar()
+  const r1 = en(filas, meta.hero.rotulo, meta.hero.slots[0])
+  const n1 = en(filas, meta.hero.nota, meta.hero.slots[0])
+  const r4 = en(filas, meta.hero.rotulo, meta.hero.slots[3])
+  const n4 = en(filas, meta.hero.nota, meta.hero.slots[3])
+
+  // (1) La cifra es entra − sale por criterio PERCIBIDO: eso es caja, no resultado. El resultado del
+  // ejercicio es devengado y vive en el P&L (reglas de oro 4, 5 y 7).
+  assert.equal(r1, ROTULOS_HERO.variacion)
+  assert.ok(/VARIACIÓN DE CAJA/.test(r1), 'volvió a llamarse resultado algo que es caja')
+  assert.ok(!/^RESULTADO/.test(r1), 'el rótulo viejo volvió')
+  assert.ok(/NO es el resultado/.test(n1), 'la nota tiene que desmentir la lectura, no sólo describir la cuenta')
+
+  // (2) El cierre se arma con TODOS los egresos futuros y SÓLO los ingresos ya contratados: es un piso.
+  assert.equal(r4, ROTULOS_HERO.cierre)
+  assert.ok(/YA VENDIDO/.test(r4), 'el rótulo tiene que declarar con qué se armó la cifra')
+  assert.ok(!/PROYECTADO/.test(r4), '"proyectado" se lee como pronóstico y esto es un piso')
+  assert.ok(/sin ventas nuevas/.test(n4) && /piso/.test(n4), n4)
+
+  // EL LÍMITE MEDIDO: la columna del hero corta a los 37 caracteres. Un rótulo más honesto pero
+  // truncado no dice nada — por eso el tope se verifica, no se confía.
+  for (const t of Object.values(ROTULOS_HERO)) {
+    assert.ok([...t].length <= ANCHO_HERO, `"${t}" tiene ${[...t].length} caracteres y el hero corta en ${ANCHO_HERO}`)
+  }
+})
+
+test('el subtítulo DECLARA que los saldos previos al corte son calculados, y sólo cuando los hay', () => {
+  const { filas } = armar()
+  const sub = en(filas, FILA.subtitulo, 0)
+  assert.ok(/CALCULADO hacia atrás/.test(sub), `un número despejado tiene que decirlo donde se lo lee: ${sub}`)
+  assert.ok(/no registrado/.test(sub), sub)
+  // Aparece bajo condición: si el corte cae en el primer mes del cuadro no hay nada que declarar, y
+  // una advertencia permanente sobre algo que no pasa enseña a saltearla.
+  assert.ok(sub.includes('IF($B$7<CAJA_FECHA_SALDO;'), sub)
+  // Sin el rango con nombre no se inventa una advertencia sobre una fecha que no existe.
+  assert.ok(!formulaSubtitulo(null, '$B$7').includes('CALCULADO'))
 })
 
 test('publica los tres nombres que el resto del archivo necesita, sobre las FILAS de la matriz', () => {

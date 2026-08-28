@@ -102,7 +102,69 @@ export const CONVENIO_POR_CODIGO = {
   'OF M': 'Oficial',
   A: 'Ayudante',
   'A M': 'Ayudante',
+  // ═══ LOS DOS CÓDIGOS QUE APARECIERON EN LA QUINCENA 17/08–31/08 (28/08/2026) ═══
+  //
+  // El dueño: *"revisa bien el sheet jornales porque algunos empleados tienen aumento de categoria"*.
+  // Los tenía razón: en el bloque 526-543 de «Obreros 26» hay dos códigos que esta tabla no conocía,
+  // y sin ellos `convenioDe` devuelve null, la persona se queda SIN PISO y el control de convenio no
+  // la puede mirar. Tres personas quedaban afuera.
+  //
+  // · `OF E` — Pastran Marcelo y Quiroga Sebastián SUBIERON de Oficial a Oficial Especializado.
+  //   La lectura es directa: E = Especializado, y la escala UOCRA tiene esa categoría.
+  //
+  // · `M OF` — Castillo Carlos, alta del 19/08. **ESTO ES UNA INFERENCIA, NO UN HECHO.** Se lee como
+  //   Medio Oficial —la escala la tiene, y la M va ADELANTE, al revés de `OF M`/`A M` donde la M del
+  //   final era el gremio metalúrgico— pero nadie lo declaró. Se aplicó bajo pedido explícito del
+  //   dueño de aplicar el cuadro, con la lectura declarada en el mensaje del 28/08 y sin respuesta
+  //   en contra. **Define el piso de una persona: si es otra cosa, se corrige acá y se rehace.**
+  'OF E': 'Oficial Especializado',
+  'M OF': 'Medio Oficial',
 }
+
+/**
+ * ═══ CUÁNTO SE AUMENTA LA HORA — DECISIÓN DEL DUEÑO, 28/08/2026 ═══
+ *
+ * *"quiero aumentarles el 50% de lo q pide el piso de uocra"*, después de rechazar explícitamente la
+ * primera lectura: *"te pedi el 50% del piso no el 1,5, hiciste todo lo contrario"*.
+ *
+ * EL AUMENTO ES UN MONTO, NO UN MULTIPLICADOR DEL PISO. A lo que cada uno cobra HOY se le suma el
+ * 50% del básico de convenio de SU categoría. No es `piso × 1,5` —eso borraría lo que cada uno
+ * negoció y le daría lo mismo al que cobra 4.500 que al que cobra 6.500— y tampoco es `piso × 0,5`,
+ * que sería una rebaja del 42% y dejaría a los 17 por debajo del mínimo legal.
+ *
+ * Que el aumento se calcule sobre el PISO y no sobre el sueldo de cada uno es lo que lo hace parejo
+ * dentro de una categoría: dos oficiales reciben el mismo monto aunque partan de jornales distintos.
+ *
+ * MAGNITUD, medida sobre la quincena 17/08–31/08 real (17 personas, 1.496 h): la masa pasa de
+ * $8.049.700 a $12.719.379, **+$4.669.679 por quincena**. Anualizado sobre 24 quincenas y con las
+ * cargas sociales del 38,62% que sale del F931 real: **+$155.379.240**.
+ */
+export const PORCENTAJE_DE_AUMENTO = 0.5
+
+/**
+ * NÚCLEO PURO: la hora que se paga después del aumento.
+ *
+ * `jornal` es lo que la persona cobra hoy; `basico` es el de su categoría en la escala vigente.
+ * Devuelve `null` cuando no hay básico — y `null` NO es cero: "no sé cuánto le corresponde" y "le
+ * corresponde nada" son afirmaciones distintas, y publicar la segunda sería falso.
+ *
+ * EL PISO SIGUE SIENDO UN PISO. El resultado nunca puede quedar por debajo del básico de convenio:
+ * el aumento es una decisión de la empresa, el mínimo es una obligación legal. Hoy ninguno de los 17
+ * queda cerca de esa frontera, pero un jornal bajo lo suficiente la cruzaría sin que nadie mire.
+ */
+export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
+  if (basico == null || !Number.isFinite(Number(basico))) return null
+  // `Number(null)` es 0 y `Number('')` también: sin esta línea, un porcentaje NO DECLARADO entraba
+  // como "cero por ciento" y la pestaña publicaba "aumento aplicado" con aumento de cero. Lo detectó
+  // el test negativo, no yo. NULL NO ES CERO, tampoco cuando JavaScript insiste en que sí.
+  if (porcentaje == null || porcentaje === '' || typeof porcentaje === 'boolean'
+    || !Number.isFinite(Number(porcentaje)) || Number(porcentaje) < 0) {
+    throw new TypeError(`un aumento de ${porcentaje} sobre el piso no describe ningún acuerdo salarial`)
+  }
+  const base = Number.isFinite(Number(jornal)) ? Number(jornal) : 0
+  return Math.max(base + Number(basico) * Number(porcentaje), Number(basico))
+}
+
 
 /** NÚCLEO PURO: a qué categoría del convenio equivale un código de la planilla, o null. */
 export function convenioDe(codigo, tabla = CONVENIO_POR_CODIGO) {
