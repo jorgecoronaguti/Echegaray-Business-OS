@@ -15,6 +15,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA, TITULO_EQUILIBRIO, TITULO_NECESIDAD } from './caja-graficos.mjs'
+import { SALIDAS, COL_NECESIDAD, esEjecutado } from './caja-necesidad-baldes.mjs'
 import { COL, MESES } from './caja-anexo-series.mjs'
 
 const SERIES = {
@@ -145,7 +146,7 @@ test('EL DE NECESIDAD SEPARA LAS DOS MAGNITUDES EN DOS EJES', () => {
   assert.equal(nec.stackedType, 'STACKED', 'las salidas del día se suman, no se comparan entre sí')
   const barras = nec.series.filter((x) => x.type === 'COLUMN')
   const curvas = nec.series.filter((x) => x.type === 'LINE')
-  assert.equal(barras.length, 5, 'cheques, proveedores, sueldos, cargas e impuestos')
+  assert.equal(barras.length, SALIDAS.length, 'lo ya salido + cheques, proveedores, sueldos, cargas e impuestos')
   assert.equal(curvas.length, 2, 'el saldo cobrando lo previsto y el saldo sin cobrar un peso')
   assert.ok(barras.every((x) => x.targetAxis === 'LEFT_AXIS'))
   assert.ok(curvas.every((x) => x.targetAxis === 'RIGHT_AXIS'))
@@ -219,4 +220,44 @@ test('el cliente de Google expone getCharts: sin eso el módulo no puede borrar'
   const src = readFileSync(new URL('./google.mjs', import.meta.url), 'utf8')
   assert.match(src, /async getCharts\(fileId\)/, 'falta el lector de gráficos en el cliente')
   assert.match(src, /charts\(chartId,spec\(title\)\)/, 'y tiene que traer el título')
+})
+
+test('LAS DOS CURVAS DE SALDO NO SE DIBUJAN CON LA COLUMNA DE UNA BARRA', () => {
+  // EL DEFECTO QUE ATRAPA (28/08/2026): las columnas del gráfico estaban escritas a mano
+  // (`[9,10,11,12,13]` para las barras, 14 y 15 para las curvas). Agregar el balde de «Ya salió»
+  // corre todo lo que está a su derecha, así que con los números viejos la curva del saldo se habría
+  // dibujado con la columna de impuestos: un gráfico perfecto de otra cosa, sin un solo error. Acá
+  // las columnas salen de `COL_NECESIDAD`, que las cuenta sobre la misma lista que las escribe.
+  const nec = graficos(7, ANEXO, SERIES).requests[0].addChart.chart.spec.basicChart
+  const columnaDe = (serie) => serie.series.sourceRange.sources[0].startColumnIndex + 1
+  const barras = nec.series.filter((x) => x.type === 'COLUMN')
+  const curvas = nec.series.filter((x) => x.type === 'LINE')
+  assert.deepEqual(barras.map(columnaDe), [...COL_NECESIDAD.salidas])
+  assert.deepEqual(curvas.map(columnaDe), [COL_NECESIDAD.saldoCobrando, COL_NECESIDAD.saldoSinCobrar])
+  assert.equal(nec.domains[0].domain.sourceRange.sources[0].startColumnIndex + 1, COL_NECESIDAD.dia)
+  // Y ninguna columna se dibuja dos veces: dos series sobre el mismo rango es una que falta.
+  const todas = [...barras, ...curvas].map(columnaDe)
+  assert.equal(new Set(todas).size, todas.length)
+})
+
+test('LO QUE YA SALIÓ VA AL PIE DE LA PILA Y CON OTRO COLOR', () => {
+  // La pregunta del gráfico es cuánta plata hay que CONSEGUIR. Si lo ya ejecutado se pinta con la
+  // misma paleta que los cinco rubros pendientes, la pila se lee como una sola necesidad y el dueño
+  // vuelve a ver $4,2M de «Proveedores» que ya se pagaron. Va primero (abajo) y en gris claro.
+  const nec = graficos(7, ANEXO, SERIES).requests[0].addChart.chart.spec.basicChart
+  assert.ok(esEjecutado(SALIDAS[0]), 'el balde de lo ejecutado es el primero de la pila')
+  const barras = nec.series.filter((x) => x.type === 'COLUMN')
+  const claridad = (c) => c.red + c.green + c.blue
+  assert.ok(barras.slice(1).every((x) => claridad(x.color) < claridad(barras[0].color)),
+    'la barra de lo ya pagado es la más clara de la pila: no compite con lo que hay que decidir')
+})
+
+test('EL SUBTÍTULO DICE CON PALABRAS CUÁL ES CUÁL, y nombra las dos mitades', () => {
+  // La leyenda nombra las series; el subtítulo tiene que decir cuál de las dos mitades hay que ir a
+  // conseguir. El dueño pidió *"que el gráfico muestre la información tal cual es"*: si la frase no
+  // está, el gráfico separa los datos y no explica la separación.
+  const spec = graficos(7, ANEXO, SERIES).requests[0].addChart.chart.spec
+  assert.match(spec.subtitle, /YA SALIÓ/)
+  assert.match(spec.subtitle, /FALTA PAGAR/)
+  assert.match(spec.subtitle, /descontado del saldo/, 'dice POR QUÉ lo ya salido no es necesidad')
 })

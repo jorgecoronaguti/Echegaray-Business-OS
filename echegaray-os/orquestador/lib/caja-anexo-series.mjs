@@ -42,6 +42,9 @@
 import { terminoLibro, LIBRO } from './libro-sumas.mjs'
 import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
+// LA TAXONOMÍA DE LOS BALDES VIVE APARTE: qué es cada balde es una decisión de negocio (qué plata ya
+// salió y qué plata falta), y acá sólo se escribe la fórmula que la aplica. Ver caja-necesidad-baldes.
+import { SALIDAS } from './caja-necesidad-baldes.mjs'
 
 /** Cuántos días mira cada curva. El dueño pidió 60 y 60: dos meses a cada lado del día de hoy. */
 export const DIAS_HISTORIA = 60
@@ -54,27 +57,6 @@ export const TOP_N = 5
 export const DIAS_TOP = 30
 /** La ventana del gráfico de necesidad diaria. El dueño la pidió a 30 días, día por día. */
 export const DIAS_NECESIDAD = 30
-
-/**
- * ═══ LOS CINCO BALDES DE LA SALIDA (20/08/2026) ═══
- *
- * El dueño: *"que el gráfico me indique los rubros o lo que me va a ir haciendo descargos de dinero,
- * es decir, cheques, proveedores, sueldos, cargas sociales, impuestos"*. Son cinco baldes y tienen
- * que ser MUTUAMENTE EXCLUYENTES: si una fila cae en dos, el total del día miente hacia arriba y el
- * gráfico dice que hace falta plata que no hace falta.
- *
- * Por eso «Proveedores» NO tiene lista propia: es el RESTO —todos los egresos menos los otros
- * cuatro—. Así ningún rubro queda afuera del gráfico por no haberlo enumerado, que es como se pierde
- * un vencimiento. Y si algún día un sueldo se pagara con cheque, el resto daría negativo y se vería:
- * un balde que se solapa tiene que gritar, no esconderse.
- */
-export const BALDES = Object.freeze({
-  sueldos: Object.freeze(['Nómina · Jornales de obra', 'Nómina · Sueldos administración']),
-  cargas: Object.freeze(['Nómina · Cargas sociales', 'Nómina · Gremiales', 'Deuda previsional (planes de pago)']),
-  impuestos: Object.freeze(['Impuestos']),
-  /** Cheques se define por INSTRUMENTO, no por rubro: un cheque a un corralón sigue siendo un cheque. */
-  cheques: Object.freeze(['cheque', 'echeq']),
-})
 
 /**
  * LOS RÓTULOS SON EL CONTRATO. `caja-pestana.mjs` no sabe en qué fila del anexo quedó cada serie:
@@ -159,12 +141,77 @@ export const saldoProyectado = (d) =>
 /**
  * NÚCLEO PURO: el saldo al día `d` SIN contar una sola cobranza.
  *
- * Es el piso del escenario: la caja de hoy menos todo lo que sale de acá a `d`. Contesta la pregunta
- * que el plan no contesta —«¿y si no me pagan?»— y es la única de las dos curvas que no depende de
- * que un tercero cumpla. La distancia entre las dos es exactamente cuánto se está apostando a cobrar.
+ * Es el piso del escenario: la caja de hoy menos todo lo que FALTA PAGAR de acá a `d`. Contesta la
+ * pregunta que el plan no contesta —«¿y si no me pagan?»— y es la única de las dos curvas que no
+ * depende de que un tercero cumpla. La distancia entre las dos es cuánto se está apostando a cobrar.
+ *
+ * ═══ RESTABA TAMBIÉN LO REAL, Y ESO ES PEDIR DOS VECES LA MISMA PLATA (28/08/2026) ═══
+ *
+ * La fórmula era `total − todos los egresos del tramo`, SIN filtro de estado. Pero `REAL` significa
+ * exactamente "ya pasó por el banco o por la caja física", o sea que ya está DESCONTADO adentro de
+ * `CAJA_TOTAL_DISPONIBLE` (ver `caja-canales.mjs`: un REAL siempre lo absorbe el extracto, la línea
+ * de posteriores al corte o el arqueo). Restarlo otra vez hundía la curva del piso por plata que no
+ * hay que conseguir — medido el 28/08: $4.200.000 de una sola fila de Compras ya pagada.
+ *
+ * Es el MISMO defecto que este archivo ya declara resuelto para la otra curva en su cabecera: *"REAL
+ * queda afuera de la proyección… sin esa simetría, el día de hoy contaría dos veces la misma plata"*.
+ * `saldoProyectado` lo respetaba (suma `NO_REAL`); esta curva era la que faltaba.
+ *
+ * Y ahora las dos curvas y las barras cierran entre sí: lo que esta fórmula resta en el tramo
+ * `[hoy, d]` es EXACTAMENTE la suma de los baldes `PENDIENTES` de esos días. La barra que se ve es
+ * la plata que mueve la línea.
  */
 export const saldoSinCobrar = (d) =>
-  `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), signo: -1, medida: 'magnitud' })}`
+  `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), signo: -1, estados: NO_REAL, medida: 'magnitud' })}`
+
+/** Los filtros de UN balde, tal como los pide `terminoLibro`. Sin ventana: la pone el que suma. */
+const filtrosDe = (b) => ({
+  signo: -1,
+  estados: [...b.estados],
+  ...(b.instrumentos ? { instrumentos: [...b.instrumentos] } : {}),
+  ...(b.rubros ? { rubros: [...b.rubros] } : {}),
+})
+
+/**
+ * Los baldes ESPECÍFICOS que comparten grupo de estados con `b` — los que hay que restarle a un
+ * residual. Se comparan los estados y no la clave: es lo que hace que «Proveedores» le reste
+ * únicamente los cheques/sueldos/cargas/impuestos PENDIENTES y no los que ya se pagaron.
+ */
+const hermanosDe = (b) => SALIDAS.filter((x) => !x.resto && String(x.estados) === String(b.estados))
+
+/**
+ * NÚCLEO PURO: cuánta plata sale de UN balde el día `d`, y cuánta entra por cobranzas.
+ *
+ * Todo en `magnitud`: el gráfico apila salidas, y apilar números negativos dibuja las barras para
+ * abajo y hace ilegible el cruce con las curvas de saldo, que es exactamente lo que hay que mirar.
+ *
+ * La ventana es de un día: `desde` el día y `hasta` el siguiente.
+ *
+ * ═══ EL ESTADO LO PONE EL BALDE, Y ES LA MITAD DE LA RESPUESTA (28/08/2026) ═══
+ *
+ * Acá decía *"no se filtra por estado — lo REAL de hoy también hay que pagarlo"*. Es falso al revés:
+ * lo REAL ya se pagó, y por eso ya está descontado del saldo. Ahora cada balde declara sus estados
+ * en `SALIDAS` y esta función no sabe cuáles son — así no puede haber una lista de estados acá y
+ * otra en el gráfico.
+ *
+ * UN BALDE RESIDUAL SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS: se le restan sus hermanos
+ * específicos sobre la MISMA ventana y los MISMOS estados. Restarle un cheque ya pagado a los
+ * proveedores pendientes daría un negativo inventado.
+ */
+export function necesidadDelDia(d, balde) {
+  const ventana = { desde: dia(d), hasta: dia(d + 1), medida: 'magnitud' }
+  // La cobranza del día ya no la dibuja ningún gráfico (la reemplazaron las dos curvas de saldo), y
+  // se conserva porque es el único término de ENTRADA que este bloque sabe armar.
+  if (balde === 'cobranzas') return `=${terminoLibro({ ...ventana, signo: 1 })}`
+  const b = SALIDAS.find((x) => x.clave === balde)
+  // FALLA CERRADO Y RUIDOSO: una clave que no existe devolvería una celda vacía, y una barra que
+  // falta en un gráfico apilado no se ve — se lee como un día sin vencimientos.
+  if (!b) throw new Error(`necesidadDelDia: no existe el balde "${balde}"`)
+  const suma = (f) => terminoLibro({ ...ventana, ...f })
+  if (!b.resto) return `=${suma(filtrosDe(b))}`
+  const otros = hermanosDe(b).map((x) => suma(filtrosDe(x)))
+  return `=${suma(filtrosDe(b))}${otros.map((t) => `-${t}`).join('')}`
+}
 
 /**
  * NÚCLEO PURO: el top de contrapartes por signo, con SORTN/QUERY sobre el libro y NUNCA con valores
@@ -185,38 +232,11 @@ export const saldoSinCobrar = (d) =>
  * NO DERRAMA: se pide `INDEX(...;k;col)`, una celda por vez. Un QUERY que derrama sobre las celdas de
  * abajo es incontrolable para un generador que reescribe la pestaña entera.
  *
+ *
  * @param {1|-1} signo entra (1) o sale (−1)
  * @param {number} k la posición del ranking, 1-based
  * @param {1|2} col 1 = el nombre de la contraparte, 2 = el importe
  */
-/**
- * NÚCLEO PURO: cuánta plata sale de UN balde el día `d`, y cuánta entra por cobranzas.
- *
- * Todo en `magnitud`: el gráfico apila salidas, y apilar números negativos dibuja las barras para
- * abajo y hace ilegible el cruce con la cobranza, que es exactamente lo que hay que mirar.
- *
- * La ventana es de un día: `desde` el día y `hasta` el siguiente. No se filtra por estado —lo REAL
- * de hoy también hay que pagarlo— salvo en el resto, donde se restan los otros cuatro sobre la misma
- * ventana para que el balde de proveedores no pueda contar dos veces.
- */
-export function necesidadDelDia(d, balde) {
-  const ventana = { desde: dia(d), hasta: dia(d + 1), medida: 'magnitud' }
-  const salida = (extra) => terminoLibro({ ...ventana, signo: -1, ...extra })
-  if (balde === 'cobranzas') return `=${terminoLibro({ ...ventana, signo: 1 })}`
-  if (balde === 'cheques') return `=${salida({ instrumentos: [...BALDES.cheques] })}`
-  if (balde === 'sueldos') return `=${salida({ rubros: [...BALDES.sueldos] })}`
-  if (balde === 'cargas') return `=${salida({ rubros: [...BALDES.cargas] })}`
-  if (balde === 'impuestos') return `=${salida({ rubros: [...BALDES.impuestos] })}`
-  // PROVEEDORES ES EL RESTO. Ver `BALDES`: enumerarlo sería dejar afuera el rubro que nadie listó.
-  const otros = [
-    salida({ instrumentos: [...BALDES.cheques] }),
-    salida({ rubros: [...BALDES.sueldos] }),
-    salida({ rubros: [...BALDES.cargas] }),
-    salida({ rubros: [...BALDES.impuestos] }),
-  ]
-  return `=${salida()}-${otros.join('-')}`
-}
-
 export function topContraparte(signo, k, col) {
   const c = LIBRO.col
   const q = `select ${c.contraparte}, sum(${c.importe}) `
@@ -286,20 +306,24 @@ export function bloqueSeries(h) {
 
   // ═══ LA NECESIDAD DIARIA (20/08/2026) ═══
   //
-  // Seis columnas contiguas porque el gráfico las apila en ese orden: cinco baldes de salida y, por
-  // encima, la cobranza del día como línea. La pregunta que contesta es una sola y es la que el dueño
-  // hizo: *"¿cubrimos día a día esa necesidad?"*. Un total mensual no la contesta — la plata no falta
-  // en el mes, falta el martes.
+  // Columnas contiguas en el orden en que el gráfico las apila: el día, los seis baldes de salida
+  // —«Ya salió» primero, al pie de la pila— y las dos curvas de saldo. La pregunta que contesta es
+  // una sola y es la que el dueño hizo: *"¿cubrimos día a día esa necesidad?"*. Un total mensual no
+  // la contesta — la plata no falta en el mes, falta el martes.
   // ═══ ESTA SERIE VIVE EN LA H Y SIGUIENTES, DETRÁS DE LA COLUMNA DE PROSA ═══
   //
   // Las columnas B a G ya tienen dueño y formato: la F es FECHA para las otras series y la G es la
   // nota. Poner «Cargas sociales» en la F dibujaba seis millones de pesos como «30/12/1899», y correr
-  // la prosa dejaba los contadores del anexo sin formato de número. Las siete columnas de este bloque
-  // arrancan después de todo eso.
+  // la prosa dejaba los contadores del anexo sin formato de número. Las columnas de este bloque
+  // arrancan después de todo eso, y cuántas son lo dice `COL_NECESIDAD` — que las cuenta sobre
+  // `SALIDAS` en vez de tenerlas escritas, porque agregar un balde corre todo lo que está a su
+  // derecha y `ANCHO_ANEXO` tiene que crecer con él (con la grilla corta, `addChart` devuelve 400 y
+  // NO SE DIBUJA NINGÚN gráfico: el lote es uno solo).
+  // LOS RÓTULOS DE LAS SERIES SALEN DE `SALIDAS`: son los que Sheets pone en la leyenda, y una
+  // leyenda que no coincide con lo que se sumó es un gráfico que miente en el único lugar donde se lee.
   push([ROTULOS.necesidad, '', '', '', '', '',
-    `Salidas por rubro y el saldo que queda, próximos ${DIAS_NECESIDAD} días`,
-    'Día', 'Cheques', 'Proveedores', 'Sueldos', 'Cargas sociales', 'Impuestos', 'Saldo si cobra',
-    'Saldo si NO cobra'])
+    `Lo que ya salió, lo que falta pagar por rubro y el saldo que queda, próximos ${DIAS_NECESIDAD} días`,
+    'Día', ...SALIDAS.map((b) => b.rotulo), 'Saldo si cobra', 'Saldo si NO cobra'])
   const fNec0 = h.n + 1
   for (let i = 0; i < DIAS_NECESIDAD; i++) {
     // LA FECHA VA EN LA B, DEBAJO DE SU PROPIO ENCABEZADO. En la A va el rótulo del bloque —así lo
@@ -312,12 +336,15 @@ export function bloqueSeries(h) {
     //
     // Van DOS saldos y la distancia entre ellos es la pregunta comercial:
     //   · «Saldo si cobra»    — caja de hoy más todo lo proyectado. El escenario del plan.
-    //   · «Saldo si NO cobra» — caja de hoy menos las salidas, sin un peso de cobranza. El piso.
+    //   · «Saldo si NO cobra» — caja de hoy menos lo que FALTA PAGAR, sin un peso de cobranza. El piso.
     // El día en que cualquiera de las dos cruza el cero es el día que hay que ir a resolver, y se ve
     // sin leer un número.
+    //
+    // LAS DOS MIRAN SÓLO `NO_REAL`, y la primera barra de la pila —«Ya salió»— no las mueve: esa
+    // plata ya está adentro del saldo del que parten las dos. Si la barra empujara la curva, el
+    // gráfico estaría pidiendo dos veces la misma plata.
     push(['', '', '', '', '', '', '', `=${dia(i)}`,
-      necesidadDelDia(i, 'cheques'), necesidadDelDia(i, 'proveedores'), necesidadDelDia(i, 'sueldos'),
-      necesidadDelDia(i, 'cargas'), necesidadDelDia(i, 'impuestos'),
+      ...SALIDAS.map((b) => necesidadDelDia(i, b.clave)),
       saldoProyectado(i), saldoSinCobrar(i)])
   }
   const fNec1 = h.n
