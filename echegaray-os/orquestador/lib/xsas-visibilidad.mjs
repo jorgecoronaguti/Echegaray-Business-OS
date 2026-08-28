@@ -65,7 +65,7 @@ export const UMBRAL = 1000
  * Se compara contra la clave completa o contra su último tramo (`cantidad_total` → `total` no, pero
  * `hh_previstas` → `hh` sí), por eso el patrón lleva bordes de palabra sobre `_`.
  */
-export const CANTIDAD_VISIBLE = /(^|_)(cantidad|cantidades|unidad|unidades|hh|hs|horas|hora|jornadas|dias|dia|semanas|meses|mes|anio|ano|year|personas|empleados|dotacion|plantel|piezas|elementos|items|documentos|comprobantes|movimientos|registros|filas|count|cuenta_de|n|nro|numero_de|metros|ml|m2|m3|kg|kilos|tn|toneladas|litros|km|superficie|area|volumen|peso|longitud|distancia|capacidad|ladrillos|bolsas|tornillos|avance|porcentaje|dias_mora|antiguedad|orden|indice|version|revision|pagina|paginas|lamina|laminas)($|_)/i
+export const CANTIDAD_VISIBLE = /(^|_)(cantidad|cantidades|unidad|unidades|hh|hs|horas|hora|jornadas|dias|dia|semanas|meses|mes|anio|ano|year|personas|empleados|dotacion|plantel|piezas|elementos|items|documentos|comprobantes|movimientos|registros|filas|count|cuenta_de|n|nro|numero_de|metros|ml|m2|m3|kg|kilos|tn|toneladas|litros|km|superficie|area|volumen|peso|longitud|distancia|capacidad|ladrillos|bolsas|tornillos|porcentaje|dias_mora|antiguedad|orden|indice|version|revision|pagina|paginas|lamina|laminas)($|_)/i
 
 /**
  * LOS TOKENS QUE HACEN QUE UNA CLAVE SEA PLATA, VALGA LO QUE VALGA.
@@ -90,7 +90,7 @@ export const CANTIDAD_VISIBLE = /(^|_)(cantidad|cantidades|unidad|unidades|hh|hs
 // conteo, y vetarlo tacharía el cómputo del jefe de obra, que es justo lo que este filtro protege.
 // Un total de plata es siempre grande, así que lo agarra el umbral igual — el veto sólo hace falta
 // para lo que es plata SIENDO chico, que un total nunca es.
-export const TOKEN_DE_PLATA = /(^|_)(precio|precios|costo|costos|venta|ventas|vendido|margen|markup|utilidad|rentabilidad|ganancia|ganancias|beneficio|cascada|importe|importes|monto|montos|iva|honorario|honorarios|arancel|tarifa|tasa|tna|tea|cft|coeficiente|valorizacion|valorizado|cotizado|saldo|saldos|caja|cobrado|cobrar|pagado|pagar|deuda|deudas|facturado|certificado|anticipo|retencion|descuento|neto|bruto|jornal|jornales|sueldo|sueldos|liquidacion|fondo_cese|disponible|descubierto|capital|interes|intereses|cuota|cuotas|usd|ars|pesos|dolares|plata|dinero|efectivo|proyectado|entra|sale)($|_)/i
+export const TOKEN_DE_PLATA = /(^|_)(precio|precios|costo|costos|venta|ventas|vendido|margen|markup|utilidad|rentabilidad|ganancia|ganancias|beneficio|cascada|importe|importes|monto|montos|valor|valores|iva|honorario|honorarios|arancel|tarifa|tasa|tna|tea|cft|coeficiente|valorizacion|valorizado|cotizado|saldo|saldos|caja|cobrado|cobrar|pagado|pagar|deuda|deudas|facturado|certificado|anticipo|retencion|descuento|neto|bruto|jornal|jornales|sueldo|sueldos|liquidacion|fondo_cese|disponible|descubierto|capital|interes|intereses|cuota|cuotas|usd|ars|pesos|dolares|plata|dinero|efectivo|proyectado|entra|sale)($|_)/i
 
 /** Claves cuyo valor es un identificador y no una magnitud: nunca se tachan aunque sean largos. */
 export const IDENTIFICADOR = /(^|_)(id|ids|uuid|clave|codigo|hash|correlation_id|request_id|drive_id|file_id|sheet_id|spreadsheet_id)($|_)/i
@@ -112,6 +112,10 @@ export const TACHADO = '[restringido]'
 /** Las unidades que, escritas justo después de un número, lo convierten en una cantidad y no en
  *  plata. Sin esto el texto se contradecía con la estructura: `hh_previstas: 1200` se mostraba y
  *  «1.200 HH» se tachaba en la misma respuesta. */
+// `avance` sale de las cantidades visibles y entra acá: un avance de obra es de lo poco que un jefe
+// de obra sí necesita, y se tachaba en el texto («avance 23%») mientras se mostraba en la estructura.
+// Como porcentaje nunca llega al umbral, alcanza con que el texto deje de tacharlo cuando lleva su
+// rótulo al lado.
 const UNIDADES = 'hh|hs|horas?|jornadas?|d[ií]as?|personas?|unidades?|piezas?|elementos?|items?|documentos?|comprobantes?|m2|m3|ml|metros?|km|kg|kilos?|tn|toneladas?|litros?|ladrillos?|bolsas?|tornillos?|l[áa]minas?|p[áa]ginas?'
 const NO_SEGUIDO_DE_UNIDAD = `(?!\\s*(${UNIDADES})\\b)`
 
@@ -125,7 +129,8 @@ const PLATA_EN_TEXTO = [
   new RegExp(`-?\\b\\d{1,3}([.\\s]\\d{3})+(,\\d+)?\\b${NO_SEGUIDO_DE_UNIDAD}`, 'gi'),
   new RegExp(`-?\\b\\d{5,}(,\\d+)?\\b${NO_SEGUIDO_DE_UNIDAD}`, 'gi'),
   /-?\b\d+([.,]\d+)?\s*(millones|millon|mil|palos|m|mm|k)\b/gi,
-  /-?\b\d+([.,]\d+)?\s*%/g,
+  // Un porcentaje es plata salvo que diga de qué: «avance 23%» y «23% de avance» son progreso.
+  /(?<!avance\s)(?<!avance\sdel\s)-?\b\d+([.,]\d+)?\s*%(?!\s*de\s*avance)/g,
 ]
 
 /** Tacha los importes de un texto. Devuelve `{texto, tachado}`. PURA.
@@ -175,6 +180,18 @@ export function tacharComercial(datos, ruta = '', clave = '') {
   }
   if (typeof datos === 'string') {
     if (IDENTIFICADOR.test(clave)) return { datos, campos }
+    // ═══ LA PLATA LLEGA COMO TEXTO (27/08/2026, cierre) ═══
+    //
+    // Una columna `numeric` de Postgres vuelve como STRING, así que `tna: "0.55"`, `cft: "0.6278"` y
+    // `saldo_utilizado: "…"` no eran números para `esPlata` y ninguna regla de texto los veía: no
+    // llevan símbolo, ni separador de miles, ni cinco dígitos. Toda una clase de campos de plata
+    // entraba por la puerta de al lado.
+    //
+    // Si el string ES un número, se lo trata como número: la clave ya dice si es plata.
+    if (/^-?\d+([.,]\d+)?$/.test(datos.trim()) && esPlata(clave, Number(datos.trim().replace(',', '.')))) {
+      campos.push(ruta)
+      return { datos: TACHADO, campos }
+    }
     const t = tacharPlataEnTexto(datos)
     if (t.tachado) campos.push(ruta)
     return { datos: t.texto, campos }

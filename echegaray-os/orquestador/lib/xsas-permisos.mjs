@@ -32,7 +32,7 @@
 
 /** Lo que cada rol de `perfiles.rol` puede pedirle a XSAS. Fail-closed: lo que no está, no puede. */
 export const PERMISOS_POR_ROL = Object.freeze({
-  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write', 'os.write', 'comercial.read']),
+  direccion: Object.freeze(['drive.read', 'os.read', 'drive.write', 'os.write', 'comercial.read', 'externo.navegar']),
   administracion: Object.freeze(['drive.read', 'os.read', 'comercial.read']),
   jefe_obra: Object.freeze(['drive.read', 'os.read']),
   campo: Object.freeze([]),
@@ -70,8 +70,12 @@ export const PERMISOS_POR_ROL = Object.freeze({
  * real— es una tool que escribe declarando una capability de lectura: eso no lo puede ver ninguna
  * regla sobre el nombre.
  */
-export const SUFIJO_DE_ESCRITURA = /\.(write|delete|send|modify|trash|draft)$/
-export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write', 'os.write'])
+// `navegar` entra el 27/08/2026 (auditoría, cierre): `tesoreria.analisis_inversion` declaraba
+// `os.read` y ENTRA A BALANZ con la sesión de la empresa. No escribe en la base, y por eso la letra
+// decía lectura; pero levanta un navegador contra la cuenta del broker, y cuando un trabajo interno
+// produce un efecto externo manda el efecto. Un `jefe_obra` la ejecutó en la auditoría.
+export const SUFIJO_DE_ESCRITURA = /\.(write|delete|send|modify|trash|draft|navegar)$/
+export const CAPACIDADES_DE_ESCRITURA = Object.freeze(['drive.write', 'os.write', 'externo.navegar'])
 
 /**
  * LAS ÚNICAS TOOLS QUE PUEDEN ESCRIBIR, POR NOMBRE.
@@ -89,6 +93,10 @@ export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
   // BORRADOR»: la capability describía de dónde LEE, no qué DEJA. Un borrador que queda en la
   // biblioteca comercial es una escritura, aunque nadie lo haya adjudicado todavía.
   'plano.cotizar',
+  // analisis_inversion — abre el navegador contra Balanz con la sesión de la empresa. No escribe en
+  // Postgres: el efecto está afuera, en un sistema de un tercero, y por eso pasa las mismas dos
+  // cerraduras y queda firmado igual que una escritura.
+  'tesoreria.analisis_inversion',
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */

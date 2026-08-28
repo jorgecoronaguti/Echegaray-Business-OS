@@ -24,6 +24,10 @@ import { filtrarPorVisibilidad, TACHADO } from './xsas-visibilidad.mjs'
 const JEFE = { id: 'jefe@ecsas.com.ar', rol: 'jefe_obra', permisos: permisosDeRol('jefe_obra') }
 const DIRECCION = { id: 'jorge@ecsas.com.ar', rol: 'direccion', permisos: permisosDeRol('direccion') }
 
+/** Cuántas tools reales tiene que haber recorrido el invariante para que valga. Se sube cuando la
+ *  cobertura sube; bajarlo es una decisión que queda en el diff. */
+export const PISO_DE_COBERTURA = 18
+
 /**
  * ═══ EL ORÁCULO NO PUEDE COMPARTIR LA DEFINICIÓN CON LO QUE PRUEBA (auditoría round 3) ═══
  *
@@ -38,39 +42,32 @@ const DIRECCION = { id: 'jorge@ecsas.com.ar', rol: 'direccion', permisos: permis
  * que es exactamente lo que tiene que detectar.
  */
 function numerosGrandes(x, ruta = '', out = new Map()) {
-  if (typeof x === 'number' && Number.isFinite(x) && Math.abs(x) >= 1000) out.set(ruta, x)
+  // Un string que ES un número cuenta como número: así vuelve `numeric` de Postgres, y mirar sólo
+  // el tipo de JavaScript dejaba fuera media tabla de condiciones financieras.
+  const comoNumero = typeof x === 'number' ? x
+    : (typeof x === 'string' && /^-?\d+([.,]\d+)?$/.test(x.trim()) ? Number(x.trim().replace(',', '.')) : NaN)
+  // UN AÑO NO SE CUENTA, y es una regla del oráculo, no una lista importada del filtro: `anio: 2026`
+  // y `periodo: "2026-06"` aparecen en media respuesta del OS y no son plata. El punto ciego que
+  // deja es un importe de exactamente 1.900–2.099 pesos, que el filtro sí tacha y este detector no
+  // verificaría — chico, conocido y escrito acá.
+  const esAnio = Number.isInteger(comoNumero) && Math.abs(comoNumero) >= 1900 && Math.abs(comoNumero) <= 2099
+  if (Number.isFinite(comoNumero) && Math.abs(comoNumero) >= 1000 && !esAnio) out.set(ruta, comoNumero)
+  else if (typeof x === 'number') { /* chico: no es plata por tamaño */ }
   // En un texto sólo cuentan las corridas de CINCO dígitos y los importes con símbolo o separador:
   // un año («2026-06») tiene cuatro y no es plata, y tratarlo como fuga haría que el oráculo pidiera
   // tachar la fecha de un período fiscal.
   else if (typeof x === 'string') {
-    for (const m of x.matchAll(/-?\b\d{5,}\b|(\$|u\$s|usd)\s*[\d.,]+|-?\b\d{1,3}(\.\d{3})+\b/gi)) out.set(`${ruta}«${m.index}»`, m[0])
+    // Desde CUATRO dígitos: el umbral del filtro es 1.000, y un oráculo que empieza en 10.000
+    // sería ciego justo en la banda que el filtro sí cubre. El año se descarta por su rótulo.
+    // En texto LIBRE el oráculo mira corridas de cinco dígitos, símbolo o separador de miles: es lo
+    // que el filtro garantiza ahí. La banda 1.000–9.999 la cubre el camino de arriba, que ahora ve
+    // también los números escritos como string.
+    for (const m of x.matchAll(/-?\b\d{5,}\b|(\$|u\$s|usd)\s*[\d.,]+|-?\b\d{1,3}(\.\d{3})+\b/gi)) {
+      out.set(`${ruta}«${m.index}»`, m[0])
+    }
   }
   else if (Array.isArray(x)) x.forEach((v, i) => numerosGrandes(v, `${ruta}[${i}]`, out))
   else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) numerosGrandes(v, ruta ? `${ruta}.${k}` : k, out)
-  return out
-}
-
-/** Recorre lo filtrado y devuelve las rutas donde quedó un número que sólo puede ser plata. */
-function fugas(datos, ruta = '', clave = '') {
-  const out = []
-  if (typeof datos === 'number' && Number.isFinite(datos)) {
-    if (Math.abs(datos) >= UMBRAL && !CANTIDAD_VISIBLE.test(clave) && !IDENTIFICADOR.test(clave)) {
-      out.push(`${ruta} = ${datos}`)
-    }
-    return out
-  }
-  if (typeof datos === 'string' && !IDENTIFICADOR.test(clave)) {
-    // Un importe escrito adentro del texto cuenta igual que uno estructurado.
-    const m = datos.match(/-?\b\d{5,}\b|(\$|u\$s|usd)\s*[\d.,]+|\b\d{1,3}(\.\d{3})+\b/i)
-    if (m) out.push(`${ruta} ⊃ «${m[0]}»`)
-    return out
-  }
-  if (!datos || typeof datos !== 'object') return out
-  if (Array.isArray(datos)) {
-    datos.forEach((v, i) => out.push(...fugas(v, `${ruta}[${i}]`, clave)))
-    return out
-  }
-  for (const [k, v] of Object.entries(datos)) out.push(...fugas(v, ruta ? `${ruta}.${k}` : k, k))
   return out
 }
 
@@ -108,8 +105,11 @@ test('ninguna tool real le filtra un número de plata a un rol sin comercial.rea
     if (hayTachado) assert.match(noVe.degradacion ?? '', /tachada/, `${clave} tachó y no lo declaró`)
   }
 
-  assert.ok(corridas.length >= 3,
-    `el invariante corrió sobre ${corridas.length} tools reales; no alcanza. No corrieron: ${noCorrieron.join(' | ')}`)
+  // El piso sigue al número real: con `>= 3` mientras cubre 21, el día que dejaran de registrarse
+  // dieciocho el invariante pasaría sobre tres y nadie se enteraría. Un piso que no se mueve con la
+  // cobertura mide otra cosa.
+  assert.ok(corridas.length >= PISO_DE_COBERTURA,
+    `el invariante corrió sobre ${corridas.length} tools reales y el piso es ${PISO_DE_COBERTURA}. No corrieron: ${noCorrieron.join(' | ')}`)
   console.log(`   [invariante] tools reales cubiertas: ${corridas.join(', ')}`)
 })
 
