@@ -239,3 +239,15 @@ test('D · caer al modelo con el dominio reconocido es una degradación, no una 
   assert.equal(r.estado, 'degradado', 'el ruteo reconoció finanzas con confianza alta y no corrió nada')
   assert.match(r.degradacion, /sin dato del OS/)
 })
+
+test('A · y al jefe de obra se le dice que NO PUEDE, en vez de improvisar una excusa', async () => {
+  const corridas = []
+  const { registro, catalogo, elegir, ia } = registroDeMentira({ corridas })
+  const r = await pedir('analizá los planos de Quattropani', 'jefe_obra', { registro, catalogo, elegir, ia })
+  assert.deepEqual(corridas, [])
+  assert.equal(r.capacidades.via, 'sin_permiso', 'no puede contestar el modelo una decisión de autorización')
+  assert.equal(r.estado, 'degradado')
+  assert.match(r.respuesta, /jefe_obra/)
+  assert.match(r.respuesta, /plano\.cotizar/)
+  assert.match(r.degradacion, /sin permiso/)
+})

@@ -404,9 +404,11 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   // donde ya está escrito para qué sirve: determinístico, sin modelo y estable entre corridas.
   const candidatas = eleccion.skills.flatMap((skill) =>
     toolsDeSkill(catalogo.find((f) => f.clave === skill), porArchivo, porLib))
+  const sinPermiso = []
   for (const clave of ordenarPorAfinidad(texto, [...new Set(candidatas)], (c) => mapa.get(c))) {
     const tool = mapa.get(clave)
-    if (!tool || !puedeUsar(pedido.actor, tool, clave)) continue
+    if (!tool) continue
+    if (!puedeUsar(pedido.actor, tool, clave)) { sinPermiso.push(clave); continue }
     const resuelto = argumentosPara(tool, pedido)
     if (resuelto.falta.length) { conArgumentoEnLaFrase.push({ clave, tool, resuelto }); continue }
     return resolverConTool({ pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'skill_con_motor', skills: eleccion.skills, t0, query: deps.query ?? null })
@@ -422,6 +424,24 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   // Se intenta sólo con la PRIMERA candidata: si el ruteo eligió mal, completar argumentos de cinco
   // tools distintas sería pagar cinco veces por adivinar. Si el argumento sigue sin aparecer, esto
   // no cambia nada — devuelve `null` y el gateway sigue su camino de siempre.
+  // ═══ UN «NO PODÉS» NO SE CONTESTA CON UN PÁRRAFO DEL MODELO (27/08/2026) ═══
+  //
+  // Medido en producción: un `jefe_obra` pidió analizar planos, la cerradura lo frenó bien —la tool
+  // ni se tocó— y el gateway le pasó la frase al modelo, que contestó «no tengo acceso a ningún
+  // archivo». Falso y confuso: el OS SÍ tiene la capacidad y los archivos, y lo que pasó es que ese
+  // rol no puede usarla. La respuesta escondía la decisión de autorización detrás de una excusa
+  // técnica inventada. Se dice lo que pasó, con el nombre de la capacidad y del rol.
+  if (!conArgumentoEnLaFrase.length && sinPermiso.length) {
+    return respuestaOk(pedido, {
+      respuesta: `No puedo hacerlo con tu rol («${pedido.actor?.rol ?? 'desconocido'}»). `
+        + `La capacidad existe —${sinPermiso.join(', ')}— y para usarla hace falta un permiso que hoy no tenés. `
+        + 'Pedíselo a Dirección.',
+      capacidades: { nivel: NIVEL.DETERMINISTICO, skills: eleccion.skills, tools: [], via: 'sin_permiso', confianza: 'alta', motivo: 'sin_permiso' },
+      degradacion: `sin permiso para ${sinPermiso.join(', ')} con el rol «${pedido.actor?.rol ?? 'desconocido'}»`,
+      ms: Date.now() - t0,
+    })
+  }
+
   const candidata = conArgumentoEnLaFrase[0]
   if (!candidata) return null
   const ia = await puertaIa(deps)
