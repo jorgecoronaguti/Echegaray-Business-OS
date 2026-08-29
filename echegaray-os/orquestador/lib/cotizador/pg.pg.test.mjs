@@ -20,7 +20,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
-import { leerEstado, guardarAlcance, guardarEventos, guardarHuella, leerHuella, leerEventos } from './pg.mjs'
+import { leerEstado, guardarAlcance, guardarEventos, guardarHuella, leerHuella, leerEventos, leerOverridesDePrecio, firmarOverrideDePrecio } from './pg.mjs'
 import { correr } from './orquestador.mjs'
 import { ACCION, PERMISOS_DE_ROL, ROL, ESTADO } from './contrato.mjs'
 import { ALCANCE, entradaDeAlcance } from './alcance.mjs'
@@ -368,6 +368,55 @@ test('cotizador · adaptadores Postgres y RBAC en la base', { skip: !hayBase }, 
       await rechaza(`update public.cotizacion_evento set despues = '1' where cotizacion_id=$1`, [cot.id], /permission denied/i)
       await rechaza(`delete from public.cotizacion_evento where cotizacion_id=$1`, [cot.id], /permission denied/i)
       await comoDios()
+    })
+
+    await t.test('FIRMAR Y LEER un override de precio, como `authenticated` y contra la base', async () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `firmarOverrideDePrecio`, restituir
+      // `on conflict … do update set motivo = excluded.motivo`.
+      //
+      // Las dos funciones tenían CERO referencias fuera de `pg.mjs`, y `firmarOverrideDePrecio`
+      // fallaba con permission denied (42501): la tabla otorga select+insert y no hay policy de
+      // UPDATE. La única salida que el sistema le ofrece al dueño para los precios vencidos no
+      // funcionaba por la vía que el código provee.
+      const query2 = (sq, pa) => c.query(sq, pa)
+      await como(UID.administracion)
+      const firma = await firmarOverrideDePrecio({ query: query2 }, cot.id, 'ZZ-MAT', 'el ladrillón no movió de precio')
+      assert.equal(firma.nueva, true)
+      assert.equal(firma.recurso_codigo, 'ZZ-MAT')
+      assert.equal(firma.autorizado_por, UID.administracion, 'lo firma quien está escribiendo, no quien diga el parámetro')
+
+      // RE-FIRMAR NO PISA: devuelve la que ya estaba, con su motivo original.
+      const otra = await firmarOverrideDePrecio({ query: query2 }, cot.id, 'ZZ-MAT', 'otro motivo distinto')
+      assert.equal(otra.nueva, false)
+      assert.equal(otra.motivo, 'el ladrillón no movió de precio', 'la historia no se reescribe (§21)')
+
+      // Y el lector devuelve la forma que la cola consume.
+      const leidos = await leerOverridesDePrecio({ query: query2 }, cot.id)
+      assert.equal(leidos.length, 1)
+      assert.deepEqual(Object.keys(leidos[0]).sort(), ['autorizadoPor', 'entidad', 'firmadoEn', 'motivo'])
+      assert.equal(leidos[0].entidad, 'ZZ-MAT')
+      await comoDios()
+
+      // EL EFECTO, leído en su destino.
+      const enLaBase = await uno(`select recurso_codigo, motivo, autorizado_por from public.cotizacion_override_precio where cotizacion_id=$1`, [cot.id])
+      assert.equal(enLaBase.motivo, 'el ladrillón no movió de precio')
+      await q(`delete from public.cotizacion_override_precio where cotizacion_id=$1`, [cot.id])
+    })
+
+    await t.test('el jefe de obra NO puede firmar un override: es COMMERCIAL_WRITE', async () => {
+      await como(UID.jefe)
+      await rechaza(`insert into public.cotizacion_override_precio (cotizacion_id, recurso_codigo, motivo) values ($1,'ZZ-MAT','lo asumo')`,
+        [cot.id], /row-level security|violates/i)
+      await comoDios()
+    })
+
+    await t.test('la firma es INMUTABLE en la base: no hay GRANT de UPDATE ni de DELETE', async () => {
+      const p = await uno(`select has_table_privilege('authenticated', 'public.cotizacion_override_precio', 'UPDATE') upd,
+                                  has_table_privilege('authenticated', 'public.cotizacion_override_precio', 'DELETE') del,
+                                  has_table_privilege('authenticated', 'public.cotizacion_override_precio', 'INSERT') ins`)
+      assert.equal(p.upd, false, 'una firma no se reescribe')
+      assert.equal(p.del, false)
+      assert.equal(p.ins, true)
     })
 
     // ── 4 · EL MAPA NO DIVERGE ────────────────────────────────────────────────────────────────

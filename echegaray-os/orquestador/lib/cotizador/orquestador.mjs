@@ -206,13 +206,40 @@ export function correr({
 
   // ═══ LA CONFIRMACIÓN HUMANA DE UNA EXCLUSIÓN ES SU OVERRIDE ═══
   //
-  // Una entrada de alcance que trae `decididoPor` la cargó una persona: eso ES la firma. Una que
-  // salió de leer dos documentos del corpus, no — y por eso `EXCLUSION_CON_COMPUTO` bloquea hasta
-  // que alguien la confirme. Las dos vías producen la misma forma de override, así que la cola no
-  // necesita saber de dónde vino.
+  // Una entrada de alcance que trae `decididoPor` la cargó una persona: **eso ES la firma**. No se
+  // le pide una segunda confirmación, y la decisión está argumentada: quien carga «pintura →
+  // EXCLUIDO, fuente: pliego art. 4.2, decididoPor: jorge» ya decidió sacar eso del presupuesto.
+  // Pedirle que además lo confirme es teatro de control: dos clics para el mismo acto, y el segundo
+  // se aprieta sin leer. La confirmación separada (`exclusionesConfirmadas`) existe para el otro
+  // caso, que es el peligroso: la exclusión que salió de leer dos documentos SIN que nadie la mire.
+  //
+  // ═══ Y LA FIRMA SE PROPAGA A LAS PARTIDAS QUE ESE PATRÓN BLOQUEÓ ═══
+  //
+  // `cruzarAlcance` emite un SEGUNDO `EXCLUSION_CON_COMPUTO` cuya entidad es el CÓDIGO DE LA
+  // PARTIDA (`T2`), no el patrón. Los overrides sólo se emitían como `alcance:<patron>`, así que ese
+  // segundo issue no se destrababa nunca: **ninguna cotización con una exclusión valorizada se podía
+  // congelar jamás**, ni siquiera el caso canónico del §19 —«sacá pintura» cargada por el dueño y
+  // además confirmada—. Es el espejo exacto del defecto que la vuelta 5 arregló: se cerró la
+  // dirección peligrosa y se rompió la buena.
+  //
+  // La entrada que decidió cada exclusión ya viaja en `porAlcance`, así que la firma se propaga sin
+  // inventar nada: si el patrón está firmado, las partidas que ese patrón sacó del total heredan
+  // la misma firma.
+  const firmaDelPatron = new Map([
+    ...alcance.filter((e) => e.decididoPor).map((e) => [e.patron, { autorizadoPor: e.decididoPor, motivo: e.motivo ?? 'cargada a mano por quien decidió el alcance' }]),
+    ...exclusionesConfirmadas.filter((c) => c?.autorizadoPor).map((c) => [c.patron, { autorizadoPor: c.autorizadoPor, motivo: c.motivo ?? 'confirmada' }]),
+  ])
   const firmasDeAlcance = [
-    ...alcance.filter((e) => e.decididoPor).map((e) => ({ entidad: `alcance:${e.patron}`, autorizadoPor: e.decididoPor, motivo: e.motivo ?? 'cargada a mano' })),
-    ...exclusionesConfirmadas.filter((c) => c?.autorizadoPor).map((c) => ({ entidad: `alcance:${c.patron}`, autorizadoPor: c.autorizadoPor, motivo: c.motivo ?? null })),
+    ...[...firmaDelPatron.entries()].map(([patron, f]) => ({ entidad: `alcance:${patron}`, ...f })),
+    ...conAlcance.partidas
+      .filter((p) => p.alcance === 'EXCLUIDO')
+      .flatMap((p) => (p.porAlcance ?? [])
+        .filter((e) => firmaDelPatron.has(e.patron))
+        .map((e) => ({
+          entidad: String(p.codigo ?? p.id),
+          ...firmaDelPatron.get(e.patron),
+          motivo: `${firmaDelPatron.get(e.patron).motivo} · vía el patrón «${e.patron}»`,
+        }))),
   ]
 
   const cola = colaDeAtencion({

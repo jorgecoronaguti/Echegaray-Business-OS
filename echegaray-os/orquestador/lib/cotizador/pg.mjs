@@ -296,15 +296,40 @@ export async function leerOverridesDePrecio({ query }, cotizacionId) {
   }))
 }
 
-/** Firmar un override. La policy exige COMMERCIAL_WRITE y `autorizado_por = auth.uid()`, así que
- *  esto NO se puede usar para firmar en nombre de otro. */
+/**
+ * FIRMAR UN OVERRIDE DE PRECIO VENCIDO.
+ *
+ * ═══ POR QUÉ NO HAY `do update` ═══
+ *
+ * La versión anterior hacía `on conflict … do update set motivo = excluded.motivo` y **fallaba con
+ * `permission denied` (42501)**: la migración otorga `select, insert` y no hay policy de UPDATE. O
+ * sea que la única salida que el DoD le ofrece al dueño para los 285 precios vencidos —firmar el
+ * override— no funcionaba por la vía que el código provee. Es «RLS no es GRANT» del otro lado.
+ *
+ * Se podía cerrar de dos maneras y se eligió la segunda:
+ *
+ *   (a) `GRANT UPDATE` + policy de UPDATE con el mismo predicado. Funciona, y deja que una firma se
+ *       reescriba: el motivo con el que alguien asumió $8,5 M cambiaría sin dejar rastro.
+ *   (b) **Sin UPDATE.** Una firma es un hecho, y §21 dice que la historia no se borra. Re-firmar no
+ *       es corregir: si el motivo cambió, cambió porque pasó algo nuevo, y eso es otro hecho. El
+ *       `do nothing` devuelve la firma que YA estaba, con quién y cuándo, en vez de pisarla.
+ *
+ * La policy exige `COMMERCIAL_WRITE` y `autorizado_por = auth.uid()`: no se puede firmar por otro.
+ */
 export async function firmarOverrideDePrecio({ query }, cotizacionId, recursoCodigo, motivo = null) {
   const r = await query(
     `insert into public.cotizacion_override_precio (cotizacion_id, recurso_codigo, motivo)
      values ($1,$2,$3)
-     on conflict (cotizacion_id, recurso_codigo) do update set motivo = excluded.motivo
-     returning id, recurso_codigo, autorizado_por`, [cotizacionId, recursoCodigo, motivo])
-  return r.rows[0]
+     on conflict (cotizacion_id, recurso_codigo) do nothing
+     returning id, recurso_codigo, autorizado_por, motivo, creado_en`, [cotizacionId, recursoCodigo, motivo])
+  if (r.rows[0]) return { ...r.rows[0], nueva: true }
+  // Ya estaba firmada. NO se pisa: se devuelve la que existe para que quien llama pueda decir
+  // «esto ya lo asumió fulano el tal día» en vez de sobrescribir el motivo de una decisión ajena.
+  const ya = await query(
+    `select id, recurso_codigo, autorizado_por, motivo, creado_en
+       from public.cotizacion_override_precio
+      where cotizacion_id = $1 and recurso_codigo = $2`, [cotizacionId, recursoCodigo])
+  return ya.rows[0] ? { ...ya.rows[0], nueva: false } : null
 }
 
 /** Los eventos de una cotización, en orden. La historia que contesta «¿por qué quedó en 168?». */

@@ -328,3 +328,87 @@ test('INCERTIDUMBRE NO DECLARADA puede dar distinto de cero', () => {
   const declarada = correr({ ...e, partidas: [...e.partidas, { codigo: 'T-DICHA', descripcion: 'partida sin cantidad', rubro: 'X', unidad: 'M2', cantidad: null, tareaTipoId: 'u-4010', porQue: 'el plano dice s/Cálculo' }] })
   assert.equal(declarada.metricas.incertidumbre_no_declarada, 0, 'un hueco DECLARADO cuenta cero')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL VERDE TIENE QUE SER ALCANZABLE — las cuatro combinaciones, POR EL CIRCUITO
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una entrada con la pintura VALORIZADA: sin composición no hay subtotal y el issue por partida
+ *  —el que estaba quedando sin destrabar— ni siquiera nace. */
+const CON_PINTURA_VALORIZADA = () => {
+  const e = ENTRADA()
+  return { ...e, composiciones: new Map([...e.composiciones, ['u-9000', COMP_MAMPOSTERIA]]) }
+}
+
+test('CIRCUITO · sin firma, la exclusión valorizada BLOQUEA', () => {
+  const e = CON_PINTURA_VALORIZADA()
+  const r = correr({ ...e, alcance: e.alcance.map((x) => ({ ...x, decididoPor: null })) })
+  assert.equal(r.gate.ready, false)
+  assert.ok(r.gate.blocking_issues.some((b) => b.tipo === 'EXCLUSION_CON_COMPUTO'),
+    JSON.stringify(r.gate.blocking_issues.map((b) => `${b.tipo}/${b.entidad}`)))
+})
+
+test('CIRCUITO · «sacá pintura» del dueño con decididoPor DESTRABA sin segunda firma', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `correr`, sacar la propagación de `firmaDelPatron` a las partidas.
+  //
+  // ═══ EL CASO CANÓNICO DEL §19, Y POR QUÉ NO SE PIDE UNA SEGUNDA FIRMA ═══
+  //
+  // `cruzarAlcance` emite DOS issues: uno con entidad `alcance:pintura` y otro con el CÓDIGO DE LA
+  // PARTIDA. Los overrides sólo se emitían por patrón, así que el segundo no se destrababa nunca y
+  // NINGUNA cotización con exclusión valorizada se podía congelar. Este test corre el circuito
+  // entero —no arma la cola a mano con un issue, que es como se escondió cuatro veces— y verifica
+  // que el verde es ALCANZABLE.
+  //
+  // Quien carga la entrada de alcance con `decididoPor` ya decidió sacar eso del presupuesto:
+  // pedirle una confirmación aparte es dos clics para el mismo acto, y el segundo se aprieta sin
+  // leer. La confirmación separada existe para la exclusión que salió del corpus sin humano.
+  const r = correr(CON_PINTURA_VALORIZADA())
+  assert.equal(r.gate.ready, true, `bloqueos: ${JSON.stringify(r.gate.blocking_issues.map((b) => `${b.tipo}/${b.entidad}`))}`)
+  assert.equal(r.partidas.find((p) => p.codigo === 'T9000').alcance, 'EXCLUIDO')
+  const scope = etapa(r, ETAPA.SCOPE)
+  assert.ok(scope.result.excluidoEnPlata > 0, 'y la plata excluida se publica')
+  // Los DOS issues quedan como advertencia con quién los asumió, no desaparecen.
+  const asumidos = r.cola.issues.filter((i) => i.type === 'EXCLUSION_CON_COMPUTO')
+  assert.equal(asumidos.length, 2, 'el de patrón y el de partida')
+  assert.ok(asumidos.every((i) => i.asumidoPor === 'jorge'), JSON.stringify(asumidos.map((i) => [i.entity, i.asumidoPor])))
+})
+
+test('CIRCUITO · la exclusión del CORPUS sin firma bloquea, y con confirmación destraba', () => {
+  const e = CON_PINTURA_VALORIZADA()
+  const delCorpus = { ...e, alcance: e.alcance.map((x) => ({ ...x, decididoPor: null })) }
+  assert.equal(correr(delCorpus).gate.ready, false)
+  const confirmada = correr({ ...delCorpus, exclusionesConfirmadas: [{ patron: 'pintura', autorizadoPor: 'jorge', motivo: 'lo revisé contra el pliego' }] })
+  assert.equal(confirmada.gate.ready, true, `bloqueos: ${JSON.stringify(confirmada.gate.blocking_issues.map((b) => `${b.tipo}/${b.entidad}`))}`)
+})
+
+test('CIRCUITO · una firma sin QUIÉN no destraba nada', () => {
+  const e = CON_PINTURA_VALORIZADA()
+  const sinQuien = correr({
+    ...e,
+    alcance: e.alcance.map((x) => ({ ...x, decididoPor: null })),
+    exclusionesConfirmadas: [{ patron: 'pintura', motivo: 'lo asumo' }],
+  })
+  assert.equal(sinQuien.gate.ready, false, 'un override sin firma no existe')
+})
+
+test('CIRCUITO · la firma de un patrón NO destraba la exclusión de otro', () => {
+  // La propagación es por patrón, no un interruptor general: firmar «pintura» no puede sacar del
+  // total una partida que excluyó otra cláusula.
+  // El alcance se arma limpio: dejar la entrada «columna → INCLUIDO» de la ENTRADA base junto a una
+  // «columna → EXCLUIDO» produciría un CONFLICTO de alcance, la partida no quedaría EXCLUIDA y el
+  // caso no probaría lo que dice probar.
+  const e = CON_PINTURA_VALORIZADA()
+  const r = correr({
+    ...e,
+    alcance: [
+      entradaDeAlcance({ patron: 'pintura', estado: ALCANCE.EXCLUIDO, fuente: 'pliego art. 4.2', decididoPor: 'jorge' }),
+      entradaDeAlcance({ patron: 'columna', estado: ALCANCE.EXCLUIDO, fuente: 'otra cláusula sin firmar' }),
+    ],
+  })
+  assert.equal(r.gate.ready, false)
+  const bloq = r.gate.blocking_issues.filter((b) => b.tipo === 'EXCLUSION_CON_COMPUTO')
+  assert.ok(bloq.length > 0, `la columna sin firmar tiene que bloquear: ${JSON.stringify(r.gate.blocking_issues.map((b) => `${b.tipo}/${b.entidad}`))}`)
+  assert.ok(bloq.some((b) => String(b.entidad).includes('columna') || b.entidad === 'T1010'), JSON.stringify(bloq.map((b) => b.entidad)))
+  assert.equal(bloq.some((b) => String(b.entidad).includes('pintura') || b.entidad === 'T9000'), false,
+    `la pintura firmada no puede seguir bloqueando: ${JSON.stringify(bloq.map((b) => b.entidad))}`)
+})
