@@ -72,10 +72,12 @@ export default async function PresupuestoPage({
   }
   const presupuesto = p!
 
-  const [partidas, versiones, tareas] = await Promise.all([
+  const [partidas, versiones, tareas, alcance] = await Promise.all([
     getPartidas(supabase, id),
     getVersiones(supabase, presupuesto.numero),
     getTareasCotizables(supabase),
+    // Las decisiones de alcance del §5. Sin ellas la cola pediría el precio de algo que se sacó.
+    supabase.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
   ])
 
   const lista = partidas.data ?? []
@@ -85,7 +87,7 @@ export default async function PresupuestoPage({
   // EL PRESUPUESTO VIVO. La cola y el gate salen del motor del cotizador —no de tres contadores de
   // la vista— y se derivan de las MISMAS filas que la tabla dibuja abajo: no hay una segunda
   // lectura que pueda decir otra cosa.
-  const vivo = estadoDesdeFilas({ presupuesto, partidas: lista })
+  const vivo = estadoDesdeFilas({ presupuesto, partidas: lista, alcance: alcance.data ?? [] })
 
   const congelado = estaCongelado(presupuesto)
   const congelar = puedeCongelar(presupuesto)

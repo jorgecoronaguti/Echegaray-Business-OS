@@ -78,6 +78,9 @@ export interface EstadoPresupuestoVivo {
   cola: Cola
   gate: Gate
   costoConocido: number | null
+  /** Cuántas partidas quedaron fuera por una decisión de alcance, y cuánta plata era. */
+  excluidas: number
+  excluidoEnPlata: number | null
   /** La cola sale de las FILAS, no de las once etapas: es real y no es toda. */
   parcial: boolean
 }
@@ -118,8 +121,18 @@ const conversarSinModelo = conversarMjs as unknown as (o: OpcionesConversar) => 
  */
 export const conversar = (o: OpcionesConversar) => conversarSinModelo({ conModelo: interpretarConModelo, ...o })
 
+/** Una fila de `cotizacion_alcance`. Se pasa cruda: `desde-base.mjs` la traduce. */
+export interface FilaAlcance {
+  patron: string
+  estado: 'INCLUIDO' | 'EXCLUIDO' | 'POR_DEFINIR'
+  fuente: string
+  texto_literal: string | null
+  decidido_por: string | null
+  motivo: string | null
+}
+
 export const estadoDesdeFilas = estadoDesdeFilasMjs as unknown as (
-  o: { presupuesto: PresupuestoCascada; partidas: PartidaValorizada[] },
+  o: { presupuesto: PresupuestoCascada; partidas: PartidaValorizada[]; alcance?: FilaAlcance[] },
 ) => EstadoPresupuestoVivo
 
 export const cascadaDesdeFila = cascadaDesdeFilaMjs as unknown as (

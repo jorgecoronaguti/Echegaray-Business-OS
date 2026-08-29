@@ -23,6 +23,7 @@
 import { ESTADO, SEVERIDAD, TIPO_ISSUE, issue } from './contrato.mjs'
 import { colaDeAtencion } from './atencion.mjs'
 import { gateDeCongelado } from './freeze.mjs'
+import { cruzarAlcance, entradaDeAlcance } from './alcance.mjs'
 
 /** Los ocho de la cascada, de `snake_case` de Postgres al `camelCase` del motor. PURA. */
 export function politicaDesdeFila(p) {
@@ -76,9 +77,9 @@ export function partidaDesdeFila(f) {
     subcontrato: f.subcontratada ? { precio: n(f.precio_subcontrato), proveedor: null } : null,
     sinAnalisis: Boolean(f.sin_analisis),
     congelada: Boolean(f.congelada),
-    // El ALCANCE todavía no vive en `cotizacion_partida`: la tabla del §5 la creó la migración del
-    // CORE (20260829T1200) y el módulo web no la escribe aún. `null` es honesto —«no se declaró»—
-    // y distinto de INCLUIDO, que sería afirmar una decisión que nadie tomó.
+    // El alcance NO vive en esta fila: vive en `cotizacion_alcance`, por PATRÓN, y lo cruza
+    // `cruzarAlcance()` en `estadoDesdeFilas`. Acá queda `null` —«no se declaró»—, que es distinto
+    // de INCLUIDO: eso sería afirmar una decisión que nadie tomó.
     alcance: null,
     evidencia: null,
     genealogia: null,
@@ -137,13 +138,28 @@ export function issuesDePartidas(partidas = []) {
  *
  * @returns `{partidas, politica, cascada, cola, gate, costoConocido, parcial}`
  */
-export function estadoDesdeFilas({ presupuesto, partidas = [] } = {}) {
-  const lista = partidas.map(partidaDesdeFila)
+/** Una fila de `cotizacion_alcance` con la forma que lee `cruzarAlcance()`. PURA. */
+export const alcanceDesdeFila = (f) => entradaDeAlcance({
+  patron: f.patron, estado: f.estado, fuente: f.fuente,
+  textoLiteral: f.texto_literal ?? null, decididoPor: f.decidido_por ?? null, motivo: f.motivo ?? null,
+})
+
+export function estadoDesdeFilas({ presupuesto, partidas = [], alcance = [] } = {}) {
+  // EL CRUCE DEL §5 NO SE REIMPLEMENTA: lo hace `cruzarAlcance()`, que además detecta el conflicto
+  // «excluido pero con cómputo». Escribir acá un `filter` propio habría dado una segunda definición
+  // de qué está adentro del presupuesto — y la que decide el costo es la del motor, no la mía.
+  const cruzado = cruzarAlcance({ partidas: partidas.map(partidaDesdeFila), alcance: alcance.map(alcanceDesdeFila) })
+  const lista = cruzado.partidas
   const cascada = cascadaDesdeFila(presupuesto)
   // El costo conocido es la escala contra la que se mide «material». Se usa el costo directo de la
   // vista, que es lo que HOY suma; si es null, `esMaterial()` trata todo como material.
   const costoConocido = cascada?.costoDirecto ?? null
-  const cola = colaDeAtencion({ issues: issuesDePartidas(lista), costoConocido })
+  // Los issues del alcance —una exclusión que igual tiene cómputo— los emite `cruzarAlcance`, y se
+  // suman a los que delatan las filas. Una partida EXCLUIDA no genera issues de precio: sacarla del
+  // alcance es exactamente decidir que no se cotiza.
+  const delAlcance = cruzado.issues ?? []
+  const dePartidas = issuesDePartidas(lista.filter((p) => p.alcance !== 'EXCLUIDO'))
+  const cola = colaDeAtencion({ issues: [...delAlcance, ...dePartidas], costoConocido })
   return Object.freeze({
     partidas: lista,
     politica: politicaDesdeFila(presupuesto),
@@ -151,6 +167,9 @@ export function estadoDesdeFilas({ presupuesto, partidas = [] } = {}) {
     cola,
     gate: gateDeCongelado({ cascada, cola }),
     costoConocido,
+    /** Cuántas partidas quedaron fuera por una decisión de alcance, y cuánta plata era. */
+    excluidas: cruzado.excluidas,
+    excluidoEnPlata: cruzado.excluidoEnPlata,
     // Ver el encabezado: la cola derivada de las filas no es la cola de las once etapas.
     parcial: true,
   })

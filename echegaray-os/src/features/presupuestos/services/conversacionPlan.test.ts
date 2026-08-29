@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { planDe, paraElMotor, rolDeContrato, type Plan } from './conversacionPlan.ts'
 // Por la MISMA puerta que usa la server action. Importar el `.mjs` directo desde el test probaría
 // un camino que producción no recorre.
-import { conversar, estadoDesdeFilas } from './cotizadorPuente.ts'
+import { conversar, estadoDesdeFilas, type FilaAlcance } from './cotizadorPuente.ts'
 import type { PartidaValorizada, PresupuestoCascada } from '../types/index.ts'
 
 const PRESUPUESTO = {
@@ -35,8 +35,8 @@ const LISTA = [
 ]
 
 /** Corre un turno igual que la server action y devuelve el plan que salió. */
-async function turnoConPlan(texto: string, rol: string) {
-  const estado = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas: LISTA })
+async function turnoConPlan(texto: string, rol: string, alcance: FilaAlcance[] = []) {
+  const estado = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas: LISTA, alcance })
   const caja: { plan: Plan | null } = { plan: null }
   const t = await conversar({
     texto, rol, actor: 'test', usarModelo: false, confirmado: true,
@@ -81,12 +81,42 @@ describe('el plan sale del motor, no de una suposición', () => {
   })
 })
 
-describe('lo que no se puede escribir dice QUÉ falta, y no finge', () => {
-  test('«saca pintura» no escribe y explica por qué', async () => {
+describe('«sacá pintura» — el canónico del §19 que deja una fila real', () => {
+  test('la exclusión se escribe en cotizacion_alcance con su fuente', async () => {
     const { plan } = await turnoConPlan('saca la mamposteria', 'DUENO')
-    assert.ok(plan && !plan.ok)
-    assert.match(plan.porQue, /alcance/, `el motivo no dice qué falta: «${plan.porQue}»`)
+    assert.ok(plan?.ok, (plan as { porQue?: string })?.porQue)
+    assert.equal(plan.plan.tabla, 'cotizacion_alcance')
+    assert.equal(plan.plan.operacion, 'upsert')
+    assert.equal(plan.plan.columnas.estado, 'EXCLUIDO')
+    assert.equal(plan.plan.columnas.cotizacion_id, PRESUPUESTO.id)
+    // §5: PROVENANCE OBLIGATORIO. Una exclusión sin fuente no se puede revisar después.
+    assert.equal(plan.plan.columnas.fuente, 'CONVERSACION')
+    assert.equal(plan.plan.columnas.texto_literal, 'saca la mamposteria')
   })
+
+  test('volver a incluirla es el mismo gesto sobre el mismo patrón', async () => {
+    const { plan } = await turnoConPlan('pone la mamposteria', 'DUENO')
+    assert.ok(plan?.ok)
+    assert.equal(plan.plan.columnas.estado, 'INCLUIDO')
+    // La clave la impone la BASE (`unique (cotizacion_id, patron)`), no una costumbre de esta capa.
+    assert.equal(plan.plan.onConflict, 'cotizacion_id,patron')
+  })
+
+  test('una exclusión que no toca ninguna partida NO se escribe en silencio', async () => {
+    const { turno, plan } = await turnoConPlan('saca los ascensores', 'DUENO')
+    assert.equal(turno.salida?.ok, false)
+    assert.equal(plan, null, 'guardó una exclusión de algo que no está en el presupuesto')
+    assert.ok(turno.respuesta.pregunta)
+  })
+
+  test('excluir es de WRITE: un LECTOR no puede', async () => {
+    const { turno, plan } = await turnoConPlan('saca la mamposteria', 'LECTOR')
+    assert.equal(turno.salida?.etapaQueParo, 'AUTORIZACION')
+    assert.equal(plan, null)
+  })
+})
+
+describe('lo que no se puede escribir dice QUÉ falta, y no finge', () => {
 
   test('un precio en dólares se rechaza en vez de guardarse como pesos (§11)', () => {
     const p = planDe(

@@ -59,9 +59,12 @@ export async function hablarConElPresupuesto(
   const perfil = await getPerfilActual(supabase)
   const rol = rolDeContrato(perfil.data?.rol ?? null)
 
-  const [{ data: presupuesto, error: eP }, partidas] = await Promise.all([
+  const [{ data: presupuesto, error: eP }, partidas, alcance] = await Promise.all([
     getPresupuesto(supabase, id),
     getPartidas(supabase, id),
+    // El ALCANCE es parte del estado: una partida excluida no genera issues de precio, y sin leerlo
+    // la conversación contestaría «falta el precio de la pintura» sobre una pintura que se sacó.
+    supabase.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
   ])
   if (!presupuesto) return { estado: 'error', texto, respuesta: sinEntender(eP ?? 'No pude leer el presupuesto.') }
 
@@ -75,7 +78,7 @@ export async function hablarConElPresupuesto(
   }
 
   const lista = partidas.data ?? []
-  const estado = estadoDesdeFilas({ presupuesto, partidas: lista })
+  const estado = estadoDesdeFilas({ presupuesto, partidas: lista, alcance: alcance.data ?? [] })
   const cascadaAntes = cascadaDesdeFila(presupuesto)
 
   // `mutar` NO escribe: arma el plan. Ver el encabezado de `conversacionPlan.ts`. El plan viaja en
@@ -104,7 +107,11 @@ export async function hablarConElPresupuesto(
     return { estado: 'rechazado', texto, degradado: turno.degradado, respuesta: sinEntender(p.porQue) }
   }
 
-  const { error } = await supabase.from(p.plan.tabla).update(p.plan.columnas).eq('id', p.plan.id)
+  // `upsert` y no `update` cuando la fila puede no existir: una decisión de alcance sobre un patrón
+  // nuevo y la revisión de una anterior son el MISMO gesto, y la clave la impone la base.
+  const { error } = p.plan.operacion === 'upsert'
+    ? await supabase.from(p.plan.tabla).upsert(p.plan.columnas, { onConflict: p.plan.onConflict }).select('id').maybeSingle().then((r) => ({ error: r.error }))
+    : await supabase.from(p.plan.tabla).update(p.plan.columnas).eq('id', p.plan.id!)
   // El mensaje de la base se muestra tal cual: «permission denied for table cotizacion_partida»
   // apunta al arreglo; «no se pudo guardar» no apunta a nada.
   if (error) return { estado: 'error', texto, respuesta: sinEntender(error.message) }

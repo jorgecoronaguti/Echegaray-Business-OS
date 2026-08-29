@@ -26,12 +26,23 @@ Rama `feat/presupuestos-v5-front`, nacida de `feat/cotizador-core`.
 
 ## Evidencia (salida literal)
 
+Tras mergear `feat/cotizador-core` al día (el CORE avanzó: trajo `pg.mjs`, `seguridad.mjs`,
+`explosion.mjs` y la migración `20260829T1500`):
+
 ```
-npm run orq:test    → EXIT=0 · 11.978 tests en dot · 0 fail
+npm run orq:test    → EXIT=0 · 12.059 tests en dot · 0 fail
 npm run typecheck   → EXIT=0
-npx eslint .        → EXIT=0 · 0 errores · 59 warnings (los mismos 59 preexistentes)
+npx eslint .        → EXIT=0 · 0 errores · 60 warnings · 0 en el área de este frente
 npm run build       → EXIT=0 · las 3 rutas de /presupuestos compilan
 ```
+
+El warning nº 60 (eran 59) llegó con el merge del CORE, no de este frente: `npx eslint` sobre
+`src/features/presupuestos`, `orquestador/lib/cotizador`, `interprete-presupuesto-llm.mjs` y
+`src/app/(main)/presupuestos` sale limpio.
+
+**El build exigió reemplazar el symlink de `node_modules` por `cp -al`**: Turbopack rechaza un
+symlink que apunta fuera de la raíz del proyecto («Symlink [project]/node_modules is invalid»). Es
+la trampa ya conocida de los worktrees; queda anotado porque vuelve a aparecer en el próximo.
 
 Migración, las dos corridas:
 
@@ -82,12 +93,16 @@ la API.** Lo que está probado es que ninguna forma de basura que devuelva el mo
 que NO está probado es que el modelo produzca JSON útil con ese prompt, ni cuánto cuesta, ni cuánto
 tarda. Las métricas del §38 sobre uso de LLM no se pueden llenar con esto.
 
-### 3 · Seis de las catorce acciones no escriben · bloquea «la conversación cubre el §19»
+### 3 · Cinco de las catorce acciones no escriben · bloquea «la conversación cubre el §19»
 
-`exclude_scope`, `include_scope`, `set_resource_price`, `set_global_policy`, `undo`, `freeze` y
-`approve` **no tienen dónde escribirse hoy** y devuelven un rechazo con el motivo. El caso canónico
-«sacá pintura» del §19 **se interpreta pero no se aplica**: el alcance por partida vive en la tabla
-que creó la migración del CORE y este módulo todavía no la escribe. Está en `MOTIVO_SIN_PLAN`.
+`set_resource_price`, `set_global_policy`, `undo`, `freeze` y `approve` **no tienen dónde
+escribirse hoy** y devuelven un rechazo con el motivo, no un «listo» falso. Están en
+`MOTIVO_SIN_PLAN` y cada uno nombra QUÉ falta.
+
+**`exclude_scope` e `include_scope` YA escriben** (cerrado después del merge del CORE, que trajo
+`cotizacion_alcance` con su RLS): «sacá pintura» hace un upsert con `fuente: CONVERSACION` y el
+texto literal, y `cruzarAlcance()` —el del §5, no una reimplementación— hace que la cola deje de
+pedir el precio de lo excluido. Sigue sin probarse contra una fila real: ver el límite 5.
 
 ### 4 · La cola es parcial · bloquea «el presupuesto vivo muestra qué falta»
 
@@ -135,8 +150,12 @@ No se escribió ningún `tests/*.spec.ts` para el circuito de conversación.
    agruparlas. `comandos.validar()` ya resolvió la partida — debería viajar al evento. Hay un
    candado en `conversacion.test.mjs` que se pone rojo cuando lo corrijan.
 
-3. **Los adaptadores de Postgres.** Cuando existan, `desde-base.mjs` y la mitad de
-   `cotizadorPuente.ts` se borran. La costura ya está en un solo archivo.
+3. **`pg.mjs` NO sirve para la web, y conviene decirlo antes de que alguien lo intente.** Los
+   adaptadores que el CORE entregó reciben `{ query }` —un pool de Postgres directo—, así que
+   corren con el rol del pool y **no con la sesión del usuario: la RLS no aplica**. La server
+   action de Next usa el cliente Supabase con la cookie, que es lo único que hace cumplir
+   `ve_economia()`. Por eso `desde-base.mjs` sigue vivo y no se reemplazó por `pg.mjs`. Si el CORE
+   quiere una sola implementación, el adaptador tiene que poder recibir un cliente PostgREST.
 
 4. **`ejecutar()` es síncrono** y llama a `mutar` en el medio del pipeline. Por eso `mutar` acá
    devuelve un PLAN que la server action aplica después. Si el CORE lo vuelve async, el plan

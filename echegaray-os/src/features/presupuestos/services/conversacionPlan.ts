@@ -47,6 +47,8 @@ export interface Intencion {
   value: string | number | null
   unit?: string | null
   supplier?: string | null
+  reason?: string | null
+  textoOriginal?: string | null
 }
 
 /** Lo que la validación del command layer ya resolvió: a qué partida apunta y con qué valor. */
@@ -61,8 +63,16 @@ export interface Validado {
 }
 
 export interface PlanEscritura {
-  tabla: 'cotizacion_partida' | 'cotizaciones'
-  id: string
+  tabla: 'cotizacion_partida' | 'cotizaciones' | 'cotizacion_alcance'
+  /**
+   * `update` apunta a una fila por `id`. `upsert` no la tiene todavía: una decisión de alcance
+   * puede ser la primera sobre ese patrón o la revisión de una anterior, y las dos son el mismo
+   * gesto. La clave la impone la base (`unique (cotizacion_id, patron)`), no esta capa.
+   */
+  operacion: 'update' | 'upsert'
+  /** Sólo en `update`. En `upsert` la fila la identifica `onConflict`. */
+  id?: string
+  onConflict?: string
   columnas: Record<string, unknown>
   /** Qué se le dice a la persona que pasó. Sale del plan, no de una frase suelta. */
   detalle: string
@@ -97,7 +107,7 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
     return {
       ok: true,
       plan: {
-        tabla: 'cotizacion_partida', id,
+        tabla: 'cotizacion_partida', operacion: 'update', id,
         columnas: { cantidad: validado.valor },
         detalle: `${validado.partida?.codigo ?? validado.partida?.descripcion}: cantidad = ${validado.valor} ${validado.unidad ?? ''}`.trim(),
       },
@@ -116,7 +126,7 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
     return {
       ok: true,
       plan: {
-        tabla: 'cotizacion_partida', id,
+        tabla: 'cotizacion_partida', operacion: 'update', id,
         columnas: { subcontratada: true, precio_subcontrato: validado.valor },
         detalle: `${validado.partida?.codigo ?? validado.partida?.descripcion}: subcontratada a ${validado.proveedor} por ${validado.valor}`,
       },
@@ -129,12 +139,32 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
     return {
       ok: true,
       plan: {
-        tabla: 'cotizaciones', id: cotizacionId,
+        tabla: 'cotizaciones', operacion: 'update', id: cotizacionId,
         // Se guarda en FRACCIÓN, que es lo que la vista multiplica. `validar()` del motor ya
         // convirtió «19» a 0,19: escribir 19 daría un beneficio de 1.900 % y —como todos los
         // escalones se multiplican por la misma base— el resultado se vería coherente.
         columnas: { [columna]: validado.valor },
         detalle: `${validado.parametro} = ${validado.valor}`,
+      },
+    }
+  }
+
+  if (intencion.action === 'exclude_scope' || intencion.action === 'include_scope') {
+    const patron = String(intencion.target ?? '').trim()
+    if (!patron) return { ok: false, porQue: 'no se dijo qué sacar o poner' }
+    const estado = intencion.action === 'exclude_scope' ? 'EXCLUIDO' : 'INCLUIDO'
+    const n = (validado.partidas ?? []).length
+    return {
+      ok: true,
+      plan: {
+        tabla: 'cotizacion_alcance', operacion: 'upsert', onConflict: 'cotizacion_id,patron',
+        columnas: {
+          cotizacion_id: cotizacionId, patron, estado,
+          // La FUENTE es lo que hace revisable la decisión: quién y por dónde. §5 la exige.
+          fuente: 'CONVERSACION', texto_literal: intencion.textoOriginal ?? null,
+          motivo: intencion.reason ?? null,
+        },
+        detalle: `${patron}: ${estado} — toca ${n} ${n === 1 ? 'partida' : 'partidas'}`,
       },
     }
   }
@@ -147,8 +177,6 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
  * «no implementado»: la diferencia es que esto se puede resolver leyéndolo.
  */
 const MOTIVO_SIN_PLAN: Record<string, string> = {
-  exclude_scope: 'el alcance por partida vive en la tabla que creó la migración del cotizador y este módulo todavía no la escribe: sacar una partida por conversación dejaría el cambio sin fila',
-  include_scope: 'el alcance por partida todavía no se escribe desde este módulo (misma tabla que exclude_scope)',
   set_resource_price: 'el precio de un recurso se carga en la Base Maestra, que es su fuente: cambiarlo desde un presupuesto lo desincronizaría del resto',
   set_global_policy: 'la política GLOBAL se cambia en parametro_comercial, no desde una cotización: una conversación no mueve la política de la empresa (§17)',
   undo: 'deshacer necesita el registro de eventos del cotizador, que este módulo todavía no escribe',

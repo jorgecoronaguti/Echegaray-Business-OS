@@ -90,6 +90,34 @@ describe('el gate dice POR QUÉ no, no un booleano opaco (§24)', () => {
   })
 })
 
+describe('el alcance del §5 cambia lo que la cola pide', () => {
+  const alcance = (patron, estado) => ({ patron, estado, fuente: 'CONVERSACION', texto_literal: null, decidido_por: null, motivo: null })
+
+  test('una partida sin composición pide precio… hasta que se la excluye', () => {
+    const partidas = [fila({ codigo: '02.01', descripcion: 'Pintura latex', sin_analisis: true })]
+    const antes = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas })
+    assert.ok(antes.cola.issues.some((i) => i.type === 'SIN_PRECIO'), 'no pidió el precio de la pintura')
+
+    // MUTACIÓN QUE LO PONE ROJO: ignorar `alcance` en `estadoDesdeFilas`. La cola seguiría pidiendo
+    // el precio de una partida que alguien sacó, que es lo que hace inútil el gesto de sacarla.
+    const despues = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas, alcance: [alcance('pintura', 'EXCLUIDO')] })
+    assert.equal(despues.cola.issues.some((i) => i.type === 'SIN_PRECIO'), false, 'sigue pidiendo el precio de algo excluido')
+    assert.equal(despues.excluidas, 1)
+  })
+
+  test('excluir NO borra la partida: sigue en la lista, marcada', () => {
+    const partidas = [fila({ codigo: '02.01', descripcion: 'Pintura latex' })]
+    const e = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas, alcance: [alcance('pintura', 'EXCLUIDO')] })
+    assert.equal(e.partidas.length, 1, 'la partida desapareció en vez de quedar marcada')
+    assert.equal(e.partidas[0].alcance, 'EXCLUIDO')
+  })
+
+  test('sin ninguna decisión de alcance, nada queda excluido por su cuenta', () => {
+    const e = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas: [fila({})] })
+    assert.equal(e.excluidas, 0)
+  })
+})
+
 describe('la cola es PARCIAL y lo declara', () => {
   test('el estado dice que lo que se ve desde la base no es todo lo que hay', () => {
     const e = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas: [fila({})] })
