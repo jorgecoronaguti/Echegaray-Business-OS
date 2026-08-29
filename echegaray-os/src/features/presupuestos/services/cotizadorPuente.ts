@@ -21,6 +21,9 @@ import type { PresupuestoCascada, PartidaValorizada } from '../types/index.ts'
 import type { RespuestaConversacion } from './conversacionTipos.ts'
 import type { Intencion, Validado } from './conversacionPlan.ts'
 import { conversar as conversarMjs } from '../../../../orquestador/lib/cotizador/conversacion.mjs'
+// El intérprete de respaldo vive FUERA de `cotizador/` y se inyecta: esa carpeta no importa un
+// cliente de IA y `claude-zero.test.mjs` lo verifica. Ver el encabezado de `conversacion.mjs`.
+import { interpretarConModelo } from '../../../../orquestador/lib/interprete-presupuesto-llm.mjs'
 import {
   estadoDesdeFilas as estadoDesdeFilasMjs,
   cascadaDesdeFila as cascadaDesdeFilaMjs,
@@ -87,6 +90,7 @@ interface OpcionesConversar {
   confirmado?: boolean
   cascadaAntes?: CascadaMotor | null
   usarModelo?: boolean
+  conModelo?: unknown
   mutar?: (x: { intent: Intencion; validado: Validado }) => unknown
 }
 
@@ -103,7 +107,16 @@ export interface TurnoDelMotor {
 // El doble `as unknown as` es el precio de una frontera entre un módulo sin tipos y uno tipado, y
 // está acá y en ninguna otra parte. `unknown` y no `any`: `any` apagaría el chequeo dentro de la
 // firma también, y la firma es justamente lo que hay que chequear.
-export const conversar = conversarMjs as unknown as (o: OpcionesConversar) => Promise<TurnoDelMotor>
+const conversarSinModelo = conversarMjs as unknown as (o: OpcionesConversar) => Promise<TurnoDelMotor>
+
+/**
+ * `conversar` con el respaldo del modelo YA ENCHUFADO.
+ *
+ * El enchufe está acá y en ningún otro lado: quien llame desde la web tiene el respaldo, y quien
+ * llame a `cotizador/conversacion.mjs` directo corre determinístico. Un caller no puede olvidarse de
+ * enchufarlo ni enchufarlo dos veces.
+ */
+export const conversar = (o: OpcionesConversar) => conversarSinModelo({ conModelo: interpretarConModelo, ...o })
 
 export const estadoDesdeFilas = estadoDesdeFilasMjs as unknown as (
   o: { presupuesto: PresupuestoCascada; partidas: PartidaValorizada[] },

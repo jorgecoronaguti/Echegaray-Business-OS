@@ -20,6 +20,14 @@
 // sigue funcionando. Degradado no es caído: es la diferencia entre «no entendí esta frase, escribila
 // de otra forma» y una pantalla que no abre.
 //
+// ═══ POR QUÉ ESTE ARCHIVO NO VIVE EN `cotizador/` ═══
+//
+// `claude-zero.test.mjs` verifica que NINGÚN módulo de `cotizador/` importe un cliente de IA, y
+// tiene razón: ese principio de arquitectura sin una prueba ejecutable dura hasta el primer apuro.
+// Este módulo ES la puerta del modelo, así que vive afuera y se INYECTA en `conversar()` igual que
+// `mutar` y `persistir`. La consecuencia es la que se quería: `conversar()` sin nadie que le pase
+// un intérprete de respaldo corre CLAUDE-ZERO puro, por construcción y no por configuración.
+//
 // ═══ INYECCIÓN DE PROMPT (§41) ═══
 //
 // La frase del usuario y las descripciones de las partidas —que pueden venir de un PDF de cliente—
@@ -29,9 +37,9 @@
 // produciría un `commercial_override` que el rol del que pregunta puede o no tener permitido, y que
 // el outlier engine evalúa igual que cualquier otro. El prompt es la primera puerta, no la única.
 
-import { CAPACIDAD, pedirTextoONull } from '../ia/cliente.mjs'
-import { ACCION } from './contrato.mjs'
-import { intencionCompleta } from './interprete.mjs'
+import { CAPACIDAD, pedirTextoONull } from './ia/cliente.mjs'
+import { ACCION } from './cotizador/contrato.mjs'
+import { intencionCompleta } from './cotizador/interprete.mjs'
 
 /** Cuántas partidas se le muestran al modelo. Un presupuesto real tiene 68 y no entran todas. */
 const TOPE_PARTIDAS = 60

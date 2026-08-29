@@ -13,15 +13,20 @@
 // preescrita es una afirmación que nadie verificó contra el motor. Acá TODO lo que se muestra sale
 // de lo que devolvió `ejecutar()`, y el test lo comprueba número por número.
 //
-// ═══ POR QUÉ ESTE ARCHIVO NO TOCA LA BASE ═══
+// ═══ POR QUÉ ESTE ARCHIVO NO TOCA LA BASE NI AL MODELO ═══
 //
 // `mutar`, `recalcular` y `persistir` se inyectan igual que en `comandos.mjs`, y por el mismo
 // motivo: todo lo que decide se prueba sin red. Lo que toca Postgres vive en la server action.
+//
+// Y `conModelo` también se inyecta. `claude-zero.test.mjs` verifica que ningún módulo de esta
+// carpeta importe un cliente de IA — importarlo acá lo habría burlado por transitividad, que es
+// peor que romperlo de frente. La consecuencia es la buena: `conversar()` sin nadie que le pase un
+// intérprete de respaldo corre CLAUDE-ZERO **por construcción**, no por una bandera que alguien
+// puede olvidarse de poner. La puerta del modelo vive en `lib/interprete-presupuesto-llm.mjs`.
 
 import { ACCION } from './contrato.mjs'
 import { ejecutar } from './comandos.mjs'
 import { interpretar } from './interprete.mjs'
-import { interpretarConModelo } from './interprete-llm.mjs'
 
 /** El turno de conversación. Siempre la misma forma. */
 const turno = (x) => Object.freeze({
@@ -32,14 +37,16 @@ const turno = (x) => Object.freeze({
 /**
  * UN TURNO. Devuelve qué se entendió, qué pasó y qué mostrar.
  *
- * @param usarModelo cuando es `false`, el modelo NO se llama ni siquiera si el parser falló. Es el
+ * @param conModelo el intérprete de respaldo —`interpretarConModelo` de
+ *   `lib/interprete-presupuesto-llm.mjs`—. Sin él no hay modelo y el sistema corre determinístico.
+ * @param usarModelo cuando es `false`, el respaldo NO se llama ni aunque esté inyectado. Es el
  *   interruptor del CLAUDE-ZERO (§34): permite correr el sistema entero con el proveedor apagado y
  *   ver exactamente qué se pierde, en vez de suponerlo.
  */
 export async function conversar({
   texto, rol, actor, estado = {}, correlationId = null, confirmado = false,
   mutar = null, recalcular = null, persistir = null,
-  usarModelo = true, pedir = undefined, cascadaAntes = null,
+  usarModelo = true, conModelo = null, pedir = undefined, cascadaAntes = null,
 } = {}) {
   const partidas = estado.partidas ?? []
 
@@ -48,11 +55,11 @@ export async function conversar({
   let degradado = false
 
   // ── 2 · el modelo, sólo si el parser no llegó
-  if (!leido.resuelto && usarModelo) {
-    const conModelo = await interpretarConModelo(texto, { partidas, ...(pedir ? { pedir } : {}) })
-    degradado = conModelo.degradado
-    if (conModelo.resuelto) leido = conModelo
-    else if (conModelo.porQue) leido = { ...leido, porQue: conModelo.porQue }
+  if (!leido.resuelto && usarModelo && conModelo) {
+    const r = await conModelo(texto, { partidas, ...(pedir ? { pedir } : {}) })
+    degradado = r.degradado
+    if (r.resuelto) leido = r
+    else if (r.porQue) leido = { ...leido, porQue: r.porQue }
   }
 
   if (!leido.resuelto) {

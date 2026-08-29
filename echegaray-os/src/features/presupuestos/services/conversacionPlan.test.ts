@@ -8,9 +8,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { planDe, paraElMotor, rolDeContrato, type Plan, type Intencion, type Validado } from './conversacionPlan.ts'
-import { conversar } from '../../../../orquestador/lib/cotizador/conversacion.mjs'
-import { estadoDesdeFilas } from '../../../../orquestador/lib/cotizador/desde-base.mjs'
+import { planDe, paraElMotor, rolDeContrato, type Plan } from './conversacionPlan.ts'
+// Por la MISMA puerta que usa la server action. Importar el `.mjs` directo desde el test probaría
+// un camino que producción no recorre.
+import { conversar, estadoDesdeFilas } from './cotizadorPuente.ts'
 import type { PartidaValorizada, PresupuestoCascada } from '../types/index.ts'
 
 const PRESUPUESTO = {
@@ -40,7 +41,7 @@ async function turnoConPlan(texto: string, rol: string) {
   const t = await conversar({
     texto, rol, actor: 'test', usarModelo: false, confirmado: true,
     estado: { ...estado, partidas: paraElMotor(LISTA) },
-    mutar: ({ intent, validado }: { intent: Intencion; validado: Validado }) => {
+    mutar: ({ intent, validado }) => {
       caja.plan = planDe(intent, validado, PRESUPUESTO.id)
       return estado
     },
@@ -75,7 +76,7 @@ describe('el plan sale del motor, no de una suposición', () => {
 
   test('«sanitaria 8,5M» sin proveedor NO llega a producir plan', async () => {
     const { turno, plan } = await turnoConPlan('sanitaria 8,5M', 'DUENO')
-    assert.equal(turno.salida.ok, false)
+    assert.equal(turno.salida?.ok, false)
     assert.equal(plan, null, 'armó un plan de escritura para un subcontrato que nadie confirmó')
   })
 })
@@ -115,16 +116,16 @@ describe('RBAC: el jefe de obra no toca lo comercial ni ve el valor (§40)', () 
 
   test('«beneficio 19%» de un jefe de obra no produce plan y el motivo no dice 19', async () => {
     const { turno, plan } = await turnoConPlan('beneficio 19%', 'JEFE_DE_OBRA')
-    assert.equal(turno.salida.ok, false)
-    assert.equal(turno.salida.etapaQueParo, 'AUTORIZACION')
+    assert.equal(turno.salida?.ok, false)
+    assert.equal(turno.salida?.etapaQueParo, 'AUTORIZACION')
     assert.equal(plan, null)
     assert.ok(!/19/.test(JSON.stringify(turno.respuesta)), 'el error le contó el valor')
   })
 
   test('un LECTOR no puede ni cambiar una cantidad', async () => {
     const { turno, plan } = await turnoConPlan('la mamposteria son 520 m2', 'LECTOR')
-    assert.equal(turno.salida.ok, false)
-    assert.equal(turno.salida.etapaQueParo, 'AUTORIZACION')
+    assert.equal(turno.salida?.ok, false)
+    assert.equal(turno.salida?.etapaQueParo, 'AUTORIZACION')
     assert.equal(plan, null)
   })
 

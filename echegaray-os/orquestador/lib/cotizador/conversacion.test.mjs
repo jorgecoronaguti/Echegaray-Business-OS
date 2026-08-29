@@ -5,7 +5,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { conversar, redactar, deltaDePrecio } from './conversacion.mjs'
-import { desdeJson } from './interprete-llm.mjs'
+import { desdeJson, interpretarConModelo } from '../interprete-presupuesto-llm.mjs'
 import { CANONICOS } from './interprete.mjs'
 import { ROL } from './contrato.mjs'
 
@@ -22,6 +22,8 @@ const mutar = ({ validado }) => validado
 /** Un `pedir` que finge al modelo. Sin red, sin clave, sin costo. */
 const responde = (texto) => async () => texto
 const sinModelo = async () => null
+/** El intérprete de respaldo, INYECTADO. `cotizador/` no lo importa: ver el encabezado del módulo. */
+const conModelo = interpretarConModelo
 
 describe('el ciclo completo, sin modelo (CLAUDE-ZERO · §34)', () => {
   test('«la mamposteria son 520 m2» cambia la cantidad y dice de cuánto a cuánto', async () => {
@@ -65,16 +67,41 @@ describe('el ciclo completo, sin modelo (CLAUDE-ZERO · §34)', () => {
 
 describe('sin clave el sistema DEGRADA, no se cae (§34)', () => {
   test('el modelo devuelve null y la conversación sigue viva y lo dice', async () => {
-    const t = await conversar({ texto: 'che fijate eso del tema aquel', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO, pedir: sinModelo, mutar })
+    const t = await conversar({ texto: 'che fijate eso del tema aquel', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO, pedir: sinModelo, conModelo, mutar })
     assert.equal(t.degradado, true, 'no declaró que estaba degradado')
     assert.equal(t.entendido, false)
     assert.ok(t.respuesta.pregunta)
   })
 
   test('con el modelo caído, los canónicos siguen andando igual', async () => {
-    const t = await conversar({ texto: 'q me falta para enviar', rol: ROL.DUENO, actor: 'jorge', estado: { ...ESTADO, cola: { bloqueantes: [] } }, pedir: sinModelo, mutar })
+    const t = await conversar({ texto: 'q me falta para enviar', rol: ROL.DUENO, actor: 'jorge', estado: { ...ESTADO, cola: { bloqueantes: [] } }, pedir: sinModelo, conModelo, mutar })
     assert.equal(t.entendido, true)
     assert.equal(t.degradado, false, 'llamó al modelo para una frase que el parser resuelve')
+  })
+})
+
+describe('sin inyectar el respaldo, no hay modelo — por construcción', () => {
+  test('conversar() a secas NO llama al modelo aunque el parser no entienda', async () => {
+    let llamadas = 0
+    const t = await conversar({
+      texto: 'che fijate eso del tema aquel', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO,
+      pedir: async () => { llamadas += 1; return '{\"action\":\"update_quantity\"}' },
+      mutar,
+    })
+    // MUTACIÓN QUE LO PONE ROJO: volver a importar `interpretarConModelo` dentro de
+    // `conversacion.mjs` en vez de recibirlo. Ahí `llamadas` pasa a 1.
+    assert.equal(llamadas, 0, 'llamó al modelo sin que nadie lo enchufara')
+    assert.equal(t.degradado, false, 'declaró degradación de un modelo que nunca estuvo enchufado')
+    assert.equal(t.entendido, false)
+  })
+
+  test('con el respaldo inyectado, la misma frase SÍ llega al modelo', async () => {
+    let llamadas = 0
+    await conversar({
+      texto: 'che fijate eso del tema aquel', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO,
+      conModelo, pedir: async () => { llamadas += 1; return null }, mutar,
+    })
+    assert.equal(llamadas, 1, 'el respaldo inyectado no se usó: el test de arriba no probaría nada')
   })
 })
 
@@ -89,7 +116,7 @@ describe('el texto del modelo NUNCA muta estado (§19)', () => {
   for (const [que, crudo] of BASURA) {
     test(`${que}: no produce intención`, async () => {
       let mutaciones = 0
-      const t = await conversar({ texto: 'algo que el parser no entiende jamas', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO, pedir: responde(crudo), mutar: () => { mutaciones += 1 } })
+      const t = await conversar({ texto: 'algo que el parser no entiende jamas', rol: ROL.DUENO, actor: 'jorge', estado: ESTADO, pedir: responde(crudo), conModelo, mutar: () => { mutaciones += 1 } })
       assert.equal(t.entendido, false, `«${que}» se convirtió en una intención`)
       assert.equal(mutaciones, 0)
     })
@@ -97,7 +124,7 @@ describe('el texto del modelo NUNCA muta estado (§19)', () => {
 
   test('un JSON bien formado del modelo SÍ pasa, y vuelve a pasar por RBAC', async () => {
     const crudo = '{"action":"commercial_override","target":"pctBeneficio","value":19}'
-    const t = await conversar({ texto: 'subime la ganancia un toque', rol: ROL.JEFE_DE_OBRA, actor: 'jefe', estado: ESTADO, pedir: responde(crudo), mutar })
+    const t = await conversar({ texto: 'subime la ganancia un toque', rol: ROL.JEFE_DE_OBRA, actor: 'jefe', estado: ESTADO, pedir: responde(crudo), conModelo, mutar })
     assert.equal(t.entendido, true)
     assert.equal(t.salida.ok, false)
     assert.equal(t.salida.etapaQueParo, 'AUTORIZACION')
