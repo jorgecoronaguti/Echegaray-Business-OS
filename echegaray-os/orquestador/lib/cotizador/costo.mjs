@@ -184,7 +184,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
 
     if (!sumable({ valor: p.valor, estado: p.estado === ESTADO.HISTORICO ? ESTADO.EXTRAIDO : p.estado })) {
       faltan.push(`${l.recursoCodigo ?? l.codigo}: ${p.porQue}`)
-      issues.push(issueDePrecio(p, { impacto: null, critico: true }))
+      issues.push(issueDePrecio(p, { impacto: null, critico: true, nombre: l.nombre ?? null }))
       lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, cantidad: Number(l.cantidad) * conFactor * Number(cant), unidadRecurso: l.unidad ?? null, precioUnitario: null, costo: null, estado: p.estado, fuente: p.fuente, formula: null })
       continue
     }
@@ -201,7 +201,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     const cantidadFisica = Number(l.cantidad) * conFactor * Number(cant)
     const costoLinea = cantidadFisica * conv.valor
     cajones[cajon] += costoLinea
-    if (p.estado === ESTADO.HISTORICO) issues.push(issueDePrecio(p, { impacto: redondear(costoLinea), critico: false }))
+    if (p.estado === ESTADO.HISTORICO) issues.push(issueDePrecio(p, { impacto: redondear(costoLinea), critico: false, nombre: l.nombre ?? null }))
     lineas.push({
       cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null,
       // Lo que hace posible la explosión de recursos (§13): cuánto se necesita y a qué precio.

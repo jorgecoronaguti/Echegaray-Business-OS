@@ -1,7 +1,7 @@
 # DoD — COTIZADOR CORE (`orquestador/lib/cotizador/`)
 
 Rama `feat/cotizador-core`. **No mergeado. No desplegado.** Lo cierra quien no lo construyó.
-Fases 1 y 2 cerradas al 29/08/2026.
+Fases 1, 2 y 3 cerradas al 29/08/2026. **Contrato 1.1.0.**
 
 ---
 
@@ -66,7 +66,25 @@ estaba cubierto.
 
 ## LÍMITES CONOCIDOS — cada uno bloquea el criterio que toca
 
-### 1. Nada de esto corrió sobre un proyecto real. **Bloquea §35, §36 y §37.** ← EL QUE MÁS PESA
+### 1. ~~Nada corrió sobre un proyecto real~~ → **CERRADO en fase 3**, con estas reservas
+Quattropani corrió punta a punta sobre sus 10 documentos y las 26 partidas reales de COT-2026-001;
+LA ESTRELLA fue el caso ciego; las tres formas del §37 se ejercitaron. Lo que **sigue abierto**:
+- **el caso ciego no tiene presupuesto cargado en la base**, así que su cómputo es un DICTADO sobre
+  la Base Maestra real y no el tramo documentos→cómputo del motor. No es el mismo recorrido que
+  Quattropani y compararlos uno a uno sería tramposo;
+- **ningún documento se volvió a leer**: se usó el conocimiento YA extraído en `biblioteca.json`. El
+  tramo `plano/` —interpretar láminas, medir CAD— no se ejercitó en esta fase;
+- **el `alcancePorDefecto`** que hace que las 26 partidas se coticen es una decisión declarada con
+  fuente («cargada en el presupuesto COT-2026-001»), no algo que el contrato diga. Sin ella el
+  motor no cotiza nada, y eso también es un resultado: el contrato dice qué NO va, no enumera qué sí.
+
+### 1b. Lo que Quattropani ROMPIÓ, y cómo quedó
+| Defecto | Cómo apareció | Cómo se cerró |
+|---|---|---|
+| «muros» habría excluido `T1017 CAPA AISLADORA EN MUROS` | correr el extractor sobre las 5 frases reales | corroboración en ≥2 documentos |
+| «X queda excluido» ponía lo negado antes de la marca, y se perdían entrepiso/escalera | la exclusión mejor documentada salía candidata | dos familias de negación, sufijo primero |
+| `cot_gate_congelado` (SQL) decía `ready` donde el JS bloqueaba | el vigilante del menor 4 | migración `20260829T1800`: el gate baja a `analisis_linea → recurso → recurso_precio` |
+| el script corría al importarse y cerraba el pool | 18 tests salteados con «ok # SKIP» | guard de ejecución |
 Los 247 tests corren sobre fixtures construidos a mano y sobre un presupuesto sintético insertado en
 la base dentro de una transacción. **Quattropani no se usó como regresión de punta a punta**: se
 verificó su cláusula de exclusión contra el texto real de `biblioteca.json` (límite 3 de la fase 1,
@@ -78,17 +96,16 @@ formas de cotizar desde cero (doc suficiente / doc incompleta / cómputo manual)
 en producción, ninguna ruta de Next lo consume, y las cuatro tablas nuevas **siguen vacías en la
 base real** —lo único que se escribió en ellas fue dentro de transacciones que se revirtieron—.
 
-### 3. `cot_gate_congelado` (SQL) y `gateDeCongelado` (JS) son DOS implementaciones del mismo gate.
-Es el mismo riesgo que el mapa acción→permiso, y **acá no hay vigilante**. El de SQL mira
-`cotizacion_partida_valorizada` y el de JS mira los `issues` del motor; coinciden en las reglas que
-importan (subcontrato sin precio, cantidad ausente, conflicto de alcance, sin precio calculable)
-pero no hay un test que compare sus salidas sobre el mismo presupuesto. Se duplicó porque el gate
-tiene que poder correr desde PostgREST sin pasar por el motor.
+### 3. ~~Los dos gates sin vigilante~~ → **CERRADO**: el vigilante existe y encontró un defecto real.
+Compara `ready` y los tipos de bloqueo sobre el presupuesto REAL, y comprueba que puede dar rojo
+metiendo un subcontrato sin precio. **Reserva**: compara la decisión y los tipos, no issue por
+issue — las dos implementaciones miran fuentes distintas y exigir igualdad exacta obligaría a
+duplicar también la redacción.
 
-### 4. El barrido de fuga sólo mira lo que se le pasa.
-`correr()` le pasa descripciones, notas de partida y nombres de documento. **No mira** las citas
-literales de evidencia, las fuentes de precio, ni el contenido de los documentos interpretados. Un
-nombre de otro cliente adentro de un `textoLiteral` de evidencia hoy pasa.
+### 4. ~~El barrido de fuga no miraba las citas~~ → **CERRADO parcialmente**.
+Ahora mira descripciones, notas, **citas literales de evidencia**, nombres de archivo de evidencia y
+**fuentes de precio**. **Sigue sin mirar** el contenido completo de los documentos interpretados: un
+nombre de otro cliente en el cuerpo de un pliego que no llegó a una cita no se detecta.
 
 ### 5. `FREEZE` como permiso no discrimina a ningún rol existente.
 Ningún rol tiene `ve_economia()` sin tener FREEZE, así que el segundo candado de la policy de huella
@@ -146,3 +163,35 @@ agregó la aserción sobre la propiedad que importa, no sobre el mecanismo redun
   una columna nullable en `recurso_precio`, una vista nueva y cuatro funciones. Nada existente se
   alteró, `cotizacion_cascada` sigue devolviendo sus 11 filas, y `orq:test` completo pasa — pero la
   decisión de haber aplicado sobre esa base es suya, no mía.
+
+---
+
+## Límites nuevos de la fase 3
+
+### 13. La suite completa es sensible a escrituras concurrentes de otros procesos.
+`npm run orq:test` falló una vez con `caso-controlado-circuito.pg.test.mjs` diciendo
+«cotizaciones: 11 → 12». No era de esta rama —los fixtures de acá llevan prefijo `ZZ` y hay 0 filas
+con esa marca— sino otro proceso escribiendo en la base compartida durante la corrida. Corrido de
+nuevo con la base estable: **exit 0**. El candado de `orq:test` es entre corridas de `orq:test`, no
+contra otros agentes.
+
+### 14. `partidasDesdeDictado` vive en un script, no en `lib/`.
+El test de casos reales lo importa desde `orquestador/scripts/cotizador-casos-reales.mjs`. Funciona
+—hay guard de ejecución— pero un test que importa de `scripts/` es una dependencia al revés.
+
+### 15. El extractor de exclusiones no fue probado contra un contrato que niegue de otra forma.
+Conoce «no se incluye/contempla/considera/prevé», «no incluye» y «queda excluido». Un contrato que
+diga «se deja expresamente fuera de alcance» o use una tabla de exclusiones no se lee. `tramoNegado`
+devuelve `null` y eso no bloquea nada: la exclusión simplemente **no se ve**.
+
+### 16. La forma (C) del §37 no produjo presupuesto, y eso está bien pero no está resuelto.
+El dictado «mampostería 520 m², piso 300 m²» mapeó **cero** partidas: la cerradura del espesor pidió
+el dato que falta y el piso quedó AMBIGUO entre `T1107.1` (mano de obra) y `T1107.2` (materiales).
+El motor hace lo correcto —pregunta— pero el circuito «el dueño dicta y sale un presupuesto» **no
+está cerrado**: falta la vuelta de la respuesta a la pregunta, que es del frente.
+
+### 17. Un contador puede seguir mintiendo: `AUTONOMOUS RESOLUTION RATE` dio 100 % en los tres casos.
+`mapeos` ahora reporta `SIN_PARTIDA` cuando falta `tareaTipoId`, pero las partidas que vienen de la
+base SIEMPRE lo tienen —las que no mapearon nunca llegan a ser partidas—. La tasa mide lo que entró,
+no lo que se intentó. Para que signifique algo tiene que contar también lo que `partidasDesdeDictado`
+descartó, y eso hoy queda afuera de la corrida.

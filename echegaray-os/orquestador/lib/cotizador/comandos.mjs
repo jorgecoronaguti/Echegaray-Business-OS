@@ -173,7 +173,7 @@ export function ejecutar({
 
   // ── 5 · MUTACIÓN + 6 · RECÁLCULO + 7 · PERSISTENCIA
   const e = evento({
-    accion: intent.action, entidad: String(intent.target ?? 'cotización'), campo: campoDe(intent),
+    accion: intent.action, entidad: entidadCanonica(intent, val), campo: campoDe(intent),
     antes: val.anterior ?? null, despues: val.valor ?? intent.value,
     actor, motivo: intent.textoOriginal ?? null, correlationId,
   })
@@ -185,6 +185,28 @@ export function ejecutar({
     ok: true, veredicto: ev.veredicto, eventos: Object.freeze([e]), resultado: recalculado,
     porQue: ev.veredicto === 'APLICAR_CON_AVISO' ? ev.porQue : null,
   })
+}
+
+/**
+ * LA ENTIDAD DEL EVENTO ES LA PARTIDA, NO EL TEXTO QUE ESCRIBIÓ LA PERSONA. PURA.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA ═══
+ *
+ * El evento se armaba con `String(intent.target)`, o sea el texto crudo: «mamposteria», «la
+ * mamposteria» y «01.01» son la MISMA partida y dejaban tres entidades distintas en el historial.
+ * Con eso, `historiaDe()` no puede reconstruir el estado de una partida y el undo del §21 no puede
+ * agrupar lo que fue un solo pedido — que es justo lo que el correlation_id existe para permitir.
+ *
+ * La validación YA resolvió a qué partida apunta el texto. Acá se usa esa resolución en vez de
+ * volver a confiar en cómo lo escribieron.
+ */
+export function entidadCanonica(intent, val) {
+  if (val?.partida) return String(val.partida.codigo ?? val.partida.id)
+  // `exclude_scope` puede tocar varias: la entidad es la lista, ordenada para que dos pedidos
+  // equivalentes escritos distinto den la misma clave.
+  if (val?.partidas?.length) return val.partidas.map((p) => String(p.codigo ?? p.id)).sort().join('+')
+  if (val?.parametro) return String(val.parametro)
+  return String(intent.target ?? 'cotización')
 }
 
 /** Qué campo toca cada acción. PURA. */

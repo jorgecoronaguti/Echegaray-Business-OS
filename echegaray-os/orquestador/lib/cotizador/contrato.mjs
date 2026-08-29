@@ -23,7 +23,7 @@
 
 /** Cambiar el contrato es cambiar lo que construyen las otras caras. Se sube cuando se AGREGA algo
  *  (compatible) y el registro de por qué va en `docs/engineering/COTIZADOR-CONTRATO.md`. */
-export const VERSION_CONTRATO = '1.0.0'
+export const VERSION_CONTRATO = '1.1.0'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // 1 · LOS ONCE ESTADOS DE DOMINIO (§2)
@@ -303,6 +303,18 @@ export const ACCION = Object.freeze({
 })
 
 /**
+ * ═══ LA COSTURA OFICIAL DEL COMMAND LAYER (contrato 1.1.0) ═══
+ *
+ * `comandos.ejecutar()` es SÍNCRONA y no escribe. Recibe `mutar`, que devuelve un PLAN de escritura
+ * —qué filas tocar y con qué valores— y el plan lo aplica QUIEN LLAMA, con SU credencial.
+ *
+ * No es una limitación pendiente de arreglar: es lo que mantiene la RLS honesta. Si el motor
+ * escribiera, escribiría con la conexión del servidor —rol del pool, RLS no aplicada— y los seis
+ * permisos volverían a vivir sólo en JavaScript, que es el agujero que la migración 20260829T1500
+ * cerró. Aplicando el caller, la base vuelve a preguntar quién es.
+ */
+
+/**
  * ¿ESTE ROL PUEDE ESTA ACCIÓN? PURA.
  *
  * Devuelve el motivo cuando no puede, y el motivo NO nombra el valor que se quería escribir: un
@@ -329,9 +341,22 @@ export function autorizar({ rol, action } = {}) {
  * lo demás —¿ese target existe? ¿ese número es plausible? ¿tiene permiso?— lo decide el código
  * después, en ese orden.
  */
-export function intencion({ action, target = null, value = null, unit = null, textoOriginal = null } = {}) {
-  if (!ACCION[action]) throw new Error(`el modelo propuso una acción que no existe: ${action}`)
-  return Object.freeze({ action, target, value, unit, textoOriginal, propuestaEn: null })
+export function intencion({ action, target = null, value = null, unit = null, textoOriginal = null, ...extra } = {}) {
+  const def = ACCION[action]
+  if (!def) throw new Error(`el modelo propuso una acción que no existe: ${action}`)
+  // ═══ 1.1.0 · LOS CAMPOS DECLARADOS VIAJAN ═══
+  //
+  // La 1.0.0 descartaba `supplier`, `reason`, `currency` y `source` — campos que `ACCION[x].campos`
+  // DECLARA y que `comandos.validar()` LEE. Con eso, el canónico «la sanitaria la hace X por 8,5M»
+  // NO se podía expresar con el constructor oficial: sin `supplier`, la validación lo trata como
+  // «sanitaria 8,5M» y pregunta quién. El frente tuvo que escribir un constructor paralelo, que es
+  // la receta de siempre para que dos definiciones se separen.
+  //
+  // Sólo se propaga lo DECLARADO: un campo que la acción no nombra sigue sin entrar, así que el
+  // modelo no puede colar datos que ninguna validación mira.
+  const sumar = {}
+  for (const [k, v] of Object.entries(extra)) if (def.campos.includes(k)) sumar[k] = v
+  return Object.freeze({ action, target, value, unit, textoOriginal, propuestaEn: null, ...sumar })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════

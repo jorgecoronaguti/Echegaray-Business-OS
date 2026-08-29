@@ -325,3 +325,73 @@ test('la historia se lee en castellano y en orden', () => {
   const h = historiaDe(reg, 'T4010')
   assert.match(h[0], /jorge · update_quantity \(cantidad\): 480 → 520 — la mamposteria son 520 m2/)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA ENTIDAD DEL EVENTO ES LA PARTIDA, NO EL TEXTO (costura del FRONT, contrato 1.1.0)
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('«la mamposteria» y «T4010» dejan LA MISMA entidad en el historial', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `ejecutar`, volver a `entidad: String(intent.target)`.
+  //
+  // Tres formas de nombrar la misma partida dejaban tres entidades distintas, y con eso
+  // `historiaDe()` no puede reconstruir su estado y el undo del §21 no puede agrupar lo que fue un
+  // solo pedido. El frente lo dejó anotado como límite del core con un test-candado en su rama.
+  const porTexto = ejecutar({
+    intent: intencion({ action: 'update_quantity', target: 'la mamposteria', value: '525 m2' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp,
+  })
+  const porCodigo = ejecutar({
+    intent: intencion({ action: 'update_quantity', target: 'T4010', value: '525 m2' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp,
+  })
+  assert.equal(porTexto.ok, true)
+  assert.equal(porTexto.eventos[0].entidad, 'T4010')
+  assert.equal(porTexto.eventos[0].entidad, porCodigo.eventos[0].entidad)
+})
+
+test('una exclusión que toca VARIAS partidas deja una entidad estable', () => {
+  const a = ejecutar({
+    intent: intencion({ action: 'exclude_scope', target: 'pintura' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(a.eventos[0].entidad, 'T9000')
+  // Y con dos partidas alcanzadas, la clave se ordena: dos pedidos equivalentes dan la misma.
+  const estado = { ...ESTADO_BASE, partidas: [...ESTADO_BASE.partidas, { codigo: 'T9001', descripcion: 'PINTURA EXTERIOR', unidad: 'M2', cantidad: 100, subtotal: 500_000 }] }
+  const b = ejecutar({
+    intent: intencion({ action: 'exclude_scope', target: 'pintura' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge', estado, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(b.eventos[0].entidad, 'T9000+T9001')
+  // Y con las partidas cargadas al revés da LA MISMA clave: si dependiera del orden del array, dos
+  // pedidos idénticos sobre el mismo presupuesto dejarían dos entidades y el undo no los agruparía.
+  const alReves = ejecutar({
+    intent: intencion({ action: 'exclude_scope', target: 'pintura' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge',
+    estado: { ...estado, partidas: [...estado.partidas].reverse() },
+    mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(alReves.eventos[0].entidad, b.eventos[0].entidad)
+})
+
+test('un override comercial identifica el PARÁMETRO, no cómo lo escribieron', () => {
+  const r = ejecutar({
+    intent: intencion({ action: 'commercial_override', target: 'pctBeneficio', value: 19 }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(r.eventos[0].entidad, 'pctBeneficio')
+})
+
+test('COSTURA OFICIAL · ejecutar() es SÍNCRONA y no escribe: devuelve lo que `mutar` planificó', () => {
+  // Es lo que mantiene la RLS honesta: el plan lo aplica el caller con SU credencial. Si el motor
+  // escribiera, lo haría con la conexión del servidor —rol del pool, RLS no aplicada— y los seis
+  // permisos volverían a vivir sólo en JavaScript.
+  const plan = []
+  const r = ejecutar({
+    intent: intencion({ action: 'update_quantity', target: 'T4010', value: '525 m2' }),
+    rol: ROL.ADMINISTRACION, actor: 'jorge', estado: ESTADO_BASE,
+    mutar: ({ validado }) => { plan.push({ tabla: 'cotizacion_partida', id: validado.partida.codigo, cantidad: validado.valor }); return { plan } },
+  })
+  assert.equal(typeof r.then, 'undefined', 'no devuelve una promesa: es síncrona')
+  assert.deepEqual(plan, [{ tabla: 'cotizacion_partida', id: 'T4010', cantidad: 525 }])
+  assert.equal(r.resultado.plan, plan)
+})

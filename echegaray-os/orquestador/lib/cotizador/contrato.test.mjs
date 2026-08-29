@@ -205,3 +205,32 @@ test('las TRECE invariantes del §42 están todas y cada una dice por qué', () 
 test('el contrato declara su versión', () => {
   assert.match(VERSION_CONTRATO, /^\d+\.\d+\.\d+$/)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS COSTURAS DE LA 1.1.0
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('1.1.0 · la intención propaga los campos que la ACCIÓN declara', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `intencion`, volver al `return` sin `...sumar`.
+  //
+  // La 1.0.0 los descartaba, y con eso el canónico «la sanitaria la hace X por 8,5M» NO se podía
+  // expresar con el constructor oficial: sin `supplier`, la validación lo trata como «sanitaria
+  // 8,5M» y pregunta quién. El frente tuvo que escribir un constructor paralelo.
+  const i = intencion({ action: 'set_subcontract', target: 'sanitaria', value: '8,5M', supplier: 'Gasparini', currency: 'ARS' })
+  assert.equal(i.supplier, 'Gasparini')
+  assert.equal(i.currency, 'ARS')
+  const x = intencion({ action: 'exclude_scope', target: 'pintura', reason: 'el pliego la excluye' })
+  assert.equal(x.reason, 'el pliego la excluye')
+})
+
+test('1.1.0 · un campo que la acción NO declara sigue sin entrar', () => {
+  // El modelo no puede colar datos que ninguna validación mira.
+  const i = intencion({ action: 'update_quantity', target: 'mamposteria', value: 520, unit: 'm2', supplier: 'colado', precio: 1 })
+  assert.equal('supplier' in i, false, 'update_quantity no declara supplier')
+  assert.equal('precio' in i, false)
+  assert.deepEqual(Object.keys(i).sort(), ['action', 'propuestaEn', 'target', 'textoOriginal', 'unit', 'value'])
+})
+
+test('1.1.0 · la versión subió, y subió la minor: es aditivo', () => {
+  assert.equal(VERSION_CONTRATO, '1.1.0')
+})
