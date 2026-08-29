@@ -11,10 +11,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  expresionInvertido, formulasDeLiquidez, glosaConInvertido, liquidezDeNumeros,
+  expresionInvertido, glosaDeCierre, glosaConInvertido, liquidezDeNumeros,
   emparejaCriterio, esInvertido, citaUnaFilaDe,
   CRITERIO_INVERTIDO, MARCA_INVERTIDO, COL_ROTULO, COL_PESOS,
-  AVISO_SIN_INVERTIDO, GLOSA_SIN_INVERTIDO, IMPORTE_MUESTRA, muestraIncluye,
+  CIERRE_SIN_INVERTIDO, CIERRE_CON_INVERTIDO, GLOSA_SIN_INVERTIDO, IMPORTE_MUESTRA, muestraCierre,
 } from './cash-flow-invertido.mjs'
 import { IMPORTE_MAS_LARGO } from './cash-flow-hero-cabe.mjs'
 import { grilla } from './caja-grilla.mjs'
@@ -175,29 +175,36 @@ test('la liquidez total suma; y con 0 o sin dato NO publica el número de la caj
   assert.equal(liquidezDeNumeros({ cierre: -10000000, invertido: 45015210 }).total, 35015210)
 })
 
-test('las fórmulas emiten esas dos ramas y ninguna otra', () => {
-  const f = formulasDeLiquidez({ refCierre: '$M$50', exprInvertido: expresionInvertido('CAJA') })
-  assert.ok(f.valor.includes(`"${AVISO_SIN_INVERTIDO}"`), f.valor)
-  assert.ok(f.valor.includes('N($M$50)+N(SUMIF('), f.valor)
-  assert.ok(f.glosa.includes(`"${GLOSA_SIN_INVERTIDO}"`), f.glosa)
-  assert.ok(f.glosa.includes('en Balanz'), f.glosa)
+test('la glosa del CIERRE emite esas dos ramas y ninguna otra', () => {
+  const PREFIJO = 'caja operativa'
+  const f = glosaDeCierre({ refCierre: '$M$50', exprInvertido: expresionInvertido('CAJA'), prefijo: PREFIJO })
+  // (1) LA RAMA QUE PUEDE: el cierre operativo MÁS lo invertido, dicho en la glosa y no en el titular.
+  assert.ok(f.glosa.includes(`"${PREFIJO} · ${CIERRE_CON_INVERTIDO} "&TEXT(N($M$50)+N(SUMIF(`), f.glosa)
+  // (2) LA QUE NO PUEDE: lo dice, y NO publica el cierre pelado como si fuera la liquidez con Balanz.
+  assert.ok(f.glosa.includes(`"${PREFIJO} · ${CIERRE_SIN_INVERTIDO}"`), f.glosa)
+  assert.ok(!new RegExp(`${CIERRE_CON_INVERTIDO}[^&]*"\\)`).test(f.glosa), `una rama promete Balanz sin sumarlo: ${f.glosa}`)
+
   // ═══ LA VENTANA DE TIEMPO, DECLARADA DONDE SE LEE LA CIFRA ═══
   //
-  // La tarjeta suma el saldo PROYECTADO al 31/12 con un SUMIF que vale HOY: $45.015.210 sobre
-  // $72.509.069 — el 62% de la cifra — bajo un rótulo que dice "al 31/12". Regla de oro 3. El supuesto
-  // (que lo invertido no se rescata ni rinde en cuatro meses) no se puede eliminar sin inventar una
-  // proyección de Balanz que el OS no tiene, así que se declara. Si alguien saca las dos palabras, la
-  // tarjeta vuelve a mezclar dos ventanas en silencio.
-  assert.ok(/valuado hoy/.test(f.glosa), `la glosa dejó de declarar que lo invertido vale HOY: ${f.glosa}`)
-  assert.ok(/valuado hoy/.test(f.muestra), f.muestra)
-  // El separador del archivo es `;` (es-AR) y el patrón de formato va en US: las dos reglas conviven
-  // en la misma fórmula y confundirlas deja la celda en #ERROR! o el número sin puntos.
-  assert.ok(!f.valor.includes(','), `separador de coma en: ${f.valor}`)
+  // La glosa suma el saldo PROYECTADO al 31/12 con un SUMIF que vale HOY. Por eso esta cifra dejó de
+  // ser una tarjeta: el titular no puede mezclar ventanas. En la glosa se declara — "hoy" es el
+  // supuesto, no relleno. Si alguien saca la palabra, la mezcla vuelve a ser silenciosa.
+  assert.ok(/hoy/.test(CIERRE_CON_INVERTIDO), `la glosa dejó de declarar que Balanz vale HOY: ${CIERRE_CON_INVERTIDO}`)
+  assert.ok(f.muestra.includes(IMPORTE_MUESTRA) && /hoy/.test(f.muestra), f.muestra)
+
+  // El separador de ARGUMENTOS es `;` (es-AR) y el patrón de FORMATO va en US (`#,##0`): las dos
+  // reglas conviven en la misma fórmula y confundirlas deja la celda en #ERROR! o el número sin
+  // puntos. Por eso la coma se busca FUERA de las comillas — adentro es el patrón, y es correcta.
+  const fueraDeComillas = String(f.glosa).replace(/"[^"]*"/g, '""')
+  assert.ok(!fueraDeComillas.includes(','), `separador de coma en: ${f.glosa}`)
   assert.ok(f.glosa.includes('"$ #,##0"'), f.glosa)
 
-  // Sin pestaña que leer no hay fórmula: la celda dice el aviso, y NO queda vacía ni en cero.
-  const sin = formulasDeLiquidez({ refCierre: '$M$50', exprInvertido: null })
-  assert.deepEqual(sin, { valor: AVISO_SIN_INVERTIDO, glosa: GLOSA_SIN_INVERTIDO, muestra: GLOSA_SIN_INVERTIDO })
+  // Sin pestaña que leer no hay fórmula: la glosa dice el aviso, y NO promete una cifra con Balanz.
+  const sin = glosaDeCierre({ refCierre: '$M$50', exprInvertido: null, prefijo: PREFIJO })
+  assert.equal(sin.glosa, `${PREFIJO} · ${CIERRE_SIN_INVERTIDO}`)
+  assert.equal(sin.muestra, sin.glosa)
+  assert.ok(!sin.glosa.includes(CIERRE_CON_INVERTIDO), sin.glosa)
+  assert.equal(muestraCierre(PREFIJO).includes(IMPORTE_MUESTRA), true)
   assert.equal(expresionInvertido(null), null)
   assert.equal(expresionInvertido('  '), null)
 })
@@ -232,5 +239,5 @@ test('la muestra con la que se miden las glosas es el MISMO peor caso que mide e
   // entonces el titular se mide contra una cifra más corta que la que puede llegar a mostrar.
   const digitos = (s) => String(s).replace(/\D/g, '')
   assert.equal(digitos(IMPORTE_MUESTRA), digitos(IMPORTE_MAS_LARGO))
-  assert.ok(muestraIncluye().includes(IMPORTE_MUESTRA))
+  assert.ok(muestraCierre('caja operativa').includes(IMPORTE_MUESTRA))
 })

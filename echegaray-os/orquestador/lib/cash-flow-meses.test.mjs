@@ -15,9 +15,10 @@ import {
 } from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
+import { ventanasDe } from './cash-flow-ventanas.mjs'
 import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
-import { AVISO_SIN_INVERTIDO, GLOSA_SIN_INVERTIDO, CRITERIO_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
+import { CIERRE_SIN_INVERTIDO, CIERRE_CON_INVERTIDO, CRITERIO_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 
 // `caja` es el TÍTULO de la pestaña de CAJA, que el generador resuelve contra el archivo. Sin él, la
 // tarjeta de liquidez total cae a su rama de "no pude leerlo" — que es un caso probado más abajo.
@@ -174,41 +175,71 @@ test('cero números pegados en las filas de plata', () => {
   assert.deepEqual(pegados, [])
 })
 
-test('el hero sale del propio cuadro: cuatro conceptos ANUALES, ninguno con aritmética propia', () => {
+test('LA REGLA INNEGOCIABLE: ninguna tarjeta mezcla lo real con lo proyectado', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST MANTIENE MUERTO (29/08/2026) ═══
+  //
+  // El dueño rechazó el titular anterior: *"todo eso rehacer no me convence nada"*. La causa no era la
+  // redacción — las cuatro tarjetas FUNDÍAN lo real con lo proyectado adentro de una misma cifra.
+  // `ENTRA EN EL AÑO $816.416.110` era $496.729.892 YA COBRADO más $319.686.218 POR COBRAR: de un
+  // número que ya los sumó, nadie puede separar el hecho de la promesa. Regla de oro 3.
+  //
+  // Se mide sobre la fórmula, no sobre la intención: `ventanasDe` dice a qué filas apunta cada celda.
+  const { filas, meta } = armar()
+  const mezclan = []
+  meta.hero.slots.forEach((col, i) => {
+    for (const fila of [meta.hero.valor, meta.hero.nota]) {
+      const v = ventanasDe(en(filas, fila, col), meta.fila)
+      if (v.length > 1) mezclan.push(`tarjeta ${i + 1} (fila ${fila}): cita ${v.join(' Y ')}`)
+    }
+  })
+  assert.deepEqual(mezclan, [], 'una tarjeta volvió a sumar un hecho con una proyección')
+
+  // Y NO ES UN CONTROL VACÍO: las tarjetas 2 y 3 SÍ citan una ventana cada una, y son distintas. Sin
+  // esto, cuatro tarjetas que no citaran ninguna fila pasarían el test de arriba sin decir nada.
+  const ventanaDe = (i) => ventanasDe(en(filas, meta.hero.valor, meta.hero.slots[i]), meta.fila)
+  assert.deepEqual(ventanaDe(1), ['ya pasó'])
+  assert.deepEqual(ventanaDe(2), ['proyección'])
+})
+
+test('el hero sale del propio cuadro: cada cifra es una resta de dos celdas del cuadro, o el ancla', () => {
   const { filas, meta } = armar()
   const T = letra(meta.cab.colTotal)
   const val = (i) => en(filas, meta.hero.valor, meta.hero.slots[i])
-  assert.equal(val(0), `=N($${T}$${meta.fila.ingresoReal})+N($${T}$${meta.fila.ingresoProyectado})`)
-  assert.equal(val(1), `=N($${T}$${meta.fila.egresoReal})+N($${T}$${meta.fila.egresoProyectado})`)
-  // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
-  // da un stock, y los meses anteriores al corte van vacíos.
-  assert.equal(val(2), `=N($M$${meta.fila.saldoFinal})`)
-  // La liquidez total es ese mismo cierre MÁS lo invertido: mismo origen, un sumando más.
-  assert.ok(val(3).includes(`N($M$${meta.fila.saldoFinal})`), val(3))
+  // 1 · LA FOTO DE HOY. Es el ancla de CAJA, la misma que usa el Semanal: no hay dos definiciones de
+  // cuánta plata hay hoy.
+  assert.equal(val(0), '=N(CAJA_TOTAL_DISPONIBLE)')
+  // 2 · LO QUE YA PASÓ: reales contra reales.
+  assert.equal(val(1), `=N($${T}$${meta.fila.ingresoReal})-N($${T}$${meta.fila.egresoReal})`)
+  // 3 · LO QUE VIENE: proyectado contra proyectado.
+  assert.equal(val(2), `=N($${T}$${meta.fila.ingresoProyectado})-N($${T}$${meta.fila.egresoProyectado})`)
+  // 4 · EL CIERRE: el saldo final de DICIEMBRE, no la suma de los saldos — sumar doce stocks no da un
+  // stock, y los meses anteriores al corte van vacíos.
+  assert.equal(val(3), `=N($M$${meta.fila.saldoFinal})`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LOS RÓTULOS DEL TITULAR — que la cifra correcta no salve a un nombre que dice otra cosa
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el titular no llama "resultado" ni "variación" a nada: la tarjeta que daba pérdidas se fue', () => {
+test('cada tarjeta DICE de qué ventana habla, y ninguna se llama resultado ni variación', () => {
   const { filas, meta } = armar()
   const rotulos = meta.hero.slots.map((s) => en(filas, meta.hero.rotulo, s))
-
-  // ═══ EL DEFECTO QUE ESTE TEST MANTIENE MUERTO ═══
-  //
-  // "VARIACIÓN DE CAJA DEL AÑO $(23.136.331)". El rótulo era correcto y el número también, y el dueño
-  // igual leía una pérdida que no existe: *"la empresa no termina perdiendo tampoco como marca el
-  // resultado"*. La cifra suma ocho meses REALES con cuatro PROYECTADOS y no habilita ninguna decisión.
-  for (const r of rotulos) {
-    assert.ok(!/RESULTADO|VARIACI[ÓO]N/i.test(r), `el titular volvió a publicar un "resultado": ${r}`)
-  }
   assert.deepEqual(rotulos, [
-    ROTULOS_HERO.entra, ROTULOS_HERO.sale, ROTULOS_HERO.operativa, ROTULOS_HERO.liquidez,
+    ROTULOS_HERO.hoy, ROTULOS_HERO.pasado, ROTULOS_HERO.viene, ROTULOS_HERO.cierre,
   ])
-  // Los cuatro son ANUALES o del cierre del año: ninguno habla de un mes suelto.
-  assert.ok(/AÑO/.test(rotulos[0]) && /AÑO/.test(rotulos[1]))
-  assert.ok(/31\/12/.test(rotulos[2]) && /31\/12/.test(rotulos[3]))
+
+  // (1) LA VENTANA ESTÁ EN EL RÓTULO, no sólo en la fórmula: quien lee la tarjeta tiene que saber de
+  // cuándo habla sin abrir el cuadro.
+  assert.ok(/HOY/.test(rotulos[0]), rotulos[0])
+  assert.ok(/YA PASÓ/.test(rotulos[1]), rotulos[1])
+  assert.ok(/VIENE/.test(rotulos[2]), rotulos[2])
+  assert.ok(/31\/12/.test(rotulos[3]), rotulos[3])
+  // (2) Y LA TERCERA DECLARA SU SUPUESTO EN EL RÓTULO: sólo lo ya vendido. Los ingresos proyectados
+  // salen de Cobranzas, que es un libro de cuentas por cobrar y no un pipeline comercial.
+  assert.ok(/YA VENDIDO/.test(rotulos[2]), `la tarjeta de lo que viene no declara que es sólo lo vendido: ${rotulos[2]}`)
+  // (3) Ninguna se llama resultado: entra − sale por criterio PERCIBIDO es caja, y el resultado del
+  // ejercicio es devengado y vive en el P&L (reglas de oro 4, 5 y 7).
+  for (const r of rotulos) assert.ok(!/RESULTADO|VARIACI[ÓO]N/i.test(r), `el titular volvió a publicar un "resultado": ${r}`)
 
   // EL LÍMITE MEDIDO: la columna del hero corta a los 37 caracteres. Un rótulo más honesto pero
   // truncado no dice nada — por eso el tope se verifica, no se confía.
@@ -217,60 +248,57 @@ test('el titular no llama "resultado" ni "variación" a nada: la tarjeta que dab
   }
 })
 
-test('ENTRA y SALE parten el año: lo ya cobrado y lo que falta, en la misma glosa', () => {
+test('las glosas abren cada cifra en sus dos términos, de la MISMA ventana', () => {
   const { filas, meta } = armar()
   const T = letra(meta.cab.colTotal)
   const glosa = (i) => en(filas, meta.hero.nota, meta.hero.slots[i])
 
-  // El total mezclaba $496.729.892 ya cobrado con $319.686.218 por cobrar, y esa diferencia es la que
-  // decide si el año está hecho o está prometido. Las dos partes CITAN las filas del cuadro: si la
-  // glosa recalculara, el titular tendría su propia versión del año.
-  assert.ok(glosa(0).includes(`$${T}$${meta.fila.ingresoReal}`), glosa(0))
-  assert.ok(glosa(0).includes(`$${T}$${meta.fila.ingresoProyectado}`), glosa(0))
-  assert.ok(glosa(0).includes(ROTULOS_HERO.entraYa) && glosa(0).includes(ROTULOS_HERO.entraFalta), glosa(0))
-  assert.ok(glosa(1).includes(`$${T}$${meta.fila.egresoReal}`), glosa(1))
-  assert.ok(glosa(1).includes(`$${T}$${meta.fila.egresoProyectado}`), glosa(1))
-  assert.ok(glosa(1).includes(ROTULOS_HERO.saleYa) && glosa(1).includes(ROTULOS_HERO.saleFalta), glosa(1))
+  // Las dos partes CITAN las filas del cuadro: si la glosa recalculara, el titular tendría su propia
+  // versión del año. Y las dos que abre cada glosa son de la misma ventana que su tarjeta.
+  assert.ok(glosa(1).includes(`$${T}$${meta.fila.ingresoReal}`) && glosa(1).includes(`$${T}$${meta.fila.egresoReal}`), glosa(1))
+  assert.ok(glosa(1).includes(ROTULOS_HERO.pasadoEntro) && glosa(1).includes(ROTULOS_HERO.pasadoSalio), glosa(1))
+  assert.ok(glosa(2).includes(`$${T}$${meta.fila.ingresoProyectado}`) && glosa(2).includes(`$${T}$${meta.fila.egresoProyectado}`), glosa(2))
+  assert.ok(glosa(2).includes(ROTULOS_HERO.vieneCobrar) && glosa(2).includes(ROTULOS_HERO.vienePagar), glosa(2))
 
   // LA PARTICIÓN NO SE ESCONDE CUANDO UNA MITAD ES CERO. La glosa vieja arrancaba con
   // `IF(proyectado=0;"";…)`: un año sin nada por cobrar publicaba el total pelado, que es justo el
-  // caso en que hace falta decir que TODO está cobrado. Sin condición, las dos mitades se ven siempre.
-  assert.ok(!/^=IF\(/.test(glosa(0)), `la glosa volvió a esconderse sola: ${glosa(0)}`)
+  // caso en que hace falta decirlo. Sin condición, las dos mitades se ven siempre.
   assert.ok(!/^=IF\(/.test(glosa(1)), `la glosa volvió a esconderse sola: ${glosa(1)}`)
+  assert.ok(!/^=IF\(/.test(glosa(2)), `la glosa volvió a esconderse sola: ${glosa(2)}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LAS DOS TARJETAS DEL CIERRE — y el control que prueba que la cuarta no es una copia de la tercera
+// LO INVERTIDO — bajó de tarjeta a glosa, y sigue sin poder mentir
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('LIQUIDEZ TOTAL suma lo invertido leyéndolo POR RÓTULO, y no puede dar lo mismo que la caja operativa', () => {
+test('la glosa del cierre suma lo invertido leyéndolo POR RÓTULO, y declara que ese sumando vale hoy', () => {
   const { filas, meta } = armar()
-  const operativa = en(filas, meta.hero.valor, meta.hero.slots[2])
-  const liquidez = en(filas, meta.hero.valor, meta.hero.slots[3])
+  const cierre = en(filas, meta.hero.valor, meta.hero.slots[3])
   const glosa = en(filas, meta.hero.nota, meta.hero.slots[3])
 
-  // (1) SON DOS NÚMEROS DISTINTOS. Si alguien "simplifica" la tarjeta 4 a `=N($M$50)`, esto se pone
-  // rojo: los $45.015.210 de Balanz volverían a no aparecer en ninguna cifra de la pestaña.
-  assert.notEqual(liquidez, operativa, 'la liquidez total quedó siendo una copia de la caja operativa')
-  // (2) Y LA SUMA SE HACE POR RÓTULO, nunca por número de fila: el panel de CAJA se corre de fila y
-  // una referencia posicional devuelve OTRO número sin un solo #REF!.
-  assert.ok(liquidez.includes(`SUMIF('CAJA'!$A:$A;"${CRITERIO_INVERTIDO}";'CAJA'!$C:$C)`), liquidez)
-  assert.ok(!/'CAJA'!\$?C\$?\d+/.test(liquidez), `la tarjeta cita una FILA de CAJA: ${liquidez}`)
-  assert.ok(glosa.includes('Balanz'), glosa)
+  // (1) EL TITULAR ES UNA SOLA VENTANA: el cierre operativo proyectado, sin Balanz adentro.
+  assert.ok(!cierre.includes('SUMIF'), `la tarjeta volvió a mezclar el cierre con una posición de hoy: ${cierre}`)
+  // (2) Y LA GLOSA TRAE LA OTRA CIFRA, declarando su ventana.
+  assert.ok(glosa.includes(CIERRE_CON_INVERTIDO), glosa)
+  assert.ok(glosa.includes(`SUMIF('CAJA'!$A:$A;"${CRITERIO_INVERTIDO}";'CAJA'!$C:$C)`), glosa)
+  // (3) POR RÓTULO, NUNCA POR FILA: el panel de CAJA se corre de fila y una referencia posicional
+  // devuelve OTRO número sin un solo #REF!.
+  assert.ok(!citaUnaFilaDe('CAJA', glosa), glosa)
 })
 
-test('LA MUTACIÓN: sin poder leer lo invertido, la tarjeta lo DICE — no publica el número de la de al lado', () => {
+test('LA MUTACIÓN: sin poder leer lo invertido, la glosa lo DICE — no promete una cifra con Balanz', () => {
   // Es el mismo generador con la pestaña de CAJA sin resolver, que es lo que pasa cuando la hoja se
   // renombra o el archivo todavía no la tiene. Un cero acá significaría "no hay nada invertido", y eso
-  // hoy es falso por $45.015.210: la tarjeta valdría lo mismo que la caja operativa y nadie lo notaría.
+  // hoy es falso por $45.015.210.
   const { filas, meta } = grillaMeses({ anio: 2026, refs: { ...REFS, caja: null } })
-  const operativa = en(filas, meta.hero.valor, meta.hero.slots[2])
-  const liquidez = en(filas, meta.hero.valor, meta.hero.slots[3])
-  assert.equal(liquidez, AVISO_SIN_INVERTIDO)
-  assert.notEqual(liquidez, operativa)
-  assert.equal(en(filas, meta.hero.nota, meta.hero.slots[3]), GLOSA_SIN_INVERTIDO)
-  // Y el rótulo NO cambia: sigue prometiendo liquidez total, y por eso el valor tiene que gritar.
-  assert.equal(en(filas, meta.hero.rotulo, meta.hero.slots[3]), ROTULOS_HERO.liquidez)
+  const glosa = en(filas, meta.hero.nota, meta.hero.slots[3])
+  assert.ok(glosa.includes(CIERRE_SIN_INVERTIDO), glosa)
+  assert.ok(!glosa.includes(CIERRE_CON_INVERTIDO), `promete Balanz sin poder leerlo: ${glosa}`)
+  // Y el titular NO cambia: el cierre operativo se sigue pudiendo calcular sin CAJA.
+  assert.equal(en(filas, meta.hero.valor, meta.hero.slots[3]), `=N($M$${meta.fila.saldoFinal})`)
+  assert.equal(en(filas, meta.hero.rotulo, meta.hero.slots[3]), ROTULOS_HERO.cierre)
+  // La foto de hoy tampoco puede callar: su glosa avisa igual.
+  assert.ok(en(filas, meta.hero.nota, meta.hero.slots[0]).includes('no pude leer lo invertido'), 'CAJA HOY calló')
 })
 
 test('el cuadro lee el libro; sólo el TITULAR puede citar a CAJA, y nunca por fila', () => {
