@@ -75,12 +75,31 @@ export function puedeConvertir(c: PresupuestoCascada): { puede: boolean; motivo:
 }
 
 /**
- * ¿SE PUEDE CONGELAR? La base se niega a correr `congelar_presupuesto` dos veces; acá se evita
- * ofrecer el botón. Un presupuesto sin partidas no se congela: congelar una lista vacía deja el
- * presupuesto marcado como salido y sin una sola línea de composición que respalde el precio.
+ * ¿SE PUEDE CONGELAR?
+ *
+ * ═══ ANTES ESTA FUNCIÓN NO MIRABA EL GATE, Y EL BOTÓN ERA DECORATIVO (QA visual, 29/08/2026) ═══
+ *
+ * Miraba `congelada_en` y `n_partidas === 0`, nada más. La pantalla dibujaba al lado «NO se congela:
+ * 1 bloqueo(s)» —el gate que `freeze.mjs` ya calculaba— y el botón seguía habilitado. El QA lo
+ * apretó: quedó una versión marcada como salida, con un bloqueante vivo y precio $0.
+ *
+ * Ahora recibe el GATE y devuelve sus motivos. La cerradura de verdad está en la base
+ * (`cot_congelar_con_gate` levanta excepción si el gate no pasa) — esto evita el viaje y, sobre
+ * todo, evita ofrecer un gesto que va a fallar. Las dos cosas hacen falta: sin la de la base, un
+ * POST directo se saltea la pantalla; sin ésta, el botón miente.
+ *
+ * `gate` opcional para no romper a quien todavía no lo tiene: con `null` NO se afloja el criterio,
+ * se declara que no se pudo mirar.
  */
-export function puedeCongelar(c: PresupuestoCascada): { puede: boolean; motivo: string | null } {
+export function puedeCongelar(
+  c: PresupuestoCascada,
+  gate?: { ready: boolean; blocking_issues: { tipo: string; entidad: string }[]; porQue: string } | null,
+): { puede: boolean; motivo: string | null } {
   if (c.congelada_en) return { puede: false, motivo: 'Ya está congelado. Para cambiarlo se crea una versión nueva.' }
   if (c.n_partidas === 0) return { puede: false, motivo: 'No tiene partidas: no hay composición que congelar.' }
+  if (gate === undefined || gate === null) {
+    return { puede: false, motivo: 'No pude evaluar qué falta para congelar. No se ofrece congelar a ciegas.' }
+  }
+  if (!gate.ready) return { puede: false, motivo: gate.porQue }
   return { puede: true, motivo: null }
 }

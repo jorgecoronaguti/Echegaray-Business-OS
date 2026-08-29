@@ -43,6 +43,35 @@ function titulosDelMotor(): string[] {
   return [...new Set([...titulos, 'Aplicado', 'No se aplicó'])].filter((t) => /[A-ZÁÉÍÓÚ]/.test(t[0]) && t.length > 4)
 }
 
+describe('el formulario manda lo que se escribió (QA visual, 29/08/2026)', () => {
+  // EL DEFECTO: `onSubmit={() => { campo.current.value = '' }}` limpiaba el input EN CARRERA con la
+  // captura del FormData, y el servidor recibía `texto=''` siempre. Los chips de ejemplo andaban
+  // porque llaman `mandar()` con el texto en la mano — por eso los tests no lo vieron: probaban el
+  // único camino que no estaba roto. Sin navegador no se puede tipear, pero sí se puede exigir que
+  // el orden sea el correcto, que es donde vivía el defecto.
+
+  test('el form NO limpia el campo en onSubmit', () => {
+    assert.ok(!/onSubmit=\{[^}]*value\s*=\s*''/.test(PANEL),
+      'limpia el input en onSubmit: corre en carrera con la captura del FormData y manda texto vacío')
+  })
+
+  test('la limpieza va DESPUÉS de despachar la acción', () => {
+    const accion = /action=\{\((?:datos|[a-z]+)[^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{12}\}\}/.exec(PANEL)
+    assert.ok(accion, 'no encontré la acción del formulario: el test dejó de mirar donde tenía que mirar')
+    const cuerpo = accion[1]
+    const despacho = cuerpo.indexOf('enviar(')
+    const limpieza = cuerpo.indexOf("value = ''")
+    assert.ok(despacho >= 0, 'la acción no despacha nada')
+    assert.ok(limpieza >= 0, 'la acción no limpia el campo: el input queda con el texto anterior')
+    assert.ok(despacho < limpieza, 'limpia el campo ANTES de despachar: se pierde lo que se escribió')
+  })
+
+  test('el input tiene name=texto, que es lo que el esquema del servidor exige', () => {
+    assert.match(PANEL, /name="texto"/)
+    assert.match(PANEL, /name="id"/)
+  })
+})
+
 describe('el panel no escribe respuestas', () => {
   test('la lista de títulos del motor se lee de verdad (si no, este test no controla nada)', () => {
     const t = titulosDelMotor()

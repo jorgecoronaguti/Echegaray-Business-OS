@@ -81,8 +81,26 @@ export function gateDeCongelado({ cascada = null, cola = null, issues = [], cost
   // fijar un número, y no hay número que fijar. Es una condición aparte de la cola porque puede
   // pasar sin que ningún módulo haya emitido un issue —una cotización con cero partidas, por
   // ejemplo—, y ahí la cola vacía diría que todo está bien.
-  if (!cascada || cascada.ventaSinIva === null || cascada.ventaSinIva === undefined) {
+  //
+  // ═══ EL CERO TAMBIÉN CUENTA (QA visual, 29/08/2026) ═══
+  //
+  // El guard miraba SÓLO `=== null`, y la vista `cotizacion_cascada` hace `coalesce(sum(...), 0)`:
+  // un presupuesto de CERO partidas llega acá con `ventaSinIva: 0`, pasaba el guard, y el gate
+  // publicaba «Listo para congelar». El QA lo congeló de verdad y quedó una versión marcada como
+  // salida con precio $0 y sin una sola línea que la respalde.
+  //
+  // Un precio de cero NO es un precio: en una obra es la ausencia de uno. Y ésta es la misma
+  // familia de defecto que `sumable()` existe para impedir —`sum()` de Postgres ignora los NULL y
+  // devuelve 0, así que «no se pudo calcular» y «vale cero» llegan indistinguibles—. Se corta acá,
+  // donde el efecto es irreversible.
+  const v = cascada?.ventaSinIva
+  if (v === null || v === undefined) {
     blocking.push({ tipo: 'SIN_PRECIO_CALCULABLE', entidad: 'cotización', detalle: cascada?.porQue ?? 'no hay cascada comercial calculada: congelar es fijar un número y no hay número que fijar', impacto: null, accion: null })
+  } else if (Number(v) === 0) {
+    blocking.push({
+      tipo: 'SIN_PRECIO_CALCULABLE', entidad: 'cotización', impacto: null, accion: null,
+      detalle: 'el precio de venta da $0: la vista suma con coalesce y devuelve cero cuando no hay nada que sumar, así que un cero acá significa que no hay partidas valorizadas — no que la obra valga cero',
+    })
   }
 
   return Object.freeze({

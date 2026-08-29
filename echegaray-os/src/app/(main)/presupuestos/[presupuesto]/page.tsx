@@ -90,7 +90,9 @@ export default async function PresupuestoPage({
   const vivo = estadoDesdeFilas({ presupuesto, partidas: lista, alcance: alcance.data ?? [] })
 
   const congelado = estaCongelado(presupuesto)
-  const congelar = puedeCongelar(presupuesto)
+  // EL GATE DEL MOTOR, el mismo que dibuja la Cola de Atención abajo. Una segunda evaluación acá
+  // podría decir que sí mientras la cola dice que no — que es exactamente lo que pasaba.
+  const congelar = puedeCongelar(presupuesto, vivo.gate)
   const convertir = puedeConvertir(presupuesto)
   const e = lecturaEstado(presupuesto.estado)
   const rubros = [...new Set(lista.map(rubroDe))]

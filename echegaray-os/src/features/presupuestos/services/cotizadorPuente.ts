@@ -28,6 +28,7 @@ import {
   estadoDesdeFilas as estadoDesdeFilasMjs,
   cascadaDesdeFila as cascadaDesdeFilaMjs,
 } from '../../../../orquestador/lib/cotizador/desde-base.mjs'
+import { huellaDeEntradas as huellaDeEntradasMjs } from '../../../../orquestador/lib/cotizador/freeze.mjs'
 
 /** Un issue de la cola de atención (§22). `impact` es plata o `null`, nunca cero. */
 export interface IssueCola {
@@ -138,3 +139,10 @@ export const estadoDesdeFilas = estadoDesdeFilasMjs as unknown as (
 export const cascadaDesdeFila = cascadaDesdeFilaMjs as unknown as (
   p: PresupuestoCascada | null,
 ) => CascadaMotor | null
+
+/** La huella de entradas del §39: lo que hace que una versión congelada se pueda comparar después. */
+export interface Huella { sha256: string; partes: Record<string, unknown>; resumen: string }
+
+export const huellaDeEntradas = huellaDeEntradasMjs as unknown as (
+  o: { documentos?: unknown[]; partidas?: unknown[]; precios?: unknown[]; politica?: unknown; alcance?: unknown[]; fx?: unknown },
+) => Huella

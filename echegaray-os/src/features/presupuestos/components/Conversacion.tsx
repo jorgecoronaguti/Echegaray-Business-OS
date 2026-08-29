@@ -107,9 +107,21 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
 
         {puedeEscribir ? (
           <form
-            action={enviar}
+            // ═══ NO SE LIMPIA EN `onSubmit` (QA visual, 29/08/2026) ═══
+            //
+            // Estaba `onSubmit={() => { campo.current.value = '' }}`, y corría EN CARRERA con la
+            // captura del FormData: el servidor recibía `texto=''` SIEMPRE. Los chips de ejemplo
+            // funcionaban porque llaman `mandar()` con el texto en la mano, y por eso ningún test
+            // lo vio — probaban el camino que no estaba roto.
+            //
+            // Ahora la acción envuelve al `enviar` de `useActionState`: se lee el texto del
+            // FormData YA ARMADO, se despacha, y recién después se limpia el campo. El orden es
+            // todo: limpiar antes de leer es perder lo que se escribió.
+            action={(datos: FormData) => {
+              enviar(datos)
+              if (campo.current) campo.current.value = ''
+            }}
             style={{ display: 'flex', gap: 8, marginTop: 12 }}
-            onSubmit={() => { if (campo.current) campo.current.value = '' }}
           >
             <input type="hidden" name="id" value={cotizacionId} />
             <input type="hidden" name="confirmado" value="0" />
