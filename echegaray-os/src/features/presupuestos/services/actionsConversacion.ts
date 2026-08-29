@@ -27,7 +27,9 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { getPartidas, getPresupuesto } from './presupuestosService.ts'
-import { planDe, paraElMotor, rolDeContrato, type Plan } from './conversacionPlan.ts'
+import {
+  planDe, paraElMotor, rolDeContrato, predicadoDe, veredictoDeEscritura, describir, type Plan,
+} from './conversacionPlan.ts'
 import type { RespuestaConversacion, TurnoConversacion } from './conversacionTipos.ts'
 // El motor entra por UNA puerta: `cotizadorPuente` escribe la firma que el `.mjs` no puede declarar.
 import { cascadaDesdeFila, conversar, estadoDesdeFilas } from './cotizadorPuente.ts'
@@ -110,20 +112,13 @@ export async function hablarConElPresupuesto(
     return { estado: 'rechazado', texto, degradado: turno.degradado, respuesta: sinEntender(p.porQue) }
   }
 
-  // ═══ ESCRIBIR Y COMPROBAR QUE SE ESCRIBIÓ (auditoría delta, 29/08/2026) ═══
+  // ═══ ESCRIBIR Y COMPROBAR QUE SE ESCRIBIÓ ═══
   //
-  // Antes era `.update(...).eq('id', ...)` a secas y el resultado se daba por bueno si no venía
-  // error. Dos cosas rompían ahí:
-  //
-  //   · LOST UPDATE. Sin predicado de concurrencia, A lee 480, B escribe 1200, A aplica 520 y los
-  //     1200 de B mueren mudos — con el evento registrando `antes: 480`, que es falso, y el outlier
-  //     habiendo medido +8 % sobre un cambio que en realidad fue −57 %.
-  //   · ÉXITO NO VERIFICADO. Un UPDATE que no toca ninguna fila —porque el predicado no matchea, o
-  //     porque la RLS la filtró— devuelve `error: null`, y el turno salía «Aplicado». Lo tropecé yo
-  //     mismo midiendo la policy de `parametro_operativo`: el UPDATE «pasaba» y no cambiaba nada.
-  //
-  // `.select()` en un UPDATE de PostgREST devuelve LAS FILAS TOCADAS: cero filas es la señal, y no
-  // hace falta pedir un `count` aparte.
+  // Las tres decisiones —qué predicado, qué significa cero filas, qué significa la relectura— viven
+  // en `conversacionPlan.ts` como funciones PURAS. Acá sólo se traducen a PostgREST y se ejecutan:
+  // esta capa necesita cookies y un request, así que todo lo que decida adentro es código que
+  // `node --test` no puede alcanzar. El auditor mutó las tres piezas cuando vivían acá y las tres
+  // quedaron verdes con 540 tests.
   let filas: unknown[] | null = null
   let error: { message: string } | null = null
 
@@ -132,12 +127,11 @@ export async function hablarConElPresupuesto(
     filas = r.data; error = r.error
   } else {
     let q = supabase.from(p.plan.tabla).update(p.plan.columnas).eq('id', p.plan.id!)
-    for (const [col, val] of Object.entries(p.plan.esperado ?? {})) {
-      // `.eq(col, null)` NO compara con NULL en SQL —`= NULL` nunca es cierto— y dejaría el
-      // predicado siempre en falso: para eso está `.is()`. Un subcontrato que hoy no tiene precio
-      // también tiene un estado previo que defender.
-      q = val === null || val === undefined ? q.is(col, null) : q.eq(col, val as never)
+    for (const c of predicadoDe(p.plan)) {
+      q = c.operador === 'is' ? q.is(c.columna, null) : q.eq(c.columna, c.valor as never)
     }
+    // `.select()` en un UPDATE de PostgREST devuelve LAS FILAS TOCADAS: cero filas es la señal, y
+    // no hace falta pedir un `count` aparte.
     const r = await q.select('id')
     filas = r.data; error = r.error
   }
@@ -146,43 +140,37 @@ export async function hablarConElPresupuesto(
   // apunta al arreglo; «no se pudo guardar» no apunta a nada.
   if (error) return { estado: 'error', texto, respuesta: sinEntender(error.message) }
 
-  if ((filas ?? []).length === 0) {
-    // CONFLICTO DE CONCURRENCIA: la fila ya no está como cuando se leyó. Se dicen LOS DOS valores
-    // —lo que se esperaba y lo que hay— porque «volvé a intentar» no explica qué pasó ni deja
-    // decidir. Y no se aplica nada: el cambio se calculó contra un estado que ya no existe.
-    const actual = await valorActual(supabase, p.plan)
+  // LA RELECTURA DEL DESTINO, siempre — también cuando hubo cero filas, porque ahí es JUSTAMENTE
+  // donde hace falta saber qué hay para poder decirlo.
+  const quedo = await valorActual(supabase, p.plan)
+  const veredicto = veredictoDeEscritura({ plan: p.plan, filasTocadas: (filas ?? []).length, quedo })
+
+  if (veredicto.tipo === 'CONFLICTO') {
     return {
       estado: 'rechazado', texto, degradado: turno.degradado,
       respuesta: sinEntender(
-        `Alguien cambió esto mientras escribías. Cuando leí decía ${describir(p.plan.esperado)}, y ahora dice ${describir(actual)}. No apliqué nada: lo que pediste se calculó sobre el valor viejo.`,
+        `Alguien cambió esto mientras escribías. Cuando leí decía ${describir(veredicto.esperado)}, y ahora dice ${describir(veredicto.actual)}. No apliqué nada: lo que pediste se calculó sobre el valor viejo.`,
         '¿Lo mirás y lo volvés a pedir?',
       ),
     }
   }
 
-  revalidatePath('/presupuestos')
-  revalidatePath(`/presupuestos/${id}`, 'layout')
-
-  // EL IMPACTO SE MIDE RELEYENDO, no calculándolo acá. La cascada la calcula Postgres en
-  // `cotizacion_cascada`: recomputarla en JavaScript sería una segunda definición del precio, y
-  // este repo ya pagó dos veces por tener dos.
-  // ═══ LA EVIDENCIA ES DEL EFECTO: SE RELEE EL DESTINO ═══
-  //
-  // «El UPDATE no dio error» no prueba que el dato quedó. Un trigger puede haberlo pisado, una
-  // policy de columna puede haber descartado el campo, un `numeric` puede haber redondeado. Antes
-  // de decir «Aplicado» se lee la fila y se compara con lo que se quiso escribir.
-  const quedo = await valorActual(supabase, p.plan)
-  const desajuste = Object.entries(p.plan.columnas)
-    .filter(([c]) => c in (quedo ?? {}))
-    .filter(([c, v]) => String((quedo as Record<string, unknown>)[c]) !== String(v))
-  if (desajuste.length > 0) {
+  if (veredicto.tipo === 'DESAJUSTE') {
     return {
       estado: 'error', texto, degradado: turno.degradado,
       respuesta: sinEntender(
-        `Escribí el cambio y la base devolvió otra cosa: pedí ${describir(Object.fromEntries(desajuste.map(([c, v]) => [c, v])))} y quedó ${describir(quedo)}. No lo doy por hecho.`,
+        `Escribí el cambio y la base devolvió otra cosa: pedí ${describir(veredicto.pedido)} y quedó ${describir(veredicto.quedo)}. No lo doy por hecho.`,
       ),
     }
   }
+
+  // LA PANTALLA TIENE QUE VER LO QUE PASÓ. Se revalida SÓLO acá: después de que el veredicto dijo
+  // APLICADO. Revalidar tras un CONFLICTO o un DESAJUSTE repintaría la pantalla como si algo hubiera
+  // cambiado —y no cambió—, que es la misma clase de mentira que el resto de esta función evita.
+  //
+  // Mi refactor de la vuelta 2 se lo llevó puesto, y lo delató el lint por una variable sin usar.
+  revalidatePath('/presupuestos')
+  revalidatePath(`/presupuestos/${id}`, 'layout')
 
   const { data: despues } = await getPresupuesto(supabase, id)
   return {
@@ -206,12 +194,7 @@ async function valorActual(
   return (data ?? null) as Record<string, unknown> | null
 }
 
-/** «cantidad 480». Sin adornos: es para que la persona compare dos números, no para explicar. */
-function describir(v: Record<string, unknown> | null | undefined): string {
-  if (!v) return 'nada'
-  const partes = Object.entries(v).map(([c, x]) => `${c} ${x === null || x === undefined ? 'sin cargar' : String(x)}`)
-  return partes.length ? partes.join(', ') : 'nada'
-}
+
 
 /** El movimiento del precio. `null` cuando falta cualquiera de las dos puntas — nunca cero. */
 function impactoDe(antes: number | null, despues: number | null) {

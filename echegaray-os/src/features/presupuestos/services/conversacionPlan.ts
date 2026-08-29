@@ -227,3 +227,91 @@ export function paraElMotor(partidas: PartidaValorizada[]) {
     genealogia: null,
   }))
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA DECISIÓN DE ESCRITURA — pura, y por eso testeable
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ POR QUÉ ESTO SALIÓ DE LA SERVER ACTION (auditoría delta, vuelta 2) ═══
+//
+// El arreglo del lost update estaba CORRECTO y DESPROTEGIDO: el auditor mutó las tres piezas —borrar
+// `esperado`, matar la relectura, matar el aviso de cero filas— y las tres quedaron VERDES con 540
+// tests. `concurrencia.pg.test.mjs` probaba la semántica de SQL, no que esta capa la usara.
+//
+// Una server action necesita cookies y un request: desde `node --test` es inalcanzable, así que lo
+// que vivía adentro no se podía probar. Ahora las tres decisiones son funciones puras y la action es
+// cáscara — el mismo patrón que `preparacionObra.ts`. Un refactor que saque `esperado` ya no puede
+// reabrir el lost update en silencio.
+
+/** Una condición del predicado de concurrencia, lista para traducirse a PostgREST o a SQL. */
+export interface Condicion {
+  columna: string
+  valor: unknown
+  /** `is` para los nulos: `= NULL` nunca es cierto en SQL y dejaría el UPDATE en cero filas SIEMPRE. */
+  operador: 'eq' | 'is'
+}
+
+/**
+ * EL PREDICADO DE CONCURRENCIA DE UN PLAN. PURA.
+ *
+ * Un plan sin `esperado` devuelve lista vacía, y eso es una decisión declarada —el upsert de alcance
+ * es un gesto declarativo donde la última decisión gana—, no un olvido. Lo que NO puede pasar es que
+ * un `update` de cantidad o de política llegue sin condiciones: eso es el lost update.
+ */
+export function predicadoDe(plan: PlanEscritura): Condicion[] {
+  return Object.entries(plan.esperado ?? {}).map(([columna, valor]) => ({
+    columna,
+    valor,
+    operador: valor === null || valor === undefined ? 'is' : 'eq',
+  }))
+}
+
+/**
+ * ¿ESTE PLAN TIENE QUE DEFENDERSE DE UNA CARRERA? PURA.
+ *
+ * Un `update` sobre un valor que alguien más puede estar moviendo, sí. Un `upsert` declarativo, no.
+ * Está separado de `predicadoDe` para que el test pueda exigir las dos cosas: que los que deben
+ * traer predicado lo traigan, y que el que no debe, no lo traiga.
+ */
+export const exigePredicado = (plan: PlanEscritura): boolean => plan.operacion === 'update'
+
+export type Veredicto =
+  | { tipo: 'APLICADO' }
+  | { tipo: 'CONFLICTO'; esperado: Record<string, unknown>; actual: Record<string, unknown> | null }
+  | { tipo: 'DESAJUSTE'; pedido: Record<string, unknown>; quedo: Record<string, unknown> | null }
+
+/**
+ * QUÉ PASÓ DESPUÉS DE ESCRIBIR. PURA.
+ *
+ * `filasTocadas` es lo que devolvió el `.select()` del UPDATE. **Cero filas no es un error de la
+ * base**: es la señal de que el predicado no matcheó, o sea que alguien movió la fila entre que se
+ * leyó y que se escribió. Sin este chequeo el turno salía «Aplicado» sobre un UPDATE que no tocó
+ * nada — y eso pasa igual cuando la RLS filtra la fila, que fue como lo tropecé midiendo la policy.
+ *
+ * `quedo` es la fila RELEÍDA. Que el UPDATE no diera error no prueba que el dato esté: un trigger
+ * puede haberlo pisado, un `numeric` puede haber redondeado. La regla madre del programa dice que
+ * lo que prueba una escritura es el dato leído en su destino, y ésta es la única capa que escribe.
+ */
+export function veredictoDeEscritura(
+  { plan, filasTocadas, quedo }:
+  { plan: PlanEscritura; filasTocadas: number; quedo: Record<string, unknown> | null },
+): Veredicto {
+  if (filasTocadas === 0) {
+    return { tipo: 'CONFLICTO', esperado: plan.esperado ?? {}, actual: quedo }
+  }
+  // Se comparan como texto: PostgREST devuelve `numeric` como string y `520` no es `'520'`.
+  const desajuste = Object.entries(plan.columnas)
+    .filter(([c]) => quedo !== null && c in quedo)
+    .filter(([c, v]) => String((quedo as Record<string, unknown>)[c]) !== String(v))
+  if (desajuste.length > 0) {
+    return { tipo: 'DESAJUSTE', pedido: Object.fromEntries(desajuste), quedo }
+  }
+  return { tipo: 'APLICADO' }
+}
+
+/** «cantidad 480». Sin adornos: es para que una persona compare dos números. PURA. */
+export function describir(v: Record<string, unknown> | null | undefined): string {
+  if (!v) return 'nada'
+  const partes = Object.entries(v).map(([c, x]) => `${c} ${x === null || x === undefined ? 'sin cargar' : String(x)}`)
+  return partes.length ? partes.join(', ') : 'nada'
+}

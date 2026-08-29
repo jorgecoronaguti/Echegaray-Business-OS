@@ -84,7 +84,7 @@ vista parametro_operativo_vigente: [ 'security_invoker=on' ]
 | 4 | El canario del E2E afirmaba lo que no probaba: la ausencia de `conversacion-degradada` es compatible con «el modelo contestó bien» | El assert pasa a `origen-modelo`, que sí distingue los dos casos |
 | 5 | La key volvió a colisionar por el otro lado (dos huecos de la misma fila) — y el arreglo anterior **no tenía test** | `${type}-${partidaId}` + test con las dos colisiones y su mutación |
 | 6 | `set_global_policy` valida como `commercial_override` en el motor | La base ya lo frena (punto 3) y el intérprete nunca la produce. **Declarado**: el motor es del CORE, pedido en el informe |
-| 7 | `validar()` acepta negativos | Guarda explícita en el intérprete. La mutación delató que **no tenía test**: escrito |
+| 7 | `validar()` acepta negativos | Guarda explícita **sólo en el camino de `update_quantity` de la gramática**. La mutación delató que no tenía test: escrito. Ver el límite 10 — sobreafirmaba |
 
 **Lo que resistió y quedó firmado por el auditor:** la frontera del contrato ante JSON malicioso
 (campos extra, prototype, unidades incompatibles), el RBAC en las tres cerraduras contra la base con
@@ -96,6 +96,22 @@ anti-demo, que el auditor mutó y gritaron.
 ## LÍMITES CONOCIDOS
 
 Cada uno **bloquea el criterio que toca**. Ninguno está resuelto.
+
+### 10 · La guarda de negativos cubre UN camino, no todos
+
+La fila 7 de la tabla de arriba decía «`validar()` acepta negativos → guarda explícita», y eso
+sobreafirmaba. Lo que hay es una guarda en `porCantidadOMonto()` del intérprete, o sea **sólo en el
+camino de `update_quantity` que resuelve la gramática**. El auditor pasó `beneficio -19 %` y
+`subcontrato -8,5M` **por el camino del modelo** y los frenó lo que había aguas abajo —el rango
+físico del outlier y la validación de porcentaje del motor—, no mi guarda.
+
+No se extendió, y el motivo es que extenderla bien no es barato ni es mío: el chequeo tendría que
+vivir en `comandos.validar()`, que es archivo del CORE y ve las cuatro acciones que aceptan un
+número. Ponerlo en el intérprete sólo cubriría la gramática y dejaría el camino del modelo igual —
+con la agravante de parecer resuelto. **Pedido al CORE, junto con `set_global_policy`.**
+
+Lo que sí está probado: un negativo por la gramática no produce intención, y el cero SÍ pasa —es una
+medición, no un sinsentido—.
 
 ### 1 · El QA visual corrió y encontró 6 defectos · 5 corregidos, 1 sin reproducir
 
