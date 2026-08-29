@@ -36,7 +36,7 @@ import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import {
   claveDeCategoria, convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
-  jornalConAumento, PORCENTAJE_DE_AUMENTO,
+  jornalConAumento, tarifaConAumento, PORCENTAJE_DE_AUMENTO,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
@@ -59,7 +59,10 @@ const PESTANA = 'Nómina'
 const ANIO = 2026
 const APLICAR = process.argv.includes('--aplicar')
 const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-const ANCHO = 16
+// 17 DESDE EL 29/08: entró «+ Aumento $/h». La pestaña la escribe este generador entera y nadie más,
+// así que agregar una columna no le pisa nada a nadie — el formato se calcula sobre ANCHO y los
+// tramos numéricos se detectan solos, no hay índices escritos a mano que se corran.
+const ANCHO = 17
 const SIN_DATO = '—'
 
 const fecha = (d) => (d instanceof Date && !Number.isNaN(+d)
@@ -262,15 +265,23 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   // más, y es información.
   fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
   fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. `
-    + `Piso de convenio: ${escala.rotulo ?? 'sin escala'} · a cada hora se le suma el `
-    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de su categoría.`)
+    + `Escala ${escala.rotulo ?? 'sin escala'}: a cada hora se le SUMA el `
+    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de su categoría — el convenio decide cuánto `
+    + `sube la hora, no cuánto vale.`)
   fila(quincena.diasPendientes.length
     ? `Horas = lo cargado + los días que faltan a jornada completa (9 h L-J, 8 h viernes): ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h.`
     : 'La quincena está cargada entera: no se completó ninguna jornada.')
+  // ═══ LAS TRES TARIFAS, UNA AL LADO DE LA OTRA (29/08) ═══
+  //
+  // `$/h HOY` y `$/h CON AUMENTO` estaban separadas por tres columnas de plata, y la del medio —el
+  // aumento que le toca a su categoría— no existía: había que restar dos celdas lejanas para saber
+  // cuánto sube cada uno, que es LA cifra que el dueño decidió. Ahora la cuenta se lee sola de
+  // izquierda a derecha: lo que cobra + lo que sube = lo que va a cobrar. Después, la plata.
   fila('Persona', 'Cat.', 'Convenio', 'Hs cargadas', 'Hs a completar', 'Horas', 'Adelanto',
-    '$/h HOY', 'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
-    '$/h CON AUMENTO', 'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
-  const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoPiso: 0, efPiso: 0, totPiso: 0, sube: 0, totalCargado: 0 }
+    '$/h HOY', '+ Aumento $/h', '$/h CON AUMENTO',
+    'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
+    'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
+  const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinConvenio = []
   // QUIÉNES TIENEN UN PISO DECIDIDO POR UNA INFERENCIA. `sinConvenio` sólo ve los códigos que NADIE
   // mapeó: el día que se agrega el mapeo, se apaga. Y ahí es cuando más hace falta mirar —la
@@ -306,33 +317,41 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     // propio jornal), y además `jornalConAumento` no devuelve nunca menos que el básico de convenio,
     // que es el mínimo legal. Acá ya no hay `Math.max` contra el jornal de hoy: sería redundante.
     //
-    // LO QUE TODAVÍA MIENTE ACÁ, DICHO: `jornalPiso`, `pisoR` y las claves `T.*Piso` se llaman «piso»
-    // y ya no lo son —son el escenario CON AUMENTO, que es piso + decisión de la empresa—. Los
-    // encabezados de la pestaña sí dicen «CON AUMENTO». No se renombraron para no mezclar un rename
-    // de diez líneas con el arreglo del piso de convenio; queda como deuda, no como descuido.
-    const jornalPiso = objetivo
-    const totalPiso = jornalPiso != null ? q.horas * jornalPiso : null
-    const pisoR = totalPiso != null ? repartoPersona({ total: totalPiso, adelanto: q.adelanto, banco: 0 }) : null
+    // LOS NOMBRES DICEN LO QUE SON (29/08). Se llamaban `jornalPiso`, `pisoR` y `T.*Piso` de cuando
+    // esta columna era el plantel llevado al PISO del convenio. Dejó de serlo el día que el dueño
+    // ordenó el aumento aditivo, y los encabezados de la pestaña ya decían «CON AUMENTO» mientras el
+    // código seguía diciendo «piso»: dos vocabularios para la misma columna es como alguien vuelve a
+    // implementar un piso creyendo que arregla algo.
+    const jornalNuevo = objetivo
+    const totalNuevo = jornalNuevo != null ? q.horas * jornalNuevo : null
+    const nuevoR = totalNuevo != null ? repartoPersona({ total: totalNuevo, adelanto: q.adelanto, banco: 0 }) : null
 
     T.cargadas += q.cargadas; T.horas += q.horas; T.adelanto += q.adelanto; T.totalCargado += q.totalCargado
     T.bancoHoy += hoyR.banco; T.efHoy += hoyR.efectivo; T.totHoy += hoyR.total
-    if (pisoR) { T.bancoPiso += pisoR.banco; T.efPiso += pisoR.efectivo; T.totPiso += pisoR.total; T.sube += pisoR.total - hoyR.total }
+    if (nuevoR) { T.bancoNuevo += nuevoR.banco; T.efNuevo += nuevoR.efectivo; T.totNuevo += nuevoR.total; T.sube += nuevoR.total - hoyR.total }
 
+    // EL AUMENTO DE SU CATEGORÍA, QUE ES LO QUE EL DUEÑO DECIDIÓ. Sale de la MISMA función que la
+    // tarifa nueva —no se recalcula acá con otro `× 0,5`— porque dos fórmulas para el mismo aumento
+    // se separan el día que el porcentaje cambie.
+    const suba = tarifaConAumento(q.jornal, basico)
     fila(q.dejoDeCargar ? `${p.nombre}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : p.nombre,
       q.categoria || SIN_DATO, rotuloConvenio(codigo) ?? SIN_DATO,
       Math.round(q.cargadas), q.pendientes ? Math.round(q.pendientes) : SIN_DATO, Math.round(q.horas),
       q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
-      Math.round(q.jornal), Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
-      jornalPiso != null ? Math.round(jornalPiso) : SIN_DATO,
-      pisoR ? Math.round(pisoR.banco) : SIN_DATO,
-      pisoR ? Math.round(pisoR.efectivo) : SIN_DATO,
-      pisoR ? Math.round(pisoR.total) : SIN_DATO,
-      pisoR ? (Math.round(pisoR.total - hoyR.total) || SIN_DATO) : SIN_DATO)
+      Math.round(q.jornal),
+      suba ? Math.round(suba.aumento) : SIN_DATO,
+      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO,
+      Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
+      nuevoR ? Math.round(nuevoR.banco) : SIN_DATO,
+      nuevoR ? Math.round(nuevoR.efectivo) : SIN_DATO,
+      nuevoR ? Math.round(nuevoR.total) : SIN_DATO,
+      nuevoR ? (Math.round(nuevoR.total - hoyR.total) || SIN_DATO) : SIN_DATO)
   }
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave)).length} persona(s)`), '', '',
     Math.round(T.cargadas), Math.round(T.horas - T.cargadas), Math.round(T.horas), Math.round(T.adelanto),
-    '', Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
-    '', Math.round(T.bancoPiso), Math.round(T.efPiso), Math.round(T.totPiso), Math.round(T.sube))
+    '', '', '',
+    Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
+    Math.round(T.bancoNuevo), Math.round(T.efNuevo), Math.round(T.totNuevo), Math.round(T.sube))
   fila(sub(`Sumarle a cada hora el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de SU categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. El básico de la escala es el mínimo legal; `
     + `el aumento es la decisión de la empresa, no una obligación — y el resultado nunca baja de ese mínimo.`))

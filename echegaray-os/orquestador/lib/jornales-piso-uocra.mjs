@@ -80,7 +80,7 @@ export const GAP_JORNADA = 'L-J 9 h y V 8 h son la regla del dueño; el sábado 
 const norm = claveDeCategoria
 
 /**
- * NÚCLEO PURO: DE QUÉ BLOQUE DEL ESPEJO SALE EL PLANTEL QUE FIJA EL PISO.
+ * NÚCLEO PURO: DE QUÉ BLOQUE DEL ESPEJO SALE EL PLANTEL QUE SE PROYECTA.
  *
  * ═══ EL PISO SE MEDÍA SOBRE GENTE QUE YA NO ERA EL PLANTEL (27/08) ═══
  *
@@ -101,7 +101,7 @@ const norm = claveDeCategoria
  * @param {{bloques:Array, cerrada:object|null, personasDe:(b:object)=>number}} d
  * @returns {{bloque:object|null, origen:'vigente'|'cerrada'|null, personas:number}}
  */
-export function bloqueDelPiso({ bloques = [], cerrada = null, personasDe = () => 0 } = {}) {
+export function bloqueDelPlantel({ bloques = [], cerrada = null, personasDe = () => 0 } = {}) {
   const vigente = bloques.length ? bloques[bloques.length - 1] : null
   const nVigente = vigente ? Number(personasDe(vigente)) || 0 : 0
   if (vigente && nVigente > 0) return { bloque: vigente, origen: 'vigente', personas: nVigente }
@@ -109,8 +109,8 @@ export function bloqueDelPiso({ bloques = [], cerrada = null, personasDe = () =>
   return { bloque: cerrada, origen: 'cerrada', personas: Number(personasDe(cerrada)) || 0 }
 }
 
-/** El rótulo del cuadro 4.1 lo decide de dónde salió el plantel: un título que miente es un dato falso. */
-export function rotuloDelPiso(origen) {
+/** El rótulo del cuadro 1.1 lo decide de dónde salió el plantel: un título que miente es un dato falso. */
+export function rotuloDelPlantel(origen) {
   return origen === 'cerrada'
     ? 'Plantel base — última quincena cerrada'
     : 'Plantel vigente — la quincena en curso'
@@ -266,7 +266,7 @@ export function expresionSinEscala(celdasPersonas, celdasBasico) {
  *          celdaPersonasPago?:string, celdaPersonasPiso?:string,
  *          celdaHoras?:string, celdaJornada?:string}} d rangos del bloque 4.1 y las celdas testigo
  */
-export function formulaControlPiso({
+export function formulaControlAumento({
   celdasPersonas, celdasBasico, nQuincenas,
   celdaPersonasPago = null, celdaPersonasPiso = null, celdaHoras = null, celdaJornada = null,
 }) {
@@ -276,21 +276,33 @@ export function formulaControlPiso({
   // es el que hay que arreglar, y por eso se dice UNO, no los tres juntos.
   const faltan = celdaPersonasPago && celdaPersonasPiso ? `N(${celdaPersonasPago})-N(${celdaPersonasPiso})` : null
   const cortas = celdaHoras && celdaJornada ? `N(${celdaJornada})-N(${celdaHoras})` : null
-  const ok = `"✓ las ${nQuincenas} quincenas proyectadas cubren el piso UOCRA"`
+  // EL ✓ DICE A CUÁNTA GENTE LE LLEGÓ EL AUMENTO, NO SÓLO QUE ESTÁ TODO BIEN. Un ✓ sin número no se
+  // puede contrastar contra nada; con el número, cualquiera que sepa cuántos son en la obra lo
+  // desmiente de un vistazo. Sin la celda testigo no se inventa una cuenta: se dice el ✓ pelado.
+  const ok = celdaPersonasPiso
+    ? `"✓ las ${nQuincenas} quincenas proyectadas llevan el aumento de "&N(${celdaPersonasPiso})&" persona(s)"`
+    : `"✓ las ${nQuincenas} quincenas proyectadas llevan el aumento"`
   let f = `IF(${sinEscala}=0;${ok};`
-    + `"${ALERTA} SIN piso UOCRA: "&${sinEscala}&" persona(s) sin escala — la proyección sale de la demanda")`
+    // DOS REGLAS DE LA PESTAÑA GOBIERNAN ESTE TEXTO Y LAS DOS SE APRENDIERON A LOS GOLPES: ningún
+    // literal de la columna A pasa de 60 caracteres (`LARGO_NOTA`), y arriba del calendario no va una
+    // sola palabra gremial —"convenio", "categoría", "básico", "escalón", "paritaria"—. Esta celda
+    // vive arriba del calendario. Por eso dice "sin escala para su código" y no "su categoría".
+    + `"${ALERTA} "&${sinEscala}&" persona(s) SIN AUMENTO — sin escala para su código")`
   if (cortas) {
-    f = `IF(${cortas}>0.01;`
-      + `"${ALERTA} el piso se mide con "&TEXT(${celdaHoras};"0,00")&" h y la jornada es "&TEXT(${celdaJornada};"0,00")&" h";`
+    // `*100>1` Y NO `>0.01`: un literal decimal dentro de una fórmula escrita por API en locale es-AR
+    // se escribe con COMA, y la coma es el separador de argumentos — el `0.01` de antes dependía de
+    // que Sheets lo tolerara. Multiplicar por cien no tiene ese problema y dice lo mismo.
+    f = `IF((${cortas})*100>1;`
+      + `"${ALERTA} la proyección se mide con "&TEXT(${celdaHoras};"0,00")&" h y la jornada es "&TEXT(${celdaJornada};"0,00")&" h";`
       + `${f})`
   }
   if (faltan) {
     f = `IF(${faltan}>0;`
-      + `"${ALERTA} el piso proyecta "&N(${celdaPersonasPiso})&" persona(s) y la nómina tiene "&N(${celdaPersonasPago})`
+      + `"${ALERTA} el aumento alcanza a "&N(${celdaPersonasPiso})&" persona(s) y la nómina tiene "&N(${celdaPersonasPago})`
       // "sin piso UOCRA" y no "sin piso de convenio": la celda vive ARRIBA de la sección 4 y ninguna
       // palabra gremial va en el medio (orden del dueño). Es la misma cadena que ya usaba el aviso de
       // al lado, así que además los dos avisos de esta celda hablan igual.
-      + `&" — faltan "&${faltan}&" sin piso UOCRA";`
+      + `&" — faltan "&${faltan}&" sin aumento";`
       + `${f})`
   }
   return `=${f}`

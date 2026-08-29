@@ -102,7 +102,7 @@ import {
   mesesDelMotor, filasPlantel, filasEscalon, expresionMasaDeLaQuincena,
   formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
-  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  formulaSigmaConAumento, lineaSupuestoAumento, sigmaConAumentoDelPlantel,
 } from '../lib/motor-salarial.mjs'
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
@@ -134,7 +134,7 @@ import {
 const SIN_DATO = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
 import {
-  formulaControlPiso, bloqueDelPiso, rotuloDelPiso, GAP_JORNADA,
+  formulaControlAumento, bloqueDelPlantel, rotuloDelPlantel, GAP_JORNADA,
 } from '../lib/jornales-piso-uocra.mjs'
 import {
   HORAS_LUNES_A_JUEVES, HORAS_VIERNES, HORAS_SABADO_SUPUESTO,
@@ -440,8 +440,8 @@ export function grilla({
   escalones = [], bloqueBase = null, categorias = [], personasBase = 0,
   // DE DÓNDE SALIÓ EL PLANTEL DEL PISO ('vigente' | 'cerrada'). No cambia un solo importe: cambia el
   // RÓTULO del cuadro 4.1, y un rótulo que dice "última quincena cerrada" sobre el plantel de hoy es
-  // un dato falso escrito en la pestaña. Lo resuelve `bloqueDelPiso` en main().
-  origenPiso = 'vigente',
+  // un dato falso escrito en la pestaña. Lo resuelve `bloqueDelPlantel` en main().
+  origenPlantel = 'vigente',
   escalonVigente = null, meses = [], hoy = new Date(),
   // EL MES DE LA ÚLTIMA QUINCENA CERRADA DE OBRA. No siempre es el primero del cuadro 1.2: cuando la
   // planilla de Oficina va atrasada, su mes entra antes y ancla la tabla. Ver `filasEscalon`.
@@ -794,11 +794,15 @@ export function grilla({
   // *"me aseguras que las proyecciones de aqui a fin de año de obreros se calcularon llegando a cubrir
   // el 100% de lo q pide uocra en cada parte de la escala…?"*. No se podía asegurar: nada en la pestaña
   // miraba esa pregunta. Y la respuesta era que NO —las nueve quincenas salían de la demanda de obras,
-  // sin piso de convenio, seis de ellas $28.864.019 por debajo— porque el término convenio del
-  // `MAX(convenio; demanda)` estaba apagado y el MAX resolvía siempre por el otro lado, en silencio.
+  // sin piso de convenio, seis de ellas $28.864.019 por debajo— porque el término del plantel estaba
+  // apagado y el `MAX` contra la demanda de obras resolvía siempre por el otro lado, en silencio.
+  // (Ese MAX murió el 14/08; el control quedó, porque la pregunta que contesta no era el MAX.)
+  //
+  // DESDE EL 29/08 LA PREGUNTA ES OTRA Y ES MÁS SIMPLE: ¿a cuánta gente le llega el aumento? Una
+  // persona sin categoría es una persona sin aumento, y eso se cuenta.
   //
   // VA ACÁ Y NO EN LA SECCIÓN 4: es un control de ESTE cuadro. El respaldo gremial vive abajo, pero el
-  // aviso de que la columna «Obreros» perdió su piso tiene que estar donde se lee la columna.
+  // aviso de que la columna «Obreros» perdió su aumento tiene que estar donde se lee la columna.
   const fControlPiso = push([VACIO])
   blanco()
 
@@ -1193,16 +1197,16 @@ export function grilla({
   // ── 4.1 · EL PLANTEL DEL PISO ──
   // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. De qué quincena
   // sale el plantel se queda porque es el criterio de qué dato se está mirando, y no está en ninguna
-  // celda — pero lo decide `bloqueDelPiso`, no una cadena escrita a mano que el 27/08 decía "última
+  // celda — pero lo decide `bloqueDelPlantel`, no una cadena escrita a mano que el 27/08 decía "última
   // quincena cerrada" sobre un cuadro que ya no era ése.
-  push([seccion('4.1', rotuloDelPiso(origenPiso))])
+  push([seccion('4.1', rotuloDelPlantel(origenPlantel))])
   // LO QUE FALTA PARA QUE EL CONTROL HABLE, UNA SOLA VEZ Y CONTADO. Estaba una vez por fila, adentro
   // de la columna "Estado": cuatro renglones idénticos pidiendo lo mismo. Se resuelve más abajo,
   // cuando se conocen las filas de las categorías.
   const fConvenio = push([VACIO])
   const plantel = filasPlantel({
     hoja: ESPEJO, bloque: bloqueBase, categorias, personas: personasBase,
-    filaInicio: filas.length + 1, escalonVigente, rotulo: rotuloDelPiso(origenPiso),
+    filaInicio: filas.length + 1, escalonVigente, rotulo: rotuloDelPlantel(origenPlantel),
   })
   for (const f of plantel.filas) push(f)
   filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
@@ -1220,15 +1224,17 @@ export function grilla({
   // "de dónde sale cada aumento" es literalmente el nombre de una de las columnas del cuadro
   // («De dónde sale»): el título anunciaba una columna que está a dos filas de distancia.
   push([seccion('4.2', 'El escalón del convenio, mes por mes')])
-  // LA BASE DE LA PROYECCIÓN ES EL CONVENIO, NO EL JORNAL PACTADO (07/08, orden del dueño). Sale de las
-  // DOS columnas del bloque de arriba —personas por categoría × básico del convenio—, las dos fórmulas
-  // vivas: un alta o un cambio de categoría la mueven sin tocar una celda. Por qué y quién lo hereda,
-  // en lib/proyeccion-convenio.mjs.
-  const sigmaConvenio = escalonVigente ? formulaSigmaConvenio(plantel.fPrimera, plantel.fUltima) : null
+  // LA BASE DE LA PROYECCIÓN ES «LO DE HOY + EL AUMENTO», NO EL CONVENIO (29/08, orden del dueño:
+  // *"del convenio sacar el 50% por categoria y eso es lo q le vamos a aumentar a cada empleado sobre
+  // lo q cobran por hr hoy"*). Sale de DOS celdas del total del bloque de arriba —Σ de lo que se paga
+  // hoy y Σ del aumento—, las dos fórmulas vivas: un alta, una baja o un cambio de categoría la mueven
+  // sin tocar una celda. Por qué y quién lo hereda, en lib/proyeccion-convenio.mjs.
+  const sigmaConAumento = escalonVigente
+    ? formulaSigmaConAumento(plantel.fPrimera, plantel.fUltima, fPlantel) : null
   // LA LÍNEA LA DECIDE EL CUADRO, NO LA INTENCIÓN. Se reserva la fila y se llena DESPUÉS de armar el
-  // escalón, cuando `esc.alConvenio` dice qué base quedó de verdad: tener la escala a mano no alcanza
-  // —si el mes del escalón no está en el cuadro no hay dónde anclar y el motor cae al pactado—. Una
-  // línea que anuncia el convenio arriba de un cuadro que usa el pactado es peor que no tenerla.
+  // escalón, cuando `esc.conAumento` dice qué base quedó de verdad: tener la escala a mano no alcanza
+  // —si el mes del escalón no está en el cuadro no hay dónde anclar y el motor cae a la tarifa de hoy—.
+  // Una línea que anuncia el aumento arriba de un cuadro que no lo aplicó es peor que no tenerla.
   const fSupuesto = push([VACIO])
   // La celda de la Σ $/hora PACTADA del plantel base es la COLUMNA C de la fila de total de 4.1 — no la
   // B, que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
@@ -1236,10 +1242,14 @@ export function grilla({
   // del convenio no traiga escala, y en ese caso la línea de arriba lo declara en la pestaña.
   const esc = filasEscalon({
     meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase,
-    celdaSigmaConvenio: sigmaConvenio, periodoConvenio: escalonVigente?.periodo ?? null,
+    celdaSigmaConAumento: sigmaConAumento, periodoConAumento: escalonVigente?.periodo ?? null,
   })
-  filas[fSupuesto - 1][0] = lineaSupuestoConvenio({
-    sigma: esc.alConvenio ? sigmaConvenio : null, celdaPersonas: `$B$${fPlantel}`,
+  filas[fSupuesto - 1][0] = lineaSupuestoAumento({
+    sigma: esc.conAumento ? sigmaConAumento : null,
+    celdaPersonas: `$B$${fPlantel}`,
+    // LA CELDA DEL AUMENTO, para que la línea no anuncie un aumento que nadie recibe: con el plantel
+    // cargado y la escala caída entera, la Σ total sigue siendo > 0 y sólo esta celda está en cero.
+    celdaAumento: `$D$${fPlantel}`,
   })
   for (const f of esc.filas) push(f)
   blanco()
@@ -1583,8 +1593,10 @@ export function grilla({
         celdaS: `$D$${fJornada}`,
       }),
     })
-    // Sin demanda para esta quincena es el piso de convenio solo; con demanda, MAX(convenio;
-    // constante del insumo del dueño), gateado por la MISMA frontera de caja comprometida.
+    // LA DEMANDA DE OBRAS YA NO ENTRA A ESTA CELDA. `formulaProyectadoQuincena` devuelve la
+    // expresión del plantel sola desde el 14/08 —el `MAX` contra la demanda hacía que la columna
+    // cambiara de naturaleza fila por fila— y el argumento se conserva sólo para que el llamador no
+    // tenga que saberlo. Lo que se publica es el plantel actual, con su tarifa y su aumento.
     filas[r - 1][3] = formulaProyectadoQuincena({ convenio, celdaPago: `C${r}` },
       demanda?.porQuincena?.get(claveQuincena(q.desde)) ?? null)
     const desde = i === 0 ? null : `$C$${r}`
@@ -1605,7 +1617,7 @@ export function grilla({
   // que las produjeron: las personas del cuadro de PAGO (que las cuenta sobre el registro del espejo)
   // contra las del cuadro del piso, y las horas medidas contra la jornada. Con sólo la primera
   // pregunta, la celda firmó "✓ cubren el piso" sobre una proyección $16,2M corta.
-  filas[fControlPiso - 1][0] = formulaControlPiso({
+  filas[fControlPiso - 1][0] = formulaControlAumento({
     celdasPersonas: `$B$${plantel.fPrimera}:$B$${plantel.fUltima}`,
     celdasBasico: `$F$${plantel.fPrimera}:$F$${plantel.fUltima}`,
     nQuincenas: pendientes.length,
@@ -1991,9 +2003,9 @@ async function main() {
   // factor): la quincena en curso está a medio cargar y basar un semestre en un bloque con un día de
   // horas es el defecto A2. Pero QUIÉNES SON y en qué categoría están no depende de las horas —esas
   // tres columnas están completas desde que la planilla abre el bloque— y el piso del convenio se le
-  // debe a la gente que trabaja HOY. El porqué medido, en `bloqueDelPiso`.
+  // debe a la gente que trabaja HOY. El porqué medido, en `bloqueDelPlantel`.
   const cerradaBase = ultimaQuincenaCerrada(bloques, (b) => ultimoDiaCargado(espejo[b.filaFecha - 1] ?? []), hoy)
-  const piso = bloqueDelPiso({
+  const piso = bloqueDelPlantel({
     bloques, cerrada: cerradaBase?.bloque ?? null, personasDe: (b) => personasDelBloque(espejo, b),
   })
   const bloqueBase = piso.bloque ?? cerradaBase?.bloque ?? ult
@@ -2052,15 +2064,24 @@ async function main() {
     const f = (colAE ?? []).find((x) => claveDeCategoria(x?.[0]) === cat)
     return [cat, f ? claveDeCategoria(f[4]) : '']
   }))
-  const sigmaConv = sigmaConvenioDelPlantel(espejo, bloqueBase, escalonVigente, undefined, escritoPorCodigo)
+  const sigmaConv = sigmaConAumentoDelPlantel(espejo, bloqueBase, escalonVigente, undefined, escritoPorCodigo)
   for (const d of sigmaConv.descartados) {
     console.warn(`  ${ALERTA} «Convenio» de ${d.codigo} dice "${d.escrito}" y la escala no lo reconoce:`
       + ` uso ${d.usada ?? 'ninguna equivalencia'} — es basura de un layout viejo, no una categoría`)
   }
   const pesos = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
-  console.log(`convenio 100%: Σ $/hora del plantel al convenio ${pesos(sigmaConv.total)} sobre ${sigmaConv.personas} persona(s)`
-    + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio} ${pesos(c.basico)}`).join(' · ') || 'sin escala'}`
-    + (sigmaConv.sinEscala.length ? ` · ${ALERTA} SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
+  // EL LOG PUBLICA LAS TRES CIFRAS, NO EL TOTAL SOLO. `hoy` es un hecho de la planilla, `aumento` es
+  // la decisión, y su suma es lo que proyecta la pestaña: con el total solo, un aumento mal calculado
+  // se esconde adentro de un número grande y plausible.
+  console.log(`con aumento: Σ $/hora ${pesos(sigmaConv.total)} = hoy ${pesos(sigmaConv.hoy)}`
+    + ` + aumento ${pesos(sigmaConv.aumento)} sobre ${sigmaConv.personas} persona(s)`
+    + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio ?? '(sin escala)'} +${pesos(c.aumentoHora ?? 0)}/h`).join(' · ') || 'sin escala'}`
+    + (sigmaConv.sinEscala.length ? ` · ${ALERTA} SIN AUMENTO: ${sigmaConv.sinEscala.join(', ')}` : ''))
+  // Y LA FALTA LABORAL, SI LA HAY, SE DICE APARTE. El cuadro publica la decisión (aditiva); que a
+  // alguien el aumento no le alcance para llegar al mínimo legal es otra cosa y no se compensa sola.
+  for (const b of sigmaConv.bajoConvenio) {
+    console.warn(`  ${ALERTA} ${b.codigo}: con el aumento queda en ${pesos(b.tarifa)}/h y el básico de convenio es ${pesos(b.piso)}/h`)
+  }
 
   // ── LA DEMANDA DE LAS OBRAS VENDIDAS: el otro lado del MAX de 1.3 (07/08) ──
   // Si lib/obras-datos.mjs no está en esta rama, la fuente avisa y devuelve 0: la pestaña queda igual.
@@ -2129,7 +2150,7 @@ async function main() {
   if (!personasPago.length) console.warn('  ⚠ el último bloque del espejo no tiene personas: el cuadro de pago sale vacío')
   const g = grilla({
     bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
-    escalones, bloqueBase, categorias, personasBase, origenPiso: piso.origen ?? 'cerrada',
+    escalones, bloqueBase, categorias, personasBase, origenPlantel: piso.origen ?? 'cerrada',
     escalonVigente, meses, hoy, periodoBase, demanda,
     personasPago,
     desvinculacion: null,
@@ -2842,10 +2863,20 @@ export function requestsDeFormato(sheetId, filas, g) {
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS_FINAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)
   // ── EL BLOQUE DEL MOTOR ──
-  // 1.1: personas enteras; el margen contra el convenio es un porcentaje, no plata.
+  // 1.1: personas enteras; el aumento de la hora es PLATA, no un porcentaje.
+  //
+  // ═══ EL FORMATO SE QUEDÓ CON LA COLUMNA VIEJA Y NADIE LO HABRÍA VISTO (29/08) ═══
+  //
+  // La columna 6 era «Margen» —un ratio— y este `fmt` la pintaba PERCENT. Con el rehacer del cuadro
+  // pasó a ser «Aumento $/hora»: los mismos $3.174 se habrían dibujado «317400,0%» en la pestaña,
+  // con el número correcto adentro de la celda. Ningún test de fórmulas puede ver eso —la fórmula
+  // está bien— y la corrida no lo imprime: se ve mirando el archivo, o no se ve.
+  //
+  // Es la razón por la que un cambio de COLUMNAS obliga a revisar el formato aunque las fórmulas
+  // estén probadas: el formato está indexado por número de columna y no sabe que cambió de dueño.
   if (g.plantel) {
     fmt(g.plantel.fPrimera - 1, g.plantel.fTotal, 1, 2, ENTERO)
-    fmt(g.plantel.fPrimera - 1, g.plantel.fTotal, 6, 7, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
+    fmt(g.plantel.fPrimera - 1, g.plantel.fTotal, 6, 7, moneda)
   }
   // 1.2: el mes es una FECHA (sin esto sale "$46.234"), el escalón del mes y el factor son ratios.
   // El factor lleva CUATRO decimales: con dos, un escalón de +0,4% se dibuja "1,00" y el cuadro

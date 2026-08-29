@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { evaluarFormula, ErrorHoja, celdasDelRango, hojaDeGrilla, aSerial } from './evaluar-formula-sheet.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 13)) // 13/08/2026, el día que se encontró el defecto
-const ev = (f, hoja = {}) => evaluarFormula(f, { hoja, hoy: HOY })
+const ev = (f, hoja = {}, hojas = {}) => evaluarFormula(f, { hoja, hojas, hoy: HOY })
 
 test('la aritmética y la precedencia son las de Sheets, no las del orden de lectura', () => {
   assert.equal(ev('=2+3*4'), 14)
@@ -151,4 +151,68 @@ test('INDEX/MATCH devuelven la fila que corresponde, y sin coincidencia dan #N/A
 test('ARRAYFORMULA es la máscara 0/1 que MATCH busca, elemento a elemento', () => {
   const hoja = { A1: 'San Francisco', A2: 'MESSINA', A3: 'San Francisco', B1: 'Cobrado', B2: 'Pendiente', B3: 'Pendiente' }
   assert.equal(ev('=MATCH(1;ARRAYFORMULA((A1:A3="San Francisco")*(B1:B3<>"Cobrado"));0)', hoja), 3)
+})
+
+// ═══ EL PORCENTAJE LITERAL — LA FORMA EN QUE ESTE REPO ESCRIBE UNA FRACCIÓN (29/08/2026) ═══
+//
+// El cuadro 1.1 de Jornales emite `=IF(N($F41)=0;"";$F41*50%)`: el aumento de la hora es la mitad del
+// básico de la categoría. Se escribe `50%` y no `0,5` porque en locale es-AR la coma decimal ES el
+// separador de argumentos —`formula-por-api-va-en-locale`, una trampa ya pagada— así que un `0,5`
+// partiría la fórmula en dos argumentos y devolvería otra cosa sin dar error.
+//
+// El instrumento no lo entendía y reventaba con «no entiendo "%)…"». Reventar ruidoso es lo correcto
+// —es su contrato— pero el efecto era que la celda que decide cuánto sube cada hora quedaba fuera de
+// todo lo que se puede evaluar en frío. Ahora se puede.
+test('un porcentaje literal es una fracción, no un símbolo suelto', () => {
+  assert.equal(ev('=6348*50%', {}), 3174)
+  assert.equal(ev('=IF(N(F1)=0;"";F1*50%)', { F1: 6348 }), 3174)
+  assert.equal(ev('=100%', {}), 1)
+  assert.equal(ev('=12.5%*800', {}), 100, 'con decimales también: el punto sigue siendo el decimal del parser')
+  // Y NO SE CONFUNDE CON UNA RESTA NI SE COME EL OPERADOR DE AL LADO.
+  assert.equal(ev('=50%+50%', {}), 1)
+  assert.equal(ev('=200*50%-40', {}), 60)
+  // La coma decimal sigue siendo un error: es el separador de argumentos, y que reviente acá es lo
+  // único que impide que una fórmula partida en dos llegue al Sheet pareciendo válida.
+  assert.throws(() => ev('=0,5*100', {}), /no entiendo/)
+})
+
+// ═══ `ISNUMBER(MATCH(…))` — EL IDIOMA CON EL QUE UNA FÓRMULA PREGUNTA «¿ESTÁ EN LA LISTA?» ═══
+//
+// Sin esto, el #N/A del MATCH reventaba la fórmula entera y `expresionClaveConvenio` —la celda que
+// decide contra qué categoría del convenio se mide cada fila del plantel— no se podía evaluar en
+// frío. Es exactamente la celda por la que entró el incidente de la columna «Convenio (tuya)»: el
+// cuadro se probaba entero salvo la única que importaba.
+test('ISNUMBER contesta FALSE ante un #N/A, no revienta la fórmula', () => {
+  const escala = { B10: 'Oficial Especializado', B11: 'Oficial', B12: 'Medio Oficial', B13: 'Ayudante' }
+  const clave = (celda) => ev(`=IF(ISNUMBER(MATCH($E$1;'_UOCRA_RAW'!$B$10:$B$13;0));$E$1;"Oficial")`,
+    { E1: celda }, { _UOCRA_RAW: escala })
+  assert.equal(clave('Convenio (tuya)'), 'Oficial', 'la basura cae en la equivalencia declarada')
+  assert.equal(clave(5601), 'Oficial', 'un número tampoco es una categoría')
+  assert.equal(clave(''), 'Oficial', 'la celda vacía también cae en la equivalencia')
+  assert.equal(clave('Ayudante'), 'Ayudante', 'lo que la escala SÍ conoce gana: la columna es del dueño')
+  // Y sigue contestando lo suyo sobre valores normales, incluido un rango elemento a elemento.
+  assert.equal(ev('=ISNUMBER(A1)', { A1: 5 }), 1)
+  assert.equal(ev('=ISNUMBER(A1)', { A1: 'x' }), 0)
+  assert.deepEqual(ev('=ISNUMBER(A1:A3)', { A1: 1, A2: 'x', A3: 3 }), [1, 0, 1])
+  // Un error que NO es de hoja no se absorbe: una función no soportada tiene que seguir reventando.
+  assert.throws(() => ev('=ISNUMBER(VLOOKUP(1;A1:A2;1))', { A1: 1, A2: 2 }), /no está soportada/)
+})
+
+test('AND, OR y NOT: los conectores con los que se escriben las guardas de este repo', () => {
+  assert.equal(ev('=AND(1;1)', {}), 1)
+  assert.equal(ev('=AND(1;0)', {}), 0)
+  assert.equal(ev('=OR(0;1)', {}), 1)
+  assert.equal(ev('=OR(0;0)', {}), 0)
+  assert.equal(ev('=NOT(0)', {}), 1)
+  assert.equal(ev('=NOT(1)', {}), 0)
+  // La guarda real del cuadro 1.1: «hay algo escrito Y la escala no lo conoce».
+  const escala = { B10: 'Oficial', B11: 'Ayudante' }
+  const aviso = (celda) => ev('=IF(AND($E$1<>"";NOT(ISNUMBER(MATCH($E$1;\'_UOCRA_RAW\'!$B$10:$B$11;0))));1;0)',
+    { E1: celda }, { _UOCRA_RAW: escala })
+  assert.equal(aviso('Convenio (tuya)'), 1, 'hay algo escrito y la escala no lo conoce: se avisa')
+  assert.equal(aviso(''), 0, 'la celda vacía no es un error del dueño')
+  assert.equal(aviso('Ayudante'), 0, 'lo que la escala conoce gana y no se avisa')
+  // Sobre un rango miran todas las celdas, como en Sheets.
+  assert.equal(ev('=AND(A1:A3>0)', { A1: 1, A2: 2, A3: 3 }), 1)
+  assert.equal(ev('=AND(A1:A3>0)', { A1: 1, A2: 0, A3: 3 }), 0)
 })

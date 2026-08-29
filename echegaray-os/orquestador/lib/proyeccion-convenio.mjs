@@ -31,7 +31,7 @@
 //
 // Hoy NO se paga el convenio. La proyección al 100% es una HIPÓTESIS del dueño, no el jornal vigente:
 // si la pestaña no lo dijera, el número se leería como "esto es lo que vamos a pagar" cuando en verdad
-// es "esto es lo que costaría cumplir la escala". Por eso `lineaSupuestoConvenio` se escribe arriba del
+// es "esto es lo que costaría cumplir la escala". Por eso `lineaSupuestoAumento` se escribe arriba del
 // cuadro y no en un comentario del código, que nadie abre. El bloque 1.1 —pactado contra convenio,
 // categoría por categoría— NO se toca: esa comparación sigue siendo un HECHO, y es justamente la que
 // prueba que el supuesto no es gratis.
@@ -61,8 +61,10 @@
 // el resto la hereda por rango con nombre. Ninguna pestaña necesita una celda nueva.
 
 import { sub } from './patron-pestana.mjs'
-import { convenioDe, claveDeCategoria, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
-import { categoriaDelConvenio, expresionSinEscala } from './jornales-piso-uocra.mjs'
+import {
+  convenioDe, claveDeCategoria, tarifaConAumento, CONVENIO_POR_CODIGO, PORCENTAJE_DE_AUMENTO,
+} from './uocra-paritaria.mjs'
+import { categoriaDelConvenio } from './jornales-piso-uocra.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /**
@@ -76,10 +78,11 @@ import { ALERTA } from './glifos.mjs'
  *
  * Se define UNA vez acá y se importa: dos redacciones del mismo supuesto envejecen distinto.
  */
-export const NOTA_SUPUESTO_CONVENIO = 'La parte PROYECTADA de esos jornales viene valuada al 100% de '
-  + 'la hora de convenio UOCRA por categoría (supuesto del dueño — ver Jornales por Quincena 1.2). Hoy '
-  + 'se paga por debajo de la escala: esto es lo que costaría cumplirla, no lo que se viene pagando. '
-  + 'Lo que se PAGA dentro del mes en curso queda al jornal pactado: eso sí es lo que va a salir de la caja.'
+export const NOTA_SUPUESTO_AUMENTO = 'La parte PROYECTADA de esos jornales viene valuada a la tarifa '
+  + 'de hoy MÁS el 50% del básico de convenio de cada categoría (decisión del dueño del 28/08 — ver '
+  + 'Jornales por Quincena 1.1). No es el 100% de la escala ni un piso: el convenio decide cuánto sube '
+  + 'la hora, no cuánto vale. Lo que se PAGA dentro del mes en curso queda a la tarifa de hoy, sin el '
+  + 'aumento: eso es lo que va a salir de la caja.'
 
 /**
  * LA MISMA FILA CON LA OTRA BASE DICE OTRA COSA — Y TIENE QUE DECIRLA (07/08).
@@ -90,18 +93,18 @@ export const NOTA_SUPUESTO_CONVENIO = 'La parte PROYECTADA de esos jornales vien
  * adentro es peor que ninguna, porque el que la lee ajusta mentalmente hacia abajo un número que ya
  * estaba abajo. La glosa la decide LO QUE EL CUADRO USÓ, igual que la línea de Jornales.
  *
- * @param {'convenio'|'pactado'|null} base la que publicó Jornales; null = no se pudo leer
+ * @param {'con-aumento'|'pactado'|null} base la que publicó Jornales; null = no se pudo leer
  */
 export function notaSupuesto(base) {
-  if (base === 'convenio') return NOTA_SUPUESTO_CONVENIO
-  if (base === 'pactado') {
-    return 'La parte PROYECTADA de esos jornales está valuada al jornal PACTADO —lo que hoy se paga—, '
-      + 'no al 100% de la escala UOCRA: la réplica del convenio no dio base para valuarla (ver Jornales '
-      + 'por Quincena 1.2). Cumplir la escala costaría más que esto.'
+  if (base === BASE_CON_AUMENTO) return NOTA_SUPUESTO_AUMENTO
+  if (base === BASE_PACTADO) {
+    return 'La parte PROYECTADA de esos jornales está valuada a la tarifa de HOY, SIN el aumento del '
+      + '50% del básico: la réplica del convenio no dio escala con la cual calcularlo (ver Jornales por '
+      + 'Quincena 1.1). El aumento decidido costaría más que esto.'
   }
-  return 'No pude leer de Jornales por Quincena 1.2 con qué base quedó valuada la parte PROYECTADA de '
-    + 'esos jornales —pactado o 100% del convenio—: corré jornales-pestana.mjs y volvé a generar esta '
-    + 'pestaña antes de usar este número para decidir.'
+  return 'No pude leer de Jornales por Quincena 1.1 con qué base quedó valuada la parte PROYECTADA de '
+    + 'esos jornales —la tarifa de hoy sola, o con el aumento del 50% del básico—: corré '
+    + 'jornales-pestana.mjs y volvé a generar esta pestaña antes de usar este número para decidir.'
 }
 
 /**
@@ -111,10 +114,23 @@ export function notaSupuesto(base) {
  * glosa. Si cada archivo escribiera su propia cadena, el día que alguien corrija una tilde la lectura
  * devolvería null y la glosa de Cargas empezaría a decir "no pude leer" sin que nada más se rompa.
  */
+/**
+ * LAS DOS BASES POSIBLES, NOMBRADAS UNA SOLA VEZ. Viajan entre Jornales y Cargas Sociales como
+ * string: escritas a mano en cada punta, un typo las separa sin que nada falle.
+ */
+export const BASE_CON_AUMENTO = 'con-aumento'
+export const BASE_PACTADO = 'pactado'
+
 export const ROTULO_SIGMA = {
-  convenio: 'Σ $/hora convenio',
+  // ═══ EL RÓTULO CAMBIA PORQUE CAMBIÓ EL NÚMERO (29/08) ═══
+  //
+  // Decía «Σ $/hora convenio» y era el plantel REVALUADO a la hora de convenio. Ahora es la tarifa de
+  // hoy más el aumento. Si el rótulo no cambiara, Cargas Sociales seguiría leyendo «convenio» —lo lee
+  // por el TEXTO, ver `baseDeJornales`— y glosaría un supuesto que el número ya no tiene adentro.
+  // Cambiar el rótulo es lo que obliga a que las dos pestañas se enteren juntas.
+  conAumento: 'Σ $/hora con aumento',
   pactado: 'Σ $/hora pactada',
-  /** 1.3 mezcla las dos bases fila por fila (ver `quincenaAlConvenio`): su encabezado no puede mentir. */
+  /** 1.3 mezcla las dos bases fila por fila (ver `quincenaConAumento`): su encabezado no puede mentir. */
   aplicada: 'Σ $/hora aplicada',
 }
 
@@ -127,21 +143,21 @@ export const ROTULO_SIGMA = {
  * Compras: por su encabezado, no por su letra.
  *
  * @param {any[][]} filas la pestaña de Jornales tal como la devuelve readSheetValues
- * @returns {'convenio'|'pactado'|null}
+ * @returns {'con-aumento'|'pactado'|null}
  */
 export function baseDeJornales(filas = []) {
   for (const fila of filas ?? []) {
     for (const celda of fila ?? []) {
       const t = String(celda ?? '').trim()
-      if (t === ROTULO_SIGMA.convenio || t === ROTULO_SIGMA.aplicada) return 'convenio'
-      if (t === ROTULO_SIGMA.pactado) return 'pactado'
+      if (t === ROTULO_SIGMA.conAumento || t === ROTULO_SIGMA.aplicada) return BASE_CON_AUMENTO
+      if (t === ROTULO_SIGMA.pactado) return BASE_PACTADO
     }
   }
   return null
 }
 
 /**
- * NÚCLEO PURO: ¿ESTA QUINCENA SE VALÚA AL CONVENIO O AL PACTADO? LA DECIDE SU FECHA DE PAGO.
+ * NÚCLEO PURO: ¿ESTA QUINCENA LLEVA EL AUMENTO O VA A LA TARIFA DE HOY? LA DECIDE SU FECHA DE PAGO.
  *
  * ═══ LA ORDEN DEL DUEÑO (07/08) ═══
  *
@@ -161,7 +177,7 @@ export function baseDeJornales(filas = []) {
  * @param {Date|null} pago fecha en que sale la plata
  * @param {Date} hoy
  */
-export function quincenaAlConvenio(pago, hoy = new Date()) {
+export function quincenaConAumento(pago, hoy = new Date()) {
   if (!(pago instanceof Date) || Number.isNaN(pago.getTime())) return true
   const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59, 999)
   return pago > finDeMes
@@ -169,6 +185,12 @@ export function quincenaAlConvenio(pago, hoy = new Date()) {
 
 /** Columna del espejo `_J_OBREROS` donde vive el código de categoría (0-based). Es la D. */
 const COL_CATEGORIA = 3
+/**
+ * Columna del espejo donde vive LO QUE COBRA POR HORA HOY (0-based). Es la W — la misma que suma la
+ * fórmula del cuadro 1.1. Que las dos lean la MISMA columna es la condición para que el control y la
+ * pestaña puedan compararse; si una lee W y la otra otra cosa, coincidir sería casualidad.
+ */
+const COL_JORNAL = 22
 /** Columna del espejo donde vive el nombre. Una fila sin nombre no es una persona. */
 const COL_NOMBRE = 1
 
@@ -205,19 +227,26 @@ const COL_NOMBRE = 1
  * @param {number} fUltima  última
  * @returns {string|null} null si el bloque no tiene filas — no hay Σ que armar
  */
-export function formulaSigmaConvenio(fPrimera, fUltima) {
-  if (!(fPrimera > 0) || !(fUltima >= fPrimera)) return null
-  const B = `$B$${fPrimera}:$B$${fUltima}`
-  const F = `$F$${fPrimera}:$F$${fUltima}`
-  const sigma = `SUMPRODUCT(${B};${F})`
-  // ═══ EL GUARD PREGUNTABA POR EL VACÍO Y EL AGUJERO ERA UN TEXTO (14/08) ═══
+export function formulaSigmaConAumento(fPrimera, fUltima, fTotal) {
+  if (!(fPrimera > 0) || !(fUltima >= fPrimera) || !(fTotal > fUltima)) return null
+  const hoy = `$C$${fTotal}`
+  const aumento = `$D$${fTotal}`
+  // ═══ POR QUÉ SON DOS CELDAS DEL CUADRO Y NO UN PRODUCTO ESCALAR (29/08) ═══
   //
-  // Decía `--(F="")`. En el archivo vivo `F80` («OF M», 8 de 16 personas) traía el texto "Banco"
-  // —residuo del layout anterior— que NO es vacío: el guard no disparó, `SUMPRODUCT` trató el texto
-  // como 0 y la Σ publicó $46.988 en vez de $97.772. Un total corto y plausible, que es justo lo que
-  // este guard existe para impedir. La pregunta correcta —¿es un NÚMERO mayor que cero?— vive en una
-  // sola definición compartida con el control del piso, en lib/jornales-piso-uocra.mjs.
-  return `IF(OR(${sigma}=0;${expresionSinEscala(B, F)}>0);"";${sigma})`
+  // Era `SUMPRODUCT($B;$F)` — personas × básico —, que valuaba el plantel A LA HORA DEL CONVENIO. Eso
+  // es un PISO y el dueño lo rechazó: el convenio no reemplaza la tarifa de nadie, sólo dice cuánto
+  // sube. La Σ que proyecta es `lo que se paga hoy + lo que suma el aumento`, y las dos ya están
+  // publicadas en la fila de total del cuadro 1.1. Referenciarlas —en vez de recalcularlas— es lo que
+  // hace imposible que la pestaña muestre un número y proyecte otro.
+  //
+  // EL GUARD CAMBIÓ DE PREGUNTA, Y ES A PROPÓSITO. Antes, una categoría sin básico apagaba la Σ
+  // ENTERA: con un piso tiene sentido —un piso incompleto no es un piso—. Con un aumento aditivo no:
+  // que a una categoría le falte la escala significa que ESA gente no recibe aumento, no que las
+  // otras dieciséis personas dejen de cobrar lo que ya cobran. Apagar el total escondería catorce
+  // sueldos ciertos por uno incierto. Lo que falta lo dice el control de cobertura, que para eso
+  // existe y cuenta personas. La Σ sólo se apaga cuando NO HAY PLANTEL, que es el único caso en que
+  // no hay nada que proyectar.
+  return `IF(N(${hoy})=0;"";N(${hoy})+N(${aumento}))`
 }
 
 /**
@@ -236,14 +265,16 @@ export function formulaSigmaConvenio(fPrimera, fUltima) {
  * @param {string} celdaPersonas celda con el total de personas del plantel base
  * @returns {string} la fórmula (o el texto) para la columna A
  */
-export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {}) {
+export function lineaSupuestoAumento({
+  sigma = null, celdaPersonas = null, celdaAumento = null, porcentaje = PORCENTAJE_DE_AUMENTO,
+} = {}) {
   // SIN ESCALA NO SE INVENTA UN CRITERIO. Si la réplica no trajo el mes, la proyección vuelve al jornal
   // pactado — y eso se DICE. Cambiar de base en silencio sería publicar otro número con el mismo
   // rótulo, que es exactamente lo que este archivo existe para impedir.
   // NOMBRA LA FUENTE QUE FALTA. Al acortar esta línea le saqué "_UOCRA_RAW" y su test lo cazó: sin el
   // nombre de la réplica, el aviso dice que algo se rompió pero no qué se arregla. Un aviso que no se
   // puede accionar es tinta.
-  if (!sigma) return sub(`${ALERTA} Sin escala en _UOCRA_RAW — base: jornal pactado`)
+  if (!sigma) return sub(`${ALERTA} Sin escala en _UOCRA_RAW — base: hoy, sin aumento`)
   // `IFERROR(...;0)` y no `N(...)` a secas: si una celda de «Básico convenio» devolviera algo que el
   // producto escalar no sabe multiplicar, la línea que avisa del problema sería ella misma un #VALUE! —
   // el aviso se perdería justo cuando hace falta. Un error acá se lee como "no hay escala", que es lo
@@ -257,11 +288,12 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   //
   // No se borró un criterio, se dejó de repetirlo TRES veces. Lo que el párrafo decía ya está escrito
   // como DATO en el cuadro que encabeza:
-  //   · la BASE la declara el encabezado de la columna F (`ROTULO_SIGMA.convenio` = "Σ $/hora
-  //     convenio" vs "Σ $/hora pactada"). Es la misma celda que lee `baseQuePublico` para Cargas.
-  //   · que hoy se paga POR DEBAJO lo mide el bloque 4 (margen sobre el piso, en rojo si es negativo).
-  //   · que las quincenas del mes en curso van al pactado lo decide `formulaSigmaDelMes` fila por
-  //     fila, y se ve en la Σ de cada mes del cuadro.
+  //   · la BASE la declara el encabezado de la columna F (`ROTULO_SIGMA.conAumento` = "Σ $/hora
+  //     con aumento" vs "Σ $/hora pactada"). Es la misma celda que lee `baseDeJornales` para Cargas.
+  //   · si a alguien el aumento no le alcanza para llegar al mínimo legal lo dice el Estado de su
+  //     fila en 1.1 — con el mínimo de la categoría, no con el promedio, que lo escondería.
+  //   · que las quincenas del mes en curso van a la tarifa de hoy lo decide `formulaSigmaDelMes` fila
+  //     por fila, y se ve en la Σ de cada mes del cuadro.
   // Queda el rótulo, que es lo único que el párrafo agregaba: que es un SUPUESTO y no lo que se paga.
   const cuantos = celdaPersonas ? `"&${celdaPersonas}&"` : 'las'
   // ═══ EL AVISO DECÍA "PROYECCIÓN VACÍA" Y LA PROYECCIÓN NO ESTABA VACÍA (14/08) ═══
@@ -274,9 +306,33 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   //
   // El aviso dice ahora lo que efectivamente pasa: la proyección SIGUE, sin piso. Es peor noticia que
   // "vacía" y por eso hay que decirla — un cuadro vacío se ve; uno con el piso apagado, no.
+  // ═══ LA LÍNEA MIRA EL TÉRMINO DEL AUMENTO, NO EL TOTAL (29/08) ═══
+  //
+  // Miraba `N(sigma)`, que es `hoy + aumento`. Con plantel cargado y la escala caída ENTERA, ese
+  // total sigue siendo > 0 —la gente cobra lo que cobra— así que la línea anunciaba «Con aumento: hoy
+  // + 50% del básico» mientras el control de al lado gritaba que nadie lo estaba recibiendo. Las dos
+  // celdas eran ciertas por separado y juntas se leían mal, que es la peor forma de mentir: nadie
+  // puede señalar cuál de las dos está mal.
+  //
+  // Ahora hay tres estados y cada uno dice qué se perdió: sin plantel · con plantel y sin escala ·
+  // con las dos cosas. El segundo es el que faltaba.
+  //
+  // CADA LITERAL, ≤ 60 CARACTERES: es `LARGO_NOTA`, el umbral con el que esta pestaña distingue un
+  // RÓTULO de una nota, y se mide adentro de las fórmulas (fue así como se colaron las glosas de
+  // 374 caracteres que el dueño rechazó). Por eso dice "hoy" y no "la tarifa de hoy".
+  //
+  // Y DICE DESDE CUÁNDO RIGE, porque el alcance temporal de una cifra vive en la celda y no en un
+  // comentario del código (`encabezado-de-periodo-es-el-contrato`). La regla es la frontera de caja
+  // comprometida: la quincena que se paga dentro del mes en curso va a la tarifa de hoy, sin aumento.
+  const vigencia = ' personas · rige desde el mes de pago siguiente'
+  const sinAumento = celdaAumento
+    ? `IF(IFERROR(N(${celdaAumento});0)=0;"   · ${ALERTA} La escala no dio básicos: nadie recibe aumento";`
+    : ''
   return `=IF(IFERROR(N(${sigma});0)=0;`
-    + `"   · ${ALERTA} Sin escala: la proyección va SIN piso de convenio";`
-    + `"   · Supuesto: proyectado al 100% del convenio · ${cuantos} personas")`
+    + `"   · ${ALERTA} Sin plantel: la proyección va sin el aumento adentro";`
+    + sinAumento
+    + `"   · Con aumento: hoy + ${Math.round(Number(porcentaje) * 100)}% del básico · ${cuantos}${vigencia}")`
+    + (sinAumento ? ')' : '')
 }
 
 /**
@@ -309,13 +365,17 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
  * @param {Object<string,string>} escritoPorCodigo lo que el dueño escribió en «Convenio», por código
  * @returns {{total:number, personas:number, porCategoria:Array, sinEscala:string[], descartados:Array}}
  */
-export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null,
-  tabla = CONVENIO_POR_CODIGO, escritoPorCodigo = {}) {
-  const vacio = { total: 0, personas: 0, porCategoria: [], sinEscala: [], descartados: [] }
+export function sigmaConAumentoDelPlantel(grid = [], bloque = null, escalon = null,
+  tabla = CONVENIO_POR_CODIGO, escritoPorCodigo = {}, porcentaje = PORCENTAJE_DE_AUMENTO) {
+  const vacio = {
+    total: 0, hoy: 0, aumento: 0, personas: 0, porCategoria: [], sinEscala: [], descartados: [],
+    bajoConvenio: [],
+  }
   if (!bloque) return vacio
   const acum = new Map()
   const sinEscala = []
   const descartados = []
+  const bajoConvenio = []
   let personas = 0
   for (let r = bloque.inicio; r <= bloque.fin; r++) {
     const fila = grid[r - 1] ?? []
@@ -340,21 +400,62 @@ export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null
     }
     const convenio = res.categoria
     const basico = convenio ? escalon?.categorias?.[convenio]?.basico : null
-    if (typeof basico !== 'number') {
+    // LA TARIFA DE HOY ES UN HECHO DE LA PLANILLA Y ENTRA IGUAL, CON ESCALA O SIN ELLA. Sin básico no
+    // hay aumento que calcular —eso se cuenta aparte— pero la persona SIGUE COBRANDO lo que cobra: si
+    // se la saltea, el total del control queda corto contra la fórmula, que la suma igual porque
+    // `SUMPRODUCT(--(TRIM(D)=cat);N(W))` no le pregunta a la escala. Los dos caminos tienen que sumar
+    // exactamente lo mismo o el control no controla nada.
+    const t = tarifaConAumento(fila[COL_JORNAL], basico, porcentaje)
+    const hoyDeEsta = Number.isFinite(Number(fila[COL_JORNAL])) ? Number(fila[COL_JORNAL]) : 0
+    if (!t) {
       if (codigo && !sinEscala.includes(codigo)) sinEscala.push(codigo || '(sin categoría)')
+      const kSin = `${codigo}|`
+      const p0 = acum.get(kSin) ?? { codigo, convenio: null, personas: 0, basico: null, aumentoHora: 0, hoy: 0, aumento: 0 }
+      acum.set(kSin, { ...p0, personas: p0.personas + 1, hoy: p0.hoy + hoyDeEsta })
       continue
     }
+    // QUIÉN QUEDA BAJO EL MÍNIMO LEGAL AUNQUE SE LE APLIQUE EL AUMENTO. No se corrige el número —el
+    // cuadro publica la DECISIÓN, que es aditiva— pero callarlo sería publicar una falta laboral con
+    // cara de total prolijo. Hoy la lista está vacía; el día que no lo esté, la corrida lo dice.
+    if (t.bajoConvenio) bajoConvenio.push({ codigo, tarifa: t.tarifa, piso: t.piso })
     const k = `${codigo}|${convenio}`
-    const prev = acum.get(k) ?? { codigo, convenio, personas: 0, basico, subtotal: 0 }
-    acum.set(k, { ...prev, personas: prev.personas + 1, subtotal: prev.subtotal + basico })
+    const prev = acum.get(k)
+      ?? { codigo, convenio, personas: 0, basico, aumentoHora: t.aumento, hoy: 0, aumento: 0 }
+    // EL AUMENTO SE DERIVA DE LA TARIFA, NO SE SUMA EN PARALELO (29/08). Escrito como
+    // `prev.aumento + t.aumento` había DOS definiciones de la tarifa nueva: la de `tarifaConAumento`
+    // y la que esta Σ reconstruía sumando sus partes.
+    //
+    // LA PRIMERA VERSIÓN DE ESTE COMENTARIO AFIRMABA UNA VIGILANCIA QUE NO EXISTÍA. Decía que
+    // cualquier cambio en la tarifa rompía la igualdad con la fórmula del Sheet «que es el test que
+    // la vigila», y la auditoría lo desmintió: mutando `tarifa` a `MAX(hoy + aumento; piso)` la suite
+    // era INDISTINGUIBLE entre esta forma y la de paralelo. La razón no era la resta: era la grilla
+    // del test, donde la tarifa más baja ($4.300 + $2.699,50 contra un piso de $5.399) nunca hacía
+    // morder el MAX. Un control ejercido sólo donde el defecto no puede aparecer no controla nada.
+    //
+    // Medido de nuevo el 29/08 con una persona BAJO el piso en esa grilla ($2.000 de Oficial):
+    //   · con la resta   → «EL CONTROL DE JS Y LA FÓRMULA DAN EL MISMO NÚMERO» ROJO, 15.854 ≠ 14.680;
+    //   · en paralelo    → ese assert queda VERDE y sólo protesta el de mínimo legal.
+    // O sea: la resta es lo que hace que la igualdad vigile, y la grilla es lo que la hace ejercerse.
+    // Las dos cosas hacen falta y ninguna sola alcanza.
+    acum.set(k, {
+      ...prev,
+      personas: prev.personas + 1,
+      hoy: prev.hoy + t.hoy,
+      aumento: prev.aumento + (t.tarifa - t.hoy),
+    })
   }
-  const porCategoria = [...acum.values()]
+  const porCategoria = [...acum.values()].map((x) => ({ ...x, subtotal: x.hoy + x.aumento }))
+  const hoy = porCategoria.reduce((s, x) => s + x.hoy, 0)
+  const aumento = porCategoria.reduce((s, x) => s + x.aumento, 0)
   return {
-    total: porCategoria.reduce((s, x) => s + x.subtotal, 0),
+    total: hoy + aumento,
+    hoy,
+    aumento,
     personas,
     porCategoria,
     sinEscala,
     descartados,
+    bajoConvenio,
   }
 }
 
@@ -384,7 +485,7 @@ export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null
  * frontera que aplicar, y lo que corresponde es la base del cuadro.
  *
  * @param {string} celdaDesde celda con el inicio de la quincena
- * @param {{f0:number, f1:number, alConvenio?:boolean, celdaSigmaBase?:string, rAnclaBase?:number}} esc
+ * @param {{f0:number, f1:number, conAumento?:boolean, celdaSigmaBase?:string, rAnclaBase?:number}} esc
  * @param {string|null} celdaPago celda "Se paga el" de ESA fila
  */
 export function formulaSigmaDelMes(celdaDesde, esc, celdaPago = null) {
@@ -427,10 +528,10 @@ export function expresionSigmaDelMes(celdaDesde, esc, celdaPago = null) {
  * @returns {{delCuadro:string, pactada:string|null}}
  */
 export function piezasSigmaDelMes(celdaDesde, esc) {
-  const { f0, f1, alConvenio = false, celdaSigmaBase = null, rAnclaBase = null } = esc
+  const { f0, f1, conAumento = false, celdaSigmaBase = null, rAnclaBase = null } = esc
   const mes = `MATCH(EOMONTH(${celdaDesde};0);$A$${f0}:$A$${f1};0)`
   const delCuadro = `INDEX($F$${f0}:$F$${f1};${mes})`
-  if (!alConvenio || !celdaSigmaBase || !rAnclaBase) return { delCuadro, pactada: null }
+  if (!conAumento || !celdaSigmaBase || !rAnclaBase) return { delCuadro, pactada: null }
   return { delCuadro, pactada: `${celdaSigmaBase}*INDEX($E$${f0}:$E$${f1};${mes})/$E$${rAnclaBase}` }
 }
 
@@ -439,7 +540,7 @@ export function piezasSigmaDelMes(celdaDesde, esc) {
  *
  * ¿Esta quincena sale de la caja ANTES de fin de mes? De ese lado se valúa al pactado —es la plata que
  * va a salir— y del otro al 100% del convenio, que es planificación. El porqué está arriba, en
- * `quincenaAlConvenio`, que es la misma regla en JavaScript.
+ * `quincenaConAumento`, que es la misma regla en JavaScript.
  *
  * Se extrajo el 27/08 porque la frontera pasó a decidir DOS cosas y no una: además de la base ($/hora
  * pactada o de convenio) decide con qué horas se multiplica esa base — las medidas para lo que se paga,
