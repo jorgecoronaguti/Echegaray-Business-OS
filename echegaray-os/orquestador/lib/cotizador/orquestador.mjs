@@ -31,6 +31,7 @@ import { cascada } from './comercial.mjs'
 import { colaDeAtencion, estadoDeCola } from './atencion.mjs'
 import { huellaDeEntradas, gateDeCongelado } from './freeze.mjs'
 import { metricasDeCorrida } from './metricas.mjs'
+import { explotarRecursos, reconciliar } from './explosion.mjs'
 
 /**
  * ADAPTAR EL RESULTADO DEL PIPELINE DE PLANO a la entrada del orquestador. PURA.
@@ -177,6 +178,11 @@ export function correr({
   }))
 
   // ── 11 · OUTPUT
+  // La explosión es DERIVADA: sale acá y no en una etapa propia porque no decide nada — es la
+  // misma información de COST leída por recurso en vez de por partida. Y se RECONCILIA contra el
+  // costo directo: si no cuadra, hay un recurso contado dos veces o uno perdido.
+  const explosion = explotarRecursos(costos)
+  const reconciliacion = reconciliar(explosion, cd)
   const metricas = metricasDeCorrida({
     documentos, elementos,
     cantidades: partidas.map((p) => ({ valor: p.cantidad, estado: p.cantidad === null || p.cantidad === undefined ? ESTADO.FALTA_DATO : ESTADO.CALCULADO, porQue: p.porQue ?? (p.cantidad === null ? 'sin cantidad computada' : null) })),
@@ -188,8 +194,12 @@ export function correr({
   })
   anotar(resultadoEtapa({
     etapa: ETAPA.OUTPUT, status: gate.ready ? STATUS.OK : STATUS.BLOQUEADA,
-    result: { listoParaOfertar: gate.ready, metricas },
+    result: { listoParaOfertar: gate.ready, metricas, explosion, reconciliacion },
     provenance: [huella.resumen],
+    // Una explosión que no reconcilia NO bloquea la oferta —el precio sale de COST, no de acá— pero
+    // sí es una advertencia fuerte: significa que el desglose que va a leer Compras no coincide con
+    // el que se cotizó.
+    missing_data: reconciliacion.cuadra === false ? [reconciliacion.porQue] : [],
   }))
 
   return Object.freeze({
@@ -200,7 +210,7 @@ export function correr({
     costos: Object.freeze(costos),
     costoDirecto: cd,
     cascada: casc,
-    cola, huella, gate, metricas,
+    cola, huella, gate, metricas, explosion, reconciliacion,
     estado: estadoDeCola(cola),
     degradada: Boolean(degradacion?.hubo),
     congeladoPor,

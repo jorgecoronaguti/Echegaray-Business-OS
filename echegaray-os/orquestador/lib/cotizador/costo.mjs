@@ -185,21 +185,27 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     if (!sumable({ valor: p.valor, estado: p.estado === ESTADO.HISTORICO ? ESTADO.EXTRAIDO : p.estado })) {
       faltan.push(`${l.recursoCodigo ?? l.codigo}: ${p.porQue}`)
       issues.push(issueDePrecio(p, { impacto: null, critico: true }))
-      lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, costo: null, estado: p.estado, fuente: p.fuente, formula: null })
+      lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, cantidad: Number(l.cantidad) * conFactor * Number(cant), unidadRecurso: l.unidad ?? null, precioUnitario: null, costo: null, estado: p.estado, fuente: p.fuente, formula: null })
       continue
     }
     const conv = aplicarFx({ monto: p.valor, desde: p.moneda ?? monedaDestino, hasta: monedaDestino, fx })
     if (conv.estado !== ESTADO.CALCULADO) {
       faltan.push(`${l.recursoCodigo ?? l.codigo}: ${conv.porQue}`)
       issues.push(issue({ type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.BLOQUEANTE, entity: String(l.recursoCodigo ?? l.codigo), detalle: conv.porQue }))
-      lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, costo: null, estado: ESTADO.FALTA_DATO, fuente: p.fuente, formula: null })
+      lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, cantidad: Number(l.cantidad) * conFactor * Number(cant), unidadRecurso: l.unidad ?? null, precioUnitario: null, costo: null, estado: ESTADO.FALTA_DATO, fuente: p.fuente, formula: null })
       continue
     }
-    const costoLinea = Number(l.cantidad) * conv.valor * conFactor * Number(cant)
+    // La CANTIDAD FÍSICA total que esta partida demanda de este recurso. No se redondea acá: la
+    // explosión de recursos la suma entre partidas y redondear en cada una acumula el error justo
+    // en el número que después se compra.
+    const cantidadFisica = Number(l.cantidad) * conFactor * Number(cant)
+    const costoLinea = cantidadFisica * conv.valor
     cajones[cajon] += costoLinea
     if (p.estado === ESTADO.HISTORICO) issues.push(issueDePrecio(p, { impacto: redondear(costoLinea), critico: false }))
     lineas.push({
       cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null,
+      // Lo que hace posible la explosión de recursos (§13): cuánto se necesita y a qué precio.
+      cantidad: cantidadFisica, unidadRecurso: l.unidad ?? null, precioUnitario: conv.valor,
       costo: redondear(costoLinea), estado: p.estado, fuente: p.fuente, observadoEn: p.observadoEn,
       formula: `${l.cantidad} ${l.unidad ?? ''}/u × ${conv.valor} × ${conFactor} desperdicio × ${cant} ${base.unidad ?? ''}`.replace(/\s+/g, ' '),
     })

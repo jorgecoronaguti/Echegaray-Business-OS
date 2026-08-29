@@ -173,6 +173,18 @@ test('CLAUDE-ZERO · un subcontrato sin precio bloquea la corrida entera', () =>
 // REPRODUCIBILIDAD (§39)
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
+test('CLAUDE-ZERO · la explosión de recursos RECONCILIA contra el costo directo (§13)', () => {
+  const r = correr(ENTRADA())
+  assert.equal(r.reconciliacion.cuadra, true, r.reconciliacion.porQue)
+  assert.equal(r.reconciliacion.costoDirecto, r.costoDirecto.total)
+  // 520 m² × 45 un × 1,05 de desperdicio = 24.570 ladrillones, y 47,2 × 1,05 = 49,56 m³ de hormigón
+  assert.equal(r.explosion.materiales.find((m) => m.recurso === 'MAT-LAD').cantidad, 24_570)
+  assert.equal(r.explosion.materiales.find((m) => m.recurso === 'MAT-HORM').cantidad, 49.56)
+  // El oficial trabaja en las dos partidas y sale UNA vez: 520 × 2 + 47,2 × 8 = 1.417,6 hs
+  assert.equal(r.explosion.hhPorCategoria.find((h) => h.recurso === 'MO-OF').horas, 1_417.6)
+  assert.equal(r.etapas.at(-1).result.explosion.nRecursos, 3)
+})
+
 test('REPRODUCIBILIDAD · RUN1 = RUN2 en huella y en métricas', () => {
   const uno = correr(ENTRADA())
   const dos = correr(ENTRADA())
