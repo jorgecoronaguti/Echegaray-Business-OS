@@ -396,10 +396,14 @@ export function filasPlantel({
     //     Flow— NO se midió contra el archivo. Es lo primero que hay que mirar.
     //
     // B · EL CUADRO CAMBIÓ DE COLUMNAS, NO SÓLO DE FÓRMULAS. La D pasó de «$/hora mínimo» a «Σ
-    //     aumento» y la G de «Margen» a «Aumento $/hora». Si el régimen de preservación conserva lo
-    //     que ya había en esas celdas, la pestaña queda con los ENCABEZADOS nuevos sobre NÚMEROS
-    //     viejos, que es peor que no correr nada: se lee coherente y miente. Verificar celda por
-    //     celda las dos columnas después de la primera corrida.
+    //     aumento» y la G de «Margen» a «Aumento $/hora». El riesgo era que el régimen de
+    //     preservación conservara lo que ya había en esas celdas y la pestaña quedara con los
+    //     encabezados nuevos sobre números viejos — se lee coherente y miente.
+    //
+    //     MEDIDO por la auditoría del 29/08 sobre `sheet_huella_celda`: todas las coordenadas de
+    //     datos del bloque tienen huella viva sellada hoy y con forma coincidente, o sea que el
+    //     generador las reescribe. No hay encabezado nuevo sobre número viejo. Queda como cosa a
+    //     MIRAR en la primera corrida, no como riesgo abierto.
     //
     // C · CUÁNDO EMPIEZA A REGIR EL AUMENTO ES UN SUPUESTO MÍO, NO UNA ORDEN. Se aplica a las
     //     quincenas que se pagan DESPUÉS del cierre del mes en curso —la misma frontera de «caja

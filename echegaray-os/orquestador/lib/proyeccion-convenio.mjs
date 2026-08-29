@@ -265,7 +265,9 @@ export function formulaSigmaConAumento(fPrimera, fUltima, fTotal) {
  * @param {string} celdaPersonas celda con el total de personas del plantel base
  * @returns {string} la fórmula (o el texto) para la columna A
  */
-export function lineaSupuestoAumento({ sigma = null, celdaPersonas = null, porcentaje = PORCENTAJE_DE_AUMENTO } = {}) {
+export function lineaSupuestoAumento({
+  sigma = null, celdaPersonas = null, celdaAumento = null, porcentaje = PORCENTAJE_DE_AUMENTO,
+} = {}) {
   // SIN ESCALA NO SE INVENTA UN CRITERIO. Si la réplica no trajo el mes, la proyección vuelve al jornal
   // pactado — y eso se DICE. Cambiar de base en silencio sería publicar otro número con el mismo
   // rótulo, que es exactamente lo que este archivo existe para impedir.
@@ -304,12 +306,33 @@ export function lineaSupuestoAumento({ sigma = null, celdaPersonas = null, porce
   //
   // El aviso dice ahora lo que efectivamente pasa: la proyección SIGUE, sin piso. Es peor noticia que
   // "vacía" y por eso hay que decirla — un cuadro vacío se ve; uno con el piso apagado, no.
+  // ═══ LA LÍNEA MIRA EL TÉRMINO DEL AUMENTO, NO EL TOTAL (29/08) ═══
+  //
+  // Miraba `N(sigma)`, que es `hoy + aumento`. Con plantel cargado y la escala caída ENTERA, ese
+  // total sigue siendo > 0 —la gente cobra lo que cobra— así que la línea anunciaba «Con aumento: hoy
+  // + 50% del básico» mientras el control de al lado gritaba que nadie lo estaba recibiendo. Las dos
+  // celdas eran ciertas por separado y juntas se leían mal, que es la peor forma de mentir: nadie
+  // puede señalar cuál de las dos está mal.
+  //
+  // Ahora hay tres estados y cada uno dice qué se perdió: sin plantel · con plantel y sin escala ·
+  // con las dos cosas. El segundo es el que faltaba.
+  //
+  // CADA LITERAL, ≤ 60 CARACTERES: es `LARGO_NOTA`, el umbral con el que esta pestaña distingue un
+  // RÓTULO de una nota, y se mide adentro de las fórmulas (fue así como se colaron las glosas de
+  // 374 caracteres que el dueño rechazó). Por eso dice "hoy" y no "la tarifa de hoy".
+  //
+  // Y DICE DESDE CUÁNDO RIGE, porque el alcance temporal de una cifra vive en la celda y no en un
+  // comentario del código (`encabezado-de-periodo-es-el-contrato`). La regla es la frontera de caja
+  // comprometida: la quincena que se paga dentro del mes en curso va a la tarifa de hoy, sin aumento.
+  const vigencia = ' personas · rige desde el mes de pago siguiente'
+  const sinAumento = celdaAumento
+    ? `IF(IFERROR(N(${celdaAumento});0)=0;"   · ${ALERTA} La escala no dio básicos: nadie recibe aumento";`
+    : ''
   return `=IF(IFERROR(N(${sigma});0)=0;`
-    // CADA LITERAL, ≤ 60 CARACTERES: es `LARGO_NOTA`, el umbral con el que esta pestaña distingue un
-    // RÓTULO de una nota, y se mide adentro de las fórmulas (fue así como se colaron las glosas de
-    // 374 caracteres que el dueño rechazó). Por eso dice "hoy" y no "la tarifa de hoy".
     + `"   · ${ALERTA} Sin plantel: la proyección va sin el aumento adentro";`
-    + `"   · Con aumento: hoy + ${Math.round(Number(porcentaje) * 100)}% del básico de su categoría · ${cuantos} personas")`
+    + sinAumento
+    + `"   · Con aumento: hoy + ${Math.round(Number(porcentaje) * 100)}% del básico · ${cuantos}${vigencia}")`
+    + (sinAumento ? ')' : '')
 }
 
 /**
@@ -400,10 +423,20 @@ export function sigmaConAumentoDelPlantel(grid = [], bloque = null, escalon = nu
       ?? { codigo, convenio, personas: 0, basico, aumentoHora: t.aumento, hoy: 0, aumento: 0 }
     // EL AUMENTO SE DERIVA DE LA TARIFA, NO SE SUMA EN PARALELO (29/08). Escrito como
     // `prev.aumento + t.aumento` había DOS definiciones de la tarifa nueva: la de `tarifaConAumento`
-    // y la que esta Σ reconstruía sumando sus partes. Se probó: mutando `tarifa` a un `MAX(...)` —o
-    // sea volviendo al piso por la puerta de atrás— la Σ no se movía y sólo protestaba el control de
-    // mínimo legal. Restando, cualquier cambio en la tarifa llega hasta acá y rompe la igualdad con
-    // la fórmula del Sheet, que es el test que la vigila.
+    // y la que esta Σ reconstruía sumando sus partes.
+    //
+    // LA PRIMERA VERSIÓN DE ESTE COMENTARIO AFIRMABA UNA VIGILANCIA QUE NO EXISTÍA. Decía que
+    // cualquier cambio en la tarifa rompía la igualdad con la fórmula del Sheet «que es el test que
+    // la vigila», y la auditoría lo desmintió: mutando `tarifa` a `MAX(hoy + aumento; piso)` la suite
+    // era INDISTINGUIBLE entre esta forma y la de paralelo. La razón no era la resta: era la grilla
+    // del test, donde la tarifa más baja ($4.300 + $2.699,50 contra un piso de $5.399) nunca hacía
+    // morder el MAX. Un control ejercido sólo donde el defecto no puede aparecer no controla nada.
+    //
+    // Medido de nuevo el 29/08 con una persona BAJO el piso en esa grilla ($2.000 de Oficial):
+    //   · con la resta   → «EL CONTROL DE JS Y LA FÓRMULA DAN EL MISMO NÚMERO» ROJO, 15.854 ≠ 14.680;
+    //   · en paralelo    → ese assert queda VERDE y sólo protesta el de mínimo legal.
+    // O sea: la resta es lo que hace que la igualdad vigile, y la grilla es lo que la hace ejercerse.
+    // Las dos cosas hacen falta y ninguna sola alcanza.
     acum.set(k, {
       ...prev,
       personas: prev.personas + 1,

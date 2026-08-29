@@ -160,6 +160,31 @@ test('EL CONTROL DE JS Y LA FÓRMULA DAN EL MISMO NÚMERO — dos caminos, una c
   assert.equal(js.total, 39980)
   assert.equal(js.personas, 5)
   assert.deepEqual(js.bajoConvenio, [], 'con estas tarifas nadie queda bajo el mínimo legal')
+
+  // ═══ Y LA MISMA IGUALDAD CON ALGUIEN BAJO EL PISO — SIN ESTO EL TEST NO VIGILA NADA (29/08) ═══
+  //
+  // La auditoría mutó `tarifa` a `MAX(hoy + aumento; piso)` —el piso volviendo por la puerta de
+  // atrás— y ESTE test quedó VERDE en las dos configuraciones del acumulador. Con las cinco tarifas
+  // de arriba el MAX nunca muerde (la más baja, $4.300, más su aumento da $6.999,50 contra un piso de
+  // $5.399), así que la mutación no cambiaba un peso y la igualdad se cumplía igual. Un control que
+  // sólo se ejerce donde el defecto no puede aparecer es una constante disfrazada, y el comentario
+  // del acumulador afirmaba que este test lo vigilaba: era `la-mutacion-declarada-no-probada`.
+  //
+  // Con un Oficial en $2.000 —$2.000 + $3.174 = $5.174 contra un piso de $6.348— el MAX SÍ muerde, y
+  // ahí las dos cuentas se separan: la fórmula del Sheet suma `hoy` (columna W, $2.000) más
+  // `personas × básico/2`, sin enterarse de ningún piso; el JS mutado devolvería $6.348 de tarifa y
+  // su aumento derivado por resta sería $4.348 en vez de $3.174.
+  const bajo = espejo()
+  bajo[F0 - 1][22] = 2000
+  const filasBajo = resolver(bajo, cuadroDe(bajo), basicoDe)
+  const jsBajo = sigmaConAumentoDelPlantel(bajo, BLOQUE, ESCALON)
+  assert.equal(jsBajo.hoy, filasBajo.reduce((a, f) => a + f.hoy, 0),
+    'la Σ de hoy dejó de ser la columna W: alguien la está corrigiendo por el camino')
+  assert.equal(jsBajo.aumento, filasBajo.reduce((a, f) => a + f.sigmaAumento, 0),
+    'el aumento del JS dejó de coincidir con el de la fórmula: hay un piso escondido en la tarifa')
+  assert.equal(jsBajo.total, filasBajo.reduce((a, f) => a + f.hoy + f.sigmaAumento, 0))
+  assert.equal(jsBajo.total, 39980 - 5600 + 2000)
+  assert.equal(jsBajo.bajoConvenio.length, 1, 'y la persona bajo el piso se sigue nombrando')
 })
 
 test('EL MÍNIMO LEGAL NO SE APLICA EN SILENCIO: se publica la decisión y se AVISA', () => {

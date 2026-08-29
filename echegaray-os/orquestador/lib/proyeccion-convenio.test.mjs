@@ -12,6 +12,7 @@ import {
   baseDeJornales, quincenaConAumento, ROTULO_SIGMA, BASE_CON_AUMENTO,
 } from './proyeccion-convenio.mjs'
 import { expresionSinEscala } from './jornales-piso-uocra.mjs'
+import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 import { crearGrilla } from './cargas-grilla.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion } from './cargas-bloques.mjs'
@@ -192,6 +193,32 @@ test('LA PESTAÑA DECLARA CON QUÉ CRITERIO PROYECTA, Y NO ES EL JORNAL VIGENTE'
   //   · y que las personas salgan de la celda, no del código.
   assert.match(l, /Con aumento/i)
   assert.match(l, /50% del básico/i)
+  // ═══ DESDE CUÁNDO RIGE VA EN LA CELDA, NO EN UN COMENTARIO DEL CÓDIGO ═══
+  //
+  // El alcance temporal de una cifra es parte de la cifra (`encabezado-de-periodo-es-el-contrato`).
+  // Que el aumento empiece en la quincena que se paga el mes que viene —y no en la que se está
+  // pagando— era un supuesto declarado sólo en la cabecera del módulo: quien mira la pestaña no lee
+  // el código y no tenía forma de saber sobre qué período está mirando el número.
+  assert.match(l, /rige desde el mes de pago siguiente/,
+    'la línea no dice desde cuándo rige el aumento: el que mira la pestaña no puede saberlo')
+
+  // ═══ TRES ESTADOS, NO DOS: «hay plantel pero la escala no dio básicos» faltaba ═══
+  //
+  // Con plantel cargado y la escala caída ENTERA, la Σ total sigue siendo > 0 —la gente cobra lo que
+  // cobra— así que la línea anunciaba «Con aumento» mientras el control de al lado gritaba que nadie
+  // lo recibía. Dos celdas ciertas que juntas se leen mal.
+  const conAumentoCero = lineaSupuestoAumento({
+    sigma: formulaSigmaConAumento(18, 21, 22), celdaPersonas: '$B$22', celdaAumento: '$D$22',
+  })
+  assert.match(conAumentoCero, /IF\(IFERROR\(N\(\$D\$22\);0\)=0;/,
+    'la línea no mira el término del AUMENTO: con la escala caída sigue anunciando que lo aplica')
+  assert.match(conAumentoCero, /nadie recibe aumento/)
+  // Y las tres ramas se evalúan de verdad, no se leen del texto: la celda tiene que decir cada cosa
+  // en su estado. (`$C$22` es la Σ de hoy y `$D$22` la del aumento, las dos del total del cuadro.)
+  const dice = (C, D) => evaluarFormula(conAumentoCero, { hoja: { $C$22: C, C22: C, D22: D, B22: 16 } })
+  assert.match(String(dice(0, 0)), /Sin plantel/)
+  assert.match(String(dice(81600, 0)), /nadie recibe aumento/)
+  assert.match(String(dice(81600, 48886)), /Con aumento: hoy \+ 50% del básico · 16 personas/)
   assert.doesNotMatch(l, /100% del convenio/i, 'volvió a anunciar el piso que el dueño rechazó')
   assert.match(l, /&\$B\$22&/, 'la cantidad de personas tiene que salir de la celda, no del código')
   // NINGÚN MES NI IMPORTE ESTAMPADO: un número escrito acá envejece el día que entra un obrero.

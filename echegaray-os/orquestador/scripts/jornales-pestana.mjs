@@ -1245,7 +1245,11 @@ export function grilla({
     celdaSigmaConAumento: sigmaConAumento, periodoConAumento: escalonVigente?.periodo ?? null,
   })
   filas[fSupuesto - 1][0] = lineaSupuestoAumento({
-    sigma: esc.conAumento ? sigmaConAumento : null, celdaPersonas: `$B$${fPlantel}`,
+    sigma: esc.conAumento ? sigmaConAumento : null,
+    celdaPersonas: `$B$${fPlantel}`,
+    // LA CELDA DEL AUMENTO, para que la línea no anuncie un aumento que nadie recibe: con el plantel
+    // cargado y la escala caída entera, la Σ total sigue siendo > 0 y sólo esta celda está en cero.
+    celdaAumento: `$D$${fPlantel}`,
   })
   for (const f of esc.filas) push(f)
   blanco()
