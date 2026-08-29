@@ -225,3 +225,62 @@ test('una cotización sin ninguna partida NO tiene costo directo cero', () => {
   const cd = costoDirecto([])
   assert.equal(cd.total, null, 'cero partidas no es un presupuesto de $0: es un presupuesto vacío')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS TRES NULL→0 QUE ENCONTRÓ LA AUDITORÍA ADVERSARIAL
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('una LÍNEA de composición sin cantidad NO vale cero: borra $2,4 M de mano de obra', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `costoDePartida`, sacar la guarda de `l.cantidad`.
+  //
+  // El defecto medido: `Number(null) * precio * cant` = 0, la partida salía `completa: true`, sin
+  // un solo issue, y la fórmula publicaba «null hs/u». Es el mismo defecto que este archivo ya
+  // cerraba para la cantidad de la PARTIDA y no para la de la LÍNEA.
+  const c = costoDePartida({
+    partida: { codigo: 'HORM', cantidad: 100, unidad: 'm3' },
+    composicion: [COMPOSICION[0], { ...COMPOSICION[1], cantidad: null }],
+    observaciones: PRECIOS, hoy: HOY,
+  })
+  assert.equal(c.subtotal, null, 'con un renglón sin medir el subtotal NO se afirma')
+  assert.notEqual(c.subtotal, 13_230_000, 'y sobre todo NO da el costo de los materiales solos')
+  assert.equal(c.estado, ESTADO.FALTA_DATO)
+  assert.equal(c.issues.length, 1)
+  assert.equal(c.issues[0].severity, SEVERIDAD.BLOQUEANTE)
+  assert.match(c.issues[0].detalle, /NO es cero: es un renglón sin medir/)
+  // Y la línea sale con cantidad null, no con un número inventado.
+  assert.equal(c.lineas.find((l) => l.recurso === 'MO-OF').cantidad, null)
+})
+
+test('si la línea sin medir es de MANO DE OBRA, las HH de la partida son NULL', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `costoDePartida`, `hh: redondear(hhUnitarias * Number(cant), 4)`.
+  //
+  // `hhUnitarias += Number(l.cantidad) || 0` sumaba cero y publicaba un total de horas al que le
+  // faltaba un renglón — que engaña más que un total ausente.
+  const c = costoDePartida({
+    partida: { codigo: 'HORM', cantidad: 100, unidad: 'm3' },
+    composicion: [COMPOSICION[0], { ...COMPOSICION[1], cantidad: null }],
+    observaciones: PRECIOS, hoy: HOY,
+  })
+  assert.equal(c.hh, null)
+  assert.notEqual(c.hh, 0)
+  // Con la línea de MO medida, las HH vuelven.
+  const ok = costoDePartida({ partida: { codigo: 'HORM', cantidad: 100, unidad: 'm3' }, composicion: COMPOSICION, observaciones: PRECIOS, hoy: HOY })
+  assert.equal(ok.hh, 200)
+})
+
+test('HISTORICO ≠ VALIDADO: la partida con precio vencido NO sale CALCULADA', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `costoDePartida`, `estado: completa ? ESTADO.CALCULADO : …`.
+  //
+  // El motor traducía HISTORICO a EXTRAIDO para poder sumar el número, y con eso el estado se
+  // perdía aguas abajo: la versión terminaba sellada VALIDADA con precios de catorce meses.
+  const viejo = observacionDePrecio({ recursoCodigo: 'MAT-CEM', precio: 9_000, fuente: 'lista 2025', observadoEn: '2025-01-01' })
+  const c = costoDePartida({
+    partida: { codigo: 'HORM', cantidad: 10, unidad: 'm3' },
+    composicion: [COMPOSICION[0]], observaciones: [viejo], hoy: HOY,
+  })
+  assert.notEqual(c.subtotal, null, 'el número existe: el precio viejo se puede sumar')
+  assert.equal(c.estado, ESTADO.HISTORICO, 'pero el estado NO es CALCULADO')
+  assert.equal(c.vencidos.length, 1)
+  assert.equal(c.vencidos[0].recurso, 'MAT-CEM')
+  assert.ok(c.vencidos[0].impacto > 0, 'y dice cuánta plata cuelga de ese precio')
+})

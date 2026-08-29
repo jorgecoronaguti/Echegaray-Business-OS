@@ -73,7 +73,7 @@ export async function leerEstado({ query }, cotizacionId, { hoy = new Date() } =
   const partidasSql = await query(
     `select p.id, p.orden, p.rubro, p.codigo, p.descripcion, p.cantidad, p.unidad,
             p.tarea_tipo_id, p.analisis_id, p.subcontratada, p.precio_subcontrato,
-            p.costo_unitario, p.hs_unitarias, p.nota
+            p.costo_unitario, p.hs_unitarias, p.nota, p.creado_en
        from public.cotizacion_partida p
       where p.cotizacion_id = $1
       order by p.orden, p.codigo`, [cotizacionId])
@@ -173,7 +173,18 @@ export async function leerEstado({ query }, cotizacionId, { hoy = new Date() } =
         // Un `precio_subcontrato` en NULL entra como NULL. `subcontrato()` lo convierte en
         // FALTA_DATO y NO en $0, que es todo el punto del §14.
         precio: r.precio_subcontrato === null ? null : Number(r.precio_subcontrato),
-        ...(r.precio_subcontrato === null ? {} : { fuente: 'cotizacion_partida.precio_subcontrato', cotizadoEn: iso(hoy) }),
+        // ═══ LA FECHA NO SE FABRICA ═══
+        // Ponerle `hoy` a un subcontrato cargado hace ocho meses lo dejaba VIGENTE PARA SIEMPRE: la
+        // guarda de vencimiento nunca podía dispararse porque el dato que mira lo inventaba el
+        // adaptador. `cotizacion_partida` no guarda la fecha de la cotización del subcontratista,
+        // así que se usa la fecha de creación de la partida —que es lo más cercano que hay— y se
+        // DECLARA en la fuente que es una aproximación, no el dato.
+        ...(r.precio_subcontrato === null ? {} : {
+          fuente: r.creado_en
+            ? `cotizacion_partida.precio_subcontrato · fecha aproximada por creado_en (la tabla no guarda la fecha de la cotización del subcontratista)`
+            : 'cotizacion_partida.precio_subcontrato · SIN FECHA de cotización',
+          cotizadoEn: r.creado_en ? iso(r.creado_en) : null,
+        }),
       })
       : null,
     hh: r.hs_unitarias === null || r.cantidad === null ? null : Number(r.hs_unitarias) * Number(r.cantidad),

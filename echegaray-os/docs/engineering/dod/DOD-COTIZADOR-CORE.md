@@ -195,3 +195,81 @@ está cerrado**: falta la vuelta de la respuesta a la pregunta, que es del frent
 base SIEMPRE lo tienen —las que no mapearon nunca llegan a ser partidas—. La tasa mide lo que entró,
 no lo que se intentó. Para que signifique algo tiene que contar también lo que `partidasDesdeDictado`
 descartó, y eso hoy queda afuera de la corrida.
+
+---
+
+# VUELTA 4 — respuesta a la auditoría adversarial (NO CERRADO: 17 ataques, 10 rompieron)
+
+Los 8 bloqueantes y las 6 mejoras fuertes, cerrados. **Contrato 1.1.0 sin cambios.**
+
+| # | Qué rompía | Cómo quedó | Mutación |
+|---|---|---|---|
+| 1 | `l.cantidad` NULL ⇒ ×0: $2,4 M de MO con `completa=true` y 0 issues | guarda de línea + `hh: null` si la MO no cierra | A1, A2 |
+| 2 | HISTORICO→EXTRAIDO→sella VALIDADO; `cierra()` sin consumidores | 3 capas iguales: **bloquea salvo override firmado**; `congelar()` usa `cierra()` | A3, A8, A15, A16 |
+| 3 | `excluidoEnPlata=0`: el cruce corría antes de costear | el cruce corre **dos veces**; lo excluido se costea aparte | A9 |
+| 4 | `montoAnual` NULL ⇒ GG 5 puntos abajo sin issue | `null` + issue con los conceptos sin monto | A4 |
+| 5 | el vigilante comparaba 1 tipo; los conjuntos eran disjuntos | **conjuntos** + lista declarada de ceguera estructural | A19b (SQL) |
+| 6 | 8 de 10 redacciones castellanas no se veían | **10/10**, una prueba por FORMA aislada | A12b, A14b |
+| 7 | RUN1=RUN2 hasheaba la entrada: tautología | `huellaDeResultado()` + `hoy` como entrada | A7 |
+| 8 | la migración afirmaba un efecto inexistente | comentario corregido: «sus únicos llamadores son tests» | — |
+| 9 | `Object.freeze` superficial | `congelarHondo()` | A6 |
+| 10 | `cotizadoEn: iso(hoy)` fabricaba la fecha | `creado_en` + fuente que declara la aproximación | A17 |
+| 11 | `v>1 ⇒ /100` sobre `factorFinanciero` | excepción declarada: 1,5 guarda 1,5 | A5 |
+| 12 | control que no puede dar rojo + detector ciego + canal real | `rechazadas`, patrones castellanos, `exigeConfirmacion()` | A11, A12b, A13 |
+| 13 | `relaciones` sólo alcanzable desde su test | cableada desde `correr()` | A18 |
+| 14 | `incertidumbre_no_declarada` estructuralmente 0 | se mide **antes** de estampar el motivo | A10 |
+
+**19 mutaciones corridas, 19 ROJO en la vuelta final.** Tres salieron VERDE primero: A12 (otro patrón
+cazaba la misma frase — redundancia útil, prueba inútil), A14 (no había test de la lista encabezada),
+A19 (mutar el propio test es inválido: se reemplazó por la mutación del gate SQL).
+
+## EL EFECTO DE LA VUELTA 4, MEDIDO — va al dueño
+
+Con la semántica correcta de `HISTORICO ≠ VALIDADO`, **ningún presupuesto real queda listo para
+ofertar**:
+
+| | antes | ahora |
+|---|---|---|
+| QUATTROPANI | BLOQUEADO (7) | **BLOQUEADO (96)** — 89 precios vencidos |
+| LA ESTRELLA | LISTO PARA OFERTAR | **BLOQUEADO (3)** — 3 precios vencidos |
+
+No es un motor más quisquilloso: es que la Base Maestra tiene **89 de 231 observaciones de precio
+con más de 180 días** y hasta ahora eso no frenaba nada. Las salidas son dos y las dos son del
+dueño: actualizar los precios, o firmar el override por recurso —que queda como fila auditable en
+`cotizacion_override_precio` con quién y por qué—.
+
+## LÍMITE 15, CON LA LISTA COMPLETA (antes subdeclaraba 4×)
+
+`tramoNegado()` ve las diez formas probadas. Queda ciego a **esto y sólo a esto**, verificado:
+
+1. **Tablas** con columna «Incluido S/N»: no hay frase que negar.
+2. **Negación por omisión**: «el alcance comprende A, B y C» excluye D sin nombrarlo. Indecidible.
+3. **Condicionales**: «se incluirá si el comitente provee el cálculo» no es exclusión ni inclusión.
+4. **Referencias cruzadas**: «según el Anexo II», con el anexo fuera del corpus.
+5. **Otro idioma** o **PDF escaneado sin capa de texto**.
+6. **Doble negación / ironía**: «no es cierto que no se incluya».
+7. **Exclusión implícita por precio cero** en una planilla.
+8. **Notas manuscritas** sobre un plano.
+
+Los ocho devuelven `tramoNegado(...) === null`, y eso **no bloquea nada**: la exclusión simplemente
+no se ve. Es el modo de falla silencioso y por eso está enumerado, no resumido.
+
+## Ceguera estructural del gate SQL (declarada, con test que la vigila)
+
+No puede ver `CONFLICTO`, `FALTA_DATO`, `AMBIGUO`, `EXCLUSION_CON_COMPUTO`, `FUGA_ENTRE_CLIENTES`,
+`FUGA_NO_VERIFICABLE` ni `UNIDAD_INCOMPATIBLE`: esas fuentes no están en Postgres. El vigilante
+lleva esa lista como diferencia esperada y **falla si aparece un tipo fuera de ella**. Y exige que
+todo lo que ve SQL lo vea el motor: el motor nunca puede ser más ciego.
+
+## Lo que la vuelta 4 NO cerró
+
+- **`analisis_linea.cantidad` NULL no existe hoy en la base**: la guarda del motor y la del gate SQL
+  están probadas con fixtures, no con una fila real. Si la Base Maestra nunca produce ese caso, la
+  guarda es defensa en profundidad y no un control activo.
+- **El override de precio vencido no genera todavía el evento del §21**: la fila auditable existe en
+  `cotizacion_override_precio`, pero nadie inserta el `cotizacion_evento` correspondiente. Falta el
+  caller.
+- **`exigeConfirmacion()` no está probada sobre un corpus envenenado real**: el ataque de los dos
+  PDFs se prueba con fixtures.
+- **El rol `administracion` sigue sin existir en ningún perfil**: los tests lo promueven dentro de la
+  transacción.

@@ -49,13 +49,31 @@ const normal = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[�
  * real, no leerlo.
  */
 const NEGACIONES_PREFIJO = [
-  /no\s+se\s+(incluye|incluyen|contempla|contemplan|considera|consideran|preve|preven)\s+/i,
+  /no\s+se\s+(incluye|incluyen|incluir[aá]n?|contempla|contemplan|considera|consideran|preve|prev[eé]n|ejecuta|ejecutan|realiza|realizan|cotiza|cotizan)\s+/i,
   /no\s+incluye[n]?\s+/i,
+  /se\s+exclu(ye|yen)\s+(de\s+\w+\s+)?/i,
+  /(se\s+)?(deja|dejan)\s+(expresamente\s+)?fuera\s+(de\s+\w+\s+)?/i,
+  /sin\s+incluir\s+/i,
+  /(queda|quedan)\s+a\s+cargo\s+d[eo]l\s+(comitente|cliente|propietario)\s*:?\s*/i,
+  // «Quedan fuera DEL PRESENTE PRESUPUESTO los revoques»: la marca abre la frase y lo excluido
+  // viene DESPUÉS del complemento. Es la misma forma verbal que el sufijo «X queda fuera de», y por
+  // eso el sufijo se prueba primero: cuando matchea en la posición 0 deja un tramo vacío y cae acá.
+  /(queda|quedan)\s+fuera\s+(?:de[l]?\s+(?:\w+\s+){0,3})?/i,
 ]
 const NEGACIONES_SUFIJO = [
   /,?\s*quedan?\s+(completamente\s+)?exclui[dr]\w*/i,
   /,?\s*(est[aá]n?|son)\s+exclui[dr]\w*/i,
+  // «El entrepiso NO ESTÁ INCLUIDO» · «Los revoques no están contemplados» · «no forma parte»
+  /,?\s*no\s+(est[aá]n?|ser[aá]n?|ha\s+sido|han\s+sido)\s+(inclui[dr]\w*|contemplad\w*|considerad\w*|cotizad\w*|previst\w*)/i,
+  /,?\s*no\s+(forma|forman)\s+parte/i,
+  /,?\s*(queda|quedan)\s+fuera\s+(de|del)/i,
+  /,?\s*(corre|corren|ser[aá]n?)\s+por\s+cuenta\s+d[eo]l\s+(comitente|cliente|propietario)/i,
 ]
+/**
+ * LA LISTA ENCABEZADA. «EXCLUSIONES: entrepiso, escalera, revoques» no tiene verbo que negar: la
+ * negación está en el título. Es la forma más común en un pliego y la que ningún patrón verbal ve.
+ */
+const ENCABEZADO_LISTA = /^\s*(exclusi[oó]n(es)?|no\s+incluye|excluido[s]?|fuera\s+de\s+alcance)\s*[:：-]\s*/i
 const CORTES = /[.;]|\s+en\s+caso\s+de\s+|\s+quedan?\s+|\s+se\s+cotizar/i
 /** Lo que precede al sujeto en una frase de exclusión por sufijo: no aporta términos. */
 const PREAMBULO = /^.*?\b(que|:)\s+/i
@@ -69,7 +87,14 @@ const RUIDO = new Set(['ni', 'de', 'del', 'la', 'el', 'los', 'las', 'en', 'con',
 /** El tramo NEGADO de una frase de exclusión, o `null` si la frase no niega nada concreto. PURA. */
 export function tramoNegado(frase) {
   const t = String(frase ?? '')
-  // El SUFIJO se prueba PRIMERO: «no se incluye X» y «X queda excluido» pueden convivir, y si gana
+  // El encabezado de lista se prueba PRIMERO: «EXCLUSIONES: no se incluye el entrepiso» tiene las
+  // dos formas y lo que manda es el título.
+  const enc = ENCABEZADO_LISTA.exec(t)
+  if (enc) {
+    const resto = t.slice(enc[0].length).trim()
+    if (resto) return resto
+  }
+  // El SUFIJO se prueba antes que el prefijo: «no se incluye X» y «X queda excluido» pueden convivir, y si gana
   // el prefijo sobre una frase de sufijo se lee el complemento en vez del sujeto.
   for (const re of NEGACIONES_SUFIJO) {
     const m = re.exec(t)
@@ -87,6 +112,28 @@ export function tramoNegado(frase) {
   }
   return null
 }
+
+/**
+ * LO QUE ESTE EXTRACTOR **NO VE**, ENUMERADO.
+ *
+ * La auditoría adversarial encontró que 8 de 10 redacciones castellanas comunes pasaban de largo, y
+ * que el límite declarado subdeclaraba el problema cuatro veces. Se cubrieron las formas verbales y
+ * la lista encabezada. Queda ciego a esto, y la lista es la lista COMPLETA de lo probado:
+ *
+ *   · TABLAS. Un pliego con una columna «Incluido S/N» no tiene ninguna frase que negar.
+ *   · NEGACIÓN POR OMISIÓN. «El alcance comprende A, B y C» excluye D sin nombrarlo. Es
+ *     indecidible sin saber qué existe, y por eso ni se intenta.
+ *   · CONDICIONALES. «Se incluirá el entrepiso sólo si el comitente provee el cálculo» no es una
+ *     exclusión ni una inclusión: es una condición, y aplicarla en cualquiera de los dos sentidos
+ *     sería decidir por el cliente.
+ *   · REFERENCIAS CRUZADAS. «Según lo indicado en el Anexo II» — el anexo puede no estar en el
+ *     corpus.
+ *   · NEGACIÓN EN OTRO IDIOMA o en un PDF escaneado sin texto.
+ *   · IRONÍA / DOBLE NEGACIÓN. «No es cierto que no se incluya el entrepiso».
+ *
+ * Todo eso devuelve `tramoNegado(...) === null`, y eso NO bloquea nada: la exclusión simplemente no
+ * se ve. Es el modo de falla peligroso —silencioso— y por eso está escrito acá y en el DoD.
+ */
 
 /** Los términos candidatos de un tramo negado. PURA. */
 export const terminosDe = (tramo) => [...new Set(normal(tramo)

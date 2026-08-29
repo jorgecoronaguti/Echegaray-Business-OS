@@ -29,10 +29,10 @@ import { cruzarAlcance, paraCostear } from './alcance.mjs'
 import { costoDePartida, costoDirecto } from './costo.mjs'
 import { cascada } from './comercial.mjs'
 import { colaDeAtencion, estadoDeCola } from './atencion.mjs'
-import { huellaDeEntradas, gateDeCongelado } from './freeze.mjs'
+import { huellaDeEntradas, huellaDeResultado, gateDeCongelado } from './freeze.mjs'
 import { metricasDeCorrida } from './metricas.mjs'
 import { explotarRecursos, reconciliar } from './explosion.mjs'
-import { barridoDeFuga, gateDeFuga } from './seguridad.mjs'
+import { barridoDeFuga, gateDeFuga, exigeConfirmacion } from './seguridad.mjs'
 
 /**
  * ADAPTAR EL RESULTADO DEL PIPELINE DE PLANO a la entrada del orquestador. PURA.
@@ -79,6 +79,9 @@ export function correr({
   // que recalcularlos o bajarles la severidad sería resolverlos por la vía de mirar para otro lado.
   issuesHeredados = [],
   alcancePorDefecto = null,
+  overridesDePrecio = [],
+  relacionesExternas = [],
+  exclusionesConfirmadas = [],
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -104,10 +107,39 @@ export function correr({
   }))
 
   // ── 3 · SCOPE
-  const conAlcance = cruzarAlcance({ partidas, alcance, porDefecto: alcancePorDefecto })
+  //
+  // ═══ EL CRUCE SE HACE DOS VECES, Y NO ES UN DESPERDICIO ═══
+  //
+  // La primera decide QUÉ entra. Pero las partidas todavía no tienen subtotal —costear viene
+  // después— así que `excluidoEnPlata` daba **0** aunque hubiera $650.000 afuera, y el issue
+  // `EXCLUSION_CON_COMPUTO` nunca disparaba en el circuito real: su condición es «hay cómputo
+  // valorizado» y nunca lo había. El informe committeado llegó a decir «excluidas por contrato: 0»
+  // mientras el cruce las estaba aplicando.
+  //
+  // Así que lo EXCLUIDO también se costea —aparte, sin entrar al total— y el cruce se rehace con
+  // los subtotales puestos. «¿Cuánto vale lo que sacaste?» es la primera pregunta del cliente
+  // cuando compara esta oferta con otra que sí lo incluía, y sin este segundo paso no se puede
+  // contestar.
+  const primerCruce = cruzarAlcance({ partidas, alcance, porDefecto: alcancePorDefecto })
+  const costear = (p) => costoDePartida({
+    partida: p, composicion: composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? [],
+    observaciones, fx, hoy,
+  })
+  const costosExcluidos = primerCruce.partidas.filter((p) => p.alcance === 'EXCLUIDO').map(costear)
+  const subtotalDe = new Map(costosExcluidos.map((c) => [c.partida, c.subtotal]))
+  const conAlcance = cruzarAlcance({
+    partidas: partidas.map((p) => (subtotalDe.has(p.codigo ?? p.id) ? { ...p, subtotal: subtotalDe.get(p.codigo ?? p.id) } : p)),
+    alcance, porDefecto: alcancePorDefecto,
+  })
   anotar(resultadoEtapa({
     etapa: ETAPA.SCOPE, status: STATUS.OK,
-    result: { incluidas: conAlcance.incluidas, excluidas: conAlcance.excluidas, porDefinir: conAlcance.porDefinir, excluidoEnPlata: conAlcance.excluidoEnPlata },
+    result: {
+      incluidas: conAlcance.incluidas, excluidas: conAlcance.excluidas, porDefinir: conAlcance.porDefinir,
+      excluidoEnPlata: conAlcance.excluidoEnPlata,
+      // Cuántas excluidas no se pudieron valorizar: sin esto, un `excluidoEnPlata` bajo se lee como
+      // «se sacó poco» cuando puede ser «no se pudo medir cuánto se sacó».
+      excluidasSinValorizar: costosExcluidos.filter((c) => c.subtotal === null).length,
+    },
     conflicts: conAlcance.conflictos,
     missing_data: conAlcance.partidas.filter((p) => p.alcance === 'POR_DEFINIR').map((p) => p.codigo),
     next_actions: conAlcance.porDefinir ? ['include_scope', 'exclude_scope'] : [],
@@ -139,10 +171,7 @@ export function correr({
   }))
 
   // ── 7 · COST
-  const costos = aCostear.map((p) => costoDePartida({
-    partida: p, composicion: composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? [],
-    observaciones, fx, hoy,
-  }))
+  const costos = aCostear.map(costear)
   const cd = costoDirecto(costos)
   anotar(resultadoEtapa({
     etapa: ETAPA.COST, status: cd.total === null ? STATUS.BLOQUEADA : STATUS.OK,
@@ -162,9 +191,23 @@ export function correr({
   }))
 
   // ── 9 · VALIDATE
+  // Una exclusión que saca partidas valorizadas del total exige confirmación humana: corroborar
+  // entre documentos alcanza para proponerla, no para sacar plata.
+  const porConfirmar = [...new Set(conAlcance.partidas.filter((p) => p.alcance === 'EXCLUIDO').flatMap((p) => (p.porAlcance ?? []).map((e) => e.patron)))]
+    .map((patron) => exigeConfirmacion({
+      patron,
+      fuente: conAlcance.partidas.flatMap((p) => p.porAlcance ?? []).find((e) => e.patron === patron)?.fuente ?? '?',
+      partidasExcluidas: conAlcance.partidas.filter((p) => p.alcance === 'EXCLUIDO' && (p.porAlcance ?? []).some((e) => e.patron === patron)),
+      confirmadas: exclusionesConfirmadas,
+    }))
+    .filter(Boolean)
+
   const cola = colaDeAtencion({
-    issues: [...issuesHeredados, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? [])],
+    issues: [...issuesHeredados, ...porConfirmar, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? [])],
     costoConocido: cd.parcial,
+    // Los precios vencidos asumidos por alguien con permiso comercial. Sin `autorizadoPor` no
+    // cuentan: un override es una firma, no un flag.
+    overrides: overridesDePrecio,
   })
   anotar(resultadoEtapa({
     etapa: ETAPA.VALIDATE, status: cola.nBloqueantes ? STATUS.BLOQUEADA : STATUS.OK,
@@ -189,6 +232,11 @@ export function correr({
       ...(p.evidencia?.textoLiteral ? [{ origen: `${p.codigo}.evidencia`, texto: p.evidencia.textoLiteral }] : []),
       ...(p.evidencia?.archivo ? [{ origen: `${p.codigo}.evidencia.archivo`, texto: p.evidencia.archivo }] : []),
     ]),
+    // ═══ LAS RELACIONES, QUE HASTA ACÁ NO SE LE PASABAN ═══
+    // `barridoDeFuga` las declara como «la MÁS grave» —una relación a otra obra significa que el
+    // presupuesto está CONSTRUIDO sobre datos ajenos— y el orquestador nunca se las pasaba: la rama
+    // sólo era alcanzable desde su propio test. Salen del origen de cada composición heredada.
+    relaciones: relacionesExternas,
     metadatos: [
       ...documentos.map((d) => ({ campo: `documento:${d.nombre}`, valor: d.nombre ?? '', sale: false })),
       // Las FUENTES DE PRECIO no salen al cliente —son traza interna— pero una que nombre a otro
@@ -200,7 +248,7 @@ export function correr({
   // Sin cliente declarado el barrido no puede correr, y eso NO se disfraza de limpio.
   const gateFuga = cliente ? gateDeFuga(fuga) : { ready: false, blocking_issues: [{ tipo: 'FUGA_NO_VERIFICABLE', entidad: 'cotización', detalle: 'la cotización no declara cliente: el barrido de fuga no puede correr', impacto: null, accion: null }], warnings: [], porQue: 'sin cliente no hay contra qué comparar' }
 
-  const huella = huellaDeEntradas({ documentos, partidas: conAlcance.partidas, precios: observaciones, politica, alcance, fx })
+  const huella = huellaDeEntradas({ documentos, partidas: conAlcance.partidas, precios: observaciones, politica, alcance, fx, hoy })
   const gateCongelado = gateDeCongelado({ cascada: casc, cola })
   const gate = Object.freeze({
     ready: gateCongelado.ready && gateFuga.ready,
@@ -223,7 +271,17 @@ export function correr({
   const reconciliacion = reconciliar(explosion, cd)
   const metricas = metricasDeCorrida({
     documentos, elementos,
-    cantidades: partidas.map((p) => ({ valor: p.cantidad, estado: p.cantidad === null || p.cantidad === undefined ? ESTADO.FALTA_DATO : ESTADO.CALCULADO, porQue: p.porQue ?? (p.cantidad === null ? 'sin cantidad computada' : null) })),
+    // ═══ LA INCERTIDUMBRE SE MIDE ANTES DE ESTAMPAR EL MOTIVO ═══
+    // Esta línea estampaba `porQue: 'sin cantidad computada'` a toda cantidad ausente, un renglón
+    // antes de que `metricasDeCorrida` contara las que NO tienen motivo. Con eso
+    // `incertidumbre_no_declarada` era estructuralmente CERO: el productor declaraba el hueco justo
+    // para que el contador no lo viera. Ahora se pasa el `porQue` que la partida traía —o nada— y
+    // el contador puede dar un número distinto de cero.
+    cantidades: partidas.map((p) => ({
+      valor: p.cantidad,
+      estado: p.cantidad === null || p.cantidad === undefined ? ESTADO.FALTA_DATO : ESTADO.CALCULADO,
+      porQue: p.porQue ?? null,
+    })),
     // Una partida SIN tarea de la Base Maestra no está mapeada. Poner 'MAPEADA' fijo hacía que el
     // AUTONOMOUS RESOLUTION RATE diera 100 % siempre — un contador incapaz de decir que no, que es
     // el defecto que este repo ya midió una vez en el Claude Avoidance Rate.
@@ -252,6 +310,8 @@ export function correr({
     costoDirecto: cd,
     cascada: casc,
     cola, huella, gate, metricas, explosion, reconciliacion, fuga,
+    huellaResultado: huellaDeResultado({ costoDirecto: cd, cascada: casc, gate, cola, explosion, partidas: conAlcance.partidas, etapas }),
+    costosExcluidos: Object.freeze(costosExcluidos),
     estado: estadoDeCola(cola),
     degradada: Boolean(degradacion?.hubo),
     congeladoPor,

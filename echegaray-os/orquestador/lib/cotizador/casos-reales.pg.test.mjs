@@ -33,8 +33,34 @@ test('cotizador · los casos reales', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
   const query = (s, p) => c.query(s, p)
   const uno = async (s, p) => (await c.query(s, p)).rows[0]
+  const filas = async (sq, pa) => (await c.query(sq, pa)).rows
+  const UID = {}
+  const como = async (uid) => {
+    await c.query('reset role')
+    await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated' })])
+    await c.query('set local role authenticated')
+  }
+  const comoDios = async () => { await c.query('reset role') }
+  /** Un intento que TIENE que fallar, sin llevarse la transacción puesta. */
+  const rechaza = async (sql, params, re, mensaje) => {
+    await c.query('savepoint intento')
+    let error = null
+    try { await c.query(sql, params) } catch (e) { error = e }
+    if (error) await c.query('rollback to savepoint intento'); else await c.query('release savepoint intento')
+    assert.ok(error, mensaje ?? `la base ACEPTÓ lo que tenía que rechazar`)
+    assert.match(String(error.message), re, `rechazó por el motivo equivocado: ${error.message}`)
+  }
   try {
     await c.query('begin')
+    const dirP = await uno(`select id from public.perfiles where rol='direccion' order by id limit 1`)
+    const jefesP = await filas(`select id from public.perfiles where rol='jefe_obra' order by id limit 2`)
+    UID.direccion = dirP.id
+    UID.jefe = jefesP[0].id
+    // El rol `administracion` no existe en ningún perfil real: se promueve DENTRO de la transacción
+    // y el rollback lo deshace. Está declarado en el DoD como límite.
+    UID.administracion = jefesP[1].id
+    await filas(`update public.perfiles set rol='administracion' where id=$1`, [UID.administracion])
+
     const clientes = clientesDelCorpus(BIBLIOTECA)
     const politica = await politicaVigente(query)
 
@@ -145,11 +171,28 @@ test('cotizador · los casos reales', { skip: !hayBase }, async (t) => {
       assert.equal(etapa(q, ETAPA.COST).status, STATUS.BLOQUEADA)
     })
 
-    await t.test('REPRODUCIBILIDAD sobre el caso REAL · RUN1 = RUN2 (§39)', () => {
+    await t.test('REPRODUCIBILIDAD sobre el caso REAL · RUN1 = RUN2 en ENTRADA **Y RESULTADO** (§39)', () => {
+      // ═══ HASHEAR LA ENTRADA DOS VECES ES UNA TAUTOLOGÍA ═══
+      // Lo encontró la auditoría adversarial: `huellaDeEntradas` sobre el mismo objeto da igual por
+      // construcción. Ahora se compara también la huella del RESULTADO, que es la que puede diferir.
       const dos = correr(entrada)
-      assert.equal(q.huella.sha256, dos.huella.sha256)
+      assert.equal(q.huella.sha256, dos.huella.sha256, 'entradas')
+      assert.equal(q.huellaResultado.sha256, dos.huellaResultado.sha256, 'RESULTADO')
       assert.equal(q.costoDirecto.parcial, dos.costoDirecto.parcial)
-      assert.deepEqual(q.cola.bloqueantes.map((i) => i.entity), dos.cola.bloqueantes.map((i) => i.entity))
+    })
+
+    await t.test('REPRODUCIBILIDAD · el control PUEDE dar rojo: correr en 2027 NO da lo mismo', () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `huellaDeEntradas`, sacar `hoy` de `partes`.
+      //
+      // El caso concreto que la tautología escondía: la misma cotización corrida un año después
+      // tiene precios vencidos que hoy están vigentes. El resultado cambia y la huella de entradas
+      // decía «iguales».
+      const enElFuturo = correr({ ...entrada, hoy: new Date('2027-08-29T12:00:00Z') })
+      assert.notEqual(q.huella.sha256, enElFuturo.huella.sha256, 'la fecha de corrida ES una entrada')
+      assert.notEqual(q.huellaResultado.sha256, enElFuturo.huellaResultado.sha256)
+      const vencidosHoy = q.metricas.precios_vencidos
+      const vencidosDespues = enElFuturo.metricas.precios_vencidos
+      assert.ok(vencidosDespues >= vencidosHoy, `hoy ${vencidosHoy} vencidos, en 2027 ${vencidosDespues}`)
     })
 
     await t.test('la huella del caso REAL se guarda en cotizacion_huella y se relee', async () => {
@@ -169,13 +212,36 @@ test('cotizador · los casos reales', { skip: !hayBase }, async (t) => {
     await t.test('EL VIGILANTE · cot_gate_congelado (SQL) y gateDeCongelado (JS) dicen lo mismo', async () => {
       // Dos implementaciones del mismo gate sin nada que las compare es la receta del día siguiente.
       // No se comparan issue por issue —miran fuentes distintas— sino la DECISIÓN y los TIPOS.
+      // ═══ SE COMPARAN CONJUNTOS, NO UN TIPO ═══
+      //
+      // La versión anterior comparaba `ready` y UN tipo. La auditoría adversarial mostró que los
+      // conjuntos reales eran DISJUNTOS —SQL veía [PRECIO_DESACTUALIZADO, SIN_PRECIO,
+      // SIN_PRECIO_CALCULABLE] y JS veía [AMBIGUO, CONFLICTO, …]— y el vigilante decía que sí.
+      //
+      // El gate de la base es estructuralmente más ciego y eso NO se puede arreglar: hay fuentes
+      // que no están en Postgres. Se declaran, y el test falla si aparece un tipo FUERA de la lista.
+      const SOLO_LOS_VE_EL_MOTOR = new Set([
+        'CONFLICTO',              // heredado del corpus documental: biblioteca.json no está en la base
+        'FALTA_DATO',             // idem, y los huecos declarados del proyecto
+        'AMBIGUO',                // exclusión candidata: sale de leer las frases del contrato
+        'EXCLUSION_CON_COMPUTO',  // exige confirmación humana; el alcance del corpus no está en la base
+        'FUGA_ENTRE_CLIENTES',    // el barrido corre sobre el texto que produce el motor
+        'FUGA_NO_VERIFICABLE',
+        'UNIDAD_INCOMPATIBLE',    // la unidad se valida contra el catálogo del motor
+      ])
       const sql = (await uno(`select public.cot_gate_congelado($1) g`, [cot.id])).g
       const js = gateDeCongelado({ cascada: q.cascada, cola: q.cola })
       assert.equal(sql.ready, js.ready, `SQL dice ready=${sql.ready} y JS dice ready=${js.ready}`)
+
       const tiposSql = new Set(sql.blocking_issues.map((b) => b.tipo))
       const tiposJs = new Set(js.blocking_issues.map((b) => b.tipo))
-      assert.ok(tiposSql.has('SIN_PRECIO_CALCULABLE') === tiposJs.has('SIN_PRECIO_CALCULABLE'),
-        `SIN_PRECIO_CALCULABLE: SQL ${tiposSql.has('SIN_PRECIO_CALCULABLE')} vs JS ${tiposJs.has('SIN_PRECIO_CALCULABLE')}`)
+      // 1 · todo lo que ve SQL lo tiene que ver el motor: el motor nunca puede ser más ciego.
+      const soloSql = [...tiposSql].filter((t) => !tiposJs.has(t))
+      assert.deepEqual(soloSql, [], `SQL bloquea por tipos que el MOTOR no ve: ${soloSql.join(', ')}`)
+      // 2 · lo que sólo ve el motor tiene que estar en la lista declarada. Un tipo nuevo rompe.
+      const soloJs = [...tiposJs].filter((t) => !tiposSql.has(t))
+      const noDeclarados = soloJs.filter((t) => !SOLO_LOS_VE_EL_MOTOR.has(t))
+      assert.deepEqual(noDeclarados, [], `el motor bloquea por tipos que SQL no ve y que NO están declarados como ceguera estructural: ${noDeclarados.join(', ')}`)
       // Y el vigilante tiene que poder dar ROJO: con un subcontrato sin precio, los DOS bloquean.
       await c.query(`insert into public.cotizacion_partida (cotizacion_id, orden, codigo, descripcion, cantidad, unidad, subcontratada)
                      values ($1, 99, 'ZZ-SUB', 'ZZ subcontrato sin precio', 1, 'un', true)`, [cot.id])
@@ -283,6 +349,67 @@ test('cotizador · los casos reales', { skip: !hayBase }, async (t) => {
       assert.equal(sinDefault.partidas.filter((p) => p.alcance === ALCANCE.POR_DEFINIR).length, 26,
         'sin el default declarado, las 26 quedan sin decidir y NO se cotizan')
       assert.equal(sinDefault.costos.length, 0)
+    })
+
+    await t.test('el adaptador NO FABRICA la fecha de cotización de un subcontrato', async () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `pg.mjs`, volver a `cotizadoEn: iso(hoy)`.
+      //
+      // Ponerle `hoy` a un subcontrato cargado hace meses lo dejaba VIGENTE PARA SIEMPRE: la guarda
+      // de vencimiento nunca podía dispararse porque el dato que mira lo inventaba el adaptador.
+      await filas(`insert into public.cotizacion_partida (cotizacion_id, orden, codigo, descripcion, cantidad, unidad, subcontratada, precio_subcontrato, creado_en)
+               values ($1, 98, 'ZZ-SUB-VIEJO', 'ZZ sanitaria contratada hace ocho meses', 1, 'un', true, 8500000, now() - interval '240 days')`, [cot.id])
+      const est = await leerEstado({ query }, cot.id)
+      const sub = est.partidas.find((p) => p.codigo === 'ZZ-SUB-VIEJO')
+      const hoyIso = new Date().toISOString().slice(0, 10)
+      assert.notEqual(sub.subcontrato.cotizadoEn, hoyIso, 'la fecha NO puede ser la de hoy')
+      assert.ok(sub.subcontrato.cotizadoEn < hoyIso)
+      assert.match(sub.subcontrato.fuente, /fecha aproximada por creado_en/,
+        'y se DECLARA que es una aproximación: la tabla no guarda la fecha del subcontratista')
+      await filas(`delete from public.cotizacion_partida where cotizacion_id=$1 and codigo='ZZ-SUB-VIEJO'`, [cot.id])
+    })
+
+    await t.test('el barrido recibe RELACIONES del orquestador, no sólo desde su test', () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `correr`, sacar `relaciones: relacionesExternas`.
+      //
+      // `barridoDeFuga` declara la relación como «la MÁS grave» —el presupuesto construido sobre
+      // datos de otra obra— y esa rama sólo era alcanzable desde su propio test: el orquestador
+      // nunca le pasaba relaciones.
+      const conRelacion = correr({
+        ...entrada,
+        relacionesExternas: [{ tipo: 'analisis_heredado_de', referencia: 'cot-2025-118', cliente: 'GRUPO NATANIA' }],
+      })
+      assert.equal(conRelacion.gate.ready, false)
+      assert.ok(conRelacion.fuga.materiales.some((h) => h.lugar === 'RELACION' && h.cliente === 'GRUPO NATANIA'),
+        JSON.stringify(conRelacion.fuga.materiales))
+      assert.ok(conRelacion.gate.blocking_issues.some((b) => b.tipo === 'FUGA_ENTRE_CLIENTES'))
+    })
+
+    await t.test('el PRECIO VENCIDO bloquea en la BASE y lo destraba un override firmado', async () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `cot_gate_congelado`, volver a tratar el vencido por
+      // materialidad (el `if v_conocido > 0 and r.subtotal / v_conocido >= v_umbral`).
+      const g = (await uno(`select public.cot_gate_congelado($1) g`, [cot.id])).g
+      const vencidos = g.blocking_issues.filter((b) => b.tipo === 'PRECIO_DESACTUALIZADO')
+      assert.ok(vencidos.length > 0, 'el presupuesto real tiene precios de más de 180 días y tienen que bloquear')
+      assert.match(vencidos[0].detalle, /HISTORICO distinto de VALIDADO/)
+
+      // El override lo firma alguien con COMMERCIAL_WRITE, y sin firma no entra.
+      // La entidad es `codigo (NOMBRE)`: se compara ENTERA. Filtrar por `startsWith(codigo)` cazaba
+      // «40», «41»… cuando el código es «4» — 400 recursos tienen código puramente numérico.
+      const entidad = vencidos[0].entidad
+      const codigo = String(entidad).split(' ')[0]
+      await como(UID.jefe)
+      await rechaza(`insert into public.cotizacion_override_precio (cotizacion_id, recurso_codigo, motivo) values ($1,$2,'lo asumo')`,
+        [cot.id, codigo], /row-level security|violates/i, 'el jefe de obra no puede asumir un precio vencido')
+      await como(UID.administracion)
+      await c.query(`insert into public.cotizacion_override_precio (cotizacion_id, recurso_codigo, motivo) values ($1,$2,'el material no movió')`, [cot.id, codigo])
+      await comoDios()
+      const g2 = (await uno(`select public.cot_gate_congelado($1) g`, [cot.id])).g
+      assert.equal(g2.blocking_issues.filter((b) => b.tipo === 'PRECIO_DESACTUALIZADO' && b.entidad === entidad).length, 0,
+        'EL EFECTO: con el override firmado ESE recurso deja de bloquear')
+      assert.ok(g2.blocking_issues.some((b) => b.tipo === 'PRECIO_DESACTUALIZADO'),
+        'y los OTROS vencidos siguen bloqueando: el override es por recurso, no un interruptor general')
+      assert.ok(g2.warnings.some((w) => String(w.detalle ?? '').includes('asumido por')), 'y queda como advertencia con quién lo asumió')
+      await filas(`delete from public.cotizacion_override_precio where cotizacion_id=$1`, [cot.id])
     })
 
     await t.test('el extractor de exclusiones lee las DOS formas de negar', () => {

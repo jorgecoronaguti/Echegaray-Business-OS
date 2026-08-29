@@ -51,7 +51,15 @@ const DIRECTIVAS = Object.freeze([
   /you\s+are\s+now\b/i,
   /a\s+partir\s+de\s+ahora\s+(sos|eres|actuá|actua)/i,
   /\bset\s+the\s+(discount|price|margin|total)\b/i,
-  /(aplic(a|á|ar)|pon(e|é|er))\s+(un\s+)?(descuento|margen|beneficio)\s+(de\s+)?\d/i,
+  /(aplic(a|á|ar)|pon(e|é|er)|fij(a|á|ar))\s+(un\s+)?(descuento|margen|beneficio|precio|coeficiente)/i,
+  // ═══ EL DETECTOR ERA CIEGO EN CASTELLANO ESCRITO CON LETRAS ═══
+  // «el beneficio se fija en cero por ciento» no tiene un dígito, así que el patrón que exigía `\d`
+  // pasaba de largo. Lo encontró la auditoría adversarial.
+  /(el|la)\s+(beneficio|margen|descuento|precio|coeficiente|utilidad)\s+se\s+(fija|establece|define)/i,
+  /(cero|uno|dos|cinco|diez|veinte|cincuenta|cien|noventa)\s+por\s+ciento/i,
+  // «aprueba» no matchea «aprob(a|á|ar)»: el verbo diptonga. Se toma la raíz y se deja correr.
+  /(aprueb|aprob|congel|autoriz|valid)\w*\s+(\S+\s+)?(este|esta|el|la)\s+(presupuesto|cotizaci[oó]n|oferta)/i,
+  /no\s+(reportes|informes|menciones|avises)\s+(esta|este|nada)/i,
   /<\|?\s*(im_start|im_end|system|endoftext)\s*\|?>/i,
 ])
 
@@ -90,8 +98,23 @@ export function textoDeDocumentoExterno(texto, { documento = null, pagina = null
  * en una acción del command layer. La interpretación produce ELEMENTOS y HECHOS; las intenciones
  * las produce una persona escribiéndole al chat, y ésa tiene rol.
  */
-export function intencionesDesdeDocumento() {
-  return Object.freeze([])
+export function intencionesDesdeDocumento(propuestas = []) {
+  // ═══ ANTES ERA `Object.freeze([])` Y NO PODÍA DAR ROJO ═══
+  //
+  // Devolver siempre una lista vacía hacía cumplir la garantía y no la PROBABA: un control que no
+  // puede fallar no es un control, es una afirmación. Ahora recibe lo que un intérprete produjo
+  // leyendo un documento y devuelve las dos cosas: la lista de acciones —siempre vacía— y los
+  // RECHAZOS, con lo que se intentó colar. Si algún día alguien cablea un intérprete que produce
+  // intenciones desde un PDF, esta función lo muestra en vez de dejarlo pasar en silencio.
+  const rechazadas = (Array.isArray(propuestas) ? propuestas : [propuestas]).filter(Boolean)
+  return Object.freeze({
+    acciones: Object.freeze([]),
+    rechazadas: Object.freeze(rechazadas.map((x) => ({
+      accion: x?.action ?? String(x).slice(0, 60),
+      porQue: 'un documento externo no produce acciones: no tiene rol, así que ni siquiera llega a la validación',
+    }))),
+    limpio: rechazadas.length === 0,
+  })
 }
 
 /** El issue de un intento detectado. No bloquea el cómputo —el documento sigue siendo un cómputo
@@ -235,5 +258,40 @@ export function gateDeFuga(barrido) {
     porQue: barrido.bloquea
       ? `${barrido.materiales.length} referencia(s) a otro cliente en algo que sale hacia afuera`
       : `revisados ${barrido.clientesRevisados} clientes, sin referencias que salgan hacia afuera`,
+  })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// 3 · EL CANAL REAL: DOS DOCUMENTOS ENVENENADOS SON UNA CORROBORACIÓN
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ¿ESTA EXCLUSIÓN PUEDE APLICARSE SOLA? PURA.
+ *
+ * ═══ EL ATAQUE QUE ESTO CIERRA ═══
+ *
+ * La corroboración entre documentos protege del falso positivo gramatical («muros»), pero no de un
+ * atacante: dos PDFs con la misma frase —o el mismo PDF adjuntado dos veces con otro nombre— son
+ * dos documentos, y la exclusión se aplicaba SOLA, sacando plata del total sin que ninguna persona
+ * la mirara. Lo encontró la auditoría adversarial y es el canal real de la inyección: no hace falta
+ * que el modelo obedezca una instrucción, alcanza con que el corpus mienta.
+ *
+ * La regla: **corroborar alcanza para PROPONER, no para SACAR PLATA.** Una exclusión que deja
+ * partidas valorizadas afuera exige confirmación humana; una que no toca nada valorizado se aplica
+ * y queda como constancia. Es la misma frontera que gobierna todo el motor: lo que mueve plata no
+ * se decide solo.
+ */
+export function exigeConfirmacion({ patron, fuente, partidasExcluidas = [], confirmadas = [] } = {}) {
+  const plata = partidasExcluidas.reduce((a, p) => a + (Number(p.subtotal) || 0), 0)
+  const sinValorizar = partidasExcluidas.filter((p) => p.subtotal === null || p.subtotal === undefined).length
+  const yaConfirmada = confirmadas.some((c) => c?.autorizadoPor && c.patron === patron)
+  if (yaConfirmada || (!partidasExcluidas.length)) return null
+  return issue({
+    type: TIPO_ISSUE.EXCLUSION_CON_COMPUTO, severity: SEVERIDAD.BLOQUEANTE,
+    entity: `alcance:${patron}`,
+    impact: plata > 0 ? plata : null,
+    evidence: { fuente, partidas: partidasExcluidas.map((p) => p.codigo ?? p.id) },
+    detalle: `la exclusión «${patron}» (${fuente}) saca ${partidasExcluidas.length} partida(s) del total${plata > 0 ? ` por $${Math.round(plata).toLocaleString('es-AR')}` : ''}${sinValorizar ? ` y ${sinValorizar} sin valorizar` : ''}. Corroborar entre documentos alcanza para proponerla, NO para sacar plata: lo confirma una persona`,
+    recommended_action: 'exclude_scope',
   })
 }

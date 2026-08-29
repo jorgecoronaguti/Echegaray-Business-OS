@@ -25,7 +25,7 @@
 // del cemento» de «cambió la política comercial»: las dos mueven el total.
 
 import crypto from 'node:crypto'
-import { ESTADO, ETAPA, STATUS, resultadoEtapa } from './contrato.mjs'
+import { ESTADO, ETAPA, STATUS, resultadoEtapa, cierra } from './contrato.mjs'
 import { colaDeAtencion } from './atencion.mjs'
 
 /**
@@ -36,8 +36,24 @@ import { colaDeAtencion } from './atencion.mjs'
  * falló — el mismo motivo por el que `seleccion.mjs` desempata por código y `ordenarCola` desempata
  * por entidad.
  */
-export function huellaDeEntradas({ documentos = [], partidas = [], precios = [], politica = null, alcance = [], fx = null } = {}) {
+/** Congela en profundidad. `Object.freeze` es superficial: `huella.partes.partidas` quedaba
+ *  MUTABLE, y `pg.mjs` persiste `partes` + `sha` sin re-verificar que uno corresponda al otro. Un
+ *  consumidor podía reescribir el detalle y guardar la huella vieja al lado. PURA. */
+export function congelarHondo(x) {
+  if (x && typeof x === 'object' && !Object.isFrozen(x)) {
+    Object.freeze(x)
+    for (const v of Object.values(x)) congelarHondo(v)
+  }
+  return x
+}
+
+export function huellaDeEntradas({ documentos = [], partidas = [], precios = [], politica = null, alcance = [], fx = null, hoy = null } = {}) {
   const partes = {
+    // ═══ `hoy` ES UNA ENTRADA ═══
+    // Sin él, la misma cotización corrida en 2026 y en 2027 daba la MISMA huella y resultados
+    // distintos —cero precios vencidos contra tres—, y la reproducibilidad decía «iguales». La
+    // fecha de corrida decide qué precio venció: es un input, no un detalle de ejecución.
+    hoy: hoy ? String(hoy instanceof Date ? hoy.toISOString() : hoy).slice(0, 10) : null,
     documentos: [...documentos].map((d) => `${d.hash ?? d.id ?? d.nombre}`).sort(),
     partidas: [...partidas].map((p) => `${p.codigo ?? p.id}|${p.cantidad ?? '-'}|${p.unidad ?? '-'}|${p.alcance ?? '-'}`).sort(),
     precios: [...precios].map((o) => `${o.recursoCodigo}|${o.precio}|${o.moneda}|${o.observadoEn}|${o.fuente}`).sort(),
@@ -46,11 +62,44 @@ export function huellaDeEntradas({ documentos = [], partidas = [], precios = [],
     fx: fx ? `${fx.par}|${fx.tasa}|${fx.observadoEn}|${fx.fuente}` : null,
   }
   const texto = JSON.stringify(partes)
-  return Object.freeze({
+  return congelarHondo({
     sha256: crypto.createHash('sha256').update(texto).digest('hex'),
-    partes: Object.freeze(partes),
+    partes,
     /** El detalle legible, para que una diferencia de huella se pueda EXPLICAR y no sólo detectar. */
     resumen: `${partes.documentos.length} documentos · ${partes.partidas.length} partidas · ${partes.precios.length} precios · política ${politica?.version ?? '—'}`,
+  })
+}
+
+/**
+ * LA HUELLA DEL RESULTADO. PURA.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON LA DE LAS ENTRADAS ═══
+ *
+ * «RUN1 = RUN2» comparando la huella de entradas sobre el MISMO objeto de entrada es una
+ * tautología: hashea dos veces lo mismo y por supuesto da igual. Lo detectó la auditoría
+ * adversarial, y el caso que lo prueba es concreto: la misma cotización corrida en 2026 y en 2027
+ * produce cero precios vencidos contra tres, y la huella de entradas decía que eran idénticas.
+ *
+ * Ésta hashea lo que el motor PRODUJO. Dos corridas reproducibles tienen que coincidir en las dos.
+ */
+export function huellaDeResultado(corrida) {
+  const partes = {
+    costoDirecto: corrida?.costoDirecto?.total ?? null,
+    parcial: corrida?.costoDirecto?.parcial ?? null,
+    hh: corrida?.costoDirecto?.hh ?? null,
+    ventaSinIva: corrida?.cascada?.ventaSinIva ?? null,
+    coeficiente: corrida?.cascada?.coeficienteSinIva ?? null,
+    // Los bloqueos, ordenados: dos corridas que bloquean por lo mismo tienen que dar lo mismo.
+    bloqueos: [...(corrida?.gate?.blocking_issues ?? [])].map((b) => `${b.tipo}|${b.entidad}`).sort(),
+    cola: [...(corrida?.cola?.issues ?? [])].map((i) => `${i.type}|${i.entity}|${i.bloquea}`).sort(),
+    recursos: [...(corrida?.explosion?.recursos ?? [])].map((r) => `${r.recurso}|${r.cantidad}|${r.costoTotal}`).sort(),
+    alcance: [...(corrida?.partidas ?? [])].map((p) => `${p.codigo}|${p.alcance}|${p.cuentaEnElTotal}`).sort(),
+    etapas: (corrida?.etapas ?? []).map((e) => `${e.etapa}:${e.status}`),
+  }
+  return congelarHondo({
+    sha256: crypto.createHash('sha256').update(JSON.stringify(partes)).digest('hex'),
+    partes,
+    resumen: `costo ${partes.costoDirecto ?? 'null'} · venta ${partes.ventaSinIva ?? 'null'} · ${partes.bloqueos.length} bloqueos`,
   })
 }
 
@@ -124,20 +173,31 @@ export function gateDeCongelado({ cascada = null, cola = null, issues = [], cost
  * relevante. No es una decoración — es la única forma de que un consumidor no pueda mutar la oferta
  * ya emitida por accidente, que es exactamente lo que la base tuvo que arreglar con triggers.
  */
-export function congelar({ cotizacionId, cascada, huella, gate, congeladoPor, congeladoEn = null, version = 1 } = {}) {
+export function congelar({ cotizacionId, cascada, huella, gate, congeladoPor, congeladoEn = null, version = 1, estadoDeLoCongelado = null } = {}) {
   if (!gate?.ready) {
     throw new Error(`no se puede congelar: ${gate?.porQue ?? 'no se corrió el gate'}`)
   }
   if (!congeladoPor) throw new Error('congelar sin decir quién congeló deja una oferta sin dueño')
   if (!huella?.sha256) throw new Error('congelar sin huella de entradas hace imposible la revisión: no se podría decir qué cambió')
-  return Object.freeze({
+  // ═══ EL ESTADO SALE DE `cierra()`, QUE HASTA ACÁ NO LLAMABA NADIE ═══
+  //
+  // `contrato.NO_CIERRAN` declara qué estados no pueden sostener un número en una versión
+  // congelada —incluido HISTORICO— y su único consumidor era su propio test. La versión se sellaba
+  // VALIDADA siempre. Ahora el sello depende del estado real de lo que se congeló: si algo entró
+  // como HISTORICO o PROPUESTO, la versión queda CONFIRMADA —decidida por una persona— y no
+  // VALIDADA, que significa contrastada contra una fuente independiente.
+  const estadoEntrante = estadoDeLoCongelado ?? ESTADO.CALCULADO
+  const sella = cierra(estadoEntrante)
+  return congelarHondo({
     cotizacionId, version,
     congeladoEn: congeladoEn ?? new Date().toISOString(),
     congeladoPor,
     huella,
-    cascada: Object.freeze({ ...cascada }),
+    cascada: { ...cascada },
     advertencias: gate.warnings,
-    estado: ESTADO.VALIDADO,
+    estado: sella ? ESTADO.VALIDADO : ESTADO.CONFIRMADO,
+    estadoDeLoCongelado: estadoEntrante,
+    porQue: sella ? null : `se congeló con datos en estado ${estadoEntrante}, que NO cierra por sí solo (§42): la versión queda CONFIRMADA por ${congeladoPor}, no VALIDADA`,
     esBorrador: false,
   })
 }

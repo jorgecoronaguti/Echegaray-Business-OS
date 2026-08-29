@@ -395,3 +395,23 @@ test('COSTURA OFICIAL · ejecutar() es SÍNCRONA y no escribe: devuelve lo que `
   assert.deepEqual(plan, [{ tabla: 'cotizacion_partida', id: 'T4010', cantidad: 525 }])
   assert.equal(r.resultado.plan, plan)
 })
+
+test('factorFinanciero NO es un porcentaje: pedir 1,5 guarda 1,5 y no 0,015', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `validar`, `const valor = v > 1 ? v / 100 : v`.
+  //
+  // El factor es qué fracción del período se financia, y 1,5 períodos es legítimo. La regla de
+  // «19 → 0,19» lo dividía por cien: un factor cien veces más chico, sin un solo aviso.
+  const r = ejecutar({
+    intent: intencion({ action: 'commercial_override', target: 'factorFinanciero', value: 1.5 }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(r.ok, true)
+  assert.equal(r.eventos[0].despues, 1.5)
+  assert.notEqual(r.eventos[0].despues, 0.015)
+  // Y el beneficio SÍ sigue leyéndose como porcentaje.
+  const b = ejecutar({
+    intent: intencion({ action: 'commercial_override', target: 'pctBeneficio', value: 19 }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(b.eventos[0].despues, 0.19)
+})

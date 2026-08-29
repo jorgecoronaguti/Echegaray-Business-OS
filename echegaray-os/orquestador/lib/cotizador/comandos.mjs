@@ -113,7 +113,12 @@ export function validar(intent, estado = {}) {
     }
     const v = Number(intent.value)
     // «19 %» y «0,19» son lo mismo y la gente escribe las dos. Un 19 crudo sería un 1.900 %.
-    const valor = v > 1 ? v / 100 : v
+    //
+    // PERO `factorFinanciero` NO ES UN PORCENTAJE: es qué fracción del período se financia, y 1,5
+    // períodos es un valor legítimo. Dividirlo por 100 guardaba 0,015 donde se pidió 1,5 — un
+    // factor cien veces más chico, sin un solo aviso. Lo encontró la auditoría adversarial.
+    const esFactor = intent.target === 'factorFinanciero'
+    const valor = (!esFactor && v > 1) ? v / 100 : v
     if (!Number.isFinite(valor) || valor < 0) return { ok: false, porQue: `«${intent.value}» no es un porcentaje` }
     return { ok: true, parametro: intent.target, valor, anterior: estado.politica?.[intent.target] ?? null }
   }
