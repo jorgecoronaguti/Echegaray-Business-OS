@@ -434,7 +434,7 @@ export function sigmaConAumentoDelPlantel(grid = [], bloque = null, escalon = nu
     //
     // Medido de nuevo el 29/08 con una persona BAJO el piso en esa grilla ($2.000 de Oficial):
     //   · con la resta   → «EL CONTROL DE JS Y LA FÓRMULA DAN EL MISMO NÚMERO» ROJO, 15.854 ≠ 14.680;
-    //   · en paralelo    → ese assert queda VERDE y sólo protesta el de mínimo legal.
+    //   · en paralelo    → ese assert queda VERDE y ese assert queda verde (el test cae igual, un assert más abajo, por el mínimo legal).
     // O sea: la resta es lo que hace que la igualdad vigile, y la grilla es lo que la hace ejercerse.
     // Las dos cosas hacen falta y ninguna sola alcanza.
     acum.set(k, {
