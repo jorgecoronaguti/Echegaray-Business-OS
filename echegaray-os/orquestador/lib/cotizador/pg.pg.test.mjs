@@ -112,9 +112,37 @@ test('cotizador · adaptadores Postgres y RBAC en la base', { skip: !hayBase }, 
       assert.equal(estado.partidas[0].composicion.length, 2)
       assert.equal(estado.observaciones.length, 2)
       assert.equal(estado.cliente, 'ZZ Cliente Uno')
-      // La política es la que COPIÓ la cotización, no la vigente de hoy.
+      // La política es la que COPIÓ la cotización, no la vigente de hoy. Una oferta de agosto se
+      // defiende con los porcentajes de agosto: leer la vigente reescribiría el precio de una
+      // oferta ya emitida cada vez que la empresa cambia su política.
       assert.equal(estado.politica.pctBeneficio, Number(pc.pct_beneficio))
+      assert.equal(estado.politica.origen, 'QUOTE', 'son los porcentajes DE ESTA cotización, no la política global')
+      assert.equal(estado.politica.version, pc.version, 'y dice de qué versión se copiaron')
       assert.match(estado.politica.fuente, /copiada de parametro_comercial/)
+    })
+
+    await t.test('con VARIAS observaciones del mismo recurso gana la más reciente, y la huella no depende del orden', async () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `precioVigente`, ordenar ascendente por `observadoEn`.
+      //
+      // El `order by` de la consulta de precios es REDUNDANTE —`precioVigente` y `huellaDeEntradas`
+      // ordenan por su cuenta— y eso está bien: es defensa en profundidad. Lo que sí hay que probar
+      // es la propiedad, no el `order by`: con tres precios del mismo recurso, el resultado no
+      // puede depender de en qué orden los devolvió Postgres.
+      const rid = await uno(`select id from public.recurso where codigo='ZZ-MAT'`)
+      await q(`insert into public.recurso_precio (recurso_id, costo, fecha_precio, fuente, vigente, moneda) values
+                 ($1, 700, current_date - 200, 'ZZ vieja',  false, 'ARS'),
+                 ($1, 1200, current_date - 2,  'ZZ nueva',  false, 'ARS')`, [rid.id])
+      const query = (sq, pa) => c.query(sq, pa)
+      const estado = await leerEstado({ query }, cot.id)
+      assert.equal(estado.observaciones.filter((o) => o.recursoCodigo === 'ZZ-MAT').length, 3)
+      const r = correr({ ...estado, alcance: [entradaDeAlcance({ patron: 'ZZ-T01', estado: ALCANCE.INCLUIDO, fuente: 'test' })], cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno'] })
+      // 520 × (45 × 1200 × 1,05 + 2 × 4200) = 520 × (56.700 + 8.400) = 33.852.000
+      assert.equal(r.costoDirecto.total, 33_852_000, 'gana la de hace 2 días, no la de hace 200 ni la del medio')
+      // Y la huella es la misma con las observaciones en cualquier orden.
+      const desordenado = correr({ ...estado, observaciones: [...estado.observaciones].reverse(), alcance: [entradaDeAlcance({ patron: 'ZZ-T01', estado: ALCANCE.INCLUIDO, fuente: 'test' })], cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno'] })
+      assert.equal(desordenado.huella.sha256, r.huella.sha256)
+      assert.equal(desordenado.costoDirecto.total, r.costoDirecto.total)
+      await q(`delete from public.recurso_precio where recurso_id=$1 and fuente in ('ZZ vieja','ZZ nueva')`, [rid.id])
     })
 
     await t.test('lo que lee alimenta correr() y da el mismo costo que la aritmética a mano', async () => {
@@ -185,6 +213,46 @@ test('cotizador · adaptadores Postgres y RBAC en la base', { skip: !hayBase }, 
       // que NO se costea. Si nadie dijo que va, cotizarla es decidir por el cliente.
       assert.equal(r.costos.length, 0)
       assert.equal(r.gate.ready, false)
+    })
+
+    await t.test('REPRODUCIBILIDAD SOBRE LA BASE · RUN1 = RUN2, y la huella queda guardada', async () => {
+      // MUTACIÓN QUE LO PONE ROJO: en `leerEstado`, sacar el `order by` de la consulta de precios.
+      //
+      // La fase 1 probó la reproducibilidad sobre una entrada armada a mano, donde el orden lo
+      // decidía el test. Acá el orden lo decide Postgres, que no garantiza ninguno sin `order by`:
+      // es el escenario donde la reproducibilidad se rompe de verdad.
+      const query = (sq, pa) => c.query(sq, pa)
+      const uno1 = await leerEstado({ query }, cot.id)
+      const dos1 = await leerEstado({ query }, cot.id)
+      const r1 = correr({ ...uno1, cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno', 'ZZ Otro'] })
+      const r2 = correr({ ...dos1, cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno', 'ZZ Otro'] })
+      assert.equal(r1.huella.sha256, r2.huella.sha256)
+      assert.equal(r1.costoDirecto.total, r2.costoDirecto.total)
+      assert.equal(r1.reconciliacion.cuadra, r2.reconciliacion.cuadra)
+
+      // Y la huella del snapshot que salió de la BASE se guarda y se puede volver a leer.
+      await como(UID.direccion)
+      await guardarHuella({ query }, cot.id, 7, r1.huella)
+      await comoDios()
+      const guardada = await leerHuella({ query }, cot.id, 7)
+      assert.equal(guardada.sha256, r1.huella.sha256)
+      assert.ok(guardada.partes.partidas.length > 0, 'y las partes viajan para poder EXPLICAR una diferencia')
+
+      // Cambiar un dato EN LA BASE cambia la huella: el control puede dar rojo.
+      await q(`update public.cotizacion_partida set cantidad = 525 where cotizacion_id=$1 and codigo='ZZ-T01'`, [cot.id])
+      const r3 = correr({ ...(await leerEstado({ query }, cot.id)), cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno'] })
+      assert.notEqual(r3.huella.sha256, r1.huella.sha256)
+      await q(`update public.cotizacion_partida set cantidad = 520 where cotizacion_id=$1 and codigo='ZZ-T01'`, [cot.id])
+      await q(`delete from public.cotizacion_huella where cotizacion_id=$1 and version=7`, [cot.id])
+    })
+
+    await t.test('la explosión de recursos sale del presupuesto REAL y reconcilia', async () => {
+      const estado = await leerEstado({ query: (sq, pa) => c.query(sq, pa) }, cot.id)
+      const r = correr({ ...estado, alcance: [entradaDeAlcance({ patron: 'ZZ-T01', estado: ALCANCE.INCLUIDO, fuente: 'test' })], cliente: 'ZZ Cliente Uno', clientesConocidos: ['ZZ Cliente Uno'] })
+      assert.equal(r.reconciliacion.cuadra, true, r.reconciliacion.porQue)
+      // 520 m² × 45 un × 1,05 = 24.570 ladrillones
+      assert.equal(r.explosion.materiales.find((m) => m.recurso === 'ZZ-MAT').cantidad, 24_570)
+      assert.equal(r.explosion.hhPorCategoria.find((h) => h.recurso === 'ZZ-MO').horas, 1_040)
     })
 
     // ── 3 · RBAC ADVERSARIAL ──────────────────────────────────────────────────────────────────
