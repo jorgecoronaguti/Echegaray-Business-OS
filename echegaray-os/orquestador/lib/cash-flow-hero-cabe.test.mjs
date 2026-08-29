@@ -75,8 +75,14 @@ function exigirDeclaracion(meta, filas, { sinMedir = [] } = {}) {
     const nota = declaradas.find((p) => p.pieza === 'nota')
     const rindePlata = glosa.includes('"$ #,##0"')
     if (!nota) { noMedidas.push(i + 1); if (rindePlata) faltan.push(`slot ${i + 1}: la glosa renderiza un importe y no declaró muestra`) ; return }
-    if (rindePlata && !nota.texto.includes(IMPORTE_MUESTRA)) {
-      faltan.push(`slot ${i + 1}: la muestra "${nota.texto}" no lleva el importe más largo, así que mide una cifra corta`)
+    // TANTOS IMPORTES EN LA MUESTRA COMO EN LA FÓRMULA. Exigir UNO alcanzaba para que una glosa que
+    // crece a tres importes se siguiera midiendo contra la muestra vieja de dos: la pieza declarada
+    // mide menos de lo que la celda va a mostrar, que es exactamente el agujero que este auditor
+    // existe para tapar. Se cuentan los `"$ #,##0"` de la fórmula (los patrones de FECHA no cuentan).
+    const importes = (glosa.match(/"\$ #,##0"/g) ?? []).length
+    const declarados = nota.texto.split(IMPORTE_MUESTRA).length - 1
+    if (rindePlata && declarados !== importes) {
+      faltan.push(`slot ${i + 1}: la fórmula muestra ${importes} importe(s) y la muestra "${nota.texto}" declara ${declarados}`)
     }
     if (!glosa.startsWith('=') && nota.texto !== glosa) {
       faltan.push(`slot ${i + 1}: la glosa es texto fijo ("${glosa}") y se declaró otra cosa ("${nota.texto}")`)

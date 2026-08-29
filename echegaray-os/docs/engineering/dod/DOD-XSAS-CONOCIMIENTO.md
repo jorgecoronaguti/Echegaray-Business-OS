@@ -114,11 +114,11 @@ node orquestador/scripts/migrar-practicas-historicas.mjs --dry   (segunda vez)
 
 > No son pendientes. Cada uno **bloquea** el criterio que toca, y está escrito acá y no al lado de un ✔.
 
-**1 · El estudio nunca se volvió a correr sobre el corpus, así que el artefacto publicado es el de la corrida anterior.**
-Los controles ya tienen consumidor en producción —`estudiarTanda` los corre y el artefacto publica el bloque `controles`—, pero eso se probó con planillas de fixture. `hallazgos-cotizaciones.json` y `dataset-hallazgos.json` en disco siguen siendo los de la corrida vieja: **no tienen el bloque `controles`**, y sus 430 filas se produjeron con el camino de dos estados. Y las 190 prácticas retiradas **no vuelven hasta esa corrida**: hoy la biblioteca tiene 190 huecos FALTA_DATO declarados y **cero prácticas vivas**. Correrlo sale a Drive, baja 237 planillas y reescribe la base: es una decisión del dueño, no mía. Bloquea **B1** y **E3**.
+**1 · ~~El estudio nunca se volvió a correr sobre el corpus~~ — LEVANTADO el 28/08/2026 en `feat/xsas-docx-arcor`.**
+Este límite dejó de ser cierto y **un límite que dejó de ser cierto miente igual que un criterio marcado sin evidencia**, así que se corrige acá en vez de dejarlo. El estudio se corrió con `--refrescar` sobre el corpus real. En disco hoy: `hallazgos-cotizaciones.json` **tiene** el bloque `controles` (y además el bloque `corrida`), **500** hallazgos, y la biblioteca tiene **287 prácticas vivas** como `PRACTICA_HISTORICA_ECSAS` · `CANDIDATO` — no cero. Los 196 huecos `FALTA_DATO` siguen ahí; son los que declara cada documento, no las prácticas retiradas. Detalle y evidencia en `DOD-XSAS-DOCX-ARCOR.md`.
 
-**2 · Los tres controles de planilla nunca encontraron nada en el corpus real, porque nunca corrieron sobre él.**
-`dataset-hallazgos.json`, 430 filas: `CELDA_EN_ERROR 0` · `FORMULA_SOBRE_CELDA_ROTA 0` · `RENGLON_INCOHERENTE 0`. No es que las planillas estén sanas: esas tres reglas se escribieron después de la corrida que produjo el dataset. Lo único que las probó son los negative tests con fixtures. Bloquea **B1**.
+**2 · ~~Los tres controles de planilla nunca corrieron sobre el corpus real~~ — LEVANTADO PARCIALMENTE el 28/08/2026.**
+Ya corrieron. `CELDA_EN_ERROR` encuentra de verdad: en la corrida del 28/08 salieron hallazgos ALTA sobre siete planillas —«MESSINA · Cotizaciones» con 558 celdas en error en 6 hojas, «LA ESTRELLA · CIERRE PERIMETRAL» con 773—. `FORMULA_SOBRE_CELDA_ROTA` y `RENGLON_INCOHERENTE` también dispararon: **3 hallazgos cada una** en el artefacto de esa corrida (contados sobre el array real de `hallazgos-cotizaciones.json`, 500 hallazgos). Una versión anterior de este límite decía que no habían disparado; lo desmintió la auditoría del 28/08 contando el disco. LEVANTADO entero.
 
 **3 · Ninguna planilla `.xlsm` real se abrió para cruzar los `celda_o_rango` que el dataset publica.**
 El dataset dice «hoja Presupuesto · filas 19 a 25» y nadie abrió ese archivo en Excel para confirmar que ahí está lo que dice. La cadena entera se verificó contra el artefacto, que salió del mismo lector. Bloquea **A1**.

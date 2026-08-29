@@ -8,10 +8,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grillaSemanal, vinculoHoy, PESTANA_SEMANAL, ROTULOS_HERO } from './cash-flow-semanas.mjs'
-import { CRITERIO_INVERTIDO, GLOSA_SIN_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
+import { CRITERIO_INVERTIDO, GLOSA_SIN_INVERTIDO, GLOSA_SIN_ANCLA, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 import {
   conceptosDe, colTotal, footprintDe, letra, semanasDelAnio, serialDeFecha,
 } from './cash-flow-matriz.mjs'
+import { ventanasDe } from './cash-flow-ventanas.mjs'
 import { ESTADOS_PENDIENTES } from './cash-flow-medidas.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
@@ -165,6 +166,36 @@ test('cero números pegados: toda celda de plata es fórmula', () => {
   }
 })
 
+test('LA REGLA INNEGOCIABLE EN EL SEMANAL: cada titular es UNA ventana, y la declara en su rótulo', () => {
+  // El rediseño del Mensual (29/08) nace de que sus cuatro tarjetas fundían lo real con lo proyectado.
+  // El Semanal contesta otras preguntas y no hereda esas cifras, pero SÍ hereda la regla — y acá se
+  // verifica con el mismo medidor, no con una lectura a ojo.
+  const { filas, meta } = armar()
+  const mezclan = []
+  meta.hero.slots.forEach((col, i) => {
+    for (const fila of [meta.hero.valor, meta.hero.nota]) {
+      const v = ventanasDe(en(filas, fila, col), meta.fila)
+      if (v.length > 1) mezclan.push(`titular ${i + 1} (fila ${fila}): cita ${v.join(' Y ')}`)
+    }
+  })
+  assert.deepEqual(mezclan, [], 'un titular del Semanal sumó un hecho con una proyección')
+
+  // Y LA VENTANA SE DECLARA DONDE SE LEE. Los cuatro dicen de cuándo hablan sin abrir el cuadro:
+  const rotulos = meta.hero.slots.map((c) => en(filas, meta.hero.rotulo, c))
+  assert.ok(/HOY/.test(rotulos[0]), rotulos[0])
+  assert.ok(/PERÍODO/.test(rotulos[1]), rotulos[1])
+  assert.ok(/PRÓXIMOS 7 DÍAS/.test(rotulos[2]) && /PRÓXIMOS 7 DÍAS/.test(rotulos[3]), rotulos.join(' · '))
+  // El PISO es un stock —una foto en un instante, no una suma de ventanas— y su glosa dice en qué
+  // semana ocurre: sin eso, "el punto más bajo" no se puede ubicar en el calendario.
+  assert.ok(en(filas, meta.hero.nota, meta.hero.slots[1]).includes('la semana del'), 'el piso no dice cuándo')
+  // Y los dos mayores miran SÓLO lo que todavía no ocurrió: su filtro de estados lo fija el test de
+  // más abajo ("el mayor pago y el mayor cobro llevan el MISMO filtro de estados").
+  for (const i of [2, 3]) {
+    const v = en(filas, meta.hero.valor, meta.hero.slots[i])
+    assert.ok(v.includes('TODAY()') && v.includes('TODAY()+7'), `el titular ${i + 1} no acota su ventana: ${v}`)
+  }
+})
+
 test('CAJA HOY dice que es sólo la caja OPERATIVA: la glosa suma lo que está invertido', () => {
   // El dueño mira este número para decidir un pago, y $28.319.557 es el número correcto para eso: la
   // caja disponible es banco y efectivo por la decisión del 06/08. Lo que faltaba era decir que hay
@@ -312,7 +343,9 @@ test('sin los rangos con nombre de CAJA, el ancla va VACÍA en vez de apuntar a 
   const { filas, meta } = grillaSemanal({ hoy: HOY, anio: ANIO, refs: {} })
   assert.equal(en(filas, meta.fila.saldoInicial, meta.cab.col0), '')
   assert.equal(en(filas, meta.hero.valor, 0), '')
-  assert.match(en(filas, meta.hero.nota, 0), /Falta el saldo declarado/)
+  // EL MISMO TEXTO QUE EL MENSUAL, DE LA MISMA CONSTANTE: las dos vistas publican la misma tarjeta
+  // CAJA HOY y dos redacciones del mismo estado son dos versiones del archivo.
+  assert.equal(en(filas, meta.hero.nota, 0), GLOSA_SIN_ANCLA)
 })
 
 test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el dueño lo pida', () => {

@@ -39,7 +39,9 @@ import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
 import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio } from './cash-flow-borde-anio.mjs'
-import { expresionInvertido, formulasDeLiquidez, IMPORTE_MUESTRA } from './cash-flow-invertido.mjs'
+import {
+  expresionInvertido, glosaDeCierre, glosaConInvertido, muestraSemanal, IMPORTE_MUESTRA, GLOSA_SIN_ANCLA,
+} from './cash-flow-invertido.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_MENSUAL = 'Cash Flow Mensual'
@@ -60,15 +62,21 @@ const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
  * Ninguno pasa de 37 caracteres — ver `bloqueHero` para por qué ese número manda.
  */
 export const ROTULOS_HERO = Object.freeze({
-  entra: 'ENTRA EN EL AÑO',
-  entraYa: 'ya cobrado',
-  entraFalta: 'por cobrar',
-  sale: 'SALE EN EL AÑO',
-  saleYa: 'ya pagado',
-  saleFalta: 'por pagar',
-  operativa: 'CAJA OPERATIVA AL 31/12',
-  operativaNota: 'sin ventas nuevas · sin lo invertido',
-  liquidez: 'LIQUIDEZ TOTAL AL 31/12',
+  hoy: 'CAJA HOY',
+  hoySinAncla: GLOSA_SIN_ANCLA,
+  pasado: 'YA PASÓ EN EL AÑO',
+  pasadoEntro: 'entró',
+  pasadoSalio: 'salió',
+  viene: 'LO QUE VIENE (YA VENDIDO)',
+  vieneCobrar: 'a cobrar',
+  vienePagar: 'a pagar',
+  // LA PALABRA QUE SE HABÍA PERDIDO. El titular viejo decía "sin ventas nuevas · es un piso" y el
+  // rediseño se quedó con la mitad: `(YA VENDIDO)` dice de dónde salen los ingresos, no qué significa
+  // que el neto dé negativo. Los ingresos proyectados salen SÓLO de Cobranzas —un libro de cuentas por
+  // cobrar, no un pipeline comercial— y los egresos se proyectan por calendario y están completos: el
+  // número es, por construcción, el peor caso. 343 px medidos contra los 374 del slot.
+  vieneCola: 'piso',
+  cierre: 'CIERRE PROYECTADO AL 31/12',
 })
 
 /** El tope medido de la columna del hero. Lo verifica el test, no la buena voluntad. */
@@ -93,7 +101,7 @@ const refPresupuesto = (rango, mes) => `INDEX(${rango};MATCH(${mes};${PRESUPUEST
  * @returns {{filas:any[][], meta:object}}
  */
 export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date() } = {}) {
-  const { saldo: refSaldo = null, fecha: refFecha = null, caja: refCaja = null } = refs
+  const { saldo: refSaldo = null, fecha: refFecha = null } = refs
   const filas = []
   const poner = (f, col, valor) => {
     const row = filas[f - 1] || (filas[f - 1] = [])
@@ -130,7 +138,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   const vinculo = vinculoHoy(gid, meta)
   if (vinculo) { poner(FILA.botonHoy, 0, vinculo); meta.botonHoy = { fila: FILA.botonHoy, col: 0 } }
 
-  bloqueHero(poner, meta, refCaja)
+  bloqueHero(poner, meta, refs)
 
   poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
   meses.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
@@ -196,48 +204,41 @@ export function vinculoHoy(gid, meta) {
 }
 
 /**
- * EL TITULAR DEL AÑO — CUATRO CONCEPTOS ANUALES, cada uno leído del propio cuadro.
+ * EL TITULAR DEL AÑO — CUATRO TARJETAS, UNA VENTANA DE TIEMPO CADA UNA.
  *
- * Ninguno recalcula nada: si mañana cambia una fórmula del cuerpo, el hero cambia con ella. Un titular
- * con su propia aritmética es la forma más elegante de tener dos verdades en una pestaña.
+ * Ninguna recalcula nada: cada cifra sale del propio cuadro o del ancla de CAJA. Un titular con su
+ * propia aritmética es la forma más elegante de tener dos verdades en una pestaña.
  *
- * ═══ LA TARJETA QUE SE FUE, Y POR QUÉ (28/08/2026) ═══
+ * ═══ EL RECHAZO, Y LA CAUSA DE FONDO (29/08/2026) ═══
  *
- * "VARIACIÓN DE CAJA DEL AÑO" publicaba $(23.136.331) y el dueño la leía como una pérdida: *"no es
- * entendible lo q marcan las tarjetas además de q da pérdidas"*, *"la empresa no termina perdiendo
- * tampoco como marca el resultado"*. El número era correcto y el rótulo también —es una variación de
- * caja, no un resultado— pero la cifra no habilitaba ninguna decisión: suma ocho meses REALES con
- * cuatro PROYECTADOS y da negativa porque el cierre proyectado se arma con TODOS los egresos futuros y
- * SÓLO los ingresos ya vendidos. Un titular cuya única lectura posible es una equivocada no se
- * corrige con una nota al pie: se saca. Las cuatro tarjetas de hoy dicen cuatro cosas distintas.
+ * El dueño vio las cuatro anteriores y las rechazó: *"todo eso rehacer no me convence nada"*. La causa
+ * no era la redacción: las cuatro FUNDÍAN lo real con lo proyectado adentro de una misma cifra.
+ * `ENTRA EN EL AÑO $816.416.110` era $496.729.892 ya cobrado MÁS $319.686.218 por cobrar, y ningún
+ * lector puede separar el hecho de la promesa de un número que ya los sumó. La glosa lo abría, pero la
+ * cifra —lo que se lee primero y lo que se recuerda— seguía siendo un híbrido. Regla de oro 3 (nunca
+ * mezclar ventanas de tiempo) y regla 17 (distinguir actividad de progreso).
  *
- * ═══ POR QUÉ EL CIERRE SIGUE DICIENDO "SIN VENTAS NUEVAS" ═══
+ * Desde acá la regla es estructural y MEDIBLE: ninguna tarjeta cita filas de dos ventanas. Lo verifica
+ * `ventanasDe` (cash-flow-ventanas) sobre cada valor y cada glosa del titular, no un comentario.
  *
- * Porque es un PISO, no un pronóstico. Los ingresos proyectados salen únicamente de Cobranzas, que es
- * un libro de cuentas por cobrar: sólo tiene lo ya vendido y facturado, y no debe tener otra cosa
- * —Cobranzas no es un pipeline comercial—. Los egresos, en cambio, se proyectan por calendario y están
- * completos. Un cierre armado con TODOS los egresos futuros y SÓLO los ingresos ya contratados es, por
- * construcción, el peor caso. La consecuencia medible de esa asimetría la reporta
- * `cash-flow-asimetria.mjs`, que no vive acá porque el hero no calcula.
+ *   1 · CAJA HOY          la única foto del presente, y lo dice con la fecha del saldo declarado
+ *   2 · YA PASÓ EN EL AÑO reales contra reales: lo que la caja hizo, sin una sola proyección adentro
+ *   3 · LO QUE VIENE      proyectado contra proyectado, y el rótulo declara el supuesto (ya vendido)
+ *   4 · CIERRE AL 31/12   el saldo de diciembre que el cuadro ya calcula
  *
- * ═══ POR QUÉ LO YA COBRADO Y LO QUE FALTA VAN EN LA GLOSA Y NO EN DOS TARJETAS ═══
+ * ═══ POR QUÉ LA LIQUIDEZ TOTAL BAJÓ A UNA GLOSA ═══
  *
- * "ENTRA EN EL AÑO $816.416.110" mezclaba $496.729.892 ya cobrado con $319.686.218 por cobrar, y esa
- * diferencia es la que decide si el año está hecho o está prometido. Partirlo en dos tarjetas gastaba
- * los cuatro slots en dos conceptos; el total manda —es la magnitud del año— y la glosa lo abre.
- *
- * ═══ Y POR QUÉ EL CIERRE SON DOS TARJETAS Y NO UNA ═══
- *
- * Porque CAJA decidió el 06/08 que la caja disponible es sólo banco y efectivo, con lo invertido
- * discriminado (el panel operating-vs-invested de J.P. Morgan). Esa decisión se respeta: la tarjeta 3
- * es la caja operativa que paga un cheque y la 4 es la liquidez total, que la incluye. Publicar una
- * sola sería elegir por el dueño cuál de las dos preguntas importa. Ver `cash-flow-invertido.mjs`.
+ * Porque era la única cifra que no podía cumplir la regla: saldo proyectado a diciembre más una
+ * posición que vale hoy. No se borró —son $45.015.210 de la empresa— pero dejó de ser un titular y
+ * pasó a la nota del cierre, que es donde una mezcla se puede declarar en vez de disimular. Ver
+ * `glosaDeCierre` en cash-flow-invertido.
  *
  * EL LÍMITE DE LOS 37 CARACTERES no es una preferencia: el auditor de pantalla midió que la columna
- * del hero corta ahí. Un rótulo más honesto pero truncado no dice nada. Las glosas que son fórmula se
- * miden por su `muestra` —el peor caso ya renderizado— porque una fórmula no se puede medir.
+ * del hero corta ahí. Las glosas que son fórmula se miden por su `muestra` —el peor caso ya
+ * renderizado, con un importe de diez dígitos— porque una fórmula no se puede medir.
  */
-function bloqueHero(poner, meta, refCaja = null) {
+function bloqueHero(poner, meta, refs = {}) {
+  const { saldo: refSaldo = null, fecha: refFecha = null, caja: refCaja = null } = refs
   const R = meta.hero.rotulo
   const V = meta.hero.valor
   // LA GLOSA VA UNA FILA ABAJO, EN LA MISMA COLUMNA. Estaba en la celda de al lado y le dejaba al
@@ -245,24 +246,32 @@ function bloqueHero(poner, meta, refCaja = null) {
   // que eso produjo en la pestaña real.
   const G = meta.hero.nota
   const T = (clave) => celda(meta.cab.colTotal, meta.fila[clave])
+  const invertido = expresionInvertido(refCaja)
   // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
   // da un stock. Los meses anteriores al corte van vacíos, así que sumarlos daría cualquier cosa.
   const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
-  const liquidez = formulasDeLiquidez({ refCierre: diciembre, exprInvertido: expresionInvertido(refCaja) })
+  const cierre = glosaDeCierre({ refCierre: diciembre, exprInvertido: invertido })
 
   const tarjetas = [
     {
-      rotulo: ROTULOS_HERO.entra,
-      valor: `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`,
-      ...glosaPartida(T('ingresoReal'), ROTULOS_HERO.entraYa, T('ingresoProyectado'), ROTULOS_HERO.entraFalta),
+      // LA MISMA GLOSA QUE EL SEMANAL, DE LA MISMA FUNCIÓN. Las dos vistas no pueden decir dos cosas
+      // distintas de la misma plata, y el Semanal ya publicaba esta foto con su fecha.
+      rotulo: ROTULOS_HERO.hoy,
+      valor: refSaldo ? `=N(${refSaldo})` : '',
+      glosa: refFecha ? glosaConInvertido(`"al "&TEXT(${refFecha};"d/mm")`, invertido) : ROTULOS_HERO.hoySinAncla,
+      muestra: refFecha ? muestraSemanal() : ROTULOS_HERO.hoySinAncla,
     },
     {
-      rotulo: ROTULOS_HERO.sale,
-      valor: `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`,
-      ...glosaPartida(T('egresoReal'), ROTULOS_HERO.saleYa, T('egresoProyectado'), ROTULOS_HERO.saleFalta),
+      rotulo: ROTULOS_HERO.pasado,
+      valor: `=N(${T('ingresoReal')})-N(${T('egresoReal')})`,
+      ...glosaPartida(ROTULOS_HERO.pasadoEntro, T('ingresoReal'), ROTULOS_HERO.pasadoSalio, T('egresoReal')),
     },
-    { rotulo: ROTULOS_HERO.operativa, valor: `=N(${diciembre})`, glosa: ROTULOS_HERO.operativaNota, muestra: ROTULOS_HERO.operativaNota },
-    { rotulo: ROTULOS_HERO.liquidez, valor: liquidez.valor, glosa: liquidez.glosa, muestra: liquidez.muestra },
+    {
+      rotulo: ROTULOS_HERO.viene,
+      valor: `=N(${T('ingresoProyectado')})-N(${T('egresoProyectado')})`,
+      ...glosaPartida(ROTULOS_HERO.vieneCobrar, T('ingresoProyectado'), ROTULOS_HERO.vienePagar, T('egresoProyectado'), ROTULOS_HERO.vieneCola),
+    },
+    { rotulo: ROTULOS_HERO.cierre, valor: `=N(${diciembre})`, glosa: cierre.glosa, muestra: cierre.muestra },
   ]
 
   meta.hero.slots.forEach((s, i) => {
@@ -271,8 +280,8 @@ function bloqueHero(poner, meta, refCaja = null) {
     poner(G, s, tarjetas[i].glosa)
   })
   // EL TITULAR DECLARA LO QUE VA A MOSTRAR, para que el auditor de ancho lo mida sin adivinarlo. Antes
-  // el test raspaba la grilla y SALTEABA toda glosa que fuera fórmula: las tres que hoy llevan un
-  // importe adentro no se estaban midiendo, que es justo donde se cortó el número que vio el dueño.
+  // el test raspaba la grilla y SALTEABA toda glosa que fuera fórmula: las que llevan un importe
+  // adentro no se estaban midiendo, que es justo donde se cortó el número que vio el dueño.
   meta.hero.piezas = tarjetas.flatMap((t, i) => [
     { slot: i, pieza: 'rotulo', texto: t.rotulo },
     { slot: i, pieza: 'nota', texto: t.muestra },
@@ -280,17 +289,22 @@ function bloqueHero(poner, meta, refCaja = null) {
 }
 
 /**
- * LA GLOSA QUE PARTE UN TOTAL ANUAL EN LO QUE YA PASÓ Y LO QUE FALTA.
+ * LA GLOSA QUE ABRE UNA VARIACIÓN EN SUS DOS TÉRMINOS — los dos de la MISMA ventana.
+ *
+ * El dicho va ADELANTE del número ("entró $ 496.729.892") y no atrás: la tarjeta publica una resta, y
+ * lo primero que hay que saber de cada término es qué es, no cuánto.
  *
  * Devuelve la fórmula Y su `muestra`: el mismo texto con el importe más largo que el titular tiene que
  * poder mostrar. Sin la muestra, el auditor de ancho no puede medir una glosa que es fórmula — y no
  * medirla es exactamente cómo llegó a producción `$839.552.44(`.
  */
-export function glosaPartida(refYa, dichoYa, refFalta, dichoFalta) {
+export function glosaPartida(dichoA, refA, dichoB, refB, cola = '') {
   const plata = (c) => `TEXT(${c};"$ #,##0")`
+  const fin = cola ? ` · ${cola}` : ''
+  // Sin cola NO se concatena una cadena vacía: `&""` al final es ruido que después alguien copia.
   return {
-    glosa: `=${plata(refYa)}&" ${dichoYa} · "&${plata(refFalta)}&" ${dichoFalta}"`,
-    muestra: `${IMPORTE_MUESTRA} ${dichoYa} · ${IMPORTE_MUESTRA} ${dichoFalta}`,
+    glosa: `="${dichoA} "&${plata(refA)}&" · ${dichoB} "&${plata(refB)}${fin ? `&"${fin}"` : ''}`,
+    muestra: `${dichoA} ${IMPORTE_MUESTRA} · ${dichoB} ${IMPORTE_MUESTRA}${fin}`,
   }
 }
 

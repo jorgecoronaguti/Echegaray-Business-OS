@@ -47,6 +47,19 @@ export const CLASE_FUENTE = Object.freeze({
   PLIEGO: { id: 'PLIEGO', peso: 4, que: 'el pliego de especificaciones' },
   PLANILLA: { id: 'PLANILLA', peso: 5, que: 'una planilla o cómputo entregado' },
   REFERENCIA: { id: 'REFERENCIA', peso: 6, que: 'una referencia externa (CIRCOT, norma, web)' },
+  // ═══ UN BORRADOR PROPIO NO ES DOCUMENTACIÓN DEL PROYECTO ═══
+  // Apareció al abrir los `.docx`: en la carpeta de QUATTROPANI hay «Charlar de diagrama de
+  // GANT.docx» y «Diagrama IA.docx» —una nota de trabajo y una salida de un modelo—, y entraban
+  // como PLIEGO con confianza alta porque `claseDocumental` devuelve PLIEGO por defecto. Con eso,
+  // un apunte interno contradecía al contrato del cliente en igualdad de condiciones. Es el peso más
+  // débil de todos a propósito: aporta cuando nadie más dice nada, y no le gana a nadie.
+  NOTA_INTERNA: { id: 'NOTA_INTERNA', peso: 7, que: 'una nota de trabajo o un borrador propio, no documentación del proyecto' },
+  // ═══ EL NOMBRE NO DIJO NADA, Y ESO NO ES «ES UN PLIEGO» ═══
+  // `claseDocumental` devolvía PLIEGO cuando ninguna regla matcheaba, así que un borrador con un
+  // nombre que no estuviera en la lista —«Reunión 12-08», «v2 final»— entraba con peso 4 y le
+  // ganaba a la planilla del cliente. Un documento que no se pudo identificar aporta cuando nadie
+  // más habla y no le gana a ninguna fuente identificada.
+  SIN_CLASIFICAR: { id: 'SIN_CLASIFICAR', peso: 8, que: 'un documento cuyo nombre no dice qué es' },
 })
 
 const PESOS = Object.freeze(Object.fromEntries(Object.values(CLASE_FUENTE).map((c) => [c.id, c.peso])))

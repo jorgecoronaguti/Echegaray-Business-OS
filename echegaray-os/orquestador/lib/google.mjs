@@ -929,6 +929,23 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  parsearlo y volver a armarlo. Un PDF que hay que entregar se entrega, no se reconstruye.
      *  @returns {Promise<Buffer>} */
     async descargarBytes(fileId) { return downloadBytes(fileId) },
+    /** Los BYTES de un archivo NATIVO de Google exportado a otro formato, EN MEMORIA.
+     *
+     *  Un Doc o un Sheet nativo no tiene bytes que bajar: `alt=media` devuelve 403 y el motivo que
+     *  llega —«google download 403»— no dice nada. Exportándolo a `.docx`/`.xlsx` entra por el MISMO
+     *  lector que los archivos subidos, en vez de abrir un segundo camino que lea otra cosa.
+     *  @returns {Promise<Buffer>} */
+    async exportarBytesComo(fileId, mimeType) {
+      const token = await ownerToken()
+      const res = await withRetry(() => doFetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(mimeType)}`,
+        { headers: { Authorization: `Bearer ${token}` } }))
+      if (!res.ok) {
+        const t = String(await res.text()).slice(0, 200)
+        const e = new Error(`google export ${mimeType} ${res.status}: ${t}`); e.status = res.status; throw e
+      }
+      return Buffer.from(await res.arrayBuffer())
+    },
     /** Lee un archivo Excel (.xlsx/.xlsm) descargándolo y parseándolo. Acotado a
      *  maxRows para no explotar tokens. Devuelve pestañas + filas de la elegida. */
     async readExcel(fileId, { sheet, maxRows = 50 } = {}) {

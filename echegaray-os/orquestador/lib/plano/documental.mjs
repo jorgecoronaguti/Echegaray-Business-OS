@@ -25,6 +25,7 @@ import { abrirDwg } from '../ingesta/dwg.mjs'
 import { segmentar } from '../ingesta/segmentar.mjs'
 import { recortarRegiones, hashDe } from '../ingesta/recortes.mjs'
 import { formatoDe, FORMATO } from '../ingesta/registro.mjs'
+import { leerWord } from '../ingesta/word.mjs'
 import { hechosDeCad, hechosDeTexto, CLASE_FUENTE } from './proyecto.mjs'
 
 /** Qué clase de documento del proyecto es, para saber cuánto pesa lo que diga. El nombre es la
@@ -32,10 +33,19 @@ import { hechosDeCad, hechosDeTexto, CLASE_FUENTE } from './proyecto.mjs'
  *  «memoria» y «cálculo» pesan más que «pliego», y «pliego» más que una planilla del cliente. PURA. */
 export function claseDocumental(nombre) {
   const n = String(nombre ?? '').toLowerCase()
+  // Lo INTERNO se aparta primero, y antes que «memoria»: un archivo puede llamarse «memoria» y ser
+  // un borrador. Los nombres salen de los que hay: «Charlar de diagrama de GANT», «Diagrama IA».
+  if (/charlar|borrador|apunte|minuta|diagrama|whatsapp/.test(n)) return CLASE_FUENTE.NOTA_INTERNA
   if (/memoria|calculo|cálculo/.test(n)) return CLASE_FUENTE.MEMORIA
+  // El contrato define el ALCANCE y es lo que se puede oponer al cliente. Antes llegaba a PLIEGO
+  // por el `return` final —o sea, por descarte—: si mañana alguien cambia el default, el contrato
+  // se movía con él sin que nadie lo decidiera. Va escrito.
+  if (/contrato|convenio|acuerdo|adenda|locacion de obra|locación de obra/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/pliego|especificacion|especificación|condiciones/.test(n)) return CLASE_FUENTE.PLIEGO
   if (/planilla|computo|cómputo|listado/.test(n)) return CLASE_FUENTE.PLANILLA
-  return CLASE_FUENTE.PLIEGO
+  // NO es PLIEGO. Que el nombre no diga qué es no lo convierte en la especificación del proyecto:
+  // el borrador que no se llame «borrador» entraba con peso 4 y le ganaba a la planilla del cliente.
+  return CLASE_FUENTE.SIN_CLASIFICAR
 }
 
 /** Los archivos CAD de un conjunto de insumos. Dejan de ser «no legibles»: son la mejor fuente
@@ -118,6 +128,17 @@ export async function textoDe(doc, bytes, { google } = {}) {
       const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
       const texto = (x.rows ?? []).map((f) => (Array.isArray(f) ? f.filter(Boolean).join(' | ') : String(f))).join('\n')
       return { ok: true, texto, formato, pestana: x.sheet }
+    }
+    // ═══ EL DOCUMENTO DE WORD ES DONDE VIVE EL ALCANCE ═══
+    // Hasta acá este `return` decía «todavía no hay lector de texto para DOCUMENTO» y con esa frase
+    // quedó afuera del proyecto de QUATTROPANI el CONTRATO DE OBRA con su memoria descriptiva —el
+    // único papel que dice qué está EXCLUIDO (entrepiso y escalera), quién contrata la estructura
+    // metálica y qué muros no llevan revoque—. El motor computaba el plano sin saber nada de eso.
+    if (formato === FORMATO.DOCUMENTO) {
+      const w = leerWord(bytes, { nombre: doc.name })
+      return w.ok
+        ? { ok: true, texto: w.texto, formato, variante: w.variante, tablas: w.bloques?.filter((b) => b.tipo === 'tabla') ?? [] }
+        : { ok: false, formato, porQue: w.porQue }
     }
     return { ok: false, formato, porQue: `todavía no hay lector de texto para ${formato}: el archivo queda declarado, no ignorado` }
   } catch (e) {
