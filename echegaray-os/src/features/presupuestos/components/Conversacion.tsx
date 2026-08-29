@@ -189,6 +189,15 @@ function Respuesta({ r, onConfirmar, pendiente }: {
     >
       {r.titulo && <p style={{ margin: 0, fontSize: 12.5, fontWeight: 500, color: t.color }}>{r.titulo}</p>}
 
+      {/* EL ORIGEN, VISIBLE. Una intención deducida por el modelo y una que encajó en una regla con
+          tests no merecen la misma confianza, y hasta la auditoría delta se veían idénticas. No se
+          dibuja para la gramática: marcar lo normal no dice nada; marcar lo excepcional sí. */}
+      {r.origen === 'MODELO' && (
+        <p style={{ margin: '3px 0 0', fontSize: 10.5, color: C.warn }} data-testid="origen-modelo">
+          interpretado por el modelo — no salió de una regla
+        </p>
+      )}
+
       {r.lineas.map((l) => (
         <p key={l} style={{ margin: '4px 0 0', fontSize: 12, color: C.tintaSuave, lineHeight: 1.45 }}>{l}</p>
       ))}

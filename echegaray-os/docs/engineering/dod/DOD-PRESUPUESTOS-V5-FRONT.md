@@ -30,7 +30,7 @@ Tras mergear `feat/cotizador-core` al día (el CORE avanzó: trajo `pg.mjs`, `se
 `explosion.mjs` y la migración `20260829T1500`):
 
 ```
-npm run orq:test    → EXIT=0 · 12.110 tests en dot · 0 fail
+npm run orq:test    → EXIT=0 · 12.130 tests en dot · 0 fail
 npm run typecheck   → EXIT=0
 npx eslint .        → EXIT=0 · 0 errores · 60 warnings · 0 en el área de este frente
 npm run build       → EXIT=0 · las 3 rutas de /presupuestos compilan
@@ -71,6 +71,25 @@ vista parametro_operativo_vigente: [ 'security_invoker=on' ]
 | `{r.titulo &&` → `{'Aplicado' &&` en el panel | FAIL «Aplicado está escrito en Conversacion.tsx: es una respuesta preescrita» |
 | `Number.isFinite(Number(v))` en `deltaDePrecio` | FAIL: `ventaSinIva: null` entraba como 0. **Era un defecto real, corregido.** |
 | `interprete-llm` importado dentro de `cotizador/` | FAIL en `claude-zero.test.mjs`. **Era un defecto real: el archivo se mudó afuera.** |
+
+---
+
+## AUDITORÍA DELTA — 6 ataques rompieron, 4 bloqueantes. Qué se hizo
+
+| # | Defecto medido por el auditor | Arreglo |
+|---|---|---|
+| 1 | **Lost update**: A lee 480, B escribe 1200, A aplica 520 → los 1200 mueren mudos, el evento miente (`antes: 480`) y el outlier midió +8 % sobre un cambio real de −57 % | Predicado de concurrencia (`.eq`/`.is` sobre el valor leído) + cero filas ⇒ CONFLICTO con los dos valores + **relectura del destino** antes de decir «Aplicado» |
+| 2 | La interpretación del modelo mutaba sin confirmación y sin marca: un «Aplicado» de una regla y uno de una alucinación eran idénticos | Origen `GRAMATICA`/`MODELO` en toda la cadena; una mutación de origen MODELO exige el «¿Lo aplico igual?» **antes de mutar**, aunque el outlier calle; el panel lo dibuja |
+| 3 | Como `administracion` reescribió el margen a 99, borró la fila y movió el `pct_beneficio` global | Migración `20260829T2000`: las dos tablas con `cot_permiso('GLOBAL_POLICY_WRITE')`, sin `delete` en el grant |
+| 4 | El canario del E2E afirmaba lo que no probaba: la ausencia de `conversacion-degradada` es compatible con «el modelo contestó bien» | El assert pasa a `origen-modelo`, que sí distingue los dos casos |
+| 5 | La key volvió a colisionar por el otro lado (dos huecos de la misma fila) — y el arreglo anterior **no tenía test** | `${type}-${partidaId}` + test con las dos colisiones y su mutación |
+| 6 | `set_global_policy` valida como `commercial_override` en el motor | La base ya lo frena (punto 3) y el intérprete nunca la produce. **Declarado**: el motor es del CORE, pedido en el informe |
+| 7 | `validar()` acepta negativos | Guarda explícita en el intérprete. La mutación delató que **no tenía test**: escrito |
+
+**Lo que resistió y quedó firmado por el auditor:** la frontera del contrato ante JSON malicioso
+(campos extra, prototype, unidades incompatibles), el RBAC en las tres cerraduras contra la base con
+el jefe real, el E2E honesto (corrida propia, sin residuo, rebote genuino del gate) y los guards
+anti-demo, que el auditor mutó y gritaron.
 
 ---
 
@@ -120,9 +139,15 @@ distinción va al lado — reescribirlo habría tapado lo que el motor dijo.
 ### 2 · El modelo nunca se llamó de verdad · bloquea «el intérprete LLM funciona»
 
 Todos los tests del puente al modelo usan un `pedir` inyectado. **Nunca se hizo una llamada real a
-la API.** Lo que está probado es que ninguna forma de basura que devuelva el modelo muta estado; lo
-que NO está probado es que el modelo produzca JSON útil con ese prompt, ni cuánto cuesta, ni cuánto
-tarda. Las métricas del §38 sobre uso de LLM no se pueden llenar con esto.
+la API.** No está probado que el prompt produzca JSON útil, ni cuánto cuesta, ni cuánto tarda: las
+métricas del §38 sobre uso de LLM no se pueden llenar con esto.
+
+**Lo que la auditoría delta corrigió de esta declaración:** decía que «lo que SÍ está probado es que
+ninguna forma de basura que devuelva el modelo muta estado». Eso era cierto para el JSON malformado
+y para las acciones inventadas —el auditor lo atacó y resistió— pero **no** para un JSON bien
+formado y plausible: ése entraba a `ejecutar()` y, si el outlier callaba, mutaba solo. Ya no: una
+intención de origen `MODELO` exige confirmación explícita, aunque el outlier no tenga nada que
+decir. Sigue sin probarse el camino del modelo en sí.
 
 ### 3 · Cinco de las catorce acciones no escriben · bloquea «la conversación cubre el §19»
 
@@ -142,11 +167,12 @@ necesitan documentos, elementos y composiciones, o sea el pipeline de plano, que
 Ve tres tipos de hueco de trece. La pantalla lo dice (`data-testid="cola-parcial"`), pero **«no hay
 nada bloqueando» en esa cola no significa que el presupuesto esté listo.**
 
-### 5 · Ningún dato real pasó por el circuito · bloquea todo criterio de efecto
+### 5 · ~~Ningún dato real pasó por el circuito~~ — OBSOLETO desde el E2E
 
-No se corrió una conversación contra un presupuesto real de la base. Las escrituras
-(`cotizacion_partida.cantidad`, `precio_subcontrato`, `cotizaciones.pct_*`) **están probadas como
-PLAN, no como fila escrita.** La evidencia es del plan, no del efecto.
+Este límite contradecía al 8 y quedó viejo: `tests/presupuesto-conversacion.spec.ts` recorre el
+circuito con datos reales y lee las filas en su destino, y `concurrencia.pg.test.mjs` y
+`congelar-con-gate.pg.test.mjs` atacan la base directamente. Lo que sigue sin cubrirse es acotado y
+está en los límites 2 y 9.
 
 ### 6 · Los cuatro umbrales de Base Maestra siguen decidiendo desde la constante
 

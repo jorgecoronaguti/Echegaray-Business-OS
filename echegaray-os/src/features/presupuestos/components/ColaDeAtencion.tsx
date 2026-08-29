@@ -97,12 +97,17 @@ export function ColaDeAtencion({ cola, gate, parcial }: {
           <ul style={{ margin: '10px 0 0', padding: 0, listStyle: 'none' }}>
             {cola.issues.map((i) => (
               <li
-                // LA CLAVE ES LA FILA, NO LO QUE SE LEE (QA visual, 29/08/2026). Era
-                // `${i.type}-${i.entity}` y `entity` cae a la descripción cuando la partida no
-                // tiene código: dos partidas con la misma descripción daban la misma clave. El id
-                // de la fila viaja en `evidence` desde `issuesDePartidas`, que es de donde el issue
-                // salió. El índice del array habría callado a React sin identificar nada.
-                key={i.evidence?.partidaId ?? `${i.type}-${i.entity}`}
+                // LA CLAVE ES EL TIPO **Y** LA FILA. Dos correcciones, las dos medidas:
+                //
+                //  · QA visual 29/08: era `${i.type}-${i.entity}` y `entity` cae a la descripción
+                //    cuando la partida no tiene código — dos partidas iguales, misma clave.
+                //  · Auditoría delta, el mismo día: pasó a ser sólo `partidaId`, y volvió a
+                //    colisionar por el otro lado: UNA fila puede tener DOS huecos a la vez
+                //    (cantidad ausente + subcontrato sin precio) y los dos daban `row-1`.
+                //
+                // Hacen falta los dos: qué le falta y a cuál. El índice del array habría callado a
+                // React sin identificar nada, en las dos vueltas.
+                key={`${i.type}-${i.evidence?.partidaId ?? i.entity}`}
                 data-testid="issue-cola" data-tipo={i.type} data-bloquea={i.bloquea ? '1' : '0'}
                 style={{ borderTop: `1px solid ${C.lineaTenue}`, padding: '7px 0' }}
               >

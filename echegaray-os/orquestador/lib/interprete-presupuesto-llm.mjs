@@ -46,7 +46,11 @@ const TOPE_PARTIDAS = 60
 
 /** La respuesta del puente. Misma forma resuelva, degrade o falle. PURA. */
 const salida = (x) => Object.freeze({
-  resuelto: false, intencion: null, degradado: false, porQue: null, comoSeLeyo: null, ...x,
+  resuelto: false, intencion: null, degradado: false, porQue: null, comoSeLeyo: null,
+  // TODO lo que sale de acá es MODELO, resuelva o no. Es lo que hace que `conversar()` exija
+  // confirmación explícita antes de mutar y que la pantalla pueda decirlo.
+  origen: 'MODELO',
+  ...x,
 })
 
 /**

@@ -74,3 +74,46 @@ describe('toda tabla del módulo reserva ancho en el teléfono', () => {
     assert.equal(anchoMinimoDeGrilla(''), 0)
   })
 })
+
+// ═══ LA CLAVE DE LA COLA DE ATENCIÓN (auditoría delta, 29/08/2026) ═══
+//
+// Colisionó DOS veces, por los dos lados, y la segunda vez porque el arreglo de la primera no tenía
+// test — el auditor lo revirtió y 496 tests siguieron en verde. Ahora sí lo tiene.
+//
+//   1ª · `${type}-${entity}`: `entity` cae a la descripción cuando la partida no tiene código, así
+//        que dos partidas con la misma descripción daban la misma clave.
+//   2ª · sólo `partidaId`: UNA fila puede tener DOS huecos a la vez —cantidad ausente y subcontrato
+//        sin precio— y los dos daban `row-1`.
+//
+// Hacen falta los dos componentes: QUÉ le falta y A CUÁL.
+describe('la cola de atención no puede repetir una clave', () => {
+  const COLA = readFileSync(join(AQUI, 'ColaDeAtencion.tsx'), 'utf8')
+
+  /** La expresión de `key=` tal como está escrita en el componente. */
+  const claveDelComponente = (): string => {
+    const m = /key=\{`([^`]+)`\}/.exec(COLA) ?? /key=\{([^}]+)\}/.exec(COLA)
+    assert.ok(m, 'no encontré la key de la lista: el test dejó de mirar donde tenía que mirar')
+    return m[1]
+  }
+
+  test('la clave usa el TIPO y la FILA, no uno solo de los dos', () => {
+    const k = claveDelComponente()
+    // MUTACIÓN QUE LO PONE ROJO: volver a `key={i.evidence?.partidaId ?? ...}` (colisión 2ª) o a
+    // `key={`${i.type}-${i.entity}`}` (colisión 1ª). Las dos dejan de nombrar una de las dos cosas.
+    assert.match(k, /i\.type/, 'la clave no distingue QUÉ hueco es: dos huecos de la misma fila colisionan')
+    assert.match(k, /partidaId/, 'la clave no distingue A CUÁL fila: dos partidas iguales colisionan')
+  })
+
+  test('sobre datos reales, las claves de dos huecos de la misma fila son distintas', () => {
+    // La forma exacta de los dos issues que colisionaban: misma fila, dos tipos.
+    const issues = [
+      { type: 'CANTIDAD_CRITICA_AUSENTE', entity: 'ZZ-01', evidence: { partidaId: 'row-1' } },
+      { type: 'SUBCONTRATO_SIN_PRECIO', entity: 'ZZ-01', evidence: { partidaId: 'row-1' } },
+      // Y el caso de la primera colisión: dos filas distintas que se leen igual.
+      { type: 'SIN_PRECIO', entity: 'Sanitaria', evidence: { partidaId: 'row-2' } },
+      { type: 'SIN_PRECIO', entity: 'Sanitaria', evidence: { partidaId: 'row-3' } },
+    ]
+    const clave = (i: typeof issues[number]) => `${i.type}-${i.evidence?.partidaId ?? i.entity}`
+    assert.equal(new Set(issues.map(clave)).size, issues.length, 'dos issues distintos comparten clave')
+  })
+})

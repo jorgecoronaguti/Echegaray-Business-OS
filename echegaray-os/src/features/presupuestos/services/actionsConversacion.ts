@@ -89,6 +89,9 @@ export async function hablarConElPresupuesto(
     texto, rol, actor: perfil.data?.id ?? 'desconocido',
     estado: { ...estado, partidas: paraElMotor(lista) },
     confirmado: confirmado === '1',
+    // El MISMO «sí» explícito vale para las dos guardas: la del outlier y la del origen. Lo que no
+    // se hereda es la ausencia de guarda — una intención del modelo nunca se aplica sin este paso.
+    confirmadoDelModelo: confirmado === '1',
     cascadaAntes,
     mutar: ({ intent, validado }) => {
       caja.plan = planDe(intent, validado, id)
@@ -107,14 +110,55 @@ export async function hablarConElPresupuesto(
     return { estado: 'rechazado', texto, degradado: turno.degradado, respuesta: sinEntender(p.porQue) }
   }
 
-  // `upsert` y no `update` cuando la fila puede no existir: una decisión de alcance sobre un patrón
-  // nuevo y la revisión de una anterior son el MISMO gesto, y la clave la impone la base.
-  const { error } = p.plan.operacion === 'upsert'
-    ? await supabase.from(p.plan.tabla).upsert(p.plan.columnas, { onConflict: p.plan.onConflict }).select('id').maybeSingle().then((r) => ({ error: r.error }))
-    : await supabase.from(p.plan.tabla).update(p.plan.columnas).eq('id', p.plan.id!)
+  // ═══ ESCRIBIR Y COMPROBAR QUE SE ESCRIBIÓ (auditoría delta, 29/08/2026) ═══
+  //
+  // Antes era `.update(...).eq('id', ...)` a secas y el resultado se daba por bueno si no venía
+  // error. Dos cosas rompían ahí:
+  //
+  //   · LOST UPDATE. Sin predicado de concurrencia, A lee 480, B escribe 1200, A aplica 520 y los
+  //     1200 de B mueren mudos — con el evento registrando `antes: 480`, que es falso, y el outlier
+  //     habiendo medido +8 % sobre un cambio que en realidad fue −57 %.
+  //   · ÉXITO NO VERIFICADO. Un UPDATE que no toca ninguna fila —porque el predicado no matchea, o
+  //     porque la RLS la filtró— devuelve `error: null`, y el turno salía «Aplicado». Lo tropecé yo
+  //     mismo midiendo la policy de `parametro_operativo`: el UPDATE «pasaba» y no cambiaba nada.
+  //
+  // `.select()` en un UPDATE de PostgREST devuelve LAS FILAS TOCADAS: cero filas es la señal, y no
+  // hace falta pedir un `count` aparte.
+  let filas: unknown[] | null = null
+  let error: { message: string } | null = null
+
+  if (p.plan.operacion === 'upsert') {
+    const r = await supabase.from(p.plan.tabla).upsert(p.plan.columnas, { onConflict: p.plan.onConflict }).select('id')
+    filas = r.data; error = r.error
+  } else {
+    let q = supabase.from(p.plan.tabla).update(p.plan.columnas).eq('id', p.plan.id!)
+    for (const [col, val] of Object.entries(p.plan.esperado ?? {})) {
+      // `.eq(col, null)` NO compara con NULL en SQL —`= NULL` nunca es cierto— y dejaría el
+      // predicado siempre en falso: para eso está `.is()`. Un subcontrato que hoy no tiene precio
+      // también tiene un estado previo que defender.
+      q = val === null || val === undefined ? q.is(col, null) : q.eq(col, val as never)
+    }
+    const r = await q.select('id')
+    filas = r.data; error = r.error
+  }
+
   // El mensaje de la base se muestra tal cual: «permission denied for table cotizacion_partida»
   // apunta al arreglo; «no se pudo guardar» no apunta a nada.
   if (error) return { estado: 'error', texto, respuesta: sinEntender(error.message) }
+
+  if ((filas ?? []).length === 0) {
+    // CONFLICTO DE CONCURRENCIA: la fila ya no está como cuando se leyó. Se dicen LOS DOS valores
+    // —lo que se esperaba y lo que hay— porque «volvé a intentar» no explica qué pasó ni deja
+    // decidir. Y no se aplica nada: el cambio se calculó contra un estado que ya no existe.
+    const actual = await valorActual(supabase, p.plan)
+    return {
+      estado: 'rechazado', texto, degradado: turno.degradado,
+      respuesta: sinEntender(
+        `Alguien cambió esto mientras escribías. Cuando leí decía ${describir(p.plan.esperado)}, y ahora dice ${describir(actual)}. No apliqué nada: lo que pediste se calculó sobre el valor viejo.`,
+        '¿Lo mirás y lo volvés a pedir?',
+      ),
+    }
+  }
 
   revalidatePath('/presupuestos')
   revalidatePath(`/presupuestos/${id}`, 'layout')
@@ -122,6 +166,24 @@ export async function hablarConElPresupuesto(
   // EL IMPACTO SE MIDE RELEYENDO, no calculándolo acá. La cascada la calcula Postgres en
   // `cotizacion_cascada`: recomputarla en JavaScript sería una segunda definición del precio, y
   // este repo ya pagó dos veces por tener dos.
+  // ═══ LA EVIDENCIA ES DEL EFECTO: SE RELEE EL DESTINO ═══
+  //
+  // «El UPDATE no dio error» no prueba que el dato quedó. Un trigger puede haberlo pisado, una
+  // policy de columna puede haber descartado el campo, un `numeric` puede haber redondeado. Antes
+  // de decir «Aplicado» se lee la fila y se compara con lo que se quiso escribir.
+  const quedo = await valorActual(supabase, p.plan)
+  const desajuste = Object.entries(p.plan.columnas)
+    .filter(([c]) => c in (quedo ?? {}))
+    .filter(([c, v]) => String((quedo as Record<string, unknown>)[c]) !== String(v))
+  if (desajuste.length > 0) {
+    return {
+      estado: 'error', texto, degradado: turno.degradado,
+      respuesta: sinEntender(
+        `Escribí el cambio y la base devolvió otra cosa: pedí ${describir(Object.fromEntries(desajuste.map(([c, v]) => [c, v])))} y quedó ${describir(quedo)}. No lo doy por hecho.`,
+      ),
+    }
+  }
+
   const { data: despues } = await getPresupuesto(supabase, id)
   return {
     estado: 'ok', texto, degradado: turno.degradado,
@@ -131,6 +193,24 @@ export async function hablarConElPresupuesto(
       impacto: impactoDe(cascadaAntes?.ventaSinIva ?? null, despues?.venta_sin_iva ?? null),
     },
   }
+}
+
+/** Las columnas que este plan toca, tal como están AHORA en la fila. `null` si no se pudo leer. */
+async function valorActual(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  plan: { tabla: string; id?: string; columnas: Record<string, unknown>; onConflict?: string },
+): Promise<Record<string, unknown> | null> {
+  if (!plan.id) return null
+  const cols = Object.keys(plan.columnas).join(', ')
+  const { data } = await supabase.from(plan.tabla).select(cols).eq('id', plan.id).maybeSingle()
+  return (data ?? null) as Record<string, unknown> | null
+}
+
+/** «cantidad 480». Sin adornos: es para que la persona compare dos números, no para explicar. */
+function describir(v: Record<string, unknown> | null | undefined): string {
+  if (!v) return 'nada'
+  const partes = Object.entries(v).map(([c, x]) => `${c} ${x === null || x === undefined ? 'sin cargar' : String(x)}`)
+  return partes.length ? partes.join(', ') : 'nada'
 }
 
 /** El movimiento del precio. `null` cuando falta cualquiera de las dos puntas — nunca cero. */

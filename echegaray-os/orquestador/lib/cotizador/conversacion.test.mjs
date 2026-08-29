@@ -147,6 +147,57 @@ describe('el texto del modelo NUNCA muta estado (§19)', () => {
   })
 })
 
+describe('lo que interpretó el modelo NO se aplica solo (auditoría delta, 29/08/2026)', () => {
+  // El fallback del modelo entraba a `ejecutar()` igual que la gramática: si el outlier no tenía
+  // nada que decir, la mutación se aplicaba sola y el «Aplicado» de una alucinación era idéntico al
+  // de una regla con tests. La diferencia es de CONFIANZA, no de materialidad.
+  const delModelo = '{"action":"update_quantity","target":"pintura","value":"910 m2"}'
+
+  test('una intención del modelo PARA y pide confirmación, aunque el outlier calle', async () => {
+    let mutaciones = 0
+    const t = await conversar({
+      texto: 'poneme la pintura un toque mas', rol: ROL.DUENO, actor: 'j', estado: ESTADO,
+      conModelo, pedir: responde(delModelo), mutar: () => { mutaciones += 1; return ESTADO },
+    })
+    assert.equal(t.entendido, true)
+    assert.equal(mutaciones, 0, 'aplicó una intención que dedujo el modelo sin que nadie confirmara')
+    assert.equal(t.origen, 'MODELO')
+    assert.match(t.respuesta.pregunta ?? '', /¿Lo aplico igual\?/)
+  })
+
+  test('con el «sí» explícito, la misma intención SÍ se aplica', async () => {
+    let mutaciones = 0
+    const t = await conversar({
+      texto: 'poneme la pintura un toque mas', rol: ROL.DUENO, actor: 'j', estado: ESTADO,
+      conModelo, pedir: responde(delModelo), confirmado: true, confirmadoDelModelo: true,
+      mutar: ({ validado }) => { mutaciones += 1; return validado },
+    })
+    assert.equal(mutaciones, 1, 'ni con confirmación explícita se aplicó: la guarda quedó cerrada de más')
+    assert.equal(t.salida.ok, true, t.salida.porQue ?? '')
+  })
+
+  test('el ORIGEN viaja hasta la respuesta, y no dice MODELO cuando fue la gramática', async () => {
+    const g = await conversar({ texto: 'la mamposteria son 500 m2', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, confirmado: true, mutar })
+    assert.equal(g.origen, 'GRAMATICA')
+    assert.equal(g.respuesta.origen, 'GRAMATICA')
+    // MUTACIÓN QUE LO PONE ROJO: que `redactar()` deje de propagar el origen. Ahí un «Aplicado» de
+    // una regla y uno de una deducción vuelven a ser la misma frase.
+    const m = await conversar({
+      texto: 'poneme la pintura un toque mas', rol: ROL.DUENO, actor: 'j', estado: ESTADO,
+      conModelo, pedir: responde(delModelo), mutar,
+    })
+    assert.equal(m.respuesta.origen, 'MODELO', 'la respuesta no dice que la interpretó el modelo')
+  })
+
+  test('una CONSULTA del modelo no necesita confirmación: no muta nada', async () => {
+    const t = await conversar({
+      texto: 'contame de donde viene la pintura esa', rol: ROL.DUENO, actor: 'j', estado: ESTADO,
+      conModelo, pedir: responde('{"action":"evidence_query","target":"pintura"}'), mutar,
+    })
+    assert.equal(t.salida.ok, true, 'pidió confirmar una consulta que no cambia nada')
+  })
+})
+
 describe('ninguna respuesta está preescrita', () => {
   /** Todos los números que aparecen en un objeto serializado. */
   const numerosDe = (o) => (JSON.stringify(o ?? null).match(/-?\d+(\.\d+)?/g) ?? [])

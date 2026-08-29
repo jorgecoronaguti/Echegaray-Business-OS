@@ -23,6 +23,12 @@ export interface RespuestaConversacion {
   datos?: unknown
   /** Cuánto movió el precio. `null` = no se pudo medir; nunca cero. */
   impacto?: { antes: number; despues: number; delta: number } | null
+  /**
+   * DE DÓNDE SALIÓ LA INTENCIÓN. `GRAMATICA` = una regla con tests encajó; `MODELO` = lo dedujo el
+   * proveedor de razonamiento. Se muestra: un «Aplicado» de cada uno no merece la misma confianza,
+   * y sin esto se ven idénticos (auditoría delta, 29/08/2026).
+   */
+  origen?: 'GRAMATICA' | 'MODELO'
 }
 
 export interface TurnoConversacion {

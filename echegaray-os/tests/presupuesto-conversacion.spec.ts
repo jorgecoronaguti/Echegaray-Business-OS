@@ -22,10 +22,17 @@ import { conBase, entrar, laFila } from './util/obras-e2e'
 // ═══ QUÉ NO PRUEBA ═══
 //
 // **El camino del modelo.** Todas las frases de este recorrido son de las que el intérprete
-// determinístico resuelve, así que el LLM no se llama nunca — y eso se VERIFICA: si se hubiera
-// llamado y hubiera fallado, la pantalla publicaría `conversacion-degradada`, y se afirma que ese
-// cartel NO está. Es regresión del circuito, no prueba del proveedor de razonamiento; ése sigue
-// siendo el límite declarado en el DoD.
+// determinístico resuelve. Que eso sea así se verifica con `origen-modelo`: el panel lo dibuja
+// cuando la intención la dedujo el modelo, así que su ausencia prueba que TODO salió de la
+// gramática.
+//
+// El canario ANTERIOR era la ausencia de `conversacion-degradada`, y la auditoría delta lo tumbó:
+// ese cartel sólo aparece cuando el modelo se llamó Y FALLÓ. Un modelo que se llama y contesta bien
+// lo deja ausente igual, así que la aserción era compatible con lo contrario de lo que afirmaba —
+// un control que no puede decir que no. El de ahora mira el ORIGEN de la intención, que es el dato
+// que distingue los dos casos.
+//
+// Lo que sigue sin probarse es el camino del modelo EN SÍ: sigue siendo el límite del DoD.
 //
 // ═══ POR QUÉ EL PRESUPUESTO SE CREA POR LA BASE ═══
 //
@@ -133,8 +140,10 @@ test.describe('conversación del presupuesto', () => {
       // El bloqueo que se ve es el de la partida sin composición, nombrada por su código.
       await expect(page.getByTestId('bloqueos-conversacion')).toContainText('ZZE2E-02')
 
-      // EL CANARIO DEL MODELO: si el LLM se hubiera llamado y hubiera fallado, la pantalla lo diría.
-      // Que no esté prueba que todo esto corrió determinístico (§34).
+      // EL CANARIO: `origen-modelo` se dibuja cuando la intención la dedujo el modelo. Su ausencia
+      // prueba que esto salió de la gramática — a diferencia de `conversacion-degradada`, que sólo
+      // aparece si el modelo falló y por lo tanto no distinguía «no se llamó» de «contestó bien».
+      await expect(page.getByTestId('origen-modelo')).toHaveCount(0)
       await expect(page.getByTestId('conversacion-degradada')).toHaveCount(0)
 
       // EL FOCO VUELVE AL CAMPO. Era `false` antes del arreglo: había que hacer clic para seguir.

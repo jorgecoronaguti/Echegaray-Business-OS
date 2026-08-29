@@ -94,6 +94,8 @@ interface OpcionesConversar {
   actor: string
   estado: Record<string, unknown>
   confirmado?: boolean
+  /** El «sí» explícito a una intención que dedujo el modelo. NO se hereda de `confirmado`. */
+  confirmadoDelModelo?: boolean
   cascadaAntes?: CascadaMotor | null
   usarModelo?: boolean
   conModelo?: unknown
@@ -103,6 +105,7 @@ interface OpcionesConversar {
 export interface TurnoDelMotor {
   entendido: boolean
   comoSeEntendio: string | null
+  origen: 'GRAMATICA' | 'MODELO' | null
   degradado: boolean
   intencion: Intencion | null
   salida: { ok: boolean; etapaQueParo: string | null; porQue: string | null } | null

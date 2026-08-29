@@ -53,7 +53,8 @@ export interface Intencion {
 
 /** Lo que la validación del command layer ya resolvió: a qué partida apunta y con qué valor. */
 export interface Validado {
-  partida?: { id?: string; codigo?: string | null; descripcion?: string }
+  partida?: { id?: string; codigo?: string | null; descripcion?: string; precioSubcontrato?: number | null }
+  anterior?: unknown
   partidas?: { id?: string }[]
   valor?: number
   unidad?: string
@@ -73,6 +74,21 @@ export interface PlanEscritura {
   /** Sólo en `update`. En `upsert` la fila la identifica `onConflict`. */
   id?: string
   onConflict?: string
+  /**
+   * EL PREDICADO DE CONCURRENCIA: cómo tiene que estar la fila para que este cambio sea válido.
+   *
+   * ═══ EL DEFECTO QUE ESTO IMPIDE (auditoría delta, 29/08/2026) ═══
+   *
+   * Sin él, dos personas hablándole al mismo presupuesto se pisan sin ruido: A lee 480, B escribe
+   * 1200, A dice «son 520» y el UPDATE por `id` lo aplica. Los 1200 de B mueren mudos, el evento
+   * registra `antes: 480` —que es FALSO— y el outlier midió un +8 % cuando el cambio real fue un
+   * −57 %: la guarda del §20 corrió contra un estado que ya no existía.
+   *
+   * Con el predicado, ese UPDATE afecta CERO filas y el turno tiene que decir que hubo conflicto en
+   * vez de festejar. `null` significa «este cambio no depende del estado previo» —el upsert de
+   * alcance es un gesto declarativo: la última decisión gana y eso está bien—.
+   */
+  esperado?: Record<string, unknown> | null
   columnas: Record<string, unknown>
   /** Qué se le dice a la persona que pasó. Sale del plan, no de una frase suelta. */
   detalle: string
@@ -108,6 +124,9 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
       ok: true,
       plan: {
         tabla: 'cotizacion_partida', operacion: 'update', id,
+        // La cantidad tiene que seguir siendo la que la validación leyó. Si otro la movió, este
+        // cambio se calculó contra un estado muerto y no se aplica.
+        esperado: { cantidad: validado.anterior ?? null },
         columnas: { cantidad: validado.valor },
         detalle: `${validado.partida?.codigo ?? validado.partida?.descripcion}: cantidad = ${validado.valor} ${validado.unidad ?? ''}`.trim(),
       },
@@ -127,6 +146,7 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
       ok: true,
       plan: {
         tabla: 'cotizacion_partida', operacion: 'update', id,
+        esperado: { precio_subcontrato: validado.partida?.precioSubcontrato ?? null },
         columnas: { subcontratada: true, precio_subcontrato: validado.valor },
         detalle: `${validado.partida?.codigo ?? validado.partida?.descripcion}: subcontratada a ${validado.proveedor} por ${validado.valor}`,
       },
@@ -140,6 +160,7 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
       ok: true,
       plan: {
         tabla: 'cotizaciones', operacion: 'update', id: cotizacionId,
+        esperado: { [columna]: validado.anterior ?? null },
         // Se guarda en FRACCIÓN, que es lo que la vista multiplica. `validar()` del motor ya
         // convirtió «19» a 0,19: escribir 19 daría un beneficio de 1.900 % y —como todos los
         // escalones se multiplican por la misma base— el resultado se vería coherente.
@@ -157,7 +178,9 @@ export function planDe(intencion: Intencion, validado: Validado, cotizacionId: s
     return {
       ok: true,
       plan: {
-        tabla: 'cotizacion_alcance', operacion: 'upsert', onConflict: 'cotizacion_id,patron',
+        // Sin predicado a propósito: una decisión de alcance es DECLARATIVA —«esto no va»— y la
+        // última gana. No hay un valor previo contra el que se haya calculado nada.
+        tabla: 'cotizacion_alcance', operacion: 'upsert', onConflict: 'cotizacion_id,patron', esperado: null,
         columnas: {
           cotizacion_id: cotizacionId, patron, estado,
           // La FUENTE es lo que hace revisable la decisión: quién y por dónde. §5 la exige.

@@ -168,6 +168,32 @@ describe('RBAC — el jefe de obra no ve lo comercial ni por el error (§40)', (
   })
 })
 
+describe('una cantidad de obra no puede ser negativa (auditoría delta, 29/08/2026)', () => {
+  // Hasta acá los negativos los frenaba el RANGO FÍSICO del outlier engine, que es un freno
+  // indirecto: depende de que la partida tenga costo y de que el cambio sea material. «-520 m2» no
+  // es un cambio atípico, es una frase sin sentido físico, y se corta antes de que nada la mida.
+  test('«la mamposteria son -520 m2» no produce intención', () => {
+    const r = interpretar('la mamposteria son -520 m2', { partidas: PARTIDAS })
+    // MUTACIÓN QUE LO PONE ROJO: sacar la guarda de `porCantidadOMonto`. La corrí antes de escribir
+    // este test y NADA se puso rojo — la guarda estaba sin cubrir.
+    assert.equal(r.resuelto, false, 'aceptó una cantidad negativa')
+    assert.match(r.porQue, /negativo/)
+    assert.ok(r.pregunta, 'rechaza sin decir qué hacer')
+  })
+
+  test('y no llega a mutar ni con el rol más alto', () => {
+    const r = interpretar('la mamposteria son -520 m2', { partidas: PARTIDAS })
+    assert.equal(r.intencion, null)
+  })
+
+  test('el cero SÍ pasa: es una medición, no un sinsentido', () => {
+    // Una partida que quedó en cero es una decisión legítima —se computó y no hay—. Cerrarla acá
+    // confundiría «no tiene sentido» con «no me gusta el número».
+    const r = interpretar('la mamposteria son 0 m2', { partidas: PARTIDAS })
+    assert.equal(r.resuelto, true, 'rechazó un cero, que es una medición válida')
+  })
+})
+
 describe('lo que el intérprete NO tiene que resolver', () => {
   test('una frase que no engancha devuelve pregunta, no una intención inventada', () => {
     const r = interpretar('hola como andas', { partidas: PARTIDAS })

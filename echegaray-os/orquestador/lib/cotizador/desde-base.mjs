@@ -75,6 +75,9 @@ export function partidaDesdeFila(f) {
     tareaTipoId: f.tarea_tipo_id ?? null,
     subcontratada: Boolean(f.subcontratada),
     subcontrato: f.subcontratada ? { precio: n(f.precio_subcontrato), proveedor: null } : null,
+    // El precio SUELTO además del objeto: el predicado de concurrencia compara contra la columna,
+    // y una partida que hoy no está subcontratada igual tiene un valor previo (null) que defender.
+    precioSubcontrato: n(f.precio_subcontrato),
     sinAnalisis: Boolean(f.sin_analisis),
     congelada: Boolean(f.congelada),
     // El alcance NO vive en esta fila: vive en `cotizacion_alcance`, por PATRÓN, y lo cruza

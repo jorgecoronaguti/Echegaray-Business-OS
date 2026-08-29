@@ -30,6 +30,9 @@ import { PARAMETROS } from './comercial.mjs'
 /** La respuesta del intérprete. Siempre la misma forma, resuelva o no. PURA. */
 const lectura = (x) => Object.freeze({
   resuelto: false, intencion: null, comoSeLeyo: null, porQue: null,
+  // De dónde salió. Este archivo SÓLO produce GRAMATICA: son reglas con tests, no deducciones.
+  // Quien lee el `origen` decide cuánta confianza le da, y esa decisión no es de acá.
+  origen: 'GRAMATICA',
   pregunta: null, opciones: null, ...x,
 })
 
@@ -213,7 +216,20 @@ function conTarget(action, crudo, comoSeLeyo, original, partidas) {
   })
 }
 
-/** «beneficio 19 %» → `{target: 'pctBeneficio', value: 19}`. `null` si la frase no es comercial. PURA. */
+/**
+ * «beneficio 19 %» → `{target: 'pctBeneficio', value: 19}`. `null` si la frase no es comercial. PURA.
+ *
+ * ═══ ESTE INTÉRPRETE NUNCA PRODUCE `set_global_policy` ═══
+ *
+ * Y es deliberado. `commercial_override` mueve la política de ESTA cotización; `set_global_policy`
+ * mueve la de la empresa entera (§17), y una conversación no es el lugar donde se decide eso. El
+ * modelo tampoco puede colarla: `interpretarConModelo` la deja pasar sintácticamente —está en la
+ * lista cerrada— pero desde la auditoría delta la base exige `GLOBAL_POLICY_WRITE` en
+ * `parametro_comercial` y `parametro_operativo`, y `planDe()` no le arma plan de escritura.
+ *
+ * Queda DECLARADO que `comandos.validar()` la valida igual que `commercial_override`: es archivo
+ * del CORE y está pedido en el informe. Hoy el freno real es la base, que es la cerradura correcta.
+ */
 function interpretarComercial(t) {
   const m = R.COMERCIAL.exec(t)
   if (!m) return null
@@ -255,6 +271,18 @@ function porCantidadOMonto(objetivo, valor, original) {
         value: monto.valor ?? valor, unit: monto.unidad ?? 'ARS', currency: monto.unidad ?? 'ARS',
         textoOriginal: original,
       }),
+    })
+  }
+
+  // ═══ UNA CANTIDAD DE OBRA NO PUEDE SER NEGATIVA (auditoría delta, 29/08/2026) ═══
+  //
+  // Hoy los frena el rango físico del outlier engine, que es un freno indirecto: depende de que la
+  // partida tenga costo y de la materialidad. «la mamposteria son -520 m2» no es un cambio atípico,
+  // es una frase sin sentido físico, y se corta acá antes de que nada la mida.
+  if (Number.isFinite(Number(leido.valor)) && Number(leido.valor) < 0) {
+    return lectura({
+      porQue: `«${valor}» es negativo: una cantidad de obra no puede serlo`,
+      pregunta: '¿Querías restar de la cantidad actual? Decime la cantidad final.',
     })
   }
 

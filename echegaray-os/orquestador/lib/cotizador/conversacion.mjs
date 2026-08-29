@@ -28,9 +28,17 @@ import { ACCION } from './contrato.mjs'
 import { ejecutar } from './comandos.mjs'
 import { interpretar } from './interprete.mjs'
 
+/**
+ * DE DÓNDE SALIÓ LA INTENCIÓN. Es un dato de negocio, no de telemetría.
+ *
+ * `GRAMATICA` es una regla con tests que encajó; `MODELO` es una deducción. Las dos pueden acertar,
+ * pero no merecen la misma confianza — y la pantalla tiene que poder decir cuál fue.
+ */
+export const ORIGEN = Object.freeze({ GRAMATICA: 'GRAMATICA', MODELO: 'MODELO' })
+
 /** El turno de conversación. Siempre la misma forma. */
 const turno = (x) => Object.freeze({
-  entendido: false, comoSeEntendio: null, degradado: false,
+  entendido: false, comoSeEntendio: null, origen: null, degradado: false,
   intencion: null, salida: null, respuesta: null, eventos: Object.freeze([]), ...x,
 })
 
@@ -47,6 +55,7 @@ export async function conversar({
   texto, rol, actor, estado = {}, correlationId = null, confirmado = false,
   mutar = null, recalcular = null, persistir = null,
   usarModelo = true, conModelo = null, pedir = undefined, cascadaAntes = null,
+  confirmadoDelModelo = false,
 } = {}) {
   const partidas = estado.partidas ?? []
 
@@ -75,16 +84,53 @@ export async function conversar({
     })
   }
 
-  // ── 3 · el command layer. Autoriza, valida, mide el atípico, muta y recalcula — en ese orden.
+  // ═══ LO QUE INTERPRETÓ EL MODELO SE CONFIRMA SIEMPRE (auditoría delta, 29/08/2026) ═══
+  //
+  // El fallback del modelo entraba a `ejecutar()` igual que la gramática, y si el outlier no tenía
+  // nada que decir la mutación se aplicaba sola. Un «Aplicado» nacido de una regla determinística y
+  // uno nacido de una alucinación se veían idénticos.
+  //
+  // La diferencia es de CONFIANZA, no de materialidad: la gramática acertó porque la frase encajó
+  // en un patrón con tests; el modelo acertó porque le pareció. §19 le deja producir intención, no
+  // le deja escribir estado sin que una persona diga que sí. Así que `confirmado` NO se hereda: una
+  // intención del modelo exige el «¿Lo aplico igual?» explícito aunque el outlier calle.
+  const delModelo = leido.origen === ORIGEN.MODELO
+  const faltaConfirmarElOrigen = delModelo && !confirmadoDelModelo && ACCION[leido.intencion.action].muta
+
+  // ═══ LA CONFIRMACIÓN VA ANTES DE MUTAR, NO DESPUÉS ═══
+  //
+  // Se corre el pipeline completo SIN `mutar`: autoriza, valida y mide el atípico —todo lo que hay
+  // que saber para poder preguntar con fundamento— y no toca nada. Preguntar después de haber
+  // mutado sería el mismo defecto que el §20 evita en el outlier: un cambio que se aplica y después
+  // se consulta ya movió el precio.
+  //
+  // Y el orden importa al revés también: si el rol no puede, o la frase no valida, eso se dice
+  // PRIMERO. Ofrecer «confirmá esto» sobre algo que igual va a ser rechazado hace perder un paso y
+  // —peor— le confirma a un jefe de obra que el campo comercial existe.
   const salida = ejecutar({
     intent: leido.intencion, rol, actor, estado, correlationId, confirmado,
-    mutar, recalcular, persistir,
+    mutar: faltaConfirmarElOrigen ? null : mutar,
+    recalcular: faltaConfirmarElOrigen ? null : recalcular,
+    persistir: faltaConfirmarElOrigen ? null : persistir,
   })
 
+  if (faltaConfirmarElOrigen && salida.ok) {
+    return turno({
+      entendido: true, comoSeEntendio: leido.comoSeLeyo, origen: ORIGEN.MODELO, degradado,
+      intencion: leido.intencion, salida: Object.freeze({ ...salida, ok: false, etapaQueParo: 'ORIGEN' }),
+      respuesta: Object.freeze({
+        tono: 'pregunta', titulo: 'Esto lo interpretó el modelo',
+        lineas: Object.freeze([`Entendí «${leido.intencion.action}» sobre «${leido.intencion.target ?? 'la cotización'}». No salió de una regla: lo dedujo el modelo de tu frase.`]),
+        cambios: Object.freeze([]), opciones: null, origen: ORIGEN.MODELO,
+        pregunta: 'Confirmá que es lo que querías. ¿Lo aplico igual?',
+      }),
+    })
+  }
+
   return turno({
-    entendido: true, comoSeEntendio: leido.comoSeLeyo, degradado,
-    intencion: leido.intencion, salida, eventos: salida.eventos,
-    respuesta: redactar({ intencion: leido.intencion, salida, cascadaAntes }),
+    entendido: true, comoSeEntendio: leido.comoSeLeyo, origen: leido.origen ?? ORIGEN.GRAMATICA,
+    degradado, intencion: leido.intencion, salida, eventos: salida.eventos,
+    respuesta: redactar({ intencion: leido.intencion, salida, cascadaAntes, origen: leido.origen ?? ORIGEN.GRAMATICA }),
   })
 }
 
@@ -98,8 +144,10 @@ export async function conversar({
  * No inventa una sola palabra sobre el presupuesto: los motivos, las preguntas y los números salen
  * de `salida`. Lo único propio son los rótulos de sección, que no afirman nada.
  */
-export function redactar({ intencion, salida, cascadaAntes = null } = {}) {
-  const base = { tono: 'ok', titulo: null, lineas: [], cambios: [], pregunta: null, opciones: null }
+export function redactar({ intencion, salida, cascadaAntes = null, origen = ORIGEN.GRAMATICA } = {}) {
+  // EL ORIGEN VIAJA HASTA LA PANTALLA. Sin esto, «Aplicado» por una regla y «Aplicado» por una
+  // deducción del modelo son la misma frase, y quien mira no puede saber a cuál creerle.
+  const base = { tono: 'ok', titulo: null, lineas: [], cambios: [], pregunta: null, opciones: null, origen }
 
   if (!salida.ok) {
     return Object.freeze({
