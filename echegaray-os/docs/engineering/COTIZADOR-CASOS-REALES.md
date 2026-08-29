@@ -1,12 +1,12 @@
 # COTIZADOR — LOS CASOS REALES
 
-  Generado por `orquestador/scripts/cotizador-casos-reales.mjs` el 2026-08-29.
-  Documentos y conocimientos de `orquestador/datos/conocimiento/biblioteca.json`; partidas, análisis
-  y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
+Generado por `orquestador/scripts/cotizador-casos-reales.mjs` el 2026-08-29.
+Documentos y conocimientos de `orquestador/datos/conocimiento/biblioteca.json`; partidas, análisis
+y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 
-  ## El cuadro
+## El cuadro
 
-  | | QUATTROPANI (real) | LA ESTRELLA (ciego) | DOC INCOMPLETA | CÓMPUTO MANUAL |
+| | QUATTROPANI (real) | LA ESTRELLA (ciego) | DOC INCOMPLETA | CÓMPUTO MANUAL |
 |---|---|---|---|---|
 | **documentos del corpus** | 10 | 14 | 2 | 0 |
 | **conocimientos leídos** | 57 | 0 | 0 | 0 |
@@ -37,13 +37,13 @@
 | **CLAUDE AVOIDANCE RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **AUTONOMOUS RESOLUTION RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **incertidumbre NO declarada** | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 32 ms / 14 ms | 28 ms / 15 ms | 10 ms / 10 ms | 18 ms / 15 ms |
+| **latencia fría / tibia** | 33 ms / 13 ms | 26 ms / 17 ms | 10 ms / 17 ms | 18 ms / 13 ms |
 | **huella de entradas** | 92f5b502ec50e5f8 | 55d5ab9b43549426 | 0ca94dff1ecca70b | c294b49a9771b55f |
 | **ESTADO** | BLOQUEADO (7) | LISTO PARA OFERTAR | BLOQUEADO (4) | BLOQUEADO (1) |
 
-  ## Qué bloquea cada caso
+## Qué bloquea cada caso
 
-  ### QUATTROPANI (real)
+### QUATTROPANI (real)
 
 1. **AMBIGUO** · alcance:metalica — «metalica» aparece negado en UN solo documento («CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani»): puede ser lo excluido o el lugar donde algo no se hace. No se aplica solo
 2. **AMBIGUO** · alcance:muros — «muros» aparece negado en UN solo documento («CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani»): puede ser lo excluido o el lugar donde algo no se hace. No se aplica solo
@@ -69,18 +69,18 @@ _sin bloqueos_
 1. **SIN_PRECIO_CALCULABLE** · cotización — el costo directo no se pudo afirmar, así que el precio tampoco. NO es cero: es desconocido
 
 
-  ## Reproducibilidad (§39)
+## Reproducibilidad (§39)
 
-  RUN1 = RUN2 en las 4 corridas: **SÍ**.
+RUN1 = RUN2 en las 4 corridas: **SÍ**.
 
-  - `QUATTROPANI (real)` → `92f5b502ec50e5f877f214ef`
+- `QUATTROPANI (real)` → `92f5b502ec50e5f877f214ef`
 - `LA ESTRELLA (ciego)` → `55d5ab9b435494269d2f5ee4`
 - `DOC INCOMPLETA` → `0ca94dff1ecca70bdeb61ea1`
 - `CÓMPUTO MANUAL` → `c294b49a9771b55f84fd66e7`
 
-  ## Lo que el dictado NO pudo mapear a la Base Maestra
+## Lo que el dictado NO pudo mapear a la Base Maestra
 
-  ### LA ESTRELLA (ciego)
+### LA ESTRELLA (ciego)
 
 mapeadas 1 · ambiguas 1 · sin partida 1
 
@@ -95,9 +95,8 @@ mapeadas 0 · ambiguas 1 · sin partida 1
 - **PISO DE HORMIGON ALISADO MECÁNICO** → AMBIGUO: «T1107.1» y «T1107.2» quedan a 0.096 de distancia (mínimo 0.25): son dos opciones, no una
 
 
-  ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
+## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 
-  - **aplicadas** (corroboradas en ≥2 documentos): `entrepiso`, `escalera`
-  - **candidatas** (un solo documento, preguntan en vez de excluir): `metalica`, `muros`
-  - **descartadas** (no alcanzan a ninguna partida): `pintura`, `revoques`
-  
+- **aplicadas** (corroboradas en ≥2 documentos): `entrepiso`, `escalera`
+- **candidatas** (un solo documento, preguntan en vez de excluir): `metalica`, `muros`
+- **descartadas** (no alcanzan a ninguna partida): `pintura`, `revoques`

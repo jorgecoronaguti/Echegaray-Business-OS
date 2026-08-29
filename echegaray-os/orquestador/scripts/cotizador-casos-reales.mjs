@@ -217,34 +217,34 @@ async function informe() {
 
   const md = `# COTIZADOR — LOS CASOS REALES
 
-  Generado por \`orquestador/scripts/cotizador-casos-reales.mjs\` el ${new Date().toISOString().slice(0, 10)}.
-  Documentos y conocimientos de \`orquestador/datos/conocimiento/biblioteca.json\`; partidas, análisis
-  y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
+Generado por \`orquestador/scripts/cotizador-casos-reales.mjs\` el ${new Date().toISOString().slice(0, 10)}.
+Documentos y conocimientos de \`orquestador/datos/conocimiento/biblioteca.json\`; partidas, análisis
+y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 
-  ## El cuadro
+## El cuadro
 
-  ${comoMarkdown(cuadros)}
+${comoMarkdown(cuadros)}
 
-  ## Qué bloquea cada caso
+## Qué bloquea cada caso
 
-  ${casos.map((k) => `### ${k.nombre}\n\n${bloqueosLegibles(k.corrida).join('\n') || '_sin bloqueos_'}\n`).join('\n')}
+${casos.map((k) => `### ${k.nombre}\n\n${bloqueosLegibles(k.corrida).join('\n') || '_sin bloqueos_'}\n`).join('\n')}
 
-  ## Reproducibilidad (§39)
+## Reproducibilidad (§39)
 
-  RUN1 = RUN2 en las ${casos.length} corridas: **${reproducible ? 'SÍ' : 'NO'}**.
+RUN1 = RUN2 en las ${casos.length} corridas: **${reproducible ? 'SÍ' : 'NO'}**.
 
-  ${casos.map((k) => `- \`${k.nombre}\` → \`${k.corrida.huella.sha256.slice(0, 24)}\``).join('\n')}
+${casos.map((k) => `- \`${k.nombre}\` → \`${k.corrida.huella.sha256.slice(0, 24)}\``).join('\n')}
 
-  ## Lo que el dictado NO pudo mapear a la Base Maestra
+## Lo que el dictado NO pudo mapear a la Base Maestra
 
-  ${casos.filter((k) => k.mapeo).map((k) => `### ${k.nombre}\n\nmapeadas ${k.mapeo.mapeadas} · ambiguas ${k.mapeo.ambiguas} · sin partida ${k.mapeo.candidatas}\n\n${k.mapeo.sinMapear.map((x) => `- **${x.que}** → ${x.estado}: ${String(x.porQue).slice(0, 220)}`).join('\n') || '_todo mapeado_'}\n`).join('\n')}
+${casos.filter((k) => k.mapeo).map((k) => `### ${k.nombre}\n\nmapeadas ${k.mapeo.mapeadas} · ambiguas ${k.mapeo.ambiguas} · sin partida ${k.mapeo.candidatas}\n\n${k.mapeo.sinMapear.map((x) => `- **${x.que}** → ${x.estado}: ${String(x.porQue).slice(0, 220)}`).join('\n') || '_todo mapeado_'}\n`).join('\n')}
 
-  ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
+## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 
-  ${casos[0].exclusiones ? `- **aplicadas** (corroboradas en ≥2 documentos): ${casos[0].exclusiones.entradas.map((x) => `\`${x.patron}\``).join(', ') || '—'}
-  - **candidatas** (un solo documento, preguntan en vez de excluir): ${casos[0].exclusiones.candidatas.map((x) => `\`${x.patron}\``).join(', ') || '—'}
-  - **descartadas** (no alcanzan a ninguna partida): ${casos[0].exclusiones.descartadas.map((x) => `\`${x.termino}\``).join(', ') || '—'}` : ''}
-  `
+${casos[0].exclusiones ? `- **aplicadas** (corroboradas en ≥2 documentos): ${casos[0].exclusiones.entradas.map((x) => `\`${x.patron}\``).join(', ') || '—'}
+- **candidatas** (un solo documento, preguntan en vez de excluir): ${casos[0].exclusiones.candidatas.map((x) => `\`${x.patron}\``).join(', ') || '—'}
+- **descartadas** (no alcanzan a ninguna partida): ${casos[0].exclusiones.descartadas.map((x) => `\`${x.termino}\``).join(', ') || '—'}` : ''}
+`
 
   if (process.argv.includes('--escribir')) {
     writeFileSync(new URL('../../docs/engineering/COTIZADOR-CASOS-REALES.md', import.meta.url), md)
