@@ -20,6 +20,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { ESTADOS } from '../types'
+import { huellaDeEntradas } from './cotizadorPuente.ts'
 // El estado inicial y los tipos NO se declaran acá: un archivo `'use server'` sólo puede exportar
 // funciones async, y una constante exportada rompe la pantalla en tiempo de ejecución sin que
 // typecheck, lint ni build digan una palabra. Ver `./accion`.
@@ -193,11 +194,45 @@ export async function congelar(_prev: EstadoAccion, form: FormData): Promise<Est
   if (!z.string().uuid().safeParse(id).success) return { error: 'Falta el presupuesto' }
   const { c, error } = await sb()
   if (!c) return { error: error! }
-  const { data, error: e } = await c.rpc('congelar_presupuesto', { p_cotizacion_id: id })
+
+  // ═══ EL GATE VA ANTES DE MUTAR, Y LO CORRE LA BASE (QA visual, 29/08/2026) ═══
+  //
+  // Hasta acá esta acción llamaba directo a `congelar_presupuesto`, que informa a posteriori qué
+  // quedó sin respaldo — cuando ya no se puede deshacer. El QA congeló un presupuesto con un
+  // bloqueante VIVO y precio $0: la pantalla decía «NO se congela: 1 bloqueo(s)» y el botón estaba
+  // habilitado al lado. `puedeCongelar()` nunca miraba el gate, y el RPC tampoco.
+  //
+  // `cot_congelar_con_gate` corre el gate y SÓLO si pasa congela, todo en una transacción, y LEVANTA
+  // EXCEPCIÓN si no pasa. Que sea la BASE la que decide es lo que importa: un control en la pantalla
+  // no protege de un POST a esta acción, y ésta es la única cerradura que no se puede saltear.
+  const [{ data: pres }, { data: partidas }, { data: alcance }] = await Promise.all([
+    c.from('cotizacion_cascada').select('*').eq('id', id).maybeSingle(),
+    c.from('cotizacion_partida_valorizada').select('*').eq('cotizacion_id', id),
+    c.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
+  ])
+
+  // La HUELLA DE ENTRADAS (§39) se calcula ANTES de congelar, sobre lo que se está por congelar.
+  // Sin ella una revisión posterior no puede decir qué cambió, y `congelar()` del motor se niega a
+  // correr sin huella justamente por eso.
+  const huella = huellaDeEntradas({
+    partidas: partidas ?? [], alcance: alcance ?? [],
+    politica: pres ? { version: pres.version } : null,
+  })
+
+  const { data, error: e } = await c.rpc('cot_congelar_con_gate', {
+    p_cotizacion_id: id,
+    p_sha256: huella.sha256,
+    p_partes: huella.partes,
+    p_resumen: huella.resumen,
+  })
+  // El mensaje de la excepción nombra los bloqueos: se muestra tal cual, porque es lo que dice qué
+  // hay que arreglar. Traducirlo a «no se pudo congelar» perdería exactamente esa información.
   if (e) return { error: e.message }
   refrescar(id)
 
-  const r = (data ?? {}) as {
+  // `cot_congelar_con_gate` envuelve el resultado de `congelar_presupuesto` en `congelado`.
+  const envuelto = (data ?? {}) as { congelado?: unknown; huella?: string }
+  const r = (envuelto.congelado ?? {}) as {
     lineas_composicion?: number; n_partidas?: number; n_partidas_congeladas?: number
     n_subcontratadas?: number; n_sin_analisis?: number; n_subcontratadas_sin_precio?: number
   }
@@ -210,7 +245,7 @@ export async function congelar(_prev: EstadoAccion, form: FormData): Promise<Est
   if (n(r.n_sin_analisis) > 0) partes.push(`${n(r.n_sin_analisis)} sin análisis, sin composición que respalde su precio`)
   if (n(r.n_subcontratadas_sin_precio) > 0) partes.push(`${n(r.n_subcontratadas_sin_precio)} paquetes sin precio contratado`)
 
-  return { error: null, ok: true, mensaje: `Congelado: ${partes.join(' · ')}.` }
+  return { error: null, ok: true, mensaje: `Congelado: ${partes.join(' · ')}. Huella ${String(envuelto.huella ?? '').slice(0, 12)}.` }
 }
 
 /**

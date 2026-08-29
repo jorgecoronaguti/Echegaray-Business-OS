@@ -30,6 +30,9 @@ import { TablaPartidas } from '@/features/presupuestos/components/TablaPartidas'
 import { PanelPartida } from '@/features/presupuestos/components/PanelPartida'
 import { AltaPartida } from '@/features/presupuestos/components/AltaPartida'
 import { AccionesPresupuesto } from '@/features/presupuestos/components/AccionesPresupuesto'
+import { Conversacion } from '@/features/presupuestos/components/Conversacion'
+import { ColaDeAtencion } from '@/features/presupuestos/components/ColaDeAtencion'
+import { estadoDesdeFilas } from '@/features/presupuestos/services/cotizadorPuente'
 import { Aviso, Ayuda, Estado, Plegable } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import {
@@ -69,18 +72,27 @@ export default async function PresupuestoPage({
   }
   const presupuesto = p!
 
-  const [partidas, versiones, tareas] = await Promise.all([
+  const [partidas, versiones, tareas, alcance] = await Promise.all([
     getPartidas(supabase, id),
     getVersiones(supabase, presupuesto.numero),
     getTareasCotizables(supabase),
+    // Las decisiones de alcance del §5. Sin ellas la cola pediría el precio de algo que se sacó.
+    supabase.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
   ])
 
   const lista = partidas.data ?? []
   const seleccionada = partidaId ? lista.find((x) => x.partida_id === partidaId) ?? null : null
   const composicion = seleccionada ? (await getComposicion(supabase, seleccionada)).data : null
 
+  // EL PRESUPUESTO VIVO. La cola y el gate salen del motor del cotizador —no de tres contadores de
+  // la vista— y se derivan de las MISMAS filas que la tabla dibuja abajo: no hay una segunda
+  // lectura que pueda decir otra cosa.
+  const vivo = estadoDesdeFilas({ presupuesto, partidas: lista, alcance: alcance.data ?? [] })
+
   const congelado = estaCongelado(presupuesto)
-  const congelar = puedeCongelar(presupuesto)
+  // EL GATE DEL MOTOR, el mismo que dibuja la Cola de Atención abajo. Una segunda evaluación acá
+  // podría decir que sí mientras la cola dice que no — que es exactamente lo que pasaba.
+  const congelar = puedeCongelar(presupuesto, vivo.gate)
   const convertir = puedeConvertir(presupuesto)
   const e = lecturaEstado(presupuesto.estado)
   const rubros = [...new Set(lista.map(rubroDe))]
@@ -177,6 +189,20 @@ export default async function PresupuestoPage({
           <Plegable titulo="Cómo se llega a ese precio" testid="cascada-plegable">
             <CascadaPrecio p={presupuesto} />
           </Plegable>
+        </div>
+
+        {/* LA CONVERSACIÓN ES LA INTERFAZ PRINCIPAL (§46), y la cola de atención es su contracara
+            estructurada: una dice qué se puede pedir, la otra qué falta. Van juntas y arriba de la
+            tabla — abajo de 68 partidas nadie las ve. */}
+        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+          <Conversacion
+            cotizacionId={presupuesto.id}
+            // LO QUE EL ROL NO PUEDE, NO SE DIBUJA. El servidor lo re-valida igual: `ve_economia()`
+            // en la pantalla, `autorizar()` en el command layer y la RLS en la base son tres
+            // cerraduras, y ésta es sólo la que evita el viaje.
+            puedeEscribir={!congelado}
+          />
+          <ColaDeAtencion cola={vivo.cola} gate={vivo.gate} parcial={vivo.parcial} />
         </div>
 
         <div className={`mt-4 grid min-w-0 gap-6 ${seleccionada ? 'xl:grid-cols-[minmax(0,1fr)_400px]' : ''}`}>

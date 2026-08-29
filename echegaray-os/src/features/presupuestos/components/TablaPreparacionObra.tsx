@@ -25,6 +25,7 @@
 // lado, que es exactamente lo que el dueño prohibió.
 
 import Link from 'next/link'
+import { EnvoltorioAncho } from '@/shared/components/canon/EnvoltorioAncho'
 import type { MetodoMedicion, Plantilla } from '../types'
 import type { FilaPreparacion } from '../services/preparacionObra'
 import { cantidad as fCantidad, hh as fHH } from '../services/formato'
@@ -92,6 +93,16 @@ export function TablaPreparacionObra({
 }: Props) {
   const marcadas = filas.filter((f) => seleccion.has(f.partidaId)).length
   return (
+    // ═══ LA GRILLA SE ARMABA A MANO Y NO SCROLLEABA (QA visual, 390×844, 29/08/2026) ═══
+    //
+    // Esta tabla escribe `gridTemplateColumns` directo y nunca pasó por `EnvoltorioAncho`, que es
+    // lo que las otras tablas del canon usan para reservar ancho en el teléfono. Con `body` en
+    // `overflow-x: clip`, a 390 px la columna de la descripción —`minmax(0,1.7fr)`— caía a CERO y
+    // el dato no se corría: se cortaba. En pantalla quedaban «s/c» y la cantidad, sin forma de
+    // saber de qué partida se estaba hablando ni barra que avisara que faltaba algo.
+    //
+    // Se envuelve con el mismo mecanismo ya probado, con las MISMAS columnas. Por encima de 1024 px
+    // no cambia nada: la media query no aplica y el escritorio sigue midiendo lo que mide el mockup.
     <div className="min-w-0 flex-1 overflow-hidden rounded-card border border-line bg-surface" data-testid="tabla-preparacion">
       <div className="flex items-center gap-2.5 border-b border-surface-sunken px-4 py-3">
         <h2 className="text-[13.5px] font-semibold text-ink">Qué partidas se convierten en actividades</h2>
@@ -117,6 +128,7 @@ export function TablaPreparacionObra({
               )}
         </button>
       </div>
+      <EnvoltorioAncho cols={COLS}>
 
       <div
         className="grid h-[36px] items-end gap-2.5 border-b border-line bg-surface-quiet px-4"
@@ -144,6 +156,7 @@ export function TablaPreparacionObra({
           Este presupuesto no tiene partidas: no hay nada que convertir.
         </p>
       )}
+      </EnvoltorioAncho>
     </div>
   )
 }

@@ -90,7 +90,12 @@ export function validar(intent, estado = {}) {
     // Sin proveedor NO es un subcontrato: es un número al lado de un rubro. Asumirlo subcontratado
     // es inventar una decisión comercial —a quién se le compra— que nadie tomó.
     if (!intent.supplier) {
-      return { ok: false, porQue: `«${intent.target} ${intent.textoOriginal ?? intent.value}» no dice QUIÉN lo hace: un monto al lado de un rubro no es un subcontrato`, pregunta: `¿${intent.target} la hace un tercero? ¿Quién?` }
+      // SE CITA EL TEXTO ORIGINAL, NO SE RECONSTRUYE. Concatenar `target` + `textoOriginal` daba
+      // «sanitaria sanitaria 8,5M»: el original YA trae el rubro, porque de ahí salió el target. El
+      // QA visual lo leyó en pantalla el 29/08/2026. Cuando no hay original —una intención que armó
+      // el modelo— se compone, que es el único caso donde hace falta.
+      const dicho = intent.textoOriginal ?? `${intent.target} ${intent.value}`
+      return { ok: false, porQue: `«${dicho}» no dice QUIÉN lo hace: un monto al lado de un rubro no es un subcontrato`, pregunta: `¿${intent.target} la hace un tercero? ¿Quién?` }
     }
     const leida = intent.unit === 'ARS' || intent.unit === 'USD'
       ? { valor: Number(intent.value), unidad: intent.unit, estado: ESTADO.EXTRAIDO }

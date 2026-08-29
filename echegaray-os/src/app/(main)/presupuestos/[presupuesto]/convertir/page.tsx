@@ -35,6 +35,7 @@ import { puedeConvertir } from '@/features/presupuestos/services/estado'
 import { hh } from '@/features/presupuestos/services/formato'
 import { getObra } from '@/features/obras/services/obrasService'
 import { PipelineConversion } from '@/features/presupuestos/components/PipelineConversion'
+import { pasosDelPipeline } from '@/features/presupuestos/services/pipeline'
 import { ConfiguradorConversion } from '@/features/presupuestos/components/ConfiguradorConversion'
 import { PreparacionObra } from '@/features/presupuestos/components/PreparacionObra'
 import { Aviso, Ayuda, EntityHeader, Plegable } from '@/shared/components/ds'
@@ -116,7 +117,17 @@ export default async function ConvertirPage({
       </div>
 
       <div className="w-full px-4 lg:px-10">
-        <PipelineConversion />
+        {/* EL PIPELINE MIRA DATOS. `hayAvance` queda SIN PASAR a propósito: esta pantalla no lee
+            el avance de la obra, y el paso 5 sale «sin dato» en vez de afirmar que no arrancó. */}
+        <PipelineConversion
+          pasos={pasosDelPipeline({
+            nPartidas: lista.length,
+            nSinAnalisis: lista.filter((p) => p.sin_analisis).length,
+            congelado: Boolean(presupuesto.congelada_en),
+            nConvertidas: convertidas,
+            planConFechas: Boolean(obra?.fecha_inicio_plan),
+          })}
+        />
       </div>
 
       {!habilitada.puede && (

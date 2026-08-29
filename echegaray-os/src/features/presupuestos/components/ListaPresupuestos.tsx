@@ -44,18 +44,17 @@ import { tieneCifras } from '../services/cascada'
 import { fecha } from '../services/formato'
 import { PanelPresupuesto } from './PanelPresupuesto'
 
-// ═══ EL UMBRAL DE MARGEN: 17 ES DEL OS, 12 ES DEL MOCKUP, Y LA DIFERENCIA NO LA RESUELVO YO ═══
+// ═══ EL UMBRAL DE MARGEN YA NO VIVE ACÁ ═══
 //
-// El mockup pinta el margen en rojo por debajo de 12 y llama a ese número «el piso de margen de la
-// empresa» (`16`, la marca de la barra). Este módulo viene usando 17 desde antes, declarado como
-// «el objetivo de la empresa». Son dos afirmaciones sobre una política comercial y ninguna de las
-// dos tiene fuente en la base: `parametro_comercial` guarda el BENEFICIO (markup sobre el costo),
-// que no es el margen sobre el precio.
+// Era `const MARGEN_OBJETIVO = 17`: un número sin fuente ni fecha decidiendo a qué presupuestos se
+// les mira el precio antes de mandarlos. Y con un conflicto encima —el handoff de diseño dice 12—
+// que un `const` no puede expresar. Ahora es una fila de `parametro_operativo` con su procedencia,
+// su estado y la otra lectura escrita al lado; llega por prop desde el servidor, que es quien puede
+// leerla con la sesión de quien mira.
 //
-// Cambiar 17 por 12 sin que el dueño lo decida movería en silencio qué presupuestos se ven en rojo
-// —o sea, a cuáles se les va a mirar el precio antes de mandarlos—. Se conserva el 17 que ya está
-// en producción y la diferencia queda declarada en el informe para que la cierre quien puede.
-const MARGEN_OBJETIVO = 17
+// LLEGA `null` CUANDO NO SE SABE, y ahí NO se pinta ninguna fila bajo objetivo. Un default de 17
+// acá reconstruiría el defecto adentro del componente y encima en silencio: la fila se pintaría en
+// rojo contra un umbral que la empresa no declaró. Sin umbral no hay juicio.
 
 // ═══ HAY DOS COLUMNAS O NO LAS HAY ═══
 //
@@ -80,6 +79,7 @@ export function ListaPresupuestos({
   filtro,
   seleccionInicial = null,
   accion,
+  margenObjetivo = null,
 }: {
   presupuestos: PresupuestoCascada[]
   filtro: FiltroCartera
@@ -87,6 +87,8 @@ export function ListaPresupuestos({
   seleccionInicial?: string | null
   /** «Nuevo presupuesto», que lo arma el servidor porque conoce el estado del formulario. */
   accion?: React.ReactNode
+  /** De `parametro_operativo.margen_objetivo_pct`. `null` = nadie lo declaró, o este rol no lo ve. */
+  margenObjetivo?: number | null
 }) {
   const router = useRouter()
   const [busqueda, setBusqueda] = useState('')
@@ -183,6 +185,7 @@ export function ListaPresupuestos({
               p={p}
               seleccionada={esEscritorio && p.id === abierto}
               onAbrir={() => abrir(p.id)}
+              margenObjetivo={margenObjetivo}
             />
           ))}
 
@@ -222,22 +225,26 @@ export function ListaPresupuestos({
           )}
         </TarjetaTabla>
 
-        {seleccionado && <PanelPresupuesto p={seleccionado} onCerrar={cerrar} margenObjetivo={MARGEN_OBJETIVO} />}
+        {seleccionado && <PanelPresupuesto p={seleccionado} onCerrar={cerrar} margenObjetivo={margenObjetivo} />}
       </div>
     </>
   )
 }
 
-function FilaPresupuesto({ p, seleccionada, onAbrir }: {
+function FilaPresupuesto({ p, seleccionada, onAbrir, margenObjetivo }: {
   p: PresupuestoCascada
   seleccionada: boolean
   onAbrir: () => void
+  margenObjetivo: number | null
 }) {
   const e = lecturaEstado(p.estado)
   const conCifras = tieneCifras(p)
   const monto = conCifras ? millones(p.precio_venta) : null
   const margen = porcentajeCanon(p.margen_sobre_precio_pct)
-  const bajoObjetivo = p.margen_sobre_precio_pct !== null && p.margen_sobre_precio_pct < MARGEN_OBJETIVO
+  // SIN UMBRAL NO HAY JUICIO: `margenObjetivo === null` significa que nadie lo declaró o que este
+  // rol no puede verlo, y en los dos casos pintar la fila en rojo sería inventar un piso.
+  const bajoObjetivo = margenObjetivo !== null
+    && p.margen_sobre_precio_pct !== null && p.margen_sobre_precio_pct < margenObjetivo
   const problemas = problemasDe(p)
 
   return (

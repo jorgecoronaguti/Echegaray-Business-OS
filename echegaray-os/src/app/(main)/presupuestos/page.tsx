@@ -24,6 +24,7 @@ import { veEconomia } from '@/features/auth/types/areas'
 import { getCartera, getParametroComercialVigente } from '@/features/presupuestos/services/presupuestosService'
 import { getObrasDestino } from '@/features/presupuestos/services/conversionService'
 import { esFiltro } from '@/features/presupuestos/services/cartera'
+import { getParametrosOperativos, valorDe } from '@/features/presupuestos/services/parametrosOperativos'
 import { crearPresupuesto } from '@/features/presupuestos/services/actions'
 import { ListaPresupuestos } from '@/features/presupuestos/components/ListaPresupuestos'
 import { CamposPresupuesto } from '@/features/presupuestos/components/CamposPresupuesto'
@@ -64,10 +65,14 @@ export default async function PresupuestosPage({
   // porcentajes son una decisión empresarial: hasta la 4300 vivían tipeados en un `defaultValue` de
   // `CamposPresupuesto.tsx` y no eran los de la empresa — daban un coeficiente de 1,43 contra el
   // 1,68 del libro con el que se cotiza.
-  const [{ data, error }, obras, parametro] = await Promise.all([
+  // El UMBRAL DE MARGEN se lee acá por el mismo motivo, y con la sesión de quien mira: la fila
+  // está marcada `economico` y la RLS se la niega a un jefe de obra. Si no llega, la lista no pinta
+  // ninguna fila bajo objetivo — no inventa un piso.
+  const [{ data, error }, obras, parametro, operativos] = await Promise.all([
     getCartera(supabase),
     getObrasDestino(supabase),
     getParametroComercialVigente(supabase),
+    getParametrosOperativos(supabase, 'presupuestos'),
   ])
   const presupuestos = data ?? []
 
@@ -99,6 +104,7 @@ export default async function PresupuestosPage({
         presupuestos={presupuestos}
         filtro={filtro}
         seleccionInicial={sel ?? null}
+        margenObjetivo={valorDe(operativos.data, 'margen_objetivo_pct')}
         accion={
           abierta ? (
             <BotonPlano href="/presupuestos" testid="abrir-alta-presupuesto">
