@@ -7,8 +7,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditarHero, anchoDeSlot, anchoEnPx, PADDING_CELDA, IMPORTE_MAS_LARGO } from './cash-flow-hero-cabe.mjs'
-import { ANCHOS } from './cash-flow-piel-matriz.mjs'
+import {
+  auditarHero, anchoDeSlot, anchoEnPx, spansDelHero, PADDING_CELDA, IMPORTE_MAS_LARGO,
+} from './cash-flow-hero-cabe.mjs'
+import { ANCHOS, pielMatriz } from './cash-flow-piel-matriz.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
 import { IMPORTE_MUESTRA } from './cash-flow-invertido.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
@@ -36,7 +38,25 @@ const CUERPO = { rotulo: 9, valor: 12, nota: 9 }
  * muestra honesta (una glosa que termina en un nombre de proveedor, sin tope conocido) no la declara,
  * y así se ve qué queda sin medir en vez de creer que se midió todo.
  */
+/**
+ * LOS MERGES QUE LA PIEL EMITE SOBRE LA FILA DEL VALOR. Es lo que hace que la celda mida lo que el
+ * auditor cree que mide: sin ellos, el número tiene UNA columna de 95 px y el resto era desborde —
+ * que el PDF de Google no dibuja (ver la cabecera de `cash-flow-hero-cabe`).
+ */
+const mergesDelValor = (meta) => pielMatriz({ sheetId: 0, meta })
+  .filter((r) => r.mergeCells?.range?.startRowIndex === meta.hero.valor - 1)
+  .map((r) => ({ desde: r.mergeCells.range.startColumnIndex, hasta: r.mergeCells.range.endColumnIndex }))
+
 function piezasDe(meta, filas, { importe = IMPORTE_MAS_LARGO } = {}) {
+  // LA CELDA DEL VALOR TIENE QUE EXISTIR ANTES DE MEDIRLA. Medir el importe contra el slot entero
+  // mientras la celda es una columna es exactamente el agujero que dejó `($31.332.233` en el PDF: el
+  // auditor daba verde midiendo un ancho que el Sheet no le daba a nadie.
+  const merges = mergesDelValor(meta)
+  for (const { desde, hasta } of spansDelHero(meta.hero.slots, meta.footprint.cols)) {
+    if (hasta - desde <= 1) continue
+    assert.ok(merges.some((m) => m.desde === desde && m.hasta === hasta),
+      `${meta.pestana}: la piel no mergea la celda del valor en ${desde}..${hasta}, así que el importe se corta en su columna`)
+  }
   // SIN `?? []`. Ese operador convertía la AUSENCIA de declaración en un auditor que mide cero piezas
   // y dice que todo entra: borrar `meta.hero.piezas` del Semanal dejaba la suite en verde con los
   // cuatro rótulos y la glosa de CAJA HOY sin medir. Es el mismo defecto que este archivo corrigió
@@ -186,4 +206,42 @@ test('EL SLOT MÁS ANGOSTO MANDA: la glosa de la liquidez total se mide contra s
   })
   assert.equal(largo.ok, false, 'un control que no puede decir que no es una constante disfrazada')
   assert.ok(largo.desbordes[0].sobraPx > 0, JSON.stringify(largo.desbordes[0]))
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL VALOR — la única pieza que nunca había entrado al medidor, y la que se cortó en el PDF real
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL DEFECTO DEL RENDER: el peor caso NO entra en una columna, y por eso la celda se mergea', () => {
+  // Lo que el dueño vio en la pestaña aplicada: tres de los cuatro valores cortados un carácter.
+  // `($31.332.233)` se dibujó `($31.332.233`. Con `OVERFLOW_CELL` y la celda de al lado vacía. En
+  // pantalla desborda; en el PDF que exporta Google, no. El dato en la celda estaba entero.
+  const unaColumna = ANCHOS.tiempo - PADDING_CELDA
+  const peorCaso = anchoEnPx(IMPORTE_MAS_LARGO, { tamano: 12, negrita: true })
+  assert.ok(peorCaso > unaColumna,
+    `"${IMPORTE_MAS_LARGO}" mide ${Math.round(peorCaso)} px y una columna da ${unaColumna}: sin merge se corta`)
+  // Y el corte medido en el render cae donde la columna termina, no donde el slot termina: si el
+  // desborde se dibujara, `($31.332.233)` (119 px) habría entrado en los 374 del slot.
+  assert.ok(anchoEnPx('($31.332.233)', { tamano: 12, negrita: true }) > unaColumna, 'el caso real ya no reproduce el corte')
+
+  // LA CELDA MERGEADA SÍ LO BANCA, en las dos vistas y en los cuatro slots.
+  for (const meta of [
+    grillaMeses({ anio: 2026, refs: {} }).meta,
+    grillaSemanal({ hoy: new Date('2026-08-13T00:00:00Z'), anio: 2026, refs: {} }).meta,
+  ]) {
+    const cols = meta.footprint.cols
+    const merges = mergesDelValor(meta)
+    assert.deepEqual(merges, spansDelHero(meta.hero.slots, cols).filter((x) => x.hasta - x.desde > 1),
+      `${meta.pestana}: los merges del valor no cubren los slots`)
+    const r = auditarHero({
+      slots: meta.hero.slots,
+      cols,
+      anchoCol: anchoCol(cols),
+      piezas: meta.hero.slots.map((_, i) => ({ slot: i, pieza: 'valor', texto: IMPORTE_MAS_LARGO, tamano: 12, negrita: true })),
+    })
+    assert.equal(r.ok, true, `${meta.pestana}: ${JSON.stringify(r.desbordes)}`)
+    // El slot más angosto de la pestaña sigue sobrando: no entra por un pelo.
+    const menor = Math.min(...r.medidas.map((m) => m.disponiblePx - m.anchoPx))
+    assert.ok(menor > 100, `el peor caso entra por ${menor} px: demasiado justo para un render que ya mintió`)
+  }
 })

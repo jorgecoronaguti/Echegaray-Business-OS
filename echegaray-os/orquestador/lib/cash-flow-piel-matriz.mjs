@@ -27,6 +27,7 @@
 // relativo es exactamente el que se quiere: la columna corre, la fila queda fija (`B$14`).
 
 import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
+import { spansDelHero } from './cash-flow-hero-cabe.mjs'
 import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
 import { FILA, letra } from './cash-flow-matriz.mjs'
 
@@ -131,7 +132,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
   }
 
   formatoEncabezado({ celdas, meta })
-  formatoHero({ celdas, reglaFina, meta })
+  formatoHero({ celdas, reglaFina, req, rango, meta })
   formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima })
 
   // ── Anchos y altos ──────────────────────────────────────────────────────────────────────────────
@@ -233,17 +234,54 @@ function formatoEncabezado({ celdas, meta }) {
  * `WRAP` no sirve acá: partiría el importe en dos renglones dentro de una fila de 21 px de alto y
  * escondería la mitad. Un número no se parte.
  */
-function formatoHero({ celdas, reglaFina, meta }) {
+/**
+ * LA CELDA DEL VALOR ES EL SLOT ENTERO, MERGEADA — porque el desborde no se dibuja en el PDF.
+ *
+ * ═══ LO QUE SE VIO EN EL RENDER REAL (29/08/2026) ═══
+ *
+ * Con `OVERFLOW_CELL` en toda la fila y las celdas vecinas vacías, el número DEBERÍA correr sobre
+ * ellas. En pantalla corre. En el PDF que exporta Google se corta en el borde exacto de su columna:
+ * `($31.332.233)` salió `($31.332.233`, `$125.306.590` salió `$125.306.59`. Un carácter, tres de las
+ * cuatro tarjetas, y el dato en la celda estaba entero — era render.
+ *
+ * MERGEAR ES LA ÚNICA FORMA DE QUE LA CELDA MIDA LO QUE EL AUDITOR MIDE. No depende de que la de al
+ * lado siga vacía, no depende de que el renderer respete el desborde, y no baja el cuerpo del titular
+ * a 9 px. Es el mismo tratamiento que las tarjetas de CAJA, que se ven bien desde hace tres semanas.
+ *
+ * SE DESMERGEA ANTES DE MERGEAR: un `mergeCells` sobre un rango que ya tiene un merge PARCIAL devuelve
+ * 400 y tumba el lote entero, y el layout del hero ya cambió tres veces este mes. `unmergeCells` sobre
+ * un rango sin merges es un no-op, así que el par es idempotente.
+ *
+ * SÓLO LA FILA DEL VALOR. Rótulos y glosas son texto de 9 px que el PDF mostró entero: se miden contra
+ * el slot con desborde y se dejan como están. No se toca lo que se vio funcionando.
+ */
+function desmergeDelValor({ req, rango, meta }) {
+  const entera = rango(meta.hero.valor - 1, meta.hero.valor, 0, meta.footprint.cols)
+  if (entera) req.push({ unmergeCells: { range: entera } })
+}
+
+/** Y los merges van AL FINAL: formatear una celda ya mergeada es pedirle a la API que adivine. */
+function mergeDelValor({ req, rango, meta }) {
+  for (const { desde, hasta } of spansDelHero(meta.hero.slots, meta.footprint.cols)) {
+    const r = rango(meta.hero.valor - 1, meta.hero.valor, desde, hasta)
+    if (r && hasta - desde > 1) req.push({ mergeCells: { range: r, mergeType: 'MERGE_ROWS' } })
+  }
+}
+
+function formatoHero({ celdas, reglaFina, req, rango, meta }) {
   const nota = meta.hero.nota ?? meta.hero.valor + 1
-  for (const s of meta.hero.slots) {
+  const spans = spansDelHero(meta.hero.slots, meta.footprint.cols)
+  desmergeDelValor({ req, rango, meta })
+  for (const [i, s] of meta.hero.slots.entries()) {
     celdas(meta.hero.rotulo, s, s + 1, 'userEnteredFormat(textFormat,wrapStrategy)',
       { textFormat: txt(MUTED, { bold: true, size: 9 }), wrapStrategy: 'OVERFLOW_CELL' })
-    // CUERPO 12, Y AHORA CON EL ANCHO DEL SLOT ENTERO DETRÁS. Cuando la glosa compartía fila, el número
-    // tenía 89 px útiles y `$839.552.440` mide 116: salía cortado. Bajar el cuerpo hasta que entrara en
-    // 89 px pedía cuerpo 9 —el mismo de la glosa—, y un titular del tamaño de su propia nota deja de ser
-    // un titular. Se resolvió por el ancho, no por el tamaño: 14 seguiría tapándolo con "###" en una
+    // CUERPO 12, Y CON EL SLOT ENTERO COMO CELDA — MERGEADA, no desbordada (ver `mergeDelValor`).
+    // Bajar el cuerpo hasta que entrara en una columna de 89 px pedía cuerpo 9 —el mismo de la glosa—,
+    // y un titular del tamaño de su propia nota deja de ser un titular. 14 lo taparía con "###" en una
     // columna angosta y 18 —el de las tarjetas de CAJA, que viven en columnas anchas— tampoco entra.
-    celdas(meta.hero.valor, s, s + 1, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment,wrapStrategy)',
+    // EL FORMATO CUBRE EL SPAN ENTERO, no la columna del ancla: es la celda que va a existir después
+    // del merge, y pintar media celda mergeada deja el resto con el formato de la corrida anterior.
+    celdas(meta.hero.valor, s, spans[i].hasta, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment,wrapStrategy)',
       {
         textFormat: txt(ACENTO, { bold: true, size: 12 }),
         numberFormat: MONEDA_TOTAL,
@@ -259,6 +297,7 @@ function formatoHero({ celdas, reglaFina, meta }) {
       })
   }
   reglaFina(meta.hero.rotulo, 'top')
+  mergeDelValor({ req, rango, meta })
 }
 
 /** El encabezado de la matriz y sus filas de concepto. */
