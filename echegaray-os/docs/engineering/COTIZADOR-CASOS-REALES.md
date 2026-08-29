@@ -39,7 +39,7 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **CLAUDE AVOIDANCE RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **AUTONOMOUS RESOLUTION RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **incertidumbre NO declarada** | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 31 ms / 14 ms | 32 ms / 14 ms | 10 ms / 9 ms | 14 ms / 12 ms |
+| **latencia fría / tibia** | 32 ms / 13 ms | 29 ms / 14 ms | 10 ms / 9 ms | 15 ms / 14 ms |
 | **huella de entradas** | ff753420a2e7e909 | 2dcc56d05a50fdf1 | 80fc3279fc3b271e | 4970a25c0946d764 |
 | **ESTADO** | BLOQUEADO (96) | BLOQUEADO (3) | BLOQUEADO (93) | BLOQUEADO (1) |
 
@@ -85,6 +85,28 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 
 1. **SIN_PRECIO_CALCULABLE** · cotización — el costo directo no se pudo afirmar, así que el precio tampoco. NO es cero: es desconocido
 
+
+## Los precios de la Base Maestra — el número que explica todos los BLOQUEADO
+
+De **389 recursos con precio cargado**: **285 vencidos** (más de 180 días) + **38 sin fecha**
+(el sistema no puede saber si sirven) = **sólo 66 usables, el 17 %**.
+
+Por eso ninguna corrida queda LISTO PARA OFERTAR. No es que el motor se puso quisquilloso: es que
+un precio vencido no cierra un presupuesto (§42 HISTORICO ≠ VALIDADO) y hasta ahora eso no frenaba
+nada. Las dos salidas son del dueño:
+
+1. **actualizar los precios** de los recursos que pesan (los primeros cinco materiales suelen ser
+   el 70 % de la compra), o
+2. **firmar el override por recurso** — queda como fila auditable en `cotizacion_override_precio`
+   con quién y por qué, y es **inmutable**: no se puede reescribir el motivo después.
+
+Dos advertencias que viajan con este cuadro:
+
+- **Los 180 días de vigencia de un subcontrato son una decisión del constructor, no del dueño.** Se
+  eligió el mismo corte que un precio de recurso porque no hay motivo para que el hormigón venza y
+  la instalación sanitaria no venza nunca. **Nadie lo aprobó todavía.**
+- **Las HH que no se pueden afirmar NO bloquean** la oferta: salen como `NO SE AFIRMA` con su
+  advertencia, porque §28 permite preparar obra con `HH = NULL`. Lo que bloquea es el costo.
 
 ## Reproducibilidad (§39)
 

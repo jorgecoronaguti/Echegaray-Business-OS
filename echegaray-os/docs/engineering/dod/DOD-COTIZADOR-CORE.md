@@ -336,20 +336,37 @@ todo lo que ve SQL lo vea el motor: el motor nunca puede ser más ciego.
 **30 mutaciones, 30 ROJO.** Las que salieron verde en alguna vuelta anterior están anotadas arriba
 con su corrección (A12→A12b, A14→A14b, A19→A19b).
 
-## El número que va al dueño, medido de nuevo
+## EL NÚMERO QUE VA AL DUEÑO — es TRIPLE, y los tres con su consulta
 
-Los **89/231** del informe anterior eran de ESA cotización, no de la base. Medido sobre
-`recurso_precio_vigencia`, en toda la base:
+Ni el 73 % que reporté ni el 81 % del coordinador solos: reconciliados dan tres números y el que
+importa es el tercero.
 
+```sql
+select (select count(*) from public.recurso where activo is not false)                       as recursos_activos,
+       (select count(distinct recurso_id) from public.recurso_precio
+         where costo is not null and fecha_precio is not null)                               as con_precio_y_fecha,
+       (select count(distinct recurso_id) from public.recurso_precio
+         where costo is not null and fecha_precio is null)                                   as con_costo_sin_fecha,
+       (select count(distinct recurso_id) from public.recurso_precio_vigencia
+         where estado = 'HISTORICO')                                                         as vencidos,
+       (select count(distinct recurso_id) from public.recurso_precio_vigencia
+         where estado = 'EXTRAIDO')                                                          as usables;
 ```
-todas las observaciones:            285/389 vencidas (73 %)
-sólo las marcadas vigente = true:   285/389 vencidas (73 %)
-recursos con su precio vencido:     285
-```
 
-El coordinador pasó **285/351 (81 %)**: el numerador coincide, el denominador no. **No adopto un
-número que no puedo reproducir**: la consulta está arriba y da 389 observaciones con costo y fecha.
-Quien tenga el 351 debería decir con qué filtro lo obtuvo — la diferencia son 38 filas.
+| | |
+|---|---|
+| recursos activos en la Base Maestra | **406** |
+| con precio **y** fecha | 351 |
+| con costo y **sin fecha** | 38 |
+| — de los 389 con costo: **VENCIDOS** | **285** |
+| — de los 389 con costo: **USABLES** | **66 (17 %)** |
+
+**De 389 recursos con precio, 285 están vencidos y 38 no tienen fecha: sólo 66 son usables.** Los
+38 sin fecha no son un detalle de redondeo — son precios que el sistema NO PUEDE saber si sirven, y
+contarlos como vigentes era lo que inflaba el porcentaje bueno. Mi 73 % los daba por buenos; el
+81 % los excluía del denominador. Los tres números juntos son la única lectura honesta.
+
+El 89/231 del primer informe era de UNA cotización, no de la base. Corregido en las dos direcciones.
 
 ## Lo que la vuelta 5 NO cerró
 
@@ -361,3 +378,68 @@ Quien tenga el 351 debería decir con qué filtro lo obtuvo — la diferencia so
   mismo corte que un precio de recurso porque no hay motivo para que uno venza y el otro no, pero
   nadie lo firmó.
 - **El rol `administracion` sigue sin existir en ningún perfil.**
+
+
+---
+
+# VUELTA 6 — el verde inalcanzable, la firma que no podía escribir, y los dos pedidos del FRONT
+
+| # | Qué rompía | Cómo quedó | Mutación |
+|---|---|---|---|
+| 1 | `cruzarAlcance` emite un SEGUNDO `EXCLUSION_CON_COMPUTO` con entidad = código de partida; los overrides sólo salían por patrón ⇒ **ninguna cotización con exclusión valorizada se podía congelar jamás**, ni el canónico del §19 | la firma del patrón se **propaga** a las partidas que ese patrón bloqueó; tests **por el CIRCUITO** con `correr()` | C1, C2 |
+| 2 | `firmarOverrideDePrecio` fallaba con `permission denied` (42501) y no tenía un solo test: la única salida del dueño para los 285 vencidos no funcionaba | **sin UPDATE**: `do nothing` devuelve la firma que ya estaba. Migración `20260829T2300` aplicada. Tests de firmar Y leer como `authenticated` | C3 |
+| 3 | `set_global_policy` pasaba la validación (el permiso sólo dice QUIÉN) | rechazada en `validar()`, con la acción que sí corresponde en la pregunta | D1 |
+| 4 | las cuatro acciones numéricas aceptaban negativos | guarda en las cuatro; `set_resource_price` no tenía ni rama propia | D2, D3, D4, D5 |
+
+## Las dos decisiones de esta vuelta, argumentadas
+
+**Una entrada de alcance con `decididoPor` NO necesita segunda firma.** Quien carga «pintura →
+EXCLUIDO, fuente: pliego art. 4.2, decididoPor: jorge» ya decidió sacar eso del presupuesto. Pedirle
+que además lo confirme es dos clics para el mismo acto, y el segundo se aprieta sin leer. La
+confirmación separada existe para el caso peligroso: la exclusión que salió de leer dos documentos
+sin que nadie la mire.
+
+**Un porcentaje comercial negativo se RECHAZA, no sale AMBIGUO.** `AMBIGUO` es para cuando no se
+sabe qué quiso decir; acá el número está claro. Un beneficio de −5 % es vender bajo costo, y esa
+decisión no se toma bajando este parámetro: se toma con un **descuento declarado**, que es otro
+concepto, deja otro rastro y se explica distinto delante del dueño. Bajar el beneficio a negativo
+esconde la decisión adentro de un campo que nadie mira como «descuento».
+
+## Tres cosas que el DoD dejaba inferir y ahora dice
+
+1. **El issue de HH sin publicar NO bloquea.** Cuando alguna partida no puede afirmar sus horas, el
+   total sale `null` con un issue de severidad ALTA — y eso es deliberado: §28 permite preparar obra
+   con `HH = NULL`, así que las horas faltantes no pueden frenar una oferta. Lo que sí frena es el
+   COSTO, que es otra cosa.
+2. **Los 180 días de vigencia de un subcontrato son una decisión mía, sin firmar.** Se eligió el
+   mismo corte que un precio de recurso porque no hay motivo para que el hormigón venza a los 180
+   días y la instalación sanitaria no venza nunca. **Nadie lo aprobó.**
+3. **La firma de un override es inmutable por diseño**, no por omisión: no hay `GRANT UPDATE` ni
+   policy de UPDATE, y el código usa `do nothing`. Si el motivo cambia es porque pasó algo nuevo, y
+   eso es otro hecho (§21).
+
+## Tabla de mutaciones — vuelta 6 (C, D)
+
+| id | mutación (archivo → qué se rompe) | test que la caza | resultado |
+|---|---|---|---|
+| C1 | `orquestador.mjs` — quitar la propagación de `firmaDelPatron` a las partidas | claude-zero · «CIRCUITO · «sacá pintura» del dueño con decididoPor DESTRABA» | ROJO |
+| C2 | `orquestador.mjs` — `.filter(() => true)` en la propagación | claude-zero · «CIRCUITO · la firma de un patrón NO destraba la de otro» | ROJO |
+| C3 | `pg.mjs` — restituir `on conflict … do update set motivo` | pg · «FIRMAR Y LEER un override de precio…» | ROJO |
+| D1 | `comandos.mjs` — quitar la rama `set_global_policy` de `validar` | comandos · «set_global_policy se RECHAZA en la validación» | ROJO |
+| D2 | `comandos.mjs` — quitar la guarda `valor < 0` comercial | comandos · «un porcentaje comercial NEGATIVO se rechaza» | ROJO |
+| D3 | `comandos.mjs` — quitar la guarda de cantidad negativa | comandos · «las CUATRO acciones numéricas rechazan un negativo» | ROJO |
+| D4 | `comandos.mjs` — quitar la guarda de subcontrato negativo | comandos · idem | ROJO |
+| D5 | `comandos.mjs` — quitar la guarda de precio de recurso negativo | comandos · idem | ROJO |
+
+**38 mutaciones acumuladas (A19 + B11 + C3 + D5), 38 ROJO.**
+
+## Lo que la vuelta 6 NO cerró
+
+- **Sigue sin insertarse el `cotizacion_evento` del override.** La fila auditable se escribe y se
+  lee; el evento del §21 sigue faltando y es del caller.
+- **`analisis_linea.cantidad` NULL sigue sin existir en la base**: guarda probada con fixtures.
+- **Los 180 días del subcontrato siguen sin firma del dueño.**
+- **El rol `administracion` sigue sin existir en ningún perfil real.**
+- **`set_global_policy` quedó sin camino**: se rechaza en el motor y no hay otra vía para cambiar la
+  política de la empresa. Cambiar `parametro_comercial` hoy es un INSERT a mano en la base. Es
+  coherente con §17 —no se cambia desde una conversación— pero significa que **no existe el flujo**.

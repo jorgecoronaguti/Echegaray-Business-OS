@@ -415,3 +415,77 @@ test('factorFinanciero NO es un porcentaje: pedir 1,5 guarda 1,5 y no 0,015', ()
   })
   assert.equal(b.eventos[0].despues, 0.19)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// VUELTA 6 — los dos pedidos del FRONT
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('set_global_policy se RECHAZA en la validación, no sólo por permiso', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar la rama `if (intent.action === 'set_global_policy')` de `validar`.
+  //
+  // El permiso GLOBAL_POLICY_WRITE dice QUIÉN puede: el dueño lo tiene, y con eso la acción pasaba
+  // la validación y llegaba a mutar el estado de ESTA cotización. §17 dice que una conversación no
+  // cambia la política de la empresa, y cambiar el beneficio global afecta a TODAS las ofertas
+  // vivas. El freno va en la validación, que es donde se ven todos los caminos.
+  const r = ejecutar({
+    intent: intencion({ action: 'set_global_policy', target: 'pctBeneficio', value: 19 }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: () => { throw new Error('MUTÓ') }, confirmado: true,
+  })
+  assert.equal(r.ok, false)
+  assert.equal(r.etapaQueParo, 'VALIDACION')
+  assert.match(r.porQue, /no se cambia desde una cotización/)
+  assert.match(r.pregunta, /override comercial/, 'y ofrece la acción que sí corresponde')
+  assert.equal(r.eventos.length, 0)
+})
+
+test('un porcentaje comercial NEGATIVO se rechaza — y no como AMBIGUO', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `validar`, sacar la guarda `if (valor < 0)` de commercial_override.
+  //
+  // No es AMBIGUO: AMBIGUO es para cuando no se sabe qué quiso decir, y acá el número está claro.
+  // Un beneficio de −5 % es vender bajo costo, y eso NO se hace bajando este parámetro: se hace con
+  // un descuento declarado, que deja otro rastro y se explica distinto delante del dueño.
+  const r = ejecutar({
+    intent: intencion({ action: 'commercial_override', target: 'pctBeneficio', value: -5 }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: () => { throw new Error('MUTÓ') }, confirmado: true,
+  })
+  assert.equal(r.ok, false)
+  assert.equal(r.etapaQueParo, 'VALIDACION')
+  assert.match(r.porQue, /vender bajo costo/)
+  assert.match(r.pregunta, /descuento/)
+})
+
+test('las CUATRO acciones numéricas rechazan un negativo', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar cualquiera de las cuatro guardas `< 0`.
+  const casos = [
+    ['update_quantity', { target: 'mamposteria', value: -520, unit: 'm2' }, /cantidad negativa/],
+    ['set_subcontract', { target: 'sanitaria', value: -8_500_000, unit: 'ARS', supplier: 'X' }, /no puede costar menos que cero/],
+    ['set_resource_price', { target: 'MAT-CEM', value: -18_000, unit: 'ARS', source: 'lista' }, /no puede costar menos que cero/],
+    ['commercial_override', { target: 'pctBeneficio', value: -0.05 }, /vender bajo costo/],
+  ]
+  for (const [action, campos, re] of casos) {
+    const r = ejecutar({
+      intent: { ...intencion({ action, target: campos.target, value: campos.value, unit: campos.unit }), ...campos },
+      rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: () => { throw new Error(`MUTÓ en ${action}`) }, confirmado: true,
+    })
+    assert.equal(r.ok, false, `${action} aceptó un negativo`)
+    assert.equal(r.etapaQueParo, 'VALIDACION', action)
+    assert.match(r.porQue, re, action)
+  }
+})
+
+test('...y el mismo número en POSITIVO sí pasa: la guarda no es un muro', () => {
+  const r = ejecutar({
+    intent: intencion({ action: 'update_quantity', target: 'mamposteria', value: 520, unit: 'm2' }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(r.ok, true)
+})
+
+test('un precio de recurso SIN FUENTE no se puede cargar', () => {
+  const r = ejecutar({
+    intent: intencion({ action: 'set_resource_price', target: 'MAT-CEM', value: 18_000, unit: 'ARS' }),
+    rol: ROL.DUENO, actor: 'jorge', estado: ESTADO_BASE, mutar: mutarNoOp, confirmado: true,
+  })
+  assert.equal(r.ok, false)
+  assert.match(r.porQue, /no se puede volver a consultar cuando venza/)
+})

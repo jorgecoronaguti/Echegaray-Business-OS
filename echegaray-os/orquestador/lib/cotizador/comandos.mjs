@@ -69,6 +69,9 @@ export function validar(intent, estado = {}) {
       return { ok: false, porQue: leida.porQue, pregunta: `¿«${intent.textoOriginal ?? intent.value}» son ${leida.lecturas?.map((l) => `${l.valor} ${l.unidad ?? '(sin unidad)'}`).join(' o ')}?`, lecturas: leida.lecturas }
     }
     if (!Number.isFinite(Number(leida.valor))) return { ok: false, porQue: `«${intent.value}» no es una cantidad` }
+    // Una cantidad negativa no es un cómputo: es un error de tipeo o un intento de restar de un
+    // total. Restar se hace excluyendo la partida, que deja rastro y se puede deshacer.
+    if (Number(leida.valor) < 0) return { ok: false, porQue: `«${intent.value}» es una cantidad negativa: para sacar trabajo del presupuesto se excluye la partida, no se resta`, pregunta: `¿querés excluir «${intent.target}» del alcance?` }
     const compat = compatibleConPartida({ unidad: leida.unidad, unidadPartida: partida.unidad })
     if (!compat.ok) return { ok: false, porQue: compat.porQue, estado: compat.estado }
     return { ok: true, partida, valor: Number(leida.valor) * (compat.factor ?? 1), unidad: partida.unidad, unidadEsperada: partida.unidad, anterior: partida.cantidad }
@@ -93,17 +96,38 @@ export function validar(intent, estado = {}) {
       ? { valor: Number(intent.value), unidad: intent.unit, estado: ESTADO.EXTRAIDO }
       : leerCantidad(String(intent.value ?? ''), { contexto: 'MONETARIO' })
     if (!Number.isFinite(Number(leida.valor))) return { ok: false, porQue: `«${intent.value}» no es un precio` }
+    // Un subcontrato negativo sería que el subcontratista nos paga. Si existe una nota de crédito,
+    // es otro hecho y va por otro lado — este repo ya pagó caro confundir el signo de una NC.
+    if (Number(leida.valor) < 0) return { ok: false, porQue: `«${intent.value}» es un precio negativo: un subcontrato no puede costar menos que cero` }
     // La unidad de ESTE campo es la MONEDA, no la unidad de la partida. Pasarle `un` al detector
     // de atípicos hacía que $8.500.000 cayera fuera del rango de un CONTEO y se rechazara como
     // «físicamente imposible»: un precio no se mide en la unidad de lo que compra.
     return { ok: true, partida, valor: Number(leida.valor), unidad: leida.unidad ?? 'ARS', unidadEsperada: 'ARS', moneda: leida.unidad ?? 'ARS', proveedor: intent.supplier, anterior: partida.subcontrato ?? null }
   }
 
-  if (intent.action === 'commercial_override' || intent.action === 'set_global_policy') {
+  if (intent.action === 'set_global_policy') {
+    // ═══ LA POLÍTICA GLOBAL NO SE CAMBIA DESDE UNA COTIZACIÓN (§17) ═══
+    //
+    // El permiso `GLOBAL_POLICY_WRITE` ya la separa de `COMMERCIAL_WRITE`, pero eso sólo dice QUIÉN
+    // puede: el dueño lo tiene, y con eso la acción pasaba la validación y llegaba a mutar el
+    // estado de ESTA cotización. §17 dice que una conversación no cambia la política de la empresa,
+    // y el motor de la cotización no es el lugar donde eso se decide — cambiar el beneficio global
+    // afecta a todas las ofertas vivas, no a la que se está armando.
+    //
+    // El freno va acá, en la VALIDACIÓN, y no en la pantalla: es donde se ven todos los caminos.
+    // Lo pidió el frente al cablear la conversación, y tiene razón.
+    return {
+      ok: false,
+      porQue: 'la política comercial GLOBAL de la empresa no se cambia desde una cotización: afecta a todas las ofertas vivas, no sólo a ésta (§17)',
+      pregunta: `¿querés que este cambio valga sólo para esta cotización? Eso es un override comercial sobre «${intent.target}»`,
+    }
+  }
+
+  if (intent.action === 'commercial_override') {
     const rechazo = rechazarEscrituraDeCoeficiente(intent.target)
     if (rechazo) return { ok: false, porQue: rechazo.porQue, pregunta: `¿cuál querés mover? ${rechazo.componentes.join(', ')}` }
     if (!PARAMETROS.includes(intent.target)) return { ok: false, porQue: `«${intent.target}» no es un parámetro de la política comercial` }
-    if (intent.action === 'commercial_override' && esNormativo(intent.target)) {
+    if (esNormativo(intent.target)) {
       return { ok: false, porQue: `el ${intent.target} es normativo: no se negocia por cotización` }
     }
     const v = Number(intent.value)
@@ -114,8 +138,34 @@ export function validar(intent, estado = {}) {
     // factor cien veces más chico, sin un solo aviso. Lo encontró la auditoría adversarial.
     const esFactor = intent.target === 'factorFinanciero'
     const valor = (!esFactor && v > 1) ? v / 100 : v
-    if (!Number.isFinite(valor) || valor < 0) return { ok: false, porQue: `«${intent.value}» no es un porcentaje` }
+    if (!Number.isFinite(valor)) return { ok: false, porQue: `«${intent.value}» no es un número` }
+    // ═══ UN PORCENTAJE NEGATIVO SE RECHAZA, NO SE PREGUNTA ═══
+    //
+    // No es AMBIGUO: AMBIGUO es para cuando no se sabe qué quiso decir, y acá el número está claro.
+    // Un beneficio de −5 % es una decisión de vender bajo costo, y esa decisión NO se toma bajando
+    // el beneficio a negativo: se toma con un descuento declarado, que es otro concepto, deja otro
+    // rastro y se explica distinto delante del dueño. Bajar el beneficio a negativo esconde la
+    // decisión adentro de un campo que nadie mira como «descuento».
+    if (valor < 0) {
+      return {
+        ok: false,
+        porQue: `un ${intent.target} negativo (${intent.value}) significa vender bajo costo, y eso no se hace bajando este parámetro: se hace con un descuento declarado, que deja otro rastro`,
+        pregunta: '¿querés cargar un descuento sobre el precio en vez de un beneficio negativo?',
+      }
+    }
     return { ok: true, parametro: intent.target, valor, anterior: estado.politica?.[intent.target] ?? null }
+  }
+
+  if (intent.action === 'set_resource_price') {
+    // La cuarta acción numérica. No tenía rama propia: caía al chequeo genérico de campos faltantes
+    // y un precio negativo llegaba a la mutación sin que nada lo mirara.
+    const leida = intent.unit === 'ARS' || intent.unit === 'USD'
+      ? { valor: Number(intent.value), unidad: intent.unit }
+      : leerCantidad(String(intent.value ?? ''), { contexto: 'MONETARIO' })
+    if (!Number.isFinite(Number(leida.valor))) return { ok: false, porQue: `«${intent.value}» no es un precio` }
+    if (Number(leida.valor) < 0) return { ok: false, porQue: `«${intent.value}» es un precio negativo: un recurso no puede costar menos que cero` }
+    if (!intent.source) return { ok: false, porQue: 'un precio sin fuente no se puede volver a consultar cuando venza', pregunta: '¿de dónde salió ese precio?' }
+    return { ok: true, recurso: intent.target, valor: Number(leida.valor), moneda: leida.unidad ?? 'ARS', fuente: intent.source }
   }
 
   if (faltan.length) return { ok: false, porQue: `faltan datos para «${intent.action}»: ${faltan.join(', ')}` }
