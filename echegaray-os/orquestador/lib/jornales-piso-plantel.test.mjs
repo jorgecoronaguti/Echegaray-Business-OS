@@ -99,20 +99,22 @@ test('EL DEFECTO: el plantel salía de la quincena CERRADA y dejaba 2 personas d
   const conVigente = sigmaConAumentoDelPlantel(grid, elegido.bloque, ESCALON)
   const conCerrada = sigmaConAumentoDelPlantel(grid, cerrada, ESCALON)
   // 17 personas: lo que cobran hoy 5×5.600 + 7×5.200 + 3×4.500 + 2×4.300 = $86.500, más el aumento
-  // 12×(6.348/2) + 5×(5.399/2) = $51.585,50. Total $138.085,50.
+  // —media brecha al piso de cada uno: 5×$374 + 7×$574 + 3×$449,50 + 2×$549,50 = $8.335,50.
   assert.equal(conVigente.hoy, 86500)
-  assert.equal(conVigente.aumento, 51585.5)
-  assert.equal(conVigente.total, 138085.5)
-  // Con el plantel de la cerrada (15): $76.400 + $45.712 = $122.112. Faltaban $15.973,50 por hora.
-  assert.equal(conCerrada.total, 122112)
-  assert.equal(conVigente.total - conCerrada.total, 15973.5)
+  assert.equal(conVigente.aumento, 8335.5)
+  assert.equal(conVigente.total, 94835.5)
+  // Con el plantel de la cerrada (15): $76.400 + $7.512 = $83.912. Faltaban $10.923,50 por hora.
+  assert.equal(conCerrada.total, 83912)
+  assert.equal(conVigente.total - conCerrada.total, 10923.5)
   assert.equal(conVigente.personas, 17)
   assert.equal(conCerrada.personas, 15)
   // EL AUMENTO NO REEMPLAZA LA TARIFA: si alguien vuelve al piso, la Σ sería personas × básico
-  // ($103.171 con 17) y este test lo agarra por el número, no por el nombre de la función.
+  // ($103.171 con 17) y este test lo agarra por el número, no por el nombre de la función. Y la Σ con
+  // aumento tiene que quedar POR DEBAJO de eso: se cierra media brecha, no la brecha.
   assert.notEqual(conVigente.total, 103171, 'volvió a valuar el plantel A LA HORA DEL CONVENIO')
-  // Y nadie queda bajo el mínimo legal con estas tarifas: la lista vacía es parte del contrato.
-  assert.deepEqual(conVigente.bajoConvenio, [])
+  assert.ok(conVigente.total < 103171, 'la Σ con aumento pasó el piso del plantel')
+  // Los 17 siguen bajo su piso después del aumento: es la decisión, y se cuenta.
+  assert.equal(conVigente.bajoConvenio.length, 17)
 })
 
 test('sin nadie cargado en la quincena en curso el plantel VUELVE a la cerrada — y el rótulo lo dice', () => {
@@ -167,23 +169,23 @@ test('EL DEFECTO, EN PESOS: la proyección valía el 66% del piso — el plantel
   const piso = suma(alPiso(grid, vigente))
 
   assert.ok(antes < piso, 'la proyección quedaba POR DEBAJO de lo que ella misma decía cubrir')
-  // Σ $122.112/$138.085,50 (plantel) × 7,18 h por día hábil contra la jornada real (9/8/4): la
+  // Σ $83.912/$94.835,50 (plantel) × 7,18 h por día hábil contra la jornada real (9/8/4): la
   // proyección valía el 66,1% de la obligación. Los factores se MULTIPLICAN, y por eso el agujero es
   // mayor que cualquiera de los dos por separado. (La razón del plantel no es 15/17: la Σ pesa por
   // tarifa y por categoría, y las dos altas fueron un Oficial y un Ayudante.)
-  assert.equal(Number((antes / piso).toFixed(4)), 0.6609)
+  assert.equal(Number((antes / piso).toFixed(4)), 0.6613)
   // El faltante en pesos de las ocho quincenas que se PAGAN de septiembre a diciembre — el importe
   // exacto, no un umbral: un `>` se sigue cumpliendo cuando el arreglo se revierte a medias.
   //
-  // LOS TRES NÚMEROS SUBIERON RESPECTO DE LA VERSIÓN «PISO» ($54,0M/$81,6M/$27,5M) y no es un error de
-  // este test: con el aumento aditivo la Σ por hora es mayor que valuar el plantel a la escala
-  // ($138.085,50 contra $103.171), porque el aumento se SUMA a lo que ya se cobra en vez de
-  // reemplazarlo. Que estos tres números bajen a los viejos significa que alguien volvió al piso.
-  assert.equal(Math.round(antes), 72_195_721)
-  assert.equal(Math.round(piso), 109_234_032)
+  // LOS TRES NÚMEROS SON MENORES que los de la versión «piso» ($54,0M/$81,6M) y que los de la
+  // primera lectura del aumento ($72,1M/$109,2M): con la regla definitiva la Σ por hora ($94.835,50)
+  // queda POR DEBAJO de valuar el plantel a la escala ($103.171), porque se cierra media brecha. Si
+  // estos números vuelven a subir, alguien volvió a alguna de las dos lecturas descartadas.
+  assert.equal(Math.round(antes), 49_610_909)
+  assert.equal(Math.round(piso), 75_020_651)
   // Se redondea la RESTA de los dos redondeados, no la resta cruda: si no, el test se cae por un peso
   // de acarreo y manda a buscar un defecto que no existe.
-  assert.equal(Math.round(piso) - Math.round(antes), 37_038_311)
+  assert.equal(Math.round(piso) - Math.round(antes), 25_409_742)
 })
 
 test('EL DEFECTO: la obligación se valuaba con la asistencia — una sola frontera decide base y horas', () => {

@@ -29,7 +29,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { categoriasDelBloque, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
 import { expresionSinEscala } from './jornales-piso-uocra.mjs'
-import { evaluarFormula } from './evaluar-formula-sheet.mjs'
+import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'
 
 // ── LA RÉPLICA `_UOCRA_RAW`, MODELADA COMO LA LEE LA FÓRMULA ──
@@ -118,12 +118,13 @@ function resolverCuadro(grid, escrito = {}) {
     const cat = String(c.filas[i + 1][0])
     const basico = evaluarFormula(String(c.filas[i + 1][5]), { hoja, hojas: { _UOCRA_RAW: REPLICA } })
     hoja[`F${r}`] = basico
-    const aumento = evaluarFormula(String(c.filas[i + 1][6]), { hoja, hojas: { _UOCRA_RAW: REPLICA } })
-    hoja[`G${r}`] = aumento
-    const sigmaAumento = evaluarFormula(String(c.filas[i + 1][3]), { hoja })
+    const sigmaAumento = evaluarFormula(String(c.filas[i + 1][3]),
+      { hoja, hojas: { _UOCRA_RAW: REPLICA, _J_OBREROS: hojaDeGrilla(grid.map((f) => f ?? [])) } })
     hoja[`D${r}`] = sigmaAumento
+    const conAumento = evaluarFormula(String(c.filas[i + 1][6]), { hoja })
+    hoja[`G${r}`] = conAumento
     filas.push({
-      cat, personas: hoja[`B${r}`], hoy: hoja[`C${r}`], basico, aumento, sigmaAumento,
+      cat, personas: hoja[`B${r}`], hoy: hoja[`C${r}`], basico, sigmaAumento,
       estadoFormula: String(c.filas[i + 1][7]), hoja,
     })
   }
@@ -153,13 +154,13 @@ test('EL INCIDENTE: con la columna del dueño llena de basura, NADIE pierde su a
   assert.equal(sucio.aumento, limpio.aumento, 'la basura en la E le costó el aumento a alguien')
   assert.equal(sucio.hoy, limpio.hoy, 'la tarifa de hoy no puede depender de lo que diga la columna E')
 
-  // 3 · Y EL NÚMERO DE ESTA GRILLA, FIJADO: 2 Oficiales ($5.600 + $5.300) + 1 Ayudante ($4.500) +
-  //     1 «A M» ($4.300) + 1 «OF M» ($5.200) = $24.900 de tarifas, más el aumento — 3 Oficiales a
-  //     $3.174 y 2 Ayudantes a $2.699,50 = $14.921. Total $39.821 por hora.
+  // 3 · Y EL NÚMERO DE ESTA GRILLA, FIJADO. Tarifas: 2 Oficiales ($5.600 + $5.300) + 1 Ayudante
+  //     ($4.500) + 1 «A M» ($4.300) + 1 «OF M» ($5.200) = $24.900. Aumentos, media brecha contra el
+  //     piso de cada categoría: $374 + $524 + $449,50 + $549,50 + $574 = $2.471.
   assert.equal(sucio.hoy, 24900)
-  assert.equal(sucio.aumento, 3 * 3174 + 2 * 2699.5)
-  assert.equal(sucio.aumento, 14921)
-  assert.equal(sucio.hoy + sucio.aumento, 39821)
+  assert.equal(sucio.aumento, 374 + 524 + 449.5 + 549.5 + 574)
+  assert.equal(sucio.aumento, 2471)
+  assert.equal(sucio.hoy + sucio.aumento, 27371)
 })
 
 test('LAS CUATRO FILAS DICEN QUE SE IGNORÓ LA CELDA DEL DUEÑO, Y CONTRA QUÉ MIDIERON', () => {
