@@ -22,6 +22,7 @@ import { promisify } from 'node:util'
 import { PDF_MIN_CARACTERES_UTILES } from './buscar.mjs'
 import { errorDeCelda } from './celda.mjs'
 import { FORMATO, formatoDe } from '../ingesta/registro.mjs'
+import { leerWord } from '../ingesta/word.mjs'
 
 const correr = promisify(execFile)
 const GUION_PDF = path.join(path.dirname(new URL(import.meta.url).pathname), 'leer-pdf.py')
@@ -129,7 +130,9 @@ export async function leerPdfLocal(bytes, { maxPaginas = PDF_MAX_PAGINAS } = {})
 /** Por qué NO se puede abrir cada formato que este circuito no sabe abrir. El motivo es el dato. */
 export const SIN_ADAPTADOR = Object.freeze({
   [FORMATO.IMAGEN]: 'es una imagen: sólo se lee mirándola, y este circuito corre sin modelo de visión',
-  [FORMATO.DOCUMENTO]: 'no hay adaptador de Word (.doc/.docx) en el repo: no está la dependencia y no se agrega por un archivo',
+  // El de Word ya NO está en esta lista: `ingesta/word.mjs` abre las dos variantes sin dependencia
+  // nueva. El motivo viejo —«no está la dependencia»— dejó 57 documentos sin leer, memorias
+  // descriptivas y el contrato de QUATTROPANI incluidos, por una dependencia que nunca hizo falta.
   [FORMATO.DWG]: 'un DWG se mide, no se lee como texto — eso lo hace ingesta/dwg.mjs dentro del pipeline de planos',
   [FORMATO.DXF]: 'un DXF se mide, no se lee como texto — eso lo hace ingesta/dxf.mjs dentro del pipeline de planos',
   [FORMATO.COMPRIMIDO]: 'está comprimido: hay que descomprimirlo antes, y descomprimir a ciegas lo que llega de afuera no se hace',
@@ -148,6 +151,7 @@ export async function leerArchivo(bytes, { nombre = '', mime = null } = {}) {
   const base = { formato, hash, bytes: bytes.length, nombre }
   if (formato === FORMATO.PLANILLA) return { ...base, ...(await leerPlanilla(bytes)) }
   if (formato === FORMATO.PDF) return { ...base, ...(await leerPdfLocal(bytes)) }
+  if (formato === FORMATO.DOCUMENTO) return { ...base, ...leerWord(bytes, { nombre }) }
   if (formato === FORMATO.TEXTO) {
     const texto = Buffer.from(bytes).toString('utf8')
     return texto.trim() ? { ...base, ok: true, texto } : { ...base, ok: false, porQue: 'el archivo de texto está vacío' }

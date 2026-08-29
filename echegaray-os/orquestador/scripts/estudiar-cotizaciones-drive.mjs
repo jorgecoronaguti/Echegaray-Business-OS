@@ -35,7 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { closePool, query } from '../lib/db.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
-import { CLASE, inventariar, subarbol } from '../lib/conocimiento/inventario-drive.mjs'
+import { CLASE, RAIZ_ADMINISTRACION, inventariar, subarbol } from '../lib/conocimiento/inventario-drive.mjs'
 import { formatoDe } from '../lib/ingesta/registro.mjs'
 import { cargar, guardar, incorporar, inventario, yaEstudiado } from '../lib/conocimiento/biblioteca.mjs'
 import { estudiarTanda } from '../lib/conocimiento/estudio-cotizaciones.mjs'
@@ -43,8 +43,7 @@ import { retirarPracticasSuperadas } from '../lib/conocimiento/practica-historic
 import { conCache } from '../lib/conocimiento/cache.mjs'
 import { resumen } from '../lib/conocimiento/hallazgos-cotizacion.mjs'
 
-/** La carpeta `administracion` de Drive: la que señaló el dueño. */
-export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
+export { RAIZ_ADMINISTRACION }
 
 /** Las clases del inventario que este comando estudia. El resto queda inventariado y declarado. */
 export const CLASES_QUE_ESTUDIA = Object.freeze([CLASE.COTIZACION_ECSAS, CLASE.RENDIMIENTO, CLASE.MEDICION])
@@ -152,9 +151,17 @@ async function main() {
     obtenidoEn: new Date().toISOString().slice(0, 10),
   })
 
-  console.log(`cotizaciones leídas: ${r.cotizaciones.length} · ya estudiadas: ${r.salteados.length} · no leídas: ${r.noLeidos.length}`)
+  console.log(`cotizaciones con la plantilla interna: ${r.cotizaciones.length} · en formato del cliente: ${r.cliente.length} · ya estudiadas: ${r.salteados.length} · no leídas: ${r.noLeidos.length}`)
+  const porClase = r.cliente.reduce((a, c) => { a[c.clase] = (a[c.clase] ?? 0) + 1; return a }, {})
+  if (r.cliente.length) console.log(`  formato del cliente por clase: ${Object.entries(porClase).map(([k, v]) => `${k} ${v}`).join(' · ')}`)
+  for (const c of r.cliente.filter((x) => x.discrepancia)) console.log(`  AMBIGUO  ${c.nombre} — ${c.discrepancia}`)
   for (const n of r.noLeidos) console.log(`  ✗ ${n.nombre} — ${n.porQue}`)
-  console.log(`\nprácticas observadas: ${r.practicas.length} (${resumirMadurez(r.practicas)})`)
+  console.log(`\nprácticas observadas (plantilla interna): ${r.practicas.length} (${resumirMadurez(r.practicas)})`)
+  console.log(`prácticas observadas (formato del cliente): ${r.practicasCliente.practicas.length} (${resumirMadurez(r.practicasCliente.practicas)}) — ${r.practicasCliente.resumen}`)
+  for (const p of r.practicasCliente.practicas.filter((x) => x.clave.startsWith('cotizacion_cliente.cierre.'))) {
+    console.log(`  ${p.clave.split('.').pop().padEnd(20)} n=${p.casos.length} obras=${p.obrasDistintas} media=${p.estadistica.media} min=${p.estadistica.min} max=${p.estadistica.max} dispersión=${p.estadistica.dispersion} madurez=${p.madurez}`)
+  }
+  for (const s of r.practicasCliente.sinCoeficiente.slice(0, 8)) console.log(`  sin coeficiente: ${s.concepto} en ${s.cotizacion} — ${s.porQue.slice(0, 90)}`)
   console.log(`hallazgos: ${JSON.stringify(r.resumen, null, 1)}`)
   // Los tres estados, uno por control. «12 controles pasados» sin decir cuántos ni siquiera
   // pudieron mirar es la frase que dejó pasar $ 4.149.546 adentro de un precio.
@@ -186,6 +193,7 @@ async function main() {
     // entre corridas y los controles no, porque un control no puede afirmar nada sobre una planilla
     // que esta vez no abrió. Por eso viaja con `sobre` y `salteadas` al lado.
     controles: bloqueDeControles(r),
+    corrida: bloqueDeCorrida(r, { candidatas: todas.length }),
     hallazgos: fusionados,
   }, null, 1)}\n`)
   console.log(`\n✓ biblioteca v${version}: ${JSON.stringify(inventario(biblioteca))}`)
@@ -199,6 +207,33 @@ async function main() {
  * 14 × 237 renglones y el dato que decide es CUÁNTAS no se pudieron mirar y POR QUÉ, no cuál fue la
  * número 143.
  */
+/**
+ * LO QUE LA CORRIDA LEYÓ, EN EL DISCO Y NO EN LA PANTALLA. PURA.
+ *
+ * ═══ POR QUÉ ESTO NO PODÍA SEGUIR VIVIENDO EN `stdout` ═══
+ *
+ * «114 candidatas · 64 con la plantilla interna · 38 en formato del cliente · 12 no leídas» era el
+ * respaldo de todo lo que la rama afirmaba, y sólo existía en la terminal de quien la corrió. Un
+ * número que no está en ningún archivo no lo puede verificar un tercero: es exactamente la clase de
+ * afirmación que este repo trata como incumplida.
+ *
+ * Va con el detalle de las NO LEÍDAS, que es el dato que impide leer «64 + 38» como «leí todo».
+ */
+export const bloqueDeCorrida = (r, { candidatas = null } = {}) => ({
+  candidatas,
+  plantillaInterna: r.cotizaciones.length,
+  formatoDelCliente: r.cliente.length,
+  formatoDelClientePorClase: r.cliente.reduce((a, c) => { a[c.clase] = (a[c.clase] ?? 0) + 1; return a }, {}),
+  yaEstudiadas: r.salteados.length,
+  noLeidas: r.noLeidos.length,
+  // Cada una con su motivo: sin esto, «12 no leídas» no permite saber si es un formato que falta
+  // soportar o un archivo roto.
+  porQueNoSeLeyeron: r.noLeidos.map((n) => ({ archivo: n.nombre, porQue: String(n.porQue ?? '').slice(0, 220) })),
+  practicasPlantillaInterna: r.practicas.length,
+  practicasFormatoDelCliente: r.practicasCliente.practicas.length,
+  cierresSinCoeficiente: r.practicasCliente.sinCoeficiente.length,
+})
+
 const bloqueDeControles = (r) => ({
   sobre: r.cotizaciones.length,
   salteadas: r.salteados.length,

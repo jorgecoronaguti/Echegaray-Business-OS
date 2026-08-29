@@ -175,6 +175,37 @@ test('NEGATIVO: un documento sólo adquirido NO cuenta como estudiado', () => {
   assert.equal(B.yaEstudiado(bib, 'abc'), false, 'guardar un PDF no es saber')
 })
 
+test('la ficha de un documento AVANZA: aprender a leerlo no puede dejarlo en NO_LEIDO', () => {
+  // ═══ 33 AFIRMACIONES FALSAS ═══
+  // El `id` sale del hash del CONTENIDO. Cuando el circuito aprendió a leer las planillas en formato
+  // del cliente, el archivo no cambió: mismo hash, mismo id — y la regla «gana la que ya estaba»
+  // conservaba la ficha «NO_LEIDO: no es la plantilla de cotización interna». La biblioteca terminó
+  // afirmando que no pudo leer los 33 archivos de los que sacó 97 prácticas.
+  const antes = B.documento({ fuenteId: 'f', url: 'u', hash: 'h1', etapa: B.ETAPA.NO_LEIDO, porQue: 'no es la plantilla interna' })
+  const ahora = B.documento({ fuenteId: 'f', url: 'u', hash: 'h1', etapa: B.ETAPA.ESTUDIADO })
+  assert.equal(antes.id, ahora.id, 'mismo contenido, mismo id: por eso la vieja tapaba a la nueva')
+  let bib = B.incorporar(B.cargar({ ruta: path.join(tmp(), 'b.json') }), { documentos: [antes] })
+  bib = B.incorporar(bib, { documentos: [ahora] })
+  assert.equal(bib.documentos.length, 1)
+  assert.equal(bib.documentos[0].etapa, B.ETAPA.ESTUDIADO)
+  assert.equal(bib.documentos[0].porQue, null, 'el motivo de por qué no se pudo leer ya no aplica')
+  // Y en el mismo movimiento deja de bajarse de Drive en cada corrida: `yaEstudiado` exige ESTUDIADO.
+  assert.equal(B.yaEstudiado(bib, 'h1'), true)
+})
+
+test('la ficha NO retrocede: una corrida que falla sobre algo ya estudiado no lo degrada', () => {
+  // La contraparte, y es la que impide que esto sea «gana la última». Si una corrida rota devolviera
+  // NO_LEIDO sobre un contenido ya estudiado, aceptarlo borraría el trabajo bueno y volvería a bajar
+  // el archivo para siempre. Se conserva lo mejor logrado; la regresión la grita la corrida.
+  assert.equal(B.fichaDeDocumento({ etapa: B.ETAPA.ESTUDIADO }, { etapa: B.ETAPA.NO_LEIDO }).etapa, B.ETAPA.ESTUDIADO)
+  assert.equal(B.fichaDeDocumento({ etapa: B.ETAPA.NO_LEIDO }, { etapa: B.ETAPA.PARSEADO }).etapa, B.ETAPA.PARSEADO)
+  assert.equal(B.fichaDeDocumento(null, { etapa: B.ETAPA.NO_LEIDO }).etapa, B.ETAPA.NO_LEIDO)
+  // A igual avance gana la nueva: trae la ruta y la fecha de esta corrida.
+  assert.equal(B.fichaDeDocumento({ etapa: B.ETAPA.NO_LEIDO, porQue: 'viejo' }, { etapa: B.ETAPA.NO_LEIDO, porQue: 'nuevo' }).porQue, 'nuevo')
+  // Y NO_LEIDO está abajo de todo a propósito: «lo tengo y no saqué nada» es el piso, no un empate.
+  assert.ok(B.AVANCE_DE_ETAPA[B.ETAPA.NO_LEIDO] < B.AVANCE_DE_ETAPA[B.ETAPA.ADQUIRIDO])
+})
+
 test('cambioDeVersion detecta contenido nuevo en la misma fuente', () => {
   const bib = B.incorporar(B.cargar({ ruta: path.join(tmp(), 'b.json') }), { documentos: [B.documento({ fuenteId: 'inti-cirsoc', hash: 'v1', url: 'u' })] })
   assert.equal(B.cambioDeVersion(bib, { fuenteId: 'inti-cirsoc', hash: 'v1' }).cambio, false)

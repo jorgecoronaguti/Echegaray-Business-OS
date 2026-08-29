@@ -19,6 +19,8 @@ import { pasarControles, paso } from './controles-cotizacion.mjs'
 import { celdasRotasDe } from './hallazgos-celdas.mjs'
 import { resumen } from './hallazgo.mjs'
 import { aprendizajes } from './aprendizaje-cotizacion.mjs'
+import { CLASE_PLANILLA, leerLibro } from './planilla-semantica.mjs'
+import { ADVERTENCIA_CLIENTE, practicasCliente } from './practica-cotizacion-cliente.mjs'
 
 /** ¿Este archivo tiene forma de cotización interna de ECSAS? Se decide por sus PESTAÑAS, no por su
  *  nombre: hay `COTIZACION INTERNA.xlsx` que no lo son y planillas con otro nombre que sí. PURA. */
@@ -100,10 +102,24 @@ export async function estudiarUno({ bytes, nombre, ruta = null, driveId = null, 
   if (!leido.ok) return { ...base, ok: false, porQue: leido.porQue, necesitaOcr: Boolean(leido.necesitaOcr) }
   if (!leido.hojas) return { ...base, ok: false, porQue: 'no es una planilla: la cotización interna de ECSAS vive en un libro de Excel' }
   if (!esCotizacionInterna(leido.pestanas)) {
-    return { ...base, ok: false, pestanas: leido.pestanas, porQue: `la planilla no tiene las pestañas ${HOJA.ANALISIS}/${HOJA.PRESUPUESTO}/${HOJA.GG}: no es la plantilla de cotización interna` }
+    // ═══ NO ES LA PLANTILLA DE ECSAS: NO ES LO MISMO QUE NO SER UNA COTIZACIÓN ═══
+    // Acá terminaban las 48 de ARCOR, con «formato diferente». El lector semántico busca el
+    // encabezado por lo que DICE y lee la planilla venga como venga; lo que no reconoce sale con el
+    // detalle de qué encabezados encontró, que es un motivo con el que se puede hacer algo.
+    const cliente = leerLibro(leido.hojas, { nombre })
+    if (!cliente.ok) {
+      return { ...base, ok: false, pestanas: leido.pestanas, porQue: `no tiene las pestañas ${HOJA.ANALISIS}/${HOJA.PRESUPUESTO}/${HOJA.GG} de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ${cliente.porQue}` }
+    }
+    return {
+      ...base, ok: true, formatoCotizacion: 'CLIENTE',
+      obra: obraDe(ruta ?? nombre), modificado, pestanas: leido.pestanas, formulas: leido.formulas,
+      hoja: cliente.hoja, clase: cliente.clase, discrepancia: cliente.discrepancia,
+      items: cliente.items, rubros: cliente.rubros, cierre: cliente.cierre, notas: cliente.notas,
+      porQue: cliente.porQue,
+    }
   }
   return {
-    ...base, ok: true,
+    ...base, ok: true, formatoCotizacion: 'ECSAS',
     obra: obraDe(ruta ?? nombre),
     modificado,
     pestanas: leido.pestanas,
@@ -144,6 +160,7 @@ export async function estudiarTanda(archivos = [], {
   obtenidoEn = null, opciones = {},
 } = {}) {
   const cotizaciones = []
+  const cliente = []
   const noLeidos = []
   const salteados = []
   for (const a of archivos) {
@@ -159,9 +176,13 @@ export async function estudiarTanda(archivos = [], {
     const r = await estudiarUno({ ...a, bytes })
     await recordarHash(a, r.hash)
     if (r.hash && yaEstudiado(r.hash)) { salteados.push({ ...a, hash: r.hash, porQue: 'ya estudiado: el contenido es idéntico al de otra corrida' }); continue }
-    if (r.ok) cotizaciones.push(r)
-    else noLeidos.push(r)
+    if (!r.ok) { noLeidos.push(r); continue }
+    if (r.formatoCotizacion === 'CLIENTE') cliente.push(r)
+    else cotizaciones.push(r)
   }
+  // Las dos familias NO se mezclan: la plantilla interna enseña cómo se arma el precio por dentro y
+  // la planilla entregada enseña con qué coeficientes se cerró. Meterlas en la misma lista obligaría
+  // a `practicas()` a entender dos formas distintas del mismo objeto, que es como se rompen las dos.
   const p = practicas(cotizaciones, opciones)
   // ═══ LOS HALLAZGOS SALEN DE LOS CONTROLES, NO DE UNA SEGUNDA LLAMADA ═══
   //
@@ -182,9 +203,23 @@ export async function estudiarTanda(archivos = [], {
     porCotizacion: indiceDeCotizaciones(cotizaciones),
     totalCotizaciones: cotizaciones.length,
   })
+  // Sólo las que el lector semántico clasificó COTIZACION: un CERTIFICADO tiene la misma forma y sus
+  // cantidades son las EJECUTADAS, así que enseñaría una práctica que nadie decidió al cotizar.
+  const soloCotizaciones = cliente.filter((c) => c.clase === CLASE_PLANILLA.COTIZACION)
+  const pc = practicasCliente(soloCotizaciones)
+  // La planilla entregada pasa por EL MISMO registro histórico que la plantilla interna. No es una
+  // comodidad: si tuviera su propio camino a la biblioteca, sería el segundo, y el segundo camino es
+  // exactamente lo que dejó 190 prácticas marcadas «lo medimos ejecutando» sin que nadie lo notara.
+  const historicosCliente = registrosHistoricos(pc.practicas, {
+    porCotizacion: indiceDeCotizaciones(cliente),
+    totalCotizaciones: soloCotizaciones.length,
+    advertencia: ADVERTENCIA_CLIENTE,
+  })
   return {
-    cotizaciones, noLeidos, salteados,
+    cotizaciones, cliente, noLeidos, salteados,
     practicas: p,
+    practicasCliente: pc,
+    historicosCliente,
     historicos,
     controles,
     paso: paso(controles),
@@ -198,8 +233,9 @@ export async function estudiarTanda(archivos = [], {
       // Y lo que se aprende de los defectos, que NUNCA es su número: la forma del defecto, con el
       // control que lo detecta. Va a la MISMA biblioteca; no hay una segunda base de aprendizajes.
       ...aprendizajes(h, { fecha: obtenidoEn }),
+      ...historicosCliente.map((r) => aConocimientoHistorico(r, { fecha: obtenidoEn })),
     ],
-    documentos: cotizaciones.map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0, obtenidoEn }))
+    documentos: [...cotizaciones, ...cliente].map((c) => documentoDe(c, { hubuoConocimiento: p.length > 0 || pc.practicas.length > 0, obtenidoEn }))
       .concat(noLeidos.filter((c) => c.hash).map((c) => documentoDe(c, { hubuoConocimiento: false, obtenidoEn }))),
     hallazgos: h,
     resumen: resumen(h),

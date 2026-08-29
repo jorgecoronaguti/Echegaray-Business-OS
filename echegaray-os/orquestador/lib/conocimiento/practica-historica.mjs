@@ -64,7 +64,7 @@ const rango = (fechas) => {
  * fecha de modificación de los archivos: es la única fecha que Drive garantiza, y decir que sale de
  * ahí es más honesto que llamarla «fecha de la cotización».
  */
-export function registroHistorico(practica, { porCotizacion = new Map(), totalCotizaciones = 0 } = {}) {
+export function registroHistorico(practica, { porCotizacion = new Map(), totalCotizaciones = 0, advertencia = ADVERTENCIA } = {}) {
   const casos = practica.casos ?? []
   const fichas = casos.map((c) => porCotizacion.get(c.cotizacion) ?? null)
   const archivos = [...new Set(casos.map((c, i) => fichas[i]?.archivo ?? archivoDeLaUbicacion(c.ubicacion)).filter(Boolean))]
@@ -92,7 +92,10 @@ export function registroHistorico(practica, { porCotizacion = new Map(), totalCo
     madurez: practica.madurez ?? null,
     confianzaDescriptiva: practica.confianza ?? 'BAJA',
     queSignifica: CONFIANZA_DESCRIPTIVA[practica.confianza] ?? CONFIANZA_DESCRIPTIVA.BAJA,
-    noEsUnaNorma: ADVERTENCIA,
+    // El corpus se nombra: `ADVERTENCIA` dice «cotizaciones INTERNAS de ECSAS» y hay una familia que
+    // sale de la planilla ENTREGADA AL CLIENTE. La advertencia sigue siendo la misma en sustancia
+    // —describe, no prescribe— pero mentir sobre de dónde salió el número no es un detalle.
+    noEsUnaNorma: advertencia,
   }
 }
 

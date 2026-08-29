@@ -1,32 +1,323 @@
 {
- "generado": "2026-08-28T14:57:19.475Z",
+ "generado": "2026-08-28T22:50:28.305Z",
  "raiz": "1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs",
  "resumen": {
-  "total": 430,
+  "total": 500,
   "porTipo": {
    "OFERTA_ROTA": 2,
    "IVA_ESCRITO_A_MANO": 1,
+   "RENGLON_INCOHERENTE": 3,
    "DATOS_DE_OTRO_CLIENTE": 24,
    "COEFICIENTE_AJUSTE_IMPLAUSIBLE": 12,
+   "CELDA_EN_ERROR": 64,
    "UNIDAD_CONTRADICTORIA": 4,
    "COEFICIENTE_AJUSTE_SIN_CRITERIO": 26,
    "ROTULO_CONTRADICE_COEFICIENTE": 227,
    "REFERENCIA_ROTA": 63,
+   "FORMULA_SOBRE_CELDA_ROTA": 3,
    "COEFICIENTE_INESTABLE": 6,
    "INDIRECTO_SIEMPRE_EN_CERO": 1,
    "PARTIDA_SIN_DATOS": 64
   },
   "porGravedad": {
-   "ALTA": 43,
-   "MEDIA": 323,
+   "ALTA": 56,
+   "MEDIA": 380,
    "BAJA": 64
   },
   "montoPorTipo": {
    "OFERTA_ROTA": 52057755.42,
    "IVA_ESCRITO_A_MANO": 8760450.13,
+   "RENGLON_INCOHERENTE": 892857.72,
    "COEFICIENTE_AJUSTE_SIN_CRITERIO": 60986034.59,
    "ROTULO_CONTRADICE_COEFICIENTE": 77586801.07
   }
+ },
+ "controles": {
+  "sobre": 64,
+  "salteadas": 0,
+  "paso": false,
+  "resumen": {
+   "total": 500,
+   "porTipo": {
+    "OFERTA_ROTA": 2,
+    "IVA_ESCRITO_A_MANO": 1,
+    "RENGLON_INCOHERENTE": 3,
+    "DATOS_DE_OTRO_CLIENTE": 24,
+    "COEFICIENTE_AJUSTE_IMPLAUSIBLE": 12,
+    "CELDA_EN_ERROR": 64,
+    "UNIDAD_CONTRADICTORIA": 4,
+    "COEFICIENTE_AJUSTE_SIN_CRITERIO": 26,
+    "ROTULO_CONTRADICE_COEFICIENTE": 227,
+    "REFERENCIA_ROTA": 63,
+    "FORMULA_SOBRE_CELDA_ROTA": 3,
+    "COEFICIENTE_INESTABLE": 6,
+    "INDIRECTO_SIEMPRE_EN_CERO": 1,
+    "PARTIDA_SIN_DATOS": 64
+   },
+   "porGravedad": {
+    "ALTA": 56,
+    "MEDIA": 380,
+    "BAJA": 64
+   },
+   "montoPorTipo": {
+    "OFERTA_ROTA": 52057755.42,
+    "IVA_ESCRITO_A_MANO": 8760450.13,
+    "RENGLON_INCOHERENTE": 892857.72,
+    "COEFICIENTE_AJUSTE_SIN_CRITERIO": 60986034.59,
+    "ROTULO_CONTRADICE_COEFICIENTE": 77586801.07
+   },
+   "controles": 14,
+   "conHallazgo": 13,
+   "limpios": 0,
+   "noSePudoMirar": 1
+  },
+  "corridas": [
+   {
+    "id": "oferta-con-el-cierre-roto",
+    "que": "el SUB TOTAL, el IVA y el TOTAL de la oferta que ve el cliente",
+    "estado": "HALLAZGO",
+    "hallazgos": 2,
+    "mirados": 57,
+    "sinMirar": 7,
+    "motivos": [
+     "la hoja OFERTA no tiene el encabezado TAREA/CANT/PRECIO/SUB TOTAL"
+    ],
+    "ejemplos": [
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO TECHO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "LISTADO DE TAREAS A EJECUTAR.xlsm"
+    ]
+   },
+   {
+    "id": "iva-escrito-a-mano",
+    "que": "si el IVA de la oferta se calcula o se tipea",
+    "estado": "HALLAZGO",
+    "hallazgos": 1,
+    "mirados": 57,
+    "sinMirar": 7,
+    "motivos": [
+     "la hoja OFERTA no tiene el encabezado TAREA/CANT/PRECIO/SUB TOTAL"
+    ],
+    "ejemplos": [
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO TECHO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "LISTADO DE TAREAS A EJECUTAR.xlsm"
+    ]
+   },
+   {
+    "id": "aritmetica-de-la-oferta",
+    "que": "que la suma de los ítems dé el subtotal y que subtotal + IVA dé el total",
+    "estado": "NO_SE_PUDO_MIRAR",
+    "hallazgos": 0,
+    "mirados": 57,
+    "sinMirar": 7,
+    "motivos": [
+     "la hoja OFERTA no tiene el encabezado TAREA/CANT/PRECIO/SUB TOTAL"
+    ],
+    "ejemplos": [
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO TECHO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "LISTADO DE TAREAS A EJECUTAR.xlsm"
+    ]
+   },
+   {
+    "id": "rotulo-contra-coeficiente",
+    "que": "que el porcentaje que promete el rótulo de GG sea el que aplica la fórmula",
+    "estado": "HALLAZGO",
+    "hallazgos": 227,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "coeficiente-inestable",
+    "que": "el mismo concepto de GG con coeficientes muy distintos entre cotizaciones",
+    "estado": "HALLAZGO",
+    "hallazgos": 6,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "unidad-contradictoria",
+    "que": "la misma partida medida en unidades distintas según la cotización",
+    "estado": "HALLAZGO",
+    "hallazgos": 4,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "partida-sin-datos",
+    "que": "los renglones «sin datos» que viajan dentro del presupuesto interno",
+    "estado": "HALLAZGO",
+    "hallazgos": 64,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "datos-comerciales-de-otro-cliente",
+    "que": "las ofertas a OTROS clientes guardadas fuera del área principal de la hoja OFERTA",
+    "estado": "HALLAZGO",
+    "hallazgos": 24,
+    "mirados": 57,
+    "sinMirar": 7,
+    "motivos": [
+     "la hoja OFERTA no tiene el encabezado TAREA/CANT/PRECIO/SUB TOTAL"
+    ],
+    "ejemplos": [
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO TECHO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "LISTADO DE TAREAS A EJECUTAR.xlsm"
+    ]
+   },
+   {
+    "id": "indirecto-siempre-en-cero",
+    "que": "los conceptos de gastos generales que se listan siempre y se cotizan siempre en $ 0",
+    "estado": "HALLAZGO",
+    "hallazgos": 1,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "coeficiente-de-ajuste-sin-criterio",
+    "que": "la columna COEF. AJUSTE distinta de 1 sin nada que explique por qué",
+    "estado": "HALLAZGO",
+    "hallazgos": 38,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "referencia-rota-en-el-presupuesto",
+    "que": "las filas del presupuesto interno cuyo nombre de tarea es un error de fórmula",
+    "estado": "HALLAZGO",
+    "hallazgos": 63,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "celdas-en-error",
+    "que": "#REF!, #N/A, #NAME?, #DIV/0!, #VALUE! y #NUM! en CUALQUIER hoja del libro",
+    "estado": "HALLAZGO",
+    "hallazgos": 64,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "formula-sobre-celda-rota",
+    "que": "las fórmulas sanas que se apoyan en una celda que está en error",
+    "estado": "HALLAZGO",
+    "hallazgos": 3,
+    "mirados": 64,
+    "sinMirar": 0,
+    "motivos": [],
+    "ejemplos": []
+   },
+   {
+    "id": "renglon-que-no-multiplica",
+    "que": "precio × cantidad × coeficiente contra el subtotal que declara el renglón",
+    "estado": "HALLAZGO",
+    "hallazgos": 3,
+    "mirados": 57,
+    "sinMirar": 8,
+    "motivos": [
+     "la hoja OFERTA no tiene el encabezado TAREA/CANT/PRECIO/SUB TOTAL",
+     "en OFERTA ningún renglón trae los tres números: no hay nada que multiplicar y «0 incoherentes» no significa nada"
+    ],
+    "ejemplos": [
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO TECHO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "PRESUPUESTO.xlsm",
+     "LISTADO DE TAREAS A EJECUTAR.xlsm"
+    ]
+   }
+  ]
+ },
+ "corrida": {
+  "candidatas": 114,
+  "plantillaInterna": 64,
+  "formatoDelCliente": 38,
+  "formatoDelClientePorClase": {
+   "COTIZACION": 36,
+   "COMPUTO": 2
+  },
+  "yaEstudiadas": 0,
+  "noLeidas": 12,
+  "porQueNoSeLeyeron": [
+   {
+    "archivo": "Computos.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "computo de materiales.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "RECOTIZACIÓN ARCOR 23050969 — Reparaciones y mantenimiento",
+    "porQue": "no se pudo bajar: es un Google Sheet nativo, no un archivo: habría que exportarlo a xlsx y este circuito todavía no lo hace"
+   },
+   {
+    "archivo": "PRESUPUESTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: la fila 7 re"
+   },
+   {
+    "archivo": "Computo y Presupuesto de materiales.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 2 pestaña(s) tiene encabezado de cotización — «Real»: ninguna de la"
+   },
+   {
+    "archivo": "GASTO DE MANO DE OBRA .xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO DE MATERIALES.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "Computo de materiales .xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 4 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "COMPUTO DE MATERIALES - REAL.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "NUEVO GALPON - COMPUTO.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   },
+   {
+    "archivo": "computo.xlsx",
+    "porQue": "no tiene las pestañas Análisis/Presupuesto/GG de la plantilla interna, y el lector semántico tampoco reconoce una planilla de cotización: ninguna de las 1 pestaña(s) tiene encabezado de cotización — «Hoja1»: ninguna de l"
+   }
+  ],
+  "practicasPlantillaInterna": 190,
+  "practicasFormatoDelCliente": 111,
+  "cierresSinCoeficiente": 97
  },
  "hallazgos": [
   {
@@ -82,6 +373,48 @@
    ],
    "monto": 8760450.13,
    "porQue": "y el SUB TOTAL de arriba está en #NAME?: el impuesto se tipeó al lado del error"
+  },
+  {
+   "tipo": "RENGLON_INCOHERENTE",
+   "gravedad": "ALTA",
+   "clave": "1eLzY4RxYZbl7b9ZBFYl4JMyQgjcWjzgJ.oferta.renglones_incoherentes",
+   "afirmacion": "en «ARCOR - SAN JUAN · PARADOR DE CAMIONEROS» 1 renglón(es) de la hoja OFERTA declaran un subtotal que no es CANT × PRECIO UNITARIO",
+   "evidencia": [
+    {
+     "cita": "COTIZACION DE HORA - 1 OF/ 1 AY: declara 708522.37 y CANT × PRECIO UNITARIO da 92415.95999999999",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja OFERTA · fila 14"
+    }
+   ],
+   "monto": 616106.41,
+   "porQue": "o el subtotal está tipeado encima de la fórmula, o alguno de los tres números se cambió después: en los dos casos el renglón dejó de ser reconstruible"
+  },
+  {
+   "tipo": "RENGLON_INCOHERENTE",
+   "gravedad": "ALTA",
+   "clave": "1M5CxWrgvpqgt3kDzRYCiu_I4MyE0hV38.oferta.renglones_incoherentes",
+   "afirmacion": "en «SAINT GOBAIN · PISOS EN FOSA» 1 renglón(es) de la hoja OFERTA declaran un subtotal que no es CANT × PRECIO UNITARIO",
+   "evidencia": [
+    {
+     "cita": "BARANDA DE 4M- SAINT GOBAIN: declara 3315895.8 y CANT × PRECIO UNITARIO da 3093306.06",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja OFERTA · fila 14"
+    }
+   ],
+   "monto": 222589.73999999976,
+   "porQue": "o el subtotal está tipeado encima de la fórmula, o alguno de los tres números se cambió después: en los dos casos el renglón dejó de ser reconstruible"
+  },
+  {
+   "tipo": "RENGLON_INCOHERENTE",
+   "gravedad": "ALTA",
+   "clave": "1ckj7nNzcNVYybgVLWvZA_zFOwgIExKJz.oferta.renglones_incoherentes",
+   "afirmacion": "en «SAINT GOBAIN · TRABAJOS VARIOS - CAMBIOS DE CHAPAS» 1 renglón(es) de la hoja OFERTA declaran un subtotal que no es CANT × PRECIO UNITARIO",
+   "evidencia": [
+    {
+     "cita": "CAMBIO DE CHAPA: declara 653352.66 y CANT × PRECIO UNITARIO da 599191.09",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja OFERTA · fila 14"
+    }
+   ],
+   "monto": 54161.570000000065,
+   "porQue": "o el subtotal está tipeado encima de la fórmula, o alguno de los tres números se cambió después: en los dos casos el renglón dejó de ser reconstruible"
   },
   {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
@@ -184,6 +517,48 @@
    "porQue": "fuera del rango 0.5–3 lo más probable es que sea una cantidad tipeada en la columna equivocada; el precio de esa partida sale multiplicado por ese número igual"
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "12qPCRZ-1m1xubBkrNygG-uNow2K4oMi8.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · CONCENTRADOR ROSSI» tiene 583 celda(s) en error de fórmula repartidas en 7 hoja(s) (#N/A: 317, #REF!: 188, #DIV/0!: 78)",
+   "evidencia": [
+    {
+     "cita": "J14 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · J14"
+    },
+    {
+     "cita": "N14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · N14"
+    },
+    {
+     "cita": "O14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · O14"
+    },
+    {
+     "cita": "P14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · P14"
+    },
+    {
+     "cita": "Q14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · Q14"
+    },
+    {
+     "cita": "R14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · R14"
+    },
+    {
+     "cita": "S14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · S14"
+    },
+    {
+     "cita": "T14 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · T14"
+    }
+   ],
+   "monto": null,
+   "porQue": "6 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
    "gravedad": "ALTA",
    "clave": "12Wt0YBkrIjt9CLCM5LDNgqBc54d5H-yC.oferta.bloques",
@@ -242,6 +617,48 @@
    ],
    "monto": null,
    "porQue": "fuera del rango 0.5–3 lo más probable es que sea una cantidad tipeada en la columna equivocada; el precio de esa partida sale multiplicado por ese número igual"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "19TZFLfu9KsED6xe8GGZg0vY5EfJQAd0Q.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · REPARACION EDILICIA DE SECTOR LINEA TOMATE PELADO» tiene 558 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 366, #REF!: 192)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "1 de esas celdas están en la hoja que ve el cliente"
   },
   {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
@@ -490,6 +907,48 @@
    "porQue": "fuera del rango 0.5–3 lo más probable es que sea una cantidad tipeada en la columna equivocada; el precio de esa partida sale multiplicado por ese número igual"
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1MFtUGWLGVk_qnAeeapwdiz99xZ9AA8yV.celdas_en_error",
+   "afirmacion": "«MESSINA · Cotizaciones» tiene 558 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 365, #REF!: 193)",
+   "evidencia": [
+    {
+     "cita": "N11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · N11"
+    },
+    {
+     "cita": "O11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · O11"
+    },
+    {
+     "cita": "P11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · P11"
+    },
+    {
+     "cita": "Q11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · Q11"
+    },
+    {
+     "cita": "R11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · R11"
+    },
+    {
+     "cita": "S11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · S11"
+    },
+    {
+     "cita": "T11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · T11"
+    },
+    {
+     "cita": "U11 = #N/A",
+     "ubicacion": "ADICIONAL MURO.xlsm · hoja Presupuesto · U11"
+    }
+   ],
+   "monto": null,
+   "porQue": "2 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
    "gravedad": "ALTA",
    "clave": "1MJrF1Vetp9tTfRD5VfrDiweZcVag4vUL.oferta.bloques",
@@ -502,6 +961,48 @@
    ],
    "monto": null,
    "porQue": "la planilla se copia de la anterior en vez de partir de una limpia, y el archivo conserva lo que se le cotizó a otro"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1p85-2vM2fc3UOnRXmvfr5NQ0j-M7dTCZ.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · REPARACION PISOS BASCULA» tiene 558 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 366, #REF!: 192)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "1 de esas celdas están en la hoja que ve el cliente"
   },
   {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
@@ -518,6 +1019,48 @@
    "porQue": "la planilla se copia de la anterior en vez de partir de una limpia, y el archivo conserva lo que se le cotizó a otro"
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1RjMRkZb9CP2K9NDSD3maplImTT4r73Ju.celdas_en_error",
+   "afirmacion": "«MESSINA · ADICIONAL» tiene 503 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 310, #REF!: 193)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "ADICIONAL.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "2 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
    "tipo": "COEFICIENTE_AJUSTE_IMPLAUSIBLE",
    "gravedad": "ALTA",
    "clave": "1rKUCSYZHeUsFWOjbOySCOoueqqz7kWRi.presupuesto.coeficientes_implausibles",
@@ -532,6 +1075,48 @@
    "porQue": "fuera del rango 0.5–3 lo más probable es que sea una cantidad tipeada en la columna equivocada; el precio de esa partida sale multiplicado por ese número igual"
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1SCGIKaheKUu5gwHvUXxKl-VWzYKcEjvP.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · CIERRE PERIMETRAL» tiene 773 celda(s) en error de fórmula repartidas en 13 hoja(s) (#NAME?: 552, #REF!: 184, #DIV/0!: 32, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "D16 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · D16"
+    },
+    {
+     "cita": "E16 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · E16"
+    },
+    {
+     "cita": "F16 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · F16"
+    },
+    {
+     "cita": "G16 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · G16"
+    },
+    {
+     "cita": "D18 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · D18"
+    },
+    {
+     "cita": "E18 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · E18"
+    },
+    {
+     "cita": "F18 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · F18"
+    },
+    {
+     "cita": "G18 = #NAME?",
+     "ubicacion": "COTIZACION INTERNA - muro de mamposteria y rejas.xlsm · hoja MO Lu-Vi 8 a 16 · G18"
+    }
+   ],
+   "monto": null,
+   "porQue": "3 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
    "gravedad": "ALTA",
    "clave": "1SCGIKaheKUu5gwHvUXxKl-VWzYKcEjvP.oferta.bloques",
@@ -544,6 +1129,132 @@
    ],
    "monto": null,
    "porQue": "la planilla se copia de la anterior en vez de partir de una limpia, y el archivo conserva lo que se le cotizó a otro"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1SYK85GC8nH1_RuNrzHAF4vrWg-urwovw.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · PISOS BANO MARIA» tiene 520 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 326, #REF!: 194)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "1 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1sYZvh5tf1JvDyrjFiQ3w5sTut5O7z6st.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · FINAL» tiene 542 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 350, #REF!: 192)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "1 de esas celdas están en la hoja que ve el cliente"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1TDiBKdmuwMSdMByNxHtDpbWNyAjQLviU.celdas_en_error",
+   "afirmacion": "«DEPOSITO FARMACIA DE VILLA KRAUSE» tiene 197 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 184, #N/A: 13)",
+   "evidencia": [
+    {
+     "cita": "N26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N26"
+    },
+    {
+     "cita": "O26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · O26"
+    },
+    {
+     "cita": "P26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · P26"
+    },
+    {
+     "cita": "Q26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · Q26"
+    },
+    {
+     "cita": "R26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · R26"
+    },
+    {
+     "cita": "S26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · S26"
+    },
+    {
+     "cita": "T26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · T26"
+    },
+    {
+     "cita": "U26 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U26"
+    }
+   ],
+   "monto": null,
+   "porQue": "8 de esas celdas están en la hoja que ve el cliente"
   },
   {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
@@ -610,6 +1321,48 @@
    ],
    "monto": null,
    "porQue": "la planilla se copia de la anterior en vez de partir de una limpia, y el archivo conserva lo que se le cotizó a otro"
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "ALTA",
+   "clave": "1zezbWmskjd1CoV8A7E8O6o42RDD5Xuzp.celdas_en_error",
+   "afirmacion": "«COLEGIO INGLES» tiene 313 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 188, #DIV/0!: 72, #N/A: 53)",
+   "evidencia": [
+    {
+     "cita": "O23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · O23"
+    },
+    {
+     "cita": "P23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · P23"
+    },
+    {
+     "cita": "Q23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · Q23"
+    },
+    {
+     "cita": "R23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · R23"
+    },
+    {
+     "cita": "S23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · S23"
+    },
+    {
+     "cita": "T23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · T23"
+    },
+    {
+     "cita": "U23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · U23"
+    },
+    {
+     "cita": "V23 = #N/A",
+     "ubicacion": "presupuesto interno - COLEGIO INGLES.xlsm · hoja Presupuesto · V23"
+    }
+   ],
+   "monto": null,
+   "porQue": "70 de esas celdas están en la hoja que ve el cliente"
   },
   {
    "tipo": "DATOS_DE_OTRO_CLIENTE",
@@ -5488,6 +6241,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1_u3-0Zh82VJbxOW6o3onef6NqWpv2Ynw.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · CIERRE PERIMETRAL» tiene 238 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 40, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U11 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U11"
+    },
+    {
+     "cita": "U12 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U12"
+    },
+    {
+     "cita": "U13 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U13"
+    },
+    {
+     "cita": "U14 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U14"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U16 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U16"
+    },
+    {
+     "cita": "U17 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U17"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA - Alambrado.xlsm · hoja Presupuesto · U18"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1_u3-0Zh82VJbxOW6o3onef6NqWpv2Ynw.presupuesto.referencias",
@@ -5500,6 +6295,66 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "10nlQuRoPBcQykL1921zyoMr3tRDfynZO.celdas_en_error",
+   "afirmacion": "«FRANCO QUATTROPANI» tiene 238 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 194, #DIV/0!: 23, #N/A: 21)",
+   "evidencia": [
+    {
+     "cita": "U10 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U10"
+    },
+    {
+     "cita": "U11 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U11"
+    },
+    {
+     "cita": "U25 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U25"
+    },
+    {
+     "cita": "U28 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U28"
+    },
+    {
+     "cita": "U31 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U31"
+    },
+    {
+     "cita": "U32 = #DIV/0!",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · U32"
+    },
+    {
+     "cita": "N33 = #N/A",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · N33"
+    },
+    {
+     "cita": "O33 = #N/A",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · O33"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
+   "tipo": "FORMULA_SOBRE_CELDA_ROTA",
+   "gravedad": "MEDIA",
+   "clave": "10nlQuRoPBcQykL1921zyoMr3tRDfynZO.formulas_sobre_celda_rota",
+   "afirmacion": "en «FRANCO QUATTROPANI» 2 fórmula(s) se apoyan en una celda que está en error: el error se propaga a todo lo que las use",
+   "evidencia": [
+    {
+     "cita": "R33 = IF(B33>0,(O33+Q33)*$H$90/1.14,\"0\") → apunta a Presupuesto!O33 que vale #N/A",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · R33"
+    },
+    {
+     "cita": "R34 = IF(B34>0,(O34+Q34)*$H$90/1.14,\"0\") → apunta a Presupuesto!O34 que vale #N/A",
+     "ubicacion": "Presupuesto Nave Industrial V2.xlsm · hoja Presupuesto · R34"
+    }
+   ],
+   "monto": null,
+   "porQue": "la celda rota se ve; la fórmula que la usa muestra un número hasta que Excel recalcula, y ese número es el que entra al precio"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5516,6 +6371,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "11vyK-T_DdoxYPwsYI4SLIIO3zX-1VGWs.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · Oficina y Fabrica de palitos» tiene 222 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 24, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "A1 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · A1"
+    },
+    {
+     "cita": "F4 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · F4"
+    },
+    {
+     "cita": "G4 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · G4"
+    },
+    {
+     "cita": "F5 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · F5"
+    },
+    {
+     "cita": "G5 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · G5"
+    },
+    {
+     "cita": "F6 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · F6"
+    },
+    {
+     "cita": "G6 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · G6"
+    },
+    {
+     "cita": "F7 = #REF!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES version 2.xlsm · hoja NN (2) · F7"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "11vyK-T_DdoxYPwsYI4SLIIO3zX-1VGWs.presupuesto.referencias",
@@ -5528,6 +6425,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "12LAUWUhXrkys-mZN4TAOsKgOYJVyHqsh.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · Oficina y Fabrica de palitos» tiene 222 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 24, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U20 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U20"
+    },
+    {
+     "cita": "U24 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U24"
+    },
+    {
+     "cita": "U27 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U27"
+    },
+    {
+     "cita": "U29 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U29"
+    },
+    {
+     "cita": "U31 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U31"
+    },
+    {
+     "cita": "U32 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U32"
+    },
+    {
+     "cita": "U33 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA CON PANELES.xlsm · hoja Presupuesto · U33"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5558,6 +6497,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "12Wt0YBkrIjt9CLCM5LDNgqBc54d5H-yC.celdas_en_error",
+   "afirmacion": "«FIMA SA» tiene 384 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #N/A: 190, #DIV/0!: 1)",
+   "evidencia": [
+    {
+     "cita": "N14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · N14"
+    },
+    {
+     "cita": "O14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · O14"
+    },
+    {
+     "cita": "P14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · P14"
+    },
+    {
+     "cita": "Q14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · Q14"
+    },
+    {
+     "cita": "R14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · R14"
+    },
+    {
+     "cita": "S14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · S14"
+    },
+    {
+     "cita": "T14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · T14"
+    },
+    {
+     "cita": "U14 = #N/A",
+     "ubicacion": "PRESUPUESTO GALPON.xlsm · hoja Presupuesto · U14"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "12Wt0YBkrIjt9CLCM5LDNgqBc54d5H-yC.presupuesto.referencias",
@@ -5570,6 +6551,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "16L2rALXM9WjaneyRxjyIbm15h9-OhyvV.celdas_en_error",
+   "afirmacion": "«ALEJANDRO MOLINA» tiene 407 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 189, #REF!: 186, #DIV/0!: 32)",
+   "evidencia": [
+    {
+     "cita": "J13 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · J13"
+    },
+    {
+     "cita": "N13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · N13"
+    },
+    {
+     "cita": "O13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · O13"
+    },
+    {
+     "cita": "P13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · P13"
+    },
+    {
+     "cita": "Q13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · Q13"
+    },
+    {
+     "cita": "R13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · R13"
+    },
+    {
+     "cita": "S13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · S13"
+    },
+    {
+     "cita": "T13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - GALPON PROPIO.xlsm · hoja Presupuesto · T13"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5586,6 +6609,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "18jRL3mYnvGoMPqW_LX4eUYg5hEpjEbRD.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · OFICINA AGRICOLA» tiene 233 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 186, #N/A: 45, #DIV/0!: 2)",
+   "evidencia": [
+    {
+     "cita": "N23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · N23"
+    },
+    {
+     "cita": "O23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · O23"
+    },
+    {
+     "cita": "P23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · P23"
+    },
+    {
+     "cita": "Q23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · Q23"
+    },
+    {
+     "cita": "R23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · R23"
+    },
+    {
+     "cita": "S23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · S23"
+    },
+    {
+     "cita": "T23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · T23"
+    },
+    {
+     "cita": "U23 = #N/A",
+     "ubicacion": "presupuesto interno - oficina.xlsm · hoja Presupuesto · U23"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "18jRL3mYnvGoMPqW_LX4eUYg5hEpjEbRD.presupuesto.referencias",
@@ -5598,6 +6663,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "19rYSz2s1oFs0DIHyEFh9qV_bY0ZwTNKC.celdas_en_error",
+   "afirmacion": "«FRANCO QUATTROPANI» tiene 206 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 194, #DIV/0!: 7, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "A1 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · A1"
+    },
+    {
+     "cita": "F4 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · F4"
+    },
+    {
+     "cita": "G4 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · G4"
+    },
+    {
+     "cita": "F5 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · F5"
+    },
+    {
+     "cita": "G5 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · G5"
+    },
+    {
+     "cita": "F6 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · F6"
+    },
+    {
+     "cita": "G6 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · G6"
+    },
+    {
+     "cita": "F7 = #REF!",
+     "ubicacion": "Cotizacion Final.xlsm · hoja NN (2) · F7"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5628,6 +6735,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Ap3YJlYEr5Iah42gcTEp7dwPlmWU9Gvv.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ» tiene 261 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #N/A: 37, #DIV/0!: 31)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "U10 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · U10"
+    },
+    {
+     "cita": "N15 = #N/A",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · N15"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "N21 = #N/A",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · N21"
+    },
+    {
+     "cita": "N23 = #N/A",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · N23"
+    },
+    {
+     "cita": "U23 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · U23"
+    },
+    {
+     "cita": "N24 = #N/A",
+     "ubicacion": "PRESUPUESTO V.2.xlsm · hoja Presupuesto · N24"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1Ap3YJlYEr5Iah42gcTEp7dwPlmWU9Gvv.presupuesto.referencias",
@@ -5640,6 +6789,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1aPPD1b4ZIPTC4N9zCVWzA2l5qjSY3tHj.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · SENDAS PEATONALES» tiene 407 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 197, #REF!: 185, #DIV/0!: 25)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5656,6 +6847,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1aUrjkNab6TzaXhpRe66561oc7v8KsKUk.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · NUEVA CALLE» tiene 389 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 194, #N/A: 173, #DIV/0!: 22)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1aUrjkNab6TzaXhpRe66561oc7v8KsKUk.presupuesto.referencias",
@@ -5668,6 +6901,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1cBQuKoPSYEtrnRDI8q72qy38PVQkdAV6.celdas_en_error",
+   "afirmacion": "«MESSINA · PISOS INDUSTRIALES 120m2» tiene 235 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 194, #DIV/0!: 36, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U16 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U16"
+    },
+    {
+     "cita": "U17 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U17"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U19 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U19"
+    },
+    {
+     "cita": "U20 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U20"
+    },
+    {
+     "cita": "U21 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U21"
+    },
+    {
+     "cita": "U22 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U22"
+    },
+    {
+     "cita": "U23 = #DIV/0!",
+     "ubicacion": "Cotizacion piso 120m2.xlsm · hoja Presupuesto · U23"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5684,6 +6959,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Ceif0IXaTBt5wGLhZTLQD_BZY6tXBrtg.celdas_en_error",
+   "afirmacion": "«GALPON ROSAS» tiene 165 celda(s) en error de fórmula repartidas en 4 hoja(s) (#REF!: 144, #N/A: 21)",
+   "evidencia": [
+    {
+     "cita": "N26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · N26"
+    },
+    {
+     "cita": "O26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · O26"
+    },
+    {
+     "cita": "P26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · P26"
+    },
+    {
+     "cita": "Q26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · Q26"
+    },
+    {
+     "cita": "R26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · R26"
+    },
+    {
+     "cita": "S26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · S26"
+    },
+    {
+     "cita": "T26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · T26"
+    },
+    {
+     "cita": "U26 = #N/A",
+     "ubicacion": "PRESUPUESTO ALQUILER VIBRO.xlsm · hoja Presupuesto · U26"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1Ceif0IXaTBt5wGLhZTLQD_BZY6tXBrtg.presupuesto.referencias",
@@ -5696,6 +7013,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1ckj7nNzcNVYybgVLWvZA_zFOwgIExKJz.celdas_en_error",
+   "afirmacion": "«SAINT GOBAIN · TRABAJOS VARIOS - CAMBIOS DE CHAPAS» tiene 398 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 189, #REF!: 186, #DIV/0!: 23)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5712,6 +7071,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1CU6-evTf-Zl5I-w1w0v0CCFqFPo-w9cX.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ» tiene 261 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #N/A: 37, #DIV/0!: 31)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "U10 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · U10"
+    },
+    {
+     "cita": "N15 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N15"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "N21 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N21"
+    },
+    {
+     "cita": "N23 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N23"
+    },
+    {
+     "cita": "U23 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · U23"
+    },
+    {
+     "cita": "N24 = #N/A",
+     "ubicacion": "PRESUPUESTO - PISOS.xlsm · hoja Presupuesto · N24"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1CU6-evTf-Zl5I-w1w0v0CCFqFPo-w9cX.presupuesto.referencias",
@@ -5724,6 +7125,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1d3KM6j0QS7tJ7XQLU3F6CoRyQnR_0tpn.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · Oficina y Fabrica de palitos» tiene 222 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 24, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U24 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U24"
+    },
+    {
+     "cita": "U27 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U27"
+    },
+    {
+     "cita": "U30 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U30"
+    },
+    {
+     "cita": "U32 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U32"
+    },
+    {
+     "cita": "U34 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U34"
+    },
+    {
+     "cita": "U35 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U35"
+    },
+    {
+     "cita": "U36 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA .xlsm · hoja Presupuesto · U36"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5740,6 +7183,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1dI9UqBobAh3n2cK-U2p1AVcdsmMOq8hw.celdas_en_error",
+   "afirmacion": "«SAINT GOBAIN · BARANDAS Y TRASLADO DE BANCO» tiene 426 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 213, #REF!: 186, #DIV/0!: 27)",
+   "evidencia": [
+    {
+     "cita": "J13 = #DIV/0!",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · J13"
+    },
+    {
+     "cita": "N13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · N13"
+    },
+    {
+     "cita": "O13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · O13"
+    },
+    {
+     "cita": "P13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · P13"
+    },
+    {
+     "cita": "Q13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · Q13"
+    },
+    {
+     "cita": "R13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · R13"
+    },
+    {
+     "cita": "S13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · S13"
+    },
+    {
+     "cita": "T13 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · T13"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1dI9UqBobAh3n2cK-U2p1AVcdsmMOq8hw.presupuesto.referencias",
@@ -5752,6 +7237,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1dkprgx9a4esGm8UcRewWv3k3xJPWbcUD.celdas_en_error",
+   "afirmacion": "«ALEJANDRO MOLINA» tiene 419 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 205, #REF!: 188, #DIV/0!: 26)",
+   "evidencia": [
+    {
+     "cita": "J12 = #DIV/0!",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · J12"
+    },
+    {
+     "cita": "N12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · N12"
+    },
+    {
+     "cita": "O12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · O12"
+    },
+    {
+     "cita": "P12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · P12"
+    },
+    {
+     "cita": "Q12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · Q12"
+    },
+    {
+     "cita": "R12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · R12"
+    },
+    {
+     "cita": "S12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · S12"
+    },
+    {
+     "cita": "T12 = #N/A",
+     "ubicacion": "COTIZACION COMPRESOR 185Q - MOLINA ALEJANDRO.xlsm · hoja Presupuesto · T12"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5768,6 +7295,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1elDvlea8-f4B1YlRQs4lZYY-8-oo2gGq.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · carpeta sin título» tiene 532 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 342, #REF!: 190)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "presupuesto interno.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1elDvlea8-f4B1YlRQs4lZYY-8-oo2gGq.presupuesto.referencias",
@@ -5780,6 +7349,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1eLzY4RxYZbl7b9ZBFYl4JMyQgjcWjzgJ.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · PARADOR DE CAMIONEROS» tiene 354 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 186, #N/A: 149, #DIV/0!: 19)",
+   "evidencia": [
+    {
+     "cita": "J21 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J21"
+    },
+    {
+     "cita": "N21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N21"
+    },
+    {
+     "cita": "O21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O21"
+    },
+    {
+     "cita": "P21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P21"
+    },
+    {
+     "cita": "Q21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q21"
+    },
+    {
+     "cita": "R21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R21"
+    },
+    {
+     "cita": "S21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S21"
+    },
+    {
+     "cita": "T21 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T21"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5796,6 +7407,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1eRGq2NKeCxto_880mC01IwNQWmO-IRSS.celdas_en_error",
+   "afirmacion": "«SAINT GOBAIN · Veredas de Masilla a Bascula» tiene 428 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 213, #REF!: 186, #DIV/0!: 29)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "U9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · U9"
+    },
+    {
+     "cita": "J13 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J13"
+    },
+    {
+     "cita": "N13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N13"
+    },
+    {
+     "cita": "O13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O13"
+    },
+    {
+     "cita": "P13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P13"
+    },
+    {
+     "cita": "Q13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q13"
+    },
+    {
+     "cita": "R13 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R13"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1eRGq2NKeCxto_880mC01IwNQWmO-IRSS.presupuesto.referencias",
@@ -5808,6 +7461,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1g33k4AXl2oy9Ajokk5QTEzkwtEFtFNsC.celdas_en_error",
+   "afirmacion": "«ORICA · PISOS EN COCHERA» tiene 236 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 38, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U16 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U16"
+    },
+    {
+     "cita": "U17 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U17"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U19 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U19"
+    },
+    {
+     "cita": "U20 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U20"
+    },
+    {
+     "cita": "U21 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U21"
+    },
+    {
+     "cita": "U22 = #DIV/0!",
+     "ubicacion": "COTIZACION - PISOS.xlsm · hoja Presupuesto · U22"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5824,6 +7519,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1gTp46v2mMRvo0R9hj_m_TMkHSKsfJNMD.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ · ADICIONALES» tiene 227 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 29, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U12 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U12"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U21 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U21"
+    },
+    {
+     "cita": "U24 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U24"
+    },
+    {
+     "cita": "U25 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U25"
+    },
+    {
+     "cita": "U26 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U26"
+    },
+    {
+     "cita": "U27 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES INTERNOS.xlsm · hoja Presupuesto · U27"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1gTp46v2mMRvo0R9hj_m_TMkHSKsfJNMD.presupuesto.referencias",
@@ -5836,6 +7573,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1hGB4YpGjHHPh1t62qfYrrQNqTFGvdAIQ.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ» tiene 261 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #N/A: 37, #DIV/0!: 31)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "U10 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U10"
+    },
+    {
+     "cita": "N15 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N15"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "N21 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N21"
+    },
+    {
+     "cita": "N23 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N23"
+    },
+    {
+     "cita": "U23 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U23"
+    },
+    {
+     "cita": "N24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N24"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5852,6 +7631,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1hsvnhuiDy2XdW-dNasXQdO-VEKxSGx-Q.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · CIERRE PERIMETRAL» tiene 299 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 191, #N/A: 79, #DIV/0!: 29)",
+   "evidencia": [
+    {
+     "cita": "N21 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · N21"
+    },
+    {
+     "cita": "N23 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · N23"
+    },
+    {
+     "cita": "U23 = #DIV/0!",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · U23"
+    },
+    {
+     "cita": "N24 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · N24"
+    },
+    {
+     "cita": "U24 = #DIV/0!",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · U24"
+    },
+    {
+     "cita": "N25 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · N25"
+    },
+    {
+     "cita": "O25 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · O25"
+    },
+    {
+     "cita": "P25 = #N/A",
+     "ubicacion": "COTIZACION CIERRE CON MAMPOSTERIA Y ACMAFOR.xlsm · hoja Presupuesto · P25"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1hsvnhuiDy2XdW-dNasXQdO-VEKxSGx-Q.presupuesto.referencias",
@@ -5864,6 +7685,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1iKAAbLs6vdk9jnzgRYS4Bo16g-1wrgdF.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ · Pisos Industriales» tiene 227 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 194, #DIV/0!: 28, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U16 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U16"
+    },
+    {
+     "cita": "U21 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U21"
+    },
+    {
+     "cita": "U26 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U26"
+    },
+    {
+     "cita": "U27 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U27"
+    },
+    {
+     "cita": "U28 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U28"
+    },
+    {
+     "cita": "U29 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U29"
+    },
+    {
+     "cita": "U30 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U30"
+    },
+    {
+     "cita": "U31 = #DIV/0!",
+     "ubicacion": "Cotizacion interna - Pisos Industriales.xlsm · hoja Presupuesto · U31"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5880,6 +7743,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Iszrvp5v4WSxeV_fTMy1EF4XvwEHdozy.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA» tiene 445 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 254, #REF!: 191)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1Iszrvp5v4WSxeV_fTMy1EF4XvwEHdozy.presupuesto.referencias",
@@ -5892,6 +7797,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Ivx-mA3mzQRHoEM0DfkeLzavHLIaOy5K.celdas_en_error",
+   "afirmacion": "«GALPON ROSAS» tiene 165 celda(s) en error de fórmula repartidas en 4 hoja(s) (#REF!: 144, #N/A: 21)",
+   "evidencia": [
+    {
+     "cita": "N26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · N26"
+    },
+    {
+     "cita": "O26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · O26"
+    },
+    {
+     "cita": "P26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · P26"
+    },
+    {
+     "cita": "Q26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · Q26"
+    },
+    {
+     "cita": "R26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · R26"
+    },
+    {
+     "cita": "S26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · S26"
+    },
+    {
+     "cita": "T26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · T26"
+    },
+    {
+     "cita": "U26 = #N/A",
+     "ubicacion": "PRESUPUESTO PISO.xlsm · hoja Presupuesto · U26"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5908,6 +7855,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1j7YryWDE9Kcxh2NAtrv8VOObjdmZfYQ7.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · carpeta sin título» tiene 423 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 205, #REF!: 186, #DIV/0!: 32)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "U9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · U9"
+    },
+    {
+     "cita": "J11 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · J11"
+    },
+    {
+     "cita": "N11 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · N11"
+    },
+    {
+     "cita": "O11 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · O11"
+    },
+    {
+     "cita": "P11 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · P11"
+    },
+    {
+     "cita": "Q11 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · Q11"
+    },
+    {
+     "cita": "R11 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - CISTERNA.xlsm · hoja Presupuesto · R11"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1j7YryWDE9Kcxh2NAtrv8VOObjdmZfYQ7.presupuesto.referencias",
@@ -5920,6 +7909,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1JDCsqrJSrvY5AcRh_Uw1gW1OI7sYN__j.celdas_en_error",
+   "afirmacion": "«MESSINA · LOSA PARA TANQUE DE GAS» tiene 519 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 326, #REF!: 193)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "Presupuesto - Platea de Hormigon.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5936,6 +7967,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1kCvVNbJ6fuKXinhXeUHdSS7A4MChocsy.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · PRESUPUESTO INTERNO» tiene 296 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 191, #N/A: 93, #DIV/0!: 12)",
+   "evidencia": [
+    {
+     "cita": "J27 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · J27"
+    },
+    {
+     "cita": "N27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · N27"
+    },
+    {
+     "cita": "O27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · O27"
+    },
+    {
+     "cita": "P27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · P27"
+    },
+    {
+     "cita": "Q27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · Q27"
+    },
+    {
+     "cita": "R27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · R27"
+    },
+    {
+     "cita": "S27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · S27"
+    },
+    {
+     "cita": "T27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS.xlsm · hoja Presupuesto · T27"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1kCvVNbJ6fuKXinhXeUHdSS7A4MChocsy.presupuesto.referencias",
@@ -5948,6 +8021,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1kpFYtdu4kVH92QUm2mqiKagM2ZTDAZnO.celdas_en_error",
+   "afirmacion": "«CIERRE PERIMETRAL - MORENO» tiene 223 celda(s) en error de fórmula repartidas en 4 hoja(s) (#REF!: 146, #N/A: 77)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5964,6 +8079,66 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1KwsH9-WJtyoZ74q63k2i_aZmM6WzF3hf.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ» tiene 265 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 220, #DIV/0!: 24, #N/A: 21)",
+   "evidencia": [
+    {
+     "cita": "N11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · N11"
+    },
+    {
+     "cita": "O11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · O11"
+    },
+    {
+     "cita": "P11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · P11"
+    },
+    {
+     "cita": "S11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · S11"
+    },
+    {
+     "cita": "T11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · T11"
+    },
+    {
+     "cita": "U11 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · U11"
+    },
+    {
+     "cita": "N12 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · N12"
+    },
+    {
+     "cita": "O12 = #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · O12"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
+   "tipo": "FORMULA_SOBRE_CELDA_ROTA",
+   "gravedad": "MEDIA",
+   "clave": "1KwsH9-WJtyoZ74q63k2i_aZmM6WzF3hf.formulas_sobre_celda_rota",
+   "afirmacion": "en «JAVIER SANCHEZ» 2 fórmula(s) se apoyan en una celda que está en error: el error se propaga a todo lo que las use",
+   "evidencia": [
+    {
+     "cita": "R11 = IF(B11>0,(O11+Q11)*$H$75/1.14,\"0\") → apunta a Presupuesto!O11 que vale #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · R11"
+    },
+    {
+     "cita": "R12 = IF(B12>0,(O12+Q12)*$H$75/1.14,\"0\") → apunta a Presupuesto!O12 que vale #N/A",
+     "ubicacion": "POSIBLES ADICIONALES.xlsm · hoja Presupuesto · R12"
+    }
+   ],
+   "monto": null,
+   "porQue": "la celda rota se ve; la fórmula que la usa muestra un número hasta que Excel recalcula, y ese número es el que entra al precio"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1KwsH9-WJtyoZ74q63k2i_aZmM6WzF3hf.presupuesto.referencias",
@@ -5976,6 +8151,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1l2aS0U0qS9Zl_zgGF9-cdzxMxFncFGQQ.celdas_en_error",
+   "afirmacion": "«MESSINA · BSA - DEMOLICION Y PILETA DE CONTENCION» tiene 532 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 342, #REF!: 190)",
+   "evidencia": [
+    {
+     "cita": "N16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · N16"
+    },
+    {
+     "cita": "O16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · O16"
+    },
+    {
+     "cita": "P16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · P16"
+    },
+    {
+     "cita": "Q16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · Q16"
+    },
+    {
+     "cita": "R16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · R16"
+    },
+    {
+     "cita": "S16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · S16"
+    },
+    {
+     "cita": "T16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · T16"
+    },
+    {
+     "cita": "U16 = #N/A",
+     "ubicacion": "ADICIONAL SUELO CEMENTO.xlsm · hoja Presupuesto · U16"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -5992,6 +8209,78 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1M_p-AQaFXRY0UF8ccH_NKHV4SM5DlMht.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · Oficina y Fabrica de palitos» tiene 264 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 194, #N/A: 39, #DIV/0!: 31)",
+   "evidencia": [
+    {
+     "cita": "N11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · N11"
+    },
+    {
+     "cita": "O11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · O11"
+    },
+    {
+     "cita": "P11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · P11"
+    },
+    {
+     "cita": "S11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · S11"
+    },
+    {
+     "cita": "T11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · T11"
+    },
+    {
+     "cita": "U11 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · U11"
+    },
+    {
+     "cita": "N13 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · N13"
+    },
+    {
+     "cita": "O13 = #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · O13"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
+   "tipo": "FORMULA_SOBRE_CELDA_ROTA",
+   "gravedad": "MEDIA",
+   "clave": "1M_p-AQaFXRY0UF8ccH_NKHV4SM5DlMht.formulas_sobre_celda_rota",
+   "afirmacion": "en «LA ESTRELLA · Oficina y Fabrica de palitos» 5 fórmula(s) se apoyan en una celda que está en error: el error se propaga a todo lo que las use",
+   "evidencia": [
+    {
+     "cita": "R11 = IF(B11>0,(O11+Q11)*$H$89/1.13,\"0\") → apunta a Presupuesto!O11 que vale #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · R11"
+    },
+    {
+     "cita": "R13 = IF(B13>0,(O13+Q13)*$H$89/1.14,\"0\") → apunta a Presupuesto!O13 que vale #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · R13"
+    },
+    {
+     "cita": "R15 = IF(B15>0,(O15+Q15)*$H$89/1.14,\"0\") → apunta a Presupuesto!O15 que vale #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · R15"
+    },
+    {
+     "cita": "R17 = IF(B17>0,(O17+Q17)*$H$89/1.14,\"0\") → apunta a Presupuesto!O17 que vale #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · R17"
+    },
+    {
+     "cita": "R19 = IF(B19>0,(O19+Q19)*$H$89/1.14,\"0\") → apunta a Presupuesto!O19 que vale #N/A",
+     "ubicacion": "ADICIONALES.xlsm · hoja Presupuesto · R19"
+    }
+   ],
+   "monto": null,
+   "porQue": "la celda rota se ve; la fórmula que la usa muestra un número hasta que Excel recalcula, y ese número es el que entra al precio"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1M_p-AQaFXRY0UF8ccH_NKHV4SM5DlMht.presupuesto.referencias",
@@ -6006,6 +8295,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1M5CxWrgvpqgt3kDzRYCiu_I4MyE0hV38.celdas_en_error",
+   "afirmacion": "«SAINT GOBAIN · PISOS EN FOSA» tiene 426 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 213, #REF!: 186, #DIV/0!: 27)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1M5CxWrgvpqgt3kDzRYCiu_I4MyE0hV38.presupuesto.referencias",
@@ -6018,6 +8349,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1MfeZExFtvTZOvFC2tXarCTMLHOpIYggG.celdas_en_error",
+   "afirmacion": "«FRANCO QUATTROPANI» tiene 233 celda(s) en error de fórmula repartidas en 7 hoja(s) (#REF!: 228, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "A1 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · A1"
+    },
+    {
+     "cita": "F4 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · F4"
+    },
+    {
+     "cita": "G4 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · G4"
+    },
+    {
+     "cita": "F5 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · F5"
+    },
+    {
+     "cita": "G5 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · G5"
+    },
+    {
+     "cita": "F6 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · F6"
+    },
+    {
+     "cita": "G6 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · G6"
+    },
+    {
+     "cita": "F7 = #REF!",
+     "ubicacion": "LISTADO DE TAREAS A EJECUTAR.xlsm · hoja NN (2) · F7"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6048,6 +8421,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1MJrF1Vetp9tTfRD5VfrDiweZcVag4vUL.celdas_en_error",
+   "afirmacion": "«FRANCO QUATTROPANI» tiene 376 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #N/A: 182, #DIV/0!: 1)",
+   "evidencia": [
+    {
+     "cita": "N18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N18"
+    },
+    {
+     "cita": "O18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · O18"
+    },
+    {
+     "cita": "P18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · P18"
+    },
+    {
+     "cita": "Q18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · Q18"
+    },
+    {
+     "cita": "R18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · R18"
+    },
+    {
+     "cita": "S18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · S18"
+    },
+    {
+     "cita": "T18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · T18"
+    },
+    {
+     "cita": "U18 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U18"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1MJrF1Vetp9tTfRD5VfrDiweZcVag4vUL.presupuesto.referencias",
@@ -6060,6 +8475,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1NJnpm1W7meTEUZLZRKsJLbz0nT1y2S4N.celdas_en_error",
+   "afirmacion": "«BODEGA - AZCONA» tiene 165 celda(s) en error de fórmula repartidas en 4 hoja(s) (#REF!: 144, #N/A: 21)",
+   "evidencia": [
+    {
+     "cita": "N24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · N24"
+    },
+    {
+     "cita": "O24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · O24"
+    },
+    {
+     "cita": "P24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · P24"
+    },
+    {
+     "cita": "Q24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · Q24"
+    },
+    {
+     "cita": "R24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · R24"
+    },
+    {
+     "cita": "S24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · S24"
+    },
+    {
+     "cita": "T24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · T24"
+    },
+    {
+     "cita": "U24 = #N/A",
+     "ubicacion": "PRESUPUESTO.xlsm · hoja Presupuesto · U24"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6090,6 +8547,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1PWW-OGONPcxcXG3p3yAxaor9LZmGOceq.celdas_en_error",
+   "afirmacion": "«ORICA» tiene 419 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 205, #REF!: 188, #DIV/0!: 26)",
+   "evidencia": [
+    {
+     "cita": "J12 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · J12"
+    },
+    {
+     "cita": "N12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · N12"
+    },
+    {
+     "cita": "O12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · O12"
+    },
+    {
+     "cita": "P12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · P12"
+    },
+    {
+     "cita": "Q12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · Q12"
+    },
+    {
+     "cita": "R12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · R12"
+    },
+    {
+     "cita": "S12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · S12"
+    },
+    {
+     "cita": "T12 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO.xlsm · hoja Presupuesto · T12"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1PWW-OGONPcxcXG3p3yAxaor9LZmGOceq.presupuesto.referencias",
@@ -6102,6 +8601,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Q0tbtyKpWSdIWTwRmRtH0VJVuhgjHmLJ.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ · ADICIONALES» tiene 227 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 29, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U12 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U12"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U21 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U21"
+    },
+    {
+     "cita": "U24 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U24"
+    },
+    {
+     "cita": "U25 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U25"
+    },
+    {
+     "cita": "U26 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U26"
+    },
+    {
+     "cita": "U27 = #DIV/0!",
+     "ubicacion": "COTIZACION REVOQUES.xlsm · hoja Presupuesto · U27"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6118,6 +8659,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Qa3ZNhq2asqjypMh3vDG0lRwn3_qp6h6.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · PRESUPUESTO INTERNO» tiene 296 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 191, #N/A: 93, #DIV/0!: 12)",
+   "evidencia": [
+    {
+     "cita": "J27 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · J27"
+    },
+    {
+     "cita": "N27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · N27"
+    },
+    {
+     "cita": "O27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · O27"
+    },
+    {
+     "cita": "P27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · P27"
+    },
+    {
+     "cita": "Q27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · Q27"
+    },
+    {
+     "cita": "R27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · R27"
+    },
+    {
+     "cita": "S27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · S27"
+    },
+    {
+     "cita": "T27 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO LUCERAS. V2.xlsm · hoja Presupuesto · T27"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1Qa3ZNhq2asqjypMh3vDG0lRwn3_qp6h6.presupuesto.referencias",
@@ -6132,6 +8715,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1qaYNuHjG2h5Q7A7rYcTsr3Usxs1gG7Lj.celdas_en_error",
+   "afirmacion": "«SAINT GOBAIN» tiene 335 celda(s) en error de fórmula repartidas en 4 hoja(s) (#N/A: 173, #REF!: 147, #DIV/0!: 15)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO DE REFACCION CARAS EXTERNAS DE GALPONES.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1qaYNuHjG2h5Q7A7rYcTsr3Usxs1gG7Lj.presupuesto.referencias",
@@ -6144,6 +8769,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1qCcsSD2oe15d9JCP2-TqfGqyxRp48Ydb.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ · Pisos Industriales» tiene 236 celda(s) en error de fórmula repartidas en 7 hoja(s) (#REF!: 230, #DIV/0!: 6)",
+   "evidencia": [
+    {
+     "cita": "J6 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · J6"
+    },
+    {
+     "cita": "J67 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · J67"
+    },
+    {
+     "cita": "J71 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · J71"
+    },
+    {
+     "cita": "J79 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · J79"
+    },
+    {
+     "cita": "J83 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · J83"
+    },
+    {
+     "cita": "D85 = #DIV/0!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja GG · D85"
+    },
+    {
+     "cita": "A1 = #REF!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja NN (2) · A1"
+    },
+    {
+     "cita": "F4 = #REF!",
+     "ubicacion": "Horas Hombre - Pisos Industriales.xlsm · hoja NN (2) · F4"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "ROTULO_CONTRADICE_COEFICIENTE",
@@ -6218,6 +8885,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1QTgppT5FBmkrwGTUn37QdJb9rPymXbFQ.celdas_en_error",
+   "afirmacion": "«MESSINA · OBRAS NO ADJUDICADAS» tiene 572 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 333, #REF!: 188, #DIV/0!: 51)",
+   "evidencia": [
+    {
+     "cita": "J17 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · J17"
+    },
+    {
+     "cita": "N17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · N17"
+    },
+    {
+     "cita": "O17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · O17"
+    },
+    {
+     "cita": "P17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · P17"
+    },
+    {
+     "cita": "Q17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · Q17"
+    },
+    {
+     "cita": "R17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · R17"
+    },
+    {
+     "cita": "S17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · S17"
+    },
+    {
+     "cita": "T17 = #N/A",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · T17"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1QTgppT5FBmkrwGTUn37QdJb9rPymXbFQ.presupuesto.referencias",
@@ -6244,6 +8953,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1rKUCSYZHeUsFWOjbOySCOoueqqz7kWRi.celdas_en_error",
+   "afirmacion": "«MESSINA · BSA - DEMOLICION Y PILETA DE CONTENCION» tiene 532 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 342, #REF!: 190)",
+   "evidencia": [
+    {
+     "cita": "N16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · N16"
+    },
+    {
+     "cita": "O16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · O16"
+    },
+    {
+     "cita": "P16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · P16"
+    },
+    {
+     "cita": "Q16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · Q16"
+    },
+    {
+     "cita": "R16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · R16"
+    },
+    {
+     "cita": "S16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · S16"
+    },
+    {
+     "cita": "T16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · T16"
+    },
+    {
+     "cita": "U16 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL - DEMOLICION Y PILETA DE CONTENCION - FI 12.xlsm · hoja Presupuesto · U16"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6316,6 +9067,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1UHkok7fd1XLpdFfcTPdJvY6tZjA2QAT6.celdas_en_error",
+   "afirmacion": "«BODEGA - AZCONA · TECHO SOLO» tiene 175 celda(s) en error de fórmula repartidas en 4 hoja(s) (#REF!: 144, #N/A: 21, #DIV/0!: 10)",
+   "evidencia": [
+    {
+     "cita": "U11 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U11"
+    },
+    {
+     "cita": "U12 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U12"
+    },
+    {
+     "cita": "U14 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U14"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U17 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U17"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U19 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U19"
+    },
+    {
+     "cita": "U20 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO TECHO.xlsm · hoja Presupuesto · U20"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "COEFICIENTE_AJUSTE_SIN_CRITERIO",
    "gravedad": "MEDIA",
    "clave": "1UHkok7fd1XLpdFfcTPdJvY6tZjA2QAT6.presupuesto.coeficientes",
@@ -6344,6 +9137,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1uXVe7ffIgYS5srgTwFtUGlRjYV9pR7Eu.celdas_en_error",
+   "afirmacion": "«JAVIER SANCHEZ · Instalacion Electrica» tiene 210 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 195, #DIV/0!: 10, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U10 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U10"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U26 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U26"
+    },
+    {
+     "cita": "U34 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U34"
+    },
+    {
+     "cita": "U35 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U35"
+    },
+    {
+     "cita": "U39 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U39"
+    },
+    {
+     "cita": "U40 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U40"
+    },
+    {
+     "cita": "U44 = #DIV/0!",
+     "ubicacion": "Cotizacion Interna - Instalacion Electrica.xlsm · hoja Presupuesto · U44"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1uXVe7ffIgYS5srgTwFtUGlRjYV9pR7Eu.presupuesto.referencias",
@@ -6356,6 +9191,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1VIz-2WghVuz98_pnsAghkDvc8Bs_xd39.celdas_en_error",
+   "afirmacion": "«MESSINA · ADICIONAL» tiene 501 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 310, #REF!: 191)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "Presupuesto Final.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6372,6 +9249,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1WVUh-Vitd-y8gOSY6PVWFINqmZcLfpiB.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · carpeta sin título» tiene 229 celda(s) en error de fórmula repartidas en 3 hoja(s) (#N/A: 165, #REF!: 43, #DIV/0!: 21)",
+   "evidencia": [
+    {
+     "cita": "J18 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · J18"
+    },
+    {
+     "cita": "N18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · N18"
+    },
+    {
+     "cita": "O18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · O18"
+    },
+    {
+     "cita": "P18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · P18"
+    },
+    {
+     "cita": "Q18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · Q18"
+    },
+    {
+     "cita": "R18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · R18"
+    },
+    {
+     "cita": "S18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · S18"
+    },
+    {
+     "cita": "T18 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO - PISOS.xlsm · hoja Presupuesto · T18"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1WVUh-Vitd-y8gOSY6PVWFINqmZcLfpiB.presupuesto.referencias",
@@ -6384,6 +9303,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Wx3D5HVhq8zk_71C7Def_-LferJFQ_MN.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · NUEVA CALLE» tiene 389 celda(s) en error de fórmula repartidas en 6 hoja(s) (#REF!: 194, #N/A: 173, #DIV/0!: 22)",
+   "evidencia": [
+    {
+     "cita": "J9 = #DIV/0!",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · J9"
+    },
+    {
+     "cita": "N9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · N9"
+    },
+    {
+     "cita": "O9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · O9"
+    },
+    {
+     "cita": "P9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · P9"
+    },
+    {
+     "cita": "Q9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · Q9"
+    },
+    {
+     "cita": "R9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · R9"
+    },
+    {
+     "cita": "S9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · S9"
+    },
+    {
+     "cita": "T9 = #N/A",
+     "ubicacion": "PRESUPUESTO INTERNO V2.xlsm · hoja Presupuesto · T9"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",
@@ -6400,6 +9361,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1XDDzZF7tTQaUK8aMp5G-S8XBP5_Rff2J.celdas_en_error",
+   "afirmacion": "«LA ESTRELLA · FINAL» tiene 453 celda(s) en error de fórmula repartidas en 6 hoja(s) (#N/A: 258, #REF!: 195)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "PRESUPUESTO FINAL.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1XDDzZF7tTQaUK8aMp5G-S8XBP5_Rff2J.presupuesto.referencias",
@@ -6414,6 +9417,48 @@
    "porQue": null
   },
   {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1yWFIucpMOFCvqPwwzNCBqJXI_leJnVXU.celdas_en_error",
+   "afirmacion": "«MESSINA · ADICIONAL» tiene 501 celda(s) en error de fórmula repartidas en 5 hoja(s) (#N/A: 310, #REF!: 191)",
+   "evidencia": [
+    {
+     "cita": "N10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · N10"
+    },
+    {
+     "cita": "O10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · O10"
+    },
+    {
+     "cita": "P10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · P10"
+    },
+    {
+     "cita": "Q10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · Q10"
+    },
+    {
+     "cita": "R10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · R10"
+    },
+    {
+     "cita": "S10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · S10"
+    },
+    {
+     "cita": "T10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · T10"
+    },
+    {
+     "cita": "U10 = #N/A",
+     "ubicacion": "COTIZACION INTERNA.xlsm · hoja Presupuesto · U10"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
+  },
+  {
    "tipo": "REFERENCIA_ROTA",
    "gravedad": "MEDIA",
    "clave": "1yWFIucpMOFCvqPwwzNCBqJXI_leJnVXU.presupuesto.referencias",
@@ -6426,6 +9471,48 @@
    ],
    "monto": null,
    "porQue": null
+  },
+  {
+   "tipo": "CELDA_EN_ERROR",
+   "gravedad": "MEDIA",
+   "clave": "1Z4RT_989-QoskuzcPEgzNsXmt8kA4_iC.celdas_en_error",
+   "afirmacion": "«ARCOR - SAN JUAN · sala de microbiologia» tiene 236 celda(s) en error de fórmula repartidas en 5 hoja(s) (#REF!: 193, #DIV/0!: 38, #N/A: 5)",
+   "evidencia": [
+    {
+     "cita": "U12 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U12"
+    },
+    {
+     "cita": "U13 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U13"
+    },
+    {
+     "cita": "U14 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U14"
+    },
+    {
+     "cita": "U15 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U15"
+    },
+    {
+     "cita": "U16 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U16"
+    },
+    {
+     "cita": "U17 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U17"
+    },
+    {
+     "cita": "U18 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U18"
+    },
+    {
+     "cita": "U19 = #DIV/0!",
+     "ubicacion": "presupuesto.xlsm · hoja Presupuesto · U19"
+    }
+   ],
+   "monto": null,
+   "porQue": "una celda rota no se queda quieta: todo lo que la sume o la multiplique arrastra el error, y el número final se sigue viendo como un número"
   },
   {
    "tipo": "REFERENCIA_ROTA",

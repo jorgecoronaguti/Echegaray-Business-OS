@@ -24,6 +24,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { bloqueDeCorrida } from './estudiar-cotizaciones-drive.mjs'
 
 const aca = path.dirname(fileURLToPath(import.meta.url))
 const script = path.join(aca, 'estudiar-cotizaciones-drive.mjs')
@@ -128,3 +129,25 @@ for (const nombre of HERMANOS) {
     } finally { fs.rmSync(carpeta, { recursive: true, force: true }) }
   })
 }
+
+test('los conteos de la corrida quedan EN EL DISCO, no sólo en la pantalla', () => {
+  // «114 candidatas · 64 internas · 38 del cliente · 12 no leídas» era todo el respaldo de lo que
+  // la rama afirmaba y vivía sólo en stdout. Un número que no está en ningún archivo no lo puede
+  // verificar un tercero. Y las NO LEÍDAS viajan con su motivo: sin eso, «64 + 38» se lee como
+  // «leí todo», que es la afirmación que la lista de no leídas existe para impedir.
+  const r = {
+    cotizaciones: [{}, {}], cliente: [{ clase: 'COTIZACION' }, { clase: 'COMPUTO' }],
+    salteados: [{}], noLeidos: [{ nombre: 'Computos.xlsx', porQue: 'ninguna pestaña tiene encabezado de cotización' }],
+    practicas: [1, 2, 3], practicasCliente: { practicas: [1, 2], sinCoeficiente: [1] },
+  }
+  const b = bloqueDeCorrida(r, { candidatas: 114 })
+  assert.equal(b.candidatas, 114)
+  assert.equal(b.plantillaInterna, 2)
+  assert.equal(b.formatoDelCliente, 2)
+  assert.deepEqual(b.formatoDelClientePorClase, { COTIZACION: 1, COMPUTO: 1 })
+  assert.equal(b.noLeidas, 1)
+  assert.equal(b.porQueNoSeLeyeron[0].archivo, 'Computos.xlsx')
+  assert.match(b.porQueNoSeLeyeron[0].porQue, /encabezado de cotización/)
+  assert.equal(b.practicasFormatoDelCliente, 2)
+  assert.equal(b.cierresSinCoeficiente, 1)
+})

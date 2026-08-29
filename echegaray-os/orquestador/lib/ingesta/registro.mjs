@@ -79,7 +79,10 @@ export const ADAPTADOR = Object.freeze({
   [FORMATO.DWG]: { modulo: 'ingesta/dwg.mjs', saca: ['capas', 'longitudes', 'áreas', 'conteo de bloques', 'cotas acotadas', 'textos'], estado: ESTADO.PENDIENTE },
   [FORMATO.IMAGEN]: { modulo: 'comprobantes/vision.mjs', saca: ['interpretación visual'], estado: ESTADO.PENDIENTE },
   [FORMATO.PLANILLA]: { modulo: 'google.readExcel', saca: ['pestañas', 'filas'], estado: ESTADO.PENDIENTE },
-  [FORMATO.DOCUMENTO]: { modulo: 'google.exportarComoTexto', saca: ['texto'], estado: ESTADO.PENDIENTE },
+  // Word se lee LOCAL, sin pasar por Google: `ingesta/word.mjs` abre el `.docx` como ZIP y el
+  // `.doc` binario por su piece table. Exportarlo por Drive obligaba a tener el archivo en Drive y
+  // a gastar una llamada por documento para algo que se resuelve con `zlib`.
+  [FORMATO.DOCUMENTO]: { modulo: 'ingesta/word.mjs', saca: ['texto', 'tablas con sus filas y celdas'], estado: ESTADO.PENDIENTE },
   [FORMATO.TEXTO]: { modulo: 'lectura directa', saca: ['texto'], estado: ESTADO.PENDIENTE },
   [FORMATO.COMPRIMIDO]: { modulo: null, saca: [], estado: ESTADO.NO_LEGIBLE },
   [FORMATO.OTRO]: { modulo: null, saca: [], estado: ESTADO.NO_LEGIBLE },
