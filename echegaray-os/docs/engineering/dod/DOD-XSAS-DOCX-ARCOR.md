@@ -76,15 +76,15 @@ verde, y con una de ellas la cláusula de U$S 31.500 desaparecía del artefacto.
 
 | | contención | Jaccard | proporción |
 |---|---|---|---|
-| el par real (las dos copias del contrato) — 33 de 34 frases | **0,971** | 0,943 | 1,000 |
+| el par real (las dos copias del contrato) — 34 de 35 frases | **0,971** | 0,944 | 1,000 |
 | el par siguiente (dos contratos con el mismo machote) | **0,455** | 0,125 | 0,324 |
 | pares en la zona [0,60 – 0,85) | **ninguno** | | |
 
-**Sobre este corpus las dos métricas dan el mismo veredicto** — con Jaccard 0,943, por encima del
+**Sobre este corpus las dos métricas dan el mismo veredicto** — con Jaccard 0,944, por encima del
 corte, el resultado de hoy sería idéntico. La razón para elegir contención no es el par que ya
-tenemos sino cuánto aguanta cada una (**CÁLCULO**, no medición): sobre 34 frases con `k` cláusulas
-cambiadas de cada lado, Jaccard deja de reconocer la misma revisión en `k = 3` (0,838) y contención
-aguanta hasta `k = 5` (0,853).
+tenemos sino cuánto aguanta cada una (**CÁLCULO**, no medición): sobre 35 frases con `k` cláusulas
+cambiadas de cada lado, Jaccard deja de reconocer la misma revisión en `k = 3` (0,842) y contención
+aguanta hasta `k = 5` (0,857).
 
 ---
 
@@ -129,8 +129,12 @@ Google Sheet nativo que el circuito todavía no exporta.
 
 **9 · Se tocó código compartido de `main`.**
 `biblioteca.mjs` (la ficha de documento avanza), `practica-historica.mjs` (la advertencia nombra su
-corpus) y `documento-proyecto.mjs` (clave por contenido, NFC en el borde). Los tres cambios son
-aditivos y con test, pero son de otro dominio y otro autor.
+corpus) y `plano/documental.mjs` — este último con un cambio de comportamiento para consumidores
+preexistentes: `claseDocumental` ya no devuelve `PLIEGO` por descarte sino `SIN_CLASIFICAR` (peso 8,
+debajo de `PLANILLA` 5 y `REFERENCIA` 6), y con eso cambian `documental.mjs:175` (`ingerir`, el peso
+de los hechos) y `capacidades.mjs:237` (`filaRol` devuelve `null` y esos documentos pierden su fila
+de ROL). Probado a nivel unitario, no a nivel de esos consumidores. (`documento-proyecto.mjs` NO va
+en esta lista: es nuevo de esta rama, no existe en `main`.)
 
 ---
 

@@ -62,27 +62,27 @@ export const MINIMO_FRASES_PARA_COMPARAR = 8
  * distintos, 1.081 pares; el auditor contó 55 lecturas antes de unificar por documento, 1.485 pares
  * — misma conclusión):
  *
- *   el par real (las dos copias del contrato de Quattropani)  33 de 34 frases en común
- *      contención 0,971 · Jaccard 0,943 · proporción de tamaño 1,000
+ *   el par real (las dos copias del contrato de Quattropani)  34 de 35 frases en común
+ *      contención 0,971 · Jaccard 0,944 · proporción de tamaño 1,000
  *   el par siguiente (dos contratos que comparten el machote del estudio)
  *      contención 0,455 · Jaccard 0,125 · proporción 0,324
  *   pares en la zona [0,60 – 0,85):  NINGUNO
  *
  * ═══ SOBRE ESTE CORPUS LAS DOS MÉTRICAS DAN EL MISMO VEREDICTO ═══
  *
- * Y hay que decirlo así: con Jaccard 0,943 —por encima del corte— el resultado de hoy sería
+ * Y hay que decirlo así: con Jaccard 0,944 —por encima del corte— el resultado de hoy sería
  * idéntico. La versión anterior de este comentario decía «0,846 contra 0,917, con el corte en el
  * medio»; esos números no salían de ninguna medición y eran falsos. La elección se sostiene por
  * otra cosa, no por el par que ya tenemos.
  *
  * ═══ POR QUÉ IGUAL SE ELIGE CONTENCIÓN: CUÁNTO AGUANTA CADA UNA ═══
  *
- * CÁLCULO —no medición—: sobre un documento de 34 frases, con `k` cláusulas cambiadas de cada lado,
- * Jaccard = (34−k)/(34+k) y contención = (34−k)/34.
+ * CÁLCULO —no medición—: sobre un documento de 35 frases, con `k` cláusulas cambiadas de cada lado,
+ * Jaccard = (35−k)/(35+k) y contención = (35−k)/35.
  *
- *   k = 1  Jaccard 0,943   contención 0,971
- *   k = 3  Jaccard 0,838 ← YA NO DETECTA   contención 0,912
- *   k = 5  Jaccard 0,744                   contención 0,853 ← el borde
+ *   k = 1  Jaccard 0,944   contención 0,971
+ *   k = 3  Jaccard 0,842 ← YA NO DETECTA   contención 0,914
+ *   k = 5  Jaccard 0,750                   contención 0,857 ← el borde
  *
  * O sea: Jaccard deja de reconocer una revisión del MISMO contrato con tres cláusulas tocadas, y
  * contención aguanta cinco. La pregunta que interesa es «¿todo lo que dice uno lo dice también el
