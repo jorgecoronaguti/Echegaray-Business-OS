@@ -31,6 +31,8 @@ import { cascada } from './comercial.mjs'
 import { colaDeAtencion, estadoDeCola } from './atencion.mjs'
 import { huellaDeEntradas, gateDeCongelado } from './freeze.mjs'
 import { metricasDeCorrida } from './metricas.mjs'
+import { explotarRecursos, reconciliar } from './explosion.mjs'
+import { barridoDeFuga, gateDeFuga } from './seguridad.mjs'
 
 /**
  * ADAPTAR EL RESULTADO DEL PIPELINE DE PLANO a la entrada del orquestador. PURA.
@@ -71,6 +73,7 @@ export function correr({
   documentos = [], elementos = [], partidas = [], composiciones = new Map(),
   observaciones = [], alcance = [], politica = null, fx = null,
   degradacion = null, congeladoPor = null, hoy = new Date(),
+  cliente = null, clientesConocidos = [],
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -167,16 +170,42 @@ export function correr({
   }))
 
   // ── 10 · FREEZE
+  // ═══ EL BARRIDO DE FUGA VA ANTES DE CONGELAR, NO ANTES DE ENVIAR ═══
+  // Congelar es el punto sin retorno: después la versión no muta y la oferta sale de ella. Un
+  // nombre de otro cliente detectado recién al exportar el PDF ya está adentro de la versión que
+  // se congeló, y sacarlo exige crear una versión nueva.
+  const fuga = barridoDeFuga({
+    clienteDeLaCotizacion: cliente, clientesConocidos,
+    contenido: conAlcance.partidas.flatMap((p) => [
+      { origen: `${p.codigo}.descripcion`, texto: p.descripcion ?? '' },
+      ...(p.nota ? [{ origen: `${p.codigo}.nota`, texto: p.nota }] : []),
+    ]),
+    metadatos: documentos.map((d) => ({ campo: `documento:${d.nombre}`, valor: d.nombre ?? '', sale: false })),
+  })
+  // Sin cliente declarado el barrido no puede correr, y eso NO se disfraza de limpio.
+  const gateFuga = cliente ? gateDeFuga(fuga) : { ready: false, blocking_issues: [{ tipo: 'FUGA_NO_VERIFICABLE', entidad: 'cotización', detalle: 'la cotización no declara cliente: el barrido de fuga no puede correr', impacto: null, accion: null }], warnings: [], porQue: 'sin cliente no hay contra qué comparar' }
+
   const huella = huellaDeEntradas({ documentos, partidas: conAlcance.partidas, precios: observaciones, politica, alcance, fx })
-  const gate = gateDeCongelado({ cascada: casc, cola })
+  const gateCongelado = gateDeCongelado({ cascada: casc, cola })
+  const gate = Object.freeze({
+    ready: gateCongelado.ready && gateFuga.ready,
+    blocking_issues: Object.freeze([...gateCongelado.blocking_issues, ...gateFuga.blocking_issues]),
+    warnings: Object.freeze([...gateCongelado.warnings, ...gateFuga.warnings]),
+    porQue: [gateCongelado.porQue, gateFuga.ready ? null : gateFuga.porQue].filter(Boolean).join(' · '),
+  })
   anotar(resultadoEtapa({
     etapa: ETAPA.FREEZE, status: gate.ready ? STATUS.OK : STATUS.BLOQUEADA,
-    result: gate, evidence: [{ huella: huella.sha256, resumen: huella.resumen }],
+    result: gate, evidence: [{ huella: huella.sha256, resumen: huella.resumen }, { fuga: fuga.clientesRevisados }],
     blocking_issues: gate.blocking_issues,
     next_actions: gate.ready ? ['freeze'] : [...new Set(gate.blocking_issues.map((b) => b.accion).filter(Boolean))],
   }))
 
   // ── 11 · OUTPUT
+  // La explosión es DERIVADA: sale acá y no en una etapa propia porque no decide nada — es la
+  // misma información de COST leída por recurso en vez de por partida. Y se RECONCILIA contra el
+  // costo directo: si no cuadra, hay un recurso contado dos veces o uno perdido.
+  const explosion = explotarRecursos(costos)
+  const reconciliacion = reconciliar(explosion, cd)
   const metricas = metricasDeCorrida({
     documentos, elementos,
     cantidades: partidas.map((p) => ({ valor: p.cantidad, estado: p.cantidad === null || p.cantidad === undefined ? ESTADO.FALTA_DATO : ESTADO.CALCULADO, porQue: p.porQue ?? (p.cantidad === null ? 'sin cantidad computada' : null) })),
@@ -188,8 +217,12 @@ export function correr({
   })
   anotar(resultadoEtapa({
     etapa: ETAPA.OUTPUT, status: gate.ready ? STATUS.OK : STATUS.BLOQUEADA,
-    result: { listoParaOfertar: gate.ready, metricas },
+    result: { listoParaOfertar: gate.ready, metricas, explosion, reconciliacion },
     provenance: [huella.resumen],
+    // Una explosión que no reconcilia NO bloquea la oferta —el precio sale de COST, no de acá— pero
+    // sí es una advertencia fuerte: significa que el desglose que va a leer Compras no coincide con
+    // el que se cotizó.
+    missing_data: reconciliacion.cuadra === false ? [reconciliacion.porQue] : [],
   }))
 
   return Object.freeze({
@@ -200,7 +233,7 @@ export function correr({
     costos: Object.freeze(costos),
     costoDirecto: cd,
     cascada: casc,
-    cola, huella, gate, metricas,
+    cola, huella, gate, metricas, explosion, reconciliacion, fuga,
     estado: estadoDeCola(cola),
     degradada: Boolean(degradacion?.hubo),
     congeladoPor,

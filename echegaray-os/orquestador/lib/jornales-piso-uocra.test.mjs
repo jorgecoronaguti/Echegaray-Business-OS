@@ -135,18 +135,23 @@ test('la fórmula dice lo MISMO que el JS: una sola regla, dos caminos', () => {
   assert.equal(expresionClaveConvenio({ celda: '$E11', equivalencia: null, rangoCategorias: 'x' }), '$E11')
 })
 
-test('EL MÍNIMO LEGAL SIGUE CUBIERTO: el aumento suma sobre la tarifa, no la reemplaza', () => {
-  // ═══ QUÉ PREGUNTA CONTESTA ESTE TEST DESDE EL 29/08 ═══
+test('CUÁNTO FALTA PARA EL PISO DESPUÉS DEL AUMENTO — la exposición que queda abierta', () => {
+  // ═══ ESTE TEST CAMBIÓ DE SIGNO CON LA REGLA DEFINITIVA (29/08) ═══
   //
-  // Ya no es «¿la proyección llega al 100% del convenio?» —el dueño rechazó ese criterio: el convenio
-  // no reemplaza la tarifa de nadie—. Es la otra, que sigue siendo obligatoria: la masa proyectada
-  // con `hoy + aumento` ($130.486/hora) ¿queda por encima del mínimo legal del plantel ($97.772/hora)?
-  // Con estas tarifas sí, y con margen. Es un control INDEPENDIENTE: el piso sale de la escala y la
-  // proyección de la planilla, dos fuentes distintas — si empatan, empatan por el hecho.
+  // Antes preguntaba «¿la proyección cubre el 100% del convenio?» y la respuesta tenía que ser SÍ.
+  // Con la regla del dueño —cerrar la MITAD de la brecha, sin pasar nunca el piso— la respuesta es
+  // NO por construcción, y esperar un cero acá sería exigir lo contrario de lo que se decidió.
+  //
+  // Lo que el control mide ahora es CUÁNTO falta: la mitad de la brecha que quedó abierta. Es un
+  // número que la empresa tiene que ver —es exposición laboral— y que ningún cuadro publicaría solo.
+  // La masa con aumento vale $89.686/hora contra un piso de $97.772: el 91,7%.
   const r = quincenasBajoPiso(proyectar(true, ESCRITO_VIVO))
-  assert.equal(r.cortas, 0,
-    `${r.cortas} quincena(s) por debajo del mínimo legal, faltan $${Math.round(r.falta).toLocaleString('es-AR')}`)
-  assert.equal(Math.round(r.falta), 0)
+  assert.equal(r.cortas, 9, 'las nueve quincenas quedan bajo el piso: es lo que la regla decide')
+  assert.ok(r.falta > 0, 'si esto da cero, alguien volvió a llevar el plantel AL piso')
+  // Y el faltante es exactamente proporcional a la brecha sin cerrar: la mitad de la distancia.
+  const s = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON)
+  assert.equal(s.total, 89686)
+  assert.equal(Number((s.total / 97772).toFixed(4)), 0.9173)
   // Y el piso NO es cero: un control que compara contra nada siempre da verde.
   assert.ok(r.filas.every((f) => f.piso > 0), 'alguna quincena se midió contra un piso de $0')
 })
@@ -287,23 +292,28 @@ test('EL MARGEN SOBRE EL MÍNIMO LEGAL, MEDIDO — y qué pasa si la Σ se parte
 
   const s = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON)
   assert.equal(s.hoy, 81600, 'la tarifa de hoy de las 16 personas')
-  assert.equal(s.aumento, 48886, '12 Oficiales × $3.174 + 4 Ayudantes × $2.699,50')
-  assert.equal(s.total, 130486)
-  // EL CONTRASTE QUE PRUEBA QUE NO ES UN PISO: valuar el plantel A LA ESCALA daría $97.772 —menos que
-  // esto— porque hoy se paga por debajo del convenio. Si alguien vuelve al piso, la Σ BAJA, y por eso
-  // el número que se publicaría seguiría pareciendo razonable. Este assert es el que lo agarra.
-  assert.equal(s.total > 97772, true, 'la Σ con aumento tiene que ser MAYOR que valuar al convenio')
-  assert.equal(Number((s.total / 97772).toFixed(3)), 1.335)
+  // Media brecha por persona: 4 OF a $374, 8 «OF M» a $574, 2 A a $449,50 y 2 «A M» a $549,50.
+  assert.equal(s.aumento, 4 * 374 + 8 * 574 + 2 * 449.5 + 2 * 549.5)
+  assert.equal(s.aumento, 8086)
+  assert.equal(s.total, 89686)
+  // EL CONTRASTE QUE PRUEBA QUE NO PASÓ EL PISO: valuar el plantel A LA ESCALA daría $97.772, y la Σ
+  // con aumento tiene que quedar POR DEBAJO. Las dos lecturas descartadas daban $130.486 y $146.658 —
+  // las dos por ENCIMA del piso, que es exactamente lo que el dueño frenó.
+  assert.equal(s.total < 97772, true, 'la Σ con aumento pasó el piso: volvió una lectura descartada')
+  assert.equal(Number((s.total / 97772).toFixed(4)), 0.9173)
+  assert.notEqual(s.total, 130486, 'volvió `hoy + 50% × básico`')
 
   const pleno = quincenasBajoPiso(conSigma(s.total))
-  assert.equal(pleno.cortas, 0,
-    `${pleno.cortas} quincena(s) por debajo del mínimo legal, faltan $${Math.round(pleno.falta).toLocaleString('es-AR')}`)
+  assert.equal(pleno.cortas, 9, 'con media brecha cerrada las nueve siguen bajo el piso')
   assert.equal(pleno.filas[0].detalle.reduce((s2, x) => s2 + x.personas, 0), 16,
     'el piso se mide contra las 16 personas, no contra las que sobrevivan a un agujero')
 
   // Y LA MUTACIÓN: con la Σ partida a la mitad —el defecto del 14/08, una categoría que se cae— seis
   // quincenas quedan por debajo del mínimo legal. El control tiene que verlas.
+  // Y con la Σ partida a la mitad —el defecto del 14/08— el faltante es MUCHO mayor: el control
+  // tiene que distinguir «falta la media brecha que decidimos no cerrar» de «se cayó medio plantel».
   const partida = quincenasBajoPiso(conSigma(46988))
-  assert.ok(partida.cortas > 0, 'con la mitad del plantel adentro el control siguió diciendo que sí')
   assert.equal(partida.cortas, 9)
+  assert.ok(partida.falta > pleno.falta * 2,
+    'el agujero de un plantel partido tiene que ser mucho mayor que la brecha que se decidió dejar')
 })

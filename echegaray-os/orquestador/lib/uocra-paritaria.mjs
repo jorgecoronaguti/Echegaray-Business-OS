@@ -177,67 +177,102 @@ export const CONVENIO_POR_CODIGO = {
  * $8.049.700 a $12.719.379, **+$4.669.679 por quincena**. Anualizado sobre 24 quincenas y con las
  * cargas sociales del 38,62% que sale del F931 real: **+$155.379.240**.
  *
- * ═══ LOS TRES LÍMITES DE ESTE NÚMERO (29/08) ═══
+ * ═══ LA LECTURA CORRECTA, EN LA TERCERA VUELTA (29/08) — Y POR QUÉ LAS DOS ANTERIORES ESTABAN MAL ═══
+ *
+ * Se implementó dos veces otra cosa antes de entender esta frase. La restricción que la decodifica
+ * llegó última y es la que cierra todo: *"no puede dar mas el resultado por hora q el 100% del piso
+ * de uocra"*.
+ *
+ * LA REGLA: se cierra LA MITAD DE LA BRECHA entre lo que cada uno cobra hoy y el piso de convenio de
+ * su categoría. El resultado NUNCA pasa el piso, y nadie baja.
+ *
+ *     brecha  = max(0; básico − hoy)
+ *     aumento = brecha / 2
+ *     tarifa  = hoy + aumento          ≤ básico, siempre
+ *
+ * Las cinco frases del dueño, cada una contra esta regla:
+ *   1 · "del convenio sacar el 50% por categoria y eso aumentar sobre lo q cobran hoy" → el 50% de la
+ *       brecha AL convenio, sumado a lo de hoy.
+ *   2 · "el aumento no es al 100% del convenio, es al 50%" → no se los lleva al convenio entero: a
+ *       mitad de camino.
+ *   3 · "¿cómo puede ser q el 50% sea más q el 100% del piso?" → su objeción exacta al intento
+ *       anterior, que publicaba $8.774 con un piso de $6.348.
+ *   4 · "en lugar de llevar a la gente al piso (100%), llevarlos a un 50 de eso" → a mitad de camino.
+ *   5 · "no puede dar más el resultado por hora q el 100% del piso" → el tope.
+ *
+ * LOS DOS INTENTOS ANTERIORES, PARA QUE NO VUELVAN:
+ *   · `hoy + 50% × básico` — daba $5.600 + $3.174 = $8.774 para un Oficial, un 38% POR ENCIMA del
+ *     piso. Es la que el dueño frenó con la pregunta 3.
+ *   · `1,5 × básico` ("piso + 50%") — daba $9.522, todavía peor. La restricción 5 la mata.
+ * Las dos son PLAUSIBLES leyendo sólo una frase suelta, y las dos multiplican el costo por siete:
+ * $661.779 de aumento en la quincena contra los $4,67M que publicaba la primera lectura.
+ *
+ * ═══ LOS TRES LÍMITES DE ESTE NÚMERO ═══
  *
  * 1 · DESDE CUÁNDO RIGE NO ESTÁ DECIDIDO. La proyección lo aplica a las quincenas que se pagan
  *     después del cierre del mes en curso (la frontera de «caja comprometida» del 07/08). Es un
  *     supuesto del OS, no una orden: nadie dijo la fecha.
  * 2 · EL BÁSICO NO ES UN DATO PROPIO. Sale de la réplica `_UOCRA_RAW`, que es un IMPORTHTML a un
- *     sitio de terceros. Como el aumento es la MITAD del básico, un error de escala entra al bolsillo
- *     de cada persona multiplicado por todas las horas del semestre. Lo único que puede notarlo es
- *     `contrastarEscala` contra la escala verificada a mano.
- * 3 · SI ALGUIEN QUEDA BAJO EL MÍNIMO LEGAL AUN CON EL AUMENTO, ESTA FUNCIÓN NO LO ARREGLA. Devuelve
- *     la decisión (`tarifa`) y la marca (`bajoConvenio`); el que liquida usa `jornalConAumento`, que
- *     sí aplica el piso. Son dos preguntas distintas y las dos tienen que poder contestarse.
+ *     sitio de terceros. Y ahora el básico no sólo escala el aumento: lo DEFINE por diferencia, así
+ *     que un básico inflado se convierte en aumento peso por peso. `contrastarEscala` es lo único
+ *     que puede notarlo.
+ * 3 · TRAS EL AUMENTO, EL PLANTEL SIGUE POR DEBAJO DEL PISO DE CONVENIO — POR DISEÑO. Cerrar la
+ *     mitad de la brecha deja la otra mitad abierta: los 17 quedan entre un 2% y un 9% bajo la
+ *     escala. Eso no es un defecto de esta función, es la decisión del dueño; pero es una exposición
+ *     laboral real y por eso `bajoConvenio` la sigue contando y la corrida la sigue imprimiendo. Una
+ *     decisión declarada se publica; no se tapa subiendo el número en silencio.
  */
-export const PORCENTAJE_DE_AUMENTO = 0.5
+export const FRACCION_DE_BRECHA = 0.5
+/** El nombre viejo, por si alguna rama lo cita. Es la MISMA fracción, aplicada a la brecha. */
+export const PORCENTAJE_DE_AUMENTO = FRACCION_DE_BRECHA
 
 /**
- * NÚCLEO PURO: la hora que se paga después del aumento.
+ * NÚCLEO PURO: la hora que se paga después del aumento — y las piezas con las que se explica.
  *
  * `jornal` es lo que la persona cobra hoy; `basico` es el de su categoría en la escala vigente.
  * Devuelve `null` cuando no hay básico — y `null` NO es cero: "no sé cuánto le corresponde" y "le
  * corresponde nada" son afirmaciones distintas, y publicar la segunda sería falso.
  *
- * EL PISO SIGUE SIENDO UN PISO. El resultado nunca puede quedar por debajo del básico de convenio:
- * el aumento es una decisión de la empresa, el mínimo es una obligación legal. Hoy ninguno de los 17
- * queda cerca de esa frontera, pero un jornal bajo lo suficiente la cruzaría sin que nadie mire.
+ * EL AUMENTO ES POR PERSONA AUNQUE EL PISO SEA POR CATEGORÍA: dos Oficiales que cobran $5.600 y
+ * $5.300 tienen brechas distintas contra el mismo piso, así que reciben $374 y $524. Un cuadro por
+ * categoría NO puede publicar «personas × constante»: tiene que sumar persona por persona.
  */
-export function tarifaConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
+export function tarifaConAumento(jornal, basico, fraccion = FRACCION_DE_BRECHA) {
   if (basico == null || !Number.isFinite(Number(basico))) return null
-  // `Number(null)` es 0 y `Number('')` también: sin esta línea, un porcentaje NO DECLARADO entraba
+  // `Number(null)` es 0 y `Number('')` también: sin esta línea, una fracción NO DECLARADA entraba
   // como "cero por ciento" y la pestaña publicaba "aumento aplicado" con aumento de cero. Lo detectó
   // el test negativo, no yo. NULL NO ES CERO, tampoco cuando JavaScript insiste en que sí.
-  if (porcentaje == null || porcentaje === '' || typeof porcentaje === 'boolean'
-    || !Number.isFinite(Number(porcentaje)) || Number(porcentaje) < 0) {
-    throw new TypeError(`un aumento de ${porcentaje} sobre el piso no describe ningún acuerdo salarial`)
+  if (fraccion == null || fraccion === '' || typeof fraccion === 'boolean'
+    || !Number.isFinite(Number(fraccion)) || Number(fraccion) < 0) {
+    throw new TypeError(`cerrar ${fraccion} de la brecha no describe ningún acuerdo salarial`)
   }
   const piso = Number(basico)
   const hoy = Number.isFinite(Number(jornal)) ? Number(jornal) : 0
-  const aumento = piso * Number(porcentaje)
+  // EL `max(0; …)` ES LA MITAD DE LA REGLA, NO UNA DEFENSA CONTRA NÚMEROS RAROS. Sin él, quien ya
+  // cobra POR ENCIMA del piso tendría brecha negativa y el "aumento" le BAJARÍA la hora. Hoy no le
+  // pasa a ninguno de los 17, y por eso justamente hay que escribirlo: el día que alguien cobre más
+  // que su escala, la regla ya dice qué hacer y no lo decide un signo.
+  const brecha = Math.max(0, piso - hoy)
+  const aumento = brecha * Number(fraccion)
   const tarifa = hoy + aumento
-  return { hoy, aumento, piso, tarifa, bajoConvenio: tarifa < piso }
+  return { hoy, brecha, aumento, piso, tarifa, bajoConvenio: tarifa < piso, sobreElPiso: hoy >= piso }
 }
 
 /**
- * NÚCLEO PURO: la hora que se PAGA — la tarifa nueva, nunca por debajo del mínimo legal.
+ * NÚCLEO PURO: la hora que se LIQUIDA. Es la misma tarifa, sin corrección.
  *
- * Se separó de `tarifaConAumento` el 29/08 porque las dos preguntas dejaron de tener la misma
- * respuesta y el cuadro por categoría necesita la primera:
+ * ═══ ACÁ HABÍA UN `Math.max(tarifa; piso)` Y HOY SERÍA UNA MENTIRA (29/08) ═══
  *
- *   · `tarifaConAumento().tarifa` es LA DECISIÓN: hoy + 50% del básico, sin techo y sin piso. Es lo
- *     que suma el cuadro 1.1 y lo que proyecta la pestaña — el aumento es aditivo por definición.
- *   · `jornalConAumento` es LO QUE SE LIQUIDA: la misma tarifa con el mínimo legal aplicado.
+ * Con las lecturas anteriores el resultado quedaba SOBRE el piso y ese max no hacía nada; era una red
+ * por si un jornal muy bajo cruzaba la frontera. Con la regla definitiva el resultado queda SIEMPRE
+ * bajo el piso —es lo que el dueño decidió— así que ese max ya no sería una red: pisaría la decisión
+ * y publicaría un número que nadie tomó, un 9% más caro, en la pestaña con la que se firma el pago.
  *
- * Hoy las dos coinciden para las 17 personas (el que menos cobra está en $4.200 y el básico de
- * Ayudante en $5.399: $4.200 + $2.699 = $6.899 > $5.399). Pueden separarse con una tarifa por debajo
- * de la mitad de su básico, y ahí el cuadro publica la decisión y el Estado de la fila GRITA que esa
- * categoría queda bajo el convenio. No se corrige en silencio: un piso aplicado calladamente esconde
- * que la empresa está en falta.
+ * La exposición legal no desaparece porque no la corrijamos acá: se CUENTA (`bajoConvenio`) y se
+ * imprime en la corrida. Un dato incómodo se publica; no se disuelve en un máximo.
  */
-export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
-  const t = tarifaConAumento(jornal, basico, porcentaje)
-  return t ? Math.max(t.tarifa, t.piso) : null
+export function jornalConAumento(jornal, basico, fraccion = FRACCION_DE_BRECHA) {
+  return tarifaConAumento(jornal, basico, fraccion)?.tarifa ?? null
 }
 
 /**
@@ -247,7 +282,7 @@ export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUME
  * entera se rompe o —peor— se parte en dos argumentos y devuelve otra cosa. Es la trampa ya pagada
  * (`formula-por-api-va-en-locale`). Con notación de porcentaje no hay coma decimal que escribir.
  */
-export function porcentajeEnFormula(pct = PORCENTAJE_DE_AUMENTO) {
+export function porcentajeEnFormula(pct = FRACCION_DE_BRECHA) {
   const n = Number(pct) * 100
   if (!Number.isFinite(n)) throw new TypeError(`no sé escribir ${pct} como porcentaje en una fórmula`)
   // Un porcentaje con decimales necesitaría coma: se escribe como fracción, que no la usa.

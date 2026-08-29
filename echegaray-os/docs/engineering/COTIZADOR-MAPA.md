@@ -1,5 +1,10 @@
 # COTIZADOR — MAPA A/B/C/D
 
+> **Estado al cierre de la FASE 2 (29/08/2026).** La tabla de abajo es el estado ANTES de construir
+> `orquestador/lib/cotizador/`. Lo que la fase 1 y la 2 movieron está en la sección «Qué se movió»
+> al final; el mapa original se conserva porque es la evidencia de qué había, y reescribirlo
+> borraría el punto de partida contra el que se mide.
+
 Qué existe hoy para «cotización real punta a punta» (PROGRAMA v5), estación por estación.
 **A** ya existe · **B** parcial · **C** existe pero no está conectado · **D** falta implementar.
 
@@ -63,3 +68,43 @@ Es para USAR. Antes de escribir una línea de una estación, mirar su fila y abr
 
 `biblioteca.mjs` · `practica-historica.mjs` · `orquestador/lib/plano/*` (core XSAS cerrado: se
 ENVUELVE, no se edita) · el XLSM · cualquier Sheet · `motor-salarial`/`nomina-*`/`jornales-*`.
+
+
+---
+
+## Qué se movió (fases 1 y 2)
+
+| # | Estación | Antes | Ahora | Dónde |
+|---|---|:-:|:-:|---|
+| 1 | INGEST | B | B | sigue sin registro de documento consultable |
+| 4 | SCOPE | **D** | **A** | `cotizador/alcance.mjs` + `public.cotizacion_alcance` |
+| 6 | Unidades fuertes | **D** | **A** | `cotizador/unidades.mjs` |
+| 8 | COMPOSE | B | B | falta `source/version/validity` por línea |
+| 9 | Precios | B | **A** | `cotizador/precios.mjs` + vista `recurso_precio_vigencia` |
+| 10 | FX | B | **A** | `cotizador/precios.mjs` `tipoDeCambio`/`aplicarFx` |
+| 12 | COSTO DIRECTO | B | **A** | `cotizador/costo.mjs` — el total se niega |
+| 13 | Subcontrato sin precio | B | **A** | `cotizador/costo.mjs` `subcontrato()` |
+| 14 | Indirectos | **D** | **A** | `cotizador/comercial.mjs` + `public.indirecto_concepto` |
+| 17 | Resource explosion | **D** | **A** | `cotizador/explosion.mjs` con reconciliación |
+| 18 | Outlier engine | **D** | **A** | `cotizador/outlier.mjs` — 5 señales |
+| 19 | Eventos / undo | **D** | **A** | `cotizador/eventos.mjs` + `public.cotizacion_evento` |
+| 20 | Cola de atención | B | **A** | `cotizador/atencion.mjs` |
+| 21 | Blocking rules | B | **A** | `cotizador/atencion.mjs` + `public.cot_gate_congelado` |
+| 22 | FREEZE | B | **A** | `cotizador/freeze.mjs` + `public.cot_congelar_con_gate` |
+| 23 | Oferta con genealogía | **C** | **A** | `cotizador/oferta.mjs` |
+| 24 | Revisión dos vistas | **D** | **A** | `cotizador/oferta.mjs` `revisar()` con puente |
+| 26 | Preparar obra | B | **A** | `cotizador/obra.mjs` — Σ frentes |
+| 27 | RBAC por acción | B | **A** | `contrato.mjs` + `public.cot_permiso` / `cot_permiso_de_accion` |
+| 28 | CLAUDE-ZERO | B | **A** | `cotizador/claude-zero.test.mjs` |
+| 30 | Métricas por run | B | **A** | `cotizador/metricas.mjs` con test propio |
+| 31 | Prompt injection | **D** | **A** | `cotizador/seguridad.mjs` |
+| 32 | Cross-client leak | **C** | **A** | `cotizador/seguridad.mjs`, enganchado antes de FREEZE |
+| — | Adaptadores Postgres | — | **A** | `cotizador/pg.mjs` — 5 consultas, sin N+1 |
+
+**Los tres defectos medidos, cerrados:** el total ya no se afirma con partidas sin precio
+(`costo.mjs` + `cot_gate_congelado`); el gate va antes de congelar (`cot_congelar_con_gate` levanta
+excepción); las unidades son fuertes y la colisión de `m` está declarada.
+
+**Lo que sigue en D o B:** registro de documentos (1), `source/version/validity` por línea de
+composición (8), y la jerarquía de resolución de FALTA_DATO del §30 —que es una métrica, no una
+cadena que busque—. Los casos reales (§35, §36, §37) no se ejercitaron: es la fase siguiente.

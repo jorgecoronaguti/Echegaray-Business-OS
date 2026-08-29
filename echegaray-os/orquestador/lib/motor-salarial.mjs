@@ -317,7 +317,7 @@ export function filasPlantel({
   // la de al lado. Lo que cambió de contenido es la D —era «$/hora mínimo», ahora es la Σ del
   // aumento— y el mínimo pasó a calcularse DENTRO del Estado, que es el único que lo usaba.
   filas.push(['Categoría', 'Personas', 'Σ $/hora HOY', 'Σ aumento', 'Convenio (tuya)',
-    'Básico convenio', `Aumento ${porcentajeEnFormula(porcentaje)} $/hora`, 'Estado'])
+    'Básico convenio', 'Σ $/hora con aumento', 'Estado'])
   const fPrimera = filaInicio + 1
   const equivalencias = categorias.map((c) => [c, convenioDe(c, tabla)])
   // El grupo del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH por nombre de mes
@@ -340,8 +340,8 @@ export function filasPlantel({
    */
   const estado = (r, minimo) => `IF(N($F${r})=0;"sin escala para esa categoría";`
     + `IF(${minimo}=0;"sin nadie con tarifa cargada";`
-    + `IF(${minimo}+N($G${r})<N($F${r});`
-    + `"${ALERTA} aun con el aumento queda bajo el convenio";"✓ el aumento lo deja sobre el convenio")))`
+    + `IF(${minimo}>=N($F${r});"✓ ya cobra el piso: sin aumento";`
+    + `"✓ cierra el 50% de la brecha al piso")))`
   categorias.forEach((cat, i) => {
     const r = fPrimera + i
     const q = `"${cat}"`
@@ -443,20 +443,28 @@ export function filasPlantel({
       cat,
       `=SUMPRODUCT(--(TRIM(${D})=${q}))`,
       `=SUMPRODUCT(--(TRIM(${D})=${q});N(${W}))`,
-      // Σ DEL AUMENTO DE LA CATEGORÍA = personas × el aumento de la hora. Sale de dos celdas de esta
-      // misma fila y no de un producto escalar nuevo: si mañana el plantel cambia, se mueve sola.
-      `=N($B${r})*N($G${r})`,
+      // ═══ LA Σ DEL AUMENTO NO PUEDE SER «PERSONAS × CONSTANTE» (29/08, tercera lectura) ═══
+      //
+      // El piso es por CATEGORÍA pero la brecha es por PERSONA: dos Oficiales que cobran $5.600 y
+      // $5.300 tienen brechas de $748 y $1.048 contra el mismo piso, así que reciben $374 y $524. Una
+      // columna con «el aumento de la hora» y una multiplicación por la cantidad de gente daría el
+      // promedio disfrazado de dato, y sería exacto sólo si todos cobraran igual.
+      //
+      // Se suma persona por persona sobre el espejo: `(básico − W)` recortado en cero por la máscara
+      // `(N(W) < básico)` —el que ya cobra el piso no baja— y por `ISNUMBER(W)`, que deja afuera al
+      // que no tiene tarifa cargada. Sin esa última, una celda vacía se leería como «cobra $0» y se
+      // le inventaría medio básico de aumento.
+      `=IF(N($F${r})=0;0;SUMPRODUCT(--(TRIM(${D})=${q});ISNUMBER(${W});`
+      + `(N($F${r})-N(${W}))*(N(${W})<N($F${r})))*${porcentajeEnFormula(porcentaje)})`,
       // LA COLUMNA DEL DUEÑO. Cadena vacía = "no es mía, preservá lo que haya". Con el centinela, la
       // corrida siguiente le borraría lo que escribió — es el defecto que dejó OFICINA_BANCO ciego.
       '',
       g
         ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$${g.r0}:$${UOCRA_COL.basico}$${g.r1};MATCH(${clave};'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1};0));"")`
         : '',
-      // EL AUMENTO DE LA HORA: el % del básico de SU categoría. Es lo único que el convenio decide acá
-      // —el tamaño de la suba— y por eso cuelga de la celda del básico y no de un número escrito.
-      // El porcentaje va en notación de porcentaje: `0,5` metería una coma decimal en una fórmula
-      // cuyo separador de argumentos ES la coma en otros locales, y ésa es una trampa ya pagada.
-      `=IF(N($F${r})=0;"";$F${r}*${porcentajeEnFormula(porcentaje)})`,
+      // LO QUE VA A COSTAR ESA CATEGORÍA POR HORA: lo de hoy más su aumento. Son las dos celdas de
+      // esta misma fila, sumadas — no un tercer cálculo que pueda separarse de ellas.
+      `=N($C${r})+N($D${r})`,
       // ═══ UN ESTADO, NO UNA INSTRUCCIÓN — Y MENOS REPETIDA UNA VEZ POR FILA (06/08) ═══
       //
       // Acá decía "escribí la categoría del convenio en la columna de al lado" y la frase aparecía
@@ -467,14 +475,15 @@ export function filasPlantel({
       // SI LA CELDA DEL DUEÑO SE IGNORÓ, LA FILA LO DICE. Su valor se PRESERVA pero no gobierna: sin
       // este aviso, la corrección arreglaría el número y lo dejaría creyendo que su categoría manda.
       //
-      // ═══ QUÉ PREGUNTA CONTESTA EL ESTADO AHORA (29/08) ═══
+      // ═══ QUÉ PREGUNTA CONTESTA EL ESTADO (29/08, tercera lectura) ═══
       //
-      // Antes decía «por debajo del convenio» comparando el mínimo de la categoría contra el básico:
-      // era el control de un PISO que se iba a aplicar. Con el aumento aditivo el convenio ya no
-      // reemplaza la tarifa de nadie, así que la pregunta útil es la otra: ¿el aumento ALCANZA para
-      // sacar al que menos cobra de abajo del mínimo legal? Si no alcanza, la empresa queda en falta
-      // y la fila lo dice — no se corrige en silencio subiéndole la tarifa en la Σ, porque eso
-      // escondería la falta detrás de un número prolijo.
+      // Ya NO pregunta si alguien queda bajo el piso: con esta regla quedan TODOS, por diseño —se
+      // cierra media brecha y la otra media queda abierta—. Un ▲ en las cuatro filas sería ruido que
+      // se aprende a ignorar, y lo que hay que mirar (cuánta gente sigue bajo la escala) lo dice el
+      // control de la sección, contado y una sola vez.
+      //
+      // Lo que la fila SÍ tiene que distinguir es el caso en que el aumento no aplica porque esa
+      // gente ya cobra el piso: ahí el aumento es cero y no es un error.
       equiv && rangoCats
         ? `=IF(AND($E${r}<>"";NOT(ISNUMBER(MATCH($E${r};${rangoCats};0))));`
           + `"${ALERTA} «Convenio» no está en la escala — uso ${equiv}";`

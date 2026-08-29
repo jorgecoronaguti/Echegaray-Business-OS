@@ -53,6 +53,11 @@ const COMP_COLUMNA = [
 
 /** La entrada del proyecto. Fija, sin red, sin modelo. Es lo que hace posible el CLAUDE-ZERO. */
 const ENTRADA = () => ({
+  // El cliente y la lista de clientes conocidos son OBLIGATORIOS para que el barrido de fuga pueda
+  // correr. Sin ellos el gate bloquea, y eso es correcto: un control que no pudo mirar no dice
+  // «no está».
+  cliente: 'ZZ CLIENTE CERO',
+  clientesConocidos: ['ZZ CLIENTE CERO', 'FRANCO QUATTROPANI', 'ARCOR - SAN JUAN'],
   documentos: [
     { hash: 'sha-plano-estructura', nombre: 'Plano de Estructura.pdf', parseado: true },
     { hash: 'sha-pliego', nombre: 'Pliego de especificaciones.pdf', parseado: true },
@@ -139,6 +144,25 @@ test('CLAUDE-ZERO · el gate deja congelar y la oferta sale, todo sin proveedor'
   assert.equal(obra.tareas.length, 2)
 })
 
+test('CLAUDE-ZERO · sin cliente declarado NO se congela: el barrido de fuga no puede correr', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `correr`, `const gateFuga = cliente ? gateDeFuga(fuga) : {ready: true…}`.
+  const e = ENTRADA()
+  const r = correr({ ...e, cliente: null })
+  assert.equal(r.gate.ready, false)
+  assert.ok(r.gate.blocking_issues.some((b) => b.tipo === 'FUGA_NO_VERIFICABLE'))
+})
+
+test('CLAUDE-ZERO · una partida que nombra a OTRO cliente bloquea el congelado', () => {
+  const e = ENTRADA()
+  const r = correr({
+    ...e,
+    partidas: e.partidas.map((p) => (p.codigo === 'T4010' ? { ...p, nota: 'mismo criterio que en la obra de FRANCO QUATTROPANI' } : p)),
+  })
+  assert.equal(r.gate.ready, false)
+  assert.ok(r.gate.blocking_issues.some((b) => b.tipo === 'FUGA_ENTRE_CLIENTES'), JSON.stringify(r.gate.blocking_issues))
+  assert.equal(r.fuga.bloquea, true)
+})
+
 test('CLAUDE-ZERO · sin precio de un recurso, el total se niega TAMBIÉN con el modelo apagado', () => {
   // La degradación no puede convertirse en excusa para publicar un total incompleto.
   const e = ENTRADA()
@@ -172,6 +196,18 @@ test('CLAUDE-ZERO · un subcontrato sin precio bloquea la corrida entera', () =>
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // REPRODUCIBILIDAD (§39)
 // ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('CLAUDE-ZERO · la explosión de recursos RECONCILIA contra el costo directo (§13)', () => {
+  const r = correr(ENTRADA())
+  assert.equal(r.reconciliacion.cuadra, true, r.reconciliacion.porQue)
+  assert.equal(r.reconciliacion.costoDirecto, r.costoDirecto.total)
+  // 520 m² × 45 un × 1,05 de desperdicio = 24.570 ladrillones, y 47,2 × 1,05 = 49,56 m³ de hormigón
+  assert.equal(r.explosion.materiales.find((m) => m.recurso === 'MAT-LAD').cantidad, 24_570)
+  assert.equal(r.explosion.materiales.find((m) => m.recurso === 'MAT-HORM').cantidad, 49.56)
+  // El oficial trabaja en las dos partidas y sale UNA vez: 520 × 2 + 47,2 × 8 = 1.417,6 hs
+  assert.equal(r.explosion.hhPorCategoria.find((h) => h.recurso === 'MO-OF').horas, 1_417.6)
+  assert.equal(r.etapas.at(-1).result.explosion.nRecursos, 3)
+})
 
 test('REPRODUCIBILIDAD · RUN1 = RUN2 en huella y en métricas', () => {
   const uno = correr(ENTRADA())
