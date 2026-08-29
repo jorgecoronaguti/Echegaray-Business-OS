@@ -103,11 +103,23 @@ export function issuesDePartidas(partidas = []) {
   const out = []
   for (const p of partidas) {
     const quien = p.codigo ?? p.descripcion ?? p.id
+    // ═══ DE QUÉ FILA SALIÓ ESTE ISSUE (QA visual, 29/08/2026) ═══
+    //
+    // `entity` es lo que se LEE, y cae a la descripción cuando la partida no tiene código: dos
+    // partidas sin código y con la misma descripción —«Instalación sanitaria completa» ×2 en el
+    // fixture del QA— producen dos issues con la misma entidad. En pantalla React avisó con un
+    // warning de key duplicada, pero el problema de fondo es peor que el warning: son dos huecos
+    // distintos que se ven idénticos y no se puede saber a cuál ir.
+    //
+    // El id de la fila viaja en `evidence`, que es exactamente para eso —de dónde salió el issue— y
+    // ya existe en el contrato, así que no hace falta pedirle un campo nuevo. La pantalla lo usa
+    // como clave estable; el índice del array habría servido para callar a React y para nada más.
+    const origen = { partidaId: p.id ?? null }
 
     if (p.cantidad === null) {
       out.push(issue({
         type: TIPO_ISSUE.CANTIDAD_CRITICA_AUSENTE, severity: SEVERIDAD.BLOQUEANTE, entity: quien,
-        impact: null, recommended_action: 'update_quantity',
+        impact: null, recommended_action: 'update_quantity', evidence: origen,
         detalle: `«${p.descripcion}» no tiene cantidad computada: sin cantidad no hay costo, y su hueco no se puede medir`,
       }))
     }
@@ -115,7 +127,7 @@ export function issuesDePartidas(partidas = []) {
     if (p.subcontratada && (p.subcontrato?.precio === null || p.subcontrato?.precio === undefined)) {
       out.push(issue({
         type: TIPO_ISSUE.SUBCONTRATO_SIN_PRECIO, severity: SEVERIDAD.BLOQUEANTE, entity: quien,
-        impact: null, recommended_action: 'set_subcontract',
+        impact: null, recommended_action: 'set_subcontract', evidence: origen,
         detalle: `«${p.descripcion}» está marcada subcontratada y no tiene precio contratado. SIN_PRECIO no es $0 (§14)`,
       }))
     }
@@ -125,7 +137,7 @@ export function issuesDePartidas(partidas = []) {
     if (!p.subcontratada && p.sinAnalisis) {
       out.push(issue({
         type: TIPO_ISSUE.SIN_PRECIO, severity: SEVERIDAD.ALTA, entity: quien,
-        impact: null, recommended_action: 'set_resource_price',
+        impact: null, recommended_action: 'set_resource_price', evidence: origen,
         detalle: `«${p.descripcion}» no tiene composición cargada: hoy aporta cero al costo directo sin decirlo`,
       }))
     }

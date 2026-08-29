@@ -119,7 +119,14 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
             // todo: limpiar antes de leer es perder lo que se escribió.
             action={(datos: FormData) => {
               enviar(datos)
-              if (campo.current) campo.current.value = ''
+              // El orden es todo: primero se despacha lo capturado, después se limpia. Y el FOCO
+              // VUELVE AL CAMPO (QA visual: `document.activeElement === input` daba false): una
+              // conversación se escribe seguido, y si después de cada frase hay que volver a hacer
+              // clic en el input, deja de ser una conversación y pasa a ser un formulario.
+              if (campo.current) {
+                campo.current.value = ''
+                campo.current.focus()
+              }
             }}
             style={{ display: 'flex', gap: 8, marginTop: 12 }}
           >

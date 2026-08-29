@@ -90,6 +90,34 @@ describe('el gate dice POR QUÉ no, no un booleano opaco (§24)', () => {
   })
 })
 
+describe('dos partidas que se leen igual son dos issues distinguibles (QA visual, 29/08/2026)', () => {
+  // El fixture del QA tenía «Instalación sanitaria completa» DOS VECES, sin código. `entity` cae a
+  // la descripción cuando no hay código, así que los dos issues salían con la misma entidad: React
+  // avisó por la key duplicada, pero lo grave era que en pantalla son dos huecos distintos que se
+  // ven idénticos y no se puede saber a cuál ir.
+  const dosIguales = [
+    fila({ partida_id: 'p-1', codigo: null, descripcion: 'Instalacion sanitaria completa', sin_analisis: true }),
+    fila({ partida_id: 'p-2', codigo: null, descripcion: 'Instalacion sanitaria completa', sin_analisis: true }),
+  ]
+
+  test('cada issue trae el id de SU fila, aunque se lean igual', () => {
+    const issues = issuesDePartidas(dosIguales.map(partidaDesdeFila))
+    assert.equal(issues.length, 2)
+    assert.equal(issues[0].entity, issues[1].entity, 'el fixture ya no reproduce el caso')
+    // MUTACIÓN QUE LO PONE ROJO: sacar `evidence: origen` de `issuesDePartidas`. La pantalla vuelve
+    // a no tener con qué distinguir las dos filas y React vuelve a avisar por la key.
+    assert.notEqual(issues[0].evidence?.partidaId, issues[1].evidence?.partidaId, 'los dos issues apuntan a la misma fila')
+    assert.equal(issues[0].evidence.partidaId, 'p-1')
+  })
+
+  test('la cola conserva los dos y ninguno pisa al otro', () => {
+    const e = estadoDesdeFilas({ presupuesto: PRESUPUESTO, partidas: dosIguales })
+    const sanitarias = e.cola.issues.filter((i) => i.entity === 'Instalacion sanitaria completa')
+    assert.equal(sanitarias.length, 2, 'la cola perdió uno de los dos huecos')
+    assert.equal(new Set(sanitarias.map((i) => i.evidence.partidaId)).size, 2)
+  })
+})
+
 describe('el alcance del §5 cambia lo que la cola pide', () => {
   const alcance = (patron, estado) => ({ patron, estado, fuente: 'CONVERSACION', texto_literal: null, decidido_por: null, motivo: null })
 

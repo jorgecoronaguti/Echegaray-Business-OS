@@ -36,6 +36,8 @@ export interface IssueCola {
   severity: 'BLOQUEANTE' | 'ALTA' | 'MEDIA' | 'BAJA'
   entity: string
   impact: number | null
+  /** De dónde salió el issue. Para los que derivan de una fila, `{partidaId}` — su clave estable. */
+  evidence: { partidaId?: string | null } | null
   recommended_action: string | null
   detalle: string | null
   bloquea: boolean

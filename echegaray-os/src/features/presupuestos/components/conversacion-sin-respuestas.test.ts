@@ -66,6 +66,15 @@ describe('el formulario manda lo que se escribió (QA visual, 29/08/2026)', () =
     assert.ok(despacho < limpieza, 'limpia el campo ANTES de despachar: se pierde lo que se escribió')
   })
 
+  test('el foco vuelve al campo, y DESPUÉS de despachar', () => {
+    const accion = /action=\{\((?:datos|[a-z]+)[^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{12}\}\}/.exec(PANEL)
+    assert.ok(accion, 'no encontré la acción del formulario')
+    const cuerpo = accion[1]
+    const foco = cuerpo.indexOf('.focus()')
+    assert.ok(foco >= 0, 'el foco no vuelve al input: hay que hacer clic para escribir la frase siguiente')
+    assert.ok(cuerpo.indexOf('enviar(') < foco, 'devuelve el foco antes de despachar')
+  })
+
   test('el input tiene name=texto, que es lo que el esquema del servidor exige', () => {
     assert.match(PANEL, /name="texto"/)
     assert.match(PANEL, /name="id"/)

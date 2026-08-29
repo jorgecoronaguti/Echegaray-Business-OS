@@ -197,9 +197,21 @@ describe('una consulta sin datos DICE que no los tiene (QA visual, 29/08/2026)',
     assert.deepEqual(t.respuesta.lineas, [], 'inventó una línea de ausencia sobre un dato que estaba')
   })
 
-  test('«no encuentro X» del motor se muestra tal cual, sin reescribirlo', async () => {
+  test('«no encuentro X» se muestra tal cual Y distingue no-está de sin-dato y de cero', async () => {
     const t = await conversar({ texto: 'de donde sale el ascensor', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, mutar })
-    if (t.salida?.ok) assert.match(t.respuesta.lineas[0] ?? '', /no encuentro/)
+    assert.equal(t.salida.ok, true)
+    // El mensaje del motor, intacto: reescribirlo taparía lo que el motor dijo.
+    assert.match(t.respuesta.lineas[0], /no encuentro/)
+    // Y la distinción de las tres cosas que se confunden acá. §42: NULL ≠ 0, y «no está» ≠ ninguna.
+    assert.match(t.respuesta.lineas[1] ?? '', /distinto de valer cero/)
+  })
+
+  test('«no está» y «está sin dato» NO dicen lo mismo', async () => {
+    const noEsta = await conversar({ texto: 'de donde sale el ascensor', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, mutar })
+    const sinDato = await conversar({ texto: 'de donde sale la mamposteria', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, mutar })
+    assert.notDeepEqual(noEsta.respuesta.lineas, sinDato.respuesta.lineas,
+      'una partida que no existe y una cargada sin datos dan la misma respuesta')
+    assert.match(sinDato.respuesta.lineas[0], /no tiene genealogia ni evidencia/)
   })
 })
 

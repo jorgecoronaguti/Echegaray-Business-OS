@@ -30,7 +30,7 @@ Tras mergear `feat/cotizador-core` al día (el CORE avanzó: trajo `pg.mjs`, `se
 `explosion.mjs` y la migración `20260829T1500`):
 
 ```
-npm run orq:test    → EXIT=0 · 12.105 tests en dot · 0 fail
+npm run orq:test    → EXIT=0 · 12.110 tests en dot · 0 fail
 npm run typecheck   → EXIT=0
 npx eslint .        → EXIT=0 · 0 errores · 60 warnings · 0 en el área de este frente
 npm run build       → EXIT=0 · las 3 rutas de /presupuestos compilan
@@ -86,23 +86,36 @@ El QA usó navegador, login y base reales. Lo que encontró y qué pasó con cad
 |---|---|---|
 | 1 | El gate de congelar era decorativo: congeló con un bloqueante vivo y precio $0 | **Corregido.** `puedeCongelar()` consume el gate; la action llama a `cot_congelar_con_gate` |
 | 2 | El input nunca enviaba lo tipeado (`onSubmit` limpiaba en carrera) | **Corregido.** Se limpia después de despachar |
-| 3 | Cartera/Edición a 390 px: `scrollWidth === clientWidth` | **NO reproducido.** Ver abajo |
+| 3 | Cartera/Edición a 390 px: `scrollWidth === clientWidth` | **RETIRADO por el QA.** Había medido `TarjetaTabla` (la caja) en vez de `.canon-scroll-x`; bien medido, scrollea |
 | 4 | Convertir a 390 px: la descripción con `width=0` | **Corregido.** La grilla pasa por `EnvoltorioAncho` |
 | 5 | `venta_sin_iva` llega 0 y el guard sólo miraba `=== null` | **Corregido** en `freeze.mjs` (archivo del CORE — que lo absorba) |
 | 6 | «sanitaria sanitaria 8,5M» | **Corregido** en `comandos.mjs` (idem) |
 | 8 | Evidence query sin match: JSON de nulls mudo | **Corregido.** Línea estructural de ausencia + el JSON debajo |
 
-**El defecto 3 no lo pude reproducir, y el diagnóstico del QA no es la causa.** No falta
-`overflow-x-auto`: el mecanismo existe (`TarjetaTabla cols={COLS}` → `EnvoltorioAncho` →
-`.canon-scroll-x` bajo `@media (max-width: 1023px)`), las dos tablas SÍ pasan sus columnas, y el
-ancho reservado es **845 px** (cartera) y **838 px** (edición) — los dos muy por encima de 390.
-Corregir a ciegas `PAGINA.cuerpo`, que es del canon compartido por diez pantallas, sin poder mirar
-ninguna, es cómo se rompen nueve para arreglar una.
+**El defecto 3 se retiró.** No faltaba `overflow-x-auto`: el mecanismo estaba entero
+(`TarjetaTabla cols={COLS}` → `EnvoltorioAncho` → `.canon-scroll-x` bajo
+`@media (max-width: 1023px)`) y el ancho reservado era 845/838 px. El QA había medido la caja
+—que lleva `overflow: hidden` a propósito— en vez del contenedor de scroll, que es su hijo.
+Bien medido, la rueda llega hasta TOTAL y MARGEN. Queda anotado porque el error de medición es
+fácil de repetir: **el scroll de una tabla del canon NO está en `[data-testid]`, está en el
+`.canon-scroll-x` de adentro.**
 
-**Lo que necesito del QA para cerrarlo:** el selector exacto sobre el que midió. Si midió el
-`[data-testid="tabla-presupuestos"]`, ése lleva `overflow: hidden` (es la caja) y el scroll vive en
-su hijo `.canon-scroll-x` — ahí `scrollWidth === clientWidth` es lo esperado y no hay defecto. Si
-midió el hijo y también daba igual, el defecto es real y está en otro lado.
+### Micro-tanda del re-QA — dos defectos más, cerrados
+
+| Defecto | Arreglo |
+|---|---|
+| El foco no volvía al input tras enviar tipeando | `focus()` después de despachar y limpiar, en el mismo lugar |
+| Key duplicada en la cola con dos partidas de igual descripción | El issue lleva el id de SU fila en `evidence`; la pantalla lo usa como clave |
+
+La key no se arregló con el índice del array. `entity` cae a la descripción cuando la partida no
+tiene código, así que dos partidas iguales daban **dos huecos distintos que se ven idénticos en
+pantalla** — el warning de React era el síntoma barato de eso. El id de la fila viaja en `evidence`,
+que es el campo del contrato para «de dónde salió este issue», así que no hizo falta pedirle un
+campo nuevo al CORE. Un índice habría callado a React sin identificar nada.
+
+Y la línea del evidence query sin match ahora distingue las TRES cosas que se confundían: **no
+está** · **está cargada sin datos** · **vale cero**. El mensaje del motor se muestra intacto y la
+distinción va al lado — reescribirlo habría tapado lo que el motor dijo.
 
 ### 2 · El modelo nunca se llamó de verdad · bloquea «el intérprete LLM funciona»
 

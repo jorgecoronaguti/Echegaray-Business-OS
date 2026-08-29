@@ -158,8 +158,18 @@ export function redactar({ intencion, salida, cascadaAntes = null } = {}) {
  */
 function lineasDeAusencia(resultado) {
   if (!resultado || typeof resultado !== 'object') return []
-  // `porQue` es el «no encuentro X» que ya trae el propio motor: se muestra tal cual y basta.
-  if (typeof resultado.porQue === 'string') return [resultado.porQue]
+  // El «no encuentro X» del motor se muestra TAL CUAL —reescribirlo sería tapar lo que dijo—, y se
+  // le agrega al lado la distinción de las tres cosas que se confunden acá (§42, NULL≠0):
+  //
+  //   · NO ESTÁ            — la partida no existe en este presupuesto;
+  //   · ESTÁ SIN DATO      — existe y su genealogía o su evidencia no se cargaron;
+  //   · VALE CERO          — alguien midió y el resultado fue cero.
+  //
+  // El QA leyó «no encuentro «47,2 m3»» y era cierto y ambiguo: no distinguía la primera de las
+  // otras dos. La línea que sigue no interpreta nada, sólo dice cuál de las tres es.
+  if (typeof resultado.porQue === 'string') {
+    return [resultado.porQue, 'No está en el presupuesto: es distinto de estar cargada sin datos, y distinto de valer cero.']
+  }
 
   const mirados = ['genealogia', 'evidencia', 'subtotal', 'costoUnitario']
     .filter((k) => k in resultado)
