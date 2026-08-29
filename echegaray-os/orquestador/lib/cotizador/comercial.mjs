@@ -112,16 +112,29 @@ export function overrideDeQuote({ base, parametro, valor, autorizadoPor, motivo 
  */
 export function indirectos({ conceptos = null, costoDirectoAnual = null, aplicado = null, motivoOverride = null } = {}) {
   const hayEstructura = Array.isArray(conceptos) && conceptos.length > 0 && Number.isFinite(Number(costoDirectoAnual)) && Number(costoDirectoAnual) > 0
-  const totalConceptos = hayEstructura ? conceptos.reduce((a, c) => a + (Number(c.montoAnual) || 0), 0) : null
-  const calculado = hayEstructura ? totalConceptos / Number(costoDirectoAnual) : null
+  // ═══ UN CONCEPTO SIN MONTO NO VALE CERO ═══
+  // `|| 0` sobre un `montoAnual` ausente bajaba el porcentaje de gastos generales CINCO PUNTOS sin
+  // emitir un solo issue: la estructura decía tener seis conceptos y se calculaba sobre cinco. Un
+  // concepto declarado y sin monto es un hueco, y un hueco no se suma: envenena el cálculo.
+  const sinMonto = hayEstructura ? conceptos.filter((c) => c?.montoAnual === null || c?.montoAnual === undefined || c?.montoAnual === '' || !Number.isFinite(Number(c.montoAnual))) : []
+  const totalConceptos = hayEstructura && !sinMonto.length ? conceptos.reduce((a, c) => a + Number(c.montoAnual), 0) : null
+  const calculado = totalConceptos === null ? null : totalConceptos / Number(costoDirectoAnual)
 
   if (aplicado === null || aplicado === undefined) {
     return Object.freeze({
       calculado: redondear(calculado, 6), aplicado: redondear(calculado, 6), override: null,
       conceptos: hayEstructura ? Object.freeze([...conceptos]) : null,
-      estado: hayEstructura ? ESTADO.CALCULADO : ESTADO.FALTA_DATO,
-      porQue: hayEstructura ? null : 'no hay estructura de indirectos declarada: el porcentaje no se calcula, y NO es cero',
-      issues: hayEstructura ? [] : [issue({ type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.ALTA, entity: 'indirectos', detalle: 'sin estructura declarada no se puede calcular el porcentaje de indirectos' })],
+      estado: calculado === null ? ESTADO.FALTA_DATO : ESTADO.CALCULADO,
+      porQue: calculado !== null ? null
+        : (sinMonto.length
+          ? `${sinMonto.length} concepto(s) de la estructura no declaran monto anual (${sinMonto.map((c) => c.concepto ?? '?').join(', ')}): el porcentaje NO se calcula sobre los que sí lo declaran`
+          : 'no hay estructura de indirectos declarada: el porcentaje no se calcula, y NO es cero'),
+      issues: calculado !== null ? [] : [issue({
+        type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.ALTA, entity: 'indirectos',
+        detalle: sinMonto.length
+          ? `conceptos sin monto anual: ${sinMonto.map((c) => c.concepto ?? '?').join(', ')}`
+          : 'sin estructura declarada no se puede calcular el porcentaje de indirectos',
+      })],
     })
   }
 

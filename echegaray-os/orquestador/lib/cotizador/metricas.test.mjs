@@ -112,8 +112,10 @@ test('bloqueantes y conflictos salen de la cola, no de un recuento aparte', () =
     ],
   })
   const m = metricasDeCorrida({ cola })
-  assert.equal(m.bloqueantes, 2)
-  assert.equal(m.no_bloqueantes, 1)
+  // Tres bloqueantes: el subcontrato sin precio, el conflicto, y el PRECIO_DESACTUALIZADO —que
+  // desde el cambio de semántica bloquea salvo override auditado (§42 HISTORICO ≠ VALIDADO).
+  assert.equal(m.bloqueantes, 3)
+  assert.equal(m.no_bloqueantes, 0)
   assert.equal(m.conflictos, 1)
   assert.equal(m.preguntas_humanas, 1, 'sólo los issues que traen una acción sugerida son una pregunta')
 })

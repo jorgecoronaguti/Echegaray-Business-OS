@@ -213,7 +213,11 @@ async function informe() {
     conocimientos: k.corpus.conocimientos?.length ?? 0, msFrio: k.msFrio, msTibio: k.msTibio,
   }))
 
-  const reproducible = casos.every((k) => k.corrida.huella.sha256 === k.segunda.huella.sha256)
+  // La reproducibilidad se prueba contra la huella del RESULTADO, no sólo la de la entrada: hashear
+  // el mismo objeto de entrada dos veces es una tautología y decía «iguales» aunque el resultado
+  // cambiara (el caso concreto: 2026 vs 2027, cero precios vencidos contra tres).
+  const reproducible = casos.every((k) => k.corrida.huella.sha256 === k.segunda.huella.sha256
+    && k.corrida.huellaResultado.sha256 === k.segunda.huellaResultado.sha256)
 
   const md = `# COTIZADOR — LOS CASOS REALES
 
@@ -233,7 +237,7 @@ ${casos.map((k) => `### ${k.nombre}\n\n${bloqueosLegibles(k.corrida).join('\n') 
 
 RUN1 = RUN2 en las ${casos.length} corridas: **${reproducible ? 'SÍ' : 'NO'}**.
 
-${casos.map((k) => `- \`${k.nombre}\` → \`${k.corrida.huella.sha256.slice(0, 24)}\``).join('\n')}
+${casos.map((k) => `- \`${k.nombre}\` → entrada \`${k.corrida.huella.sha256.slice(0, 16)}\` · resultado \`${k.corrida.huellaResultado.sha256.slice(0, 16)}\``).join('\n')}
 
 ## Lo que el dictado NO pudo mapear a la Base Maestra
 

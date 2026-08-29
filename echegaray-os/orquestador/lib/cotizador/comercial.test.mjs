@@ -136,3 +136,23 @@ test('sin estructura declarada el indirecto calculado es NULL, nunca cero', () =
   assert.equal(i.estado, ESTADO.FALTA_DATO)
   assert.equal(i.issues[0].type, TIPO_ISSUE.FALTA_DATO)
 })
+
+test('un concepto de indirectos SIN MONTO no vale cero: baja el GG 5 puntos sin avisar', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `indirectos`, volver a `(Number(c.montoAnual) || 0)`.
+  //
+  // Medido por la auditoría adversarial: la estructura declaraba seis conceptos, uno sin monto, y
+  // el porcentaje se calculaba sobre cinco. Cinco puntos menos de gastos generales, sin un issue.
+  const i = indirectos({
+    conceptos: [
+      { concepto: 'sueldos de oficina', montoAnual: 240_000_000 },
+      { concepto: 'alquiler', montoAnual: null },
+    ],
+    costoDirectoAnual: 1_000_000_000,
+  })
+  assert.equal(i.calculado, null, 'el porcentaje NO se calcula sobre los que sí declaran')
+  assert.notEqual(i.calculado, 0.24)
+  assert.equal(i.estado, ESTADO.FALTA_DATO)
+  assert.equal(i.issues.length, 1)
+  assert.match(i.issues[0].detalle, /conceptos sin monto anual: alquiler/)
+  assert.match(i.porQue, /NO se calcula sobre los que sí lo declaran/)
+})

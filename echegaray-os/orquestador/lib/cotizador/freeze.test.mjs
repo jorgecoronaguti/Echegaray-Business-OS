@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { colaDeAtencion, bloquea, esMaterial, queMeFaltaParaEnviar, UMBRAL_MATERIALIDAD } from './atencion.mjs'
-import { huellaDeEntradas, diferenciaDeHuellas, gateDeCongelado, congelar, etapaFreeze } from './freeze.mjs'
+import { huellaDeEntradas, huellaDeResultado, diferenciaDeHuellas, gateDeCongelado, congelar, etapaFreeze } from './freeze.mjs'
 import { issue, TIPO_ISSUE, SEVERIDAD, STATUS, ETAPA, ESTADO } from './contrato.mjs'
 import { politicaComercial, cascada } from './comercial.mjs'
 import { observacionDePrecio } from './precios.mjs'
@@ -50,9 +50,31 @@ test('un CONFLICTO bloquea aunque sea barato: no se resuelve con plata', () => {
   assert.match(bloquea(c, { costoConocido: 180_000_000 }).porQue, /se resuelve con una decisión/)
 })
 
-test('un dato menor NO bloquea: un precio viejo de $900 es una advertencia', () => {
+test('un PRECIO VENCIDO bloquea aunque sea de $900 — HISTORICO ≠ VALIDADO (§42)', () => {
+  // ═══ CAMBIO DE SEMÁNTICA, ORDENADO Y DELIBERADO ═══
+  //
+  // Este test afirmaba lo contrario: que un precio viejo de $900 era una advertencia por no ser
+  // material. La auditoría adversarial mostró a dónde llevaba esa lectura — el motor traducía
+  // HISTORICO a EXTRAIDO para poder sumarlo y la versión terminaba SELLADA como VALIDADA con
+  // precios de catorce meses. Un precio vencido barato no vuelve válida una oferta: sólo la vuelve
+  // barata de arreglar.
   const viejo = issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: 'MAT-CLAVO', impact: 900 })
-  assert.equal(bloquea(viejo, { costoConocido: 180_000_000 }).bloquea, false)
+  assert.equal(bloquea(viejo, { costoConocido: 180_000_000 }).bloquea, true)
+  assert.match(bloquea(viejo, { costoConocido: 180_000_000 }).porQue, /HISTORICO ≠ VALIDADO/)
+})
+
+test('...y lo destraba un OVERRIDE COMERCIAL con quién lo autoriza, nunca un flag', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `overrideDe`, sacar la condición `o?.autorizadoPor`.
+  const viejo = issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: 'MAT-CLAVO', impact: 900 })
+  const sinQuien = bloquea(viejo, { costoConocido: 180_000_000, overrides: [{ entidad: 'MAT-CLAVO' }] })
+  assert.equal(sinQuien.bloquea, true, 'un override sin quién lo autorizó no existe')
+  const conQuien = bloquea(viejo, { costoConocido: 180_000_000, overrides: [{ entidad: 'MAT-CLAVO', autorizadoPor: 'jorge', motivo: 'el clavo no movió' }] })
+  assert.equal(conQuien.bloquea, false)
+  assert.match(conQuien.porQue, /asumido por jorge/)
+  // Y el issue dice QUIÉN lo asumió: la advertencia no puede decir sólo «no bloquea».
+  const cola = colaDeAtencion({ costoConocido: 180_000_000, issues: [viejo], overrides: [{ entidad: 'MAT-CLAVO', autorizadoPor: 'jorge' }] })
+  assert.equal(cola.nBloqueantes, 0)
+  assert.equal(cola.issues[0].asumidoPor, 'jorge')
 })
 
 test('el umbral es 2 % y se puede mover, pero está declarado', () => {
@@ -120,7 +142,11 @@ test('sin precio calculable NO se congela aunque la cola esté vacía', () => {
 })
 
 test('con la cola limpia el gate deja pasar, y las advertencias quedan REGISTRADAS', () => {
-  const cola = colaDeAtencion({ costoConocido: 180_000_000, issues: [issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: 'MAT-CLAVO', impact: 900 })] })
+  const cola = colaDeAtencion({
+    costoConocido: 180_000_000,
+    issues: [issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: 'MAT-CLAVO', impact: 900 })],
+    overrides: [{ entidad: 'MAT-CLAVO', autorizadoPor: 'jorge', motivo: 'asumido' }],
+  })
   const g = gateDeCongelado({ cascada: CASCADA_OK, cola })
   assert.equal(g.ready, true)
   assert.equal(g.warnings.length, 1)
@@ -191,4 +217,47 @@ test('la etapa FREEZE con quién congela devuelve la versión inmutable y su hue
   assert.equal(e.result.esBorrador, false)
   assert.equal(e.evidence[0].huella.length, 64)
   assert.equal(e.confidence, 1)
+})
+
+test('la huella se congela EN PROFUNDIDAD: partes.partidas no se puede reescribir', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `huellaDeEntradas`, volver a `Object.freeze({...})` superficial.
+  //
+  // `Object.freeze` es superficial: `huella.partes.partidas` quedaba MUTABLE y `pg.mjs` persiste
+  // `partes` + `sha` sin re-verificar que uno corresponda al otro. Un consumidor podía reescribir
+  // el detalle y guardar la huella vieja al lado.
+  const h = huellaDeEntradas(ENTRADAS)
+  assert.throws(() => { h.partes.partidas.push('inventada') }, TypeError)
+  assert.throws(() => { h.partes.politica = 'otra' }, TypeError)
+  assert.throws(() => { h.sha256 = 'a'.repeat(64) }, TypeError)
+})
+
+test('`hoy` ES una entrada: la misma cotización en 2027 NO tiene la misma huella', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `huellaDeEntradas`, sacar `hoy` de `partes`.
+  const a = huellaDeEntradas({ ...ENTRADAS, hoy: new Date('2026-08-29') })
+  const b = huellaDeEntradas({ ...ENTRADAS, hoy: new Date('2027-08-29') })
+  assert.notEqual(a.sha256, b.sha256, 'la fecha decide qué precio venció: es un input')
+  assert.deepEqual(diferenciaDeHuellas(a, b).cambiaron, ['hoy'])
+})
+
+test('la HUELLA DEL RESULTADO distingue lo que la de entrada no puede', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `huellaDeResultado`, dejar `partes = {}`.
+  const base = { costoDirecto: { total: 100, parcial: 100, hh: 5 }, cascada: { ventaSinIva: 168, coeficienteSinIva: 1.68 }, gate: { blocking_issues: [] }, cola: { issues: [] }, explosion: { recursos: [] }, partidas: [], etapas: [] }
+  const otro = { ...base, costoDirecto: { total: 200, parcial: 200, hh: 5 } }
+  assert.notEqual(huellaDeResultado(base).sha256, huellaDeResultado(otro).sha256)
+  assert.equal(huellaDeResultado(base).sha256, huellaDeResultado({ ...base }).sha256)
+  assert.match(huellaDeResultado(base).resumen, /costo 100/)
+})
+
+test('CIERRA() decide el sello: lo congelado con datos HISTORICO queda CONFIRMADO, no VALIDADO', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `congelar`, `estado: ESTADO.VALIDADO` fijo.
+  //
+  // `contrato.NO_CIERRAN` declara que HISTORICO no cierra y su único consumidor era su propio test:
+  // la versión se sellaba VALIDADA siempre.
+  const g = gateDeCongelado({ cascada: CASCADA_OK, cola: colaDeAtencion({ issues: [] }) })
+  const limpio = congelar({ cascada: CASCADA_OK, huella: huellaDeEntradas(ENTRADAS), gate: g, congeladoPor: 'jorge', estadoDeLoCongelado: ESTADO.CALCULADO })
+  assert.equal(limpio.estado, ESTADO.VALIDADO)
+  const conViejos = congelar({ cascada: CASCADA_OK, huella: huellaDeEntradas(ENTRADAS), gate: g, congeladoPor: 'jorge', estadoDeLoCongelado: ESTADO.HISTORICO })
+  assert.equal(conViejos.estado, ESTADO.CONFIRMADO)
+  assert.notEqual(conViejos.estado, ESTADO.VALIDADO, 'HISTORICO ≠ VALIDADO (§42)')
+  assert.match(conViejos.porQue, /NO cierra por sí solo/)
 })

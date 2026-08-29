@@ -282,3 +282,46 @@ test('el adaptador del pipeline de plano NO recalcula: sólo traduce', () => {
   assert.equal(traducido.partidas[0].lineas.length, 2, 'y cada elemento conserva su línea')
   assert.equal(traducido.documentos[0].hash, 'd1')
 })
+
+test('EXCLUIDO EN PLATA · lo que sale del total se VALORIZA (el cruce corre dos veces)', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `correr`, usar `primerCruce` como `conAlcance`.
+  //
+  // `cruzarAlcance` corría ANTES de costear, así que las partidas excluidas no tenían subtotal y
+  // `excluidoEnPlata` daba **0** con plata afuera. Peor: el issue EXCLUSION_CON_COMPUTO nunca
+  // disparaba en el circuito real —su condición es «hay cómputo valorizado»— y el informe llegó a
+  // decir «excluidas por contrato: 0» mientras el cruce las estaba aplicando.
+  const e = ENTRADA()
+  const r = correr(e)
+  const scope = etapa(r, ETAPA.SCOPE)
+  assert.equal(scope.result.excluidas, 1, 'la pintura está excluida por el pliego art. 4.2')
+  // La pintura de esta entrada NO tiene composición cargada, así que no se puede valorizar. El
+  // contador lo DECLARA en vez de dejar un cero que se lee como «se sacó poco»: es la diferencia
+  // entre «no se sacó plata» y «no se pudo medir cuánta se sacó».
+  assert.equal(scope.result.excluidoEnPlata, 0)
+  assert.equal(scope.result.excluidasSinValorizar, 1)
+  const conComposicion = correr({
+    ...e,
+    composiciones: new Map([...e.composiciones, ['u-9000', COMP_MAMPOSTERIA]]),
+  })
+  const s2 = etapa(conComposicion, ETAPA.SCOPE)
+  assert.ok(s2.result.excluidoEnPlata > 40_000_000, `dio ${s2.result.excluidoEnPlata}`)
+  assert.equal(s2.result.excluidasSinValorizar, 0)
+  // Y el issue EXCLUSION_CON_COMPUTO por fin dispara, con su plata.
+  const i = conComposicion.cola.issues.find((x) => x.type === 'EXCLUSION_CON_COMPUTO')
+  assert.ok(i, 'el issue tiene que existir cuando hay cómputo valorizado excluido')
+  assert.ok(i.impact > 0)
+})
+
+test('INCERTIDUMBRE NO DECLARADA puede dar distinto de cero', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `correr`, volver a estampar
+  // `porQue: p.porQue ?? (p.cantidad === null ? 'sin cantidad computada' : null)`.
+  //
+  // El productor estampaba el motivo un renglón antes de que el contador contara las que NO lo
+  // tienen: la métrica era estructuralmente CERO. El productor declaraba el hueco justo para que
+  // el contador no lo viera.
+  const e = ENTRADA()
+  const muda = correr({ ...e, partidas: [...e.partidas, { codigo: 'T-MUDA', descripcion: 'partida sin cantidad y sin motivo', rubro: 'X', unidad: 'M2', cantidad: null, tareaTipoId: 'u-4010' }] })
+  assert.equal(muda.metricas.incertidumbre_no_declarada, 1)
+  const declarada = correr({ ...e, partidas: [...e.partidas, { codigo: 'T-DICHA', descripcion: 'partida sin cantidad', rubro: 'X', unidad: 'M2', cantidad: null, tareaTipoId: 'u-4010', porQue: 'el plano dice s/Cálculo' }] })
+  assert.equal(declarada.metricas.incertidumbre_no_declarada, 0, 'un hueco DECLARADO cuenta cero')
+})

@@ -175,14 +175,45 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
   const faltan = []
   const issues = []
   let hhUnitarias = 0
+  let hhIncompletas = false
+  const vencidos = []
 
   for (const l of composicion) {
     const cajon = CAJON_DE_TIPO[l.tipo] ?? CAJON.OTHER
     const p = precioVigente(l.recursoCodigo ?? l.codigo, observaciones, { hoy })
     const conFactor = 1 + (Number(l.desperdicio) || 0)
-    if (l.tipo === TIPO_RECURSO.MANO_OBRA) hhUnitarias += Number(l.cantidad) || 0
 
-    if (!sumable({ valor: p.valor, estado: p.estado === ESTADO.HISTORICO ? ESTADO.EXTRAIDO : p.estado })) {
+    // ═══ LA CANTIDAD DE LA LÍNEA, CON LA MISMA GUARDA QUE LA DE LA PARTIDA ═══
+    //
+    // Medido por la auditoría adversarial: una línea de composición con `cantidad: null` pasaba por
+    // `Number(null) * precio * cant` = **0** y la partida salía `completa: true`, sin un solo issue,
+    // con la fórmula publicando «null hs/u». Sobre el presupuesto real eso borraba $2,4 M de mano
+    // de obra. Es exactamente el defecto que este archivo ya cerraba una escala más arriba —para la
+    // cantidad de la PARTIDA— y que no se había cerrado para la cantidad de la LÍNEA.
+    const cl = l.cantidad
+    if (cl === null || cl === undefined || cl === '' || !Number.isFinite(Number(cl))) {
+      const porQue = `${l.recursoCodigo ?? l.codigo}: la composición no dice cuánto lleva por unidad. NO es cero: es un renglón sin medir`
+      faltan.push(porQue)
+      // Si la línea sin medir es de mano de obra, las HH de la partida dejan de ser afirmables:
+      // publicar la suma de las otras sería un total de horas al que le falta un renglón.
+      if (l.tipo === TIPO_RECURSO.MANO_OBRA) hhIncompletas = true
+      issues.push(issue({
+        type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.BLOQUEANTE,
+        entity: `${l.recursoCodigo ?? l.codigo}${l.nombre ? ` (${l.nombre})` : ''}`,
+        detalle: porQue, recommended_action: null,
+      }))
+      lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, cantidad: null, unidadRecurso: l.unidad ?? null, precioUnitario: null, costo: null, estado: ESTADO.FALTA_DATO, fuente: p.fuente, formula: null })
+      continue
+    }
+    if (l.tipo === TIPO_RECURSO.MANO_OBRA) hhUnitarias += Number(cl)
+
+    // ═══ HISTORICO ≠ VALIDADO (§42), Y ACÁ NO SE TRADUCE ═══
+    //
+    // La versión anterior hacía `p.estado === HISTORICO ? EXTRAIDO : p.estado` para decidir si el
+    // precio era sumable. El número SÍ se puede sumar —existe— pero traducirlo borraba el estado
+    // aguas abajo, y la partida terminaba sellándose VALIDADA con un precio de 14 meses. El precio
+    // se usa y el estado se CONSERVA: quien decide qué hacer con él es el gate, no esta función.
+    if (!sumable({ valor: p.valor, estado: p.estado === ESTADO.HISTORICO ? ESTADO.CALCULADO : p.estado })) {
       faltan.push(`${l.recursoCodigo ?? l.codigo}: ${p.porQue}`)
       issues.push(issueDePrecio(p, { impacto: null, critico: true, nombre: l.nombre ?? null }))
       lineas.push({ cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, cantidad: Number(l.cantidad) * conFactor * Number(cant), unidadRecurso: l.unidad ?? null, precioUnitario: null, costo: null, estado: p.estado, fuente: p.fuente, formula: null })
@@ -201,7 +232,10 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     const cantidadFisica = Number(l.cantidad) * conFactor * Number(cant)
     const costoLinea = cantidadFisica * conv.valor
     cajones[cajon] += costoLinea
-    if (p.estado === ESTADO.HISTORICO) issues.push(issueDePrecio(p, { impacto: redondear(costoLinea), critico: false, nombre: l.nombre ?? null }))
+    if (p.estado === ESTADO.HISTORICO) {
+      vencidos.push({ recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null, impacto: redondear(costoLinea), observadoEn: p.observadoEn, antiguedadDias: p.antiguedadDias })
+      issues.push(issueDePrecio(p, { impacto: redondear(costoLinea), critico: false, nombre: l.nombre ?? null }))
+    }
     lineas.push({
       cajon, recurso: l.recursoCodigo ?? l.codigo, nombre: l.nombre ?? null,
       // Lo que hace posible la explosión de recursos (§13): cuánto se necesita y a qué precio.
@@ -223,8 +257,14 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     lineas,
     costoUnitario: completa ? redondear(total / Number(cant), 6) : null,
     subtotal: redondear(total),
-    hh: redondear(hhUnitarias * Number(cant), 4),
-    estado: completa ? ESTADO.CALCULADO : ESTADO.FALTA_DATO,
+    // HH `null` cuando falta el renglón de alguna mano de obra: la suma de las otras es un total al
+    // que le falta una parte, y eso engaña más que un total ausente.
+    hh: hhIncompletas ? null : redondear(hhUnitarias * Number(cant), 4),
+    // El estado de la partida NO puede ser CALCULADO si su costo se apoya en un precio vencido.
+    // `HISTORICO` dice exactamente eso: el número existe y no cierra un presupuesto (§42).
+    estado: completa ? (vencidos.length ? ESTADO.HISTORICO : ESTADO.CALCULADO) : ESTADO.FALTA_DATO,
+    /** Los precios vencidos que sostienen este costo, con su plata. Los lee el gate. */
+    vencidos: Object.freeze(vencidos),
     faltan,
     issues: issues.filter(Boolean),
   }

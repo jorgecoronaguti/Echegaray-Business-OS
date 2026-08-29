@@ -47,6 +47,28 @@ export const BLOQUEAN_SI_MATERIALES = Object.freeze([
 ])
 
 /**
+ * LOS QUE BLOQUEAN SALVO OVERRIDE COMERCIAL EXPLÍCITO Y AUDITADO.
+ *
+ * ═══ POR QUÉ EL PRECIO VENCIDO CAMBIÓ DE LADO ═══
+ *
+ * Antes era una advertencia si no era material. La auditoría adversarial mostró a dónde llevaba:
+ * el motor traducía HISTORICO a EXTRAIDO para poder sumarlo, y la versión terminaba SELLADA como
+ * VALIDADA con precios de catorce meses. `HISTORICO ≠ VALIDADO` es el §42 y no admite una lectura
+ * por materialidad: un precio vencido de $900 tampoco vuelve válida una oferta, sólo la vuelve
+ * barata de arreglar.
+ *
+ * Lo que SÍ admite es que alguien con permiso comercial diga «lo asumo». Ese override no es un
+ * flag: exige `autorizadoPor` y queda como evento con actor (§21). Sin quién, no hay override.
+ */
+export const BLOQUEAN_SALVO_OVERRIDE = Object.freeze([TIPO_ISSUE.PRECIO_DESACTUALIZADO])
+
+/** ¿Hay un override AUDITADO para este issue? PURA. Un override sin quién lo autorizó no existe. */
+export function overrideDe(issue, overrides = []) {
+  return overrides.find((o) => o?.autorizadoPor
+    && (o.entidad === issue.entity || String(issue.entity).startsWith(`${o.entidad} `) || o.entidad === '*')) ?? null
+}
+
+/**
  * ¿ESTE ISSUE ES MATERIAL? PURA.
  *
  * `impact === null` devuelve `true`: no saber cuánto cuesta un hueco NO lo vuelve chico. Es la misma
@@ -67,6 +89,11 @@ export function bloquea(issue, opciones = {}) {
   if (BLOQUEAN_SIEMPRE.includes(issue.type)) {
     return { bloquea: true, porQue: `${issue.type} sobre «${issue.entity}»: no se resuelve con plata, se resuelve con una decisión` }
   }
+  if (BLOQUEAN_SALVO_OVERRIDE.includes(issue.type)) {
+    const ov = overrideDe(issue, opciones.overrides ?? [])
+    if (ov) return { bloquea: false, porQue: `${issue.type} sobre «${issue.entity}» asumido por ${ov.autorizadoPor}${ov.motivo ? `: ${ov.motivo}` : ''}`, override: ov }
+    return { bloquea: true, porQue: `${issue.type} sobre «${issue.entity}»: un precio vencido NO cierra un presupuesto (§42 HISTORICO ≠ VALIDADO). Lo destraba un override comercial con quién lo autoriza` }
+  }
   if (!BLOQUEAN_SI_MATERIALES.includes(issue.type)) return { bloquea: false, porQue: null }
   const material = esMaterial(issue, opciones)
   if (!material) return { bloquea: false, porQue: `${issue.type} sobre «${issue.entity}» pesa ${((issue.impact / opciones.costoConocido) * 100).toFixed(2)} % del costo conocido: no bloquea` }
@@ -86,14 +113,17 @@ export function bloquea(issue, opciones = {}) {
  * decisión de si bloquea la toma acá, con el costo total a la vista, que es la única escala en la
  * que «material» significa algo.
  */
-export function colaDeAtencion({ issues = [], costoConocido = null, umbral = UMBRAL_MATERIALIDAD } = {}) {
+export function colaDeAtencion({ issues = [], costoConocido = null, umbral = UMBRAL_MATERIALIDAD, overrides = [] } = {}) {
   const evaluados = issues.filter(Boolean).map((i) => {
-    const b = bloquea(i, { costoConocido, umbral })
+    const b = bloquea(i, { costoConocido, umbral, overrides })
     return Object.freeze({
       ...i,
       severity: b.bloquea ? SEVERIDAD.BLOQUEANTE : (i.severity === SEVERIDAD.BLOQUEANTE ? SEVERIDAD.ALTA : i.severity),
       bloquea: b.bloquea,
       porQueBloquea: b.porQue,
+      // Quién asumió el riesgo, cuando lo hubo. Va en el issue para que la advertencia no diga
+      // sólo «no bloquea» sino «no bloquea PORQUE fulano lo asumió».
+      asumidoPor: b.override?.autorizadoPor ?? null,
     })
   })
   const ordenada = ordenarCola(evaluados)

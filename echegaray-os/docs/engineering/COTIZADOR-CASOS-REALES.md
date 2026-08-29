@@ -23,10 +23,10 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **HH previstas** | 3.697,691 h | 50,4 h | 3.697,691 h | 0 h |
 | **FALTA_DATO en la cola** | 2 | 0 | 0 | 0 |
 | **CONFLICTO en la cola** | 1 | 0 | 0 | 0 |
-| **bloqueantes** | 6 | 0 | 3 | 0 |
+| **bloqueantes** | 95 | 3 | 92 | 0 |
 | **· sin impacto medido** | 6 | 0 | 3 | 0 |
 | **preguntas dirigidas** | 96 | 3 | 92 | 0 |
-| **plata en riesgo** | no medida | no medida | no medida | no medida |
+| **plata en riesgo** | $ 17.388.173 | $ 19.457 | $ 17.388.173 | no medida |
 | **COSTO DIRECTO** | NO SE AFIRMA | $ 512.293 | NO SE AFIRMA | NO SE AFIRMA |
 | **· parcial (lo que sí cerró)** | $ 79.571.283 | $ 512.293 | $ 79.571.283 | $ 0 |
 | **reconciliación explosión ↔ costo** | no comparable | cuadra (residuo $0) | no comparable | no comparable |
@@ -37,32 +37,47 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **CLAUDE AVOIDANCE RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **AUTONOMOUS RESOLUTION RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **incertidumbre NO declarada** | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 33 ms / 13 ms | 26 ms / 17 ms | 10 ms / 17 ms | 18 ms / 13 ms |
-| **huella de entradas** | 92f5b502ec50e5f8 | 55d5ab9b43549426 | 0ca94dff1ecca70b | c294b49a9771b55f |
-| **ESTADO** | BLOQUEADO (7) | LISTO PARA OFERTAR | BLOQUEADO (4) | BLOQUEADO (1) |
+| **latencia fría / tibia** | 36 ms / 13 ms | 24 ms / 23 ms | 10 ms / 9 ms | 15 ms / 13 ms |
+| **huella de entradas** | ff753420a2e7e909 | 2dcc56d05a50fdf1 | 80fc3279fc3b271e | 4970a25c0946d764 |
+| **ESTADO** | BLOQUEADO (96) | BLOQUEADO (3) | BLOQUEADO (93) | BLOQUEADO (1) |
 
 ## Qué bloquea cada caso
 
 ### QUATTROPANI (real)
 
-1. **AMBIGUO** · alcance:metalica — «metalica» aparece negado en UN solo documento («CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani»): puede ser lo excluido o el lugar donde algo no se hace. No se aplica solo
-2. **AMBIGUO** · alcance:muros — «muros» aparece negado en UN solo documento («CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani»): puede ser lo excluido o el lugar donde algo no se hace. No se aplica solo
-3. **CONFLICTO** · documento-proyecto.version.contrato-de-obra-y-memoria-descriptiva-ecsas-quattropani.SALDO: EL MONTO RESTANTE ES DE (U$S 31500 + IVA), EL MISMO SERÁ ABONADO MEDIANTE — hay dos versiones del mismo documento (97 % de frases en común) y sólo «CONTRATO DE OBRA Y MEMORIA DESCRIPTIVA - ECSAS + Quattropani» dice: «Saldo: el monto restante es de (U$S 31500 + IVA), el mismo 
-4. **SIN_PRECIO** · 116 (BUJE RED 25x20 ACQUA SYSTEM (3/4x1/2)) — no hay ninguna observación de precio para este recurso
-5. **SIN_PRECIO** · 4 (CAL HIDRATADA EN POLVO) — no hay ninguna observación de precio para este recurso
-6. **SIN_PRECIO** · 88 (ADHESIVO PARA PVC) — no hay ninguna observación de precio para este recurso
-7. **SIN_PRECIO_CALCULABLE** · cotización — el costo directo no se pudo afirmar, así que el precio tampoco. NO es cero: es desconocido
+1. **PRECIO_DESACTUALIZADO** · 367 (Panel Chapa Trape Blanco Pur 50 Mm Foil Blanco) — el precio es del 2024-08-07 (752 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+2. **PRECIO_DESACTUALIZADO** · 333 (VIAJE DE TATU con RSU) — el precio es del 2024-09-01 (727 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+3. **PRECIO_DESACTUALIZADO** · 288 (MALLA SIMA ACINDAR Q188 (15x15 del 6)) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+4. **PRECIO_DESACTUALIZADO** · 294 (CUARZO PARA PISO INDUSTRIAL) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+5. **PRECIO_DESACTUALIZADO** · 24 (ELECTRODO 13 A 3,25mm) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+6. **PRECIO_DESACTUALIZADO** · 243 (HIERRO LISO ø 16) — el precio es del 2025-03-23 (524 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+7. **PRECIO_DESACTUALIZADO** · 247 (TORNILLO AUTOPERFORANTE 2") — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+8. **PRECIO_DESACTUALIZADO** · 154 (PLACA DE YESO 12,5 X 2,4 X 1,2) — el precio es del 2024-08-04 (755 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+9. **PRECIO_DESACTUALIZADO** · 292 (HELICOPTERO) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+10. **PRECIO_DESACTUALIZADO** · 359 (VIBRO COMPACTADOR NIWA 643 - EN DOLARES 10 mil dolares) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+11. **PRECIO_DESACTUALIZADO** · 24 (ELECTRODO 13 A 3,25mm) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+12. **PRECIO_DESACTUALIZADO** · 112 (CABLE UNIPOLAR 1,5 TIPO PIRELLI) — el precio es del 2026-03-01 (181 días, vigencia 180): sirve de referencia y no cierra un presupuesto
 
 ### LA ESTRELLA (ciego)
 
-_sin bloqueos_
+1. **PRECIO_DESACTUALIZADO** · 15 (CLAVO PUNTA PARIS 2") — el precio es del 2024-03-03 (909 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+2. **PRECIO_DESACTUALIZADO** · 329 (ALFALJIA) — el precio es del 2022-06-09 (1542 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+3. **PRECIO_DESACTUALIZADO** · 328 (TANZA) — el precio es del 2022-06-09 (1542 días, vigencia 180): sirve de referencia y no cierra un presupuesto
 
 ### DOC INCOMPLETA
 
-1. **SIN_PRECIO** · 116 (BUJE RED 25x20 ACQUA SYSTEM (3/4x1/2)) — no hay ninguna observación de precio para este recurso
-2. **SIN_PRECIO** · 4 (CAL HIDRATADA EN POLVO) — no hay ninguna observación de precio para este recurso
-3. **SIN_PRECIO** · 88 (ADHESIVO PARA PVC) — no hay ninguna observación de precio para este recurso
-4. **SIN_PRECIO_CALCULABLE** · cotización — el costo directo no se pudo afirmar, así que el precio tampoco. NO es cero: es desconocido
+1. **PRECIO_DESACTUALIZADO** · 367 (Panel Chapa Trape Blanco Pur 50 Mm Foil Blanco) — el precio es del 2024-08-07 (752 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+2. **PRECIO_DESACTUALIZADO** · 333 (VIAJE DE TATU con RSU) — el precio es del 2024-09-01 (727 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+3. **PRECIO_DESACTUALIZADO** · 288 (MALLA SIMA ACINDAR Q188 (15x15 del 6)) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+4. **PRECIO_DESACTUALIZADO** · 294 (CUARZO PARA PISO INDUSTRIAL) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+5. **PRECIO_DESACTUALIZADO** · 24 (ELECTRODO 13 A 3,25mm) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+6. **PRECIO_DESACTUALIZADO** · 243 (HIERRO LISO ø 16) — el precio es del 2025-03-23 (524 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+7. **PRECIO_DESACTUALIZADO** · 247 (TORNILLO AUTOPERFORANTE 2") — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+8. **PRECIO_DESACTUALIZADO** · 154 (PLACA DE YESO 12,5 X 2,4 X 1,2) — el precio es del 2024-08-04 (755 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+9. **PRECIO_DESACTUALIZADO** · 292 (HELICOPTERO) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+10. **PRECIO_DESACTUALIZADO** · 359 (VIBRO COMPACTADOR NIWA 643 - EN DOLARES 10 mil dolares) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+11. **PRECIO_DESACTUALIZADO** · 24 (ELECTRODO 13 A 3,25mm) — el precio es del 2025-10-01 (332 días, vigencia 180): sirve de referencia y no cierra un presupuesto
+12. **PRECIO_DESACTUALIZADO** · 112 (CABLE UNIPOLAR 1,5 TIPO PIRELLI) — el precio es del 2026-03-01 (181 días, vigencia 180): sirve de referencia y no cierra un presupuesto
 
 ### CÓMPUTO MANUAL
 
@@ -73,10 +88,10 @@ _sin bloqueos_
 
 RUN1 = RUN2 en las 4 corridas: **SÍ**.
 
-- `QUATTROPANI (real)` → `92f5b502ec50e5f877f214ef`
-- `LA ESTRELLA (ciego)` → `55d5ab9b435494269d2f5ee4`
-- `DOC INCOMPLETA` → `0ca94dff1ecca70bdeb61ea1`
-- `CÓMPUTO MANUAL` → `c294b49a9771b55f84fd66e7`
+- `QUATTROPANI (real)` → entrada `ff753420a2e7e909` · resultado `2f14be4f4d0bbaa8`
+- `LA ESTRELLA (ciego)` → entrada `2dcc56d05a50fdf1` · resultado `9a8571502d1a45d7`
+- `DOC INCOMPLETA` → entrada `80fc3279fc3b271e` · resultado `5b66a3b04ebe244f`
+- `CÓMPUTO MANUAL` → entrada `4970a25c0946d764` · resultado `f37b95ee8bf14486`
 
 ## Lo que el dictado NO pudo mapear a la Base Maestra
 
