@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import {
   CONVENIO_POR_CODIGO, DECISION_DUENO, ESCALA_VERIFICADA, INFERENCIA_OS, MENSUAL_VERIFICADO,
   ORIGEN_ACUERDO, ORIGEN_PROYECCION, PERIODO_VERIFICADO, PORCENTAJE_DE_AUMENTO, TRAMOS_FIRMADOS,
-  ULTIMO_TRAMO, claveDeCategoria, codigosSinProcedencia, contrastarEscala, convenioDe, equivalenciaDe,
+  ULTIMO_TRAMO, FRACCION_DE_BRECHA, tarifaConAumento, claveDeCategoria, codigosSinProcedencia, contrastarEscala, convenioDe, equivalenciaDe,
   esInferida, factorUocraEntre, jornalConAumento, lineaEquivalenciasInferidas, periodosEntre,
   rotuloConvenio, tramoDe,
 } from './uocra-paritaria.mjs'
@@ -142,33 +142,62 @@ test('las categorías nuevas de la planilla tienen equivalencia, y la que se inf
   assert.equal(convenioDe('OF ESP'), null, 'tampoco una variante que nadie declaró')
 })
 
-test('el aumento es el 50% del básico sumado a lo que cobra hoy, no un múltiplo del piso', () => {
-  // El dueño rechazó explícitamente la lectura «piso × 1,5»: *"te pedi el 50% del piso no el 1,5"*.
-  // Lo que pidió: *"quiero aumentarles el 50% de lo q pide el piso de uocra"* — un MONTO, sumado.
-  assert.equal(jornalConAumento(5600, 6348), 8774, 'Oficial que hoy cobra 5.600: +3.174')
-  assert.equal(jornalConAumento(4500, 5399), 7199.5, 'Ayudante que hoy cobra 4.500: +2.699,50')
-  assert.equal(jornalConAumento(6500, 7420), 10210, 'Of. Especializado que hoy cobra 6.500: +3.710')
-  // Lo que hace parejo al aumento: DOS OFICIALES DISTINTOS RECIBEN EL MISMO MONTO. Si el 50% se
-  // calculara sobre el sueldo de cada uno, el que más cobra se llevaría más y la brecha se abriría.
-  assert.equal(jornalConAumento(6200, 6348) - 6200, jornalConAumento(5300, 6348) - 5300)
-  // Y NO es piso × 1,5 ni piso × 0,5: las dos lecturas que el dueño descartó.
-  assert.notEqual(jornalConAumento(5600, 6348), 6348 * 1.5)
-  assert.notEqual(jornalConAumento(5600, 6348), 6348 * 0.5)
+test('el aumento cierra la MITAD de la brecha hasta el piso, y nunca lo pasa', () => {
+  // ═══ LA REGLA, CONFIRMADA POR EL DUEÑO (29/08) ═══
+  //
+  // *"Cerrar el 50% de la brecha hasta el piso de UOCRA, sin pasar nunca el piso. - ahora si"*.
+  // Antes se implementaron dos lecturas distintas de la misma frase y las dos daban por ENCIMA del
+  // piso; la restricción que las descarta es *"no puede dar mas el resultado por hora q el 100% del
+  // piso de uocra"*.
+  assert.equal(jornalConAumento(5600, 6348), 5974, 'Oficial que hoy cobra 5.600: brecha 748, +374')
+  assert.equal(jornalConAumento(4500, 5399), 4949.5, 'Ayudante que hoy cobra 4.500: brecha 899, +449,50')
+  assert.equal(jornalConAumento(6200, 7420), 6810, 'Of. Especializado que cobra 6.200: brecha 1.220, +610')
+  assert.equal(jornalConAumento(5600, 5866), 5733, 'Medio Oficial que cobra 5.600: brecha 266, +133')
+
+  // EL AUMENTO ES POR PERSONA, NO POR CATEGORÍA: dos Oficiales con jornales distintos tienen brechas
+  // distintas contra el mismo piso, así que reciben montos distintos y terminan en horas distintas.
+  // Es lo contrario de la lectura anterior, donde los dos sumaban lo mismo.
+  assert.notEqual(jornalConAumento(6200, 6348) - 6200, jornalConAumento(5300, 6348) - 5300)
+  assert.equal(jornalConAumento(6200, 6348) - 6200, 74)
+  assert.equal(jornalConAumento(5300, 6348) - 5300, 524)
+
+  // LAS DOS LECTURAS DESCARTADAS, POR NÚMERO: si alguna reaparece, este test la nombra.
+  assert.notEqual(jornalConAumento(5600, 6348), 5600 + 6348 * 0.5, 'volvió `hoy + 50% × básico` ($8.774)')
+  assert.notEqual(jornalConAumento(5600, 6348), 6348 * 1.5, 'volvió `1,5 × básico` ($9.522)')
+  assert.notEqual(jornalConAumento(5600, 6348), 6348, 'volvió el piso entero')
+
   // NULL NO ES CERO: sin básico la respuesta es "no sé", no "$0" — un cero se publicaría como jornal.
   assert.equal(jornalConAumento(5600, null), null)
   assert.equal(jornalConAumento(5600, 'no es un número'), null)
-  assert.equal(PORCENTAJE_DE_AUMENTO, 0.5)
+  assert.equal(FRACCION_DE_BRECHA, 0.5)
 })
 
-// ═══ EL PISO SIGUE SIENDO UN PISO ═══
+// ═══ LOS DOS INVARIANTES DUROS DE LA REGLA ═══
 //
-// El aumento es una decisión de la empresa; el básico de convenio es una obligación legal. Un jornal
-// bajo lo suficiente cruzaría esa frontera sin que nadie mire: 2.000 + 50% de 6.348 = 5.174, que está
-// DEBAJO del mínimo del Oficial. La función tiene que devolver el mínimo, no la cuenta.
-test('el resultado nunca queda por debajo del básico de convenio', () => {
-  assert.equal(jornalConAumento(2000, 6348), 6348, 'la cuenta daba 5.174: gana el piso legal')
-  assert.equal(jornalConAumento(0, 5399), 5399)
-  assert.equal(jornalConAumento(null, 6348), 6348, 'sin jornal cargado, el piso igual se respeta')
+// No son casos de borde: son las dos mitades de la frase del dueño. El tope («sin pasar nunca el
+// piso») y el suelo («nadie baja»). Los dos se barren sobre un rango de jornales, no sobre tres
+// valores elegidos a mano, porque un invariante probado en tres puntos es una anécdota.
+test('INVARIANTE · el resultado nunca pasa el piso de convenio', () => {
+  for (const piso of [5399, 5866, 6348, 7420]) {
+    for (let hoy = 0; hoy <= piso; hoy += 97) {
+      const t = jornalConAumento(hoy, piso)
+      assert.ok(t <= piso, `hoy=${hoy} contra piso=${piso} dio ${t}: pasó el piso`)
+      assert.equal(t, hoy + (piso - hoy) / 2)
+    }
+  }
+  // Y el caso que el dueño usó para frenar la lectura anterior, con su número.
+  assert.ok(jornalConAumento(5600, 6348) <= 6348)
+})
+
+test('INVARIANTE · nadie baja: quien ya cobra el piso o más conserva su hora', () => {
+  for (const hoy of [6348, 6349, 8000, 12000, 99999]) {
+    assert.equal(jornalConAumento(hoy, 6348), hoy, `hoy=${hoy}: la hora cambió, alguien bajó`)
+    assert.equal(tarifaConAumento(hoy, 6348).aumento, 0)
+    assert.equal(tarifaConAumento(hoy, 6348).sobreElPiso, true)
+  }
+  // Sin jornal cargado la brecha es el piso entero y se cierra la mitad — no se le imputa el piso.
+  assert.equal(jornalConAumento(0, 5399), 2699.5)
+  assert.equal(jornalConAumento(null, 6348), 3174, 'sin jornal cargado, media brecha desde cero')
 })
 
 // ═══ EL TEST NEGATIVO: ESTE CONTROL PUEDE DAR ROJO ═══

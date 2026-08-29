@@ -51,30 +51,36 @@ const espejoCon = (cats, filaInicio = 495) => {
   return { grid, bloque: { inicio: filaInicio, fin: filaInicio + cats.length - 1 } }
 }
 
-test('LA Σ DEL PLANTEL CON EL AUMENTO: lo que cobran hoy MÁS el 50% del básico de su categoría', () => {
-  // ═══ EL CRITERIO QUE EL DUEÑO ORDENÓ EL 29/08, EN ARITMÉTICA ═══
+test('LA Σ DEL PLANTEL CON EL AUMENTO: media brecha hasta el piso, sin pasarlo nunca', () => {
+  // ═══ EL CRITERIO QUE EL DUEÑO CONFIRMÓ EL 29/08 ═══
   //
-  // *"del convenio sacar el 50% por categoria y eso es lo q le vamos a aumentar a cada empleado sobre
-  // lo q cobran por hr hoy"*. No es el plantel revaluado a la escala —eso daría $97.772 y borraría lo
-  // que cada uno negoció—: es lo que cobran hoy ($81.600) más el aumento ($48.886).
+  // *"Cerrar el 50% de la brecha hasta el piso de UOCRA, sin pasar nunca el piso. - ahora si"*. No es
+  // el plantel revaluado a la escala —eso daría $97.772 y borraría lo que cada uno negoció— ni
+  // `hoy + 50% del básico`, que daría $130.486 y pasaría el piso: es lo que cobran hoy ($81.600) más
+  // media brecha por persona ($8.086).
   const { grid, bloque } = espejoCon(PLANTEL)
   const s = sigmaConAumentoDelPlantel(grid, bloque, AGOSTO)
   assert.equal(s.personas, 16)
   assert.equal(s.hoy, 81600, 'la tarifa de hoy sale de la columna W del espejo')
-  assert.equal(s.aumento, 12 * (6348 / 2) + 4 * (5399 / 2))
-  assert.equal(s.aumento, 48886)
-  assert.equal(s.total, 130486)
-  // SI ALGUIEN VUELVE AL PISO, LA Σ CAE A $97.772 Y ESTE ASSERT LO AGARRA. El número de la versión
-  // anterior sigue escrito acá a propósito: es el que hay que reconocer si reaparece.
+  assert.equal(s.aumento, 4 * 374 + 8 * 574 + 2 * 449.5 + 2 * 549.5)
+  assert.equal(s.aumento, 8086)
+  assert.equal(s.total, 89686)
+  // LOS TRES NÚMEROS QUE NO PUEDEN VOLVER, escritos acá para reconocerlos si reaparecen: $97.772 es
+  // el plantel valuado A LA ESCALA (el piso), $130.486 es `hoy + 50% × básico` y $146.658 es
+  // `1,5 × básico`. Los tres pasan o igualan el piso, y el dueño frenó exactamente eso.
   assert.notEqual(s.total, 97772, 'volvió a valuar el plantel A LA HORA DEL CONVENIO')
+  assert.notEqual(s.total, 130486, 'volvió `hoy + 50% × básico`')
+  assert.ok(s.total < 97772, 'la Σ con aumento pasó el piso del plantel')
   assert.deepEqual(s.sinEscala, [])
-  assert.deepEqual(s.bajoConvenio, [], 'con estas tarifas el aumento deja a todos sobre el mínimo legal')
+  assert.equal(s.bajoConvenio.length, 16, 'los 16 siguen bajo su piso: se cerró media brecha')
   // Y abierto por categoría, para que el log de la corrida pueda mostrar de dónde sale cada peso.
   const oficiales = s.porCategoria.filter((c) => c.convenio === 'Oficial').reduce((n, c) => n + c.personas, 0)
   assert.equal(oficiales, 12, 'el sufijo M tiene que mapear igual: es la orden expresa del dueño')
   // Y el aumento POR HORA de cada categoría, que es lo que el cuadro publica en su columna.
-  assert.equal(s.porCategoria.find((c) => c.codigo === 'OF').aumentoHora, 3174)
-  assert.equal(s.porCategoria.find((c) => c.codigo === 'A').aumentoHora, 2699.5)
+  // El aumento POR PERSONA de la categoría (todas las de este fixture cobran igual dentro de su
+  // código, así que el de la primera es el de todas).
+  assert.equal(s.porCategoria.find((c) => c.codigo === 'OF').aumentoHora, 374)
+  assert.equal(s.porCategoria.find((c) => c.codigo === 'A').aumentoHora, 449.5)
 })
 
 test('UN CAMBIO DE CATEGORÍA EN EL ESPEJO MUEVE LA PROYECCIÓN — no es una constante', () => {
@@ -85,19 +91,17 @@ test('UN CAMBIO DE CATEGORÍA EN EL ESPEJO MUEVE LA PROYECCIÓN — no es una co
   ascendido[ascendido.indexOf('A')] = 'OF'
   const s = sigmaConAumentoDelPlantel(...Object.values(espejoCon(ascendido)), AGOSTO)
   // EL ASCENSO MUEVE DOS COSAS, NO UNA: la tarifa que cobra ($5.600 en vez de $4.500, porque en el
-  // espejo un Oficial cobra más) y el tamaño de su aumento ($3.174 en vez de $2.699,50, porque el
-  // básico de su categoría es otro). $1.100 + $474,50. Con el criterio anterior —revaluar al
-  // convenio— la diferencia era sólo la de la escala, $949: si este número vuelve a 949, alguien
-  // volvió al piso.
-  assert.equal(s.total - base.total, (5600 - 4500) + (6348 / 2 - 5399 / 2))
-  assert.equal(s.total - base.total, 1574.5)
+  // espejo un Oficial cobra más) y su brecha contra el piso ($748 contra $899, o sea $374 de aumento
+  // en vez de $449,50 — sube de categoría y su aumento BAJA, porque queda más cerca de su piso).
+  assert.equal(s.total - base.total, (5600 - 4500) + (374 - 449.5))
+  assert.equal(s.total - base.total, 1024.5)
 })
 
 test('UN ALTA EN EL ESPEJO MUEVE LA PROYECCIÓN, y una categoría desconocida NO se adivina', () => {
   const s = sigmaConAumentoDelPlantel(...Object.values(espejoCon([...PLANTEL, 'OF'])), AGOSTO)
   assert.equal(s.personas, 17)
-  assert.equal(s.total, 130486 + 5600 + 3174, 'el alta suma SU tarifa y SU aumento')
-  assert.equal(s.total, 139260)
+  assert.equal(s.total, 89686 + 5600 + 374, 'el alta suma SU tarifa y SU aumento')
+  assert.equal(s.total, 95660)
   // Una categoría que no está en la tabla de equivalencia no vale cero en silencio: se cuenta como
   // persona y se nombra aparte. Inventarle una escala sería fabricar un dato.
   const raro = sigmaConAumentoDelPlantel(...Object.values(espejoCon([...PLANTEL, 'ZZ'])), AGOSTO)
@@ -105,7 +109,7 @@ test('UN ALTA EN EL ESPEJO MUEVE LA PROYECCIÓN, y una categoría desconocida NO
   // La persona con categoría desconocida NO recibe aumento —no hay básico del cual sacarlo— pero
   // SIGUE COBRANDO lo que cobra. En este fixture su tarifa es 0 (no está en la tabla sintética), así
   // que el total no se mueve; lo que la nombra es `sinEscala`, no un agujero en la Σ.
-  assert.equal(raro.total, 130486, 'le puso aumento a una categoría que no tiene equivalente declarado')
+  assert.equal(raro.total, 89686, 'le puso aumento a una categoría que no tiene equivalente declarado')
   assert.deepEqual(raro.sinEscala, ['ZZ'])
 })
 
@@ -191,8 +195,7 @@ test('LA PESTAÑA DECLARA CON QUÉ CRITERIO PROYECTA, Y NO ES EL JORNAL VIGENTE'
   //   · que lo proyectado NO es lo que se cobra hoy —lleva el aumento adentro—;
   //   · de dónde sale el tamaño del aumento (el % del básico de cada categoría);
   //   · y que las personas salgan de la celda, no del código.
-  assert.match(l, /Con aumento/i)
-  assert.match(l, /50% del básico/i)
+  assert.match(l, /Aumento: cierra el 50% de la brecha al piso/i)
   // ═══ DESDE CUÁNDO RIGE VA EN LA CELDA, NO EN UN COMENTARIO DEL CÓDIGO ═══
   //
   // El alcance temporal de una cifra es parte de la cifra (`encabezado-de-periodo-es-el-contrato`).
@@ -218,11 +221,12 @@ test('LA PESTAÑA DECLARA CON QUÉ CRITERIO PROYECTA, Y NO ES EL JORNAL VIGENTE'
   const dice = (C, D) => evaluarFormula(conAumentoCero, { hoja: { $C$22: C, C22: C, D22: D, B22: 16 } })
   assert.match(String(dice(0, 0)), /Sin plantel/)
   assert.match(String(dice(81600, 0)), /nadie recibe aumento/)
-  assert.match(String(dice(81600, 48886)), /Con aumento: hoy \+ 50% del básico · 16 personas/)
+  assert.match(String(dice(81600, 8086)), /Aumento: cierra el 50% de la brecha al piso · 16 personas/)
   assert.doesNotMatch(l, /100% del convenio/i, 'volvió a anunciar el piso que el dueño rechazó')
+  assert.doesNotMatch(l, /hoy \+ 50% del básico/i, 'volvió a anunciar la primera lectura, la que pasaba el piso')
   assert.match(l, /&\$B\$22&/, 'la cantidad de personas tiene que salir de la celda, no del código')
   // NINGÚN MES NI IMPORTE ESTAMPADO: un número escrito acá envejece el día que entra un obrero.
-  assert.doesNotMatch(l, /97\.?772|85\.?900|130\.?486/)
+  assert.doesNotMatch(l, /97\.?772|85\.?900|130\.?486|89\.?686/)
   assert.doesNotMatch(l, /agosto|Agosto|2026/)
   // Y SI LA Σ DA 0, EL AVISO DICE LO QUE PASA DE VERDAD: no que la proyección quedó vacía —no queda—
   // sino que no lleva el aumento adentro, que es la peor noticia y la que no se ve mirando la columna.
@@ -323,17 +327,17 @@ test('EL SUPUESTO LLEGA A CARGAS SOCIALES, que no muestra la masa sino que la MU
   // se lee — y una limitación declarada en otra pestaña no está declarada.
   const glosa = glosaDeCargas(BASE_CON_AUMENTO)
   assert.match(glosa, /Jornales proyectados × la relación de arriba/, 'la glosa perdió lo que ya decía')
-  assert.match(glosa, /50% del básico de convenio/, 'Cargas Sociales publica el número sin decir qué asume')
+  assert.match(glosa, /50% de la brecha/, 'Cargas Sociales publica el número sin decir qué asume')
   // Se prohíbe la AFIRMACIÓN, no la palabra: la glosa dice «No es el 100% de la escala ni un piso»,
   // que es exactamente lo que hay que decir. Lo que no puede volver es «viene valuada al 100%…».
   assert.doesNotMatch(glosa, /valuada al 100%/,
     'la glosa volvió a anunciar el piso que el dueño rechazó')
   assert.match(glosa, /Jornales por Quincena 1\.1/, 'sin la referencia nadie puede ir a verlo')
-  assert.match(glosa, /no cuánto vale/, 'sin esto el aumento se lee como una revaluación al convenio')
+  assert.match(glosa, /NUNCA pasa ese piso/, 'sin esto el aumento se lee como una revaluación al convenio')
   assert.match(glosa, /dentro del mes en curso/, 'no dice que lo que sale de la caja este mes va sin aumento')
   // El texto vive UNA vez: si alguien lo re-escribe a mano en la otra pestaña, envejecen distinto.
   const bloques = readFileSync(new URL('cargas-bloques.mjs', new URL('lib/', RAIZ)), 'utf8')
-  assert.doesNotMatch(bloques, /50% del básico de convenio/)
+  assert.doesNotMatch(bloques, /50% de la brecha/)
 })
 
 test('LA GLOSA DE CARGAS DICE LA VERDAD EN LOS DOS ESTADOS: la decide lo que el cuadro USÓ', () => {
@@ -344,12 +348,12 @@ test('LA GLOSA DE CARGAS DICE LA VERDAD EN LOS DOS ESTADOS: la decide lo que el 
   // hace que el que lee ajuste hacia abajo un número que ya estaba abajo.
   const alPactado = glosaDeCargas('pactado')
   assert.match(alPactado, /SIN el aumento/)
-  assert.doesNotMatch(alPactado, /50% del básico de convenio/, 'declara un supuesto que la masa no tiene adentro')
+  assert.doesNotMatch(alPactado, /50% de la brecha/, 'declara un supuesto que la masa no tiene adentro')
   assert.match(alPactado, /Jornales por Quincena 1\.1/, 'igual tiene que decir dónde mirarlo')
   // Y SI NO SE PUDO LEER, LO DICE. Afirmar cualquiera de las dos sin evidencia es peor que las dos.
   const sinSenal = glosaDeCargas(null)
   assert.match(sinSenal, /No pude leer/)
-  assert.doesNotMatch(sinSenal, /50% del básico de convenio/)
+  assert.doesNotMatch(sinSenal, /50% de la brecha entre/)
   assert.notEqual(alPactado, sinSenal)
 })
 
@@ -388,10 +392,10 @@ test('un espacio de más en el espejo NO parte la categoría en dos filas del co
   assert.equal(s.porCategoria.length, 1, 'la misma categoría se contó dos veces con dos claves distintas')
   assert.equal(s.porCategoria[0].codigo, 'OF M', 'el código del log tiene que ser el mismo que el de la pestaña')
   assert.equal(s.personas, 1)
-  // $5.200 de tarifa + $3.174 de aumento. Con el criterio anterior daba $6.348 —el básico pelado—:
-  // si este número vuelve, alguien volvió a revaluar al convenio.
-  assert.equal(s.total, 5200 + 3174)
-  assert.equal(s.total, 8374)
+  // $5.200 de tarifa + $574 de media brecha contra el piso de Oficial ($6.348). Con el criterio
+  // anterior daba $8.374 y con el piso $6.348: los dos pasan o igualan la escala.
+  assert.equal(s.total, 5200 + (6348 - 5200) / 2)
+  assert.equal(s.total, 5774)
 })
 
 test('la columna «Convenio» del dueño gana también en el control, no sólo en la fórmula', () => {
@@ -403,10 +407,10 @@ test('la columna «Convenio» del dueño gana también en el control, no sólo e
   const s = sigmaConAumentoDelPlantel(grid, bloque, AGOSTO, undefined, { 'OF M': 'Ayudante' })
   assert.equal(s.porCategoria.length, 1)
   assert.equal(s.porCategoria[0].convenio, 'Ayudante', 'se ignoró la celda del dueño: el lookup usó otra clave')
-  // Su tarifa no cambia por lo que el dueño escriba —es lo que cobra— pero SU AUMENTO sí: pasa a
-  // salir del básico de Ayudante. $5.200 + $2.699,50.
-  assert.equal(s.total, 5200 + 5399 / 2)
-  assert.equal(s.total, 7899.5)
+  // Su tarifa no cambia por lo que el dueño escriba —es lo que cobra— pero SU BRECHA sí: pasa a
+  // medirse contra el piso de Ayudante ($5.399), así que el aumento cae de $574 a $99,50.
+  assert.equal(s.total, 5200 + (5399 - 5200) / 2)
+  assert.equal(s.total, 5299.5)
   // Y el plantel entero con la misma mezcla: la Σ no puede depender de cómo se tipeó el espacio.
   const sucio = espejoCon(PLANTEL.map((c) => (c === 'OF M' ? 'OF  M ' : `${c} `)))
   const limpio = espejoCon(PLANTEL)

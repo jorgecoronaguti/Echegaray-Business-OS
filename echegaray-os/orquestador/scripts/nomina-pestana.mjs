@@ -265,9 +265,9 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   // más, y es información.
   fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
   fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. `
-    + `Escala ${escala.rotulo ?? 'sin escala'}: a cada hora se le SUMA el `
-    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de su categoría — el convenio decide cuánto `
-    + `sube la hora, no cuánto vale.`)
+    + `Escala ${escala.rotulo ?? 'sin escala'}: a cada hora se le cierra el `
+    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la BRECHA hasta el piso de su categoría — el resultado `
+    + `nunca pasa el piso, y al que ya lo cobra no se le toca la hora.`)
   fila(quincena.diasPendientes.length
     ? `Horas = lo cargado + los días que faltan a jornada completa (9 h L-J, 8 h viernes): ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h.`
     : 'La quincena está cargada entera: no se completó ninguna jornada.')
@@ -352,9 +352,9 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
     '', '', '',
     Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
     Math.round(T.bancoNuevo), Math.round(T.efNuevo), Math.round(T.totNuevo), Math.round(T.sube))
-  fila(sub(`Sumarle a cada hora el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% del básico de SU categoría cuesta `
-    + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. El básico de la escala es el mínimo legal; `
-    + `el aumento es la decisión de la empresa, no una obligación — y el resultado nunca baja de ese mínimo.`))
+  fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
+    + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
+    + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
   const bajas = activos.filter((p) => quincena.porClave.get(p.clave)?.dejoDeCargar)
   if (bajas.length) {
     fila(sub(`${bajas.length} sin horas desde antes del cierre —${bajas.map((p) => `${p.nombre} (${quincena.porClave.get(p.clave).ultimoDiaSuyo})`).join(' · ')}—: se les paga lo cargado y NO se les completan los días que faltan. Si es una baja, su liquidación final va en el cuadro 4.`))
