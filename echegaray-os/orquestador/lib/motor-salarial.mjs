@@ -66,8 +66,8 @@ import {
   escalonDe, escalonPromedio, estadoReplica, filasPorHora, rotuloDeAcuerdo, ultimoEscalon,
 } from './uocra-acuerdos.mjs'
 import {
-  CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA, claveDeCategoria,
-  convenioDe, factorUocraEntre, tramoDe,
+  CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, PORCENTAJE_DE_AUMENTO, ULTIMO_TRAMO,
+  VIGENCIA_HASTA, claveDeCategoria, convenioDe, factorUocraEntre, porcentajeEnFormula, tramoDe,
 } from './uocra-paritaria.mjs'
 import { ROTULO_SIGMA } from './proyeccion-convenio.mjs'
 import { expresionClaveConvenio } from './jornales-piso-uocra.mjs'
@@ -78,8 +78,8 @@ import { expresionClaveConvenio } from './jornales-piso-uocra.mjs'
 // `formulaSigmaDelMes` vive allá porque lo que decide no es la mecánica del cuadro sino el alcance
 // del supuesto —qué quincenas van al convenio y cuáles al pactado—, de lo que ese archivo es dueño.
 export {
-  formulaSigmaConvenio, formulaSigmaDelMes, expresionSigmaDelMes,
-  lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  formulaSigmaConAumento, formulaSigmaDelMes, expresionSigmaDelMes,
+  lineaSupuestoAumento, sigmaConAumentoDelPlantel,
   // La frontera de la caja comprometida decide desde el 27/08 dos cosas —la base y las horas—: la
   // segunda sale por la misma puerta que la primera, para que no puedan quedar en desacuerdo.
   expresionCajaComprometida, expresionMasaDeLaQuincena, piezasSigmaDelMes,
@@ -287,6 +287,9 @@ export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
  */
 export function filasPlantel({
   hoja, bloque, categorias, personas, filaInicio, escalonVigente, tabla = CONVENIO_POR_CODIGO,
+  // CUÁNTO SE AUMENTA NO SE DECIDE ACÁ: la decisión del dueño vive en `PORCENTAJE_DE_AUMENTO`
+  // (lib/uocra-paritaria.mjs), con su cita textual y su magnitud medida. Acá sólo se dibuja.
+  porcentaje = PORCENTAJE_DE_AUMENTO,
   // EL RÓTULO DEL ⇒ LO DECIDE QUIÉN ELIGIÓ EL BLOQUE, NO ESTE ARCHIVO. Estaba estampado como "la
   // última quincena cerrada" y el 27/08 el plantel pasó a salir del bloque VIGENTE: la fila habría
   // seguido nombrando una quincena que no es la que tiene adentro. El default preserva el texto
@@ -298,7 +301,23 @@ export function filasPlantel({
   const filas = []
   // «Convenio (tuya)»: el paréntesis reemplaza la frase "si escribís otra en «Convenio», manda la
   // tuya" que colgaba arriba del cuadro. La instrucción sobre una columna se lee en su encabezado.
-  filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio (tuya)', 'Básico convenio', 'Margen', 'Estado'])
+  // ═══ EL CUADRO PASÓ DE PUBLICAR UN PISO A PUBLICAR UN AUMENTO (29/08) ═══
+  //
+  // El dueño rechazó el enfoque anterior entero: *"pesimo, te pedi q del convenio sacar el 50% por
+  // categoria y eso es lo q le vamos a aumentar a cada empleado sobre lo q cobran por hr hoy"*.
+  //
+  // Lo que había era un PISO: el plantel REVALUADO a la hora de convenio, que entraba como término de
+  // una comparación. Eso borra lo que cada uno negoció —le da lo mismo al que cobra $4.200 que al que
+  // cobra $5.600— y además publica una tarifa que nadie va a cobrar. Lo que se paga es
+  // `tarifa de hoy + 50% del básico de SU categoría`: el convenio aporta el TAMAÑO del aumento, no
+  // la tarifa. No es techo ni piso de nadie.
+  //
+  // LAS COLUMNAS SON LAS QUE PIDIÓ, Y «Convenio (tuya)» NO SE MOVIÓ DE LA E. Es la celda del dueño y
+  // la corrida la fusiona por posición: correrla una columna le dejaría lo que escribió huérfano en
+  // la de al lado. Lo que cambió de contenido es la D —era «$/hora mínimo», ahora es la Σ del
+  // aumento— y el mínimo pasó a calcularse DENTRO del Estado, que es el único que lo usaba.
+  filas.push(['Categoría', 'Personas', 'Σ $/hora HOY', 'Σ aumento', 'Convenio (tuya)',
+    'Básico convenio', `Aumento ${porcentajeEnFormula(porcentaje)} $/hora`, 'Estado'])
   const fPrimera = filaInicio + 1
   const equivalencias = categorias.map((c) => [c, convenioDe(c, tabla)])
   // El grupo del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH por nombre de mes
@@ -311,6 +330,18 @@ export function filasPlantel({
   // filas por hora, un "Sereno" no matchea, la celda queda vacía y el Estado de la fila lo dice.
   const g = filasPorHora(escalonVigente)
   const rangoCats = g ? `'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1}` : null
+  /**
+   * EL ESTADO DE UNA FILA, EN UNA SOLA DEFINICIÓN: las tres ramas lo repetían palabra por palabra y
+   * eso es lo que deja un cuadro con dos criterios el día que alguien corrige una sola.
+   *
+   * `minimo + aumento` contra el básico, no la Σ contra el básico: una categoría con cuatro personas
+   * puede tener tres cómodas y una abajo, y el promedio la escondería. El que decide es el que menos
+   * cobra — es el que puede estar por debajo del mínimo legal.
+   */
+  const estado = (r, minimo) => `IF(N($F${r})=0;"sin escala para esa categoría";`
+    + `IF(${minimo}=0;"sin nadie con tarifa cargada";`
+    + `IF(${minimo}+N($G${r})<N($F${r});`
+    + `"${ALERTA} aun con el aumento queda bajo el convenio";"✓ el aumento lo deja sobre el convenio")))`
   categorias.forEach((cat, i) => {
     const r = fPrimera + i
     const q = `"${cat}"`
@@ -326,9 +357,13 @@ export function filasPlantel({
     //
     // Lo eran, y contaban 5 de 17 personas. `cat` viene normalizado y la columna D del espejo NO: el
     // dueño escribe `"OF "` con un espacio al final, `COUNTIFS` no normaliza su rango, y nueve
-    // personas contaban cero. Ningún error, ninguna celda roja: el término «convenio» del
-    // `MAX(convenio; demanda)` quedaba 3,58× subvaluado y viajaba a Cargas Sociales, _MOVIMIENTOS,
-    // CAJA y los dos Cash Flow.
+    // personas contaban cero. Ningún error, ninguna celda roja: el término del plantel quedaba 3,58×
+    // subvaluado y viajaba a Cargas Sociales, _MOVIMIENTOS, CAJA y los dos Cash Flow.
+    //
+    // (Decía «el término convenio del `MAX(convenio; demanda)`». Ese MAX no existe desde el 14/08 —
+    // `formulaProyectadoQuincena` devuelve la expresión sola— y el comentario lo siguió describiendo
+    // dos semanas. Un comentario que nombra una estructura muerta manda a buscar al lugar
+    // equivocado, que es la misma familia de defecto que este bloque vino a arreglar.)
     //
     // La familia *IFS no acepta un criterio calculado sobre el rango —no hay forma de escribir
     // `COUNTIFS(TRIM(D);…)`—, así que la comparación cambia de forma: SUMPRODUCT para contar y sumar,
@@ -344,7 +379,44 @@ export function filasPlantel({
     // mínimo, `ISNUMBER(W)` cumple el mismo papel: sin él, un texto pasa el `>0` (en Sheets el texto
     // ordena después de los números) y contamina el mínimo.
     //
-    // ═══ LO QUE ESTE ARREGLO **NO** VERIFICÓ (28/08) — LEER ANTES DE LA PRIMERA CORRIDA REAL ═══
+    // ═══ QUÉ ES «LO QUE COBRA POR HORA HOY» — SUPUESTO DECLARADO (29/08) ═══
+    //
+    // La columna W del BLOQUE VIGENTE del espejo, que es el mismo bloque del que sale el plantel
+    // (`bloqueDelPlantel`). Es la tarifa con la que la planilla del dueño liquidó la quincena en
+    // curso. Dos consecuencias que se aceptan a propósito: una persona con la celda W vacía o con un
+    // texto entra a la Σ como CERO —`N()` la lee así— y una tarifa que el dueño cambie a mitad de
+    // quincena se toma por su valor final, no promediada. Lo primero lo delata el control de
+    // cobertura; lo segundo es lo que hace la planilla y no se corrige desde acá.
+    //
+    // ═══ LO QUE ESTE REHACER **NO** VERIFICÓ (29/08) — LEER ANTES DE LA PRIMERA CORRIDA REAL ═══
+    //
+    // A · NADIE VIO LA PESTAÑA CON EL CRITERIO NUEVO. Todo lo de acá se probó sobre grillas
+    //     sintéticas desde un worktree, donde tocar el Sheet está prohibido. La Σ que este cuadro va
+    //     a publicar de verdad —y por lo tanto el total que viaja a Cargas, CAJA y los dos Cash
+    //     Flow— NO se midió contra el archivo. Es lo primero que hay que mirar.
+    //
+    // B · EL CUADRO CAMBIÓ DE COLUMNAS, NO SÓLO DE FÓRMULAS. La D pasó de «$/hora mínimo» a «Σ
+    //     aumento» y la G de «Margen» a «Aumento $/hora». El riesgo era que el régimen de
+    //     preservación conservara lo que ya había en esas celdas y la pestaña quedara con los
+    //     encabezados nuevos sobre números viejos — se lee coherente y miente.
+    //
+    //     MEDIDO por la auditoría del 29/08 sobre `sheet_huella_celda`: todas las coordenadas de
+    //     datos del bloque tienen huella viva sellada hoy y con forma coincidente, o sea que el
+    //     generador las reescribe. No hay encabezado nuevo sobre número viejo. Queda como cosa a
+    //     MIRAR en la primera corrida, no como riesgo abierto.
+    //
+    // C · CUÁNDO EMPIEZA A REGIR EL AUMENTO ES UN SUPUESTO MÍO, NO UNA ORDEN. Se aplica a las
+    //     quincenas que se pagan DESPUÉS del cierre del mes en curso —la misma frontera de «caja
+    //     comprometida» que el dueño fijó el 07/08— y la que se está pagando ahora queda a la tarifa
+    //     de hoy. Nadie dijo desde cuándo. Si el dueño lo quiere desde la quincena en curso, es
+    //     mover esa frontera (`quincenaConAumento`), no rehacer esto.
+    //
+    // D · EL BÁSICO SALE DE LA RÉPLICA `_UOCRA_RAW`, y el aumento es la MITAD de ese número. Si la
+    //     réplica trae una escala que no es la vigente, el error entra al aumento multiplicado por
+    //     todo el plantel y por todas las horas del semestre. El contraste contra la escala
+    //     verificada a mano (`contrastarEscala`) es lo único que puede notarlo.
+    //
+    // ═══ LO QUE EL ARREGLO DEL 28/08 TAMPOCO VERIFICÓ, Y SIGUE SIN VERIFICARSE ═══
     //
     // Se escribió y se probó desde un worktree, donde tocar el Sheet está prohibido. Las tres cosas
     // que faltan son de la corrida desde el árbol principal, y ninguna la puede contestar un test:
@@ -364,18 +436,27 @@ export function filasPlantel({
     //     preservación las considera ajenas —editadas por una persona— en vez de propias, se
     //     preservan las viejas y el COUNTIFS sigue vivo en el archivo con todo el código arreglado.
     //     ES LO PRIMERO QUE HAY QUE MIRAR: abrir la celda y ver si dice SUMPRODUCT o COUNTIFS.
+    // El mínimo de la categoría ya no tiene columna propia: lo usaba una sola celda —el Estado, para
+    // saber si alguien queda bajo el convenio— y esa columna hacía falta para la Σ del aumento.
+    const minimo = `IFERROR(MIN(FILTER(${W};TRIM(${D})=${q};ISNUMBER(${W});${W}>0));0)`
     filas.push([
       cat,
       `=SUMPRODUCT(--(TRIM(${D})=${q}))`,
       `=SUMPRODUCT(--(TRIM(${D})=${q});N(${W}))`,
-      `=IFERROR(MIN(FILTER(${W};TRIM(${D})=${q};ISNUMBER(${W});${W}>0));"")`,
+      // Σ DEL AUMENTO DE LA CATEGORÍA = personas × el aumento de la hora. Sale de dos celdas de esta
+      // misma fila y no de un producto escalar nuevo: si mañana el plantel cambia, se mueve sola.
+      `=N($B${r})*N($G${r})`,
       // LA COLUMNA DEL DUEÑO. Cadena vacía = "no es mía, preservá lo que haya". Con el centinela, la
       // corrida siguiente le borraría lo que escribió — es el defecto que dejó OFICINA_BANCO ciego.
       '',
       g
         ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$${g.r0}:$${UOCRA_COL.basico}$${g.r1};MATCH(${clave};'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1};0));"")`
         : '',
-      `=IF(N($F${r})=0;"";$D${r}/$F${r}-1)`,
+      // EL AUMENTO DE LA HORA: el % del básico de SU categoría. Es lo único que el convenio decide acá
+      // —el tamaño de la suba— y por eso cuelga de la celda del básico y no de un número escrito.
+      // El porcentaje va en notación de porcentaje: `0,5` metería una coma decimal en una fórmula
+      // cuyo separador de argumentos ES la coma en otros locales, y ésa es una trampa ya pagada.
+      `=IF(N($F${r})=0;"";$F${r}*${porcentajeEnFormula(porcentaje)})`,
       // ═══ UN ESTADO, NO UNA INSTRUCCIÓN — Y MENOS REPETIDA UNA VEZ POR FILA (06/08) ═══
       //
       // Acá decía "escribí la categoría del convenio en la columna de al lado" y la frase aparecía
@@ -385,20 +466,32 @@ export function filasPlantel({
       // comparar; con equivalencia el "—" desaparece porque ya hay respuesta.
       // SI LA CELDA DEL DUEÑO SE IGNORÓ, LA FILA LO DICE. Su valor se PRESERVA pero no gobierna: sin
       // este aviso, la corrección arreglaría el número y lo dejaría creyendo que su categoría manda.
+      //
+      // ═══ QUÉ PREGUNTA CONTESTA EL ESTADO AHORA (29/08) ═══
+      //
+      // Antes decía «por debajo del convenio» comparando el mínimo de la categoría contra el básico:
+      // era el control de un PISO que se iba a aplicar. Con el aumento aditivo el convenio ya no
+      // reemplaza la tarifa de nadie, así que la pregunta útil es la otra: ¿el aumento ALCANZA para
+      // sacar al que menos cobra de abajo del mínimo legal? Si no alcanza, la empresa queda en falta
+      // y la fila lo dice — no se corrige en silencio subiéndole la tarifa en la Σ, porque eso
+      // escondería la falta detrás de un número prolijo.
       equiv && rangoCats
         ? `=IF(AND($E${r}<>"";NOT(ISNUMBER(MATCH($E${r};${rangoCats};0))));`
           + `"${ALERTA} «Convenio» no está en la escala — uso ${equiv}";`
-          + `IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`
+          + `${estado(r, minimo)})`
         : (equiv
-          ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio"))`
-          : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`),
+          ? `=${estado(r, minimo)}`
+          : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";${estado(r, minimo)}))`),
     ])
   })
   const fUltima = fPrimera + categorias.length - 1
   const fTotal = fUltima + 1
+  // LA FILA QUE ALIMENTA LA PROYECCIÓN. `$C$total + $D$total` es la Σ $/hora del plantel CON el
+  // aumento, y son dos celdas visibles del mismo cuadro: quien mire la pestaña puede sumarlas a mano.
+  // Una tercera celda con la suma ya hecha sería una cuarta definición del mismo número.
   filas.push([rotuloTotal(rotulo),
     `=SUM($B$${fPrimera}:$B$${fUltima})`, `=SUM($C$${fPrimera}:$C$${fUltima})`,
-    `=IFERROR(MINIFS(${W};${W};">0");"")`, VACIO, VACIO, VACIO,
+    `=SUM($D$${fPrimera}:$D$${fUltima})`, VACIO, VACIO, VACIO,
     // EL CANARIO DEL ESPEJO. Las filas del bloque las resuelve el generador en cada corrida; si la
     // corrida se saltea (candado, firma, freno de mano) y mientras tanto entra una quincena nueva, el
     // rango queda apuntando al bloque de antes y NO da error: da el plantel viejo. Esto lo dice.
@@ -444,23 +537,23 @@ export function filasPlantel({
  * celdas «Básico convenio» del bloque 1.1, que leen el escalón VIGENTE de la réplica — casi siempre el
  * mes en curso, un mes por delante del de la última quincena cerrada. Dividir esa Σ por el factor del
  * mes base le agregaría un tramo entero de paritaria que ya tiene adentro: el mismo doble conteo que
- * el motor mata en la primera quincena, otra vez de costado. Por eso `periodoConvenio`.
+ * el motor mata en la primera quincena, otra vez de costado. Por eso `periodoConAumento`.
  *
- * @returns {{filas:any[][], f0:number, f1:number, alConvenio:boolean}}
+ * @returns {{filas:any[][], f0:number, f1:number, conAumento:boolean}}
  */
 export function filasEscalon({
   meses, escalones, filaInicio, celdaSigmaBase, periodoBase = null,
-  celdaSigmaConvenio = null, periodoConvenio = null,
+  celdaSigmaConAumento = null, periodoConAumento = null,
 }) {
-  const iConv = periodoConvenio ? meses.findIndex((m) => m.periodo === periodoConvenio) : -1
+  const iConv = periodoConAumento ? meses.findIndex((m) => m.periodo === periodoConAumento) : -1
   // SIN EL MES DEL ESCALÓN EN EL CUADRO NO HAY DÓNDE ANCLAR, y anclar en otra fila es escalar de más
   // en silencio: se cae a la base pactada, que es el criterio anterior, y la línea de arriba del cuadro
   // lo declara. Un criterio que cambia sin decirlo es peor que el criterio viejo.
-  const alConvenio = Boolean(celdaSigmaConvenio) && iConv >= 0
-  const sigma = alConvenio ? celdaSigmaConvenio : celdaSigmaBase
+  const conAumento = Boolean(celdaSigmaConAumento) && iConv >= 0
+  const sigma = conAumento ? celdaSigmaConAumento : celdaSigmaBase
   const filas = []
   filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base',
-    alConvenio ? ROTULO_SIGMA.convenio : ROTULO_SIGMA.pactado, 'De dónde sale', 'Estado'])
+    conAumento ? ROTULO_SIGMA.conAumento : ROTULO_SIGMA.pactado, 'De dónde sale', 'Estado'])
   const f0 = filaInicio + 1
   const ult = ultimoEscalon(escalones)
   // ═══ LA Σ $/hora SE ANCLA EN EL MES DE OBRA, NO EN LA PRIMERA FILA DEL CUADRO (07/08) ═══
@@ -471,7 +564,7 @@ export function filasEscalon({
   // ya tiene adentro, y el error se arrastra a las diez quincenas siguientes. No da error, da un total
   // más alto y plausible. La división por la fila del mes base de obra lo cierra.
   const iBase = Math.max(0, meses.findIndex((m) => m.periodo === periodoBase))
-  const rAncla = f0 + (alConvenio ? iConv : iBase)
+  const rAncla = f0 + (conAumento ? iConv : iBase)
   meses.forEach((m, i) => {
     const r = f0 + i
     const e = escalonDe(escalones, m.periodo)
@@ -515,7 +608,7 @@ export function filasEscalon({
   // LAS DOS ANCLAS VIAJAN, no sólo la que ganó. El cuadro 1.3 necesita poder valuar una quincena al
   // PACTADO aunque el cuadro esté al convenio (ver `formulaSigmaDelMes`): sin la celda de la Σ pactada
   // y su fila de ancla tendría que reconstruirlas por su cuenta, que es como aparecen dos bases.
-  return { filas, f0, f1, alConvenio, celdaSigmaBase, rAnclaBase: f0 + iBase }
+  return { filas, f0, f1, conAumento, celdaSigmaBase, rAnclaBase: f0 + iBase }
 }
 
 /**

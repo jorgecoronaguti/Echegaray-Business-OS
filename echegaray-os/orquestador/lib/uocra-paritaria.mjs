@@ -176,6 +176,19 @@ export const CONVENIO_POR_CODIGO = {
  * MAGNITUD, medida sobre la quincena 17/08–31/08 real (17 personas, 1.496 h): la masa pasa de
  * $8.049.700 a $12.719.379, **+$4.669.679 por quincena**. Anualizado sobre 24 quincenas y con las
  * cargas sociales del 38,62% que sale del F931 real: **+$155.379.240**.
+ *
+ * ═══ LOS TRES LÍMITES DE ESTE NÚMERO (29/08) ═══
+ *
+ * 1 · DESDE CUÁNDO RIGE NO ESTÁ DECIDIDO. La proyección lo aplica a las quincenas que se pagan
+ *     después del cierre del mes en curso (la frontera de «caja comprometida» del 07/08). Es un
+ *     supuesto del OS, no una orden: nadie dijo la fecha.
+ * 2 · EL BÁSICO NO ES UN DATO PROPIO. Sale de la réplica `_UOCRA_RAW`, que es un IMPORTHTML a un
+ *     sitio de terceros. Como el aumento es la MITAD del básico, un error de escala entra al bolsillo
+ *     de cada persona multiplicado por todas las horas del semestre. Lo único que puede notarlo es
+ *     `contrastarEscala` contra la escala verificada a mano.
+ * 3 · SI ALGUIEN QUEDA BAJO EL MÍNIMO LEGAL AUN CON EL AUMENTO, ESTA FUNCIÓN NO LO ARREGLA. Devuelve
+ *     la decisión (`tarifa`) y la marca (`bajoConvenio`); el que liquida usa `jornalConAumento`, que
+ *     sí aplica el piso. Son dos preguntas distintas y las dos tienen que poder contestarse.
  */
 export const PORCENTAJE_DE_AUMENTO = 0.5
 
@@ -190,7 +203,7 @@ export const PORCENTAJE_DE_AUMENTO = 0.5
  * el aumento es una decisión de la empresa, el mínimo es una obligación legal. Hoy ninguno de los 17
  * queda cerca de esa frontera, pero un jornal bajo lo suficiente la cruzaría sin que nadie mire.
  */
-export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
+export function tarifaConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
   if (basico == null || !Number.isFinite(Number(basico))) return null
   // `Number(null)` es 0 y `Number('')` también: sin esta línea, un porcentaje NO DECLARADO entraba
   // como "cero por ciento" y la pestaña publicaba "aumento aplicado" con aumento de cero. Lo detectó
@@ -199,8 +212,46 @@ export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUME
     || !Number.isFinite(Number(porcentaje)) || Number(porcentaje) < 0) {
     throw new TypeError(`un aumento de ${porcentaje} sobre el piso no describe ningún acuerdo salarial`)
   }
-  const base = Number.isFinite(Number(jornal)) ? Number(jornal) : 0
-  return Math.max(base + Number(basico) * Number(porcentaje), Number(basico))
+  const piso = Number(basico)
+  const hoy = Number.isFinite(Number(jornal)) ? Number(jornal) : 0
+  const aumento = piso * Number(porcentaje)
+  const tarifa = hoy + aumento
+  return { hoy, aumento, piso, tarifa, bajoConvenio: tarifa < piso }
+}
+
+/**
+ * NÚCLEO PURO: la hora que se PAGA — la tarifa nueva, nunca por debajo del mínimo legal.
+ *
+ * Se separó de `tarifaConAumento` el 29/08 porque las dos preguntas dejaron de tener la misma
+ * respuesta y el cuadro por categoría necesita la primera:
+ *
+ *   · `tarifaConAumento().tarifa` es LA DECISIÓN: hoy + 50% del básico, sin techo y sin piso. Es lo
+ *     que suma el cuadro 1.1 y lo que proyecta la pestaña — el aumento es aditivo por definición.
+ *   · `jornalConAumento` es LO QUE SE LIQUIDA: la misma tarifa con el mínimo legal aplicado.
+ *
+ * Hoy las dos coinciden para las 17 personas (el que menos cobra está en $4.200 y el básico de
+ * Ayudante en $5.399: $4.200 + $2.699 = $6.899 > $5.399). Pueden separarse con una tarifa por debajo
+ * de la mitad de su básico, y ahí el cuadro publica la decisión y el Estado de la fila GRITA que esa
+ * categoría queda bajo el convenio. No se corrige en silencio: un piso aplicado calladamente esconde
+ * que la empresa está en falta.
+ */
+export function jornalConAumento(jornal, basico, porcentaje = PORCENTAJE_DE_AUMENTO) {
+  const t = tarifaConAumento(jornal, basico, porcentaje)
+  return t ? Math.max(t.tarifa, t.piso) : null
+}
+
+/**
+ * NÚCLEO PURO: el porcentaje tal como se escribe DENTRO de una fórmula de Sheets.
+ *
+ * `0.5` en una fórmula es-AR se escribiría `0,5` y la coma es el separador de argumentos: la fórmula
+ * entera se rompe o —peor— se parte en dos argumentos y devuelve otra cosa. Es la trampa ya pagada
+ * (`formula-por-api-va-en-locale`). Con notación de porcentaje no hay coma decimal que escribir.
+ */
+export function porcentajeEnFormula(pct = PORCENTAJE_DE_AUMENTO) {
+  const n = Number(pct) * 100
+  if (!Number.isFinite(n)) throw new TypeError(`no sé escribir ${pct} como porcentaje en una fórmula`)
+  // Un porcentaje con decimales necesitaría coma: se escribe como fracción, que no la usa.
+  return Number.isInteger(n) ? `${n}%` : `${Number(pct) * 1000}%/10`
 }
 
 

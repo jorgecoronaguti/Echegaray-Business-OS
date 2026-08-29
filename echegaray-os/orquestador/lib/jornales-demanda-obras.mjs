@@ -351,8 +351,16 @@ export function glosaDemanda(demanda = null) {
   const nQ = demanda?.porQuincena?.size ?? 0
   if (!nQ) return ''
   const n = Number(demanda?.nObras) || 0
-  // LA FÓRMULA DICE MÁS QUE LA FRASE Y OCUPA UN CUARTO. "Donde la demanda de las N obras vendidas
-  // (insumo del dueño) supera el convenio, Proyectado es MAX(convenio; demanda)" son 110 caracteres
-  // para expresar en palabras exactamente el MAX que la celda ya calcula.
-  return ` · Proyectado = MAX(convenio; demanda de ${n} obra${n === 1 ? '' : 's'})`
+  // ═══ ESTA GLOSA ESTUVO MINTIENDO DOS SEMANAS (encontrado el 29/08) ═══
+  //
+  // Decía `Proyectado = MAX(convenio; demanda de N obras)` y se ESCRIBÍA EN LA PESTAÑA. El MAX murió
+  // el 14/08 —`formulaProyectadoQuincena` devuelve la expresión del plantel sola— así que la línea
+  // describía una fórmula que la celda de al lado no tenía. No es un comentario viejo: es una
+  // afirmación falsa publicada en el Sheet, del tipo que hace que alguien concilie contra un
+  // criterio que no existe y no encuentre nunca la diferencia.
+  //
+  // Dice lo que la columna ES. La demanda de obras sigue siendo información —y sigue midiéndose,
+  // en `coberturaDeManoDeObra`— pero NO entra en este número, y por eso se nombra para decir
+  // exactamente eso.
+  return ` · Proyectado = plantel actual, no la demanda de ${n} obra${n === 1 ? '' : 's'}`
 }

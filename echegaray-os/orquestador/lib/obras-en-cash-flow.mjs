@@ -16,10 +16,10 @@
 //     neteo vivo contra Compras. Medido en la corrida del 14/08: "$18.880.836 de $18.880.836".
 //   · MANO DE OBRA Y CARGAS — $126.974.442, y acá estaba el agujero. La corrida imprime *"$126.974.442
 //     de MO va por Jornales"*, pero ese número NO se mide: se copia de la explosión del dueño. La MO
-//     de las obras llega al flujo a través de la pestaña Jornales, cuya celda proyectada es
-//     `MAX(convenio; demanda de las obras)`. Donde el piso del plantel vigente supera a la demanda,
-//     manda el piso — y ahí la MO de las obras entra ABSORBIDA, no sumada. Si el piso quedara corto,
-//     el cash flow mostraría de menos y la línea de la corrida seguiría diciendo que está todo.
+//     de las obras llega al flujo a través de la pestaña Jornales, cuya celda proyectada es el
+//     PLANTEL ACTUAL con su aumento. Donde ese número supera a la demanda, la MO de las obras entra
+//     ABSORBIDA, no sumada. Si queda corto, el cash flow muestra de menos y la línea de la corrida
+//     seguiría diciendo que está todo.
 //
 // ═══ QUÉ HACE ESTE ARCHIVO ═══
 //
@@ -127,10 +127,15 @@ export function publicadasPorQuincena({ hasta = [], total = [] } = {}) {
  *
  * Quincena por quincena: `cubierta = MIN(demanda; publicado)` y `falta = MAX(0; demanda − publicado)`.
  *
- * POR QUÉ EL MIN Y NO LA IGUALDAD. La celda de Jornales es `MAX(convenio; demanda)`: cuando manda el
- * convenio, lo publicado es MAYOR que la demanda y la MO de la obra está adentro de ese número —no
- * sobra plata ni falta—. Lo único que prueba un agujero es lo contrario: publicado MENOR que la
- * demanda significa que esa quincena de obra no está entera en el cash flow, y `falta` la cuantifica.
+ * POR QUÉ EL MIN Y NO LA IGUALDAD. Cuando lo publicado por Jornales es MAYOR que la demanda, la MO
+ * de la obra está adentro de ese número —no sobra plata ni falta—. Lo único que prueba un agujero es
+ * lo contrario: publicado MENOR que la demanda significa que esa quincena de obra no está entera en
+ * el cash flow, y `falta` la cuantifica.
+ *
+ * ESTE CONTROL RECIÉN AHORA PUEDE DAR ROJO. Mientras la celda de Jornales fue `MAX(convenio;
+ * demanda)`, lo publicado NUNCA podía ser menor que la demanda: `falta` era cero por construcción y
+ * el control era una constante disfrazada. El MAX murió el 14/08 y la celda pasa a publicar el
+ * plantel actual: desde entonces la comparación es real.
  *
  * Una quincena con demanda y SIN fila publicada cuenta como falta entera: es el caso más grave —la
  * planilla ni siquiera llega hasta ahí— y el que un promedio escondería.

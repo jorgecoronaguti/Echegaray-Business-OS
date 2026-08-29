@@ -41,7 +41,7 @@ import { rangosDeCargas, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mj
 import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada, personasDelBloque } from '../lib/motor-salarial.mjs'
-import { bloqueDelPiso } from '../lib/jornales-piso-uocra.mjs'
+import { bloqueDelPlantel } from '../lib/jornales-piso-uocra.mjs'
 import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
 import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
 import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
@@ -274,7 +274,7 @@ async function main() {
   const espejo = await google.readSheetValues(ID, '_J_OBREROS!A1:AC990').catch(() => [])
   const bloquesJ = detectarQuincenas(espejo ?? [])
   const cerrada = ultimaQuincenaCerrada(bloquesJ, (b) => ultimoDiaCargado(espejo[b.filaFecha - 1] ?? []), new Date())
-  const plantel = bloqueDelPiso({
+  const plantel = bloqueDelPlantel({
     bloques: bloquesJ, cerrada: cerrada?.bloque ?? null, personasDe: (b) => personasDelBloque(espejo, b),
   })
   const bloqueBase = plantel.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null

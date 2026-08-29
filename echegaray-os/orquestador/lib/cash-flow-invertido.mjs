@@ -69,11 +69,20 @@ export const CRITERIO_INVERTIDO = `*${MARCA_INVERTIDO}`
 export const COL_ROTULO = 'A'
 export const COL_PESOS = 'C'
 
-/** Lo que se muestra en la celda del importe cuando lo invertido no se pudo leer. */
-export const AVISO_SIN_INVERTIDO = `${ALERTA} sin dato`
-
-/** Y la glosa que dice por qué. Un importe con una advertencia al lado no es lo mismo que un importe. */
+/** La glosa que dice que no se pudo leer. Un importe con una advertencia al lado no es un importe. */
 export const GLOSA_SIN_INVERTIDO = 'no pude leer lo invertido en CAJA'
+
+/**
+ * LO QUE DICE LA FOTO DE HOY CUANDO NO HAY ANCLA. Vive acá y no en cada vista porque las dos publican
+ * la MISMA tarjeta CAJA HOY: dos textos distintos para el mismo estado son dos versiones del archivo.
+ */
+export const GLOSA_SIN_ANCLA = 'Falta el saldo declarado de CAJA'
+
+/** Lo mismo dicho corto, para el slot más angosto del titular (294 px). */
+export const CIERRE_SIN_INVERTIDO = `${ALERTA} no pude leer Balanz`
+
+/** Y lo que dice cuando SÍ lo leyó. "hoy" no es relleno: declara la ventana del sumando que trae. */
+export const CIERRE_CON_INVERTIDO = 'con Balanz hoy'
 
 /**
  * EL PEOR CASO CON EL QUE SE MIDEN LAS GLOSAS. Es el mismo número de `IMPORTE_MAS_LARGO`
@@ -176,41 +185,45 @@ export function liquidezDeNumeros({ cierre, invertido }) {
 const plata = (expr) => `TEXT(${expr};"$ #,##0")`
 
 /**
- * EL TEXTO DE LA GLOSA — y las tres palabras que declaran la ventana de tiempo.
+ * LO QUE LA GLOSA DEL CIERRE MIDE EN EL PEOR CASO — lo que el auditor de ancho tiene que poder medir.
  *
- * ═══ POR QUÉ "VALUADO HOY" (28/08/2026, hallazgo de la auditoría) ═══
- *
- * La tarjeta suma dos cosas de ventanas distintas: el saldo PROYECTADO al 31/12 y un `SUMIF` VIVO que
- * vale hoy. Son $45.015.210 sobre $72.509.069 — el 62% de la cifra es un valor de hoy bajo un rótulo
- * que dice "al 31/12", con el supuesto tácito de que lo invertido no se rescata ni rinde en cuatro
- * meses. Regla de oro 3: nunca mezclar ventanas de tiempo incompatibles. No hay forma de proyectar la
- * posición de Balanz sin inventarla —el OS no tiene su curva de rendimiento— así que el supuesto no se
- * elimina: se DECLARA donde se lee la cifra. Es el mismo criterio con el que el subtítulo declara que
- * los saldos anteriores al corte están calculados hacia atrás.
+ * SIN PREFIJO (29/08/2026). Decía "caja operativa · con Balanz hoy $…" y medía 285 px contra los 294
+ * del slot más angosto de la pestaña: nueve píxeles, el margen más chico que tuvo este titular, para
+ * repetir lo que el rótulo de al lado ya dice. Sin él son 189/294 — y nadie vio nunca esta pestaña
+ * renderizada por Google, así que no se estrena con un carácter y medio de aire.
  */
-const TEXTO_INCLUYE = 'en Balanz, valuado hoy'
-
-/** Lo que la glosa mide en el peor caso: lo que el auditor de ancho tiene que poder medir. */
-export const muestraIncluye = () => `incluye ${IMPORTE_MUESTRA} ${TEXTO_INCLUYE}`
+export const muestraCierre = () => `${CIERRE_CON_INVERTIDO} ${IMPORTE_MUESTRA}`
 
 /** Y la del Semanal, que cuelga de la fecha del saldo declarado. */
 export const muestraSemanal = (fecha = 'al 28/08') => `${fecha} · más ${IMPORTE_MUESTRA} invertido en Balanz`
 
 /**
- * NÚCLEO PURO: las dos celdas de la tarjeta de liquidez total, en fórmula es-AR.
+ * NÚCLEO PURO: la glosa de la tarjeta del CIERRE, en fórmula es-AR.
+ *
+ * ═══ POR QUÉ LA LIQUIDEZ TOTAL DEJÓ DE SER UNA TARJETA (29/08/2026) ═══
+ *
+ * Era la cuarta del titular y sumaba el saldo PROYECTADO al 31/12 con un `SUMIF` que vale HOY:
+ * $45.015.210 sobre $72.509.069, el 62% de la cifra, bajo un rótulo que decía "al 31/12". El dueño
+ * rechazó el titular entero —*"todo eso rehacer no me convence nada"*— y el rediseño trajo una regla
+ * que esa tarjeta violaba: CADA TARJETA HABLA DE UNA SOLA VENTANA DE TIEMPO.
+ *
+ * La cifra no se pierde, cambia de jerarquía: la TARJETA publica el cierre operativo proyectado —una
+ * sola ventana— y la GLOSA dice cuánto da con Balanz, declarando que ese sumando vale HOY. Una glosa
+ * no compite con el titular: es la nota al pie que explica de qué está hecho, y ahí la mezcla se lee
+ * como lo que es en vez de esconderse adentro de un número grande.
+ *
+ * No hay forma de proyectar la posición de Balanz a diciembre sin inventarla —el OS no tiene su curva
+ * de rendimiento—, así que el supuesto no se elimina: se declara donde se lee la cifra.
  *
  * @param {{refCierre:string, exprInvertido:string|null}} p
- * @returns {{valor:string, glosa:string, muestra:string}}
+ * @returns {{glosa:string, muestra:string}}
  */
-export function formulasDeLiquidez({ refCierre, exprInvertido }) {
-  if (!exprInvertido) {
-    return { valor: AVISO_SIN_INVERTIDO, glosa: GLOSA_SIN_INVERTIDO, muestra: GLOSA_SIN_INVERTIDO }
-  }
+export function glosaDeCierre({ refCierre, exprInvertido }) {
+  if (!exprInvertido) return { glosa: CIERRE_SIN_INVERTIDO, muestra: CIERRE_SIN_INVERTIDO }
   const inv = `N(${exprInvertido})`
   return {
-    valor: `=IF(${inv}=0;"${AVISO_SIN_INVERTIDO}";N(${refCierre})+${inv})`,
-    glosa: `=IF(${inv}=0;"${GLOSA_SIN_INVERTIDO}";"incluye "&${plata(exprInvertido)}&" ${TEXTO_INCLUYE}")`,
-    muestra: muestraIncluye(),
+    glosa: `=IF(${inv}=0;"${CIERRE_SIN_INVERTIDO}";"${CIERRE_CON_INVERTIDO} "&${plata(`N(${refCierre})+${inv}`)})`,
+    muestra: muestraCierre(),
   }
 }
 

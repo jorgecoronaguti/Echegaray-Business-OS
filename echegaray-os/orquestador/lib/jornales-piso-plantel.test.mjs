@@ -29,9 +29,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  bloqueDelPiso, rotuloDelPiso, formulaControlPiso,
+  bloqueDelPlantel, rotuloDelPlantel, formulaControlAumento,
 } from './jornales-piso-uocra.mjs'
-import { sigmaConvenioDelPlantel, expresionMasaDeLaQuincena } from './proyeccion-convenio.mjs'
+import { sigmaConAumentoDelPlantel, expresionMasaDeLaQuincena } from './proyeccion-convenio.mjs'
 import {
   horasDeJornada, HORAS_SEMANA_DECLARADA, HORAS_SEMANA_CON_SABADO, HORAS_POR_DIA_HABIL,
 } from './jornada-uocra.mjs'
@@ -50,13 +50,27 @@ const ESCALON = {
 const VIGENTE = [['OF', 5], ['OF M', 7], ['A', 3], ['A M', 2]]
 const CERRADA = [['OF', 4], ['OF M', 7], ['A', 2], ['A M', 2]]
 
+// LA TARIFA DE HOY ENTRÓ AL FIXTURE EL 29/08, PORQUE AHORA ES PARTE DEL NÚMERO. Mientras la
+// proyección era un PISO, lo que cada uno cobra no la tocaba: el plantel se revaluaba entero a la
+// escala. Con el aumento aditivo la tarifa de hoy ES el término principal, así que el espejo
+// sintético tiene que traerla.
+//
+// SON VALORES SINTÉTICOS, del orden de magnitud de los reales ($4.200–$5.600 en la quincena
+// 17/08–31/08). No se copian los 17 jornales del archivo vivo: lo que este test prueba es la
+// ARITMÉTICA, y con tarifas inventadas se prueba igual. Los pesos de abajo se derivan de acá.
+const TARIFA = { OF: 5600, 'OF M': 5200, A: 4500, 'A M': 4300 }
+
 /** El espejo como lo lee el motor: col B nombre, col D código de categoría. Dos bloques, uno tras otro. */
 function espejoDeDosBloques() {
   const filas = []
   const push = (plantel) => {
     const inicio = filas.length + 1
     for (const [cod, n] of plantel) {
-      for (let i = 0; i < n; i++) filas.push([null, `Persona ${filas.length + 1}`, null, cod])
+      for (let i = 0; i < n; i++) {
+        const f = [null, `Persona ${filas.length + 1}`, null, cod]
+        f[22] = TARIFA[cod]   // columna W: lo que cobra por hora HOY
+        filas.push(f)
+      }
     }
     return { inicio, fin: filas.length }
   }
@@ -72,36 +86,46 @@ const personasDelBloque = (grid, b) => {
   return n
 }
 
-test('EL DEFECTO: el piso se medía sobre la quincena CERRADA y dejaba 2 personas de la nómina afuera', () => {
+test('EL DEFECTO: el plantel salía de la quincena CERRADA y dejaba 2 personas de la nómina afuera', () => {
   const { grid, cerrada, vigente } = espejoDeDosBloques()
-  const elegido = bloqueDelPiso({
+  const elegido = bloqueDelPlantel({
     bloques: [cerrada, vigente], cerrada, personasDe: (b) => personasDelBloque(grid, b),
   })
-  assert.equal(elegido.origen, 'vigente', 'el plantel del piso sale de la quincena EN CURSO')
+  assert.equal(elegido.origen, 'vigente', 'el plantel sale de la quincena EN CURSO')
   assert.equal(elegido.personas, 17)
   assert.equal(personasDelBloque(grid, cerrada), 15, 'la cerrada tenía 15: ése era el plantel proyectado')
 
-  // La Σ $/hora al convenio, por los dos caminos. Es la diferencia que el MAX nunca vio.
-  const conVigente = sigmaConvenioDelPlantel(grid, elegido.bloque, ESCALON)
-  const conCerrada = sigmaConvenioDelPlantel(grid, cerrada, ESCALON)
-  // 12 Oficial × $6.348 + 5 Ayudante × $5.399 = $103.171 · contra 11 × $6.348 + 4 × $5.399 = $91.424.
-  assert.equal(conVigente.total, 103171)
-  assert.equal(conCerrada.total, 91424)
+  // La Σ $/hora CON EL AUMENTO, por los dos caminos. Es la diferencia que nadie veía.
+  const conVigente = sigmaConAumentoDelPlantel(grid, elegido.bloque, ESCALON)
+  const conCerrada = sigmaConAumentoDelPlantel(grid, cerrada, ESCALON)
+  // 17 personas: lo que cobran hoy 5×5.600 + 7×5.200 + 3×4.500 + 2×4.300 = $86.500, más el aumento
+  // 12×(6.348/2) + 5×(5.399/2) = $51.585,50. Total $138.085,50.
+  assert.equal(conVigente.hoy, 86500)
+  assert.equal(conVigente.aumento, 51585.5)
+  assert.equal(conVigente.total, 138085.5)
+  // Con el plantel de la cerrada (15): $76.400 + $45.712 = $122.112. Faltaban $15.973,50 por hora.
+  assert.equal(conCerrada.total, 122112)
+  assert.equal(conVigente.total - conCerrada.total, 15973.5)
   assert.equal(conVigente.personas, 17)
   assert.equal(conCerrada.personas, 15)
+  // EL AUMENTO NO REEMPLAZA LA TARIFA: si alguien vuelve al piso, la Σ sería personas × básico
+  // ($103.171 con 17) y este test lo agarra por el número, no por el nombre de la función.
+  assert.notEqual(conVigente.total, 103171, 'volvió a valuar el plantel A LA HORA DEL CONVENIO')
+  // Y nadie queda bajo el mínimo legal con estas tarifas: la lista vacía es parte del contrato.
+  assert.deepEqual(conVigente.bajoConvenio, [])
 })
 
-test('sin nadie cargado en la quincena en curso el piso VUELVE a la cerrada — y el rótulo lo dice', () => {
+test('sin nadie cargado en la quincena en curso el plantel VUELVE a la cerrada — y el rótulo lo dice', () => {
   const { grid, cerrada } = espejoDeDosBloques()
   const vacio = { inicio: 999, fin: 1000 }
-  const elegido = bloqueDelPiso({
+  const elegido = bloqueDelPlantel({
     bloques: [cerrada, vacio], cerrada, personasDe: (b) => personasDelBloque(grid, b),
   })
-  assert.equal(elegido.origen, 'cerrada', 'un bloque abierto y sin gente no puede fijar el piso')
+  assert.equal(elegido.origen, 'cerrada', 'un bloque abierto y sin gente no puede fijar el plantel')
   assert.equal(elegido.personas, 15)
   // Y el título del cuadro no puede quedar diciendo lo del otro caso: es el dato que explica el número.
-  assert.equal(rotuloDelPiso('cerrada'), 'Plantel base — última quincena cerrada')
-  assert.equal(rotuloDelPiso('vigente'), 'Plantel vigente — la quincena en curso')
+  assert.equal(rotuloDelPlantel('cerrada'), 'Plantel base — última quincena cerrada')
+  assert.equal(rotuloDelPlantel('vigente'), 'Plantel vigente — la quincena en curso')
 })
 
 // ═══ LAS QUINCENAS PENDIENTES Y EL FACTOR DE PARITARIA, DEL CUADRO 4.2 DEL ARCHIVO VIVO ═══
@@ -123,13 +147,13 @@ const HORAS_MEDIDAS = 7.18
 
 /** Lo que la pestaña publicaba: Σ × horas MEDIDAS × días hábiles L-V. */
 const comoPublicaba = (grid, bloque, horasPorDia) => PENDIENTES.map((q) => {
-  const s = sigmaConvenioDelPlantel(grid, bloque, ESCALON)
+  const s = sigmaConAumentoDelPlantel(grid, bloque, ESCALON)
   const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
   return { total: s.total * factor * horasPorDia * diasHabilesObra(q.desde, q.hasta) }
 })
 /** La obligación: Σ × las horas de JORNADA del tramo, contadas por día de la semana. */
 const alPiso = (grid, bloque) => PENDIENTES.map((q) => {
-  const s = sigmaConvenioDelPlantel(grid, bloque, ESCALON)
+  const s = sigmaConAumentoDelPlantel(grid, bloque, ESCALON)
   const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
   return { total: s.total * factor * horasDeJornada(q.desde, q.hasta) }
 })
@@ -142,23 +166,28 @@ test('EL DEFECTO, EN PESOS: la proyección valía el 66% del piso — el plantel
   // La obligación: plantel VIGENTE × la jornada real. Ninguna entrada se mide sobre la otra.
   const piso = suma(alPiso(grid, vigente))
 
-  assert.ok(antes < piso, 'el término convenio quedaba POR DEBAJO del piso que decía estar cubriendo')
-  // Σ $91.424/$103.171 (plantel) × 7,18 h por día hábil contra la jornada real (9/8/4): la proyección
-  // valía el 66,2% de la obligación. Los factores se MULTIPLICAN, y por eso el agujero es mayor que
-  // cualquiera de los dos por separado. (La razón del plantel no es 15/17: la Σ pesa por categoría, y
-  // las dos altas fueron un Oficial y un Ayudante.)
-  assert.equal(Number((antes / piso).toFixed(4)), 0.6623)
+  assert.ok(antes < piso, 'la proyección quedaba POR DEBAJO de lo que ella misma decía cubrir')
+  // Σ $122.112/$138.085,50 (plantel) × 7,18 h por día hábil contra la jornada real (9/8/4): la
+  // proyección valía el 66,1% de la obligación. Los factores se MULTIPLICAN, y por eso el agujero es
+  // mayor que cualquiera de los dos por separado. (La razón del plantel no es 15/17: la Σ pesa por
+  // tarifa y por categoría, y las dos altas fueron un Oficial y un Ayudante.)
+  assert.equal(Number((antes / piso).toFixed(4)), 0.6609)
   // El faltante en pesos de las ocho quincenas que se PAGAN de septiembre a diciembre — el importe
   // exacto, no un umbral: un `>` se sigue cumpliendo cuando el arreglo se revierte a medias.
-  assert.equal(Math.round(antes), 54_052_195)
-  assert.equal(Math.round(piso), 81_614_538)
+  //
+  // LOS TRES NÚMEROS SUBIERON RESPECTO DE LA VERSIÓN «PISO» ($54,0M/$81,6M/$27,5M) y no es un error de
+  // este test: con el aumento aditivo la Σ por hora es mayor que valuar el plantel a la escala
+  // ($138.085,50 contra $103.171), porque el aumento se SUMA a lo que ya se cobra en vez de
+  // reemplazarlo. Que estos tres números bajen a los viejos significa que alguien volvió al piso.
+  assert.equal(Math.round(antes), 72_195_721)
+  assert.equal(Math.round(piso), 109_234_032)
   // Se redondea la RESTA de los dos redondeados, no la resta cruda: si no, el test se cae por un peso
   // de acarreo y manda a buscar un defecto que no existe.
-  assert.equal(Math.round(piso) - Math.round(antes), 27_562_343)
+  assert.equal(Math.round(piso) - Math.round(antes), 37_038_311)
 })
 
 test('EL DEFECTO: la obligación se valuaba con la asistencia — una sola frontera decide base y horas', () => {
-  const esc = { f0: 101, f1: 103, alConvenio: true, celdaSigmaBase: '$C$95', rAnclaBase: 101 }
+  const esc = { f0: 101, f1: 103, conAumento: true, celdaSigmaBase: '$C$95', rAnclaBase: 101 }
   const e = expresionMasaDeLaQuincena({
     esc,
     celdaDesde: 'A40',
@@ -185,7 +214,7 @@ test('EL DEFECTO: la obligación se valuaba con la asistencia — una sola front
 })
 
 test('EL CONTROL YA NO SE FIRMA A SÍ MISMO: mira el plantel y las horas, no sólo los básicos', () => {
-  const f = formulaControlPiso({
+  const f = formulaControlAumento({
     celdasPersonas: '$B$79:$B$82',
     celdasBasico: '$F$79:$F$82',
     nQuincenas: 9,
@@ -195,14 +224,17 @@ test('EL CONTROL YA NO SE FIRMA A SÍ MISMO: mira el plantel y las horas, no só
     celdaJornada: '$B$36',
   })
   // Las dos preguntas que faltaban, con las celdas que las contestan por OTRO camino que el número.
-  assert.ok(f.includes('N($B$7)-N($B$83)'), 'personas de la nómina contra personas del piso')
+  assert.ok(f.includes('N($B$7)-N($B$83)'), 'personas de la nómina contra personas del cuadro')
   assert.ok(f.includes('N($B$36)-N($B$35)'), 'jornada contra horas medidas')
-  assert.ok(f.includes('sin piso UOCRA'), 'y dice cuántas quedaron afuera')
-  // El ✓ sólo se firma cuando ninguna de las tres dispara.
-  assert.ok(f.includes('✓ las 9 quincenas proyectadas cubren el piso UOCRA'))
+  // UNA PERSONA SIN CATEGORÍA ES UNA PERSONA SIN AUMENTO: eso es lo que el control dice ahora, y es
+  // la misma cuenta de antes con la consecuencia correcta escrita al lado.
+  assert.ok(f.includes('sin aumento'), 'y dice cuántas quedaron afuera')
+  assert.ok(f.includes('SIN AUMENTO'), 'la que no tiene escala tampoco recibe el aumento')
+  // El ✓ sólo se firma cuando ninguna de las tres dispara — y dice a cuánta gente le llegó.
+  assert.ok(f.includes('✓ las 9 quincenas proyectadas llevan el aumento de "&N($B$83)&" persona(s)"'))
   // Sin las celdas testigo el control es el de antes: un llamador viejo no se rompe, pero tampoco
   // hereda una firma que no puede sostener.
-  const viejo = formulaControlPiso({ celdasPersonas: '$B$79:$B$82', celdasBasico: '$F$79:$F$82', nQuincenas: 9 })
+  const viejo = formulaControlAumento({ celdasPersonas: '$B$79:$B$82', celdasBasico: '$F$79:$F$82', nQuincenas: 9 })
   assert.ok(!viejo.includes('faltan '))
 })
 

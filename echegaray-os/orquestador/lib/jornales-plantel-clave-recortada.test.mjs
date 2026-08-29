@@ -83,11 +83,14 @@ const FORMAS = [
     const d = valores(g, rango); const w = valores(g, imp)
     return d.reduce((acc, v, i) => acc + (TRIM(v) === clave ? 1 : 0) * N(w[i]), 0)
   }],
-  [/^=IFERROR\(MIN\(FILTER\((.+?);TRIM\((.+?)\)="(.*)";ISNUMBER\((.+?)\);(.+?)>0\)\);""\)$/,
+  // El mínimo de la categoría YA NO TIENE COLUMNA (29/08): la D pasó a ser la Σ del aumento y el
+  // mínimo se calcula adentro del Estado, que era su único consumidor. Se evalúa igual, extraído de
+  // esa fórmula con `minimoDe`: lo que se prueba es la cuenta, no en qué celda vive.
+  [/^IFERROR\(MIN\(FILTER\((.+?);TRIM\((.+?)\)="(.*)";ISNUMBER\((.+?)\);(.+?)>0\)\);0\)$/,
     (g, [imp, rango, clave]) => {
       const d = valores(g, rango); const w = valores(g, imp)
       const hits = w.filter((v, i) => TRIM(d[i]) === clave && ES_NUM(v) && v > 0)
-      return hits.length ? Math.min(...hits) : ''
+      return hits.length ? Math.min(...hits) : 0
     }],
   // Las tres de ANTES. Viven acá para que la mutación se pueda correr de verdad: si alguien las
   // revierte, el evaluador las entiende y el test falla por el NÚMERO, que es lo que importa.
@@ -103,6 +106,13 @@ const FORMAS = [
     return hits.length ? Math.min(...hits) : ''
   }],
 ]
+
+/** El `IFERROR(MIN(FILTER(…));0)` que vive adentro de la fórmula del Estado. */
+const minimoDe = (estado) => {
+  const m = /IFERROR\(MIN\(FILTER\([^;]+;TRIM\([^)]+\)="[^"]*";ISNUMBER\([^)]+\);[^)]+>0\)\);0\)/.exec(String(estado))
+  if (!m) throw new Error(`la fórmula del Estado dejó de calcular el mínimo de la categoría: ${estado}`)
+  return m[0]
+}
 
 function evaluar(formula, grid) {
   for (const [re, fn] of FORMAS) {
@@ -178,7 +188,7 @@ test('un texto en la columna de importes no rompe la Σ ni contamina el mínimo'
   const filaOF = cuadro(g).filas.find((f) => f[0] === 'OF')
   assert.equal(evaluar(filaOF[1], g), 5, 'la persona sigue contando: tiene categoría, lo que falta es el importe')
   assert.equal(evaluar(filaOF[2], g), 5300 + 5400 + 5500 + 5600, 'el texto tiene que valer cero, no romper')
-  assert.equal(evaluar(filaOF[3], g), 5300, 'el mínimo es el menor NUMÉRICO positivo, no el texto')
+  assert.equal(evaluar(minimoDe(filaOF[7]), g), 5300, 'el mínimo es el menor NUMÉRICO positivo, no el texto')
 })
 
 test('una categoría que no está en el bloque cuenta cero, y su mínimo es vacío', () => {
@@ -188,7 +198,11 @@ test('una categoría que no está en el bloque cuenta cero, y su mínimo es vac�
   })
   assert.equal(evaluar(c.filas[1][1], g), 0)
   assert.equal(evaluar(c.filas[1][2], g), 0)
-  assert.equal(evaluar(c.filas[1][3], g), '', 'sin gente el mínimo es vacío, nunca 0: un 0 se lee como "cobra cero"')
+  assert.equal(evaluar(minimoDe(c.filas[1][7]), g), 0)
+  // Y CON EL MÍNIMO EN CERO EL ESTADO NO PUEDE DECIR «queda bajo el convenio»: nadie cobra $0, lo que
+  // pasa es que no hay a quién medirle la tarifa. Un aviso que confunde las dos cosas manda a
+  // corregir un sueldo que no existe.
+  assert.match(String(c.filas[1][7]), /sin nadie con tarifa cargada/)
 })
 
 test('las fórmulas se escriben en locale es-AR: el separador es ";" y nunca ","', () => {

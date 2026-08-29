@@ -38,7 +38,12 @@ export const aSerial = (d) => Math.round((d.getTime() - EPOCH) / DIA)
 const aFecha = (s) => new Date(EPOCH + Math.round(s) * DIA)
 
 const TOKEN = new RegExp('^(?:'
-  + '(\\d+(?:\\.\\d+)?)'                                                       // 1 número
+  // 1 NÚMERO — con el sufijo `%` opcional. Un porcentaje literal no es un capricho: es la forma en
+  // que este repo escribe una fracción DENTRO de una fórmula, porque `0,5` metería una coma
+  // decimal donde la coma es el separador de argumentos (`porcentajeEnFormula`). Sin esto, la
+  // columna «Aumento $/hora» del cuadro 1.1 no se podía evaluar en frío — y es justo la celda que
+  // decide cuánto sube cada hora.
+  + '(\\d+(?:\\.\\d+)?%?)'                                                      // 1 número
   + '|("(?:[^"])*")'                                                           // 2 texto
   // 3 ref/rango — el prefijo de pestaña va entre comillas simples cuando el nombre tiene espacios,
   // que es como lo escribe todo generador de este repo ('Cheques Emitidos'!$M$27:$M$400) y como cita
@@ -61,7 +66,7 @@ export function tokenizar(formula) {
     s = s.trimStart()
     const m = TOKEN.exec(s)
     if (!m) throw new Error(`evaluar-formula-sheet: no entiendo "${s.slice(0, 24)}…"`)
-    if (m[1]) out.push({ t: 'num', v: Number(m[1]) })
+    if (m[1]) out.push({ t: 'num', v: m[1].endsWith('%') ? Number(m[1].slice(0, -1)) / 100 : Number(m[1]) })
     else if (m[2]) out.push({ t: 'str', v: m[2].slice(1, -1) })
     else if (m[3]) out.push({ t: 'ref', v: m[3] })
     else if (m[4]) out.push({ t: 'fn', v: m[4].toUpperCase() })
@@ -262,6 +267,20 @@ function llamar(n, args, ev) {
     return num(c) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
   }
   if (n === 'IFERROR') { try { return ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return ev(args[1] ?? { k: 'num', v: 0 }) ; throw e } }
+  // ═══ ISNUMBER ABSORBE EL ERROR DE SU ARGUMENTO, COMO EN SHEETS (29/08/2026) ═══
+  //
+  // `ISNUMBER(MATCH(x; rango; 0))` es EL idioma para preguntar «¿está en la lista?»: cuando no está,
+  // el MATCH da #N/A y ISNUMBER contesta FALSE. Acá el #N/A se propagaba y reventaba la fórmula
+  // entera, así que `expresionClaveConvenio` —la celda que decide contra qué categoría se mide cada
+  // fila del plantel, y por la que entró el incidente de la columna «Convenio»— era literalmente
+  // imposible de evaluar en frío. Se resuelve ANTES de `args.map(ev)` porque el error se produce
+  // evaluando el argumento, igual que IF e IFERROR.
+  if (n === 'ISNUMBER') {
+    let x
+    try { x = ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return 0; throw e }
+    const esNumero = (y) => (typeof y === 'number' ? 1 : 0)
+    return Array.isArray(x) ? x.map(esNumero) : esNumero(x)
+  }
   const v = args.map(ev)
   switch (n) {
     case 'SUM': return plano(v).reduce((s, x) => s + num(x), 0)
@@ -272,6 +291,14 @@ function llamar(n, args, ev) {
       for (let k = 0; k < largo; k++) t += v.reduce((p, x) => p * num(Array.isArray(x) ? x[k] : x), 1)
       return t
     }
+    // AND/OR/NOT — los conectores con los que este repo escribe sus GUARDAS. `AND(N(pago)>0;
+    // pago<=EOMONTH(TODAY();0))` es la frontera de la caja comprometida y `AND($E<>"";
+    // NOT(ISNUMBER(MATCH(…))))` es la que enciende el aviso de «la escala no conoce eso». Sin ellos,
+    // las dos condiciones que deciden qué publica la pestaña quedaban fuera de lo evaluable en frío.
+    // Sobre un rango se comportan como en Sheets: miran TODAS las celdas.
+    case 'AND': return plano(v).every((x) => num(x) !== 0) ? 1 : 0
+    case 'OR': return plano(v).some((x) => num(x) !== 0) ? 1 : 0
+    case 'NOT': return num(v[0]) === 0 ? 1 : 0
     case 'MAX': return Math.max(...plano(v).map(num))
     case 'MIN': return Math.min(...plano(v).map(num))
     case 'ROUND': { const d = 10 ** num(v[1] ?? 0); return Math.round(num(v[0]) * d) / d }
@@ -323,11 +350,6 @@ function llamar(n, args, ev) {
       // categorías —`COUNTIF(M27:M400;"✓ su factura está en Compras")`— y sin esto reventaba.
       if (!m) return plano([v[0]]).filter((x) => cumpleCriterio(x, v[1])).length
       return plano([v[0]]).filter((x) => binario(m[1] === '<>' ? '<>' : (m[1] ?? '='), x, Number(m[2])) === 1).length
-    }
-    // ¿Es un número? Sobre un rango contesta rango, por el mismo motivo que el IF de arriba.
-    case 'ISNUMBER': {
-      const esNum = (x) => (typeof x === 'number' ? 1 : 0)
-      return Array.isArray(v[0]) ? v[0].map(esNum) : esNum(v[0])
     }
     // UPPER sobre un rango también contesta rango: así compara el filtro `UPPER(K27:K400)<>"SI"`,
     // que es el que deja afuera los cheques ya debitados.
