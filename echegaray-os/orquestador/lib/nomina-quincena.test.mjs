@@ -96,7 +96,11 @@ test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nue
   const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   const i = cols.indexOf('$/h HOY')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
-  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', '+ Aumento $/h', '$/h CON AUMENTO'],
+  // El «+» inicial NO puede volver: Sheets lo parsea como fórmula (=+Aumento…) y el encabezado
+  // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
+  // con los números correctos abajo.
+  assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
+  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', 'Aumento $/h', '$/h CON AUMENTO'],
     'las tres tarifas dejaron de leerse seguidas: la cuenta no se puede seguir de izquierda a derecha')
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
   // separan el día que el porcentaje cambie.

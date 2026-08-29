@@ -278,7 +278,7 @@ function grilla(activos, { hoy, quincena, escala, legajos }) {
   // cuánto sube cada uno, que es LA cifra que el dueño decidió. Ahora la cuenta se lee sola de
   // izquierda a derecha: lo que cobra + lo que sube = lo que va a cobrar. Después, la plata.
   fila('Persona', 'Cat.', 'Convenio', 'Hs cargadas', 'Hs a completar', 'Horas', 'Adelanto',
-    '$/h HOY', '+ Aumento $/h', '$/h CON AUMENTO',
+    '$/h HOY', 'Aumento $/h', '$/h CON AUMENTO',
     'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
     'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
