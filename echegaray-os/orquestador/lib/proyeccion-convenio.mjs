@@ -78,11 +78,12 @@ import { ALERTA } from './glifos.mjs'
  *
  * Se define UNA vez acá y se importa: dos redacciones del mismo supuesto envejecen distinto.
  */
-export const NOTA_SUPUESTO_AUMENTO = 'La parte PROYECTADA de esos jornales viene valuada a la tarifa '
-  + 'de hoy MÁS el 50% del básico de convenio de cada categoría (decisión del dueño del 28/08 — ver '
-  + 'Jornales por Quincena 1.1). No es el 100% de la escala ni un piso: el convenio decide cuánto sube '
-  + 'la hora, no cuánto vale. Lo que se PAGA dentro del mes en curso queda a la tarifa de hoy, sin el '
-  + 'aumento: eso es lo que va a salir de la caja.'
+export const NOTA_SUPUESTO_AUMENTO = 'La parte PROYECTADA de esos jornales viene valuada con el '
+  + 'aumento que decidió el dueño el 29/08: se cierra el 50% de la brecha entre lo que cada uno cobra '
+  + 'hoy y el piso de convenio de su categoría, y el resultado NUNCA pasa ese piso (ver Jornales por '
+  + 'Quincena 1.1). No es el 100% de la escala: después del aumento el plantel sigue por debajo de '
+  + 'ella, que es lo que se decidió. Lo que se PAGA dentro del mes en curso queda a la tarifa de hoy, '
+  + 'sin el aumento: eso es lo que va a salir de la caja.'
 
 /**
  * LA MISMA FILA CON LA OTRA BASE DICE OTRA COSA — Y TIENE QUE DECIRLA (07/08).
@@ -98,12 +99,12 @@ export const NOTA_SUPUESTO_AUMENTO = 'La parte PROYECTADA de esos jornales viene
 export function notaSupuesto(base) {
   if (base === BASE_CON_AUMENTO) return NOTA_SUPUESTO_AUMENTO
   if (base === BASE_PACTADO) {
-    return 'La parte PROYECTADA de esos jornales está valuada a la tarifa de HOY, SIN el aumento del '
-      + '50% del básico: la réplica del convenio no dio escala con la cual calcularlo (ver Jornales por '
-      + 'Quincena 1.1). El aumento decidido costaría más que esto.'
+    return 'La parte PROYECTADA de esos jornales está valuada a la tarifa de HOY, SIN el aumento: la '
+      + 'réplica del convenio no dio escala, y sin el piso de cada categoría no hay brecha que cerrar '
+      + '(ver Jornales por Quincena 1.1). El aumento decidido costaría más que esto.'
   }
   return 'No pude leer de Jornales por Quincena 1.1 con qué base quedó valuada la parte PROYECTADA de '
-    + 'esos jornales —la tarifa de hoy sola, o con el aumento del 50% del básico—: corré '
+    + 'esos jornales —la tarifa de hoy sola, o con el aumento que cierra media brecha al piso—: corré '
     + 'jornales-pestana.mjs y volvé a generar esta pestaña antes de usar este número para decidir.'
 }
 
@@ -331,7 +332,7 @@ export function lineaSupuestoAumento({
   return `=IF(IFERROR(N(${sigma});0)=0;`
     + `"   · ${ALERTA} Sin plantel: la proyección va sin el aumento adentro";`
     + sinAumento
-    + `"   · Con aumento: hoy + ${Math.round(Number(porcentaje) * 100)}% del básico · ${cuantos}${vigencia}")`
+    + `"   · Aumento: cierra el ${Math.round(Number(porcentaje) * 100)}% de la brecha al piso · ${cuantos}${vigencia}")`
     + (sinAumento ? ')' : '')
 }
 

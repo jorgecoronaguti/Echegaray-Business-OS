@@ -302,7 +302,14 @@ function llamar(n, args, ev) {
     case 'MAX': return Math.max(...plano(v).map(num))
     case 'MIN': return Math.min(...plano(v).map(num))
     case 'ROUND': { const d = 10 ** num(v[1] ?? 0); return Math.round(num(v[0]) * d) / d }
-    case 'N': return typeof v[0] === 'number' ? v[0] : 0
+    // N SOBRE UN RANGO CONTESTA RANGO, como ISNUMBER y UPPER. Es lo que permite hacer aritmética
+    // element-a-element con una columna que puede traer texto: `(básico − N(W))` no revienta con
+    // #VALUE! porque `N` ya convirtió el texto en cero. Sin esto, la Σ del aumento del cuadro 1.1
+    // —que resta la tarifa de cada persona contra el piso de su categoría— no se podía evaluar.
+    case 'N': {
+      const aNumero = (x) => (typeof x === 'number' ? x : 0)
+      return Array.isArray(v[0]) ? v[0].map(aNumero) : aNumero(v[0])
+    }
     case 'TEXT': return textoConPatron(v[0], v[1])
     case 'TODAY': return aSerial(ev.hoy)
     case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
@@ -350,6 +357,14 @@ function llamar(n, args, ev) {
       // categorías —`COUNTIF(M27:M400;"✓ su factura está en Compras")`— y sin esto reventaba.
       if (!m) return plano([v[0]]).filter((x) => cumpleCriterio(x, v[1])).length
       return plano([v[0]]).filter((x) => binario(m[1] === '<>' ? '<>' : (m[1] ?? '='), x, Number(m[2])) === 1).length
+    }
+    // TRIM DE SHEETS NO ES `String.trim()`: además de las puntas, COLAPSA los espacios internos —
+    // "OF  M" queda "OF M"—. Esa diferencia es exactamente el defecto que costó 9 de 17 personas sin
+    // piso de convenio (la clave se recortaba de un solo lado), así que un modelo que usara `.trim()`
+    // haría pasar en verde el defecto que este repo ya pagó. Sobre un rango contesta rango.
+    case 'TRIM': {
+      const t = (x) => String(x ?? '').replace(/\s+/g, ' ').trim()
+      return Array.isArray(v[0]) ? v[0].map(t) : t(v[0])
     }
     // UPPER sobre un rango también contesta rango: así compara el filtro `UPPER(K27:K400)<>"SI"`,
     // que es el que deja afuera los cheques ya debitados.

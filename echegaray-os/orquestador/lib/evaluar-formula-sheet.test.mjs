@@ -216,3 +216,34 @@ test('AND, OR y NOT: los conectores con los que se escriben las guardas de este 
   assert.equal(ev('=AND(A1:A3>0)', { A1: 1, A2: 2, A3: 3 }), 1)
   assert.equal(ev('=AND(A1:A3>0)', { A1: 1, A2: 0, A3: 3 }), 0)
 })
+
+// ═══ `N` SOBRE UN RANGO — LA CONVERSIÓN QUE HACE EVALUABLE LA ARITMÉTICA CONTRA UNA COLUMNA ═══
+//
+// El cuadro 1.1 de Jornales suma el aumento persona por persona: `(básico − N(W)) × (N(W) < básico)`
+// sobre la columna de tarifas del espejo. Si `N` colapsara el rango a un escalar, esa resta daría un
+// número plausible y equivocado; si no convirtiera el texto en cero, una celda con «vacaciones»
+// reventaría la fila entera con #VALUE!.
+test('N convierte elemento a elemento y el texto vale cero', () => {
+  assert.deepEqual(ev('=N(A1:A3)', { A1: 5600, A2: 'vacaciones', A3: 5300 }), [5600, 0, 5300])
+  assert.equal(ev('=N(A1)', { A1: 'x' }), 0)
+  assert.equal(ev('=N(A1)', { A1: 42 }), 42)
+  // La cuenta real del cuadro: dos Oficiales bajo el piso y uno que ya lo supera (no baja).
+  const hoja = { A1: 5600, A2: 5300, A3: 12000, F1: 6348 }
+  assert.equal(ev('=SUMPRODUCT((N($F$1)-N(A1:A3))*(N(A1:A3)<N($F$1)))*50%', hoja), 374 + 524,
+    'el que ya cobra sobre el piso tiene que quedar en cero, no restar')
+})
+
+// ═══ `TRIM` — Y POR QUÉ NO ES `String.trim()` (29/08/2026) ═══
+//
+// TRIM de Sheets colapsa TAMBIÉN los espacios internos. La diferencia no es cosmética: el cuadro 1.1
+// de Jornales compara `TRIM(columna D del espejo)` contra una clave normalizada del mismo modo, y
+// recortar de un solo lado dejó a 9 de 17 personas sin piso de convenio durante dos semanas. Un
+// modelo que usara `String.trim()` haría pasar en verde exactamente ese defecto.
+test('TRIM colapsa los espacios internos, no sólo las puntas', () => {
+  assert.equal(ev('=TRIM(A1)', { A1: 'OF ' }), 'OF')
+  assert.equal(ev('=TRIM(A1)', { A1: 'OF  M' }), 'OF M', 'los espacios internos también se colapsan')
+  assert.equal(ev('=TRIM(A1)', { A1: '  A M  ' }), 'A M')
+  assert.deepEqual(ev('=TRIM(A1:A3)', { A1: 'OF ', A2: 'OF  M', A3: 'A' }), ['OF', 'OF M', 'A'])
+  // La cuenta real del cuadro: contar las personas de una categoría con la columna sucia.
+  assert.equal(ev('=SUMPRODUCT(--(TRIM(A1:A3)="OF"))', { A1: 'OF ', A2: 'OF', A3: 'A ' }), 2)
+})
