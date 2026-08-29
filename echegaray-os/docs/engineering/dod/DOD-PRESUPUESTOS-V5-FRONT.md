@@ -161,9 +161,42 @@ Base Maestra es de su propio frente.
 resuelve evidencia o autoridad. **Decisión pendiente del dueño.** Mientras tanto la cartera marca
 bajo objetivo contra 17, igual que antes, pero ahora se puede ver por qué.
 
-### 8 · El E2E de la pantalla no existe
+### 8 · ~~El E2E de la pantalla no existe~~ — CERRADO
 
-No se escribió ningún `tests/*.spec.ts` para el circuito de conversación.
+`tests/presupuesto-conversacion.spec.ts`: dos recorridos, en navegador real, **tipeando** con
+`pressSequentially` y `Enter` sobre el formulario nativo (no `fill`, que no reproduce el defecto que
+el QA encontró). Cada afirmación se cierra leyendo la fila en Postgres, no el mensaje de la
+pantalla.
+
+```
+E2E_PORT=3287 LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs \
+  npx playwright test tests/presupuesto-conversacion.spec.ts
+
+CORRIDA 1 → 2 passed (24.6s)
+CORRIDA 2 → 2 passed (19.6s)
+```
+
+Puerto propio: con `E2E_PORT` el arnés apaga el reuso, así que lo que se prueba sale de ESTE
+worktree. Limpieza por marca propia (`ZZE2E-CONVERSACION`) al entrar y al salir, gane o pierda —
+verificado después de las dos corridas: cero residuo en la base.
+
+**Tres defectos que sólo encontró el E2E**, y que los tests de estructura no podían ver:
+
+1. **El foco seguía sin volver** aunque el `focus()` estaba puesto. La causa era otra:
+   `disabled={pendiente}` en el input. Deshabilitar un elemento enfocado se lo quita el navegador,
+   así que el `focus()` se perdía en el repintado siguiente. El arreglo anterior era necesario y no
+   suficiente. El input ya no se deshabilita — el doble envío lo frena el botón, que sí.
+2. **Mi mutación declarada era falsa.** Escribí que «limpiar antes de despachar pierde lo que se
+   escribió»; la mutación inversa dejó el E2E en **verde**. El FormData llega a la acción ya
+   capturado, así que el orden ahí adentro es indiferente: lo que rompía era `onSubmit`, que corre
+   antes de que React lo arme. Comentario y test de estructura corregidos.
+3. **El outlier sí pregunta** en el caso del guion: 480→520 mueve $1.000.000 sobre $12.000.000, más
+   del 2 % de materialidad. El recorrido verifica que el primer intento **no** mueve la fila y que
+   sólo se aplica con el «Aplicalo igual» explícito (§20).
+
+**Lo que este E2E no prueba:** el camino del modelo. Todas las frases son de las que el intérprete
+determinístico resuelve, y eso se verifica con el canario `conversacion-degradada`, que tiene que
+estar ausente. El límite 2 sigue abierto.
 
 ---
 

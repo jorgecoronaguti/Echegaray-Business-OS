@@ -55,24 +55,30 @@ describe('el formulario manda lo que se escribió (QA visual, 29/08/2026)', () =
       'limpia el input en onSubmit: corre en carrera con la captura del FormData y manda texto vacío')
   })
 
-  test('la limpieza va DESPUÉS de despachar la acción', () => {
+  test('la limpieza vive DENTRO de la acción, que es donde no puede hacer daño', () => {
+    // El FormData llega a la acción YA CAPTURADO, así que tocar el input desde adentro no lo
+    // afecta. Medido con la mutación inversa el 29/08/2026: mover la limpieza antes del `enviar()`
+    // deja el E2E en VERDE. Lo que importa es dónde vive, no el orden acá adentro — por eso lo que
+    // se exige es que esté acá, y el test de arriba exige que NO esté en `onSubmit`.
     const accion = /action=\{\((?:datos|[a-z]+)[^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{12}\}\}/.exec(PANEL)
     assert.ok(accion, 'no encontré la acción del formulario: el test dejó de mirar donde tenía que mirar')
     const cuerpo = accion[1]
-    const despacho = cuerpo.indexOf('enviar(')
-    const limpieza = cuerpo.indexOf("value = ''")
-    assert.ok(despacho >= 0, 'la acción no despacha nada')
-    assert.ok(limpieza >= 0, 'la acción no limpia el campo: el input queda con el texto anterior')
-    assert.ok(despacho < limpieza, 'limpia el campo ANTES de despachar: se pierde lo que se escribió')
+    assert.ok(cuerpo.includes('enviar('), 'la acción no despacha nada')
+    assert.ok(cuerpo.includes("value = ''"), 'la acción no limpia el campo: el input queda con el texto anterior')
   })
 
   test('el foco vuelve al campo, y DESPUÉS de despachar', () => {
     const accion = /action=\{\((?:datos|[a-z]+)[^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{12}\}\}/.exec(PANEL)
     assert.ok(accion, 'no encontré la acción del formulario')
     const cuerpo = accion[1]
-    const foco = cuerpo.indexOf('.focus()')
-    assert.ok(foco >= 0, 'el foco no vuelve al input: hay que hacer clic para escribir la frase siguiente')
-    assert.ok(cuerpo.indexOf('enviar(') < foco, 'devuelve el foco antes de despachar')
+    assert.ok(cuerpo.includes('.focus()'), 'el foco no vuelve al input: hay que hacer clic para escribir la frase siguiente')
+    // Y el input NO puede deshabilitarse mientras se procesa: deshabilitar un elemento enfocado se
+    // lo quita el navegador, y ahí el `focus()` de arriba se pierde en el repintado. Sólo lo
+    // destapó el E2E que tipea en un navegador real; el `focus()` solo no alcanzaba.
+    const inputs = /<input\b[^>]*data-testid="entrada-conversacion"[\s\S]{0,400}?\/>/.exec(PANEL)
+      ?? /ref=\{campo\}[\s\S]{0,400}?\/>/.exec(PANEL)
+    assert.ok(inputs, 'no encontré el input de la conversación')
+    assert.ok(!/disabled=\{pendiente\}/.test(inputs[0]), 'el input se deshabilita mientras se procesa: eso le quita el foco')
   })
 
   test('el input tiene name=texto, que es lo que el esquema del servidor exige', () => {

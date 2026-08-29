@@ -107,22 +107,24 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
 
         {puedeEscribir ? (
           <form
-            // ═══ NO SE LIMPIA EN `onSubmit` (QA visual, 29/08/2026) ═══
+            // ═══ LA LIMPIEZA VA EN LA ACCIÓN, NUNCA EN `onSubmit` (QA visual, 29/08/2026) ═══
             //
-            // Estaba `onSubmit={() => { campo.current.value = '' }}`, y corría EN CARRERA con la
-            // captura del FormData: el servidor recibía `texto=''` SIEMPRE. Los chips de ejemplo
-            // funcionaban porque llaman `mandar()` con el texto en la mano, y por eso ningún test
-            // lo vio — probaban el camino que no estaba roto.
+            // Estaba `onSubmit={() => { campo.current.value = '' }}`. `onSubmit` corre ANTES de que
+            // React arme el FormData, así que el servidor recibía `texto=''` SIEMPRE. Los chips de
+            // ejemplo funcionaban porque llaman `mandar()` con el texto en la mano, y por eso ningún
+            // test lo vio: probaban el único camino que no estaba roto.
             //
-            // Ahora la acción envuelve al `enviar` de `useActionState`: se lee el texto del
-            // FormData YA ARMADO, se despacha, y recién después se limpia el campo. El orden es
-            // todo: limpiar antes de leer es perder lo que se escribió.
+            // Acá adentro el FormData YA ESTÁ CAPTURADO —llega como argumento—, así que tocar el
+            // input no puede afectarlo. Medido con la mutación inversa: mover la limpieza antes del
+            // `enviar()` deja el E2E en verde; volver a `onSubmit` lo pone rojo. Lo que importa es
+            // DÓNDE, no en qué orden dentro de acá.
             action={(datos: FormData) => {
               enviar(datos)
-              // El orden es todo: primero se despacha lo capturado, después se limpia. Y el FOCO
-              // VUELVE AL CAMPO (QA visual: `document.activeElement === input` daba false): una
-              // conversación se escribe seguido, y si después de cada frase hay que volver a hacer
-              // clic en el input, deja de ser una conversación y pasa a ser un formulario.
+              // EL FOCO VUELVE AL CAMPO (QA visual: `document.activeElement === input` daba
+              // false): una conversación se escribe seguido, y si después de cada frase hay que
+              // volver a hacer clic en el input, deja de ser una conversación y pasa a ser un
+              // formulario. Devolverlo acá es NECESARIO y no suficiente — ver el `disabled` del
+              // input, que es lo que se lo llevaba puesto.
               if (campo.current) {
                 campo.current.value = ''
                 campo.current.focus()
@@ -133,7 +135,17 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
             <input type="hidden" name="id" value={cotizacionId} />
             <input type="hidden" name="confirmado" value="0" />
             <input
-              ref={campo} name="texto" autoComplete="off" disabled={pendiente}
+              // ═══ EL INPUT NO SE DESHABILITA MIENTRAS SE PROCESA (E2E, 29/08/2026) ═══
+              //
+              // Llevaba `disabled={pendiente}`, y ahí estaba la razón REAL de que el foco no
+              // volviera: deshabilitar un elemento enfocado se lo quita el navegador, así que el
+              // `focus()` de la acción se perdía en cuanto React repintaba con `pendiente` en true.
+              // El arreglo anterior —llamar a `focus()` después de despachar— era necesario y no
+              // suficiente, y sólo lo destapó el recorrido que TIPEA en un navegador de verdad.
+              //
+              // Deshabilitarlo tampoco protegía nada: el doble envío lo frena el botón, que sí
+              // sigue deshabilitado. Lo único que hacía era romper el hilo de la conversación.
+              ref={campo} name="texto" autoComplete="off"
               placeholder="la mampostería son 520 m2 · ¿qué me falta para enviar?"
               data-testid="entrada-conversacion"
               style={{
