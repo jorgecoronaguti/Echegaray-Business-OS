@@ -221,12 +221,14 @@ verificado después de las dos corridas: cero residuo en la base.
    sólo se aplica con el «Aplicalo igual» explícito (§20).
 
 **Lo que este E2E no prueba:** el camino del modelo. Todas las frases son de las que el intérprete
-determinístico resuelve, y eso se verifica con el canario `conversacion-degradada`, que tiene que
-estar ausente. El límite 2 sigue abierto.
+determinístico resuelve, y eso se verifica con el canario `origen-modelo`: su ausencia prueba
+que NINGUNA intención aplicada salió del modelo — no que el modelo no se llamó (uno que contesta basura también lo deja ausente), y alcanza para lo que el E2E afirma. La versión anterior citaba `conversacion-degradada`; la auditoría la refutó: su ausencia era compatible con el modelo llamado y respondiendo.
 
 ---
 
 ## Lo que necesita el CORE
+
+3. **`comandos.validar()` trata `set_global_policy` como `commercial_override`** (`comandos.mjs:~107`): el motor la deja pasar con `ok:true` para un DUENO. Hoy la frenan la tabla de planes del front (`MOTIVO_SIN_PLAN`) y la base (`GLOBAL_POLICY_WRITE` en las dos tablas de parámetros), pero §17 pide el rechazo TAMBIÉN en el motor: una conversación no cambia política global sin acción explícita autorizada. Es archivo del CORE.
 
 1. ~~`intencion()` descarta campos declarados~~ — **RESUELTO por el contrato 1.1.0.** Mi
    `intencionCompleta()` está borrado y todo usa el constructor oficial.
