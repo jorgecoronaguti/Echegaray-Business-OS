@@ -65,7 +65,9 @@ import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './ca
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
 import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
-import { expresionInvertido, glosaConInvertido, muestraSemanal } from './cash-flow-invertido.mjs'
+import {
+  expresionInvertido, glosaConInvertido, muestraSemanal, GLOSA_SIN_ANCLA,
+} from './cash-flow-invertido.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_SEMANAL = 'Cash Flow Semanal'
@@ -172,7 +174,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
  * decir dos cosas distintas sobre la misma plata.
  */
 function glosaCajaHoy(refFecha, refCaja) {
-  if (!refFecha) return 'Falta el saldo declarado de CAJA'
+  if (!refFecha) return GLOSA_SIN_ANCLA
   return glosaConInvertido(`"al "&TEXT(${refFecha};"d/mm")`, expresionInvertido(refCaja))
 }
 
