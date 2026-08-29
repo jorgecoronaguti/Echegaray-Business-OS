@@ -44,6 +44,21 @@ export const PT_A_PX = 4 / 3
 export const PADDING_CELDA = 6
 
 /**
+ * NÚCLEO PURO: hasta dónde llega cada slot del titular. Una sola definición para dos consumidores.
+ *
+ * La usa la PIEL para MERGEAR la celda del valor, y el auditor para medir contra esa misma celda. Si
+ * las dos la calcularan por su cuenta, el auditor mediría un ancho que el Sheet no tiene — que es
+ * exactamente lo que pasó: medía el slot entero confiando en el desborde, y el desborde no existe.
+ *
+ * @param {number[]} slots columnas donde arranca cada cifra
+ * @param {number} cols ancho del footprint
+ * @returns {Array<{desde:number, hasta:number}>} `hasta` es exclusivo
+ */
+export function spansDelHero(slots = [], cols = 0) {
+  return slots.map((s, i) => ({ desde: s, hasta: i + 1 < slots.length ? slots[i + 1] : cols }))
+}
+
+/**
  * NÚCLEO PURO: los píxeles que tiene un slot del hero antes de chocar con el siguiente.
  *
  * El texto de una celda desborda sobre las celdas VACÍAS de su derecha y se corta contra la primera
@@ -103,6 +118,30 @@ export function auditarHero({ slots = [], cols, anchoCol, piezas = [] }) {
 }
 
 /**
+ * ═══ EL DESBORDE NO EXISTE EN EL PDF, Y ESO SE MIDIÓ EN EL RENDER REAL (29/08/2026) ═══
+ *
+ * Las tres filas del hero se escriben con `wrapStrategy: OVERFLOW_CELL` y las celdas de la derecha
+ * quedan vacías, así que el texto DEBERÍA correr sobre ellas. En la pantalla corre. **En el PDF que
+ * exporta Google, no**: el dueño miró la pestaña aplicada y tres de los cuatro VALORES salieron
+ * cortados en el borde exacto de su columna.
+ *
+ * Lo que se vio, contra lo que la celda tiene (leído por API):
+ *
+ *   `($31.332.233)` → se dibujó `($31.332.233`   · 119 px medidos, se cortó en 112
+ *   `$125.306.590`  → se dibujó `$125.306.59`    · 116 px medidos, se cortó en 106
+ *   `$153.612.775`  → se dibujó `$153.612.77`    · 116 px medidos, se cortó en 106
+ *   `$28.306.185`   → COMPLETO                   · 106 px medidos
+ *
+ * El corte cae entre 112 y 116 px de los de este medidor, que sobre una columna de 95 px reales es el
+ * ancho de la columna y nada más: CERO desborde. Por eso el valor ya no se mide contra el slot sino
+ * contra SU PROPIA CELDA, y por eso la piel MERGEA esa celda a lo ancho del slot. Un titular que
+ * depende de que la celda de al lado siga vacía es un titular que se rompe cuando alguien escribe al
+ * lado — y encima ya se rompía sin que nadie escribiera nada.
+ *
+ * LOS RÓTULOS Y LAS GLOSAS SIGUEN MIDIÉNDOSE CONTRA EL SLOT y no se mergean: son texto de 9 px que
+ * entra holgado en su propia columna más el desborde, y el PDF los mostró enteros. Si algún día uno
+ * de ellos se corta, se mergea también — pero no se toca lo que se vio funcionando.
+ *
  * EL IMPORTE MÁS LARGO QUE EL TITULAR TIENE QUE PODER MOSTRAR.
  *
  * No es un número real de la empresa: es la PRUEBA de que el layout no depende de que la cifra sea
