@@ -9,7 +9,7 @@
 // OUTLIER → MUTACIÓN → RECÁLCULO → PERSISTENCIA, todo en código de este repo.
 //
 // **El texto que devuelve el modelo nunca llega al estado de negocio.** Se parsea a JSON, se
-// construye una intención con `intencionCompleta()` —que rechaza cualquier acción fuera de la lista
+// construye una intención con `intencion()` del contrato —que rechaza cualquier acción fuera de la lista
 // cerrada— y ahí termina su participación. Si el JSON viene roto, si la acción no existe o si el
 // modelo escribió prosa, el resultado es el mismo que si no hubiera modelo: no se entendió.
 //
@@ -38,8 +38,8 @@
 // el outlier engine evalúa igual que cualquier otro. El prompt es la primera puerta, no la única.
 
 import { CAPACIDAD, pedirTextoONull } from './ia/cliente.mjs'
-import { ACCION } from './cotizador/contrato.mjs'
-import { intencionCompleta } from './cotizador/interprete.mjs'
+import { ACCION, intencion } from './cotizador/contrato.mjs'
+
 
 /** Cuántas partidas se le muestran al modelo. Un presupuesto real tiene 68 y no entran todas. */
 const TOPE_PARTIDAS = 60
@@ -147,7 +147,7 @@ export function desdeJson(crudo, frase = null) {
   try {
     return salida({
       resuelto: true, comoSeLeyo: 'interpretada por el modelo',
-      intencion: intencionCompleta({
+      intencion: intencion({
         action: obj.action,
         target: texto(obj.target), value: escalar(obj.value), unit: texto(obj.unit),
         supplier: texto(obj.supplier), reason: texto(obj.reason),

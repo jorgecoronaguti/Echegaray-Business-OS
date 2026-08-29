@@ -23,30 +23,9 @@
 // `leerCantidad()`, que ya tiene el catálogo de unidades, la colisión declarada `m`/`mm` y los tests
 // de esa colisión. Duplicar acá ese criterio sería tener dos definiciones de la misma cosa.
 
-import { ACCION, ESTADO, intencion } from './contrato.mjs'
+import { ESTADO, intencion } from './contrato.mjs'
 import { leerCantidad } from './unidades.mjs'
 import { PARAMETROS } from './comercial.mjs'
-
-/**
- * UNA INTENCIÓN CON LOS CAMPOS QUE SU ACCIÓN DECLARA. PURA.
- *
- * `intencion()` del contrato acepta cinco llaves y descarta el resto, pero `ACCION[x].campos`
- * declara `supplier`, `reason`, `currency` y `source`, y `comandos.validar()` los LEE
- * (`intent.supplier` decide si «sanitaria 8,5M» es un subcontrato o una pregunta). Sin este envoltorio
- * el caso canónico «la sanitaria la hace X por 8,5M» no se puede expresar.
- *
- * Se conserva la garantía del contrato —la acción pasa por `intencion()`, que rechaza cualquiera
- * fuera de la lista cerrada— y sólo se agregan campos que la propia acción declara: un campo que
- * `ACCION[action].campos` no nombre NO se propaga, así que esto no puede convertirse en una puerta
- * lateral para meterle datos arbitrarios al command layer.
- */
-export function intencionCompleta({ action, target = null, value = null, unit = null, textoOriginal = null, ...extra }) {
-  const base = intencion({ action, target, value, unit, textoOriginal })
-  const declarados = ACCION[action].campos
-  const sumar = {}
-  for (const [k, v] of Object.entries(extra)) if (declarados.includes(k)) sumar[k] = v
-  return Object.freeze({ ...base, ...sumar })
-}
 
 /** La respuesta del intérprete. Siempre la misma forma, resuelva o no. PURA. */
 const lectura = (x) => Object.freeze({
@@ -180,7 +159,7 @@ export function interpretar(texto, { partidas = [] } = {}) {
 
   const mk = (action, campos, comoSeLeyo) => lectura({
     resuelto: true, comoSeLeyo,
-    intencion: intencionCompleta({ action, textoOriginal: original, ...campos }),
+    intencion: intencion({ action, textoOriginal: original, ...campos }),
   })
 
   // ── 1 · «¿qué me falta para enviar?» — la única que no lleva target
@@ -230,7 +209,7 @@ function conTarget(action, crudo, comoSeLeyo, original, partidas) {
   if (!r.ok) return lectura({ porQue: r.porQue, pregunta: r.pregunta ?? null, opciones: r.opciones ?? null })
   return lectura({
     resuelto: true, comoSeLeyo,
-    intencion: intencionCompleta({ action, target: r.target, textoOriginal: original }),
+    intencion: intencion({ action, target: r.target, textoOriginal: original }),
   })
 }
 
@@ -271,7 +250,7 @@ function porCantidadOMonto(objetivo, valor, original) {
     const monto = leerCantidad(valor, { contexto: 'MONETARIO' })
     return lectura({
       resuelto: true, comoSeLeyo: 'monto sin proveedor: el command layer va a preguntar quién lo hace',
-      intencion: intencionCompleta({
+      intencion: intencion({
         action: 'set_subcontract', target, supplier: null,
         value: monto.valor ?? valor, unit: monto.unidad ?? 'ARS', currency: monto.unidad ?? 'ARS',
         textoOriginal: original,
@@ -283,7 +262,7 @@ function porCantidadOMonto(objetivo, valor, original) {
   // ahí está el cruce con la unidad de la partida, que es lo que decide si se acepta.
   return lectura({
     resuelto: true, comoSeLeyo: 'cantidad de obra',
-    intencion: intencionCompleta({ action: 'update_quantity', target, value: String(valor).trim(), unit: null, textoOriginal: original }),
+    intencion: intencion({ action: 'update_quantity', target, value: String(valor).trim(), unit: null, textoOriginal: original }),
   })
 }
 

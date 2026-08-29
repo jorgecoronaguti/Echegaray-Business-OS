@@ -30,7 +30,7 @@ Tras mergear `feat/cotizador-core` al día (el CORE avanzó: trajo `pg.mjs`, `se
 `explosion.mjs` y la migración `20260829T1500`):
 
 ```
-npm run orq:test    → EXIT=0 · 12.059 tests en dot · 0 fail
+npm run orq:test    → EXIT=0 · 12.105 tests en dot · 0 fail
 npm run typecheck   → EXIT=0
 npx eslint .        → EXIT=0 · 0 errores · 60 warnings · 0 en el área de este frente
 npm run build       → EXIT=0 · las 3 rutas de /presupuestos compilan
@@ -78,13 +78,31 @@ vista parametro_operativo_vigente: [ 'security_invoker=on' ]
 
 Cada uno **bloquea el criterio que toca**. Ninguno está resuelto.
 
-### 1 · Sin QA visual · bloquea «la pantalla 15 funciona»
+### 1 · El QA visual corrió y encontró 6 defectos · 5 corregidos, 1 sin reproducir
 
-`qa-visual` no estaba disponible para este frente. **Nadie miró el panel en un navegador.** El
-build compila y los tests corren, pero un panel de conversación que no se usó a mano no está
-probado: la hidratación, el foco del campo tras enviar, el ancho del panel en 13" y el
-comportamiento de `useActionState` con el formulario nativo no tienen evidencia. **Esto tiene que
-mirarlo el QA antes de cualquier merge.**
+El QA usó navegador, login y base reales. Lo que encontró y qué pasó con cada cosa:
+
+| # | Defecto | Estado |
+|---|---|---|
+| 1 | El gate de congelar era decorativo: congeló con un bloqueante vivo y precio $0 | **Corregido.** `puedeCongelar()` consume el gate; la action llama a `cot_congelar_con_gate` |
+| 2 | El input nunca enviaba lo tipeado (`onSubmit` limpiaba en carrera) | **Corregido.** Se limpia después de despachar |
+| 3 | Cartera/Edición a 390 px: `scrollWidth === clientWidth` | **NO reproducido.** Ver abajo |
+| 4 | Convertir a 390 px: la descripción con `width=0` | **Corregido.** La grilla pasa por `EnvoltorioAncho` |
+| 5 | `venta_sin_iva` llega 0 y el guard sólo miraba `=== null` | **Corregido** en `freeze.mjs` (archivo del CORE — que lo absorba) |
+| 6 | «sanitaria sanitaria 8,5M» | **Corregido** en `comandos.mjs` (idem) |
+| 8 | Evidence query sin match: JSON de nulls mudo | **Corregido.** Línea estructural de ausencia + el JSON debajo |
+
+**El defecto 3 no lo pude reproducir, y el diagnóstico del QA no es la causa.** No falta
+`overflow-x-auto`: el mecanismo existe (`TarjetaTabla cols={COLS}` → `EnvoltorioAncho` →
+`.canon-scroll-x` bajo `@media (max-width: 1023px)`), las dos tablas SÍ pasan sus columnas, y el
+ancho reservado es **845 px** (cartera) y **838 px** (edición) — los dos muy por encima de 390.
+Corregir a ciegas `PAGINA.cuerpo`, que es del canon compartido por diez pantallas, sin poder mirar
+ninguna, es cómo se rompen nueve para arreglar una.
+
+**Lo que necesito del QA para cerrarlo:** el selector exacto sobre el que midió. Si midió el
+`[data-testid="tabla-presupuestos"]`, ése lleva `overflow: hidden` (es la caja) y el scroll vive en
+su hijo `.canon-scroll-x` — ahí `scrollWidth === clientWidth` es lo esperado y no hay defecto. Si
+midió el hijo y también daba igual, el defecto es real y está en otro lado.
 
 ### 2 · El modelo nunca se llamó de verdad · bloquea «el intérprete LLM funciona»
 
@@ -138,17 +156,12 @@ No se escribió ningún `tests/*.spec.ts` para el circuito de conversación.
 
 ## Lo que necesita el CORE
 
-1. **`intencion()` descarta campos que `ACCION[x].campos` declara.** `supplier`, `reason`,
-   `currency`, `source` y `correlation_id` no se propagan, y `comandos.validar()` los LEE
-   (`intent.supplier` decide si «sanitaria 8,5M» es un subcontrato o una pregunta). El canónico «la
-   sanitaria la hace X por 8,5M» **no se puede expresar con el constructor oficial**. Mientras
-   tanto lo cubre `intencionCompleta()` en `interprete.mjs`, que sólo propaga campos declarados.
+1. ~~`intencion()` descarta campos declarados~~ — **RESUELTO por el contrato 1.1.0.** Mi
+   `intencionCompleta()` está borrado y todo usa el constructor oficial.
 
-2. **El evento identifica la entidad por el texto del usuario.** `evento({entidad:
-   String(intent.target)})`: «la mamposteria», «mamposteria de ladrillo hueco» y «01.01» son la
-   misma partida y dejan tres entidades distintas en el historial. El `undo` del §21 no puede
-   agruparlas. `comandos.validar()` ya resolvió la partida — debería viajar al evento. Hay un
-   candado en `conversacion.test.mjs` que se pone rojo cuando lo corrijan.
+2. ~~El evento identifica la entidad por el texto del usuario~~ — **RESUELTO por el contrato
+   1.1.0.** El candado se puso rojo, como estaba previsto, y quedó dado vuelta: ahora afirma la
+   propiedad nueva (dos textos distintos sobre la misma partida ⇒ una sola entidad, `01.01`).
 
 3. **`pg.mjs` NO sirve para la web, y conviene decirlo antes de que alguien lo intente.** Los
    adaptadores que el CORE entregó reciben `{ query }` —un pool de Postgres directo—, así que

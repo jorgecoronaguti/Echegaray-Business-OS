@@ -6,7 +6,8 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { interpretar, resolverTarget, CANONICOS, intencionCompleta } from './interprete.mjs'
+import { interpretar, resolverTarget, CANONICOS } from './interprete.mjs'
+import { intencion } from './contrato.mjs'
 import { ejecutar } from './comandos.mjs'
 import { ACCION, ROL } from './contrato.mjs'
 
@@ -189,14 +190,17 @@ describe('lo que el intérprete NO tiene que resolver', () => {
   })
 })
 
-describe('intencionCompleta sólo propaga campos que la acción declara', () => {
+// El constructor propio (`intencionCompleta`) se borró al llegar el contrato 1.1.0: `intencion()`
+// ya propaga los campos que la acción DECLARA, que era la única razón por la que existía. La
+// propiedad que importaba sigue verificada, ahora sobre el constructor oficial.
+describe('intencion() sólo propaga campos que la acción declara', () => {
   test('un campo que la acción no declara se descarta', () => {
-    const i = intencionCompleta({ action: 'update_quantity', target: 'x', value: 1, supplier: 'colado', reason: 'colado' })
+    const i = intencion({ action: 'update_quantity', target: 'x', value: 1, supplier: 'colado', reason: 'colado' })
     assert.equal(i.supplier, undefined, 'propagó un campo que update_quantity no declara')
     assert.equal(i.reason, undefined)
   })
 
   test('una acción fuera de la lista cerrada no se construye', () => {
-    assert.throws(() => intencionCompleta({ action: 'borrar_todo' }), /no existe/)
+    assert.throws(() => intencion({ action: 'borrar_todo' }), /no existe/)
   })
 })

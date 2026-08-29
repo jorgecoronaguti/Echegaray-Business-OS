@@ -31,20 +31,23 @@ describe('el ciclo completo, sin modelo (CLAUDE-ZERO · §34)', () => {
     assert.equal(t.entendido, true)
     assert.equal(t.salida.ok, true, t.salida.porQue ?? '')
     assert.equal(t.respuesta.titulo, 'Aplicado')
-    assert.deepEqual(t.respuesta.cambios, [{ que: 'mamposteria', campo: 'cantidad', antes: 480, despues: 520 }])
+    assert.deepEqual(t.respuesta.cambios, [{ que: '01.01', campo: 'cantidad', antes: 480, despues: 520 }])
   })
 
-  // ═══ CANDADO DE UN LÍMITE CONOCIDO DEL CORE, NO UNA PREFERENCIA ═══
+  // ═══ LA PROPIEDAD QUE EL CONTRATO 1.1.0 TRAJO, CON SU CANDADO ═══
   //
-  // `comandos.ejecutar()` arma el evento con `entidad: String(intent.target)`, o sea el TEXTO que
-  // escribió la persona, no la partida que la validación ya resolvió. «mamposteria», «la
-  // mamposteria» y «01.01» son la misma partida y dejan tres entidades distintas en el historial,
-  // así que el undo del §21 no puede agruparlas. Está pedido al CORE. Cuando lo corrija, este test
-  // se pone rojo y alguien tiene que venir a mirarlo — que es exactamente para lo que está.
-  test('LÍMITE: el evento identifica la entidad por el texto del usuario, no por la partida', async () => {
+  // Hasta la 1.0.0 el evento se firmaba con `entidad: String(intent.target)` —el TEXTO que escribió
+  // la persona—, así que «la mamposteria», «mamposteria de ladrillo hueco» y «01.01» dejaban tres
+  // entidades distintas en el historial y el undo del §21 no podía agruparlas. Acá vivía un candado
+  // que afirmaba esa limitación para ponerse rojo el día que la arreglaran. Se puso rojo.
+  //
+  // Ahora afirma lo contrario, que es la propiedad de verdad: dos formas de nombrar la misma partida
+  // dejan UNA sola entidad. Si alguien vuelve a firmar con el texto crudo, esto se pone rojo otra vez.
+  test('dos textos distintos sobre la misma partida dejan UNA entidad, no dos', async () => {
     const a = await conversar({ texto: 'la mamposteria son 500 m2', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, confirmado: true, mutar })
     const b = await conversar({ texto: 'mamposteria de ladrillo hueco son 500 m2', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, confirmado: true, mutar })
-    assert.notEqual(a.eventos[0].entidad, b.eventos[0].entidad, 'el CORE ya identifica la entidad por la partida: actualizar este candado')
+    assert.equal(a.eventos[0].entidad, b.eventos[0].entidad, 'el evento se firma con el texto del usuario: el undo no puede agrupar')
+    assert.equal(a.eventos[0].entidad, '01.01', 'la entidad no es la partida que resolvió la validación')
   })
 
   test('los siete canónicos se entienden con el proveedor APAGADO', async () => {
@@ -175,6 +178,28 @@ describe('ninguna respuesta está preescrita', () => {
     })
     assert.equal(r.tono, 'aviso')
     assert.ok(r.lineas.some((l) => /10 veces/.test(l)))
+  })
+})
+
+describe('una consulta sin datos DICE que no los tiene (QA visual, 29/08/2026)', () => {
+  test('«de donde sale» sobre una partida sin genealogía no devuelve un JSON de nulls mudo', async () => {
+    const t = await conversar({ texto: 'de donde sale la mamposteria', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, mutar })
+    assert.equal(t.salida.ok, true, t.salida.porQue ?? '')
+    assert.ok(t.respuesta.lineas.length > 0, 'devolvió el JSON pelado y ninguna línea que lo explique')
+    assert.match(t.respuesta.lineas[0], /no tiene genealogia ni evidencia/)
+    // Y el JSON SIGUE ahí: la línea acompaña al dato, no lo reemplaza.
+    assert.equal(t.respuesta.datos.entidad, '01.01')
+  })
+
+  test('cuando SÍ hay genealogía no se agrega ninguna línea de ausencia', async () => {
+    const conDatos = { ...ESTADO, partidas: PARTIDAS.map((p) => (p.codigo === '01.01' ? { ...p, genealogia: 'plano A-01, muro eje 3' } : p)) }
+    const t = await conversar({ texto: 'de donde sale la mamposteria', rol: ROL.DUENO, actor: 'j', estado: conDatos, usarModelo: false, mutar })
+    assert.deepEqual(t.respuesta.lineas, [], 'inventó una línea de ausencia sobre un dato que estaba')
+  })
+
+  test('«no encuentro X» del motor se muestra tal cual, sin reescribirlo', async () => {
+    const t = await conversar({ texto: 'de donde sale el ascensor', rol: ROL.DUENO, actor: 'j', estado: ESTADO, usarModelo: false, mutar })
+    if (t.salida?.ok) assert.match(t.respuesta.lineas[0] ?? '', /no encuentro/)
   })
 })
 

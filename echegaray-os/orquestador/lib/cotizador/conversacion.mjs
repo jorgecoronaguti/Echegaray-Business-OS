@@ -117,7 +117,20 @@ export function redactar({ intencion, salida, cascadaAntes = null } = {}) {
 
   // Las CONSULTAS devuelven el dato pedido, no un cambio.
   if (!ACCION[intencion.action].muta) {
-    return Object.freeze({ ...base, tono: 'dato', titulo: TITULO_CONSULTA[intencion.action] ?? 'Respuesta', lineas: Object.freeze([]), datos: salida.resultado, cambios: Object.freeze([]) })
+    return Object.freeze({
+      ...base, tono: 'dato', titulo: TITULO_CONSULTA[intencion.action] ?? 'Respuesta',
+      // ═══ UN RESULTADO TODO-NULL NECESITA SU LÍNEA (QA visual, 29/08/2026) ═══
+      //
+      // «¿de dónde sale X?» sobre una partida encontrada pero sin genealogía devolvía
+      // `{entidad, genealogia: null, evidencia: null}` y la pantalla dibujaba ese JSON pelado. Es
+      // cierto y no se entiende: quien pregunta no sabe si el sistema no lo sabe o si no lo buscó.
+      //
+      // La línea que se agrega es ESTRUCTURAL, no interpretación: dice cuáles de los campos pedidos
+      // vinieron vacíos y con qué entidad. El JSON sigue abajo, intacto — «no se interpreta» sigue
+      // siendo la política, y ausencia declarada no es interpretación.
+      lineas: Object.freeze(lineasDeAusencia(salida.resultado)),
+      datos: salida.resultado, cambios: Object.freeze([]),
+    })
   }
 
   const e = salida.eventos?.[0] ?? null
@@ -134,6 +147,28 @@ export function redactar({ intencion, salida, cascadaAntes = null } = {}) {
     cambios: Object.freeze(cambios),
     impacto,
   })
+}
+
+/**
+ * LA AUSENCIA, DECLARADA. PURA.
+ *
+ * Un `{genealogia: null, evidencia: null}` es una respuesta correcta y muda. Esto la nombra sin
+ * inventar nada: enumera qué campos vinieron vacíos, con la entidad delante. No dice POR QUÉ están
+ * vacíos —eso sería interpretar— ni propone nada.
+ */
+function lineasDeAusencia(resultado) {
+  if (!resultado || typeof resultado !== 'object') return []
+  // `porQue` es el «no encuentro X» que ya trae el propio motor: se muestra tal cual y basta.
+  if (typeof resultado.porQue === 'string') return [resultado.porQue]
+
+  const mirados = ['genealogia', 'evidencia', 'subtotal', 'costoUnitario']
+    .filter((k) => k in resultado)
+  if (mirados.length === 0) return []
+  const vacios = mirados.filter((k) => resultado[k] === null || resultado[k] === undefined)
+  if (vacios.length === 0 || vacios.length < mirados.length) return []
+
+  const quien = resultado.entidad ?? 'lo consultado'
+  return [`${quien} existe, pero no tiene ${vacios.join(' ni ')} registrada${vacios.length > 1 ? 's' : ''}: el dato no está cargado, no es que valga cero.`]
 }
 
 const TITULO_PARADA = Object.freeze({
