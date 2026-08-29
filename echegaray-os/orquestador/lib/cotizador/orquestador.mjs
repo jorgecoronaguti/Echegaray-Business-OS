@@ -175,7 +175,9 @@ export function correr({
   const cd = costoDirecto(costos)
   anotar(resultadoEtapa({
     etapa: ETAPA.COST, status: cd.total === null ? STATUS.BLOQUEADA : STATUS.OK,
-    result: { total: cd.total, parcial: cd.parcial, cajones: cd.cajones, hh: cd.hh },
+    // `hh` viaja como lo devuelve `costoDirecto`: `null` cuando alguna partida no puede afirmar las
+    // suyas. Publicar la suma de las que sí es un total al que le falta una partida entera.
+    result: { total: cd.total, parcial: cd.parcial, cajones: cd.cajones, hh: cd.hh, nSinHh: cd.nSinHh },
     missing_data: cd.faltan.map((f) => `${f.partida}: ${(f.porQue ?? []).join(' · ')}`),
     blocking_issues: cd.total === null ? [{ tipo: 'COSTO_NO_AFIRMABLE', entidad: 'cotización', detalle: cd.porQue }] : [],
     confidence: cd.nPartidas ? (cd.nPartidas - cd.nSinCosto) / cd.nPartidas : null,
@@ -202,12 +204,23 @@ export function correr({
     }))
     .filter(Boolean)
 
+  // ═══ LA CONFIRMACIÓN HUMANA DE UNA EXCLUSIÓN ES SU OVERRIDE ═══
+  //
+  // Una entrada de alcance que trae `decididoPor` la cargó una persona: eso ES la firma. Una que
+  // salió de leer dos documentos del corpus, no — y por eso `EXCLUSION_CON_COMPUTO` bloquea hasta
+  // que alguien la confirme. Las dos vías producen la misma forma de override, así que la cola no
+  // necesita saber de dónde vino.
+  const firmasDeAlcance = [
+    ...alcance.filter((e) => e.decididoPor).map((e) => ({ entidad: `alcance:${e.patron}`, autorizadoPor: e.decididoPor, motivo: e.motivo ?? 'cargada a mano' })),
+    ...exclusionesConfirmadas.filter((c) => c?.autorizadoPor).map((c) => ({ entidad: `alcance:${c.patron}`, autorizadoPor: c.autorizadoPor, motivo: c.motivo ?? null })),
+  ]
+
   const cola = colaDeAtencion({
-    issues: [...issuesHeredados, ...porConfirmar, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? [])],
+    issues: [...issuesHeredados, ...porConfirmar, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? []), ...cd.issues.filter((i) => i.entity === 'HH de la obra')],
     costoConocido: cd.parcial,
-    // Los precios vencidos asumidos por alguien con permiso comercial. Sin `autorizadoPor` no
-    // cuentan: un override es una firma, no un flag.
-    overrides: overridesDePrecio,
+    // Los precios vencidos asumidos por alguien con permiso comercial y las exclusiones firmadas.
+    // Sin `autorizadoPor` no cuentan: un override es una firma, no un flag.
+    overrides: [...overridesDePrecio, ...firmasDeAlcance],
   })
   anotar(resultadoEtapa({
     etapa: ETAPA.VALIDATE, status: cola.nBloqueantes ? STATUS.BLOQUEADA : STATUS.OK,

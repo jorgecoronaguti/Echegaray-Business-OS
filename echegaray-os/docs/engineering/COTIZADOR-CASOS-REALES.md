@@ -14,6 +14,8 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **· incluidas por alcance** | 26 | 1 | 26 | 0 |
 | **· excluidas por contrato** | 0 | 0 | 0 | 0 |
 | **· sin decidir** | 0 | 0 | 0 | 0 |
+| **plata excluida por contrato** | $ 0 | $ 0 | $ 0 | $ 0 |
+| **· excluidas sin valorizar** | 0 | 0 | 0 | 0 |
 | **cantidades resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 |
 | **cobertura de cómputo** | 100.0 % | 100.0 % | 100.0 % | — |
 | **composiciones resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 |
@@ -37,7 +39,7 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **CLAUDE AVOIDANCE RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **AUTONOMOUS RESOLUTION RATE** | 100.0 % | 100.0 % | 100.0 % | — |
 | **incertidumbre NO declarada** | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 36 ms / 13 ms | 24 ms / 23 ms | 10 ms / 9 ms | 15 ms / 13 ms |
+| **latencia fría / tibia** | 31 ms / 14 ms | 32 ms / 14 ms | 10 ms / 9 ms | 14 ms / 12 ms |
 | **huella de entradas** | ff753420a2e7e909 | 2dcc56d05a50fdf1 | 80fc3279fc3b271e | 4970a25c0946d764 |
 | **ESTADO** | BLOQUEADO (96) | BLOQUEADO (3) | BLOQUEADO (93) | BLOQUEADO (1) |
 

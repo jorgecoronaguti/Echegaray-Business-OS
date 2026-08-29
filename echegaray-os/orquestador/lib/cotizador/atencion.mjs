@@ -60,12 +60,31 @@ export const BLOQUEAN_SI_MATERIALES = Object.freeze([
  * Lo que SÍ admite es que alguien con permiso comercial diga «lo asumo». Ese override no es un
  * flag: exige `autorizadoPor` y queda como evento con actor (§21). Sin quién, no hay override.
  */
-export const BLOQUEAN_SALVO_OVERRIDE = Object.freeze([TIPO_ISSUE.PRECIO_DESACTUALIZADO])
+export const BLOQUEAN_SALVO_OVERRIDE = Object.freeze([
+  TIPO_ISSUE.PRECIO_DESACTUALIZADO,
+  // ═══ SACAR PLATA DEL TOTAL EXIGE UNA FIRMA ═══
+  //
+  // Este tipo NO estaba en ninguna de las tres listas, así que la cola lo degradaba a ALTA y
+  // `bloquea: false`. Punta a punta eso significaba que un corpus con dos documentos que dijeran lo
+  // mismo sacaba $650.000 del total con `gate.ready: true` y la versión se sellaba CONFIRMADA — el
+  // ataque original, textual. El override acá es la CONFIRMACIÓN HUMANA de la exclusión: una
+  // entrada de alcance cargada por una persona ya la trae (`decididoPor`); una que salió de leer
+  // dos PDFs, no.
+  TIPO_ISSUE.EXCLUSION_CON_COMPUTO,
+])
 
 /** ¿Hay un override AUDITADO para este issue? PURA. Un override sin quién lo autorizó no existe. */
 export function overrideDe(issue, overrides = []) {
+  // ═══ NO HAY COMODÍN ═══
+  // Había un `o.entidad === '*'` que destrababa TODO con una sola fila. `cotizacion_override_precio`
+  // no puede expresarlo —su unique es `(cotizacion_id, recurso_codigo)`— así que era una capacidad
+  // que sólo existía en memoria, sin contraparte en la base y sin un test que la mirara. Un override
+  // es por entidad o no es.
+  //
+  // El `startsWith` sí se conserva y es necesario: la entidad de un issue de precio es
+  // `codigo (NOMBRE)` y el override se firma por código.
   return overrides.find((o) => o?.autorizadoPor
-    && (o.entidad === issue.entity || String(issue.entity).startsWith(`${o.entidad} `) || o.entidad === '*')) ?? null
+    && (o.entidad === issue.entity || String(issue.entity).startsWith(`${o.entidad} `))) ?? null
 }
 
 /**
@@ -92,7 +111,12 @@ export function bloquea(issue, opciones = {}) {
   if (BLOQUEAN_SALVO_OVERRIDE.includes(issue.type)) {
     const ov = overrideDe(issue, opciones.overrides ?? [])
     if (ov) return { bloquea: false, porQue: `${issue.type} sobre «${issue.entity}» asumido por ${ov.autorizadoPor}${ov.motivo ? `: ${ov.motivo}` : ''}`, override: ov }
-    return { bloquea: true, porQue: `${issue.type} sobre «${issue.entity}»: un precio vencido NO cierra un presupuesto (§42 HISTORICO ≠ VALIDADO). Lo destraba un override comercial con quién lo autoriza` }
+    return {
+      bloquea: true,
+      porQue: issue.type === TIPO_ISSUE.EXCLUSION_CON_COMPUTO
+        ? `${issue.type} sobre «${issue.entity}»: sacar plata del total exige una firma. Corroborar entre documentos alcanza para proponerlo, no para aplicarlo`
+        : `${issue.type} sobre «${issue.entity}»: un precio vencido NO cierra un presupuesto (§42 HISTORICO ≠ VALIDADO). Lo destraba un override comercial con quién lo autoriza`,
+    }
   }
   if (!BLOQUEAN_SI_MATERIALES.includes(issue.type)) return { bloquea: false, porQue: null }
   const material = esMaterial(issue, opciones)

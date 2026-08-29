@@ -261,3 +261,61 @@ test('CIERRA() decide el sello: lo congelado con datos HISTORICO queda CONFIRMAD
   assert.notEqual(conViejos.estado, ESTADO.VALIDADO, 'HISTORICO ≠ VALIDADO (§42)')
   assert.match(conViejos.porQue, /NO cierra por sí solo/)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// VUELTA 5 — lo que la re-auditoría encontró vivo
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EXCLUSION_CON_COMPUTO BLOQUEA — y se prueba POR LA COLA, no sobre el issue crudo', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar TIPO_ISSUE.EXCLUSION_CON_COMPUTO de BLOQUEAN_SALVO_OVERRIDE.
+  //
+  // El test anterior verificaba `severity` sobre el issue recién construido, SIN pasarlo por la
+  // cola — y la cola lo degradaba a ALTA con `bloquea: false`. Un control validado contra su propia
+  // salida, la tercera vez de esta familia. Ahora el issue viaja por la cola y por el gate.
+  const i = issue({ type: TIPO_ISSUE.EXCLUSION_CON_COMPUTO, severity: SEVERIDAD.BLOQUEANTE, entity: 'alcance:pintura', impact: 650_000 })
+  const cola = colaDeAtencion({ costoConocido: 180_000_000, issues: [i] })
+  assert.equal(cola.nBloqueantes, 1, 'la COLA tiene que verlo, no sólo el constructor del issue')
+  assert.equal(cola.issues[0].bloquea, true)
+  const g = gateDeCongelado({ cascada: CASCADA_OK, cola })
+  assert.equal(g.ready, false, 'y el GATE tiene que frenar el congelado')
+  assert.ok(g.blocking_issues.some((b) => b.tipo === TIPO_ISSUE.EXCLUSION_CON_COMPUTO))
+})
+
+test('...y la CONFIRMACIÓN HUMANA es su override: con firma deja pasar', () => {
+  const i = issue({ type: TIPO_ISSUE.EXCLUSION_CON_COMPUTO, severity: SEVERIDAD.BLOQUEANTE, entity: 'alcance:pintura', impact: 650_000 })
+  const cola = colaDeAtencion({ costoConocido: 180_000_000, issues: [i], overrides: [{ entidad: 'alcance:pintura', autorizadoPor: 'jorge' }] })
+  assert.equal(cola.nBloqueantes, 0)
+  assert.equal(cola.issues[0].asumidoPor, 'jorge')
+  assert.equal(gateDeCongelado({ cascada: CASCADA_OK, cola }).ready, true)
+})
+
+test('el override NO tiene comodín: una firma no destraba los 89', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `overrideDe`, agregar `|| o.entidad === '*'`.
+  //
+  // El `'*'` existía en memoria y `cotizacion_override_precio` no puede expresarlo —su unique es
+  // (cotizacion_id, recurso_codigo)—: una capacidad sin contraparte en la base y sin test.
+  const a = issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: '4 (CAL)', impact: 100 })
+  const b = issue({ type: TIPO_ISSUE.PRECIO_DESACTUALIZADO, entity: '88 (ADHESIVO)', impact: 100 })
+  const cola = colaDeAtencion({ costoConocido: 1_000_000, issues: [a, b], overrides: [{ entidad: '*', autorizadoPor: 'jorge' }] })
+  assert.equal(cola.nBloqueantes, 2, 'el comodín no destraba nada')
+  const porRecurso = colaDeAtencion({ costoConocido: 1_000_000, issues: [a, b], overrides: [{ entidad: '4', autorizadoPor: 'jorge' }] })
+  assert.equal(porRecurso.nBloqueantes, 1, 'y el override por recurso destraba UNO')
+})
+
+test('etapaFreeze pasa el estado por el CAMINO REAL: no sella VALIDADO sobre HISTORICO', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `etapaFreeze`, volver a `congelar({... })` sin `estadoDeLoCongelado`.
+  //
+  // `congelar()` aceptaba el estado desde la vuelta anterior y `etapaFreeze` —el camino de
+  // producción— no se lo pasaba: con un override firmado la versión volvía a sellarse VALIDADA
+  // sobre datos HISTORICO. Era `cierra()`-sin-consumidores mudado un nivel.
+  const cola = colaDeAtencion({ issues: [] })
+  const conVencidos = etapaFreeze({
+    cascada: CASCADA_OK, cola, huella: huellaDeEntradas(ENTRADAS), congeladoPor: 'jorge',
+    costos: [{ partida: 'T1', estado: ESTADO.HISTORICO, vencidos: [{ recurso: 'MAT-CEM' }] }],
+  })
+  assert.equal(conVencidos.result.estado, ESTADO.CONFIRMADO)
+  assert.notEqual(conVencidos.result.estado, ESTADO.VALIDADO)
+  assert.ok(conVencidos.provenance.some((p) => p.includes('sello: CONFIRMADO')))
+  const limpio = etapaFreeze({ cascada: CASCADA_OK, cola, huella: huellaDeEntradas(ENTRADAS), congeladoPor: 'jorge', costos: [{ partida: 'T1', estado: ESTADO.CALCULADO, vencidos: [] }] })
+  assert.equal(limpio.result.estado, ESTADO.VALIDADO)
+})

@@ -238,21 +238,30 @@ con más de 180 días** y hasta ahora eso no frenaba nada. Las salidas son dos y
 dueño: actualizar los precios, o firmar el override por recurso —que queda como fila auditable en
 `cotizacion_override_precio` con quién y por qué—.
 
-## LÍMITE 15, CON LA LISTA COMPLETA (antes subdeclaraba 4×)
+## LÍMITE 15 — lo que `tramoNegado()` NO ve
 
-`tramoNegado()` ve las diez formas probadas. Queda ciego a **esto y sólo a esto**, verificado:
+**La versión anterior decía «ciego a esto y sólo a esto, verificado» y era falsa**: la re-auditoría
+encontró cuatro formas VERBALES ciegas que el límite daba por cubiertas —«queda a cargo del
+comitente» (media forma: «corre por cuenta del» sí estaba), «no se encuentra incluido», «quedan
+exceptuados», «no comprende»—. Las cuatro están cubiertas ahora y son **14 formas probadas, una
+por una, con test aislado**.
+
+La palabra «sólo» sale de este límite. Lo que sigue es lo que **se sabe** que no ve; no es una
+enumeración cerrada, porque el castellano de un pliego no lo es:
 
 1. **Tablas** con columna «Incluido S/N»: no hay frase que negar.
 2. **Negación por omisión**: «el alcance comprende A, B y C» excluye D sin nombrarlo. Indecidible.
-3. **Condicionales**: «se incluirá si el comitente provee el cálculo» no es exclusión ni inclusión.
-4. **Referencias cruzadas**: «según el Anexo II», con el anexo fuera del corpus.
+3. **Condicionales**: «se incluirá si el comitente provee el cálculo».
+4. **Referencias cruzadas** a un anexo que no está en el corpus.
 5. **Otro idioma** o **PDF escaneado sin capa de texto**.
-6. **Doble negación / ironía**: «no es cierto que no se incluya».
+6. **Doble negación / ironía**.
 7. **Exclusión implícita por precio cero** en una planilla.
 8. **Notas manuscritas** sobre un plano.
+9. **Formas verbales todavía no probadas.** Es la categoría honesta: se cubrieron 14 y aparecieron 4
+   más cuando alguien buscó. No hay motivo para creer que 14 sea el número final.
 
-Los ocho devuelven `tramoNegado(...) === null`, y eso **no bloquea nada**: la exclusión simplemente
-no se ve. Es el modo de falla silencioso y por eso está enumerado, no resumido.
+Todas devuelven `tramoNegado(...) === null`, y eso **no bloquea nada**: la exclusión no se ve. Es el
+modo de falla silencioso.
 
 ## Ceguera estructural del gate SQL (declarada, con test que la vigila)
 
@@ -273,3 +282,82 @@ todo lo que ve SQL lo vea el motor: el motor nunca puede ser más ciego.
   PDFs se prueba con fixtures.
 - **El rol `administracion` sigue sin existir en ningún perfil**: los tests lo promueven dentro de la
   transacción.
+
+
+---
+
+# VUELTA 5 — respuesta a la re-auditoría (FAIL: 3 vivos + 1 nuevo que mi corrección introdujo)
+
+| # | Qué seguía roto | Cómo quedó |
+|---|---|---|
+| 1 | `EXCLUSION_CON_COMPUTO` no estaba en NINGUNA lista: la cola lo degradaba y el corpus envenenado sacaba $650.000 con `gate.ready:true` | a `BLOQUEAN_SALVO_OVERRIDE`; la **confirmación humana** (`decididoPor` o `exclusionesConfirmadas`) es su override |
+| 2 | `etapaFreeze` no pasaba `estadoDeLoCongelado`: el camino de producción sellaba VALIDADO sobre HISTORICO | cableado, y si no se declara se **deriva de los costos** |
+| 3 | A10/A17 sin guarda; y `pg.mjs` nunca fija `validoHasta` ⇒ subcontrato eterno | las dos mutaciones-que-restituyen dan rojo (B6, B7); `subcontratoVigente` deriva la vigencia de `cotizadoEn` (180 d) y sin fecha **no** es vigente |
+| 4 | **NUEVO, de mi fix**: `(c.hh ?? 0)` se tragaba el `hh: null` — rota + sana = 200 h | `hh: null` si algún sumando es null, con issue; viaja a la etapa, la huella y el informe |
+| 5 | el `'*'` de `overrideDe` sin contraparte ni test; nadie LEÍA `cotizacion_override_precio` | comodín eliminado con test; `leerOverridesDePrecio()` + `firmarOverrideDePrecio()`; `leerEstado` pasa de 5 a **6 consultas** |
+| 6 | el límite 15 mentía por defecto | 4 formas cubiertas, **14 probadas una por una**, límite reescrito sin «sólo» |
+| 7 | «19 corridas, 19 ROJO» sin tabla no es reproducible | la tabla está abajo |
+
+## Tabla de mutaciones — vuelta 4 (A) y vuelta 5 (B)
+
+| id | mutación (archivo → qué se rompe) | test que la caza | resultado |
+|---|---|---|---|
+| A1 | `costo.mjs` — quitar la guarda de `l.cantidad` | costo · «una LÍNEA de composición sin cantidad NO vale cero» | ROJO |
+| A2 | `costo.mjs` — `hh` sin la guarda `hhIncompletas` | costo · «si la línea sin medir es de MANO DE OBRA…» | ROJO |
+| A3 | `costo.mjs` — `estado: completa ? CALCULADO : …` | costo · «HISTORICO ≠ VALIDADO: la partida…» | ROJO |
+| A4 | `comercial.mjs` — `(Number(c.montoAnual) \|\| 0)` | comercial · «un concepto de indirectos SIN MONTO…» | ROJO |
+| A5 | `comandos.mjs` — `v > 1 ? v/100 : v` sin la excepción | comandos · «factorFinanciero NO es un porcentaje» | ROJO |
+| A6 | `freeze.mjs` — `Object.freeze` superficial | freeze · «la huella se congela EN PROFUNDIDAD» | ROJO |
+| A7 | `freeze.mjs` — sacar `hoy` de `partes` | freeze · «`hoy` ES una entrada» | ROJO |
+| A8 | `freeze.mjs` — `estado: ESTADO.VALIDADO` fijo | freeze · «CIERRA() decide el sello» | ROJO |
+| A9 | `orquestador.mjs` — `conAlcance = primerCruce` | claude-zero · «EXCLUIDO EN PLATA» | ROJO |
+| A10 | `orquestador.mjs:283` — estampar `porQue` antes de contar | claude-zero · «INCERTIDUMBRE NO DECLARADA…» | ROJO |
+| A11 | `seguridad.mjs` — `rechazadas: []` | seguridad · «un documento NO produce NINGUNA acción…» | ROJO |
+| A12b | `seguridad.mjs` — quitar el patrón `(el\|la) X se (fija\|establece)` | seguridad · «cada patrón del detector se prueba AISLADO» | ROJO |
+| A13 | `seguridad.mjs` — `exigeConfirmacion` devuelve `null` siempre | seguridad · «DOS documentos con la misma frase…» | ROJO |
+| A14b | `corpus.mjs` — `const enc = null` | corpus · «ve la forma “encabezado de lista”» | ROJO |
+| A15 | `atencion.mjs` — `BLOQUEAN_SALVO_OVERRIDE` inerte | freeze · «un PRECIO VENCIDO bloquea aunque sea de $900» | ROJO |
+| A16 | `atencion.mjs` — `overrideDe` sin exigir `autorizadoPor` | freeze · «…lo destraba un OVERRIDE COMERCIAL con quién» | ROJO |
+| A17 | `pg.mjs` — `cotizadoEn: iso(hoy)` | casos-reales · «el adaptador NO FABRICA la fecha…» | ROJO |
+| A18 | `orquestador.mjs` — `relaciones: []` | casos-reales · «el barrido recibe RELACIONES…» | ROJO |
+| A19b | **SQL** `cot_gate_congelado` — agregar `TIPO_INVENTADO` | casos-reales · «EL VIGILANTE…» | ROJO |
+| B1 | `atencion.mjs` — sacar `EXCLUSION_CON_COMPUTO` de la lista | freeze · «EXCLUSION_CON_COMPUTO BLOQUEA — por la COLA» | ROJO |
+| B2 | `atencion.mjs` — restituir `o.entidad === '*'` | freeze · «el override NO tiene comodín» | ROJO |
+| B3 | `freeze.mjs` — `etapaFreeze` sin `estadoDeLoCongelado` | freeze · «etapaFreeze pasa el estado por el CAMINO REAL» | ROJO |
+| B4 | `costo.mjs` — `(c.hh ?? 0)` en `costoDirecto` | costo · «el TOTAL de HH no se traga el null» | ROJO |
+| B5 | `costo.mjs` — `!validoHasta ⇒ vigente:true` | costo · «un SUBCONTRATO sin vencimiento…» | ROJO |
+| B6 | `pg.mjs` — **restituir** `cotizadoEn: iso(hoy)` | casos-reales · «el adaptador NO FABRICA la fecha…» | ROJO |
+| B7 | `orquestador.mjs` — **restituir** el estampado de `porQue` | claude-zero · «INCERTIDUMBRE NO DECLARADA…» | ROJO |
+| B8 | `corpus.mjs` — quitar «queda a cargo del comitente» | corpus · «ve la forma “queda a cargo…”» | ROJO |
+| B9 | `corpus.mjs` — quitar «no se encuentra incluido» | corpus · «ve la forma “no se encuentra incluido”» | ROJO |
+| B10 | `corpus.mjs` — quitar «quedan exceptuados» | corpus · «ve la forma “quedan exceptuados”» | ROJO |
+| B11 | `corpus.mjs` — quitar «no comprende» | corpus · «ve la forma “no comprende”» | ROJO |
+
+**30 mutaciones, 30 ROJO.** Las que salieron verde en alguna vuelta anterior están anotadas arriba
+con su corrección (A12→A12b, A14→A14b, A19→A19b).
+
+## El número que va al dueño, medido de nuevo
+
+Los **89/231** del informe anterior eran de ESA cotización, no de la base. Medido sobre
+`recurso_precio_vigencia`, en toda la base:
+
+```
+todas las observaciones:            285/389 vencidas (73 %)
+sólo las marcadas vigente = true:   285/389 vencidas (73 %)
+recursos con su precio vencido:     285
+```
+
+El coordinador pasó **285/351 (81 %)**: el numerador coincide, el denominador no. **No adopto un
+número que no puedo reproducir**: la consulta está arriba y da 389 observaciones con costo y fecha.
+Quien tenga el 351 debería decir con qué filtro lo obtuvo — la diferencia son 38 filas.
+
+## Lo que la vuelta 5 NO cerró
+
+- **Nadie inserta el `cotizacion_evento` del override.** La fila auditable existe y ahora además se
+  LEE (`leerOverridesDePrecio`), pero el evento del §21 sigue faltando: falta el caller.
+- **`analisis_linea.cantidad` NULL sigue sin existir en la base**: la guarda está probada con
+  fixtures, en el motor y en el gate SQL.
+- **Los 180 días de vigencia de un subcontrato son una decisión mía, no del dueño.** Se eligió el
+  mismo corte que un precio de recurso porque no hay motivo para que uno venza y el otro no, pero
+  nadie lo firmó.
+- **El rol `administracion` sigue sin existir en ningún perfil.**

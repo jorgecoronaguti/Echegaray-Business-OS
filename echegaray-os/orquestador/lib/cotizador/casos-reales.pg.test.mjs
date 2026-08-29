@@ -82,7 +82,7 @@ test('cotizador · los casos reales', { skip: !hayBase }, async (t) => {
     await t.test('el material real está donde se dijo: 10 documentos y 26 partidas', () => {
       assert.equal(corpus.documentos.length, 10)
       assert.equal(estado.partidas.length, 26)
-      assert.equal(estado.consultas, 5, 'y se leyó en cinco consultas, no en N+1')
+      assert.equal(estado.consultas, 6, 'y se leyó en SEIS consultas fijas, no en N+1')
     })
 
     await t.test('PROTEGIDO · «muros» NO excluye la CAPA AISLADORA EN MUROS', () => {

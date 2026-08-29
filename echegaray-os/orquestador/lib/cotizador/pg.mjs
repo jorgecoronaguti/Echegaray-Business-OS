@@ -62,7 +62,7 @@ const iso = (v) => {
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 
 /**
- * EL ESTADO DE UNA COTIZACIÓN, en la forma que `correr()` consume. CINCO consultas.
+ * EL ESTADO DE UNA COTIZACIÓN, en la forma que `correr()` consume. SEIS consultas fijas.
  *
  * Devuelve además `crudo`, con las filas tal cual salieron, porque cuando un número no cuadra la
  * primera pregunta es «¿eso lo trajo así la base o lo transformó el adaptador?» y sin las filas
@@ -152,6 +152,8 @@ export async function leerEstado({ query }, cotizacionId, { hoy = new Date() } =
     : null
 
   // ── los documentos salen de `public.computo`, que es la genealogía ya cableada
+  const overrides = await leerOverridesDePrecio({ query }, cotizacionId)
+
   const docsSql = await query(
     `select distinct c.documento_drive_id, c.documento_nombre
        from public.computo c
@@ -200,10 +202,11 @@ export async function leerEstado({ query }, cotizacionId, { hoy = new Date() } =
     documentos: docsSql.rows.map((d) => ({ hash: d.documento_drive_id ?? d.documento_nombre, nombre: d.documento_nombre, parseado: true })),
     elementos: [],
     partidas, composiciones, observaciones, alcance, politica, fx: null, hoy,
+    overridesDePrecio: overrides,
     /** Las filas tal cual salieron. Sin esto, «¿lo trajo así la base o lo transformó el adaptador?»
      *  no se puede contestar sin volver a consultar. */
     crudo: { partidas: partidasSql.rows, composiciones: compSql.rows, precios: preciosSql.rows },
-    consultas: 5,
+    consultas: 6,
   }
 }
 
@@ -265,6 +268,43 @@ export async function leerHuella({ query }, cotizacionId, version) {
       where cotizacion_id = $1 and version = $2`, [cotizacionId, version])
   const f = r.rows[0]
   return f ? { sha256: f.sha256, partes: f.partes, resumen: f.resumen, calculadaEn: f.calculada_en } : null
+}
+
+/**
+ * LOS OVERRIDES DE PRECIO VENCIDO, EN LA FORMA QUE LA COLA CONSUME.
+ *
+ * ═══ POR QUÉ ESTA FUNCIÓN EXISTE ═══
+ *
+ * La migración creó `cotizacion_override_precio` y el gate de SQL la lee, pero del lado del motor
+ * NADIE la leía: el override de la base y el del motor no se tocaban. Con eso, el gate de SQL
+ * destrababa un precio vencido y el del motor lo seguía bloqueando — dos respuestas distintas a la
+ * misma pregunta, que es justo lo que el vigilante existe para impedir.
+ *
+ * `entidad` sale como el CÓDIGO del recurso: `overrideDe()` compara por prefijo porque la entidad
+ * de un issue de precio es `codigo (NOMBRE)`.
+ */
+export async function leerOverridesDePrecio({ query }, cotizacionId) {
+  const r = await query(
+    `select o.recurso_codigo, o.autorizado_por, o.motivo, o.creado_en
+       from public.cotizacion_override_precio o
+      where o.cotizacion_id = $1 order by o.recurso_codigo`, [cotizacionId])
+  return r.rows.map((o) => ({
+    entidad: o.recurso_codigo,
+    autorizadoPor: o.autorizado_por,
+    motivo: o.motivo,
+    firmadoEn: o.creado_en?.toISOString?.() ?? o.creado_en,
+  }))
+}
+
+/** Firmar un override. La policy exige COMMERCIAL_WRITE y `autorizado_por = auth.uid()`, así que
+ *  esto NO se puede usar para firmar en nombre de otro. */
+export async function firmarOverrideDePrecio({ query }, cotizacionId, recursoCodigo, motivo = null) {
+  const r = await query(
+    `insert into public.cotizacion_override_precio (cotizacion_id, recurso_codigo, motivo)
+     values ($1,$2,$3)
+     on conflict (cotizacion_id, recurso_codigo) do update set motivo = excluded.motivo
+     returning id, recurso_codigo, autorizado_por`, [cotizacionId, recursoCodigo, motivo])
+  return r.rows[0]
 }
 
 /** Los eventos de una cotización, en orden. La historia que contesta «¿por qué quedó en 168?». */

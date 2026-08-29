@@ -92,11 +92,31 @@ export function subcontrato({
 
 /** ¿Este subcontrato ya venció? PURA. Vencido no es sin precio: el número existe y hay que
  *  reconfirmarlo, que es una acción distinta. */
-export function subcontratoVigente(s, { hoy = new Date() } = {}) {
+/** Cuántos días vale la cotización de un subcontratista cuando no declara vencimiento. Mismo corte
+ *  que el de un precio de recurso: no hay motivo para que el precio del hormigón venza a los 180
+ *  días y el de la instalación sanitaria no venza nunca. */
+export const DIAS_VIGENCIA_SUBCONTRATO = 180
+
+export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = DIAS_VIGENCIA_SUBCONTRATO } = {}) {
   if (s.estado !== ESTADO.EXTRAIDO) return { vigente: false, estado: s.estado }
-  if (!s.validoHasta) return { vigente: true, estado: ESTADO.EXTRAIDO, porQue: 'la cotización no declara vencimiento' }
-  const hoyIso = (hoy instanceof Date ? hoy.toISOString() : String(hoy)).slice(0, 10)
-  if (hoyIso > s.validoHasta) return { vigente: false, estado: ESTADO.HISTORICO, porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} venció el ${s.validoHasta}` }
+  const hoyIso0 = (hoy instanceof Date ? hoy.toISOString() : String(hoy)).slice(0, 10)
+  // ═══ SIN VENCIMIENTO NO ES «VIGENTE PARA SIEMPRE» ═══
+  //
+  // La versión anterior devolvía `vigente: true` cuando el subcontrato no declaraba `validoHasta`, y
+  // `pg.mjs` NUNCA lo fija: todo subcontrato leído de la base era eterno. Un precio de recurso vence
+  // a los 180 días y uno de subcontrato jamás — el mismo agujero de HISTORICO, por otra puerta.
+  // Ahora la vigencia se DERIVA de la fecha de cotización, y si tampoco la hay, no hay vigencia.
+  if (!s.validoHasta) {
+    if (!s.cotizadoEn) {
+      return { vigente: false, estado: ESTADO.FALTA_DATO, porQue: `«${s.alcance}» no declara ni fecha de cotización ni vencimiento: no se puede saber si el precio sigue en pie` }
+    }
+    const limite = new Date(Date.parse(`${s.cotizadoEn}T00:00:00Z`) + diasPorDefecto * 86_400_000).toISOString().slice(0, 10)
+    if (hoyIso0 > limite) {
+      return { vigente: false, estado: ESTADO.HISTORICO, porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} es del ${s.cotizadoEn} y no declara vencimiento: pasados ${diasPorDefecto} días se considera vencida` }
+    }
+    return { vigente: true, estado: ESTADO.EXTRAIDO, porQue: `no declara vencimiento; vale ${diasPorDefecto} días desde el ${s.cotizadoEn}` }
+  }
+  if (hoyIso0 > s.validoHasta) return { vigente: false, estado: ESTADO.HISTORICO, porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} venció el ${s.validoHasta}` }
   return { vigente: true, estado: ESTADO.EXTRAIDO }
 }
 
@@ -291,10 +311,24 @@ export function costoDirecto(costosDePartida = []) {
     for (const [k, v] of Object.entries(c.cajones ?? {})) cajones[k] = (cajones[k] ?? 0) + (v ?? 0)
   }
   const completo = faltan.length === 0 && costosDePartida.length > 0
+  const sinHh = costosDePartida.filter((c) => c.hh === null || c.hh === undefined)
+  if (sinHh.length) {
+    issues.push(issue({
+      type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.ALTA, entity: 'HH de la obra',
+      detalle: `${sinHh.length} partida(s) no pueden afirmar sus HH (${sinHh.map((c) => c.partida).join(', ')}): el total de horas de la obra NO se publica`,
+    }))
+  }
   return {
     total: completo ? redondear(parcial) : null,
     cajones: completo ? Object.fromEntries(Object.entries(cajones).map(([k, v]) => [k, redondear(v)])) : null,
-    hh: redondear(costosDePartida.reduce((a, c) => a + (c.hh ?? 0), 0), 4),
+    // ═══ `(c.hh ?? 0)` SE TRAGABA EL NULL QUE EL FIX DE LA LÍNEA ACABABA DE CREAR ═══
+    // Una partida rota (hh null) más una sana (200 h) publicaba 200 como total de la obra: un total
+    // de horas al que le falta una partida entera. La misma regla que el costo: si un sumando no se
+    // puede afirmar, el total tampoco.
+    hh: costosDePartida.some((c) => c.hh === null || c.hh === undefined)
+      ? null
+      : redondear(costosDePartida.reduce((a, c) => a + c.hh, 0), 4),
+    nSinHh: costosDePartida.filter((c) => c.hh === null || c.hh === undefined).length,
     nPartidas: costosDePartida.length,
     nSinCosto: faltan.length,
     estado: completo ? ESTADO.CALCULADO : ESTADO.FALTA_DATO,

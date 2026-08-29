@@ -284,3 +284,37 @@ test('HISTORICO ≠ VALIDADO: la partida con precio vencido NO sale CALCULADA', 
   assert.equal(c.vencidos[0].recurso, 'MAT-CEM')
   assert.ok(c.vencidos[0].impacto > 0, 'y dice cuánta plata cuelga de ese precio')
 })
+
+test('el TOTAL de HH no se traga el null: una partida rota lo anula', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `costoDirecto`, `hh: redondear(reduce((a,c) => a + (c.hh ?? 0)))`.
+  //
+  // El fix de la línea sin cantidad creó `hh: null` por partida, y `costoDirecto` lo sumaba como
+  // cero: una partida rota más una sana publicaba 200 h como total de la obra.
+  const sana = costoDePartida({ partida: { codigo: 'A', cantidad: 100, unidad: 'm3' }, composicion: COMPOSICION, observaciones: PRECIOS, hoy: HOY })
+  const rota = costoDePartida({ partida: { codigo: 'B', cantidad: 100, unidad: 'm3' }, composicion: [COMPOSICION[0], { ...COMPOSICION[1], cantidad: null }], observaciones: PRECIOS, hoy: HOY })
+  assert.equal(sana.hh, 200)
+  assert.equal(rota.hh, null)
+  const cd = costoDirecto([sana, rota])
+  assert.equal(cd.hh, null, 'el total de horas NO se afirma')
+  assert.notEqual(cd.hh, 200)
+  assert.equal(cd.nSinHh, 1)
+  assert.ok(cd.issues.some((i) => i.entity === 'HH de la obra'))
+  // Con las dos sanas, vuelve.
+  assert.equal(costoDirecto([sana, sana]).hh, 400)
+})
+
+test('un SUBCONTRATO sin vencimiento NO es vigente para siempre', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `subcontratoVigente`, `if (!s.validoHasta) return {vigente:true}`.
+  //
+  // `pg.mjs` nunca fija `validoHasta`, así que TODO subcontrato leído de la base era eterno: un
+  // precio de recurso vence a los 180 días y uno de subcontrato jamás. El mismo agujero de
+  // HISTORICO por otra puerta.
+  const viejo = subcontrato({ alcance: 'sanitaria', proveedor: 'X', precio: 8_500_000, cotizadoEn: '2025-06-01', fuente: 'mail' })
+  const v = subcontratoVigente(viejo, { hoy: HOY })
+  assert.equal(v.vigente, false)
+  assert.equal(v.estado, ESTADO.HISTORICO)
+  assert.match(v.porQue, /no declara vencimiento/)
+  // Uno reciente sigue vigente.
+  const nuevo = subcontrato({ alcance: 'sanitaria', proveedor: 'X', precio: 8_500_000, cotizadoEn: '2026-08-20', fuente: 'mail' })
+  assert.equal(subcontratoVigente(nuevo, { hoy: HOY }).vigente, true)
+})

@@ -185,7 +185,14 @@ export function congelar({ cotizacionId, cascada, huella, gate, congeladoPor, co
 }
 
 /** La etapa FREEZE con la forma del contrato. PURA. */
-export function etapaFreeze({ cascada, cola, huella, congeladoPor = null } = {}) {
+export function etapaFreeze({ cascada, cola, huella, congeladoPor = null, estadoDeLoCongelado = null, costos = [] } = {}) {
+  // ═══ EL ESTADO VIAJA POR EL CAMINO REAL, NO SÓLO DESDE UN TEST ═══
+  // `congelar()` acepta `estadoDeLoCongelado` desde la vuelta anterior, y `etapaFreeze` —que es el
+  // camino de producción— no se lo pasaba: con un override firmado, la versión volvía a sellarse
+  // VALIDADA sobre datos HISTORICO. Era `cierra()`-sin-consumidores mudado un nivel. Si no se
+  // declara, se DERIVA de los costos: una sola partida apoyada en un precio vencido alcanza.
+  const estado = estadoDeLoCongelado
+    ?? (costos.some((c) => c?.estado === ESTADO.HISTORICO || (c?.vencidos ?? []).length) ? ESTADO.HISTORICO : ESTADO.CALCULADO)
   const gate = gateDeCongelado({ cascada, cola })
   if (!gate.ready) {
     return resultadoEtapa({
@@ -202,12 +209,13 @@ export function etapaFreeze({ cascada, cola, huella, congeladoPor = null } = {})
       provenance: [huella?.resumen].filter(Boolean),
     })
   }
-  const congelada = congelar({ cotizacionId: null, cascada, huella, gate, congeladoPor })
+  const congelada = congelar({ cotizacionId: null, cascada, huella, gate, congeladoPor, estadoDeLoCongelado: estado })
   return resultadoEtapa({
     etapa: ETAPA.FREEZE, status: STATUS.OK, result: congelada,
     evidence: [{ huella: huella.sha256, resumen: huella.resumen }],
     provenance: [`congelada por ${congeladoPor} el ${congelada.congeladoEn}`],
     missing_data: gate.warnings.map((w) => `${w.tipo}/${w.entidad}`),
     confidence: gate.warnings.length ? 0.9 : 1,
+    provenance: [`congelada por ${congeladoPor} el ${congelada.congeladoEn}`, `sello: ${congelada.estado}`],
   })
 }

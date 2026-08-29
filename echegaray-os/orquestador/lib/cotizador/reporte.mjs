@@ -39,13 +39,18 @@ export function cuadroDeCorrida(corrida, { nombre, documentosCorpus = null, cono
       ['· incluidas por alcance', num(corrida.partidas.filter((p) => p.alcance === 'INCLUIDO').length)],
       ['· excluidas por contrato', num(corrida.partidas.filter((p) => p.alcance === 'EXCLUIDO').length)],
       ['· sin decidir', num(corrida.partidas.filter((p) => p.alcance === 'POR_DEFINIR').length)],
+      // El número que justifica el cruce doble. Sin publicarlo, la corrección de la vuelta 4 no
+      // llega a ninguna pantalla y «excluidas por contrato: 0» sigue siendo lo único que se ve.
+      ['plata excluida por contrato', corrida.etapas?.find((e) => e.etapa === 'SCOPE')?.result?.excluidoEnPlata
+        ? plata(corrida.etapas.find((e) => e.etapa === 'SCOPE').result.excluidoEnPlata) : '$ 0'],
+      ['· excluidas sin valorizar', num(corrida.etapas?.find((e) => e.etapa === 'SCOPE')?.result?.excluidasSinValorizar)],
       ['cantidades resueltas', `${num(partidasConCantidad)} / ${num(corrida.partidas.length)}`],
       ['cobertura de cómputo', cobertura === null ? '—' : pct(cobertura)],
       ['composiciones resueltas', `${num(conComposicion)} / ${num(corrida.costos.length)}`],
       ['recursos explotados', num(corrida.explosion?.nRecursos)],
       ['· sin precio', num(corrida.explosion?.nSinPrecio)],
       ['precios vigentes / vencidos / faltantes', `${num(m.precios_vigentes)} / ${num(m.precios_vencidos)} / ${num(m.precios_faltantes)}`],
-      ['HH previstas', cd.hh === null ? 's/d' : `${num(cd.hh)} h`],
+      ['HH previstas', cd.hh === null ? `NO SE AFIRMA (${num(cd.nSinHh)} partida(s) sin HH)` : `${num(cd.hh)} h`],
       ['FALTA_DATO en la cola', num(m.no_bloqueantes === null ? null : corrida.cola.issues.filter((i) => i.type === 'FALTA_DATO').length)],
       ['CONFLICTO en la cola', num(m.conflictos)],
       ['bloqueantes', num(m.bloqueantes)],

@@ -59,6 +59,11 @@ const NEGACIONES_PREFIJO = [
   // viene DESPUÉS del complemento. Es la misma forma verbal que el sufijo «X queda fuera de», y por
   // eso el sufijo se prueba primero: cuando matchea en la posición 0 deja un tramo vacío y cae acá.
   /(queda|quedan)\s+fuera\s+(?:de[l]?\s+(?:\w+\s+){0,3})?/i,
+  // «No SE ENCUENTRA incluido el entrepiso» y «el presupuesto NO COMPRENDE la escalera»: la
+  // negación abre y lo excluido viene después. Estaban en la familia equivocada —el sufijo devolvía
+  // «El presupuesto»— y por eso el término salía mal en vez de no salir, que es peor.
+  /no\s+se\s+encuentran?\s+(inclui[dr]\w*|contemplad\w*|comprendid\w*|previst\w*)\s+/i,
+  /no\s+(comprende|comprenden|abarca|abarcan|alcanza|alcanzan|contempla|contemplan)\s+/i,
 ]
 const NEGACIONES_SUFIJO = [
   /,?\s*quedan?\s+(completamente\s+)?exclui[dr]\w*/i,
@@ -68,6 +73,11 @@ const NEGACIONES_SUFIJO = [
   /,?\s*no\s+(forma|forman)\s+parte/i,
   /,?\s*(queda|quedan)\s+fuera\s+(de|del)/i,
   /,?\s*(corre|corren|ser[aá]n?)\s+por\s+cuenta\s+d[eo]l\s+(comitente|cliente|propietario)/i,
+  // Cuatro formas de la MISMA familia que la re-auditoría encontró ciegas. «corre por cuenta del
+  // comitente» estaba cubierto y «queda A CARGO del comitente» no: media forma, que es peor que
+  // ninguna porque el límite las daba por cubiertas.
+  /,?\s*(queda|quedan)\s+a\s+cargo\s+d[eo]l\s+(comitente|cliente|propietario)/i,
+  /,?\s*(queda|quedan)\s+exceptuad\w*/i,
 ]
 /**
  * LA LISTA ENCABEZADA. «EXCLUSIONES: entrepiso, escalera, revoques» no tiene verbo que negar: la

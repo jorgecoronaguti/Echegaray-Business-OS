@@ -73,7 +73,10 @@ const ENTRADA = () => ({
   alcance: [
     entradaDeAlcance({ patron: 'mamposteria', estado: ALCANCE.INCLUIDO, fuente: 'pliego art. 3.1' }),
     entradaDeAlcance({ patron: 'columna', estado: ALCANCE.INCLUIDO, fuente: 'pliego art. 3.1' }),
-    entradaDeAlcance({ patron: 'pintura', estado: ALCANCE.EXCLUIDO, fuente: 'pliego art. 4.2', textoLiteral: 'las terminaciones no forman parte del presente' }),
+    // `decididoPor` es la FIRMA: esta exclusión la cargó una persona leyendo el pliego. Sin ella,
+    // `EXCLUSION_CON_COMPUTO` bloquea — que es exactamente lo que tiene que pasar con una exclusión
+    // que salió sola del corpus.
+    entradaDeAlcance({ patron: 'pintura', estado: ALCANCE.EXCLUIDO, fuente: 'pliego art. 4.2', textoLiteral: 'las terminaciones no forman parte del presente', decididoPor: 'jorge' }),
   ],
   politica: POLITICA,
   // ═══ EL PROVEEDOR ESTÁ APAGADO ═══

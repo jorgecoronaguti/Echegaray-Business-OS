@@ -106,7 +106,9 @@ test('cotizador · adaptadores Postgres y RBAC en la base', { skip: !hayBase }, 
     // ── 1 · LECTURA ────────────────────────────────────────────────────────────────────────────
     await t.test('el adaptador lee el presupuesto en CINCO consultas, no en N+1', async () => {
       const estado = await leerEstado({ query: (s, p) => c.query(s, p) }, cot.id)
-      assert.equal(estado.consultas, 5)
+      // SEIS desde que el adaptador también trae los overrides de precio firmados: sin ese lector,
+      // el gate de SQL destrababa un precio vencido y el del motor lo seguía bloqueando.
+      assert.equal(estado.consultas, 6)
       assert.equal(estado.partidas.length, 1)
       assert.equal(estado.partidas[0].cantidad, 520)
       assert.equal(estado.partidas[0].composicion.length, 2)

@@ -52,3 +52,36 @@ test('la CORROBORACIÓN sigue mandando: una forma nueva no se aplica sola', () =
   assert.deepEqual(enDos.entradas.map((c) => c.patron), ['pintura'])
   assert.equal(enDos.entradas[0].estado, ALCANCE.EXCLUIDO)
 })
+
+/** Las cuatro formas VERBALES que la re-auditoría encontró ciegas cuando el límite las daba por
+ *  cubiertas. «corre por cuenta del comitente» estaba y «queda a cargo del comitente» no: media
+ *  forma, que es peor que ninguna porque el límite mentía por defecto. */
+const FORMAS_DE_LA_RE_AUDITORIA = [
+  ['sufijo · queda a cargo del comitente', 'La pintura queda a cargo del comitente.', 'pintura'],
+  ['prefijo · no se encuentra incluido', 'No se encuentra incluido el entrepiso.', 'entrepiso'],
+  ['sufijo · quedan exceptuados', 'Los revoques quedan exceptuados del alcance.', 'revoques'],
+  ['prefijo · no comprende', 'El presupuesto no comprende la escalera.', 'escalera'],
+]
+
+for (const [forma, frase, esperado] of FORMAS_DE_LA_RE_AUDITORIA) {
+  test(`ve la forma «${forma}» (re-auditoría)`, () => {
+    const t = tramoNegado(frase)
+    assert.ok(t, `tramoNegado devolvió null para «${frase}»`)
+    assert.ok(terminosDe(t).includes(esperado), `de «${t}» no salió «${esperado}»`)
+  })
+}
+
+test('las CATORCE formas se leen sin un solo falso positivo', () => {
+  // MUTACIÓN QUE LO PONE ROJO: sacar cualquiera de las cuatro regex nuevas.
+  const todas = [...REDACCIONES, ...FORMAS_DE_LA_RE_AUDITORIA]
+  assert.equal(todas.length, 14)
+  for (const [, frase, esperado] of todas) {
+    assert.ok(terminosDe(tramoNegado(frase) ?? '').includes(esperado), `ciego a: «${frase}»`)
+  }
+  for (const f of [
+    'El contratista ejecutará la mampostería de 520 m2',
+    'Se incluye la provisión y colocación de la carpintería.',
+    'El plazo de obra es de 90 días corridos.',
+    'La obra comprende la totalidad de los trabajos de albañilería.',
+  ]) assert.equal(tramoNegado(f), null, `falso positivo en: «${f}»`)
+})
