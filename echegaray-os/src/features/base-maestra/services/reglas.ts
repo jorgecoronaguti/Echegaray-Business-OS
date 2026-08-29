@@ -106,6 +106,16 @@ export function faltaOperativa(s: SenalesDelAnalisis): string | null {
 
 export type Frescura = 'nueva' | 'ok' | 'vieja' | 'sin_fecha'
 
+// ═══ LA FUENTE DE ESTOS DOS NÚMEROS ES `parametro_operativo`, NO ESTA LÍNEA ═══
+//
+// Sembrados el 29/08/2026 en `parametro_operativo` con las claves `dias_precio_fresco` y
+// `dias_precio_aceptable`, con su procedencia (esta constante) y su estado. Se leen con
+// `presupuestos/services/parametrosOperativos.getParametrosOperativos(supabase, 'base_maestra')`.
+//
+// Siguen acá como DEFAULT porque estas funciones son puras y no pueden consultar la base: quien
+// tenga los umbrales de la tabla los pasa por parámetro y gana la tabla. Los callers de este
+// dominio todavía no los pasan — es trabajo del frente de Base Maestra, no del de Presupuestos, y
+// está declarado como límite. Mientras tanto el número que decide es éste.
 export const DIAS_FRESCO = 60
 export const DIAS_ACEPTABLE = 180
 
@@ -117,15 +127,22 @@ export function diasEntre(desdeISO: string, hastaISO: string): number {
   return Math.round((b - a) / 86_400_000)
 }
 
-export function frescuraDePrecio(fechaPrecio: string | null | undefined, hoyISO: string): Frescura {
+export function frescuraDePrecio(
+  fechaPrecio: string | null | undefined,
+  hoyISO: string,
+  // Los umbrales entran por parámetro para que la tabla pueda ganarle a la constante sin que esta
+  // función deje de ser pura. Ver el comentario de DIAS_FRESCO.
+  diasFresco: number = DIAS_FRESCO,
+  diasAceptable: number = DIAS_ACEPTABLE,
+): Frescura {
   if (!fechaPrecio) return 'sin_fecha'
   const dias = diasEntre(fechaPrecio, hoyISO)
   if (Number.isNaN(dias)) return 'sin_fecha'
   // Una fecha en el futuro es un dato cargado mal, no un precio fresquísimo. Se trata como
   // desconocida: afirmar «nueva» sobre una fecha imposible es publicar el error como si fuera dato.
   if (dias < 0) return 'sin_fecha'
-  if (dias <= DIAS_FRESCO) return 'nueva'
-  if (dias <= DIAS_ACEPTABLE) return 'ok'
+  if (dias <= diasFresco) return 'nueva'
+  if (dias <= diasAceptable) return 'ok'
   return 'vieja'
 }
 
@@ -172,6 +189,8 @@ export function claveDeCategoria(nombre: string): string {
 // NULL SE PROPAGA. El sereno se paga por mes y no tiene `basico_hora`: su valor hora no es cero, es
 // inexistente. Un cero acá haría que un sereno costara $0 la hora en cualquier análisis que lo use.
 
+// Sembrado como `jornada_horas` en `parametro_operativo` el 29/08/2026. `costoDeCategoria` ya lo
+// recibe por parámetro desde antes: la tabla puede ganarle sin tocar esta línea.
 export const JORNADA_HORAS = 8
 
 export type CostoCategoria = {
@@ -269,18 +288,21 @@ export type Desvio = {
   direccion: DireccionDesvio
 }
 
+// Sembrado como `banda_desvio` en `parametro_operativo` el 29/08/2026, con esta constante como
+// procedencia. Entra por parámetro por el mismo motivo que los días de frescura.
 export const BANDA_DESVIO = 0.1
 
 /** `null` cuando falta cualquiera de las dos puntas, o cuando la base es 0 (dividir daría infinito). */
 export function desvioObservado(
   baseHsUnidad: number | null | undefined,
   observadoHsUnidad: number | null | undefined,
+  banda: number = BANDA_DESVIO,
 ): Desvio | null {
   if (baseHsUnidad == null || !Number.isFinite(baseHsUnidad) || baseHsUnidad <= 0) return null
   if (observadoHsUnidad == null || !Number.isFinite(observadoHsUnidad)) return null
   const ratio = observadoHsUnidad / baseHsUnidad
-  if (ratio > 1 + BANDA_DESVIO) return { ratio, direccion: 'peor' }
-  if (ratio < 1 - BANDA_DESVIO) return { ratio, direccion: 'mejor' }
+  if (ratio > 1 + banda) return { ratio, direccion: 'peor' }
+  if (ratio < 1 - banda) return { ratio, direccion: 'mejor' }
   return { ratio, direccion: 'igual' }
 }
 

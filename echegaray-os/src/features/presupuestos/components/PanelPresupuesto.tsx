@@ -51,12 +51,14 @@ export function PanelPresupuesto({
 }: {
   p: PresupuestoCascada
   onCerrar: () => void
-  margenObjetivo: number
+  /** De `parametro_operativo.margen_objetivo_pct`. `null` = nadie lo declaró, o este rol no lo ve. */
+  margenObjetivo: number | null
 }) {
   const e = lecturaEstado(p.estado)
   const conCifras = tieneCifras(p)
   const margen = p.margen_sobre_precio_pct
-  const bajoObjetivo = margen !== null && margen < margenObjetivo
+  // Sin umbral declarado no se juzga el margen. Ver `ListaPresupuestos`.
+  const bajoObjetivo = margenObjetivo !== null && margen !== null && margen < margenObjetivo
   const conversion = puedeConvertir(p)
   const problemas = problemasDe(p)
 
