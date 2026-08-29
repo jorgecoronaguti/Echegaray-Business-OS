@@ -35,7 +35,7 @@
 
 import { ESTADO, ACCION, autorizar, intencion } from './contrato.mjs'
 import { leerCantidad, compatibleConPartida } from './unidades.mjs'
-import { evaluarCambio, dejaPasar } from './outlier.mjs'
+import { evaluarCambio } from './outlier.mjs'
 import { evento } from './eventos.mjs'
 import { rechazarEscrituraDeCoeficiente, PARAMETROS, esNormativo } from './comercial.mjs'
 import { queMeFaltaParaEnviar } from './atencion.mjs'

@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ejecutar, validar } from './comandos.mjs'
+import { ejecutar } from './comandos.mjs'
 import { intencion, ROL, ESTADO } from './contrato.mjs'
 import { evaluarCambio, dejaPasar, POSIBLE } from './outlier.mjs'
 import { evento, registro, deshacer, historiaDe } from './eventos.mjs'
