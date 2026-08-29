@@ -799,7 +799,7 @@ test('el supuesto de la proyección se declara CON EL DATO, y ningún mes queda 
   assert.match(glosa2, /Mayo \+2,4%/, 'la línea trae un mes escrito a mano: no siguió a la réplica')
 })
 
-test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del convenio en el escalón, la pactada en obra', () => {
+test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del aumento en el escalón, la pactada en obra', () => {
   // ═══ EL DEFECTO QUE ESTE TEST CUIDA, Y POR QUÉ CAMBIÓ DE ANCLA EL 07/08 ═══
   //
   // El cuadro 1.2 arranca en el mes MÁS VIEJO de los tres bloques —casi siempre el de Oficina, que va
@@ -822,8 +822,8 @@ test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del convenio en el esca
   const rAgosto = conEscala.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-08')
   const sigmas = conEscala.filas.slice(conEscala.esc.f0 - 1, conEscala.esc.f1).map((f) => String(f[5]))
   for (const s of sigmas) {
-    assert.match(s, new RegExp(`/\\$E\\$${rAgosto};`), `la Σ del convenio quedó anclada fuera del mes del escalón: ${s}`)
-    assert.match(s, /SUMPRODUCT\(\$B\$\d+:\$B\$\d+;\$F\$\d+:\$F\$\d+\)/, `la base dejó de ser el convenio: ${s}`)
+    assert.match(s, new RegExp(`/\\$E\\$${rAgosto};`), `la Σ con aumento quedó anclada fuera del mes del escalón: ${s}`)
+    assert.match(s, /N\(\$C\$\d+\)\+N\(\$D\$\d+\)/, `la base dejó de llevar el aumento: ${s}`)
   }
 
   // SIN ESCALA VIGENTE la proyección vuelve al jornal PACTADO — y entonces el ancla vuelve a ser el mes
@@ -838,16 +838,21 @@ test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del convenio en el esca
   const rJulio = sinEscala.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-07')
   for (const f of sinEscala.filas.slice(sinEscala.esc.f0 - 1, sinEscala.esc.f1)) {
     assert.match(String(f[5]), new RegExp(`/\\$E\\$${rJulio};`), `sin escala la Σ pactada quedó fuera del mes de obra: ${f[5]}`)
-    assert.doesNotMatch(String(f[5]), /SUMPRODUCT/, 'sin escala no puede valuar al convenio: no hay convenio que leer')
+    assert.doesNotMatch(String(f[5]), /N\(\$D\$\d+\)/,
+      'sin escala no hay aumento que sumar: el término del aumento no puede aparecer')
   }
 })
 
-test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta JORNALES_PROY_TOTAL', () => {
-  // ═══ LA ORDEN (07/08) ═══
-  // *"quiero q realices la proyeccion de las quincenas futuras de los obreros considerando que se paga
-  // el 100% de lo q indica la hora del convenio"*. Este test recorre el cable entero: si se corta en
-  // cualquier eslabón, la proyección vuelve al jornal PACTADO —que está ~15% abajo de la escala— y el
-  // total sigue siendo un número plausible que nadie puede distinguir a ojo.
+test('LA CADENA COMPLETA: el plantel del espejo llega CON EL AUMENTO hasta JORNALES_PROY_TOTAL', () => {
+  // ═══ LA ORDEN (29/08), QUE REEMPLAZA A LA DEL 07/08 ═══
+  //
+  // *"te pedi q del convenio sacar el 50% por categoria y eso es lo q le vamos a aumentar a cada
+  // empleado sobre lo q cobran por hr hoy"*. La orden anterior —proyectar al 100% de la hora de
+  // convenio— quedó derogada: revaluaba a todos a la escala y borraba lo que cada uno negoció.
+  //
+  // Este test recorre el cable entero: si se corta en cualquier eslabón, la proyección vuelve a la
+  // tarifa de hoy SIN aumento —o peor, al piso— y el total sigue siendo un número plausible que nadie
+  // puede distinguir a ojo.
   const p = gm.plantel
   // 1 · las personas por categoría salen del espejo —de la columna D—, no de una lista en el código.
   //     Era un COUNTIFS y desde el 28/08 es un SUMPRODUCT sobre `TRIM(D)`: el COUNTIFS comparaba la
@@ -855,17 +860,29 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   //     eslabón cuida no cambió —que el conteo salga del espejo— pero la forma sí, y tiene que decir
   //     TRIM: sin él vuelve el defecto (ver `jornales-plantel-clave-recortada.test.mjs`).
   assert.match(String(gm.filas[p.fPrimera - 1][1]), /SUMPRODUCT\(--\(TRIM\('_J_OBREROS'!\$D\$\d+:\$D\$\d+\)=/)
-  // 2 · el básico de cada categoría sale de la réplica del convenio.
+  // 1 bis · lo que cobra HOY sale de la MISMA columna W del espejo. Es el término principal de la
+  //     proyección desde el 29/08: si esta celda deja de leer el espejo, el aumento se aplicaría
+  //     sobre un número escrito y nadie lo notaría.
+  assert.match(String(gm.filas[p.fPrimera - 1][2]), /N\('_J_OBREROS'!\$W\$\d+:\$W\$\d+\)/)
+  // 2 · el básico de cada categoría sale de la réplica del convenio…
   assert.match(String(gm.filas[p.fPrimera - 1][5]), /INDEX\('_UOCRA_RAW'!/)
-  // 3 · la Σ del cuadro 1.2 es el producto escalar de esas dos columnas — y de NINGÚN número pegado.
+  // 2 bis · …y el AUMENTO es el 50% de ESE básico, colgando de la celda, no un importe escrito.
+  assert.match(String(gm.filas[p.fPrimera - 1][6]), new RegExp(`\\$F${p.fPrimera}\\*50%`))
+  assert.doesNotMatch(String(gm.filas[p.fPrimera - 1][6]), /\d{4,}/, 'el aumento quedó estampado como importe')
+  // 2 ter · y la Σ del aumento de la categoría es personas × ese aumento.
+  assert.match(String(gm.filas[p.fPrimera - 1][3]), new RegExp(`N\\(\\$B${p.fPrimera}\\)\\*N\\(\\$G${p.fPrimera}\\)`))
+  // 3 · la Σ del cuadro 1.2 sale de las DOS celdas del total de 1.1 — y de NINGÚN número pegado.
   const fEsc = String(gm.filas[gm.esc.f0 - 1][5])
-  assert.equal(gm.esc.alConvenio, true, 'con escala vigente la proyección tiene que valuar al convenio')
-  assert.match(fEsc, new RegExp(`SUMPRODUCT\\(\\$B\\$${p.fPrimera}:\\$B\\$${p.fUltima};\\$F\\$${p.fPrimera}:\\$F\\$${p.fUltima}\\)`),
+  assert.equal(gm.esc.conAumento, true, 'con escala vigente la proyección tiene que llevar el aumento')
+  assert.match(fEsc, new RegExp(`N\\(\\$C\\$${p.fTotal}\\)\\+N\\(\\$D\\$${p.fTotal}\\)`),
     `la Σ del cuadro 1.2 dejó de salir del bloque 1.1: ${fEsc}`)
+  // Y NO PUEDE VOLVER A SER EL PRODUCTO ESCALAR CONTRA LA ESCALA: ése era el piso.
+  assert.doesNotMatch(fEsc, new RegExp(`SUMPRODUCT\\(\\$B\\$${p.fPrimera}`),
+    'la Σ volvió a valuar el plantel a la hora del convenio')
   assert.doesNotMatch(fEsc, /\d{4,}/, 'apareció un importe estampado donde tiene que haber referencias')
   // 4 · el encabezado no puede mentir sobre cuál de las dos Σ es la que está abajo. Es el defecto de
   //     "Ajuste inflación" en Oficina: el rótulo sobrevivió al criterio que lo justificaba.
-  assert.equal(String(gm.filas[gm.esc.f0 - 2][5]), 'Σ $/hora convenio', 'el encabezado de 1.2 quedó con la base vieja')
+  assert.equal(String(gm.filas[gm.esc.f0 - 2][5]), 'Σ $/hora con aumento', 'el encabezado de 1.2 quedó con la base vieja')
   // El de 1.3 dice "aplicada" y no "convenio" desde el 07/08: abajo conviven las dos bases —lo que se
   // paga este mes va al pactado— y un encabezado que nombra una sola sería el defecto de "Ajuste
   // inflación", el rótulo que sobrevive al criterio que lo justificaba.
@@ -932,20 +949,22 @@ test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
   // quincenas valuadas a una escala que hoy NO se paga.
   // ═══ EL PÁRRAFO SE FUE, LA DECLARACIÓN NO (13/08) ═══
   //
-  // El rótulo pasó de 460 caracteres a "Supuesto: proyectado al 100% del convenio · N personas". Lo que
-  // este test cuida sigue siendo lo mismo: que la palabra SUPUESTO esté, que diga contra qué base, y
-  // que esté ARRIBA del cuadro que la aplica. Lo que ya no exige es la frase "hoy pagamos POR DEBAJO",
-  // porque eso es una MEDICIÓN y se controla dos assertions más abajo, contra la celda que la calcula
-  // —donde no puede quedar desactualizada respecto del número, que es lo que pasa con una glosa—.
-  const esSupuesto = (c) => /Supuesto: proyectado al 100% del convenio/.test(c)
+  // El rótulo pasó de 460 caracteres a "Con aumento: hoy + 50% del básico de su categoría · N
+  // personas". Lo que este test cuida sigue siendo lo mismo: que diga contra qué base proyecta y que
+  // esté ARRIBA del cuadro que la aplica. Cambió QUÉ base declara —el 29/08 dejó de ser el 100% del
+  // convenio— y por eso el texto viejo ya no puede satisfacerlo.
+  const esSupuesto = (c) => /Con aumento: hoy \+ 50% del básico/.test(c)
   const linea = gm.filas.map((f) => String(f[0] ?? '')).find(esSupuesto)
-  assert.ok(linea, 'desapareció la línea que declara que la proyección asume el 100% del convenio')
+  assert.ok(linea, 'desapareció la línea que declara con qué criterio proyecta el cuadro')
+  assert.ok(!gm.filas.map((f) => String(f[0] ?? '')).some((c) => /100% del convenio/i.test(c)),
+    'volvió a anunciar el piso del convenio que el dueño rechazó')
   // Va ANTES del cuadro 1.2, que es el que la aplica — no al final de la pestaña.
   assert.ok(gm.filas.findIndex((f) => esSupuesto(String(f[0] ?? ''))) < gm.esc.f0 - 1)
-  // Y el bloque 1.1 —pactado contra convenio— NO se toca: esa comparación sigue siendo un hecho, y es
-  // la que prueba que el supuesto no es gratis.
+  // Y EL CONTROL DEL MÍNIMO LEGAL NO SE TOCA: que el aumento sea aditivo no autoriza a quedar por
+  // debajo de la escala. La fila lo dice con el mínimo de SU categoría, no con el promedio.
   const estado = String(gm.filas[gm.plantel.fPrimera - 1][7])
-  assert.match(estado, /por debajo del convenio/)
+  assert.match(estado, /queda bajo el convenio/)
+  assert.match(estado, /MIN\(FILTER\(/, 'el Estado dejó de mirar al que MENOS cobra de la categoría')
   // El pactado sigue saliendo de la columna W del espejo; el SUMIFS pasó a SUMPRODUCT por la misma
   // razón que el conteo, y `N()` está para que un texto en la columna de importes valga cero en vez
   // de romper la fila entera con #VALUE!.
@@ -956,10 +975,10 @@ test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
 
 test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido usar', () => {
   // EL DEFECTO QUE ESTO ATRAPA, encontrado al revertir el arreglo a propósito (07/08). La línea se
-  // emitía mirando `escalonVigente` y el cuadro decidía con `alConvenio`, que además exige que el mes
+  // emitía mirando `escalonVigente` y el cuadro decidía con `conAumento`, que además exige que el mes
   // del escalón esté EN el cuadro para tener dónde anclar. Con la escala presente pero su mes fuera de
-  // la tabla, la pestaña anunciaba "100% DEL CONVENIO" arriba de una proyección hecha sobre el jornal
-  // PACTADO. Dos flags para la misma decisión: el modo de falla más caro de este libro.
+  // la tabla, la pestaña anunciaba el criterio nuevo arriba de una proyección hecha sobre el jornal de
+  // hoy pelado. Dos flags para la misma decisión: el modo de falla más caro de este libro.
   const mesesSinAgosto = mesesDelMotor(new Date(2026, 5, 30), [
     { desde: new Date(2026, 6, 1), hasta: new Date(2026, 6, 15) },
   ], [new Date(2026, 5, 30)])
@@ -972,10 +991,11 @@ test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido
     escalonVigente: escalonDe(ESC, '2026-08'),
     meses: mesesSinAgosto, hoy: HOY, periodoBase: '2026-06',
   })
-  assert.equal(g2.esc.alConvenio, false, 'sin el mes del escalón en el cuadro no hay dónde anclar la Σ')
-  const linea = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /pactado|100% del convenio/i.test(c))
-  assert.match(linea, /pactado/i, 'la pestaña anuncia el convenio y el cuadro está usando el pactado')
-  assert.doesNotMatch(linea, /100% del convenio/i)
+  assert.equal(g2.esc.conAumento, false, 'sin el mes del escalón en el cuadro no hay dónde anclar la Σ')
+  const lineas = g2.filas.map((f) => String(f[0] ?? '')).filter((c) => /sin aumento|Con aumento/i.test(c))
+  const linea = lineas.join(' | ')
+  assert.match(linea, /base: hoy/i, `la pestaña anuncia el aumento y el cuadro usa la tarifa de hoy: ${linea}`)
+  assert.doesNotMatch(linea, /Con aumento:/, 'anunció el aumento arriba de un cuadro que no lo aplicó')
   // El encabezado del calendario ya no nombra la base (13/08): la Σ vive dentro de la celda de obra.
   // Lo que se controla es que esa celda NO traiga la rama del convenio cuando el cuadro no puede usarla.
   assert.doesNotMatch(String(g2.filas[g2.p0 - 1][3]), /EOMONTH\(TODAY\(\);0\)\);\$C\$/,
@@ -987,8 +1007,8 @@ test('EL 01/09 LA PROYECCIÓN NO VUELVE SOLA AL PACTADO: la escala rige hasta qu
   //
   // El motor resolvía el escalón vigente por igualdad exacta de período. El acuerdo publicado termina
   // el 31/08 y la réplica no trae septiembre: el 01/09, sin que nadie tocara un archivo, la base de la
-  // proyección volvía del convenio al jornal PACTADO —−12,14% sobre la masa— y la glosa de Cargas
-  // seguía declarando el 100% del convenio. Ninguna celda daba error.
+  // proyección perdía el término del aumento —volvía al jornal de hoy pelado— y la glosa de Cargas
+  // seguía declarando que el aumento estaba adentro. Ninguna celda daba error.
   const sept = new Date(2026, 8, 1)
   assert.equal(escalonDe(ESC, '2026-09'), null, 'la fixture tiene que NO traer septiembre: es el ANTES')
   const vigente = escalonVigenteEn(ESC, sept)
@@ -1004,19 +1024,19 @@ test('EL 01/09 LA PROYECCIÓN NO VUELVE SOLA AL PACTADO: la escala rige hasta qu
     categorias: ['OF', 'A', 'A M', 'OF M'], personasBase: 16, escalonVigente: vigente,
     meses: mesesDelMotor(new Date(2026, 6, 31), pend, [new Date(2026, 6, 31), sept]), hoy: sept,
   })
-  assert.equal(g.esc.alConvenio, true, 'en septiembre la proyección se cayó sola al jornal pactado')
-  assert.equal(String(g.filas[g.esc.f0 - 2][5]), 'Σ $/hora convenio')
+  assert.equal(g.esc.conAumento, true, 'en septiembre la proyección se cayó sola al jornal de hoy sin aumento')
+  assert.equal(String(g.filas[g.esc.f0 - 2][5]), 'Σ $/hora con aumento')
   // Y la Σ sale del ÚLTIMO ESCALÓN: el bloque 1.1 tiene que leer las filas de agosto en la réplica,
   // que es la escala que sigue rigiendo. Si leyera otro grupo, la base sería de otro mes.
   const basico = String(g.filas[g.plantel.fPrimera - 1][5])
   assert.match(basico, new RegExp(`\\$D\\$${vigente.categorias.Oficial.fila - 1}`),
     `«Básico convenio» dejó de leer el grupo del escalón vigente: ${basico}`)
   for (let r = g.esc.f0; r <= g.esc.f1; r++) {
-    assert.match(String(g.filas[r - 1][5]), new RegExp(`SUMPRODUCT\\(\\$B\\$${g.plantel.fPrimera}:`),
-      'la Σ del cuadro 1.2 dejó de valuar al convenio en septiembre')
+    assert.match(String(g.filas[r - 1][5]), new RegExp(`N\\(\\$C\\$${g.plantel.fTotal}\\)\\+N\\(\\$D\\$${g.plantel.fTotal}\\)`),
+      'la Σ del cuadro 1.2 dejó de llevar el aumento en septiembre')
   }
-  const linea = g.filas.map((f) => String(f[0] ?? '')).find((c) => /100% del convenio|pactado/i.test(c))
-  assert.match(linea, /100% del convenio/i, 'la pestaña anuncia el pactado con el cuadro al convenio')
+  const linea = g.filas.map((f) => String(f[0] ?? '')).filter((c) => /Con aumento|sin aumento/i.test(c)).join(' | ')
+  assert.match(linea, /Con aumento/i, `la pestaña anuncia la base vieja con el cuadro ya al aumento: ${linea}`)
 })
 
 test('LA FRONTERA DEL MES EN CURSO VIVE EN LA CELDA: lo que se paga este mes va al PACTADO', () => {
@@ -1047,7 +1067,7 @@ test('LA FRONTERA DEL MES EN CURSO VIVE EN LA CELDA: lo que se paga este mes va 
   // NINGÚN MES ESCRITO: la frontera se mueve sola el 1° de cada mes, sin esperar una corrida.
   assert.doesNotMatch(String(gm.filas[gm.p0 - 1][3]), /DATE\(\d{4}/)
   // Y SIN CONVENIO NO HAY DOS BASES ENTRE LAS CUALES ELEGIR: el cuadro ya publica la pactada.
-  const sinConv = formulaSigmaDelMes('A35', { f0: 25, f1: 30, alConvenio: false }, 'C35')
+  const sinConv = formulaSigmaDelMes('A35', { f0: 25, f1: 30, conAumento: false }, 'C35')
   assert.doesNotMatch(sinConv, /TODAY/)
 })
 
@@ -1595,6 +1615,29 @@ test('NINGUNA COLUMNA DE TEXTO ALINEADA A LA DERECHA — el texto se derramaba s
     }
     return v
   }
+  // ═══ EL FORMATO ESTÁ INDEXADO POR NÚMERO DE COLUMNA Y NO SABE QUE CAMBIÓ DE DUEÑO (29/08) ═══
+  //
+  // La columna 6 de 1.1 era «Margen» —un ratio, pintado PERCENT— y con el rehacer pasó a ser
+  // «Aumento $/hora». El `fmt` no se movió: los $3.174 de un Oficial se habrían dibujado
+  // «317400,0%» en la pestaña, con el número correcto adentro de la celda. Ninguna prueba de
+  // fórmulas lo ve —la fórmula está bien— y la corrida no lo imprime. Este assert es lo único que
+  // puede notarlo sin abrir el archivo.
+  const formatoDe = (fila, col) => {
+    let v = null
+    for (const r of reqs) {
+      const g2 = r.repeatCell
+      if (!g2?.range) continue
+      const { startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 } = g2.range
+      if (fila - 1 < r0 || fila - 1 >= r1 || col < c0 || col >= c1) continue
+      const f = g2.cell?.userEnteredFormat?.numberFormat
+      if (f) v = f
+    }
+    return v
+  }
+  assert.equal(formatoDe(gm.plantel.fPrimera, 6)?.type, 'CURRENCY',
+    'el aumento de la hora se está dibujando como porcentaje: $3.174 se lee «317400,0%»')
+  assert.equal(formatoDe(gm.plantel.fPrimera, 1)?.type, 'NUMBER', 'las personas dejaron de ser un entero')
+
   // 1.1 · «Convenio» (columna del dueño) y «Estado».
   for (const col of [4, 7]) {
     assert.equal(alineacionDe(gm.plantel.fPrimera, col), 'LEFT', `1.1 col ${col}: el texto vuelve a taparle el número a la izquierda`)
@@ -1846,8 +1889,8 @@ test('EL DEFECTO: la columna «Obreros» valuaba la obligación con las horas ME
 })
 
 test('EL DEFECTO: el ✓ del piso se firmaba sin mirar el plantel ni las horas', () => {
-  const control = gm.filas.map((f) => String(f[0] ?? '')).find((s) => s.includes('cubren el piso UOCRA'))
-  assert.ok(control, 'se fue el control del piso')
+  const control = gm.filas.map((f) => String(f[0] ?? '')).find((s) => s.includes('llevan el aumento'))
+  assert.ok(control, 'se fue el control de cobertura del aumento')
   assert.ok(control.includes('— faltan '),
     'el control volvió a preguntar sólo por los básicos: firma el ✓ con gente de la nómina afuera del piso')
   assert.ok(control.includes('la jornada es'),
@@ -1859,6 +1902,6 @@ test('el plantel del piso sale de la quincena EN CURSO y el cuadro 4.1 lo dice',
   assert.ok(t.some((s) => s.includes('Plantel vigente — la quincena en curso')),
     'el título del 4.1 volvió a nombrar la quincena cerrada sobre el plantel de hoy')
   // Y con el bloque abierto sin gente el rótulo cambia: un título fijo miente en uno de los dos casos.
-  const gc = conMotor({ origenPiso: 'cerrada' })
+  const gc = conMotor({ origenPlantel: 'cerrada' })
   assert.ok(gc.filas.map((f) => String(f[0] ?? '')).some((s) => s.includes('Plantel base — última quincena cerrada')))
 })

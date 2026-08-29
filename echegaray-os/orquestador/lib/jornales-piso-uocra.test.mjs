@@ -12,9 +12,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CATEGORIAS_POR_HORA, categoriaDelConvenio, expresionClaveConvenio,
-  pisoDeQuincena, quincenasBajoPiso, formulaControlPiso, expresionSinEscala,
+  pisoDeQuincena, quincenasBajoPiso, formulaControlAumento, expresionSinEscala,
 } from './jornales-piso-uocra.mjs'
-import { sigmaConvenioDelPlantel, formulaSigmaConvenio } from './proyeccion-convenio.mjs'
+import { sigmaConAumentoDelPlantel, formulaSigmaConAumento } from './proyeccion-convenio.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -28,11 +28,20 @@ const ESCALON = {
   categorias: Object.fromEntries(Object.entries(ESCALA_VERIFICADA)
     .map(([c, b], i) => [c, { fila: 10 + i, basico: b, zonaA: b }])),
 }
-/** El espejo `_J_OBREROS` como lo lee el motor: columna B nombre, columna D código de categoría. */
+// LA TARIFA DE HOY, SINTÉTICA (29/08). Desde que la proyección es «lo de hoy + el aumento», la
+// columna W del espejo entra en el número: sin ella la Σ sería sólo el aumento y este archivo estaría
+// midiendo otra cosa. Los valores son del orden de los reales, no copiados del archivo vivo.
+const TARIFA = { OF: 5600, 'OF M': 5200, A: 4500, 'A M': 4300 }
+
+/** El espejo `_J_OBREROS` como lo lee el motor: col B nombre, col D categoría, col W $/hora de hoy. */
 const espejo = () => {
   const filas = []
   for (const [cod, n] of PLANTEL) {
-    for (let i = 0; i < n; i++) filas.push([null, `Persona ${filas.length + 1}`, null, cod])
+    for (let i = 0; i < n; i++) {
+      const f = [null, `Persona ${filas.length + 1}`, null, cod]
+      f[22] = TARIFA[cod]
+      filas.push(f)
+    }
   }
   return filas
 }
@@ -62,10 +71,11 @@ const PENDIENTES = [
 ]
 
 /**
- * LA PROYECCIÓN DE UNA QUINCENA, COMO LA ARMA LA PESTAÑA: `MAX(convenio; demanda)`, y el convenio es
- * Σ$/hora × factor del mes × horas por persona y día × días laborables. Cuando la Σ se apaga, el
- * `IFERROR(convenio;0)` de la celda hace que el MAX resuelva SIEMPRE por la demanda — ése es el modo
- * de falla que este archivo persigue, así que se reproduce igual: con un 0, no con un error.
+ * LA PROYECCIÓN DE UNA QUINCENA, COMO LA ARMA LA PESTAÑA HOY: Σ$/hora CON AUMENTO × factor del mes ×
+ * horas por persona y día × días laborables. SIN `MAX` contra la demanda de obras: ese MAX murió el
+ * 14/08 —`formulaProyectadoQuincena` devuelve la expresión sola— porque hacía que la columna cambiara
+ * de naturaleza fila por fila. El campo `demanda` de las quincenas se conserva sólo como dato
+ * histórico de las fixtures; ninguna cuenta de este archivo lo usa.
  */
 const proyectar = (sigma, escrito) => PENDIENTES.map((q) => {
   // EL PISO SE MIDE CONTRA LA OBLIGACIÓN, NO CONTRA LO QUE LA PESTAÑA HAYA LOGRADO RESOLVER. Ésta es
@@ -73,18 +83,19 @@ const proyectar = (sigma, escrito) => PENDIENTES.map((q) => {
   // categoría que se cae de la resolución se caería también del piso y las dos bajarían juntas — el
   // control diría "cubre" con doce personas sin escala adentro. Es la regla del repo: un control nunca
   // se valida contra la misma información que produce.
-  const obligacion = sigmaConvenioDelPlantel(espejo(), BLOQUE, ESCALON)
-  const s = sigmaConvenioDelPlantel(espejo(), BLOQUE, ESCALON, undefined, escrito)
+  const obligacion = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON)
+  const s = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON, undefined, escrito)
   const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
   const dias = diasHabilesObra(q.desde, q.hasta)
-  const convenio = sigma ? s.total * factor * HORAS_POR_DIA * dias : 0
   return {
     ...q,
     porCategoria: obligacion.porCategoria,
     factor,
     horasPorDia: HORAS_POR_DIA,
     dias,
-    proyectado: Math.max(convenio, q.demanda),
+    // `sigma:false` simula la Σ apagada (réplica caída): la proyección se queda en cero y el control
+    // tiene que verlo. Antes ese cero lo tapaba el MAX contra la demanda.
+    proyectado: sigma ? s.total * factor * HORAS_POR_DIA * dias : 0,
   }
 })
 
@@ -124,34 +135,38 @@ test('la fórmula dice lo MISMO que el JS: una sola regla, dos caminos', () => {
   assert.equal(expresionClaveConvenio({ celda: '$E11', equivalencia: null, rangoCategorias: 'x' }), '$E11')
 })
 
-test('EL CONTROL QUE EL DUEÑO PIDIÓ: ninguna quincena proyectada queda bajo el piso UOCRA', () => {
-  // ═══ ÉSTE ES EL TEST QUE SE PONE ROJO SI SE REVIERTE LA CORRECCIÓN ═══
+test('EL MÍNIMO LEGAL SIGUE CUBIERTO: el aumento suma sobre la tarifa, no la reemplaza', () => {
+  // ═══ QUÉ PREGUNTA CONTESTA ESTE TEST DESDE EL 29/08 ═══
   //
-  // Con la columna «Convenio» resuelta bien, la Σ del plantel vale $97.772/hora y el `MAX` garantiza
-  // el piso POR CONSTRUCCIÓN. Si se vuelve a dejar ganar la basura, la Σ cae a $50.784 —sólo los 8
-  // «OF M», la única categoría cuya celda estaba vacía— y seis de las nueve quincenas quedan cortas.
+  // Ya no es «¿la proyección llega al 100% del convenio?» —el dueño rechazó ese criterio: el convenio
+  // no reemplaza la tarifa de nadie—. Es la otra, que sigue siendo obligatoria: la masa proyectada
+  // con `hoy + aumento` ($130.486/hora) ¿queda por encima del mínimo legal del plantel ($97.772/hora)?
+  // Con estas tarifas sí, y con margen. Es un control INDEPENDIENTE: el piso sale de la escala y la
+  // proyección de la planilla, dos fuentes distintas — si empatan, empatan por el hecho.
   const r = quincenasBajoPiso(proyectar(true, ESCRITO_VIVO))
   assert.equal(r.cortas, 0,
-    `${r.cortas} quincena(s) por debajo del piso UOCRA, faltan $${Math.round(r.falta).toLocaleString('es-AR')}`)
+    `${r.cortas} quincena(s) por debajo del mínimo legal, faltan $${Math.round(r.falta).toLocaleString('es-AR')}`)
   assert.equal(Math.round(r.falta), 0)
   // Y el piso NO es cero: un control que compara contra nada siempre da verde.
   assert.ok(r.filas.every((f) => f.piso > 0), 'alguna quincena se midió contra un piso de $0')
 })
 
-test('EL DEFECTO, MEDIDO: sin piso de convenio faltan $28.864.019 en seis quincenas', () => {
-  // El estado del archivo vivo el 14/08. Es la respuesta con número a la pregunta del dueño, y queda
-  // fijada acá para que nadie tenga que volver a medirla a mano.
+test('EL CONTROL PUEDE DECIR QUE NO: con la Σ apagada, las NUEVE quincenas quedan cortas', () => {
+  // UN CONTROL QUE NO SE PUEDE PONER ROJO NO ES UN CONTROL. Con la réplica caída la Σ se apaga y la
+  // proyección queda en cero: las nueve tienen que aparecer cortas por el piso entero.
+  //
+  // Antes acá había otra medición —«sin piso de convenio faltan $28.864.019 en seis quincenas»— y las
+  // otras tres «zafaban» porque el `MAX` contra la demanda de obras las tapaba. Ese MAX no existe
+  // desde el 14/08, así que hoy no hay nada que tape un cero: son nueve, y eso es más honesto.
   const r = quincenasBajoPiso(proyectar(false, ESCRITO_VIVO))
-  assert.equal(r.cortas, 6)
-  assert.equal(Math.round(r.falta), 28864019)
-  // Las tres primeras SÍ cubrían: la demanda de las obras vendidas de agosto y septiembre es más alta
-  // que el convenio. Que tres de nueve zafaran por casualidad es justamente por qué hace falta el
-  // control — el total de la columna se veía sano.
-  assert.deepEqual(r.filas.slice(0, 3).map((f) => Math.round(f.falta)), [0, 0, 0])
+  assert.equal(r.cortas, 9)
+  assert.ok(r.falta > 0)
+  assert.deepEqual(r.filas.slice(0, 3).map((f) => f.falta > 0), [true, true, true],
+    'con la proyección en cero ninguna quincena puede estar cubierta')
 })
 
 test('el piso se abre POR CATEGORÍA, que es como el dueño preguntó', () => {
-  const s = sigmaConvenioDelPlantel(espejo(), BLOQUE, ESCALON, undefined, ESCRITO_VIVO)
+  const s = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON, undefined, ESCRITO_VIVO)
   const { piso, detalle } = pisoDeQuincena({ porCategoria: s.porCategoria, factor: 1, horasPorDia: 1, dias: 1 })
   assert.equal(Math.round(piso), 97772, 'la Σ al convenio del plantel de agosto 2026')
   const porConvenio = new Map()
@@ -161,16 +176,25 @@ test('el piso se abre POR CATEGORÍA, que es como el dueño preguntó', () => {
   assert.equal(porConvenio.get('Ayudante'), 4 * 5399)
 })
 
-test('la línea de la pestaña avisa cuándo el piso NO se está aplicando, y cuántos son', () => {
-  const f = formulaControlPiso({ celdasPersonas: '$B$76:$B$79', celdasBasico: '$F$76:$F$79', nQuincenas: 9 })
-  assert.match(f, /9 quincenas proyectadas cubren el piso UOCRA/)
+test('la línea de la pestaña avisa cuándo el aumento NO llega a todos, y a cuántos', () => {
+  const f = formulaControlAumento({ celdasPersonas: '$B$76:$B$79', celdasBasico: '$F$76:$F$79', nQuincenas: 9 })
+  assert.match(f, /9 quincenas proyectadas llevan el aumento/)
   assert.match(f, /▲/, 'la marca de alerta tiene que ser la que se dibuja en el PDF')
   assert.match(f, /SUMPRODUCT\(\$B\$76:\$B\$79;1-\(ISNUMBER\(\$F\$76:\$F\$79\)\*\(\$F\$76:\$F\$79>0\)\)\)/,
     'el control dejó de medirse sobre las dos columnas que arman la Σ')
   assert.doesNotMatch(f, /,/, 'separador es-AR')
   // Y NOMBRA EL NÚMERO CON EL QUE SE ARREGLA: cuántas personas quedaron sin escala. Un aviso que dice
   // "algo anda mal" no se puede accionar.
-  assert.match(f, /persona\(s\) sin escala/)
+  assert.match(f, /persona\(s\) SIN AUMENTO/)
+  // Y NINGUNA PALABRA GREMIAL: esta celda vive ARRIBA del calendario, y la pestaña prohíbe ahí
+  // «convenio», «categoría», «básico», «escalón» y «paritaria» (orden de diseño del dueño).
+  for (const palabra of [/convenio/i, /categor[íi]a/i, /b[áa]sico/i, /escal[óo]n/i, /paritaria/i]) {
+    assert.doesNotMatch(f, palabra, 'volvió a entrar material gremial arriba del calendario')
+  }
+  // Ningún literal de la columna A puede pasar de 60 caracteres (`LARGO_NOTA`).
+  for (const lit of f.match(/"[^"]*"/g) ?? []) {
+    assert.ok(lit.length - 2 <= 60, `literal de ${lit.length - 2} caracteres en la columna A: ${lit}`)
+  }
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -223,39 +247,32 @@ test('el control sigue rojo con la celda VACÍA, y verde sólo con las cuatro re
   assert.equal(evaluarSinEscala(expr, [2, 0, 4, 2], [5399, 'Banco', 6348, 5399]), 0)
 })
 
-test('LA Σ DEL CONVENIO Y EL CONTROL PREGUNTAN LO MISMO — una sola definición', () => {
+test('EL CONTROL SIGUE USANDO LA DEFINICIÓN COMPARTIDA DE «SIN ESCALA»', () => {
   // Las dos celdas se separaron una vez y costó la mitad del plantel: la Σ publicó $46.988 (sin «OF
   // M») mientras el control de al lado decía ✓. Que las dos citen la MISMA expresión es lo que impide
   // que vuelvan a contar historias distintas sobre el mismo plantel.
   const sinEscala = expresionSinEscala('$B$79:$B$82', '$F$79:$F$82')
-  assert.ok(formulaSigmaConvenio(79, 82).includes(sinEscala),
-    'el guard de la Σ dejó de usar la definición compartida de «sin escala»')
-  assert.ok(formulaControlPiso({ celdasPersonas: '$B$79:$B$82', celdasBasico: '$F$79:$F$82', nQuincenas: 9 })
-    .includes(sinEscala), 'el control del piso dejó de usar la definición compartida')
+  // LA Σ YA NO LLEVA ESE GUARD, Y ES UNA DECISIÓN, NO UN OLVIDO. Con un piso, una categoría sin
+  // básico apagaba la Σ entera: un piso incompleto no es un piso. Con un aumento aditivo, apagarla
+  // escondería lo que las otras dieciséis personas cobran HOY —que es un hecho de la planilla— por
+  // una escala que falta. Lo que falta lo cuenta el control, que para eso mira las mismas dos
+  // columnas y publica el número de personas.
+  assert.ok(!formulaSigmaConAumento(79, 82, 83).includes(sinEscala),
+    'la Σ volvió a apagarse entera por una categoría sin escala')
+  assert.ok(formulaControlAumento({ celdasPersonas: '$B$79:$B$82', celdasBasico: '$F$79:$F$82', nQuincenas: 9 })
+    .includes(sinEscala), 'el control dejó de usar la definición compartida de «sin escala»')
   assert.doesNotMatch(sinEscala, /,/, 'separador es-AR: una coma y las dos celdas son #ERROR!')
 })
 
-test('EL RECÁLCULO: la Σ partida dejó SEIS quincenas cortas por $23.754.205', () => {
-  // ═══ LA PREGUNTA QUE ABRIÓ ESTA TAREA, CON NÚMERO ═══
+test('EL MARGEN SOBRE EL MÍNIMO LEGAL, MEDIDO — y qué pasa si la Σ se parte a la mitad', () => {
+  // ═══ LA PREGUNTA, CON NÚMERO ═══
   //
-  // Una vez que la Σ deja de estar partida a la mitad, ¿el piso sigue cerrando? La respuesta no es
-  // obvia: con «OF M» adentro la Σ pasa de $46.988 a $97.772, así que el piso de CADA quincena se
-  // duplica y hay que medirlo, no suponerlo.
-  //
-  // Lo que la pestaña publica hoy en «Obreros» son $84.868.442 hasta diciembre. Contra el piso del
-  // plantel COMPLETO faltan $23.754.205 repartidos en las seis quincenas de octubre a diciembre; las
-  // tres de agosto y septiembre zafan porque la demanda de las obras vendidas es más alta que el
-  // convenio, no porque el piso se estuviera aplicando. (Con las 7,2020 h/día exactas que mide la
-  // pestaña en vez de las 7,20 declaradas acá arriba, el faltante da $23.762.470: el criterio no
-  // cambia, la cifra se mueve $8k.)
-  //
-  // No son los $28.864.019 del hueco de ayer: aquél medía la proyección SIN ningún término de
-  // convenio, y éste mide una Σ a medias. Dos defectos distintos sobre la misma celda.
-  const SIGMA_PUBLICADA = 2 * 5399 + 8 * 0 + 4 * 6348 + 2 * 5399 // F80="Banco" vale 0 en SUMPRODUCT
-  assert.equal(SIGMA_PUBLICADA, 46988, 'la Σ que la pestaña publicaba el 14/08 en F90')
-
+  // La proyección con aumento vale $130.486/hora ($81.600 de tarifas de hoy + $48.886 de aumento) y
+  // el mínimo legal del mismo plantel vale $97.772/hora. El margen es del 33,5%: el aumento no sólo
+  // cubre la escala, la deja bien arriba. Eso hay que MEDIRLO y no suponerlo, porque es la única
+  // razón por la que se puede publicar una masa aditiva sin revisar persona por persona.
   const conSigma = (sigma) => PENDIENTES.map((q) => {
-    const obligacion = sigmaConvenioDelPlantel(espejo(), BLOQUE, ESCALON)
+    const obligacion = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON)
     const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
     const dias = diasHabilesObra(q.desde, q.hasta)
     return {
@@ -264,20 +281,29 @@ test('EL RECÁLCULO: la Σ partida dejó SEIS quincenas cortas por $23.754.205',
       factor,
       horasPorDia: HORAS_POR_DIA,
       dias,
-      proyectado: Math.max(sigma * factor * HORAS_POR_DIA * dias, q.demanda),
+      proyectado: sigma * factor * HORAS_POR_DIA * dias,
     }
   })
 
-  const publicado = quincenasBajoPiso(conSigma(SIGMA_PUBLICADA))
-  assert.equal(publicado.cortas, 6)
-  assert.equal(Math.round(publicado.falta), 23754205)
-  assert.deepEqual(publicado.filas.slice(0, 3).map((f) => Math.round(f.falta)), [0, 0, 0],
-    'agosto y septiembre los cubre la demanda de obras, no el convenio')
+  const s = sigmaConAumentoDelPlantel(espejo(), BLOQUE, ESCALON)
+  assert.equal(s.hoy, 81600, 'la tarifa de hoy de las 16 personas')
+  assert.equal(s.aumento, 48886, '12 Oficiales × $3.174 + 4 Ayudantes × $2.699,50')
+  assert.equal(s.total, 130486)
+  // EL CONTRASTE QUE PRUEBA QUE NO ES UN PISO: valuar el plantel A LA ESCALA daría $97.772 —menos que
+  // esto— porque hoy se paga por debajo del convenio. Si alguien vuelve al piso, la Σ BAJA, y por eso
+  // el número que se publicaría seguiría pareciendo razonable. Este assert es el que lo agarra.
+  assert.equal(s.total > 97772, true, 'la Σ con aumento tiene que ser MAYOR que valuar al convenio')
+  assert.equal(Number((s.total / 97772).toFixed(3)), 1.335)
 
-  // Y con la Σ del plantel completo el MAX cubre el piso POR CONSTRUCCIÓN: ninguna queda corta.
-  const pleno = quincenasBajoPiso(conSigma(97772))
+  const pleno = quincenasBajoPiso(conSigma(s.total))
   assert.equal(pleno.cortas, 0,
-    `${pleno.cortas} quincena(s) cortas con el plantel completo, faltan $${Math.round(pleno.falta).toLocaleString('es-AR')}`)
-  assert.equal(pleno.filas[0].detalle.reduce((s, x) => s + x.personas, 0), 16,
-    'el piso se mide contra las 16 personas, no contra las 8 que sobrevivían al agujero')
+    `${pleno.cortas} quincena(s) por debajo del mínimo legal, faltan $${Math.round(pleno.falta).toLocaleString('es-AR')}`)
+  assert.equal(pleno.filas[0].detalle.reduce((s2, x) => s2 + x.personas, 0), 16,
+    'el piso se mide contra las 16 personas, no contra las que sobrevivan a un agujero')
+
+  // Y LA MUTACIÓN: con la Σ partida a la mitad —el defecto del 14/08, una categoría que se cae— seis
+  // quincenas quedan por debajo del mínimo legal. El control tiene que verlas.
+  const partida = quincenasBajoPiso(conSigma(46988))
+  assert.ok(partida.cortas > 0, 'con la mitad del plantel adentro el control siguió diciendo que sí')
+  assert.equal(partida.cortas, 9)
 })

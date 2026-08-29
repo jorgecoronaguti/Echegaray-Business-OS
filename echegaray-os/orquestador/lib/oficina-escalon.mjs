@@ -53,10 +53,12 @@
 //
 // ═══ LA TRAMPA QUE ESTE ARCHIVO NO REPRODUCE ═══
 //
-// La Σ del convenio de obra se apaga ENTERA —devuelve `""`— si a una sola categoría le falta el
-// básico. El 14/08 una fórmula residual en la celda del básico de `A` dejó la Σ en blanco, el término
-// `convenio` del `MAX(convenio; demanda)` en cero, y la proyección de obreros publicó $79.753.312
-// donde el piso pedía $109.714.182. Ni un error, ni una celda en rojo.
+// La Σ de obra se apagaba ENTERA —devolvía `""`— si a una sola categoría le faltaba el básico. El
+// 14/08 una fórmula residual en la celda del básico de `A` dejó la Σ en blanco, el término del
+// plantel en cero, y la proyección de obreros publicó $79.753.312 donde el piso pedía $109.714.182.
+// Ni un error, ni una celda en rojo. (Desde el 29/08 esa Σ ya no se apaga por una categoría sin
+// escala —lo que se pierde es el aumento de ESA gente, no el sueldo de las otras— y quién quedó
+// afuera lo cuenta el control de cobertura.)
 //
 // Acá el equivalente sería devolver "no sé" cuando parte de la cadena de tramos no está firmada. No
 // se hace: se devuelve HASTA DÓNDE está firmada. Un dato que falta degrada la fila, nunca la apaga.

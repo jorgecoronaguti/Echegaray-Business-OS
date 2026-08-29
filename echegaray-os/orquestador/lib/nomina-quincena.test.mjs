@@ -82,3 +82,42 @@ test('los comentarios de la Nómina no describen un código que ya no existe', (
   assert.doesNotMatch(NOMINA, /Math\.max\(q\.jornal/)
   assert.doesNotMatch(NOMINA, /el escenario\n\s*\/\/ «piso» es el mismo que el de hoy/)
 })
+
+// ═══ LAS TRES TARIFAS DEL EMPLEADO, UNA AL LADO DE LA OTRA (29/08/2026) ═══
+//
+// El dueño ordenó rehacer el criterio: el convenio aporta el 50% de su básico como SUBA sobre lo que
+// cada uno cobra hoy, no una tarifa que lo reemplaza. En la pestaña eso se tiene que poder LEER: qué
+// cobra, cuánto sube, cuánto va a cobrar. Antes las dos puntas estaban separadas por tres columnas de
+// plata y la del medio no existía — para saber cuánto subía cada uno había que restar dos celdas
+// lejanas, que es justo la cifra que el dueño decidió.
+test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nueva, y en ese orden', () => {
+  const enc = /fila\('Persona', 'Cat\.', 'Convenio'[\s\S]*?'Aumento'\)/.exec(NOMINA)
+  assert.ok(enc, 'se fue el encabezado del cuadro 1 de la Nómina')
+  const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  const i = cols.indexOf('$/h HOY')
+  assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
+  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', '+ Aumento $/h', '$/h CON AUMENTO'],
+    'las tres tarifas dejaron de leerse seguidas: la cuenta no se puede seguir de izquierda a derecha')
+  // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
+  // separan el día que el porcentaje cambie.
+  assert.match(NOMINA, /const suba = tarifaConAumento\(q\.jornal, basico\)/)
+  assert.match(NOMINA, /suba \? Math\.round\(suba\.aumento\) : SIN_DATO/)
+})
+
+test('el vocabulario del código dice «aumento», no «piso» — no quedan dos nombres para la misma columna', () => {
+  // Los nombres viejos sobrevivieron al cambio de criterio y quedaron nombrando un piso que ya no
+  // existe, con los encabezados de la pestaña diciendo «CON AUMENTO». Dos vocabularios para la misma
+  // columna es como alguien vuelve a implementar un piso creyendo que arregla algo.
+  //
+  // SE MIRA EL CÓDIGO, NO LA PROSA: la primera versión de este test se puso roja contra su propio
+  // comentario, que nombraba las variables viejas para explicar de qué hablaba. Un guard que no
+  // distingue una mención de un uso obliga a no poder escribir de qué se trata.
+  const codigo = NOMINA.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')
+    .map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n')
+  for (const viejo of ['jornalPiso', 'pisoR', 'bancoPiso', 'efPiso', 'totPiso']) {
+    assert.doesNotMatch(codigo, new RegExp(`\\b${viejo}\\b`),
+      `volvió ${viejo} a la Nómina: el código nombra un piso que no existe`)
+  }
+  // Y el guard tiene que poder ver un uso de verdad: si no, es una constante que siempre da verde.
+  assert.match(`${codigo}\nconst jornalPiso = 1`, /\bjornalPiso\b/)
+})

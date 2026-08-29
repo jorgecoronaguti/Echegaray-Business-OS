@@ -162,9 +162,16 @@ test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas
   assert.equal(glosaDemanda(null), '')
   assert.equal(glosaDemanda({ porQuincena: new Map(), nObras: 7 }), '')
   const g = glosaDemanda({ porQuincena: new Map([['2026-09-1', {}]]), nObras: 7 })
-  // La glosa se acortó el 13/08 con el rediseño de la pestaña: 110 caracteres para decir en palabras
-  // el MAX que la celda ya calcula. Lo que se sigue exigiendo es que nombre CUÁNTAS obras empujan —sin
-  // el número, el lector no sabe sobre qué se apoya la suba— y que declare que la regla es un MAX.
+  // ═══ LA GLOSA DESCRIBÍA UNA FÓRMULA QUE LA CELDA YA NO TENÍA (29/08) ═══
+  //
+  // Decía `Proyectado = MAX(convenio; demanda de 7 obras)` y se escribía EN LA PESTAÑA. El MAX se
+  // había ido el 14/08 —el test de arriba lo prueba: `assert.ok(!conDemanda.includes('MAX'))`— así
+  // que durante dos semanas la línea afirmó, en el Sheet, un criterio que la fórmula de al lado no
+  // usaba. Dos tests del MISMO archivo se contradecían y los dos estaban en verde.
+  //
+  // Lo que se exige ahora: que nombre cuántas obras hay —el dato sigue siendo útil— y que diga que
+  // NO entran en el número. Y que no vuelva a nombrar el MAX, que es lo que lo hacía falso.
   assert.match(g, /7 obras/)
-  assert.match(g, /MAX\(convenio; demanda/)
+  assert.match(g, /no la demanda/, 'la glosa dejó de decir que la demanda NO entra en la columna')
+  assert.doesNotMatch(g, /MAX/, 'volvió a anunciar en la pestaña un MAX que la fórmula no tiene')
 })

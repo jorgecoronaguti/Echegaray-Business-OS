@@ -324,10 +324,11 @@ async function extraerDeLasFuentes(google, corte) {
     // El bloque de arriba copiaba `moCargasPesos` de la explosión del dueño y lo daba por llegado (ya
     // no existe: la conciliación contra las constantes se reemplazó por el control contra el total que
     // publica el propio cuadro 5). Pero la MO de las obras SIGUE entrando al libro por otra puerta —la
-    // pestaña Jornales, que esta medición no toca—, cuya celda proyectada es
-    // `MAX(convenio; demanda)`: donde el piso del plantel vigente supera a la demanda, la MO de la
-    // obra está ADENTRO de lo publicado; donde la planilla queda corta, el cash flow muestra de menos
-    // y hasta hoy nada lo decía. Se mide contra lo que la planilla publica de verdad —dos fuentes
+    // pestaña Jornales, que esta medición no toca—, cuya celda proyectada es el PLANTEL ACTUAL con
+    // su aumento: si ese número supera a la demanda de las obras, la MO de la obra está ADENTRO de lo
+    // publicado; si queda corto, el cash flow muestra de menos y nada más lo diría. (Hasta el 14/08
+    // la celda era `MAX(convenio; demanda)` y entonces este control NO PODÍA dar rojo: el MAX
+    // garantizaba por construcción que lo publicado nunca fuera menor. Ahora sí puede.) Se mide contra lo que la planilla publica de verdad —dos fuentes
     // independientes, que es lo único que hace válido a un control— y se imprime siempre, también
     // cuando cubre el 100%: un control que sólo habla cuando falla no se distingue de uno apagado.
     if (OBRAS_FUTURAS.length) {
