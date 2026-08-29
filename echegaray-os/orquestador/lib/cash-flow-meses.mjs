@@ -70,8 +70,13 @@ export const ROTULOS_HERO = Object.freeze({
   viene: 'LO QUE VIENE (YA VENDIDO)',
   vieneCobrar: 'a cobrar',
   vienePagar: 'a pagar',
+  // LA PALABRA QUE SE HABÍA PERDIDO. El titular viejo decía "sin ventas nuevas · es un piso" y el
+  // rediseño se quedó con la mitad: `(YA VENDIDO)` dice de dónde salen los ingresos, no qué significa
+  // que el neto dé negativo. Los ingresos proyectados salen SÓLO de Cobranzas —un libro de cuentas por
+  // cobrar, no un pipeline comercial— y los egresos se proyectan por calendario y están completos: el
+  // número es, por construcción, el peor caso. 343 px medidos contra los 374 del slot.
+  vieneCola: 'piso',
   cierre: 'CIERRE PROYECTADO AL 31/12',
-  cierrePrefijo: 'caja operativa',
 })
 
 /** El tope medido de la columna del hero. Lo verifica el test, no la buena voluntad. */
@@ -214,7 +219,7 @@ export function vinculoHoy(gid, meta) {
  * mezclar ventanas de tiempo) y regla 17 (distinguir actividad de progreso).
  *
  * Desde acá la regla es estructural y MEDIBLE: ninguna tarjeta cita filas de dos ventanas. Lo verifica
- * `ventanasDe` (cash-flow-matriz) sobre cada valor y cada glosa del titular, no un comentario.
+ * `ventanasDe` (cash-flow-ventanas) sobre cada valor y cada glosa del titular, no un comentario.
  *
  *   1 · CAJA HOY          la única foto del presente, y lo dice con la fecha del saldo declarado
  *   2 · YA PASÓ EN EL AÑO reales contra reales: lo que la caja hizo, sin una sola proyección adentro
@@ -245,7 +250,7 @@ function bloqueHero(poner, meta, refs = {}) {
   // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
   // da un stock. Los meses anteriores al corte van vacíos, así que sumarlos daría cualquier cosa.
   const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
-  const cierre = glosaDeCierre({ refCierre: diciembre, exprInvertido: invertido, prefijo: ROTULOS_HERO.cierrePrefijo })
+  const cierre = glosaDeCierre({ refCierre: diciembre, exprInvertido: invertido })
 
   const tarjetas = [
     {
@@ -264,7 +269,7 @@ function bloqueHero(poner, meta, refs = {}) {
     {
       rotulo: ROTULOS_HERO.viene,
       valor: `=N(${T('ingresoProyectado')})-N(${T('egresoProyectado')})`,
-      ...glosaPartida(ROTULOS_HERO.vieneCobrar, T('ingresoProyectado'), ROTULOS_HERO.vienePagar, T('egresoProyectado')),
+      ...glosaPartida(ROTULOS_HERO.vieneCobrar, T('ingresoProyectado'), ROTULOS_HERO.vienePagar, T('egresoProyectado'), ROTULOS_HERO.vieneCola),
     },
     { rotulo: ROTULOS_HERO.cierre, valor: `=N(${diciembre})`, glosa: cierre.glosa, muestra: cierre.muestra },
   ]
@@ -293,11 +298,13 @@ function bloqueHero(poner, meta, refs = {}) {
  * poder mostrar. Sin la muestra, el auditor de ancho no puede medir una glosa que es fórmula — y no
  * medirla es exactamente cómo llegó a producción `$839.552.44(`.
  */
-export function glosaPartida(dichoA, refA, dichoB, refB) {
+export function glosaPartida(dichoA, refA, dichoB, refB, cola = '') {
   const plata = (c) => `TEXT(${c};"$ #,##0")`
+  const fin = cola ? ` · ${cola}` : ''
+  // Sin cola NO se concatena una cadena vacía: `&""` al final es ruido que después alguien copia.
   return {
-    glosa: `="${dichoA} "&${plata(refA)}&" · ${dichoB} "&${plata(refB)}`,
-    muestra: `${dichoA} ${IMPORTE_MUESTRA} · ${dichoB} ${IMPORTE_MUESTRA}`,
+    glosa: `="${dichoA} "&${plata(refA)}&" · ${dichoB} "&${plata(refB)}${fin ? `&"${fin}"` : ''}`,
+    muestra: `${dichoA} ${IMPORTE_MUESTRA} · ${dichoB} ${IMPORTE_MUESTRA}${fin}`,
   }
 }
 

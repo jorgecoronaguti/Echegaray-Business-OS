@@ -176,12 +176,14 @@ test('la liquidez total suma; y con 0 o sin dato NO publica el número de la caj
 })
 
 test('la glosa del CIERRE emite esas dos ramas y ninguna otra', () => {
-  const PREFIJO = 'caja operativa'
-  const f = glosaDeCierre({ refCierre: '$M$50', exprInvertido: expresionInvertido('CAJA'), prefijo: PREFIJO })
+  const f = glosaDeCierre({ refCierre: '$M$50', exprInvertido: expresionInvertido('CAJA') })
   // (1) LA RAMA QUE PUEDE: el cierre operativo MÁS lo invertido, dicho en la glosa y no en el titular.
-  assert.ok(f.glosa.includes(`"${PREFIJO} · ${CIERRE_CON_INVERTIDO} "&TEXT(N($M$50)+N(SUMIF(`), f.glosa)
+  assert.ok(f.glosa.includes(`"${CIERRE_CON_INVERTIDO} "&TEXT(N($M$50)+N(SUMIF(`), f.glosa)
   // (2) LA QUE NO PUEDE: lo dice, y NO publica el cierre pelado como si fuera la liquidez con Balanz.
-  assert.ok(f.glosa.includes(`"${PREFIJO} · ${CIERRE_SIN_INVERTIDO}"`), f.glosa)
+  assert.ok(f.glosa.includes(`"${CIERRE_SIN_INVERTIDO}"`), f.glosa)
+  // SIN PREFIJO: "caja operativa · " repetía el rótulo de al lado y dejaba el margen en 9 px sobre 294,
+  // el más chico de la pestaña. Sin él son 189/294. El rótulo ya dice que el cierre es la caja.
+  assert.ok(!/caja operativa/i.test(f.glosa), `la glosa volvió a repetir el rótulo: ${f.glosa}`)
   assert.ok(!new RegExp(`${CIERRE_CON_INVERTIDO}[^&]*"\\)`).test(f.glosa), `una rama promete Balanz sin sumarlo: ${f.glosa}`)
 
   // ═══ LA VENTANA DE TIEMPO, DECLARADA DONDE SE LEE LA CIFRA ═══
@@ -200,11 +202,11 @@ test('la glosa del CIERRE emite esas dos ramas y ninguna otra', () => {
   assert.ok(f.glosa.includes('"$ #,##0"'), f.glosa)
 
   // Sin pestaña que leer no hay fórmula: la glosa dice el aviso, y NO promete una cifra con Balanz.
-  const sin = glosaDeCierre({ refCierre: '$M$50', exprInvertido: null, prefijo: PREFIJO })
-  assert.equal(sin.glosa, `${PREFIJO} · ${CIERRE_SIN_INVERTIDO}`)
+  const sin = glosaDeCierre({ refCierre: '$M$50', exprInvertido: null })
+  assert.equal(sin.glosa, CIERRE_SIN_INVERTIDO)
   assert.equal(sin.muestra, sin.glosa)
   assert.ok(!sin.glosa.includes(CIERRE_CON_INVERTIDO), sin.glosa)
-  assert.equal(muestraCierre(PREFIJO).includes(IMPORTE_MUESTRA), true)
+  assert.equal(muestraCierre().includes(IMPORTE_MUESTRA), true)
   assert.equal(expresionInvertido(null), null)
   assert.equal(expresionInvertido('  '), null)
 })
@@ -239,5 +241,5 @@ test('la muestra con la que se miden las glosas es el MISMO peor caso que mide e
   // entonces el titular se mide contra una cifra más corta que la que puede llegar a mostrar.
   const digitos = (s) => String(s).replace(/\D/g, '')
   assert.equal(digitos(IMPORTE_MUESTRA), digitos(IMPORTE_MAS_LARGO))
-  assert.ok(muestraCierre('caja operativa').includes(IMPORTE_MUESTRA))
+  assert.ok(muestraCierre().includes(IMPORTE_MUESTRA))
 })

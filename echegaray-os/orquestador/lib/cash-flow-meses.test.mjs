@@ -259,6 +259,13 @@ test('las glosas abren cada cifra en sus dos términos, de la MISMA ventana', ()
   assert.ok(glosa(1).includes(ROTULOS_HERO.pasadoEntro) && glosa(1).includes(ROTULOS_HERO.pasadoSalio), glosa(1))
   assert.ok(glosa(2).includes(`$${T}$${meta.fila.ingresoProyectado}`) && glosa(2).includes(`$${T}$${meta.fila.egresoProyectado}`), glosa(2))
   assert.ok(glosa(2).includes(ROTULOS_HERO.vieneCobrar) && glosa(2).includes(ROTULOS_HERO.vienePagar), glosa(2))
+  // Y DICE QUE ES UN PISO. El neto proyectado da negativo por construcción: los ingresos salen SÓLO de
+  // Cobranzas —cuentas por cobrar, no pipeline— y los egresos se proyectan completos por calendario.
+  // Un negativo que es el peor caso por cómo está armado tiene que decirlo donde se lo lee.
+  // Se busca la PALABRA, no la constante: `includes('')` es verdadero siempre, y una aserción que
+  // pasa cuando la constante se vacía es un espejo, no un control.
+  assert.ok(/\bpiso\b/.test(glosa(2)), `la tarjeta de lo que viene no dice que es un piso: ${glosa(2)}`)
+  assert.ok(ROTULOS_HERO.vieneCola.length > 0, 'la cola de la glosa se vació y la glosa quedó muda')
 
   // LA PARTICIÓN NO SE ESCONDE CUANDO UNA MITAD ES CERO. La glosa vieja arrancaba con
   // `IF(proyectado=0;"";…)`: un año sin nada por cobrar publicaba el total pelado, que es justo el

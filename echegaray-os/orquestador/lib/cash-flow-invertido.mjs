@@ -186,9 +186,13 @@ const plata = (expr) => `TEXT(${expr};"$ #,##0")`
 
 /**
  * LO QUE LA GLOSA DEL CIERRE MIDE EN EL PEOR CASO — lo que el auditor de ancho tiene que poder medir.
- * @param {string} prefijo lo que la vista dice ANTES de la cifra ("caja operativa")
+ *
+ * SIN PREFIJO (29/08/2026). Decía "caja operativa · con Balanz hoy $…" y medía 285 px contra los 294
+ * del slot más angosto de la pestaña: nueve píxeles, el margen más chico que tuvo este titular, para
+ * repetir lo que el rótulo de al lado ya dice. Sin él son 189/294 — y nadie vio nunca esta pestaña
+ * renderizada por Google, así que no se estrena con un carácter y medio de aire.
  */
-export const muestraCierre = (prefijo) => `${prefijo} · ${CIERRE_CON_INVERTIDO} ${IMPORTE_MUESTRA}`
+export const muestraCierre = () => `${CIERRE_CON_INVERTIDO} ${IMPORTE_MUESTRA}`
 
 /** Y la del Semanal, que cuelga de la fecha del saldo declarado. */
 export const muestraSemanal = (fecha = 'al 28/08') => `${fecha} · más ${IMPORTE_MUESTRA} invertido en Balanz`
@@ -211,16 +215,15 @@ export const muestraSemanal = (fecha = 'al 28/08') => `${fecha} · más ${IMPORT
  * No hay forma de proyectar la posición de Balanz a diciembre sin inventarla —el OS no tiene su curva
  * de rendimiento—, así que el supuesto no se elimina: se declara donde se lee la cifra.
  *
- * @param {{refCierre:string, exprInvertido:string|null, prefijo:string}} p
+ * @param {{refCierre:string, exprInvertido:string|null}} p
  * @returns {{glosa:string, muestra:string}}
  */
-export function glosaDeCierre({ refCierre, exprInvertido, prefijo }) {
-  const sinDato = `${prefijo} · ${CIERRE_SIN_INVERTIDO}`
-  if (!exprInvertido) return { glosa: sinDato, muestra: sinDato }
+export function glosaDeCierre({ refCierre, exprInvertido }) {
+  if (!exprInvertido) return { glosa: CIERRE_SIN_INVERTIDO, muestra: CIERRE_SIN_INVERTIDO }
   const inv = `N(${exprInvertido})`
   return {
-    glosa: `=IF(${inv}=0;"${sinDato}";"${prefijo} · ${CIERRE_CON_INVERTIDO} "&${plata(`N(${refCierre})+${inv}`)})`,
-    muestra: muestraCierre(prefijo),
+    glosa: `=IF(${inv}=0;"${CIERRE_SIN_INVERTIDO}";"${CIERRE_CON_INVERTIDO} "&${plata(`N(${refCierre})+${inv}`)})`,
+    muestra: muestraCierre(),
   }
 }
 
