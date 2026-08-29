@@ -74,6 +74,11 @@ export function correr({
   observaciones = [], alcance = [], politica = null, fx = null,
   degradacion = null, congeladoPor = null, hoy = new Date(),
   cliente = null, clientesConocidos = [],
+  // Los huecos y conflictos que el proyecto YA traía del corpus documental. El motor los HEREDA:
+  // §31 dice que un conflicto contractual se mantiene y sólo evidencia o autoridad lo cierra, así
+  // que recalcularlos o bajarles la severidad sería resolverlos por la vía de mirar para otro lado.
+  issuesHeredados = [],
+  alcancePorDefecto = null,
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -99,7 +104,7 @@ export function correr({
   }))
 
   // ── 3 · SCOPE
-  const conAlcance = cruzarAlcance({ partidas, alcance })
+  const conAlcance = cruzarAlcance({ partidas, alcance, porDefecto: alcancePorDefecto })
   anotar(resultadoEtapa({
     etapa: ETAPA.SCOPE, status: STATUS.OK,
     result: { incluidas: conAlcance.incluidas, excluidas: conAlcance.excluidas, porDefinir: conAlcance.porDefinir, excluidoEnPlata: conAlcance.excluidoEnPlata },
@@ -158,7 +163,7 @@ export function correr({
 
   // ── 9 · VALIDATE
   const cola = colaDeAtencion({
-    issues: [...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? [])],
+    issues: [...issuesHeredados, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? [])],
     costoConocido: cd.parcial,
   })
   anotar(resultadoEtapa({
@@ -179,8 +184,18 @@ export function correr({
     contenido: conAlcance.partidas.flatMap((p) => [
       { origen: `${p.codigo}.descripcion`, texto: p.descripcion ?? '' },
       ...(p.nota ? [{ origen: `${p.codigo}.nota`, texto: p.nota }] : []),
+      // La CITA LITERAL de evidencia sale en la genealogía y en cualquier defensa de la oferta. Un
+      // nombre de otro cliente adentro de un `textoLiteral` pasaba: era el límite 4 del DoD.
+      ...(p.evidencia?.textoLiteral ? [{ origen: `${p.codigo}.evidencia`, texto: p.evidencia.textoLiteral }] : []),
+      ...(p.evidencia?.archivo ? [{ origen: `${p.codigo}.evidencia.archivo`, texto: p.evidencia.archivo }] : []),
     ]),
-    metadatos: documentos.map((d) => ({ campo: `documento:${d.nombre}`, valor: d.nombre ?? '', sale: false })),
+    metadatos: [
+      ...documentos.map((d) => ({ campo: `documento:${d.nombre}`, valor: d.nombre ?? '', sale: false })),
+      // Las FUENTES DE PRECIO no salen al cliente —son traza interna— pero una que nombre a otro
+      // cliente significa que este presupuesto se costeó con la lista de precios de otra obra, y
+      // eso hay que verlo aunque no se filtre.
+      ...[...new Set(observaciones.map((o) => o.fuente).filter(Boolean))].map((f) => ({ campo: `precio:${String(f).slice(0, 40)}`, valor: f, sale: false })),
+    ],
   })
   // Sin cliente declarado el barrido no puede correr, y eso NO se disfraza de limpio.
   const gateFuga = cliente ? gateDeFuga(fuga) : { ready: false, blocking_issues: [{ tipo: 'FUGA_NO_VERIFICABLE', entidad: 'cotización', detalle: 'la cotización no declara cliente: el barrido de fuga no puede correr', impacto: null, accion: null }], warnings: [], porQue: 'sin cliente no hay contra qué comparar' }
@@ -209,7 +224,10 @@ export function correr({
   const metricas = metricasDeCorrida({
     documentos, elementos,
     cantidades: partidas.map((p) => ({ valor: p.cantidad, estado: p.cantidad === null || p.cantidad === undefined ? ESTADO.FALTA_DATO : ESTADO.CALCULADO, porQue: p.porQue ?? (p.cantidad === null ? 'sin cantidad computada' : null) })),
-    mapeos: partidas.map(() => ({ estado: 'MAPEADA' })),
+    // Una partida SIN tarea de la Base Maestra no está mapeada. Poner 'MAPEADA' fijo hacía que el
+    // AUTONOMOUS RESOLUTION RATE diera 100 % siempre — un contador incapaz de decir que no, que es
+    // el defecto que este repo ya midió una vez en el Claude Avoidance Rate.
+    mapeos: partidas.map((p) => ({ estado: p.tareaTipoId ? 'MAPEADA' : 'SIN_PARTIDA' })),
     composiciones: aCostear.map((p) => composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []),
     costosDePartida: costos, cola,
     decisionesDeterministicas: partidas.length + costos.length,

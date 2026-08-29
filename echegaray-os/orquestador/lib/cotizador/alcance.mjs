@@ -78,7 +78,17 @@ export function alcanza(entrada, partida) {
  * misma regla que `plano/proyecto.mjs` aplica a los hechos documentales («elegir una en silencio es
  * inventar el resultado de una discusión que todavía no ocurrió»).
  */
-export function cruzarAlcance({ partidas = [], alcance = [] } = {}) {
+export function cruzarAlcance({ partidas = [], alcance = [], porDefecto = null } = {}) {
+  // ═══ EL DEFAULT NO ES UN DEFAULT: ES UNA DECLARACIÓN CON FUENTE ═══
+  //
+  // Sobre el presupuesto REAL de Quattropani, sus 26 partidas quedaban POR_DEFINIR —el contrato
+  // dice qué NO va, no enumera qué sí— y el motor no costeaba ninguna. La lectura correcta es que
+  // una partida CARGADA en el presupuesto está incluida por acto propio de la empresa, pero eso es
+  // una afirmación y §5 exige provenance: por eso `porDefecto` lleva `fuente` obligatoria y no hay
+  // ningún valor implícito. Sin él, POR_DEFINIR sigue siendo la respuesta.
+  if (porDefecto && !porDefecto.fuente) {
+    throw new Error('el alcance por defecto exige fuente: decir que todo está incluido es una afirmación, no una ausencia de decisión')
+  }
   const resueltas = []
   const issues = []
   const conflictos = []
@@ -100,12 +110,13 @@ export function cruzarAlcance({ partidas = [], alcance = [] } = {}) {
       continue
     }
 
-    const estado = estados[0] ?? ALCANCE.POR_DEFINIR
+    const estado = estados[0] ?? (porDefecto ? porDefecto.estado : ALCANCE.POR_DEFINIR)
+    const porDefault = !estados.length && Boolean(porDefecto)
     const excluida = estado === ALCANCE.EXCLUIDO
     resueltas.push({
       ...partida, alcance: estado,
       estadoAlcance: excluida ? ESTADO.CONFIRMADO : (estado === ALCANCE.INCLUIDO ? ESTADO.CONFIRMADO : ESTADO.FALTA_DATO),
-      porAlcance: tocan,
+      porAlcance: porDefault ? [{ patron: '(por defecto)', estado, fuente: porDefecto.fuente, motivo: porDefecto.motivo ?? null }] : tocan,
       // ═══ LA EXCLUSIÓN NO BORRA: SACA DEL TOTAL ═══
       // El cómputo queda entero, con su evidencia. Si el cliente cambia de idea, la partida vuelve
       // completa en vez de volver a computarse.

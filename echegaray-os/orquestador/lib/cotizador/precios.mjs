@@ -183,13 +183,17 @@ export function aplicarFx({ monto, desde, hasta, fx = null, aplicadoEn = null } 
  * de un recurso sin precio y sin cantidad conocida es el más peligroso de todos y mandarlo al fondo
  * de la cola con un cero sería enterrarlo (ver el comentario de `issue()` en el contrato).
  */
-export function issueDePrecio(precio, { impacto = null, critico = false } = {}) {
+export function issueDePrecio(precio, { impacto = null, critico = false, nombre = null } = {}) {
+  // «SIN_PRECIO · 4» es ilegible: 400 recursos de la Base Maestra tienen código puramente numérico
+  // («4» es CAL HIDRATADA EN POLVO). El código identifica; el nombre es lo que permite ir a
+  // pedirle el precio a un proveedor sin abrir otra pantalla.
+  const quien = nombre ? `${precio.recursoCodigo} (${nombre})` : precio.recursoCodigo
   if (precio.estado === ESTADO.EXTRAIDO) return null
   if (precio.estado === ESTADO.HISTORICO) {
     return issue({
       type: TIPO_ISSUE.PRECIO_DESACTUALIZADO,
       severity: critico ? SEVERIDAD.ALTA : SEVERIDAD.MEDIA,
-      entity: precio.recursoCodigo, impact: impacto,
+      entity: quien, impact: impacto,
       evidence: { fuente: precio.fuente, observadoEn: precio.observadoEn, antiguedadDias: precio.antiguedadDias },
       recommended_action: 'set_resource_price',
       detalle: precio.porQue,
@@ -198,7 +202,7 @@ export function issueDePrecio(precio, { impacto = null, critico = false } = {}) 
   return issue({
     type: TIPO_ISSUE.SIN_PRECIO,
     severity: critico ? SEVERIDAD.BLOQUEANTE : SEVERIDAD.ALTA,
-    entity: precio.recursoCodigo, impact: impacto,
+    entity: quien, impact: impacto,
     evidence: precio.fuente ? { fuente: precio.fuente, observadoEn: precio.observadoEn } : null,
     recommended_action: 'set_resource_price',
     detalle: precio.porQue,

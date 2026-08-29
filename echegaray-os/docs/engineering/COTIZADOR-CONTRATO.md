@@ -1,6 +1,6 @@
 # COTIZADOR — EL CONTRATO
 
-**Versión 1.0.0.** Fuente ejecutable: `orquestador/lib/cotizador/contrato.mjs`. Este documento
+**Versión 1.1.0.** Fuente ejecutable: `orquestador/lib/cotizador/contrato.mjs`. Este documento
 explica; el que manda es el `.mjs`. Si difieren, gana el código y este archivo está desactualizado.
 
 Tres caras leen lo mismo —la pantalla de Presupuestos, la conversación XSAS y Claude Code—. Si cada
@@ -15,6 +15,7 @@ tabla de cambios. No se cambia en silencio.
 | Versión | Fecha | Qué cambió | Por qué |
 |---|---|---|---|
 | 1.0.0 | 29/08/2026 | Primera | — |
+| 1.1.0 | 29/08/2026 | `intencion()` propaga los campos que la acción DECLARA (`supplier`, `reason`, `currency`, `source`) | La 1.0.0 los descartaba, así que el canónico «la sanitaria la hace X por 8,5M» no se podía expresar con el constructor oficial: sin `supplier` la validación pregunta quién. El frente tuvo que escribir un constructor paralelo. Aditivo y compatible: lo no declarado sigue sin entrar |
 
 ---
 
@@ -132,6 +133,25 @@ AUTORIZACIÓN → VALIDACIÓN → REGLAS → OUTLIER → MUTACIÓN → RECÁLCUL
 
 El modelo nunca escribe estado de negocio. Los siete casos canónicos del §19 son la prueba de
 aceptación del command layer.
+
+### La costura oficial: `ejecutar()` es SÍNCRONA y no escribe
+
+Recibe `mutar`, que devuelve un **plan** de escritura, y el plan lo aplica **quien llama, con SU
+credencial**. No es una limitación pendiente: es lo que mantiene la RLS honesta. Si el motor
+escribiera, lo haría con la conexión del servidor —rol del pool, RLS no aplicada— y los seis
+permisos volverían a vivir sólo en JavaScript, que es el agujero que cerró la migración
+`20260829T1500`.
+
+Corolario: **`orquestador/lib/cotizador/pg.mjs` NO ES PARA LA WEB.** Recibe el pool directo, así que
+las policies no se evalúan. Sirve para scripts, informes, tests y el worker. Una ruta de Next o una
+server action tienen que aplicar el plan con la credencial del usuario.
+
+### La entidad del evento es la partida, no el texto
+
+`ejecutar()` arma el evento con la partida que la **validación ya resolvió**, no con lo que escribió
+la persona. «mamposteria», «la mamposteria» y «T4010» dejan **una sola** entidad en el historial —
+sin eso, `historiaDe()` no puede reconstruir el estado de una partida y el `undo` del §21 no puede
+agrupar lo que fue un solo pedido.
 
 ## 5 · Las trece invariantes del §42
 

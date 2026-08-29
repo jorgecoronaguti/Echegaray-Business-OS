@@ -14,6 +14,27 @@
 // contra Supabase eso es medio minuto de reloj para armar una pantalla. Acá son CINCO consultas
 // fijas, con `= any($1::uuid[])`, independientemente del tamaño del presupuesto.
 //
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// ⚠ ESTE MÓDULO **NO ES PARA LA WEB**. LA RLS NO APLICA ACÁ.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `leerEstado` y las tres funciones de escritura reciben un `query` que en la práctica es el POOL
+// del servidor. Ese pool se conecta con un rol que NO pasa por row-level security: las policies de
+// `cotizacion_alcance`, `cotizacion_evento` y `cotizacion_huella` **no se evalúan**, y los seis
+// permisos del contrato quedan sin hacer cumplir.
+//
+// Es exactamente la clase de agujero que este repo ya pagó —«RLS no es GRANT», «una capability de
+// lectura que escribía»— así que se dice acá, con mayúsculas, en vez de en una nota al pie.
+//
+//   · USO LEGÍTIMO: scripts del orquestador, informes, tests, el worker. Todo lo que corre del lado
+//     del servidor con una decisión ya tomada por alguien.
+//   · USO PROHIBIDO: una ruta de Next, una server action, o cualquier cosa que atienda a un
+//     usuario. Ahí la escritura la tiene que hacer el CALLER con SU credencial —el plan que
+//     devuelve `comandos.ejecutar()` está pensado para eso— y la base vuelve a preguntar quién es.
+//
+// `pg.pg.test.mjs` prueba las policies aparte, con `set local role authenticated` y un JWT real,
+// justamente porque este módulo por sí solo no las ejercita.
+//
 // ═══ LO QUE NO HACE ═══
 //
 // No calcula nada. No decide nada. No corrige nada. Si `cotizacion_partida.cantidad` viene en NULL,
