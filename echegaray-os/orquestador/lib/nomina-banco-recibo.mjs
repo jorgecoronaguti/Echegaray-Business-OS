@@ -48,6 +48,29 @@ export const CUIL_POR_PERSONA_DE_PLANILLA = Object.freeze({
 })
 
 /**
+ * TRANSFERENCIAS A UNA PERSONA QUE **NO** SON UN ADELANTO DE SUELDO.
+ *
+ * Que la plata salga de la cuenta hacia alguien del plantel no la convierte en un pago a cuenta. El
+ * extracto no puede distinguirlo —dice importe, fecha y beneficiario— y el único que sabe qué era
+ * es el dueño.
+ *
+ * Se declara **por la referencia del banco**, que es lo único que identifica un movimiento y sólo
+ * uno: por (persona, fecha, importe) dos transferencias iguales el mismo día se leen como una, y
+ * este repo ya pagó ese error con 68 duplicados.
+ *
+ * La clave es que descontar de un sueldo algo que no se adelantó es pagarle de menos a una persona.
+ */
+export const MOVIMIENTOS_QUE_NO_SON_ADELANTO = Object.freeze({
+  // El dueño, 31/08/2026: «no considerar esa transfer de 40 a maldonado porque fue devolucion de
+  // dinero, dejar en cero». Es plata que volvía a él, no un anticipo de su sueldo.
+  77529957: 'devolución de dinero a Emiliano Maldonado — no es adelanto (dueño, 31/08/2026)',
+})
+
+/** ¿Este movimiento del extracto puede restarse de un sueldo? */
+export const esAdelantoDeVerdad = (referencia) =>
+  !Object.hasOwn(MOVIMIENTOS_QUE_NO_SON_ADELANTO, String(referencia ?? '').trim())
+
+/**
  * QUIÉN ESTÁ EN LA PLANILLA Y NO COBRA ESTA QUINCENA, Y POR QUÉ.
  *
  * No es lo mismo «no tiene recibo porque se fue» que «no tiene recibo y no sabemos por qué». La
