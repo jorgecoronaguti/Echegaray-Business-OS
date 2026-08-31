@@ -72,6 +72,7 @@
 //
 //   node orquestador/scripts/jornales-pestana.mjs [--dry]
 
+import { formulaNetoAPagar, formulaEnEfectivo } from '../lib/jornales-neto-pago.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotaciones.mjs'
