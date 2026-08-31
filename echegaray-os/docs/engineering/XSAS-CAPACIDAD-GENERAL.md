@@ -149,3 +149,43 @@ cuatro veces en este proyecto y las cuatro escondía un control muerto.
 - **Optimizar un presupuesto particular.** Quattropani, La Estrella y ARCOR son regresiones. Los
   casos prueban el motor; no entrenan la respuesta esperada. Cambiar una regla para que un histórico
   «cierre» invalida el caso y el motor.
+
+---
+
+## 6. EL CIERRE — 2026-08-31
+
+**Veredicto del auditor independiente: `PASS_CON_LIMITACIONES`.** Cuatro pasadas adversariales, tres
+FAIL antes de la firma. El auditor aplicó ocho mutaciones sobre una copia del árbol y obtuvo ocho
+rojos; ninguna de las correcciones se dio por buena sin romper el código a propósito.
+
+### Lo que las cuatro pasadas encontraron, y que ningún test había visto
+
+| | El defecto | Qué producía |
+|---|---|---|
+| **1** | Un renglón de mano de obra sin cantidad se escalaba a **cero** al aplicar un aprendizaje | Una cotización que **no se podía afirmar** pasaba a $ 4.947.000 con el gate **abierto**: congelable y ofertable, con las horas del ayudante en cero. Aplicar un aprendizaje llegaba a **desbloquear** un presupuesto |
+| **2** | La huella de entradas no incluía el aprendizaje aplicado | Tres corridas con costos de $ 0, $ 4.947.000 y $ 5.535.000 **firmaban igual** |
+| **3** | Un precio traído de una página web reemplazaba a uno propio vencido **sin emitir un solo issue** | Probado con un precio ×10 sobre un recurso que mueve el 40 % del costo. Con 285 de 389 precios vencidos, la condición de disparo es el estado normal del catálogo |
+| **4** | La medición de «¿la base defiende lo congelado?» abría transacción con `pool.query` | El `begin`, el `UPDATE` y el `rollback` caían en conexiones distintas: **4 de 6 filas sobrevivieron al rollback** en la prueba del auditor. Justo la medición que existe para detectar que la base no defiende podía dejar committeado un `cantidad × 2` sobre una composición congelada |
+| **5** | «Cantidad sin medir» tenía **dos** definiciones y la nueva no reconocía `''` | Con `cantidad: ''` el defecto 1 se reabría entero. Dos definiciones del mismo predicado siempre divergen, y gana la laxa |
+
+### La Definition of Done bajó de 20/24 a 12/24, y eso es la mejora
+
+El instrumento arrancó con **nueve términos que no podían dar falso**: la etiqueta del criterio
+escrita como si fuera su medición. `mapeadas` sumaba la cantidad de partidas, así que «selecciona
+partidas defendiblemente» era «hay partidas». `reconcilia` leía `cuadra !== false`, con lo cual el
+`null` de «no hay contra qué reconciliar» se publicaba como que reconciliaba.
+`resueltosAutonomamente` contaba `VIGENTE` —que significa *no hubo que hacer nada*— y no
+`ACTUALIZADO`.
+
+Cada punto que el numerador perdió es un verde falso que se fue.
+
+### Un defecto de proceso, que resultó el hallazgo más importante
+
+**Dos veces lo declarado no estaba en el código.** Una, un bloque commiteado con evidencia de corrida
+que el commit siguiente borró —el `readFileSync` quedó importado sin usar y un import muerto no rompe
+el lint—. Otra, dos correcciones descritas con su criterio y su justificación que nunca se
+escribieron, porque el reemplazo no encontró la cadena que buscaba.
+
+Las dos veces el parte fue la única evidencia y las dos veces estaba mal. La regla que quedó:
+**`git diff` de cada punto declarado, antes de avisar.** Los defectos que lo destaparon eran dos
+términos de una tabla; el que lo produjo decide si todo lo demás se puede creer.
