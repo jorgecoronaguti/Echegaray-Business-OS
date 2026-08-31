@@ -33,6 +33,8 @@ import { huellaDeEntradas, huellaDeResultado, gateDeCongelado } from './freeze.m
 import { metricasDeCorrida } from './metricas.mjs'
 import { explotarRecursos, reconciliar } from './explosion.mjs'
 import { barridoDeFuga, gateDeFuga, exigeConfirmacion } from './seguridad.mjs'
+import { evaluarComposicion, complementosDe } from '../base-maestra-completitud.mjs'
+import { preguntaParaCerrar } from '../base-maestra-pregunta.mjs'
 
 /**
  * ADAPTAR EL RESULTADO DEL PIPELINE DE PLANO a la entrada del orquestador. PURA.
@@ -82,6 +84,19 @@ export function correr({
   overridesDePrecio = [],
   relacionesExternas = [],
   exclusionesConfirmadas = [],
+  // ── Lo que engancha el motor general (§5 a §8). Los cuatro tienen default inerte: sin ellos la
+  //    corrida es exactamente la de antes, y por eso ninguno de los tests viejos se movió.
+  //
+  // `resolverPrecio` reemplaza la vigencia plana de 180 días por una derivada de materialidad y
+  // deriva real. `mapeos` son las decisiones de `plano/seleccion.mjs`: sin ellas MAP no puede
+  // ofrecer la pregunta que cierra un hueco, sólo contar partidas. `paresComplementarios` es lo que
+  // impide cotizar la mitad de una tarea creyendo que es toda. `estadosDeComposicion` trae el
+  // estado declarado en la Base Maestra (VALIDADO / HISTORICO / CANDIDATO / INCOMPLETO).
+  resolverPrecio = null,
+  mapeos = [],
+  paresComplementarios = [],
+  estadosDeComposicion = new Map(),
+  costosDeCatalogo = {},
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -124,6 +139,7 @@ export function correr({
   const costear = (p) => costoDePartida({
     partida: p, composicion: composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? [],
     observaciones, fx, hoy,
+    ...(resolverPrecio ? { resolverPrecio } : {}),
   })
   const costosExcluidos = primerCruce.partidas.filter((p) => p.alcance === 'EXCLUIDO').map(costear)
   const subtotalDe = new Map(costosExcluidos.map((c) => [c.partida, c.subtotal]))
@@ -154,20 +170,64 @@ export function correr({
     confidence: partidas.length ? conCantidad.length / partidas.length : null,
   }))
 
-  // ── 5 · MAP (la decidió `seleccion.mjs`, que es puro: acá sólo se reporta)
+  // ── 5 · MAP (la decidió `seleccion.mjs`, que es puro: acá sólo se reporta y se ofrece la salida)
+  //
+  // Un mapeo que no cerró no es un renglón perdido: es una pregunta que alguien puede contestar. La
+  // diferencia importa porque el motor mide su cobertura ACCIONABLE —lo mapeado más lo preguntable—
+  // y no sólo lo mapeado: sobre un dictado telefónico de 8 partidas, mapear 2 y saber preguntar por
+  // las 6 restantes es un resultado utilizable; mapear 2 y encogerse de hombros no lo es.
+  const preguntasDeMapeo = mapeos
+    .map((m) => preguntaParaCerrar(m, { costos: costosDeCatalogo, paresComplementarios }))
+    .filter(Boolean)
+  const mapeadas = mapeos.filter((m) => m.estado === 'MAPEADA').length
   anotar(resultadoEtapa({
     etapa: ETAPA.MAP, status: partidas.length ? STATUS.OK : STATUS.OMITIDA,
-    result: { partidas: partidas.length },
+    result: {
+      partidas: partidas.length,
+      mapeos: mapeos.length,
+      mapeadas,
+      preguntables: preguntasDeMapeo.length,
+      // Sin mapeos declarados esto es `null`, no 1: una cobertura que nadie midió no es cobertura
+      // perfecta. Es la misma regla que gobierna las tasas en `metricas.mjs`.
+      sinSalida: mapeos.length ? mapeos.length - mapeadas - preguntasDeMapeo.length : null,
+    },
+    evidence: preguntasDeMapeo.map((p) => ({ tipo: p.tipo, pregunta: p.pregunta, opciones: p.opciones?.length ?? 0 })),
     provenance: ['plano/seleccion.mjs — la partida la decide el código, no el modelo'],
   }))
 
   // ── 6 · COMPOSE
   const aCostear = paraCostear(conAlcance.partidas)
-  const sinComposicion = aCostear.filter((p) => !(composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []).length)
+  const lineasDe = (p) => composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []
+  const sinComposicion = aCostear.filter((p) => !lineasDe(p).length)
+
+  // TENER COMPOSICIÓN NO ES TENERLA ENTERA. Una que trae los materiales y no la mano de obra suma
+  // un subtotal perfectamente creíble al que le falta un cajón — y sobre 205 partidas vigentes hay
+  // 44 así. El motor las evalúa una por una y las que están incompletas dejan de publicar costo:
+  // publican `costoDeReferencia`, que es otra cosa y se lee como otra cosa.
+  const evaluadas = aCostear.map((p) => {
+    const codigo = p.tareaTipoId ?? p.codigo
+    return {
+      partida: p.codigo ?? p.id,
+      ...evaluarComposicion(
+        { codigo, nombre: p.nombre ?? p.descripcion ?? '', unidad: p.unidad ?? null, lineas: lineasDe(p) },
+        { complementos: complementosDe(codigo, paresComplementarios), ...(estadosDeComposicion.get?.(codigo) ? { estadoDeclarado: estadosDeComposicion.get(codigo) } : {}) },
+      ),
+    }
+  })
+  const incompletas = evaluadas.filter((e) => (e.huecos ?? []).length)
   anotar(resultadoEtapa({
     etapa: ETAPA.COMPOSE, status: aCostear.length ? STATUS.OK : STATUS.OMITIDA,
-    result: { conComposicion: aCostear.length - sinComposicion.length, sinComposicion: sinComposicion.length },
-    missing_data: sinComposicion.map((p) => p.codigo),
+    result: {
+      conComposicion: aCostear.length - sinComposicion.length,
+      sinComposicion: sinComposicion.length,
+      incompletas: incompletas.length,
+      huecos: incompletas.flatMap((e) => e.huecos.map((h) => h.tipo ?? h)),
+    },
+    missing_data: [
+      ...sinComposicion.map((p) => p.codigo),
+      ...incompletas.map((e) => `${e.partida}: ${(e.huecos ?? []).map((h) => h.tipo ?? h).join(' · ')}`),
+    ],
+    provenance: ['base-maestra-completitud.mjs — los cinco cajones de un APU, y cuál falta'],
   }))
 
   // ── 7 · COST
