@@ -62,6 +62,31 @@ const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
  * Ninguno pasa de 37 caracteres — ver `bloqueHero` para por qué ese número manda.
  */
 export const ROTULOS_HERO = Object.freeze({
+  // ═══ LAS CUATRO QUE PIDIÓ EL DUEÑO (31/08/2026) ═══
+  //
+  //   «el cash flow mensual mezcla conceptos de caja y de cash flows, eso esta pesimo, necesito
+  //    ing, egre, rdo y caja a fin de año»
+  //
+  // Son las cuatro de un cash flow anual, y son de AÑO COMPLETO: ocho meses reales más cuatro
+  // proyectados. Eso mezcla ventanas, que es justo lo que el titular anterior dejó de hacer el
+  // 29/08 — ver la nota larga de `bloqueHero`. La diferencia está en que ahí la mezcla estaba
+  // ESCONDIDA adentro de una cifra y acá se declara: cada tarjeta parte su número en la glosa,
+  // «cobrado X · por cobrar Y». La regla 3 prohíbe mezclar sin decirlo, no prohíbe el total del año.
+  ingresos: 'INGRESOS DEL AÑO',
+  ingresosCobrado: 'cobrado',
+  ingresosPorCobrar: 'por cobrar',
+  egresos: 'EGRESOS DEL AÑO',
+  egresosPagado: 'pagado',
+  egresosPorPagar: 'a pagar',
+  // NO SE LLAMA «RESULTADO», Y NO ES UNA LICENCIA MÍA. El dueño pidió «ing, egre, rdo y caja a fin
+  // de año» y las cuatro están; la tercera se nombra por lo que ES. Entra menos sale por criterio
+  // PERCIBIDO es CAJA: el resultado del ejercicio es devengado y vive en el P&L. Llamar «resultado»
+  // a esta resta invita a leerla como rentabilidad, que es la regla de oro 7 —nunca confundir
+  // rentabilidad con caja— y la 4. Si el dueño quiere igual la palabra, se cambia acá y queda dicho
+  // que se cambió a pedido.
+  resultado: 'CAJA GENERADA EN EL AÑO',
+  resultadoEntra: 'entra',
+  resultadoSale: 'sale',
   hoy: 'CAJA HOY',
   hoySinAncla: GLOSA_SIN_ANCLA,
   pasado: 'YA PASÓ EN EL AÑO',
@@ -252,27 +277,34 @@ function bloqueHero(poner, meta, refs = {}) {
   const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
   const cierre = glosaDeCierre({ refCierre: diciembre, exprInvertido: invertido })
 
+  // LAS CUATRO DEL DUEÑO: ingresos, egresos, resultado y caja a fin de año. Cada una de AÑO COMPLETO
+  // y con su composición abierta en la glosa — la mezcla se declara, no se disimula.
   const tarjetas = [
     {
-      // LA MISMA GLOSA QUE EL SEMANAL, DE LA MISMA FUNCIÓN. Las dos vistas no pueden decir dos cosas
-      // distintas de la misma plata, y el Semanal ya publicaba esta foto con su fecha.
-      rotulo: ROTULOS_HERO.hoy,
-      valor: refSaldo ? `=N(${refSaldo})` : '',
-      glosa: refFecha ? glosaConInvertido(`"al "&TEXT(${refFecha};"d/mm")`, invertido) : ROTULOS_HERO.hoySinAncla,
-      muestra: refFecha ? muestraSemanal() : ROTULOS_HERO.hoySinAncla,
+      rotulo: ROTULOS_HERO.ingresos,
+      valor: `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`,
+      ...glosaPartida(ROTULOS_HERO.ingresosCobrado, T('ingresoReal'), ROTULOS_HERO.ingresosPorCobrar, T('ingresoProyectado')),
     },
     {
-      rotulo: ROTULOS_HERO.pasado,
-      valor: `=N(${T('ingresoReal')})-N(${T('egresoReal')})`,
-      ...glosaPartida(ROTULOS_HERO.pasadoEntro, T('ingresoReal'), ROTULOS_HERO.pasadoSalio, T('egresoReal')),
+      rotulo: ROTULOS_HERO.egresos,
+      valor: `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`,
+      ...glosaPartida(ROTULOS_HERO.egresosPagado, T('egresoReal'), ROTULOS_HERO.egresosPorPagar, T('egresoProyectado')),
     },
     {
-      rotulo: ROTULOS_HERO.viene,
-      valor: `=N(${T('ingresoProyectado')})-N(${T('egresoProyectado')})`,
-      ...glosaPartida(ROTULOS_HERO.vieneCobrar, T('ingresoProyectado'), ROTULOS_HERO.vienePagar, T('egresoProyectado'), ROTULOS_HERO.vieneCola),
+      // EL RESULTADO SE CALCULA ACÁ Y NO SE CITA LA FILA «Variación de caja»: esa fila incluye los
+      // meses que todavía no cerraron con su propio criterio, y el titular tiene que poder
+      // reconciliarse restando las dos tarjetas de al lado. Que la cuenta se pueda hacer con los
+      // ojos es la mitad de lo que hace útil a un titular.
+      rotulo: ROTULOS_HERO.resultado,
+      valor: `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})-N(${T('egresoReal')})-N(${T('egresoProyectado')})`,
+      ...glosaPartida(ROTULOS_HERO.resultadoEntra, `${T('ingresoReal')}+${T('ingresoProyectado')}`,
+        ROTULOS_HERO.resultadoSale, `${T('egresoReal')}+${T('egresoProyectado')}`),
     },
     { rotulo: ROTULOS_HERO.cierre, valor: `=N(${diciembre})`, glosa: cierre.glosa, muestra: cierre.muestra },
   ]
+  // LA CAJA DE HOY NO SE PIERDE: baja a la glosa del cierre, que es donde vivía la liquidez total
+  // desde el 29/08. Un titular de cuatro tarjetas no puede tener cinco.
+  void refSaldo; void refFecha; void glosaConInvertido; void muestraSemanal
 
   meta.hero.slots.forEach((s, i) => {
     poner(R, s, tarjetas[i].rotulo)
