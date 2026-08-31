@@ -122,6 +122,79 @@ test('la huella distingue el TIPO de pregunta, no sólo los códigos', { skip: !
   })
 })
 
+test('el TIPO de pregunta separa AUNQUE la respuesta guardada siga siendo válida', { skip: !hayBase }, async () => {
+  // ═══ POR QUÉ ESTE TEST EXISTE APARTE DEL DE ARRIBA ═══
+  //
+  // El de arriba pasaba igual con la huella mutada para ignorar el tipo: lo salvaba el SEGUNDO
+  // CANDADO, porque «JUNTAS» no es una opción de CUAL_DE_ESTAS. O sea que probaba el candado, no la
+  // huella — y su nombre decía otra cosa. Lo descubrió la mutación M15, que quedó VERDE.
+  //
+  // Acá la respuesta guardada es «T1107.1», que SÍ es una opción válida de las dos preguntas. El
+  // candado no puede intervenir: si la huella no distingue el tipo, una respuesta dada a «¿van
+  // juntas?» cierra en silencio un «¿cuál de las dos?» — que es cotizar la mitad del piso con el
+  // aval de alguien que nunca contestó eso.
+  await enEnsayo(async (db) => {
+    const pares = paresComplementarios([T1107_1, T1107_2])
+    const m = mapeoDe('PISO DE HORMIGON ALISADO MECÁNICO', 'M2', [T1107_1, T1107_2], 300)
+
+    const vanJuntas = (await resolverConMemoria(db, m, { costos: COSTOS, paresComplementarios: pares })).pregunta
+    const cualDeEstas = (await resolverConMemoria(db, m, { costos: COSTOS, paresComplementarios: [] })).pregunta
+    assert.equal(vanJuntas.tipo, 'VAN_JUNTAS')
+    assert.equal(cualDeEstas.tipo, 'CUAL_DE_ESTAS')
+    // Mismo atributo (ninguno) y MISMO conjunto de códigos: lo único que las separa es el tipo.
+    assert.deepEqual(
+      [...new Set(vanJuntas.opciones.flatMap((o) => o.codigos))].sort(),
+      [...new Set(cualDeEstas.opciones.flatMap((o) => o.codigos))].sort(),
+    )
+    assert.notEqual(huellaDePregunta(vanJuntas), huellaDePregunta(cualDeEstas))
+
+    // Se contesta «sólo T1107.1» a la pregunta VAN_JUNTAS. Es una opción legítima de las DOS.
+    await contestarYGuardar(db, vanJuntas, 'T1107.1', { quien: QUIEN })
+
+    const r = await resolverConMemoria(db, m, { costos: COSTOS, paresComplementarios: [] })
+    assert.equal(r.resolucion, RESOLUCION.HAY_QUE_PREGUNTAR,
+      'una respuesta dada a «¿van juntas?» no puede cerrar en silencio un «¿cuál de las dos?»')
+    assert.equal(r.decisionPrevia, null, 'ni siquiera la encuentra: la huella no coincide')
+  })
+})
+
+test('ORDEN vence a un empate de decidido_en — el timestamp puede repetirse', { skip: !hayBase }, async () => {
+  // ═══ POR QUÉ NO ALCANZA CON HABER ARREGLADO EL DEFAULT ═══
+  //
+  // La migración cambió el default de `now()` a `clock_timestamp()`, que avanza dentro de la
+  // transacción. Eso hizo que el test de append-only pasara TAMBIÉN con `order by decidido_en` — la
+  // mutación M18 quedó verde, o sea que el test ya no probaba por qué existe `orden`.
+  //
+  // Pero un timestamp puede repetirse igual: dos inserts en el mismo microsegundo, un reloj que
+  // salta hacia atrás por NTP, o una carga que trae la fecha explícita. `orden` es lo único que no
+  // puede empatar por construcción, y esto lo prueba forzando el empate.
+  await enEnsayo(async (db) => {
+    const catalogo = [T1018, T1019]
+    const m = mapeoDe('MAMPOSTERÍA LADRILLON CERÁMICO', 'M2', catalogo)
+    const p = (await resolverConMemoria(db, m, { costos: COSTOS })).pregunta
+    const h = huellaDePregunta(p)
+    const clave = claveDeElemento('MAMPOSTERÍA LADRILLON CERÁMICO')
+    const MISMO_INSTANTE = '2026-08-30T12:00:00Z'
+
+    for (const respuesta of ['T1018', 'NO_HAY_ANALISIS']) {
+      await db.query(
+        `insert into public.base_maestra_decision
+           (elemento, unidad, tipo_pregunta, pregunta, respuesta, codigos, huella, decidido_por, decidido_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [clave, 'M2', p.tipo, p.pregunta, respuesta, respuesta === 'T1018' ? ['T1018'] : [], h, QUIEN, MISMO_INSTANTE],
+      )
+    }
+    const empatadas = await db.query(
+      'select count(distinct decidido_en)::int d, count(*)::int n from public.base_maestra_decision where elemento=$1', [clave])
+    assert.equal(empatadas.rows[0].n, 2)
+    assert.equal(empatadas.rows[0].d, 1, 'las dos tienen EXACTAMENTE el mismo decidido_en')
+
+    const v = await decisionVigente(db, { elemento: 'MAMPOSTERÍA LADRILLON CERÁMICO', unidad: 'M2', huella: h })
+    assert.equal(v.respuesta, 'NO_HAY_ANALISIS',
+      'con decidido_en empatado el orden lo decidiría el plan de ejecución; con `orden` gana la que se insertó después')
+  })
+})
+
 test('la respuesta guardada se vuelve a validar contra las opciones de HOY', { skip: !hayBase }, async () => {
   await enEnsayo(async (db) => {
     const m = mapeoDe('PISO DE HORMIGON ALISADO MECÁNICO', 'M2', [T1107_1, T1107_2], 300)
