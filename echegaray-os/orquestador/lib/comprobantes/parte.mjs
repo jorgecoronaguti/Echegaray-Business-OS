@@ -62,8 +62,25 @@ export function sumarPartes(a, b) {
     ilegibles: [...(x.ilegibles ?? []), ...(y.ilegibles ?? [])],
     sinImputar: [...(x.sinImputar ?? []), ...(y.sinImputar ?? [])],
     trabados: [...(x.trabados ?? []), ...(y.trabados ?? [])],
-    avisos: [...(x.avisos ?? []), ...(y.avisos ?? [])],
+    // EL MISMO AVISO DOS VECES NO ES DOS PROBLEMAS (31/08). Los avisos de `vigilancia.mjs` son un
+    // barrido GLOBAL del registro contra Compras: cada post de la tanda vuelve a mirar lo mismo y
+    // vuelve a decir lo mismo. Publicado tal cual salía «⚠ 1 fila(s) del registro apuntan a otra
+    // fila de Compras» dos veces seguidas en el mensaje del 31/08, y un aviso repetido se lee como
+    // dos hallazgos. Se colapsa por TEXTO EXACTO y sólo por texto exacto: dos avisos que difieren en
+    // un número son dos hallazgos distintos y los dos salen.
+    avisos: sinRepetir([...(x.avisos ?? []), ...(y.avisos ?? [])]),
   }
+}
+
+/** Deja la primera aparición de cada texto y respeta el orden. */
+function sinRepetir(xs = []) {
+  const visto = new Set()
+  return xs.filter((a) => {
+    const k = String(a ?? '').trim()
+    if (!k || visto.has(k)) return false
+    visto.add(k)
+    return true
+  })
 }
 
 /** Todas las partes de una tanda, sumadas. */

@@ -159,6 +159,11 @@ function repoTandas() {
       if (t && !t.aviso_post_id) t.aviso_post_id = avisoPostId
       return t?.aviso_post_id ?? null
     },
+    async moverAviso(_p, { id, avisoPostId }) {
+      const t = tandas.find((x) => x.id === id)
+      if (t) t.aviso_post_id = avisoPostId
+      return t?.aviso_post_id ?? null
+    },
   }
 }
 
@@ -199,9 +204,13 @@ test('EL SILENCIO: la tanda ya publicó su resumen y llega una PREGUNTA — tien
       pregunta: { texto: '⚠ Corralón Progreso **0004-00003745** — puede que ya esté en la **fila 889**. ¿Es el mismo?', fajoId: 'fajo_2' },
     }))
 
-  assert.equal(mm.creados.length, 2, 'la pregunta se editó sobre el mensaje viejo en vez de publicarse: eso es el silencio')
-  assert.match(mm.creados[1].message, /fila 889/, 'el post nuevo tiene que ser la pregunta')
-  assert.equal(mm.creados[1].root_id, 'p_ycpth5kc', 'la respuesta va al hilo del mensaje que la originó')
+  // Se cuenta por IDENTIDAD, no por total: desde el 31/08 el resumen también BAJA cuando llega un
+  // post nuevo (post 2 de 3), así que un número fijo acá mediría el arreglo de al lado y no éste.
+  // Lo que este test defiende es una sola cosa: la pregunta es un post PROPIO y es el último.
+  const pregunta = mm.creados.at(-1)
+  assert.match(pregunta.message, /fila 889/, 'la pregunta se editó sobre un mensaje viejo en vez de publicarse: eso es el silencio')
+  assert.equal(pregunta.root_id, 'p_ycpth5kc', 'la respuesta va al hilo del mensaje que la originó')
+  assert.ok(!mm.editados.some((e) => e.id === pregunta.id), 'la pregunta se publicó y después se reescribió: tiene que quedar tal cual')
   assert.equal(r.silencioso, true, 'la publicó él mismo, así que el handler no debe publicar de nuevo')
 })
 

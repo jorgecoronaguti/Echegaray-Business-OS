@@ -131,6 +131,17 @@ export async function estadoDeLaTanda(port, tandaId) {
   }
 }
 
+/**
+ * Cambia el post vivo de la tanda. A diferencia de `guardarAviso`, PISA el anterior a propósito:
+ * lo llama `bajarElAviso` cuando el resumen tuvo que mudarse abajo del último post de la persona.
+ */
+export async function moverAviso(port, { id, avisoPostId } = {}) {
+  const { rows } = await port.query(
+    'update comunicacion.comprobante_tandas set aviso_post_id = $2 where id = $1 returning aviso_post_id',
+    [id, avisoPostId])
+  return rows[0]?.aviso_post_id ?? null
+}
+
 /** Guarda el post del bot. Sólo si todavía no había uno: dos posts para la misma tanda es el defecto. */
 export async function guardarAviso(port, { id, avisoPostId } = {}) {
   const { rows } = await port.query(
@@ -189,9 +200,29 @@ export async function conLaTanda(d, m = {}, trabajo) {
 
   // ⏳ ANTES DE TRABAJAR. El especialista tarda minutos: sin esto el canal queda mudo y el dueño
   // vuelve a mandar las fotos.
+  //
+  // ═══ Y SI YA HABÍA UN MENSAJE, TIENE QUE BAJAR (31/08) ═══
+  //
+  // Llegar acá con `abierta.nueva` significa que la persona mandó OTRO post después de que el bot
+  // publicó el suyo. Reescribir el de antes deja la respuesta ARRIBA de las fotos nuevas, y
+  // Mattermost no notifica ni reordena un post editado: desde la pantalla del dueño, mandó fotos y
+  // no pasó nada. Es exactamente lo que el 25/08 obligó a sacar la PREGUNTA como post propio; el
+  // resumen se dejó reescribiéndose y volvió a pasar hoy — 15:07, 15:13 y 15:19 contestados los
+  // tres sobre el post de las 15:08, con 11 comprobantes ya cargados en Compras que él no vio.
+  //
+  // Sigue habiendo UN mensaje vivo por tanda: el de antes se reemplaza por una línea que apunta
+  // abajo. No es una cascada de resúmenes, es el mismo resumen que se muda al pie.
   const enCurso = await repo.estadoDeLaTanda(port, tanda.id)
-  const publicado = await refrescar({ mattermost, log }, tanda, textoTanda(enCurso.parte, { enVuelo: Math.max(1, enCurso.enVuelo) }), { port, repo })
-  if (publicado.creado) tanda = { ...tanda, aviso_post_id: publicado.creado }
+  const enCursoTexto = textoTanda(enCurso.parte, { enVuelo: Math.max(1, enCurso.enVuelo) })
+  if (tanda.aviso_post_id) {
+    const bajado = await bajarElAviso({ mattermost, log, port, repo }, tanda, enCursoTexto)
+    // Si no se pudo publicar abajo, se reescribe el de arriba: peor lugar, pero nunca silencio.
+    if (bajado) tanda = { ...tanda, aviso_post_id: bajado }
+    else await refrescar({ mattermost, log }, tanda, enCursoTexto)
+  } else {
+    const publicado = await refrescar({ mattermost, log }, tanda, enCursoTexto, { port, repo })
+    if (publicado.creado) tanda = { ...tanda, aviso_post_id: publicado.creado }
+  }
 
   let r
   try {
@@ -268,6 +299,51 @@ async function publicarPregunta({ mattermost, log }, tanda, pregunta) {
   }
 }
 
+/** Lo que queda escrito donde estaba el resumen antes de mudarse. Una línea, sin datos: los datos
+ *  están completos en el mensaje nuevo y repetirlos acá sería publicar dos veces el mismo total. */
+export const TEXTO_MUDADO = '⤴ _El resumen de esta carga sigue abajo, en el mensaje nuevo._'
+
+/**
+ * Publica el mensaje vivo de la tanda ABAJO de todo y deja arriba un puntero. Nunca lanza.
+ *
+ * El orden importa y no es intercambiable: primero se PUBLICA el nuevo, y recién con su id en la
+ * mano se toca el viejo. Al revés, un fallo al publicar dejaría el único mensaje que existía
+ * convertido en «seguí abajo» apuntando a nada.
+ *
+ * @returns {Promise<string|null>} el id del mensaje nuevo, o null si no se pudo publicar.
+ */
+async function bajarElAviso({ mattermost, log, port, repo }, tanda, texto) {
+  if (typeof mattermost?.crearPost !== 'function' || !tanda?.channel_id) return null
+  let post
+  try {
+    post = await mattermost.crearPost({
+      channel_id: tanda.channel_id,
+      message: texto,
+      root_id: tanda.root_post_id ?? undefined,
+      props: { attachments: [] },
+    })
+  } catch (e) {
+    log?.warn?.('comprobantes: no pude bajar el mensaje de la tanda', { detalle: String(e?.message ?? e).slice(0, 200) })
+    return null
+  }
+  if (!post?.id) return null
+  // Que el viejo no se pueda reescribir deja DOS resúmenes en el canal: molesto, no grave. El
+  // mensaje nuevo ya está publicado y es el que manda.
+  try {
+    if (typeof mattermost?.actualizarPost === 'function' && tanda.aviso_post_id) {
+      await mattermost.actualizarPost({ id: tanda.aviso_post_id, message: TEXTO_MUDADO, props: { attachments: [] } })
+    }
+  } catch (e) {
+    log?.warn?.('comprobantes: el mensaje viejo quedó como estaba', { detalle: String(e?.message ?? e).slice(0, 200) })
+  }
+  // Y si la base no acepta el cambio, se sigue con el id nuevo en memoria: lo que no puede pasar es
+  // que este post se publique y después se reescriba el otro.
+  try { await repo.moverAviso(port, { id: tanda.id, avisoPostId: post.id }) } catch (e) {
+    log?.warn?.('comprobantes: no pude registrar el mensaje mudado', { detalle: String(e?.message ?? e).slice(0, 200) })
+  }
+  return post.id
+}
+
 /**
  * Reescribe el mensaje con el acumulado de TODA la tanda.
  *
@@ -334,5 +410,5 @@ async function refrescar({ mattermost, log }, tanda, texto, guardar = null) {
 
 /** Este mismo módulo como objeto, para que `conLaTanda` use el repositorio real por default. */
 function moduloPropio() {
-  return { tablasListas, tandaViva, cerrarVencidas, abrirTanda, abrirParte, cerrarParte, estadoDeLaTanda, guardarAviso }
+  return { tablasListas, tandaViva, cerrarVencidas, abrirTanda, abrirParte, cerrarParte, estadoDeLaTanda, guardarAviso, moverAviso }
 }

@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { conLaTanda } from './tanda.mjs'
+import { conLaTanda, TEXTO_MUDADO } from './tanda.mjs'
 import { parteVacia } from '../../lib/comprobantes/parte.mjs'
 
 /** El repositorio de tandas, en memoria. Misma interfaz que el real, cero SQL. */
@@ -54,6 +54,11 @@ function repoFalso({ hayTablas = true } = {}) {
       if (t && !t.aviso_post_id) t.aviso_post_id = avisoPostId
       return t?.aviso_post_id ?? null
     },
+    async moverAviso(_p, { id, avisoPostId }) {
+      const t = tandas.find((x) => x.id === id)
+      if (t) t.aviso_post_id = avisoPostId
+      return t?.aviso_post_id ?? null
+    },
     async cerrarTanda(_p, { id }) {
       const t = tandas.find((x) => x.id === id)
       if (t) t.estado = 'cerrada'
@@ -75,7 +80,17 @@ function mmFalso() {
 
 const port = { query: async () => ({ rows: [] }) }
 
-test('TRES POSTS SEGUIDOS PRODUCEN UN SOLO MENSAJE, no tres', async () => {
+test('TRES POSTS SEGUIDOS: UN SOLO RESUMEN VIVO, y siempre en el ÚLTIMO mensaje', async () => {
+  // ═══ POR QUÉ ESTE TEST CAMBIÓ (31/08) ═══
+  //
+  // Antes exigía `creados === 1`: un solo post del bot, reescrito. Cumplía la letra —el dueño pidió
+  // "un mensaje, no una cascada"— y fallaba el efecto: Mattermost no notifica ni reordena un post
+  // editado, así que la respuesta a las fotos de las 15:13 quedaba escrita ARRIBA, en el post de las
+  // 15:08, y el dueño la leía como que el bot se colgó. Pasó en producción con 11 comprobantes ya
+  // cargados en Compras que él nunca vio.
+  //
+  // El invariante que de verdad importa NO es cuántos posts hay: es que haya UN SOLO RESUMEN VIVO y
+  // que esté ABAJO DE TODO. Los anteriores quedan como una línea que apunta al nuevo.
   const repo = repoFalso()
   const mm = mmFalso()
   const base = { plataforma: 'mattermost', userId: 'u1', channelId: 'c1', recibidos: 4 }
@@ -87,13 +102,39 @@ test('TRES POSTS SEGUIDOS PRODUCEN UN SOLO MENSAJE, no tres', async () => {
     }))
   }
 
-  assert.equal(mm.creados.length, 1, 'el bot publicó más de un mensaje')
   assert.equal(repo.tandas.length, 1, 'se abrió más de una tanda')
-  // El único mensaje termina diciendo el TOTAL de los tres posts, no el del último.
-  const ultimo = mm.editados.at(-1)
-  assert.match(ultimo.message, /termin/i)
-  assert.match(ultimo.message, /11 comprobantes/)
-  assert.match(ultimo.message, /1 ya estaba cargado/)
+  assert.equal(mm.creados.length, 3, 'el resumen tiene que bajar una vez por cada post del dueño')
+
+  // El resumen vivo es el ÚLTIMO post publicado, y dice el total de los tres.
+  const vivo = mm.creados.at(-1).id
+  assert.equal(repo.tandas[0].aviso_post_id, vivo, 'la tanda quedó apuntando a un mensaje que no es el último')
+  const ultimaEdicion = mm.editados.filter((e) => e.id === vivo).at(-1)
+  assert.match(ultimaEdicion.message, /termin/i)
+  assert.match(ultimaEdicion.message, /11 comprobantes/)
+  assert.match(ultimaEdicion.message, /1 ya estaba cargado/)
+
+  // Y NINGUNO de los anteriores quedó con un resumen compitiendo: los dos apuntan abajo.
+  for (const viejo of mm.creados.slice(0, -1)) {
+    const final = mm.editados.filter((e) => e.id === viejo.id).at(-1)
+    assert.equal(final.message, TEXTO_MUDADO, `el mensaje ${viejo.id} quedó con un resumen viejo vivo`)
+  }
+})
+
+test('si NO se puede publicar abajo, se reescribe arriba: peor lugar, nunca silencio', async () => {
+  const repo = repoFalso()
+  const mm = mmFalso()
+  const base = { userId: 'u1', channelId: 'c1', recibidos: 4 }
+  const trabajo = async () => ({ estado: 'cargado', parte: { ...parteVacia(), recibidos: 4, cargados: 4 } })
+
+  await conLaTanda({ port, mattermost: mm, repo }, { ...base, postId: 'p1' }, trabajo)
+  const primero = mm.creados[0].id
+  mm.crearPost = async () => { throw new Error('mattermost no contesta') }
+  await conLaTanda({ port, mattermost: mm, repo }, { ...base, postId: 'p2' }, trabajo)
+
+  assert.equal(mm.creados.length, 1, 'publicó un mensaje que había fallado')
+  const final = mm.editados.filter((e) => e.id === primero).at(-1)
+  assert.match(final.message, /8 comprobantes/, 'el total de los dos posts no llegó a ningún lado')
+  assert.notEqual(final.message, TEXTO_MUDADO, 'dejó un puntero apuntando a un mensaje que no existe')
 })
 
 test('el primer post publica el ⏳ ANTES de trabajar: el canal no se queda mudo dos minutos', async () => {
