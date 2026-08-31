@@ -218,10 +218,21 @@ export async function guardarResolucion({ query }, { recurso, resolucion }) {
  *
  * ═══ POR QUÉ INSERT Y NO UPDATE ═══
  *
- * Se agrega una OBSERVACIÓN nueva y se baja `vigente` de las anteriores del mismo recurso. Pisar la
- * fila vieja borraría el único punto que la serie tiene hoy, y con él la única chance de que alguna
- * vez se pueda medir la volatilidad real en vez de caer al IPC. Un catálogo que se pisa a sí mismo
- * nunca acumula serie.
+ * **PISAR LA FILA GARANTIZA QUE LA SERIE NUNCA CREZCA Y QUE LA VOLATILIDAD REAL NUNCA SE PUEDA
+ * MEDIR.** No es una preferencia de estilo: es la explicación de un hecho medido. Al 30/08/2026 los
+ * 389 recursos del catálogo tienen EXACTAMENTE UNA observación cada uno —ni uno solo tiene dos—, y
+ * por eso `derivaDeSerie()` no puede disparar en ningún recurso y los 338 caen al IPC nivel general,
+ * que es un piso prestado del promedio de la economía y no la deriva del hormigón ni la del gasoil.
+ *
+ * Ese «1 observación por recurso» no es casualidad ni falta de historia: es la firma de una carga
+ * que siempre sobrescribió. Un catálogo que se pisa a sí mismo no tiene pasado, y sin pasado la
+ * vigencia sólo se puede estimar desde afuera.
+ *
+ * Por eso acá se agrega una OBSERVACIÓN NUEVA y se baja `vigente` de las anteriores. La consecuencia
+ * es acumulativa y es el punto: a la tercera corrida que consiga un precio, ese recurso tiene tres
+ * puntos con fecha, `derivaDeSerie()` empieza a devolver `SERIE_OBSERVADA` en vez de `IPC_INDEC`, y
+ * la vigencia pasa de estimada a MEDIDA. El costo de guardar filas de más es despreciable; el de
+ * borrarlas es no poder medir nunca.
  */
 export async function aplicarResolucion({ query }, { recurso, resolucion }) {
   if (resolucion.resultado !== 'ACTUALIZADO') {

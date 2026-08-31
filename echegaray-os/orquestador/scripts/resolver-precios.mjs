@@ -6,6 +6,12 @@
 //   node orquestador/scripts/resolver-precios.mjs --evidencia      # guarda el cuaderno de resoluciones
 //   node orquestador/scripts/resolver-precios.mjs --aplicar        # + escribe los ACTUALIZADO en el catálogo
 //   node orquestador/scripts/resolver-precios.mjs --cotizacion <uuid>   # con la materialidad REAL
+//   node orquestador/scripts/resolver-precios.mjs --hoy 2026-09-01      # ¿qué pasa el día que caduca?
+//
+// `--hoy` no es una comodidad de test: es la única forma de VER el acantilado de la paritaria antes
+// de chocarlo. El tramo firmado rige hasta el 31/08/2026, así que la misma cotización corrida con
+// fecha 30/08 y con fecha 01/09 da dos respuestas distintas, y esa diferencia es un aviso operativo,
+// no un detalle de implementación.
 //
 // ═══ SIN `--cotizacion` SE MIDE EL PEOR CASO ═══
 //
@@ -39,7 +45,9 @@ const pct = (a, b) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : '—')
 async function main() {
   const pool = getPool()
   const query = (s, p) => pool.query(s, p)
-  const hoy = new Date()
+  const hoyArg = args[args.indexOf('--hoy') + 1] ?? null
+  const hoy = tiene('--hoy') && hoyArg ? new Date(`${hoyArg}T00:00:00Z`) : new Date()
+  if (tiene('--hoy')) console.log(`⚠ corrida con fecha SIMULADA ${hoy.toISOString().slice(0, 10)} — los números son una proyección, no el estado de hoy`)
 
   const cotizacionId = args[args.indexOf('--cotizacion') + 1] ?? null
   let pesos = {}

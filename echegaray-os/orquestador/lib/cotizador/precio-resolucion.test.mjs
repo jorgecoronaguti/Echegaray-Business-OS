@@ -11,6 +11,7 @@ import { FUENTE } from '../plano/fuente.mjs'
 import {
   ORIGEN, RESULTADO, FUENTE_DE_ORIGEN,
   candidatoDePrecio, materialidadDe, evaluarCandidato, compararFuentes, resolverPrecio, necesitaHumano,
+  TRAMO_PARITARIA_HASTA,
 } from './precio-resolucion.mjs'
 
 const HOY = new Date('2026-08-30T00:00:00Z')
@@ -256,9 +257,13 @@ test('todo precio resuelto lleva los ocho campos que el programa exige', () => {
     assert.ok(p[campo] !== undefined && p[campo] !== null, `falta «${campo}»`)
   }
   // Sin materialidad conocida la tolerancia es el piso de ignorancia (5%) y el IPC real del INDEC
-  // da ~2,63%/mes: 30 × 5% ÷ 2,63% = 57 días desde el 25/08.
-  assert.equal(p.vigencia.dias, 57)
-  assert.equal(p.vigencia.venceEl, '2026-10-21', 'la vigencia dice HASTA CUÁNDO, no sólo cuántos días')
+  // da ~2,63%/mes: 30 × 5% ÷ 2,63% = 57 días. Pero el IPC publicado llega a 2026-06 y hoy es el
+  // 30/08: hay ~2 meses sin medir, así que la vigencia se recorta a 43. Que este número sea MENOR
+  // que 57 es la prueba de que la guarda del índice atrasado está aplicada y no sólo declarada.
+  assert.equal(p.vigencia.origenDeriva, 'IPC_INDEC_ATRASADO')
+  assert.ok(p.vigencia.dias < 57, `sin el recorte por atraso daría 57; dio ${p.vigencia.dias}`)
+  assert.equal(p.vigencia.dias, 43)
+  assert.equal(p.vigencia.venceEl, '2026-10-07', 'la vigencia dice HASTA CUÁNDO, no sólo cuántos días')
   assert.equal(p.evidencia.fila, 7)
   assert.equal(p.provenance.decididoEn, '2026-08-30')
 })
@@ -302,4 +307,51 @@ test('el recorrido completo sale SIEMPRE, incluso cuando no se resolvió nada', 
   const p = resolverPrecio({ recurso: HORMIGON, candidatos: [], hoy: HOY })
   assert.equal(p.provenance.recorrido.length, 4)
   assert.ok(p.provenance.recorrido.every((r) => r.estado === 'SIN_CANDIDATO' && r.porQue))
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL TRAMO DE PARITARIA · LA FECHA QUE CADUCA
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+const OFICIAL = { codigo: '1', nombre: 'OFICIAL', tipo: 'mano_obra', familia: 'MANO DE OBRA', unidad: 'hs' }
+/** El básico de agosto: $6.348/h Zona A, el valor real de `ESCALA_VERIFICADA`. */
+const basicoDeAgosto = () => candidatoDePrecio({
+  recursoCodigo: '1', valor: 6_348, origen: ORIGEN.INTERNO, observadoEn: '2026-08-01',
+  detalleFuente: 'UOCRA CCT 76/75 Zona A · escala 2026-08',
+})
+
+test('el básico de convenio se resuelve SOLO: el tramo firmado está cableado, no hay que pasarlo', () => {
+  const p = resolverPrecio({ recurso: OFICIAL, candidatos: [basicoDeAgosto()], hoy: new Date('2026-08-30T00:00:00Z') })
+  assert.equal(p.resultado, RESULTADO.VIGENTE, 'ya no sale TRAMO_PARITARIA_DESCONOCIDO')
+  assert.equal(p.vigencia.origenDeriva, 'TRAMO_PARITARIA')
+  assert.equal(p.vigencia.venceEl, TRAMO_PARITARIA_HASTA)
+  assert.equal(p.issue, null)
+})
+
+test('EL 01/09/2026 el básico de agosto CADUCA y pide el tramo nuevo', () => {
+  // La fecha fija es el punto: el 30/08 este mismo precio es correcto y el 01/09 no lo es. Lo que
+  // cambió no es el mercado —no pasó nada con la inflación en 48 horas—: se terminó el acuerdo.
+  const p = resolverPrecio({ recurso: OFICIAL, candidatos: [basicoDeAgosto()], hoy: new Date('2026-09-01T00:00:00Z') })
+  assert.equal(p.resultado, RESULTADO.NECESITA_HUMANO)
+  assert.equal(p.estado, ESTADO.HISTORICO)
+  assert.equal(p.valor, 6_348, 'el número se muestra como referencia; lo que NO se hace es cerrarle una oferta encima')
+  assert.match(p.porQue, /CADUCÓ el 2026-08-31/)
+  assert.equal(necesitaHumano(p), true)
+})
+
+test('CADUCAR NO ES DEGRADARSE · a igual fecha, el material sigue vivo y el jornal no', () => {
+  const hoy = new Date('2026-09-01T00:00:00Z')
+  const jornal = resolverPrecio({ recurso: OFICIAL, candidatos: [basicoDeAgosto()], hoy })
+  const material = resolverPrecio({
+    recurso: HORMIGON, hoy, impacto: 0.001, costoConocido: 1,
+    candidatos: [cand({ valor: 200_000, origen: ORIGEN.INTERNO, observadoEn: '2026-08-01', detalleFuente: 'catálogo' })],
+  })
+  assert.equal(jornal.resultado, RESULTADO.NECESITA_HUMANO, 'el jornal caducó por FECHA')
+  assert.equal(material.resultado, RESULTADO.VIGENTE, 'el material de la misma fecha todavía no se degradó lo suficiente')
+  assert.ok(jornal.vigencia.dias < material.vigencia.dias)
+})
+
+test('NEGATIVO · el 31/08, el último día del tramo, TODAVÍA vale', () => {
+  const p = resolverPrecio({ recurso: OFICIAL, candidatos: [basicoDeAgosto()], hoy: new Date('2026-08-31T00:00:00Z') })
+  assert.equal(p.resultado, RESULTADO.VIGENTE, 'el borde se incluye: el acuerdo rige HASTA el 31 inclusive')
 })

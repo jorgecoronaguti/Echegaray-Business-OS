@@ -37,7 +37,7 @@
 
 import { ESTADO, TIPO_ISSUE, SEVERIDAD, issue } from './contrato.mjs'
 import { FUENTE } from '../plano/fuente.mjs'
-import { vigenciaDerivada } from './vigencia.mjs'
+import { vigenciaDerivada, TRAMO_PARITARIA_HASTA, TRAMO_PARITARIA_FUENTE } from './vigencia.mjs'
 import { evaluarCambio, IMPACTO_MATERIAL } from './outlier.mjs'
 
 /** De dónde puede salir un precio. El orden del objeto ES el orden de la cascada. */
@@ -128,18 +128,36 @@ export function materialidadDe({ impacto = null, costoConocido = null } = {}) {
  * Devuelve el candidato con `vigencia`, `antiguedadDias`, `vigente` y `estado`. Un precio fechado en
  * el futuro sale `ERROR` y NO vigente: una fecha imposible no es un precio fresco, es un dedazo.
  */
-export function evaluarCandidato(cand, { recurso = {}, materialidad = null, serie = [], tramoParitariaHasta = null, hoy = new Date() } = {}) {
+export function evaluarCandidato(cand, { recurso = {}, materialidad = null, serie = [], tramoParitariaHasta = TRAMO_PARITARIA_HASTA, hoy = new Date() } = {}) {
   const vig = vigenciaDerivada({
     tipo: recurso.tipo, familia: recurso.familia, serie, origen: cand.origen,
     // La moneda viaja porque un precio en dólares no envejece con la inflación en pesos: el
     // VIBRO COMPACTADOR NIWA de la base está en USD y el IPC del INDEC no mide su deriva.
     moneda: cand.moneda,
-    materialidad, tramoParitariaHasta, hoy,
+    materialidad, tramoParitariaHasta, observadoEn: cand.observadoEn, hoy,
   })
   const edad = dias(cand.observadoEn, iso(hoy))
   if (edad < 0) {
     return Object.freeze({ ...cand, vigencia: vig, antiguedadDias: edad, vigente: false, estado: ESTADO.ERROR, porQue: `está fechado el ${cand.observadoEn}, en el futuro` })
   }
+
+  // ═══ CADUCAR Y DEGRADARSE NO SON LO MISMO ═══
+  //
+  // Un precio de material se DEGRADA: la pregunta es cuánta antigüedad se aguanta, y la contesta el
+  // cociente. Un básico de convenio CADUCA: está exactamente bien hasta el último día del tramo
+  // firmado y exactamente mal al día siguiente, porque lo que cambió no es el mercado sino la
+  // escala. Contra una fecha dura no se compara una antigüedad — se compara HOY.
+  if (vig.caducaEl) {
+    const vigenteHoy = iso(hoy) <= vig.caducaEl
+    return Object.freeze({
+      ...cand, vigencia: vig, antiguedadDias: edad, vigente: vigenteHoy,
+      estado: vigenteHoy ? ESTADO.EXTRAIDO : ESTADO.HISTORICO,
+      porQue: vigenteHoy
+        ? `rige hasta el ${vig.caducaEl} (${vig.porQue})`
+        : `CADUCÓ el ${vig.caducaEl} y hoy es ${iso(hoy)} — ${vig.porQue}`,
+    })
+  }
+
   const vigente = edad <= vig.dias
   return Object.freeze({
     ...cand, vigencia: vig, antiguedadDias: edad, vigente,
@@ -195,7 +213,9 @@ export function compararFuentes({ elegido, incumbente = null, recurso = {}, impa
  */
 export function resolverPrecio({
   recurso = {}, candidatos = [], serie = [], impacto = null, costoConocido = null,
-  tramoParitariaHasta = null, hoy = new Date(),
+  // El default es el tramo REAL cableado en `vigencia.mjs` desde `uocra-paritaria.mjs`: quien no
+  // sabe que existe una paritaria igual obtiene la respuesta correcta.
+  tramoParitariaHasta = TRAMO_PARITARIA_HASTA, hoy = new Date(),
 } = {}) {
   const mat = materialidadDe({ impacto, costoConocido })
   const evaluados = candidatos.map((c) => evaluarCandidato(c, { recurso, materialidad: mat.fraccion, serie, tramoParitariaHasta, hoy }))
@@ -295,7 +315,10 @@ function precio({ recurso, elegido, evaluados, recorrido, mat, resultado, estado
   return Object.freeze({ ...salida, issue: issueDeResolucion(salida, mat) })
 }
 
-const venceEl = (c) => iso(new Date(Date.parse(`${c.observadoEn}T00:00:00Z`) + c.vigencia.dias * 86_400_000))
+/** HASTA CUÁNDO VALE. Con fecha dura de caducidad es esa fecha; si no, la antigüedad admitida
+ *  sumada a la observación. Un `dias` en null (convenio sin observación fechada) no se suma. */
+const venceEl = (c) => c.vigencia.caducaEl
+  ?? (c.vigencia.dias === null ? null : iso(new Date(Date.parse(`${c.observadoEn}T00:00:00Z`) + c.vigencia.dias * 86_400_000)))
 
 /**
  * EL ISSUE QUE VA A LA COLA, O NADA. PURA.
@@ -324,6 +347,8 @@ export function issueDeResolucion(p, mat) {
     detalle: `${p.porQue} · ${mat.porQue}`,
   })
 }
+
+export { TRAMO_PARITARIA_HASTA, TRAMO_PARITARIA_FUENTE }
 
 /** ¿Esta resolución todavía necesita a una persona? PURA. Es la pregunta del paso 12. */
 export const necesitaHumano = (p) => p.resultado === RESULTADO.NECESITA_HUMANO || p.resultado === RESULTADO.SIN_PRECIO
