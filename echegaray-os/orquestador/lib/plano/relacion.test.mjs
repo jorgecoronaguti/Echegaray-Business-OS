@@ -230,3 +230,34 @@ test('MUTACIÓN · en la MISMA carpeta, el duplicado «(1)» de Drive SÍ es la 
   assert.equal(rel.familias.length, 1, 'el control puede decir «es la misma»: no quedó constante en 2')
   assert.equal(rel.superado.size, 1)
 })
+
+test('DOS ARCHIVOS QUE DECLARAN LA MISMA REVISIÓN NO SE ELIGEN A OJO: sale AMBIGUA', () => {
+  // El detector no disparó ni una vez sobre los 368 insumos de ARCOR. Que no haya casos no prueba
+  // que funcione — esto prueba que PUEDE decir que sí, y el caso sale del data room real:
+  // «Muro Cortafuego Rev E.xls» y «Muro Cortafuego Rev E - FINAL.xls» existen los dos.
+  const rel = relacionar([
+    doc('ARSJ Muro Cortafuego Rev E.xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev E.xls`),
+    doc('ARSJ Muro Cortafuego Rev E (2).xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev E (2).xls`),
+  ], { carpetaObra: RAIZ })
+  assert.equal(rel.ambiguas.length, 1)
+  assert.match(rel.ambiguas[0].porQue, /declaran Rev E/)
+  // Y CON REVISIONES DISTINTAS NO ES AMBIGUA: el control puede decir las dos cosas.
+  const claro = relacionar([
+    doc('ARSJ Muro Cortafuego Rev E.xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev E.xls`),
+    doc('ARSJ Muro Cortafuego Rev F.xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev F.xls`),
+  ], { carpetaObra: RAIZ })
+  assert.equal(claro.ambiguas.length, 0)
+  assert.equal(claro.superado.get('ARSJ Muro Cortafuego Rev E.xls').vigente, 'ARSJ Muro Cortafuego Rev F.xls')
+})
+
+test('UN SUFIJO DECORATIVO PARTE LA FAMILIA — límite conocido, y falla del lado seguro', () => {
+  // «… Rev E.xls» y «… Rev E - FINAL.xls» son dos familias distintas para este modelo: el «- FINAL»
+  // no se saca. La consecuencia es que NO se detecta la ambigüedad, no que se declare superado un
+  // documento vivo. Queda escrito acá para que se sepa que es un límite y no un descuido.
+  const rel = relacionar([
+    doc('ARSJ Muro Cortafuego Rev E.xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev E.xls`),
+    doc('ARSJ Muro Cortafuego Rev E - FINAL.xls', `${RAIZ}MURO CORTAFUEGO/ARSJ Muro Cortafuego Rev E - FINAL.xls`),
+  ], { carpetaObra: RAIZ })
+  assert.equal(rel.familias.length, 2)
+  assert.equal(rel.superado.size, 0, 'ninguno pisa al otro: el error es de omisión, no de borrado')
+})
