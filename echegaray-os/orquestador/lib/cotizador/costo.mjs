@@ -65,13 +65,28 @@ const redondear = (n, d = 2) => (n === null || n === undefined ? null : Math.rou
 export function subcontrato({
   alcance, proveedor = null, cantidad = null, unidad = null,
   precio = null, moneda = 'ARS', cotizadoEn = null, validoHasta = null, fuente = null,
+  tipo = null, documento = null, validezDias = null, incluye = [], excluye = [],
 } = {}) {
   if (!alcance) throw new Error('un subcontrato sin alcance no se puede comparar contra nada: ¿qué incluye?')
   const tienePrecio = precio !== null && precio !== undefined && Number.isFinite(Number(precio))
+  // ═══ LO QUE SE PRESERVA SIEMPRE, TENGA PRECIO O NO ═══
+  // Alcance, proveedor, fecha, moneda, vigencia y documento sobreviven a la rama sin precio. La
+  // versión anterior los tiraba: un subcontrato sin cotizar perdía la fecha en que se pidió y el
+  // documento donde consta el pedido, que es justo lo que hace falta para reclamarlo.
+  const constante = {
+    alcance, proveedor, cantidad, unidad, moneda, tipo,
+    cotizadoEn: cotizadoEn ? String(cotizadoEn).slice(0, 10) : null,
+    validoHasta: validoHasta ? String(validoHasta).slice(0, 10) : null,
+    validezDias: validezDias === null || validezDias === undefined || !Number.isFinite(Number(validezDias)) ? null : Number(validezDias),
+    documento: documento ?? null,
+    // Un sub «más barato» que excluye tres ítems no es más barato. Sin estas dos listas, comparar
+    // dos cotizaciones de subcontratistas es comparar dos números que miden cosas distintas.
+    incluye: Object.freeze([...incluye]), excluye: Object.freeze([...excluye]),
+  }
   if (!tienePrecio) {
     return Object.freeze({
-      alcance, proveedor, cantidad, unidad, moneda,
-      costo: null, estado: ESTADO.FALTA_DATO,
+      ...constante,
+      costo: null, fuente: fuente ? String(fuente) : null, estado: ESTADO.FALTA_DATO,
       // El texto importa: dice explícitamente que no es cero, porque el que lea esto en una pantalla
       // o en un export tiene que entenderlo sin conocer el modelo de datos.
       porQue: `«${alcance}» está declarado como subcontrato y todavía no tiene precio. NO vale $0: vale lo que va a costar, y falta preguntarlo`,
@@ -81,10 +96,8 @@ export function subcontrato({
   if (!fuente) throw new Error(`el subcontrato «${alcance}» trae precio y no trae fuente: un precio que no se puede volver a pedir no se puede defender`)
   if (!cotizadoEn) throw new Error(`el subcontrato «${alcance}» trae precio y no trae fecha: no se puede saber si sigue vigente`)
   return Object.freeze({
-    alcance, proveedor, cantidad, unidad,
-    costo: Number(precio), moneda, cotizadoEn: String(cotizadoEn).slice(0, 10),
-    validoHasta: validoHasta ? String(validoHasta).slice(0, 10) : null,
-    fuente: String(fuente),
+    ...constante,
+    costo: Number(precio), fuente: String(fuente),
     estado: ESTADO.EXTRAIDO,
     porQue: null, faltan: [],
   })
@@ -92,32 +105,118 @@ export function subcontrato({
 
 /** ¿Este subcontrato ya venció? PURA. Vencido no es sin precio: el número existe y hay que
  *  reconfirmarlo, que es una acción distinta. */
-/** Cuántos días vale la cotización de un subcontratista cuando no declara vencimiento. Mismo corte
- *  que el de un precio de recurso: no hay motivo para que el precio del hormigón venza a los 180
- *  días y el de la instalación sanitaria no venza nunca. */
+/**
+ * CUÁNTOS DÍAS VALE LA COTIZACIÓN DE UN SUBCONTRATISTA.
+ *
+ * ═══ POR QUÉ 180 PLANO ESTABA MAL ═══
+ *
+ * El 180 salió de `parametro_operativo.dias_precio_aceptable`, que es el corte de un PRECIO DE
+ * RECURSO de la base maestra. Un subcontrato no es un precio de lista: es una OFERTA de un tercero,
+ * y una oferta declara su propia validez. Cuando el documento la declara, manda el documento —
+ * asumir 180 sobre una oferta que dice «válida 15 días» es cotizar con un precio que el
+ * subcontratista ya no sostiene, y esa diferencia la paga la obra.
+ *
+ * ═══ POR QUÉ EL DEFAULT POR TIPO VIENE VACÍO ═══
+ *
+ * `GENERAL: 180` es el único corte con origen declarado en el OS. Los defaults por tipo de
+ * subcontrato —sanitaria, eléctrica, movimiento de suelo, estructura metálica— **no están medidos**
+ * y ponerlos acá sería inventarlos. La tabla se pasa por parámetro y la llena la base
+ * (`subcontrato_vigencia_default`); mientras un tipo no tenga su fila, el resultado cae en GENERAL y
+ * lo DECLARA en `origen`, para que se vea que ese vencimiento es un supuesto y no una regla.
+ */
 export const DIAS_VIGENCIA_SUBCONTRATO = 180
+export const VIGENCIA_SUBCONTRATO = Object.freeze({ GENERAL: DIAS_VIGENCIA_SUBCONTRATO })
 
-export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = DIAS_VIGENCIA_SUBCONTRATO } = {}) {
-  if (s.estado !== ESTADO.EXTRAIDO) return { vigente: false, estado: s.estado }
+/**
+ * DE DÓNDE SALE LA VIGENCIA DE ESTE SUBCONTRATO. PURA.
+ *
+ * Tres orígenes y se distinguen siempre: `DOCUMENTO` (la oferta lo dice), `TIPO` (la empresa tiene
+ * un default declarado para esa clase de trabajo) y `GENERAL` (ninguno de los dos: es un supuesto).
+ */
+export function vigenciaDeSubcontrato(s, { tabla = VIGENCIA_SUBCONTRATO, diasPorDefecto = null } = {}) {
+  // `Number(null)` es 0 y `Number.isFinite(0)` es `true`: preguntar sólo por `isFinite` convertía una
+  // validez AUSENTE en una validez MEDIDA de cero días, y todo subcontrato sin `validezDias` salía
+  // vencido el mismo día que se cotizó. Lo encontró el test «un SUBCONTRATO sin vencimiento NO es
+  // vigente para siempre». Es el mismo `NULL ≠ 0` que este archivo ya cierra dos veces más abajo.
+  const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v))
+  if (s?.validoHasta) return { origen: 'DOCUMENTO', dias: null, hasta: s.validoHasta, porQue: `la oferta declara vigencia hasta el ${s.validoHasta}` }
+  const declarada = num(s?.validezDias)
+  if (declarada !== null) {
+    return { origen: 'DOCUMENTO', dias: declarada, hasta: null, porQue: `la oferta declara ${declarada} días de validez` }
+  }
+  const porTipo = s?.tipo ? num(tabla?.[s.tipo]) : null
+  if (porTipo !== null) {
+    return { origen: 'TIPO', dias: porTipo, hasta: null, porQue: `la oferta no declara validez; el default declarado para «${s.tipo}» es ${porTipo} días` }
+  }
+  const general = num(diasPorDefecto) ?? num(tabla?.GENERAL) ?? DIAS_VIGENCIA_SUBCONTRATO
+  return {
+    origen: 'GENERAL', dias: general, hasta: null,
+    porQue: s?.tipo
+      ? `no declara vencimiento y «${s.tipo}» no tiene default declarado: se SUPONE el corte general de ${general} días`
+      : `no declara vencimiento ni tipo de subcontrato: se SUPONE el corte general de ${general} días`,
+  }
+}
+
+/**
+ * ¿ESTE SUBCONTRATO SIGUE EN PIE? PURA.
+ *
+ * Vencido NO es sin precio: el número existe y hay que reconfirmarlo, que es una acción distinta.
+ * `decisionRequerida` sale en `true` cuando el precio existe y no se puede usar tal cual — es lo que
+ * impide que un subcontrato vencido entre callado a un total.
+ */
+export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = null, tabla = VIGENCIA_SUBCONTRATO, resolver = null } = {}) {
+  if (s.estado !== ESTADO.EXTRAIDO) return { vigente: false, estado: s.estado, decisionRequerida: false }
   const hoyIso0 = (hoy instanceof Date ? hoy.toISOString() : String(hoy)).slice(0, 10)
+  // ═══ EL DOCUMENTO LE GANA A CUALQUIER DERIVACIÓN ═══
+  //
+  // Un resolvedor que deriva la vigencia de la deriva de precios y la materialidad es mejor que un
+  // 180 puesto a dedo — pero sólo cuando el proveedor NO dijo hasta cuándo sostiene su precio.
+  // Cuando lo dijo, ese es un dato duro y ninguna estadística lo puede pisar: derivarle 90 días a
+  // una oferta que dice «válida 15» es cotizar con un precio que el subcontratista ya no sostiene.
+  // Por eso la precedencia vive acá y no en el resolvedor: quien inyecte no puede saltearla.
+  const declarada = Boolean(s?.validoHasta) || Number.isFinite(Number(s?.validezDias)) && s?.validezDias !== null
+  const v = (!declarada && typeof resolver === 'function')
+    ? resolver(s, { tabla, diasPorDefecto, hoy })
+    : vigenciaDeSubcontrato(s, { tabla, diasPorDefecto })
   // ═══ SIN VENCIMIENTO NO ES «VIGENTE PARA SIEMPRE» ═══
   //
   // La versión anterior devolvía `vigente: true` cuando el subcontrato no declaraba `validoHasta`, y
-  // `pg.mjs` NUNCA lo fija: todo subcontrato leído de la base era eterno. Un precio de recurso vence
-  // a los 180 días y uno de subcontrato jamás — el mismo agujero de HISTORICO, por otra puerta.
-  // Ahora la vigencia se DERIVA de la fecha de cotización, y si tampoco la hay, no hay vigencia.
-  if (!s.validoHasta) {
-    if (!s.cotizadoEn) {
-      return { vigente: false, estado: ESTADO.FALTA_DATO, porQue: `«${s.alcance}» no declara ni fecha de cotización ni vencimiento: no se puede saber si el precio sigue en pie` }
-    }
-    const limite = new Date(Date.parse(`${s.cotizadoEn}T00:00:00Z`) + diasPorDefecto * 86_400_000).toISOString().slice(0, 10)
-    if (hoyIso0 > limite) {
-      return { vigente: false, estado: ESTADO.HISTORICO, porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} es del ${s.cotizadoEn} y no declara vencimiento: pasados ${diasPorDefecto} días se considera vencida` }
-    }
-    return { vigente: true, estado: ESTADO.EXTRAIDO, porQue: `no declara vencimiento; vale ${diasPorDefecto} días desde el ${s.cotizadoEn}` }
+  // `pg.mjs` NUNCA lo fija: todo subcontrato leído de la base era eterno. Ahora la vigencia se DERIVA
+  // de la fecha de cotización, y si tampoco la hay, no hay vigencia.
+  const limite = v.hasta ?? (s.cotizadoEn
+    ? new Date(Date.parse(`${s.cotizadoEn}T00:00:00Z`) + v.dias * 86_400_000).toISOString().slice(0, 10)
+    : null)
+  if (!limite) {
+    return { vigente: false, estado: ESTADO.FALTA_DATO, origen: v.origen, decisionRequerida: true, porQue: `«${s.alcance}» no declara ni fecha de cotización ni vencimiento: no se puede saber si el precio sigue en pie` }
   }
-  if (hoyIso0 > s.validoHasta) return { vigente: false, estado: ESTADO.HISTORICO, porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} venció el ${s.validoHasta}` }
-  return { vigente: true, estado: ESTADO.EXTRAIDO }
+  if (hoyIso0 > limite) {
+    return {
+      vigente: false, estado: ESTADO.HISTORICO, origen: v.origen, venceEl: limite, decisionRequerida: true,
+      porQue: `la cotización de ${s.proveedor ?? 'el subcontratista'} venció el ${limite} — ${v.porQue}`,
+    }
+  }
+  return { vigente: true, estado: ESTADO.EXTRAIDO, origen: v.origen, venceEl: limite, decisionRequerida: false, porQue: v.origen === 'DOCUMENTO' ? null : v.porQue }
+}
+
+/**
+ * ¿ESTE SUBCONTRATO CUBRE LO QUE LA PARTIDA EXIGE? PURA.
+ *
+ * Comparar el precio de dos subcontratistas sin comparar su alcance es comparar dos números que
+ * miden cosas distintas. Devuelve lo que el sub EXCLUYE de lo exigido: si la lista no está vacía, el
+ * precio no es comparable y la diferencia la va a poner la obra.
+ */
+export function brechaDeAlcance({ subcontrato: s, exigido = [] } = {}) {
+  const norm = (x) => String(x ?? '').toLowerCase().trim()
+  const incluye = new Set((s?.incluye ?? []).map(norm))
+  const excluye = new Set((s?.excluye ?? []).map(norm))
+  const noCubre = exigido.filter((e) => excluye.has(norm(e)) || !incluye.has(norm(e)))
+  return {
+    comparable: noCubre.length === 0 && exigido.length > 0,
+    noCubre: Object.freeze([...noCubre]),
+    porQue: exigido.length === 0
+      ? 'no se declaró qué exige la partida: el precio del subcontratista no se puede comparar contra nada'
+      : (noCubre.length ? `el subcontratista NO cubre ${noCubre.join(', ')}: su precio no es comparable con uno que sí lo incluye` : null),
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -136,7 +235,41 @@ export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = DIAS_
  *   · algún recurso no tiene precio       → se sabe de qué está hecha y no cuánto sale
  *   · la cantidad no está en la unidad de la partida → error de cómputo, no de precio
  */
-export function costoDePartida({ partida, composicion = [], observaciones = [], fx = null, monedaDestino = 'ARS', hoy = new Date() } = {}) {
+/**
+ * ¿ESTA CANTIDAD ESTÁ SIN MEDIR? PURA. Una sola definición para todo el motor.
+ *
+ * Existía dos veces con dos criterios distintos: acá, que ya listaba `''`, y en la reutilización de
+ * aprendizajes del orquestador, que no. El auditor lo probó: con `cantidad: ''` —`Number('')` es
+ * **0**, y 0 es finito— el agujero de las HH fantasma se reabría entero. Dos definiciones del mismo
+ * predicado siempre terminan divergiendo, y la que gana es la laxa.
+ *
+ * `'  '` también entra: `Number('  ')` es 0, y un renglón con espacios no es un renglón que vale 0.
+ */
+export function sinMedir(cantidad) {
+  if (cantidad === null || cantidad === undefined) return true
+  if (typeof cantidad === 'string' && cantidad.trim() === '') return true
+  return !Number.isFinite(Number(cantidad))
+}
+
+export function costoDePartida({
+  partida, composicion = [], observaciones = [], fx = null,
+  monedaDestino = 'ARS', hoy = new Date(),
+  tablaVigenciaSubcontrato = VIGENCIA_SUBCONTRATO,
+  // ═══ EL PUNTO DE ENGANCHE DEL RESOLVEDOR DE PRECIOS ═══
+  //
+  // El default ES `precioVigente`, así que sin inyectar nada el comportamiento es exactamente el de
+  // antes. Existe porque el corte de vigencia plano de 180 días no distingue un precio de $900 que
+  // se movió 2 % de uno de $8 M que se movió 40 %, y quien sabe derivar eso es otro módulo. El
+  // contrato del resolvedor son los NUEVE campos que este archivo lee (`valor`, `estado`, `moneda`,
+  // `fuente`, `observadoEn`, `antiguedadDias`, `porQue` y los que consume `issueDePrecio`); lo que
+  // agregue de más viaja sin que esta función lo mire.
+  resolverPrecio = precioVigente,
+  // Mismo mecanismo para la vigencia de un subcontrato — con UNA diferencia que no se negocia: si el
+  // documento del proveedor declara su propia validez, MANDA EL DOCUMENTO. Una oferta con validez
+  // declarada es un dato duro y ninguna derivación estadística la puede pisar; el resolvedor
+  // inyectado sólo entra cuando el documento calla. La precedencia vive en `subcontratoVigente`.
+  resolverVigenciaSubcontrato = null,
+} = {}) {
   const base = {
     partida: partida?.codigo ?? partida?.id ?? '?',
     cantidad: partida?.cantidad ?? null,
@@ -164,7 +297,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     if (conv.estado !== ESTADO.CALCULADO) {
       return { ...base, hh: 0, estado: ESTADO.FALTA_DATO, faltan: [conv.porQue], issues: [issue({ type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.BLOQUEANTE, entity: base.partida, detalle: conv.porQue })] }
     }
-    const venc = subcontratoVigente(s, { hoy })
+    const venc = subcontratoVigente(s, { hoy, tabla: tablaVigenciaSubcontrato, resolver: resolverVigenciaSubcontrato })
     return {
       ...base, hh: 0, estado: venc.vigente ? ESTADO.EXTRAIDO : ESTADO.HISTORICO,
       cajones: { LABOR: 0, MATERIALS: 0, EQUIPMENT: 0, SUBCONTRACTS: redondear(conv.valor), OTHER: 0 },
@@ -200,7 +333,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
 
   for (const l of composicion) {
     const cajon = CAJON_DE_TIPO[l.tipo] ?? CAJON.OTHER
-    const p = precioVigente(l.recursoCodigo ?? l.codigo, observaciones, { hoy })
+    const p = resolverPrecio(l.recursoCodigo ?? l.codigo, observaciones, { hoy })
     const conFactor = 1 + (Number(l.desperdicio) || 0)
 
     // ═══ LA CANTIDAD DE LA LÍNEA, CON LA MISMA GUARDA QUE LA DE LA PARTIDA ═══
@@ -211,7 +344,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     // de obra. Es exactamente el defecto que este archivo ya cerraba una escala más arriba —para la
     // cantidad de la PARTIDA— y que no se había cerrado para la cantidad de la LÍNEA.
     const cl = l.cantidad
-    if (cl === null || cl === undefined || cl === '' || !Number.isFinite(Number(cl))) {
+    if (sinMedir(cl)) {
       const porQue = `${l.recursoCodigo ?? l.codigo}: la composición no dice cuánto lleva por unidad. NO es cero: es un renglón sin medir`
       faltan.push(porQue)
       // Si la línea sin medir es de mano de obra, las HH de la partida dejan de ser afirmables:

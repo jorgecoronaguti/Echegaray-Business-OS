@@ -25,10 +25,92 @@ import { leerEstado } from '../lib/cotizador/pg.mjs'
 import { delProyecto, exclusionesDelProyecto, issuesDeCandidatas, huecosDelProyecto, clientesDelCorpus } from '../lib/cotizador/corpus.mjs'
 import { cuadroDeCorrida, comoMarkdown, bloqueosLegibles } from '../lib/cotizador/reporte.mjs'
 import { seleccionarTodas } from '../lib/plano/seleccion.mjs'
+import { armarCaso, numerosDelCaso } from '../lib/cotizador/caso-planilla-cliente.mjs'
+import { costoDePartida } from '../lib/cotizador/costo.mjs'
 import { politicaComercial } from '../lib/cotizador/comercial.mjs'
 import { observacionDePrecio } from '../lib/cotizador/precios.mjs'
+import { resolvedorDePrecios } from '../lib/cotizador/precio-adaptador.mjs'
+import { leerComprasReales, pesosDeCotizacion } from '../lib/cotizador/precio-fuentes.pg.mjs'
+import { VIGENCIA_HASTA } from '../lib/uocra-paritaria.mjs'
+
+/** DD/MM/YYYY → YYYY-MM-DD. El tramo de paritaria vive en el formato del acuerdo, no en el de la base. */
+const isoDelTramo = (ddmmyyyy) => {
+  const [d, m, a] = String(ddmmyyyy).split('/')
+  return a && m && d ? `${a}-${m}-${d}` : null
+}
+
+/**
+ * EL RESOLVEDOR DE PRECIOS DE UNA COTIZACIÓN.
+ *
+ * Necesita los PESOS de ESTA cotización, no los del catálogo: la materialidad es lo único que separa
+ * al panel de chapa que mueve millones del tornillo autoperforante que mueve centavos, y sin ella
+ * los dos frenan igual una oferta de $ 80 M. Sin `cotizacionId` no hay pesos y todo cae al piso más
+ * exigente — es correcto, y hay que saberlo al leer el número que sale.
+ */
+export async function resolvedorParaCotizacion(query, { cotizacionId = null, recursos = new Map(), comparables = [], preciosWeb = new Map() } = {}) {
+  const compras = await leerComprasReales({ query })
+  const pesos = cotizacionId ? (await pesosDeCotizacion({ query }, cotizacionId)).pesos : {}
+  return resolvedorDePrecios({ compras, pesos, recursos, comparables, preciosWeb, tramoParitariaHasta: isoDelTramo(VIGENCIA_HASTA) })
+}
+
+/**
+ * LAS OBSERVACIONES CON LAS QUE SE ARMAN LAS COHORTES DE COMPARABLES. UNA consulta.
+ *
+ * Una por recurso —la más reciente—, con el nombre y la unidad, que es lo que
+ * `precio-comparable.mjs` necesita para decidir si dos recursos son el mismo mercado. NO se filtra
+ * por frescura acá: la frescura la decide `evaluarCandidato`, y un comparable hereda la fecha de la
+ * observación que copió. Filtrarla en dos lugares es como termina habiendo dos definiciones.
+ */
+export async function observacionesComparables(query) {
+  const r = await query(`select distinct on (r.id) r.codigo, r.nombre, r.unidad, rp.costo, rp.moneda, rp.fecha_precio
+                           from public.recurso r join public.recurso_precio rp on rp.recurso_id = r.id
+                          where rp.costo is not null and rp.fecha_precio is not null and rp.costo > 0
+                          order by r.id, rp.fecha_precio desc`)
+  return r.rows.map((x) => ({
+    recurso: { codigo: x.codigo, nombre: x.nombre, unidad: x.unidad },
+    valor: Number(x.costo),
+    moneda: x.moneda ?? 'ARS',
+    observadoEn: (x.fecha_precio instanceof Date ? x.fecha_precio.toISOString() : String(x.fecha_precio)).slice(0, 10),
+  }))
+}
 
 const BIBLIOTECA = JSON.parse(readFileSync(new URL('../datos/conocimiento/biblioteca.json', import.meta.url), 'utf8'))
+
+/**
+ * LA LECTURA CONGELADA DEL ÁMBITO DE ARCOR QUE ENTRA POR PLANILLAS.
+ *
+ * La produce `estudiar-ambito-planillas.mjs` y vive en el repo por la misma razón que la biblioteca:
+ * este script tiene que correr entero, sin red y sin credenciales. Cada documento lleva adentro el
+ * hash de sus bytes y la fecha en que se bajó, así que volver a correr el estudio dice si Drive se
+ * movió — un espejo que no puede gritar es una fuente muerta que se lee como viva.
+ */
+const AMBITO_ARCOR = JSON.parse(readFileSync(new URL('../datos/conocimiento/ambito-arcor-filtro-sanitario.json', import.meta.url), 'utf8'))
+
+/**
+ * EL COSTO UNITARIO DE CADA TAREA DEL CATÁLOGO, `{ codigo: costo }`. 0 consultas: usa lo ya leído.
+ *
+ * Sirve para que la pregunta que cierra un hueco llegue con su plata al lado: «¿la de 0,15 o la de
+ * 0,20?» sin decir que una sale $ 17.550 y la otra $ 28.939 traslada la decisión sin trasladar la
+ * información. Una tarea que no se puede costear queda AFUERA del mapa, no en cero.
+ */
+export function costosDelCatalogo({ tareas, composiciones }, { observaciones, resolverPrecio, hoy = new Date() }) {
+  const salida = {}
+  for (const t of tareas) {
+    const c = costoDePartida({
+      partida: { codigo: t.codigo, cantidad: 1, unidad: t.unidad, tareaTipoId: t.id },
+      composicion: composiciones.get(t.id) ?? [], observaciones, hoy,
+      ...(resolverPrecio ? { resolverPrecio } : {}),
+    })
+    if (c.costoUnitario !== null && Number.isFinite(c.costoUnitario)) salida[t.codigo] = c.costoUnitario
+  }
+  return salida
+}
+
+/** El costo unitario de cada RECURSO, `{ codigo: costo }`, para medir la plata del material que el
+ *  cliente ya compró. Un recurso sin precio queda afuera: su riesgo es desconocido, no cero. */
+export const costosDeRecursos = (observaciones = []) => Object.fromEntries(
+  observaciones.filter((o) => Number.isFinite(Number(o?.precio))).map((o) => [o.recursoCodigo, Number(o.precio)]),
+)
 
 /** El catálogo de la Base Maestra con análisis vigente y su composición. UNA consulta cada uno. */
 export async function baseMaestraCompleta(query) {
@@ -116,13 +198,24 @@ export function correrCronometrado(entrada) {
   return { corrida: fria, segunda: tibia, msFrio: t1 - t0, msTibio: t2 - t1 }
 }
 
-async function main() {
+export async function main() {
   const pool = getPool()
   const query = (s, p) => pool.query(s, p)
   const clientes = clientesDelCorpus(BIBLIOTECA)
   const politica = await politicaVigente(query)
   const bm = await baseMaestraCompleta(query)
   const precios = await preciosVigentes(query)
+  // El catálogo de recursos por código: el resolvedor lo necesita para saber de qué tipo es cada uno
+  // (un jornal de convenio caduca con la paritaria; una bolsa de cemento se degrada con la inflación).
+  const recursos = new Map((await query('select codigo, nombre, tipo, unidad from public.recurso')).rows
+    .map((r) => [r.codigo, { nombre: r.nombre, tipo: r.tipo, unidad: r.unidad }]))
+  // Un dictado telefónico no tiene cotización cargada, así que no hay pesos: sin materialidad todo
+  // recurso cae al piso de vigencia más exigente. Es correcto y hay que leerlo sabiéndolo.
+  // Los comparables salen de la MISMA tabla de precios: no hay una fuente nueva ni un dato que
+  // alguien haya cargado para esto. Lo único que se agrega es la pregunta «¿algún otro recurso del
+  // mismo mercado tiene precio fresco?», que hasta ahora nadie hacía.
+  const comparables = await observacionesComparables(query)
+  const sinPesos = await resolvedorParaCotizacion(query, { cotizacionId: null, recursos, comparables })
   const casos = []
 
   // ── CASO 1 · QUATTROPANI, PUNTA A PUNTA ────────────────────────────────────────────────────
@@ -131,6 +224,9 @@ async function main() {
                               order by fecha_cotizacion limit 1`)).rows[0]
   const corpusQ = delProyecto(BIBLIOTECA, 'quattropani')
   const estadoQ = await leerEstado({ query }, cotQ.id)
+  // Sin `preciosWeb`: este script NO sale a internet. El paso WEB queda cableado y vacío, que es
+  // exactamente lo que el §13 pide poder demostrar — el informe sale igual sin red.
+  const resolverPrecioQ = await resolvedorParaCotizacion(query, { cotizacionId: cotQ.id, recursos, comparables })
   const exQ = exclusionesDelProyecto(corpusQ.conocimientos, { partidas: estadoQ.partidas })
   const q = correrCronometrado({
     ...estadoQ,
@@ -143,6 +239,7 @@ async function main() {
     // La partida está CARGADA en COT-2026-001, que es un acto de la empresa. Es el provenance que
     // §5 exige para no dejar las 26 en POR_DEFINIR; lo que el contrato excluye lo sigue excluyendo.
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'cargada en el presupuesto COT-2026-001', motivo: 'una partida cargada en el presupuesto está incluida por acto propio de la empresa' },
+    resolverPrecio: resolverPrecioQ,
   })
   casos.push({ nombre: 'QUATTROPANI (real)', ...q, corpus: corpusQ, exclusiones: exQ, cotizacionId: cotQ.id })
 
@@ -162,6 +259,7 @@ async function main() {
     alcance: exE.entradas, politica, cliente: 'LA ESTRELLA', clientesConocidos: clientes,
     issuesHeredados: huecosDelProyecto(corpusE.huecos),
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'dictado del jefe de obra', motivo: 'lo que se dicta se cotiza' },
+    resolverPrecio: sinPesos,
   })
   casos.push({ nombre: 'LA ESTRELLA (ciego)', ...e, corpus: corpusE, exclusiones: exE, mapeo: mapE })
 
@@ -171,6 +269,7 @@ async function main() {
     ...estadoQ, documentos: corpusQ.documentos.slice(0, 2), alcance: [],
     politica: estadoQ.politica ?? politica, cliente: 'FRANCO QUATTROPANI', clientesConocidos: clientes,
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'cargada en el presupuesto COT-2026-001' },
+    resolverPrecio: resolverPrecioQ,
   })
   casos.push({ nombre: 'DOC INCOMPLETA', ...inc, corpus: { documentos: corpusQ.documentos.slice(0, 2), conocimientos: [] } })
 
@@ -185,8 +284,41 @@ async function main() {
     partidas: mapC.partidas, observaciones: precios, alcance: [], politica,
     cliente: 'OBRA SIN PLANOS', clientesConocidos: clientes,
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'dictado del dueño', motivo: 'lo que se dicta se cotiza' },
+    resolverPrecio: sinPesos,
   })
   casos.push({ nombre: 'CÓMPUTO MANUAL', ...c, corpus: { documentos: [], conocimientos: [] }, mapeo: mapC })
+
+  // ── CASO 5 · ARCOR · LA GRILLA LA IMPONE EL CLIENTE ────────────────────────────────────────
+  //
+  // Es el caso opuesto a Quattropani, y por eso está: ARCOR no manda planos, manda SU planilla.
+  // Los 57 documentos del cliente en el corpus son 49 planillas y 8 Word, y los 57 se abren sin un
+  // modelo. El ámbito elegido —FILTRO SANITARIO— trae la cadena completa: el pedido del cliente, la
+  // cotización interna, el cómputo final y el cómputo de materiales que sostiene los kilos.
+  //
+  // Nada de este caso ajusta un umbral para que cierre. Al revés: el control de suministro SACA del
+  // costo las partidas cuyo análisis compra material que ARCOR ya compró, así que ARCOR cotiza
+  // MENOS partidas que si no existiera. Un caso real que sale perfecto es un caso que se acomodó.
+  const costosCatalogo = costosDelCatalogo(bm, { observaciones: precios, resolverPrecio: sinPesos })
+  const casoA = armarCaso(AMBITO_ARCOR, {
+    catalogo: bm.tareas, composiciones: bm.composiciones,
+    cliente: 'ARCOR', costoPorRecurso: costosDeRecursos(precios),
+  })
+  const a = correrCronometrado({
+    documentos: casoA.documentos, elementos: casoA.elementos, partidas: casoA.partidas,
+    composiciones: bm.composiciones, observaciones: precios, alcance: [], politica,
+    cliente: 'ARCOR - SAN JUAN', clientesConocidos: clientes,
+    mapeos: casoA.mapeos, costosDeCatalogo: costosCatalogo,
+    issuesHeredados: casoA.issues,
+    // Lo que el cliente escribió en SU planilla está pedido por acto propio del cliente. No es una
+    // suposición nuestra: es el documento con el que nos invitó a cotizar.
+    alcancePorDefecto: { estado: 'INCLUIDO', fuente: `planilla del cliente: ${casoA.version.elegido?.nombre ?? 'sin versión'}`, motivo: 'lo que el cliente escribió en su propia planilla de cotización está pedido' },
+    resolverPrecio: sinPesos,
+  })
+  casos.push({
+    nombre: 'ARCOR (planilla del cliente)', ...a,
+    corpus: { documentos: casoA.documentos, conocimientos: [] },
+    ambito: casoA, numeros: numerosDelCaso(casoA),
+  })
 
   await pool.end()
   return { casos, clientes }
@@ -203,6 +335,36 @@ async function main() {
  */
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await informe()
+}
+
+/**
+ * LO QUE EL CUADRO GENERAL NO PUEDE DECIR DE UN ÁMBITO QUE LLEGA POR PLANILLA.
+ *
+ * El cuadro cuenta PARTIDAS, y en este caso son 2. Leerlo solo hace pensar que la obra son dos
+ * renglones: son 12 ítems que el cliente pidió, de los cuales 10 quedaron abiertos. Sin esta
+ * sección, el «COSTO DIRECTO» de la columna se lee como el costo de la obra, y es el costo de dos
+ * ítems de doce.
+ */
+function cuadroDelAmbito(caso) {
+  if (!caso) return '_ningún caso entró por planilla del cliente_'
+  const n = caso.numeros
+  const plata = (v) => (v === null ? 'no medida' : `$ ${Math.round(v).toLocaleString('es-AR')}`)
+  return [
+    `Ámbito: **${caso.ambito.version.elegido?.nombre ?? 'sin versión que rija'}** — ${caso.ambito.version.porQue}`,
+    '',
+    '| | |',
+    '|---|---|',
+    `| documentos del ámbito · abiertos sin modelo | ${n.documentos} · **${n.documentosAbiertos}** |`,
+    `| ítems que el cliente pidió en su planilla | ${n.itemsDelCliente} |`,
+    `| · que llegaron a cómputo | ${n.computos} |`,
+    `| · que se perdieron en la lectura | ${n.huecosDeLectura} |`,
+    `| mapeadas / ambiguas / sin partida | ${n.mapeadas} / ${n.ambiguas} / ${n.sinPartida} |`,
+    `| con material que el cliente ya compró | ${n.choquesDeSuministro} (${plata(n.plataDeSuministro)}) |`,
+    `| **partidas que se pueden costear** | **${n.partidasCosteables} de ${n.itemsDelCliente}** |`,
+    `| brecha de alcance entre versiones del ámbito | ${plata(n.brechaDeAlcance)} |`,
+    '',
+    `> El COSTO DIRECTO de la columna es el de ${n.partidasCosteables} ítem(s) de ${n.itemsDelCliente}. **No es el costo de la obra.**`,
+  ].join('\n')
 }
 
 async function informe() {
@@ -242,6 +404,10 @@ ${casos.map((k) => `- \`${k.nombre}\` → entrada \`${k.corrida.huella.sha256.sl
 ## Lo que el dictado NO pudo mapear a la Base Maestra
 
 ${casos.filter((k) => k.mapeo).map((k) => `### ${k.nombre}\n\nmapeadas ${k.mapeo.mapeadas} · ambiguas ${k.mapeo.ambiguas} · sin partida ${k.mapeo.candidatas}\n\n${k.mapeo.sinMapear.map((x) => `- **${x.que}** → ${x.estado}: ${String(x.porQue).slice(0, 220)}`).join('\n') || '_todo mapeado_'}\n`).join('\n')}
+
+## El ámbito que entra por la planilla del cliente (ARCOR)
+
+${cuadroDelAmbito(casos.find((k) => k.ambito))}
 
 ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 

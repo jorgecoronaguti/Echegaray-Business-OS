@@ -62,6 +62,17 @@ export const BLOQUEAN_SI_MATERIALES = Object.freeze([
  */
 export const BLOQUEAN_SALVO_OVERRIDE = Object.freeze([
   TIPO_ISSUE.PRECIO_DESACTUALIZADO,
+  // ═══ UN PRECIO DE INTERNET NO CIERRA UNA OFERTA SOLO ═══
+  //
+  // La auditoría lo señaló antes de que hiciera daño: cuando el precio interno está vencido, el
+  // resolvedor acepta el de la web y lo publica como ACTUALIZADO **sin ningún issue** — probado con
+  // un precio ×10 sobre un recurso que mueve el 40 % del costo. Hoy no hace daño porque nadie
+  // enchufó el resolvedor web a la corrida real; el día que se enchufe, la condición de disparo es
+  // el estado NORMAL del catálogo: 285 de 389 precios vencidos.
+  //
+  // Que la web sea la única fuente disponible no la vuelve propia. Es `WEB ≠ EXPERIENCIA_ECSAS`
+  // aplicado donde se decide, y no sólo en el provenance.
+  TIPO_ISSUE.PRECIO_DE_INTERNET,
   // ═══ SACAR PLATA DEL TOTAL EXIGE UNA FIRMA ═══
   //
   // Este tipo NO estaba en ninguna de las tres listas, así que la cola lo degradaba a ALTA y

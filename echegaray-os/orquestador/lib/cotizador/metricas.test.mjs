@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metricasDeCorrida, compararCorridas } from './metricas.mjs'
+import { metricasDeCorrida, compararCorridas, SIN_MEDIR, estaMedida, exactitud, exactitudDeCorrida } from './metricas.mjs'
 import { costoDePartida, subcontrato } from './costo.mjs'
 import { observacionDePrecio, TIPO_RECURSO } from './precios.mjs'
 import { colaDeAtencion } from './atencion.mjs'
@@ -27,13 +27,135 @@ const PRECIOS = [
 ]
 const VIEJO = observacionDePrecio({ recursoCodigo: 'MAT-LAD', precio: 500, fuente: 'lista 2024', observadoEn: '2024-01-01' })
 
-test('una corrida VACÍA no es 100 % de autonomía: las tasas son NULL', () => {
+test('una corrida VACÍA no es 100 % de autonomía: las tasas son SIN_MEDIR', () => {
   // MUTACIÓN QUE LO PONE ROJO: en `tasa`, `return den > 0 ? num/den : 1`.
+  //
+  // ═══ CAMBIO DE CONTRATO 30/08/2026: era `null`, ahora es la palabra ═══
+  //
+  // El test viejo pedía `null` y `null` era correcto en la aritmética, pero `reporte.mjs` lo
+  // imprimía como «—». Medido: la columna CÓMPUTO MANUAL —0 partidas, 0 recursos— publicaba
+  // «AUTONOMOUS RESOLUTION: —» al lado de tres columnas con «100,0 %», y un guión entre porcentajes
+  // se lee como «acá no importa», no como «no se pudo medir». El valor ahora dice la palabra.
   const m = metricasDeCorrida({})
-  assert.equal(m.autonomous_resolution_rate, null)
-  assert.equal(m.knowledge_reuse_rate, null)
-  assert.equal(m.claude_avoidance_rate, null)
+  assert.equal(m.autonomous_resolution_rate, SIN_MEDIR)
+  assert.equal(m.knowledge_reuse_rate, SIN_MEDIR)
+  assert.equal(m.claude_avoidance_rate, SIN_MEDIR)
   assert.notEqual(m.autonomous_resolution_rate, 1)
+  assert.equal(estaMedida(m.autonomous_resolution_rate), false)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO MEDIDO EL 29/08/2026 SOBRE QUATTROPANI (real)
+//
+// BLOQUEADO (96) · bloqueantes 95 · preguntas dirigidas 96 · $17.388.173 en riesgo · COSTO DIRECTO
+// «NO SE AFIRMA» — y en la misma columna AUTONOMOUS RESOLUTION RATE 100,0 %.
+//
+// El denominador era «lo que el motor intentó», no «lo que había que resolver»: derivar trabajo a
+// una persona MEJORABA la métrica, porque salía del denominador. Es el patrón que ya costó caro
+// acá: un control que no puede decir que no.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una cola con `n` issues que bloquean y piden acción, como los 95 de Quattropani. */
+const colaCon = (n, { bloquea = true } = {}) => ({
+  total: n,
+  nBloqueantes: bloquea ? n : 0,
+  issues: Array.from({ length: n }, (_, i) => ({
+    type: 'PRECIO_DESACTUALIZADO', entity: `r${i}`, bloquea, recommended_action: 'actualizar_precio',
+  })),
+  bloqueantes: [],
+})
+
+/** 26 partidas con cantidad resuelta: el numerador de Quattropani. */
+const VEINTISEIS = Array.from({ length: 26 }, (_, i) => ({ valor: 10 + i, estado: ESTADO.CALCULADO }))
+
+test('QUATTROPANI · con 96 preguntas al humano el AUTONOMOUS RESOLUTION no puede dar 100 %', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `metricasDeCorrida`, volver al denominador viejo
+  // `tasa(conCantidad.length + mapeadas.length, cantidades.length + mapeos.length)`.
+  const m = metricasDeCorrida({ cantidades: VEINTISEIS, cola: colaCon(96) })
+  assert.equal(m.human_questions, 96)
+  assert.equal(m.requieren_humano, 96)
+  assert.notEqual(m.autonomous_resolution_rate, 1, 'una corrida que no puede afirmar su costo no resolvió el 100 %')
+  // 26 resueltas sobre 26 + 96 de trabajo real = 0,213
+  assert.equal(m.autonomous_resolution_rate, 0.213)
+  assert.equal(m.autonomous_resolution_base, 122)
+})
+
+test('LA MUTACIÓN DEL FRENTE · todo resuelto da 100 %, y UN bloqueante lo BAJA', () => {
+  // Los dos extremos en el mismo test, porque probar sólo uno no prueba nada: un contador clavado
+  // en 1 pasa el primero, y uno clavado en 0 pasa el segundo.
+  const limpia = metricasDeCorrida({ cantidades: VEINTISEIS, cola: colaCon(0) })
+  assert.equal(limpia.autonomous_resolution_rate, 1, 'el verde TIENE que ser alcanzable')
+  assert.equal(limpia.autonomous_resolution_base, 26)
+
+  const conUno = metricasDeCorrida({ cantidades: VEINTISEIS, cola: colaCon(1) })
+  assert.ok(conUno.autonomous_resolution_rate < 1, `un solo bloqueante ya baja la tasa; dio ${conUno.autonomous_resolution_rate}`)
+  assert.equal(conUno.autonomous_resolution_rate, 0.963) // 26 / 27
+
+  // Y la caída es MONÓTONA: más preguntas, menos autonomía. Sin esto, «baja» podría ser un ruido.
+  const serie = [0, 1, 10, 96].map((n) => metricasDeCorrida({ cantidades: VEINTISEIS, cola: colaCon(n) }).autonomous_resolution_rate)
+  assert.deepEqual(serie, [...serie].sort((a, b) => b - a), `no es monótona: ${JSON.stringify(serie)}`)
+  assert.deepEqual(serie, [1, 0.963, 0.722, 0.213])
+})
+
+test('las preguntas y los bloqueantes NO se cuentan dos veces', () => {
+  // En Quattropani 95 de las 96 son las dos cosas. Sumarlas daría 191 de denominador y una tasa
+  // más baja que la real: exagerar el rojo también es mentir.
+  const m = metricasDeCorrida({ cantidades: VEINTISEIS, cola: colaCon(96) })
+  assert.equal(m.autonomous_resolution_base, 26 + 96, 'la UNIÓN, no la suma')
+})
+
+test('CLAUDE AVOIDANCE con 0 llamadas y 0 decisiones es SIN_MEDIR, no 100 %', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `tasa`, devolver 1 con denominador cero.
+  // Evitar algo que nunca se necesitó no es mérito.
+  const nada = metricasDeCorrida({ decisionesDeterministicas: 0, llamadasLLM: [] })
+  assert.equal(nada.claude_avoidance_rate, SIN_MEDIR)
+  assert.equal(nada.claude_avoidance_base, 0)
+  // Con decisiones reales sí se mide, y el denominador viaja con la tasa.
+  const real = metricasDeCorrida({ decisionesDeterministicas: 10, llamadasLLM: [] })
+  assert.equal(real.claude_avoidance_rate, 1)
+  assert.equal(real.claude_avoidance_base, 10)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA EXACTITUD (§21): sin real conocido, SIN_MEDIR
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('NEGATIVO · sin un real conocido las cinco exactitudes son SIN_MEDIR, NUNCA 100 %', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `exactitud`, `if (real == null) return 1`.
+  const m = metricasDeCorrida({ cantidades: VEINTISEIS, costosDePartida: [{ hh: 40, subtotal: 1_000 }] })
+  for (const k of ['exactitud_cantidad', 'exactitud_hh', 'exactitud_recursos', 'exactitud_costo', 'exactitud_precio']) {
+    assert.equal(m[k], SIN_MEDIR, `${k} no tiene contra qué medirse`)
+    assert.notEqual(m[k], 1)
+  }
+})
+
+test('con un real conocido la exactitud SE MIDE, y un error grande la hunde', () => {
+  assert.equal(exactitud({ estimado: 100, real: 100 }), 1)
+  assert.equal(exactitud({ estimado: 90, real: 100 }), 0.9)
+  assert.equal(exactitud({ estimado: 300, real: 100 }), 0, 'pasarse al triple es 0, no −2')
+  // Los dos casos en que no hay proporción posible:
+  assert.equal(exactitud({ estimado: 5, real: 0 }), SIN_MEDIR, 'contra un real de cero no hay porcentaje')
+  assert.equal(exactitud({ estimado: null, real: 100 }), SIN_MEDIR, 'un costo que NO SE AFIRMA no tiene exactitud')
+})
+
+test('la exactitud de costo es SIN_MEDIR si alguna partida no cerró su subtotal', () => {
+  // Sumar lo que cerró y compararlo contra el real total daría una exactitud baja por una razón
+  // falsa: el motor no se equivocó, no terminó. Son cosas distintas.
+  const parcial = exactitudDeCorrida({ real: { costo: 1_000 }, costosDePartida: [{ subtotal: 600 }, { subtotal: null }] })
+  assert.equal(parcial.exactitud_costo, SIN_MEDIR)
+  const completo = exactitudDeCorrida({ real: { costo: 1_000 }, costosDePartida: [{ subtotal: 600 }, { subtotal: 350 }] })
+  assert.equal(completo.exactitud_costo, 0.95)
+})
+
+test('compararCorridas compara ESTRUCTURALMENTE: dos corridas iguales no difieren', () => {
+  // MUTACIÓN QUE LO PONE ROJO: volver a `if (a[k] === b[k]) continue`.
+  // Con métricas que son objetos, `===` compara referencias y el control del §39 daría rojo
+  // permanente — y un control que siempre está en rojo se apaga.
+  const a = metricasDeCorrida({ cantidades: VEINTISEIS, investigaciones: [{ resueltoEn: 'BASE_MAESTRA' }] })
+  const b = metricasDeCorrida({ cantidades: VEINTISEIS, investigaciones: [{ resueltoEn: 'BASE_MAESTRA' }] })
+  assert.deepEqual(compararCorridas(a, b).diferencias, [])
+  const c = metricasDeCorrida({ cantidades: VEINTISEIS, investigaciones: [{ resueltoEn: 'WEB' }] })
+  assert.ok(compararCorridas(a, c).diferencias.some((d) => d.metrica === 'investigaciones_por_paso'))
 })
 
 test('el CLAUDE AVOIDANCE RATE baja cuando se llama al modelo', () => {
@@ -159,4 +281,36 @@ test('la latencia se declara y NO se inventa', () => {
   assert.equal(m.latencia_fria_ms, null)
   assert.equal(m.latencia_tibia_ms, null)
   assert.equal(metricasDeCorrida({ msFrio: 4200 }).latencia_fria_ms, 4200)
+})
+
+test('una investigación que terminó en el HUMANO también entra al denominador', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `metricasDeCorrida`, `const humanoTotal = requierenHumano`.
+  //
+  // Encontrado corriendo el script real: la corrida publicaba `human_questions: 1` (la cola) con
+  // DOS huecos que habían recorrido los siete pasos del §12 y terminado en una persona. Investigar
+  // y no encontrar salía gratis para la métrica — el mismo agujero del denominador viejo, un piso
+  // más abajo.
+  const cant = [{ valor: 1, estado: ESTADO.CALCULADO }, { valor: 2, estado: ESTADO.CALCULADO }]
+  const sinEscalar = metricasDeCorrida({ cantidades: cant, investigaciones: [{ resueltoEn: 'WEB' }] })
+  assert.equal(sinEscalar.human_questions, 0)
+  assert.equal(sinEscalar.autonomous_resolution_rate, 1)
+
+  const conEscaladas = metricasDeCorrida({
+    cantidades: cant,
+    investigaciones: [{ resueltoEn: 'WEB' }, { resueltoEn: null, requiereHumano: true }, { resueltoEn: null, requiereHumano: true }],
+  })
+  assert.equal(conEscaladas.human_questions, 2)
+  assert.equal(conEscaladas.investigaciones_escaladas_al_humano, 2)
+  assert.equal(conEscaladas.autonomous_resolution_base, 4, '2 cantidades + 2 preguntas')
+  assert.equal(conEscaladas.autonomous_resolution_rate, 0.5)
+  assert.ok(conEscaladas.autonomous_resolution_rate < sinEscalar.autonomous_resolution_rate)
+})
+
+test('`preguntas_humanas` (la cola) y `human_questions` (§21) no son el mismo número', () => {
+  // Y esa diferencia es a propósito: el informe de casos reales publica el primero desde hace
+  // semanas y cambiarle el significado por debajo sería peor que agregar un nombre nuevo.
+  const cola = { total: 1, nBloqueantes: 1, issues: [{ type: 'X', bloquea: true, recommended_action: 'a' }], bloqueantes: [] }
+  const m = metricasDeCorrida({ cola, investigaciones: [{ resueltoEn: null, requiereHumano: true }] })
+  assert.equal(m.preguntas_humanas, 1, 'sólo la cola')
+  assert.equal(m.human_questions, 2, 'la cola más la investigación escalada')
 })

@@ -177,6 +177,9 @@ export const TIPO_ISSUE = Object.freeze({
   SIN_PARTIDA: 'SIN_PARTIDA',
   CANTIDAD_CRITICA_AUSENTE: 'CANTIDAD_CRITICA_AUSENTE',
   FUGA_ENTRE_CLIENTES: 'FUGA_ENTRE_CLIENTES',
+  /** Un precio que salió de una página web reemplazó a uno propio vencido. Es información legítima
+   *  y NO es experiencia de ECSAS: congelar una oferta sobre él exige que alguien lo asuma. */
+  PRECIO_DE_INTERNET: 'PRECIO_DE_INTERNET',
 })
 
 /** Cuánto duele. `BLOQUEANTE` no es un adjetivo: es lo que hace que `puedeCongelar` diga que no. */
