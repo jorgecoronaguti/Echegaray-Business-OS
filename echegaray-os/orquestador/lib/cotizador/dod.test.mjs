@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { CRITERIOS, VEREDICTO, GLOBAL, evaluar, veredictoGlobal, correrDod } from './dod.mjs'
+import { CRITERIOS, VEREDICTO, MOTIVO, GLOBAL, evaluar, veredictoGlobal, correrDod, sinPoderMedir, noAplica } from './dod.mjs'
 
 /** La evidencia de un sistema perfecto: los veinticuatro criterios medidos y en verde. */
 const TODO_BIEN = {
@@ -40,8 +40,8 @@ test('DoD · con todo medido y en verde da PASS y 24/24', () => {
   const r = correrDod(TODO_BIEN)
   assert.equal(r.estado, GLOBAL.PASS)
   assert.equal(r.completas, '24/24')
-  assert.equal(r.noCumple, 0)
-  assert.equal(r.sinMedir, 0)
+  assert.equal(r.fail, 0)
+  assert.equal(r.sinEjercitar, 0)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -52,7 +52,7 @@ test('DoD · UN solo criterio en rojo es FAIL — no se promedia', () => {
   // 23 de 24 en verde: 95,8%. No alcanza, y ése es el punto.
   const r = correrDod({ ...TODO_BIEN, costoDirecto: { afirmadoEnCasos: 0 } })
   assert.equal(r.estado, GLOBAL.FAIL)
-  assert.equal(r.cumple, 23)
+  assert.equal(r.pass, 23)
   assert.deepEqual(r.bloquean, ['#10 calcula costo directo'])
 })
 
@@ -60,8 +60,8 @@ test('DoD · lo que no se midió es NO_VERIFICABLE, jamás CUMPLE', () => {
   const sinPrecios = Object.fromEntries(Object.entries(TODO_BIEN).filter(([k]) => k !== 'precios'))
   const r = correrDod(sinPrecios)
   const fila = r.filas.find((f) => f.id === 8)
-  assert.equal(fila.veredicto, VEREDICTO.NO_VERIFICABLE)
-  assert.notEqual(fila.veredicto, VEREDICTO.CUMPLE)
+  assert.equal(fila.veredicto, VEREDICTO.NO_EJERCITADA)
+  assert.notEqual(fila.veredicto, VEREDICTO.PASS)
   // Y no suma al numerador: 23 de 24, no 24 de 24.
   assert.equal(r.completas, '23/24')
   assert.equal(r.estado, GLOBAL.PASS_CON_LIMITACIONES)
@@ -71,7 +71,7 @@ test('DoD · lo que no se midió es NO_VERIFICABLE, jamás CUMPLE', () => {
 test('DoD · una medición que se rompe es NO_VERIFICABLE, no un «no»', () => {
   const criterio = { id: 99, dice: 'el que explota', mide: 'x', exige: () => { throw new Error('se rompió el medidor') } }
   const fila = evaluar(criterio, { x: { algo: 1 } })
-  assert.equal(fila.veredicto, VEREDICTO.NO_VERIFICABLE)
+  assert.equal(fila.veredicto, VEREDICTO.NO_EJERCITADA)
   assert.match(fila.porque, /se rompió el medidor/)
 })
 
@@ -79,14 +79,14 @@ test('DoD · una evidencia presente pero vacía SÍ se evalúa y puede dar NO_CU
   // La diferencia con el test anterior: `{}` es una medición que dio cero, no una ausencia de
   // medición. Cero medido es un «no»; no medido es un «no sé». Confundirlos es el agujero.
   const fila = evaluar(CRITERIOS.find((c) => c.id === 17), { ejecucionReal: {} })
-  assert.equal(fila.veredicto, VEREDICTO.NO_CUMPLE)
+  assert.equal(fila.veredicto, VEREDICTO.FAIL)
 })
 
 test('DoD · un criterio que devuelve algo verdadero-ish pero no true no cumple', () => {
   // `exige` debe devolver true. Un 1, un 'sí' o un objeto NO alcanzan: la comparación es estricta
   // justamente para que nadie cierre un criterio con un valor casual.
   const criterio = { id: 98, dice: 'el mentiroso', mide: 'x', exige: () => 1 }
-  assert.equal(evaluar(criterio, { x: {} }).veredicto, VEREDICTO.NO_CUMPLE)
+  assert.equal(evaluar(criterio, { x: {} }).veredicto, VEREDICTO.FAIL)
 })
 
 test('DoD · los veinticuatro criterios están y ninguno se repite', () => {
@@ -99,15 +99,15 @@ test('DoD · sin evidencia de nada, el veredicto es PASS_CON_LIMITACIONES con 0/
   // El caso que más importa: correr la DoD sin haber medido nada no puede parecerse a un cierre.
   const r = correrDod({})
   assert.equal(r.completas, '0/24')
-  assert.equal(r.sinMedir, 24)
+  assert.equal(r.sinEjercitar, 24)
   assert.equal(r.limitaciones.length, 24)
 })
 
 test('veredictoGlobal · FAIL gana sobre PASS_CON_LIMITACIONES cuando hay de los dos', () => {
   const r = veredictoGlobal([
-    { id: 1, dice: 'a', veredicto: VEREDICTO.CUMPLE },
-    { id: 2, dice: 'b', veredicto: VEREDICTO.NO_VERIFICABLE, porque: 'x' },
-    { id: 3, dice: 'c', veredicto: VEREDICTO.NO_CUMPLE },
+    { id: 1, dice: 'a', veredicto: VEREDICTO.PASS },
+    { id: 2, dice: 'b', veredicto: VEREDICTO.NO_EJERCITADA, porque: 'x' },
+    { id: 3, dice: 'c', veredicto: VEREDICTO.FAIL },
   ])
   assert.equal(r.estado, GLOBAL.FAIL)
 })
@@ -135,6 +135,68 @@ test('un criterio sin su medición no puede quedar CUMPLE por descuido', () => {
   // La contracara: si mañana alguien borra otro bloque, el criterio cae a NO_VERIFICABLE y baja el
   // numerador. Nunca sube. Es lo que hace que perder una medición se note en el número.
   const r = correrDod({})
-  assert.equal(r.cumple, 0)
+  assert.equal(r.pass, 0)
+  assert.equal(r.estado, GLOBAL.PASS_CON_LIMITACIONES)
+})
+
+// ═══ LOS CUATRO ESTADOS (§J del segundo pedido) ═══
+//
+// El cajón único NO_VERIFICABLE mezclaba «ninguna corrida llegó hasta acá» —que es trabajo
+// pendiente— con «este término no lo puede contestar ninguna consulta» —que es un límite del
+// instrumento—. Son dos cosas distintas y el cuadro tiene que poder decir cuál es.
+
+test('DoD · sin evidencia el motivo es NO_HUBO_CORRIDA, no un límite del instrumento', () => {
+  const f = evaluar(CRITERIOS[0], {})
+  assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA)
+  assert.equal(f.motivo, MOTIVO.NO_HUBO_CORRIDA)
+})
+
+test('DoD · sinPoderMedir() distingue el límite del instrumento de la falta de corrida', () => {
+  const f = evaluar(CRITERIOS[21], { claudeZero: sinPoderMedir('el cero es estructural') })
+  assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA)
+  assert.equal(f.motivo, MOTIVO.TERMINO_NO_MEDIBLE)
+  assert.equal(f.porque, 'el cero es estructural')
+})
+
+test('DoD · un predicado que se rompe es MEDICION_ROTA, nunca un «no»', () => {
+  const revienta = { id: 99, dice: 'x', mide: 'x', exige: () => { throw new Error('la consulta murió') } }
+  const f = evaluar(revienta, { x: { algo: 1 } })
+  assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA)
+  assert.equal(f.motivo, MOTIVO.MEDICION_ROTA)
+  assert.match(f.porque, /la consulta murió/)
+})
+
+test('DoD · NO_APLICA sale del denominador — y por eso EXIGE una razón escrita', () => {
+  // Es la puerta trasera obvia: marcar los doce que no cierran como «no aplican» y publicar 12/12.
+  // Se cierra de dos maneras. Primera: la razón es obligatoria en el constructor.
+  assert.throws(() => noAplica(''), /exige una razón escrita/)
+  assert.throws(() => noAplica('   '), /exige una razón escrita/)
+  assert.throws(() => noAplica(undefined), /exige una razón escrita/)
+  assert.throws(() => sinPoderMedir(null), /exige una razón escrita/)
+  // Segunda: la razón viaja al informe, en su propia sección, donde el dueño la lee.
+  const r = correrDod({ ...TODO_BIEN, subcontratos: noAplica('esta obra no tiene un solo subcontrato') })
+  assert.equal(r.noAplica, 1)
+  assert.equal(r.completas, '23/23')
+  assert.deepEqual(r.excluidas, ['#9 maneja subcontratos — esta obra no tiene un solo subcontrato'])
+})
+
+test('DoD · NO_APLICA no puede tapar un criterio que la medición pone en rojo', () => {
+  // Un NO_APLICA es una declaración del recolector sobre el contexto, no un veredicto: si además
+  // hay un FAIL medido en otro criterio, el global sigue siendo FAIL. Excluir no es absolver.
+  const r = correrDod({
+    ...TODO_BIEN,
+    subcontratos: noAplica('no hay subcontratos en esta obra'),
+    precios: { resueltosAutonomamente: 0, sinPrecioValorizadoEnCero: 0 },
+  })
+  assert.equal(r.estado, GLOBAL.FAIL)
+  assert.equal(r.noAplica, 1)
+  assert.deepEqual(r.bloquean, ['#8 gestiona precios autónomamente'])
+})
+
+test('DoD · sin ejercitar nunca suma al numerador, aunque sean veintitrés de veinticuatro', () => {
+  const r = correrDod({ proyectosEntendidos: { distintos: 3, formatos: 5 } })
+  assert.equal(r.pass, 1)
+  assert.equal(r.sinEjercitar, 23)
+  assert.equal(r.completas, '1/24')
   assert.equal(r.estado, GLOBAL.PASS_CON_LIMITACIONES)
 })
