@@ -28,6 +28,7 @@
 
 import { atributosDe, piezaDe } from './atributos.mjs'
 import { FUENTE } from './fuente.mjs'
+import { ambitoDeHecho, claveDeHecho, dominioDe, resolverPorJerarquia } from './relacion.mjs'
 
 /**
  * DE QUÉ CLASE DE DOCUMENTO SALE UN HECHO, y cuánto pesa cuando dos se contradicen.
@@ -103,26 +104,42 @@ export const ESTADO_HECHO = Object.freeze({
   COMPLETADO: 'COMPLETADO',   // lo aporta una sola fuente y nadie la contradice
   CONFLICTO: 'CONFLICTO',     // dos fuentes legítimas dicen cosas distintas
   SOLO_MENCIONES: 'SOLO_MENCIONES', // varias frases sueltas dicen cosas distintas y ninguna sabe de qué habla
+  // Discrepaban, y la JERARQUÍA DOCUMENTAL decidió: una revisión más nueva, o la fuente que manda en
+  // ese dominio. No es CONFIRMADO —nadie confirmó nada— y por eso la versión desplazada viaja
+  // adjunta con su documento y su cita.
+  RESUELTO_POR_JERARQUIA: 'RESUELTO_POR_JERARQUIA',
 })
 
 /**
  * CONSOLIDAR LOS HECHOS DE TODO EL PROYECTO. PURA.
  *
- * Agrupa por `elemento:atributo` y decide UNA de tres cosas por grupo. El orden de salida es total
+ * Agrupa por `elemento:atributo` y decide UNA de cuatro cosas por grupo. El orden de salida es total
  * —por clave— para que dos corridas produzcan la misma lista y los conflictos se puedan comparar
  * entre versiones del proyecto.
+ *
+ * ═══ `relaciones` NO ES UN DETALLE DE IMPLEMENTACIÓN ═══
+ *
+ * Sin él, esta función hace lo que hizo siempre: cualquier desacuerdo es CONFLICTO y dos hechos con
+ * la misma clave se comparan aunque vengan de dos obras distintas del mismo cliente. Con él, entra
+ * el grafo de `relacionar()` y se agrega exactamente lo que faltaba: el ÁMBITO separa lo que no
+ * habla de lo mismo, y la jerarquía decide lo que se puede decidir. Lo que no se puede decidir sigue
+ * siendo CONFLICTO — el default es el comportamiento prudente, y la mejora es opcional y explícita.
  */
-export function consolidar(hechos = []) {
+export function consolidar(hechos = [], { relaciones = null } = {}) {
   const grupos = new Map()
   for (const h of hechos) {
     if (!h) continue
-    const g = grupos.get(h.que) ?? []
+    const k = relaciones ? claveDeHecho(h, relaciones) : h.que
+    const g = grupos.get(k) ?? []
     g.push(h)
-    grupos.set(h.que, g)
+    grupos.set(k, g)
   }
   const resueltos = []
   const conflictos = []
-  for (const [que, lista] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  const resueltosPorJerarquia = []
+  for (const [clave, lista] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const que = lista[0].que
+    const ambito = relaciones ? ambitoDeHecho(lista[0], relaciones) : null
     // El desempate por documento y texto hace que el «principal» sea el mismo en toda corrida.
     const orden = [...lista].sort((a, b) => a.peso - b.peso || String(a.documento).localeCompare(String(b.documento)) || String(a.textoLiteral).localeCompare(String(b.textoLiteral)))
     const principal = orden[0]
@@ -135,8 +152,33 @@ export function consolidar(hechos = []) {
     // conflicto solas: para eso hace falta que al menos una fuente sepa DE QUÉ está hablando.
     const conPeso = orden.filter((h) => h.confianza !== 'baja')
     const debiles = orden.filter((h) => h.confianza === 'baja')
+    // ═══ LA JERARQUÍA SE INTENTA ANTES DE DECLARAR EL CONFLICTO, Y DEJA RASTRO ═══
+    // Sólo cuando hay relaciones cargadas y sólo entre las fuentes CON PESO: una mención suelta no
+    // desplaza a nadie ni la desplaza nadie, porque no sabe de qué habla.
+    const jer = relaciones && discrepan.length && conPeso.length > 1
+      ? resolverPorJerarquia(conPeso, { dominio: dominioDe(principal.atributo), relaciones, coinciden: mismoValor })
+      : null
+    if (jer) {
+      const g = jer.ganadores[0]
+      const r = {
+        clave, que, ambito, elemento: g.elemento, atributo: g.atributo,
+        estado: ESTADO_HECHO.RESUELTO_POR_JERARQUIA,
+        valor: g.valor, unidad: g.unidad, clase: g.clase, documento: g.documento, lamina: g.lamina,
+        textoLiteral: g.textoLiteral,
+        respaldo: jer.ganadores.map((h) => `${h.clase}:${h.documento}`),
+        // La otra versión NO desaparece. Sale con su documento y su cita, que es lo que permite
+        // discutir la regla que la desplazó en vez de tener que confiar en ella.
+        desplazadas: jer.desplazadas.map((h) => ({ valor: h.valor, unidad: h.unidad, clase: h.clase, documento: h.documento, lamina: h.lamina, textoLiteral: h.textoLiteral, regla: h.regla, porQue: h.porQue })),
+        reglas: jer.reglas,
+        porQue: `${jer.desplazadas.length} versión(es) quedaron desplazadas por la jerarquía documental: ${jer.desplazadas.map((h) => h.porQue).join(' · ')}`,
+      }
+      resueltos.push(r)
+      resueltosPorJerarquia.push(r)
+      continue
+    }
     if (discrepan.length && conPeso.length) {
       const c = {
+        clave, ambito,
         que, elemento: principal.elemento, atributo: principal.atributo,
         estado: ESTADO_HECHO.CONFLICTO,
         versiones: conPeso.map((h) => ({ valor: h.valor, unidad: h.unidad, clase: h.clase, documento: h.documento, lamina: h.lamina, textoLiteral: h.textoLiteral })),
@@ -152,6 +194,7 @@ export function consolidar(hechos = []) {
       continue
     }
     resueltos.push({
+      clave, ambito,
       que, elemento: principal.elemento, atributo: principal.atributo,
       // Si discrepan pero ninguna fuente tiene peso, NO es un hecho consolidado: es un conjunto de
       // menciones sueltas. Se marca como tal para que nadie lo lea como una definición del proyecto.
@@ -166,7 +209,7 @@ export function consolidar(hechos = []) {
         : `lo dice ${principal.clase} («${principal.documento}») y ninguna otra fuente lo contradice`,
     })
   }
-  return { hechos: resueltos, conflictos, total: resueltos.length }
+  return { hechos: resueltos, conflictos, resueltosPorJerarquia, total: resueltos.length }
 }
 
 /** Las frases de un documento. Un pliego separa por punto y por renglón, y una especificación casi
@@ -331,8 +374,8 @@ export function hechosDeCad(medicion, { documento } = {}) {
  * Es la representación canónica que faltaba: un solo objeto donde el plano, el CAD, el pliego y la
  * memoria ya se cruzaron, con los conflictos afuera y visibles.
  */
-export function armarProyecto({ documentos = [], hechos = [], laminas = [], cad = [] } = {}) {
-  const c = consolidar(hechos)
+export function armarProyecto({ documentos = [], hechos = [], laminas = [], cad = [], relaciones = null } = {}) {
+  const c = consolidar(hechos, { relaciones })
   const porClase = {}
   for (const h of hechos) if (h) porClase[h.clase] = (porClase[h.clase] ?? 0) + 1
   return {
@@ -341,8 +384,10 @@ export function armarProyecto({ documentos = [], hechos = [], laminas = [], cad 
     cad: cad.length,
     hechos: c.hechos,
     conflictos: c.conflictos,
+    resueltosPorJerarquia: c.resueltosPorJerarquia ?? [],
+    relaciones: relaciones ? { ambitos: relaciones.ambitos.length, superados: relaciones.superado.size, ...relaciones.relaciones } : null,
     porClase,
-    resumen: `${c.total} hechos técnicos de ${Object.keys(porClase).length} clase(s) de documento · ${c.conflictos.length} conflicto(s) sin resolver`,
+    resumen: `${c.total} hechos técnicos de ${Object.keys(porClase).length} clase(s) de documento · ${c.conflictos.length} conflicto(s) sin resolver${c.resueltosPorJerarquia?.length ? ` · ${c.resueltosPorJerarquia.length} resuelto(s) por jerarquía documental (con la versión desplazada adjunta)` : ''}`,
   }
 }
 

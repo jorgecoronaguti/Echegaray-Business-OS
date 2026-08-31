@@ -176,13 +176,53 @@ export function computarElemento(elemento) {
   }
 }
 
-/** El cómputo de una lista de elementos, con el recuento que después va al resumen ejecutivo. */
+/**
+ * ¿ESTA CANTIDAD SE PUEDE VOLVER A ABRIR? PURA.
+ *
+ * ═══ UNA CANTIDAD SIN DOCUMENTO DE ORIGEN NO ENTRA ═══
+ *
+ * Multiplicar bien no vuelve defendible a un número: si nadie puede abrir el archivo, ir a la lámina
+ * y releer la frase, la cantidad es una afirmación del OS sobre sí mismo. `genealogia.mjs` ya exigía
+ * los tres campos al final de la cadena —`conservaOrigen`—, pero recién cuando la cotización se
+ * convertía en obra: hasta ahí el número viajaba adentro del presupuesto como cualquier otro.
+ *
+ * Las tres cosas juntas, y por separado no alcanzan: el ARCHIVO para poder abrirlo, la VISTA o
+ * LÁMINA para saber dónde mirar, y el TEXTO LITERAL para poder contrastar. Citar el archivo sin
+ * decir qué dice ahí es una referencia, no una prueba.
+ */
+export function origenCitable(item) {
+  const ev = item?.evidencia ?? null
+  const faltan = ['archivo', 'textoLiteral'].filter((k) => !ev?.[k])
+  if (!ev?.lamina && !ev?.vista) faltan.push('lámina o vista')
+  return {
+    ok: faltan.length === 0,
+    faltan,
+    porQue: faltan.length
+      ? `la cantidad no se va a poder rastrear: falta ${faltan.join(', ')} para volver al documento`
+      : null,
+  }
+}
+
+/**
+ * EL CÓMPUTO DE UNA LISTA DE ELEMENTOS, con el recuento que después va al resumen ejecutivo.
+ *
+ * `computados` cuenta los que tienen número. `admitidas` cuenta los que además se pueden citar, que
+ * es un número más chico y es el que vale delante de un cliente. Los dos salen, y la diferencia
+ * también: esconderla es exactamente cómo un número sin respaldo termina adentro de un precio.
+ */
 export function computarElementos(elementos = []) {
-  const items = elementos.map(computarElemento)
+  const items = elementos.map((e) => {
+    const c = computarElemento(e)
+    return { ...c, origen: origenCitable(c) }
+  })
+  const conNumero = items.filter((i) => i.cantidad !== null)
+  const sinOrigen = conNumero.filter((i) => !i.origen.ok)
   return {
     items,
     detectados: elementos.length,
-    computados: items.filter((i) => i.cantidad !== null).length,
+    computados: conNumero.length,
     conHueco: items.filter((i) => i.cantidad === null).length,
+    admitidas: conNumero.length - sinOrigen.length,
+    sinOrigen: sinOrigen.map((i) => ({ id: i.id, nombre: i.nombre, faltan: i.origen.faltan, porQue: i.origen.porQue })),
   }
 }

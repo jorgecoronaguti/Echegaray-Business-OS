@@ -27,8 +27,9 @@ import { mapearPartidas } from './partidas.mjs'
 import { seleccionarTodas, huella } from './seleccion.mjs'
 import { procesosDeTodos } from './procesos.mjs'
 import { controlar } from './control.mjs'
-import { ingerir } from './documental.mjs'
+import { claseDocumental, ingerir } from './documental.mjs'
 import { armarProyecto } from './proyecto.mjs'
+import { relacionar } from './relacion.mjs'
 import { resolverConCad } from './medicion-cad.mjs'
 import { piezaDe } from './atributos.mjs'
 import { obraDesdeCotizacion } from './genealogia.mjs'
@@ -625,6 +626,11 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
   const planos = planosDe(insumos)
+  // ═══ LOS DOCUMENTOS NO SE ANALIZAN COMO ISLAS ═══
+  // El grafo se arma ANTES de leer nada porque no necesita leer nada: sale del nombre y de la ruta.
+  // Es lo que después le permite a `armarProyecto` no confundir dos obras del mismo cliente con una
+  // contradicción, y no tratar a una revisión superada como una fuente viva.
+  const relaciones = relacionar(insumos.map((d) => ({ ...d, clase: claseDocumental(d.name).id })), { carpetaObra: raiz })
 
   const laminas = []
   const usos = []
@@ -759,6 +765,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     hechos: documental.hechos,
     laminas,
     cad: documental.cad,
+    relaciones,
   })
   const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos, identidadesAmbiguas })
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
@@ -767,6 +774,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   return {
     termino, carpeta: raiz, ms: Date.now() - t0,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
+    relaciones,
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
     control, checklist, tipoObra: tipo,
     documental: { ...documental, segmentaciones: documental.segmentaciones },
