@@ -34,10 +34,10 @@ import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
-import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
+import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
 import {
   claveDeCategoria, convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
-  jornalConAumento, tarifaConAumento, PORCENTAJE_DE_AUMENTO,
+  jornalConAumento, PORCENTAJE_DE_AUMENTO,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
@@ -243,6 +243,17 @@ async function recibosDelPeriodo(periodo) {
   return new Map(rows.map((r) => [r.cuil, { ...r, neto: Number(r.neto) }]))
 }
 
+/** Lo ya transferido a cuenta del sueldo, por CUIL y concepto. Llave: la referencia del banco. */
+async function adelantosPagados(concepto) {
+  const { rows } = await query(
+    `select cuil, beneficiario, sum(importe)::numeric importe
+       from public.nomina_adelanto where concepto = $1 group by cuil, beneficiario`, [concepto],
+  )
+  const porCuil = new Map()
+  for (const r of rows) if (r.cuil) porCuil.set(r.cuil, Number(r.importe))
+  return { porCuil, filas: rows }
+}
+
 async function legajosDeDrive() {
   // ═══ TRES CARPETAS, NO UNA (31/08/2026) ═══
   //
@@ -271,7 +282,7 @@ async function legajosDeDrive() {
   return { carpetas, porCarpeta }
 }
 
-function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map() }) {
+function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map() }) {
   const meses = mesesDe(ANIO)
   const f = []
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
@@ -305,10 +316,22 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // aumento que le toca a su categoría— no existía: había que restar dos celdas lejanas para saber
   // cuánto sube cada uno, que es LA cifra que el dueño decidió. Ahora la cuenta se lee sola de
   // izquierda a derecha: lo que cobra + lo que sube = lo que va a cobrar. Después, la plata.
-  fila('Persona', 'Cat.', 'Convenio', 'Hs cargadas', 'Hs a completar', 'Horas', 'Adelanto',
-    '$/h HOY', 'Aumento $/h', '$/h CON AUMENTO',
-    'Banco HOY', 'Efectivo HOY', 'TOTAL HOY',
-    'Banco CON AUMENTO', 'Efectivo CON AUMENTO', 'TOTAL CON AUMENTO', 'Aumento')
+  // ═══ EL CUADRO SE LEE COMO UNA INSTRUCCIÓN DE PAGO, NO COMO UNA PLANILLA DE CÁLCULO ═══
+  //
+  // El dueño, 31/08/2026: «es confuso como ha quedado […] quiero saber cuanto y como tengo q pagarle
+  // a cada uno». Tenía diecisiete columnas para una decisión que son TRES números: cuánto se
+  // transfiere, cuántos billetes hay que sacar, y cuánto es en total.
+  //
+  // Dos cosas se fueron a la derecha, después del total: las horas y las tarifas. Son el respaldo de
+  // cómo salió el número, no el número. Y una columna DESAPARECIÓ —«Banco CON AUMENTO»— porque desde
+  // que el banco es el recibo repetía la de al lado: dos celdas idénticas al lado de la que sí
+  // cambia es exactamente lo que hacía dudar de cuál mirar.
+  //
+  // El orden es el del acto: a quién · lo que ya se le dio · lo que se transfiere · los billetes ·
+  // el total. Y después las dos columnas del escenario con aumento, que es la decisión pendiente.
+  fila('Persona', 'Ya transferido', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
+    'EN EFECTIVO c/aumento', 'TOTAL c/aumento', 'Sube',
+    'Horas', '$/h HOY', '$/h c/aumento', 'Cat.', 'Convenio')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -356,7 +379,15 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // acá se cae a lo que traiga la planilla, que es lo que había antes de que existiera el recibo.
     // La diferencia se ve en la fila, que dice de dónde salió cada banco.
     const delRecibo = bancoDeLaPersona(p.nombre, recibosPorCuil)
-    const hoyR = repartoPersona({ total: q.total, adelanto: q.adelanto, banco: delRecibo.banco ?? q.banco })
+    // ═══ EL ADELANTO SUMA LA PLANILLA Y LO QUE SALIÓ POR EL BANCO ═══
+    //
+    // «restar lo que ya hemos transferido lo pagado en adelantos que di el viernes». La planilla
+    // trae unos y el extracto trae otros —el lote de haberes del 28/08— y son distintos: ningún
+    // importe se repite. Sumarlos es lo correcto; quedarse con uno le paga de más a cinco personas.
+    const porBanco = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
+      ? (adelantosPorCuil.get(CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]) ?? 0) : 0
+    const adel = Number(q.adelanto || 0) + porBanco
+    const hoyR = repartoPersona({ total: q.total, adelanto: adel, banco: delRecibo.banco ?? q.banco })
     if (delRecibo.banco === null) sinRecibo.push({ nombre: p.nombre, porQue: delRecibo.fuente })
     // EL ESCENARIO «CON AUMENTO» NUNCA BAJA A NADIE, y por dos razones distintas que conviene no
     // confundir: el aumento SUMA sobre lo que cada uno cobra hoy (nadie puede quedar por debajo de su
@@ -375,37 +406,33 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // nuevo — o sea, el aumento se repartía mitad y mitad. La orden es que el aumento vaya ENTERO
     // al efectivo, porque lo registrado no se mueve hasta que el estudio liquide distinto.
     const nuevoR = totalNuevo != null
-      ? repartoPersona({ total: totalNuevo, adelanto: q.adelanto, banco: delRecibo.banco ?? q.banco })
+      ? repartoPersona({ total: totalNuevo, adelanto: adel, banco: delRecibo.banco ?? q.banco })
       : null
 
-    T.cargadas += q.cargadas; T.horas += q.horas; T.adelanto += q.adelanto; T.totalCargado += q.totalCargado
+    T.cargadas += q.cargadas; T.horas += q.horas; T.adelanto += adel; T.totalCargado += q.totalCargado
     T.bancoHoy += hoyR.banco; T.efHoy += hoyR.efectivo; T.totHoy += hoyR.total
     if (nuevoR) { T.bancoNuevo += nuevoR.banco; T.efNuevo += nuevoR.efectivo; T.totNuevo += nuevoR.total; T.sube += nuevoR.total - hoyR.total }
 
     // EL AUMENTO DE SU CATEGORÍA, QUE ES LO QUE EL DUEÑO DECIDIÓ. Sale de la MISMA función que la
     // tarifa nueva —no se recalcula acá con otro `× 0,5`— porque dos fórmulas para el mismo aumento
     // se separan el día que el porcentaje cambie.
-    const suba = tarifaConAumento(q.jornal, basico)
     fila(q.dejoDeCargar ? `${p.nombre}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : p.nombre,
-      q.categoria || SIN_DATO, rotuloConvenio(codigo) ?? SIN_DATO,
-      Math.round(q.cargadas), q.pendientes ? Math.round(q.pendientes) : SIN_DATO, Math.round(q.horas),
-      q.adelanto ? Math.round(q.adelanto) : SIN_DATO,
-      Math.round(q.jornal),
-      suba ? Math.round(suba.aumento) : SIN_DATO,
-      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO,
+      adel ? Math.round(adel) : SIN_DATO,
       Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
-      nuevoR ? Math.round(nuevoR.banco) : SIN_DATO,
       nuevoR ? Math.round(nuevoR.efectivo) : SIN_DATO,
       nuevoR ? Math.round(nuevoR.total) : SIN_DATO,
-      nuevoR ? (Math.round(nuevoR.total - hoyR.total) || SIN_DATO) : SIN_DATO)
+      nuevoR ? (Math.round(nuevoR.total - hoyR.total) || SIN_DATO) : SIN_DATO,
+      Math.round(q.horas), Math.round(q.jornal),
+      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO,
+      q.categoria || SIN_DATO, rotuloConvenio(codigo) ?? SIN_DATO)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
   // después de sacar a los dos liquidados: un total de 15 filas rotulado «17 persona(s)».
-  fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`), '', '',
-    Math.round(T.cargadas), Math.round(T.horas - T.cargadas), Math.round(T.horas), Math.round(T.adelanto),
-    '', '', '',
+  fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
+    Math.round(T.adelanto),
     Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
-    Math.round(T.bancoNuevo), Math.round(T.efNuevo), Math.round(T.totNuevo), Math.round(T.sube))
+    Math.round(T.efNuevo), Math.round(T.totNuevo), Math.round(T.sube),
+    Math.round(T.horas), '', '', '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -447,18 +474,39 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     fila(seccion('1.b', 'liquidaciones finales · 50 en blanco y 50 en efectivo'))
     fila('Lo liquidado por el estudio es la mitad BLANCA del acuerdo; el efectivo es un monto igual. '
       + 'Lo que sale de la caja es la suma de las dos columnas, o sea el doble del recibo.')
-    fila('Persona', 'Legajo', 'Fecha', 'Blanco (lo liquidado)', 'Efectivo', 'TOTAL')
-    const F = { blanco: 0, negro: 0, total: 0 }
+    fila('Persona', 'Legajo', 'Fecha', 'Blanco (lo liquidado)', 'Efectivo', 'TOTAL', 'Ya transferido', 'QUEDA POR PAGAR')
+    const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     for (const r of [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, r.legajo ?? SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
-      F.blanco += c.blanco; F.negro += c.negro; F.total += c.total
+      if (c.total === null) { fila(r.nombre_recibo, r.legajo ?? SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
+      //
+      // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
+      // un adelanto de quincena —ellos ya no cobran la quincena— sino un pago a cuenta de esto. Sin
+      // restarla acá, el cuadro pide transferir de nuevo lo que ya salió.
+      //
+      // ═══ POR CUIL, Y LA PRIMERA VERSIÓN POR NOMBRE FALLÓ EN LA PRIMERA CORRIDA ═══
+      //
+      // Emparejaba por nombre normalizado con prefijo de nueve letras. El banco escribe «Sosa Nestor
+      // Raul» y su recibo dice «SOSA NESTROR RAUL»: una letra de diferencia en la posición nueve, y
+      // su fila salió publicando que no se le había transferido nada cuando ya tenía $300.000
+      // encima. Le pedía al dueño transferir de nuevo lo que ya había salido.
+      //
+      // El CUIL de esos dos movimientos se completó desde el CUIL de sus propios recibos. Sin CUIL
+      // NO se resta: la fila muestra el total entero y eso se ve, que es mejor que restarle a quien
+      // no corresponde.
+      const dado = (adelantosDeFinal.filas ?? [])
+        .filter((a) => a.cuil && a.cuil === r.cuil)
+        .reduce((acc, a) => acc + Number(a.importe), 0)
+      F.blanco += c.blanco; F.negro += c.negro; F.total += c.total; F.dado += dado; F.queda += c.total - dado
       fila(r.nombre_recibo, r.legajo ?? SIN_DATO,
         r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-AR') : SIN_DATO,
-        Math.round(c.blanco), Math.round(c.negro), Math.round(c.total))
+        Math.round(c.blanco), Math.round(c.negro), Math.round(c.total),
+        dado ? Math.round(dado) : SIN_DATO, Math.round(c.total - dado))
     }
     fila(rotuloTotal(`${finales.size} liquidación(es) final(es)`), '', '',
-      Math.round(F.blanco), Math.round(F.negro), Math.round(F.total))
+      Math.round(F.blanco), Math.round(F.negro), Math.round(F.total),
+      Math.round(F.dado), Math.round(F.queda))
     fila(sub('Estas personas NO cobran la quincena: su vínculo terminó. El costo de desvincular al resto del plantel está en el cuadro 4.'))
   }
 
@@ -704,6 +752,8 @@ async function main() {
   const periodoRecibo = `${quincenaDelMes}-${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
   const recibosPorCuil = await recibosDelPeriodo(periodoRecibo)
   const finales = await recibosDelPeriodo('FINAL')
+  const { porCuil: adelantosPorCuil } = await adelantosPagados('QUINCENA')
+  const adelantosDeFinal = await adelantosPagados('LIQUIDACION_FINAL')
   console.log(`recibos del período ${periodoRecibo}: ${recibosPorCuil.size} · liquidaciones finales: ${finales.size}`)
 
   // LO QUE LA PLANILLA NO TRAE Y LA BASE SÍ: la fecha de ingreso y el convenio declarado.
@@ -721,7 +771,7 @@ async function main() {
   }
   const legajos = await legajosDeDrive()
   console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
-  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales })
+  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal })
   console.log(`${PESTANA}: ${filas.length} filas × ${ANCHO} columnas`)
   for (const f of filas.slice(5, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')

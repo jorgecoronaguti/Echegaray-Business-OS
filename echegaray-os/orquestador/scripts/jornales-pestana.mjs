@@ -1675,20 +1675,33 @@ export function grilla({
   // ANCLADO AL TEXTO, NO A LA FILA: el rótulo dice «⇒ 15 persona(s)» y el número cambia con el
   // plantel, así que se busca con comodín. Una referencia por número de fila da un total distinto
   // cada vez que alguien inserta una línea arriba — es la trampa que este repo ya pagó.
-  const deNomina = (col) => `IFERROR(INDEX('Nómina'!${col}:${col};MATCH("⇒*persona(s)";'Nómina'!A:A;0)))`
+  // ═══ ANCLADO AL TEXTO EN LAS DOS DIMENSIONES, NO SÓLO EN LA FILA ═══
+  //
+  // La primera versión ancló la FILA al rótulo «⇒ N persona(s)» y la COLUMNA a una letra fija (K, M,
+  // G). Media hora después el cuadro de Nómina se rehizo con otro orden de columnas y esta fila
+  // publicó el «TOTAL c/aumento» en la celda del adelanto: $8.158.360 de adelanto contra $8.144.700
+  // de total, y un neto a pagar de **menos $13.660**. La pestaña que dispara el pago, en negativo.
+  //
+  // Es la misma trampa que el repo ya tiene escrita para las filas, cometida sobre las columnas. Así
+  // que el número de columna también se busca por su ENCABEZADO, dentro de la fila que empieza con
+  // «Persona». Si mañana se reordenan otra vez, esto sigue apuntando a lo mismo; y si un encabezado
+  // se renombra, la celda da error en vez de un número de otra columna — que es lo que hay que
+  // querer: un #N/A se ve, un importe plausible en la celda equivocada no.
+  const colDeNomina = (titulo) => `MATCH("${titulo}";INDEX('Nómina'!$A:$Z;MATCH("Persona";'Nómina'!$A:$A;0);0);0)`
+  const deNomina = (titulo) => `IFERROR(INDEX('Nómina'!$A:$Z;MATCH("⇒*persona(s)";'Nómina'!$A:$A;0);${colDeNomina(titulo)}))`
   filaPago(fPago.obra, {
     // El plantel sale del mismo rótulo: si Nómina excluye a alguien, acá desaparece solo.
     personas: `=IFERROR(VALUE(REGEXEXTRACT(INDEX('Nómina'!A:A;MATCH("⇒*persona(s)";'Nómina'!A:A;0));"(\\d+)"));$${colDe('Personas')}$${fReg})`,
     cuando: `=$C$${fReg}`,
     // TOTAL HOY de Nómina (columna M). Si la pestaña no está o el rótulo cambió, cae al registro:
     // una celda vacía acá se lee como «no hay que pagar nada», que es peor que un número viejo.
-    total: `=IF(N(${deNomina('M')})>0;${deNomina('M')};$${cTot}$${fReg})`,
-    adelanto: `=IF(N(${deNomina('G')})>0;${deNomina('G')};$${cAdel}$${fReg})`,
+    total: `=IF(N(${deNomina('TOTAL A PAGAR')})>0;${deNomina('TOTAL A PAGAR')};$${cTot}$${fReg})`,
+    adelanto: `=IF(N(${deNomina('Ya transferido')})>0;${deNomina('Ya transferido')};$${cAdel}$${fReg})`,
     // Banco HOY de Nómina (columna K) — la suma de lo que dice cada recibo. El `/2` de antes era el
     // 50% calculado, que es justamente lo que el dueño mandó dejar de usar.
     // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y
     // ahí la coma es el separador de argumentos — el 0,5 se parte en dos y la celda queda en #ERROR.
-    banco: `=IF(N(${deNomina('K')})>0;${deNomina('K')};IF(N($${cBco}$${fReg})>0;$${cBco}$${fReg};D${fPago.obra}/2))`,
+    banco: `=IF(N(${deNomina('POR BANCO')})>0;${deNomina('POR BANCO')};IF(N($${cBco}$${fReg})>0;$${cBco}$${fReg};D${fPago.obra}/2))`,
   })
   // OFICINA y DIRECCIÓN: la próxima fecha de caja con algo PROYECTADO todavía por pagar. Se mira la
   // columna «Proyectado» y no la «Pagado» — un mes ya pagado no es un pago que viene.
