@@ -10,6 +10,9 @@ import {
   compararObra, compararPartida, compararMagnitud, observacion, causaDeDesvio,
   CONCEPTO, NO_COMPARABLE, SIN_CAUSA,
 } from './plan-vs-real.mjs'
+import {
+  causaRaiz, cuadroDeCausas, coberturaDeObras, comparabilidadViva, CAUSA_RAIZ, DISPOSICION,
+} from './plan-real-causas.mjs'
 import { ESTADO } from './contrato.mjs'
 
 const PLAN = [
@@ -302,4 +305,194 @@ test('el resumen desglosa POR MOTIVO: «14 no comparables» sin desglose no dice
 
 test('comparar sin plan o sin real levanta: una lista no es una comparación', () => {
   assert.throws(() => compararPartida({ plan: PLAN[0], real: null }), /no hay comparación/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CAUSA RAÍZ · el motivo dice QUÉ faltó; la causa dice QUIÉN lo arregla
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+const noComparable = (concepto, motivo) => observacion({
+  concepto, entidad: 'T1002', unidad: UNIDAD.MONEDA,
+  plan: magnitud(100, UNIDAD.MONEDA), real: magnitud(null, UNIDAD.MONEDA),
+  comparable: false, motivoNoComparable: motivo,
+})
+
+test('EL MISMO MOTIVO, DOS CAUSAS: la tabla vacía es de obra; la tabla llena es del OS', () => {
+  // MUTACIÓN CORRIDA: en `causaRaiz`, reemplazar las dos ramas de `vacia` por un único
+  // `return raiz(CAUSA_RAIZ.CAPTURA_VACIA, DISPOSICION.FALTA_DATO, …)` →
+  //   AssertionError: 'CAPTURA_VACIA' !== 'IDENTIDAD_RECURSO'  (test 2 en rojo)
+  // Sin las dos ramas, el clasificador es una constante: manda TODO a obra y ningún hueco de
+  // cableado se descubre nunca.
+  const obs = noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL)
+  const base = { tieneGenealogia: true, partidaConActividad: true }
+
+  const sinCaptura = causaRaiz(obs, { ...base, capturaVacia: { [CONCEPTO.COSTO]: true } })
+  assert.equal(sinCaptura.causa, CAUSA_RAIZ.CAPTURA_VACIA)
+  assert.equal(sinCaptura.disposicion, DISPOSICION.FALTA_DATO)
+
+  const conCaptura = causaRaiz(obs, { ...base, capturaVacia: { [CONCEPTO.COSTO]: false } })
+  assert.equal(conCaptura.causa, CAUSA_RAIZ.IDENTIDAD_RECURSO)
+  assert.equal(conCaptura.disposicion, DISPOSICION.ESTRUCTURA)
+})
+
+test('nadie midió si la captura está vacía: NO se elige una de las dos, se dice que no se sabe', () => {
+  // Un control que no pudo mirar no dice «no está». Sin `capturaVacia`, mandar el hueco a obra
+  // sería afirmar algo que nadie verificó.
+  const r = causaRaiz(noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL), { tieneGenealogia: true, partidaConActividad: true })
+  assert.equal(r.causa, CAUSA_RAIZ.OTRO)
+  assert.match(r.arregla, /sin medir/)
+})
+
+test('EN CURSO vs CIERRE INALCANZABLE: esperar un cierre que no puede llegar no es esperar', () => {
+  // MUTACIÓN CORRIDA: devolver siempre `EN_CURSO/TIEMPO` en la rama de PARTIDA_EN_CURSO →
+  //   AssertionError: 'EN_CURSO' !== 'CIERRE_INALCANZABLE'
+  // Es el defecto medido en Quattropani: los únicos partes con avance_pct=100 están en actividades
+  // sin cotizacion_partida_id, así que CANTIDAD/HH/COSTO quedan «en curso» PARA SIEMPRE y el
+  // tablero los cuenta como pendientes de tiempo en vez de como un enganche roto.
+  const obs = noComparable(CONCEPTO.CANTIDAD, NO_COMPARABLE.PARTIDA_EN_CURSO)
+  const base = { tieneGenealogia: true, partidaConActividad: true }
+  assert.equal(causaRaiz(obs, { ...base, puedeCerrar: true }).disposicion, DISPOSICION.TIEMPO)
+  const roto = causaRaiz(obs, { ...base, puedeCerrar: false })
+  assert.equal(roto.causa, CAUSA_RAIZ.CIERRE_INALCANZABLE)
+  assert.equal(roto.disposicion, DISPOSICION.ESTRUCTURA)
+})
+
+test('la duración sin cronograma: se cablea si el dato existe, y NO se inventa si no existe', () => {
+  const obs = observacion({
+    concepto: CONCEPTO.DURACION, entidad: 'T1002', unidad: UNIDAD.DIA,
+    plan: magnitud(null, UNIDAD.DIA), real: magnitud(4, UNIDAD.DIA),
+    comparable: false, motivoNoComparable: NO_COMPARABLE.SIN_PLAN,
+  })
+  const base = { tieneGenealogia: true, partidaConActividad: true }
+  assert.equal(causaRaiz(obs, { ...base, cronogramaTieneDias: true }).disposicion, DISPOSICION.ESTRUCTURA)
+  assert.equal(causaRaiz(obs, { ...base, cronogramaTieneDias: false }).disposicion, DISPOSICION.FALTA_DATO)
+})
+
+test('una observación COMPARABLE no tiene causa raíz: darle una la convierte en pendiente', () => {
+  // MUTACIÓN CORRIDA: sacar el `if (obs.comparable) return null` →
+  //   AssertionError: { causa: 'OTRO', … } !== null
+  // Con la causa puesta, el cuadro contaría las 2 comparables entre los 404 huecos y la suma
+  // dejaría de cerrar contra el resumen.
+  const ok = observacion({
+    concepto: CONCEPTO.HH, entidad: 'T1001', unidad: UNIDAD.HH,
+    plan: magnitud(10, UNIDAD.HH), real: magnitud(12, UNIDAD.HH), comparable: true,
+  })
+  assert.equal(causaRaiz(ok, { tieneGenealogia: true }), null)
+})
+
+test('el cuadro suma por disposición y separa lo recuperable de lo que hay que ir a buscar', () => {
+  const obs = [
+    noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL),
+    noComparable(CONCEPTO.CANTIDAD, NO_COMPARABLE.PARTIDA_EN_CURSO),
+    noComparable(CONCEPTO.CANTIDAD, NO_COMPARABLE.SIN_REAL),
+  ]
+  const c = cuadroDeCausas(obs, (o) => ({
+    tieneGenealogia: true, partidaConActividad: true,
+    puedeCerrar: o.motivoNoComparable === NO_COMPARABLE.PARTIDA_EN_CURSO ? false : undefined,
+    capturaVacia: { [CONCEPTO.COSTO]: true },
+  }))
+  assert.equal(c.filas.length, 3)
+  assert.equal(c.recuperablesPorEstructura, 1, 'el cierre inalcanzable se arregla en el OS')
+  assert.equal(c.faltaDatoDeclarado, 1, 'la captura vacía la carga una persona')
+  assert.equal(c.noSonDefecto, 1, 'la partida que no empezó no es un pendiente')
+  assert.equal(Object.values(c.porDisposicion).reduce((a, b) => a + b, 0), obs.length, 'el cuadro tiene que sumar el total')
+})
+
+test('SIN GENEALOGÍA gana sobre todo: sin plan congelado no hay nada que comparar', () => {
+  const r = causaRaiz(noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL), { tieneGenealogia: false })
+  assert.equal(r.causa, CAUSA_RAIZ.SIN_GENEALOGIA)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COBERTURA · el denominador que no se ve
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('una obra con ejecución y sin genealogía queda AFUERA del cuadro, y el cuadro lo dice', () => {
+  // MUTACIÓN CORRIDA: `sesgado: false` fijo →
+  //   AssertionError: false !== true
+  // Es el caso real: 5 obras con 244 partes no aportan ni una observación mala, así que no bajan
+  // ningún promedio. «2 de 406» se leería como el estado de la empresa cuando es el de UNA obra.
+  const c = coberturaDeObras([
+    { obraId: 'quattropani', partes: 6, imputacionesHH: 6, tieneGenealogia: true },
+    { obraId: 'san-francisco', partes: 117, imputacionesHH: 0, tieneGenealogia: false },
+    { obraId: 'le-comedor', partes: 55, imputacionesHH: 0, tieneGenealogia: false },
+    { obraId: 'pilon', partes: 0, imputacionesHH: 0, tieneGenealogia: false },
+  ])
+  assert.equal(c.obrasConEjecucion, 3, 'la obra sin ningún parte no cuenta como no mirada')
+  assert.equal(c.obrasNoMiradas, 2)
+  assert.equal(c.partesFueraDelCuadro, 172)
+  assert.equal(c.sesgado, true)
+})
+
+test('con todas las obras enganchadas la cobertura es 1 y deja de estar sesgada', () => {
+  const c = coberturaDeObras([{ obraId: 'q', partes: 6, tieneGenealogia: true }])
+  assert.equal(c.cobertura, 1)
+  assert.equal(c.sesgado, false)
+})
+
+test('sin ninguna obra con ejecución la cobertura es null, NO 1: no mirar nada no es cobertura total', () => {
+  const c = coberturaDeObras([{ obraId: 'pilon', partes: 0, tieneGenealogia: false }])
+  assert.equal(c.cobertura, null)
+  assert.equal(c.obrasConEjecucion, 0)
+})
+
+test('una partida que NO empezó no tiene un problema de clave: no se le inventa un defecto', () => {
+  // MUTACIÓN CORRIDA: sacar la rama `ctx.partidaConEjecucion === false` →
+  //   AssertionError: 'IDENTIDAD_RECURSO' !== 'SIN_EJECUCION'
+  // Es el sobre-diagnóstico que la PRIMERA corrida real produjo: con 6 imputaciones en la obra, las
+  // 21 partidas sin empezar salían como «hay horas y no enganchan, revisá la clave». Mandar a
+  // alguien a buscar un defecto que no existe es peor que no clasificar.
+  const obs = noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES)
+  const base = { tieneGenealogia: true, partidaConActividad: true, capturaVacia: { [CONCEPTO.HH]: false } }
+  assert.equal(causaRaiz(obs, { ...base, partidaConEjecucion: false }).causa, CAUSA_RAIZ.SIN_EJECUCION)
+  // Y el gemelo: con ejecución registrada y sin horas, el hueco SÍ es sospechoso.
+  assert.equal(causaRaiz(obs, { ...base, partidaConEjecucion: true }).causa, CAUSA_RAIZ.IDENTIDAD_RECURSO)
+})
+
+test('una obra que no arrancó da SIN_MEDIR, NO 0%: todavía no hubo nada que intentar', () => {
+  // MUTACIÓN CORRIDA: `tasa: base > 0 ? … : 0` →
+  //   AssertionError: 0 !== 'SIN_MEDIR'
+  // Con 0 fijo, una obra recién adjudicada publica «0% comparable» y después sube sola con el
+  // avance sin que nadie arregle nada: la métrica mide ejecución disfrazada de calidad de dato.
+  const cuadro = cuadroDeCausas(
+    [noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES), noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL)],
+    () => ({ tieneGenealogia: true, partidaConActividad: true, partidaConEjecucion: false, capturaVacia: { HH: false, COSTO: false } }))
+  assert.equal(cuadro.huecosAccionables, 0)
+  assert.equal(comparabilidadViva({ comparables: 0, cuadro }).tasa, 'SIN_MEDIR')
+})
+
+test('con huecos reales la tasa es un número y PUEDE dar 0: se intentó y no se pudo', () => {
+  const cuadro = cuadroDeCausas(
+    [noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES), noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL)],
+    () => ({ tieneGenealogia: true, partidaConActividad: true, partidaConEjecucion: true, capturaVacia: { HH: true, COSTO: true } }))
+  assert.equal(cuadro.huecosAccionables, 2)
+  assert.equal(comparabilidadViva({ comparables: 0, cuadro }).tasa, 0)
+  assert.equal(comparabilidadViva({ comparables: 2, cuadro }).tasa, 0.5)
+})
+
+test('§E2 · el rendimiento NO se calcula sobre una cantidad de 0: sería un ritmo infinito', () => {
+  // ═══ DOS GUARDS INDEPENDIENTES, Y LA MUTACIÓN DE UNO SOLO NO ALCANZA ═══
+  //
+  // MUTACIÓN CORRIDA (a): sacar el `cant > 0` de `obsRendimiento` → SIGUE VERDE.
+  // MUTACIÓN CORRIDA (b): en `num()`, cambiar `!Number.isFinite` por `Number.isNaN` → SIGUE VERDE.
+  // MUTACIÓN CORRIDA (a+b), las dos juntas →
+  //   AssertionError: true !== false  «cantidad 0 con horas gastadas no tiene rendimiento»
+  //
+  // Se deja escrito porque es información: la protección está DUPLICADA —el guard explícito y el
+  // filtro de `num()`— y por eso ninguna mutación sola la rompe. Declarar un rojo que no ocurrió
+  // sería peor que no tener el test. Lo que este test sí prueba es el COMPORTAMIENTO: 90 HH sobre
+  // 0 m³ nunca publica «Infinity HH/m³», que es lo que pondría a esa partida a encabezar cualquier
+  // ranking de desvío para siempre.
+  const obs = compararPartida({
+    plan: PLAN[0],
+    real: consolidar({
+      ejecuciones: [{ actividad_id: 'a1', fecha: '2026-08-22', cantidad: 0 }],
+      horas: [{ actividad_id: 'a1', fecha: '2026-08-22', horas: 90, persona_id: 'p' }],
+    }).partidas[0],
+  })
+  const r = de(obs, CONCEPTO.RENDIMIENTO, 'T1001')
+  assert.equal(r.comparable, false, 'cantidad 0 con horas gastadas no tiene rendimiento: tiene un problema')
+  assert.equal(r.real, null)
+  assert.equal(r.desvioPct, null)
+  assert.notEqual(r.real, Infinity)
 })

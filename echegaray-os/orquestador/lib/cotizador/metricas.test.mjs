@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metricasDeCorrida, compararCorridas, SIN_MEDIR, estaMedida, exactitud, exactitudDeCorrida } from './metricas.mjs'
+import { metricasDeCorrida, compararCorridas, SIN_MEDIR, estaMedida, exactitud, exactitudDeCorrida, reusoDeConocimiento } from './metricas.mjs'
 import { costoDePartida, subcontrato } from './costo.mjs'
 import { observacionDePrecio, TIPO_RECURSO } from './precios.mjs'
 import { colaDeAtencion } from './atencion.mjs'
@@ -313,4 +313,105 @@ test('`preguntas_humanas` (la cola) y `human_questions` (§21) no son el mismo n
   const m = metricasDeCorrida({ cola, investigaciones: [{ resueltoEn: null, requiereHumano: true }] })
   assert.equal(m.preguntas_humanas, 1, 'sólo la cola')
   assert.equal(m.human_questions, 2, 'la cola más la investigación escalada')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// KNOWLEDGE REUSE · tiene que poder decir 0 %, >0 % y NO MEDIDO, y las tres son distintas
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('KNOWLEDGE REUSE · sin ninguna decisión elegible es SIN_MEDIR, NUNCA 100%', () => {
+  // MUTACIÓN CORRIDA: `declaradas > 0 ? … : 1` →
+  //   AssertionError: 1 !== 'SIN_MEDIR'
+  // Una corrida vacía que publica «100 % de reuso» es el mismo verde falso que este archivo
+  // documenta arriba: no reusar nada porque no había nada no es reusar todo.
+  const r = reusoDeConocimiento({})
+  assert.equal(r.knowledge_reuse_rate, SIN_MEDIR)
+  assert.match(r.knowledge_reuse_estado, /no hubo ninguna decisión elegible/)
+})
+
+test('KNOWLEDGE REUSE · «no pude mirar» NO es «no hubo reuso»: es SIN_MEDIR, no 0%', () => {
+  // MUTACIÓN CORRIDA: contar las resoluciones sin `origen` como no-reuso, o sea
+  //   `const resDeclaradas = resoluciones` →
+  //   AssertionError: 0 !== 'SIN_MEDIR'
+  // Publicado como «0 % de reuso», eso manda a alguien a construir conocimiento que quizá ya se
+  // esté usando — y el trabajo se justifica con una métrica que nunca midió nada.
+  const r = reusoDeConocimiento({ resoluciones: [{ recurso: 'A' }, { recurso: 'B' }, { recurso: 'C' }] })
+  assert.equal(r.knowledge_reuse_rate, SIN_MEDIR)
+  assert.equal(r.knowledge_reuse_elegibles, 3)
+  assert.equal(r.knowledge_reuse_sin_procedencia, 3)
+  assert.equal(r.knowledge_reuse_cobertura, 0)
+  assert.match(r.knowledge_reuse_estado, /ninguna declara de dónde salió/)
+})
+
+test('KNOWLEDGE REUSE · con procedencia declarada y ningún reuso da 0%, y eso SÍ es una medición', () => {
+  const r = reusoDeConocimiento({
+    resoluciones: [{ origen: 'WEB', resuelta: true }, { origen: 'WEB', resuelta: true }],
+    mapeos: [{ estado: 'SIN_PARTIDA' }],
+  })
+  assert.equal(r.knowledge_reuse_rate, 0)
+  assert.equal(r.knowledge_reuse_estado, 'MEDIDO')
+  assert.equal(r.knowledge_reuse_cobertura, 1)
+})
+
+test('KNOWLEDGE REUSE · un precio de la WEB no es conocimiento propio', () => {
+  // MUTACIÓN CORRIDA: `WEB: true` en ORIGEN_ES_REUSO →
+  //   AssertionError: 1 !== 0.5
+  // Con WEB adentro, salir a buscar afuera MEJORA la métrica del conocimiento propio: la empresa
+  // parecería reusar más cuanto menos sabe.
+  const r = reusoDeConocimiento({ resoluciones: [{ origen: 'INTERNO', resuelta: true }, { origen: 'WEB', resuelta: true }] })
+  assert.equal(r.knowledge_reuse_rate, 0.5)
+  assert.equal(r.knowledge_reuse_por_familia.precio.reuso, 1)
+})
+
+test('KNOWLEDGE REUSE · las tres familias suman, y la cobertura delata la tasa medida en una esquina', () => {
+  const r = reusoDeConocimiento({
+    // 4 resoluciones, 1 sin declarar: la tasa se calcula sobre 3
+    resoluciones: [{ origen: 'INTERNO', resuelta: true }, { origen: 'COMPRA_ECSAS', resuelta: true }, { origen: 'WEB', resuelta: true }, { recurso: 'sin origen' }],
+    mapeos: [{ estado: 'MAPEADA' }, { estado: 'AMBIGUO' }],
+    aprendizajesAplicados: [{ clave: 'k1' }],
+  })
+  assert.equal(r.knowledge_reuse_elegibles, 7)
+  assert.equal(r.knowledge_reuse_denominador, 6)
+  assert.equal(r.knowledge_reuse_numerador, 4, '2 precios + 1 mapeo + 1 aprendizaje')
+  assert.equal(r.knowledge_reuse_rate, 0.667)
+  assert.equal(r.knowledge_reuse_cobertura, 0.857)
+})
+
+test('KNOWLEDGE REUSE · deja de ser un alias de la cobertura de mapeo', () => {
+  // El defecto viejo: `knowledge_reuse_rate = mapeadas/mapeos`, que además es parte del numerador
+  // de autonomous_resolution_rate. Con precios declarados que NO son reuso, las dos métricas tienen
+  // que separarse — si siguieran pegadas, este test da igual en los dos casos.
+  const soloMapeo = reusoDeConocimiento({ mapeos: [{ estado: 'MAPEADA' }, { estado: 'MAPEADA' }] })
+  const conPrecios = reusoDeConocimiento({
+    mapeos: [{ estado: 'MAPEADA' }, { estado: 'MAPEADA' }],
+    resoluciones: [{ origen: 'WEB', resuelta: true }, { origen: 'WEB', resuelta: true }],
+  })
+  assert.equal(soloMapeo.knowledge_reuse_rate, 1)
+  assert.equal(conPrecios.knowledge_reuse_rate, 0.5, 'los precios de la web bajan el reuso y no tocan el mapeo')
+})
+
+test('KNOWLEDGE REUSE · viaja dentro de las métricas de la corrida', () => {
+  const m = metricasDeCorrida({ mapeos: [{ estado: 'MAPEADA' }, { estado: 'AMBIGUO' }] })
+  assert.equal(m.knowledge_reuse_rate, 0.5)
+  assert.equal(m.knowledge_reuse_estado, 'MEDIDO')
+  const vacia = metricasDeCorrida({})
+  assert.equal(vacia.knowledge_reuse_rate, SIN_MEDIR)
+})
+
+test('KNOWLEDGE REUSE · un precio que salió de la Base Maestra y terminó en una persona NO es reuso', () => {
+  // MUTACIÓN CORRIDA: sacar `&& r.resuelta === true` del filtro de reuso →
+  //   AssertionError: 1 !== 0.5
+  // Es el caso REAL medido: 105 de 107 resoluciones salen de BASE_MAESTRA y sólo 49 quedaron
+  // VIGENTE. Sin la condición, derivar la decisión a un humano SUBE la métrica del conocimiento
+  // reutilizable — el mismo agujero que autonomous_resolution_rate ya tuvo.
+  const r = reusoDeConocimiento({
+    resoluciones: [{ origen: 'INTERNO', resuelta: true }, { origen: 'INTERNO', resuelta: false }],
+  })
+  assert.equal(r.knowledge_reuse_rate, 0.5)
+})
+
+test('KNOWLEDGE REUSE · declarar el origen sin declarar si cerró NO alcanza: no se puede mirar', () => {
+  const r = reusoDeConocimiento({ resoluciones: [{ origen: 'INTERNO' }, { origen: 'INTERNO' }] })
+  assert.equal(r.knowledge_reuse_rate, SIN_MEDIR)
+  assert.equal(r.knowledge_reuse_sin_procedencia, 2)
 })

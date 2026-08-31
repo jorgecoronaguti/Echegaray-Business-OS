@@ -19,10 +19,185 @@
 // CANDIDATO y que hacen falta dos casos comparables de OBRAS DISTINTAS para VALIDADO. Una obra no
 // valida nada, por más que la comparación contra su histórico haya salido bien.
 
+import { estadoDelAprendizaje } from '../obra-plan-real.mjs'
+
 /** Un aprendizaje candidato. `condicion` es lo que lo dispara; `nombresPropios` viaja aparte y sólo
  *  como evidencia — nunca dentro de la afirmación. */
 export function aprendizaje({ clave, condicion, afirmacion, porQue, evidencia = {}, area = 'cotizacion' }) {
   return Object.freeze({ clave, condicion, afirmacion, porQue, evidencia, area, tipo: 'CANDIDATO' })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL EXPEDIENTE DE UN CANDIDATO — lo que hace falta para poder decirle que no
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ POR QUÉ UN APRENDIZAJE NO PUEDE SER UNA FRASE ═══
+//
+// Hoy hay 10 CANDIDATO en `conocimiento_empresa` y ninguno se puede evaluar: dicen qué se aprendió
+// y no dicen sobre cuántos casos, de qué obras, en qué rango de fechas, ni cuánto se dispersan
+// entre sí. Sin eso, quien tiene que aprobarlos no tiene con qué rechazar uno — y una gobernanza que
+// no puede rechazar es un sello.
+//
+// El expediente trae las nueve cosas que permiten decir que no:
+//
+//   sampleCount · obras · contexto · unidades · distribucion · dispersion · evidencia ·
+//   procedencia · rangoDeFechas
+//
+// ═══ LA DISPERSIÓN ES LA QUE MÁS DUELE ═══
+//
+// Dos mediciones que difieren un 40 % no se están confirmando: están diciendo que algo más cambió
+// —la cuadrilla, el frente, el clima— y promediarlas fabrica un número que no describe a ninguna de
+// las dos. Por eso la dispersión viaja SIEMPRE y el promedio nunca viaja solo.
+
+const numero = (v) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v))
+
+/** Mín, mediana, máx y coeficiente de variación. `null` donde no se puede: con un solo caso no hay
+ *  dispersión, y escribir 0 diría «todas las mediciones coinciden» sobre una sola medición. */
+export function distribucionDe(valores = []) {
+  const xs = valores.map(numero).filter((x) => x !== null).sort((a, b) => a - b)
+  if (!xs.length) return Object.freeze({ n: 0, min: null, mediana: null, max: null, promedio: null, desvio: null, cv: null })
+  const promedio = xs.reduce((a, b) => a + b, 0) / xs.length
+  const mediana = xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2
+  const desvio = xs.length > 1
+    ? Math.sqrt(xs.reduce((a, x) => a + (x - promedio) ** 2, 0) / (xs.length - 1))
+    : null
+  return Object.freeze({
+    n: xs.length, min: xs[0], max: xs[xs.length - 1], mediana,
+    promedio: Math.round(promedio * 10000) / 10000,
+    desvio: desvio === null ? null : Math.round(desvio * 10000) / 10000,
+    // Coeficiente de variación. Con promedio 0 NO es infinito ni cero: no hay proporción posible.
+    cv: desvio === null || promedio === 0 ? null : Math.round((desvio / Math.abs(promedio)) * 1000) / 1000,
+  })
+}
+
+/**
+ * EL EXPEDIENTE DE UN CANDIDATO. PURA.
+ *
+ * `casos` son observaciones de rendimiento real, cada una con `{obraId, actividadId, tareaTipoId,
+ * unidad, hsUnitarias, fecha, fuente}`. NADA se completa: un caso sin fecha deja el rango abierto y
+ * lo declara, no se le pone la fecha de hoy.
+ */
+export function expedienteDe({ clave, condicion, afirmacion, area = 'cotizacion', casos = [] } = {}) {
+  if (!clave) throw new Error('un aprendizaje sin clave no se puede volver a encontrar ni contrastar')
+  const obras = [...new Set(casos.map((c) => c.obraId).filter(Boolean))]
+  const unidades = [...new Set(casos.map((c) => c.unidad).filter(Boolean))]
+  const fechas = casos.map((c) => c.fecha).filter(Boolean).map(String).sort()
+  const sinFecha = casos.filter((c) => !c.fecha).length
+  const procedencia = [...new Set(casos.map((c) => c.fuente ?? 'SIN_FUENTE_DECLARADA'))]
+
+  return Object.freeze({
+    clave, condicion, afirmacion, area, tipo: 'CANDIDATO',
+    sampleCount: casos.length,
+    obras: Object.freeze(obras),
+    // Un aprendizaje que mezcla unidades no es un aprendizaje: es dos, superpuestos.
+    unidades: Object.freeze(unidades),
+    contexto: Object.freeze({
+      tareaTipoId: [...new Set(casos.map((c) => c.tareaTipoId).filter(Boolean))],
+      actividades: [...new Set(casos.map((c) => c.actividadId).filter(Boolean))].length,
+    }),
+    distribucion: distribucionDe(casos.map((c) => c.hsUnitarias)),
+    dispersion: distribucionDe(casos.map((c) => c.hsUnitarias)).cv,
+    rangoDeFechas: Object.freeze({
+      desde: fechas[0] ?? null, hasta: fechas[fechas.length - 1] ?? null,
+      // Un rango calculado sobre la mitad de los casos no es el rango. Se dice cuántos faltan.
+      casosSinFecha: sinFecha,
+    }),
+    procedencia: Object.freeze(procedencia),
+    evidencia: Object.freeze(casos.map((c) => Object.freeze({ ...c }))),
+  })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA PROMOCIÓN — y por qué este archivo NO decide qué se valida
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La regla que eleva a VALIDADO vive en `obra-plan-real.mjs` y NO se reimplementa acá: dos casos
+// comparables, consistentes dentro de la tolerancia y de OBRAS DISTINTAS. Si esa regla viviera en
+// dos archivos, el OS tendría dos respuestas a «¿esto ya se puede usar para cotizar?», que es
+// exactamente lo que la realidad única prohíbe.
+//
+// Lo único que este archivo agrega es un estado INTERMEDIO que hoy no existe y que hace falta para
+// poder revisar la cola: `estadoDelAprendizaje` devuelve CANDIDATO tanto para «primer caso de la
+// vida» como para «se midió en dos obras distintas y las dos se contradicen». Son cosas muy
+// distintas —la segunda YA fue contrastada contra evidencia independiente y no sobrevivió— y
+// mezcladas en un solo estado nadie las separa.
+//
+// ═══ ESTO NO AFLOJA NADA ═══
+//
+// CONTRASTADO es una partición del CANDIDATO que la gobernanza ya había decidido. Un VALIDADO pasa
+// tal cual y NUNCA se produce acá.
+
+export const ESTADO_APRENDIZAJE = Object.freeze({
+  CANDIDATO: 'CANDIDATO',       // no se contrastó todavía, o sólo contra la misma obra
+  CONTRASTADO: 'CONTRASTADO',   // se midió en otra obra y NO se confirmó: hay una pregunta abierta
+  VALIDADO: 'VALIDADO',         // lo decide la gobernanza de obra-plan-real.mjs, nunca este archivo
+})
+
+/**
+ * QUÉ ESTADO LE CORRESPONDE A UN CASO NUEVO. PURA.
+ *
+ * Delega en `estadoDelAprendizaje` y sólo refina su CANDIDATO. `previos` son los casos ya conocidos
+ * de la misma tarea.
+ */
+export function promocionDe(nuevo, previos = []) {
+  const g = estadoDelAprendizaje(nuevo, previos)
+  if (g.estado === ESTADO_APRENDIZAJE.VALIDADO) return Object.freeze({ ...g, gobernanza: 'obra-plan-real.mjs' })
+
+  const deOtraObra = previos.some((p) =>
+    p?.obraId && nuevo?.obraId && p.obraId !== nuevo.obraId &&
+    p.tareaTipoId && nuevo.tareaTipoId && p.tareaTipoId === nuevo.tareaTipoId && p.unidad === nuevo.unidad)
+  if (deOtraObra) {
+    return Object.freeze({
+      ...g, estado: ESTADO_APRENDIZAJE.CONTRASTADO, gobernanza: 'obra-plan-real.mjs',
+      porQue: `${g.porQue} — se contrastó contra otra obra y no se confirmó: la diferencia es la pregunta, no un promedio`,
+    })
+  }
+  return Object.freeze({ ...g, gobernanza: 'obra-plan-real.mjs' })
+}
+
+/**
+ * LA REGRESIÓN, ANTES DE ACTIVAR. PURA.
+ *
+ * ═══ UN APRENDIZAJE QUE EMPEORA LO CONOCIDO NO SE ACTIVA ═══
+ *
+ * Que un conocimiento nuevo esté bien medido no dice que sirva. La prueba es contra los casos que ya
+ * se sabían: se predice cada uno con la referencia vieja y con la nueva, y se compara el error. Si
+ * el error EMPEORA, no se promueve — por más casos que lo sostengan.
+ *
+ * `casosConocidos` son `{real, esperado}` medidos antes; `predecir(caso, valor)` devuelve la
+ * predicción con un valor dado. Sin casos conocidos NO devuelve «pasa»: devuelve `SIN_REGRESION`,
+ * porque no haber podido probar no es haber probado.
+ */
+export function regresionDe({ casosConocidos = [], valorViejo = null, valorNuevo = null, predecir } = {}) {
+  if (!casosConocidos.length || valorNuevo === null || typeof predecir !== 'function') {
+    return Object.freeze({ resultado: 'SIN_REGRESION', promueve: false, porQue: 'no hay casos conocidos contra los que probar: no haber podido probar no es haber probado' })
+  }
+  const err = (v) => casosConocidos.reduce((a, c) => {
+    const p = numero(predecir(c, v))
+    const r = numero(c.real)
+    // Un caso sin real no aporta error. NO se cuenta como acierto.
+    return p === null || r === null ? a : a + Math.abs(p - r)
+  }, 0)
+  const medibles = casosConocidos.filter((c) => numero(c.real) !== null && numero(predecir(c, valorNuevo)) !== null).length
+  if (!medibles) {
+    return Object.freeze({ resultado: 'SIN_REGRESION', promueve: false, porQue: 'ningún caso conocido trae su valor real: no hay error que comparar' })
+  }
+  const viejo = valorViejo === null ? null : err(valorViejo)
+  const nuevo = err(valorNuevo)
+  if (viejo === null) {
+    return Object.freeze({ resultado: 'SIN_REFERENCIA', promueve: true, errorNuevo: nuevo, casos: medibles, porQue: 'no había referencia previa: el conocimiento nuevo no empeora nada porque no había nada' })
+  }
+  const mejora = nuevo <= viejo
+  return Object.freeze({
+    resultado: mejora ? 'MEJORA_O_IGUAL' : 'EMPEORA',
+    promueve: mejora,
+    errorViejo: Math.round(viejo * 10000) / 10000,
+    errorNuevo: Math.round(nuevo * 10000) / 10000,
+    casos: medibles,
+    porQue: mejora
+      ? `el error total sobre ${medibles} caso(s) conocidos no empeora (${nuevo.toFixed(4)} contra ${viejo.toFixed(4)})`
+      : `el error total sobre ${medibles} caso(s) conocidos EMPEORA (${nuevo.toFixed(4)} contra ${viejo.toFixed(4)}): NO se promueve`,
+  })
 }
 
 const money = (n) => `$ ${Math.round(Number(n ?? 0)).toLocaleString('es-AR')}`
