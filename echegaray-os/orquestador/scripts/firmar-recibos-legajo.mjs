@@ -24,13 +24,14 @@ import { createRequire } from 'node:module'
 import { PDFDocument } from 'pdf-lib'
 import { getTokenFor } from '../lib/google-oauth.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { rotuloDelEmpleador, ubicacionDeLaFirma, yaFirmado, MARCA } from '../lib/firma-en-recibo.mjs'
+import { rotuloDelEmpleador, lineasDelRecuadro, ubicacionDeLaFirma, yaFirmado, MARCA } from '../lib/firma-en-recibo.mjs'
 
 const pdfjs = await import(createRequire(import.meta.url).resolve('pdfjs-dist/legacy/build/pdf.mjs'))
 
 const APLICAR = process.argv.includes('--aplicar')
 const LIMITE = Number(process.argv[process.argv.indexOf('--limite') + 1]) || Infinity
 const CUIL = process.argv.includes('--persona') ? process.argv[process.argv.indexOf('--persona') + 1] : null
+const PARALELO = Number(process.argv[process.argv.indexOf('--paralelo') + 1]) || 6
 const CUENTA = process.env.ORQ_LEGAJOS_CUENTA || 'rodrigo@ecsas.com.ar'
 // ═══ LA FIRMA NO VIVE EN EL REPOSITORIO ═══
 //
@@ -54,6 +55,26 @@ async function api(u, opt = {}, binario = false) {
   throw new Error('reintentos agotados')
 }
 
+/**
+ * Los trazos vectoriales de una página, como bounding boxes en coordenadas de página.
+ *
+ * `pdfjs` no expone la geometría de los caminos con una API estable —`getPathGeometry` no existe en
+ * esta versión— pero cada `constructPath` de la lista de operadores trae su propio bounding box ya
+ * calculado en su tercer argumento. Un recuadro es un camino con alto ~0: eso alcanza para encontrar
+ * el renglón de la firma sin reimplementar el intérprete de caminos de PDF.
+ */
+async function trazosDe(pagina) {
+  const ops = await pagina.getOperatorList()
+  const out = []
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    if (ops.fnArray[i] !== pdfjs.OPS.constructPath) continue
+    const mm = ops.argsArray[i]?.[2]
+    if (!mm) continue
+    out.push({ x1: mm[0], y1: mm[1], x2: mm[2], y2: mm[3] })
+  }
+  return out
+}
+
 /** Sella un PDF en memoria. Devuelve el buffer nuevo, o el motivo por el que no se tocó. */
 export async function sellar(buf, pngFirma) {
   const doc = await pdfjs.getDocument({ data: new Uint8Array(buf), useSystemFonts: true }).promise
@@ -62,10 +83,12 @@ export async function sellar(buf, pngFirma) {
   const png = await out.embedPng(pngFirma)
   let puestas = 0; const sinRotulo = []
   for (let i = 1; i <= doc.numPages; i++) {
-    const tc = await (await doc.getPage(i)).getTextContent()
+    const pag = await doc.getPage(i)
+    const tc = await pag.getTextContent()
     const rot = rotuloDelEmpleador(tc.items)
     if (!rot) { sinRotulo.push(i); continue }
-    const u = ubicacionDeLaFirma(rot, { ancho: png.width, alto: png.height })
+    const { renglon, techo } = lineasDelRecuadro(await trazosDe(pag), rot)
+    const u = ubicacionDeLaFirma(rot, { ancho: png.width, alto: png.height }, { renglon, techo })
     out.getPage(i - 1).drawImage(png, { x: u.x, y: u.y, width: u.ancho, height: u.alto })
     puestas++
   }
@@ -90,18 +113,20 @@ async function main() {
   console.log(APLICAR ? '── APLICANDO ──\n' : '── EN SECO: no se escribe nada ──\n')
 
   const cuenta = { firmados: 0, yaEstaban: 0, faltaDato: 0, fallaron: 0 }
-  let n = 0
-  for (const r of rows) {
-    if (n++ >= LIMITE) break
+  // 671 recibos en serie contra Drive son ~40 minutos, casi todos de espera de red. Se resuelven de
+  // a PARALELO a la vez: cada uno toca un archivo distinto de Drive, así que no compiten por nada.
+  const cola = rows.slice(0, LIMITE === Infinity ? rows.length : LIMITE)
+  let cursor = 0
+  const uno = async (r) => {
     const quien = String(r.nombre_completo).slice(0, 28).padEnd(29)
     try {
       const buf = await api(`https://www.googleapis.com/drive/v3/files/${r.drive_file_id}?alt=media&supportsAllDrives=true`, {}, true)
       const s = await sellar(buf, png)
-      if (s.que === 'ya_firmado') { cuenta.yaEstaban++; continue }
+      if (s.que === 'ya_firmado') { cuenta.yaEstaban++; return }
       if (s.que === 'falta_dato') {
         cuenta.faltaDato++
         console.log(`  ⊘ ${quien} ${String(r.nombre).slice(0, 40)} — FALTA_DATO: sin rótulo del empleador`)
-        continue
+        return
       }
       if (APLICAR) {
         await api(`https://www.googleapis.com/upload/drive/v3/files/${r.drive_file_id}?uploadType=media&supportsAllDrives=true`,
@@ -116,6 +141,9 @@ async function main() {
       console.log(`  ✗ ${quien} ${String(r.nombre).slice(0, 34)} — ${String(e.message).slice(0, 60)}`)
     }
   }
+  await Promise.all(Array.from({ length: PARALELO }, async () => {
+    while (cursor < cola.length) await uno(cola[cursor++])
+  }))
   console.log(`\n${APLICAR ? 'FIRMADOS' : 'SE FIRMARÍAN'}: ${cuenta.firmados} · ya estaban: ${cuenta.yaEstaban}`
     + ` · FALTA_DATO: ${cuenta.faltaDato} · fallaron: ${cuenta.fallaron}`)
   if (!APLICAR) console.log('\n(sin --aplicar no se escribió nada)')
