@@ -95,10 +95,17 @@ test('dimensiones distintas no se comparan aunque el nombre coincida', () => {
   assert.match(r.porQue, /MASA|LONGITUD/)
 })
 
-test('dentro de la dimensión SÍ convierte con factor declarado: t → kg', () => {
+test('dentro de la dimensión convierte con el factor de un PRECIO, no el de una cantidad', () => {
+  // $/t → $/kg se DIVIDE por 1.000. Con el factor de cantidad (×1.000) el kilo de hierro salía a
+  // mil millones de pesos, y con formato de plata eso pasa desapercibido.
   const r = sonComparables(rec('a', 'HIERRO TORSIONADO ø 16', 'kg'), rec('b', 'HIERRO TORSIONADO ø 12', 't'))
   assert.equal(r.comparable, true)
-  assert.equal(r.factor, 1000)
+  assert.equal(r.factor, 0.001)
+  const c = cohorteDe(rec('a', 'HIERRO TORSIONADO ø 16', 'kg'), [
+    obs(rec('b', 'HIERRO TORSIONADO ø 12', 't'), 1_615_000, '2026-04-01'),
+    obs(rec('c', 'HIERRO TORSIONADO ø 10', 't'), 1_615_000, '2026-04-01'),
+  ])
+  assert.equal(c.elegido.valorEnLaUnidad, 1615)
 })
 
 test('una unidad que el diccionario no conoce bloquea en vez de adivinar', () => {

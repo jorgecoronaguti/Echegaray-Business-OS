@@ -41,7 +41,7 @@
 //
 // PURO: sin red, sin base, sin reloj propio.
 
-import { DIMENSION, normalizarUnidad, convertir } from './unidades.mjs'
+import { DIMENSION, normalizarUnidad, factorDePrecio } from './unidades.mjs'
 import { normalizar } from './compras-precio.mjs'
 import { atributosDe, comparar } from '../plano/atributos.mjs'
 import { ESTADO } from './contrato.mjs'
@@ -135,11 +135,13 @@ export function sonComparables(a, b) {
     const c = choque.conflictos[0]
     return no(`los atributos se contradicen en ${c.atributo}: «${c.literalElemento}» contra «${c.literalPartida}»`)
   }
-  const conv = convertir(1, ub.canonica, ua.canonica)
+  // El precio del comparable está POR SU unidad, así que el factor es el de un precio y no el de
+  // una cantidad: $1.615.000 por tonelada son $1.615 por kilo, no $1.615.000.000.
+  const conv = factorDePrecio(ub.canonica, ua.canonica)
   if (conv.estado !== ESTADO.CALCULADO) return no(conv.porQue)
   return {
     comparable: true,
-    factor: conv.valor,
+    factor: conv.factor,
     porQue: `misma base «${ba.clave}», los dos en ${ua.dimension} (${ua.canonica}/${ub.canonica}) y sin atributos en conflicto; difieren sólo en ${bb.dimensionales.join(' ') || 'nada declarado'}`,
   }
 }

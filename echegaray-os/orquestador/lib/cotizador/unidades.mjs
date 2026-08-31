@@ -160,6 +160,30 @@ export function convertir(valor, de, a) {
   }
 }
 
+/**
+ * EL FACTOR PARA PASAR UN PRECIO POR UNIDAD DE UNA UNIDAD A OTRA. PURA.
+ *
+ * ═══ NO ES EL MISMO FACTOR QUE EL DE UNA CANTIDAD, Y CONFUNDIRLOS ES UN ERROR DE ×10⁶ ═══
+ *
+ * Una tonelada son 1.000 kg, así que una CANTIDAD de 1 t se convierte multiplicando por 1.000. Un
+ * PRECIO de $1.615.000 **por tonelada** son $1.615 **por kilo**: se DIVIDE por 1.000. La unidad
+ * está en el denominador, y por eso el factor de un precio es el inverso del de una cantidad.
+ *
+ * Medido acá mismo: usar `convertir()` para un precio por tonelada devolvió $1.615.000.000 el kilo
+ * —un millón de veces el valor real— y el número tenía formato de plata, así que a simple vista
+ * pasaba. Esta función existe para que esa conversión tenga un solo nombre y un solo lugar.
+ *
+ * Devuelve `{factor, estado, porQue}` con la misma disciplina de `convertir`: no hay número sin
+ * decir que se pudo.
+ */
+export function factorDePrecio(de, a) {
+  // El truco es exacto y no es un truco: cuántas unidades `de` entran en una unidad `a` ES el
+  // factor por el que hay que multiplicar el precio. Por eso los argumentos van al revés.
+  const c = convertir(1, a, de)
+  if (c.estado !== ESTADO.CALCULADO) return { factor: null, estado: c.estado, porQue: c.porQue }
+  return { factor: c.valor, estado: ESTADO.CALCULADO, porQue: `1 ${normalizarUnidad(a).canonica} = ${c.valor} ${normalizarUnidad(de).canonica}, así que el precio por ${normalizarUnidad(de).canonica} se multiplica por ${c.valor}` }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // EL PARSER — donde vive la regla de orden
 // ══════════════════════════════════════════════════════════════════════════════════════════════
