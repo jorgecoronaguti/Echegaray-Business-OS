@@ -404,8 +404,8 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // LO QUE SALE = todo lo que se debe MENOS lo que ya se entregó. No es «banco + efectivo»: en las
   // liquidaciones el efectivo es la mitad negra entera y los $600.000 del lote del 28/08 ya salieron.
   // Sumar las dos columnas los contaría de nuevo, que es cómo un titular pide transferir dos veces.
-  const saleDeLaCaja = `${deTodos('F')}-${deTodos('C')}-${deTodos('B')}`
-  fila('', `=${deTodos('D')}`, '', `=${saleDeLaCaja}-${deTodos('D')}`, '', `=${saleDeLaCaja}`)
+  const saleDeLaCaja = `${deTodos('G')}-${deTodos('D')}-${deTodos('C')}`
+  fila('', `=${deTodos('E')}`, '', `=${saleDeLaCaja}-${deTodos('E')}`, '', `=${saleDeLaCaja}`)
   // Una sola glosa, corta, en la columna ancha. La primera versión ponía una nota abajo de cada
   // cifra —«a la cuenta sueldo de cada uno», «billetes, ya descontado lo adelantado»— y las tres
   // salieron cortadas: la columna mide 108 px, que son ~17 caracteres. Un texto que no entra no
@@ -467,8 +467,13 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // es una lectura del OS que nadie declaró, y dibujarla igual que una declarada convierte una
   // inferencia en un hecho silencioso — el mismo aviso que la pestaña ya da al pie, ahora en la fila
   // de quien afecta.
-  fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Categoría', 'Horas', '$/h hoy', '$/h c/aum.')
+  // AL LADO DEL NOMBRE, por pedido del dueño (31/08): «poner la categoria al lado del nombre».
+  // La había puesto con el respaldo por el principio de «la plata primero»; leyendo el cuadro se ve
+  // por qué él tiene razón: la categoría es parte de QUIÉN es la persona —con ella se lee la fila
+  // entera, porque explica el piso, el aumento y la tarifa— y a la derecha obligaba a cruzar
+  // once columnas para saber contra qué se está midiendo a cada uno.
+  fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
+    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -622,15 +627,15 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // equivalencia se muestra el código crudo de la planilla, que es mejor que un blanco: dice que
     // esa categoría no está mapeada y por eso su fila no tiene piso.
     const catConvenio = conv ? `${conv}${esInferida(codigo) ? ' ▲' : ''}` : (codigo || SIN_DATO)
-    fila(nombreFila, celdaAdel, celdaTransf, celdaBanco,
-      `=N(F${n})-N(D${n})-N(C${n})-N(B${n})`, // efectivo = total − banco − transferido − adelanto
+    fila(nombreFila, catConvenio, celdaAdel, celdaTransf, celdaBanco,
+      `=N(G${n})-N(E${n})-N(D${n})-N(C${n})`, // efectivo = total − banco − transferido − adelanto
       `=N(K${n})*N(L${n})`,                  // total = horas × $/h
-      jornalNuevo != null ? `=N(H${n})-N(D${n})-N(C${n})-N(B${n})` : SIN_DATO,
+      jornalNuevo != null ? `=N(I${n})-N(E${n})-N(D${n})-N(C${n})` : SIN_DATO,
       jornalNuevo != null ? `=N(K${n})*N(M${n})` : SIN_DATO,
       // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
       // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
-      jornalNuevo != null ? `=N(H${n})-N(F${n})` : SIN_DATO,
-      catConvenio, celdaHoras, celdaJornal,
+      jornalNuevo != null ? `=N(I${n})-N(G${n})` : SIN_DATO,
+      celdaHoras, celdaJornal,
       jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
@@ -639,9 +644,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   const n0 = nF - activos.filter((x) => quincena.porClave.has(x.clave) && !tieneLiquidacionFinal(x.nombre)).length + 1
   const suma = (c) => `=SUM(${c}${n0}:${c}${nF})`
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
-    // Hasta I la plata; J es la categoría (texto, no se suma) y K las horas, que sí. L y M son
-    // tarifas — promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
-    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), '', suma('K'), '', '')
+    // B es la categoría (texto, no se suma); de C a J la plata; K las horas. L y M son tarifas —
+    // promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
+    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), suma('K'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -697,7 +702,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     fila(seccion(2, `qué se le paga a oficina · mes ${mes}`))
     fila('Oficina cobra MENSUAL aunque el estudio liquide dos quincenas. Por eso el banco suma los recibos '
       + 'del mes entero. Mismo acuerdo que obra: lo liquidado va por banco y otro tanto igual en efectivo.')
-    fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (el mes)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas cargadas')
+    // MISMA LETRA, MISMO SIGNIFICADO EN LOS TRES CUADROS. La columna B es la categoría también acá,
+    // aunque venga vacía: la planilla de oficina NO trae categoría —`COL_OFICINA` la declara `null`—
+    // y el «—» dice eso. Correr la plata una columna para ahorrarse dos guiones obliga a releer el
+    // encabezado en cada tabla, que es de donde venía la sensación de descuadre.
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (el mes)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas cargadas')
     const incompletos = []
     const sinRecibOfi = []
     const orden = (x) => comoSeEscribe(recibosDelMes.get(CUIL_POR_PERSONA_DE_PLANILLA[x.nombre])?.nombre_recibo ?? x.nombre)
@@ -712,23 +721,24 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       if (!r) {
         // Sin recibo no hay mitad blanca, y sin mitad blanca el 50/50 no tiene de dónde salir.
         sinRecibOfi.push(`${comoSeLlama} (sin recibo de ${mes})`)
-        fila(comoSeLlama, o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0, 0, SIN_DATO, SIN_DATO, SIN_DATO, 0)
+        fila(comoSeLlama, SIN_DATO, o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0, 0, SIN_DATO, SIN_DATO, SIN_DATO, 0)
         continue
       }
       if (cuantas < 2) incompletos.push(`${comoSeLlama} (${cuantas} de 2)`)
       fila(comoSeLlama,
+        SIN_DATO,                            // la planilla de oficina no trae categoría
         o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0,
         `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")`,
         // EL MES ENTERO: comodín sobre el período, que es «Q1-08/2026» y «Q2-08/2026».
         `=SUMIFS(${R}$E$1:$E$400;${R}$A$1:$A$400;"${cuil}";${R}$B$1:$B$400;"*-${mes}")`,
-        `=N(D${nf})-N(C${nf})-N(B${nf})`,   // la mitad negra, menos lo ya entregado
-        `=N(D${nf})+N(E${nf})`,
+        `=N(E${nf})-N(D${nf})-N(C${nf})`,   // la mitad negra, menos lo ya entregado
+        `=N(E${nf})+N(F${nf})`,
         cuantas)
     }
     const oF = f.length
     const o0 = oF - deOficina.length + 1
-    fila(rotuloTotal(`${deOficina.length} persona(s) de oficina`),
-      `=SUM(B${o0}:B${oF})`, `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, '')
+    fila(rotuloTotal(`${deOficina.length} persona(s) de oficina`), '',
+      `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`, '')
     if (incompletos.length) {
       fila(sub(`INCOMPLETO: el mes son DOS quincenas y falta cargar la primera de ${incompletos.join(' · ')}. `
         + 'Lo que publica esta tabla es lo que hay, no el mes entero: cuando entre el recibo que falta, el banco y el efectivo suben solos.'))
@@ -777,12 +787,12 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // Así que la mitad negra es IGUAL a la blanca, el total es el doble, y lo ya entregado se resta
     // en su propia columna. Se ve el acuerdo Y se ve lo que falta pagar, que son dos preguntas
     // distintas y las dos se hacen sobre esta fila.
-    fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'QUEDA POR PAGAR')
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'QUEDA POR PAGAR')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -809,19 +819,20 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       const nf = f.length + 1
       const cita = `SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$A$1:$A$400;"${r.cuil}";'_RECIBOS_RAW'!$B$1:$B$400;"FINAL")`
       fila(r.nombre_recibo,
+        SIN_DATO,                              // su categoría no vive en ninguna fuente del archivo
         0,                                     // adelanto en obra: a estas personas no se les dio
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
         // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
         // Lo ya entregado se resta al final, en su columna, sin tocar el 50/50.
-        `=${cita}`, `=N(D${nf})`, `=N(D${nf})+N(E${nf})`, `=N(F${nf})-N(C${nf})-N(B${nf})`)
+        `=${cita}`, `=N(E${nf})`, `=N(E${nf})+N(F${nf})`, `=N(G${nf})-N(D${nf})-N(C${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
     const q1 = f.length - ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length + 1
     const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
-      `=SUM(B${q1}:B${q2})`, `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
-      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`)
+      '', `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
+      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`)
     // ARCA LO CONFIRMA, ASÍ QUE LA NOTA LO AFIRMA. Hasta el 31/08 esta línea decía «su vínculo
     // terminó» apoyada sólo en que el estudio les liquidó el final. Ahora está la constancia de
     // baja de ARCA de los dos, con fecha de cese 25/08/2026 y causal, guardada en su legajo.

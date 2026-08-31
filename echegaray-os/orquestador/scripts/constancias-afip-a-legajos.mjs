@@ -212,11 +212,16 @@ try {
   const v = await g.readSheetValues(ID, "'Nómina'!A1:L46")
   const cab = v.findIndex((r) => String(r?.[0] ?? '').trim() === 'Persona')
   const col = cab >= 0 ? v[cab].findIndex((c) => String(c ?? '').trim() === '$/h hoy') : -1
+  const colCat = cab >= 0 ? v[cab].findIndex((c) => String(c ?? '').trim() === 'Categoría') : -1
   if (cab >= 0 && col > 0) {
     for (let i = cab + 1; i < v.length && String(v[i]?.[0] ?? '').trim(); i++) {
       const n = String(v[i][0]).replace(/\s+▲.*$/, '').trim()
       if (/^⇒/.test(n)) break
-      nominaPorNombre.set(n, Number(String(v[i][col] ?? '').replace(/[^\d,-]/g, '').replace(',', '.')) || null)
+      nominaPorNombre.set(n, {
+        hora: Number(String(v[i][col] ?? '').replace(/[^\d,-]/g, '').replace(',', '.')) || null,
+        // El «▲» marca que la equivalencia la dedujo el OS; para comparar contra ARCA no cuenta.
+        categoria: colCat > 0 ? String(v[i][colCat] ?? '').replace('▲', '').trim() : null,
+      })
     }
   }
 } catch (e) {
@@ -234,7 +239,8 @@ console.log(HAY_BAJAS
 const pagaMenos = []
 for (const c of constancias.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))) {
   const r = reciboDe.get(c.cuil)
-  const hora = nominaPorNombre.get(c.nombre) ?? null
+  const fila = nominaPorNombre.get(c.nombre) ?? null
+  const hora = fila?.hora ?? null
   // Sólo tiene sentido comparar contra lo que se paga HOY a quien sigue trabajando.
   if (!/baja/i.test(c.tipo) && hora != null && c.retribucion != null && hora < c.retribucion) pagaMenos.push({ c, hora })
   console.log(HAY_BAJAS
@@ -296,6 +302,26 @@ for (const c of constancias) {
   const enBase = p ? papelEnBase.get(`${p.id}·${tipoDeDocumento(c.tipo)}`) : null
   if (enBase && enBase.presente === false) huecos.push(`el legajo pedía ${esBaja ? 'la baja' : 'el alta'} y no tenía archivo: ${c.nombre}`)
 }
+// ═══ LA CATEGORÍA DE LA PLANILLA CONTRA LA DECLARADA ANTE ARCA ═══
+//
+// No es un detalle de forma: la categoría FIJA EL PISO de convenio, y el aumento del dueño es medio
+// camino hasta ese piso. Si la planilla trata como Ayudante a alguien que ARCA declara Oficial, su
+// piso se mide contra $5.399 en vez de $6.348 y el aumento sale por la mitad de lo que debería.
+//
+// LAS DOS DIRECCIONES NO SON LO MISMO y por eso se dicen distinto:
+//   · ARCA declara MÁS alto que la planilla → exposición: se le paga por debajo de lo declarado.
+//   · la planilla más alto que ARCA        → decisión del dueño, se le paga mejor que lo declarado.
+const norm = (x) => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim()
+const RANGO = ['AYUDANTE', 'MEDIO OFICIAL', 'OFICIAL', 'OFICIAL ESPECIALIZADO']
+for (const c of constancias) {
+  const cat = nominaPorNombre.get(c.nombre)?.categoria
+  if (!cat || !c.categoria || norm(cat) === norm(c.categoria)) continue
+  const arriba = RANGO.indexOf(norm(c.categoria)) > RANGO.indexOf(norm(cat))
+  huecos.push(`${arriba ? 'ARCA lo declara' : 'la planilla lo trata como'} `
+    + `${arriba ? c.categoria : cat} y ${arriba ? `la planilla lo trata como ${cat}` : `ARCA lo declara ${c.categoria}`}: `
+    + `${c.nombre}${arriba ? ' — se le mide el piso contra la categoría más baja' : ' — se le paga mejor que lo declarado'}`)
+}
+
 // El papel declara más de lo que la caja paga. No es un desfasaje de paritaria —eso va al revés—:
 // es la empresa pagando por debajo de lo que ella misma declaró ante ARCA.
 for (const { c, hora } of pagaMenos) {
