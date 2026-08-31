@@ -211,3 +211,81 @@ test('P2-R1 · la cadena vacía y los espacios TAMPOCO son una cantidad medida',
     assert.equal(etapa(r, 'COST').result.aprendizajesNoAplicados, 1)
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL INVARIANTE, GENERALIZADO — un aprendizaje NUNCA desbloquea un presupuesto
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// F1 probaba el invariante para UNA causa de bloqueo: el renglón de mano de obra sin medir. Pero el
+// invariante no es sobre esa causa, es sobre el aprendizaje: aplicar experiencia de obras terminadas
+// puede hacer una cotización más cara, más barata o igual — nunca puede convertir un «no se puede
+// afirmar» en un número, ni abrir un gate que estaba cerrado.
+//
+// El bug original tenía esa forma exacta: un `?? 0` hacía desaparecer un FALTA_DATO y una cotización
+// que no se podía afirmar quedaba congelable en $4.947.000 con `gate.ready: true`. Si mañana el
+// escalado toca otra cosa —el material, la cantidad de la partida, el desperdicio— el agujero vuelve
+// por otra puerta y F1 sigue verde. Este test recorre las causas de bloqueo una por una.
+
+import { sinMedir } from './costo.mjs'
+
+/** Las causas por las que una cotización NO se puede afirmar, cada una con su entrada. */
+const BLOQUEOS = [
+  ['un renglón de mano de obra sin cantidad', {
+    composiciones: new Map([['u-4010', [
+      { recursoCodigo: 'MAT-LAD', nombre: 'Ladrillón', tipo: TIPO_RECURSO.MATERIAL, cantidad: 45, unidad: 'un' },
+      { recursoCodigo: 'MO-OF', nombre: 'Oficial', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: 2, unidad: 'hs' },
+      { recursoCodigo: 'MO-AY', nombre: 'Ayudante', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: null, unidad: 'hs' },
+    ]]]),
+  }],
+  ['un renglón de MATERIAL sin cantidad', {
+    composiciones: new Map([['u-4010', [
+      { recursoCodigo: 'MAT-LAD', nombre: 'Ladrillón', tipo: TIPO_RECURSO.MATERIAL, cantidad: null, unidad: 'un' },
+      { recursoCodigo: 'MO-OF', nombre: 'Oficial', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: 2, unidad: 'hs' },
+    ]]]),
+  }],
+  ['un recurso SIN PRECIO', {
+    observaciones: [observacionDePrecio({ recursoCodigo: 'MAT-LAD', precio: 950, fuente: 'lista', observadoEn: '2026-08-20' })],
+  }],
+  ['la partida SIN CANTIDAD computada', {
+    partidas: [{ codigo: 'T4010', descripcion: 'MAMPOSTERIA LADRILLON e=0,20', rubro: 'MAMPOSTERÍA', unidad: 'M2', cantidad: null, tareaTipoId: 'u-4010' }],
+  }],
+  ['la partida SIN COMPOSICIÓN', { composiciones: new Map() }],
+]
+
+test('INVARIANTE · aplicar un aprendizaje NUNCA convierte un costo desconocido en un número', () => {
+  for (const [causa, entrada] of BLOQUEOS) {
+    const sin = correr(ENTRADA(entrada))
+    const con = correr(ENTRADA({ ...entrada, aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]) }))
+    assert.equal(sin.costoDirecto.total, null, `el fixture «${causa}» tiene que bloquear SIN aprendizaje, o no prueba nada`)
+    assert.equal(con.costoDirecto.total, null, `«${causa}»: el aprendizaje afirmó un costo que sin él era desconocido`)
+    assert.equal(con.gate.ready, false, `«${causa}»: aplicar un aprendizaje ABRIÓ el gate de congelado`)
+    // Y en la dirección permitida: un aprendizaje SÍ puede cerrar un gate que estaba abierto —
+    // encarecer una obra hasta sacarla del margen es un resultado legítimo—, pero nunca al revés.
+  }
+})
+
+test('INVARIANTE · el gate nunca pasa de cerrado a abierto por un aprendizaje, para NINGÚN rendimiento', () => {
+  // Barrido sobre el rango de rendimientos plausibles: de 10× mejor a 10× peor que el análisis.
+  const entrada = BLOQUEOS[0][1]
+  for (const rendimiento of [0.2, 0.5, 1, 1.6, 2, 2.0001, 5, 20]) {
+    const con = correr(ENTRADA({ ...entrada, aprendizajesActivos: new Map([['rendimiento.T4010', rendimiento]]) }))
+    assert.equal(con.gate.ready, false, `con rendimiento ${rendimiento} el gate se abrió`)
+    assert.equal(con.costoDirecto.total, null, `con rendimiento ${rendimiento} el costo se afirmó`)
+  }
+})
+
+test('sinMedir · el predicado vive en UN solo lugar y sigue diciendo que no', () => {
+  // El P2-R1 nació de tener dos definiciones del mismo predicado y que ganara la laxa. La guarda
+  // está exportada de `costo.mjs` justamente para que no se pueda volver a escribir a mano.
+  // Lo que NO es una cantidad medida:
+  for (const v of [null, undefined, '', '  ', '\t', NaN, 'mucho', {}]) {
+    assert.equal(sinMedir(v), true, `${JSON.stringify(v)} se tomó como una cantidad medida`)
+  }
+  // Lo que SÍ lo es. El 0 está adentro a propósito: «esta partida no lleva ayudante» es un dato.
+  for (const v of [0, '0', 1, 2.5, '2.5', -1]) {
+    assert.equal(sinMedir(v), false, `${JSON.stringify(v)} se tomó como sin medir`)
+  }
+  // MUTACIÓN CORRIDA: en `costo.mjs::sinMedir`, sacar la rama del string vacío —
+  //   `!Number.isFinite(Number(v))` a secas—. FALLA: «"" se tomó como una cantidad medida:
+  //   false !== true», porque `Number('')` es 0 y 0 es finito. Es el bug que P2-R1 reabrió.
+})

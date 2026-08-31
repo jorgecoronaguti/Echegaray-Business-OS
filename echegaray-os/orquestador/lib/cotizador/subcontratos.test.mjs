@@ -280,3 +280,152 @@ test('una vigencia DERIVADA no puede pisar la que el documento declara', () => {
   //   resolvedor pisa la validez declarada. FALLA: «el resolvedor no se consulta cuando el proveedor
   //   ya dijo hasta cuándo: 'DERIVADO' !== 'DOCUMENTO'».
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CORRIDA — hasta acá el módulo se probaba SUELTO y ninguna cotización lo había atravesado
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La DoD dejaba #9 en NO_VERIFICABLE con «no se juntó evidencia de subcontratos», y era literal: la
+// evidencia se leía de `public.subcontrato` —que tiene 0 filas y además es la tabla de la OBRA, no
+// la del presupuesto— y `correr()` no publicaba NADA sobre sus subcontratos. Podía costear diez y
+// el resultado de la etapa no los mencionaba.
+//
+// Y había un cable cortado: `politica-pg.mjs::leerVigenciaDeSubcontratos()` lee
+// `subcontrato_vigencia_default` desde el 29/08, `costoDePartida` sabe usar esa tabla, y `correr()`
+// no tenía el parámetro. Toda corrida caía al corte GENERAL de 180 días con los defaults por tipo
+// declarados en la base.
+
+import { correr, etapa } from './orquestador.mjs'
+import { STATUS } from './contrato.mjs'
+import { politicaComercial } from './comercial.mjs'
+
+const POLITICA = politicaComercial({
+  fuente: 'parametro_comercial vigente', pctGastosGenerales: 0.27, pctBeneficio: 0.22,
+  pctFinanciero: 0.07, factorFinanciero: 0.5, pctIibb: 0.024, pctGanancias: 0.02,
+  pctCheque: 0.012, pctIva: 0.21,
+})
+const correrCon = (partidas, extra = {}) => correr({
+  documentos: [{ hash: 'd1', nombre: 'pedido de cotización', parseado: true }],
+  elementos: [{ id: 'E1' }], partidas, observaciones: OBS, politica: POLITICA, hoy: HOY,
+  cliente: 'FRANCO QUATTROPANI', clientesConocidos: ['FRANCO QUATTROPANI'],
+  alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'cargada en el presupuesto' },
+  ...extra,
+})
+const partidaSub = (codigo, s, extra = {}) => ({ codigo, descripcion: codigo, unidad: 'gl', cantidad: 1, subcontrato: s, ...extra })
+
+test('CORRIDA · la etapa COST publica lo que sabe de sus subcontratos, y sin ninguno publica null', () => {
+  const sinSubs = etapa(correrCon([{ ...PARTIDA, descripcion: 'Mampostería' }]), 'COST')
+  assert.equal(sinSubs.result.subcontratos, null, 'cero subcontratos NO es un cero medido: es que no hay nada que ejercitar')
+
+  const r = correrCon([
+    partidaSub('ELE-01', subcontrato({ alcance: 'Instalación eléctrica', proveedor: 'Electro Cuyo', precio: 8_500_000, cotizadoEn: '2026-08-20', fuente: 'presupuesto EC-145', incluye: ['materiales', 'mano de obra'], excluye: ['zanjeo'] })),
+    partidaSub('SAN-01', subcontrato({ alcance: 'Instalación sanitaria', proveedor: 'Sanitarios del Oeste SRL', tipo: 'SANITARIA', documento: 'mail 01/08' })),
+    partidaSub('MS-01', conPrecio({ tipo: 'MOVIMIENTO_SUELO' })),
+  ], { tablaVigenciaSubcontrato: { GENERAL: 180, MOVIMIENTO_SUELO: 20 } })
+  const s = etapa(r, 'COST').result.subcontratos
+  assert.equal(s.total, 3)
+  assert.equal(s.conPrecio, 2)
+  assert.equal(s.sinPrecio, 1)
+  assert.equal(s.vencidos, 1, 'el de movimiento de suelo venció a los 20 días: la tabla por tipo LLEGÓ a la corrida')
+  assert.equal(s.conAlcanceDeclarado, 1)
+  assert.deepEqual(s.monedas, ['ARS'])
+  assert.equal(s.duplicadosDeAlcance.length, 0)
+  // Y el costo directo NO se afirma, porque uno de los tres no tiene precio.
+  assert.equal(r.costoDirecto.total, null)
+  assert.equal(r.costoDirecto.parcial, 20_500_000, '8.500.000 + 12.000.000: la cifra parcial existe y se llama distinto')
+  // MUTACIÓN CORRIDA: en `orquestador.mjs::evidenciaDeSubcontratos`, cambiar `if (!conSub.length) return null`
+  //   por `if (!conSub.length) return { total: 0, conPrecio: 0, sinPrecio: 0, vencidos: 0, conAlcanceDeclarado: 0, sinProveedor: 0, monedas: [], duplicadosDeAlcance: [], plataDuplicada: 0 }`.
+  //   FALLA: «cero subcontratos NO es un cero medido: es que no hay nada que ejercitar».
+})
+
+test('CORRIDA · la tabla de vigencia por tipo cambia el resultado — el parámetro no es decorativo', () => {
+  const p = [partidaSub('MS-01', conPrecio({ tipo: 'MOVIMIENTO_SUELO' }))]
+  const sinTabla = correrCon(p)
+  const conTabla = correrCon(p, { tablaVigenciaSubcontrato: { GENERAL: 180, MOVIMIENTO_SUELO: 20 } })
+  assert.equal(etapa(sinTabla, 'COST').result.subcontratos.vencidos, 0, 'sin la tabla cae al corte GENERAL de 180: éste era el estado de TODA corrida')
+  assert.equal(etapa(conTabla, 'COST').result.subcontratos.vencidos, 1)
+  assert.equal(conTabla.cola.issues.some((i) => i.type === TIPO_ISSUE.PRECIO_DESACTUALIZADO), true)
+  // MUTACIÓN CORRIDA: en `orquestador.mjs::costear`, quitar
+  //   `...(tablaVigenciaSubcontrato ? { tablaVigenciaSubcontrato } : {})` — que es el estado en el que
+  //   estaba el archivo. FALLA: «Expected values to be strictly equal: 0 !== 1».
+})
+
+test('CORRIDA · un subcontrato entra al costo directo UNA SOLA VEZ, aunque la partida traiga composición', () => {
+  // La partida está subcontratada Y tiene el análisis cargado. Si las dos cosas entraran, el total
+  // sería 8.500.000 + 6.510.000: se pagaría el trabajo al sub y los materiales otra vez.
+  const conLasDos = partidaSub('MAM-SUB', subcontrato({
+    alcance: 'Mampostería completa', proveedor: 'Muros SA', precio: 8_500_000,
+    cotizadoEn: '2026-08-20', fuente: 'presupuesto MS-1',
+  }), { composicion: PARTIDA.composicion, cantidad: 100, unidad: 'M2' })
+  const r = correrCon([conLasDos])
+  assert.equal(r.costoDirecto.total, 8_500_000, 'el subcontrato cortocircuita la composición: el material del análisis NO se suma encima')
+  assert.equal(r.costos[0].cajones.MATERIALS, 0)
+  assert.equal(r.costos[0].cajones.SUBCONTRACTS, 8_500_000)
+  assert.equal(r.costos[0].hh, 0, 'una partida subcontratada no consume horas propias: CERO es el dato')
+  // Y la explosión de recursos lo ve una sola vez, con su cajón.
+  assert.equal(r.explosion.subcontratos.length, 1)
+  assert.equal(r.reconciliacion.cuadra, true, 'la explosión reconcilia contra el costo directo: si contara dos veces, no cuadraría')
+})
+
+test('CORRIDA · el MISMO alcance del MISMO proveedor cargado dos veces sale como conflicto con su plata', () => {
+  const s = () => subcontrato({ alcance: 'Instalación sanitaria completa', proveedor: 'Sanitarios del Oeste SRL', precio: 6_000_000, cotizadoEn: '2026-08-20', fuente: 'presupuesto SO-88' })
+  const r = correrCon([partidaSub('SAN-01', s()), partidaSub('SAN-02', s())])
+  const ev = etapa(r, 'COST').result.subcontratos
+  assert.equal(ev.duplicadosDeAlcance.length, 1)
+  assert.equal(ev.plataDuplicada, 6_000_000, 'el número que importa es la plata de más, no el conteo')
+  assert.deepEqual(ev.duplicadosDeAlcance[0].partidas, ['SAN-01', 'SAN-02'])
+  // El costo directo SUMA los dos —es lo que la aritmética hace— y por eso el conflicto tiene que
+  // ser BLOQUEANTE: el total de 12.000.000 es exactamente el defecto que se está denunciando.
+  assert.equal(r.costoDirecto.total, 12_000_000)
+  const dup = r.cola.bloqueantes.find((i) => /DOS VECES/.test(i.detalle ?? ''))
+  assert.ok(dup, `el duplicado tiene que estar en la cola de bloqueantes: ${JSON.stringify(r.cola.bloqueantes.map((i) => i.type))}`)
+  assert.equal(dup.impact, 6_000_000)
+  assert.equal(r.gate.ready, false, 'una cotización que paga la misma sanitaria dos veces no se congela')
+  // Y dos alcances DISTINTOS del mismo proveedor no son un duplicado.
+  const distinto = correrCon([
+    partidaSub('SAN-01', s()),
+    partidaSub('SAN-02', subcontrato({ alcance: 'Desagües pluviales', proveedor: 'Sanitarios del Oeste SRL', precio: 2_000_000, cotizadoEn: '2026-08-20', fuente: 'presupuesto SO-89' })),
+  ])
+  assert.equal(etapa(distinto, 'COST').result.subcontratos.duplicadosDeAlcance.length, 0)
+  // MUTACIÓN CORRIDA: en `evidenciaDeSubcontratos`, sacar el proveedor de la clave —
+  //   `const clave = (s) => String(s.alcance ?? '').trim().toLowerCase()`. Sigue verde acá, porque
+  //   los dos son del mismo proveedor; lo que destapa es el caso de abajo.
+})
+
+test('CORRIDA · el MISMO alcance de DOS proveedores distintos NO es un duplicado: son dos ofertas', () => {
+  // Es el caso que la clave por alcance solo confundiría: pedir la misma sanitaria a dos empresas es
+  // lo que hay que hacer, y marcarlo como plata duplicada haría que el motor grite en el caso sano.
+  const r = correrCon([
+    partidaSub('SAN-01', subcontrato({ alcance: 'Instalación sanitaria completa', proveedor: 'Sanitarios del Oeste SRL', precio: 6_000_000, cotizadoEn: '2026-08-20', fuente: 'SO-88' })),
+    partidaSub('SAN-02', subcontrato({ alcance: 'Instalación sanitaria completa', proveedor: 'Hidráulica Cuyana', precio: 5_400_000, cotizadoEn: '2026-08-21', fuente: 'HC-12' })),
+  ])
+  assert.equal(etapa(r, 'COST').result.subcontratos.duplicadosDeAlcance.length, 0)
+  // MUTACIÓN CORRIDA: en `evidenciaDeSubcontratos`, cambiar la clave a sólo el alcance.
+  //   FALLA: «Expected values to be strictly equal: 1 !== 0».
+})
+
+test('CORRIDA · un subcontrato en USD sin tipo de cambio NO vale su número en pesos: bloquea', () => {
+  const r = correrCon([partidaSub('EST-01', subcontrato({
+    alcance: 'Estructura metálica', proveedor: 'Metalúrgica del Este', precio: 42_000, moneda: 'USD',
+    cotizadoEn: '2026-08-20', fuente: 'presupuesto ME-7',
+  }))])
+  assert.equal(r.costoDirecto.total, null, '42.000 no son 42.000 pesos: sin el tipo de cambio el costo es DESCONOCIDO')
+  assert.deepEqual(etapa(r, 'COST').result.subcontratos.monedas, ['USD'])
+  assert.match(r.costos[0].faltan[0], /falta el tipo de cambio USD\/ARS/)
+  assert.equal(etapa(r, 'COMMERCIAL').status, STATUS.BLOQUEADA)
+  // Y con el tipo de cambio declarado, el mismo subcontrato cierra.
+  const conFx = correrCon([partidaSub('EST-01', subcontrato({
+    alcance: 'Estructura metálica', proveedor: 'Metalúrgica del Este', precio: 42_000, moneda: 'USD',
+    cotizadoEn: '2026-08-20', fuente: 'presupuesto ME-7',
+  }))], { fx: { par: 'USD/ARS', tasa: 1_450, fuente: 'BNA vendedor', observadoEn: '2026-08-30' } })
+  assert.equal(conFx.costoDirecto.total, 60_900_000)
+})
+
+test('CORRIDA · un subcontrato sin proveedor se cuenta, no se disimula', () => {
+  const r = correrCon([partidaSub('PIN-01', subcontrato({
+    alcance: 'Pintura completa', precio: 3_200_000, cotizadoEn: '2026-08-20', fuente: 'presupuesto sin membrete',
+  }))])
+  const s = etapa(r, 'COST').result.subcontratos
+  assert.equal(s.sinProveedor, 1, 'un precio del que no se sabe a quién pedírselo otra vez no es un precio cerrado')
+  assert.equal(s.total, 1)
+})

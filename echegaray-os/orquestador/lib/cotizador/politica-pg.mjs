@@ -108,3 +108,81 @@ export async function leerVigenciaDeSubcontratos({ query }) {
   if (!r.rows.length) return { ...VIGENCIA_SUBCONTRATO }
   return Object.fromEntries(r.rows.map((x) => [x.tipo, Number(x.dias)]))
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA ESCRITURA — lo que faltaba, y por eso «ninguna cotización las referencia todavía»
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Este archivo tenía cinco lectores y CERO escritores. `cotizacion_politica_ref` y
+// `cotizacion_indirecto` existen desde el 29/08 con 0 filas, y la DoD lo leía como una decisión
+// pendiente de la empresa: «la cascada sigue tomando la vigente». No era eso. No había por dónde
+// escribir la referencia aunque alguien quisiera.
+//
+// ⚠ Lo mismo que arriba: NO ES PARA LA WEB. El `query` es el pool del servidor y la RLS no se
+// evalúa. Desde una ruta de Next la escritura la hace el caller con SU credencial.
+
+/**
+ * DEJAR ESCRITO QUÉ VERSIÓN DE POLÍTICA USÓ ESTA COTIZACIÓN.
+ *
+ * Guarda el NÚMERO de versión y el id de la fila, no los porcentajes. Es toda la diferencia: si
+ * copiara los valores, publicar una política nueva no cambiaría el precio de las ofertas viejas
+ * —bien— pero tampoco se podría auditar contra qué versión se cotizó —mal—. La referencia contesta
+ * las dos.
+ *
+ * Idempotente por cotización: cotizar dos veces no crea dos referencias. `congeladaEn` sólo se
+ * escribe una vez — una cotización congelada no cambia de política, y `coalesce` lo hace cumplir en
+ * la base y no en el que llama.
+ */
+export async function escribirReferenciaDePolitica({ query }, { cotizacionId, version, congeladaEn = null } = {}) {
+  if (!cotizacionId) throw new Error('una referencia de política sin cotización no apunta a nada')
+  const v = await query('select id, version from public.politica_comercial_version where version = $1', [Number(version)])
+  const fila = v.rows[0]
+  if (!fila) return { escrita: false, porQue: `la política v${version} no existe: no se puede referenciar lo que no está en el catálogo` }
+  const r = await query(
+    `insert into public.cotizacion_politica_ref (cotizacion_id, politica_version_id, version, congelada_en)
+     values ($1, $2, $3, $4)
+     on conflict (cotizacion_id) do update
+       set politica_version_id = excluded.politica_version_id,
+           version = excluded.version,
+           congelada_en = coalesce(public.cotizacion_politica_ref.congelada_en, excluded.congelada_en)
+     returning version, congelada_en`,
+    [cotizacionId, fila.id, fila.version, congeladaEn])
+  return { escrita: true, version: r.rows[0].version, congeladaEn: r.rows[0].congelada_en, porQue: null }
+}
+
+/**
+ * DEJAR ESCRITOS LOS DOS INDIRECTOS DE ESTA COTIZACIÓN.
+ *
+ * `pctCalculado` y `pctAplicado` van a COLUMNAS DISTINTAS y las dos pueden ser NULL. Un calculado en
+ * NULL es «la estructura no alcanza para calcularlo» y NO es cero: por eso no hay `?? 0` en ninguna
+ * parte de esta función. Hoy, con los 14 conceptos reales sin valor, lo que se guarda es exactamente
+ * ese par de nulos con su estructura al lado — que es más información que no guardar nada.
+ *
+ * El override sólo se escribe COMPLETO: `override_actor` es un uuid de persona, y sin actor los
+ * otros tres campos no se guardan tampoco. Un override a medias en la base es peor que ninguno.
+ */
+export async function escribirIndirectoDeCotizacion({ query }, { cotizacionId, estructuraId = null, pctCalculado = null, pctAplicado = null, override = null } = {}) {
+  if (!cotizacionId) throw new Error('un indirecto sin cotización no se puede guardar')
+  const completo = Boolean(override?.actor && override?.motivo && override?.evidencia && override?.fecha)
+  const r = await query(
+    `insert into public.cotizacion_indirecto
+       (cotizacion_id, estructura_id, pct_calculado, pct_aplicado, override_actor, override_motivo, override_evidencia, override_fecha)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)
+     on conflict (cotizacion_id) do update
+       set estructura_id = excluded.estructura_id, pct_calculado = excluded.pct_calculado,
+           pct_aplicado = excluded.pct_aplicado, override_actor = excluded.override_actor,
+           override_motivo = excluded.override_motivo, override_evidencia = excluded.override_evidencia,
+           override_fecha = excluded.override_fecha
+     returning pct_calculado, pct_aplicado, override_actor`,
+    [cotizacionId, estructuraId, pctCalculado, pctAplicado,
+      completo ? override.actor : null, completo ? override.motivo : null,
+      completo ? override.evidencia : null, completo ? override.fecha : null])
+  const f = r.rows[0]
+  return {
+    escrito: true,
+    pctCalculado: f.pct_calculado === null ? null : Number(f.pct_calculado),
+    pctAplicado: f.pct_aplicado === null ? null : Number(f.pct_aplicado),
+    overrideEscrito: f.override_actor !== null,
+    porQue: override && !completo ? 'el override venía incompleto y NO se escribió: en la base, un override a medias es peor que ninguno' : null,
+  }
+}
