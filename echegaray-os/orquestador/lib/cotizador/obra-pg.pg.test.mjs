@@ -220,3 +220,107 @@ test('obra · genealogía, plan congelado, costo real y observaciones contra la 
   })
   c.release()
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS DOS DEFENSAS DEL ORIGEN, CONTRA LA FILA QUE YA ESTÁ PERSISTIDA
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El test de arriba crea su propia genealogía adentro de la transacción, así que prueba las dos
+// defensas contra una fila que él mismo puso. Éste ataca el estado REAL: v1 ya está persistida en
+// `obra_origen_cotizacion` (la corrió `plan-vs-real-obra.mjs --aplicar`), y lo que se verifica es
+// que v3 no puede colarse como origen de la misma obra.
+//
+// ═══ SON DOS CERRADURAS, NO UNA ═══
+//
+//   · `congelada_en NOT NULL` frena a v3 porque NO ESTÁ CONGELADA;
+//   · el índice parcial `obra_origen_una_original_por_obra` frena una SEGUNDA ORIGINAL, esté
+//     congelada o no.
+//
+// La diferencia importa: si mañana alguien congela v3 —que es una acción legítima—, la primera
+// cerradura deja de aplicar y la única que queda en pie es el índice. Probar sólo la primera y
+// suponer la segunda dejaría a la obra con dos orígenes el día que eso pase.
+
+test('obra · v3 NO puede convertirse en el origen de Quattropani', { skip: !hayBase }, async (t) => {
+  const c = await getPool().connect()
+  const q = async (sql, params) => (await c.query(sql, params)).rows
+
+  const persistida = (await q(
+    `select o.id, o.version, o.alcance, o.huella_sha256, o.nota
+       from public.obra_origen_cotizacion o where o.obra_id = $1 and o.alcance = 'ORIGINAL'`, [OBRA]))[0]
+
+  await t.test('v1 está persistida como ORIGINAL — sin esto el resto no prueba nada', () => {
+    assert.ok(persistida, 'no hay genealogía persistida: correr plan-vs-real-obra.mjs --aplicar primero')
+    assert.equal(persistida.version, 1)
+  })
+
+  await t.test('la huella del congelado quedó en NULL, y el testigo NO se hace pasar por ella', () => {
+    // `cotizacion_evento` se creó el 29/08 13:09 y v1 se congeló el 22/08 16:23: no hay registro que
+    // cubra esa ventana, y `cotizacion_partida` no tiene columna de modificación. Un sha256 calculado
+    // hoy certificaría el estado de HOY con fecha del 22 — un sello con fecha falsa.
+    assert.equal(persistida.huella_sha256, null, 'se guardó un hash calculado hoy como si fuera la huella del congelado')
+    assert.match(persistida.nota, /^testigo-desde-\d{4}-\d{2}-\d{2}:[0-9a-f]{32,}/, 'el testigo tiene que estar rotulado y fechado')
+    assert.match(persistida.nota, /NO es la huella del congelado/)
+  })
+
+  await c.query('begin')
+  try {
+    const nueva = (congeladaEn, alcance) => q(
+      `insert into public.obra_origen_cotizacion (obra_id, cotizacion_id, alcance, version, congelada_en, adjudicada_en, nota)
+       values ($1, $2, $3, 3, $4, now(), 'ZZ-defensa') returning id`,
+      [OBRA, COT_V3, alcance, congeladaEn])
+
+    await t.test('CERRADURA 1 · v3 tal como está hoy: la frena el NOT NULL, por no estar congelada', async () => {
+      await q('savepoint d1')
+      await assert.rejects(() => nueva(null, 'ORIGINAL'), /null value in column "congelada_en"|violates not-null/)
+      await q('rollback to savepoint d1')
+    })
+
+    await t.test('CERRADURA 2 · v3 congelada igual NO entra: ya hay una ORIGINAL persistida', async () => {
+      // El escenario que la cerradura 1 no cubre: alguien congela v3 y la registra. Legítimo como
+      // acción, prohibido como SEGUNDO origen de la misma obra.
+      await q('savepoint d2')
+      await assert.rejects(() => nueva(new Date().toISOString(), 'ORIGINAL'), /obra_origen_una_original_por_obra/)
+      await q('rollback to savepoint d2')
+    })
+
+    await t.test('las dos son defensas DISTINTAS: sin el NOT NULL, el índice sigue frenando', async () => {
+      // MUTACIÓN CORRIDA acá mismo: se quita el NOT NULL dentro de la transacción. Si el índice
+      // fuera redundante, v3 entraría. No entra.
+      await q('savepoint d3')
+      await c.query('alter table public.obra_origen_cotizacion alter column congelada_en drop not null')
+      await assert.rejects(() => nueva(null, 'ORIGINAL'), /obra_origen_una_original_por_obra/,
+        'sin el NOT NULL, v3 SIN congelar entró como segunda ORIGINAL: el índice no estaba defendiendo nada')
+      await q('rollback to savepoint d3')
+    })
+
+    await t.test('…y sin el índice, el NOT NULL sigue frenando a v3 sin congelar', async () => {
+      await q('savepoint d4')
+      await c.query('drop index public.obra_origen_una_original_por_obra')
+      await assert.rejects(() => nueva(null, 'ORIGINAL'), /null value in column "congelada_en"|violates not-null/)
+      await q('rollback to savepoint d4')
+    })
+
+    await t.test('el control PUEDE decir que sí: v3 congelada entra como ADICIONAL', async () => {
+      await q('savepoint d5')
+      const r = await nueva(new Date().toISOString(), 'ADICIONAL')
+      assert.ok(r[0]?.id, 'el índice parcial está bloqueando de más: un adicional no es un segundo origen')
+      await q('rollback to savepoint d5')
+    })
+  } finally {
+    await c.query('rollback')
+  }
+
+  await t.test('la base quedó con UNA sola genealogía y el trigger vivo', async () => {
+    const n = (await getPool().query(`select count(*)::int n from public.obra_origen_cotizacion where obra_id = $1`, [OBRA])).rows[0].n
+    assert.equal(n, 1, 'quedó una genealogía de más')
+    const cerraduras = (await getPool().query(
+      `select (select count(*) from pg_indexes where indexname = 'obra_origen_una_original_por_obra') idx,
+              (select count(*) from pg_trigger where tgname = 'obra_partida_plan_congelado') trg,
+              (select count(*) from information_schema.columns
+                where table_name = 'obra_origen_cotizacion' and column_name = 'congelada_en' and is_nullable = 'NO') nn`)).rows[0]
+    assert.equal(Number(cerraduras.idx), 1, 'el índice parcial no volvió')
+    assert.equal(Number(cerraduras.trg), 1, 'el trigger del plan no volvió')
+    assert.equal(Number(cerraduras.nn), 1, 'el NOT NULL no volvió')
+  })
+  c.release()
+})

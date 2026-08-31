@@ -18,6 +18,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { getPool } from '../lib/db.mjs'
+import { huellaDeEntradas } from '../lib/cotizador/freeze.mjs'
 import { genealogiaDeObra, heredarPlan } from '../lib/cotizador/obra.mjs'
 import { consolidarEjecucion } from '../lib/cotizador/ejecucion-real.mjs'
 import { compararObra, NO_COMPARABLE } from '../lib/cotizador/plan-vs-real.mjs'
@@ -47,6 +48,48 @@ async function inventario(pool) {
            (select count(*)::int from cotizaciones c where c.obra_canonica_id = oc.id and c.congelada_en is not null) versiones_congeladas
       from obra_canonica oc order by 5 desc, 4 desc`)
   console.table(rows.filter((r) => r.actividades > 0))
+}
+
+/**
+ * EL TESTIGO — no la huella del congelado.
+ *
+ * ═══ POR QUÉ ESTO NO VA A `huella_sha256` ═══
+ *
+ * La huella del congelado vale porque se tomó EN el congelado. Calcular un sha256 hoy sobre las
+ * mismas filas y guardarlo ahí sería un sello con fecha falsa: certificaría el estado de hoy
+ * afirmando que es el del 22/08.
+ *
+ * Y no hay forma de saber si son el mismo estado. Medido: `cotizacion_evento` —el registro
+ * append-only de cambios— se creó el 29/08 13:09, SIETE DÍAS después de que v1 se congelara el
+ * 22/08 16:23, con cero eventos para v1; y `cotizacion_partida` no tiene ninguna columna de
+ * modificación, sólo `creado_en`. Un UPDATE en esa ventana no dejó rastro en ningún lado.
+ *
+ * Lo que sí sirve: este hash es el punto de partida HACIA ADELANTE. No prueba que v1 no cambió
+ * entre el 22 y hoy —eso ya no se puede probar—, pero desde este momento un cambio en v1 se
+ * detecta. Por eso viaja en `nota`, rotulado, y `huella_sha256` queda en NULL.
+ */
+async function testigoDeHoy(q, cotizacionId, congeladaEn) {
+  const partidas = await q(`select codigo, cantidad, unidad from public.cotizacion_partida where cotizacion_id = $1`, [cotizacionId])
+  // Los precios salen de la composición CONGELADA, no de `recurso_precio`: esa tabla se mueve, y la
+  // composición guardó el costo, la moneda y la fecha del precio tal como entraron al congelado.
+  const precios = await q(
+    `select c.recurso_codigo, c.costo_unitario, c.moneda, c.fecha_precio
+       from public.cotizacion_partida_composicion c
+       join public.cotizacion_partida p on p.id = c.partida_id
+      where p.cotizacion_id = $1`, [cotizacionId])
+  const pol = (await q(`select pct_gastos_generales, pct_beneficio, pct_financiero, factor_financiero,
+                               pct_iibb, pct_ganancias, pct_cheque, pct_iva from public.cotizaciones where id = $1`, [cotizacionId]))[0]
+  const h = huellaDeEntradas({
+    partidas,
+    precios: precios.map((r) => ({ recursoCodigo: r.recurso_codigo, precio: r.costo_unitario, moneda: r.moneda, observadoEn: r.fecha_precio, fuente: 'composicion_congelada' })),
+    politica: {
+      pctGastosGenerales: pol.pct_gastos_generales, pctBeneficio: pol.pct_beneficio, pctFinanciero: pol.pct_financiero,
+      factorFinanciero: pol.factor_financiero, pctIibb: pol.pct_iibb, pctGanancias: pol.pct_ganancias,
+      pctCheque: pol.pct_cheque, pctIva: pol.pct_iva,
+    },
+    hoy: congeladaEn,
+  })
+  return h
 }
 
 /** Candidata: una versión CONGELADA de esta obra. Si hay más de una, NO elige. */
@@ -82,8 +125,12 @@ async function main() {
     console.log(`\n═══ ${obraId} · contra ${cot.numero} v${cot.version} (congelada ${String(cot.congelada_en).slice(0, 10)}) ═══\n`)
 
     // ── 1 · genealogía y plan
+    const testigo = await testigoDeHoy(q, cot.id, cot.congelada_en)
     const g = genealogiaDeObra({
-      obraId, adjudicadaPor: null, nota: aplicar ? null : 'ensayo',
+      obraId, adjudicadaPor: null,
+      // `huella: null` a propósito. El testigo va a `nota`, rotulado, para que nadie lo lea como la
+      // huella del congelado. Ver `testigoDeHoy` para por qué esa distinción no es un formalismo.
+      nota: `testigo-desde-${new Date().toISOString().slice(0, 10)}:${testigo.sha256} · NO es la huella del congelado (${testigo.resumen})`,
       congelada: { id: cot.id, numero: cot.numero, version: cot.version, congeladaEn: cot.congelada_en, costo_estimado: cot.costo_estimado, monto_venta: cot.monto_venta, huella: null },
     })
     if (!g.listo) { console.log('✗ genealogía bloqueada:', g.bloqueos.map((b) => b.detalle).join(' · ')); return }
