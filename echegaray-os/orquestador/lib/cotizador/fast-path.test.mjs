@@ -13,6 +13,7 @@ import {
 import { PASO, resuelto, noResuelve } from './research.mjs'
 import { crearCache } from './cache.mjs'
 import { metricasDeCorrida, SIN_MEDIR } from './metricas.mjs'
+import { crearMedidorLLM } from '../ia/medidor.mjs'
 import { FUENTE } from '../plano/fuente.mjs'
 
 const espia = (respuesta) => {
@@ -34,8 +35,12 @@ const PREGUNTA = '¿cuántos ladrillones entran en un m² de muro de 0,20?'
 
 test('el fast path es EXACTAMENTE este y en este orden', () => {
   // MUTACIÓN QUE LO PONE ROJO: mover MODELO_BARATO antes de RESEARCH.
+  //
+  // El orden lo fijó el dueño el 31/08/2026 y CACHE va PRIMERO. El riesgo que eso abría —servir
+  // estado vivo viejo— no se resolvió discutiendo el orden sino haciendo que el caché sepa de qué
+  // nivel salió cada respuesta; lo prueba «el caché no sirve una respuesta de SQL…» más abajo.
   assert.deepEqual(ordenDelFastPath(), [
-    'CODE', 'SQL', 'CACHE', 'BASE_MAESTRA', 'EXPERIENCIA_ECSAS', 'BIBLIOTECA_TECNICA',
+    'CACHE', 'CODE', 'SQL', 'BASE_MAESTRA', 'EXPERIENCIA_ECSAS', 'BIBLIOTECA_TECNICA',
     'RESEARCH', 'MODELO_BARATO', 'MODELO_POTENTE',
   ])
   assert.equal(NIVELES_SIN_MODELO.length, 7, 'siete niveles sobreviven a un proveedor muerto')
@@ -337,4 +342,195 @@ test('una corrida SIN decisiones publica SIN_MEDIR, no 100 %', () => {
   assert.equal(m.claude_avoidance_rate, SIN_MEDIR)
   assert.equal(m.autonomous_resolution_rate, SIN_MEDIR)
   assert.equal(m.cache_hit_rate, null, 'un caché que no existió no tiene tasa')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE NUNCA SE LE PREGUNTA A UN MODELO (31/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Estos tests existen porque la regla estaba escrita en un documento y nada la hacía cumplir. Cada
+// uno cablea un modelo que SÍ FUNCIONA y con el proveedor DISPONIBLE: si el fast path lo llamara,
+// resolvería y el test se pondría rojo. Probar esto con el proveedor caído no probaría nada — sólo
+// que sin modelo no hay modelo.
+
+const PROVEEDOR_VIVO = estadoDelProveedor({ apiKey: 'sk-ant-de-prueba', saldoUsd: 10, proveedorVivo: true, llmActivados: true })
+
+test('PROHIBIDO · una SUMA no llega a un modelo, aunque el modelo esté vivo y sepa contestarla', async () => {
+  const modelo = espia(resuelveNivel({ valor: 546, porQue: 'lo calculé yo' }))
+  const registro = crearRegistro()
+  const r = await resolverPorFastPath({
+    pregunta: '520 * 1,05',
+    resolvedores: { [NIVEL.MODELO_BARATO]: modelo, [NIVEL.MODELO_POTENTE]: modelo },
+    proveedor: PROVEEDOR_VIVO, registro,
+  })
+
+  assert.equal(modelo.veces, 0, 'no se llama y se descarta: NO SE LLAMA')
+  assert.equal(r.resuelto, false, 'sin resolvedor determinístico cableado, esto es trabajo de una persona')
+  assert.equal(r.determinista.si, true)
+  assert.equal(r.determinista.clase, 'ARITMETICA')
+  const prohibidos = r.recorrido.filter((x) => x.estado === 'PROHIBIDO').map((x) => x.nivel)
+  assert.deepEqual(prohibidos, ['MODELO_BARATO', 'MODELO_POTENTE'])
+  assert.equal(registro.prohibidas.length, 2, 'queda anotado cuántos tokens se ahorraron y por qué')
+})
+
+test('PROHIBIDO · las siete clases declaradas bloquean el modelo, y la interpretación NO', async () => {
+  const clases = ['ARITMETICA', 'CONVERSION_UNIDADES', 'SQL', 'DATO_ESTRUCTURADO', 'COMPARAR_HASH', 'REGLA_DETERMINISTICA']
+  for (const clase of clases) {
+    const modelo = espia(resuelveNivel({ valor: 'lo que sea' }))
+    const r = await resolverPorFastPath({
+      pregunta: 'una pregunta cualquiera', clase,
+      resolvedores: { [NIVEL.MODELO_BARATO]: modelo }, proveedor: PROVEEDOR_VIVO,
+    })
+    assert.equal(modelo.veces, 0, `la clase ${clase} no puede llegar a un modelo`)
+    assert.equal(r.determinista.clase, clase)
+  }
+  // Y el control PUEDE decir que sí: si nunca dejara pasar nada, el modelo no serviría para nada.
+  const modelo = espia(resuelveNivel({ valor: 'T1010', porQue: 'lo interpreté' }))
+  const r = await resolverPorFastPath({
+    pregunta: '«COLUMNA DE CARGA H17»: ¿T1010 o T1069?', clase: 'INTERPRETACION',
+    resolvedores: { [NIVEL.MODELO_BARATO]: modelo }, proveedor: PROVEEDOR_VIVO,
+  })
+  assert.equal(modelo.veces, 1, 'lo ambiguo SÍ llega al modelo: un control que siempre dice que no no dice nada')
+  assert.equal(r.nivel, NIVEL.MODELO_BARATO)
+})
+
+test('PROHIBIDO · un SELECT escrito en la pregunta se detecta aunque nadie declare la clase', async () => {
+  const modelo = espia(resuelveNivel({ valor: 42 }))
+  const r = await resolverPorFastPath({
+    pregunta: 'select sum(total) from public.cotizacion_partida where obra_id = 7',
+    resolvedores: { [NIVEL.MODELO_BARATO]: modelo }, proveedor: PROVEEDOR_VIVO,
+  })
+  assert.equal(modelo.veces, 0)
+  assert.equal(r.determinista.clase, 'SQL')
+  assert.equal(r.determinista.como, 'DETECTADA_EN_EL_TEXTO')
+})
+
+test('PROHIBIDO · lo prohibido para el modelo NO bloquea los siete niveles baratos', async () => {
+  const code = espia(resuelveNivel({ valor: 546, porQue: 'la multiplicación la hace el OS' }))
+  const modelo = espia(resuelveNivel({ valor: 'algo' }))
+  const r = await resolverPorFastPath({
+    pregunta: '520 * 1,05', clase: 'ARITMETICA',
+    resolvedores: { [NIVEL.CODE]: code, [NIVEL.MODELO_BARATO]: modelo },
+    proveedor: PROVEEDOR_VIVO,
+  })
+  assert.equal(r.nivel, NIVEL.CODE, 'la cuenta la resuelve el código, que es de lo que se trata')
+  assert.equal(r.valor, 546)
+  assert.equal(modelo.veces, 0)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CACHÉ PRIMERO, Y LO QUE ESO OBLIGÓ
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el caché NO sirve una respuesta de SQL cuando nadie declaró cuánta antigüedad se tolera', async () => {
+  const cache = crearCache({ version: 'v1' }) // sin ttlMs
+  let vueltas = 0
+  const sql = async () => { vueltas += 1; return resuelveNivel({ valor: 100 + vueltas, porQue: 'select de ahora' }) }
+  const args = { pregunta: 'saldo de la obra', entradas: { obra: 7 }, resolvedores: { [NIVEL.SQL]: sql }, cache }
+
+  const uno = await resolverPorFastPath(args)
+  const dos = await resolverPorFastPath(args)
+  assert.equal(uno.nivel, NIVEL.SQL)
+  assert.equal(dos.nivel, NIVEL.SQL, 'estado vivo sin TTL declarado se vuelve a consultar')
+  assert.equal(dos.valor, 102, 'y trae el valor de AHORA, no el de la corrida anterior')
+  assert.equal(vueltas, 2)
+})
+
+test('el caché SÍ sirve una respuesta de SQL cuando el TTL está declarado', async () => {
+  const cache = crearCache({ version: 'v1', ttlMs: 60_000 })
+  let vueltas = 0
+  const sql = async () => { vueltas += 1; return resuelveNivel({ valor: 100 + vueltas }) }
+  const args = { pregunta: 'saldo de la obra', entradas: { obra: 7 }, resolvedores: { [NIVEL.SQL]: sql }, cache }
+
+  await resolverPorFastPath(args)
+  const dos = await resolverPorFastPath(args)
+  assert.equal(dos.nivel, NIVEL.CACHE, 'alguien declaró que un minuto de antigüedad es aceptable')
+  assert.equal(dos.nivelOrigen, NIVEL.SQL, 'y se sigue sabiendo de dónde salió de verdad')
+  assert.equal(vueltas, 1)
+})
+
+test('el caché SÍ sirve una respuesta de CODE sin TTL: una función pura no envejece', async () => {
+  const cache = crearCache({ version: 'v1' })
+  let vueltas = 0
+  const code = async () => { vueltas += 1; return resuelveNivel({ valor: 546 }) }
+  const args = { pregunta: '520 × 1,05', entradas: { a: 520 }, resolvedores: { [NIVEL.CODE]: code }, cache }
+
+  await resolverPorFastPath(args)
+  const dos = await resolverPorFastPath(args)
+  assert.equal(dos.nivel, NIVEL.CACHE)
+  assert.equal(dos.nivelOrigen, NIVEL.CODE)
+  assert.equal(vueltas, 1)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTADOR QUE PUEDE DECIR QUE NO — Y QUE NO SE DEJA ENGAÑAR POR LA DECLARACIÓN
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+const RESPUESTA_REAL = () => new Response(JSON.stringify({
+  model: 'claude-haiku-4-5', content: [{ type: 'text', text: 'ok' }],
+  usage: { input_tokens: 1000, output_tokens: 200 },
+}), { status: 200, headers: { 'content-type': 'application/json' } })
+
+test('una llamada declarada SIN uso no puede costar $ 0: la plata la pone el transporte', async () => {
+  // ═══ EL DEFECTO QUE ESTE TEST ENCONTRÓ AL CORRERLO ═══
+  // `consultarNivel` anota `{...salida.uso}`, y un resolvedor que no devuelve `uso` dejaba
+  // `tokensIn: 0, usd: 0`. El CONTEO salía bien —1 llamada— y la PLATA salía en cero. Una llamada
+  // real facturada como gratis es el mismo defecto que un control que no puede dar rojo.
+  const original = globalThis.fetch
+  globalThis.fetch = async () => RESPUESTA_REAL()
+
+  const medidor = crearMedidorLLM()
+  const desinstalar = medidor.instalar()
+  try {
+    const registro = crearRegistro({ medidor })
+    await resolverPorFastPath({
+      pregunta: 'algo ambiguo de verdad', clase: 'INTERPRETACION',
+      resolvedores: {
+        [NIVEL.MODELO_BARATO]: async () => {
+          await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', body: '{}' })
+          return resuelveNivel({ valor: 'T1010' }) // ← sin `uso`
+        },
+      },
+      proveedor: PROVEEDOR_VIVO, registro,
+    })
+
+    assert.equal(registro.llamadasLLM[0].usd, 0, 'lo declarado por el fast path era, efectivamente, cero')
+
+    const m = metricasDeCorrida({ ...registro.paraMetricas(), cantidades: [{ valor: 1, estado: 'CALCULADO' }] })
+    assert.equal(m.llamadas_llm, 1)
+    // MUTACIÓN QUE LO PONE ROJO: en `paraMetricas()`, devolver `[...llamadasLLM]` en vez de unir.
+    assert.equal(m.tokens, 1200, 'los tokens salen del `usage` del proveedor')
+    assert.equal(m.costo_llm_usd, 0.002, '1000/1e6×$1 + 200/1e6×$5 — y no $ 0')
+  } finally { desinstalar(); globalThis.fetch = original }
+})
+
+test('una llamada al modelo hecha POR FUERA del fast path igual entra en el costo', async () => {
+  const original = globalThis.fetch
+  globalThis.fetch = async () => RESPUESTA_REAL()
+
+  const medidor = crearMedidorLLM()
+  const desinstalar = medidor.instalar()
+  try {
+    const registro = crearRegistro({ medidor })
+    // Nadie pasó por `resolverPorFastPath`: es el caso de un módulo que se abre su propia puerta.
+    await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', body: '{}' })
+
+    const c = registro.conciliacion()
+    assert.equal(c.declaradas, 0, 'el fast path no la vio pasar')
+    assert.equal(c.medidas, 1, 'el transporte sí')
+    assert.equal(c.noDeclaradas, 1)
+    assert.equal(c.cuadra, false)
+    assert.match(c.porQue, /NADIE declaró/)
+
+    const m = metricasDeCorrida({ ...registro.paraMetricas(), cantidades: [{ valor: 1, estado: 'CALCULADO' }] })
+    assert.equal(m.llamadas_llm, 1, 'llamar por fuera deja de ser una forma de que el costo baje')
+    assert.equal(m.costo_llm_usd, 0.002)
+  } finally { desinstalar(); globalThis.fetch = original }
+})
+
+test('sin medidor, la conciliación dice que NO PUDO MIRAR — no dice que no hubo', () => {
+  const c = crearRegistro().conciliacion()
+  assert.equal(c.medidas, null, 'un control que no pudo mirar no afirma que está todo bien')
+  assert.equal(c.cuadra, null)
+  assert.match(c.porQue, /no instaló el medidor/)
 })

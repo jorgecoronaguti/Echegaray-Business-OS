@@ -42,6 +42,7 @@ const { crearCache } = await import('../lib/cotizador/cache.mjs')
 const { PASO, resuelto, noResuelve } = await import('../lib/cotizador/research.mjs')
 const { NIVEL, estadoDelProveedor, crearRegistro, resolverPorFastPath, resuelveNivel } =
   await import('../lib/cotizador/fast-path.mjs')
+const { crearMedidorLLM } = await import('../lib/ia/medidor.mjs')
 const { aplicarPoliticaContenidoExterno } = await import('../lib/web/contenido-externo.mjs')
 
 const ARGS = new Set(process.argv.slice(2))
@@ -198,8 +199,18 @@ function auditarImports() {
   return { archivos: archivos.length, culpables }
 }
 
+// ═══ EL CERO SE MIDE, NO SE DECLARA (31/08/2026) ═══
+//
+// Hasta hoy `llamadas_llm = 0` acá salía de que ningún resolvedor declaró una llamada. Es cierto,
+// pero es la misma clase de prueba que el §13 rechazó en `correr()`: un cero que sale de que nadie
+// levantó la mano. Con el medidor instalado, el cero sale del TRANSPORTE — no salió una sola
+// petición a un host de modelo durante toda la corrida— y ese cero sí puede ser otra cosa: el mismo
+// medidor da 1 en `xsas-generativo-fallback.mjs`, sobre una llamada real.
+const medidor = crearMedidorLLM()
+const desinstalarMedidor = medidor.instalar()
+
 const cache = crearCache({ version: 'xsas-sin-llm@1' })
-const registro = crearRegistro({ cache })
+const registro = crearRegistro({ cache, medidor })
 
 const t0 = Date.now()
 const corrida = correr(ENTRADA())
@@ -243,6 +254,9 @@ const metricas = metricasDeCorrida({
   msFrio: msCotizacion,
 })
 
+desinstalarMedidor()
+const medicion = medidor.instantanea()
+const conciliacion = registro.conciliacion()
 const imports = auditarImports()
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -307,6 +321,11 @@ const M = [
   ['Human Questions', metricas.human_questions],
   ['FALTA_DATO', metricas.falta_dato],
   ['CONFLICTOS', metricas.conflictos],
+  ['llamadas LLM (declaradas)', conciliacion.declaradas],
+  // El número que importa: no salió NINGUNA petición a un host de modelo. Es una medición, y por
+  // eso puede dar distinto de cero — el mismo medidor da 1 en `xsas-generativo-fallback.mjs`.
+  ['llamadas LLM (MEDIDAS en la red)', medicion.total],
+  ['· ¿cuadran?', `${conciliacion.cuadra ? 'sí' : 'NO'} — ${conciliacion.porQue}`],
   ['llamadas LLM', metricas.llamadas_llm],
   ['tokens', metricas.tokens],
   ['USD', `$ ${metricas.costo_llm_usd}`],
@@ -337,6 +356,9 @@ if (!real) {
 
 // ── EL VEREDICTO ──
 const ok = metricas.llamadas_llm === 0 && metricas.tokens === 0 && imports.culpables.length === 0
+  // El cero MEDIDO en el transporte se exige aparte del declarado: es el que no puede ser una
+  // constante. Sin esta condición, el veredicto seguiría apoyado en que nadie levantó la mano.
+  && medicion.total === 0 && conciliacion.cuadra === true
   && corrida.etapas.length === 11 && corrida.costoDirecto.total !== null && corrida.gate.ready === true
 console.log(`\n${ok ? '✔' : '✖'} XSAS ${ok ? 'llegó al final' : 'NO llegó al final'} con las cuatro condiciones puestas: ${metricas.llamadas_llm} llamadas LLM, ${metricas.tokens} tokens, $ ${metricas.costo_llm_usd}.\n`)
 process.exit(ok ? 0 : 1)
