@@ -133,6 +133,19 @@ export function correr({
   // §31 dice que un conflicto contractual se mantiene y sólo evidencia o autoridad lo cierra, así
   // que recalcularlos o bajarles la severidad sería resolverlos por la vía de mirar para otro lado.
   issuesHeredados = [],
+  // ═══ EL CONTADOR DE LLAMADAS AL MODELO NO PUEDE SER UNA CONSTANTE ═══
+  //
+  // Hasta hoy esta función cableaba `llamadasLLM: []`, así que `llamadas_llm === 0` no era una
+  // medición: era una afirmación. El criterio «funciona sin Claude» quedaba estructuralmente en
+  // verde y no podía dar rojo ni aunque el motor llamara al modelo diez veces — el mismo defecto
+  // que este repo ya midió en el Claude Avoidance Rate y en un control que era literalmente una
+  // constante. El registro del fast path mide EN EL TRANSPORTE (envuelve `fetch`), así que cuenta
+  // toda llamada la declare quien la declare.
+  //
+  // Default inerte a propósito: sin registro el comportamiento es el de siempre. Pero entonces el
+  // cero NO se publica como medido — viaja `llamadas_llm_medidas: false`, y el cuadro sabe que ese
+  // cero no vale. Un default que mienta en silencio sería peor que no tener el parámetro.
+  registroLLM = null,
   alcancePorDefecto = null,
   overridesDePrecio = [],
   relacionesExternas = [],
@@ -573,7 +586,8 @@ export function correr({
     composiciones: aCostear.map((p) => composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []),
     costosDePartida: costos, cola,
     decisionesDeterministicas: partidas.length + costos.length,
-    llamadasLLM: [],
+    ...(registroLLM ? registroLLM.paraMetricas() : { llamadasLLM: [] }),
+    llamadasLlmMedidas: Boolean(registroLLM),
   })
   anotar(resultadoEtapa({
     etapa: ETAPA.OUTPUT, status: gate.ready ? STATUS.OK : STATUS.BLOQUEADA,

@@ -45,6 +45,9 @@ export const estaMedida = (v) => typeof v === 'number' && Number.isFinite(v)
 export function metricasDeCorrida({
   documentos = [], elementos = [], cantidades = [], mapeos = [], composiciones = [],
   costosDePartida = [], cola = null, eventos = [], llamadasLLM = [], llamadasWeb = [],
+  // ¿El cero de llamadas al modelo salió de una medición o del cableado? Sin esta bandera las dos
+  // cosas se ven idénticas en el informe, y una de las dos no prueba nada.
+  llamadasLlmMedidas = false,
   decisionesDeterministicas = 0, msFrio = null, msTibio = null,
   // ═══ LO QUE AGREGA EL §12/§13/§21 ═══
   // Entran por parámetro y con default vacío para que una corrida que todavía no cablea el
@@ -127,6 +130,9 @@ export function metricasDeCorrida({
     overrides_humanos: eventos.filter((e) => e.accion === 'commercial_override' || e.accion === 'set_global_policy').length,
     acciones_deterministicas: decisionesDeterministicas,
     llamadas_llm: llamadasLLM.length,
+    // `null` —no `false`— cuando nadie midió: el consumidor tiene que distinguir «medí y dio 0» de
+    // «no medí». Publicar el 0 sin este acompañante es lo que dejó el criterio #22 en verde falso.
+    llamadas_llm_medidas: llamadasLlmMedidas === true ? true : null,
     llamadas_web: llamadasWeb.length,
     tokens,
     costo_llm_usd: Math.round(costoLLM * 10000) / 10000,
