@@ -100,12 +100,35 @@ export function especificacionNormalizada({ nombre = '', unidad = null, familia 
   const diametros = [...crudo.matchAll(/(?:ø|diam(?:etro)?\.?)\s*(\d+(?:[.,]\d+)?)/g)].map((m) => `d${m[1].replace(',', '.')}`)
   const RELLENO = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'con', 'sin', 'para', 'por', 'en', 'a', 'y', 'o', 'x'])
   const palabras = crudo.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-    .filter((w) => w.length > 2 && !RELLENO.has(w) && !/^\d+$/.test(w))
+    .filter((w) => w.length > 2 && !RELLENO.has(w) && !/^[\d.,]+$/.test(w))
+  // ═══ LOS NÚMEROS PELADOS TAMBIÉN SON ESPECIFICACIÓN ═══
+  //
+  // «PLACA DE YESO 12,5 X 2,4 X 1,2» no trae ninguna unidad escrita, y sin embargo el 12,5 es el
+  // espesor y el 2,4 × 1,2 es la placa entera: es TODA la especificación del producto. Descartarlos
+  // por no tener unidad al lado dejaba la spec en «placa yeso», que describe a cualquier placa de
+  // cualquier medida — y la búsqueda que sale de ahí trae cualquier cosa. Se conservan tal como
+  // están escritos: reinterpretarlos como milímetros o metros sería inventar la unidad.
+  const numeros = crudo.replace(/[^0-9.,\s]/g, ' ').split(/\s+/)
+    .map((n) => n.replace(/[.,]$/, '').replace(',', '.'))
+    .filter((n) => n && /\d/.test(n))
+  // ═══ EL TÉRMINO CONSERVA EL ORDEN ORIGINAL, Y LA SPEC NO ═══
+  //
+  // La `spec` va ordenada alfabéticamente porque es una CLAVE: sirve para decir «estos dos son el
+  // mismo producto» y el orden ahí es ruido. El `termino` es lo contrario: es lo que se le dice a un
+  // buscador, y ahí el orden ES el significado. Medido el 31/08: la consulta armada con la spec
+  // ordenada del recurso 367 empezaba con «blanco chapa foil panel pur trape» y Bing devolvió trece
+  // páginas de empresas llamadas Blanco. La misma búsqueda con el nombre en su orden devuelve
+  // paneles. Son dos usos distintos del mismo análisis y por eso el módulo devuelve las dos formas.
+  const termino = crudo.replace(/[^a-z0-9.,\s]/g, ' ').split(/\s+/)
+    .filter((w) => w && !RELLENO.has(w) && w.length > 1)
+    .join(' ').trim()
   const u = normalizarUnidad(unidad)
   const partes = [...new Set([...palabras, ...medidas, ...diametros])].sort()
   return Object.freeze({
     spec: partes.join(' '),
+    termino,
     atributos: Object.freeze([...new Set([...medidas, ...diametros])].sort()),
+    numeros: Object.freeze([...new Set(numeros)]),
     palabras: Object.freeze([...new Set(palabras)].sort()),
     unidad: u?.canonica ?? null,
     dimension: u?.dimension ?? null,
