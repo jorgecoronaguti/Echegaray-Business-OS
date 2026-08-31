@@ -144,6 +144,22 @@ export function evidenciaDeProductividad(causas = []) {
 }
 
 /**
+ * LAS CAUSAS DE UNA FILA, NORMALIZADAS CONTRA EL CATÁLOGO. PURA.
+ *
+ * `rendimiento_historico.causas` guarda `{"falta_material": 1}` —clave y cuántas veces— y la familia
+ * vive en `public.causa_desvio`. Cruzarlas es lo que convierte una clave suelta en un criterio. Una
+ * causa que NO está en el catálogo se devuelve con familia `null`, y eso la descalifica: una clave
+ * que nadie definió no se puede clasificar como productividad.
+ */
+export function causasDeclaradas(causas, catalogo = new Map()) {
+  if (!causas) return []
+  const claves = Array.isArray(causas)
+    ? causas.map((c) => (typeof c === 'string' ? c : c?.causa_desvio ?? c?.clave)).filter(Boolean)
+    : Object.keys(causas)
+  return claves.map((k) => ({ causa_desvio: k, familia: catalogo.get?.(k) ?? catalogo[k] ?? null }))
+}
+
+/**
  * PARTIR UNA MUESTRA POR CAUSA. PURA. Lo descalificado NO se tira: se devuelve con su motivo, porque
  * «esta obra no enseñó nada de productividad porque faltó material» es información de negocio.
  */
