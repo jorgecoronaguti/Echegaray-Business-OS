@@ -19,6 +19,10 @@
 
 create table if not exists orq.drive_audit (
   id                  uuid primary key default gen_random_uuid(),
+  -- ORDEN TOTAL. `ocurrido_en` no alcanza: dos filas escritas en la misma transacción reciben el
+  -- MISMO `now()` (es el instante del begin, no del insert) y quedan sin orden entre sí. Medido:
+  -- un mover y un renombrar del mismo pedido salieron al revés. `seq` es lo que ordena el libro.
+  seq                 bigserial not null,
   ocurrido_en         timestamptz not null default now(),
   correlation_id      uuid,                          -- ata las N operaciones de un mismo pedido
   -- QUÉ pasó
@@ -48,8 +52,8 @@ create table if not exists orq.drive_audit (
 comment on column orq.drive_audit.verificado is
   'true SÓLO si el estado de `despues` se releyó del destino después de la escritura. Una fila con verificado=false es una operación que no probó su efecto.';
 
-create index if not exists drive_audit_file_idx     on orq.drive_audit (file_id, ocurrido_en desc);
-create index if not exists drive_audit_cuando_idx   on orq.drive_audit (ocurrido_en desc);
+create index if not exists drive_audit_file_idx     on orq.drive_audit (file_id, seq desc);
+create index if not exists drive_audit_cuando_idx   on orq.drive_audit (seq desc);
 create index if not exists drive_audit_corr_idx     on orq.drive_audit (correlation_id) where correlation_id is not null;
 create index if not exists drive_audit_idem_idx     on orq.drive_audit (clave_idempotencia) where clave_idempotencia is not null;
 
@@ -69,7 +73,7 @@ create policy drive_audit_srv  on orq.drive_audit for insert to service_role wit
 -- Vista pública read-only (la app no ve el schema orq).
 create or replace view public.orq_drive_audit
   with (security_invoker = true) as
-  select id, ocurrido_en, correlation_id, operacion, capability_slug, engine, resultado,
+  select id, seq, ocurrido_en, correlation_id, operacion, capability_slug, engine, resultado,
          actor, actor_tipo, provider, file_id, parent_id, mime_type, revision_id,
          antes, despues, verificado, verificado_campos
     from orq.drive_audit;

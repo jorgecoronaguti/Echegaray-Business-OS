@@ -83,9 +83,11 @@ export function crearAuditorPg({ db, actor, actorTipo = 'sistema', capability = 
   /** LA HISTORIA DE UN ARCHIVO. La pregunta que la capacidad tiene que poder contestar. */
   async function historia(fileId, { limite = 50 } = {}) {
     const { rows } = await db.query(
-      `select id, ocurrido_en, operacion, actor, actor_tipo, capability_slug, resultado,
+      // Se ordena por `seq`, no por `ocurrido_en`: dos filas de la misma transacción comparten
+      // el timestamp y quedarían en orden arbitrario. Medido en el ensayo de la migración.
+      `select id, seq, ocurrido_en, operacion, actor, actor_tipo, capability_slug, resultado,
               revision_id, antes, despues, verificado, verificado_campos, correlation_id
-         from ${TABLA} where file_id = $1 order by ocurrido_en desc limit $2`,
+         from ${TABLA} where file_id = $1 order by seq desc limit $2`,
       [fileId, limite],
     )
     return rows
@@ -94,8 +96,8 @@ export function crearAuditorPg({ db, actor, actorTipo = 'sistema', capability = 
   /** Todo lo que pasó bajo un mismo pedido, en orden. */
   async function porCorrelacion(id) {
     const { rows } = await db.query(
-      `select id, ocurrido_en, operacion, file_id, actor, resultado, verificado
-         from ${TABLA} where correlation_id = $1 order by ocurrido_en asc`, [id],
+      `select id, seq, ocurrido_en, operacion, file_id, actor, resultado, verificado
+         from ${TABLA} where correlation_id = $1 order by seq asc`, [id],
     )
     return rows
   }
