@@ -24,7 +24,7 @@
 // cuánto más le falta — y el §22 pide una cola de atención, que es justamente la lista de TODO lo
 // que hay que resolver, no del primero.
 
-import { ETAPA, STATUS, ESTADO, resultadoEtapa, ORDEN_ETAPAS } from './contrato.mjs'
+import { ETAPA, STATUS, ESTADO, resultadoEtapa, ORDEN_ETAPAS, issue, TIPO_ISSUE, SEVERIDAD } from './contrato.mjs'
 import { cruzarAlcance, paraCostear } from './alcance.mjs'
 import { costoDePartida, costoDirecto, sinMedir } from './costo.mjs'
 import { cascada } from './comercial.mjs'
@@ -77,6 +77,46 @@ export function desdePipelineDePlano(resultado = {}) {
 }
 
 /**
+ * LO QUE UNA CORRIDA PUEDE DECIR DE SUS SUBCONTRATOS. PURA.
+ *
+ * Devuelve `null` cuando no hay ninguno: cero subcontratos NO es «los maneja mal», es que no hay
+ * nada que ejercitar, y publicar `{total: 0}` haría que un contador lo lea como un cero medido.
+ *
+ * ═══ EL DUPLICADO DE ALCANCE, QUE NADIE MIRABA ═══
+ *
+ * `costoDePartida` cortocircuita en el subcontrato: una partida subcontratada NO costea su
+ * composición, así que el mismo trabajo no se paga dos veces DENTRO de una partida. Lo que nadie
+ * comparaba es entre partidas: dos renglones con el mismo alcance del mismo proveedor —el pedido de
+ * cotización cargado dos veces con distinto código— suman los dos al costo directo y el total sale
+ * con una sanitaria de más. Se detecta por (proveedor, alcance) normalizados y sale como conflicto.
+ */
+function evidenciaDeSubcontratos(partidas = [], costos = []) {
+  const conSub = partidas.map((p, i) => ({ p, c: costos[i] })).filter((x) => x.p?.subcontrato)
+  if (!conSub.length) return null
+  const clave = (s) => `${String(s.proveedor ?? '?').trim().toLowerCase()}|${String(s.alcance ?? '').trim().toLowerCase()}`
+  const vistos = new Map()
+  const duplicados = []
+  for (const { p, c } of conSub) {
+    const k = clave(p.subcontrato)
+    if (vistos.has(k)) duplicados.push({ alcance: p.subcontrato.alcance, proveedor: p.subcontrato.proveedor, partidas: [vistos.get(k), p.codigo ?? p.id], plata: c?.subtotal ?? null })
+    else vistos.set(k, p.codigo ?? p.id)
+  }
+  return {
+    total: conSub.length,
+    conPrecio: conSub.filter((x) => x.p.subcontrato.costo !== null).length,
+    sinPrecio: conSub.filter((x) => x.p.subcontrato.costo === null).length,
+    // Vencido NO es sin precio: el número existe y hay que reconfirmarlo. Se cuentan aparte.
+    vencidos: conSub.filter((x) => x.c?.estado === ESTADO.HISTORICO).length,
+    conAlcanceDeclarado: conSub.filter((x) => (x.p.subcontrato.incluye?.length ?? 0) + (x.p.subcontrato.excluye?.length ?? 0) > 0).length,
+    sinProveedor: conSub.filter((x) => !x.p.subcontrato.proveedor).length,
+    monedas: [...new Set(conSub.map((x) => x.p.subcontrato.moneda).filter(Boolean))],
+    duplicadosDeAlcance: duplicados,
+    // La plata que un duplicado mete de más. Es el número que hay que mirar, no el conteo.
+    plataDuplicada: duplicados.reduce((a, d) => a + (Number(d.plata) || 0), 0),
+  }
+}
+
+/**
  * CORRER LAS ONCE ETAPAS. PURA.
  *
  * Devuelve `{etapas, estado, cola, cascada, huella, gate, metricas}`. `etapas` es un array en el
@@ -113,6 +153,14 @@ export function correr({
   estructuraIndirecta = null,
   intentoDeIndirecto = null,
   politicaEfectivaDeLaCotizacion = null,
+  // ═══ LA TABLA DE VIGENCIA POR TIPO DE SUBCONTRATO, QUE NO TENÍA POR DÓNDE ENTRAR ═══
+  //
+  // `politica-pg.mjs::leerVigenciaDeSubcontratos()` la lee de `subcontrato_vigencia_default` desde
+  // el 29/08 y `costoDePartida` la sabe usar — pero `correr()` no tenía el parámetro, así que la
+  // tabla no llegaba nunca al costeo: TODA corrida caía al corte GENERAL de 180 días, incluso
+  // teniendo el default por tipo declarado en la base. Un sub de movimiento de suelo con 20 días
+  // salía vigente a los 30. `null` mantiene el comportamiento anterior exacto.
+  tablaVigenciaSubcontrato = null,
   // Lo que la gobernanza activó, no lo que el circuito propuso: `Map<'rendimiento.<codigo>', hs/u>`.
   aprendizajesActivos = new Map(),
 } = {}) {
@@ -201,6 +249,7 @@ export function correr({
     partida: p, composicion: conAprendizaje(p, composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []),
     observaciones, fx, hoy,
     ...(resolverPrecio ? { resolverPrecio } : {}),
+    ...(tablaVigenciaSubcontrato ? { tablaVigenciaSubcontrato } : {}),
   })
   const costosExcluidos = primerCruce.partidas.filter((p) => p.alcance === 'EXCLUIDO').map(costear)
   const subtotalDe = new Map(costosExcluidos.map((c) => [c.partida, c.subtotal]))
@@ -294,6 +343,7 @@ export function correr({
   // ── 7 · COST
   const costos = aCostear.map(costear)
   const cd = costoDirecto(costos)
+  const subs = evidenciaDeSubcontratos(aCostear, costos)
   anotar(resultadoEtapa({
     etapa: ETAPA.COST, status: cd.total === null ? STATUS.BLOQUEADA : STATUS.OK,
     // `hh` viaja como lo devuelve `costoDirecto`: `null` cuando alguna partida no puede afirmar las
@@ -308,6 +358,8 @@ export function correr({
       // Un aprendizaje que estaba disponible y NO se aplicó tiene que decir por qué. Sin esto, el
       // par «disponibles 3 · reutilizan 0» se lee como que el motor los ignoró.
       aprendizajesNoAplicados: noReutilizados.length,
+      // `null` cuando no hay ninguno: cero subcontratos no es un cero medido.
+      subcontratos: subs,
     },
     missing_data: cd.faltan.map((f) => `${f.partida}: ${(f.porQue ?? []).join(' · ')}`),
     blocking_issues: cd.total === null ? [{ tipo: 'COSTO_NO_AFIRMABLE', entidad: 'cotización', detalle: cd.porQue }] : [],
@@ -420,8 +472,17 @@ export function correr({
         }))),
   ]
 
+  // Un subcontrato duplicado no es un aviso: es plata cobrada dos veces en el mismo total. Va a la
+  // cola como BLOQUEANTE con su monto, igual que un precio faltante.
+  const issuesDeDuplicado = (subs?.duplicadosDeAlcance ?? []).map((d) => issue({
+    type: TIPO_ISSUE.CONFLICTO, severity: SEVERIDAD.BLOQUEANTE, entity: d.partidas.join(' + '),
+    impact: d.plata,
+    detalle: `«${d.alcance}» de ${d.proveedor} está cargado en ${d.partidas.join(' y ')}: el mismo alcance del mismo proveedor entra DOS VECES al costo directo`,
+    recommended_action: 'set_subcontract',
+  }))
+
   const cola = colaDeAtencion({
-    issues: [...issuesHeredados, ...porConfirmar, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? []), ...cd.issues.filter((i) => i.entity === 'HH de la obra')],
+    issues: [...issuesHeredados, ...porConfirmar, ...conAlcance.issues, ...costos.flatMap((c) => c.issues ?? []), ...issuesDeDuplicado, ...cd.issues.filter((i) => i.entity === 'HH de la obra')],
     costoConocido: cd.parcial,
     // Los precios vencidos asumidos por alguien con permiso comercial y las exclusiones firmadas.
     // Sin `autorizadoPor` no cuentan: un override es una firma, no un flag.
