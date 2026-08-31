@@ -1,8 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  cuilPlano, importeArca, constanciaDePagina, agruparPorPersona, nombreDeArchivo, yaTieneAlta,
+  cuilPlano, importeArca, constanciaDePagina, agruparPorPersona, nombreDeArchivo,
+  yaTieneConstancia, tipoDeDocumento,
 } from './constancia-afip.mjs'
+
+/** Una página real del PDF de BAJAS del 31/08/2026. */
+const BAJA = `Simplificación Registral
+CONSTANCIA DEL TRABAJADOR
+Baja
+Original para el empleador, duplicado para el empleado.
+Empleador: CUIT: 30-71630464-3
+Datos del Empleado
+Apellido y nombre: SOSA NESTOR RAUL
+CUIL: 20-33836450-5
+Fecha Inicio: 07/05/2026 Fecha Cese: 25/08/2026 Obra Social: 105408 - O.S.DEL PERSONAL DE LA CONSTRUCCION
+Categoria: 019448 - OFICIAL Puesto: 7129 - Oficiales y operarios de la construcción (obra gruesa) y
+Retrib. pactada: $5235,00 Mod. Liq.: 5 - HORA
+Situación de baja: 39 - Despido Art.5° Ley 25371
+Talón para el empleador (Original)
+`
 
 /** Una página real del PDF de ARCA del 31/08/2026, tal como sale del extractor de texto. */
 const PAGINA = `Simplificación Registral
@@ -106,20 +123,55 @@ test('una página ilegible se informa, no rompe el resto', () => {
 test('el archivo se nombra como ya se nombran las altas del legajo', () => {
   assert.equal(nombreDeArchivo('AGUERO CRISTIAN DOMINGO'), 'Alta - Aguero Cristian Domingo.pdf')
   assert.equal(nombreDeArchivo('GONZALEZ TOBARES JUAN GUILLERMO'), 'Alta - Gonzalez Tobares Juan Guillermo.pdf')
+  assert.equal(nombreDeArchivo('SOSA NESTOR RAUL', 'Baja'), 'Baja - Sosa Nestor Raul.pdf')
 })
 
 test('reconoce el alta que ya está, con cualquiera de los nombres que usa el legajo', () => {
-  assert.equal(yaTieneAlta(['ALTA.pdf']), true)
-  assert.equal(yaTieneAlta(['alta.pdf', 'HM.pdf']), true)
-  assert.equal(yaTieneAlta(['Alta - Quiroga S.pdf']), true)
-  assert.equal(yaTieneAlta(['ALTA - QUIROGA ALEXANDER.pdf']), true)
-  assert.equal(yaTieneAlta(['FWEB_1988796.pdf']), true, 'el nombre crudo de la descarga de ARCA')
+  assert.equal(yaTieneConstancia(['ALTA.pdf']), true)
+  assert.equal(yaTieneConstancia(['alta.pdf', 'HM.pdf']), true)
+  assert.equal(yaTieneConstancia(['Alta - Quiroga S.pdf']), true)
+  assert.equal(yaTieneConstancia(['ALTA - QUIROGA ALEXANDER.pdf']), true)
+  assert.equal(yaTieneConstancia(['FWEB_1988796.pdf']), true, 'el nombre crudo de la descarga de ARCA')
 })
 
 test('«HM» es la libreta del IERIC, no un alta', () => {
-  assert.equal(yaTieneAlta(['HM.pdf', 'DNI.pdf', 'EPP - Fulano.pdf']), false)
-  assert.equal(yaTieneAlta(['HM - AGUERO.pdf']), false)
-  assert.equal(yaTieneAlta([]), false)
+  assert.equal(yaTieneConstancia(['HM.pdf', 'DNI.pdf', 'EPP - Fulano.pdf']), false)
+  assert.equal(yaTieneConstancia(['HM - AGUERO.pdf']), false)
+  assert.equal(yaTieneConstancia([]), false)
   // «Altas y bajas» no es el alta de esta persona; empieza con «alta» pero sigue con otra cosa.
-  assert.equal(yaTieneAlta(['Alternativa.pdf']), false, 'la palabra tiene que estar entera')
+  assert.equal(yaTieneConstancia(['Alternativa.pdf']), false, 'la palabra tiene que estar entera')
+})
+
+test('la baja se busca por su propio nombre, y un alta guardada NO la da por presente', () => {
+  assert.equal(yaTieneConstancia(['BAJA.pdf'], 'Baja'), true)
+  assert.equal(yaTieneConstancia(['Baja - Contreras J.pdf'], 'Baja'), true)
+  // Tiene el alta y NO la baja: si esto diera true, la persona se queda sin su baja para siempre.
+  assert.equal(yaTieneConstancia(['ALTA.pdf', 'DNI.pdf'], 'Baja'), false)
+  // Y al revés: tener la baja no significa tener el alta.
+  assert.equal(yaTieneConstancia(['BAJA.pdf'], 'Alta'), false)
+  // El nombre crudo de ARCA no dice qué trae adentro: vale como alta (verificado contra el legajo
+  // real) y NUNCA como baja, porque ahí sería una suposición que deja a alguien sin su papel.
+  assert.equal(yaTieneConstancia(['FWEB_2024922.pdf'], 'Baja'), false)
+})
+
+test('una baja lee su fecha de cese, su causal y su categoría', () => {
+  const c = constanciaDePagina(BAJA)
+  assert.equal(c.tipo, 'Baja')
+  assert.equal(c.cuil, '20338364505')
+  assert.equal(c.fechaInicio, '07/05/2026')
+  assert.equal(c.fechaCese, '25/08/2026')
+  assert.equal(c.categoria, 'OFICIAL')
+  assert.equal(c.retribucion, 5235)
+  assert.equal(c.situacionBaja, '39 - Despido Art.5° Ley 25371')
+})
+
+test('un alta no inventa causal de baja', () => {
+  assert.equal(constanciaDePagina(PAGINA).situacionBaja, null)
+})
+
+test('el tipo de documento del legajo sale del papel, no del nombre del archivo', () => {
+  assert.equal(tipoDeDocumento('Baja'), 'baja')
+  assert.equal(tipoDeDocumento('Alta'), 'alta_temprana')
+  // El vocabulario de `documentacion_legajo` es cerrado: cualquier otra cosa rompe el CHECK.
+  for (const t of ['baja', 'alta_temprana']) assert.ok(['baja', 'alta_temprana'].includes(t))
 })

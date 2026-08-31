@@ -55,6 +55,9 @@ export function constanciaDePagina(texto) {
     retribucion: importeArca(/Retrib\. pactada\s*:\s*\$?\s*([\d.,]+)/i.exec(t)?.[1]),
     porHora: /Mod\. Liq\.\s*:\s*5\s*-\s*HORA/i.test(t),
     cuitEmpleador: cuilPlano(/CUIT\s*:\s*([\d-]+)/i.exec(t)?.[1]),
+    // Sólo la baja. «39 - Despido Art.5° Ley 25371» no es lo mismo que una renuncia: la causal
+    // decide qué se le debe a la persona, así que se conserva textual y no se interpreta acá.
+    situacionBaja: (/Situación de baja\s*:\s*(.+?)(?=\n)/i.exec(t)?.[1] ?? '').trim() || null,
     // El talón del empleado es el único que trae el número de trámite.
     //
     // El `\b` no es decorativo: «empleador» EMPIEZA con «empleado», así que sin él el talón del
@@ -110,27 +113,42 @@ export function agruparPorPersona(paginas = []) {
  * EL NOMBRE DEL ARCHIVO, SEGÚN LA CONVENCIÓN DE LA CARPETA.
  *
  * Los legajos ya escriben sus altas como «Alta - Quiroga S.pdf», «Alta - Aballay Diego.pdf»,
- * «ALTA - QUIROGA ALEXANDER.pdf». Se sigue esa forma con el nombre completo y en Título, que es la
- * variante más legible de las que ya conviven. Lo que NO se hace es dejar el nombre crudo de la
- * descarga («FWEB_1988796.pdf»): dentro de un legajo ese nombre no dice nada.
+ * «ALTA - QUIROGA ALEXANDER.pdf», y sus bajas como «BAJA.pdf» o «Baja - Contreras J.pdf». Se sigue
+ * esa forma con el nombre completo y en Título, que es la variante más legible de las que ya
+ * conviven. Lo que NO se hace es dejar el nombre crudo de la descarga («FWEB_1988796.pdf»): dentro
+ * de un legajo ese nombre no dice nada.
  */
-export function nombreDeArchivo(nombreCompleto) {
+export function nombreDeArchivo(nombreCompleto, tipo = 'Alta') {
   const titulo = String(nombreCompleto ?? '').trim().toLowerCase()
     .replace(/\b[a-záéíóúñ]/g, (c) => c.toUpperCase())
-  return `Alta - ${titulo}.pdf`
+  return `${/baja/i.test(tipo) ? 'Baja' : 'Alta'} - ${titulo}.pdf`
 }
 
+/** El tipo de documento del legajo, del vocabulario cerrado de `documentacion_legajo`. */
+export const tipoDeDocumento = (tipo) => (/baja/i.test(String(tipo)) ? 'baja' : 'alta_temprana')
+
 /**
- * ¿ESTA CARPETA YA TIENE EL ALTA?
+ * ¿ESTA CARPETA YA TIENE LA CONSTANCIA?
  *
  * Por el nombre del archivo, que es lo único que hay: el legajo escribe «ALTA.pdf», «alta.pdf»,
- * «Alta - Fulano.pdf» y también el nombre crudo de la descarga de ARCA («FWEB_1988796.pdf»).
+ * «Alta - Fulano.pdf», «BAJA.pdf» y también el nombre crudo de la descarga de ARCA
+ * («FWEB_1988796.pdf»).
  *
  * **«HM» NO es un alta**: es la libreta del IERIC (fondo de cese). Este repo ya se equivocó leyendo
  * el nombre de un archivo como si dijera qué contiene, y acá el costo del error es subir un
  * duplicado —barato— o dar por presente algo que no está —caro—. Por eso la lista de lo que cuenta
- * como alta es explícita y corta.
+ * es explícita y corta.
+ *
+ * EL NOMBRE CRUDO DE ARCA SÓLO VALE PARA EL ALTA. «FWEB_1988796.pdf» es la descarga del formulario
+ * y no dice si adentro hay un alta o una baja; darlo por bueno para las dos haría que una persona
+ * con su alta guardada así se quede sin baja para siempre, en silencio. Como alta ya está
+ * verificado contra el legajo real; como baja sería una suposición, y de las que no avisan.
  */
-export function yaTieneAlta(nombresEnCarpeta = []) {
-  return nombresEnCarpeta.some((n) => /^\s*alta\b/i.test(String(n)) || /^FWEB_\d+\.pdf$/i.test(String(n).trim()))
+export function yaTieneConstancia(nombresEnCarpeta = [], tipo = 'Alta') {
+  const esBaja = /baja/i.test(String(tipo))
+  return nombresEnCarpeta.some((x) => {
+    const n = String(x).trim()
+    if (esBaja) return /^\s*baja\b/i.test(n)
+    return /^\s*alta\b/i.test(n) || /^FWEB_\d+\.pdf$/i.test(n)
+  })
 }
