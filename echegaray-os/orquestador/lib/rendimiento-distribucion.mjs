@@ -39,7 +39,12 @@ export const LECTURA = Object.freeze({
   SIN_DATO: 'SIN_DATO',                   // no hay. NO es 0 y NO es el de la tarea de al lado
 })
 
+// El descarte explícito de `null`, `undefined` y `''` NO es defensivo de más: `Number(null)` es 0 y
+// `Number('')` también. Sin esta línea, «no hay rendimiento medido» se convierte en «0 h/unidad», que
+// es un número, se multiplica por la cantidad y publica 0 HH — la afirmación de que la tarea no
+// lleva trabajo. Lo agarró el test de SIN_DATO ≠ 0 sobre este mismo archivo.
 const num = (x) => {
+  if (x === null || x === undefined || x === '') return null
   const n = Number(x)
   return Number.isFinite(n) ? n : null
 }
