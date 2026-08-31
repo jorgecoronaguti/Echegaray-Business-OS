@@ -137,7 +137,10 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   //      separar» — sumaba billetes de obra con transferencias del banco en una sola celda.
   //   +1 «necesito q aparezcan las categorias de los empleados» — sin ella no se puede leer contra
   //      qué piso se mide el aumento de cada uno.
-  assert.ok(dc.length <= 13, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  //   +1 «la idea era que no borraras el número sino que pusieras el redondeado en una columna al
+  //      lado» (31/08) — «EFECTIVO redondeado». El exacto es el devengado y con eso se audita; el
+  //      redondeado es lo que se cuenta en billetes. Son dos cosas y no pueden compartir celda.
+  assert.ok(dc.length <= 14, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
   // ═══ LA CATEGORÍA VA PEGADA AL NOMBRE, Y ES UNA ORDEN, NO UNA PREFERENCIA ═══
   //
   // La había puesto con el respaldo —después de la plata— por el principio de «el número que decide
@@ -172,10 +175,19 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // ya no alcanza con mirar el prefijo. Lo que se exige sigue siendo lo mismo: que reste TRES cosas,
   // el banco, lo transferido y el adelanto. Restar dos le paga de nuevo a quien ya recibió.
   const restaTres = (n) => (NOMINA.match(/-N\([A-Z]\$\{n[f]?\}\)/g) || []).length >= n
-  assert.ok(/ROUND\(N\(K\$\{n\}\)\*N\(L\$\{n\}\)-N\(E\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\);0\)/.test(NOMINA),
-    'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
-  assert.ok(/ROUND\(N\(K\$\{n\}\)\*N\(M\$\{n\}\)-N\(E\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\);0\)/.test(NOMINA),
-    'el escenario con aumento no resta lo ya entregado por las dos vías')
+  // SIN LETRAS FIJAS. Esto anclaba a `N(K{n})*N(L{n})-N(E)-N(D)-N(C)` y se rompió el 31/08 cuando
+  // entró «EFECTIVO redondeado» y corrió las tarifas una columna a la derecha — el mismo defecto que
+  // el comentario de arriba dice que no hay que cometer, cometido dos párrafos más abajo. Lo que se
+  // exige es la FORMA de la cuenta: horas × tarifa, menos TRES columnas, todo dentro de un ROUND.
+  const CUENTA_DEL_EFECTIVO = /ROUND\(N\([A-Z]\$\{n\}\)\*N\([A-Z]\$\{n\}\)(?:-N\([A-Z]\$\{n\}\)){3};0\)/g
+  const cuentas = NOMINA.match(CUENTA_DEL_EFECTIVO) || []
+  assert.ok(cuentas.length >= 2,
+    `el efectivo dejó de restar las TRES columnas de lo ya entregado: se paga dos veces (encontré ${cuentas.length} cuentas)`)
+  // Las dos —hoy y con aumento— tienen que restar las MISMAS tres columnas: si una resta el adelanto
+  // y la otra no, el escenario del aumento le paga de nuevo a quien ya recibió los billetes.
+  const restadas = (f) => [...f.matchAll(/-N\(([A-Z])\$\{n\}\)/g)].map((m) => m[1]).join('')
+  assert.equal(restadas(cuentas[0]), restadas(cuentas[1]),
+    'el escenario con aumento no resta lo mismo que el de hoy')
   // Y el efectivo va REDONDEADO: sin esto la celda vale con centavos y el total suma billetes que
   // nadie entrega.
   assert.ok(restaTres(3), 'se perdieron las restas de lo ya entregado')

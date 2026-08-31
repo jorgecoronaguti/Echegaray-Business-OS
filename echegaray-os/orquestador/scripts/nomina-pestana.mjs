@@ -63,12 +63,22 @@ const ALTO_HISTORICO = 160
 // ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
 //
 // El centinela significa «esta celda es mía y va vacía», y se resuelve DENTRO de la fusión. Esta
-// pestaña no se fusiona: el generador es dueño del 100% de ella y la reescribe entera. Al escribirlo
-// por esta puerta quedó LITERAL en el archivo —«::VACIO::» en cientos de celdas, probado el
-// 27/08— que es exactamente lo que el propio módulo advierte. Acá se escribe vacío de verdad y la
-// guarda se saltea con `yaGuardado`, que es la puerta declarada para el escritor que ya evaluó de
-// quién es la pestaña. La condición para poder usarla es la que se cumple acá y en pocos lugares
-// más: NADIE que no sea este script escribió jamás una celda de esta pestaña.
+// pestaña no se fusiona: el generador la reescribe entera. Al escribirlo por esta puerta quedó
+// LITERAL en el archivo —«::VACIO::» en cientos de celdas, probado el 27/08— que es exactamente lo
+// que el propio módulo advierte. Acá se escribe vacío de verdad.
+//
+// ═══ LA PREMISA QUE ERA FALSA, Y LO QUE COSTÓ (31/08) ═══
+//
+// Acá decía: *«la condición para poder usar `respetar: false` es la que se cumple acá: NADIE que no
+// sea este script escribió jamás una celda de esta pestaña»*. Dejó de ser cierta y nadie se enteró
+// hasta que el dueño lo dijo: **«me borraste mis ediciones»**, y después **«respetá mis ediciones de
+// celda por más que después corrijas»**.
+//
+// Una premisa así no se puede sostener por escrito: la pestaña está a la vista, cualquiera la abre y
+// escribe, y el generador corre solo cada dos horas. La Regla 0 vuelve a estar ENCENDIDA —el default
+// de `escribirPreservando`— y con ella el auto-respeto de una reescritura completa. Que el generador
+// después corrija su número no lo autoriza a borrar lo que una persona escribió: primero se respeta,
+// y lo que quede en conflicto se dice, no se pisa.
 
 const ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Nómina'
@@ -517,10 +527,14 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // por qué él tiene razón: la categoría es parte de QUIÉN es la persona —con ella se lee la fila
   // entera, porque explica el piso, el aumento y la tarifa— y a la derecha obligaba a cruzar
   // once columnas para saber contra qué se está midiendo a cada uno.
+  // «EFECTIVO redondeado» NO reemplaza al exacto: va AL LADO. El dueño, 31/08: «la idea era que no
+  // borraras el número sino que pusieras el redondeado en una columna al lado». Tiene razón — el
+  // exacto es lo devengado y hace falta para auditar; el redondeado es lo que se cuenta en billetes.
+  //
+  // El comentario va ACÁ ARRIBA y no adentro del `fila(...)`: el test que cuida este encabezado lo
+  // busca con un regex acotado a 400 caracteres, y un comentario adentro lo empuja fuera del alcance
+  // — el test se pone rojo por la prosa, no por el cuadro.
   fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    // «EFECTIVO redondeado» NO reemplaza al exacto: va AL LADO. El dueño, 31/08: «la idea era que no
-    // borraras el número sino que pusieras el redondeado en una columna al lado». Tiene razón — el
-    // exacto es lo devengado y hace falta para auditar; el redondeado es lo que se cuenta en billetes.
     'EFECTIVO c/aum.', 'EFECTIVO redondeado', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
@@ -1488,7 +1502,8 @@ async function publicar(google, PESTANA, filas) {
   // Así que dentro de su rectángulo —las columnas que escribe, hasta ALTO_HISTORICO— manda el
   // generador. Fuera de ahí no toca nada: lo que el dueño escriba a la derecha de la última columna
   // o más abajo se conserva, que antes ni siquiera era cierto porque la pestaña se borraba entera.
-  const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: anchoPropio, respetar: false })
+  // SIN `respetar: false`: la Regla 0 es el default y acá tiene que estar encendida. Ver arriba.
+  const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: anchoPropio })
   // ═══ UNA ESCRITURA QUE NO OCURRIÓ NO PUEDE ANUNCIARSE COMO HECHA ═══
   //
   // `escribirPreservando` puede volver SIN HABER ESCRITO —pestaña bajo candado, editada por una
