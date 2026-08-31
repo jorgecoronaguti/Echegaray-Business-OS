@@ -29,9 +29,30 @@
 // una fila cuenta como vacía sólo si está vacía en TODO el ancho leído, y la lectura se pide con
 // `FORMULA`: una fórmula que devuelve "" se ve como fórmula (hay algo) y no como celda vacía.
 
-/** Filas de aire que quedan entre un bloque y el título siguiente. Tres absorben el crecimiento
- *  chico de una corrida a la otra sin que nadie tenga que insertar nada. */
-export const COLCHON_FINAL = 3
+/**
+ * Filas de aire que quedan entre un bloque y el título siguiente.
+ *
+ * ═══ ERAN TRES, Y EL BOT LAS PASÓ POR ARRIBA (31/08/2026) ═══
+ *
+ * El número viejo era 3, con este argumento: «tres absorben el crecimiento chico de una corrida a la
+ * otra». El supuesto —que entre dos corridas el cuadro crece poco— valía cuando los comprobantes se
+ * cargaban a mano y de a uno.
+ *
+ * Medido ese día: el bot de `#comprobantes-gastos` cargó **17 comprobantes en 32 minutos**, entre la
+ * corrida del pipeline de las 14:50 y la siguiente, dos horas después. El cuadro B pasó de entrar a
+ * necesitar 57 filas donde había 46, la dinámica de A28 se negó a renderizar y la sección 1 entera
+ * quedó invisible con un `#REF!`. El dueño lo vio antes que ningún control: «pestaña proveedores
+ * esta rota».
+ *
+ * Quince filas es un día entero de carga por chat con margen, y el costo es quince filas en blanco
+ * que nadie mira porque están debajo del bloque. Una pestaña con aire de más se lee igual; una
+ * pestaña en `#REF!` no se lee.
+ *
+ * Esto NO reemplaza a la inserción de filas de `proveedores-dos-cuadros`: ésa sigue siendo la que
+ * resuelve un crecimiento grande. El colchón es lo que evita que un crecimiento normal tenga que
+ * esperar dos horas al próximo pase para no romper nada.
+ */
+export const COLCHON_FINAL = 15
 
 const vacia = (f) => (f ?? []).every((c) => String(c ?? '').trim() === '')
 
