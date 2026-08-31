@@ -114,7 +114,7 @@ async function main() {
     // borrador de ella. Sobre el DRAFT la cadena da 7/11 —faltan COMPOSICION, RECURSO,
     // PRICE_OBSERVATION y COSTO— y eso no es un hueco de datos: es que todavía no hay nada
     // congelado que mirar. Medido antes de agregar esta línea.
-    const cong = await congelarBorrador(c, fx)
+    if (!await congelarBorrador(c, fx)) console.log('  NO_MEDIDO: sin perfil `direccion` no se puede congelar, y sin congelar no hay composición')
     const obra = await completarConObra(c, fx)
     const cad = await cadenaDe(c, fx.partidaId)
     const e = eslabonesPresentes(cad)
