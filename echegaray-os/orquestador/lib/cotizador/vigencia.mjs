@@ -38,14 +38,23 @@
 import { IPC, FUENTE as FUENTE_IPC } from '../ipc-publicado.mjs'
 import { IMPACTO_MATERIAL } from './outlier.mjs'
 
-/** Cuánto error de precio se tolera antes de exigir refresco, para un recurso NO material. El 5% es
- *  el orden del redondeo comercial de una oferta: por debajo de eso, pedir un precio nuevo cuesta
- *  más de lo que corrige. */
-export const TOLERANCIA_BASE = 0.05
+/** Cuánto error de precio se tolera cuando NO se sabe cuánto pesa el recurso. El 5% es el orden del
+ *  redondeo comercial de una oferta: por debajo de eso, pedir un precio nuevo cuesta más de lo que
+ *  corrige. Se usa sólo como piso de ignorancia — con materialidad conocida, la tolerancia se
+ *  deriva. */
+export const TOLERANCIA_SIN_MATERIALIDAD = 0.05
 
-/** Y para uno material. Es `IMPACTO_MATERIAL` de `outlier.mjs`, no una constante nueva: el mismo
- *  umbral que decide si un cambio se aplica solo decide cuánto error de precio se aguanta. */
-export const TOLERANCIA_MATERIAL = IMPACTO_MATERIAL
+/** Los bordes de la tolerancia. Por debajo del 2% se estaría persiguiendo ruido de mercado; por
+ *  encima del 50% el precio ya no se defiende delante de un cliente por chico que sea el ítem. */
+export const TOLERANCIA_MIN = IMPACTO_MATERIAL
+export const TOLERANCIA_MAX = 0.5
+
+/** Cuánto vale un precio en moneda extranjera cuando no hay serie propia con qué medirlo. Es el
+ *  viejo default de 180 días, conservado A PROPÓSITO y SÓLO acá, con su etiqueta de NO MEDIDO: el
+ *  IPC en pesos no mide la deriva de un precio en dólares, y lo que envejece de verdad en ese caso
+ *  es el tipo de cambio —que tiene su propia fecha y lo controla `aplicarFx`, no este módulo—.
+ *  Aparece en los informes como `MONEDA_EXTRANJERA_NO_MEDIDA` para que se vea que es un hueco. */
+export const DIAS_MONEDA_EXTRANJERA_NO_MEDIDA = 180
 
 /** Los bordes. Nada vence antes de una semana —eso sería pedir precio todos los días— ni dura más de
  *  un año, porque un precio de más de un año no se defiende delante de un cliente aunque el modelo
@@ -155,26 +164,59 @@ export function derivaDeSerie(serie = [], { minObservaciones = 3, minSpanDias = 
 }
 
 /**
+ * CUÁNTO ERROR DE PRECIO SE TOLERA EN ESTE RECURSO. PURA.
+ *
+ * ═══ LA TOLERANCIA NO ES UN GUSTO: SE DESPEJA ═══
+ *
+ * Si un recurso pesa la fracción `f` del costo y su precio se desvió `e`, el TOTAL se desvía `f × e`.
+ * Lo que importa no es el error del precio: es el error del total. Entonces la tolerancia de este
+ * precio es la que hace que el total todavía no sea material:
+ *
+ *     f × e < IMPACTO_MATERIAL   ⟹   e < IMPACTO_MATERIAL / f
+ *
+ * Eso contesta de una sola vez las dos mitades del problema medido: el Panel de Chapa Trape, que
+ * mueve millones, tolera poco y hay que refrescarlo; el TORNILLO AUTOPERFORANTE 2", que mueve
+ * centavos, tolera tanto que su precio no vence — y por eso deja de frenar una obra de $79,5 M.
+ * No es una excepción hecha para el tornillo: es la misma fórmula.
+ */
+export function toleranciaDeMaterialidad(fraccion) {
+  if (fraccion === null || fraccion === undefined || !(Number(fraccion) > 0)) {
+    return { tolerancia: TOLERANCIA_SIN_MATERIALIDAD, porQue: `tolerancia ${(TOLERANCIA_SIN_MATERIALIDAD * 100).toFixed(0)}%: no se sabe qué fracción del costo mueve este recurso, y un peso desconocido no se lee como cero` }
+  }
+  const f = Number(fraccion)
+  const cruda = IMPACTO_MATERIAL / f
+  const tolerancia = Math.max(TOLERANCIA_MIN, Math.min(TOLERANCIA_MAX, cruda))
+  const acotada = tolerancia !== cruda ? ` (acotada al rango ${TOLERANCIA_MIN * 100}–${TOLERANCIA_MAX * 100}%)` : ''
+  return {
+    tolerancia,
+    porQue: `tolerancia ${(tolerancia * 100).toFixed(1)}% = ${(IMPACTO_MATERIAL * 100).toFixed(0)}% de impacto material ÷ ${(f * 100).toFixed(3)}% que el recurso pesa en el costo${acotada}`,
+  }
+}
+
+/**
  * CUÁNTOS DÍAS VALE ESTE PRECIO. PURA. Devuelve el número Y CÓMO SALIÓ.
  *
  * `materialidad` es la fracción del costo que este recurso mueve (`0.03` = 3%), o `null` si no se
- * sabe. `null` NO se lee como cero: un recurso cuyo peso se desconoce se trata como material,
- * porque suponer que no importa es exactamente el supuesto que nadie puede defender después.
+ * sabe. `null` NO se lee como cero: cae al piso de ignorancia del 5%, que es más exigente que lo que
+ * saldría de suponer que el recurso no pesa nada.
  */
 export function vigenciaDerivada({
-  tipo = null, familia = null, serie = [], origen = 'INTERNO',
+  tipo = null, familia = null, serie = [], origen = 'INTERNO', moneda = 'ARS',
   materialidad = null, tramoParitariaHasta = null, hoy = new Date(), tablaIpc = IPC,
 } = {}) {
   const clase = claseDeRecurso({ tipo, familia })
-  const esMaterial = materialidad === null || Number(materialidad) >= TOLERANCIA_MATERIAL
-  const tolerancia = esMaterial ? TOLERANCIA_MATERIAL : TOLERANCIA_BASE
-  const porQueTolerancia = materialidad === null
-    ? `tolerancia ${(tolerancia * 100).toFixed(0)}%: no se sabe cuánto pesa este recurso, y un peso desconocido se trata como material`
-    : `tolerancia ${(tolerancia * 100).toFixed(0)}%: el recurso mueve el ${(Number(materialidad) * 100).toFixed(2)}% del costo`
+  const { tolerancia, porQue: porQueTolerancia } = toleranciaDeMaterialidad(materialidad)
 
   if (clase === CLASE.CONVENIO) return vigenciaDeConvenio({ tramoParitariaHasta, hoy, clase, tolerancia, porQueTolerancia })
 
   const deSerie = derivaDeSerie(serie)
+  if (deSerie.derivaMensual === null && String(moneda) !== 'ARS') {
+    return congelar({
+      clase, dias: DIAS_MONEDA_EXTRANJERA_NO_MEDIDA, tolerancia, porQueTolerancia,
+      deriva: { derivaMensual: null, origen: 'MONEDA_EXTRANJERA_NO_MEDIDA', porQue: `el precio está en ${moneda} y el IPC del INDEC mide pesos: no hay con qué medir su deriva` },
+      porQue: `${DIAS_MONEDA_EXTRANJERA_NO_MEDIDA} días NO MEDIDOS: un precio en ${moneda} no envejece con la inflación en pesos — lo que envejece es el tipo de cambio, que tiene su propia fecha y lo controla aplicarFx. Este número es el default viejo conservado como hueco declarado, no una medición`,
+    })
+  }
   const base = deSerie.derivaMensual !== null ? deSerie : derivaDelIPC({ tabla: tablaIpc, hoy })
   if (base.derivaMensual === null || base.derivaMensual <= 0) {
     return congelar({

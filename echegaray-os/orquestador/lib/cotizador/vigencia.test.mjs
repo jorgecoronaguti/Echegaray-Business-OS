@@ -7,8 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CLASE, DIAS_MIN, DIAS_MAX, TOLERANCIA_BASE, TOLERANCIA_MATERIAL,
-  claseDeRecurso, derivaDelIPC, derivaDeSerie, vigenciaDerivada,
+  CLASE, DIAS_MIN, DIAS_MAX, TOLERANCIA_SIN_MATERIALIDAD, TOLERANCIA_MIN, TOLERANCIA_MAX,
+  DIAS_MONEDA_EXTRANJERA_NO_MEDIDA,
+  claseDeRecurso, derivaDelIPC, derivaDeSerie, toleranciaDeMaterialidad, vigenciaDerivada,
 } from './vigencia.mjs'
 
 const HOY = new Date('2026-08-30T00:00:00Z')
@@ -77,29 +78,58 @@ test('derivaDeSerie · con serie suficiente MIDE, y la mediana ignora la correcc
 })
 
 test('vigenciaDerivada · el número SALE del cociente y no de una constante', () => {
-  // 30 × 2% ÷ 3%/mes = 20 días.
+  // f = 10% ⇒ tolerancia = 2% ÷ 10% = 20%. Días = 30 × 20% ÷ 3%/mes = 200.
   const v = vigenciaDerivada({ tipo: 'material', materialidad: 0.10, hoy: HOY, tablaIpc: IPC_FIJO })
-  assert.equal(v.dias, 20)
-  assert.equal(v.tolerancia, TOLERANCIA_MATERIAL)
+  assert.equal(v.dias, 200)
+  assert.ok(Math.abs(v.tolerancia - 0.20) < 1e-12)
   assert.equal(v.origenDeriva, 'IPC_INDEC')
-  assert.match(v.porQue, /30 × 2% ÷ 3\.00%\/mes/)
+  assert.match(v.porQue, /30 × 20% ÷ 3\.00%\/mes/)
   assert.notEqual(v.dias, 180, 'si esto vuelve a dar 180 es que volvió la constante plana')
 })
 
-test('vigenciaDerivada · un recurso que no mueve plata dura MÁS que uno material', () => {
-  const clavo = vigenciaDerivada({ tipo: 'material', materialidad: 0.0001, hoy: HOY, tablaIpc: IPC_FIJO })
-  const hormigon = vigenciaDerivada({ tipo: 'material', materialidad: 0.30, hoy: HOY, tablaIpc: IPC_FIJO })
-  assert.equal(clavo.tolerancia, TOLERANCIA_BASE)
-  assert.equal(hormigon.tolerancia, TOLERANCIA_MATERIAL)
-  assert.ok(clavo.dias > hormigon.dias, `el clavo (${clavo.dias}) tiene que durar más que el hormigón (${hormigon.dias})`)
+test('vigenciaDerivada · el TORNILLO no puede frenar una obra de $79,5 M y el PANEL sí', () => {
+  const tornillo = vigenciaDerivada({ tipo: 'material', materialidad: 0.00002, hoy: HOY, tablaIpc: IPC_FIJO })
+  const panel = vigenciaDerivada({ tipo: 'material', materialidad: 0.30, hoy: HOY, tablaIpc: IPC_FIJO })
+  assert.equal(tornillo.tolerancia, TOLERANCIA_MAX)
+  assert.ok(Math.abs(panel.tolerancia - 0.02 / 0.30) < 1e-12)
+  assert.equal(tornillo.dias, DIAS_MAX, 'un tornillo que mueve centavos no vence: su error no mueve el total')
+  assert.ok(panel.dias < tornillo.dias, `el panel (${panel.dias}) tiene que vencer antes que el tornillo (${tornillo.dias})`)
 })
 
-test('vigenciaDerivada · materialidad DESCONOCIDA se trata como material, no como cero', () => {
+test('toleranciaDeMaterialidad · se DESPEJA de f × e < IMPACTO_MATERIAL', () => {
+  assert.ok(Math.abs(toleranciaDeMaterialidad(0.20).tolerancia - 0.10) < 1e-12, '2% ÷ 20% = 10%')
+  assert.equal(toleranciaDeMaterialidad(1).tolerancia, TOLERANCIA_MIN, 'un recurso que ES el costo no tolera más que el propio umbral material')
+  assert.equal(toleranciaDeMaterialidad(0.000001).tolerancia, TOLERANCIA_MAX)
+  assert.equal(toleranciaDeMaterialidad(null).tolerancia, TOLERANCIA_SIN_MATERIALIDAD)
+  assert.equal(toleranciaDeMaterialidad(0).tolerancia, TOLERANCIA_SIN_MATERIALIDAD, 'cero no es «no pesa nada»: es no saber')
+})
+
+test('vigenciaDerivada · un precio en DÓLARES no envejece con la inflación en pesos', () => {
+  const usd = vigenciaDerivada({ tipo: 'equipo', moneda: 'USD', materialidad: 0.05, hoy: HOY, tablaIpc: IPC_FIJO })
+  const ars = vigenciaDerivada({ tipo: 'equipo', moneda: 'ARS', materialidad: 0.05, hoy: HOY, tablaIpc: IPC_FIJO })
+  assert.equal(usd.origenDeriva, 'MONEDA_EXTRANJERA_NO_MEDIDA')
+  assert.equal(usd.dias, DIAS_MONEDA_EXTRANJERA_NO_MEDIDA)
+  assert.match(usd.porQue, /NO MEDIDOS/)
+  assert.match(usd.porQue, /aplicarFx/)
+  assert.notEqual(usd.origenDeriva, ars.origenDeriva)
+})
+
+test('vigenciaDerivada · en dólares, una serie PROPIA le gana al hueco declarado', () => {
+  const serie = [
+    { precio: 1000, observadoEn: '2026-01-01' },
+    { precio: 1010, observadoEn: '2026-03-01' },
+    { precio: 1020, observadoEn: '2026-05-01' },
+  ]
+  const v = vigenciaDerivada({ tipo: 'equipo', moneda: 'USD', serie, materialidad: 0.05, hoy: HOY, tablaIpc: IPC_FIJO })
+  assert.equal(v.origenDeriva, 'SERIE_OBSERVADA', 'medir siempre le gana a declarar un hueco')
+})
+
+test('vigenciaDerivada · materialidad DESCONOCIDA no se lee como cero', () => {
   const sinSaber = vigenciaDerivada({ tipo: 'material', materialidad: null, hoy: HOY, tablaIpc: IPC_FIJO })
   const chico = vigenciaDerivada({ tipo: 'material', materialidad: 0.0001, hoy: HOY, tablaIpc: IPC_FIJO })
-  assert.equal(sinSaber.tolerancia, TOLERANCIA_MATERIAL)
+  assert.equal(sinSaber.tolerancia, TOLERANCIA_SIN_MATERIALIDAD)
   assert.ok(sinSaber.dias < chico.dias, 'no saber cuánto pesa no puede salir más barato que saber que no pesa')
-  assert.match(sinSaber.componentes.join(' '), /peso desconocido se trata como material/)
+  assert.match(sinSaber.componentes.join(' '), /no se lee como cero/)
 })
 
 test('vigenciaDerivada · una serie propia le gana al IPC', () => {
@@ -108,14 +138,14 @@ test('vigenciaDerivada · una serie propia le gana al IPC', () => {
     { precio: 1005, observadoEn: '2026-03-01' },
     { precio: 1010, observadoEn: '2026-05-01' },
   ]
-  const v = vigenciaDerivada({ tipo: 'material', serie, materialidad: 0.10, hoy: HOY, tablaIpc: IPC_FIJO })
+  const v = vigenciaDerivada({ tipo: 'material', serie, materialidad: 0.60, hoy: HOY, tablaIpc: IPC_FIJO })
   assert.equal(v.origenDeriva, 'SERIE_OBSERVADA')
-  const sinSerie = vigenciaDerivada({ tipo: 'material', materialidad: 0.10, hoy: HOY, tablaIpc: IPC_FIJO })
+  const sinSerie = vigenciaDerivada({ tipo: 'material', materialidad: 0.60, hoy: HOY, tablaIpc: IPC_FIJO })
   assert.ok(v.dias > sinSerie.dias, 'un recurso que se movió 0,25%/mes propio tiene que durar más que el piso del IPC')
 })
 
 test('vigenciaDerivada · un precio de la web dura la MITAD que la misma observación interna', () => {
-  const base = { tipo: 'material', materialidad: 0.001, hoy: HOY, tablaIpc: IPC_FIJO }
+  const base = { tipo: 'material', materialidad: 0.60, hoy: HOY, tablaIpc: IPC_FIJO }
   const interno = vigenciaDerivada({ ...base, origen: 'INTERNO' })
   const web = vigenciaDerivada({ ...base, origen: 'WEB' })
   assert.equal(web.dias, Math.max(DIAS_MIN, Math.round(interno.dias * 0.5)))
@@ -144,7 +174,7 @@ test('vigenciaDerivada · CONVENIO sin tramo DECLARA que está aproximando', () 
 })
 
 test('vigenciaDerivada · sin IPC y sin serie NO supone que el precio está quieto', () => {
-  const v = vigenciaDerivada({ tipo: 'material', materialidad: 0.10, hoy: HOY, tablaIpc: [] })
+  const v = vigenciaDerivada({ tipo: 'material', materialidad: 0.60, hoy: HOY, tablaIpc: [] })
   assert.equal(v.dias, DIAS_MIN, 'sin deriva medible la vigencia va al mínimo, no al máximo')
   assert.match(v.porQue, /en vez de suponer que el precio no se mueve/)
 })
@@ -155,7 +185,7 @@ test('vigenciaDerivada · el resultado siempre queda dentro del rango declarado'
     { precio: 1000.01, observadoEn: '2023-01-01' },
     { precio: 1000.02, observadoEn: '2026-01-01' },
   ]
-  const v = vigenciaDerivada({ tipo: 'material', serie: casi_quieto, materialidad: 0.001, hoy: HOY, tablaIpc: IPC_FIJO })
+  const v = vigenciaDerivada({ tipo: 'material', serie: casi_quieto, materialidad: 0.60, hoy: HOY, tablaIpc: IPC_FIJO })
   assert.ok(v.dias >= DIAS_MIN && v.dias <= DIAS_MAX, `${v.dias} salió del rango`)
   assert.equal(v.dias, DIAS_MAX)
   assert.match(v.porQue, /acotado al rango/)
