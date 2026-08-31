@@ -16,11 +16,15 @@
 // encima de otra se ve como un borrón y obliga a rehacer el PDF desde el original, que puede no
 // existir más.
 
-/** Alto de la firma en puntos. El hueco real del recibo entre la línea que corona el rótulo
- *  (y=42,5) y la línea que cierra el bloque por arriba (y=93,3) son 50,8 pt: con 34 la firma se lee
- *  entera y le sobra aire de los dos lados. Es un TOPE, no una medida fija — si el recuadro de un
- *  recibo fuera más bajo, `ubicacionDeLaFirma` la achica sola. */
-export const ALTO_FIRMA = 34
+/** Alto de la firma en puntos: EL MÁXIMO QUE ENTRA. El hueco real del recibo entre la línea que
+ *  corona el rótulo (y=42,5) y la que cierra el bloque por arriba (y=93,3) son 50,8 pt; descontado
+ *  el AIRE de los dos lados quedan 44,8. Se usan 44 para que la firma se lea lo más grande posible
+ *  sin tocar ninguna de las dos líneas.
+ *
+ *  Es un TOPE, no una medida fija: si el recuadro de un recibo viniera más bajo,
+ *  `ubicacionDeLaFirma` la achica sola en vez de desbordarlo. Subir este número NO agranda la firma
+ *  más allá de lo que el papel permite — la recorta el techo. */
+export const ALTO_FIRMA = 44
 
 /** Aire entre la firma y cada línea del recuadro. Una firma que muerde la línea que tiene abajo
  *  tapa el propio renglón que está firmando; el dueño lo marcó mirando el ejemplo. */
