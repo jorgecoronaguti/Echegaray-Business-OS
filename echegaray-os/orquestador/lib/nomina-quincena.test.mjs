@@ -123,7 +123,11 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   const i = cols.indexOf('$/h hoy')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
   // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
-  const decide = /fila\('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
+  // ANCLADO A LO QUE EL CUADRO ES, NO AL ORDEN DE SUS COLUMNAS. Este literal ya se rompió dos veces
+  // en un día —cuando se separó ADELANTO de YA TRANSFERIDO y cuando la categoría pasó al lado del
+  // nombre—, y las dos veces el test se puso rojo por un reordenamiento que el dueño pidió, no por
+  // un defecto. Se busca el encabezado que contiene las tres columnas de plata que él opera.
+  const decide = /fila\('Persona',[\s\S]{0,400}?'TOTAL A PAGAR',[\s\S]{0,400}?'\$\/h c\/aum\.'\)/.exec(NOMINA)
   assert.ok(decide, 'se fue el cuadro de instrucción de pago')
   const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   // TRECE, Y CADA UNA LA PIDIÓ EL DUEÑO (31/08). El tope existe para que el cuadro no vuelva a
@@ -134,9 +138,18 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   //   +1 «necesito q aparezcan las categorias de los empleados» — sin ella no se puede leer contra
   //      qué piso se mide el aumento de cada uno.
   assert.ok(dc.length <= 13, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
-  // Y la categoría va con el respaldo, no delante de la plata: es lo que EXPLICA la tarifa.
-  assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Categoría'),
-    'la categoría se metió delante de la plata: el cuadro decide un pago, no describe un plantel')
+  // ═══ LA CATEGORÍA VA PEGADA AL NOMBRE, Y ES UNA ORDEN, NO UNA PREFERENCIA ═══
+  //
+  // La había puesto con el respaldo —después de la plata— por el principio de «el número que decide
+  // primero», y este mismo test exigía eso. El dueño lo corrigió: «poner la categoria al lado del
+  // nombre». Tiene razón por una razón concreta: la categoría no explica una columna, explica la
+  // FILA entera —el piso, el aumento y la tarifa salen de ella—, así que es parte de quién es la
+  // persona. A once columnas de distancia obligaba a cruzar el cuadro para leer una fila.
+  assert.equal(dc[1], 'Categoría', 'la categoría se despegó del nombre')
+  // Lo que NO puede pasar es que el detalle de horas y tarifas se meta delante de la plata: eso
+  // convertiría la instrucción de pago en una planilla de cálculo otra vez.
+  assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Horas'),
+    'el detalle se metió delante de la plata')
   // Y la plata va antes que el respaldo: el número que decide primero, cómo salió después.
   assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Horas'),
     'el detalle de horas y tarifas se metió delante de la plata')
@@ -149,10 +162,15 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // recibió los billetes. Por eso no alcanza con que los rótulos existan — se verifica la CUENTA.
   assert.ok(dc.includes('ADELANTO') && dc.includes('YA TRANSFERIDO'),
     'volvieron a mezclarse los billetes de obra con las transferencias del banco')
-  const efectivo = /`=N\(F\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\)-N\(B\$\{n\}\)`/.test(NOMINA)
-  assert.ok(efectivo, 'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
-  const conAumento = /`=N\(H\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\)-N\(B\$\{n\}\)`/.test(NOMINA)
-  assert.ok(conAumento, 'el escenario con aumento no resta lo ya entregado por las dos vías')
+  // ═══ LA CUENTA, NO LAS LETRAS ═══
+  //
+  // Esto anclaba a `=N(F)-N(D)-N(C)-N(B)` y se rompió cuando la categoría entró en la B y corrió
+  // toda la plata una columna. Lo que importa no es qué letra tiene cada columna —eso lo mueve el
+  // dueño cuando quiere— sino que el efectivo reste TRES cosas: el banco, lo transferido y el
+  // adelanto. Restar dos le paga de nuevo a quien ya recibió los billetes.
+  const restaTres = (col) => new RegExp(`=N\\(${col}\\$\\{n\\}\\)(-N\\([A-Z]\\$\\{n\\}\\)){3}\``).test(NOMINA)
+  assert.ok(restaTres('G'), 'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
+  assert.ok(restaTres('I'), 'el escenario con aumento no resta lo ya entregado por las dos vías')
   // El «+» inicial NO puede volver: Sheets lo parsea como fórmula (=+Aumento…) y el encabezado
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
