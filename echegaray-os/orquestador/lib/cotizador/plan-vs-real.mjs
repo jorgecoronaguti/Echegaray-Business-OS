@@ -218,10 +218,15 @@ function obsPorRecurso(plan, real, causa) {
   // se cotizó, o una imputación mal hecha, y las dos hay que mirarlas.
   for (const [k, vis] of consumo) {
     out.push(observacion({
+      // `...causa` va PRIMERO y la evidencia propia después: al revés, el `evidencia: null` que trae
+      // una causa SIN_CAUSA pisaba el monto del material no cotizado y el hallazgo llegaba sin la
+      // plata que lo hace accionable. Lo encontró el test, no la revisión.
+      ...causa,
       concepto: CONCEPTO.MATERIAL, entidad: `${plan.codigo ?? plan.descripcion}·${k}`, cotizacionPartidaId: plan.cotizacionPartidaId,
       unidad: vis.unidad ?? null, plan: nada(UNIDAD.FISICA), real: magnitud(vis.cantidad, UNIDAD.FISICA),
       comparable: false, motivoNoComparable: NO_COMPARABLE.SIN_RECURSO_EN_COMPOSICION,
-      evidencia: { monto: vis.monto, nombre: vis.nombre }, ...causa, estado: ESTADO.CONFLICTO,
+      evidencia: { monto: vis.monto, nombre: vis.nombre, causaDeclarada: causa.evidencia },
+      estado: ESTADO.CONFLICTO,
     }))
   }
   return out
