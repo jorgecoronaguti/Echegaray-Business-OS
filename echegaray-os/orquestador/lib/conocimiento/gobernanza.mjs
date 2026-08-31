@@ -103,6 +103,60 @@ export function muestrasAdmisibles(filas = []) {
   return { admisibles, referencia, descartadas }
 }
 
+/**
+ * LA FAMILIA DE CAUSAS QUE SÍ HABLA DE PRODUCTIVIDAD.
+ *
+ * El catálogo es `public.causa_desvio` y su columna `familia` — abastecimiento, equipos,
+ * coordinación, calidad, proyecto, cliente, externa, planificación, presupuesto y productividad.
+ * Acá no se inventa ninguna: se usa la que el jefe de obra declaró.
+ *
+ * ═══ EL CASO QUE OBLIGÓ A ESCRIBIR ESTO (30/08/2026) ═══
+ *
+ * `T1002 EXCAVACIONES` rindió 0,50 contra 3,40 cotizadas: −85,3%. Un motor ingenuo aprende
+ * «excavar rinde 0,50» y cotiza así la próxima obra. Pero la causa la escribió una persona y es
+ * `falta_material`, familia `abastecimiento`: ese número mide un problema de logística, no la
+ * velocidad de la cuadrilla. Aprenderlo como rendimiento sería aprender el error.
+ */
+export const FAMILIA_PRODUCTIVIDAD = 'productividad'
+
+/**
+ * ¿ESTA OBSERVACIÓN MIDE PRODUCTIVIDAD? PURA.
+ *
+ * `causas`: lo que trae la evidencia — `[{ causa_desvio, familia }]`.
+ *
+ * Sin causa declarada la observación SIGUE SIENDO evidencia: nadie declaró nada, y suponer una causa
+ * sería inventar el dato que después descalifica al número. Con causa declarada de otra familia, no:
+ * el desvío ya tiene dueño y no es la tarea. `otro` —familia sin clasificar— tampoco sirve: alguien
+ * dijo que pasó algo y no se sabe qué.
+ */
+export function evidenciaDeProductividad(causas = []) {
+  const declaradas = (causas ?? []).filter((c) => c && (c.causa_desvio ?? c.causa ?? c.clave))
+  if (!declaradas.length) return { admisible: true, motivo: 'sin causa de desvío declarada', ajenas: [] }
+  const ajenas = declaradas.filter((c) => (c.familia ?? null) !== FAMILIA_PRODUCTIVIDAD)
+  if (!ajenas.length) {
+    return { admisible: true, motivo: `causa declarada de familia ${FAMILIA_PRODUCTIVIDAD}`, ajenas: [] }
+  }
+  return {
+    admisible: false,
+    motivo: `el desvío tiene causa declarada ajena a la productividad: ${ajenas.map((c) => `${c.causa_desvio ?? c.clave} (${c.familia ?? 'sin familia'})`).join(', ')}`,
+    ajenas,
+  }
+}
+
+/**
+ * PARTIR UNA MUESTRA POR CAUSA. PURA. Lo descalificado NO se tira: se devuelve con su motivo, porque
+ * «esta obra no enseñó nada de productividad porque faltó material» es información de negocio.
+ */
+export function filtrarPorCausa(muestras = []) {
+  const admisibles = [], descalificadas = []
+  for (const m of muestras) {
+    const v = evidenciaDeProductividad(m?.causas ?? [])
+    if (v.admisible) admisibles.push(m)
+    else descalificadas.push({ ...m, motivo: v.motivo, ajenas: v.ajenas })
+  }
+  return { admisibles, descalificadas }
+}
+
 const control = (nombre, cumple, porQue) => ({ nombre, cumple: Boolean(cumple), porQue })
 
 /**
@@ -137,6 +191,12 @@ export function evaluarGobernanza({
         : `la última medición es de hace ${edad} día(s); el máximo es ${p.antiguedadMaximaDias}`),
     control('clase', clase !== null && ORDEN[clase] >= ORDEN[p.claseMinima],
       `clase ${clase ?? '—'}; para ser norma hace falta ${p.claseMinima}`),
+    // EL PORTERO DE LA CAUSA. Quien arma el candidato ya debería haber filtrado con
+    // `filtrarPorCausa`; esto es el respaldo para el día que alguien escriba otro armador y se
+    // olvide. `contexto.causas_ajenas` es la cuenta de mediciones cuyo desvío tiene dueño declarado
+    // y no es la tarea.
+    control('causa-ajena', (c?.contexto?.causas_ajenas ?? 0) === 0,
+      `${c?.contexto?.causas_ajenas ?? 0} medición(es) con causa declarada ajena a la productividad entraron a la muestra`),
     control('regresion-hold-out', !p.exigeHoldOut || reg?.holdOut === true,
       reg?.holdOut === true
         ? 'la regla se probó contra casos que no la produjeron'

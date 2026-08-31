@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { candidato, MADUREZ } from './promocion.mjs'
 import {
   POLITICA, ESTADO, ventana, antiguedadDias, muestrasAdmisibles, evaluarGobernanza, estadoDe,
+  evidenciaDeProductividad, filtrarPorCausa,
 } from './gobernanza.mjs'
 import { pliegues, regresionHoldOut, evaluarActivo, mediana } from './regresion-aprendizaje.mjs'
 
@@ -53,6 +54,42 @@ test('NEGATIVO: estar en el histórico no vuelve válida a una fila — REFERENC
   assert.deepEqual(admisibles.map((f) => f.id), [1, 2])
   assert.equal(referencia.length, 1, 'la tabla del xlsm no puede confirmarse a sí misma')
   assert.equal(descartadas.length, 1)
+})
+
+// ═══ LA CAUSA DECLARADA DECIDE SI EL NÚMERO MIDE PRODUCTIVIDAD ═══
+
+test('NEGATIVO: el T1002 real — un −85,3% causado por falta de material NO enseña a excavar', () => {
+  // El caso medido en Quattropani el 30/08/2026: 0,50 hs/un contra 3,40 cotizadas. La causa la
+  // escribió una persona y es de familia `abastecimiento`.
+  const v = evidenciaDeProductividad([{ causa_desvio: 'falta_material', familia: 'abastecimiento' }])
+  assert.equal(v.admisible, false)
+  assert.match(v.motivo, /falta_material \(abastecimiento\)/)
+
+  // Sin causa declarada la observación SIGUE siendo evidencia: no se inventa una causa para
+  // descalificarla, igual que no se inventa una para explicarla.
+  assert.equal(evidenciaDeProductividad([]).admisible, true)
+  assert.equal(evidenciaDeProductividad([{ causa_desvio: 'curva_aprendizaje', familia: 'productividad' }]).admisible, true)
+  // «Otra causa» no tiene familia: alguien dijo que pasó algo y no se sabe qué.
+  assert.equal(evidenciaDeProductividad([{ causa_desvio: 'otro', familia: null }]).admisible, false)
+})
+
+test('lo descalificado por causa no se tira: vuelve con su motivo', () => {
+  const { admisibles, descalificadas } = filtrarPorCausa([
+    { id: 'T1001', valor: 0.1159, causas: [] },
+    { id: 'T1002', valor: 0.5, causas: [{ causa_desvio: 'falta_material', familia: 'abastecimiento' }] },
+    { id: 'T1003', valor: 0.4, causas: [{ causa_desvio: 'clima', familia: 'externa' }] },
+  ])
+  assert.deepEqual(admisibles.map((m) => m.id), ['T1001'])
+  assert.deepEqual(descalificadas.map((m) => m.id), ['T1002', 'T1003'])
+  assert.match(descalificadas[1].motivo, /clima/)
+})
+
+test('NEGATIVO: si una medición con causa ajena se cuela en la muestra, la gobernanza la frena igual', () => {
+  const m = muestrasSanas()
+  const c = { ...conVentana(candidatoDe(m), m), contexto: { causas_ajenas: 1 } }
+  const g = evaluarGobernanza({ candidato: c, regresion: regresionHoldOut({ muestras: m }), hoy: HOY })
+  assert.equal(g.apto, false)
+  assert.ok(g.bloqueos.includes('causa-ajena'), g.porQue)
 })
 
 // ═══ CANDIDATO ≠ NORMA ═══

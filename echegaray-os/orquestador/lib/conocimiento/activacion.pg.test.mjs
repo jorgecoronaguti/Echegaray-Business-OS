@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
 import { candidato } from './promocion.mjs'
 import { evaluarGobernanza, ventana, ESTADO } from './gobernanza.mjs'
-import { regresionHoldOut } from './regresion-aprendizaje.mjs'
+import { regresionHoldOut, evaluarActivo } from './regresion-aprendizaje.mjs'
 import { guardar, activar, revertir, activos, historial, vigenteDe } from './activacion.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
@@ -112,6 +112,17 @@ test('un aprendizaje se activa con gobernanza y vuelve al estado exacto anterior
       assert.equal(Number((await activos(db)).find((x) => x.clave === 'ZZ-rend').valor), 40)
     })
 
+    // Los casos que la empresa ya sabe cómo salieron. La regla activa se juzga contra esto, no
+    // contra una opinión.
+    const CONOCIDOS = [{ id: 'k1', valor: 10 }, { id: 'k2', valor: 10.3 }, { id: 'k3', valor: 9.7 }]
+
+    await t.test('el rollback lo dispara una MEDICIÓN: la regla activa estima peor y se mide cuánto', async () => {
+      const juicio = evaluarActivo({ casos: CONOCIDOS, reglaActiva: 40, reglaAnterior: 10 })
+      assert.equal(juicio.corrio, true)
+      assert.equal(juicio.revertir, true, juicio.porQue)
+      assert.ok(juicio.deltaPP > 100, `el empeoramiento tiene que ser grande y medido, dio ${juicio.deltaPP} pp`)
+    })
+
     await t.test('el rollback deja rigiendo EXACTAMENTE la versión anterior', async () => {
       const r = await revertir(db, { clave: 'ZZ-rend', porQue: 'la versión 2 estimaba peor' })
       assert.equal(r.revertida, true, r.porQue)
@@ -123,6 +134,10 @@ test('un aprendizaje se activa con gobernanza y vuelve al estado exacto anterior
       const h = await historial(db, 'ZZ-rend')
       assert.equal(h[0].accion, 'ROLLBACK')
       assert.equal(h[0].regla_anterior.valor, 40, 'queda anotado qué dejó de regir')
+      // Y después de volver, la regla que rige vuelve a estimar bien los casos conocidos.
+      const despues = evaluarActivo({ casos: CONOCIDOS, reglaActiva: Number(enUso.valor), reglaAnterior: 40 })
+      assert.equal(despues.revertir, false, despues.porQue)
+      assert.ok(despues.deltaPP < -100, `volver tiene que MEJORAR la estimación, dio ${despues.deltaPP} pp`)
       // La historia no se borra: las tres filas siguen ahí.
       assert.deepEqual(h.map((x) => `${x.version}:${x.accion}`), ['3:ROLLBACK', '2:ACTIVACION', '1:ACTIVACION'])
     })
