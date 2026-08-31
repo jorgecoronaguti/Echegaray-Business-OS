@@ -280,6 +280,7 @@ export class Planilla {
    * @param {string} [o.revision] huella tomada antes; si el destino cambió desde entonces, se
    *        rechaza con `REVISION_VIEJA` en vez de pisar lo que otro escribió.
    * @param {(string|null)[]} [o.esquema] tipo esperado por columna; se valida ANTES de mandar nada.
+   * @param {number} [o.filasEncabezado] cuántas filas de arriba NO son datos (el esquema las saltea).
    * @param {boolean} [o.espejo] pestaña `_RAW`: sin Regla 0. Sólo para copias de una fuente externa.
    */
   async escribirRango(ref, grid, o = {}) {
@@ -310,13 +311,18 @@ export class Planilla {
         { rango: ref, grilla: dReal, declarado: dims })
     }
     if (o.esquema) {
-      const malas = validarTipos(grid, o.esquema)
+      // `filasEncabezado` NO tiene un valor por defecto adivinado. Un esquema que se aplicara a la
+      // fila 0 rechazaría todo bloque con encabezado —"Neto" no es un número— y la reacción sería
+      // dejar de pasar esquema, que es perder la validación entera. Quien declara tipos declara
+      // también dónde arrancan los datos.
+      const salto = Number(o.filasEncabezado ?? 0)
+      const malas = validarTipos(grid.slice(salto), o.esquema)
       if (malas.length) {
         const m = malas[0]
+        const donde = formatearCelda({ fila: r.desde.fila + salto + m.fila, col: r.desde.col + m.col })
         fallar(CODIGOS.TIPO_INVALIDO,
-          `${formatearCelda({ fila: r.desde.fila + m.fila, col: r.desde.col + m.col })} espera ${m.esperado} `
-          + `y recibió ${m.recibido} (${JSON.stringify(m.valor)})`,
-          { rango: ref, celdas: malas.slice(0, 20), total: malas.length })
+          `${donde} espera ${m.esperado} y recibió ${m.recibido} (${JSON.stringify(m.valor)})`,
+          { rango: ref, celdas: malas.slice(0, 20), total: malas.length, filasEncabezado: salto })
       }
     }
     return rectangular(grid, dims)
