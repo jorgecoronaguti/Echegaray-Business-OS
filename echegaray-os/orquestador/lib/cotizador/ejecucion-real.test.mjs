@@ -194,3 +194,33 @@ test('las horas improductivas son null si nadie marcó ninguna, no cero', () => 
   const rep = c.partidas.find((p) => p.codigo === 'T1001')
   assert.equal(rep.hhImproductivas.valor, null, 'sin marcas de improductividad no se puede afirmar que fueron cero')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUADRILLA (§E1) · el hueco que no se veía porque el dato no llegaba a la salida
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('sin cuadrilla declarada el hueco se DECLARA: una lista vacía se lee como «no hubo cuadrillas»', () => {
+  // MUTACIÓN CORRIDA: `motivoCuadrilla: null` fijo →
+  //   AssertionError: null !== 'ningún parte ni imputación declara la cuadrilla'
+  // Medido sobre las 6 obras: cuadrilla_id está en NULL en las 251 filas de obra_ejecucion. Sin el
+  // motivo, esa ausencia total es indistinguible de una obra sin cuadrillas asignadas.
+  const r = consolidarEjecucion({
+    plan: [{ cotizacionPartidaId: 'p1', actividadId: 'a1', codigo: 'T1', unidad: 'm2', cantidadPlan: 10 }],
+    ejecuciones: [{ actividad_id: 'a1', fecha: '2026-08-22', cantidad: 4, cuadrilla_id: null }],
+    horas: [{ actividad_id: 'a1', fecha: '2026-08-22', horas: 8, persona_id: 'x' }],
+  })
+  assert.deepEqual([...r.partidas[0].cuadrillas], [])
+  assert.equal(r.partidas[0].motivoCuadrilla, 'ningún parte ni imputación declara la cuadrilla')
+  assert.equal(r.resumen.conCuadrilla, 0)
+})
+
+test('con cuadrilla declarada sale identificada y sin motivo — el control PUEDE dar verde', () => {
+  const r = consolidarEjecucion({
+    plan: [{ cotizacionPartidaId: 'p1', actividadId: 'a1', codigo: 'T1', unidad: 'm2', cantidadPlan: 10 }],
+    ejecuciones: [{ actividad_id: 'a1', fecha: '2026-08-22', cantidad: 4, cuadrilla_id: 'cuad-3' }],
+    horas: [{ actividad_id: 'a1', fecha: '2026-08-22', horas: 8, trabajador_o_cuadrilla: 'cuad-3' }],
+  })
+  assert.deepEqual([...r.partidas[0].cuadrillas], ['cuad-3'], 'la misma cuadrilla por dos puertas es UNA cuadrilla')
+  assert.equal(r.partidas[0].motivoCuadrilla, null)
+  assert.equal(r.resumen.conCuadrilla, 1)
+})

@@ -466,3 +466,30 @@ test('con huecos reales la tasa es un número y PUEDE dar 0: se intentó y no se
   assert.equal(comparabilidadViva({ comparables: 0, cuadro }).tasa, 0)
   assert.equal(comparabilidadViva({ comparables: 2, cuadro }).tasa, 0.5)
 })
+
+test('§E2 · el rendimiento NO se calcula sobre una cantidad de 0: sería un ritmo infinito', () => {
+  // ═══ DOS GUARDS INDEPENDIENTES, Y LA MUTACIÓN DE UNO SOLO NO ALCANZA ═══
+  //
+  // MUTACIÓN CORRIDA (a): sacar el `cant > 0` de `obsRendimiento` → SIGUE VERDE.
+  // MUTACIÓN CORRIDA (b): en `num()`, cambiar `!Number.isFinite` por `Number.isNaN` → SIGUE VERDE.
+  // MUTACIÓN CORRIDA (a+b), las dos juntas →
+  //   AssertionError: true !== false  «cantidad 0 con horas gastadas no tiene rendimiento»
+  //
+  // Se deja escrito porque es información: la protección está DUPLICADA —el guard explícito y el
+  // filtro de `num()`— y por eso ninguna mutación sola la rompe. Declarar un rojo que no ocurrió
+  // sería peor que no tener el test. Lo que este test sí prueba es el COMPORTAMIENTO: 90 HH sobre
+  // 0 m³ nunca publica «Infinity HH/m³», que es lo que pondría a esa partida a encabezar cualquier
+  // ranking de desvío para siempre.
+  const obs = compararPartida({
+    plan: PLAN[0],
+    real: consolidar({
+      ejecuciones: [{ actividad_id: 'a1', fecha: '2026-08-22', cantidad: 0 }],
+      horas: [{ actividad_id: 'a1', fecha: '2026-08-22', horas: 90, persona_id: 'p' }],
+    }).partidas[0],
+  })
+  const r = de(obs, CONCEPTO.RENDIMIENTO, 'T1001')
+  assert.equal(r.comparable, false, 'cantidad 0 con horas gastadas no tiene rendimiento: tiene un problema')
+  assert.equal(r.real, null)
+  assert.equal(r.desvioPct, null)
+  assert.notEqual(r.real, Infinity)
+})

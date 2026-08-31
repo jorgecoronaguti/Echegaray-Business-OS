@@ -200,6 +200,22 @@ export function consolidarEjecucion({
         ? magnitud(hh.filter((h) => h.improductiva).reduce((a, h) => a + (num(h.horas) ?? 0), 0), UNIDAD.HH)
         : magnitud(null, UNIDAD.HH, { detalle: 'ninguna imputación marcada improductiva' }),
       personas: personasDistintas(hh),
+      // ═══ LA CUADRILLA (§E1) — UN HUECO DECLARADO, NO UN CAMPO QUE NO EXISTE ═══
+      //
+      // `leerEjecucionReal` YA trae `cuadrilla_id` y esta consolidación lo tiraba, así que el hueco
+      // era invisible: nadie podía ver que falta porque el dato ni siquiera llegaba a la salida.
+      // Medido el 31/08/2026 sobre las 6 obras: `obra_ejecucion.cuadrilla_id` está en NULL en las
+      // 251 filas y `registros_hh.trabajador_o_cuadrilla` en las 25. O sea, el rendimiento nunca se
+      // va a poder atribuir a una cuadrilla, y esa es exactamente la variable que explica por qué
+      // la misma tarea rinde distinto en dos frentes.
+      //
+      // Sale como hueco DECLARADO y no como lista vacía: `[]` se lee como «no hubo cuadrillas».
+      cuadrillas: Object.freeze([...new Set([
+        ...eje.map((e) => e.cuadrilla_id).filter(Boolean),
+        ...hh.map((h) => h.trabajador_o_cuadrilla).filter(Boolean),
+      ])].map(String)),
+      motivoCuadrilla: (eje.some((e) => e.cuadrilla_id) || hh.some((h) => h.trabajador_o_cuadrilla))
+        ? null : 'ningún parte ni imputación declara la cuadrilla',
       duracion: duracionDeCalendario(fechas),
       diasTrabajados: diasTrabajados(fechas),
       // — material, equipo, costo
@@ -243,6 +259,9 @@ export function consolidarEjecucion({
       sinNingunRegistro: partidas.filter((p) => p.motivoCantidad === 'SIN_REGISTRO').length,
       conHHReales: partidas.filter((p) => p.hhReales.valor !== null).length,
       conCostoReal: partidas.filter((p) => p.costoReal.valor !== null).length,
+      // Si esto es 0 con partidas ejecutadas, el rendimiento no se puede atribuir a ninguna
+      // cuadrilla y la comparación entre frentes queda sin la variable que la explica.
+      conCuadrilla: partidas.filter((p) => p.cuadrillas.length > 0).length,
       cerradas: partidas.filter((p) => p.cerrada).length,
       // El contador que impide que «no hay desvíos» signifique «no miré». Si esto no es cero, hay
       // ejecución real que no está sumando a ninguna partida.
