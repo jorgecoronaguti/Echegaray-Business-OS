@@ -104,12 +104,24 @@ test('una cohorte de comparables que no coinciden entre sí NO resuelve el preci
 test('un comparable con fecha vieja NO afirma precio: hereda la fecha de quien le prestó el número', () => {
   // Un comparable no tiene fecha propia: lleva la de la observación que copió. Si esa venció, el
   // comparable venció — y encima con la mitad de la ventana, porque `FACTOR_ORIGEN.COMPARABLE` es
-  // 0,5. Acá: vigencia de 21 días contra 3.155 de antigüedad.
+  // 0,5. Ninguno de los dos cierra nada.
   const viejos = COMPARABLES.map((c) => ({ ...c, observadoEn: '2018-01-10' }))
   const resolver = resolvedorDePrecios({ recursos, comparables: viejos })
   const r = resolver(HIERRO.codigo, obsInterna(1700, '2017-06-07'), { hoy: HOY })
   assert.equal(r.resolucion.resultado, RESULTADO.NECESITA_HUMANO)
   assert.equal(r.estado, ESTADO.HISTORICO)
-  assert.ok(r.resolucion.vigencia.dias < 30)
-  assert.match(r.resolucion.vigencia.porQue, /recortado ×0\.5 porque el precio viene de COMPARABLE/)
+})
+
+test('con los dos vencidos, el que se MUESTRA es la observación propia, no el comparable más nuevo', () => {
+  // Este test cambió de expectativa a propósito. Antes afirmaba lo que el motor hacía —mostrar el
+  // COMPARABLE de 2018 por ser más nuevo que el interno de 2017— y eso era justamente el defecto:
+  // le ponía adelante a la persona que decide un número INFERIDO de otro recurso, habiendo una
+  // observación del recurso mismo. Ahora manda la procedencia, y el comparable sigue visible.
+  const viejos = COMPARABLES.map((c) => ({ ...c, observadoEn: '2018-01-10' }))
+  const resolver = resolvedorDePrecios({ recursos, comparables: viejos })
+  const r = resolver(HIERRO.codigo, obsInterna(1700, '2017-06-07'), { hoy: HOY })
+  assert.equal(r.resolucion.provenance.resueltoEn, ORIGEN.INTERNO)
+  assert.equal(r.valor, 1700)
+  assert.notEqual(r.valor, 1615)
+  assert.ok(r.resolucion.provenance.descartados.some((d) => d.origen === ORIGEN.COMPARABLE && d.observadoEn === '2018-01-10'))
 })

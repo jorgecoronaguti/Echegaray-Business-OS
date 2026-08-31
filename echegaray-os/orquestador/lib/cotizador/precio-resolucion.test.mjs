@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { ESTADO, TIPO_ISSUE, SEVERIDAD } from './contrato.mjs'
 import { FUENTE } from '../plano/fuente.mjs'
 import {
-  ORIGEN, RESULTADO, FUENTE_DE_ORIGEN,
+  ORIGEN, RESULTADO, FUENTE_DE_ORIGEN, ES_DEL_RECURSO, ORDEN_CASCADA,
   candidatoDePrecio, materialidadDe, evaluarCandidato, compararFuentes, resolverPrecio, necesitaHumano,
   TRAMO_PARITARIA_HASTA,
 } from './precio-resolucion.mjs'
@@ -354,4 +354,81 @@ test('CADUCAR NO ES DEGRADARSE · a igual fecha, el material sigue vivo y el jor
 test('NEGATIVO · el 31/08, el último día del tramo, TODAVÍA vale', () => {
   const p = resolverPrecio({ recurso: OFICIAL, candidatos: [basicoDeAgosto()], hoy: new Date('2026-08-31T00:00:00Z') })
   assert.equal(p.resultado, RESULTADO.VIGENTE, 'el borde se incluye: el acuerdo rige HASTA el 31 inclusive')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// ENTRE DOS VENCIDOS, LA PROCEDENCIA MANDA SOBRE LA FECHA
+//
+// Ninguno de estos candidatos cierra un presupuesto —todos salen NECESITA_HUMANO—, pero UNO es el
+// que se le muestra a la persona que va a decidir, y va a decidir mirando ése. Ordenando sólo por
+// fecha, un COMPARABLE de 2026 (que es el precio de OTRO recurso) desplazaba a la observación
+// propia de 2017. Más reciente no es más cierto cuando cambia la procedencia.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+const vencido = (origen, observadoEn, valor) => cand({ valor, origen, observadoEn, detalleFuente: `${origen} ${observadoEn}` })
+
+test('un COMPARABLE más nuevo NO desplaza a la observación propia vencida', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY,
+    candidatos: [vencido(ORIGEN.INTERNO, '2017-06-07', 1000), vencido(ORIGEN.COMPARABLE, '2026-01-15', 9999)],
+  })
+  assert.equal(p.resultado, RESULTADO.NECESITA_HUMANO)
+  assert.equal(p.provenance.resueltoEn, ORIGEN.INTERNO)
+  assert.equal(p.valor, 1000)
+  assert.notEqual(p.valor, 9999, 'un precio inferido de otro recurso no es mejor evidencia sobre éste')
+})
+
+test('un precio de la WEB más nuevo tampoco desplaza a una compra real vencida', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY,
+    candidatos: [vencido(ORIGEN.COMPRA_ECSAS, '2020-02-13', 500), vencido(ORIGEN.WEB, '2026-06-01', 7777)],
+  })
+  assert.equal(p.provenance.resueltoEn, ORIGEN.COMPRA_ECSAS)
+  assert.equal(p.valor, 500)
+})
+
+test('el desplazado NO se esconde: queda entero en provenance.descartados', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY,
+    candidatos: [vencido(ORIGEN.INTERNO, '2017-06-07', 1000), vencido(ORIGEN.COMPARABLE, '2026-01-15', 9999)],
+  })
+  const d = p.provenance.descartados.find((x) => x.origen === ORIGEN.COMPARABLE)
+  assert.ok(d, 'el comparable desplazado tiene que seguir visible')
+  assert.equal(d.valor, 9999)
+  assert.equal(d.observadoEn, '2026-01-15')
+  assert.match(p.porQue, /inferencias más nuevas pero sobre otra cosa/)
+})
+
+test('A IGUAL procedencia SÍ decide la fecha: entre dos del propio recurso gana el más nuevo', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY,
+    candidatos: [vencido(ORIGEN.INTERNO, '2017-06-07', 1000), vencido(ORIGEN.COMPRA_ECSAS, '2022-05-14', 3000)],
+  })
+  assert.equal(p.provenance.resueltoEn, ORIGEN.COMPRA_ECSAS)
+  assert.equal(p.valor, 3000)
+})
+
+test('entre dos inferencias también decide la fecha, y no se menciona ningún desplazado propio', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY,
+    candidatos: [vencido(ORIGEN.WEB, '2024-03-03', 200), vencido(ORIGEN.COMPARABLE, '2025-10-01', 400)],
+  })
+  assert.equal(p.provenance.resueltoEn, ORIGEN.COMPARABLE)
+  assert.equal(p.valor, 400)
+})
+
+test('la elección entre vencidos es determinística con los candidatos en cualquier orden (§39)', () => {
+  const cs = [vencido(ORIGEN.COMPARABLE, '2026-01-15', 9999), vencido(ORIGEN.INTERNO, '2017-06-07', 1000), vencido(ORIGEN.WEB, '2026-07-01', 8888)]
+  const a = resolverPrecio({ recurso: HORMIGON, candidatos: cs, hoy: HOY })
+  const b = resolverPrecio({ recurso: HORMIGON, candidatos: [...cs].reverse(), hoy: HOY })
+  assert.equal(a.provenance.resueltoEn, ORIGEN.INTERNO)
+  assert.equal(a.valor, b.valor)
+})
+
+test('ES_DEL_RECURSO clasifica los cuatro orígenes y ninguno queda sin declarar', () => {
+  assert.deepEqual(Object.keys(ES_DEL_RECURSO).sort(), [...ORDEN_CASCADA].sort())
+  assert.equal(ES_DEL_RECURSO[ORIGEN.INTERNO], true)
+  assert.equal(ES_DEL_RECURSO[ORIGEN.COMPRA_ECSAS], true)
+  assert.equal(ES_DEL_RECURSO[ORIGEN.COMPARABLE], false)
+  assert.equal(ES_DEL_RECURSO[ORIGEN.WEB], false)
 })

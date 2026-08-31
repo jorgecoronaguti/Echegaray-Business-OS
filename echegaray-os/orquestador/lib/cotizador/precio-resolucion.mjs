@@ -62,6 +62,23 @@ export const FUENTE_DE_ORIGEN = Object.freeze({
   WEB: FUENTE.WEB,
 })
 
+/**
+ * ¿ESTE ORIGEN OBSERVÓ AL RECURSO, O LO INFIRIÓ DE OTRA COSA?
+ *
+ * `INTERNO` y `COMPRA_ECSAS` son observaciones DEL RECURSO: el catálogo lo dice de él, la factura
+ * se pagó por él. `COMPARABLE` y `WEB` son inferencias SOBRE él — uno le copia el precio a otro
+ * recurso, el otro lo lee de una página que no es de esta empresa.
+ *
+ * La distinción no cambia la cascada (eso lo hace `ORDEN_CASCADA`): decide cuál de dos candidatos
+ * VENCIDOS se le muestra a la persona que va a resolver. Ver `sinVigente`.
+ */
+export const ES_DEL_RECURSO = Object.freeze({
+  INTERNO: true,
+  COMPRA_ECSAS: true,
+  COMPARABLE: false,
+  WEB: false,
+})
+
 /** En qué puede terminar una resolución. */
 export const RESULTADO = Object.freeze({
   VIGENTE: 'VIGENTE',                   // había un precio interno vigente: no hubo que hacer nada
@@ -272,11 +289,27 @@ function sinVigente({ recurso, evaluados, recorrido, mat, hoy }) {
         : 'se recorrió la cascada entera —catálogo interno, compras reales de ECSAS, observaciones comparables y web— y ninguna fuente tiene este recurso',
     })
   }
-  const mejor = [...viejos].sort((a, b) => b.observadoEn.localeCompare(a.observadoEn))[0]
+  // ═══ ENTRE DOS QUE NO CIERRAN, GANA LA PROCEDENCIA ANTES QUE LA FECHA ═══
+  //
+  // Ninguno de estos candidatos cierra un presupuesto: todos salen NECESITA_HUMANO. Pero UNO se le
+  // muestra a la persona que va a decidir, y ordenando sólo por fecha un COMPARABLE de 2026 —que es
+  // el precio de OTRO recurso— desplazaba a la observación propia de 2017. Más reciente no es más
+  // cierto cuando cambia la procedencia: una inferencia sobre este recurso nunca es mejor evidencia
+  // sobre él que una observación de él mismo, por más nueva que sea.
+  //
+  // El desplazado NO se esconde: sigue entero en `provenance.descartados`, con su origen, su valor
+  // y su fecha. La regla no es tapar el comparable, es no ponerlo primero.
+  const mejor = [...viejos].sort((a, b) => Number(ES_DEL_RECURSO[b.origen] ?? false) - Number(ES_DEL_RECURSO[a.origen] ?? false)
+    || b.observadoEn.localeCompare(a.observadoEn)
+    || a.valor - b.valor)[0]
+  const inferidosDesplazados = viejos.filter((c) => c !== mejor && !ES_DEL_RECURSO[c.origen])
   return precio({
     recurso, elegido: mejor, evaluados, recorrido, mat, hoy,
     resultado: RESULTADO.NECESITA_HUMANO, estado: ESTADO.HISTORICO, cotejo: null,
-    porQue: `el único precio que hay venció y NO se usa en silencio: ${mejor.porQue}`,
+    porQue: `el único precio que hay venció y NO se usa en silencio: ${mejor.porQue}`
+      + (inferidosDesplazados.length
+        ? ` — se muestra éste, que es una observación del propio recurso, y no ${inferidosDesplazados.map((c) => `el ${c.origen} del ${c.observadoEn}`).join(' ni ')}, que son inferencias más nuevas pero sobre otra cosa`
+        : ''),
   })
 }
 
