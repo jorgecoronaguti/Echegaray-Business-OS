@@ -841,7 +841,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // 50/50 se VEA y que el titular cierre. Se resuelven separándolas: EN EFECTIVO neta lo ya
     // entregado —igual que en los otros dos cuadros, así el titular puede sumar la columna— y la
     // mitad negra del acuerdo, que es igual a la blanca, se muestra entera en su propia columna.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (mitad blanca)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD NEGRA del acuerdo')
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR TRANSFERIR', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
@@ -878,7 +878,17 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
         // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
         // Lo ya entregado se resta al final, en su columna, sin tocar el 50/50.
-        `=${cita}`, `=ROUND(N(E${nf})-N(D${nf})-N(C${nf});0)`, `=N(E${nf})+N(F${nf})`, `=ROUND(N(E${nf});0)`)
+        // ═══ LO YA TRANSFERIDO SE RESTA DEL BANCO, NO DEL EFECTIVO (31/08) ═══
+        //
+        // Lo tenía al revés y el dueño lo vio en las tarjetas: los $300.000 de cada uno salieron
+        // por TRANSFERENCIA —el lote de haberes del 28/08—, así que reducen lo que falta
+        // transferir, no los billetes. Restándolos del efectivo, la tarjeta «POR TRANSFERENCIA»
+        // pedía transferir $600.000 que YA habían salido.
+        //
+        // De paso el 50/50 vuelve a leerse solo: EN EFECTIVO ($330.431) es exactamente la mitad
+        // negra, igual a lo liquidado, y lo que se descontó se ve en la columna de al lado.
+        `=ROUND(N(${cita})-N(D${nf})-N(C${nf});0)`, `=ROUND(N(${cita});0)`,
+        `=N(E${nf})+N(F${nf})`, `=ROUND(N(${cita});0)`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
