@@ -108,6 +108,19 @@ async function main() {
     b: num(porRotulo(jornales, /^Oficina/, 3)),
   }))
 
+  // A bis · CÓMO SE REPARTE ese pago. Que el TOTAL coincida no alcanza: el 31/08 las dos pestañas
+  // cerraban en $3.600.000 y diferían en $473.716,88 entre banco y efectivo, porque Jornales
+  // publicaba la mitad calculada en vez de lo que dicen los recibos. Un total que cierra con un
+  // reparto que no cierra es plata mal transferida con cara de estar bien.
+  cruces.push(cruzar({
+    que: 'oficina · lo que se le TRANSFIERE', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
+    a: num(porRotulo(nomina, /^⇒.*de oficina/, 4)), b: num(porRotulo(jornales, /^Oficina/, 6)),
+  }))
+  cruces.push(cruzar({
+    que: 'obreros · lo que se les TRANSFIERE', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
+    a: num(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 4)), b: num(porRotulo(jornales, /^Obreros/, 6)),
+  }))
+
   // B · CUÁNTA GENTE COBRA ESTA QUINCENA — y no «cuánta gente hay», que es otra pregunta.
   //
   // La primera versión cruzaba el ⇒ de Plantel (19) contra Jornales (17) y daba rojo. No era un
