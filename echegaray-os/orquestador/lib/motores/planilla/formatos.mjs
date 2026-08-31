@@ -60,67 +60,65 @@ export function formatoDe({ mimeType, name } = {}) {
 }
 
 /**
- * Qué permite cada formato. `leer` es la lectura estructural (valores, fórmulas, tipos);
- * `escribir` es cambiar celdas; `estructura` es crear/copiar/borrar hojas y rangos con nombre.
+ * QUÉ PERMITE CADA FORMATO — una TABLA, no un `switch`.
  *
- * `motivo` explica el NO en términos de lo que se perdería, no en términos de la librería: al que
- * pregunta le importa su archivo, no nuestras dependencias.
+ * `leer` es la lectura estructural (valores, fórmulas, tipos); `escribir` es cambiar celdas;
+ * `estructura` es crear/copiar/borrar hojas y rangos con nombre.
+ *
+ * `motivo` explica el NO en términos de lo que se PERDERÍA, no de qué librería nos falta: al que
+ * pregunta le importa su archivo, no nuestras dependencias. Y `alternativa` existe porque un NO sin
+ * salida deja al llamador clavado — que es como termina alguien improvisando el round-trip a mano.
  */
+const CONVERTIR = 'convertir una COPIA a Google Sheets y operar sobre la copia'
+
+const TABLA = Object.freeze({
+  [FORMATOS.GOOGLE]: { leer: true, escribir: true, estructura: true, motivo: null, alternativa: null },
+  [FORMATOS.XLSM]: {
+    leer: true,
+    escribir: false,
+    estructura: false,
+    motivo: 'escribir un .xlsm con las herramientas de este sistema borra el proyecto VBA (las macros), '
+      + 'la validación de datos, el formato condicional, los gráficos y las tablas dinámicas. El archivo '
+      + 'quedaría abriéndose sin dar error y sin funcionar.',
+    alternativa: CONVERTIR,
+  },
+  [FORMATOS.XLSX]: {
+    leer: true,
+    escribir: false,
+    estructura: false,
+    motivo: 'reescribir un .xlsx con las herramientas de este sistema conserva los valores pero pierde '
+      + 'validación de datos, formato condicional, gráficos, tablas dinámicas y rangos con nombre. '
+      + 'La pérdida es silenciosa: el archivo abre igual. Medido en `formatos-xlsx.test.mjs`.',
+    alternativa: CONVERTIR,
+  },
+  [FORMATOS.XLS]: {
+    leer: true,
+    escribir: false,
+    estructura: false,
+    motivo: 'el formato .xls (Excel 97-2003) sólo se lee; escribirlo no está implementado.',
+    alternativa: CONVERTIR,
+  },
+  [FORMATOS.CSV]: {
+    leer: true,
+    escribir: false,
+    estructura: false,
+    motivo: 'un CSV no tiene fórmulas, tipos, hojas ni formato: escribirlo desde un motor que promete '
+      + 'preservar esas cosas prometería algo que el formato no puede cumplir.',
+    alternativa: 'importarlo a una hoja de Google Sheets',
+  },
+  [FORMATOS.DESCONOCIDO]: {
+    leer: false,
+    escribir: false,
+    estructura: false,
+    motivo: 'no es una planilla que este motor sepa leer.',
+    alternativa: null,
+  },
+})
+
+/** Las capacidades de un formato, con el formato adentro para que el error las pueda citar enteras. */
 export function capacidades(formato) {
-  switch (formato) {
-    case FORMATOS.GOOGLE:
-      return { formato, leer: true, escribir: true, estructura: true, motivo: null, alternativa: null }
-    case FORMATOS.XLSM:
-      return {
-        formato,
-        leer: true,
-        escribir: false,
-        estructura: false,
-        motivo: 'escribir un .xlsm con las herramientas de este sistema borra el proyecto VBA '
-          + '(las macros), la validación de datos, el formato condicional, los gráficos y las tablas '
-          + 'dinámicas. El archivo quedaría abriéndose sin dar error y sin funcionar.',
-        alternativa: 'convertir una COPIA a Google Sheets y operar sobre la copia',
-      }
-    case FORMATOS.XLSX:
-      return {
-        formato,
-        leer: true,
-        escribir: false,
-        estructura: false,
-        motivo: 'reescribir un .xlsx con las herramientas de este sistema conserva los valores pero '
-          + 'pierde validación de datos, formato condicional, gráficos, tablas dinámicas y rangos '
-          + 'con nombre. La pérdida es silenciosa: el archivo abre igual.',
-        alternativa: 'convertir una COPIA a Google Sheets y operar sobre la copia',
-      }
-    case FORMATOS.XLS:
-      return {
-        formato,
-        leer: true,
-        escribir: false,
-        estructura: false,
-        motivo: 'el formato .xls (Excel 97-2003) sólo se lee; escribirlo no está implementado.',
-        alternativa: 'convertir una COPIA a Google Sheets y operar sobre la copia',
-      }
-    case FORMATOS.CSV:
-      return {
-        formato,
-        leer: true,
-        escribir: false,
-        estructura: false,
-        motivo: 'un CSV no tiene fórmulas, tipos, hojas ni formato: escribirlo desde un motor que '
-          + 'promete preservar esas cosas prometería algo que el formato no puede cumplir.',
-        alternativa: 'importarlo a una hoja de Google Sheets',
-      }
-    default:
-      return {
-        formato: FORMATOS.DESCONOCIDO,
-        leer: false,
-        escribir: false,
-        estructura: false,
-        motivo: 'no es una planilla que este motor sepa leer.',
-        alternativa: null,
-      }
-  }
+  const f = TABLA[formato] ? formato : FORMATOS.DESCONOCIDO
+  return { formato: f, ...TABLA[f] }
 }
 
 /** ¿Este formato admite la operación? Devuelve `null` si sí, o el objeto de capacidades si no —
