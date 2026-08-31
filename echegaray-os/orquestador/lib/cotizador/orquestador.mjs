@@ -33,6 +33,19 @@ import { huellaDeEntradas, huellaDeResultado, gateDeCongelado } from './freeze.m
 import { metricasDeCorrida } from './metricas.mjs'
 import { explotarRecursos, reconciliar } from './explosion.mjs'
 import { barridoDeFuga, gateDeFuga, exigeConfirmacion } from './seguridad.mjs'
+// ═══ LOS DOS IMPORTS QUE FALTABAN, Y POR QUÉ NADIE LO NOTÓ ═══
+//
+// `indirectoCalculado`, `indirectoAplicado` y `proyectarACascada` se USAN abajo (etapa COMMERCIAL) y
+// nunca se importaron. En ESM eso no es un error de parseo: es un `ReferenceError` en tiempo de
+// ejecución, y sólo se alcanza cuando la corrida trae `estructuraIndirecta` o
+// `politicaEfectivaDeLaCotizacion` — los dos con default `null`. Ninguna corrida se los pasaba, así
+// que el camino nunca se evaluó y los tests seguían verdes.
+//
+// Es la prueba dura de por qué la DoD dejaba #11 y #12 en NO_VERIFICABLE: no es que los indirectos
+// «entren por el porcentaje de la política» por decisión de diseño, es que la primera cotización que
+// intentara usarlos se caía con `indirectoAplicado is not defined`. EXISTE_CÓDIGO ≠ CAPACIDAD.
+import { indirectoCalculado, indirectoAplicado } from './indirectos.mjs'
+import { proyectarACascada } from './politica-version.mjs'
 import { evaluarComposicion, complementosDe } from '../base-maestra-completitud.mjs'
 import { preguntaParaCerrar } from '../base-maestra-pregunta.mjs'
 
@@ -339,7 +352,18 @@ export function correr({
         : politicaDeLaCascada ? [`política v${politicaDeLaCascada.version} (${politicaDeLaCascada.origen}) — ${politicaDeLaCascada.fuente}`] : []),
       ...(ind ? [`indirecto ${ind.estado}: ${ind.porQue ?? ''}`] : []),
     ],
-    missing_data: [...(ind?.issues ?? []).map((i) => i.detalle ?? i.tipo ?? String(i)), ...(proy?.faltan ?? [])],
+    // ═══ LOS OVERRIDES RECHAZADOS DE LA POLÍTICA TAMBIÉN VIAJAN ═══
+    //
+    // `politicaEfectiva()` produce `rechazados` e `issues` —un intento de bajar el beneficio al 15 %
+    // sin firma, por ejemplo— y el orquestador no los leía: sólo miraba los del indirecto y los
+    // `faltan` de la proyección. Un override rechazado desaparecía de la corrida entera, y «se
+    // intentó y no se pudo» es exactamente lo que hay que ver cuando alguien pregunta cómo se armó
+    // este precio. Se encontró al ejercitar #12 por primera vez.
+    missing_data: [
+      ...(ind?.issues ?? []).map((i) => i.detalle ?? i.tipo ?? String(i)),
+      ...(politicaEfectivaDeLaCotizacion?.issues ?? []).map((i) => i.detalle ?? i.type ?? String(i)),
+      ...(proy?.faltan ?? []),
+    ],
     blocking_issues: casc.estado === ESTADO.CALCULADO ? [] : [{
       tipo: 'SIN_PRECIO_CALCULABLE', entidad: 'cotización',
       detalle: proy && !proy.politica ? (proy.porQue ?? 'la política efectiva no proyecta a la cascada') : casc.porQue,
