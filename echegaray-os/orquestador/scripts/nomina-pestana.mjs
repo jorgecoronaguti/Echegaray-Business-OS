@@ -451,8 +451,24 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // Sumarlas escondía cuál de las dos era, y son distintas para decidir: un adelanto en efectivo se
   // discute con quien lo entregó, una transferencia se busca en el extracto. Las dos se restan del
   // total —eso no cambia— pero cada una se ve y se audita por su lado.
+  // ═══ LA CATEGORÍA, PEDIDA POR EL DUEÑO (31/08): «necesito q aparezcan las categorias» ═══
+  //
+  // Va con el respaldo —después de la plata, antes de las horas— porque es de la misma familia: es
+  // lo que EXPLICA la tarifa, no lo que se decide. Y explica bastante: el piso de convenio contra el
+  // que se mide el aumento sale de ella, así que dos personas con el mismo $/hora y distinta
+  // categoría suben distinto, y sin esta columna eso no se puede leer en la fila.
+  //
+  // SE MUESTRA EL NOMBRE DE CONVENIO, NO EL CÓDIGO DE LA PLANILLA. El espejo trae «OF», «OF E»,
+  // «M OF», «A» —códigos del dueño— y el piso vive en `_UOCRA_RAW` bajo «Oficial», «Oficial
+  // Especializado», «Medio Oficial», «Ayudante». Publicar el código obligaría a traducir de memoria
+  // para saber contra qué piso se está midiendo a cada uno.
+  //
+  // Y LA FILA DICE CUÁNDO LA EQUIVALENCIA LA DEDUJO EL OS. Con «▲» al lado: `M OF → Medio Oficial`
+  // es una lectura del OS que nadie declaró, y dibujarla igual que una declarada convierte una
+  // inferencia en un hecho silencioso — el mismo aviso que la pestaña ya da al pie, ahora en la fila
+  // de quien afecta.
   fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
+    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Categoría', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -602,15 +618,19 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // cuando hay días pendientes, así la fórmula no lleva un «+0» que hace dudar.
     const celdaHoras = e ? `=N(${J}$V$${e})${q.pendientes ? `+${Math.round(q.pendientes)}` : ''}` : Math.round(q.horas)
     const celdaJornal = e ? `=N(${J}$W$${e})` : Math.round(q.jornal)
+    // La categoría de convenio: la declarada si existe, y si la dedujo el OS va con «▲». Sin
+    // equivalencia se muestra el código crudo de la planilla, que es mejor que un blanco: dice que
+    // esa categoría no está mapeada y por eso su fila no tiene piso.
+    const catConvenio = conv ? `${conv}${esInferida(codigo) ? ' ▲' : ''}` : (codigo || SIN_DATO)
     fila(nombreFila, celdaAdel, celdaTransf, celdaBanco,
       `=N(F${n})-N(D${n})-N(C${n})-N(B${n})`, // efectivo = total − banco − transferido − adelanto
-      `=N(J${n})*N(K${n})`,                  // total = horas × $/h
+      `=N(K${n})*N(L${n})`,                  // total = horas × $/h
       jornalNuevo != null ? `=N(H${n})-N(D${n})-N(C${n})-N(B${n})` : SIN_DATO,
-      jornalNuevo != null ? `=N(J${n})*N(L${n})` : SIN_DATO,
+      jornalNuevo != null ? `=N(K${n})*N(M${n})` : SIN_DATO,
       // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
       // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
       jornalNuevo != null ? `=N(H${n})-N(F${n})` : SIN_DATO,
-      celdaHoras, celdaJornal,
+      catConvenio, celdaHoras, celdaJornal,
       jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
@@ -619,9 +639,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   const n0 = nF - activos.filter((x) => quincena.porClave.has(x.clave) && !tieneLiquidacionFinal(x.nombre)).length + 1
   const suma = (c) => `=SUM(${c}${n0}:${c}${nF})`
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
-    // Hasta J: la plata y las horas se suman. K y L son tarifas — promediar $/h es inventar un
-    // número que nadie cobra, así que quedan vacías a propósito.
-    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '', '')
+    // Hasta I la plata; J es la categoría (texto, no se suma) y K las horas, que sí. L y M son
+    // tarifas — promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
+    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), '', suma('K'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -1037,7 +1057,10 @@ async function formatear(google, hoja, filas) {
   const unidadDe = (rotulo) => {
     const t = String(rotulo ?? '').toLowerCase()
     if (/fecha|ingreso|egreso|vence/.test(t)) return E.NUM.fecha
-    if (/antig|cat\.|sector|convenio|régimen|regimen|carpeta|falta|persona|estado|qué|que es|último|ultimo|variante|unidad|alta|libreta|dni|epp|ieric/.test(t)) return E.NUM.texto
+    // «categor» cubre «Cat.» y «Categoría»: es TEXTO. Sin esto caía al default y la columna nueva
+    // salía con formato de moneda — una categoría dibujada como plata es el defecto que dejó 79
+    // celdas de texto dentro de celdas numéricas en «Plantel».
+    if (/antig|categor|cat\.|sector|convenio|régimen|regimen|carpeta|falta|persona|estado|qué|que es|último|ultimo|variante|unidad|alta|libreta|dni|epp|ieric/.test(t)) return E.NUM.texto
     // «Quincenas cargadas» es un CONTEO (1 de 2). Sin esto caía en el default y salía «$1»: un
     // recuento vestido de pesos, que es el mismo defecto que puso «$45.803» en una fecha de ingreso.
     if (/hora|hs\b|\$\/h|recibos|personas|días|dias|quincenas|cargadas/.test(t)) return E.NUM.cantidad

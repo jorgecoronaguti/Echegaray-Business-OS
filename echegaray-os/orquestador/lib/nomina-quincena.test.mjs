@@ -126,12 +126,17 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   const decide = /fila\('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
   assert.ok(decide, 'se fue el cuadro de instrucción de pago')
   const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  // DOCE Y NO ONCE, por decisión del dueño (31/08): «no me gusta esa mezcla de conceptos en la
-  // columna "ya transferido" con "adelantos" separar». La columna que había sumaba billetes
-  // entregados en obra con transferencias del banco y publicaba el resultado como un solo hecho.
-  // El tope sube exactamente uno y sigue siendo un tope: es lo que impide que el cuadro vuelva a
-  // llenarse de detalle.
-  assert.ok(dc.length <= 12, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  // TRECE, Y CADA UNA LA PIDIÓ EL DUEÑO (31/08). El tope existe para que el cuadro no vuelva a
+  // llenarse de detalle solo, no para bloquear lo que él pide: sube de a uno y con el pedido escrito.
+  //
+  //   +1 «no me gusta esa mezcla de conceptos en la columna "ya transferido" con "adelantos"
+  //      separar» — sumaba billetes de obra con transferencias del banco en una sola celda.
+  //   +1 «necesito q aparezcan las categorias de los empleados» — sin ella no se puede leer contra
+  //      qué piso se mide el aumento de cada uno.
+  assert.ok(dc.length <= 13, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  // Y la categoría va con el respaldo, no delante de la plata: es lo que EXPLICA la tarifa.
+  assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Categoría'),
+    'la categoría se metió delante de la plata: el cuadro decide un pago, no describe un plantel')
   // Y la plata va antes que el respaldo: el número que decide primero, cómo salió después.
   assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Horas'),
     'el detalle de horas y tarifas se metió delante de la plata')
