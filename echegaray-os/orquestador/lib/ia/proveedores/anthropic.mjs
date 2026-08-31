@@ -61,12 +61,40 @@ export const anthropic = {
     if (temperatura != null) cuerpo.temperature = temperatura
     if (Array.isArray(herramientas) && herramientas.length) cuerpo.tools = herramientas
 
-    const res = await fetchImpl(`${HOST}/v1/messages`, {
+    const pedir = (c) => fetchImpl(`${HOST}/v1/messages`, {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': VERSION, 'content-type': 'application/json' },
-      body: JSON.stringify(cuerpo),
+      body: JSON.stringify(c),
       signal: señal,
     })
+
+    let res = await pedir(cuerpo)
+
+    // ═══ `temperature` ESTÁ DEPRECADO EN LOS MODELOS NUEVOS, Y EL 400 ES DURO ═══
+    //
+    // Medido: `temperatura: 0` contra la capacidad COMPLEX (opus) devuelve
+    // `400 · temperature is deprecated for this model`; contra haiku sigue andando. Hoy no muerde
+    // porque los dos llamadores vivos —el asistente de Mattermost y el intérprete de presupuestos—
+    // van a haiku, pero muerde el día que alguien rutee uno a COMPLEX o cambie `ORQ_ASISTENTE_MODELO`.
+    // Ese día el error no se ve como «cambió el modelo»: se ve como que el bot dejó de entender.
+    //
+    // NO se resuelve con una lista de modelos que aceptan `temperature`: esa lista se pudre sola y
+    // el próximo modelo la vuelve a romper en silencio. Se resuelve reaccionando a lo que la API
+    // efectivamente dice — se reintenta UNA vez sin el parámetro, y sólo ante ESTE error. Cualquier
+    // otro 400 (saldo, esquema, modelo inexistente) sigue subiendo tal cual: reintentar a ciegas
+    // convertiría un error de saldo en dos llamadas y el mismo fallo.
+    if (!res.ok && res.status === 400 && cuerpo.temperature !== undefined) {
+      const detalle = await res.text().catch(() => '')
+      if (/temperature/i.test(detalle) && /deprecat|unsupported|not supported/i.test(detalle)) {
+        const { temperature, ...sinTemperatura } = cuerpo
+        res = await pedir(sinTemperatura)
+      } else {
+        const err = new Error(`anthropic 400: ${detalle.slice(0, 200)}`)
+        err.status = 400
+        err.cuerpo = detalle
+        throw err
+      }
+    }
 
     if (!res.ok) {
       // El cuerpo del error lleva el motivo —«credit balance is too low»— y sin él un 400 de saldo
