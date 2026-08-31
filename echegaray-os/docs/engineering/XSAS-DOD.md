@@ -1,6 +1,6 @@
 # XSAS — DEFINITION OF DONE
 
-**FAIL** · cumplidos **12/24** · en rojo 2 · sin medir 10
+**FAIL** · cumplidos **12/24** · en rojo 3 · sin medir 9
 
 | | criterio | | evidencia |
 |---|---|---|---|
@@ -27,12 +27,13 @@
 | ? | #21 reutiliza aprendizaje | NO_VERIFICABLE | no se juntó evidencia de «reuso» |
 | ? | #22 funciona sin Claude | NO_VERIFICABLE | no se juntó evidencia de «claudeZero» |
 | ? | #23 generaliza a varios proyectos | NO_VERIFICABLE | no se juntó evidencia de «generalizacion» |
-| ? | #24 auditor independiente PASS | NO_VERIFICABLE | no se juntó evidencia de «auditoria» |
+| ✖ | #24 auditor independiente PASS | NO_CUMPLE | `{"veredicto":"PASS_CON_LIMITACIONES","loFirmoQuienNoLoConstruyo":true,"auditor":"auditor-de-cierre · sesión independiente","fecha":"2026-08-31"}` |
 
 ## Lo que bloquea el cierre
 
 - #1 entiende proyectos heterogéneos
 - #8 gestiona precios autónomamente
+- #24 auditor independiente PASS
 
 ## Lo que no se pudo medir
 
@@ -45,7 +46,6 @@
 - #21 reutiliza aprendizaje — no se juntó evidencia de «reuso»
 - #22 funciona sin Claude — no se juntó evidencia de «claudeZero»
 - #23 generaliza a varios proyectos — no se juntó evidencia de «generalizacion»
-- #24 auditor independiente PASS — no se juntó evidencia de «auditoria»
 
 ## Por qué falta esa evidencia
 
@@ -55,4 +55,3 @@
 - **generalizacion**: los 5 casos corren de punta a punta, pero «nadie aflojó un umbral para que cierren» no lo puede contestar una consulta: lo sostienen el diff auditado y las mutaciones corridas. El término va en nulo y el criterio queda sin medir, en vez de darse por bueno con un cero escrito a mano
 - **indirectos**: hay 14 conceptos catalogados y ninguna cotización los usa: el indirecto sigue entrando por el porcentaje de la política
 - **comercial**: las versiones de política existen y ninguna cotización las referencia todavía: hoy la cascada sigue tomando la vigente
-- **auditoria**: todavía no hay firma de auditoría independiente: falta `docs/engineering/xsas-auditoria.json`

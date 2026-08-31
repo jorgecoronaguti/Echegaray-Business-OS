@@ -115,25 +115,29 @@ function desdeLosCasos(casos) {
       formatos: new Set(casos.flatMap((c) => (c.corpus?.documentos ?? []).map((d) => d.formato).filter(Boolean))).size,
     },
     proyectosEntendidos__porque: ('la ingesta abre PDF, DWG, DXF, imagen, planilla, DOC y DOCX sobre archivos reales (57/57 de ARCOR, 0 llamadas al modelo), pero a las corridas de cotización sólo les llegan planillas y Word: las partidas de Quattropani vienen cargadas de la base, no reconstruidas de sus planos'),
-    alcance: {
-      partidasConEstado: q?.partidas?.filter((p) => p.alcance).length ?? 0,
-      sinDecidir: q?.partidas?.filter((p) => p.alcance === 'POR_DEFINIR').length ?? 0,
-    },
+    // Sin corrida no hay nada que medir. Devolver `{0, 0}` publicaba un NO_CUMPLE sobre un motor
+    // que no corrió: «un control que no pudo mirar no dice "no está"», por la puerta de atrás.
+    alcance: q ? {
+      partidasConEstado: q.partidas.filter((p) => p.alcance).length,
+      sinDecidir: q.partidas.filter((p) => p.alcance === 'POR_DEFINIR').length,
+    } : null,
     // Si NINGUNA partida trae evidencia, fuente ni nota, no hay nada que medir: sale sin medir, no
     // en rojo. El motor no falló — la cotización llegó con las partidas cargadas y sin su rastro.
     computo: conEvidencia > 0 ? { cantidades, conGenealogiaCompleta: conEvidencia } : null,
-    computo__porque: conEvidencia > 0 ? undefined
-      : `las ${cantidades} partidas de la corrida traen cantidad pero ninguna trae evidencia, fuente ni nota: vienen cargadas en la cotización, no reconstruidas de un documento. La genealogía completa la prueba \`plano/genealogia.mjs\` sobre el pipeline de planos, no este cuadro`,
+    // Sin el spread condicional la clave se crea igual con `undefined` adentro, y el informe imprime
+    // «computo: undefined» bajo «Por qué falta esa evidencia» sobre un criterio que no la tiene
+    // faltante. Cosmético, pero cae en el documento que lee el dueño.
+    ...(conEvidencia > 0 ? {} : { computo__porque: `las ${cantidades} partidas de la corrida traen cantidad pero ninguna trae evidencia, fuente ni nota: vienen cargadas en la cotización, no reconstruidas de un documento. La genealogía completa la prueba \`plano/genealogia.mjs\` sobre el pipeline de planos, no este cuadro` }),
     // Sumar `partidas.length` convertía «selecciona partidas defendiblemente» en «hay partidas».
     // Sin mapeos declarados el criterio queda SIN MEDIR —no en rojo—: la corrida no ejercita el
     // selector porque las partidas de Quattropani ya vienen cargadas en la cotización.
     mapeo: map.mapeos ? { mapeadas: map.mapeadas, porParecidoTextualSinAtributos: map.sinSalida ?? 0 } : null,
-    composiciones: {
+    composiciones: q ? {
       resueltas: compose.conComposicion ?? 0,
       // El invariante de §6: una composición incompleta no puede haber costado como si estuviera
       // entera. Si el motor detectó incompletas y el costo total igual se afirmó, esto es > 0.
-      incompletasQueCostaronCero: (compose.incompletas ?? 0) > 0 && q?.costoDirecto?.total !== null ? compose.incompletas : 0,
-    },
+      incompletasQueCostaronCero: (compose.incompletas ?? 0) > 0 && typeof q.costoDirecto?.total === 'number' ? compose.incompletas : 0,
+    } : null,
     // `cuadra: null` es «no hay contra qué reconciliar» —el costo no se pudo afirmar—, no «cuadra».
     explosion: q?.reconciliacion?.cuadra === null || q?.reconciliacion?.cuadra === undefined
       ? null
@@ -145,7 +149,10 @@ function desdeLosCasos(casos) {
 
     costoDirecto: { afirmadoEnCasos: conCosto.length },
     incertidumbre: { noDeclarada: m.incertidumbre_no_declarada ?? null },
-    precio: {
+    // Sin ninguna corrida que haya derivado un coeficiente no hay nada que juzgar: publicar
+    // `derivado: false` acusaría al motor de no derivarlo cuando lo que pasó es que no llegó a
+    // costear. La guarda del coeficiente escribible sí se prueba siempre — es pura.
+    precio: conCosto.length === 0 ? null : {
       coeficienteDerivado: conCosto.some((c) => typeof c.corrida.cascada?.coeficienteSinIva === 'number'),
       // No se afirma: se INTENTA escribirlo y se mira si el módulo lo rechaza.
       coeficienteEscribible: intentarEscribirCoeficiente(),
