@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { CRITERIOS, VEREDICTO, MOTIVO, GLOBAL, evaluar, veredictoGlobal, correrDod, sinPoderMedir, noAplica } from './dod.mjs'
+import { CRITERIOS, VEREDICTO, MOTIVO, GLOBAL, evaluar, veredictoGlobal, correrDod, sinPoderMedir, noAplica, medicionRota } from './dod.mjs'
 
 /** La evidencia de un sistema perfecto: los veinticuatro criterios medidos y en verde. */
 const TODO_BIEN = {
@@ -164,6 +164,19 @@ test('DoD · un predicado que se rompe es MEDICION_ROTA, nunca un «no»', () =>
   assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA)
   assert.equal(f.motivo, MOTIVO.MEDICION_ROTA)
   assert.match(f.porque, /la consulta murió/)
+})
+
+test('DoD · una medición del recolector que REVENTÓ no se publica como «nadie la corrió»', () => {
+  // EL DEFECTO: el recolector envuelve cada bloque en un `try` y en el `catch` guarda `null`. El
+  // dictaminador lee ese `null` y dicta NO_HUBO_CORRIDA — «ninguna corrida dejó evidencia» —, que es
+  // falso: la corrida existió y la consulta se rompió. Las dos cosas se ven idénticas en el cuadro y
+  // llevan a trabajos opuestos: una espera datos, la otra espera que alguien arregle el código.
+  // Es el invariante ERROR=0 con otra ropa: el error se archiva como un estado benigno.
+  const f = evaluar(CRITERIOS[8], { subcontratos: medicionRota('column s.vigencia_hasta does not exist') })
+  assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA, 'una medición rota tampoco es un «no»')
+  assert.equal(f.motivo, MOTIVO.MEDICION_ROTA)
+  assert.match(f.porque, /vigencia_hasta/, 'el error tiene que llegar al cuadro, no quedarse en el log')
+  assert.throws(() => medicionRota(''), /exige una razón escrita/)
 })
 
 test('DoD · NO_APLICA sale del denominador — y por eso EXIGE una razón escrita', () => {

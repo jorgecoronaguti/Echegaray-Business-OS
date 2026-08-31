@@ -60,6 +60,16 @@ export const GLOBAL = Object.freeze({
 export const sinPoderMedir = (razon) => ({ __sinMedir: exigirRazon(razon, 'sinPoderMedir') })
 export const noAplica = (razon) => ({ __noAplica: exigirRazon(razon, 'noAplica') })
 
+/**
+ * LA MEDICIÓN EXISTIÓ Y REVENTÓ. Es un tercer estado, no un caso de los otros dos.
+ *
+ * El recolector envuelve cada bloque en un `try` y en el `catch` guardaba `null`, que acá se leía
+ * como NO_HUBO_CORRIDA — «ninguna corrida dejó evidencia». Es falso y además engaña en la dirección
+ * cara: una consulta rota se archiva junto a los criterios que sólo esperan datos, cuando lo que
+ * espera es que alguien arregle el código. El error viaja al cuadro para que se vea.
+ */
+export const medicionRota = (razon) => ({ __medicionRota: exigirRazon(razon, 'medicionRota') })
+
 function exigirRazon(razon, quien) {
   const r = typeof razon === 'string' ? razon.trim() : ''
   if (!r) throw new Error(`${quien}() exige una razón escrita: un criterio no se descarta en silencio`)
@@ -121,6 +131,9 @@ export function evaluar(criterio, evidencia) {
   }
   if (typeof e === 'object' && typeof e.__sinMedir === 'string') {
     return { ...base, veredicto: VEREDICTO.NO_EJERCITADA, motivo: MOTIVO.TERMINO_NO_MEDIBLE, porque: e.__sinMedir, evidencia: null }
+  }
+  if (typeof e === 'object' && typeof e.__medicionRota === 'string') {
+    return { ...base, veredicto: VEREDICTO.NO_EJERCITADA, motivo: MOTIVO.MEDICION_ROTA, porque: `la medición se rompió: ${e.__medicionRota}`, evidencia: null }
   }
 
   try {
