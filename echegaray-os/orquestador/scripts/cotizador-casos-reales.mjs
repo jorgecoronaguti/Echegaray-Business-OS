@@ -310,6 +310,36 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   await informe()
 }
 
+/**
+ * LO QUE EL CUADRO GENERAL NO PUEDE DECIR DE UN ÁMBITO QUE LLEGA POR PLANILLA.
+ *
+ * El cuadro cuenta PARTIDAS, y en este caso son 2. Leerlo solo hace pensar que la obra son dos
+ * renglones: son 12 ítems que el cliente pidió, de los cuales 10 quedaron abiertos. Sin esta
+ * sección, el «COSTO DIRECTO» de la columna se lee como el costo de la obra, y es el costo de dos
+ * ítems de doce.
+ */
+function cuadroDelAmbito(caso) {
+  if (!caso) return '_ningún caso entró por planilla del cliente_'
+  const n = caso.numeros
+  const plata = (v) => (v === null ? 'no medida' : `$ ${Math.round(v).toLocaleString('es-AR')}`)
+  return [
+    `Ámbito: **${caso.ambito.version.elegido?.nombre ?? 'sin versión que rija'}** — ${caso.ambito.version.porQue}`,
+    '',
+    '| | |',
+    '|---|---|',
+    `| documentos del ámbito · abiertos sin modelo | ${n.documentos} · **${n.documentosAbiertos}** |`,
+    `| ítems que el cliente pidió en su planilla | ${n.itemsDelCliente} |`,
+    `| · que llegaron a cómputo | ${n.computos} |`,
+    `| · que se perdieron en la lectura | ${n.huecosDeLectura} |`,
+    `| mapeadas / ambiguas / sin partida | ${n.mapeadas} / ${n.ambiguas} / ${n.sinPartida} |`,
+    `| con material que el cliente ya compró | ${n.choquesDeSuministro} (${plata(n.plataDeSuministro)}) |`,
+    `| **partidas que se pueden costear** | **${n.partidasCosteables} de ${n.itemsDelCliente}** |`,
+    `| brecha de alcance entre versiones del ámbito | ${plata(n.brechaDeAlcance)} |`,
+    '',
+    `> El COSTO DIRECTO de la columna es el de ${n.partidasCosteables} ítem(s) de ${n.itemsDelCliente}. **No es el costo de la obra.**`,
+  ].join('\n')
+}
+
 async function informe() {
   const { casos } = await main()
 
@@ -347,6 +377,10 @@ ${casos.map((k) => `- \`${k.nombre}\` → entrada \`${k.corrida.huella.sha256.sl
 ## Lo que el dictado NO pudo mapear a la Base Maestra
 
 ${casos.filter((k) => k.mapeo).map((k) => `### ${k.nombre}\n\nmapeadas ${k.mapeo.mapeadas} · ambiguas ${k.mapeo.ambiguas} · sin partida ${k.mapeo.candidatas}\n\n${k.mapeo.sinMapear.map((x) => `- **${x.que}** → ${x.estado}: ${String(x.porQue).slice(0, 220)}`).join('\n') || '_todo mapeado_'}\n`).join('\n')}
+
+## El ámbito que entra por la planilla del cliente (ARCOR)
+
+${cuadroDelAmbito(casos.find((k) => k.ambito))}
 
 ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 

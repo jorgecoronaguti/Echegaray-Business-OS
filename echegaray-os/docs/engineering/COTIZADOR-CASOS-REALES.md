@@ -39,7 +39,7 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 | **CLAUDE AVOIDANCE RATE** | 100.0 % (52 decisiones) | 100.0 % (2 decisiones) | 100.0 % (52 decisiones) | SIN_MEDIR | 100.0 % (4 decisiones) |
 | **AUTONOMOUS RESOLUTION RATE** | 40.0 % (130 a resolver) | 40.0 % (5 a resolver) | 41.6 % (125 a resolver) | SIN_MEDIR | 21.1 % (19 a resolver) |
 | **incertidumbre NO declarada** | 0 | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 766 ms / 725 ms | 35 ms / 33 ms | 683 ms / 688 ms | 14 ms / 12 ms | 70 ms / 66 ms |
+| **latencia fría / tibia** | 793 ms / 706 ms | 34 ms / 32 ms | 702 ms / 686 ms | 13 ms / 13 ms | 63 ms / 62 ms |
 | **huella de entradas** | d1507481798fab3c | 67edcf0670a7f6a0 | ac84ca9f68d2dd32 | c7aedb05216dcfa2 | 47ab7c04c4391c0d |
 | **ESTADO** | BLOQUEADO (77) | BLOQUEADO (3) | BLOQUEADO (74) | BLOQUEADO (1) | BLOQUEADO (14) |
 
@@ -127,6 +127,23 @@ mapeadas 0 · ambiguas 1 · sin partida 1
 - **MAMPOSTERÍA LADRILLON CERÁMICO** → PARTIDA_CANDIDATA: «T1018» exige un atributo que el plano no demuestra: espesor_m (T1018 exige «e = 0,20 m»). La respuesta correcta acá es la pregunta, no un precio que lo supone
 - **PISO DE HORMIGON ALISADO MECÁNICO** → AMBIGUO: «T1107.1» y «T1107.2» quedan a 0.096 de distancia (mínimo 0.25): son dos opciones, no una
 
+
+## El ámbito que entra por la planilla del cliente (ARCOR)
+
+Ámbito: **ARSJ Planilla de computo - Filtro Sanitario ESTRUCTURAS METALICAS - FINAL FINAL.xlsx** — está bajo «PROYECTO FINAL», que es una declaración de la empresa sobre su propia documentación; las otras 1 están bajo «ARCHIVOS VIEJOS»
+
+| | |
+|---|---|
+| documentos del ámbito · abiertos sin modelo | 4 · **4** |
+| ítems que el cliente pidió en su planilla | 12 |
+| · que llegaron a cómputo | 12 |
+| · que se perdieron en la lectura | 1 |
+| mapeadas / ambiguas / sin partida | 3 / 1 / 8 |
+| con material que el cliente ya compró | 1 ($ 2.894.561) |
+| **partidas que se pueden costear** | **2 de 12** |
+| brecha de alcance entre versiones del ámbito | $ 31.882.681 |
+
+> El COSTO DIRECTO de la columna es el de 2 ítem(s) de 12. **No es el costo de la obra.**
 
 ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 
