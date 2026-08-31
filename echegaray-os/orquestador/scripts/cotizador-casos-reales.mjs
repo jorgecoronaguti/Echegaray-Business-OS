@@ -160,7 +160,7 @@ export function correrCronometrado(entrada) {
   return { corrida: fria, segunda: tibia, msFrio: t1 - t0, msTibio: t2 - t1 }
 }
 
-async function main() {
+export async function main() {
   const pool = getPool()
   const query = (s, p) => pool.query(s, p)
   const clientes = clientesDelCorpus(BIBLIOTECA)

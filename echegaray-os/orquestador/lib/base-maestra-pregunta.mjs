@@ -200,6 +200,42 @@ export function preguntaParaCerrar(mapeo, { costos = {}, paresComplementarios = 
 }
 
 /**
+ * EL ELEMENTO, NORMALIZADO PARA PODER RECONOCERLO EN OTRA OBRA. PURA.
+ *
+ * La decision se guarda para NO volver a preguntar, y eso solo sirve si «MAMPOSTERIA LADRILLON
+ * CERAMICO» dictada en La Estrella se reconoce como el mismo elemento que en la obra siguiente.
+ * Por eso la clave es el NOMBRE normalizado y no el id del computo, que es distinto en cada corrida
+ * («D-1», «Q-7») y haria que la memoria no sirviera nunca.
+ */
+export const claveDeElemento = (nombre) => String(nombre ?? '')
+  .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+
+/**
+ * LA HUELLA DE UNA PREGUNTA: que se pregunto exactamente, y con que opciones sobre la mesa. PURA.
+ *
+ * ═══ POR QUE LA CLAVE NO PUEDE SER EL ELEMENTO SOLO ═══
+ *
+ * Una respuesta guardada contra «mamposteria ladrillon ceramico» diria «T1018» para siempre. Pero
+ * lo que esa persona contesto fue una pregunta CONCRETA: «el unico espesor analizado es 0,20, ¿es
+ * ese?». Si manana entra a la Base Maestra una mamposteria de ladrillon a 0,15, la pregunta pasa a
+ * ser otra —ahora hay dos espesores posibles— y la respuesta vieja ya no la contesta: fue dada
+ * cuando no habia alternativa. Cerrar el hueco nuevo con ella seria poner en boca de alguien una
+ * decision que no tomo, y firmada con su uuid.
+ *
+ * La huella incluye el TIPO de pregunta, el ATRIBUTO que faltaba y el CONJUNTO ORDENADO de codigos
+ * ofrecidos. Cualquiera de las tres cosas que cambie produce otra huella, y otra huella es una
+ * pregunta que hay que volver a hacer. Es deliberadamente estricta: preguntar de mas cuesta una
+ * conversacion, cerrar de mas cuesta plata.
+ *
+ * NO incluye los precios: que el hormigon haya aumentado no cambia que elemento es.
+ */
+export function huellaDePregunta(pregunta) {
+  if (!pregunta) return null
+  const codigos = [...new Set((pregunta.opciones ?? []).flatMap((o) => o.codigos ?? []))].map(String).sort()
+  return [pregunta.tipo, pregunta.atributo ?? '-', codigos.join('+') || '-'].join('|')
+}
+
+/**
  * LA RESPUESTA CONVERTIDA EN MAPEO. PURA.
  *
  * No vuelve a puntuar, no reinterpreta y no acepta texto libre: busca la respuesta entre las
