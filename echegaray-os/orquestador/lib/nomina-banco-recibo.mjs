@@ -135,6 +135,32 @@ export function bancoDeLaPersona(nombrePlanilla, recibosPorCuil = new Map()) {
 }
 
 /**
+ * EL SUELDO NETO ACORDADO CON CADA PERSONA DE OFICINA, POR MES.
+ *
+ * ═══ LA ORDEN, TEXTUAL (31/08/2026) ═══
+ *
+ *   «el sueldo neto de nievas y maldonado es de 1800000 cada uno en donde lo blanco es lo q indica
+ *    su recibo de sueldo y el resto se completa en efectivo»
+ *
+ * Es un ACUERDO, no un cálculo: no sale de horas, ni del convenio, ni de doblar el recibo. Por eso
+ * vive declarado acá, con la frase que lo fijó al lado, y no derivado en ninguna fórmula.
+ *
+ * ═══ POR QUÉ NO ES «EL DOBLE DEL RECIBO», QUE ES LO QUE YO HABÍA PUESTO ═══
+ *
+ * En las liquidaciones finales el acuerdo SÍ es mitad y mitad, y lo estiré a oficina por analogía.
+ * Con un recibo mensual de $1.326.667,64 eso publicaba $2.653.335 por persona — **$853.335 de más
+ * cada uno, $1.706.671 en total**— y el titular de la pestaña lo sumaba como plata a sacar de la
+ * caja. Una analogía no es una fuente.
+ *
+ * Acá el neto es fijo: lo blanco es lo que liquidó el estudio y el efectivo COMPLETA hasta este
+ * número. Si el recibo sube, baja el efectivo; el bolsillo de la persona no se mueve.
+ */
+export const SUELDO_NETO_OFICINA = Object.freeze({
+  20359232668: 1800000,   // MALDONADO BATISTA EMILIANO MIGUEL
+  20403679764: 1800000,   // NIEVAS VILLEGAS JUAN PABLO
+})
+
+/**
  * LOS QUE SE DIERON DE ALTA Y DE BAJA COMO EMPLEADOS PERO NO SON PERSONAL.
  *
  * El dueño, 31/08/2026: «son todos subcontratistas de gerson castro, el formato fue asi de alta y

@@ -35,7 +35,7 @@ import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
-import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
+import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA, SUELDO_NETO_OFICINA } from '../lib/nomina-banco-recibo.mjs'
 import {
   claveDeCategoria, convenioDe, esInferida, lineaEquivalenciasInferidas,
   jornalConAumento, PORCENTAJE_DE_AUMENTO,
@@ -47,7 +47,8 @@ import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+// VACIO vive en `preservar-anotaciones`, no en `cola-de-rango` — ésta lo re-importa de allá.
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 /**
  * CUÁNTAS FILAS ESCRIBIÓ ALGUNA VEZ ESTE GENERADOR.
@@ -432,16 +433,25 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // El reparto entre transferencia y efectivo —que es operativo y él lo necesita— baja a la glosa,
   // donde se puede decir de dónde sale cada uno sin fingir que es una columna.
   fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
-  // TRANSFERENCIA = lo que falta pagar MENOS los billetes. No se suma la columna «POR BANCO»
-  // porque en el cuadro de liquidaciones esa columna muestra el ACUERDO —la mitad blanca entera— y
-  // de ahí ya salieron $600.000 el 28/08: sumarla pedía transferir dos veces la misma plata.
-  fila('', `=${deTodos('G')}-${deTodos('F')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
+  // CADA TARJETA ES LA SUMA DE SU COLUMNA, y las dos primeras dan la tercera. Se puede verificar
+  // mirando: es la única forma de que un titular genere confianza.
+  fila('', `=${deTodos('E')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
   // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
   // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
   // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
-  // La glosa dice qué NO está en el titular: lo que ya salió antes de mañana.
-  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · cada cifra es la suma de su columna. " `
-    + `& "Aparte, ya se entregaron " & TEXT(${deTodos('C')}+${deTodos('D')};"$ #,##0") & " en adelantos y transferencias, ya descontados."`)
+  // ═══ LA GLOSA DICE LA VERDAD SOBRE LA ÚNICA TARJETA QUE NO ES UNA SUMA ═══
+  //
+  // «EN EFECTIVO» y «TOTAL A PAGAR» SÍ son la suma de su columna. «POR TRANSFERENCIA» no puede
+  // serlo: la columna POR BANCO de las liquidaciones muestra el ACUERDO —la mitad blanca entera— y
+  // de ahí ya salieron los $600.000 del lote del 28/08. Sumarla pediría transferir dos veces.
+  //
+  // Antes la glosa afirmaba «cada cifra es la suma de su columna», que era falso justo donde
+  // importaba. Ahora dice los dos números y la resta: el que lee puede verificarla mirando.
+  // LA DIFERENCIA SE CALCULA, NO SE SUPONE. No es Σ«YA TRANSFERIDO» ($1.200.000): de esos, los
+  // $600.000 de los obreros ya están descontados dentro de su EFECTIVO. Lo que falta explicar es
+  // sólo lo que sigue vivo en la columna POR BANCO, y eso es exactamente Σbanco − (Σtotal − Σefectivo).
+  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · cada cifra es la suma de su columna, y las dos primeras dan la tercera. " `
+    + `& "Lo ya entregado (" & TEXT(${deTodos('C')}+${deTodos('D')};"$ #,##0") & " entre adelantos y el lote del 28/08) ya está descontado."`)
   fila('')
 
   fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
@@ -753,24 +763,38 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const quincenasDe = (cuil) => Number(recibosDelMes.get(cuil)?.quincenas ?? 0)
     fila('')
     fila(seccion(2, `qué se le paga a oficina · mes ${mes}`))
-    fila('Oficina cobra MENSUAL aunque el estudio liquide dos quincenas. Por eso el banco suma los recibos '
-      + 'del mes entero. Mismo acuerdo que obra: lo liquidado va por banco y otro tanto igual en efectivo.')
+    // ═══ EL RECIBO ES EL DE LA QUINCENA, NO LA SUMA DEL MES (31/08, corrección del dueño) ═══
+    //
+    // Yo sumaba las dos quincenas —$663.526,08 + $663.141,56 = $1.326.667,64— y él lo cortó:
+    // «eso esta mal porque no es lo q indican los recibos de cada uno». Tiene razón: por banco va
+    // lo que dice EL recibo, y el recibo de esta quincena dice $663.141,56.
+    //
+    // El neto ACORDADO sí es mensual ($1.800.000), así que la quincena vale la mitad y el efectivo
+    // completa hasta ahí. Las dos cosas conviven sin contradecirse: el acuerdo se pacta por mes, la
+    // plata se paga por quincena.
+    fila(`Neto acordado de ${(Object.values(SUELDO_NETO_OFICINA)[0] ?? 0).toLocaleString('es-AR')} para CADA UNO. `
+      + 'Por banco va lo que dice su recibo y el efectivo COMPLETA hasta ese neto: si el recibo sube, baja el efectivo.')
     // MISMA LETRA, MISMO SIGNIFICADO EN LOS TRES CUADROS. La columna B es la categoría también acá,
     // aunque venga vacía: la planilla de oficina NO trae categoría —`COL_OFICINA` la declara `null`—
     // y el «—» dice eso. Correr la plata una columna para ahorrarse dos guiones obliga a releer el
     // encabezado en cada tabla, que es de donde venía la sensación de descuadre.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (el mes)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas cargadas')
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas del mes')
     const incompletos = []
     const sinRecibOfi = []
+    const sinAcuerdoNeto = []
     const orden = (x) => comoSeEscribe(recibosDelMes.get(CUIL_POR_PERSONA_DE_PLANILLA[x.nombre])?.nombre_recibo ?? x.nombre)
     for (const p of [...deOficina].sort((x, y) => orden(x).localeCompare(orden(y), 'es'))) {
       const cuil = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
-      const r = cuil ? recibosDelMes.get(cuil) : null
+      const r = cuil ? (recibosPorCuil.get(cuil) ?? recibosDelMes.get(cuil)) : null
       const comoSeLlama = comoSeEscribe(r?.nombre_recibo ?? p.nombre)
       const o = oficinaEspejo.get(p.nombre) ?? null
       const R = "'_RECIBOS_RAW'!"
       const nf = f.length + 1
       const cuantas = cuil ? quincenasDe(cuil) : 0
+      // EL NETO ES UN ACUERDO DECLARADO, no un cálculo. Quien no lo tenga declarado no lleva total:
+      // inventarle uno es inventarle el sueldo a una persona.
+      const neto = cuil ? (SUELDO_NETO_OFICINA[cuil] ?? null) : null
+      if (neto == null && r) sinAcuerdoNeto.push(comoSeEscribe(r.nombre_recibo))
       if (!r) {
         // Sin recibo no hay mitad blanca, y sin mitad blanca el 50/50 no tiene de dónde salir.
         sinRecibOfi.push(`${comoSeLlama} (sin recibo de ${mes})`)
@@ -782,23 +806,44 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         SIN_DATO,                            // la planilla de oficina no trae categoría
         o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0,
         `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")`,
-        // EL MES ENTERO: comodín sobre el período, que es «Q1-08/2026» y «Q2-08/2026».
-        `=SUMIFS(${R}$E$1:$E$400;${R}$A$1:$A$400;"${cuil}";${R}$B$1:$B$400;"*-${mes}")`,
-        `=ROUND(N(E${nf})-N(D${nf})-N(C${nf});0)`,   // la mitad negra en billetes: sin centavos
-        `=N(E${nf})+N(F${nf})`,
+        // EL RECIBO DE ESTA QUINCENA. No la suma del mes: por banco va lo que dice el recibo.
+        `=SUMIFS(${R}$E$1:$E$400;${R}$A$1:$A$400;"${cuil}";${R}$B$1:$B$400;"${periodoRecibo}")`,
+        // El efectivo completa hasta el NETO ACORDADO, y va en billetes: sin centavos.
+        `=ROUND(N(G${nf})-N(E${nf})-N(D${nf})-N(C${nf});0)`,
+        // EL NETO ES DE CADA UNO, ENTERO. Lo partí por dos y el dueño lo cortó: «el 1.800.000 es el
+        // salario de cada uno». No se prorratea: es lo que cobra la persona.
+        neto ?? SIN_DATO,
         cuantas)
     }
     const oF = f.length
     const o0 = oF - deOficina.length + 1
     fila(rotuloTotal(`${deOficina.length} persona(s) de oficina`), '',
-      `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`, '')
-    if (incompletos.length) {
-      fila(sub(`INCOMPLETO: el mes son DOS quincenas y falta cargar la primera de ${incompletos.join(' · ')}. `
-        + 'Lo que publica esta tabla es lo que hay, no el mes entero: cuando entre el recibo que falta, el banco y el efectivo suben solos.'))
-    }
+      `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`,
+      // NO va vacía: una celda vacía no borra, y acá quedaba viva la cuenta de quincenas de la
+      // corrida anterior. Se escribe el mínimo de quincenas cargadas del grupo, que es lo que
+      // decide si el mes está completo.
+      Math.min(...deOficina.map((p) => quincenasDe(CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]))))
+    // ═══ ESTA NOTA SE ESCRIBE SIEMPRE, DIGA LO QUE DIGA ═══
+    //
+    // Cuando el mes se completó, la nota de «INCOMPLETO» desaparecía del grid… y se quedaba viva en
+    // la pestaña, porque una celda vacía NO borra: la guarda NO-BORRAR conserva el destino y el
+    // centinela tampoco pasa (lo lee como grilla vacía). Resultado: una advertencia falsa publicada
+    // sobre un mes que ya estaba completo.
+    //
+    // La salida no es pelearse con la guarda —hace bien su trabajo— sino no dejar nunca un hueco:
+    // la fila SIEMPRE lleva texto, y el texto nuevo pisa al viejo. De paso el cuadro dice de cuánto
+    // mes está hablando sin que haya que contar recibos.
+    fila(sub(incompletos.length
+      ? `INCOMPLETO: el mes son DOS quincenas y falta cargar la primera de ${incompletos.join(' · ')}. `
+        + 'Lo que publica esta tabla es lo que hay, no el mes entero: cuando entre el recibo que falta, el banco y el efectivo suben solos.'
+      : `Mes completo: las dos quincenas de ${mes} están cargadas para las ${deOficina.length} persona(s) de oficina.`))
     if (sinRecibOfi.length) {
-      fila(sub(`Sin recibo del mes: ${sinRecibOfi.join(' · ')}. Sin la mitad blanca no se puede calcular la negra: `
+      fila(sub(`Sin recibo del mes: ${sinRecibOfi.join(' · ')}. Sin la parte blanca no se puede calcular el efectivo: `
         + 'a ésos la pestaña no les afirma ningún importe.'))
+    }
+    if (sinAcuerdoNeto.length) {
+      fila(sub(`Sin neto acordado declarado: ${sinAcuerdoNeto.join(' · ')}. El neto de oficina no se calcula —es un `
+        + 'acuerdo— así que se declara en SUELDO_NETO_OFICINA o la fila queda sin total.'))
     }
   }
 
@@ -857,7 +902,17 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // El titular se arregla en el titular: su tarjeta de transferencia ya no suma la columna del
     // banco —que acá muestra el acuerdo, no lo que falta girar— sino que sale de restarle el
     // efectivo al total. Ver `deTodos` en el bloque del hero.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'QUEDA POR PAGAR', 'TOTAL DEL ACUERDO')
+    // ═══ LA COLUMNA «POR BANCO» DICE LO QUE FALTA GIRAR, NO EL ACUERDO ═══
+    //
+    // Es la corrección que faltaba y la que hacía que el titular dijera cualquier cosa. En los
+    // otros dos cuadros «POR BANCO» es plata que TODAVÍA no salió; acá mostraba la mitad blanca
+    // entera, con $600.000 ya girados adentro. La misma letra con dos significados: la tarjeta que
+    // suma esa columna pedía transferir dos veces lo mismo.
+    //
+    // Ahora las tres columnas significan lo mismo en los tres cuadros, así que cada tarjeta ES la
+    // suma de su columna y las dos primeras dan la tercera. El 50/50 no se pierde: la mitad negra
+    // está en EN EFECTIVO y la blanca, entera, en su propia columna al final.
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (a girar)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
@@ -905,8 +960,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         // negra, igual a lo liquidado, y lo que se descontó se ve en la columna de al lado.
         // La blanca es lo liquidado; la negra es un monto IGUAL; lo que queda por pagar descuenta
         // lo ya entregado; y el total del acuerdo —el doble— queda a la vista en la última columna.
-        `=ROUND(N(${cita});0)`, `=ROUND(N(${cita});0)`,
-        `=N(E${nf})+N(F${nf})-N(D${nf})-N(C${nf})`, `=N(E${nf})+N(F${nf})`)
+        // Falta girar = lo liquidado menos lo ya girado. La mitad negra es IGUAL a la blanca.
+        `=ROUND(N(${cita})-N(D${nf})-N(C${nf});0)`, `=ROUND(N(${cita});0)`,
+        `=N(E${nf})+N(F${nf})`, `=ROUND(N(${cita});0)`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -1372,7 +1428,23 @@ async function publicar(google, PESTANA, filas) {
   // en las columnas que él escribe y en las filas que ya no llena. Fuera de ese rectángulo no hay
   // cola posible: hay, si acaso, algo que escribió una persona.
   const anchoPropio = Math.max(...filas.map((f) => f.filter((c) => String(c ?? '').trim()).length), 1)
-  const conCola = conColaLimpiable(sinNotasRepetidas(filas), { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
+  // ═══ UNA CELDA VACÍA NO BORRA: HAY QUE PEDIR QUE SE BORRE ═══
+  //
+  // `fila()` rellena cada renglón hasta ANCHO con cadena vacía, y la guarda NO-BORRAR conserva el
+  // destino cuando la fuente trae `''` — hace bien, es lo que impide que un generador roto vacíe una
+  // pestaña. El efecto secundario acá era feo: cuando una nota desaparecía, las de abajo se corrían
+  // y la vieja quedaba viva en su fila, publicada dos veces. Se vio con «1 sin recibo confirmado» y
+  // con «INCOMPLETO: el mes son DOS quincenas», los dos duplicados exactos.
+  //
+  // El centinela SÍ borra, y decir «esta celda es mía y va vacía» es justamente lo que hay que
+  // decir. Se aplica sólo a los rellenos de la cola —no a un `''` que alguna fila use como dato—
+  // porque se reemplaza a partir del último contenido real de cada renglón.
+  const conCentinela = filas.map((f) => {
+    let fin = f.length
+    while (fin > 0 && !String(f[fin - 1] ?? '').trim()) fin--
+    return [...f.slice(0, fin), ...Array(Math.max(0, f.length - fin)).fill(VACIO)]
+  })
+  const conCola = conColaLimpiable(sinNotasRepetidas(conCentinela), { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
   // ═══ EL CONTRATO, DICHO EN UNA LÍNEA: ESTE GENERADOR ES DUEÑO DE SU RECTÁNGULO ═══
   //
   // `respetar: true` conserva TODO texto del destino, y en esta pestaña casi todo es texto: las
@@ -1384,6 +1456,22 @@ async function publicar(google, PESTANA, filas) {
   // generador. Fuera de ahí no toca nada: lo que el dueño escriba a la derecha de la última columna
   // o más abajo se conserva, que antes ni siquiera era cierto porque la pestaña se borraba entera.
   const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: anchoPropio, respetar: false })
+  // ═══ UNA ESCRITURA QUE NO OCURRIÓ NO PUEDE ANUNCIARSE COMO HECHA ═══
+  //
+  // `escribirPreservando` puede volver SIN HABER ESCRITO —pestaña bajo candado, editada por una
+  // persona, o firma no verificable— y devuelve la razón en su resultado. Este script no la miraba:
+  // seguía de largo, formateaba y después releía la pestaña, que obviamente tenía contenido, y
+  // publicaba «✓ releído del archivo, 53 filas». Verde sobre una corrida que no tocó nada.
+  //
+  // Es exactamente el defecto que el OS persigue: un control validado contra la misma información
+  // que produce. Releer que hay 53 filas no prueba que las haya escrito esta corrida.
+  if (escritura?.bloqueada || escritura?.editadaPorHumano || escritura?.noVerificable) {
+    console.error(`✋ ${PESTANA}: NO se escribió — `
+      + `${escritura.bloqueada ? 'la pestaña está bajo candado' : ''}`
+      + `${escritura.editadaPorHumano ? 'la editaste vos y el generador no pisa tus ediciones' : ''}`
+      + `${escritura.noVerificable ? 'no pude verificar la firma de la pestaña' : ''}.`)
+    process.exit(1)
+  }
   if (escritura?.conservadas?.length) {
     console.log(`  ✋ ${escritura.conservadas.length} celda(s) tuyas conservadas:`)
     for (const c of escritura.conservadas.slice(0, 8)) console.log(`     fila ${c.fila}, col ${c.col}: ${String(c.valor).slice(0, 60)}`)
