@@ -10,6 +10,25 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { desdeLosCasos } from '../../scripts/xsas-dod.mjs'
+import { CRITERIOS, evaluar, VEREDICTO } from './dod.mjs'
+
+/**
+ * Lo que estos tests fijan no es la FORMA del objeto de evidencia sino el VEREDICTO que produce.
+ * Antes afirmaban `=== null`; cuando el recolector pasó a declarar el motivo dentro de la fila, la
+ * forma cambió y los tests se pusieron rojos sin que hubiera un defecto. Preguntar por el veredicto
+ * sobrevive a eso y prueba lo que importa: que el criterio NO queda demostrado.
+ */
+function veredictoDe(evidencia, mide) {
+  const c = CRITERIOS.find((x) => x.mide === mide)
+  assert.ok(c, `no existe criterio que mida «${mide}»`)
+  return evaluar(c, evidencia)
+}
+const noDemostrado = (evidencia, mide, rastro) => {
+  const f = veredictoDe(evidencia, mide)
+  assert.equal(f.veredicto, VEREDICTO.NO_EJERCITADA, `«${mide}» quedó ${f.veredicto} sin corrida que lo sostenga`)
+  if (rastro) assert.match(f.porque, rastro)
+  return f
+}
 
 /** Una corrida mínima con la forma que el recolector espera. */
 const corrida = (extra = {}) => ({
@@ -34,9 +53,7 @@ const corrida = (extra = {}) => ({
 test('recolector · una partida SIN evidencia, fuente ni nota no cuenta como genealogía', () => {
   // El defecto P3-F1: contaba cantidades y las llamaba genealogía. 26 partidas con `evidencia: null`
   // y `fuente: null` daban CUMPLE en «computa CON EVIDENCIA».
-  const e = desdeLosCasos([corrida()])
-  assert.equal(e.computo, null)
-  assert.match(e.computo__porque, /ninguna trae evidencia, fuente ni nota/)
+  noDemostrado(desdeLosCasos([corrida()]), 'computo', /ninguna trae evidencia, fuente ni nota/)
 })
 
 test('recolector · con rastro PARCIAL el criterio puede decir que no', () => {
@@ -54,21 +71,23 @@ test('recolector · con rastro PARCIAL el criterio puede decir que no', () => {
 test('recolector · con rastro COMPLETO el criterio puede decir que sí', () => {
   const c = corrida({ partidas: [{ codigo: 'T1', cantidad: 10, fuente: 'plano de estructura' }] })
   assert.deepEqual(desdeLosCasos([c]).computo, { cantidades: 1, conGenealogiaCompleta: 1 })
-  assert.equal(desdeLosCasos([c]).computo__porque, undefined)
+  // Y con rastro completo el criterio SÍ se demuestra: sin este término el test de arriba lo
+  // pasaría un recolector que devuelva «sin ejercitar» para todo.
+  assert.equal(veredictoDe(desdeLosCasos([c]), 'computo').veredicto, VEREDICTO.PASS)
 })
 
 test('recolector · el cero de llamadas al modelo NO se publica como medición', () => {
   // P3-F2: `correr()` cablea `llamadasLLM: []`, así que el término era estructuralmente 0.
-  const e = desdeLosCasos([corrida()])
-  assert.equal(e.claudeZero, null)
-  assert.match(e.claudeZero__porque, /ESTRUCTURAL/)
-  assert.match(e.claudeZero__porque, /sin-llm/)
+  const f = noDemostrado(desdeLosCasos([corrida()]), 'claudeZero', /ESTRUCTURAL/)
+  assert.match(f.porque, /sin-llm/)
+  // Y el motivo distingue «nadie lo corrió» de «el término no lo contesta ninguna consulta».
+  assert.equal(f.motivo, 'TERMINO_NO_MEDIBLE')
 })
 
 test('recolector · `cuadra: null` NO es «reconcilia»', () => {
   // P2-F4 de la primera pasada: `cuadra !== false` publicaba el «no hay contra qué reconciliar»
   // —que es lo que devuelve cuando el costo no se pudo afirmar— como que reconciliaba.
-  assert.equal(desdeLosCasos([corrida({ reconciliacion: { cuadra: null } })]).explosion, null)
+  noDemostrado(desdeLosCasos([corrida({ reconciliacion: { cuadra: null } })]), 'explosion')
   assert.deepEqual(desdeLosCasos([corrida()]).explosion, { recursos: 5, reconcilia: true })
   assert.deepEqual(desdeLosCasos([corrida({ reconciliacion: { cuadra: false } })]).explosion, { recursos: 5, reconcilia: false })
 })
@@ -83,22 +102,20 @@ test('recolector · un costo `undefined` no cuenta como costo afirmado', () => {
 test('recolector · sin mapeos declarados, el selector no se juzga', () => {
   // P2-F3: `mapeadas` sumaba `partidas.length`, o sea que el criterio era «hay partidas».
   const sinMapeos = corrida({ etapas: [{ etapa: 'MAP', result: { mapeos: 0, mapeadas: 0 } }] })
-  assert.equal(desdeLosCasos([sinMapeos]).mapeo, null)
+  noDemostrado(desdeLosCasos([sinMapeos]), 'mapeo')
   assert.deepEqual(desdeLosCasos([corrida()]).mapeo, { mapeadas: 2, porParecidoTextualSinAtributos: 1 })
 })
 
 test('recolector · la generalización NUNCA se mide sola', () => {
   // P2-F7: «nadie aflojó un umbral» no lo puede contestar una consulta, y una limitación declarada
   // BLOQUEA el criterio que toca en vez de acompañarlo.
-  const e = desdeLosCasos([corrida()])
-  assert.equal(e.generalizacion, null)
-  assert.match(e.generalizacion__porque, /no lo puede contestar una consulta/)
+  noDemostrado(desdeLosCasos([corrida()]), 'generalizacion', /no lo puede contestar una consulta/)
 })
 
 test('recolector · sin la corrida de Quattropani, nada se inventa', () => {
-  // Todo bloque va en su propio `try` y una corrida ausente deja NO_VERIFICABLE, no ceros.
+  // Todo bloque va en su propio `try` y una corrida ausente deja NO_EJERCITADA, no ceros.
   const e = desdeLosCasos([])
   for (const k of ['alcance', 'computo', 'mapeo', 'composiciones', 'explosion', 'hh', 'precio', 'reuso']) {
-    assert.equal(e[k], null, `«${k}» inventó evidencia sobre una corrida que no existe`)
+    noDemostrado(e, k)
   }
 })

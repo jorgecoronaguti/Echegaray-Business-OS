@@ -27,7 +27,7 @@
 import { pathToFileURL } from 'node:url'
 import { writeFileSync, readFileSync } from 'node:fs'
 import { getPool } from '../lib/db.mjs'
-import { correrDod, VEREDICTO } from '../lib/cotizador/dod.mjs'
+import { correrDod, VEREDICTO, sinPoderMedir } from '../lib/cotizador/dod.mjs'
 import { rechazarEscrituraDeCoeficiente } from '../lib/cotizador/comercial.mjs'
 import { main as correrCasos } from './cotizador-casos-reales.mjs'
 
@@ -123,11 +123,11 @@ function desdeLosCasos(casos) {
     } : null,
     // Si NINGUNA partida trae evidencia, fuente ni nota, no hay nada que medir: sale sin medir, no
     // en rojo. El motor no falló — la cotización llegó con las partidas cargadas y sin su rastro.
-    computo: conEvidencia > 0 ? { cantidades, conGenealogiaCompleta: conEvidencia } : null,
-    // Sin el spread condicional la clave se crea igual con `undefined` adentro, y el informe imprime
-    // «computo: undefined» bajo «Por qué falta esa evidencia» sobre un criterio que no la tiene
-    // faltante. Cosmético, pero cae en el documento que lee el dueño.
-    ...(conEvidencia > 0 ? {} : { computo__porque: `las ${cantidades} partidas de la corrida traen cantidad pero ninguna trae evidencia, fuente ni nota: vienen cargadas en la cotización, no reconstruidas de un documento. La genealogía completa la prueba \`plano/genealogia.mjs\` sobre el pipeline de planos, no este cuadro` }),
+    // La razón viaja DENTRO de la fila, no en una sección aparte al pie: un criterio sin ejercitar
+    // y su porqué separados por media página es como se lee un cuadro sin leer su limitación.
+    computo: conEvidencia > 0
+      ? { cantidades, conGenealogiaCompleta: conEvidencia }
+      : sinPoderMedir(`las ${cantidades} partidas de la corrida traen cantidad pero ninguna trae evidencia, fuente ni nota: vienen cargadas en la cotización, no reconstruidas de un documento`),
     // Sumar `partidas.length` convertía «selecciona partidas defendiblemente» en «hay partidas».
     // Sin mapeos declarados el criterio queda SIN MEDIR —no en rojo—: la corrida no ejercita el
     // selector porque las partidas de Quattropani ya vienen cargadas en la cotización.
@@ -160,8 +160,7 @@ function desdeLosCasos(casos) {
     // `correr()` construye sus métricas con `llamadasLLM: []` cableado, así que `llamadas_llm === 0`
     // no puede dar falso: es un cero fabricado, no una medición. El hecho de fondo es cierto y está
     // bien probado — pero por otro lado.
-    claudeZero: null,
-    claudeZero__porque: 'el cero de `llamadas_llm` es ESTRUCTURAL: `correr()` cablea `llamadasLLM: []`, así que el término no puede decir que no. La prueba real del §13 es `orquestador/lib/cotizador/sin-llm.test.mjs` + `orquestador/scripts/xsas-sin-llm.mjs`, que borran las llaves del entorno antes de importar nada, cablean resolvedores que tiran ECONNREFUSED y saldo cero, y auditan que ninguno de los 26 módulos del cotizador importe un cliente de IA',
+    claudeZero: sinPoderMedir('el cero de `llamadas_llm` es ESTRUCTURAL: `correr()` cablea `llamadasLLM: []`, así que el término no puede decir que no. La prueba real del §13 es `orquestador/lib/cotizador/sin-llm.test.mjs` + `orquestador/scripts/xsas-sin-llm.mjs`, que borran las llaves del entorno antes de importar nada, cablean resolvedores que tiran ECONNREFUSED y saldo cero, y auditan que ninguno de los 26 módulos del cotizador importe un cliente de IA'),
     // #21 · lo que una corrida REAL aplicó. Cero disponibles no es «no reutiliza»: es que la
     // gobernanza no promovió nada todavía, y eso lo produce la obra, no el código.
     reuso: (() => {
@@ -174,8 +173,7 @@ function desdeLosCasos(casos) {
     // segundo término del criterio —que nadie aflojó un umbral para que cierren— no lo puede
     // contestar una consulta, y una limitación declarada BLOQUEA el criterio que toca: ponerla al
     // lado del criterio cumplido no lo salva, lo anula. Por eso la evidencia entera va `null`.
-    generalizacion: null,
-    generalizacion__porque: `los ${casos.filter((c) => (c.corrida?.etapas?.length ?? 0) === 11).length} casos corren de punta a punta, pero «nadie aflojó un umbral para que cierren» no lo puede contestar una consulta: lo sostienen el diff auditado y las mutaciones corridas. El término va en nulo y el criterio queda sin medir, en vez de darse por bueno con un cero escrito a mano`,
+    generalizacion: sinPoderMedir(`los ${casos.filter((c) => (c.corrida?.etapas?.length ?? 0) === 11).length} casos corren de punta a punta, pero «nadie aflojó un umbral para que cierren» no lo puede contestar una consulta: lo sostienen el diff auditado y las mutaciones corridas. El término va en nulo y el criterio queda sin medir, en vez de darse por bueno con un cero escrito a mano`),
   }
 }
 
@@ -193,7 +191,7 @@ async function desdeLaBase(query, pool) {
   // MEDIDO sobre datos que existen sí es un «no».
   await medir('subcontratos', async () => {
     const total = await uno(query, 'select count(*) n from public.subcontrato')
-    if (total === 0) return null
+    if (total === 0) return sinPoderMedir('no hay un solo subcontrato cargado: no hay nada que ejercite la capacidad. Cero subcontratos no es «los maneja mal»')
     return {
       total,
       conAlcanceYVigencia: await uno(query, `select count(*) n from public.subcontrato s
@@ -211,8 +209,7 @@ async function desdeLaBase(query, pool) {
   await medir('precios', async () => {
     const total = await uno(query, 'select count(*) n from public.recurso_precio_resolucion')
     if (total === 0) {
-      e.precios__porque = 'no hay evidencia persistida de resolución de precios: falta correr `resolver-precios.mjs --cotizacion <id> --evidencia`'
-      return null
+      return sinPoderMedir('no hay evidencia persistida de resolución de precios: falta correr `resolver-precios.mjs --cotizacion <id> --evidencia`')
     }
     return {
       // `VIGENTE` es «había precio interno vigente: NO HUBO QUE HACER NADA». La resolución autónoma
@@ -229,8 +226,7 @@ async function desdeLaBase(query, pool) {
   await medir('indirectos', async () => {
     const usadas = await uno(query, 'select count(*) n from public.cotizacion_indirecto')
     if (usadas === 0) {
-      e.indirectos__porque = `hay ${await uno(query, 'select count(*) n from public.indirecto_concepto')} conceptos catalogados y ninguna cotización los usa: el indirecto sigue entrando por el porcentaje de la política`
-      return null
+      return sinPoderMedir(`hay ${await uno(query, 'select count(*) n from public.indirecto_concepto')} conceptos catalogados y ninguna cotización los usa: el indirecto sigue entrando por el porcentaje de la política`)
     }
     return {
       conceptos: usadas,
@@ -240,8 +236,7 @@ async function desdeLaBase(query, pool) {
   await medir('comercial', async () => {
     const refs = await uno(query, 'select count(*) n from public.cotizacion_politica_ref')
     if (refs === 0) {
-      e.comercial__porque = 'las versiones de política existen y ninguna cotización las referencia todavía: hoy la cascada sigue tomando la vigente'
-      return null
+      return sinPoderMedir('las versiones de política existen y ninguna cotización las referencia todavía: hoy la cascada sigue tomando la vigente')
     }
     return {
       versionCitada: (await query('select version from public.cotizacion_politica_ref order by version desc limit 1')).rows[0]?.version ?? null,
@@ -263,8 +258,7 @@ async function desdeLaBase(query, pool) {
     // ninguna, y el cuadro acusaría al motor de un defecto que nadie demostró. «Un control que no
     // pudo mirar no dice "no está"».
     if (rechaza === null) {
-      e.versionado__porque = 'no hay ninguna cotización congelada con composición contra la cual intentar la escritura: no se pudo medir si la base defiende lo congelado'
-      return null
+      return sinPoderMedir('no hay ninguna cotización congelada con composición contra la cual intentar la escritura: no se pudo medir si la base defiende lo congelado')
     }
     return {
     // `count(*) >= 0` era verdadero para todo entero y no probaba nada. Ahora se le pregunta a la
@@ -296,12 +290,10 @@ async function desdeLaBase(query, pool) {
   await medir('auditoria', async () => {
     let firma
     try { firma = JSON.parse(readFileSync(RUTA_FIRMA, 'utf8')) } catch {
-      e.auditoria__porque = `todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``
-      return null
+      return sinPoderMedir(`todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``)
     }
     if (!firma.auditor || firma.auditor === firma.construyo) {
-      e.auditoria__porque = `la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`
-      return null
+      return sinPoderMedir(`la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`)
     }
     return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
   })
@@ -329,18 +321,19 @@ async function juntarEvidencia() {
 }
 
 function comoMarkdown(r, evidencia) {
-  const icono = { [VEREDICTO.CUMPLE]: '✔', [VEREDICTO.NO_CUMPLE]: '✖', [VEREDICTO.NO_VERIFICABLE]: '?' }
+  const icono = { [VEREDICTO.PASS]: '✔', [VEREDICTO.FAIL]: '✖', [VEREDICTO.NO_EJERCITADA]: '·', [VEREDICTO.NO_APLICA]: '–' }
   const l = [
     '# XSAS — DEFINITION OF DONE',
     '',
-    `**${r.estado}** · cumplidos **${r.completas}** · en rojo ${r.noCumple} · sin medir ${r.sinMedir}`,
+    `**${r.estado}** · demostradas **${r.completas}** · en rojo ${r.fail} · sin ejercitar ${r.sinEjercitar}${r.noAplica ? ` · no aplican ${r.noAplica}` : ''}`,
     '',
     '| | criterio | | evidencia |',
     '|---|---|---|---|',
-    ...r.filas.map((f) => `| ${icono[f.veredicto]} | #${f.id} ${f.dice} | ${f.veredicto} | ${f.evidencia ? `\`${JSON.stringify(f.evidencia)}\`` : f.porque} |`),
+    ...r.filas.map((f) => `| ${icono[f.veredicto]} | #${f.id} ${f.dice} | ${f.veredicto}${f.motivo ? ` · ${f.motivo}` : ''} | ${f.evidencia ? `\`${JSON.stringify(f.evidencia)}\`` : f.porque} |`),
   ]
   if (r.bloquean.length) l.push('', '## Lo que bloquea el cierre', '', ...r.bloquean.map((b) => `- ${b}`))
-  if (r.limitaciones.length) l.push('', '## Lo que no se pudo medir', '', ...r.limitaciones.map((x) => `- ${x}`))
+  if (r.limitaciones.length) l.push('', '## Lo que NO se ejercitó — y por qué', '', ...r.limitaciones.map((x) => `- ${x}`))
+  if (r.excluidas.length) l.push('', '## Lo que no aplica', '', ...r.excluidas.map((x) => `- ${x}`))
   const errores = Object.entries(evidencia).filter(([k]) => k.endsWith('__error'))
   if (errores.length) l.push('', '## Mediciones que se rompieron', '', ...errores.map(([k, v]) => `- \`${k.replace('__error', '')}\`: ${v}`))
   const porques = Object.entries(evidencia).filter(([k]) => k.endsWith('__porque'))
