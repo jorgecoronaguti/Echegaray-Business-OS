@@ -1,0 +1,19 @@
+══ 1 · TRUNCATE como authenticated sobre tablas PRODUCTIVAS ══
+  public.certificado_cliente       → SQLSTATE 42501 · permission denied for table certificado_cliente
+  public.cotizacion_evento         → SQLSTATE 42501 · permission denied for table cotizacion_evento
+  public.movimientos_bancarios     → SQLSTATE 42P01 · relation "public.movimientos_bancarios" does not exist
+  public.cobranzas                 → SQLSTATE 42501 · permission denied for table cobranzas
+  public.jornales                  → SQLSTATE 42P01 · relation "public.jornales" does not exist
+
+══ 2 · los otros tres bits, mismo rol ══
+  CREATE TRIGGER → SQLSTATE 42501 · permission denied for table certificado_cliente
+  CLUSTER (MAINTAIN) → SQLSTATE 42501 · permission denied for table certificado_cliente
+
+══ 3 · la operación normal bajo RLS, mismo rol ══
+  SELECT 2 filas · INSERT id=7ff0dec5-17cb-4fbd-986f-c0a3a6e280ef numero=ZZ-SEC-1788174767071 · UPDATE → ZZ2
+
+══ 4 · TABLA NUEVA REAL (creada, commiteada, medida, atacada y borrada) ══
+  ACL al nacer: {postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+  privilegios de anon/authenticated: NINGUNO
+  ataque → SQLSTATE 42501 · permission denied for table zz_nace_segura
+  zz_nace_segura borrada: null
