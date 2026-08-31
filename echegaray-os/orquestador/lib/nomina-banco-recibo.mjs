@@ -107,6 +107,44 @@ export function bancoDeLaPersona(nombrePlanilla, recibosPorCuil = new Map()) {
 }
 
 /**
+ * LOS QUE TIENEN LIQUIDACIÓN FINAL PERO NO SON PERSONAL.
+ *
+ * El dueño, 31/08/2026: «son todos subcontratistas de gerson castro, el formato fue asi de alta y
+ * baja, pero son subcontratistas». O sea: existe el papel de liquidación final porque se los dio de
+ * alta y de baja con esa forma, y la relación económica es otra.
+ *
+ * Importa para una cosa concreta: **el 50/50 es el acuerdo con el PERSONAL**. Aplicárselo a un
+ * subcontratista sería inventarle una mitad en efectivo que nadie acordó — y son cinco personas por
+ * $123.806,34 cada una, así que el invento serían $619.032 de la nada. Se muestran con lo que
+ * liquidó el estudio y sin segunda mitad, hasta que el dueño diga otra cosa.
+ */
+export const SUBCONTRATISTAS_CON_LIQUIDACION = Object.freeze({
+  'AVILA ALEJANDRO LUIS': 'subcontratista de Gerson Castro',
+  'CASTRO GALVAN GERSON ULISES': 'subcontratista — es el titular del grupo',
+  'CASTRO GALVAN HEBER LUCAS': 'subcontratista de Gerson Castro',
+  'DIAZ RAMON ORLANDO': 'subcontratista de Gerson Castro',
+  'FLORES ALEJANDRO NAZARENO': 'subcontratista de Gerson Castro',
+})
+
+/**
+ * EL NOMBRE, ESCRITO SIEMPRE IGUAL: APELLIDO Y NOMBRES, EN MAYÚSCULA.
+ *
+ * El dueño: «no mezcles nombres con apellidos, necesito orden alfabetico claro […] uniformidad en
+ * como se estan escribiendo las cosas». La planilla escribe «Aguero Cristian» y «Emanuel Alaniz» —
+ * apellido primero en unos, nombre primero en otros— y el recibo los escribe todos igual porque lo
+ * emite el sistema de liquidación.
+ *
+ * Cuando hay recibo, manda el recibo. Cuando no, se usa el nombre de la planilla EN MAYÚSCULA: no
+ * se le da vuelta el orden, porque adivinar cuál de dos palabras es el apellido es exactamente el
+ * error que este archivo existe para no cometer. Al menos la caja queda pareja y la lista se ordena
+ * por la misma clave para todos.
+ */
+export const comoSeEscribe = (nombre) => String(nombre ?? '').toUpperCase().trim()
+
+export const esSubcontratista = (nombreDelRecibo) =>
+  Object.keys(SUBCONTRATISTAS_CON_LIQUIDACION).includes(String(nombreDelRecibo ?? '').trim())
+
+/**
  * EL REPARTO 50/50 DE UNA LIQUIDACIÓN FINAL.
  *
  * El dueño lo pidió así: «el calculo de 50 en blanco (lo liquidado) y 50 en negro (lo q se paga en

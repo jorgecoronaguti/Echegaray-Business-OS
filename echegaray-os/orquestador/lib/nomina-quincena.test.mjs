@@ -91,17 +91,40 @@ test('los comentarios de la Nómina no describen un código que ya no existe', (
 // plata y la del medio no existía — para saber cuánto subía cada uno había que restar dos celdas
 // lejanas, que es justo la cifra que el dueño decidió.
 test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nueva, y en ese orden', () => {
-  const enc = /fila\('Persona', 'Cat\.', 'Convenio'[\s\S]*?'Aumento'\)/.exec(NOMINA)
-  assert.ok(enc, 'se fue el encabezado del cuadro 1 de la Nómina')
+  // ═══ EL ENCABEZADO SE BUSCA POR SU PRIMERA COLUMNA, NO POR LA SEGUNDA ═══
+  //
+  // Este test anclaba al literal `fila('Persona', 'Cat.', 'Convenio'`. El 31/08/2026 el dueño mandó
+  // rehacer el cuadro para que se leyera como una instrucción de pago —«quiero saber cuanto y como
+  // tengo q pagarle a cada uno»— y las columnas de plata pasaron al frente. El test se puso rojo por
+  // el reordenamiento, no por un defecto: seguía exigiendo que «Cat.» fuera la segunda columna.
+  //
+  // Lo que este test cuida NO es el orden general del cuadro —ése lo decide el dueño— sino UNA cosa
+  // que sí es del código: que las tres tarifas se lean seguidas. Así que ahora ancla sólo a
+  // «'Persona'» y verifica la vecindad de las tres, que es la propiedad que importa.
+  // Se busca la línea de encabezado que CONTIENE las tarifas, no «la primera que empieza con
+  // Persona»: desde que el cuadro que decide se separó del que explica, hay dos encabezados que
+  // empiezan igual y el rango entre uno y otro abarca doscientas líneas de código — cualquier
+  // apóstrofo suelto de un comentario en el medio desparejaba el conteo de comillas.
+  const enc = /fila\('Persona',[^\n]*'\$\/h HOY'[^\n]*\)/.exec(NOMINA)
+  assert.ok(enc, 'se fue el encabezado con las tarifas')
   const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   const i = cols.indexOf('$/h HOY')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
+  // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
+  const decide = /fila\('Persona', 'Ya transferido', 'POR BANCO'[^\n]*\)/.exec(NOMINA)
+  assert.ok(decide, 'se fue el cuadro de instrucción de pago')
+  const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  assert.ok(dc.length <= 7, `el cuadro que decide volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  for (const c of ['POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR']) {
+    assert.ok(dc.includes(c), `desapareció «${c}», que es lo que el dueño opera`)
+  }
   // El «+» inicial NO puede volver: Sheets lo parsea como fórmula (=+Aumento…) y el encabezado
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
   assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
-  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', 'Aumento $/h', '$/h CON AUMENTO'],
+  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', 'Aumento $/h', '$/h c/aumento'],
     'las tres tarifas dejaron de leerse seguidas: la cuenta no se puede seguir de izquierda a derecha')
+
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
   // separan el día que el porcentaje cambie.
   assert.match(NOMINA, /const suba = tarifaConAumento\(q\.jornal, basico\)/)

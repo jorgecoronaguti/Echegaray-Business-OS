@@ -398,8 +398,22 @@ test('PAGO 3 · EL 50/50 SE CALCULA CUANDO BANCO ESTÁ EN CERO, Y EL DATO CARGAD
   // CITA AL REGISTRO, NO AL ESPEJO. Con el cuadro por grupo la fila de obra es UNA, y su banco es el
   // de la quincena entera: la columna «Banco» del registro de abajo, que ya suma el espejo. Ir al
   // espejo desde acá sería una segunda cuenta del mismo dato, que es como se llega a dos versiones.
+  // ═══ LA CASCADA GANÓ UN ESCALÓN ARRIBA (31/08/2026) ═══
+  //
+  // El dueño ordenó que la parte bancaria deje de ser el 50% calculado y pase a ser lo que dice el
+  // recibo del estudio: «por banco va lo q dice recibo y en efectivo se completa todo hasta llegar
+  // al numero». Y que las dos pestañas coincidan, así que esta fila CITA a Nómina.
+  //
+  // Lo que este test cuida sigue siendo lo mismo y por eso se conserva: **un hecho le gana a un
+  // cálculo, y el 50/50 es el último recurso**. Sólo que ahora hay dos hechos antes, en orden de
+  // autoridad: el recibo (Nómina) primero, el banco cargado en el registro después, y recién si no
+  // hay ninguno, el 50/50. Lo que NO puede pasar es que el 50/50 se adelante a un dato real.
   const banco = String(gm.filas[gm.hero.f0 - 1][colPago('Por banco')])
-  assert.match(banco, new RegExp(`^=IF\\(N\\(\\$${colDe('Banco')}\\$\\d+\\)>0;\\$${colDe('Banco')}\\$\\d+;[A-Z]\\d+/2\\)$`),
+  assert.ok(banco.indexOf("'Nómina'") < banco.indexOf(`$${colDe('Banco')}$`),
+    'el recibo dejó de tener prioridad sobre el banco cargado en el registro')
+  assert.ok(banco.lastIndexOf(`$${colDe('Banco')}$`) < banco.lastIndexOf('/2'),
+    'el 50/50 se adelantó al dato cargado: un cálculo no puede ganarle a un hecho')
+  assert.match(banco, new RegExp(`IF\\(N\\(\\$${colDe('Banco')}\\$\\d+\\)>0;\\$${colDe('Banco')}\\$\\d+;[A-Z]\\d+/2\\)`),
     `el reparto no es 50/50 con el dato cargado ganando: ${banco}`)
   // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y se
   // convierte en un #ERROR que no hace falta correr para producir.
