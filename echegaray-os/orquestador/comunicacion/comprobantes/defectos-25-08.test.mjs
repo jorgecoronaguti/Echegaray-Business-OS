@@ -64,10 +64,18 @@ function lecturaCorralon3745(over = {}) {
 }
 
 /** Compras VIVO con la fila 889 real: el mismo proveedor y el mismo día, número consecutivo. */
+// EL IMPORTE DE LA FILA 889 TIENE QUE SER EL MISMO QUE EL DEL PAPEL (31/08).
+//
+// Traía $106.429,73 contra los $304.515,98 que lee la foto, y con eso ya no hay duplicado que
+// declarar: desde el 31/08 «mismo proveedor, mismo día, número a un dígito» exige además que los
+// importes puedan salir del mismo papel, porque un corralón factura seis veces por día con números
+// consecutivos y esa alarma sonaba siempre. Lo que estos tests defienden no es la detección —eso lo
+// mide `defectos-31-08`— sino que una pregunta abierta se DECLARE y no se la trague la tanda. Para
+// medir eso hace falta una pregunta, así que el fixture pasa a ser un duplicado de verdad.
 function comprasConLa889() {
   return { ok: true, ...indexarCompras([
     ...Array.from({ length: 885 }, () => []),
-    filaCompras('25/8/2026', 'Corralon Progreso', 'F A', '0004-00003746', '', 'Grif. Mozart Praga', 'Tornillo drywall', '$ 106.429,73', 'B'),
+    filaCompras('25/8/2026', 'Corralon Progreso', 'F A', '0004-00003746', '', 'Grif. Mozart Praga', 'Tornillo drywall', '$ 304.515,98', 'B'),
   ]) }
 }
 

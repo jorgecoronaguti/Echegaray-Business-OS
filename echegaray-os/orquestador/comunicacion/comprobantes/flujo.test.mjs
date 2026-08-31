@@ -890,9 +890,13 @@ test('un duplicado PROBABLE no borra la clave de idempotencia: dudar no es haber
   repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
   // La misma factura en Compras con el número a UN DÍGITO de distancia: `…10489` contra `…10480`.
   // Es el hallazgo PROBABLE, no el CARGADO.
+  //
+  // El importe es el MISMO que el del papel, y desde el 31/08 tiene que serlo: con uno cualquiera ya
+  // no hay duplicado que dudar (ver `defectos-31-08`), y este test dejaría de medir lo suyo —que
+  // dudar no borra la clave de idempotencia— sin decirlo.
   const enCompras = { ok: true, ...indexarCompras([
     ...Array.from({ length: 808 }, () => []),
-    filaCompras('5/1/2026', 'Combustibles Barcelo', 'F A', '0113-00010480', 'Estrella', '', 'Gasoil', '$ 99.999,99'),
+    filaCompras('5/1/2026', 'Combustibles Barcelo', 'F A', '0113-00010480', 'Estrella', '', 'Gasoil', '$ 36.460,30'),
   ]) }
   const { escribir, llamadas } = conEscritor()
   await procesarPost({ ...d, escribir, comprasDe: async () => enCompras }, post())

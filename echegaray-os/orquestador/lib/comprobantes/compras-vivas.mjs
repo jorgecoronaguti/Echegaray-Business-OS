@@ -251,6 +251,26 @@ function importeCierra(a, b) {
 }
 
 /**
+ * ¿Estos dos importes pueden salir del MISMO papel?
+ *
+ * Sí cuando cierran, cuando alguno no se sabe (no saber no es saber que son distintos), o cuando uno
+ * es el otro corrido de coma: `2014940.07` y `201494007` son la misma factura leída con y sin coma,
+ * y ése es el error que el OCR comete de verdad. Diez mil contra ocho mil no lo es.
+ */
+function puedeSerElMismoPapel(a, b) {
+  if (a == null || b == null) return true
+  if (importeCierra(a, b)) return true
+  const x = Math.abs(Number(a)), y = Math.abs(Number(b))
+  if (!(x > 0) || !(y > 0)) return false
+  const grande = Math.max(x, y), chico = Math.min(x, y)
+  // Hasta cuatro lugares: una coma corrida, un punto de miles comido, o los dos.
+  for (let k = 1; k <= 4; k++) {
+    if (Math.abs(grande - chico * 10 ** k) <= TOLERANCIA * 10 ** k) return true
+  }
+  return false
+}
+
+/**
  * ¿Este comprobante ya está en Compras? Devuelve null, un `CARGADO` o un `PROBABLE`.
  *
  * NO DEPENDE DE ARCA, NI DEL TIPO, NI DEL CUIT. Corre siempre, con lo que haya leído la foto.
@@ -345,12 +365,28 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
   // distintas y legítimas. Por eso no se descarta nada solo: se muestra la fila candidata con su
   // número, su fecha y su importe, y quien mira el papel contesta en un segundo. El costo del falso
   // positivo es una pregunta; el del falso negativo ya se midió y fueron $201M.
+  //
+  // ═══ …PERO EL IMPORTE TIENE QUE PODER SER EL MISMO PAPEL (31/08) ═══
+  //
+  // Medido en producción ese día, un solo fajo: `0006-00003450` por $8.073,24 frenado contra la fila
+  // 918 (`0006-00003453`, $7.000), `0004-00003773` por $13.358,08 contra la 917 ($4.903,22) y
+  // `0006-00003452` por $65.000 contra la 918 otra vez. Los tres del mismo corralón, el mismo día, y
+  // ninguno era un duplicado: $86.431,32 retenidos esperando una respuesta a una pregunta que no
+  // había que hacer. Un proveedor de obra factura cinco o seis veces por día y sus números son
+  // consecutivos: la regla de "un dígito" sola convierte eso en una alarma permanente, y una alarma
+  // que suena siempre deja de leerse.
+  //
+  // El caso ALUMETAL que creó esta pasada sigue cubierto, y por eso el filtro NO es "el importe
+  // cierra": ahí el importe también estaba mal leído ($201.494.007 contra $2.014.940,07). Pero
+  // estaba mal leído POR UNA COMA — los dígitos eran los mismos. Ese es el modo de falla del OCR y
+  // se reconoce solo. Dos importes que no cierran ni por escala son dos compras distintas.
   if (numero && fecha) {
     const cands = (indice.porFecha?.get(fecha) ?? [])
       .filter((r) => r.numero && r.numero !== numero
         && (difiereEnUnCaracter(numero, r.numero) || mismoCorrelativo(numero, r.numero)))
       .map((r) => ({ r, quien: identidadProveedor(comprobante, r) }))
       .filter((c) => c.quien === 'igual')
+      .filter((c) => puedeSerElMismoPapel(total, c.r.total))
     if (cands.length) {
       const via = difiereEnUnCaracter(numero, cands[0].r.numero)
         ? 'proveedor+fecha+numero a un digito'
