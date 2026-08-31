@@ -44,8 +44,14 @@ const Datos = z.object({
 
 export const Bloque = z.discriminatedUnion('tipo', [Parrafo, Lista, Tabla, Datos])
 
+// EL `id` NO SE PIDE: SE DERIVA DEL TÍTULO, SIEMPRE.
+//
+// Un Google Doc no guarda ids de sección: guarda párrafos con estilo. Cuando el documento se relee,
+// lo único que hay para nombrar una sección es su título. Si acá se pudiera declarar un id
+// arbitrario, la estructura en memoria diría «ejecutado» y el documento releído diría
+// «ejecutado_en_el_periodo» — y `actualizarSeccion('ejecutado')` fallaría contra el documento que
+// este mismo motor acaba de escribir. Pasó, en la primera corrida viva.
 export const Seccion = z.object({
-  id: z.string().trim().regex(/^[a-z0-9_]{1,60}$/, 'el id va en minúsculas, números y guión bajo').optional(),
   titulo: texto(140),
   nivel: z.number().int().min(1).max(3).default(1),
   bloques: z.array(Bloque).max(60).default([]),
@@ -82,9 +88,10 @@ export function validarDocumento(entrada) {
   }
   const vistos = new Set()
   const secciones = r.data.secciones.map((s) => {
-    // El id se deriva del título sólo cuando no vino. Un choque NO se resuelve pisando: se numera,
-    // porque dos secciones con el mismo id hacen que «actualizá la sección X» toque cualquiera.
-    let id = s.id || idDeTitulo(s.titulo)
+    // Un choque de ids NO se resuelve pisando: se numera, porque dos secciones con el mismo id
+    // hacen que «actualizá la sección X» toque cualquiera de las dos. Es la MISMA regla que aplica
+    // `documento-estructura.mjs` al releer, y por eso los ids coinciden a los dos lados.
+    let id = idDeTitulo(s.titulo)
     if (vistos.has(id)) { let n = 2; while (vistos.has(`${id}_${n}`)) n++; id = `${id}_${n}` }
     vistos.add(id)
     return { ...s, id }

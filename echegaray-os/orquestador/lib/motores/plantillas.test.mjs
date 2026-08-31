@@ -53,7 +53,12 @@ test('el informe se arma entero desde la plantilla, sin modelo', () => {
   const r = renderDocumento('informe.avance_obra.v1', INFORME)
   assert.equal(r.ok, true)
   assert.equal(r.nombre, 'Informe de avance · Obra de prueba · agosto 2026')
-  assert.deepEqual(r.contenido.secciones.map((s) => s.id), ['encabezado', 'resumen', 'ejecutado'])
+  // Los ids del CONTENIDO salen del título, que es lo único que sobrevive dentro de un Google Doc.
+  // Los de la plantilla son de diseño. El mapa dice cuál es cuál: sin él, «actualizá la sección
+  // ejecutado» fallaría contra el documento que este mismo motor acaba de escribir.
+  assert.deepEqual(r.contenido.secciones.map((s) => s.id), ['informe_de_avance', 'resumen', 'ejecutado_en_el_periodo'])
+  assert.deepEqual(r.mapa_de_secciones.map((m) => [m.plantilla, m.documento]),
+    [['encabezado', 'informe_de_avance'], ['resumen', 'resumen'], ['ejecutado', 'ejecutado_en_el_periodo']])
   assert.deepEqual(r.omitidas.map((o) => o.seccion), ['desvios', 'proximo'])
   const lista = r.contenido.secciones[2].bloques[0]
   assert.deepEqual(lista.items, INFORME.ejecutado)
@@ -74,7 +79,8 @@ test('una tabla repite una fila por elemento de la lista de datos', () => {
 })
 
 test('falta un dato obligatorio ⇒ MISSING_REQUIRED_FIELD con el nombre del que falta', () => {
-  const { ejecutado, ...sinEjecutado } = INFORME
+  const sinEjecutado = { ...INFORME }
+  delete sinEjecutado.ejecutado
   const r = renderDocumento('informe.avance_obra.v1', sinEjecutado)
   assert.equal(r.ok, false)
   assert.equal(r.codigo, 'MISSING_REQUIRED_FIELD')

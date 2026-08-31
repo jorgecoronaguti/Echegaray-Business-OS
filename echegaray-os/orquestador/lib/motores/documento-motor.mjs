@@ -134,7 +134,7 @@ async function verificarDocumento(google, fileId, doc) {
       id: fileId, link: enlace(fileId), titulos_ausentes: titulosAusentes.slice(0, 8), textos_ausentes: ausentes.slice(0, 8),
     })
   }
-  return { ok: true, verificacion: { ...resumen(e), titulos_controlados: doc.secciones.length, textos_controlados: textos.length, releido: true } }
+  return { ok: true, verificacion: { ...resumen(e), titulos_controlados: doc.secciones.length, textos_controlados: textos.length, releido: true, ids: e.secciones.map((s) => s.id) } }
 }
 
 /**

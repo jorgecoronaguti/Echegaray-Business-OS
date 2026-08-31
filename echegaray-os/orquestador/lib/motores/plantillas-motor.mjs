@@ -143,7 +143,11 @@ export function renderDocumento(templateId, datos) {
   if (r.faltantes.length) return fallo(CODIGO.MISSING_REQUIRED_FIELD, 'faltan datos obligatorios de la plantilla', { falta: r.faltantes })
   const v = validarDocumento({ titulo: nombre.nombre, secciones: r.secciones })
   if (!v.ok) return fallo(CODIGO.INVALID_CONTENT, 'la plantilla con estos datos no arma un documento válido', { errores: v.errores })
-  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: v.doc, omitidas: r.omitidas }
+  // EL MAPA. El id de la plantilla es de diseño; el del documento sale de su título, que es lo
+  // único que sobrevive en un Google Doc. Quien después quiera actualizar una sección necesita el
+  // segundo, no el primero: devolverlo evita que lo adivine.
+  const mapa = r.secciones.map((s, i) => ({ plantilla: s.id, documento: v.doc.secciones[i].id, titulo: s.titulo }))
+  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: v.doc, omitidas: r.omitidas, mapa_de_secciones: mapa }
 }
 
 /** Una sección de plantilla → una lámina. El mapeo es FIJO: no hay elección de forma. PURA. */
@@ -212,5 +216,5 @@ export async function crearDesdePlantilla(google, { template_id, datos, carpeta_
   const r = renderDocumento(template_id, datos)
   if (!r.ok) return r
   const creado = await crearDocumento(google, { contenido: r.contenido, nombre: r.nombre, carpeta_id: destino.carpeta_id, clave: idem })
-  return creado.ok ? { ...creado, template_id: p.template_id, omitidas: r.omitidas, clave: idem } : creado
+  return creado.ok ? { ...creado, template_id: p.template_id, omitidas: r.omitidas, mapa_de_secciones: r.mapa_de_secciones, clave: idem } : creado
 }

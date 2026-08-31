@@ -19,8 +19,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
-const LIB = path.join(AQUI, '..', 'lib', 'motores')
-const TEST = path.join(LIB, 'motores-negativos.test.mjs')
+const ORQ = path.join(AQUI, '..')
+const LIB = path.join(ORQ, 'lib', 'motores')
+const NEGATIVOS = path.join(LIB, 'motores-negativos.test.mjs')
 
 const MUTACIONES = [
   {
@@ -65,12 +66,20 @@ const MUTACIONES = [
     de: 'async function verificarDocumento(google, fileId, doc) {\n  const leido = await leerDocumento(google, fileId)',
     a: 'async function verificarDocumento(google, fileId, doc) {\n  if (doc) return { ok: true, verificacion: { releido: true } }\n  const leido = await leerDocumento(google, fileId)',
   },
+  {
+    // La llave borrada VUELVE A LA VIDA si no se neutraliza el EnvironmentFile del modelo:
+    // `lib/config.mjs` carga `~/.config/echegaray-orq/anthropic.env` dentro de `process.env`.
+    n: 9, patron: 'una API KEY en el entorno', archivo: 'scripts/motores-sin-llm.mjs',
+    test: 'lib/motores/claude-zero.test.mjs',
+    de: "process.env.ORQ_ANTHROPIC_ENV_FILE = '/dev/null/no-existe'",
+    a: "// (mutación) sin neutralizar el EnvironmentFile del modelo",
+  },
 ]
 
 /** Corre SÓLO el test de esa mutación. Devuelve `{verde, salida}`. Nunca lanza. */
-function correr(patron) {
+function correr(patron, archivoDeTest = NEGATIVOS) {
   try {
-    const salida = execFileSync(process.execPath, ['--test', '--test-name-pattern', patron, TEST], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    const salida = execFileSync(process.execPath, ['--test', '--test-name-pattern', patron, archivoDeTest], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     // Salir con 0 no alcanza: un patrón que no matchea ningún test también sale con 0, y entonces
     // «verde» significaría «no se probó nada». Se exige que haya corrido al menos uno.
     const paso = Number(salida.match(/pass (\d+)/)?.[1] ?? 0)
@@ -85,7 +94,7 @@ const motivo = (salida) => (salida.match(/AssertionError.*|Error: .*/)?.[0] ?? '
 
 let fallados = 0
 for (const m of MUTACIONES) {
-  const ruta = path.join(LIB, m.archivo)
+  const ruta = m.archivo.includes('/') ? path.join(ORQ, m.archivo) : path.join(LIB, m.archivo)
   const original = readFileSync(ruta, 'utf8')
   // Una mutación puede tener que tocar más de un renglón: un control implementado en dos lugares
   // sólo se apaga apagando los dos, y apagar uno solo «sigue verde» sin que eso pruebe nada.
@@ -98,9 +107,10 @@ for (const m of MUTACIONES) {
   }
   try {
     writeFileSync(ruta, cambios.reduce((t, c) => t.replace(c.de, c.a), original))
-    const rojo = correr(m.patron)
+    const test = m.test ? path.join(ORQ, m.test) : NEGATIVOS
+    const rojo = correr(m.patron, test)
     writeFileSync(ruta, original)
-    const verde = correr(m.patron)
+    const verde = correr(m.patron, test)
     const bien = !rojo.verde && verde.verde
     if (!bien) fallados++
     console.log(`${bien ? '✔' : '✖'} ${m.n} · ${m.archivo}`)
@@ -110,5 +120,5 @@ for (const m of MUTACIONES) {
     writeFileSync(ruta, original) // pase lo que pase, el código queda como estaba
   }
 }
-console.log(fallados ? `\n${fallados} mutación(es) no demostraron nada.` : '\nLas 8 mutaciones pusieron en rojo su test y el código quedó como estaba.')
+console.log(fallados ? `\n${fallados} mutación(es) no demostraron nada.` : `\nLas ${MUTACIONES.length} mutaciones pusieron en rojo su test y el código quedó como estaba.`)
 process.exit(fallados ? 1 : 0)

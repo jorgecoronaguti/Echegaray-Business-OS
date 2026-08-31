@@ -102,6 +102,22 @@ const idx = (offset, base = 1) => base + offset
  */
 export function requestsDeCuerpo(plan, { base = 1 } = {}) {
   const out = [{ insertText: { location: { index: base }, text: plan.texto } }]
+  // ═══ NORMALIZAR PRIMERO. MEDIDO, NO PRECAVIDO ═══
+  //
+  // El texto que se inserta HEREDA el estilo del párrafo donde entra. Actualizando una sección, el
+  // punto de inserción es el arranque del párrafo siguiente —que es el TÍTULO de la sección que
+  // viene—, así que todo el contenido nuevo nacía con estilo `HEADING_1`: cada párrafo del resumen
+  // se convertía en una sección nueva y la sección «resumen» quedaba vacía. La relectura lo
+  // atrapó (WRITE_NOT_PERSISTED) antes de que nadie viera el documento, que es para lo que está.
+  if (plan.texto.length) {
+    out.push({
+      updateParagraphStyle: {
+        range: { startIndex: base, endIndex: base + plan.texto.length },
+        paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+        fields: 'namedStyleType',
+      },
+    })
+  }
   for (const h of plan.encabezados) {
     out.push({
       updateParagraphStyle: {

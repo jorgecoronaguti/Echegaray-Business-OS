@@ -5,7 +5,7 @@
 // Este repositorio ya tuvo un control que era una constante y no podía dar rojo (escondía $ 4,1 M)
 // y una mutación «que lo pone rojo» declarada y nunca corrida. Por eso cada test de acá abajo
 // lleva escrita LA MUTACIÓN EXACTA que lo pone en rojo, en código de producción y no en el test, y
-// las ocho se corrieron: `node orquestador/scripts/motores-mutaciones.mjs`.
+// las nueve se corrieron: `node orquestador/scripts/motores-mutaciones.mjs`.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -36,7 +36,8 @@ test('NEGATIVO 1 · una plantilla que no existe no crea nada y dice TEMPLATE_NOT
 // Con las dos apagadas el documento sale igual, con la sección «Ejecutado» vacía.
 test('NEGATIVO 2 · sin un dato obligatorio no se crea el archivo: MISSING_REQUIRED_FIELD', async () => {
   const g = dobleDrive({})
-  const { ejecutado, ...sinDato } = DATOS_INFORME
+  const sinDato = { ...DATOS_INFORME }
+  delete sinDato.ejecutado
   const r = await crearDesdePlantilla(g, { template_id: 'informe.avance_obra.v1', datos: sinDato, carpeta_id: 'x' })
   assert.equal(r.codigo, 'MISSING_REQUIRED_FIELD')
   assert.deepEqual(r.falta, ['ejecutado'])
