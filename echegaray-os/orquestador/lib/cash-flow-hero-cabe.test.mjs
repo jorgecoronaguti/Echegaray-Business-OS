@@ -54,6 +54,20 @@ function piezasDe(meta, filas, { importe = IMPORTE_MAS_LARGO } = {}) {
   const merges = mergesDelValor(meta)
   for (const { desde, hasta } of spansDelHero(meta.hero.slots, meta.footprint.cols)) {
     if (hasta - desde <= 1) continue
+    // ═══ EL PRIMER SLOT NO SE PUEDE MERGEAR, Y NO ES UNA OMISIÓN (31/08/2026) ═══
+    //
+    // Arranca en la columna A, que va CONGELADA para que el concepto siga a la vista con doce meses
+    // a la derecha. Sheets rechaza fusionar a través de esa frontera —«You can't merge frozen and
+    // non-frozen columns»— con un 400 que tumba el lote ENTERO: el 31/08 el Cash Flow Mensual quedó
+    // sin una sola regla de formato por culpa de esta tarjeta.
+    //
+    // El test deja de exigir ese merge y pasa a exigir lo contrario: que NINGUNO lo cruce. La
+    // tarjeta vuelve a medirse por desborde, que es como estaba antes de que el merge existiera.
+    if (desde < 1 && hasta > 1) {
+      assert.ok(!merges.some((m) => m.desde < 1 && m.hasta > 1),
+        `${meta.pestana}: hay un merge que cruza la columna congelada — la API devuelve 400 y la pestaña queda sin formato`)
+      continue
+    }
     assert.ok(merges.some((m) => m.desde === desde && m.hasta === hasta),
       `${meta.pestana}: la piel no mergea la celda del valor en ${desde}..${hasta}, así que el importe se corta en su columna`)
   }
@@ -231,7 +245,10 @@ test('EL DEFECTO DEL RENDER: el peor caso NO entra en una columna, y por eso la 
   ]) {
     const cols = meta.footprint.cols
     const merges = mergesDelValor(meta)
-    assert.deepEqual(merges, spansDelHero(meta.hero.slots, cols).filter((x) => x.hasta - x.desde > 1),
+    // TODOS MENOS EL QUE CRUZA LA COLUMNA CONGELADA. Ése no se puede mergear —la API devuelve 400 y
+    // se lleva puesto el formato entero de la pestaña— y desde el 31/08 la piel lo saltea a propósito.
+    assert.deepEqual(merges, spansDelHero(meta.hero.slots, cols)
+      .filter((x) => x.hasta - x.desde > 1 && !(x.desde < 1 && x.hasta > 1)),
       `${meta.pestana}: los merges del valor no cubren los slots`)
     const r = auditarHero({
       slots: meta.hero.slots,

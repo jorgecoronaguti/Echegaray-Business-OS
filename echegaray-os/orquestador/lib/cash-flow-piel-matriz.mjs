@@ -32,6 +32,19 @@ import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
 import { FILA, letra } from './cash-flow-matriz.mjs'
 
 const FUENTE = 'Arial'
+
+/**
+ * LA PRIMERA COLUMNA VA CONGELADA — y eso limita lo que se puede fusionar.
+ *
+ * La matriz tiene doce meses (o cincuenta y tres semanas) a la derecha: sin la columna de concepto
+ * fija, scrollear a diciembre deja números sin fila que los nombre.
+ *
+ * El precio es que **Sheets se niega a fusionar un rango que cruza esa frontera** —«You can't merge
+ * frozen and non-frozen columns»— y devuelve 400 para TODO el lote, así que un merge del titular que
+ * arranca en la A tumba también los colores, los anchos y los bordes. Pasó el 31/08: el Cash Flow
+ * Mensual quedó sin formatear entero por una tarjeta.
+ */
+const COLUMNAS_CONGELADAS = 1
 /** El detalle, apagado contra la tinta de los titulares: se lee como respaldo, no como mensaje. */
 const TENUE = { red: 0.36, green: 0.38, blue: 0.42 }
 /** El gris del encabezado de la matriz. Suave: marca la banda sin competir con los números. */
@@ -101,7 +114,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
   // ── 1. La hoja: sin reja, con el encabezado y el concepto anclados ───────────────────────────────
   req.push({
     updateSheetProperties: {
-      properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: FILA.cabecera, frozenColumnCount: 1 } },
+      properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: FILA.cabecera, frozenColumnCount: COLUMNAS_CONGELADAS } },
       fields: 'gridProperties(hideGridlines,frozenRowCount,frozenColumnCount)',
     },
   })
@@ -260,9 +273,20 @@ function desmergeDelValor({ req, rango, meta }) {
   if (entera) req.push({ unmergeCells: { range: entera } })
 }
 
-/** Y los merges van AL FINAL: formatear una celda ya mergeada es pedirle a la API que adivine. */
+/**
+ * Y los merges van AL FINAL: formatear una celda ya mergeada es pedirle a la API que adivine.
+ *
+ * SE SALTEA EL SPAN QUE CRUZA LA FRONTERA DE LO CONGELADO. Es siempre el primero —la tarjeta que
+ * arranca en la columna A— y su merge devuelve 400 arrastrando el lote entero. Sin fusionar, esa
+ * celda vuelve a medirse por desborde, que es como se veía antes de que el merge existiera: peor
+ * que las otras tres, y muchísimo mejor que la pestaña sin formato.
+ *
+ * No se resuelve descongelando: con doce meses a la derecha, perder la columna de concepto deja
+ * números sin fila que los nombre, que es un problema más caro que una tarjeta angosta.
+ */
 function mergeDelValor({ req, rango, meta }) {
   for (const { desde, hasta } of spansDelHero(meta.hero.slots, meta.footprint.cols)) {
+    if (desde < COLUMNAS_CONGELADAS && hasta > COLUMNAS_CONGELADAS) continue
     const r = rango(meta.hero.valor - 1, meta.hero.valor, desde, hasta)
     if (r && hasta - desde > 1) req.push({ mergeCells: { range: r, mergeType: 'MERGE_ROWS' } })
   }
