@@ -432,7 +432,10 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // El reparto entre transferencia y efectivo —que es operativo y él lo necesita— baja a la glosa,
   // donde se puede decir de dónde sale cada uno sin fingir que es una columna.
   fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
-  fila('', `=${deTodos('E')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
+  // TRANSFERENCIA = lo que falta pagar MENOS los billetes. No se suma la columna «POR BANCO»
+  // porque en el cuadro de liquidaciones esa columna muestra el ACUERDO —la mitad blanca entera— y
+  // de ahí ya salieron $600.000 el 28/08: sumarla pedía transferir dos veces la misma plata.
+  fila('', `=${deTodos('G')}-${deTodos('F')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
   // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
   // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
   // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
@@ -841,7 +844,20 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // 50/50 se VEA y que el titular cierre. Se resuelven separándolas: EN EFECTIVO neta lo ya
     // entregado —igual que en los otros dos cuadros, así el titular puede sumar la columna— y la
     // mitad negra del acuerdo, que es igual a la blanca, se muestra entera en su propia columna.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR TRANSFERIR', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
+    // ═══ COMO ESTABA, QUE ERA COMO ESTABA BIEN (31/08, tercera vuelta) ═══
+    //
+    // El dueño: «pesimo el calculo de liquidaciones finales, estaba bien lo indicaba antes». Tiene
+    // razón y las dos veces que lo cambié fue para arreglar el TITULAR, no el cuadro — que es
+    // exactamente al revés de como se hace.
+    //
+    // Vuelve lo que él aprobó: la mitad blanca es lo que liquidó el estudio, la negra es OTRO TANTO
+    // IGUAL, el total es el doble, y lo ya entregado se resta aparte en «QUEDA POR PAGAR». El 50/50
+    // se lee en la fila sin hacer ninguna cuenta.
+    //
+    // El titular se arregla en el titular: su tarjeta de transferencia ya no suma la columna del
+    // banco —que acá muestra el acuerdo, no lo que falta girar— sino que sale de restarle el
+    // efectivo al total. Ver `deTodos` en el bloque del hero.
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'QUEDA POR PAGAR', 'TOTAL DEL ACUERDO')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
@@ -887,8 +903,10 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         //
         // De paso el 50/50 vuelve a leerse solo: EN EFECTIVO ($330.431) es exactamente la mitad
         // negra, igual a lo liquidado, y lo que se descontó se ve en la columna de al lado.
-        `=ROUND(N(${cita})-N(D${nf})-N(C${nf});0)`, `=ROUND(N(${cita});0)`,
-        `=N(E${nf})+N(F${nf})`, `=ROUND(N(${cita});0)`)
+        // La blanca es lo liquidado; la negra es un monto IGUAL; lo que queda por pagar descuenta
+        // lo ya entregado; y el total del acuerdo —el doble— queda a la vista en la última columna.
+        `=ROUND(N(${cita});0)`, `=ROUND(N(${cita});0)`,
+        `=N(E${nf})+N(F${nf})-N(D${nf})-N(C${nf})`, `=N(E${nf})+N(F${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -897,6 +915,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
       '', `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
       `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`)
+    // G ES «QUEDA POR PAGAR» EN ESTE CUADRO Y «TOTAL A PAGAR» EN LOS OTROS DOS, y las dos cosas son
+    // lo mismo: lo que todavía sale de la caja por esa fila. Por eso el titular puede sumar la
+    // columna G de los tres sin mezclar nada.
     // ARCA LO CONFIRMA, ASÍ QUE LA NOTA LO AFIRMA. Hasta el 31/08 esta línea decía «su vínculo
     // terminó» apoyada sólo en que el estudio les liquidó el final. Ahora está la constancia de
     // baja de ARCA de los dos, con fecha de cese 25/08/2026 y causal, guardada en su legajo.
