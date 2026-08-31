@@ -111,15 +111,46 @@ export const COL_ESPEJO = {
  * @param {{total?:number, adelanto?:number, banco?:number}} p
  * @returns {{total:number, adelanto:number, neto:number, banco:number, efectivo:number, bancoCalculado:boolean}}
  */
-export function repartoPersona({ total = 0, adelanto = 0, banco = 0 } = {}) {
+export function repartoPersona({
+  total = 0, adelanto = 0, banco = 0, efectivoPlanilla = null, totalPlanilla = null,
+} = {}) {
   const t = Number(total) || 0
   const a = Number(adelanto) || 0
   const cargado = Number(banco) || 0
-  const bancoCalculado = !(cargado > 0)
+  // ═══ UN BANCO VACÍO NO SIEMPRE SIGNIFICA «NADIE LO CARGÓ» (31/08) ═══
+  //
+  // El dueño: *«rehacer nómina de la persona Castillo Carlos, inventaste que tenía un recibo de
+  // sueldo y calculaste todo mal, revisando sheet jornales»*. Su fila de la planilla dice BANCO
+  // vacío, EFECTIVO 308.000 y TOTAL 308.000 — o sea: **a esta persona no se le transfiere nada, va
+  // todo en billetes**. El OS publicaba 154.000 y 154.000, porque leía el vacío como «falta el dato»
+  // y aplicaba el 50/50 del acuerdo general.
+  //
+  // La planilla ya trae la respuesta al lado y el OS no la miraba: cuando BANCO + EFECTIVO da el
+  // TOTAL, el reparto está DECLARADO, no falta. Recién cuando no cierran hay que calcular algo.
+  const declarado = esElRepartoDeLaPlanilla({ banco: cargado, efectivoPlanilla, totalPlanilla })
+  const bancoCalculado = !(cargado > 0) && !declarado
   const b = bancoCalculado ? t * ACUERDO_BANCO : cargado
   const neto = t - a
   // SIN `MAX(0; …)`: un efectivo negativo es un adelanto de más y es información, no un error a tapar.
-  return { total: t, adelanto: a, neto, banco: b, efectivo: neto - b, bancoCalculado }
+  return { total: t, adelanto: a, neto, banco: b, efectivo: neto - b, bancoCalculado, bancoDeclarado: declarado }
+}
+
+/** Tolerancia en pesos para dar por cerrada la aritmética de la planilla. */
+export const CIERRA_POR = 1
+
+/**
+ * ¿La planilla declaró el reparto de esta fila, en vez de dejarlo sin cargar?
+ *
+ * Lo declara cuando su propia aritmética cierra: BANCO + EFECTIVO = TOTAL. Con BANCO vacío y
+ * EFECTIVO igual al TOTAL, lo que dice es «cero por transferencia»; y eso es un DATO, no un hueco.
+ * Si no cierran —o si no hay EFECTIVO cargado— no hay nada declarado y el que pregunta tiene que
+ * calcular.
+ */
+export function esElRepartoDeLaPlanilla({ banco = 0, efectivoPlanilla = null, totalPlanilla = null } = {}) {
+  const e = Number(efectivoPlanilla)
+  const tp = Number(totalPlanilla)
+  if (!Number.isFinite(e) || !Number.isFinite(tp) || !(e > 0) || !(tp > 0)) return false
+  return Math.abs(((Number(banco) || 0) + e) - tp) <= CIERRA_POR
 }
 
 /**

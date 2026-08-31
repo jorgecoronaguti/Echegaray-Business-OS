@@ -223,6 +223,9 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
       horas,
       jornal,
       banco: Number(f[23]) || 0,
+      // La planilla también trae el EFECTIVO (Z) al lado del banco. Con los dos se sabe si el
+      // reparto está DECLARADO o si falta cargarlo — ver `esElRepartoDeLaPlanilla`.
+      efectivoPlanilla: Number(f[25]) || 0,
       adelanto: Number(f[24]) || 0,
       // El total de la planilla vale para las horas CARGADAS; la quincena completa se valoriza acá.
       totalCargado: Number(f[26]) || cargadas * jornal,
@@ -574,7 +577,8 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const porBanco = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
       ? (adelantosPorCuil.get(CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]) ?? 0) : 0
     const adel = Number(q.adelanto || 0) + porBanco
-    const hoyR = repartoPersona({ total: q.total, adelanto: adel, banco: delRecibo.banco ?? q.banco })
+    const declaradoPorLaPlanilla = { efectivoPlanilla: q.efectivoPlanilla, totalPlanilla: q.totalCargado }
+    const hoyR = repartoPersona({ total: q.total, adelanto: adel, banco: delRecibo.banco ?? q.banco, ...declaradoPorLaPlanilla })
     if (delRecibo.banco === null) sinRecibo.push({ nombre: p.nombre, porQue: delRecibo.fuente })
     // EL ESCENARIO «CON AUMENTO» NUNCA BAJA A NADIE, y por dos razones distintas que conviene no
     // confundir: el aumento SUMA sobre lo que cada uno cobra hoy (nadie puede quedar por debajo de su
@@ -593,7 +597,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // nuevo — o sea, el aumento se repartía mitad y mitad. La orden es que el aumento vaya ENTERO
     // al efectivo, porque lo registrado no se mueve hasta que el estudio liquide distinto.
     const nuevoR = totalNuevo != null
-      ? repartoPersona({ total: totalNuevo, adelanto: adel, banco: delRecibo.banco ?? q.banco })
+      ? repartoPersona({ total: totalNuevo, adelanto: adel, banco: delRecibo.banco ?? q.banco, ...declaradoPorLaPlanilla })
       : null
 
     T.cargadas += q.cargadas; T.horas += q.horas; T.adelanto += adel; T.totalCargado += q.totalCargado
