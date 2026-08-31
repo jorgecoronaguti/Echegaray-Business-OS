@@ -21,6 +21,7 @@
 
 import crypto from 'node:crypto'
 import { getPool } from '../lib/db.mjs'
+import { huellaDeEntradas } from '../lib/cotizador/freeze.mjs'
 
 export const PREFIJO = 'ZZ-XSAS'
 
@@ -142,6 +143,77 @@ export async function crearBorradorValido(c) {
   const cot = await cotizacionConPartida(c, sf, analisis, politica)
   const computo = await computoDeLaPartida(c, sf, cot.partidaId, cot.cantidad)
   return { sufijo: sf, politica, recursos, ...analisis, ...cot, ...computo }
+}
+
+/**
+ * LAS ENTRADAS DE LA HUELLA, LEÍDAS DE LA BASE. Con la forma exacta que `huellaDeEntradas()` espera.
+ *
+ * Existe para que la huella de una corrida se calcule sobre lo que la base DICE, y no sobre lo que
+ * el que la calcula creía que decía. Cada mutación de dimensión —cantidad, composición, precio,
+ * recurso, HH, indirecto, política, override, alcance— cambia una de estas listas, y por eso el
+ * sha256 se puede probar dimensión por dimensión sin fabricar entradas a mano.
+ */
+export async function entradasDeLaCotizacion(c, cotizacionId, { hoy = '2026-08-31' } = {}) {
+  const uno = async (sql, p = [cotizacionId]) => (await c.query(sql, p)).rows
+  const [cot] = await uno(`select pct_gastos_generales, pct_beneficio, pct_financiero, factor_financiero,
+    pct_iibb, pct_ganancias, pct_cheque, pct_iva, version from public.cotizaciones where id = $1`)
+  const partidas = await uno(`select coalesce(codigo, id::text) as codigo, cantidad, unidad from public.cotizacion_partida where cotizacion_id = $1`)
+  const precios = await uno(`select rc.codigo, rp.costo, rp.moneda, rp.fecha_precio, rp.fuente
+    from public.cotizacion_partida p
+    join public.analisis_linea l on l.analisis_id = p.analisis_id
+    join public.recurso rc on rc.id = l.recurso_id
+    join public.recurso_precio rp on rp.recurso_id = rc.id and rp.vigente
+   where p.cotizacion_id = $1`)
+  const documentos = await uno(`select distinct k.documento_drive_id, k.documento_nombre
+    from public.computo k join public.cotizacion_partida p on p.id = k.cotizacion_partida_id where p.cotizacion_id = $1`)
+  const alcance = await uno('select patron, estado, fuente from public.cotizacion_alcance where cotizacion_id = $1')
+  const lineas = await uno(`select rc.codigo, l.cantidad from public.cotizacion_partida p
+    join public.analisis_linea l on l.analisis_id = p.analisis_id
+    join public.recurso rc on rc.id = l.recurso_id where p.cotizacion_id = $1`)
+  const overrides = await uno('select recurso_codigo from public.cotizacion_override_precio where cotizacion_id = $1')
+  const [ind] = await uno('select estructura_id, pct_aplicado from public.cotizacion_indirecto where cotizacion_id = $1')
+  const [pol] = await uno('select version from public.cotizacion_politica_ref where cotizacion_id = $1')
+  return {
+    hoy,
+    documentos: documentos.map((d) => ({ hash: d.documento_drive_id, nombre: d.documento_nombre })),
+    partidas: partidas.map((p) => ({ codigo: p.codigo, cantidad: p.cantidad, unidad: p.unidad })),
+    precios: precios.map((p) => ({ recursoCodigo: p.codigo, precio: p.costo, moneda: p.moneda, observadoEn: p.fecha_precio, fuente: p.fuente })),
+    politica: cot ? { ...cot, version: cot.version } : null,
+    alcance: alcance.map((a) => ({ patron: a.patron, estado: a.estado, fuente: a.fuente })),
+    // La composición y los overrides viajan como pares: son las dos dimensiones que el defecto de la
+    // huella idéntica sobre costos distintos dejaba afuera.
+    estadosDeComposicion: lineas.map((l) => [l.codigo, String(l.cantidad)])
+      .concat(overrides.map((o) => [`override:${o.recurso_codigo}`, 'ASUMIDO'])),
+    estructuraIndirecta: ind ? { version: ind.estructura_id, conceptos: [], costoDirectoAnual: ind.pct_aplicado } : null,
+    politicaEfectiva: pol ? { versionReferenciada: pol.version, valores: cot ?? {} } : null,
+  }
+}
+
+/**
+ * CONGELA EL BORRADOR DE VERDAD, con la identidad de una persona con FREEZE.
+ *
+ * Vive acá y no en cada script porque los dos lo necesitan y una segunda definición del congelado de
+ * prueba es exactamente lo que la Realidad Única prohíbe. Dos detalles que costaron una corrida cada
+ * uno, los dos medidos:
+ *
+ *   · sin identidad, `cot_permiso('FREEZE')` es false y la función rebota — congelar como el dueño
+ *     del pool probaría que el gate anda, no que una PERSONA con FREEZE puede congelar;
+ *   · `cotizacion_huella.sha256` tiene un CHECK de 64 hex: un `'sha-de-prueba'` rebota, así que la
+ *     huella tiene que ser la REAL, calculada con el mismo `huellaDeEntradas()` del motor.
+ *
+ * Devuelve `null` si no hay ningún perfil de dirección: decirlo es mejor que congelar con otro rol
+ * y dar por probado un camino que no se probó.
+ */
+export async function congelarBorrador(c, fx) {
+  const { rows: [quien] } = await c.query("select id from public.perfiles where rol = 'direccion' limit 1")
+  if (!quien) return null
+  const h = huellaDeEntradas(await entradasDeLaCotizacion(c, fx.cotizacionId))
+  await c.query('set local role authenticated')
+  await c.query("select set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)", [quien.id])
+  const { rows: [res] } = await c.query('select public.cot_congelar_con_gate($1,$2,$3::jsonb,$4) as r',
+    [fx.cotizacionId, h.sha256, JSON.stringify(h.partes), h.resumen])
+  await c.query('reset role')
+  return { congeladoPor: quien.id, huella: h, devuelto: res.r.congelado }
 }
 
 /** Abre la transacción, arma el borrador, corre `fn` y REVIERTE siempre. La única forma segura de
