@@ -319,3 +319,32 @@ test('etapaFreeze pasa el estado por el CAMINO REAL: no sella VALIDADO sobre HIS
   const limpio = etapaFreeze({ cascada: CASCADA_OK, cola, huella: huellaDeEntradas(ENTRADAS), congeladoPor: 'jorge', costos: [{ partida: 'T1', estado: ESTADO.CALCULADO, vencidos: [] }] })
   assert.equal(limpio.result.estado, ESTADO.VALIDADO)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// UN PRECIO DE INTERNET BLOQUEA IGUAL QUE UNO VENCIDO (R1 de la auditoría adversarial)
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Este test existe porque la mutación de sacar `PRECIO_DE_INTERNET` de `BLOQUEAN_SALVO_OVERRIDE`
+// quedó VERDE: el issue se emitía y nadie probaba que además FRENARA algo. Un issue que no bloquea
+// es una nota al pie — y la nota al pie no impide congelar una oferta sobre un precio que salió de
+// una página. La misma forma que este repo ya pagó: un control que no puede decir que no.
+
+test('un PRECIO_DE_INTERNET material bloquea el congelado', () => {
+  // MUTACIÓN CORRIDA: sacar TIPO_ISSUE.PRECIO_DE_INTERNET de BLOQUEAN_SALVO_OVERRIDE → rojo.
+  const deLaWeb = issue({ type: TIPO_ISSUE.PRECIO_DE_INTERNET, entity: 'MAT-PANEL', impact: 8_200_000 })
+  const b = bloquea(deLaWeb, { costoConocido: 180_000_000 })
+  assert.equal(b.bloquea, true, 'un precio de una página web congeló una oferta sin que nadie lo asumiera')
+  const cola = colaDeAtencion({ costoConocido: 180_000_000, issues: [deLaWeb] })
+  assert.equal(cola.nBloqueantes, 1)
+})
+
+test('...y lo destraba la misma firma que destraba un precio vencido, no un flag', () => {
+  const deLaWeb = issue({ type: TIPO_ISSUE.PRECIO_DE_INTERNET, entity: 'MAT-PANEL', impact: 8_200_000 })
+  const sinQuien = bloquea(deLaWeb, { costoConocido: 180_000_000, overrides: [{ entidad: 'MAT-PANEL' }] })
+  assert.equal(sinQuien.bloquea, true, 'un override sin quién lo autorizó no existe')
+  const conQuien = bloquea(deLaWeb, {
+    costoConocido: 180_000_000,
+    overrides: [{ entidad: 'MAT-PANEL', autorizadoPor: 'jorge', motivo: 'lo verifiqué con el proveedor por teléfono' }],
+  })
+  assert.equal(conQuien.bloquea, false)
+})

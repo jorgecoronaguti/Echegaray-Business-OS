@@ -11,6 +11,7 @@ import { FUENTE } from '../plano/fuente.mjs'
 import {
   ORIGEN, RESULTADO, FUENTE_DE_ORIGEN, ES_DEL_RECURSO, ORDEN_CASCADA,
   candidatoDePrecio, materialidadDe, evaluarCandidato, compararFuentes, resolverPrecio, necesitaHumano,
+  issueDeResolucion,
   TRAMO_PARITARIA_HASTA,
 } from './precio-resolucion.mjs'
 
@@ -431,4 +432,54 @@ test('ES_DEL_RECURSO clasifica los cuatro orígenes y ninguno queda sin declarar
   assert.equal(ES_DEL_RECURSO[ORIGEN.COMPRA_ECSAS], true)
   assert.equal(ES_DEL_RECURSO[ORIGEN.COMPARABLE], false)
   assert.equal(ES_DEL_RECURSO[ORIGEN.WEB], false)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// UN PRECIO DE INTERNET NO CIERRA UNA OFERTA SOLO (R1 de la auditoría adversarial)
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Lo que midió el auditor: con el precio interno vencido, el resolvedor acepta el de la web —probado
+// con uno ×10 sobre un recurso que mueve el 40 % del costo— y lo publicaba como ACTUALIZADO **sin
+// ningún issue**. Que la web sea la única fuente disponible no la vuelve propia, y con 285 de 389
+// precios vencidos la condición de disparo es el estado normal del catálogo, no un caso raro.
+
+const VIEJO_INTERNO = { valor: 100000, origen: ORIGEN.INTERNO, observadoEn: '2024-06-01', detalleFuente: 'catálogo interno' }
+
+test('un ACTUALIZADO desde la WEB emite PRECIO_DE_INTERNET y pide firma para congelar', () => {
+  // MUTACIÓN CORRIDA: devolver `null` para todo ACTUALIZADO → este test en rojo.
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 0.4, costoConocido: 1,
+    candidatos: [
+      cand(VIEJO_INTERNO),
+      cand({ valor: 1000000, origen: ORIGEN.WEB, observadoEn: '2026-08-29', detalleFuente: 'https://uncorralon.example/lista' }),
+    ],
+  })
+  assert.equal(p.resultado, RESULTADO.ACTUALIZADO)
+  assert.equal(p.provenance.resueltoEn, ORIGEN.WEB)
+  const i = issueDeResolucion(p, materialidadDe({ impacto: 0.4, costoConocido: 1 }))
+  assert.ok(i, 'un precio de internet entró al costo sin un solo issue')
+  assert.equal(i.type, TIPO_ISSUE.PRECIO_DE_INTERNET)
+  assert.equal(i.severity, SEVERIDAD.ALTA)
+})
+
+test('el mismo ACTUALIZADO desde una COMPRA PROPIA no pide nada', () => {
+  // El control que prueba que el candado no bloquea de más: una factura pagada por ECSAS es
+  // experiencia propia, y exigirle firma sería tratar lo propio como si viniera de afuera.
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 0.4, costoConocido: 1,
+    candidatos: [
+      cand(VIEJO_INTERNO),
+      cand({ valor: 260000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-20', detalleFuente: 'factura A 0001-00012345' }),
+    ],
+  })
+  assert.equal(p.resultado, RESULTADO.ACTUALIZADO)
+  assert.equal(issueDeResolucion(p, materialidadDe({ impacto: 0.4, costoConocido: 1 })), null)
+})
+
+test('WEB ≠ EXPERIENCIA_ECSAS · un precio de internet nunca se guarda como fuente propia', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 0.4, costoConocido: 1,
+    candidatos: [cand(VIEJO_INTERNO), cand({ valor: 1000000, origen: ORIGEN.WEB, observadoEn: '2026-08-29', detalleFuente: 'https://uncorralon.example/lista' })],
+  })
+  assert.notEqual(p.fuente, FUENTE.EXPERIENCIA_ECSAS)
 })

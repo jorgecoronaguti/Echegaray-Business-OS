@@ -361,7 +361,21 @@ const venceEl = (c) => c.vigencia.caducaEl
  * `puedeCongelar` diga que no, así que ponerlo en un clavo frenaría una oferta de $180 M por $400.
  */
 export function issueDeResolucion(p, mat) {
-  if (p.resultado === RESULTADO.VIGENTE || p.resultado === RESULTADO.ACTUALIZADO) return null
+  if (p.resultado === RESULTADO.VIGENTE) return null
+  // Un ACTUALIZADO desde la web se acepta como número y NO como palabra final: entra al costo y
+  // pide una firma para congelar. Desde una compra propia o un comparable del catálogo no la pide.
+  if (p.resultado === RESULTADO.ACTUALIZADO) {
+    if (p.provenance?.resueltoEn !== ORIGEN.WEB) return null
+    return issue({
+      type: TIPO_ISSUE.PRECIO_DE_INTERNET,
+      severity: mat.material ? SEVERIDAD.ALTA : SEVERIDAD.BAJA,
+      entity: p.nombre ? `${p.recurso} (${p.nombre})` : String(p.recurso),
+      impact: mat.fraccion === null ? null : p.valor,
+      evidence: { detalleFuente: p.detalleFuente, fecha: p.fecha },
+      recommended_action: 'set_resource_price',
+      detalle: `el precio salió de una página web y reemplazó a uno propio vencido: ${p.porQue}`,
+    })
+  }
   const quien = p.nombre ? `${p.recurso} (${p.nombre})` : String(p.recurso)
   const critico = mat.material
   if (p.resultado === RESULTADO.SIN_PRECIO) {
