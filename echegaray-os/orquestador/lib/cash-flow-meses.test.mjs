@@ -245,7 +245,7 @@ test('el hero sale del propio cuadro: cada cifra es una resta de dos celdas del 
 // LOS RÓTULOS DEL TITULAR — que la cifra correcta no salve a un nombre que dice otra cosa
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('cada tarjeta DICE de qué ventana habla, y ninguna se llama resultado ni variación', () => {
+test('cada tarjeta DICE de qué ventana habla, y la tercera se llama RESULTADO porque él la pidió así', () => {
   const { filas, meta } = armar()
   const rotulos = meta.hero.slots.map((s) => en(filas, meta.hero.rotulo, s))
   assert.deepEqual(rotulos, [
@@ -260,9 +260,20 @@ test('cada tarjeta DICE de qué ventana habla, y ninguna se llama resultado ni v
   // (2) LOS INGRESOS DEL AÑO LLEVAN PROYECCIÓN ADENTRO, y esa proyección sale SÓLO de Cobranzas —un
   // libro de cuentas por cobrar, no un pipeline comercial—. Que la glosa parta «cobrado / por
   // cobrar» es lo que mantiene visible el supuesto, y eso ya lo exige el test de la regla 3.
-  // (3) Ninguna se llama resultado: entra − sale por criterio PERCIBIDO es caja, y el resultado del
-  // ejercicio es devengado y vive en el P&L (reglas de oro 4, 5 y 7).
-  for (const r of rotulos) assert.ok(!/RESULTADO|VARIACI[ÓO]N/i.test(r), `el titular volvió a publicar un "resultado": ${r}`)
+  // (3) LA TERCERA SE LLAMA «RESULTADO», Y ESTE TEST ANTES EXIGÍA LO CONTRARIO (31/08/2026).
+  //
+  // Decía «ninguna se llama resultado», con el argumento de que entra − sale por criterio PERCIBIDO
+  // es caja y el resultado del ejercicio es devengado (reglas de oro 4 y 7). El argumento es cierto;
+  // la conclusión no era mía de tomar. El dueño pidió «ing, egre, RDO y caja a fin de año», leyó
+  // «CAJA GENERADA EN EL AÑO» en su tarjeta y contestó que había hecho cualquier cosa. Un test que
+  // fija el criterio del que construye contra el pedido explícito del que lee no protege nada:
+  // congela el error.
+  //
+  // Lo que SÍ hay que defender es que la palabra no se lea como rentabilidad, y eso se defiende con
+  // la glosa —«entra X · sale Y»— y con el subtítulo de la pestaña, que dice percibido. Eso es lo
+  // que se mide acá.
+  assert.equal(rotulos[2], 'RESULTADO DEL AÑO', 'le cambiaron a la tercera el nombre que el dueño pidió')
+  assert.ok(!/VARIACI[ÓO]N/i.test(rotulos.join(' ')), 'volvió la palabra «variación», que no dice nada')
 
   // EL LÍMITE MEDIDO: la columna del hero corta a los 37 caracteres. Un rótulo más honesto pero
   // truncado no dice nada — por eso el tope se verifica, no se confía.

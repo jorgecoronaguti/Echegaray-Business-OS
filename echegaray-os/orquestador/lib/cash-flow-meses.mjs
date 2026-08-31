@@ -78,13 +78,20 @@ export const ROTULOS_HERO = Object.freeze({
   egresos: 'EGRESOS DEL AÑO',
   egresosPagado: 'pagado',
   egresosPorPagar: 'a pagar',
-  // NO SE LLAMA «RESULTADO», Y NO ES UNA LICENCIA MÍA. El dueño pidió «ing, egre, rdo y caja a fin
-  // de año» y las cuatro están; la tercera se nombra por lo que ES. Entra menos sale por criterio
-  // PERCIBIDO es CAJA: el resultado del ejercicio es devengado y vive en el P&L. Llamar «resultado»
-  // a esta resta invita a leerla como rentabilidad, que es la regla de oro 7 —nunca confundir
-  // rentabilidad con caja— y la 4. Si el dueño quiere igual la palabra, se cambia acá y queda dicho
-  // que se cambió a pedido.
-  resultado: 'CAJA GENERADA EN EL AÑO',
+  // SE LLAMA «RESULTADO» PORQUE EL DUEÑO LO PIDIÓ DOS VECES (31/08/2026).
+  //
+  // La primera versión decía «CAJA GENERADA EN EL AÑO» con este argumento: entra menos sale por
+  // criterio PERCIBIDO es caja, y el resultado del ejercicio es devengado y vive en el P&L, así que
+  // llamarlo «resultado» invita a leerlo como rentabilidad (reglas de oro 4 y 7). El argumento sigue
+  // siendo cierto. Lo que estaba mal era la conclusión: él pidió «ing, egre, RDO y caja a fin de
+  // año», leyó otra palabra en su tarjeta y contestó «te pedí exactamente lo que quería e hiciste
+  // cualquier cosa». Un rótulo es de quien lee el cuadro.
+  //
+  // El riesgo que motivaba el otro nombre se cubre donde corresponde y sin discutirle el título: el
+  // subtítulo de la pestaña dice PERCIBIDO, y la glosa parte el número en «entra X · sale Y», que es
+  // la definición de la resta a la vista. Un lector que ve de dónde sale el número no lo confunde
+  // con rentabilidad.
+  resultado: 'RESULTADO DEL AÑO',
   resultadoEntra: 'entra',
   resultadoSale: 'sale',
   hoy: 'CAJA HOY',
