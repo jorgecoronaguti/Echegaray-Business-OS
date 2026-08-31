@@ -36,7 +36,34 @@
 // aproximación no es un adorno: es la diferencia entre un número defendible y uno inventado.
 
 import { IPC, FUENTE as FUENTE_IPC } from '../ipc-publicado.mjs'
+import { VIGENCIA_HASTA, CCT, ZONA, PERIODO_VERIFICADO, VERIFICADA_EL } from '../uocra-paritaria.mjs'
 import { IMPACTO_MATERIAL } from './outlier.mjs'
+
+/**
+ * HASTA CUÁNDO RIGE EL TRAMO DE PARITARIA FIRMADO, en ISO.
+ *
+ * NO se escribe el número acá: se trae de `uocra-paritaria.mjs`, que es donde vive verificado contra
+ * fuente (CCT 76/75, Zona A, verificado el 07/08/2026). Copiarlo sería crear una segunda definición
+ * del mismo concepto, y el día que se firme el tramo nuevo una de las dos quedaría vieja sin gritar
+ * — que es exactamente cómo este repo ya perdió plata con fuentes congeladas.
+ *
+ * El módulo lo publica en DD/MM/YYYY porque así se lee en el acuerdo; acá se normaliza a ISO.
+ */
+export const TRAMO_PARITARIA_HASTA = (() => {
+  const [d, m, a] = String(VIGENCIA_HASTA).split('/')
+  return `${a}-${m}-${d}`
+})()
+
+/** De dónde salió esa fecha, para poder citarla sin abrir otro archivo. */
+export const TRAMO_PARITARIA_FUENTE = `UOCRA CCT ${CCT} Zona ${ZONA} · escala ${PERIODO_VERIFICADO} verificada el ${VERIFICADA_EL}`
+
+/**
+ * CUÁNTOS MESES DE ATRASO DEL IPC SE AGUANTAN ANTES DE NO PODER AFIRMAR NADA.
+ *
+ * El INDEC publica mensualmente. Un atraso de un mes es el calendario; doce meses es una tabla
+ * abandonada. Pasado ese punto el índice no sostiene ninguna vigencia y la derivada cae al mínimo.
+ */
+export const IPC_ATRASO_MAXIMO_MESES = 12
 
 /** Cuánto error de precio se tolera cuando NO se sabe cuánto pesa el recurso. El 5% es el orden del
  *  redondeo comercial de una oferta: por debajo de eso, pedir un precio nuevo cuesta más de lo que
@@ -114,12 +141,39 @@ export function derivaDelIPC({ tabla = IPC, ventana = 6, hoy = new Date() } = {}
   const ultimo = usados[usados.length - 1].periodo
   // Un período '2026-06' es el mes cerrado: se mide contra su último día, no contra el primero.
   const finDelMes = new Date(Date.UTC(Number(ultimo.slice(0, 4)), Number(ultimo.slice(5, 7)), 0))
+  const antiguedadDias = dias(iso(finDelMes), iso(hoy))
+  const atrasoMeses = Math.max(0, antiguedadDias / 30)
+
+  // ═══ UN ÍNDICE ATRASADO NO SE CITA COMO SI ESTUVIERA FRESCO ═══
+  //
+  // Toda la deriva de este módulo se apoya en esta tabla. Si la tabla dejó de actualizarse, la
+  // vigencia sigue saliendo con dos decimales y cara de medición — y ése es el patrón exacto de
+  // «fuente que se congela sin gritar» que ya costó plata acá. `antiguedadDias` se calculaba desde
+  // el principio y NO LO MIRABA NADIE, que es la definición de un control que no puede decir que no.
+  //
+  // La degradación es proporcional y explicable: la tasa se midió sobre una ventana de N meses y
+  // hay M meses posteriores sin medir, así que sólo N de cada N+M meses del período que la tasa
+  // pretende describir están respaldados. La vigencia se recorta en esa fracción.
+  if (atrasoMeses > IPC_ATRASO_MAXIMO_MESES) {
+    return {
+      derivaMensual: null, origen: 'IPC_INDEC_ABANDONADO', fuente: FUENTE_IPC, antiguedadDias, factorFrescura: 0,
+      porQue: `el último IPC publicado es de ${ultimo}, hace ${antiguedadDias} días (más de ${IPC_ATRASO_MAXIMO_MESES} meses): la tabla está abandonada y no sostiene ninguna vigencia`,
+    }
+  }
+  // Menos de un mes de atraso es el CALENDARIO DE PUBLICACIÓN, no una tabla congelada: el INDEC
+  // publica el mes cerrado a mediados del siguiente. Recortar por eso castigaría el funcionamiento
+  // normal y volvería el aviso ruido de fondo.
+  const atrasado = atrasoMeses >= 1
+  const factorFrescura = atrasado ? usados.length / (usados.length + atrasoMeses) : 1
   return {
     derivaMensual,
-    origen: 'IPC_INDEC',
+    origen: atrasado ? 'IPC_INDEC_ATRASADO' : 'IPC_INDEC',
     fuente: FUENTE_IPC,
-    antiguedadDias: dias(iso(finDelMes), iso(hoy)),
-    porQue: `${(derivaMensual * 100).toFixed(2)}%/mes — promedio geométrico de los ${usados.length} meses de IPC nivel general publicados hasta ${ultimo}. Es un PISO de deriva, no la deriva de este recurso`,
+    antiguedadDias,
+    factorFrescura,
+    porQue: atrasado
+      ? `${(derivaMensual * 100).toFixed(2)}%/mes — promedio geométrico de ${usados.length} meses de IPC hasta ${ultimo}, PERO ese dato tiene ${antiguedadDias} días: hay ${atrasoMeses.toFixed(1)} meses posteriores sin medir, así que la vigencia se recorta ×${factorFrescura.toFixed(2)}`
+      : `${(derivaMensual * 100).toFixed(2)}%/mes — promedio geométrico de los ${usados.length} meses de IPC nivel general publicados hasta ${ultimo}. Es un PISO de deriva, no la deriva de este recurso`,
   }
 }
 
@@ -202,12 +256,13 @@ export function toleranciaDeMaterialidad(fraccion) {
  */
 export function vigenciaDerivada({
   tipo = null, familia = null, serie = [], origen = 'INTERNO', moneda = 'ARS',
-  materialidad = null, tramoParitariaHasta = null, hoy = new Date(), tablaIpc = IPC,
+  materialidad = null, tramoParitariaHasta = TRAMO_PARITARIA_HASTA, observadoEn = null,
+  hoy = new Date(), tablaIpc = IPC,
 } = {}) {
   const clase = claseDeRecurso({ tipo, familia })
   const { tolerancia, porQue: porQueTolerancia } = toleranciaDeMaterialidad(materialidad)
 
-  if (clase === CLASE.CONVENIO) return vigenciaDeConvenio({ tramoParitariaHasta, hoy, clase, tolerancia, porQueTolerancia })
+  if (clase === CLASE.CONVENIO) return vigenciaDeConvenio({ tramoParitariaHasta, observadoEn, hoy, clase, tolerancia, porQueTolerancia })
 
   const deSerie = derivaDeSerie(serie)
   if (deSerie.derivaMensual === null && String(moneda) !== 'ARS') {
@@ -226,37 +281,67 @@ export function vigenciaDerivada({
     })
   }
   const factor = FACTOR_ORIGEN[origen] ?? FACTOR_ORIGEN.WEB
-  const crudo = 30 * (tolerancia / base.derivaMensual) * factor
+  // El factor de frescura sólo existe cuando la deriva vino del IPC: una serie propia del recurso no
+  // envejece por lo que el INDEC deje de publicar.
+  const frescura = base.factorFrescura ?? 1
+  const crudo = 30 * (tolerancia / base.derivaMensual) * factor * frescura
   const d = Math.max(DIAS_MIN, Math.min(DIAS_MAX, Math.round(crudo)))
   const recorte = factor === 1 ? '' : ` · recortado ×${factor} porque el precio viene de ${origen}`
+  const porAtraso = frescura === 1 ? '' : ` · recortado ×${frescura.toFixed(2)} porque el IPC que sostiene la deriva tiene ${base.antiguedadDias} días`
   return congelar({
     clase, dias: d, tolerancia, porQueTolerancia, deriva: base,
-    porQue: `${d} días = 30 × ${(tolerancia * 100).toFixed(0)}% ÷ ${(base.derivaMensual * 100).toFixed(2)}%/mes${recorte}${d !== Math.round(crudo) ? ` (acotado al rango ${DIAS_MIN}–${DIAS_MAX})` : ''}`,
+    porQue: `${d} días = 30 × ${(tolerancia * 100).toFixed(0)}% ÷ ${(base.derivaMensual * 100).toFixed(2)}%/mes${recorte}${porAtraso}${d !== Math.round(crudo) ? ` (acotado al rango ${DIAS_MIN}–${DIAS_MAX})` : ''}`,
   })
 }
 
-/** El jornal de convenio: el driver es el tramo de paritaria, no una deriva mensual. PURA. */
-function vigenciaDeConvenio({ tramoParitariaHasta, hoy, clase, tolerancia, porQueTolerancia }) {
-  if (tramoParitariaHasta) {
-    const restan = dias(iso(hoy), iso(tramoParitariaHasta))
-    const d = Math.max(DIAS_MIN, Math.min(DIAS_MAX, restan))
+/**
+ * EL JORNAL DE CONVENIO CADUCA, NO SE DEGRADA. PURA.
+ *
+ * ═══ LA DIFERENCIA QUE ESTA FUNCIÓN EXISTE PARA HACER ═══
+ *
+ * Un precio de material se DEGRADA: cada día que pasa se aleja un poco del real, y la pregunta es
+ * cuánto se aguanta. Un básico de convenio no hace eso. Está exactamente bien hasta el último día
+ * del tramo y exactamente mal al día siguiente, porque lo que cambia no es el mercado: es que se
+ * firmó otra escala. No hay «un poco vencido» — hay una FECHA.
+ *
+ * Por eso devuelve `caducaEl`, una fecha dura, y no un cociente. `evaluarCandidato` compara contra
+ * ella y no contra la antigüedad: `dias` queda como dato informativo.
+ *
+ * ═══ EL BUG QUE ESTO CORRIGE ═══
+ *
+ * La versión anterior devolvía `dias = fin del tramo − HOY`, y quien llama compara ese número
+ * contra `HOY − observadoEn`. Son dos ejes distintos: un básico observado el 01/08 con el tramo
+ * terminando el 31/08 daba `dias = 1` contra una antigüedad de 29, o sea VENCIDO el 30/08 —
+ * un día antes de que el tramo terminara de verdad. La escala de agosto se declaraba muerta
+ * mientras seguía siendo la vigente.
+ */
+function vigenciaDeConvenio({ tramoParitariaHasta, observadoEn, hoy, clase, tolerancia, porQueTolerancia }) {
+  if (!tramoParitariaHasta) {
     return congelar({
-      clase, dias: d, tolerancia, porQueTolerancia,
-      deriva: { derivaMensual: null, origen: 'TRAMO_PARITARIA', porQue: `el tramo vigente termina el ${iso(tramoParitariaHasta)}` },
-      porQue: restan <= 0
-        ? `el tramo de paritaria venció el ${iso(tramoParitariaHasta)}: el jornal ya no es el vigente y la vigencia queda en el mínimo de ${DIAS_MIN} días`
-        : `${d} días: el jornal de convenio no deriva, salta — vale hasta que entre el próximo tramo, el ${iso(tramoParitariaHasta)}`,
+      clase, dias: 30, tolerancia, porQueTolerancia, caducaEl: null,
+      deriva: { derivaMensual: null, origen: 'TRAMO_PARITARIA_DESCONOCIDO', porQue: 'no se pasó la fecha de fin del tramo vigente' },
+      porQue: '30 días POR APROXIMACIÓN DECLARADA: el driver real de un jornal de convenio es el tramo de paritaria y acá no se pasó cuál rige. No es una medición',
     })
   }
+  const caducaEl = iso(tramoParitariaHasta)
+  // Los días de vida del precio se cuentan DESDE SU OBSERVACIÓN, que es el eje contra el que quien
+  // llama mide la antigüedad. Sin `observadoEn` no se puede informar el número y se dice.
+  const d = observadoEn ? Math.max(0, dias(iso(observadoEn), caducaEl)) : null
+  const yaCaduco = iso(hoy) > caducaEl
   return congelar({
-    clase, dias: 30, tolerancia, porQueTolerancia,
-    deriva: { derivaMensual: null, origen: 'TRAMO_PARITARIA_DESCONOCIDO', porQue: 'no se pasó la fecha de fin del tramo vigente' },
-    porQue: '30 días POR APROXIMACIÓN DECLARADA: el driver real de un jornal de convenio es el tramo de paritaria y acá no se pasó cuál rige. No es una medición',
+    clase, dias: d, tolerancia, porQueTolerancia, caducaEl,
+    deriva: { derivaMensual: null, origen: 'TRAMO_PARITARIA', porQue: `el tramo de paritaria firmado rige hasta el ${caducaEl}` },
+    porQue: yaCaduco
+      ? `el tramo de paritaria CADUCÓ el ${caducaEl}: después de esa fecha no hay escala firmada y el básico anterior no se sigue sirviendo en silencio — hay que traer el tramo nuevo`
+      : `vale hasta el ${caducaEl} y ese día deja de valer: un básico de convenio no se degrada de a poco, caduca cuando entra la escala nueva`,
   })
 }
 
-const congelar = ({ clase, dias: d, tolerancia, porQueTolerancia, deriva, porQue }) => Object.freeze({
+const congelar = ({ clase, dias: d, tolerancia, porQueTolerancia, deriva, porQue, caducaEl = null }) => Object.freeze({
   dias: d,
+  /** La FECHA DURA de caducidad, cuando el precio caduca en vez de degradarse. `null` significa que
+   *  este precio se degrada y quien decide es la antigüedad contra `dias`. */
+  caducaEl,
   clase,
   tolerancia,
   derivaMensual: deriva.derivaMensual,
