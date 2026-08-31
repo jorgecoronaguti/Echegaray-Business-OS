@@ -65,10 +65,20 @@ test('un sábado no puede ser el último día de nadie a los efectos de esta reg
 // probar el cable en absoluto.
 const NOMINA = readFileSync(new URL('../scripts/nomina-pestana.mjs', import.meta.url), 'utf8')
 
-test('la columna «Convenio» de la Nómina se dibuja con la marca de procedencia', () => {
-  assert.match(NOMINA, /rotuloConvenio\(codigo\) \?\? SIN_DATO/,
-    'volvió a dibujar la categoría pelada: una inferencia del OS se ve igual que una decisión del dueño')
-  assert.match(NOMINA, /if \(conv && esInferida\(codigo\)\) conInferencia\.push/)
+test('la Nómina NOMBRA las equivalencias que dedujo el OS, no las hace pasar por decididas', () => {
+  // ═══ QUÉ CUIDA ESTE TEST, Y QUÉ DEJÓ DE CUIDAR ═══
+  //
+  // Cuidaba dos cosas: que la columna «Convenio» del cuadro 1 llevara la marca de procedencia, y que
+  // al pie se nombraran las equivalencias deducidas. La columna se fue el 31/08 cuando el dueño
+  // ordenó rehacer el cuadro como instrucción de pago —«quiero saber cuanto y como tengo q pagarle a
+  // cada uno»—, y el convenio no es parte de esa instrucción.
+  //
+  // Lo que NO se fue, y es lo que importa, es la línea al pie: una equivalencia que dedujo el OS
+  // —«M OF → Medio Oficial», que el jornal de Castillo contradice— no puede leerse igual que una que
+  // declaró el dueño. Sin columna, esa distinción vive entera en esa línea, así que el test la exige
+  // más fuerte que antes: que se detecte, que se arme y que se escriba.
+  assert.match(NOMINA, /if \(conv && esInferida\(codigo\)\) conInferencia\.push/,
+    'dejó de detectar qué equivalencias dedujo el OS')
   assert.match(NOMINA, /const inferidas = lineaEquivalenciasInferidas\(conInferencia\)/,
     'la línea al pie que nombra las inferencias dejó de armarse')
   assert.match(NOMINA, /if \(inferidas\) fila\(sub\(inferidas\)\)/, 'se arma la línea pero no se escribe')
@@ -90,7 +100,7 @@ test('los comentarios de la Nómina no describen un código que ya no existe', (
 // cobra, cuánto sube, cuánto va a cobrar. Antes las dos puntas estaban separadas por tres columnas de
 // plata y la del medio no existía — para saber cuánto subía cada uno había que restar dos celdas
 // lejanas, que es justo la cifra que el dueño decidió.
-test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nueva, y en ese orden', () => {
+test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detalle', () => {
   // ═══ EL ENCABEZADO SE BUSCA POR SU PRIMERA COLUMNA, NO POR LA SEGUNDA ═══
   //
   // Este test anclaba al literal `fila('Persona', 'Cat.', 'Convenio'`. El 31/08/2026 el dueño mandó
@@ -105,16 +115,21 @@ test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nue
   // Persona»: desde que el cuadro que decide se separó del que explica, hay dos encabezados que
   // empiezan igual y el rango entre uno y otro abarca doscientas líneas de código — cualquier
   // apóstrofo suelto de un comentario en el medio desparejaba el conteo de comillas.
-  const enc = /fila\('Persona',[^\n]*'\$\/h HOY'[^\n]*\)/.exec(NOMINA)
+  // Acotado a 400 caracteres y no `[^\n]*`: el encabezado del cuadro pasó a ocupar dos líneas y un
+  // patrón que no cruza el salto lo daba por desaparecido.
+  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aumento'\)/.exec(NOMINA)
   assert.ok(enc, 'se fue el encabezado con las tarifas')
   const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   const i = cols.indexOf('$/h HOY')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
   // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
-  const decide = /fila\('Persona', 'Ya transferido', 'POR BANCO'[^\n]*\)/.exec(NOMINA)
+  const decide = /fila\('Persona', 'Ya transferido', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
   assert.ok(decide, 'se fue el cuadro de instrucción de pago')
   const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  assert.ok(dc.length <= 7, `el cuadro que decide volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  assert.ok(dc.length <= 11, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  // Y la plata va antes que el respaldo: el número que decide primero, cómo salió después.
+  assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Horas'),
+    'el detalle de horas y tarifas se metió delante de la plata')
   for (const c of ['POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR']) {
     assert.ok(dc.includes(c), `desapareció «${c}», que es lo que el dueño opera`)
   }
@@ -122,13 +137,22 @@ test('la Nómina publica tarifa de hoy · aumento de su categoría · tarifa nue
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
   assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
-  assert.deepEqual(cols.slice(i, i + 3), ['$/h HOY', 'Aumento $/h', '$/h c/aumento'],
-    'las tres tarifas dejaron de leerse seguidas: la cuenta no se puede seguir de izquierda a derecha')
+  assert.deepEqual(cols.slice(i, i + 2), ['$/h HOY', '$/h c/aumento'],
+    'las dos tarifas dejaron de leerse seguidas: la comparación no se puede hacer de un vistazo')
 
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
   // separan el día que el porcentaje cambie.
-  assert.match(NOMINA, /const suba = tarifaConAumento\(q\.jornal, basico\)/)
-  assert.match(NOMINA, /suba \? Math\.round\(suba\.aumento\) : SIN_DATO/)
+  // ═══ UNA SOLA CUENTA DEL AUMENTO ═══
+  //
+  // Antes había dos columnas —«Aumento $/h» y «$/h CON AUMENTO»— y este test exigía que las dos
+  // salieran de la misma familia de funciones, porque dos cuentas del mismo aumento se separan el
+  // día que el porcentaje cambie. La columna del aumento se fue con el rediseño del 31/08, así que
+  // ahora hay UNA sola cuenta y el invariante se cuida por el otro lado: que la tarifa nueva salga
+  // de `jornalConAumento` y que nadie la reimplemente acá con un `× 0,5` escrito al lado.
+  assert.match(NOMINA, /const objetivo = jornalConAumento\(q\.jornal, basico\)/,
+    'la tarifa con aumento dejó de salir de `jornalConAumento`')
+  assert.ok(!/\*\s*0[.,]5/.test(NOMINA),
+    'alguien volvió a escribir la mitad de la brecha a mano: la regla vive en `jornalConAumento`')
 })
 
 test('el vocabulario del código dice «aumento», no «piso» — no quedan dos nombres para la misma columna', () => {
