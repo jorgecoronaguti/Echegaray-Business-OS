@@ -30,6 +30,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import * as E from '../lib/estilo-pestana.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
@@ -44,7 +45,7 @@ import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
-import { seccion, sub, total as rotuloTotal } from '../lib/patron-pestana.mjs'
+import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
 // ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
 //
 // El centinela significa «esta celda es mía y va vacía», y se resuelve DENTRO de la fusión. Esta
@@ -372,7 +373,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // Las horas y las tarifas vuelven acá, DESPUÉS de la plata — el número que decide primero, el
   // respaldo a su derecha, en la misma fila.
   fila('Persona', 'Ya transferido', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EN EFECTIVO c/aumento', 'TOTAL c/aumento', 'Horas', '$/h HOY', '$/h c/aumento')
+    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -572,12 +573,22 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     fila(seccion(2, 'lo que terminó · liquidaciones finales'))
     fila('Lo liquidado por el estudio es la mitad BLANCA del acuerdo; el efectivo es un monto igual. '
       + 'Lo que sale de la caja es la suma de las dos columnas, o sea el doble del recibo.')
-    fila('Persona', 'Fecha', 'Blanco (lo liquidado)', 'Efectivo', 'TOTAL', 'Ya transferido', 'QUEDA POR PAGAR')
+    // ═══ LA MISMA COLUMNA SIGNIFICA LO MISMO EN TODA LA PESTAÑA ═══
+    //
+    // Este cuadro tenía la fecha en B y la plata corrida a partir de C, mientras el de arriba tenía
+    // el transferido en B y el banco en C. Dos tablas con el mismo aspecto y distinto significado por
+    // columna obligan a releer el encabezado en cada una, y es de donde viene la sensación de
+    // descuadre. Ahora B es «ya transferido», C lo que va por banco y D el efectivo en las dos, y la
+    // fecha —que es contexto, no plata— se va al final.
+    // Sin columna de fecha: es contexto, no plata, y su lugar es `_RECIBOS_RAW`, que la trae con la
+    // fuente al lado. Acá obligaba a meter una columna de texto en medio del contrato numérico y
+    // salía dibujada como su serial —«46.259»—, que es el defecto clásico de mezclar unidades.
+    fila('Persona', 'Ya transferido', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL', 'QUEDA POR PAGAR')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -604,18 +615,16 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       const nf = f.length + 1
       const cita = `SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$A$1:$A$400;"${r.cuil}";'_RECIBOS_RAW'!$B$1:$B$400;"FINAL")`
       fila(r.nombre_recibo,
-        r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-AR') : SIN_DATO,
-        `=${cita}`, `=C${nf}`, `=C${nf}+D${nf}`,
-        dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : SIN_DATO,
-        `=N(E${nf})-N(F${nf})`)
+        dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
+        `=${cita}`, `=C${nf}`, `=C${nf}+D${nf}`, `=N(E${nf})-N(B${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
     const q1 = f.length - ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length + 1
     const q2 = f.length
-    fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`), '',
-      `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`, `=SUM(E${q1}:E${q2})`,
-      `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`)
+    fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
+      `=SUM(B${q1}:B${q2})`, `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
+      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`)
     fila(sub('Estas personas NO cobran la quincena: su vínculo terminó. El costo de desvincular al resto del plantel está en el cuadro 4.'))
 
   }
@@ -796,41 +805,76 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
  * en US y lo MUESTRA con la coma y el punto del locale. Escribirlo con el separador local lo rompe.
  */
 async function formatear(google, hoja, filas) {
+  // ═══ EL FORMATO SALE DE `estilo-pestana`, COMO EN TODO EL ARCHIVO ═══
+  //
+  // Esta pestaña era la ÚNICA del Sheet con su propio formateo escrito a mano: CAJA, Cheques,
+  // Jornales, Estructura, OBRAS y Calendario pasan todas por `lib/estilo-pestana.mjs`. Por eso se
+  // veía distinta por más que se le arreglaran los detalles — no era un problema de detalles, era
+  // que no hablaba el mismo idioma. El dueño lo dijo así: «no coincide con el formato de todo el
+  // sheet».
+  //
+  // Todo formato pasa por `E.conFuente`: si se define `textFormat` sin nombrar la tipografía, Sheets
+  // la reemplaza por la de la hoja y la celda queda en otra fuente.
   const s = hoja.sheetId
-  const rango = (r0, r1, c0, c1) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-  const esTitulo = (i) => /^\d+ · /.test(String(filas[i]?.[0] ?? ''))
-  const esCabecera = (i) => String(filas[i]?.[0] ?? '') === 'Persona'
-  const esTotal = (i) => /^⇒/.test(String(filas[i]?.[0] ?? ''))
-  const reqs = [
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 190 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 108 }, fields: 'pixelSize' } },
-    { repeatCell: { range: rango(0, 1, 0, 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 13 } } }, fields: 'userEnteredFormat.textFormat(bold,fontSize)' } },
+  const n = filas.length
+  const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  const req = [
+    { unmergeCells: { range: r(0, Math.max(n, 200)) } },
+    E.reset(s, Math.max(n + 20, 200), ANCHO),
+    // SIN CUADRÍCULA y con el titular congelado: la jerarquía la hace la tipografía, no la reja.
+    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: 8 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ANCHO.concepto }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: E.ANCHO.numero }, fields: 'pixelSize' } },
   ]
-  // EL PATRÓN DE MILES VA SÓLO DONDE HAY UN NÚMERO, celda por celda. Aplicarlo a un bloque entero
-  // convertía la fecha de ingreso en «45.803»: una fecha es un número para la planilla, y el patrón
-  // de pesos la muestra como su serial. Se recorren las corridas contiguas de números de cada fila.
-  for (let i = 0; i < filas.length; i++) {
-    let j = 0
-    while (j < ANCHO) {
-      // UNA FÓRMULA TAMBIÉN ES UNA CELDA DE NÚMERO. Desde que la columna POR BANCO cita
-      // `_RECIBOS_RAW`, su valor es un string que empieza con «=»: esas celdas salían sin formato,
-      // con dos decimales y sin separador, al lado de las formateadas. Se lee como un error de dato
-      // y es de formato — que es peor, porque hace dudar del número.
-      const esPlata = (x) => typeof x === 'number' || (typeof x === 'string' && x.startsWith('='))
-      if (!esPlata(filas[i][j])) { j++; continue }
-      let k = j
-      while (k < ANCHO && esPlata(filas[i][k])) k++
-      reqs.push({ repeatCell: { range: rango(i, i + 1, j, k), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } })
-      j = k
+  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
+
+  // ── EL CONTRATO DE COLUMNAS, UNA VEZ PARA TODA LA PESTAÑA ───────────────────────────────────────
+  //
+  // La plata es plata en toda la pestaña. Formatear por bloque obliga a que cada bloque nuevo se
+  // «acuerde», y así es como una columna termina con dos formatos distintos según dónde se mire.
+  // A es texto; B a G son plata en los dos cuadros; H a J son cantidades y tarifas.
+  fmt(r(0, n, 0, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy', { numberFormat: E.NUM.texto, wrapStrategy: 'CLIP' })
+  for (let c = 1; c <= 6; c++) fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+  for (let c = 7; c < ANCHO; c++) fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'RIGHT' })
+
+  // ── LA JERARQUÍA, FILA POR FILA ────────────────────────────────────────────────────────────────
+  const texto = (i) => String(filas[i]?.[0] ?? '')
+  for (let i = 0; i < n; i++) {
+    if (i === 0) { fmt(r(0, 1), 'userEnteredFormat', E.titulo()); continue }
+    if (ES_SECCION_NUM.test(texto(i))) { fmt(r(i, i + 1), 'userEnteredFormat', E.bloque()); continue }
+    if (texto(i) === 'Persona') {
+      fmt(r(i, i + 1), 'userEnteredFormat', E.encabezado())
+      // El encabezado envuelve, así que necesita alto propio: con los 20px de una fila normal se ve
+      // la primera línea y el resto queda cortado abajo, sin que nada avise.
+      req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
+      continue
     }
-  }
-  for (let i = 0; i < filas.length; i++) {
-    if (esTitulo(i) || esCabecera(i) || esTotal(i)) {
-      reqs.push({ repeatCell: { range: rango(i, i + 1, 0, ANCHO), cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } })
+    if (ES_TOTAL.test(texto(i))) {
+      // Sólo hasta la columna de plata: pintado hasta el final, el total dibujaba las HORAS como
+      // pesos —«$1.408»— porque `E.total()` trae su propio formato de moneda.
+      fmt(r(i, i + 1, 0, 7), 'userEnteredFormat', E.total())
+      // El total se rula con una línea fina arriba, no con relleno: es la diferencia entre una
+      // planilla y un estado financiero.
+      req.push({ updateBorders: { range: r(i, i + 1), top: { style: 'SOLID', color: E.COLOR.hairline ?? { red: 0.8, green: 0.84, blue: 0.86 } } } })
+      continue
     }
+    if (ES_SUBITEM.test(texto(i))) fmt(r(i, i + 1), 'userEnteredFormat', E.nota())
   }
-  await google.spreadsheetBatchUpdate(ID, reqs)
-  console.log(`  formato: ${reqs.length} reglas`)
+
+  // ── EL TITULAR: rótulo chico y gris, cifra grande, contexto chico ──────────────────────────────
+  //
+  // Es la forma de una tarjeta en cualquier producto de tesorería, y es la misma que ya usa CAJA.
+  // Repetirla idéntica es lo que hace que las tres cifras se lean de un vistazo en vez de una a una.
+  const fHero = filas.findIndex((x) => String(x?.[0] ?? '') === 'QUÉ SALE DE LA CAJA MAÑANA')
+  if (fHero >= 0) {
+    fmt(r(fHero, fHero + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.bloque, foregroundColor: E.COLOR.titulo } })
+    fmt(r(fHero + 1, fHero + 2), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', verticalAlignment: 'BOTTOM', wrapStrategy: 'CLIP' })
+    fmt(r(fHero + 2, fHero + 3, 1, ANCHO), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment', { textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
+    fmt(r(fHero + 3, fHero + 4), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+    req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: fHero + 2, endIndex: fHero + 3 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
+  }
+  await google.spreadsheetBatchUpdate(ID, req)
+  console.log(`  formato: ${req.length} reglas`)
 }
 
 /**

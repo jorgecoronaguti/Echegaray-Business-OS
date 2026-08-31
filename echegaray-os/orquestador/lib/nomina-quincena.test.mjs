@@ -117,10 +117,10 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // apóstrofo suelto de un comentario en el medio desparejaba el conteo de comillas.
   // Acotado a 400 caracteres y no `[^\n]*`: el encabezado del cuadro pasó a ocupar dos líneas y un
   // patrón que no cruza el salto lo daba por desaparecido.
-  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aumento'\)/.exec(NOMINA)
+  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aum\.'\)/.exec(NOMINA)
   assert.ok(enc, 'se fue el encabezado con las tarifas')
   const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  const i = cols.indexOf('$/h HOY')
+  const i = cols.indexOf('$/h hoy')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
   // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
   const decide = /fila\('Persona', 'Ya transferido', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
@@ -137,7 +137,7 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
   assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
-  assert.deepEqual(cols.slice(i, i + 2), ['$/h HOY', '$/h c/aumento'],
+  assert.deepEqual(cols.slice(i, i + 2), ['$/h hoy', '$/h c/aum.'],
     'las dos tarifas dejaron de leerse seguidas: la comparación no se puede hacer de un vistazo')
 
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
