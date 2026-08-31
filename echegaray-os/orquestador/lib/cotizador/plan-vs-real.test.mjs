@@ -8,8 +8,11 @@ import assert from 'node:assert/strict'
 import { consolidarEjecucion, magnitud, UNIDAD } from './ejecucion-real.mjs'
 import {
   compararObra, compararPartida, compararMagnitud, observacion, causaDeDesvio,
-  CONCEPTO, NO_COMPARABLE, SIN_CAUSA, causaRaiz, cuadroDeCausas, coberturaDeObras, CAUSA_RAIZ, DISPOSICION, comparabilidadViva,
+  CONCEPTO, NO_COMPARABLE, SIN_CAUSA,
 } from './plan-vs-real.mjs'
+import {
+  causaRaiz, cuadroDeCausas, coberturaDeObras, comparabilidadViva, CAUSA_RAIZ, DISPOSICION,
+} from './plan-real-causas.mjs'
 import { ESTADO } from './contrato.mjs'
 
 const PLAN = [

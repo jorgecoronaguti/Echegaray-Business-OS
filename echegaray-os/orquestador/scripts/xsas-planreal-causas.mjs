@@ -26,9 +26,10 @@
 import { getPool } from '../lib/db.mjs'
 import { genealogiaDeObra, heredarPlan } from '../lib/cotizador/obra.mjs'
 import { consolidarEjecucion } from '../lib/cotizador/ejecucion-real.mjs'
+import { compararObra, CONCEPTO } from '../lib/cotizador/plan-vs-real.mjs'
 import {
-  compararObra, cuadroDeCausas, coberturaDeObras, comparabilidadViva, CONCEPTO, DISPOSICION,
-} from '../lib/cotizador/plan-vs-real.mjs'
+  cuadroDeCausas, coberturaDeObras, comparabilidadViva, DISPOSICION,
+} from '../lib/cotizador/plan-real-causas.mjs'
 import { leerPlanDeObra, leerEjecucionReal, guardarGenealogia, guardarPlan, enlazarActividad } from '../lib/cotizador/obra-pg.mjs'
 
 const comoJson = process.argv.includes('--json')
