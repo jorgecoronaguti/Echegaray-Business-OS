@@ -7,6 +7,7 @@
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --duplicados       # sólo los pares
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --cuadrillas       # sólo el frente de cuadrillas
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --cargas           # carga social vs HH
+//   node orquestador/scripts/xsas-basemaestra-auditar.mjs --hallazgos        # los defectos, con su número
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --cuadrillas --aplicar
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --cuadrillas --revertir
 //   node orquestador/scripts/xsas-basemaestra-auditar.mjs --par T1075.1 T1111.0   # dos, lado a lado
@@ -35,7 +36,7 @@
 // persona a mano no tiene ese prefijo y sobrevive. Es la misma disciplina que «respetar lo editado
 // por personas».
 import { getPool } from '../lib/db.mjs'
-import { auditarDuplicados, planDeFusion, veredicto } from './xsas-basemaestra-duplicados.mjs'
+import { auditarDuplicados, planDeFusion, veredicto, claveNombre } from './xsas-basemaestra-duplicados.mjs'
 import { cuadrillaDesdeObservaciones } from '../lib/plano/cuadrilla.mjs'
 
 const FUENTE = 'xsas-basemaestra'
@@ -157,7 +158,9 @@ async function guardarVeredictos(q, filas, corrida) {
     await q(`insert into public.base_maestra_relacion
                (codigo_a, codigo_b, veredicto, regla, por_que, evidencia, criterios, corrida)
              values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)`,
-    [f.a, f.b, f.veredicto, f.regla, f.porQue, JSON.stringify(f.ejes), f.criterios, corrida])
+    [f.a, f.b, f.veredicto, f.regla, f.porQue,
+      JSON.stringify({ ...f.ejes, hallazgo: f.hallazgo ?? null, accion: f.accion ?? null, pregunta: f.pregunta ?? null }),
+      f.criterios, corrida])
   }
   return filas.length
 }
@@ -278,6 +281,64 @@ function imprimirCuadrillas(cuadro) {
 }
 
 /**
+ * LOS TRES DEFECTOS DE COMPOSICIÓN, CON EL NÚMERO DE CUÁNTO SE MUEVE CADA PARTIDA.
+ *
+ * ═══ ESTO SE CUENTA, NO SE CORRIGE ═══
+ *
+ * Corregir cualquiera de los tres cambia el costo de una partida de la Base Maestra, y eso es
+ * efecto económico: lo firma el dueño, no un script. Este cuadro existe para que los tenga
+ * adelante con el número, que es lo único que convierte «hay un error» en una decisión.
+ *
+ * Los detecta por REGLA, no por lista: si mañana aparece un cuarto caso, sale acá solo.
+ *
+ *   RECETA COPIADA          dos tareas sin nada en común comparten la composición byte a byte, y
+ *                           una de las dos lleva un recurso que se llama como la OTRA tarea.
+ *   CARGA SOCIAL EN CERO    hay línea de carga social y su cantidad es 0. Se escapa de
+ *                           `analisis_incompleto`, cuya condición es `bool_or(tipo='carga_social')`:
+ *                           la línea EXISTE, así que la da por completa. El cero no es vacío.
+ *
+ * El movimiento de la carga social en cero se calcula con el precio de LA PROPIA LÍNEA que está en
+ * cero —el recurso y su precio ya están cargados, lo único que falta es la cantidad— aplicando la
+ * convención 1:1 del libro migrado (una hora de carga social por hora de mano de obra), que es la
+ * que siguen T1002, T1075 y la mayoría. **Que la convención sea 1:1 para esta tarea no está
+ * demostrado**: es el supuesto que el número lleva puesto y por eso se dice.
+ */
+function imprimirHallazgos(fichas, dup) {
+  const porCodigo = new Map(fichas.map((f) => [f.codigo, f]))
+  console.log(`\n═══ DEFECTOS DE COMPOSICIÓN — PARA DECIDIR, NO CORREGIDOS ═══`)
+
+  for (const v of dup.filter((x) => x.regla === 'RECETA_COPIADA')) {
+    // La «dueña» del recurso es aquella cuyo nombre coincide con el del recurso que las dos usan.
+    // La otra se lo tomó prestado, y su costo entero sale de un insumo que no es el suyo.
+    const [x, y] = [porCodigo.get(v.a), porCodigo.get(v.b)]
+    const propia = (f) => f.composicion.some((l) => claveNombre(l.recurso_nombre) === claveNombre(f.nombre))
+    const prestada = propia(x) && !propia(y) ? y : !propia(x) && propia(y) ? x : null
+    if (!prestada) continue
+    const dueña = prestada === y ? x : y
+    console.log(`\n· RECETA COPIADA · ${prestada.codigo} «${prestada.nombre}» (${prestada.unidad})`)
+    console.log(`  su composición entera es «${prestada.composicion.map((l) => l.recurso_nombre).join(', ')}», que es el insumo de ${dueña.codigo} «${dueña.nombre}»`)
+    console.log(`  hoy publica  $${$(prestada.costoUnitario)}/${prestada.unidad}  ·  respaldo propio: NINGUNO (100% de la partida)`)
+    console.log(`  cuánto se mueve si se corrige: NO CALCULABLE — no existe en el maestro un recurso de «${prestada.nombre}» con el que reemplazarlo`)
+    console.log(`  expuesto hoy: ${prestada.usos?.cotizaciones ?? 0} cotizaciones · ${prestada.usos?.actividades ?? 0} actividades`)
+  }
+
+  for (const f of fichas) {
+    const mo = f.composicion.filter((l) => l.tipo === 'mano_obra').reduce((s, l) => s + Number(l.cantidad), 0)
+    const enCero = f.composicion.filter((l) => l.tipo === 'carga_social' && Number(l.cantidad) === 0)
+    if (!(mo > 0 && enCero.length)) continue
+    const falta = enCero.reduce((s, l) => s + mo * Number(l.costo_con_desperdicio ?? 0), 0)
+    const hoy = Number(f.costoUnitario ?? 0)
+    console.log(`\n· CARGA SOCIAL EN CERO · ${f.codigo} «${f.nombre}» (${f.unidad})`)
+    console.log(`  ${$(mo)} hs de mano de obra y la línea «${enCero.map((l) => l.recurso_nombre).join(', ')}» con cantidad 0`)
+    console.log(`  hoy publica  $${$(hoy)}/${f.unidad}  →  con la convención 1:1 del libro  $${$(hoy + falta)}/${f.unidad}`)
+    console.log(`  SE MUEVE $${$(falta)}/${f.unidad}  (+${((falta / hoy) * 100).toFixed(1)}%)`)
+    console.log(`  no lo levanta analisis_incompleto: la línea existe, y su condición es que exista`)
+    console.log(`  expuesto hoy: ${f.usos?.cotizaciones ?? 0} cotizaciones · ${f.usos?.actividades ?? 0} actividades`)
+  }
+  console.log(`\n  NINGUNO SE CORRIGIÓ. Cambiar el costo de una partida tiene efecto económico y lo firma el dueño.`)
+}
+
+/**
  * LA CARGA SOCIAL CONTRA LAS HORAS QUE DICE COBRAR. Sale de las mismas fichas, sin otra consulta.
  *
  * La convención del libro migrado es 1 hora de carga social por cada hora de mano de obra: así
@@ -392,11 +453,12 @@ async function main() {
     } finally { cliente.release() }
   } else {
     console.log(`Base Maestra: ${fichas.length} tareas con análisis vigente · corrida ${corrida}`)
-    const solo = ['--cuadrillas', '--duplicados', '--cargas'].filter(arg)
+    const solo = ['--cuadrillas', '--duplicados', '--cargas', '--hallazgos'].filter(arg)
     const mostrar = (n) => solo.length === 0 || solo.includes(n)
     if (mostrar('--duplicados')) imprimirDuplicados(dup)
     if (mostrar('--cuadrillas')) imprimirCuadrillas(cua)
     if (mostrar('--cargas')) imprimirCargasSociales(fichas)
+    if (mostrar('--hallazgos')) imprimirHallazgos(fichas, dup)
     if (arg('--guardar')) console.log(`\n✓ ${await guardarVeredictos(q, dup, corrida)} veredictos guardados en base_maestra_relacion`)
     if (arg('--aplicar')) console.log(`\n✓ cuadrillas cargadas: ${JSON.stringify(await aplicarCuadrillas(q, cua))}`)
     if (arg('--revertir')) console.log(`\n✓ ${await revertirCuadrillas(q)} filas de analisis_cuadrilla con fuente «${FUENTE}*» eliminadas`)
