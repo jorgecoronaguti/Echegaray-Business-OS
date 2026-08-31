@@ -1,0 +1,91 @@
+▶ ningún rol de aplicación puede vaciar ni intervenir una tabla
+  ✖ el censo: cero combinaciones tabla/rol/privilegio destructivas en public (278.864519ms)
+  ✖ la regla que fabrica las tablas nuevas no reparte privilegios destructivos (76.519398ms)
+  ✖ asumiendo el rol authenticated, el TRUNCATE es rechazado (331.077688ms)
+  ✔ el mismo rol sigue pudiendo leer y escribir lo que la policy le permite (419.714809ms)
+  ✖ una tabla creada DESPUÉS de la corrección nace sin privilegios destructivos (193.28244ms)
+  ✔ service_role conserva sus privilegios: la corrección no fue de más (58.13737ms)
+✖ ningún rol de aplicación puede vaciar ni intervenir una tabla (1663.7835ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 2
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12281.614774
+
+✖ failing tests:
+
+test at orquestador/lib/permiso-destructivo.pg.test.mjs:46:13
+✖ el censo: cero combinaciones tabla/rol/privilegio destructivas en public (278.864519ms)
+  AssertionError [ERR_ASSERTION]: 1545 combinaciones abiertas. Primeras: anon MAINTAIN public.acciones · anon REFERENCES public.acciones · anon TRIGGER public.acciones · anon TRUNCATE public.acciones · authenticated MAINTAIN public.acciones · authenticated REFERENCES public.acciones · authenticated TRIGGER public.acciones · authenticated TRUNCATE public.acciones
+  
+  1545 !== 0
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:55:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:46:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1545,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at orquestador/lib/permiso-destructivo.pg.test.mjs:58:13
+✖ la regla que fabrica las tablas nuevas no reparte privilegios destructivos (76.519398ms)
+  AssertionError [ERR_ASSERTION]: el default privilege de postgres en public vuelve a fabricar tablas vulnerables: {postgres=arwdDxtm/postgres,anon=Dxtm/postgres,authenticated=Dxtm/postgres,service_role=arwdDxtm/postgres}
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:66:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:58:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at orquestador/lib/permiso-destructivo.pg.test.mjs:73:13
+✖ asumiendo el rol authenticated, el TRUNCATE es rechazado (331.077688ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection: authenticated pudo truncar public.certificado_cliente
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:77:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:73:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at orquestador/lib/permiso-destructivo.pg.test.mjs:107:13
+✖ una tabla creada DESPUÉS de la corrección nace sin privilegios destructivos (193.28244ms)
+  AssertionError [ERR_ASSERTION]: la tabla nueva nació con anon:TRUNCATE, anon:REFERENCES, anon:TRIGGER, anon:MAINTAIN, authenticated:TRUNCATE, authenticated:REFERENCES, authenticated:TRIGGER, authenticated:MAINTAIN
+  
+  8 !== 0
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:114:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/permiso-destructivo.pg.test.mjs:107:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 8,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
