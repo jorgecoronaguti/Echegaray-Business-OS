@@ -56,7 +56,7 @@ test('DoD · UN solo criterio en rojo es FAIL — no se promedia', () => {
 })
 
 test('DoD · lo que no se midió es NO_VERIFICABLE, jamás CUMPLE', () => {
-  const { precios, ...sinPrecios } = TODO_BIEN
+  const sinPrecios = Object.fromEntries(Object.entries(TODO_BIEN).filter(([k]) => k !== 'precios'))
   const r = correrDod(sinPrecios)
   const fila = r.filas.find((f) => f.id === 8)
   assert.equal(fila.veredicto, VEREDICTO.NO_VERIFICABLE)
