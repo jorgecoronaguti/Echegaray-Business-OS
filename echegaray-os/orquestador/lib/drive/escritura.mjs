@@ -44,7 +44,7 @@ export const TIPOS_NATIVOS = Object.freeze({
 const REINTENTO_VERIFICACION_MS = 700
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
 
-export function crearEscritura({ google, lectura, auditor = null, reloj = () => new Date() }) {
+export function crearEscritura({ google, lectura, auditor = null, reloj = () => new Date(), esperaVerificacionMs = REINTENTO_VERIFICACION_MS }) {
   if (!google) throw argInvalido('escritura de Drive: falta el cliente Google')
   if (!lectura) throw argInvalido('escritura de Drive: falta la capa de lectura (la verificación la hace ella)')
 
@@ -71,7 +71,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     let ref = await lectura.referencia(fileId)
     let diff = comparar(esperado, ref, campos)
     if (Object.keys(diff).length) {
-      await dormir(REINTENTO_VERIFICACION_MS)
+      await dormir(esperaVerificacionMs)
       ref = await lectura.referencia(fileId)
       diff = comparar(esperado, ref, campos)
     }

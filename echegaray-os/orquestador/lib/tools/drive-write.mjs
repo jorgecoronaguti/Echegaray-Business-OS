@@ -8,6 +8,9 @@
 // ejecutor de operaciones aprobadas (handlers/operation_execute.mjs), DESPUÉS de que
 // un humano aprobó. Por eso el efecto real vive acá, en un solo lugar, reusado.
 
+import { crearCapacidadDrive } from '../drive/index.mjs'
+import { caraFina } from './drive-cara.mjs'
+
 const DOC = 'application/vnd.google-apps.document'
 const SHEET = 'application/vnd.google-apps.spreadsheet'
 const SLIDES = 'application/vnd.google-apps.presentation'
@@ -98,7 +101,20 @@ function avisoErrorCeldas(errs) {
 }
 
 /** Registry de tools de escritura, cerrado sobre un cliente Google con WRITE_SCOPES. */
-export function driveWriteTools(google) {
+/**
+ * Registry de tools de ESCRITURA, cerrado sobre un cliente Google.
+ *
+ * Desde el 31/08, las cinco que tocan el ARCHIVO —crear, renombrar, mover, copiar, papelera— no
+ * implementan nada: llaman a la capacidad nativa (`lib/drive/`), que relee el destino antes de
+ * afirmar el efecto y deja la operación auditada. Las que tocan el CONTENIDO de una pestaña
+ * (update/append/clear/insertrows/…) siguen igual: son de los motores de contenido, no de esta
+ * capacidad, y su borde no se cruza.
+ *
+ * `opciones` es aditivo (db/actor/correlationId) para no romperle la firma a los cuatro
+ * entrypoints que ya llaman `driveWriteTools(google)`.
+ */
+export function driveWriteTools(google, opciones = {}) {
+  const drive = crearCapacidadDrive({ google, ...opciones })
   return {
     'drive.update': {
       capability: 'drive.write',
@@ -178,25 +194,21 @@ export function driveWriteTools(google) {
           required: ['name', 'tipo'],
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         const tipo = String(input?.tipo || '').toLowerCase()
-        const mimeType = TIPO_MIME[tipo]
-        if (!input?.name || !mimeType) return { error: 'faltan name o tipo válido ("doc"|"sheet"|"slides"|"carpeta")' }
-        try {
-          // Doc con contenido: usar createDoc (crea + inserta texto en un solo paso).
-          if ((tipo === 'doc' || tipo === 'documento') && input?.contenido) {
-            const d = await google.createDoc(input.name, input.contenido, { parentId: input.folder_id })
-            return { ok: true, id: d.id, name: input.name, link: d.link }
-          }
-          const f = await google.createFile({ name: input.name, mimeType, parents: input.folder_id ? [input.folder_id] : undefined })
-          return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null }
-        } catch (e) {
-          if (/storageQuota|quota has been exceeded/i.test(e?.message || '')) {
-            return { error: 'no pude crear el archivo por almacenamiento. Verificá que el OS esté autorizado a actuar como tu cuenta (login de Google).' }
-          }
-          throw e
+        if (!input?.name || !TIPO_MIME[tipo]) return { error: 'faltan name o tipo válido ("doc"|"sheet"|"slides"|"carpeta")' }
+        // Un Doc CON contenido sigue por `createDoc`: crea e inserta el texto en un solo paso, y
+        // el texto es CONTENIDO — no es de esta capacidad. La creación vacía sí lo es.
+        if ((tipo === 'doc' || tipo === 'documento') && input?.contenido) {
+          const d = await google.createDoc(input.name, input.contenido, { parentId: input.folder_id })
+          return { ok: true, id: d.id, name: input.name, link: d.link }
         }
-      },
+        const r = await drive.crearNativo({
+          nombre: input.name, tipo, padre: input.folder_id ?? null,
+          clave_idempotencia: input.clave_idempotencia ?? null,
+        })
+        return { ok: true, id: r.referencia.file_id, name: r.referencia.name, link: r.referencia.web_view_link, idempotente: r.idempotente, verificado: r.verificado.campos }
+      }),
     },
     'drive.write_doc': {
       capability: 'drive.write',
@@ -235,11 +247,12 @@ export function driveWriteTools(google) {
           required: ['file_id', 'new_name'],
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         if (!input?.file_id || !input?.new_name) return { error: 'faltan file_id o new_name' }
-        const r = await google.renameFile(input.file_id, input.new_name)
-        return { ok: true, id: r.id, name: r.name }
-      },
+        // El nombre que se devuelve es el RELEÍDO de Drive, no el que contestó el PATCH.
+        const r = await drive.renombrar({ file_id: input.file_id, nombre: input.new_name })
+        return { ok: true, id: r.referencia.file_id, name: r.referencia.name, antes: r.antes.name, verificado: r.verificado.campos }
+      }),
     },
     'drive.move': {
       capability: 'drive.write',
@@ -253,11 +266,11 @@ export function driveWriteTools(google) {
           required: ['file_id', 'folder_id'],
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         if (!input?.file_id || !input?.folder_id) return { error: 'faltan file_id o folder_id (carpeta destino)' }
-        const r = await google.moveFile(input.file_id, input.folder_id)
-        return { ok: true, id: r.id, name: r.name, parents: r.parents }
-      },
+        const r = await drive.mover({ file_id: input.file_id, destino: input.folder_id })
+        return { ok: true, id: r.referencia.file_id, name: r.referencia.name, parents: r.referencia.parents, antes: r.antes.parents, verificado: r.verificado.campos }
+      }),
     },
     'drive.batchupdate': {
       capability: 'drive.write',
@@ -452,16 +465,15 @@ export function driveWriteTools(google) {
           required: ['file_id', 'name'],
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         if (!input?.file_id || !input?.name) return { error: 'faltan file_id o name' }
-        try {
-          const f = await google.copyFile(input.file_id, input.name, input.folder_id ? [input.folder_id] : undefined)
-          return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null, navigate: f.webViewLink ? { url: f.webViewLink, name: f.name, file_id: f.id } : undefined }
-        } catch (e) {
-          if (/storageQuota|quota/i.test(e?.message || '')) return { error: 'la copia quedaría a nombre de la cuenta del OS, que no tiene almacenamiento. Para que el OS duplique solo, hace falta una Unidad Compartida. Por ahora duplicá vos el archivo (clic derecho → Hacer una copia) y compartímelo.' }
-          throw e
-        }
-      },
+        const r = await drive.copiar({
+          file_id: input.file_id, nombre: input.name, destino: input.folder_id ?? null,
+          clave_idempotencia: input.clave_idempotencia ?? null,
+        })
+        const ref = r.referencia
+        return { ok: true, id: ref.file_id, name: ref.name, link: ref.web_view_link, idempotente: r.idempotente, verificado: r.verificado.campos, navigate: { url: ref.web_view_link, name: ref.name, file_id: ref.file_id } }
+      }),
     },
     'drive.trash': {
       capability: 'drive.write', // Baja REVERSIBLE (papelera) → requiere aprobación, no es Nivel F
@@ -471,11 +483,11 @@ export function driveWriteTools(google) {
         description: 'Da de BAJA un archivo/carpeta mandándolo a la PAPELERA (reversible, se puede restaurar 30 días). Pasá file_id. Se aplica AL INSTANTE al llamarla (no pidas aprobación). (El borrado definitivo sigue prohibido.)',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' } }, required: ['file_id'] },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         if (!input?.file_id) return { error: 'falta file_id' }
-        const r = await google.trashFile(input.file_id)
-        return { ok: true, id: r.id, name: r.name, trashed: r.trashed }
-      },
+        const r = await drive.archivar({ file_id: input.file_id })
+        return { ok: true, id: r.referencia.file_id, name: r.referencia.name, trashed: r.referencia.trashed, idempotente: r.idempotente, verificado: r.verificado.campos }
+      }),
     },
     'drive.delete': {
       capability: 'drive.delete', // Nivel F → la policy lo deja SIEMPRE forbidden; run nunca se alcanza

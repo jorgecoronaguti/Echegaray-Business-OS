@@ -87,9 +87,15 @@ export function clasificar(err, { que = 'el archivo' } = {}) {
     if (/storageQuota|quota has been exceeded|quotaExceeded/i.test(detalle)) {
       return new DriveError(CODIGO.QUOTA, 'Drive rechazó la operación por almacenamiento: la cuenta que la ejecuta no tiene cuota.', { detalle, causa: err })
     }
-    // Un scope insuficiente o una delegación mal configurada SE ARREGLAN autorizando; un
-    // "no sos dueño de este archivo" no. Mezclarlos manda a la persona al lugar equivocado.
-    if (/insufficient|scope|unauthorized_client|delegat|accessNotConfigured/i.test(detalle)) {
+    // La línea que separa los dos 403 de Google, y por qué importa:
+    //   PERMISSION_REQUIRED  el problema es de la CREDENCIAL del OS (scope corto, delegación sin
+    //                        activar, cliente no autorizado). Lo arregla autorizar.
+    //   FORBIDDEN            la credencial está bien y Drive igual dice que no sobre ESE objeto
+    //                        (no está compartido, es de otro, está restringido). No lo arregla el OS.
+    // `insufficientFilePermissions` contiene "insufficient" y es del segundo grupo: se descarta
+    // primero, o el OS mandaría a reautorizar por un archivo que sólo hay que compartir.
+    if (!/insufficientFilePermissions|sufficient permissions for/i.test(detalle)
+        && /insufficient|scope|unauthorized_client|delegat|accessNotConfigured/i.test(detalle)) {
       return new DriveError(CODIGO.PERMISSION_REQUIRED, 'Falta autorizar el acceso a Drive para esta operación.', { detalle, causa: err })
     }
     return new DriveError(CODIGO.FORBIDDEN, `Drive no permite esa operación sobre ${que}.`, { detalle, causa: err })

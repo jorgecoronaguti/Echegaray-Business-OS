@@ -8,13 +8,20 @@
 // cuando exista la pantalla de aprobación (Fase 5).
 
 import { mapearFormulas, formatFormulas } from '../sheet-formulas.mjs'
+import { crearCapacidadDrive } from '../drive/index.mjs'
+import { caraFina } from './drive-cara.mjs'
 
-const FOLDER = 'application/vnd.google-apps.folder'
-const tipoLegible = (m) =>
-  m === FOLDER ? 'carpeta' : m.includes('spreadsheet') || m.includes('excel') ? 'planilla' : m.includes('document') || m.includes('word') ? 'documento' : m.includes('pdf') ? 'pdf' : m.includes('image') ? 'imagen' : 'archivo'
 
-/** Devuelve el registry de tools de lectura, cerrado sobre un cliente Google. */
-export function driveReadTools(google) {
+/**
+ * Devuelve el registry de tools de lectura, cerrado sobre un cliente Google.
+ *
+ * Desde el 31/08 estas tools NO implementan nada: son la cara fina de la capacidad nativa
+ * (`lib/drive/`), que es llamable como función sin ningún modelo de por medio. `opciones` es
+ * aditivo (db/índice/actor) para no romperles la firma a `os.mjs`, `interactive-server.mjs`,
+ * `handlers/specialist.mjs` ni `handlers/operation_execute.mjs`.
+ */
+export function driveReadTools(google, opciones = {}) {
+  const drive = crearCapacidadDrive({ google, ...opciones })
   return {
     'drive.list': {
       capability: 'drive.read',
@@ -31,21 +38,25 @@ export function driveReadTools(google) {
           },
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         let folderId = input?.folder_id
         if (!folderId && input?.query) {
-          const f = await google.findFolder(input.query)
-          if (!f) return { error: `no encontré una carpeta llamada "${input.query}"` }
-          folderId = f.id
+          const encontradas = await drive.buscarCarpetas(input.query)
+          if (!encontradas.length) return { error: `no encontré una carpeta llamada "${input.query}"` }
+          folderId = encontradas[0].file_id
         }
         if (!folderId) return { error: 'falta folder_id o query' }
-        const items = await google.listFolder(folderId)
+        // La capacidad pagina (antes se truncaba en silencio pasadas mil filas) y levanta TRASHED
+        // si la carpeta está en la papelera, en vez de devolver una lista vacía sin motivo.
+        const r = await drive.listarCarpeta(folderId)
         return {
           folder_id: folderId,
-          count: items.length,
-          items: items.map((i) => ({ name: i.name, tipo: tipoLegible(i.mimeType), id: i.id, modificado: i.modifiedTime ?? null })),
+          carpeta: r.carpeta.name,
+          count: r.count,
+          truncado: r.truncado,
+          items: r.items.map((i) => ({ name: i.name, tipo: i.tipo, id: i.file_id, modificado: i.modified_at })),
         }
-      },
+      }),
     },
     'drive.tabs': {
       capability: 'drive.read',
@@ -169,13 +180,13 @@ export function driveReadTools(google) {
           'Lista las OBRAS/clientes de la empresa (las subcarpetas de PRESUPUESTOS, cada una es un cliente/obra con sus Cotizaciones y Planos adentro). Usalo cuando el dueño dice "mis obras", "qué obras tengo", o quiere el estado de una obra: te da el nombre y el folder_id de cada una para después entrar con drive_list/drive_read a su presupuesto, avance o adicionales.',
         input_schema: { type: 'object', properties: {} },
       },
-      async run() {
-        const f = await google.findFolder('PRESUPUESTOS')
-        if (!f) return { error: 'no encontré la carpeta PRESUPUESTOS en el Drive' }
-        const items = await google.listFolder(f.id)
-        const obras = items.filter((i) => (i.mimeType || '').includes('folder')).map((i) => ({ obra: i.name, folder_id: i.id }))
-        return { fuente: 'PRESUPUESTOS', count: obras.length, obras }
-      },
+      run: caraFina(async () => {
+        const carpetas = await drive.buscarCarpetas('PRESUPUESTOS')
+        if (!carpetas.length) return { error: 'no encontré la carpeta PRESUPUESTOS en el Drive' }
+        const r = await drive.listarCarpeta(carpetas[0].file_id)
+        const obras = r.items.filter((i) => i.is_folder).map((i) => ({ obra: i.name, folder_id: i.file_id }))
+        return { fuente: r.carpeta.name, count: obras.length, obras }
+      }),
     },
     'drive.navigate': {
       capability: 'drive.read',
@@ -192,22 +203,19 @@ export function driveReadTools(google) {
           },
         },
       },
-      async run(input) {
+      run: caraFina(async (input) => {
         let fileId = input?.file_id
         if (!fileId && input?.query) {
-          // Buscar como archivo Y como carpeta; priorizar coincidencia de carpeta si el
-          // pedido suena a carpeta, si no el primer archivo.
-          const folder = await google.findFolder(input.query)
-          const files = await google.searchFile(input.query)
-          fileId = folder?.id || files[0]?.id
+          // Buscar como carpeta Y como archivo; priorizar la carpeta si existe con ese nombre.
+          const carpetas = await drive.buscarCarpetas(input.query).catch(() => [])
+          const archivos = carpetas.length ? [] : await drive.buscarPorNombre(input.query)
+          fileId = carpetas[0]?.file_id || archivos[0]?.file_id
           if (!fileId) return { error: `no encontré ningún archivo ni carpeta llamado "${input.query}"` }
         }
         if (!fileId) return { error: 'falta query o file_id' }
-        const meta = await google.getMeta(fileId)
-        const url = meta.webViewLink
-          || (meta.mimeType?.includes('folder') ? `https://drive.google.com/drive/folders/${fileId}` : `https://drive.google.com/file/d/${fileId}/view`)
-        return { ok: true, name: meta.name, tipo: tipoLegible(meta.mimeType), navigate: { url, name: meta.name, file_id: fileId } }
-      },
+        const ref = await drive.referencia(fileId)
+        return { ok: true, name: ref.name, tipo: ref.tipo, trashed: ref.trashed, navigate: { url: ref.web_view_link, name: ref.name, file_id: ref.file_id } }
+      }),
     },
   }
 }

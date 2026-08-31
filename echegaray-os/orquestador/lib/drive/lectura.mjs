@@ -111,8 +111,10 @@ export function crearLectura({ google, indice = null }) {
     if (enCarpeta) partes.push(`'${escapar(enCarpeta)}' in parents`)
     if (modificadoDesde) partes.push(`modifiedTime > '${escapar(modificadoDesde)}'`)
     if (propiedad?.clave) partes.push(`properties has { key='${escapar(propiedad.clave)}' and value='${escapar(propiedad.valor)}' }`)
-    if (!incluirPapelera) partes.push('trashed = false')
+    // El chequeo va ANTES de sumar `trashed = false`: si no, "no hay ningún criterio" nunca se
+    // cumple —el filtro de papelera cuenta como criterio— y la consulta lista el Drive entero.
     if (!partes.length) throw argInvalido('buscarPorMetadata sin ningún criterio: eso lista el Drive entero')
+    if (!incluirPapelera) partes.push('trashed = false')
     const q = encodeURIComponent(partes.join(' and '))
     const campos = encodeURIComponent(`files(${CAMPOS})`)
     const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${campos}`

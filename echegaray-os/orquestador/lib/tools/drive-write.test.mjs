@@ -9,10 +9,15 @@ function check(n, c) { if (c) ok++; else { fail++; console.error(`FALLA: ${n}`) 
 
 async function main() {
   const calls = []
+  const creados = {}
   const google = {
     async updateSheetValues(fileId, range, values) { calls.push(['update', fileId, range, values]); return { updatedRange: range, updatedCells: values.flat().length } },
     async appendSheetValues(fileId, range, values) { calls.push(['append', fileId, range, values]); return { updates: { updatedRange: range, updatedRows: values.length } } },
-    async createFile(meta) { calls.push(['create', meta]); return { id: 'NEW1', name: meta.name, webViewLink: 'http://x' } },
+    async createFile(meta) { calls.push(['create', meta]); creados.NEW1 = { id: 'NEW1', name: meta.name, mimeType: meta.mimeType, parents: meta.parents ?? [], trashed: false, properties: meta.properties ?? {} }; return { id: 'NEW1', name: meta.name, webViewLink: 'http://x' } },
+    // CAMBIO DE CONTRATO (31/08): `drive_create` ya no le cree a la respuesta de la API —
+    // relee el archivo del destino antes de decir que lo creó. Un doble sin `getMeta` ahora
+    // falla, y eso es lo correcto: el que no puede releer no puede afirmar.
+    async getMeta(id) { calls.push(['getMeta', id]); const a = creados[id]; if (!a) { const e = new Error(`File not found: ${id}`); e.status = 404; throw e } return a },
   }
   const reg = driveWriteTools(google)
 
@@ -38,16 +43,19 @@ async function main() {
   const c = await reg['drive.create'].run({ name: 'Acta', tipo: 'doc' })
   check('create: mimeType documento', calls[2][1].mimeType === 'application/vnd.google-apps.document')
   check('create: devolvió id/link', c.ok === true && c.id === 'NEW1')
+  check('create: RELEYÓ el archivo antes de afirmarlo', calls.some(([m, id]) => m === 'getMeta' && id === 'NEW1'))
+  check('create: informa qué campos verificó', Array.isArray(c.verificado) && c.verificado.includes('name'))
 
   // create tipo inválido -> error
   const cbad = await reg['drive.create'].run({ name: 'X', tipo: 'zip' })
   check('create: tipo inválido -> error', !!cbad.error)
+  const llamadasAntesDelDelete = calls.length
 
   // delete (Nivel F): capability drive.delete y run NUNCA escribe
   check('delete: capability drive.delete', reg['drive.delete'].capability === 'drive.delete')
   const d = await reg['drive.delete'].run({ file_id: 'F9' })
   check('delete: run no ejecuta (mensaje forbidden)', !!d.error && /prohibido|Nivel F/i.test(d.error))
-  check('delete: no tocó google', calls.length === 3)
+  check('delete: no tocó google', calls.length === llamadasAntesDelDelete)
 
   // Bug 4 (auditoría 18/07): pestaña inexistente -> error ÚTIL con las pestañas reales,
   // en vez del 400 crudo que hacía loopear al modelo.
