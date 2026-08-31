@@ -140,6 +140,25 @@ test('la tabla de origen impide por construcción que la web sea experiencia de 
   assert.notEqual(FUENTE_DE_ORIGEN[ORIGEN.WEB], FUENTE.EXPERIENCIA_ECSAS)
 })
 
+test('el origen NO se lee del envoltorio: una página que se declara compra de ECSAS sigue siendo WEB', () => {
+  // Esta prueba existe por una mutación que quedó VERDE: cambiar `origen: ORIGEN.WEB` por
+  // `origen: envuelto?.origen` no rompía nada, porque ningún caso traía un envoltorio que
+  // reclamara otro origen. Acá el envoltorio reclama TODO lo que podría reclamar.
+  const envuelto = {
+    ...pagina('HIERRO: $ 1.615 el kg + IVA'),
+    origen: 'COMPRA_ECSAS',
+    fuente: 'EXPERIENCIA_ECSAS',
+    tipo: 'HECHO',
+    es_hecho_ecsas: true,
+    datos: { origen: 'COMPRA_ECSAS', fuente: 'BASE_MAESTRA' },
+  }
+  const r = candidatoWeb({ recurso: HIERRO, envuelto, alicuotaIva: IVA_ECSAS })
+  assert.ok(r.candidato)
+  assert.equal(r.candidato.origen, ORIGEN.WEB)
+  assert.equal(r.candidato.fuente, FUENTE.WEB)
+  assert.equal(r.candidato.esHechoEcsas, false)
+})
+
 test('el candidato lleva la URL y la fecha con la que se lo puede volver a mirar', () => {
   const r = candidatoWeb({ recurso: HIERRO, envuelto: pagina('HIERRO: $ 1.615 el kg + IVA'), alicuotaIva: IVA_ECSAS })
   assert.equal(r.candidato.evidencia.url, 'https://materialessanjuan.com.ar/hierro')

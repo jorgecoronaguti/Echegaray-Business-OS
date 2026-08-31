@@ -45,10 +45,31 @@ const isoDelTramo = (ddmmyyyy) => {
  * los dos frenan igual una oferta de $ 80 M. Sin `cotizacionId` no hay pesos y todo cae al piso más
  * exigente — es correcto, y hay que saberlo al leer el número que sale.
  */
-export async function resolvedorParaCotizacion(query, { cotizacionId = null, recursos = new Map() } = {}) {
+export async function resolvedorParaCotizacion(query, { cotizacionId = null, recursos = new Map(), comparables = [], preciosWeb = new Map() } = {}) {
   const compras = await leerComprasReales({ query })
   const pesos = cotizacionId ? (await pesosDeCotizacion({ query }, cotizacionId)).pesos : {}
-  return resolvedorDePrecios({ compras, pesos, recursos, tramoParitariaHasta: isoDelTramo(VIGENCIA_HASTA) })
+  return resolvedorDePrecios({ compras, pesos, recursos, comparables, preciosWeb, tramoParitariaHasta: isoDelTramo(VIGENCIA_HASTA) })
+}
+
+/**
+ * LAS OBSERVACIONES CON LAS QUE SE ARMAN LAS COHORTES DE COMPARABLES. UNA consulta.
+ *
+ * Una por recurso —la más reciente—, con el nombre y la unidad, que es lo que
+ * `precio-comparable.mjs` necesita para decidir si dos recursos son el mismo mercado. NO se filtra
+ * por frescura acá: la frescura la decide `evaluarCandidato`, y un comparable hereda la fecha de la
+ * observación que copió. Filtrarla en dos lugares es como termina habiendo dos definiciones.
+ */
+export async function observacionesComparables(query) {
+  const r = await query(`select distinct on (r.id) r.codigo, r.nombre, r.unidad, rp.costo, rp.moneda, rp.fecha_precio
+                           from public.recurso r join public.recurso_precio rp on rp.recurso_id = r.id
+                          where rp.costo is not null and rp.fecha_precio is not null and rp.costo > 0
+                          order by r.id, rp.fecha_precio desc`)
+  return r.rows.map((x) => ({
+    recurso: { codigo: x.codigo, nombre: x.nombre, unidad: x.unidad },
+    valor: Number(x.costo),
+    moneda: x.moneda ?? 'ARS',
+    observadoEn: (x.fecha_precio instanceof Date ? x.fecha_precio.toISOString() : String(x.fecha_precio)).slice(0, 10),
+  }))
 }
 
 const BIBLIOTECA = JSON.parse(readFileSync(new URL('../datos/conocimiento/biblioteca.json', import.meta.url), 'utf8'))
@@ -152,7 +173,11 @@ async function main() {
     .map((r) => [r.codigo, { nombre: r.nombre, tipo: r.tipo, unidad: r.unidad }]))
   // Un dictado telefónico no tiene cotización cargada, así que no hay pesos: sin materialidad todo
   // recurso cae al piso de vigencia más exigente. Es correcto y hay que leerlo sabiéndolo.
-  const sinPesos = await resolvedorParaCotizacion(query, { cotizacionId: null, recursos })
+  // Los comparables salen de la MISMA tabla de precios: no hay una fuente nueva ni un dato que
+  // alguien haya cargado para esto. Lo único que se agrega es la pregunta «¿algún otro recurso del
+  // mismo mercado tiene precio fresco?», que hasta ahora nadie hacía.
+  const comparables = await observacionesComparables(query)
+  const sinPesos = await resolvedorParaCotizacion(query, { cotizacionId: null, recursos, comparables })
   const casos = []
 
   // ── CASO 1 · QUATTROPANI, PUNTA A PUNTA ────────────────────────────────────────────────────
@@ -161,7 +186,9 @@ async function main() {
                               order by fecha_cotizacion limit 1`)).rows[0]
   const corpusQ = delProyecto(BIBLIOTECA, 'quattropani')
   const estadoQ = await leerEstado({ query }, cotQ.id)
-  const resolverPrecioQ = await resolvedorParaCotizacion(query, { cotizacionId: cotQ.id, recursos })
+  // Sin `preciosWeb`: este script NO sale a internet. El paso WEB queda cableado y vacío, que es
+  // exactamente lo que el §13 pide poder demostrar — el informe sale igual sin red.
+  const resolverPrecioQ = await resolvedorParaCotizacion(query, { cotizacionId: cotQ.id, recursos, comparables })
   const exQ = exclusionesDelProyecto(corpusQ.conocimientos, { partidas: estadoQ.partidas })
   const q = correrCronometrado({
     ...estadoQ,

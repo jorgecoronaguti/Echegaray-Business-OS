@@ -27,6 +27,7 @@
 import { ESTADO } from './contrato.mjs'
 import { ORIGEN, RESULTADO, candidatoDePrecio, resolverPrecio } from './precio-resolucion.mjs'
 import { comprasDeRecurso } from './compras-precio.mjs'
+import { candidatoComparable } from './precio-comparable.mjs'
 
 /** Qué `ESTADO` del contrato le corresponde a cada resultado. `costo.mjs` decide con esto —vía
  *  `sumable()`— si el número entra al total, así que el mapeo vive acá y no repartido. */
@@ -47,6 +48,18 @@ export const ESTADO_DE_RESULTADO = Object.freeze({
  */
 export function resolvedorDePrecios({
   compras = [], pesos = {}, recursos = new Map(), tramoParitariaHasta = null,
+  /**
+   * LOS PASOS 3 Y 4, QUE SON OPCIONALES A PROPÓSITO.
+   *
+   * `comparables` son las observaciones de los OTROS recursos —una por recurso, la más reciente—
+   * con las que `precio-comparable.mjs` arma la cohorte. `preciosWeb` es un `Map` código →
+   * candidato YA investigado: la red se usa antes, en una pasada aparte, porque esta función es
+   * SÍNCRONA y `costo.mjs` la llama en el medio de una suma.
+   *
+   * Sin ninguno de los dos, la cascada es exactamente la que había. Eso es el §13: el camino
+   * determinístico no depende de que haya internet ni de que alguien haya preparado comparables.
+   */
+  comparables = [], preciosWeb = new Map(),
 } = {}) {
   return function precioResuelto(recursoCodigo, observaciones = [], { hoy = new Date() } = {}) {
     const recurso = recursos.get(recursoCodigo) ?? { codigo: recursoCodigo }
@@ -70,6 +83,21 @@ export function resolvedorDePrecios({
         detalleFuente: `${c.evidencia.tabla} fila ${c.evidencia.fila} · ${c.proveedor ?? 'sin proveedor'} · ${c.porQue}`,
       }))
     }
+
+    // ── PASO 3 · COMPARABLE ───────────────────────────────────────────────────────────────────
+    // El comparable se construye SIEMPRE que la cohorte lo permita, aunque el precio interno esté
+    // vigente: `resolverPrecio` recorre la cascada en orden y no va a bajar a COMPARABLE si arriba
+    // hay algo. Construirlo igual tiene un efecto que se quiere — el recorrido muestra que el paso
+    // se probó, en vez de decir «no había ningún precio de origen COMPARABLE».
+    if (comparables.length) {
+      const c = candidatoComparable({ recurso: { ...recurso, codigo: recursoCodigo }, frescos: comparables })
+      if (c.candidato) candidatos.push(c.candidato)
+    }
+
+    // ── PASO 4 · WEB ──────────────────────────────────────────────────────────────────────────
+    // Ya investigado y ya validado por `candidatoWeb`. Acá no se abre ninguna conexión.
+    const web = preciosWeb.get?.(recursoCodigo) ?? null
+    if (web) candidatos.push(web)
 
     const f = pesos[recursoCodigo] ?? null
     const p = resolverPrecio({
