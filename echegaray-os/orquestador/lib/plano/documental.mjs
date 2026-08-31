@@ -26,7 +26,13 @@ import { segmentar } from '../ingesta/segmentar.mjs'
 import { recortarRegiones, hashDe } from '../ingesta/recortes.mjs'
 import { formatoDe, FORMATO } from '../ingesta/registro.mjs'
 import { leerWord } from '../ingesta/word.mjs'
+import { leerPlanilla, filaDe, filasDe } from '../ingesta/planilla.mjs'
+import { takeoffDeHoja, libroDe } from '../cotizador/takeoff.mjs'
 import { hechosDeCad, hechosDeTexto, CLASE_FUENTE } from './proyecto.mjs'
+
+/** Las filas de una hoja como texto, con el mismo formato que producía `google.readExcel` para que
+ *  los extractores de hechos que ya existen no vean un cambio de forma. PURA. */
+const textoDeHoja = (h) => filasDe(h).map((f) => [...filaDe(h, f).values()].map((c) => c.texto).filter(Boolean).join(' | ')).filter(Boolean)
 
 /** Qué clase de documento del proyecto es, para saber cuánto pesa lo que diga. El nombre es la
  *  única señal disponible antes de abrirlo, y por eso las reglas son explícitas y no una corazonada:
@@ -124,10 +130,27 @@ export async function textoDe(doc, bytes, { google } = {}) {
       const clasePdf = texto.trim() ? d.clase : (await leerPdf(bytes, { conGeometria: true, hasta: 1 })).clase
       return { ok: true, texto, formato, clasePdf }
     }
-    if (formato === FORMATO.PLANILLA && google?.readExcel) {
+    // ═══ UNA PLANILLA TIENE MÁS DE UNA HOJA, Y ESO NO ERA UN DETALLE ═══
+    // Hasta acá esta rama era `google.readExcel`, que lee `SheetNames[0]` y descarta el resto en
+    // silencio. En el COMPUTO.xlsx de Quattropani la primera hoja es «Real» —lo ejecutado— y la que
+    // originó la cotización es «Presupuestado»: el circuito venía leyendo la hoja equivocada sin que
+    // nada lo dijera. Además aplanaba todo a texto, así que ninguna cantidad podía citar su celda.
+    // `leerPlanilla` trabaja sobre los MISMOS bytes que ya se descargaron —una llamada menos a
+    // Drive— y devuelve el modelo con hoja, celda, fórmula e inputs.
+    if (formato === FORMATO.PLANILLA) {
+      const p = leerPlanilla(bytes, { nombre: doc.name })
+      if (p.ok) {
+        const texto = p.hojas.map((h) => [`## hoja: ${h.nombre}`, ...textoDeHoja(h)].join('\n')).join('\n')
+        return { ok: true, texto, formato, planilla: p, pestanas: p.hojas.map((h) => h.nombre) }
+      }
+      // El formato viejo (.xls OLE2) y el .csv no los abre el lector nuevo. Antes de declararlos sin
+      // leer se intenta el camino de Drive, que sí los convierte — pero se conserva el motivo por el
+      // que el lector con celdas no pudo, porque eso es lo que explica por qué esas cantidades no
+      // van a poder citar su origen.
+      if (!google?.readExcel) return { ok: false, formato, porQue: p.porQue }
       const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
       const texto = (x.rows ?? []).map((f) => (Array.isArray(f) ? f.filter(Boolean).join(' | ') : String(f))).join('\n')
-      return { ok: true, texto, formato, pestana: x.sheet }
+      return { ok: true, texto, formato, pestana: x.sheet, sinCeldas: p.porQue }
     }
     // ═══ EL DOCUMENTO DE WORD ES DONDE VIVE EL ALCANCE ═══
     // Hasta acá este `return` decía «todavía no hay lector de texto para DOCUMENTO» y con esa frase
@@ -158,6 +181,7 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
   const documentales = []
   const segmentaciones = []
   const hechos = []
+  const takeoffs = []
   const noLeidos = []
 
   for (const doc of cadDe(insumos)) {
@@ -173,8 +197,20 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
     const t = await textoDe(doc, bytes, { google })
     if (!t.ok) { noLeidos.push({ archivo: doc.name, porQue: t.porQue }); continue }
     const clase = claseDocumental(doc.name)
-    documentales.push({ archivo: doc.name, clase: clase.id, caracteres: t.texto.length, clasePdf: t.clasePdf ?? null })
+    documentales.push({ archivo: doc.name, clase: clase.id, caracteres: t.texto.length, clasePdf: t.clasePdf ?? null, pestanas: t.pestanas ?? null, sinCeldas: t.sinCeldas ?? null })
     hechos.push(...hechosDeTexto(t.texto, { documento: doc.name, clase }))
+    // ═══ LA PLANILLA NO ES SÓLO TEXTO ═══
+    // Un pliego se lee y se convierten sus frases en hechos. Una planilla de cómputo YA TIENE la
+    // cantidad, la unidad y la fórmula en celdas separadas: convertirla a texto para volver a sacar
+    // el número con una expresión regular pierde la fórmula y la dirección de la celda, que es
+    // justo lo que hace falta para poder defender la cantidad después.
+    if (t.planilla?.ok) {
+      const libro = libroDe(t.planilla)
+      for (const h of t.planilla.hojas) {
+        const tk = takeoffDeHoja(h, { documento: doc.name, driveId: doc.drive_file_id ?? null, libro })
+        takeoffs.push({ archivo: doc.name, ...tk })
+      }
+    }
   }
 
   for (const doc of planosLegibles) {
@@ -183,12 +219,14 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
     segmentaciones.push(await segmentarLamina(doc, bytes, { escribirTemporal, limite }))
   }
 
+  const cantidadesDePlanilla = takeoffs.reduce((a, t) => a + t.cantidades.length, 0)
   return {
     cad,
     documentales,
     segmentaciones,
     hechos,
+    takeoffs,
     noLeidos,
-    resumen: `${cad.length} CAD abierto(s) · ${documentales.length} documento(s) de especificación · ${segmentaciones.reduce((a, s) => a + s.laminas.reduce((b, l) => b + l.regiones.length, 0), 0)} región(es) segmentadas · ${hechos.length} hecho(s) técnicos · ${noLeidos.length} sin leer`,
+    resumen: `${cad.length} CAD abierto(s) · ${documentales.length} documento(s) de especificación · ${segmentaciones.reduce((a, s) => a + s.laminas.reduce((b, l) => b + l.regiones.length, 0), 0)} región(es) segmentadas · ${hechos.length} hecho(s) técnicos · ${cantidadesDePlanilla} cantidad(es) de planilla con celda y fórmula · ${noLeidos.length} sin leer`,
   }
 }
