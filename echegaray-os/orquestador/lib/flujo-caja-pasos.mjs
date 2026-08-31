@@ -358,6 +358,10 @@ export const PASOS = [
   // como fallo, el servicio quedaría siempre en rojo y —peor— la frescura del Cash Flow, que sólo se
   // registra si nadie falló, dejaría de registrarse. Es el motivo por el que existe esa lista.
   ['auditar-duenos-pestanas.mjs', 'censo de dueños: qué pestaña del archivo no la mantiene ningún paso de esta lista', []],
+  // VA AL FINAL Y A PROPÓSITO: pregunta si las pestañas quedaron al día y si dicen lo mismo entre
+  // ellas, y las dos cosas sólo se pueden contestar DESPUÉS de que todos los generadores corrieron.
+  // Corrido antes, mediría la corrida de ayer. Ver `lib/coherencia-pestanas.mjs`.
+  ['auditar-coherencia-pestanas.mjs', 'el control del dueño: ¿están todas al día y condicen entre sí?', []],
   // ═══ EL AUDITOR QUE HABRÍA CAZADO LOS DOCE `ARCA_*` TAMPOCO LO CORRÍA NADIE (14/08/2026) ═══
   //
   // Exactamente la misma historia que `_CRUCE_ARCA` cuatro entradas más arriba, sobre otro objeto.
@@ -509,6 +513,7 @@ export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.scri
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
+  'auditar-coherencia-pestanas.mjs',
   'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
 ])
 

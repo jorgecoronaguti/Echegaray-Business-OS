@@ -18,6 +18,19 @@ import { getTokenFor, OAUTH_SCOPES } from '../lib/google-oauth.mjs'
 import { query } from '../lib/db.mjs'
 import { frescuraDe, cruzar, veredicto, FRESCURA, COHERENCIA } from '../lib/coherencia-pestanas.mjs'
 import { SUBCONTRATISTAS_CON_LIQUIDACION } from '../lib/nomina-banco-recibo.mjs'
+import { PASOS_RETIRADOS } from '../lib/flujo-caja-pasos.mjs'
+
+/**
+ * PESTAÑAS SIN DUEÑO ACTIVO — deuda declarada, no un fallo de hoy.
+ *
+ * `Materiales` está vieja desde el 14/08 y eso NO es un descuido: su generador se retiró porque cada
+ * corrida apilaba una capa sobre el archivo del dueño. Llamarla «atrasada» pondría el control en rojo
+ * todos los días por una decisión tomada a propósito, y un control que grita siempre deja de leerse.
+ * Se dice lo que es: nadie la mantiene, y el motivo está escrito en `PASOS_RETIRADOS`.
+ */
+const SIN_DUENO = new Set(PASOS_RETIRADOS
+  .filter((p) => /materiales/i.test(String(p.script ?? '')))
+  .map(() => 'Materiales'))
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const CUENTA = process.env.ORQ_SHEETS_CUENTA || 'jorge@ecsas.com.ar'
@@ -70,6 +83,7 @@ async function main() {
 
   const frescuras = MANTENIDAS.map((p) => frescuraDe({
     pestana: p, escritoEn: firmas.get(p) ?? null, candado: candados.has(p),
+    tieneGenerador: SIN_DUENO.has(p) ? false : undefined,
   }))
 
   console.log('\n═══ 1 · ¿ESTÁ CADA UNA AL DÍA? ═══\n')
