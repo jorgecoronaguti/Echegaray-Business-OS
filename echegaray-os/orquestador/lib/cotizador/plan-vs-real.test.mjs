@@ -130,6 +130,37 @@ test('subcontratada sin HH imputadas: NO_APLICA, no un desvío ni un hueco', () 
   assert.equal(hh.motivoNoComparable, NO_COMPARABLE.SUBCONTRATADA_SIN_HH)
 })
 
+test('las HH de una partida ABIERTA no son un ahorro del 93,7%', () => {
+  // DEFECTO REAL, encontrado por la corrida sobre Quattropani y no por la revisión: T1002 tenía 10
+  // HH imputadas contra 158,916 cotizadas y la comparación publicaba «−93,7%» — la excavación más
+  // eficiente de la historia, sobre una partida que recién empezaba.
+  // MUTACIÓN CORRIDA: sacar el `if (!real.cerrada)` de `obsHH` →
+  // «AssertionError: 10 de 158.916 HH se publicaron como un ahorro de -93.7%». Revertida.
+  const r = compararObra({ obraId: 'q', plan: PLAN, ejecucion: consolidar({
+    ejecuciones: [{ actividad_id: 'a2', fecha: '2026-08-22', cantidad: 20 }],
+    horas: [{ actividad_id: 'a2', fecha: '2026-08-22', horas: 10, persona_id: 'x', tipo_hora: 'normal' }],
+  }) })
+  const hh = de(r.observaciones, CONCEPTO.HH, 'T1002')
+  assert.equal(hh.comparable, false, `10 de 158.916 HH se publicaron como un ahorro de ${hh.desvioPct?.toFixed(1)}%`)
+  assert.equal(hh.motivoNoComparable, NO_COMPARABLE.PARTIDA_EN_CURSO)
+  assert.equal(hh.real, 10, 'el consumo real igual tiene que verse')
+
+  // Pero el RENDIMIENTO sí, porque es un cociente: 10 HH / 20 m³ = 0,5 contra 3,4 cotizadas.
+  const rend = de(r.observaciones, CONCEPTO.RENDIMIENTO, 'T1002')
+  assert.equal(rend.comparable, true, 'el cociente se puede leer con la partida abierta')
+  assert.equal(rend.real, 0.5)
+})
+
+test('cerrada, las HH SÍ dan rojo: el control puede decir que sí', () => {
+  const r = compararObra({ obraId: 'q', plan: PLAN, ejecucion: consolidar({
+    ejecuciones: [{ actividad_id: 'a2', fecha: '2026-08-22', cantidad: 46.74, avance_pct: 100 }],
+    horas: [{ actividad_id: 'a2', fecha: '2026-08-22', horas: 210, persona_id: 'x', tipo_hora: 'normal' }],
+  }) })
+  const hh = de(r.observaciones, CONCEPTO.HH, 'T1002')
+  assert.equal(hh.comparable, true)
+  assert.ok(hh.desvioPct > 30, `las HH se pasaron ${hh.desvioPct?.toFixed(1)}%`)
+})
+
 test('subcontratada CON horas propias imputadas SÍ es un hallazgo, y sin dividir por cero', () => {
   const r = compararObra({ obraId: 'q', plan: PLAN, ejecucion: consolidar({
     horas: [{ actividad_id: 'a3', fecha: '2026-08-22', horas: 64, persona_id: 'x', tipo_hora: 'normal' }],

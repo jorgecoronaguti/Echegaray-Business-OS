@@ -57,26 +57,31 @@ export async function leerPlanDeObra({ query }, obraId) {
  * (`ejecucion_id`) y no a la actividad, así que la unión la hace la consulta y no un bucle.
  */
 export async function leerEjecucionReal({ query }, obraId, { partidaIds = [] } = {}) {
-  const [ejecuciones, horas, equipos, costos, composicion] = await Promise.all([
-    query(`select id, actividad_id, fecha, cantidad, avance_pct, causa_desvio, comentario, fuente, metodo, cuadrilla_id
-             from public.obra_ejecucion where obra_id = $1`, [obraId]),
-    query(`select h.id, h.actividad_id, h.fecha, h.fecha_inicio_semana, h.horas, h.persona_id,
-                  h.trabajador_o_cuadrilla, h.tipo_hora, h.improductiva, h.causa_desvio, h.notas
-             from public.registros_hh h
-             join public.obra_actividad a on a.id = h.actividad_id
-            where a.obra_id = $1`, [obraId]),
-    query(`select q.id, e.actividad_id, e.fecha, q.equipo, q.horas
-             from public.obra_ejecucion_equipo q
-             join public.obra_ejecucion e on e.id = q.ejecucion_id
-            where q.obra_id = $1`, [obraId]),
-    query(`select id, cotizacion_partida_id, actividad_id, tipo, recurso_codigo, recurso_nombre,
-                  unidad, cantidad, precio_unitario, monto, moneda, fecha, proveedor, comprobante, fuente
-             from public.obra_partida_costo_real where obra_id = $1`, [obraId]),
-    partidaIds.length
-      ? query(`select partida_id, recurso_codigo, recurso_nombre, tipo, unidad, cantidad, desperdicio, costo_unitario
-                 from public.cotizacion_partida_composicion where partida_id = any($1::uuid[]) order by partida_id, orden`, [partidaIds])
-      : Promise.resolve([]),
-  ])
+  // SECUENCIALES, no `Promise.all`: `query` suele ser un CLIENTE tomado del pool para poder abrir
+  // una transacción, y un cliente de `pg` no ejecuta dos consultas a la vez — las encola y avisa por
+  // deprecación. Cinco viajes con latencia real son ~300 ms; una corrida rota, un rato.
+  const ejecuciones = await query(
+    `select id, actividad_id, fecha, cantidad, avance_pct, causa_desvio, comentario, fuente, metodo, cuadrilla_id
+       from public.obra_ejecucion where obra_id = $1`, [obraId])
+  const horas = await query(
+    `select h.id, h.actividad_id, h.fecha, h.fecha_inicio_semana, h.horas, h.persona_id,
+            h.trabajador_o_cuadrilla, h.tipo_hora, h.improductiva, h.causa_desvio, h.notas
+       from public.registros_hh h
+       join public.obra_actividad a on a.id = h.actividad_id
+      where a.obra_id = $1`, [obraId])
+  const equipos = await query(
+    `select q.id, e.actividad_id, e.fecha, q.equipo, q.horas
+       from public.obra_ejecucion_equipo q
+       join public.obra_ejecucion e on e.id = q.ejecucion_id
+      where q.obra_id = $1`, [obraId])
+  const costos = await query(
+    `select id, cotizacion_partida_id, actividad_id, tipo, recurso_codigo, recurso_nombre,
+            unidad, cantidad, precio_unitario, monto, moneda, fecha, proveedor, comprobante, fuente
+       from public.obra_partida_costo_real where obra_id = $1`, [obraId])
+  const composicion = partidaIds.length
+    ? await query(`select partida_id, recurso_codigo, recurso_nombre, tipo, unidad, cantidad, desperdicio, costo_unitario
+                     from public.cotizacion_partida_composicion where partida_id = any($1::uuid[]) order by partida_id, orden`, [partidaIds])
+    : []
   return { ejecuciones, horas, equipos, costos, composicion }
 }
 

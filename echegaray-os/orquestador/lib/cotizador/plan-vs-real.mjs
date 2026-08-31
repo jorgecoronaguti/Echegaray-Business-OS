@@ -132,8 +132,15 @@ function obsHH(plan, real, causa) {
     // Subcontratada con 0 HH previstas y sin HH imputadas: NO_APLICA, no es un hueco a llenar.
     return observacion({ ...base, plan: p, real: real.hhReales, comparable: false, estado: plan.subcontratada ? ESTADO.NO_APLICA : ESTADO.FALTA_DATO, motivoNoComparable: plan.subcontratada ? NO_COMPARABLE.SUBCONTRATADA_SIN_HH : NO_COMPARABLE.SIN_HH_REALES })
   }
-  // Plan 0 con horas reales SÍ se compara: se están gastando horas propias en algo que se pagó a un
-  // tercero, y ese es uno de los hallazgos más caros que puede dar esta comparación.
+  // Plan 0 con horas reales SÍ se compara SIEMPRE: se están gastando horas propias en algo que se
+  // pagó a un tercero, y eso es un hallazgo esté la partida cerrada o abierta.
+  if (p.valor === 0) return observacion({ ...base, plan: p, real: real.hhReales, comparable: true })
+  // ═══ LAS HH SON UN TOTAL, COMO LA CANTIDAD Y EL COSTO ═══
+  // Lo descubrió la corrida REAL sobre Quattropani: T1002 tenía 10 HH imputadas contra 158,9
+  // cotizadas y salía «−93,7%», o sea la excavación más eficiente de la historia. No es eficiencia:
+  // es una partida que recién empezó. El único que se puede leer con la partida abierta es el
+  // RENDIMIENTO, porque es un cociente y no un acumulado.
+  if (!real.cerrada) return observacion({ ...base, plan: p, real: real.hhReales, comparable: false, motivoNoComparable: NO_COMPARABLE.PARTIDA_EN_CURSO })
   return observacion({ ...base, plan: p, real: real.hhReales, comparable: true })
 }
 
