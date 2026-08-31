@@ -97,6 +97,9 @@ export function correr({
   paresComplementarios = [],
   estadosDeComposicion = new Map(),
   costosDeCatalogo = {},
+  estructuraIndirecta = null,
+  intentoDeIndirecto = null,
+  politicaEfectivaDeLaCotizacion = null,
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -244,12 +247,44 @@ export function correr({
   }))
 
   // ── 8 · COMMERCIAL
-  const casc = cascada({ costoDirecto: cd.total, politica })
+  //
+  // El orden es costo directo → indirecto CALCULADO → indirecto APLICADO → política → cascada. Los
+  // dos indirectos son campos distintos a propósito: lo que la estructura de la empresa dice que
+  // cuesta sostener una obra, y lo que esta oferta efectivamente absorbe. Cuando difieren, la
+  // diferencia tiene nombre —`brechaDeAbsorcion`— y es plata que alguien decidió no cobrar.
+  //
+  // Sin `estructuraIndirecta` la corrida es la de siempre: el pct sale de la política y nadie
+  // pretende haberlo calculado.
+  const ind = estructuraIndirecta
+    ? indirectoAplicado({
+        calculado: indirectoCalculado({ estructura: estructuraIndirecta, costoDirectoObra: cd.total }),
+        intento: intentoDeIndirecto,
+      })
+    : null
+  const proy = politicaEfectivaDeLaCotizacion
+    ? proyectarACascada({ efectiva: politicaEfectivaDeLaCotizacion, pctGastosGenerales: ind?.aplicado ?? null })
+    : null
+  // `proy.politica === null` significa NO HAY PRECIO. Caer a `politica` acá convertiría un bloqueo
+  // declarado en un precio publicado, que es exactamente lo que el §14 prohíbe.
+  const politicaDeLaCascada = proy ? proy.politica : politica
+  const casc = cascada({ costoDirecto: cd.total, politica: politicaDeLaCascada })
   anotar(resultadoEtapa({
     etapa: ETAPA.COMMERCIAL, status: casc.estado === ESTADO.CALCULADO ? STATUS.OK : STATUS.BLOQUEADA,
-    result: casc,
-    provenance: politica ? [`política v${politica.version} (${politica.origen}) — ${politica.fuente}`] : [],
-    blocking_issues: casc.estado === ESTADO.CALCULADO ? [] : [{ tipo: 'SIN_PRECIO_CALCULABLE', entidad: 'cotización', detalle: casc.porQue }],
+    result: {
+      ...casc,
+      ...(ind ? { indirectoCalculado: ind.calculado, indirectoAplicado: ind.aplicado, brechaDeAbsorcion: ind.brechaDeAbsorcion } : {}),
+    },
+    provenance: [
+      ...(politicaEfectivaDeLaCotizacion?.versionReferenciada
+        ? [`política versión ${politicaEfectivaDeLaCotizacion.versionReferenciada} — referenciada, no copiada`]
+        : politicaDeLaCascada ? [`política v${politicaDeLaCascada.version} (${politicaDeLaCascada.origen}) — ${politicaDeLaCascada.fuente}`] : []),
+      ...(ind ? [`indirecto ${ind.estado}: ${ind.porQue ?? ''}`] : []),
+    ],
+    missing_data: [...(ind?.issues ?? []).map((i) => i.detalle ?? i.tipo ?? String(i)), ...(proy?.faltan ?? [])],
+    blocking_issues: casc.estado === ESTADO.CALCULADO ? [] : [{
+      tipo: 'SIN_PRECIO_CALCULABLE', entidad: 'cotización',
+      detalle: proy && !proy.politica ? (proy.porQue ?? 'la política efectiva no proyecta a la cascada') : casc.porQue,
+    }],
   }))
 
   // ── 9 · VALIDATE
