@@ -35,6 +35,7 @@ scripts · 14 timers en producción.
 | las referencias del CIRCOT (mano de obra, Modelo III galpón) | `orquestador/lib/circot/` + el dataset versionado en `orquestador/datos/circot/` · se importa con `scripts/circot-importar.mjs` |
 | cuántas HH, qué cuadrilla, cuántos días | `orquestador/lib/plano/cuadrilla.mjs` (método Navas/CIRCOT 2012, verificado contra el ejemplo publicado) |
 | la inteligencia: modelos, proveedores, costo, degradación | `orquestador/lib/ia/` — **la única puerta**. El port del Work Fabric es `engines/index.mjs` |
+| operar una planilla como ESTRUCTURA (leer/buscar/filtrar/ordenar/escribir/fórmula/hoja/copiar/rango con nombre) | `orquestador/lib/motores/planilla/` — determinístico, **0 llamadas a un modelo**. Núcleo puro en `direcciones · tipos · verificacion · formatos · tabla`; el I/O en `motor.mjs` + `estructura.mjs`, sobre `lib/google.mjs` tal como está. Toda escritura RELEE y compara: un 200 no es evidencia. Prueba del circuito: `scripts/planilla-sin-llm.mjs` |
 
 ## Fuentes de verdad — cuál manda
 
