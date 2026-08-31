@@ -50,6 +50,7 @@ export function metricasDeCorrida({
   // Entran por parámetro y con default vacío para que una corrida que todavía no cablea el
   // research y el fast path publique CEROS honestos en vez de ausencias silenciosas.
   cache = SIN_CACHE, investigaciones = [], nivelesDeFastPath = [], real = null, cascada = null,
+  reuso = {},
 } = {}) {
   const conCantidad = cantidades.filter((c) => !esAusencia(c.estado) && c.valor !== null && c.valor !== undefined)
   const mapeadas = mapeos.filter((m) => m.estado === 'MAPEADA')
@@ -149,7 +150,11 @@ export function metricasDeCorrida({
     ),
     autonomous_resolution_base: cantidades.length + mapeos.length + humanoTotal,
 
-    knowledge_reuse_rate: tasa(mapeadas.length, mapeos.length),
+    // ═══ KNOWLEDGE REUSE ═══ Ver `reusoDeConocimiento`. Los mapeos entran como una de las tres
+    // familias; `resoluciones` y `aprendizajesAplicados` llegan por parámetro y con default vacío,
+    // igual que el caché y el research, para que una corrida que todavía no los cablea publique
+    // SIN_MEDIR en vez de una ausencia silenciosa.
+    ...reusoDeConocimiento({ ...reuso, mapeos }),
 
     /**
      * CLAUDE AVOIDANCE RATE = decisiones tomadas sin modelo / decisiones TOMADAS.
@@ -181,6 +186,97 @@ export function metricasDeCorrida({
     // Sin un real conocido, `SIN_MEDIR`. NUNCA 100 %: no tener contra qué compararse no es acertar.
     ...exactitudDeCorrida({ real, costosDePartida, cantidades, lineas, cascada }),
   })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// KNOWLEDGE REUSE
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ QUÉ ESTABA MAL ANTES ═══
+//
+// `knowledge_reuse_rate` era `mapeadas / mapeos`. Eso no es reuso de conocimiento: es COBERTURA DE
+// MAPEO, y además es exactamente parte del numerador de `autonomous_resolution_rate`. Dos métricas
+// que cuentan lo mismo no son dos mediciones: una es decoración, y la decoración es la que sube
+// cuando conviene que suba.
+//
+// ═══ LA DEFINICIÓN ═══
+//
+//   NUMERADOR   decisiones resueltas con un artefacto de conocimiento que YA EXISTÍA antes de esta
+//               corrida y que el objeto DECLARA haber usado.
+//   DENOMINADOR decisiones ELEGIBLES para reuso: aquellas que un artefacto preexistente podría en
+//               principio haber resuelto. No toda decisión lo es.
+//
+// Las tres familias de artefacto reutilizable que existen en esta arquitectura:
+//
+//   · PRECIO — `ORIGEN.INTERNO` (el catálogo), `ORIGEN.COMPRA_ECSAS` (una factura propia ya pagada)
+//     y `ORIGEN.COMPARABLE` (el precio de otro recurso de la casa). `ORIGEN.WEB` NO es reuso: es
+//     adquisición nueva, y contarla haría que salir a buscar afuera mejorara la métrica del
+//     conocimiento propio.
+//   · MAPEO — una partida enganchada a la Base Maestra reusa la taxonomía que la empresa ya tiene.
+//   · APRENDIZAJE — un `conocimiento_empresa` aplicado a esta decisión.
+//
+// ═══ EL TERCER ESTADO, Y POR QUÉ NO ALCANZA CON DOS ═══
+//
+// Un contador de reuso puede fallar de dos maneras opuestas y las dos terminan en un número que se
+// publica: decir 100 % porque todo lo que miró era reuso (y no miró casi nada), o decir 0 % porque
+// los objetos no traían de dónde salieron. Lo segundo es el peligroso: **«no pude mirar» no es «no
+// hubo reuso»**, y publicado como 0 % manda a alguien a construir conocimiento que tal vez ya se
+// esté usando.
+//
+// Por eso hay TRES resultados y no dos:
+//
+//   · sin decisiones elegibles                    → SIN_MEDIR  (no había nada que reusar)
+//   · elegibles > 0 y NINGUNA declara procedencia  → SIN_MEDIR  (no se pudo mirar)
+//   · alguna declara                               → la tasa, que PUEDE dar 0
+//
+// Y viaja siempre `knowledge_reuse_cobertura`: una tasa calculada sobre el 5 % de las decisiones no
+// vale lo mismo que una calculada sobre el 90 %, y sin ese número las dos se leen igual.
+
+/** Los orígenes de precio que SON conocimiento previo de la empresa. `WEB` no está, a propósito. */
+export const ORIGEN_ES_REUSO = Object.freeze({ INTERNO: true, COMPRA_ECSAS: true, COMPARABLE: true, WEB: false })
+
+/**
+ * KNOWLEDGE REUSE. PURA.
+ *
+ * `resoluciones` son las resoluciones de precio de `precio-resolucion.mjs` (cada una con su
+ * `origen`); `mapeos` los ítems contra la Base Maestra; `aprendizajesAplicados` las entradas de
+ * `conocimiento_empresa` que esta corrida efectivamente usó.
+ *
+ * Una resolución SIN `origen` no cuenta como «no hubo reuso»: cuenta como no declarada, y sale del
+ * numerador Y del denominador de la tasa, pero queda contada en `sinProcedencia` para que se vea
+ * cuánto de la corrida no se pudo mirar.
+ */
+export function reusoDeConocimiento({ resoluciones = [], mapeos = [], aprendizajesAplicados = [] } = {}) {
+  const declara = (x) => x?.origen !== null && x?.origen !== undefined
+  const resDeclaradas = resoluciones.filter(declara)
+  const resReuso = resDeclaradas.filter((r) => ORIGEN_ES_REUSO[r.origen] === true)
+
+  // Un mapeo SIEMPRE declara su estado, así que la familia entera es declarada. `MAPEADA` es reuso
+  // de la taxonomía; `AMBIGUO` y `SIN_PARTIDA` son decisiones elegibles que no lo lograron.
+  const mapReuso = mapeos.filter((m) => m?.estado === 'MAPEADA')
+
+  const elegibles = resoluciones.length + mapeos.length + aprendizajesAplicados.length
+  const declaradas = resDeclaradas.length + mapeos.length + aprendizajesAplicados.length
+  const conReuso = resReuso.length + mapReuso.length + aprendizajesAplicados.length
+
+  return {
+    knowledge_reuse_rate: declaradas > 0 ? Math.round((conReuso / declaradas) * 1000) / 1000 : SIN_MEDIR,
+    knowledge_reuse_numerador: conReuso,
+    knowledge_reuse_denominador: declaradas,
+    knowledge_reuse_elegibles: elegibles,
+    // Cuántas decisiones elegibles no dijeron de dónde salieron. Si esto es alto, la tasa está
+    // medida sobre una esquina de la corrida y no sobre la corrida.
+    knowledge_reuse_sin_procedencia: elegibles - declaradas,
+    knowledge_reuse_cobertura: elegibles > 0 ? Math.round((declaradas / elegibles) * 1000) / 1000 : SIN_MEDIR,
+    knowledge_reuse_por_familia: Object.freeze({
+      precio: { elegibles: resoluciones.length, declaradas: resDeclaradas.length, reuso: resReuso.length },
+      mapeo: { elegibles: mapeos.length, declaradas: mapeos.length, reuso: mapReuso.length },
+      aprendizaje: { elegibles: aprendizajesAplicados.length, declaradas: aprendizajesAplicados.length, reuso: aprendizajesAplicados.length },
+    }),
+    knowledge_reuse_estado: declaradas > 0
+      ? 'MEDIDO'
+      : (elegibles > 0 ? 'SIN_MEDIR: hay decisiones elegibles y ninguna declara de dónde salió' : 'SIN_MEDIR: no hubo ninguna decisión elegible para reuso'),
+  }
 }
 
 /**
