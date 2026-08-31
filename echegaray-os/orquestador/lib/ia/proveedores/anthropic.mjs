@@ -86,7 +86,8 @@ export const anthropic = {
     if (!res.ok && res.status === 400 && cuerpo.temperature !== undefined) {
       const detalle = await res.text().catch(() => '')
       if (/temperature/i.test(detalle) && /deprecat|unsupported|not supported/i.test(detalle)) {
-        const { temperature, ...sinTemperatura } = cuerpo
+        const sinTemperatura = { ...cuerpo }
+        delete sinTemperatura.temperature
         res = await pedir(sinTemperatura)
       } else {
         const err = new Error(`anthropic 400: ${detalle.slice(0, 200)}`)
