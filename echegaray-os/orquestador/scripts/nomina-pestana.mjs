@@ -902,13 +902,26 @@ async function publicar(google, PESTANA, filas) {
   // después no se toca»*. `getSheetMeta` no devuelve el índice, así que se pide aparte y se repone
   // al crearla. Es el mismo criterio que gobierna el contenido de las celdas, aplicado al orden de
   // las solapas — que también es algo que él acomodó.
-  let indicePrevio = null
+  // ═══ SI NO SÉ DÓNDE ESTABA, NO LA MANDO AL FINAL ═══
+  //
+  // Preservar la posición sólo sirve si se pudo leer. Cuando la lectura falla —o cuando la pestaña
+  // todavía no existe— `indicePrevio` quedaba en `null` y el `addSheet` la creaba al final del
+  // archivo. Peor: la corrida SIGUIENTE leía esa posición del final y la «preservaba», así que un
+  // fallo momentáneo se volvía permanente. Fue exactamente lo que le pasó a la Nómina: del lugar 2,
+  // pegada a «Jornales por Quincena», al 37, y ninguna corrida posterior la trajo de vuelta.
+  //
+  // El dueño ya lo había marcado una vez, textual: *«respetá la ubicación q YO le asigno […] si yo
+  // hago algo, después no se toca»*. Así que ahora hay un lugar declarado al que volver, y el
+  // `null` deja de significar «al final».
+  const LUGAR = { 'Nómina': 2, Plantel: 3 }
+  let indicePrevio = LUGAR[PESTANA] ?? null
   if (hoja) {
     try {
       const meta = await google.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ID)}?fields=sheets.properties(sheetId,index,title)`)
-      indicePrevio = (meta.sheets ?? []).find((x) => x.properties?.sheetId === hoja.sheetId)?.properties?.index ?? null
-      console.log(`  posición actual de ${PESTANA}: ${indicePrevio}`)
-    } catch { indicePrevio = null }
+      const leido = (meta.sheets ?? []).find((x) => x.properties?.sheetId === hoja.sheetId)?.properties?.index
+      if (Number.isInteger(leido)) indicePrevio = leido
+      console.log(`  posición actual de ${PESTANA}: ${leido ?? 'no la pude leer'} → repongo en ${indicePrevio}`)
+    } catch { /* queda el lugar declarado */ }
   }
 
   // ═══ SE BORRA Y SE REHACE, Y ES LA ÚNICA FORMA CORRECTA ACÁ ═══
