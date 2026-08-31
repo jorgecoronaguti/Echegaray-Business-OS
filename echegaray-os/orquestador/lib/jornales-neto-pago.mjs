@@ -52,3 +52,30 @@ export function formulaNetoAPagar({ fila, colTotal = 'D', colAdelanto = 'E', yaN
 export function formulaEnEfectivo({ fila, colTotal = 'D', colNeto = 'F', colBanco = 'G' } = {}) {
   return `=IF(OR(N(${colTotal}${fila})=0;NOT(ISNUMBER(${colBanco}${fila})));"";${colNeto}${fila}-${colBanco}${fila})`
 }
+
+/**
+ * LO QUE SE LE TRANSFIERE A OFICINA — y por qué no es la mitad.
+ *
+ * ═══ EL DEFECTO (31/08/2026) ═══
+ *
+ * La fila de Oficina publicaba `total/2`: el 50/50 calculado. Con $3.600.000 de neto acordado daba
+ * $1.800.000 por banco y $1.800.000 en efectivo. Pero los recibos de los dos dicen $663.141,56 cada
+ * uno — $1.326.283 de blanco— y el resto, $2.273.716, se completa en billetes. El acuerdo del dueño
+ * es textual: **«lo blanco es lo que indica su recibo y el resto se completa en efectivo»**.
+ *
+ * O sea: $473.717 de más por transferencia y esa misma plata de menos en la mano. Es el mismo 50/50
+ * que él mandó dejar de usar en la fila de obra, que había quedado vivo en la de al lado.
+ *
+ * La mitad se conserva SÓLO como respaldo: si Nómina no está o el rótulo cambió, una celda vacía se
+ * leería como «a oficina no se le transfiere nada», que es peor que un reparto aproximado.
+ *
+ * `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo, donde
+ * la coma es el separador de argumentos — el `0,5` se parte en dos y la celda queda en #ERROR.
+ *
+ * @param {{fila:number, colTotal?:string, cita:string}} o  `cita` = la expresión que trae el POR BANCO
+ *   publicado en Nómina.
+ */
+export function formulaBancoOficina({ fila, colTotal = 'D', cita } = {}) {
+  const T = `${colTotal}${fila}`
+  return `=IF(N(${T})=0;"";IF(N(${cita})>0;${cita};${T}/2))`
+}

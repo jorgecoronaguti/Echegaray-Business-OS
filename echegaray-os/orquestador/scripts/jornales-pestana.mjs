@@ -72,7 +72,7 @@
 //
 //   node orquestador/scripts/jornales-pestana.mjs [--dry]
 
-import { formulaNetoAPagar, formulaEnEfectivo } from '../lib/jornales-neto-pago.mjs'
+import { formulaNetoAPagar, formulaEnEfectivo, formulaBancoOficina } from '../lib/jornales-neto-pago.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotaciones.mjs'
@@ -1773,7 +1773,9 @@ export function grilla({
     // «este mes no se le paga a nadie».
     total: `=IF(N(${deNominaOficina('TOTAL A PAGAR')})>0;${deNominaOficina('TOTAL A PAGAR')};`
       + `IF(N(C${fPago.oficina})=0;"";SUMIFS($H$${o0}:$H$${oFin};$E$${o0}:$E$${oFin};C${fPago.oficina})))`,
-    banco: `=IF(N(D${fPago.oficina})=0;"";D${fPago.oficina}/2)`,
+    // EL BANCO DE OFICINA ES LO QUE DICEN SUS RECIBOS, NO LA MITAD. Ver `formulaBancoOficina`:
+    // publicaba $1.800.000 donde los dos recibos suman $1.326.283.
+    banco: formulaBancoOficina({ fila: fPago.oficina, cita: deNominaOficina('POR BANCO') }),
   })
   // DIRECCIÓN VA ENTERA POR BANCO — orden del dueño, no una medición: *"administracion todos por
   // banco"* (03/08). Publicar "—" acá rompía la identidad POR BANCO + EN EFECTIVO = NETO en la fila de
