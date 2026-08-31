@@ -12,6 +12,8 @@
 // `s/d` y no `0`. La cobertura de una corrida sin partidas es `—`, no `100 %`. «78 % honesto >
 // 100 % verde falso» no es una frase del programa: es lo que decide qué se imprime.
 
+import { SIN_MEDIR, estaMedida } from './metricas.mjs'
+
 const pct = (x) => (x === null || x === undefined ? 's/d' : `${(Number(x) * 100).toFixed(1)} %`)
 const num = (x) => (x === null || x === undefined ? 's/d' : Number(x).toLocaleString('es-AR'))
 const plata = (x) => (x === null || x === undefined ? 'NO SE AFIRMA' : `$ ${Math.round(Number(x)).toLocaleString('es-AR')}`)
@@ -64,8 +66,12 @@ export function cuadroDeCorrida(corrida, { nombre, documentosCorpus = null, cono
       ['coeficiente', corrida.cascada.coeficienteSinIva ?? 's/d'],
       ['margen sobre precio', corrida.cascada.margenSobrePrecioPct === null || corrida.cascada.margenSobrePrecioPct === undefined ? 's/d' : `${corrida.cascada.margenSobrePrecioPct} %`],
       ['llamadas al modelo', num(m.llamadas_llm)],
-      ['CLAUDE AVOIDANCE RATE', m.claude_avoidance_rate === null ? '—' : pct(m.claude_avoidance_rate)],
-      ['AUTONOMOUS RESOLUTION RATE', m.autonomous_resolution_rate === null ? '—' : pct(m.autonomous_resolution_rate)],
+      // ═══ «—» NO ES UNA MEDICIÓN ═══
+      // Un guión al lado de tres columnas con «100,0 %» se lee como «acá no importa». La palabra
+      // SIN_MEDIR se lee como lo que es: no había con qué medir. Y la tasa se publica con su
+      // denominador, porque 3/3 y 300/300 son el mismo 100 % y no son la misma corrida.
+      ['CLAUDE AVOIDANCE RATE', estaMedida(m.claude_avoidance_rate) ? `${pct(m.claude_avoidance_rate)} (${num(m.claude_avoidance_base)} decisiones)` : SIN_MEDIR],
+      ['AUTONOMOUS RESOLUTION RATE', estaMedida(m.autonomous_resolution_rate) ? `${pct(m.autonomous_resolution_rate)} (${num(m.autonomous_resolution_base)} a resolver)` : SIN_MEDIR],
       ['incertidumbre NO declarada', num(m.incertidumbre_no_declarada)],
       ['latencia fría / tibia', msFrio === null ? 's/d' : `${Math.round(msFrio)} ms / ${msTibio === null ? 's/d' : `${Math.round(msTibio)} ms`}`],
       ['huella de entradas', corrida.huella.sha256.slice(0, 16)],
