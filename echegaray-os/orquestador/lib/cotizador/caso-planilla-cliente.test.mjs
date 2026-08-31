@@ -34,6 +34,23 @@ test('EL CASO ARMA SOBRE LA VERSIÓN QUE RIGE, no sobre la primera del array', (
   assert.equal(c.documentos.filter((d) => d.parseado).length, 4, 'los 4 se abrieron sin modelo')
 })
 
+test('UN DOCUMENTO QUE NO SE PUDO ABRIR NO SE DECLARA LEÍDO — con su motivo al lado', () => {
+  // La trampa ya pagada: `parseado` escrito `true` a mano publicaba como leídos documentos que
+  // nadie pudo abrir. Un control que no puede decir «no lo miré» no puede decir «no está».
+  const conCiego = {
+    ...ARTEFACTO,
+    documentos: [...ARTEFACTO.documentos, { hash: 'h-ciego', nombre: 'plano.pdf', formato: 'PDF', abierto: false, porQueNoSeAbrio: 'el PDF no tiene capa de texto y haría falta OCR', lectura: null }],
+  }
+  const c = armarCaso(conCiego, OPCIONES)
+  assert.equal(c.documentos.length, 5)
+  assert.equal(c.documentos.filter((d) => d.parseado).length, 4, 'siguen siendo 4 los leídos')
+  const ciego = c.documentos.find((d) => d.nombre === 'plano.pdf')
+  assert.equal(ciego.parseado, false)
+  assert.match(ciego.porQue, /OCR/)
+  // Y no aporta ni un cómputo: el ámbito sigue teniendo los 12 ítems de la planilla que rige.
+  assert.equal(c.planilla.computos.length, 12)
+})
+
 test('LO QUE CHOCA NO SE COSTEA: T1111.1 compra el acero que ARCOR provee, así que no entra a partidas', () => {
   const c = armarCaso(ARTEFACTO, OPCIONES)
   const mapeadas = c.mapeos.filter((x) => x.estado === 'MAPEADA').map((x) => x.tarea.codigo).sort()
