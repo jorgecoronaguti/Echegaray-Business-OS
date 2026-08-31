@@ -122,7 +122,11 @@ test('EL RIESGO SIN PRECIO ES null, NUNCA 0', () => {
   assert.equal(issueDeSuministro(r).impact, null)
 })
 
-test('EL BARRIDO SÓLO REVISA LAS QUE CERRARON: una AMBIGUO no se cuenta dos veces', () => {
+test('EL BARRIDO SÓLO REVISA LAS QUE CERRARON — Y EL ESTADO MANDA, no la tarea que quedó pegada', () => {
+  // El caso que hace que el filtro por ESTADO no sea redundante con el filtro por `tarea`: cuando
+  // `resolverConMemoria` vuelve a abrir un mapeo porque la respuesta guardada ya no está entre las
+  // opciones de hoy, el objeto conserva la `tarea` de la decisión vieja. Mirar sólo `tarea` haría
+  // que ese mapeo REABIERTO se cuente como cerrado y aporte un choque que nadie confirmó.
   const composiciones = new Map([['id-1064', T1064], ['id-1028', T1028]])
   const mapeo = (estado, tareaId, codigo, texto, id) => ({
     estado, tarea: tareaId ? { id: tareaId, codigo } : null,
@@ -131,13 +135,14 @@ test('EL BARRIDO SÓLO REVISA LAS QUE CERRARON: una AMBIGUO no se cuenta dos vec
   const r = barrerSuministros([
     mapeo('MAPEADA', 'id-1064', 'T1064', 'Montaje de puerta P1. Puerta a cargo de ARCOR', 'E1'),
     mapeo('MAPEADA', 'id-1028', 'T1028', TEXTO_1_8, 'E2'),
-    mapeo('AMBIGUO', null, null, TEXTO_1_1, 'E3'),
+    mapeo('AMBIGUO', 'id-1064', 'T1064', 'Montaje de puerta P1. Puerta a cargo de ARCOR', 'E3'),
     mapeo('PARTIDA_CANDIDATA', null, null, TEXTO_1_1, 'E4'),
   ], { composiciones, cliente: 'ARCOR', costoPorRecurso: { 'M-PUE': 300000 } })
   assert.equal(r.revisados.length, 2, 'sólo las dos MAPEADAS')
+  assert.deepEqual(r.revisados.map((x) => x.elemento), ['E1', 'E2'])
   assert.equal(r.conChoque.length, 1)
   assert.equal(r.conChoque[0].elemento, 'E1')
-  assert.equal(r.plataEnRiesgo, 300000)
+  assert.equal(r.plataEnRiesgo, 300000, 'el AMBIGUO con tarea pegada NO suma su segundo choque')
   assert.match(r.porQue, /2 partida\(s\) cerrada\(s\) revisada\(s\) · 1 con material/)
 })
 
