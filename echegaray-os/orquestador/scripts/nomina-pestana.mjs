@@ -654,11 +654,27 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const e = q.filaEspejo                   // su fila en el espejo de la planilla
     const cuilFila = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
     const rec = (col, cuil, per) => `SUMIFS(${R}$E$1:$E$400;${R}$${col}$1:$${col}$400;"${cuil}";${R}$B$1:$B$400;"${per}")`
+    // ═══ «POR BANCO» ES LO QUE FALTA TRANSFERIR, NO EL NETO DEL RECIBO (31/08) ═══
+    //
+    // El dueño, después de pagar: *«te equivocaste con los empleados que ya habían recibido
+    // transferencias, me hiciste transferir de más porque no consideraste que lo del neto del recibo
+    // es lo que va al banco, y si dice transferido también»*.
+    //
+    // Tenía razón y costó plata. La columna publicaba el NETO DEL RECIBO entero como si estuviera
+    // pendiente, con «YA TRANSFERIDO $200.000» en la celda de al lado: el que paga lee la columna de
+    // banco y transfiere. A Gonzalez Tobares se le mandó $192.887,48 cuando ya tenía cubiertos los
+    // $192.887,48 con el lote del 28/08; a Rosales y a Pastran, $200.000 de más a cada uno.
+    //
+    // El neto del recibo es la OBLIGACIÓN bancaria de la quincena. Lo ya transferido es un pago A
+    // CUENTA de esa misma obligación, no un concepto aparte: se resta acá, no del efectivo. `MAX(0;…)`
+    // porque transferir de más no genera una transferencia negativa — el sobrante lo absorbe el
+    // efectivo, que es `total − banco − transferido − adelanto` y ya lo contempla.
+    //
+    // SIN `ROUND`: el dueño, más temprano — «dejar los números de la manera correcta porque si no las
+    // transferencias se hacen mal». El recibo dice $215.564,62 y redondear hace una transferencia por
+    // 38 centavos de más.
     const celdaBanco = cuilFila && delRecibo.banco !== null
-      // SIN `Math.round`: el dueño, 31/08 — «cuidado con redondear en la pestaña nomina, dejar los
-      // numeros de la manera correcta porque sino las transferencias se hacen mal». El recibo dice
-      // $215.564,62 y redondear a $215.565 hace una transferencia por 38 centavos de más.
-      ? `=${rec('A', cuilFila, periodoRecibo)}` : hoyR.banco
+      ? `=MAX(0;${rec('A', cuilFila, periodoRecibo)}-N(D${n}))` : hoyR.banco
     // B · EL ADELANTO EN OBRA. Sale del espejo de la planilla, citado por fórmula como las horas y
     // el jornal: es el mismo dato, de la misma fila, y no hay razón para pegarlo.
     //
