@@ -12,6 +12,7 @@ import {
   CASCADA, PASO, TIPO, ordenDeLaCascada, PASOS_ANTES_DEL_HUMANO, investigarHueco,
   puedeAscenderAExperiencia, fuenteDelPaso, necesitaInterpretacion, compuertaDelModelo,
   resuelto, noResuelve, resolvedorWeb,
+  validarDesambiguacion, interpretacionDelModelo, desenvolver,
 } from './research.mjs'
 import { FUENTE } from '../plano/fuente.mjs'
 import { aplicarPoliticaContenidoExterno } from '../web/contenido-externo.mjs'
@@ -352,4 +353,165 @@ test('un ERROR de un paso no rompe la cascada: se anota y se sigue', async () =>
   const err = r.recorrido.find((x) => x.paso === PASO.BASE_MAESTRA)
   assert.equal(err.estado, 'ERROR')
   assert.match(err.porQue, /Postgres/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL FALLBACK GENERATIVO: LA SALIDA DEL MODELO PASA UNA VALIDACIÓN QUE PUEDE RECHAZARLA
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las candidatas son las REALES de la Base Maestra: `select codigo, nombre, unidad from
+// public.tarea_tipo` sobre las 205 activas devuelve estas dos con la misma raíz, la misma unidad y
+// distancia 0 en el selector. Un caso inventado probaría el caso inventado.
+
+const CANDIDATAS_REALES = [
+  { codigo: 'T1010', nombre: 'COLUMNA DE CARGA H17 - FE 190 KG/M3', unidad: 'M3' },
+  { codigo: 'T1069', nombre: 'COLUMNA DE CARGA H17 - FE 110 KG/M3', unidad: 'M3' },
+]
+
+const SALIDA_BUENA = {
+  atributo: 'armadura',
+  relacion: 'ALTERNATIVAS',
+  valores: [
+    { codigo: 'T1010', literal: 'FE 190 KG/M3' },
+    { codigo: 'T1069', literal: 'FE 110 KG/M3' },
+  ],
+  porQue: 'las dos partidas son la misma columna de H17 y sólo difieren en la cuantía de armadura declarada en su nombre',
+}
+
+test('GENERATIVO · una salida bien formada y anclada al catálogo pasa', () => {
+  const v = validarDesambiguacion(SALIDA_BUENA, { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, true, `debería pasar y falló por: ${v.problemas.join(' · ')}`)
+  assert.equal(v.valor.atributo, 'armadura')
+  assert.equal(v.valor.valores.length, 2)
+})
+
+test('GENERATIVO · RECHAZO · un literal que el modelo INVENTÓ no existe en el catálogo', () => {
+  // El control fuerte. Un modelo puede escribir «FE 250 KG/M3» con total naturalidad; lo que no
+  // puede es hacer que ese texto exista en un nombre que salió de Postgres.
+  const v = validarDesambiguacion({
+    ...SALIDA_BUENA,
+    valores: [{ codigo: 'T1010', literal: 'FE 250 KG/M3' }, { codigo: 'T1069', literal: 'FE 110 KG/M3' }],
+  }, { candidatas: CANDIDATAS_REALES })
+
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /NO aparece en el nombre real/)
+  assert.equal(v.valor, null, 'una salida rechazada no devuelve un valor a medias que alguien pueda usar igual')
+})
+
+test('GENERATIVO · RECHAZO · el modelo NO puede elegir la partida', () => {
+  const v = validarDesambiguacion({ ...SALIDA_BUENA, elegida: 'T1010' }, { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /ESTADO COMERCIAL/)
+})
+
+test('GENERATIVO · RECHAZO · el modelo NO puede fijar un precio ni recomendar', () => {
+  for (const intruso of [{ precio: 145000 }, { recomendada: 'T1069' }, { margen: 0.22 }, { congelar: true }, { experiencia: 'sí' }]) {
+    const v = validarDesambiguacion({ ...SALIDA_BUENA, ...intruso }, { candidatas: CANDIDATAS_REALES })
+    assert.equal(v.valido, false, `${JSON.stringify(intruso)} tendría que ser rechazado`)
+    assert.match(v.problemas.join(' '), /ESTADO COMERCIAL/)
+  }
+})
+
+test('GENERATIVO · RECHAZO · un código que no estaba entre las candidatas', () => {
+  const v = validarDesambiguacion({
+    ...SALIDA_BUENA,
+    valores: [{ codigo: 'T9999', literal: 'FE 190 KG/M3' }, { codigo: 'T1069', literal: 'FE 110 KG/M3' }],
+  }, { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /códigos que no estaban entre las candidatas/)
+})
+
+test('GENERATIVO · RECHAZO · desambiguar la mitad no es desambiguar', () => {
+  const v = validarDesambiguacion({
+    ...SALIDA_BUENA, valores: [{ codigo: 'T1010', literal: 'FE 190 KG/M3' }],
+  }, { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /no dijo nada de T1069/)
+})
+
+test('GENERATIVO · RECHAZO · un atributo inventado no lo puede consumir ninguna pregunta del OS', () => {
+  const v = validarDesambiguacion({ ...SALIDA_BUENA, atributo: 'nivel_de_detalle' }, { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /no es un atributo que el OS sepa preguntar/)
+})
+
+test('GENERATIVO · RECHAZO · prosa en vez de JSON se rechaza, no se rescata', () => {
+  const v = validarDesambiguacion(
+    'Creo que la primera, T1010, porque 190 kg/m³ suena a una columna más cargada.',
+    { candidatas: CANDIDATAS_REALES },
+  )
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /no es JSON/)
+})
+
+test('GENERATIVO · RECHAZO · sin porQue no se puede auditar', () => {
+  const sinPorQue = { ...SALIDA_BUENA }
+  delete sinPorQue.porQue
+  assert.equal(validarDesambiguacion(sinPorQue, { candidatas: CANDIDATAS_REALES }).valido, false)
+})
+
+test('GENERATIVO · el sello dice que fue el modelo, y que NO asciende a experiencia', () => {
+  const v = validarDesambiguacion(SALIDA_BUENA, { candidatas: CANDIDATAS_REALES })
+  const sellada = interpretacionDelModelo({
+    valor: v.valor, candidatas: CANDIDATAS_REALES,
+    provenance: { modelo: 'claude-haiku-4-5', tokensIn: 400, tokensOut: 90, usd: 0.00085, ms: 900, cuando: '2026-08-31T11:00:00Z' },
+  })
+
+  assert.equal(sellada.fuente, FUENTE.INFERIDO, 'lo que sale de un modelo es INFERIDO y nada más')
+  assert.equal(sellada.esExperienciaEcsas, false)
+  assert.equal(sellada.esHechoEcsas, false)
+  assert.ok(sellada.noAsciende.includes('EXPERIENCIA ECSAS'))
+  assert.equal(sellada.decide, false, 'el modelo reformula la pregunta; no la contesta')
+  assert.equal(sellada.requiereHumano, true)
+  assert.equal(sellada.provenance.quien, 'MODELO')
+  assert.equal(sellada.provenance.promptVersion, 'desambiguacion@1')
+  assert.ok(sellada.provenance.usd > 0, 'una interpretación del modelo sin costo declarado sería gratis, y no lo es')
+})
+
+test('GENERATIVO · lo que produjo el modelo NO asciende a experiencia de ECSAS', () => {
+  // La guarda que ya existía para la cascada, ejercitada sobre el paso MODELO.
+  const r = puedeAscenderAExperiencia({ resueltoEn: PASO.MODELO, dato: { fuente: FUENTE.INFERIDO } })
+  assert.equal(r.permitido, false)
+  assert.match(r.porQue, /la experiencia se gana midiendo una obra de ECSAS/)
+})
+
+test('GENERATIVO · RECHAZO · un atributo que NO diferencia, refutado con lo que el OS ya extrae', () => {
+  // ═══ ESTE TEST SALIÓ DE UNA CORRIDA REAL, NO DE LA IMAGINACIÓN ═══
+  // `claude-haiku-4-5` contestó exactamente esto en dos corridas del 31/08/2026: `resistencia`, con
+  // los literales bien copiados y la forma correcta. Habría pasado los otros cinco controles. Lo
+  // refuta `atributosDe`, que extrae «H17» de LAS DOS: preguntarle al jefe de obra «¿qué
+  // resistencia?» tiene la misma respuesta para las dos y no cierra nada.
+  const v = validarDesambiguacion({
+    atributo: 'resistencia',
+    relacion: 'ALTERNATIVAS',
+    valores: [{ codigo: 'T1010', literal: '190 KG/M3' }, { codigo: 'T1069', literal: '110 KG/M3' }],
+    porQue: 'difieren en su capacidad de carga por unidad de volumen',
+  }, { candidatas: CANDIDATAS_REALES })
+
+  assert.equal(v.valido, false)
+  assert.match(v.problemas.join(' '), /NO es lo que las diferencia.*H17/)
+})
+
+test('GENERATIVO · el control de atributo sólo REFUTA: lo que no puede demostrar, lo deja pasar', () => {
+  // `armadura` da null en las dos: el extractor no sabe nada y por eso no opina. La asimetría es
+  // deliberada — se rechaza lo que el OS puede demostrar que está mal, no lo que no puede demostrar
+  // que está bien. Un control que exigiera confirmación rechazaría todo y no serviría.
+  assert.equal(validarDesambiguacion(SALIDA_BUENA, { candidatas: CANDIDATAS_REALES }).valido, true)
+})
+
+test('GENERATIVO · la cerca de markdown se saca; el texto suelto alrededor NO se rescata', () => {
+  const json = JSON.stringify(SALIDA_BUENA)
+  // Medido: `claude-haiku-4-5` cerca la respuesta aunque el prompt diga que no.
+  assert.equal(desenvolver('```json\n' + json + '\n```'), json)
+  assert.equal(desenvolver('```\n' + json + '\n```'), json)
+  assert.equal(desenvolver(json), json, 'sin cerca, no toca nada')
+  // Y lo que NO se hace: buscar la primera llave en el medio de un párrafo.
+  const conProsa = `Creo que es la primera. ${json} Espero que sirva.`
+  assert.equal(desenvolver(conProsa), conProsa, 'no se rescata prosa: sale igual y la validación lo rechaza')
+  assert.equal(validarDesambiguacion(conProsa, { candidatas: CANDIDATAS_REALES }).valido, false)
+})
+
+test('GENERATIVO · una salida cercada y correcta pasa entera', () => {
+  const v = validarDesambiguacion('```json\n' + JSON.stringify(SALIDA_BUENA) + '\n```', { candidatas: CANDIDATAS_REALES })
+  assert.equal(v.valido, true, `debería pasar y falló por: ${v.problemas.join(' · ')}`)
 })
