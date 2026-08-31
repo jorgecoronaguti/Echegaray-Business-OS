@@ -94,13 +94,33 @@ async function main() {
     b: num(porRotulo(jornales, /^Oficina/, 3)),
   }))
 
-  // B · Cuánta gente declara cada una. Un plantel que no coincide es un costo que no coincide.
-  const personasPlantel = num(String(porRotulo(plantel, /^⇒\s*\d+ persona/, 0) ?? '').replace(/\D/g, ''))
-  const personasJornales = (num(porRotulo(jornales, /^Obreros/, 1)) ?? 0) + (num(porRotulo(jornales, /^Oficina/, 1)) ?? 0)
+  // B · CUÁNTA GENTE COBRA ESTA QUINCENA — y no «cuánta gente hay», que es otra pregunta.
+  //
+  // La primera versión cruzaba el ⇒ de Plantel (19) contra Jornales (17) y daba rojo. No era un
+  // defecto de las pestañas: Plantel es el plantel del AÑO —incluye a los dos que ya cobraron su
+  // liquidación final— y Jornales es quién cobra AHORA. Comparar los dos es la trampa de «una vista
+  // que cambia de significado»: dos números correctos que no hablan de lo mismo.
+  //
+  // Lo que sí tiene que cerrar es Nómina contra Jornales: las dos contestan la MISMA pregunta, y de
+  // hecho Jornales cita a Nómina desde el 31/08. Si alguna vez difieren, una de las dos se
+  // desconectó.
+  const personasNomina = num(String(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 0) ?? '').replace(/\D/g, ''))
+  const personasOficina = num(porRotulo(nomina, /^⇒.*de oficina/, 1)) ?? num(String(porRotulo(nomina, /^⇒.*de oficina/, 0) ?? '').replace(/\D/g, ''))
+  const personasJornales = num(porRotulo(jornales, /^Obreros/, 1))
   cruces.push(cruzar({
-    que: 'cuánta gente hay', izquierda: 'Plantel', derecha: 'Jornales por Quincena',
-    a: personasPlantel, b: personasJornales || null, tolerancia: 0,
+    que: 'obreros que cobran esta quincena', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
+    a: personasNomina, b: personasJornales, tolerancia: 0,
   }))
+  cruces.push(cruzar({
+    que: 'lo que se le paga a los obreros', izquierda: 'Nómina', derecha: 'Jornales por Quincena',
+    a: num(porRotulo(nomina, /^⇒\s*\d+ persona\(s\)$/, 6)), b: num(porRotulo(jornales, /^Obreros/, 3)),
+  }))
+  // El plantel del año se INFORMA, no se cruza: su universo es otro a propósito.
+  const personasPlantel = num(String(porRotulo(plantel, /^⇒\s*\d+ persona/, 0) ?? '').replace(/\D/g, ''))
+  if (personasPlantel != null && personasNomina != null && personasOficina != null) {
+    console.log(`\n  ℹ Plantel declara ${personasPlantel} persona(s) del AÑO; esta quincena cobran `
+      + `${personasNomina} obrero(s) + ${personasOficina} de oficina. La diferencia son los que ya cobraron su liquidación final.`)
+  }
 
   // C · Los subcontratistas que cobran por nómina, ¿figuran en su pestaña?
   const textoSub = (subcon ?? []).flat().map((c) => String(c ?? '').toUpperCase()).join(' | ')

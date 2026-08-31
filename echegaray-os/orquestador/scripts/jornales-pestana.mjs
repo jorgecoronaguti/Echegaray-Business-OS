@@ -1644,16 +1644,17 @@ export function grilla({
   // Cada una cita a SU bloque de abajo; ningún importe se copia. Las dos identidades que hacen
   // auditable la fila sin hacer cuentas: TOTAL − Adelanto = Neto, y Por banco + En efectivo = Neto.
   const cTot = colDe('TOTAL'); const cAdel = colDe('Adelanto'); const cBco = colDe('Banco')
-  const filaPago = (f, { personas, cuando, total, adelanto, banco }) => {
+  // `yaNeto` es la expresión que la HOJA evalúa para saber si el total de esa fila ya viene neto. Ver
+  // `lib/jornales-neto-pago.mjs`: restarle el adelanto a un total que ya lo tiene descontado le sacó
+  // $1.208.644 en efectivo a la cuadrilla el 31/08.
+  const filaPago = (f, { personas, cuando, total, adelanto, banco, yaNeto = null }) => {
     filas[f - 1][1] = personas
     filas[f - 1][2] = cuando
     filas[f - 1][3] = total
     filas[f - 1][4] = adelanto
-    filas[f - 1][5] = `=IF(N(D${f})=0;"";D${f}-N(E${f}))`
+    filas[f - 1][5] = formulaNetoAPagar({ fila: f, yaNeto })
     filas[f - 1][6] = banco
-    // El efectivo es el RESTO del neto, nunca otro 50% calculado aparte: así la identidad cierra
-    // aunque el banco venga de un dato cargado y no del acuerdo.
-    filas[f - 1][7] = `=IF(OR(N(D${f})=0;NOT(ISNUMBER(G${f})));"";F${f}-G${f})`
+    filas[f - 1][7] = formulaEnEfectivo({ fila: f })
   }
   // OBRA: la quincena que se está pagando, leída del registro. Si la columna «Banco» del espejo ya
   // trae el reparto cargado, ése manda; mientras esté en cero, el 50/50 del acuerdo lo calcula.
@@ -1699,6 +1700,11 @@ export function grilla({
     // TOTAL HOY de Nómina (columna M). Si la pestaña no está o el rótulo cambió, cae al registro:
     // una celda vacía acá se lee como «no hay que pagar nada», que es peor que un número viejo.
     total: `=IF(N(${deNomina('TOTAL A PAGAR')})>0;${deNomina('TOTAL A PAGAR')};$${cTot}$${fReg})`,
+    // EL TOTAL CITADO DE NÓMINA YA VIENE NETO — su columna «EN EFECTIVO» resta el adelanto, lo ya
+    // transferido y lo que va por banco antes de publicarlo. El respaldo (`$cTot$fReg`, el registro
+    // de la quincena) es BRUTO, así que la condición es la MISMA prueba que eligió el total: si
+    // Nómina contestó, no se resta; si mandó el respaldo, sí.
+    yaNeto: `N(${deNomina('TOTAL A PAGAR')})>0`,
     // ═══ LO YA ENTREGADO SON DOS COLUMNAS EN NÓMINA, Y ACÁ ES UNA SOLA CIFRA ═══
     //
     // Nómina las separó el 31/08 por orden del dueño: «ADELANTO» son los billetes que entregó el
