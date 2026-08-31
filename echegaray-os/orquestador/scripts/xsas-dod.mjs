@@ -14,7 +14,7 @@
 // pasar es que una medición rota se lea como un criterio cumplido: por eso ningún `catch` devuelve
 // un objeto vacío ni un cero — devuelven `null`, que el dictaminador traduce a «no se midió».
 import { pathToFileURL } from 'node:url'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 import { getPool } from '../lib/db.mjs'
 import { correrDod, VEREDICTO } from '../lib/cotizador/dod.mjs'
 import { main as correrCasos } from './cotizador-casos-reales.mjs'
@@ -130,6 +130,25 @@ async function desdeLaBase(query) {
   // que la gobernanza —correctamente— no promovió ninguno todavía. El consumo está cableado y
   // probado en `reutilizacion.test.mjs`; lo que falta es material que promover, y eso lo produce la
   // obra, no el código.
+  // ═══ LA FIRMA DEL AUDITOR NO LA PUEDE PRODUCIR ESTE PROCESO ═══
+  //
+  // El criterio 24 se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si ese nombre
+  // coincide con quien construyó, no vale: «ningún trabajo lo cierra quien lo construyó» no es una
+  // formalidad, es lo único que impide que el veredicto sea una opinión sobre uno mismo. Sin
+  // archivo, el criterio queda NO_VERIFICABLE y el PASS pelado se vuelve imposible — que es
+  // exactamente lo que tiene que pasar mientras nadie de afuera lo haya mirado.
+  await medir('auditoria', async () => {
+    let firma
+    try { firma = JSON.parse(readFileSync('docs/engineering/xsas-auditoria.json', 'utf8')) } catch { 
+      e.auditoria__porque = 'todavía no hay firma de auditoría independiente: falta `docs/engineering/xsas-auditoria.json`'
+      return null
+    }
+    if (!firma.auditor || firma.auditor === firma.construyo) {
+      e.auditoria__porque = `la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`
+      return null
+    }
+    return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
+  })
   await medir('reuso', async () => {
     const disponibles = await uno(query, 'select count(*) n from public.aprendizaje_activo')
     if (disponibles === 0) {
