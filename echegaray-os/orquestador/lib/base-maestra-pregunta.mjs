@@ -44,12 +44,24 @@ export const TIPO_PREGUNTA = Object.freeze({
 })
 
 /** Cómo se lee un atributo cuando se le habla a una persona. Sin esto la pregunta dice
- *  «espesor_m», que es un nombre de columna y no una pregunta. */
+ *  «espesor_m», que es un nombre de columna y no una pregunta.
+ *
+ *  Van las DOS formas —el sujeto («el espesor») y la pregunta entera («¿Qué pieza es?»)— porque no
+ *  todos los atributos entran en la misma plantilla: «¿Cuál es qué pieza es?» es lo que salía con
+ *  una sola, y una pregunta mal escrita se contesta mal. */
 const COMO_SE_DICE = Object.freeze({
-  espesor_m: 'el espesor', seccion: 'la sección', metodo: 'el método de ejecución',
-  terminacion: 'la terminación', ubicacion: 'si es interior o exterior', pieza: 'qué pieza es',
-  resistencia: 'la resistencia del hormigón', material: 'el material', armadura: 'si lleva armadura',
+  espesor_m: { sujeto: 'el espesor', pregunta: '¿Cuál es el espesor?' },
+  seccion: { sujeto: 'la sección', pregunta: '¿Cuál es la sección?' },
+  metodo: { sujeto: 'el método de ejecución', pregunta: '¿Se ejecuta a mano o con máquina?' },
+  terminacion: { sujeto: 'la terminación', pregunta: '¿Cuál es la terminación?' },
+  ubicacion: { sujeto: 'la ubicación', pregunta: '¿Va en interior o en exterior?' },
+  pieza: { sujeto: 'la pieza', pregunta: '¿Sobre qué elemento va?' },
+  resistencia: { sujeto: 'la resistencia del hormigón', pregunta: '¿Qué resistencia de hormigón?' },
+  material: { sujeto: 'el material', pregunta: '¿De qué material es?' },
+  armadura: { sujeto: 'la armadura', pregunta: '¿Lleva armadura?' },
 })
+
+const comoSeDice = (a) => COMO_SE_DICE[a] ?? { sujeto: a, pregunta: `¿Cuál es ${a}?` }
 
 const plata = (n) => (n === null || n === undefined ? 'sin precio' : `$ ${Math.round(Number(n)).toLocaleString('es-AR')}`)
 
@@ -139,8 +151,8 @@ export function preguntaParaCerrar(mapeo, { costos = {}, paresComplementarios = 
         // ═══ LA PREGUNTA HONESTA CUANDO HAY UNA SOLA OPCIÓN ═══
         // Ofrecer alternativas que el catálogo no tiene es peor que no preguntar: manda a alguien a
         // elegir un espesor para el que después no va a haber análisis de precio.
-        ? `${COMO_SE_DICE[falta.atributo] ?? falta.atributo}: lo único analizado en la Base Maestra es «${opciones[0].literal}» (${opciones[0].codigo}, ${plata(opciones[0].costoUnitario)} por ${opciones[0].unidad}). ¿Es ése?`
-        : `¿Cuál es ${COMO_SE_DICE[falta.atributo] ?? falta.atributo}?`,
+        ? `${comoSeDice(falta.atributo).sujeto}: lo único analizado en la Base Maestra es «${opciones[0].literal}» (${opciones[0].codigo}, ${plata(opciones[0].costoUnitario)} por ${opciones[0].unidad}). ¿Es ése?`
+        : comoSeDice(falta.atributo).pregunta,
       opciones: Object.freeze([
         ...opciones.map((o) => Object.freeze({
           respuesta: o.codigo, codigos: Object.freeze([o.codigo]), valor: o.valor,
