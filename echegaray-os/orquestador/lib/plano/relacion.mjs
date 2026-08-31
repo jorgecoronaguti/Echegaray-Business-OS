@@ -169,11 +169,34 @@ const extDe = (n) => String(n ?? '').toLowerCase().match(/\.[a-z0-9]{1,5}$/)?.[0
 /** Las familias con su vigente y sus superadas. La revisión declarada en el nombre manda; la ruta
  *  («ARCHIVOS VIEJOS») manda sobre la revisión, porque la movió una persona a propósito. PURA. */
 function familias(fichas) {
+  // ═══ EL MISMO NOMBRE EN OTRA CARPETA NO ES OTRA VERSIÓN ═══
+  //
+  // MEDIDO SOBRE ARCOR, 368 insumos: agrupando sólo por ámbito + nombre aplanado salieron 22
+  // «superados», y entre ellos «bazaN.pdf → bazan.pdf», «931.pdf → 931.pdf» y «Boleta IERIC.pdf →
+  // BOLETA - IERIC.pdf». Son archivos distintos, de carpetas distintas, que coinciden en el nombre
+  // después de normalizarlo. Declararlos superados saca del proyecto un documento vivo, que es
+  // exactamente el daño que este modelo existe para evitar.
+  //
+  // Por eso la familia nace atada A SU CARPETA, y sólo cruza de carpeta cuando alguien lo DECLARA:
+  // una revisión escrita en el nombre, o una ruta que dice «ARCHIVOS VIEJOS». Sin declaración, dos
+  // archivos homónimos en dos carpetas son dos documentos y ninguno pisa al otro.
+  const carpetaDe = (f) => String(f.ruta ?? '').split('/').slice(0, -1).join('/')
+  const declara = (f) => Boolean(f.revision) || f.superadaPorRuta
   const mapa = new Map()
   for (const f of fichas) {
-    const k = `${f.ambito ?? '*'} ${f.familia}`
+    const k = declara(f) ? `${f.ambito ?? '*'} ${f.familia}` : `${f.ambito ?? '*'} ${carpetaDe(f)} ${f.familia}`
     if (!mapa.has(k)) mapa.set(k, [])
     mapa.get(k).push(f)
+  }
+  // La Rev B suelta y la Rev F guardada en «ARCHIVOS VIEJOS» son la misma familia aunque estén en
+  // carpetas distintas: alguien lo declaró. Una familia sin declaración se arrima a la declarada de
+  // su mismo nombre; dos familias sin declaración jamás se tocan.
+  for (const [k, lista] of [...mapa]) {
+    if (lista.some(declara)) continue
+    const corta = `${lista[0].ambito ?? '*'} ${lista[0].familia}`
+    if (corta === k || !mapa.has(corta)) continue
+    mapa.set(corta, [...mapa.get(corta), ...lista])
+    mapa.delete(k)
   }
   const salida = []
   for (const [, lista] of [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
@@ -241,20 +264,20 @@ export function relacionar(documentos = [], { carpetaObra = '' } = {}) {
   const porNombre = new Map(fichas.map((f) => [f.nombre, f]))
   const porAmbito = new Map()
   for (const f of fichas) {
-    const k = f.ambito ?? ' RAIZ'
+    const k = f.ambito ?? ' RAIZ'
     porAmbito.set(k, [...(porAmbito.get(k) ?? []), f.nombre])
   }
   const pares = (n) => (n * (n - 1)) / 2
-  const ambitos = [...porAmbito.entries()].filter(([k]) => k !== ' RAIZ').sort((a, b) => a[0].localeCompare(b[0]))
+  const ambitos = [...porAmbito.entries()].filter(([k]) => k !== ' RAIZ').sort((a, b) => a[0].localeCompare(b[0]))
   return {
     fichas, familias: fams, superado, porNombre,
     ambitos: ambitos.map(([ambito, docs]) => ({ ambito, documentos: docs })),
-    raiz: porAmbito.get(' RAIZ') ?? [],
+    raiz: porAmbito.get(' RAIZ') ?? [],
     relaciones: {
       [RELACION.REVISION]: fams.reduce((a, f) => a + f.superadas.length, 0),
       [RELACION.ESPEJO_FORMATO]: fams.reduce((a, f) => a + f.espejos.length, 0),
       [RELACION.MISMO_AMBITO]: ambitos.reduce((a, [, d]) => a + pares(d.length), 0),
-      [RELACION.AMBITOS_DISTINTOS]: pares(fichas.length) - ambitos.reduce((a, [, d]) => a + pares(d.length), 0) - pares(porAmbito.get(' RAIZ')?.length ?? 0),
+      [RELACION.AMBITOS_DISTINTOS]: pares(fichas.length) - ambitos.reduce((a, [, d]) => a + pares(d.length), 0) - pares(porAmbito.get(' RAIZ')?.length ?? 0),
     },
     ambiguas: fams.filter((f) => f.ambigua).map((f) => ({ familia: f.familia, ambito: f.ambito, porQue: f.ambigua })),
     resumen: `${fichas.length} documento(s) · ${ambitos.length} ámbito(s) de obra · ${fams.length} familia(s) · ${superado.size} documento(s) superado(s) por una revisión más nueva`,
@@ -267,7 +290,7 @@ export const ambitoDeHecho = (h, rel) => rel?.porNombre?.get(h?.documento)?.ambi
 
 /** La clave con la que se agrupa un hecho. Dos hechos de obras distintas NO comparten clave: no
  *  pueden confirmarse ni contradecirse entre sí. PURA. */
-export const claveDeHecho = (h, rel) => `${ambitoDeHecho(h, rel) ?? '*'} ${h?.que}`
+export const claveDeHecho = (h, rel) => `${ambitoDeHecho(h, rel) ?? '*'} ${h?.que}`
 
 /**
  * ¿ALGUNA REGLA DOCUMENTAL DECIDE ENTRE ESTOS DOS? PURA.

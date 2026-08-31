@@ -210,3 +210,23 @@ test('DOS CORRIDAS DEL GRAFO dan exactamente lo mismo — es un modelo, no una h
   assert.deepEqual([...a.superado.keys()], [...b.superado.keys()])
   assert.deepEqual(a.relaciones, b.relaciones)
 })
+
+test('ARCOR · DOS ARCHIVOS HOMÓNIMOS EN CARPETAS DISTINTAS NO SON DOS VERSIONES', () => {
+  // Medido en la corrida real: «bazaN.pdf» y «bazan.pdf» viven en dos carpetas y el modelo los
+  // declaraba uno superado por el otro. Ninguno declara revisión: son dos documentos.
+  const rel = relacionar([
+    { name: 'bazaN.pdf', path: `${RAIZ}ARCOR/2025-02/bazaN.pdf` },
+    { name: 'bazan.pdf', path: `${RAIZ}ARCOR/2025-03/bazan.pdf` },
+  ], { carpetaObra: RAIZ })
+  assert.equal(rel.superado.size, 0)
+  assert.equal(rel.familias.length, 2)
+})
+
+test('MUTACIÓN · en la MISMA carpeta, el duplicado «(1)» de Drive SÍ es la misma familia', () => {
+  const rel = relacionar([
+    { name: '2025-02 F.931.pdf', path: `${RAIZ}ARCOR/2025-02 F.931.pdf`, modified_time: '2025-03-01' },
+    { name: '2025-02 F.931 (1).pdf', path: `${RAIZ}ARCOR/2025-02 F.931 (1).pdf`, modified_time: '2025-03-09' },
+  ], { carpetaObra: RAIZ })
+  assert.equal(rel.familias.length, 1, 'el control puede decir «es la misma»: no quedó constante en 2')
+  assert.equal(rel.superado.size, 1)
+})
