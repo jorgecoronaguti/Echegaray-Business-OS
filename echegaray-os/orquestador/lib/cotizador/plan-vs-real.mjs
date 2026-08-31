@@ -27,6 +27,7 @@
 
 import { ESTADO } from './contrato.mjs'
 import { UNIDAD, magnitud, num } from './ejecucion-real.mjs'
+import { SIN_MEDIR } from './metricas.mjs'
 
 export const MOTOR = 'plan-vs-real/1.0.0'
 
@@ -350,8 +351,21 @@ export function causaRaiz(obs, ctx = {}) {
     return raiz(CAUSA_RAIZ.CAPTURA_VACIA, DISPOSICION.FALTA_DATO, 'cargar la CANTIDAD ejecutada en el parte, no sólo el porcentaje')
   }
   if (m === NO_COMPARABLE.SIN_HH_REALES || m === NO_COMPARABLE.SIN_COSTO_REAL || m === NO_COMPARABLE.SIN_CONSUMO_REGISTRADO) {
+    // ═══ UNA PARTIDA QUE NO EMPEZÓ NO TIENE UN PROBLEMA DE CLAVE ═══
+    //
+    // Lo encontró la primera corrida de este clasificador contra la base real: con 6 imputaciones de
+    // HH en la obra, `capturaVacia[HH]` da `false`, y las 21 partidas que nadie tocó todavía salían
+    // como IDENTIDAD_RECURSO — «hay horas y no enganchan, revisá la clave». Eran 21 partidas sin
+    // empezar. Un diagnóstico así manda a alguien a buscar un defecto que no existe, y es la misma
+    // familia de error que el archivo entero evita: afirmar más de lo que el dato sostiene.
+    //
+    // El hueco sólo es sospechoso cuando la partida SÍ registró ejecución y aun así no tiene el
+    // dato: ahí se reportó avance y no se imputó nada, y eso hay que mirarlo.
+    if (ctx.partidaConEjecucion === false) {
+      return raiz(CAUSA_RAIZ.SIN_EJECUCION, DISPOSICION.TIEMPO, 'nada: la partida no empezó, y sin trabajo no hay horas ni consumo que imputar')
+    }
     if (vacia === true) return raiz(CAUSA_RAIZ.CAPTURA_VACIA, DISPOSICION.FALTA_DATO, `nadie cargó nunca ${obs.concepto}: la puerta de entrada está vacía en toda la base`)
-    if (vacia === false) return raiz(CAUSA_RAIZ.IDENTIDAD_RECURSO, DISPOSICION.ESTRUCTURA, `hay datos de ${obs.concepto} en la base y ninguno engancha con esta partida/recurso: revisar la clave`)
+    if (vacia === false) return raiz(CAUSA_RAIZ.IDENTIDAD_RECURSO, DISPOSICION.ESTRUCTURA, `hay ${obs.concepto} registrado en la obra, la partida registró avance y aun así no engancha: revisar la clave`)
     // `null` = nadie midió si la puerta está vacía. NO se elige una de las dos: un control que no
     // pudo mirar no dice «no está».
     return raiz(CAUSA_RAIZ.OTRO, DISPOSICION.FALTA_DATO, `sin medir si la captura de ${obs.concepto} está vacía: no se puede repartir el arreglo`)
@@ -386,6 +400,35 @@ export function cuadroDeCausas(observaciones = [], contextoDe = () => ({})) {
     recuperablesPorEstructura: porDisposicion[DISPOSICION.ESTRUCTURA] ?? 0,
     faltaDatoDeclarado: porDisposicion[DISPOSICION.FALTA_DATO] ?? 0,
     noSonDefecto: (porDisposicion[DISPOSICION.TIEMPO] ?? 0) + (porDisposicion[DISPOSICION.NO_APLICA] ?? 0),
+    // Los huecos que alguien tiene que cerrar. Lo que todavía no empezó NO es un hueco.
+    huecosAccionables: filas.length
+      - ((porDisposicion[DISPOSICION.TIEMPO] ?? 0) + (porDisposicion[DISPOSICION.NO_APLICA] ?? 0)),
+  })
+}
+
+/**
+ * LA COMPARABILIDAD, SOBRE EL DENOMINADOR QUE CORRESPONDE. PURA.
+ *
+ * ═══ «2 DE 406» TIENE EL DENOMINADOR INFLADO ═══
+ *
+ * Medido sobre Quattropani: de las 404 no comparables, 351 son partidas que NO EMPEZARON. Contarlas
+ * hace que la tasa mida cuánto falta ejecutar de la obra, no cuánto se puede comparar de lo
+ * ejecutado — y como una obra siempre empieza vacía, la tasa arranca cerca de cero por diseño y
+ * después sube sola con el avance, sin que nadie arregle nada. Una métrica que mejora sin trabajo no
+ * está midiendo trabajo.
+ *
+ * El denominador honesto es lo VIVO: lo que ya se puede comparar más lo que se querría comparar y no
+ * se puede por un hueco real. Y con la obra sin arrancar el resultado NO es 0 %: es `SIN_MEDIR`.
+ * Cero por ciento dice «se intentó y no se pudo»; acá todavía no hubo nada que intentar.
+ */
+export function comparabilidadViva({ comparables = 0, cuadro } = {}) {
+  const base = comparables + (cuadro?.huecosAccionables ?? 0)
+  return Object.freeze({
+    comparables,
+    huecosAccionables: cuadro?.huecosAccionables ?? 0,
+    base,
+    fueraDelDenominador: cuadro?.noSonDefecto ?? 0,
+    tasa: base > 0 ? Math.round((comparables / base) * 1000) / 1000 : SIN_MEDIR,
   })
 }
 

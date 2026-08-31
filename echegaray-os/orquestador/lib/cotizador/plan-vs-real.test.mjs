@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { consolidarEjecucion, magnitud, UNIDAD } from './ejecucion-real.mjs'
 import {
   compararObra, compararPartida, compararMagnitud, observacion, causaDeDesvio,
-  CONCEPTO, NO_COMPARABLE, SIN_CAUSA, causaRaiz, cuadroDeCausas, coberturaDeObras, CAUSA_RAIZ, DISPOSICION,
+  CONCEPTO, NO_COMPARABLE, SIN_CAUSA, causaRaiz, cuadroDeCausas, coberturaDeObras, CAUSA_RAIZ, DISPOSICION, comparabilidadViva,
 } from './plan-vs-real.mjs'
 import { ESTADO } from './contrato.mjs'
 
@@ -431,4 +431,38 @@ test('sin ninguna obra con ejecución la cobertura es null, NO 1: no mirar nada 
   const c = coberturaDeObras([{ obraId: 'pilon', partes: 0, tieneGenealogia: false }])
   assert.equal(c.cobertura, null)
   assert.equal(c.obrasConEjecucion, 0)
+})
+
+test('una partida que NO empezó no tiene un problema de clave: no se le inventa un defecto', () => {
+  // MUTACIÓN CORRIDA: sacar la rama `ctx.partidaConEjecucion === false` →
+  //   AssertionError: 'IDENTIDAD_RECURSO' !== 'SIN_EJECUCION'
+  // Es el sobre-diagnóstico que la PRIMERA corrida real produjo: con 6 imputaciones en la obra, las
+  // 21 partidas sin empezar salían como «hay horas y no enganchan, revisá la clave». Mandar a
+  // alguien a buscar un defecto que no existe es peor que no clasificar.
+  const obs = noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES)
+  const base = { tieneGenealogia: true, partidaConActividad: true, capturaVacia: { [CONCEPTO.HH]: false } }
+  assert.equal(causaRaiz(obs, { ...base, partidaConEjecucion: false }).causa, CAUSA_RAIZ.SIN_EJECUCION)
+  // Y el gemelo: con ejecución registrada y sin horas, el hueco SÍ es sospechoso.
+  assert.equal(causaRaiz(obs, { ...base, partidaConEjecucion: true }).causa, CAUSA_RAIZ.IDENTIDAD_RECURSO)
+})
+
+test('una obra que no arrancó da SIN_MEDIR, NO 0%: todavía no hubo nada que intentar', () => {
+  // MUTACIÓN CORRIDA: `tasa: base > 0 ? … : 0` →
+  //   AssertionError: 0 !== 'SIN_MEDIR'
+  // Con 0 fijo, una obra recién adjudicada publica «0% comparable» y después sube sola con el
+  // avance sin que nadie arregle nada: la métrica mide ejecución disfrazada de calidad de dato.
+  const cuadro = cuadroDeCausas(
+    [noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES), noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL)],
+    () => ({ tieneGenealogia: true, partidaConActividad: true, partidaConEjecucion: false, capturaVacia: { HH: false, COSTO: false } }))
+  assert.equal(cuadro.huecosAccionables, 0)
+  assert.equal(comparabilidadViva({ comparables: 0, cuadro }).tasa, 'SIN_MEDIR')
+})
+
+test('con huecos reales la tasa es un número y PUEDE dar 0: se intentó y no se pudo', () => {
+  const cuadro = cuadroDeCausas(
+    [noComparable(CONCEPTO.HH, NO_COMPARABLE.SIN_HH_REALES), noComparable(CONCEPTO.COSTO, NO_COMPARABLE.SIN_COSTO_REAL)],
+    () => ({ tieneGenealogia: true, partidaConActividad: true, partidaConEjecucion: true, capturaVacia: { HH: true, COSTO: true } }))
+  assert.equal(cuadro.huecosAccionables, 2)
+  assert.equal(comparabilidadViva({ comparables: 0, cuadro }).tasa, 0)
+  assert.equal(comparabilidadViva({ comparables: 2, cuadro }).tasa, 0.5)
 })
