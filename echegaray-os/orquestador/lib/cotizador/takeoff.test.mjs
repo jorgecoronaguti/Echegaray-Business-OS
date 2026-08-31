@@ -1,16 +1,16 @@
-// LOS SEIS DEFECTOS QUE ESTE MÓDULO EXISTE PARA NO TENER.
+// LOS NUEVE DEFECTOS QUE ESTE MÓDULO EXISTE PARA NO TENER.
 //
 // La hoja de prueba tiene la MISMA FORMA que el COMPUTO.xlsx real de Quattropani, y esa forma es el
 // punto: encabezado en la fila 2 (no en la 1), DOS columnas rotuladas «Cantidad» —la C, que cuenta
 // piezas, y la P, que trae la cantidad de obra con su unidad al lado—, una cadena de fórmulas
 // P3 → H3 → C3*D3*E3*F3, una fila sin cantidad y una celda con error.
 //
-// Cada bloque declara la mutación que lo pone en rojo. Las seis se corrieron.
+// Cada bloque declara la mutación que lo pone en rojo. Las nueve se corrieron, una por una.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  encabezadoDe, bloquesDe, bloquesDeCantidad, papelesDe, cadenaDe, aplanar,
+  encabezadoDe, bloquesDe, bloquesDeCantidad, papelesDe, cadenaDe, aplanar, libroDe,
   cantidadDeFila, takeoffDeHoja, contrastar, medirTakeoff, elementoDe, ESTADO,
 } from './takeoff.mjs'
 import { partirDireccion, refsDeFormula } from '../ingesta/planilla.mjs'
@@ -130,6 +130,23 @@ test('takeoff · NEGATIVO: dos unidades distintas son un CONFLICTO, no una resta
   // como números y sale un CANTIDAD_DISTINTA del 20%: una diferencia inventada entre dos cosas que
   // ni siquiera se miden igual.
   assert.ok(k.coinciden.some((c) => c.elemento === 'B1'), 'lo que coincide se dice que coincide')
+})
+
+test('takeoff · POSITIVO: la cadena cruza de hoja cuando se le pasa el libro', () => {
+  // La forma REAL de la OFERTA de Quattropani: `OFERTA!D14 = Presupuesto!E10`, un solo salto, y ese
+  // salto es TODA la cadena. Sin cruzar de hoja, la cantidad queda con cero literales detrás.
+  const oferta = { nombre: 'OFERTA', celdas: [celda('D14', 258.77, { formula: 'Presupuesto!E10' })] }
+  const presu = { nombre: 'Presupuesto', celdas: [celda('E10', 258.77, { formula: 'B10*C10' }), celda('B10', 25.877), celda('C10', 10)] }
+  const libro = new Map([['OFERTA', oferta], ['Presupuesto', presu]])
+  const conLibro = aplanar(cadenaDe(oferta, 'D14', { libro }))
+  assert.deepEqual(conLibro.filter((p) => p.estado === 'LITERAL').map((p) => `${p.hoja}!${p.celda}`), ['Presupuesto!B10', 'Presupuesto!C10'])
+  // ═══ MUTACIÓN QUE LO PONE ROJO ═══
+  // En `cadenaDe`, borrar `const otra = libro?.get?.(r.hoja); if (otra) return seguir(otra, r.desde)`.
+  // El eslabón vuelve a salir EXTERNA y la cantidad queda sin ningún número que la sostenga.
+  const sinLibro = aplanar(cadenaDe(oferta, 'D14'))
+  assert.equal(sinLibro.filter((p) => p.estado === 'LITERAL').length, 0)
+  assert.equal(sinLibro.find((p) => p.estado === 'EXTERNA').hoja, 'Presupuesto')
+  assert.equal(libroDe({ hojas: [oferta, presu] }).get('OFERTA'), oferta)
 })
 
 test('takeoff · una referencia circular corta, no cuelga', () => {

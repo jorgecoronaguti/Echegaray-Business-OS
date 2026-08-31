@@ -123,29 +123,48 @@ export function bloquesDeCantidad(encabezado) {
  * dónde salió esto?» y lo único que convierte una cantidad en algo discutible.
  *
  * Los rangos (`SUMA(P3:P10)`) se registran como rango y no se expanden: se declara que el input es
- * un rango, que es lo cierto, en vez de fabricar diez eslabones. Las referencias a OTRA hoja se
- * marcan `externa` — este recorrido tiene una hoja sola, y decir que un input «no está» cuando en
- * realidad está en otra pestaña sería un FALTA_DATO falso.
+ * un rango, que es lo cierto, en vez de fabricar diez eslabones.
+ *
+ * ═══ LA CADENA CRUZA DE HOJA CUANDO PUEDE, Y LO DICE CUANDO NO ═══
+ *
+ * Con `libro` —un Map de nombre de hoja a hoja— una referencia como `Presupuesto!E10` se sigue hasta
+ * su origen. Sin `libro`, o cuando la hoja referida no está en él, el eslabón sale como `EXTERNA`
+ * con el motivo. La diferencia importa: en la OFERTA real de Quattropani, `OFERTA!D14 =
+ * Presupuesto!E10` es el ÚNICO paso de la cadena, así que cortar ahí deja la cantidad sin ningún
+ * literal detrás — y una cantidad sin literales se lee como «no se pudo rastrear» cuando en realidad
+ * el rastro estaba a una hoja de distancia.
  */
-export function cadenaDe(hoja, direccion, { profundidad = 8, vistas = new Set() } = {}) {
+export function cadenaDe(hoja, direccion, { profundidad = 8, vistas = new Set(), libro = null } = {}) {
   const c = (hoja?.celdas ?? []).find((x) => x.celda === direccion)
+  const llave = `${hoja?.nombre ?? ''}!${direccion}`
   if (!c) return { celda: direccion, hoja: hoja?.nombre ?? null, estado: 'AUSENTE', valor: null, formula: null, inputs: [] }
   const base = { celda: direccion, hoja: hoja?.nombre ?? null, tipo: c.tipo, valor: c.valor, texto: c.texto, formula: c.formula }
   if (!c.formula) return { ...base, estado: c.tipo === 'ERROR' ? 'ERROR' : 'LITERAL', inputs: [] }
-  if (profundidad <= 0 || vistas.has(direccion)) return { ...base, estado: 'CORTADA', inputs: [], porQue: vistas.has(direccion) ? 'referencia circular' : 'se alcanzó el fondo del recorrido' }
-  const siguientes = new Set([...vistas, direccion])
+  if (profundidad <= 0 || vistas.has(llave)) return { ...base, estado: 'CORTADA', inputs: [], porQue: vistas.has(llave) ? 'referencia circular' : 'se alcanzó el fondo del recorrido' }
+  const siguientes = new Set([...vistas, llave])
+  const seguir = (h, dir) => cadenaDe(h, dir, { profundidad: profundidad - 1, vistas: siguientes, libro })
   const inputs = c.inputs.map((r) => {
-    if (r.hoja) return { celda: `${r.hoja}!${r.desde}${r.hasta ? ':' + r.hasta : ''}`, estado: 'EXTERNA', valor: null, formula: null, inputs: [] }
-    if (r.rango) return { celda: `${r.desde}:${r.hasta}`, estado: 'RANGO', valor: null, formula: null, inputs: [] }
-    return cadenaDe(hoja, r.desde, { profundidad: profundidad - 1, vistas: siguientes })
+    if (r.rango) return { celda: `${r.hoja ? r.hoja + '!' : ''}${r.desde}:${r.hasta}`, hoja: r.hoja ?? hoja?.nombre ?? null, estado: 'RANGO', valor: null, formula: null, inputs: [] }
+    if (!r.hoja) return seguir(hoja, r.desde)
+    const otra = libro?.get?.(r.hoja)
+    if (otra) return seguir(otra, r.desde)
+    return {
+      celda: r.desde, hoja: r.hoja, estado: 'EXTERNA', valor: null, formula: null, inputs: [],
+      porQue: libro ? `la hoja «${r.hoja}» no está en el libro que se pasó` : 'no se pasó el libro: la cadena no puede cruzar de hoja',
+    }
   })
   return { ...base, estado: 'CALCULADA', inputs }
 }
 
+/** El libro como Map de nombre → hoja, que es lo que `cadenaDe` necesita para cruzar de pestaña. */
+export const libroDe = (planilla) => new Map((planilla?.hojas ?? []).map((h) => [h.nombre, h]))
+
 /** Los eslabones de una cadena, aplanados en el orden en que se recorrieron. PURA. */
 export function aplanar(cadena, salida = []) {
   if (!cadena) return salida
-  salida.push({ celda: cadena.celda, estado: cadena.estado, valor: cadena.valor, formula: cadena.formula })
+  // La HOJA viaja con cada eslabón: sin ella, `E10` es ambiguo en un libro de 19 pestañas y la cita
+  // deja de ser localizable — que es lo único que la hacía una cita.
+  salida.push({ celda: cadena.celda, hoja: cadena.hoja ?? null, estado: cadena.estado, valor: cadena.valor, formula: cadena.formula })
   for (const i of cadena.inputs ?? []) aplanar(i, salida)
   return salida
 }
@@ -182,7 +201,7 @@ export function literalDe(hoja, fila) {
  * escrito a mano — y no al revés: un número tipeado en una planilla es una afirmación del documento,
  * no un cálculo, y merecen confianza distinta.
  */
-export function cantidadDeFila(hoja, fila, bloque, { documento, hash = null, driveId = null } = {}) {
+export function cantidadDeFila(hoja, fila, bloque, { documento, hash = null, driveId = null, libro = null } = {}) {
   const papeles = bloque.papeles ?? papelesDe(bloque)
   const celdas = filaDe(hoja, fila)
   const cCant = celdas.get(papeles.cantidad)
@@ -210,7 +229,7 @@ export function cantidadDeFila(hoja, fila, bloque, { documento, hash = null, dri
   if (cCant.tipo !== 'NUMERO') {
     return { ...comun, estado: ESTADO.FALTA_DATO, valor: null, cadena: null, provenance: [ubicacion], dato: faltaDato({ que: `cantidad de «${el?.nombre ?? 'elemento sin nombre'}»`, porque: `la celda ${ubicacion} tiene «${cCant.texto}», que no es un número`, unidad: comun.unidad }) }
   }
-  const cadena = cadenaDe(hoja, cCant.celda)
+  const cadena = cadenaDe(hoja, cCant.celda, { libro })
   const plano = aplanar(cadena)
   return {
     ...comun,
@@ -218,15 +237,16 @@ export function cantidadDeFila(hoja, fila, bloque, { documento, hash = null, dri
     valor: cCant.valor,
     formula: cCant.formula,
     cadena,
-    provenance: plano.map((p) => `${hoja.nombre}!${p.celda}${p.formula ? ` = ${p.formula}` : ` = ${p.valor}`}`),
-    literales: plano.filter((p) => p.estado === 'LITERAL').map((p) => ({ celda: `${hoja.nombre}!${p.celda}`, valor: p.valor })),
+    provenance: plano.map((p) => `${p.hoja ?? hoja.nombre}!${p.celda}${p.formula ? ` = ${p.formula}` : ` = ${p.valor}`}`),
+    literales: plano.filter((p) => p.estado === 'LITERAL').map((p) => ({ celda: `${p.hoja ?? hoja.nombre}!${p.celda}`, valor: p.valor })),
+    externos: plano.filter((p) => p.estado === 'EXTERNA' || p.estado === 'RANGO').map((p) => ({ celda: `${p.hoja ?? ''}!${p.celda}`, estado: p.estado })),
     dato: dato({
       valor: cCant.valor,
       unidad: comun.unidad,
       fuente: cCant.formula ? FUENTE.CALCULADO : FUENTE.DOCUMENTO_TECNICO,
       evidencia: ev,
       formula: cCant.formula,
-      entradas: plano.filter((p) => p.estado === 'LITERAL').map((p) => `${p.celda}=${p.valor}`),
+      entradas: plano.filter((p) => p.estado === 'LITERAL').map((p) => `${p.hoja ?? hoja.nombre}!${p.celda}=${p.valor}`),
       nota: comun.unidad ? null : `la fila no declara unidad: ${cCant.valor} sin unidad no es una cantidad de obra`,
     }),
   }
@@ -238,7 +258,7 @@ export function cantidadDeFila(hoja, fila, bloque, { documento, hash = null, dri
  * Cuando la hoja tiene MÁS DE UN bloque que califica, salen los dos con su nombre de bloque: la
  * decisión de cuál vale es de negocio y se toma arriba, con las dos cifras a la vista.
  */
-export function takeoffDeHoja(hoja, { documento, hash = null, driveId = null } = {}) {
+export function takeoffDeHoja(hoja, { documento, hash = null, driveId = null, libro = null } = {}) {
   const enc = encabezadoDe(hoja)
   if (!enc) return { hoja: hoja?.nombre ?? null, encabezado: null, bloques: [], cantidades: [], porQue: 'ninguna de las primeras 12 filas tiene dos rótulos reconocibles: no hay tabla que leer acá' }
   const bloques = bloquesDeCantidad(enc)
@@ -249,7 +269,7 @@ export function takeoffDeHoja(hoja, { documento, hash = null, driveId = null } =
   for (const b of bloques) {
     const marca = `${letraDeColumna(b.desde)}–${letraDeColumna(b.hasta)}`
     for (const f of filasDe(hoja).filter((n) => n > enc.fila)) {
-      const c = cantidadDeFila(hoja, f, b, { documento, hash, driveId })
+      const c = cantidadDeFila(hoja, f, b, { documento, hash, driveId, libro })
       if (c) cantidades.push({ ...c, bloque: marca })
     }
   }
