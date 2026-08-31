@@ -6,42 +6,42 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 
 ## El cuadro
 
-| | QUATTROPANI (real) | LA ESTRELLA (ciego) | DOC INCOMPLETA | CÓMPUTO MANUAL |
-|---|---|---|---|---|
-| **documentos del corpus** | 10 | 14 | 2 | 0 |
-| **conocimientos leídos** | 57 | 0 | 0 | 0 |
-| **partidas** | 26 | 1 | 26 | 0 |
-| **· incluidas por alcance** | 26 | 1 | 26 | 0 |
-| **· excluidas por contrato** | 0 | 0 | 0 | 0 |
-| **· sin decidir** | 0 | 0 | 0 | 0 |
-| **plata excluida por contrato** | $ 0 | $ 0 | $ 0 | $ 0 |
-| **· excluidas sin valorizar** | 0 | 0 | 0 | 0 |
-| **cantidades resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 |
-| **cobertura de cómputo** | 100.0 % | 100.0 % | 100.0 % | — |
-| **composiciones resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 |
-| **recursos explotados** | 110 | 7 | 110 | 0 |
-| **· sin precio** | 3 | 0 | 3 | 0 |
-| **precios vigentes / vencidos / faltantes** | 158 / 70 / 3 | 4 / 3 / 0 | 158 / 70 / 3 | 0 / 0 / 0 |
-| **HH previstas** | 3.697,691 h | 50,4 h | 3.697,691 h | 0 h |
-| **FALTA_DATO en la cola** | 2 | 0 | 0 | 0 |
-| **CONFLICTO en la cola** | 1 | 0 | 0 | 0 |
-| **bloqueantes** | 76 | 3 | 73 | 0 |
-| **· sin impacto medido** | 6 | 0 | 3 | 0 |
-| **preguntas dirigidas** | 77 | 3 | 73 | 0 |
-| **plata en riesgo** | $ 12.485.690 | $ 19.457 | $ 12.485.690 | no medida |
-| **COSTO DIRECTO** | NO SE AFIRMA | $ 512.293 | NO SE AFIRMA | NO SE AFIRMA |
-| **· parcial (lo que sí cerró)** | $ 79.571.283 | $ 512.293 | $ 79.571.283 | $ 0 |
-| **reconciliación explosión ↔ costo** | no comparable | cuadra (residuo $0) | no comparable | no comparable |
-| **VENTA SIN IVA** | NO SE AFIRMA | $ 861.661 | NO SE AFIRMA | NO SE AFIRMA |
-| **coeficiente** | s/d | 1.681968 | s/d | s/d |
-| **margen sobre precio** | s/d | 16.61 % | s/d | s/d |
-| **llamadas al modelo** | 0 | 0 | 0 | 0 |
-| **CLAUDE AVOIDANCE RATE** | 100.0 % (52 decisiones) | 100.0 % (2 decisiones) | 100.0 % (52 decisiones) | SIN_MEDIR |
-| **AUTONOMOUS RESOLUTION RATE** | 40.0 % (130 a resolver) | 40.0 % (5 a resolver) | 41.6 % (125 a resolver) | SIN_MEDIR |
-| **incertidumbre NO declarada** | 0 | 0 | 0 | 0 |
-| **latencia fría / tibia** | 819 ms / 706 ms | 34 ms / 33 ms | 693 ms / 663 ms | 14 ms / 15 ms |
-| **huella de entradas** | d1507481798fab3c | 67edcf0670a7f6a0 | ac84ca9f68d2dd32 | c7aedb05216dcfa2 |
-| **ESTADO** | BLOQUEADO (77) | BLOQUEADO (3) | BLOQUEADO (74) | BLOQUEADO (1) |
+| | QUATTROPANI (real) | LA ESTRELLA (ciego) | DOC INCOMPLETA | CÓMPUTO MANUAL | ARCOR (planilla del cliente) |
+|---|---|---|---|---|---|
+| **documentos del corpus** | 10 | 14 | 2 | 0 | 4 |
+| **conocimientos leídos** | 57 | 0 | 0 | 0 | 0 |
+| **partidas** | 26 | 1 | 26 | 0 | 2 |
+| **· incluidas por alcance** | 26 | 1 | 26 | 0 | 2 |
+| **· excluidas por contrato** | 0 | 0 | 0 | 0 | 0 |
+| **· sin decidir** | 0 | 0 | 0 | 0 | 0 |
+| **plata excluida por contrato** | $ 0 | $ 0 | $ 0 | $ 0 | $ 0 |
+| **· excluidas sin valorizar** | 0 | 0 | 0 | 0 | 0 |
+| **cantidades resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 | 2 / 2 |
+| **cobertura de cómputo** | 100.0 % | 100.0 % | 100.0 % | — | 100.0 % |
+| **composiciones resueltas** | 26 / 26 | 1 / 1 | 26 / 26 | 0 / 0 | 2 / 2 |
+| **recursos explotados** | 110 | 7 | 110 | 0 | 14 |
+| **· sin precio** | 3 | 0 | 3 | 0 | 0 |
+| **precios vigentes / vencidos / faltantes** | 158 / 70 / 3 | 4 / 3 / 0 | 158 / 70 / 3 | 0 / 0 / 0 | 8 / 10 / 0 |
+| **HH previstas** | 3.697,691 h | 50,4 h | 3.697,691 h | 0 h | 129,5 h |
+| **FALTA_DATO en la cola** | 2 | 0 | 0 | 0 | 1 |
+| **CONFLICTO en la cola** | 1 | 0 | 0 | 0 | 3 |
+| **bloqueantes** | 76 | 3 | 73 | 0 | 14 |
+| **· sin impacto medido** | 6 | 0 | 3 | 0 | 2 |
+| **preguntas dirigidas** | 77 | 3 | 73 | 0 | 11 |
+| **plata en riesgo** | $ 12.485.690 | $ 19.457 | $ 12.485.690 | no medida | $ 35.958.461 |
+| **COSTO DIRECTO** | NO SE AFIRMA | $ 512.293 | NO SE AFIRMA | NO SE AFIRMA | $ 2.520.420 |
+| **· parcial (lo que sí cerró)** | $ 79.571.283 | $ 512.293 | $ 79.571.283 | $ 0 | $ 2.520.420 |
+| **reconciliación explosión ↔ costo** | no comparable | cuadra (residuo $0) | no comparable | no comparable | cuadra (residuo $0.01) |
+| **VENTA SIN IVA** | NO SE AFIRMA | $ 861.661 | NO SE AFIRMA | NO SE AFIRMA | $ 4.239.266 |
+| **coeficiente** | s/d | 1.681968 | s/d | s/d | 1.681968 |
+| **margen sobre precio** | s/d | 16.61 % | s/d | s/d | 16.61 % |
+| **llamadas al modelo** | 0 | 0 | 0 | 0 | 0 |
+| **CLAUDE AVOIDANCE RATE** | 100.0 % (52 decisiones) | 100.0 % (2 decisiones) | 100.0 % (52 decisiones) | SIN_MEDIR | 100.0 % (4 decisiones) |
+| **AUTONOMOUS RESOLUTION RATE** | 40.0 % (130 a resolver) | 40.0 % (5 a resolver) | 41.6 % (125 a resolver) | SIN_MEDIR | 21.1 % (19 a resolver) |
+| **incertidumbre NO declarada** | 0 | 0 | 0 | 0 | 0 |
+| **latencia fría / tibia** | 793 ms / 706 ms | 34 ms / 32 ms | 702 ms / 686 ms | 13 ms / 13 ms | 63 ms / 62 ms |
+| **huella de entradas** | d1507481798fab3c | 67edcf0670a7f6a0 | ac84ca9f68d2dd32 | c7aedb05216dcfa2 | 47ab7c04c4391c0d |
+| **ESTADO** | BLOQUEADO (77) | BLOQUEADO (3) | BLOQUEADO (74) | BLOQUEADO (1) | BLOQUEADO (14) |
 
 ## Qué bloquea cada caso
 
@@ -85,15 +85,31 @@ y precios de las tablas reales. **Ninguna corrida llamó a un modelo.**
 
 1. **SIN_PRECIO_CALCULABLE** · cotización — el costo directo no se pudo afirmar, así que el precio tampoco. NO es cero: es desconocido
 
+### ARCOR (planilla del cliente)
+
+1. **CONFLICTO** · version:FILTRO SANITARIO — el ámbito tiene 2 cómputos distintos (ARSJ Planilla de computo - Filtro Sanitario ESTRUCTURAS METALICAS - FINAL FINAL.xlsx: 12 ítems, $ 13.216.025 · PEDIDO DE COTIZACION.xlsx: 22 ítems, $ 45.098.706).
+2. **CONFLICTO** · suministro:ARSJ-1.2-Planilla_de_cotización-f11 — el ítem dice «Materiales a cargo de ARCOR» y T1111.1 compra 6 de esos materiales (PERFIL "C"  240x80x15X2,5, ELECTRODO 13 A 3,25mm, HIERRO LISO ø 16…). Cotizarla tal cual paga dos veces el mismo mater
+3. **PRECIO_DESACTUALIZADO** · 186 (PUERTA 1,00x2,05) — el único precio que hay venció y NO se usa en silencio: venció: 303 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+4. **PRECIO_DESACTUALIZADO** · 225 (BARRAL ANTIPÁNICO SIMPLE CON CERRADURA) — el único precio que hay venció y NO se usa en silencio: venció: 303 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+5. **PRECIO_DESACTUALIZADO** · 157 (MASILLA X 7KG) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+6. **PRECIO_DESACTUALIZADO** · 151 (MONTANTE 0,34 X 2,6) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+7. **PRECIO_DESACTUALIZADO** · 154 (PLACA DE YESO 12,5 X 2,4 X 1,2) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+8. **PRECIO_DESACTUALIZADO** · 152 (FIJACIONES COMPLETAS 8 X 1000 C/T) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+9. **PRECIO_DESACTUALIZADO** · 150 (SOLERA 0,35 X 2,6) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+10. **PRECIO_DESACTUALIZADO** · 156 (CINTA DE PAPEL X 75 M) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+11. **PRECIO_DESACTUALIZADO** · 153 (TT1 AGUJA 8 X 1/2 X 1000) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+12. **PRECIO_DESACTUALIZADO** · 155 (TT2 AGUJA 6 X 1 X 1000) — el único precio que hay venció y NO se usa en silencio: venció: 757 días de antigüedad contra una vigencia de 42 días — 42 días = 30 × 5% ÷ 2.63%/mes · recortado ×0.74 porque el IPC que sostiene la de
+
 
 ## Reproducibilidad (§39)
 
-RUN1 = RUN2 en las 4 corridas: **SÍ**.
+RUN1 = RUN2 en las 5 corridas: **SÍ**.
 
 - `QUATTROPANI (real)` → entrada `d1507481798fab3c` · resultado `919a03827ffa1cc6`
 - `LA ESTRELLA (ciego)` → entrada `67edcf0670a7f6a0` · resultado `9a8571502d1a45d7`
 - `DOC INCOMPLETA` → entrada `ac84ca9f68d2dd32` · resultado `1d186dcb371f2180`
 - `CÓMPUTO MANUAL` → entrada `c7aedb05216dcfa2` · resultado `f37b95ee8bf14486`
+- `ARCOR (planilla del cliente)` → entrada `47ab7c04c4391c0d` · resultado `b87feee03b9fe3b8`
 
 ## Lo que el dictado NO pudo mapear a la Base Maestra
 
@@ -112,9 +128,25 @@ mapeadas 0 · ambiguas 1 · sin partida 1
 - **PISO DE HORMIGON ALISADO MECÁNICO** → AMBIGUO: «T1107.1» y «T1107.2» quedan a 0.096 de distancia (mínimo 0.25): son dos opciones, no una
 
 
+## El ámbito que entra por la planilla del cliente (ARCOR)
+
+Ámbito: **ARSJ Planilla de computo - Filtro Sanitario ESTRUCTURAS METALICAS - FINAL FINAL.xlsx** — está bajo «PROYECTO FINAL», que es una declaración de la empresa sobre su propia documentación; las otras 1 están bajo «ARCHIVOS VIEJOS»
+
+| | |
+|---|---|
+| documentos del ámbito · abiertos sin modelo | 4 · **4** |
+| ítems que el cliente pidió en su planilla | 12 |
+| · que llegaron a cómputo | 12 |
+| · que se perdieron en la lectura | 1 |
+| mapeadas / ambiguas / sin partida | 3 / 1 / 8 |
+| con material que el cliente ya compró | 1 ($ 2.894.561) |
+| **partidas que se pueden costear** | **2 de 12** |
+| brecha de alcance entre versiones del ámbito | $ 31.882.681 |
+
+> El COSTO DIRECTO de la columna es el de 2 ítem(s) de 12. **No es el costo de la obra.**
+
 ## El cruce exclusión ↔ cómputo, sobre el contrato REAL
 
 - **aplicadas** (corroboradas en ≥2 documentos): `entrepiso`, `escalera`
 - **candidatas** (un solo documento, preguntan en vez de excluir): `metalica`, `muros`
 - **descartadas** (no alcanzan a ninguna partida): `pintura`, `revoques`
-
