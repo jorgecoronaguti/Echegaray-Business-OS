@@ -125,6 +125,7 @@ function resumirSeveridad(resoluciones) {
   console.log('─'.repeat(96))
   console.log('  LO QUE DE VERDAD FRENA LA OFERTA')
   console.log(`    BLOQUEANTE ${String(cuenta.BLOQUEANTE).padStart(4)}   ALTA ${String(cuenta.ALTA).padStart(4)}   MEDIA ${String(cuenta.MEDIA).padStart(4)}   BAJA ${String(cuenta.BAJA).padStart(4)}`)
+  console.log(`    plata en riesgo (sólo BLOQUEANTE + ALTA): $${$(plata)}`)
   console.log(`    los BAJA y MEDIA no frenan un congelado: son ${cuenta.BAJA + cuenta.MEDIA} interrupciones que el dueño deja de recibir`)
 }
 
