@@ -6,6 +6,7 @@
 //   node orquestador/scripts/buscar-precios-web.mjs --cotizacion <uuid> --observar   # guarda las OBSERVACIONES
 //   node orquestador/scripts/buscar-precios-web.mjs --cotizacion <uuid> --aplicar    # + escribe el catálogo
 //   node orquestador/scripts/buscar-precios-web.mjs --cotizacion <uuid> --ensayo     # aplica y HACE ROLLBACK
+//   node orquestador/scripts/buscar-precios-web.mjs --cotizacion <uuid> --aplicar --firmar jorge@ecsas.com.ar
 //
 // ═══ POR QUÉ NO CORRE SOBRE EL CATÁLOGO ENTERO ═══
 //
@@ -27,7 +28,7 @@ import { leerUrl } from '../lib/web/web-lectura.mjs'
 import { resolverCatalogo, pesosDeCotizacion } from '../lib/cotizador/precio-fuentes.pg.mjs'
 import { riesgoDeRecurso, priorizar } from '../lib/cotizador/precio-materialidad.mjs'
 import { buscador, observarPrecioWeb, consultasDeEspecificacion } from '../lib/cotizador/precio-buscador-web.mjs'
-import { observarEnCatalogos, PROVEEDORES } from '../lib/cotizador/precio-catalogo-proveedor.mjs'
+import { observarEnCatalogos } from '../lib/cotizador/precio-catalogo-proveedor.mjs'
 import { seleccionar, aplicar } from '../lib/cotizador/precio-observacion.mjs'
 import { poderDeObservacion, autorizacion, PODER, POLITICA_WEB } from '../lib/cotizador/precio-governance.mjs'
 import { guardarObservaciones, aplicarObservacion } from '../lib/cotizador/precio-observacion.pg.mjs'
@@ -195,7 +196,11 @@ async function persistir({ pool, salida, cotizacionId }) {
       obs += (await guardarObservaciones({ query: q }, { observaciones: s.web.observaciones, cotizacionId })).length
       if (!(tiene('--aplicar') || ensayo)) continue
       const sel = seleccionar({ observaciones: s.web.observaciones, regla: REGLA_SELECCION })
-      const auth = autorizacion({ observacion: sel.elegida, veredicto: s.veredicto })
+      // `--firmar` es la ÚNICA manera de que una persona se haga cargo, y su valor viene de afuera:
+      // no hay default, no se rellena con «el sistema» y no se toma del usuario del sistema
+      // operativo. Un firmante que el programa pueda averiguar solo es un firmante que el programa
+      // puede inventar.
+      const auth = autorizacion({ observacion: sel.elegida, veredicto: s.veredicto, firmadaPor: valor('--firmar') })
       try {
         const acto = aplicar({ seleccion: sel, autorizacion: auth, destino: 'public.recurso_precio' })
         await aplicarObservacion({ query: q }, { recursoId: s.riesgo.recurso.id, acto })

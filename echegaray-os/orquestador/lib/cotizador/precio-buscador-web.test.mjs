@@ -16,8 +16,9 @@ const PANEL = { codigo: '367', nombre: 'Panel Chapa Trape Blanco Pur 50 Mm Foil 
 test('la consulta se arma con los ATRIBUTOS, no con el nombre literal del catálogo', () => {
   const { consultas, spec } = consultasDeEspecificacion({ recurso: PANEL })
   assert.ok(spec.atributos.includes('50mm'), `atributos=${spec.atributos}`)
-  assert.match(consultas[0], /50mm/)
+  assert.match(consultas[0], /50 mm/, 'la medida viaja en la consulta tal como está escrita')
   assert.match(consultas[0], /precio por m2/)
+  assert.match(consultas[0], /^comprar panel chapa trape/, 'el ORDEN del nombre se conserva: ordenado alfabéticamente empezaba con «blanco» y Bing devolvía empresas llamadas Blanco')
   assert.match(consultas[0], /Argentina/)
   // La consulta por nombre literal existe, pero es la ÚLTIMA: es la que no devuelve nada.
   assert.match(consultas[consultas.length - 1], /"Panel Chapa Trape Blanco Pur 50 Mm Foil Blanco"/)
@@ -130,8 +131,8 @@ test('la unidad de conteo no produce «precio por un», que el buscador lee como
   assert.doesNotMatch(consultas[0], /precio por un\b/)
   assert.match(consultas[0], /precio unidad/)
   // Y las medidas peladas, que son TODA la especificación de esta placa, entran a la consulta.
-  assert.match(consultas[0], /12\.5/)
-  assert.match(consultas[0], /2\.4/)
+  assert.match(consultas[0], /12,5/)
+  assert.match(consultas[0], /2,4/)
 })
 
 test('el buscador ya filtra los muros: no gasta lecturas en ellos', async () => {
