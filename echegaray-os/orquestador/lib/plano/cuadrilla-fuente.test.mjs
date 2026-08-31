@@ -33,7 +33,8 @@
 // Ninguna de las tres se «corrigió» en el código. Se declaran: la fuente dice lo que dice.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { contenidos, horasNecesarias, evaluarCuadrilla, cuadrillaOptima, desperdicioHorario } from './cuadrilla.mjs'
+import { contenidos, horasNecesarias, evaluarCuadrilla, cuadrillaOptima, desperdicioHorario,
+  reducirCuadrilla, cuadrillaDesdeObservaciones } from './cuadrilla.mjs'
 
 const P = 345
 const COF = 0.22
@@ -186,4 +187,100 @@ test('NEGATIVO: sin relación salarial no hay óptima — y no se supone una', (
 test('NEGATIVO: una cantidad que no existe no produce horas inventadas', () => {
   assert.equal(horasNecesarias(null, contenidos({ oficial_h_u: COF, ayudante_h_u: CAY })), null)
   assert.equal(horasNecesarias(-5, contenidos({ oficial_h_u: COF, ayudante_h_u: CAY })), null)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA SEGUNDA FUENTE: LA OBSERVACIÓN REAL DE OBRA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El paper dice con qué cuadrilla CONVIENE trabajar. Estas filas dicen con cuál se trabajó de
+// verdad, y son el único origen legítimo de la cuadrilla de la Base Maestra. Están transcritas de
+// `rendimiento_historico.composicion` tal como las dejó la ingesta del 2026-08-22, que a su vez las
+// leyó de `Horas Hombre.xlsm · DESCRIPCION DE TAREAS`. Son ORÁCULOS: si el módulo cambia y estas
+// filas dejan de dar lo que dan, lo que cambió es la respuesta, no el dato.
+//
+//   T1183 ARMADO DE CORREA METALICA        A10 · 35 correas · 128 HH · 2 personas · [1 of, 1 ay]
+//   T1184 COLOCACION DE CORREA DE TECHO    A4  · 24 correas · 240 HH · 6 personas · [3 of, 3 ay]
+//   T1181 PINTURA DE COLUMNA METALICA      A7  ·  9 columnas· 288 HH · 6 personas · [2 of, 4 ay]
+//   T1185 PINTURA DE CORREA METALICA       A2  · 25 correas · 144 HH · 3 personas · [1 of, 2 ay]
+//                                          A3  · 46 correas · 288 HH · 6 personas · [2 of, 4 ay]
+//   T1180 MONTAJE DE COLUMNA METALICA      A11 ·  8 columnas· 256 HH · 4 personas · [2 of, 2 ay]
+//                                          A6  · 10 columnas· 288 HH · 6 personas · [4 of, 2 ay]
+//   T1182 MONTAJE DE VIGA METALICA         A8  ·  8 vigas   · 192 HH · 4 personas · [1 of, 3 ay]
+//                                          A5  · 16 vigas   · 256 HH · 4 personas · [2 of, 2 ay]
+
+const OBS = (oficial, ayudante, fuente) => ({ composicion: { oficial, ayudante }, fuente })
+
+test('fuente Horas Hombre.xlsm: una sola observación se declara TAL CUAL — T1183 [1*1]', () => {
+  const r = cuadrillaDesdeObservaciones([OBS(1, 1, 'DESCRIPCION DE TAREAS!A10')])
+  assert.equal(r.estado, 'UNICA')
+  assert.deepEqual(r.composicion, { oficial: 1, ayudante: 1 })
+  assert.equal(r.personas, 2)
+})
+
+test('fuente Horas Hombre.xlsm: T1184 se observó [3*3] y NO se reduce a [1*1]', () => {
+  // Con una sola observación no hay nada que conciliar: reducirla sería reemplazar el dato por una
+  // interpretación del dato. La reducción existe para CONCILIAR, no para simplificar.
+  const r = cuadrillaDesdeObservaciones([OBS(3, 3, 'DESCRIPCION DE TAREAS!A4')])
+  assert.deepEqual(r.composicion, { oficial: 3, ayudante: 3 })
+  assert.equal(r.personas, 6)
+  assert.equal(r.frentes, 3, 'los 3 frentes quedan declarados, pero la composición publicada es la observada')
+})
+
+test('fuente Horas Hombre.xlsm: T1185 tiene DOS observaciones y CONVERGEN en [1 of, 2 ay]', () => {
+  // [1*2] con 3 personas y [2*4] con 6: es la MISMA receta en uno y en dos frentes. No es conflicto.
+  const r = cuadrillaDesdeObservaciones([OBS(1, 2, 'A2'), OBS(2, 4, 'A3')])
+  assert.equal(r.estado, 'CONVERGE')
+  assert.deepEqual(r.composicion, { ayudante: 2, oficial: 1 })
+  assert.equal(r.personas, 3)
+  assert.match(r.porQue, /frentes/)
+})
+
+test('fuente Horas Hombre.xlsm: T1180 observó [2*2] y [4*2] → CONFLICTO, no se declara cuadrilla', () => {
+  const r = cuadrillaDesdeObservaciones([OBS(2, 2, 'A11'), OBS(4, 2, 'A6')])
+  assert.equal(r.estado, 'CONFLICTO')
+  assert.equal(r.composicion, null)
+  assert.equal(r.usadas.length, 2, 'las dos observaciones quedan a la vista aunque no cierren')
+})
+
+test('fuente Horas Hombre.xlsm: T1182 observó [1*3] y [2*2] → CONFLICTO', () => {
+  const r = cuadrillaDesdeObservaciones([OBS(1, 3, 'A8'), OBS(2, 2, 'A5')])
+  assert.equal(r.estado, 'CONFLICTO')
+  assert.equal(r.composicion, null)
+})
+
+// ═══════════════ LOS CASOS QUE TIENEN QUE FALLAR ═══════════════
+
+test('NEGATIVO: «6 personas» sin categorías NO es una cuadrilla', () => {
+  // Es la trampa exacta: HH ≠ personas ≠ duración, y personas ≠ cuadrilla. Con 6 personas hay al
+  // menos cinco composiciones posibles y todas cuestan distinto.
+  const r = cuadrillaDesdeObservaciones([{ personas: 6, fuente: 'una planilla que sólo contó cabezas' }])
+  assert.equal(r.estado, 'SIN_DATO')
+  assert.equal(r.composicion, null)
+  assert.equal(r.personas, null, 'SIN_DATO no publica un plantel: publicarlo sería inventar la mitad del dato')
+  assert.match(r.descartadas[0].porQue, /no es una cuadrilla/)
+})
+
+test('NEGATIVO: sin observaciones no hay cuadrilla y tampoco hay cuadrilla de cero', () => {
+  const r = cuadrillaDesdeObservaciones([])
+  assert.equal(r.estado, 'SIN_DATO')
+  assert.equal(r.personas, null)
+})
+
+test('NEGATIVO: media persona no se redondea — se descarta', () => {
+  assert.equal(reducirCuadrilla({ oficial: 1.5, ayudante: 2 }), null)
+  assert.equal(cuadrillaDesdeObservaciones([{ composicion: { oficial: 1.5, ayudante: 2 } }]).estado, 'SIN_DATO')
+})
+
+test('NEGATIVO: si CONVERGE promediara en vez de reducir, [1*2] y [2*4] darían [1,5 * 3]', () => {
+  const r = cuadrillaDesdeObservaciones([OBS(1, 2), OBS(2, 4)])
+  assert.notDeepEqual(r.composicion, { oficial: 1.5, ayudante: 3 })
+  assert.deepEqual(r.composicion, { ayudante: 2, oficial: 1 })
+})
+
+test('NEGATIVO: el CONFLICTO no se resuelve eligiendo la primera ni la más grande', () => {
+  const r = cuadrillaDesdeObservaciones([OBS(2, 2), OBS(4, 2)])
+  assert.equal(r.composicion, null)
+  assert.notDeepEqual(r.composicion, { oficial: 2, ayudante: 2 })
+  assert.notDeepEqual(r.composicion, { oficial: 4, ayudante: 2 })
 })

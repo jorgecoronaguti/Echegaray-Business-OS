@@ -268,6 +268,114 @@ const CATEGORIA = Object.freeze([
   ['ayudante', /ayudante|peon|peón|\bpe[oó]n\b/i],
 ])
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUADRILLA QUE **SE OBSERVÓ**, QUE NO ES LA QUE EL MÉTODO CALCULA
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Todo lo de arriba responde «¿con qué cuadrilla CONVIENE hacerlo?». Esto responde otra pregunta,
+// y es la que la Base Maestra tiene vacía en las 205 tareas: «¿con qué cuadrilla SE MIDIÓ el
+// rendimiento que estamos usando para cotizar?». Sin esa respuesta las HH por unidad no se pueden
+// convertir en producción diaria y el plazo sale de una división a ojo.
+//
+// ═══ LAS TRES MAGNITUDES QUE NO SON LA MISMA, Y QUE ACÁ SE CONFUNDEN SIEMPRE ═══
+//
+//   HH        esfuerzo total. 256 HH.
+//   PERSONAS  cuántos estaban. 4.
+//   DURACIÓN  cuántos días. 8.
+//
+// Las tres viven en la misma fila de una planilla de obra y ninguna se deduce de las otras dos sin
+// la jornada. Y —lo importante— **una cuadrilla no es un número de personas: es una composición
+// por categoría**. «4 personas» no dice si son 2 oficiales y 2 ayudantes o 1 y 3, y esas dos
+// cuadrillas producen distinto y cuestan distinto. Por eso una observación que sólo trae `personas`
+// NO alcanza para declarar cuadrilla: se descarta con nombre, no se reparte a ojo.
+//
+// ═══ POR QUÉ [2*4] Y [1*2] SON LA MISMA RESPUESTA ═══
+//
+// Es la misma aritmética del ábaco de más arriba: [2 of * 4 ay] es [1 of * 2 ay] trabajando en dos
+// frentes. Cuestan lo mismo por unidad producida y terminan a distinta velocidad. Cuando dos
+// observaciones de la misma tarea reducen a la misma composición básica, NO están en conflicto:
+// coinciden en lo único que el estándar tiene que declarar —la receta de gente— y difieren en
+// cuántos frentes se abrieron, que es una decisión de obra y no un atributo de la tarea.
+//
+// Cuando NO reducen a la misma base —[2*2] y [4*2]— sí están en conflicto, y entonces no hay
+// cuadrilla que declarar. Promediarlas daría un número que nadie observó nunca.
+
+/** Reduce una composición por el máximo común divisor de sus cantidades: `{of:2, ay:4}` → `{of:1,
+ *  ay:2}` con 2 frentes. Devuelve `null` si alguna cantidad no es un entero positivo — media
+ *  persona no es una cuadrilla, es un promedio de otra cosa. PURA. */
+export function reducirCuadrilla(composicion) {
+  const pares = Object.entries(composicion ?? {})
+    .map(([cat, n]) => [cat, Number(n)])
+    .filter(([, n]) => n > 0)
+  if (!pares.length) return null
+  if (pares.some(([, n]) => !Number.isInteger(n))) return null
+  const k = pares.map(([, n]) => n).reduce((x, y) => mcd(x, y))
+  return {
+    base: Object.fromEntries(pares.map(([cat, n]) => [cat, n / k]).sort((a, b) => (a[0] < b[0] ? -1 : 1))),
+    frentes: k,
+    personas: pares.reduce((s, [, n]) => s + n, 0),
+  }
+}
+
+const mismaBase = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * LA CUADRILLA DE UNA TAREA A PARTIR DE LAS OBSERVACIONES REALES. PURA.
+ *
+ * @param observaciones `[{ composicion: {oficial: 2, ayudante: 2}, personas, fuente, ... }]`
+ * @returns `{estado, composicion, frentes, personas, porQue, usadas, descartadas}`
+ *
+ * `estado` es uno de:
+ *   UNICA      una sola observación utilizable — se declara TAL COMO SE OBSERVÓ
+ *   CONVERGE   varias, y todas reducen a la misma composición básica — se declara la BASE
+ *   CONFLICTO  varias que no reducen a la misma base — NO se declara nada
+ *   SIN_DATO   ninguna observación trae composición por categoría
+ *
+ * Nunca devuelve una composición inventada, y `SIN_DATO` NO es «cuadrilla de cero personas».
+ */
+export function cuadrillaDesdeObservaciones(observaciones = []) {
+  const usadas = []
+  const descartadas = []
+  for (const o of observaciones) {
+    const r = reducirCuadrilla(o?.composicion)
+    if (!r) {
+      descartadas.push({
+        fuente: o?.fuente ?? null,
+        porQue: o?.personas
+          ? `la observación dice ${o.personas} personas y no dice de qué categoría: un número de gente no es una cuadrilla`
+          : 'la observación no trae composición por categoría',
+      })
+      continue
+    }
+    usadas.push({ ...r, observado: o.composicion, fuente: o?.fuente ?? null, cantidad: o?.cantidad ?? null, hh: o?.hh ?? null })
+  }
+
+  if (!usadas.length) {
+    return { estado: 'SIN_DATO', composicion: null, frentes: null, personas: null, usadas, descartadas,
+      porQue: descartadas.length
+        ? `hay ${descartadas.length} observación(es) y ninguna declara categorías: ${descartadas[0].porQue}`
+        : 'no hay ninguna observación de cuadrilla para esta tarea' }
+  }
+
+  if (usadas.length === 1) {
+    const u = usadas[0]
+    return { estado: 'UNICA', composicion: u.observado, frentes: u.frentes, personas: u.personas, usadas, descartadas,
+      porQue: `una sola observación real (${u.fuente ?? 'sin fuente declarada'}): se declara tal como se observó, sin reducirla` }
+  }
+
+  const primera = usadas[0].base
+  if (usadas.every((u) => mismaBase(u.base, primera))) {
+    const personas = Object.values(primera).reduce((s, n) => s + n, 0)
+    return { estado: 'CONVERGE', composicion: primera, frentes: 1, personas, usadas, descartadas,
+      porQue: `${usadas.length} observaciones que reducen a la misma composición ${JSON.stringify(primera)}: `
+        + `difieren en cuántos frentes se abrieron (${usadas.map((u) => u.frentes).join(', ')}), que lo decide la obra y no la tarea` }
+  }
+
+  return { estado: 'CONFLICTO', composicion: null, frentes: null, personas: null, usadas, descartadas,
+    porQue: `${usadas.length} observaciones con composiciones que no reducen a la misma base `
+      + `(${usadas.map((u) => JSON.stringify(u.observado)).join(' vs ')}): promediarlas daría una cuadrilla que nadie usó nunca` }
+}
+
 /**
  * LOS CONTENIDOS DE TRABAJO SACADOS DE UNA COMPOSICIÓN DE LA BASE MAESTRA. PURA.
  *
