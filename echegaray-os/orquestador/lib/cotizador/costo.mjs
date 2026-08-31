@@ -164,10 +164,20 @@ export function vigenciaDeSubcontrato(s, { tabla = VIGENCIA_SUBCONTRATO, diasPor
  * `decisionRequerida` sale en `true` cuando el precio existe y no se puede usar tal cual — es lo que
  * impide que un subcontrato vencido entre callado a un total.
  */
-export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = null, tabla = VIGENCIA_SUBCONTRATO } = {}) {
+export function subcontratoVigente(s, { hoy = new Date(), diasPorDefecto = null, tabla = VIGENCIA_SUBCONTRATO, resolver = null } = {}) {
   if (s.estado !== ESTADO.EXTRAIDO) return { vigente: false, estado: s.estado, decisionRequerida: false }
   const hoyIso0 = (hoy instanceof Date ? hoy.toISOString() : String(hoy)).slice(0, 10)
-  const v = vigenciaDeSubcontrato(s, { tabla, diasPorDefecto })
+  // ═══ EL DOCUMENTO LE GANA A CUALQUIER DERIVACIÓN ═══
+  //
+  // Un resolvedor que deriva la vigencia de la deriva de precios y la materialidad es mejor que un
+  // 180 puesto a dedo — pero sólo cuando el proveedor NO dijo hasta cuándo sostiene su precio.
+  // Cuando lo dijo, ese es un dato duro y ninguna estadística lo puede pisar: derivarle 90 días a
+  // una oferta que dice «válida 15» es cotizar con un precio que el subcontratista ya no sostiene.
+  // Por eso la precedencia vive acá y no en el resolvedor: quien inyecte no puede saltearla.
+  const declarada = Boolean(s?.validoHasta) || Number.isFinite(Number(s?.validezDias)) && s?.validezDias !== null
+  const v = (!declarada && typeof resolver === 'function')
+    ? resolver(s, { tabla, diasPorDefecto, hoy })
+    : vigenciaDeSubcontrato(s, { tabla, diasPorDefecto })
   // ═══ SIN VENCIMIENTO NO ES «VIGENTE PARA SIEMPRE» ═══
   //
   // La versión anterior devolvía `vigente: true` cuando el subcontrato no declaraba `validoHasta`, y
@@ -225,7 +235,25 @@ export function brechaDeAlcance({ subcontrato: s, exigido = [] } = {}) {
  *   · algún recurso no tiene precio       → se sabe de qué está hecha y no cuánto sale
  *   · la cantidad no está en la unidad de la partida → error de cómputo, no de precio
  */
-export function costoDePartida({ partida, composicion = [], observaciones = [], fx = null, monedaDestino = 'ARS', hoy = new Date(), tablaVigenciaSubcontrato = VIGENCIA_SUBCONTRATO } = {}) {
+export function costoDePartida({
+  partida, composicion = [], observaciones = [], fx = null,
+  monedaDestino = 'ARS', hoy = new Date(),
+  tablaVigenciaSubcontrato = VIGENCIA_SUBCONTRATO,
+  // ═══ EL PUNTO DE ENGANCHE DEL RESOLVEDOR DE PRECIOS ═══
+  //
+  // El default ES `precioVigente`, así que sin inyectar nada el comportamiento es exactamente el de
+  // antes. Existe porque el corte de vigencia plano de 180 días no distingue un precio de $900 que
+  // se movió 2 % de uno de $8 M que se movió 40 %, y quien sabe derivar eso es otro módulo. El
+  // contrato del resolvedor son los NUEVE campos que este archivo lee (`valor`, `estado`, `moneda`,
+  // `fuente`, `observadoEn`, `antiguedadDias`, `porQue` y los que consume `issueDePrecio`); lo que
+  // agregue de más viaja sin que esta función lo mire.
+  resolverPrecio = precioVigente,
+  // Mismo mecanismo para la vigencia de un subcontrato — con UNA diferencia que no se negocia: si el
+  // documento del proveedor declara su propia validez, MANDA EL DOCUMENTO. Una oferta con validez
+  // declarada es un dato duro y ninguna derivación estadística la puede pisar; el resolvedor
+  // inyectado sólo entra cuando el documento calla. La precedencia vive en `subcontratoVigente`.
+  resolverVigenciaSubcontrato = null,
+} = {}) {
   const base = {
     partida: partida?.codigo ?? partida?.id ?? '?',
     cantidad: partida?.cantidad ?? null,
@@ -253,7 +281,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
     if (conv.estado !== ESTADO.CALCULADO) {
       return { ...base, hh: 0, estado: ESTADO.FALTA_DATO, faltan: [conv.porQue], issues: [issue({ type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.BLOQUEANTE, entity: base.partida, detalle: conv.porQue })] }
     }
-    const venc = subcontratoVigente(s, { hoy, tabla: tablaVigenciaSubcontrato })
+    const venc = subcontratoVigente(s, { hoy, tabla: tablaVigenciaSubcontrato, resolver: resolverVigenciaSubcontrato })
     return {
       ...base, hh: 0, estado: venc.vigente ? ESTADO.EXTRAIDO : ESTADO.HISTORICO,
       cajones: { LABOR: 0, MATERIALS: 0, EQUIPMENT: 0, SUBCONTRACTS: redondear(conv.valor), OTHER: 0 },
@@ -289,7 +317,7 @@ export function costoDePartida({ partida, composicion = [], observaciones = [], 
 
   for (const l of composicion) {
     const cajon = CAJON_DE_TIPO[l.tipo] ?? CAJON.OTHER
-    const p = precioVigente(l.recursoCodigo ?? l.codigo, observaciones, { hoy })
+    const p = resolverPrecio(l.recursoCodigo ?? l.codigo, observaciones, { hoy })
     const conFactor = 1 + (Number(l.desperdicio) || 0)
 
     // ═══ LA CANTIDAD DE LA LÍNEA, CON LA MISMA GUARDA QUE LA DE LA PARTIDA ═══

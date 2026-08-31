@@ -10,6 +10,7 @@ import {
   subcontrato, subcontratoVigente, vigenciaDeSubcontrato, brechaDeAlcance,
   costoDePartida, costoDirecto, VIGENCIA_SUBCONTRATO, DIAS_VIGENCIA_SUBCONTRATO,
 } from './costo.mjs'
+import { precioVigente, observacionDePrecio } from './precios.mjs'
 
 const HOY = new Date('2026-08-30T12:00:00Z')
 
@@ -210,4 +211,72 @@ test('sin alcance exigido declarado NO se puede afirmar que un precio es compara
 test('un subcontrato con precio y sin fuente, o sin fecha, no se construye', () => {
   assert.throws(() => subcontrato({ alcance: 'x', precio: 100, cotizadoEn: '2026-08-01' }), /fuente/)
   assert.throws(() => subcontrato({ alcance: 'x', precio: 100, fuente: 'y' }), /fecha/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PUNTO DE ENGANCHE DEL RESOLVEDOR — pedido por el frente de precios autónomos
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+const PARTIDA = {
+  codigo: 'MAM-01', cantidad: 100, unidad: 'M2',
+  composicion: [
+    { recursoCodigo: 'MAT-1', nombre: 'Ladrillón', tipo: 'material', unidad: 'un', cantidad: 45, desperdicio: 0.05 },
+    { recursoCodigo: 'MO-1', nombre: 'Oficial', tipo: 'mano_obra', unidad: 'hs', cantidad: 2, desperdicio: 0 },
+  ],
+}
+const OBS = [
+  observacionDePrecio({ recursoCodigo: 'MAT-1', precio: 1200, fuente: 'lista 08/2026', observadoEn: '2026-08-20' }),
+  observacionDePrecio({ recursoCodigo: 'MO-1', precio: 4200, fuente: 'convenio UOCRA', observadoEn: '2026-08-20' }),
+]
+
+test('el resolvedor de precios inyectable NO mueve nada cuando no se inyecta', () => {
+  const conDefault = costoDePartida({ partida: PARTIDA, composicion: PARTIDA.composicion, observaciones: OBS, hoy: HOY })
+  // El mismo cálculo pasando EXPLÍCITAMENTE el resolvedor por defecto tiene que dar lo mismo, campo
+  // por campo: si el agregado moviera algo, este `deepEqual` lo muestra entero.
+  const explicito = costoDePartida({ partida: PARTIDA, composicion: PARTIDA.composicion, observaciones: OBS, hoy: HOY, resolverPrecio: precioVigente })
+  assert.deepEqual(explicito, conDefault)
+  // Y el número es el de siempre: 100 × (45 × 1200 × 1,05 + 2 × 4200) = 100 × 65.100 = 6.510.000.
+  assert.equal(conDefault.subtotal, 6_510_000)
+  assert.equal(conDefault.estado, ESTADO.CALCULADO)
+  assert.equal(conDefault.hh, 200)
+})
+
+test('un resolvedor que devuelve SIN_PRECIO deja la partida en desconocido, NUNCA en 0', () => {
+  // Devuelve la forma de `precioVigente` con estado FALTA_DATO, que es lo que el resolvedor nuevo
+  // produce cuando ninguna observación sirve.
+  const sinPrecio = (codigo) => ({
+    valor: null, estado: ESTADO.FALTA_DATO, moneda: null, fuente: null, observadoEn: null,
+    antiguedadDias: null, recursoCodigo: codigo, vigenciaDias: null,
+    porQue: `no hay observación de precio utilizable para ${codigo}`,
+  })
+  const r = costoDePartida({ partida: PARTIDA, composicion: PARTIDA.composicion, observaciones: OBS, hoy: HOY, resolverPrecio: sinPrecio })
+  assert.equal(r.subtotal, null, 'SIN_PRECIO ≠ 0: la partida cuesta DESCONOCIDO, no cero')
+  assert.equal(r.costoUnitario, null)
+  assert.equal(r.estado, ESTADO.FALTA_DATO)
+  assert.equal(r.cajones.MATERIALS, null, 'ni siquiera el cajón se afirma: le falta un renglón')
+  assert.equal(r.faltan.length, 2)
+  assert.ok(r.issues.every((i) => i.severity === SEVERIDAD.BLOQUEANTE))
+  // Y el costo directo de la cotización tampoco se afirma.
+  assert.equal(costoDirecto([r]).total, null)
+  // MUTACIÓN CORRIDA: en `costoDePartida`, cambiar el `const total = completa ? … : null` por
+  //   `const total = Object.values(cajones).reduce((a, v) => a + v, 0)` —o sea, sumar igual—.
+  //   FALLA: «SIN_PRECIO ≠ 0: la partida cuesta DESCONOCIDO, no cero: 0 !== null».
+})
+
+test('una vigencia DERIVADA no puede pisar la que el documento declara', () => {
+  // El resolvedor inyectado le daría 365 días a cualquier cosa. Con validez declarada NO se lo
+  // consulta: una oferta que dice «válida 15 días» venció, por mejor que sea la derivación.
+  const generoso = () => ({ origen: 'DERIVADO', dias: 365, hasta: null, porQue: 'derivado de la deriva de precios' })
+  const declarado = conPrecio({ validezDias: 15, tipo: 'MOVIMIENTO_SUELO' })
+  const r = subcontratoVigente(declarado, { hoy: HOY, resolver: generoso })
+  assert.equal(r.origen, 'DOCUMENTO', 'el resolvedor no se consulta cuando el proveedor ya dijo hasta cuándo')
+  assert.equal(r.vigente, false)
+  // Y cuando el documento CALLA, el resolvedor sí manda.
+  const callado = conPrecio({ tipo: 'MOVIMIENTO_SUELO' })
+  const s = subcontratoVigente(callado, { hoy: HOY, resolver: generoso })
+  assert.equal(s.origen, 'DERIVADO')
+  assert.equal(s.vigente, true)
+  // MUTACIÓN CORRIDA: en `subcontratoVigente`, quitar la guarda `!declarada` del ternario → el
+  //   resolvedor pisa la validez declarada. FALLA: «el resolvedor no se consulta cuando el proveedor
+  //   ya dijo hasta cuándo: 'DERIVADO' !== 'DOCUMENTO'».
 })

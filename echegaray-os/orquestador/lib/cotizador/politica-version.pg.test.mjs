@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
 import { ESTADO } from './contrato.mjs'
 import { leerVersionDePolitica, leerCatalogoDePoliticas, leerPoliticaDeCotizacion, leerEstructuraIndirecta, leerVigenciaDeSubcontratos } from './politica-pg.mjs'
-import { politicaEfectiva, proyectarACascada, resolverReferencia, referenciaDePolitica, cumpleMargenObjetivo } from './politica-version.mjs'
+import { politicaEfectiva, proyectarACascada, resolverReferencia, cumpleMargenObjetivo } from './politica-version.mjs'
 import { indirectoCalculado } from './indirectos.mjs'
 import { cascada } from './comercial.mjs'
 
