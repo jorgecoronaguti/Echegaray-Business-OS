@@ -372,8 +372,22 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // obligaba a saltar entre bloques para entender una fila, que es lo contrario de lo que se buscaba.
   // Las horas y las tarifas vuelven acá, DESPUÉS de la plata — el número que decide primero, el
   // respaldo a su derecha, en la misma fila.
-  fila('Persona', 'Ya transferido', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Horas', '$/h hoy', '$/h c/aum.')
+  // ═══ EL ADELANTO Y LO TRANSFERIDO SON DOS COSAS, Y VAN EN DOS COLUMNAS (31/08) ═══
+  //
+  // El dueño: «no me gusta esa mezcla de conceptos en la columna "ya transferido" con "adelantos"
+  // separar». Tenía razón y el defecto era de fondo, no de rótulo: la celda sumaba **plata de dos
+  // fuentes distintas** y mostraba el resultado como si fuera un solo hecho.
+  //
+  // · ADELANTO       — billetes entregados en obra. Lo anota el jefe en la planilla de jornales
+  //                    (columna Y) y no pasa por ningún banco: no hay comprobante, hay una firma.
+  // · YA TRANSFERIDO — plata que salió de la cuenta. Cada peso tiene su referencia en el extracto
+  //                    del Santander y vive en `_RECIBOS_RAW`.
+  //
+  // Sumarlas escondía cuál de las dos era, y son distintas para decidir: un adelanto en efectivo se
+  // discute con quien lo entregó, una transferencia se busca en el extracto. Las dos se restan del
+  // total —eso no cambia— pero cada una se ve y se audita por su lado.
+  fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
+    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -507,21 +521,30 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const rec = (col, cuil, per) => `SUMIFS(${R}$E$1:$E$400;${R}$${col}$1:$${col}$400;"${cuil}";${R}$B$1:$B$400;"${per}")`
     const celdaBanco = cuilFila && delRecibo.banco !== null
       ? `=${rec('A', cuilFila, periodoRecibo)}` : Math.round(hoyR.banco)
-    const celdaAdel = cuilFila
-      ? `=${Number(q.adelanto || 0)}+SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA")`
-      // CERO, no el guión: esta celda entra en una resta. Con «—» adentro, `E−C−B` devuelve #VALUE!
-      // y se llevó puesta la fila de Castillo y el total de la columna. El guión es para leer, no
-      // para calcular; que el cero se VEA como guión lo resuelve el formato, no el contenido.
-      : Math.round(adel || 0)
+    // B · EL ADELANTO EN OBRA. Sale del espejo de la planilla, citado por fórmula como las horas y
+    // el jornal: es el mismo dato, de la misma fila, y no hay razón para pegarlo.
+    //
+    // CERO, no el guión: esta celda entra en una resta. Con «—» adentro, `F−D−C−B` devuelve #VALUE!
+    // y se llevó puesta la fila de Castillo y el total de la columna. El guión es para leer, no
+    // para calcular; que el cero se VEA como guión lo resuelve el formato, no el contenido.
+    const celdaAdel = e ? `=N(${J}$Y$${e})` : Math.round(Number(q.adelanto || 0))
+    // C · LO QUE YA SALIÓ POR EL BANCO. Otra fuente, otra columna: `_RECIBOS_RAW` trae una fila por
+    // movimiento con su referencia del extracto. Sin CUIL no hay a qué apuntar y queda el valor.
+    const celdaTransf = cuilFila
+      ? `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA")`
+      : Math.round(porBanco || 0)
     // Las horas del espejo más los días que faltan a jornada completa. El sumando sólo aparece
     // cuando hay días pendientes, así la fórmula no lleva un «+0» que hace dudar.
     const celdaHoras = e ? `=N(${J}$V$${e})${q.pendientes ? `+${Math.round(q.pendientes)}` : ''}` : Math.round(q.horas)
     const celdaJornal = e ? `=N(${J}$W$${e})` : Math.round(q.jornal)
-    fila(nombreFila, celdaAdel, celdaBanco,
-      `=N(E${n})-N(C${n})-N(B${n})`,          // efectivo = total − banco − lo ya transferido
-      `=N(H${n})*N(I${n})`,                  // total = horas × $/h
-      jornalNuevo != null ? `=N(G${n})-N(C${n})-N(B${n})` : SIN_DATO,
-      jornalNuevo != null ? `=N(H${n})*N(J${n})` : SIN_DATO,
+    fila(nombreFila, celdaAdel, celdaTransf, celdaBanco,
+      `=N(F${n})-N(D${n})-N(C${n})-N(B${n})`, // efectivo = total − banco − transferido − adelanto
+      `=N(J${n})*N(K${n})`,                  // total = horas × $/h
+      jornalNuevo != null ? `=N(H${n})-N(D${n})-N(C${n})-N(B${n})` : SIN_DATO,
+      jornalNuevo != null ? `=N(J${n})*N(L${n})` : SIN_DATO,
+      // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
+      // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
+      jornalNuevo != null ? `=N(H${n})-N(F${n})` : SIN_DATO,
       celdaHoras, celdaJornal,
       jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO)
   }
@@ -531,7 +554,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   const n0 = nF - activos.filter((x) => quincena.porClave.has(x.clave) && !tieneLiquidacionFinal(x.nombre)).length + 1
   const suma = (c) => `=SUM(${c}${n0}:${c}${nF})`
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
-    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), '', '')
+    // Hasta J: la plata y las horas se suman. K y L son tarifas — promediar $/h es inventar un
+    // número que nadie cobra, así que quedan vacías a propósito.
+    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -578,17 +603,22 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // Este cuadro tenía la fecha en B y la plata corrida a partir de C, mientras el de arriba tenía
     // el transferido en B y el banco en C. Dos tablas con el mismo aspecto y distinto significado por
     // columna obligan a releer el encabezado en cada una, y es de donde viene la sensación de
-    // descuadre. Ahora B es «ya transferido», C lo que va por banco y D el efectivo en las dos, y la
-    // fecha —que es contexto, no plata— se va al final.
+    // descuadre. Ahora las dos tablas dicen lo mismo en la misma letra: B adelanto, C ya
+    // transferido, D lo que va por banco, E el efectivo.
+    //
+    // A estas personas nadie les adelantó billetes en obra, así que su columna B es cero — y el
+    // formato de la casa dibuja el cero como «—». La columna se ve vacía porque LO ESTÁ, que es un
+    // dato: lo único que se les descontó salió del banco y tiene referencia en el extracto.
+    //
     // Sin columna de fecha: es contexto, no plata, y su lugar es `_RECIBOS_RAW`, que la trae con la
     // fuente al lado. Acá obligaba a meter una columna de texto en medio del contrato numérico y
     // salía dibujada como su serial —«46.259»—, que es el defecto clásico de mezclar unidades.
-    fila('Persona', 'Ya transferido', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL', 'QUEDA POR PAGAR')
+    fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL', 'QUEDA POR PAGAR')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -615,8 +645,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       const nf = f.length + 1
       const cita = `SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$A$1:$A$400;"${r.cuil}";'_RECIBOS_RAW'!$B$1:$B$400;"FINAL")`
       fila(r.nombre_recibo,
+        0,                                     // adelanto en obra: a estas personas no se les dio
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
-        `=${cita}`, `=C${nf}`, `=C${nf}+D${nf}`, `=N(E${nf})-N(B${nf})`)
+        `=${cita}`, `=D${nf}`, `=D${nf}+E${nf}`, `=N(F${nf})-N(C${nf})-N(B${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -624,7 +655,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
       `=SUM(B${q1}:B${q2})`, `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
-      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`)
+      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`)
     fila(sub('Estas personas NO cobran la quincena: su vínculo terminó. El costo de desvincular al resto del plantel está en el cuadro 4.'))
 
   }
@@ -818,24 +849,56 @@ async function formatear(google, hoja, filas) {
   const s = hoja.sheetId
   const n = filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId: s, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  const conTitular = filas.some((x) => String(x?.[0] ?? '') === 'QUÉ SALE DE LA CAJA MAÑANA')
   const req = [
     { unmergeCells: { range: r(0, Math.max(n, 200)) } },
     E.reset(s, Math.max(n + 20, 200), ANCHO),
     // SIN CUADRÍCULA y con el titular congelado: la jerarquía la hace la tipografía, no la reja.
-    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: 8 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
+    // SE CONGELA HASTA EL TITULAR, y sólo si lo hay. Congelar ocho filas en «Plantel», cuya tabla
+    // arranca en la sexta, dejaba las dos primeras personas atrapadas en la banda fija: la fila se
+    // veía bloqueada y no se podía scrollear por encima de ella.
+    { updateSheetProperties: { properties: { sheetId: s, gridProperties: { hideGridlines: true, frozenRowCount: conTitular ? 8 : 3 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
     { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ANCHO.concepto }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId: s, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: E.ANCHO.numero }, fields: 'pixelSize' } },
   ]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
 
-  // ── EL CONTRATO DE COLUMNAS, UNA VEZ PARA TODA LA PESTAÑA ───────────────────────────────────────
+  // ── EL CONTRATO DE COLUMNAS, DECLARADO POR EL ENCABEZADO DE CADA TABLA ─────────────────────────
   //
-  // La plata es plata en toda la pestaña. Formatear por bloque obliga a que cada bloque nuevo se
-  // «acuerde», y así es como una columna termina con dos formatos distintos según dónde se mire.
-  // A es texto; B a G son plata en los dos cuadros; H a J son cantidades y tarifas.
+  // La primera versión aplicaba UN contrato a toda la pestaña —B a G plata, H en adelante
+  // cantidades— porque en la Nómina las dos tablas significan lo mismo en la misma columna. Cuando
+  // «Plantel» pasó a usar este mismo formateo, ese contrato le pintó la fecha de Ingreso como
+  // «$45.803» —su serial vestido de pesos— y las Horas del año como «$1.550». Cuatro tablas
+  // heterogéneas no comparten contrato, y forzarlas a uno es inventar un significado.
+  //
+  // La unidad la declara el RÓTULO, que es el único lugar donde ya está escrita. Un número sin
+  // rótulo reconocible se dibuja como cantidad, no como plata: equivocarse hacia «1.408» es una
+  // molestia, hacia «$1.408» es afirmar que son pesos.
   fmt(r(0, n, 0, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy', { numberFormat: E.NUM.texto, wrapStrategy: 'CLIP' })
-  for (let c = 1; c <= 6; c++) fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
-  for (let c = 7; c < ANCHO; c++) fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'RIGHT' })
+  // CUATRO UNIDADES, NO DOS. La primera versión partía en «plata» y «no plata», y a todo lo que no
+  // era plata le ponía formato de CANTIDAD: así «Ley 22.250» y «OF» quedaron como texto dentro de una
+  // celda con formato numérico —79 casos en «Plantel»—. Una categoría no es un número chico: es otra
+  // cosa, y la planilla tiene que saberlo o el día que alguien ordene la columna, ordena mal.
+  const unidadDe = (rotulo) => {
+    const t = String(rotulo ?? '').toLowerCase()
+    if (/fecha|ingreso|egreso|vence/.test(t)) return E.NUM.fecha
+    if (/antig|cat\.|sector|convenio|régimen|regimen|carpeta|falta|persona|estado|qué|que es|último|ultimo|variante|unidad|alta|libreta|dni|epp|ieric/.test(t)) return E.NUM.texto
+    if (/hora|hs\b|\$\/h|recibos|personas|días|dias/.test(t)) return E.NUM.cantidad
+    return E.NUM.moneda
+  }
+  // Cada tabla va de su encabezado («Persona») hasta su fila de total inclusive.
+  for (let i = 0; i < n; i++) {
+    if (String(filas[i]?.[0] ?? '') !== 'Persona') continue
+    let fin = i + 1
+    while (fin < n && !ES_TOTAL.test(String(filas[fin]?.[0] ?? ''))) fin++
+    fin = Math.min(fin + 1, n)
+    for (let c = 1; c < ANCHO; c++) {
+      const u = unidadDe(filas[i][c])
+      const alineacion = u === E.NUM.fecha ? 'CENTER' : u === E.NUM.texto ? 'LEFT' : 'RIGHT'
+      fmt(r(i + 1, fin, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+        { numberFormat: u, horizontalAlignment: alineacion })
+    }
+  }
 
   // ── LA JERARQUÍA, FILA POR FILA ────────────────────────────────────────────────────────────────
   const texto = (i) => String(filas[i]?.[0] ?? '')
@@ -869,7 +932,12 @@ async function formatear(google, hoja, filas) {
   if (fHero >= 0) {
     fmt(r(fHero, fHero + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.bloque, foregroundColor: E.COLOR.titulo } })
     fmt(r(fHero + 1, fHero + 2), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', verticalAlignment: 'BOTTOM', wrapStrategy: 'CLIP' })
-    fmt(r(fHero + 2, fHero + 3, 1, ANCHO), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment', { textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
+    // CON FORMATO DE MONEDA. El contrato de columnas pasó a aplicarse por TABLA —de un encabezado
+    // «Persona» hasta su total— y el titular no es una tabla: quedó fuera y sus tres cifras salieron
+    // como números pelados. Una cifra de titular sin el signo no se lee como plata, que es lo único
+    // que tiene que hacer.
+    fmt(r(fHero + 2, fHero + 3, 1, ANCHO), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titulo, foregroundColor: E.COLOR.titulo }, horizontalAlignment: 'LEFT' })
     fmt(r(fHero + 3, fHero + 4), 'userEnteredFormat', { numberFormat: E.NUM.texto, textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.bloqueTexto }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
     req.push({ updateDimensionProperties: { range: { sheetId: s, dimension: 'ROWS', startIndex: fHero + 2, endIndex: fHero + 3 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
   }

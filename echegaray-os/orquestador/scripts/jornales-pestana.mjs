@@ -1696,7 +1696,17 @@ export function grilla({
     // TOTAL HOY de Nómina (columna M). Si la pestaña no está o el rótulo cambió, cae al registro:
     // una celda vacía acá se lee como «no hay que pagar nada», que es peor que un número viejo.
     total: `=IF(N(${deNomina('TOTAL A PAGAR')})>0;${deNomina('TOTAL A PAGAR')};$${cTot}$${fReg})`,
-    adelanto: `=IF(N(${deNomina('Ya transferido')})>0;${deNomina('Ya transferido')};$${cAdel}$${fReg})`,
+    // ═══ LO YA ENTREGADO SON DOS COLUMNAS EN NÓMINA, Y ACÁ ES UNA SOLA CIFRA ═══
+    //
+    // Nómina las separó el 31/08 por orden del dueño: «ADELANTO» son los billetes que entregó el
+    // jefe en obra y «YA TRANSFERIDO» lo que salió del banco. Son dos hechos con dos fuentes
+    // distintas y allá se auditan por separado; acá la fila decide UN pago, así que lo que importa
+    // es cuánto se le entregó en total — la suma de las dos.
+    //
+    // Citar una sola sería el error caro: con «YA TRANSFERIDO» a secas, a quien recibió efectivo en
+    // obra se le vuelve a pagar ese efectivo.
+    adelanto: `=IF(N(${deNomina('ADELANTO')})+N(${deNomina('YA TRANSFERIDO')})>0;`
+      + `N(${deNomina('ADELANTO')})+N(${deNomina('YA TRANSFERIDO')});$${cAdel}$${fReg})`,
     // Banco HOY de Nómina (columna K) — la suma de lo que dice cada recibo. El `/2` de antes era el
     // 50% calculado, que es justamente lo que el dueño mandó dejar de usar.
     // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y

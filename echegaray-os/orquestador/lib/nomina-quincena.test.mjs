@@ -123,16 +123,31 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   const i = cols.indexOf('$/h hoy')
   assert.ok(i > 0, 'desapareció la columna de lo que cobra hoy')
   // Y el cuadro que DECIDE existe, con las tres columnas de plata y sin el detalle encima.
-  const decide = /fila\('Persona', 'Ya transferido', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
+  const decide = /fila\('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO'[\s\S]{0,400}?\)/.exec(NOMINA)
   assert.ok(decide, 'se fue el cuadro de instrucción de pago')
   const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
-  assert.ok(dc.length <= 11, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  // DOCE Y NO ONCE, por decisión del dueño (31/08): «no me gusta esa mezcla de conceptos en la
+  // columna "ya transferido" con "adelantos" separar». La columna que había sumaba billetes
+  // entregados en obra con transferencias del banco y publicaba el resultado como un solo hecho.
+  // El tope sube exactamente uno y sigue siendo un tope: es lo que impide que el cuadro vuelva a
+  // llenarse de detalle.
+  assert.ok(dc.length <= 12, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
   // Y la plata va antes que el respaldo: el número que decide primero, cómo salió después.
   assert.ok(dc.indexOf('TOTAL A PAGAR') < dc.indexOf('Horas'),
     'el detalle de horas y tarifas se metió delante de la plata')
   for (const c of ['POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR']) {
     assert.ok(dc.includes(c), `desapareció «${c}», que es lo que el dueño opera`)
   }
+  // ═══ LO ENTREGADO EN OBRA Y LO TRANSFERIDO SON DOS COLUMNAS, Y LAS DOS SE RESTAN ═══
+  //
+  // Separarlas sin restarlas las dos es peor que tenerlas juntas: le paga de nuevo a quien ya
+  // recibió los billetes. Por eso no alcanza con que los rótulos existan — se verifica la CUENTA.
+  assert.ok(dc.includes('ADELANTO') && dc.includes('YA TRANSFERIDO'),
+    'volvieron a mezclarse los billetes de obra con las transferencias del banco')
+  const efectivo = /`=N\(F\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\)-N\(B\$\{n\}\)`/.test(NOMINA)
+  assert.ok(efectivo, 'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
+  const conAumento = /`=N\(H\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\)-N\(B\$\{n\}\)`/.test(NOMINA)
+  assert.ok(conAumento, 'el escenario con aumento no resta lo ya entregado por las dos vías')
   // El «+» inicial NO puede volver: Sheets lo parsea como fórmula (=+Aumento…) y el encabezado
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.

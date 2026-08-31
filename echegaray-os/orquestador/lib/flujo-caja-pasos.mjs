@@ -17,6 +17,17 @@ export const PASOS = [
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
   ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
+  // ═══ LOS RECIBOS, JUNTO AL ESPEJO DE LA PLANILLA (31/08) ═══
+  //
+  // `_RECIBOS_RAW` nació el 31/08 y quedó fuera de esta lista: la Nómina la cita por fórmula
+  // —«POR BANCO», «ADELANTO», «YA TRANSFERIDO» y las liquidaciones finales salen todas de ahí— y
+  // nadie la refrescaba. Una réplica sin dueño no da error: envejece, y la pestaña que la lee
+  // publica la quincena pasada con cara de actual. Es exactamente lo que le pasó al espejo de
+  // JORNALES en julio, $1.231.963 abajo.
+  //
+  // Va pegada al espejo porque es el otro insumo de lo mismo: el espejo trae las horas del dueño y
+  // ésta lo que liquidó el estudio y lo que salió del banco.
+  ['recibos-raw-pestana.mjs', '_RECIBOS_RAW — los recibos del estudio y lo ya transferido, dentro del Sheet', ['_RECIBOS_RAW']],
   // ═══ EL ESLABÓN QUE FALTABA (06/08) ═══
   //
   // `Parámetros!A72` declara desde el primer día que el bloque de índices "lo actualiza el OS solo
@@ -30,6 +41,14 @@ export const PASOS = [
   // pestaña es lo que produce anchos de grilla mezclados, bloques huérfanos y —acá— el techo de 14
   // quincenas, porque la fila que insertaba uno caía fuera del rango que sumaba el otro.
   // Este generador escribe la pestaña ENTERA y publica sus rangos con nombre para las demás.
+  // NÓMINA ANTES QUE JORNALES POR QUINCENA, y el orden importa: desde el 29/08 la fila de pago de
+  // «Jornales por Quincena» CITA la fila de total de Nómina en vez de recalcularla. Si Nómina se
+  // escribiera después, esa fila leería la corrida anterior — el mismo desfase de una vuelta que ya
+  // pagamos con _CRUCE_ARCA.
+  //
+  // Lleva `--aplicar` porque sin la bandera el generador imprime y no escribe: dentro del pipeline
+  // eso sería un paso que dice «✓» sin haber hecho nada, que es la peor de las salidas.
+  ['nomina-pestana.mjs', 'Nómina y Plantel — qué se le paga a cada uno mañana y con qué papeles', ['Nómina', 'Plantel'], ['--aplicar']],
   ['jornales-pestana.mjs', 'Jornales por Quincena — quincenas reales, proyección y control de convenio', ['Jornales por Quincena']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de

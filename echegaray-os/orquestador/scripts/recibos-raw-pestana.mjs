@@ -83,7 +83,14 @@ async function main() {
   const cola = await conColaMedidaLeida(google, ID, `'${PESTANA}'`, filas, { ancho: ANCHO })
   if (avisoDeCola(cola, PESTANA)) console.log(avisoDeCola(cola, PESTANA))
   // `espejo: true` — es una réplica de un insumo, no una pantalla que alguien edite a mano.
-  await google.updateSheetValues(ID, `'${PESTANA}'!A1`, cola.filas, { espejo: true })
+  //
+  // `respetar: false` CON EL MOTIVO, que es lo que exige la Regla 0: acá no hay un solo rótulo
+  // escrito por una persona. Cada texto de esta pestaña es el nombre de un campo del recibo o del
+  // extracto —CUIL, Período, Neto, Referencia— y las filas son hechos de afuera que se reemplazan
+  // enteros en cada corrida. Preservar una edición manual sobre un dato de origen sería conservar
+  // una corrección que después nadie puede explicar contra el papel. Si alguien necesita anotar
+  // algo, el lugar es la pestaña que LEE esta réplica, no la réplica.
+  await google.updateSheetValues(ID, `'${PESTANA}'!A1`, cola.filas, { espejo: true, respetar: false })
   // No se cree lo que devolvió la API: se relee.
   const leido = await google.readSheetValues(ID, `'${PESTANA}'!A1:H400`)
   console.log(`✓ releído del archivo: ${leido.filter((r) => String(r?.[0] ?? '').trim()).length} filas con contenido`)
