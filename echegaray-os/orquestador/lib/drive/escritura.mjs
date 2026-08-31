@@ -67,8 +67,25 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
    * `esperado` son los valores que la operación prometió dejar; `campos`, los únicos que se
    * comparan (meter `modified_at` acá haría que todo pareciera exitoso siempre).
    */
-  async function verificar(fileId, esperado, campos) {
-    let ref = await lectura.referencia(fileId)
+  async function verificar(fileId, esperado, campos, { reciénCreado = false } = {}) {
+    let ref
+    try {
+      ref = await lectura.referencia(fileId)
+    } catch (e) {
+      // NO EXISTE LO QUE ACABO DE CREAR: casi nunca es que Drive perdió el archivo. Es que la
+      // identidad que CREA no es la que LEE. `google.mjs` usa `ownerToken()` para createFile,
+      // copyFile, renameFile, moveFile y trashFile —porque la cuenta de servicio no tiene cuota
+      // de almacenamiento— y `accessToken()` para todo lo demás. Con el cliente institucional
+      // (service account) eso significa: el archivo nace en el Drive del dueño y el robot no lo
+      // ve. Un NOT_FOUND pelado mandaría a buscar un archivo que sí existe.
+      if (reciénCreado && e?.codigo === CODIGO.NOT_FOUND) {
+        throw new DriveError(CODIGO.VERIFY_FAILED,
+          `Drive creó ${fileId} pero la identidad que lee no lo ve: no se puede probar el efecto. ` +
+          'Armá la capacidad con un cliente cuya identidad sea la misma que crea (la cuenta operadora), no con el service account.',
+          { file_id: fileId, detalle: e.detalle })
+      }
+      throw e
+    }
     let diff = comparar(esperado, ref, campos)
     if (Object.keys(diff).length) {
       await dormir(esperaVerificacionMs)
@@ -125,7 +142,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
       properties: clave_idempotencia ? { [PROP_IDEMPOTENCIA]: clave_idempotencia } : undefined,
     }))
     if (!creado?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del archivo creado.')
-    const ref = await verificar(creado.id, { name: nombre, mime_type: mimeType, trashed: false }, ['name', 'mime_type', 'trashed'])
+    const ref = await verificar(creado.id, { name: nombre, mime_type: mimeType, trashed: false }, ['name', 'mime_type', 'trashed'], { reciénCreado: true })
     const audit = await auditar({ operacion: 'crear', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: ['name', 'mime_type', 'trashed'] })
     return { ok: true, operacion: 'crear', idempotente: false, referencia: ref, antes: null, verificado: verificacion(['name', 'mime_type', 'trashed']), audit }
   }
@@ -144,7 +161,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
       properties: clave_idempotencia ? { [PROP_IDEMPOTENCIA]: clave_idempotencia } : undefined,
     }))
     if (!subido?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del archivo subido.')
-    const ref = await verificar(subido.id, { name: nombre, trashed: false }, ['name', 'trashed'])
+    const ref = await verificar(subido.id, { name: nombre, trashed: false }, ['name', 'trashed'], { reciénCreado: true })
     const audit = await auditar({ operacion: 'subir', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: ['name', 'trashed'] })
     return { ok: true, operacion: 'subir', idempotente: false, referencia: ref, antes: null, verificado: verificacion(['name', 'trashed']), audit }
   }
@@ -196,7 +213,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     if (!copia?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id de la copia.')
     const esperado = { name: nombre, trashed: false, ...(destino ? { parents: [destino] } : {}) }
     const campos = destino ? ['name', 'trashed', 'parents'] : ['name', 'trashed']
-    const ref = await verificar(copia.id, esperado, campos)
+    const ref = await verificar(copia.id, esperado, campos, { reciénCreado: true })
     const audit = await auditar({ operacion: 'copiar', referencia: ref, antes: resumen(origen), despues: resumen(ref), clave_idempotencia, verificado_campos: campos })
     return { ok: true, operacion: 'copiar', idempotente: false, referencia: ref, antes: resumen(origen), verificado: verificacion(campos), audit }
   }
@@ -238,7 +255,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
       nombre: nombre ?? `${origen.name}.pdf`, parentId: destino ?? undefined,
     }))
     if (!salida?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del PDF exportado.')
-    const ref = await verificar(salida.id, { trashed: false }, ['trashed'])
+    const ref = await verificar(salida.id, { trashed: false }, ['trashed'], { reciénCreado: true })
     const audit = await auditar({ operacion: 'exportar', referencia: ref, antes: resumen(origen), despues: resumen(ref), clave_idempotencia, verificado_campos: ['trashed'] })
     return { ok: true, operacion: 'exportar', idempotente: false, referencia: ref, antes: resumen(origen), verificado: verificacion(['trashed']), audit }
   }
