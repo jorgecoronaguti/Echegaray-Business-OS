@@ -115,3 +115,72 @@ test('la reutilización es reproducible: dos corridas iguales dan la misma huell
   const e = ENTRADA({ aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]) })
   assert.equal(correr(e).huella.sha256, correr(e).huella.sha256)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS DOS AGUJEROS QUE ENCONTRÓ LA AUDITORÍA ADVERSARIAL
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('F1 · un renglón de mano de obra SIN CANTIDAD no se escala a cero, y el gate sigue cerrado', () => {
+  // El defecto, textual del auditor: `Number(null ?? 0)` convertía en CERO la cantidad DESCONOCIDA
+  // de un ayudante. `costo.mjs` bloquea sobre `null` y no sobre `0` porque 0 es finito, así que el
+  // FALTA_DATO desaparecía y una cotización NO AFIRMABLE pasaba a congelable y ofertable:
+  //   sin aprendizaje → costoDirecto null · gate.ready false
+  //   con aprendizaje → costoDirecto 4.947.000 · gate.ready TRUE · venta $8.320.695
+  // Aplicar un aprendizaje llegaba a DESBLOQUEAR un presupuesto. Es lo contrario de lo que un
+  // aprendizaje puede hacer.
+  //
+  // MUTACIÓN CORRIDA: volver a `Number(l.cantidad ?? 0)` y sacar la guarda `sinMedir`.
+  const conAyudanteSinMedir = [
+    { recursoCodigo: 'MAT-LAD', nombre: 'Ladrillón', tipo: TIPO_RECURSO.MATERIAL, cantidad: 45, unidad: 'un' },
+    { recursoCodigo: 'MO-OF', nombre: 'Oficial albañil', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: 2, unidad: 'hs' },
+    { recursoCodigo: 'MO-AY', nombre: 'Ayudante', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: null, unidad: 'hs' },
+  ]
+  // El ayudante lleva precio: así lo ÚNICO que puede bloquear es su cantidad sin medir, y el test
+  // no pasa por la razón equivocada. (En la primera versión no lo tenía y el `total: null` venía de
+  // un SIN_PRECIO — verde por casualidad, que es la forma más cara de estar verde.)
+  const entrada = (extra) => ENTRADA({
+    composiciones: new Map([['u-4010', conAyudanteSinMedir]]),
+    observaciones: [
+      observacionDePrecio({ recursoCodigo: 'MAT-LAD', precio: 950, fuente: 'lista 08/2026', observadoEn: '2026-08-20' }),
+      observacionDePrecio({ recursoCodigo: 'MO-OF', precio: 4200, fuente: 'convenio UOCRA Zona A', observadoEn: '2026-08-20' }),
+      observacionDePrecio({ recursoCodigo: 'MO-AY', precio: 3600, fuente: 'convenio UOCRA Zona A', observadoEn: '2026-08-20' }),
+    ],
+    ...extra,
+  })
+
+  const sin = correr(entrada())
+  const con = correr(entrada({ aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]) }))
+
+  // Lo que el aprendizaje NO puede hacer: cambiar un «no se puede afirmar» por un número.
+  assert.equal(sin.costoDirecto.total, null)
+  assert.equal(sin.gate.ready, false)
+  assert.equal(con.costoDirecto.total, null, 'el aprendizaje afirmó un costo que sin él era desconocido')
+  assert.equal(con.gate.ready, false, 'aplicar un aprendizaje ABRIÓ el gate de congelado')
+  assert.equal(con.costoDirecto.hh, null)
+
+  // Y no se aplica en silencio: la partida queda declarada con su motivo.
+  const cost = etapa(con, 'COST')
+  assert.equal(cost.result.reutilizanAprendizaje, 0)
+  assert.equal(cost.result.aprendizajesNoAplicados, 1)
+  assert.match(cost.provenance.join(' '), /NO se aplicó el aprendizaje — 1 renglón\(es\) de mano de obra sin cantidad/)
+})
+
+test('F2 · cambiar el aprendizaje CAMBIA la huella de entradas', () => {
+  // La otra mitad de §39, y la que faltaba. `correr(e).huella === correr(e).huella` sobre el MISMO
+  // objeto es una tautología —el propio `freeze.mjs` lo dice—; lo que prueba algo es que dos
+  // entradas distintas no puedan firmarse igual. Medido por el auditor: tres corridas con costos
+  // null / $4.947.000 / $5.535.000 llevaban la misma huella.
+  //
+  // MUTACIÓN CORRIDA: sacar `aprendizajes` de `huellaDeEntradas` → este test en rojo.
+  const sin = correr(ENTRADA()).huella.sha256
+  const con16 = correr(ENTRADA({ aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]) })).huella.sha256
+  const con30 = correr(ENTRADA({ aprendizajesActivos: new Map([['rendimiento.T4010', 3]]) })).huella.sha256
+  assert.equal(new Set([sin, con16, con30]).size, 3, 'tres corridas con resultados distintos firmaron igual')
+})
+
+test('F2 · y el resultado también las distingue — no alcanza con que difiera la entrada', () => {
+  const con16 = correr(ENTRADA({ aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]) }))
+  const con30 = correr(ENTRADA({ aprendizajesActivos: new Map([['rendimiento.T4010', 3]]) }))
+  assert.notEqual(con16.costoDirecto.total, con30.costoDirecto.total)
+  assert.notEqual(con16.huellaResultado?.sha256 ?? con16.costoDirecto.total, con30.huellaResultado?.sha256 ?? con30.costoDirecto.total)
+})

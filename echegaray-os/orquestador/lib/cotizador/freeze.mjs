@@ -47,7 +47,17 @@ export function congelarHondo(x) {
   return x
 }
 
-export function huellaDeEntradas({ documentos = [], partidas = [], precios = [], politica = null, alcance = [], fx = null, hoy = null } = {}) {
+export function huellaDeEntradas({
+  documentos = [], partidas = [], precios = [], politica = null, alcance = [], fx = null, hoy = null,
+  // ═══ LO QUE CAMBIA EL RESULTADO ENTRA EN LA HUELLA, SIN EXCEPCIÓN ═══
+  //
+  // La auditoría lo midió: tres corridas con costos directos distintos —null, $4.947.000 y
+  // $5.535.000— llevaban la MISMA huella de entradas, porque el aprendizaje aplicado no entraba
+  // acá. Dos ofertas con precios distintos firmadas igual, y «volver a correr con las mismas
+  // entradas» dejaba de reproducir el número congelado. La regla que este archivo ya declaraba
+  // para `hoy` vale para cualquier entrada nueva: si mueve el resultado, es un input.
+  aprendizajes = null, estructuraIndirecta = null, politicaEfectiva = null, estadosDeComposicion = null,
+} = {}) {
   const partes = {
     // ═══ `hoy` ES UNA ENTRADA ═══
     // Sin él, la misma cotización corrida en 2026 y en 2027 daba la MISMA huella y resultados
@@ -60,6 +70,12 @@ export function huellaDeEntradas({ documentos = [], partidas = [], precios = [],
     politica: politica ? ['pctGastosGenerales', 'pctBeneficio', 'pctFinanciero', 'factorFinanciero', 'pctIibb', 'pctGanancias', 'pctCheque', 'pctIva'].map((k) => `${k}=${politica[k]}`).join(';') : null,
     alcance: [...alcance].map((e) => `${e.patron}|${e.estado}|${e.fuente}`).sort(),
     fx: fx ? `${fx.par}|${fx.tasa}|${fx.observadoEn}|${fx.fuente}` : null,
+    aprendizajes: aprendizajes ? [...aprendizajes].map(([k, v]) => `${k}=${v}`).sort() : null,
+    estructuraIndirecta: estructuraIndirecta
+      ? `v${estructuraIndirecta.version ?? '-'}|${(estructuraIndirecta.conceptos ?? []).length}|${estructuraIndirecta.costoDirectoAnual ?? '-'}` : null,
+    politicaEfectiva: politicaEfectiva
+      ? `v${politicaEfectiva.versionReferenciada ?? '-'}|${Object.entries(politicaEfectiva.valores ?? {}).map(([k, v]) => `${k}=${v}`).sort().join(';')}` : null,
+    estadosDeComposicion: estadosDeComposicion ? [...estadosDeComposicion].map(([k, v]) => `${k}=${v}`).sort() : null,
   }
   const texto = JSON.stringify(partes)
   return congelarHondo({

@@ -151,16 +151,38 @@ export function correr({
   // Sólo entra lo que la gobernanza ACTIVÓ. Un candidato no es una norma, y acá se ve: el mapa que
   // llega es `aprendizaje_activo`, nunca `aprendizaje_candidato`.
   const reutilizados = []
+  const noReutilizados = []
   const conAprendizaje = (p, lineas) => {
-    const aprendido = aprendizajesActivos.get?.(`rendimiento.${p.codigo ?? p.tareaTipoId}`)
+    const clave = `rendimiento.${p.codigo ?? p.tareaTipoId}`
+    const aprendido = aprendizajesActivos.get?.(clave)
     if (aprendido === undefined || aprendido === null || !(Number(aprendido) > 0)) return lineas
-    const original = lineas.filter((l) => l.tipo === 'mano_obra').reduce((a, l) => a + Number(l.cantidad ?? 0), 0)
+    const manoDeObra = lineas.filter((l) => l.tipo === 'mano_obra')
+
+    // ═══ UN RENGLÓN SIN MEDIR NO SE ESCALA: SE DEJA COMO ESTÁ ═══
+    //
+    // Esto lo encontró la auditoría y era un agujero de plata. `Number(null ?? 0)` convertía en CERO
+    // la cantidad DESCONOCIDA de un ayudante, y `costo.mjs` bloquea sobre `null` pero no sobre `0`
+    // porque 0 es finito: el `FALTA_DATO` desaparecía, la partida quedaba completa y una cotización
+    // que NO se podía afirmar pasaba a `gate.ready: true`, congelable y ofertable, con las horas del
+    // ayudante en cero. Aplicar un aprendizaje llegaba a DESBLOQUEAR un presupuesto — lo contrario
+    // de lo que un aprendizaje puede hacer. Es el mismo `?? 0` que `costo.mjs:317` documenta haber
+    // cerrado («borraba $2,4 M de mano de obra»), reabierto un renglón más arriba.
+    // Y la guarda NO puede escribirse `!Number.isFinite(Number(l.cantidad))`: **`Number(null)` es 0,
+    // y 0 es finito**. La primera versión de este arreglo tenía adentro el mismo bug que venía a
+    // cerrar, y lo destapó el test —no la lectura—. `null` y `undefined` se preguntan aparte.
+    const sinMedir = manoDeObra.filter((l) => l.cantidad === null || l.cantidad === undefined || !Number.isFinite(Number(l.cantidad)))
+    if (sinMedir.length) {
+      noReutilizados.push({ partida: p.codigo ?? p.id, clave, porQue: `${sinMedir.length} renglón(es) de mano de obra sin cantidad: no se puede escalar lo que no se midió` })
+      return lineas
+    }
+
+    const original = manoDeObra.reduce((a, l) => a + Number(l.cantidad), 0)
     // Sin rendimiento original no hay razón que calcular, y un cociente contra cero no es infinito:
     // es una cuenta que no se puede hacer. La partida sigue con su composición y se dice por qué.
     if (!(original > 0)) return lineas
     const razon = Number(aprendido) / original
-    reutilizados.push({ partida: p.codigo ?? p.id, clave: `rendimiento.${p.codigo ?? p.tareaTipoId}`, deComposicion: original, aprendido: Number(aprendido), razon })
-    return lineas.map((l) => (l.tipo === 'mano_obra' ? { ...l, cantidad: Number(l.cantidad ?? 0) * razon } : l))
+    reutilizados.push({ partida: p.codigo ?? p.id, clave, deComposicion: original, aprendido: Number(aprendido), razon })
+    return lineas.map((l) => (l.tipo === 'mano_obra' ? { ...l, cantidad: Number(l.cantidad) * razon } : l))
   }
   const costear = (p) => costoDePartida({
     partida: p, composicion: conAprendizaje(p, composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []),
@@ -270,11 +292,17 @@ export function correr({
       // sin este contador «aprender» no se distingue de «guardar».
       reutilizanAprendizaje: reutilizados.length,
       aprendizajesDisponibles: aprendizajesActivos.size ?? 0,
+      // Un aprendizaje que estaba disponible y NO se aplicó tiene que decir por qué. Sin esto, el
+      // par «disponibles 3 · reutilizan 0» se lee como que el motor los ignoró.
+      aprendizajesNoAplicados: noReutilizados.length,
     },
     missing_data: cd.faltan.map((f) => `${f.partida}: ${(f.porQue ?? []).join(' · ')}`),
     blocking_issues: cd.total === null ? [{ tipo: 'COSTO_NO_AFIRMABLE', entidad: 'cotización', detalle: cd.porQue }] : [],
     confidence: cd.nPartidas ? (cd.nPartidas - cd.nSinCosto) / cd.nPartidas : null,
-    provenance: reutilizados.map((r) => `${r.partida}: rendimiento aprendido ${r.aprendido} en vez de ${r.deComposicion} del análisis (×${Math.round(r.razon * 1000) / 1000})`),
+    provenance: [
+      ...reutilizados.map((r) => `${r.partida}: rendimiento aprendido ${r.aprendido} en vez de ${r.deComposicion} del análisis (×${Math.round(r.razon * 1000) / 1000})`),
+      ...noReutilizados.map((r) => `${r.partida}: NO se aplicó el aprendizaje — ${r.porQue}`),
+    ],
   }))
 
   // ── 8 · COMMERCIAL
@@ -414,7 +442,12 @@ export function correr({
   // Sin cliente declarado el barrido no puede correr, y eso NO se disfraza de limpio.
   const gateFuga = cliente ? gateDeFuga(fuga) : { ready: false, blocking_issues: [{ tipo: 'FUGA_NO_VERIFICABLE', entidad: 'cotización', detalle: 'la cotización no declara cliente: el barrido de fuga no puede correr', impacto: null, accion: null }], warnings: [], porQue: 'sin cliente no hay contra qué comparar' }
 
-  const huella = huellaDeEntradas({ documentos, partidas: conAlcance.partidas, precios: observaciones, politica, alcance, fx, hoy })
+  const huella = huellaDeEntradas({
+    documentos, partidas: conAlcance.partidas, precios: observaciones, politica, alcance, fx, hoy,
+    aprendizajes: aprendizajesActivos.size ? aprendizajesActivos : null,
+    estructuraIndirecta, politicaEfectiva: politicaEfectivaDeLaCotizacion,
+    estadosDeComposicion: estadosDeComposicion.size ? estadosDeComposicion : null,
+  })
   const gateCongelado = gateDeCongelado({ cascada: casc, cola })
   const gate = Object.freeze({
     ready: gateCongelado.ready && gateFuga.ready,
