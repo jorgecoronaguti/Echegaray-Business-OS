@@ -125,7 +125,19 @@ async function desdeLaBase(query) {
     promovidos: await uno(query, 'select count(*) n from public.aprendizaje_version'),
     rechazadosPorGobernanza: await uno(query, "select count(*) n from public.aprendizaje_candidato where estado <> 'APTO'"),
   }))
-  await medir('reuso', async () => ({ reutilizados: await uno(query, 'select count(*) n from public.aprendizaje_activo') }))
+  // ═══ MISMO CRITERIO QUE CON LOS SUBCONTRATOS ═══
+  // Cero aprendizajes reutilizados con cero aprendizajes ACTIVOS no es «el motor no reutiliza»: es
+  // que la gobernanza —correctamente— no promovió ninguno todavía. El consumo está cableado y
+  // probado en `reutilizacion.test.mjs`; lo que falta es material que promover, y eso lo produce la
+  // obra, no el código.
+  await medir('reuso', async () => {
+    const disponibles = await uno(query, 'select count(*) n from public.aprendizaje_activo')
+    if (disponibles === 0) {
+      e.reuso__porque = 'no hay ningún aprendizaje ACTIVADO que reutilizar: la gobernanza rechazó los candidatos que había, y el consumo está cableado y probado sin material real que aplicar'
+      return null
+    }
+    return { reutilizados: disponibles }
+  })
   return e
 }
 
@@ -158,6 +170,8 @@ function comoMarkdown(r, evidencia) {
   if (r.limitaciones.length) l.push('', '## Lo que no se pudo medir', '', ...r.limitaciones.map((x) => `- ${x}`))
   const errores = Object.entries(evidencia).filter(([k]) => k.endsWith('__error'))
   if (errores.length) l.push('', '## Mediciones que se rompieron', '', ...errores.map(([k, v]) => `- \`${k.replace('__error', '')}\`: ${v}`))
+  const porques = Object.entries(evidencia).filter(([k]) => k.endsWith('__porque'))
+  if (porques.length) l.push('', '## Por qué falta esa evidencia', '', ...porques.map(([k, v]) => `- **${k.replace('__porque', '')}**: ${v}`))
   return l.join('\n')
 }
 
