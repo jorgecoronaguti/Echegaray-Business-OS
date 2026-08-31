@@ -431,15 +431,14 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   //
   // El reparto entre transferencia y efectivo —que es operativo y él lo necesita— baja a la glosa,
   // donde se puede decir de dónde sale cada uno sin fingir que es una columna.
-  fila('', 'SE DEBE', '', 'YA SE ENTREGÓ', '', 'SALE MAÑANA')
-  const seDebe = deTodos('G')
-  const yaEntregado = `${deTodos('C')}+${deTodos('D')}`
-  fila('', `=${seDebe}`, '', `=${yaEntregado}`, '', `=${seDebe}-(${yaEntregado})`)
+  fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
+  fila('', `=${deTodos('E')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
   // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
   // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
   // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
-  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · de lo que sale mañana, " `
-    + `& TEXT(${deTodos('E')};"$ #,##0") & " van por transferencia —lo que dice cada recibo— y el resto en efectivo."`)
+  // La glosa dice qué NO está en el titular: lo que ya salió antes de mañana.
+  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · cada cifra es la suma de su columna. " `
+    + `& "Aparte, ya se entregaron " & TEXT(${deTodos('C')}+${deTodos('D')};"$ #,##0") & " en adelantos y transferencias, ya descontados."`)
   fila('')
 
   fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
@@ -660,10 +659,29 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // esa categoría no está mapeada y por eso su fila no tiene piso.
     const catConvenio = conv ? `${conv}${esInferida(codigo) ? ' ▲' : ''}` : (codigo || SIN_DATO)
     fila(nombreFila, catConvenio, celdaAdel, celdaTransf, celdaBanco,
-      `=N(G${n})-N(E${n})-N(D${n})-N(C${n})`, // efectivo = total − banco − transferido − adelanto
-      `=N(K${n})*N(L${n})`,                  // total = horas × $/h
-      jornalNuevo != null ? `=N(I${n})-N(E${n})-N(D${n})-N(C${n})` : SIN_DATO,
-      jornalNuevo != null ? `=N(K${n})*N(M${n})` : SIN_DATO,
+      // ═══ EL TOTAL DE LA FILA ES LO QUE SALE, NO EL BRUTO (31/08) ═══
+      //
+      // «TOTAL A PAGAR» era `horas × $/hora`: el devengado de la quincena, con los adelantos ya
+      // entregados adentro. En oficina era banco+efectivo y en liquidaciones otra cosa, así que la
+      // misma columna significaba tres cosas y ninguna tarjeta del titular podía sumarla.
+      //
+      // Ahora las tres dicen lo mismo: **banco + efectivo = lo que sale de la caja por esta fila**.
+      // El bruto no se pierde —es `Horas × $/h hoy`, las dos columnas están a la derecha— y lo ya
+      // entregado sigue en sus dos columnas propias.
+      // ═══ EL EFECTIVO VA REDONDEADO, Y EL REDONDEO ES DEL VALOR (31/08) ═══
+      //
+      // El dueño: «lo q se entrega en efectivo a cada uno y los conceptos en efectivo en general no
+      // los quiero con centavos, redondea». Es obvio dicho así: no hay billete de 38 centavos.
+      //
+      // `ROUND` en la FÓRMULA, no en el formato. Redondear sólo la vista dejaría la celda valiendo
+      // $372.435,38 mientras muestra $372.435, y el total de la columna sumaría los centavos que
+      // nadie entrega — un total que no cierra contra los billetes que salen del sobre.
+      //
+      // La transferencia NO se redondea: ahí el centavo existe y el recibo dice $215.564,62.
+      `=ROUND(N(K${n})*N(L${n})-N(E${n})-N(D${n})-N(C${n});0)`,
+      `=N(E${n})+N(F${n})`,                            // total = lo que sale por esta fila
+      jornalNuevo != null ? `=ROUND(N(K${n})*N(M${n})-N(E${n})-N(D${n})-N(C${n});0)` : SIN_DATO,
+      jornalNuevo != null ? `=N(E${n})+N(H${n})` : SIN_DATO,
       // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
       // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
       jornalNuevo != null ? `=N(I${n})-N(G${n})` : SIN_DATO,
@@ -763,7 +781,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")`,
         // EL MES ENTERO: comodín sobre el período, que es «Q1-08/2026» y «Q2-08/2026».
         `=SUMIFS(${R}$E$1:$E$400;${R}$A$1:$A$400;"${cuil}";${R}$B$1:$B$400;"*-${mes}")`,
-        `=N(E${nf})-N(D${nf})-N(C${nf})`,   // la mitad negra, menos lo ya entregado
+        `=ROUND(N(E${nf})-N(D${nf})-N(C${nf});0)`,   // la mitad negra en billetes: sin centavos
         `=N(E${nf})+N(F${nf})`,
         cuantas)
     }
@@ -819,7 +837,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // Así que la mitad negra es IGUAL a la blanca, el total es el doble, y lo ya entregado se resta
     // en su propia columna. Se ve el acuerdo Y se ve lo que falta pagar, que son dos preguntas
     // distintas y las dos se hacen sobre esta fila.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'QUEDA POR PAGAR')
+    // «MITAD NEGRA» EN VEZ DE «QUEDA POR PAGAR». El dueño pidió dos cosas que se peleaban: que el
+    // 50/50 se VEA y que el titular cierre. Se resuelven separándolas: EN EFECTIVO neta lo ya
+    // entregado —igual que en los otros dos cuadros, así el titular puede sumar la columna— y la
+    // mitad negra del acuerdo, que es igual a la blanca, se muestra entera en su propia columna.
+    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (mitad blanca)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD NEGRA del acuerdo')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
@@ -856,7 +878,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
         // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
         // Lo ya entregado se resta al final, en su columna, sin tocar el 50/50.
-        `=${cita}`, `=N(E${nf})`, `=N(E${nf})+N(F${nf})`, `=N(G${nf})-N(D${nf})-N(C${nf})`)
+        `=${cita}`, `=ROUND(N(E${nf})-N(D${nf})-N(C${nf});0)`, `=N(E${nf})+N(F${nf})`, `=ROUND(N(E${nf});0)`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -1117,7 +1139,12 @@ async function formatear(google, hoja, filas) {
     //
     // Sólo en la Nómina. «Plantel» son agregados anuales donde el centavo es ruido y nadie transfiere
     // desde ahí.
-    return hoja?.title === 'Nómina' ? E.NUM.monedaExacta : E.NUM.moneda
+    // LOS CENTAVOS VAN DONDE HAY TRANSFERENCIA, NO DONDE HAY BILLETES. El recibo dice
+    // $215.564,62 y eso se transfiere tal cual; el efectivo se entrega en mano y se redondea. La
+    // celda del efectivo YA viene redondeada por `ROUND` — esto sólo evita mostrarle un «,00» a un
+    // número que no tiene decimales.
+    if (hoja?.title !== 'Nómina') return E.NUM.moneda
+    return /efectivo|adelanto|negra|sube/.test(t) ? E.NUM.moneda : E.NUM.monedaExacta
   }
   // Cada tabla va de su encabezado («Persona») hasta su fila de total inclusive.
   for (let i = 0; i < n; i++) {
@@ -1270,7 +1297,18 @@ async function publicar(google, PESTANA, filas) {
   // este generador escribió alguna vez: se declara con margen para que una corrida corta limpie lo
   // que dejó una larga, y `conColaLimpiable` aborta si la grilla crece más que eso en vez de dejar
   // cola publicada en silencio.
-  const conCola = conColaLimpiable(filas, { ancho: ANCHO, alto: ALTO_HISTORICO, quien: PESTANA })
+  // ═══ EL CENTINELA SÓLO PUEDE ALCANZAR LO QUE ESTE GENERADOR ESCRIBE (31/08, segunda vuelta) ═══
+  //
+  // Saqué el `deleteSheet` y el dueño volvió a decir «te dije q no borraras mi ediciones». Tenía
+  // razón de nuevo: había puesto la cola en 160 filas × 17 columnas, o sea que el centinela
+  // declaraba suyas 2.720 celdas y vaciaba TODAS las que el generador no escribe. Es el mismo
+  // borrado con otra puerta — y peor, porque parece cuidadoso.
+  //
+  // La cola existe para limpiar lo que dejó una corrida MÁS LARGA de este mismo script, y eso vive
+  // en las columnas que él escribe y en las filas que ya no llena. Fuera de ese rectángulo no hay
+  // cola posible: hay, si acaso, algo que escribió una persona.
+  const anchoPropio = Math.max(...filas.map((f) => f.filter((c) => String(c ?? '').trim()).length), 1)
+  const conCola = conColaLimpiable(filas, { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
   const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: ANCHO })
   if (escritura?.conservadas?.length) {
     console.log(`  ✋ ${escritura.conservadas.length} celda(s) tuyas conservadas:`)
