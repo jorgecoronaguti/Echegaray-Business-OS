@@ -27,6 +27,29 @@ import { cuadroDeCorrida, comoMarkdown, bloqueosLegibles } from '../lib/cotizado
 import { seleccionarTodas } from '../lib/plano/seleccion.mjs'
 import { politicaComercial } from '../lib/cotizador/comercial.mjs'
 import { observacionDePrecio } from '../lib/cotizador/precios.mjs'
+import { resolvedorDePrecios } from '../lib/cotizador/precio-adaptador.mjs'
+import { leerComprasReales, pesosDeCotizacion } from '../lib/cotizador/precio-fuentes.pg.mjs'
+import { VIGENCIA_HASTA } from '../lib/uocra-paritaria.mjs'
+
+/** DD/MM/YYYY → YYYY-MM-DD. El tramo de paritaria vive en el formato del acuerdo, no en el de la base. */
+const isoDelTramo = (ddmmyyyy) => {
+  const [d, m, a] = String(ddmmyyyy).split('/')
+  return a && m && d ? `${a}-${m}-${d}` : null
+}
+
+/**
+ * EL RESOLVEDOR DE PRECIOS DE UNA COTIZACIÓN.
+ *
+ * Necesita los PESOS de ESTA cotización, no los del catálogo: la materialidad es lo único que separa
+ * al panel de chapa que mueve millones del tornillo autoperforante que mueve centavos, y sin ella
+ * los dos frenan igual una oferta de $ 80 M. Sin `cotizacionId` no hay pesos y todo cae al piso más
+ * exigente — es correcto, y hay que saberlo al leer el número que sale.
+ */
+export async function resolvedorParaCotizacion(query, { cotizacionId = null, recursos = new Map() } = {}) {
+  const compras = await leerComprasReales({ query })
+  const pesos = cotizacionId ? (await pesosDeCotizacion({ query }, cotizacionId)).pesos : {}
+  return resolvedorDePrecios({ compras, pesos, recursos, tramoParitariaHasta: isoDelTramo(VIGENCIA_HASTA) })
+}
 
 const BIBLIOTECA = JSON.parse(readFileSync(new URL('../datos/conocimiento/biblioteca.json', import.meta.url), 'utf8'))
 
@@ -123,6 +146,13 @@ async function main() {
   const politica = await politicaVigente(query)
   const bm = await baseMaestraCompleta(query)
   const precios = await preciosVigentes(query)
+  // El catálogo de recursos por código: el resolvedor lo necesita para saber de qué tipo es cada uno
+  // (un jornal de convenio caduca con la paritaria; una bolsa de cemento se degrada con la inflación).
+  const recursos = new Map((await query('select codigo, nombre, tipo, unidad from public.recurso')).rows
+    .map((r) => [r.codigo, { nombre: r.nombre, tipo: r.tipo, unidad: r.unidad }]))
+  // Un dictado telefónico no tiene cotización cargada, así que no hay pesos: sin materialidad todo
+  // recurso cae al piso de vigencia más exigente. Es correcto y hay que leerlo sabiéndolo.
+  const sinPesos = await resolvedorParaCotizacion(query, { cotizacionId: null, recursos })
   const casos = []
 
   // ── CASO 1 · QUATTROPANI, PUNTA A PUNTA ────────────────────────────────────────────────────
@@ -131,6 +161,7 @@ async function main() {
                               order by fecha_cotizacion limit 1`)).rows[0]
   const corpusQ = delProyecto(BIBLIOTECA, 'quattropani')
   const estadoQ = await leerEstado({ query }, cotQ.id)
+  const resolverPrecioQ = await resolvedorParaCotizacion(query, { cotizacionId: cotQ.id, recursos })
   const exQ = exclusionesDelProyecto(corpusQ.conocimientos, { partidas: estadoQ.partidas })
   const q = correrCronometrado({
     ...estadoQ,
@@ -143,6 +174,7 @@ async function main() {
     // La partida está CARGADA en COT-2026-001, que es un acto de la empresa. Es el provenance que
     // §5 exige para no dejar las 26 en POR_DEFINIR; lo que el contrato excluye lo sigue excluyendo.
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'cargada en el presupuesto COT-2026-001', motivo: 'una partida cargada en el presupuesto está incluida por acto propio de la empresa' },
+    resolverPrecio: resolverPrecioQ,
   })
   casos.push({ nombre: 'QUATTROPANI (real)', ...q, corpus: corpusQ, exclusiones: exQ, cotizacionId: cotQ.id })
 
@@ -162,6 +194,7 @@ async function main() {
     alcance: exE.entradas, politica, cliente: 'LA ESTRELLA', clientesConocidos: clientes,
     issuesHeredados: huecosDelProyecto(corpusE.huecos),
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'dictado del jefe de obra', motivo: 'lo que se dicta se cotiza' },
+    resolverPrecio: sinPesos,
   })
   casos.push({ nombre: 'LA ESTRELLA (ciego)', ...e, corpus: corpusE, exclusiones: exE, mapeo: mapE })
 
@@ -171,6 +204,7 @@ async function main() {
     ...estadoQ, documentos: corpusQ.documentos.slice(0, 2), alcance: [],
     politica: estadoQ.politica ?? politica, cliente: 'FRANCO QUATTROPANI', clientesConocidos: clientes,
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'cargada en el presupuesto COT-2026-001' },
+    resolverPrecio: resolverPrecioQ,
   })
   casos.push({ nombre: 'DOC INCOMPLETA', ...inc, corpus: { documentos: corpusQ.documentos.slice(0, 2), conocimientos: [] } })
 
@@ -185,6 +219,7 @@ async function main() {
     partidas: mapC.partidas, observaciones: precios, alcance: [], politica,
     cliente: 'OBRA SIN PLANOS', clientesConocidos: clientes,
     alcancePorDefecto: { estado: 'INCLUIDO', fuente: 'dictado del dueño', motivo: 'lo que se dicta se cotiza' },
+    resolverPrecio: sinPesos,
   })
   casos.push({ nombre: 'CÓMPUTO MANUAL', ...c, corpus: { documentos: [], conocimientos: [] }, mapeo: mapC })
 
