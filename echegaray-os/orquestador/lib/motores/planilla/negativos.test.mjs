@@ -18,7 +18,7 @@
 // pasar y el test se pone rojo por eso. Es la defensa contra las dos cicatrices de este repo: el
 // control que era una constante y escondía $4,1 M, y la mutación declarada que nadie corrió.
 
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 
 // El doble no manda un byte a Google; el freno se consulta igual, así que se apunta la marca a una
@@ -37,6 +37,30 @@ function cliente() {
   const drive = crearDrive()
   return { drive, google: makeGoogleClient({ auth: { getAccessToken: async () => 'token-del-doble' }, fetchImpl: fetchFalso(drive) }) }
 }
+
+// EL TEST DEJA EL MUNDO COMO LO ENCONTRÓ — Y SE COMPRUEBA, no se promete.
+//
+// La guarda de escritura firma en Postgres cada pestaña que toca, y las de los dobles también serían
+// filas: `file_id` con prefijo `fake-`, que sólo genera `crearDrive()`.
+//
+// MEDIDO (31/08/2026): bajo `node --test` esas filas NO se escriben. `guarda-base-de-prueba.mjs`
+// detecta el contexto de test (`NODE_TEST_CONTEXT` / `--test`), ve que la base NO está declarada de
+// prueba, y bloquea la escritura — falla cerrado. O sea que la limpieza la hace una protección que
+// ya existía, no este archivo.
+//
+// La primera versión de esto era un `after()` que borraba las filas. No borraba nada: la MISMA
+// guarda le bloqueaba el DELETE, y el `catch` se lo tragaba. Era decoración. Esto, en cambio, puede
+// dar rojo: si la guarda se aflojara y los dobles empezaran a ensuciar la base, se ve acá.
+after(async () => {
+  try {
+    const { query } = await import('../../db.mjs')
+    const { rows } = await query("select count(*)::int n from sheet_tab_firma where file_id like 'fake-%'")
+    assert.equal(rows[0].n, 0, `los dobles dejaron ${rows[0].n} firma(s) en Postgres: la guarda de base de prueba dejó de frenarlas`)
+  } catch (e) {
+    // Sin base no hay nada que comprobar; pero un fallo de la ASERCIÓN sí tiene que salir.
+    if (e?.code === 'ERR_ASSERTION') throw e
+  }
+})
 
 /** El escenario base: una planilla con una hoja `Datos` de tres filas. */
 async function mundo(motor = MOTOR) {
@@ -410,4 +434,47 @@ test('NEGATIVO · el Flujo de Caja se LEE y no se escribe, en ninguna de sus for
   }
   // Y ni una sola escritura salió al cable.
   assert.equal(drive.trafico.filter((t) => t.metodo !== 'GET').length, 0)
+})
+
+// ══════════════════════════ LA REGLA 0: lo que escribió una persona no se pisa ═════════════════
+//
+// «respeta mis ediciones de celda por mas q dp corrijas» — el dueño, textual. Es la regla más cara
+// del repo: seis pérdidas documentadas de su trabajo. El motor no la reimplementa: usa
+// `escribirPreservando`, y lo que estos tests fijan es que el camino LLEGA hasta ahí.
+
+test('REGLA 0 · el generador pisa lo suyo y CONSERVA la nota que anotó una persona', async () => {
+  const { drive, google } = cliente()
+  const p = await MOTOR.crearPlanilla(google, 'REGLA0')
+  await p.crearHoja('Cuadro')
+  await p.escribirRango('Cuadro!A1:C2', [['Proveedor', 'Neto', 'Nota'], ['ACME', 1000, '']])
+  // Una PERSONA anota al costado, en una columna que el generador deja vacía.
+  await p.escribirCelda('Cuadro!C2', 'ojo: falta el remito')
+
+  // El generador vuelve a correr con el importe corregido y SIN nada en la columna de notas.
+  const r = await p.escribirPreservando('Cuadro!A1:C2', [['Proveedor', 'Neto', ''], ['ACME', 1200, '']])
+  assert.ok(r.conservadas.length >= 1, 'la fusión tiene que declarar qué conservó')
+
+  assert.equal((await p.leerCelda('Cuadro!C2')).valor, 'ojo: falta el remito', 'LE BORRÉ LA NOTA')
+  assert.equal((await p.leerCelda('Cuadro!B2')).valor, 1200, 'y el generador sí actualizó lo suyo')
+  void drive // la firma que dejó esta escritura la limpia el `after` de arriba
+})
+
+// DESCUBIERTO CORRIENDO EL TEST, no leyendo el código: `escribirRango` NO pisa con un vacío. El
+// cinturón de `no-borrar.mjs` convierte toda celda vacía que caería sobre contenido en "dejá lo que
+// hay", así que la escritura sale, la relectura trae el texto de la persona, y la verificación ve
+// una diferencia. Reportar eso como ESCRITURA_NO_PERSISTIO mandaba a buscar un problema de red
+// donde hubo una decisión deliberada del sistema: por eso tiene código propio.
+test('REGLA 0 · un vacío sobre contenido NO se escribe, y el motor dice QUÉ hacer', async () => {
+  const { planilla } = await mundo()
+  await planilla.escribirCelda('Datos!C2', 'nota de una persona')
+
+  await assert.rejects(() => planilla.escribirRango('Datos!A2:C2', [['ACME', 1000, '']]), (e) => {
+    assert.ok(esError(e, CODIGOS.CONTENIDO_CONSERVADO), `vino ${e?.codigo}: ${e?.message}`)
+    assert.match(e.message, /escribirPreservando|centinela VACIO/)
+    return true
+  })
+  assert.equal((await planilla.leerCelda('Datos!C2')).valor, 'nota de una persona', 'la nota sigue ahí')
+
+  // Y lo que NO es vacío sí se escribe: el cinturón protege del borrado, no de la corrección.
+  assert.equal((await planilla.escribirRango('Datos!A2:C2', [['ACME', 1000, 'nota corregida']])).verificado, true)
 })

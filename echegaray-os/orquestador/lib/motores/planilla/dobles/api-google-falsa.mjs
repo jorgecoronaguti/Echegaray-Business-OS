@@ -140,12 +140,15 @@ export function fetchFalso(drive) {
 // ─────────────────────────────── Sheets API ───────────────────────────────
 
 function sheets(drive, u, metodo, cuerpo) {
-  const m = /^\/v4\/spreadsheets\/([^/:]+)(?::(\w+))?(?:\/values\/([^:]+))?(?::(\w+))?$/.exec(u.pathname)
+  const m = /^\/v4\/spreadsheets\/([^/:]+)(?:\/values)?(?::(\w+))?(?:\/values\/([^:]+))?(?::(\w+))?$/.exec(u.pathname)
   if (!m) return error(404, `ruta de sheets desconocida: ${u.pathname}`)
   const arch = drive.archivos.get(decodeURIComponent(m[1]))
   if (!arch || arch.trashed) return error(404, 'Requested entity was not found.')
 
   if (m[3]) return valores(arch, decodeURIComponent(m[3]), u, metodo, cuerpo, m[4])
+  // `/values:batchUpdate` (varios rangos de una) vs `:batchUpdate` (operaciones de FORMA). La `/values`
+  // del medio es lo único que los distingue, y son dos endpoints distintos de Google.
+  if (m[2] === 'batchUpdate' && u.pathname.endsWith('/values:batchUpdate')) return batchValores(arch, cuerpo)
   if (m[2] === 'batchUpdate') return batchUpdate(arch, cuerpo)
   if (metodo === 'GET') return metadatos(arch, u)
   return error(400, 'operación no soportada por el doble')
@@ -251,6 +254,23 @@ function valores(arch, ref, u, metodo, cuerpo, sufijo) {
     return json({ spreadsheetId: arch.id, updates: { updatedRange: rango, updatedRows: filas.length } })
   }
   return error(400, `values: método ${metodo} no soportado por el doble`)
+}
+
+/** values.batchUpdate — varios rangos en una sola llamada. Es por donde pasa `escribirPreservando`. */
+function batchValores(arch, cuerpo) {
+  const responses = []
+  let total = 0
+  for (const d of cuerpo?.data ?? []) {
+    const r = partirRango(d.range, arch)
+    if (!r.hoja) return error(400, `Unable to parse range: ${d.range}`)
+    const filas = d.values ?? []
+    for (let f = 0; f < filas.length; f++) {
+      for (let c = 0; c < (filas[f] ?? []).length; c++) { ponerCelda(r.hoja, r.a.f + f, r.a.c + c, filas[f][c]); total++ }
+    }
+    responses.push({ updatedRange: d.range, updatedRows: filas.length })
+  }
+  arch.version++
+  return json({ spreadsheetId: arch.id, totalUpdatedCells: total, responses })
 }
 
 /** spreadsheets.batchUpdate — las operaciones de FORMA. */

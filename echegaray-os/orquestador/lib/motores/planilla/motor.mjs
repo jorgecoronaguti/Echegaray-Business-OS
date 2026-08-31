@@ -454,6 +454,25 @@ export class Planilla {
     const { ok, diferencias } = compararEscritura(esperado, leido, leidoF)
     if (!ok) {
       const direccionar = (f, c) => formatearCelda({ fila: r.desde.fila + f, col: r.desde.col + c })
+      // ═══ NO ES LO MISMO "NO ATERRIZÓ" QUE "UNA GUARDA CONSERVÓ CONTENIDO" (31/08/2026) ═══
+      //
+      // `no-borrar.mjs` convierte toda celda VACÍA que caería sobre contenido en "dejá lo que hay".
+      // Es la Regla 0 y está bien que exista. Pero entonces la relectura devuelve el contenido viejo
+      // donde el llamador mandó vacío, y reportar eso como ESCRITURA_NO_PERSISTIO manda a buscar un
+      // problema de red donde hubo una decisión deliberada del sistema.
+      //
+      // El llamador tiene tres salidas y ninguna se adivina: usar `escribirPreservando` (lo normal
+      // para un bloque que se regenera), marcar la celda como propia con el centinela `VACIO` de
+      // `preservar-anotaciones.mjs`, o dejarla como está. Por eso es un código aparte.
+      const soloConservadas = diferencias.every((d) => d.motivo === 'valor_distinto'
+        && String(esperado[d.fila]?.[d.col] ?? '') === '' && ![null, undefined, ''].includes(d.leido))
+      if (soloConservadas) {
+        fallar(CODIGOS.CONTENIDO_CONSERVADO,
+          `no escribí vacío sobre contenido en ${ref} — ${resumirDiferencias(diferencias, direccionar)}. `
+          + 'Si el bloque se regenera usá escribirPreservando(); si esa celda es tuya y va vacía, '
+          + 'mandá el centinela VACIO de preservar-anotaciones.mjs.',
+          { rango: ref, diferencias, conservadas: diferencias.length })
+      }
       fallar(CODIGOS.ESCRITURA_NO_PERSISTIO,
         `escribí ${ref} y al releer no coincide — ${resumirDiferencias(diferencias, direccionar)}`,
         { rango: ref, diferencias })
