@@ -564,7 +564,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  @param {{q?:string, campos?:string, tope?:number}} opts `q` se AGREGA al filtro de carpeta.
      *  @returns {Promise<Array<{id:string,name:string,mimeType:string,modifiedTime:string,size?:string}>>}
      */
-    async listarCarpeta(carpetaId, { q = '', campos = 'id,name,mimeType,modifiedTime,size', tope = 2000 } = {}) {
+    async listarCarpeta(carpetaId, { q = '', campos = 'id,name,mimeType,modifiedTime,size', tope = 2000, comoDueno = false } = {}) {
+      const tok = comoDueno ? await ownerToken() : undefined
       const filtro = `'${String(carpetaId).replace(/'/g, "\\'")}' in parents and trashed = false${q ? ` and (${q})` : ''}`
       const out = []
       let pageToken = ''
@@ -574,7 +575,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           + `&fields=${encodeURIComponent(`nextPageToken,files(${campos})`)}`
           + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true'
           + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
-        const j = await apiGet(url)
+        const j = await apiGet(url, tok)
         out.push(...(j.files || []))
         pageToken = j.nextPageToken || ''
       } while (pageToken && out.length < tope)
@@ -1183,14 +1184,27 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         'POST',
         { requests: [{ insertInlineImage: { location: { index }, uri: imageUrl } }] })
     },
+    // ═══ `comoDueno` — POR QUÉ EXISTE (31/08/2026, motor de documentos) ═══
+    //
+    // `createFile` crea el archivo con el token del DUEÑO, porque la cuenta de servicio no tiene
+    // cuota de storage. El documento nace entonces en el Drive del dueño y el robot NO figura entre
+    // sus permisos: `docsBatchUpdate` con el token del robot devuelve 403 «The caller does not have
+    // permission» sobre un archivo que el propio OS acaba de crear. Medido, no supuesto.
+    //
+    // Es la misma asimetría que las primitivas de Slides ya resolvieron usando `ownerToken()` en las
+    // cuatro puertas. Acá no se cambia el default —los Docs COMPARTIDOS con el robot se siguen
+    // leyendo y escribiendo como robot, y la firma sigue distinguiendo al OS de una persona—: se
+    // agrega la opción para el archivo que el OS creó y que sólo el dueño puede tocar.
     /** Documento Docs COMPLETO (estructura con índices) — para ubicar texto, tablas, fin. */
-    async getDoc(fileId) {
-      return apiGet(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`)
+    async getDoc(fileId, { comoDueno = false } = {}) {
+      return apiGet(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`,
+        comoDueno ? await ownerToken() : undefined)
     },
     /** batchUpdate genérico de la Docs API: `requests` = array de requests de Docs. Un solo
      *  lugar para formato, tablas, imágenes, reemplazos — igual que spreadsheetBatchUpdate. */
-    async docsBatchUpdate(fileId, requests) {
-      return apiSend(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`, 'POST', { requests })
+    async docsBatchUpdate(fileId, requests, { comoDueno = false } = {}) {
+      return apiSend(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`, 'POST',
+        { requests }, comoDueno ? await ownerToken() : undefined)
     },
     /** Lee un GOOGLE DOC nativo exportándolo a texto plano (Drive export). Cubre contratos,
      *  notas, informes en Docs. Acotado a maxChars. */
@@ -1297,15 +1311,37 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       await sellar()
       return res
     },
+    /**
+     * ARCHIVOS DEL OS MARCADOS CON UNA `appProperty`. La búsqueda por IDENTIDAD, no por nombre.
+     *
+     * En este repositorio el nombre de un archivo ya mintió (uno llamado «HM» era la libreta del
+     * IERIC) y ya se leyó una copia congelada creyendo que era el original. Un reintento que busque
+     * «Informe agosto» encuentra el que una persona renombró, o no encuentra el propio y crea el
+     * duplicado. La marca la pone el OS al crear y no la ve nadie en la interfaz de Drive.
+     * @returns {Promise<Array<{id:string,name:string,mimeType:string,trashed:boolean}>>}
+     */
+    async buscarPorPropiedad(clave, valor, { tope = 20 } = {}) {
+      const esc = (v) => String(v).replace(/'/g, "\\'")
+      const q = `appProperties has { key='${esc(clave)}' and value='${esc(valor)}' } and trashed = false`
+      const url = 'https://www.googleapis.com/drive/v3/files'
+        + `?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,mimeType,trashed)')}`
+        + `&pageSize=${Math.max(1, Math.min(100, tope))}&supportsAllDrives=true&includeItemsFromAllDrives=true`
+      const j = await apiGet(url, await ownerToken())
+      return j.files || []
+    },
     /** Crea un archivo propio del OS (Doc/Sheet nativo o carpeta) vía Drive metadata.
      *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
-    async createFile({ name, mimeType, parents } = {}) {
+    async createFile({ name, mimeType, parents, appProperties } = {}) {
       if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
       const tok = await ownerToken() // crear en el Drive del dueño (cuota real), no en el del robot
       const f = await apiSend(
-        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink&supportsAllDrives=true',
+        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink,appProperties&supportsAllDrives=true',
         'POST',
-        { name, mimeType, ...(parents ? { parents } : {}) },
+        // `appProperties` son metadatos PRIVADOS de la aplicación: no se ven en la interfaz de Drive
+        // y sobreviven a que una persona renombre o mueva el archivo. Es lo que permite que
+        // «crear el informe de agosto» reintentado encuentre el archivo que ya creó en vez de
+        // dejar «Informe agosto (1)»: la identidad del archivo es su id, nunca su nombre.
+        { name, mimeType, ...(parents ? { parents } : {}), ...(appProperties ? { appProperties } : {}) },
         tok,
       )
       // Un Sheet creado por API nace en_US (formato inglés: coma decimal, fechas MM/DD, fórmulas
@@ -1321,6 +1357,16 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         } catch { /* si falla, la localización al escribir igual detecta el locale */ }
       }
       return f
+    },
+    /** MARCA un archivo con `appProperties` del OS (privadas, invisibles en Drive). Es lo que
+     *  permite reconocer «el informe de agosto que ya creé» sin depender del nombre. */
+    async marcarArchivo(fileId, appProperties) {
+      return apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,appProperties&supportsAllDrives=true`,
+        'PATCH',
+        { appProperties },
+        await ownerToken(), // op a nivel-archivo: la hace el dueño del archivo, no el robot
+      )
     },
     /** Renombra un archivo/carpeta existente. */
     async renameFile(fileId, name) {
