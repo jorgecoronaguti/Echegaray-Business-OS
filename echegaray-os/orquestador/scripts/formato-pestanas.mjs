@@ -107,6 +107,17 @@ export const PESTANAS = [
   // apagar el aviso. Que el censo los cuente es exactamente lo que se quiere.
   { titulo: 'OBRAS', congeladas: 2, hastaFila: 98, cols: 9, propio: true },
   { titulo: 'Calendario de Cobros', congeladas: 4, hastaFila: 110, cols: 17, propio: true },
+  // LAS DOS QUE FALTABAN (31/08). Mismo defecto que OBRAS y Calendario en agosto: nacieron después
+  // de esta lista y nadie las anotó, así que el censo de números pegados y el auditor de pantalla
+  // pasaban de largo. El aviso estaba a la vista en cada corrida —«2 pestaña(s) del archivo NO están
+  // en PESTANAS ni declaradas en SIN_PANTALLA: Nómina · SUBCONTRATISTAS»— y nadie lo levantó hasta
+  // que el dueño dijo que la Nómina no respetaba su regla de diseño. El estándar no se aplicó porque
+  // el control no sabía que la pestaña existía.
+  //
+  // Sin `origen`: las dos son 100% calculadas. Nómina la escribe entera su generador desde el espejo
+  // y desde Postgres; SUBCONTRATISTAS es una vista de Compras y lo declara en su propia fila 2.
+  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true },
+  { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
 ]
 
 /**

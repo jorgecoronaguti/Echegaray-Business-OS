@@ -34,10 +34,10 @@ import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
-import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, SUBCONTRATISTAS_CON_LIQUIDACION, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
+import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA } from '../lib/nomina-banco-recibo.mjs'
 import {
-  claveDeCategoria, convenioDe, esInferida, rotuloConvenio, lineaEquivalenciasInferidas,
-  jornalConAumento, tarifaConAumento, PORCENTAJE_DE_AUMENTO,
+  claveDeCategoria, convenioDe, esInferida, lineaEquivalenciasInferidas,
+  jornalConAumento, PORCENTAJE_DE_AUMENTO,
 } from '../lib/uocra-paritaria.mjs'
 import { HORAS_POR_DIA_DE_SEMANA } from '../lib/jornada-uocra.mjs'
 import { PAPELES, carpetaDe, papelesDe } from '../lib/legajo-drive.mjs'
@@ -169,6 +169,9 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
     const horas = cargadas + pendientesSuyas
     out.set(clave(nombre), {
       nombre,
+      // La fila del espejo: es lo que permite que la Nómina CITE las horas y el jornal en vez de
+      // pegar el número que el OS ya calculó. Sin esto no hay forma de cumplir la regla de oro 5.
+      filaEspejo: r,
       categoria: claveDeCategoria(f[3]),
       cargadas,
       pendientes: pendientesSuyas,
@@ -282,7 +285,7 @@ async function legajosDeDrive() {
   return { carpetas, porCarpeta }
 }
 
-function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map() }) {
+function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '' }) {
   const meses = mesesDe(ANIO)
   const f = []
   const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
@@ -302,7 +305,33 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // EL 50/50 NO ES UNA REGLA DE ESTA PESTAÑA: es `repartoPersona`, el mismo núcleo con el que se
   // paga la quincena. Y el efectivo NO se recorta en cero — un efectivo negativo es un adelanto de
   // más, y es información.
-  fila(seccion(1, `qué hay que pagarle a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
+  // ═══ EL TITULAR: LAS TRES CIFRAS QUE SE DECIDEN, ANTES QUE NADA ═══
+  //
+  // Contrato del dueño («Sheets de clase mundial», legibilidad): *el titular arriba, siempre — las
+  // 2-3 cifras que se deciden. El resto es el detalle de esas cifras.* Esta pestaña arrancaba
+  // directamente en el cuadro: había que leer quince filas y llegar al total para saber cuánta plata
+  // sale mañana.
+  //
+  // POR FÓRMULA, no por número pegado (regla de oro 5): cita la fila de total del cuadro 1, anclada
+  // al rótulo y no a la posición. Si mañana entra una persona más, el titular se mueve solo. Un
+  // número pegado acá sería la misma cifra escrita dos veces, y ésa es la forma en que dos totales
+  // empiezan a discrepar.
+  const enTotal = (titulo) => `=IFERROR(INDEX($A:$Z;MATCH("⇒*persona(s)";$A:$A;0);MATCH("${titulo}";INDEX($A:$Z;MATCH("Persona";$A:$A;0);0);0)))`
+  // NINGUNA DE LAS TRES CIFRAS VA EN LA COLUMNA A. Sus fórmulas ubican la fila buscando rótulos EN
+  // la columna A, así que una celda de plata puesta ahí se referencia a sí misma: Sheets lo resuelve
+  // como dependencia circular y publica #REF!. Pasó en la primera corrida — «POR BANCO» salió en
+  // error y las otras dos, que caen en C y en E, salieron bien.
+  fila('QUÉ SALE DE LA CAJA MAÑANA')
+  fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
+  fila('', enTotal('POR BANCO'), '', enTotal('EN EFECTIVO'), '', enTotal('TOTAL A PAGAR'))
+  // Una sola glosa, corta, en la columna ancha. La primera versión ponía una nota abajo de cada
+  // cifra —«a la cuenta sueldo de cada uno», «billetes, ya descontado lo adelantado»— y las tres
+  // salieron cortadas: la columna mide 108 px, que son ~17 caracteres. Un texto que no entra no
+  // explica nada y ensucia la fila que tiene que leerse en tres segundos.
+  fila(`${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09`)
+  fila('')
+
+  fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
   fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. `
     + `Escala ${escala.rotulo ?? 'sin escala'}: a cada hora se le cierra el `
     + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la BRECHA hasta el piso de su categoría — el resultado `
@@ -322,21 +351,15 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // a cada uno». Tenía diecisiete columnas para una decisión que son TRES números: cuánto se
   // transfiere, cuántos billetes hay que sacar, y cuánto es en total.
   //
-  // Dos cosas se fueron a la derecha, después del total: las horas y las tarifas. Son el respaldo de
-  // cómo salió el número, no el número. Y una columna DESAPARECIÓ —«Banco CON AUMENTO»— porque desde
-  // que el banco es el recibo repetía la de al lado: dos celdas idénticas al lado de la que sí
-  // cambia es exactamente lo que hacía dudar de cuál mirar.
-  //
-  // El orden es el del acto: a quién · lo que ya se le dio · lo que se transfiere · los billetes ·
-  // el total. Y después las dos columnas del escenario con aumento, que es la decisión pendiente.
-  // Siete columnas, no seis: «Ya transferido» vuelve al cuadro que decide porque NO es respaldo —
-  // es la razón por la que el efectivo de alguien es más chico, y sin verla al lado el número
-  // parece un error. El detalle de tarifas sí es respaldo y sigue abajo.
-  fila('Persona', 'Ya transferido', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'EN EFECTIVO c/aumento', 'TOTAL c/aumento')
+  // UNA SOLA TABLA. El cuadro «cómo se llegó a ese número» se retiró: partir la información en dos
+  // obligaba a saltar entre bloques para entender una fila, que es lo contrario de lo que se buscaba.
+  // Las horas y las tarifas vuelven acá, DESPUÉS de la plata — el número que decide primero, el
+  // respaldo a su derecha, en la misma fila.
+  fila('Persona', 'Ya transferido', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
+    'EN EFECTIVO c/aumento', 'TOTAL c/aumento', 'Horas', '$/h HOY', '$/h c/aumento')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
-  const respaldo = []
   const sinConvenio = []
   // QUIÉNES TIENEN UN PISO DECIDIDO POR UNA INFERENCIA. `sinConvenio` sólo ve los códigos que NADIE
   // mapeó: el día que se agrega el mapeo, se apaga. Y ahí es cuando más hace falta mirar —la
@@ -418,7 +441,6 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // EL AUMENTO DE SU CATEGORÍA, QUE ES LO QUE EL DUEÑO DECIDIÓ. Sale de la MISMA función que la
     // tarifa nueva —no se recalcula acá con otro `× 0,5`— porque dos fórmulas para el mismo aumento
     // se separan el día que el porcentaje cambie.
-    const suba = tarifaConAumento(q.jornal, basico)
     // ═══ EL NOMBRE QUE SE MUESTRA ES EL DEL RECIBO ═══
     //
     // La planilla de jornales los escribe como salga: «Aguero Cristian» y «Emanuel Alaniz» y «Emi
@@ -434,25 +456,65 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const oficial = cuilP ? recibosPorCuil.get(cuilP)?.nombre_recibo : null
     const comoSeLlama = comoSeEscribe(oficial ?? p.nombre)
     const nombreFila = q.dejoDeCargar ? `${comoSeLlama}  ▲ sin cargar desde el ${q.ultimoDiaSuyo}` : comoSeLlama
-    fila(nombreFila, adel ? Math.round(adel) : SIN_DATO,
-      Math.round(hoyR.banco), Math.round(hoyR.efectivo), Math.round(hoyR.total),
-      nuevoR ? Math.round(nuevoR.efectivo) : SIN_DATO,
-      nuevoR ? Math.round(nuevoR.total) : SIN_DATO)
-    // El respaldo del número se guarda y se publica DESPUÉS, en su propio bloque. Once columnas de
-    // detalle al lado de la cifra que decide es lo que obliga a barrer la fila entera para leer un
-    // importe: el total va a la izquierda y el cálculo, abajo.
-    respaldo.push([nombreFila, Math.round(q.horas), Math.round(q.jornal),
-      suba ? Math.round(suba.aumento) : SIN_DATO,
-      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO,
-      nuevoR ? (Math.round(nuevoR.total - hoyR.total) || SIN_DATO) : SIN_DATO,
-      q.categoria || SIN_DATO, rotuloConvenio(codigo) ?? SIN_DATO])
+    // ═══ LA PLATA VA POR FÓRMULA CONTRA `_RECIBOS_RAW`, NO PEGADA ═══
+    //
+    // Regla de oro 5: *«nunca un número pegado: todo en celda referenciada y/o fórmula»*. El censo
+    // midió 601 pegados en esta pestaña apenas entró al registro de controles. El neto del recibo y
+    // lo transferido son DATO DE ORIGEN y viven en su réplica declarada; acá se los cita, y el
+    // efectivo y el total se calculan en la celda. Así el que abre la pestaña puede ver de dónde
+    // sale cada peso sin salir del archivo, que es de lo que se trata la regla.
+    //
+    // Con CUIL se cita; sin CUIL —quien no tiene recibo— se conserva el valor calculado, porque no
+    // hay a qué apuntar. Esas filas quedan contadas por el censo y eso es correcto: son la excepción
+    // y tienen que verse.
+    // SUMIFS y no INDEX+MATCH: `MATCH(1;(A:A=x)*(B:B=y);0)` necesita semántica de array y sin
+    // ARRAYFORMULA devuelve vacío — probado, la columna salió en blanco. Con una fila por
+    // (CUIL, período) la suma ES el valor, y de paso es la fórmula más simple que resuelve, que es
+    // lo que pide el checklist. Rangos CERRADOS, no `A:A`, por la misma razón.
+    // ═══ TODA LA PLATA POR FÓRMULA (regla de oro 5) ═══
+    //
+    // Nada de esta fila es un número calculado y pegado. Las horas y el jornal CITAN el espejo de la
+    // planilla; el neto del recibo y lo transferido citan `_RECIBOS_RAW`, que es el insumo declarado;
+    // y el total y el efectivo son la cuenta hecha EN LA CELDA. Quien abre la pestaña puede seguir de
+    // dónde sale cada peso sin salir del archivo.
+    //
+    // Queda un solo número pegado por fila: `$/h c/aumento`. No es un cálculo, es LA DECISIÓN del
+    // dueño —cerrar la mitad de la brecha hasta el piso de convenio, sin pasarlo nunca— y la produce
+    // `jornalConAumento`. Pegarlo es correcto; derivarlo en la celda sería reimplementar la regla en
+    // dos lugares, que es como se separan.
+    const R = "'_RECIBOS_RAW'!"
+    const J = "'_J_OBREROS'!"
+    const n = f.length + 1                   // la fila que va a ocupar en la Nómina
+    const e = q.filaEspejo                   // su fila en el espejo de la planilla
+    const cuilFila = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
+    const rec = (col, cuil, per) => `SUMIFS(${R}$E$1:$E$400;${R}$${col}$1:$${col}$400;"${cuil}";${R}$B$1:$B$400;"${per}")`
+    const celdaBanco = cuilFila && delRecibo.banco !== null
+      ? `=${rec('A', cuilFila, periodoRecibo)}` : Math.round(hoyR.banco)
+    const celdaAdel = cuilFila
+      ? `=${Number(q.adelanto || 0)}+SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA")`
+      // CERO, no el guión: esta celda entra en una resta. Con «—» adentro, `E−C−B` devuelve #VALUE!
+      // y se llevó puesta la fila de Castillo y el total de la columna. El guión es para leer, no
+      // para calcular; que el cero se VEA como guión lo resuelve el formato, no el contenido.
+      : Math.round(adel || 0)
+    // Las horas del espejo más los días que faltan a jornada completa. El sumando sólo aparece
+    // cuando hay días pendientes, así la fórmula no lleva un «+0» que hace dudar.
+    const celdaHoras = e ? `=N(${J}$V$${e})${q.pendientes ? `+${Math.round(q.pendientes)}` : ''}` : Math.round(q.horas)
+    const celdaJornal = e ? `=N(${J}$W$${e})` : Math.round(q.jornal)
+    fila(nombreFila, celdaAdel, celdaBanco,
+      `=N(E${n})-N(C${n})-N(B${n})`,          // efectivo = total − banco − lo ya transferido
+      `=N(H${n})*N(I${n})`,                  // total = horas × $/h
+      jornalNuevo != null ? `=N(G${n})-N(C${n})-N(B${n})` : SIN_DATO,
+      jornalNuevo != null ? `=N(H${n})*N(J${n})` : SIN_DATO,
+      celdaHoras, celdaJornal,
+      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
   // después de sacar a los dos liquidados: un total de 15 filas rotulado «17 persona(s)».
+  const nF = f.length
+  const n0 = nF - activos.filter((x) => quincena.porClave.has(x.clave) && !tieneLiquidacionFinal(x.nombre)).length + 1
+  const suma = (c) => `=SUM(${c}${n0}:${c}${nF})`
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
-    Math.round(T.adelanto),
-    Math.round(T.bancoHoy), Math.round(T.efHoy), Math.round(T.totHoy),
-    Math.round(T.efNuevo), Math.round(T.totNuevo))
+    suma('B'), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -491,15 +553,15 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // total— le paga a cada uno la mitad de lo que le corresponde.
   if (finales.size) {
     fila('')
-    fila(seccion('1.b', 'liquidaciones finales · 50 en blanco y 50 en efectivo'))
+    fila(seccion(2, 'lo que terminó · liquidaciones finales'))
     fila('Lo liquidado por el estudio es la mitad BLANCA del acuerdo; el efectivo es un monto igual. '
       + 'Lo que sale de la caja es la suma de las dos columnas, o sea el doble del recibo.')
-    fila('Persona', 'Legajo', 'Fecha', 'Blanco (lo liquidado)', 'Efectivo', 'TOTAL', 'Ya transferido', 'QUEDA POR PAGAR')
+    fila('Persona', 'Fecha', 'Blanco (lo liquidado)', 'Efectivo', 'TOTAL', 'Ya transferido', 'QUEDA POR PAGAR')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, r.legajo ?? SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -520,54 +582,20 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         .filter((a) => a.cuil && a.cuil === r.cuil)
         .reduce((acc, a) => acc + Number(a.importe), 0)
       F.blanco += c.blanco; F.negro += c.negro; F.total += c.total; F.dado += dado; F.queda += c.total - dado
-      fila(r.nombre_recibo, r.legajo ?? SIN_DATO,
+      fila(r.nombre_recibo,
         r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-AR') : SIN_DATO,
         Math.round(c.blanco), Math.round(c.negro), Math.round(c.total),
         dado ? Math.round(dado) : SIN_DATO, Math.round(c.total - dado))
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
-    fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`), '', '',
+    fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`), '',
       Math.round(F.blanco), Math.round(F.negro), Math.round(F.total),
       Math.round(F.dado), Math.round(F.queda))
     fila(sub('Estas personas NO cobran la quincena: su vínculo terminó. El costo de desvincular al resto del plantel está en el cuadro 4.'))
 
-    // ═══ 1.d · LOS QUE TIENEN EL PAPEL PERO NO SON PERSONAL ═══
-    //
-    // Se les hizo alta y baja con la forma de un empleado y son subcontratistas. Van aparte y SIN
-    // segunda mitad: el 50/50 es el acuerdo con el personal, y aplicárselo acá inventaría $619.032
-    // que nadie acordó.
-    const subcos = ordenadas.filter((x) => esSubcontratista(x.nombre_recibo))
-    if (subcos.length) {
-      fila('')
-      fila(seccion('1.c', 'liquidaciones con forma de baja que son SUBCONTRATOS'))
-      fila('Se les dio alta y baja con el formato del personal y no son personal. Se muestra lo que liquidó el estudio; '
-        + 'NO se les aplica el 50/50, que es el acuerdo con los empleados.')
-      fila('Persona', 'Fecha', 'Lo liquidado', 'Qué es')
-      let tot = 0
-      for (const r of subcos) {
-        tot += Number(r.neto)
-        fila(r.nombre_recibo, r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-AR') : SIN_DATO,
-          Math.round(Number(r.neto)), SUBCONTRATISTAS_CON_LIQUIDACION[r.nombre_recibo] ?? SIN_DATO)
-      }
-      fila(rotuloTotal(`${subcos.length} subcontratista(s)`), '', Math.round(tot), '')
-    }
   }
 
-  // ═══ 1.c · CÓMO SE LLEGÓ A ESE NÚMERO ═══
-  //
-  // El detalle no se borra: se muda. La página que decide se lee como un resumen —seis columnas— y
-  // el cálculo vive abajo, con la misma clave de persona. Es la separación entre la salida y el
-  // cálculo que usa cualquier modelo financiero serio, y es lo que pidió el dueño cuando dijo que la
-  // pestaña estaba «confusa, con mucho contenido disperso».
-  if (respaldo.length) {
-    fila('')
-    fila(seccion('1.d', 'cómo se llegó a ese número'))
-    fila('Persona', 'Horas', '$/h HOY', 'Aumento $/h', '$/h c/aumento', 'Sube', 'Cat.', 'Convenio')
-    for (const r of respaldo) fila(...r)
-    fila(rotuloTotal(`${respaldo.length} persona(s)`), Math.round(T.horas), '', '', '',
-      Math.round(T.sube), '', '')
-  }
 
   const bajas = activos.filter((p) => quincena.porClave.get(p.clave)?.dejoDeCargar)
   if (bajas.length) {
@@ -587,7 +615,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 2 · QUIÉNES SON ═══
-  fila(seccion(2, 'quiénes son'))
+  fila(seccion(3, 'quiénes son'))
   fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
   let horasT = 0
   let importeT = 0
@@ -604,7 +632,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 3 · EL AÑO, MES A MES ═══
-  fila(seccion(3, `lo devengado mes a mes · ${ANIO}`))
+  fila(seccion(4, `lo devengado mes a mes · ${ANIO}`))
   fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
   const porMes = new Array(12).fill(0)
   for (const p of activos) {
@@ -636,7 +664,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
   // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
   // de una desvinculación a la mitad exacta.
-  fila(seccion(4, 'qué cuesta desvincular a cada uno'))
+  fila(seccion(5, 'qué cuesta desvincular a cada uno'))
   fila(`La liquidación formal cubre el ${Math.round(ACUERDO_BANCO * 100)}% —la parte registrada—; el resto se completa en efectivo. Las dos columnas SUMAN: juntas son lo que sale de la caja.`)
   fila('El fondo de cese va aparte y NUNCA se suma: es plata del trabajador que se le entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
@@ -688,7 +716,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 5 · EL LEGAJO EN DRIVE ═══
-  fila(seccion(5, 'el legajo de cada uno en Drive'))
+  fila(seccion(6, 'el legajo de cada uno en Drive'))
   fila('Mira el NOMBRE de los archivos de su carpeta, no el contenido: un «alta.pdf» que adentro tenga otra cosa se cuenta como alta igual.')
   fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
   const sinCarpeta = []
@@ -712,7 +740,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══
-  fila(seccion(6, 'lo que esta pestaña NO puede decir'))
+  fila(seccion(7, 'lo que esta pestaña NO puede decir'))
   fila(sub('Sólo el plantel ACTIVO. Los desvinculados se sacaron por pedido del dueño: su devengado histórico vive en la planilla de jornales.'))
   fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
   fila(sub('Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia siguen adentro de los PDF.'))
@@ -750,10 +778,15 @@ async function formatear(google, hoja, filas) {
   for (let i = 0; i < filas.length; i++) {
     let j = 0
     while (j < ANCHO) {
-      if (typeof filas[i][j] !== 'number') { j++; continue }
+      // UNA FÓRMULA TAMBIÉN ES UNA CELDA DE NÚMERO. Desde que la columna POR BANCO cita
+      // `_RECIBOS_RAW`, su valor es un string que empieza con «=»: esas celdas salían sin formato,
+      // con dos decimales y sin separador, al lado de las formateadas. Se lee como un error de dato
+      // y es de formato — que es peor, porque hace dudar del número.
+      const esPlata = (x) => typeof x === 'number' || (typeof x === 'string' && x.startsWith('='))
+      if (!esPlata(filas[i][j])) { j++; continue }
       let k = j
-      while (k < ANCHO && typeof filas[i][k] === 'number') k++
-      reqs.push({ repeatCell: { range: rango(i, i + 1, j, k), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '#,##0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } })
+      while (k < ANCHO && esPlata(filas[i][k])) k++
+      reqs.push({ repeatCell: { range: rango(i, i + 1, j, k), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } })
       j = k
     }
   }
@@ -843,7 +876,7 @@ async function main() {
   }
   const legajos = await legajosDeDrive()
   console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
-  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal })
+  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo })
   console.log(`${PESTANA}: ${filas.length} filas × ${ANCHO} columnas`)
   for (const f of filas.slice(5, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
   if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
