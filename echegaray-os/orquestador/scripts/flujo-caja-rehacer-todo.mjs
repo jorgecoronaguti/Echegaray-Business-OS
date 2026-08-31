@@ -306,8 +306,28 @@ async function main() {
     // a tu versión— hay deshacer real. Nunca frena el trabajo: si un snapshot falla, se registra y sigue.
     if (!DRY) {
       const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+      // ═══ EL SNAPSHOT SE SACA DEL ARCHIVO, NO DE LA LISTA DE PASOS (31/08) ═══
+      //
+      // Salía de `tabs`, que son las pestañas que los PASOS DECLARAN en su tercer elemento. Treinta y
+      // cuatro pasos no declaran ninguna —los diez de Proveedores, los cuatro que escriben columnas de
+      // Compras, Cobranzas, Cheques Emitidos— así que escribían pestañas de las que NO había foto
+      // previa. Justo las tres con más trabajo a mano del dueño: la columna "Qué hacer" de Proveedores
+      // vive ahí. Si la guarda fallaba en una de ellas, la única marcha atrás era el historial de
+      // Google, que no dice qué celda cambió.
+      //
+      // La declaración sirve para saber qué paso saltear cuando una pestaña está candada; para la RED
+      // DE SEGURIDAD la pregunta es otra —"¿qué puede perderse?"— y la respuesta es el archivo entero.
+      // Fotografiar de más cuesta una lectura por pestaña; fotografiar de menos cuesta el trabajo del
+      // dueño. Si no se puede listar el archivo, se cae a las declaradas en vez de quedarse sin red.
+      let aFotografiar = tabs
+      try {
+        const todas = await google.listTabs(ID)
+        aFotografiar = [...new Set([...tabs, ...todas.filter((t) => t && !t.startsWith('_'))])]
+      } catch (e) {
+        console.log(`  ⚠ no pude listar las pestañas del archivo (${String(e.message).slice(0, 60)}): fotografío sólo las declaradas`)
+      }
       let snaps = 0
-      for (const t of tabs) { if (await tomarSnapshot({ google, fileId: ID, pestana: t, tool: 'flujo-caja-rehacer' }).catch(() => null)) snaps++ }
+      for (const t of aFotografiar) { if (await tomarSnapshot({ google, fileId: ID, pestana: t, tool: 'flujo-caja-rehacer' }).catch(() => null)) snaps++ }
       if (snaps) console.log(`🧷 snapshot previo de ${snaps} pestaña(s) — marcha atrás disponible en orq.sheet_snapshots\n`)
     }
 
