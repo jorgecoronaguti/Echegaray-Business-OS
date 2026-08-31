@@ -46,6 +46,18 @@ import { query, closePool } from '../lib/db.mjs'
 import { escalonDe, parsearAcuerdos } from '../lib/uocra-acuerdos.mjs'
 import { COL_OBRA, COL_OFICINA, devengadoPorMes, diaDeCelda, mesesDe, totalAnio, ultimaColumnaHabilCargada, dejoDeCargar as dejoAntesQueElResto } from '../lib/nomina-devengado.mjs'
 import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITEM } from '../lib/patron-pestana.mjs'
+import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+
+/**
+ * CUÁNTAS FILAS ESCRIBIÓ ALGUNA VEZ ESTE GENERADOR.
+ *
+ * No es el alto del cuadro de hoy: es el techo que la cola tiene que poder limpiar. Si una corrida
+ * publica 53 filas después de una de 141 —pasó, la Nómina bajó de 141 a 46 el 31/08— las 88 de
+ * sobra quedan vivas abajo salvo que el centinela las marque como propias. Se declara con margen
+ * hacia arriba, nunca hacia abajo.
+ */
+const ALTO_HISTORICO = 160
 // ═══ POR QUÉ ACÁ NO VA EL CENTINELA `VACIO` ═══
 //
 // El centinela significa «esta celda es mía y va vacía», y se resuelve DENTRO de la fusión. Esta
@@ -400,17 +412,34 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // como dependencia circular y publica #REF!. Pasó en la primera corrida — «POR BANCO» salió en
   // error y las otras dos, que caen en C y en E, salieron bien.
   fila('QUÉ SALE DE LA CAJA MAÑANA')
-  fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'SALE DE LA CAJA')
-  // LO QUE SALE = todo lo que se debe MENOS lo que ya se entregó. No es «banco + efectivo»: en las
-  // liquidaciones el efectivo es la mitad negra entera y los $600.000 del lote del 28/08 ya salieron.
-  // Sumar las dos columnas los contaría de nuevo, que es cómo un titular pide transferir dos veces.
-  const saleDeLaCaja = `${deTodos('G')}-${deTodos('D')}-${deTodos('C')}`
-  fila('', `=${deTodos('E')}`, '', `=${saleDeLaCaja}-${deTodos('E')}`, '', `=${saleDeLaCaja}`)
-  // Una sola glosa, corta, en la columna ancha. La primera versión ponía una nota abajo de cada
-  // cifra —«a la cuenta sueldo de cada uno», «billetes, ya descontado lo adelantado»— y las tres
-  // salieron cortadas: la columna mide 108 px, que son ~17 caracteres. Un texto que no entra no
-  // explica nada y ensucia la fila que tiene que leerse en tres segundos.
-  fila(`${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09`)
+  // ═══ TRES CIFRAS QUE SE PUEDEN VERIFICAR SUMANDO UNA COLUMNA (31/08) ═══
+  //
+  // El dueño: «quitar las filas 5 a 7 de pestaña nomina, estan mal calculadas y ademas confunden […]
+  // o dejarlas si eso indica una de las reglas de oro, pero corregirlas». La regla de oro pide el
+  // titular arriba, así que se corrige.
+  //
+  // Y confundían por una razón concreta: la tarjeta «EN EFECTIVO» decía $4.932.467 mientras la suma
+  // de las columnas EN EFECTIVO de los tres cuadros da $5.532.467. No estaba mal la cuenta —le
+  // restaba los $600.000 ya transferidos a Jofre y Sosa— pero ninguna columna de la pestaña muestra
+  // ese número, así que no se podía verificar mirando. Un titular que no se puede reconciliar con
+  // lo de abajo es peor que no tener titular.
+  //
+  // Ahora las tres cifras salen de sumar UNA columna cada una:
+  //   SE DEBE      = Σ TOTAL A PAGAR   (columna G de los tres cuadros)
+  //   YA SE ENTREGÓ = Σ ADELANTO + Σ YA TRANSFERIDO
+  //   SALE MAÑANA  = la resta de las dos anteriores
+  //
+  // El reparto entre transferencia y efectivo —que es operativo y él lo necesita— baja a la glosa,
+  // donde se puede decir de dónde sale cada uno sin fingir que es una columna.
+  fila('', 'SE DEBE', '', 'YA SE ENTREGÓ', '', 'SALE MAÑANA')
+  const seDebe = deTodos('G')
+  const yaEntregado = `${deTodos('C')}+${deTodos('D')}`
+  fila('', `=${seDebe}`, '', `=${yaEntregado}`, '', `=${seDebe}-(${yaEntregado})`)
+  // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
+  // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
+  // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
+  fila(`="${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} · paga 01/09 · de lo que sale mañana, " `
+    + `& TEXT(${deTodos('E')};"$ #,##0") & " van por transferencia —lo que dice cada recibo— y el resto en efectivo."`)
   fila('')
 
   fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
@@ -606,23 +635,26 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const cuilFila = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
     const rec = (col, cuil, per) => `SUMIFS(${R}$E$1:$E$400;${R}$${col}$1:$${col}$400;"${cuil}";${R}$B$1:$B$400;"${per}")`
     const celdaBanco = cuilFila && delRecibo.banco !== null
-      ? `=${rec('A', cuilFila, periodoRecibo)}` : Math.round(hoyR.banco)
+      // SIN `Math.round`: el dueño, 31/08 — «cuidado con redondear en la pestaña nomina, dejar los
+      // numeros de la manera correcta porque sino las transferencias se hacen mal». El recibo dice
+      // $215.564,62 y redondear a $215.565 hace una transferencia por 38 centavos de más.
+      ? `=${rec('A', cuilFila, periodoRecibo)}` : hoyR.banco
     // B · EL ADELANTO EN OBRA. Sale del espejo de la planilla, citado por fórmula como las horas y
     // el jornal: es el mismo dato, de la misma fila, y no hay razón para pegarlo.
     //
     // CERO, no el guión: esta celda entra en una resta. Con «—» adentro, `F−D−C−B` devuelve #VALUE!
     // y se llevó puesta la fila de Castillo y el total de la columna. El guión es para leer, no
     // para calcular; que el cero se VEA como guión lo resuelve el formato, no el contenido.
-    const celdaAdel = e ? `=N(${J}$Y$${e})` : Math.round(Number(q.adelanto || 0))
+    const celdaAdel = e ? `=N(${J}$Y$${e})` : (Number(q.adelanto) || 0)
     // C · LO QUE YA SALIÓ POR EL BANCO. Otra fuente, otra columna: `_RECIBOS_RAW` trae una fila por
     // movimiento con su referencia del extracto. Sin CUIL no hay a qué apuntar y queda el valor.
     const celdaTransf = cuilFila
       ? `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA")`
-      : Math.round(porBanco || 0)
+      : (porBanco || 0)
     // Las horas del espejo más los días que faltan a jornada completa. El sumando sólo aparece
     // cuando hay días pendientes, así la fórmula no lleva un «+0» que hace dudar.
     const celdaHoras = e ? `=N(${J}$V$${e})${q.pendientes ? `+${Math.round(q.pendientes)}` : ''}` : Math.round(q.horas)
-    const celdaJornal = e ? `=N(${J}$W$${e})` : Math.round(q.jornal)
+    const celdaJornal = e ? `=N(${J}$W$${e})` : q.jornal
     // La categoría de convenio: la declarada si existe, y si la dedujo el OS va con «▲». Sin
     // equivalencia se muestra el código crudo de la planilla, que es mejor que un blanco: dice que
     // esa categoría no está mapeada y por eso su fila no tiene piso.
@@ -636,7 +668,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
       jornalNuevo != null ? `=N(I${n})-N(G${n})` : SIN_DATO,
       celdaHoras, celdaJornal,
-      jornalNuevo != null ? Math.round(jornalNuevo) : SIN_DATO)
+      jornalNuevo != null ? jornalNuevo : SIN_DATO)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
   // después de sacar a los dos liquidados: un total de 15 filas rotulado «17 persona(s)».
@@ -1075,7 +1107,17 @@ async function formatear(google, hoja, filas) {
     // «Quincenas cargadas» es un CONTEO (1 de 2). Sin esto caía en el default y salía «$1»: un
     // recuento vestido de pesos, que es el mismo defecto que puso «$45.803» en una fecha de ingreso.
     if (/hora|hs\b|\$\/h|recibos|personas|días|dias|quincenas|cargadas/.test(t)) return E.NUM.cantidad
-    return E.NUM.moneda
+    // ═══ CON CENTAVOS EN LA NÓMINA, PORQUE DE ACÁ SE COPIAN LAS TRANSFERENCIAS (31/08) ═══
+    //
+    // El dueño: «cuidado con redondear en la pestaña nomina, dejar los numeros de la manera correcta
+    // porque sino las transferencias se hacen mal». El formato de la casa es `"$"#,##0` —sin
+    // decimales— y con él el recibo de Aguero, que dice $215.564,62, se DIBUJA $215.565. El valor de
+    // la celda siempre estuvo bien; lo que estaba mal era lo que se leía, y de lo que se lee salen
+    // las transferencias.
+    //
+    // Sólo en la Nómina. «Plantel» son agregados anuales donde el centavo es ruido y nadie transfiere
+    // desde ahí.
+    return hoja?.title === 'Nómina' ? E.NUM.monedaExacta : E.NUM.moneda
   }
   // Cada tabla va de su encabezado («Persona») hasta su fila de total inclusive.
   for (let i = 0; i < n; i++) {
@@ -1183,59 +1225,58 @@ async function publicar(google, PESTANA, filas) {
     } catch { /* queda el lugar declarado */ }
   }
 
-  // ═══ SE BORRA Y SE REHACE, Y ES LA ÚNICA FORMA CORRECTA ACÁ ═══
+  // ═══ YA NO SE BORRA LA PESTAÑA. EL DUEÑO ESCRIBE ACÁ (31/08/2026) ═══
   //
-  // La regla NO-BORRAR del OS es absoluta: ninguna escritura puede dejar vacía una celda que tenga
-  // algo, porque no puede probar que ese algo no lo escribió el dueño. Es correcta y no se saltea.
-  // Pero convierte una pestaña 100% generada en un sedimento: si una corrida es más corta que la
-  // anterior, la cola de la vieja queda viva debajo de la nueva. Ya pasó dos veces acá.
+  // Hasta hoy este bloque hacía `deleteSheet` + `addSheet` en cada corrida, con este argumento
+  // escrito al lado: *«esta pestaña la crea y la rehace ESTE script, entera, y nadie más escribió
+  // nunca una celda suya»*, y con esta condición: *«el día que el dueño anote algo acá, esta
+  // decisión hay que revisarla»*.
   //
-  // La salida no es debilitar la guarda: es no pedirle que resuelva algo que no puede. Esta pestaña
-  // la crea y la rehace ESTE script, entera, y nadie más escribió nunca una celda suya. Borrarla y
-  // volver a crearla deja el archivo exactamente en el estado que describe el generador, sin cola.
-  // El día que el dueño anote algo acá, esta decisión hay que revisarla — y por eso está escrita.
-  if (hoja) {
-    const borrado = await google.spreadsheetBatchUpdate(ID, [{ deleteSheet: { sheetId: hoja.sheetId } }])
-    // NO SE ANUNCIA UN BORRADO QUE NO SE CONFIRMÓ. La guarda puede devolver `{protegido:true}` sin
-    // lanzar: seguir de largo dejaba el mensaje «✂ borré la Nómina anterior» sobre una pestaña que
-    // sigue entera, y el paso siguiente crearía una segunda con el mismo nombre.
-    if (borrado?.protegido) {
-      console.error(`no pude borrar ${PESTANA} (${borrado.motivo ?? 'la guarda lo frenó'}): NO sigo.`)
+  // Ese día llegó, y con la peor evidencia posible: **«no estas respetando mis ediciones en las
+  // pestañas seguis borrando lo q yo hago en sheet flujo de fondos»**. La pestaña se corrió ocho
+  // veces el 31/08 y cada corrida se llevó puesto lo que él hubiera anotado, sin dejar rastro —
+  // borrar la hoja no deja ni la huella que deja pisar una celda.
+  //
+  // ═══ LO QUE REEMPLAZA AL BORRADO ═══
+  //
+  // El borrado existía por una razón real: la regla NO-BORRAR impide vaciar una celda con contenido,
+  // así que una corrida más corta que la anterior dejaba la cola de la vieja viva abajo. La solución
+  // no es borrar la hoja: es el CENTINELA de `cola-de-rango`, que marca las celdas sobrantes como
+  // propias y las vacía por `vaciarPropio` — el mismo mecanismo que usan todas las demás pestañas
+  // del archivo, incluida SUBCONTRATISTAS.
+  //
+  // La diferencia práctica: si él escribe algo en una celda que el generador no escribe, ahora se
+  // conserva y la corrida lo informa. Si escribe encima de una celda que el generador SÍ escribe,
+  // gana el generador — eso no cambió y es correcto, porque esa celda es una cuenta.
+  if (!hoja) {
+    const creada = await google.spreadsheetBatchUpdate(ID, [{
+      addSheet: {
+        properties: {
+          title: PESTANA,
+          ...(indicePrevio == null ? {} : { index: indicePrevio }),
+          gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 },
+        },
+      },
+    }])
+    hoja = await buscar()
+    if (creada?.protegido || !hoja) {
+      console.error(`no pude crear ${PESTANA} (${creada?.motivo ?? 'no aparece en el archivo'}): NO sigo.`)
       process.exit(1)
     }
-    if (await buscar()) { console.error(`${PESTANA} sigue existiendo después del borrado: NO sigo.`); process.exit(1) }
-    console.log(`  ✂ borré la ${PESTANA} anterior para rehacerla sin cola`)
-    hoja = null
+    console.log(`  ✚ creé la pestaña ${PESTANA}`)
   }
-  const creada = await google.spreadsheetBatchUpdate(ID, [{
-    addSheet: {
-      properties: {
-        title: PESTANA,
-        ...(indicePrevio == null ? {} : { index: indicePrevio }),
-        gridProperties: { rowCount: filas.length + 40, columnCount: ANCHO, frozenRowCount: 3 },
-      },
-    },
-  }])
-  hoja = await buscar()
-  // BORRADA Y SIN REPONER es el peor estado posible de esta secuencia, y el `catch` de `main` sólo
-  // imprimía. Se comprueba que la pestaña EXISTE antes de dar por hecho que se creó.
-  if (creada?.protegido || !hoja) {
-    console.error(`no pude crear ${PESTANA} (${creada?.motivo ?? 'no aparece en el archivo'}): la pestaña quedó BORRADA. Volvé a correr esto.`)
-    process.exit(1)
-  }
-  console.log(`  ✚ creé la pestaña ${PESTANA}`)
 
-  // ═══ LA REGLA 0, DECIDIDA EN VOZ ALTA: `respetar: false` ═══
-  //
-  // La regla del OS es no pisar nunca lo que escribió el dueño, y por eso cada generador tiene que
-  // declarar qué hace con sus ediciones. Acá se apaga, y el motivo es verificable: la pestaña se
-  // borra y se vuelve a crear en cada corrida, con lo cual no puede haber una celda de nadie más —
-  // y si alguna vez la hubiera, se habría perdido en el `deleteSheet` de arriba, no acá.
-  //
-  // ESTA DECISIÓN CADUCA EL DÍA QUE EL DUEÑO ANOTE ALGO EN LA PESTAÑA. Cuando eso pase hay que
-  // cambiar el borrado por una fusión y esta línea por `escribirPreservando`. Queda escrito para
-  // que quien lo lea sepa que fue una decisión y no un descuido.
-  const escritura = await google.updateSheetValues(ID, `${PESTANA}!A1:${String.fromCharCode(64 + ANCHO)}${filas.length}`, filas, { yaGuardado: true, respetar: false })
+  // La cola de la corrida anterior se limpia con el centinela, no borrando la hoja. `alto` es lo que
+  // este generador escribió alguna vez: se declara con margen para que una corrida corta limpie lo
+  // que dejó una larga, y `conColaLimpiable` aborta si la grilla crece más que eso en vez de dejar
+  // cola publicada en silencio.
+  const conCola = conColaLimpiable(filas, { ancho: ANCHO, alto: ALTO_HISTORICO, quien: PESTANA })
+  const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: ANCHO })
+  if (escritura?.conservadas?.length) {
+    console.log(`  ✋ ${escritura.conservadas.length} celda(s) tuyas conservadas:`)
+    for (const c of escritura.conservadas.slice(0, 8)) console.log(`     fila ${c.fila}, col ${c.col}: ${String(c.valor).slice(0, 60)}`)
+  }
+  if (escritura?.respetadas?.length) console.log(`  ✋ ${escritura.respetadas.length} texto(s) tuyos respetados`)
   // ═══ SI LA ESCRITURA NO PASÓ, NO SE FORMATEA ═══
   //
   // El desastre de CAJA fue exactamente esto: la guarda frenó los VALORES y el generador siguió
