@@ -37,6 +37,27 @@ const LLAVES = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_API_KEY', '
   'ORQ_ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'GOOGLE_GENERATIVE_AI_API_KEY']
 const borradas = LLAVES.filter((k) => process.env[k] !== undefined)
 for (const k of LLAVES) delete process.env[k]
+// El borrado se COMPRUEBA, no se da por hecho, y se comprueba AL FINAL de la corrida (ver la
+// salida): asi tambien se detecta un modulo que la repusiera al importarse.
+const llavesVivas = () => LLAVES.filter((k) => process.env[k] !== undefined)
+
+// ═══ BORRARLAS NO ALCANZA (medido el 31/08/2026) ═══
+//
+// `lib/config.mjs` carga `~/.config/echegaray-orq/anthropic.env` DENTRO de `process.env` al
+// importarse, y llega solo: google.mjs -> no-reponer.mjs -> db.mjs -> config.mjs. Como
+// `loadEnvLocalInto` completa lo que falta y no pisa lo que hay, REPONE exactamente la llave que
+// esta linea acaba de borrar. Con la primera version de este script, `ANTHROPIC_API_KEY` estaba
+// VIVA al terminar la corrida: el apagado era nominal.
+//
+// La cura es apuntar ESE cargador a un archivo que no existe. Es la variable que el propio
+// `config.mjs` respeta, y no se toca el archivo real.
+//
+// SOLO ESE. La primera version tambien anulaba `ORQ_ENV_FILE` (worker.env), y con eso se fue
+// DATABASE_URL: la guarda de escritura se quedo sin base y fallo CERRADA — «no puedo verificar tus
+// ediciones -> no piso ninguna pestaña de contenido». El circuito murio en la primera escritura, que
+// es la trampa del worktree documentada en el repo, y esta bien que muera asi. `worker.env` y
+// `.env.local` no traen llaves de modelo (verificado), asi que apagar el LLM no necesita tocarlos.
+process.env.ORQ_ANTHROPIC_ENV_FILE = '/dev/null/anthropic-env-inexistente-del-apagado'
 
 const ARGS = new Set(process.argv.slice(2))
 const VIVO = ARGS.has('--vivo')
@@ -210,6 +231,9 @@ const salida = {
   modo: VIVO ? 'vivo' : 'doble',
   fileId: planilla.fileId,
   llaves_borradas_del_entorno: borradas,
+  // TIENE QUE SER []. Es la diferencia entre "el codigo dice que las borra" y "no quedo ninguna
+  // viva cuando termino de correr todo".
+  llaves_vivas_al_terminar: llavesVivas(),
   metricas: {
     llamadas_llm: llm.total,
     tokens: llm.tokens,
@@ -233,6 +257,7 @@ if (ARGS.has('--json')) {
   }
   console.log(`\nEL CERO, MEDIDO EN EL TRANSPORTE\n${'='.repeat(78)}`)
   fila('llaves borradas del entorno', borradas.length ? borradas.join(', ') : '(no habia ninguna puesta)')
+  fila('llaves VIVAS al terminar', llavesVivas().length ? `!! ${llavesVivas().join(', ')}` : 'ninguna')
   fila('LLAMADAS A UN MODELO', llm.total)
   fila('tokens . costo USD', `${llm.tokens} . ${llm.usd}`)
   fila('llamadas a la API de Google', drive ? drive.trafico.length : 'n/d (modo vivo)')
