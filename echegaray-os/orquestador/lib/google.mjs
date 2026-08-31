@@ -954,15 +954,38 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=10`)
       return (j.files || [])[0] || null
     },
-    /** Lista el contenido inmediato de una carpeta (archivos y subcarpetas). */
-    async listFolder(folderId) {
+    /** Lista el contenido inmediato de una carpeta (archivos y subcarpetas).
+     *
+     *  PAGINA (31/08). Antes pedía `pageSize=1000` y devolvía `j.files` sin mirar el
+     *  `nextPageToken`: una carpeta con más de mil hijos se truncaba EN SILENCIO, y el que
+     *  llamaba no tenía cómo enterarse. Lo usan `impuestos-fuentes.mjs` y `uocra-ddjj.mjs`
+     *  sobre carpetas fiscales, donde "faltaba un archivo" no se distingue de "no existe".
+     *  `tope` corta explícito para que un Drive gigante no cuelgue la tarea. */
+    async listFolder(folderId, { tope = 5000 } = {}) {
       const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`)
-      const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=folder,name&pageSize=1000`)
-      return j.files || []
+      const out = []
+      let pageToken = ''
+      do {
+        const url = `https://www.googleapis.com/drive/v3/files?q=${q}`
+          + '&fields=nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)'
+          + '&orderBy=folder,name&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true'
+          + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+        const j = await apiGet(url)
+        out.push(...(j.files || []))
+        pageToken = j.nextPageToken || ''
+      } while (pageToken && out.length < tope)
+      return out
     },
-    /** Metadata de un archivo (id, name, mimeType, size, link para abrirlo). */
-    async getMeta(fileId) {
-      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,webViewLink&supportsAllDrives=true`)
+    /** Metadata de un archivo. Por defecto la proyección corta e histórica
+     *  (id, name, mimeType, size, link para abrirlo).
+     *
+     *  `campos` (31/08) existe porque esa proyección NO alcanza para identificar un archivo:
+     *  sin `parents` no se puede verificar un move, sin `trashed` una carpeta en la papelera se
+     *  lee vacía y sin error, y sin `md5Checksum`/`version` no hay con qué decir que el
+     *  contenido cambió. La capacidad de Drive (`lib/drive/`) pide el juego completo; el default
+     *  se deja corto a propósito para no cambiarles la respuesta a los llamadores viejos. */
+    async getMeta(fileId, { campos = 'id,name,mimeType,size,webViewLink' } = {}) {
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(campos)}&supportsAllDrives=true`)
     },
     /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
      *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a
@@ -1014,10 +1037,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Sube un archivo BINARIO (imagen, PDF, cualquier formato) a Drive vía multipart.
      *  data = base64. Devuelve {id, link}. Requiere actuar como usuario (OAuth) o Shared Drive. */
-    async uploadFile(name, base64Data, mimeType, { parentId } = {}) {
+    async uploadFile(name, base64Data, mimeType, { parentId, properties } = {}) {
       const token = await accessToken()
       const meta = { name, mimeType }
       if (parentId) meta.parents = [parentId]
+      if (properties) meta.properties = properties // clave de idempotencia en la misma llamada
       const boundary = 'echeg' + Math.random().toString(36).slice(2)
       const body =
         `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
@@ -1299,13 +1323,16 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Crea un archivo propio del OS (Doc/Sheet nativo o carpeta) vía Drive metadata.
      *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
-    async createFile({ name, mimeType, parents } = {}) {
+    async createFile({ name, mimeType, parents, properties } = {}) {
       if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
       const tok = await ownerToken() // crear en el Drive del dueño (cuota real), no en el del robot
+      // `properties` va EN LA CREACIÓN, no en un PATCH posterior: si la clave de idempotencia se
+      // escribiera después, una caída entre las dos llamadas dejaría un archivo sin marca y el
+      // retry crearía el segundo. Ver `lib/drive/escritura.mjs`.
       const f = await apiSend(
-        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink&supportsAllDrives=true',
+        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink,parents&supportsAllDrives=true',
         'POST',
-        { name, mimeType, ...(parents ? { parents } : {}) },
+        { name, mimeType, ...(parents ? { parents } : {}), ...(properties ? { properties } : {}) },
         tok,
       )
       // Un Sheet creado por API nace en_US (formato inglés: coma decimal, fechas MM/DD, fórmulas
@@ -1532,6 +1559,10 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * por eso una nota mal escrita sobrevive a que se reescriba la pestaña entera.
      */
     async apiGetSheets(url) { return apiGet(url) },
+    /** GET autenticado contra la API de DRIVE. Es el mismo `apiGet` que `apiGetSheets`, con el
+     *  nombre que corresponde: la capacidad de Drive (`lib/drive/`) arma sus propias consultas
+     *  `q=` tipadas y necesita una puerta que no mienta sobre a qué API le habla. */
+    async apiGetDrive(url) { return apiGet(url) },
     /**
      * Las pestañas del archivo con su tamaño y SI ESTÁN OCULTAS.
      *
@@ -1742,11 +1773,15 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return res
     },
     /** Copia/duplica un archivo (para partir de una plantilla o de un presupuesto previo). */
-    async copyFile(fileId, name, parents) {
+    /** Duplica un archivo. `properties` (31/08) se pasa explícito porque una copia HEREDA las
+     *  properties del original: si el original llevaba una clave de idempotencia, la copia
+     *  aparecería como «esa operación ya se hizo». Quien copia decide qué clave lleva la copia —
+     *  y `{clave: null}` la borra. */
+    async copyFile(fileId, name, parents, { properties } = {}) {
       return apiSend(
-        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?fields=id,name,webViewLink,mimeType&supportsAllDrives=true`,
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?fields=id,name,webViewLink,mimeType,parents&supportsAllDrives=true`,
         'POST',
-        { ...(name ? { name } : {}), ...(parents ? { parents } : {}) },
+        { ...(name ? { name } : {}), ...(parents ? { parents } : {}), ...(properties ? { properties } : {}) },
         await ownerToken(), // la copia nace en el Drive del dueño (cuota real), no en el del robot
       )
     },
