@@ -1657,14 +1657,38 @@ export function grilla({
   }
   // OBRA: la quincena que se está pagando, leída del registro. Si la columna «Banco» del espejo ya
   // trae el reparto cargado, ése manda; mientras esté en cero, el 50/50 del acuerdo lo calcula.
+  // ═══ ESTA FILA CITA A «Nómina», PARA QUE LAS DOS PESTAÑAS COINCIDAN POR CONSTRUCCIÓN ═══
+  //
+  // El dueño lo pidió el 31/08/2026: «no descuidar la pestaña "jornales por quincena" tiene q
+  // coincidir con la informacion de "nomina"». Y no coincidían: Jornales decía 17 personas y
+  // $8.144.700 con $600.000 por banco; Nómina, 15 personas y $7.540.500 con $2.786.533. La
+  // diferencia eran Jofre y Sosa, que ya cobraron su liquidación final y seguían contados acá.
+  //
+  // La causa de fondo es que cada pestaña miraba una fuente distinta: Jornales, el registro de la
+  // quincena (que sale del espejo de la planilla); Nómina, los recibos que emite el estudio. Dos
+  // fuentes para el mismo concepto es exactamente lo que este proyecto no admite, y «sincronizarlas»
+  // copiando números las separa de nuevo la próxima vez que una cambie.
+  //
+  // Así que esta fila deja de calcular y pasa a CITAR la fila de total de Nómina. Coincidir deja de
+  // ser algo que hay que revisar y pasa a ser algo que no puede fallar.
+  //
+  // ANCLADO AL TEXTO, NO A LA FILA: el rótulo dice «⇒ 15 persona(s)» y el número cambia con el
+  // plantel, así que se busca con comodín. Una referencia por número de fila da un total distinto
+  // cada vez que alguien inserta una línea arriba — es la trampa que este repo ya pagó.
+  const deNomina = (col) => `IFERROR(INDEX('Nómina'!${col}:${col};MATCH("⇒*persona(s)";'Nómina'!A:A;0)))`
   filaPago(fPago.obra, {
-    personas: `=$${colDe('Personas')}$${fReg}`,
+    // El plantel sale del mismo rótulo: si Nómina excluye a alguien, acá desaparece solo.
+    personas: `=IFERROR(VALUE(REGEXEXTRACT(INDEX('Nómina'!A:A;MATCH("⇒*persona(s)";'Nómina'!A:A;0));"(\\d+)"));$${colDe('Personas')}$${fReg})`,
     cuando: `=$C$${fReg}`,
-    total: `=$${cTot}$${fReg}`,
-    adelanto: `=$${cAdel}$${fReg}`,
+    // TOTAL HOY de Nómina (columna M). Si la pestaña no está o el rótulo cambió, cae al registro:
+    // una celda vacía acá se lee como «no hay que pagar nada», que es peor que un número viejo.
+    total: `=IF(N(${deNomina('M')})>0;${deNomina('M')};$${cTot}$${fReg})`,
+    adelanto: `=IF(N(${deNomina('G')})>0;${deNomina('G')};$${cAdel}$${fReg})`,
+    // Banco HOY de Nómina (columna K) — la suma de lo que dice cada recibo. El `/2` de antes era el
+    // 50% calculado, que es justamente lo que el dueño mandó dejar de usar.
     // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y
     // ahí la coma es el separador de argumentos — el 0,5 se parte en dos y la celda queda en #ERROR.
-    banco: `=IF(N($${cBco}$${fReg})>0;$${cBco}$${fReg};D${fPago.obra}/2)`,
+    banco: `=IF(N(${deNomina('K')})>0;${deNomina('K')};IF(N($${cBco}$${fReg})>0;$${cBco}$${fReg};D${fPago.obra}/2))`,
   })
   // OFICINA y DIRECCIÓN: la próxima fecha de caja con algo PROYECTADO todavía por pagar. Se mira la
   // columna «Proyectado» y no la «Pagado» — un mes ya pagado no es un pago que viene.
