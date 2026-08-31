@@ -12,10 +12,27 @@ from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind = 'r';
 ```
 
-Resultado el 2026-08-30: **176 de 185**.
-
 Cualquiera que tenga una sesión autenticada —cualquier usuario del OS, con cualquier rol de negocio—
 puede ejecutar `truncate public.<tabla>` y vaciarla.
+
+## El número no es fijo, y ahí está lo peor
+
+| momento del 2026-08-30 | truncables / total |
+|---|---|
+| al abrir el programa | **176 / 185** |
+| una hora después, tras crear 11 tablas nuevas | **187 / 196** |
+
+Las once tablas creadas en esa hora —las de precios, genealogía de obra y decisiones de Base
+Maestra— **nacieron todas truncables**, sin que ninguna migración lo pidiera. Es el mismo patrón que
+ya mordió con los `GRANT` por columna: el permiso no está puesto tabla por tabla, está en los
+`default privileges`, así que **cada tabla nueva lo hereda al nacer**.
+
+Por eso citar un número absoluto es engañoso: crece solo. Lo que hay que arreglar no son 187 tablas,
+es la regla que las fabrica así.
+
+Entre las alcanzadas están las que el sistema trata como inmutables por diseño —`cotizacion_evento`,
+`cotizacion_override_precio`, el log de decisiones de Base Maestra—: tablas cuyas policies prohíben
+`update` y `delete` y que, sin embargo, se pueden **vaciar enteras**.
 
 ## Por qué RLS no protege
 
@@ -29,8 +46,8 @@ así no se reconstruye desde el propio sistema.
 
 ## El alcance real
 
-Entre las 176 están las que sostienen la operación y la plata: movimientos bancarios, cobranzas,
-compras, jornales, cotizaciones, obras, asistencia. Nueve tablas quedan afuera; el resto, no.
+Están las que sostienen la operación y la plata: movimientos bancarios, cobranzas, compras, jornales,
+cotizaciones, obras, asistencia. Nueve tablas quedan afuera; el resto, no.
 
 ## Lo que hay que hacer (fuera de este programa)
 
