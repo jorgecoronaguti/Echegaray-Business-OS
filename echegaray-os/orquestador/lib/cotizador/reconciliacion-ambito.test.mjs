@@ -172,3 +172,23 @@ test('con un solo cómputo no se reconcilia, y eso se DICE — no sale todo en v
 
 /** Los renglones de un veredicto, para las reconciliaciones locales de los negativos. */
 function de2(r, v) { return r.renglones.filter((x) => x.veredicto === v) }
+
+test('el choque se encuentra por FILA, no sólo por número de ítem', () => {
+  // `barrerSuministros` indexa por el ID DEL CÓMPUTO —un id interno—, no por el «5.3» de la grilla.
+  // Buscarlo sólo por `item` daba CERO choques sobre ARCOR mientras el barrido encontraba uno de
+  // $ 2.894.561: la reconciliación publicaba «0 CLIENT_SUPPLIED» al lado del hallazgo que sí existía.
+  const item = it({ item: '1.2', fila: 11, descripcion: 'Provisión de placas de acero. Materiales a cargo de ARCOR', unidad: 'kg', cantidad: 88, importe: 700_000 })
+  const choque = {
+    elemento: 'computo-a3f9-interno', fila: 11, codigo: 'T1111.1', plataEnRiesgo: 2_894_561,
+    declarados: [{ literal: 'Materiales a cargo de ARCOR' }], lineas: [{ recursoCodigo: 'MAT-P', nombre: 'Perfil C', cantidad: 6 }],
+    porQue: 'el ítem dice «Materiales a cargo de ARCOR» y T1111.1 compra 6 de esos materiales',
+  }
+  const r = reconciliarAmbito({ rige: grilla('rige.xlsx', [item]), contra: grilla('pedido.xlsx', [item]), suministros: { conChoque: [choque] } })
+  assert.equal(r.resumen[VEREDICTO.CLIENT_SUPPLIED].n, 1, 'el id interno del cómputo no coincide con «1.2»: la fila es lo único que las dos vistas comparten')
+  assert.equal(r.resumen[VEREDICTO.CLIENT_SUPPLIED].plata, 2_894_561)
+  assert.equal(r.resumen[VEREDICTO.MATCH].n, 0)
+  // MUTACIÓN CORRIDA: en `reconciliacion-ambito.mjs`, volver a
+  //   `const choqueDe = (i) => conChoque.get(\`item:${String(i?.item)}\`) ?? null`.
+  //   FALLA: «el id interno del cómputo no coincide con «1.2»: la fila es lo único que las dos vistas
+  //   comparten: 0 !== 1».
+})

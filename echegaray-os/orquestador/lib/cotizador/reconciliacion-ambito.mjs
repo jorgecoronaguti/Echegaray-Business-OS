@@ -100,11 +100,22 @@ export function reconciliarAmbito({ rige = null, contra = null, suministros = nu
   const itemsContra = contra.lectura?.items ?? []
   const porClaveContra = new Map(itemsContra.map((i) => [claveDe(i), i]))
   const porClaveRige = new Map(itemsRige.map((i) => [claveDe(i), i]))
-  // Los elementos con choque de suministro, por el `item` de la planilla que los produjo.
-  const conChoque = new Map((suministros?.conChoque ?? []).map((c) => [String(c.elemento), c]))
+  // ═══ LOS CHOQUES SE BUSCAN POR FILA, Y POR ÍTEM COMO RESPALDO ═══
+  //
+  // `barrerSuministros` los devuelve indexados por `elemento`, que es el **id del cómputo** que
+  // produjo `computosDePlanilla` — no el número de ítem de la grilla. Buscarlos sólo por `item` daba
+  // CERO choques sobre ARCOR mientras el barrido encontraba uno de $ 2.894.561: la reconciliación
+  // publicaba «0 CLIENT_SUPPLIED» al lado del hallazgo que sí existía. La fila de la planilla es lo
+  // único que las dos vistas comparten, y por eso el caller la adjunta.
+  const conChoque = new Map()
+  for (const c of suministros?.conChoque ?? []) {
+    if (c.fila !== null && c.fila !== undefined) conChoque.set(`fila:${c.fila}`, c)
+    conChoque.set(`item:${String(c.elemento)}`, c)
+  }
+  const choqueDe = (i) => conChoque.get(`fila:${i?.fila}`) ?? conChoque.get(`item:${String(i?.item)}`) ?? null
 
   const renglones = [
-    ...itemsRige.map((i) => renglonDeRige(i, { porClaveContra, itemsContra, conChoque, rige, contra })),
+    ...itemsRige.map((i) => renglonDeRige(i, { porClaveContra, itemsContra, choqueDe, rige, contra })),
     // Lo que está en el pedido y no en lo que rige: SALIÓ del alcance cotizado. Es la mitad de la
     // brecha que el cliente va a preguntar.
     ...itemsContra.filter((i) => !porClaveRige.has(claveDe(i))).map((i) => renglon(VEREDICTO.EXCLUDED, {
@@ -117,10 +128,10 @@ export function reconciliarAmbito({ rige = null, contra = null, suministros = nu
 }
 
 /** El veredicto de un ítem del cómputo que rige. PURA. */
-function renglonDeRige(i, { porClaveContra, itemsContra, conChoque, rige, contra }) {
+function renglonDeRige(i, { porClaveContra, itemsContra, choqueDe, rige, contra }) {
   const clave = claveDe(i)
   const par = porClaveContra.get(clave) ?? null
-  const choque = conChoque.get(String(i.item)) ?? null
+  const choque = choqueDe(i)
   // ═══ EL CHOQUE DE SUMINISTRO GANA SOBRE CUALQUIER OTRO VEREDICTO ═══
   // Un ítem que coincide perfecto entre los dos cómputos y cuyo análisis compra el material que el
   // cliente ya compró es un MATCH que paga dos veces. El veredicto tiene que decir eso.

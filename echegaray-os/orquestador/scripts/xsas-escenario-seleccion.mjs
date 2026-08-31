@@ -183,6 +183,23 @@ async function main() {
   for (const c of r.costos.filter((x) => x.subtotal === null)) linea(`- \`${c.partida}\` sin costo: ${(c.faltan ?? []).join(' · ')}`)
   linea('')
 
+  // ── 4 · LA RECONCILIACIÓN, YA ADENTRO DEL CASO ─────────────────────────────────────────────
+  const rec = caso.reconciliacion
+  linea('## 4 · La reconciliación entre los dos cómputos del ámbito')
+  linea('')
+  linea(rec.porQue)
+  linea('')
+  linea('| veredicto | renglones | plata | sin valorizar |')
+  linea('|---|---|---|---|')
+  for (const [v, x] of Object.entries(rec.resumen ?? {})) linea(`| ${v} | ${x.n} | ${plata(x.plata)} | ${x.sinValorizar} |`)
+  linea('')
+  linea(`Brecha declarada por los totales de las dos planillas: **${plata(caso.version.conflicto?.brecha)}**`)
+  linea('')
+  for (const x of rec.renglones.filter((y) => y.veredicto !== 'EXCLUDED')) {
+    linea(`- **${x.veredicto}** · ítem ${x.rige?.item ?? x.pedido?.item ?? '?'} — ${String(x.porQue).slice(0, 160)}`)
+  }
+  linea('')
+
   await pool.end()
 
   linea('## VEREDICTO')
