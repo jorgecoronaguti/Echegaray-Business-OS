@@ -282,3 +282,35 @@ test('la latencia se declara y NO se inventa', () => {
   assert.equal(m.latencia_tibia_ms, null)
   assert.equal(metricasDeCorrida({ msFrio: 4200 }).latencia_fria_ms, 4200)
 })
+
+test('una investigación que terminó en el HUMANO también entra al denominador', () => {
+  // MUTACIÓN QUE LO PONE ROJO: en `metricasDeCorrida`, `const humanoTotal = requierenHumano`.
+  //
+  // Encontrado corriendo el script real: la corrida publicaba `human_questions: 1` (la cola) con
+  // DOS huecos que habían recorrido los siete pasos del §12 y terminado en una persona. Investigar
+  // y no encontrar salía gratis para la métrica — el mismo agujero del denominador viejo, un piso
+  // más abajo.
+  const cant = [{ valor: 1, estado: ESTADO.CALCULADO }, { valor: 2, estado: ESTADO.CALCULADO }]
+  const sinEscalar = metricasDeCorrida({ cantidades: cant, investigaciones: [{ resueltoEn: 'WEB' }] })
+  assert.equal(sinEscalar.human_questions, 0)
+  assert.equal(sinEscalar.autonomous_resolution_rate, 1)
+
+  const conEscaladas = metricasDeCorrida({
+    cantidades: cant,
+    investigaciones: [{ resueltoEn: 'WEB' }, { resueltoEn: null, requiereHumano: true }, { resueltoEn: null, requiereHumano: true }],
+  })
+  assert.equal(conEscaladas.human_questions, 2)
+  assert.equal(conEscaladas.investigaciones_escaladas_al_humano, 2)
+  assert.equal(conEscaladas.autonomous_resolution_base, 4, '2 cantidades + 2 preguntas')
+  assert.equal(conEscaladas.autonomous_resolution_rate, 0.5)
+  assert.ok(conEscaladas.autonomous_resolution_rate < sinEscalar.autonomous_resolution_rate)
+})
+
+test('`preguntas_humanas` (la cola) y `human_questions` (§21) no son el mismo número', () => {
+  // Y esa diferencia es a propósito: el informe de casos reales publica el primero desde hace
+  // semanas y cambiarle el significado por debajo sería peor que agregar un nombre nuevo.
+  const cola = { total: 1, nBloqueantes: 1, issues: [{ type: 'X', bloquea: true, recommended_action: 'a' }], bloqueantes: [] }
+  const m = metricasDeCorrida({ cola, investigaciones: [{ resueltoEn: null, requiereHumano: true }] })
+  assert.equal(m.preguntas_humanas, 1, 'sólo la cola')
+  assert.equal(m.human_questions, 2, 'la cola más la investigación escalada')
+})

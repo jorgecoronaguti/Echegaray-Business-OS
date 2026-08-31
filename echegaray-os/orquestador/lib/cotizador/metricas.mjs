@@ -84,6 +84,17 @@ export function metricasDeCorrida({
    */
   const requierenHumano = cola ? cola.issues.filter((i) => i.bloquea || i.recommended_action).length : 0
 
+  /**
+   * Y LAS PREGUNTAS QUE NACIERON INVESTIGANDO.
+   *
+   * Un hueco que recorrió los siete pasos del §12 y terminó en una persona ES una pregunta al
+   * humano, aunque no haya llegado a la cola de atención. Sin sumarlas acá, investigar y no
+   * encontrar sería gratis para la métrica — el mismo agujero que tenía el denominador viejo, un
+   * piso más abajo. No hay doble conteo: las de la cola y las del research son objetos distintos.
+   */
+  const escaladasInvestigando = investigaciones.filter((i) => i?.requiereHumano).length
+  const humanoTotal = requierenHumano + escaladasInvestigando
+
   return Object.freeze({
     documentos_total: documentos.length,
     documentos_parseados: documentos.filter((d) => d.parseado !== false).length,
@@ -106,11 +117,13 @@ export function metricasDeCorrida({
     no_bloqueantes: noBloqueantes,
     conflictos: cola ? cola.issues.filter((i) => i.type === 'CONFLICTO').length : null,
     falta_dato: cola ? cola.issues.filter((i) => i.type === 'FALTA_DATO').length : null,
+    // `preguntas_humanas` es SÓLO la cola: es el número que ya publica el informe de casos reales
+    // y no se le cambia el significado por debajo.
     preguntas_humanas: cola ? cola.issues.filter((i) => i.recommended_action).length : null,
-    // El nombre del §21 sobre el MISMO número: la pantalla y el informe no pueden tener dos
-    // definiciones de «cuántas preguntas hay».
-    human_questions: cola ? cola.issues.filter((i) => i.recommended_action).length : null,
-    requieren_humano: cola ? requierenHumano : null,
+    // `human_questions` es el del §21: TODO lo que termina en una persona, venga de la cola o de una
+    // investigación que se quedó sin fuentes.
+    human_questions: (cola ? cola.issues.filter((i) => i.recommended_action).length : 0) + escaladasInvestigando,
+    requieren_humano: humanoTotal,
     overrides_humanos: eventos.filter((e) => e.accion === 'commercial_override' || e.accion === 'set_global_policy').length,
     acciones_deterministicas: decisionesDeterministicas,
     llamadas_llm: llamadasLLM.length,
@@ -132,9 +145,9 @@ export function metricasDeCorrida({
      */
     autonomous_resolution_rate: tasa(
       conCantidad.length + mapeadas.length,
-      cantidades.length + mapeos.length + requierenHumano,
+      cantidades.length + mapeos.length + humanoTotal,
     ),
-    autonomous_resolution_base: cantidades.length + mapeos.length + requierenHumano,
+    autonomous_resolution_base: cantidades.length + mapeos.length + humanoTotal,
 
     knowledge_reuse_rate: tasa(mapeadas.length, mapeos.length),
 
