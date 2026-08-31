@@ -1,0 +1,90 @@
+▶ las fotos del Sheet y el tráfico del chat no los lee authenticated
+  ✖ ninguna de las cinco le devuelve una sola fila a authenticated (1773.980692ms)
+  ✔ y sigue leyendo las de orq que sí tiene permitidas: la corrección no fue de más (749.466971ms)
+  ✔ el worker las sigue leyendo: sheet_snapshots no quedó inaccesible (57.89127ms)
+  ✖ las cinco quedaron con el mismo portero que sus vecinas de orq (67.911908ms)
+  ✖ una tabla nueva de orq no nace legible por authenticated (62.709994ms)
+✖ las fotos del Sheet y el tráfico del chat no los lee authenticated (2890.282953ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 2
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13524.360605
+
+✖ failing tests:
+
+test at orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:63:13
+✖ ninguna de las cinco le devuelve una sola fila a authenticated (1773.980692ms)
+  AssertionError [ERR_ASSERTION]: authenticated leyó datos sensibles: orq.sheet_snapshots → 2397 filas · orq.chat_result → 414 filas · orq.chat_cost → 493 filas · orq.chat_request → 105 filas · orq.chat_cache → 21 filas
+  + actual - expected
+  
+  + [
+  +   'orq.sheet_snapshots → 2397 filas',
+  +   'orq.chat_result → 414 filas',
+  +   'orq.chat_cost → 493 filas',
+  +   'orq.chat_request → 105 filas',
+  +   'orq.chat_cache → 21 filas'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:71:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:63:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'orq.sheet_snapshots → 2397 filas', 'orq.chat_result → 414 filas', 'orq.chat_cost → 493 filas', 'orq.chat_request → 105 filas', 'orq.chat_cache → 21 filas' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:87:13
+✖ las cinco quedaron con el mismo portero que sus vecinas de orq (67.911908ms)
+  AssertionError [ERR_ASSERTION]: siguen sin RLS: chat_cache, chat_cost, chat_request, chat_result, sheet_snapshots
+  + actual - expected
+  
+  + [
+  +   'chat_cache',
+  +   'chat_cost',
+  +   'chat_request',
+  +   'chat_result',
+  +   'sheet_snapshots'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:94:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:87:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'chat_cache', 'chat_cost', 'chat_request', 'chat_result', 'sheet_snapshots' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:97:13
+✖ una tabla nueva de orq no nace legible por authenticated (62.709994ms)
+  AssertionError [ERR_ASSERTION]: el default privilege de orq sigue regalando select a authenticated: {authenticated=r/postgres,service_role=arwd/postgres}
+      at TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:102:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async TestContext.<anonymous> (file:///home/jorge/echegaray-os/app/.claude/worktrees/xsas-F-security/echegaray-os/orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs:97:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

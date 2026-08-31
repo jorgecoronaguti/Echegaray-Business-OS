@@ -1,0 +1,17 @@
+══ como authenticated ══
+  orq.sheet_snapshots  → SQLSTATE 42501 · permission denied for table sheet_snapshots
+  orq.chat_result      → SQLSTATE 42501 · permission denied for table chat_result
+  orq.chat_cost        → SQLSTATE 42501 · permission denied for table chat_cost
+  orq.chat_request     → SQLSTATE 42501 · permission denied for table chat_request
+  orq.chat_cache       → SQLSTATE 42501 · permission denied for table chat_cache
+  orq.tasks            → devolvió 177 fila(s)
+  orq.events           → devolvió 1120 fila(s)
+
+══ como service_role (el rol del backend autorizado) ══
+  orq.sheet_snapshots  → 2397 fila(s)
+  orq.chat_result      → 414 fila(s)
+
+══ como postgres (el rol real del worker, DATABASE_URL) ══
+  orq.sheet_snapshots  → 2397 fila(s)
+
+default privilege de orq ahora: {service_role=arwd/postgres}

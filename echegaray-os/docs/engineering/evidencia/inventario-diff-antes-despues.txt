@@ -1,27 +1,25 @@
 
-255 tablas · 41 secuencias · 148 funciones
+259 tablas · 41 secuencias · 152 funciones
 esquemas medidos: public, orq, comunicacion, tesoreria, supabase_migrations
 
 ┌─────────┬──────────────┬───────────┬───────────────┬──────────────┐
 │ (index) │ privilegio   │ anon      │ authenticated │ service_role │
 ├─────────┼──────────────┼───────────┼───────────────┼──────────────┤
-│ 0       │ 'SELECT'     │ '1'       │ '183'         │ '220'        │
-│ 1       │ 'INSERT'     │ '0'       │ '92'          │ '220'        │
-│ 2       │ 'UPDATE'     │ '0'       │ '81'          │ '220'        │
-│ 3       │ 'DELETE'     │ '0'       │ '75'          │ '220'        │
-│ 4       │ 'TRUNCATE'   │ '194 → 0' │ '187 → 0'     │ '199'        │
-│ 5       │ 'REFERENCES' │ '194 → 0' │ '194 → 0'     │ '199'        │
-│ 6       │ 'TRIGGER'    │ '194 → 0' │ '194 → 0'     │ '199'        │
-│ 7       │ 'MAINTAIN'   │ '194 → 0' │ '194 → 0'     │ '199'        │
+│ 0       │ 'SELECT'     │ '1'       │ '183 → 182'   │ '220 → 224'  │
+│ 1       │ 'INSERT'     │ '0'       │ '92 → 96'     │ '220 → 224'  │
+│ 2       │ 'UPDATE'     │ '0'       │ '81'          │ '220 → 224'  │
+│ 3       │ 'DELETE'     │ '0'       │ '75'          │ '220 → 224'  │
+│ 4       │ 'TRUNCATE'   │ '194 → 0' │ '187 → 0'     │ '199 → 203'  │
+│ 5       │ 'REFERENCES' │ '194 → 0' │ '194 → 0'     │ '199 → 203'  │
+│ 6       │ 'TRIGGER'    │ '194 → 0' │ '194 → 0'     │ '199 → 203'  │
+│ 7       │ 'MAINTAIN'   │ '194 → 0' │ '194 → 0'     │ '199 → 203'  │
 └─────────┴──────────────┴───────────┴───────────────┴──────────────┘
 funciones SECURITY DEFINER ejecutables por authenticated: 33
 funciones SECURITY DEFINER ejecutables por anon:          18
 
 DEFAULT PRIVILEGES — la regla que fabrica el permiso de las tablas que todavía no existen:
-  postgres crea en orq → {authenticated=r/postgres,service_role=arwd/postgres}
+  postgres crea en orq → {service_role=arwd/postgres}
   postgres crea en public → {postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
   supabase_admin crea en public → {postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}
-
-⚠ 5 tablas legibles por authenticated SIN RLS: orq.chat_cache, orq.chat_cost, orq.chat_request, orq.chat_result, orq.sheet_snapshots
 
 evidencia completa en docs/engineering/evidencia/privilegios-DESPUES.json

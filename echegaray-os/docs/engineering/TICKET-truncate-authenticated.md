@@ -148,13 +148,86 @@ Tabla creada **después** de la corrección: nace con
 2. **33 funciones `SECURITY DEFINER` ejecutables por `authenticated` y 18 por `anon`.** Una función
    así corre con los permisos de su dueño: es la vía por la que un privilegio revocado puede volver
    a entrar por la ventana. No se auditó ninguna. Es otro frente.
-3. **5 tablas legibles por `authenticated` sin RLS**: `orq.chat_cache`, `orq.chat_cost`,
-   `orq.chat_request`, `orq.chat_result`, `orq.sheet_snapshots`. Las encontró el inventario nuevo.
-   Contienen tráfico de chat y snapshots del Sheet. No se tocaron: ponerles RLS puede romper el
-   worker y es una decisión propia.
+3. ~~5 tablas legibles por `authenticated` sin RLS.~~ **CERRADO** — ver la sección de abajo.
 4. **Los esquemas de la plataforma Supabase** (`auth`, `storage`, `realtime`, `vault`, `cron`,
    `graphql*`) quedaron deliberadamente fuera de la medición y de la corrección: los administra
    `supabase_admin` y tocarlos rompe el producto sin que podamos repararlo.
 5. **La verificación es de la base, no de la app corriendo.** No se levantó el front ni se pasó un
    E2E: lo que se probó es que el rol `authenticated` lee y escribe lo que la policy le permite y
    que el auditor de permiso económico sigue dando 0 fugas.
+
+---
+
+# SEGUNDO HALLAZGO · las fotos del Sheet las leía todo el plantel
+
+**Estado:** CORREGIDO Y APLICADO el 2026-08-31 · falta la misma firma.
+Migración `20260901T0620_las_fotos_del_sheet_no_las_lee_todo_el_plantel.sql` ·
+test `orquestador/lib/snapshot-del-sheet-no-es-publico.pg.test.mjs`.
+
+No estaba en el ticket original. Lo destapó medir el esquema `orq`, que nadie había mirado porque
+toda la atención estaba en `public`. Cinco tablas con `relrowsecurity = false`, cero policies y
+`select` concedido a `authenticated`. Asumiendo el rol, **antes**:
+
+```
+orq.sheet_snapshots  → 2397 filas    50 MB · las fotos del 'Flujo de Caja - Cash Flow':
+                                     caja, jornales y margen por obra, celda por celda
+orq.chat_result      →  414 filas   584 kB · las respuestas del chat, que también llevan plata
+orq.chat_cost        →  493 filas   256 kB
+orq.chat_request     →  105 filas   152 kB
+orq.chat_cache       →   21 filas   136 kB
+```
+
+Un jefe de obra al que `subcontrato_costo` le esconde el precio de un paquete tenía la caja completa
+de la empresa a un `select` de distancia.
+
+## Quién las lee de verdad — buscado antes de tocar, no después
+
+- **Cero referencias en `src/`.** Ninguna pantalla las lee.
+- Los 10 lectores reales viven en `orquestador/` y llegan por `query()` de `lib/db.mjs`, que conecta
+  con `DATABASE_URL`: rol `postgres`, dueño del esquema y con `BYPASSRLS`. Varios lo hacen con
+  `await import('./db.mjs')` dinámico, por eso no aparecen en un grep de imports estáticos.
+- `orq` **no** está expuesto por PostgREST (`supabase/config.toml`: `schemas = ["public",
+  "graphql_public"]`). Es un atenuante, no una defensa: está a una línea de configuración de dejar
+  de serlo, y el grant seguía puesto.
+
+## La corrección, copiando el idioma que el esquema ya tenía
+
+Las otras 19 tablas de `orq` ya tenían RLS. `orq.google_tokens` y `orq.xsas_requests` —las
+sensibles— usan **RLS encendida con policy sólo para `service_role`**, sin policy para
+`authenticated`: cero filas. Estas cinco nunca lo recibieron. Se les puso ese mismo portero, más el
+`revoke select`, porque las dos capas fallan distinto: la RLS devuelve **cero filas** (silencioso,
+se confunde con «no hay datos») y el REVOKE devuelve **permission denied**, que se ve en el log.
+
+Y la regla que las fabricaba: `20260711120000_orq_fundacion_work_fabric.sql` había dejado
+`alter default privileges in schema orq grant select on tables to authenticated`. Misma clase de
+defecto que el TRUNCATE. El default de `orq` ahora es `{service_role=arwd/postgres}`: una tabla
+nueva nace privada y la que necesite lectura la pide explícitamente, que es lo que uno quiere leer
+en un diff.
+
+## La evidencia del efecto
+
+```
+DESPUÉS · como authenticated
+  orq.sheet_snapshots  → SQLSTATE 42501 · permission denied for table sheet_snapshots
+  orq.chat_result      → SQLSTATE 42501 · permission denied for table chat_result
+  orq.chat_cost        → SQLSTATE 42501 · permission denied for table chat_cost
+  orq.chat_request     → SQLSTATE 42501 · permission denied for table chat_request
+  orq.chat_cache       → SQLSTATE 42501 · permission denied for table chat_cache
+  orq.tasks            → devolvió 177 fila(s)     ← lectura deliberada, intacta
+  orq.events           → devolvió 1120 fila(s)    ← lectura deliberada, intacta
+
+DESPUÉS · como service_role      orq.sheet_snapshots → 2397 fila(s)
+DESPUÉS · como postgres (worker) orq.sheet_snapshots → 2397 fila(s)
+```
+
+Delta calculado sobre los JSON de evidencia, no estimado: `authenticated` perdió `SELECT` sobre
+**exactamente esas cinco** y ninguna otra; ninguna tabla preexistente ganó nada.
+
+## Lo que este segundo arreglo NO cubre
+
+- **Las otras 17 tablas de `orq` legibles por `authenticated`** (`agents`, `capabilities`,
+  `model_routes`, `tenants`, `projects`…) tienen policy de lectura deliberada `using (true)`. Son
+  configuración del Work Fabric, no plata, y no se auditó si toda esa configuración debería ser
+  pública para el plantel. Queda dicho, no resuelto.
+- El `revoke` es sobre el grant de tabla, no por columna: si mañana una pantalla necesita leer una
+  de las cinco, hay que darle un portero, no devolverle el `select` entero.
