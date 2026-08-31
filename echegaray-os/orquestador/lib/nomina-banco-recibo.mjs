@@ -130,23 +130,36 @@ export function bancoDeLaPersona(nombrePlanilla, recibosPorCuil = new Map()) {
 }
 
 /**
- * LOS QUE TIENEN LIQUIDACIÓN FINAL PERO NO SON PERSONAL.
+ * LOS QUE SE DIERON DE ALTA Y DE BAJA COMO EMPLEADOS PERO NO SON PERSONAL.
  *
  * El dueño, 31/08/2026: «son todos subcontratistas de gerson castro, el formato fue asi de alta y
- * baja, pero son subcontratistas». O sea: existe el papel de liquidación final porque se los dio de
- * alta y de baja con esa forma, y la relación económica es otra.
+ * baja, pero son subcontratistas». O sea: existe el papel porque se los dio de alta y de baja con
+ * esa forma, y la relación económica es otra.
  *
  * Importa para una cosa concreta: **el 50/50 es el acuerdo con el PERSONAL**. Aplicárselo a un
- * subcontratista sería inventarle una mitad en efectivo que nadie acordó — y son cinco personas por
- * $123.806,34 cada una, así que el invento serían $619.032 de la nada. Se muestran con lo que
- * liquidó el estudio y sin segunda mitad, hasta que el dueño diga otra cosa.
+ * subcontratista sería inventarle una mitad en efectivo que nadie acordó — sobre los cinco primeros
+ * eran $619.032 de la nada. Se muestran con lo que liquidó el estudio y sin segunda mitad.
+ *
+ * ═══ LOS DOS QUE FALTABAN, Y CÓMO APARECIERON (31/08/2026) ═══
+ *
+ * El cruce de las constancias de BAJA de ARCA los encontró: Bustos Orosco y Posse Orosco, alta el
+ * 05/08 y baja el 12/08, AYUDANTE a $5.399/h — las mismas fechas, la misma categoría y el mismo
+ * valor hora que el grupo de Gerson— sin estar en esta lista y sin liquidación cargada. El dueño lo
+ * resolvió en una palabra: «subcontratistas».
+ *
+ * SE MANTIENEN AUNQUE NO TENGAN LIQUIDACIÓN. Los otros cinco tienen la suya de $123.806,34; éstos
+ * dos no tienen ninguna cargada. Que falte el papel no cambia lo que son, y sacarlos de acá por eso
+ * los devolvería al cuadro del personal — que es justamente donde no van. Lo que falta es el papel,
+ * y eso se pide; no se resuelve reclasificando a una persona.
  */
 export const SUBCONTRATISTAS_CON_LIQUIDACION = Object.freeze({
   'AVILA ALEJANDRO LUIS': 'subcontratista de Gerson Castro',
+  'BUSTOS OROSCO JONATHAN ERICK': 'subcontratista de Gerson Castro (dueño, 31/08/2026) — sin liquidación cargada',
   'CASTRO GALVAN GERSON ULISES': 'subcontratista — es el titular del grupo',
   'CASTRO GALVAN HEBER LUCAS': 'subcontratista de Gerson Castro',
   'DIAZ RAMON ORLANDO': 'subcontratista de Gerson Castro',
   'FLORES ALEJANDRO NAZARENO': 'subcontratista de Gerson Castro',
+  'POSSE OROSCO JEREMIAS GABRIEL': 'subcontratista de Gerson Castro (dueño, 31/08/2026) — sin liquidación cargada',
 })
 
 /**
