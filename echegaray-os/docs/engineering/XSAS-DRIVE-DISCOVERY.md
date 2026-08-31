@@ -169,3 +169,92 @@ las tools de Drive no la usan y devuelven `{error: string}` o dejan propagar el 
 
 **Se construye nuevo, y sólo esto:** `orquestador/lib/drive/` — la capa llamable que agrega
 referencia por ID, verify-after-write, idempotencia de negocio, taxonomía de errores y auditoría.
+
+---
+
+# LO QUE SE CONSTRUYÓ — `orquestador/lib/drive/`
+
+Llamable como función. Ningún modelo participa de ninguna de estas operaciones.
+
+```js
+import { crearCapacidadDrive } from 'orquestador/lib/drive/index.mjs'
+const drive = crearCapacidadDrive({ google, db, indice, actor, actorTipo, correlationId, politica, principalId })
+```
+
+## READ — identidad y almacenamiento
+
+| Función | Devuelve |
+|---|---|
+| `referencia(file_id, {displayPath})` | la referencia canónica, **incluida `trashed`** |
+| `referenciaViva(file_id)` | igual, pero un archivo en la papelera levanta `TRASHED` |
+| `listarCarpeta(folder_id, {tope})` | `{carpeta, count, truncado, items[]}` — pagina, y una carpeta archivada levanta `TRASHED` |
+| `buscarCarpetas(nombre, {limite})` | todas las coincidencias (que haya dos con el mismo nombre es información) |
+| `buscarPorNombre(texto, {limite, mimeType, enCarpeta})` | búsqueda literal `name contains`, con las comillas escapadas |
+| `buscarPorMetadata({nombreExacto, nombreContiene, mimeType, enCarpeta, modificadoDesde, propiedad, incluirPapelera, limite})` | sin ningún criterio, `INVALID_ARGUMENT` |
+| `porClaveDeIdempotencia(clave, {enCarpeta})` | el archivo que ya produjo esa clave, o `null` |
+| `buscarEnIndice(texto, {tipo, usuario, limite})` | el buscador determinístico de `drive-busqueda/`; sin índice dice `UNSUPPORTED_OPERATION` |
+| `revisiones(file_id)` | el historial, de la más vieja a la más nueva |
+| `descargar(file_id)` | `{referencia, bytes, mime_type}`; un nativo de Google dice `UNSUPPORTED_OPERATION` y sugiere exportar |
+| `exportar(file_id, formato)` | bytes en memoria; la conversión se valida **antes** de llamar a Drive |
+
+**La referencia canónica**: `provider · file_id · name · mime_type · tipo · is_folder · parents · folder_id ·
+display_path · size_bytes · hash · revision_id · modified_at · created_at · trashed · web_view_link ·
+owner_email · idempotency_key`.
+
+## CREATE + MANAGEMENT — con portero, relectura y auditoría
+
+| Función | Verifica releyendo |
+|---|---|
+| `crearCarpeta({nombre, padre, clave_idempotencia})` | `name`, `mime_type`, `trashed` |
+| `crearNativo({nombre, tipo, padre, clave_idempotencia})` | `name`, `mime_type`, `trashed` |
+| `subir({nombre, contenido_base64, mime_type, padre, clave_idempotencia})` | `name`, `trashed` |
+| `renombrar({file_id, nombre})` | `name` |
+| `mover({file_id, destino})` | `parents` |
+| `copiar({file_id, nombre, destino, clave_idempotencia})` | `name`, `trashed`, `parents` |
+| `archivar({file_id})` | `trashed` |
+| `exportarADrive({file_id, formato, nombre, destino, clave_idempotencia})` | `trashed` |
+| `borrarDefinitivo()` | no existe: siempre `FORBIDDEN` (Nivel F) |
+
+Toda mutación devuelve
+`{ok, operacion, idempotente, referencia, antes, verificado:{campos, leido_en, metodo}, audit, capability, actor, policy}`.
+
+`historia(file_id)` contesta qué cambió, quién, cuándo y con qué versión quedó.
+
+## Códigos de error
+
+`DRIVE_UNAVAILABLE · NOT_FOUND · TRASHED · FORBIDDEN · PERMISSION_REQUIRED · UNSUPPORTED_OPERATION ·
+INVALID_ARGUMENT · VERIFY_FAILED · CONFLICT · QUOTA · AUDIT_UNAVAILABLE`.
+
+Ninguno nombra al OS, y hay un test que recorre la tabla y falla si alguno lo hiciera.
+
+---
+
+# LO QUE LA CORRIDA REAL DESTAPÓ
+
+## 1. La identidad que CREA no es la que LEE
+
+`google.mjs` usa `ownerToken()` para `createFile`, `copyFile`, `renameFile`, `moveFile` y `trashFile`
+—porque la cuenta de servicio no tiene cuota de almacenamiento— y `accessToken()` para todo lo demás.
+
+Con el cliente institucional (`googleDelOs()`, el service account), eso significa: **el archivo nace en
+el Drive del dueño y el robot no lo ve**. La primera corrida de la prueba real murió exactamente ahí:
+
+```
+✖ la corrida murió: NOT_FOUND No existe el archivo 1sMABg5Yom83oEZK7TwQWU-3rnVF-iLIk.
+```
+
+El archivo existía. **Verificar una creación es imposible por construcción con ese cliente.** Ahora
+sale como `VERIFY_FAILED` con el motivo escrito, y la prueba real se arma con la cuenta operadora —el
+mismo patrón que ya usa `handlers/operation_execute.mjs` para ejecutar lo aprobado.
+
+## 2. El listado crudo de una carpeta archivada no es determinístico
+
+Dos corridas seguidas de `google.listFolder()` sobre la misma carpeta recién archivada devolvieron
+**1 archivo** y **0 archivos**. Drive propaga la papelera a los descendientes de forma diferida y las
+dos veces contesta 200 sin decir nada. Sobre esa respuesta no se puede afirmar «no hay archivos».
+
+## 3. `ocurrido_en` no ordena un libro de auditoría
+
+Dos filas escritas en la misma transacción reciben el **mismo** `now()` (es el instante del `begin`) y
+quedan sin orden entre sí: en el ensayo, un `mover` y un `renombrar` del mismo pedido salieron al
+revés. Por eso `orq.drive_audit` tiene `seq bigserial` y la historia se ordena por ahí.
