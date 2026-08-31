@@ -117,7 +117,10 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // apóstrofo suelto de un comentario en el medio desparejaba el conteo de comillas.
   // Acotado a 400 caracteres y no `[^\n]*`: el encabezado del cuadro pasó a ocupar dos líneas y un
   // patrón que no cruza el salto lo daba por desaparecido.
-  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aum\.'\)/.exec(NOMINA)
+  // El rótulo pasó a «$/h c/aumento» el 31/08, cuando el dueño pidió ver las dos tarifas seguidas
+  // («queria una columna con lo q se paga de hora hoy y con el aumento como lo pedi»). El test acepta
+  // las dos escrituras: lo que cuida es que las DOS tarifas estén y estén pegadas, no cómo se abrevia.
+  const enc = /fila\('Persona',[\s\S]{0,400}?'\$\/h c\/aum(?:\.|ento)'\)/.exec(NOMINA)
   assert.ok(enc, 'se fue el encabezado con las tarifas')
   const cols = [...enc[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   const i = cols.indexOf('$/h hoy')
@@ -127,7 +130,7 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // en un día —cuando se separó ADELANTO de YA TRANSFERIDO y cuando la categoría pasó al lado del
   // nombre—, y las dos veces el test se puso rojo por un reordenamiento que el dueño pidió, no por
   // un defecto. Se busca el encabezado que contiene las tres columnas de plata que él opera.
-  const decide = /fila\('Persona',[\s\S]{0,400}?'TOTAL A PAGAR',[\s\S]{0,400}?'\$\/h c\/aum\.'\)/.exec(NOMINA)
+  const decide = /fila\('Persona',[\s\S]{0,400}?'TOTAL A PAGAR',[\s\S]{0,400}?'\$\/h c\/aum(?:\.|ento)'\)/.exec(NOMINA)
   assert.ok(decide, 'se fue el cuadro de instrucción de pago')
   const dc = [...decide[0].matchAll(/'([^']+)'/g)].map((m) => m[1])
   // TRECE, Y CADA UNA LA PIDIÓ EL DUEÑO (31/08). El tope existe para que el cuadro no vuelva a
@@ -138,9 +141,11 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   //   +1 «necesito q aparezcan las categorias de los empleados» — sin ella no se puede leer contra
   //      qué piso se mide el aumento de cada uno.
   //   +1 «la idea era que no borraras el número sino que pusieras el redondeado en una columna al
-  //      lado» (31/08) — «EFECTIVO redondeado». El exacto es el devengado y con eso se audita; el
-  //      redondeado es lo que se cuenta en billetes. Son dos cosas y no pueden compartir celda.
-  assert.ok(dc.length <= 14, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
+  //      lado» (31/08) — «EFECTIVO redondeado», que además dejó de escribirla el OS: «voy a hacer
+  //      cargas manuales de montos en columna efectivo redondeado, no tocarla».
+  //   +1 «me borraste los totales por más que tengan algo pagado» (31/08) — «COBRA»: lo que gana la
+  //      persona, esté pagado o no. «TOTAL A PAGAR» pasó a ser sólo lo que falta entregar.
+  assert.ok(dc.length <= 16, `el cuadro volvió a tener ${dc.length} columnas: no se lee de un vistazo`)
   // ═══ LA CATEGORÍA VA PEGADA AL NOMBRE, Y ES UNA ORDEN, NO UNA PREFERENCIA ═══
   //
   // La había puesto con el respaldo —después de la plata— por el principio de «el número que decide
@@ -179,13 +184,19 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // entró «EFECTIVO redondeado» y corrió las tarifas una columna a la derecha — el mismo defecto que
   // el comentario de arriba dice que no hay que cometer, cometido dos párrafos más abajo. Lo que se
   // exige es la FORMA de la cuenta: horas × tarifa, menos TRES columnas, todo dentro de un ROUND.
-  const CUENTA_DEL_EFECTIVO = /ROUND\(N\([A-Z]\$\{n\}\)\*N\([A-Z]\$\{n\}\)(?:-N\([A-Z]\$\{n\}\)){3};0\)/g
+  // LA FORMA CAMBIÓ, EL INVARIANTE NO. El 31/08 nació la columna «COBRA» —lo que gana la persona— y
+  // el efectivo pasó a restarle las tres columnas de lo ya entregado en vez de recalcular
+  // `horas × tarifa` cada vez. Lo que este test cuida sigue siendo lo mismo: que reste LAS TRES.
+  // Restar dos le paga de nuevo a quien ya recibió los billetes.
+  const CUENTA_DEL_EFECTIVO = /ROUND\(N\([A-Z]\$\{n[f]?\}\)(?:-N\([A-Z]\$\{n[f]?\}\)){3};0\)/g
   const cuentas = NOMINA.match(CUENTA_DEL_EFECTIVO) || []
   assert.ok(cuentas.length >= 2,
     `el efectivo dejó de restar las TRES columnas de lo ya entregado: se paga dos veces (encontré ${cuentas.length} cuentas)`)
   // Las dos —hoy y con aumento— tienen que restar las MISMAS tres columnas: si una resta el adelanto
   // y la otra no, el escenario del aumento le paga de nuevo a quien ya recibió los billetes.
-  const restadas = (f) => [...f.matchAll(/-N\(([A-Z])\$\{n\}\)/g)].map((m) => m[1]).join('')
+  // `${n}` en el cuadro de obreros, `${nf}` en los de oficina y liquidaciones: son la misma variable
+  // con otro nombre en cada bloque, y anclar a uno solo dejaba al otro sin verificar.
+  const restadas = (f) => [...f.matchAll(/-N\(([A-Z])\$\{n[f]?\}\)/g)].map((m) => m[1]).join('')
   assert.equal(restadas(cuentas[0]), restadas(cuentas[1]),
     'el escenario con aumento no resta lo mismo que el de hoy')
   // Y el efectivo va REDONDEADO: sin esto la celda vale con centavos y el total suma billetes que
@@ -195,7 +206,7 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.
   assert.ok(!cols.some((c) => /^\s*[+=]/.test(String(c ?? ''))), 'un rótulo que empieza con + o = entra como fórmula y publica #ERROR!')
-  assert.deepEqual(cols.slice(i, i + 2), ['$/h hoy', '$/h c/aum.'],
+  assert.deepEqual(cols.slice(i, i + 2), ['$/h hoy', '$/h c/aumento'],
     'las dos tarifas dejaron de leerse seguidas: la comparación no se puede hacer de un vistazo')
 
   // Y el aumento sale de la MISMA función que la tarifa nueva: dos cuentas del mismo aumento se
@@ -207,8 +218,16 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // día que el porcentaje cambie. La columna del aumento se fue con el rediseño del 31/08, así que
   // ahora hay UNA sola cuenta y el invariante se cuida por el otro lado: que la tarifa nueva salga
   // de `jornalConAumento` y que nadie la reimplemente acá con un `× 0,5` escrito al lado.
-  assert.match(NOMINA, /const objetivo = jornalConAumento\(q\.jornal, basico\)/,
+  // LA BASE CAMBIÓ, LA REGLA NO. El 31/08 el dueño aplicó el aumento a mano en su planilla y pidió
+  // que el OS sólo COMPLETE lo que falte («falta el de Quiroga Alexander»). Desde entonces la tarifa
+  // se calcula sobre la de la quincena ANTERIOR y sólo cuando él no la movió — calcularla sobre la
+  // actual la aplicaba dos veces. Lo que este test cuida es que el aumento siga saliendo de
+  // `jornalConAumento` y que nadie lo reimplemente con un `× 0,5` al lado.
+  assert.match(NOMINA, /jornalConAumento\(q\.jornalAnterior, basico\)/,
     'la tarifa con aumento dejó de salir de `jornalConAumento`')
+  // Y que la decisión de cuándo calcular esté ESCRITA, no implícita en un `??`.
+  assert.match(NOMINA, /const yaLoAplico = /,
+    'se perdió la distinción entre «el dueño ya lo aplicó» y «se le pasó»')
   assert.ok(!/\*\s*0[.,]5/.test(NOMINA),
     'alguien volvió a escribir la mitad de la brecha a mano: la regla vive en `jornalConAumento`')
 })

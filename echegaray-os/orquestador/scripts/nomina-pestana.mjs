@@ -225,6 +225,29 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
       // La fila del espejo: es lo que permite que la Nómina CITE las horas y el jornal en vez de
       // pegar el número que el OS ya calculó. Sin esto no hay forma de cumplir la regla de oro 5.
       filaEspejo: r,
+      // ═══ LA FILA ANTERIOR DE LA MISMA PERSONA — DE AHÍ SALE «$/h HOY» (31/08) ═══
+      //
+      // La planilla trae UNA sola columna de tarifa y desde que el dueño aplicó el aumento, esa
+      // columna ES la tarifa nueva. Para poder mostrar las dos —«lo que cobraba» y «lo que cobra»—
+      // hace falta la quincena ANTERIOR, que está en el bloque de arriba de la misma planilla.
+      //
+      // Se busca la ÚLTIMA aparición previa de la persona, no una fila calculada por offset: los
+      // bloques no tienen todos la misma altura y un offset fijo terminaría citando a otro.
+      // La tarifa de la quincena ANTERIOR: la base sobre la que se calcula el aumento. Ver abajo.
+      jornalAnterior: (() => {
+        for (let k = r - 1; k >= 1; k--) {
+          const g = grid[k - 1]
+          if (g && clave(String(g?.[1] ?? '').trim()) === clave(nombre) && Number(g?.[22]) > 0) return Number(g[22])
+        }
+        return null
+      })(),
+      filaAnterior: (() => {
+        for (let k = r - 1; k >= 1; k--) {
+          const g = grid[k - 1]
+          if (g && clave(String(g?.[1] ?? '').trim()) === clave(nombre) && Number(g?.[22]) > 0) return k
+        }
+        return null
+      })(),
       categoria: claveDeCategoria(f[3]),
       cargadas,
       pendientes: pendientesSuyas,
@@ -232,13 +255,21 @@ function quincenaEnCurso(grid, bloques, clave, { hoy = new Date(), anio = ANIO }
       ultimoDiaSuyo,
       horas,
       jornal,
+      // ═══ EL MAPEO DE COLUMNAS DE LA PLANILLA, RELEÍDO EL 31/08 ═══
+      //
+      // El dueño rehizo «Obreros 26»: aplicó el aumento en $/h, abrió una columna Y para lo YA GIRADO
+      // y corrió el resto. El encabezado real de la fila 525 dice:
+      //     V:Hs · W:$/h · X:BANCO · Y:(ya girado) · Z:ADELANTO · AA:EFECTIVO · AB:TOTAL
+      // El OS seguía leyendo el mapeo viejo —adelanto en Y, total en AA— y publicaba el giro como si
+      // fuera un adelanto y el efectivo como si fuera el total. De ahí salió el desastre del día.
+      //
+      // Se lee la planilla ENTERA, no tres columnas: ella ya declara el reparto y su aritmética
+      // cierra (X + Y + Z + AA = AB en las 17 filas). El OS copia; no recalcula.
       banco: Number(f[23]) || 0,
-      // La planilla también trae el EFECTIVO (Z) al lado del banco. Con los dos se sabe si el
-      // reparto está DECLARADO o si falta cargarlo — ver `esElRepartoDeLaPlanilla`.
-      efectivoPlanilla: Number(f[25]) || 0,
-      adelanto: Number(f[24]) || 0,
-      // El total de la planilla vale para las horas CARGADAS; la quincena completa se valoriza acá.
-      totalCargado: Number(f[26]) || cargadas * jornal,
+      transferidoPlanilla: Number(f[24]) || 0,
+      adelanto: Number(f[25]) || 0,
+      efectivoPlanilla: Number(f[26]) || 0,
+      totalCargado: Number(f[27]) || cargadas * jornal,
       total: horas * jornal,
     })
   }
@@ -449,7 +480,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'TOTAL A PAGAR')
   // CADA TARJETA ES LA SUMA DE SU COLUMNA, y las dos primeras dan la tercera. Se puede verificar
   // mirando: es la única forma de que un titular genere confianza.
-  fila('', `=${deTodos('E')}`, '', `=${deTodos('F')}`, '', `=${deTodos('G')}`)
+  // LA TERCERA TARJETA ES LA SUMA DE LAS DOS PRIMERAS, ESCRITA ASÍ. Sumar la columna «TOTAL A
+  // PAGAR» dependía de que las tres tablas la tuvieran en la MISMA letra, y cada vez que se agrega
+  // una columna a una sola de ellas eso se rompe en silencio. El subtítulo promete «las dos primeras
+  // dan la tercera»: que la fórmula diga exactamente eso.
+  fila('', `=${deTodos('F')}`, '', `=${deTodos('G')}`, '', `=${deTodos('F')}+${deTodos('G')}`)
   // UNA SOLA FÓRMULA, no texto con un «=» adentro: una celda es fórmula o es texto, no las dos.
   // El patrón de TEXT va en formato US («#,##0») aunque el archivo sea es-AR — la API lo interpreta
   // en US y lo MUESTRA con el punto de miles local; escribirlo con el separador local lo rompe.
@@ -534,8 +569,24 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // El comentario va ACÁ ARRIBA y no adentro del `fila(...)`: el test que cuida este encabezado lo
   // busca con un regex acotado a 400 caracteres, y un comentario adentro lo empuja fuera del alcance
   // — el test se pone rojo por la prosa, no por el cuadro.
-  fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EFECTIVO c/aum.', 'EFECTIVO redondeado', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
+  // ═══ SE FUERON LAS COLUMNAS DEL AUMENTO (31/08) ═══
+  //
+  // El dueño aplicó el aumento EN SU PLANILLA: la columna $/h de «Obreros 26» ya trae la tarifa
+  // nueva. El OS seguía calculando «con aumento» encima de una tarifa que ya lo tenía —a Aguero le
+  // publicaba $431.340 de efectivo contra los $411.705 reales— y esa columna es la que el que paga
+  // mira. Un aumento aplicado dos veces no es un redondeo: es plata.
+  //
+  // Queda «EFECTIVO redondeado», que él pidió, ahora colgado del efectivo de verdad.
+  // LAS SIETE PRIMERAS COLUMNAS SON IGUALES EN LAS TRES TABLAS, Y NO ES ESTÉTICA: la tarjeta del
+  // titular suma la MISMA letra en las tres filas de total. Con «EFECTIVO redondeado» metido en la G
+  // de obreros, esa suma mezclaba el redondeo de una tabla con el total de las otras dos y publicaba
+  // $7.326.440 donde salían $9.659.243. El redondeado va DESPUÉS del total.
+  // «COBRA» ES LO QUE GANA LA PERSONA, PAGADO O NO (31/08). El dueño: «me borraste los totales por
+  // más que tengan algo pagado, no sé eso». Tenía razón: «TOTAL A PAGAR» pasó a ser lo que SALE
+  // mañana, y con eso se perdió de vista cuánto gana cada uno. Son dos preguntas distintas y ahora
+  // hay dos columnas: COBRA (el devengado de la quincena) y TOTAL A PAGAR (lo que falta entregar).
+  fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO',
+    'TOTAL A PAGAR', 'EFECTIVO redondeado', 'Horas', '$/h hoy', '$/h c/aumento')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -560,7 +611,35 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // es lo que la ley exige y tiene que seguir siendo legible, porque es contra ESE número que se
     // mide si la empresa está en falta — no contra el que se decidió pagar.
     const basico = conv ? escala.porCategoria[conv] ?? null : null
-    const objetivo = jornalConAumento(q.jornal, basico)
+    // ═══ EL AUMENTO SE CALCULA SOBRE LA TARIFA DE LA QUINCENA ANTERIOR (31/08) ═══
+    //
+    // El dueño ya aplicó el aumento a mano en su planilla para casi todos, pero a Quiroga Alexander
+    // se le pasó: quedó en $4.500 con los otros Ayudantes en $4.950. Y él pidió: «no podés editar
+    // ahí, tenés que TRAER los valores de hora — falta el de Quiroga Alexander».
+    //
+    // Calcularlo sobre la tarifa ACTUAL aplicaría el aumento dos veces a los que ya lo tienen
+    // ($5.974 → $6.161). Calcularlo sobre la ANTERIOR da el mismo número que él ya escribió para los
+    // 14, y completa el que falta. La regla no cambia —media brecha hasta el piso, sin pasarlo—:
+    // cambia la base sobre la que se aplica, que es la única correcta.
+    //
+    // Sin quincena anterior (alguien que entró ahora) se usa la actual: es lo único que hay.
+    // ═══ LA TARIFA DE LA PLANILLA MANDA; EL CÁLCULO SÓLO COMPLETA LO QUE FALTA (31/08) ═══
+    //
+    // El dueño ya aplicó el aumento a mano para 14 de los 15, y a Quiroga Alexander se le pasó: quedó
+    // en $4.500 con los otros Ayudantes en $4.950. Pidió: «no podés editar ahí, tenés que TRAER los
+    // valores de hora — falta el de Quiroga Alexander».
+    //
+    // Cómo se distingue «ya lo aplicó» de «se le pasó», sin adivinar: si la tarifa de esta quincena
+    // es DISTINTA de la de la anterior, la movió él y se respeta tal cual. Si es IGUAL, el aumento no
+    // llegó a esa fila y el OS lo calcula con la regla —media brecha hasta el piso, sin pasarlo—.
+    //
+    // Recalcular siempre rompía dos filas: a Castillo (sin quincena anterior) le aplicaba el aumento
+    // sobre una tarifa que YA lo tenía, $5.733 → $5.800; y a Ochoa, cuya quincena anterior fue más
+    // alta que ésta, le publicaba $6.174 contra los $5.974 de la planilla.
+    const yaLoAplico = q.jornalAnterior != null && Number(q.jornal) !== Number(q.jornalAnterior)
+    const objetivo = yaLoAplico || q.jornalAnterior == null
+      ? Number(q.jornal)
+      : jornalConAumento(q.jornalAnterior, basico)
     if (!conv) sinConvenio.push(p.nombre)
     // LA FILA DICE SI SU EQUIVALENCIA LA DECLARÓ ALGUIEN O LA DEDUJO EL OS. Sin la marca, `M OF →
     // Medio Oficial` (una lectura del OS que el jornal de Castillo contradice) se dibuja idéntico al
@@ -664,6 +743,8 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // dos lugares, que es como se separan.
     const R = "'_RECIBOS_RAW'!"
     const J = "'_J_OBREROS'!"
+    // El mismo formato con el que `_RECIBOS_RAW` escribe la fecha: d/m/aaaa, sin ceros a la izquierda.
+    const diaDeHoy = `${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`
     const n = f.length + 1                   // la fila que va a ocupar en la Nómina
     const e = q.filaEspejo                   // su fila en el espejo de la planilla
     const cuilFila = CUIL_POR_PERSONA_DE_PLANILLA[p.nombre]
@@ -687,20 +768,46 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // SIN `ROUND`: el dueño, más temprano — «dejar los números de la manera correcta porque si no las
     // transferencias se hacen mal». El recibo dice $215.564,62 y redondear hace una transferencia por
     // 38 centavos de más.
-    const celdaBanco = cuilFila && delRecibo.banco !== null
-      ? `=MAX(0;${rec('A', cuilFila, periodoRecibo)}-N(D${n}))` : hoyR.banco
+    // ═══ LA PLANILLA MANDA. EL OS COPIA (31/08) ═══
+    //
+    // El dueño, después de tres correcciones mías sobre la misma quincena: «respetá las anotaciones
+    // de jornales». Su planilla ya declara qué va al banco, qué se giró, qué se adelantó y qué queda
+    // en billetes — y su aritmética cierra fila por fila. Todo lo que el OS ponga encima es una
+    // conjetura sobre un dato que ya existe.
+    //
+    // Por eso estas cuatro columnas CITAN el espejo y no calculan nada. El que quiera saber de dónde
+    // sale un peso lo sigue hasta la planilla, que es donde se carga la obra.
+    const girosDeHoy = cuilFila
+      ? `SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA";${R}$B$1:$B$400;"${diaDeHoy}")`
+      : '0'
+    // ═══ QUÉ VA EN CADA COLUMNA — LO FIJÓ EL DUEÑO (31/08) ═══
+    //
+    //   POR BANCO       = lo que salió por transferencia HOY, del extracto del Santander.
+    //   YA TRANSFERIDO  = lo que ya había salido ANTES de esos giros (la columna Y de su planilla).
+    //
+    // Textual: «eso va en columna por banco, y lo ya transferido era un dato que tenías antes de
+    // haber hecho esas transferencias». Las dos son plata que ya salió por el banco, en momentos
+    // distintos, y por eso son dos columnas y no una: mezcladas no se puede auditar contra el
+    // extracto de hoy.
+    const celdaBanco = `=${girosDeHoy}`
     // B · EL ADELANTO EN OBRA. Sale del espejo de la planilla, citado por fórmula como las horas y
     // el jornal: es el mismo dato, de la misma fila, y no hay razón para pegarlo.
     //
     // CERO, no el guión: esta celda entra en una resta. Con «—» adentro, `F−D−C−B` devuelve #VALUE!
     // y se llevó puesta la fila de Castillo y el total de la columna. El guión es para leer, no
     // para calcular; que el cero se VEA como guión lo resuelve el formato, no el contenido.
-    const celdaAdel = e ? `=N(${J}$Y$${e})` : (Number(q.adelanto) || 0)
+    const celdaAdel = e ? `=N(${J}$Z$${e})` : (Number(q.adelanto) || 0)
     // C · LO QUE YA SALIÓ POR EL BANCO. Otra fuente, otra columna: `_RECIBOS_RAW` trae una fila por
     // movimiento con su referencia del extracto. Sin CUIL no hay a qué apuntar y queda el valor.
-    const celdaTransf = cuilFila
-      ? `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuilFila}";${R}$F$1:$F$400;"QUINCENA")`
-      : (porBanco || 0)
+    // LO YA GIRADO SALE DE LA PLANILLA (columna Y), no del registro de movimientos: la planilla es
+    // la que el dueño mantiene y contra la que paga. El registro sigue existiendo para el control.
+    // ═══ LO YA GIRADO: LA PLANILLA **MÁS** LOS GIROS DE HOY (31/08) ═══
+    //
+    // La columna Y de la planilla trae lo que el dueño anotó hasta ayer. Los 16 giros de hoy salen
+    // del extracto del Santander (lote 260831507) y todavía no están anotados ahí. Se suman las dos
+    // fuentes, filtrando el registro por la FECHA de hoy: sin ese filtro se contaría dos veces el
+    // lote del 28/08, que ya está en Y.
+    const celdaTransf = e ? `=N(${J}$Y$${e})` : (porBanco || 0)
     // Las horas del espejo más los días que faltan a jornada completa. El sumando sólo aparece
     // cuando hay días pendientes, así la fórmula no lleva un «+0» que hace dudar.
     const celdaHoras = e ? `=N(${J}$V$${e})${q.pendientes ? `+${Math.round(q.pendientes)}` : ''}` : Math.round(q.horas)
@@ -709,43 +816,38 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // equivalencia se muestra el código crudo de la planilla, que es mejor que un blanco: dice que
     // esa categoría no está mapeada y por eso su fila no tiene piso.
     const catConvenio = conv ? `${conv}${esInferida(codigo) ? ' ▲' : ''}` : (codigo || SIN_DATO)
-    fila(nombreFila, catConvenio, celdaAdel, celdaTransf, celdaBanco,
-      // ═══ EL TOTAL DE LA FILA ES LO QUE SALE, NO EL BRUTO (31/08) ═══
+    fila(nombreFila, catConvenio,
+      // COBRA = horas × la tarifa CON AUMENTO (L), no la vieja (K). Con K daba el devengado del mes
+      // pasado: a Ochoa le publicaba $486.000 contra los $483.894 de la planilla, y a Castillo —que
+      // no tiene quincena anterior— lo dejaba en blanco.
+      `=ROUND(N(J${n})*N(L${n});0)`,
+      celdaAdel, celdaTransf, celdaBanco,
+      // EN EFECTIVO — la identidad de la planilla: cobra − banco − girado − adelanto = su columna AA.
+      `=ROUND(N(C${n})-N(F${n})-N(E${n})-N(D${n});0)`,
+      `=N(F${n})+N(G${n})`,                            // TOTAL A PAGAR = lo que falta entregar
+      // ═══ «EFECTIVO REDONDEADO» ES DEL DUEÑO. EL OS NO LA ESCRIBE (31/08) ═══
       //
-      // «TOTAL A PAGAR» era `horas × $/hora`: el devengado de la quincena, con los adelantos ya
-      // entregados adentro. En oficina era banco+efectivo y en liquidaciones otra cosa, así que la
-      // misma columna significaba tres cosas y ninguna tarjeta del titular podía sumarla.
+      // Textual: «voy a hacer cargas manuales de montos en columna efectivo redondeado, no tocarla».
+      // Nació como un MROUND del efectivo, pero él la va a usar para anotar lo que realmente entrega
+      // —que no siempre es el redondeo aritmético— y eso es un DATO suyo, no un cálculo.
       //
-      // Ahora las tres dicen lo mismo: **banco + efectivo = lo que sale de la caja por esta fila**.
-      // El bruto no se pierde —es `Horas × $/h hoy`, las dos columnas están a la derecha— y lo ya
-      // entregado sigue en sus dos columnas propias.
-      // ═══ EL EFECTIVO VA REDONDEADO, Y EL REDONDEO ES DEL VALOR (31/08) ═══
-      //
-      // El dueño: «lo q se entrega en efectivo a cada uno y los conceptos en efectivo en general no
-      // los quiero con centavos, redondea». Es obvio dicho así: no hay billete de 38 centavos.
-      //
-      // `ROUND` en la FÓRMULA, no en el formato. Redondear sólo la vista dejaría la celda valiendo
-      // $372.435,38 mientras muestra $372.435, y el total de la columna sumaría los centavos que
-      // nadie entrega — un total que no cierra contra los billetes que salen del sobre.
-      //
-      // La transferencia NO se redondea: ahí el centavo existe y el recibo dice $215.564,62.
-      `=ROUND(N(L${n})*N(M${n})-N(E${n})-N(D${n})-N(C${n});0)`,
-      `=N(E${n})+N(F${n})`,                            // total = lo que sale por esta fila
-      // H · EL EFECTIVO CON AUMENTO, EXACTO. Es lo devengado: de acá sale el control y contra esto se
-      // audita. No se toca.
-      jornalNuevo != null ? `=ROUND(N(L${n})*N(N${n})-N(E${n})-N(D${n})-N(C${n});0)` : SIN_DATO,
-      // I · EL MISMO NÚMERO, EN BILLETES. Pedido del dueño el 31/08: «si dice 215.215 dejar 215.000».
-      // Va AL LADO del exacto, no encima: el sobre se arma con esta columna y la auditoría con la otra.
-      // En la FÓRMULA y no en el formato — redondear la vista dejaría la celda valiendo 215.215 y el
-      // total de la columna sumaría plata que nadie entrega.
-      jornalNuevo != null ? `=${alMultiplo(`N(H${n})`)}` : SIN_DATO,
-      // J · TOTAL c/aum. sigue colgando del EXACTO: es el devengado de la fila, no el sobre.
-      jornalNuevo != null ? `=N(E${n})+N(H${n})` : SIN_DATO,
-      // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
-      // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
-      jornalNuevo != null ? `=N(J${n})-N(G${n})` : SIN_DATO,
-      celdaHoras, celdaJornal,
-      jornalNuevo != null ? jornalNuevo : SIN_DATO)
+      // Se escribe VACÍO, no el centinela `VACIO`: vacío se fusiona y conserva lo que él puso; el
+      // centinela significa «esta celda es mía y va en blanco» y le borraría el monto cada corrida.
+      '',
+      // LA TARIFA ES LA DE LA PLANILLA, Y YA TRAE EL AUMENTO. El dueño lo aplicó allá; el OS lo
+      // volvía a aplicar acá y publicaba una hora que nadie cobra. Al lado va el PISO de convenio,
+      // que es contra lo que se mide: sin él la columna dice un número y no dice si alcanza.
+      // LAS DOS TARIFAS, SEGUIDAS: la que cobraba y la que cobra. El dueño las pidió así y tiene
+      // razón — una sola no dice si el aumento llegó. Las dos CITAN la planilla: la anterior sale de
+      // su fila de la quincena pasada, la nueva de la fila de ésta.
+      celdaHoras,
+      // «$/h hoy»: la tarifa de la quincena ANTERIOR, citada de la planilla.
+      q.filaAnterior ? `=N(${J}$W$${q.filaAnterior})` : SIN_DATO,
+      // «$/h c/aumento»: la que sale de la regla del dueño —media brecha hasta el piso—, calculada
+      // sobre la anterior. Para los 14 que él ya cargó da exactamente lo que escribió; para Quiroga
+      // Alexander, que quedó sin actualizar, la completa. Va PEGADA y no citada: es la DECISIÓN, y
+      // citar la planilla sería publicar el olvido como si fuera el acuerdo.
+      jornalNuevo != null ? jornalNuevo : celdaJornal)
   }
   // El conteo cuenta a los que QUEDARON en el cuadro. Con `activos.filter(...)` seguía diciendo 17
   // después de sacar a los dos liquidados: un total de 15 filas rotulado «17 persona(s)».
@@ -755,8 +857,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
     // B es la categoría (texto, no se suma); de C a J la plata; K las horas. L y M son tarifas —
     // promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
-    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), suma('K'),
-    suma('L'), '', '')
+    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))
@@ -825,7 +926,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // aunque venga vacía: la planilla de oficina NO trae categoría —`COL_OFICINA` la declara `null`—
     // y el «—» dice eso. Correr la plata una columna para ahorrarse dos guiones obliga a releer el
     // encabezado en cada tabla, que es de donde venía la sensación de descuadre.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas del mes')
+    fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR', 'Quincenas del mes')
     const incompletos = []
     const sinRecibOfi = []
     const sinAcuerdoNeto = []
@@ -838,6 +939,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       const R = "'_RECIBOS_RAW'!"
       const nf = f.length + 1
       const cuantas = cuil ? quincenasDe(cuil) : 0
+      const diaDeHoyOfi = `${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`
       // EL NETO ES UN ACUERDO DECLARADO, no un cálculo. Quien no lo tenga declarado no lleva total:
       // inventarle uno es inventarle el sueldo a una persona.
       const neto = cuil ? (SUELDO_NETO_OFICINA[cuil] ?? null) : null
@@ -845,27 +947,47 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       if (!r) {
         // Sin recibo no hay mitad blanca, y sin mitad blanca el 50/50 no tiene de dónde salir.
         sinRecibOfi.push(`${comoSeLlama} (sin recibo de ${mes})`)
-        fila(comoSeLlama, SIN_DATO, o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0, 0, SIN_DATO, SIN_DATO, SIN_DATO, 0)
+        fila(comoSeLlama, SIN_DATO, neto ?? SIN_DATO, o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0, 0, SIN_DATO, SIN_DATO, SIN_DATO, 0)
         continue
       }
       if (cuantas < 2) incompletos.push(`${comoSeLlama} (${cuantas} de 2)`)
       fila(comoSeLlama,
         SIN_DATO,                            // la planilla de oficina no trae categoría
+        // COBRA · EL NETO ACORDADO, ENTERO. El dueño: «te había dicho que eran 1.800.000 cada uno».
+        neto ?? SIN_DATO,
         o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0,
         `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")`,
-        // EL RECIBO DE ESTA QUINCENA. No la suma del mes: por banco va lo que dice el recibo.
-        `=SUMIFS(${R}$E$1:$E$400;${R}$A$1:$A$400;"${cuil}";${R}$B$1:$B$400;"${periodoRecibo}")`,
+        // ═══ LO QUE FALTA GIRAR, NO EL RECIBO ENTERO (31/08) ═══
+        //
+        // Por banco va lo que dice el recibo de la quincena, MENOS lo que ya se le giró. La versión
+        // sin el `MAX` publicaba el recibo entero con «YA TRANSFERIDO $663.141,56» al lado, y el que
+        // paga lee esta columna: es el mismo defecto que en el cuadro de obreros le hizo transferir
+        // $592.887 de más. Con `MAX(0;…)` un giro de más no genera una transferencia negativa — el
+        // sobrante lo absorbe el efectivo, que resta las dos columnas.
+        `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA";${R}$B$1:$B$400;"${diaDeHoyOfi}")`,
         // El efectivo completa hasta el NETO ACORDADO, y va en billetes: sin centavos.
-        `=ROUND(N(G${nf})-N(E${nf})-N(D${nf})-N(C${nf});0)`,
-        // EL NETO ES DE CADA UNO, ENTERO. Lo partí por dos y el dueño lo cortó: «el 1.800.000 es el
-        // salario de cada uno». No se prorratea: es lo que cobra la persona.
-        neto ?? SIN_DATO,
+        //
+        // EL NETO VA ACÁ Y NO SE CITA A `G`: desde que «TOTAL A PAGAR» pasó a ser `E+F`, leerlo desde
+        // G hacía un ciclo —F depende de G y G de F— y Sheets publicaba #REF! en las dos celdas y en
+        // la tarjeta del titular. El neto es un PARÁMETRO declarado por el dueño («el 1.800.000 es el
+        // salario de cada uno»), no un cálculo: va escrito, como estaba antes en G.
+        `=ROUND(N(C${nf})-N(F${nf})-N(E${nf})-N(D${nf});0)`,
+        // ═══ «TOTAL A PAGAR» ES LO QUE SALE MAÑANA, NO EL SUELDO DEL MES (31/08) ═══
+        //
+        // Acá iba el neto acordado entero ($1.800.000). Mientras nada estaba pagado daba lo mismo;
+        // desde que hay giros hechos, no: la tarjeta del titular suma esta columna y decía
+        // «$7.972.450 sale mañana» cuando de la caja salían $6.646.166 — y su propio subtítulo
+        // promete que «las dos primeras dan la tercera», que dejaba de ser cierto.
+        //
+        // El neto acordado no se pierde: está escrito en el subtítulo del bloque, que es donde
+        // corresponde. Las tres tablas dicen ahora lo mismo en esta columna: banco + efectivo.
+        `=N(F${nf})+N(G${nf})`,
         cuantas)
     }
     const oF = f.length
     const o0 = oF - deOficina.length + 1
     fila(rotuloTotal(`${deOficina.length} persona(s) de oficina`), '',
-      `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`,
+      `=SUM(C${o0}:C${oF})`, `=SUM(D${o0}:D${oF})`, `=SUM(E${o0}:E${oF})`, `=SUM(F${o0}:F${oF})`, `=SUM(G${o0}:G${oF})`, `=SUM(H${o0}:H${oF})`,
       // NO va vacía: una celda vacía no borra, y acá quedaba viva la cuenta de quincenas de la
       // corrida anterior. Se escribe el mínimo de quincenas cargadas del grupo, que es lo que
       // decide si el mes está completo.
@@ -959,12 +1081,12 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // Ahora las tres columnas significan lo mismo en los tres cuadros, así que cada tarjeta ES la
     // suma de su columna y las dos primeras dan la tercera. El 50/50 no se pierde: la mitad negra
     // está en EN EFECTIVO y la blanca, entera, en su propia columna al final.
-    fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (a girar)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
+    fila('Persona', 'Categoría', 'COBRA', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (a girar)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'MITAD BLANCA (lo liquidado)')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, SIN_DATO, SIN_DATO, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -992,6 +1114,8 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       const cita = `SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$A$1:$A$400;"${r.cuil}";'_RECIBOS_RAW'!$B$1:$B$400;"FINAL")`
       fila(r.nombre_recibo,
         SIN_DATO,                              // su categoría no vive en ninguna fuente del archivo
+        // COBRA · el acuerdo entero: la mitad blanca liquidada más una mitad negra igual.
+        `=ROUND(N(${cita})*2;0)`,
         0,                                     // adelanto en obra: a estas personas no se les dio
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
         // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
@@ -1008,16 +1132,16 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         // La blanca es lo liquidado; la negra es un monto IGUAL; lo que queda por pagar descuenta
         // lo ya entregado; y el total del acuerdo —el doble— queda a la vista en la última columna.
         // Falta girar = lo liquidado menos lo ya girado. La mitad negra es IGUAL a la blanca.
-        `=ROUND(N(${cita})-N(D${nf})-N(C${nf});0)`, `=ROUND(N(${cita});0)`,
-        `=N(E${nf})+N(F${nf})`, `=ROUND(N(${cita});0)`)
+        `=ROUND(N(${cita})-N(E${nf})-N(D${nf});0)`, `=ROUND(N(${cita});0)`,
+        `=N(F${nf})+N(G${nf})`, `=ROUND(N(${cita});0)`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
     const q1 = f.length - ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length + 1
     const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
-      '', `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
-      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`)
+      '', `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`, `=SUM(E${q1}:E${q2})`,
+      `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`, `=SUM(H${q1}:H${q2})`, `=SUM(I${q1}:I${q2})`)
     // G ES «QUEDA POR PAGAR» EN ESTE CUADRO Y «TOTAL A PAGAR» EN LOS OTROS DOS, y las dos cosas son
     // lo mismo: lo que todavía sale de la caja por esa fila. Por eso el titular puede sumar la
     // columna G de los tres sin mezclar nada.
