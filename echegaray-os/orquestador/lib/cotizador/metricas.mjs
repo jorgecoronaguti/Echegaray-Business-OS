@@ -247,9 +247,18 @@ export const ORIGEN_ES_REUSO = Object.freeze({ INTERNO: true, COMPRA_ECSAS: true
  * cuánto de la corrida no se pudo mirar.
  */
 export function reusoDeConocimiento({ resoluciones = [], mapeos = [], aprendizajesAplicados = [] } = {}) {
-  const declara = (x) => x?.origen !== null && x?.origen !== undefined
+  // ═══ HACEN FALTA LAS DOS DECLARACIONES ═══
+  //
+  // De dónde salió NO alcanza: una resolución `NECESITA_HUMANO` sacó su candidato de la Base
+  // Maestra y aun así NO cerró la decisión — la cerró una persona. Contarla como reuso haría que
+  // derivar trabajo a un humano subiera la métrica del conocimiento reutilizable, que es el mismo
+  // agujero que `autonomous_resolution_rate` ya tuvo y que está documentado arriba.
+  //
+  // Medido sobre la base real: de 107 resoluciones, 105 salen de BASE_MAESTRA pero sólo 49 quedaron
+  // VIGENTE. Sin esta condición la métrica publicaría 98 % donde el reuso efectivo es 46 %.
+  const declara = (x) => x?.origen !== null && x?.origen !== undefined && typeof x?.resuelta === 'boolean'
   const resDeclaradas = resoluciones.filter(declara)
-  const resReuso = resDeclaradas.filter((r) => ORIGEN_ES_REUSO[r.origen] === true)
+  const resReuso = resDeclaradas.filter((r) => ORIGEN_ES_REUSO[r.origen] === true && r.resuelta === true)
 
   // Un mapeo SIEMPRE declara su estado, así que la familia entera es declarada. `MAPEADA` es reuso
   // de la taxonomía; `AMBIGUO` y `SIN_PARTIDA` son decisiones elegibles que no lo lograron.
