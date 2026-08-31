@@ -1689,6 +1689,9 @@ export function grilla({
   // querer: un #N/A se ve, un importe plausible en la celda equivocada no.
   const colDeNomina = (titulo) => `MATCH("${titulo}";INDEX('Nómina'!$A:$Z;MATCH("Persona";'Nómina'!$A:$A;0);0);0)`
   const deNomina = (titulo) => `IFERROR(INDEX('Nómina'!$A:$Z;MATCH("⇒*persona(s)";'Nómina'!$A:$A;0);${colDeNomina(titulo)}))`
+  // El total de OFICINA vive en otro bloque de la misma pestaña. El comodín de arriba engancha el
+  // PRIMER «⇒ … persona(s)», que es el de obreros; el de oficina cierra con «de oficina» y es único.
+  const deNominaOficina = (titulo) => `IFERROR(INDEX('Nómina'!$A:$Z;MATCH("⇒*de oficina";'Nómina'!$A:$A;0);${colDeNomina(titulo)}))`
   filaPago(fPago.obra, {
     // El plantel sale del mismo rótulo: si Nómina excluye a alguien, acá desaparece solo.
     personas: `=IFERROR(VALUE(REGEXEXTRACT(INDEX('Nómina'!A:A;MATCH("⇒*persona(s)";'Nómina'!A:A;0));"(\\d+)"));$${colDe('Personas')}$${fReg})`,
@@ -1728,12 +1731,12 @@ export function grilla({
   // contarlo: `dp0..dpFin` para Dirección (una fila por socio, salida de Compras) y el último bloque
   // del espejo para Oficina (una fila por persona, columna B). Ninguno de los dos se estampa: los dos
   // son `COUNTA` sobre un rango vivo, así que el día que entre o salga alguien, la celda se mueve sola.
-  const proximoMensual = (f, r0, r1, { personas, banco }) => {
+  const proximoMensual = (f, r0, r1, { personas, banco, total = null }) => {
     const min = `MINIFS($E$${r0}:$E$${r1};$E$${r0}:$E$${r1};">="&TODAY();$H$${r0}:$H$${r1};">0")`
     filaPago(f, {
       personas,
       cuando: `=IF(${min}=0;"";${min})`,
-      total: `=IF(N(C${f})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};C${f}))`,
+      total: total ?? `=IF(N(C${f})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};C${f}))`,
       adelanto: VACIO,
       banco,
     })
@@ -1745,6 +1748,24 @@ export function grilla({
     personas: ultimoBloqueOfi
       ? `=COUNTA('${ESPEJO_OFI}'!$B$${ultimoBloqueOfi.inicio}:$B$${ultimoBloqueOfi.fin})`
       : SIN_DATO,
+    // ═══ LO QUE COBRA OFICINA LO DECIDE EL ACUERDO, NO LA PLANILLA (31/08/2026) ═══
+    //
+    // El default de `proximoMensual` suma la columna H del espejo `_J_OFICINA`, que es horas por
+    // valor hora. Para obra eso ES el pago; para oficina no: el dueño acordó un NETO MENSUAL de
+    // $1.800.000 por cabeza —«lo blanco es lo que indica su recibo y el resto se completa en
+    // efectivo»— y ese acuerdo no sale de ninguna planilla de horas.
+    //
+    // Medido el 31/08 por `auditar-coherencia-pestanas`: Nómina publicaba $3.600.000 y esta pestaña
+    // $2.860.829. Los Cash Flow leen ÉSTA, así que la decisión del dueño no llegaba nunca al flujo:
+    // $739.171 de menos por mes, proyectados hasta diciembre.
+    //
+    // Se cita a Nómina —donde el acuerdo ya está publicado— y NO se repite la constante acá: un
+    // concepto se define una sola vez. El rótulo «⇒ … de oficina» es único en esa columna; el
+    // bloque de obreros dice «⇒ N persona(s)» a secas y no lo engancha. Si Nómina no está o el
+    // rótulo cambió, cae a la planilla: un número viejo se audita, una celda vacía se lee como
+    // «este mes no se le paga a nadie».
+    total: `=IF(N(${deNominaOficina('TOTAL A PAGAR')})>0;${deNominaOficina('TOTAL A PAGAR')};`
+      + `IF(N(C${fPago.oficina})=0;"";SUMIFS($H$${o0}:$H$${oFin};$E$${o0}:$E$${oFin};C${fPago.oficina})))`,
     banco: `=IF(N(D${fPago.oficina})=0;"";D${fPago.oficina}/2)`,
   })
   // DIRECCIÓN VA ENTERA POR BANCO — orden del dueño, no una medición: *"administracion todos por
