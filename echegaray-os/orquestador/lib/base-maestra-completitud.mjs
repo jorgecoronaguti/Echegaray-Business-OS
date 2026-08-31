@@ -14,6 +14,27 @@
 // unidad: no se delata solo. Sobre 1.000 m² de piso industrial eso son $ 28,9 M o $ 17,5 M que
 // nadie ve faltar hasta que se compra el hormigón.
 //
+// Es el peor tipo de error de plata que puede tener un cotizador: **silencioso**. No hay excepción,
+// no hay celda vacía, no hay control que se ponga rojo. Sale un precio perfectamente creíble que
+// está a la mitad, se manda al cliente, se gana la obra por ser el más barato, y la diferencia
+// aparece recién cuando hay que comprar el hormigón que nadie cotizó. Un hueco declarado se
+// negocia; éste no se ve.
+//
+// ═══ POR QUÉ SE DETECTA POR EVIDENCIA Y NO POR UMBRAL ═══
+//
+// La tentación era medir: «si el cajón de materiales pesa menos del 5 % del costo directo, la
+// partida no cotiza materiales». Habría funcionado para T1107.1 —su única línea de material es
+// nafta, $ 252 sobre $ 17.550, el 1,4 %— y habría sido la respuesta equivocada. Un umbral así es
+// una opinión sobre cuánto tiene que pesar un cajón, no se puede defender delante de nadie, y el
+// día que una partida legítima quede en el 4,8 % empieza a mentir en la otra dirección.
+//
+// La evidencia es que **la partida lo dice en su propio nombre**: «- MANO DE OBRA» y «- MATERIALES
+// H17...». Tres condiciones, todas leídas del catálogo y ninguna numérica: misma raíz comercial,
+// misma unidad, y cada una declarando un alcance parcial DISTINTO. No hay nada que calibrar, el
+// resultado no cambia si cambian los precios, y cualquiera puede verificarlo abriendo las dos
+// partidas y leyendo sus nombres. Un control apoyado en un umbral hay que defenderlo; uno apoyado
+// en lo que el dato declara de sí mismo se explica solo.
+//
 // ═══ LA REGLA QUE NO SE CRUZA ═══
 //
 // **Una composición NO se declara incompleta por lo que «debería» tener.** Un FLETE no lleva mano
