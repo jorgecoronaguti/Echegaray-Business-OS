@@ -49,6 +49,7 @@ import { seccion, sub, total as rotuloTotal, ES_SECCION_NUM, ES_TOTAL, ES_SUBITE
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
 // VACIO vive en `preservar-anotaciones`, no en `cola-de-rango` — ésta lo re-importa de allá.
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { alMultiplo } from '../lib/jornales-neto-pago.mjs'
 
 /**
  * CUÁNTAS FILAS ESCRIBIÓ ALGUNA VEZ ESTE GENERADOR.
@@ -514,7 +515,10 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // entera, porque explica el piso, el aumento y la tarifa— y a la derecha obligaba a cruzar
   // once columnas para saber contra qué se está midiendo a cada uno.
   fila('Persona', 'Categoría', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO', 'EN EFECTIVO', 'TOTAL A PAGAR',
-    'EFECTIVO c/aum.', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
+    // «EFECTIVO redondeado» NO reemplaza al exacto: va AL LADO. El dueño, 31/08: «la idea era que no
+    // borraras el número sino que pusieras el redondeado en una columna al lado». Tiene razón — el
+    // exacto es lo devengado y hace falta para auditar; el redondeado es lo que se cuenta en billetes.
+    'EFECTIVO c/aum.', 'EFECTIVO redondeado', 'TOTAL c/aum.', 'Sube', 'Horas', '$/h hoy', '$/h c/aum.')
   const T = { cargadas: 0, horas: 0, adelanto: 0, bancoHoy: 0, efHoy: 0, totHoy: 0, bancoNuevo: 0, efNuevo: 0, totNuevo: 0, sube: 0, totalCargado: 0 }
   const sinRecibo = []
   const liquidados = []
@@ -691,13 +695,21 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       // nadie entrega — un total que no cierra contra los billetes que salen del sobre.
       //
       // La transferencia NO se redondea: ahí el centavo existe y el recibo dice $215.564,62.
-      `=ROUND(N(K${n})*N(L${n})-N(E${n})-N(D${n})-N(C${n});0)`,
+      `=ROUND(N(L${n})*N(M${n})-N(E${n})-N(D${n})-N(C${n});0)`,
       `=N(E${n})+N(F${n})`,                            // total = lo que sale por esta fila
-      jornalNuevo != null ? `=ROUND(N(K${n})*N(M${n})-N(E${n})-N(D${n})-N(C${n});0)` : SIN_DATO,
+      // H · EL EFECTIVO CON AUMENTO, EXACTO. Es lo devengado: de acá sale el control y contra esto se
+      // audita. No se toca.
+      jornalNuevo != null ? `=ROUND(N(L${n})*N(N${n})-N(E${n})-N(D${n})-N(C${n});0)` : SIN_DATO,
+      // I · EL MISMO NÚMERO, EN BILLETES. Pedido del dueño el 31/08: «si dice 215.215 dejar 215.000».
+      // Va AL LADO del exacto, no encima: el sobre se arma con esta columna y la auditoría con la otra.
+      // En la FÓRMULA y no en el formato — redondear la vista dejaría la celda valiendo 215.215 y el
+      // total de la columna sumaría plata que nadie entrega.
+      jornalNuevo != null ? `=${alMultiplo(`N(H${n})`)}` : SIN_DATO,
+      // J · TOTAL c/aum. sigue colgando del EXACTO: es el devengado de la fila, no el sobre.
       jornalNuevo != null ? `=N(E${n})+N(H${n})` : SIN_DATO,
       // CUÁNTO SUBE CADA UNO. Es la cifra que el dueño decidió, y la saqué de más en el pase a
       // minimalismo: sin ella hay que restar dos celdas para saber qué cuesta el aumento por persona.
-      jornalNuevo != null ? `=N(I${n})-N(G${n})` : SIN_DATO,
+      jornalNuevo != null ? `=N(J${n})-N(G${n})` : SIN_DATO,
       celdaHoras, celdaJornal,
       jornalNuevo != null ? jornalNuevo : SIN_DATO)
   }
@@ -709,7 +721,8 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila(rotuloTotal(`${activos.filter((p) => quincena.porClave.has(p.clave) && !tieneLiquidacionFinal(p.nombre)).length} persona(s)`),
     // B es la categoría (texto, no se suma); de C a J la plata; K las horas. L y M son tarifas —
     // promediar $/h es inventar un número que nadie cobra, así que quedan vacías.
-    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), suma('K'), '', '')
+    '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), suma('H'), suma('I'), suma('J'), suma('K'),
+    suma('L'), '', '')
   fila(sub(`Cerrar el ${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la brecha hasta el piso de cada categoría cuesta `
     + `${Math.round(T.sube).toLocaleString('es-AR')} más en esta quincena. Después del aumento el plantel SIGUE por `
     + `debajo de la escala: es la decisión del dueño, y la mitad de la brecha que queda es exposición laboral abierta.`))

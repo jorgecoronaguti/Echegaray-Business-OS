@@ -79,3 +79,33 @@ export function formulaBancoOficina({ fila, colTotal = 'D', cita } = {}) {
   const T = `${colTotal}${fila}`
   return `=IF(N(${T})=0;"";IF(N(${cita})>0;${cita};${T}/2))`
 }
+
+// ═══ EL EFECTIVO SE ENTREGA EN NÚMEROS REDONDOS (31/08) ═══
+//
+// El dueño: *«necesito que me hagas el redondeo correcto en números redondos de lo que se le debe
+// pagar a cada empleado según pestaña Nómina en efectivo con aumento, si dice 215.215 dejar
+// 215.000»*. Ya había pedido antes sacar los centavos; esto va un paso más: el sobre se arma con
+// billetes y contar $372.435 en la mano es un problema que nadie tiene por qué tener.
+//
+// **Sólo el EFECTIVO.** La transferencia NO se redondea nunca: el recibo dice $215.564,62 y una
+// transferencia por un peso de más o de menos no coincide con el recibo que firma la persona. Es la
+// misma regla que ya está escrita en `nomina-pestana.mjs` para los centavos.
+//
+// `MROUND` y no `ROUND(x/1000;0)*1000`: dice en la fórmula lo que hace, y el que abre la celda lee
+// «redondeado al mil» sin reconstruir una división. El múltiplo es un PARÁMETRO y no un literal
+// enterrado, así que el día que el billete más chico cambie se cambia acá.
+export const REDONDEO_EFECTIVO = 1000
+
+/**
+ * Envuelve una expresión de efectivo para que caiga en el múltiplo más cercano.
+ *
+ * Al MÚLTIPLO MÁS CERCANO, no hacia abajo: redondear siempre para abajo le saca plata a la persona
+ * todas las quincenas —hasta $999 cada vez, siempre en la misma dirección— y eso no es un redondeo,
+ * es un descuento. Hacia arriba sería regalar. El más cercano se compensa solo.
+ *
+ * @param {string} expr  la expresión SIN el `=` inicial (ej. `N(K14)*N(M14)-N(E14)`)
+ * @param {{multiplo?:number}} [o]
+ */
+export function alMultiplo(expr, { multiplo = REDONDEO_EFECTIVO } = {}) {
+  return `MROUND(${expr};${multiplo})`
+}

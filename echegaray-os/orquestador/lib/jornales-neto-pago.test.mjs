@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formulaNetoAPagar, formulaEnEfectivo, formulaBancoOficina } from './jornales-neto-pago.mjs'
+import { formulaNetoAPagar, formulaEnEfectivo, formulaBancoOficina, alMultiplo, REDONDEO_EFECTIVO } from './jornales-neto-pago.mjs'
 
 // Lo que publicaba Nómina ese día para los 15 obreros.
 const TOTAL = 6331859      // TOTAL A PAGAR — ya neto de adelanto y de lo ya transferido
@@ -79,4 +79,30 @@ test('OFICINA: el banco CITA a Nómina y sólo cae a la mitad si Nómina no cont
 
 test('OFICINA: la mitad se escribe /2 y NUNCA *0,5 — el decimal se parte en el locale es_AR', () => {
   assert.doesNotMatch(formulaBancoOficina({ fila: 8, cita: 'X' }), /0[,.]5/)
+})
+
+test('EL EFECTIVO VA EN NÚMEROS REDONDOS: 215.215 se entrega como 215.000', () => {
+  const f = alMultiplo('N(K17)*N(M17)-N(E17)')
+  assert.equal(f, 'MROUND(N(K17)*N(M17)-N(E17);1000)')
+  // La aritmética que la fórmula representa, con los números reales de la pestaña.
+  const alMil = (x) => Math.round(x / REDONDEO_EFECTIVO) * REDONDEO_EFECTIVO
+  assert.equal(alMil(215215), 215000, 'el caso que dio el dueño')
+  assert.equal(alMil(372435), 372000)
+  assert.equal(alMil(411705), 412000, 'al más cercano, no hacia abajo')
+  assert.equal(alMil(474740), 475000)
+})
+
+test('el redondeo es al MÁS CERCANO — para abajo siempre sería un descuento encubierto', () => {
+  const alMil = (x) => Math.round(x / REDONDEO_EFECTIVO) * REDONDEO_EFECTIVO
+  // 15 personas, la peor deriva posible si se truncara: $999 cada una, todas las quincenas.
+  const casos = [215215, 372435, 411705, 326810, 161315, 252568, 133589, 416099, 243950, 282272,
+    287214, 314949, 356525, 121916, 111452]
+  const deriva = casos.reduce((a, x) => a + (alMil(x) - x), 0)
+  const truncado = casos.reduce((a, x) => a + ((Math.floor(x / 1000) * 1000) - x), 0)
+  assert.ok(Math.abs(deriva) < 3000, `el más cercano derivó ${deriva}: tendría que compensarse solo`)
+  assert.ok(truncado < -5000, 'el fixture no muestra el problema de truncar')
+})
+
+test('el múltiplo es un parámetro, no un literal enterrado', () => {
+  assert.equal(alMultiplo('X', { multiplo: 500 }), 'MROUND(X;500)')
 })
