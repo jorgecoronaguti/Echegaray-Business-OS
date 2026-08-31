@@ -401,7 +401,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // error y las otras dos, que caen en C y en E, salieron bien.
   fila('QUÉ SALE DE LA CAJA MAÑANA')
   fila('', 'POR TRANSFERENCIA', '', 'EN EFECTIVO', '', 'SALE DE LA CAJA')
-  fila('', `=${deTodos('D')}`, '', `=${deTodos('E')}`, '', `=${deTodos('D')}+${deTodos('E')}`)
+  // LO QUE SALE = todo lo que se debe MENOS lo que ya se entregó. No es «banco + efectivo»: en las
+  // liquidaciones el efectivo es la mitad negra entera y los $600.000 del lote del 28/08 ya salieron.
+  // Sumar las dos columnas los contaría de nuevo, que es cómo un titular pide transferir dos veces.
+  const saleDeLaCaja = `${deTodos('F')}-${deTodos('C')}-${deTodos('B')}`
+  fila('', `=${deTodos('D')}`, '', `=${saleDeLaCaja}-${deTodos('D')}`, '', `=${saleDeLaCaja}`)
   // Una sola glosa, corta, en la columna ancha. La primera versión ponía una nota abajo de cada
   // cifra —«a la cuenta sueldo de cada uno», «billetes, ya descontado lo adelantado»— y las tres
   // salieron cortadas: la columna mide 108 px, que son ~17 caracteres. Un texto que no entra no
@@ -744,16 +748,21 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     // Sin columna de fecha: es contexto, no plata, y su lugar es `_RECIBOS_RAW`, que la trae con la
     // fuente al lado. Acá obligaba a meter una columna de texto en medio del contrato numérico y
     // salía dibujada como su serial —«46.259»—, que es el defecto clásico de mezclar unidades.
-    // SIN «QUEDA POR PAGAR»: era una sexta columna que existía sólo porque el EN EFECTIVO de este
-    // cuadro no restaba lo ya transferido y el de arriba sí. Dos columnas con el mismo nombre y
-    // distinta cuenta obligan a leer el encabezado dos veces — y hacían que el titular sumara los
-    // $600.000 que ya salieron. Ahora el efectivo neta acá también, y el total ES lo que falta pagar.
-    fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL A PAGAR')
+    // ═══ EL 50/50 TIENE QUE VERSE, Y POR ESO EL EFECTIVO ACÁ NO NETA ═══
+    //
+    // Lo intenté al revés y el dueño lo marcó en el acto: «estan mal las liquidaciones finales
+    // porque el acuerdo tb es 50 y 50». Netear el efectivo publicaba banco $330.431 contra efectivo
+    // $30.431 — dos columnas que ya no se parecen— y el acuerdo dejaba de leerse en la fila.
+    //
+    // Así que la mitad negra es IGUAL a la blanca, el total es el doble, y lo ya entregado se resta
+    // en su propia columna. Se ve el acuerdo Y se ve lo que falta pagar, que son dos preguntas
+    // distintas y las dos se hacen sobre esta fila.
+    fila('Persona', 'ADELANTO', 'YA TRANSFERIDO', 'POR BANCO (lo liquidado)', 'EN EFECTIVO', 'TOTAL A PAGAR', 'QUEDA POR PAGAR')
     const F = { blanco: 0, negro: 0, total: 0, dado: 0, queda: 0 }
     const ordenadas = [...finales.values()].sort((a, b) => String(a.nombre_recibo).localeCompare(String(b.nombre_recibo), 'es'))
     for (const r of ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo))) {
       const c = reparto50DeLiquidacionFinal(r.neto)
-      if (c.total === null) { fila(r.nombre_recibo, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
+      if (c.total === null) { fila(r.nombre_recibo, 0, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO, SIN_DATO); continue }
       // ═══ LO QUE YA SE LE TRANSFIRIÓ CONTRA SU LIQUIDACIÓN ═══
       //
       // El lote de haberes del 28/08 les pagó $300.000 a Jofre y $300.000 a Sosa. Esa plata NO es
@@ -782,8 +791,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       fila(r.nombre_recibo,
         0,                                     // adelanto en obra: a estas personas no se les dio
         dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : 0,
-        // La mitad negra es igual a la blanca, MENOS lo que ya se le entregó por las dos vías.
-        `=${cita}`, `=N(D${nf})-N(C${nf})-N(B${nf})`, `=N(D${nf})+N(E${nf})`)
+        // La mitad negra es IGUAL a la blanca —el acuerdo— y el total es el doble del recibo.
+        // Lo ya entregado se resta al final, en su columna, sin tocar el 50/50.
+        `=${cita}`, `=N(D${nf})`, `=N(D${nf})+N(E${nf})`, `=N(F${nf})-N(C${nf})-N(B${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
@@ -791,7 +801,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
     const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`),
       `=SUM(B${q1}:B${q2})`, `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`,
-      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`)
+      `=SUM(E${q1}:E${q2})`, `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`)
     // ARCA LO CONFIRMA, ASÍ QUE LA NOTA LO AFIRMA. Hasta el 31/08 esta línea decía «su vínculo
     // terminó» apoyada sólo en que el estudio les liquidó el final. Ahora está la constancia de
     // baja de ARCA de los dos, con fecha de cese 25/08/2026 y causal, guardada en su legajo.

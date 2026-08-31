@@ -29,7 +29,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { letraCol } from '../lib/preservar-anotaciones.mjs'
-import { residuosDeclarados, candidatasDeBancoOficina, candidatasDeBancoDireccion } from '../lib/jornales-residuo.mjs'
+import { residuosDeclarados, candidatasDeBancoOficina, candidatasDeBancoDireccion, candidatasDeConvenioRoto } from '../lib/jornales-residuo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -60,7 +60,7 @@ export const CANDIDATAS = [
  * alguna vez se probaran más, es que alguien amplió la lista sin mirar —o que un ancla cayó en otro
  * cuadro— y entonces no escribo.
  */
-const TOPE = CANDIDATAS.length + 24
+const TOPE = CANDIDATAS.length + 24 + 8   // +8: las categorías del bloque 4.1, si estuvieran todas rotas
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -78,7 +78,55 @@ async function main() {
   // —encabezado del bloque 4.1, que hoy vive en F96— arriba del renglón de Diciembre, y ningún
   // control la nombraba. Ver `encabezadosDeMesBanco`.
   const candidatas = [...CANDIDATAS, ...candidatasDeBancoOficina(grid), ...candidatasDeBancoDireccion(grid)]
-  const { vaciables, conservadas } = residuosDeclarados(grid, candidatas)
+
+  // ═══ LA COLUMNA «Convenio (tuya)» ROTA, ANCLADA AL RÓTULO (31/08) ═══
+  //
+  // `CANDIDATAS` nombra E76 y E79 y el bloque 4.1 se corrió a la 96: el residuo real quedó en
+  // E98:E100 y publicaba SEIS #REF! en la fila del plantel vigente. Una lista de coordenadas
+  // envejece; un ancla al encabezado, no.
+  //
+  // Va por su propio camino y no por `residuosDeclarados` porque su prueba es OTRA: acá no hay
+  // «gemelo vivo» —una fórmula rota no está viva en ningún lado—, la prueba es que sea una FÓRMULA
+  // en una columna que el dueño usa para escribir TEXTO y que además esté EN ERROR. Las dos cosas.
+  const valores = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N${HASTA}`)
+    .catch(() => [])
+  const rotas = candidatasDeConvenioRoto(grid, valores)
+  for (const r of rotas) {
+    console.log(`  🧹 ${letraCol(r.col)}${r.fila} = "${r.contenido.slice(0, 40)}" → publica ${r.valor} en la columna «Convenio (tuya)», que es de texto`)
+  }
+  const { vaciables: declaradas, conservadas } = residuosDeclarados(grid, candidatas)
+  // Las rotas entran a la misma cola de escritura, con `valor` = lo que hay HOY: `vaciarPropio`
+  // relee el destino y sólo vacía si sigue coincidiendo. Si el dueño escribió algo ahí en el medio,
+  // no coincide y su celda se conserva — la guarda es la misma para todas.
+  // `valor` es lo que la guarda va a RELEER del destino para confirmar que sigue siendo lo mismo, y
+  // lo relee publicado, no como fórmula: acá va el «#REF!» que se ve, no el `=IFERROR(...)` que lo
+  // produce. Pasar la fórmula hacía que nunca coincidiera y la celda rota se conservaba siempre.
+  const vaciables = [...declaradas]
+
+  // ═══ LAS ROTAS VAN POR SU PROPIO CAMINO, Y ES EL DECLARADO ═══
+  //
+  // `vaciarPropio` no las suelta: su prueba es «lo que voy a borrar es idéntico a lo que escribí yo»
+  // y estas celdas NO las escribió el generador — quedaron de un layout anterior en una columna que
+  // él preserva por diseño (`''` = "no es mía"). La guarda hace exactamente lo que debe; el que no
+  // encaja es el caso.
+  //
+  // Entonces la escritura es `respetar: false` CON EL MOTIVO, que es la salida que la Regla 0
+  // define para esto. Y es una salida angosta a propósito: sólo las celdas que devolvió
+  // `candidatasDeConvenioRoto`, que ya exige las dos condiciones —ser fórmula Y publicar error— en
+  // una columna donde el dueño escribe texto. No hay barrido, no hay clearValues, no hay rango: son
+  // coordenadas nombradas, leídas del archivo en esta misma corrida.
+  if (rotas.length && APLICAR) {
+    if (rotas.length > 8) {
+      console.warn(`  ⛔ ${rotas.length} celdas rotas en «Convenio (tuya)» — son más que las categorías del bloque. NO escribo.`)
+    } else {
+      await google.batchUpdateValues(ID, rotas.map((r) => ({
+        range: `'${PESTAÑA}'!${letraCol(r.col)}${r.fila}`, values: [['']],
+      })), { respetar: false })
+      const releido = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N${HASTA}`, { render: 'FORMULA' })
+      const quedan = candidatasDeConvenioRoto(releido, await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N${HASTA}`).catch(() => []))
+      console.log(`  ✓ releído: ${rotas.length - quedan.length} de ${rotas.length} celda(s) rota(s) vaciada(s)${quedan.length ? ` · QUEDAN ${quedan.map((q) => letraCol(q.col) + q.fila).join(', ')}` : ''}`)
+    }
+  }
   for (const c of conservadas) {
     console.log(`  ✋ ${letraCol(c.col)}${c.fila} = "${c.valor}" — ${c.motivo}`)
   }

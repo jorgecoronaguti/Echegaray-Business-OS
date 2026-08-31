@@ -236,3 +236,55 @@ export function residuosDeclarados(grid = [], candidatas = []) {
     conservadas: todas.filter((x) => x.gemelo === null),
   }
 }
+
+/**
+ * LA COLUMNA «Convenio (tuya)» ROTA — residuo que el limpiador por filas fijas no puede ver.
+ *
+ * ═══ POR QUÉ HACE FALTA (31/08/2026) ═══
+ *
+ * `CANDIDATAS` nombra celdas por su coordenada —E76, E79— y el bloque 4.1 se corrió a la 96 cuando
+ * la pestaña creció. Desde entonces el residuo real vivía en E98:E100 y ningún control lo nombraba:
+ * la pestaña publicaba **seis `#REF!`** en la fila del plantel vigente, que es la que dice cuánta
+ * gente hay y cuánto cuesta. Es exactamente la trampa que este repo tiene escrita para las filas,
+ * cometida sobre una lista de filas.
+ *
+ * ═══ LA PRUEBA, Y POR QUÉ NO PUEDE CONFUNDIR UNA CELDA DEL DUEÑO ═══
+ *
+ * «Convenio (tuya)» es SU columna desde el 07/08: ahí él escribe el nombre de una categoría —texto—
+ * para forzar la equivalencia. Nunca una fórmula. Así que se propone vaciar sólo lo que cumple las
+ * dos condiciones a la vez:
+ *
+ *   1. el contenido ES una fórmula (empieza con `=`), y
+ *   2. su valor publicado ES un error.
+ *
+ * Una fórmula rota en una columna de texto del dueño no puede ser suya, y aunque lo fuera no le
+ * sirve: está en error. Todo lo demás de esa columna se conserva, incluso una fórmula que funcione.
+ *
+ * Se ancla al RÓTULO en las dos dimensiones —la fila por el encabezado «Categoría», la columna por
+ * «Convenio (tuya)»— y termina en la fila de total, que empieza con «⇒».
+ *
+ * @param {any[][]} formulas la pestaña leída con render FORMULA
+ * @param {any[][]} valores  la MISMA pestaña con sus valores publicados
+ * @returns {{fila:number, col:number, contenido:string, valor:string}[]} en base 1
+ */
+export function candidatasDeConvenioRoto(formulas = [], valores = []) {
+  const enc = formulas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Categoría'
+    && (f || []).some((c) => String(c ?? '').trim() === 'Convenio (tuya)'))
+  if (enc < 0) return []
+  const col = formulas[enc].findIndex((c) => String(c ?? '').trim() === 'Convenio (tuya)')
+  if (col < 0) return []
+  const out = []
+  for (let i = enc + 1; i < formulas.length; i++) {
+    const rotulo = String(formulas[i]?.[0] ?? '').trim()
+    // El bloque termina en su fila de total. Sin rótulo tampoco se sigue: se acabó la tabla.
+    if (!rotulo) break
+    const contenido = String(formulas[i]?.[col] ?? '')
+    const valor = String(valores[i]?.[col] ?? '')
+    if (rotulo.startsWith('⇒')) { if (esError(valor) && contenido.startsWith('=')) out.push({ fila: i + 1, col, contenido, valor }); break }
+    if (contenido.startsWith('=') && esError(valor)) out.push({ fila: i + 1, col, contenido, valor })
+  }
+  return out
+}
+
+/** Los errores que publica Sheets. `#REF!` es el que deja una fórmula circular o una hoja borrada. */
+export const esError = (v) => /^#(REF!|VALUE!|N\/A|NAME\?|¿NOMBRE\?|DIV\/0!|NUM!|ERROR!)/.test(String(v ?? '').trim())
