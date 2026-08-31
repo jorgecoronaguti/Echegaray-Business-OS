@@ -7,11 +7,18 @@
 // cliente compra el caño estructural, la chapa y el paño de aluminio; nosotros ponemos taller,
 // soldadura y montaje.
 //
-// El selector de partidas no lee esa frase: puntúa vocabulario y atributos técnicos. Así, el ítem
-// 5.3 —«Montaje de puerta de rebatir P1 … 1,00x2,05m»— cierra contra `T1064 PUERTA 1,00x2,05 c/BA`,
-// cuya composición vigente incluye la PUERTA como material. La coincidencia dimensional es real y el
-// código hizo bien su trabajo; el problema es que el análisis compra una puerta que el cliente ya
-// compró. **Se cotiza dos veces el mismo material y la oferta sale cara sin que nada avise.**
+// El selector de partidas no lee esa frase: puntúa vocabulario y atributos técnicos. En la corrida
+// real del 31/08/2026 el ítem 1.2 —«Fabricación y provisión de placas de acero e: 1/4" … Materiales
+// a cargo de ARCOR»— cerró contra `T1111.1 COLUMNAS METALICAS`, cuyo análisis vigente COMPRA seis
+// materiales (perfil C 240x80x15x2,5, hierro liso ø16, electrodo…). El código hizo bien su trabajo;
+// el problema es que ese análisis compra el acero que ARCOR ya compró. **Se cotiza dos veces el
+// mismo material y la oferta sale cara sin que nada avise.**
+//
+// LO QUE ESTE CONTROL NO PUEDE VER, Y HAY QUE SABERLO: el ítem 5.3 de esa misma planilla —«Montaje
+// de puerta de rebatir P1 …»— cierra contra `T1064 PUERTA 1,00x2,05 c/BA`, que también compra la
+// puerta. NO lo detecta, porque la descripción del 5.3 en el archivo original está CORTADA: termina
+// en la palabra «Puerta», sin la frase. Sus dos hermanos del mismo rubro sí la traen. Deducirla de
+// los hermanos sería inventarla, así que el 5.3 pasa y su riesgo queda declarado acá, no tapado.
 //
 // El error es simétrico y peor en el otro sentido: si el cliente provee y nosotros igual cargamos el
 // material, perdemos la licitación por caros; si alguien «corrige» borrando el material a ojo,

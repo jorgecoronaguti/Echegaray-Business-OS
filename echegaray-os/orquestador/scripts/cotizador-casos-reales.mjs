@@ -25,6 +25,8 @@ import { leerEstado } from '../lib/cotizador/pg.mjs'
 import { delProyecto, exclusionesDelProyecto, issuesDeCandidatas, huecosDelProyecto, clientesDelCorpus } from '../lib/cotizador/corpus.mjs'
 import { cuadroDeCorrida, comoMarkdown, bloqueosLegibles } from '../lib/cotizador/reporte.mjs'
 import { seleccionarTodas } from '../lib/plano/seleccion.mjs'
+import { armarCaso, numerosDelCaso } from '../lib/cotizador/caso-planilla-cliente.mjs'
+import { costoDePartida } from '../lib/cotizador/costo.mjs'
 import { politicaComercial } from '../lib/cotizador/comercial.mjs'
 import { observacionDePrecio } from '../lib/cotizador/precios.mjs'
 import { resolvedorDePrecios } from '../lib/cotizador/precio-adaptador.mjs'
@@ -52,6 +54,42 @@ export async function resolvedorParaCotizacion(query, { cotizacionId = null, rec
 }
 
 const BIBLIOTECA = JSON.parse(readFileSync(new URL('../datos/conocimiento/biblioteca.json', import.meta.url), 'utf8'))
+
+/**
+ * LA LECTURA CONGELADA DEL ÁMBITO DE ARCOR QUE ENTRA POR PLANILLAS.
+ *
+ * La produce `estudiar-ambito-planillas.mjs` y vive en el repo por la misma razón que la biblioteca:
+ * este script tiene que correr entero, sin red y sin credenciales. Cada documento lleva adentro el
+ * hash de sus bytes y la fecha en que se bajó, así que volver a correr el estudio dice si Drive se
+ * movió — un espejo que no puede gritar es una fuente muerta que se lee como viva.
+ */
+const AMBITO_ARCOR = JSON.parse(readFileSync(new URL('../datos/conocimiento/ambito-arcor-filtro-sanitario.json', import.meta.url), 'utf8'))
+
+/**
+ * EL COSTO UNITARIO DE CADA TAREA DEL CATÁLOGO, `{ codigo: costo }`. 0 consultas: usa lo ya leído.
+ *
+ * Sirve para que la pregunta que cierra un hueco llegue con su plata al lado: «¿la de 0,15 o la de
+ * 0,20?» sin decir que una sale $ 17.550 y la otra $ 28.939 traslada la decisión sin trasladar la
+ * información. Una tarea que no se puede costear queda AFUERA del mapa, no en cero.
+ */
+export function costosDelCatalogo({ tareas, composiciones }, { observaciones, resolverPrecio, hoy = new Date() }) {
+  const salida = {}
+  for (const t of tareas) {
+    const c = costoDePartida({
+      partida: { codigo: t.codigo, cantidad: 1, unidad: t.unidad, tareaTipoId: t.id },
+      composicion: composiciones.get(t.id) ?? [], observaciones, hoy,
+      ...(resolverPrecio ? { resolverPrecio } : {}),
+    })
+    if (c.costoUnitario !== null && Number.isFinite(c.costoUnitario)) salida[t.codigo] = c.costoUnitario
+  }
+  return salida
+}
+
+/** El costo unitario de cada RECURSO, `{ codigo: costo }`, para medir la plata del material que el
+ *  cliente ya compró. Un recurso sin precio queda afuera: su riesgo es desconocido, no cero. */
+export const costosDeRecursos = (observaciones = []) => Object.fromEntries(
+  observaciones.filter((o) => Number.isFinite(Number(o?.precio))).map((o) => [o.recursoCodigo, Number(o.precio)]),
+)
 
 /** El catálogo de la Base Maestra con análisis vigente y su composición. UNA consulta cada uno. */
 export async function baseMaestraCompleta(query) {
@@ -222,6 +260,38 @@ export async function main() {
     resolverPrecio: sinPesos,
   })
   casos.push({ nombre: 'CÓMPUTO MANUAL', ...c, corpus: { documentos: [], conocimientos: [] }, mapeo: mapC })
+
+  // ── CASO 5 · ARCOR · LA GRILLA LA IMPONE EL CLIENTE ────────────────────────────────────────
+  //
+  // Es el caso opuesto a Quattropani, y por eso está: ARCOR no manda planos, manda SU planilla.
+  // Los 57 documentos del cliente en el corpus son 49 planillas y 8 Word, y los 57 se abren sin un
+  // modelo. El ámbito elegido —FILTRO SANITARIO— trae la cadena completa: el pedido del cliente, la
+  // cotización interna, el cómputo final y el cómputo de materiales que sostiene los kilos.
+  //
+  // Nada de este caso ajusta un umbral para que cierre. Al revés: el control de suministro SACA del
+  // costo las partidas cuyo análisis compra material que ARCOR ya compró, así que ARCOR cotiza
+  // MENOS partidas que si no existiera. Un caso real que sale perfecto es un caso que se acomodó.
+  const costosCatalogo = costosDelCatalogo(bm, { observaciones: precios, resolverPrecio: sinPesos })
+  const casoA = armarCaso(AMBITO_ARCOR, {
+    catalogo: bm.tareas, composiciones: bm.composiciones,
+    cliente: 'ARCOR', costoPorRecurso: costosDeRecursos(precios),
+  })
+  const a = correrCronometrado({
+    documentos: casoA.documentos, elementos: casoA.elementos, partidas: casoA.partidas,
+    composiciones: bm.composiciones, observaciones: precios, alcance: [], politica,
+    cliente: 'ARCOR - SAN JUAN', clientesConocidos: clientes,
+    mapeos: casoA.mapeos, costosDeCatalogo: costosCatalogo,
+    issuesHeredados: casoA.issues,
+    // Lo que el cliente escribió en SU planilla está pedido por acto propio del cliente. No es una
+    // suposición nuestra: es el documento con el que nos invitó a cotizar.
+    alcancePorDefecto: { estado: 'INCLUIDO', fuente: `planilla del cliente: ${casoA.version.elegido?.nombre ?? 'sin versión'}`, motivo: 'lo que el cliente escribió en su propia planilla de cotización está pedido' },
+    resolverPrecio: sinPesos,
+  })
+  casos.push({
+    nombre: 'ARCOR (planilla del cliente)', ...a,
+    corpus: { documentos: casoA.documentos, conocimientos: [] },
+    ambito: casoA, numeros: numerosDelCaso(casoA),
+  })
 
   await pool.end()
   return { casos, clientes }
