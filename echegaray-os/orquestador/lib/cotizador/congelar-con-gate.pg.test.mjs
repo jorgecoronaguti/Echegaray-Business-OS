@@ -20,6 +20,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
 import { gateDeCongelado } from './freeze.mjs'
+import { crearBorradorValido, congelarBorrador } from '../../scripts/xsas-freeze-fixture.mjs'
+import { MUTACIONES } from '../../scripts/xsas-freeze-camino-verde.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -128,4 +130,113 @@ test('congelar exige el gate ANTES de mutar, y la base lo hace cumplir', { skip:
   })
 
   c.release()
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CAMINO VERDE — lo único que este archivo NO probaba
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Todo lo de arriba prueba que el candado BLOQUEA. Ninguno prueba que DEJE PASAR algo correcto, y un
+// candado que sólo se vio bloqueando no se distingue de un candado soldado: las dos veces dice que
+// no. Lo de acá abajo arma un borrador válido —nunca congelado— y lo congela de verdad; después le
+// saca una pieza por vez y exige que se corte y que al reponerla vuelva a permitir.
+//
+// Todo dentro de `begin`/`rollback` sobre UNA conexión. La base es la productiva y está compartida.
+
+test('el candado deja pasar un borrador CORRECTO, y cada pieza que falta lo corta', { skip: !hayBase }, async (t) => {
+  const c = await getPool().connect()
+  const gate = async (id) => (await c.query('select public.cot_gate_congelado($1) as g', [id])).rows[0].g
+  const valida = async (id) => (await c.query('select public.xsas_freeze_validacion($1) as v', [id])).rows[0].v
+  const hash = async (id) => (await c.query('select public.xsas_freeze_hash_estado($1) as h', [id])).rows[0].h
+
+  try {
+    await c.query('begin')
+    const fx = await crearBorradorValido(c)
+
+    await t.test('CAMINO VERDE · un DRAFT válido congela, y la fila lo prueba en su destino', async () => {
+      assert.equal((await gate(fx.cotizacionId)).ready, true, 'el gate rechaza un borrador que no tiene nada mal')
+      assert.equal((await valida(fx.cotizacionId)).ready_estricto, true, 'la validación estricta rechaza un borrador correcto')
+
+      const antes = (await c.query('select congelada_en from public.cotizaciones where id=$1', [fx.cotizacionId])).rows[0]
+      assert.equal(antes.congelada_en, null, 'la fixture nació congelada: no probaría el camino de un DRAFT')
+
+      await c.query('savepoint verde')
+      const res = await congelarBorrador(c, fx)
+      if (!res) { t.diagnostic('NO_MEDIDO: no hay perfil `direccion` en esta base'); await c.query('rollback to savepoint verde'); return }
+
+      // LA FILA, no el jsonb que devolvió la función: se lee sin el rol de la persona.
+      const [fila] = (await c.query('select congelada_en, congelada_por from public.cotizaciones where id=$1', [fx.cotizacionId])).rows
+      assert.notEqual(fila.congelada_en, null, 'la función dijo que congeló y `congelada_en` sigue en null')
+      assert.equal(fila.congelada_por, res.congeladoPor, 'congeló, pero la firma no es de quien apretó')
+      const [comp] = (await c.query(`select count(*)::int n from public.cotizacion_partida_composicion x
+        join public.cotizacion_partida p on p.id = x.partida_id where p.cotizacion_id=$1`, [fx.cotizacionId])).rows
+      assert.equal(comp.n, 2, 'congeló sin dejar la composición: una versión sin líneas no respalda su precio')
+      const [hue] = (await c.query('select sha256 from public.cotizacion_huella where cotizacion_id=$1', [fx.cotizacionId])).rows
+      assert.match(hue.sha256, /^[0-9a-f]{64}$/, 'la huella guardada no es un sha256')
+      await c.query('rollback to savepoint verde')
+    })
+
+    for (let i = 0; i < MUTACIONES.length; i++) {
+      const m = MUTACIONES[i]
+      await t.test(`MUTACIÓN ${m.nombre}`, async () => {
+        await c.query(`savepoint m${i}`)
+        await m.aplicar(c, fx)
+        const g = await gate(fx.cotizacionId)
+        const v = await valida(fx.cotizacionId)
+        const issues = m.fuente === 'gate' ? g.blocking_issues : v.ciegos
+        assert.equal(m.fuente === 'gate' ? g.ready : v.ready_estricto, false,
+          `la mutación no cortó el congelado: ${JSON.stringify(issues)}`)
+        assert.ok(issues.some((b) => b.tipo === m.tipo),
+          `cortó por otra cosa: esperaba ${m.tipo} y vinieron ${issues.map((b) => b.tipo).join(', ')}`)
+        // Y TIENE QUE VOLVER A VERDE. Un bloqueo que no se revierte no probó esta mutación: probó
+        // que el gate quedó roto para todo, y eso pasa igual con el gate soldado.
+        await c.query(`rollback to savepoint m${i}`)
+        assert.equal((await gate(fx.cotizacionId)).ready, true, 'revertida la mutación, el gate sigue bloqueando')
+        assert.equal((await valida(fx.cotizacionId)).ready_estricto, true, 'revertida la mutación, la validación sigue bloqueando')
+      })
+    }
+
+    // ═══ §L · UNA OPERACIÓN DE LECTURA JAMÁS MODIFICA UNA COMPOSICIÓN CONGELADA ═══
+    await t.test('§L · validar y reconstruir la cadena NO tocan nada: el hash es idéntico', async () => {
+      await c.query('savepoint solo_lectura')
+      const res = await congelarBorrador(c, fx)
+      if (!res) { t.diagnostic('NO_MEDIDO: no hay perfil `direccion` en esta base'); await c.query('rollback to savepoint solo_lectura'); return }
+      const antes = await hash(fx.cotizacionId)
+      await valida(fx.cotizacionId)
+      await c.query('select public.xsas_genealogia_cadena($1)', [fx.partidaId])
+      await c.query('select public.xsas_freeze_validacion($1)', [fx.cotizacionId])
+      assert.equal(await hash(fx.cotizacionId), antes, 'validar o reconstruir la cadena MOVIÓ el estado')
+
+      // EL NEGATIVO: la escritura vieja —editar la composición ya congelada— tiene que rebotar. Sin
+      // esto, el hash igual sólo probaría que nadie intentó escribir, no que no se pueda.
+      let rebotó = false
+      await c.query('savepoint intento')
+      try {
+        await c.query(`update public.cotizacion_partida_composicion set costo_unitario = 1
+          where partida_id = $1`, [fx.partidaId])
+      } catch (err) { rebotó = true; assert.match(err.message, /congelad/i, `rebotó por otro motivo: ${err.message}`) }
+      await c.query('rollback to savepoint intento')
+      assert.equal(rebotó, true, 'se pudo reescribir la composición de una versión CONGELADA')
+      assert.equal(await hash(fx.cotizacionId), antes, 'el intento de escritura dejó rastro')
+      await c.query('rollback to savepoint solo_lectura')
+    })
+
+    // ═══ §L · UN PRECIO WEB NO CONGELA SIN GOVERNANCE ═══
+    await t.test('§L · un precio de fuente WEB llega al congelado sin ninguna fila de gobernanza', async () => {
+      await c.query('savepoint web')
+      await c.query(`update public.recurso_precio set fuente = 'WEB' where recurso_id = $1`, [fx.recursos[1].id])
+      const g = await gate(fx.cotizacionId)
+      // NO SE AFIRMA QUE ESTÉ BIEN: se MIDE. Hoy el gate no mira `fuente`, así que un precio scrapeado
+      // de la web congela igual que uno de un remito. El hook de gobernanza del precio web es del
+      // frente B y todavía no existe (`precio-web.mjs` no expone ninguno), así que esto queda
+      // declarado como agujero medido y NO como criterio cumplido.
+      assert.equal(g.ready, true,
+        'CAMBIÓ EL COMPORTAMIENTO: si el gate ya bloquea el precio WEB, este test tiene que pasar a exigirlo')
+      t.diagnostic('AGUJERO MEDIDO: un precio con fuente=WEB congela sin gobernanza. NO_MEDIDO: el hook del frente B no existe todavía.')
+      await c.query('rollback to savepoint web')
+    })
+  } finally {
+    await c.query('rollback').catch(() => {})
+    c.release()
+  }
 })
