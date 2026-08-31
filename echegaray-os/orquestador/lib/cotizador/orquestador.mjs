@@ -100,6 +100,8 @@ export function correr({
   estructuraIndirecta = null,
   intentoDeIndirecto = null,
   politicaEfectivaDeLaCotizacion = null,
+  // Lo que la gobernanza activó, no lo que el circuito propuso: `Map<'rendimiento.<codigo>', hs/u>`.
+  aprendizajesActivos = new Map(),
 } = {}) {
   const etapas = []
   const anotar = (r) => { etapas.push(r); return r }
@@ -139,8 +141,29 @@ export function correr({
   // cuando compara esta oferta con otra que sí lo incluía, y sin este segundo paso no se puede
   // contestar.
   const primerCruce = cruzarAlcance({ partidas, alcance, porDefecto: alcancePorDefecto })
+  // ═══ LA REUTILIZACIÓN DEL APRENDIZAJE (§19 · §20) ═══
+  //
+  // Un rendimiento aprendido de obras terminadas reemplaza al del análisis, y para que el costo y
+  // las HH no se desincronicen se ESCALAN las líneas de mano de obra por la razón entre los dos
+  // rendimientos — no se pisa el `hh` por afuera. Pisar sólo las horas dejaría una partida que
+  // declara 200 h y cobra por 260: dos números del mismo hecho diciendo cosas distintas.
+  //
+  // Sólo entra lo que la gobernanza ACTIVÓ. Un candidato no es una norma, y acá se ve: el mapa que
+  // llega es `aprendizaje_activo`, nunca `aprendizaje_candidato`.
+  const reutilizados = []
+  const conAprendizaje = (p, lineas) => {
+    const aprendido = aprendizajesActivos.get?.(`rendimiento.${p.codigo ?? p.tareaTipoId}`)
+    if (aprendido === undefined || aprendido === null || !(Number(aprendido) > 0)) return lineas
+    const original = lineas.filter((l) => l.tipo === 'mano_obra').reduce((a, l) => a + Number(l.cantidad ?? 0), 0)
+    // Sin rendimiento original no hay razón que calcular, y un cociente contra cero no es infinito:
+    // es una cuenta que no se puede hacer. La partida sigue con su composición y se dice por qué.
+    if (!(original > 0)) return lineas
+    const razon = Number(aprendido) / original
+    reutilizados.push({ partida: p.codigo ?? p.id, clave: `rendimiento.${p.codigo ?? p.tareaTipoId}`, deComposicion: original, aprendido: Number(aprendido), razon })
+    return lineas.map((l) => (l.tipo === 'mano_obra' ? { ...l, cantidad: Number(l.cantidad ?? 0) * razon } : l))
+  }
   const costear = (p) => costoDePartida({
-    partida: p, composicion: composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? [],
+    partida: p, composicion: conAprendizaje(p, composiciones.get?.(p.tareaTipoId) ?? p.composicion ?? []),
     observaciones, fx, hoy,
     ...(resolverPrecio ? { resolverPrecio } : {}),
   })
@@ -240,10 +263,18 @@ export function correr({
     etapa: ETAPA.COST, status: cd.total === null ? STATUS.BLOQUEADA : STATUS.OK,
     // `hh` viaja como lo devuelve `costoDirecto`: `null` cuando alguna partida no puede afirmar las
     // suyas. Publicar la suma de las que sí es un total al que le falta una partida entera.
-    result: { total: cd.total, parcial: cd.parcial, cajones: cd.cajones, hh: cd.hh, nSinHh: cd.nSinHh },
+    result: {
+      total: cd.total, parcial: cd.parcial, cajones: cd.cajones, hh: cd.hh, nSinHh: cd.nSinHh,
+      // Cuántas partidas costearon con experiencia propia en vez del análisis del catálogo. Es la
+      // métrica del §20: la obra terminada tiene que hacer que la próxima cotización sea mejor, y
+      // sin este contador «aprender» no se distingue de «guardar».
+      reutilizanAprendizaje: reutilizados.length,
+      aprendizajesDisponibles: aprendizajesActivos.size ?? 0,
+    },
     missing_data: cd.faltan.map((f) => `${f.partida}: ${(f.porQue ?? []).join(' · ')}`),
     blocking_issues: cd.total === null ? [{ tipo: 'COSTO_NO_AFIRMABLE', entidad: 'cotización', detalle: cd.porQue }] : [],
     confidence: cd.nPartidas ? (cd.nPartidas - cd.nSinCosto) / cd.nPartidas : null,
+    provenance: reutilizados.map((r) => `${r.partida}: rendimiento aprendido ${r.aprendido} en vez de ${r.deComposicion} del análisis (×${Math.round(r.razon * 1000) / 1000})`),
   }))
 
   // ── 8 · COMMERCIAL
