@@ -94,7 +94,11 @@ function desdeLosCasos(casos) {
   const m = q?.metricas ?? {}
 
   const cantidades = q?.partidas?.length ?? 0
-  const conCantidad = q?.partidas?.filter((p) => p.cantidad !== null && p.cantidad !== undefined).length ?? 0
+  // «computa CON EVIDENCIA» no es «tiene un número». Contar cantidades y llamarlas genealogía daba
+  // CUMPLE sobre 26 partidas cuya `evidencia` y `fuente` eran las dos `null`: la afirmación sin la
+  // evidencia adjunta, publicada en el cuadro que va al dueño.
+  const conEvidencia = q?.partidas?.filter((p) =>
+    p.cantidad !== null && p.cantidad !== undefined && (p.evidencia || p.fuente || p.nota)).length ?? 0
   const compose = etapaDe(q, 'COMPOSE')?.result ?? {}
   const map = etapaDe(q, 'MAP')?.result ?? {}
 
@@ -115,7 +119,11 @@ function desdeLosCasos(casos) {
       partidasConEstado: q?.partidas?.filter((p) => p.alcance).length ?? 0,
       sinDecidir: q?.partidas?.filter((p) => p.alcance === 'POR_DEFINIR').length ?? 0,
     },
-    computo: { cantidades, conGenealogiaCompleta: conCantidad },
+    // Si NINGUNA partida trae evidencia, fuente ni nota, no hay nada que medir: sale sin medir, no
+    // en rojo. El motor no falló — la cotización llegó con las partidas cargadas y sin su rastro.
+    computo: conEvidencia > 0 ? { cantidades, conGenealogiaCompleta: conEvidencia } : null,
+    computo__porque: conEvidencia > 0 ? undefined
+      : `las ${cantidades} partidas de la corrida traen cantidad pero ninguna trae evidencia, fuente ni nota: vienen cargadas en la cotización, no reconstruidas de un documento. La genealogía completa la prueba \`plano/genealogia.mjs\` sobre el pipeline de planos, no este cuadro`,
     // Sumar `partidas.length` convertía «selecciona partidas defendiblemente» en «hay partidas».
     // Sin mapeos declarados el criterio queda SIN MEDIR —no en rojo—: la corrida no ejercita el
     // selector porque las partidas de Quattropani ya vienen cargadas en la cotización.
@@ -142,7 +150,11 @@ function desdeLosCasos(casos) {
       // No se afirma: se INTENTA escribirlo y se mira si el módulo lo rechaza.
       coeficienteEscribible: intentarEscribirCoeficiente(),
     },
-    claudeZero: { llamadasLlm: casos.reduce((a, c) => a + (c.corrida?.metricas?.llamadas_llm ?? 0), 0), llegoAlFinal: conCosto.length > 0 },
+    // `correr()` construye sus métricas con `llamadasLLM: []` cableado, así que `llamadas_llm === 0`
+    // no puede dar falso: es un cero fabricado, no una medición. El hecho de fondo es cierto y está
+    // bien probado — pero por otro lado.
+    claudeZero: null,
+    claudeZero__porque: 'el cero de `llamadas_llm` es ESTRUCTURAL: `correr()` cablea `llamadasLLM: []`, así que el término no puede decir que no. La prueba real del §13 es `orquestador/lib/cotizador/sin-llm.test.mjs` + `orquestador/scripts/xsas-sin-llm.mjs`, que borran las llaves del entorno antes de importar nada, cablean resolvedores que tiran ECONNREFUSED y saldo cero, y auditan que ninguno de los 26 módulos del cotizador importe un cliente de IA',
     // #21 · lo que una corrida REAL aplicó. Cero disponibles no es «no reutiliza»: es que la
     // gobernanza no promovió nada todavía, y eso lo produce la obra, no el código.
     reuso: (() => {
@@ -237,12 +249,23 @@ async function desdeLaBase(query, pool) {
   // lo que bloquea es un trigger. Un permiso no es una capacidad. Así que se INTENTA el UPDATE
   // sobre una línea de una cotización congelada, dentro de una transacción que se deshace, y se
   // mira si la base lo rechaza. Es la misma diferencia que separa «existe el código» de «corrió».
-  await medir('versionado', async () => ({
+  await medir('versionado', async () => {
+    const rechaza = await rechazaEscribirLoCongelado(pool)
+    // Es el ÚNICO lugar de la DoD donde una ausencia de medición salía en rojo. Hoy no dispara
+    // porque existen 462 líneas congeladas, pero en una base limpia —staging, un restore— no hay
+    // ninguna, y el cuadro acusaría al motor de un defecto que nadie demostró. «Un control que no
+    // pudo mirar no dice "no está"».
+    if (rechaza === null) {
+      e.versionado__porque = 'no hay ninguna cotización congelada con composición contra la cual intentar la escritura: no se pudo medir si la base defiende lo congelado'
+      return null
+    }
+    return {
     // `count(*) >= 0` era verdadero para todo entero y no probaba nada. Ahora se le pregunta a la
     // base si el rol con el que entra la web puede tocar la composición congelada.
-    congeladaEsInmutable: await rechazaEscribirLoCongelado(pool),
-    ofertaDerivaDeCongelada: (await uno(query, 'select count(*) n from public.obra_origen_cotizacion where congelada_en is not null')) > 0,
-  }))
+      congeladaEsInmutable: rechaza,
+      ofertaDerivaDeCongelada: (await uno(query, 'select count(*) n from public.obra_origen_cotizacion where congelada_en is not null')) > 0,
+    }
+  })
   await medir('aObra', async () => ({ obrasConGenealogia: await uno(query, 'select count(distinct obra_id) n from public.obra_origen_cotizacion') }))
   await medir('ejecucionReal', async () => ({ relacionesEstablecidas: await uno(query, 'select count(*) n from public.obra_partida_plan where actividad_id is not null') }))
   await medir('planVsReal', async () => ({
