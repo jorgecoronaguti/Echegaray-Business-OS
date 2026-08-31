@@ -286,9 +286,25 @@ async function legajosDeDrive() {
 }
 
 function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new Map(), finales = new Map(), adelantosPorCuil = new Map(), adelantosDeFinal = new Map(), periodoRecibo = '' }) {
+  // ═══ UNA HOJA, UN PROPÓSITO ═══
+  //
+  // Esta pestaña hacía cinco trabajos: la instrucción de pago de la quincena, el plantel, lo
+  // devengado mes a mes, el costo de desvincular y el índice de legajos en Drive. Ciento cuarenta y
+  // una filas y seis anchos de grilla distintos para contestar «cuánto le pago a cada uno mañana».
+  //
+  // El estándar de modelado financiero es explícito: cada hoja es un capítulo, y los cuadros de
+  // respaldo van a su propia hoja (FAST — «worksheets are like chapters in a book»; los supporting
+  // schedules se separan). Y el contrato del dueño dice lo mismo con otras palabras: *menos bloques;
+  // antes de agregar un cuadro, preguntar si su información no cabe en uno que ya existe*.
+  //
+  // Así que la Nómina se queda con lo que se paga —y nada más— y los cuatro cuadros de respaldo se
+  // mudan a «Plantel». No se borra nada: se mueve, con su propio ancho de grilla y sin competir con
+  // el número que se opera mañana.
   const meses = mesesDe(ANIO)
   const f = []
-  const fila = (...c) => { f.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
+  const g = []
+  let destino = f
+  const fila = (...c) => { destino.push(c.concat(Array(Math.max(0, ANCHO - c.length)).fill(''))) }
 
   fila(PESTANA)
   fila('El plantel de hoy: cuánto hay que pagarle a cada uno esta quincena, y cuánto costaría desvincularlo.')
@@ -582,16 +598,24 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         .filter((a) => a.cuil && a.cuil === r.cuil)
         .reduce((acc, a) => acc + Number(a.importe), 0)
       F.blanco += c.blanco; F.negro += c.negro; F.total += c.total; F.dado += dado; F.queda += c.total - dado
+      // Igual que el cuadro 1: el blanco CITA la réplica y el resto es la cuenta en la celda. El
+      // negro es un espejo del blanco —el 50/50— y el total su suma; escribirlos como números sería
+      // pegar tres veces el mismo hecho.
+      const nf = f.length + 1
+      const cita = `SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$A$1:$A$400;"${r.cuil}";'_RECIBOS_RAW'!$B$1:$B$400;"FINAL")`
       fila(r.nombre_recibo,
         r.fecha_pago ? new Date(r.fecha_pago).toLocaleDateString('es-AR') : SIN_DATO,
-        Math.round(c.blanco), Math.round(c.negro), Math.round(c.total),
-        dado ? Math.round(dado) : SIN_DATO, Math.round(c.total - dado))
+        `=${cita}`, `=C${nf}`, `=C${nf}+D${nf}`,
+        dado ? `=SUMIFS('_RECIBOS_RAW'!$E$1:$E$400;'_RECIBOS_RAW'!$C$1:$C$400;"${r.cuil}";'_RECIBOS_RAW'!$F$1:$F$400;"LIQUIDACION_FINAL")` : SIN_DATO,
+        `=N(E${nf})-N(F${nf})`)
     }
     // Cuenta las que QUEDARON en el cuadro. Con `finales.size` decía «7 liquidaciones» sobre dos
     // filas, porque las otras cinco se habían ido al bloque de subcontratistas.
+    const q1 = f.length - ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length + 1
+    const q2 = f.length
     fila(rotuloTotal(`${ordenadas.filter((x) => !esSubcontratista(x.nombre_recibo)).length} liquidación(es) final(es)`), '',
-      Math.round(F.blanco), Math.round(F.negro), Math.round(F.total),
-      Math.round(F.dado), Math.round(F.queda))
+      `=SUM(C${q1}:C${q2})`, `=SUM(D${q1}:D${q2})`, `=SUM(E${q1}:E${q2})`,
+      `=SUM(F${q1}:F${q2})`, `=SUM(G${q1}:G${q2})`)
     fila(sub('Estas personas NO cobran la quincena: su vínculo terminó. El costo de desvincular al resto del plantel está en el cuadro 4.'))
 
   }
@@ -615,7 +639,13 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 2 · QUIÉNES SON ═══
-  fila(seccion(3, 'quiénes son'))
+  // ─── DESDE ACÁ, TODO VA A «Plantel» ───
+  destino = g
+  fila('Plantel')
+  fila('Quiénes son, qué devengaron en el año, qué costaría desvincularlos y qué papel les falta en el legajo.')
+  fila(`Respaldo de «Nómina». Al ${fecha(hoy)}.`)
+  fila()
+  fila(seccion(1, 'quiénes son'))
   fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
   let horasT = 0
   let importeT = 0
@@ -632,7 +662,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 3 · EL AÑO, MES A MES ═══
-  fila(seccion(4, `lo devengado mes a mes · ${ANIO}`))
+  fila(seccion(2, `lo devengado mes a mes · ${ANIO}`))
   fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
   const porMes = new Array(12).fill(0)
   for (const p of activos) {
@@ -664,7 +694,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
   // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
   // de una desvinculación a la mitad exacta.
-  fila(seccion(5, 'qué cuesta desvincular a cada uno'))
+  fila(seccion(3, 'qué cuesta desvincular a cada uno'))
   fila(`La liquidación formal cubre el ${Math.round(ACUERDO_BANCO * 100)}% —la parte registrada—; el resto se completa en efectivo. Las dos columnas SUMAN: juntas son lo que sale de la caja.`)
   fila('El fondo de cese va aparte y NUNCA se suma: es plata del trabajador que se le entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
@@ -716,7 +746,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 5 · EL LEGAJO EN DRIVE ═══
-  fila(seccion(6, 'el legajo de cada uno en Drive'))
+  fila(seccion(4, 'el legajo de cada uno en Drive'))
   fila('Mira el NOMBRE de los archivos de su carpeta, no el contenido: un «alta.pdf» que adentro tenga otra cosa se cuenta como alta igual.')
   fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
   const sinCarpeta = []
@@ -740,14 +770,18 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila()
 
   // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══
-  fila(seccion(7, 'lo que esta pestaña NO puede decir'))
+  // Las limitaciones son de la Nómina y van al pie de la Nómina: son los límites del número que se
+  // paga, no del cuadro de respaldo.
+  destino = f
+  fila('')
+  fila(seccion(3, 'lo que esta pestaña NO puede decir'))
   fila(sub('Sólo el plantel ACTIVO. Los desvinculados se sacaron por pedido del dueño: su devengado histórico vive en la planilla de jornales.'))
   fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
   fila(sub('Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia siguen adentro de los PDF.'))
   fila(sub('Las cargas sociales no se abren por persona: la planilla las tiene por total.'))
   fila(sub('El fondo de cese acumulado se calcula sobre el jornal de la planilla. Si los aportes se depositaron sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — no lo puedo verificar desde acá.'))
   fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja: la planilla no las distingue.'))
-  return f
+  return { nomina: f, plantel: g }
 }
 
 /**
@@ -799,91 +833,15 @@ async function formatear(google, hoja, filas) {
   console.log(`  formato: ${reqs.length} reglas`)
 }
 
-async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const hoy = new Date()
-  // ═══ LA MISMA PLANILLA, LEÍDA DE LAS DOS FORMAS, Y CADA UNA PARA LO SUYO ═══
-  //
-  // Con FORMATTED_VALUE la fecha de ingreso llega como «26/05/2025» —que es lo que el lector del
-  // plantel sabe parsear— y los importes llegan como «$ 431.200», que no son un número. Con
-  // UNFORMATTED_VALUE pasa exactamente lo contrario. Pedir las dos cuesta una llamada más y evita la
-  // clase entera de defectos: la primera versión leyó todo sin formato y dejó la columna Ingreso en
-  // «—» para las diecinueve personas, sin un solo error a la vista.
-  const [obreros, obrerosNum, oficina, uocra] = await Promise.all([
-    google.readSheetValues(ID, '_J_OBREROS!A1:AC990'),
-    google.readSheetValues(ID, '_J_OBREROS!A1:AC990', { render: 'UNFORMATTED_VALUE' }),
-    google.readSheetValues(ID, '_J_OFICINA!A1:AA990'),
-    google.readSheetValues(ID, '_UOCRA_RAW!A1:J400', { render: 'UNFORMATTED_VALUE' }),
-  ])
-  const a = personasDe(obreros, 'Obra', COL_OBRA)
-  const b = personasDe(oficina, 'Oficina', COL_OFICINA)
-  // SÓLO EL PLANTEL DE HOY. El dueño: *"los inactivos quitar"*. La historia de los que se fueron no
-  // desaparece —vive en la planilla de jornales, que es la fuente— pero no ensucia la decisión de
-  // cuánto hay que pagar esta quincena.
-  const quincena = quincenaEnCurso(obrerosNum ?? [], a.bloques, claveNombre, { hoy })
-  // Los recibos se leen ACÁ porque el orden alfabético
-  // del plantel depende del nombre canónico, que sale de ellos.
-  const quincenaDelMes = (quincena.desde && Number(String(quincena.desde).split('/')[0]) > 15) ? 'Q2' : 'Q1'
-  const periodoRecibo = `${quincenaDelMes}-${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
-  const recibosPorCuil = await recibosDelPeriodo(periodoRecibo)
-  const finales = await recibosDelPeriodo('FINAL')
-  const { porCuil: adelantosPorCuil } = await adelantosPagados('QUINCENA')
-  const adelantosDeFinal = await adelantosPagados('LIQUIDACION_FINAL')
-  console.log(`recibos del período ${periodoRecibo}: ${recibosPorCuil.size} · liquidaciones finales: ${finales.size}`)
-
-  // ═══ EL ORDEN ES POR EL NOMBRE CANÓNICO, NO POR EL DE LA PLANILLA ═══
-  //
-  // Ordenar por `p.nombre` ordena por lo que quedó adelante en cada renglón de la planilla, y ahí
-  // conviven «Aguero Cristian» con «Emanuel Alaniz»: la lista sale alfabética por apellido para unos
-  // y por nombre de pila para otros, que es justo lo que el dueño pidió corregir. Se ordena por el
-  // nombre del recibo —APELLIDO primero, siempre— y quien no tenga recibo cae a su nombre de
-  // planilla, que sigue siendo mejor que un orden inventado.
-  const activos = [...a.personas, ...b.personas].filter((p) => p.activo)
-  const claveDeOrden = (x) => {
-    const c = CUIL_POR_PERSONA_DE_PLANILLA[x.nombre]
-    return comoSeEscribe((c ? recibosPorCuil.get(c)?.nombre_recibo : null) ?? x.nombre)
-  }
-  activos.sort((x, y) => claveDeOrden(x).localeCompare(claveDeOrden(y), 'es'))
-
-  // LA ESCALA DEL CONVENIO, del período de la quincena. Si no hay escalón para ese mes NO se estira
-  // el anterior: la columna del piso queda vacía y la pestaña lo dice.
-  const { escalones } = parsearAcuerdos(uocra ?? [])
-  const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
-  const esc = escalonDe(escalones, periodo)
-  const escala = {
-    rotulo: esc ? `${esc.rotulo} (${esc.periodo})` : null,
-    porCategoria: Object.fromEntries(Object.entries(esc?.categorias ?? {}).map(([k, v]) => [k, v.zonaA ?? v.basico])),
-  }
-
-  console.log(`activos: ${activos.length} · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} con ${quincena.porClave.size} persona(s) · escala ${escala.rotulo ?? 'SIN ESCALA'}`)
-  if (!activos.length) { console.error('no leí ninguna persona activa: NO escribo'); process.exit(1) }
-  if (!esc) console.warn('  ⚠ sin escalón de convenio para el período: el cuadro del piso sale vacío')
-
-  // LA COLUMNA BANCO DEL CUADRO 1. Sale del recibo que emitió el estudio, no del 50% calculado.
-  // El período se arma del mes de la quincena: la segunda mitad del mes es Q2.
-  // LO QUE LA PLANILLA NO TRAE Y LA BASE SÍ: la fecha de ingreso y el convenio declarado.
-  const fichas = await fichasDeLaBase()
-  const nombresFicha = fichas.map((f) => f.nombre_completo)
-  for (const p of activos) {
-    const m = carpetaDe(p.nombre, nombresFicha)
-    const f = m.seguro ? fichas.find((x) => x.nombre_completo === m.carpeta) : null
-    p.convenio = f?.convenio_colectivo ?? null
-    p.fichaDe = f?.nombre_completo ?? null
-    if (!p.ingreso && f?.fecha_ingreso) {
-      p.ingreso = new Date(f.fecha_ingreso)
-      p.ingresoDeLaBase = true
-    }
-  }
-  const legajos = await legajosDeDrive()
-  console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
-  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo })
-  console.log(`${PESTANA}: ${filas.length} filas × ${ANCHO} columnas`)
-  for (const f of filas.slice(5, 12)) console.log('  ', f.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
-  if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
-
-  const malas = filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
-  if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
-
+/**
+ * PUBLICA UNA PESTAÑA GENERADA ENTERA: la borra, la vuelve a crear y la escribe.
+ *
+ * Era el cuerpo final de `main` y hablaba de `PESTANA` y de `filas` por nombre. Desde que la
+ * Nómina se partió en dos —la instrucción de pago acá, los cuadros de respaldo en «Plantel»— hay
+ * dos pestañas que se publican igual, y una segunda copia de estas ochenta líneas es la forma más
+ * segura de que dentro de un mes una tenga una guarda que la otra no.
+ */
+async function publicar(google, PESTANA, filas) {
   // ═══ EL TÍTULO SE COMPARA EXACTO, NUNCA POR PREFIJO ═══
   //
   // `hallarPestana` prueba exacto y DESPUÉS por prefijo: si no existiera una pestaña llamada
@@ -974,7 +932,99 @@ async function main() {
 
   // RELEER EL DESTINO: lo que prueba una escritura es el dato leído en su destino.
   const releido = await google.readSheetValues(ID, `${PESTANA}!A1:A${filas.length}`)
-  console.log(`✓ releído del archivo: ${(releido ?? []).filter((r) => String(r?.[0] ?? '').trim()).length} filas con contenido en la columna A`)
+  console.log(`✓ ${PESTANA}: releído del archivo, ${(releido ?? []).filter((r) => String(r?.[0] ?? '').trim()).length} filas con contenido`)
+}
+
+async function main() {
+  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const hoy = new Date()
+  // ═══ LA MISMA PLANILLA, LEÍDA DE LAS DOS FORMAS, Y CADA UNA PARA LO SUYO ═══
+  //
+  // Con FORMATTED_VALUE la fecha de ingreso llega como «26/05/2025» —que es lo que el lector del
+  // plantel sabe parsear— y los importes llegan como «$ 431.200», que no son un número. Con
+  // UNFORMATTED_VALUE pasa exactamente lo contrario. Pedir las dos cuesta una llamada más y evita la
+  // clase entera de defectos: la primera versión leyó todo sin formato y dejó la columna Ingreso en
+  // «—» para las diecinueve personas, sin un solo error a la vista.
+  const [obreros, obrerosNum, oficina, uocra] = await Promise.all([
+    google.readSheetValues(ID, '_J_OBREROS!A1:AC990'),
+    google.readSheetValues(ID, '_J_OBREROS!A1:AC990', { render: 'UNFORMATTED_VALUE' }),
+    google.readSheetValues(ID, '_J_OFICINA!A1:AA990'),
+    google.readSheetValues(ID, '_UOCRA_RAW!A1:J400', { render: 'UNFORMATTED_VALUE' }),
+  ])
+  const a = personasDe(obreros, 'Obra', COL_OBRA)
+  const b = personasDe(oficina, 'Oficina', COL_OFICINA)
+  // SÓLO EL PLANTEL DE HOY. El dueño: *"los inactivos quitar"*. La historia de los que se fueron no
+  // desaparece —vive en la planilla de jornales, que es la fuente— pero no ensucia la decisión de
+  // cuánto hay que pagar esta quincena.
+  const quincena = quincenaEnCurso(obrerosNum ?? [], a.bloques, claveNombre, { hoy })
+  // Los recibos se leen ACÁ porque el orden alfabético
+  // del plantel depende del nombre canónico, que sale de ellos.
+  const quincenaDelMes = (quincena.desde && Number(String(quincena.desde).split('/')[0]) > 15) ? 'Q2' : 'Q1'
+  const periodoRecibo = `${quincenaDelMes}-${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
+  const recibosPorCuil = await recibosDelPeriodo(periodoRecibo)
+  const finales = await recibosDelPeriodo('FINAL')
+  const { porCuil: adelantosPorCuil } = await adelantosPagados('QUINCENA')
+  const adelantosDeFinal = await adelantosPagados('LIQUIDACION_FINAL')
+  console.log(`recibos del período ${periodoRecibo}: ${recibosPorCuil.size} · liquidaciones finales: ${finales.size}`)
+
+  // ═══ EL ORDEN ES POR EL NOMBRE CANÓNICO, NO POR EL DE LA PLANILLA ═══
+  //
+  // Ordenar por `p.nombre` ordena por lo que quedó adelante en cada renglón de la planilla, y ahí
+  // conviven «Aguero Cristian» con «Emanuel Alaniz»: la lista sale alfabética por apellido para unos
+  // y por nombre de pila para otros, que es justo lo que el dueño pidió corregir. Se ordena por el
+  // nombre del recibo —APELLIDO primero, siempre— y quien no tenga recibo cae a su nombre de
+  // planilla, que sigue siendo mejor que un orden inventado.
+  const activos = [...a.personas, ...b.personas].filter((p) => p.activo)
+  const claveDeOrden = (x) => {
+    const c = CUIL_POR_PERSONA_DE_PLANILLA[x.nombre]
+    return comoSeEscribe((c ? recibosPorCuil.get(c)?.nombre_recibo : null) ?? x.nombre)
+  }
+  activos.sort((x, y) => claveDeOrden(x).localeCompare(claveDeOrden(y), 'es'))
+
+  // LA ESCALA DEL CONVENIO, del período de la quincena. Si no hay escalón para ese mes NO se estira
+  // el anterior: la columna del piso queda vacía y la pestaña lo dice.
+  const { escalones } = parsearAcuerdos(uocra ?? [])
+  const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+  const esc = escalonDe(escalones, periodo)
+  const escala = {
+    rotulo: esc ? `${esc.rotulo} (${esc.periodo})` : null,
+    porCategoria: Object.fromEntries(Object.entries(esc?.categorias ?? {}).map(([k, v]) => [k, v.zonaA ?? v.basico])),
+  }
+
+  console.log(`activos: ${activos.length} · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'} con ${quincena.porClave.size} persona(s) · escala ${escala.rotulo ?? 'SIN ESCALA'}`)
+  if (!activos.length) { console.error('no leí ninguna persona activa: NO escribo'); process.exit(1) }
+  if (!esc) console.warn('  ⚠ sin escalón de convenio para el período: el cuadro del piso sale vacío')
+
+  // LA COLUMNA BANCO DEL CUADRO 1. Sale del recibo que emitió el estudio, no del 50% calculado.
+  // El período se arma del mes de la quincena: la segunda mitad del mes es Q2.
+  // LO QUE LA PLANILLA NO TRAE Y LA BASE SÍ: la fecha de ingreso y el convenio declarado.
+  const fichas = await fichasDeLaBase()
+  const nombresFicha = fichas.map((f) => f.nombre_completo)
+  for (const p of activos) {
+    const m = carpetaDe(p.nombre, nombresFicha)
+    const f = m.seguro ? fichas.find((x) => x.nombre_completo === m.carpeta) : null
+    p.convenio = f?.convenio_colectivo ?? null
+    p.fichaDe = f?.nombre_completo ?? null
+    if (!p.ingreso && f?.fecha_ingreso) {
+      p.ingreso = new Date(f.fecha_ingreso)
+      p.ingresoDeLaBase = true
+    }
+  }
+  const legajos = await legajosDeDrive()
+  console.log(`legajos en Drive: ${legajos.carpetas.length} carpeta(s) en «1. ACTIVOS»`)
+  const filas = grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil, finales, adelantosPorCuil, adelantosDeFinal, periodoRecibo })
+  console.log(`${PESTANA}: ${filas.nomina.length} filas · Plantel: ${filas.plantel.length} filas × ${ANCHO} columnas`)
+  for (const x of filas.nomina.slice(5, 12)) console.log('  ', x.filter((c) => c !== '').map((c) => String(c).slice(0, 16)).join(' | '))
+  if (!APLICAR) return console.log('\n(sin --aplicar: no escribí nada)')
+
+  for (const [titulo, arr] of [[PESTANA, filas.nomina], ['Plantel', filas.plantel]]) {
+    const malas = arr.map((x, i) => (x.length > ANCHO ? i + 1 : 0)).filter(Boolean)
+    if (malas.length) throw new Error(`${titulo}: ${malas.length} fila(s) más anchas que ${ANCHO}: ${malas.slice(0, 5).join(', ')}. NO escribo.`)
+  }
+
+  await publicar(google, PESTANA, filas.nomina)
+  if (filas.plantel.length) await publicar(google, 'Plantel', filas.plantel)
+
 }
 
 main().then(() => closePool()).catch(async (e) => { console.error(String(e?.message ?? e)); await closePool().catch(() => {}); process.exit(1) })

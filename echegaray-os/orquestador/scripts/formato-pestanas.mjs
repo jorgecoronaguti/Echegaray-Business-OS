@@ -118,6 +118,11 @@ export const PESTANAS = [
   // y desde Postgres; SUBCONTRATISTAS es una vista de Compras y lo declara en su propia fila 2.
   { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true },
   { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
+  // «Plantel» nace el 31/08 al partir la Nómina: los cuatro cuadros de respaldo —quiénes son, lo
+  // devengado, el costo de desvincular y el índice de legajos— salen de la pestaña que se opera y
+  // pasan a la suya. Se anota acá EN LA MISMA corrida que la crea, para no repetir el descuido que
+  // dejó a OBRAS y a la propia Nómina fuera de todos los controles.
+  { titulo: 'Plantel', congeladas: 3, hastaFila: 140, cols: 17, propio: true },
 ]
 
 /**
