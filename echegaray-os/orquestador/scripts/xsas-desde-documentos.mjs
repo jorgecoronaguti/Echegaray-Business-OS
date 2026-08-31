@@ -300,7 +300,15 @@ const medicion = {
   partidas_mapeadas: { valor: r.mapeo?.mapeadas ?? 0, estado: 'MEDIDO' },
   partidas_candidatas: { valor: r.mapeo?.candidatas ?? 0, estado: 'MEDIDO' },
   cantidades_de_planilla_insumo: { valor: takeoffsInsumo.reduce((a, t) => a + t.cantidades.length, 0), estado: 'MEDIDO' },
-  cantidades_de_planilla_contraste: { valor: contrastes.flatMap((c) => c.hojas).reduce((a, h) => a + h.cantidades.length, 0), estado: 'MEDIDO' },
+  // NO se llama «cantidades de cómputo»: son FILAS CON FORMA de cantidad (una columna rotulada
+  // cantidad y otra unidad) en 19 pestañas por libro, y ahí adentro entran las hojas «Análisis»,
+  // que son análisis de precio unitario y no cómputo de obra. Llamarlas cantidades publicaría 6.800
+  // cómputos donde hay 60. El número es real; el rótulo es lo que lo hacía mentir.
+  filas_con_forma_de_cantidad_en_reservados: { valor: contrastes.flatMap((c) => c.hojas).reduce((a, h) => a + h.cantidades.length, 0), estado: 'MEDIDO' },
+  cantidades_del_computo_del_proyecto: {
+    valor: contrastes.filter((c) => /computo/i.test(c.archivo)).flatMap((c) => c.hojas).reduce((a, h) => a + h.cantidades.filter((x) => x.estado === ESTADO.DEFENDIBLE).length, 0),
+    estado: contrastes.some((c) => /computo/i.test(c.archivo)) ? 'MEDIDO' : 'NO_APLICA',
+  },
   llamadas_al_modelo: { valor: r.ia.llamadas, estado: 'MEDIDO' },
   reproducibilidad_run1_run2: { valor: null, estado: opciones.run2 ? 'MEDIDO' : 'NO_MEDIDO', porQue: opciones.run2 ? null : 'no se pidió --run2: una corrida sola no puede afirmar nada sobre reproducibilidad' },
 }
