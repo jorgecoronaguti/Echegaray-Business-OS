@@ -146,16 +146,48 @@ test('escritura económica, drive_index y bitácora — contra la base real', { 
     // ── §26 ───────────────────────────────────────────────────────────────────────────────────
     await t.test('drive_index: campo ve su legajo y no el archivo fiscal',
       { skip: !campo && 'sin perfil campo con persona' }, async () => {
-        const propios = await uno(
-          `select count(*)::int n from documentacion_legajo where persona_id=$1 and drive_file_id is not null`,
-          [campo.persona_id])
-        assert.ok(propios.n > 0, 'la persona de prueba no tiene documentos de legajo indexados')
+        // ═══ QUÉ SE MIDE ACÁ, Y QUÉ SE MEDÍA ANTES ═══
+        //
+        // Este test cuida UNA cosa: que `campo` sólo vea del catálogo las filas de SU legajo. Lo
+        // afirmaba comparando el conteo de `drive_index` contra el de `documentacion_legajo`, que
+        // son DOS TABLAS DISTINTAS: la primera es el catálogo del Drive y la segunda el registro de
+        // qué papel tiene cada persona. Que coincidan no es una propiedad de la policy — es una
+        // propiedad del mundo, cierta sólo mientras el catálogo esté al día.
+        //
+        // El 31/08/2026 dejó de ser cierta por una operación perfectamente normal: se archivó el
+        // recibo de sueldo de QUIROGA SEBASTIAN ADOLFO, quedó registrado en `documentacion_legajo`
+        // (53) y el catálogo siguió en 52. El test se puso rojo sin que hubiera un defecto, y de
+        // paso arrastró al subtest siguiente, que midió el «total» con el rol de campo todavía
+        // puesto porque la falla saltó antes del `rollback`.
+        //
+        // Y no hay quién lo empareje: **`drive_index` no tiene indexador**. El módulo lo nombra
+        // (`scripts/indexar-drive.mjs`) y el script no existe, ni está la variable de raíces. El
+        // catálogo se separa de la realidad sola, en silencio, cada vez que alguien sube un papel.
+        //
+        // Así que ahora se mide la POLICY: todo lo que campo ve es suyo, y ve algo. Es más
+        // exigente que el conteo —un catálogo desactualizado ya no lo rompe, pero una fuga de UNA
+        // fila ajena sí— y no depende de que dos tablas estén sincronizadas.
+        // ═══ EL CONJUNTO SE ARMA ANTES DE CAMBIAR DE ROL ═══
+        //
+        // Primer intento de esta corrección: preguntar, YA como campo, cuántas filas de
+        // `drive_index` no tienen su contraparte en `documentacion_legajo`. Daba 52 sobre 52 y
+        // parecía una fuga masiva. No lo era: `documentacion_legajo` TAMBIÉN está bajo RLS, así que
+        // bajo el rol de campo la subconsulta no ve nada y el `not exists` es verdadero siempre.
+        // Un control que se evalúa adentro de la jaula que está midiendo no mide la jaula.
+        const suyos = new Set((await c.query(
+          `select drive_file_id from documentacion_legajo where persona_id=$1 and drive_file_id is not null`,
+          [campo.persona_id])).rows.map((r) => r.drive_file_id))
+        assert.ok(suyos.size > 0, 'la persona de prueba no tiene documentos de legajo')
 
         await c.query('savepoint como_campo2')
         await como(campo.id)
-        const total = await uno(`select count(*)::int n from drive_index`)
-        assert.equal(total.n, propios.n,
-          `campo vio ${total.n} filas del catálogo y sólo le corresponden sus ${propios.n} de legajo`)
+        const vistos = (await c.query('select drive_file_id from drive_index')).rows.map((r) => r.drive_file_id)
+        // Sin esto, una policy que niegue TODO pasaría el test: «ninguna fila ajena» es
+        // trivialmente cierto sobre cero filas.
+        assert.ok(vistos.length > 0, 'campo no vio ni una fila del catálogo: la policy lo dejó ciego')
+        const ajenas = vistos.filter((id) => !suyos.has(id))
+        assert.deepEqual(ajenas, [],
+          `campo vio ${ajenas.length} fila(s) del catálogo que no son de su legajo`)
         const fiscal = await uno(`select count(*)::int n from drive_index where path like 'archivo-fiscal/%'`)
         assert.equal(fiscal.n, 0, 'campo listó archivo-fiscal/')
         const sueldos = await uno(`select count(*)::int n from drive_index where path like 'libro-sueldos/%'`)

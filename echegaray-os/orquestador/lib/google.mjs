@@ -613,6 +613,46 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       walk(msg.payload)
       return { id, snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars) }
     },
+    /**
+     * LOS ADJUNTOS DE UN MAIL: primero la lista, después los bytes.
+     *
+     * `gmailGet` devuelve sólo el texto, así que hasta hoy un mail con doce recibos de sueldo
+     * llegaba al OS como su cuerpo y nada más. Cada quincena entra plata de gente por esta puerta.
+     *
+     * Se devuelve el `attachmentId` y NO los bytes: un mail del estudio contable trae doce PDF y
+     * bajarlos todos para mirar la lista sería traer megas para leer nombres.
+     */
+    async gmailAttachments(id) {
+      const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`)
+      const out = []
+      const walk = (p) => {
+        if (!p) return
+        // Un adjunto real tiene `attachmentId`. Las partes inline (la firma con el logo) también,
+        // así que se informa `inline` y decide quien llama: descartarlas acá escondería un adjunto
+        // legítimo que el cliente de mail marcó inline.
+        if (p.body?.attachmentId && p.filename) {
+          const h = Object.fromEntries((p.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+          out.push({
+            attachmentId: p.body.attachmentId,
+            nombre: p.filename,
+            mime: p.mimeType || '',
+            bytes: p.body.size ?? null,
+            inline: String(h['content-disposition'] || '').toLowerCase().startsWith('inline'),
+          })
+        }
+        for (const c of p.parts || []) walk(c)
+      }
+      walk(msg.payload)
+      return out
+    },
+    /** Los bytes de UN adjunto. Devuelve Buffer; el llamador decide dónde lo pone. */
+    async gmailAttachmentBytes(id, attachmentId) {
+      const j = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`)
+      if (!j?.data) throw new Error(`el adjunto ${attachmentId} vino sin datos`)
+      // Gmail devuelve base64url, no base64: sin la traducción, un PDF con `-` o `_` en su binario
+      // se baja corrupto y recién se nota al abrirlo.
+      return Buffer.from(String(j.data).replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+    },
     // ---- PRP-024: CALENDAR (lectura) ----
     /** Próximos eventos del calendario primario. Devuelve [{summary, start, end}]. */
     async calendarUpcoming({ max = 10, days = 30 } = {}) {
