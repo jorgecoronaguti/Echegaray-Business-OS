@@ -27,7 +27,7 @@
 import { pathToFileURL } from 'node:url'
 import { writeFileSync, readFileSync } from 'node:fs'
 import { getPool } from '../lib/db.mjs'
-import { correrDod, VEREDICTO, sinPoderMedir } from '../lib/cotizador/dod.mjs'
+import { correrDod, VEREDICTO, sinPoderMedir, medicionRota } from '../lib/cotizador/dod.mjs'
 import { rechazarEscrituraDeCoeficiente } from '../lib/cotizador/comercial.mjs'
 import { main as correrCasos } from './cotizador-casos-reales.mjs'
 
@@ -81,10 +81,73 @@ async function rechazaEscribirLoCongelado(pool) {
 /** Dónde firma el auditor independiente. Exportado para que un test pueda probar que se LEE. */
 export const RUTA_FIRMA = 'docs/engineering/xsas-auditoria.json'
 
+/**
+ * LA MISMA FIRMA SE CORRA DESDE DONDE SE CORRA.
+ *
+ * `RUTA_FIRMA` es relativa y `readFileSync` la resuelve contra el CWD. Medido: desde
+ * `echegaray-os/` encuentra la firma y el criterio #24 da FAIL —el auditor firmó
+ * PASS_CON_LIMITACIONES, no PASS—; desde `app/` no encuentra nada y publica «todavía no hay firma»,
+ * que es NO_EJERCITADA y deja el global en PASS_CON_LIMITACIONES. El veredicto de la campaña
+ * dependía del directorio desde el que se tipeaba el comando, y la rama benigna tapaba la que
+ * bloquea el cierre. Resolverla contra el módulo la ancla al archivo, no al lugar donde uno se paró.
+ */
+const ARCHIVO_FIRMA = new URL(`../../${RUTA_FIRMA}`, import.meta.url)
+
+/**
+ * #24 · LA FIRMA DEL AUDITOR NO LA PUEDE PRODUCIR ESTE PROCESO.
+ *
+ * Este bloque ya había existido y **lo borró el commit siguiente** (la reescritura F3–F9), sin que
+ * nada lo detectara: el `readFileSync` quedó importado y sin usar, y el import muerto no rompe el
+ * lint. Una capacidad commiteada con evidencia de corrida desapareció y el criterio #24 habría
+ * quedado NO_VERIFICABLE aunque alguien lo firmara. Por eso ahora tiene test.
+ *
+ * El criterio se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si coincide con quien
+ * construyó, no vale: «ningún trabajo lo cierra quien lo construyó» es lo único que impide que el
+ * veredicto sea una opinión sobre uno mismo.
+ */
+async function medirAuditoria() {
+  let firma
+  try { firma = JSON.parse(readFileSync(ARCHIVO_FIRMA, 'utf8')) } catch {
+    return sinPoderMedir(`todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``)
+  }
+  if (!firma.auditor || firma.auditor === firma.construyo) {
+    return sinPoderMedir(`la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`)
+  }
+  return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
+}
+
 const uno = async (query, sql, campo = 'n') => Number((await query(sql)).rows[0]?.[campo] ?? 0)
 
 /** La evidencia que sale de correr el motor sobre los casos reales. */
 const etapaDe = (c, n) => c?.etapas?.find((e) => e.etapa === n)
+
+/**
+ * #4 · EL SELECTOR SE JUZGA SOBRE EL UNIVERSO, NO SOBRE UN CASO.
+ *
+ * Leía la etapa MAP de QUATTROPANI y de ninguna otra. Un segundo caso que eligiera partidas por
+ * parecido textual sin atributos quedaba entero fuera del cuadro y el criterio salía en verde sobre
+ * un universo que contenía exactamente lo que el criterio prohíbe. Medir un caso y titular «el
+ * universo» es la misma familia que `mapeadas = partidas.length`: la etiqueta, no la medición.
+ *
+ * Y la cobertura que un caso NO pudo calcular (`sinSalida: null`) no entra como cero: un caso que no
+ * se pudo mirar no aporta «cero problemas». Ahí el criterio entero sale sin medir, con su razón.
+ */
+function mapeoDelUniverso(casos) {
+  const mapas = casos
+    .map((c) => ({ nombre: c.nombre, r: etapaDe(c.corrida, 'MAP')?.result }))
+    .filter((x) => (x.r?.mapeos ?? 0) > 0)
+  if (mapas.length === 0) return null
+
+  const ciegos = mapas.filter((x) => typeof x.r.sinSalida !== 'number')
+  if (ciegos.length > 0) {
+    return sinPoderMedir(`${ciegos.length} de ${mapas.length} caso(s) no publicó su cobertura de mapeo (${ciegos.map((x) => x.nombre).join(', ')}): sumarlos como cero convertiría «no se pudo mirar» en «no hay problemas»`)
+  }
+  return {
+    mapeadas: mapas.reduce((a, x) => a + x.r.mapeadas, 0),
+    porParecidoTextualSinAtributos: mapas.reduce((a, x) => a + x.r.sinSalida, 0),
+    casos: mapas.length,
+  }
+}
 
 function desdeLosCasos(casos) {
   const q = casos.find((c) => c.nombre.startsWith('QUATTROPANI'))?.corrida
@@ -100,7 +163,6 @@ function desdeLosCasos(casos) {
   const conEvidencia = q?.partidas?.filter((p) =>
     p.cantidad !== null && p.cantidad !== undefined && (p.evidencia || p.fuente || p.nota)).length ?? 0
   const compose = etapaDe(q, 'COMPOSE')?.result ?? {}
-  const map = etapaDe(q, 'MAP')?.result ?? {}
 
   return {
     // Un proyecto «entendido» es uno que llegó a producir partidas, no uno que figura en una lista.
@@ -131,7 +193,7 @@ function desdeLosCasos(casos) {
     // Sumar `partidas.length` convertía «selecciona partidas defendiblemente» en «hay partidas».
     // Sin mapeos declarados el criterio queda SIN MEDIR —no en rojo—: la corrida no ejercita el
     // selector porque las partidas de Quattropani ya vienen cargadas en la cotización.
-    mapeo: map.mapeos ? { mapeadas: map.mapeadas, porParecidoTextualSinAtributos: map.sinSalida ?? 0 } : null,
+    mapeo: mapeoDelUniverso(casos),
     composiciones: q ? {
       resueltas: compose.conComposicion ?? 0,
       // El invariante de §6: una composición incompleta no puede haber costado como si estuviera
@@ -177,10 +239,51 @@ function desdeLosCasos(casos) {
   }
 }
 
+/**
+ * #9 · SUBCONTRATOS — Y LA COLUMNA QUE NO EXISTE.
+ *
+ * La consulta anterior filtraba por `s.vigencia_hasta is not null`. Esa columna NO ESTÁ en
+ * `public.subcontrato`: las suyas son `fecha_inicio_plan`, `fecha_fin_plan`, `fecha_inicio_real` y
+ * `fecha_fin_real`. Verificado contra el esquema vivo — «column s.vigencia_hasta does not exist».
+ *
+ * El defecto estaba DORMIDO: con la tabla vacía la función devolvía antes de llegar a la consulta,
+ * así que sólo habría reventado el día que se cargara el primer subcontrato. Por eso ahora las dos
+ * consultas corren SIEMPRE, incluso sobre la tabla vacía: una columna que el esquema no tiene se
+ * cobra hoy y no el día que aparezcan los datos.
+ *
+ * ═══ POR QUÉ NO SE REEMPLAZA POR `fecha_fin_plan` ═══
+ *
+ * Sería la corrección fácil y sería fabricar. `fecha_fin_plan` es cuándo se planifica TERMINAR el
+ * paquete; la vigencia de un subcontrato es hasta cuándo el tercero SOSTIENE SU PRECIO —así lo
+ * define `costo.mjs::vigenciaDeSubcontrato()`: `validoHasta`, `validezDias`, o `cotizadoEn` más el
+ * default de `subcontrato_vigencia_default`. Ninguna de esas tres cosas tiene columna en la base
+ * (revisadas las siete tablas `subcontrato*`; `subcontrato_documento.vence_el` es el vencimiento de
+ * un PAPEL —ART, seguro—, no la validez de la oferta). Poner la fecha de plan donde va la validez de
+ * la oferta mide una cosa y la titula con el nombre de otra, que es el defecto que esta campaña
+ * persigue. Así que el término se declara no medible y el criterio queda bloqueado, con su razón.
+ */
+async function medirSubcontratos(query) {
+  const total = await uno(query, 'select count(*) n from public.subcontrato')
+  const conAlcance = await uno(query, `select count(*) n from public.subcontrato s
+                                        where exists (select 1 from public.subcontrato_alcance a
+                                                       where a.subcontrato_id = s.id)`)
+  if (total === 0) {
+    return sinPoderMedir('no hay un solo subcontrato cargado: no hay nada que ejercite la capacidad. Cero subcontratos no es «los maneja mal»')
+  }
+  return sinPoderMedir(`hay ${total} subcontrato(s) y ${conAlcance} con alcance declarado, pero la VIGENCIA no la puede contestar ninguna consulta: `
+    + '`public.subcontrato` no tiene columna para la validez de la oferta (ni `validoHasta`, ni `validezDias`, ni fecha de cotización). '
+    + 'El criterio exige alcance Y vigencia, así que queda sin medir en vez de darse por bueno con la mitad')
+}
+
 /** La evidencia que vive en la base: obra, ejecución, aprendizaje, política. */
 async function desdeLaBase(query, pool) {
   const e = {}
-  const medir = async (clave, fn) => { try { e[clave] = await fn() } catch (err) { e[clave] = null; e[`${clave}__error`] = err.message } }
+  // Un `null` en el `catch` hacía que el dictaminador dijera NO_HUBO_CORRIDA sobre una consulta que
+  // sí corrió y reventó. Son dos trabajos distintos —esperar datos vs. arreglar código— y se veían
+  // iguales en el cuadro. `medicionRota` los separa y lleva el error a la fila.
+  const medir = async (clave, fn) => {
+    try { e[clave] = await fn() } catch (err) { e[clave] = medicionRota(err.message); e[`${clave}__error`] = err.message }
+  }
 
   // ═══ CERO SUBCONTRATOS NO ES «MANEJA MAL LOS SUBCONTRATOS» ═══
   //
@@ -189,16 +292,7 @@ async function desdeLaBase(query, pool) {
   // `null` y el criterio queda NO_VERIFICABLE — que igual impide el PASS pelado, pero no acusa al
   // motor de un defecto que nadie demostró. Es la contracara exacta de la otra trampa: un cero
   // MEDIDO sobre datos que existen sí es un «no».
-  await medir('subcontratos', async () => {
-    const total = await uno(query, 'select count(*) n from public.subcontrato')
-    if (total === 0) return sinPoderMedir('no hay un solo subcontrato cargado: no hay nada que ejercite la capacidad. Cero subcontratos no es «los maneja mal»')
-    return {
-      total,
-      conAlcanceYVigencia: await uno(query, `select count(*) n from public.subcontrato s
-                                              where exists (select 1 from public.subcontrato_alcance a where a.subcontrato_id = s.id)
-                                                and s.vigencia_hasta is not null`),
-    }
-  })
+  await medir('subcontratos', () => medirSubcontratos(query))
   // Tener 14 conceptos catalogados no es calcular un indirecto. Si ninguna cotización los usa, el
   // criterio no está cumplido: está sin ejercitar, y eso se dice.
   // ═══ #8 · POR RECURSO Y CONTRA EVIDENCIA PERSISTIDA ═══
@@ -287,16 +381,7 @@ async function desdeLaBase(query, pool) {
   // El criterio 24 se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si coincide con
   // quien construyó, no vale: «ningún trabajo lo cierra quien lo construyó» es lo único que impide
   // que el veredicto sea una opinión sobre uno mismo.
-  await medir('auditoria', async () => {
-    let firma
-    try { firma = JSON.parse(readFileSync(RUTA_FIRMA, 'utf8')) } catch {
-      return sinPoderMedir(`todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``)
-    }
-    if (!firma.auditor || firma.auditor === firma.construyo) {
-      return sinPoderMedir(`la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`)
-    }
-    return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
-  })
+  await medir('auditoria', medirAuditoria)
   await medir('candidatos', async () => ({ generados: await uno(query, 'select count(*) n from public.aprendizaje_candidato') }))
   await medir('governance', async () => ({
     promovidos: await uno(query, 'select count(*) n from public.aprendizaje_version'),
@@ -351,4 +436,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.exit(r.estado === 'FAIL' ? 1 : 0)
 }
 
-export { juntarEvidencia, desdeLosCasos, comoMarkdown }
+export { juntarEvidencia, desdeLosCasos, comoMarkdown, medirSubcontratos, mapeoDelUniverso, medirAuditoria }

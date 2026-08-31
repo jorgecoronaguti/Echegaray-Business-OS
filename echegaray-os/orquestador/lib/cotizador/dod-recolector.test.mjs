@@ -103,7 +103,55 @@ test('recolector · sin mapeos declarados, el selector no se juzga', () => {
   // P2-F3: `mapeadas` sumaba `partidas.length`, o sea que el criterio era «hay partidas».
   const sinMapeos = corrida({ etapas: [{ etapa: 'MAP', result: { mapeos: 0, mapeadas: 0 } }] })
   noDemostrado(desdeLosCasos([sinMapeos]), 'mapeo')
-  assert.deepEqual(desdeLosCasos([corrida()]).mapeo, { mapeadas: 2, porParecidoTextualSinAtributos: 1 })
+  // `casos` viaja en la evidencia desde que el criterio pasó a leer el universo: sin él, un
+  // `{mapeadas: 5}` no dice si salió de cinco casos o de uno, que es el defecto que se acaba de
+  // cerrar. Va a la columna «evidencia» del cuadro para que se lea al lado del número.
+  assert.deepEqual(desdeLosCasos([corrida()]).mapeo, { mapeadas: 2, porParecidoTextualSinAtributos: 1, casos: 1 })
+})
+
+/** Un caso cualquiera del universo con su etapa MAP dictada a mano. */
+const casoConMapa = (nombre, result) => ({
+  nombre,
+  corrida: { partidas: [{ codigo: 'X', cantidad: 1 }], etapas: [{ etapa: 'MAP', result }] },
+  corpus: { documentos: [{ formato: 'PLANILLA' }] },
+})
+
+test('recolector · el selector se juzga sobre el UNIVERSO de casos, no sólo sobre Quattropani', () => {
+  // EL DEFECTO: `mapeo` leía la etapa MAP de la corrida de QUATTROPANI y de ninguna otra. Un segundo
+  // caso que eligió partidas por parecido textual sin atributos quedaba entero fuera del cuadro, y
+  // el criterio #4 —«selecciona partidas defendiblemente»— salía en VERDE sobre un universo que
+  // contenía exactamente lo que el criterio prohíbe. Medir un caso y titular «el universo» es la
+  // misma familia que `mapeadas = partidas.length`: la etiqueta del criterio, no su medición.
+  const quattropani = corrida({ etapas: [{ etapa: 'MAP', result: { mapeos: 3, mapeadas: 3, sinSalida: 0 } }] })
+  const otro = casoConMapa('ARCOR galpón', { mapeos: 4, mapeadas: 1, sinSalida: 3 })
+
+  const e = desdeLosCasos([quattropani, otro])
+  assert.equal(e.mapeo.mapeadas, 4, 'las mapeadas del universo son las 3 de Quattropani más la 1 del otro caso')
+  assert.equal(e.mapeo.porParecidoTextualSinAtributos, 3,
+    'las 3 sin salida del segundo caso eran invisibles: el criterio se leía sólo sobre Quattropani')
+  assert.equal(veredictoDe(e, 'mapeo').veredicto, VEREDICTO.FAIL,
+    'un universo con selección sin atributos no puede dar PASS')
+})
+
+test('recolector · el universo mapeado limpio SÍ puede dar PASS', () => {
+  // Sin este término el test de arriba lo pasaría un recolector que devuelva FAIL para todo.
+  const e = desdeLosCasos([
+    corrida({ etapas: [{ etapa: 'MAP', result: { mapeos: 3, mapeadas: 3, sinSalida: 0 } }] }),
+    casoConMapa('ARCOR galpón', { mapeos: 2, mapeadas: 2, sinSalida: 0 }),
+  ])
+  assert.deepEqual(e.mapeo, { mapeadas: 5, porParecidoTextualSinAtributos: 0, casos: 2 })
+  assert.equal(veredictoDe(e, 'mapeo').veredicto, VEREDICTO.PASS)
+})
+
+test('recolector · una cobertura de mapeo que nadie midió NO suma cero al universo', () => {
+  // `sinSalida` sale `null` cuando la etapa MAP no pudo calcular la cobertura. Sumarlo como 0 es el
+  // invariante prohibido NULL=0 con otra ropa: el criterio quedaría en verde porque uno de los casos
+  // no se pudo mirar, que es justo lo contrario de lo que su ausencia significa.
+  const e = desdeLosCasos([
+    corrida({ etapas: [{ etapa: 'MAP', result: { mapeos: 3, mapeadas: 3, sinSalida: 0 } }] }),
+    casoConMapa('CIEGO', { mapeos: 5, mapeadas: 2, sinSalida: null }),
+  ])
+  noDemostrado(e, 'mapeo', /no publicó su cobertura/)
 })
 
 test('recolector · la generalización NUNCA se mide sola', () => {

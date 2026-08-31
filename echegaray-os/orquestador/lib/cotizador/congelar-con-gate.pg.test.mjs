@@ -221,18 +221,44 @@ test('el candado deja pasar un borrador CORRECTO, y cada pieza que falta lo cort
       await c.query('rollback to savepoint solo_lectura')
     })
 
-    // ═══ §L · UN PRECIO WEB NO CONGELA SIN GOVERNANCE ═══
-    await t.test('§L · un precio de fuente WEB llega al congelado sin ninguna fila de gobernanza', async () => {
+    // ═══ §L · UN PRECIO WEB Y EL GATE DE CONGELADO ═══
+    //
+    // ═══ POR QUÉ ESTE TEST ESTABA ESCRITO AL REVÉS ═══
+    //
+    // Afirmaba `assert.equal(g.ready, true)` — o sea, EXIGÍA que el agujero siguiera abierto. Un test
+    // así está verde mientras el defecto vive y se pone rojo el día que alguien lo arregla: le cobra
+    // el trabajo a quien viene a hacerlo bien. Y publica un ✔ en la suite por un hueco, que es la
+    // forma más cara de `NO_EJERCITADO = PASS`.
+    //
+    // Lo que se mide ahora es lo que de verdad se sabe: se monta el escenario, se le pregunta al
+    // gate, y se DECLARA su respuesta. El requisito —un precio scrapeado no debería congelar sin una
+    // fila de gobernanza— sigue sin estar implementado (el hook es del frente B y `precio-web.mjs`
+    // no expone ninguno), así que el estado honesto es NO_MEDIDO y viaja como diagnóstico, no como
+    // afirmación. El día que el hook aterrice, este test no se rompe: entra por la otra rama y ahí
+    // sí exige que el corte haya sido POR ESTO.
+    await t.test('§L · un precio de fuente WEB: qué contesta hoy el gate de congelado', async () => {
       await c.query('savepoint web')
-      await c.query(`update public.recurso_precio set fuente = 'WEB' where recurso_id = $1`, [fx.recursos[1].id])
+      const { rowCount } = await c.query(`update public.recurso_precio set fuente = 'WEB' where recurso_id = $1`, [fx.recursos[1].id])
+      // SIN ESTO EL TEST NO MEDÍA NADA. Si el recurso no tuviera fila de precio, el update tocaría
+      // cero filas y el gate contestaría sobre un escenario que nunca se montó: verde por no haber
+      // mirado. «Un control que no pudo mirar no dice que no está».
+      assert.ok(rowCount > 0, 'no se marcó ningún precio como WEB: el escenario no se llegó a montar')
+
       const g = await gate(fx.cotizacionId)
-      // NO SE AFIRMA QUE ESTÉ BIEN: se MIDE. Hoy el gate no mira `fuente`, así que un precio scrapeado
-      // de la web congela igual que uno de un remito. El hook de gobernanza del precio web es del
-      // frente B y todavía no existe (`precio-web.mjs` no expone ninguno), así que esto queda
-      // declarado como agujero medido y NO como criterio cumplido.
-      assert.equal(g.ready, true,
-        'CAMBIÓ EL COMPORTAMIENTO: si el gate ya bloquea el precio WEB, este test tiene que pasar a exigirlo')
-      t.diagnostic('AGUJERO MEDIDO: un precio con fuente=WEB congela sin gobernanza. NO_MEDIDO: el hook del frente B no existe todavía.')
+      assert.equal(typeof g.ready, 'boolean', 'el gate no contestó: sin respuesta no hay medición')
+      assert.ok(Array.isArray(g.blocking_issues), 'el gate no publicó sus bloqueos')
+
+      if (g.ready === false) {
+        // El hook aterrizó. Que corte no alcanza: tiene que cortar POR EL PRECIO WEB. Un gate que
+        // bloquea por cualquier otra cosa daría este test por bueno sin que la capacidad exista.
+        const porLaFuente = g.blocking_issues.some((b) => /web|fuente|gobernanza/i.test(JSON.stringify(b)))
+        assert.ok(porLaFuente,
+          `el gate bloqueó, pero no por el precio WEB: ${JSON.stringify(g.blocking_issues)}`)
+        t.diagnostic('el gate YA bloquea el precio WEB: sacar esta capacidad de las limitaciones declaradas de la DoD.')
+      } else {
+        t.diagnostic('NO_MEDIDO · agujero abierto: un precio con fuente=WEB congela sin ninguna fila de gobernanza. '
+          + 'El hook del frente B no existe todavía. Esto NO es un criterio cumplido.')
+      }
       await c.query('rollback to savepoint web')
     })
   } finally {
