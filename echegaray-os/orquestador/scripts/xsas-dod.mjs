@@ -81,6 +81,41 @@ async function rechazaEscribirLoCongelado(pool) {
 /** Dónde firma el auditor independiente. Exportado para que un test pueda probar que se LEE. */
 export const RUTA_FIRMA = 'docs/engineering/xsas-auditoria.json'
 
+/**
+ * LA MISMA FIRMA SE CORRA DESDE DONDE SE CORRA.
+ *
+ * `RUTA_FIRMA` es relativa y `readFileSync` la resuelve contra el CWD. Medido: desde
+ * `echegaray-os/` encuentra la firma y el criterio #24 da FAIL —el auditor firmó
+ * PASS_CON_LIMITACIONES, no PASS—; desde `app/` no encuentra nada y publica «todavía no hay firma»,
+ * que es NO_EJERCITADA y deja el global en PASS_CON_LIMITACIONES. El veredicto de la campaña
+ * dependía del directorio desde el que se tipeaba el comando, y la rama benigna tapaba la que
+ * bloquea el cierre. Resolverla contra el módulo la ancla al archivo, no al lugar donde uno se paró.
+ */
+const ARCHIVO_FIRMA = new URL(`../../${RUTA_FIRMA}`, import.meta.url)
+
+/**
+ * #24 · LA FIRMA DEL AUDITOR NO LA PUEDE PRODUCIR ESTE PROCESO.
+ *
+ * Este bloque ya había existido y **lo borró el commit siguiente** (la reescritura F3–F9), sin que
+ * nada lo detectara: el `readFileSync` quedó importado y sin usar, y el import muerto no rompe el
+ * lint. Una capacidad commiteada con evidencia de corrida desapareció y el criterio #24 habría
+ * quedado NO_VERIFICABLE aunque alguien lo firmara. Por eso ahora tiene test.
+ *
+ * El criterio se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si coincide con quien
+ * construyó, no vale: «ningún trabajo lo cierra quien lo construyó» es lo único que impide que el
+ * veredicto sea una opinión sobre uno mismo.
+ */
+async function medirAuditoria() {
+  let firma
+  try { firma = JSON.parse(readFileSync(ARCHIVO_FIRMA, 'utf8')) } catch {
+    return sinPoderMedir(`todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``)
+  }
+  if (!firma.auditor || firma.auditor === firma.construyo) {
+    return sinPoderMedir(`la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`)
+  }
+  return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
+}
+
 const uno = async (query, sql, campo = 'n') => Number((await query(sql)).rows[0]?.[campo] ?? 0)
 
 /** La evidencia que sale de correr el motor sobre los casos reales. */
@@ -346,16 +381,7 @@ async function desdeLaBase(query, pool) {
   // El criterio 24 se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si coincide con
   // quien construyó, no vale: «ningún trabajo lo cierra quien lo construyó» es lo único que impide
   // que el veredicto sea una opinión sobre uno mismo.
-  await medir('auditoria', async () => {
-    let firma
-    try { firma = JSON.parse(readFileSync(RUTA_FIRMA, 'utf8')) } catch {
-      return sinPoderMedir(`todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``)
-    }
-    if (!firma.auditor || firma.auditor === firma.construyo) {
-      return sinPoderMedir(`la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`)
-    }
-    return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
-  })
+  await medir('auditoria', medirAuditoria)
   await medir('candidatos', async () => ({ generados: await uno(query, 'select count(*) n from public.aprendizaje_candidato') }))
   await medir('governance', async () => ({
     promovidos: await uno(query, 'select count(*) n from public.aprendizaje_version'),
@@ -410,4 +436,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.exit(r.estado === 'FAIL' ? 1 : 0)
 }
 
-export { juntarEvidencia, desdeLosCasos, comoMarkdown, medirSubcontratos, mapeoDelUniverso }
+export { juntarEvidencia, desdeLosCasos, comoMarkdown, medirSubcontratos, mapeoDelUniverso, medirAuditoria }

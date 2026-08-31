@@ -6,6 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { CRITERIOS, VEREDICTO, MOTIVO, GLOBAL, evaluar, veredictoGlobal, correrDod, sinPoderMedir, noAplica, medicionRota } from './dod.mjs'
 
 /** La evidencia de un sistema perfecto: los veinticuatro criterios medidos y en verde. */
@@ -127,8 +128,34 @@ test('el recolector nombra la ruta de la firma, y la lee de verdad', async () =>
   assert.equal(mod.RUTA_FIRMA, 'docs/engineering/xsas-auditoria.json')
   const fuente = readFileSync(new URL('../../scripts/xsas-dod.mjs', import.meta.url), 'utf8')
   assert.match(fuente, /medir\('auditoria'/, 'nadie mide el criterio 24: el bloque que lee la firma no está')
-  assert.match(fuente, /readFileSync\(RUTA_FIRMA/, 'la ruta de la firma está declarada pero no se lee')
+  // La firma se lee de `ARCHIVO_FIRMA`, que es `RUTA_FIRMA` resuelta contra el módulo y no contra el
+  // cwd. Se exigen las dos cosas: que la ruta declarada sea la que arma el archivo, y que ese
+  // archivo sea el que se lee. Así el guard sigue detectando que alguien borre la lectura.
+  assert.match(fuente, /ARCHIVO_FIRMA = new URL\(`\.\.\/\.\.\/\$\{RUTA_FIRMA\}`, import\.meta\.url\)/,
+    'la firma dejó de anclarse al módulo: vuelve a depender del directorio desde el que se corra')
+  assert.match(fuente, /readFileSync\(ARCHIVO_FIRMA/, 'la ruta de la firma está declarada pero no se lee')
   assert.match(fuente, /firma\.auditor === firma\.construyo/, 'no se rechaza la firma de quien lo construyó')
+})
+
+test('la firma del auditor se lee SIEMPRE del mismo archivo, se corra desde donde se corra', async () => {
+  // EL DEFECTO, MEDIDO. `RUTA_FIRMA` es relativa y `readFileSync` la resuelve contra el cwd. Corrido
+  // desde `echegaray-os/` el criterio #24 encuentra la firma y da FAIL —el auditor firmó
+  // PASS_CON_LIMITACIONES, no PASS—. Corrido desde `app/` no encuentra nada y publica «todavía no hay
+  // firma de auditoría independiente», que es NO_EJERCITADA y deja el global en PASS_CON_LIMITACIONES.
+  //
+  // O sea: el veredicto de la campaña dependía del directorio desde el que se tipeó el comando, y la
+  // rama benigna —«nadie firmó todavía»— tapaba la rama que bloquea el cierre. Es «un control que no
+  // pudo mirar no dice que no está» con el archivo bien puesto y el lector parado en otro lado.
+  const { medirAuditoria } = await import('../../scripts/xsas-dod.mjs')
+  const antes = process.cwd()
+  try {
+    process.chdir(tmpdir())
+    const r = await medirAuditoria()
+    assert.ok(!r.__sinMedir?.includes('todavía no hay firma'),
+      `desde otro directorio el criterio #24 no encontró la firma: ${r.__sinMedir ?? ''}`)
+  } finally {
+    process.chdir(antes)
+  }
 })
 
 test('un criterio sin su medición no puede quedar CUMPLE por descuido', () => {
