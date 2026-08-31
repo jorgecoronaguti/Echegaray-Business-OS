@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CUIL_POR_PERSONA_DE_PLANILLA, SIN_RECIBO_EN_LA_QUINCENA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA,
-  bancoDeLaPersona, reparto50DeLiquidacionFinal,
+  SUBCONTRATISTAS_CON_LIQUIDACION, bancoDeLaPersona, reparto50DeLiquidacionFinal,
 } from './nomina-banco-recibo.mjs'
 
 const recibos = new Map([['20294271067', { neto: 215564.62, etiqueta: 'SEGUNDA QUINCENA 08/2026' }]])
@@ -63,10 +63,22 @@ test('el puente cubre a TODOS los de la planilla: o mapea, o declara por qué no
   }
 })
 
-test('los tres que cobran y no están en la planilla están declarados', () => {
-  // Tienen recibo pero no horas: su total no se puede calcular y su efectivo queda en nulo.
-  assert.equal(COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA.length, 3)
-  for (const p of COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA) assert.ok(p.legajo && p.nombre)
+test('los que cobran y no están en la planilla siguen teniendo una casilla propia', () => {
+  // ═══ ESTABA EN 3 Y HOY ESTÁ VACÍA, POR UNA DECISIÓN (31/08/2026) ═══
+  //
+  // Eran CASTRO JUAN MARCELO, MORENO JULIO MIGUEL y QUIROZ FACUNDO MIGUEL: recibo sin horas
+  // cargadas. El dueño los encuadró como subcontratistas, igual que a Bustos Orosco y Posse Orosco,
+  // y por eso pasaron a `SUBCONTRATISTAS_CON_LIQUIDACION`.
+  //
+  // El test no exige un número: exige que quien esté acá esté COMPLETO. Un largo fijo se rompería
+  // cada vez que alguien entra o sale, y lo que puede hacer daño no es cuántos son sino uno a medio
+  // declarar — sin legajo no se lo puede buscar, sin nombre no se lo puede nombrar en la pestaña.
+  for (const p of COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA) assert.ok(p.legajo && p.nombre, JSON.stringify(p))
+  // Y ninguno puede estar en los dos lados: sería mostrarlo dos veces con dos importes distintos.
+  const subs = new Set(Object.keys(SUBCONTRATISTAS_CON_LIQUIDACION))
+  for (const p of COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA) {
+    assert.ok(!subs.has(p.nombre), `${p.nombre} está en las dos listas: se pagaría dos veces`)
+  }
 })
 
 test('liquidación final · el recibo es la MITAD, así que el total es el doble', () => {

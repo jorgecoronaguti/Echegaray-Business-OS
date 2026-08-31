@@ -104,11 +104,16 @@ export function tieneLiquidacionFinal(nombrePlanilla) {
  * `horas × $/hora` y nadie les cargó horas. Sin total no hay efectivo: `null`, nunca cero. Un cero
  * acá les paga sólo la parte registrada y se lee como si estuviera bien.
  */
-export const COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA = Object.freeze([
-  { nombre: 'CASTRO JUAN MARCELO', legajo: '85', cuil: '20245269561' },
-  { nombre: 'MORENO JULIO MIGUEL', legajo: '86', cuil: '20309892756' },
-  { nombre: 'QUIROZ FACUNDO MIGUEL', legajo: '87', cuil: '20449917848' },
-])
+// ═══ VACÍA DESDE EL 31/08/2026, Y ESO ES UNA RESPUESTA, NO UN OLVIDO ═══
+//
+// Tenía tres: CASTRO JUAN MARCELO (leg. 85), MORENO JULIO MIGUEL (86) y QUIROZ FACUNDO MIGUEL (87).
+// Cobraban recibo y no tenían horas cargadas, y la pestaña publicaba una nota pidiendo que se las
+// cargaran. El dueño contestó la pregunta —eran el mismo caso que Bustos Orosco y Posse Orosco— con
+// una palabra: «subcontratistas». Pasaron a `SUBCONTRATISTAS_CON_LIQUIDACION`.
+//
+// Se deja la constante y no se borra el concepto: el día que aparezca alguien con recibo y sin
+// horas, hay que volver a preguntar en vez de asumir que también es subcontratista.
+export const COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA = Object.freeze([])
 
 /**
  * EL BANCO DE UNA PERSONA PARA UNA QUINCENA. PURA.
@@ -156,10 +161,14 @@ export const SUBCONTRATISTAS_CON_LIQUIDACION = Object.freeze({
   'AVILA ALEJANDRO LUIS': 'subcontratista de Gerson Castro',
   'BUSTOS OROSCO JONATHAN ERICK': 'subcontratista de Gerson Castro (dueño, 31/08/2026) — sin liquidación cargada',
   'CASTRO GALVAN GERSON ULISES': 'subcontratista — es el titular del grupo',
+  // Los tres que cobraban recibo sin horas cargadas. El dueño, 31/08/2026: «subcontratistas».
+  'CASTRO JUAN MARCELO': 'subcontratista (dueño, 31/08/2026) — legajo 85, cobra recibo y no tiene horas',
   'CASTRO GALVAN HEBER LUCAS': 'subcontratista de Gerson Castro',
   'DIAZ RAMON ORLANDO': 'subcontratista de Gerson Castro',
   'FLORES ALEJANDRO NAZARENO': 'subcontratista de Gerson Castro',
+  'MORENO JULIO MIGUEL': 'subcontratista (dueño, 31/08/2026) — legajo 86, cobra recibo y no tiene horas',
   'POSSE OROSCO JEREMIAS GABRIEL': 'subcontratista de Gerson Castro (dueño, 31/08/2026) — sin liquidación cargada',
+  'QUIROZ FACUNDO MIGUEL': 'subcontratista (dueño, 31/08/2026) — legajo 87, cobra recibo y no tiene horas',
 })
 
 /**

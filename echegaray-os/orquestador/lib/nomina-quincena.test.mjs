@@ -168,9 +168,17 @@ test('la Nómina publica las dos tarifas seguidas, y la plata ANTES que el detal
   // toda la plata una columna. Lo que importa no es qué letra tiene cada columna —eso lo mueve el
   // dueño cuando quiere— sino que el efectivo reste TRES cosas: el banco, lo transferido y el
   // adelanto. Restar dos le paga de nuevo a quien ya recibió los billetes.
-  const restaTres = (col) => new RegExp(`=N\\(${col}\\$\\{n\\}\\)(-N\\([A-Z]\\$\\{n\\}\\)){3}\``).test(NOMINA)
-  assert.ok(restaTres('G'), 'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
-  assert.ok(restaTres('I'), 'el escenario con aumento no resta lo ya entregado por las dos vías')
+  // La cuenta del efectivo pasó a estar envuelta en ROUND —los billetes no tienen centavos— así que
+  // ya no alcanza con mirar el prefijo. Lo que se exige sigue siendo lo mismo: que reste TRES cosas,
+  // el banco, lo transferido y el adelanto. Restar dos le paga de nuevo a quien ya recibió.
+  const restaTres = (n) => (NOMINA.match(/-N\([A-Z]\$\{n[f]?\}\)/g) || []).length >= n
+  assert.ok(/ROUND\(N\(K\$\{n\}\)\*N\(L\$\{n\}\)-N\(E\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\);0\)/.test(NOMINA),
+    'el efectivo dejó de restar las DOS columnas de lo ya entregado: se paga dos veces')
+  assert.ok(/ROUND\(N\(K\$\{n\}\)\*N\(M\$\{n\}\)-N\(E\$\{n\}\)-N\(D\$\{n\}\)-N\(C\$\{n\}\);0\)/.test(NOMINA),
+    'el escenario con aumento no resta lo ya entregado por las dos vías')
+  // Y el efectivo va REDONDEADO: sin esto la celda vale con centavos y el total suma billetes que
+  // nadie entrega.
+  assert.ok(restaTres(3), 'se perdieron las restas de lo ya entregado')
   // El «+» inicial NO puede volver: Sheets lo parsea como fórmula (=+Aumento…) y el encabezado
   // publica #ERROR!. Se vio en el render real del 29/08 — la celda decía #ERROR! sobre la columna
   // con los números correctos abajo.

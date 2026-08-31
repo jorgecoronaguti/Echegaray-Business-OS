@@ -910,7 +910,14 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // Aquella pestaña publica la quincena con las horas CARGADAS —es lo correcto para conciliar contra
   // la planilla— y ésta la publica COMPLETA, que es lo que se va a firmar el día de pago. Los dos
   // números son ciertos y miden cosas distintas; el que se calla es el que después no cierra.
-  fila(sub(`«Jornales por Quincena» publica ${Math.round(T.totalCargado).toLocaleString('es-AR')} para esta quincena: son las ${Math.round(T.cargadas)} h cargadas. Acá se completan las ${Math.round(T.horas - T.cargadas)} h que faltan.`))
+  // ESTA NOTA COMPARABA DOS COSAS QUE YA NO SON COMPARABLES. Decía «Jornales por Quincena publica
+  // 7.540.500 y acá se completan las horas que faltan», y desde que «TOTAL A PAGAR» de este cuadro
+  // pasó a ser lo que SALE de la caja (banco + efectivo, neto de adelantos), su total es $6.331.859:
+  // el lector veía dos cifras distintas presentadas como la misma. Se dice qué es cada una.
+  fila(sub(`El devengado de la quincena es ${Math.round(T.totalCargado).toLocaleString('es-AR')} `
+    + `(${Math.round(T.cargadas)} h cargadas${T.horas > T.cargadas ? ` + ${Math.round(T.horas - T.cargadas)} h completadas` : ''}), `
+    + `que es lo que publica «Jornales por Quincena». El TOTAL A PAGAR de arriba es menor porque ya `
+    + `tiene descontado lo que se entregó en adelantos y transferencias.`))
   if (sinConvenio.length) fila(sub(`${sinConvenio.length} sin equivalencia de convenio declarada: ${sinConvenio.join(' · ')}. No se les mide el piso.`))
   // Y LA OTRA MITAD DE LA MISMA PREGUNTA: los que SÍ tienen equivalencia, pero la puso el OS. La línea
   // desaparece sola el día que el dueño las confirme — no hay nada que apagar a mano.
@@ -1075,6 +1082,32 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
  * El patrón va en formato US (`#,##0`) aunque el archivo esté en es-AR: la API interpreta el patrón
  * en US y lo MUESTRA con la coma y el punto del locale. Escribirlo con el separador local lo rompe.
  */
+/**
+ * DOS NOTAS IDÉNTICAS SEGUIDAS NO SON DOS NOTAS: ES UN DEFECTO PUBLICADO.
+ *
+ * La corrida del 31/08 publicó tres pares exactos —el aviso de Castillo, el de la quincena que falta
+ * en oficina y el de la equivalencia inferida— cada uno repetido en la fila de abajo. Da igual dónde
+ * esté la causa: **una pestaña que dice dos veces lo mismo hace dudar del resto**, y el dueño la usa
+ * para pagar.
+ *
+ * Sólo se colapsa el caso inequívoco: dos filas CONSECUTIVAS, con el mismo texto en la columna A y
+ * el resto vacío. Una fila de datos nunca cumple eso —lleva importes— y dos personas homónimas
+ * tampoco, porque tendrían plata al lado. Se informa cuántas se colapsaron: si el número no baja a
+ * cero cuando alguien arregle la causa, es que la causa sigue ahí.
+ */
+export function sinNotasRepetidas(filas = []) {
+  const soloA = (f) => String(f?.[0] ?? '').trim() && (f ?? []).slice(1).every((c) => !String(c ?? '').trim())
+  const out = []
+  let repetidas = 0
+  for (const f of filas) {
+    const previa = out[out.length - 1]
+    if (previa && soloA(f) && soloA(previa) && String(f[0]).trim() === String(previa[0]).trim()) { repetidas++; continue }
+    out.push(f)
+  }
+  if (repetidas) console.log(`  ⚠ ${repetidas} nota(s) repetida(s) colapsada(s) — hay un defecto en el armado, no sólo en la vista`)
+  return out
+}
+
 async function formatear(google, hoja, filas) {
   // ═══ EL FORMATO SALE DE `estilo-pestana`, COMO EN TODO EL ARCHIVO ═══
   //
@@ -1308,8 +1341,18 @@ async function publicar(google, PESTANA, filas) {
   // en las columnas que él escribe y en las filas que ya no llena. Fuera de ese rectángulo no hay
   // cola posible: hay, si acaso, algo que escribió una persona.
   const anchoPropio = Math.max(...filas.map((f) => f.filter((c) => String(c ?? '').trim()).length), 1)
-  const conCola = conColaLimpiable(filas, { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
-  const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: ANCHO })
+  const conCola = conColaLimpiable(sinNotasRepetidas(filas), { ancho: anchoPropio, alto: ALTO_HISTORICO, quien: PESTANA })
+  // ═══ EL CONTRATO, DICHO EN UNA LÍNEA: ESTE GENERADOR ES DUEÑO DE SU RECTÁNGULO ═══
+  //
+  // `respetar: true` conserva TODO texto del destino, y en esta pestaña casi todo es texto: las
+  // notas al pie de la corrida anterior sobrevivían a la siguiente y, cuando una nota desaparecía,
+  // las de abajo se corrían y quedaban DUPLICADAS. Se vio: tres pares idénticos en las filas 32-33,
+  // 40-41 y 51-52.
+  //
+  // Así que dentro de su rectángulo —las columnas que escribe, hasta ALTO_HISTORICO— manda el
+  // generador. Fuera de ahí no toca nada: lo que el dueño escriba a la derecha de la última columna
+  // o más abajo se conserva, que antes ni siquiera era cierto porque la pestaña se borraba entera.
+  const escritura = await escribirPreservando(google, ID, `'${PESTANA}'`, conCola, { anchoHoja: anchoPropio, respetar: false })
   if (escritura?.conservadas?.length) {
     console.log(`  ✋ ${escritura.conservadas.length} celda(s) tuyas conservadas:`)
     for (const c of escritura.conservadas.slice(0, 8)) console.log(`     fila ${c.fila}, col ${c.col}: ${String(c.valor).slice(0, 60)}`)
