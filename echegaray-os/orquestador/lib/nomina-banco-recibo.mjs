@@ -1,0 +1,121 @@
+// LA COLUMNA «BANCO» DEL CUADRO DE NÓMINA SALE DEL RECIBO, NO DE UN PORCENTAJE.
+//
+// ═══ LA ORDEN, TEXTUAL (31/08/2026) ═══
+//
+//   «por banco va lo q dice recibo y en efectivo se completa todo hasta llegar al numero.
+//    en lo q respecta a estimar con aumento se deja fijo lo de banco y se pasa lo q haga falta
+//    para llegar al monto con aumento todo via efectivo»
+//
+// Hasta hoy el cuadro calculaba la parte bancaria como el 50% del acuerdo. Para Aguero eso da
+// $294.000 y el recibo dice $215.564,62: $78.435 que el cuadro mandaba al banco y en realidad se
+// pagan en efectivo. El 50/50 sigue rigiendo el TOTAL de cada persona; lo que deja de ser un
+// cálculo es el REPARTO.
+//
+// ═══ POR QUÉ EL PUENTE ES EXPLÍCITO Y NO POR NOMBRE ═══
+//
+// La planilla de jornales escribe «Zogber Leonardo», «Reta Sebastian», «Emanuel Alaniz». El recibo
+// dice «ZOGBE RAMOS WALTER LEONARDO», «RETA RAMON HECTOR SEBASTIAN», «ALANIZ EMANUEL ARIEL». Ningún
+// emparejamiento automático por nombre es seguro acá y el repo ya lo pagó: «Castillo Carlos» cayó
+// en «GONZALEZ CARLOS SAMUEL» y «Gonzalez Juan» en «TELLO JUAN». Con plata de sueldo de por medio,
+// un candidato no alcanza.
+//
+// Así que el puente es una TABLA DECLARADA, revisada persona por persona contra los 19 recibos de
+// la 2da quincena de 08/2026, y la llave del recibo es el CUIL. Es más trabajo y es lo correcto:
+// cuando entre alguien nuevo, el sistema va a decir que no lo conoce en vez de adivinar.
+
+/** Persona de la planilla de jornales → su CUIL. Verificado contra el recibo, uno por uno. */
+export const CUIL_POR_PERSONA_DE_PLANILLA = Object.freeze({
+  'Aguero Cristian': '20294271067',
+  'Emanuel Alaniz': '20382188153',
+  'Gonzalez Carlos': '20355081886',
+  'Gonzalez Emiliano': '20509455474',
+  'Gonzalez Juan': '20314422555',
+  // Legajo 95. No está en `personas` —es alta nueva— pero el CUIL lo trae su propio recibo, que es
+  // la fuente que importa acá. Tenerlo en `null` hacía que su banco cayera a la planilla ($226.800)
+  // cuando el recibo dice $67.794,80: $159.005 de más por transferencia.
+  'Ochoa Eduardo': '20301119772',
+  'Pastran Marcelo': '20251676462',
+  'Petina Jairo': '23358514189',
+  'Quiroga Alexander': '23445275549',
+  'Quiroga Sebastian': '20305012905',
+  'Reta Sebastian': '20311255712',
+  'Rosales Diego': '20358508783',
+  'Tello Juan': '20304020181',
+  'Zogber Leonardo': '20291086021',
+  // Los dos de oficina, que cobran recibo igual que los de obra.
+  'Emi Maldonado': '20359232668',
+  'Juan Pablo Nievas': '20403679764',
+})
+
+/**
+ * QUIÉN ESTÁ EN LA PLANILLA Y NO COBRA ESTA QUINCENA, Y POR QUÉ.
+ *
+ * No es lo mismo «no tiene recibo porque se fue» que «no tiene recibo y no sabemos por qué». La
+ * segunda es un hueco que alguien tiene que mirar antes de pagar.
+ */
+export const SIN_RECIBO_EN_LA_QUINCENA = Object.freeze({
+  'Jofre Ismael': 'liquidación final el 25/08 — no cobra la 2da quincena',
+  'Sosa Raul': 'liquidación final el 25/08 — no cobra la 2da quincena',
+  'Castillo Carlos': 'FALTA_DATO: no tiene recibo en agosto y no hay baja registrada',
+})
+
+/**
+ * ¿ESTA PERSONA YA COBRÓ SU LIQUIDACIÓN FINAL?
+ *
+ * Importa para una sola cosa y es cara: quien tiene liquidación final **no puede aparecer también
+ * en el cuadro de la quincena**. La primera corrida los dejó en los dos —Jofre y Sosa con banco
+ * $300.000 arriba y su liquidación completa abajo—, y un cuadro que muestra a la misma persona dos
+ * veces con dos importes distintos es cómo se paga dos veces.
+ *
+ * La planilla de jornales los sigue trayendo porque tienen horas hasta el día de la baja. Tener
+ * horas no es cobrar la quincena.
+ */
+export function tieneLiquidacionFinal(nombrePlanilla) {
+  return /liquidación final/i.test(SIN_RECIBO_EN_LA_QUINCENA[nombrePlanilla] ?? '')
+}
+
+/**
+ * COBRA RECIBO Y NO ESTÁ EN LA PLANILLA DE JORNALES.
+ *
+ * Su parte bancaria se conoce —la dice el recibo— pero su TOTAL no, porque el total sale de
+ * `horas × $/hora` y nadie les cargó horas. Sin total no hay efectivo: `null`, nunca cero. Un cero
+ * acá les paga sólo la parte registrada y se lee como si estuviera bien.
+ */
+export const COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA = Object.freeze([
+  { nombre: 'CASTRO JUAN MARCELO', legajo: '85', cuil: '20245269561' },
+  { nombre: 'MORENO JULIO MIGUEL', legajo: '86', cuil: '20309892756' },
+  { nombre: 'QUIROZ FACUNDO MIGUEL', legajo: '87', cuil: '20449917848' },
+])
+
+/**
+ * EL BANCO DE UNA PERSONA PARA UNA QUINCENA. PURA.
+ *
+ * Devuelve `{ banco, fuente }`. Sin recibo devuelve `banco: null` — **no cero y no el 50%**: que
+ * falte el recibo de alguien tiene que verse como un hueco, no resolverse con el cálculo viejo por
+ * la puerta de atrás. Quien llame decide qué hacer con el nulo, y el cuadro lo muestra.
+ */
+export function bancoDeLaPersona(nombrePlanilla, recibosPorCuil = new Map()) {
+  const cuil = CUIL_POR_PERSONA_DE_PLANILLA[nombrePlanilla]
+  if (cuil === undefined) {
+    const porQue = SIN_RECIBO_EN_LA_QUINCENA[nombrePlanilla]
+    return { banco: null, fuente: porQue ?? `no está en el puente recibo↔planilla: nadie declaró el CUIL de «${nombrePlanilla}»` }
+  }
+  if (cuil === null) return { banco: null, fuente: `${nombrePlanilla} cobra recibo pero no tiene CUIL declarado en el puente` }
+  const r = recibosPorCuil.get(cuil)
+  if (!r || !(Number(r.neto) > 0)) return { banco: null, fuente: `sin recibo confirmado para el CUIL ${cuil}` }
+  return { banco: Number(r.neto), fuente: `recibo ${r.etiqueta ?? ''}`.trim() }
+}
+
+/**
+ * EL REPARTO 50/50 DE UNA LIQUIDACIÓN FINAL.
+ *
+ * El dueño lo pidió así: «el calculo de 50 en blanco (lo liquidado) y 50 en negro (lo q se paga en
+ * efectivo)». O sea: lo que liquidó el estudio ES la mitad blanca, y la mitad negra es otro tanto
+ * igual. El total que sale de la caja es el DOBLE del recibo — no la mitad, que es el error de
+ * leerlo al revés.
+ */
+export function reparto50DeLiquidacionFinal(netoDelRecibo) {
+  const n = Number(netoDelRecibo)
+  if (!Number.isFinite(n) || n <= 0) return { blanco: null, negro: null, total: null }
+  return { blanco: n, negro: n, total: n * 2 }
+}
