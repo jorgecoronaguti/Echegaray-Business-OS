@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tramoNegado, terminosDe, exclusionesDelProyecto } from './corpus.mjs'
+import { tramoNegado, terminosDe, exclusionesDelProyecto, delProyecto } from './corpus.mjs'
 import { ALCANCE } from './alcance.mjs'
 
 /** Una por FORMA, no una por sinónimo. */
@@ -84,4 +84,45 @@ test('las CATORCE formas se leen sin un solo falso positivo', () => {
     'El plazo de obra es de 90 días corridos.',
     'La obra comprende la totalidad de los trabajos de albañilería.',
   ]) assert.equal(tramoNegado(f), null, `falso positivo en: «${f}»`)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// UN DOCUMENTO QUE NADIE PUDO LEER NO ES UN DOCUMENTO LEÍDO
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `delProyecto` publicaba `parseado: true` escrito a mano y tiraba la `etapa` que el corpus sí
+// traía. Sobre la biblioteca real eso daba por leídos 6 documentos marcados NO_LEIDO en tres
+// proyectos, y el motor contaba con ellos para decir que había entendido el proyecto. Es la misma
+// forma que ya costó caro en este repo: un control incapaz de decir que no.
+
+const BIBLIOTECA_FALSA = {
+  documentos: [
+    { id: 'd1', hash: 'h1', titulo: 'x/PRUEBA/leido.pdf', formato: 'PDF', etapa: 'ESTUDIADO' },
+    { id: 'd2', hash: 'h2', titulo: 'x/PRUEBA/roto.pdf', formato: 'PDF', etapa: 'NO_LEIDO' },
+    { id: 'd3', hash: 'h3', titulo: 'x/PRUEBA/viejo.pdf', formato: 'PDF' },
+  ],
+  conocimientos: [], huecos: [],
+}
+
+test('delProyecto · un documento NO_LEIDO no sale como parseado', () => {
+  // MUTACIÓN CORRIDA: volver a `parseado: true` fijo → este test y el siguiente en rojo.
+  const { documentos } = delProyecto(BIBLIOTECA_FALSA, 'prueba')
+  const porNombre = Object.fromEntries(documentos.map((d) => [d.nombre, d]))
+  assert.equal(porNombre['leido.pdf'].parseado, true)
+  assert.equal(porNombre['roto.pdf'].parseado, false, 'un NO_LEIDO se publicó como leído')
+})
+
+test('delProyecto · sin etapa el estado es DESCONOCIDO, y desconocido no es leído', () => {
+  // El matiz que separa este arreglo de uno peor: un documento sin etapa tampoco es `false`. No
+  // sabemos si se leyó, y `null` lo dice; `false` afirmaría que falló, que es otra mentira.
+  const { documentos } = delProyecto(BIBLIOTECA_FALSA, 'prueba')
+  const viejo = documentos.find((d) => d.nombre === 'viejo.pdf')
+  assert.equal(viejo.parseado, null)
+  assert.notEqual(viejo.parseado, true)
+  assert.notEqual(viejo.parseado, false)
+})
+
+test('delProyecto · la etapa viaja, no se descarta', () => {
+  const { documentos } = delProyecto(BIBLIOTECA_FALSA, 'prueba')
+  assert.deepEqual(documentos.map((d) => d.etapa), ['ESTUDIADO', 'NO_LEIDO', null])
 })

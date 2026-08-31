@@ -247,7 +247,17 @@ export function delProyecto(biblioteca, termino) {
   const huecos = (biblioteca.huecos ?? []).filter((h) => re.test(String(h.clave ?? '')))
   return {
     termino,
-    documentos: documentos.map((d) => ({ hash: d.hash, nombre: (String(d.titulo ?? '').split('/').pop()), parseado: true, formato: d.formato })),
+    // `parseado` estaba escrito `true` a mano, y la `etapa` del corpus se descartaba. Sobre ARCOR
+    // eso publicaba como leídos 2 documentos que el corpus marca NO_LEIDO: un control incapaz de
+    // decir que no. La etapa manda; sólo cuando el corpus no la trae se declara desconocida —y
+    // desconocido no es leído, así que `parseado` sale `null` y no `true`.
+    documentos: documentos.map((d) => ({
+      hash: d.hash,
+      nombre: (String(d.titulo ?? '').split('/').pop()),
+      etapa: d.etapa ?? null,
+      parseado: d.etapa === undefined || d.etapa === null ? null : d.etapa !== 'NO_LEIDO',
+      formato: d.formato,
+    })),
     conocimientos, huecos,
     estado: documentos.length ? ESTADO.EXTRAIDO : ESTADO.FALTA_DATO,
   }
