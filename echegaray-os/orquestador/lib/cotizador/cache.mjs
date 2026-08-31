@@ -109,6 +109,12 @@ export function crearCache({ version, capacidad = 500, ttlMs = null, ahora = () 
     version,
     clave,
 
+    /** ¿Este caché declara cuánta antigüedad tolera? El fast path lo consulta para decidir si puede
+     *  servir una respuesta que salió de estado vivo (SQL). Es una propiedad y no un valor suelto
+     *  para que quien la lea no tenga que conocer el `null` que significa «sin TTL». */
+    get tieneTtl() { return ttlMs !== null },
+    get ttlMs() { return ttlMs },
+
     /** Devuelve SIEMPRE la misma forma: `{ hit, valor, motivo, sha256 }`. Un `valor: null` con
      *  `hit: true` es un resultado legítimo —«se investigó y no hay dato»— y por eso el hit no se
      *  deduce de que el valor exista. */
