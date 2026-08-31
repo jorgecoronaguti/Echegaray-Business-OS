@@ -127,19 +127,62 @@ test('dos fuentes que no coinciden NO producen su promedio', () => {
   assert.ok([180_000, 900_000].includes(p.valor))
 })
 
-test('un salto material NO se aplica solo: queda OUTLIER_PENDING con el descartado escrito', () => {
+test('un salto material sobre un precio VIGENTE no se aplica solo: OUTLIER_PENDING', () => {
   const p = resolverPrecio({
     recurso: HORMIGON, hoy: HOY, impacto: 8_000_000, costoConocido: 100_000_000,
     candidatos: [
-      cand({ valor: 180_000, origen: ORIGEN.INTERNO, observadoEn: '2024-01-01', detalleFuente: 'catálogo viejo' }),
-      cand({ valor: 900_000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-20', detalleFuente: 'compra_sheet fila 88' }),
+      // El interno es de anteayer: sigue vigente, así que SÍ es línea de base.
+      cand({ valor: 180_000, origen: ORIGEN.INTERNO, observadoEn: '2026-08-28', detalleFuente: 'catálogo fresco' }),
+      cand({ valor: 900_000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-29', detalleFuente: 'compra_sheet fila 88' }),
     ],
   })
-  assert.equal(p.resultado, RESULTADO.NECESITA_HUMANO)
-  assert.equal(p.provenance.cotejo.veredicto, 'RESOLVER')
-  assert.equal(p.issue.type, TIPO_ISSUE.OUTLIER_PENDING)
+  assert.equal(p.valor, 180_000, 'la cascada se para en INTERNO vigente')
+  assert.equal(p.resultado, RESULTADO.VIGENTE)
+
+  // Ahora el mismo salto, pero sin interno vigente que gane la cascada: se compara y se frena.
+  const q = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 8_000_000, costoConocido: 100_000_000,
+    candidatos: [
+      cand({ valor: 900_000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-29', detalleFuente: 'compra_sheet fila 88' }),
+    ],
+  })
+  assert.equal(q.resultado, RESULTADO.ACTUALIZADO, 'sin nada contra qué comparar, la factura gana sola')
+  assert.equal(compararFuentes({
+    elegido: { valor: 900_000, moneda: 'ARS', recursoCodigo: 'H21' },
+    incumbente: { valor: 180_000, moneda: 'ARS', vigente: true, observadoEn: '2026-08-28' },
+    recurso: HORMIGON, impacto: 8_000_000, costoConocido: 100_000_000,
+  }).veredicto, 'RESOLVER')
+})
+
+test('un incumbente VENCIDO no es línea de base: ×5 contra un precio de 2022 es inflación, no anomalía', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 8_000_000, costoConocido: 100_000_000,
+    candidatos: [
+      cand({ valor: 180_000, origen: ORIGEN.INTERNO, observadoEn: '2022-05-10', detalleFuente: 'Planilla · Recursos!324' }),
+      cand({ valor: 900_000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-29', detalleFuente: 'compra_sheet fila 88' }),
+    ],
+  })
+  // Medido: la primera corrida sobre el catálogo real mandó a humano 7 de los 8 recursos que la
+  // cascada YA había resuelto con una factura pagada, por este motivo exacto.
+  assert.equal(p.resultado, RESULTADO.ACTUALIZADO)
+  assert.equal(p.valor, 900_000)
+  assert.equal(p.issue, null)
+  assert.match(p.provenance.cotejo.porQue, /la diferencia es tiempo, no anomalía/)
+})
+
+test('NEGATIVO · el mismo cotejo, con el incumbente VIGENTE, sí frena', () => {
+  const p = resolverPrecio({
+    recurso: HORMIGON, hoy: HOY, impacto: 8_000_000, costoConocido: 100_000_000,
+    candidatos: [
+      cand({ valor: 180_000, origen: ORIGEN.INTERNO, observadoEn: '2026-08-29', detalleFuente: 'catálogo de ayer' }),
+      cand({ valor: 900_000, origen: ORIGEN.COMPRA_ECSAS, observadoEn: '2026-08-29', detalleFuente: 'compra_sheet fila 88' }),
+    ],
+  })
+  // El interno vigente gana la cascada (paso 1) y no hay cotejo que hacer.
+  assert.equal(p.resultado, RESULTADO.VIGENTE)
+  assert.equal(p.valor, 180_000)
   assert.equal(p.provenance.descartados.length, 1)
-  assert.equal(p.provenance.descartados[0].valor, 180_000, 'lo que no se eligió queda escrito, no desaparece')
+  assert.equal(p.provenance.descartados[0].valor, 900_000, 'lo que no se eligió queda escrito, no desaparece')
 })
 
 test('NEGATIVO · el MISMO salto sobre un recurso que no mueve plata SÍ se aplica solo', () => {

@@ -159,6 +159,23 @@ export function evaluarCandidato(cand, { recurso = {}, materialidad = null, seri
  */
 export function compararFuentes({ elegido, incumbente = null, recurso = {}, impacto = null, costoConocido = null } = {}) {
   if (!incumbente || incumbente.valor === elegido.valor) return { veredicto: 'APLICAR', porQue: null, issue: null }
+  // ═══ UN INCUMBENTE VENCIDO NO ES UNA LÍNEA DE BASE ═══
+  //
+  // Medido: la primera corrida sobre el catálogo real mandó a resolución humana 7 de los 8 recursos
+  // que la cascada había resuelto con una FACTURA PAGADA. El motivo era que el precio del catálogo
+  // —de 2017, de 2021, de 2022— difería más de 3× de la factura de 2026. Eso no es un valor atípico:
+  // es la inflación acumulada de cuatro años, y llamarla «outlier» convierte el mecanismo en un
+  // generador de preguntas sin respuesta posible («¿está seguro de que el ripio subió?»).
+  //
+  // Un factor sólo significa algo entre dos números comparables. Si el que había ya venció, no hay
+  // contra qué comparar: gana el nuevo, y la diferencia queda ESCRITA como dato, no como bloqueo.
+  if (incumbente.vigente === false) {
+    return {
+      veredicto: 'APLICAR',
+      porQue: `el precio que había (${incumbente.moneda} ${incumbente.valor}, del ${incumbente.observadoEn}) ya estaba vencido: un precio vencido no es una línea de base contra la cual medir un salto — la diferencia es tiempo, no anomalía`,
+      issue: null,
+    }
+  }
   if (incumbente.moneda !== elegido.moneda) {
     return { veredicto: 'RESOLVER', porQue: `el precio que había está en ${incumbente.moneda} y el nuevo en ${elegido.moneda}: no se comparan sin tipo de cambio declarado`, issue: null }
   }

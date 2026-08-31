@@ -152,6 +152,40 @@ export async function resolverCatalogo({ query }, { codigos = null, pesos = {}, 
 }
 
 /**
+ * CUÁNTO PESA CADA RECURSO EN UNA COTIZACIÓN CONCRETA. UNA consulta.
+ *
+ * ═══ POR QUÉ ESTO NO ES UN LUJO ═══
+ *
+ * La materialidad es la entrada que decide si un precio viejo frena la oferta o no, y sólo existe
+ * DENTRO de una cotización: en el catálogo suelto, el TORNILLO AUTOPERFORANTE y el PANEL DE CHAPA
+ * pesan lo mismo (nada), porque no hay cantidades. Correr la resolución sobre el catálogo sin pesos
+ * es medir el peor caso; correrla sobre una cotización es medir el caso real.
+ *
+ * El peso es `cantidad de partida × cantidad de la composición × precio del recurso`, normalizado
+ * sobre el total. Se usa el precio que HAY —viejo o no— porque para pesar sirve el orden de
+ * magnitud, no la exactitud: un recurso que representa el 30% con precios de 2022 sigue
+ * representando cerca del 30% con precios de 2026 mientras la inflación los mueva a todos.
+ */
+export async function pesosDeCotizacion({ query }, cotizacionId) {
+  const { rows } = await query(
+    `select r.codigo, sum(p.cantidad * al.cantidad * coalesce(rp.costo, 0)) as monto
+       from public.cotizacion_partida p
+       join public.analisis_linea al on al.analisis_id = p.analisis_id
+       join public.recurso r on r.id = al.recurso_id
+       left join public.recurso_precio rp on rp.recurso_id = r.id and rp.vigente is true
+      where p.cotizacion_id = $1 and p.cantidad is not null
+      group by r.codigo`, [cotizacionId])
+  const total = rows.reduce((a, r) => a + Number(r.monto ?? 0), 0)
+  const pesos = {}
+  // Con total 0 no se normaliza nada: devolver ceros diría «ningún recurso importa», que es
+  // justamente la mentira que `materialidadDe` existe para no contar. Se devuelve vacío y cada
+  // recurso queda con materialidad desconocida, que es la verdad.
+  if (!(total > 0)) return { pesos, total: 0, porQue: 'ningún recurso de esta cotización tiene precio cargado: no se puede pesar nada' }
+  for (const r of rows) if (Number(r.monto) > 0) pesos[r.codigo] = Number(r.monto) / total
+  return { pesos, total, porQue: `${Object.keys(pesos).length} recursos pesados sobre un costo de referencia de $${total.toLocaleString('es-AR')}` }
+}
+
+/**
  * GUARDAR LA EVIDENCIA DE UNA RESOLUCIÓN. Sólo INSERT — la tabla no tiene GRANT de UPDATE.
  *
  * El CHECK `sin_precio_no_es_cero` de la migración es el que hace cumplir el invariante en la BASE:
