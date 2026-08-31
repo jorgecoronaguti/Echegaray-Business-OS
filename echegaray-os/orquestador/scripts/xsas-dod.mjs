@@ -46,23 +46,40 @@ function intentarEscribirCoeficiente() {
  * nada— y no deja nada. Sin ninguna cotización congelada con composición devuelve `null`: no se
  * pudo medir, que es distinto de que no funcione.
  */
-async function rechazaEscribirLoCongelado(query) {
-  const { rows } = await query(`select cpc.id
-                                  from public.cotizacion_partida_composicion cpc
-                                  join public.cotizacion_partida cp on cp.id = cpc.partida_id
-                                  join public.cotizaciones c on c.id = cp.cotizacion_id
-                                 where c.congelada_en is not null limit 1`)
-  if (!rows[0]) return null
-  await query('begin')
+async function rechazaEscribirLoCongelado(pool) {
+  // ═══ UNA CONEXIÓN DEDICADA, NO EL POOL ═══
+  //
+  // La primera versión usaba `pool.query`, que toma un cliente cualquiera por llamada: el `begin`,
+  // el `UPDATE` y el `rollback` podían caer en tres conexiones distintas. El auditor lo demostró
+  // sobre una tabla propia: **4 de 6 filas sobrevivieron al rollback**. Hoy no rompía nada porque
+  // el flujo es secuencial y el trigger rechaza — pero en el escenario EXACTO que esta medición
+  // existe para detectar, que es que la base NO defienda, el `cantidad * 2` sobre una de las 462
+  // líneas de una composición congelada quedaba committeado y el rollback no lo deshacía.
+  // Una medición que corrompe la fuente de verdad justo cuando encuentra la falla.
+  const c = await pool.connect()
   try {
-    await query('update public.cotizacion_partida_composicion set cantidad = cantidad * 2 where id = $1', [rows[0].id])
-    return false   // pasó: la congelada SÍ se puede reescribir
-  } catch {
-    return true    // la base la defendió
+    const { rows } = await c.query(`select cpc.id
+                                      from public.cotizacion_partida_composicion cpc
+                                      join public.cotizacion_partida cp on cp.id = cpc.partida_id
+                                      join public.cotizaciones c on c.id = cp.cotizacion_id
+                                     where c.congelada_en is not null limit 1`)
+    if (!rows[0]) return null
+    await c.query('begin')
+    try {
+      await c.query('update public.cotizacion_partida_composicion set cantidad = cantidad * 2 where id = $1', [rows[0].id])
+      return false   // pasó: la congelada SÍ se puede reescribir
+    } catch {
+      return true    // la base la defendió
+    } finally {
+      await c.query('rollback')
+    }
   } finally {
-    await query('rollback')
+    c.release()
   }
 }
+
+/** Dónde firma el auditor independiente. Exportado para que un test pueda probar que se LEE. */
+export const RUTA_FIRMA = 'docs/engineering/xsas-auditoria.json'
 
 const uno = async (query, sql, campo = 'n') => Number((await query(sql)).rows[0]?.[campo] ?? 0)
 
@@ -113,10 +130,10 @@ function desdeLosCasos(casos) {
     explosion: q?.reconciliacion?.cuadra === null || q?.reconciliacion?.cuadra === undefined
       ? null
       : { recursos: q.explosion?.nRecursos ?? 0, reconcilia: q.reconciliacion.cuadra === true },
-    // Se MIDE: si algún día el costo publicara días y coincidieran con las horas, esto lo ve.
-    hh: typeof q?.costoDirecto?.hh === 'number'
-      ? { horas: q.costoDirecto.hh, confundeHhConDuracion: q.costoDirecto.dias !== undefined && q.costoDirecto.dias === q.costoDirecto.hh }
-      : null,
+    // `costoDirecto()` NO devuelve `dias`, así que preguntarle por ellos era el literal `false`
+    // disfrazado de medición — peor que el literal, porque un lector deja de mirarlo. HH ≠ DURACIÓN
+    // lo sostienen los tests de `plano/cuadrilla.mjs` y `plan-vs-real.mjs`, no este cuadro.
+    hh: typeof q?.costoDirecto?.hh === 'number' ? { horas: q.costoDirecto.hh } : null,
 
     costoDirecto: { afirmadoEnCasos: conCosto.length },
     incertidumbre: { noDeclarada: m.incertidumbre_no_declarada ?? null },
@@ -133,19 +150,18 @@ function desdeLosCasos(casos) {
       if (!cost || (cost.aprendizajesDisponibles ?? 0) === 0) return null
       return { reutilizados: cost.reutilizanAprendizaje ?? 0 }
     })(),
-    generalizacion: {
-      // «PASS» acá es «el motor llegó al final sin romperse», no «el caso quedó verde»: un caso que
-      // termina BLOQUEADO con sus motivos declarados es el motor funcionando, no fallando.
-      casosPass: casos.filter((c) => (c.corrida?.etapas?.length ?? 0) === 11).length,
-      // No es medible por código: ninguna consulta puede probar que nadie aflojó un umbral. Lo
-      // sostiene el diff auditado y las mutaciones corridas, no este número.
-      reglasTocadasParaQueCierren: 0,
-    },
+    // «PASS» acá es «el motor llegó al final sin romperse», no «el caso quedó verde»: un caso que
+    // termina BLOQUEADO con sus motivos declarados es el motor funcionando, no fallando. Pero el
+    // segundo término del criterio —que nadie aflojó un umbral para que cierren— no lo puede
+    // contestar una consulta, y una limitación declarada BLOQUEA el criterio que toca: ponerla al
+    // lado del criterio cumplido no lo salva, lo anula. Por eso la evidencia entera va `null`.
+    generalizacion: null,
+    generalizacion__porque: `los ${casos.filter((c) => (c.corrida?.etapas?.length ?? 0) === 11).length} casos corren de punta a punta, pero «nadie aflojó un umbral para que cierren» no lo puede contestar una consulta: lo sostienen el diff auditado y las mutaciones corridas. El término va en nulo y el criterio queda sin medir, en vez de darse por bueno con un cero escrito a mano`,
   }
 }
 
 /** La evidencia que vive en la base: obra, ejecución, aprendizaje, política. */
-async function desdeLaBase(query) {
+async function desdeLaBase(query, pool) {
   const e = {}
   const medir = async (clave, fn) => { try { e[clave] = await fn() } catch (err) { e[clave] = null; e[`${clave}__error`] = err.message } }
 
@@ -180,7 +196,11 @@ async function desdeLaBase(query) {
       return null
     }
     return {
-      resueltosAutonomamente: await uno(query, "select count(*) n from public.recurso_precio_resolucion where resultado = 'VIGENTE'"),
+      // `VIGENTE` es «había precio interno vigente: NO HUBO QUE HACER NADA». La resolución autónoma
+      // es `ACTUALIZADO`: «el sistema consiguió un precio nuevo y defendible, solo». Contar el
+      // primero y llamarlo autonomía ponía el criterio en verde con CERO resoluciones autónomas.
+      resueltosAutonomamente: await uno(query, "select count(*) n from public.recurso_precio_resolucion where resultado = 'ACTUALIZADO'"),
+      yaEstabanVigentes: await uno(query, "select count(*) n from public.recurso_precio_resolucion where resultado = 'VIGENTE'"),
       // El invariante: un SIN_PRECIO nunca puede haber quedado con un valor puesto.
       sinPrecioValorizadoEnCero: await uno(query, "select count(*) n from public.recurso_precio_resolucion where resultado = 'SIN_PRECIO' and valor is not null"),
       necesitanHumano: await uno(query, "select count(*) n from public.recurso_precio_resolucion where resultado = 'NECESITA_HUMANO'"),
@@ -220,7 +240,7 @@ async function desdeLaBase(query) {
   await medir('versionado', async () => ({
     // `count(*) >= 0` era verdadero para todo entero y no probaba nada. Ahora se le pregunta a la
     // base si el rol con el que entra la web puede tocar la composición congelada.
-    congeladaEsInmutable: await rechazaEscribirLoCongelado(query),
+    congeladaEsInmutable: await rechazaEscribirLoCongelado(pool),
     ofertaDerivaDeCongelada: (await uno(query, 'select count(*) n from public.obra_origen_cotizacion where congelada_en is not null')) > 0,
   }))
   await medir('aObra', async () => ({ obrasConGenealogia: await uno(query, 'select count(distinct obra_id) n from public.obra_origen_cotizacion') }))
@@ -233,6 +253,28 @@ async function desdeLaBase(query) {
     // sin ninguna evidencia detrás.
     causasInventadas: await uno(query, "select count(*) n from public.obra_plan_real_observacion where causa is not null and causa <> 'SIN_CAUSA' and (evidencia is null or evidencia::text in ('{}', 'null'))"),
   }))
+  // ═══ LA FIRMA DEL AUDITOR NO LA PUEDE PRODUCIR ESTE PROCESO ═══
+  //
+  // Este bloque ya había existido y **lo borró el commit siguiente** (la reescritura F3–F9), sin que
+  // nada lo detectara: el `readFileSync` quedó importado y sin usar, y el import muerto no rompe el
+  // lint. Una capacidad commiteada con evidencia de corrida desapareció y el criterio #24 habría
+  // quedado NO_VERIFICABLE aunque alguien lo firmara. Por eso ahora tiene test.
+  //
+  // El criterio 24 se lee de un archivo que escribe QUIEN AUDITÓ, y trae su nombre. Si coincide con
+  // quien construyó, no vale: «ningún trabajo lo cierra quien lo construyó» es lo único que impide
+  // que el veredicto sea una opinión sobre uno mismo.
+  await medir('auditoria', async () => {
+    let firma
+    try { firma = JSON.parse(readFileSync(RUTA_FIRMA, 'utf8')) } catch {
+      e.auditoria__porque = `todavía no hay firma de auditoría independiente: falta \`${RUTA_FIRMA}\``
+      return null
+    }
+    if (!firma.auditor || firma.auditor === firma.construyo) {
+      e.auditoria__porque = `la firma dice que auditó «${firma.auditor ?? 'nadie'}» y construyó «${firma.construyo ?? '?'}»: no puede ser la misma persona`
+      return null
+    }
+    return { veredicto: firma.veredicto, loFirmoQuienNoLoConstruyo: true, auditor: firma.auditor, fecha: firma.fecha ?? null }
+  })
   await medir('candidatos', async () => ({ generados: await uno(query, 'select count(*) n from public.aprendizaje_candidato') }))
   await medir('governance', async () => ({
     promovidos: await uno(query, 'select count(*) n from public.aprendizaje_version'),
@@ -248,7 +290,7 @@ async function juntarEvidencia() {
   // El orden importa y no es estético: `correrCasos()` cierra el pool al terminar. Medir la base
   // después dejaba los diez criterios de obra, ejecución y aprendizaje en NO_VERIFICABLE por una
   // conexión cerrada — un «no se pudo medir» que no era del sistema sino de este archivo.
-  const deBase = await desdeLaBase(query)
+  const deBase = await desdeLaBase(query, pool)
   const { casos } = await correrCasos()
   // `auditoria` se deja ausente a propósito: la firma del auditor independiente NO la puede producir
   // el mismo proceso que construyó el trabajo. Hasta que exista, el criterio 24 sale NO_VERIFICABLE

@@ -184,3 +184,30 @@ test('F2 · y el resultado también las distingue — no alcanza con que difiera
   assert.notEqual(con16.costoDirecto.total, con30.costoDirecto.total)
   assert.notEqual(con16.huellaResultado?.sha256 ?? con16.costoDirecto.total, con30.huellaResultado?.sha256 ?? con30.costoDirecto.total)
 })
+
+test('P2-R1 · la cadena vacía y los espacios TAMPOCO son una cantidad medida', () => {
+  // El auditor reabrió F1 entero con `cantidad: ''`: `Number('')` es **0**, y 0 es finito, así que
+  // la guarda escrita a mano lo dejaba pasar mientras `costo.mjs` sí lo listaba. Dos definiciones
+  // del mismo predicado, y ganaba la laxa. Ahora hay una sola, en `costo.mjs`, y ésta la usa.
+  //
+  // MUTACIÓN CORRIDA: en `sinMedir`, sacar la rama de string vacío → este test en rojo.
+  for (const vacia of ['', '  ', '\t']) {
+    const comp = [
+      { recursoCodigo: 'MAT-LAD', nombre: 'Ladrillón', tipo: TIPO_RECURSO.MATERIAL, cantidad: 45, unidad: 'un' },
+      { recursoCodigo: 'MO-OF', nombre: 'Oficial albañil', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: 2, unidad: 'hs' },
+      { recursoCodigo: 'MO-AY', nombre: 'Ayudante', tipo: TIPO_RECURSO.MANO_OBRA, cantidad: vacia, unidad: 'hs' },
+    ]
+    const r = correr(ENTRADA({
+      composiciones: new Map([['u-4010', comp]]),
+      observaciones: [
+        observacionDePrecio({ recursoCodigo: 'MAT-LAD', precio: 950, fuente: 'lista', observadoEn: '2026-08-20' }),
+        observacionDePrecio({ recursoCodigo: 'MO-OF', precio: 4200, fuente: 'convenio', observadoEn: '2026-08-20' }),
+        observacionDePrecio({ recursoCodigo: 'MO-AY', precio: 3600, fuente: 'convenio', observadoEn: '2026-08-20' }),
+      ],
+      aprendizajesActivos: new Map([['rendimiento.T4010', 1.6]]),
+    }))
+    assert.equal(r.costoDirecto.total, null, `con cantidad ${JSON.stringify(vacia)} el aprendizaje afirmó un costo desconocido`)
+    assert.equal(r.gate.ready, false)
+    assert.equal(etapa(r, 'COST').result.aprendizajesNoAplicados, 1)
+  }
+})

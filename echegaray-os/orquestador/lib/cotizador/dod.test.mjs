@@ -5,6 +5,7 @@
 // y la excepción— y para fijar que lo que no se midió NUNCA cuenta como cumplido.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { CRITERIOS, VEREDICTO, GLOBAL, evaluar, veredictoGlobal, correrDod } from './dod.mjs'
 
 /** La evidencia de un sistema perfecto: los veinticuatro criterios medidos y en verde. */
@@ -15,7 +16,7 @@ const TODO_BIEN = {
   mapeo: { mapeadas: 24, porParecidoTextualSinAtributos: 0 },
   composiciones: { resueltas: 26, incompletasQueCostaronCero: 0 },
   explosion: { recursos: 110, reconcilia: true },
-  hh: { horas: 3697.7, confundeHhConDuracion: false },
+  hh: { horas: 3697.7 },
   precios: { resueltosAutonomamente: 80, sinPrecioValorizadoEnCero: 0 },
   subcontratos: { total: 3, conAlcanceYVigencia: 3 },
   costoDirecto: { afirmadoEnCasos: 3 },
@@ -109,4 +110,31 @@ test('veredictoGlobal · FAIL gana sobre PASS_CON_LIMITACIONES cuando hay de los
     { id: 3, dice: 'c', veredicto: VEREDICTO.NO_CUMPLE },
   ])
   assert.equal(r.estado, GLOBAL.FAIL)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CRITERIO 24 TIENE QUE TENER QUIÉN LO LEA
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Este test existe por un defecto de proceso, no de lógica: el bloque que lee la firma del auditor
+// se commiteó con evidencia de corrida y **el commit siguiente lo borró**. Nada lo detectó — el
+// `readFileSync` quedó importado y sin usar, y un import muerto no rompe el lint. Una capacidad
+// desapareció en silencio y el criterio #24 habría quedado NO_VERIFICABLE aunque alguien firmara.
+
+test('el recolector nombra la ruta de la firma, y la lee de verdad', async () => {
+  // MUTACIÓN CORRIDA: borrar el bloque `medir('auditoria', …)` → este test en rojo.
+  const mod = await import('../../scripts/xsas-dod.mjs')
+  assert.equal(mod.RUTA_FIRMA, 'docs/engineering/xsas-auditoria.json')
+  const fuente = readFileSync(new URL('../../scripts/xsas-dod.mjs', import.meta.url), 'utf8')
+  assert.match(fuente, /medir\('auditoria'/, 'nadie mide el criterio 24: el bloque que lee la firma no está')
+  assert.match(fuente, /readFileSync\(RUTA_FIRMA/, 'la ruta de la firma está declarada pero no se lee')
+  assert.match(fuente, /firma\.auditor === firma\.construyo/, 'no se rechaza la firma de quien lo construyó')
+})
+
+test('un criterio sin su medición no puede quedar CUMPLE por descuido', () => {
+  // La contracara: si mañana alguien borra otro bloque, el criterio cae a NO_VERIFICABLE y baja el
+  // numerador. Nunca sube. Es lo que hace que perder una medición se note en el número.
+  const r = correrDod({})
+  assert.equal(r.cumple, 0)
+  assert.equal(r.estado, GLOBAL.PASS_CON_LIMITACIONES)
 })

@@ -41,7 +41,10 @@ export const CRITERIOS = Object.freeze([
   { id: 4, dice: 'selecciona partidas defendiblemente', mide: 'mapeo', exige: (e) => e.mapeadas > 0 && e.porParecidoTextualSinAtributos === 0 },
   { id: 5, dice: 'usa composiciones', mide: 'composiciones', exige: (e) => e.resueltas > 0 && e.incompletasQueCostaronCero === 0 },
   { id: 6, dice: 'explota recursos', mide: 'explosion', exige: (e) => e.recursos > 0 && e.reconcilia === true },
-  { id: 7, dice: 'estima HH/productividad', mide: 'hh', exige: (e) => e.horas > 0 && e.confundeHhConDuracion === false },
+  // `HH ≠ DURACIÓN` no se prueba con un campo del cuadro —`costoDirecto()` no publica días— sino con
+  // los tests de `plano/cuadrilla.mjs` y `plan-vs-real.mjs`. Acá se mide lo que este cuadro puede
+  // medir: que las horas existan y salgan de una composición, no de un supuesto.
+  { id: 7, dice: 'estima HH/productividad', mide: 'hh', exige: (e) => e.horas > 0 },
   { id: 8, dice: 'gestiona precios autónomamente', mide: 'precios', exige: (e) => e.resueltosAutonomamente > 0 && e.sinPrecioValorizadoEnCero === 0 },
   { id: 9, dice: 'maneja subcontratos', mide: 'subcontratos', exige: (e) => e.conAlcanceYVigencia === e.total && e.total > 0 },
   { id: 10, dice: 'calcula costo directo', mide: 'costoDirecto', exige: (e) => e.afirmadoEnCasos > 0 },
@@ -57,6 +60,10 @@ export const CRITERIOS = Object.freeze([
   { id: 20, dice: 'valida/promueve con governance', mide: 'governance', exige: (e) => e.rechazadosPorGobernanza > 0 || e.promovidos > 0 },
   { id: 21, dice: 'reutiliza aprendizaje', mide: 'reuso', exige: (e) => e.reutilizados > 0 },
   { id: 22, dice: 'funciona sin Claude', mide: 'claudeZero', exige: (e) => e.llamadasLlm === 0 && e.llegoAlFinal === true },
+  // El segundo término no lo puede contestar ninguna consulta: que nadie haya aflojado un umbral
+  // para que un caso cierre lo sostiene el diff auditado, no una medición. Por eso el recolector lo
+  // devuelve `null` y el criterio cae a NO_VERIFICABLE — una limitación declarada BLOQUEA el
+  // criterio que toca; ponerla al lado del criterio cumplido no lo salva, lo anula.
   { id: 23, dice: 'generaliza a varios proyectos', mide: 'generalizacion', exige: (e) => e.casosPass >= 3 && e.reglasTocadasParaQueCierren === 0 },
   { id: 24, dice: 'auditor independiente PASS', mide: 'auditoria', exige: (e) => e.veredicto === 'PASS' && e.loFirmoQuienNoLoConstruyo === true },
 ])

@@ -235,6 +235,22 @@ export function brechaDeAlcance({ subcontrato: s, exigido = [] } = {}) {
  *   · algún recurso no tiene precio       → se sabe de qué está hecha y no cuánto sale
  *   · la cantidad no está en la unidad de la partida → error de cómputo, no de precio
  */
+/**
+ * ¿ESTA CANTIDAD ESTÁ SIN MEDIR? PURA. Una sola definición para todo el motor.
+ *
+ * Existía dos veces con dos criterios distintos: acá, que ya listaba `''`, y en la reutilización de
+ * aprendizajes del orquestador, que no. El auditor lo probó: con `cantidad: ''` —`Number('')` es
+ * **0**, y 0 es finito— el agujero de las HH fantasma se reabría entero. Dos definiciones del mismo
+ * predicado siempre terminan divergiendo, y la que gana es la laxa.
+ *
+ * `'  '` también entra: `Number('  ')` es 0, y un renglón con espacios no es un renglón que vale 0.
+ */
+export function sinMedir(cantidad) {
+  if (cantidad === null || cantidad === undefined) return true
+  if (typeof cantidad === 'string' && cantidad.trim() === '') return true
+  return !Number.isFinite(Number(cantidad))
+}
+
 export function costoDePartida({
   partida, composicion = [], observaciones = [], fx = null,
   monedaDestino = 'ARS', hoy = new Date(),
@@ -328,7 +344,7 @@ export function costoDePartida({
     // de obra. Es exactamente el defecto que este archivo ya cerraba una escala más arriba —para la
     // cantidad de la PARTIDA— y que no se había cerrado para la cantidad de la LÍNEA.
     const cl = l.cantidad
-    if (cl === null || cl === undefined || cl === '' || !Number.isFinite(Number(cl))) {
+    if (sinMedir(cl)) {
       const porQue = `${l.recursoCodigo ?? l.codigo}: la composición no dice cuánto lleva por unidad. NO es cero: es un renglón sin medir`
       faltan.push(porQue)
       // Si la línea sin medir es de mano de obra, las HH de la partida dejan de ser afirmables:

@@ -26,7 +26,7 @@
 
 import { ETAPA, STATUS, ESTADO, resultadoEtapa, ORDEN_ETAPAS } from './contrato.mjs'
 import { cruzarAlcance, paraCostear } from './alcance.mjs'
-import { costoDePartida, costoDirecto } from './costo.mjs'
+import { costoDePartida, costoDirecto, sinMedir } from './costo.mjs'
 import { cascada } from './comercial.mjs'
 import { colaDeAtencion, estadoDeCola } from './atencion.mjs'
 import { huellaDeEntradas, huellaDeResultado, gateDeCongelado } from './freeze.mjs'
@@ -170,9 +170,9 @@ export function correr({
     // Y la guarda NO puede escribirse `!Number.isFinite(Number(l.cantidad))`: **`Number(null)` es 0,
     // y 0 es finito**. La primera versión de este arreglo tenía adentro el mismo bug que venía a
     // cerrar, y lo destapó el test —no la lectura—. `null` y `undefined` se preguntan aparte.
-    const sinMedir = manoDeObra.filter((l) => l.cantidad === null || l.cantidad === undefined || !Number.isFinite(Number(l.cantidad)))
-    if (sinMedir.length) {
-      noReutilizados.push({ partida: p.codigo ?? p.id, clave, porQue: `${sinMedir.length} renglón(es) de mano de obra sin cantidad: no se puede escalar lo que no se midió` })
+    const sinMedirLineas = manoDeObra.filter((l) => sinMedir(l.cantidad))
+    if (sinMedirLineas.length) {
+      noReutilizados.push({ partida: p.codigo ?? p.id, clave, porQue: `${sinMedirLineas.length} renglón(es) de mano de obra sin cantidad: no se puede escalar lo que no se midió` })
       return lineas
     }
 
