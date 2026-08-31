@@ -229,9 +229,11 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // Corregir si la lectura se equivocó de clase de papel.
   if (c.esPresupuestoORemito) {
     falta(MOTIVO.NO_ES_FACTURA, 'es un presupuesto/remito, no una factura',
+      // LAS PALABRAS EXACTAS, NO EL BOTÓN (31/08). Decía «tocá Corregir», y los botones están
+      // apagados en producción: la orden de entrega de Cerrajería SAN MIGUEL se mandó dos veces y
+      // quedó trabada las dos porque no había forma de contestar. `RE_ES_FACTURA` acepta esto.
       'esto parece un **presupuesto o remito**, no una factura: todavía no es un gasto y no se carga '
-      + 'a Compras. Si me equivoqué, tocá **Corregir** y contestá SI en «¿Es una factura de verdad?»; '
-      + 'si no, **Descartar**.')
+      + 'a Compras. Si me equivoqué, escribime **«es factura»** y la cargo; si no va, **«descartalo»**.')
   }
 
   // UN PROVEEDOR QUE NO ESTÁ EN EL DESPLEGABLE YA NO FRENA LA FILA cuando el CUIT y el número la

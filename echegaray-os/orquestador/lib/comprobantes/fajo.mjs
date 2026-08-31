@@ -133,6 +133,9 @@ export function colapsarRepetidos(items = [], { ahora } = {}) {
     // (`esFacturaTipeada`) la levanta.
     if (!copia?.comprobante?.esFacturaTipeada
         && todos.some((it) => it?.comprobante?.esPresupuestoORemito)
+        // …salvo que el dueño YA haya contestado que sí es factura: una foto nueva no puede
+        // reabrir una pregunta que él cerró (`resolverClase`).
+        && !copia?.claseResuelta
         && !copia?.comprobante?.esPresupuestoORemito) {
       copia.comprobante = { ...copia.comprobante, esPresupuestoORemito: true }
     }
@@ -568,5 +571,39 @@ export function resolverDuplicado(items = [], indice = -1, respuesta = 'otro') {
   if (!it?.posibleDuplicado || it.duplicadoResuelto) return null
   const out = [...items]
   out[indice] = { ...it, duplicadoResuelto: respuesta === 'mismo' ? 'mismo' : 'otro' }
+  return out
+}
+
+/** ¿Queda algún «esto parece un presupuesto/remito» sin contestar? */
+export function indiceClaseAbierta(items = []) {
+  return items.findIndex((it) => it?.comprobante?.esPresupuestoORemito && !it.claseResuelta && !it.yaCargado)
+}
+
+/**
+ * «Sí, es una factura» — la salida escrita del freno de presupuesto/remito.
+ *
+ * ═══ POR QUÉ EXISTE (31/08) ═══
+ *
+ * El freno del 21/08 está bien puesto: un presupuesto no es un gasto y no puede entrar a Compras.
+ * Lo que no tenía era salida. El mensaje decía «tocá **Corregir** y contestá SI», y los botones en
+ * producción están APAGADOS — el mismo agujero que el duplicado tuvo hasta el 25/08 y que este repo
+ * ya nombró dos veces: **una pregunta que no se puede contestar no es una pregunta**.
+ *
+ * Medido hoy: la orden de entrega de Cerrajería SAN MIGUEL por $23.000 se mandó DOS veces y quedó
+ * trabada las dos, sin ninguna palabra que la destrabara. El dueño terminó contestándomelo a mí por
+ * otro canal, que es exactamente lo que el bot existe para evitar.
+ *
+ * Sólo resuelve en la dirección «sí es factura». Para la otra ya existe `descartalo`, y agregar una
+ * segunda forma de tirar un gasto es la clase de atajo que este repo paga caro.
+ */
+export function resolverClase(items = [], indice = -1) {
+  const it = items[indice]
+  if (!it?.comprobante?.esPresupuestoORemito || it.claseResuelta) return null
+  const out = [...items]
+  out[indice] = {
+    ...it,
+    claseResuelta: 'factura',
+    comprobante: { ...it.comprobante, esPresupuestoORemito: false },
+  }
   return out
 }

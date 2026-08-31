@@ -14,7 +14,7 @@
 import { ESTADO, ETIQUETA_CAMPO, imputacionPendiente } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { RESPUESTA } from '../../lib/comprobantes/respuesta-texto.mjs'
-import { aplicarEleccion, confirmarFajo, contestarDuplicado, RESULTADO } from './aplicar.mjs'
+import { aplicarEleccion, confirmarFajo, contestarDuplicado, RESULTADO, contestarClase } from './aplicar.mjs'
 import * as repoReal from './repositorio.mjs'
 
 export const TEXTO = Object.freeze({
@@ -73,6 +73,32 @@ export async function atenderRespuesta(d, { fajo, respuesta } = {}) {
     if (!cerrado) return { texto: TEXTO.YA_CERRADO, estado: 'ya_cerrado' }
     await refrescar(mattermost, cerrado, { message: TEXTO.DESCARTADO }, log)
     return { texto: TEXTO.DESCARTADO, estado: 'descartado' }
+  }
+
+  // ── «Sí, es una factura» ───────────────────────────────────────────────────
+  //
+  // Mismo agujero que el duplicado y misma forma de taparlo: el freno de presupuesto/remito ofrecía
+  // como única salida un botón que en producción está apagado. Ver `resolverClase`.
+  if (respuesta.que === RESPUESTA.CLASE) {
+    const r = await contestarClase({ port, repo, log }, { fajoId: fajo.id, indice: respuesta.indices?.[0] ?? -1 })
+    if (r.que === RESULTADO.SIN_FAJO) return { texto: TEXTO.SIN_FAJO, estado: 'sin_fajo' }
+    if (r.que === RESULTADO.CERRADO) return { texto: TEXTO.YA_CERRADO, estado: 'ya_cerrado' }
+    if (r.que === RESULTADO.INVALIDA) return { texto: 'Eso ya estaba contestado.', estado: 'clase_resuelta' }
+
+    const anotado = '✔ Anotado: **es una factura**, la cargo.'
+    if (r.listo) {
+      const c = await confirmarFajo({
+        port, repo, escribir, log,
+        alEmpezar: (f) => refrescar(mattermost, f, { message: `${TEXTO.CARGANDO}\n\n${anotado}` }, log),
+      }, { fajoId: r.fajo.id })
+      if (c.que === RESULTADO.SIN_FAJO) return { texto: TEXTO.SIN_FAJO, estado: 'sin_fajo' }
+      if (c.que === 'ya_en_curso' || c.que === RESULTADO.CERRADO) {
+        return { texto: `${anotado}\n\nEsos comprobantes ya se estaban cargando.`, estado: 'ya_en_curso' }
+      }
+      await refrescar(mattermost, c.fajo, { message: c.texto }, log)
+      return { texto: `${anotado}\n\n${c.texto ?? '✔ Cargado.'}`, estado: c.estado ?? ESTADO.CARGADO }
+    }
+    return { texto: anotado, estado: 'clase_resuelta' }
   }
 
   // ── El PROBABLE duplicado, contestado escribiendo ──────────────────────────

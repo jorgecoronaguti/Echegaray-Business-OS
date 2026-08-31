@@ -11,7 +11,7 @@
 //
 // NO SABE PUBLICAR NI CONTESTAR HTTP. Devuelve el fajo y los hechos; el mensaje lo arma cada camino.
 
-import { ESTADO, estaCompleto, aplicarOpcion, imputacionPendiente, resolverDuplicado, indiceDuplicadoAbierto } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, aplicarOpcion, imputacionPendiente, resolverDuplicado, indiceDuplicadoAbierto, resolverClase, indiceClaseAbierta } from '../../lib/comprobantes/fajo.mjs'
 import { escribirFajo } from './escritura.mjs'
 import * as repoReal from './repositorio.mjs'
 
@@ -96,6 +96,35 @@ export async function contestarDuplicado(d, { fajoId, indice = -1, respuesta } =
   const guardado = await repo.guardarItems(port, { id: fajo.id, items })
   if (!guardado) return { que: RESULTADO.CERRADO, fajo }
   log?.info?.('comprobantes: duplicado contestado', { fajo: fajo.id, indice: i, respuesta })
+
+  const vivos = guardado.items ?? []
+  const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
+  return { que: RESULTADO.APLICADA, fajo: guardado, listo: Boolean(listo) }
+}
+
+/**
+ * Contesta «sí, es una factura» y guarda el fajo. Mismo cuerpo que `contestarDuplicado` y por la
+ * misma razón: la decisión tiene que ser una sola, la llame el botón o la llame el texto.
+ *
+ * Sólo resuelve hacia «es factura». Para lo otro está `descartalo`: una segunda forma de tirar un
+ * gasto sería un atajo que este repo ya pagó.
+ *
+ * @param {object} d {port, repo?, log?}
+ * @param {object} p {fajoId, indice?}
+ */
+export async function contestarClase(d, { fajoId, indice = -1 } = {}) {
+  const { port, repo = repoReal, log = null } = d
+  const fajo = await repo.fajoPorId(port, fajoId)
+  if (!fajo) return { que: RESULTADO.SIN_FAJO }
+  if (fajo.estado !== ESTADO.ABIERTO) return { que: RESULTADO.CERRADO, fajo }
+
+  const i = indice >= 0 ? indice : indiceClaseAbierta(fajo.items ?? [])
+  const items = resolverClase(fajo.items ?? [], i)
+  if (!items) return { que: RESULTADO.INVALIDA, fajo }
+
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return { que: RESULTADO.CERRADO, fajo }
+  log?.info?.('comprobantes: clase del papel contestada', { fajo: fajo.id, indice: i })
 
   const vivos = guardado.items ?? []
   const listo = vivos.length && vivos.every((it) => !imputacionPendiente(it).length) && vivos.some(estaCompleto)
