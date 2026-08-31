@@ -14,7 +14,9 @@
 
 import { idDeTitulo } from './documento-contrato.mjs'
 
-const NIVEL = { HEADING_1: 1, HEADING_2: 2, HEADING_3: 3, TITLE: 0, SUBTITLE: 0 }
+// TITLE y SUBTITLE NO están: son la portada del documento, no una sección. Si contaran como
+// sección de nivel 0, «actualizá la primera sección» reemplazaría el título del informe.
+const NIVEL = { HEADING_1: 1, HEADING_2: 2, HEADING_3: 3 }
 
 /** El texto de un párrafo del Doc (concatena sus textRun). PURA. */
 export function textoDeParrafo(elemento) {
