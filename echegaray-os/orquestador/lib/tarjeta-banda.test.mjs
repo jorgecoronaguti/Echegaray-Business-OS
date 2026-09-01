@@ -306,10 +306,21 @@ test('las dos pistas van en paralelo: el bloque más corto no corre al otro', ()
 })
 
 test('la banda es determinística: no estampa la fecha de la corrida', () => {
+  // Se prueba CAMBIANDO el día y exigiendo la misma salida. La versión anterior corría dos veces con
+  // el MISMO `hoy` —con lo cual la igualdad no probaba nada— y después buscaba la fecha de hoy, en
+  // UTC, en cualquier parte de la banda. Eso la rompía todas las noches entre las 21 y las 24 hora
+  // argentina por dos motivos a la vez: UTC ya está en el día siguiente, y el vencimiento REAL de la
+  // tarjeta (01/09/2026) es una fecha legítima del negocio que el control no podía distinguir de una
+  // fecha estampada. Un control que no puede separar el dato del artefacto no es un control.
   const otra = bandaFilas(FILA_HDR, datosDeLaBanda([RESUMEN], MOVS, { hoy: '2026-08-28' }))
   assert.deepEqual(otra.filas, banda)
-  const hoy = new Date().toISOString().slice(0, 10)
-  assert.ok(!JSON.stringify(banda).includes(hoy.split('-').reverse().join('/')), 'hay una fecha de corrida pegada')
+  // Y la fecha del día se busca CON UNA FECHA INVENTADA, lejos de cualquier dato del resumen: si la
+  // banda la estampara, aparecería. Buscar la fecha del reloj no servía —el vencimiento real de la
+  // tarjeta puede caer justo hoy— y además se leía en UTC, que después de las 21 hora argentina ya
+  // está en el día siguiente.
+  const inventada = '2031-07-19'
+  const conFechaRara = bandaFilas(FILA_HDR, datosDeLaBanda([RESUMEN], MOVS, { hoy: inventada }))
+  assert.ok(!JSON.stringify(conFechaRara.filas).includes('19/07/2031'), 'hay una fecha de corrida pegada')
 })
 
 test('la antigüedad del resumen no puede envejecer en silencio', () => {

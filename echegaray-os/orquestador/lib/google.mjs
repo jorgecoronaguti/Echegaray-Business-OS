@@ -90,6 +90,16 @@ export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/tasks',
 ]
 
+/**
+ * Los campos que `getMeta` trae SIEMPRE.
+ *
+ * Está exportada para que un test pueda exigir que un campo del que depende un control siga
+ * pidiéndose. Un control que pregunta por un campo que la lectura no trae contesta `undefined`
+ * para siempre, no falla nunca, y nadie se entera: es la forma más barata de tener un control
+ * que no puede decir que no.
+ */
+export const METADATA_MINIMA = ['id', 'name', 'mimeType', 'size', 'webViewLink', 'trashed', 'parents']
+
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
 // sin depender del cwd. La integración real de Google (2026-07-09) ya dejó la key
 // del service account acá; la REUSAMOS (no creamos una nueva).
@@ -960,9 +970,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=folder,name&pageSize=1000`)
       return j.files || []
     },
-    /** Metadata de un archivo (id, name, mimeType, size, link para abrirlo). */
+    /** Metadata de un archivo (id, name, mimeType, size, link para abrirlo, DÓNDE está y si está
+     *  en la papelera).
+     *
+     *  `trashed` y `parents` no estaban, y su ausencia dejaba MUDO un control que existía y estaba
+     *  bien escrito: `uocra-ddjj.mjs::porQueNoSirve` pregunta `meta.trashed` para no escribir una
+     *  réplica vacía del Fondo de Cese, y la respuesta era `undefined` SIEMPRE. Una carpeta en la
+     *  papelera se lee vacía y sin error, así que el control no podía decir que no — el mismo
+     *  defecto que este repo ya pagó con un control que era una constante.
+     *
+     *  Pedir campos de más no rompe a nadie: un llamador recibe lo que pedía y algo más. */
     async getMeta(fileId) {
-      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,webViewLink&supportsAllDrives=true`)
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${METADATA_MINIMA.join(',')}&supportsAllDrives=true`)
     },
     /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
      *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a
