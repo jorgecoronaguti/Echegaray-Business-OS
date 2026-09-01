@@ -39,7 +39,8 @@ test('SIN LLM · una API KEY en el entorno NO habilita nada: el script la borra 
   const { metricas } = correr()
   assert.deepEqual(metricas.llaves_borradas_del_entorno, ['ANTHROPIC_API_KEY'])
   assert.equal(metricas.config_cargada, true, 'sin cargar la config, «ausente» no probaría nada')
-  assert.equal(metricas.ANTHROPIC_API_KEY_despues_de_cargar_config, null)
+  assert.equal(metricas.ANTHROPIC_API_KEY_despues_de_cargar_config, 'ausente',
+    'la llave revivió después de cargar la config, o el control dejó de poder verlo')
 })
 
 test('SIN LLM · ningún módulo de los dos motores importa un cliente de IA', () => {

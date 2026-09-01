@@ -231,7 +231,15 @@ const metricas = {
   llamadas_a_google: salidas.google,
   llaves_borradas_del_entorno: borradas,
   config_cargada: configCargada,
-  ANTHROPIC_API_KEY_despues_de_cargar_config: configCargada ? (process.env.ANTHROPIC_API_KEY ?? null) : 'NO_VERIFICADO (la config no se pudo cargar)',
+  // SE PUBLICA LA PRESENCIA, NUNCA EL VALOR.
+  //
+  // Antes decía `process.env.ANTHROPIC_API_KEY ?? null`, o sea el VALOR. El día que esta guarda
+  // falle —que es exactamente el día para el que existe— la llave de producción de la empresa
+  // quedaba escrita en claro en el log de `orq:test`, en la salida de CI y en el transcript de
+  // quien lo corriera. Un control que filtra el secreto cuando salta es peor que no tenerlo.
+  ANTHROPIC_API_KEY_despues_de_cargar_config: configCargada
+    ? (process.env.ANTHROPIC_API_KEY ? 'PRESENTE (revivida)' : 'ausente')
+    : 'NO_VERIFICADO (la config no se pudo cargar)',
   modulos_auditados: imports.archivos,
   modulos_que_importan_ia: imports.culpables,
 }
@@ -242,7 +250,7 @@ else {
   for (const p of paso) console.log(`${p.ok ? '✔' : '✖'} ${p.paso}${p.codigo ? ` — ${p.codigo}: ${p.motivo}` : ''}`)
   console.log(`\nllamadas a un modelo: ${metricas.llamadas_llm} · llamadas a Google: ${metricas.llamadas_a_google}`)
   console.log(`llaves borradas del entorno: ${borradas.join(', ') || '(no había ninguna)'}`)
-  console.log(`ANTHROPIC_API_KEY después de cargar config: ${metricas.ANTHROPIC_API_KEY_despues_de_cargar_config ?? 'ausente'}`)
+  console.log(`ANTHROPIC_API_KEY después de cargar config: ${metricas.ANTHROPIC_API_KEY_despues_de_cargar_config}`)
   console.log(`módulos auditados: ${metricas.modulos_auditados} · que importan un cliente de IA: ${metricas.modulos_que_importan_ia.length}`)
 }
 process.exit(paso.every((p) => p.ok) && metricas.llamadas_llm === 0 && !metricas.modulos_que_importan_ia.length ? 0 : 1)
