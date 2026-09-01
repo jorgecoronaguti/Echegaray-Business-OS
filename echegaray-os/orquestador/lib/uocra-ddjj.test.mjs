@@ -74,9 +74,23 @@ test('un PDF ilegible devuelve nulls, NUNCA ceros', () => {
 // solo error. La réplica quedó clavada en junio mientras las DDJJ de julio se subían puntualmente
 // a la carpeta buena: dos meses de Fondo de Cese estimados en vez de declarados, sin ninguna alarma.
 import { porQueNoSirve, CARPETA_UOCRA } from './uocra-ddjj.mjs'
+import { METADATA_MINIMA } from './google.mjs'
 
 test('la papelera se detecta — es el modo de fallar que no grita', () => {
   assert.match(porQueNoSirve({ trashed: true }, [{ name: 'a.pdf' }]) ?? '', /PAPELERA/)
+})
+
+// Y EL CONTROL DE ARRIBA ESTUVO MUDO DESDE QUE SE ESCRIBIÓ.
+//
+// `porQueNoSirve` está bien y su test pasaba, porque el test le pasa `{trashed:true}` a mano. Pero
+// en producción el dato viene de `google.getMeta`, que pedía `id,name,mimeType,size,webViewLink`
+// y NO pedía `trashed`: la respuesta real era `undefined`, la rama nunca se tomaba, y la carpeta
+// en la papelera habría vuelto a pasar sin ruido. Probar la función pura con una entrada inventada
+// no prueba que la fuente REAL entregue esa entrada — es el mismo agujero que un control validado
+// contra la información que él mismo produce.
+test('la lectura real TRAE el campo del que depende el control', () => {
+  assert.ok(METADATA_MINIMA.includes('trashed'),
+    'getMeta dejó de pedir `trashed`: porQueNoSirve vuelve a quedar mudo sobre la papelera')
 })
 
 test('una carpeta viva pero sin PDF tampoco sirve', () => {
