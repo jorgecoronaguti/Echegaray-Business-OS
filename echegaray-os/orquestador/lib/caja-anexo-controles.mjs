@@ -99,52 +99,7 @@ export function bloqueLiquidez(h) {
   push(['Primer mes por debajo de la caja mínima (proyección del Cash Flow)', '', '', '', '', '',
     primerMes(`<${DESDE_CAJA.minima}`)])
   push(['Primer mes con caja negativa (proyección del Cash Flow)', '', '', '', '', '', primerMes('<0')])
-
-  // ═══ DÓNDE VA A ESTAR LA PLATA A FIN DE MES: EFECTIVO vs BANCO ═══
-  //
-  // El saldo de HOY, partido, más los flujos del mes clasificados por el INSTRUMENTO de cada
-  // movimiento (`_MOVIMIENTOS!I`). Es la fuente que ya unifica Cobranzas + Compras + Jornales + Banco,
-  // así que las dos líneas SUMAN el mismo cierre que proyecta el resto del bloque (cross-check abajo).
-  //
-  // LOS COBROS ESTÁN 100% CLASIFICADOS (Cobranzas: B→banco, N→efectivo). El hueco está en los EGRESOS
-  // "desconocido" del mes ($39,9M el 01/09): Jornales, Cargas Sociales, Impuestos, Estructura. Regla
-  // del dueño (01/09), simple por rubro: lo de Jornales sin instrumento va a EFECTIVO; todo el resto
-  // sin instrumento va a BANCO. Un movimiento con instrumento ya cargado manda por su instrumento.
-  const MOV = `'_MOVIMIENTOS'`
-  const mF = `${MOV}!$A$2:$A`, mS = `${MOV}!$B$2:$B`, mI = `${MOV}!$C$2:$C`
-  const mE = `${MOV}!$H$2:$H`, mIn = `${MOV}!$I$2:$I`, mOr = `${MOV}!$N$2:$N`, mMon = `${MOV}!$D$2:$D`
-  const efInst = `(${mIn}="efectivo")`
-  const bcInst = `((${mIn}="transferencia")+(${mIn}="echeq")+(${mIn}="debito")+(${mIn}="tarjeta")+(${mIn}="cheque"))`
-  const esJorn = `(${mOr}="Jornales por Quincena")`
-  // 1 si la fila es EFECTIVO: instrumento efectivo, o desconocido de Jornales. El resto (incluye
-  // desconocido no-Jornales y todo lo bancario) es 1-flag → banco. Los dos flags parten en 0/1 exactos.
-  const flagEf = `(${efInst}+(1-${efInst}-${bcInst})*${esJorn})`
-  // SÓLO PESOS: sin el filtro de moneda, un movimiento en USD dentro de la ventana se sumaría como si
-  // fueran pesos, sin convertir. Hoy no hay ninguno no-REAL en ventana; el filtro lo deja así a futuro,
-  // y si entrara uno el control de abajo deja de cuadrar (que es la señal correcta, no un número mudo).
-  const ventana = `ISNUMBER(${mF})*(${mF}>=${DESDE_CAJA.fecha})*(${mF}<=EOMONTH(TODAY();0))*(${mE}<>"REAL")*(${mMon}="ARS")`
-  const flujo = (flag) => `SUMPRODUCT(${ventana}*${flag}*N(${mS})*N(${mI}))`
-  // EL EFECTIVO DE HOY ES arqueo + delta posterior (= CAJA!C7), NO sólo el delta. `ANEXO_EFECTIVO_NETO`
-  // es únicamente el movimiento de efectivo posterior al conteo; usarlo solo arrancaba la línea de
-  // efectivo en $0 y se lo comía la de banco — y el control no lo veía porque el término se cancela en
-  // la suma. Anclar al arqueo lo hace correcto por definición: es la misma cifra que publica CAJA!C7.
-  const efHoy = `(N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto}))`
-  const bcHoy = `(N(${DESDE_CAJA.total})-${efHoy})`
-  const fEf = push(['Saldo en efectivo proyectado a fin de mes', '', '', '', `=${efHoy}+${flujo(flagEf)}`, '',
-    'efectivo de hoy + cobros/pagos en efectivo del mes · Jornales sin instrumento → efectivo'])
-  const fBc = push(['Dinero en banco proyectado a fin de mes', '', '', '', `=${bcHoy}+${flujo(`(1-${flagEf})`)}`, '',
-    'banco de hoy + cobros/pagos por banco del mes · cargas, impuestos y estructura sin instrumento → banco'])
-  // CROSS-CHECK QUE PUEDE DAR ROJO: efectivo + banco proyectados = el cierre del mes del Cash Flow.
-  // Si el reparto por instrumento se desincroniza del cuadro mensual, esta línea deja de decir "cuadra".
-  const cierreMes = rangoCierre && rangoMes
-    ? `INDEX(${rangoMes};1;MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${rangoMes};0));0))*0+INDEX(${rangoCierre};1;MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${rangoMes};0));0))`
-    : null
-  push(['   · control: efectivo + banco = cierre del mes', '', '', '',
-    cierreMes ? `=IFERROR((E${fEf}+E${fBc})-(${cierreMes});"")` : '', '',
-    cierreMes
-      ? `=IF(NOT(ISNUMBER(E${fEf}));"";IF(ABS((E${fEf}+E${fBc})-(${cierreMes}))<1000;"cuadra";"${ALERTA} no cuadra por "&TEXT((E${fEf}+E${fBc})-(${cierreMes});"$#,##0")))`
-      : `${ALERTA} falta el cierre mensual`])
-  return { fDias, fMin, fEf, fBc }
+  return { fDias, fMin }
 }
 
 /**

@@ -88,6 +88,10 @@ const OCRE = { red: 0.45, green: 0.40, blue: 0.30 }
 // Y EL GRIS CLARO ES EL DE LO QUE YA PASÓ. Un color apagado no es decoración: en esta pila significa
 // "esto no se decide", y por eso es el único que no está en la escala de la paleta viva.
 const GRIS_CLARO = { red: 0.85, green: 0.85, blue: 0.85 }
+// LAS DOS MITADES DEL SALDO DEL PLAN: verde el efectivo, celeste el banco. Distintos del azul del plan
+// (ACENTO) y del rojo del piso, para que las cuatro curvas se lean sin confundirse.
+const VERDE = { red: 0.18, green: 0.49, blue: 0.34 }
+const CELESTE = { red: 0.25, green: 0.52, blue: 0.66 }
 
 const rango = (sheetId, f0, f1, c0, c1) => ({ sheetId, startRowIndex: f0 - 1, endRowIndex: f1, startColumnIndex: c0 - 1, endColumnIndex: c1 })
 /**
@@ -176,6 +180,12 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
       // gráfico dejaba de mostrar lo que sale, que es la mitad de la pregunta.
       { series: fuente(col(COL_NECESIDAD.saldoCobrando)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
       { series: fuente(col(COL_NECESIDAD.saldoSinCobrar)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
+      // ═══ Y EL SALDO DEL PLAN PARTIDO EN DÓNDE VA A ESTAR LA PLATA (01/09/2026) ═══
+      //
+      // Dos curvas más en el eje derecho: cuánto queda en EFECTIVO (verde) y cuánto en BANCO (celeste).
+      // Apiladas dan la del plan (ACENTO): son su desglose, no otra medida. Ver `saldoEfectivoProyectado`.
+      { series: fuente(col(COL_NECESIDAD.saldoEfectivo)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: VERDE, lineStyle: { width: 2 } },
+      { series: fuente(col(COL_NECESIDAD.saldoBanco)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: CELESTE, lineStyle: { width: 2 } },
     ],
     axis: [
       { position: 'BOTTOM_AXIS', format: texto(9) },

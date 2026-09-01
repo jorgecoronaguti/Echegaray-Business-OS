@@ -40,7 +40,7 @@
 // Doce filas, dos importes por fila, todo por `terminoLibro` sobre el mismo libro que el resto.
 
 import { terminoLibro, LIBRO } from './libro-sumas.mjs'
-import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
+import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
 // LA TAXONOMÍA DE LOS BALDES VIVE APARTE: qué es cada balde es una decisión de negocio (qué plata ya
 // salió y qué plata falta), y acá sólo se escribe la fórmula que la aplica. Ver caja-necesidad-baldes.
@@ -163,6 +163,42 @@ export const saldoProyectado = (d) =>
  */
 export const saldoSinCobrar = (d) =>
   `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), signo: -1, estados: NO_REAL, medida: 'magnitud' })}`
+
+// ═══ EL SALDO DEL PLAN, PARTIDO EN DÓNDE VA A ESTAR LA PLATA: EFECTIVO vs BANCO (01/09/2026) ═══
+//
+// El dueño pidió dos curvas más: cuánto del saldo proyectado va a quedar en EFECTIVO y cuánto en el
+// BANCO. No son otra cuenta: son `saldoProyectado` (el «si cobra») partido en dos, así que apiladas dan
+// exactamente esa curva. El efectivo se calcula solo —arqueo de hoy + los flujos en efectivo que
+// todavía no pasaron— y el banco es el resto, para que la identidad `efectivo + banco = plan` no pueda
+// romperse por dos cálculos que se desincronizan.
+//
+// LA CLASIFICACIÓN. Un movimiento con instrumento efectivo es efectivo; todo lo demás (transferencia,
+// echeq, débito, tarjeta, cheque) es banco. Para lo que entra SIN instrumento —"desconocido"—, la
+// regla del dueño (01/09): los Jornales van a efectivo (la quincena que no dice medio se paga en mano)
+// y el resto —cargas, impuestos, estructura— a banco. El banco, como es "el plan menos el efectivo",
+// se lleva ese "resto" sin nombrarlo.
+
+/** Efectivo de hoy = arqueo del conteo + su delta posterior. Es la misma cifra que publica `CAJA!C7`;
+ *  `ANEXO_EFECTIVO_NETO` solo es el delta, y arrancar de él dejaría la curva de efectivo en el piso. */
+const efectivoHoy = `(N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto}))`
+/** El flujo de EFECTIVO que todavía no pasó, de hoy hasta `hasta`: instrumento efectivo + Jornales sin
+ *  instrumento. `neto` (default): lo que entra suma, lo que sale resta. */
+const flujoEfectivo = (hasta) =>
+  `${terminoLibro({ desde: 'TODAY()', hasta, estados: NO_REAL, instrumentos: ['efectivo'] })}`
+  + `+${terminoLibro({ desde: 'TODAY()', hasta, estados: NO_REAL, instrumentos: ['desconocido'], origenes: ['Jornales por Quincena'] })}`
+
+/** NÚCLEO PURO: el saldo en EFECTIVO proyectado al día `d`. */
+export const saldoEfectivoProyectado = (d) => `=${efectivoHoy}+${flujoEfectivo(dia(d + 1))}`
+
+/**
+ * NÚCLEO PURO: el saldo en BANCO al día `d` = el saldo del plan MENOS el efectivo.
+ *
+ * Se define por RESTA a propósito: así `saldoEfectivo + saldoBanco = saldoProyectado` es una identidad
+ * algebraica, no una coincidencia de dos sumas que un día divergen. El banco se queda con todo lo que
+ * el efectivo no reclama —incluido lo "desconocido" que no es Jornales—, que es justo la regla pedida.
+ */
+export const saldoBancoProyectado = (d) =>
+  `=(${DESDE_CAJA.total}+${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), estados: NO_REAL })})-(${efectivoHoy}+${flujoEfectivo(dia(d + 1))})`
 
 /** Los filtros de UN balde, tal como los pide `terminoLibro`. Sin ventana: la pone el que suma. */
 const filtrosDe = (b) => ({
@@ -323,7 +359,7 @@ export function bloqueSeries(h) {
   // leyenda que no coincide con lo que se sumó es un gráfico que miente en el único lugar donde se lee.
   push([ROTULOS.necesidad, '', '', '', '', '',
     `Lo que ya salió, lo que falta pagar por rubro y el saldo que queda, próximos ${DIAS_NECESIDAD} días`,
-    'Día', ...SALIDAS.map((b) => b.rotulo), 'Saldo si cobra', 'Saldo si NO cobra'])
+    'Día', ...SALIDAS.map((b) => b.rotulo), 'Saldo si cobra', 'Saldo si NO cobra', 'Saldo efectivo', 'Saldo banco'])
   const fNec0 = h.n + 1
   for (let i = 0; i < DIAS_NECESIDAD; i++) {
     // LA FECHA VA EN LA B, DEBAJO DE SU PROPIO ENCABEZADO. En la A va el rótulo del bloque —así lo
@@ -345,7 +381,7 @@ export function bloqueSeries(h) {
     // gráfico estaría pidiendo dos veces la misma plata.
     push(['', '', '', '', '', '', '', `=${dia(i)}`,
       ...SALIDAS.map((b) => necesidadDelDia(i, b.clave)),
-      saldoProyectado(i), saldoSinCobrar(i)])
+      saldoProyectado(i), saldoSinCobrar(i), saldoEfectivoProyectado(i), saldoBancoProyectado(i)])
   }
   const fNec1 = h.n
 

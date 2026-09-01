@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   bloqueSeries, ubicarSeries, saldoHistorico, saldoProyectado, saldoSinCobrar, topContraparte,
+  saldoEfectivoProyectado, saldoBancoProyectado,
   ingresosDelMes, egresosDelMes, necesidadDelDia,
   ROTULOS, LARGO, COL, DIAS_HISTORIA, DIAS_PROYECCION, DIAS_NECESIDAD, TOP_N, MESES,
 } from './caja-anexo-series.mjs'
@@ -354,6 +355,12 @@ test('EL BLOQUE PUBLICA UNA COLUMNA POR BALDE Y EL ANEXO ES LO BASTANTE ANCHO', 
   const fila = h.filas[r.fNec0 - 1]
   SALIDAS.forEach((b, i) => assert.equal(fila[COL_NECESIDAD.salidas[i] - 1], necesidadDelDia(0, b.clave)))
   assert.equal(fila[COL_NECESIDAD.saldoSinCobrar - 1], saldoSinCobrar(0))
+  // Las dos curvas del reparto viven en sus columnas y son el saldo de hoy partido en efectivo y banco.
+  assert.equal(fila[COL_NECESIDAD.saldoEfectivo - 1], saldoEfectivoProyectado(0))
+  assert.equal(fila[COL_NECESIDAD.saldoBanco - 1], saldoBancoProyectado(0))
+  // La identidad que no se puede romper: efectivo + banco parte del mismo saldo del plan (saldoProyectado).
+  assert.ok(saldoBancoProyectado(0).includes(saldoEfectivoProyectado(0).slice(1)),
+    'el banco se define como el plan menos el efectivo: comparten el término del efectivo')
   assert.ok(ANCHO_ANEXO >= COL_NECESIDAD.saldoSinCobrar,
     `el anexo tiene ${ANCHO_ANEXO} columnas y el bloque llega a la ${COL_NECESIDAD.saldoSinCobrar}`)
   assert.equal(ANCHOS_ANEXO.length, ANCHO_ANEXO, 'cada columna declara su ancho en píxeles')

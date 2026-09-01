@@ -147,7 +147,7 @@ test('EL DE NECESIDAD SEPARA LAS DOS MAGNITUDES EN DOS EJES', () => {
   const barras = nec.series.filter((x) => x.type === 'COLUMN')
   const curvas = nec.series.filter((x) => x.type === 'LINE')
   assert.equal(barras.length, SALIDAS.length, 'lo ya salido + cheques, proveedores, sueldos, cargas e impuestos')
-  assert.equal(curvas.length, 2, 'el saldo cobrando lo previsto y el saldo sin cobrar un peso')
+  assert.equal(curvas.length, 4, 'plan previsto, piso sin cobrar, y el plan partido en efectivo y banco')
   assert.ok(barras.every((x) => x.targetAxis === 'LEFT_AXIS'))
   assert.ok(curvas.every((x) => x.targetAxis === 'RIGHT_AXIS'))
   assert.ok(nec.axis.some((a) => a.position === 'RIGHT_AXIS'), 'sin el eje derecho declarado no hay dos escalas')
@@ -233,7 +233,11 @@ test('LAS DOS CURVAS DE SALDO NO SE DIBUJAN CON LA COLUMNA DE UNA BARRA', () => 
   const barras = nec.series.filter((x) => x.type === 'COLUMN')
   const curvas = nec.series.filter((x) => x.type === 'LINE')
   assert.deepEqual(barras.map(columnaDe), [...COL_NECESIDAD.salidas])
-  assert.deepEqual(curvas.map(columnaDe), [COL_NECESIDAD.saldoCobrando, COL_NECESIDAD.saldoSinCobrar])
+  // Cuatro curvas desde el 01/09/2026: el plan, el piso, y el plan partido en efectivo y banco.
+  assert.deepEqual(curvas.map(columnaDe), [
+    COL_NECESIDAD.saldoCobrando, COL_NECESIDAD.saldoSinCobrar,
+    COL_NECESIDAD.saldoEfectivo, COL_NECESIDAD.saldoBanco,
+  ])
   assert.equal(nec.domains[0].domain.sourceRange.sources[0].startColumnIndex + 1, COL_NECESIDAD.dia)
   // Y ninguna columna se dibuja dos veces: dos series sobre el mismo rango es una que falta.
   const todas = [...barras, ...curvas].map(columnaDe)

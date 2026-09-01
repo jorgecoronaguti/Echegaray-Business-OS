@@ -99,6 +99,11 @@ export const COL_NECESIDAD = Object.freeze({
   salidas: Object.freeze(SALIDAS.map((_, i) => 9 + i)),
   saldoCobrando: 9 + SALIDAS.length,
   saldoSinCobrar: 10 + SALIDAS.length,
+  // El saldo del plan («si cobra») partido en las dos mitades donde de verdad está la plata: cuánto
+  // queda en EFECTIVO y cuánto en BANCO, día por día. Las dos curvas apiladas dan exactamente
+  // `saldoCobrando` — son su desglose, no otra cuenta. Ver `saldoEfectivoProyectado` en caja-anexo-series.
+  saldoEfectivo: 11 + SALIDAS.length,
+  saldoBanco: 12 + SALIDAS.length,
 })
 
 /**
