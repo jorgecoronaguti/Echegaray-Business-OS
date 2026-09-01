@@ -70,7 +70,18 @@ export const RUTA_MARCA = process.env.ORQ_SHEETS_MARCA
 
 /** NÚCLEO PURO: ¿este motivo de descongelamiento sirve? Uno vacío o trivial no es una decisión. */
 export function motivoValido(m) {
-  const s = String(m ?? '').trim()
+  // EXIGE UNA CADENA, Y NO ES PEDANTERÍA.
+  //
+  // Antes hacía `String(m ?? '')`, así que `motivoValido({})` daba **true**: `String({})` es
+  // "[object Object]", quince caracteres que no matchean ninguna palabra trivial. Un `{ actor,
+  // motivo }` mal desestructurado —pasar el objeto entero donde va el motivo— LEVANTABA EL FRENO
+  // DE MANO con un motivo que no dice nada. Lo mismo un array de nueve números, que se aplana a
+  // "1,2,3,4,5,6,7,8,9".
+  //
+  // El freno es lo único que separa un script del trabajo del dueño en el Sheet, y este repo ya
+  // perdió ese trabajo seis veces. Una puerta que se abre con basura no es una puerta.
+  if (typeof m !== 'string') return false
+  const s = m.trim()
   return s.length >= 8 && !/^(1|true|si|sí|yes|ok|x)$/i.test(s)
 }
 
@@ -121,8 +132,11 @@ export function aviso(marca, fileId, detalle) {
  */
 export function confirmacionValida(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) return null
-  const actor = String(c.actor ?? '').trim()
-  const motivo = String(c.motivo ?? '').trim()
+  // El actor también tiene que ser una cadena: un objeto se aplanaba a "[object Object]" y quedaba
+  // registrado como el nombre de quien levantó el freno. Un log que nombra a nadie no rinde cuentas.
+  if (typeof c.actor !== 'string' || typeof c.motivo !== 'string') return null
+  const actor = c.actor.trim()
+  const motivo = c.motivo.trim()
   if (!actor) return null
   if (!motivoValido(motivo)) return null
   return { actor, motivo }

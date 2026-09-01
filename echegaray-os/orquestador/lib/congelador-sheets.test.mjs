@@ -86,6 +86,15 @@ test('motivoValido exige una frase, no una palabra suelta', () => {
   assert.equal(motivoValido('restauro CAJA a pedido'), true)
   assert.equal(motivoValido('dale'), false)
   assert.equal(motivoValido(undefined), false)
+  // Y EXIGE UNA CADENA. `String({})` es "[object Object]": quince caracteres que no son ninguna
+  // palabra trivial, así que `motivoValido({})` daba **true** y un `{actor, motivo}` mal
+  // desestructurado LEVANTABA EL FRENO con un motivo que no dice nada. Un array de nueve números
+  // se aplanaba a "1,2,3,4,5,6,7,8,9" y también pasaba. El freno es lo único que separa un script
+  // del trabajo del dueño, y este repo ya lo perdió seis veces.
+  assert.equal(motivoValido({}), false, 'un objeto aplanado NO es un motivo escrito')
+  assert.equal(motivoValido({ actor: 'x', motivo: 'y' }), false)
+  assert.equal(motivoValido([1, 2, 3, 4, 5, 6, 7, 8, 9]), false)
+  assert.equal(motivoValido(12345678901234), false, 'un número largo no explica nada')
 })
 
 test('el aviso dice CÓMO levantarlo: un freno sin salida documentada se saltea a martillazos', () => {
@@ -182,6 +191,12 @@ test('confirmacionValida es núcleo puro y normaliza: devuelve actor y motivo, o
   assert.equal(m.confirmacionValida(null), null)
   assert.equal(m.confirmacionValida({ actor: 'jcorona' }), null)
   assert.equal(m.confirmacionValida({ motivo: 'asistencia confirmada en el chat' }), null)
+  // El actor también tiene que ser una cadena: un objeto se registraba como "[object Object]", y un
+  // log que nombra a nadie no rinde cuentas de quién abrió el freno.
+  assert.equal(m.confirmacionValida({ actor: 'x', motivo: {} }), null, 'un objeto aplanado abría el freno')
+  assert.equal(m.confirmacionValida({ actor: {}, motivo: 'restauro CAJA a pedido' }), null)
+  assert.deepEqual(m.confirmacionValida({ actor: 'jorge', motivo: 'restauro CAJA a pedido' }),
+    { actor: 'jorge', motivo: 'restauro CAJA a pedido' }, 'el caso legítimo tiene que seguir pasando')
 })
 
 void congelado; void _resetAviso
