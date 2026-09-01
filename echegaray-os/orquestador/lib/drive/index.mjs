@@ -19,6 +19,19 @@ import { crearEscritura } from './escritura.mjs'
 import { crearAuditorPg, crearAuditorEnMemoria } from './auditoria.mjs'
 import { CODIGO, DriveError, clasificar, esReintentable } from './errores.mjs'
 import { referenciaDe, resumen, PROVEEDOR, PROP_IDEMPOTENCIA } from './referencia.mjs'
+import { crearIndice } from '../drive-busqueda/buscar.mjs'
+
+// EL ÍNDICE VIVE EN EL PROCESO, NO EN LA CAPACIDAD. Son ~3.700 filas: armarlo por llamada
+// sería releer el índice entero cada vez que alguien pide un archivo. Mismo criterio que
+// `comunicacion/asistente/capacidades/drive-buscar.mjs`, que ya lo hacía así.
+let _indiceProceso = null
+function indiceCompartido(db) {
+  if (!_indiceProceso) _indiceProceso = crearIndice({ port: db })
+  return _indiceProceso
+}
+
+/** Sólo para tests: el índice es del proceso y no debe filtrarse entre casos. */
+export function _reiniciarIndiceCompartido() { _indiceProceso = null }
 
 /** Qué capacidad de `orq.capabilities` gobierna cada operación. */
 export const CAPACIDAD = Object.freeze({
@@ -58,12 +71,21 @@ export function crearCapacidadDrive({
   google, db = null, indice = null, actor = 'sistema', actorTipo = 'sistema',
   correlationId = null, politica = null, principalId = null, auditor: auditorDado = null,
 } = {}) {
-  if (!google) throw new DriveError(CODIGO.INVALID_ARGUMENT, 'la capacidad de Drive necesita un cliente Google')
+  // SIN CUENTA CONECTADA NO ES UN ERROR DE PROGRAMACIÓN, ES UN PERMISO QUE FALTA. `os.mjs`
+  // documenta que `googleClient()` devuelve `null` cuando nadie autorizó, y quien reciba este
+  // error tiene algo que hacer (autorizar), no un bug que reportar.
+  if (!google) throw new DriveError(CODIGO.PERMISSION_REQUIRED,
+    'No hay una cuenta de Google conectada: autorizá el acceso a Drive y volvé a intentar.')
 
   const auditor = auditorDado
     ?? (db ? crearAuditorPg({ db, actor, actorTipo, correlationId, capability: CAPACIDAD.GESTIONAR }) : null)
 
-  const lectura = crearLectura({ google, indice })
+  // EL ÍNDICE SE ARMA SOLO SI HAY BASE. Sin esto, `buscarEnIndice` quedaba con cero
+  // consumidores: los cuatro entrypoints llaman a las factorías sin `indice` y el buscador
+  // determinístico —el único que entiende "vision/traccion"— nunca se alcanzaba desde ahí.
+  const indiceEfectivo = indice ?? (db ? indiceCompartido(db) : null)
+
+  const lectura = crearLectura({ google, indice: indiceEfectivo })
   const escritura = crearEscritura({ google, lectura, auditor })
 
   /**

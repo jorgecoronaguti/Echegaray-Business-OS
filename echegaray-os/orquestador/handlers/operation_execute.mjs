@@ -68,7 +68,17 @@ export async function operationExecuteHandler(task, ctx) {
   // `presentacionTools` y `slidesPdfTools` entran acá porque sus tools son de ESCRITURA y por lo
   // tanto se encolan: si el registro de ejecución no las tuviera, la operación aprobada por el
   // dueño no encontraría con qué correr y quedaría aprobada sin efecto — el peor de los estados.
-  const registry = { ...driveWriteTools(google), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }), ...sheetRenderTools(op_email ? google : null), ...slidesPdfTools(op_email ? google : null), ...presentacionTools(op_email ? google : null), ...imagenTools(op_email ? google : null) }
+  // El actor de la auditoría de Drive es QUIEN APROBÓ la operación, no el worker: es lo que hace
+  // que el libro conteste "quién" sobre una operación con efecto. `correlation_id` ata las N
+  // operaciones del mismo pedido; `db` enciende la auditoría. Ver `lib/drive/index.mjs`.
+  const { rows: [aprobador] } = await query('select slug from orq.principals where id = $1', [op.decided_by ?? null])
+  const ctxDrive = {
+    db: { query },
+    actor: aprobador?.slug ?? op.agent_slug ?? 'worker:operation_execute',
+    actorTipo: aprobador ? 'persona' : 'agente',
+    correlationId: op.task_id ?? null,
+  }
+  const registry = { ...driveWriteTools(google, ctxDrive), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }), ...sheetRenderTools(op_email ? google : null), ...slidesPdfTools(op_email ? google : null), ...presentacionTools(op_email ? google : null), ...imagenTools(op_email ? google : null) }
   const entry = Object.values(registry).find((t) => t.schema.name === toolName)
   if (!entry) {
     await markFailed(opId, `tool desconocida en la operación: ${toolName}`)

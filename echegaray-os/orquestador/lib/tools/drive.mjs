@@ -21,7 +21,20 @@ import { caraFina } from './drive-cara.mjs'
  * `handlers/specialist.mjs` ni `handlers/operation_execute.mjs`.
  */
 export function driveReadTools(google, opciones = {}) {
-  const drive = crearCapacidadDrive({ google, ...opciones })
+  // PEREZOSO, Y NO ES UN DETALLE DE ESTILO.
+  //
+  // `os.mjs` construye el registro ENTERO —79 capacidades— en un solo objeto, y su
+  // `googleClient()` devuelve `null` cuando nadie autorizó Google (contrato documentado en
+  // os.mjs:66: "las capacidades de Drive lo dicen en vez de fallar raro"). Armar la capacidad
+  // acá arriba hacía que un OAuth vencido tirara abajo el registro completo: jornales, caja,
+  // cobranzas, impuestos y obligaciones dejaban de existir por un problema de Drive. Medido:
+  // `node orquestador/os.mjs list` pasaba de 79 capacidades a "Falló: la capacidad de Drive
+  // necesita un cliente Google".
+  //
+  // Instanciar dentro del `run()` deja el registro intacto y mueve la falla a donde tiene que
+  // estar: la tool de Drive que se invoque contesta PERMISSION_REQUIRED, y el resto anda.
+  let _cap = null
+  const drive = () => (_cap ??= crearCapacidadDrive({ google, ...opciones }))
   return {
     'drive.list': {
       capability: 'drive.read',
@@ -41,14 +54,14 @@ export function driveReadTools(google, opciones = {}) {
       run: caraFina(async (input) => {
         let folderId = input?.folder_id
         if (!folderId && input?.query) {
-          const encontradas = await drive.buscarCarpetas(input.query)
+          const encontradas = await drive().buscarCarpetas(input.query)
           if (!encontradas.length) return { error: `no encontré una carpeta llamada "${input.query}"` }
           folderId = encontradas[0].file_id
         }
         if (!folderId) return { error: 'falta folder_id o query' }
         // La capacidad pagina (antes se truncaba en silencio pasadas mil filas) y levanta TRASHED
         // si la carpeta está en la papelera, en vez de devolver una lista vacía sin motivo.
-        const r = await drive.listarCarpeta(folderId)
+        const r = await drive().listarCarpeta(folderId)
         return {
           folder_id: folderId,
           carpeta: r.carpeta.name,
@@ -181,9 +194,9 @@ export function driveReadTools(google, opciones = {}) {
         input_schema: { type: 'object', properties: {} },
       },
       run: caraFina(async () => {
-        const carpetas = await drive.buscarCarpetas('PRESUPUESTOS')
+        const carpetas = await drive().buscarCarpetas('PRESUPUESTOS')
         if (!carpetas.length) return { error: 'no encontré la carpeta PRESUPUESTOS en el Drive' }
-        const r = await drive.listarCarpeta(carpetas[0].file_id)
+        const r = await drive().listarCarpeta(carpetas[0].file_id)
         const obras = r.items.filter((i) => i.is_folder).map((i) => ({ obra: i.name, folder_id: i.file_id }))
         return { fuente: r.carpeta.name, count: obras.length, obras }
       }),
@@ -206,14 +219,31 @@ export function driveReadTools(google, opciones = {}) {
       run: caraFina(async (input) => {
         let fileId = input?.file_id
         if (!fileId && input?.query) {
-          // Buscar como carpeta Y como archivo; priorizar la carpeta si existe con ese nombre.
-          const carpetas = await drive.buscarCarpetas(input.query).catch(() => [])
-          const archivos = carpetas.length ? [] : await drive.buscarPorNombre(input.query)
-          fileId = carpetas[0]?.file_id || archivos[0]?.file_id
+          // EL ÍNDICE PRIMERO, LA API DESPUÉS.
+          //
+          // `name contains` obliga a recordar el nombre exacto, que es justo lo que nadie hace:
+          // "vision/traccion" contra Drive devuelve que no hay nada y el archivo —"Vision /
+          // Tracción"— está ahí. El buscador de `drive-busqueda/` ya resolvía eso desde una sola
+          // superficie (el chat); acá era el consumidor que le faltaba.
+          //
+          // Sólo se acepta con CONFIANZA ALTA. Con media o baja hay un favorito pero el segundo es
+          // plausible, y una tool que ABRE un archivo no puede jugar a adivinar: se cae a la
+          // búsqueda literal, que es exactamente lo que hacía antes. Sin índice (sin `db`), este
+          // bloque no corre y el comportamiento es el de siempre.
+          const delIndice = await drive().buscarEnIndice(input.query).catch(() => null)
+          if (delIndice?.confianza === 'alta' && delIndice.ganador?.drive_file_id) {
+            fileId = delIndice.ganador.drive_file_id
+          }
+          if (!fileId) {
+            // Buscar como carpeta Y como archivo; priorizar la carpeta si existe con ese nombre.
+            const carpetas = await drive().buscarCarpetas(input.query).catch(() => [])
+            const archivos = carpetas.length ? [] : await drive().buscarPorNombre(input.query)
+            fileId = carpetas[0]?.file_id || archivos[0]?.file_id
+          }
           if (!fileId) return { error: `no encontré ningún archivo ni carpeta llamado "${input.query}"` }
         }
         if (!fileId) return { error: 'falta query o file_id' }
-        const ref = await drive.referencia(fileId)
+        const ref = await drive().referencia(fileId)
         return { ok: true, name: ref.name, tipo: ref.tipo, trashed: ref.trashed, navigate: { url: ref.web_view_link, name: ref.name, file_id: ref.file_id } }
       }),
     },

@@ -231,7 +231,25 @@ Ninguno nombra al OS, y hay un test que recorre la tabla y falla si alguno lo hi
 
 # LO QUE LA CORRIDA REAL DESTAPÓ
 
-## 1. La identidad que CREA no es la que LEE
+## 0. Corrección de la auditoría: la asimetría estaba al revés en la primera versión de este documento
+
+La **lectura** (`getMeta`, `listarCarpeta`, todo `apiGet`) usa `accessToken()`, que es la identidad
+del cliente. Entonces **`uploadFile` era el consistente** —también usa `accessToken()`— y los
+inconsistentes eran `createFile`, `copyFile`, `renameFile`, `moveFile` y `trashFile`, que saltaban a
+`ownerToken()`.
+
+**Arreglado en `google.mjs` (31/08):** `ownerToken()` ahora devuelve el token del cliente cuando el
+cliente se armó COMO UNA PERSONA (`getToken` presente), y sólo cae a `ORQ_GOOGLE_IMPERSONATE` cuando
+es el Service Account —que es el caso para el que se escribió, porque no tiene cuota.
+
+La consecuencia que faltaba declarar: en `interactive-server.mjs` el cliente se arma con
+`operadorPara(userEmail)`. Si esa persona autorizó su propia cuenta y `ORQ_GOOGLE_IMPERSONATE` está
+puesto (lo está, en `worker.env` y `asistencia-http.env`), `drive_create` y `drive_copy` **creaban el
+archivo en el Drive de jorge, no en el suyo** — y con la verificación puesta eso pasaba de «ok con el
+link» a `VERIFY_FAILED`. El efecto siempre estuvo mal; lo que faltaba era enterarse. Guardia:
+`orquestador/lib/google-identidad-owner.test.mjs`.
+
+## 1. La identidad que CREA no es la que LEE (cómo se descubrió)
 
 `google.mjs` usa `ownerToken()` para `createFile`, `copyFile`, `renameFile`, `moveFile` y `trashFile`
 —porque la cuenta de servicio no tiene cuota de almacenamiento— y `accessToken()` para todo lo demás.
@@ -258,3 +276,45 @@ dos veces contesta 200 sin decir nada. Sobre esa respuesta no se puede afirmar �
 Dos filas escritas en la misma transacción reciben el **mismo** `now()` (es el instante del `begin`) y
 quedan sin orden entre sí: en el ensayo, un `mover` y un `renombrar` del mismo pedido salieron al
 revés. Por eso `orq.drive_audit` tiene `seq bigserial` y la historia se ordena por ahí.
+
+
+---
+
+# LO QUE CORRIGIÓ LA AUDITORÍA DE CIERRE (31/08)
+
+| # | Qué estaba mal | Dónde | Guardia que ahora lo atrapa |
+|---|---|---|---|
+| 1 | Las factorías armaban la capacidad **al construir el registro**, y la capacidad lanza sin cliente. Con `google=null`, `node orquestador/os.mjs list` pasaba de **79 capacidades a 0**: se caían jornales, caja, cobranzas, impuestos y obligaciones por un OAuth de Google vencido | `tools/drive.mjs`, `tools/drive-write.mjs` | `tools/drive-registro.test.mjs` |
+| 2 | «Verify-after-write en toda mutación» era falso: `crearNativo`, `subir` y `exportarADrive` **no comparaban `parents`**. Un «guardá el informe en la carpeta del cliente» mal ubicado devolvía `ok:true`, bloque `verificado` y fila de auditoría que decía verificado | `drive/escritura.mjs` | 5 tests nuevos en `drive/escritura.test.mjs` |
+| 3 | La rama nunca había mergeado `main`, así que `orq:test` daba exit 1 por `tarjeta-banda.test.mjs`, que no es de esta rama | — | `git merge main` |
+| 4 | El criterio que gobierna todo —independencia del modelo— **no tenía guardia ejecutable** | — | `drive/sin-modelo.test.mjs`, 4 pruebas |
+| 5 | Aplicar la migración **no** encendía la auditoría: los entrypoints llamaban a las factorías sin `db`, sin `actor` y sin `indice`. `actor` quedaba `'sistema'` fijo y `buscarEnIndice` tenía cero consumidores | `os.mjs`, `interactive-server.mjs`, `handlers/operation_execute.mjs` | — (cableado; se ve en la fila de auditoría) |
+| 6 | `clasificar()` se comió dos mensajes accionables (crear: «autorizá al OS a actuar como tu cuenta»; copiar: «hace falta una Unidad Compartida») | `drive/escritura.mjs` | test de cuota en `drive/escritura.test.mjs` |
+| 6b | `porClaveDeIdempotencia` buscaba en **todo el Drive**: dos flujos con la misma clave de negocio colisionaban | `drive/escritura.mjs` | test de alcance en `drive/escritura.test.mjs` |
+
+## La trampa de `anthropic.env`, y por qué el test la mide al final
+
+`lib/config.mjs` hidrata `~/.config/echegaray-orq/anthropic.env` dentro de `process.env` al
+importarse. Borrar `ANTHROPIC_API_KEY` y después importar cualquier cosa que toque la configuración
+**la revive**, y un test que midiera la llave al empezar daría verde probando nada. `sin-modelo.test.mjs`
+neutraliza `ORQ_ANTHROPIC_ENV_FILE` antes de importar (imports dinámicos) y mide **la llave viva al
+terminar**. `ORQ_ENV_FILE` no se toca: ahí vive `DATABASE_URL`.
+
+Medido: quitando la neutralización, el test se pone rojo con
+«al terminar el ciclo había una credencial de modelo viva».
+
+## Lo que el ciclo SÍ lee del entorno, y por qué no es una ofensa
+
+`ANTHROPIC_MODEL_SONNET`, `ANTHROPIC_TIMEOUT_MS` y siete parientes. No es la capacidad: es la cadena
+`google.mjs → no-reponer.mjs → db.mjs → config.mjs`, y `config.mjs` valida **un** esquema para todo el
+OS. Leer el NOMBRE de un modelo desde un esquema no es llamar a un modelo. Lo que el test vigila es
+que no se lea una **credencial**. Y la prueba 4 verifica que `lib/drive/` no arrastre `config.mjs` ni
+`db.mjs` a su árbol de imports: la capacidad se levanta sola.
+
+## `listFolder` y las unidades compartidas — declarado
+
+El arreglo de paginación agregó también `supportsAllDrives=true&includeItemsFromAllDrives=true`, que
+**amplía el universo a las unidades compartidas**. Hoy no rompe nada (ARCHIVO FISCAL tiene 5 hijos
+directos y UOCRA DDJJ 9: el truncado era una bomba sin estallar). Pero el día que exista una unidad
+compartida, una lectura fiscal empieza a ver archivos que antes no veía, sin avisar. Se dejan porque
+`listarCarpeta` ya los usaba y tener dos listados con universos distintos es peor.

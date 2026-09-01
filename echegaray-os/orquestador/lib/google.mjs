@@ -366,6 +366,24 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // Sheet (que sigue siendo el robot, para que la firma distinga al OS del dueño). Cae al robot si no hay
   // token del dueño. Verificado: crea/copia como el dueño.
   async function ownerToken() {
+    // SI EL CLIENTE SE ARMÓ COMO UNA PERSONA, ESA PERSONA MANDA (31/08).
+    //
+    // `ownerToken` existe porque la cuenta de servicio no tiene cuota de almacenamiento: crear o
+    // copiar como el robot da 403. Pero saltaba directo a `ORQ_GOOGLE_IMPERSONATE` incluso cuando
+    // quien armó el cliente ya había elegido una identidad — y ahí hacía dos daños a la vez:
+    //
+    //   · `interactive-server.mjs` arma el cliente con `operadorPara(userEmail)`. Si esa persona
+    //     autorizó su propia cuenta, `drive.create`/`drive.copy` creaban el archivo en el Drive de
+    //     `ORQ_GOOGLE_IMPERSONATE` (jorge), no en el suyo.
+    //   · y como TODA la lectura usa `accessToken()` —la identidad del cliente—, releer el archivo
+    //     recién creado daba 404. Con la verificación puesta eso es un VERIFY_FAILED donde antes
+    //     devolvía ok con el link: el efecto siempre estuvo mal, lo que faltaba era enterarse.
+    //
+    // Una persona autenticada TIENE cuota, así que el motivo original de la desviación no aplica.
+    // Sólo se cae a `ORQ_GOOGLE_IMPERSONATE` cuando el cliente es el Service Account, que es el
+    // caso para el que se escribió. La escritura de CELDAS no pasa por acá (usa `accessToken`),
+    // así que la firma que distingue al OS del dueño en los Sheets no se toca.
+    if (getToken) { const ut = await userToken(); if (ut) return ut }
     const dueno = process.env.ORQ_GOOGLE_IMPERSONATE
     if (dueno) {
       try { const { getTokenFor } = await import('./google-oauth.mjs'); const t = await getTokenFor(dueno)(); if (t) return t } catch { /* cae al robot */ }
@@ -960,7 +978,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  `nextPageToken`: una carpeta con más de mil hijos se truncaba EN SILENCIO, y el que
      *  llamaba no tenía cómo enterarse. Lo usan `impuestos-fuentes.mjs` y `uocra-ddjj.mjs`
      *  sobre carpetas fiscales, donde "faltaba un archivo" no se distingue de "no existe".
-     *  `tope` corta explícito para que un Drive gigante no cuelgue la tarea. */
+     *  `tope` corta explícito para que un Drive gigante no cuelgue la tarea.
+     *
+     *  OJO CON `supportsAllDrives`/`includeItemsFromAllDrives`, que también se agregaron acá:
+     *  amplían el universo a las UNIDADES COMPARTIDAS. No rompe nada —hoy la empresa no tiene
+     *  unidades compartidas en uso— pero el día que exista una, una lectura fiscal
+     *  (`impuestos-fuentes.mjs`, `uocra-ddjj.mjs`) empieza a ver archivos que antes no veía, sin
+     *  avisar. Se dejan porque `listarCarpeta` ya los usaba y tener dos listados con universos
+     *  distintos es peor; queda declarado para que el cambio no sea una sorpresa. */
     async listFolder(folderId, { tope = 5000 } = {}) {
       const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`)
       const out = []

@@ -44,9 +44,48 @@ export const TIPOS_NATIVOS = Object.freeze({
 const REINTENTO_VERIFICACION_MS = 700
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * QUÉ HACER cuando Drive rechaza por almacenamiento, por operación.
+ *
+ * `clasificar()` convierte el 403 de cuota en `QUOTA` con un mensaje genérico, y al hacerlo se
+ * comió dos frases que sí decían qué hacer y que estaban escritas en las tools desde antes:
+ * la de crear («autorizá al OS a actuar como tu cuenta») y la de copiar («hace falta una Unidad
+ * Compartida; por ahora duplicá vos el archivo y compartímelo»). El código es correcto y viaja
+ * igual; lo que faltaba era la salida. Vive acá y no en la tool porque cualquiera que llame a la
+ * capacidad desde código merece la misma respuesta, no sólo el modelo.
+ */
+const AYUDA_QUOTA = Object.freeze({
+  crear: 'No pude crear el archivo por almacenamiento. Verificá que el OS esté autorizado a actuar como tu cuenta (login de Google).',
+  subir: 'No pude subir el archivo por almacenamiento. Verificá que el OS esté autorizado a actuar como tu cuenta (login de Google).',
+  copiar: 'La copia quedaría a nombre de la cuenta del OS, que no tiene almacenamiento. Para que el OS duplique solo, hace falta una Unidad Compartida. Por ahora duplicá vos el archivo (clic derecho → Hacer una copia) y compartímelo.',
+  exportar: 'No pude guardar el PDF en Drive por almacenamiento. Verificá que el OS esté autorizado a actuar como tu cuenta (login de Google).',
+})
+
+/** Reemplaza el mensaje genérico de QUOTA por el que dice qué hacer, sin perder el de Google. */
+function conAyudaDeCuota(operacion, err) {
+  if (!(err instanceof DriveError) || err.codigo !== CODIGO.QUOTA || !AYUDA_QUOTA[operacion]) return err
+  return new DriveError(CODIGO.QUOTA, AYUDA_QUOTA[operacion], { detalle: err.detalle, causa: err.cause })
+}
+
 export function crearEscritura({ google, lectura, auditor = null, reloj = () => new Date(), esperaVerificacionMs = REINTENTO_VERIFICACION_MS }) {
   if (!google) throw argInvalido('escritura de Drive: falta el cliente Google')
   if (!lectura) throw argInvalido('escritura de Drive: falta la capa de lectura (la verificación la hace ella)')
+
+  /**
+   * LA UBICACIÓN TAMBIÉN SE VERIFICA, Y ANTES NO.
+   *
+   * `crearNativo`, `subir` y `exportarADrive` comparaban sólo nombre/mime/trashed. Un
+   * «guardá el informe en la carpeta del cliente» que Drive ubicara mal devolvía `ok:true`,
+   * un bloque `verificado` y una fila de auditoría que decía verificado — con el archivo en
+   * otra carpeta. Eso no es verify-after-write: es verify-de-la-identidad. `mover` y `copiar`
+   * sí comparaban `parents`, que es por qué esas dos daban rojo de verdad.
+   *
+   * Sin `padre` NO se agrega la expectativa: Drive lo deja en la raíz de la cuenta, cuyo id no
+   * conocemos, y afirmar `parents: []` sería inventar una expectativa que nunca se cumple.
+   */
+  const conUbicacion = (esperado, campos, padre) => (padre
+    ? [{ ...esperado, parents: [padre] }, [...campos, 'parents']]
+    : [esperado, campos])
 
   /** El sello de qué se verificó. Va en toda respuesta: un cierre sin evidencia no es un cierre. */
   const verificacion = (campos) => ({ campos, leido_en: reloj().toISOString(), metodo: 'relectura del destino' })
@@ -100,10 +139,18 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     return ref
   }
 
-  /** ¿Esta clave ya produjo un archivo? Devuelve la referencia existente o null. */
-  async function yaHecho(clave) {
+  /**
+   * ¿Esta clave ya produjo un archivo? Devuelve la referencia existente o null.
+   *
+   * SE BUSCA DENTRO DE LA CARPETA DESTINO cuando la hay. Buscando en todo el Drive, dos flujos
+   * distintos que eligieran la misma clave de negocio —"informe-2026-08" del cliente A y del
+   * cliente B— colisionaban: el segundo devolvía el archivo del primero y no creaba nada.
+   * Sin carpeta destino (raíz) no hay dónde acotar y se busca global, que es el mismo alcance
+   * que tiene la operación.
+   */
+  async function yaHecho(clave, destino = null) {
     if (!clave) return null
-    return lectura.porClaveDeIdempotencia(clave)
+    return lectura.porClaveDeIdempotencia(clave, { enCarpeta: destino ?? null })
   }
 
   function sobreExistente(clave, ref, operacion) {
@@ -132,7 +179,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     if (!nombre) throw argInvalido('falta el nombre del archivo a crear')
     const mimeType = TIPOS_NATIVOS[String(tipo ?? '').toLowerCase()]
     if (!mimeType) throw noSoportada(`No sé crear un "${tipo}". Tipos: ${Object.keys(TIPOS_NATIVOS).join(', ')}.`)
-    const previo = await yaHecho(clave_idempotencia)
+    const previo = await yaHecho(clave_idempotencia, padre)
     if (previo) return sobreExistente(clave_idempotencia, previo, 'crear')
 
     if (padre) await lectura.referenciaViva(padre) // un padre en la papelera no es un destino
@@ -140,11 +187,12 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     const creado = await conDrive('el archivo nuevo', () => google.createFile({
       name: nombre, mimeType, parents: padre ? [padre] : undefined,
       properties: clave_idempotencia ? { [PROP_IDEMPOTENCIA]: clave_idempotencia } : undefined,
-    }))
+    })).catch((e) => { throw conAyudaDeCuota('crear', e) })
     if (!creado?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del archivo creado.')
-    const ref = await verificar(creado.id, { name: nombre, mime_type: mimeType, trashed: false }, ['name', 'mime_type', 'trashed'], { reciénCreado: true })
-    const audit = await auditar({ operacion: 'crear', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: ['name', 'mime_type', 'trashed'] })
-    return { ok: true, operacion: 'crear', idempotente: false, referencia: ref, antes: null, verificado: verificacion(['name', 'mime_type', 'trashed']), audit }
+    const [esperado, campos] = conUbicacion({ name: nombre, mime_type: mimeType, trashed: false }, ['name', 'mime_type', 'trashed'], padre)
+    const ref = await verificar(creado.id, esperado, campos, { reciénCreado: true })
+    const audit = await auditar({ operacion: 'crear', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: campos })
+    return { ok: true, operacion: 'crear', idempotente: false, referencia: ref, antes: null, verificado: verificacion(campos), audit }
   }
 
   /** Sube BYTES a Drive. `contenido` en base64 (es lo que ya recibe `uploadFile`). */
@@ -152,18 +200,19 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     if (!nombre) throw argInvalido('falta el nombre del archivo a subir')
     if (!contenido_base64) throw argInvalido('falta el contenido (base64) del archivo a subir')
     if (!mime_type) throw argInvalido('falta el mime_type del archivo a subir')
-    const previo = await yaHecho(clave_idempotencia)
+    const previo = await yaHecho(clave_idempotencia, padre)
     if (previo) return sobreExistente(clave_idempotencia, previo, 'subir')
     if (padre) await lectura.referenciaViva(padre)
 
     const subido = await conDrive('el archivo subido', () => google.uploadFile(nombre, contenido_base64, mime_type, {
       parentId: padre ?? undefined,
       properties: clave_idempotencia ? { [PROP_IDEMPOTENCIA]: clave_idempotencia } : undefined,
-    }))
+    })).catch((e) => { throw conAyudaDeCuota('subir', e) })
     if (!subido?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del archivo subido.')
-    const ref = await verificar(subido.id, { name: nombre, trashed: false }, ['name', 'trashed'], { reciénCreado: true })
-    const audit = await auditar({ operacion: 'subir', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: ['name', 'trashed'] })
-    return { ok: true, operacion: 'subir', idempotente: false, referencia: ref, antes: null, verificado: verificacion(['name', 'trashed']), audit }
+    const [esperado, campos] = conUbicacion({ name: nombre, trashed: false }, ['name', 'trashed'], padre)
+    const ref = await verificar(subido.id, esperado, campos, { reciénCreado: true })
+    const audit = await auditar({ operacion: 'subir', referencia: ref, antes: null, despues: resumen(ref), clave_idempotencia, verificado_campos: campos })
+    return { ok: true, operacion: 'subir', idempotente: false, referencia: ref, antes: null, verificado: verificacion(campos), audit }
   }
 
   // ───────────────────────────── MANAGEMENT ─────────────────────────────
@@ -199,7 +248,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
   async function copiar({ file_id, nombre, destino = null, clave_idempotencia = null } = {}) {
     if (!file_id) throw argInvalido('falta file_id del archivo a copiar')
     if (!nombre) throw argInvalido('falta el nombre de la copia')
-    const previo = await yaHecho(clave_idempotencia)
+    const previo = await yaHecho(clave_idempotencia, destino)
     if (previo) return sobreExistente(clave_idempotencia, previo, 'copiar')
     const origen = await lectura.referenciaViva(file_id)
     if (origen.is_folder) throw noSoportada('Drive no copia carpetas en una sola operación: hay que crear la carpeta y copiar su contenido.')
@@ -209,7 +258,7 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
       // `null` BORRA la property heredada del original. Sin esto, copiar un archivo marcado
       // haría que su clave apareciera dos veces y el control de idempotencia mentiría.
       properties: { [PROP_IDEMPOTENCIA]: clave_idempotencia ?? null },
-    }))
+    })).catch((e) => { throw conAyudaDeCuota('copiar', e) })
     if (!copia?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id de la copia.')
     const esperado = { name: nombre, trashed: false, ...(destino ? { parents: [destino] } : {}) }
     const campos = destino ? ['name', 'trashed', 'parents'] : ['name', 'trashed']
@@ -247,17 +296,23 @@ export function crearEscritura({ google, lectura, auditor = null, reloj = () => 
     if (String(formato).toLowerCase() !== 'pdf') {
       throw noSoportada(`Guardar la conversión en Drive sólo está soportado a PDF (pediste ${formato}). Para otros formatos usá exportar(), que devuelve los bytes.`)
     }
-    const previo = await yaHecho(clave_idempotencia)
+    const previo = await yaHecho(clave_idempotencia, destino)
     if (previo) return sobreExistente(clave_idempotencia, previo, 'exportar')
     const origen = await lectura.referenciaViva(file_id)
     if (destino) await lectura.referenciaViva(destino)
+    // El nombre se calcula ACÁ y no se delega, porque es lo que después se verifica: si lo
+    // decidiera `exportarComoPdf` por su cuenta, la expectativa y el efecto saldrían de la
+    // misma fuente y la comparación no probaría nada.
+    const base = nombre ?? origen.name
+    const esperadoNombre = /\.pdf$/i.test(base) ? base : `${base}.pdf`
     const salida = await conDrive(`el archivo ${file_id}`, () => google.exportarComoPdf(file_id, {
-      nombre: nombre ?? `${origen.name}.pdf`, parentId: destino ?? undefined,
-    }))
+      nombre: esperadoNombre, parentId: destino ?? undefined,
+    })).catch((e) => { throw conAyudaDeCuota('exportar', e) })
     if (!salida?.id) throw new DriveError(CODIGO.VERIFY_FAILED, 'Drive no devolvió el id del PDF exportado.')
-    const ref = await verificar(salida.id, { trashed: false }, ['trashed'], { reciénCreado: true })
-    const audit = await auditar({ operacion: 'exportar', referencia: ref, antes: resumen(origen), despues: resumen(ref), clave_idempotencia, verificado_campos: ['trashed'] })
-    return { ok: true, operacion: 'exportar', idempotente: false, referencia: ref, antes: resumen(origen), verificado: verificacion(['trashed']), audit }
+    const [esperado, campos] = conUbicacion({ name: esperadoNombre, trashed: false }, ['name', 'trashed'], destino)
+    const ref = await verificar(salida.id, esperado, campos, { reciénCreado: true })
+    const audit = await auditar({ operacion: 'exportar', referencia: ref, antes: resumen(origen), despues: resumen(ref), clave_idempotencia, verificado_campos: campos })
+    return { ok: true, operacion: 'exportar', idempotente: false, referencia: ref, antes: resumen(origen), verificado: verificacion(campos), audit }
   }
 
   return { crearCarpeta, crearNativo, subir, renombrar, mover, copiar, archivar, borrarDefinitivo, exportarADrive, _verificar: verificar }

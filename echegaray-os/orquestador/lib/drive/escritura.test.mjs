@@ -17,7 +17,7 @@ const SHEET = 'application/vnd.google-apps.spreadsheet'
  * y la relectura de verificación mira ESE estado. `sordo` simula el caso peligroso: la API
  * contesta que sí y el archivo no cambia.
  */
-function drive(inicial = {}, { sordo = false } = {}) {
+function drive(inicial = {}, { sordo = false, ubicaMal = false } = {}) {
   const archivos = { ...inicial }
   const llamadas = []
   let n = 0
@@ -39,13 +39,13 @@ function drive(inicial = {}, { sordo = false } = {}) {
     async createFile({ name, mimeType, parents, properties }) {
       llamadas.push(['createFile', name])
       const id = `n${++n}`
-      archivos[id] = { id, name, mimeType, parents: parents ?? [], trashed: false, properties: properties ?? {}, version: '1' }
+      archivos[id] = { id, name, mimeType, parents: ubicaMal ? [] : (parents ?? []), trashed: false, properties: properties ?? {}, version: '1' }
       return { id, name, mimeType }
     },
     async uploadFile(name, _b64, mimeType, { parentId, properties } = {}) {
       llamadas.push(['uploadFile', name])
       const id = `u${++n}`
-      archivos[id] = { id, name, mimeType, parents: parentId ? [parentId] : [], trashed: false, properties: properties ?? {}, md5Checksum: 'abc' }
+      archivos[id] = { id, name, mimeType, parents: (parentId && !ubicaMal) ? [parentId] : [], trashed: false, properties: properties ?? {}, md5Checksum: 'abc' }
       return { id, link: 'x' }
     },
     async renameFile(id, name) {
@@ -74,7 +74,7 @@ function drive(inicial = {}, { sordo = false } = {}) {
     async exportarComoPdf(id, { nombre, parentId } = {}) {
       llamadas.push(['exportarComoPdf', id])
       const nid = `p${++n}`
-      archivos[nid] = { id: nid, name: nombre, mimeType: 'application/pdf', parents: parentId ? [parentId] : [], trashed: false, properties: {} }
+      archivos[nid] = { id: nid, name: ubicaMal ? 'otro-nombre.pdf' : nombre, mimeType: 'application/pdf', parents: (parentId && !ubicaMal) ? [parentId] : [], trashed: false, properties: {} }
       return { id: nid, link: 'x' }
     },
   }
@@ -93,6 +93,83 @@ const CARPETA = { id: 'C', name: 'OBRAS', mimeType: MIME_CARPETA, parents: ['rai
 const CARPETA2 = { id: 'D', name: 'ARCHIVO', mimeType: MIME_CARPETA, parents: ['raiz'], trashed: false, properties: {} }
 const PAPELERA = { id: 'P', name: 'VIEJA', mimeType: MIME_CARPETA, parents: ['raiz'], trashed: true, properties: {} }
 const ARCHIVO = { id: 'F', name: 'Presupuesto.pdf', mimeType: 'application/pdf', parents: ['C'], trashed: false, properties: {} }
+
+// ─────────────── LA UBICACIÓN ES PARTE DEL EFECTO, NO UN ADORNO ───────────────
+//
+// Estas tres NO ponían nada en rojo antes: `crearNativo`, `subir` y `exportarADrive`
+// comparaban nombre/mime/trashed y jamás `parents`. Un "guardá el informe en la carpeta del
+// cliente" que Drive ubicara mal devolvía ok:true, un bloque `verificado` y una fila de
+// auditoría que decía verificado, con el archivo en otra carpeta. Eso bloquea ORGANIZAR,
+// que es la mitad del sentido de esta capacidad.
+
+test('CREAR en una carpeta y que Drive lo deje en otra → VERIFY_FAILED', async () => {
+  const { escritura } = armar({ C: CARPETA }, { ubicaMal: true })
+  await assert.rejects(
+    () => escritura.crearNativo({ nombre: 'informe', tipo: 'doc', padre: 'C' }),
+    (e) => e.codigo === CODIGO.VERIFY_FAILED && e.diff.parents.antes[0] === 'C',
+  )
+})
+
+test('SUBIR a una carpeta y que Drive lo deje en otra → VERIFY_FAILED', async () => {
+  const { escritura } = armar({ C: CARPETA }, { ubicaMal: true })
+  await assert.rejects(
+    () => escritura.subir({ nombre: 'r.pdf', contenido_base64: 'AA==', mime_type: 'application/pdf', padre: 'C' }),
+    (e) => e.codigo === CODIGO.VERIFY_FAILED && 'parents' in e.diff,
+  )
+})
+
+test('EXPORTAR a una carpeta con otro nombre o en otro lado → VERIFY_FAILED', async () => {
+  const { escritura } = armar({ C: CARPETA, S: { id: 'S', name: 'CF', mimeType: SHEET, parents: ['C'], trashed: false, properties: {} } }, { ubicaMal: true })
+  await assert.rejects(
+    () => escritura.exportarADrive({ file_id: 'S', formato: 'pdf', destino: 'C' }),
+    (e) => e.codigo === CODIGO.VERIFY_FAILED && 'parents' in e.diff && 'name' in e.diff,
+  )
+})
+
+test('sin padre NO se inventa una expectativa de ubicación: Drive lo deja en la raíz', async () => {
+  // Afirmar `parents: []` sería una expectativa que nunca se cumple (la raíz tiene id).
+  const { escritura } = armar({})
+  const r = await escritura.crearNativo({ nombre: 'suelto', tipo: 'doc' })
+  assert.equal(r.ok, true)
+  assert.ok(!r.verificado.campos.includes('parents'))
+})
+
+test('con padre, la respuesta DECLARA que verificó la ubicación', async () => {
+  const { escritura } = armar({ C: CARPETA })
+  const r = await escritura.crearNativo({ nombre: 'ubicado', tipo: 'doc', padre: 'C' })
+  assert.ok(r.verificado.campos.includes('parents'))
+  assert.deepEqual(r.referencia.parents, ['C'])
+  const s = await escritura.subir({ nombre: 'x.pdf', contenido_base64: 'AA==', mime_type: 'application/pdf', padre: 'C' })
+  assert.ok(s.verificado.campos.includes('parents'))
+})
+
+test('LA CUOTA DE DRIVE DEVUELVE QUÉ HACER, no sólo el código', async () => {
+  // Las dos frases que las tools decían antes y que `clasificar()` se comió al convertir el 403
+  // en un QUOTA genérico. El código sigue siendo QUOTA y el texto de Google sigue en `detalle`.
+  const cuota = () => { const e = new Error("The user's storageQuota has been exceeded"); e.status = 403; throw e }
+  const g = drive({ F: ARCHIVO, C: CARPETA })
+  g.createFile = cuota; g.copyFile = cuota
+  const escritura = crearEscritura({ google: g, lectura: crearLectura({ google: g }), esperaVerificacionMs: 1 })
+  await assert.rejects(
+    () => escritura.crearNativo({ nombre: 'x', tipo: 'doc', padre: 'C' }),
+    (e) => e.codigo === CODIGO.QUOTA && /autorizado a actuar como tu cuenta/.test(e.message) && /storageQuota/.test(e.detalle),
+  )
+  await assert.rejects(
+    () => escritura.copiar({ file_id: 'F', nombre: 'copia', destino: 'C' }),
+    (e) => e.codigo === CODIGO.QUOTA && /Unidad Compartida/.test(e.message) && /duplicá vos el archivo/.test(e.message),
+  )
+})
+
+test('la clave de idempotencia se busca DENTRO de la carpeta destino, no en todo el Drive', async () => {
+  // Dos clientes que eligen la misma clave de negocio no pueden pisarse.
+  const consultas = []
+  const g = drive({ C: CARPETA, D: CARPETA2 })
+  const apiOriginal = g.apiGetDrive
+  g.apiGetDrive = async (url) => { consultas.push(decodeURIComponent(url)); return apiOriginal(url) }
+  const escritura = crearEscritura({ google: g, lectura: crearLectura({ google: g }), esperaVerificacionMs: 1 })
+  await escritura.crearNativo({ nombre: 'informe', tipo: 'doc', padre: 'C', clave_idempotencia: 'informe-2026-08' })
+  assert.ok(consultas[0].includes("'C' in parents"), `no acotó por carpeta: ${consultas[0]}`)
+})
 
 // ───────────────────────── ESCRITURA SIN PERSISTENCIA ─────────────────────────
 

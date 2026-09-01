@@ -21,7 +21,7 @@
 import { makeGoogleClient, WORKSPACE_SCOPES } from './lib/google.mjs'
 import { operadorPara, getTokenFor } from './lib/google-oauth.mjs'
 import { loadConfig } from './lib/config.mjs'
-import { closePool } from './lib/db.mjs'
+import { closePool, query } from './lib/db.mjs'
 
 // Las mismas familias de tools que registra el servidor interactivo.
 import { driveReadTools } from './lib/tools/drive.mjs'
@@ -75,8 +75,14 @@ async function googleClient() {
 
 async function construirRegistro() {
   const google = await googleClient()
+  // QUIÉN, DÓNDE SE AUDITA Y CON QUÉ ÍNDICE SE BUSCA. Sin esto la capacidad de Drive quedaba
+  // con `auditor: null` (toda operación devolvía `audit.registrado:false` aunque la migración
+  // estuviera aplicada), `actor:'sistema'` fijo —una auditoría cuyo actor es una constante no
+  // contesta "quién"— y `indice: null`, que dejaba al buscador determinístico sin un solo
+  // consumidor. `query` es el port de `db.mjs`; si la base no está, el auditor lo dice.
+  const contexto = { db: { query }, actor: (await operadorPara()) ?? 'cli:os.mjs', actorTipo: 'persona' }
   return {
-    ...driveReadTools(google), ...driveWriteTools(google), ...osDataTools(),
+    ...driveReadTools(google, contexto), ...driveWriteTools(google, contexto), ...osDataTools(),
     ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...cuitTools(),
     ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google),
     ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(),

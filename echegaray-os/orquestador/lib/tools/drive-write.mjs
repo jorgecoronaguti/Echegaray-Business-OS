@@ -114,7 +114,20 @@ function avisoErrorCeldas(errs) {
  * entrypoints que ya llaman `driveWriteTools(google)`.
  */
 export function driveWriteTools(google, opciones = {}) {
-  const drive = crearCapacidadDrive({ google, ...opciones })
+  // PEREZOSO, Y NO ES UN DETALLE DE ESTILO.
+  //
+  // `os.mjs` construye el registro ENTERO —79 capacidades— en un solo objeto, y su
+  // `googleClient()` devuelve `null` cuando nadie autorizó Google (contrato documentado en
+  // os.mjs:66: "las capacidades de Drive lo dicen en vez de fallar raro"). Armar la capacidad
+  // acá arriba hacía que un OAuth vencido tirara abajo el registro completo: jornales, caja,
+  // cobranzas, impuestos y obligaciones dejaban de existir por un problema de Drive. Medido:
+  // `node orquestador/os.mjs list` pasaba de 79 capacidades a "Falló: la capacidad de Drive
+  // necesita un cliente Google".
+  //
+  // Instanciar dentro del `run()` deja el registro intacto y mueve la falla a donde tiene que
+  // estar: la tool de Drive que se invoque contesta PERMISSION_REQUIRED, y el resto anda.
+  let _cap = null
+  const drive = () => (_cap ??= crearCapacidadDrive({ google, ...opciones }))
   return {
     'drive.update': {
       capability: 'drive.write',
@@ -203,7 +216,7 @@ export function driveWriteTools(google, opciones = {}) {
           const d = await google.createDoc(input.name, input.contenido, { parentId: input.folder_id })
           return { ok: true, id: d.id, name: input.name, link: d.link }
         }
-        const r = await drive.crearNativo({
+        const r = await drive().crearNativo({
           nombre: input.name, tipo, padre: input.folder_id ?? null,
           clave_idempotencia: input.clave_idempotencia ?? null,
         })
@@ -250,7 +263,7 @@ export function driveWriteTools(google, opciones = {}) {
       run: caraFina(async (input) => {
         if (!input?.file_id || !input?.new_name) return { error: 'faltan file_id o new_name' }
         // El nombre que se devuelve es el RELEÍDO de Drive, no el que contestó el PATCH.
-        const r = await drive.renombrar({ file_id: input.file_id, nombre: input.new_name })
+        const r = await drive().renombrar({ file_id: input.file_id, nombre: input.new_name })
         return { ok: true, id: r.referencia.file_id, name: r.referencia.name, antes: r.antes.name, verificado: r.verificado.campos }
       }),
     },
@@ -268,7 +281,7 @@ export function driveWriteTools(google, opciones = {}) {
       },
       run: caraFina(async (input) => {
         if (!input?.file_id || !input?.folder_id) return { error: 'faltan file_id o folder_id (carpeta destino)' }
-        const r = await drive.mover({ file_id: input.file_id, destino: input.folder_id })
+        const r = await drive().mover({ file_id: input.file_id, destino: input.folder_id })
         return { ok: true, id: r.referencia.file_id, name: r.referencia.name, parents: r.referencia.parents, antes: r.antes.parents, verificado: r.verificado.campos }
       }),
     },
@@ -467,7 +480,7 @@ export function driveWriteTools(google, opciones = {}) {
       },
       run: caraFina(async (input) => {
         if (!input?.file_id || !input?.name) return { error: 'faltan file_id o name' }
-        const r = await drive.copiar({
+        const r = await drive().copiar({
           file_id: input.file_id, nombre: input.name, destino: input.folder_id ?? null,
           clave_idempotencia: input.clave_idempotencia ?? null,
         })
@@ -485,7 +498,7 @@ export function driveWriteTools(google, opciones = {}) {
       },
       run: caraFina(async (input) => {
         if (!input?.file_id) return { error: 'falta file_id' }
-        const r = await drive.archivar({ file_id: input.file_id })
+        const r = await drive().archivar({ file_id: input.file_id })
         return { ok: true, id: r.referencia.file_id, name: r.referencia.name, trashed: r.referencia.trashed, idempotente: r.idempotente, verificado: r.verificado.campos }
       }),
     },

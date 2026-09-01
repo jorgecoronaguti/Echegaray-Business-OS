@@ -82,6 +82,10 @@ test('sin auditor, pedir la historia de un archivo lo dice en vez de devolver va
   await assert.rejects(() => drive.historia('F'), (e) => e.codigo === CODIGO.AUDIT_UNAVAILABLE)
 })
 
-test('sin cliente Google no se arma una capacidad que después falle en otro lado', () => {
-  assert.throws(() => crearCapacidadDrive({}), (e) => e.codigo === CODIGO.INVALID_ARGUMENT)
+test('sin cuenta de Google el error es un PERMISO que falta, no un bug', () => {
+  // CAMBIO DE CONTRATO (31/08). Era INVALID_ARGUMENT, que se lee como "el programador se olvidó
+  // de pasar algo". El caso real es el que documenta `os.mjs`: nadie autorizó Google todavía.
+  // Quien recibe esto tiene algo que hacer —autorizar—, no un defecto que reportar.
+  assert.throws(() => crearCapacidadDrive({}), (e) => e.codigo === CODIGO.PERMISSION_REQUIRED)
+  assert.throws(() => crearCapacidadDrive({ google: null }), (e) => /cuenta de Google/.test(e.message))
 })
