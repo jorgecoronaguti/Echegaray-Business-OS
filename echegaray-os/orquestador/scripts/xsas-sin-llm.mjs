@@ -29,6 +29,12 @@
 const LLAVES = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_API_KEY', 'OPENAI_API_KEY', 'ORQ_ANTHROPIC_API_KEY']
 const borradas = LLAVES.filter((k) => process.env[k] !== undefined)
 for (const k of LLAVES) delete process.env[k]
+// Y BORRARLAS NO ALCANZA: `lib/config.mjs` hidrata `~/.config/echegaray-orq/anthropic.env` dentro
+// de `process.env` al importarse, así que basta con que un módulo del cotizador llegue a `db.mjs`
+// para que la llave VUELVA A LA VIDA y este control quede probando nada. Hoy la cadena del
+// cotizador no llega ahí —o sea que zafaba por casualidad—, y una casualidad no es un control.
+// `ORQ_ENV_FILE` NO se toca: ahí vive DATABASE_URL.
+process.env.ORQ_ANTHROPIC_ENV_FILE = '/dev/null/no-existe-a-proposito'
 
 const { readdirSync, readFileSync } = await import('node:fs')
 const path = await import('node:path')
@@ -193,10 +199,22 @@ function auditarImports() {
   const dir = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'lib', 'cotizador')
   const archivos = readdirSync(dir).filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs'))
   const culpables = archivos.filter((f) => {
-    const imports = readFileSync(path.join(dir, f), 'utf8').split('\n').filter((l) => /^\s*import\s/.test(l)).join('\n')
-    return /ia\/cliente|pedirTexto|anthropic|CAPACIDAD/i.test(imports)
+    // LOS DINÁMICOS TAMBIÉN. El filtro era `/^\s*import\s/`, o sea SÓLO los estáticos al principio
+    // de la línea: un `await import('../ia/cliente.mjs')` adentro de una función pasaba entero.
+    // Medido: con esa llamada metida en `comercial.mjs`, este control informaba «48 archivos ·
+    // con cliente de IA: 0». Era la garantía estructural del §13 y no podía dar rojo.
+    const lineas = readFileSync(path.join(dir, f), 'utf8').split('\n')
+      .filter((l) => /^\s*import\s|import\s*\(/.test(l)).join('\n')
+    return /ia\/cliente|pedirTexto|anthropic|CAPACIDAD/i.test(lineas)
   })
   return { archivos: archivos.length, culpables }
+}
+
+/** ¿Quedó viva una credencial de modelo al TERMINAR? Es lo único que prueba que nada la repuso.
+ *  Se informa la PRESENCIA, jamás el valor: un control que filtra el secreto cuando salta —el día
+ *  para el que existe— es peor que no tenerlo. */
+function llavesVivasAlTerminar() {
+  return LLAVES.filter((k) => process.env[k] !== undefined)
 }
 
 // ═══ EL CERO SE MIDE, NO SE DECLARA (31/08/2026) ═══
@@ -279,6 +297,7 @@ console.log(fila('variables de API borradas', borradas.length ? borradas.join(',
 for (const [k, v] of Object.entries(PROVEEDOR.condiciones)) console.log(fila(k, v ? 'SÍ (apagado)' : 'no'))
 console.log(fila('modelo disponible', PROVEEDOR.disponible ? 'SÍ' : 'NO'))
 console.log(fila('módulos de cotizador/ auditados', `${imports.archivos} · con cliente de IA: ${imports.culpables.length}`))
+console.log(fila('llaves de modelo VIVAS al terminar', llavesVivasAlTerminar().join(', ') || 'ninguna'))
 
 console.log('\nLA COTIZACIÓN (11 etapas)')
 console.log(fila('etapas corridas', `${corrida.etapas.length} · orden correcto: ${corrida.ordenCorrecto}`))
@@ -355,7 +374,9 @@ if (!real) {
 }
 
 // ── EL VEREDICTO ──
+const vivas = llavesVivasAlTerminar()
 const ok = metricas.llamadas_llm === 0 && metricas.tokens === 0 && imports.culpables.length === 0
+  && vivas.length === 0
   // El cero MEDIDO en el transporte se exige aparte del declarado: es el que no puede ser una
   // constante. Sin esta condición, el veredicto seguiría apoyado en que nadie levantó la mano.
   && medicion.total === 0 && conciliacion.cuadra === true
