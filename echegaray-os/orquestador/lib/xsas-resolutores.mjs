@@ -246,6 +246,21 @@ export const ATAJOS = Object.freeze({
   'como venimos por obra': 'os.costos_obras',
   'ranking de costos por obra': 'os.costos_obras',
   'costos por obra': 'os.costos_obras',
+  // ═══ LAS PREGUNTAS DE PLATA QUE CAÍAN AL MODELO TENIENDO LA TOOL AL LADO (01/09/2026) ═══
+  //
+  // Medido contra la puerta viva: «qué vence esta semana» escaló a un modelo, que contestó pidiendo
+  // que le aclararan la pregunta — teniendo `caja.vencido` registrada y andando. No es una pregunta
+  // ambigua para esta casa: vencimiento es plata a pagar.
+  'que vence esta semana': 'caja.vencido',
+  'que vence': 'caja.vencido',
+  'que tenemos que pagar': 'caja.vencido',
+  'que hay que pagar': 'caja.vencido',
+  'vencimientos': 'caja.vencido',
+  // La caja NO entra acá: `briefing.caja` necesita el cliente de Google y un atajo a una tool que
+  // puede no estar registrada es un atajo huérfano. Esa pregunta ya rutea sola por su skill.
+  'quien nos debe': 'os.cobranzas',
+  'que nos deben': 'os.cobranzas',
+  'cobranzas': 'os.cobranzas',
 })
 
 /**
