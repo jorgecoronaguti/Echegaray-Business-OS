@@ -17,12 +17,43 @@ la fuente de verdad de cada concepto, los comandos, las unidades de producción 
 pagadas. No se carga solo: se abre cuando hace falta, y evita recorrer 400 módulos y 200 scripts
 para encontrar dónde vive algo. Si algo suyo quedó viejo, se corrige ahí mismo.
 
+### 0. El límite semanal de Claude es un recurso escaso
+
+Se optimizan **cuatro cosas a la vez: calidad, velocidad, tokens y continuidad semanal.** El default
+es **mínimo contexto + mínimo razonamiento + mínimas llamadas + test mínimo suficiente** para obtener
+evidencia suficiente; se escala sólo cuando la evidencia muestra que hace falta, nunca por las dudas.
+
+- **Opus con effort alto no es el modo universal.** Se reserva para arquitectura difícil, bugs
+  realmente complejos, decisiones ambiguas y la auditoría final de algo riesgoso. Git, búsqueda,
+  lectura, ediciones simples, tests, lint, typecheck, formatting, scripts, SQL determinístico,
+  mantenimiento y documentación rutinaria van con el modelo y el esfuerzo más baratos que resuelvan
+  bien la tarea. Razonamiento proporcional a la dificultad: mecánico → bajo, programación normal →
+  medio, alto sólo con evidencia de que hace falta.
+- **Antes de una operación cara, preguntarse si de verdad hace falta**: más contexto, Opus, effort
+  alto, subagentes, suite completa, auditor. Si la respuesta es no, no se hace.
+- **Trabajos grandes en hitos chicos y cerrables**, no en campañas: una capacidad → implementar →
+  test dirigido → cerrar → la siguiente. Las campañas grandes sólo si el dueño las pide.
+- **Si el trabajo se está repitiendo mecánicamente, se deja de hacer a mano**: se convierte en
+  script, test, regla de lint, invariante, consulta SQL o health check. El límite semanal no se gasta
+  repitiendo trabajo determinístico.
+- **Bajo consumo no es menos control.** Se reemplaza generación por determinismo —tests,
+  invariantes, scripts, evidencia—; nunca se baja la certeza ni la seguridad para ahorrar tokens.
+- **Respuestas cortas mientras se desarrolla**: HECHO / RESULTADO / PENDIENTE. No se narra cada
+  archivo leído ni cada paso.
+
 ### 1. El contexto es el recurso escaso
 
 Medido sobre 60 sesiones de este repo: el 75% de los turnos corrió con más de 200k tokens y el 39%
 con más de 400k. Eso —no el tamaño de las tareas— es el gasto.
 
 - **`/clear` entre tareas no relacionadas.** La sesión de todo incluido degrada todo lo que sigue.
+  Tampoco se mantienen sesiones de varios días: cuando cambia el objetivo, se cierra una tarea
+  importante o el contexto ya quedó persistido, se actualiza el traspaso y se arranca sesión nueva
+  — sin esperar a la enésima compactación.
+- **Contexto just-in-time.** Nunca se lee el repo "para entender": primero se localiza (`rg`, git,
+  índices, `MAPA.md`, nombres conocidos) y recién ahí se abre el archivo, la función o el test
+  necesarios. No se cargan transcripts viejos ni se reconstruyen conversaciones: el estado vive en
+  código, git, tests, documentación y `.claude/estado/traspaso.md`.
 - **Antes de abrir un archivo: ¿es estrictamente necesario?** Si no, no se abre. Leer un archivo de
   1.500 líneas para cambiar una función cuesta 36k tokens y se queda en la ventana todo el resto de
   la sesión. Leer el tramo, no el archivo.
@@ -32,7 +63,9 @@ con más de 400k. Eso —no el tamaño de las tareas— es el gasto.
   busca y qué cuenta como respuesta.
 - **Después de DOS correcciones fallidas sobre el mismo problema, parar.** El contexto ya está
   contaminado. `/clear` y reformular con lo aprendido.
-- **Antes de cerrar con trabajo a medio hacer: `/traspaso`.** La sesión siguiente lo recibe sola.
+- **Antes de cerrar con trabajo a medio hacer: `/traspaso`.** La sesión siguiente lo recibe sola. Se
+  mantiene **corto**: commit actual, estado, qué cerró, qué quedó abierto, decisiones pendientes y
+  riesgos. No es otro transcript.
 
 **Lo medido el 25/08/2026, cuando el consumo semanal llegó al 100%:**
 
@@ -97,6 +130,12 @@ Antes de dar algo por terminado lo revisa un subagente con contexto nuevo, que v
 criterios pero no el razonamiento que los produjo. Proceso completo en
 `docs/engineering/AUDITORIA_FINAL_MODULOS.md` y `docs/engineering/DEFINITION_OF_DONE.md`; las
 trampas ya pagadas, en `docs/engineering/LECCIONES_APRENDIDAS_ASISTENCIA.md`.
+
+El cierre lo sigue firmando un tercero — eso no se negocia. Lo que se evita es la **repetición**:
+auditar entero, corregir, volver a auditar entero. Primero tests dirigidos, invariantes y
+mutaciones que prueben que el control puede dar rojo; el auditor se vuelve a llamar cuando agrega
+evidencia que el test no puede dar, no como trámite. Y no se lanzan varios auditores en paralelo
+por rutina.
 
 Advertencia: un revisor al que se le pide encontrar brechas siempre encuentra alguna. Se corrige lo
 que afecta corrección o requisitos declarados. Lo que se descarta, se descarta **por escrito** — no
