@@ -43,7 +43,7 @@ export const esNativoGoogle = (mime) => String(mime ?? '').startsWith('applicati
 
 const escapar = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 
-export function crearLectura({ google, indice = null }) {
+export function crearLectura({ google, indice = null, db = null }) {
   if (!google) throw argInvalido('lectura de Drive: falta el cliente Google')
 
   /** La referencia completa de un archivo por su ID. Incluye `trashed`: no lo esconde. */
@@ -146,7 +146,36 @@ export function crearLectura({ google, indice = null }) {
       'La búsqueda por índice necesita el índice de Drive (Postgres) y esta capacidad se armó sin él.')
     if (!texto) throw argInvalido('falta el texto a buscar')
     const { buscar } = await import('../drive-busqueda/buscar.mjs')
-    return buscar({ indice, texto, tipo, limite, usuario })
+    const r = await buscar({ indice, texto, tipo, limite, usuario })
+    return conHomonimos(r)
+  }
+
+  /**
+   * «CONFIANZA ALTA» NO SIGNIFICABA «NO HAY AMBIGÜEDAD», Y ALGUIEN IBA A CREERLE.
+   *
+   * `resolver()` devuelve `alta` cuando queda UN candidato después de filtrar, o cuando uno domina
+   * el puntaje. Eso no es lo mismo que ser único: medido contra el índice real, «Recibo 2026-05
+   * Q2.pdf» colapsaba a una sola opción con `alternativas: []` y confianza `alta` — y hay
+   * VEINTIDÓS archivos con ese nombre exacto, uno por empleado. El OS abría el recibo de sueldo de
+   * una persona concreta y llamaba a eso certeza.
+   *
+   * Acá se le pregunta al índice cuántas filas comparten el nombre EXACTO del ganador. Si hay más
+   * de una, la confianza baja a `media`: hay un favorito, pero quien decida tiene que elegir. La
+   * degradación va acá y no en `drive-busqueda/`, que es compartido con el chat: el que no puede
+   * adivinar es el que ABRE el archivo.
+   */
+  async function conHomonimos(r) {
+    if (!db || !r?.ganador?.name) return { ...r, homonimos: null }
+    let homonimos = null
+    try {
+      const { rows } = await db.query(
+        'select count(*)::int n from public.drive_index where name = $1', [r.ganador.name])
+      homonimos = rows?.[0]?.n ?? null
+    } catch { return { ...r, homonimos: null } }   // sin índice legible no se INVENTA certeza ni duda
+    if (homonimos !== null && homonimos > 1 && r.confianza === 'alta') {
+      return { ...r, homonimos, confianza: 'media', porQue: `hay ${homonimos} archivos con el nombre exacto «${r.ganador.name}»` }
+    }
+    return { ...r, homonimos }
   }
 
   /** El historial de versiones, de la más vieja a la más nueva. */

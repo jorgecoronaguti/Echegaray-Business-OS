@@ -218,6 +218,10 @@ export function driveReadTools(google, opciones = {}) {
       },
       run: caraFina(async (input) => {
         let fileId = input?.file_id
+        // De dónde salió el archivo que se va a abrir. Viaja en la respuesta: quien la recibe tiene
+        // que poder saber que se eligió entre varios, y con qué certeza. Antes la tool devolvía
+        // sólo el destino, así que era imposible enterarse de que se había elegido entre 22.
+        let resuelto = { fuente: input?.file_id ? 'file_id' : null, confianza: null, alternativas: null, homonimos: null }
         if (!fileId && input?.query) {
           // EL ÍNDICE PRIMERO, LA API DESPUÉS.
           //
@@ -230,21 +234,40 @@ export function driveReadTools(google, opciones = {}) {
           // plausible, y una tool que ABRE un archivo no puede jugar a adivinar: se cae a la
           // búsqueda literal, que es exactamente lo que hacía antes. Sin índice (sin `db`), este
           // bloque no corre y el comportamiento es el de siempre.
+          //
+          // Y «alta» NO alcanza sola: se exige además que NO haya alternativas y que ningún otro
+          // archivo del índice se llame exactamente igual. Medido contra el índice real, «Recibo
+          // 2026-05 Q2.pdf» daba `alta` con cero alternativas y hay 22 archivos con ese nombre
+          // exacto —uno por empleado—: el OS abría el recibo de sueldo de una persona concreta y
+          // lo llamaba certeza. Un control que no puede decir «no sé» no es un control.
           const delIndice = await drive().buscarEnIndice(input.query).catch(() => null)
-          if (delIndice?.confianza === 'alta' && delIndice.ganador?.drive_file_id) {
+          const unico = delIndice?.confianza === 'alta'
+            && (delIndice.alternativas?.length ?? 0) === 0
+            && (delIndice.homonimos === null || delIndice.homonimos <= 1)
+          if (unico && delIndice.ganador?.drive_file_id) {
             fileId = delIndice.ganador.drive_file_id
+            resuelto = { fuente: 'indice', confianza: delIndice.confianza, alternativas: 0, homonimos: delIndice.homonimos }
           }
           if (!fileId) {
             // Buscar como carpeta Y como archivo; priorizar la carpeta si existe con ese nombre.
             const carpetas = await drive().buscarCarpetas(input.query).catch(() => [])
             const archivos = carpetas.length ? [] : await drive().buscarPorNombre(input.query)
-            fileId = carpetas[0]?.file_id || archivos[0]?.file_id
+            const halladas = carpetas.length ? carpetas : archivos
+            fileId = halladas[0]?.file_id
+            resuelto = {
+              fuente: 'api', confianza: halladas.length === 1 ? 'alta' : 'baja',
+              alternativas: Math.max(0, halladas.length - 1),
+              homonimos: delIndice?.homonimos ?? null,
+            }
           }
           if (!fileId) return { error: `no encontré ningún archivo ni carpeta llamado "${input.query}"` }
         }
         if (!fileId) return { error: 'falta query o file_id' }
         const ref = await drive().referencia(fileId)
-        return { ok: true, name: ref.name, tipo: ref.tipo, trashed: ref.trashed, navigate: { url: ref.web_view_link, name: ref.name, file_id: ref.file_id } }
+        return {
+          ok: true, name: ref.name, tipo: ref.tipo, trashed: ref.trashed, resuelto,
+          navigate: { url: ref.web_view_link, name: ref.name, file_id: ref.file_id },
+        }
       }),
     },
   }

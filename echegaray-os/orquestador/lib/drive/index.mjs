@@ -85,7 +85,7 @@ export function crearCapacidadDrive({
   // determinístico —el único que entiende "vision/traccion"— nunca se alcanzaba desde ahí.
   const indiceEfectivo = indice ?? (db ? indiceCompartido(db) : null)
 
-  const lectura = crearLectura({ google, indice: indiceEfectivo })
+  const lectura = crearLectura({ google, indice: indiceEfectivo, db })
   const escritura = crearEscritura({ google, lectura, auditor })
 
   /**

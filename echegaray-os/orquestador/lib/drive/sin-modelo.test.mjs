@@ -75,12 +75,37 @@ test('1 · el árbol de imports de la capacidad no toca ningún modelo', () => {
   assert.ok(modulos.size >= 10, `el rastreador recorrió ${modulos.size} módulos: la prueba sería vacía`)
 })
 
+/**
+ * Saca los comentarios de línea SIN comerse las URL.
+ *
+ * La versión anterior era `replace(/\/\/.*$/gm, '')` y trataba el `//` de `https://` como el
+ * arranque de un comentario: de `fetch('https://api.anthropic.com/v1/messages', {'x-api-key':k})`
+ * dejaba `const r = await fetch('https:` — es decir, BORRABA EXACTAMENTE EL DOMINIO Y EL HEADER QUE
+ * BUSCABA. La guardia daba verde con una llamada a Anthropic escrita en el archivo.
+ *
+ * Un `//` sólo abre comentario si no viene pegado a los dos puntos de un esquema.
+ */
+export function sinComentarios(src) {
+  return String(src).replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
+const HUELLA_DE_MODELO = /api\.anthropic\.com|ANTHROPIC_API_KEY|x-api-key|api\.openai\.com/
+
 test('1b · y tampoco hay un fetch a la API armado a mano', () => {
+  // LA GUARDIA DE LA GUARDIA, primero: si el limpiador se come la URL, el resto del test es
+  // decorativo y nadie se entera. Se prueba con la línea exacta que tiene que poder ver.
+  const espia = `  const r = await fetch('https://api.anthropic.com/v1/messages', { headers: { 'x-api-key': k } })`
+  assert.match(sinComentarios(espia), /api\.anthropic\.com/,
+    'el limpiador de comentarios se está comiendo la URL que este test existe para encontrar')
+  assert.ok(HUELLA_DE_MODELO.test(sinComentarios(espia)), 'el patrón no reconoce una llamada armada a mano')
+  assert.equal(sinComentarios('const a = 1 // api.anthropic.com'), 'const a = 1 ',
+    'un comentario de verdad sí se saca: si no, cualquier nota al margen daría falso positivo')
+
   const ofensas = []
   for (const f of modulosAlcanzados()) {
     if (!f.includes(`${path.sep}drive${path.sep}`) && !f.includes(`${path.sep}tools${path.sep}drive`)) continue
-    const src = fs.readFileSync(f, 'utf8').replace(/\/\/.*$/gm, '')
-    if (/api\.anthropic\.com|ANTHROPIC_API_KEY|x-api-key|api\.openai\.com/.test(src)) ofensas.push(f)
+    if (f.endsWith('sin-modelo.test.mjs')) continue   // este archivo NOMBRA el patrón a propósito
+    if (HUELLA_DE_MODELO.test(sinComentarios(fs.readFileSync(f, 'utf8')))) ofensas.push(f)
   }
   assert.deepEqual(ofensas, [], `hay una llamada a la API armada acá:\n${ofensas.join('\n')}`)
 })

@@ -109,3 +109,63 @@ test('sin índice, la búsqueda semántica DICE que no puede: no devuelve vacío
   const l = crearLectura({ google: falso({}) })
   await assert.rejects(() => l.buscarEnIndice('flujo de fondos'), (e) => e.codigo === CODIGO.UNSUPPORTED_OPERATION)
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// «CONFIANZA ALTA» NO ERA «NO HAY AMBIGÜEDAD», Y UNA TOOL QUE ABRE ARCHIVOS LE CREÍA.
+//
+// `resolver()` de `drive-busqueda/` devuelve `alta` cuando queda UN candidato después de filtrar.
+// Medido contra las 3.695 filas reales del índice: «Recibo 2026-05 Q2.pdf» daba `alta` con cero
+// alternativas — y hay VEINTIDÓS archivos con ese nombre exacto, uno por empleado. `drive.navigate`
+// abría el recibo de sueldo de una persona concreta y lo llamaba certeza.
+//
+// La degradación va acá y no en `drive-busqueda/`, que lo comparte el chat: el que no puede
+// adivinar es el que ABRE el archivo. Un buscador puede proponer; abrir es decidir.
+
+/** Índice de mentira: devuelve siempre el mismo ganador con confianza alta y sin alternativas. */
+function indiceQueSiempreDiceAlta(nombre) {
+  const fila = {
+    drive_file_id: 'F1', name: nombre, nombre_norm: nombre.toLowerCase(),
+    path: `/x/${nombre}`, path_norm: `/x/${nombre}`.toLowerCase(),
+    tokens: nombre.toLowerCase(), mime_type: 'application/pdf', is_folder: false, tipo: 'pdf',
+  }
+  return {
+    async filasVigentes() { return [fila] },
+    aceptaciones() { return new Map() },
+    fuentes() { return new Map() },
+    estados() { return new Map() },
+    alias() { return null },
+  }
+}
+
+test('un nombre que se repite en el índice DEJA de ser confianza alta', async () => {
+  const db = { async query() { return { rows: [{ n: 22 }] } } }
+  const l = crearLectura({ google: falso({}), indice: indiceQueSiempreDiceAlta('Recibo 2026-05 Q2.pdf'), db })
+  const r = await l.buscarEnIndice('Recibo 2026-05 Q2.pdf')
+  assert.equal(r.homonimos, 22)
+  assert.notEqual(r.confianza, 'alta', 'con 22 homónimos siguió diciendo que estaba seguro')
+  assert.match(r.porQue ?? '', /22 archivos con el nombre exacto/)
+})
+
+test('un nombre único conserva su confianza: no se rompe el caso bueno', async () => {
+  const db = { async query() { return { rows: [{ n: 1 }] } } }
+  const l = crearLectura({ google: falso({}), indice: indiceQueSiempreDiceAlta('Flujo de Caja 2026.xlsx'), db })
+  const r = await l.buscarEnIndice('Flujo de Caja 2026.xlsx')
+  assert.equal(r.homonimos, 1)
+  assert.equal(r.confianza, 'alta')
+})
+
+test('sin base no se INVENTA ni certeza ni duda: homonimos queda en null', async () => {
+  // Y `drive.navigate` trata `null` como "no pude mirar", no como "es único": si el índice no se
+  // puede consultar, la respuesta es no saber. Un control que no pudo mirar no dice «no está».
+  const l = crearLectura({ google: falso({}), indice: indiceQueSiempreDiceAlta('X.pdf'), db: null })
+  const r = await l.buscarEnIndice('X.pdf')
+  assert.equal(r.homonimos, null)
+  assert.equal(r.confianza, 'alta')
+})
+
+test('si el índice no se deja consultar, tampoco se inventa: se degrada a no saber', async () => {
+  const db = { async query() { throw new Error('la base no contesta') } }
+  const l = crearLectura({ google: falso({}), indice: indiceQueSiempreDiceAlta('X.pdf'), db })
+  const r = await l.buscarEnIndice('X.pdf')
+  assert.equal(r.homonimos, null, 'un error de base no puede leerse como "es único"')
+})
