@@ -90,6 +90,16 @@ export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/tasks',
 ]
 
+/**
+ * Los campos que `getMeta` trae SIEMPRE.
+ *
+ * Está exportada para que un test pueda exigir que un campo del que depende un control siga
+ * pidiéndose. Un control que pregunta por un campo que la lectura no trae contesta `undefined`
+ * para siempre, no falla nunca, y nadie se entera: es la forma más barata de tener un control
+ * que no puede decir que no.
+ */
+export const METADATA_MINIMA = ['id', 'name', 'mimeType', 'size', 'webViewLink', 'trashed', 'parents']
+
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
 // sin depender del cwd. La integración real de Google (2026-07-09) ya dejó la key
 // del service account acá; la REUSAMOS (no creamos una nueva).
@@ -1001,15 +1011,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       } while (pageToken && out.length < tope)
       return out
     },
-    /** Metadata de un archivo. Por defecto la proyección corta e histórica
-     *  (id, name, mimeType, size, link para abrirlo).
+    /** Metadata de un archivo. Por defecto `METADATA_MINIMA`: id, name, mimeType, size, link,
+     *  DÓNDE está (`parents`) y si está en la papelera (`trashed`).
      *
-     *  `campos` (31/08) existe porque esa proyección NO alcanza para identificar un archivo:
-     *  sin `parents` no se puede verificar un move, sin `trashed` una carpeta en la papelera se
-     *  lee vacía y sin error, y sin `md5Checksum`/`version` no hay con qué decir que el
-     *  contenido cambió. La capacidad de Drive (`lib/drive/`) pide el juego completo; el default
-     *  se deja corto a propósito para no cambiarles la respuesta a los llamadores viejos. */
-    async getMeta(fileId, { campos = 'id,name,mimeType,size,webViewLink' } = {}) {
+     *  Ese default lo puso main (82fb2bba) para destrabar un control que estaba MUDO:
+     *  `uocra-ddjj.mjs::porQueNoSirve` pregunta `meta.trashed` para no escribir una réplica vacía
+     *  del Fondo de Cese, y la respuesta era `undefined` siempre porque `getMeta` no pedía el
+     *  campo. Ese default no se toca.
+     *
+     *  `campos` se agrega encima: la capacidad de Drive (`lib/drive/`) necesita además
+     *  `md5Checksum`, `version`, `createTime` y `properties` para poder decir que un archivo
+     *  cambió y para llevar su clave de idempotencia. Pedirlos SIEMPRE le cambiaría la respuesta
+     *  a los ~180 llamadores viejos por una necesidad de uno solo, así que se piden a demanda. */
+    async getMeta(fileId, { campos = METADATA_MINIMA.join(',') } = {}) {
       return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(campos)}&supportsAllDrives=true`)
     },
     /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no

@@ -7,7 +7,7 @@
 // "no existe". Y getMeta tiene que poder traer parents/trashed: sin eso no se verifica un move.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeGoogleClient } from './google.mjs'
+import { makeGoogleClient, METADATA_MINIMA } from './google.mjs'
 
 /** Drive de mentira: tres páginas de 1.000, 1.000 y 7. */
 function fetchDeTresPaginas(urls) {
@@ -46,7 +46,13 @@ test('getMeta puede traer parents y trashed, que es con lo que se verifica una o
     fetchImpl: async (url) => { urls.push(url); const b = { id: 'X', name: 'n', parents: ['P'], trashed: false }; return { ok: true, status: 200, async json() { return b }, async text() { return '{}' } } },
   })
   const corta = await g.getMeta('X')
-  assert.ok(decodeURIComponent(urls[0]).includes('fields=id,name,mimeType,size,webViewLink'), 'el default cambió: se le rompe la respuesta a los llamadores viejos')
+  const porDefecto = decodeURIComponent(urls[0])
+  // El default lo fija METADATA_MINIMA (main 82fb2bba): incluye `trashed`, del que depende
+  // `uocra-ddjj.mjs::porQueNoSirve` para no escribir una réplica vacía del Fondo de Cese.
+  for (const c of METADATA_MINIMA) assert.ok(porDefecto.includes(c), `el default perdió ${c}`)
+  // Y NO incluye los extras que sólo necesita la capacidad: pedirlos siempre le cambiaría la
+  // respuesta a ~180 llamadores por la necesidad de uno.
+  assert.ok(!porDefecto.includes('md5Checksum'), 'el default se llenó de campos que nadie pidió')
   const larga = await g.getMeta('X', { campos: 'id,name,parents,trashed,md5Checksum' })
   assert.ok(decodeURIComponent(urls[1]).includes('parents'), 'no pidió parents')
   assert.ok(decodeURIComponent(urls[1]).includes('trashed'), 'no pidió trashed')
