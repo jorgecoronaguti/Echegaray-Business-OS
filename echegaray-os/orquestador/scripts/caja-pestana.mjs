@@ -59,7 +59,7 @@ import { refsDelArchivo, rescatar } from '../lib/caja-refs.mjs'
 import {
   grilla, ANCHO, ANCHOS, FILAS_MAXIMAS, esTituloDeBloque, COLS_PLATA, COLS_FECHA, COLS_TARJETA,
 } from '../lib/caja-grilla.mjs'
-import { requestsDeGraficos, FILA_ANCLA } from '../lib/caja-graficos.mjs'
+import { requestsDeGraficos, FILA_ANCLA, FILA_ANCLA_MAX } from '../lib/caja-graficos.mjs'
 import { ubicarSeries } from '../lib/caja-anexo-series.mjs'
 import { MARCA_ALERTA, MARCA_OK } from '../lib/caja-avisos.mjs'
 
@@ -182,7 +182,9 @@ async function main() {
   // GARANTIZAR EL ALTO Y EL ANCHO ANTES DE TODO: si el batch apunta más allá del alto real, la API
   // ABORTA el write entero y CAJA queda con lo de la corrida anterior. Y los gráficos flotan pero su
   // ANCLA es una celda real: si la hoja no llega a esa fila, `addChart` devuelve 400 y el lote se cae.
-  const hasta = Math.max(g.filas.length + 20, FILA_ANCLA + 4, hoja.rows ?? 0)
+  // Hasta pasar la ÚLTIMA fila-ancla de los gráficos (cada bloque cuelga de su propia fila, no se
+  // apilan por offset): sin esa fila, `addChart` sobre una celda inexistente devuelve 400.
+  const hasta = Math.max(g.filas.length + 20, FILA_ANCLA_MAX + 1, hoja.rows ?? 0)
   const anchoHoja = Math.max(ANCHO, hoja.cols ?? 0)
   if ((hoja.rows ?? 0) < hasta || (hoja.cols ?? 0) < anchoHoja) {
     await google.spreadsheetBatchUpdate(ID, [{

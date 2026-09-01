@@ -65,6 +65,20 @@ export const COL_ANCLA = 0
 /** El alto y el ancho de cada uno. Dos por fila: los cuatro entran en 1.120px, el ancho de la grilla. */
 const ANCHO_PX = 552
 const ALTO_PX = 300
+/**
+ * FILAS DE GRILLA QUE OCUPA UN BLOQUE VERTICAL. Cada bloque cuelga de su PROPIA celda ancla (no se
+ * apila por offset — ver `base`). Una fila vacía de la grilla mide ~21px; un gráfico de 300px entra en
+ * ~15 filas. Con tres bloques (necesidad, efectivo/banco, y la fila de los dos de media anchura) las
+ * anclas caen en rowIndex 22, 37 y 52 — y la pestaña CAJA tiene 53 filas, así que la última EXISTE sin
+ * tener que agrandar la grilla. Los gráficos flotan y se extienden más abajo del borde, que está bien.
+ */
+const FILAS_POR_BLOQUE = 15
+/**
+ * LA ÚLTIMA FILA-ANCLA que puede usar el layout: tres bloques verticales (necesidad, efectivo/banco,
+ * y la fila de los dos de media anchura). El generador tiene que garantizar que la hoja LLEGUE a esta
+ * fila, o `addChart` sobre una celda inexistente devuelve 400 y se cae el lote entero.
+ */
+export const FILA_ANCLA_MAX = FILA_ANCLA + 2 * FILAS_POR_BLOQUE
 
 /** El prefijo que marca un gráfico como PROPIO. Se conserva para poder reconocerlos en el archivo. */
 export const MARCA = '⟡ '
@@ -121,8 +135,14 @@ function base(titulo, subtitulo, basicChart, sheetId, posicion) {
         },
         position: {
           overlayPosition: {
-            anchorCell: { sheetId, rowIndex: FILA_ANCLA, columnIndex: COL_ANCLA },
-            offsetXPixels: posicion.x, offsetYPixels: posicion.y,
+            // CADA GRÁFICO A SU PROPIA FILA-ANCLA, NO APILADOS POR OFFSET (01/09/2026). Cuatro gráficos
+            // colgados de la MISMA celda y separados sólo por `offsetYPixels` rasterizan bien en el PDF
+            // de export, pero el editor VIVO de Google COLAPSA los que quedan uno debajo del otro a la
+            // misma columna: mostraba tres de los cuatro y el de «efectivo vs banco» no aparecía nunca.
+            // Los de media anchura sí se veían porque comparten fila pero difieren en X (van al lado).
+            // Por eso ahora el ancla es una fila REAL distinta por bloque y `offsetY` queda en 0.
+            anchorCell: { sheetId, rowIndex: posicion.filaAncla ?? FILA_ANCLA, columnIndex: COL_ANCLA },
+            offsetXPixels: posicion.x, offsetYPixels: posicion.y ?? 0,
             widthPixels: posicion.ancho ?? ANCHO_PX, heightPixels: ALTO_PX,
           },
         },
@@ -193,30 +213,43 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
 }
 
 /**
- * DÓNDE VA A ESTAR LA PLATA: dos curvas limpias —efectivo (verde) y banco (celeste)— día por día.
+ * DÓNDE VA A ESTAR LA PLATA + QUÉ SALE CADA DÍA. COMBO: los egresos del día apilados por rubro
+ * (barras, eje izquierdo) y el saldo proyectado partido en efectivo (verde) y banco (celeste)
+ * (líneas, eje derecho).
  *
- * Sale del MISMO bloque de la necesidad diaria (columnas «Saldo efectivo» / «Saldo banco»), pero en su
- * PROPIO gráfico. Apiladas en el de «¿alcanza la caja?» eran dos líneas más entre seis barras y cuatro
- * curvas: el dueño lo vio y no se entendía nada. Solas, con una sola escala, se leen de un vistazo:
- * cuánto va a quedar en la mano y cuánto en el banco a lo largo del mes.
+ * Sale del MISMO bloque de la necesidad diaria. La versión anterior mostraba SÓLO las dos curvas de
+ * saldo y el dueño lo rechazó: *"no me sirve si no veo los egresos también"*. Los egresos van acá con
+ * la misma apertura por rubro que en «¿alcanza la caja?» —para poder cruzar «qué sale» con «dónde
+ * queda»— pero SIN las curvas de saldo cobrando/sin cobrar de aquel: son sólo dos líneas sobre las
+ * barras, no cuatro, así que se lee sin la maraña que el dueño ya había frenado.
+ *
+ * DOS EJES A PROPÓSITO: lo que sale un día se mide en millones sueltos; el saldo, en decenas de
+ * millones. En el mismo eje las barras quedaban aplastadas contra el piso.
  */
 function efectivoVsBanco({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
   const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
+  // El mismo color por rubro que la necesidad diaria: un rubro es del mismo color en los dos gráficos.
+  const COLORES = { ejecutado: GRIS_CLARO, cheques: GRIS, proveedores: INK, sueldos: ACENTO, cargas: OCRE, impuestos: ROJO }
   return base(titulo, subtitulo, {
-    chartType: 'LINE',
+    chartType: 'COMBO',
+    stackedType: 'STACKED',
     legendPosition: 'BOTTOM_LEGEND',
     // El encabezado adentro del rango es lo que hace que la leyenda diga «Saldo efectivo»/«Saldo banco».
     headerCount: 1,
     domains: [{ domain: fuente(col(COL_NECESIDAD.dia)) }],
     series: [
-      // Las dos en el MISMO eje: son la misma magnitud (plata), y su suma es el saldo del plan. En ejes
-      // distintos parecerían comparables cuando una es parte de la otra.
-      { series: fuente(col(COL_NECESIDAD.saldoEfectivo)), targetAxis: 'LEFT_AXIS', color: VERDE, lineStyle: { width: 3 } },
-      { series: fuente(col(COL_NECESIDAD.saldoBanco)), targetAxis: 'LEFT_AXIS', color: CELESTE, lineStyle: { width: 3 } },
+      // Los egresos del día, apilados por rubro (eje izquierdo): lo que va SALIENDO y mueve los saldos.
+      ...COL_NECESIDAD.salidas.map((c, i) => ({
+        series: fuente(col(c)), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: COLORES[SALIDAS[i].clave] ?? GRIS,
+      })),
+      // Dónde va a quedar la plata (eje derecho): efectivo verde, banco celeste. Su suma es el saldo del plan.
+      { series: fuente(col(COL_NECESIDAD.saldoEfectivo)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: VERDE, lineStyle: { width: 3 } },
+      { series: fuente(col(COL_NECESIDAD.saldoBanco)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: CELESTE, lineStyle: { width: 3 } },
     ],
     axis: [
       { position: 'BOTTOM_AXIS', format: texto(9) },
-      { position: 'LEFT_AXIS', title: 'Saldo proyectado', format: texto(9) },
+      { position: 'LEFT_AXIS', title: 'Sale ese día, por rubro', format: texto(9) },
+      { position: 'RIGHT_AXIS', title: 'Saldo proyectado — efectivo / banco', format: texto(9) },
     ],
   }, sheetId, posicion)
 }
@@ -304,7 +337,7 @@ export function graficos(sheetId, anexo, series = {}) {
     // necesidad diaria (por eso su serie es la de `necesidad`), pero sólo las dos columnas del reparto.
     ['efectivoBanco', (r, posicion) => efectivoVsBanco({
       titulo: TITULO_EFECTIVO_BANCO,
-      subtitulo: 'El saldo del plan partido en dónde va a estar: verde lo que queda en la mano, celeste en el banco. Sumadas dan la curva llena del gráfico de arriba. El día que el efectivo cruza el cero, hay plata pero está en el banco, no en la mano.',
+      subtitulo: 'Barras (eje izq.): lo que SALE cada día, abierto por rubro. Líneas (eje der.): dónde va a quedar el saldo del plan — verde en la mano, celeste en el banco; sumadas dan la curva llena del gráfico de arriba. El día que el verde cruza el cero, hay plata pero está en el banco, no en efectivo.',
       sheetId, anexo, rango: r, posicion,
     })],
     ['equilibrio', (r, posicion) => cruce({
@@ -341,13 +374,15 @@ export function graficos(sheetId, anexo, series = {}) {
   let fila = 0
   vivos.forEach(([clave, hacer], i) => {
     const r = series[clave]
+    // La FILA-ANCLA es una celda real distinta por bloque vertical (ver `base`): el editor vivo de
+    // Google no apila full-width por offsetY, así que cada bloque cuelga de su propia fila.
     if (esFull(clave)) {
-      requests.push(hacer(r, { x: 0, y: fila * (ALTO_PX + 16), ancho: ANCHO_PX * 2 + 16 }))
+      requests.push(hacer(r, { x: 0, filaAncla: FILA_ANCLA + fila * FILAS_POR_BLOQUE, ancho: ANCHO_PX * 2 + 16 }))
       fila++
       return
     }
     const k = vivos.slice(0, i).filter(([c]) => !esFull(c)).length
-    requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), y: (fila + Math.floor(k / 2)) * (ALTO_PX + 16) }))
+    requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), filaAncla: FILA_ANCLA + (fila + Math.floor(k / 2)) * FILAS_POR_BLOQUE }))
   })
   return { requests, faltan }
 }

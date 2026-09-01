@@ -58,12 +58,15 @@ test('LA NECESIDAD DIARIA VA PRIMERA, A TODO EL ANCHO, Y NO DESALINEA A LOS DEM�
   // El reparto efectivo/banco: también a todo el ancho, en su propia fila debajo de la necesidad.
   assert.equal(todos[1].offsetXPixels, 0, 'el reparto arranca pegado al margen')
   assert.ok(todos[1].widthPixels > todos[2].widthPixels, 'y también ocupa las dos columnas')
-  assert.ok(todos[1].offsetYPixels > todos[0].offsetYPixels, 'y va debajo de la necesidad')
-  // Los dos de abajo (equilibrio y proyección): misma altura, uno al lado del otro.
+  // La separación vertical la da la FILA-ANCLA (cada bloque en su celda), no el offset: apilar
+  // full-width por offsetY hacía que el editor vivo de Google colapsara el de abajo y no se viera.
+  const filaDe = (p) => p.anchorCell.rowIndex
+  assert.ok(filaDe(todos[1]) > filaDe(todos[0]), 'el reparto cuelga de una fila-ancla debajo de la necesidad')
+  // Los dos de abajo (equilibrio y proyección): misma fila-ancla, uno al lado del otro.
   assert.equal(todos[2].offsetXPixels, 0)
   assert.ok(todos[3].offsetXPixels > 0)
-  assert.equal(todos[2].offsetYPixels, todos[3].offsetYPixels)
-  assert.ok(todos[2].offsetYPixels > todos[1].offsetYPixels)
+  assert.equal(filaDe(todos[2]), filaDe(todos[3]), 'equilibrio y proyección comparten fila-ancla')
+  assert.ok(filaDe(todos[2]) > filaDe(todos[1]), 'y van debajo del reparto')
 
   // Y SIN la necesidad, los dos restantes suben: no queda una fila en blanco arriba.
   const sinNec = pos(graficos(7, ANEXO, { ...SERIES, necesidad: null }).requests)
@@ -146,6 +149,28 @@ test('LAS CURVAS LEEN FECHA CONTRA IMPORTE', () => {
   assert.equal(pr.legendPosition, 'NO_LEGEND')
 })
 
+test('EL DE EFECTIVO/BANCO MUESTRA LOS EGRESOS, NO SÓLO LOS DOS SALDOS', () => {
+  // El dueño rechazó la versión de dos líneas solas: *"no me sirve si no veo los egresos también"*.
+  // Ahora es un COMBO: los egresos del día apilados por rubro (barras, eje izq.) y el saldo partido en
+  // efectivo/banco (líneas, eje der.). El defecto que atrapa: volver a la versión de sólo dos líneas.
+  const efb = porTitulo(TITULO_EFECTIVO_BANCO).basicChart
+  assert.equal(efb.chartType, 'COMBO', 'sin COMBO no hay barras de egreso y líneas de saldo a la vez')
+  assert.equal(efb.stackedType, 'STACKED', 'los egresos del día se apilan')
+  const barras = efb.series.filter((x) => x.type === 'COLUMN')
+  const curvas = efb.series.filter((x) => x.type === 'LINE')
+  const columnaDe = (s) => s.series.sourceRange.sources[0].startColumnIndex + 1
+  assert.deepEqual(barras.map(columnaDe), [...COL_NECESIDAD.salidas], 'los egresos son las mismas columnas que la necesidad')
+  assert.deepEqual(curvas.map(columnaDe), [COL_NECESIDAD.saldoEfectivo, COL_NECESIDAD.saldoBanco], 'las dos líneas son efectivo y banco')
+  assert.ok(barras.every((x) => x.targetAxis === 'LEFT_AXIS'), 'los egresos, en la escala del día (izq.)')
+  assert.ok(curvas.every((x) => x.targetAxis === 'RIGHT_AXIS'), 'los saldos, en la escala acumulada (der.)')
+  assert.ok(efb.axis.some((a) => a.position === 'RIGHT_AXIS'), 'sin el eje derecho declarado no hay dos escalas')
+  // El verde es el efectivo y el celeste el banco: verde = más verde que rojo/azul; celeste = más azul.
+  const [ef, bco] = curvas.map((x) => x.color)
+  assert.ok(ef.green >= ef.red && ef.green >= ef.blue, 'el efectivo va en verde')
+  assert.ok(bco.blue > bco.red, 'el banco va en celeste')
+  assert.match(porTitulo(TITULO_EFECTIVO_BANCO).subtitle, /SALE cada día/, 'el subtítulo nombra los egresos')
+})
+
 test('EL DE NECESIDAD SEPARA LAS DOS MAGNITUDES EN DOS EJES', () => {
   // Lo que sale un día se mide en unidades de millón; el saldo acumulado, en decenas. En un solo eje
   // las barras quedan aplastadas contra el piso y el gráfico deja de mostrar QUÉ SALE, que es la
@@ -172,19 +197,21 @@ test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () =
   const { requests } = graficos(7, ANEXO, SERIES)
   for (const r of requests) {
     const p = r.addChart.chart.position.overlayPosition
-    assert.equal(p.anchorCell.rowIndex, FILA_ANCLA)
+    // Cada bloque cuelga de su PROPIA fila-ancla (no se apilan por offset): el primero en FILA_ANCLA.
+    assert.ok(p.anchorCell.rowIndex >= FILA_ANCLA, 'ningún bloque cuelga por encima del ancla base')
     assert.equal(p.anchorCell.columnIndex, COL_ANCLA)
   }
-  // La necesidad diaria arriba a todo el ancho; los otros cuatro, dos por fila debajo.
+  // La necesidad arriba a todo el ancho; el reparto en su fila debajo; equilibrio y proyección, dos
+  // por fila más abajo todavía. La separación vertical es por FILA-ANCLA, no por offsetY.
+  const fila = (r) => r.addChart.chart.position.overlayPosition.anchorCell.rowIndex
   const xs = requests.map((r) => r.addChart.chart.position.overlayPosition.offsetXPixels)
-  const ys = requests.map((r) => r.addChart.chart.position.overlayPosition.offsetYPixels)
   assert.equal(xs[0], 0)
-  assert.equal(ys[0], 0)
-  assert.ok(ys[1] > 0 && xs[1] === 0, 'el reparto efectivo/banco abre la segunda fila, a todo el ancho')
-  assert.ok(ys[2] > ys[1] && xs[2] === 0, 'el equilibrio abre la tercera fila')
-  assert.ok(xs[3] > 0 && ys[3] === ys[2], 'la proyección va a su lado')
+  assert.equal(fila(requests[0]), FILA_ANCLA, 'la necesidad ancla en la fila base')
+  assert.ok(fila(requests[1]) > fila(requests[0]) && xs[1] === 0, 'el reparto efectivo/banco abre la segunda fila, a todo el ancho')
+  assert.ok(fila(requests[2]) > fila(requests[1]) && xs[2] === 0, 'el equilibrio abre la tercera fila')
+  assert.ok(xs[3] > 0 && fila(requests[3]) === fila(requests[2]), 'la proyección va a su lado, misma fila')
   const src = readFileSync(new URL('../scripts/caja-pestana.mjs', import.meta.url), 'utf8')
-  assert.match(src, /FILA_ANCLA \+ 4/, 'el generador tiene que extender la hoja hasta pasado el ancla')
+  assert.match(src, /FILA_ANCLA_MAX \+ 1/, 'el generador tiene que extender la hoja hasta pasada la última fila-ancla')
   assert.match(src, /gridProperties\.rowCount/, 'y pedirle a la API que cambie el alto, no suponerlo')
 })
 
