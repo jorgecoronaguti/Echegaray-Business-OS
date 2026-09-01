@@ -141,6 +141,8 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
   const mapa = new Map()
   const porArchivo = new Map()
   const fallaron = []
+  /** Las que escriben afuera y todavía no tienen la firma del dueño. Se declaran, no se ocultan. */
+  const sinFirma = []
   const fabricas = google ? [...FABRICAS_0API, ...FABRICAS_GOOGLE] : FABRICAS_0API
   for (const [ruta, nombre, forma] of fabricas) {
     try {
@@ -151,6 +153,18 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
       // recién al correrse. Un registro que miente en silencio es peor que una fábrica que no carga.
       const arg = forma === 'objeto' ? { google } : google
       for (const [clave, tool] of Object.entries(mod[nombre](arg))) {
+        // ═══ SIN FIRMA NO ENTRA AL REGISTRO (01/09/2026) ═══
+        //
+        // Registrar las fábricas que faltaban dejó alcanzables ~40 tools de ESCRITURA que el dueño
+        // todavía no firmó en `TOOLS_AUTORIZADAS_A_ESCRIBIR`. `puedeUsar` las habría frenado igual al
+        // correrlas, pero figurarían como disponibles: XSAS ofrecería escribir en el Sheet o mandar
+        // un mail que después no puede hacer. Una capacidad que se ofrece y no se puede ejecutar es
+        // peor que una que no aparece. No se pierden: quedan listadas en `sinFirma`, que es la cola
+        // exacta de lo que el dueño tiene que autorizar.
+        if (escribeAfuera(tool?.capability) && !autorizadaAEscribir(clave)) {
+          sinFirma.push(clave)
+          continue
+        }
         mapa.set(clave, tool)
         claves.push(clave)
       }
@@ -159,7 +173,7 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
       fallaron.push(`${ruta}: ${String(e?.message ?? e).slice(0, 80)}`)
     }
   }
-  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo, mapa), fallaron } }
+  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo, mapa), fallaron, sinFirma } }
   return _cache.valor
 }
 

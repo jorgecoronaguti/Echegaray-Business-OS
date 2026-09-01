@@ -64,11 +64,13 @@ test('EL DEFECTO QUE SE EVITA: resolver una intención obvia llamando primero al
 // ── EL REGISTRO COMPLETO (01/09/2026) ─────────────────────────────────────────────────────────
 
 test('EL DEFECTO: 33 fábricas de tools existían y la puerta no las conocía', async () => {
-  const { mapa, fallaron } = await toolsDelNucleo({ google: {}, refrescar: true })
+  const { mapa, fallaron, sinFirma } = await toolsDelNucleo({ google: {}, refrescar: true })
   assert.deepEqual(fallaron, [], 'una fábrica registrada que no importa deja la capacidad muda')
-  // Medido el 01/09/2026: 125 tools con cliente de Google. El piso protege contra el defecto que
-  // esto arregla —volver a dejar fábricas afuera—, no contra agregar tools nuevas.
-  assert.ok(mapa.size >= 120, `el registro cayó a ${mapa.size} tools`)
+  // Medido el 01/09/2026: 125 tools cargadas, 70 alcanzables y 55 esperando la firma del dueño para
+  // escribir afuera. El piso protege contra el defecto que esto arregla —volver a dejar fábricas
+  // afuera—, no contra agregar tools nuevas.
+  assert.ok(mapa.size >= 65, `el registro cayó a ${mapa.size} tools`)
+  assert.ok(sinFirma.length > 0, 'si nada espera firma, o se firmó todo o el filtro dejó de mirar')
   for (const clave of ['drive.list', 'drive.read', 'os.buscar_comprobante', 'gmail.search']) {
     assert.ok(mapa.has(clave), `${clave} existe en el OS y la puerta no la alcanza`)
   }
