@@ -73,6 +73,7 @@ export const TITULO_PROYECCION = `${MARCA}Proyección de la caja`
 export const TITULO_PAGOS = `${MARCA}Concentración de pagos`
 export const TITULO_COBRANZAS = `${MARCA}Concentración de cobranzas`
 export const TITULO_NECESIDAD = `${MARCA}¿Alcanza la caja? — qué sale cada día y qué saldo queda`
+export const TITULO_EFECTIVO_BANCO = `${MARCA}Dónde va a estar la plata — efectivo vs banco`
 
 // La misma paleta que la pestaña: tinta, gris apagado y UN acento.
 const INK = { red: 0.10, green: 0.13, blue: 0.20 }
@@ -180,12 +181,6 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
       // gráfico dejaba de mostrar lo que sale, que es la mitad de la pregunta.
       { series: fuente(col(COL_NECESIDAD.saldoCobrando)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
       { series: fuente(col(COL_NECESIDAD.saldoSinCobrar)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
-      // ═══ Y EL SALDO DEL PLAN PARTIDO EN DÓNDE VA A ESTAR LA PLATA (01/09/2026) ═══
-      //
-      // Dos curvas más en el eje derecho: cuánto queda en EFECTIVO (verde) y cuánto en BANCO (celeste).
-      // Apiladas dan la del plan (ACENTO): son su desglose, no otra medida. Ver `saldoEfectivoProyectado`.
-      { series: fuente(col(COL_NECESIDAD.saldoEfectivo)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: VERDE, lineStyle: { width: 2 } },
-      { series: fuente(col(COL_NECESIDAD.saldoBanco)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: CELESTE, lineStyle: { width: 2 } },
     ],
     axis: [
       { position: 'BOTTOM_AXIS', format: texto(9) },
@@ -193,6 +188,35 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
       // seis series en un gráfico de este ancho—, el eje sigue diciendo qué se está midiendo.
       { position: 'LEFT_AXIS', title: 'Sale ese día: lo ya pagado + lo que falta pagar', format: texto(9) },
       { position: 'RIGHT_AXIS', title: 'Saldo acumulado', format: texto(9) },
+    ],
+  }, sheetId, posicion)
+}
+
+/**
+ * DÓNDE VA A ESTAR LA PLATA: dos curvas limpias —efectivo (verde) y banco (celeste)— día por día.
+ *
+ * Sale del MISMO bloque de la necesidad diaria (columnas «Saldo efectivo» / «Saldo banco»), pero en su
+ * PROPIO gráfico. Apiladas en el de «¿alcanza la caja?» eran dos líneas más entre seis barras y cuatro
+ * curvas: el dueño lo vio y no se entendía nada. Solas, con una sola escala, se leen de un vistazo:
+ * cuánto va a quedar en la mano y cuánto en el banco a lo largo del mes.
+ */
+function efectivoVsBanco({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
+  const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
+  return base(titulo, subtitulo, {
+    chartType: 'LINE',
+    legendPosition: 'BOTTOM_LEGEND',
+    // El encabezado adentro del rango es lo que hace que la leyenda diga «Saldo efectivo»/«Saldo banco».
+    headerCount: 1,
+    domains: [{ domain: fuente(col(COL_NECESIDAD.dia)) }],
+    series: [
+      // Las dos en el MISMO eje: son la misma magnitud (plata), y su suma es el saldo del plan. En ejes
+      // distintos parecerían comparables cuando una es parte de la otra.
+      { series: fuente(col(COL_NECESIDAD.saldoEfectivo)), targetAxis: 'LEFT_AXIS', color: VERDE, lineStyle: { width: 3 } },
+      { series: fuente(col(COL_NECESIDAD.saldoBanco)), targetAxis: 'LEFT_AXIS', color: CELESTE, lineStyle: { width: 3 } },
+    ],
+    axis: [
+      { position: 'BOTTOM_AXIS', format: texto(9) },
+      { position: 'LEFT_AXIS', title: 'Saldo proyectado', format: texto(9) },
     ],
   }, sheetId, posicion)
 }
@@ -276,6 +300,13 @@ export function graficos(sheetId, anexo, series = {}) {
       subtitulo: 'Barras: lo que sale ese día. La gris clara es lo que YA SALIÓ (ya está descontado del saldo, no hay que conseguirlo); las otras cinco son lo que FALTA PAGAR, abierto por rubro. Curvas (eje derecho): el saldo que queda descontando sólo lo que falta pagar — la llena cobrando lo previsto, la punteada sin cobrar un peso. El día que cruzan el cero, no alcanza.',
       sheetId, anexo, rango: r, posicion,
     })],
+    // Su propio gráfico, a todo el ancho, justo debajo del de «¿alcanza?». Lee las mismas filas de la
+    // necesidad diaria (por eso su serie es la de `necesidad`), pero sólo las dos columnas del reparto.
+    ['efectivoBanco', (r, posicion) => efectivoVsBanco({
+      titulo: TITULO_EFECTIVO_BANCO,
+      subtitulo: 'El saldo del plan partido en dónde va a estar: verde lo que queda en la mano, celeste en el banco. Sumadas dan la curva llena del gráfico de arriba. El día que el efectivo cruza el cero, hay plata pero está en el banco, no en la mano.',
+      sheetId, anexo, rango: r, posicion,
+    })],
     ['equilibrio', (r, posicion) => cruce({
       titulo: TITULO_EQUILIBRIO,
       subtitulo: 'Donde el rojo supera al azul, el mes se financia con caja acumulada',
@@ -293,6 +324,10 @@ export function graficos(sheetId, anexo, series = {}) {
     // pagos y cobranzas"*. Las SERIES siguen en el anexo —el dato es suyo y no pidió borrarlo, igual
     // que con la historia de sesenta días—: se dejó de DIBUJAR, no se borró.
   ]
+  // El reparto efectivo/banco vive en las MISMAS filas que la necesidad diaria (columnas Q/R de ese
+  // bloque), así que su serie ES la de la necesidad. Si esa está, este también.
+  series = { ...series, efectivoBanco: series?.necesidad ?? null }
+  const esFull = (c) => c === 'necesidad' || c === 'efectivoBanco'
   const requests = []
   const faltan = []
   // ═══ LA GRILLA ES DE DOS COLUMNAS Y EL PRIMERO OCUPA LAS DOS ═══
@@ -305,14 +340,13 @@ export function graficos(sheetId, anexo, series = {}) {
   const vivos = cuadros.filter(([clave]) => { if (series?.[clave]) return true; faltan.push(clave); return false })
   let fila = 0
   vivos.forEach(([clave, hacer], i) => {
-    const ancho = clave === 'necesidad'
     const r = series[clave]
-    if (ancho) {
+    if (esFull(clave)) {
       requests.push(hacer(r, { x: 0, y: fila * (ALTO_PX + 16), ancho: ANCHO_PX * 2 + 16 }))
       fila++
       return
     }
-    const k = vivos.slice(0, i).filter(([c]) => c !== 'necesidad').length
+    const k = vivos.slice(0, i).filter(([c]) => !esFull(c)).length
     requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), y: (fila + Math.floor(k / 2)) * (ALTO_PX + 16) }))
   })
   return { requests, faltan }
