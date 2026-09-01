@@ -133,7 +133,11 @@ const google = makeGoogleClient({ config: cfg, scopes: WRITE_SCOPES })
 const basura = []
 
 // ── 5 · EL CIRCUITO ──────────────────────────────────────────────────────────────────────────
-const carpeta = await google.createFile({ name: `_ZZ motores ${SELLO}`, mimeType: 'application/vnd.google-apps.folder' })
+// La carpeta va marcada con la misma `appProperty` que usa el motor: es lo que después permite
+// PREGUNTARLE A DRIVE si quedó algo vivo. Preguntar por nombre no sirve — medido: la búsqueda por
+// nombre corre con el token del robot, que NO ve el Drive del dueño y devuelve `[]` tanto si el
+// archivo existe como si no. Un control que no puede mirar no dice «no está».
+const carpeta = await google.createFile({ name: `_ZZ motores ${SELLO}`, mimeType: 'application/vnd.google-apps.folder', appProperties: { os_clave: `prueba-${SELLO}` } })
 basura.push(carpeta.id)
 anotar('carpeta propia de trabajo', { ok: true }, { id: carpeta.id })
 
@@ -169,6 +173,9 @@ const estructura = morir(await leerDocumento(google, doc.id), 'leer la estructur
 anotar('leer la estructura del documento', estructura, { secciones: estructura.estructura.secciones.map((s) => s.id) })
 const pdfDoc = morir(await exportarDocumento(google, doc.id, { formato: 'pdf' }), 'exportar el documento')
 anotar('exportar el documento a PDF', pdfDoc, { bytes: pdfDoc.bytes })
+// El PDF exportado se deja en disco cuando se pide `--png`: es la única forma de MIRAR el
+// documento sin abrir Drive, y un documento que nadie miró no está listo.
+if (CARPETA_PNG) { mkdirSync(CARPETA_PNG, { recursive: true }); writeFileSync(path.join(CARPETA_PNG, 'documento.pdf'), pdfDoc.contenido) }
 
 // 5.5 · IDEMPOTENCIA: el mismo pedido, otra vez
 const otra = morir(await crearDesdePlantilla(google, { template_id: 'informe.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id }), 'reintento')
@@ -204,6 +211,14 @@ if (!CONSERVAR) {
   for (const id of [...new Set(basura)].reverse()) { try { await google.trashFile(id); limpiados++ } catch { /* queda anotado abajo */ } }
 }
 anotar('limpiar lo creado', { ok: CONSERVAR || limpiados === new Set(basura).size }, { archivos: basura.length, a_la_papelera: limpiados, conservado: CONSERVAR })
+
+// Y LA LIMPIEZA SE VERIFICA LEYENDO DRIVE, no confiando en que el borrado contestó bien.
+if (!CONSERVAR) {
+  const claves = [`prueba-${SELLO}`, doc.clave, pres.clave].filter(Boolean)
+  const vivos = []
+  for (const c of claves) vivos.push(...(await google.buscarPorPropiedad('os_clave', c)).map((f) => `${f.name} (${f.id})`))
+  anotar('verificar que no quedó nada vivo en Drive', { ok: vivos.length === 0, codigo: 'WRITE_NOT_PERSISTED', motivo: `quedaron ${vivos.length} archivo(s)` }, { claves_consultadas: claves.length, vivos })
+}
 
 // ── 7 · LO QUE PRUEBA QUE NO HUBO MODELO ─────────────────────────────────────────────────────
 informar({ carpeta: carpeta.id, documento: doc.id, presentacion: pres.id })
