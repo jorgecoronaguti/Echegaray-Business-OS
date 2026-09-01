@@ -84,8 +84,8 @@ export async function importarExtracto(args = {}, deps = {}) {
 
   // 5. FRESCURA — best effort: que falle el catálogo no puede anular una carga buena.
   try {
-    const { hasta } = await estadoCuenta({ query })
-    await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.banco, coberturaHasta: hasta ?? undefined })
+    const { cobertura } = await estadoCuenta({ query })
+    await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.banco, coberturaHasta: cobertura ?? undefined })
   } catch { /* declarado: la frescura es un aviso, no un paso del circuito */ }
 
   // 6. EL SHEET — réplica _BANCO_RAW y DEBITADO de cheques, con el freno levantado POR OPERACIÓN.
@@ -111,7 +111,7 @@ export async function importarExtracto(args = {}, deps = {}) {
   }
 
   const estado = await estadoCuenta({ query }).catch(() => null)
-  const out = { ok: true, ...base, sheet, base_total: estado?.total ?? null, base_hasta: estado?.hasta ?? null }
+  const out = { ok: true, ...base, sheet, base_total: estado?.total ?? null, base_hasta: estado?.cobertura ?? null }
   out.resumen_texto = resumen(out)
   return out
 }
