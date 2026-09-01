@@ -45,6 +45,24 @@ const FABRICAS_0API = Object.freeze([
   // Vencimientos de caja: Postgres puro, sin Workspace. Entra al núcleo 0-API por la misma razón
   // que el briefing entra al de Google: la capacidad existía y el gateway no la conocía.
   ['./tools/caja-vencido-tool.mjs', 'cajaVencidoTools'],
+  // ═══ LAS QUE EXISTÍAN Y LA PUERTA NO CONOCÍA (01/09/2026) ═══
+  //
+  // Medido: 48 fábricas de tools en `lib/tools/` y 15 registradas acá. Las otras 33 estaban escritas,
+  // probadas y en producción por otras caras —el bot, los scripts— y para XSAS no existían: un
+  // «buscá los comprobantes de X» o «qué certificamos» caía al modelo teniendo la tool al lado. No es
+  // capacidad nueva, es una desconexión. Lo que escribe afuera sigue cerrado por `puedeUsar` y por
+  // `TOOLS_AUTORIZADAS_A_ESCRIBIR`: estar en el registro no autoriza nada.
+  ['./tools/compras-tool.mjs', 'comprasTools'],
+  ['./tools/certificaciones-tool.mjs', 'certificacionesTools'],
+  ['./tools/adicionales-tool.mjs', 'adicionalesTools'],
+  ['./tools/obligaciones-tool.mjs', 'obligacionesTools'],
+  ['./tools/control-administrativo-tool.mjs', 'controlAdministrativoTools'],
+  ['./tools/no-conformidades-tool.mjs', 'noConformidadesTools'],
+  ['./tools/cotizaciones-historial-tool.mjs', 'cotizacionesHistorialTools'],
+  ['./tools/operating-review-tool.mjs', 'operatingReviewTools'],
+  ['./tools/rodados-tool.mjs', 'rodadosTools'],
+  ['./tools/cuit-tool.mjs', 'cuitTools'],
+  ['./tools/learn.mjs', 'learnTools'],
 ])
 
 /** Fábricas que reciben un cliente de Google. Sin cliente NO se cargan: una tool que va a fallar
@@ -73,6 +91,31 @@ const FABRICAS_GOOGLE = Object.freeze([
   // el número de columnas estructuradas, sin modelo— no estaba registrado acá. La capacidad
   // existía, el gateway no la conocía.
   ['./tools/briefing-caja-tool.mjs', 'briefingCajaTools'],
+  // ═══ DRIVE, WORKSPACE Y EL SHEET — el resto de la desconexión ═══
+  //
+  // `drive.list/read/navigate/obras` y `gmail.search` son LECTURA y ya estaban escritas. Sin ellas,
+  // «buscá el contrato de X» no tenía a dónde ir. Las de escritura entran al registro pero siguen
+  // necesitando la firma: `autorizadaAEscribir` las rechaza mientras no estén en la lista del dueño.
+  ['./tools/drive.mjs', 'driveReadTools'],
+  ['./tools/drive-write.mjs', 'driveWriteTools'],
+  ['./tools/workspace.mjs', 'workspaceTools', 'objeto'],
+  ['./tools/appsheet-pedidos.mjs', 'appsheetPedidosTools', 'objeto'],
+  ['./tools/jornales-tool.mjs', 'jornalesTools'],
+  ['./tools/cargas-sociales-tool.mjs', 'cargasSocialesTools'],
+  ['./tools/nomina-sync-tool.mjs', 'nominaSyncTools'],
+  ['./tools/egresos-tool.mjs', 'egresosTools'],
+  ['./tools/pyl-tool.mjs', 'pylTools'],
+  ['./tools/reclamo-cobranza-tool.mjs', 'reclamoCobranzaTools'],
+  ['./tools/alias-pendientes-tool.mjs', 'aliasPendientesTools'],
+  ['./tools/auditar-pestana-tool.mjs', 'auditarPestanaTools'],
+  ['./tools/deshacer-sheet-tool.mjs', 'deshacerSheetTools'],
+  ['./tools/gasto-sheet.mjs', 'gastoSheetTools'],
+  ['./tools/operaciones-sheet-tool.mjs', 'operacionesSheetTools'],
+  ['./tools/sheet-render.mjs', 'sheetRenderTools'],
+  ['./tools/sheets-format.mjs', 'sheetsFormatTools'],
+  ['./tools/sheet-dropdowns.mjs', 'sheetDropdownTools'],
+  ['./tools/docs-format.mjs', 'docsFormatTools'],
+  ['./tools/slides-pdf-tool.mjs', 'slidesPdfTools'],
 ])
 
 /** `./tools/x.mjs` → `orquestador/lib/tools/x.mjs`, que es como el catálogo nombra los módulos. */
@@ -99,11 +142,15 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
   const porArchivo = new Map()
   const fallaron = []
   const fabricas = google ? [...FABRICAS_0API, ...FABRICAS_GOOGLE] : FABRICAS_0API
-  for (const [ruta, nombre] of fabricas) {
+  for (const [ruta, nombre, forma] of fabricas) {
     try {
       const mod = await import(ruta)
       const claves = []
-      for (const [clave, tool] of Object.entries(mod[nombre](google))) {
+      // Dos fábricas reciben `{ google }` en vez del cliente pelado. Pasarles el cliente
+      // positional no falla: DESTRUCTURA `undefined` y devuelve tools sin Google, que fallarían
+      // recién al correrse. Un registro que miente en silencio es peor que una fábrica que no carga.
+      const arg = forma === 'objeto' ? { google } : google
+      for (const [clave, tool] of Object.entries(mod[nombre](arg))) {
         mapa.set(clave, tool)
         claves.push(clave)
       }

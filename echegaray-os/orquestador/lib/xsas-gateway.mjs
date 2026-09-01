@@ -54,6 +54,12 @@ const CAPACIDAD_POR_NIVEL = Object.freeze({
   [NIVEL.RAZONAMIENTO]: CAPACIDAD.COMPLEX,
 })
 
+/** «¿Qué podés hacer?», escrito como lo escribe cualquiera. Normalizado por `normalizarFrase`. */
+const PREGUNTAS_DE_CAPACIDADES = new Set([
+  'que podes hacer', 'que sabes hacer', 'que puedo pedirte', 'en que me podes ayudar',
+  'que capacidades tenes', 'ayuda', 'que podes hacer?', 'que sabes hacer?',
+])
+
 const SISTEMA = [
   'Sos XSAS, la inteligencia del Echegaray Business OS. Contestás en español rioplatense, directo y',
   'sin lenguaje corporativo. Nunca inventás un número: si no tenés el dato, decís exactamente qué',
@@ -314,6 +320,31 @@ async function despachar(pedido, deps, t0) {
   }
 
   const texto = textoDePedido(pedido)
+
+  // ── N0 · «¿QUÉ PODÉS HACER?» SE CONTESTA DEL REGISTRO, NO PREGUNTÁNDOLE A UN MODELO ───────
+  //
+  // Un modelo contestando esto describe lo que CREE que el OS sabe hacer, que es exactamente la
+  // respuesta que no sirve: dice de más y no filtra por permisos. Sale del registro real, filtrado
+  // por lo que ESTE actor puede correr, y no cuesta un token.
+  if (PREGUNTAS_DE_CAPACIDADES.has(normalizarFrase(texto))) {
+    const puede = [...mapa.entries()].filter(([clave, tool]) => puedeUsar(pedido.actor, tool, clave))
+    const porArea = new Map()
+    for (const [clave] of puede) {
+      const area = clave.includes('.') ? clave.split('.')[0] : 'otras'
+      porArea.set(area, [...(porArea.get(area) ?? []), clave])
+    }
+    const areas = [...porArea.entries()].sort((a, b) => b[1].length - a[1].length)
+    return respuestaOk(pedido, {
+      respuesta: [
+        `Tengo ${puede.length} capacidades disponibles para tu rol, de ${mapa.size} registradas:`,
+        ...areas.map(([area, claves]) => `· ${area} (${claves.length}): ${claves.sort().join(', ')}`),
+        'Escribime lo que necesitás en lenguaje normal — yo elijo cuál usar.',
+      ].join('\n'),
+      datos: { disponibles: puede.length, registradas: mapa.size, por_area: Object.fromEntries(areas) },
+      capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [], via: 'capacidades', confianza: 'alta', motivo: 'capacidades' },
+      ms: Date.now() - t0,
+    })
+  }
 
   // ── N0 · LA FRASE EXACTA QUE YA SABEMOS QUÉ SIGNIFICA ─────────────────────────────────────
   //
