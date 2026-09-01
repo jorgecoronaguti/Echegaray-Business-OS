@@ -30,3 +30,29 @@ test('«primer mes bajo mínima / negativo» sólo mira de hoy en adelante', () 
   assert.equal(balance(fBajo), 0, 'paréntesis balanceados en primer mes bajo mínima')
   assert.equal(balance(fNeg), 0, 'paréntesis balanceados en primer mes negativo')
 })
+
+test('«efectivo/banco proyectado» parten los flujos del mes por instrumento de _MOVIMIENTOS', () => {
+  const h = armarH()
+  bloqueLiquidez(h)
+  const ef = h.rows.find((r) => String(r[0]).includes('Saldo en efectivo proyectado'))
+  const bc = h.rows.find((r) => String(r[0]).includes('Dinero en banco proyectado'))
+  const ctrl = h.rows.find((r) => String(r[0]).includes('efectivo + banco = cierre'))
+  assert.ok(ef && bc && ctrl, 'existen las dos líneas y su control')
+  const fEf = ef[4] // columna E
+  const fBc = bc[4]
+  // salen de _MOVIMIENTOS, no del Cash Flow directo
+  assert.match(fEf, /_MOVIMIENTOS/, 'efectivo lee _MOVIMIENTOS')
+  assert.match(fBc, /_MOVIMIENTOS/, 'banco lee _MOVIMIENTOS')
+  // la regla del dueño: Jornales sin instrumento cae a efectivo
+  assert.match(fEf, /Jornales por Quincena/, 'la clasificación mira el origen Jornales')
+  // el instrumento efectivo tiene que aparecer en la clasificación
+  assert.match(fEf, /I\$2:\$I="efectivo"/, 'clasifica por instrumento efectivo')
+  // no se cuentan movimientos ya REALizados (están en el saldo de hoy)
+  assert.match(fEf, /<>"REAL"/, 'excluye los movimientos ya reales')
+  // paréntesis balanceados en las tres fórmulas
+  const balance = (f) => [...String(f)].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0)
+  assert.equal(balance(fEf), 0, 'paréntesis balanceados en efectivo proyectado')
+  assert.equal(balance(fBc), 0, 'paréntesis balanceados en banco proyectado')
+  assert.equal(balance(ctrl[4]), 0, 'paréntesis balanceados en el control (col E)')
+  assert.equal(balance(ctrl[6]), 0, 'paréntesis balanceados en el control (col G)')
+})
