@@ -281,6 +281,29 @@ test('la traza distingue el pedido que pagó modelo del que no — es toda la me
   assert.equal(fila.actor_rol, 'direccion')
 })
 
+test('EL CABLEADO: una escalación real deja escrito POR QUÉ hizo falta el razonador', async () => {
+  // El defecto medido: de las 10 llamadas al modelo del 27–28/08, nueve no decían por qué. Sin eso
+  // no se distingue «había que pensarlo» de «falta una tool», que es lo único que baja el número.
+  const p = normalizarPedido({ actor: ACTOR, canal: 'app', mensaje: 'no se entiende qué quiere' })
+  const elegir = () => ({ resolucion: 'ambiguo', skills: [], capacidades: [], candidatas: ['a', 'b'], confianza: null, motivo: 'dos débiles' })
+  const r = await atender({ ...p, actor: ACTOR, canal: 'app', mensaje: 'no se entiende qué quiere' },
+    { registro: registroDoble([]), catalogo: [], elegir, ia: iaEspia() })
+  const fila = filaDeTraza(p, r)
+  assert.equal(fila.llm, true)
+  assert.equal(fila.reasoner_required_reason, 'AMBIGUOUS_INTENT', 'el ruteo no reconoció nada: eso es lo que hay que anotar')
+
+  // Y con la skill EN el catálogo, con módulos y sin tool ejecutable, la razón es la otra: la
+  // capacidad existe en el papel y no hay código que la corra. Ése es el candidato a escribir.
+  const elegirConSkill = () => ({ resolucion: 'determinista', skills: ['costos-presupuestacion'], capacidades: [], candidatas: [], confianza: 'alta', motivo: 'una fuerte' })
+  const r2 = await atender({ actor: ACTOR, canal: 'app', mensaje: 'cómo cotizo esto' },
+    {
+      registro: registroDoble([]),
+      catalogo: [{ clave: 'costos-presupuestacion', modulos: ['orquestador/lib/costos.mjs'] }],
+      elegir: elegirConSkill, ia: iaEspia(),
+    })
+  assert.equal(filaDeTraza(p, r2).reasoner_required_reason, 'MISSING_RULE')
+})
+
 // ── EL REGISTRO REAL ──────────────────────────────────────────────────────────────────────────
 
 test('los atajos apuntan a tools que EXISTEN en el registro real (un atajo huérfano no rutea nada)', async () => {

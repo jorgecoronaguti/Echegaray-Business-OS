@@ -39,7 +39,7 @@ import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
-import { registrarTraza } from './xsas-traza.mjs'
+import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
   ordenarPorAfinidad,
@@ -208,7 +208,9 @@ async function resolverConTool({ pedido, clave, tool, nivel, via, skills = [], t
 
 /** N2/N3: el modelo. `ia.pedirTexto` es la ÚNICA puerta hacia un proveedor y ya trae reintentos,
  *  clasificación de error, fallback entre proveedores, costo y aviso de degradación. */
-async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0, degradacion = null }) {
+// `razon` es el REASONER REQUIRED REASON del pedido: por qué esto no lo pudo resolver una tool.
+// Va en `capacidades` para que la traza lo persista sin que el gateway tenga que conocer la tabla.
+async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0, degradacion = null, razon = null }) {
   const capacidad = CAPACIDAD_POR_NIVEL[nivel] ?? CAPACIDAD.SIMPLE
   const contexto = []
   if (Object.keys(pedido.entidad).length) contexto.push(`Contexto verificado: ${JSON.stringify(pedido.entidad)}.`)
@@ -224,7 +226,7 @@ async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0, degrad
     })
     return respuestaOk(pedido, {
       respuesta: r.texto,
-      capacidades: { nivel, skills, tools: [], via: 'modelo', confianza: 'media', motivo },
+      capacidades: { nivel, skills, tools: [], via: 'modelo', confianza: 'media', motivo, razon },
       degradacion,
       llm: {
         proveedor: r.proveedor, modelo: r.modelo, tokens: r.tokens, usd: r.usd,
@@ -244,7 +246,7 @@ async function resolverConModelo({ pedido, nivel, skills, motivo, ia, t0, degrad
         'Sigue funcionando sin modelo:',
         ...SIN_RAZONADOR.map((x) => `· ${x}`),
       ].join('\n'),
-      capacidades: { nivel, skills, tools: [], via: 'modelo', confianza: null, motivo },
+      capacidades: { nivel, skills, tools: [], via: 'modelo', confianza: null, motivo, razon },
       degradacion: `sin razonador (${kind})`,
       ms: Date.now() - t0,
     })
@@ -371,7 +373,7 @@ async function despachar(pedido, deps, t0) {
     return resolverConModelo({
       pedido, nivel: NIVEL.IA_LIVIANA, skills: eleccion.skills,
       motivo: `${eleccion.motivo}; sin tool ejecutable para esas skills`, ia: await puertaIa(deps), t0,
-      degradacion: sinMotorEsDegradacion(eleccion),
+      degradacion: sinMotorEsDegradacion(eleccion), razon: RAZON_RAZONADOR.MISSING_RULE,
     })
   }
 
@@ -393,6 +395,9 @@ async function despachar(pedido, deps, t0) {
   return resolverConModelo({
     pedido, nivel, skills: eleccion.skills, motivo: eleccion.motivo, ia: await puertaIa(deps), t0,
     degradacion: sinMotorEsDegradacion(eleccion),
+    // Sin skills el ruteo no supo QUÉ se pidió; con skills sabe el dominio y lo que falta es
+    // el razonamiento en palabras. Son dos problemas distintos y se arreglan distinto.
+    razon: eleccion.skills.length ? RAZON_RAZONADOR.UNSTRUCTURED_REASONING : RAZON_RAZONADOR.AMBIGUOUS_INTENT,
   })
 }
 

@@ -10,6 +10,55 @@
 //   2. NUNCA lanza. Que la telemetría falle no puede tumbar la operación que la produjo — es la
 //      misma regla que ya gobierna `registrarUso` en `lib/ia/cliente.mjs`.
 
+/**
+ * ═══ POR QUÉ HIZO FALTA EL RAZONADOR (01/09/2026) ═══
+ *
+ * Una llamada al modelo que no puede explicar por qué fue necesaria es candidata a desaparecer. El
+ * conjunto es CERRADO a propósito: `DEFAULT`, `FALLBACK` y `UNKNOWN` no son justificaciones, son la
+ * ausencia de una — cualquier valor que no esté acá se anota `SIN_JUSTIFICAR`, que es lo que la
+ * métrica busca para señalar el candidato.
+ */
+export const RAZON_RAZONADOR = Object.freeze({
+  /** El ruteo no reconoció ninguna skill: no se sabe qué se pidió. */
+  AMBIGUOUS_INTENT: 'AMBIGUOUS_INTENT',
+  /** Se sabe el dominio, pero la respuesta es un razonamiento en palabras, no un dato. */
+  UNSTRUCTURED_REASONING: 'UNSTRUCTURED_REASONING',
+  /** Dos fuentes o dos criterios se contradicen y hay que arbitrar. */
+  CONFLICT: 'CONFLICT',
+  /** La skill aplica y NO hay tool ni regla ejecutable que la resuelva. El candidato a código. */
+  MISSING_RULE: 'MISSING_RULE',
+  /** Problema que el OS no vio antes: no hay capacidad ni conocimiento que lo cubra. */
+  NOVEL_PROBLEM: 'NOVEL_PROBLEM',
+  /** Hay que ESCRIBIR algo (texto, propuesta, informe), no calcularlo. */
+  GENERATIVE_CONTENT: 'GENERATIVE_CONTENT',
+  /** No pudo explicarse. Es un hallazgo, no un estado válido. */
+  SIN_JUSTIFICAR: 'SIN_JUSTIFICAR',
+})
+
+const NO_ES_JUSTIFICACION = new Set(['DEFAULT', 'FALLBACK', 'UNKNOWN', 'DESCONOCIDO', ''])
+
+/**
+ * LA RAZÓN, DERIVADA DE LO QUE YA SE SABE. PURA.
+ *
+ * Devuelve `null` cuando no hubo escalación — la inmensa mayoría de los pedidos. Cuando el gateway
+ * declaró una razón se valida contra el conjunto cerrado; cuando no la declaró se deriva de la
+ * evidencia disponible, y si tampoco alcanza, `SIN_JUSTIFICAR`.
+ */
+export function motivoDeEscalacion(respuesta) {
+  const c = respuesta?.capacidades ?? {}
+  const escalo = c.via === 'modelo' || Boolean(respuesta?.llm?.modelo)
+  if (!escalo) return null
+  const declarada = typeof c.razon === 'string' ? c.razon.trim().toUpperCase() : ''
+  if (declarada && !NO_ES_JUSTIFICACION.has(declarada) && declarada in RAZON_RAZONADOR) return declarada
+  if (declarada) return RAZON_RAZONADOR.SIN_JUSTIFICAR
+  const skills = Array.isArray(c.skills) ? c.skills : []
+  if (!skills.length) return RAZON_RAZONADOR.AMBIGUOUS_INTENT
+  if (/sin tool ejecutable|ninguna capacidad determin/i.test(String(respuesta?.degradacion ?? c.motivo ?? ''))) {
+    return RAZON_RAZONADOR.MISSING_RULE
+  }
+  return RAZON_RAZONADOR.UNSTRUCTURED_REASONING
+}
+
 /** La fila, armada desde el pedido y la respuesta. PURA: se puede probar sin base. */
 export function filaDeTraza(pedido, respuesta, extra = {}) {
   const c = respuesta?.capacidades ?? {}
@@ -39,13 +88,14 @@ export function filaDeTraza(pedido, respuesta, extra = {}) {
     estado: respuesta?.estado ?? null,
     error_tipo: respuesta?.error?.tipo ?? null,
     degradacion: respuesta?.degradacion ?? null,
+    reasoner_required_reason: motivoDeEscalacion(respuesta),
   }
 }
 
 const COLUMNAS = Object.freeze([
   'request_id', 'correlation_id', 'canal', 'origen', 'actor_id', 'actor_rol', 'tipo', 'intencion',
   'nivel', 'skills', 'tools', 'agente', 'llm', 'proveedor', 'modelo', 'tokens_in', 'tokens_out',
-  'usd', 'fallback_de', 'ms', 'estado', 'error_tipo', 'degradacion',
+  'usd', 'fallback_de', 'ms', 'estado', 'error_tipo', 'degradacion', 'reasoner_required_reason',
 ])
 
 /**
