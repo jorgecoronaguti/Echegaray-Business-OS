@@ -344,13 +344,22 @@ async function recibosDelPeriodo(periodo) {
  * quincena publica un sueldo incompleto y eso tiene que verse.
  */
 async function recibosDelMesEntero(hoy) {
-  const mes = `${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
+  // ═══ EL MES ES EL DE LOS RECIBOS, NO EL DEL CALENDARIO (01/09/2026) ═══
+  //
+  // El 1° de septiembre este cuadro se vació solo: `hoy` decía 09/2026, no hay un solo recibo de
+  // septiembre, y el bloque entero pasó a «sin recibo del mes» — con la Q2 de agosto pagada AYER y
+  // el efectivo de agosto todavía pendiente. El mes que se está PAGANDO es el del último recibo
+  // cargado; el calendario sólo coincide con él la mayoría de los días, no todos.
+  const calendario = `${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
+  const { rows: [u] } = await query(
+    `select substring(max(periodo) from 4) mes from public.nomina_recibo_neto where periodo like 'Q%'`)
+  const mes = u?.mes ?? calendario
   const { rows } = await query(
     `select cuil, sum(neto)::numeric neto, count(*)::int quincenas,
             max(nombre_recibo) nombre_recibo, max(legajo) legajo
        from public.nomina_recibo_neto where periodo like $1 group by cuil`, [`%-${mes}`],
   )
-  return new Map(rows.map((r) => [r.cuil, { ...r, neto: Number(r.neto) }]))
+  return Object.assign(new Map(rows.map((r) => [r.cuil, { ...r, neto: Number(r.neto) }])), { mes })
 }
 
 /** Lo ya transferido a cuenta del sueldo, por CUIL y concepto. Llave: la referencia del banco. */
@@ -905,7 +914,7 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // incompleto presentado como completo es peor que un hueco visible.
   const deOficina = activos.filter((p) => p.sector === 'Oficina')
   if (deOficina.length) {
-    const mes = `${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
+    const mes = recibosDelMes.mes ?? `${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
     // Cuántas quincenas de ESTE mes tiene cargada cada persona. Se cuenta por CUIL sobre los recibos
     // que ya están en la base: es el único lugar donde el hecho existe.
     const quincenasDe = (cuil) => Number(recibosDelMes.get(cuil)?.quincenas ?? 0)
@@ -956,7 +965,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
         // COBRA · EL NETO ACORDADO, ENTERO. El dueño: «te había dicho que eran 1.800.000 cada uno».
         neto ?? SIN_DATO,
         o ? `=N('_J_OFICINA'!$X$${o.fila})` : 0,
-        `=SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")`,
+        // ═══ SIN EL GIRO DE HOY (01/09/2026) ═══ El giro del día vive en «POR BANCO»; acá va lo
+        // girado ANTES. La versión que sumaba todo repetía el mismo giro en las dos columnas y el
+        // «TOTAL A PAGAR» volvía a pedir plata que ya había salido — el defecto exacto que el dueño
+        // ya había hecho corregir en el cuadro de obreros el 31/08.
+        `=MAX(0;SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA")-SUMIFS(${R}$E$1:$E$400;${R}$C$1:$C$400;"${cuil}";${R}$F$1:$F$400;"QUINCENA";${R}$B$1:$B$400;"${diaDeHoyOfi}"))`,
         // ═══ LO QUE FALTA GIRAR, NO EL RECIBO ENTERO (31/08) ═══
         //
         // Por banco va lo que dice el recibo de la quincena, MENOS lo que ya se le giró. La versión
