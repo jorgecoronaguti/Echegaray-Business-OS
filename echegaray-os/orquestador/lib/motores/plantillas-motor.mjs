@@ -17,6 +17,7 @@ import { plantilla as buscarPlantilla } from './plantillas-catalogo.mjs'
 import { validarDocumento } from './documento-contrato.mjs'
 import { crearDocumento } from './documento-motor.mjs'
 import { crearPresentacion, prepararPresentacion } from './presentacion-motor.mjs'
+import { puedeEscribir } from './frontera-modelo.mjs'
 
 const esVacio = (v) => v === undefined || v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)
 const HUECO = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi
@@ -46,7 +47,12 @@ function renderBloque(b, datos, faltan) {
     return { tipo: 'lista', items: limpios }
   }
   if (b.tipo === 'datos') {
-    const pares = b.pares.map((p) => ({ clave: p.clave, valor: sustituir(p.valor, datos) }))
+    const evaluados = b.pares.map((p) => ({ clave: p.clave, valor: sustituir(p.valor, datos) }))
+    // Un par que se cae por falta de dato se ANOTA. Antes se descartaba en silencio, y por eso la
+    // mitad del control de datos que mira las secciones obligatorias no podía enterarse de nada:
+    // un certificado salía sin su acumulado y el resultado no lo mencionaba.
+    for (const e of evaluados) if (e.valor.faltan.length) faltan.push(...e.valor.faltan)
+    const pares = evaluados
       .filter((p) => !p.valor.faltan.length && p.valor.texto.trim())
       .map((p) => ({ clave: sustituir(p.clave, datos).texto, valor: p.valor.texto }))
     return pares.length ? { tipo: 'datos', pares } : null
@@ -80,19 +86,25 @@ const listaDeTextos = (v, campo) => (Array.isArray(v) ? v : [])
 export function renderSecciones(p, datos) {
   const secciones = []
   const omitidas = []
+  const incompletas = []
   const faltantes = new Set()
   for (const s of p.sections) {
     const faltan = []
     const bloques = s.bloques.map((b) => renderBloque(b, datos, faltan)).filter(Boolean)
     const titulo = sustituir(s.titulo, datos)
     if (faltan.length || titulo.faltan.length) {
-      const criticos = [...faltan, ...titulo.faltan].filter((k) => p.required_data.includes(k))
-      if (criticos.length || s.obligatoria) { criticos.forEach((k) => faltantes.add(k)) }
-      if (!s.obligatoria) { omitidas.push({ seccion: s.id, por_falta_de: [...new Set([...faltan, ...titulo.faltan])] }); continue }
+      const sinDato = [...new Set([...faltan, ...titulo.faltan])]
+      sinDato.filter((k) => p.required_data.includes(k)).forEach((k) => faltantes.add(k))
+      if (!s.obligatoria) { omitidas.push({ seccion: s.id, por_falta_de: sinDato }); continue }
+      // UNA SECCIÓN OBLIGATORIA A LA QUE LE FALTÓ UN DATO OPCIONAL SE EMITE IGUAL, Y SE DECLARA.
+      // Un certificado sin su acumulado sigue siendo un certificado; lo que no puede pasar es que
+      // salga con un renglón menos y el resultado no lo mencione. Esta rama antes existía y no
+      // hacía nada: mutarla no ponía en rojo ningún test porque no había nada que romper.
+      incompletas.push({ seccion: s.id, sin_dato: sinDato })
     }
     secciones.push({ id: s.id, titulo: titulo.texto, nivel: s.nivel, bloques })
   }
-  return { secciones, omitidas, faltantes: [...faltantes] }
+  return { secciones, omitidas, incompletas, faltantes: [...faltantes] }
 }
 
 /** El nombre del archivo según `output_naming`. PURA. */
@@ -147,7 +159,7 @@ export function renderDocumento(templateId, datos) {
   // único que sobrevive en un Google Doc. Quien después quiera actualizar una sección necesita el
   // segundo, no el primero: devolverlo evita que lo adivine.
   const mapa = r.secciones.map((s, i) => ({ plantilla: s.id, documento: v.doc.secciones[i].id, titulo: s.titulo }))
-  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: v.doc, omitidas: r.omitidas, mapa_de_secciones: mapa }
+  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: v.doc, omitidas: r.omitidas, incompletas: r.incompletas, mapa_de_secciones: mapa }
 }
 
 /** Una sección de plantilla → una lámina. El mapeo es FIJO: no hay elección de forma. PURA. */
@@ -187,14 +199,19 @@ export function renderPresentacion(templateId, datos) {
   }
   const prueba = prepararPresentacion(deck)
   if (!prueba.ok) return prueba
-  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: deck, omitidas: r.omitidas, control_de_calidad: prueba.control_de_calidad }
+  return { ok: true, plantilla: sello(p), nombre: nombre.nombre, contenido: deck, omitidas: r.omitidas, incompletas: r.incompletas, control_de_calidad: prueba.control_de_calidad }
 }
 
 /**
  * CREA EL ARCHIVO desde la plantilla. Idempotente: el reintento devuelve el archivo que ya existe.
  * @returns {Promise<{ok:true, id, link, template_id, reutilizado:boolean, verificacion:object}|object>}
  */
-export async function crearDesdePlantilla(google, { template_id, datos, carpeta_id, clave } = {}) {
+export async function crearDesdePlantilla(google, { template_id, datos, carpeta_id, clave, actor, archivos_habilitados } = {}) {
+  // EL PORTERO PRIMERO, ANTES DE MIRAR SIQUIERA SI LA PLANTILLA EXISTE. Es el orden de la frontera:
+  // quien no puede escribir tampoco tiene por qué enterarse de qué plantillas hay. Los motores de
+  // abajo vuelven a preguntar —la guardia no depende de que esta función siga escrita así.
+  const puerta = puedeEscribir({ operation: 'crear_desde_plantilla', actor, archivos_habilitados })
+  if (!puerta.ok) return puerta
   const p = buscarPlantilla(template_id)
   if (!p) return fallo(CODIGO.TEMPLATE_NOT_FOUND, `no existe la plantilla «${template_id}»`)
   if (p.estado !== 'VIGENTE' || p.file_type === 'sheet') {
@@ -210,11 +227,11 @@ export async function crearDesdePlantilla(google, { template_id, datos, carpeta_
     const r = renderPresentacion(template_id, datos)
     if (!r.ok) return r
     const deck = destino.carpeta_id ? { ...r.contenido, carpeta_id: destino.carpeta_id } : r.contenido
-    const creada = await crearPresentacion(google, { contenido: deck, nombre: r.nombre, clave: idem })
-    return creada.ok ? { ...creada, template_id: p.template_id, omitidas: r.omitidas, clave: idem } : creada
+    const creada = await crearPresentacion(google, { contenido: deck, nombre: r.nombre, clave: idem, actor, archivos_habilitados })
+    return creada.ok ? { ...creada, template_id: p.template_id, omitidas: r.omitidas, incompletas: r.incompletas, clave: idem } : creada
   }
   const r = renderDocumento(template_id, datos)
   if (!r.ok) return r
-  const creado = await crearDocumento(google, { contenido: r.contenido, nombre: r.nombre, carpeta_id: destino.carpeta_id, clave: idem })
-  return creado.ok ? { ...creado, template_id: p.template_id, omitidas: r.omitidas, mapa_de_secciones: r.mapa_de_secciones, clave: idem } : creado
+  const creado = await crearDocumento(google, { contenido: r.contenido, nombre: r.nombre, carpeta_id: destino.carpeta_id, clave: idem, actor, archivos_habilitados })
+  return creado.ok ? { ...creado, template_id: p.template_id, omitidas: r.omitidas, incompletas: r.incompletas, mapa_de_secciones: r.mapa_de_secciones, clave: idem } : creado
 }

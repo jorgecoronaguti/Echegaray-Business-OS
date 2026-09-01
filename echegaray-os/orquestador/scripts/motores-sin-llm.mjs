@@ -66,18 +66,42 @@ const CARPETA_PNG = ARGS[ARGS.indexOf('--png') + 1]
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 
 // ── 3 · NINGÚN MÓDULO DE LOS MOTORES IMPORTA UN CLIENTE DE IA ────────────────────────────────
-const RE_IA = /from\s+'[^']*(?:\/ia\/|anthropic|openai|llm)[^']*'/i
+//
+// ═══ EL FILTRO MIRA LAS DOS FORMAS DE IMPORTAR ═══
+//
+// La primera versión de esta auditoría buscaba `from '…'` y daba VERDE con esto puesto adentro del
+// motor de documentos:
+//
+//     export async function narrarConModelo(texto) {
+//       const { pedirTexto } = await import('../ia/cliente.mjs')
+//       return pedirTexto({ prompt: texto })
+//     }
+//
+// El import dinámico no lleva `from`. Una guardia que sólo ve la forma estática protege contra el
+// código de hoy y queda indefensa contra el de mañana, que es cuando hace falta. El criterio es el
+// mismo que usa la lane del motor de planillas: primero se aíslan las LÍNEAS DE IMPORT —estáticas y
+// dinámicas— y después se busca el cliente de IA en ellas.
+const ES_IMPORT = /^\s*import\s|await import\(/
+const ES_CLIENTE_IA = /ia\/cliente|ia\/medidor|anthropic|openai|pedirTexto|llamarModelo/i
+
+/** Se lee con `fs` y se RECORRE recursivo. Con `grep` no: este repo tiene archivos con bytes NUL
+ *  que `grep` saltea en silencio, y una auditoría que no miró un archivo no puede absolverlo. */
 function auditarImports(carpetas) {
-  const culpables = []
-  let archivos = 0
-  for (const c of carpetas) {
-    for (const f of readdirSync(path.join(AQUI, '..', 'lib', c)).filter((x) => x.endsWith('.mjs'))) {
-      archivos++
-      const txt = readFileSync(path.join(AQUI, '..', 'lib', c, f), 'utf8')
-      for (const linea of txt.split('\n')) if (RE_IA.test(linea)) culpables.push(`${c}/${f}: ${linea.trim().slice(0, 90)}`)
+  const archivos = []
+  const recorrer = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) { recorrer(path.join(d, e.name)); continue }
+      if (e.name.endsWith('.mjs')) archivos.push(path.join(d, e.name))
     }
   }
-  return { archivos, culpables }
+  for (const c of carpetas) recorrer(path.join(AQUI, '..', 'lib', c))
+  const culpables = []
+  for (const f of archivos) {
+    for (const linea of readFileSync(f, 'utf8').split('\n')) {
+      if (ES_IMPORT.test(linea) && ES_CLIENTE_IA.test(linea)) culpables.push(`${path.basename(path.dirname(f))}/${path.basename(f)}: ${linea.trim().slice(0, 90)}`)
+    }
+  }
+  return { archivos: archivos.length, culpables }
 }
 
 // ── 4 · LOS DATOS: DE UNA OBRA DE PRUEBA, ROTULADOS COMO TALES ───────────────────────────────
@@ -94,6 +118,13 @@ const DATOS = {
 }
 
 let configCargada = false
+// ═══ QUIÉN ESCRIBE ═══
+//
+// Los motores no escriben sin saber quién pide. Este script corre a mano en la VM, con la cuenta
+// del dueño (la misma que `ORQ_GOOGLE_IMPERSONATE`), y lo declara: `origen: 'script'` no pasa por el
+// gateway de XSAS y por eso no tiene una tool que nombrar — lo que lo autoriza es el rol.
+const ACTOR = { id: process.env.ORQ_GOOGLE_IMPERSONATE || 'script-local', rol: 'direccion', origen: 'script' }
+
 const paso = []
 const anotar = (que, r, extra = {}) => { paso.push({ paso: que, ok: Boolean(r?.ok), ...(r?.ok ? {} : { codigo: r?.codigo, motivo: r?.motivo }), ...extra }); return r }
 const morir = (r, que) => { if (!r?.ok) { console.error(`✖ ${que}: ${r?.codigo} — ${r?.motivo}`); console.error(JSON.stringify(paso, null, 1)); process.exit(1) } return r }
@@ -143,7 +174,7 @@ anotar('carpeta propia de trabajo', { ok: true }, { id: carpeta.id })
 
 // 5.1 · DOCUMENTO desde plantilla, con tabla y todo
 const doc = morir(await crearDesdePlantilla(google, {
-  template_id: 'informe.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id,
+  template_id: 'informe.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id, actor: ACTOR,
 }), 'crear documento desde plantilla')
 basura.push(doc.id)
 anotar('crear documento desde plantilla', doc, { id: doc.id, verificacion: doc.verificacion, omitidas: doc.omitidas })
@@ -153,7 +184,7 @@ anotar('crear documento desde plantilla', doc, { id: doc.id, verificacion: doc.v
 // plantilla: el motor devuelve el mapa para no tener que adivinarlo.
 const idDe = (dePlantilla) => doc.mapa_de_secciones.find((m) => m.plantilla === dePlantilla).documento
 const editado = morir(await actualizarSeccion(google, doc.id, {
-  seccion_id: idDe('resumen'),
+  seccion_id: idDe('resumen'), actor: ACTOR,
   bloques: [
     { tipo: 'parrafo', texto: 'Resumen reescrito por el motor sin ningún modelo de por medio.' },
     { tipo: 'tabla', columnas: ['Frente', 'Estado'], filas: [['A', 'cerrado'], ['B', 'en curso']] },
@@ -163,9 +194,9 @@ anotar('actualizar la sección «resumen» y releerla', editado, { texto_releido
 
 // 5.3 · INSERTAR contenido con un hueco, y REEMPLAZARLO
 morir(await insertarEnSeccion(google, doc.id, {
-  seccion_id: idDe('ejecutado'), bloques: [{ tipo: 'parrafo', texto: 'Monto del período: {{monto_del_periodo}}' }],
+  seccion_id: idDe('ejecutado'), actor: ACTOR, bloques: [{ tipo: 'parrafo', texto: 'Monto del período: {{monto_del_periodo}}' }],
 }), 'insertar contenido')
-const vars = morir(await reemplazarVariables(google, doc.id, { monto_del_periodo: 'a confirmar con el certificado' }), 'reemplazar variables')
+const vars = morir(await reemplazarVariables(google, doc.id, { monto_del_periodo: 'a confirmar con el certificado' }, { actor: ACTOR }), 'reemplazar variables')
 anotar('insertar contenido y reemplazar {{variables}}', vars, { pendientes: vars.pendientes_en_el_documento })
 
 // 5.4 · LEER la estructura y EXPORTAR
@@ -178,13 +209,13 @@ anotar('exportar el documento a PDF', pdfDoc, { bytes: pdfDoc.bytes })
 if (CARPETA_PNG) { mkdirSync(CARPETA_PNG, { recursive: true }); writeFileSync(path.join(CARPETA_PNG, 'documento.pdf'), pdfDoc.contenido) }
 
 // 5.5 · IDEMPOTENCIA: el mismo pedido, otra vez
-const otra = morir(await crearDesdePlantilla(google, { template_id: 'informe.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id }), 'reintento')
+const otra = morir(await crearDesdePlantilla(google, { template_id: 'informe.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id, actor: ACTOR }), 'reintento')
 anotar('reintentar el MISMO pedido', otra, { mismo_archivo: otra.id === doc.id, reutilizado: otra.reutilizado })
 if (otra.id !== doc.id) { basura.push(otra.id); morir({ codigo: 'DUPLICADO', motivo: 'el reintento creó un segundo archivo' }, 'idempotencia') }
 
 // 5.6 · PRESENTACIÓN desde la misma plantilla de datos
 const pres = morir(await crearDesdePlantilla(google, {
-  template_id: 'presentacion.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id,
+  template_id: 'presentacion.avance_obra.v1', datos: DATOS, carpeta_id: carpeta.id, actor: ACTOR,
 }), 'crear presentación desde plantilla')
 basura.push(pres.id)
 anotar('crear presentación desde plantilla', pres, { id: pres.id, laminas: pres.laminas, verificacion: pres.verificacion })
@@ -192,7 +223,7 @@ anotar('crear presentación desde plantilla', pres, { id: pres.id, laminas: pres
 // 5.7 · MODIFICARLA
 const conCierre = renderPresentacion('presentacion.avance_obra.v1', { ...DATOS, proximo: ['Cerrar el frente B', 'Certificar septiembre'] })
 morir(conCierre, 'componer la presentación modificada')
-const actualizada = morir(await actualizarPresentacion(google, pres.id, conCierre.contenido), 'actualizar la presentación')
+const actualizada = morir(await actualizarPresentacion(google, pres.id, conCierre.contenido, { actor: ACTOR }), 'actualizar la presentación')
 anotar('actualizar la presentación', actualizada, { laminas: actualizada.laminas, verificacion: actualizada.verificacion })
 
 // 5.8 · MIRAR EL RENDER DE VERDAD

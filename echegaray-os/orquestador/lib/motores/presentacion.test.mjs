@@ -18,6 +18,7 @@ const DECK = {
     { tipo: 'puntos', titulo: 'Próximo', puntos: ['tres'] },
   ],
 }
+const DUENO = { id: 'jorge@ecsas.com.ar', rol: 'direccion', origen: 'script' }
 const PNG = Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG'), Buffer.alloc(20)])
 
 test('el pie numera sobre el total REAL del mazo, portada incluida', () => {
@@ -32,6 +33,31 @@ test('el pie numera sobre el total REAL del mazo, portada incluida', () => {
     assert.equal(total, compuesto.laminas.length, `el pie dice ${total} y el mazo tiene ${compuesto.laminas.length}`)
     assert.ok(n <= total, `la lámina ${n} no puede ser mayor que el total ${total}`)
   }
+})
+
+test('el pie de la lámina de FUENTES numera sobre el mismo total que las demás', () => {
+  // La numeración se arreglaba en DOS lugares (`laminaContenido` y `laminaFuentes`) y el test de
+  // arriba sólo pisaba el primero: un mazo con datos externos podía volver a numerar mal y nadie
+  // se enteraba. Es la misma regla que el resto de los controles duplicados de esta lane — cada
+  // mitad se prueba por separado.
+  const conFuente = {
+    ...DECK,
+    laminas: [
+      ...DECK.laminas,
+      { tipo: 'puntos', titulo: 'Contexto', puntos: ['la inflación de julio'], origen: 'EXTERNO',
+        fuentes: [{ titulo: 'INDEC', url: 'https://www.indec.gob.ar/' }] },
+    ],
+  }
+  const compuesto = componerDeck(conFuente)
+  const pies = compuesto.laminas.flatMap((l) => l.cajas.filter((c) => /^\d+ \/ \d+$/.test(String(c.contenido ?? ''))))
+  const laminaDeFuentes = compuesto.laminas.at(-1)
+  assert.equal(laminaDeFuentes.nombre, 'fuentes', 'el mazo tiene su lámina de referencias externas')
+  for (const p of pies) {
+    const [n, total] = String(p.contenido).split(' / ').map(Number)
+    assert.equal(total, compuesto.laminas.length, `el pie dice ${total} y el mazo tiene ${compuesto.laminas.length}`)
+    assert.ok(n <= total)
+  }
+  assert.ok(pies.some((p) => String(p.contenido).startsWith(`${compuesto.laminas.length} /`)), 'la última lámina se numera a sí misma')
 })
 
 test('previsualizar no toca nada y un contenido inválido no llega a Drive', () => {
@@ -51,8 +77,8 @@ test('el reintento devuelve la MISMA presentación', async () => {
     marcarArchivo: {},
     exportarPdfBytes: Buffer.from('%PDF-1.4 Avance de prueba Ejecutado Números Próximo'),
   })
-  const uno = await crearPresentacion(g, { contenido: DECK, clave: 'avance-agosto' })
-  const dos = await crearPresentacion(g, { contenido: DECK, clave: 'avance-agosto' })
+  const uno = await crearPresentacion(g, { contenido: DECK, clave: 'avance-agosto', actor: DUENO })
+  const dos = await crearPresentacion(g, { contenido: DECK, clave: 'avance-agosto', actor: DUENO })
   assert.equal(uno.ok, true, JSON.stringify(uno))
   assert.equal(uno.reutilizado, false)
   assert.equal(dos.reutilizado, true)
@@ -66,7 +92,7 @@ test('actualizar borra y crea en UN solo batch: los objectId se repiten y un bat
     slidesBatchUpdate: (_id, reqs) => { lotes.push(reqs); return {} },
     exportarPdfBytes: Buffer.from('%PDF Avance de prueba Ejecutado Números Próximo'),
   })
-  const r = await actualizarPresentacion(g, 'pres_1', DECK)
+  const r = await actualizarPresentacion(g, 'pres_1', DECK, { actor: DUENO })
   const primero = lotes[0]
   assert.equal(primero.filter((q) => q.deleteObject).length, 2)
   assert.ok(primero.findIndex((q) => q.createSlide) > primero.findLastIndex((q) => q.deleteObject),

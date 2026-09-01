@@ -981,8 +981,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  defecto que este repo ya pagó con un control que era una constante.
      *
      *  Pedir campos de más no rompe a nadie: un llamador recibe lo que pedía y algo más. */
-    async getMeta(fileId) {
-      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${METADATA_MINIMA.join(',')}&supportsAllDrives=true`)
+    async getMeta(fileId, { comoDueno = false } = {}) {
+      // `comoDueno` por la misma razón que en `getDoc`: un archivo que el OS creó con `createFile`
+      // nace en el Drive del dueño y el robot NO lo ve — le contesta 404. Un control de destino que
+      // pregunta con el token equivocado no dice «quedó en otro lado»: no dice nada.
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${METADATA_MINIMA.join(',')}&supportsAllDrives=true`,
+        comoDueno ? await ownerToken() : undefined)
     },
     /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
      *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a

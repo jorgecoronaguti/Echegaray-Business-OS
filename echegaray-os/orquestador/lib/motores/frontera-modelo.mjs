@@ -58,11 +58,54 @@ export const Propuesta = z.object({
   proposed_content: z.unknown().optional(),
 })
 
+/**
+ * QUIÉN PIDE, Y POR QUÉ PUERTA.
+ *
+ * ═══ `origen` NO LO PUEDE ELEGIR QUIEN PIDE ═══
+ *
+ * `xsas` es la puerta del chat y del modelo: además del rol, exige que la TOOL esté nombrada en
+ * `TOOLS_AUTORIZADAS_A_ESCRIBIR`. `script` es el dueño corriendo algo a mano en la VM, que no pasa
+ * por el gateway y ya cruzó el secreto de la puerta antes de llegar acá.
+ *
+ * La diferencia sería un agujero si un pedido pudiera declararse `script` para saltear la segunda
+ * cerradura. No puede: `validarPropuesta` —la única puerta por la que entra un modelo— lo PISA con
+ * `xsas` después de parsear, y el esquema descarta las llaves que no declara (medido: un `permisos`
+ * inyectado en el cuerpo nunca llega a leerse). Y el default es `xsas`, que es el caso estricto:
+ * quien no declara nada, entra por la puerta angosta.
+ */
 const Actor = z.object({
   id: z.string().trim().min(1),
   rol: z.string().trim().min(1),
   tool: z.string().trim().min(1).optional(),
+  origen: z.enum(['xsas', 'script']).default('xsas'),
 })
+
+/**
+ * EL PORTERO, LLAMADO DESDE ADENTRO DE LOS MOTORES.
+ *
+ * ═══ POR QUÉ ADENTRO Y NO AL LADO ═══
+ *
+ * Esta función nació al lado: `validarPropuesta` validaba lindo y ningún motor la importaba, así
+ * que cualquiera que llamara `crearDesdePlantilla(google, …)` escribía Drive con el token del dueño
+ * salteándose las dos cerraduras y la lista de archivos prohibidos. Un portero que nadie está
+ * obligado a cruzar no es un portero: es documentación. Ahora toda escritura de los tres motores
+ * empieza llamando acá, y sin actor no se escribe.
+ *
+ * PURA. Devuelve `{ok:true, actor}` o un fallo con nombre.
+ */
+export function puedeEscribir({ operation, file_id = null, actor, archivos_habilitados = null } = {}) {
+  const capacidad = OPERACIONES[operation]
+  if (!capacidad) return fallo(CODIGO.UNSUPPORTED_OPERATION, `los motores no saben hacer «${operation}»`, { soportadas: Object.keys(OPERACIONES) })
+  const a = Actor.safeParse(actor)
+  if (!a.success) {
+    return fallo(CODIGO.FORBIDDEN, 'esta operación necesita un actor identificable (id y rol): sin saber quién pide, no se escribe')
+  }
+  const permiso = revisarPermiso(capacidad, a.data)
+  if (!permiso.ok) return permiso
+  const archivo = revisarArchivo({ operation, file_id }, archivos_habilitados)
+  if (!archivo.ok) return archivo
+  return { ok: true, actor: a.data, capacidad }
+}
 
 /**
  * VALIDA UNA PROPUESTA DEL MODELO. PURA — no sale a la red y no ejecuta nada.
@@ -77,18 +120,14 @@ export function validarPropuesta(propuesta, { actor, archivos_habilitados = null
     return fallo(CODIGO.INVALID_CONTENT, 'la propuesta no tiene la forma {operation, file_id, section, proposed_content}',
       { errores: p.error.issues.slice(0, 6).map((i) => `${i.path.join('.') || '(raíz)'}: ${i.message}`) })
   }
-  const a = Actor.safeParse(actor)
-  if (!a.success) return fallo(CODIGO.FORBIDDEN, 'la propuesta no trae un actor identificable (id y rol)')
-
-  const capacidad = OPERACIONES[p.data.operation]
-  if (!capacidad) {
-    return fallo(CODIGO.UNSUPPORTED_OPERATION, `los motores no saben hacer «${p.data.operation}»`, { soportadas: Object.keys(OPERACIONES) })
-  }
-  const permiso = revisarPermiso(capacidad, a.data)
-  if (!permiso.ok) return permiso
-
-  const archivo = revisarArchivo(p.data, archivos_habilitados)
-  if (!archivo.ok) return archivo
+  // Por la puerta del modelo el origen es `xsas`, se declare lo que se declare: acá no se elige
+  // la puerta por la que se entró.
+  const puerta = puedeEscribir({
+    operation: p.data.operation, file_id: p.data.file_id ?? null,
+    actor: { ...(actor ?? {}), origen: 'xsas' }, archivos_habilitados,
+  })
+  if (!puerta.ok) return puerta
+  const { actor: a, capacidad } = { actor: { data: puerta.actor }, capacidad: puerta.capacidad }
   if (NECESITAN_SECCION.has(p.data.operation) && !p.data.section) {
     return fallo(CODIGO.SECTION_NOT_FOUND, `«${p.data.operation}» necesita saber qué sección`)
   }
@@ -113,7 +152,12 @@ function revisarPermiso(capacidad, actor) {
   // `xsas-permisos.mjs`. Los motores de documentos y presentaciones todavía NO están en esa lista,
   // y agregarlos es una decisión del dueño que queda en el diff — no algo que este archivo se
   // conceda a sí mismo. Mientras no esté, la propuesta se rechaza acá, con el nombre del motivo.
-  if (!actor.tool) return fallo(CODIGO.PERMISSION_REQUIRED, 'una escritura necesita declarar desde qué tool se pide')
+  //
+  // Sólo aplica a la puerta de XSAS: la lista existe para acotar qué CAPACIDAD DEL CHAT puede
+  // escribir. Un script que corre el dueño en la VM no pasa por el gateway y no tiene tool que
+  // nombrar; lo que lo autoriza es su rol, que sí se comprueba arriba.
+  if (actor.origen === 'script') return { ok: true }
+  if (!actor.tool) return fallo(CODIGO.PERMISSION_REQUIRED, 'una escritura por la puerta de XSAS necesita declarar desde qué tool se pide')
   if (!autorizadaAEscribir(actor.tool)) {
     return fallo(CODIGO.PERMISSION_REQUIRED,
       `la tool «${actor.tool}» no está en TOOLS_AUTORIZADAS_A_ESCRIBIR: la escritura por esta puerta la habilita el dueño, no el motor`)

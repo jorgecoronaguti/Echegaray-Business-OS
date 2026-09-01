@@ -13,6 +13,7 @@
 // composición y la medición son aritmética, no lenguaje.
 
 import { CODIGO, fallo, intentar } from './errores.mjs'
+import { puedeEscribir } from './frontera-modelo.mjs'
 import { miniaturas, prepararDeck, publicarDeck, requestsDelDeck, verificarEfecto } from '../slides/motor.mjs'
 import { requestsCrearLaminas } from '../slides/requests.mjs'
 
@@ -30,7 +31,9 @@ export function prepararPresentacion(contenido) {
  * CREA la presentación. Idempotente con `clave`: el reintento devuelve la misma, no una segunda.
  * @returns {Promise<{ok:true, id, link, laminas, reutilizado:boolean, verificacion:object}|object>}
  */
-export async function crearPresentacion(google, { contenido, nombre, clave } = {}) {
+export async function crearPresentacion(google, { contenido, nombre, clave, actor, archivos_habilitados } = {}) {
+  const puerta = puedeEscribir({ operation: 'crear_presentacion', actor, archivos_habilitados })
+  if (!puerta.ok) return puerta
   const previa = prepararPresentacion(contenido)
   if (!previa.ok) return previa
   if (!google?.crearPresentacionVacia) return fallo(CODIGO.DRIVE_UNAVAILABLE, 'no hay cuenta de Google autorizada para crear archivos')
@@ -61,7 +64,9 @@ export async function crearPresentacion(google, { contenido, nombre, clave } = {
  * nuevo. Se reemplaza entera a propósito — una presentación es un conjunto compuesto, y parchear
  * una lámina suelta deja el resto contando otra historia.
  */
-export async function actualizarPresentacion(google, fileId, contenido) {
+export async function actualizarPresentacion(google, fileId, contenido, { actor, archivos_habilitados } = {}) {
+  const puerta = puedeEscribir({ operation: 'actualizar_presentacion', file_id: fileId ? String(fileId) : null, actor, archivos_habilitados })
+  if (!puerta.ok) return puerta
   const prep = prepararDeck(contenido)
   if (!prep.ok) return fallo(CODIGO.INVALID_CONTENT, prep.motivo, { errores: prep.errores, control_de_calidad: prep.qa })
   if (!google?.slidesBatchUpdate) return fallo(CODIGO.DRIVE_UNAVAILABLE, 'no hay cuenta de Google autorizada')

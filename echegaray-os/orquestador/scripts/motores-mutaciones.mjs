@@ -30,10 +30,13 @@ const MUTACIONES = [
     a: "  if (p.estado",
   },
   {
+    // MITAD A del control de datos obligatorios. La B es la mutación 13: se prueban POR SEPARADO
+    // porque apagar las dos juntas esconde que una sola no está probada — el auditor encontró
+    // exactamente eso acá.
     n: 2, patron: 'NEGATIVO 2', archivo: 'plantillas-motor.mjs',
     cambios: [
       { de: 'export function faltanRequeridos(p, datos) {\n  return p.required_data.filter', a: 'export function faltanRequeridos(p, datos) {\n  return [].filter' },
-      { de: '      if (criticos.length || s.obligatoria) { criticos.forEach((k) => faltantes.add(k)) }', a: '      if (false) { criticos.forEach((k) => faltantes.add(k)) }' },
+      { de: "      sinDato.filter((k) => p.required_data.includes(k)).forEach((k) => faltantes.add(k))", a: '      // (mutación) sin registrar los críticos' },
     ],
   },
   {
@@ -74,6 +77,55 @@ const MUTACIONES = [
     de: "process.env.ORQ_ANTHROPIC_ENV_FILE = '/dev/null/no-existe'",
     a: "// (mutación) sin neutralizar el EnvironmentFile del modelo",
   },
+  {
+    n: 10, patron: 'NEGATIVO 10', archivo: 'frontera-modelo.mjs',
+    de: "export const PROHIBIDOS = Object.freeze(['1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'])",
+    a: 'export const PROHIBIDOS = Object.freeze([])',
+  },
+  {
+    // EL VERIFY-AFTER-WRITE DE LA RUTA DE ACTUALIZACIÓN. La 8 cubre la de creación.
+    n: 11, patron: 'NEGATIVO 11', archivo: 'documento-motor.mjs',
+    de: 'export async function verificarSeccion(google, fileId, seccionId, bloques) {\n  const leido',
+    a: 'export async function verificarSeccion(google, fileId, seccionId, bloques) {\n  if (bloques) return { ok: true, verificacion: { releido: true } }\n  const leido',
+  },
+  {
+    n: 12, patron: 'NEGATIVO 12', archivo: 'documento-motor.mjs',
+    de: "  if (sinReemplazar.length) {\n    return fallo(CODIGO.WRITE_NOT_PERSISTED, 'quedaron variables sin reemplazar después de escribir', { sin_reemplazar: sinReemplazar })\n  }",
+    a: '  // (mutación) sin comprobar que las variables se hayan ido',
+  },
+  {
+    // MITAD B del control de datos: la sección obligatoria a la que le faltó un dato opcional.
+    n: 13, patron: 'NEGATIVO 13', archivo: 'plantillas-motor.mjs',
+    de: '      incompletas.push({ seccion: s.id, sin_dato: sinDato })',
+    a: '      // (mutación) sin declarar que la sección salió incompleta',
+  },
+  {
+    n: 14, patron: 'NEGATIVO 14', archivo: 'documento-motor.mjs',
+    de: '    ...(carpeta_id ? { parents: [carpeta_id] } : {}),',
+    a: '    // (mutación) sin parents: el archivo cae donde caiga',
+  },
+  {
+    // EL PORTERO LLAMADO DESDE ADENTRO. Sin esta línea, el motor escribe Drive con el token del
+    // dueño salteándose las dos cerraduras y la lista de archivos prohibidos.
+    n: 15, patron: 'NEGATIVO 15', archivo: 'documento-motor.mjs',
+    de: "  const puerta = puedeEscribir({ operation: 'crear_documento', actor, archivos_habilitados })\n  if (!puerta.ok) return puerta",
+    a: "  puedeEscribir({ operation: 'crear_documento', actor, archivos_habilitados })",
+  },
+  {
+    // EL PIE DE LA LÁMINA DE FUENTES: el mismo arreglo en dos lugares, cada uno con su test.
+    n: 16, patron: 'lámina de FUENTES', archivo: 'lib/slides/plantillas.mjs',
+    test: 'lib/motores/presentacion.test.mjs',
+    de: 'laminas.push(laminaFuentes(fuentes, { numero: i + 2, total, deck })); return }',
+    a: 'laminas.push(laminaFuentes(fuentes, { numero: i + 2, total: total + 1, deck })); return }',
+  },
+  {
+    // LA GUARDIA QUE NO SOBREVIVE A MAÑANA: el import DINÁMICO de un cliente de IA. Es la inyección
+    // textual con la que el auditor dejó la auditoría estructural en 4/4 verde.
+    n: 17, patron: 'ningún módulo de los dos motores', archivo: 'lib/motores/documento-motor.mjs',
+    test: 'lib/motores/claude-zero.test.mjs',
+    de: 'const MIME_DOC =',
+    a: "export async function narrarConModelo(texto) {\n  const { pedirTexto } = await import('../ia/cliente.mjs')\n  return pedirTexto({ prompt: texto })\n}\n\nconst MIME_DOC =",
+  },
 ]
 
 /** Corre SÓLO el test de esa mutación. Devuelve `{verde, salida}`. Nunca lanza. */
@@ -90,7 +142,9 @@ function correr(patron, archivoDeTest = NEGATIVOS) {
   }
 }
 
-const motivo = (salida) => (salida.match(/AssertionError.*|Error: .*/)?.[0] ?? '(sin línea de error)').slice(0, 140)
+/** La razón del rojo. Se prefiere la ASERCIÓN sobre el «Command failed» del proceso hijo: lo que
+ *  hay que poder leer es qué control saltó, no que el comando devolvió distinto de cero. */
+const motivo = (salida) => (salida.match(/AssertionError[^\n]*/)?.[0] ?? salida.match(/Error: [^\n]*/)?.[0] ?? '(sin línea de error)').slice(0, 150)
 
 let fallados = 0
 for (const m of MUTACIONES) {

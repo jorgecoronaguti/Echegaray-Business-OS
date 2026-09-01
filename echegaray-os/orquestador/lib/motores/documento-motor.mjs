@@ -13,6 +13,7 @@
 // fallo con nombre y no un «listo».
 
 import { CODIGO, fallo, intentar } from './errores.mjs'
+import { puedeEscribir } from './frontera-modelo.mjs'
 import { validarDocumento } from './documento-contrato.mjs'
 import { leerEstructura, seccionPorId } from './documento-estructura.mjs'
 import {
@@ -68,7 +69,9 @@ async function aplicarPlan(google, fileId, plan, base) {
  * @param {{contenido:object, nombre?:string, carpeta_id?:string, clave?:string}} pedido
  * @returns {Promise<{ok:true, id:string, link:string, reutilizado:boolean, verificacion:object}|object>}
  */
-export async function crearDocumento(google, { contenido, nombre, carpeta_id, clave } = {}) {
+export async function crearDocumento(google, { contenido, nombre, carpeta_id, clave, actor, archivos_habilitados } = {}) {
+  const puerta = puedeEscribir({ operation: 'crear_documento', actor, archivos_habilitados })
+  if (!puerta.ok) return puerta
   const v = validarDocumento(contenido)
   if (!v.ok) return fallo(CODIGO.INVALID_CONTENT, 'la estructura del documento no cumple el contrato', { errores: v.errores })
   if (sinDrive(google)) return fallo(CODIGO.DRIVE_UNAVAILABLE, 'no hay cliente de Drive para crear el documento')
@@ -96,7 +99,29 @@ export async function crearDocumento(google, { contenido, nombre, carpeta_id, cl
 
   const control = await verificarDocumento(google, id, v.doc)
   if (!control.ok) return control
-  return { ok: true, id, link: enlace(id), nombre: titulo, reutilizado: false, verificacion: control.verificacion }
+  const destino = await verificarDestino(google, id, carpeta_id)
+  if (!destino.ok) return destino
+  return { ok: true, id, link: enlace(id), nombre: titulo, reutilizado: false, verificacion: { ...control.verificacion, ...destino.verificacion } }
+}
+
+/**
+ * ¿DÓNDE QUEDÓ? Verificar qué dice adentro y no dónde está deja pasar el archivo perfecto en la
+ * carpeta equivocada — y una oferta que aparece en la raíz del Drive del dueño en vez de en la
+ * carpeta del cliente es un archivo perdido, aunque su contenido sea impecable.
+ *
+ * `parents` y `trashed` los trae `getMeta` desde main (82fb2bba), y hay que pedirlos con el token
+ * del DUEÑO: el archivo lo creó él, el robot no lo ve.
+ */
+export async function verificarDestino(google, fileId, carpetaEsperada) {
+  if (!google?.getMeta) return fallo(CODIGO.DRIVE_UNAVAILABLE, 'no se puede comprobar dónde quedó el archivo: falta getMeta')
+  const meta = await intentar(() => google.getMeta(String(fileId), { comoDueno: true }), 'al comprobar dónde quedó el archivo')
+  if (!meta.ok) return meta
+  const padres = meta.valor?.parents ?? []
+  if (meta.valor?.trashed) return fallo(CODIGO.WRITE_NOT_PERSISTED, 'el archivo recién creado está en la papelera', { id: fileId })
+  if (carpetaEsperada && !padres.includes(String(carpetaEsperada))) {
+    return fallo(CODIGO.WRITE_NOT_PERSISTED, 'el archivo NO quedó en la carpeta que se pidió', { id: fileId, esperada: String(carpetaEsperada), quedó_en: padres })
+  }
+  return { ok: true, verificacion: { carpeta: padres[0] ?? null, en_la_carpeta_pedida: carpetaEsperada ? true : null, trashed: false } }
 }
 
 const enlace = (id) => `https://docs.google.com/document/d/${id}/edit`
@@ -141,16 +166,21 @@ async function verificarDocumento(google, fileId, doc) {
  * ACTUALIZA UNA SECCIÓN: borra su contenido y escribe el nuevo. El título no se toca — la sección
  * es la unidad direccionable y su nombre es lo que la hace direccionable.
  */
-export async function actualizarSeccion(google, fileId, { seccion_id, bloques } = {}) {
-  return escribirEnSeccion(google, fileId, { seccion_id, bloques, vaciar: true })
+export async function actualizarSeccion(google, fileId, { seccion_id, bloques, actor, archivos_habilitados } = {}) {
+  return escribirEnSeccion(google, fileId, { seccion_id, bloques, actor, archivos_habilitados, vaciar: true })
 }
 
 /** INSERTA contenido AL FINAL de una sección, sin borrar lo que ya está. */
-export async function insertarEnSeccion(google, fileId, { seccion_id, bloques } = {}) {
-  return escribirEnSeccion(google, fileId, { seccion_id, bloques, vaciar: false })
+export async function insertarEnSeccion(google, fileId, { seccion_id, bloques, actor, archivos_habilitados } = {}) {
+  return escribirEnSeccion(google, fileId, { seccion_id, bloques, actor, archivos_habilitados, vaciar: false })
 }
 
-async function escribirEnSeccion(google, fileId, { seccion_id, bloques, vaciar }) {
+async function escribirEnSeccion(google, fileId, { seccion_id, bloques, vaciar, actor, archivos_habilitados }) {
+  const puerta = puedeEscribir({
+    operation: vaciar ? 'actualizar_seccion' : 'insertar_en_seccion',
+    file_id: fileId ? String(fileId) : null, actor, archivos_habilitados,
+  })
+  if (!puerta.ok) return puerta
   const v = validarDocumento({ titulo: 'x', secciones: [{ titulo: 'x', bloques }] })
   if (!v.ok) return fallo(CODIGO.INVALID_CONTENT, 'los bloques no cumplen el contrato', { errores: v.errores })
 
@@ -195,7 +225,9 @@ export async function verificarSeccion(google, fileId, seccionId, bloques) {
  * de las reemplazadas haya quedado. Las que el documento tenía y no se pasaron se informan: un
  * contrato con `{{plazo_obra}}` a la vista es peor que uno que no se generó.
  */
-export async function reemplazarVariables(google, fileId, variables) {
+export async function reemplazarVariables(google, fileId, variables, { actor, archivos_habilitados } = {}) {
+  const puerta = puedeEscribir({ operation: 'reemplazar_variables', file_id: fileId ? String(fileId) : null, actor, archivos_habilitados })
+  if (!puerta.ok) return puerta
   const claves = Object.keys(variables ?? {})
   if (!claves.length) return fallo(CODIGO.INVALID_CONTENT, 'no se pasó ninguna variable para reemplazar')
   const leido = await leerDocumento(google, fileId)

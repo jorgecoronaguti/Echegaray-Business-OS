@@ -50,6 +50,7 @@ export function dobleDrive(guion = {}) {
     veces: (que) => llamadas.filter((l) => l.que === que).length,
     createFile: responder('createFile'),
     getDoc: responder('getDoc'),
+    getMeta: responder('getMeta'),
     docsBatchUpdate: responder('docsBatchUpdate'),
     buscarPorPropiedad: responder('buscarPorPropiedad'),
     exportarBytesComo: responder('exportarBytesComo'),

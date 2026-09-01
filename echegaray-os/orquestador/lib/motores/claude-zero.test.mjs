@@ -18,10 +18,27 @@ import { fileURLToPath } from 'node:url'
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'motores-sin-llm.mjs')
 
-const correr = () => JSON.parse(execFileSync(process.execPath, [SCRIPT, '--seco', '--json'], {
-  encoding: 'utf8',
-  env: { ...process.env, ANTHROPIC_API_KEY: 'sk-ant-FALSA-NO-DEBE-USARSE' },
-}))
+/**
+ * Corre el script y devuelve su JSON AUNQUE HAYA SALIDO CON 1.
+ *
+ * Con `execFileSync` a secas, un script que falla hace estallar la llamada y el test muere con
+ * «Command failed» sin llegar a ninguna aserción: el rojo aparece, pero no dice QUÉ control saltó.
+ * Medido inyectando un import DINÁMICO del cliente de IA en el motor: el mensaje era el comando y
+ * no el módulo culpable. El script imprime su JSON antes de salir, así que se parsea igual.
+ *
+ * (Y este comentario no puede escribir esa línea textual: la auditoría no parsea JavaScript, mira
+ *  las líneas de import y no distingue una de un comentario. Falla cerrado, que es la dirección
+ *  correcta, pero obliga a nombrar la trampa sin escribirla.)
+ */
+const correr = () => {
+  const opciones = { encoding: 'utf8', env: { ...process.env, ANTHROPIC_API_KEY: 'sk-ant-FALSA-NO-DEBE-USARSE' } }
+  try { return JSON.parse(execFileSync(process.execPath, [SCRIPT, '--seco', '--json'], opciones)) }
+  catch (e) {
+    const salida = String(e.stdout ?? '')
+    if (!salida.trim().startsWith('{')) throw e
+    return JSON.parse(salida)
+  }
+}
 
 test('SIN LLM · los motores arman documento y presentación con llamadas_llm = 0', () => {
   const { metricas, pasos } = correr()
