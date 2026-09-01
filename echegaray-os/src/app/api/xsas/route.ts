@@ -32,6 +32,18 @@ interface EntradaXsas {
   entidad?: { obra_id?: string; cliente_id?: string }
   origen?: string
   correlation_id?: string
+  adjuntos?: { nombre?: unknown; contenido?: unknown }[]
+}
+
+/** Adjuntos con contenido en texto (un CSV, un extracto pegado). El servidor impone los topes ANTES
+ *  de reenviar: el contrato del OS los vuelve a imponer, pero rebotar acá da un error legible. */
+function adjuntosValidados(crudos: EntradaXsas['adjuntos']): { nombre: string; contenido: string }[] {
+  if (!Array.isArray(crudos)) return []
+  return crudos
+    .filter((a): a is { nombre?: unknown; contenido?: unknown } => Boolean(a) && typeof a === 'object')
+    .slice(0, 10)
+    .map((a) => ({ nombre: String(a.nombre ?? 'adjunto').slice(0, 200), contenido: String(a.contenido ?? '') }))
+    .filter((a) => a.contenido.length > 0 && a.contenido.length <= 512 * 1024)
 }
 
 /** El contexto de entidad que el usuario PUEDE ver, leído con su propia sesión (o sea, con RLS). */
@@ -102,6 +114,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // La firma sólo se pone cuando ALGO se verificó de verdad. Sin contexto no hay nada que firmar.
     ...(Object.keys(entidad).length ? { verificado_por: 'app-server' as const } : {}),
     correlation_id: entrada.correlation_id ?? null,
+    adjuntos: adjuntosValidados(entrada.adjuntos),
   }
 
   // La puerta se resuelve DESPUÉS de identificar al usuario: sin sesión no se toca la base por un

@@ -91,6 +91,8 @@ const FABRICAS_GOOGLE = Object.freeze([
   // el número de columnas estructuradas, sin modelo— no estaba registrado acá. La capacidad
   // existía, el gateway no la conocía.
   ['./tools/briefing-caja-tool.mjs', 'briefingCajaTools'],
+  // El extracto bancario entero —parseo, cadena de saldos, base, _BANCO_RAW, DEBITADO— sin modelo.
+  ['./tools/banco-extracto-tool.mjs', 'bancoExtractoTools'],
   // ═══ DRIVE, WORKSPACE Y EL SHEET — el resto de la desconexión ═══
   //
   // `drive.list/read/navigate/obras` y `gmail.search` son LECTURA y ya estaban escritas. Sin ellas,

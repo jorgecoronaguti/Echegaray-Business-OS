@@ -90,7 +90,13 @@ const ESQUEMA = z.object({
   verificado_por: z.enum(Object.values(VERIFICADOR)).optional().nullable(),
   correlation_id: z.string().optional().nullable(),
   request_id: z.string().optional().nullable(),
-  adjuntos: z.array(z.string()).default([]),
+  // Un adjunto puede ser un id/ruta (string, el contrato original) o el CONTENIDO en texto con su
+  // nombre — que es como llega un CSV desde /xsas. El tope de 512 KB por adjunto es el del borde
+  // HTTP: un extracto del Santander pesa ~50 KB.
+  adjuntos: z.array(z.union([
+    z.string(),
+    z.object({ nombre: z.string().max(200), contenido: z.string().max(512 * 1024) }),
+  ])).max(10).default([]),
 })
 
 export class PedidoInvalido extends Error {

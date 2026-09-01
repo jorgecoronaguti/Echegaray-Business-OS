@@ -38,6 +38,7 @@ import { filtrarPorVisibilidad } from './xsas-visibilidad.mjs'
 import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
+import { pareceExtractoBancario } from './archivos/planilla.mjs'
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
@@ -320,6 +321,54 @@ async function despachar(pedido, deps, t0) {
   }
 
   const texto = textoDePedido(pedido)
+
+  // ── N0 · UN ARCHIVO ADJUNTO VA A SU MOTOR, NO A UN MODELO ─────────────────────────────────
+  //
+  // Un archivo NO es un prompt. Si lo que llegó SE PARSEA como extracto bancario —lo decide
+  // `pareceExtractoBancario`, que intenta parsearlo de verdad—, corre el circuito determinístico
+  // entero (base → _BANCO_RAW → DEBITADO). Si llegan adjuntos y ninguno es un extracto, se DICE qué
+  // llegó y qué falta: hoy éste es el único formato que entra por acá, y declararlo es más honesto
+  // que mandarlo a un modelo que no puede abrirlo.
+  const conContenido = pedido.adjuntos.filter((a) => typeof a === 'object' && a?.contenido)
+  if (conContenido.length) {
+    const clave = 'banco.importar_extracto'
+    const tool = mapa.get(clave)
+    for (const adj of conContenido) {
+      const p = tool ? pareceExtractoBancario(adj.contenido) : { esExtracto: false }
+      if (!p.esExtracto) continue
+      if (!puedeUsar(pedido.actor, tool, clave)) {
+        return respuestaError(pedido, {
+          tipo: 'sin_permiso', mensaje: `el adjunto "${adj.nombre}" es un extracto bancario, pero tu rol no puede importarlo`,
+          ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' },
+        })
+      }
+      const r = await correrTool({
+        clave, tool, pedido, query: deps.query ?? null,
+        argsResueltos: { args: { contenido: adj.contenido, nombre: adj.nombre }, falta: [] },
+      })
+      if (!r.ok) {
+        return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' } })
+      }
+      return respuestaOk(pedido, {
+        respuesta: textoDeDatos(r.datos),
+        datos: r.datos,
+        capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [clave], via: 'adjunto_extracto', confianza: 'alta', motivo: 'adjunto_extracto' },
+        accionesEjecutadas: [{ tool: clave, args: { nombre: adj.nombre } }],
+        evidencia: [{ que: 'resultado', fuente: `tool ${clave}`, cuando: new Date().toISOString() }],
+        degradacion: r.datos?.ok === false ? String(r.datos.error ?? '').slice(0, 200) : null,
+        ms: Date.now() - t0,
+      })
+    }
+    return respuestaOk(pedido, {
+      respuesta: [
+        `Recibí ${conContenido.length} archivo(s) (${conContenido.map((a) => a.nombre).join(', ')}) y ninguno se parsea como extracto bancario.`,
+        'Por ahora el único archivo que proceso por acá es el extracto del Santander (CSV o texto pegado).',
+        'Los demás formatos entran por el bot @xsas de Mattermost.',
+      ].join('\n'),
+      capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [], via: 'adjunto_desconocido', confianza: 'alta', motivo: 'adjunto_desconocido' },
+      ms: Date.now() - t0,
+    })
+  }
 
   // ── N0 · «¿QUÉ PODÉS HACER?» SE CONTESTA DEL REGISTRO, NO PREGUNTÁNDOLE A UN MODELO ───────
   //

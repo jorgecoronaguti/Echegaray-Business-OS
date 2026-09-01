@@ -22,6 +22,10 @@ El corazón de esta skill es el **MAPA DE IMPACTO**: para cada tipo de evento ba
 
 El camino de carga **ya existe y funciona**. Esta skill NO construye un importador nuevo:
 
+- **`orquestador/lib/tools/banco-extracto-tool.mjs`** — la capacidad XSAS (`banco.importar_extracto`,
+  01/09/2026): el circuito ENTERO en una tool determinística —parseo, cadena de saldos, dedup, base,
+  réplica `_BANCO_RAW`, DEBITADO probado— para que el extracto adjunto en /xsas o Mattermost se
+  procese solo, sin modelo. Si la cadena no cierra, NO escribe.
 - **`orquestador/scripts/importar-banco.mjs`** — la PUERTA: CSV o pegado → tabla `public.banco_movimientos` (con dedup en la base) → verificación de la cadena de saldos → recién ahí escribe.
 - **`orquestador/lib/banco-importar.mjs`** — el parser puro (importe es-AR, fecha DD/MM, paréntesis = débito, back-fill de saldo intradía, cadena de saldos). Tiene 30 tests que cubren cada modo de falla silenciosa. **No tocar sin un defecto real y un test.**
 - **`orquestador/lib/banco-santander.mjs`** — lo que declara el banco (cuenta, ACUERDO de descubierto, TARJETA, echeqs de terceros y emitidos) + `clasificarMovimiento` y `naturalezaIngreso`.

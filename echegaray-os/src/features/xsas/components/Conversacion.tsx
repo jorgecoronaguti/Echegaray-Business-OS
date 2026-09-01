@@ -87,6 +87,8 @@ function LineaDeTraza({ r, ms }: { r: RespuestaXsas; ms?: number }) {
 export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNombre?: string }) {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [texto, setTexto] = useState('')
+  const [adjuntos, setAdjuntos] = useState<{ nombre: string; contenido: string }[]>([])
+  const [arrastrando, setArrastrando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
   // Una sola correlación por conversación: la traza del OS puede reconstruir el hilo entero.
@@ -94,11 +96,25 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
 
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [turnos, enviando])
 
+  /** Lee archivos soltados o elegidos. Sólo texto (CSV/TXT, hasta 512 KB): es lo que el OS procesa
+   *  hoy por esta vía — el extracto bancario. Otros formatos se declaran, no se fingen. */
+  const agregarArchivos = useCallback(async (lista: FileList | File[]) => {
+    const leidos: { nombre: string; contenido: string }[] = []
+    for (const f of Array.from(lista).slice(0, 10)) {
+      if (f.size > 512 * 1024) continue
+      leidos.push({ nombre: f.name, contenido: await f.text() })
+    }
+    if (leidos.length) setAdjuntos((prev) => [...prev, ...leidos].slice(0, 10))
+  }, [])
+
   const enviar = useCallback(async (mensaje: string) => {
     const limpio = mensaje.trim()
-    if (!limpio || enviando) return
+    const conAdjuntos = adjuntosRef.current
+    if ((!limpio && !conAdjuntos.length) || enviando) return
     setTexto('')
-    setTurnos((t) => [...t, { id: idNuevo(), quien: 'yo', texto: limpio }])
+    setAdjuntos([])
+    const rotulo = conAdjuntos.length ? `${limpio || 'procesá esto'} 📎 ${conAdjuntos.map((a) => a.nombre).join(', ')}` : limpio
+    setTurnos((t) => [...t, { id: idNuevo(), quien: 'yo', texto: rotulo }])
     setEnviando(true)
     const t0 = performance.now()
     try {
@@ -106,8 +122,9 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          mensaje: limpio,
+          mensaje: limpio || 'procesá esto',
           origen: '/xsas',
+          ...(conAdjuntos.length ? { adjuntos: conAdjuntos } : {}),
           correlation_id: correlacion.current,
           ...(obraId ? { entidad: { obra_id: obraId }, contexto: { obra: obraNombre } } : {}),
         }),
@@ -128,8 +145,17 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
     }
   }, [enviando, obraId, obraNombre])
 
+  // El ref evita que `enviar` se recree por cada archivo agregado (y con él, los botones de ejemplo).
+  const adjuntosRef = useRef(adjuntos)
+  adjuntosRef.current = adjuntos
+
   return (
-    <div className="flex h-[calc(100vh-9rem)] flex-col">
+    <div
+      className={`flex h-[calc(100vh-9rem)] flex-col ${arrastrando ? 'rounded-xl outline-dashed outline-2 outline-amber-400' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setArrastrando(true) }}
+      onDragLeave={() => setArrastrando(false)}
+      onDrop={(e) => { e.preventDefault(); setArrastrando(false); if (e.dataTransfer.files.length) void agregarArchivos(e.dataTransfer.files) }}
+    >
       <div className="flex-1 space-y-4 overflow-y-auto pb-4">
         {turnos.length === 0 && (
           <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -200,13 +226,30 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
           placeholder="Escribí lo que necesitás… (Enter envía, Shift+Enter salta de línea)"
           className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
         />
+        {adjuntos.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {adjuntos.map((a, i) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                📎 {a.nombre}
+                <button type="button" aria-label={`quitar ${a.nombre}`} onClick={() => setAdjuntos((prev) => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-slate-700">×</button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">
-            Los archivos todavía no entran por acá: se procesan por el bot @xsas de Mattermost.
-          </span>
+          <label className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
+            📎 Adjuntar (CSV del banco — otros formatos, por el bot de Mattermost)
+            <input
+              type="file"
+              multiple
+              accept=".csv,.txt,text/csv,text/plain"
+              className="hidden"
+              onChange={(e) => { if (e.target.files) void agregarArchivos(e.target.files); e.target.value = '' }}
+            />
+          </label>
           <button
             type="submit"
-            disabled={enviando || !texto.trim()}
+            disabled={enviando || (!texto.trim() && adjuntos.length === 0)}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             {enviando ? 'Trabajando…' : 'Enviar'}

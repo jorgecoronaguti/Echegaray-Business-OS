@@ -45,8 +45,12 @@ test('la lista de tools que escriben es corta y explícita: crecer es una decisi
   // queda dicho: la lista no crece sola.
   // `tesoreria.analisis_inversion` entró el 27/08/2026 al cierre: no escribe una fila, abre el
   // navegador contra Balanz con la sesión de la empresa. Manda el efecto, no la letra.
+  // `banco.importar_extracto` entró el 01/09/2026 por instrucción textual del dueño («crear la skill
+  // de descarga de csv de extracto bancario… y conectarla para XSAS que la use por su cuenta»):
+  // escribe `public.banco_movimientos` y la réplica `_BANCO_RAW`, con la cadena de saldos como
+  // condición de escritura y el DEBITADO limitado a lo que el extracto prueba.
   assert.deepEqual([...TOOLS_AUTORIZADAS_A_ESCRIBIR],
-    ['slides.crear', 'imagen.generar', 'cotizacion.registrar', 'plano.cotizar', 'tesoreria.analisis_inversion', 'web.browser'])
+    ['slides.crear', 'imagen.generar', 'cotizacion.registrar', 'plano.cotizar', 'tesoreria.analisis_inversion', 'web.browser', 'banco.importar_extracto'])
 })
 
 test('lo que NO escribe afuera no queda marcado como escritura', () => {

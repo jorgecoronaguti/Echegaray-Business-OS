@@ -99,6 +99,11 @@ export const TOOLS_AUTORIZADAS_A_ESCRIBIR = Object.freeze([
   'tesoreria.analisis_inversion',
   // web.browser — `chromium.launch` en la VM, saliendo a internet con la IP de la empresa.
   'web.browser',
+  // importar_extracto_bancario — pedido del dueño (01/09/2026, chat): «crear la skill de descarga de
+  // csv de extracto bancario, lectura análisis y carga en sheet flujo de fondos y conectarla para
+  // XSAS que la use por su cuenta». Escribe public.banco_movimientos y la réplica _BANCO_RAW; NO
+  // escribe si la cadena de saldos no cierra, y el DEBITADO sólo marca lo que el extracto prueba.
+  'banco.importar_extracto',
 ])
 
 /** ¿Esta capability escribe afuera? PURA. */
