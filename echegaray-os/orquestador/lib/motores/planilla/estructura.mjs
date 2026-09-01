@@ -120,6 +120,41 @@ export async function definirRangoConNombre(planilla, nombre, ref) {
 // ─────────────────────── crear y duplicar un WORKBOOK ───────────────────────
 
 /**
+ * ¿EL ARCHIVO QUEDÓ DONDE SE PIDIÓ? — verify-after-write de la UBICACIÓN, no sólo de la identidad.
+ *
+ * ═══ EL AGUJERO QUE CIERRA (01/09/2026, auditoría) ═══
+ *
+ * `createFile` y `copyFile` devolvían `{id, name}` y el motor daba la operación por buena. Nadie
+ * releía `parents`. Un «creá la planilla de control en la carpeta de la obra» que aterrizara en la
+ * raíz del Drive del robot devolvía `ok` y `verificado`: se verificaba QUÉ quedó adentro y nunca
+ * DÓNDE quedó. Es el mismo agujero que la capability de Drive ya cerró.
+ *
+ * Pasa de verdad y sin error: `parents` se ignora en silencio si la carpeta no existe, si el token
+ * que crea no tiene permiso sobre ella, o si el `supportsAllDrives` no aplica. El archivo existe,
+ * se puede escribir, y nadie lo encuentra.
+ *
+ * `getMeta` trae `parents` desde `METADATA_MINIMA` (commit 82fb2bba de main). Si un día dejara de
+ * traerlo, este control contestaría `undefined` para siempre — por eso se exige que el campo VENGA,
+ * en vez de tratar su ausencia como "no hay padres".
+ */
+async function exigirUbicacion(google, fileId, carpetaId, { que }) {
+  if (!carpetaId) return null
+  const meta = await google.getMeta(fileId)
+  if (!Array.isArray(meta?.parents)) {
+    fallar(CODIGOS.UBICACION_INESPERADA,
+      `no pude leer en qué carpeta quedó ${que}: la metadata no trajo "parents", así que no puedo probar dónde está.`,
+      { fileId, carpetaPedida: carpetaId, meta })
+  }
+  if (!meta.parents.includes(carpetaId)) {
+    fallar(CODIGOS.UBICACION_INESPERADA,
+      `${que} se creó, pero quedó en ${JSON.stringify(meta.parents)} y se pidió la carpeta ${carpetaId}.`,
+      { fileId, carpetaPedida: carpetaId, carpetaReal: meta.parents })
+  }
+  return meta.parents
+}
+
+
+/**
  * Crea una planilla nueva de Google Sheets y la abre.
  *
  * Nace en es-AR porque lo fija `createFile` (locale + zona horaria de San Juan). No es cosmético:
@@ -138,7 +173,11 @@ export async function crearPlanilla(google, nombre, { carpetaId, opciones, abrir
     parents: carpetaId ? [carpetaId] : undefined,
   })
   if (!f?.id) fallar(CODIGOS.ESCRITURA_NO_PERSISTIO, `no se creó la planilla "${nombre}"`, { nombre, respuesta: f })
-  return abrir(google, f.id, opciones)
+  await exigirUbicacion(google, f.id, carpetaId, { que: `la planilla "${nombre}"` })
+  // El motor ACABA de crear este archivo: no hay nada de nadie adentro, así que la intención de
+  // escribir viene declarada sola. Obligar al llamador a repetirla acá sería ceremonia sin defensa
+  // —la protección existe para no escribir archivos AJENOS por accidente, y éste no es ajeno—.
+  return abrir(google, f.id, { escribir: `planilla creada por el motor: ${nombre}`, ...opciones })
 }
 
 /**
@@ -162,5 +201,8 @@ export async function duplicarTemplate(google, templateId, nombre, { carpetaId, 
   }
   const copia = await google.copyFile(templateId, nombre, carpetaId ? [carpetaId] : undefined)
   if (!copia?.id) fallar(CODIGOS.ESCRITURA_NO_PERSISTIO, `no se copió "${meta.name}"`, { templateId, respuesta: copia })
-  return abrir(google, copia.id, opciones)
+  await exigirUbicacion(google, copia.id, carpetaId, { que: `la copia de "${meta.name}"` })
+  // Igual que en `crearPlanilla`: la COPIA es del motor. El ORIGINAL no se toca nunca y para
+  // escribirlo habría que abrirlo aparte, declarándolo.
+  return abrir(google, copia.id, { escribir: `copia creada por el motor desde ${templateId}`, ...opciones })
 }

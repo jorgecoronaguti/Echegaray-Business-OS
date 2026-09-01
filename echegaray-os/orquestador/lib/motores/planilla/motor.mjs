@@ -26,6 +26,7 @@
 // · No decide `respetar:false`. La Regla 0 (fusionar, no pisar lo que editó una persona) es de
 //   `escribirPreservando`, y este motor la usa como está.
 
+import { motivoValido } from '../../congelador-sheets.mjs'
 import { CODIGOS, ErrorPlanilla, fallar } from './errores.mjs'
 import {
   citarHoja, dimensiones, formatearCelda, formatearRango, letraCol,
@@ -40,12 +41,44 @@ import {
   crearPlanilla as _crearPlanilla, duplicarTemplate as _duplicarTemplate,
 } from './estructura.mjs'
 
-/** Los IDs que este motor NUNCA escribe, pase lo que pase. Son FUENTE: se leen y no se tocan.
- *  Es un cinturón sobre el freno de mano, no un reemplazo: el freno se puede levantar con motivo,
- *  esto no. Un `fileId` de acá en una escritura es un bug del llamador, no una situación. */
+/**
+ * EL PISO: los IDs que este motor NUNCA escribe, ni con intención declarada.
+ *
+ * ═══ POR QUÉ ESTO NO ES LA DEFENSA PRINCIPAL (01/09/2026, auditoría) ═══
+ *
+ * Esta lista tenía UN solo id —el Cash Flow— y dejaba escribibles el P&L, el Avance de obras y el
+ * espejo de JORNALES. Es la trampa de la red de seguridad que se alimenta de una lista, que este
+ * repo ya pagó: **una lista que hay que acordarse de mantener no es una red**, porque su modo de
+ * falla es el silencio (olvidarse de agregar un archivo = escribirlo).
+ *
+ * La defensa principal se invirtió: **se escribe sólo donde el llamador DECLARÓ que quiere
+ * escribir** (ver `motivoDeEscritura`). Así el olvido falla CERRADO —no declaraste, no escribís— en
+ * vez de fallar abierto.
+ *
+ * Esta lista queda como PISO, y `fuentes-declaradas.test.mjs` la mantiene honesta: deduce del código
+ * los Sheets de producción (los `export const *_FILE_ID` / `*_SHEET_ID` del repo) y exige que cada
+ * uno esté acá o esté declarado escribible a propósito. Si mañana aparece una fuente nueva y nadie
+ * la clasifica, ese test se pone rojo el día que se agrega, no el día que se pisa.
+ */
 export const PROHIBIDOS_ESCRIBIR = Object.freeze(new Set([
   '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8', // Flujo de Caja - Cash Flow
+  '1-NAqlEuKoB0IqCY4res5OiJhbbz_7-F2M-zmpnkpMYg', // Ingresos y Egresos - P&L  (lib/pyl.mjs)
+  '1XHiqSC1wiMVrXAob8H_koN5vHr9BQLLvXn61yIW18Ug', // Avance de obras          (lib/obra-cronograma.mjs)
+  '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk', // JORNALES (espejo)        (lib/espejo-jornales.mjs)
 ]))
+
+/**
+ * ¿EL LLAMADOR DECLARÓ QUE QUIERE ESCRIBIR, Y PARA QUÉ?
+ *
+ * Se pide un MOTIVO y no un `true` a propósito, con la misma vara que el freno de mano
+ * (`congelador-sheets.mjs::motivoValido`, reusada para que exista UNA sola definición de "esto es
+ * una decisión"): un booleano se pone por accidente al copiar una línea, un motivo de ocho
+ * caracteres no. Y queda escrito en el error de cualquier guarda que se cruce después.
+ */
+export function motivoDeEscritura(escribir) {
+  if (escribir === undefined || escribir === null || escribir === false) return null
+  return motivoValido(escribir) ? String(escribir).trim() : null
+}
 
 /** El render que se usa para leer un valor cuando importa el DATO y no cómo se ve. Es la cura de
  *  la trampa dd/mm/yy: un serial no se puede leer al revés. */
@@ -81,6 +114,8 @@ export class Planilla {
     this.meta = meta
     this.formato = formato
     this.opciones = opciones
+    /** La intención declarada de escribir, con su motivo. `null` = planilla de sólo lectura. */
+    this.escritura = motivoDeEscritura(opciones.escribir)
   }
 
   // ─────────────────────────────── guardas ───────────────────────────────
@@ -97,8 +132,16 @@ export class Planilla {
     return r
   }
 
-  /** Antes de cualquier escritura: formato apto y destino no prohibido. */
+  /** Antes de cualquier escritura: intención declarada, formato apto y destino no prohibido. */
   _puedeEscribir(operacion = 'escribir') {
+    // PRIMERO la intención: es la única guarda cuyo olvido falla CERRADO. Va antes que el formato
+    // para que abrir un archivo "a ver qué tiene" no pueda escribirlo por un typo en el método.
+    if (!this.escritura) {
+      fallar(CODIGOS.ESCRITURA_NO_DECLARADA,
+        `"${this.meta.name}" se abrió para LEER. Para escribir, abrila declarando para qué: `
+        + "abrirPlanilla(google, fileId, { escribir: 'motivo de al menos 8 caracteres' }).",
+        { fileId: this.fileId, operacion })
+    }
     const cap = permite(this.formato, operacion)
     if (cap) {
       fallar(CODIGOS.FORMATO_NO_SOPORTADO,
@@ -107,8 +150,9 @@ export class Planilla {
     }
     if (PROHIBIDOS_ESCRIBIR.has(this.fileId) && !this.opciones.permitirEscrituraEn?.(this.fileId)) {
       fallar(CODIGOS.DESTINO_PROHIBIDO,
-        `"${this.meta.name}" está en la lista de archivos que este motor no escribe nunca: es fuente, se lee.`,
-        { fileId: this.fileId })
+        `"${this.meta.name}" es FUENTE: se lee y no se escribe, ni declarando un motivo. `
+        + `El motivo declarado era: "${this.escritura}".`,
+        { fileId: this.fileId, motivoDeclarado: this.escritura })
     }
   }
 
@@ -293,7 +337,45 @@ export class Planilla {
 
     const res = await this.google.updateSheetValues(this.fileId, formatearRango(r), esperado, { espejo: !!o.espejo })
     this._siProtegido(res, ref)
-    return this._verificar(r, esperado)
+    return this._verificar(this._dondeAterrizo(res, r), esperado)
+  }
+
+  /**
+   * DÓNDE ATERRIZÓ DE VERDAD LA ESCRITURA — no dónde se pidió que aterrizara.
+   *
+   * ═══ EL AGUJERO QUE CIERRA (01/09/2026, auditoría) ═══
+   *
+   * El encabezado de `verificacion.mjs` dice que la API «devuelve 200 igual si el valor aterrizó en
+   * la pestaña equivocada porque el rango tenía un nombre parecido», y ése era exactamente el caso
+   * que este motor NO podía detectar: releía con LA MISMA CADENA con la que había escrito. Si Google
+   * resuelve mal el nombre, la escritura y la relectura van al mismo lugar equivocado, coinciden, y
+   * el control dice que sí. Un control que se compara contra sí mismo no es un control.
+   *
+   * `updatedRange` lo escribe el SERVIDOR, después de resolver el nombre: es la única fuente que
+   * puede contradecir al llamador. `agregarFilas` ya lo usaba —ahí es imprescindible porque el
+   * append elige la fila— y acá faltaba.
+   *
+   * Si la respuesta no lo trae, NO se cae a la cadena pedida: eso reabriría el agujero en silencio.
+   */
+  _dondeAterrizo(res, pedido) {
+    const crudo = res?.updatedRange
+    if (!crudo) {
+      fallar(CODIGOS.ESCRITURA_NO_PERSISTIO,
+        `la API no dijo dónde aterrizó la escritura sobre ${formatearRango(pedido)}: no hay contra qué verificar.`,
+        { rango: formatearRango(pedido), respuesta: res })
+    }
+    const real = parsearRango(crudo)
+    // Se comparan las ESTRUCTURAS, no las cadenas: la API devuelve `Datos!E1` donde el motor pidió
+    // `Datos!E1:E1`, y son el mismo lugar.
+    const mismo = (real.hoja ?? null) === (pedido.hoja ?? null)
+      && real.desde?.fila === pedido.desde.fila && real.desde?.col === pedido.desde.col
+      && real.hasta?.fila === pedido.hasta.fila && real.hasta?.col === pedido.hasta.col
+    if (!mismo) {
+      fallar(CODIGOS.ESCRITURA_NO_PERSISTIO,
+        `pedí escribir ${formatearRango(pedido)} y la escritura aterrizó en ${crudo}.`,
+        { pedido: formatearRango(pedido), aterrizo: crudo })
+    }
+    return real
   }
 
   /** Valida forma y tipos antes de gastar una llamada. Separado de `escribirRango` para que esa

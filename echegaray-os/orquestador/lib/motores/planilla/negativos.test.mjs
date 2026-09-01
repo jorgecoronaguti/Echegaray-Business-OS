@@ -241,14 +241,17 @@ test('NEGATIVO · un .xlsm se lee y NO se escribe (mutado: se escribe y le borra
     },
     intentar: async (motor) => {
       const { google, id } = archivoDe('application/vnd.ms-excel.sheet.macroEnabled.12', 'Presupuesto con macros.xlsm')
-      return (await motor.abrirPlanilla(google, id)).escribirCelda('Hoja 1!A1', 'x')
+      // Se DECLARA la intención a propósito: si no, saltaría ESCRITURA_NO_DECLARADA y este test
+      // estaría probando la guarda de al lado en vez de la del formato.
+      const p = await motor.abrirPlanilla(google, id, { escribir: 'prueba del rechazo por formato' })
+      return p.escribirCelda('Hoja 1!A1', 'x')
     },
   })
 })
 
 test('NEGATIVO · el .xlsm se ABRE para leer, y cada forma de escribirlo se niega diciendo qué se perdería', async () => {
   const { google, id } = archivoDe('application/vnd.ms-excel.sheet.macroEnabled.12', 'Con macros.xlsm')
-  const p = await MOTOR.abrirPlanilla(google, id)
+  const p = await MOTOR.abrirPlanilla(google, id, { escribir: 'prueba del rechazo por formato' })
   assert.equal(p.formato, 'xlsm', 'leer sí: el motor no se hace el que no lo conoce')
   assert.deepEqual((await p.hojas()).map((h) => h.title), ['Hoja 1'])
 
@@ -294,8 +297,18 @@ function clienteMentiroso() {
   const estado = { mintiendo: false }
   const google = makeGoogleClient({
     auth: { getAccessToken: async () => 't' },
+    // La mentira imita la FORMA de una respuesta real de Google —`updatedRange` incluido, porque
+    // Google siempre lo manda— y simplemente no guarda nada. Si devolviera menos campos, el motor
+    // la descartaría por incompleta y nunca se probaría lo que importa: que la RELECTURA es lo que
+    // desenmascara al 200 vacío.
     fetchImpl: async (url, o) => (estado.mintiendo && (o?.method || 'GET') === 'PUT'
-      ? { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ updatedCells: 3 }), text: async () => '{}' }
+      ? {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ updatedRange: decodeURIComponent(new URL(url).pathname.split('/values/')[1]), updatedCells: 3 }),
+        text: async () => '{}',
+      }
       : honesto(url, o)),
   })
   return { drive, google, estado }
@@ -420,7 +433,8 @@ test('NEGATIVO · el Flujo de Caja se LEE y no se escribe, en ninguna de sus for
   arch.id = CASH_FLOW
   drive.archivos.set(CASH_FLOW, arch)
 
-  const p = await MOTOR.abrirPlanilla(google, CASH_FLOW)
+  // Declarando la intención A PROPÓSITO: el piso tiene que aguantar incluso a alguien decidido.
+  const p = await MOTOR.abrirPlanilla(google, CASH_FLOW, { escribir: 'intento deliberado de escribir la fuente' })
   assert.deepEqual((await p.hojas()).map((h) => h.title), ['Hoja 1'], 'leer sí: es fuente, y una fuente se lee')
 
   for (const op of [
@@ -477,4 +491,151 @@ test('REGLA 0 · un vacío sobre contenido NO se escribe, y el motor dice QUÉ h
 
   // Y lo que NO es vacío sí se escribe: el cinturón protege del borrado, no de la corrección.
   assert.equal((await planilla.escribirRango('Datos!A2:C2', [['ACME', 1000, 'nota corregida']])).verificado, true)
+})
+
+// ═══════════ 8 · LA UBICACIÓN: se verifica QUÉ quedó adentro Y DÓNDE quedó ════════════════════
+//
+// Las tres de acá salieron de una auditoría (01/09/2026) que mutó el motor y la suite siguió verde:
+// mutaciones INERTES, o sea guardas que nadie defendía. Una guarda sin un test que la vea caer es
+// una guarda que se puede borrar sin que nada avise.
+
+test('NEGATIVO · una planilla que aterriza en otra carpeta NO cuenta como creada (mutado: cuenta)', async () => {
+  await rojoYVerde({
+    codigo: CODIGOS.UBICACION_INESPERADA,
+    // La mutación es lo que había: crear y no releer dónde quedó. Drive ignora el `parents` en
+    // silencio si la carpeta no existe o el token no tiene permiso — el archivo queda en la raíz,
+    // con 200, y nadie lo encuentra nunca.
+    mutacion: {
+      archivo: 'estructura.mjs',
+      de: '  await exigirUbicacion(google, f.id, carpetaId, { que: `la planilla "${nombre}"` })\n',
+      a: '',
+    },
+    intentar: async (motor) => {
+      const { drive, google } = cliente()
+      drive.carpetasQueIgnora.add('carpeta-de-la-obra') // Drive la acepta y la descarta
+      return motor.crearPlanilla(google, 'Control de obra', { carpetaId: 'carpeta-de-la-obra' })
+    },
+  })
+})
+
+test('NEGATIVO · una COPIA de template que aterriza en otra carpeta tampoco cuenta', async () => {
+  const { drive, google } = cliente()
+  const tpl = drive.nuevoArchivo({ name: 'Template de control' })
+  drive.carpetasQueIgnora.add('carpeta-fantasma')
+  await assert.rejects(
+    () => MOTOR.duplicarTemplate(google, tpl.id, 'Control Quattropani', { carpetaId: 'carpeta-fantasma' }),
+    (e) => {
+      assert.ok(esError(e, CODIGOS.UBICACION_INESPERADA), `vino ${e?.codigo}: ${e?.message}`)
+      assert.equal(e.detalle.carpetaPedida, 'carpeta-fantasma')
+      return true
+    },
+  )
+  // Y con una carpeta que Drive SÍ respeta, pasa: la guarda no es un "siempre no".
+  const p = await MOTOR.duplicarTemplate(google, tpl.id, 'Control San Francisco', { carpetaId: 'carpeta-buena' })
+  assert.deepEqual(drive.archivos.get(p.fileId).parents, ['carpeta-buena'])
+})
+
+test('NEGATIVO · si `parents` no viene en la metadata, no se puede probar la ubicación y se dice', async () => {
+  // Un control que pregunta por un campo que la lectura no trae contesta `undefined` para siempre y
+  // no falla nunca. `METADATA_MINIMA` lo trae hoy; si mañana alguien lo saca, esto grita.
+  const { google } = cliente()
+  const real = google.getMeta
+  google.getMeta = async () => ({ id: 'x', name: 'y' }) // sin `parents`
+  try {
+    await assert.rejects(() => MOTOR.crearPlanilla(google, 'Sin parents', { carpetaId: 'c1' }), (e) => {
+      assert.ok(esError(e, CODIGOS.UBICACION_INESPERADA))
+      assert.match(e.message, /no puedo probar dónde está/)
+      return true
+    })
+  } finally { google.getMeta = real }
+})
+
+test('METADATA_MINIMA · `parents` sigue pidiéndose: sin él el control de ubicación es mudo', async () => {
+  const { METADATA_MINIMA } = await import('../../google.mjs')
+  assert.ok(METADATA_MINIMA.includes('parents'),
+    'si `parents` sale de METADATA_MINIMA, exigirUbicacion() no puede decir que no nunca más')
+})
+
+// ══════════ 9 · LA ESCRITURA SE RELEE DONDE ATERRIZÓ, NO DONDE SE PIDIÓ ═══════════════════════
+
+test('NEGATIVO · si la escritura aterriza en otra pestaña, releer con la cadena pedida no lo ve', async () => {
+  await rojoYVerde({
+    codigo: CODIGOS.ESCRITURA_NO_PERSISTIO,
+    // La mutación es lo que había: verificar con LA MISMA CADENA con la que se escribió. Si Google
+    // resuelve mal el nombre, la escritura y la relectura van al mismo lugar equivocado, coinciden,
+    // y el control dice que sí. Un control que se compara contra sí mismo no es un control.
+    mutacion: {
+      archivo: 'motor.mjs',
+      de: '    return this._verificar(this._dondeAterrizo(res, r), esperado)',
+      a: '    void this._dondeAterrizo; void res; return this._verificar(r, esperado)',
+    },
+    intentar: async (motor) => {
+      // Un Google que resuelve "Datos" a la pestaña "Datos 2024" — el nombre parecido del que habla
+      // el encabezado de `verificacion.mjs`. Las dos operaciones caen ahí, así que coinciden.
+      const drive = crearDrive()
+      const honesto = fetchFalso(drive)
+      const desviar = (u) => u.replace(/\/values\/Datos(!|%21)/, '/values/Datos%202024$1')
+      const google = makeGoogleClient({
+        auth: { getAccessToken: async () => 't' },
+        fetchImpl: async (url, o) => honesto(desviar(String(url)), o),
+      })
+      const p = await motor.crearPlanilla(google, 'DESVIADO')
+      await p.crearHoja('Datos')
+      await p.crearHoja('Datos 2024')
+      return p.escribirRango('Datos!A1:C1', [['a', 1, 'b']])
+    },
+  })
+})
+
+test('NEGATIVO · el error de aterrizaje dice dónde se pidió y dónde cayó', async () => {
+  const drive = crearDrive()
+  const honesto = fetchFalso(drive)
+  let desviando = false
+  const google = makeGoogleClient({
+    auth: { getAccessToken: async () => 't' },
+    fetchImpl: async (url, o) => {
+      const u = String(url)
+      if (desviando && (o?.method || 'GET') === 'PUT') {
+        const r = await honesto(u, o)
+        const j = await r.json()
+        return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ ...j, updatedRange: 'Otra!A1:C1' }), text: async () => '{}' }
+      }
+      return honesto(u, o)
+    },
+  })
+  const p = await MOTOR.crearPlanilla(google, 'ATERRIZAJE')
+  await p.crearHoja('Datos')
+  assert.equal((await p.escribirRango('Datos!A1:C1', [['a', 1, 'b']])).verificado, true)
+
+  desviando = true
+  await assert.rejects(() => p.escribirRango('Datos!A2:C2', [['x', 2, 'y']]), (e) => {
+    assert.ok(esError(e, CODIGOS.ESCRITURA_NO_PERSISTIO))
+    assert.equal(e.detalle.pedido, 'Datos!A2:C2')
+    assert.equal(e.detalle.aterrizo, 'Otra!A1:C1')
+    return true
+  })
+})
+
+// ══════════ 10 · CREAR UNA HOJA SE PRUEBA RELEYENDO, NO CON LA RESPUESTA DEL BATCH ════════════
+
+test('NEGATIVO · crearHoja no se cree la respuesta del batch (mutado: se la cree)', async () => {
+  await rojoYVerde({
+    codigo: CODIGOS.HOJA_INEXISTENTE,
+    // Confiar en `addSheet.properties` es confiar en lo que escribió quien escribió. La evidencia es
+    // la relectura de metadatos, que la escribe el destino — está dicho en el comentario de
+    // `estructura.mjs` desde el primer commit, y hasta hoy no lo defendía ningún test.
+    mutacion: {
+      archivo: 'estructura.mjs',
+      de: '  const h = await planilla.hoja(titulo) // la evidencia es la relectura, no la respuesta del batch',
+      a: '  const h = { sheetId: res?.replies?.[0]?.addSheet?.properties?.sheetId ?? -1 }',
+    },
+    intentar: async (motor) => {
+      const { google } = cliente()
+      const p = await motor.crearPlanilla(google, 'CREAR HOJA')
+      // Un batch que dice que sí y no crea nada. Con la relectura da HOJA_INEXISTENTE; sin ella,
+      // devuelve `ok:true` con el sheetId que el servidor inventó.
+      google.spreadsheetBatchUpdate = async () => ({ replies: [{ addSheet: { properties: { sheetId: 999, title: 'Resumen' } } }] })
+      return p.crearHoja('Resumen')
+    },
+  })
 })

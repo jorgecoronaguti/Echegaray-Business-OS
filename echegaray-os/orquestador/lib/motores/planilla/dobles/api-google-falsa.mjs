@@ -29,8 +29,11 @@ const clave = (f, c) => `${f},${c}`
 export function crearDrive({ locale = 'es_AR' } = {}) {
   const archivos = new Map()
   let seq = 0
+  /** Las carpetas que este Drive acepta y descarta, para poder ejercitar la falla silenciosa. */
+  const carpetasQueIgnora = new Set()
+  const drive = { archivos, carpetasQueIgnora, trafico: [] }
 
-  const nuevoArchivo = ({ name, mimeType = MIME_SHEET, hojas = ['Hoja 1'] }) => {
+  const nuevoArchivo = ({ name, mimeType = MIME_SHEET, hojas = ['Hoja 1'], parents = [] }) => {
     const id = `fake-${++seq}-${Math.random().toString(36).slice(2, 8)}`
     archivos.set(id, {
       id,
@@ -39,6 +42,10 @@ export function crearDrive({ locale = 'es_AR' } = {}) {
       trashed: false,
       locale,
       version: 1,
+      // `parents` se guarda porque el motor lo VERIFICA. Y `carpetasQueIgnora` reproduce la falla
+      // real: Drive acepta el `parents` y lo ignora en silencio cuando la carpeta no existe o el
+      // token que crea no tiene permiso sobre ella. El archivo queda en la raíz, con 200.
+      parents: parents.filter((x) => !drive.carpetasQueIgnora.has(x)),
       hojas: hojas.map((t, i) => ({ sheetId: 1000 + i, title: t, index: i, hidden: false, celdas: new Map() })),
       namedRanges: [],
       nextSheetId: 1000 + hojas.length,
@@ -46,13 +53,8 @@ export function crearDrive({ locale = 'es_AR' } = {}) {
     return archivos.get(id)
   }
 
-  return {
-    archivos,
-    nuevoArchivo,
-    /** Las llamadas que efectivamente llegaron. Es lo que permite AFIRMAR que una operación no
-     *  hizo I/O de más, y contar cuántas veces se releyó. */
-    trafico: [],
-  }
+  drive.nuevoArchivo = nuevoArchivo
+  return drive
 }
 
 /** Busca la hoja por título dentro de un archivo. */
@@ -330,14 +332,16 @@ function driveApi(drive, u, metodo, cuerpo) {
   if (!m) return error(404, `ruta de drive desconocida: ${u.pathname}`)
 
   if (!m[1] && metodo === 'POST') {
-    const a = drive.nuevoArchivo({ name: cuerpo?.name, mimeType: cuerpo?.mimeType })
+    const a = drive.nuevoArchivo({ name: cuerpo?.name, mimeType: cuerpo?.mimeType, parents: cuerpo?.parents ?? [] })
+    // La respuesta de `files.create` NO incluye `parents` salvo que se pidan en `fields`, y el
+    // cliente no los pide: por eso la ubicación sólo se puede probar releyendo. Se imita.
     return json({ id: a.id, name: a.name, mimeType: a.mimeType, webViewLink: `https://fake/${a.id}` })
   }
   const arch = drive.archivos.get(decodeURIComponent(m[1] ?? ''))
   if (!arch) return error(404, 'File not found.')
 
   if (m[2] === 'copy' && metodo === 'POST') {
-    const c = drive.nuevoArchivo({ name: cuerpo?.name ?? `Copia de ${arch.name}`, mimeType: arch.mimeType, hojas: [] })
+    const c = drive.nuevoArchivo({ name: cuerpo?.name ?? `Copia de ${arch.name}`, mimeType: arch.mimeType, hojas: [], parents: cuerpo?.parents ?? [] })
     c.hojas = arch.hojas.map((h) => ({ ...h, celdas: new Map(h.celdas) }))
     c.nextSheetId = arch.nextSheetId
     c.namedRanges = arch.namedRanges.map((n) => ({ ...n }))
@@ -345,7 +349,7 @@ function driveApi(drive, u, metodo, cuerpo) {
   }
   if (metodo === 'GET') {
     if (arch.trashed) return json({ id: arch.id, name: arch.name, mimeType: arch.mimeType, trashed: true })
-    return json({ id: arch.id, name: arch.name, mimeType: arch.mimeType, trashed: false, version: String(arch.version), webViewLink: `https://fake/${arch.id}` })
+    return json({ id: arch.id, name: arch.name, mimeType: arch.mimeType, trashed: false, parents: arch.parents, version: String(arch.version), webViewLink: `https://fake/${arch.id}` })
   }
   if (metodo === 'PATCH') {
     Object.assign(arch, cuerpo ?? {})
