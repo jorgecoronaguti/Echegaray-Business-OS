@@ -639,3 +639,80 @@ test('NEGATIVO · crearHoja no se cree la respuesta del batch (mutado: se la cre
     },
   })
 })
+
+// ══════ 11 · SE ESCRIBE SÓLO DONDE SE DECLARÓ QUERER ESCRIBIR ═════════════════════════════════
+//
+// La inversión de la red de seguridad. Antes la defensa era una LISTA de archivos prohibidos, cuyo
+// modo de falla es el silencio: olvidarse de agregar uno significa escribirlo. Ahora un archivo
+// AJENO se abre para leer, y escribirlo requiere declararlo con un motivo — el olvido falla CERRADO.
+//
+// Estos tests existen porque la mutación «sacar la exigencia de intención» salió INERTE la primera
+// vez: la guarda estaba escrita y no la defendía nadie. Que es justo lo que la guarda previene.
+
+test('NEGATIVO · una planilla AJENA se abre para leer y no se puede escribir sin declararlo', async () => {
+  await rojoYVerde({
+    codigo: CODIGOS.ESCRITURA_NO_DECLARADA,
+    mutacion: { archivo: 'motor.mjs', de: '    if (!this.escritura) {', a: '    if (false) {' },
+    intentar: async (motor) => {
+      const { drive, google } = cliente()
+      // Un archivo que el motor NO creó: de otro, abierto para mirarlo.
+      const ajeno = drive.nuevoArchivo({ name: 'Presupuesto de un tercero' })
+      const p = await motor.abrirPlanilla(google, ajeno.id)
+      return p.escribirCelda('Hoja 1!A1', 'me lo llevo puesto')
+    },
+  })
+})
+
+test('NEGATIVO · sin intención declarada, NINGUNA forma de escribir pasa — y leer sí', async () => {
+  const { drive, google } = cliente()
+  const ajeno = drive.nuevoArchivo({ name: 'Sheet de otro' })
+  const p = await MOTOR.abrirPlanilla(google, ajeno.id)
+
+  assert.deepEqual((await p.hojas()).map((h) => h.title), ['Hoja 1'], 'leer no necesita declarar nada')
+  assert.equal((await p.leerCelda('Hoja 1!A1')).valor, null)
+
+  for (const op of [
+    () => p.escribirCelda('Hoja 1!A1', 'x'),
+    () => p.escribirRango('Hoja 1!A1:B1', [['a', 'b']]),
+    () => p.escribirFormula('Hoja 1!A2', '=SUM(A1:A1)'),
+    () => p.agregarFilas('Hoja 1!A1:B1', [['a', 'b']]),
+    () => p.escribirPreservando('Hoja 1!A1:B2', [['a', 'b']]),
+    () => p.crearHoja('Nueva'),
+    () => p.copiarHoja('Hoja 1', 'Copia'),
+    () => p.borrarHoja('Hoja 1'),
+    () => p.definirRangoConNombre('X', 'Hoja 1!A1:A2'),
+  ]) {
+    await assert.rejects(op, (e) => {
+      assert.ok(esError(e, CODIGOS.ESCRITURA_NO_DECLARADA), `vino ${e?.codigo}: ${e?.message}`)
+      assert.match(e.message, /declarando para qué/)
+      return true
+    })
+  }
+  assert.equal(drive.trafico.filter((t) => t.metodo !== 'GET').length, 0, 'ni una escritura salió al cable')
+})
+
+test('NEGATIVO · un `true` no es una decisión: la intención necesita un MOTIVO', async () => {
+  const { drive, google } = cliente()
+  const ajeno = drive.nuevoArchivo({ name: 'Sheet de otro' })
+  // La misma vara que el freno de mano (`motivoValido`): un booleano se pone por accidente al
+  // copiar una línea, y un `ok` no explica nada. Sin motivo válido, la planilla sigue de sólo lectura.
+  for (const intento of [true, 1, 'ok', 'si', '   ', {}]) {
+    const p = await MOTOR.abrirPlanilla(google, ajeno.id, { escribir: intento })
+    await assert.rejects(() => p.escribirCelda('Hoja 1!A1', 'x'),
+      (e) => esError(e, CODIGOS.ESCRITURA_NO_DECLARADA), `"${JSON.stringify(intento)}" no debería habilitar nada`)
+  }
+  // Con un motivo de verdad, escribe.
+  const ok = await MOTOR.abrirPlanilla(google, ajeno.id, { escribir: 'cargar el cuadro de control de la obra' })
+  assert.equal((await ok.escribirCelda('Hoja 1!A1', 'x')).verificado, true)
+  assert.equal(ok.escritura, 'cargar el cuadro de control de la obra', 'el motivo queda a la vista para los errores')
+})
+
+test('NEGATIVO · lo que el motor CREA nace declarado: no hay que repetir la intención', async () => {
+  // La protección existe para no pisar archivos AJENOS. Uno que el motor acaba de crear no lo es, y
+  // pedir la declaración ahí sería ceremonia sin defensa.
+  const { google } = cliente()
+  const p = await MOTOR.crearPlanilla(google, 'Mía')
+  assert.match(p.escritura, /creada por el motor/)
+  await p.crearHoja('Datos')
+  assert.equal((await p.escribirCelda('Datos!A1', 'x')).verificado, true)
+})

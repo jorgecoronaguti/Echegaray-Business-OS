@@ -18,6 +18,17 @@
 // coincide, no devuelve un `ok:false` cortés — LANZA `ESCRITURA_NO_PERSISTIO` con el diff. Una
 // escritura que se cree hecha y no lo está es peor que una que falla.
 //
+// ═══ TODAVÍA NO TIENE UN SOLO CONSUMIDOR (01/09/2026) ═══
+//
+// Nada fuera de `lib/motores/planilla/` invoca este motor: ni una tool, ni un endpoint, ni un script
+// que el dueño pueda correr. `lib/tools/drive-write.mjs` sigue con su propia lógica, así que la
+// inversión que este motor hace posible **todavía no está aplicada**. Está dicho acá y no en un
+// informe porque un informe se archiva: mientras esta línea exista, el trabajo no terminó.
+//
+// No se migraron esas tools desde acá a propósito: llevan `yaGuardado: true` porque pasan por la
+// cola de aprobación del dueño, y cambiarles la semántica de escritura es una decisión de
+// integración, no de esta lane.
+//
 // ═══ LO QUE ESTE MOTOR NO HACE, A PROPÓSITO ═══
 //
 // · No levanta el freno de escritura de Sheets ni lo consulta por su cuenta: `google.mjs` ya lo
@@ -76,8 +87,12 @@ export const PROHIBIDOS_ESCRIBIR = Object.freeze(new Set([
  * caracteres no. Y queda escrito en el error de cualquier guarda que se cruce después.
  */
 export function motivoDeEscritura(escribir) {
-  if (escribir === undefined || escribir === null || escribir === false) return null
-  return motivoValido(escribir) ? String(escribir).trim() : null
+  // EL TIPO SE EXIGE ACÁ, y no se delega. `motivoValido({})` devuelve `true`: `String({})` es
+  // "[object Object]", quince caracteres que no matchean ninguna palabra trivial. O sea que un
+  // objeto pasado por error —un `{ actor, motivo }` mal desestructurado, lo más fácil del mundo—
+  // habilitaría la escritura con un motivo que no dice nada. Lo descubrió el test de esta guarda.
+  if (typeof escribir !== 'string') return null
+  return motivoValido(escribir) ? escribir.trim() : null
 }
 
 /** El render que se usa para leer un valor cuando importa el DATO y no cómo se ve. Es la cura de

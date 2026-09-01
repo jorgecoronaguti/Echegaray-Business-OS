@@ -22,11 +22,28 @@
 // freno con la variable de entorno, y la regla del repo es explícita: *el freno de mano manda y no
 // se pide excepción*. Así que la corrida por defecto es contra `dobles/api-google-falsa.mjs`.
 //
-// LO QUE ESO PRUEBA Y LO QUE NO. El doble está en `fetchImpl`, no en el cliente: corre `google.mjs`
-// ENTERO (URL, escapado del rango, localización de fórmulas a es-AR, freno, guarda de escritura,
-// no-borrar) y lo único fingido es el servidor. Prueba el motor y su cableado; NO prueba que Google
-// se comporte como el doble cree. Para eso está `--vivo`, que espera a que el dueño levante el
-// freno y NO toca la marca por su cuenta.
+// ═══ LO QUE ESTA CORRIDA **NO** PRUEBA — leer antes de creerle al verde ═══
+//
+// El doble está en `fetchImpl`, no en el cliente: corre `google.mjs` ENTERO (URL, escapado del
+// rango, localización de fórmulas a es-AR, freno, guarda de escritura, no-borrar) y lo único
+// fingido es el servidor. Eso prueba el motor y su cableado. NO prueba que Google se comporte como
+// el doble cree, y la diferencia no es un detalle:
+//
+//   **La promesa central del motor —toda escritura relee y compara— está probada contra un servidor
+//   escrito por la misma lane que escribió el motor.**
+//
+// Sin una corrida contra Google quedan SIN evidencia, una por una:
+//   · que Google ACEPTE y CALCULE la fórmula localizada. El 463.500,5 lo calcula
+//     `dobles/calculo-falso.mjs`, 160 líneas de esta misma lane.
+//   · dónde aterriza de verdad un `append` (el doble elige la fila que a él le parece).
+//   · que `duplicateSheet` se lleve la FÓRMULA y no su resultado pegado.
+//   · el round-trip del rango con nombre: se compara texto contra el formateo que devuelve Google,
+//     y el doble devuelve el formateo de esta lane.
+//   · `UNFORMATTED_VALUE`, los seriales de fecha y el parseo es-AR AL RELEER.
+//   · el freno, la guarda de escritura, los candados y `no-borrar` contra el servidor real.
+//
+// Para eso está `--vivo`, que espera a que el dueño levante el freno y NO toca la marca por su
+// cuenta. Hasta entonces, el verde de acá vale para el motor y no vale para Google.
 //
 //   node orquestador/scripts/planilla-sin-llm.mjs
 //   node orquestador/scripts/planilla-sin-llm.mjs --json
