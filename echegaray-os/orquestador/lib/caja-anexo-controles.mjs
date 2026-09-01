@@ -112,17 +112,24 @@ export function bloqueLiquidez(h) {
   // sin instrumento va a BANCO. Un movimiento con instrumento ya cargado manda por su instrumento.
   const MOV = `'_MOVIMIENTOS'`
   const mF = `${MOV}!$A$2:$A`, mS = `${MOV}!$B$2:$B`, mI = `${MOV}!$C$2:$C`
-  const mE = `${MOV}!$H$2:$H`, mIn = `${MOV}!$I$2:$I`, mOr = `${MOV}!$N$2:$N`
+  const mE = `${MOV}!$H$2:$H`, mIn = `${MOV}!$I$2:$I`, mOr = `${MOV}!$N$2:$N`, mMon = `${MOV}!$D$2:$D`
   const efInst = `(${mIn}="efectivo")`
   const bcInst = `((${mIn}="transferencia")+(${mIn}="echeq")+(${mIn}="debito")+(${mIn}="tarjeta")+(${mIn}="cheque"))`
   const esJorn = `(${mOr}="Jornales por Quincena")`
   // 1 si la fila es EFECTIVO: instrumento efectivo, o desconocido de Jornales. El resto (incluye
   // desconocido no-Jornales y todo lo bancario) es 1-flag → banco. Los dos flags parten en 0/1 exactos.
   const flagEf = `(${efInst}+(1-${efInst}-${bcInst})*${esJorn})`
-  const ventana = `ISNUMBER(${mF})*(${mF}>=${DESDE_CAJA.fecha})*(${mF}<=EOMONTH(TODAY();0))*(${mE}<>"REAL")`
+  // SÓLO PESOS: sin el filtro de moneda, un movimiento en USD dentro de la ventana se sumaría como si
+  // fueran pesos, sin convertir. Hoy no hay ninguno no-REAL en ventana; el filtro lo deja así a futuro,
+  // y si entrara uno el control de abajo deja de cuadrar (que es la señal correcta, no un número mudo).
+  const ventana = `ISNUMBER(${mF})*(${mF}>=${DESDE_CAJA.fecha})*(${mF}<=EOMONTH(TODAY();0))*(${mE}<>"REAL")*(${mMon}="ARS")`
   const flujo = (flag) => `SUMPRODUCT(${ventana}*${flag}*N(${mS})*N(${mI}))`
-  const efHoy = `N(${ANEXO.efectivoNeto})`
-  const bcHoy = `(N(${DESDE_CAJA.total})-N(${ANEXO.efectivoNeto}))`
+  // EL EFECTIVO DE HOY ES arqueo + delta posterior (= CAJA!C7), NO sólo el delta. `ANEXO_EFECTIVO_NETO`
+  // es únicamente el movimiento de efectivo posterior al conteo; usarlo solo arrancaba la línea de
+  // efectivo en $0 y se lo comía la de banco — y el control no lo veía porque el término se cancela en
+  // la suma. Anclar al arqueo lo hace correcto por definición: es la misma cifra que publica CAJA!C7.
+  const efHoy = `(N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto}))`
+  const bcHoy = `(N(${DESDE_CAJA.total})-${efHoy})`
   const fEf = push(['Saldo en efectivo proyectado a fin de mes', '', '', '', `=${efHoy}+${flujo(flagEf)}`, '',
     'efectivo de hoy + cobros/pagos en efectivo del mes · Jornales sin instrumento → efectivo'])
   const fBc = push(['Dinero en banco proyectado a fin de mes', '', '', '', `=${bcHoy}+${flujo(`(1-${flagEf})`)}`, '',

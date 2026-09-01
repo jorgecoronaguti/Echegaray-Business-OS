@@ -49,6 +49,10 @@ test('«efectivo/banco proyectado» parten los flujos del mes por instrumento de
   assert.match(fEf, /I\$2:\$I="efectivo"/, 'clasifica por instrumento efectivo')
   // no se cuentan movimientos ya REALizados (están en el saldo de hoy)
   assert.match(fEf, /<>"REAL"/, 'excluye los movimientos ya reales')
+  // sólo pesos: un USD en ventana no puede sumarse como si fuera peso
+  assert.match(fEf, /="ARS"/, 'filtra por moneda ARS')
+  // el efectivo de hoy ancla al arqueo (= CAJA!C7), no al mero delta ANEXO_EFECTIVO_NETO
+  assert.match(fEf, /CAJA_ARQUEO_ARS/, 'el efectivo de hoy arranca del arqueo, no del delta')
   // paréntesis balanceados en las tres fórmulas
   const balance = (f) => [...String(f)].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0)
   assert.equal(balance(fEf), 0, 'paréntesis balanceados en efectivo proyectado')
