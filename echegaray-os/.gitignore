@@ -92,3 +92,7 @@ orquestador/scripts/.cfsemanal-backup-*.json
 orquestador/scripts/diff-esquemas.txt
 build.log
 server.log
+
+# Clones descartables del motor de planillas (tests de mutacion). Si aparece uno, es que una
+# corrida murio a mitad: se puede borrar sin pensarlo.
+orquestador/lib/motores/.mutante-*
