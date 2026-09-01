@@ -86,8 +86,15 @@ export function bloqueLiquidez(h) {
   // matriz, CF_MESES y CF_SALDO_CIERRE son FILAS de doce columnas y no columnas de doce filas. Sobre un
   // rango de una sola fila, `INDEX(rango;n)` significa "la fila n" —devuelve #REF!— y no "la columna n".
   // MATCH no cambia: da la posición lo mismo sobre una fila que sobre una columna.
+  // SÓLO MIRA DE HOY EN ADELANTE (01/09): sin el filtro por mes, el MATCH agarraba el primer mes
+  // NEGATIVO del año aunque ya hubiera pasado — marzo-julio 2026 estuvieron en rojo de verdad, y el
+  // control apuntaba a "febrero 2026" en septiembre. Un aviso de "cuándo te quedás sin plata" que
+  // señala una crisis que ya pasó es peor que inútil: contradice la caja real, que de hoy en adelante
+  // sube (los cobros grandes ya están agendados). El `<>""` sólo saltea meses vacíos; este factor
+  // saltea los meses CERRADOS anteriores al corte de CAJA.
+  const desdeElCorte = `(EOMONTH(${rangoMes};0)>=EOMONTH(${DESDE_CAJA.fecha};0))`
   const primerMes = (cond) => (rangoCierre
-    ? `=IFERROR(TEXT(INDEX(${rangoMes};1;MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
+    ? `=IFERROR(TEXT(INDEX(${rangoMes};1;MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond})*${desdeElCorte});0));"mmmm yyyy");"ningún mes del año")`
     : `${ALERTA} falta la línea de cierre en el Cash Flow Mensual`)
   push(['Primer mes por debajo de la caja mínima (proyección del Cash Flow)', '', '', '', '', '',
     primerMes(`<${DESDE_CAJA.minima}`)])
