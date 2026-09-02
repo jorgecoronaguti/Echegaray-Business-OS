@@ -319,6 +319,27 @@ export const PASOS = [
   // sobre el libro que se acaba de escribir y sobre el saldo que CAJA acaba de publicar.
   ['cash-flow-vistas.mjs', 'Cash Flow Semanal (53 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
     ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
+  // ═══ EL FLUJO DE FONDOS ENTERO, A POSTGRES (02/09/2026) ═══
+  //
+  // El dueño: *"necesito que lleves toda la información del sheet flujo de fondos a bd supabase
+  // ordenada de la mejor manera porque voy a armar una página de analíticas que va a consumir
+  // directamente de la bd"*. Hasta hoy la base tenía el calendario financiero y las salidas del motor
+  // de tesorería, pero no el LIBRO: cualquier pregunta sobre el flujo había que contestarla leyendo
+  // el Sheet, y una pantalla web no puede leer el Sheet en cada render.
+  //
+  // VA ACÁ Y NO ANTES, por dos dependencias que no son negociables:
+  //   · DESPUÉS de `libro-movimientos-pestana.mjs`, que es de donde lee. Antes, persistiría el libro
+  //     de la corrida anterior — el mismo desfase de una vuelta que ya se pagó con `_CRUCE_ARCA`.
+  //   · DESPUÉS de `cash-flow-vistas.mjs`, que publica `CF_MESES`/`CF_INICIO`/`CF_CIERRE`. De esos
+  //     tres nombres salen el ejercicio que cubre la foto y los saldos de cierre, que son lo único de
+  //     la corrida que NO se puede recalcular desde el libro (un saldo es un stock anclado en CAJA).
+  //
+  // NO DECLARA NINGUNA PESTAÑA, y es correcto: no escribe una sola celda. El cliente de Google nace
+  // sin scopes de escritura, así que —como el centinela del conteo— sigue sirviendo con el freno de
+  // mano puesto. Y si la migración todavía no se aplicó, o si `_MOVIMIENTOS` volvió vacía, no toca la
+  // base y sale en verde: media foto es peor que ninguna, y un paso que explota por una tabla que
+  // todavía no existe deja de registrar la frescura del Cash Flow para todo el archivo.
+  ['sync-flujo-fondos.mjs', 'núcleo: el libro, los períodos mensual/semanal y los hallazgos de asimetría → public.flujo_*', []],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.

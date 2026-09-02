@@ -270,8 +270,21 @@ export function rubroDe(fila) {
  * Que sea UNA función es el punto entero de este archivo. Si mañana una vista necesita algo que ésta
  * no da, se le agrega un parámetro — no se copia.
  *
+ * ═══ `medida` EXISTE PARA QUE ESTA FUNCIÓN PUEDA EVALUAR LOS FILTROS DE LA HOJA (02/09/2026) ═══
+ *
+ * `terminoLibro` (lib/libro-sumas.mjs) construye la fórmula del Sheet a partir de un filtro, y ese
+ * filtro tiene un campo que acá no existía: `medida:'magnitud'`, con el que los egresos se muestran
+ * en positivo. Sin él, esta función no puede evaluar en JS los MISMOS filtros que
+ * `terminosDeMedida` le pasa a la hoja — y persistir los períodos en Postgres exigiría escribir un
+ * segundo evaluador con las mismas cinco condiciones. Dos evaluadores del mismo filtro es
+ * exactamente la duplicación que el libro vino a matar.
+ *
+ * El default no cambia: sin `medida`, sigue siendo el neto (signo × importe) que todos sus llamadores
+ * de hoy esperan.
+ *
  * @param {Array} libro
- * @param {{desde?:number, hasta?:number, estados?:string[], signo?:number, rubros?:string[]}} f
+ * @param {{desde?:number, hasta?:number, estados?:string[], signo?:number, rubros?:string[],
+ *          medida?:'neto'|'magnitud'}} f
  */
 export function sumar(libro = [], f = {}) {
   const estados = f.estados ?? null
@@ -284,7 +297,7 @@ export function sumar(libro = [], f = {}) {
     if (estados && !estados.includes(m.estado)) continue
     if (f.signo && m.signo !== f.signo) continue
     if (rubros && !rubros.has(m.rubro)) continue
-    total += m.signo * m.importe
+    total += (f.medida === 'magnitud' ? 1 : m.signo) * m.importe
     filas++
   }
   return { total, filas }
