@@ -33,6 +33,8 @@ import { AccionesPresupuesto } from '@/features/presupuestos/components/Acciones
 import { Conversacion } from '@/features/presupuestos/components/Conversacion'
 import { ColaDeAtencion } from '@/features/presupuestos/components/ColaDeAtencion'
 import { estadoDesdeFilas } from '@/features/presupuestos/services/cotizadorPuente'
+import { pasosDeLectura } from '@/features/presupuestos/services/lecturaPlano'
+import { LecturaDelPlano } from '@/features/presupuestos/components/LecturaDelPlano'
 import { Aviso, Ayuda, Estado, Plegable } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import {
@@ -72,12 +74,15 @@ export default async function PresupuestoPage({
   }
   const presupuesto = p!
 
-  const [partidas, versiones, tareas, alcance] = await Promise.all([
+  const [partidas, versiones, tareas, alcance, razonamiento] = await Promise.all([
     getPartidas(supabase, id),
     getVersiones(supabase, presupuesto.numero),
     getTareasCotizables(supabase),
     // Las decisiones de alcance del §5. Sin ellas la cola pediría el precio de algo que se sacó.
     supabase.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
+    // La lectura del plano que derivó en esta cotización. Vive en `cotizaciones`, no en la vista
+    // de cascada: es una foto de la lectura, no una cifra. NULL en cotizaciones a mano o viejas.
+    supabase.from('cotizaciones').select('razonamiento').eq('id', id).maybeSingle(),
   ])
 
   const lista = partidas.data ?? []
@@ -96,6 +101,7 @@ export default async function PresupuestoPage({
   const convertir = puedeConvertir(presupuesto)
   const e = lecturaEstado(presupuesto.estado)
   const rubros = [...new Set(lista.map(rubroDe))]
+  const lectura = pasosDeLectura(razonamiento.data?.razonamiento ?? null)
   const subFuera = subcontratadasFueraDelPrecio(lista)
 
   const tono = TONO[e.tono === 'pos' ? 'pos' : e.tono === 'curso' ? 'curso' : e.tono === 'neg' ? 'neg' : e.tono === 'warn' ? 'warn' : 'neutro']
@@ -183,6 +189,22 @@ export default async function PresupuestoPage({
         {/* «Sin análisis» y «sin cómputo» eran dos bloques de aviso a ancho completo. Ahora el
             CONTADOR vive en la franja de arriba y el CHIP que filtra la tabla, en su toolbar: el
             mismo número, pero al lado de las filas que hay que arreglar. */}
+        {/* EL PASO A PASO ES LA GUÍA (dueño, 02/09 + «Presupuestos v5 · Lectura del plano»):
+            antes de hablar de precio, el razonamiento que lo derivó — con sus faltantes
+            nombrados. Sólo existe en cotizaciones que nacieron de una lectura de plano. */}
+        {lectura.length > 0 && (
+          <div className="mb-4">
+            <Plegable
+              titulo="Razonamiento del cotizador — la lectura del plano que derivó en este precio"
+              cuenta={lectura.filter((p) => p.estado !== 'firme').length || null}
+              abiertoPorDefecto
+              testid="lectura-plegable"
+            >
+              <LecturaDelPlano pasos={lectura} />
+            </Plegable>
+          </div>
+        )}
+
         <ResumenPresupuesto p={presupuesto} />
 
         <div className="mt-3">

@@ -139,16 +139,16 @@ export function armar({ cliente, obraNombre, partidas = [], composiciones = new 
  * ADJUDICACIÓN → CREAR OBRA, y cada fila de `public.computo` apunta al archivo de Drive del que
  * salió la cantidad. No toca ninguna cotización existente: siempre inserta una nueva.
  */
-export async function persistir({ query }, cotizacion, { numero, origen = 'xsas:plano', notas = null, parametroComercialId = null } = {}) {
+export async function persistir({ query }, cotizacion, { numero, origen = 'xsas:plano', notas = null, parametroComercialId = null, razonamiento = null } = {}) {
   const p = parametroComercialId ?? (await query(`select id from public.parametro_comercial where vigente order by version desc limit 1`)).rows[0]?.id ?? null
   const c = await query(
-    `insert into public.cotizaciones (cliente, obra_nombre, estado, fecha_cotizacion, numero, version, vigente, origen, notas, parametro_comercial_id,
+    `insert into public.cotizaciones (cliente, obra_nombre, estado, fecha_cotizacion, numero, version, vigente, origen, notas, razonamiento, parametro_comercial_id,
         pct_gastos_generales, pct_beneficio, pct_financiero, factor_financiero, pct_iibb, pct_ganancias, pct_cheque, pct_iva)
-     select $1,$2,'borrador',current_date,$3,1,true,$4,$5,pc.id,
+     select $1,$2,'borrador',current_date,$3,1,true,$4,$5,$6,pc.id,
         pc.pct_gastos_generales, pc.pct_beneficio, pc.pct_financiero, pc.factor_financiero, pc.pct_iibb, pc.pct_ganancias, pc.pct_cheque, pc.pct_iva
-       from public.parametro_comercial pc where pc.id = $6
+       from public.parametro_comercial pc where pc.id = $7
      returning id`,
-    [cotizacion.cliente, cotizacion.obraNombre, numero, origen, notas, p])
+    [cotizacion.cliente, cotizacion.obraNombre, numero, origen, notas, razonamiento === null ? null : JSON.stringify(razonamiento), p])
   const cotizacionId = c.rows[0].id
 
   for (const item of cotizacion.partidas) {
