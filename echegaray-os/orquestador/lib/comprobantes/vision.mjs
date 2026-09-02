@@ -409,6 +409,14 @@ async function motivoDeLaApi(res) {
 
 /** Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza. */
 async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
+  // El fusible admite ANTES de gastar: leer un comprobante es una llamada de VISIÓN y consume
+  // presupuesto como cualquier otra. Un corte se devuelve como error declarado, no lanza.
+  try {
+    const { admitir } = await import('../ia/fusible.mjs')
+    admitir({ vision: true, doble: (fetchImpl ?? globalThis.fetch) !== globalThis.fetch })
+  } catch (corte) {
+    return { error: String(corte?.message ?? 'fusible'), errorKind: corte?.clasificacion?.kind ?? 'fusible' }
+  }
   const pedir = async (pelado) => fetchImpl('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },

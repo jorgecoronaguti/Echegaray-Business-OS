@@ -64,6 +64,10 @@ export async function avisarEstado(clasificacion) {
  */
 const PROVEEDORES = [anthropic, openaiCompatible]
 
+// EL FUSIBLE DEL GASTO: bloqueo por defecto fuera de producción, presupuesto por ejecución,
+// cancelación propagada. Ver `fusible.mjs` — la admisión va por INTENTO, adentro del loop.
+import { admitir, acreditarUsd, esVision, usdEstimado, presupuestoActual } from './fusible.mjs'
+
 const TOPE_REINTENTOS = Math.min(4, Math.max(0, Number(process.env.ORQ_IA_REINTENTOS ?? 2)))
 const ESPERA_BASE_MS = Number(process.env.ORQ_IA_ESPERA_MS ?? 700)
 
@@ -101,17 +105,33 @@ export async function registrarUso(fila) {
   //
   // Quien simula lo declara. La variable la pone el verificador y nadie más; sin ella, todo se
   // registra como siempre — un olvido no puede apagar la telemetría en silencio.
+  // ═══ USD NUNCA QUEDA NULL EN SILENCIO, Y EL GASTO QUEDA ATADO A SU PEDIDO (02/09/2026) ═══
+  // Un modelo que la tabla de precios no conoce dejaba `usd = NULL` (40 llamadas de opus-5 con
+  // 523k tokens invisibles al total — auditoría de consumo). Si hay tokens, se ESTIMA por familia
+  // y se marca `usd_estimado`. La correlación sale del presupuesto vigente del fusible: es lo que
+  // permite contestar «¿qué operación gastó qué?».
+  let usd = fila.usd
+  let usdEsEstimado = false
+  if (usd == null) {
+    const est = usdEstimado(fila.modelo, { in: fila.tokensIn, out: fila.tokensOut })
+    if (est != null) { usd = est; usdEsEstimado = true }
+  }
+  // El presupuesto se acredita SIEMPRE que la llamada salió — la telemetría apagada no lo apaga.
+  if (fila.ok) acreditarUsd(usd)
   if (process.env.ORQ_IA_SIN_REGISTRO === '1') return
   try {
     const { query } = await import('../db.mjs')
+    const correlacion = presupuestoActual()?.correlacion ?? null
     await query(
       `insert into orq.chat_cost (model, usd, rol, motivo, agente, funcion, proveedor, capacidad,
-                                  tokens_in, tokens_out, ms, ok, error_kind, fallback_de)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                                  tokens_in, tokens_out, ms, ok, error_kind, fallback_de,
+                                  correlation_id, usd_estimado)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
-        fila.modelo, fila.usd, fila.agente ?? null, fila.funcion ?? null,
+        fila.modelo, usd, fila.agente ?? null, fila.funcion ?? null,
         fila.agente ?? null, fila.funcion ?? null, fila.proveedor, fila.capacidad,
         fila.tokensIn, fila.tokensOut, fila.ms, fila.ok, fila.errorKind ?? null, fila.fallbackDe ?? null,
+        correlacion === 'proceso' ? null : correlacion, usdEsEstimado,
       ],
     )
   } catch { /* la telemetría nunca decide si el OS funciona */ }
@@ -170,6 +190,19 @@ export async function pedirTexto({
     const modeloId = proveedor.idDeModelo(alias, cfg)
 
     for (let intento = 0; intento <= reintentos; intento++) {
+      // ═══ EL FUSIBLE VA ANTES DE CADA INTENTO — el contador jamás se reinicia por retry ═══
+      // Cada intento consume presupuesto: tres reintentos son tres llamadas, no una. Un corte NO
+      // hace la llamada, conserva lo ya obtenido y queda registrado con el límite que cortó.
+      try {
+        admitir({ vision: esVision(mensajes), doble: fetchImpl !== globalThis.fetch })
+      } catch (corte) {
+        await registrarUso({
+          modelo: modeloId, usd: null, agente, funcion, proveedor: proveedor.nombre, capacidad: cap,
+          tokensIn: null, tokensOut: null, ms: Date.now() - t0, ok: false,
+          errorKind: corte?.clasificacion?.kind ?? 'fusible', fallbackDe,
+        })
+        throw corte
+      }
       try {
         const r = await proveedor.completar({
           modelo: modeloId, sistema, mensajes, maxTokens, temperatura, herramientas, señal, apiKey, fetchImpl,

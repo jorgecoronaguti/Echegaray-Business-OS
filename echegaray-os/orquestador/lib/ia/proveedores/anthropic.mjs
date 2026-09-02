@@ -22,6 +22,11 @@
 const HOST = process.env.ORQ_ANTHROPIC_HOST || 'https://api.anthropic.com'
 const VERSION = '2023-06-01'
 
+// Defensa en profundidad: quien importe este proveedor SALTEÁNDOSE `cliente.mjs` choca igual con
+// el fusible (bloqueo por defecto + cancelación). El consumo del presupuesto lo cuenta el cliente
+// —una vez por intento—; acá sólo se VERIFICA, para no contar dos veces la misma llamada.
+import { verificar } from '../fusible.mjs'
+
 /** Alias → ID. Un valor que ya es un ID (`claude-…`) pasa tal cual, igual que en `resolveModelId`. */
 export function idDeModelo(alias, cfg = {}) {
   const a = String(alias ?? '').toLowerCase()
@@ -61,6 +66,7 @@ export const anthropic = {
     if (temperatura != null) cuerpo.temperature = temperatura
     if (Array.isArray(herramientas) && herramientas.length) cuerpo.tools = herramientas
 
+    verificar({ doble: fetchImpl !== globalThis.fetch })
     const pedir = (c) => fetchImpl(`${HOST}/v1/messages`, {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': VERSION, 'content-type': 'application/json' },

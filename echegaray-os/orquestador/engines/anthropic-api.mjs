@@ -149,6 +149,9 @@ function extractText(content) {
  * @param {object} [deps.semaphore]  override para tests
  */
 export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
+  // Un `client` inyectado es un doble de test: no puede gastar. El fusible igual cuenta y corta
+  // por presupuesto/cancelación; sólo el bloqueo-por-defecto queda para el cliente REAL.
+  const clienteInyectado = Boolean(client)
   const brk =
     breaker ||
     createBreaker({
@@ -194,6 +197,10 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       const callModel = async (messages) => {
         let response
         try {
+          // El fusible admite ANTES de gastar — también en el camino del SDK. El corte no es
+          // reintentable y el breaker no lo cuenta como falla del proveedor: no se llamó.
+          const { admitir } = await import('../lib/ia/fusible.mjs')
+          admitir({ vision: false, doble: clienteInyectado })
           response = await sem.run(() =>
             api.messages.create(
               {
@@ -216,6 +223,7 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
             ),
           )
         } catch (err) {
+          if (err?.clasificacion?.kind?.startsWith?.('fusible')) throw err
           const c = classifyError(err)
           brk.onFailure({ hard: c.hard })
           // SIN CRÉDITO / credencial inválida: prender el flag para que TODO el OS degrade a
@@ -235,6 +243,11 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
         // El razonador respondió: si venía marcado sin crédito, lo vuelve a OK (transición; en el
         // camino feliz es un no-op sin costo de base).
         marcarCerebroOk().catch(() => {})
+        // El costo de esta llamada se acredita al presupuesto del fusible (real o estimado).
+        try {
+          const { acreditarUsd } = await import('../lib/ia/fusible.mjs')
+          acreditarUsd(estimateCostUsd(modelId, response?.usage ?? {}))
+        } catch { /* acreditar nunca rompe la respuesta */ }
         return response
       }
 

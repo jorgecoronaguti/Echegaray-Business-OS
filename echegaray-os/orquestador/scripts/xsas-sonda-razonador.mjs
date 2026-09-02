@@ -45,6 +45,9 @@ async function main() {
 
   let r
   try {
+    // La sonda saltea a propósito el estado-cerebro, pero NUNCA el fusible del gasto.
+    const { admitir } = await import('../lib/ia/fusible.mjs')
+    admitir({})
     r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': CLAVE, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
