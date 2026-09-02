@@ -184,17 +184,37 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
   const takeoffs = []
   const noLeidos = []
 
+  // ═══ LOS BYTES PUEDEN NO LLEGAR, Y ESO NO TUMBA LA CORRIDA (dueño, 02/09: «google download 404») ═══
+  //
+  // Dos causas reales, mismo síntoma: (1) un ADJUNTO viaja en memoria con id «adjunto:<hash>» —
+  // pedírselo a Drive es un 404 seguro; el primer tramo del pipeline ya usaba `_bytes` y este tramo
+  // no, así que cotizar con un plano adjunto moría acá con el plano en la mano. (2) un archivo del
+  // índice que ya no existe en Drive (borrado, movido, sin permiso). En ambos casos la respuesta
+  // honesta es la de siempre en este archivo: el documento queda DECLARADO como no leído con su
+  // motivo, y la corrida sigue con lo que sí se pudo abrir.
+  const bytesDe = async (doc) => {
+    if (doc._bytes) return { ok: true, bytes: doc._bytes }
+    try { return { ok: true, bytes: await google.descargarBytes(doc.drive_file_id) } }
+    catch (e) {
+      const porQue = `no se pudo descargar de Drive: ${String(e?.message ?? e).slice(0, 80)}`
+      logger?.warn?.('xsas: documento no descargable', { archivo: doc.name, porQue })
+      return { ok: false, porQue }
+    }
+  }
+
   for (const doc of cadDe(insumos)) {
-    const bytes = await google.descargarBytes(doc.drive_file_id)
-    const r = await abrirCad(doc, bytes)
+    const b = await bytesDe(doc)
+    if (!b.ok) { noLeidos.push({ archivo: doc.name, porQue: b.porQue }); continue }
+    const r = await abrirCad(doc, b.bytes)
     if (!r.ok) { noLeidos.push({ archivo: doc.name, porQue: r.porQue, comoSeResuelve: r.comoSeResuelve ?? null }); logger?.warn?.('xsas: CAD no legible', { archivo: doc.name }); continue }
     cad.push(r)
     hechos.push(...hechosDeCad(r.medicion, { documento: doc.name }))
   }
 
   for (const doc of documentalesDe(insumos)) {
-    const bytes = await google.descargarBytes(doc.drive_file_id)
-    const t = await textoDe(doc, bytes, { google })
+    const b = await bytesDe(doc)
+    if (!b.ok) { noLeidos.push({ archivo: doc.name, porQue: b.porQue }); continue }
+    const t = await textoDe(doc, b.bytes, { google })
     if (!t.ok) { noLeidos.push({ archivo: doc.name, porQue: t.porQue }); continue }
     const clase = claseDocumental(doc.name)
     documentales.push({ archivo: doc.name, clase: clase.id, caracteres: t.texto.length, clasePdf: t.clasePdf ?? null, pestanas: t.pestanas ?? null, sinCeldas: t.sinCeldas ?? null })
@@ -215,8 +235,9 @@ export async function ingerir({ google, insumos = [], planosLegibles = [], escri
 
   for (const doc of planosLegibles) {
     if (!/pdf$/i.test(String(doc.name))) continue
-    const bytes = await google.descargarBytes(doc.drive_file_id)
-    segmentaciones.push(await segmentarLamina(doc, bytes, { escribirTemporal, limite }))
+    const b = await bytesDe(doc)
+    if (!b.ok) { noLeidos.push({ archivo: doc.name, porQue: b.porQue }); continue }
+    segmentaciones.push(await segmentarLamina(doc, b.bytes, { escribirTemporal, limite }))
   }
 
   const cantidadesDePlanilla = takeoffs.reduce((a, t) => a + t.cantidades.length, 0)
