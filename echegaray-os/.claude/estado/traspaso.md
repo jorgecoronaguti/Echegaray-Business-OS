@@ -143,6 +143,23 @@ lg85/86/87 en personas · freno de Sheets · firma `TOOLS_AUTORIZADAS_A_ESCRIBIR
 `sinFirma`) · migración `orq.drive_audit` · 4 precios del catálogo · firma de recibos · dónde va la
 solapa /xsas en la navegación.
 
+## 10bis. SESIÓN 02/09 (GATE 2, interrumpida por pedidos del dueño)
+
+- **CAJA (Sheet)**: causa raíz encontrada y CERRADA — el editor vivo ENCOGE un gráfico que se pasa
+  del borde de la hoja (el PDF no: por eso la verificación por PDF daba bien y el dueño lo veía
+  mal). Hoja llevada a 68 filas, 4 gráficos redibujados (anclas 22/37/52, alto 284, aire 16px),
+  generador blindado (`FILA_FINAL_DE_GRAFICOS`), commit `27c36651` pusheado.
+- **Embargo Agüero**: oficio CP7-9378/16 (DATA 2000 SA c/ Agüero, $14.675,50) subido al legajo
+  (2 jpg). Retención YA practicada (recibo 2026-08 Q2, concepto 4090). El DEPÓSITO judicial NO
+  aparece en banco_movimientos (cargado hasta 01/09). Pendiente del dueño: depósito Banco San Juan
+  cta 481690/7 CBU 0450009402800048169079 + acreditar a juzpaz7-sjn@jussanjuan.gov.ar.
+- **GATE 2 A MEDIO HACER**: rama `xsas-gate2`, worktree `.claude/worktrees/xsas-gate2`, checkpoint
+  `e0911bdb` (NO mergear como está). Falta: terminar Conversacion.tsx, tests dirigidos, APLICAR la
+  migración `20260902T1100` (en el repo ≠ aplicada), E2E por la puerta, deploy. El detalle está en
+  el mensaje del commit.
+- Defecto encontrado de paso: `google.uploadFile` usaba el token del robot (403 sin cuota) — fix en
+  la rama gate2.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
