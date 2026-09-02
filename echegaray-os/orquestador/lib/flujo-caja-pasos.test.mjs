@@ -177,6 +177,31 @@ test('las dos vistas de cash flow corren DESPUÉS de CAJA: el saldo inicial sale
     'las vistas se calculan antes de que CAJA publique el saldo: el ancla queda un ciclo atrasada')
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA PERSISTENCIA DEL FLUJO DE FONDOS (02/09/2026)
+//
+// Estos dos tests son el defecto, no el arreglo. Si alguien mueve `sync-flujo-fondos.mjs` antes del
+// libro, la base guarda la foto de la corrida ANTERIOR y las analíticas muestran ayer sin dar un solo
+// error; si lo mueve antes de las vistas, `CF_MESES`/`CF_CIERRE` todavía apuntan al ejercicio viejo y
+// los saldos entran corridos un ciclo. Las dos son fallas mudas, que son las que este archivo caza.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la persistencia del flujo corre DESPUÉS del libro y DESPUÉS de las dos vistas', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  const posSync = pos('sync-flujo-fondos.mjs')
+  assert.ok(posSync > 0, 'sync-flujo-fondos.mjs no está en PASOS: la base sólo se actualiza a mano')
+  assert.ok(posSync > pos('libro-movimientos-pestana.mjs'),
+    'persiste antes de que el libro se reescriba: guardaría la foto de la corrida anterior')
+  assert.ok(posSync > pos('cash-flow-vistas.mjs'),
+    'persiste antes de que las vistas publiquen CF_MESES/CF_CIERRE: el ejercicio y los saldos quedan un ciclo atrasados')
+})
+
+test('la persistencia del flujo NO declara ninguna pestaña: no escribe una sola celda', () => {
+  const paso = PASOS.find(([s]) => s === 'sync-flujo-fondos.mjs')
+  assert.deepEqual(paso[2], [],
+    'declarar una pestaña lo volvería su segundo dueño en el censo — y este paso sólo LEE')
+})
+
 test('sólo el generador de texto declara "Proveedores" como pestaña suya', () => {
   // El registro de PASOS es de PESTAÑAS: el que declara una figura como su dueño en el censo. Los
   // dueños de un BLOQUE declaran [] — mismo criterio que cheques-emitidos-sync-banco.mjs.

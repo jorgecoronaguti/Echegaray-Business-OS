@@ -72,8 +72,11 @@ create table if not exists public.flujo_corrida (
 -- UNA SOLA VIGENTE, IMPUESTO POR LA BASE. Dejarlo en manos del escritor significa que un proceso
 -- interrumpido entre el `update` y el `insert` deja dos fotos vigentes y las analíticas suman dos
 -- veces el año entero. El índice parcial lo hace imposible.
+-- Se indexa `vigente` y no una constante: la columna es booleana y el predicado ya deja sólo las
+-- verdaderas, así que el índice tiene a lo sumo una entrada. Una expresión constante haría lo mismo
+-- pero depende de que el planner la acepte, y una migración no es lugar para una apuesta.
 create unique index if not exists flujo_corrida_una_vigente
-  on public.flujo_corrida ((true)) where vigente;
+  on public.flujo_corrida (vigente) where vigente;
 create index if not exists flujo_corrida_reciente on public.flujo_corrida (corrida_en desc);
 create index if not exists flujo_corrida_firma on public.flujo_corrida (firma);
 
