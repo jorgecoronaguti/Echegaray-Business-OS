@@ -669,8 +669,20 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // como llamada publicaba «20 llamadas · USD 0,0000» en una corrida donde el modelo estaba
   // apagado — un número que se lee como «llamó y no cobró» cuando la verdad es «no llamó».
   const anotar = (u) => { if (u && !u.degradado) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
+  const noDescargables = []
   for (const doc of planos.legibles) {
-    const bytes = doc._bytes ?? await google.descargarBytes(doc.drive_file_id)
+    let bytes = doc._bytes ?? null
+    if (!bytes) {
+      // Un archivo del índice que Drive ya no tiene (404, movido, sin permiso) se DECLARA y se
+      // sigue: con el plano adjunto en la mano, morir acá era regalar la corrida entera.
+      try { bytes = await google.descargarBytes(doc.drive_file_id) }
+      catch (e) {
+        noDescargables.push(doc)
+        met.decidio({ que: `lámina ${doc.name}`, via: VIA.HUECO })
+        logger?.warn?.('xsas: lámina no descargable', { archivo: doc.name, porQue: String(e?.message ?? e).slice(0, 80) })
+        continue
+      }
+    }
     const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
     anotar(lam.uso)
     met.decidio({ que: `lámina ${doc.name}`, via: lam.deCache ? VIA.CACHE : (lam.error ? VIA.HUECO : VIA.MODELO) })
@@ -689,6 +701,11 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     const medicion = { pendientes: m.pendientes, resueltos: m.resueltos, cambios: m.cambios, deCache: false }
     if (m.uso) guardarCache(llave, { elementos: m.elementos, medicion })
     laminas.push({ ...lam, elementos: m.elementos, medicion })
+  }
+  if (noDescargables.length) {
+    // Del lado de la respuesta son NO LEGIBLES con motivo — y la ingesta documental no los reintenta.
+    planos.legibles = planos.legibles.filter((d) => !noDescargables.includes(d))
+    planos.noLegibles = [...planos.noLegibles, ...noDescargables]
   }
 
   // ═══ LA CARPETA ENTERA, ABIERTA COMO UN SOLO PROYECTO ═══
