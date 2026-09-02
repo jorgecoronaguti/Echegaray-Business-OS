@@ -826,9 +826,11 @@ async function ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar = f
         const r = abiertas[i]
         let faltan = r.faltan ?? []
         let args = r.args
+        let conectados = []
         if (faltan.length) {
           const delBus = completarDesdeBus(r.tool, { args, faltan }, bus)
           args = delBus.args; faltan = delBus.faltan; r.incompatibles = delBus.incompatibles
+          conectados = delBus.conectados
         }
         if (faltan.length) {
           try {
@@ -847,8 +849,11 @@ async function ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar = f
         bus = sumarAlBus(bus, { tool: r.clave, datos: corrida.datos })
         toolsUsadas.push(r.clave)
         acciones.push({ tool: r.clave, args: corrida.args })
-        evidencia.push({ que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString() })
-        partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos })
+        evidencia.push({
+          que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString(),
+          ...(conectados.length ? { encadenado: conectados.map((c) => `${c.arg} ← ${c.origen}`).join(', ') } : {}),
+        })
+        partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos, encadenado: conectados })
         bloques.push(`**${r.clausula}**\n${textoDeDatos(corrida.datos) ?? '(sin texto: el dato está en datos.partes)'}`)
         i = -1 // reevaluar desde el principio: este output puede destrabar por bus a los anteriores
       }
