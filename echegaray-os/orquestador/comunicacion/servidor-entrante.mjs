@@ -16,6 +16,7 @@ import { crearManejadorWebhook } from './endpoint-entrante.mjs'
 import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
 import { crearManejadorXsas } from './xsas-http.mjs'
 import { atender } from '../lib/xsas-gateway.mjs'
+import { conPresupuesto } from '../lib/ia/fusible.mjs'
 import { query } from '../lib/db.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
@@ -112,7 +113,14 @@ async function main() {
       } catch (e) {
         return responder(res, e.message === 'too_large' ? 413 : 408, { error: e.message })
       }
-      const rx = await manejarXsas({ method: req.method, url: req.url, headers: req.headers, rawBody: cuerpo })
+      // ═══ EL PRESUPUESTO Y LA CANCELACIÓN NACEN ACÁ (02/09/2026) ═══
+      // Cada pedido corre con su propio presupuesto de gasto (fusible) y con una señal que se
+      // aborta si el cliente se desconecta ANTES de la respuesta. Es lo que faltó con La Estrella:
+      // el cliente cortó a los 5 minutos y el pipeline siguió 45 gastando visión sin receptor.
+      const ac = new AbortController()
+      res.on('close', () => { if (!res.writableEnded) ac.abort() })
+      const rx = await conPresupuesto({ señal: ac.signal }, () =>
+        manejarXsas({ method: req.method, url: req.url, headers: req.headers, rawBody: cuerpo }))
       return responder(res, rx.status, rx.body)
     }
     if (req.url !== RUTA) return responder(res, 404, { error: 'not_found' })
@@ -123,7 +131,10 @@ async function main() {
       const status = e.message === 'too_large' ? 413 : 408
       return responder(res, status, { error: e.message })
     }
-    const r = await manejar({ method: req.method, headers: req.headers, rawBody, ip: ipReal(req) })
+    const acWebhook = new AbortController()
+    res.on('close', () => { if (!res.writableEnded) acWebhook.abort() })
+    const r = await conPresupuesto({ señal: acWebhook.signal }, () =>
+      manejar({ method: req.method, headers: req.headers, rawBody, ip: ipReal(req) }))
     responder(res, r.status, r.body)
   })
 

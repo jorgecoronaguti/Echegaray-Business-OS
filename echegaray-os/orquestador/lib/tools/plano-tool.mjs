@@ -26,6 +26,8 @@
 
 import { query } from '../db.mjs'
 import { correr } from '../plano/pipeline.mjs'
+// UNA corrida paga viva por proyecto: dos «cotizá quattropani» a la vez no duplican visión.
+import { conCorridaExclusiva } from '../ia/fusible.mjs'
 import { agruparPartidas, armar, persistir, cascadaDe } from '../plano/cotizacion-v0.mjs'
 import { razonar, textoDeRazonamiento } from '../plano/razonamiento.mjs'
 
@@ -83,7 +85,7 @@ export function planoTools(google) {
         const proyecto = String(input?.proyecto ?? '').trim()
         if (!proyecto) return { error: 'necesito de qué cliente u obra son los planos' }
         try {
-          const r = await correr({ query, google, termino: proyecto })
+          const r = await conCorridaExclusiva(`plano:${proyecto}`, () => correr({ query, google, termino: proyecto }))
           if (!r.documentos.planos.legibles.length) {
             return {
               error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
@@ -132,7 +134,7 @@ export function planoTools(google) {
           // Su identidad es el hash del contenido (la misma del caché de interpretación) y sus
           // bytes ya persisten en `orq.xsas_adjunto`, así que la genealogía no pierde el origen.
           const archivos = Array.isArray(input?.archivos) ? input.archivos : []
-          const r = await correr({ query, google, termino: proyecto, adjuntos: archivos })
+          const r = await conCorridaExclusiva(`plano:${proyecto}`, () => correr({ query, google, termino: proyecto, adjuntos: archivos }))
           if (!r.documentos.planos.legibles.length) {
             return {
               error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,

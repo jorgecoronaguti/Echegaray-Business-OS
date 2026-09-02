@@ -44,6 +44,7 @@ import {
   cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
 } from './xsas-contexto.mjs'
 import { pideMemoria, responderMemoria, registrarIntercambio } from './xsas-memoria.mjs'
+import { fijarCorrelacion } from './ia/fusible.mjs'
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
@@ -296,6 +297,8 @@ export async function atender(bruto, deps = {}) {
     const tipo = e instanceof PedidoInvalido ? 'pedido_invalido' : 'error'
     return respuestaError(null, { tipo, mensaje: e?.message ?? 'pedido inválido', ms: Date.now() - t0 })
   }
+  // El gasto de modelo de este pedido queda atado a su correlación (fusible → chat_cost).
+  fijarCorrelacion(pedido.correlationId)
 
   let r
   try {
