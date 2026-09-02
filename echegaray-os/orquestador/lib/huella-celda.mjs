@@ -345,6 +345,18 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
     const mia = activas.get(claveCelda(fila, col))
     const hoy = (actual[i] || [])[j]
     const ocupada = hayContenido(hoy)
+    // Los centinelas de vacío que circulan por la plomería. Si uno llegó LITERAL a una celda es
+    // que un escritor crudo no lo tradujo — nadie los tipea a mano. (Doctrina de residuo-propio.)
+    const esCentinelaCrudo = (v) => /::VACIO::|::MIA_Y_VACIA::/.test(String(v ?? '')) || String(v ?? '').trim() === 'VACIO'
+    // UN CENTINELA CRUDO EN LA CELDA ES BASURA DE LA PLOMERÍA, NO UNA EDICIÓN. La doctrina ya
+    // está escrita en residuo-propio.mjs: «::VACIO::» / «::MIA_Y_VACIA::» jamás los tipea una
+    // persona — llegan literales cuando un escritor crudo no los tradujo. Si pido limpiar y eso
+    // es lo que hay, se limpia con huella, sin huella o con huella que no coincide: tratarlo como
+    // «edición del dueño» inmortaliza la basura (medido: la fila fantasma de Parámetros, 02/09).
+    if (c === VACIO && ocupada && esCentinelaCrudo(hoy)) {
+      residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), por: 'centinela crudo de la plomería' })
+      return MIA_PROBADA
+    }
     // LA VACIASTE VOS. Tengo huella propia de esta celda y hoy no hay nada: no la resucito.
     // La marca viaja con DOS coordenadas: dónde estaba la huella (`fila`) y dónde vive la celda hoy
     // (`filaHoy`). Si la pestaña se corrió, la marca tiene que quedar donde la celda está AHORA — si

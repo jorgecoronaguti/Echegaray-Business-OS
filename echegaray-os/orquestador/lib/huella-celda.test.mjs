@@ -98,6 +98,22 @@ test('el centinela VACIO tampoco limpia una celda ajena', () => {
   assert.equal(ajenas.length, 1)
 })
 
+test('un CENTINELA CRUDO en la celda SÍ se limpia — es basura de la plomería, no una edición', () => {
+  // Medido el 02/09/2026 en Parámetros: un « ::VACIO:: » literal (escrito por un escritor crudo
+  // que no lo tradujo) quedaba inmortal — la huella lo leía como «edición del dueño» y la fila
+  // fantasma rompía el generador en cada corrida. Nadie tipea «::VACIO::» a mano.
+  const mio = [...lastre(), ['Fila propia']]
+  const huellas = huellasDe(mio)
+  const hoy = mio.map((f, i) => (i === mio.length - 1 ? [...f, ' ::VACIO:: ', 'VACIO'] : f))
+  const quiere = mio.map((f, i) => (i === mio.length - 1 ? [...f, VACIO, VACIO] : f))
+  const { grid, residuos, editadas } = aplicarHuella(quiere, hoy, huellas)
+  const enPestana = enLaPestana(grid, hoy)
+  assert.equal(enPestana.at(-1)[1], '', 'el ::VACIO:: crudo se limpia')
+  assert.equal(enPestana.at(-1)[2], '', 'el VACIO pelado también')
+  assert.equal(residuos.length, 2)
+  assert.equal(editadas.length, 0, 'un centinela jamás cuenta como edición del dueño')
+})
+
 test('una fórmula que se ve vacía no se lee como borrada (se compara contra la lectura FORMULA)', () => {
   const ayer = [...lastre(), ['=SI(A#="";"";SUMA(B4:B9))'.replace(/#/g, '1')]]
   const huellas = huellasDe(ayer)
