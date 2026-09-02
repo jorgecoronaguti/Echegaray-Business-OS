@@ -38,7 +38,7 @@ import { NOMBRES_VISTA } from '../lib/cash-flow-meses.mjs'
 import { LIBRO } from '../lib/libro-sumas.mjs'
 import {
   libroDesdeLaPestana, filasDeMovimiento, filasDePeriodo, filasDeAsimetria,
-  firmaDelLibro, resumenDeCorrida, fechaDeSerial, iso,
+  firmaDelLibro, resumenDeCorrida, fechaDeSerial, iso, corridasAPodar, CORRIDAS_CON_DETALLE,
 } from '../lib/flujo-persistencia.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -241,6 +241,28 @@ async function main() {
     return
   }
   console.log('  ✓ la base y la memoria dicen lo mismo')
+  await podar()
+}
+
+/**
+ * LA PODA DEL DETALLE. La cabecera de cada corrida —su firma y sus totales de control— se conserva
+ * PARA SIEMPRE: es la serie histórica de "qué decíamos y cuánto daba", y es una fila chica. Lo que se
+ * poda es el detalle fino de las corridas viejas, que es lo que pesa (1.235 filas de período por
+ * corrida, más una por movimiento).
+ *
+ * Va DESPUÉS de la verificación y fuera de la transacción a propósito: si podar falla, la corrida
+ * nueva ya está escrita y verificada. Al revés, un error de mantenimiento tiraría abajo la foto del
+ * día — que es cambiar un problema de disco por uno de datos.
+ */
+async function podar() {
+  const { rows } = await query(
+    'select id, vigente from public.flujo_corrida order by corrida_en desc')
+  const ids = corridasAPodar(rows, { retener: CORRIDAS_CON_DETALLE })
+  if (!ids.length) return
+  await query('delete from public.flujo_movimiento where corrida_id = any($1::uuid[])', [ids])
+  await query('delete from public.flujo_periodo where corrida_id = any($1::uuid[])', [ids])
+  await query('delete from public.flujo_asimetria where corrida_id = any($1::uuid[])', [ids])
+  console.log(`  · podado el detalle de ${ids.length} corrida(s) vieja(s); sus totales de control quedan.`)
 }
 
 main().then(() => closePool()).catch(async (e) => {

@@ -312,6 +312,36 @@ export function firmaDelLibro(filas = []) {
 }
 
 /**
+ * CUÁNTAS CORRIDAS CONSERVAN SU DETALLE. Medido en el ensayo del 02/09/2026: una corrida son 1.235
+ * filas de período (12 meses + 53 semanas, cada uno con su total y sus 18 rubros) más una fila por
+ * movimiento del libro. El pipeline corre cada dos horas y el libro cambia con cada comprobante que
+ * se carga, así que sin poda son decenas de miles de filas por día y en un año la tabla del detalle
+ * no se puede consultar.
+ */
+export const CORRIDAS_CON_DETALLE = 30
+
+/**
+ * NÚCLEO PURO: de qué corridas se poda el DETALLE, conservando la cabecera.
+ *
+ * ═══ SE PODA EL DETALLE, NUNCA LA HISTORIA ═══
+ *
+ * `flujo_corrida` NO se borra jamás: es una fila chica por foto, con su firma y sus totales de
+ * control, y es lo que contesta "¿qué decíamos en agosto sobre noviembre?". Lo que se poda es el
+ * detalle fino —movimientos y períodos— de las corridas viejas, que es lo que pesa. Así la serie
+ * histórica de totales queda completa para siempre y la comparación fina alcanza las últimas 30.
+ *
+ * LA VIGENTE NO SE PODA NUNCA, aunque quedara fuera del corte por cualquier motivo. Podarla dejaría
+ * la pantalla leyendo una corrida vigente sin una sola fila: vacía, sin error y sin explicación.
+ *
+ * @param {Array<{id:string, vigente?:boolean}>} corridas de la más reciente a la más vieja
+ * @param {{retener?:number}} [opciones]
+ * @returns {string[]} los ids que pierden el detalle
+ */
+export function corridasAPodar(corridas = [], { retener = CORRIDAS_CON_DETALLE } = {}) {
+  return corridas.slice(retener).filter((c) => !c.vigente).map((c) => c.id)
+}
+
+/**
  * NÚCLEO PURO: los totales de control de una corrida.
  *
  * No es un resumen decorativo: es contra lo que se verifica que la escritura aterrizó entera. Un

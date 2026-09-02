@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import {
   COL, libroDesdeLaPestana, filasDeMovimiento, medidasDeVentana, rubrosDeVentana,
   filasDePeriodo, filasDeAsimetria, firmaDelLibro, resumenDeCorrida, fechaDeSerial, iso,
-  RUBROS_DEL_CUADRO,
+  RUBROS_DEL_CUADRO, corridasAPodar,
 } from './flujo-persistencia.mjs'
 import { LIBRO } from './libro-sumas.mjs'
 import { serialDeFecha } from './cash-flow-matriz.mjs'
@@ -244,6 +244,33 @@ test('la firma SÍ cambia cuando un movimiento pasa de PROYECTADO a REAL', () =>
   assert.notEqual(firmaDelLibro(antes), firmaDelLibro(despues))
   const otroImporte = filasDeMovimiento([mov({ clave: 'k1', estado: 'PROYECTADO', importe: 1001 })])
   assert.notEqual(firmaDelLibro(antes), firmaDelLibro(otroImporte))
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA PODA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la poda se lleva el detalle de las corridas viejas y NUNCA el de la vigente', () => {
+  // Medido en el ensayo del 02/09: una corrida son 1.235 filas de período más una por movimiento.
+  // Sin poda, un año de corridas cada dos horas vuelve la tabla del detalle inconsultable.
+  const corridas = Array.from({ length: 35 }, (_, i) => ({ id: `c${i}`, vigente: false }))
+  const podar = corridasAPodar(corridas, { retener: 30 })
+  assert.equal(podar.length, 5)
+  assert.deepEqual(podar, ['c30', 'c31', 'c32', 'c33', 'c34'])
+})
+
+test('LA VIGENTE NO SE PODA NUNCA, aunque caiga fuera del corte de retención', () => {
+  // Podarla dejaría la pantalla leyendo una corrida vigente sin una sola fila: vacía, sin error y
+  // sin explicación. Es el peor modo de falla posible para una pantalla de analíticas.
+  const corridas = Array.from({ length: 35 }, (_, i) => ({ id: `c${i}`, vigente: i === 33 }))
+  const podar = corridasAPodar(corridas, { retener: 30 })
+  assert.ok(!podar.includes('c33'), 'podó la corrida vigente')
+  assert.equal(podar.length, 4)
+})
+
+test('con menos corridas que la retención no se poda nada', () => {
+  assert.deepEqual(corridasAPodar([{ id: 'a' }, { id: 'b' }], { retener: 30 }), [])
+  assert.deepEqual(corridasAPodar([], { retener: 30 }), [])
 })
 
 test('los totales de control se parten en real y pendiente, y los dos suman el neto', () => {
