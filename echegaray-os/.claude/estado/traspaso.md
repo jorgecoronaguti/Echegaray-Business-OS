@@ -197,6 +197,17 @@ solapa /xsas en la navegación.
   registro; facturas PENDIENTES cuya plata ya viaja en cheque vivo pesan DOBLE hasta marcarse
   Pagadas en Compras (decisión conservadora, declarada en el commit).
 
+## 10quater. CRITERIO DEL DUEÑO APLICADO A COMPRAS (02/09, tarde)
+
+- **Lo pagado con cheque emitido NO es deuda del proveedor**: 19 facturas «Pendiente» con medio
+  cheque/echeq cubiertas por cheques vivos se marcaron Pagado en Compras (T=total, X=Pagado, con
+  read-back): Corralón 18 filas $1.287.260 (cubiertas por $5,94M en cheques «VARIAS» vivos) +
+  Femenia $3.823.600 (echeq 380, monto exacto). Deuda de Corralón quedó $171.314; Femenia salió.
+- El echeq 380 del registro quedó con proveedor Femenia (dato del banco, estaba vacío).
+- Circuito completo verificado: Compras pagada → cruce → cuota COMPROMETIDA → balde «Cheques» del
+  gráfico (sólo emitidos vivos, ventana 30d): 10/09 1,5M · 17/09 471k · 21/09 3,64M · 22/09 1M ·
+  25/09 2,56M.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
