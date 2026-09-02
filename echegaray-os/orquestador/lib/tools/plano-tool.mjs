@@ -175,6 +175,10 @@ export function planoTools(google) {
             faltantes: r.computo.items.filter((i) => i.cantidad === null).map((i) => ({ elemento: i.id, nombre: i.nombre, falta: i.faltan })),
             cascada,
             llamadas_ia: r.ia.llamadas,
+            // EL PASO A PASO ES LA GUÍA (dueño, 02/09): la cotización no aparece de la nada —
+            // se DERIVA del razonamiento sobre el plano, y ese razonamiento viaja con ella para
+            // que la pantalla lo muestre completándose, con los faltantes nombrados adentro.
+            razonamiento_texto: textoDeRazonamiento(razonar(r), { proyecto }),
             planos_adjuntos: archivos.map((a) => a?.nombre).filter(Boolean),
             resumen_texto: resumen({ r, cot, cascada, numero })
               + (archivos.length ? `\n\n📎 ${archivos.length} adjunto(s) procesados en memoria — no se subió nada a Drive.` : ''),

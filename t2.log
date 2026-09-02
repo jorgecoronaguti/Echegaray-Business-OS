@@ -1,38 +1,29 @@
-...X................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-....................
-............
-
-Failed tests:
-
-✖ el documento en memoria recorre el MISMO camino que uno de Drive y conserva sus bytes (3.246053ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
-  0 !== 1
-  
-      at TestContext.<anonymous> (file:///tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/ce55f257-9bef-4c99-923f-e00e8517568f/scratchpad/wt-drive/echegaray-os/orquestador/lib/plano/adjuntos-en-memoria.test.mjs:40:10)
-      at Test.runInAsyncScope (node:async_hooks:227:14)
-      at Test.run (node:internal/test_runner/test:1325:25)
-      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
-      at Test.postRun (node:internal/test_runner/test:1465:19)
-      at Test.run (node:internal/test_runner/test:1390:12)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: 0,
-    expected: 1,
-    operator: 'strictEqual',
-    diff: 'simple'
-  }
+✔ rolDe: lo específico ANTES que lo general — un muerto no es una base, una VF no es viga de carga (1.757207ms)
+✔ seccionDe: primero las dimensiones citadas; después el texto del plano; sin cita, null (nunca una típica) (0.660885ms)
+✔ excavaciones: SIN profundidad no hay m³ y el faltante sale con nombre; CON las tres medidas, volumen en banco (1.033678ms)
+✔ sísmica: si ninguna lámina la nombra es DESCONOCIDO (no «no tiene»); si la nombra, sale la cita (0.618001ms)
+✔ superficies: sólo las declaradas con cita; la impronta sale como CÁLCULO con sus entradas (0.721827ms)
+✔ validarLamina CONSERVA la grilla (antes se tiraba) y la valida (0.963885ms)
+✔ el texto del razonamiento contesta los 7 pasos y nombra lo que falta (1.744778ms)
+✔ las frases de arranque del cotizador superan el umbral de adjuntos (2.559477ms)
+✔ las frases de otros dominios NO arrancan el cotizador por accidente (0.720016ms)
+✔ «cotizame esta obra» + plano adjunto CORRE plano.cotizar con los archivos y el proyecto de la frase (10.573217ms)
+✔ UMBRAL: «mirá esta obra» + adjunto NO va al cotizador — sigue siendo ingesta (1.697628ms)
+✔ FALTA_DATO: «cotizame estos planos» sin proyecto NO inventa — pregunta en criollo y guarda la acción pendiente (1.118089ms)
+✔ EL CANDADO: un jefe_obra con planos adjuntos no cotiza, y se le dice por qué (0.730748ms)
+✔ UN EXTRACTO SIGUE SIENDO DEL BANCO: con el cotizador registrado al lado, el CSV va al importador (1.740676ms)
+(node:600495) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/ce55f257-9bef-4c99-923f-e00e8517568f/scratchpad/wt-frases/echegaray-os/src/features/presupuestos/services/arranque.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/ce55f257-9bef-4c99-923f-e00e8517568f/scratchpad/wt-frases/echegaray-os/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ una respuesta con cotizacion_id navega al entorno de ese presupuesto (0.972131ms)
+✔ sin presupuesto creado no hay navegación: la conversación sigue donde está (0.254106ms)
+✔ el paso a paso del razonamiento se parte en bloques dibujables, sin inventar estados (0.668552ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 371.742395
