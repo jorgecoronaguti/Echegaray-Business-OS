@@ -312,6 +312,33 @@ Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Ce
   barato puede copiar un genérico como valor («esta obra» → proyecto='obra'; visto vivo con un 403
   de Drive de fondo) — pre-existente del flujo simple, declarado, no corregido acá.
 
+## 10nonies. MEMORIA CONVERSACIONAL PERSISTENTE (02/09 noche, commit `585cb175`, DESPLEGADO `c11b50ce`)
+
+- Tres capas: `orq.xsas_mensaje` (RAW, evidencia, nunca se reescribe) · `orq.xsas_contexto`
+  (trabajo, ya existía) · `orq.xsas_memoria` (consolidada: estados mencionado/decidido/confirmado/
+  superado/conflicto, genealogía `supersede_a`/`superada_por`, provenance chat+mensaje+actor+fecha).
+  Migración `20260902T2300` APLICADA y verificada leyendo information_schema.
+- `lib/xsas-memoria.mjs`: extracción por gatillos explícitos (decidimos/confirmamos/dato numérico —
+  la charla y las preguntas NO producen memoria), corrección con par nuevo/viejo («es 450, no 540»),
+  consolidación sin duplicar, supersesión conservadora (`comparteTema`: nunca cruza entidades),
+  conflicto cuando una corrección alcanza asuntos distintos, recuperación JIT (≤5 memorias, filtro
+  por tema+entidad). Todo determinístico, 0 modelo, aislado por actor.
+- Gateway: hook N0 `pideMemoria` (decisión/porqué/pendiente/retomar, con guardia anti-secuestro:
+  «hacé lo que decidimos ayer» NO se secuestra) → `via='memoria_conversacional'` · después de cada
+  respuesta `registrarIntercambio` persiste raw + consolida lo que el USUARIO afirmó (lo que
+  contesta XSAS no es evidencia). Una consulta de memoria no crea memoria.
+- E2E vivo (obra canario, filas borradas al final): decisión en chat A → chat B nuevo la recupera
+  con provenance (`memoria_conversacional`, nivel 0, 121 ms server) → corrección en chat C →
+  chat D devuelve el dato nuevo y dice «reemplazó a …» → zonda inexistente honesto → otro actor no
+  ve nada. `xsas_requests`: llm=false en TODAS las operaciones de memoria (el llm=true de C fue la
+  respuesta conversacional a la corrección, camino pre-existente; la supersesión fue determinística).
+- Tests: `xsas-memoria.test.mjs` 11/11 · suite XSAS+plano 540/540 · typecheck limpio.
+- LIMITACIONES: memoria por actor, sin compartir entre roles (compartir exige decisión del dueño) ·
+  extracción por patrones castellanos explícitos (una decisión dicha sin gatillo no se captura; el
+  Reasoner NO se usa para extraer — ambigüedad semántica queda para un gate futuro) · «retomar»
+  recupera decisiones+pendientes pero no re-monta el bus compuesto del chat viejo · entidades por
+  rótulo («obra X», «de X»), sin diccionario de obras reales.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
