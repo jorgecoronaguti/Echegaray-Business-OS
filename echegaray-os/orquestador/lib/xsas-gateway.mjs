@@ -39,6 +39,7 @@ import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
 import { ingerirAdjuntos, textoDeLectura, DESTINO, bytesPorHash } from './xsas-archivos.mjs'
+import { esPlanoAdjunto, obraDeNombreDeArchivo } from './plano/detector-plano.mjs'
 import { completarDesdeBus, sumarAlBus, busPersistible } from './xsas-composicion.mjs'
 import {
   cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
@@ -964,7 +965,20 @@ async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) 
     const a = afinidad(texto, tool)
     if (a >= UMBRAL && (!mejor || a > mejor.a)) mejor = { clave, tool, a }
   }
-  if (!mejor) return null
+  if (!mejor) {
+    // ═══ UN PLANO NO NECESITA FRASE MÁGICA (dueño, 02/09: «procesá esto» + plano → basura) ═══
+    //
+    // Si ninguna frase pidió una capacidad pero lo adjuntado ES un plano de obra, el destino
+    // natural es el cotizador: nadie manda un plano para que se lo describan. La clasificación
+    // es del ARCHIVO como tipo de documento (nombre + vocabulario de lámina en el texto) — el
+    // contenido sigue siendo DATO: no rutea a ninguna otra capacidad ni ejecuta nada, y una
+    // frase con afinidad real a otra tool ya ganó arriba.
+    const toolPlano = mapa.get('plano.cotizar')
+    const hayPlano = toolPlano?.adjuntos === true
+      && utiles.some((l) => esPlanoAdjunto({ nombre: l.nombre, texto: l.resumen?.texto ?? '' }))
+    if (!hayPlano) return null
+    mejor = { clave: 'plano.cotizar', tool: toolPlano, a: 0 }
+  }
   const { clave, tool } = mejor
   if (!puedeUsar(pedido.actor, tool, clave)) {
     return respuestaError(pedido, {
@@ -975,6 +989,19 @@ async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) 
     })
   }
   let { args, falta } = argumentosPara(tool, pedido)
+  // ═══ LA OBRA ESTÁ EN EL RÓTULO DEL ARCHIVO — DEDUCIR, NO PREGUNTAR (dueño, 02/09) ═══
+  //
+  // «Estructura San Francisco del Monte Entrepiso.pdf» + «procesá esto»: preguntar «¿de qué
+  // obra?» es ignorar la respuesta que viaja en el nombre. Se infiere del rótulo ANTES de gastar
+  // el extractor, y la respuesta la declara como INFERENCIA corregible — nunca como hecho.
+  let obraInferida = null
+  if (clave === 'plano.cotizar' && falta.includes('proyecto')) {
+    obraInferida = utiles.map((l) => obraDeNombreDeArchivo(l.nombre)).find(Boolean) ?? null
+    if (obraInferida) {
+      args = { ...args, proyecto: obraInferida }
+      falta = falta.filter((f) => f !== 'proyecto')
+    }
+  }
   if (falta.length) {
     const ia = await puertaIa(deps)
     const completo = await completarArgumentos({ ia, texto, tool, args, falta, logger: deps.logger ?? null })
@@ -1007,10 +1034,14 @@ async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) 
     contenido: typeof l.adjunto?.contenido === 'string' ? l.adjunto.contenido : undefined,
     contenido_base64: l.adjunto?.contenido_base64 ?? undefined,
   }))
-  return resolverConTool({
+  const rta = await resolverConTool({
     pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'adjunto_con_motor', skills: [], t0,
     query: deps.query ?? null, argsResueltos: { args: { ...args, archivos }, falta: [] },
   })
+  if (obraInferida && rta?.ok && typeof rta.respuesta === 'string') {
+    rta.respuesta = `📐 Obra tomada del nombre del archivo: «${obraInferida}» — es una inferencia, no un dato: si no es, respondeme con la obra correcta y recotizo.\n\n${rta.respuesta}`
+  }
+  return rta
 }
 
 /**

@@ -127,6 +127,21 @@ export async function desvioCotizacionObra(obraTexto) {
   }
 }
 
+/** El estado de la biblioteca EN PALABRAS. Sin esto, la respuesta del chat era JSON crudo
+ *  («El resultado no trae lectura en palabras» — dueño, 02/09/2026). PURO. */
+export function resumenDeCotizaciones(a, filas = []) {
+  const plata = (v) => (v == null || !Number(v) ? null : `$${Math.round(Number(v)).toLocaleString('es-AR')}`)
+  const cab = `${a.total} presupuesto(s): ${a.en_juego} en juego · ${a.ganadas} ganada(s) · ${a.perdidas} perdida(s)`
+    + (plata(a.monto_total_cotizado) ? ` — ${plata(a.monto_total_cotizado)} cotizado` : '')
+    + (a.tasa_conversion_pct != null ? ` — conversión ${a.tasa_conversion_pct}%` : '')
+  const linea = (c) => `· ${c.cliente ?? 'sin cliente'} — ${c.obra_nombre ?? 'sin nombre de obra'}`
+    + ` (${plata(c.monto_venta) ?? 'sin monto'})`
+    + (c.estado ? ` · ${c.estado}` : '') + (c.fecha ? ` · ${c.fecha}` : '')
+  const partes = [cab, ...filas.slice(0, 10).map(linea)]
+  if (filas.length > 10) partes.push(`… y ${filas.length - 10} más`)
+  return partes.join('\n')
+}
+
 /** Estado de la biblioteca de cotizaciones (todas, o filtradas por cliente/estado). 0 API. */
 export async function estadoCotizaciones({ cliente, estado } = {}) {
   const cond = [], args = []
@@ -138,5 +153,10 @@ export async function estadoCotizaciones({ cliente, estado } = {}) {
             costo_estimado::float8 costo_estimado, margen_pct::float8 margen_pct, estado,
             to_char(fecha_cotizacion,'DD/MM/YYYY') fecha
        from public.cotizaciones ${where} order by fecha_cotizacion desc nulls last, created_at desc`, args)
-  return { ...analizarCotizaciones(rows), cotizaciones: rows, fuente: 'public.cotizaciones (biblioteca viva)' }
+  const analisis = analizarCotizaciones(rows)
+  return {
+    ...analisis, cotizaciones: rows,
+    resumen_texto: resumenDeCotizaciones(analisis, rows),
+    fuente: 'public.cotizaciones (biblioteca viva)',
+  }
 }
