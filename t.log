@@ -1,52 +1,16 @@
-✔ las preguntas por presupuestos de OBRA van a cotizacion.estado, no a rodados (97.191631ms)
-✔ las 12 intenciones más usadas existen por su NOMBRE en el registro real de tools (375.914888ms)
-✔ EL DEFECTO QUE SE EVITA: resolver una intención obvia llamando primero al modelo (20.609344ms)
-✔ EL DEFECTO: 33 fábricas de tools existían y la puerta no las conocía (5.871501ms)
-✔ dos fábricas no pueden reclamar la misma clave: la segunda pisaría a la primera en silencio (5.578373ms)
-✔ «¿qué podés hacer?» sale del registro filtrado por permisos, sin tocar un modelo (1.836319ms)
-✔ un mensaje vacío no es un pedido, y el gateway NO lanza: devuelve el error como dato (3.784972ms)
-✔ sin actor el pedido se rechaza — un pedido anónimo no puede correr una tool (1.14128ms)
-✔ EL DEFECTO: el navegador manda obra_id de otro. Sin firma del servidor se descarta y se DICE (6.336038ms)
-✔ con la firma del servidor, el contexto viaja y llega a la tool (1.531163ms)
-✔ (A) app.ecsas → XSAS → tool → respuesta SIN LLM (3.621123ms)
-✔ la frase exacta que ya sabemos qué significa tampoco paga un modelo (0.878642ms)
-✔ FALLA CERRADO: sin la capability en permisos la tool no corre (0.423066ms)
-✔ una capacidad que no existe se dice, no se adivina con un modelo (0.315369ms)
-✔ (H) una skill existente invocada desde el Gateway ejecuta SU tool, sin modelo (2.316899ms)
-✔ (27/08) el argumento que vino en la FRASE hace correr la tool que el contexto no podia llenar (1.765012ms)
-✔ (27/08) si el argumento NO esta en la frase, se escala como siempre: no se inventa (0.757495ms)
-✔ lo ambiguo escala al modelo y se registra QUIÉN respondió, no quién se pidió (0.723668ms)
-✔ (E) el primario falla y contesta el fallback: la respuesta dice de quién venía (0.680623ms)
-✔ (F) TODOS los proveedores caídos: no rompe, degrada y dice qué sigue andando (0.462065ms)
-✔ (F) con TODOS los LLM caídos, lo determinístico sigue contestando igual (0.370588ms)
-✔ (B)(P) app.ecsas y Mattermost comparten Core: mismo pedido, misma capacidad, misma respuesta (0.867418ms)
-✔ la traza distingue el pedido que pagó modelo del que no — es toda la medida (0.411469ms)
-✔ EL CABLEADO: una escalación real deja escrito POR QUÉ hizo falta el razonador (0.728044ms)
-✔ los atajos apuntan a tools que EXISTEN en el registro real (un atajo huérfano no rutea nada) (59.326322ms)
-✔ el contexto no puede inyectar un parámetro que la tool no declaró (0.256696ms)
-✔ parado en una obra, «¿cómo venimos?» lee ESA obra y no la empresa (0.637536ms)
-✔ sin obra en la pantalla, la misma frase sigue leyendo la empresa (0.373392ms)
-✔ con obra pero SIN el nombre, no se rompe: cae en la lectura de empresa (0.313835ms)
-✔ sin permiso para la lectura por obra, la pregunta no falla: cae en la de empresa (0.303824ms)
-✔ una tool NO nombrada en la lista de autorizadas no escribe aunque el actor tenga drive.write (0.301379ms)
-✔ la tool autorizada sí escribe, y la escritura queda firmada con actor, archivo y correlation id (0.9041ms)
-✔ la firma encuentra el archivo aunque la tool lo nombre distinto (0.500433ms)
-✔ una escritura que FALLA también queda firmada — el intento es lo que hay que poder auditar (0.431992ms)
-✔ una LECTURA no deja fila en el registro de escrituras (3.061032ms)
-✔ si la obra de la pantalla no existe para la lectura por obra, contesta la empresa y lo DICE (0.575093ms)
-✔ una tool que devuelve {error} SIN lanzar queda firmada como error, no como ok (2.006235ms)
-✔ un {ok:false} del motor también se firma como error (0.405534ms)
-✔ pideMutacion reconoce el español real del dueño y no confunde sustantivos (0.184315ms)
-✔ EL BUG: un pedido de escritura NO se contesta corriendo una tool de lectura cualquiera (0.620289ms)
-✔ la frase EXACTA del dueño, con el ruteo real (sin elegir inyectado): no corre lectura ni modelo (6.517894ms)
-✔ PRUEBA NEGATIVA: una mutación CON tool de escritura autorizada y con permiso SÍ ejecuta (0.876886ms)
-✔ NUNCA RESPUESTA VACÍA: una tool ok sin resumen_texto igual produce texto para la persona (0.585687ms)
-✔ la tool que publica su lectura como `resumen` (array) sale con ese texto, no con el respaldo (0.578201ms)
-ℹ tests 44
+✔ las preguntas por presupuestos de OBRA van a cotizacion.estado, no a rodados (94.8497ms)
+✔ las frases de arranque del cotizador superan el umbral de adjuntos (2.287327ms)
+✔ las frases de otros dominios NO arrancan el cotizador por accidente (0.749662ms)
+✔ «cotizame esta obra» + plano adjunto CORRE plano.cotizar con los archivos y el proyecto de la frase (10.106458ms)
+✔ UMBRAL: «mirá esta obra» + adjunto NO va al cotizador — sigue siendo ingesta (1.528344ms)
+✔ FALTA_DATO: «cotizame estos planos» sin proyecto NO inventa — pregunta en criollo y guarda la acción pendiente (1.20582ms)
+✔ EL CANDADO: un jefe_obra con planos adjuntos no cotiza, y se le dice por qué (0.708182ms)
+✔ UN EXTRACTO SIGUE SIENDO DEL BANCO: con el cotizador registrado al lado, el CSV va al importador (2.265614ms)
+ℹ tests 8
 ℹ suites 0
-ℹ pass 44
+ℹ pass 8
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 557.990812
+ℹ duration_ms 327.91172

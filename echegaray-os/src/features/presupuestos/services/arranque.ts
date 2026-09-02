@@ -23,3 +23,21 @@ export function numeroDeRespuesta(r: unknown): string | null {
   const numero = (datos as { numero?: unknown }).numero
   return typeof numero === 'string' && numero.trim() ? numero : null
 }
+
+/** El paso a paso del razonamiento, partido en bloques dibujables. El texto viene del motor
+ *  («**1 · Superficies** — …») y acá SOLO se corta por paso: no se inventa ningún estado —
+ *  los faltantes ya vienen nombrados adentro de cada bloque. PURA. */
+export function pasosDeRespuesta(r: unknown): { titulo: string; cuerpo: string }[] {
+  if (!r || typeof r !== 'object') return []
+  const datos = (r as { datos?: unknown }).datos
+  if (!datos || typeof datos !== 'object') return []
+  const texto = (datos as { razonamiento_texto?: unknown }).razonamiento_texto
+  if (typeof texto !== 'string' || !texto.trim()) return []
+  const bloques = texto.split(/\n+(?=\*\*\d+ · )/)
+  return bloques
+    .map((b) => {
+      const m = b.match(/^\*\*(\d+ · [^*]+)\*\*\s*—?\s*([\s\S]*)$/)
+      return m ? { titulo: m[1].trim(), cuerpo: m[2].trim() } : null
+    })
+    .filter((x): x is { titulo: string; cuerpo: string } => x !== null)
+}

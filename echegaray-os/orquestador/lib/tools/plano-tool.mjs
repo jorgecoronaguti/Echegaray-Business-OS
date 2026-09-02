@@ -116,7 +116,7 @@ export function planoTools(google) {
       schema: {
         name: 'analizar_planos_y_cotizar',
         description:
-          'LEE LOS PLANOS de un cliente u obra en Drive, los INTERPRETA visualmente (láminas, vistas, cortes, cotas, planillas), CUENTA y MIDE los elementos, los mapea contra la Base Maestra de análisis de precios y devuelve una COTIZACIÓN BORRADOR con su cascada de precio. USALO cuando el dueño diga "analizá los planos de [cliente]", "armame una cotización de [obra]", "computá los planos de [X]", "¿cuánto sale [obra] según los planos?", "cotizame esta obra", "cotizame estos planos", "cotiza este proyecto". También acepta PLANOS ADJUNTOS: los procesa directamente en memoria, sin subirlos a Drive ni tocar carpetas. Cada cantidad queda trazada al documento del que salió (archivo de Drive o adjunto por hash), la lámina y el texto literal del plano. NUNCA inventa una medida: lo que el plano no dice sale como faltante con nombre propio. La cotización queda en BORRADOR — no crea obras, no toca cotizaciones existentes y no manda nada al cliente.',
+          'LEE LOS PLANOS de un cliente u obra en Drive, los INTERPRETA visualmente (láminas, vistas, cortes, cotas, planillas), CUENTA y MIDE los elementos, los mapea contra la Base Maestra de análisis de precios y devuelve una COTIZACIÓN BORRADOR con su cascada de precio. USALO cuando el dueño diga "analizá los planos de [cliente]", "armame una cotización de [obra]", "computá los planos de [X]", "¿cuánto sale [obra] según los planos?", "cotizame esta obra", "cotizame estos planos", "cotiza este proyecto", "empecemos a cotizar", "empezá a cotizar", "vamos a cotizar", "quiero cotizar esto", "arrancá la cotización", "presupuestame esta obra", "armame el presupuesto de esto". También acepta PLANOS ADJUNTOS: los procesa directamente en memoria, sin subirlos a Drive ni tocar carpetas. Cada cantidad queda trazada al documento del que salió (archivo de Drive o adjunto por hash), la lámina y el texto literal del plano. NUNCA inventa una medida: lo que el plano no dice sale como faltante con nombre propio. La cotización queda en BORRADOR — no crea obras, no toca cotizaciones existentes y no manda nada al cliente.',
         input_schema: {
           type: 'object',
           properties: {
@@ -175,6 +175,10 @@ export function planoTools(google) {
             faltantes: r.computo.items.filter((i) => i.cantidad === null).map((i) => ({ elemento: i.id, nombre: i.nombre, falta: i.faltan })),
             cascada,
             llamadas_ia: r.ia.llamadas,
+            // EL PASO A PASO ES LA GUÍA (dueño, 02/09): la cotización no aparece de la nada —
+            // se DERIVA del razonamiento sobre el plano, y ese razonamiento viaja con ella para
+            // que la pantalla lo muestre completándose, con los faltantes nombrados adentro.
+            razonamiento_texto: textoDeRazonamiento(razonar(r), { proyecto }),
             planos_adjuntos: archivos.map((a) => a?.nombre).filter(Boolean),
             resumen_texto: resumen({ r, cot, cascada, numero })
               + (archivos.length ? `\n\n📎 ${archivos.length} adjunto(s) procesados en memoria — no se subió nada a Drive.` : ''),
