@@ -103,7 +103,19 @@ function LineaDeTraza({ r, ms }: { r: RespuestaXsas; ms?: number }) {
   )
 }
 
-export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNombre?: string }) {
+export type { RespuestaXsas }
+
+export function Conversacion({ obraId, obraNombre, ejemplos, presentacion, onRespuesta }: {
+  obraId?: string
+  obraNombre?: string
+  /** Chips de arranque propios de la pantalla que la aloja (default: los generales de /xsas). */
+  ejemplos?: string[]
+  /** El texto del estado vacío, cuando la pantalla que la aloja tiene su propio encuadre. */
+  presentacion?: string
+  /** Aviso a la pantalla anfitriona con CADA respuesta del OS — es lo que permite que
+   *  «/presupuestos/nuevo» detecte el presupuesto recién creado y navegue hasta él. */
+  onRespuesta?: (r: RespuestaXsas) => void
+}) {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [texto, setTexto] = useState('')
   const [adjuntos, setAdjuntos] = useState<AdjuntoLocal[]>([])
@@ -168,6 +180,7 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         ?? (typeof cuerpo.error === 'string' ? cuerpo.error : cuerpo.error?.mensaje)
         ?? 'XSAS contestó sin texto.'
       setTurnos((t) => [...t, { id: idNuevo(), quien: 'xsas', texto, meta: cuerpo, ms }])
+      onRespuesta?.(cuerpo)
     } catch (e) {
       setTurnos((t) => [...t, {
         id: idNuevo(), quien: 'xsas',
@@ -176,7 +189,7 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
     } finally {
       setEnviando(false)
     }
-  }, [enviando, obraId, obraNombre])
+  }, [enviando, obraId, obraNombre, onRespuesta])
 
   // El ref evita que `enviar` se recree por cada archivo agregado (y con él, los botones de ejemplo).
   const adjuntosRef = useRef(adjuntos)
@@ -193,11 +206,10 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         {turnos.length === 0 && (
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <p className="text-sm text-slate-600">
-              Pedile lo que necesites en lenguaje normal. XSAS elige solo qué capacidad del OS usa —
-              no hace falta saber qué skill corresponde.
+              {presentacion ?? 'Pedile lo que necesites en lenguaje normal. XSAS elige solo qué capacidad del OS usa — no hace falta saber qué skill corresponde.'}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {EJEMPLOS.map((e) => (
+              {(ejemplos ?? EJEMPLOS).map((e) => (
                 <button
                   key={e}
                   type="button"

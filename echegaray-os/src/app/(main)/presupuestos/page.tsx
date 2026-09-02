@@ -111,7 +111,9 @@ export default async function PresupuestosPage({
               <IcoCerrar s={14} /> Cancelar
             </BotonPlano>
           ) : (
-            <BotonMarca href="/presupuestos?nuevo=1" testid="abrir-alta-presupuesto">
+            // El camino principal es el conversacional («Presupuestos v5»): la carga manual
+            // sigue viva y enlazada desde /presupuestos/nuevo para no romper el hábito.
+            <BotonMarca href="/presupuestos/nuevo" testid="abrir-alta-presupuesto">
               <IcoMas s={14} /> Nuevo presupuesto
             </BotonMarca>
           )
