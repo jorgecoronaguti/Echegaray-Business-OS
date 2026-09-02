@@ -208,17 +208,51 @@ solapa /xsas en la navegación.
   gráfico (sólo emitidos vivos, ventana 30d): 10/09 1,5M · 17/09 471k · 21/09 3,64M · 22/09 1M ·
   25/09 2,56M.
 
+## 10quinquies. GATE 3 · HITO 1 — EL COTIZADOR SE PIDE POR /XSAS (02/09, desplegado, commit `4439241e`)
+
+El dueño ordenó: «cerremos XSAS para que comience a trabajar como cotizador; es la primera prueba
+de que XSAS es el LLM de Echegaray sin depender de Claude».
+
+- **Mecanismo GENERAL adjuntos→capacidad**: una tool declara `adjuntos: true` y
+  `intentarConAdjuntos` (gateway) la elige por la MISMA afinidad del ruteo, con umbral
+  cabeza+disparador (5) — «mirá esta obra» sigue siendo ingesta; «cotizame esta obra» y «cotizá
+  esto» matchean. Los adjuntos viajan como `args.archivos`; en acciones/traza sólo nombre+tamaño.
+- **`plano.cotizar` recibe adjuntos**: PRIMERO los sube al Drive del proyecto y los deja en
+  `public.drive_index` (`lib/plano/adjuntos.mjs`, mismo upsert que `drive-indice.pg.test`), y
+  recién entonces corre el pipeline de siempre → misma genealogía que un plano histórico. Carpeta
+  del proyecto por índice con preferencia «presupuesto»; si no hay, `COTIZACIONES XSAS - <proyecto>`
+  bajo la raíz indexada.
+- **Límite declarado**: `orq.xsas_adjunto` guarda TEXTO, no bytes → un `falta_dato` con adjuntos
+  pide reenviarlos junto con el dato (el mensaje lo dice).
+- **E2E vivo por la puerta (127.0.0.1:8791/xsas)**: adjunto + «cotizame esta obra de PRUEBA XSAS
+  GATE3» → `adjunto_con_motor`, proyecto extraído, archivo VERIFICADO en Drive leyéndolo de vuelta
+  + fila en `drive_index` + intento firmado en `public.xsas_escritura`; respuesta honesta (un txt
+  no es plano legible). Prueba limpiada (papelera + delete del índice).
+- Tests: `xsas-cotizador-adjuntos.test.mjs` (5) · `plano/adjuntos.test.mjs` (4) · XSAS 71/71 ·
+  plano completo verde. Cierre SIN auditor tercero (instrucción de consumo vigente).
+
+**Inventario clave (medido)**: el motor grande `lib/cotizador/` (~50 módulos: política comercial,
+cascada de precios, freeze, oferta, plan-vs-real) NO es alcanzable desde el gateway — ninguna tool
+lo importa. El generador del PDF de presupuesto (`lib/presupuesto/formato-echegaray.mjs`) tampoco
+tiene tool. Son los candidatos naturales de los próximos hitos.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
 
-**P0 — convertir /xsas en herramienta operativa real:** ~~routing natural~~ (G1) → ~~adjuntos +
-continuidad~~ (G2) → **GATE 3: multi-skill + mutaciones autorizadas (firma del dueño)**.
+**P0 — GATE 3 restante:** hito 2 = continuidad de cotización (follow-ups «qué falta» / «qué
+destraba» desde la cotización persistida, 0 modelo; hoy `atenderDesdeContexto` no sabe de
+cotizaciones) · hito 3 = exponer el motor grande `lib/cotizador/` como tool (política comercial,
+freeze, oferta) · hito 4 = PDF de presupuesto por tool (`lib/presupuesto/`) · multi-skill +
+resolver la cola `sinFirma` con el dueño.
 
 **P1 — perfeccionar el cotizador general:** motor geométrico/estructural → cómputo → precios/HH →
 riesgo → aprendizaje.
 
-Convergen: usuario adjunta documentación en /xsas → "cotizame esta obra" → XSAS ejecuta autónomo el cotizador.
+~~Convergen: usuario adjunta documentación en /xsas → "cotizame esta obra" → XSAS ejecuta autónomo
+el cotizador~~ — **CERRADO en hito 1** para el camino adjuntos→borrador; queda el detalle rico en
+pantalla (los `datos` llegan al front y no se pintan — `src/features/presupuestos/` ya tiene los
+componentes).
 
 ## 12. REGLA PARA LA PRÓXIMA SESIÓN
 
