@@ -360,6 +360,29 @@ Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Ce
 - OJO PRÓXIMA SESIÓN: para scripts que necesiten modelo a propósito, exportar
   `ORQ_IA_PERMITIR=claude-code-explicito` a mano; sin eso todo camino de modelo degrada declarando.
 
+## 10undecies. ENTORNO XSAS DE PRESUPUESTOS — HITO 1 (02/09 tarde, commit `7fa991c4`, Vercel)
+
+- **El diseño canónico es `~/renovac-diseno.zip` (subido 02/09 14:58)**, serie «Presupuestos v5»:
+  «entorno xsas» (pantalla), «con xsas · flujo propuesto» (6 estaciones / 5 compuertas humanas /
+  4 estados de medición / silencios), «mapa y flujo», «revisiones y diff», «preparar obra». Extraído
+  en scratchpad (se borra con la sesión) — el zip queda en `~`.
+- **Decisión tomada (delegada por el dueño)**: variante de revisión de la estación 3 = **B, tablero
+  de cómputo** (lista por rubro + plano al lado, confirmación por grupo con freno explícito). A cabe
+  después como modo de ordenamiento; C (contra obra parecida) exige histórico confiable que la
+  auditoría del cotizador mostró inexistente.
+- **Hito 1 CERRADO**: `/presupuestos/nuevo` = arranque conversacional (la pantalla del presupuesto
+  EXISTENTE ya era el entorno completo — conversación por cotización + cola + tabla + cascada).
+  `ArranqueXsas` + `arranque.ts` (puro, con test 2/2) + `Conversacion` de xsas extendida con props
+  retrocompatibles (`ejemplos`, `presentacion`, `onRespuesta`); botón «Nuevo presupuesto» de la
+  cartera apunta al arranque; la carga manual sigue viva (`?nuevo=1`). Typecheck/lint/build verdes;
+  la web se despliega por VERCEL con el push (no hay servicio local de Next). QA visual lanzado.
+  OJO: el build de Next NO corre en worktree (symlink de node_modules lo rompe) — se buildea en main
+  tras el merge.
+- **Hitos pendientes (2-4)**: estados propuesto/confirmado/corregido/no-medible en el cómputo +
+  corrida atómica (`legajo_lamina`, `computo_medicion` — la CADENA del mockup los declara nuevos) ·
+  confirmación de escala por lámina · mesa de revisión variante B · diff de revisiones (ya existe
+  `plano-comparar-historico` como base). El back que toquen: `lib/plano/` + tablas nuevas.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
