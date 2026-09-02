@@ -378,6 +378,13 @@ Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Ce
   la web se despliega por VERCEL con el push (no hay servicio local de Next). QA visual lanzado.
   OJO: el build de Next NO corre en worktree (symlink de node_modules lo rompe) — se buildea en main
   tras el merge.
+- **QA visual (02/09)**: 5/6 PASS con capturas (`.qa-reports/2026-09-02-presupuesto-nuevo/`);
+  el FAIL funcional —el chip «¿qué presupuestos tenemos en borrador?» degradaba al modelo con 13
+  borradores reales— se corrigió en `c9b5fda8`+`d9476979`: cabeza de `cotizacion.estado` con
+  presupuestos/borrador (afinidad 12-9 sobre rodados, test de ruteo bidireccional) + la skill de
+  costos CITA el archivo (`RE_MODULO` sólo cuenta paths, la prosa no). Verificado vivo:
+  `skill_con_motor · cotizacion.estado · llm:false`. Cosmético pendiente: la tool devuelve datos
+  sin `resumen_texto` (sale JSON crudo legible) y el nav mobile corta «Presupuestos» (app-wide).
 - **Hitos pendientes (2-4)**: estados propuesto/confirmado/corregido/no-medible en el cómputo +
   corrida atómica (`legajo_lamina`, `computo_medicion` — la CADENA del mockup los declara nuevos) ·
   confirmación de escala por lámina · mesa de revisión variante B · diff de revisiones (ya existe
