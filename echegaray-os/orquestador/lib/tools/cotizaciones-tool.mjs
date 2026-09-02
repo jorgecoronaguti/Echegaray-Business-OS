@@ -43,7 +43,7 @@ export function cotizacionesTools() {
       schema: {
         name: 'cotizaciones_estado',
         description:
-          'Estado de la BIBLIOTECA de cotizaciones: cuántas hay en juego, ganadas y perdidas, la TASA DE CONVERSIÓN (ganadas / decididas), el monto total cotizado, el monto ganado y el margen promedio. USALO para "¿cómo venimos con las cotizaciones?", "¿cuánto tenemos cotizado?", "¿qué tasa de conversión tenemos?", "cotizaciones de [cliente]". Pasá "cliente" o "estado" para filtrar; vacío = todas. Números reales de lo cargado, 0 inventado.',
+          'Los PRESUPUESTOS de obra de la empresa: qué presupuestos hay en borrador, cuántos en cada estado (borrador / emitida / ganada / perdida), la TASA DE CONVERSIÓN (ganadas / decididas), el monto total cotizado, el monto ganado y el margen promedio. USALO para "¿qué presupuestos tenemos en borrador?", "presupuestos en borrador", "estado de los presupuestos", "¿cómo venimos con las cotizaciones?", "¿cuánto tenemos cotizado?", "¿qué tasa de conversión tenemos?", "cotizaciones de [cliente]". Pasá "cliente" o "estado" (borrador|emitida|ganada|perdida) para filtrar; vacío = todas. Números reales de lo cargado, 0 inventado.',
         input_schema: {
           type: 'object',
           properties: {
