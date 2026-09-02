@@ -55,6 +55,36 @@ export async function documentosDelProyecto({ query }, termino) {
   return r.rows
 }
 
+/**
+ * LOS ADJUNTOS ENTRAN AL PIPELINE EN MEMORIA — XSAS NO ESCRIBE EN DRIVE POR SU CUENTA.
+ *
+ * Decisión del dueño (02/09/2026): un plano que llega adjunto al chat NO se sube a ninguna carpeta
+ * de Drive. Se vuelve un documento con la MISMA forma que una fila de `drive_index`, identificado
+ * por el hash de su contenido — la misma llave del caché de interpretación, así que genealogía y
+ * costo no cambian. Su rastro persistente es `orq.xsas_adjunto` (bytes por actor+hash), no Drive.
+ * Un adjunto sin nombre o sin contenido se ignora: no hay documento que afirmar. PURA.
+ */
+export function documentosEnMemoria(adjuntos = []) {
+  return (adjuntos ?? [])
+    .map((a) => {
+      const base64 = a?.contenido_base64
+        ?? (typeof a?.contenido === 'string' ? Buffer.from(a.contenido, 'utf8').toString('base64') : null)
+      if (!a?.nombre || !base64) return null
+      const bytes = Buffer.from(base64, 'base64')
+      return {
+        drive_file_id: `adjunto:${llaveDeCache(bytes)}`,
+        name: a.nombre,
+        path: `(adjunto)/${a.nombre}`,
+        mime_type: null,
+        is_folder: false,
+        size_bytes: bytes.length,
+        modified_time: null,
+        _bytes: bytes,
+      }
+    })
+    .filter(Boolean)
+}
+
 /** La carpeta raíz del proyecto: el prefijo común de todo lo encontrado. Sirve para que la
  *  clasificación por carpeta no lea «PRESUPUESTOS - CLIENTES» como si describiera el documento. */
 export function carpetaRaiz(filas = []) {
@@ -607,7 +637,7 @@ export function parecidosSinFusionar(elementos = []) {
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true } = {}) {
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [] } = {}) {
   const t0 = Date.now()
   // ═══ CLAUDE = 0 ═══
   // El proveedor de razonamiento puede no estar: sin saldo, sin API key, caído, o apagado a mano
@@ -623,6 +653,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // «lo resolvió el modelo y el resultado dio igual».
   const met = nuevoMedidor()
   const filas = await documentosDelProyecto({ query }, termino)
+  filas.push(...documentosEnMemoria(adjuntos))
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
   const planos = planosDe(insumos)
@@ -639,7 +670,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // apagado — un número que se lee como «llamó y no cobró» cuando la verdad es «no llamó».
   const anotar = (u) => { if (u && !u.degradado) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
   for (const doc of planos.legibles) {
-    const bytes = await google.descargarBytes(doc.drive_file_id)
+    const bytes = doc._bytes ?? await google.descargarBytes(doc.drive_file_id)
     const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
     anotar(lam.uso)
     met.decidio({ que: `lámina ${doc.name}`, via: lam.deCache ? VIA.CACHE : (lam.error ? VIA.HUECO : VIA.MODELO) })

@@ -27,7 +27,6 @@
 import { query } from '../db.mjs'
 import { correr } from '../plano/pipeline.mjs'
 import { agruparPartidas, armar, persistir, cascadaDe } from '../plano/cotizacion-v0.mjs'
-import { subirPlanosAlProyecto } from '../plano/adjuntos.mjs'
 import { razonar, textoDeRazonamiento } from '../plano/razonamiento.mjs'
 
 const money = (n) => (n === null || n === undefined ? 'sin dato' : `$ ${Math.round(Number(n)).toLocaleString('es-AR')}`)
@@ -107,14 +106,15 @@ export function planoTools(google) {
     'plano.cotizar': {
       capability: 'os.write',
       account: 'ecsas',
-      // Acepta los ADJUNTOS del pedido: un plano que llega por /xsas se sube al Drive del proyecto
-      // y se indexa ANTES de correr el pipeline — mismo camino, misma genealogía (ver
-      // `lib/plano/adjuntos.mjs`). El gateway sólo pasa adjuntos a tools que lo declaran acá.
+      // Acepta los ADJUNTOS del pedido y los procesa EN MEMORIA. XSAS no escribe en Drive por su
+      // cuenta (decisión del dueño, 02/09/2026): el rastro persistente del adjunto es
+      // `orq.xsas_adjunto` (bytes por actor+hash), y la genealogía del cómputo lo cita como
+      // `adjunto:<hash>`. Subir algo a Drive es una acción aparte que sólo pide el dueño.
       adjuntos: true,
       schema: {
         name: 'analizar_planos_y_cotizar',
         description:
-          'LEE LOS PLANOS de un cliente u obra en Drive, los INTERPRETA visualmente (láminas, vistas, cortes, cotas, planillas), CUENTA y MIDE los elementos, los mapea contra la Base Maestra de análisis de precios y devuelve una COTIZACIÓN BORRADOR con su cascada de precio. USALO cuando el dueño diga "analizá los planos de [cliente]", "armame una cotización de [obra]", "computá los planos de [X]", "¿cuánto sale [obra] según los planos?", "cotizame esta obra", "cotizame estos planos", "cotiza este proyecto". También acepta PLANOS ADJUNTOS: los sube al Drive del proyecto, los indexa y recién entonces cotiza, para que cada cantidad quede trazada a un archivo real. Cada cantidad queda trazada al archivo de Drive, la lámina y el texto literal del plano del que salió. NUNCA inventa una medida: lo que el plano no dice sale como faltante con nombre propio. La cotización queda en BORRADOR — no crea obras, no toca cotizaciones existentes y no manda nada al cliente.',
+          'LEE LOS PLANOS de un cliente u obra en Drive, los INTERPRETA visualmente (láminas, vistas, cortes, cotas, planillas), CUENTA y MIDE los elementos, los mapea contra la Base Maestra de análisis de precios y devuelve una COTIZACIÓN BORRADOR con su cascada de precio. USALO cuando el dueño diga "analizá los planos de [cliente]", "armame una cotización de [obra]", "computá los planos de [X]", "¿cuánto sale [obra] según los planos?", "cotizame esta obra", "cotizame estos planos", "cotiza este proyecto". También acepta PLANOS ADJUNTOS: los procesa directamente en memoria, sin subirlos a Drive ni tocar carpetas. Cada cantidad queda trazada al documento del que salió (archivo de Drive o adjunto por hash), la lámina y el texto literal del plano. NUNCA inventa una medida: lo que el plano no dice sale como faltante con nombre propio. La cotización queda en BORRADOR — no crea obras, no toca cotizaciones existentes y no manda nada al cliente.',
         input_schema: {
           type: 'object',
           properties: {
@@ -128,20 +128,11 @@ export function planoTools(google) {
         const proyecto = String(input?.proyecto ?? '').trim()
         if (!proyecto) return { error: 'necesito de qué cliente u obra son los planos' }
         try {
-          // Los adjuntos primero aterrizan en Drive + índice; el pipeline después los encuentra por
-          // el MISMO término que cualquier plano histórico. Un error de subida no aborta: se declara.
-          let subida = null
+          // Los adjuntos entran al pipeline EN MEMORIA — no se suben a Drive ni se indexan.
+          // Su identidad es el hash del contenido (la misma del caché de interpretación) y sus
+          // bytes ya persisten en `orq.xsas_adjunto`, así que la genealogía no pierde el origen.
           const archivos = Array.isArray(input?.archivos) ? input.archivos : []
-          if (archivos.length) {
-            subida = await subirPlanosAlProyecto({ query, google }, proyecto, archivos)
-            if (!subida.subidos.length) {
-              return {
-                error: `no pude subir ningún adjunto al Drive de «${proyecto}»: ${subida.errores.join(' · ')}`,
-                resumen_texto: `Recibí ${archivos.length} adjunto(s) para cotizar «${proyecto}» pero no pude dejar ninguno en Drive: ${subida.errores.join(' · ')}. Sin el archivo en Drive no hay genealogía, así que no cotizo a ciegas.`,
-              }
-            }
-          }
-          const r = await correr({ query, google, termino: proyecto })
+          const r = await correr({ query, google, termino: proyecto, adjuntos: archivos })
           if (!r.documentos.planos.legibles.length) {
             return {
               error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
@@ -182,9 +173,9 @@ export function planoTools(google) {
             faltantes: r.computo.items.filter((i) => i.cantidad === null).map((i) => ({ elemento: i.id, nombre: i.nombre, falta: i.faltan })),
             cascada,
             llamadas_ia: r.ia.llamadas,
-            planos_subidos: subida ? subida.subidos : [],
+            planos_adjuntos: archivos.map((a) => a?.nombre).filter(Boolean),
             resumen_texto: resumen({ r, cot, cascada, numero })
-              + (subida ? `\n\n📎 ${subida.subidos.length} adjunto(s) quedaron en Drive («${subida.carpetaPath}»)${subida.errores.length ? ` · ${subida.errores.length} no se pudieron subir: ${subida.errores.join(' · ')}` : ''}` : ''),
+              + (archivos.length ? `\n\n📎 ${archivos.length} adjunto(s) procesados en memoria — no se subió nada a Drive.` : ''),
           }
         } catch (e) {
           return { error: `no pude analizar los planos de ${proyecto}: ${String(e?.message ?? e).slice(0, 200)}` }
