@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { IconoAdjuntar } from '@/shared/components/iconos'
 
 // LA CONVERSACIÓN CON XSAS — la caja donde se le pide trabajo al OS en lenguaje normal.
 //
@@ -113,7 +114,7 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
     if ((!limpio && !conAdjuntos.length) || enviando) return
     setTexto('')
     setAdjuntos([])
-    const rotulo = conAdjuntos.length ? `${limpio || 'procesá esto'} 📎 ${conAdjuntos.map((a) => a.nombre).join(', ')}` : limpio
+    const rotulo = conAdjuntos.length ? `${limpio || 'procesá esto'} (adjuntos: ${conAdjuntos.map((a) => a.nombre).join(', ')})` : limpio
     setTurnos((t) => [...t, { id: idNuevo(), quien: 'yo', texto: rotulo }])
     setEnviando(true)
     const t0 = performance.now()
@@ -230,7 +231,7 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
           <div className="mt-2 flex flex-wrap gap-2">
             {adjuntos.map((a, i) => (
               <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                📎 {a.nombre}
+                <IconoAdjuntar className="h-3 w-3" /> {a.nombre}
                 <button type="button" aria-label={`quitar ${a.nombre}`} onClick={() => setAdjuntos((prev) => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-slate-700">×</button>
               </span>
             ))}
@@ -238,7 +239,7 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         )}
         <div className="mt-2 flex items-center justify-between">
           <label className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
-            📎 Adjuntar (CSV del banco — otros formatos, por el bot de Mattermost)
+            <span className="inline-flex items-center gap-1"><IconoAdjuntar className="h-3 w-3" /> Adjuntar (CSV del banco — otros formatos, por el bot de Mattermost)</span>
             <input
               type="file"
               multiple
