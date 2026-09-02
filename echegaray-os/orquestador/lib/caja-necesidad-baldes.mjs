@@ -70,7 +70,15 @@ export const BALDES = Object.freeze({
  */
 export const SALIDAS = Object.freeze([
   Object.freeze({ clave: 'ejecutado', rotulo: 'Ya salió', estados: Object.freeze(['REAL']), resto: true }),
-  Object.freeze({ clave: 'cheques', rotulo: 'Cheques', estados: NO_REAL, instrumentos: BALDES.cheques }),
+  // ═══ POR RUBRO Y NO POR INSTRUMENTO — REGLA DEL DUEÑO (02/09/2026) ═══
+  //
+  // «No podés mostrar información errada en los gráficos si no hay algo que AVALE que se va a hacer
+  // dicho egreso, como es el caso de lo relativo a cheques.» Por instrumento, el balde sumaba las
+  // facturas del PLAN cuyo medio previsto era cheque — un cheque que no existe todavía. El aval de
+  // un egreso de cheques es el CHEQUE EMITIDO: el balde toma el rubro que escribe el extractor de
+  // Cheques Emitidos (cartera viva), y la factura a pagar con cheque sigue siendo deuda de
+  // Proveedores hasta que el cheque exista.
+  Object.freeze({ clave: 'cheques', rotulo: 'Cheques', estados: NO_REAL, rubros: Object.freeze(['Cheques emitidos']) }),
   Object.freeze({ clave: 'proveedores', rotulo: 'Proveedores', estados: NO_REAL, resto: true }),
   Object.freeze({ clave: 'sueldos', rotulo: 'Sueldos', estados: NO_REAL, rubros: BALDES.sueldos }),
   Object.freeze({ clave: 'cargas', rotulo: 'Cargas sociales', estados: NO_REAL, rubros: BALDES.cargas }),

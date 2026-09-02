@@ -228,7 +228,10 @@ const cheques = () => {
 
 test('CHEQUES: el no debitado es COMPROMETIDO; el debitado NO se emite — ya está en el saldo', () => {
   const ms = deChequesEmitidos(cheques(), { fila0: 20 })
-  assert.equal(ms.length, 3)
+  // CONTRATO NUEVO (02/09, regla del dueño): TODO vivo no cruzado se emite — también el marcado
+  // «✓ su factura está en Compras», porque esa factura, si está PAGADA, no emite ningún futuro y
+  // el compromiso desaparecía ($12,1M medidos). Son 4: los tres de antes + «Con factura SA».
+  assert.equal(ms.length, 4)
   assert.ok(ms.every((m) => m.estado === 'COMPROMETIDO'))
   assert.ok(!ms.some((m) => m.concepto === 'Debitado SA'), 'restarlo otra vez fue el error de los $12,19M')
   // Y las claves distinguen FISICO 313 de ECHEQ 313.
@@ -238,13 +241,18 @@ test('CHEQUES: el no debitado es COMPROMETIDO; el debitado NO se emite — ya es
   assert.ok(sinNum.clave.startsWith('origen:'), 'sin número, la fila es la identidad')
 })
 
-test('CHEQUES: el que YA tiene factura en Compras no se emite — sumarlo contaba $43,4M dos veces', () => {
-  const ms = deChequesEmitidos(cheques(), { fila0: 20 })
-  assert.ok(!ms.some((m) => m.concepto === 'Con factura SA'), 'esa plata ya viaja por la puerta de Compras')
-  // Y la marca se lee de la columna del contrato, no de un rótulo: su encabezado lleva la fecha.
+test('CHEQUES: el que el CRUCE empareja no se emite acá — su plata sale por Compras como cuotas', () => {
+  // CONTRATO NUEVO (02/09): la exclusión ya no es la marca (una foto vieja) sino el CRUCE — la
+  // única certeza de que la plata viaja por la otra puerta. Con el cruce emparejando la fila 24,
+  // «Con factura SA» no se emite; sin cruce, se emite TODO vivo.
+  const cruce = { porCheque: new Map([[24, {}]]) }
+  const ms = deChequesEmitidos(cheques(), { fila0: 20, cruce })
+  assert.ok(!ms.some((m) => m.concepto === 'Con factura SA'), 'cruzado: sale por Compras (cuotas)')
+  assert.equal(ms.length, 3)
+  // Y sin marca alguna el vivo se emite igual: la marca dejó de decidir la puerta.
   const sinMarcar = cheques().map((f) => { const g = f.slice(); g[M] = ''; return g })
-  assert.equal(deChequesEmitidos(sinMarcar, { fila0: 20 }).length, 0,
-    'lo que el OS todavía no cruzó no se puede afirmar que falte')
+  assert.equal(deChequesEmitidos(sinMarcar, { fila0: 20 }).length, 4,
+    'un cheque firmado y entregado es un egreso avalado por sí mismo')
 })
 
 // ── EL CRUCE CHEQUE ↔ FACTURA: la fila de Compras que se parte en dos ─────────────────────────────
@@ -290,7 +298,10 @@ test('EL DEFECTO: "Pagado" con fecha anterior al corte y cheque VIVO era REAL en
 test('LA CUOTA HEREDA EL RUBRO Y EL CLIENTE DE SU FACTURA — es lo que el cruce vino a dar', () => {
   const ms = deCompras(comprasDiesel(), 46240, { cruce: cruceDiesel() })
   const comp = ms.filter((m) => m.estado === 'COMPROMETIDO')
-  assert.ok(comp.every((m) => m.rubro === 'Estructura'), 'sin cruce el cheque caía en "Cheques emitidos"')
+  // CONTRATO NUEVO (02/09): la cuota ES la cobertura de un cheque vivo y el balde del gráfico la
+  // toma por el rubro 'Cheques emitidos'; el cliente, el instrumento y el comprobante siguen
+  // siendo los de su factura.
+  assert.ok(comp.every((m) => m.rubro === 'Cheques emitidos'), 'la cuota es cobertura de cheque')
   assert.ok(comp.every((m) => m.instrumento === 'cheque'))
   assert.ok(comp.every((m) => m.comprobante === '0003-00000460'))
 })

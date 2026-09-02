@@ -272,10 +272,13 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
     const importe = num(f[c.importe])
     if (importe === null || importe === 0) continue
     if (/^si$/i.test(txt(f[c.debitado]))) continue // ya está en el saldo del banco
-    // `mismaMarca` y no `!==`: la fila publicada con el glifo viejo es la MISMA marca, y descartarla
-    // acá saca un compromiso real del libro sin que nada dé error. Ver `ALERTA_HEREDADA`.
-    if (!mismaMarca(txt(f[colMarca]), MARCAS.falta)) continue // con factura, ya entró por Compras
-    if (cruce?.porCheque?.has(i + 1)) continue // cruzado: su plata sale por la puerta de Compras
+    // ═══ LA MARCA DEJÓ DE SER LA LLAVE — REGLA DEL DUEÑO (02/09/2026), ver puertaDeCheque ═══
+    //
+    // Antes sólo entraba el marcado «falta la factura»; el vivo con factura pagada que el cruce no
+    // emparejaba desaparecía del plan ($12,1M medidos hoy). Ahora TODO vivo no cruzado entra por
+    // esta puerta; el cruzado sale por Compras como cuota COMPROMETIDA (cuotasEnCheque), que es la
+    // única exclusión que evita el doble conteo con certeza.
+    if (cruce?.porCheque?.has(i + 1)) continue // cruzado: su plata sale por Compras (cuotas)
     const esEcheq = /echeq/i.test(txt(f[c.tipo]))
     out.push(movimiento({
       // Sin fecha de pago cargada el cheque existe igual: cae al corte para que pese YA — un

@@ -319,10 +319,16 @@ function resumir(vivos, porCheque, ambiguos, sinCruce) {
 export function puertaDeCheque(cheque = {}, cruce = { porCheque: new Map() }, { marcaFalta = '' } = {}) {
   if (!vivo(cheque)) return PUERTA.ninguna // debitado: ya está en el saldo del banco, no es compromiso
   if (cruce.porCheque?.has(cheque.fila)) return PUERTA.compras
-  // Sin cruce pero con la certeza de que su factura NO está cargada: no puede duplicar nada, y es la
-  // puerta que `deChequesEmitidos` ya usaba antes de que este cruce existiera.
-  if (marcaFalta && mismaMarca(String(cheque.marca ?? '').trim(), marcaFalta)) return PUERTA.cheques
-  return PUERTA.ninguna
+  // ═══ EL RESIDUO YA NO CAE AL VACÍO — REGLA DEL DUEÑO (02/09/2026) ═══
+  //
+  // «Si no hay algo que avale que se va a hacer dicho egreso… y reflejar que el cheque debe ser
+  // cubierto determinado día.» El vivo sin cruce y sin marca caía a NINGUNA puerta y desaparecía
+  // del plan: medido hoy, 13 cheques por $12,1M invisibles — con vencimientos a días. Un cheque
+  // firmado y entregado ES un egreso avalado por sí mismo: entra por la puerta de Cheques. El
+  // riesgo que se acepta es el inverso y es conservador: si su factura siguiera PENDIENTE en
+  // Compras (inconsistencia que el dueño pidió corregir allá), el plan pesa esa plata dos veces
+  // hasta que Compras se marque — pecar por exceso de necesidad, nunca por esconderla.
+  return PUERTA.cheques
 }
 
 /**

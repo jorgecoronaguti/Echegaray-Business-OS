@@ -243,8 +243,10 @@ test('EL BALDE DE LO EJECUTADO SUMA SÓLO REAL, Y LOS CINCO RUBROS SÓLO LO QUE 
   const ventana = { desde: 'TODAY()+2', hasta: 'TODAY()+3', medida: 'magnitud', signo: -1 }
   assert.equal(necesidadDelDia(2, 'sueldos'),
     `=${terminoLibro({ ...ventana, estados: NO_REAL, rubros: [...BALDES.sueldos] })}`)
+  // CONTRATO NUEVO (02/09, regla del dueño): «Cheques» = rubro 'Cheques emitidos' (cartera viva y
+  // cuotas de cobertura), no el medio PREVISTO del plan — el aval del egreso es el cheque emitido.
   assert.equal(necesidadDelDia(2, 'cheques'),
-    `=${terminoLibro({ ...ventana, estados: NO_REAL, instrumentos: [...BALDES.cheques] })}`)
+    `=${terminoLibro({ ...ventana, estados: NO_REAL, rubros: ['Cheques emitidos'] })}`)
   assert.equal(necesidadDelDia(2, EJECUTADO), `=${terminoLibro({ ...ventana, estados: ['REAL'] })}`)
   // Y ningún balde pendiente deja pasar un REAL, ni el de lo ejecutado un COMPROMETIDO.
   for (const b of PENDIENTES) assert.ok(!necesidadDelDia(0, b.clave).includes('="REAL"'), b.clave)
@@ -257,7 +259,7 @@ test('EL RESTO SE RESUELVE DENTRO DE SU PROPIO GRUPO DE ESTADOS', () => {
   const f = necesidadDelDia(0, 'proveedores')
   const ventana = { desde: 'TODAY()', hasta: 'TODAY()+1', medida: 'magnitud', signo: -1, estados: NO_REAL }
   const esperado = `=${terminoLibro(ventana)}`
-    + `-${terminoLibro({ ...ventana, instrumentos: [...BALDES.cheques] })}`
+    + `-${terminoLibro({ ...ventana, rubros: ['Cheques emitidos'] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.sueldos] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.cargas] })}`
     + `-${terminoLibro({ ...ventana, rubros: [...BALDES.impuestos] })}`
@@ -304,22 +306,26 @@ test('EL DÍA CON UN PAGO HECHO Y DEUDA VIVA MUESTRA LOS DOS, Y NINGUNO EN CERO'
     // Y deuda comercial viva del mismo día, la que sí hay que conseguir.
     { signo: -1, importe: 6462880.16, estado: 'COMPROMETIDO', rubro: 'Materiales', instrumento: 'transferencia' },
     { signo: -1, importe: 1000000, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'transferencia' },
+    // El plan «a pagar con echeq» sin cheque emitido es deuda de proveedores (regla 02/09)…
     { signo: -1, importe: 500000, estado: 'COMPROMETIDO', rubro: 'Materiales', instrumento: 'echeq' },
+    // …y la cobertura de un cheque EMITIDO vivo, con su rubro propio, es el balde Cheques.
+    { signo: -1, importe: 350000, estado: 'COMPROMETIDO', rubro: 'Cheques emitidos', instrumento: 'echeq' },
     // Una cobranza del día: no es una salida y no cae en ningún balde.
     { signo: 1, importe: 9000000, estado: 'COMPROMETIDO', rubro: 'Cobranzas', instrumento: 'transferencia' },
   ]
   const r = repartirSalidas(dia)
   assert.equal(r.yaSalio, 4200000, 'lo ejecutado del día, en su propia barra')
-  assert.equal(r.faltaPagar, 7962880.16, 'lo que todavía hay que conseguir')
+  assert.equal(r.faltaPagar, 8312880.16, 'lo que todavía hay que conseguir')
   assert.ok(r.yaSalio > 0 && r.faltaPagar > 0, 'los dos a la vez: es el caso que el gráfico no distinguía')
   assert.equal(r.por.ejecutado, 4200000)
-  assert.equal(r.por.proveedores, 6462880.16, 'el pago ya hecho NO engorda el balde de proveedores')
+  assert.equal(r.por.proveedores, 6962880.16, 'el plan con medio echeq sigue siendo deuda del proveedor')
   assert.equal(r.por.sueldos, 1000000)
-  assert.equal(r.por.cheques, 500000, 'el echeq se separa por INSTRUMENTO, no por rubro')
+  assert.equal(r.por.cheques, 350000, 'sólo el cheque EMITIDO (rubro de cartera) es «Cheques»')
   assert.equal(r.por.impuestos, 0)
-  // Y la suma de las seis barras sigue siendo TODO lo que sale ese día: se separó, no se borró.
+  // Y la suma de las barras sigue siendo TODO lo que sale ese día: se separó, no se borró.
   const suma = Object.values(r.por).reduce((a, b) => a + b, 0)
-  assert.equal(Math.round(suma * 100) / 100, 12162880.16)
+  assert.equal(Math.round(suma * 100) / 100, 12512880.16)
+  assert.equal(r.faltaPagar, 8312880.16, 'lo pendiente incluye la cobertura del cheque vivo')
 })
 
 test('EL REPARTO NO DEJA UNA SALIDA AFUERA NI LA CUENTA DOS VECES', () => {
@@ -330,9 +336,10 @@ test('EL REPARTO NO DEJA UNA SALIDA AFUERA NI LA CUENTA DOS VECES', () => {
     [{ signo: -1, importe: 1, estado: 'PROYECTADO', rubro: 'Nómina · Cargas sociales', instrumento: '' }, 'cargas'],
     [{ signo: -1, importe: 1, estado: 'REAL', rubro: 'Impuestos', instrumento: 'cheque' }, EJECUTADO],
     [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Un rubro que nadie enumeró', instrumento: '' }, 'proveedores'],
-    // Un sueldo pagado con cheque cae en CHEQUES, no en sueldos: el instrumento manda, y así lo suma
-    // también la fórmula (el resto le resta los cheques). Si no coincidieran, el día contaría de más.
-    [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'cheque' }, 'cheques'],
+    // Un sueldo A PAGAR con cheque sigue en SUELDOS mientras el cheque no exista (regla 02/09):
+    // el aval del balde Cheques es el cheque emitido, que llega con rubro 'Cheques emitidos'.
+    [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Nómina · Jornales de obra', instrumento: 'cheque' }, 'sueldos'],
+    [{ signo: -1, importe: 1, estado: 'COMPROMETIDO', rubro: 'Cheques emitidos', instrumento: 'cheque' }, 'cheques'],
   ]
   for (const [mov, esperado] of casos) assert.equal(baldeDeSalida(mov), esperado, JSON.stringify(mov))
   assert.equal(baldeDeSalida({ signo: 1, importe: 1, estado: 'REAL' }), null, 'una cobranza no es una salida')

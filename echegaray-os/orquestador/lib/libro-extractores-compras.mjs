@@ -258,6 +258,14 @@ export function cuotasEnCheque(base, cuotas = [], corte = null, factura = { fila
     fecha: q.fechaPago ?? 0,
     importe: q.importe,
     instrumento: q.instrumento,
+    // SIN numeroCheque a propósito: dos cheques físicos pueden llamarse IGUAL (316 y 316, registro
+    // real) y la clave `cheque:<n>` los colapsaría. La identidad de la cuota es (fila, cheque) —
+    // va en `origen` — y el balde del gráfico la toma por el RUBRO, no por el número.
+    // ═══ RUBRO «Cheques emitidos» — REGLA DEL DUEÑO (02/09/2026) ═══
+    // La cuota es LA COBERTURA DE UN CHEQUE VIVO: en el plan de caja su naturaleza es «cheque a
+    // cubrir tal día», y el balde del gráfico la toma por este rubro. El rubro real de la factura
+    // sigue en la fila REAL del resto de la compra.
+    rubro: 'Cheques emitidos',
     concepto: `${base.concepto} · ${q.instrumento} ${q.numero}`.trim(),
     // El comprobante SÍ viaja (es lo que se lee para reconciliar contra Compras); el CUIT no, porque
     // los dos juntos arman la clave `comp:` que colisiona con el resto REAL de la misma fila.

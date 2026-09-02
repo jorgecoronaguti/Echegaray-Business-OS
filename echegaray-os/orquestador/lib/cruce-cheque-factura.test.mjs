@@ -157,9 +157,11 @@ test('LA PARTICIÓN: cada cheque vivo entra por UNA puerta, y las tres bolsas su
   const todas = Object.values(bolsas).flat()
   assert.equal(todas.length, vivos.length, 'una puerta por cheque, ni cero ni dos')
   assert.equal(new Set(todas).size, todas.length, 'ningún cheque en dos bolsas')
-  // Los cruzados van por Compras; los ambiguos y los sin cruce, al hueco declarado.
+  // Los cruzados van por Compras (cuotas). CONTRATO NUEVO (02/09): los ambiguos y sin cruce ya no
+  // caen al vacío — un cheque firmado es un egreso avalado por sí mismo y entra por Cheques.
   assert.deepEqual(bolsas[PUERTA.compras].sort((a, b) => a - b), [101, 102, 103, 124, 125, 126])
-  assert.deepEqual(bolsas[PUERTA.ninguna].sort((a, b) => a - b), [114, 115, 129])
+  assert.deepEqual(bolsas[PUERTA.ninguna], [])
+  assert.ok([114, 115, 129].every((f) => bolsas[PUERTA.cheques].includes(f)), 'el residuo entra por Cheques')
   // Un cheque marcado "falta la factura" y NO cruzado sigue entrando por su propia puerta.
   const huerfano = ch({ fila: 122, numero: '328', proveedor: 'Nadie SRL', importe: 1000000, marca: '⚠ FALTA' })
   assert.equal(puertaDeCheque(huerfano, cruzar([huerfano], COMPRAS), { marcaFalta: '⚠ FALTA' }), PUERTA.cheques)
