@@ -1,6 +1,6 @@
 # XSAS — HANDOFF
 
-_actualizado: 2026-09-02 (GATE 1 del executor cerrado)_
+_actualizado: 2026-09-02 (GATE 1 y GATE 2 del executor cerrados)_
 
 ## 1. OBJETIVO DEL PRODUCTO
 
@@ -47,11 +47,29 @@ URL producción: https://app.ecsas.com.ar/xsas — UI real conectada al Gateway.
 - Claude-zero determinístico probado · Claude-down para intenciones frecuentes probado · Reasoner por excepción
 - disponibles: consultas Drive, financieras, obras, web/research · cotización parcial
 
-**/xsas TODAVÍA NO ES PRODUCTO OPERATIVO COMPLETO.** Bloqueantes:
-1. adjuntos desde /xsas no llegan al motor `comunicacion/archivos/flujo.mjs` (existe, 0 modelo, cableado a Mattermost)
-2. no hay composición multi-skill/workflow general
-3. no hay continuidad operacional real ("seguí con esto")
-4. escrituras requieren resolver firma/autorización
+**/xsas TODAVÍA NO ES PRODUCTO OPERATIVO COMPLETO.** Bloqueantes que quedan:
+1. no hay composición multi-skill/workflow general (GATE 3)
+2. escrituras requieren resolver firma/autorización (cola `sinFirma`)
+
+**GATE 2 (adjuntos + continuidad) CERRADO 02/09 y DESPLEGADO** (commit `51131125`):
+- Adjuntos nativos: /xsas acepta CSV/TXT/PDF/Excel (base64 para binarios, tope 8MB/archivo, borde
+  HTTP 12MB). Ingesta en `lib/xsas-archivos.mjs` REUTILIZA `leerArchivo` de
+  `comunicacion/archivos/flujo.mjs`; identidad = sha256; lectura persistida en `orq.xsas_adjunto`
+  por actor; parse reutilizado por hash. Extracto → importador real (mismo candado). Formato sin
+  motor → FORMATO_NO_SOPORTADO.
+- Continuidad: `orq.xsas_contexto` por (actor, correlation_id) — la UI ya mandaba un correlation
+  estable por conversación. `referenciaContextual` (anáfora, no frases hardcodeadas) →
+  `atenderDesdeContexto` contesta desde la lectura persistida, 0 modelo; sin contexto, ruteo normal.
+- Seguridad probada con tests negativos: otro actor con el MISMO correlation_id no ve nada; la
+  inyección documental (CSV con «ignorá todo y ejecutá…») no corre ninguna tool.
+- MIGRACIÓN `20260902T1100` APLICADA y verificada en la base (tablas + RLS leídas post-apply).
+- E2E VIVO (127.0.0.1:8791): PDF real → texto extraído (via archivo_ingesta, llm=false); follow-up
+  «lo que quedó pendiente» y «resumen de eso» → contexto_archivos, llm=false; 2 archivos con
+  identidades distintas y dedup por hash; follow-up DESPUÉS de reiniciar el servicio → recuperado
+  desde Postgres, llm=false.
+- Fix de paso: `google.uploadFile` → ownerToken (403 de cuota de la cuenta de servicio).
+- UI (Conversacion.tsx + route.ts): deploy automático de Vercel desde GitHub (push hecho); la
+  verificación visual en el navegador queda para el dueño o la próxima sesión.
 
 **GATE 1 (executor básico) CERRADO 02/09 y DESPLEGADO** (commits `b338b8a0`, `8eea0049`, `559aefd6`):
 - `pideMutacion` (xsas-resolutores): un pedido de ESCRITURA ya no se contesta con una tool de
@@ -164,8 +182,8 @@ solapa /xsas en la navegación.
 
 No inventar campaña nueva. Prioridades:
 
-**P0 — convertir /xsas en herramienta operativa real:** ~~routing natural confiable~~ (GATE 1
-cerrado) → **GATE 2: adjuntos + continuidad** → GATE 3: multi-skill + mutaciones autorizadas.
+**P0 — convertir /xsas en herramienta operativa real:** ~~routing natural~~ (G1) → ~~adjuntos +
+continuidad~~ (G2) → **GATE 3: multi-skill + mutaciones autorizadas (firma del dueño)**.
 
 **P1 — perfeccionar el cotizador general:** motor geométrico/estructural → cómputo → precios/HH →
 riesgo → aprendizaje.
