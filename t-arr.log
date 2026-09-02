@@ -1,0 +1,14 @@
+(node:518749) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/ce55f257-9bef-4c99-923f-e00e8517568f/scratchpad/wt-nuevo/echegaray-os/src/features/presupuestos/services/arranque.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/claude-1001/-home-jorge-echegaray-os-app-echegaray-os/ce55f257-9bef-4c99-923f-e00e8517568f/scratchpad/wt-nuevo/echegaray-os/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ una respuesta con cotizacion_id navega al entorno de ese presupuesto (0.964183ms)
+✔ sin presupuesto creado no hay navegación: la conversación sigue donde está (0.213115ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 141.077551
