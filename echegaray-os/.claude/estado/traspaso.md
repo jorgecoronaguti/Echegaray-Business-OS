@@ -339,6 +339,27 @@ Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Ce
   recupera decisiones+pendientes pero no re-monta el bus compuesto del chat viejo · entidades por
   rótulo («obra X», «de X»), sin diccionario de obras reales.
 
+## 10decies. FUSIBLE DE GASTO ANTHROPIC (02/09 tarde, commit `9300358d`, DESPLEGADO `2bc15e93`)
+
+- `lib/ia/fusible.mjs`: (1) **bloqueo por defecto** — sin `ORQ_IA_PERMITIR` ninguna llamada paga
+  sale; en Claude Code (`CLAUDECODE=1`) ni el env de producción alcanza (hace falta
+  `ORQ_IA_PERMITIR=claude-code-explicito`); un transporte inyectado (doble de test) no se bloquea
+  pero consume presupuesto; (2) **presupuesto por ejecución** (defaults: 80 llamadas · 40 visión ·
+  $5 · 300 s; `ORQ_IA_MAX_*`), corte que conserva lo obtenido y se registra; contador nunca se
+  reinicia por retry; caller sin envolver cae al presupuesto global del proceso (renovado por
+  hora); (3) **cancelación**: `servidor-entrante` aborta la señal al desconectarse el cliente
+  (zombi de La Estrella muerto); (4) **una corrida paga por proyecto** (`conCorridaExclusiva` en
+  plano-tool); (5) `usd` nunca NULL (estimación por familia, `usd_estimado`) y `correlation_id` en
+  `chat_cost` (migración `20260903T0100` APLICADA). Llamadores cubiertos: cliente/proveedor,
+  visión comprobantes, engine SDK, sonda — test de invariante caza al que no importe el fusible.
+- `ORQ_IA_PERMITIR=servicio-produccion` agregado a `anthropic.env` y `worker.env`; 5 servicios
+  largos reiniciados y activos; gateway verificado vivo con pedido determinístico 0-API; bloqueo
+  verificado en vivo desde esta sesión (con env de prod heredado → FusibleCorto).
+- Tests: fusible 9/9 (todos con dobles, 0 llamadas reales) · suite completa verde salvo el rojo
+  pre-existente fecha-dependiente (`caso-controlado-circuito.pg.test`).
+- OJO PRÓXIMA SESIÓN: para scripts que necesiten modelo a propósito, exportar
+  `ORQ_IA_PERMITIR=claude-code-explicito` a mano; sin eso todo camino de modelo degrada declarando.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
