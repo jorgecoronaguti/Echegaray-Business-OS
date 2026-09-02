@@ -178,6 +178,25 @@ solapa /xsas en la navegación.
 - Defecto encontrado de paso: `google.uploadFile` usaba el token del robot (403 sin cuota) — fix en
   la rama gate2.
 
+## 10ter. SESIÓN 02/09 · TARDE (reglas nuevas del dueño, aplicadas y desplegadas)
+
+- **REGLA E (dueño, 02/09): el balde «Cheques» del gráfico de CAJA sólo suma egresos AVALADOS por un
+  cheque EMITIDO** (rubro 'Cheques emitidos': cartera + cuotas de cobertura). El plan «a pagar con
+  cheque» sin cheque emitido es deuda de Proveedores. `puertaDeCheque`: ningún vivo cae al vacío
+  (13 × $12,1M estaban invisibles); el cruzado sale por Compras como cuota COMPROMETIDA
+  (`cuotasEnCheque`, ahora rubro 'Cheques emitidos'). Commit `2a8fb778`; libro y anexo regenerados;
+  serie verificada (10/09 1,5M · 17/09 470k · 21/09 3,64M · 22/09 1M · 25/09 2,56M).
+- **Proveedores sección 1 RESTAURADA de la revisión 52253** (ayer) + espacio insertado (13 filas):
+  cuadro A = pivot por-proveedor + «Pagos por fecha» (distribución por fecha desde Compras, pedido
+  del dueño — reemplaza «Primer vencimiento») + «Qué hacer»; cuadro B = pivot detalle en A28. Cero
+  errores. NO tocar la sección con los scripts pivot-aplicar/aplicar-vivo sueltos: se pisan entre
+  sí (hoy se pisaron 3 veces; el restaurador completo quedó en scratchpad de la sesión).
+- Cash Flow Mensual agrandado a 160 filas (el bloque A CUBRIR de cheques no entraba, hoja 109).
+- Cobertura de cheques corrida: A CUBRIR 18 cheques · $22.799.019 (sep–dic).
+- Pendiente del dueño: 4 físicos de Corralón (310/322/324/327) sin instrumento afirmable en el
+  registro; facturas PENDIENTES cuya plata ya viaja en cheque vivo pesan DOBLE hasta marcarse
+  Pagadas en Compras (decisión conservadora, declarada en el commit).
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
