@@ -28,6 +28,26 @@ export { DESTINO }
 /** Tope de texto parseado que se PERSISTE por archivo. El archivo grande vive en el upload, no acá. */
 export const MAX_TEXTO_PERSISTIDO = 120_000
 
+/** Tope de bytes que se persisten junto a la lectura (los archivos más grandes se leen igual,
+ *  pero una acción pendiente sobre ellos pedirá re-adjuntar — y lo dice). */
+export const TOPE_BYTES_PERSISTIDOS = 12 * 1024 * 1024
+
+/**
+ * Los bytes persistidos de una tanda de adjuntos, por (actor, hash). Devuelve SÓLO los que tienen
+ * bytes; el caller decide qué hacer con los que no (declararlo, nunca inventar).
+ */
+export async function bytesPorHash(query, { actorId, hashes = [] } = {}) {
+  if (!query || !actorId || !hashes.length) return []
+  try {
+    const { rows } = await query(
+      `select hash, nombre, contenido_b64 from orq.xsas_adjunto
+        where actor_id = $1 and hash = any($2) and contenido_b64 is not null`,
+      [String(actorId), hashes],
+    )
+    return (rows ?? []).map((r) => ({ hash: r.hash, nombre: r.nombre, contenido_base64: r.contenido_b64 }))
+  } catch { return [] }
+}
+
 /** Los bytes de un adjunto del pedido. `contenido` es texto plano; `contenido_base64`, binario. */
 export function bytesDeAdjunto(adj) {
   if (!adj || typeof adj !== 'object') return null
@@ -76,11 +96,19 @@ export async function ingerirAdjuntos({ adjuntos = [], actorId, correlacionId = 
     if (query) {
       try {
         const { rows } = await query(
-          `select nombre, tamano, familia, formato, destino, resumen
+          `select nombre, tamano, familia, formato, destino, resumen, (contenido_b64 is not null) as con_bytes
              from orq.xsas_adjunto where actor_id = $1 and hash = $2 limit 1`,
           [String(actorId ?? ''), hash],
         )
         if (rows?.length) {
+          // Una fila de antes de que se guardaran bytes se COMPLETA ahora, que los tenemos en mano:
+          // sin esto, la acción pendiente de un archivo viejo seguiría pidiendo re-adjuntar.
+          if (rows[0].con_bytes === false && b.bytes.length <= TOPE_BYTES_PERSISTIDOS) {
+            await query(
+              'update orq.xsas_adjunto set contenido_b64 = $3 where actor_id = $1 and hash = $2',
+              [String(actorId ?? ''), hash, b.bytes.toString('base64')],
+            ).catch(() => {})
+          }
           lecturas.push({ hash, ...rows[0], resumen: rows[0].resumen ?? null, reutilizado: true, error: null, adjunto: adj })
           continue
         }
@@ -98,12 +126,17 @@ export async function ingerirAdjuntos({ adjuntos = [], actorId, correlacionId = 
     lecturas.push(lectura)
 
     if (query) {
+      // Los BYTES también persisten (hasta el tope): son lo que permite completar una acción
+      // pendiente («¿de qué obra son estos planos?» → «Quattropani») sin pedir re-adjuntar.
+      const b64 = b.bytes.length <= TOPE_BYTES_PERSISTIDOS ? b.bytes.toString('base64') : null
       await query(
-        `insert into orq.xsas_adjunto (actor_id, correlation_id, hash, nombre, tamano, familia, formato, destino, resumen)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         on conflict (actor_id, hash) do update set correlation_id = excluded.correlation_id`,
+        `insert into orq.xsas_adjunto (actor_id, correlation_id, hash, nombre, tamano, familia, formato, destino, resumen, contenido_b64)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         on conflict (actor_id, hash) do update set
+           correlation_id = excluded.correlation_id,
+           contenido_b64 = coalesce(orq.xsas_adjunto.contenido_b64, excluded.contenido_b64)`,
         [String(actorId ?? ''), correlacionId, hash, lectura.nombre, lectura.tamano,
-          lectura.familia, lectura.formato, lectura.destino, JSON.stringify(resumenPersistible(lectura))],
+          lectura.familia, lectura.formato, lectura.destino, JSON.stringify(resumenPersistible(lectura)), b64],
       ).catch(() => { /* perder la memoria es malo; tumbar la respuesta por perderla es peor */ })
     }
   }

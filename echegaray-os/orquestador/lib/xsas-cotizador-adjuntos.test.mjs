@@ -76,7 +76,10 @@ test('UMBRAL: «mirá esta obra» + adjunto NO va al cotizador — sigue siendo 
   assert.equal(corridas.length, 0)
 })
 
-test('FALTA_DATO: «cotizame estos planos» sin proyecto NO inventa — pide el dato y avisa reenviar', async () => {
+test('FALTA_DATO: «cotizame estos planos» sin proyecto NO inventa — pregunta en criollo y guarda la acción pendiente', async () => {
+  // CONTRATO NUEVO (dueño, 02/09 tarde): antes se pedía «mandámelos de nuevo con ese dato» — al
+  // dueño no le sirvió («no entiendo qué quiere que haga»). Ahora los bytes persisten y se
+  // pregunta sólo lo que falta; el circuito completo está en xsas-pendiente.test.mjs.
   const corridas = []
   const r = await atender(
     { actor: DIRECCION, canal: 'app', mensaje: 'cotizame estos planos', adjuntos: [PLANO] },
@@ -84,8 +87,8 @@ test('FALTA_DATO: «cotizame estos planos» sin proyecto NO inventa — pide el 
   )
   assert.equal(r.ok, false)
   assert.equal(r.error.tipo, 'falta_dato')
-  assert.match(r.respuesta, /proyecto/)
-  assert.match(r.respuesta, /[Mm]and[áa]melos de nuevo/, 'la lectura no guarda bytes: hay que decirlo')
+  assert.match(r.respuesta, /¿De qué obra o cliente/)
+  assert.doesNotMatch(r.respuesta, /capacidad plano\.cotizar/, 'sin jerga interna en la pregunta')
   assert.equal(corridas.length, 0, 'sin proyecto la capacidad NO corre')
 })
 

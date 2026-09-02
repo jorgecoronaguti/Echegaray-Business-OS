@@ -38,7 +38,7 @@ import { filtrarPorVisibilidad } from './xsas-visibilidad.mjs'
 import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
-import { ingerirAdjuntos, textoDeLectura, DESTINO } from './xsas-archivos.mjs'
+import { ingerirAdjuntos, textoDeLectura, DESTINO, bytesPorHash } from './xsas-archivos.mjs'
 import {
   cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
 } from './xsas-contexto.mjs'
@@ -358,6 +358,12 @@ async function despachar(pedido, deps, t0) {
       const desdeContexto = await atenderDesdeContexto({ pedido, ref, deps, t0 })
       if (desdeContexto) return desdeContexto
     }
+    // ── N0 · UNA ACCIÓN QUE QUEDÓ PENDIENTE DE UN DATO SE COMPLETA CON ESTE MENSAJE ─────────
+    // «¿De qué obra son estos archivos?» → «Quattropani». El dato nuevo + los bytes persistidos
+    // ejecutan la acción original; nadie re-adjunta nada. Si este mensaje es OTRO pedido (largo,
+    // con vida propia), no se secuestra: la pendiente espera y el flujo sigue normal.
+    const delPendiente = await atenderPendiente({ pedido, texto, mapa, deps, t0 })
+    if (delPendiente) return delPendiente
   }
 
   // ── N0 · «¿QUÉ PODÉS HACER?» SE CONTESTA DEL REGISTRO, NO PREGUNTÁNDOLE A UN MODELO ───────
@@ -598,6 +604,63 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
 }
 
 /**
+ * COMPLETAR LA ACCIÓN PENDIENTE CON EL DATO DE ESTE MENSAJE.
+ *
+ * Sólo actúa si hay una pendiente guardada en el contexto Y este mensaje parece la RESPUESTA al
+ * dato que falta (corto, o nombra el argumento) — un pedido nuevo con vida propia no se secuestra.
+ * El valor sale del propio texto (determinístico) o del extractor barato; los bytes salen de
+ * `orq.xsas_adjunto` por hash. Ejecutada o fallida, la pendiente se LIMPIA: no puede quedar
+ * capturando conversaciones futuras.
+ */
+async function atenderPendiente({ pedido, texto, mapa, deps, t0 }) {
+  const ctx = await cargarContexto(deps.query, { actorId: pedido.actor?.id, correlacionId: pedido.correlationId })
+  const p = ctx?.pendiente
+  if (!p?.clave || !Array.isArray(p.faltan) || !p.faltan.length) return null
+  const palabras = texto.trim().split(/\s+/).filter(Boolean)
+  const nombraElDato = p.faltan.some((k) => normalizarFrase(texto).includes(normalizarFrase(k)))
+  if (palabras.length > 8 && !nombraElDato) return null
+
+  const limpiar = () => guardarContexto(deps.query, {
+    actorId: pedido.actor?.id, correlacionId: pedido.correlationId, parche: { pendiente: null },
+  })
+
+  const tool = mapa.get(p.clave)
+  if (!tool || !puedeUsar(pedido.actor, tool, p.clave)) { await limpiar(); return null }
+
+  // El valor del dato: si falta UNO solo y el mensaje es corto, es el mensaje mismo (sin muletillas).
+  let args = {}
+  let faltan = [...p.faltan]
+  if (faltan.length === 1 && palabras.length <= 8) {
+    const valor = texto.replace(/^\s*(es\s+|de\s+|para\s+|la\s+obra\s+|el\s+proyecto\s+|el\s+cliente\s+)+/i, '').replace(/[.!]+\s*$/, '').trim()
+    if (valor) { args[faltan[0]] = valor; faltan = [] }
+  }
+  if (faltan.length) {
+    const ia = await puertaIa(deps)
+    const completo = await completarArgumentos({ ia, texto, tool, args, falta: faltan, logger: deps.logger ?? null })
+    args = completo.args
+    faltan = completo.falta
+  }
+  if (faltan.length) return null // el mensaje no trajo el dato: la pendiente espera, el flujo sigue
+
+  const archivos = await bytesPorHash(deps.query, { actorId: pedido.actor?.id, hashes: p.hashes ?? [] })
+  if ((p.hashes?.length ?? 0) && !archivos.length) {
+    await limpiar()
+    return respuestaError(pedido, {
+      tipo: 'falta_dato',
+      mensaje: `Tengo el dato (${JSON.stringify(args)}), pero los archivos de esa acción ya no están guardados. Adjuntalos de nuevo junto con el pedido y lo hago en un solo paso.`,
+      ms: Date.now() - t0,
+      capacidades: { nivel: NIVEL.DETERMINISTICO, tools: [p.clave], via: 'pendiente_sin_bytes', confianza: 'alta', motivo: 'pendiente_sin_bytes' },
+    })
+  }
+  await limpiar()
+  return resolverConTool({
+    pedido, clave: p.clave, tool, nivel: NIVEL.CAPACIDAD, via: 'pendiente_completada', skills: [], t0,
+    query: deps.query ?? null,
+    argsResueltos: { args: archivos.length ? { ...args, archivos } : args, falta: [] },
+  })
+}
+
+/**
  * UNA CLÁUSULA DE UN OBJETIVO COMPUESTO → SU CAPACIDAD, POR EL CAMINO DE SIEMPRE Y SIN MODELO.
  * Devuelve la tool ejecutable, o el motivo por el que la cláusula queda como residuo.
  */
@@ -732,12 +795,22 @@ async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) 
     falta = completo.falta
   }
   if (falta.length) {
-    // La lectura persistida guarda el TEXTO extraído, no los bytes: un follow-up con el dato que
-    // falta no puede volver a subir el archivo. Se dice, en vez de fallar raro después.
+    // ═══ LA ACCIÓN QUEDA PENDIENTE, NO SE PIDE RE-ADJUNTAR (dueño, 02/09/2026) ═══
+    //
+    // «cotiza» + dos planos y falta el proyecto: pedirle «mandámelos de nuevo con ese dato» es
+    // hacerle repetir trabajo que el OS ya tiene (los bytes persisten por hash). Se guarda la
+    // acción pendiente en el contexto y se pregunta EN CRIOLLO sólo lo que falta; el mensaje
+    // siguiente la completa (`atenderPendiente`).
+    await guardarContexto(deps.query ?? null, {
+      actorId: pedido.actor?.id, correlacionId: pedido.correlationId,
+      parche: { pendiente: { clave, faltan: falta, hashes: utiles.map((l) => l.hash), nombres: utiles.map((l) => l.nombre), cuando: new Date().toISOString() } },
+    })
+    const pregunta = falta.length === 1 && falta[0] === 'proyecto'
+      ? '¿De qué obra o cliente son estos archivos?'
+      : `Para seguir me falta: ${falta.join(', ')}.`
     return respuestaError(pedido, {
       tipo: 'falta_dato',
-      mensaje: `Para hacerlo con estos adjuntos me falta: ${falta.join(', ')} (capacidad ${clave}). `
-        + 'Mandámelos de nuevo con ese dato en el mensaje y lo ejecuto.',
+      mensaje: `${pregunta} Los archivos ya quedaron guardados — respondeme sólo con ese dato (por ejemplo: «Quattropani») y sigo solo.`,
       ms: Date.now() - t0,
       capacidades: { nivel: NIVEL.DETERMINISTICO, tools: [clave], via: 'adjunto_falta_dato', confianza: 'alta', motivo: 'adjunto_falta_dato' },
     })
