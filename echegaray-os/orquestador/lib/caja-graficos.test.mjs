@@ -211,7 +211,11 @@ test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () =
   assert.ok(fila(requests[2]) > fila(requests[1]) && xs[2] === 0, 'el equilibrio abre la tercera fila')
   assert.ok(xs[3] > 0 && fila(requests[3]) === fila(requests[2]), 'la proyección va a su lado, misma fila')
   const src = readFileSync(new URL('../scripts/caja-pestana.mjs', import.meta.url), 'utf8')
-  assert.match(src, /FILA_ANCLA_MAX \+ 1/, 'el generador tiene que extender la hoja hasta pasada la última fila-ancla')
+  // CAMBIO DE CONTRATO (02/09/2026): llegar a la última ANCLA no alcanza — el editor vivo encoge
+  // el gráfico que se pasa del borde de la hoja y lo sube tapando al de arriba (visto por el dueño:
+  // el bloque 3 anclado en 52 de una hoja de 53 se dibujaba en la 39). La hoja llega al FINAL del
+  // último bloque.
+  assert.match(src, /FILA_FINAL_DE_GRAFICOS \+ 1/, 'el generador tiene que extender la hoja hasta el FINAL del último bloque, no hasta su ancla')
   assert.match(src, /gridProperties\.rowCount/, 'y pedirle a la API que cambie el alto, no suponerlo')
 })
 

@@ -64,7 +64,10 @@ export const FILA_ANCLA = 22
 export const COL_ANCLA = 0
 /** El alto y el ancho de cada uno. Dos por fila: los cuatro entran en 1.120px, el ancho de la grilla. */
 const ANCHO_PX = 552
-const ALTO_PX = 300
+// 284 y no 300: las filas de CAJA miden 20px, así que un bloque de 15 filas mide 300px justos y un
+// gráfico de 300 quedaba PEGADO borde con borde al de abajo (reclamo del dueño, 02/09). Con 284
+// quedan 16px de aire entre bloques sin mover ninguna ancla.
+const ALTO_PX = 284
 /**
  * FILAS DE GRILLA QUE OCUPA UN BLOQUE VERTICAL. Cada bloque cuelga de su PROPIA celda ancla (no se
  * apila por offset — ver `base`). Una fila vacía de la grilla mide ~21px; un gráfico de 300px entra en
@@ -79,6 +82,16 @@ const FILAS_POR_BLOQUE = 15
  * fila, o `addChart` sobre una celda inexistente devuelve 400 y se cae el lote entero.
  */
 export const FILA_ANCLA_MAX = FILA_ANCLA + 2 * FILAS_POR_BLOQUE
+
+/**
+ * HASTA QUÉ FILA TIENE QUE LLEGAR LA HOJA PARA QUE EL EDITOR NO ENCOJA EL ÚLTIMO BLOQUE.
+ *
+ * Medido el 02/09/2026 con el dueño mirando: el PDF deja que un gráfico flote más abajo del borde
+ * de la hoja, pero el EDITOR VIVO lo sube hasta que entre — el bloque 3 anclado en la fila 52 de
+ * una hoja de 53 filas se dibujaba en la fila 39, tapando al bloque 2. La hoja tiene que llegar
+ * hasta el final del último bloque, no hasta su ancla.
+ */
+export const FILA_FINAL_DE_GRAFICOS = FILA_ANCLA_MAX + FILAS_POR_BLOQUE
 
 /** El prefijo que marca un gráfico como PROPIO. Se conserva para poder reconocerlos en el archivo. */
 export const MARCA = '⟡ '
