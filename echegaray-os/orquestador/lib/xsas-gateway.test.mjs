@@ -653,3 +653,17 @@ test('NUNCA RESPUESTA VACÍA: una tool ok sin resumen_texto igual produce texto 
   assert.ok(typeof r.respuesta === 'string' && r.respuesta.trim().length > 0, 'respuesta jamás null/vacía')
   assert.match(r.respuesta, /F-1250/, 'el texto de respaldo muestra el dato, no un genérico')
 })
+
+test('la tool que publica su lectura como `resumen` (array) sale con ese texto, no con el respaldo', async () => {
+  const mapa = new Map([['caja.doble', {
+    capability: 'os.read',
+    schema: { name: 'caja_doble', input_schema: { type: 'object', properties: {} } },
+    async run() { return { resumen: ['PAGOS vencidos: 2', 'COBROS vencidos: 1'], detalle: [] } },
+  }]])
+  const r = await atender(
+    { actor: { id: 'u-jorge', rol: 'direccion', permisos: ['os.read'] }, canal: 'app', intencion: 'caja.doble' },
+    { registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia() },
+  )
+  assert.equal(r.ok, true)
+  assert.match(r.respuesta, /PAGOS vencidos: 2\nCOBROS vencidos: 1/)
+})

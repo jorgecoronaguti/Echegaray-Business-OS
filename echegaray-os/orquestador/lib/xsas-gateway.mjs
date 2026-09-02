@@ -168,6 +168,11 @@ export function idDeLoEscrito(datos) {
 function textoDeDatos(datos) {
   if (datos == null) return null
   if (typeof datos === 'string') return datos
+  // `caja.vencido` publica su lectura como `resumen` (array de líneas) — medido el 02/09: por no
+  // leerlo, «qué vence esta semana» salía sin texto teniendo la lectura armada adentro del dato.
+  if (Array.isArray(datos.resumen) && datos.resumen.every((x) => typeof x === 'string')) {
+    return datos.resumen.join('\n') || null
+  }
   return datos.resumen_texto ?? datos.lectura ?? datos.texto ?? null
 }
 
