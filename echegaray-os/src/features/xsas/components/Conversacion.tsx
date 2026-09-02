@@ -57,6 +57,24 @@ const EJEMPLOS = [
 
 const idNuevo = () => (globalThis.crypto?.randomUUID?.() ?? String(Date.now() + Math.random()))
 
+/** Un adjunto listo para mandar: texto plano o binario en base64, nunca los dos. */
+type AdjuntoLocal = { nombre: string; tamano: number; contenido?: string; contenido_base64?: string }
+
+/** Formatos que los motores del OS procesan hoy por esta vía (planilla, PDF, texto, extracto
+ *  bancario). Lo demás se rechaza ACÁ con un motivo visible — no se finge que se leyó. */
+const EXTENSIONES = /\.(csv|txt|tsv|pdf|xlsx|xls|xlsm|ods)$/i
+const ES_TEXTO = /\.(csv|txt|tsv)$/i
+const MAX_ARCHIVO = 8 * 1024 * 1024
+
+const base64DeArchivo = (f: File) => new Promise<string>((resolve, reject) => {
+  const r = new FileReader()
+  r.onerror = () => reject(new Error('no se pudo leer'))
+  r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
+  r.readAsDataURL(f)
+})
+
+const tamanoLegible = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+
 /** El nivel con el que se resolvió, en palabras. 0 y 1 no pagan modelo. */
 const NIVEL_TEXTO: Record<number, string> = {
   0: 'determinístico',
@@ -88,7 +106,8 @@ function LineaDeTraza({ r, ms }: { r: RespuestaXsas; ms?: number }) {
 export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNombre?: string }) {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [texto, setTexto] = useState('')
-  const [adjuntos, setAdjuntos] = useState<{ nombre: string; contenido: string }[]>([])
+  const [adjuntos, setAdjuntos] = useState<AdjuntoLocal[]>([])
+  const [errorAdjunto, setErrorAdjunto] = useState<string | null>(null)
   const [arrastrando, setArrastrando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const finRef = useRef<HTMLDivElement>(null)
@@ -97,14 +116,25 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
 
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [turnos, enviando])
 
-  /** Lee archivos soltados o elegidos. Sólo texto (CSV/TXT, hasta 512 KB): es lo que el OS procesa
-   *  hoy por esta vía — el extracto bancario. Otros formatos se declaran, no se fingen. */
+  /** Lee archivos soltados o elegidos: CSV/TXT como texto, PDF/Excel como base64. Lo que no se
+   *  puede procesar se RECHAZA con motivo visible — nunca se finge que se leyó. */
   const agregarArchivos = useCallback(async (lista: FileList | File[]) => {
-    const leidos: { nombre: string; contenido: string }[] = []
+    const leidos: AdjuntoLocal[] = []
+    const rechazados: string[] = []
     for (const f of Array.from(lista).slice(0, 10)) {
-      if (f.size > 512 * 1024) continue
-      leidos.push({ nombre: f.name, contenido: await f.text() })
+      if (!EXTENSIONES.test(f.name)) { rechazados.push(`${f.name}: formato no soportado por esta vía`); continue }
+      if (f.size > MAX_ARCHIVO) { rechazados.push(`${f.name}: pesa ${tamanoLegible(f.size)} y el tope es ${tamanoLegible(MAX_ARCHIVO)}`); continue }
+      try {
+        if (ES_TEXTO.test(f.name) && f.size <= 512 * 1024) {
+          leidos.push({ nombre: f.name, tamano: f.size, contenido: await f.text() })
+        } else {
+          leidos.push({ nombre: f.name, tamano: f.size, contenido_base64: await base64DeArchivo(f) })
+        }
+      } catch {
+        rechazados.push(`${f.name}: no se pudo leer del disco`)
+      }
     }
+    setErrorAdjunto(rechazados.length ? rechazados.join(' · ') : null)
     if (leidos.length) setAdjuntos((prev) => [...prev, ...leidos].slice(0, 10))
   }, [])
 
@@ -125,7 +155,9 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         body: JSON.stringify({
           mensaje: limpio || 'procesá esto',
           origen: '/xsas',
-          ...(conAdjuntos.length ? { adjuntos: conAdjuntos } : {}),
+          ...(conAdjuntos.length
+            ? { adjuntos: conAdjuntos.map(({ nombre, contenido, contenido_base64 }) => (contenido_base64 ? { nombre, contenido_base64 } : { nombre, contenido })) }
+            : {}),
           correlation_id: correlacion.current,
           ...(obraId ? { entidad: { obra_id: obraId }, contexto: { obra: obraNombre } } : {}),
         }),
@@ -227,11 +259,12 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
           placeholder="Escribí lo que necesitás… (Enter envía, Shift+Enter salta de línea)"
           className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
         />
+        {errorAdjunto && <p className="mt-2 text-xs text-red-600">{errorAdjunto}</p>}
         {adjuntos.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
             {adjuntos.map((a, i) => (
               <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                <IconoAdjuntar className="h-3 w-3" /> {a.nombre}
+                <IconoAdjuntar className="h-3 w-3" /> {a.nombre} · {tamanoLegible(a.tamano)}
                 <button type="button" aria-label={`quitar ${a.nombre}`} onClick={() => setAdjuntos((prev) => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-slate-700">×</button>
               </span>
             ))}
@@ -239,11 +272,11 @@ export function Conversacion({ obraId, obraNombre }: { obraId?: string; obraNomb
         )}
         <div className="mt-2 flex items-center justify-between">
           <label className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
-            <span className="inline-flex items-center gap-1"><IconoAdjuntar className="h-3 w-3" /> Adjuntar (CSV del banco — otros formatos, por el bot de Mattermost)</span>
+            <span className="inline-flex items-center gap-1"><IconoAdjuntar className="h-3 w-3" /> Adjuntar (CSV, TXT, PDF, Excel — hasta 8 MB c/u)</span>
             <input
               type="file"
               multiple
-              accept=".csv,.txt,text/csv,text/plain"
+              accept=".csv,.txt,.tsv,.pdf,.xlsx,.xls,.xlsm,.ods"
               className="hidden"
               onChange={(e) => { if (e.target.files) void agregarArchivos(e.target.files); e.target.value = '' }}
             />
