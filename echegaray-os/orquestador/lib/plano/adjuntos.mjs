@@ -1,11 +1,13 @@
-// LOS PLANOS QUE LLEGAN ADJUNTOS POR /XSAS ATERRIZAN EN EL DRIVE DEL PROYECTO — Y EN EL ÍNDICE.
+// SUBIR PLANOS AL DRIVE DEL PROYECTO — SÓLO A PEDIDO EXPLÍCITO DEL DUEÑO. NUNCA AUTOMÁTICO.
 //
-// El pipeline del cotizador (`pipeline.mjs`) localiza los documentos de un proyecto con una sola
-// consulta sobre `public.drive_index`. Un plano que llega adjunto al chat no está en Drive ni en el
-// índice: si el cotizador lo leyera "de la mano" del gateway, la cotización quedaría sin genealogía
-// (¿de qué archivo salió cada cantidad?) y un follow-up de mañana no encontraría nada. Por eso el
-// adjunto se SUBE al Drive del proyecto y se INDEXA en el mismo acto, y recién entonces corre el
-// pipeline de siempre: mismo camino, misma evidencia, sin rama especial.
+// ═══ RETIRADO DEL FLUJO AUTOMÁTICO (dueño, 02/09/2026) ═══
+//
+// «no quiero que haga eso: ir a una carpeta y pegarle cosas por su cuenta». `plano.cotizar` YA NO
+// llama a este módulo: los adjuntos entran al pipeline EN MEMORIA (`correr({adjuntos})`), con
+// identidad por hash de contenido y bytes persistidos en `orq.xsas_adjunto` — la genealogía no
+// necesita que el archivo esté en Drive. Escribir en el Drive del dueño es una acción externa
+// sobre una fuente compartida: se ejecuta únicamente cuando él la pide con esas palabras.
+// Este módulo queda como la capacidad para ESE pedido explícito, con su contrato probado.
 //
 // ═══ DÓNDE ATERRIZA ═══
 //

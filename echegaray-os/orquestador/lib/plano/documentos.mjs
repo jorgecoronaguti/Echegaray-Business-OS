@@ -71,7 +71,9 @@ export function partirDocumentos(filas = [], { carpetaObra = '' } = {}) {
   const reservados = []
   for (const f of filas) {
     if (f?.is_folder) continue
-    const doc = { name: f.name, path: f.path, mime_type: f.mime_type, drive_file_id: f.drive_file_id, size_bytes: f.size_bytes }
+    // `_bytes` viaja con el documento en memoria (adjunto de chat): si se perdiera acá, el
+    // pipeline intentaría descargar «adjunto:<hash>» de Drive. Para una fila real es undefined.
+    const doc = { name: f.name, path: f.path, mime_type: f.mime_type, drive_file_id: f.drive_file_id, size_bytes: f.size_bytes, _bytes: f._bytes }
     const clase = clasificarDocumento(doc, { carpetaObra })
     const lect = legibilidadDe(doc)
     const r = revelaElResultado(doc, { carpetaObra })
