@@ -319,6 +319,14 @@ export const PASOS = [
   // sobre el libro que se acaba de escribir y sobre el saldo que CAJA acaba de publicar.
   ['cash-flow-vistas.mjs', 'Cash Flow Semanal (53 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
     ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
+  // ═══ LA ASIMETRÍA SE MIRA EN CADA CORRIDA (02/09/2026) ═══
+  //
+  // El hallazgo «nómina proyectada completa con $0 de material» existía en el código desde el
+  // 28/08 (`cash-flow-asimetria.mjs`) pero el script era suelto: nadie lo corría, y el dueño vio
+  // el cierre proyectado empeorar sin la explicación al lado. Corre DESPUÉS de las vistas (lee la
+  // pestaña recién escrita) y está en REPORTES: sus hallazgos son un aviso a la vista, no un
+  // fallo de datos — no bloquea ni la frescura ni el estado del servicio.
+  ['asimetria-cash-flow.mjs', 'Cash Flow — aviso: los meses que proyectan la cuadrilla y no la obra', []],
   // ═══ EL FLUJO DE FONDOS ENTERO, A POSTGRES (02/09/2026) ═══
   //
   // El dueño: *"necesito que lleves toda la información del sheet flujo de fondos a bd supabase
@@ -536,6 +544,9 @@ export const REPORTES = new Set([
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
   'auditar-coherencia-pestanas.mjs',
   'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
+  // Sus hallazgos («jornales proyectados con $0 de material») son una lectura de lo que falta
+  // cargar, no un error de cuadre: reporte visible, jamás un fallo del pipeline.
+  'asimetria-cash-flow.mjs',
 ])
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */

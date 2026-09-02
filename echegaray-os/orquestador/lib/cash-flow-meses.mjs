@@ -295,7 +295,11 @@ function bloqueHero(poner, meta, refs = {}) {
     {
       rotulo: ROTULOS_HERO.egresos,
       valor: `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`,
-      ...glosaPartida(ROTULOS_HERO.egresosPagado, T('egresoReal'), ROTULOS_HERO.egresosPorPagar, T('egresoProyectado')),
+      // LA ADVERTENCIA DE PISO VUELVE AL TITULAR (02/09): el rediseño del 29/08 la sacó y el dueño
+      // vio el cierre empeorar sin la nota que lo explica — lo proyectado es la CUADRILLA extendida
+      // (un piso), no la obra: los meses sin cobros fechados llevan nómina entera y $0 de material.
+      ...glosaPartida(ROTULOS_HERO.egresosPagado, T('egresoReal'), ROTULOS_HERO.egresosPorPagar, T('egresoProyectado'),
+        'lo proyectado es un piso (cuadrilla)'),
     },
     {
       // EL RESULTADO SE CALCULA ACÁ Y NO SE CITA LA FILA «Variación de caja»: esa fila incluye los
