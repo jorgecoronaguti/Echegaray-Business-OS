@@ -46,7 +46,7 @@ import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
-  ordenarPorAfinidad, pideMutacion, palabrasDe, afinidad, PESO,
+  ordenarPorAfinidad, pideMutacion, palabrasDe, afinidad, PESO, partirObjetivo,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
 import { completarArgumentos } from './xsas-argumentos.mjs'
@@ -432,6 +432,19 @@ async function despachar(pedido, deps, t0) {
 
   // ── N1 · EL RUTEO XSAS QUE YA EXISTE ──────────────────────────────────────────────────────
   const catalogo = deps.catalogo ?? await leerCatalogoDeDisco({}).catch(() => [])
+
+  // ── N1 · UN OBJETIVO CON VARIOS PEDIDOS ADENTRO SE RESUELVE POR PARTES, SIN MODELO ────────
+  //
+  // «cómo estamos de caja y qué vence esta semana» hoy caía en «multidominio → razonamiento»: un
+  // párrafo pago para dos capacidades que existen al lado. Cada parte se rutea con el MISMO camino
+  // determinístico de siempre; lo que ninguna capacidad resuelve queda como RESIDUO declarado —
+  // resolver todo lo posible, aislar el residuo, escalar sólo el residuo. Si las partes no llegan a
+  // DOS capacidades distintas, no era un objetivo compuesto: sigue el flujo normal.
+  if (pedido.tipo === TIPO.MENSAJE) {
+    const compuesto = await atenderCompuesto({ pedido, texto, mapa, catalogo, porArchivo, porLib, deps, t0 })
+    if (compuesto) return compuesto
+  }
+
   const eleccion = (deps.elegir ?? elegirCapacidad)(texto, { asesoria: pedido.tipo === TIPO.MENSAJE })
   const nivel = nivelDeRuteo(catalogo, eleccion)
 
@@ -581,6 +594,98 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
     pedido, clave: candidata.clave, tool: candidata.tool, nivel: NIVEL.CAPACIDAD,
     via: 'skill_con_motor_argumento_de_la_frase', skills: eleccion.skills, t0,
     query: deps.query ?? null, argsResueltos: { args: completo.args, falta: [] },
+  })
+}
+
+/**
+ * UNA CLÁUSULA DE UN OBJETIVO COMPUESTO → SU CAPACIDAD, POR EL CAMINO DE SIEMPRE Y SIN MODELO.
+ * Devuelve la tool ejecutable, o el motivo por el que la cláusula queda como residuo.
+ */
+function resolverClausula({ clausula, pedido, mapa, catalogo, porArchivo, porLib, deps }) {
+  const atajo = atajoPara(clausula)
+  let candidatas
+  if (atajo && mapa.has(atajo)) {
+    candidatas = [atajo]
+  } else {
+    const eleccion = (deps.elegir ?? elegirCapacidad)(clausula, { asesoria: true })
+    if (!eleccion.skills?.length) return { clausula, residuo: 'ninguna skill reconoce este pedido' }
+    candidatas = [...new Set(eleccion.skills.flatMap((s) => toolsDeSkill(catalogo.find((f) => f.clave === s), porArchivo, porLib)))]
+  }
+  const mutacion = pideMutacion(clausula)
+  let sinPermiso = null
+  for (const clave of ordenarPorAfinidad(clausula, candidatas, (c) => mapa.get(c))) {
+    const tool = mapa.get(clave)
+    if (!tool) continue
+    if (mutacion && !escribeAfuera(tool.capability)) continue
+    // Sin atajo exacto se exige una señal real de afinidad: adivinar una capacidad para una
+    // cláusula es peor que declararla residuo.
+    if (!atajo && afinidad(clausula, tool) <= 0) continue
+    if (!puedeUsar(pedido.actor, tool, clave)) { sinPermiso = clave; continue }
+    const resuelto = argumentosPara(tool, pedido)
+    if (resuelto.falta.length) return { clausula, clave, residuo: `falta ${resuelto.falta.join(', ')}` }
+    return { clausula, clave, tool, args: resuelto.args }
+  }
+  if (sinPermiso) return { clausula, clave: sinPermiso, residuo: `sin permiso para ${sinPermiso} con tu rol` }
+  return { clausula, residuo: 'ninguna capacidad determinística la resuelve' }
+}
+
+/**
+ * EL OBJETIVO COMPUESTO: partes → capacidades → ejecución secuencial → residuo declarado.
+ *
+ * Los resultados viajan como DATOS (datos.partes[] con el resultado estructurado de cada tool),
+ * no como párrafos reinterpretados. El residuo no rompe lo resuelto: queda nombrado, con motivo,
+ * para el razonador o para el usuario — nunca «todo error» porque una parte no salió.
+ */
+async function atenderCompuesto({ pedido, texto, mapa, catalogo, porArchivo, porLib, deps, t0 }) {
+  const partes = partirObjetivo(texto)
+  if (!partes.length) return null
+  const resueltas = partes.map((clausula) => resolverClausula({ clausula, pedido, mapa, catalogo, porArchivo, porLib, deps }))
+  const ejecutables = resueltas.filter((r) => r.tool)
+  const clavesDistintas = new Set(ejecutables.map((r) => r.clave))
+  // El guardián anti-falso-compuesto: si no hay al menos DOS capacidades distintas, el objetivo
+  // se atiende entero por el flujo normal (que puede razonar mejor la frase completa).
+  if (clavesDistintas.size < 2) return null
+
+  const bloques = []
+  const acciones = []
+  const evidencia = []
+  const partesDatos = []
+  const toolsUsadas = []
+  for (const r of resueltas) {
+    if (!r.tool) {
+      partesDatos.push({ pedido: r.clausula, estado: 'PENDIENTE_RAZONAMIENTO', motivo: r.residuo, tool: r.clave ?? null })
+      continue
+    }
+    const corrida = await correrTool({ clave: r.clave, tool: r.tool, pedido, query: deps.query ?? null, argsResueltos: { args: r.args, falta: [] } })
+    if (!corrida.ok) {
+      partesDatos.push({ pedido: r.clausula, estado: 'ERROR', motivo: corrida.motivo, tool: r.clave })
+      bloques.push(`**${r.clausula}** — no salió: ${corrida.motivo}`)
+      continue
+    }
+    toolsUsadas.push(r.clave)
+    acciones.push({ tool: r.clave, args: corrida.args })
+    evidencia.push({ que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString() })
+    partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos })
+    bloques.push(`**${r.clausula}**\n${textoDeDatos(corrida.datos) ?? '(sin texto: el dato está en datos.partes)'}`)
+  }
+  const pendientes = partesDatos.filter((p) => p.estado !== 'RESUELTA')
+  if (pendientes.length) {
+    bloques.push(`⚠️ Quedan sin resolver por esta vía: ${pendientes.map((p) => `«${p.pedido}» (${p.motivo})`).join(' · ')}`)
+  }
+  const visible = filtrarPorVisibilidad({
+    actor: pedido.actor,
+    datos: { partes: partesDatos },
+    args: null,
+    respuesta: bloques.join('\n\n'),
+  })
+  return respuestaOk(pedido, {
+    respuesta: visible.respuesta,
+    datos: visible.datos,
+    capacidades: { nivel: NIVEL.CAPACIDAD, skills: [], tools: toolsUsadas, via: 'objetivo_compuesto', confianza: 'alta', motivo: 'objetivo_compuesto' },
+    accionesEjecutadas: acciones,
+    evidencia,
+    degradacion: pendientes.length ? `${pendientes.length} parte(s) del objetivo quedaron pendientes: ${pendientes.map((p) => p.pedido).join(' · ')}` : null,
+    ms: Date.now() - t0,
   })
 }
 

@@ -137,8 +137,8 @@ let _cache = null
  *
  * @returns {Promise<{mapa:Map<string,object>, porArchivo:Map<string,string[]>, fallaron:string[]}>}
  */
-export async function toolsDelNucleo({ google = null, refrescar = false } = {}) {
-  const llave = google ? 'con-google' : 'solo-os'
+export async function toolsDelNucleo({ google = null, refrescar = false, dirTools = null } = {}) {
+  const llave = `${google ? 'con-google' : 'solo-os'}:${dirTools ?? 'convencion'}`
   if (_cache?.llave === llave && !refrescar) return _cache.valor
   const mapa = new Map()
   const porArchivo = new Map()
@@ -175,7 +175,39 @@ export async function toolsDelNucleo({ google = null, refrescar = false } = {}) 
       fallaron.push(`${ruta}: ${String(e?.message ?? e).slice(0, 80)}`)
     }
   }
-  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo, mapa), fallaron, sinFirma } }
+
+  // ═══ DESCUBRIMIENTO POR CONVENCIÓN (consolidación 02/09/2026) ═══
+  //
+  // Una capacidad NUEVA no debe exigir editar este archivo: un `lib/tools/<x>-tool.mjs` que exporte
+  // `registroXsas({ google, query })` entra al registro solo. Las DOS cerraduras siguen intactas:
+  // una tool de escritura descubierta sin firma cae en `sinFirma` igual que una listada, y
+  // `puedeUsar` la frena al correr. Descubrir no es autorizar. Las fábricas históricas siguen en
+  // las listas de arriba (no se reescriben); lo nuevo usa la convención.
+  const yaListadas = new Set([...FABRICAS_0API, ...FABRICAS_GOOGLE].map(([ruta]) => path.basename(ruta)))
+  const dir = dirTools ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'tools')
+  const descubiertas = []
+  let archivosTool = []
+  try { archivosTool = fs.readdirSync(dir).filter((f) => f.endsWith('-tool.mjs') && !f.endsWith('.test.mjs')) } catch { /* sin dir no hay convención */ }
+  for (const archivo of archivosTool) {
+    if (yaListadas.has(archivo)) continue
+    try {
+      const mod = await import(`file://${path.join(dir, archivo)}`)
+      if (typeof mod.registroXsas !== 'function') continue
+      const claves = []
+      for (const [clave, tool] of Object.entries(mod.registroXsas({ google }) ?? {})) {
+        if (mapa.has(clave)) continue // una fábrica listada gana: la convención agrega, no pisa
+        if (escribeAfuera(tool?.capability) && !autorizadaAEscribir(clave)) { sinFirma.push(clave); continue }
+        mapa.set(clave, tool)
+        claves.push(clave)
+        descubiertas.push(clave)
+      }
+      if (claves.length) porArchivo.set(comoLoNombraElCatalogo(`./tools/${archivo}`), claves)
+    } catch (e) {
+      fallaron.push(`./tools/${archivo}: ${String(e?.message ?? e).slice(0, 80)}`)
+    }
+  }
+
+  _cache = { llave, valor: { mapa, porArchivo, porLib: libsDeLasTools(porArchivo, mapa), fallaron, sinFirma, descubiertas } }
   return _cache.valor
 }
 
@@ -244,6 +276,24 @@ export function libsDeLasTools(porArchivo, mapa = null) {
 
 /** Tira el caché. Lo usan los tests que inyectan tools de mentira. */
 export function invalidarTools() { _cache = null }
+
+/**
+ * UN OBJETIVO PUEDE TRAER VARIOS PEDIDOS ADENTRO. PURA y CONSERVADORA.
+ *
+ * «como estamos de caja y que vence esta semana» son dos capacidades distintas que hoy terminaban
+ * en un párrafo del modelo por «multidominio». Se parte SÓLO por separadores fuertes (renglón,
+ * «;», punto seguido, «y también/después/luego», «y» entre cláusulas) y cada parte debe tener
+ * cuerpo propio (≥2 palabras): «efectivo y banco» NO se parte — «banco» solo no es un pedido.
+ * Partir es barato; el guardián real está en el gateway: si las partes no resuelven a capacidades
+ * DISTINTAS, el objetivo se atiende entero como siempre.
+ */
+export function partirObjetivo(texto) {
+  const partes = String(texto ?? '')
+    .split(/\n+|;|\.\s+|,?\s+y\s+(?:tambi[eé]n|despu[eé]s|luego)\s+|,?\s+y\s+/i)
+    .map((p) => p.trim())
+    .filter((p) => p.split(/\s+/).filter(Boolean).length >= 2)
+  return partes.length >= 2 && partes.length <= 6 ? partes : []
+}
 
 /**
  * ATAJOS EXACTOS. Frase normalizada → tool. Si mañana la tool cambia de nombre, el atajo queda

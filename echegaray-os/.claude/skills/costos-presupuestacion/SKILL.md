@@ -201,3 +201,53 @@ Ejemplo: una partida se presupuesta sistemáticamente baja en obras con un tipo 
 ## Prohibido
 
 No inventar precios unitarios, índices de costos ni rendimientos técnicos que no vengan de Planilla para Cotizar, datos reales del OS, o una fuente externa verificada y fechada.
+
+## Razonamiento técnico base del cotizador — v1 (definido por el dueño, 02/09/2026)
+
+Motor: `orquestador/lib/plano/razonamiento.mjs` (+ `pipeline.mjs`, `interpretar.mjs`). Tool XSAS:
+`plano.razonamiento`. Este conocimiento es del DOMINIO cotizador; /xsas sólo lo invoca.
+
+**Los pasos, en orden:**
+
+1. **Superficies** — impronta/cubierta, semicubierta, por nivel cuando corresponda, dimensiones
+   generales. Sólo superficies DECLARADAS con cita, o impronta como CÁLCULO con sus entradas.
+2. **Bases / muertos** — B0=n, B1=n… y M0=n, M1=n… por tipología: cantidad, sección X/Y,
+   dimensiones, altura/espesor, posición, cota/nivel, evidencia. Un muerto de anclaje NO es una base.
+3. **Vigas** — de fundación, arriostramientos, de carga; condición/función sísmica SÓLO con
+   evidencia (cita) — sin mención es DESCONOCIDO, nunca «no tiene». Secciones, tramos, apoyos, niveles.
+4. **Columnas / encadenados** — columnas de carga, tipologías, secciones, niveles, posición X/Y;
+   encadenados documentados con secciones y longitudes.
+5. **Longitud unitaria de vigas** — tramos REALES entre apoyos (C1→C2=L1, C2→C3=L2…; total = suma
+   de tramos). PROHIBIDO cantidad × longitud promedio inventada.
+6. **Lectura X/Y + barrido** — reconstruir ejes, distancias, intersecciones, módulos, niveles.
+   Barrido X1→Xn con Y1→Yn y control inverso Y1→Yn con X1→Xn: evitar omisiones y duplicados,
+   localizar y relacionar espacialmente.
+
+**Foco prioritario: EXCAVACIONES.** Por cada una: elemento que la genera, cantidad, largo, ancho,
+PROFUNDIDAD, sección, longitud si es lineal, volumen, evidencia. Tipos: PUNTUAL (bases, dados,
+muertos, pozos/cabezales; V = cantidad × largo_exc × ancho_exc × profundidad_exc) · LINEAL (vigas
+de fundación, cimientos, zanjas, arriostramientos enterrados; V = longitud × ancho_exc ×
+profundidad_exc) · GENERAL (plateas, rebajes, desmontes/cajas).
+
+**Profundidades — NO INVENTAR.** Evidencia en este orden: 1) corte/detalle específico · 2) planta
+acotada · 3) cuadro de fundaciones · 4) memoria/pliego · 5) documento inequívocamente relacionado.
+Sin evidencia: `FALTA_DATO: profundidad_excavacion`. Nunca asumir altura estructural = profundidad
+excavada. Nunca usar precio/composición/presupuesto histórico para forzar geometría.
+
+**Cruce documental:** PLANTA → CORTE → DETALLE → CUADRO → MEMORIA/PLIEGO → CAD. Complementarias se
+COMBINAN con provenance; contradictorias = CONFLICTO; ausencia = FALTA_DATO.
+
+**Relaciones (con evidencia):** base→columna→viga · baseA↔viga fundación↔baseB · columnaA↔tramo↔
+columnaB · muerto→estructura asociada. Sirven para DETECTAR omisiones/duplicados/huérfanos —
+detectar ≠ inventar.
+
+**El cotizador NO diseña:** lee, reconstruye, relaciona, computa, detecta. No inventa bases,
+columnas, vigas, secciones, armaduras, profundidades ni condición sísmica. El diseño estructural,
+si alguna vez corresponde, es de otro motor explícitamente autorizado.
+
+**NUMBER → EVIDENCE:** todo número importante debe poder reconstruirse — elementos incluidos,
+cantidades, dimensiones, profundidades, tramos, fórmula, documento, lámina, detalle.
+
+**Aprendizaje:** el cotizador usa el aprendizaje general de XSAS (cotizado→planificado→ejecutado→
+real→comparación; `xsas-aprendizaje.mjs` + `rendimiento-para-cotizar.mjs`): candidatos gobernados,
+nunca una obra sola como regla universal.
