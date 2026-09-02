@@ -7,11 +7,18 @@
 // devuelve `cotizacion_id`— se navega al entorno completo de `/presupuestos/[id]`, que ya tiene
 // la conversación por cotización, la cola de atención, la tabla y la cascada. Una sola fuente
 // del entorno: acá no se duplica nada de eso.
+//
+// EL PASO A PASO ES LA GUÍA (dueño, 02/09): XSAS lee el plano, genera el razonamiento y recién
+// de ahí deriva la cotización. Cuando la respuesta trae la lectura ESTRUCTURADA
+// (`datos.razonamiento`) se dibuja completándose paso a paso («Presupuestos v5 · Lectura del
+// plano»); el texto plano queda como respaldo para respuestas viejas.
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Conversacion, type RespuestaXsas } from '@/features/xsas/components/Conversacion'
 import { destinoDeRespuesta, numeroDeRespuesta, pasosDeRespuesta } from '@/features/presupuestos/services/arranque'
+import { lecturaDeRespuesta, type PasoLectura } from '@/features/presupuestos/services/lecturaPlano'
+import { LecturaDelPlano } from '@/features/presupuestos/components/LecturaDelPlano'
 
 const EJEMPLOS_PRESUPUESTO = [
   'cotizame esta obra (adjuntá los planos acá)',
@@ -23,24 +30,33 @@ const EJEMPLOS_PRESUPUESTO = [
 export function ArranqueXsas() {
   const router = useRouter()
   const [creado, setCreado] = useState<{ destino: string; numero: string | null } | null>(null)
+  const [lectura, setLectura] = useState<PasoLectura[]>([])
   const [pasos, setPasos] = useState<{ titulo: string; cuerpo: string }[]>([])
 
   const alResponder = useCallback((r: RespuestaXsas) => {
-    // EL PASO A PASO ES LA GUÍA (dueño, 02/09): XSAS lee el plano, genera el razonamiento y
-    // recién de ahí deriva la cotización. Los bloques se muestran tal como los produjo el motor
-    // — los faltantes vienen nombrados adentro; acá no se inventa ningún estado.
-    const p = pasosDeRespuesta(r)
-    if (p.length) setPasos(p)
+    const l = lecturaDeRespuesta(r)
+    if (l.length) setLectura(l)
+    else {
+      const p = pasosDeRespuesta(r)
+      if (p.length) setPasos(p)
+    }
     const destino = destinoDeRespuesta(r)
     if (!destino) return
     setCreado({ destino, numero: numeroDeRespuesta(r) })
-    // Más aire cuando hay paso a paso para leer antes de aterrizar en el entorno.
-    setTimeout(() => router.push(destino), p.length ? 9000 : 2500)
+    // Más aire cuando hay paso a paso para ver completarse antes de aterrizar en el entorno,
+    // donde la misma lectura queda fija (persistió con la cotización).
+    const hayGuia = l.length > 0 || pasosDeRespuesta(r).length > 0
+    setTimeout(() => router.push(destino), hayGuia ? 9000 : 2500)
   }, [router])
 
   return (
     <div>
-      {pasos.length > 0 && (
+      {lectura.length > 0 && (
+        <div className="mb-3 rounded-xl border border-slate-200 bg-white p-4">
+          <LecturaDelPlano pasos={lectura} progresivo />
+        </div>
+      )}
+      {lectura.length === 0 && pasos.length > 0 && (
         <div data-testid="paso-a-paso" className="mb-3 rounded-xl border border-slate-200 bg-white p-4">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">
             El razonamiento que deriva en la cotización — lo que falta está nombrado, no inventado

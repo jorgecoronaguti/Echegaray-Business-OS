@@ -150,9 +150,14 @@ export function planoTools(google) {
             partidas, composiciones: r.composiciones, candidatas,
           })
           const numero = String(input?.numero ?? `COT-XSAS-${proyecto.toUpperCase().slice(0, 12).replace(/\s+/g, '-')}-${Date.now().toString(36).slice(-4)}`)
+          // EL PASO A PASO ES LA GUÍA (dueño, 02/09 + «Presupuestos v5 · Lectura del plano»):
+          // la lectura estructurada del plano PERSISTE con la cotización que derivó de ella,
+          // para que la pantalla del presupuesto la muestre siempre — no sólo esta respuesta.
+          const rz = razonar(r)
           const { cotizacionId } = await persistir({ query }, cot, {
             numero,
             notas: `generada por XSAS desde ${r.documentos.planos.legibles.map((d) => d.name).join(' + ')}`,
+            razonamiento: rz,
           })
           const cascada = await cascadaDe({ query }, cotizacionId)
           return {
@@ -175,10 +180,10 @@ export function planoTools(google) {
             faltantes: r.computo.items.filter((i) => i.cantidad === null).map((i) => ({ elemento: i.id, nombre: i.nombre, falta: i.faltan })),
             cascada,
             llamadas_ia: r.ia.llamadas,
-            // EL PASO A PASO ES LA GUÍA (dueño, 02/09): la cotización no aparece de la nada —
-            // se DERIVA del razonamiento sobre el plano, y ese razonamiento viaja con ella para
-            // que la pantalla lo muestre completándose, con los faltantes nombrados adentro.
-            razonamiento_texto: textoDeRazonamiento(razonar(r), { proyecto }),
+            // La misma lectura, dos formas: la ESTRUCTURA para que la pantalla dibuje el paso a
+            // paso completándose, el TEXTO para el chat. Ninguna se recalcula distinto.
+            razonamiento: rz,
+            razonamiento_texto: textoDeRazonamiento(rz, { proyecto }),
             planos_adjuntos: archivos.map((a) => a?.nombre).filter(Boolean),
             resumen_texto: resumen({ r, cot, cascada, numero })
               + (archivos.length ? `\n\n📎 ${archivos.length} adjunto(s) procesados en memoria — no se subió nada a Drive.` : ''),
