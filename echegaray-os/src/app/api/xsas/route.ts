@@ -32,18 +32,26 @@ interface EntradaXsas {
   entidad?: { obra_id?: string; cliente_id?: string }
   origen?: string
   correlation_id?: string
-  adjuntos?: { nombre?: unknown; contenido?: unknown }[]
+  adjuntos?: { nombre?: unknown; contenido?: unknown; contenido_base64?: unknown }[]
 }
 
 /** Adjuntos con contenido en texto (un CSV, un extracto pegado). El servidor impone los topes ANTES
  *  de reenviar: el contrato del OS los vuelve a imponer, pero rebotar acá da un error legible. */
-function adjuntosValidados(crudos: EntradaXsas['adjuntos']): { nombre: string; contenido: string }[] {
+type AdjuntoSaliente = { nombre: string; contenido: string } | { nombre: string; contenido_base64: string }
+
+function adjuntosValidados(crudos: EntradaXsas['adjuntos']): AdjuntoSaliente[] {
   if (!Array.isArray(crudos)) return []
-  return crudos
-    .filter((a): a is { nombre?: unknown; contenido?: unknown } => Boolean(a) && typeof a === 'object')
-    .slice(0, 10)
-    .map((a) => ({ nombre: String(a.nombre ?? 'adjunto').slice(0, 200), contenido: String(a.contenido ?? '') }))
-    .filter((a) => a.contenido.length > 0 && a.contenido.length <= 512 * 1024)
+  const out: AdjuntoSaliente[] = []
+  for (const a of crudos.slice(0, 10)) {
+    if (!a || typeof a !== 'object') continue
+    const nombre = String(a.nombre ?? 'adjunto').slice(0, 200)
+    // Binario en base64 (PDF, Excel): hasta ~8 MB de archivo. Texto plano: hasta 512 KB.
+    const b64 = typeof a.contenido_base64 === 'string' ? a.contenido_base64 : ''
+    if (b64.length > 0 && b64.length <= 11 * 1024 * 1024) { out.push({ nombre, contenido_base64: b64 }); continue }
+    const texto = typeof a.contenido === 'string' ? a.contenido : ''
+    if (texto.length > 0 && texto.length <= 512 * 1024) out.push({ nombre, contenido: texto })
+  }
+  return out
 }
 
 /** El contexto de entidad que el usuario PUEDE ver, leído con su propia sesión (o sea, con RLS). */

@@ -92,11 +92,15 @@ async function main() {
     allowlist: (process.env.MM_INCOMING_ALLOWLIST || '').split(',').map((s) => s.trim()).filter(Boolean),
   })
   const manejar = crearManejadorWebhook(con, { maxBytes: MAX_BYTES, autenticador })
+  // El tope de /xsas es más alto que el del webhook: por acá entran ADJUNTOS (un PDF en base64
+  // pesa megas). El contrato del pedido impone además su propio tope por adjunto.
+  const XSAS_MAX_BYTES = Number(process.env.XSAS_HTTP_MAX_BYTES ?? 12 * 1024 * 1024)
   const manejarXsas = crearManejadorXsas({
     atender,
     secreto: process.env.XSAS_GATEWAY_SECRET || null,
     gateway: { query, google: await googleDeLaPuerta() },
     ruta: RUTA_XSAS,
+    maxBytes: XSAS_MAX_BYTES,
   })
 
   const server = http.createServer(async (req, res) => {
@@ -104,7 +108,7 @@ async function main() {
     if (camino === RUTA_XSAS) {
       let cuerpo = ''
       try {
-        cuerpo = await leerBody(req, 256 * 1024, BODY_TIMEOUT_MS)
+        cuerpo = await leerBody(req, XSAS_MAX_BYTES, BODY_TIMEOUT_MS)
       } catch (e) {
         return responder(res, e.message === 'too_large' ? 413 : 408, { error: e.message })
       }

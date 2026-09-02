@@ -38,7 +38,10 @@ import { filtrarPorVisibilidad } from './xsas-visibilidad.mjs'
 import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
-import { pareceExtractoBancario } from './archivos/planilla.mjs'
+import { ingerirAdjuntos, textoDeLectura, DESTINO } from './xsas-archivos.mjs'
+import {
+  cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
+} from './xsas-contexto.mjs'
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
@@ -329,50 +332,27 @@ async function despachar(pedido, deps, t0) {
 
   // ── N0 · UN ARCHIVO ADJUNTO VA A SU MOTOR, NO A UN MODELO ─────────────────────────────────
   //
-  // Un archivo NO es un prompt. Si lo que llegó SE PARSEA como extracto bancario —lo decide
-  // `pareceExtractoBancario`, que intenta parsearlo de verdad—, corre el circuito determinístico
-  // entero (base → _BANCO_RAW → DEBITADO). Si llegan adjuntos y ninguno es un extracto, se DICE qué
-  // llegó y qué falta: hoy éste es el único formato que entra por acá, y declararlo es más honesto
-  // que mandarlo a un modelo que no puede abrirlo.
-  const conContenido = pedido.adjuntos.filter((a) => typeof a === 'object' && a?.contenido)
+  // Un archivo NO es un prompt. La ingesta (`xsas-archivos.mjs`) reutiliza el motor que ya entiende
+  // archivos —formato por los bytes, planillas, PDF local, extracto bancario— y deja cada lectura
+  // PERSISTIDA por hash, así un follow-up la reutiliza sin volver a subir nada. Un extracto sigue
+  // yendo al importador del banco, que es la capacidad real que lo consume; el resto se lee, se
+  // describe con honestidad y queda activo en el contexto de la conversación.
+  const conContenido = pedido.adjuntos.filter((a) => typeof a === 'object' && (a?.contenido || a?.contenido_base64))
   if (conContenido.length) {
-    const clave = 'banco.importar_extracto'
-    const tool = mapa.get(clave)
-    for (const adj of conContenido) {
-      const p = tool ? pareceExtractoBancario(adj.contenido) : { esExtracto: false }
-      if (!p.esExtracto) continue
-      if (!puedeUsar(pedido.actor, tool, clave)) {
-        return respuestaError(pedido, {
-          tipo: 'sin_permiso', mensaje: `el adjunto "${adj.nombre}" es un extracto bancario, pero tu rol no puede importarlo`,
-          ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' },
-        })
-      }
-      const r = await correrTool({
-        clave, tool, pedido, query: deps.query ?? null,
-        argsResueltos: { args: { contenido: adj.contenido, nombre: adj.nombre }, falta: [] },
-      })
-      if (!r.ok) {
-        return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' } })
-      }
-      return respuestaOk(pedido, {
-        respuesta: textoDeDatos(r.datos),
-        datos: r.datos,
-        capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [clave], via: 'adjunto_extracto', confianza: 'alta', motivo: 'adjunto_extracto' },
-        accionesEjecutadas: [{ tool: clave, args: { nombre: adj.nombre } }],
-        evidencia: [{ que: 'resultado', fuente: `tool ${clave}`, cuando: new Date().toISOString() }],
-        degradacion: r.datos?.ok === false ? String(r.datos.error ?? '').slice(0, 200) : null,
-        ms: Date.now() - t0,
-      })
+    return atenderAdjuntos({ pedido, conContenido, mapa, deps, t0 })
+  }
+
+  // ── N0 · LA FRASE QUE SE REFIERE AL TRABAJO ANTERIOR ──────────────────────────────────────
+  //
+  // «ahora mostrame lo que quedó pendiente» sin adjuntar nada de nuevo: la referencia se resuelve
+  // contra el CONTEXTO ESTRUCTURADO de la conversación (Postgres), no reenviándole un transcript a
+  // un modelo. Si no hay contexto que la resuelva, la frase sigue su camino de siempre.
+  if (pedido.tipo === TIPO.MENSAJE && deps.query && pedido.correlationId) {
+    const ref = referenciaContextual(texto)
+    if (ref.es) {
+      const desdeContexto = await atenderDesdeContexto({ pedido, ref, deps, t0 })
+      if (desdeContexto) return desdeContexto
     }
-    return respuestaOk(pedido, {
-      respuesta: [
-        `Recibí ${conContenido.length} archivo(s) (${conContenido.map((a) => a.nombre).join(', ')}) y ninguno se parsea como extracto bancario.`,
-        'Por ahora el único archivo que proceso por acá es el extracto del Santander (CSV o texto pegado).',
-        'Los demás formatos entran por el bot @xsas de Mattermost.',
-      ].join('\n'),
-      capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [], via: 'adjunto_desconocido', confianza: 'alta', motivo: 'adjunto_desconocido' },
-      ms: Date.now() - t0,
-    })
   }
 
   // ── N0 · «¿QUÉ PODÉS HACER?» SE CONTESTA DEL REGISTRO, NO PREGUNTÁNDOLE A UN MODELO ───────
@@ -596,6 +576,141 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
     pedido, clave: candidata.clave, tool: candidata.tool, nivel: NIVEL.CAPACIDAD,
     via: 'skill_con_motor_argumento_de_la_frase', skills: eleccion.skills, t0,
     query: deps.query ?? null, argsResueltos: { args: completo.args, falta: [] },
+  })
+}
+
+/**
+ * LOS ADJUNTOS DEL PEDIDO: ingesta → contexto → capacidad.
+ *
+ * Cada archivo se lee con el motor existente y queda persistido por hash (`xsas-archivos.mjs`).
+ * Un extracto bancario corre el importador real — la MISMA conducta de siempre, permiso incluido.
+ * El resto se describe con lo que SE LEYÓ y queda activo en el contexto para los follow-ups.
+ * El contenido de un archivo es DATO: nada de lo que diga adentro rutea, autoriza ni ejecuta.
+ */
+async function atenderAdjuntos({ pedido, conContenido, mapa, deps, t0 }) {
+  const query = deps.query ?? null
+  const { lecturas, sinMemoria } = await ingerirAdjuntos({
+    adjuntos: conContenido, actorId: pedido.actor?.id, correlacionId: pedido.correlationId,
+    query, leerPdf: deps.leerPdf,
+  })
+  if (!lecturas.length) {
+    return respuestaError(pedido, {
+      tipo: 'error_archivo', mensaje: 'recibí adjuntos pero ninguno traía contenido legible',
+      ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'archivo_ingesta' },
+    })
+  }
+
+  // Los archivos quedan ACTIVOS en el contexto de la conversación — es lo que hace que «ahora
+  // mostrame eso de nuevo» funcione sin volver a subirlos.
+  const previo = await cargarContexto(query, { actorId: pedido.actor?.id, correlacionId: pedido.correlationId })
+  const guardado = await guardarContexto(query, {
+    actorId: pedido.actor?.id, correlacionId: pedido.correlationId,
+    parche: { archivos: acotarArchivos(previo?.archivos, lecturas.map(caratulaDeLectura)) },
+  })
+
+  const bloques = []
+  const toolsUsadas = []
+  const acciones = []
+  const degradaciones = []
+  let datosExtracto = null
+  for (const l of lecturas) {
+    if (l.destino === DESTINO.BANCO) {
+      const clave = 'banco.importar_extracto'
+      const tool = mapa.get(clave)
+      if (!tool) {
+        bloques.push(`${textoDeLectura(l)}\nEl importador del banco no está disponible por esta vía ahora mismo: leí el extracto pero NO lo cargué.`)
+        continue
+      }
+      if (!puedeUsar(pedido.actor, tool, clave)) {
+        return respuestaError(pedido, {
+          tipo: 'sin_permiso', mensaje: `el adjunto "${l.nombre}" es un extracto bancario, pero tu rol no puede importarlo`,
+          ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' },
+        })
+      }
+      const contenidoTexto = typeof l.adjunto?.contenido === 'string' && l.adjunto.contenido
+        ? l.adjunto.contenido
+        : Buffer.from(l.adjunto?.contenido_base64 ?? '', 'base64').toString('utf8')
+      const r = await correrTool({
+        clave, tool, pedido, query,
+        argsResueltos: { args: { contenido: contenidoTexto, nombre: l.nombre }, falta: [] },
+      })
+      if (!r.ok) {
+        return respuestaError(pedido, { tipo: r.tipo, mensaje: r.motivo, ms: Date.now() - t0, capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_extracto' } })
+      }
+      toolsUsadas.push(clave)
+      acciones.push({ tool: clave, args: { nombre: l.nombre } })
+      datosExtracto = r.datos
+      if (r.datos?.ok === false) degradaciones.push(String(r.datos.error ?? '').slice(0, 200))
+      bloques.push(textoDeDatos(r.datos) ?? textoDeLectura(l))
+      continue
+    }
+    bloques.push(textoDeLectura(l))
+  }
+  if (sinMemoria || !guardado) {
+    degradaciones.push('sin memoria de archivos: esta lectura no queda disponible para follow-ups')
+  }
+  return respuestaOk(pedido, {
+    respuesta: bloques.join('\n\n'),
+    datos: datosExtracto ?? { archivos: lecturas.map((l) => caratulaDeLectura(l)) },
+    capacidades: {
+      nivel: NIVEL.DETERMINISTICO, skills: [], tools: toolsUsadas,
+      via: toolsUsadas.length ? 'adjunto_extracto' : 'archivo_ingesta', confianza: 'alta',
+      motivo: toolsUsadas.length ? 'adjunto_extracto' : 'archivo_ingesta',
+    },
+    accionesEjecutadas: acciones,
+    evidencia: lecturas.map((l) => ({ que: `lectura de ${l.nombre}`, fuente: `hash ${String(l.hash).slice(0, 12)}`, cuando: new Date().toISOString() })),
+    degradacion: degradaciones.join(' · ') || null,
+    ms: Date.now() - t0,
+  })
+}
+
+/**
+ * EL FOLLOW-UP RESUELTO DESDE EL ESTADO, NO DESDE UN TRANSCRIPT.
+ *
+ * Lee el contexto de la conversación (actor + correlación, SIEMPRE filtrado por el actor que puso
+ * el servidor) y la lectura persistida de sus archivos activos. `null` cuando el contexto no
+ * alcanza: la frase sigue el ruteo de siempre — un detector que secuestra preguntas nuevas es peor
+ * que uno corto.
+ */
+async function atenderDesdeContexto({ pedido, ref, deps, t0 }) {
+  const ctx = await cargarContexto(deps.query, { actorId: pedido.actor?.id, correlacionId: pedido.correlationId })
+  const archivos = Array.isArray(ctx?.archivos) ? ctx.archivos : []
+  if (!archivos.length) return null
+  let filas = []
+  try {
+    const { rows } = await deps.query(
+      `select hash, nombre, tamano, familia, formato, destino, resumen
+         from orq.xsas_adjunto where actor_id = $1 and hash = any($2::text[])`,
+      [String(pedido.actor?.id ?? ''), archivos.map((a) => a.hash)],
+    )
+    filas = rows ?? []
+  } catch { return null }
+  if (!filas.length) return null
+  const orden = new Map(archivos.map((a, i) => [a.hash, i]))
+  filas.sort((a, b) => (orden.get(a.hash) ?? 99) - (orden.get(b.hash) ?? 99))
+
+  const bloques = []
+  if (ref.aspecto === 'pendiente') {
+    for (const f of filas) {
+      const r = f.resumen ?? {}
+      if (f.destino === DESTINO.BANCO) {
+        const rech = Array.isArray(r.rechazos) ? r.rechazos : []
+        bloques.push(rech.length
+          ? `**${f.nombre}** — ${rech.length} fila(s) que NO pude tomar:\n${rech.slice(0, 20).map((x) => `· ${typeof x === 'string' ? x : JSON.stringify(x).slice(0, 160)}`).join('\n')}`
+          : `**${f.nombre}** — no quedó nada sin tomar: los ${r.movimientos?.length ?? 0} movimiento(s) se leyeron enteros.`)
+      } else {
+        bloques.push(`**${f.nombre}** — no tengo pendientes registrados de este archivo (${f.destino}): lo leído está completo.`)
+      }
+    }
+  } else {
+    for (const f of filas) bloques.push(textoDeLectura({ ...f, reutilizado: true }))
+  }
+  return respuestaOk(pedido, {
+    respuesta: bloques.join('\n\n'),
+    datos: { archivos: filas.map((f) => ({ hash: f.hash, nombre: f.nombre, destino: f.destino })) },
+    capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [], via: 'contexto_archivos', confianza: 'alta', motivo: `referencia contextual (${ref.aspecto})` },
+    evidencia: filas.map((f) => ({ que: `lectura persistida de ${f.nombre}`, fuente: `orq.xsas_adjunto ${String(f.hash).slice(0, 12)}`, cuando: new Date().toISOString() })),
+    ms: Date.now() - t0,
   })
 }
 

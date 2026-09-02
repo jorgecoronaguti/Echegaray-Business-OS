@@ -1034,7 +1034,10 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Sube un archivo BINARIO (imagen, PDF, cualquier formato) a Drive vía multipart.
      *  data = base64. Devuelve {id, link}. Requiere actuar como usuario (OAuth) o Shared Drive. */
     async uploadFile(name, base64Data, mimeType, { parentId } = {}) {
-      const token = await accessToken()
+      // ownerToken, no accessToken: crear archivos necesita cuota real y la cuenta de servicio no
+      // tiene storage (403 "Service Accounts do not have storage quota" — medido el 02/09 subiendo
+      // un oficio judicial al legajo). Mismo criterio que createFile/copyFile.
+      const token = await ownerToken()
       const meta = { name, mimeType }
       if (parentId) meta.parents = [parentId]
       const boundary = 'echeg' + Math.random().toString(36).slice(2)

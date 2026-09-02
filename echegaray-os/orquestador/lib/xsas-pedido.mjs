@@ -90,12 +90,14 @@ const ESQUEMA = z.object({
   verificado_por: z.enum(Object.values(VERIFICADOR)).optional().nullable(),
   correlation_id: z.string().optional().nullable(),
   request_id: z.string().optional().nullable(),
-  // Un adjunto puede ser un id/ruta (string, el contrato original) o el CONTENIDO en texto con su
-  // nombre — que es como llega un CSV desde /xsas. El tope de 512 KB por adjunto es el del borde
-  // HTTP: un extracto del Santander pesa ~50 KB.
+  // Un adjunto puede ser un id/ruta (string, el contrato original), el CONTENIDO en texto con su
+  // nombre (un CSV, un extracto pegado — tope 512 KB), o el contenido BINARIO en base64 (un PDF,
+  // un Excel; tope ~8 MB de archivo ≈ 11 MB de base64). El binario no se interpreta acá: la
+  // ingesta detecta el formato por los bytes.
   adjuntos: z.array(z.union([
     z.string(),
     z.object({ nombre: z.string().max(200), contenido: z.string().max(512 * 1024) }),
+    z.object({ nombre: z.string().max(200), contenido_base64: z.string().max(11 * 1024 * 1024) }),
   ])).max(10).default([]),
 })
 
