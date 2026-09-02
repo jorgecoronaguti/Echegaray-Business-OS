@@ -812,6 +812,49 @@ async function ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar = f
     if (!avanzo) break
   }
 
+  // ═══ FASE 2 · EL ARGUMENTO ESTABA EN LA PROPIA CLÁUSULA ═══
+  // El bus es gratis y va primero. Lo que sigue faltando puede estar DICHO en la cláusula
+  // («razonamiento del cotizador de quattropani»): el extractor barato lo copia — traducción, no
+  // decisión, igual que en el flujo simple. Sin proveedor no pasa nada: queda FALTA_DATO, que es
+  // exactamente la degradación honesta del modo sin modelo. Después de cada extracción exitosa se
+  // reintenta el resto: su output puede destrabar pasos posteriores (reevaluación).
+  if (abiertas.some((r) => r.faltan?.length)) {
+    let ia = null
+    try { ia = await puertaIa(deps) } catch { /* sin proveedor: FALTA_DATO honesto */ }
+    if (ia) {
+      for (let i = 0; i < abiertas.length; i++) {
+        const r = abiertas[i]
+        let faltan = r.faltan ?? []
+        let args = r.args
+        if (faltan.length) {
+          const delBus = completarDesdeBus(r.tool, { args, faltan }, bus)
+          args = delBus.args; faltan = delBus.faltan; r.incompatibles = delBus.incompatibles
+        }
+        if (faltan.length) {
+          try {
+            const completo = await completarArgumentos({ ia, texto: r.clausula, tool: r.tool, args, falta: faltan, logger: deps.logger ?? null })
+            args = completo.args; faltan = completo.falta
+          } catch { /* extractor caído = faltante declarado */ }
+        }
+        if (faltan.length) { r.args = args; r.faltan = faltan; continue }
+        const corrida = await correrTool({ clave: r.clave, tool: r.tool, pedido, query: deps.query ?? null, argsResueltos: { args, falta: [] } })
+        abiertas.splice(i, 1); i -= 1
+        if (!corrida.ok) {
+          partesDatos.push({ pedido: r.clausula, estado: 'ERROR', motivo: corrida.motivo, tool: r.clave })
+          bloques.push(`**${r.clausula}** — no salió: ${corrida.motivo}`)
+          continue
+        }
+        bus = sumarAlBus(bus, { tool: r.clave, datos: corrida.datos })
+        toolsUsadas.push(r.clave)
+        acciones.push({ tool: r.clave, args: corrida.args })
+        evidencia.push({ que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString() })
+        partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos })
+        bloques.push(`**${r.clausula}**\n${textoDeDatos(corrida.datos) ?? '(sin texto: el dato está en datos.partes)'}`)
+        i = -1 // reevaluar desde el principio: este output puede destrabar por bus a los anteriores
+      }
+    }
+  }
+
   // Lo que quedó bloqueado, con su estado EXPLÍCITO.
   for (const r of abiertas) {
     if (r.incompatibles?.length) {
