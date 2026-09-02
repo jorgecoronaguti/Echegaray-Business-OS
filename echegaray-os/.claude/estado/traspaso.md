@@ -260,6 +260,39 @@ PROFUNDIDAD.
 - Trampa REPETIDA y corregida en el acto: el primer `git merge` corrió DENTRO del worktree (no-op)
   y producción quedó vieja — el deploy se verificó por el hash y se rehízo desde main.
 
+## 10septies. CONSOLIDACIÓN DEL NÚCLEO (02/09 tarde-noche, commits `f9928ccd` + `45dfc71e`, DESPLEGADOS)
+
+Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Cerrado:
+
+- **Objetivo compuesto** (`partirObjetivo` + `atenderCompuesto`): varias capacidades en un pedido,
+  secuencial, 0 modelo; resultados como DATOS (`datos.partes[]`); residuo `PENDIENTE_RAZONAMIENTO`
+  con motivo. Guardián: ≥2 capacidades DISTINTAS o flujo normal. E2E vivo: caja+vencido+cobranzas
+  en un pedido, 3 tools, llm null. SIN NINGÚN provider (env sin claves, gateway real, base real):
+  determinístico entero funciona; compuesto con parte ambigua → 2 resueltas + 1 pendiente.
+- **Registro por convención**: `toolsDelNucleo` descubre `lib/tools/*-tool.mjs` con
+  `registroXsas({google})` — capability nueva SIN editar el núcleo (fixture test; la escritura
+  descubierta sin firma cae en `sinFirma`: descubrir ≠ autorizar).
+- **Acción pendiente** (defecto reportado por el dueño EN VIVO: «no entiendo q quiere q haga»):
+  los bytes de adjuntos persisten en `orq.xsas_adjunto.contenido_b64` (migración `20260902T1900`
+  APLICADA y verificada); falta_dato con adjuntos pregunta en criollo y guarda la pendiente;
+  `atenderPendiente` completa con el mensaje siguiente (bytes por hash, arg determinístico si es
+  corto), limpia la pendiente, no secuestra pedidos largos, aísla por actor. E2E vivo completo.
+- **Conocimiento del cotizador v1** (pasos 1-6, excavaciones, profundidades, number→evidence,
+  cruce documental, relaciones, no-diseña) versionado en la skill `costos-presupuestacion` —
+  dominio del cotizador, no /xsas.
+- Aprendizaje: NO se reconstruyó — CANDIDATO→VALIDADO→reutilización ya existe y está testeado
+  (`xsas-aprendizaje` 32/32 + `rendimiento-para-cotizar`).
+- Métrica real (orq.xsas_requests, 7 días): 209 pedidos · 196 sin modelo (93,8%) · niveles: 163 N0
+  · 27 N1 · 19 N2/N3 · ms prom 4.152.
+- Suite XSAS 212/212 · consolidación 6/6 · pendiente 3/3. Prod verificada por hash `45dfc71e`.
+- LIMITACIONES declaradas: composición A.output→B.input automática entre tools distintas NO existe
+  (los datos viajan estructurados, el encadenado es secuencial); «buscá en la web…» con palabra
+  «cotiza» rutea mal a finanzas (web.search existe, afinidad eligió otra); tramos reales C1→C2 y
+  barrido X/Y inverso del cotizador: parciales (motor v1).
+- ⚠️ Trampa del worktree-merge caída DOS veces hoy: `git merge` encadenado tras `cd` al worktree
+  es no-op y producción queda vieja. El merge va en un Bash call SEPARADO desde el árbol principal,
+  y el deploy se verifica POR HASH siempre.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
