@@ -165,6 +165,10 @@ export function planoTools(google) {
           return {
             cotizacion_id: cotizacionId,
             numero,
+            // Campos de CONTRATO para la composición (A.output → B.input): el proyecto que se
+            // cotizó y el cliente real del plano. Datos que ya existían; sólo se declaran.
+            proyecto,
+            cliente: cot.cliente ?? null,
             planos: r.documentos.planos.legibles.map((d) => d.name),
             planos_no_legibles: r.documentos.planos.noLegibles.map((d) => d.name),
             control: r.control ? { estado: r.control.estado, cobertura: r.control.cobertura, supuestos_ocultos: r.control.supuestosOcultos.length, preguntas: r.control.preguntas } : null,

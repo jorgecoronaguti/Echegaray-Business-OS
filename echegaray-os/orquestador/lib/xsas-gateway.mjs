@@ -39,6 +39,7 @@ import { leerCatalogoDeDisco } from './skill-catalogo.mjs'
 import { SIN_RAZONADOR } from './xsas.mjs'
 import { normalizarPedido, textoDePedido, TIPO, PedidoInvalido } from './xsas-pedido.mjs'
 import { ingerirAdjuntos, textoDeLectura, DESTINO, bytesPorHash } from './xsas-archivos.mjs'
+import { completarDesdeBus, sumarAlBus, busPersistible } from './xsas-composicion.mjs'
 import {
   cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
 } from './xsas-contexto.mjs'
@@ -46,7 +47,7 @@ import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
-  ordenarPorAfinidad, pideMutacion, palabrasDe, afinidad, PESO, partirObjetivo,
+  ordenarPorAfinidad, pideMutacion, palabrasDe, afinidad, PESO, partirObjetivo, pideInvestigacion,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
 import { completarArgumentos } from './xsas-argumentos.mjs'
@@ -429,6 +430,20 @@ async function despachar(pedido, deps, t0) {
     }
   }
 
+  // ── N0 · «BUSCÁ AFUERA» ES RESEARCH, AUNQUE EL OBJETO SUENE A OTRO DOMINIO ────────────────
+  // «buscá en la web cuánto cotiza el dólar» iba a finanzas por «cotiza» (medido). La intención de
+  // búsqueda externa + su objeto mandan la frase al buscador real, que devuelve fuentes: REFERENCIA
+  // EXTERNA con provenance, nunca dato ECSAS. General: sin frases por objeto (ver `pideInvestigacion`).
+  if (pedido.tipo === TIPO.MENSAJE && pideInvestigacion(texto) && mapa.has('web.search')) {
+    const tool = mapa.get('web.search')
+    if (puedeUsar(pedido.actor, tool, 'web.search')) {
+      return resolverConTool({
+        pedido, clave: 'web.search', tool, nivel: NIVEL.DETERMINISTICO, via: 'investigacion_directa', t0,
+        query: deps.query ?? null, argsResueltos: { args: { query: texto }, falta: [] },
+      })
+    }
+  }
+
   const atajo = atajoPara(texto)
   if (atajo && mapa.has(atajo)) {
     const r = await resolverConTool({ pedido, clave: atajo, tool: mapa.get(atajo), nivel: NIVEL.DETERMINISTICO, via: 'atajo_exacto', t0, query: deps.query ?? null })
@@ -614,6 +629,31 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
  */
 async function atenderPendiente({ pedido, texto, mapa, deps, t0 }) {
   const ctx = await cargarContexto(deps.query, { actorId: pedido.actor?.id, correlacionId: pedido.correlationId })
+
+  // ── UN OBJETIVO COMPUESTO A MEDIAS SE RETOMA DESDE SUS PENDIENTES, CON EL BUS INTACTO ─────
+  // «hacelo» o el dato que faltaba re-ejecutan SÓLO los pasos bloqueados; lo verificado no se
+  // repite (no está en pendientes) y el bus conserva lo que los pasos resueltos ya produjeron.
+  const comp = ctx?.compuesto
+  if (comp?.pendientes?.length) {
+    const palabrasC = texto.trim().split(/\s+/).filter(Boolean)
+    const esOrden = /^(hacelo|dale|segu[ií]|continu[aá])\b/i.test(texto.trim())
+    if (esOrden || palabrasC.length <= 8) {
+      const resueltas = comp.pendientes.map((pn) => {
+        const tool = mapa.get(pn.clave)
+        if (!tool || !puedeUsar(pedido.actor, tool, pn.clave)) return { clausula: pn.clausula, residuo: `la capacidad ${pn.clave} ya no está disponible` }
+        const args = {}
+        let faltan = [...(pn.faltan ?? [])]
+        // El dato del mensaje llena el ÚNICO argumento que faltaba (determinístico, sin modelo).
+        if (!esOrden && faltan.length === 1) {
+          const valor = texto.replace(/^\s*(es\s+|de\s+|para\s+|la\s+obra\s+|el\s+proyecto\s+|el\s+cliente\s+)+/i, '').replace(/[.!]+\s*$/, '').trim()
+          if (valor) { args[faltan[0]] = valor; faltan = [] }
+        }
+        return { clausula: pn.clausula, clave: pn.clave, tool, args, faltan }
+      })
+      return ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar: true, busInicial: comp.bus ?? {} })
+    }
+  }
+
   const p = ctx?.pendiente
   if (!p?.clave || !Array.isArray(p.faltan) || !p.faltan.length) return null
   const palabras = texto.trim().split(/\s+/).filter(Boolean)
@@ -685,8 +725,9 @@ function resolverClausula({ clausula, pedido, mapa, catalogo, porArchivo, porLib
     if (!atajo && afinidad(clausula, tool) <= 0) continue
     if (!puedeUsar(pedido.actor, tool, clave)) { sinPermiso = clave; continue }
     const resuelto = argumentosPara(tool, pedido)
-    if (resuelto.falta.length) return { clausula, clave, residuo: `falta ${resuelto.falta.join(', ')}` }
-    return { clausula, clave, tool, args: resuelto.args }
+    // La cláusula con argumento faltante NO es residuo todavía: un paso ANTERIOR del mismo
+    // objetivo puede producirlo (A.output → B.input, por contrato). Se devuelve estructurada.
+    return { clausula, clave, tool, args: resuelto.args, faltan: resuelto.falta }
   }
   if (sinPermiso) return { clausula, clave: sinPermiso, residuo: `sin permiso para ${sinPermiso} con tu rol` }
   return { clausula, residuo: 'ninguna capacidad determinística la resuelve' }
@@ -708,32 +749,91 @@ async function atenderCompuesto({ pedido, texto, mapa, catalogo, porArchivo, por
   // El guardián anti-falso-compuesto: si no hay al menos DOS capacidades distintas, el objetivo
   // se atiende entero por el flujo normal (que puede razonar mejor la frase completa).
   if (clavesDistintas.size < 2) return null
+  return ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar: true })
+}
 
+/**
+ * EJECUTAR UN OBJETIVO POR PASOS, CON BUS Y REEVALUACIÓN.
+ *
+ * Rondas: en cada una corren los pasos cuyos argumentos ya están completos (de la frase, de la
+ * entidad verificada o del BUS — el output estructurado de los pasos anteriores, conectado POR
+ * CONTRATO en `xsas-composicion.mjs`). Después de cada paso el bus se actualiza y lo bloqueado se
+ * REEVALÚA: A→B→C sin volver a interpretar nada. Lo que al final sigue sin argumento es
+ * FALTA_DATO; un tipo que no coincide es CAPABILITY_INCOMPATIBLE; un paso que falla no borra a
+ * los demás. Si queda algo pendiente, el objetivo entero PERSISTE en el contexto para que
+ * «hacelo» o el dato faltante lo retomen desde donde quedó — sin repetir lo ya resuelto.
+ */
+async function ejecutarObjetivo({ pedido, resueltas, mapa, deps, t0, guardar = false, busInicial = {} }) {
   const bloques = []
   const acciones = []
   const evidencia = []
   const partesDatos = []
   const toolsUsadas = []
-  for (const r of resueltas) {
-    if (!r.tool) {
-      partesDatos.push({ pedido: r.clausula, estado: 'PENDIENTE_RAZONAMIENTO', motivo: r.residuo, tool: r.clave ?? null })
-      continue
-    }
-    const corrida = await correrTool({ clave: r.clave, tool: r.tool, pedido, query: deps.query ?? null, argsResueltos: { args: r.args, falta: [] } })
-    if (!corrida.ok) {
-      partesDatos.push({ pedido: r.clausula, estado: 'ERROR', motivo: corrida.motivo, tool: r.clave })
-      bloques.push(`**${r.clausula}** — no salió: ${corrida.motivo}`)
-      continue
-    }
-    toolsUsadas.push(r.clave)
-    acciones.push({ tool: r.clave, args: corrida.args })
-    evidencia.push({ que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString() })
-    partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos })
-    bloques.push(`**${r.clausula}**\n${textoDeDatos(corrida.datos) ?? '(sin texto: el dato está en datos.partes)'}`)
+  let bus = { ...busInicial }
+
+  const abiertas = resueltas.filter((r) => r.tool).map((r) => ({ ...r }))
+  for (const r of resueltas.filter((x) => !x.tool)) {
+    partesDatos.push({ pedido: r.clausula, estado: 'PENDIENTE_RAZONAMIENTO', motivo: r.residuo, tool: r.clave ?? null })
   }
+
+  // Rondas hasta que ninguna abierta pueda avanzar. El orden del pedido se respeta dentro de cada
+  // ronda; el tope de rondas es el número de pasos (no puede haber más olas de desbloqueo).
+  for (let ronda = 0; abiertas.length && ronda <= resueltas.length; ronda++) {
+    let avanzo = false
+    for (let i = 0; i < abiertas.length; i++) {
+      const r = abiertas[i]
+      let args = r.args
+      let faltan = r.faltan ?? []
+      let conexion = { incompatibles: [], conectados: [] }
+      if (faltan.length) {
+        conexion = completarDesdeBus(r.tool, { args, faltan }, bus)
+        args = conexion.args
+        faltan = conexion.faltan
+        r.incompatibles = conexion.incompatibles
+      }
+      if (faltan.length) continue // sigue bloqueada: quizá una ronda futura la destrabe
+      const corrida = await correrTool({ clave: r.clave, tool: r.tool, pedido, query: deps.query ?? null, argsResueltos: { args, falta: [] } })
+      abiertas.splice(i, 1); i -= 1; avanzo = true
+      if (!corrida.ok) {
+        partesDatos.push({ pedido: r.clausula, estado: 'ERROR', motivo: corrida.motivo, tool: r.clave })
+        bloques.push(`**${r.clausula}** — no salió: ${corrida.motivo}`)
+        continue
+      }
+      bus = sumarAlBus(bus, { tool: r.clave, datos: corrida.datos })
+      toolsUsadas.push(r.clave)
+      acciones.push({ tool: r.clave, args: corrida.args })
+      evidencia.push({
+        que: `resultado de «${r.clausula}»`, fuente: `tool ${r.clave}`, cuando: new Date().toISOString(),
+        ...(conexion.conectados.length ? { encadenado: conexion.conectados.map((c) => `${c.arg} ← ${c.origen}`).join(', ') } : {}),
+      })
+      partesDatos.push({ pedido: r.clausula, estado: 'RESUELTA', tool: r.clave, datos: corrida.datos, encadenado: conexion.conectados })
+      bloques.push(`**${r.clausula}**\n${textoDeDatos(corrida.datos) ?? '(sin texto: el dato está en datos.partes)'}`)
+    }
+    if (!avanzo) break
+  }
+
+  // Lo que quedó bloqueado, con su estado EXPLÍCITO.
+  for (const r of abiertas) {
+    if (r.incompatibles?.length) {
+      const inc = r.incompatibles[0]
+      partesDatos.push({ pedido: r.clausula, estado: 'CAPABILITY_INCOMPATIBLE', tool: r.clave, motivo: `«${inc.arg}» de ${inc.origen} es ${inc.recibio} y ${r.clave} espera ${inc.esperaba} — no invento conversiones` })
+    } else {
+      partesDatos.push({ pedido: r.clausula, estado: 'FALTA_DATO', tool: r.clave, faltan: r.faltan, motivo: `falta ${r.faltan.join(', ')}` })
+    }
+  }
+
   const pendientes = partesDatos.filter((p) => p.estado !== 'RESUELTA')
   if (pendientes.length) {
-    bloques.push(`⚠️ Quedan sin resolver por esta vía: ${pendientes.map((p) => `«${p.pedido}» (${p.motivo})`).join(' · ')}`)
+    bloques.push(`⚠️ Quedan sin resolver: ${pendientes.map((p) => `«${p.pedido}» (${p.motivo})`).join(' · ')}. Decime el dato que falta (o «hacelo» cuando esté) y retomo SÓLO eso.`)
+  }
+
+  // El objetivo a medias PERSISTE: el próximo mensaje retoma las pendientes con el bus intacto.
+  if (guardar && deps.query && pedido.correlationId) {
+    const conTool = pendientes.filter((p) => p.tool && p.estado === 'FALTA_DATO')
+    await guardarContexto(deps.query, {
+      actorId: pedido.actor?.id, correlacionId: pedido.correlationId,
+      parche: { compuesto: conTool.length ? { pendientes: conTool.map((p) => ({ clausula: p.pedido, clave: p.tool, faltan: p.faltan })), bus: busPersistible(bus) } : null },
+    })
   }
   const visible = filtrarPorVisibilidad({
     actor: pedido.actor,

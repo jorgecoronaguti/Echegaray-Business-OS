@@ -278,6 +278,32 @@ export function libsDeLasTools(porArchivo, mapa = null) {
 export function invalidarTools() { _cache = null }
 
 /**
+ * ¿LA FRASE PIDE INVESTIGAR AFUERA? — intención + objeto, no palabras sueltas. PURA.
+ *
+ * ═══ EL DEFECTO MEDIDO (02/09/2026) ═══
+ *
+ * «buscá en la web cuánto cotiza el dólar» ruteaba a finanzas por la palabra «cotiza»: el briefing
+ * de caja contestaba una pregunta que pedía UNA BÚSQUEDA EXTERNA. La regla general:
+ *
+ *   VERBO de búsqueda (buscar/investigar/averiguar)
+ *   + SEÑAL de afuera (web/internet/online) o de precio vigente (precio actual, cuánto vale/cotiza/cuesta)
+ *   − OBJETO del dominio obra (obra/proyecto/planos/presupuesto/cotización de X)
+ *
+ * «cotizame esta obra» no tiene verbo de búsqueda → cotizador. «buscá los comprobantes de julio»
+ * tiene verbo pero ninguna señal de afuera → dominio interno. «buscá cuánto sale la obra según los
+ * planos» nombra la obra → cotizador. Nada de frases hardcodeadas por objeto («dólar» no aparece).
+ */
+export function pideInvestigacion(texto) {
+  const t = normalizarFrase(texto)
+  const verbo = /\b(busca(me)?|buscar|investiga(r)?|averigua(r)?)\b/.test(t)
+  if (!verbo) return false
+  const señalAfuera = /\ben (la )?(web|internet)\b|\bonline\b/.test(t)
+  const señalPrecio = /\bprecio actual\b|\bvalor actual\b|\bcuanto (vale|cotiza|cuesta|sale)\b/.test(t)
+  const objetoDeObra = /\b(obra|obras|proyecto|planos?|presupuesto|cotizacion (de|del))\b/.test(t)
+  return (señalAfuera || señalPrecio) && !objetoDeObra
+}
+
+/**
  * UN OBJETIVO PUEDE TRAER VARIOS PEDIDOS ADENTRO. PURA y CONSERVADORA.
  *
  * «como estamos de caja y que vence esta semana» son dos capacidades distintas que hoy terminaban
