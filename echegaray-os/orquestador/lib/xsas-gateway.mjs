@@ -43,7 +43,7 @@ import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
-  ordenarPorAfinidad,
+  ordenarPorAfinidad, pideMutacion, palabrasDe,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
 import { completarArgumentos } from './xsas-argumentos.mjs'
@@ -303,7 +303,7 @@ export async function atender(bruto, deps = {}) {
 /** El ruteo, separado de `atender` para que el manejo de error y la traza sean uno solo. */
 async function despachar(pedido, deps, t0) {
   const registro = deps.registro ?? await toolsDelNucleo({ google: deps.google ?? null })
-  const { mapa, porArchivo, porLib = null } = registro
+  const { mapa, porArchivo, porLib = null, sinFirma = [] } = registro
 
   // ── N0 · LA INTENCIÓN PEDIDA POR SU NOMBRE ────────────────────────────────────────────────
   if (pedido.tipo === TIPO.INTENCION || pedido.tipo === TIPO.EVENTO) {
@@ -446,7 +446,7 @@ async function despachar(pedido, deps, t0) {
   const nivel = nivelDeRuteo(catalogo, eleccion)
 
   if (nivel <= NIVEL.CAPACIDAD) {
-    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, deps, texto, t0 })
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, sinFirma, deps, texto, t0 })
     if (conMotor) return conMotor
     // La skill aplica pero no hay tool ejecutable con lo que tenemos. NO se responde «no puedo»:
     // se escala, porque la política dice que menos modelo no puede significar peor respuesta.
@@ -466,8 +466,15 @@ async function despachar(pedido, deps, t0) {
   // el motor al lado, es exactamente la regla de este archivo al revés.
   //
   // Sólo cuando el ruteo fue DETERMINISTA y con confianza ALTA: si dudó, la duda manda y se razona.
-  if (eleccion.resolucion === 'determinista' && eleccion.confianza === 'alta') {
-    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, deps, texto, t0 })
+  //
+  // ═══ Y SIEMPRE QUE LA FRASE PIDA ESCRIBIR (01/09/2026) ═══
+  //
+  // Un pedido de mutación con dominio reconocido no puede terminar en un párrafo del modelo: el
+  // modelo no ejecuta escrituras. `intentarMotor` lo resuelve determinístico — corre la tool de
+  // escritura autorizada si la hay, o dice exactamente qué firma falta.
+  if ((eleccion.resolucion === 'determinista' && eleccion.confianza === 'alta')
+    || (pideMutacion(texto) && eleccion.skills.length)) {
+    const conMotor = await intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib, sinFirma, deps, texto, t0 })
     if (conMotor) return conMotor
   }
 
@@ -505,7 +512,14 @@ export function sinMotorEsDegradacion(eleccion) {
  * Recorre las tools que las skills elegidas CITAN y que el actor puede correr. La primera que tiene
  * todos sus argumentos gana. Si a una le falta un argumento, se guarda: puede estar en la frase.
  */
-async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib = null, deps, texto, t0 }) {
+async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, porLib = null, sinFirma = [], deps, texto, t0 }) {
+  // ═══ UN PEDIDO DE ESCRITURA NO SE CONTESTA CON UNA LECTURA (01/09/2026) ═══
+  //
+  // «necesito q edites el sheet flujo de fondos» corría `os.iva_anual`: la primera tool de LECTURA
+  // sin argumentos requeridos que las skills citaran, con afinidad de ruido. Para una mutación sólo
+  // son candidatas las tools que ESCRIBEN; si ninguna puede correr, la respuesta es determinística
+  // y dice qué falta — nunca una lectura que no honra el pedido ni un párrafo del modelo.
+  const mutacion = pideMutacion(texto)
   const conArgumentoEnLaFrase = []
   // ═══ CUÁL DE LAS CAPACIDADES DE LA SKILL, Y POR QUÉ NO LA PRIMERA (27/08/2026) ═══
   //
@@ -520,6 +534,7 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   for (const clave of ordenarPorAfinidad(texto, [...new Set(candidatas)], (c) => mapa.get(c))) {
     const tool = mapa.get(clave)
     if (!tool) continue
+    if (mutacion && !escribeAfuera(tool.capability)) continue
     if (!puedeUsar(pedido.actor, tool, clave)) { sinPermiso.push(clave); continue }
     const resuelto = argumentosPara(tool, pedido)
     if (resuelto.falta.length) { conArgumentoEnLaFrase.push({ clave, tool, resuelto }); continue }
@@ -555,16 +570,52 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   }
 
   const candidata = conArgumentoEnLaFrase[0]
-  if (!candidata) return null
+  if (!candidata) return mutacion ? escrituraNoDisponible({ pedido, eleccion, sinFirma, texto, t0 }) : null
   const ia = await puertaIa(deps)
   const completo = await completarArgumentos({
     ia, texto, tool: candidata.tool, args: candidata.resuelto.args, falta: candidata.resuelto.falta, logger: deps.logger ?? null,
   })
-  if (completo.falta.length) return null
+  // ═══ MUTACIÓN CON TOOL ALCANZABLE PERO SIN DATO: SE PIDE EL DATO, NO SE INVENTA NADA ═══
+  // La capacidad de escritura existe y puede correr; lo que falta es un argumento que ni el
+  // contexto ni la frase trajeron. Eso es NECESITA_DATO — distinto de «falta la firma».
+  if (completo.falta.length) {
+    if (!mutacion) return null
+    return respuestaError(pedido, {
+      tipo: 'falta_dato',
+      mensaje: `Para hacerlo me falta un dato: ${completo.falta.join(', ')} (capacidad ${candidata.clave}). Decímelo y lo ejecuto.`,
+      ms: Date.now() - t0,
+      capacidades: { nivel: NIVEL.DETERMINISTICO, skills: eleccion.skills ?? [], tools: [candidata.clave], via: 'mutacion_falta_dato', confianza: 'alta', motivo: 'mutacion_falta_dato' },
+    })
+  }
   return resolverConTool({
     pedido, clave: candidata.clave, tool: candidata.tool, nivel: NIVEL.CAPACIDAD,
     via: 'skill_con_motor_argumento_de_la_frase', skills: eleccion.skills, t0,
     query: deps.query ?? null, argsResueltos: { args: completo.args, falta: [] },
+  })
+}
+
+/**
+ * LA MUTACIÓN QUE HOY NO SE PUEDE EJECUTAR, DICHA CON NOMBRE Y APELLIDO.
+ *
+ * Un pedido de escritura sin tool de escritura ejecutable termina acá, nunca en una lectura ni en
+ * un modelo. Se distingue el motivo real: la capacidad existe y ESPERA LA FIRMA del dueño
+ * (`sinFirma`, la cola exacta de `TOOLS_AUTORIZADAS_A_ESCRIBIR`), o directamente no hay capacidad
+ * de escritura para ese dominio. `necesita_autorizacion` no es un fallo del sistema: es el sistema
+ * diciendo la verdad sobre sus cerraduras. PURA salvo el reloj.
+ */
+function escrituraNoDisponible({ pedido, eleccion, sinFirma, texto, t0 }) {
+  const palabras = palabrasDe(texto)
+  const esperanFirma = sinFirma.filter((clave) => palabras.some((w) => clave.toLowerCase().includes(w)))
+  const dominio = (eleccion.skills ?? []).join(', ') || 'ese dominio'
+  const mensaje = esperanFirma.length
+    ? `Entendí que querés modificar algo (${dominio}). No lo ejecuté: la(s) capacidad(es) de escritura que podrían hacerlo `
+      + `—${esperanFirma.join(', ')}— existen pero todavía no están autorizadas a escribir. Necesitan la firma del dueño en la lista de tools autorizadas.`
+    : `Entendí que querés modificar algo (${dominio}), pero hoy no tengo una capacidad de escritura autorizada que pueda hacerlo. No ejecuté nada.`
+  return respuestaError(pedido, {
+    tipo: 'necesita_autorizacion',
+    mensaje,
+    ms: Date.now() - t0,
+    capacidades: { nivel: NIVEL.DETERMINISTICO, skills: eleccion.skills ?? [], tools: [], via: 'mutacion_sin_escritura', confianza: 'alta', motivo: 'mutacion_sin_escritura' },
   })
 }
 

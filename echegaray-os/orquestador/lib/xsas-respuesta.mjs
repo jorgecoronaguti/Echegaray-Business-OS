@@ -44,11 +44,30 @@ function base(pedido) {
  * @param {object} [p.llm]        {proveedor, modelo, tokens, usd, intentos, fallbackDe, ms}
  * @param {string} [p.degradacion] si viene, el estado es DEGRADADO aunque haya respuesta
  */
+/**
+ * ═══ NUNCA RESPUESTA VACÍA (01/09/2026) ═══
+ *
+ * «XSAS contestó sin texto»: una tool devolvió datos sin `resumen_texto` y la respuesta salió con
+ * `respuesta: null` — para la persona, indistinguible de un sistema roto. La garantía vive ACÁ,
+ * en el molde, porque es la única salida común de las tres caras: toda respuesta ok lleva texto.
+ * Si la tool no trajo lectura en palabras, se muestran los DATOS y se dice que son datos — nunca
+ * se redacta un párrafo con un modelo para adornar lo que ya está.
+ */
+function textoDeRespaldo(datos) {
+  if (datos == null) {
+    return 'La operación terminó pero no dejó ni texto ni datos para mostrar. Eso es un defecto del OS: avisale a quien lo mantiene.'
+  }
+  let json
+  try { json = JSON.stringify(datos) } catch { json = String(datos) }
+  return `El resultado no trae lectura en palabras. Datos: ${json.slice(0, 600)}${json.length > 600 ? '…' : ''}`
+}
+
 export function respuestaOk(pedido, p = {}) {
   const r = base(pedido)
   r.ok = true
   r.estado = p.degradacion ? ESTADO.DEGRADADO : ESTADO.OK
-  r.respuesta = p.respuesta ?? null
+  const texto = typeof p.respuesta === 'string' ? p.respuesta.trim() : ''
+  r.respuesta = texto || textoDeRespaldo(p.datos ?? null)
   r.datos = p.datos ?? null
   r.acciones = { posibles: p.accionesPosibles ?? [], ejecutadas: p.accionesEjecutadas ?? [] }
   r.links = p.links ?? []

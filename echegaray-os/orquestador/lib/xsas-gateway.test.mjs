@@ -157,15 +157,17 @@ test('(27/08) el argumento que vino en la FRASE hace correr la tool que el conte
   // La extraccion usa `pedirTextoONull`, que devuelve el TEXTO pelado y no un objeto con `.texto`.
   const ia = { ...iaEspia(), pedirTextoONull: async () => '{"proyecto":"Quattropani"}' }
   const registro = registroDoble(corridas)
+  // El doble refleja producción: `plano.cotizar` es os.write AUTORIZADA (auditoría 27/08). Con
+  // drive.read el filtro de mutación la saltearía — y en la realidad nunca fue una lectura.
   registro.mapa.set('plano.cotizar', {
-    capability: 'drive.read',
+    capability: 'os.write',
     schema: { name: 'analizar_planos_y_cotizar', input_schema: { type: 'object', properties: { proyecto: { type: 'string', description: 'cliente u obra' } }, required: ['proyecto'] } },
     async run(a) { corridas.push(['plano.cotizar', a]); return { resumen_texto: 'cotizacion de ' + a.proyecto } },
   })
   registro.porArchivo.set('orquestador/lib/tools/plano.mjs', ['plano.cotizar'])
 
   const r = await atender(
-    { actor: ACTOR, canal: 'mattermost', mensaje: 'analiza los planos de Quattropani y armame una cotizacion', verificado_por: 'canal-mattermost' },
+    { actor: { ...ACTOR, permisos: ['drive.read', 'os.write'] }, canal: 'mattermost', mensaje: 'analiza los planos de Quattropani y armame una cotizacion', verificado_por: 'canal-mattermost' },
     { registro, catalogo, elegir, ia },
   )
   assert.equal(r.capacidades.via, 'skill_con_motor_argumento_de_la_frase')
@@ -181,19 +183,22 @@ test('(27/08) si el argumento NO esta en la frase, se escala como siempre: no se
   const ia = { ...espia, pedirTextoONull: async () => '{"proyecto":null}' }
   const registro = registroDoble(corridas)
   registro.mapa.set('plano.cotizar', {
-    capability: 'drive.read',
+    capability: 'os.write',
     schema: { name: 'analizar_planos_y_cotizar', input_schema: { type: 'object', properties: { proyecto: { type: 'string' } }, required: ['proyecto'] } },
     async run(a) { corridas.push(['plano.cotizar', a]); return { resumen_texto: 'no deberia correr' } },
   })
   registro.porArchivo.set('orquestador/lib/tools/plano.mjs', ['plano.cotizar'])
 
   const r = await atender(
-    { actor: ACTOR, canal: 'mattermost', mensaje: 'armame una cotizacion', verificado_por: 'canal-mattermost' },
+    { actor: { ...ACTOR, permisos: ['drive.read', 'os.write'] }, canal: 'mattermost', mensaje: 'armame una cotizacion', verificado_por: 'canal-mattermost' },
     { registro, catalogo, elegir, ia },
   )
   assert.ok(!corridas.some(([c]) => c === 'plano.cotizar'), 'la tool NO corre sin su argumento')
-  assert.equal(espia.llamadas.length, 1, 'se contesta con el modelo, como antes')
-  assert.ok(r.ok)
+  // CONTRATO NUEVO (01/09): una mutación con la tool alcanzable pero sin su dato NO se contesta
+  // con un párrafo del modelo — se pide el dato que falta, con el nombre del argumento.
+  assert.equal(espia.llamadas.length, 0, 'el modelo no redacta la respuesta de una mutación')
+  assert.equal(r.error.tipo, 'falta_dato')
+  assert.match(r.respuesta, /proyecto/)
 })
 
 // ── N2 / N3 · EL MODELO, Y QUÉ PASA CUANDO NO ESTÁ ────────────────────────────────────────────
@@ -551,4 +556,100 @@ test('un {ok:false} del motor también se firma como error', async () => {
   })
   assert.equal(filas[0][9], 'error')
   assert.match(filas[0][10], /Cloudflare/)
+})
+
+// ── EL BUG DEL 01/09: «necesito q edites el sheet flujo de fondos» → os.iva_anual, sin texto ──
+//
+// Dos defectos generales, no una frase: (1) un pedido de ESCRITURA se contestaba ejecutando la
+// primera tool de LECTURA sin argumentos requeridos que las skills citaran — afinidad 1, puro
+// ruido; (2) esa tool devolvía datos sin `resumen_texto` y la respuesta salía con texto null.
+
+import { pideMutacion } from './xsas-resolutores.mjs'
+
+test('pideMutacion reconoce el español real del dueño y no confunde sustantivos', () => {
+  for (const f of [
+    'necesito q edites el sheet flujo de fondos',
+    'editá el Sheet Flujo de Fondos',
+    'modificame el flujo de fondos',
+    'actualizalo',
+    'subilos donde corresponde',
+    'borrá esa fila',
+    'registrá el gasto',
+  ]) assert.equal(pideMutacion(f), true, `debía ser mutación: ${f}`)
+  for (const f of [
+    'que vence esta semana',
+    'como venimos',
+    'quien nos debe',
+    'cuanto pagamos de cargas sociales',
+    'cuanto cuesta la carga de un camion',
+    'mostrame el flujo de fondos',
+    'que registra el sheet de compras',
+  ]) assert.equal(pideMutacion(f), false, `NO debía ser mutación: ${f}`)
+})
+
+test('EL BUG: un pedido de escritura NO se contesta corriendo una tool de lectura cualquiera', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  // El escenario real: las skills de finanzas citan tools de LECTURA sin argumentos requeridos.
+  const catalogo = [{ clave: 'impuestos-construccion', modulos: ['orquestador/lib/tools/os-data.mjs'], tools: [] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['impuestos-construccion'], capacidades: ['advise.finance'], confianza: 'alta', motivo: 'keywords' })
+  const registro = registroDoble(corridas)
+  registro.sinFirma = ['sheet.operacion', 'sheet.render', 'drive.update']
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', mensaje: 'necesito q edites el sheet flujo de fondos' },
+    { registro, catalogo, elegir, ia },
+  )
+  assert.equal(corridas.length, 0, 'ninguna tool de lectura debe correr para un pedido de escritura')
+  assert.equal(ia.llamadas.length, 0, 'tampoco se le pasa la escritura a un modelo')
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'necesita_autorizacion')
+  assert.match(r.respuesta, /sheet\.operacion/, 'dice QUÉ capacidad espera la firma')
+  assert.ok(r.respuesta.length > 20, 'nunca respuesta vacía')
+})
+
+test('la frase EXACTA del dueño, con el ruteo real (sin elegir inyectado): no corre lectura ni modelo', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const r = await atender(
+    { actor: ACTOR, canal: 'app', mensaje: 'necesito q edites el sheet flujo de fondos' },
+    { registro: registroDoble(corridas), catalogo: [], ia },
+  )
+  assert.equal(corridas.length, 0)
+  assert.equal(ia.llamadas.length, 0)
+  assert.equal(r.error?.tipo, 'necesita_autorizacion')
+  assert.ok(typeof r.respuesta === 'string' && r.respuesta.trim().length > 0)
+})
+
+test('PRUEBA NEGATIVA: una mutación CON tool de escritura autorizada y con permiso SÍ ejecuta', async () => {
+  const corridas = []
+  const ia = iaEspia()
+  const mapa = new Map([['slides.crear', {
+    capability: 'drive.write',
+    schema: { name: 'crear_presentacion', description: 'Crea una presentación de Slides.', input_schema: { type: 'object', properties: {} } },
+    async run(a) { corridas.push(['slides.crear', a]); return { resumen_texto: 'presentación creada', id: 'f-1' } },
+  }]])
+  const catalogo = [{ clave: 'crear-presentacion-google-slides', modulos: ['orquestador/lib/tools/presentacion-tool.mjs'], tools: [] }]
+  const elegir = () => ({ resolucion: 'determinista', skills: ['crear-presentacion-google-slides'], capacidades: [], confianza: 'alta', motivo: 'keywords' })
+  const r = await atender(
+    { actor: { id: 'u-jorge', rol: 'direccion', permisos: ['drive.read', 'drive.write'] }, canal: 'app', mensaje: 'creame la presentacion del avance' },
+    { registro: { mapa, porArchivo: new Map([['orquestador/lib/tools/presentacion-tool.mjs', ['slides.crear']]]), fallaron: [] }, catalogo, elegir, ia },
+  )
+  assert.equal(r.ok, true)
+  assert.equal(corridas.length, 1, 'la escritura autorizada corre, la detección de mutación no la bloquea')
+  assert.equal(ia.llamadas.length, 0)
+})
+
+test('NUNCA RESPUESTA VACÍA: una tool ok sin resumen_texto igual produce texto para la persona', async () => {
+  const mapa = new Map([['os.numero', {
+    capability: 'os.read',
+    schema: { name: 'numero', input_schema: { type: 'object', properties: {} } },
+    async run() { return { filas: 3, referencia: 'F-1250' } },
+  }]])
+  const r = await atender(
+    { actor: { id: 'u-jorge', rol: 'direccion', permisos: ['os.read'] }, canal: 'app', intencion: 'os.numero' },
+    { registro: { mapa, porArchivo: new Map(), fallaron: [] }, catalogo: [], ia: iaEspia() },
+  )
+  assert.equal(r.ok, true)
+  assert.ok(typeof r.respuesta === 'string' && r.respuesta.trim().length > 0, 'respuesta jamás null/vacía')
+  assert.match(r.respuesta, /F-1250/, 'el texto de respaldo muestra el dato, no un genérico')
 })

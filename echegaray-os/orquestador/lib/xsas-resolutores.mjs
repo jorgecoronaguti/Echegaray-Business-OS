@@ -435,3 +435,93 @@ export function toolsDeSkill(ficha, porArchivo, porLib = null) {
   }
   return [...new Set(out)]
 }
+
+/**
+ * ¿LA FRASE PIDE MODIFICAR ALGO? — el corte que faltaba el 01/09/2026.
+ *
+ * «necesito q edites el sheet flujo de fondos» ruteaba a `os.iva_anual`: un pedido de ESCRITURA se
+ * contestaba con la primera tool de LECTURA sin argumentos requeridos que las skills citaran. El
+ * ruteo distinguía dominio pero no distinguía leer de escribir, que es la diferencia que gobierna
+ * todo lo demás (permisos, firma, verificación).
+ *
+ * Son FORMAS exactas normalizadas, no raíces: la raíz de «cargar» está en «cargas sociales» y la de
+ * «marcar» en «qué marca de cemento». Y las formas en -a y los infinitivos son AMBIGUOS — «cambia»
+ * es imperativo vos («cambiá» sin tilde) pero también indicativo («¿qué cambia si…?»), «cambiar» es
+ * pedido («quiero cambiar X») pero también pregunta («¿puede cambiar el precio?»)—, así que sólo
+ * cuentan si la palabra ANTERIOR no las vuelve pregunta o indicativo. Las formas inequívocas
+ * (subjuntivo vos «edites», imperativo con clítico «actualizalo», «subilos») cuentan siempre.
+ *
+ * La lista crece cuando el español real del dueño muestre una forma que falta — el costo de un falso
+ * negativo es el ruteo de siempre, el de un falso positivo es bloquear una lectura, y por eso se
+ * peca de corto. PURA.
+ */
+const FORMAS_INEQUIVOCAS = new Set([
+  'edites', 'editame', 'editalo', 'editala',
+  'escribas', 'escribime', 'escribilo',
+  'modifiques', 'modificame', 'modificalo', 'modificala',
+  'cambies', 'cambiame', 'cambialo', 'cambiala',
+  'actualices', 'actualizame', 'actualizalo', 'actualizala', 'actualizalos',
+  'corrijas', 'corregime', 'corregilo', 'corregilos',
+  'borres', 'borrame', 'borralo', 'borrala',
+  'elimines', 'eliminalo', 'eliminala',
+  'renombres',
+  'muevas', 'movelo', 'movela', 'movelos',
+  'subas', 'subime', 'subilo', 'subila', 'subilos', 'subilas',
+  'registres', 'registrame', 'registralo',
+  'agregues', 'agregame', 'agregalo', 'agregale',
+  'anotes', 'anotame', 'anotalo',
+  'insertes',
+  'guardes', 'guardame', 'guardalo',
+  'completes', 'completalo', 'completala',
+  'crees', 'creame', 'crealo', 'creala',
+  'generes', 'generame', 'generalo',
+  'armes', 'armame', 'armalo', 'armala',
+  'marques', 'marcalo', 'marcala', 'marcame',
+  'cargues', 'cargame', 'cargalo', 'cargala',
+  'concilies', 'conciliame', 'concilialo',
+  'mandes', 'mandame', 'mandale', 'mandalo',
+  'envies', 'enviame', 'enviale', 'envialo',
+])
+
+const FORMAS_AMBIGUAS = new Set([
+  'edita', 'edite', 'editar', 'editen',
+  'escribi', 'escriba', 'escribir',
+  'modifica', 'modifique', 'modificar',
+  'cambia', 'cambie', 'cambiar',
+  'actualiza', 'actualice', 'actualizar',
+  'corrige', 'corrija', 'corregir',
+  'borra', 'borre', 'borrar',
+  'elimina', 'elimine', 'eliminar',
+  'renombra', 'renombre', 'renombrar',
+  'move', 'mueve', 'mueva', 'mover',
+  'subi', 'suba', 'subir',
+  'registra', 'registre', 'registrar',
+  'agrega', 'agregue', 'agregar',
+  'anota', 'anote', 'anotar',
+  'inserta', 'inserte', 'insertar',
+  'guarda', 'guarde', 'guardar',
+  'completa', 'complete', 'completar',
+  'crea', 'cree', 'crear',
+  'genera', 'genere', 'generar',
+  'arma', 'arme', 'armar',
+  'marcar',
+  'cargar',
+  'concilia', 'concilie', 'conciliar',
+  'manda', 'mande', 'mandar',
+  'envia', 'envie', 'enviar',
+])
+
+/** Delante de una forma ambigua, estas palabras la vuelven pregunta, condición o indicativo. */
+const ANTES_NO_ES_ORDEN = new Set([
+  'que', 'q', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'como', 'si', 'cual', 'cuales',
+  'quien', 'quienes', 'donde', 'cuando', 'no', 'se', 'a', 'de', 'para', 'por', 'al',
+  'puede', 'pueden', 'podria', 'podrian', 'va', 'van', 'suele', 'suelen', 'deberia', 'deberian',
+  'me', 'te', 'le', 'lo', 'la', 'los', 'las', 'nos', 'les',
+])
+
+/** ¿El texto pide una mutación? Mira palabra por palabra sobre la frase normalizada. PURA. */
+export function pideMutacion(texto) {
+  const palabras = normalizarFrase(texto).split(' ')
+  return palabras.some((w, i) => FORMAS_INEQUIVOCAS.has(w)
+    || (FORMAS_AMBIGUAS.has(w) && (i === 0 || !ANTES_NO_ES_ORDEN.has(palabras[i - 1]))))
+}
