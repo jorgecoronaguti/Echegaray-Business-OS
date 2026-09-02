@@ -28,6 +28,7 @@ import { query } from '../db.mjs'
 import { correr } from '../plano/pipeline.mjs'
 import { agruparPartidas, armar, persistir, cascadaDe } from '../plano/cotizacion-v0.mjs'
 import { subirPlanosAlProyecto } from '../plano/adjuntos.mjs'
+import { razonar, textoDeRazonamiento } from '../plano/razonamiento.mjs'
 
 const money = (n) => (n === null || n === undefined ? 'sin dato' : `$ ${Math.round(Number(n)).toLocaleString('es-AR')}`)
 
@@ -57,6 +58,52 @@ export function resumen({ r, cot, cascada, numero }) {
 
 export function planoTools(google) {
   return {
+    // ═══ EL RAZONAMIENTO DEL COTIZADOR (dueño, 02/09/2026) — LECTURA, NO ESCRIBE NADA ═══
+    //
+    // Contesta los pasos que un cotizador se hace sobre los planos de un proyecto: superficies,
+    // bases por tipo con secciones, muertos de anclaje, fundación lineal, sísmica, columnas y
+    // encadenados, luces entre apoyos, el barrido de lo leído, y las excavaciones CON profundidad
+    // (o su faltante con nombre). Reusa el MISMO pipeline que cotiza — con las láminas ya
+    // interpretadas en caché la corrida no paga ninguna llamada de visión.
+    'plano.razonamiento': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'razonamiento_del_cotizador',
+        description:
+          'RESPONDE, paso por paso y con cita del plano, el razonamiento geométrico del cotizador sobre un proyecto: superficies (impronta, cubierta, semicubierta), cuántas bases por tipo y sus secciones, muertos de anclaje, vigas de fundación, arriostramientos, vigas de carga, si la documentación menciona lo sísmico, columnas y encadenados, luces entre columna y columna, el barrido X/Y del plano y las excavaciones con su PROFUNDIDAD. USALO cuando el dueño pregunte "cuántas bases tiene [obra]", "qué superficie cubierta tiene [obra]", "qué profundidad tienen las excavaciones de [obra]", "qué luces hay entre columnas", "razonamiento del cotizador de [obra]", "qué secciones tienen las columnas". Lo que la documentación no declara sale como FALTA con nombre — nunca una medida típica ni un supuesto.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            proyecto: { type: 'string', description: 'cliente, obra o proyecto cuyos planos hay que razonar (ej. "Quattropani")' },
+          },
+          required: ['proyecto'],
+        },
+      },
+      async run(input) {
+        const proyecto = String(input?.proyecto ?? '').trim()
+        if (!proyecto) return { error: 'necesito de qué cliente u obra son los planos' }
+        try {
+          const r = await correr({ query, google, termino: proyecto })
+          if (!r.documentos.planos.legibles.length) {
+            return {
+              error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
+              resumen_texto: `Busqué «${proyecto}» en el índice de Drive: ${r.documentos.total} documentos, ninguno es un plano que pueda abrir.`,
+            }
+          }
+          const rz = razonar(r)
+          return {
+            proyecto,
+            planos: r.documentos.planos.legibles.map((d) => d.name),
+            pasos: rz,
+            llamadas_ia: r.ia.llamadas,
+            resumen_texto: textoDeRazonamiento(rz, { proyecto }),
+          }
+        } catch (e) {
+          return { error: `no pude razonar los planos de ${proyecto}: ${String(e?.message ?? e).slice(0, 200)}` }
+        }
+      },
+    },
     'plano.cotizar': {
       capability: 'os.write',
       account: 'ecsas',

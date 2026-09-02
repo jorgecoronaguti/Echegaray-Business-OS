@@ -73,7 +73,7 @@ export const PROMPT = [
   '  "elementos": [{',
   '    "id":"C1", "nombre":"Columna de hormigón C1", "sistema":"hormigon_armado",',
   '    "forma":"prisma",',
-  '    "dimensiones":{"ancho_m":0.30,"alto_m":0.50,"largo_m":3.50,"espesor_m":null,"area_m2":null},',
+  '    "dimensiones":{"ancho_m":0.30,"alto_m":0.50,"largo_m":3.50,"espesor_m":null,"area_m2":null,"profundidad_m":null},',
   '    "dimensiones_texto":{"ancho_m":"C1(30-50)","alto_m":"C1(30-50)","largo_m":"H=3.50m"},',
   '    "repeticion":{"modo":"conteo_directo","cantidad":8,"longitud_tramo_m":null,"separacion_m":null,',
   '                  "incluye_extremos":null,"texto_literal":"se ven 8 símbolos C1 en ESTRUCTURA FUNDACION"},',
@@ -146,7 +146,7 @@ export function extraerJson(texto) {
   try { return JSON.parse(sinCerca.slice(a, b + 1)) } catch { return null }
 }
 
-const CLAVES_DIM = Object.freeze([['ancho_m', 'ancho'], ['alto_m', 'alto'], ['largo_m', 'largo'], ['espesor_m', 'espesor'], ['area_m2', 'area']])
+const CLAVES_DIM = Object.freeze([['ancho_m', 'ancho'], ['alto_m', 'alto'], ['largo_m', 'largo'], ['espesor_m', 'espesor'], ['area_m2', 'area'], ['profundidad_m', 'profundidad']])
 
 /** Las dimensiones de un elemento, cada una con su procedencia. Las que el modelo no trajo salen
  *  como `FALTA_DATO` explícito y no como ausencia — un campo que no está se lee como cero. */
@@ -258,6 +258,29 @@ export function validarElemento(crudo, { archivo, archivoId, lamina } = {}) {
   }
 }
 
+/** Un número positivo o null — la grilla no admite «más o menos». PURA. */
+const numPos = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null)
+
+/** La grilla de la lámina, validada: dimensiones totales, luces entre ejes y superficies
+ *  DECLARADAS (cada una con su cita — sin texto literal, una superficie no entra). PURA. */
+export function validarGrilla(crudo) {
+  const g = crudo && typeof crudo === 'object' ? crudo : {}
+  return {
+    largoTotal: numPos(g.largo_total_m),
+    anchoTotal: numPos(g.ancho_total_m),
+    alturaLibre: numPos(g.altura_libre_m),
+    lucesEntreEjes: (Array.isArray(g.luces_entre_ejes_m) ? g.luces_entre_ejes_m : []).map(numPos).filter((v) => v !== null),
+    textoLiteral: typeof g.texto_literal === 'string' && g.texto_literal.trim() ? g.texto_literal.trim() : null,
+    superficiesDeclaradas: (Array.isArray(g.superficies_declaradas) ? g.superficies_declaradas : [])
+      .map((s) => ({
+        que: typeof s?.que === 'string' && s.que.trim() ? s.que.trim() : null,
+        area: numPos(s?.area_m2),
+        textoLiteral: typeof s?.texto_literal === 'string' && s.texto_literal.trim() ? s.texto_literal.trim() : null,
+      }))
+      .filter((s) => s.area !== null && s.textoLiteral !== null),
+  }
+}
+
 /** La lámina entera, validada. Lo que no valida no se pierde: se cuenta en `descartados`. */
 export function validarLamina(crudo, { archivo, archivoId } = {}) {
   const lamina = String(crudo?.lamina?.codigo ?? crudo?.lamina?.titulo ?? archivo ?? 's/n')
@@ -271,6 +294,12 @@ export function validarLamina(crudo, { archivo, archivoId } = {}) {
     archivo, archivoId,
     proyecto: crudo?.proyecto ?? {},
     lamina: { codigo: lamina, titulo: crudo?.lamina?.titulo ?? null, tipo: crudo?.lamina?.tipo ?? null, escalas: crudo?.lamina?.escalas ?? [], vistas: crudo?.lamina?.vistas ?? [] },
+    // La GRILLA se pedía en el PROMPT desde el principio y acá se tiraba: superficies declaradas,
+    // dimensiones totales y luces entre ejes llegaban del modelo y no las leía nadie. Como el caché
+    // guarda el CRUDO, conservarla ahora vale RETROACTIVAMENTE para toda lámina ya interpretada,
+    // sin pagar una llamada de visión. Es la materia prima del razonamiento del cotizador
+    // (`razonamiento.mjs`): superficies, barrido X/Y y longitud entre apoyos.
+    grilla: validarGrilla(crudo?.grilla),
     elementos,
     descartados,
     referencias: Array.isArray(crudo?.referencias_a_otras_laminas) ? crudo.referencias_a_otras_laminas.map(String) : [],
