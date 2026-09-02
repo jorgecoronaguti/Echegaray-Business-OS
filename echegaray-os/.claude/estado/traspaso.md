@@ -1,6 +1,6 @@
 # XSAS — HANDOFF
 
-_actualizado: 2026-09-02_
+_actualizado: 2026-09-02 (GATE 1 del executor cerrado)_
 
 ## 1. OBJETIVO DEL PRODUCTO
 
@@ -52,11 +52,24 @@ URL producción: https://app.ecsas.com.ar/xsas — UI real conectada al Gateway.
 2. no hay composición multi-skill/workflow general
 3. no hay continuidad operacional real ("seguí con esto")
 4. escrituras requieren resolver firma/autorización
-5. routing natural puede seleccionar capacidades incorrectas
 
-Bug real reproducible: usuario "necesito q edites el sheet flujo de fondos" → se ruteó a
-`os.iva_anual` → "XSAS contestó sin texto". El routing operativo aún NO es confiable.
-**No declarar /xsas PASS hasta resolver tareas reales completas.**
+**GATE 1 (executor básico) CERRADO 02/09 y DESPLEGADO** (commits `b338b8a0`, `8eea0049`, `559aefd6`):
+- `pideMutacion` (xsas-resolutores): un pedido de ESCRITURA ya no se contesta con una tool de
+  lectura ni con un párrafo del modelo. Formas verbales exactas + desambiguación por palabra
+  anterior («¿qué genera más costo?» no es mutación).
+- mutación sin tool de escritura ejecutable → `necesita_autorizacion` nombrando la cola `sinFirma`;
+  con tool alcanzable pero sin dato → `falta_dato` nombrando el argumento; con tool autorizada →
+  ejecuta (probado con doble).
+- NUNCA respuesta vacía: garantía central en `respuestaOk` (respaldo con los datos) +
+  `textoDeDatos` lee `resumen[]` (caja.vencido salía sin texto teniendo la lectura adentro).
+- E2E VIVO contra producción (127.0.0.1:8791/xsas): la frase exacta del bug → necesita_autorizacion
+  con texto, 0 LLM, traza en `orq.xsas_requests` verificada; «que vence esta semana» →
+  `caja.vencido` con datos reales, 0 LLM.
+- Cambio de contrato declarado: los dobles de `plano.cotizar` pasaron a `os.write` (su capability
+  real desde 27/08); «armame una cotizacion» sin proyecto → `falta_dato` determinístico.
+- Rojo PREEXISTENTE que queda: `caso-controlado-circuito.pg.test.mjs` («evidencia con fecha
+  futura», 2026-09-02T03:00Z) — fecha-dependiente, NO tocado por este gate, pendiente de arreglo.
+- Cierre firmado por tests + E2E vivo; SIN auditor tercero (instrucción de consumo de esta sesión).
 
 ## 5. CRITERIO DAILY WORK REPLACEMENT
 
@@ -107,9 +120,13 @@ regla/rendimiento/composición reutilizable. Una corrección humana NO se vuelve
 
 ## 9. ESTADO TÉCNICO A CONSERVAR (git real, 2026-09-02)
 
-- **HEAD main:** `1e4af528` — "fix(caja): el gráfico efectivo/banco muestra los egresos y cada bloque
-  cuelga de su propia fila". Árbol LIMPIO, `main` == `origin/main`.
-- **Producción** (`~/echegaray-os/produccion/echegaray-os`): `1e4af528`, == main (0/0). Desplegada.
+- **HEAD main:** `559aefd6` — GATE 1 executor + fix emoji UI. Árbol LIMPIO salvo este traspaso,
+  `main` == `origin/main` (pusheado 02/09).
+- **Producción** (`~/echegaray-os/produccion/echegaray-os`): `559aefd6`, == main. Servicio
+  `echegaray-xsas-gateway` (user unit; es quien sirve /xsas, `servidor-entrante.mjs`) reiniciado y
+  verificado vivo con el código nuevo. OJO: el MAPA dice que los servicios corren de
+  `deploy-comunicacion` — quedó VIEJO: corren de `produccion/echegaray-os`. La UI (Conversacion.tsx)
+  necesita build de Next para verse — NO hecho (cosmético, sólo el 📎).
 - **Migraciones pendientes:** ninguna conocida de esta sesión (`reasoner_required_reason` en
   `orq.xsas_requests` ya APLICADA en sesiones previas).
 - **Handbrakes:** `SHEETS-CONGELADOS` — última señal PUESTA (marca de `congelador-sheets.mjs` NO se
@@ -130,8 +147,8 @@ solapa /xsas en la navegación.
 
 No inventar campaña nueva. Prioridades:
 
-**P0 — convertir /xsas en herramienta operativa real:** routing natural confiable → adjuntos →
-multi-skill → continuidad → escrituras autorizadas.
+**P0 — convertir /xsas en herramienta operativa real:** ~~routing natural confiable~~ (GATE 1
+cerrado) → **GATE 2: adjuntos + continuidad** → GATE 3: multi-skill + mutaciones autorizadas.
 
 **P1 — perfeccionar el cotizador general:** motor geométrico/estructural → cómputo → precios/HH →
 riesgo → aprendizaje.

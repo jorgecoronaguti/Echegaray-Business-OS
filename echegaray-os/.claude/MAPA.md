@@ -73,13 +73,14 @@ node scripts/higiene-worktrees.mjs [--ejecutar]
 | `echegaray-compras-sync.timer` | Compras → `compra_sheet` (1 h) |
 | `echegaray-comprobantes-web.timer` | cola de comprobantes de la web (1 min) |
 
-**Los tres servicios del bot NO corren desde el árbol principal**: su `WorkingDirectory` es
-`.claude/worktrees/deploy-comunicacion/echegaray-os`, rama `deploy/comunicacion-protegido`.
-Desplegar el bot es `git -C .claude/worktrees/deploy-comunicacion merge main` **y después**
-reiniciar `comunicacion-worker`, `comunicacion-ws` y `asistencia-http`. Mergear a main y reiniciar
-**no despliega nada** — el 25/08 esa rama estaba 312 commits atrás y el arreglo del bot nunca
-llegó. La prueba de que el código nuevo está vivo es un dato del proceso (la línea de arranque del
-worker enumera `fajos_mudos_ms`, que sólo existe en el código nuevo), no `is-active`.
+**Los servicios de comunicación y el gateway XSAS NO corren desde el árbol principal** (verificado
+02/09/2026): su `WorkingDirectory` es `~/echegaray-os/produccion/echegaray-os` (rama `main`, tira de
+GitHub). Son user units: `comunicacion-worker`, `comunicacion-ws`, `asistencia-http` y
+`echegaray-xsas-gateway` (éste sirve /xsas — `servidor-entrante.mjs`, puerto 8791). Desplegar es
+`git push origin main` → `git -C ~/echegaray-os/produccion/echegaray-os pull --ff-only` → reiniciar
+el servicio que corresponda con `systemctl --user restart`. Mergear a main y reiniciar sin el pull
+**no despliega nada** (el 25/08 un arreglo del bot nunca llegó por esto). La prueba de que el código
+nuevo está vivo es un dato del proceso, no `is-active`. La UI web necesita además el build de Next.
 `orq-worker` y `orq-interactive` sí corren del árbol principal: verificá `WorkingDirectory`.
 
 ## La inteligencia — dónde vive cada cosa
