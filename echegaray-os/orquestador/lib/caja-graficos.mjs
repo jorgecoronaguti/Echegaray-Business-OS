@@ -64,7 +64,10 @@ export const FILA_ANCLA = 22
 export const COL_ANCLA = 0
 /** El alto y el ancho de cada uno. Dos por fila: los cuatro entran en 1.120px, el ancho de la grilla. */
 const ANCHO_PX = 552
-const ALTO_PX = 300
+// 284 y no 300: las filas de CAJA miden 20px, así que un bloque de 15 filas mide 300px justos y un
+// gráfico de 300 quedaba PEGADO borde con borde al de abajo (reclamo del dueño, 02/09). Con 284
+// quedan 16px de aire entre bloques sin mover ninguna ancla.
+const ALTO_PX = 284
 /**
  * FILAS DE GRILLA QUE OCUPA UN BLOQUE VERTICAL. Cada bloque cuelga de su PROPIA celda ancla (no se
  * apila por offset — ver `base`). Una fila vacía de la grilla mide ~21px; un gráfico de 300px entra en
