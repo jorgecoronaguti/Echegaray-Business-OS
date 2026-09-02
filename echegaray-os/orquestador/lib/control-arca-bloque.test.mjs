@@ -65,24 +65,24 @@ test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
 })
 
 test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
-  // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_FALTAN_MONTO que publica Proveedores:
+  // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_SIN_CARGAR_MONTO que publica Proveedores:
   // dos cifras parecidas, con nombres parecidos, respondiendo preguntas distintas.
   const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
   assert.ok(g, 'la línea global existe')
-  assert.match(String(g[1]), /ARCA_FALTAN_MONTO/, 'la cifra sale del nombre, no de un recálculo local')
+  assert.match(String(g[1]), /ARCA_SIN_CARGAR_MONTO/, 'la cifra sale del nombre, no de un recálculo local')
   assert.match(String(g[0]), /Compras ENTERA, no de esta pestaña/, 'y dice de qué universo es')
 })
 
 // ═══ EL DEFECTO · UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
 //
-// Medido en el archivo vivo: `Materiales!B53` tenía `=ARCA_FALTAN_MONTO` pelado y mostraba
+// Medido en el archivo vivo: `Materiales!B53` tenía `=ARCA_SIN_CARGAR_MONTO` pelado y mostraba
 // `"0010-00000001"` —un número de comprobante— porque el nombre había quedado anclado en una celda
 // del layout anterior de "Proveedores". `Proveedores!G11`, el único otro lector del mismo nombre, ya
 // llevaba la guarda desde el 14/08 y por eso mostraba "—". Mismo nombre roto, dos lectores, uno solo
 // defendido: el indefenso dibuja un comprobante como si fuera plata, y eso no se ve.
 test('EL DEFECTO · la cifra global no se publica sin comprobar que es un número', () => {
   const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
-  assert.match(String(g[1]), /ISNUMBER\(ARCA_FALTAN_MONTO\)/,
+  assert.match(String(g[1]), /ISNUMBER\(ARCA_SIN_CARGAR_MONTO\)/,
     'cita el rango con nombre sin verificar su especie: si el nombre quedó sobre un CUIT o un comprobante, esta celda lo publica como plata')
   assert.match(String(g[1]), /IFERROR\(/,
     'sin IFERROR, el día que el nombre se retire por mentir esta celda queda en #NAME? en vez de "—"')

@@ -571,7 +571,7 @@ test('la columna Fecha declara su formato UNA vez, y es DATE', () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 //
 // EL DEFECTO MEDIDO (05/08). En el archivo vivo, `ARCA_COMPRAS_TOTAL` prometía un importe y devolvía
-// "0001-00000204" —un número de comprobante— y `ARCA_FALTAN_N` prometía un contador y devolvía
+// "0001-00000204" —un número de comprobante— y `ARCA_SIN_CARGAR_N` prometía un contador y devolvía
 // "30-71647696-7", un CUIT. Los dos son valores de la LISTA de comprobantes faltantes, que vive
 // veinte filas debajo del bloque de cobertura. Un nombre que resuelve a la lista en vez de al bloque
 // no da error en ningún lado: lo muestran Recurrentes, Estructura, Materiales y el Cash Flow Mensual.
@@ -878,7 +878,7 @@ test('EL DEFECTO · los importes pegados del bloque de ARCA viajan como entero, 
 
 // ═══ LOS DOS NOMBRES QUE OTRAS PESTAÑAS CITAN, ANCLADOS AL RÓTULO Y NO A UNA FILA ═══
 //
-// `ARCA_FALTAN_MONTO` y `ARCA_FALTAN_N` son los únicos dos rangos del bloque que se leen desde afuera
+// `ARCA_SIN_CARGAR_MONTO` y `ARCA_SIN_CARGAR_N` son los únicos dos rangos del bloque que se leen desde afuera
 // (Materiales!B53 y Proveedores!G11/H11). Medido en el archivo vivo el 15/08/2026: apuntaban a
 // Proveedores!B144 = "23-36911157-4" (un CUIT) y C144 = "0010-00000001" (un comprobante), mientras el
 // bloque vivía en las filas 176-182 — un layout anterior fosilizado.
@@ -894,15 +894,15 @@ test('los dos rangos de ARCA que otras pestañas citan caen sobre el contador y 
   assert.ok(cabecera, 'no encontré la cabecera del bloque de ARCA en la grilla que el generador escribe')
   assert.deepEqual(faltan, [], 'un rótulo con nombre colgando que no está en la grilla deja su rango donde estaba')
   const donde = Object.fromEntries(destinos.map((d) => [d.name, d]))
-  assert.deepEqual(Object.keys(donde).sort(), ['ARCA_FALTAN_MONTO', 'ARCA_FALTAN_N'])
+  assert.deepEqual(Object.keys(donde).sort(), ['ARCA_SIN_CARGAR_MONTO', 'ARCA_SIN_CARGAR_N'])
   // Los dos sobre la MISMA fila que la línea "sin cargar en Compras" — la que el generador escribió.
-  assert.equal(donde.ARCA_FALTAN_N.fila, p.g.fArcaFaltan)
-  assert.equal(donde.ARCA_FALTAN_MONTO.fila, p.g.fArcaFaltan)
+  assert.equal(donde.ARCA_SIN_CARGAR_N.fila, p.g.fArcaFaltan)
+  assert.equal(donde.ARCA_SIN_CARGAR_MONTO.fila, p.g.fArcaFaltan)
   // Y cada uno sobre su especie: el contador cuenta filas, el importe las suma.
-  assert.match(String(p.valor(donde.ARCA_FALTAN_N.fila, donde.ARCA_FALTAN_N.col)), /^=COUNTIF\(/,
-    'ARCA_FALTAN_N no cae sobre el contador: publica lo que haya en esa columna')
-  assert.match(String(p.valor(donde.ARCA_FALTAN_MONTO.fila, donde.ARCA_FALTAN_MONTO.col)), /^=SUM\(/,
-    'ARCA_FALTAN_MONTO no cae sobre la plata: publica lo que haya en esa columna')
+  assert.match(String(p.valor(donde.ARCA_SIN_CARGAR_N.fila, donde.ARCA_SIN_CARGAR_N.col)), /^=COUNTIF\(/,
+    'ARCA_SIN_CARGAR_N no cae sobre el contador: publica lo que haya en esa columna')
+  assert.match(String(p.valor(donde.ARCA_SIN_CARGAR_MONTO.fila, donde.ARCA_SIN_CARGAR_MONTO.col)), /^=SUM\(/,
+    'ARCA_SIN_CARGAR_MONTO no cae sobre la plata: publica lo que haya en esa columna')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

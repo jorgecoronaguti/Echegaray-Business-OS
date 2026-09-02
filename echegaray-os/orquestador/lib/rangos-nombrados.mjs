@@ -28,8 +28,16 @@ export const ARCA = {
   enComprasMonto: 'ARCA_EN_COMPRAS_MONTO',
   sinNumeroN: 'ARCA_SIN_NUMERO_N',
   sinNumeroMonto: 'ARCA_SIN_NUMERO_MONTO',
-  faltanN: 'ARCA_FALTAN_N',
-  faltanMonto: 'ARCA_FALTAN_MONTO',
+  // ═══ RENOMBRADOS EL 02/09/2026: LOS NOMBRES VIEJOS QUEDARON FANTASMA EN GOOGLE ═══
+  //
+  // `ARCA_FALTAN_N` y `ARCA_FALTAN_MONTO` están RESERVADOS del lado del servidor: `addNamedRange`
+  // contesta «already exists» mientras el GET del archivo (completo, sin filtro de fields) devuelve
+  // 75 rangos y NINGUNO con ese nombre — no hay id que borrar ni rango que actualizar. Probado
+  // aislado con curl, dos veces. El nombre es plomería interna con una sola fuente (este mapa) y
+  // todas las fórmulas las escribe el generador, así que la salida barata es no pelearle al
+  // fantasma: nombres nuevos.
+  faltanN: 'ARCA_SIN_CARGAR_N',
+  faltanMonto: 'ARCA_SIN_CARGAR_MONTO',
   ventasN: 'ARCA_VENTAS_N',
   ventasMonto: 'ARCA_VENTAS_MONTO',
 }
@@ -426,10 +434,28 @@ export async function publicar(google, fileId, sheetId, destinos = [], { titulo 
     }
   }
 
-  const req = [...pedidos(sheetId, aPublicar, existentes), ...retirar(retirados, existentes)]
-  if (req.length) await google.spreadsheetBatchUpdate(fileId, req)
+  let req = [...pedidos(sheetId, aPublicar, existentes), ...retirar(retirados, existentes)]
+  // ═══ UN NOMBRE FANTASMA NO PUEDE TUMBAR EL LOTE ENTERO (02/09/2026) ═══
+  //
+  // Google puede tener un nombre RESERVADO que su propio GET no devuelve (visto con
+  // ARCA_FALTAN_N/MONTO): el add contesta «already exists», no hay id para borrar ni actualizar, y
+  // el batch es atómico — un fantasma dejaba la pestaña entera sin sus nombres. Se saca el nombre
+  // que choca y se reintenta con el resto, gritándolo: perder un nombre se ve (#NAME? en quien lo
+  // cite); perder los doce por uno es el defecto que rompió Proveedores.
+  const fantasmas = []
+  for (let intento = 0; req.length && intento < 6; intento++) {
+    try { await google.spreadsheetBatchUpdate(fileId, req); break } catch (e) {
+      const m = String(e?.message ?? '').match(/Cannot add named range with name: ([A-Za-z0-9_]+)/)
+      if (!m) throw e
+      fantasmas.push(m[1])
+      console.warn(`  ⚠ NOMBRE FANTASMA en Google: ${m[1]} figura como existente para addNamedRange pero el GET no lo devuelve. Se publica el resto sin él.`)
+      req = req.filter((r) => r.addNamedRange?.namedRange?.name !== m[1])
+      if (!req.length) break
+    }
+  }
   return {
-    nombres: aPublicar.length,
+    nombres: aPublicar.length - fantasmas.length,
+    fantasmas,
     verificado,
     malApuntados,
     /** Los que se borraron del archivo por no tener ninguna celda con la especie que prometen. */

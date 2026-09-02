@@ -156,7 +156,7 @@ export function celdasEncabezado() {
   //
   // ═══ UNA CELDA QUE PROMETE PLATA NO PUEDE MOSTRAR UN COMPROBANTE (14/08/2026) ═══
   //
-  // EL DEFECTO, medido en el archivo vivo: `ARCA_FALTAN_MONTO` vive hoy en `Materiales!B53`, que
+  // EL DEFECTO, medido en el archivo vivo: `ARCA_SIN_CARGAR_MONTO` vive hoy en `Materiales!B53`, que
   // publica `0038-00025483` — un número de comprobante. Estas dos celdas son sus ÚNICOS lectores, así
   // que la posición mostraba ese comprobante bajo el rótulo "Saldo" y un CUIT bajo "%". No es un
   // número equivocado: es un dato de otra especie dibujado como si fuera plata.
@@ -170,14 +170,14 @@ export function celdasEncabezado() {
   // lo DICE. Publicar un comprobante donde se promete plata es peor que no publicar nada; publicar
   // "—" sin avisar por qué es la mitad del trabajo, porque un guion se lee como "no hay deuda".
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
-  const arcaMonto = `IFERROR(IF(ISNUMBER(ARCA_FALTAN_MONTO);ARCA_FALTAN_MONTO;"—");"—")`
+  const arcaMonto = `IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_MONTO);ARCA_SIN_CARGAR_MONTO;"—");"—")`
   // EL RÓTULO NO PUEDE DERRAMAR: G y H de esta fila llevan el monto y el conteo, así que lo que no
   // entra en los 210px de la F se corta y no se lee. Decía "Facturado por ARCA que Compras no tiene
   // — hoy no se puede medir" (65 caracteres; entran 40). El "por qué no se puede medir" se mudó a la
   // nota de la celda del monto, que es donde se va a mirar cuando el número diga "—".
   set(F.arca, 5, `=IF(ISNUMBER($G$${F.arca});"ARCA que Compras no tiene";"${ALERTA} ARCA: hoy no se puede medir")`)
   set(F.arca, 6, `=${arcaMonto}`, 'monto')
-  set(F.arca, 7, '=IFERROR(IF(ISNUMBER(ARCA_FALTAN_N);ARCA_FALTAN_N;"—");"—")', 'entero')
+  set(F.arca, 7, '=IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_N);ARCA_SIN_CARGAR_N;"—");"—")', 'entero')
 
   // ── el control: dos caminos independientes al mismo total.
   // El aging suma por tramo de vencimiento; el medio de pago suma por instrumento. Si difieren, una

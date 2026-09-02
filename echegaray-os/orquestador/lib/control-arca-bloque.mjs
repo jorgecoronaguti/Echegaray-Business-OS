@@ -105,14 +105,14 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // ═══ EL ÚNICO NÚMERO GLOBAL, Y VA REFERENCIADO — NO RECALCULADO ═══
   //
   // Un comprobante que Compras no cargó no tiene rubro todavía, así que NO se puede repartir entre las
-  // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_FALTAN_MONTO`, que
+  // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_SIN_CARGAR_MONTO`, que
   // publica Proveedores. Calcularlo de nuevo acá creaba una segunda cifra parecida con otro nombre
   // ($13.090.051 contra $13,8M), que es fuente garantizada de desconfianza. Una definición, una fuente.
   //
   // ═══ Y UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
   //
   // MEDIDO EN EL ARCHIVO VIVO, hoy: `Materiales!B53` tiene esta fórmula y muestra `"0010-00000001"`
-  // —un número de comprobante— porque `ARCA_FALTAN_MONTO` quedó anclado en `Proveedores!C144`, una
+  // —un número de comprobante— porque `ARCA_SIN_CARGAR_MONTO` quedó anclado en `Proveedores!C144`, una
   // celda del layout anterior. La celda de al lado promete plata y publica un comprobante.
   //
   // La causa se cura en `lib/rangos-nombrados.mjs` (el nombre se reapunta o se retira) y esto es la
@@ -123,7 +123,7 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   //
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
   filas.push([`${ALERTA} ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña`,
-    '=IFERROR(IF(ISNUMBER(ARCA_FALTAN_MONTO);ARCA_FALTAN_MONTO;"—");"—")'])
+    '=IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_MONTO);ARCA_SIN_CARGAR_MONTO;"—");"—")'])
 
   // ═══ EL VEREDICTO ═══
   //

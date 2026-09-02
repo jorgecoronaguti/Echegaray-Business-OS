@@ -233,7 +233,7 @@ test('el período se compara contra un Date de Postgres, no contra su texto', ()
 test('EL CRUCE VA CONTRA COMPRAS ENTERA — una factura cargada en otro rubro NO es "ARCA sin Compras"', () => {
   // EL DEFECTO (04/08). El cruce corría sólo contra el universo comercial dentro de la ventana, así
   // que una factura cargada en un rubro de nómina, o con fecha fuera de la ventana, figuraba como
-  // "ARCA la registró y Compras no la tiene". Eso daba $13.090.051 donde ARCA_FALTAN_MONTO —el número
+  // "ARCA la registró y Compras no la tiene". Eso daba $13.090.051 donde ARCA_SIN_CARGAR_MONTO —el número
   // que Proveedores ya publica— daba $13,8M: dos cifras parecidas con nombres parecidos.
   const r = conciliar({
     comprobantes: [

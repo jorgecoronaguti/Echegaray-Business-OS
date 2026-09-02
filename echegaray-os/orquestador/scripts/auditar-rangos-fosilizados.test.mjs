@@ -73,13 +73,13 @@ test('una celda CON dato de otra especie pasa el control de "ciego": por eso hac
   const cuenta = contarConDato(grilla, { startRowIndex: 3, endRowIndex: 4, startColumnIndex: 0, endColumnIndex: 1 })
   assert.deepEqual(cuenta, { con: 1, total: 1 }, 'un CUIT es "dato": el auditor viejo lo daba por bueno')
   assert.deepEqual(
-    clasificarNombrados([{ nombre: 'ARCA_FALTAN_N', hoja: 'Proveedores', conDato: 1, celdas: 1 }], ['=ARCA_FALTAN_N&" comprobantes"'])
+    clasificarNombrados([{ nombre: 'ARCA_SIN_CARGAR_N', hoja: 'Proveedores', conDato: 1, celdas: 1 }], ['=ARCA_SIN_CARGAR_N&" comprobantes"'])
       .map((n) => n.estado),
     ['ok'], 'y lo clasificaba OK aunque la fórmula que lo lee muestre un CUIT')
 
   // La pregunta que faltaba, sobre el MISMO dato.
-  const mienten = mientenPorEspecie([{ nombre: 'ARCA_FALTAN_N', hoja: 'Proveedores', valor: '30-56736337-2' }])
-  assert.deepEqual(mienten.map((m) => m.nombre), ['ARCA_FALTAN_N'])
+  const mienten = mientenPorEspecie([{ nombre: 'ARCA_SIN_CARGAR_N', hoja: 'Proveedores', valor: '30-56736337-2' }])
+  assert.deepEqual(mienten.map((m) => m.nombre), ['ARCA_SIN_CARGAR_N'])
   assert.equal(mienten[0].espera, 'entero')
 })
 

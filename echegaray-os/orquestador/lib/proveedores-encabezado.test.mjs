@@ -172,12 +172,12 @@ test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', 
 
 // ═══ UNA CELDA QUE PROMETE PLATA NO PUEDE PUBLICAR UN COMPROBANTE (14/08/2026) ═══
 //
-// `ARCA_FALTAN_MONTO` vive hoy en `Materiales!B53`, que publica `0038-00025483`. Estas dos celdas son
+// `ARCA_SIN_CARGAR_MONTO` vive hoy en `Materiales!B53`, que publica `0038-00025483`. Estas dos celdas son
 // sus únicos lectores, así que la posición mostraba ese comprobante bajo el rótulo "Saldo" y un CUIT
 // bajo "%". El rango se cura en `rangos-nombrados.mjs`; acá se cura el lector, que hace falta igual:
 // mientras el nombre exista apuntando a cualquier lado, el que lo cita a ciegas publica lo que haya.
 test('las dos celdas de ARCA no publican lo que no sea un número', () => {
-  for (const [col, nombre] of [[6, 'ARCA_FALTAN_MONTO'], [7, 'ARCA_FALTAN_N']]) {
+  for (const [col, nombre] of [[6, 'ARCA_SIN_CARGAR_MONTO'], [7, 'ARCA_SIN_CARGAR_N']]) {
     const v = celda(F.arca, col)
     assert.ok(v.includes(`ISNUMBER(${nombre})`),
       `${nombre} se publica sin preguntar si es un número: un comprobante se dibujaría como plata`)

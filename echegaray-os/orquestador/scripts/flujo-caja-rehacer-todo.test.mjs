@@ -74,7 +74,7 @@ test('una línea de DETALLE de un aviso no es la causa: cuelga de su titular, no
 test('cuando el veredicto salió por STDOUT, la causa se busca ahí — que es donde el paso decidió su código', () => {
   const stdout = [
     '  Proveedores                       199 filas x 16 columnas (filas 110–308 de la pestaña)',
-    '  ⚠ RANGO CON NOMBRE QUE QUEDÓ MAL: ARCA_FALTAN_N vive en Proveedores!B128 = "30-56736337-2"',
+    '  ⚠ RANGO CON NOMBRE QUE QUEDÓ MAL: ARCA_SIN_CARGAR_N vive en Proveedores!B128 = "30-56736337-2"',
     '',
     '⚠ 22 celdas en error: NO retiro la pestaña vieja',
   ].join('\n')
