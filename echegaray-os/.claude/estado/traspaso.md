@@ -293,6 +293,25 @@ Orden del dueño: consolidar XSAS como IA empresarial general (no otro gate). Ce
   es no-op y producción queda vieja. El merge va en un Bash call SEPARADO desde el árbol principal,
   y el deploy se verifica POR HASH siempre.
 
+## 10octies. LAS 2 BRECHAS DEL NÚCLEO CERRADAS (02/09 noche, commits `fe387dd4`+`6abc34f4`+`9ec60734`, DESPLEGADOS)
+
+- **Composición A.output→B.input por CONTRATO** (`lib/xsas-composicion.mjs`, puro): bus de datos
+  con origen por campo; conexión sólo por nombre exacto + tipo exacto del `input_schema` — sin
+  conversiones (tipo distinto = `CAPABILITY_INCOMPATIBLE`), sin texto, sin modelo. Ejecutor por
+  RONDAS con reevaluación: bus (gratis) → extractor barato por cláusula → correr → reevaluar.
+  Falla parcial no borra progreso; la independiente corre aunque otra esté bloqueada. El objetivo
+  a medias persiste (pendientes+bus en `orq.xsas_contexto.compuesto`) y «hacelo»/el dato retoman
+  SÓLO lo bloqueado. E2E vivo: razonamiento→(proyecto por bus)→cotizar + estado_empresa, 3
+  capacidades, 46,7 s, 1 sola llamada de extracción (chat_cost), encadenado en la genealogía.
+- **Routing research vs dominio** (`pideInvestigacion`, general: verbo búsqueda + señal
+  afuera/precio − objeto de obra): «buscá en la web cuánto cotiza el dólar» → `web.search` vivo
+  con fuentes; «cotizame esta obra» → cotizador. Negativos de clase en tests.
+- Suite XSAS 221/221 · composición 9/9. Producción `9ec60734` por hash.
+- LIMITACIONES: no existe hoy en el registro un par real B→C conectado por argumento REQUERIDO
+  (la cadena viva probada es A→B por `proyecto`; B→C corre por orden, no por dato) · el extractor
+  barato puede copiar un genérico como valor («esta obra» → proyecto='obra'; visto vivo con un 403
+  de Drive de fondo) — pre-existente del flujo simple, declarado, no corregido acá.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
