@@ -43,6 +43,7 @@ import { completarDesdeBus, sumarAlBus, busPersistible } from './xsas-composicio
 import {
   cargarContexto, guardarContexto, caratulaDeLectura, acotarArchivos, referenciaContextual,
 } from './xsas-contexto.mjs'
+import { pideMemoria, responderMemoria, registrarIntercambio } from './xsas-memoria.mjs'
 import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
@@ -311,6 +312,21 @@ export async function atender(bruto, deps = {}) {
   }
 
   await registrarTraza(pedido, r, { query: deps.query ?? null, agente: deps.agente ?? null })
+
+  // ── LO CONVERSADO NO MUERE CON EL CHAT ────────────────────────────────────────────────────
+  // El intercambio queda en el RAW (`orq.xsas_mensaje`) y lo que el USUARIO afirmó se consolida
+  // en `orq.xsas_memoria` (crear / superseder / conflicto). Determinístico, aislado por actor,
+  // y nunca frena la respuesta: perder memoria degrada la continuidad, no este pedido.
+  if (pedido.tipo === TIPO.MENSAJE && deps.query && pedido.correlationId && pedido.actor?.id) {
+    await registrarIntercambio(deps.query, {
+      conversationId: pedido.correlationId,
+      messageId: pedido.requestId,
+      actorId: pedido.actor.id,
+      texto: textoDePedido(pedido),
+      adjuntos: pedido.adjuntos?.length ? pedido.adjuntos.map((a) => ({ nombre: a?.nombre ?? null })) : null,
+      respuesta: typeof r?.respuesta === 'string' ? r.respuesta : null,
+    })
+  }
   return r
 }
 
@@ -365,6 +381,26 @@ async function despachar(pedido, deps, t0) {
     // con vida propia), no se secuestra: la pendiente espera y el flujo sigue normal.
     const delPendiente = await atenderPendiente({ pedido, texto, mapa, deps, t0 })
     if (delPendiente) return delPendiente
+
+    // ── N0 · LA PREGUNTA POR LO CONVERSADO SE CONTESTA DE LA MEMORIA, NO DE UN MODELO ───────
+    // «¿qué habíamos decidido del proveedor de Quattropani?» en un chat NUEVO: la respuesta vive
+    // en `orq.xsas_memoria`, con su estado, su genealogía (qué superó a qué) y el chat de origen.
+    // Si no hay nada registrado, se dice — no se inventa. Cero tokens.
+    const mem = pideMemoria(texto)
+    if (mem.es) {
+      const desdeMemoria = await responderMemoria(deps.query, {
+        actorId: pedido.actor?.id, aspecto: mem.aspecto, texto: mem.resto || texto,
+      })
+      if (desdeMemoria) {
+        return respuestaOk(pedido, {
+          respuesta: desdeMemoria.respuesta,
+          datos: desdeMemoria.datos,
+          capacidades: { nivel: NIVEL.DETERMINISTICO, skills: [], tools: [], via: 'memoria_conversacional', confianza: 'alta', motivo: `consulta de memoria (${mem.aspecto})` },
+          evidencia: desdeMemoria.evidencia,
+          ms: Date.now() - t0,
+        })
+      }
+    }
   }
 
   // ── N0 · «¿QUÉ PODÉS HACER?» SE CONTESTA DEL REGISTRO, NO PREGUNTÁNDOLE A UN MODELO ───────
