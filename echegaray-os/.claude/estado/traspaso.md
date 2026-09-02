@@ -236,6 +236,30 @@ cascada de precios, freeze, oferta, plan-vs-real) NO es alcanzable desde el gate
 lo importa. El generador del PDF de presupuesto (`lib/presupuesto/formato-echegaray.mjs`) tampoco
 tiene tool. Son los candidatos naturales de los próximos hitos.
 
+## 10sexies. GATE 3 · HITO 2 — EL RAZONAMIENTO DEL COTIZADOR (02/09, desplegado, commit `33c436a7`)
+
+El dueño pidió (02/09) que el cotizador conteste sus 7 pasos: superficies (impronta/cubierta/
+semicubierta) · bases por tipo + muertos + secciones · vigas de fundación/arriostramiento/carga +
+sísmica · columnas + encadenados · longitud de viga entre columnas · barrido X/Y · excavaciones con
+PROFUNDIDAD.
+
+- **Tool `plano.razonamiento`** (drive.read, lectura pura) en `lib/tools/plano-tool.mjs`; el motor
+  es `lib/plano/razonamiento.mjs` (puro): clasificación por ROL con orden específico→general
+  («excavación de bases» ≠ base; muerto ≠ base; VF ≠ viga de carga), secciones sólo con cita,
+  sísmica = cita o DESCONOCIDO, excavaciones vía `computarExcavacion` (estaba huérfano) sólo con
+  ancho+largo+profundidad citados.
+- **Quick win estructural**: el PROMPT de `interpretar.mjs` pedía `grilla` (superficies declaradas,
+  dimensiones totales, luces entre ejes) desde siempre y `validarLamina` la TIRABA. Ahora se
+  conserva validada — y como el caché guarda el crudo, vale RETROACTIVAMENTE sin re-pagar visión.
+  `profundidad_m` entró al contrato de dimensiones (láminas ya cacheadas no la traen: sale como
+  FALTA, sin bump de versión de caché — decisión declarada).
+- **E2E vivo** («razonamiento del cotizador de quattropani…», 21,9 s, 0 llamadas de visión):
+  respuesta real con B0 60×60 (conflicto 8-vs-9 declarado), muertos separados, secciones citadas,
+  sísmica con cita, luces 6·6·6 m, impronta 18,3×10,9, y excavaciones = FALTA profundidad (honesto).
+- Tests: `razonamiento.test.mjs` (7) · plano completo exit 0 · XSAS 62/62.
+- Trampa REPETIDA y corregida en el acto: el primer `git merge` corrió DENTRO del worktree (no-op)
+  y producción quedó vieja — el deploy se verificó por el hash y se rehízo desde main.
+
 ## 11. PRÓXIMO TRABAJO
 
 No inventar campaña nueva. Prioridades:
