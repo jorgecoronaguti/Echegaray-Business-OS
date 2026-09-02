@@ -65,14 +65,61 @@ test('«cotizame esta obra» + plano adjunto CORRE plano.cotizar con los archivo
   assert.equal(args.archivos[0].contenido ?? undefined, undefined, 'los bytes no pueden viajar en acciones/traza')
 })
 
-test('UMBRAL: «mirá esta obra» + adjunto NO va al cotizador — sigue siendo ingesta', async () => {
+test('UN PLANO SIN FRASE MÁGICA VA AL COTIZADOR: «mirá esta obra» + plano pregunta la obra, no vuelca el archivo', async () => {
+  // ═══ CONTRATO NUEVO (dueño, 02/09 noche: «mira el log… no sirve») ═══
+  // Antes: la frase sin afinidad ≥5 mandaba el plano a la ingesta genérica, que le devolvía la
+  // extracción cruda. Ahora el ARCHIVO clasificado como plano arranca el cotizador aunque la
+  // frase no lo nombre; como «planta-fundaciones» no trae obra en el rótulo, pregunta SOLO eso.
   const corridas = []
   const r = await atender(
     { actor: DIRECCION, canal: 'app', mensaje: 'mirá esta obra', adjuntos: [PLANO] },
+    { registro: registroCon(corridas), catalogo: [], ia: extractorQueDevuelve({ proyecto: null }) },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'falta_dato')
+  assert.match(r.respuesta, /¿De qué obra o cliente/)
+  assert.equal(corridas.length, 0, 'sin proyecto la capacidad NO corre')
+})
+
+test('SIN FRASE MÁGICA + OBRA EN EL RÓTULO: «procesá esto» corre el cotizador con la obra INFERIDA y la declara', async () => {
+  // «Estructura San Francisco del Monte Entrepiso.pdf» + «procesá esto» (dueño, 02/09 20:46):
+  // preguntar «¿de qué obra?» es ignorar la respuesta que viaja en el nombre del archivo.
+  // Deducción determinística (razonadorMuerto prueba que NO tocó el modelo), declarada como
+  // inferencia corregible — nunca como hecho.
+  const corridas = []
+  const ADJ = { nombre: 'Estructura San Francisco del Monte Entrepiso.txt', contenido: 'ANALISIS DE CARGAS · perfilería · sobrecarga · H=6.10m' }
+  const r = await atender(
+    { actor: DIRECCION, canal: 'app', mensaje: 'procesá esto', adjuntos: [ADJ] },
+    { registro: registroCon(corridas), catalogo: [], ia: razonadorMuerto() },
+  )
+  assert.equal(r.ok, true, JSON.stringify(r.error ?? r.degradacion ?? ''))
+  assert.equal(r.capacidades.via, 'adjunto_con_motor')
+  assert.equal(corridas.length, 1)
+  assert.equal(corridas[0].proyecto, 'San Francisco del Monte')
+  assert.match(r.respuesta, /Obra tomada del nombre del archivo: «San Francisco del Monte»/)
+  assert.match(r.respuesta, /inferencia/, 'la inferencia se declara, no se presenta como hecho')
+})
+
+test('SIN OBRA EN EL RÓTULO: «procesá esto» + «Plano de Estructura.txt» pregunta la obra — nunca la extracción cruda', async () => {
+  const corridas = []
+  const r = await atender(
+    { actor: DIRECCION, canal: 'app', mensaje: 'procesá esto', adjuntos: [{ nombre: 'Plano de Estructura.txt', contenido: '2C 240 · K1 · ESTRUCTURA TECHO P.ALTA H=6.10m' }] },
+    { registro: registroCon(corridas), catalogo: [], ia: extractorQueDevuelve({ proyecto: null }) },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.error.tipo, 'falta_dato')
+  assert.match(r.respuesta, /¿De qué obra o cliente/)
+  assert.equal(corridas.length, 0)
+})
+
+test('UNA FACTURA NO ES UN PLANO: «procesá esto» + factura sigue en la ingesta de siempre', async () => {
+  const corridas = []
+  const r = await atender(
+    { actor: DIRECCION, canal: 'app', mensaje: 'procesá esto', adjuntos: [{ nombre: 'Factura A 0003-00012345.txt', contenido: 'FACTURA A · CUIT 30-11223344-5 · IVA 21% · total $120.000' }] },
     { registro: registroCon(corridas), catalogo: [], ia: razonadorMuerto() },
   )
   assert.equal(r.ok, true)
-  assert.equal(r.capacidades.via, 'archivo_ingesta', 'una palabra suelta no manda los adjuntos a una capacidad')
+  assert.equal(r.capacidades.via, 'archivo_ingesta', 'el cotizador no secuestra papeles administrativos')
   assert.equal(corridas.length, 0)
 })
 
