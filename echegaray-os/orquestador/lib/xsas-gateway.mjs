@@ -46,7 +46,7 @@ import { respuestaOk, respuestaError } from './xsas-respuesta.mjs'
 import { registrarTraza, RAZON_RAZONADOR } from './xsas-traza.mjs'
 import {
   toolsDelNucleo, atajoPara, ATAJOS_EN_OBRA, normalizarFrase, argumentosPara, puedeUsar, toolsDeSkill,
-  ordenarPorAfinidad, pideMutacion, palabrasDe,
+  ordenarPorAfinidad, pideMutacion, palabrasDe, afinidad, PESO,
 } from './xsas-resolutores.mjs'
 import { escribeAfuera } from './xsas-permisos.mjs'
 import { completarArgumentos } from './xsas-argumentos.mjs'
@@ -93,7 +93,12 @@ async function correrTool({ clave, tool, pedido, query = null, argsResueltos = n
       query, clave, tool, pedido, datos,
       error: falló ? String(datos.error ?? datos.motivo ?? 'la tool devolvió ok:false').slice(0, 300) : null,
     })
-    return { ok: true, datos, args }
+    // Los adjuntos crudos NO viajan de vuelta: en `acciones.ejecutadas` y en la traza un plano en
+    // base64 sería megabytes de ruido. Queda el nombre y el tamaño, que es lo auditable.
+    const argsVisibles = Array.isArray(args?.archivos)
+      ? { ...args, archivos: args.archivos.map((a) => ({ nombre: a?.nombre ?? null, bytes: a?.contenido_base64 ? Buffer.byteLength(a.contenido_base64, 'base64') : (a?.contenido?.length ?? null) })) }
+      : args
+    return { ok: true, datos, args: argsVisibles }
   } catch (e) {
     const motivo = `${clave} falló: ${String(e?.message ?? e).slice(0, 200)}`
     await firmarEscritura({ query, clave, tool, pedido, datos: null, error: motivo })
@@ -580,6 +585,70 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
 }
 
 /**
+ * ADJUNTOS + UNA FRASE QUE PIDE TRABAJO → LA TOOL QUE DECLARA CONSUMIRLOS.
+ *
+ * «cotizame esta obra» con dos planos adjuntos no es «leeme estos archivos»: es un pedido a una
+ * capacidad concreta, con los archivos como insumo. El mecanismo es GENERAL: una tool que puede
+ * recibir adjuntos lo declara con `adjuntos: true` en su registro, y acá se elige por la MISMA
+ * afinidad del ruteo normal — nada de frases hardcodeadas. La frase decide (dato ≠ instrucción:
+ * lo que diga el archivo adentro no rutea); los adjuntos viajan como `args.archivos`.
+ *
+ * Devuelve null cuando ninguna tool con adjuntos matchea la frase: el llamador sigue con la
+ * ingesta-y-descripción de siempre.
+ */
+async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) {
+  const utiles = lecturas.filter((l) => l.destino !== DESTINO.BANCO)
+  if (!utiles.length) return null
+  // El umbral pide DOS señales (cabeza + disparador): una palabra suelta que la cabeza de la tool
+  // menciona de paso («obra», «planos») no alcanza para mandarle los adjuntos — eso sería adivinar.
+  // «mirá esta obra» (3) sigue siendo ingesta; «cotizame esta obra» (5) y «cotizá esto» (6) matchean.
+  const UMBRAL = PESO.CABEZA + PESO.DISPARADOR
+  let mejor = null
+  for (const [clave, tool] of mapa.entries()) {
+    if (tool?.adjuntos !== true) continue
+    const a = afinidad(texto, tool)
+    if (a >= UMBRAL && (!mejor || a > mejor.a)) mejor = { clave, tool, a }
+  }
+  if (!mejor) return null
+  const { clave, tool } = mejor
+  if (!puedeUsar(pedido.actor, tool, clave)) {
+    return respuestaError(pedido, {
+      tipo: 'sin_permiso',
+      mensaje: `los adjuntos van a la capacidad ${clave}, pero tu rol («${pedido.actor?.rol ?? 'desconocido'}») no puede usarla. Pedíselo a Dirección.`,
+      ms: Date.now() - t0,
+      capacidades: { nivel: NIVEL.DETERMINISTICO, via: 'adjunto_con_motor' },
+    })
+  }
+  let { args, falta } = argumentosPara(tool, pedido)
+  if (falta.length) {
+    const ia = await puertaIa(deps)
+    const completo = await completarArgumentos({ ia, texto, tool, args, falta, logger: deps.logger ?? null })
+    args = completo.args
+    falta = completo.falta
+  }
+  if (falta.length) {
+    // La lectura persistida guarda el TEXTO extraído, no los bytes: un follow-up con el dato que
+    // falta no puede volver a subir el archivo. Se dice, en vez de fallar raro después.
+    return respuestaError(pedido, {
+      tipo: 'falta_dato',
+      mensaje: `Para hacerlo con estos adjuntos me falta: ${falta.join(', ')} (capacidad ${clave}). `
+        + 'Mandámelos de nuevo con ese dato en el mensaje y lo ejecuto.',
+      ms: Date.now() - t0,
+      capacidades: { nivel: NIVEL.DETERMINISTICO, tools: [clave], via: 'adjunto_falta_dato', confianza: 'alta', motivo: 'adjunto_falta_dato' },
+    })
+  }
+  const archivos = utiles.map((l) => ({
+    nombre: l.nombre,
+    contenido: typeof l.adjunto?.contenido === 'string' ? l.adjunto.contenido : undefined,
+    contenido_base64: l.adjunto?.contenido_base64 ?? undefined,
+  }))
+  return resolverConTool({
+    pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'adjunto_con_motor', skills: [], t0,
+    query: deps.query ?? null, argsResueltos: { args: { ...args, archivos }, falta: [] },
+  })
+}
+
+/**
  * LOS ADJUNTOS DEL PEDIDO: ingesta → contexto → capacidad.
  *
  * Cada archivo se lee con el motor existente y queda persistido por hash (`xsas-archivos.mjs`).
@@ -607,6 +676,14 @@ async function atenderAdjuntos({ pedido, conContenido, mapa, deps, t0 }) {
     actorId: pedido.actor?.id, correlacionId: pedido.correlationId,
     parche: { archivos: acotarArchivos(previo?.archivos, lecturas.map(caratulaDeLectura)) },
   })
+
+  // La frase que acompaña a los adjuntos puede pedir una capacidad que los CONSUME (cotizar unos
+  // planos). Si matchea, esa capacidad corre con los archivos; si no, la ingesta de siempre.
+  const textoDelPedido = textoDePedido(pedido)
+  if (textoDelPedido && textoDelPedido.trim()) {
+    const conMotor = await intentarConAdjuntos({ pedido, texto: textoDelPedido, lecturas, mapa, deps, t0 })
+    if (conMotor) return conMotor
+  }
 
   const bloques = []
   const toolsUsadas = []
