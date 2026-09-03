@@ -34,6 +34,19 @@ const COEF_CON_IVA = 2.03518114
 const iso = (d) => new Date(d).toISOString().slice(0, 10)
 const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000)
 const ev = (paso, datos) => console.log(`   ▸ ${paso}`, JSON.stringify(datos))
+// ═══ EL ESCENARIO VIVE SIEMPRE EN EL FUTURO (02/09/2026) ═══
+// Las fechas estaban tipeadas («2026-09-02») y el caso ASUME que su evidencia es futura — la
+// captura debe decir fecha_desde=null porque «un parte fechado la semana que viene no es un hecho
+// todavía». El día que el calendario alcanzó esas fechas, el test empezó a fallar sin que nadie
+// tocara nada: afirmaba el estado del mundo. Ahora siembra septiembre del AÑO QUE VIENE, y la
+// semana de cada parte se calcula al lunes real de ese año.
+const AÑO_FUTURO = new Date().getFullYear() + 1
+const F = (m, d) => `${AÑO_FUTURO}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+const lunesDe = (fecha) => {
+  const x = new Date(`${fecha}T00:00:00Z`)
+  x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7))
+  return x.toISOString().slice(0, 10)
+}
 
 test('caso controlado: el circuito productivo entero, de un extremo al otro', { skip: !hayBase }, async (t) => {
   const c = await getPool().connect()
@@ -170,8 +183,8 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
 
     await t.test('4 · CONVERTIR — dos frentes con fecha y dotación, y el tiempo técnico no se comprime', async () => {
       const frentes = [
-        { nombre: 'ZZ Frente A', cantidad: 60, inicio: '2026-09-01', dotacion: 4, tope: 8 },
-        { nombre: 'ZZ Frente B', cantidad: 40, inicio: '2026-10-01', dotacion: 4, tope: 8 },
+        { nombre: 'ZZ Frente A', cantidad: 60, inicio: F(9, 1), dotacion: 4, tope: 8 },
+        { nombre: 'ZZ Frente B', cantidad: 40, inicio: F(10, 1), dotacion: 4, tope: 8 },
       ]
       const r = (await uno(`select public.convertir_partida_a_plan($1,$2,$3::jsonb,$4,null) as j`,
         [part.id, OBRA, JSON.stringify(frentes), plantilla.id])).j
@@ -238,13 +251,13 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
     await t.test('6 · EJECUTAR — avance, horas y la improductiva CON causa, separadas', async () => {
       const gente = await q(`select id from personas limit 1`)
       await q(`insert into obra_ejecucion (obra_id, actividad_id, fecha, cantidad, metodo)
-               values ($1,$2,'2026-09-02', 30, 'cantidad')`, [OBRA, ejecA.id])
+               values ($1,$2,'${F(9, 2)}', 30, 'cantidad')`, [OBRA, ejecA.id])
       await q(`insert into registros_hh (obra_canonica_id, actividad_id, persona_id, fecha,
                  fecha_inicio_semana, horas, tipo_hora, fuente_legacy)
-               values ($1,$2,$3,'2026-09-02','2026-08-31', 90, 'normal', 'zz-caso')`, [OBRA, ejecA.id, gente[0].id])
+               values ($1,$2,$3,'${F(9, 2)}','${lunesDe(F(9, 2))}', 90, 'normal', 'zz-caso')`, [OBRA, ejecA.id, gente[0].id])
       await q(`insert into registros_hh (obra_canonica_id, actividad_id, persona_id, fecha,
                  fecha_inicio_semana, horas, tipo_hora, fuente_legacy, improductiva, causa_desvio)
-               values ($1,$2,$3,'2026-09-02','2026-08-31', 15, 'normal', 'zz-caso', true, 'falta_material')`,
+               values ($1,$2,$3,'${F(9, 2)}','${lunesDe(F(9, 2))}', 15, 'normal', 'zz-caso', true, 'falta_material')`,
       [OBRA, ejecA.id, gente[0].id])
 
       const ctl = await uno(`select avance_pct, hh_real, hh_improductivas, hh_productivas, productividad,
@@ -273,7 +286,7 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
       await assert.rejects(
         () => c.query(`insert into registros_hh (obra_canonica_id, actividad_id, persona_id, fecha,
                          fecha_inicio_semana, horas, tipo_hora, fuente_legacy, improductiva)
-                       values ($1,$2,$3,'2026-09-03','2026-08-31', 4, 'normal', 'zz-caso', true)`,
+                       values ($1,$2,$3,'${F(9, 3)}','${lunesDe(F(9, 3))}', 4, 'normal', 'zz-caso', true)`,
         [OBRA, ejecA.id, gente[0].id]),
         /improductiva_con_causa|check/i, 'dejó cargar una hora perdida sin causa')
       await c.query('rollback to savepoint sin_causa')
@@ -316,10 +329,10 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
     await t.test('8 · CAPTURA — el estándar se aprende de las horas PRODUCTIVAS y de la evidencia', async () => {
       const gente = await q(`select id from personas limit 1`)
       await q(`insert into obra_ejecucion (obra_id, actividad_id, fecha, cantidad, metodo)
-               values ($1,$2,'2026-09-08', 30, 'cantidad')`, [OBRA, ejecA.id])
+               values ($1,$2,'${F(9, 8)}', 30, 'cantidad')`, [OBRA, ejecA.id])
       await q(`insert into registros_hh (obra_canonica_id, actividad_id, persona_id, fecha,
                  fecha_inicio_semana, horas, tipo_hora, fuente_legacy)
-               values ($1,$2,$3,'2026-09-08','2026-09-07', 80, 'normal', 'zz-caso')`, [OBRA, ejecA.id, gente[0].id])
+               values ($1,$2,$3,'${F(9, 8)}','${lunesDe(F(9, 8))}', 80, 'normal', 'zz-caso')`, [OBRA, ejecA.id, gente[0].id])
 
       const v = await uno(`select * from rendimiento_a_capturar where actividad_id=$1`, [ejecA.id])
       assert.ok(v, 'la actividad terminada no aparece como capturable')
@@ -350,10 +363,10 @@ test('caso controlado: el circuito productivo entero, de un extremo al otro', { 
       assert.deepEqual(r.causas, { falta_material: 1 }, 'la causa no viajó con el aprendizaje')
       // LA VENTANA SALE DE LA EVIDENCIA YA OCURRIDA. `actividad_fechas` sólo mira partes e
       // imputaciones con `fecha <= current_date`: un parte fechado la semana que viene no es un
-      // hecho todavía. Este caso siembra septiembre de 2026, así que hoy no hay inicio real —y eso
+      // hecho todavía. Este caso siembra septiembre del año que viene, así que hoy no hay inicio real —y eso
       // es lo correcto, no un dato perdido: cuando esas fechas lleguen, la ventana aparece sola.
       assert.equal(r.fecha_desde, null, 'tomó como ocurrida una evidencia con fecha futura')
-      assert.equal(iso(r.fecha_hasta), '2026-09-08', 'el último parte sí queda como corte del hecho')
+      assert.equal(iso(r.fecha_hasta), F(9, 8), 'el último parte sí queda como corte del hecho')
       await aprender({ query: (sql, params) => c.query(sql, params) }, { obras: [OBRA] })
       const otra = await uno(`select count(*)::int n from rendimiento_historico where actividad_id=$1`, [ejecA.id])
       assert.equal(n(otra.n), 1, 'una segunda corrida duplicó la muestra')
