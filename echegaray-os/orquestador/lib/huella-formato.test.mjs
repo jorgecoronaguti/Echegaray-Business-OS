@@ -194,3 +194,42 @@ test('la excepción NO abre la puerta a achicar la grilla', async () => {
   // no puede saltearse la lectura de meta para un request de tamaño.
   assert.equal(clasificarRequest(SOLO_FILAS, null).clase, CLASE.DESTRUCTIVO, 'sin el tamaño actual no se afirma que crezca')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS TRES CONTROLES QUE FALTABAN (auditoría del 03/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El auditor mutó `if (!campos.length) return false` a `return true` y la suite quedó VERDE: el
+// docblock declaraba fail-closed y ningún test lo probaba. Y el test de achique probaba el
+// CLASIFICADOR, no el PORTÓN — que es donde el agujero estaba de verdad: `frenaRequest` sólo miraba
+// pestañas candadas a mano, y la firma automática está apagada desde el 05/08.
+
+test('sin `fields` no se afirma nada: la guarda protege por defecto', async () => {
+  const { soloCambiaElTamanoDeLaGrilla } = await import('./huella-formato.mjs')
+  const sinFields = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 68 } } } }
+  assert.equal(soloCambiaElTamanoDeLaGrilla(sinFields), false, 'sin máscara no se puede saber qué toca')
+  assert.equal(claveDeFormato(sinFields)?.tipo, TIPO.PESTANA, 'y por eso se protege como pestaña')
+  assert.equal(soloCambiaElTamanoDeLaGrilla({ updateSheetProperties: { fields: '' } }), false, 'máscara vacía idem')
+  assert.equal(soloCambiaElTamanoDeLaGrilla({ updateSheetProperties: { fields: '   ' } }), false, 'sólo espacios idem')
+  assert.equal(soloCambiaElTamanoDeLaGrilla({ updateSheetProperties: { fields: ' gridProperties.rowCount ' } }), true,
+    'pero los espacios alrededor de un campo válido no lo invalidan: se recorta')
+})
+
+test('EL PORTÓN frena el achique aunque la pestaña NO esté candada', async () => {
+  const { frenaRequest, clasificarRequest } = await import('./guarda-escritura.mjs')
+  const dims = new Map([[1, { rows: 68, cols: 26 }]])
+  const achicar = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 10 } }, fields: 'gridProperties.rowCount' } }
+  const agrandar = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 90 } }, fields: 'gridProperties.rowCount' } }
+  // SIN candado: es el caso real — la firma automática está apagada, casi ninguna pestaña está candada.
+  assert.equal(frenaRequest(clasificarRequest(achicar, dims), new Set()), true,
+    'de 68 a 10 filas borra 58 filas con lo que tengan: se frena aunque nadie candó la pestaña')
+  assert.equal(frenaRequest(clasificarRequest(agrandar, dims), new Set()), false,
+    'agrandar no borra nada: sigue pasando, que es lo que arregla los gráficos de CAJA')
+})
+
+test('sin las dimensiones vivas tampoco se deja pasar un cambio de tamaño', async () => {
+  const { frenaRequest, clasificarRequest } = await import('./guarda-escritura.mjs')
+  const agrandar = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 90 } }, fields: 'gridProperties.rowCount' } }
+  assert.equal(frenaRequest(clasificarRequest(agrandar, null), new Set()), true,
+    'sin saber el alto actual no se puede afirmar que agranda: falla cerrado')
+})

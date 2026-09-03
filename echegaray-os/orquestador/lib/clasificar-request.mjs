@@ -167,7 +167,7 @@ export function clasificarRequest(req, dims = null) {
     const toca = tamanoQueToca(p.fields)
     if (!toca.filas && !toca.columnas) return inocuo('updateSheetProperties de apariencia (título, color, filas congeladas)')
     const actual = dims?.get?.(p.properties?.sheetId)
-    if (!actual) return destructivo('cambia el tamaño de la grilla y no sé el tamaño actual: achicarla borra las filas de abajo')
+    if (!actual) return { ...destructivo('cambia el tamaño de la grilla y no sé el tamaño actual: achicarla borra las filas de abajo'), borraContenido: true }
     const g = p.properties?.gridProperties || {}
     // Sólo pasa el caso que se puede AFIRMAR inofensivo: el tamaño nuevo declarado es mayor o igual al
     // actual en cada dimensión que la máscara toca.
@@ -176,7 +176,12 @@ export function clasificarRequest(req, dims = null) {
     const okCols = !toca.columnas || crece(g.columnCount, actual.cols)
     return okFilas && okCols
       ? inocuo('agranda la grilla: no deja ninguna fila afuera')
-      : destructivo('achica la grilla: las filas o columnas que quedan afuera se borran con lo que tengan')
+      // BORRA CONTENIDO: no alcanza con marcarlo destructivo. Un destructivo sólo se frena sobre
+      // pestañas CANDADAS a mano, y la firma automática está apagada por orden del dueño desde el
+      // 05/08 — o sea que sobre casi todas las pestañas «destructivo» no frena nada. Achicar la
+      // grilla es la única propiedad de pestaña que borra celdas con lo que tengan, igual que un
+      // `deleteDimension`, así que se marca aparte para poder frenarlo SIEMPRE.
+      : { ...destructivo('achica la grilla: las filas o columnas que quedan afuera se borran con lo que tengan'), borraContenido: true }
   }
   const porQueInocuo = INOCUOS.get(tipo)
   if (porQueInocuo) return inocuo(`${tipo}: ${porQueInocuo}`)
