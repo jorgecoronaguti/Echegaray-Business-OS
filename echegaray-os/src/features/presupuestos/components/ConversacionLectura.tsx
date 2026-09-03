@@ -6,11 +6,12 @@
 // estimación.
 
 import { C } from '@/shared/components/canon'
-import { progresoDeLectura, type EstadoTrabajo, type PasoTrabajo } from '../services/trabajoLectura'
+import { enCurso, progresoDeLectura, type EstadoTrabajo, type PasoTrabajo } from '../services/trabajoLectura'
 import { TurnoPaso } from './TurnoPaso'
 
 export function ConversacionLectura({
-  pasos, estado, etapa, error, errorTransitorio = null, filtro, abierto, onAbrir, onFiltrar, onRehacer,
+  pasos, estado, etapa, error, errorTransitorio = null, filtro, abierto,
+  cancelando = false, errorCancelar = null, onAbrir, onFiltrar, onRehacer, onCancelar,
 }: {
   pasos: PasoTrabajo[]
   estado: EstadoTrabajo
@@ -21,12 +22,17 @@ export function ConversacionLectura({
   errorTransitorio?: string | null
   filtro: string | null
   abierto: string | null
+  cancelando?: boolean
+  /** El pedido de cancelar no llegó (red, o el trabajo terminó justo antes). Se avisa: cancelar y
+   *  que no pase nada en silencio es peor que no tener el botón. */
+  errorCancelar?: string | null
   onAbrir: (id: string) => void
   onFiltrar: (id: string) => void
   onRehacer: () => void
+  onCancelar: () => void
 }) {
   const progreso = progresoDeLectura(pasos.length)
-  const midiendo = estado === 'ENCOLADO' || estado === 'LEYENDO'
+  const midiendo = enCurso(estado)
 
   return (
     <div
@@ -38,9 +44,23 @@ export function ConversacionLectura({
         <span className="flex-1" style={{ fontSize: 17.5, fontWeight: 600, letterSpacing: '-.014em', color: C.tinta }}>
           Razonamiento del cotizador
         </span>
-        <span role="button" data-testid="rehacer-lectura" onClick={onRehacer} className="flex-none cursor-pointer whitespace-nowrap rounded-[6px] border px-3 py-2 text-[12px]" style={{ borderColor: C.lineaFuerte, color: C.tintaSuave }}>
-          Rehacer la lectura
-        </span>
+        {/* MIENTRAS CORRE, LA ACCIÓN ES CANCELAR — no rehacer. «Rehacer» sobre un trabajo vivo lo
+            abandonaba en pantalla pero el worker seguía leyendo, y cada lámina que leía se pagaba
+            igual. Frenarlo es lo único que ahorra plata. */}
+        {midiendo ? (
+          <span
+            role="button" data-testid="cancelar-lectura" aria-disabled={cancelando}
+            onClick={cancelando ? undefined : onCancelar}
+            className="flex-none cursor-pointer whitespace-nowrap rounded-[6px] border px-3 py-2 text-[12px]"
+            style={{ borderColor: C.lineaFuerte, color: cancelando ? C.apagado : C.tintaSuave }}
+          >
+            {cancelando ? 'Cancelando…' : 'Cancelar la lectura'}
+          </span>
+        ) : (
+          <span role="button" data-testid="rehacer-lectura" onClick={onRehacer} className="flex-none cursor-pointer whitespace-nowrap rounded-[6px] border px-3 py-2 text-[12px]" style={{ borderColor: C.lineaFuerte, color: C.tintaSuave }}>
+            Rehacer la lectura
+          </span>
+        )}
       </div>
 
       <div className="flex flex-none items-center gap-4" style={{ padding: '20px 34px 16px', borderBottom: `1px solid ${C.lineaFila}` }}>
@@ -70,6 +90,24 @@ export function ConversacionLectura({
         {midiendo && errorTransitorio && (
           <div className="flex items-center gap-2" style={{ padding: '8px 0 0 50px' }} data-testid="error-transitorio">
             <span className="text-[11.5px]" style={{ color: C.neg }}>Problema de red consultando el progreso — reintentando. El trabajo sigue corriendo.</span>
+          </div>
+        )}
+
+        {midiendo && errorCancelar && (
+          <div className="flex items-center gap-2" style={{ padding: '8px 0 0 50px' }} data-testid="error-cancelar">
+            <span className="text-[11.5px]" style={{ color: C.neg }}>No se pudo cancelar: {errorCancelar}</span>
+          </div>
+        )}
+
+        {estado === 'CANCELADO' && (
+          <div className="mt-5 flex flex-col gap-2 rounded-[8px] border p-3.5" style={{ borderColor: C.linea, background: C.superficieTenue }} data-testid="lectura-cancelada">
+            <span className="text-[12.5px] font-semibold" style={{ color: C.tinta }}>Lectura cancelada</span>
+            <span className="text-[12.5px]" style={{ color: C.tintaSuave, lineHeight: 1.6 }}>
+              La frenaste vos. No se generó presupuesto y lo leído hasta acá no se guardó como cotización.
+            </span>
+            <span role="button" onClick={onRehacer} className="mt-1 w-fit cursor-pointer text-[12px] underline" style={{ color: C.tintaSuave }}>
+              Empezar de nuevo
+            </span>
           </div>
         )}
 

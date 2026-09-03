@@ -14,7 +14,7 @@
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSondeoTrabajo } from '../hooks/useSondeoTrabajo'
-import { base64DeArchivo, iniciarLectura, type AdjuntoLocal } from '../services/trabajoCotizarApi'
+import { base64DeArchivo, cancelarLectura, iniciarLectura, type AdjuntoLocal } from '../services/trabajoCotizarApi'
 import { ComposerInicial } from './ComposerInicial'
 import { ConversacionLectura } from './ConversacionLectura'
 import { PresupuestoEnFormacion } from './PresupuestoEnFormacion'
@@ -27,6 +27,8 @@ export function EntornoLecturaPlano() {
   const [abierto, setAbierto] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<string | null>(null)
   const [pasosVistos, setPasosVistos] = useState(0)
+  const [cancelando, setCancelando] = useState(false)
+  const [errorCancelar, setErrorCancelar] = useState<string | null>(null)
 
   const { trabajo, errorSondeo } = useSondeoTrabajo(trabajoId)
 
@@ -51,6 +53,8 @@ export function EntornoLecturaPlano() {
       setPasosVistos(0)
       setAbierto(null)
       setFiltro(null)
+      setCancelando(false)
+      setErrorCancelar(null)
       setTrabajoId(id)
     } catch (e) {
       setErrorArranque(e instanceof Error ? e.message : 'no se pudo iniciar la lectura')
@@ -65,7 +69,25 @@ export function EntornoLecturaPlano() {
     setFiltro(null)
     setErrorArranque(null)
     setPasosVistos(0)
+    setCancelando(false)
+    setErrorCancelar(null)
   }, [])
+
+  // CANCELAR NO LIMPIA LA PANTALLA. La fila queda en CANCELADO y el sondeo la trae en la vuelta
+  // siguiente (≤1,5 s): el estado terminal lo declara el SERVIDOR, no este componente. Si se
+  // borrara acá el trabajo, «cancelé» sería una afirmación de la pantalla sin nada que la respalde.
+  const cancelar = useCallback(async () => {
+    if (!trabajoId) return
+    setCancelando(true)
+    setErrorCancelar(null)
+    try {
+      await cancelarLectura(trabajoId)
+    } catch (e) {
+      setErrorCancelar(e instanceof Error ? e.message : 'no se pudo cancelar')
+    } finally {
+      setCancelando(false)
+    }
+  }, [trabajoId])
 
   const alternarAbierto = useCallback((id: string) => setAbierto((a) => (a === id ? null : id)), [])
   const alternarFiltro = useCallback((id: string) => setFiltro((f) => (f === id ? null : id)), [])
@@ -89,7 +111,8 @@ export function EntornoLecturaPlano() {
         // Un fallo del SONDEO (red, no del trabajo) mientras todavía no hay estado terminal: se
         // avisa aparte, sin pisar el bloque de error final que sólo corresponde a `estado==='ERROR'`.
         errorTransitorio={trabajo.estado !== 'ERROR' ? errorSondeo : null}
-        onAbrir={alternarAbierto} onFiltrar={alternarFiltro} onRehacer={rehacer}
+        cancelando={cancelando} errorCancelar={errorCancelar}
+        onAbrir={alternarAbierto} onFiltrar={alternarFiltro} onRehacer={rehacer} onCancelar={cancelar}
       />
       <PresupuestoEnFormacion
         pasos={trabajo.pasos} computo={trabajo.computo} cascada={trabajo.cascada}
