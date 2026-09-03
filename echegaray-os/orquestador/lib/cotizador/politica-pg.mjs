@@ -8,8 +8,8 @@
 // se evalúa. Uso legítimo: scripts, informes, tests y el worker. Desde una ruta de Next la escritura
 // la hace el caller con SU credencial.
 
-import { componenteDePolitica, versionDePolitica, referenciaDePolitica, overrideDeCotizacion } from './politica-version.mjs'
-import { conceptoIndirecto, estructuraIndirecta } from './indirectos.mjs'
+import { componenteDePolitica, versionDePolitica, referenciaDePolitica, overrideDeCotizacion, coincideConLaVersion } from './politica-version.mjs'
+import { conceptoIndirecto, estructuraIndirecta, indirectoCalculado, indirectoAplicado } from './indirectos.mjs'
 import { VIGENCIA_SUBCONTRATO } from './costo.mjs'
 
 const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : (v ? String(v).slice(0, 10) : null))
@@ -185,4 +185,93 @@ export async function escribirIndirectoDeCotizacion({ query }, { cotizacionId, e
     overrideEscrito: f.override_actor !== null,
     porQue: override && !completo ? 'el override venía incompleto y NO se escribió: en la base, un override a medias es peor que ninguno' : null,
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// EL REGISTRO — lo que corre cuando se escribe una cotización, y por eso deja de no correr nunca
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido el 03/09/2026: `cotizacion_politica_ref` y `cotizacion_indirecto` tenían 0 filas sobre las
+// 19 cotizaciones de la base. Los lectores existían, los escritores de arriba también, y ningún
+// camino productivo los llamaba — sólo un script de escenario que hace rollback. El commit e7e6160c
+// había arreglado el ReferenceError del orquestador de once etapas, pero ese orquestador tampoco
+// corre en producción: los dos caminos vivos (la web y el handler `cotizacion.plano`) van por
+// `plano/cotizacion-v0.mjs` y la vista `cotizacion_cascada`.
+//
+// Esta función es el enganche que faltaba, y se llama desde `persistir()` — el único lugar por donde
+// una cotización nace del motor. NO cambia el precio: los ocho porcentajes ya se copiaron y la
+// cascada los sigue leyendo de la fila. Lo que agrega es CONTRA QUÉ se cotizó.
+
+const NADA = Object.freeze({ escrita: false, escrito: false, porQue: null })
+
+/** Los ocho porcentajes que la cotización copió, en las claves que usa el motor. */
+async function pctsDeLaCotizacion({ query }, cotizacionId) {
+  const r = await query(
+    `select pct_gastos_generales, pct_beneficio, pct_financiero, factor_financiero,
+            pct_iibb, pct_ganancias, pct_cheque, pct_iva
+       from public.cotizaciones where id = $1`, [cotizacionId])
+  const f = r.rows[0]
+  if (!f) return null
+  return {
+    pctGastosGenerales: num(f.pct_gastos_generales), pctBeneficio: num(f.pct_beneficio),
+    pctFinanciero: num(f.pct_financiero), factorFinanciero: num(f.factor_financiero),
+    pctIibb: num(f.pct_iibb), pctGanancias: num(f.pct_ganancias),
+    pctCheque: num(f.pct_cheque), pctIva: num(f.pct_iva),
+  }
+}
+
+/** El costo directo que la vista canónica calculó para esta cotización — el denominador del
+ *  indirecto por obra. `null` si la cotización todavía no tiene partidas valorizadas. */
+async function costoDirectoDe({ query }, cotizacionId) {
+  const r = await query('select costo_directo from public.cotizacion_cascada where id = $1', [cotizacionId])
+  const v = num(r.rows[0]?.costo_directo)
+  return v && v > 0 ? v : null
+}
+
+/**
+ * DEJAR ESCRITO CONTRA QUÉ POLÍTICA Y CONTRA QUÉ ESTRUCTURA DE INDIRECTOS SE COTIZÓ.
+ *
+ * Devuelve `{ politica, indirecto }`, cada uno con su `porQue` cuando no se escribió. Ninguna de las
+ * dos escrituras es condición de que la cotización exista: una oferta ya escrita no se tira porque
+ * su registro de auditoría no pudo hacerse, pero el motivo se publica en vez de desaparecer.
+ *
+ * ═══ LA REFERENCIA SE ESCRIBE SÓLO SI ES VERDAD ═══
+ *
+ * `coincideConLaVersion` compara los siete porcentajes comerciales que la cotización copió contra los
+ * de la versión vigente. Si difieren, NO se referencia: decir «se cotizó con la v1» cuando el
+ * beneficio se negoció distinto es peor que no decir nada, porque parece auditado.
+ *
+ * ═══ EL INDIRECTO SE CALCULA DE VERDAD, Y HOY DA NULL ═══
+ *
+ * `indirectoCalculado` corre sobre los 14 conceptos reales de `indirecto_concepto`. Los 14 están sin
+ * valor y `indirecto_estructura.costo_directo_anual` también, así que el resultado es `null` con 14
+ * huecos nombrados — y ese `null` es una MEDICIÓN, no una ausencia. El 27 % que la cascada aplica de
+ * verdad sigue en `cotizaciones.pct_gastos_generales`, y el par (aplicado 0,27 · calculado null) es
+ * exactamente el hallazgo que `indirectos.mjs` ya nombra: un override sin registrar del 26,98 % de la
+ * hoja GG que nadie firmó. Escribirlo como `pct_aplicado` sin override sería tipear otra vez el mismo
+ * número sin explicarlo — la constraint `indirecto_aplicado_explicado` existe para eso.
+ */
+export async function registrarPoliticaEIndirecto({ query }, { cotizacionId, congeladaEn = null } = {}) {
+  if (!cotizacionId) throw new Error('no se puede registrar la política de una cotización que no existe')
+  const pcts = await pctsDeLaCotizacion({ query }, cotizacionId)
+  if (!pcts) return { politica: { ...NADA, porQue: 'la cotización no está en la base' }, indirecto: { ...NADA, porQue: 'la cotización no está en la base' } }
+
+  const version = await leerVersionDePolitica({ query })
+  const veredicto = coincideConLaVersion({ pcts, version })
+  const politica = veredicto.coincide
+    ? await escribirReferenciaDePolitica({ query }, { cotizacionId, version: version.version, congeladaEn })
+    : { escrita: false, porQue: veredicto.porQue, diferencias: veredicto.diferencias, faltan: veredicto.faltan }
+
+  const estructura = await leerEstructuraIndirecta({ query })
+  if (!estructura) {
+    return { politica, indirecto: { ...NADA, porQue: 'no hay estructura de indirectos vigente: no hay contra qué registrar el indirecto de esta cotización' } }
+  }
+  const e = await query('select id from public.indirecto_estructura where vigente')
+  const calc = indirectoCalculado({ estructura, costoDirectoObra: await costoDirectoDe({ query }, cotizacionId) })
+  const aplicado = indirectoAplicado({ calculado: calc })
+  const indirecto = await escribirIndirectoDeCotizacion({ query }, {
+    cotizacionId, estructuraId: e.rows[0]?.id ?? null,
+    pctCalculado: aplicado.calculado, pctAplicado: aplicado.aplicado,
+  })
+  return { politica, indirecto: { ...indirecto, porQue: indirecto.porQue ?? aplicado.porQue, nHuecos: calc.nHuecos } }
 }

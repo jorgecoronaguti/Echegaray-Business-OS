@@ -447,9 +447,15 @@ const PROYECCION = {
  * @param {string} colMes letra de la columna del mes en el cash flow (ej. 'I')
  * @param {string} colTabla letra de la columna equivalente en la pestaña de detalle
  * @param {number} filaCab fila del encabezado con las fechas
+ * @param {Object<string,number>} filasTabla {pestaña: fila del total}, ubicada por rótulo
  * @returns {string} fórmula es-AR
+ *
+ * `filasTabla` FALTABA EN LA FIRMA y se usaba abajo: en ESM eso es un `ReferenceError` que sólo se
+ * alcanza cuando el rubro proyecta `tipo: 'tabla'`. La función no tiene callers vivos —por eso nadie
+ * lo vio— y sigue exportada, así que el defecto estaba esperando al primero. Con el parámetro y su
+ * default, el caso sin fila cae en el `throw` que ya estaba escrito, que es el que explica qué falta.
  */
-export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab) {
+export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab, filasTabla = {}) {
   const mes = `${colMes}$${filaCab}`
   const real = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`
   const p = PROYECCION[rubro]

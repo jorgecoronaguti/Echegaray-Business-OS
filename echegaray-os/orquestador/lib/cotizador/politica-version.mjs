@@ -320,3 +320,55 @@ export function cumpleMargenObjetivo({ version, margenLogrado } = {}) {
   }
   return { estado: ESTADO.CALCULADO, cumple: Number(margenLogrado) >= Number(c.valor), umbral: Number(c.valor), margenLogrado: Number(margenLogrado), porQue: null }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// ¿LOS OCHO NÚMEROS COPIADOS SON LOS DE ESTA VERSIÓN?
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La migración 20260830T2130 dejó a las dos conviviendo: `cotizaciones` copia ocho porcentajes de
+// `parametro_comercial`, y `politica_comercial_version` los versiona con estado, fuente y conflicto
+// por componente. «Mientras tanto un test compara que digan lo mismo», dice el encabezado.
+//
+// Esta función es esa comparación, y es la que decide si se puede escribir la referencia. Sin ella,
+// `cotizacion_politica_ref` diría «esta oferta se cotizó con la política v1» apoyándose en que hoy
+// los números coinciden — una afirmación que dejaría de ser cierta el día que alguien negocie un
+// beneficio distinto y nadie se enteraría. Un registro de auditoría que no puede decir que NO no
+// registra nada.
+//
+// `pctGastosGenerales` queda AFUERA de la comparación a propósito: no es política comercial. Es el
+// indirecto aplicado y su fuente es `indirectos.mjs` — el mismo motivo por el que `proyectarACascada`
+// lo recibe por argumento.
+
+/** Las claves de la cascada que la política versionada SÍ decide. */
+export const CLAVES_COMPARABLES = Object.freeze(CLAVES_DE_CASCADA.filter((k) => k !== 'pctGastosGenerales'))
+
+/**
+ * ¿LOS PORCENTAJES COPIADOS EN LA COTIZACIÓN SON LOS DE ESTA VERSIÓN DE POLÍTICA? PURA.
+ *
+ * Devuelve `{ coincide, diferencias, faltan, porQue }`. Una clave que la versión NO define no es una
+ * diferencia: es un hueco, y va en `faltan` — «la política no lo decidió» y «la política decidió
+ * otra cosa» son dos problemas distintos y se arreglan en lugares distintos.
+ */
+export function coincideConLaVersion({ pcts = {}, version = null, tolerancia = 1e-9 } = {}) {
+  if (!version) return { coincide: false, diferencias: [], faltan: [], porQue: 'no hay versión de política contra la cual comparar' }
+  const valores = Object.fromEntries(version.componentes.map((c) => [c.clave, c.valor]))
+  const diferencias = []
+  const faltan = []
+  for (const k of CLAVES_COMPARABLES) {
+    const dela = valores[k]
+    const dela_ = hayNumero(dela) ? Number(dela) : null
+    const cot = hayNumero(pcts[k]) ? Number(pcts[k]) : null
+    if (dela_ === null) { faltan.push(k); continue }
+    if (cot === null || Math.abs(cot - dela_) > tolerancia) diferencias.push({ clave: k, cotizacion: cot, politica: dela_ })
+  }
+  if (faltan.length) {
+    return { coincide: false, diferencias, faltan, porQue: `la política v${version.version} no define ${faltan.join(', ')}: no se puede afirmar que la cotización se hizo con ella` }
+  }
+  if (diferencias.length) {
+    return {
+      coincide: false, diferencias, faltan,
+      porQue: `la cotización difiere de la política v${version.version} en ${diferencias.map((d) => `${d.clave} (${d.cotizacion} vs ${d.politica})`).join(', ')}: referenciarla diría que se cotizó con una política que no se usó`,
+    }
+  }
+  return { coincide: true, diferencias: [], faltan: [], porQue: null }
+}

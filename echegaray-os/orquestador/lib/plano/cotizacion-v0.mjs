@@ -22,6 +22,11 @@
 // salió esta cantidad?» apuntando al archivo de Drive y a la lámina.
 
 import { FUENTE } from './fuente.mjs'
+// La forma de una línea de cómputo vive en UN solo lugar y es pura. Ver el encabezado de
+// `computo-genealogia.mjs`: hasta el 03/09/2026 esta función era su único emisor, y por eso las 110
+// partidas del negocio real —las que NO vienen de un plano— no tenían genealogía ninguna.
+import { lineaMedidaDePlano } from '../cotizador/computo-genealogia.mjs'
+import { registrarPoliticaEIndirecto } from '../cotizador/politica-pg.mjs'
 
 /** El rubro de una partida sale del SISTEMA CONSTRUCTIVO del elemento, no del nombre de la tarea.
  *  Es la agrupación con la que se lee un presupuesto de obra y la que después se compara contra el
@@ -159,14 +164,23 @@ export async function persistir({ query }, cotizacion, { numero, origen = 'xsas:
       [cotizacionId, item.orden, item.rubro, item.codigo, item.descripcion, item.cantidad, item.unidad, item.tareaTipoId, a.rows[0]?.id ?? null, item.lineas.map((l) => l.porQuePartida)[0] ?? null])
     const partidaId = r.rows[0].id
     for (const l of item.lineas) {
+      const f = lineaMedidaDePlano(l)
       await query(
         `insert into public.computo (cotizacion_partida_id, documento_drive_id, documento_nombre, revision, elemento, sector, unidad, cantidad, origen, criterio)
-         values ($1,$2,$3,null,$4,$5,$6,$7,'plano',$8)`,
-        [partidaId, l.documentoId, l.documento, `${l.elemento} — ${l.nombre}`, l.lamina, l.unidad, l.cantidad,
-          `${l.criterio} · entradas ${JSON.stringify(l.entradas)} · el plano dice «${l.textoLiteral}»${l.vista ? ` (${l.vista})` : ''}`])
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [partidaId, f.documento_drive_id, f.documento_nombre, f.revision, f.elemento, f.sector, f.unidad, f.cantidad, f.origen, f.criterio])
     }
   }
-  return { cotizacionId, numero }
+  // QUÉ POLÍTICA Y QUÉ ESTRUCTURA DE INDIRECTOS RIGIERON ESTA COTIZACIÓN. No cambia un solo peso del
+  // precio —los ocho porcentajes ya se copiaron arriba de `parametro_comercial`, que es lo que lee
+  // `cotizacion_cascada`—: deja escrito CONTRA QUÉ se cotizó, que es lo que hoy no se puede contestar.
+  // No aborta la cotización si falla: una oferta escrita no se tira porque su registro de auditoría
+  // no pudo escribirse, y el motivo viaja en el resultado para que el caller lo publique.
+  const registro = await registrarPoliticaEIndirecto({ query }, { cotizacionId }).catch((e) => ({
+    politica: { escrita: false, porQue: `no se pudo registrar la política: ${e?.message ?? e}` },
+    indirecto: { escrito: false, porQue: `no se pudo registrar el indirecto: ${e?.message ?? e}` },
+  }))
+  return { cotizacionId, numero, registro }
 }
 
 /** La cascada calculada por la vista canónica para una cotización recién escrita. */
