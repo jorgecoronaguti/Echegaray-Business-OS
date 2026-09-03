@@ -34,6 +34,7 @@ import { createClient } from '@/lib/supabase/server'
 import { imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import type { Resultado } from '@/features/obras/services/actions'
 import { leerReparto } from '@/features/obras/services/repartoHH'
+import { soloEnLaPrimera, validarCausa } from './causa.ts'
 import { AVISO_CRITERIO, deltaHasta, elPorcentajeMueveElAvance } from './medicion.ts'
 import type { Metodo } from './medicion.ts'
 import { aplicarPlan, planDePasos } from './pasos.ts'
@@ -48,6 +49,9 @@ const esquema = z.object({
   avance_pct: z.string().optional(),
   criterio: z.string().trim().max(500).optional(),
   comentario: z.string().trim().max(500).optional(),
+  /** La clave del catálogo `public.causa_desvio`. La lista cerrada la impone la FK de la base: acá
+   *  sólo se valida la forma, porque un `text` de 60 no puede probar que la clave existe. */
+  causa_desvio: z.string().trim().max(60).optional(),
 })
 
 const numero = (v: string | undefined): number | null => {
@@ -81,9 +85,18 @@ export async function registrarAvance(obraId: string, form: FormData): Promise<R
     return { ok: false, error: `«${a.nombre}» no declara cómo se mide. Elegí el método desde la planificación.` }
   }
 
+  // LA REGLA DE LA CAUSA SE APLICA ACÁ TAMBIÉN, no sólo en el formulario: el formulario es del
+  // cliente y no es evidencia de nada. Es la misma función pura que avisa en la pantalla.
+  const malaCausa = validarCausa({ causa: d.causa_desvio, nota: d.comentario })
+  if (malaCausa) return { ok: false, error: malaCausa }
+  const incidencia = {
+    causa_desvio: d.causa_desvio || null,
+    comentario: d.comentario || null,
+  }
+
   const escrito = a.metodo_avance === 'pasos'
-    ? await guardarPasos(supabase, obraId, d, a.metodo_avance)
-    : await guardarMedicion(supabase, obraId, d, a)
+    ? await guardarPasos(supabase, obraId, d, a.metodo_avance, incidencia)
+    : await guardarMedicion(supabase, obraId, d, a, incidencia)
   if (!escrito.ok) return escrito
 
   const efectos = [escrito.mensaje ?? 'avance guardado']
@@ -101,6 +114,9 @@ export async function registrarAvance(obraId: string, form: FormData): Promise<R
 
 type Cliente = Awaited<ReturnType<typeof createClient>>
 
+/** Lo que le pasó a ESTE parte: la causa del catálogo y la nota de quien estuvo ahí. */
+type Incidencia = { causa_desvio: string | null; comentario: string | null }
+
 /**
  * Los pasos ejecutados. Marcar y DESMARCAR: el jefe se equivoca de renglón con el pulgar.
  *
@@ -111,6 +127,7 @@ type Cliente = Awaited<ReturnType<typeof createClient>>
  */
 async function guardarPasos(
   supabase: Cliente, obraId: string, d: z.infer<typeof esquema>, metodo: Metodo,
+  incidencia: Incidencia,
 ): Promise<Resultado> {
   const marcados = new Set((d.pasos ?? '').split(',').map((s) => s.trim()).filter(Boolean))
   const { data: pasos, error } = await supabase
@@ -130,11 +147,13 @@ async function guardarPasos(
     // Un registro de ejecución POR PASO, con lo que ese paso aporta: es el rastro de quién y cuándo
     // lo firmó, y sin `avance_pct` la base lo rechaza (`obra_ejecucion_dice_algo`).
     firmar: async (firmas) => {
-      const { error: e } = await supabase.from('obra_ejecucion').insert(firmas.map((f) => ({
-        obra_id: obraId, actividad_id: d.actividad_id, fecha: d.fecha,
-        metodo, paso_id: f.paso_id, avance_pct: f.avance_pct,
-        comentario: d.comentario || null, fuente: 'jefe_telefono',
-      })))
+      // La incidencia del día va en UNA fila, no en las cinco: `obra_causa_desvio` cuenta filas con
+      // causa, y repetirla publicaría cinco incidencias donde hubo una. El porqué, en `causa.ts`.
+      const { error: e } = await supabase.from('obra_ejecucion').insert(
+        soloEnLaPrimera(firmas.map((f) => ({
+          obra_id: obraId, actividad_id: d.actividad_id, fecha: d.fecha,
+          metodo, paso_id: f.paso_id, avance_pct: f.avance_pct, fuente: 'jefe_telefono',
+        })), incidencia))
       return { error: e?.message ?? null }
     },
     marcar: async (ids, cuando) => {
@@ -154,6 +173,7 @@ async function guardarPasos(
 async function guardarMedicion(
   supabase: Cliente, obraId: string, d: z.infer<typeof esquema>,
   a: { metodo_avance: Metodo | null; unidad: string | null; avance_pct: number | null; nombre: string },
+  incidencia: Incidencia,
 ): Promise<Resultado> {
   const metodo = a.metodo_avance as Metodo
   const criterio = d.criterio?.trim() || null
@@ -180,8 +200,8 @@ async function guardarMedicion(
 
   const { error } = await supabase.from('obra_ejecucion').insert({
     obra_id: obraId, actividad_id: d.actividad_id, fecha: d.fecha,
-    cantidad, avance_pct: avance, metodo, criterio,
-    comentario: d.comentario || null, fuente: 'jefe_telefono',
+    cantidad, avance_pct: avance, metodo, criterio, fuente: 'jefe_telefono',
+    ...incidencia,
   })
   if (error) return { ok: false, error: error.message }
 

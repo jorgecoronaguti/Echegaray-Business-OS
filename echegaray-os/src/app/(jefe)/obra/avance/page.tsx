@@ -12,6 +12,7 @@ import {
 } from '@/features/jefe/services/progreso'
 import { soloTareas } from '@/features/jefe/services/dia'
 import { getEsperados } from '@/features/administracion/services/presenciaService'
+import { getCausasDesvio } from '@/features/obras/services/personalService'
 import { registrarAvance } from '@/features/jefe/services/actionsAvance'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { semanaISO } from '@/features/jefe/services/tarea'
@@ -49,13 +50,18 @@ export default async function JefeAvancePage({
 
   if (!actividadId) return <PantallaDeObra supabase={supabase} obra={obra} error={error} />
 
-  const [actividad, pasos, plantel, arbol, partes, impedimentos] = await Promise.all([
+  // EL CATÁLOGO SE LEE DE LA BASE, NO SE ESCRIBE ACÁ. `public.causa_desvio` es la lista cerrada y
+  // ampliable; una copia en el front sería una segunda taxonomía que diverge el día que el dueño dé
+  // de baja una causa con `activa=false`. Que la lista sea corta o larga es una decisión SUYA sobre
+  // esa columna, no un `filter` escondido en una pantalla.
+  const [actividad, pasos, plantel, arbol, partes, impedimentos, causas] = await Promise.all([
     getActividad(supabase, actividadId),
     getPasos(supabase, actividadId),
     getEsperados(supabase, obra.id),
     getArbol(supabase, obra.id),
     getUltimosPartes(supabase, actividadId),
     getImpedimentos(supabase, obra.id),
+    getCausasDesvio(supabase),
   ])
 
   const volver = { href: conObra('/obra/tareas', obra.id), label: 'Tareas' }
@@ -114,6 +120,7 @@ export default async function JefeAvancePage({
         fecha={hoyEnObra()}
         partes={partes.data ?? []}
         impedimentos={suyos}
+        causas={causas.data ?? []}
         accion={guardar}
       />
     </>

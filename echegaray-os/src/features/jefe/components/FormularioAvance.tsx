@@ -10,6 +10,7 @@ import { AVISO_CRITERIO, ROTULO_METODO, VALORES_MASIVOS, controlDe } from '../se
 import type { Metodo } from '../services/medicion'
 import type { ActividadDelJefe, Impedimento, ParteDeTarea, PasoDeActividad } from '../services/jefeService'
 import { plazoDe, produccionDe, rendimientoDe } from '../services/tarea'
+import { desvioDe, validarCausa } from '../services/causa'
 import { avancePorPasos } from '@/features/obras/services/avance'
 import type { Esperado } from '@/features/administracion/services/presencia'
 
@@ -37,11 +38,23 @@ import type { Esperado } from '@/features/administracion/services/presencia'
 //
 // El botón de cámara del pie queda APAGADO. Una foto no tiene dónde guardarse: `obra_ejecucion`
 // acepta un enlace de Drive (`evidencia`) y no una carga de archivo, y no hay bucket para esto.
+//
+// ═══ LO QUE SE AGREGA DESPUÉS DEL PORTE: POR QUÉ SE DESVIÓ ═══
+//
+// J06 dibuja «RENDIMIENTO 1,32× · 32 % arriba» en ámbar y no pregunta nada. `obra_causa_desvio`
+// tenía UNA fila en dieciocho obras justamente por eso: el modelo sabe medir el desvío desde
+// agosto y ninguna pantalla pedía la causa. El bloque va PEGADO a los azulejos —debajo del número
+// que está en rojo— y sólo aparece cuando ese número está en rojo (`desvioDe`, puro y probado).
+//
+// Es lista cerrada + nota, nunca texto libre solo: diecinueve maneras de escribir «faltó material»
+// no se pueden contar, y lo que no se puede contar no entra en la próxima cotización. Las causas
+// salen de `public.causa_desvio` con su `orden`; el largo de la lista es una decisión del dueño
+// sobre la columna `activa`, no un recorte de esta pantalla.
 
 type Estado = { ok: boolean; mensaje: string } | null
 
 export function FormularioAvance({
-  actividad, frente, pasos, plantel, fecha, partes, impedimentos, accion,
+  actividad, frente, pasos, plantel, fecha, partes, impedimentos, causas, accion,
 }: {
   actividad: ActividadDelJefe
   /** El frente sale del ÁRBOL, no de `rubro`: son dos jerarquías y no coinciden. Ver `frentes.ts`. */
@@ -51,6 +64,8 @@ export function FormularioAvance({
   fecha: string
   partes: ParteDeTarea[]
   impedimentos: Impedimento[]
+  /** El catálogo cerrado de `public.causa_desvio`, ya ordenado y sin las dadas de baja. */
+  causas: { clave: string; nombre: string }[]
   accion: (estado: Estado, form: FormData) => Promise<Estado>
 }) {
   const metodo = (actividad.metodo_avance ?? 'manual') as Metodo
@@ -62,6 +77,8 @@ export function FormularioAvance({
   const [cantidad, setCantidad] = useState(0)
   const [criterio, setCriterio] = useState('')
   const [gente, setGente] = useState<Record<string, string>>({})
+  const [causa, setCausa] = useState('')
+  const [nota, setNota] = useState('')
   const [estado, enviar, enviando] = useActionState(accion, null)
 
   // LA CUENTA NO SE REPITE ACÁ. `avancePorPasos` es la misma función que usa la vista y la
@@ -81,6 +98,9 @@ export function FormularioAvance({
   const plazo = plazoDe(actividad)
   const prod = produccionDe(actividad)
   const parado = impedimentos.length > 0
+  const desvio = desvioDe(actividad)
+  // La misma función que corre en la Server Action: acá avisa antes de enviar, allá decide.
+  const avisoCausa = validarCausa({ causa, nota })
 
   return (
     <form action={enviar}>
@@ -88,6 +108,8 @@ export function FormularioAvance({
       <input type="hidden" name="fecha" value={fecha} />
       <input type="hidden" name="pasos" value={[...marcados].join(',')} />
       <input type="hidden" name="tipo_hora" value="normal" />
+      <input type="hidden" name="causa_desvio" value={desvio.pedir ? causa : ''} />
+      <input type="hidden" name="comentario" value={desvio.pedir ? nota : ''} />
       {control === 'cantidad' && <input type="hidden" name="cantidad" value={cantidad} />}
       {control === 'porcentaje' && <input type="hidden" name="avance_pct" value={objetivo ?? ''} />}
 
@@ -170,6 +192,90 @@ export function FormularioAvance({
             valor={plazo.texto} colorValor={plazo.alerta ? C.neg : C.ink} detalle={plazo.detalle}
           />
         </div>
+
+        {/* ── ¿POR QUÉ SE DESVIÓ? — pegado al azulejo que está en rojo, y sólo cuando lo está ─ */}
+        {desvio.pedir && (
+          <div
+            data-testid="causa-desvio"
+            style={{
+              marginTop: 12, background: C.warnFondo, border: `1px solid ${C.warnBorde}`,
+              borderRadius: R.tarjeta, padding: 14,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+              <span style={{ display: 'flex', color: C.warn, flexShrink: 0, marginTop: 1 }}>
+                <Icono nombre="alerta" tamano={18} />
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>¿Por qué se desvió?</div>
+                <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, lineHeight: 1.45 }}>
+                  {desvio.motivo}. Elegí la causa: es lo que hace que la próxima cotización no
+                  repita el error.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 12 }} data-testid="causas">
+              {causas.length === 0 ? (
+                <Vacio testid="causas-vacio">
+                  El catálogo de causas no cargó. Se puede guardar el avance igual; la causa queda sin
+                  registrar.
+                </Vacio>
+              ) : causas.map((c) => {
+                const on = causa === c.clave
+                return (
+                  <button
+                    key={c.clave}
+                    type="button"
+                    data-testid="causa"
+                    aria-pressed={on}
+                    onClick={() => setCausa(on ? '' : c.clave)}
+                    style={{
+                      display: 'flex', alignItems: 'center', fontSize: 12.5, minHeight: 36,
+                      border: `1px solid ${on ? C.grafito : C.linea}`,
+                      background: on ? C.grafito : C.surface, color: on ? C.surface : C.inkSuave,
+                      borderRadius: R.pastilla, padding: '7px 12px', cursor: 'pointer',
+                      fontFamily: 'inherit', textAlign: 'left',
+                    }}
+                  >
+                    {c.nombre}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* LA NOTA ES OPCIONAL SALVO EN «otra causa»: sin nombre, «otro» es el texto libre que
+                el catálogo vino a evitar, con forma de clave. Sólo aparece con una causa elegida —
+                un campo de texto vacío arriba de todo invita a escribir en vez de a clasificar. */}
+            {causa !== '' && (
+              <div
+                style={{
+                  marginTop: 10, background: C.surface, borderRadius: R.controlChico, padding: 11,
+                  border: `1px solid ${avisoCausa ? C.warn : C.linea}`,
+                }}
+              >
+                <textarea
+                  value={nota}
+                  onChange={(e) => setNota(e.target.value)}
+                  rows={2}
+                  data-testid="causa-nota"
+                  placeholder={causa === 'otro'
+                    ? 'Escribí cuál fue la causa'
+                    : 'Opcional: qué pasó, en dos palabras'}
+                  style={{
+                    border: 'none', background: 'transparent', fontSize: 14, color: C.ink,
+                    width: '100%', padding: 0, resize: 'none', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            )}
+            {avisoCausa && (
+              <p data-testid="aviso-causa" style={{ marginTop: 6, fontSize: 11.5, color: C.warn, lineHeight: 1.5 }}>
+                {avisoCausa}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* ── EL CONTROL, SEGÚN EL MÉTODO ────────────────────────────────────────────── */}
         {control === 'pasos' && (
@@ -415,15 +521,21 @@ export function FormularioAvance({
       <PieFijo>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1 }}>
+            {/* LA CAUSA NO BLOQUEA EL PARTE, PERO LA OMISIÓN QUEDA ESCRITA EN EL BOTÓN. Perder la
+                producción del día —medida en obra, cara— para no perder su clasificación —barata—
+                sería cambiar lo importante por lo accesorio. Lo que NO se puede es que el jefe se
+                vaya creyendo que explicó algo. `otro` sin nombre sí frena: no clasifica nada. */}
             <BotonAncho
-              activo={!enviando && !faltaCriterio && hayCambio}
+              activo={!enviando && !faltaCriterio && !avisoCausa && hayCambio}
               icono="ok"
               testid="guardar-avance"
             >
               {enviando ? 'Guardando…'
                 : faltaCriterio ? 'Falta el criterio'
-                  : hayCambio ? 'Guardar avance'
-                    : control === 'pasos' ? 'Marcá el paso alcanzado' : 'Poné cuánto se hizo'}
+                  : avisoCausa ? 'Falta cuál fue la causa'
+                    : !hayCambio ? (control === 'pasos' ? 'Marcá el paso alcanzado' : 'Poné cuánto se hizo')
+                      : desvio.pedir && causa === '' ? 'Guardar sin explicar el desvío'
+                        : 'Guardar avance'}
             </BotonAncho>
           </div>
           {/* SIN DESTINO NO HAY BOTÓN VIVO. Una foto no tiene dónde guardarse: queda a la vista,
