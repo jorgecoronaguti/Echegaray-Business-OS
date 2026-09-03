@@ -136,19 +136,31 @@ export async function enlazarActividad({ query }, { obraId, cotizacionPartidaId,
 }
 
 /** IMPUTAR UN COSTO REAL A UNA PARTIDA. `cotizacionPartidaId` puede ser null: entra igual y sale en
- *  SIN_IMPUTAR. Rechazarlo lo haría desaparecer del costo de la obra. */
-export async function imputarCostoReal({ query }, c) {
+ *  SIN_IMPUTAR. Rechazarlo lo haría desaparecer del costo de la obra.
+ *
+ *  LA GRANULARIDAD SE DERIVA DE LA IMPUTACIÓN, y por eso el caller no puede mentirla por descuido:
+ *  con partida es PARTIDA, con un frente escrito por una persona es FRENTE, y si no es OBRA. La base
+ *  lo vuelve a verificar con un CHECK — acá se deriva para que ningún caller viejo tenga que saberlo. */
+export async function imputarCostoReal({ query }, c, { conGranularidad = true } = {}) {
+  const granularidad = c.granularidad
+    ?? (c.cotizacionPartidaId ? 'PARTIDA' : (c.frenteTexto ? 'FRENTE' : 'OBRA'))
+  const base = [c.obraId, c.cotizacionPartidaId ?? null, c.actividadId ?? null, c.tipo, c.recursoCodigo ?? null,
+    c.recursoNombre, c.unidad ?? null, c.cantidad ?? null, c.precioUnitario ?? null, c.monto,
+    c.moneda ?? null, c.fecha, c.proveedor ?? null, c.comprobante ?? null, c.fuente, c.fuenteId ?? null,
+    c.imputadoPor ?? null]
+  // `conGranularidad: false` es para el caso REAL de una base donde la migración que crea esas tres
+  // columnas todavía no se aplicó: la fila entra igual —el costo no se pierde— pero la precisión de
+  // la imputación no queda guardada, y quien llama tiene que decirlo.
+  const extra = conGranularidad ? [granularidad, c.frenteTexto ?? null, c.nota ?? null] : []
+  const cols = ['obra_id', 'cotizacion_partida_id', 'actividad_id', 'tipo', 'recurso_codigo', 'recurso_nombre',
+    'unidad', 'cantidad', 'precio_unitario', 'monto', 'moneda', 'fecha', 'proveedor', 'comprobante',
+    'fuente', 'fuente_id', 'imputado_por', ...(conGranularidad ? ['granularidad', 'frente_texto', 'nota'] : [])]
+  const vals = cols.map((_, i) => (i === 10 ? "coalesce($11,'ARS')" : `$${i + 1}`)).join(',')
   const filas = await query(
-    `insert into public.obra_partida_costo_real
-       (obra_id, cotizacion_partida_id, actividad_id, tipo, recurso_codigo, recurso_nombre, unidad,
-        cantidad, precio_unitario, monto, moneda, fecha, proveedor, comprobante, fuente, fuente_id, imputado_por)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,coalesce($11,'ARS'),$12,$13,$14,$15,$16,$17)
+    `insert into public.obra_partida_costo_real (${cols.join(', ')})
+     values (${vals})
      on conflict do nothing
-     returning id`,
-    [c.obraId, c.cotizacionPartidaId ?? null, c.actividadId ?? null, c.tipo, c.recursoCodigo ?? null,
-      c.recursoNombre, c.unidad ?? null, c.cantidad ?? null, c.precioUnitario ?? null, c.monto,
-      c.moneda ?? null, c.fecha, c.proveedor ?? null, c.comprobante ?? null, c.fuente, c.fuenteId ?? null,
-      c.imputadoPor ?? null])
+     returning id`, [...base, ...extra])
   return filas[0] ?? null
 }
 

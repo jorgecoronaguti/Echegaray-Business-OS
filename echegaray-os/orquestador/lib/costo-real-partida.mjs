@@ -171,7 +171,12 @@ export function resolverObraDeJornal({ cliente, obra }, { alias, norm } = {}) {
   }
   const porObra = texto(obra) ? buscar(obra) : null
   if (porObra) return { obraId: porObra.obraId, regla: 'obra', frente: null, clave: porObra.clave }
-  const porAmbos = texto(cliente) && texto(obra) ? buscar(`${cliente} ${obra}`) : null
+  // La clave compuesta se arma con las partes YA NORMALIZADAS y no normalizando la concatenación:
+  // el resultado es el mismo (norm colapsa espacios y trabaja palabra por palabra) y así el
+  // normalizador —que en producción es una consulta a Postgres— sólo ve rótulos que existen en la
+  // planilla, sin tener que adivinar de antemano todas las combinaciones posibles.
+  const compuesta = [norm(cliente), norm(obra)].filter(Boolean).join(' ')
+  const porAmbos = compuesta && alias.has(compuesta) ? { clave: compuesta, obraId: alias.get(compuesta) } : null
   if (porAmbos) return { obraId: porAmbos.obraId, regla: 'cliente_obra', frente: null, clave: porAmbos.clave }
   const porCliente = texto(cliente) ? buscar(cliente) : null
   if (porCliente) {
