@@ -100,6 +100,19 @@ test('LA HUELLA DE LAS PRUEBAS NO QUEDA EN LA OBRA', async () => {
   expect((data ?? []).length, `quedaron partes de prueba en ${OBRA}: ${MARCA}`).toBe(0)
 })
 
+// ═══ DESDE UN WORKTREE, ESTE TEST NECESITA `next start`, NO `next dev` (03/09/2026) ═══
+//
+// El worktree resuelve `node_modules` por un symlink que apunta afuera, y Turbopack sólo lo acepta
+// con `NEXT_TURBOPACK_ROOT=/home/jorge/echegaray-os/app`. Con esa raíz, `next dev` sirve los chunks
+// de cliente bajo rutas que él mismo no encuentra: el log se llena de `ChunkLoadError` y LA PÁGINA
+// NUNCA HIDRATA. Nada es interactivo, el `<form>` se envía nativo sin el estado de React, el parte
+// entra vacío y el rojo parece del código.
+//
+// La corrida que vale sale del build:
+//   NEXT_TURBOPACK_ROOT=/home/jorge/echegaray-os/app npm run build
+//   npx next start --port 3287 --hostname 127.0.0.1
+//   LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs E2E_BASE_URL=http://127.0.0.1:3287 \
+//     npx playwright test tests/jefe-avance-escribe.spec.ts -g "LA CAUSA DEL DESVÍO"
 test('J06 · LA CAUSA DEL DESVÍO ENTRA POR LA PANTALLA Y LLEGA A `obra_causa_desvio`', async ({ page }) => {
   // ESTE ES EL CAMINO COMPLETO, Y LA EVIDENCIA ES EL SELECT EN EL DESTINO.
   //
@@ -166,9 +179,12 @@ test('J06 · LA CAUSA DEL DESVÍO ENTRA POR LA PANTALLA Y LLEGA A `obra_causa_de
  */
 async function prender(loc: Locator) {
   await expect(async () => {
-    await loc.click()
-    await expect(loc).toHaveAttribute('aria-pressed', 'true', { timeout: 2_000 })
-  }).toPass({ timeout: 90_000 })
+    // SÓLO SI NO ESTÁ YA PRENDIDO. El chip de causa es un interruptor: reintentar el click a ciegas
+    // lo apagaba en el intento siguiente y el test oscilaba noventa segundos entre encendido y
+    // apagado, informando «timeout» sobre un control que funcionaba.
+    if ((await loc.getAttribute('aria-pressed')) !== 'true') await loc.click()
+    await expect(loc).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 })
+  }).toPass({ timeout: 60_000 })
 }
 
 /**
