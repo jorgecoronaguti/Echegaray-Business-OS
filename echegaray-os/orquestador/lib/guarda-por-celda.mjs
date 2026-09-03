@@ -52,9 +52,12 @@ export async function filtrarPorCelda(cliente, fileId, requests, id2tab) {
     const respetadas = [...a.respetadas, ...b.respetadas, ...c.respetadas]
     avisarRespetadas(respetadas)
     await registrarRespetadas(fileId, respetadas)
-    return { requests: c.requests, respetadas, sellar: async () => { await a.sellar(); await c.sellar() } }
+    // `frenados` viaja hasta el llamador (03/09, auditoría). Un `deleteDimension` que no se aplicó
+    // deja al generador CREYENDO que la geometría cambió: sigue escribiendo con el layout nuevo sobre
+    // una pestaña que quedó con el viejo. Frenar y no avisar es peor que no frenar.
+    return { requests: c.requests, respetadas, frenados: b.frenados, sellar: async () => { await a.sellar(); await c.sellar() } }
   } catch (e) {
     console.warn(`  ⚠ propiedad por celda inactiva en el batch (${String(e.message).slice(0, 90)}) — una edición tuya podría pisarse`)
-    return { requests, respetadas: [], sellar: async () => {} }
+    return { requests, respetadas: [], frenados: [], sellar: async () => {} }
   }
 }

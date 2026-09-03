@@ -498,6 +498,7 @@ export async function guardarRequests(cliente, fileId, requests) {
     requests: porCelda.requests,
     bloqueadas: [...bloqTabs],
     respetadas: porCelda.respetadas,
+    frenados: porCelda.frenados ?? [],
     sellar: async () => { await sellarTabs(cliente, fileId, escritos); await porCelda.sellar() },
   }
 }

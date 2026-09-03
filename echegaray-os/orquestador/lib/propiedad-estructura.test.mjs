@@ -110,3 +110,41 @@ test('un tramo VACÍO se borra sin preguntar, y un espejo _RAW ni se mira', asyn
   const r = await filtrarEstructura({ async readSheetValues() { throw new Error('no debería leer un espejo') } }, 'FILE', espejo, id2tab)
   assert.deepEqual(r.requests, espejo)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// B5 — FRENAR Y NO AVISAR ES PEOR QUE NO FRENAR
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const { abortaPorGeometria } = await import('./propiedad-estructura.mjs')
+
+test('abortaPorGeometria: los tres motivos por los que la geometría NO cambió', () => {
+  assert.equal(abortaPorGeometria({ frenados: [{ motivo: 'hay 3 celda(s) tuya(s) en el tramo (B24)' }] }).aborta, true)
+  assert.match(abortaPorGeometria({ frenados: [{ motivo: 'hay 3 celda(s) tuya(s) en el tramo (B24)' }] }).motivo, /B24/)
+  assert.equal(abortaPorGeometria({ congelado: true }).aborta, true)
+  assert.equal(abortaPorGeometria({ protegido: true, motivo: 'pestaña candada' }).aborta, true)
+  // El camino feliz: la API contestó y la geometría cambió de verdad.
+  assert.equal(abortaPorGeometria({ replies: [{}], spreadsheetId: 'x' }).aborta, false)
+  assert.equal(abortaPorGeometria({ frenados: [] }).aborta, false)
+  assert.equal(abortaPorGeometria(undefined).aborta, false)
+})
+
+test('el tablero de Cheques Emitidos ABORTA si la banda no se pudo ajustar', async () => {
+  // EL DAÑO QUE EVITA: si el `deleteDimension` de la banda se frena y el generador sigue, escribe el
+  // encabezado en una fila y el registro en otra — la pestaña queda mezclada, que es peor que no
+  // haberla tocado. Se prueba sobre la MISMA función que usa el script, no sobre una copia.
+  const { abortaPorGeometria: usa } = await import('./propiedad-estructura.mjs')
+  const fs = await import('node:fs')
+  const fuente = fs.readFileSync(new URL('../scripts/cheques-emitidos-tablero.mjs', import.meta.url), 'utf8')
+  assert.match(fuente, /abortaPorGeometria\(r\)/, 'el tablero dejó de mirar si su cambio de geometría entró')
+  assert.match(fuente, /if \(corte\.aborta\)[\s\S]{0,400}process\.exit\(1\)/, 'mira el resultado pero no aborta')
+  assert.equal(usa({ frenados: [{ motivo: 'x' }] }).aborta, true)
+})
+
+test('los otros dos llamadores que dependen de la geometría también abortan', async () => {
+  const fs = await import('node:fs')
+  for (const script of ['proveedores-dos-cuadros.mjs', 'compras-columna-fosil.mjs']) {
+    const fuente = fs.readFileSync(new URL(`../scripts/${script}`, import.meta.url), 'utf8')
+    assert.match(fuente, /abortaPorGeometria/, `${script} no mira si su borrado entró`)
+    assert.match(fuente, /corte\.aborta/, `${script} no aborta`)
+  }
+})

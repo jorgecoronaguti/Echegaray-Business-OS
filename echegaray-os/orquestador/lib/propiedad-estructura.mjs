@@ -130,3 +130,26 @@ export async function filtrarEstructura(cliente, fileId, requests = [], id2tab =
   }
   return { requests: salida, frenados, respetadas }
 }
+
+/**
+ * ¿EL LLAMADOR TIENE QUE ABORTAR? — la lectura del resultado de `spreadsheetBatchUpdate`, en un solo
+ * lugar y pura.
+ *
+ * ═══ POR QUÉ (03/09, auditoría de cierre) ═══
+ *
+ * Frenar un `deleteDimension` y no avisar es PEOR que no frenarlo. Tres generadores cambian la
+ * geometría y después escriben contra ella: `cheques-emitidos-tablero` (la banda del encabezado),
+ * `proveedores-dos-cuadros` (el colchón entre secciones) y `compras-columna-fosil` (borra una
+ * columna, que corre todas las de la derecha). Si el borrado no ocurrió y el generador sigue, escribe
+ * el layout nuevo sobre la pestaña vieja y la deja mezclada: encabezado en una fila, datos en otra.
+ *
+ * Los tres motivos se leen igual y por eso se leen acá: la guarda por celda (`frenados`), el candado
+ * de pestaña (`protegido`) y el freno de mano (`congelado`). Los tres significan lo mismo para quien
+ * iba a apoyarse en la geometría nueva: no cambió.
+ */
+export function abortaPorGeometria(res) {
+  if (res?.congelado) return { aborta: true, motivo: 'el freno de mano está puesto' }
+  if (res?.frenados?.length) return { aborta: true, motivo: res.frenados[0].motivo }
+  if (res?.protegido) return { aborta: true, motivo: res.motivo ?? 'la guarda descartó el pedido (pestaña candada)' }
+  return { aborta: false, motivo: null }
+}

@@ -27,6 +27,7 @@
 //   node orquestador/scripts/cheques-emitidos-tablero.mjs [--dry] [--rediseniar]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { abortaPorGeometria } from '../lib/propiedad-estructura.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { skinRequests, MUTED, INK, ACENTO, HAIR } from '../lib/estilo-statement.mjs'
 import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
@@ -114,9 +115,20 @@ async function main() {
   // corre entero, y las pestañas que lo leen lo hacen por rango de columna anclado en la geometría
   // (lib/cheques-emitidos-geometria.mjs), así que correrlo no rompe ninguna referencia.
   if (bandaActual !== BANDA) {
-    await google.spreadsheetBatchUpdate(ID, [bandaActual < BANDA
+    const r = await google.spreadsheetBatchUpdate(ID, [bandaActual < BANDA
       ? { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: BANDA - bandaActual }, inheritFromBefore: false } }
       : { deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: bandaActual - BANDA } } }])
+    // ═══ SI LA GEOMETRÍA NO CAMBIÓ, TODO LO DE ABAJO ESCRIBIRÍA EN EL LUGAR EQUIVOCADO (03/09) ═══
+    //
+    // La guarda por celda frena un borrado de filas cuando en el tramo hay algo del dueño. Seguir
+    // como si la banda se hubiera achicado deja el registro escrito con un desfasaje: el encabezado
+    // en una fila y los datos en otra. Abortar deja la pestaña como está, que es reversible.
+    const corte = abortaPorGeometria(r)
+    if (corte.aborta) {
+      console.error(`⛔ no pude ajustar la banda de ${bandaActual} a ${BANDA} filas (${corte.motivo}). `
+        + 'No escribo el registro: con la geometría vieja quedaría corrido. Resolvelo y volvé a correrlo.')
+      process.exit(1)
+    }
     console.log(`  ↕ la banda pasó de ${bandaActual} a ${BANDA} filas: el registro arranca ahora en la ${FILA_HDR + 1}`)
   }
 

@@ -1766,11 +1766,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       // eso, el propio borrado auto-candaba la pestaña y frenaba la escritura que completaba la
       // operación. Nunca sella una pestaña bloqueada, así que no levanta ningún candado.
       let sellar = async () => {}
+      let frenados = []
       if (!espejo && !yaGuardado) {
         try {
           const { guardarRequests } = await import('./guarda-escritura.mjs')
           const g = await guardarRequests(cliente, fileId, requests)
-          if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          frenados = g.frenados ?? []
+          if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas, frenados }
           requests = g.requests
           sellar = g.sellar
         } catch { /* fail-open */ }
@@ -1781,7 +1783,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         { requests },
       )
       await sellar()
-      return res
+      // ═══ UN REQUEST ESTRUCTURAL FRENADO TIENE QUE LLEGAR AL LLAMADOR (03/09) ═══
+      //
+      // La guarda por celda puede frenar un `deleteDimension` porque en el tramo hay celdas del dueño.
+      // Si eso no vuelve, el generador sigue como si la geometría hubiera cambiado —«la banda pasó de
+      // 8 a 5 filas»— y escribe el layout nuevo sobre una pestaña que quedó con el viejo. El resultado
+      // es peor que no haber frenado nada: la pestaña queda mezclada. Los llamadores que dependen de
+      // la geometría ABORTAN mirando este campo.
+      return frenados.length ? { ...res, frenados } : res
     },
     /** Copia/duplica un archivo (para partir de una plantilla o de un presupuesto previo). */
     async copyFile(fileId, name, parents) {
