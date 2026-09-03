@@ -200,6 +200,8 @@ export interface ParteDeTarea {
   avance_pct: number | null
   metodo: string | null
   comentario: string | null
+  /** La clave de `causa_desvio` que declaró ese parte, si declaró alguna. */
+  causa_desvio: string | null
 }
 
 /**
@@ -216,7 +218,9 @@ export async function getUltimosPartes(
 ): Promise<ServiceResult<ParteDeTarea[]>> {
   const { data, error } = await supabase
     .from('obra_ejecucion')
-    .select('id, fecha, cantidad, avance_pct, metodo, comentario')
+    // `causa_desvio` viaja acá para que la pantalla sepa si el desvío YA fue explicado y deje de
+    // preguntar lo mismo todos los días. Una pregunta que no se apaga se vuelve empapelado.
+    .select('id, fecha, cantidad, avance_pct, metodo, comentario, causa_desvio')
     .eq('actividad_id', actividadId)
     .order('fecha', { ascending: false })
     .limit(limite)
@@ -231,6 +235,7 @@ export async function getUltimosPartes(
         avance_pct: numero(f.avance_pct),
         metodo: (f.metodo as string | null) ?? null,
         comentario: (f.comentario as string | null) ?? null,
+        causa_desvio: (f.causa_desvio as string | null) ?? null,
       }
     }),
     error: null,

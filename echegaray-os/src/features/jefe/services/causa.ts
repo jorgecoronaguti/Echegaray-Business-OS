@@ -107,3 +107,27 @@ export function soloEnLaPrimera<T extends object>(
     comentario: i === 0 ? incidencia.comentario : null,
   }))
 }
+
+/**
+ * ¿ESTE DESVÍO YA ESTÁ EXPLICADO? — la razón por la que la pregunta no es empapelado.
+ *
+ * Medido el 03/09/2026 en `san-francisco`: las CINCUENTA Y UNA tareas abiertas proyectan fin después
+ * del plan. Una pregunta ámbar que aparece en las cincuenta y una, todos los días, deja de leerse a
+ * la tercera y el jefe aprende a saltearla — que es exactamente cómo se llega a una fila en
+ * dieciocho obras.
+ *
+ * Así que la pregunta se apaga cuando ya fue contestada: si el último parte con causa de esta tarea
+ * declara una, la pantalla la MUESTRA en tono neutro en vez de reclamarla en ámbar, y el botón deja
+ * de acusar la omisión. Cambió el motivo, se toca otra causa y listo.
+ *
+ * Se mira el parte más reciente CON causa, no el más reciente a secas: los partes posteriores sin
+ * causa son días normales, no una retractación.
+ */
+export function yaExplicado(partes: { fecha: string; causa_desvio: string | null }[]): {
+  causa: string; fecha: string
+} | null {
+  const conCausa = partes.filter((p) => p.causa_desvio)
+  if (conCausa.length === 0) return null
+  const ultimo = conCausa.reduce((a, b) => (b.fecha > a.fecha ? b : a))
+  return { causa: ultimo.causa_desvio as string, fecha: ultimo.fecha }
+}

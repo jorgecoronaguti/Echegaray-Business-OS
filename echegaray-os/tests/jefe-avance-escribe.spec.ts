@@ -99,3 +99,79 @@ test('LA HUELLA DE LAS PRUEBAS NO QUEDA EN LA OBRA', async () => {
   const { data } = await admin.from('obra_ejecucion').select('id').eq('fuente', 'jefe_telefono')
   expect((data ?? []).length, `quedaron partes de prueba en ${OBRA}: ${MARCA}`).toBe(0)
 })
+
+test('J06 · LA CAUSA DEL DESVÍO ENTRA POR LA PANTALLA Y LLEGA A `obra_causa_desvio`', async ({ page }) => {
+  // ESTE ES EL CAMINO COMPLETO, Y LA EVIDENCIA ES EL SELECT EN EL DESTINO.
+  //
+  // `public.obra_causa_desvio` tenía UNA fila repartida en dieciocho obras: la columna existía desde
+  // agosto, el catálogo también, y ninguna pantalla pedía la causa. Lo que este test prueba no es
+  // que aparezca un chip: es que un jefe de obra, con su sesión real y la RLS viva, deja una causa
+  // clasificada que la vista de análisis de causas puede contar.
+  const admin = servicio()
+  const t = await tareaConDesvio(admin)
+  await entrarComo(page, JEFE.email, JEFE.password)
+  await page.setViewportSize({ width: 390, height: 900 })
+
+  try {
+    await page.goto(`/obra/avance?obra=${OBRA}&actividad=${t.actividad_id}`)
+    // La pregunta aparece SOLA, porque la tarea está fuera de objetivo. Nadie tuvo que ir a
+    // buscar un formulario de cierre de obra.
+    const bloque = page.getByTestId('causa-desvio')
+    await expect(bloque, 'la pantalla no preguntó por qué se desvió').toBeVisible({ timeout: 30_000 })
+
+    await bloque.getByTestId('causa').filter({ hasText: 'Espera de equipo' }).click()
+    await page.getByTestId('causa-nota').fill(MARCA)
+    await page.getByTestId('valor-avance').first().click()
+    await page.getByTestId('guardar-avance').click()
+    await expect(page.getByTestId('resultado-avance')).toBeVisible({ timeout: 30_000 })
+
+    // 1 · LA FILA, EN SU TABLA.
+    const { data } = await admin.from('obra_ejecucion')
+      .select('id, causa_desvio, comentario, fuente')
+      .eq('actividad_id', t.actividad_id).eq('fuente', 'jefe_telefono')
+      .order('creado_en', { ascending: false }).limit(1)
+    const fila = data?.[0] as { causa_desvio: string | null; comentario: string | null } | undefined
+    expect(fila, 'no se escribió ninguna fila en obra_ejecucion').toBeTruthy()
+    expect(fila!.causa_desvio, 'el parte entró SIN causa: la puerta sigue tapiada').toBe('espera_equipo')
+    expect(fila!.comentario).toBe(MARCA)
+
+    // 2 · Y EN LA VISTA QUE CONSUME EL ANÁLISIS. Que la fila exista no alcanza: `obra_causa_desvio`
+    // es lo que lee quien pregunta «¿por qué se nos fue el tiempo en esta obra?», y una causa que
+    // no llega hasta ahí no le enseña nada a la próxima cotización.
+    const { data: vista } = await admin.from('obra_causa_desvio')
+      .select('obra_id, causa_desvio, causa, familia, n_incidencias')
+      .eq('obra_id', OBRA).eq('causa_desvio', 'espera_equipo')
+    const agrupada = vista?.[0] as { causa: string; familia: string; n_incidencias: number } | undefined
+    expect(agrupada, 'la causa no llegó a obra_causa_desvio').toBeTruthy()
+    expect(agrupada!.causa).toBe('Espera de equipo')
+    // La familia es lo que separa lo reclamable al cliente de lo que tenemos que corregir nosotros.
+    expect(agrupada!.familia).toBe('equipos')
+    expect(agrupada!.n_incidencias).toBeGreaterThan(0)
+  } finally {
+    await admin.from('obra_ejecucion').delete()
+      .eq('actividad_id', t.actividad_id).eq('fuente', 'jefe_telefono')
+  }
+})
+
+/**
+ * Una tarea de la obra que la pantalla vaya a marcar como desviada —proyecta fin después del plan—
+ * y que TODAVÍA no tenga causa declarada: con una causa vieja el bloque sale en tono neutro y el
+ * test dejaría de medir el caso que importa, que es el reclamo.
+ */
+async function tareaConDesvio(admin: ReturnType<typeof servicio>) {
+  const { data } = await admin.from('obra_actividad_control')
+    .select('actividad_id, nombre, avance_pct, fin_plan, forecast_fin')
+    .eq('obra_id', OBRA).eq('metodo_avance', 'partes').eq('tipo', 'tarea')
+    .lt('avance_pct', 100).not('fin_plan', 'is', null).not('forecast_fin', 'is', null)
+    .limit(50)
+  const candidatas = (data ?? []).filter((o) => {
+    const f = o as { fin_plan: string; forecast_fin: string }
+    return f.forecast_fin > f.fin_plan
+  }) as { actividad_id: string; nombre: string }[]
+  for (const c of candidatas) {
+    const { data: previos } = await admin.from('obra_ejecucion')
+      .select('id').eq('actividad_id', c.actividad_id).not('causa_desvio', 'is', null).limit(1)
+    if ((previos ?? []).length === 0) return c
+  }
+  throw new Error(`ninguna tarea de ${OBRA} se mide por partes, está atrasada y sin causa declarada`)
+}

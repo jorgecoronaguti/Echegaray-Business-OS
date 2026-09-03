@@ -10,7 +10,7 @@ import { AVISO_CRITERIO, ROTULO_METODO, VALORES_MASIVOS, controlDe } from '../se
 import type { Metodo } from '../services/medicion'
 import type { ActividadDelJefe, Impedimento, ParteDeTarea, PasoDeActividad } from '../services/jefeService'
 import { plazoDe, produccionDe, rendimientoDe } from '../services/tarea'
-import { desvioDe, validarCausa } from '../services/causa'
+import { desvioDe, validarCausa, yaExplicado } from '../services/causa'
 import { avancePorPasos } from '@/features/obras/services/avance'
 import type { Esperado } from '@/features/administracion/services/presencia'
 
@@ -99,6 +99,12 @@ export function FormularioAvance({
   const prod = produccionDe(actividad)
   const parado = impedimentos.length > 0
   const desvio = desvioDe(actividad)
+  // Y SE APAGA CUANDO YA FUE CONTESTADA. Las 51 tareas abiertas de `san-francisco` proyectan fin
+  // después del plan: en ámbar y todos los días, la pregunta se vuelve empapelado. El porqué y el
+  // dato medido, en `causa.ts`.
+  const explicado = yaExplicado(partes)
+  const nombreCausa = (clave: string) => causas.find((c) => c.clave === clave)?.nombre ?? clave
+  const reclama = desvio.pedir && !explicado
   // La misma función que corre en la Server Action: acá avisa antes de enviar, allá decide.
   const avisoCausa = validarCausa({ causa, nota })
 
@@ -198,19 +204,23 @@ export function FormularioAvance({
           <div
             data-testid="causa-desvio"
             style={{
-              marginTop: 12, background: C.warnFondo, border: `1px solid ${C.warnBorde}`,
-              borderRadius: R.tarjeta, padding: 14,
+              marginTop: 12, borderRadius: R.tarjeta, padding: 14,
+              background: reclama ? C.warnFondo : C.surface,
+              border: `1px solid ${reclama ? C.warnBorde : C.linea}`,
             }}
           >
             <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-              <span style={{ display: 'flex', color: C.warn, flexShrink: 0, marginTop: 1 }}>
-                <Icono nombre="alerta" tamano={18} />
+              <span style={{ display: 'flex', color: reclama ? C.warn : C.faint, flexShrink: 0, marginTop: 1 }}>
+                <Icono nombre={reclama ? 'alerta' : 'historial'} tamano={18} />
               </span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>¿Por qué se desvió?</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>
+                  {reclama ? '¿Por qué se desvió?' : 'Ya explicado'}
+                </div>
                 <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, lineHeight: 1.45 }}>
-                  {desvio.motivo}. Elegí la causa: es lo que hace que la próxima cotización no
-                  repita el error.
+                  {explicado
+                    ? `${nombreCausa(explicado.causa)}, desde el ${explicado.fecha.slice(8, 10)}/${explicado.fecha.slice(5, 7)}. Si cambió el motivo, elegí otra.`
+                    : `${desvio.motivo}. Elegí la causa: es lo que hace que la próxima cotización no repita el error.`}
                 </div>
               </div>
             </div>

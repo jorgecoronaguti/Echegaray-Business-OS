@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { AVISO_OTRO, desvioDe, soloEnLaPrimera, validarCausa } from './causa.ts'
+import { AVISO_OTRO, desvioDe, soloEnLaPrimera, validarCausa, yaExplicado } from './causa.ts'
 import { plazoDe, rendimientoDe } from './tarea.ts'
 
 // EL DEFECTO QUE ATRAPAN ESTOS TESTS: una pantalla que pregunta la causa cuando no hay nada que
@@ -95,4 +95,23 @@ test('medir por pasos escribe UNA incidencia, no una por paso', () => {
   assert.deepEqual(filas.slice(1).map((f) => f.causa_desvio), [null, null])
   // Y no pierde lo que ya traía cada fila.
   assert.deepEqual(filas.map((f) => f.paso_id), ['a', 'b', 'c'])
+})
+
+test('la pregunta se APAGA cuando ya fue contestada: el más reciente CON causa', () => {
+  // El defecto: mirar el parte más reciente a secas. Un día normal cargado después —sin causa— no
+  // es una retractación, y con esa lectura la pantalla volvería a reclamar en ámbar todos los días
+  // hasta que el jefe aprenda a saltearla.
+  assert.deepEqual(
+    yaExplicado([
+      { fecha: '2026-09-03', causa_desvio: null },
+      { fecha: '2026-09-01', causa_desvio: 'frente_no_liberado' },
+      { fecha: '2026-08-20', causa_desvio: 'clima' },
+    ]),
+    { causa: 'frente_no_liberado', fecha: '2026-09-01' },
+  )
+})
+
+test('sin ningún parte con causa, no hay nada explicado', () => {
+  assert.equal(yaExplicado([]), null)
+  assert.equal(yaExplicado([{ fecha: '2026-09-03', causa_desvio: null }]), null)
 })
