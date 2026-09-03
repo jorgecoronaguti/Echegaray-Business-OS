@@ -11,7 +11,9 @@
 // antes de llegar acá. PURO: sin red, sin base.
 
 /** Lo que un plano NO es, gane lo que gane el resto del nombre: papeles administrativos. */
-const RE_NO_PLANO = /factura|recibo|extracto|resumen\s+de|presupuesto|cotizaci[oó]n|contrato|pliego|remito|orden\s+de\s+(compra|pago)|liquidaci|n[oó]mina|sueldo|constancia|comprobante/i
+// «costos» y «cómputo» entran acá y no en las señales de plano: «Estructura de costos.pdf» tiene
+// la palabra ESTRUCTURA y se elevaba a plano_general — un papel de plata saliendo a visión paga.
+const RE_NO_PLANO = /factura|recibo|extracto|resumen\s+de|presupuesto|cotizaci[oó]n|c[oó]mputos?|costos?|contrato|pliego|remito|orden\s+de\s+(compra|pago)|liquidaci|n[oó]mina|sueldo|constancia|comprobante/i
 
 /** Señales de plano en el NOMBRE del archivo. */
 const RE_NOMBRE_PLANO = /plano|estructur|arquitect[oó]nic|arquitectura|fundaci|cimient|entrepiso|l[aá]mina|replanteo|municipal/i

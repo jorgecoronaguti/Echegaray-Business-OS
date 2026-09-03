@@ -28,6 +28,7 @@ import { seleccionarTodas, huella } from './seleccion.mjs'
 import { procesosDeTodos } from './procesos.mjs'
 import { controlar } from './control.mjs'
 import { claseDocumental, ingerir } from './documental.mjs'
+import { leerPdf, renglones } from '../ingesta/pdf.mjs'
 import { armarProyecto } from './proyecto.mjs'
 import { relacionar } from './relacion.mjs'
 import { resolverConCad } from './medicion-cad.mjs'
@@ -64,6 +65,10 @@ export async function documentosDelProyecto({ query }, termino) {
  * costo no cambian. Su rastro persistente es `orq.xsas_adjunto` (bytes por actor+hash), no Drive.
  * Un adjunto sin nombre o sin contenido se ignora: no hay documento que afirmar. PURA.
  */
+/** Cuánto texto se guarda para CLASIFICAR. `esPlanoAdjunto` mira los primeros 20k: más que eso
+ *  es cargar memoria sin cambiar una sola decisión. */
+export const TOPE_TEXTO_CLASIFICACION = 20_000
+
 export function documentosEnMemoria(adjuntos = []) {
   return (adjuntos ?? [])
     .map((a) => {
@@ -80,6 +85,10 @@ export function documentosEnMemoria(adjuntos = []) {
         size_bytes: bytes.length,
         modified_time: null,
         _bytes: bytes,
+        // El TEXTO de la lectura que ya hizo quien recibió el archivo. Viaja con el documento
+        // porque es lo que permite clasificar «E3 Techo P.Alta.pdf» —un plano cuyo NOMBRE no
+        // dice que lo sea— sin volver a extraerlo. Una lectura, una fuente.
+        _texto: typeof a?.texto === 'string' && a.texto ? a.texto.slice(0, TOPE_TEXTO_CLASIFICACION) : null,
       }
     })
     .filter(Boolean)
@@ -637,7 +646,62 @@ export function parecidosSinFusionar(elementos = []) {
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [] } = {}) {
+/**
+ * DE DÓNDE SALEN LOS DOCUMENTOS DE UNA CORRIDA — Y CUÁNDO DRIVE NO ENTRA.
+ *
+ * ═══ MODO SÓLO-ADJUNTOS (dueño, 02/09/2026: «google download 404») ═══
+ *
+ * Cuando el pedido trae PLANOS ADJUNTOS, esos planos SON la documentación de la corrida: el
+ * `termino` deja de ser un término de búsqueda y pasa a ser el RÓTULO de la obra. Salir igual al
+ * índice de Drive traía archivos que nadie mandó, los bajaba de a uno y bastaba un 404 para
+ * degradar —o tumbar— una cotización que tenía el plano en la mano. Peor: el rótulo inferido del
+ * nombre del archivo («San Francisco del Monte») como patrón `%...%` puede traer la carpeta de
+ * OTRA obra del mismo cliente y mezclar dos proyectos en un solo cómputo.
+ *
+ * Sumar Drive a una corrida con adjuntos vuelve a ser posible, pero SÓLO pedido explícitamente
+ * (`conDrive: true`). Sin adjuntos, la conducta es la de siempre: se busca por término.
+ *
+ * @returns {Promise<{filas:Array, conIndice:boolean}>} `conIndice` declara si se consultó Drive.
+ */
+/**
+ * EL TEXTO QUE FALTA SE EXTRAE ACÁ, GRATIS Y SIN RED.
+ *
+ * Quien manda el adjunto puede traer el texto ya leído (el gateway lo tiene) o no traerlo (un
+ * script, otra cara). Sin texto, la clasificación queda atada al nombre, y hay planos reales cuyo
+ * nombre no declara nada: «GOP-153479.pdf», «E3 Techo P.Alta.pdf». El lector local de PDF es el
+ * mismo que usa `documental.mjs`, no cuesta una llamada paga y no sale a Drive.
+ *
+ * Un PDF ESCANEADO sigue sin texto y sin señal en el nombre: ése queda declarado como no-plano y
+ * hay que nombrar la obra a mano — es el límite conocido, no un silencio.
+ */
+export async function conTextoParaClasificar(filas = []) {
+  for (const f of filas) {
+    if (f._texto || !f._bytes) continue
+    // La firma se mira antes de llamar al lector: pasarle un .txt a un parser de PDF funciona
+    // —falla y se captura— pero imprime warnings y cuesta cien veces más que comparar 5 bytes.
+    if (f._bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
+      try {
+        const d = await leerPdf(f._bytes, { conGeometria: false })
+        const texto = d.leidas.map((pg) => renglones(pg.textos).map((r) => r.texto).join('\n')).join('\n')
+        f._texto = texto.slice(0, TOPE_TEXTO_CLASIFICACION)
+      } catch { f._texto = null /* PDF que no abre: el nombre decide solo, y se sabe */ }
+      continue
+    }
+    const crudo = f._bytes.toString('utf8')
+    f._texto = crudo.slice(0, 1000).includes('\u0000') ? null : crudo.slice(0, TOPE_TEXTO_CLASIFICACION)
+  }
+  return filas
+}
+
+export async function fuentesDe({ query }, { termino, adjuntos = [], conDrive = null } = {}) {
+  const enMemoria = await conTextoParaClasificar(documentosEnMemoria(adjuntos))
+  const conIndice = conDrive === true || (conDrive !== false && enMemoria.length === 0)
+  const filas = conIndice ? await documentosDelProyecto({ query }, termino) : []
+  filas.push(...enMemoria)
+  return { filas, conIndice }
+}
+
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [], conDrive = null } = {}) {
   const t0 = Date.now()
   // ═══ CLAUDE = 0 ═══
   // El proveedor de razonamiento puede no estar: sin saldo, sin API key, caído, o apagado a mano
@@ -652,8 +716,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // resolvió — que es la única forma de que «lo resolvió el caché» no se pueda confundir con
   // «lo resolvió el modelo y el resultado dio igual».
   const met = nuevoMedidor()
-  const filas = await documentosDelProyecto({ query }, termino)
-  filas.push(...documentosEnMemoria(adjuntos))
+  const { filas, conIndice } = await fuentesDe({ query }, { termino, adjuntos, conDrive })
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
   const planos = planosDe(insumos)
@@ -821,6 +884,8 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
 
   return {
     termino, carpeta: raiz, ms: Date.now() - t0,
+    // `soloAdjuntos` es lo que le permite a la respuesta no decir «busqué en Drive» cuando no buscó.
+    soloAdjuntos: !conIndice,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
     relaciones,
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,
