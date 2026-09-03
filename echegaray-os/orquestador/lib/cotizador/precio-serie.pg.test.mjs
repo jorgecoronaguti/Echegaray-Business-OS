@@ -146,6 +146,29 @@ test('recurso_precio acumula serie y la lectura dice CUÁL se usa y de cuándo e
         assert.match(e.por_que, /NINGUNA marcada vigente/)
       })
 
+      // Contestar mal es peor que no contestar. La vista es `security_invoker`: sin el filtro
+      // `ve_economia()` la RLS de `recurso_precio` vacía el join y un jefe de obra vería los 406
+      // recursos como «sin precio» — un falso FALTA_DATO por cada uno. MUTACIÓN: sacando el `where`
+      // de la vista, este test devuelve 406 en vez de 0.
+      await t.test('a quien no ve economía la vista le contesta CERO, no «ningún recurso tiene precio»', async () => {
+        const campo = await uno(`select id from perfiles where rol = 'campo' limit 1`)
+        const admin = await uno(`select id from perfiles where rol in ('direccion','administracion') limit 1`)
+        assert.ok(campo?.id && admin?.id, 'la base no tiene una cuenta de campo y una de economía: el permiso no se puede probar')
+
+        const filasComo = async (id) => {
+          await c.query('savepoint rol')
+          await c.query(`select set_config('request.jwt.claims', $1, true)`,
+            [JSON.stringify({ sub: id, role: 'authenticated' })])
+          await c.query('set local role authenticated')
+          const n = Number((await uno('select count(*) n from public.recurso_precio_serie')).n)
+          await c.query('rollback to savepoint rol')
+          await c.query('reset role')
+          return n
+        }
+        assert.equal(await filasComo(campo.id), 0, 'un jefe de obra vio la serie de precios')
+        assert.ok(await filasComo(admin.id) > 0, 'quien SÍ ve economía se quedó sin la vista')
+      })
+
       await t.test('nada del catálogo real se perdió en el camino', async () => {
         const despues = Number((await uno(
           'select count(*) n from public.recurso_precio where recurso_id <> $1', [recursoId])).n)

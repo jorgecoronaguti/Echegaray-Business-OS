@@ -29,6 +29,30 @@
 -- de la serie, eso NO se resuelve solo eligiendo la otra: se declara CONFLICTO. Elegir en silencio
 -- es exactamente lo que hace que un desacuerdo entre fuentes no se vea nunca.
 --
+-- ═══ LO QUE QUEDA ROTO Y NO SE TOCA ACÁ ═══
+--
+-- `cot_gate_congelado()` lee `recurso_precio` en TRES lugares SIN filtrar por `vigente`:
+--
+--   · SIN_PRECIO             `not exists (... rp.costo is not null and rp.fecha_precio is not null)`
+--   · SIN_PRECIO_CALCULABLE  el mismo `not exists`
+--   · PRECIO_DESACTUALIZADO  `having max(rp.fecha_precio) < current_date - coalesce(max(rp.vigencia_dias), 180)`
+--
+-- Mientras cada recurso tenga UNA observación eso da el mismo resultado que mirar la fila vigente
+-- —verificado: el gate de la cotización de Quattropani devuelve un JSON idéntico antes y después de
+-- esta migración—. En cuanto un recurso tenga dos, se separan y en la dirección peligrosa:
+--
+--   · una observación vieja pero fechada tapa un precio vigente SIN fecha, y SIN_PRECIO deja de
+--     dispararse cuando más falta hace;
+--   · si alguien revierte una carga equivocada, `max(fecha_precio)` sigue siendo la de la
+--     observación jubilada y el gate declara fresco un total calculado con la vieja;
+--   · `max(vigencia_dias)` toma la ventana MÁS PERMISIVA de toda la serie, así que una observación
+--     histórica con vigencia contractual larga apaga el control para todas las demás.
+--
+-- El arreglo es agregar `and rp.vigente` a los tres y leer la vigencia de esa misma fila. NO se hace
+-- en esta migración porque el encargo acotó el cambio a `recurso_precio` y hay varias ramas de
+-- cotizador en vuelo sobre esa función: reemplazarla desde acá revertiría en silencio el trabajo de
+-- otra. Queda declarado para que lo decida quien tiene la vista del conjunto.
+
 -- ═══ QUÉ NO HACE ═══
 --
 -- No inventa, no interpola y no actualiza nada por inflación. Un precio de 2017 sale con su fecha,
