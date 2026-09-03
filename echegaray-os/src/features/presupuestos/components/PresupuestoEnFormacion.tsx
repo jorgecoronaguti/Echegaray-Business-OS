@@ -109,13 +109,14 @@ function PieCascada({ cascada, listo, presupuestoId, onDerivar }: {
 
 function FilasCascada({ c }: { c: Cascada }) {
   if (!c) return null
+  // Nombres reales de `cotizacion_cascada` (ver el comentario del tipo `Cascada`): no hay
+  // «riesgo» en la cascada del motor — ese escalón nunca existió fuera del mockup.
   const filas: { k: string; pct: string | null; v: string | null; venta?: boolean }[] = [
-    { k: 'Costo directo medido', pct: null, v: formatoPesos(c.costoDirecto) },
-    { k: 'Indirectos aplicados', pct: pctSobreCostoDirecto(c.costoDirecto, c.indirectos), v: formatoPesos(c.indirectos) },
-    { k: 'Riesgo', pct: pctSobreCostoDirecto(c.costoDirecto, c.riesgo), v: formatoPesos(c.riesgo) },
-    { k: 'Financiero', pct: pctSobreCostoDirecto(c.costoDirecto, c.financiero), v: formatoPesos(c.financiero) },
-    { k: 'Beneficio', pct: pctSobreCostoDirecto(c.costoDirecto, c.beneficio), v: formatoPesos(c.beneficio) },
-    { k: 'Precio de venta', pct: c.coeficiente ? `coef. ${c.coeficiente.toLocaleString('es-AR', { maximumFractionDigits: 3 })}` : null, v: formatoPesos(c.venta), venta: true },
+    { k: 'Costo directo medido', pct: null, v: formatoPesos(c.costo_directo) },
+    { k: 'Gastos generales', pct: pctSobreCostoDirecto(c.costo_directo, c.gastos_generales), v: formatoPesos(c.gastos_generales) },
+    { k: 'Beneficio', pct: pctSobreCostoDirecto(c.costo_directo, c.beneficio), v: formatoPesos(c.beneficio) },
+    { k: 'Financiero', pct: pctSobreCostoDirecto(c.costo_directo, c.financiero), v: formatoPesos(c.financiero) },
+    { k: 'Precio de venta', pct: c.coeficiente_sin_iva ? `coef. ${c.coeficiente_sin_iva.toLocaleString('es-AR', { maximumFractionDigits: 3 })}` : null, v: formatoPesos(c.venta_final), venta: true },
   ]
   return (
     <>

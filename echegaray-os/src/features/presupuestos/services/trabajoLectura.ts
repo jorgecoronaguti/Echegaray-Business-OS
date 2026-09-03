@@ -83,14 +83,19 @@ export interface GrupoComputo {
 
 export interface Computo { grupos: GrupoComputo[] }
 
+// LOS NOMBRES REALES DE `public.cotizacion_cascada` — no una forma inventada. El handler
+// (`cotizacion_plano.mjs`) guarda el row de `cascadaDe()` tal cual sale de la vista canónica;
+// `riesgo` no existe en esa cascada (nunca existió: fue un nombre del mockup que nadie cruzó
+// contra el motor real). Ver `services/cascada.ts` para la cascada completa del libro — acá sólo
+// se necesita el subconjunto que la pantalla de lectura del plano dibuja en su pie.
 export interface Cascada {
-  costoDirecto: number
-  indirectos: number
-  riesgo: number
-  financiero: number
-  beneficio: number
-  venta: number
-  coeficiente: number | null
+  costo_directo: number | null
+  gastos_generales: number | null
+  costo_industrial: number | null
+  beneficio: number | null
+  financiero: number | null
+  venta_final: number | null
+  coeficiente_sin_iva: number | null
 }
 
 export interface TrabajoLectura {
@@ -204,8 +209,8 @@ export function filtrarComputo(computo: Computo | null, pasoId: string | null): 
 }
 
 /** Un porcentaje derivado de dos cifras reales — nunca una tasa fija: `costoDirecto` es la base. */
-export function pctSobreCostoDirecto(base: number, valor: number): string | null {
-  if (!Number.isFinite(base) || base === 0) return null
+export function pctSobreCostoDirecto(base: number | null, valor: number | null): string | null {
+  if (base === null || valor === null || !Number.isFinite(base) || base === 0) return null
   return `${((valor / base) * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`
 }
 

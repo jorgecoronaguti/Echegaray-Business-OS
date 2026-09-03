@@ -60,7 +60,9 @@ test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disput
     id: 'j3', estado: 'LISTO', etapa: null, pasos,
     certeza: { estado: 'conflicto', porEstado: { firme: 6, conflicto: 1 }, firmes: 6, total: 7 },
     computo,
-    cascada: { costoDirecto: 24_010.8, indirectos: 6_483, riesgo: 763, financiero: 1_845, beneficio: 5_795, venta: 38_897, coeficiente: 1.62 },
+    // Nombres reales de `cotizacion_cascada` — un fixture con nombres inventados nunca detecta
+    // que la pantalla lee campos que el backend no manda (auditoría 03/09/2026).
+    cascada: { costo_directo: 24_010.8, gastos_generales: 6_483, costo_industrial: 30_493.8, beneficio: 5_795, financiero: 1_845, venta_final: 38_897, coeficiente_sin_iva: 1.62 },
     presupuesto_id: 'pres-123', error: null,
   }
   const cm = certezaMonetaria(t.pasos, t.computo)

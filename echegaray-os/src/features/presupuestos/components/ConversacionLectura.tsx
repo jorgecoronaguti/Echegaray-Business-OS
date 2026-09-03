@@ -10,12 +10,15 @@ import { progresoDeLectura, type EstadoTrabajo, type PasoTrabajo } from '../serv
 import { TurnoPaso } from './TurnoPaso'
 
 export function ConversacionLectura({
-  pasos, estado, etapa, error, filtro, abierto, onAbrir, onFiltrar, onRehacer,
+  pasos, estado, etapa, error, errorTransitorio = null, filtro, abierto, onAbrir, onFiltrar, onRehacer,
 }: {
   pasos: PasoTrabajo[]
   estado: EstadoTrabajo
   etapa: string | null
   error: string | null
+  /** Un fallo del SONDEO (red), no del trabajo — el worker puede seguir andando bien. Se avisa
+   *  aparte del bloque de `estado==='ERROR'`, que es terminal y viene del servidor. */
+  errorTransitorio?: string | null
   filtro: string | null
   abierto: string | null
   onAbrir: (id: string) => void
@@ -61,6 +64,12 @@ export function ConversacionLectura({
           <div className="flex items-center gap-3" style={{ padding: '22px 0 0 50px' }} data-testid="midiendo">
             <span className="font-mono text-[10.5px] font-semibold" style={{ letterSpacing: '.09em', color: C.info }}>XSAS</span>
             <span className="text-[12.5px]" style={{ color: C.apagado }}>{etapa ?? 'Midiendo'}</span>
+          </div>
+        )}
+
+        {midiendo && errorTransitorio && (
+          <div className="flex items-center gap-2" style={{ padding: '8px 0 0 50px' }} data-testid="error-transitorio">
+            <span className="text-[11.5px]" style={{ color: C.neg }}>Problema de red consultando el progreso — reintentando. El trabajo sigue corriendo.</span>
           </div>
         )}
 

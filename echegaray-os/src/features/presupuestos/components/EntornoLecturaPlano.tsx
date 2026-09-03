@@ -86,6 +86,9 @@ export function EntornoLecturaPlano() {
       <ConversacionLectura
         pasos={trabajo.pasos} estado={trabajo.estado} etapa={trabajo.etapa}
         error={trabajo.error ?? errorSondeo} filtro={filtro} abierto={abierto}
+        // Un fallo del SONDEO (red, no del trabajo) mientras todavía no hay estado terminal: se
+        // avisa aparte, sin pisar el bloque de error final que sólo corresponde a `estado==='ERROR'`.
+        errorTransitorio={trabajo.estado !== 'ERROR' ? errorSondeo : null}
         onAbrir={alternarAbierto} onFiltrar={alternarFiltro} onRehacer={rehacer}
       />
       <PresupuestoEnFormacion
