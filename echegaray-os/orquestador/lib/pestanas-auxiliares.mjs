@@ -43,6 +43,9 @@ export const SIN_GENERADOR = {
   Cobranzas: 'la carga una persona: es el libro de ventas y cobros.',
   Parámetros: 'los parámetros los decide una persona (alícuotas, jornada, clientes).',
   '01_Valores Iniciales': 'saldos de arranque del ejercicio: se cargan una vez.',
+  // Declarada el 02/09/2026: el censo la reportaba huérfana (53h sin firma) y nadie lo veía
+  // porque no rompe ningún total. Su contenido cuadra contra nomina-banco-recibo (10=10 medido).
+  SUBCONTRATISTAS: 'la carga una persona: subcontratistas y sus pagos. Sin script propio; cuadra contra nomina-banco-recibo.',
   // NO ES UNA EXCEPCIÓN CÓMODA, ES UNA DEUDA DECLARADA: la escala del convenio cambia con cada
   // paritaria y hoy la réplica se carga a mano. Mientras siga así, el bloque de escala de Jornales
   // envejece en silencio cuando se firma un acuerdo nuevo.
