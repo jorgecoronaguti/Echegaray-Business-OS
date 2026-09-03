@@ -21,6 +21,7 @@
 // documentación técnica legítima, pero en este data room viaja en el mismo PDF que el precio.
 
 import { clasificarDocumento, legibilidadDe, LECTURA, TIPO_DOC } from '../documentacion-obra.mjs'
+import { esPlanoAdjunto } from './detector-plano.mjs'
 
 /** Los formatos que la VISIÓN sí puede mirar aunque `legibilidadDe` los declare no legibles: esa
  *  función responde «¿puedo extraer texto?», que hasta ahora era la única lectura que existía. Un
@@ -61,6 +62,33 @@ export function revelaElResultado(doc, { carpetaObra = '' } = {}) {
   return { revela: false, porQue: null }
 }
 
+/** Un documento que llegó ADJUNTO al chat, no del índice de Drive. */
+const esAdjunto = (doc) => String(doc?.drive_file_id ?? '').startsWith('adjunto:')
+
+/**
+ * LA CLASE DE UN INSUMO — Y POR QUÉ UN ADJUNTO NO SE CLASIFICA IGUAL QUE UN ARCHIVO DE DRIVE.
+ *
+ * Medido con el plano real del dueño (02/09/2026): «Estructura San Francisco del Monte
+ * Entrepiso.pdf» adjunto salía `desconocido` y la cotización contestaba «ninguno es un plano que
+ * pueda abrir» — con el plano en la mano. El motivo: `clasificarDocumento` exige, para un plano de
+ * estructura, una señal GRÁFICA en el nombre («plano», «lámina», «E-01»), porque en el data room
+ * «Instalacion Electrica» es el nombre de una CARPETA DE OBRA y no de un plano. Esa premisa vale
+ * para Drive y no vale para un adjunto: un adjunto no tiene carpeta que lo explique, y quien lo
+ * mandó ya declaró qué esperaba de él.
+ *
+ * Además había DOS definiciones de «esto es un plano» conviviendo: la de Drive y la del detector
+ * que rutea el adjunto al cotizador. La segunda es la que hizo entrar el archivo acá; ignorarla en
+ * el paso siguiente era garantizar que un plano adjunto no se cotice nunca. Sólo ELEVA lo que
+ * quedó `desconocido`: ninguna clasificación existente se pisa, y un adjunto que revela el
+ * resultado (una cotización, un cómputo) sigue quedando reservado por su propia vía.
+ */
+export function claseDeInsumo(doc, { carpetaObra = '' } = {}) {
+  const c = clasificarDocumento(doc, { carpetaObra })
+  if (c.tipo !== TIPO_DOC.desconocido || !esAdjunto(doc)) return c
+  if (!esPlanoAdjunto({ nombre: doc?.name ?? '' })) return c
+  return { tipo: TIPO_DOC.planoGeneral, senal: 'adjunto: el mismo detector que lo mandó al cotizador', confianza: 'media' }
+}
+
 /**
  * EL CONJUNTO DOCUMENTAL, PARTIDO EN DOS. Devuelve `insumos` (con qué se cotiza) y `reservados`
  * (contra qué se valida después). Cada documento lleva por qué quedó donde quedó y si el OS puede
@@ -74,7 +102,7 @@ export function partirDocumentos(filas = [], { carpetaObra = '' } = {}) {
     // `_bytes` viaja con el documento en memoria (adjunto de chat): si se perdiera acá, el
     // pipeline intentaría descargar «adjunto:<hash>» de Drive. Para una fila real es undefined.
     const doc = { name: f.name, path: f.path, mime_type: f.mime_type, drive_file_id: f.drive_file_id, size_bytes: f.size_bytes, _bytes: f._bytes }
-    const clase = clasificarDocumento(doc, { carpetaObra })
+    const clase = claseDeInsumo(doc, { carpetaObra })
     const lect = legibilidadDe(doc)
     const r = revelaElResultado(doc, { carpetaObra })
     const mirable = MIRABLE.test(String(doc.name)) && lect.forma !== LECTURA.noLegible

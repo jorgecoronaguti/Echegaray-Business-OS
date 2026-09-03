@@ -6,7 +6,8 @@
 // archivos que encontraba, y el primer 404 se comía la cotización entera.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fuentesDe } from './pipeline.mjs'
+import { fuentesDe, documentosEnMemoria } from './pipeline.mjs'
+import { partirDocumentos, planosDe } from './documentos.mjs'
 import { textoDe } from './documental.mjs'
 
 const ADJUNTO = { nombre: 'Estructura San Francisco del Monte Entrepiso.pdf', contenido: 'LÁMINA E-01 · columnas 2C240 · H=6.10m' }
@@ -60,4 +61,29 @@ test('UN readExcel QUE FALLA NO TUMBA LA LECTURA: declara el motivo y la corrida
   assert.equal(r.ok, false, 'no puede afirmar que leyó lo que no leyó')
   assert.match(String(r.porQue), /Drive tampoco lo pudo convertir/)
   assert.match(String(r.porQue), /sólo-adjuntos leyó una planilla/)
+})
+
+test('EL PLANO ADJUNTO CUENTA COMO PLANO: sin esto, la corrida contesta «ninguno es un plano» con el plano en la mano', () => {
+  // Medido con el archivo real del dueño: «Estructura San Francisco del Monte Entrepiso.pdf»
+  // salía `desconocido` porque el clasificador de Drive exige una señal gráfica en el nombre
+  // («plano», «lámina», «E-01») — premisa que vale para una carpeta de Drive y no para un adjunto.
+  const filas = documentosEnMemoria([ADJUNTO])
+  const { insumos } = partirDocumentos(filas, { carpetaObra: '' })
+  const planos = planosDe(insumos)
+  assert.equal(planos.legibles.length, 1, 'el adjunto que el detector mandó al cotizador tiene que ser un plano acá también')
+  assert.equal(planos.otros.length, 0)
+  assert.match(insumos[0].senal, /adjunto/)
+})
+
+test('UN ADJUNTO QUE REVELA EL RESULTADO SIGUE RESERVADO: la elevación no abre esa puerta', () => {
+  const filas = documentosEnMemoria([{ nombre: 'Cómputo estructura entrepiso.pdf', contenido: 'x' }])
+  const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: '' })
+  assert.equal(insumos.length, 0)
+  assert.equal(reservados.length, 1, 'un cómputo adjunto no entra a cotizar por ser adjunto')
+})
+
+test('UN ADJUNTO QUE NO ES PLANO NO SE ELEVA: la factura sigue siendo desconocida para el cotizador', () => {
+  const filas = documentosEnMemoria([{ nombre: 'Nota del cliente.pdf', contenido: 'x' }])
+  const { insumos } = partirDocumentos(filas, { carpetaObra: '' })
+  assert.equal(planosDe(insumos).legibles.length, 0)
 })
