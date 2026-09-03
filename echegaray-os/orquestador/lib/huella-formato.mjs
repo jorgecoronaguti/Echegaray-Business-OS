@@ -45,6 +45,23 @@ export function a1DeGridRange(r) {
   return `${letraCol(c0)}${f0}:${c1 === null ? '' : letraCol(c1)}${f1 ?? ''}`
 }
 
+/** Los únicos campos de `updateSheetProperties` que son TAMAÑO y no diseño. */
+const CAMPOS_DE_TAMANO = new Set(['gridProperties.rowCount', 'gridProperties.columnCount'])
+
+/**
+ * ¿Este request sólo cambia cuántas filas o columnas tiene la hoja? PURA.
+ *
+ * Sin `fields` no se puede afirmar nada y se responde `false`: la guarda protege por defecto. Ojo
+ * con el sentido de la respuesta — esto NO dice que el cambio sea seguro, dice que no es formato.
+ * Que no se pueda ENCOGER la grilla es harina de otro costal y lo decide `clasificarRequest`
+ * (un `rowCount` menor al vivo es un `deleteDimension` con otro nombre).
+ */
+export function soloCambiaElTamanoDeLaGrilla(req) {
+  const campos = String(req?.updateSheetProperties?.fields ?? '').split(',').map((c) => c.trim()).filter(Boolean)
+  if (!campos.length) return false
+  return campos.every((c) => CAMPOS_DE_TAMANO.has(c))
+}
+
 /**
  * Qué formatea un request, si formatea algo. Puro.
  * @returns {{tipo:string, sheetId:number, rango:string, gr:object|null}|null}
@@ -69,6 +86,14 @@ export function claveDeFormato(req) {
   if (req.updateSheetProperties) {
     const p = req.updateSheetProperties.properties
     if (!p || p.sheetId === undefined) return null
+    // AGRANDAR LA GRILLA NO ES FORMATEAR. `rowCount`/`columnCount` son la CAPACIDAD de la hoja:
+    // agregan filas o columnas vacías al final y no tocan una sola celda. Tratarlas como diseño
+    // frenaba el request que el propio generador de CAJA emite para que entre el último bloque de
+    // gráficos (`requestDeAltoMinimo`), y el editor vivo terminaba dibujándolo encima del anterior
+    // — el defecto que el dueño reportó tres veces. `frozenRowCount`, `hideGridlines`, el color de
+    // la pestaña y cualquier otra propiedad SÍ son decisiones suyas y se siguen protegiendo: por
+    // eso la excepción mira `fields`, y un request que ADEMÁS toca el diseño se protege entero.
+    if (soloCambiaElTamanoDeLaGrilla(req)) return null
     return { tipo: TIPO.PESTANA, sheetId: p.sheetId, rango: '*', gr: null }
   }
   return null
