@@ -14,7 +14,19 @@
 // LA REGLA QUE GOBIERNA TODO EL MÓDULO: null nunca es cero. Un importe sin precio es 'sin cotizar',
 // nunca '$0' — mezclarlos haría que un ítem sin cotizar bajara el total en vez de faltarle.
 
-export type EstadoTrabajo = 'ENCOLADO' | 'LEYENDO' | 'LISTO' | 'ERROR'
+// CANCELADO es un final más, y necesita su propio nombre: no es un error (no falló nadie) ni un
+// éxito (no hay presupuesto). Llamarlo de cualquiera de las otras dos formas miente.
+export type EstadoTrabajo = 'ENCOLADO' | 'LEYENDO' | 'LISTO' | 'ERROR' | 'CANCELADO'
+
+/** LOS ESTADOS EN LOS QUE YA NO HAY NADA MÁS QUE ESPERAR. El sondeo se para acá y en ningún otro
+ *  lado: una lista de estados repetida en el hook y en la pantalla se desincroniza el día que se
+ *  agrega el siguiente (fue exactamente lo que pasó con CANCELADO). */
+export function esFinal(estado: EstadoTrabajo): boolean {
+  return estado === 'LISTO' || estado === 'ERROR' || estado === 'CANCELADO'
+}
+
+/** Lo contrario, para la pantalla: mientras esto sea cierto, el trabajo puede cancelarse. */
+export const enCurso = (estado: EstadoTrabajo): boolean => !esFinal(estado)
 
 export type EstadoPaso = 'firme' | 'con supuesto' | 'sin dato' | 'conflicto' | 'revisar'
 

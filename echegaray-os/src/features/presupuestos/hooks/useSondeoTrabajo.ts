@@ -25,7 +25,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { consultarLectura } from '../services/trabajoCotizarApi'
-import type { TrabajoLectura } from '../services/trabajoLectura'
+import { esFinal, type TrabajoLectura } from '../services/trabajoLectura'
 
 const INTERVALO_MS = 1500
 const MAX_FALLOS_SEGUIDOS = 5
@@ -48,7 +48,9 @@ export function useSondeoTrabajo(id: string | null) {
         if (!vivo.current) return
         fallosSeguidos = 0
         setEstado({ id, trabajo: t, error: null })
-        if (t.estado === 'LISTO' || t.estado === 'ERROR') return
+        // Un trabajo CANCELADO es tan final como LISTO o ERROR: seguir sondeándolo es preguntar
+        // para siempre por algo que ya nadie está haciendo.
+        if (esFinal(t.estado)) return
       } catch (e) {
         if (!vivo.current) return
         fallosSeguidos += 1

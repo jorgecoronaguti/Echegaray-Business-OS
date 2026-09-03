@@ -56,12 +56,37 @@ export async function iniciarLectura(payload: { mensaje?: string; adjuntos: Adju
   return { id: cuerpo.id }
 }
 
+/** FRENA UNA LECTURA EMPEZADA. Devuelve el trabajo ya cancelado. Si ya había terminado (409) o no
+ *  es de este usuario (404), tira con el motivo en castellano: cancelar algo que ya terminó no es
+ *  un éxito silencioso — la pantalla tiene que poder decir qué pasó.
+ *
+ *  LÍMITE: marca la fila. La llamada de visión que estuviera en vuelo se termina de pagar. */
+export async function cancelarLectura(id: string): Promise<TrabajoLectura> {
+  const res = await fetch(`/api/presupuestos/cotizar/${id}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ accion: 'cancelar' }),
+  })
+  const cuerpo = (await res.json().catch(() => null)) as Partial<TrabajoLectura> & { error?: unknown } | null
+  if (!res.ok) {
+    const motivo = cuerpo && typeof cuerpo.error === 'string' ? cuerpo.error : `el servidor contestó ${res.status}`
+    throw new Error(motivo)
+  }
+  return normalizarTrabajo(id, cuerpo ?? {})
+}
+
 /** Una vuelta de sondeo. Devuelve el trabajo tal como lo manda el backend — sin inventar campos
  *  que no llegaron: lo que falta queda en su default más conservador (arrays vacíos, `null`). */
 export async function consultarLectura(id: string): Promise<TrabajoLectura> {
   const res = await fetch(`/api/presupuestos/cotizar/${id}`)
   if (!res.ok) throw new Error(`no se pudo consultar el trabajo (${res.status})`)
-  const j = (await res.json()) as Partial<TrabajoLectura>
+  return normalizarTrabajo(id, (await res.json()) as Partial<TrabajoLectura>)
+}
+
+/** La forma del trabajo tal como la manda el backend — sin inventar campos que no llegaron: lo que
+ *  falta queda en su default más conservador (arrays vacíos, `null`). La comparten el sondeo y la
+ *  cancelación: los dos leen la MISMA fila y no pueden interpretarla distinto. */
+function normalizarTrabajo(id: string, j: Partial<TrabajoLectura>): TrabajoLectura {
   return {
     id: typeof j.id === 'string' ? j.id : id,
     estado: (j.estado as TrabajoLectura['estado']) ?? 'ENCOLADO',

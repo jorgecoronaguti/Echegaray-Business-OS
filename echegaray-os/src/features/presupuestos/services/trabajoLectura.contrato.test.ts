@@ -8,7 +8,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  certezaMonetaria, filtrarComputo, pieDePaso, progresoDeLectura, type TrabajoLectura,
+  certezaMonetaria, enCurso, esFinal, filtrarComputo, pieDePaso, progresoDeLectura, type TrabajoLectura,
 } from './trabajoLectura.ts'
 
 const pasoBase = (over: Partial<TrabajoLectura['pasos'][number]>): TrabajoLectura['pasos'][number] => ({
@@ -96,4 +96,31 @@ test('LISTO con cascada:null — costo directo sin firmeza todavía no calcula v
   const cm = certezaMonetaria(t.pasos, t.computo)
   assert.equal(cm.firme, null)
   assert.equal(cm.sinCotizar, 1)
+})
+
+
+test('CANCELADO — un final más: el sondeo para, y no se lee ni como error ni como éxito', () => {
+  const t: TrabajoLectura = {
+    id: 'j6', estado: 'CANCELADO', etapa: null,
+    // Se canceló con dos pasos ya leídos: lo leído no desaparece de la pantalla.
+    pasos: [pasoBase({}), pasoBase({ id: 'p2', etiqueta: '2', titulo: 'Bases' })],
+    certeza: { estado: 'firme', porEstado: { firme: 2 }, firmes: 2, total: 2 },
+    computo: null, cascada: null, presupuesto_id: null, error: null,
+  }
+  assert.equal(esFinal(t.estado), true, 'seguir sondeando un trabajo cancelado es preguntar para siempre')
+  assert.equal(enCurso(t.estado), false, 'un trabajo cancelado ya no se puede volver a cancelar')
+  assert.equal(t.error, null, 'cancelar NO es un error: nadie falló')
+  assert.equal(t.presupuesto_id, null, 'ni un éxito: no hay presupuesto')
+  assert.equal(progresoDeLectura(t.pasos.length).texto, 'paso 2 de 7', 'lo leído hasta el corte sigue a la vista')
+})
+
+test('esFinal / enCurso: los estados en los que todavía hay algo que esperar', () => {
+  assert.deepEqual(
+    (['ENCOLADO', 'LEYENDO', 'LISTO', 'ERROR', 'CANCELADO'] as const).filter(esFinal),
+    ['LISTO', 'ERROR', 'CANCELADO'],
+  )
+  assert.deepEqual(
+    (['ENCOLADO', 'LEYENDO', 'LISTO', 'ERROR', 'CANCELADO'] as const).filter(enCurso),
+    ['ENCOLADO', 'LEYENDO'],
+  )
 })
