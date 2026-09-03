@@ -416,11 +416,18 @@ export function noReponerAusentes(generado = [], actual = [], huellas = new Map(
 //     números; si uno parsea y el otro no, NO se afirma nada (falla del lado de seguir manteniendo la
 //     celda, que es reversible; congelarla no lo es).
 
-/** Contenido comparable: la fórmula sin locale ni apóstrofos, o el texto sin mayúsculas ni espacios. */
+/**
+ * Contenido comparable: la fórmula normalizada, o el texto sin mayúsculas ni espacios de más.
+ *
+ * La fórmula pasa por `normalizarFormula` —que ya existe y ya saca lo que le agrega Google: el
+ * apóstrofo de escape, las comillas del nombre de pestaña y el espaciado— y además se unifica el
+ * separador. Dos definiciones de "la misma fórmula" en el archivo que decide qué se puede reescribir
+ * del trabajo del dueño es exactamente la duplicación que este repo ya pagó.
+ */
 export function contenidoComparable(v) {
-  const s = String(v ?? '').replace(/^'/, '').trim()
-  if (!s.startsWith('=')) return s.replace(/\s+/g, ' ').toLowerCase()
-  return s.replace(/;/g, ',').replace(/'/g, '').replace(/\s+/g, ' ').toLowerCase()
+  const f = normalizarFormula(v)
+  if (f) return f.replace(/;/g, ',')
+  return String(v ?? '').replace(/^'/, '').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
 /** El número que representa un valor, o null si no se puede afirmar que sea uno. Acepta es-AR y en-US. */
@@ -448,6 +455,25 @@ export function editadaPorElDueno(hoy, sellado) {
   const a = contenidoComparable(hoy); const b = contenidoComparable(sellado)
   if (a === b) return false
   const esFormula = (s) => s.startsWith('=')
+  // ═══ EL CASO QUE LA AUDITORÍA DEJÓ ABIERTO: LA FÓRMULA QUE REESCRIBE GOOGLE ═══
+  //
+  // Cuando LOS DOS lados son fórmula, la diferencia después de normalizar puede seguir siendo obra de
+  // Google y no del dueño: reescribe referencias al insertar filas, expande rangos, agrega o saca el
+  // `$`, y cambia `A1:A` por `A1:A1000`. Declarar «editada» ahí congelaría la fórmula para siempre —
+  // y es el falso positivo más caro, porque las fórmulas son la columna vertebral del archivo.
+  //
+  // Así que entre dos fórmulas la diferencia tiene que ser de ESTRUCTURA, no de coordenadas: se
+  // enmascaran los números y los `$` (que es lo que ya hace `formaDe` para una fórmula, y por el mismo
+  // motivo: «una fila que se inserta no puede leerse como una edición»). Si con eso siguen siendo
+  // distintas, el dueño cambió la fórmula de verdad: le agregó un término, cambió una función, la
+  // apuntó a otra columna. Si sólo difieren en los números, no se afirma nada.
+  if (esFormula(a) && esFormula(b)) {
+    // Los números se enmascaran, y con ellos los separadores que los rodean: `1,05` y `1.05` son el
+    // mismo decimal en dos locales, y `(a;b)` y `(a,b)` la misma lista de argumentos. Sin colapsarlos,
+    // cada fórmula con un decimal que pasó por `localizeValues` se declararía editada.
+    const esqueleto = (f) => f.replace(/\$/g, '').replace(/\d+/g, '#').replace(/[#.,;]+/g, '#')
+    return esqueleto(a) !== esqueleto(b)
+  }
   if (esFormula(a) || esFormula(b)) return true
   const na = numeroDe(hoy); const nb = numeroDe(sellado)
   if (na !== null && nb !== null) return na !== nb
