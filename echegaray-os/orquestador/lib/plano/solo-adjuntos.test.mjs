@@ -6,7 +6,7 @@
 // archivos que encontraba, y el primer 404 se comía la cotización entera.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fuentesDe, documentosEnMemoria } from './pipeline.mjs'
+import { fuentesDe, documentosEnMemoria, conTextoParaClasificar } from './pipeline.mjs'
 import { partirDocumentos, planosDe } from './documentos.mjs'
 import { textoDe } from './documental.mjs'
 
@@ -86,4 +86,53 @@ test('UN ADJUNTO QUE NO ES PLANO NO SE ELEVA: la factura sigue siendo desconocid
   const filas = documentosEnMemoria([{ nombre: 'Nota del cliente.pdf', contenido: 'x' }])
   const { insumos } = partirDocumentos(filas, { carpetaObra: '' })
   assert.equal(planosDe(insumos).legibles.length, 0)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PLANO QUE EL NOMBRE NO DECLARA — el defecto que encontró la auditoría de esta misma rama.
+//
+// El gateway rutea al cotizador con NOMBRE + TEXTO; adentro se clasificaba sólo por el NOMBRE.
+// «GOP-153479.pdf» y «E3 Techo P.Alta.pdf» entraban por su texto de lámina y volvían a salir
+// `desconocido`: la corrida contestaba «ninguno de los adjuntos es un plano» habiéndolos aceptado.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const TEXTO_LAMINA = 'PLANTA ALTA · escala 1:100 · cotas en metros · vigas VF y columnas C1 · hormigón H-21 · corte A'
+
+const planosDeAdjuntos = async (adjuntos) => {
+  const { filas } = await fuentesDe({ query: indiceQueExplota }, { termino: 'X', adjuntos })
+  return planosDe(partirDocumentos(filas, { carpetaObra: '' }).insumos)
+}
+
+test('EL TEXTO CLASIFICA CUANDO EL NOMBRE CALLA: «GOP-153479.pdf» y «E3 Techo P.Alta.pdf» son planos', async () => {
+  for (const nombre of ['GOP-153479.pdf', 'E3 Techo P.Alta.pdf']) {
+    const planos = await planosDeAdjuntos([{ nombre, texto: TEXTO_LAMINA, contenido: TEXTO_LAMINA }])
+    assert.equal(planos.legibles.length, 1, `«${nombre}» tiene que ser un plano acá, igual que en el gateway`)
+    assert.equal(planos.otros.length, 0)
+  }
+})
+
+test('SIN TEXTO PROVISTO se extrae de los bytes: el mismo archivo clasifica igual venga de donde venga', async () => {
+  // Un script que llame la capacidad directo no manda `texto`. Si la clasificación dependiera de
+  // que el llamador lo traiga, el mismo plano sería plano por una cara y no por la otra.
+  // Se mira el TIPO y no la legibilidad: que un .txt no se pueda mirar con visión es otro hecho,
+  // y mezclarlos escondería exactamente el defecto que este test cuida.
+  const filas = await conTextoParaClasificar(documentosEnMemoria([{ nombre: 'E3 Techo P.Alta.txt', contenido: TEXTO_LAMINA }]))
+  assert.equal(filas[0]._texto, TEXTO_LAMINA, 'el texto se completa desde los bytes')
+  const { insumos } = partirDocumentos(filas, { carpetaObra: '' })
+  assert.match(insumos[0].tipo, /plano/, 'el mismo archivo, la misma clase, lo traiga o no el llamador')
+})
+
+test('EL TEXTO NO PUEDE ASCENDER UN PAPEL DE PLATA: «Estructura de costos.pdf» no sale a visión paga', async () => {
+  // Se elevaba a plano_general por la palabra ESTRUCTURA y se pagaban llamadas de visión para
+  // mirar una planilla de costos.
+  for (const nombre of ['Estructura de costos.pdf', 'Cómputo de estructura metálica.pdf', 'Presupuesto estructura.pdf']) {
+    const planos = await planosDeAdjuntos([{ nombre, texto: TEXTO_LAMINA, contenido: TEXTO_LAMINA }])
+    assert.equal(planos.legibles.length, 0, `«${nombre}» no puede entrar a computar`)
+  }
+})
+
+test('UN BINARIO SIN TEXTO NO INVENTA TEXTO: queda con el nombre como única señal', async () => {
+  const bytes = Buffer.from([0x00, 0x01, 0x02, 0x00, 0x03]).toString('base64')
+  const filas = await conTextoParaClasificar(documentosEnMemoria([{ nombre: 'escaneo.pdf', contenido_base64: bytes }]))
+  assert.equal(filas[0]._texto, null, 'sin texto extraíble se declara null, no una cadena de basura')
 })

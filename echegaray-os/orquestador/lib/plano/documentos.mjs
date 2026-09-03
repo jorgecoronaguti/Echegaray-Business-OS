@@ -85,7 +85,12 @@ const esAdjunto = (doc) => String(doc?.drive_file_id ?? '').startsWith('adjunto:
 export function claseDeInsumo(doc, { carpetaObra = '' } = {}) {
   const c = clasificarDocumento(doc, { carpetaObra })
   if (c.tipo !== TIPO_DOC.desconocido || !esAdjunto(doc)) return c
-  if (!esPlanoAdjunto({ nombre: doc?.name ?? '' })) return c
+  // EL MISMO JUICIO QUE EN EL GATEWAY, CON LOS MISMOS DOS DATOS. Pasar sólo el nombre dejaba
+  // afuera los planos que el rótulo no declara —«GOP-153479.pdf», «E3 Techo P.Alta.pdf»—: el
+  // gateway los mandaba a cotizar por su TEXTO y acá volvían a caer en `desconocido`, así que la
+  // corrida contestaba «ninguno de los adjuntos es un plano». Dos criterios para una definición
+  // era el defecto; medio criterio también.
+  if (!esPlanoAdjunto({ nombre: doc?.name ?? '', texto: doc?._texto ?? '' })) return c
   return { tipo: TIPO_DOC.planoGeneral, senal: 'adjunto: el mismo detector que lo mandó al cotizador', confianza: 'media' }
 }
 
@@ -101,7 +106,7 @@ export function partirDocumentos(filas = [], { carpetaObra = '' } = {}) {
     if (f?.is_folder) continue
     // `_bytes` viaja con el documento en memoria (adjunto de chat): si se perdiera acá, el
     // pipeline intentaría descargar «adjunto:<hash>» de Drive. Para una fila real es undefined.
-    const doc = { name: f.name, path: f.path, mime_type: f.mime_type, drive_file_id: f.drive_file_id, size_bytes: f.size_bytes, _bytes: f._bytes }
+    const doc = { name: f.name, path: f.path, mime_type: f.mime_type, drive_file_id: f.drive_file_id, size_bytes: f.size_bytes, _bytes: f._bytes, _texto: f._texto ?? null }
     const clase = claseDeInsumo(doc, { carpetaObra })
     const lect = legibilidadDe(doc)
     const r = revelaElResultado(doc, { carpetaObra })

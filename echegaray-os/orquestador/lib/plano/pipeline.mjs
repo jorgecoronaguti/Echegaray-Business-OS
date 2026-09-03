@@ -28,6 +28,7 @@ import { seleccionarTodas, huella } from './seleccion.mjs'
 import { procesosDeTodos } from './procesos.mjs'
 import { controlar } from './control.mjs'
 import { claseDocumental, ingerir } from './documental.mjs'
+import { leerPdf, renglones } from '../ingesta/pdf.mjs'
 import { armarProyecto } from './proyecto.mjs'
 import { relacionar } from './relacion.mjs'
 import { resolverConCad } from './medicion-cad.mjs'
@@ -64,6 +65,10 @@ export async function documentosDelProyecto({ query }, termino) {
  * costo no cambian. Su rastro persistente es `orq.xsas_adjunto` (bytes por actor+hash), no Drive.
  * Un adjunto sin nombre o sin contenido se ignora: no hay documento que afirmar. PURA.
  */
+/** Cuánto texto se guarda para CLASIFICAR. `esPlanoAdjunto` mira los primeros 20k: más que eso
+ *  es cargar memoria sin cambiar una sola decisión. */
+export const TOPE_TEXTO_CLASIFICACION = 20_000
+
 export function documentosEnMemoria(adjuntos = []) {
   return (adjuntos ?? [])
     .map((a) => {
@@ -80,6 +85,10 @@ export function documentosEnMemoria(adjuntos = []) {
         size_bytes: bytes.length,
         modified_time: null,
         _bytes: bytes,
+        // El TEXTO de la lectura que ya hizo quien recibió el archivo. Viaja con el documento
+        // porque es lo que permite clasificar «E3 Techo P.Alta.pdf» —un plano cuyo NOMBRE no
+        // dice que lo sea— sin volver a extraerlo. Una lectura, una fuente.
+        _texto: typeof a?.texto === 'string' && a.texto ? a.texto.slice(0, TOPE_TEXTO_CLASIFICACION) : null,
       }
     })
     .filter(Boolean)
@@ -654,8 +663,38 @@ export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 
  *
  * @returns {Promise<{filas:Array, conIndice:boolean}>} `conIndice` declara si se consultó Drive.
  */
+/**
+ * EL TEXTO QUE FALTA SE EXTRAE ACÁ, GRATIS Y SIN RED.
+ *
+ * Quien manda el adjunto puede traer el texto ya leído (el gateway lo tiene) o no traerlo (un
+ * script, otra cara). Sin texto, la clasificación queda atada al nombre, y hay planos reales cuyo
+ * nombre no declara nada: «GOP-153479.pdf», «E3 Techo P.Alta.pdf». El lector local de PDF es el
+ * mismo que usa `documental.mjs`, no cuesta una llamada paga y no sale a Drive.
+ *
+ * Un PDF ESCANEADO sigue sin texto y sin señal en el nombre: ése queda declarado como no-plano y
+ * hay que nombrar la obra a mano — es el límite conocido, no un silencio.
+ */
+export async function conTextoParaClasificar(filas = []) {
+  for (const f of filas) {
+    if (f._texto || !f._bytes) continue
+    // La firma se mira antes de llamar al lector: pasarle un .txt a un parser de PDF funciona
+    // —falla y se captura— pero imprime warnings y cuesta cien veces más que comparar 5 bytes.
+    if (f._bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
+      try {
+        const d = await leerPdf(f._bytes, { conGeometria: false })
+        const texto = d.leidas.map((pg) => renglones(pg.textos).map((r) => r.texto).join('\n')).join('\n')
+        f._texto = texto.slice(0, TOPE_TEXTO_CLASIFICACION)
+      } catch { f._texto = null /* PDF que no abre: el nombre decide solo, y se sabe */ }
+      continue
+    }
+    const crudo = f._bytes.toString('utf8')
+    f._texto = crudo.slice(0, 1000).includes('\u0000') ? null : crudo.slice(0, TOPE_TEXTO_CLASIFICACION)
+  }
+  return filas
+}
+
 export async function fuentesDe({ query }, { termino, adjuntos = [], conDrive = null } = {}) {
-  const enMemoria = documentosEnMemoria(adjuntos)
+  const enMemoria = await conTextoParaClasificar(documentosEnMemoria(adjuntos))
   const conIndice = conDrive === true || (conDrive !== false && enMemoria.length === 0)
   const filas = conIndice ? await documentosDelProyecto({ query }, termino) : []
   filas.push(...enMemoria)

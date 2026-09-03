@@ -1033,6 +1033,12 @@ async function intentarConAdjuntos({ pedido, texto, lecturas, mapa, deps, t0 }) 
     nombre: l.nombre,
     contenido: typeof l.adjunto?.contenido === 'string' ? l.adjunto.contenido : undefined,
     contenido_base64: l.adjunto?.contenido_base64 ?? undefined,
+    // EL TEXTO YA LEÍDO VIAJA CON EL ARCHIVO. La capacidad vuelve a clasificar el documento
+    // adentro; si no le damos el texto que ESTA función usó para rutearlo, clasifica con menos
+    // información que la que decidió mandárselo — y un plano cuyo nombre no lo declara («E3 Techo
+    // P.Alta.pdf») entraba acá y adentro salía «no es un plano». No va a la traza: la traza
+    // guarda nombre y tamaño.
+    texto: typeof l.resumen?.texto === 'string' ? l.resumen.texto : undefined,
   }))
   const rta = await resolverConTool({
     pedido, clave, tool, nivel: NIVEL.CAPACIDAD, via: 'adjunto_con_motor', skills: [], t0,

@@ -24,7 +24,7 @@
 // escritura, aunque nadie lo haya adjudicado. Sigue sin tocar Drive, sin tocar el Sheet y sin crear
 // ninguna obra — eso no la vuelve de lectura.
 
-import { query } from '../db.mjs'
+import { query as queryDelProceso } from '../db.mjs'
 import { correr } from '../plano/pipeline.mjs'
 // UNA corrida paga viva por proyecto: dos «cotizá quattropani» a la vez no duplican visión.
 import { conCorridaExclusiva } from '../ia/fusible.mjs'
@@ -57,7 +57,13 @@ export function resumen({ r, cot, cascada, numero }) {
   ].filter(Boolean).join('\n')
 }
 
-export function planoTools(google) {
+/**
+ * `query` se INYECTA (con la conexión real por defecto) por una razón concreta: sin eso, la
+ * decisión de si esta capacidad sale o no al índice de Drive no la puede ejecutar ningún test —
+ * habría que abrir Postgres para probar una condición que no necesita la base. Un control que no
+ * se puede correr no es un control.
+ */
+export function planoTools(google, { query = queryDelProceso } = {}) {
   return {
     // ═══ EL RAZONAMIENTO DEL COTIZADOR (dueño, 02/09/2026) — LECTURA, NO ESCRIBE NADA ═══
     //
@@ -168,10 +174,16 @@ export function planoTools(google) {
           // EL PASO A PASO ES LA GUÍA (dueño, 02/09 + «Presupuestos v5 · Lectura del plano»):
           // la lectura estructurada del plano PERSISTE con la cotización que derivó de ella,
           // para que la pantalla del presupuesto la muestre siempre — no sólo esta respuesta.
-          const rz = razonar(r)
+          // ═══ CON QUÉ DOCUMENTACIÓN SE COTIZÓ, PERSISTIDO Y CONSULTABLE ═══
+          // «cotizó con lo que mandó el dueño» y «cotizó con media carpeta de Drive» producen
+          // cotizaciones que se leen igual y valen distinto. La procedencia viaja con el
+          // razonamiento —`razonamiento->'procedencia'->>'soloAdjuntos'` en SQL— y también en la
+          // nota, que es lo que lee una persona. Sin migración: la columna ya existe.
+          const rz = { ...razonar(r), procedencia: { soloAdjuntos: r.soloAdjuntos === true, documentos: r.documentos.planos.legibles.map((d) => d.name) } }
           const { cotizacionId } = await persistir({ query }, cot, {
             numero,
-            notas: `generada por XSAS desde ${r.documentos.planos.legibles.map((d) => d.name).join(' + ')}`,
+            notas: `generada por XSAS desde ${r.documentos.planos.legibles.map((d) => d.name).join(' + ')}`
+              + (r.soloAdjuntos ? ' · fuente: SÓLO ADJUNTOS (no se consultó Drive)' : ''),
             razonamiento: rz,
           })
           const cascada = await cascadaDe({ query }, cotizacionId)
