@@ -23,7 +23,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { terminoLibro } from '../lib/libro-sumas.mjs'
+import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, ivaDeclaradoPorMesDeEmision } from '../lib/impuestos-base-libro.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
@@ -114,16 +114,9 @@ const LINEAS_CREDITO = [
   'Servicios recurrentes',
 ]
 
-// ═══ LA BASE DE LA PROYECCIÓN SALE DEL LIBRO (05/08) ═══
-//
-// Las celdas del IVA proyectado apuntaban por POSICIÓN al Cash Flow Mensual. El rediseño por bloques
-// puso otra cosa en esas coordenadas y la fórmula habría leído el egreso proyectado de enero como
-// débito fiscal — sin un solo error. La base se calcula sobre `_MOVIMIENTOS` con `terminoLibro`, la
-// misma fuente única que alimenta las vistas.
-const RUBROS_CREDITO_LIBRO = ['Materiales Civil', 'Materiales Mantenimiento', 'Estructura', 'Servicios recurrentes']
-const ventanaDelMes = (m) => ({ desde: `DATE(${AÑO};${m};1)`, hasta: `EOMONTH(DATE(${AÑO};${m};1);0)+1` })
-const brutoDebitoLibro = (m) => [terminoLibro({ ...ventanaDelMes(m), signo: 1, rubros: ['Cobranzas'], medida: 'magnitud' })]
-const brutoCreditoLibro = (m) => [`-(${terminoLibro({ ...ventanaDelMes(m), rubros: RUBROS_CREDITO_LIBRO })})`]
+// La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
+const brutoDebitoLibro = (m) => [debitoFacturadoDelMes(AÑO, m)]
+const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
 /** La fila de cada rótulo en la columna A del cash flow. Rompe si falta alguno. */
 export function ubicarLineas(colA = [], rotulos = []) {
@@ -313,13 +306,20 @@ async function planDeProyeccionIva(google, ivaOficial) {
   // celda: el --dry exhibe el insumo y un importe fiscal se puede rehacer a mano contra el Libro.
   const lib = (await google.readSheetValues(ID, '_MOVIMIENTOS!A2:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const movs = lib.filter((f) => Number.isFinite(f?.[0]) && Number.isFinite(f?.[2]))
-    .map((f) => ({ fecha: f[0], signo: Number(f[1]), importe: Number(f[2]), rubro: String(f[5] ?? '') }))
+    .map((f) => ({
+      fecha: f[0], signo: Number(f[1]), importe: Number(f[2]), rubro: String(f[5] ?? ''),
+      origen: String(f[13] ?? ''), fila: Number(f[14]),
+    }))
+
+  // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
+  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:K', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const ivaEmitido = ivaDeclaradoPorMesDeEmision(cob)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
     debito: [{
-      celda: '_MOVIMIENTOS', rotulo: 'Cobranzas del Libro (cobrado + esperado del mes)',
-      valor: movs.filter((x) => enMes(x, m) && x.signo === 1 && x.rubro === 'Cobranzas').reduce((a, x) => a + x.importe, 0),
+      celda: 'Cobranzas', rotulo: 'IVA declarado por las facturas B emitidas en el mes',
+      valor: ivaEmitido[`${AÑO}-${String(m).padStart(2, '0')}`] ?? 0,
     }],
     credito: [{
       celda: '_MOVIMIENTOS', rotulo: 'Compras con factura del Libro (4 rubros, netas de NC)',
