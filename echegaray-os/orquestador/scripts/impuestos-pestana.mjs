@@ -415,13 +415,9 @@ async function main() {
     + ` · ARCA parcial (mes en curso): ${nombresDeMes(g.origenIva['arca-parcial'])}`
     + ` · proyección del Libro: ${nombresDeMes(g.origenIva.proyeccion)} · del dueño: ${nombresDeMes(g.origenIva.ajeno)}`)
   if (DRY) {
-    // VOLCADO DE LA GRILLA INTENDIDA (02/09): con ORQ_VOLCAR_GRILLA=<ruta>, el --dry deja en un
-    // JSON exactamente lo que el generador escribiría — para reparar por bloque una pestaña cuyas
-    // celdas corruptas la Regla 0 conserva como «del dueño». Sólo en DRY: jamás toca el Sheet.
+    // ORQ_VOLCAR_GRILLA=<ruta>: el --dry vuelca la grilla intendida en JSON — para reparar por bloque lo que la Regla 0 conserva corrupto como «del dueño» (02/09).
     if (process.env.ORQ_VOLCAR_GRILLA) {
-      const { writeFileSync } = await import('node:fs')
-      writeFileSync(process.env.ORQ_VOLCAR_GRILLA, JSON.stringify({ filas: g.filas, filaAlicuotaIva: g.filaAlicuotaIva ?? null }))
-      console.log(`  📤 grilla intendida volcada en ${process.env.ORQ_VOLCAR_GRILLA} (${g.filas.length} filas)`)
+      ;(await import('node:fs')).writeFileSync(process.env.ORQ_VOLCAR_GRILLA, JSON.stringify({ filas: g.filas, filaAlicuotaIva: g.filaAlicuotaIva ?? null }))
     }
     console.log('\n  ══ CONTROL (NO se escribe) — posición técnica sobre comprobantes de ARCA ══')
     console.log('  Otro método y otra fuente que la proyección de abajo: sirve para contrastar la DDJJ,')
