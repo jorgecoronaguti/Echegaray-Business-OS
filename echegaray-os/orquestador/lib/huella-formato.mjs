@@ -127,7 +127,21 @@ export function huellaDeRango(tipo, lectura, gr) {
     const dentro = (lectura.merges ?? []).filter((m) => m.fila < f1 && m.filaFin > f0 && m.col < c1 && m.colFin > c0)
     return hash(dentro.map((m) => [m.fila, m.filaFin, m.col, m.colFin]).sort())
   }
-  if (tipo === TIPO.PESTANA) return hash([lectura.congeladas?.filas ?? 0, lectura.congeladas?.columnas ?? 0])
+  // LA HUELLA DE PESTAÑA TIENE QUE ABARCAR LO QUE LA CLAVE DE PESTAÑA DECIDE. Hasta el 03/09
+  // hasheaba SÓLO las filas y columnas congeladas, pero `claveDeFormato` manda a este tipo también
+  // los `hideGridlines`, `tabColor` y `title`: la decisión sobre el color de una pestaña se tomaba
+  // comparando cuántas filas estaban congeladas. Un control validado contra información que no es
+  // la que protege siempre dice que sí. `?? null` y no `?? false`: una lectura vieja que no trae el
+  // campo NO puede parecerse a una que lo trae en falso.
+  if (tipo === TIPO.PESTANA) {
+    return hash([
+      lectura.congeladas?.filas ?? 0,
+      lectura.congeladas?.columnas ?? 0,
+      lectura.hideGridlines ?? null,
+      lectura.tabColor ?? null,
+      lectura.titulo ?? null,
+    ])
+  }
   return null
 }
 
