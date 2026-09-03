@@ -59,7 +59,10 @@ import { refsDelArchivo, rescatar } from '../lib/caja-refs.mjs'
 import {
   grilla, ANCHO, ANCHOS, FILAS_MAXIMAS, esTituloDeBloque, COLS_PLATA, COLS_FECHA, COLS_TARJETA,
 } from '../lib/caja-grilla.mjs'
-import { requestsDeGraficos, FILA_ANCLA, FILA_FINAL_DE_GRAFICOS } from '../lib/caja-graficos.mjs'
+import {
+  requestsDeGraficos, requestDeAltoMinimo, leerLayoutDeGraficos, verificarLayoutGraficos,
+  FILA_ANCLA, FILA_FINAL_DE_GRAFICOS,
+} from '../lib/caja-graficos.mjs'
 import { ubicarSeries } from '../lib/caja-anexo-series.mjs'
 import { MARCA_ALERTA, MARCA_OK } from '../lib/caja-avisos.mjs'
 
@@ -542,9 +545,26 @@ export async function formatear(google, sheetId, g, anexo) {
   while (colA.length < 600) colA.push([''])
   const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA))
   if (!charts.length) return
+
+  // ═══ EL ALTO SE GARANTIZA EN EL MISMO LOTE QUE LOS GRÁFICOS (03/09/2026) ═══
+  //
+  // Ya se garantizó al principio de la corrida, y no alcanzó. El 03/09 la hoja apareció en 55 filas
+  // —la fórmula vieja `filas + 20`— con los cuatro gráficos anclados donde correspondía, y el editor
+  // vivo subió el bloque 3 encima del 2. Entre aquel resize y este `addChart` hay veinte llamadas a la
+  // API: lo que achique la hoja en el medio deja los gráficos sobre una hoja corta sin que nadie se
+  // entere. En el MISMO batch y PRIMERO no existe ese "en el medio" — Google aplica los requests en orden.
+  const hojaHoy = await google.getSheetMeta(ID)
+    .then((m) => m.find((h) => h.sheetId === sheetId) ?? null)
+    .catch(() => null)
+  // Si no se pudo leer el alto actual NO se manda el resize: pedir un `rowCount` menor al real borra
+  // las filas de abajo con todo lo que tengan. El resize del principio ya pasó y la relectura de más
+  // abajo dirá si alcanzó — una defensa que no se puede afirmar segura no se ejecuta.
+  const lote = Number.isFinite(hojaHoy?.rows) ? [requestDeAltoMinimo(sheetId, hojaHoy.rows), ...charts] : charts
+  if (lote === charts) console.warn('  ⚠ no pude leer el alto actual de la hoja: mando los gráficos sin re-garantizarlo en el mismo lote')
+
   let respuesta
   try {
-    respuesta = await google.spreadsheetBatchUpdate(ID, charts)
+    respuesta = await google.spreadsheetBatchUpdate(ID, lote)
     console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`)
   } catch (e) {
     console.warn(`  ⚠ NO pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`)
@@ -558,11 +578,31 @@ export async function formatear(google, sheetId, g, anexo) {
   // decenas de millones. `updateChartSpec` sobre el gráfico recién creado, con la MISMA
   // especificación, sí conserva el eje derecho (probado en vivo). Es idempotente: si la creación
   // ya vino bien, no cambia nada.
-  const reafirmar = reafirmarEspecificaciones(charts, respuesta)
+  // El emparejamiento request↔respuesta es POR POSICIÓN: se le pasa el lote que se mandó, no `charts`.
+  // Con `charts` el resize del frente correría un lugar todos los índices y cada `updateChartSpec`
+  // iría al gráfico equivocado — el modo de falla más silencioso posible, porque todos existirían.
+  const reafirmar = reafirmarEspecificaciones(lote, respuesta)
   if (reafirmar.length) {
     await google.spreadsheetBatchUpdate(ID, reafirmar)
       .catch((e) => console.warn(`  ⚠ NO pude reafirmar los ejes de los gráficos (${e.message}): las curvas de saldo pueden quedar en el eje izquierdo.`))
   }
+
+  // ═══ Y SE RELEE LA HOJA: LA EVIDENCIA ES DEL EFECTO, NO DEL INTENTO ═══
+  //
+  // Todo lo de arriba es lo que se PIDIÓ. Lo único que prueba que la pestaña quedó bien es leerla.
+  // El fix del 02/09 se cerró sin esta lectura y la falla volvió sin avisar: el generador informaba
+  // «4 gráfico(s) dibujados» mientras el editor los apilaba de a dos.
+  const leido = await leerLayoutDeGraficos(google, ID, hojaHoy?.title ?? PESTAÑA).catch((e) => {
+    // No poder leer NO es "quedó bien": es que no se miró, y se dice así.
+    console.warn(`  ⚠ no pude releer el layout de los gráficos (${e.message}): NO puedo afirmar que quedó bien. Corré: node orquestador/scripts/caja-graficos-verificar.mjs`)
+    return null
+  })
+  if (!leido) return
+  const veredicto = verificarLayoutGraficos(leido)
+  if (veredicto.ok) return console.log(`  ✓ layout verificado sobre la hoja: ${leido.rows} filas y ${leido.charts.length} gráfico(s) en su ancla`)
+  console.warn(`  ✗ el layout de gráficos NO quedó bien — leído de la hoja: ${leido.rows} filas, ${leido.charts.length} gráfico(s)`)
+  for (const p of veredicto.problemas) console.warn(`  ✗ ${p}`)
+  process.exitCode = 1
 }
 
 /**
