@@ -17,6 +17,7 @@ scripts · 14 timers en producción.
 | Compras, comprobantes, la carga por chat | `orquestador/comunicacion/comprobantes/` (flujo·tanda·accion·aplicar) + `orquestador/lib/comprobantes/` |
 | escribir en la pestaña Compras | `orquestador/lib/carga-comprobantes.mjs` + `lib/comprobantes/contrato-columnas.mjs` (**el contrato A→AN vive ahí, con test**) |
 | CAJA, las tarjetas, la escalera | `orquestador/lib/caja-*.mjs` (43 módulos) · el generador es `scripts/caja-pestana.mjs` |
+| los 4 gráficos de CAJA (anclas, alto de la hoja) | `orquestador/lib/caja-graficos.mjs` — el layout sale de `graficos()`; **verificalo contra la hoja viva con `node orquestador/scripts/caja-graficos-verificar.mjs`** (read-only, exit 1 si el editor los apiló) |
 | el libro canónico de movimientos | `orquestador/lib/libro-*.mjs` · las sumas del Sheet, `lib/libro-sumas.mjs` (`terminoLibro`) |
 | banco, extracto, conciliación | `orquestador/lib/banco-*.mjs` · la puerta es `scripts/importar-banco.mjs` |
 | cobranzas, certificados, portal del cliente | `src/features/clientes/` + `src/app/(portal)/` · sync en `scripts/portal-esquema-sync.mjs` |
