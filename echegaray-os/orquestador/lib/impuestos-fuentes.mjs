@@ -204,6 +204,32 @@ export function ventasFacturadasPorMes(filas = []) {
 }
 
 /**
+ * QUÉ FILAS DE COBRANZAS LLEVAN FACTURA, por número de fila del Sheet.
+ *
+ * El IVA débito proyectado no se arma de esta lista sino del Libro (`_MOVIMIENTOS`), que es donde
+ * vive el CALENDARIO del cobro. Pero el Libro no arrastra la categoría: cada movimiento sólo guarda
+ * de qué pestaña y de qué fila salió. Esto es el puente — devuelve las filas facturadas para que el
+ * débito pueda descartar las que no lo están SIN sacarlas de la caja, que es lo que las distingue:
+ * un cobro sin factura entró igual, y la plata es real. Lo que no existe es su IVA.
+ *
+ * `filas` son las de `Cobranzas!B5:B` (índice 0 = Categoría) y `primeraFila` el número real de la
+ * primera, que por defecto es la 5. Las filas del todo vacías no se cuentan como «sin categoría»:
+ * son el fondo del rango abierto, no un dato sin clasificar.
+ */
+export function filasFacturadas(filas = [], primeraFila = 5) {
+  const facturadas = new Set()
+  let sinFactura = 0
+  let sinCategoria = 0
+  filas.forEach((f, i) => {
+    const cat = String(f?.[0] ?? '').trim().toUpperCase()
+    if (!cat) { if (f?.length) sinCategoria++; return }
+    if (cat !== CATEGORIA_FACTURADA) { sinFactura++; return }
+    facturadas.add(primeraFila + i)
+  })
+  return { facturadas, sinFactura, sinCategoria }
+}
+
+/**
  * Las ventas facturadas por mes — la base sobre la que se proyecta el IVA débito.
  *
  * ═══ SÓLO LA CATEGORÍA «B» (03/09/2026) ═══

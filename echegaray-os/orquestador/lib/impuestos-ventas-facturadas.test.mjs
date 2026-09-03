@@ -76,3 +76,37 @@ test('proporción real medida: N es el 38% de Cobranzas y no puede sumar', () =>
   ])
   assert.equal(porMes['2026-08'], 131926540, 'agosto/26 es casi mitad y mitad: ahí el desvío se vuelve grosero')
 })
+
+// ── EL PUENTE AL LIBRO ──────────────────────────────────────────────────────────
+// El débito proyectado se arma de `_MOVIMIENTOS`, que guarda la pestaña y la fila de origen pero
+// NO la categoría. `filasFacturadas` es lo que permite descartar del IVA lo que no lleva factura
+// sin sacarlo de la caja: el cobro entró, la plata es real; lo que no existe es su IVA.
+
+import { filasFacturadas } from './impuestos-fuentes.mjs'
+
+test('devuelve el número de fila REAL del Sheet, no el índice del array', () => {
+  const { facturadas } = filasFacturadas([['B'], ['N'], ['B']])
+  assert.deepEqual([...facturadas].sort((a, b) => a - b), [5, 7], 'la primera fila de datos es la 5')
+})
+
+test('una fila N no queda facturada — es el cobro de $291.473.901 que inflaba el débito', () => {
+  const { facturadas, sinFactura } = filasFacturadas([['N'], ['N']])
+  assert.equal(facturadas.size, 0)
+  assert.equal(sinFactura, 2)
+})
+
+test('las filas vacías del rango abierto no se cuentan como «sin categoría»', () => {
+  const { sinCategoria } = filasFacturadas([['B'], [], [], []])
+  assert.equal(sinCategoria, 0, 'el fondo del rango no es un dato sin clasificar')
+})
+
+test('una fila CON datos pero sin categoría sí se cuenta: es un hueco real', () => {
+  const { sinCategoria, facturadas } = filasFacturadas([['B'], ['', '02/12/2025']])
+  assert.equal(sinCategoria, 1)
+  assert.equal(facturadas.has(6), false, 'sin categoría no se asume facturada')
+})
+
+test('respeta un primer renglón distinto del 5', () => {
+  const { facturadas } = filasFacturadas([['B']], 100)
+  assert.deepEqual([...facturadas], [100])
+})
