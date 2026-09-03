@@ -28,8 +28,8 @@ test('ENCOLADO — sin pasos todavía, ningún cálculo revienta con listas vac�
     id: 'j1', estado: 'ENCOLADO', etapa: null, pasos: [], certeza: null, computo: null,
     cascada: null, presupuesto_id: null, error: null,
   }
-  assert.equal(progresoDeLectura(t.pasos, t.certeza).texto, 'paso 0 de 7')
-  assert.equal(progresoDeLectura(t.pasos, t.certeza).sello, 'Leyendo el plano · paso 0 de 7')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza, t.estado).texto, 'paso 0 de 7')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza, t.estado).sello, 'Leyendo el plano · paso 0 de 7')
   assert.deepEqual(certezaMonetaria(t.pasos, t.computo), { firme: null, disputa: null, sinCotizar: 0, pctFirme: 0, pctDisputa: 0 })
   assert.deepEqual(filtrarComputo(t.computo, null), [])
 })
@@ -51,7 +51,7 @@ test('LEYENDO — los SIETE publicados, 3 contestados y 4 pendientes: la guía c
     certeza: { estado: 'pendiente', porEstado: { firme: 1, 'sin dato': 1, 'con supuesto': 1, pendiente: 4 }, firmes: 1, pendientes: 4, hechos: 3, total: 7 },
     computo: null, cascada: null, presupuesto_id: null, error: null,
   }
-  const pr = progresoDeLectura(t.pasos, t.certeza)
+  const pr = progresoDeLectura(t.pasos, t.certeza, t.estado)
   assert.equal(pr.texto, 'paso 3 de 7', 'el 3 sale de `certeza.hechos`; contar `pasos.length` diría 7 de 7 sin haber leído nada')
   assert.equal(pr.sello, 'Leyendo el plano · paso 3 de 7')
   assert.equal(pr.midiendo, 'Midiendo · paso 4', 'la línea de abajo nombra el próximo paso sin contestar')
@@ -59,6 +59,24 @@ test('LEYENDO — los SIETE publicados, 3 contestados y 4 pendientes: la guía c
   assert.equal(pieDePaso(t.pasos[1]), '→ 3 partidas · sin importe')
   assert.equal(pieDePaso(t.pasos[0]), '→ 2 partidas · $0M')
   assert.equal(pieDePaso(t.pasos[3]), 'todavía sin medir', '«no genera partida» sobre un paso que no se miró es una conclusión falsa')
+})
+
+// EL CASO QUE OCURRE EN PRODUCCIÓN Y NO ESTABA EN NINGÚN FIXTURE. El único LEYENDO que había
+// forzaba cuatro pasos pendientes A MANO, así que nunca ejercía `hechos = 7` con el trabajo vivo —
+// que es lo que pasa después de la PRIMERA lámina de fundaciones y lo que rompió el primer cierre.
+test('LEYENDO con los SIETE contestados y 19 láminas por leer: la pantalla NO puede decir que cerró', () => {
+  const t: TrabajoLectura = {
+    id: 'j2b', estado: 'LEYENDO', etapa: 'leyendo lámina 1 de 20',
+    pasos: Array.from({ length: 7 }, (_, i) => pasoBase({ id: `p${i + 1}`, etiqueta: String(i + 1), estado: 'en curso' })),
+    certeza: { estado: 'en curso', porEstado: { 'en curso': 7 }, firmes: 0, pendientes: 0, hechos: 7, total: 7 },
+    computo: null, cascada: null, presupuesto_id: null, error: null,
+  }
+  const pr = progresoDeLectura(t.pasos, t.certeza, t.estado)
+  assert.equal(pr.hechos, 7, 'los siete ya midieron algo: eso es cierto')
+  assert.equal(pr.completo, false, 'y sin embargo la lectura sigue: el botón de cancelar está en pantalla')
+  assert.notEqual(pr.texto, '7 de 7 · lectura cerrada')
+  assert.notEqual(pr.sello, 'Cómputo derivado del plano · borrador')
+  assert.equal(enCurso(t.estado), true, 'el mismo estado que dibuja «Cancelar la lectura» no puede convivir con «lectura cerrada»')
 })
 
 test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disputa', () => {
@@ -86,7 +104,7 @@ test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disput
   assert.equal(cm.disputa, 468_000)
   assert.equal(filtrarComputo(t.computo, 'p4').length, 1)
   assert.equal(filtrarComputo(t.computo, 'p4')[0].pasoId, 'p4')
-  const pr = progresoDeLectura(t.pasos, t.certeza)
+  const pr = progresoDeLectura(t.pasos, t.certeza, t.estado)
   assert.equal(pr.completo, true)
   assert.equal(pr.texto, '7 de 7 · lectura cerrada')
   assert.equal(pr.sello, 'Cómputo derivado del plano · borrador')
@@ -131,7 +149,7 @@ test('CANCELADO — un final más: el sondeo para, y no se lee ni como error ni 
   assert.equal(enCurso(t.estado), false, 'un trabajo cancelado ya no se puede volver a cancelar')
   assert.equal(t.error, null, 'cancelar NO es un error: nadie falló')
   assert.equal(t.presupuesto_id, null, 'ni un éxito: no hay presupuesto')
-  assert.equal(progresoDeLectura(t.pasos, t.certeza).texto, 'paso 2 de 7', 'lo leído hasta el corte sigue a la vista')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza, t.estado).texto, 'paso 2 de 7', 'lo leído hasta el corte sigue a la vista')
 })
 
 test('esFinal / enCurso: los estados en los que todavía hay algo que esperar', () => {

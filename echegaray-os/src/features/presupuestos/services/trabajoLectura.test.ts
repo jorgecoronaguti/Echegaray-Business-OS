@@ -124,7 +124,7 @@ const siete = (contestados: number): PasoTrabajo[] =>
   Array.from({ length: 7 }, (_, i) => pasoDe(`p${i + 1}`, i < contestados ? 'firme' : 'pendiente'))
 
 test('progresoDeLectura: los siete pasos publicados con tres contestados son "paso 3 de 7"', () => {
-  const pr = progresoDeLectura(siete(3))
+  const pr = progresoDeLectura(siete(3), null, 'LEYENDO')
   assert.equal(pr.texto, 'paso 3 de 7', 'contar la longitud de la lista daría 7 de 7 sin haber leído nada')
   assert.equal(pr.hechos, 3)
   assert.equal(pr.pctAncho, 43)
@@ -133,28 +133,55 @@ test('progresoDeLectura: los siete pasos publicados con tres contestados son "pa
   assert.equal(pr.midiendo, 'Midiendo · bases y muertos de anclaje', 'el título del PRÓXIMO paso sin contestar, en minúscula')
 })
 
-test('progresoDeLectura: con los siete contestados se cierra la lectura y nadie se está midiendo', () => {
-  const pr = progresoDeLectura(siete(7))
+// ═══ EL DEFECTO QUE COSTÓ EL PRIMER CIERRE (auditoría 03/09/2026) ═══
+//
+// `completo` se deducía de `hechos >= total`. Una sola lámina de fundaciones —grilla, base, muerto,
+// viga de fundación, columna, excavación, viga de carga— ya da `hechos: 7`. Con 19 láminas todavía
+// por leer, la pantalla mostraba la barra al 100 %, «7 de 7 · lectura cerrada» y el sello del
+// cómputo derivado, AL LADO del botón «Cancelar la lectura» —que sólo se dibuja si el trabajo sigue
+// vivo—. Es la misma mentira que el temporizador de 620 ms, derivada en vez de cronometrada.
+
+test('LEYENDO con los siete contestados NO es una lectura cerrada — sólo LISTO lo es', () => {
+  const certeza = { estado: 'sin dato' as const, porEstado: {}, firmes: 5, pendientes: 0, hechos: 7, total: 7 }
+  const pr = progresoDeLectura(siete(7), certeza, 'LEYENDO')
+  assert.equal(pr.hechos, 7, 'los siete contestaron algo: eso es cierto y se muestra')
+  assert.equal(pr.completo, false, 'pero la lectura sigue: quedan láminas por leer y el trabajo se puede cancelar')
+  assert.notEqual(pr.texto, '7 de 7 · lectura cerrada')
+  assert.equal(pr.texto, 'paso 7 de 7')
+  assert.equal(pr.sello, 'Leyendo el plano · paso 7 de 7', 'el sello del cómputo derivado afirma que terminó')
+})
+
+test('progresoDeLectura: la lectura cerrada la declara el estado LISTO, no la cuenta de pasos', () => {
+  const pr = progresoDeLectura(siete(7), null, 'LISTO')
   assert.equal(pr.texto, '7 de 7 · lectura cerrada')
   assert.equal(pr.sello, 'Cómputo derivado del plano · borrador')
   assert.equal(pr.midiendo, null)
   assert.equal(pr.completo, true)
 })
 
+test('progresoDeLectura: un final que no es LISTO no dice ni que cerró ni que sigue leyendo', () => {
+  for (const estado of ['ERROR', 'CANCELADO'] as const) {
+    const pr = progresoDeLectura(siete(7), null, estado)
+    assert.equal(pr.completo, false, `${estado} no produjo una lectura cerrada`)
+    assert.equal(pr.sello, 'Lectura interrumpida · paso 7 de 7')
+  }
+})
+
 test('progresoDeLectura: manda `certeza.hechos` del backend por sobre lo que la lista aparente', () => {
   // Una fila publicada a mitad de escritura: los pasos ya se ven contestados pero el backend
   // todavía cuenta 2. Gana el backend — el número lo deriva quien leyó el plano.
-  const pr = progresoDeLectura(siete(5), { estado: 'pendiente', porEstado: {}, firmes: 5, pendientes: 5, hechos: 2, total: 7 })
+  const pr = progresoDeLectura(siete(5), { estado: 'pendiente', porEstado: {}, firmes: 5, pendientes: 5, hechos: 2, total: 7 }, 'LEYENDO')
   assert.equal(pr.hechos, 2)
   assert.equal(pr.texto, 'paso 2 de 7')
 })
 
 test('progresoDeLectura: sin ningún paso publicado todavía es "paso 0 de 7", no un progreso vacío', () => {
-  assert.equal(progresoDeLectura([]).texto, 'paso 0 de 7')
-  assert.equal(progresoDeLectura([]).pctAncho, 0)
+  assert.equal(progresoDeLectura([], null, 'ENCOLADO').texto, 'paso 0 de 7')
+  assert.equal(progresoDeLectura([], null, 'ENCOLADO').pctAncho, 0)
 })
 
-test('pieDePaso: un paso pendiente no afirma que no genera partida', () => {
+test('pieDePaso: ni pendiente ni en curso afirman que el paso no genera partida', () => {
   assert.equal(pieDePaso(pasoDe('p4', 'pendiente')), 'todavía sin medir')
+  assert.equal(pieDePaso(pasoDe('p4', 'en curso')), 'midiendo', 'la partida puede aparecer en la lámina que falta')
   assert.equal(pieDePaso(pasoDe('p4', 'firme')), 'no genera partida')
 })

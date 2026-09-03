@@ -145,14 +145,17 @@ test('un paso PENDIENTE no publica filas, ni evidencia, ni supuesto, ni faltante
   assert.deepEqual(p.faltan, [])
 })
 
-test('en cuanto un paso MIDE algo deja de estar pendiente, aunque la lectura siga abierta', () => {
+test('en cuanto un paso MIDE algo pasa a EN CURSO — que no es una certeza, es un avance', () => {
   const items = [item('B1')]
   const abierta = vistaDePasos(razonar({ computo: { items }, laminas: [lamina()], documentos: {} }), { items, cerrada: false })
   const bases = abierta.find((p) => p.id === 'p2')
-  assert.notEqual(bases.estado, ESTADO.PENDIENTE, 'ya midió 4 bases con su sección: eso es un hecho, no una espera')
-  assert.equal(bases.estado, ESTADO.FIRME)
+  assert.equal(bases.estado, ESTADO.EN_CURSO, 'ya midió 4 bases: eso es un avance, no una espera')
+  assert.notEqual(bases.estado, ESTADO.FIRME, 'y tampoco es firme: faltan láminas que pueden completarlo o contradecirlo')
   // Y los que todavía no vieron nada siguen pendientes: la lectura avanza de a uno, no de golpe.
   assert.ok(abierta.some((p) => p.estado === ESTADO.PENDIENTE), 'si TODOS quedaran resueltos con una lámina, el paso a paso no mediría nada')
+  // Cerrada, el MISMO dato sí puede declarar certeza.
+  const cerrada = vistaDePasos(razonar({ computo: { items }, laminas: [lamina()], documentos: {} }), { items, cerrada: true })
+  assert.equal(cerrada.find((p) => p.id === 'p2').estado, ESTADO.FIRME)
 })
 
 test('certezaDeLectura: `hechos` es el número que ve el dueño y sale de los datos, no de un reloj', () => {
@@ -163,4 +166,127 @@ test('certezaDeLectura: `hechos` es el número que ve el dueño y sale de los da
   assert.equal(c.hechos + c.pendientes, 7, 'los siete están siempre: los contestados más los que faltan')
   assert.ok(c.hechos > 0 && c.pendientes > 0, 'esta lectura está a mitad de camino — si diera 0 o 7 el control no probaría nada')
   assert.equal(c.estado, ESTADO.PENDIENTE, 'una lectura con pasos sin contestar no puede declararse firme por los que sí contestó')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS FALTANTES SON POR FILA, NO POR PASO (auditoría 03/09/2026)
+//
+// El defecto: `pendiente` se aplicaba al PASO entero, así que bastaba que un paso midiera UNA cosa
+// para que publicara también todos sus huecos. Tras una sola lámina el paso 1 ya decía
+// «superficie cubierta · ningún rótulo ni planta la declara» — sobre diecinueve láminas sin abrir.
+// Es el mismo faltante fabricado que la invariante decía prohibir, un nivel más abajo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('un paso EN CURSO publica sus mediciones y NINGUNO de sus huecos', () => {
+  // Una lámina con grilla (mide la impronta) pero sin superficie cubierta declarada: el paso 1
+  // tiene una fila medida y dos faltantes.
+  const rz = razonar({ computo: { items: [] }, laminas: [lamina({ proyecto: { notas_generales: [] } })], documentos: {} })
+  const cerrado = vistaDePasos(rz, { items: [], cerrada: true }).find((p) => p.id === 'p1')
+  assert.ok(cerrado.filas.some((f) => f.falta), 'con la lectura cerrada el faltante SÍ se nombra: es para pedírselo al proyectista')
+
+  const enCurso = vistaDePasos(rz, { items: [], cerrada: false }).find((p) => p.id === 'p1')
+  assert.equal(enCurso.estado, ESTADO.EN_CURSO)
+  assert.ok(enCurso.filas.length > 0, 'lo que sí midió se ve: el paso a paso tiene que mostrar el avance')
+  assert.equal(enCurso.filas.filter((f) => f.falta).length, 0, 'ni un hueco declarado sobre documentación que no se terminó de mirar')
+  assert.deepEqual(enCurso.faltan, [], 'los faltantes con nombre se emiten al cerrar, no a mitad de camino')
+  assert.equal(enCurso.supuesto, null, 'un supuesto es una conclusión sobre lo que falta')
+})
+
+// Un caso con las TRES cosas a la vez: una fila medida, una fila hueca, un faltante con nombre y
+// un supuesto. Es el que de verdad ejerce el filtrado — con un paso que no tiene faltantes ni
+// supuestos, publicarlos o no da igual y el control no puede dar rojo.
+const CON_HUECOS = [
+  item('B1'),                                                        // base con sección: se mide
+  item('B2', { dimensiones: {} }),                                   // base sin sección: hueco + supuesto
+  item('EXC1', { nombre: 'excavación de base', dimensiones: { ancho_m: 2.4, largo_m: 2.4, profundidad_m: 1.1 } }),
+  item('EXC2', { nombre: 'excavación de pozo', dimensiones: { ancho_m: 1, largo_m: 1 } }),  // sin cota: faltante con nombre
+]
+const conHuecos = (cerrada) => vistaDePasos(
+  razonar({ computo: { items: CON_HUECOS }, laminas: [lamina()], documentos: {} }),
+  { items: CON_HUECOS, cerrada },
+)
+
+test('EN CURSO no emite los FALTANTES CON NOMBRE — se le pide al proyectista al cerrar, no antes', () => {
+  const cerrado = conHuecos(true).find((p) => p.id === 'p3')
+  assert.equal(cerrado.faltan.length, 1, 'con la lectura cerrada el faltante viaja: es lo que hay que ir a pedir')
+  assert.match(cerrado.faltan[0], /profundidad/i)
+
+  const abierto = conHuecos(false).find((p) => p.id === 'p3')
+  assert.equal(abierto.estado, ESTADO.EN_CURSO)
+  assert.deepEqual(abierto.faltan, [], 'mandarlo a buscar un dato que puede estar en la lámina 12 es hacerle perder el día')
+  assert.equal(abierto.filas.length, 1, 'y lo que sí se midió se sigue viendo')
+})
+
+test('EN CURSO no publica el SUPUESTO — es una conclusión sobre lo que falta', () => {
+  const cerrado = conHuecos(true).find((p) => p.id === 'p2')
+  assert.match(cerrado.supuesto, /supuesto/i, 'al cerrar, el supuesto que sostendría el hueco se declara')
+
+  const abierto = conHuecos(false).find((p) => p.id === 'p2')
+  assert.equal(abierto.estado, ESTADO.EN_CURSO)
+  assert.equal(abierto.supuesto, null, 'ofrecer un supuesto sobre un hueco que quizá no exista es inventar el problema y la solución')
+})
+
+test('EN CURSO conserva la evidencia y la derivación: lo medido es un hecho y se muestra', () => {
+  const items = [item('B1')]
+  const p2 = vistaDePasos(razonar({ computo: { items }, laminas: [lamina()], documentos: {} }), { items, cerrada: false })
+    .find((p) => p.id === 'p2')
+  assert.equal(p2.deriva.partidas, 1, 'las partidas derivadas hasta acá son un dato real: alimentan la columna del cómputo')
+  assert.equal(p2.evidencia, 'B-01', 'la lámina de la que salió la medición no es una conclusión: es la cita')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA MONOTONÍA NO ES «POR CONSTRUCCIÓN» — LO QUE SE PUDO PROBAR Y LO QUE NO
+//
+// El docblock de la primera versión afirmaba que un paso que dejó de estar pendiente no volvía, y
+// que por eso la barra nunca retrocedía. Era una afirmación sin control. Lo que estos tests
+// establecen, con el camino que marcó la auditoría:
+//
+//   · LAS FILAS MEDIDAS SÍ RETROCEDEN. Un elemento incompleto del mismo tipo, aportado por una
+//     lámina posterior, vuelve `sinCantidad` al grupo entero: una fila que era medición pasa a ser
+//     hueco. Probado abajo.
+//   · EL PASO no llega a volver a pendiente HOY porque `deriva.partidas` le hace de piso. Ese piso
+//     no lo sostiene ninguna invariante declarada: es una consecuencia de que los items sólo se
+//     acumulen y de que ningún rol de estos pasos quede fuera de `PASO_DE_ROL`. NO pude construir
+//     un caso que lo rompa — y eso no es lo mismo que probar que no existe.
+//
+// Por eso la garantía de que la barra no retroceda vive donde SÍ se puede sostener: en `contestados`,
+// la memoria de la corrida que lleva el handler.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const bases = (items, opciones = {}) => vistaDePasos(
+  razonar({ computo: { items }, laminas: [lamina()], documentos: {} }),
+  { items, cerrada: false, ...opciones },
+).find((p) => p.id === 'p2')
+
+test('las filas MEDIDAS de un paso sí retroceden: un elemento incompleto vuelve hueco al grupo', () => {
+  const medidas = (p) => p.filas.length
+  assert.equal(medidas(bases([item('B1')])), 1, 'con la lámina 1 el grupo B1 está contado y con sección')
+  // La lámina siguiente trae otro B1 sin cantidad: `grupoPorTipo` marca `sinCantidad` al grupo.
+  assert.equal(medidas(bases([item('B1'), item('B1', { cantidadElementos: null })])), 0,
+    'si esto siguiera dando 1, «la evidencia sólo se acumula» sería cierto y el candado sobraría')
+})
+
+test('lo que sostiene al paso es `deriva.partidas`, no una invariante: queda declarado, no supuesto', () => {
+  const p = bases([item('B1'), item('B1', { cantidadElementos: null })])
+  assert.equal(p.filas.length, 0, 'sin una sola fila medida…')
+  assert.equal(p.estado, ESTADO.EN_CURSO, '…el paso igual no retrocede, pero sólo porque sigue derivando partidas')
+  assert.ok(p.deriva.partidas > 0, 'ese es el único piso que hay, y no lo declara ninguna invariante del módulo')
+})
+
+test('`contestados` sostiene el avance aunque la vista devuelva el paso a pendiente', () => {
+  const vacio = { computo: { items: [] }, laminas: [], documentos: {} }
+  const sinMemoria = vistaDePasos(razonar(vacio), { items: [], cerrada: false }).find((p) => p.id === 'p2')
+  assert.equal(sinMemoria.estado, ESTADO.PENDIENTE, 'sin nada leído y sin memoria, el paso está pendiente')
+
+  const conMemoria = vistaDePasos(razonar(vacio), { items: [], cerrada: false, contestados: new Set(['p2']) }).find((p) => p.id === 'p2')
+  assert.equal(conMemoria.estado, ESTADO.EN_CURSO, 'ya había contestado en un avance anterior: el avance no se devuelve')
+  assert.equal(certezaDeLectura([conMemoria]).hechos, 1, 'y «paso N de 7» no baja delante del dueño')
+})
+
+test('`contestados` NO inventa contenido: el paso sostenido no publica filas que no midió', () => {
+  const vacio = { computo: { items: [] }, laminas: [], documentos: {} }
+  const p = vistaDePasos(razonar(vacio), { items: [], cerrada: false, contestados: new Set(['p2']) }).find((x) => x.id === 'p2')
+  assert.deepEqual(p.filas, [], 'sostener el avance no puede convertirse en fabricar mediciones')
+  assert.deepEqual(p.faltan, [])
+  assert.match(p.resumen, /Sin mediciones nuevas/)
 })

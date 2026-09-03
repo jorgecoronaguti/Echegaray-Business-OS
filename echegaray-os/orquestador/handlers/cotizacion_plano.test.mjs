@@ -476,3 +476,50 @@ test('dos avances con la misma etapa pero DISTINTO parcial se publican los dos',
   assert.equal(iguales.length, 2, 'saltear el segundo dejaría la pantalla con los pasos viejos: es justamente el avance que hay que ver')
   assert.notDeepEqual(pasosDe(iguales[0]).map((p) => p.estado), pasosDe(iguales[1]).map((p) => p.estado))
 })
+
+test('la barra no retrocede: un avance que pierde lo medido no baja «paso N de 7»', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({
+    query, crearGoogle: async () => null,
+    correr: async (args) => {
+      const aviso = (laminas) => args.onProgreso({ fase: 'laminas', hecho: laminas.length, total: 3, parcial: { laminas, porRegion: [], documentos: {} } })
+      await aviso([laminaLeida('B-01', [baseMedida('B1')])])
+      // La lámina 2 no aporta nada y «pierde» lo leído (el caso extremo del retroceso). Sin la
+      // memoria de la corrida, los pasos volverían a pendiente y el contador bajaría.
+      await aviso([])
+      return resultadoPipelineFalso()
+    },
+  })
+  await handler(tareaFalsa({ lectura_id: 'lec-monotona' }), ctxFalso)
+
+  const hechos = conPasos(llamados).map((u) => JSON.parse(u.certeza).hechos)
+  assert.deepEqual(hechos, [...hechos].sort((a, b) => a - b), `«paso N de 7» no puede bajar delante del dueño (fue ${hechos.join(' → ')})`)
+  assert.ok(Math.max(...hechos) > 0, 'y si nunca subiera, este control no probaría nada')
+})
+
+test('mientras lee, ningún paso publica un faltante ni una certeza — sólo lo medido', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({
+    query, crearGoogle: async () => null,
+    correr: async (args) => {
+      await args.onProgreso({
+        fase: 'laminas', hecho: 1, total: 20,
+        parcial: { laminas: [laminaLeida('B-01', [baseMedida('B1')])], porRegion: [], documentos: { planos: { legibles: [], noLegibles: [] } } },
+      })
+      return resultadoPipelineFalso()
+    },
+  })
+  await handler(tareaFalsa({ lectura_id: 'lec-faltantes' }), ctxFalso)
+
+  const CERTEZAS = ['firme', 'sin dato', 'con supuesto', 'conflicto', 'revisar']
+  const enMitad = pasosDe(conPasos(llamados)[1])
+  for (const p of enMitad) {
+    assert.ok(!CERTEZAS.includes(p.estado), `el paso ${p.id} declaró «${p.estado}» con 19 láminas sin abrir`)
+    assert.equal(p.filas.filter((f) => f.falta).length, 0, `el paso ${p.id} publicó un hueco antes de terminar de mirar`)
+    assert.deepEqual(p.faltan, [], `el paso ${p.id} mandó a pedirle un dato al proyectista a mitad de lectura`)
+    assert.equal(p.supuesto, null)
+  }
+  // Y al cerrar, las certezas y los faltantes SÍ aparecen: es lo que hace que valga la pena esperar.
+  const final = pasosDe(conPasos(llamados).at(-1))
+  assert.ok(final.every((p) => CERTEZAS.includes(p.estado)), 'con la lectura cerrada, cada paso declara su certeza')
+})

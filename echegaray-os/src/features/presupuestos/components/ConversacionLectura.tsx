@@ -43,7 +43,8 @@ export function ConversacionLectura({
   onRehacer: () => void
   onCancelar: () => void
 }) {
-  const progreso = progresoDeLectura(pasos, certeza)
+  // `estado` va SIEMPRE: «lectura cerrada» lo declara el servidor, nunca la cuenta de pasos.
+  const progreso = progresoDeLectura(pasos, certeza, estado)
   const midiendo = enCurso(estado)
 
   return (

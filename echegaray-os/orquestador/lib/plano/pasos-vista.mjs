@@ -19,13 +19,24 @@ import { rolDe, ROL } from './razonamiento.mjs'
 
 /** Los estados posibles de un paso. El orden es de peor a mejor: `peorEstado` los compara.
  *
- *  PENDIENTE no es un estado de certeza: es la ausencia de lectura. Existe porque «lo miré y no
- *  está» y «todavía no llegué a mirarlo» son cosas distintas y la pantalla tiene que poder
- *  distinguirlas — publicar `sin dato` a los diez segundos de arrancar sería afirmar un faltante
- *  que nadie verificó. Sólo aparece mientras la lectura está ABIERTA; cuando cierra, cada paso se
- *  queda con el estado que su evidencia sostiene. */
+ *  ═══ DOS DE ELLOS NO SON ESTADOS DE CERTEZA ═══
+ *
+ *  `pendiente` y `en curso` describen LA LECTURA, no el plano, y sólo existen mientras la lectura
+ *  está abierta. La certeza de un paso —firme, con supuesto, sin dato, conflicto, revisar— es una
+ *  afirmación sobre lo que la documentación dice y lo que NO dice, y eso no se puede sostener hasta
+ *  haber terminado de mirarla.
+ *
+ *  · `pendiente` — de este paso no salió todavía ninguna medición. No es «sin dato»: uno dice «lo
+ *    miré y el plano no lo trae, pedíselo al proyectista» y el otro dice «todavía no llegué».
+ *  · `en curso`  — ya midió algo, y por eso cuenta como paso contestado en el avance, pero su
+ *    certeza sigue sin poder declararse: falta documentación por leer que puede completarlo o
+ *    contradecirlo. Un paso `en curso` publica SÓLO sus filas medidas: sus faltantes, sus supuestos
+ *    y su resumen conclusivo se emiten cuando la lectura cierra.
+ *
+ *  Cuando cierra, los dos desaparecen y cada paso se queda con el estado que su evidencia sostiene. */
 export const ESTADO = Object.freeze({
   PENDIENTE: 'pendiente',
+  EN_CURSO: 'en curso',
   CONFLICTO: 'conflicto',
   SIN_DATO: 'sin dato',
   CON_SUPUESTO: 'con supuesto',
@@ -33,9 +44,9 @@ export const ESTADO = Object.freeze({
   FIRME: 'firme',
 })
 
-// PENDIENTE encabeza la gravedad: una lectura con pasos sin contestar no puede declararse firme
-// por los que sí contestó.
-const GRAVEDAD = [ESTADO.PENDIENTE, ESTADO.CONFLICTO, ESTADO.SIN_DATO, ESTADO.CON_SUPUESTO, ESTADO.REVISAR, ESTADO.FIRME]
+// Los dos estados de lectura encabezan la gravedad: una lectura que todavía está mirando no puede
+// declararse firme por los pasos que ya contestaron.
+const GRAVEDAD = [ESTADO.PENDIENTE, ESTADO.EN_CURSO, ESTADO.CONFLICTO, ESTADO.SIN_DATO, ESTADO.CON_SUPUESTO, ESTADO.REVISAR, ESTADO.FIRME]
 const peorEstado = (...ee) => GRAVEDAD.find((e) => ee.includes(e)) ?? ESTADO.FIRME
 
 /** Qué paso cotiza cada rol constructivo. Es la ÚNICA atribución partida→paso que existe: si un
@@ -294,27 +305,81 @@ const VISTAS = {
 
 export const RESUMEN_PENDIENTE = 'Todavía no leí nada que conteste este paso.'
 
+/** Las filas que son una MEDICIÓN. Las otras (`falta: true`) son huecos declarados, y un hueco no
+ *  es un hallazgo hasta que se terminó de mirar dónde podía estar. */
+const filasMedidas = (vista) => (vista?.filas ?? []).filter((f) => !f.falta)
+
 /**
  * ¿ESTE PASO TODAVÍA NO SE PUDO MIRAR? Sí cuando de él no salió NINGUNA fila medida ni ninguna
  * partida: todo lo que hay son huecos, y un hueco declarado a mitad de la lectura no es «el plano
- * no lo dice» — es «todavía no llegué a la lámina que lo diría». La diferencia es la que separa un
- * faltante para pedirle al proyectista de un paso que el motor no alcanzó a contestar.
+ * no lo dice» — es «todavía no llegué a la lámina que lo diría».
  *
- * Es MONÓTONO por construcción: la evidencia sólo se acumula, así que un paso que dejó de estar
- * pendiente no vuelve a estarlo y la barra de progreso nunca retrocede.
+ * NO SE PUEDE AFIRMAR QUE SEA MONÓTONO, y la primera versión lo afirmaba sin ningún control. Lo
+ * medido (`pasos-vista.test.mjs`):
+ *
+ *  · las FILAS medidas sí retroceden — `grupoPorTipo` marca `sinCantidad` a un grupo ya contado
+ *    cuando una lámina posterior aporta un elemento incompleto del mismo tipo;
+ *  · el PASO no llega a volver a pendiente hoy porque `deriva.partidas` le hace de piso, pero ese
+ *    piso es una consecuencia de cómo se acumulan los items, no una invariante que alguien declare.
+ *    No pude construir un caso que lo rompa, y eso no prueba que no exista.
+ *
+ * Por eso la garantía de que la barra no retroceda NO sale de acá: la sostiene quien publica, con
+ * `contestados`. Una invariante que este módulo no puede garantizar solo se declara donde vive.
  */
 export function todaviaNoSePudoMirar(vista, deriva) {
-  const medidas = (vista?.filas ?? []).filter((f) => !f.falta).length
-  return medidas === 0 && (deriva?.partidas ?? 0) === 0
+  return filasMedidas(vista).length === 0 && (deriva?.partidas ?? 0) === 0
 }
+
+const cabecera = (e) => ({ id: e.id, etiqueta: e.etiqueta, titulo: e.titulo, pregunta: e.pregunta })
 
 /** El paso pendiente: el esqueleto sin ninguna conclusión. Ni filas, ni evidencia, ni supuesto, ni
  *  faltantes — todo eso son afirmaciones sobre un plano que todavía no se terminó de leer. */
 const comoPendiente = (e, v, deriva) => ({
-  id: e.id, etiqueta: e.etiqueta, titulo: e.titulo, pregunta: e.pregunta,
-  estado: ESTADO.PENDIENTE, resumen: RESUMEN_PENDIENTE,
+  ...cabecera(e), estado: ESTADO.PENDIENTE, resumen: RESUMEN_PENDIENTE,
   columnas: v.columnas, filas: [], evidencia: null, supuesto: null, faltan: [], deriva,
 })
+
+/**
+ * EL PASO QUE YA MIDIÓ ALGO PERO NO PUEDE DECLARAR SU CERTEZA TODAVÍA.
+ *
+ * Publica SÓLO lo medido. Lo que se deja afuera y por qué:
+ *  · las filas con `falta` — «superficie cubierta: ningún rótulo la declara» sobre una lectura de
+ *    una lámina de veinte es exactamente el faltante fabricado que este módulo prohíbe. La regla es
+ *    por FILA, no por paso: que el paso 1 haya medido la impronta no habilita a afirmar que la
+ *    superficie cubierta no está declarada en ningún lado.
+ *  · `faltan` — los faltantes con nombre existen para pedírselos al proyectista. Se emiten al
+ *    cerrar; mandárselos a mitad de lectura es hacerlo perseguir datos que están en la lámina 12.
+ *  · el `supuesto` — es una conclusión sobre lo que falta. LÍMITE DECLARADO: el único supuesto que
+ *    no lo es (la cita sísmica del paso 3, que es evidencia real) también queda afuera y reaparece
+ *    al cerrar. Distinguirlos exigiría marcar el origen de cada supuesto en las siete vistas; se
+ *    prefirió no publicar de más antes que publicar una afirmación de menos.
+ *  · el `resumen` conclusivo — está armado mezclando lo medido con lo que falta («2 sin sección
+ *    citada: contadas, sin cotizar»). Se reemplaza por el conteo real de lo medido. Se pierde la
+ *    riqueza del texto durante la lectura; el detalle está en la tabla, que es lo que se abre.
+ */
+function comoEnCurso(e, v, deriva) {
+  const medidas = filasMedidas(v)
+  const CIERRE = 'La certeza de este paso y lo que falte se declaran cuando cierre la lectura.'
+  const partidas = deriva.partidas ? ` · ${deriva.partidas} partida(s) derivadas` : ''
+  const resumen = medidas.length
+    ? `${medidas.length} medición(es) en lo leído hasta acá${partidas}. ${CIERRE}`
+    // Un paso puede derivar partidas sin tener todavía una fila cerrada: el elemento se contó pero
+    // le falta la sección. Decir «sin mediciones» ahí sería negar lo que sí se midió.
+    : (deriva.partidas
+      ? `${deriva.partidas} partida(s) derivadas, sin ninguna fila cerrada todavía. ${CIERRE}`
+      : `Sin mediciones nuevas en lo leído hasta acá. ${CIERRE}`)
+  return {
+    ...cabecera(e),
+    estado: ESTADO.EN_CURSO,
+    resumen,
+    columnas: v.columnas,
+    filas: medidas,
+    evidencia: v.evidencia,
+    supuesto: null,
+    faltan: [],
+    deriva,
+  }
+}
 
 /**
  * LOS SIETE PASOS LISTOS PARA MOSTRAR. Uno por pregunta, en el orden de la lectura.
@@ -324,17 +389,25 @@ const comoPendiente = (e, v, deriva) => ({
  * que lo respalda, el supuesto que lo sostiene si lo hay, y las partidas que deriva con su plata.
  *
  * @param {object} rz resultado de `razonar()`
- * @param {{ items?: object[], cerrada?: boolean }} opciones `items` es el cómputo del pipeline —de
- *   ahí sale la derivación—. `cerrada: false` es una lectura EN CURSO: los pasos que todavía no
- *   produjeron nada salen PENDIENTE en vez de fingir una conclusión. El default es `true` porque
- *   la lectura terminada es el caso que ya existía y no puede cambiar de significado.
+ * @param {{ items?: object[], cerrada?: boolean, contestados?: Set<string> }} opciones
+ *   `items` es el cómputo del pipeline —de ahí sale la derivación—.
+ *   `cerrada: false` es una lectura EN CURSO: ningún paso publica certeza, faltantes ni supuestos;
+ *   los que no midieron nada salen PENDIENTE y los demás EN CURSO con sus filas medidas. El default
+ *   es `true` porque la lectura terminada es el caso que ya existía y no puede cambiar de
+ *   significado.
+ *   `contestados` son los ids que YA salieron de pendiente en un avance anterior de esta misma
+ *   corrida: los sostiene en `en curso` aunque una lámina posterior les haya vuelto hueco lo medido.
+ *   Es lo que impide que la barra retroceda — ver `todaviaNoSePudoMirar`.
  */
-export function vistaDePasos(rz, { items = [], cerrada = true } = {}) {
+export function vistaDePasos(rz, { items = [], cerrada = true, contestados = null } = {}) {
   if (!rz) return []
   return ESQUELETO.map((e) => {
     const v = VISTAS[e.clave](rz, items)
     const deriva = derivaDe(e.id, items)
-    if (!cerrada && todaviaNoSePudoMirar(v, deriva)) return comoPendiente(e, v, deriva)
+    if (!cerrada) {
+      const sinMirar = todaviaNoSePudoMirar(v, deriva) && !contestados?.has(e.id)
+      return sinMirar ? comoPendiente(e, v, deriva) : comoEnCurso(e, v, deriva)
+    }
     return {
       id: e.id,
       etiqueta: e.etiqueta,

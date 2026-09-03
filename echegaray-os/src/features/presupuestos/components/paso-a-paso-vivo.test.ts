@@ -40,7 +40,7 @@ test('ningún componente de presupuestos fabrica progreso con un temporizador', 
 })
 
 test('el contador sale del backend (`certeza`), no de cuántos pasos llegaron', () => {
-  assert.match(CONVERSACION, /progresoDeLectura\(pasos, certeza\)/, 'el «3» de «paso 3 de 7» lo deriva quien leyó el plano')
+  assert.match(CONVERSACION, /progresoDeLectura\(pasos, certeza, estado\)/, 'el «3» de «paso 3 de 7» lo deriva quien leyó el plano, y «cerrada» lo declara el estado del servidor')
   assert.ok(!/progresoDeLectura\(pasos\.length/.test(CONVERSACION), 'contar la lista da 7 de 7 desde el primer segundo')
   assert.match(ENTORNO, /certeza=\{trabajo\.certeza\}/, 'si la certeza no viaja, la pantalla vuelve a contar por su cuenta')
 })

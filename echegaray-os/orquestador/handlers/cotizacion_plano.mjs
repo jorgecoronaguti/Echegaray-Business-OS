@@ -52,7 +52,7 @@ import { correr as correrPipeline } from '../lib/plano/pipeline.mjs'
 import { bytesPorHash } from '../lib/xsas-archivos.mjs'
 import { razonar } from '../lib/plano/razonamiento.mjs'
 import { lecturaHastaAhora } from '../lib/plano/parcial.mjs'
-import { vistaDePasos, certezaDeLectura, pasoDeItem, ESQUELETO } from '../lib/plano/pasos-vista.mjs'
+import { vistaDePasos, certezaDeLectura, pasoDeItem, ESQUELETO, ESTADO } from '../lib/plano/pasos-vista.mjs'
 import { agruparPartidas, armar, persistir, cascadaDe } from '../lib/plano/cotizacion-v0.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
@@ -247,13 +247,26 @@ const ETAPA_INICIAL = 'buscando los adjuntos que se subieron'
  * sin nada leído (el arranque) son los siete PENDIENTES, que es lo que hace que la pantalla pueda
  * dibujar la guía completa desde el primer segundo sin fabricar un solo estado.
  *
- * `cerrada: false` es lo que impide que un paso al que todavía no se llegó se publique como
- * «sin dato» — un faltante que nadie verificó todavía.
+ * `cerrada: false` es lo que impide que un paso publique una certeza, un faltante o un supuesto
+ * antes de haber terminado de mirar la documentación.
+ *
+ * ═══ LA BARRA NO RETROCEDE, Y ESO SE SOSTIENE ACÁ ═══
+ *
+ * `vistaDePasos` NO es monótono: una lámina posterior puede aportar un elemento incompleto del
+ * mismo tipo que uno ya contado y volver hueco lo que era una medición, con lo que un paso
+ * contestado volvería a `pendiente` y «paso 5 de 7» pasaría a «paso 4 de 7». `contestados` es la
+ * memoria de esta corrida: un paso que ya salió de pendiente no vuelve. Vive en el handler y no en
+ * el módulo puro porque es estado DE LA CORRIDA, no del plano.
+ *
+ * @param {object} parcial lo leído hasta ahora
+ * @param {Set<string>} contestados ids que ya contestaron en un avance anterior. SE MUTA: los
+ *   pasos que contestan ahora quedan anotados para los avances siguientes.
  */
-export function pasosEnCurso(parcial = {}) {
+export function pasosEnCurso(parcial = {}, contestados = new Set()) {
   const r = lecturaHastaAhora(parcial)
   const items = r.computo?.items ?? []
-  const pasos = vistaDePasos(razonar(r), { items, cerrada: false })
+  const pasos = vistaDePasos(razonar(r), { items, cerrada: false, contestados })
+  for (const p of pasos) if (p.estado !== ESTADO.PENDIENTE) contestados.add(p.id)
   return { pasos: jsonb(pasos), certeza: jsonb(certezaDeLectura(pasos)) }
 }
 
@@ -268,6 +281,8 @@ function tableroDeCorrida({ query, lecturaId, ctx, ahora }) {
   let medido = { ia: null, metricas: null }
   let progreso = null
   let ultimoPublicado = null
+  // La memoria de qué pasos ya contestaron en ESTA corrida. Sin ella la barra puede retroceder.
+  const contestados = new Set()
 
   const medicion = (extra) => jsonb(resumirMedicion({ ...medido, ms: ahora() - arranque, progreso, ...extra }))
 
@@ -292,7 +307,7 @@ function tableroDeCorrida({ query, lecturaId, ctx, ahora }) {
     arrancar: async () => {
       await actualizar(
         query, lecturaId,
-        { estado: 'LEYENDO', etapa: ETAPA_INICIAL, error: null, ...pasosEnCurso() },
+        { estado: 'LEYENDO', etapa: ETAPA_INICIAL, error: null, ...pasosEnCurso({}, contestados) },
         { soloVivo: true },
       )
       ultimoPublicado = null
@@ -307,7 +322,7 @@ function tableroDeCorrida({ query, lecturaId, ctx, ahora }) {
     onProgreso: async (p) => {
       progreso = { fase: p?.fase ?? null, hecho: p?.hecho ?? null, total: p?.total ?? null }
       try {
-        await publicar(etapaDeProgreso(p ?? {}), p?.parcial ? pasosEnCurso(p.parcial) : {})
+        await publicar(etapaDeProgreso(p ?? {}), p?.parcial ? pasosEnCurso(p.parcial, contestados) : {})
       } catch (e) { ctx.logger?.warn?.(`cotizacion.plano: progreso no publicado: ${e?.message ?? e}`) }
     },
     cancelado: async () => {

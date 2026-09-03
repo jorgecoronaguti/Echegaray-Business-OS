@@ -44,10 +44,14 @@ test('las vistas recortadas suman al parcial junto con las láminas — no lo re
   assert.deepEqual(r.computo.items.map((i) => i.id).sort(), ['C1', 'V1'])
 })
 
-test('los documentos viajan enteros: un plano ilegible tiene que verse en el barrido parcial', () => {
+test('los documentos viajan enteros: un plano ilegible llega al razonamiento parcial', () => {
   const documentos = { planos: { legibles: [], noLegibles: [{ name: 'E-02.pdf' }] } }
   const r = lecturaHastaAhora({ laminas: [lam('A-01.pdf', [columna('C1')])], documentos })
-  const barrido = vistaDePasos(razonar(r), { items: r.computo.items, cerrada: false }).find((p) => p.id === 'p7')
-  assert.notEqual(barrido.estado, ESTADO.PENDIENTE)
-  assert.ok(barrido.resumen.includes('E-02.pdf'), 'un documento que no se pudo abrir se dice mientras se lee, no al final')
+  // Se comprueba sobre el RAZONAMIENTO, no sobre el texto del resumen: mientras la lectura está
+  // abierta el resumen no publica conclusiones, pero el dato tiene que estar ahí para cuando cierre.
+  assert.deepEqual(razonar(r).barrido.noLegibles, ['E-02.pdf'], 'sin esto, al cerrar la lectura el barrido diría que todo se pudo abrir')
+  const abierto = vistaDePasos(razonar(r), { items: r.computo.items, cerrada: false }).find((p) => p.id === 'p7')
+  assert.equal(abierto.estado, ESTADO.EN_CURSO, 'el barrido ya leyó una lámina: no está pendiente')
+  const cerrado = vistaDePasos(razonar(r), { items: r.computo.items, cerrada: true }).find((p) => p.id === 'p7')
+  assert.ok(cerrado.resumen.includes('E-02.pdf'), 'al cerrar, el documento que no se pudo abrir se dice con nombre')
 })
