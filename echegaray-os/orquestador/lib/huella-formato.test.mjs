@@ -12,6 +12,7 @@ registerHooks({
 globalThis.__dbFmt = async (sql, params) => {
   if (estado.caida) throw new Error('sin base')
   const s = String(sql)
+  if (/to_regclass/.test(s)) return { rows: [{ t: 'public.sheet_huella_formato' }] }
   if (/select rango_a1, tipo, huella/.test(s)) return { rows: estado.huellas }
   if (/insert into public\.sheet_huella_formato/.test(s)) { estado.guardadas.push(params); return { rows: [] } }
   return { rows: [] }

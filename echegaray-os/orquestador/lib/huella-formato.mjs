@@ -148,18 +148,28 @@ async function q(deps) {
   return (await import('./db.mjs')).query
 }
 
+// El DDL no vive acá: la fuente es la migración `20260903T1200_…`. Un módulo que se crea su propia
+// tabla puede nacer con un esquema distinto del migrado, y además la crearía SIN RLS — que es
+// exactamente lo que este archivo no puede hacer, porque guarda cómo se ve el Sheet del dueño.
+// Si la tabla no está, el SELECT falla, la guarda falla CERRADA (no se re-aplica ningún formato) y
+// se dice por qué. Una vez por proceso.
+let tablaVerificada = null
 async function asegurarTabla(query) {
-  await query(`
-    create table if not exists public.sheet_huella_formato (
-      file_id     text        not null,
-      pestana     text        not null,
-      rango_a1    text        not null,
-      tipo        text        not null,
-      huella      text        not null,
-      aplicado_en timestamptz not null default now(),
-      primary key (file_id, pestana, rango_a1, tipo)
-    )`)
+  if (tablaVerificada) return tablaVerificada
+  tablaVerificada = query("select to_regclass('public.sheet_huella_formato') as t").then((r) => {
+    if (!r.rows[0]?.t) {
+      throw new Error('falta public.sheet_huella_formato: aplicá la migración 20260903T1200_tus_ediciones_mandan_celda_por_celda.sql')
+    }
+    return true
+  })
+  // UN MEMO QUE CACHEA EL RECHAZO DEJA LA GUARDA MUERTA PARA SIEMPRE: una base que tembló una vez,
+  // o un test que arranca sin ella, envenenarían el resto del proceso. Sólo se recuerda el ÉXITO.
+  tablaVerificada = tablaVerificada.catch((e) => { tablaVerificada = null; throw e })
+  return tablaVerificada
 }
+
+/** Sólo para los tests: olvida el chequeo de una vez por proceso. */
+export function olvidarTablaFormatoVerificada() { tablaVerificada = null }
 
 /** Las huellas de formato de una pestaña: Map("tipo|rango" → huella). */
 export async function leerHuellasFormato(deps, fileId, pestana) {

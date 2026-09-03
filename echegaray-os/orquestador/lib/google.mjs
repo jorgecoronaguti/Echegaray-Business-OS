@@ -54,9 +54,7 @@ const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé 
 /** El gancho de la guarda inversa, atado a este archivo: lo que el dueño vació no se repone. */
 const noReponer = (fileId) => (range, actual, values) => noReponerEnRango(fileId, range, actual, values)
 
-// Se EXPORTA (03/09): un script que sólo mira —columnas-calculadas— tiene que quedarse sin poder
-// escribir por el TOKEN, no por un `if`. Un «no escribe» que depende de una rama se vuelve a romper.
-export const READONLY_SCOPES = [
+const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
@@ -1266,34 +1264,54 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
      *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
+    // ═══ SE MANDA LO QUE LA GUARDA DEVOLVIÓ, NO LO QUE ENTRÓ (03/09/2026) ═══
+    //
+    // EL DEFECTO, encontrado por la auditoría de cierre de la propiedad por celda: acá se llamaba a
+    // `guardarEscritura`, se miraba SÓLO si `g.data` había quedado vacío… y después se escribía
+    // `range` + `values` ORIGINALES. Todo lo que la guarda decide sobre el CONTENIDO se tiraba: el
+    // recorte por celda, y también la re-inyección de las celdas aprendidas, que tiene un año.
+    //
+    // El daño era peor que "no proteger": el log decía «✋ N celda(s) tuya(s) respetada(s)», la fila
+    // entraba en `sheet_reconciliacion_celda` como respetada, y la celda se pisaba igual. Una guarda
+    // que informa lo contrario de lo que hace es peor que no tenerla — es la que hace que nadie
+    // vuelva a mirar. `batchUpdateValues` (más abajo) ya consumía su `g.data`; ésta no.
+    //
+    // El camino feliz no cambia de forma: una sola entrada con el rango intacto sigue siendo el mismo
+    // PUT de siempre. Sólo cuando la guarda PARTIÓ el pedido se manda por `values:batchUpdate`, que
+    // es la única forma de escribir varios rangos sin volver a mandar los que se recortaron.
     async updateSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, range); if (hielo) return hielo
       // Mismo choke point que batchUpdateValues: no piso una pestaña candada ni una que editaste.
       let sellar = async () => {}
+      let data = [{ range, values }]
       if (!espejo && !yaGuardado) {
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
-          const g = await guardarEscritura(cliente, fileId, [{ range, values }])
+          const g = await guardarEscritura(cliente, fileId, data)
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
+          data = g.data
           sellar = g.sellar
         } catch { /* sin base: se escribe (disponibilidad) */ }
       }
       // NO-BORRAR: después de toda guarda y de todo bypass. Si acá una celda quedara vacía sobre
       // contenido, se conserva el contenido. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, [{ range, values }], { antesDePreservar: noReponer(fileId) })
+        const nb = await protegerBorrado(cliente, fileId, data, { antesDePreservar: noReponer(fileId) })
         if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
-        values = nb.data[0].values
+        data = nb.data
       }
-      values = await localizeValues(fileId, values)
-      const res = await apiSend(
-        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-        'PUT',
-        { range, majorDimension: 'ROWS', values },
-      )
-      await sellar()
+      const loc = []
+      for (const d of data) loc.push({ range: d.range, majorDimension: 'ROWS', values: await localizeValues(fileId, d.values) })
+      const res = loc.length === 1 && loc[0].range === range
+        ? await apiSend(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+          'PUT', loc[0])
+        : await apiSend(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values:batchUpdate`,
+          'POST', { valueInputOption: 'USER_ENTERED', data: loc })
+      await sellar(res)
       return res
     },
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa

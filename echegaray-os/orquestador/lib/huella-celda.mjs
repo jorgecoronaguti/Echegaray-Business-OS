@@ -630,28 +630,37 @@ export function huellasDeEscritura(grid = [], { fila0 = 1, col0 = 0 } = {}) {
 // PERSISTENCIA
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+// ═══ EL DDL SALE DE LA RUTA CALIENTE (03/09, auditoría de cierre) ═══
+//
+// `asegurarTabla` corría un `create table if not exists` MÁS un `alter table … add column` en CADA
+// `leerHuellas` y en CADA `guardarHuellas`. Con la propiedad por celda enchufada al portón eso son dos
+// sentencias de DDL por rango escrito —cientos por corrida— contra la base productiva, y encima
+// hacían que un test que no aísla la base disparara la guarda de escrituras en producción.
+//
+// LA FUENTE ES LA MIGRACIÓN (`20260903T1200_tus_ediciones_mandan_celda_por_celda.sql`). Un módulo que
+// se crea su propia tabla esconde exactamente el problema que el repo ya pagó —"migración en el repo
+// ≠ migración aplicada"—: si la tabla no está, lo correcto es que el SELECT falle y la guarda falle
+// CERRADA, no que el código la invente en silencio con otro esquema que el de la migración.
+//
+// Queda un chequeo de una sola vez por proceso, que no escribe nada: si la tabla no está, lo dice con
+// nombre y apellido en vez de dejar un error de Postgres suelto en el log de un generador.
+let tablaVerificada = null
 async function asegurarTabla() {
-  await query(`
-    create table if not exists public.sheet_huella_celda (
-      file_id    text not null,
-      pestana    text not null,
-      fila       int  not null,
-      col        int  not null,
-      forma        text not null,
-      huella       text not null,
-      borrada_en   timestamptz,
-      abandonada_en timestamptz,
-      escrito_en   timestamptz not null default now(),
-      primary key (file_id, pestana, fila, col)
-    )`)
-  // La tabla ya existe en la base viva desde el 05/08: el `create` de arriba no la toca y la columna
-  // nueva tiene que llegar por acá. Sin esto la cuarta evidencia queda muerta hasta que alguien corra
-  // la migración a mano, que es exactamente la trampa de "migración en el repo ≠ migración aplicada".
-  await query('alter table public.sheet_huella_celda add column if not exists abandonada_en timestamptz')
-  // `valor` (03/09): el contenido EXACTO que dejó el OS. Nace null en las 5.858 huellas ya escritas y
-  // sobre ésas no se afirma nada — la protección de (b) se enciende celda por celda, no de golpe.
-  await query('alter table public.sheet_huella_celda add column if not exists valor text')
+  if (tablaVerificada) return tablaVerificada
+  tablaVerificada = query('select to_regclass(\'public.sheet_huella_celda\') as t').then((r) => {
+    if (!r.rows[0]?.t) {
+      throw new Error('falta public.sheet_huella_celda: aplicá la migración 20260903T1200_tus_ediciones_mandan_celda_por_celda.sql')
+    }
+    return true
+  })
+  // UN MEMO QUE CACHEA EL RECHAZO DEJA LA GUARDA MUERTA PARA SIEMPRE: una base que tembló una vez,
+  // o un test que arranca sin ella, envenenarían el resto del proceso. Sólo se recuerda el ÉXITO.
+  tablaVerificada = tablaVerificada.catch((e) => { tablaVerificada = null; throw e })
+  return tablaVerificada
 }
+
+/** Sólo para los tests: olvida el chequeo de una vez por proceso. */
+export function olvidarTablaVerificada() { tablaVerificada = null }
 
 /**
  * El mapa de lo que escribí la última vez en esta pestaña: "fila:col" → {forma, borrada}.
@@ -767,7 +776,18 @@ export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts =
     alto: generado.length,
     ancho: Math.max(...generado.map((f) => (f || []).length), 1),
   }
-  const huellas = await leerHuellas(fileId, pestana, ventana).catch(() => new Map())
+  // ═══ FAIL-CLOSED, NO FAIL-OPEN (03/09, auditoría de cierre) ═══
+  //
+  // Acá decía `.catch(() => new Map())`: si la base temblaba, la huella decidía con un mapa VACÍO —o
+  // sea "no tengo registro de nada"— y eso no significa "no sé", significa "primera corrida": la
+  // grilla salía intacta y se pisaba TODO, incluida cada celda del dueño. El peor momento posible
+  // para desprotegerse es justo cuando el registro no responde.
+  //
+  // Ahora lanza, como hace `filtrarEstructura`. Quien llame decide qué hacer con la duda:
+  // `decidirVentana` (el portón) no escribe sobre ninguna celda con contenido, y
+  // `conHuellaFueraDelPorton` —que sirve a generadores que no pueden frenar— sigue avisando fuerte.
+  // La diferencia es que la decisión de aflojar queda EXPLÍCITA en un lugar, no escondida en un catch.
+  const huellas = await leerHuellas(fileId, pestana, ventana)
   const r = aplicarHuella(generado, actual, huellas, opts)
   return {
     ...r,

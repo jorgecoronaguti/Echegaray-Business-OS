@@ -21,6 +21,28 @@ import os from 'node:os'
 process.env.ORQ_SHEETS_MARCA = path.join(os.tmpdir(), 'no-existe', 'SHEETS-CONGELADOS')
 delete process.env.ORQ_SHEETS_DESCONGELAR
 
+// ═══ Y LA BASE TAMBIÉN SE AÍSLA (03/09) ═══
+//
+// «Hermético: sin Postgres» decía este encabezado y no era cierto: `db.mjs` es el real, así que
+// cuando la propiedad por celda se enchufó al portón estos tests empezaron a consultar —y a intentar
+// escribir— la base PRODUCTIVA, y la guarda de escrituras en prueba los puso en rojo. Es la trampa
+// que el repo ya tiene escrita: un test que "no toca la base" hasta que alguien agrega una guarda que
+// sí la toca. Se intercepta el módulo, como hacen los tests del portón.
+//
+// La base falsa responde "no tengo ninguna huella de esta pestaña": es el estado real de las que
+// escriben estos generadores, y hace que la huella no decida (primera corrida) en vez de congelar.
+const { registerHooks } = await import('node:module')
+registerHooks({
+  load(url, context, next) {
+    if (!url.endsWith('/orquestador/lib/db.mjs')) return next(url, context)
+    return { format: 'module', shortCircuit: true, source: 'export const query = (...a) => globalThis.__dbAterrizaje(...a)' }
+  },
+})
+globalThis.__dbAterrizaje = async (sql) => {
+  if (/to_regclass/.test(String(sql))) return { rows: [{ t: 'public.sheet_huella_celda' }] }
+  return { rows: [] }
+}
+
 const { makeGoogleClient } = await import('./google.mjs')
 
 /**

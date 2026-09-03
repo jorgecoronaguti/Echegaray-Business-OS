@@ -17,6 +17,7 @@ registerHooks({
 globalThis.__dbPropiedad = async (sql) => {
   if (estado.caida) throw new Error('sin base')
   const s = String(sql)
+  if (/to_regclass/.test(String(sql))) return { rows: [{ t: 'public.sheet_huella_celda' }] }
   if (/select fila, col, forma, huella/.test(s)) return { rows: estado.huellas }
   if (/^\s*(create|alter|delete|insert)/i.test(s)) { estado.escrituras.push(s.slice(0, 40)); return { rows: [] } }
   return { rows: [] }
@@ -192,7 +193,7 @@ test('base caída: no se escribe sobre NINGUNA celda con contenido, sí sobre la
   const conContenido = r.respetadas.map((x) => x.celda).sort()
   assert.ok(conContenido.includes('A10') && conContenido.includes('D11'),
     `sin base tiene que respetar todo lo que tiene contenido; respetó: ${conContenido.join(',')}`)
-  assert.ok(r.respetadas.every((x) => /sin base/.test(x.causa)))
+  assert.ok(r.respetadas.every((x) => /sin registro de huellas/.test(x.causa)))
   // D12 está vacía en la hoja: escribir ahí no puede destruir nada, y por eso sí pasa.
   const escritas = r.data.flatMap((d) => d.values.flat())
   assert.deepEqual(escritas, ['esperar'])

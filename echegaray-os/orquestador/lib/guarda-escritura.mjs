@@ -342,10 +342,20 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
   // administración va a invalidar sólo fabrica un baseline falso. No se sella.
   const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
-  // La propiedad por celda se aplica a lo que PISA. `chequearVacio:false` marca las dos escrituras que
-  // no pisan —`append` (INSERT_ROWS: mete filas nuevas) y `clearValues`— y ahí el destino releído no
-  // es el que se va a tocar: decidir sobre él sería decidir sobre otra cosa.
-  const porCelda = (d, sellar) => (chequearVacio ? conPropiedadPorCelda(cliente, fileId, d, sellar) : Promise.resolve({ data: d, respetadas: [], sellar }))
+  // ═══ A QUÉ ESCRITURAS SE LES APLICA LA PROPIEDAD POR CELDA ═══
+  //
+  // · `chequearVacio:false` marca las dos que NO PISAN —`append` (INSERT_ROWS: mete filas nuevas) y
+  //   `clearValues`—: ahí el destino releído no es el que se va a tocar, y decidir sobre él sería
+  //   decidir sobre otra cosa.
+  // · `compartida` (JORNALES) queda afuera por el MISMO motivo por el que queda afuera de la firma, y
+  //   está escrito arriba: ahí el OS no es dueño de la pestaña, sólo pone celdas sueltas, así que
+  //   nunca va a tener huella de casi nada y la propiedad por celda congelaría la carga de
+  //   administración entera y para siempre. Quien la use trae su propia protección, y más fina:
+  //   `registrarAsistencia` relee la celda destino, compara su huella justo antes de escribir y
+  //   aborta la operación si cambió. Se protege LA CELDA, que es la unidad que se comparte.
+  const porCelda = (d, sellar) => (chequearVacio && !compartida
+    ? conPropiedadPorCelda(cliente, fileId, d, sellar)
+    : Promise.resolve({ data: d, respetadas: [], sellar }))
   if (!bloqueadas.size) {
     const conAprendidas = await reInyectarAprendidas(fileId, data)
     const p = await porCelda(conAprendidas, sellarSi(tabs))

@@ -198,19 +198,25 @@ export async function decidirVentana(cliente, fileId, ventana, generado) {
   let actual
   try { actual = await cliente.readSheetValues(fileId, rango, { render: 'FORMULA' }) } catch { actual = undefined }
   if (actual === undefined) return { estado: 'sin-leer', escribible: [], payload: [], respetadas: [], sellar: async () => {} }
-  // La base es la que guarda las huellas. Si no responde, ninguna celda se puede probar mía.
+  // LA BASE ES LA QUE GUARDA LAS HUELLAS. Si no responde —ni el probe, ni la lectura de la ventana, ni
+  // la tabla— ninguna celda se puede probar mía y no se escribe sobre nada que hoy tenga contenido.
+  // Se prueban las DOS cosas y en el mismo lugar: un `select 1` que anda no garantiza que
+  // `sheet_huella_celda` esté (la migración puede no estar aplicada), y ése era el hueco que dejaba el
+  // `.catch(() => new Map())` de `conHuellaDeCelda` — mapa vacío se lee como "primera corrida".
+  let h
   try {
     const { query } = await import('./db.mjs')
     await query('select 1')
-  } catch {
+    h = await conHuellaDeCelda(fileId, tab, generado, actual, { fila0, col0 })
+  } catch (e) {
     const escribible = generado.map((f, i) => (f || []).map((_, j) => !hayContenido((actual[i] || [])[j])))
     const respetadas = []
+    const causa = `sin registro de huellas (${String(e.message).slice(0, 70)}): no puedo verificar de quién es la celda (fail-closed)`
     generado.forEach((f, i) => (f || []).forEach((g, j) => {
-      if (!escribible[i][j] && quiereEscribir(g)) respetadas.push({ i, j, valorDueno: (actual[i] || [])[j] ?? null, valorOs: g, causa: 'sin base: no puedo verificar de quién es la celda (fail-closed)' })
+      if (!escribible[i][j] && quiereEscribir(g)) respetadas.push({ i, j, valorDueno: (actual[i] || [])[j] ?? null, valorOs: g, causa })
     }))
     return { estado: 'sin-base', escribible, payload: generado, respetadas, sellar: async () => {} }
   }
-  const h = await conHuellaDeCelda(fileId, tab, generado, actual, { fila0, col0 })
   const c = clasificarGrilla(generado, actual, h.grid)
   const porQue = causasDeVeredicto(h)
   for (const r of c.respetadas) { r.causa = porQue(fila0 + r.i, col0 + r.j) }

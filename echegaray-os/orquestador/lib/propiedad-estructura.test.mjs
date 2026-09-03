@@ -11,6 +11,7 @@ registerHooks({
 })
 globalThis.__dbEst = async (sql) => {
   if (estado.caida) throw new Error('sin base')
+  if (/to_regclass/.test(String(sql))) return { rows: [{ t: 'public.sheet_huella_celda' }] }
   if (/select fila, col, forma, huella/.test(String(sql))) return { rows: estado.huellas }
   return { rows: [] }
 }

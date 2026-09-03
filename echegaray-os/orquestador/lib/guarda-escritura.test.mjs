@@ -611,6 +611,7 @@ function baseViva({ candadas = [], candadasAuto = [], huellas = [] } = {}) {
     if (/select firma from public\.sheet_tab_firma/i.test(sql)) { const f = reg.firmas.get(params[1]); return { rows: f ? [{ firma: f }] : [] } }
     if (/insert into public\.sheet_tab_firma/i.test(sql)) { reg.firmas.set(params[1], params[2]); return { rows: [] } }
     // La huella POR CELDA (03/09): sin ella, un deleteDimension no puede probar que el tramo es suyo.
+    if (/to_regclass/i.test(sql)) return { rows: [{ t: 'public.sheet_huella_celda' }] }
     if (/select fila, col, forma, huella/i.test(sql)) return { rows: reg.huellas }
     return { rows: [] }
   }
