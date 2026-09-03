@@ -176,21 +176,66 @@ export async function leerRetenciones(google, fileId) {
   return clasificar(cobros)
 }
 
-/** Las ventas ya facturadas o proyectadas por mes. Alimenta SÓLO el bloque de CONTROL, no la escritura. */
-export async function ventasProyectadas(google, fileId) {
-  // Cobranzas: monto NETO (columna J) por mes de emisión (columna C). RANGO ABIERTO: el tope en la
-  // fila 200 dejaba afuera 157 filas de datos, y esta lectura alimenta un control — un control ciego
-  // a la mitad de su fuente no controla nada.
-  const v = await google.readSheetValues(fileId, 'Cobranzas!C5:J')
-  const out = {}
-  for (const f of v) {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(f?.[0] ?? '').trim())
-    if (!m) continue
+/** El rótulo con el que Cobranzas marca la venta FACTURADA en su columna B «Categoría». */
+export const CATEGORIA_FACTURADA = 'B'
+
+/**
+ * NÚCLEO PURO: las ventas FACTURADAS por mes de emisión, desde las filas de `Cobranzas!B5:J`.
+ *
+ * Índices dentro de cada fila: 0 = B (Categoría) · 1 = C (Fecha emisión) · 8 = J (Monto neto).
+ *
+ * Devuelve también qué quedó afuera y por qué. Un filtro que descarta en silencio es indistinguible
+ * de un filtro roto: si mañana aparece una categoría nueva, esto tiene que poder decirlo.
+ */
+export function ventasFacturadasPorMes(filas = []) {
+  const porMes = {}
+  const afuera = { sinFactura: 0, sinCategoria: 0, sinFecha: 0 }
+  for (const f of filas) {
+    const cat = String(f?.[0] ?? '').trim().toUpperCase()
+    if (!cat) { afuera.sinCategoria++; continue }
+    if (cat !== CATEGORIA_FACTURADA) { afuera.sinFactura++; continue }
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(f?.[1] ?? '').trim())
+    if (!m) { afuera.sinFecha++; continue }
     const per = `${m[3]}-${String(m[2]).padStart(2, '0')}`
-    const neto = parseFloat(String(f?.[7] ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
-    out[per] = (out[per] ?? 0) + neto
+    const neto = parseFloat(String(f?.[8] ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+    porMes[per] = (porMes[per] ?? 0) + neto
   }
-  return out
+  return { porMes, afuera }
+}
+
+/**
+ * Las ventas facturadas por mes — la base sobre la que se proyecta el IVA débito.
+ *
+ * ═══ SÓLO LA CATEGORÍA «B» (03/09/2026) ═══
+ *
+ * El dueño: «las proyecciones de IVA están tomando de manera exagerada; lo indicado con B en
+ * Cobranzas es lo que tiene que considerar siempre». Cobranzas clasifica cada venta en su columna B
+ * «Categoría»: `B` es la venta facturada y `N` la que no lleva factura.
+ *
+ * MEDIDO sobre las 96 filas del archivo el 03/09/2026:
+ *
+ *     B   63 filas   $464.427.693 de neto   $102.539.282 de IVA
+ *     N   33 filas   $284.773.901 de neto   IVA CERO en las treinta y tres, sin una excepción
+ *
+ * Esta lectura las sumaba todas: el rango arrancaba en la columna C y **ni siquiera veía la
+ * categoría**, así que era incapaz de filtrar. Proyectaba sobre $749.361.594 en vez de
+ * $464.427.693 — 38% de más, y **$59.802.519 de IVA débito que nunca se va a devengar**. Entre mayo
+ * y agosto de 2026 casi la mitad de Cobranzas es `N`, y ahí el desvío se vuelve grosero.
+ *
+ * Una venta sin factura no genera débito fiscal. Incluirla no es una proyección conservadora: es un
+ * pasivo inventado, y encima uno que el dueño ve en su pantalla como plata que va a tener que pagar.
+ *
+ * Y NO alimenta sólo un control, como decía el comentario anterior: el resultado entra en
+ * `posicionIvaCompleta()` y de ahí a la pestaña. Era un comentario que mentía sobre su propio efecto.
+ */
+export async function ventasProyectadas(google, fileId) {
+  // RANGO ABIERTO: el tope en la fila 200 dejaba afuera 157 filas de datos. Un control ciego a la
+  // mitad de su fuente no controla nada.
+  const { porMes, afuera } = ventasFacturadasPorMes(await google.readSheetValues(fileId, 'Cobranzas!B5:J'))
+  if (afuera.sinCategoria) {
+    console.warn(`⚠ ventasProyectadas: ${afuera.sinCategoria} fila(s) de Cobranzas sin categoría — fuera del IVA proyectado`)
+  }
+  return porMes
 }
 
 /**
