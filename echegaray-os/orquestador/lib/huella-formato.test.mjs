@@ -233,3 +233,46 @@ test('sin las dimensiones vivas tampoco se deja pasar un cambio de tamaño', asy
   assert.equal(frenaRequest(clasificarRequest(agrandar, null), new Set()), true,
     'sin saber el alto actual no se puede afirmar que agranda: falla cerrado')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// BORRAR UNA PESTAÑA ENTERA NO LO DECIDE UN MODELO (auditoría del 03/09, segunda ronda)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La re-verificación buscó «¿qué otro request borra contenido y sólo lo frena un candado?» y
+// encontró `deleteSheet` — con dos EMISORES VIVOS manejados por un modelo (`drive.deletetab` y
+// `drive.delete_tab`), cuya descripción decía «Irreversible … no pidas aprobación». Con la firma
+// apagada desde el 05/08, ninguna pestaña está candada salvo las que el dueño candó a mano.
+
+test('deleteSheet se frena aunque la pestaña esté libre', async () => {
+  const { frenaRequest, clasificarRequest } = await import('./guarda-escritura.mjs')
+  const borrar = { deleteSheet: { sheetId: 1 } }
+  const c = clasificarRequest(borrar, new Map([[1, { rows: 68, cols: 26 }]]))
+  assert.equal(c.borraContenido, true, 'se lleva la pestaña con todo lo que tenga')
+  assert.equal(frenaRequest(c, new Set()), true, 'sin candado también se frena: el candado no puede ser la única defensa')
+  assert.equal(frenaRequest(c, new Set([1])), true, 'y con candado, obviamente')
+})
+
+test('la máscara `gridProperties.*` no se lee como apariencia', async () => {
+  const { clasificarRequest, CLASE } = await import('./guarda-escritura.mjs')
+  const dims = new Map([[1, { rows: 68, cols: 26 }]])
+  const achicarComodin = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 10 } }, fields: 'gridProperties.*' } }
+  const c = clasificarRequest(achicarComodin, dims)
+  assert.equal(c.clase, CLASE.DESTRUCTIVO, 'el comodín cubre rowCount: achica igual que la máscara explícita')
+  assert.equal(c.borraContenido, true, 'y por lo tanto se frena siempre')
+})
+
+test('las herramientas expuestas a un modelo ya no borran pestañas', async () => {
+  const fs = await import('node:fs')
+  // Los nombres difieren entre los dos archivos: `drive.deletetab` y `drive.delete_tab`.
+  for (const [archivo, clave] of [['./tools/sheets-format.mjs', "'drive.deletetab'"], ['./tools/drive-write.mjs', "'drive.delete_tab'"]]) {
+    const txt = fs.readFileSync(new URL(archivo, import.meta.url), 'utf8')
+    const i = txt.indexOf(clave)
+    assert.ok(i > 0, `no encontré ${clave} en ${archivo}`)
+    // Hasta la herramienta SIGUIENTE, no una ventana fija: el bloque de al lado sí escribe.
+    const sig = txt.indexOf("    'drive.", i + clave.length)
+    const bloque = txt.slice(i, sig > 0 ? sig : i + 2600)
+    assert.ok(!/spreadsheetBatchUpdate/.test(bloque),
+      `${archivo}: la herramienta volvió a emitir una escritura — un modelo no borra una pestaña`)
+    assert.ok(/no borro pestañas/.test(bloque), `${archivo}: tiene que explicar por qué no, no fallar seco`)
+  }
+})

@@ -446,7 +446,7 @@ export function separarRequests(requests = [], sheetIdsBloqueados = new Set(), d
  * mapear sheetId→pestaña y para saber si un cambio de tamaño de grilla la agranda o la achica.
  * @returns {Promise<{requests:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
  */
-export async function guardarRequests(cliente, fileId, requests) {
+export async function guardarRequests(cliente, fileId, requests, { borrarPestanas = null } = {}) {
   // Primera pasada SIN meta: un batch que no destruye NADA y no toca ningún formato no paga ni una
   // llamada a la API. Antes alcanzaba con "no destruye": desde que el diseño lleva huella propia
   // (03/09) un `repeatCell` también tiene que mirarse, porque re-aplicar un formato encima del que
@@ -487,10 +487,40 @@ export async function guardarRequests(cliente, fileId, requests) {
   const bloqTabs = await evaluarBloqueadas(cliente, fileId, aEvaluar)
   const bloqSids = new Set([...id2tab].filter(([, t]) => bloqTabs.has(t)).map(([s]) => s))
   const permitidos = []
+  const frenadosDuros = []
   let pasoAlgunaTodas = false
+  // ═══ EL PERMISO EXPLÍCITO ES POR CÓDIGO, NO POR ENTRADA ═══
+  //
+  // `borrarPestanas` lo pasa un generador del OS que sabe QUÉ pestañas retira y por qué (hoy sólo
+  // `proveedores-materiales-pestana.mjs`, con una lista fija de obsoletas). Una herramienta expuesta
+  // a un modelo no puede pasarlo: no hay forma de que un `deleteSheet` llegue desde una decisión del
+  // modelo. Se exige la LISTA de nombres, no un booleano — «sí, borrá» no dice qué se creía borrar.
+  const puedeBorrar = new Set(
+    Array.isArray(borrarPestanas)
+      ? borrarPestanas.map((t) => [...id2tab].find(([, n2]) => n2 === t)?.[0]).filter((x) => x !== undefined)
+      : [],
+  )
   requests.forEach((r, i) => {
-    if (frenaRequest(clases[i], bloqSids)) return
-    if (clases[i].todas && clases[i].clase === CLASE.DESTRUCTIVO) pasoAlgunaTodas = true
+    const c = clases[i]
+    if (c.borraContenido && r?.deleteSheet && c.sheetIds.every((sid) => puedeBorrar.has(sid))) {
+      permitidos.push(r)
+      return
+    }
+    if (frenaRequest(c, bloqSids)) {
+      // ═══ FRENAR Y NO AVISAR ES PEOR QUE NO FRENAR ═══
+      //
+      // Está escrito en `guarda-por-celda.mjs` y valía para la capa por celda; acá no se cumplía. Un
+      // request frenado que desaparece en silencio deja al generador escribiendo sobre una geometría
+      // que ya no es la que cree. Va al log Y viaja en `frenados`, que es lo que miran los llamadores
+      // que dependen de la geometría (`abortaPorGeometria`).
+      if (c.borraContenido) {
+        const donde = c.sheetIds.map((sid) => id2tab.get(sid) ?? `sheetId ${sid}`).join(', ') || 'todo el archivo'
+        console.log(`  ⛔ frenado: ${c.porQue} — ${donde}. Si de verdad hay que hacerlo, lo pide el código con permiso explícito, no una herramienta.`)
+        frenadosDuros.push({ tipo: Object.keys(r)[0], porQue: c.porQue, pestanas: c.sheetIds.map((sid) => id2tab.get(sid)).filter(Boolean) })
+      }
+      return
+    }
+    if (c.todas && c.clase === CLASE.DESTRUCTIVO) pasoAlgunaTodas = true
     permitidos.push(r)
   })
   // Se sella lo que se modificó y NO estaba bloqueado. Si pasó un request sin pestaña atribuible, cambió
@@ -508,7 +538,7 @@ export async function guardarRequests(cliente, fileId, requests) {
     requests: porCelda.requests,
     bloqueadas: [...bloqTabs],
     respetadas: porCelda.respetadas,
-    frenados: porCelda.frenados ?? [],
+    frenados: [...frenadosDuros, ...(porCelda.frenados ?? [])],
     sellar: async () => { await sellarTabs(cliente, fileId, escritos); await porCelda.sellar() },
   }
 }

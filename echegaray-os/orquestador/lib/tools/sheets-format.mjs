@@ -150,17 +150,24 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_delete_tab',
-        description: 'BORRA una pestaña (hoja) entera de un Google Sheet. Irreversible (la pestaña y sus datos se pierden). Pasá file_id y tab (nombre de la pestaña). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
+        description: 'NO borra nada: el borrado de una pestaña entera es irreversible y no lo decide un modelo. Devuelve una explicación para que se lo pidas a una persona. Existe sólo para poder contestar bien cuando alguien pide borrar una pestaña.',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, tab: { type: 'string' } }, required: ['file_id', 'tab'] },
       },
       async run(input) {
-        if (!input?.file_id || !input?.tab) return { error: 'faltan file_id o tab' }
-        const meta = await google.getSheetMeta(input.file_id)
-        const s = meta.find((x) => x.title === input.tab)
-        if (!s) return { error: `no encontré la pestaña "${input.tab}"` }
-        if (meta.length <= 1) return { error: 'no puedo borrar la única pestaña del archivo (un Sheet necesita al menos una)' }
-        await google.spreadsheetBatchUpdate(input.file_id, [{ deleteSheet: { sheetId: s.sheetId } }])
-        return { ok: true, borrada: input.tab }
+        // ═══ UN MODELO NO BORRA UNA PESTAÑA (03/09) ═══
+        //
+        // Esta herramienta decía «Irreversible … Se aplica AL INSTANTE (no pidas aprobación)» y sus
+        // únicas defensas eran que la pestaña existiera y que no fuera la última. Un `file_id` o un
+        // `tab` confundidos se llevaban CAJA, Compras o Cobranzas enteras, y la guarda no lo frenaba
+        // porque sólo pondera candados y la firma está apagada desde el 05/08. Auditoría del 03/09.
+        //
+        // El borrado sigue siendo posible: lo pide un generador por código, nombrando las pestañas
+        // (`borrarPestanas`). Lo que deja de ser posible es que lo decida un modelo en una corrida.
+        return {
+          error: 'no borro pestañas: es irreversible y se lleva todo su contenido. Si hay que retirar una, '
+            + 'decímelo y lo hace una persona con la pestaña a la vista — o un generador que declare por código cuál retira.',
+          pestana: input?.tab ?? null,
+        }
       },
     },
     'drive.renametab': {

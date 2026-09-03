@@ -1732,7 +1732,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
-    async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
+    async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false, borrarPestanas = null } = {}) {
       const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
       // ═══ UN RANGO VACÍO TIRA EL LOTE ENTERO, Y ESO DEJA ESCRITURAS A MEDIAS ═══
       //
@@ -1773,7 +1773,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       if (!espejo && !yaGuardado) {
         try {
           const { guardarRequests } = await import('./guarda-escritura.mjs')
-          const g = await guardarRequests(cliente, fileId, requests)
+          const g = await guardarRequests(cliente, fileId, requests, { borrarPestanas })
           frenados = g.frenados ?? []
           if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas, frenados }
           requests = g.requests

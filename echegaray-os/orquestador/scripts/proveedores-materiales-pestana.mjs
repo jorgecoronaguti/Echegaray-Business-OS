@@ -2311,7 +2311,10 @@ async function main() {
   // Dos cosas distintas no comparten nombre aunque el verbo sea el mismo: acá se retiran PESTAÑAS.
   const pestanasARetirar = OBSOLETAS.map((t) => meta2.find((h) => h.title === t)).filter(Boolean)
   if (!err && pestanasARetirar.length) {
-    await google.spreadsheetBatchUpdate(ID, pestanasARetirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })))
+    // El permiso para borrar pestañas se pide POR CÓDIGO y nombrando cuáles: la guarda frena todo
+    // `deleteSheet` que no venga con su lista (03/09). `OBSOLETAS` es fija y está arriba.
+    await google.spreadsheetBatchUpdate(ID, pestanasARetirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })),
+      { borrarPestanas: pestanasARetirar.map((h) => h.title) })
     console.log(`  retiradas: ${pestanasARetirar.map((h) => `"${h.title}"`).join(', ')} — su contenido está en las dos de arriba`)
   }
 
