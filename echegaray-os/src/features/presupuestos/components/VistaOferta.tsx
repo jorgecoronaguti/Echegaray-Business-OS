@@ -29,7 +29,8 @@ export function VistaOferta({ oferta, p, congelado }: {
     <div
       data-testid="vista-oferta"
       style={{
-        width: '100%', maxWidth: 620, background: C.superficie, border: `1px solid ${C.linea}`,
+        width: '100%', maxWidth: 620, margin: '0 auto',
+        background: C.superficie, border: `1px solid ${C.linea}`,
         borderRadius: 8, padding: '36px 38px 32px', height: 'fit-content',
       }}
     >

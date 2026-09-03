@@ -207,7 +207,12 @@ export default async function PresupuestoPage({
           <Solapas href={href} vista={url.vista} />
 
           <div className="flex-1 xl:min-h-0 xl:overflow-auto" style={{ background: C.superficieTenue }}>
-            <div className="flex justify-center px-5 py-6">
+            {/* CENTRADO CON `mx-auto`, NO CON `justify-center` (medido a 1280 el 03/09/2026).
+                Un hijo más ancho que su contenedor flex centrado se pasa por LOS DOS lados, y el
+                de la izquierda no se puede alcanzar scrolleando: la columna PARTIDA quedaba
+                cortada contra el borde y no había forma de llegar a ella. Con márgenes automáticos
+                el desborde arranca en el borde izquierdo, que es de donde se lee. */}
+            <div className="px-5 py-6">
               {url.vista === 'oferta' ? (
                 <VistaOferta
                   oferta={ofertaDe(vivo.partidas, vivo.cascada)}
@@ -251,7 +256,7 @@ export default async function PresupuestoPage({
                 rubros={[...new Set(lista.map(rubroDe))]}
               />
             ) : seleccionada && composicion ? (
-              <PanelPartida p={seleccionada} presupuesto={presupuesto} composicion={composicion} />
+              <PanelPartida p={seleccionada} presupuesto={presupuesto} composicion={composicion} hrefCerrar={null} />
             ) : (
               // Un id de partida que no existe en esta cotización no se dibuja como panel vacío.
               <Aviso tono="warn" titulo="No encontré esa partida">
@@ -345,7 +350,14 @@ function Costos({
   nueva: boolean
 }) {
   return (
-    <div className="flex w-full min-w-0 max-w-[1000px] flex-col gap-7">
+    // ═══ 760 px DE MÍNIMO, Y ESO SIGNIFICA SCROLL HORIZONTAL A 1280 (medido el 03/09/2026) ═══
+    //
+    // A 1280 el presupuesto vivo mide 632 px —1280 menos los 648 fijos de la conversación— y la
+    // tabla de partidas tiene ocho columnas con `fr`: sin un mínimo se comprimen hasta que el código se
+    // superpone con la descripción y la columna COSTO queda cortada contra el borde. Con el mínimo, el
+    // contenedor scrollea de lado y la tabla conserva sus proporciones. Es una limitación real de
+    // poner 648 px fijos al lado de una tabla ancha, y se resuelve scrolleando, no comprimiendo.
+    <div className="mx-auto flex w-full min-w-[900px] max-w-[1000px] flex-col gap-7">
       {subFuera.n > 0 && (
         // HUECO DEL MODELO, MEDIDO EL 21/08/2026 — no una precaución teórica. La vista valoriza con
         // `coalesce(costo_unitario, analisis)` y una subcontratada no tiene ninguno de los dos: su

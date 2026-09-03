@@ -106,13 +106,25 @@ function BarraCerteza({ c }: { c: Certeza }) {
       <span style={{ height: 6, display: 'flex', borderRadius: 3, overflow: 'hidden', background: C.lineaFila }}>
         <span style={{ width: ancho(c.confirmadas), background: C.grafito }} />
         <span style={{ width: ancho(c.porConfirmar), background: '#B9B7B0' }} />
-        <span style={{ width: ancho(c.conProblema), background: C.neg }} />
+        <span style={{ width: ancho(c.ambiguas), background: C.warn }} />
+        <span style={{ width: ancho(c.faltantes), background: C.neg }} />
       </span>
       <span style={{ fontSize: 11.5, color: C.apagado }} data-testid="certeza-texto">
+        {/* CADA PROBLEMA POR SU NOMBRE. «26 con problema» no dice si hay que medir un plano o
+            llamar al cliente, y son las dos cosas más distintas que puede haber acá. */}
         {c.total} {c.total === 1 ? 'partida' : 'partidas'} · {c.confirmadas} confirmadas
-        {' · '}{c.porConfirmar} por confirmar · {c.conProblema} con problema
+        {' · '}{c.porConfirmar} por confirmar
+        {c.ambiguas > 0 && ` · ${c.ambiguas} sin alcance declarado`}
+        {c.faltantes > 0 && ` · ${c.faltantes} sin poder valorizar`}
         {c.excluidas > 0 && ` · ${c.excluidas} excluidas`}
       </span>
+      {c.sinGenealogia > 0 && (
+        // §16 y §21: el número existe pero no se puede recorrer hacia atrás. No impide cotizar y no
+        // se cuenta como problema de precio — pero callarlo sería publicar un costo sin origen.
+        <span style={{ fontSize: 10.5, color: C.warn }} data-testid="sin-genealogia">
+          {c.sinGenealogia} sin análisis detrás: el costo no se puede explicar hacia atrás
+        </span>
+      )}
     </span>
   )
 }

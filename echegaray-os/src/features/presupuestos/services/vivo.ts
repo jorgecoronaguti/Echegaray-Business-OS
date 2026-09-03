@@ -61,10 +61,31 @@ export function estaExcluida(p: PartidaDelMotor): boolean {
   return p.alcance === 'EXCLUIDO'
 }
 
+/**
+ * ¿ESTA FILA IMPIDE QUE HAYA UN PRECIO?
+ *
+ * ═══ NO TODO HUECO ES UN PROBLEMA DE PRECIO (medido contra la base, 03/09/2026) ═══
+ *
+ * La primera versión pintaba «con problema» cualquier fila con un hueco, y `sin análisis` es uno.
+ * En COT-2026-001 —26 partidas importadas con `costo_unitario` cargado a mano y sin análisis— el
+ * encabezado publicaba «26 con problema» y, dos centímetros más a la derecha, «26 partidas adentro
+ * del precio». Las dos cosas eran ciertas y juntas no significaban nada.
+ *
+ * La certeza mide UNA cosa: si el número se puede sostener. Sin cantidad no hay número; sin importe
+ * tampoco; un subcontrato sin precio deja un agujero. Que la fila no tenga genealogía es un problema
+ * DISTINTO —§16: la oferta no puede contener costos sin genealogía— y se cuenta aparte, con su
+ * nombre, en vez de mezclarse con el que impide cotizar.
+ */
+export function bloqueaElPrecio(p: PartidaDelMotor): boolean {
+  if (p.cantidad === null) return true
+  if (p.subcontratada && p.precioSubcontrato === null) return true
+  return p.subtotal === null
+}
+
 export function estadoDeFila(p: PartidaDelMotor): EstadoFila {
   if (estaExcluida(p)) return 'excluido'
   if (p.alcance === 'POR_DEFINIR') return 'ambiguo'
-  if (huecosDe(p).length > 0) return 'falta'
+  if (bloqueaElPrecio(p)) return 'falta'
   // `congelada` es la ÚNICA marca de fijación que la fila trae. No es una confirmación humana con
   // autor y fecha —eso el modelo todavía no lo guarda— y por eso `Certeza.criterio` lo dice.
   if (p.congelada) return 'confirmado'
@@ -76,8 +97,23 @@ export interface Certeza {
   total: number
   confirmadas: number
   porConfirmar: number
+  /**
+   * `ambiguas + faltantes`. Se conserva para la lectura rápida, pero NO se muestra solo: «con
+   * problema» no dice qué problema, y los dos se arreglan de maneras opuestas —uno declarando el
+   * alcance con el cliente, el otro midiendo o pidiendo un precio—.
+   */
   conProblema: number
+  /** Nadie declaró si entran en el alcance. Lo dice el motor, no esta capa. */
+  ambiguas: number
+  /** No se pueden valorizar: sin cómputo, sin importe, o subcontrato sin precio. */
+  faltantes: number
   excluidas: number
+  /**
+   * Filas valorizadas que NO tienen análisis detrás: el número existe pero no se puede recorrer
+   * hacia atrás (§16, §21). No impide cotizar, así que no entra en `conProblema` — pero tampoco se
+   * calla, porque es lo que separa un presupuesto explicable de uno tipeado.
+   */
+  sinGenealogia: number
   /** Cómo se leyó «confirmada». Se muestra: una certeza sin criterio no se puede discutir. */
   criterio: string
 }
@@ -94,7 +130,10 @@ export function certezaDe(partidas: readonly PartidaDelMotor[]): Certeza {
     confirmadas: dentro.filter((e) => e === 'confirmado').length,
     porConfirmar: dentro.filter((e) => e === 'extraido' || e === 'propuesto').length,
     conProblema: dentro.filter((e) => e === 'falta' || e === 'ambiguo').length,
+    ambiguas: dentro.filter((e) => e === 'ambiguo').length,
+    faltantes: dentro.filter((e) => e === 'falta').length,
     excluidas: estados.filter((e) => e === 'excluido').length,
+    sinGenealogia: partidas.filter((p) => !estaExcluida(p) && !bloqueaElPrecio(p) && p.sinAnalisis).length,
     criterio: CRITERIO,
   }
 }

@@ -14,7 +14,8 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Cola, Gate, PartidaDelMotor } from './cotizadorPuente.ts'
 import {
-  bloqueosDeEnvio, certezaDe, estadoDeFila, firmezaDe, huecosDe, partirCascada, precioFirmeDe,
+  bloqueaElPrecio, bloqueosDeEnvio, certezaDe, estadoDeFila, firmezaDe, huecosDe, partirCascada,
+  precioFirmeDe,
 } from './vivo.ts'
 import type { Escalon } from './cascada.ts'
 
@@ -59,8 +60,24 @@ describe('el estado de la fila', () => {
     assert.equal(estadoDeFila(partida({ alcance: 'POR_DEFINIR' })), 'ambiguo')
   })
 
-  test('un hueco pinta la fila de falta', () => {
+  test('un hueco que impide cotizar pinta la fila de falta', () => {
     assert.equal(estadoDeFila(partida({ cantidad: null, subtotal: null })), 'falta')
+  })
+
+  // ═══ EL DEFECTO MEDIDO EL 03/09/2026 CONTRA COT-2026-001 ═══
+  //
+  // 26 partidas importadas con `costo_unitario` cargado y sin análisis. La primera versión las
+  // pintaba «con problema» a las 26 y al lado publicaba «26 partidas adentro del precio». Sin este
+  // test, la regla vuelve sola en cuanto alguien agregue un hueco nuevo a `huecosDe`.
+  test('sin análisis pero valorizada NO es un problema de precio', () => {
+    const p = partida({ sinAnalisis: true, cantidad: 520, subtotal: 520_000 })
+    assert.equal(bloqueaElPrecio(p), false)
+    assert.equal(estadoDeFila(p), 'extraido')
+    assert.deepEqual(huecosDe(p), ['sin análisis'], 'el hueco igual se nombra en la fila')
+  })
+
+  test('una subcontratada sin precio SÍ impide cotizar, aunque tenga cantidad', () => {
+    assert.equal(bloqueaElPrecio(partida({ subcontratada: true, precioSubcontrato: null })), true)
   })
 
   test('la composición fijada es lo más cerca de confirmada que la fila puede decir', () => {
@@ -94,13 +111,35 @@ describe('la certeza se cuenta, no se puntúa', () => {
     assert.equal(c.conProblema, 1)
   })
 
+  test('«sin alcance declarado» y «sin poder valorizar» se cuentan por separado', () => {
+    // Los dos son «problema» y se arreglan de maneras opuestas: uno se resuelve hablando con el
+    // cliente, el otro midiendo un plano o pidiendo un precio. Sumarlos borra esa diferencia.
+    const c = certezaDe([
+      partida({ id: 'a', alcance: 'POR_DEFINIR' }),
+      partida({ id: 'b', cantidad: null, subtotal: null }),
+    ])
+    assert.equal(c.ambiguas, 1)
+    assert.equal(c.faltantes, 1)
+    assert.equal(c.conProblema, 2, 'el total sigue estando, pero no se muestra solo')
+  })
+
   test('el criterio de «confirmada» viaja con el número: sin él no se puede discutir', () => {
     assert.match(certezaDe(lista).criterio, /autor ni fecha/)
   })
 
+  test('la falta de genealogía se cuenta aparte, no se mezcla con lo que impide cotizar', () => {
+    const c = certezaDe([
+      partida({ id: 'a', sinAnalisis: true }),
+      partida({ id: 'b', cantidad: null, subtotal: null, sinAnalisis: true }),
+    ])
+    assert.equal(c.conProblema, 1, 'sólo la que no se puede valorizar')
+    assert.equal(c.porConfirmar, 1)
+    assert.equal(c.sinGenealogia, 1, 'y la valorizada sin análisis igual se declara')
+  })
+
   test('sin partidas no hay certeza inventada: todo en cero y sin problema', () => {
     const c = certezaDe([])
-    assert.deepEqual([c.total, c.confirmadas, c.porConfirmar, c.conProblema], [0, 0, 0, 0])
+    assert.deepEqual([c.total, c.confirmadas, c.porConfirmar, c.conProblema, c.sinGenealogia], [0, 0, 0, 0, 0])
   })
 })
 

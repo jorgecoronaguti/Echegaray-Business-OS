@@ -26,10 +26,19 @@
 import type { CascadaMotor, PartidaDelMotor } from './cotizadorPuente.ts'
 import { estaExcluida } from './vivo.ts'
 
+/**
+ * Cuántas descripciones entran en el detalle de una línea.
+ *
+ * Medido contra COT-2026-001, que no tiene rubros cargados: las 26 partidas caían en un solo renglón
+ * y el detalle era un párrafo de veinte líneas. Un documento comercial no se lee así. Se muestran
+ * las primeras y se declara cuántas quedaron — el detalle completo vive en la vista de costos.
+ */
+const TOPE_DETALLE = 6
+
 export interface LineaOferta {
   /** El rubro, que es como el cliente lee un presupuesto de obra. */
   rubro: string
-  /** Las descripciones comerciales de lo que hay adentro. Sin cantidades. */
+  /** Las descripciones comerciales de lo que hay adentro, hasta `TOPE_DETALLE`. Sin cantidades. */
   detalle: string
   /** El precio del rubro. `null` = todavía no tiene precio; jamás `0`. */
   importe: number | null
@@ -66,7 +75,7 @@ export function ofertaDe(
   return {
     lineas: grupos.map((g, i) => ({
       rubro: g.rubro,
-      detalle: g.descripciones.join(' · '),
+      detalle: detalleDe(g.descripciones),
       importe: importes[i],
       sinPrecio: g.sinPrecio,
     })),
@@ -74,6 +83,13 @@ export function ofertaDe(
     coeficiente: cascada?.coeficienteSinIva ?? null,
     sinPrecio: dentro.filter((p) => p.subtotal === null).length,
   }
+}
+
+/** Las primeras descripciones y, si sobran, cuántas. Nunca se recorta sin decir que se recortó. */
+function detalleDe(descripciones: readonly string[]): string {
+  const visibles = descripciones.slice(0, TOPE_DETALLE).join(' · ')
+  const resto = descripciones.length - TOPE_DETALLE
+  return resto > 0 ? `${visibles} · y ${resto} trabajos más` : visibles
 }
 
 interface GrupoRubro {

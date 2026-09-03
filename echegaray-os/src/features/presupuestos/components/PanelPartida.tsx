@@ -18,10 +18,17 @@ export function PanelPartida({
   p,
   presupuesto,
   composicion,
+  hrefCerrar,
 }: {
   p: PartidaValorizada
   presupuesto: PresupuestoCascada
   composicion: Composicion
+  /**
+   * A dónde vuelve el cierre. `null` = el panel NO dibuja su propia cruz porque quien lo monta ya
+   * tiene una: dentro del cajón del entorno había DOS cierres a dos centímetros, y el de acá además
+   * volvía a `/presupuestos/{id}` pelado, perdiendo la vista y la cola que estaban abiertas.
+   */
+  hrefCerrar?: string | null
 }) {
   const desglose = desglosar(composicion.lineas)
   const control = desgloseCierra(desglose.totalDesglose, p.costo_unitario)
@@ -38,8 +45,10 @@ export function PanelPartida({
           </div>
           <h3 className="mt-0.5 text-[15.5px] font-semibold leading-tight text-ink">{p.descripcion}</h3>
         </div>
-        <Link href={`/presupuestos/${presupuesto.id}`} aria-label="Cerrar el panel"
-          className="shrink-0 text-[13px] text-faint hover:text-ink" data-testid="cerrar-panel">✕</Link>
+        {hrefCerrar !== null && (
+          <Link href={hrefCerrar ?? `/presupuestos/${presupuesto.id}`} aria-label="Cerrar el panel"
+            className="shrink-0 text-[13px] text-faint hover:text-ink" data-testid="cerrar-panel">✕</Link>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-3 divide-x divide-[#EFEEEA] border-y border-[#EFEEEA] py-2.5">
