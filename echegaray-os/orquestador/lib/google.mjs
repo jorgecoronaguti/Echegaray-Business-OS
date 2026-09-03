@@ -899,6 +899,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return {
         titulo: s.properties?.title ?? null,
         sheetId: s.properties?.sheetId,
+        // Lo que la guarda de formato dice proteger a nivel PESTAÑA. Antes leía sólo las congeladas
+        // y con eso decidía sobre `hideGridlines` y el color: un control juzgando con información
+        // que no era la que protegía.
+        hideGridlines: s.properties?.gridProperties?.hideGridlines ?? false,
+        tabColor: s.properties?.tabColor ?? null,
         congeladas: {
           filas: s.properties?.gridProperties?.frozenRowCount ?? 0,
           columnas: s.properties?.gridProperties?.frozenColumnCount ?? 0,
@@ -922,7 +927,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * falta lo que una PERSONA escribió como formato, que es exactamente `userEnteredFormat`.
      */
     async readSheetUserFormats(fileId, range) {
-      const campos = 'sheets(properties(title,sheetId,gridProperties(frozenRowCount,frozenColumnCount)),'
+      const campos = 'sheets(properties(title,sheetId,tabColor,gridProperties(frozenRowCount,frozenColumnCount,hideGridlines)),'
         + 'data(startRow,startColumn,columnMetadata(pixelSize),'
         + 'rowData(values(userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,'
         + 'numberFormat,borders,textFormat(fontFamily,fontSize,bold,italic,strikethrough,foregroundColor))))))'
