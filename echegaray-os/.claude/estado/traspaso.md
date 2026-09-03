@@ -43,23 +43,14 @@ Antes de buscar nada: `.claude/MAPA.md`.
 
 ## 4. ESTADO ACTUAL
 
-- **Producción == main == `2e0990e2`.** Suite completa `orq:test` VERDE (exit=0) al cierre 03/09.
-- **Freno de Sheets LEVANTADO por el dueño** (02/09, marca archivada `levantado-20260902-1908`);
-  timer `echegaray-flujo-caja.timer` ACTIVO (cada 2h, 06:50–20:50). Verificar con `frenar()`, no asumir.
-- Flujo de Fondos → Postgres operativo y auto-actualizado: tablas `flujo_movimiento`,
-  `flujo_periodo`, `flujo_corrida` (vigente = ancla), `flujo_asimetria`; sync es paso del pipeline.
-  Design va a consumir de ahí.
-- Pestaña «Impuestos y Financieros» reconstruida y auditada al centavo (saldo IVA a favor
-  $4.046.759); Rodrigo tiene la posición confirmada.
-- XSAS: gateway vivo, cotizador arranca por plano adjunto sin frase mágica, memoria conversacional,
-  composición por contrato, fusible de gasto Anthropic activo (`ORQ_IA_PERMITIR` obligatorio para
-  llamadas pagas; en Claude Code exportar `ORQ_IA_PERMITIR=claude-code-explicito` a propósito).
-- Cola `sinFirma`: ~55 capacidades de escritura esperan firma del dueño (`lib/xsas-permisos.mjs`).
-- Trampas vigentes: el generador REACOMODA filas (nunca marcar celdas por posición y correr el
-  generador después) · archivos con `\x00` silencian grep → `grep -a` · `readSheetGrid.valor` es
-  FORMATEADO, la especie se juzga con `.numero` · `git merge` encadenado tras `cd` al worktree es
-  no-op: merge en Bash separado desde el árbol principal y deploy verificado POR HASH · el build de
-  Next no corre en worktree · Sheet NUNCA desde worktree · UNA corrida de orq:test por VM.
+_actualizado 03/09/2026 10:25, sesión en curso_
+
+- **Producción == main == `edb944cb`** (gateway reiniciado 10:24). Suite completa `orq:test` verde en las dos integraciones de hoy.
+- Desplegado hoy: (1) cotizador con adjuntos NO toca Drive, clasifica plano por nombre+texto, persiste `razonamiento.procedencia`; (2) CAJA garantiza 68 filas en el mismo lote que los gráficos y relee (rojo si no); (3) `/presupuestos/[id]` reconstruida como entorno xsas v5 (conversación 648 px + presupuesto vivo, Oferta/Costos, cajón `?insp=`, modo determinístico, congelada acepta preguntas). Re-auditoría de (3) corriendo.
+- **Timer `echegaray-flujo-caja.timer` DETENIDO por el OS a las 09:04** (el dueño vio valores pisados). Se reactiva sólo cuando la guarda por celda (`sheet/propiedad-por-celda`, worktree `.claude/worktrees/sheet-propiedad`) firme: el auditor la rechazó (updateSheetValues descartaba el recorte; ~470 celdas calculadas se congelarían en la 1ª corrida; siembra inútil). Segunda ronda en curso.
+- Orden del dueño 03/09: «el Sheet es un documento vivo automático; mis ediciones (escribir, borrar, modificar, agregar, sacar, diseño, mover, copiar/pegar) mandan siempre». Firma por pestaña sigue APAGADA (ORQ_AUTOCANDADO) a propósito.
+- Hoy a mano (efecto leído): extracto Santander al 03/09 importado (+4 mov, `_BANCO_RAW` 543), USD 507,53 en CAJA B10/D10, echeq 369 DEBITADO (--forzar-candado con extracto), `_MOVIMIENTOS` reconstruido (1.183 mov) tras 3 timeouts de 45 s → drop-in `ORQ_GOOGLE_FETCH_TIMEOUT_MS=180000` en el service.
+- Sin evidencia de celdas del dueño revertidas por las corridas de hoy (diff triple de snapshots): pedirle pestaña+celda si insiste.
 
 ## 5. TRABAJO DE ESTA SESIÓN (maratón 02-03/09, todo desplegado)
 
