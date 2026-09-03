@@ -439,3 +439,77 @@ export async function requestsDeGraficos(google, fileId, sheetId, anexoSheetId, 
     ...requests,
   ]
 }
+
+// ═══ EL EFECTO, NO EL INTENTO (03/09/2026) ═══
+//
+// El arreglo del 02/09 se cerró con la evidencia del REQUEST: el generador PEDÍA la hoja larga. El
+// 03/09 el dueño la vio rota otra vez —55 filas, el bloque 3 encima del 2— y nadie se enteró, porque
+// nadie volvió a LEER la hoja después de escribirla. Un layout que depende del alto de la grilla sólo
+// se puede AFIRMAR mirando la grilla; lo demás es la pantalla que respondió que sí.
+
+// Series de muestra: `graficos()` sólo mira que la clave EXISTA para decidir el lugar de cada cuadro.
+const M = { f0: 2, f1: 3 }
+const SERIES_COMPLETAS = { necesidad: M, equilibrio: M, proyeccion: M }
+
+/** Título y ancla de cada `addChart` de un lote. Puro — y la misma forma que se lee de la API. */
+export function anclasDeRequests(requests = []) {
+  return (requests || []).flatMap((r) => {
+    const p = r?.addChart?.chart?.position?.overlayPosition
+    if (!p) return []
+    // La API OMITE los ceros (`rowIndex: 0`, `offsetXPixels: 0`): sin el `?? 0`, el ancla de la
+    // primera columna se leería como "no vino" y el control daría rojo por un artefacto del transporte.
+    return [{ titulo: r.addChart.chart.spec?.title ?? '', fila: p.anchorCell?.rowIndex ?? 0, x: p.offsetXPixels ?? 0 }]
+  })
+}
+
+/** Lo mismo, sobre lo que devuelve `charts(chartId,position(overlayPosition),spec(title))`. */
+export function anclasDeCharts(charts = []) {
+  return (charts || []).map((c) => {
+    const p = c?.position?.overlayPosition ?? c?.overlayPosition ?? {}
+    return { titulo: c?.spec?.title ?? '', fila: p.anchorCell?.rowIndex ?? 0, x: p.offsetXPixels ?? 0 }
+  })
+}
+
+/**
+ * EL LAYOUT QUE CORRESPONDE, SACADO DEL MISMO CÓDIGO QUE DIBUJA. Una tabla de filas y títulos escrita
+ * a mano al lado se desincroniza el día que cambia `FILAS_POR_BLOQUE`, y el control pasa a certificar
+ * el layout viejo: dos definiciones de lo mismo, que es lo que esta pestaña ya pagó una vez.
+ */
+export function layoutEsperado(series = SERIES_COMPLETAS) {
+  return anclasDeRequests(graficos(0, 1, series).requests)
+}
+
+/**
+ * ¿QUEDÓ COMO TIENE QUE QUEDAR? PURA: recibe lo LEÍDO de la API y devuelve el veredicto.
+ * @param {{rows:number, charts:Array, esperados?:Array}} leido `rows` = gridProperties.rowCount de CAJA.
+ * @returns {{ok:boolean, problemas:string[]}}
+ */
+export function verificarLayoutGraficos({ rows, charts, esperados = layoutEsperado() } = {}) {
+  const problemas = []
+  const minimo = FILA_FINAL_DE_GRAFICOS + 1
+  if (!Number.isFinite(rows) || rows < minimo) {
+    problemas.push(`la hoja tiene ${Number.isFinite(rows) ? rows : '—'} filas y necesita ${minimo}: con menos, el editor vivo sube el último bloque hasta que entre y lo dibuja encima del anterior`)
+  }
+  const leidos = anclasDeCharts(charts)
+  for (const e of esperados) {
+    const iguales = leidos.filter((l) => l.titulo === e.titulo)
+    if (!iguales.length) { problemas.push(`falta el gráfico «${e.titulo}»`); continue }
+    // Dos veces el mismo título es un apilado: sólo se ve el de arriba, y el de abajo sigue ahí.
+    if (iguales.length > 1) problemas.push(`«${e.titulo}» está ${iguales.length} veces: los apilados no se ven, pero están`)
+    const c = iguales[0]
+    if (c.fila !== e.fila) problemas.push(`«${e.titulo}» ancla en la fila ${c.fila + 1} y le corresponde la ${e.fila + 1}`)
+    else if (c.x !== e.x) problemas.push(`«${e.titulo}» arranca en x=${c.x}px y le corresponde x=${e.x}px`)
+  }
+  return { ok: problemas.length === 0, problemas }
+}
+
+/**
+ * EL REQUEST QUE GARANTIZA EL ALTO, PARA MANDARLO EN EL MISMO LOTE QUE LOS `addChart`.
+ *
+ * NUNCA ACHICA: toma el máximo contra el alto actual, porque un `rowCount` MENOR al de la hoja es un
+ * `deleteDimension` con otro nombre y la guarda lo trataría —con razón— como destructivo.
+ */
+export function requestDeAltoMinimo(sheetId, filasActuales = 0) {
+  const rowCount = Math.max(FILA_FINAL_DE_GRAFICOS + 1, Number.isFinite(filasActuales) ? filasActuales : 0)
+  return { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount } }, fields: 'gridProperties.rowCount' } }
+}
