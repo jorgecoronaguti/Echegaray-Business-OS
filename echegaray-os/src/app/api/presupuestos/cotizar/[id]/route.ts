@@ -8,18 +8,16 @@
 // CONTRATO CON LA PANTALLA: estos nombres de campo no se cambian sin avisar — otro agente está
 // construyendo la pantalla que los lee en paralelo.
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { IdLecturaSchema, clasificarErrorRpc } from '@/features/presupuestos/services/cotizarEntrada'
 
 export const runtime = 'nodejs'
 
 const CAMPOS = 'id, estado, etapa, pasos, certeza, computo, cascada, documentos, presupuesto_id, error, creado, actualizado'
 
-const IdSchema = z.string().uuid()
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const { id } = await params
-  const idValido = IdSchema.safeParse(id)
+  const idValido = IdLecturaSchema.safeParse(id)
   if (!idValido.success) return NextResponse.json({ error: 'id inválido' }, { status: 400 })
 
   const supabase = await createClient()
@@ -27,7 +25,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!user) return NextResponse.json({ error: 'sin sesión' }, { status: 401 })
 
   const { data, error } = await supabase.from('cotizacion_lectura').select(CAMPOS).eq('id', idValido.data).maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    const { status, motivo } = clasificarErrorRpc(error)
+    return NextResponse.json({ error: motivo }, { status })
+  }
   // `null` es lo que la RLS devuelve tanto si la fila no existe como si existe y no es de este
   // usuario ni ve_economia() — las dos cosas se leen igual desde afuera, y así tiene que ser.
   if (!data) return NextResponse.json({ error: 'no encontrada' }, { status: 404 })

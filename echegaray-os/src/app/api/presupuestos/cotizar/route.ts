@@ -15,28 +15,12 @@
 // RPC `cotizacion_encolar_lectura` (SECURITY DEFINER, ver la migración) hace ambas escrituras en
 // UNA transacción con la sesión del usuario ya identificada — mismo patrón que
 // `public.orq_submit_objective`.
-import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { EntradaCotizarSchema, adjuntosConHash, clasificarErrorRpc } from '@/features/presupuestos/services/cotizarEntrada'
 
 export const runtime = 'nodejs'
 export const maxDuration = 15
-
-// Mismos topes que `api/xsas/route.ts`: hasta 10 adjuntos, hasta ~8 MB de archivo cada uno
-// (~10,9 MB en base64 — la codificación agrega ~1/3).
-const TOPE_ADJUNTOS = 10
-const TOPE_BASE64 = 11 * 1024 * 1024
-
-const AdjuntoEntrada = z.object({
-  nombre: z.string().trim().min(1).max(200),
-  contenido_base64: z.string().min(1).max(TOPE_BASE64),
-})
-
-const EntradaSchema = z.object({
-  mensaje: z.string().trim().max(2000).optional(),
-  adjuntos: z.array(AdjuntoEntrada).min(1, 'necesito al menos un plano adjunto').max(TOPE_ADJUNTOS),
-})
 
 type LecturaFila = { id: string }
 
@@ -55,7 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'json inválido' }, { status: 400 })
   }
 
-  const entrada = EntradaSchema.safeParse(crudo)
+  const entrada = EntradaCotizarSchema.safeParse(crudo)
   if (!entrada.success) {
     return NextResponse.json({ error: entrada.error.issues[0]?.message ?? 'entrada inválida' }, { status: 400 })
   }
@@ -63,19 +47,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // El hash es la identidad real del contenido — se calcula ACÁ, del lado del servidor, con el
   // mismo criterio que `hashDe()` en `orquestador/lib/xsas-archivos.mjs`. El RPC valida que tenga
   // forma de sha256 pero no lo recalcula (no tiene `pgcrypto` garantizado en su `search_path`).
-  const adjuntosConHash = entrada.data.adjuntos.map((a) => ({
-    nombre: a.nombre,
-    hash: createHash('sha256').update(Buffer.from(a.contenido_base64, 'base64')).digest('hex'),
-    contenido_base64: a.contenido_base64,
-  }))
+  const p_adjuntos = adjuntosConHash(entrada.data.adjuntos)
 
   const { data, error } = await supabase
-    .rpc('cotizacion_encolar_lectura', { p_mensaje: entrada.data.mensaje ?? null, p_adjuntos: adjuntosConHash })
+    .rpc('cotizacion_encolar_lectura', { p_mensaje: entrada.data.mensaje ?? null, p_adjuntos })
 
   if (error) {
-    // El RPC valida (sesión, cantidad de adjuntos, tamaño, hash) con `raise exception`: ese texto
-    // ya es legible para una persona, no un código de Postgres — se reenvía tal cual.
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    // 400 si el RPC lo rechazó a propósito (`raise exception`, ese texto ya es legible para una
+    // persona); 500/502 si falló la base o la conexión — ver `clasificarErrorRpc`.
+    const { status, motivo } = clasificarErrorRpc(error)
+    return NextResponse.json({ error: motivo }, { status })
   }
   // La función devuelve UNA fila de `public.cotizacion_lectura` (no `setof`): PostgREST la entrega
   // como objeto, no como array. Sin tipos generados de Supabase en este repo, se valida la forma
