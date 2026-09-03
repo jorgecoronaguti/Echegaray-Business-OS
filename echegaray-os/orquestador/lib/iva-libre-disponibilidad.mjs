@@ -144,6 +144,18 @@ export function formulaDebitoProyectado(celdasBruto = []) {
 }
 
 /**
+ * El débito cuando el IVA no hay que DERIVARLO porque la fuente ya lo declara.
+ *
+ * Cobranzas escribe el IVA de cada factura en su columna K. Multiplicar eso por
+ * `alícuota/(1+alícuota)` lo volvería a convertir, y aplicarle el factor a un importe **neto de
+ * retenciones** —que es lo que hacía— mezcla caja con base imponible. Acá se suma y nada más.
+ */
+export function formulaDebitoDeclarado(terminos = []) {
+  if (!terminos.length) throw new Error('iva-libre-disponibilidad: sin términos no hay débito declarado que sumar')
+  return `=${terminos.map((t) => `N(${t})`).join('+')}`
+}
+
+/**
  * Fórmula del CRÉDITO fiscal proyectado de un mes.
  *
  * OJO CON QUÉ COMPRAS ENTRAN. Sólo las que tienen FACTURA: sin comprobante no hay crédito fiscal que

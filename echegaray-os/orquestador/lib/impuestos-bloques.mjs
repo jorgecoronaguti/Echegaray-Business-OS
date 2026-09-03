@@ -8,7 +8,7 @@ import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
 import { rango } from './compras-columnas.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
-  formulaDebitoProyectado, formulaCreditoProyectado, formulaAPagarProyectado,
+  formulaDebitoDeclarado, formulaCreditoProyectado, formulaAPagarProyectado,
   formulaLibreDispProyectada, RANGO_ALICUOTA_IVA,
 } from './iva-libre-disponibilidad.mjs'
 import {
@@ -141,7 +141,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
 
   G.mensual('Débito fiscal del período',
     (m) => (calculado(m)
-      ? termino(m, { deArca: formulaDebitoArca, proyectado: (x) => formulaDebitoProyectado(proy.brutoDebito(x)) })
+      ? termino(m, { deArca: formulaDebitoArca, proyectado: (x) => formulaDebitoDeclarado(proy.brutoDebito(x)) })
       : ofOAjeno(m, 'debito')),
     'F.2051 · IVA generado por las ventas del mes. Los meses sin DDJJ pero CON comprobantes salen de _ARCA_RAW —las ventas reales que ARCA registró para ese período— y los que no tienen ni eso son PROYECCIÓN: el IVA contenido en las cobranzas que el Libro ya da por cobradas y esperadas.', { meses })
   G.mensual('Crédito fiscal del período',

@@ -23,7 +23,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO } from '../lib/impuestos-base-libro.mjs'
+import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, ivaDeclaradoPorMesDeEmision } from '../lib/impuestos-base-libro.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
@@ -46,7 +46,7 @@ import { ACUERDO, TARJETA } from '../lib/banco-santander.mjs'
 import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
-  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw, predicadoDeCobranzaFacturada,
+  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw,
 } from '../lib/impuestos-fuentes.mjs'
 import {
   bloqueIva, mesDelSaldoVigente, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
@@ -311,13 +311,15 @@ async function planDeProyeccionIva(google, ivaOficial) {
       origen: String(f[13] ?? ''), fila: Number(f[14]),
     }))
 
-  const debitoFacturado = await predicadoDeCobranzaFacturada(google, ID, movs) // el puente, en el lib
+  // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
+  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:K', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const ivaEmitido = ivaDeclaradoPorMesDeEmision(cob)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
     debito: [{
-      celda: '_MOVIMIENTOS', rotulo: 'Cobranzas FACTURADAS del Libro (cobrado + esperado del mes)',
-      valor: movs.filter((x) => enMes(x, m) && x.signo === 1 && debitoFacturado(x)).reduce((a, x) => a + x.importe, 0),
+      celda: 'Cobranzas', rotulo: 'IVA declarado por las facturas B emitidas en el mes',
+      valor: ivaEmitido[`${AÑO}-${String(m).padStart(2, '0')}`] ?? 0,
     }],
     credito: [{
       celda: '_MOVIMIENTOS', rotulo: 'Compras con factura del Libro (4 rubros, netas de NC)',
