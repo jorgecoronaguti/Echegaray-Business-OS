@@ -134,13 +134,18 @@ export function sumarRespetadas(stdout, acc = new Map()) {
   return acc
 }
 
-/** El párrafo de cierre. Devuelve [] cuando no se respetó nada: no se dice lo que no pasó. */
+/** El párrafo de cierre. Devuelve [] cuando no se respetó nada: no se dice lo que no pasó.
+ *  Sólo va a `console.log` (línea de abajo, en el llamador) — nunca a una celda del Sheet. El
+ *  nombre `L` no es cosmético: es la convención que ya usa `lib/alias-pendientes.mjs` para que el
+ *  guardián de glifos (`glifos-generadores.test.mjs`) reconozca un párrafo de log y no un valor de
+ *  celda sin necesitar una excepción de archivo entero. */
 export function informeRespetadas(acc = new Map()) {
   if (!acc.size) return []
   const total = [...acc.values()].reduce((n, v) => n + v.celdas, 0)
-  const out = [`\n✋ ${total} celda(s) tuya(s) respetada(s) en esta corrida — no las pisé:`]
-  for (const [tab, v] of acc) out.push(`  · ${tab}: ${v.celdas} (${v.muestra.join(', ')}${v.celdas > v.muestra.length ? ', …' : ''})`)
-  return out
+  const L = []
+  L.push(`\n✋ ${total} celda(s) tuya(s) respetada(s) en esta corrida — no las pisé:`)
+  for (const [tab, v] of acc) L.push(`  · ${tab}: ${v.celdas} (${v.muestra.join(', ')}${v.celdas > v.muestra.length ? ', …' : ''})`)
+  return L
 }
 
 export function motivoDeFalla(e = {}) {
