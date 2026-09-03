@@ -40,9 +40,10 @@ import { puedeCongelar, puedeConvertir, lecturaEstado } from '@/features/presupu
 import { rubroDe, subcontratadasFueraDelPrecio } from '@/features/presupuestos/services/partidas'
 import { plata } from '@/features/presupuestos/services/formato'
 import {
-  bloqueosDeEnvio, certezaDe, firmezaDe, pendientesDe, precioFirmeDe,
+  bloqueosDeEnvio, certezaDe, estadoDeFila, firmezaDe, pendientesDe, precioFirmeDe,
 } from '@/features/presupuestos/services/vivo'
 import { ofertaDe } from '@/features/presupuestos/services/oferta'
+import type { EstadoFila } from '@/features/presupuestos/services/vivo'
 import { hayModelo } from '@/features/presupuestos/services/modelo'
 import {
   aliasPartida, hrefEntorno, leerEstadoUrl, partidaDelInspector, type Consulta,
@@ -138,7 +139,15 @@ export default async function PresupuestoPage({
 
   const inspPartidaId = partidaDelInspector(url.insp)
   const seleccionada = inspPartidaId ? lista.find((x) => x.partida_id === inspPartidaId) ?? null : null
-  const composicion = seleccionada ? (await getComposicion(supabase, seleccionada)).data : null
+  // EL ERROR DE LECTURA NO SE DISFRAZA DE «NO EXISTE». Son dos cosas distintas: un id que no está en
+  // esta cotización es un enlace viejo, y una composición que no se pudo leer es una falla que hay
+  // que arreglar. Mostrar la misma frase para las dos manda a buscar donde no hay nada.
+  const comp = seleccionada ? await getComposicion(supabase, seleccionada) : null
+
+  // EL COLOR DE CADA FILA sale de `motivoDeFila` sobre las partidas YA CRUZADAS con el alcance —las
+  // mismas que cuentan la certeza y los pendientes—. La tabla recibe un mapa por id: así no hace
+  // falta que conozca el motor ni que vuelva a decidir nada.
+  const estadosDeFila = Object.fromEntries(vivo.partidas.map((p) => [p.id, estadoDeFila(p)]))
 
   const href = (cambios: Parameters<typeof hrefEntorno>[2]) => hrefEntorno(id, url, cambios)
 
@@ -193,8 +202,7 @@ export default async function PresupuestoPage({
             pendientes={pendientes}
             congelado={congelado}
             sello={congelado ? `v${presupuesto.version} congelada · inmutable` : null}
-            hrefBase={`/presupuestos/${id}`}
-            vista={url.vista}
+            href={href}
             accionCongelar={congelar.puede ? <BotonCongelar id={presupuesto.id} /> : null}
             notaConvertir={convertir.puede ? null : convertir.motivo}
           />
@@ -228,6 +236,7 @@ export default async function PresupuestoPage({
                 <Costos
                   presupuesto={presupuesto}
                   lista={lista}
+                  estadosDeFila={estadosDeFila}
                   lectura={lectura}
                   subFuera={subFuera}
                   errorPartidas={partidas.error}
@@ -242,7 +251,7 @@ export default async function PresupuestoPage({
           </div>
         </div>
 
-        {(url.nueva || seleccionada) && (
+        {(url.nueva || inspPartidaId) && (
           <CajonInspector
             miga={
               url.nueva
@@ -260,13 +269,20 @@ export default async function PresupuestoPage({
                 tareas={tareas.data ?? []}
                 rubros={[...new Set(lista.map(rubroDe))]}
               />
-            ) : seleccionada && composicion ? (
-              <PanelPartida p={seleccionada} presupuesto={presupuesto} composicion={composicion} hrefCerrar={null} />
+            ) : !seleccionada ? (
+              // UN ENLACE VIEJO NO ES UNA FALLA. El cajón se abre igual y dice qué pasó: antes no se
+              // dibujaba nada y la pantalla se veía normal, como si el clic no hubiera existido.
+              <Aviso tono="warn" titulo="No encontré esa partida en este presupuesto" testid="partida-ajena">
+                El enlace apunta a una partida que no está acá. Puede haberse quitado, o ser de otra
+                versión de este presupuesto.
+              </Aviso>
+            ) : comp?.data ? (
+              <PanelPartida p={seleccionada} presupuesto={presupuesto} composicion={comp.data} hrefCerrar={null} />
             ) : (
-              // Un id de partida que no existe en esta cotización no se dibuja como panel vacío.
-              <Aviso tono="warn" titulo="No encontré esa partida">
-                El enlace apunta a una partida que no está en este presupuesto. Puede haberse quitado,
-                o ser de otra versión.
+              // Y esto es lo contrario: la partida EXISTE y su composición no se pudo leer. Es una
+              // falla, se muestra como falla, y con el mensaje de la base — que apunta al arreglo.
+              <Aviso tono="neg" titulo="No pude leer la composición de esta partida" testid="composicion-ilegible">
+                {comp?.error ?? 'La consulta no devolvió la composición y no dijo por qué.'}
               </Aviso>
             )}
           </CajonInspector>
@@ -340,11 +356,12 @@ function Solapas({ href, vista }: {
 
 /** La vista interna: el razonamiento que derivó el precio, las partidas y la cascada. */
 function Costos({
-  presupuesto, lista, lectura, subFuera, errorPartidas, seleccionada, congelado,
+  presupuesto, lista, estadosDeFila, lectura, subFuera, errorPartidas, seleccionada, congelado,
   hrefNueva, hrefCancelarNueva, nueva,
 }: {
   presupuesto: NonNullable<Awaited<ReturnType<typeof getPresupuesto>>['data']>
   lista: NonNullable<Awaited<ReturnType<typeof getPartidas>>['data']>
+  estadosDeFila: Record<string, EstadoFila>
   lectura: ReturnType<typeof pasosDeLectura>
   subFuera: ReturnType<typeof subcontratadasFueraDelPrecio>
   errorPartidas: string | null
@@ -396,6 +413,7 @@ function Costos({
 
       <TablaPartidas
         partidas={lista}
+        estados={estadosDeFila}
         cotizacionId={presupuesto.id}
         costoDirecto={tieneCifras(presupuesto) ? presupuesto.costo_directo : null}
         hhPrevistas={tieneCifras(presupuesto) ? presupuesto.hh_previstas : null}

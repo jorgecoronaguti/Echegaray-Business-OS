@@ -104,6 +104,10 @@ export function cruzarAlcance({ partidas = [], alcance = [], porDefecto = null }
       issues.push(issue({
         type: TIPO_ISSUE.CONFLICTO, severity: SEVERIDAD.BLOQUEANTE,
         entity: String(partida.codigo ?? partida.id), impact: partida.subtotal ?? null,
+        // DE QUÉ FILA SALIÓ. `entity` cae al código, que puede faltar o repetirse; el id es la clave
+        // estable. Sin esto, quien consume la cola no puede saber que este issue y el hueco que ve
+        // en la fila son la MISMA partida, y termina contándola dos veces.
+        evidence: { partidaId: partida.id ?? null },
         detalle: `el alcance dice dos cosas distintas sobre esta partida: ${detalle}`,
         recommended_action: 'include_scope',
       }))
@@ -130,7 +134,7 @@ export function cruzarAlcance({ partidas = [], alcance = [], porDefecto = null }
       issues.push(issue({
         type: TIPO_ISSUE.EXCLUSION_CON_COMPUTO, severity: SEVERIDAD.MEDIA,
         entity: String(partida.codigo ?? partida.id), impact: partida.subtotal,
-        evidence: { fuente: tocan[0].fuente, textoLiteral: tocan[0].textoLiteral },
+        evidence: { partidaId: partida.id ?? null, fuente: tocan[0].fuente, textoLiteral: tocan[0].textoLiteral },
         detalle: `«${partida.descripcion ?? partida.codigo}» está computada y valorizada, y el alcance la EXCLUYE por «${tocan[0].patron}» (${tocan[0].fuente}): sale del total y el cómputo se conserva`,
         recommended_action: 'include_scope',
       }))
@@ -139,6 +143,7 @@ export function cruzarAlcance({ partidas = [], alcance = [], porDefecto = null }
       issues.push(issue({
         type: TIPO_ISSUE.FALTA_DATO, severity: SEVERIDAD.MEDIA,
         entity: String(partida.codigo ?? partida.id), impact: partida.subtotal ?? null,
+        evidence: { partidaId: partida.id ?? null },
         detalle: `nadie declaró si «${partida.descripcion ?? partida.codigo}» entra o no en el alcance`,
         recommended_action: 'include_scope',
       }))

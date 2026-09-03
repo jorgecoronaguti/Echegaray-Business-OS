@@ -33,6 +33,7 @@ import {
 import type { RespuestaConversacion, TurnoConversacion } from './conversacionTipos.ts'
 // El motor entra por UNA puerta: `cotizadorPuente` escribe la firma que el `.mjs` no puede declarar.
 import { cascadaDesdeFila, conversar, estadoDesdeFilas } from './cotizadorPuente.ts'
+import { decisionSobreCongelada } from './congelada.ts'
 
 const schema = z.object({
   id: z.string().uuid('Falta el presupuesto'),
@@ -47,10 +48,52 @@ const sinEntender = (porQue: string, pregunta: string | null = null): RespuestaC
   tono: 'no', titulo: 'No se pudo', lineas: [porQue], cambios: [], pregunta, opciones: null,
 })
 
+/**
+ * LO QUE SE CONTESTA A UNA MUTACIÓN SOBRE UNA VERSIÓN CONGELADA.
+ *
+ * No es «no se pudo»: es «acá no, y hay un camino». El camino existe —una revisión es una versión
+ * nueva y la ofertada queda intacta— y por eso se nombra el botón que lo abre en vez de dejar a la
+ * persona buscando.
+ */
+const congeladaNoSeEdita = (version: number): RespuestaConversacion => ({
+  tono: 'no',
+  titulo: 'La versión está congelada',
+  lineas: [
+    `La v${version} quedó fija tal como salió y no admite cambios: ni cantidad, ni alcance, ni subcontrato, ni parámetros.`,
+    'Preguntar sí funciona: explicar no modifica.',
+  ],
+  cambios: [],
+  pregunta: '¿Abrimos una revisión? La versión ofertada queda intacta y el cambio se mide contra ella.',
+  opciones: ['«Nueva versión», en el encabezado, crea la v+1 y ahí sí se aplica'],
+})
+
+/**
+ * ═══ NINGUNA EXCEPCIÓN SE LLEVA PUESTO EL MENSAJE ═══
+ *
+ * Esta acción llama al motor, a PostgREST y —cuando hay— al proveedor del modelo. Cualquiera de los
+ * tres puede tirar: un timeout, un JSON roto, una cookie vencida. Sin este envoltorio la excepción
+ * sube al límite de la Server Action, React descarta el estado y la persona ve el campo vacío, sin
+ * respuesta y sin la frase que escribió — indistinguible de «no pasó nada».
+ *
+ * Se devuelve un turno de error con el mensaje real y con el texto original adentro, que es lo que
+ * permite volver a intentarlo sin reescribirlo.
+ */
 export async function hablarConElPresupuesto(
-  _prev: TurnoConversacion,
+  prev: TurnoConversacion,
   form: FormData,
 ): Promise<TurnoConversacion> {
+  const texto = String(form.get('texto') ?? '')
+  try {
+    return await hablar(form)
+  } catch (e) {
+    // El mensaje de la excepción se muestra tal cual: «fetch failed» apunta a la red y «permission
+    // denied» a la RLS. «Ocurrió un error» no apunta a nada.
+    const porQue = e instanceof Error ? e.message : String(e)
+    return { estado: 'error', texto, degradado: prev.degradado, respuesta: sinEntender(`Se cortó antes de contestar: ${porQue}`) }
+  }
+}
+
+async function hablar(form: FormData): Promise<TurnoConversacion> {
   const parsed = schema.safeParse(Object.fromEntries(form))
   if (!parsed.success) {
     return { estado: 'error', texto: String(form.get('texto') ?? ''), respuesta: sinEntender(parsed.error.issues[0].message) }
@@ -69,15 +112,6 @@ export async function hablarConElPresupuesto(
     supabase.from('cotizacion_alcance').select('*').eq('cotizacion_id', id),
   ])
   if (!presupuesto) return { estado: 'error', texto, respuesta: sinEntender(eP ?? 'No pude leer el presupuesto.') }
-
-  // CONGELADO NO SE HABLA. El trigger de la base rechazaría el UPDATE igual, pero decirlo acá evita
-  // que la persona escriba una frase, espere, y reciba un mensaje de Postgres.
-  if (presupuesto.congelada_en) {
-    return {
-      estado: 'error', texto,
-      respuesta: sinEntender('Este presupuesto está congelado: su composición quedó copiada tal como salió. Para cambiarlo se crea una versión nueva.'),
-    }
-  }
 
   const lista = partidas.data ?? []
   const estado = estadoDesdeFilas({ presupuesto, partidas: lista, alcance: alcance.data ?? [] })
@@ -100,6 +134,23 @@ export async function hablarConElPresupuesto(
       return estado
     },
   })
+
+  // ═══ EL CORTE DEL CONGELADO VA ACÁ, NO EN LA PUERTA ═══
+  //
+  // En la puerta rechazaba también las preguntas, y la conversación promete lo contrario. Acá ya se
+  // sabe QUÉ pidió la persona: si la intención muta, se ofrece la revisión; si es una consulta,
+  // sigue de largo y contesta. Ninguna escritura pasó todavía — `mutar` sólo arma el plan, y el plan
+  // se aplica más abajo.
+  if (decisionSobreCongelada({
+    congelada: Boolean(presupuesto.congelada_en),
+    accion: turno.intencion?.action,
+    hayPlan: caja.plan !== null,
+  }) === 'ofrecer-revision') {
+    return {
+      estado: 'rechazado', texto, degradado: turno.degradado,
+      respuesta: congeladaNoSeEdita(presupuesto.version),
+    }
+  }
 
   if (!turno.salida?.ok) {
     return { estado: turno.entendido ? 'rechazado' : 'no-entendido', texto, degradado: turno.degradado, respuesta: turno.respuesta }

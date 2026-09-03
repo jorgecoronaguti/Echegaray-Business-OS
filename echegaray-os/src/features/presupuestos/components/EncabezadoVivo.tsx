@@ -28,6 +28,7 @@
 import Link from 'next/link'
 import { C } from '@/shared/components/canon'
 import { plata } from '../services/formato'
+import type { hrefEntorno } from '../services/rutas'
 import type { Bloqueo, Certeza, Firmeza, Pendientes } from '../services/vivo'
 
 const ROTULO: React.CSSProperties = {
@@ -39,7 +40,7 @@ const CIFRA: React.CSSProperties = {
 
 export function EncabezadoVivo({
   certeza, firmeza, precioFirme, bloqueos, porQueGate, pendientes, congelado, sello,
-  hrefBase, vista, accionCongelar, notaConvertir,
+  href, accionCongelar, notaConvertir,
 }: {
   certeza: Certeza
   firmeza: Firmeza
@@ -53,15 +54,17 @@ export function EncabezadoVivo({
   congelado: boolean
   /** «v2 congelada · inmutable». Sólo cuando lo está. */
   sello: string | null
-  /** La URL de esta pantalla sin paneles, para armar los enlaces de estado. */
-  hrefBase: string
-  vista: 'oferta' | 'costos'
+  /**
+   * El armador de URLs de `services/rutas.ts`. NO se concatenan querystrings acá: este encabezado
+   * las armaba a mano —`?vista=${vista}&insp=partida:${id}`— y un id con caracteres especiales
+   * habría salido sin codificar, además de repetir una lógica que ya tiene test.
+   */
+  href: (cambios: Parameters<typeof hrefEntorno>[2]) => string
   /** El botón real de congelar, que vive en `AccionesPresupuesto` con su server action. */
   accionCongelar: React.ReactNode
   /** Por qué todavía no se puede convertir a obra. `null` = se puede, y el botón está en la barra. */
   notaConvertir: string | null
 }) {
-  const q = (extra: string) => `${hrefBase}?vista=${vista}${extra}`
   return (
     <div
       data-testid="encabezado-vivo"
@@ -88,23 +91,24 @@ export function EncabezadoVivo({
       <div style={{ flex: 1 }} />
 
       <Link
-        href={q('&atencion=1')}
+        href={href({ atencion: true })}
         data-testid="chip-atencion"
         title={pendientes.criterio}
         style={{
           fontSize: 12, fontWeight: 600, borderRadius: 6, padding: '8px 12px', whiteSpace: 'nowrap',
-          color: pendientes.atencion ? C.grafito : C.pos,
-          background: pendientes.atencion ? '#FDF3D0' : C.superficieTenue,
-          boxShadow: `inset 0 0 0 1px ${pendientes.atencion ? C.marca : C.linea}`,
+          color: pendientes.total ? C.grafito : C.pos,
+          background: pendientes.total ? '#FDF3D0' : C.superficieTenue,
+          boxShadow: `inset 0 0 0 1px ${pendientes.total ? C.marca : C.linea}`,
         }}
       >
-        {/* EL CHIP DICE QUÉ CUENTA. «Necesita tu atención · 26» no distingue 26 planos por medir de
-            26 decisiones de alcance, que es la diferencia entre una semana y una llamada. */}
-        {pendientes.atencionResumen}
+        {/* EL CHIP DICE QUÉ CUENTA, Y CUENTA LA UNIÓN. «Necesita tu atención · 26» no distingue 26
+            planos por medir de 26 decisiones de alcance, que es la diferencia entre una semana y
+            una llamada; y contar sólo la cola dejaba en cero filas con huecos que nadie levantó. */}
+        {pendientes.resumen}
       </Link>
 
       <EstadoDeEnvio
-        congelado={congelado} sello={sello} bloqueos={bloqueos} accion={accionCongelar} q={q}
+        congelado={congelado} sello={sello} bloqueos={bloqueos} accion={accionCongelar} href={href}
         porQue={porQueGate} notaConvertir={notaConvertir}
       />
     </div>
@@ -151,31 +155,21 @@ function BarraCerteza({ c }: { c: Certeza }) {
  */
 function BloquePendientes({ p }: { p: Pendientes }) {
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 260 }} title={p.criterio}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 280 }} title={p.criterio}>
       <span style={ROTULO}>DEPENDE DE PENDIENTES</span>
       <span style={{ ...CIFRA, color: p.total ? C.warn : C.pos }} data-testid="pendientes">
-        {p.total === 0
-          ? 'nada pendiente'
-          : `${p.total} ${p.total === 1 ? 'partida' : 'partidas'}`}
+        {p.total === 0 ? 'nada pendiente' : `${p.total} ${p.total === 1 ? 'pendiente' : 'pendientes'}`}
       </span>
       {p.total > 0 && (
         <span style={{ fontSize: 10.5, color: C.tenue, lineHeight: 1.45 }} data-testid="pendientes-detalle">
-          {p.sinAlcance > 0 && (
-            <>
-              {p.sinAlcance} adentro sin alcance declarado
-              {/* El monto es AL COSTO: es lo que saldría del costo directo si se excluyeran. */}
-              {p.montoEnRiesgo !== null && ` (${plata(p.montoEnRiesgo)} de costo que podría salir)`}
-            </>
-          )}
-          {p.sinAlcance > 0 && p.sinValorizar > 0 && ' · '}
-          {p.sinValorizar > 0 && (
-            <>
-              {p.sinValorizar} sin valorizar
-              {p.montoPorSumar !== null && ` (${plata(p.montoPorSumar)} conocidos por sumar)`}
-            </>
-          )}
-          {/* Un hueco sin medir no se puede llamar chico: se dice que no se sabe. */}
-          {p.sinMedir > 0 && ` · ${p.sinMedir} sin medir`}
+          {[
+            // Cada dirección con su monto AL COSTO: es lo que entraría o saldría del costo directo.
+            p.puedenRestar > 0 && `${p.puedenRestar} adentro del precio sin decidir${p.montoQuePuedeSalir !== null ? ` (${plata(p.montoQuePuedeSalir)} podrían salir)` : ''}`,
+            p.puedenSumar > 0 && `${p.puedenSumar} sin valorizar${p.montoQuePuedeEntrar !== null ? ` (${plata(p.montoQuePuedeEntrar)} conocidos por entrar)` : ''}`,
+            p.inciertos > 0 && `${p.inciertos} con el dato en duda`,
+            // Un hueco sin medir no se puede llamar chico: se dice que no se sabe.
+            p.sinMedir > 0 && `${p.sinMedir} sin medir`,
+          ].filter(Boolean).join(' · ')}
         </span>
       )}
     </span>
@@ -188,13 +182,13 @@ function BloquePendientes({ p }: { p: Pendientes }) {
  * y moverlos sin dejar rastro habría dejado esa prueba mirando un lugar vacío.
  */
 function EstadoDeEnvio({
-  congelado, sello, bloqueos, accion, q, porQue, notaConvertir,
+  congelado, sello, bloqueos, accion, href, porQue, notaConvertir,
 }: {
   congelado: boolean
   sello: string | null
   bloqueos: Bloqueo[]
   accion: React.ReactNode
-  q: (extra: string) => string
+  href: (cambios: Parameters<typeof hrefEntorno>[2]) => string
   porQue: string
   notaConvertir: string | null
 }) {
@@ -237,7 +231,7 @@ function EstadoDeEnvio({
       {bloqueos.map((b, i) => (
         <Link
           key={`${b.tipo}-${b.partidaId ?? b.entidad}-${i}`}
-          href={b.partidaId ? q(`&insp=partida:${b.partidaId}`) : q('&atencion=1')}
+          href={b.partidaId ? href({ insp: `partida:${b.partidaId}` }) : href({ atencion: true })}
           data-testid="bloqueo-envio"
           style={{
             fontSize: 11.5, color: C.tintaSuave, lineHeight: 1.5,

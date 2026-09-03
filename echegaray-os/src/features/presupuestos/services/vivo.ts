@@ -82,14 +82,42 @@ export function bloqueaElPrecio(p: PartidaDelMotor): boolean {
   return p.subtotal === null
 }
 
-export function estadoDeFila(p: PartidaDelMotor): EstadoFila {
-  if (estaExcluida(p)) return 'excluido'
-  if (p.alcance === 'POR_DEFINIR') return 'ambiguo'
-  if (bloqueaElPrecio(p)) return 'falta'
+/**
+ * EL MOTIVO POR EL QUE UNA FILA NO ESTÁ RESUELTA — UNO SOLO, Y EN ESTE ORDEN.
+ *
+ * ═══ POR QUÉ UNA SOLA FUNCIÓN Y NO DOS CONTEOS ═══
+ *
+ * La certeza contaba «ambiguas» con el alcance ANTES del precio y los pendientes contaban «sin
+ * alcance» con el precio antes del alcance. Una fila sin cantidad Y sin alcance caía en un casillero
+ * distinto en cada lado, así que la misma franja publicaba dos números para la misma cosa. Ahora hay
+ * una sola función y los dos conteos salen de ella: no pueden diferir porque no hay dos lugares.
+ *
+ * El orden es el del trabajo real: primero hay que poder valorizarla —sin cantidad no hay número que
+ * discutir— y recién después tiene sentido preguntar si entra en el alcance.
+ */
+export type MotivoFila = 'excluida' | 'sin_valorizar' | 'sin_alcance' | 'confirmada' | 'extraida'
+
+export function motivoDeFila(p: PartidaDelMotor): MotivoFila {
+  if (estaExcluida(p)) return 'excluida'
+  if (bloqueaElPrecio(p)) return 'sin_valorizar'
+  // `null` es «nadie declaró», igual que POR_DEFINIR: sólo INCLUIDO es una decisión tomada.
+  if (p.alcance !== 'INCLUIDO') return 'sin_alcance'
   // `congelada` es la ÚNICA marca de fijación que la fila trae. No es una confirmación humana con
   // autor y fecha —eso el modelo todavía no lo guarda— y por eso `Certeza.criterio` lo dice.
-  if (p.congelada) return 'confirmado'
-  return 'extraido'
+  if (p.congelada) return 'confirmada'
+  return 'extraida'
+}
+
+const ESTADO_DE_MOTIVO: Record<MotivoFila, EstadoFila> = {
+  excluida: 'excluido',
+  sin_valorizar: 'falta',
+  sin_alcance: 'ambiguo',
+  confirmada: 'confirmado',
+  extraida: 'extraido',
+}
+
+export function estadoDeFila(p: PartidaDelMotor): EstadoFila {
+  return ESTADO_DE_MOTIVO[motivoDeFila(p)]
 }
 
 export interface Certeza {
@@ -123,16 +151,19 @@ const CRITERIO = 'Confirmada = composición fijada en la fila. `cotizacion_parti
 
 /** LA CERTEZA OBSERVABLE — contada de las filas, no un score. */
 export function certezaDe(partidas: readonly PartidaDelMotor[]): Certeza {
-  const estados = partidas.map(estadoDeFila)
-  const dentro = estados.filter((e) => e !== 'excluido')
+  const motivos = partidas.map(motivoDeFila)
+  const dentro = motivos.filter((m) => m !== 'excluida')
+  const cuantas = (m: MotivoFila) => dentro.filter((x) => x === m).length
   return {
     total: dentro.length,
-    confirmadas: dentro.filter((e) => e === 'confirmado').length,
-    porConfirmar: dentro.filter((e) => e === 'extraido' || e === 'propuesto').length,
-    conProblema: dentro.filter((e) => e === 'falta' || e === 'ambiguo').length,
-    ambiguas: dentro.filter((e) => e === 'ambiguo').length,
-    faltantes: dentro.filter((e) => e === 'falta').length,
-    excluidas: estados.filter((e) => e === 'excluido').length,
+    confirmadas: cuantas('confirmada'),
+    porConfirmar: cuantas('extraida'),
+    conProblema: cuantas('sin_valorizar') + cuantas('sin_alcance'),
+    // El MISMO número que `pendientesDe().sinAlcance`: sale de `motivoDeFila`, no de un filtro
+    // paralelo. Un test lo afirma, porque es exactamente lo que se desincronizó una vez.
+    ambiguas: cuantas('sin_alcance'),
+    faltantes: cuantas('sin_valorizar'),
+    excluidas: motivos.filter((m) => m === 'excluida').length,
     sinGenealogia: partidas.filter((p) => !estaExcluida(p) && !bloqueaElPrecio(p) && p.sinAnalisis).length,
     criterio: CRITERIO,
   }
@@ -205,102 +236,140 @@ export const ROTULO_ISSUE: Record<string, string> = {
   FUGA_ENTRE_CLIENTES: 'con dato de otro cliente',
   SIN_PRECIO_CALCULABLE: 'sin precio calculable',
   SIN_ALCANCE: 'sin alcance declarado',
+  SIN_VALORIZAR: 'sin poder valorizar',
+}
+
+/** Hacia dónde puede mover el precio resolver este pendiente. */
+export type Direccion = 'suma' | 'resta' | 'incierta'
+
+export interface Pendiente {
+  /** La fila a la que pertenece. `null` = es de la cotización entera, no de una partida. */
+  partidaId: string | null
+  /** Con qué rótulo se agrupa y se cuenta. */
+  clave: string
+  /**
+   * `suma` — todavía NO está en el precio; resolverlo lo agranda.
+   * `resta` — YA está en el precio sin que nadie lo decidiera; resolverlo puede sacarlo.
+   * `incierta` — está en el precio pero el dato puede cambiar (precio viejo, conflicto).
+   */
+  direccion: Direccion
+  /** Cuánta plata mueve, al costo. `null` = no se midió; nunca cero. */
+  monto: number | null
 }
 
 export interface Pendientes {
   /**
-   * Lo que la COLA DEL MOTOR tiene para mirar. Es el número del chip porque es lo que el chip abre:
-   * si el chip contara otra cosa, apretarlo llevaría a una lista de otro tamaño.
-   */
-  atencion: number
-  /** QUÉ cuenta ese número. Un «26» pelado al lado de «nada pendiente» es una contradicción. */
-  atencionResumen: string
-
-  /**
-   * ═══ LA SEMÁNTICA ÚNICA: LO QUE TODAVÍA PUEDE MOVER EL PRECIO ═══
+   * ═══ UNA SOLA DEFINICIÓN, Y POR ESO UN SOLO NÚMERO ═══
    *
-   * Se eligió ésta y no «lo que falta sumar», que era la de antes y produjo la contradicción que el
-   * dueño marcó: el encabezado decía «26 necesitan tu atención» y al lado «nada pendiente».
+   * Pendiente = todo lo que todavía puede mover el precio, venga de donde venga: los issues que
+   * levantó el motor Y los huecos que delatan las filas, **unidos y deduplicados por partida**.
    *
-   * Las dos eran ciertas con la definición vieja y juntas no significaban nada. Una partida que
-   * nadie declaró dentro del alcance YA ESTÁ sumada en el precio —`cotizacion_cascada` suma todos
-   * los subtotales y no sabe nada de alcance—, así que resolverla puede RESTAR. Una partida sin
-   * valorizar todavía no está, así que resolverla puede SUMAR. Las dos mueven el precio, y por eso
-   * las dos son pendientes: la dirección del movimiento es lo único que cambia.
+   * Antes eran dos cuentas independientes —el chip contaba la cola, el bloque contaba las filas— y
+   * se contradecían en las dos direcciones: tres precios vencidos en la cola daban chip 3 y «nada
+   * pendiente», y tres partidas sin cantidad ni alcance daban chip «Nada pendiente» y 3 pendientes.
+   * Con la unión, `total === 0` si y sólo si no hay nada de ninguno de los dos lados.
    */
   total: number
-  /** Están adentro del precio sin que nadie decidiera que van. Resolverlas puede RESTAR. */
-  sinAlcance: number
-  /** No están en el precio porque no se pueden valorizar. Resolverlas puede SUMAR. */
-  sinValorizar: number
-  /** Lo que las «sin alcance» pesan HOY dentro del precio, al costo. `null` si ninguna lo trae. */
-  montoEnRiesgo: number | null
-  /** Lo conocido de las «sin valorizar»: el precio de subcontrato que la vista no valoriza. */
-  montoPorSumar: number | null
-  /** Cuántas pendientes no traen monto alguno. De ésas no se sabe cuánto mueven. */
+  /** QUÉ cuenta ese número. Un número pelado al lado de «nada pendiente» es una contradicción. */
+  resumen: string
+
+  /** Cuántos de esos pendientes mueven el precio hacia cada lado. */
+  puedenSumar: number
+  puedenRestar: number
+  inciertos: number
+  /** Lo que está adentro del precio sin decidir y podría salir. `null` si no se midió. */
+  montoQuePuedeSalir: number | null
+  /** Lo conocido que todavía no entró al precio. `null` si no se midió. */
+  montoQuePuedeEntrar: number | null
+  /** Cuántos pendientes no traen monto. De ésos no se sabe cuánto mueven. */
   sinMedir: number
-  /** El criterio, para que el número se pueda discutir sin abrir el código. */
+
+  /** El MISMO número que `certezaDe().ambiguas`: los dos salen de `motivoDeFila`. */
+  sinAlcance: number
+  /** El MISMO número que `certezaDe().faltantes`. */
+  sinValorizar: number
+
   criterio: string
+  items: Pendiente[]
 }
 
-const CRITERIO_PENDIENTES = 'Pendiente = partida cuya resolución todavía puede mover el precio: las'
-  + ' que están adentro sin alcance declarado (pueden restar) y las que no se pueden valorizar'
-  + ' (pueden sumar). Los montos son al costo, no al precio de venta.'
+const CRITERIO_PENDIENTES = 'Pendiente = todo lo que todavía puede mover el precio: los issues del'
+  + ' motor y los huecos de las filas, unidos y sin contar dos veces la misma partida. Los montos son'
+  + ' al costo, no al precio de venta.'
 
 /**
- * LAS DOS CIFRAS DEL ENCABEZADO, DE UNA SOLA FUNCIÓN.
+ * LOS PENDIENTES — la unión, deduplicada por partida.
  *
- * El chip de atención y el bloque «depende de pendientes» salían de dos lugares distintos —la cola
- * del motor y un conteo de filas— con dos definiciones distintas de «pendiente», y se contradecían
- * en pantalla. Ahora salen de acá: el chip sigue contando la cola porque es lo que abre, pero su
- * rótulo se arma con el MISMO vocabulario, y el resto se cuenta de las filas con una sola regla.
+ * La fila manda sobre el issue cuando hablan de la misma partida: la fila sabe si el número está o
+ * no está adentro del precio, que es lo que decide la DIRECCIÓN. El issue aporta las partidas que la
+ * fila ve sanas —un precio vencido, un conflicto de documentos— y los pendientes que no son de
+ * ninguna fila, como «el precio de venta da $0».
  */
 export function pendientesDe(
   partidas: readonly PartidaDelMotor[], cola: Pick<Cola, 'issues' | 'total'>,
 ): Pendientes {
-  const dentro = partidas.filter((p) => !estaExcluida(p))
-  const sinAlcance = dentro.filter((p) => p.alcance !== 'INCLUIDO' && !bloqueaElPrecio(p))
-  const sinValorizar = dentro.filter((p) => bloqueaElPrecio(p))
+  const items: Pendiente[] = []
+  const cubiertas = new Set<string>()
 
-  const enRiesgo = sinAlcance
-    .map((p) => p.subtotal)
-    .filter((v): v is number => v !== null && Number.isFinite(v))
-  const porSumar = sinValorizar
-    .map((p) => p.precioSubcontrato)
-    .filter((v): v is number => v !== null && Number.isFinite(v))
+  for (const p of partidas) {
+    const motivo = motivoDeFila(p)
+    if (motivo === 'sin_valorizar') {
+      // No suma todavía: lo conocido es el precio de subcontrato que la vista no valoriza.
+      items.push({ partidaId: p.id, clave: 'SIN_VALORIZAR', direccion: 'suma', monto: p.precioSubcontrato })
+      cubiertas.add(p.id)
+    } else if (motivo === 'sin_alcance') {
+      // Ya está sumada —la cascada no sabe nada de alcance—, así que decidirla puede RESTAR.
+      items.push({ partidaId: p.id, clave: 'SIN_ALCANCE', direccion: 'resta', monto: p.subtotal })
+      cubiertas.add(p.id)
+    }
+  }
+
+  for (const i of cola.issues) {
+    const pid = i.evidence?.partidaId ?? null
+    // Una partida ya contada no se cuenta otra vez: el chip mide PARTIDAS por resolver, no avisos.
+    if (pid !== null && cubiertas.has(pid)) continue
+    if (pid !== null) cubiertas.add(pid)
+    items.push({ partidaId: pid, clave: claveDeIssue(i), direccion: 'incierta', monto: i.impact })
+  }
+
+  const de = (d: Direccion) => items.filter((x) => x.direccion === d)
+  const suma = (xs: Pendiente[]) => {
+    const montos = xs.map((x) => x.monto).filter((v): v is number => v !== null && Number.isFinite(v))
+    return montos.length === 0 ? null : montos.reduce((a, b) => a + b, 0)
+  }
 
   return {
-    atencion: cola.total,
-    atencionResumen: resumenDeCola(cola),
-    total: sinAlcance.length + sinValorizar.length,
-    sinAlcance: sinAlcance.length,
-    sinValorizar: sinValorizar.length,
-    montoEnRiesgo: enRiesgo.length === 0 ? null : enRiesgo.reduce((a, b) => a + b, 0),
-    montoPorSumar: porSumar.length === 0 ? null : porSumar.reduce((a, b) => a + b, 0),
-    sinMedir: (sinAlcance.length - enRiesgo.length) + (sinValorizar.length - porSumar.length),
+    total: items.length,
+    resumen: resumenDePendientes(items),
+    puedenSumar: de('suma').length,
+    puedenRestar: de('resta').length,
+    inciertos: de('incierta').length,
+    montoQuePuedeSalir: suma(de('resta')),
+    montoQuePuedeEntrar: suma(de('suma')),
+    sinMedir: items.filter((x) => x.monto === null).length,
+    sinAlcance: items.filter((x) => x.clave === 'SIN_ALCANCE').length,
+    sinValorizar: items.filter((x) => x.clave === 'SIN_VALORIZAR').length,
     criterio: CRITERIO_PENDIENTES,
+  items: items,
   }
 }
 
 /**
- * QUÉ HAY EN LA COLA, EN UNA LÍNEA.
+ * QUÉ HAY PENDIENTE, EN UNA LÍNEA.
  *
- * Un solo tipo se nombra entero («26 sin alcance declarado»); varios se resumen por los dos más
+ * Un solo motivo se nombra entero («26 sin alcance declarado»); varios se resumen por los dos más
  * numerosos. Nunca se publica un número sin decir de qué es.
  */
-export function resumenDeCola(cola: Pick<Cola, 'issues' | 'total'>): string {
-  if (cola.total === 0) return 'Nada pendiente'
-  const porTipo = new Map<string, number>()
-  for (const i of cola.issues) {
-    const k = claveDeIssue(i)
-    porTipo.set(k, (porTipo.get(k) ?? 0) + 1)
-  }
-  const grupos = [...porTipo.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+export function resumenDePendientes(items: readonly Pendiente[]): string {
+  if (items.length === 0) return 'Nada pendiente'
+  const porClave = new Map<string, number>()
+  for (const i of items) porClave.set(i.clave, (porClave.get(i.clave) ?? 0) + 1)
+  const grupos = [...porClave.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   const nombre = (t: string) => ROTULO_ISSUE[t] ?? t.toLowerCase().replace(/_/g, ' ')
 
-  if (grupos.length === 1) return `${cola.total} ${nombre(grupos[0][0])}`
+  if (grupos.length === 1) return `${items.length} ${nombre(grupos[0][0])}`
   const dos = grupos.slice(0, 2).map(([t, n]) => `${n} ${nombre(t)}`).join(' · ')
-  return `${cola.total} para mirar · ${dos}${grupos.length > 2 ? '…' : ''}`
+  return `${items.length} para resolver · ${dos}${grupos.length > 2 ? '…' : ''}`
 }
 
 /**
