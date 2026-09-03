@@ -14,7 +14,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA, TITULO_EQUILIBRIO, TITULO_NECESIDAD, TITULO_EFECTIVO_BANCO } from './caja-graficos.mjs'
+import {
+  graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA, FILA_FINAL_DE_GRAFICOS,
+  TITULO_EQUILIBRIO, TITULO_NECESIDAD, TITULO_EFECTIVO_BANCO, TITULO_PROYECCION,
+  layoutEsperado, verificarLayoutGraficos, requestDeAltoMinimo,
+} from './caja-graficos.mjs'
+import { CLASE, clasificarRequest } from './clasificar-request.mjs'
 import { SALIDAS, COL_NECESIDAD, esEjecutado } from './caja-necesidad-baldes.mjs'
 import { COL, MESES } from './caja-anexo-series.mjs'
 
@@ -301,4 +306,115 @@ test('EL SUBTÍTULO DICE CON PALABRAS CUÁL ES CUÁL, y nombra las dos mitades',
   assert.match(spec.subtitle, /YA SALIÓ/)
   assert.match(spec.subtitle, /FALTA PAGAR/)
   assert.match(spec.subtitle, /descontado del saldo/, 'dice POR QUÉ lo ya salido no es necesidad')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL LAYOUT VERIFICADO CONTRA LO QUE DEVUELVE LA API — Y QUE EL CONTROL PUEDA DAR ROJO
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPAN, MEDIDO EN EL ARCHIVO REAL EL 03/09/2026 A LAS 08:25: CAJA tenía 55 filas (la
+// fórmula vieja `filas + 20`) con los cuatro gráficos anclados donde corresponde. El request estaba
+// bien y la pestaña estaba rota: el editor vivo de Google sube el bloque anclado en la fila 52 hasta
+// que entre en una hoja de 55, y lo dibuja encima del bloque 2. El fix del 02/09 se cerró mirando el
+// request y no la hoja — evidencia del intento, no del efecto. Estos tests miden lo LEÍDO.
+
+// Lo que devuelve `charts(chartId,position(overlayPosition),spec(title))` cuando todo está en su lugar.
+const leidoOk = () => layoutEsperado().map((e, i) => ({
+  chartId: 100 + i,
+  // La API omite los ceros: se los omite acá también, para medir lo que de verdad llega.
+  position: { overlayPosition: { anchorCell: { sheetId: 7, rowIndex: e.fila }, ...(e.x ? { offsetXPixels: e.x } : {}) } },
+  spec: { title: e.titulo },
+}))
+
+test('VERDE: 68 filas y los cuatro gráficos en su ancla', () => {
+  const v = verificarLayoutGraficos({ rows: FILA_FINAL_DE_GRAFICOS + 1, charts: leidoOk() })
+  assert.deepEqual(v.problemas, [])
+  assert.equal(v.ok, true)
+})
+
+test('ROJO: la hoja quedó en 55 filas — el estado real del 03/09', () => {
+  // La mutación es la hoja, no los gráficos: las cuatro anclas están perfectas y el layout igual está
+  // roto. Si este test pasa a verde, el control dejó de mirar el alto de la grilla.
+  const v = verificarLayoutGraficos({ rows: 55, charts: leidoOk() })
+  assert.equal(v.ok, false)
+  assert.match(v.problemas[0], /55 filas y necesita 68/)
+})
+
+test('ROJO: una fila de menos que el mínimo, y una de más ya es verde', () => {
+  // El borde exacto: 67 no alcanza (el último bloque termina en la fila 67 y necesita existir entera).
+  assert.equal(verificarLayoutGraficos({ rows: FILA_FINAL_DE_GRAFICOS, charts: leidoOk() }).ok, false)
+  assert.equal(verificarLayoutGraficos({ rows: FILA_FINAL_DE_GRAFICOS + 2, charts: leidoOk() }).ok, true)
+})
+
+test('ROJO: falta un gráfico', () => {
+  const charts = leidoOk().filter((c) => c.spec.title !== TITULO_EFECTIVO_BANCO)
+  const v = verificarLayoutGraficos({ rows: 68, charts })
+  assert.equal(v.ok, false)
+  assert.match(v.problemas.join(' | '), /falta el gráfico «⟡ Dónde va a estar la plata/)
+})
+
+test('ROJO: un ancla corrida — el bloque 3 dibujado en la fila 39, encima del 2', () => {
+  // Es literalmente lo que hace el editor vivo cuando la hoja es corta: no borra el gráfico, lo SUBE.
+  // Un control que sólo contara los gráficos lo daría por bueno.
+  const charts = leidoOk()
+  const i = charts.findIndex((c) => c.spec.title === TITULO_EQUILIBRIO)
+  charts[i].position.overlayPosition.anchorCell.rowIndex = 38
+  const v = verificarLayoutGraficos({ rows: 68, charts })
+  assert.equal(v.ok, false)
+  assert.match(v.problemas.join(' | '), /punto de equilibrio» ancla en la fila 39 y le corresponde la 53/)
+})
+
+test('ROJO: los dos de media anchura, uno encima del otro (misma fila, mismo x)', () => {
+  const charts = leidoOk()
+  const i = charts.findIndex((c) => c.spec.title === TITULO_PROYECCION)
+  delete charts[i].position.overlayPosition.offsetXPixels
+  const v = verificarLayoutGraficos({ rows: 68, charts })
+  assert.equal(v.ok, false)
+  assert.match(v.problemas.join(' | '), /Proyección de la caja» arranca en x=0px/)
+})
+
+test('ROJO: el mismo gráfico dos veces — el apilado que no se ve', () => {
+  const charts = leidoOk()
+  charts.push({ ...charts[0], chartId: 999 })
+  const v = verificarLayoutGraficos({ rows: 68, charts })
+  assert.equal(v.ok, false)
+  assert.match(v.problemas.join(' | '), /está 2 veces/)
+})
+
+test('EL LAYOUT ESPERADO SALE DEL GENERADOR, no de una tabla escrita al lado', () => {
+  // Si mañana cambia FILAS_POR_BLOQUE, el control tiene que moverse solo. Se compara contra los
+  // requests que el generador produce para las series REALES del anexo.
+  const pedido = graficos(7, ANEXO, SERIES).requests.map((r) => ({
+    titulo: r.addChart.chart.spec.title,
+    fila: r.addChart.chart.position.overlayPosition.anchorCell.rowIndex,
+    x: r.addChart.chart.position.overlayPosition.offsetXPixels ?? 0,
+  }))
+  assert.deepEqual(layoutEsperado(), pedido)
+  // Y la última fila que ocupa el layout es la que el generador tiene que garantizar.
+  assert.equal(Math.max(...pedido.map((p) => p.fila)) + 15, FILA_FINAL_DE_GRAFICOS)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL REQUEST DE ALTO MÍNIMO PASA LA GUARDA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LA GUARDA DEJA PASAR EL RESIZE QUE AGRANDA, en el mismo lote que los gráficos', () => {
+  // Sin esto, meter el `updateSheetProperties` adentro del lote de los gráficos podría hacer que la
+  // guarda descartara el request —y los `addChart` se dibujarían igual sobre la hoja corta—.
+  const dims = new Map([[7, { rows: 55, cols: 10 }]])
+  const req = requestDeAltoMinimo(7, 55)
+  assert.equal(req.updateSheetProperties.properties.gridProperties.rowCount, 68)
+  assert.equal(clasificarRequest(req, dims).clase, CLASE.INOCUO)
+})
+
+test('NO ACHICA NUNCA: si la hoja ya es más alta, el request pide el alto que ya tiene', () => {
+  // La mutación que este test prohíbe: declarar `FILA_FINAL_DE_GRAFICOS + 1` a secas. Sobre una hoja
+  // de 200 filas eso borra 132 filas con lo que tengan adentro, y la guarda lo clasifica destructivo.
+  const dims = new Map([[7, { rows: 200, cols: 10 }]])
+  const req = requestDeAltoMinimo(7, 200)
+  assert.equal(req.updateSheetProperties.properties.gridProperties.rowCount, 200)
+  assert.equal(clasificarRequest(req, dims).clase, CLASE.INOCUO)
+  // Y la prueba de que la guarda SÍ sabe decir que no: el request ingenuo sobre la misma hoja.
+  const ingenuo = { updateSheetProperties: { properties: { sheetId: 7, gridProperties: { rowCount: 68 } }, fields: 'gridProperties.rowCount' } }
+  assert.equal(clasificarRequest(ingenuo, dims).clase, CLASE.DESTRUCTIVO)
 })
