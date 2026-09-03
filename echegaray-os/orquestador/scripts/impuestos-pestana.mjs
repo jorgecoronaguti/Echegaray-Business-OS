@@ -46,7 +46,7 @@ import { ACUERDO, TARJETA } from '../lib/banco-santander.mjs'
 import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
-  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw,
+  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw, filasFacturadas,
 } from '../lib/impuestos-fuentes.mjs'
 import {
   bloqueIva, mesDelSaldoVigente, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
@@ -313,13 +313,44 @@ async function planDeProyeccionIva(google, ivaOficial) {
   // celda: el --dry exhibe el insumo y un importe fiscal se puede rehacer a mano contra el Libro.
   const lib = (await google.readSheetValues(ID, '_MOVIMIENTOS!A2:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const movs = lib.filter((f) => Number.isFinite(f?.[0]) && Number.isFinite(f?.[2]))
-    .map((f) => ({ fecha: f[0], signo: Number(f[1]), importe: Number(f[2]), rubro: String(f[5] ?? '') }))
+    .map((f) => ({
+      fecha: f[0], signo: Number(f[1]), importe: Number(f[2]), rubro: String(f[5] ?? ''),
+      origen: String(f[13] ?? ''), fila: Number(f[14]),
+    }))
+
+  // ═══ EL DÉBITO SÓLO MIRA LO FACTURADO (03/09/2026) ═══
+  //
+  // El dueño: «las proyecciones de IVA están tomando de manera exagerada; lo indicado con B en
+  // cobranzas es lo que tiene que considerar siempre». Cobranzas marca la venta facturada con `B` y
+  // la que no lleva factura con `N`. El Libro no arrastra esa marca —sólo la pestaña y la fila de
+  // origen—, así que el puente se hace acá.
+  //
+  // MEDIDO sobre los 92 movimientos de rubro Cobranzas: 60 facturados por $562.605.362 y 32 sin
+  // factura por $291.473.901. En los meses que se proyectan, la base del débito bajaba así:
+  //
+  //     sep-26   $217.961.520 → $132.752.129
+  //     oct-26    $95.601.045 →  $62.421.413
+  //     nov-26    $24.690.667 →  $12.775.852
+  //     dic-26    $19.163.777 →  $19.163.777   (no tiene ninguna sin factura)
+  //
+  // $130.303.837 de base inventada, que a la alícuota vigente son unos $22,6M de IVA a pagar que
+  // nunca se iban a devengar. La plata de esos cobros ES real y sigue entera en la caja: lo único
+  // que no existe es su IVA. Por eso el filtro va acá y NO en el extractor del Libro.
+  const catCobranzas = (await google.readSheetValues(ID, 'Cobranzas!B5:B', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const { facturadas, sinFactura, sinCategoria } = filasFacturadas(catCobranzas)
+  // Un movimiento de Cobranzas cuyo origen no sea esa pestaña no se puede clasificar: su número de
+  // fila apunta a otro lado. Medido hoy: cero. Se cuenta para que deje de ser cero con ruido.
+  const cobranzasSinOrigen = movs.filter((x) => x.signo === 1 && x.rubro === 'Cobranzas' && x.origen !== 'Cobranzas')
+  const debitoFacturado = (x) => x.rubro === 'Cobranzas' && x.origen === 'Cobranzas' && facturadas.has(x.fila)
+  console.log(`  débito del Libro: ${facturadas.size} filas de Cobranzas facturadas · ${sinFactura} sin factura (fuera del IVA, dentro de la caja)`
+    + `${sinCategoria ? ` · ⚠ ${sinCategoria} SIN CATEGORÍA` : ''}`
+    + `${cobranzasSinOrigen.length ? ` · ⚠ ${cobranzasSinOrigen.length} cobro(s) sin origen en Cobranzas, no clasificables` : ''}`)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
     debito: [{
-      celda: '_MOVIMIENTOS', rotulo: 'Cobranzas del Libro (cobrado + esperado del mes)',
-      valor: movs.filter((x) => enMes(x, m) && x.signo === 1 && x.rubro === 'Cobranzas').reduce((a, x) => a + x.importe, 0),
+      celda: '_MOVIMIENTOS', rotulo: 'Cobranzas FACTURADAS del Libro (cobrado + esperado del mes)',
+      valor: movs.filter((x) => enMes(x, m) && x.signo === 1 && debitoFacturado(x)).reduce((a, x) => a + x.importe, 0),
     }],
     credito: [{
       celda: '_MOVIMIENTOS', rotulo: 'Compras con factura del Libro (4 rubros, netas de NC)',
