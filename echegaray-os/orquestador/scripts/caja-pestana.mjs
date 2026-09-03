@@ -274,7 +274,10 @@ async function main() {
 
   const publicados = await rangoConNombre(google, hoja.sheetId, g)
   console.log(`  🔖 ${publicados} rango(s) reapuntados a la grilla RECIÉN ESCRITA: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
-  await formatear(google, hoja.sheetId, g, anexo)
+  // El TÍTULO REAL va como argumento: `PESTAÑA` ('Caja') es la clave con la que se BUSCA la pestaña
+  // —`hallarPestana` no distingue mayúsculas— y la pestaña se llama 'CAJA'. Como nombre de rango, la
+  // constante lee otra cosa; `hoja.title` es el nombre que la hoja tiene de verdad.
+  await formatear(google, hoja.sheetId, g, anexo, tab)
 
   const quedo = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`).catch(() => [])
   await guardarRegistro(ID, PESTAÑA, g.filas, ediciones, quedo, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
@@ -320,7 +323,7 @@ async function main() {
  * 3. SIN CUADRÍCULA, SIN BARRAS DE COLOR, SIN BORDES DE CAJA. La jerarquía la dan la tipografía y una
  *    hairline. Lo que se resta se distingue por el signo y por la palabra.
  */
-export async function formatear(google, sheetId, g, anexo) {
+export async function formatear(google, sheetId, g, anexo, titulo = PESTAÑA) {
   const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
   const INK = { red: 0.10, green: 0.13, blue: 0.20 }
   const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }
@@ -562,42 +565,51 @@ export async function formatear(google, sheetId, g, anexo) {
   const lote = Number.isFinite(hojaHoy?.rows) ? [requestDeAltoMinimo(sheetId, hojaHoy.rows), ...charts] : charts
   if (lote === charts) console.warn('  ⚠ no pude leer el alto actual de la hoja: mando los gráficos sin re-garantizarlo en el mismo lote')
 
-  let respuesta
   try {
-    respuesta = await google.spreadsheetBatchUpdate(ID, lote)
+    await google.spreadsheetBatchUpdate(ID, lote)
     console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`)
   } catch (e) {
     console.warn(`  ⚠ NO pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`)
     return
   }
+  // ═══ SE RELEE LA HOJA: LA EVIDENCIA ES DEL EFECTO, NO DEL INTENTO ═══
+  //
+  // Todo lo de arriba es lo que se PIDIÓ. Lo único que prueba que la pestaña quedó bien es leerla.
+  // El fix del 02/09 se cerró sin esta lectura y la falla volvió sin avisar: el generador informaba
+  // «4 gráfico(s) dibujados» mientras el editor los apilaba de a dos.
+  //
+  // EL TÍTULO REAL LO TRAE `titulo` (main lo saca de `hoja.title`): la constante `PESTAÑA` es la CLAVE
+  // DE BÚSQUEDA —'Caja'— y la pestaña se llama 'CAJA'. Usarla como nombre de rango es leer otra cosa.
+  const leido = await leerLayoutDeGraficos(google, ID, hojaHoy?.title ?? titulo).catch((e) => {
+    console.warn(`  ⚠ no pude releer el layout de los gráficos (${e.message})`)
+    return null
+  })
+  if (!leido) {
+    // NO PODER MIRAR NO ES «QUEDÓ BIEN». Salir en verde acá es exactamente el modo de falla que este
+    // bloque existe para cerrar: la corrida del 02/09 se dio por buena sin haber leído la hoja.
+    console.warn('  ✗ no pude verificar el efecto: la pestaña puede haber quedado rota y nadie lo sabría. Corré: node orquestador/scripts/caja-graficos-verificar.mjs')
+    process.exitCode = 1
+    return
+  }
+
   // ═══ LA ESPECIFICACIÓN SE REAFIRMA DESPUÉS DE CREAR (25/08/2026) ═══
   //
   // `addChart` con un COMBO apilado devuelve el gráfico con las dos curvas de saldo en el eje
   // IZQUIERDO y sin eje derecho, aunque el request las manda al derecho: el dueño vio las barras
-  // «lo que sale ese día» aplastadas contra el cero porque compartían escala con un saldo de
-  // decenas de millones. `updateChartSpec` sobre el gráfico recién creado, con la MISMA
-  // especificación, sí conserva el eje derecho (probado en vivo). Es idempotente: si la creación
-  // ya vino bien, no cambia nada.
-  // El emparejamiento request↔respuesta es POR POSICIÓN: se le pasa el lote que se mandó, no `charts`.
-  // Con `charts` el resize del frente correría un lugar todos los índices y cada `updateChartSpec`
-  // iría al gráfico equivocado — el modo de falla más silencioso posible, porque todos existirían.
-  const reafirmar = reafirmarEspecificaciones(lote, respuesta)
+  // «lo que sale ese día» aplastadas contra el cero porque compartían escala con un saldo de decenas
+  // de millones. `updateChartSpec` sobre el gráfico recién creado, con la MISMA especificación, sí
+  // conserva el eje derecho (probado en vivo). Es idempotente: si la creación ya vino bien, no cambia nada.
+  //
+  // VA DESPUÉS DE LA LECTURA (03/09) porque se empareja por TÍTULO contra los gráficos que de verdad
+  // quedaron, no por posición contra los replies — ver `reafirmarEspecificaciones`. Leer antes no
+  // desactualiza el veredicto de abajo: `updateChartSpec` cambia la especificación y no toca ni el alto
+  // de la grilla ni el ancla, que es lo único que el veredicto mide.
+  const reafirmar = reafirmarEspecificaciones(lote, leido.charts)
   if (reafirmar.length) {
     await google.spreadsheetBatchUpdate(ID, reafirmar)
       .catch((e) => console.warn(`  ⚠ NO pude reafirmar los ejes de los gráficos (${e.message}): las curvas de saldo pueden quedar en el eje izquierdo.`))
   }
 
-  // ═══ Y SE RELEE LA HOJA: LA EVIDENCIA ES DEL EFECTO, NO DEL INTENTO ═══
-  //
-  // Todo lo de arriba es lo que se PIDIÓ. Lo único que prueba que la pestaña quedó bien es leerla.
-  // El fix del 02/09 se cerró sin esta lectura y la falla volvió sin avisar: el generador informaba
-  // «4 gráfico(s) dibujados» mientras el editor los apilaba de a dos.
-  const leido = await leerLayoutDeGraficos(google, ID, hojaHoy?.title ?? PESTAÑA).catch((e) => {
-    // No poder leer NO es "quedó bien": es que no se miró, y se dice así.
-    console.warn(`  ⚠ no pude releer el layout de los gráficos (${e.message}): NO puedo afirmar que quedó bien. Corré: node orquestador/scripts/caja-graficos-verificar.mjs`)
-    return null
-  })
-  if (!leido) return
   const veredicto = verificarLayoutGraficos(leido)
   if (veredicto.ok) return console.log(`  ✓ layout verificado sobre la hoja: ${leido.rows} filas y ${leido.charts.length} gráfico(s) en su ancla`)
   console.warn(`  ✗ el layout de gráficos NO quedó bien — leído de la hoja: ${leido.rows} filas, ${leido.charts.length} gráfico(s)`)
@@ -606,19 +618,38 @@ export async function formatear(google, sheetId, g, anexo) {
 }
 
 /**
- * Empareja cada `addChart` del lote con el `chartId` que devolvió la API y arma el `updateChartSpec`
- * equivalente. Pura: se prueba sin Google. Los `deleteEmbeddedObject` del lote no tienen respuesta
- * útil y se saltean por posición.
+ * Empareja cada `addChart` del lote con el gráfico que DE VERDAD quedó en la pestaña —por TÍTULO— y
+ * arma el `updateChartSpec` equivalente. Pura: se prueba sin Google.
+ *
+ * ═══ POR TÍTULO Y NO POR POSICIÓN (03/09/2026) ═══
+ *
+ * La versión anterior emparejaba el request `i` con el reply `i`, y eso es FALSO apenas se descarta un
+ * request: `spreadsheetBatchUpdate` filtra los vacíos y los que la guarda bloquea —`requests =
+ * g.requests` en google.mjs— y la API contesta alineada a la lista FILTRADA, no a la que se le pasó.
+ * El corrimiento no da error ni deja un gráfico de menos: aplica la especificación de uno al de al
+ * lado, los cuatro siguen existiendo, y el log dice que todo salió bien.
+ *
+ * El título es IDENTIDAD: los cuatro son distintos, `verificarLayoutGraficos` se pone rojo si alguno
+ * se repite o falta, y así el emparejamiento no depende de cuántos requests hayan sobrevivido.
+ *
+ * @param {Array} requests el lote que se mandó (los que no son `addChart` se saltean solos)
+ * @param {Array} charts lo leído de la hoja: `[{ chartId, spec: { title } }]`
  */
-export function reafirmarEspecificaciones(requests, respuesta) {
-  const replies = respuesta?.replies ?? []
+export function reafirmarEspecificaciones(requests, charts = []) {
+  const idPorTitulo = new Map()
+  for (const c of charts || []) {
+    const t = c?.spec?.title
+    if (t && Number.isFinite(c?.chartId)) idPorTitulo.set(t, c.chartId)
+  }
   const out = []
-  requests.forEach((req, i) => {
-    const spec = req.addChart?.chart?.spec
-    const chartId = replies[i]?.addChart?.chart?.chartId
-    if (!spec || !Number.isFinite(chartId)) return
+  for (const req of requests || []) {
+    const spec = req?.addChart?.chart?.spec
+    const chartId = idPorTitulo.get(spec?.title)
+    // Sin un id LEÍDO de la hoja no se reafirma: adivinarlo escribiría la especificación sobre
+    // cualquier objeto flotante de la pestaña.
+    if (!spec || !Number.isFinite(chartId)) continue
     out.push({ updateChartSpec: { chartId, spec } })
-  })
+  }
   return out
 }
 

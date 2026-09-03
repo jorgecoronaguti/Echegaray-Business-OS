@@ -36,10 +36,12 @@ function colaDelAnexo() {
  * El cliente que no escribe: junta los LOTES (no los requests sueltos — acá lo que se mide es qué
  * viaja junto con qué) y devuelve la hoja que se le diga al releer.
  */
-function clienteFalso({ rows = 55, alReleer } = {}) {
+function clienteFalso({ rows = 55, alReleer, romperRelectura = false, sinMeta = false } = {}) {
   const lotes = []
+  const rangosLeidos = []
   return {
     lotes,
+    rangosLeidos,
     google: {
       async spreadsheetBatchUpdate(_id, rs) {
         lotes.push(rs)
@@ -50,8 +52,13 @@ function clienteFalso({ rows = 55, alReleer } = {}) {
       async getConditionalFormats() { return [] },
       async readSheetValues() { return colaDelAnexo() },
       async getCharts() { return [{ sheetId: SHEET, title: TITULO, charts: [] }] },
-      async getSheetMeta() { return [{ sheetId: SHEET, title: TITULO, rows, cols: 10 }] },
-      async getGridData() {
+      async getSheetMeta() {
+        if (sinMeta) throw new Error('429')
+        return [{ sheetId: SHEET, title: TITULO, rows, cols: 10 }]
+      },
+      async getGridData(_id, rango) {
+        rangosLeidos.push(rango)
+        if (romperRelectura) throw new Error('429')
         const l = alReleer ?? { rows: FILA_FINAL_DE_GRAFICOS + 1, charts: layoutEsperado() }
         return {
           sheets: [{
@@ -70,7 +77,7 @@ function clienteFalso({ rows = 55, alReleer } = {}) {
 
 /** Corre `formatear` con la consola tapada y el exitCode aislado: un test no cambia el del proceso. */
 async function correr(opciones) {
-  const { lotes, google } = clienteFalso(opciones)
+  const { lotes, rangosLeidos, google } = clienteFalso(opciones)
   const dicho = []
   const { log, warn } = console
   const antes = process.exitCode
@@ -78,8 +85,8 @@ async function correr(opciones) {
   console.warn = (...a) => dicho.push(a.join(' '))
   process.exitCode = 0
   try {
-    await formatear(google, SHEET, grilla(new Map(), REFS), { sheetId: 99, title: '_CAJA_ANEXO' })
-    return { lotes, dicho, exitCode: process.exitCode }
+    await formatear(google, SHEET, grilla(new Map(), REFS), { sheetId: 99, title: '_CAJA_ANEXO' }, TITULO)
+    return { lotes, rangosLeidos, dicho, exitCode: process.exitCode }
   } finally {
     console.log = log; console.warn = warn; process.exitCode = antes
   }
@@ -111,17 +118,16 @@ test('EL RESIZE NUNCA ACHICA: sobre una hoja de 200 filas pide 200', async () =>
   assert.equal(resize.updateSheetProperties.properties.gridProperties.rowCount, 200)
 })
 
-test('LOS updateChartSpec APUNTAN AL GRÁFICO QUE LES CORRESPONDE, con el resize adelante', async () => {
-  // El emparejamiento request↔respuesta es POR POSICIÓN. Si se reafirma sobre `charts` en vez de sobre
-  // el lote mandado, el resize corre todos los índices un lugar y cada especificación se aplica al
-  // gráfico de al lado: los cuatro existen, ninguno está bien, y no hay un solo error en el log.
+test('CADA updateChartSpec LLEVA EL TÍTULO DEL GRÁFICO CUYO ID USA', async () => {
+  // El emparejamiento ya no es por posición (límite L2 de la auditoría): la guarda descarta requests
+  // en silencio y los replies vuelven alineados a la lista FILTRADA, así que un índice no identifica
+  // nada. Se mide contra lo que la HOJA dijo que tiene: id ↔ título.
   const { lotes } = await correr({ rows: 55 })
-  const lote = loteDeGraficos(lotes)
   const reafirmar = lotes.find((l) => l.some((r) => r.updateChartSpec))
+  const enLaHoja = new Map(layoutEsperado().map((c, i) => [100 + i, c.titulo]))
   assert.equal(reafirmar.length, 4)
   for (const r of reafirmar) {
-    const i = r.updateChartSpec.chartId - 100
-    assert.equal(lote[i]?.addChart?.chart?.spec?.title, r.updateChartSpec.spec.title)
+    assert.equal(enLaHoja.get(r.updateChartSpec.chartId), r.updateChartSpec.spec.title)
   }
 })
 
@@ -147,17 +153,29 @@ test('VERDE: 68 filas y los cuatro en su ancla — y lo dice con los números le
   assert.match(dicho.join('\n'), /✓ layout verificado sobre la hoja: 68 filas y 4 gráfico\(s\)/)
 })
 
-test('NO PODER RELEER NO ES «QUEDÓ BIEN»', async () => {
-  // La falla del 02/09 fue exactamente ésta con otra ropa: dar por bueno lo que no se miró.
-  const { google } = clienteFalso({})
-  google.getGridData = async () => { throw new Error('429') }
-  const { log, warn } = console
-  const dicho = []
-  const antes = process.exitCode
-  console.log = (...a) => dicho.push(a.join(' ')); console.warn = (...a) => dicho.push(a.join(' '))
-  try {
-    await formatear(google, SHEET, grilla(new Map(), REFS), { sheetId: 99, title: '_CAJA_ANEXO' })
-  } finally { console.log = log; console.warn = warn; process.exitCode = antes }
-  assert.match(dicho.join('\n'), /NO puedo afirmar que quedó bien/)
+test('NO PODER RELEER NO ES «QUEDÓ BIEN»: exit 1, no verde', async () => {
+  // LÍMITE L1 DE LA AUDITORÍA (03/09). Antes esto imprimía el aviso y salía con exit 0 — «verde sin
+  // haber mirado», que es el modo de falla exacto que esta rama existe para cerrar. Un 429 en la
+  // relectura no dice que la pestaña quedó bien: dice que no se sabe, y eso se informa como rojo.
+  const { dicho, exitCode } = await correr({ romperRelectura: true })
+  assert.equal(exitCode, 1)
+  assert.match(dicho.join('\n'), /no pude verificar el efecto/)
   assert.doesNotMatch(dicho.join('\n'), /✓ layout verificado/)
+})
+
+test('SI SE PUDO LEER, SE REAFIRMAN LOS EJES CONTRA LOS ID DE LA HOJA', async () => {
+  // El emparejamiento dejó de ser por posición (ver caja-pestana-reafirmar.test.mjs): acá se mide que
+  // el lote de updateChartSpec use los chartId que devolvió LA HOJA y no los índices del batch.
+  const { lotes } = await correr({})
+  const reafirmar = lotes.find((l) => l.some((r) => r.updateChartSpec))
+  assert.equal(reafirmar.length, 4)
+  assert.deepEqual(reafirmar.map((r) => r.updateChartSpec.chartId), [100, 101, 102, 103])
+})
+
+test('SIN getSheetMeta, LA RELECTURA USA EL NOMBRE REAL DE LA PESTAÑA', async () => {
+  // LÍMITE L4 DE LA AUDITORÍA (03/09). El fallback era la constante PESTAÑA = 'Caja', que es la CLAVE
+  // con la que se busca la pestaña —`hallarPestana` no distingue mayúsculas—, no su nombre: la pestaña
+  // se llama 'CAJA'. Un rango con el nombre equivocado no lee de menos: lee otra cosa, o 400.
+  const { rangosLeidos } = await correr({ sinMeta: true })
+  assert.deepEqual(rangosLeidos, [`'${TITULO}'`])
 })
