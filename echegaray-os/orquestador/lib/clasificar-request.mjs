@@ -55,7 +55,10 @@ export function tamanoQueToca(fields) {
   const f = String(fields ?? '')
   // Máscara ANCHA (vacía, `*`, o `gridProperties` a secas): cubre el tamaño entero, y lo que la máscara
   // cubre pero no se declara se BORRA. Se la trata como si tocara las dos dimensiones.
-  const ancha = !f || f === '*' || /(^|[,\s])gridProperties([,\s]|$)/.test(f)
+  // `gridProperties.*` es tan ancha como `gridProperties` a secas: el comodín cubre rowCount y
+  // columnCount. Sin el `(\.\*)?` se leía como apariencia y un achique con esa máscara pasaba entero
+  // sobre una pestaña virgen (medido en la auditoría del 03/09).
+  const ancha = !f || f === '*' || /(^|[,\s])gridProperties(\.\*)?([,\s]|$)/.test(f)
   // Ojo con `frozenRowCount`: contiene "RowCount" con mayúscula, así que /\browCount\b/ no lo agarra —
   // congelar filas es apariencia y tiene que seguir pasando libre.
   return { filas: ancha || /\browCount\b/.test(f), columnas: ancha || /\bcolumnCount\b/.test(f) }
@@ -182,6 +185,24 @@ export function clasificarRequest(req, dims = null) {
       // grilla es la única propiedad de pestaña que borra celdas con lo que tengan, igual que un
       // `deleteDimension`, así que se marca aparte para poder frenarlo SIEMPRE.
       : { ...destructivo('achica la grilla: las filas o columnas que quedan afuera se borran con lo que tengan'), borraContenido: true }
+  }
+  // ═══ BORRAR UNA PESTAÑA ENTERA NO LO DECIDE UN MODELO ═══
+  //
+  // `deleteSheet` se lleva la pestaña con todo lo que tenga y no existe capa por celda que lo mire:
+  // `propiedad-estructura.mjs` conoce deleteDimension, deleteRange y moveDimension, no éste. Hasta el
+  // 03/09 lo único que lo detenía era el candado explícito — y la firma automática está apagada desde
+  // el 05/08, así que ninguna pestaña lo tiene salvo las que el dueño candó a mano.
+  //
+  // Lo que lo vuelve urgente no es la teoría: es que hay un EMISOR VIVO manejado por un modelo.
+  // `lib/tools/sheets-format.mjs` expone `drive.deletetab`, cuya propia descripción dice «Irreversible
+  // … Se aplica AL INSTANTE al llamarla (no pidas aprobación)», y sus únicas defensas son que la
+  // pestaña exista y que no sea la última del archivo. Un `file_id` confundido borra CAJA.
+  //
+  // Los borrados LEGÍTIMOS del OS —el que retira pestañas obsoletas de una lista fija en
+  // `proveedores-materiales-pestana.mjs`— piden permiso explícito por código (`borrarPestanas`), que
+  // una herramienta no puede pasar. Ver `guardarRequests`.
+  if (tipo === 'deleteSheet') {
+    return { ...destructivo('deleteSheet: borra la pestaña entera con todo su contenido'), borraContenido: true }
   }
   const porQueInocuo = INOCUOS.get(tipo)
   if (porQueInocuo) return inocuo(`${tipo}: ${porQueInocuo}`)

@@ -387,9 +387,9 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_borrar_pestana',
         description:
-          'BORRA una pestaña entera de un Google Sheet. Es IRREVERSIBLE y rompe cualquier fórmula que la ' +
-          'referencie (quedan en #REF!). Antes de usarla, verificá que nada dependa de esa pestaña. ' +
-          'Pasá file_id y tab.',
+          'NO borra nada: el borrado de una pestaña entera es irreversible, rompe toda fórmula que la ' +
+          'referencie y no lo decide un modelo. Devuelve una explicación para que se lo pidas a una ' +
+          'persona. Existe sólo para poder contestar bien cuando alguien pide borrar una pestaña.',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, tab: { type: 'string' } },
@@ -397,13 +397,17 @@ export function driveWriteTools(google) {
         },
       },
       async run(input) {
-        if (!input?.file_id || !input?.tab) return { error: 'faltan file_id o tab' }
-        const hojas = await google.getSheetMeta(input.file_id)
-        const meta = hojas.find((s) => s.title === input.tab)
-        if (!meta) return { error: `no encontré la pestaña "${input.tab}"` }
-        if (hojas.length <= 1) return { error: 'es la única pestaña del archivo: no se puede borrar' }
-        await google.spreadsheetBatchUpdate(input.file_id, [{ deleteSheet: { sheetId: meta.sheetId } }])
-        return { ok: true, borrada: input.tab }
+        // ═══ UN MODELO NO BORRA UNA PESTAÑA (03/09) ═══ Gemela de `drive.deletetab` en
+        // `tools/sheets-format.mjs`; mismo motivo, mismo desenlace. Sus defensas eran que la pestaña
+        // existiera y que no fuera la última: un `file_id` confundido se llevaba CAJA entera, y la
+        // guarda no lo frenaba porque sólo pondera candados y la firma está apagada desde el 05/08.
+        // El borrado sigue existiendo para el OS: lo pide un generador por código y nombrando cuáles
+        // retira (`borrarPestanas`). Lo que deja de existir es que lo decida un modelo.
+        return {
+          error: 'no borro pestañas: es irreversible, se lleva todo su contenido y rompe las fórmulas que la '
+            + 'referencien. Si hay que retirar una, lo hace una persona con la pestaña a la vista.',
+          pestana: input?.tab ?? null,
+        }
       },
     },
 
