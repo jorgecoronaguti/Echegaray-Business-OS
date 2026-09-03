@@ -39,7 +39,9 @@ import { estaCongelado, tieneCifras } from '@/features/presupuestos/services/cas
 import { puedeCongelar, puedeConvertir, lecturaEstado } from '@/features/presupuestos/services/estado'
 import { rubroDe, subcontratadasFueraDelPrecio } from '@/features/presupuestos/services/partidas'
 import { plata } from '@/features/presupuestos/services/formato'
-import { bloqueosDeEnvio, certezaDe, firmezaDe, precioFirmeDe } from '@/features/presupuestos/services/vivo'
+import {
+  bloqueosDeEnvio, certezaDe, firmezaDe, pendientesDe, precioFirmeDe,
+} from '@/features/presupuestos/services/vivo'
 import { ofertaDe } from '@/features/presupuestos/services/oferta'
 import { hayModelo } from '@/features/presupuestos/services/modelo'
 import {
@@ -129,6 +131,9 @@ export default async function PresupuestoPage({
   const certeza = certezaDe(vivo.partidas)
   const firmeza = firmezaDe(vivo.partidas)
   const bloqueos = bloqueosDeEnvio(vivo.gate, vivo.cola)
+  // El chip de atención y el bloque de pendientes salen de UNA función: eran dos definiciones de
+  // «pendiente» y se contradecían en pantalla.
+  const pendientes = pendientesDe(vivo.partidas, vivo.cola)
   const modeloDisponible = hayModelo()
 
   const inspPartidaId = partidaDelInspector(url.insp)
@@ -147,7 +152,6 @@ export default async function PresupuestoPage({
             id={presupuesto.id}
             estado={presupuesto.estado}
             puedeConvertir={convertir.puede}
-            motivoConvertir={convertir.motivo}
             hrefConvertir={`/presupuestos/${presupuesto.id}/convertir`}
           />
         }
@@ -186,12 +190,13 @@ export default async function PresupuestoPage({
             precioFirme={precioFirmeDe(vivo.cascada, firmeza)}
             bloqueos={bloqueos}
             porQueGate={vivo.gate.porQue}
-            nAtencion={vivo.cola.total}
+            pendientes={pendientes}
             congelado={congelado}
             sello={congelado ? `v${presupuesto.version} congelada · inmutable` : null}
             hrefBase={`/presupuestos/${id}`}
             vista={url.vista}
             accionCongelar={congelar.puede ? <BotonCongelar id={presupuesto.id} /> : null}
+            notaConvertir={convertir.puede ? null : convertir.motivo}
           />
 
           {url.atencion && (

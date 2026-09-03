@@ -3,9 +3,13 @@
 // LAS ACCIONES DEL PRESUPUESTO — una primaria por contexto, y las demás en icono o texto.
 //
 // «Convertir a obra» es la primaria de la pantalla 15. Cuando todavía no corresponde —el
-// presupuesto no está adjudicado, o no está congelado— NO se esconde: se dibuja apagada y el motivo
-// va en su `title`. Un botón que desaparece obliga a adivinar qué falta; uno apagado que al pasar
-// por encima dice «congelá primero» enseña el ciclo sin ocupar 240px de la línea del encabezado.
+// presupuesto no está adjudicado, o no está congelado— NO se dibuja apagada: se dibuja el MOTIVO,
+// como texto, en el encabezado del presupuesto vivo (`NotaConvertir`).
+//
+// La versión anterior lo dejaba gris con la explicación escondida en el `title`, y el argumento era
+// que un botón que desaparece obliga a adivinar. Es cierto, y por eso el motivo no desaparece: lo
+// que desaparece es el control muerto. «Se convierte cuando el presupuesto está adjudicado» escrito
+// enseña el ciclo mejor que un rectángulo gris que hay que descubrir pasando el mouse por encima.
 //
 // «Congelar» tiene efecto irreversible: copia la composición y fija el costo. Por eso su leyenda
 // dice qué hace ANTES de tocarlo —bajo demanda, en el `title`— y no hay `window.confirm`: un diálogo
@@ -41,13 +45,11 @@ export function AccionesPresupuesto({
   id,
   estado,
   puedeConvertir,
-  motivoConvertir,
   hrefConvertir,
 }: {
   id: string
   estado: EstadoPresupuesto
   puedeConvertir: boolean
-  motivoConvertir: string | null
   hrefConvertir: string
 }) {
   return (
@@ -56,7 +58,9 @@ export function AccionesPresupuesto({
       {/* Congelar NO se dibuja acá: cuando se puede, lo dibuja el encabezado del presupuesto vivo;
           cuando no, ese lugar muestra los bloqueos. Ver el encabezado de este archivo. */}
       <NuevaVersion id={id} />
-      {puedeConvertir ? (
+      {/* Cuando no se puede, acá no va nada: el motivo lo escribe `NotaConvertir` en el encabezado
+          del presupuesto vivo, que es donde hay lugar para una frase entera. */}
+      {puedeConvertir && (
         <Link
           href={hrefConvertir}
           data-testid="convertir-a-obra"
@@ -64,16 +68,6 @@ export function AccionesPresupuesto({
         >
           Convertir a obra
         </Link>
-      ) : (
-        // El motivo va en el `title`, no en 240px de texto permanente al lado del botón: es la
-        // respuesta a «por qué está apagado», y esa pregunta se hace una vez.
-        <span
-          data-testid="convertir-bloqueado"
-          title={motivoConvertir ?? undefined}
-          className="cursor-not-allowed rounded-control bg-surface-sunken px-3.5 py-[7px] text-[12.5px] font-semibold text-faint"
-        >
-          Convertir a obra
-        </span>
       )}
     </div>
   )

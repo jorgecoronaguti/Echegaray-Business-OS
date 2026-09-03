@@ -12,6 +12,13 @@
 // enlace a su partida. Un «Congelar» deshabilitado obliga a adivinar qué falta; esto contesta la
 // pregunta en el mismo lugar donde aparece.
 //
+// ═══ EL CHIP Y LOS PENDIENTES CUENTAN LO MISMO, Y LO DICEN ═══
+//
+// Antes el chip decía «Necesita tu atención · 26» y a su izquierda se leía «DEPENDE DE PENDIENTES:
+// nada pendiente». Las dos cifras eran ciertas con SUS definiciones —una contaba la cola del motor,
+// la otra las filas sin importe— y juntas se contradecían. Ahora las dos salen de `pendientesDe()`,
+// el chip dice QUÉ cuenta, y el criterio viaja en el `title` de los dos.
+//
 // ═══ LA BARRA DE CERTEZA NO ES UN SEMÁFORO ═══
 //
 // Son tres tramos proporcionales a un conteo real —confirmadas, por confirmar, con problema— y el
@@ -21,7 +28,7 @@
 import Link from 'next/link'
 import { C } from '@/shared/components/canon'
 import { plata } from '../services/formato'
-import type { Bloqueo, Certeza, Firmeza } from '../services/vivo'
+import type { Bloqueo, Certeza, Firmeza, Pendientes } from '../services/vivo'
 
 const ROTULO: React.CSSProperties = {
   fontSize: 10, fontWeight: 600, letterSpacing: '.08em', color: C.tenue,
@@ -31,8 +38,8 @@ const CIFRA: React.CSSProperties = {
 }
 
 export function EncabezadoVivo({
-  certeza, firmeza, precioFirme, bloqueos, porQueGate, nAtencion, congelado, sello,
-  hrefBase, vista, accionCongelar,
+  certeza, firmeza, precioFirme, bloqueos, porQueGate, pendientes, congelado, sello,
+  hrefBase, vista, accionCongelar, notaConvertir,
 }: {
   certeza: Certeza
   firmeza: Firmeza
@@ -41,7 +48,8 @@ export function EncabezadoVivo({
   bloqueos: Bloqueo[]
   /** El `porQue` del gate, tal como lo escribe el motor. No se reescribe acá. */
   porQueGate: string
-  nAtencion: number
+  /** El chip y el bloque de pendientes, de una sola función. */
+  pendientes: Pendientes
   congelado: boolean
   /** «v2 congelada · inmutable». Sólo cuando lo está. */
   sello: string | null
@@ -50,6 +58,8 @@ export function EncabezadoVivo({
   vista: 'oferta' | 'costos'
   /** El botón real de congelar, que vive en `AccionesPresupuesto` con su server action. */
   accionCongelar: React.ReactNode
+  /** Por qué todavía no se puede convertir a obra. `null` = se puede, y el botón está en la barra. */
+  notaConvertir: string | null
 }) {
   const q = (extra: string) => `${hrefBase}?vista=${vista}${extra}`
   return (
@@ -73,26 +83,29 @@ export function EncabezadoVivo({
         </span>
       </span>
 
-      <Pendientes f={firmeza} />
+      <BloquePendientes p={pendientes} />
 
       <div style={{ flex: 1 }} />
 
       <Link
         href={q('&atencion=1')}
         data-testid="chip-atencion"
+        title={pendientes.criterio}
         style={{
           fontSize: 12, fontWeight: 600, borderRadius: 6, padding: '8px 12px', whiteSpace: 'nowrap',
-          color: nAtencion ? C.grafito : C.pos,
-          background: nAtencion ? '#FDF3D0' : C.superficieTenue,
-          boxShadow: `inset 0 0 0 1px ${nAtencion ? C.marca : C.linea}`,
+          color: pendientes.atencion ? C.grafito : C.pos,
+          background: pendientes.atencion ? '#FDF3D0' : C.superficieTenue,
+          boxShadow: `inset 0 0 0 1px ${pendientes.atencion ? C.marca : C.linea}`,
         }}
       >
-        {nAtencion > 0 ? `Necesita tu atención · ${nAtencion}` : 'Nada pendiente'}
+        {/* EL CHIP DICE QUÉ CUENTA. «Necesita tu atención · 26» no distingue 26 planos por medir de
+            26 decisiones de alcance, que es la diferencia entre una semana y una llamada. */}
+        {pendientes.atencionResumen}
       </Link>
 
       <EstadoDeEnvio
         congelado={congelado} sello={sello} bloqueos={bloqueos} accion={accionCongelar} q={q}
-        porQue={porQueGate}
+        porQue={porQueGate} notaConvertir={notaConvertir}
       />
     </div>
   )
@@ -129,22 +142,40 @@ function BarraCerteza({ c }: { c: Certeza }) {
   )
 }
 
-/** Lo que falta se CUENTA; su plata se suma sólo cuando existe, y lo que no se midió se declara. */
-function Pendientes({ f }: { f: Firmeza }) {
+/**
+ * LO QUE TODAVÍA PUEDE MOVER EL PRECIO — y en qué dirección.
+ *
+ * Las dos direcciones se dicen porque no son lo mismo: lo que está adentro sin decidir puede RESTAR
+ * cuando alguien decida, y lo que no se puede valorizar puede SUMAR cuando se pueda. Un solo número
+ * las taparía, y el que cotiza necesita saber para qué lado se mueve.
+ */
+function BloquePendientes({ p }: { p: Pendientes }) {
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 260 }} title={p.criterio}>
       <span style={ROTULO}>DEPENDE DE PENDIENTES</span>
-      <span style={{ ...CIFRA, color: f.pendientes ? C.neg : C.pos }} data-testid="pendientes">
-        {f.pendientes === 0
+      <span style={{ ...CIFRA, color: p.total ? C.warn : C.pos }} data-testid="pendientes">
+        {p.total === 0
           ? 'nada pendiente'
-          : `${f.pendientes} ${f.pendientes === 1 ? 'partida sin importe' : 'partidas sin importe'}`}
+          : `${p.total} ${p.total === 1 ? 'partida' : 'partidas'}`}
       </span>
-      {f.pendientes > 0 && (
-        <span style={{ fontSize: 10.5, color: C.tenue }}>
-          {f.montoPendienteConocido !== null && `${plata(f.montoPendienteConocido)} conocidos`}
-          {f.montoPendienteConocido !== null && f.pendientesSinMonto > 0 && ' · '}
+      {p.total > 0 && (
+        <span style={{ fontSize: 10.5, color: C.tenue, lineHeight: 1.45 }} data-testid="pendientes-detalle">
+          {p.sinAlcance > 0 && (
+            <>
+              {p.sinAlcance} adentro sin alcance declarado
+              {/* El monto es AL COSTO: es lo que saldría del costo directo si se excluyeran. */}
+              {p.montoEnRiesgo !== null && ` (${plata(p.montoEnRiesgo)} de costo que podría salir)`}
+            </>
+          )}
+          {p.sinAlcance > 0 && p.sinValorizar > 0 && ' · '}
+          {p.sinValorizar > 0 && (
+            <>
+              {p.sinValorizar} sin valorizar
+              {p.montoPorSumar !== null && ` (${plata(p.montoPorSumar)} conocidos por sumar)`}
+            </>
+          )}
           {/* Un hueco sin medir no se puede llamar chico: se dice que no se sabe. */}
-          {f.pendientesSinMonto > 0 && `${f.pendientesSinMonto} sin medir`}
+          {p.sinMedir > 0 && ` · ${p.sinMedir} sin medir`}
         </span>
       )}
     </span>
@@ -157,7 +188,7 @@ function Pendientes({ f }: { f: Firmeza }) {
  * y moverlos sin dejar rastro habría dejado esa prueba mirando un lugar vacío.
  */
 function EstadoDeEnvio({
-  congelado, sello, bloqueos, accion, q, porQue,
+  congelado, sello, bloqueos, accion, q, porQue, notaConvertir,
 }: {
   congelado: boolean
   sello: string | null
@@ -165,25 +196,30 @@ function EstadoDeEnvio({
   accion: React.ReactNode
   q: (extra: string) => string
   porQue: string
+  notaConvertir: string | null
 }) {
   if (congelado) {
     return (
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 300 }} data-testid="sello-congelada">
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 320 }} data-testid="sello-congelada">
         <span style={{ fontSize: 12.5, fontWeight: 600, color: C.pos }}>{sello}</span>
         <span style={{ fontSize: 11.5, color: C.apagado, lineHeight: 1.5 }}>
           Inmutable. Un cambio de alcance abre una revisión.
         </span>
+        <NotaConvertir texto={notaConvertir} />
       </span>
     )
   }
   if (bloqueos.length === 0) {
     return (
       <span
-        style={{ display: 'flex', alignItems: 'center', gap: 14 }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 340 }}
         data-testid="gate-freeze" data-ready="1"
       >
-        <span style={{ fontSize: 12, color: C.pos, whiteSpace: 'nowrap' }}>Listo para enviar</span>
-        {accion}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span style={{ fontSize: 12, color: C.pos, whiteSpace: 'nowrap' }}>Listo para enviar</span>
+          {accion}
+        </span>
+        <NotaConvertir texto={notaConvertir} />
       </span>
     )
   }
@@ -211,6 +247,26 @@ function EstadoDeEnvio({
           {b.entidad}{b.detalle ? ` — ${b.detalle}` : ''}
         </Link>
       ))}
+      <NotaConvertir texto={notaConvertir} />
+    </span>
+  )
+}
+
+/**
+ * POR QUÉ TODAVÍA NO SE CONVIERTE A OBRA — texto, no un botón gris.
+ *
+ * «Convertir a obra» se dibujaba apagado con el motivo escondido en el `title`: había que pasar por
+ * encima de un control muerto para enterarse de qué faltaba. El contrato lo prohíbe, y el motivo ya
+ * existía —`puedeConvertir()` lo devuelve—; lo único que faltaba era escribirlo donde se lee.
+ */
+function NotaConvertir({ texto }: { texto: string | null }) {
+  if (!texto) return null
+  return (
+    <span
+      data-testid="nota-convertir"
+      style={{ fontSize: 11, color: C.tenue, lineHeight: 1.45 }}
+    >
+      Convertir a obra — {texto}
     </span>
   )
 }

@@ -20,7 +20,7 @@
 // Ninguna función de acá devuelve `0` para decir «no sé». Las pendientes se CUENTAN; su plata se
 // suma sólo cuando existe, y cuando no existe se declara cuántas quedaron sin medir.
 
-import type { CascadaMotor, Cola, Gate, PartidaDelMotor } from './cotizadorPuente.ts'
+import type { CascadaMotor, Cola, Gate, IssueCola, PartidaDelMotor } from './cotizadorPuente.ts'
 import type { Escalon } from './cascada.ts'
 
 /**
@@ -186,6 +186,135 @@ export function precioFirmeDe(cascada: CascadaMotor | null, f: Firmeza): number 
   const v = cascada?.ventaSinIva
   if (v === null || v === undefined || !Number.isFinite(v) || v === 0) return null
   return v
+}
+
+/** La traducción de los tipos de issue del motor. UNA sola, para que el chip y la cola coincidan. */
+export const ROTULO_ISSUE: Record<string, string> = {
+  FALTA_DATO: 'sin dato',
+  CONFLICTO: 'en conflicto',
+  AMBIGUO: 'ambiguas',
+  SIN_PRECIO: 'sin precio',
+  PRECIO_DESACTUALIZADO: 'con precio viejo',
+  SUBCONTRATO_SIN_PRECIO: 'con subcontrato sin precio',
+  OUTLIER_PENDING: 'con un cambio atípico sin resolver',
+  COMMERCIAL_DECISION: 'con una decisión comercial abierta',
+  UNIDAD_INCOMPATIBLE: 'con unidad incompatible',
+  EXCLUSION_CON_COMPUTO: 'excluidas pero computadas',
+  SIN_PARTIDA: 'sin partida',
+  CANTIDAD_CRITICA_AUSENTE: 'sin cómputo',
+  FUGA_ENTRE_CLIENTES: 'con dato de otro cliente',
+  SIN_PRECIO_CALCULABLE: 'sin precio calculable',
+  SIN_ALCANCE: 'sin alcance declarado',
+}
+
+export interface Pendientes {
+  /**
+   * Lo que la COLA DEL MOTOR tiene para mirar. Es el número del chip porque es lo que el chip abre:
+   * si el chip contara otra cosa, apretarlo llevaría a una lista de otro tamaño.
+   */
+  atencion: number
+  /** QUÉ cuenta ese número. Un «26» pelado al lado de «nada pendiente» es una contradicción. */
+  atencionResumen: string
+
+  /**
+   * ═══ LA SEMÁNTICA ÚNICA: LO QUE TODAVÍA PUEDE MOVER EL PRECIO ═══
+   *
+   * Se eligió ésta y no «lo que falta sumar», que era la de antes y produjo la contradicción que el
+   * dueño marcó: el encabezado decía «26 necesitan tu atención» y al lado «nada pendiente».
+   *
+   * Las dos eran ciertas con la definición vieja y juntas no significaban nada. Una partida que
+   * nadie declaró dentro del alcance YA ESTÁ sumada en el precio —`cotizacion_cascada` suma todos
+   * los subtotales y no sabe nada de alcance—, así que resolverla puede RESTAR. Una partida sin
+   * valorizar todavía no está, así que resolverla puede SUMAR. Las dos mueven el precio, y por eso
+   * las dos son pendientes: la dirección del movimiento es lo único que cambia.
+   */
+  total: number
+  /** Están adentro del precio sin que nadie decidiera que van. Resolverlas puede RESTAR. */
+  sinAlcance: number
+  /** No están en el precio porque no se pueden valorizar. Resolverlas puede SUMAR. */
+  sinValorizar: number
+  /** Lo que las «sin alcance» pesan HOY dentro del precio, al costo. `null` si ninguna lo trae. */
+  montoEnRiesgo: number | null
+  /** Lo conocido de las «sin valorizar»: el precio de subcontrato que la vista no valoriza. */
+  montoPorSumar: number | null
+  /** Cuántas pendientes no traen monto alguno. De ésas no se sabe cuánto mueven. */
+  sinMedir: number
+  /** El criterio, para que el número se pueda discutir sin abrir el código. */
+  criterio: string
+}
+
+const CRITERIO_PENDIENTES = 'Pendiente = partida cuya resolución todavía puede mover el precio: las'
+  + ' que están adentro sin alcance declarado (pueden restar) y las que no se pueden valorizar'
+  + ' (pueden sumar). Los montos son al costo, no al precio de venta.'
+
+/**
+ * LAS DOS CIFRAS DEL ENCABEZADO, DE UNA SOLA FUNCIÓN.
+ *
+ * El chip de atención y el bloque «depende de pendientes» salían de dos lugares distintos —la cola
+ * del motor y un conteo de filas— con dos definiciones distintas de «pendiente», y se contradecían
+ * en pantalla. Ahora salen de acá: el chip sigue contando la cola porque es lo que abre, pero su
+ * rótulo se arma con el MISMO vocabulario, y el resto se cuenta de las filas con una sola regla.
+ */
+export function pendientesDe(
+  partidas: readonly PartidaDelMotor[], cola: Pick<Cola, 'issues' | 'total'>,
+): Pendientes {
+  const dentro = partidas.filter((p) => !estaExcluida(p))
+  const sinAlcance = dentro.filter((p) => p.alcance !== 'INCLUIDO' && !bloqueaElPrecio(p))
+  const sinValorizar = dentro.filter((p) => bloqueaElPrecio(p))
+
+  const enRiesgo = sinAlcance
+    .map((p) => p.subtotal)
+    .filter((v): v is number => v !== null && Number.isFinite(v))
+  const porSumar = sinValorizar
+    .map((p) => p.precioSubcontrato)
+    .filter((v): v is number => v !== null && Number.isFinite(v))
+
+  return {
+    atencion: cola.total,
+    atencionResumen: resumenDeCola(cola),
+    total: sinAlcance.length + sinValorizar.length,
+    sinAlcance: sinAlcance.length,
+    sinValorizar: sinValorizar.length,
+    montoEnRiesgo: enRiesgo.length === 0 ? null : enRiesgo.reduce((a, b) => a + b, 0),
+    montoPorSumar: porSumar.length === 0 ? null : porSumar.reduce((a, b) => a + b, 0),
+    sinMedir: (sinAlcance.length - enRiesgo.length) + (sinValorizar.length - porSumar.length),
+    criterio: CRITERIO_PENDIENTES,
+  }
+}
+
+/**
+ * QUÉ HAY EN LA COLA, EN UNA LÍNEA.
+ *
+ * Un solo tipo se nombra entero («26 sin alcance declarado»); varios se resumen por los dos más
+ * numerosos. Nunca se publica un número sin decir de qué es.
+ */
+export function resumenDeCola(cola: Pick<Cola, 'issues' | 'total'>): string {
+  if (cola.total === 0) return 'Nada pendiente'
+  const porTipo = new Map<string, number>()
+  for (const i of cola.issues) {
+    const k = claveDeIssue(i)
+    porTipo.set(k, (porTipo.get(k) ?? 0) + 1)
+  }
+  const grupos = [...porTipo.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const nombre = (t: string) => ROTULO_ISSUE[t] ?? t.toLowerCase().replace(/_/g, ' ')
+
+  if (grupos.length === 1) return `${cola.total} ${nombre(grupos[0][0])}`
+  const dos = grupos.slice(0, 2).map(([t, n]) => `${n} ${nombre(t)}`).join(' · ')
+  return `${cola.total} para mirar · ${dos}${grupos.length > 2 ? '…' : ''}`
+}
+
+/**
+ * LA CLAVE CON LA QUE SE AGRUPA UN ISSUE — más fina que su `type`, y sin adivinar.
+ *
+ * El motor emite `FALTA_DATO` tanto para «nadie declaró si esto entra en el alcance» como para
+ * cualquier otro dato ausente, así que el rótulo salía «26 sin dato»: cierto y sin filo. Lo que
+ * distingue el caso es la ACCIÓN RECOMENDADA que el propio motor adjunta —`include_scope`—, no una
+ * heurística sobre el texto del detalle. Si el motor deja de mandarla, esto vuelve a decir «sin
+ * dato»: se degrada a menos preciso, nunca a incorrecto.
+ */
+export function claveDeIssue(i: Pick<IssueCola, 'type' | 'recommended_action'>): string {
+  if (i.type === 'FALTA_DATO' && i.recommended_action === 'include_scope') return 'SIN_ALCANCE'
+  return i.type
 }
 
 /**

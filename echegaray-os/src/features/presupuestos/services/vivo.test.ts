@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import type { Cola, Gate, PartidaDelMotor } from './cotizadorPuente.ts'
 import {
   bloqueaElPrecio, bloqueosDeEnvio, certezaDe, estadoDeFila, firmezaDe, huecosDe, partirCascada,
-  precioFirmeDe,
+  pendientesDe, precioFirmeDe, resumenDeCola,
 } from './vivo.ts'
 import type { Escalon } from './cascada.ts'
 
@@ -266,6 +266,131 @@ describe('los bloqueos llevan a su fila', () => {
   })
 })
 
+describe('el chip y los pendientes cuentan lo mismo (corrección del dueño, 03/09/2026)', () => {
+  // ═══ LA CONTRADICCIÓN QUE ESTE BLOQUE IMPIDE ═══
+  //
+  // En COT-2026-001 el encabezado publicaba, a diez centímetros de distancia, «Necesita tu atención
+  // · 26» y «DEPENDE DE PENDIENTES: nada pendiente». Las dos eran ciertas con SU definición: una
+  // contaba la cola del motor, la otra las filas sin importe. Juntas no significaban nada.
+  //
+  // La semántica elegida es una sola: pendiente = lo que todavía puede MOVER el precio.
+
+  const cola = (tipos: string[]) => ({
+    total: tipos.length,
+    issues: tipos.map((type, i) => ({
+      type, severity: 'MEDIA' as const, entity: `e${i}`, impact: null,
+      evidence: null, recommended_action: null, detalle: null, bloquea: false, porQueBloquea: null,
+    })),
+  })
+
+  test('una partida sin alcance declarado ES pendiente aunque esté valorizada', () => {
+    // Está SUMADA en el precio —la cascada no sabe nada de alcance— así que resolverla puede RESTAR.
+    const p = pendientesDe([partida({ alcance: 'POR_DEFINIR', subtotal: 520_000 })], cola(['FALTA_DATO']))
+    assert.equal(p.total, 1, 'con la definición vieja esto daba 0 y contradecía al chip')
+    assert.equal(p.sinAlcance, 1)
+    assert.equal(p.sinValorizar, 0)
+    assert.equal(p.montoEnRiesgo, 520_000, 'lo que saldría del costo directo si se excluyera')
+  })
+
+  test('el caso real: 26 sin alcance no pueden convivir con «nada pendiente»', () => {
+    const partidas = Array.from({ length: 26 }, (_, i) =>
+      partida({ id: `p${i}`, alcance: 'POR_DEFINIR', subtotal: 1_000_000 }))
+    const p = pendientesDe(partidas, cola(Array(26).fill('FALTA_DATO')))
+    assert.equal(p.atencion, 26)
+    assert.equal(p.total, 26, 'el chip y el bloque tienen que decir el mismo número acá')
+    assert.match(p.atencionResumen, /26 sin dato/)
+  })
+
+  test('una partida INCLUIDA y valorizada no es pendiente: nadie tiene nada que decidir', () => {
+    const p = pendientesDe([partida({ alcance: 'INCLUIDO' })], cola([]))
+    assert.equal(p.total, 0)
+    assert.equal(p.atencion, 0)
+    assert.equal(p.atencionResumen, 'Nada pendiente')
+  })
+
+  test('las dos direcciones se cuentan por separado: una puede restar, la otra sumar', () => {
+    const p = pendientesDe([
+      partida({ id: 'a', alcance: 'POR_DEFINIR', subtotal: 500_000 }),
+      partida({ id: 'b', alcance: 'INCLUIDO', subtotal: null, cantidad: null }),
+      partida({ id: 'c', alcance: 'INCLUIDO', subtotal: null, subcontratada: true, precioSubcontrato: 8_500_000 }),
+    ], cola(['FALTA_DATO', 'CANTIDAD_CRITICA_AUSENTE', 'SUBCONTRATO_SIN_PRECIO']))
+    assert.equal(p.sinAlcance, 1)
+    assert.equal(p.sinValorizar, 2)
+    assert.equal(p.total, 3)
+    assert.equal(p.montoEnRiesgo, 500_000)
+    assert.equal(p.montoPorSumar, 8_500_000)
+    assert.equal(p.sinMedir, 1, 'la que no trae ni cantidad ni precio')
+  })
+
+  test('una excluida no es pendiente: la decisión ya se tomó', () => {
+    const p = pendientesDe([partida({ alcance: 'EXCLUIDO', subtotal: null })], cola([]))
+    assert.equal(p.total, 0)
+  })
+
+  test('el criterio viaja con las dos cifras: sin él el número no se puede discutir', () => {
+    const p = pendientesDe([], cola([]))
+    assert.match(p.criterio, /puede mover el precio/)
+    assert.match(p.criterio, /al costo/)
+  })
+
+  test('nada se cuenta dos veces: sin alcance y sin valorizar son conjuntos disjuntos', () => {
+    // Una fila sin alcance Y sin valorizar cae en «sin valorizar»: primero hay que poder medirla.
+    const p = pendientesDe(
+      [partida({ alcance: 'POR_DEFINIR', cantidad: null, subtotal: null })], cola(['FALTA_DATO']),
+    )
+    assert.equal(p.sinAlcance + p.sinValorizar, p.total)
+    assert.equal(p.sinValorizar, 1)
+    assert.equal(p.sinAlcance, 0)
+  })
+})
+
+describe('el chip dice QUÉ cuenta', () => {
+  const issues = (tipos: string[]) => ({
+    total: tipos.length,
+    issues: tipos.map((type, i) => ({
+      type, severity: 'MEDIA' as const, entity: `e${i}`, impact: null,
+      evidence: null, recommended_action: null, detalle: null, bloquea: false, porQueBloquea: null,
+    })),
+  })
+
+  test('un solo tipo se nombra entero', () => {
+    assert.equal(resumenDeCola(issues(['CANTIDAD_CRITICA_AUSENTE', 'CANTIDAD_CRITICA_AUSENTE'])), '2 sin cómputo')
+  })
+
+  test('varios tipos se resumen por los dos más numerosos, sin esconder el total', () => {
+    const r = resumenDeCola(issues([
+      'CANTIDAD_CRITICA_AUSENTE', 'CANTIDAD_CRITICA_AUSENTE', 'SIN_PRECIO', 'CONFLICTO',
+    ]))
+    assert.match(r, /^4 para mirar/)
+    assert.match(r, /2 sin cómputo/)
+  })
+
+  test('el FALTA_DATO del alcance se nombra por lo que es, no «sin dato»', () => {
+    // Lo distingue la acción que el MOTOR recomienda, no el texto del detalle.
+    const cola = {
+      total: 26,
+      issues: Array.from({ length: 26 }, (_, i) => ({
+        type: 'FALTA_DATO', severity: 'MEDIA' as const, entity: `e${i}`, impact: null,
+        evidence: null, recommended_action: 'include_scope', detalle: null,
+        bloquea: false, porQueBloquea: null,
+      })),
+    }
+    assert.equal(resumenDeCola(cola), '26 sin alcance declarado')
+  })
+
+  test('un FALTA_DATO que NO es de alcance sigue siendo «sin dato»', () => {
+    assert.equal(resumenDeCola(issues(['FALTA_DATO'])), '1 sin dato')
+  })
+
+  test('un tipo que la pantalla no conoce se muestra igual, no se traga', () => {
+    assert.match(resumenDeCola(issues(['ALGO_NUEVO_DEL_MOTOR'])), /algo nuevo del motor/)
+  })
+
+  test('la cola vacía no dice un número', () => {
+    assert.equal(resumenDeCola(issues([])), 'Nada pendiente')
+  })
+})
+
 describe('MUTACIÓN — el control puede dar rojo', () => {
   // Si esto pasara en verde con la versión mentirosa, los tests de arriba no estarían controlando
   // nada. Se reimplementa `firmezaDe` con el defecto clásico —`?? 0`— y se verifica que los mismos
@@ -294,5 +419,24 @@ describe('MUTACIÓN — el control puede dar rojo', () => {
     const cascada = { estado: 'ok', costoDirecto: 520_000, ventaSinIva: 874_640, ventaFinal: null, iva: null, coeficienteSinIva: 1.682, porQue: null }
     assert.equal(precioFirmeDe(cascada, bueno), 874_640)
     assert.equal(bueno.pendientesSinMonto, 1, 'el bueno declara el hueco que el malo esconde')
+  })
+
+  test('un chip que contara sólo lo que falta SUMAR volvería a contradecir al de atención', () => {
+    // Ésta es la mutación de la corrección del 03/09: la definición vieja de «pendiente».
+    const vieja = (ps: PartidaDelMotor[]) => ps.filter((p) => p.subtotal === null).length
+    const partidas = Array.from({ length: 26 }, (_, i) =>
+      partida({ id: `p${i}`, alcance: 'POR_DEFINIR', subtotal: 1_000_000 }))
+    const cola = {
+      total: 26,
+      issues: partidas.map((_, i) => ({
+        type: 'FALTA_DATO', severity: 'MEDIA' as const, entity: `e${i}`, impact: null,
+        evidence: null, recommended_action: null, detalle: null, bloquea: false, porQueBloquea: null,
+      })),
+    }
+    const bueno = pendientesDe(partidas, cola)
+    assert.equal(vieja(partidas), 0, 'la definición vieja publicaba «nada pendiente»')
+    assert.equal(bueno.atencion, 26)
+    assert.notEqual(vieja(partidas), bueno.atencion, 'y ahí estaba la contradicción')
+    assert.equal(bueno.total, bueno.atencion)
   })
 })
