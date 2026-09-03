@@ -156,10 +156,21 @@ export async function imputarCostoReal({ query }, c, { conGranularidad = true } 
     'unidad', 'cantidad', 'precio_unitario', 'monto', 'moneda', 'fecha', 'proveedor', 'comprobante',
     'fuente', 'fuente_id', 'imputado_por', ...(conGranularidad ? ['granularidad', 'frente_texto', 'nota'] : [])]
   const vals = cols.map((_, i) => (i === 10 ? "coalesce($11,'ARS')" : `$${i + 1}`)).join(',')
+  // IDEMPOTENCIA CON REPARACIÓN. Si la fila ya existe se actualiza SÓLO lo que declara la precisión
+  // de la imputación. Sin esto, una carga hecha antes de aplicar la migración quedaría para siempre
+  // con la granularidad por default —«OBRA» para una fila que sí tiene frente— y volver a correr el
+  // cargador no la arreglaría: `do nothing` no arregla nada. Los montos NO se tocan: si un monto
+  // cambió en la fuente, eso es una fila nueva o una corrección, no un update silencioso.
+  const conflicto = "on conflict (fuente, fuente_id, coalesce(cotizacion_partida_id::text, '—'),"
+    + " coalesce(recurso_codigo, '—')) where fuente_id is not null"
+  const alConflicto = conGranularidad
+    ? `${conflicto} do update set granularidad = excluded.granularidad,`
+      + ' frente_texto = excluded.frente_texto, nota = excluded.nota'
+    : 'on conflict do nothing'
   const filas = await query(
     `insert into public.obra_partida_costo_real (${cols.join(', ')})
      values (${vals})
-     on conflict do nothing
+     ${c.fuenteId ? alConflicto : 'on conflict do nothing'}
      returning id`, [...base, ...extra])
   return filas[0] ?? null
 }

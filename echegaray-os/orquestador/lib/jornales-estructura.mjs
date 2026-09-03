@@ -187,7 +187,7 @@ const valor = (c) => (c && c.valor != null ? String(c.valor).trim() : '')
 const crudo = (c) => (c && c.valor != null ? String(c.valor) : '')
 
 /** Busca en una fila la primera columna cuyo rótulo matchea `re`. */
-function columnaPorRotulo(grid, fila, re, maxCol = 60) {
+export function columnaPorRotulo(grid, fila, re, maxCol = 60) {
   const r = grid.filas?.[fila] || []
   for (let j = 0; j < Math.min(r.length, maxCol); j++) {
     if (re.test(valor(r[j]))) return j

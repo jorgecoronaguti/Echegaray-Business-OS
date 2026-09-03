@@ -147,6 +147,24 @@ function informar(titulo, r) {
   return c
 }
 
+/** Los rótulos que no encontraron obra: es la lista de trabajo para el dueño —cada uno se resuelve
+ *  agregando UN alias— y mientras tanto es plata que no está en ninguna obra. */
+function informarSinAlias(excluidas) {
+  const porRotulo = new Map()
+  for (const e of excluidas.filter((x) => x.excluida === 'SIN_OBRA_CANONICA')) {
+    const k = (e.rotulo ?? '').trim() || '(sin rótulo)'
+    const a = porRotulo.get(k) ?? { rotulo: k, n: 0, monto: 0 }
+    a.n++
+    a.monto += Number(e.monto) || 0
+    porRotulo.set(k, a)
+  }
+  const lista = [...porRotulo.values()].sort((a, b) => b.monto - a.monto)
+  if (!lista.length) return
+  console.log('\n  RÓTULOS SIN OBRA CANÓNICA (cada uno se resuelve con un alias en public.obra_alias)')
+  for (const r of lista.slice(0, 15)) console.log(`    «${r.rotulo}» ${r.n} fila(s) ${$(r.monto)}`)
+  if (lista.length > 15) console.log(`    … y ${lista.length - 15} rótulo(s) más`)
+}
+
 function informarBloques(bloques) {
   const conTestigo = bloques.filter((b) => b.testigo != null)
   const malos = conTestigo.filter((b) => !b.concuerda)
@@ -158,6 +176,10 @@ function informarBloques(bloques) {
   }
   if (malos.length > 12) console.log(`    … y ${malos.length - 12} bloque(s) más con diferencia`)
   if (!malos.length && conTestigo.length) console.log('    ✓ todos los bloques con testigo coinciden al peso')
+  const os = conTestigo.reduce((a, b) => a + b.leido, 0)
+  const pl = conTestigo.reduce((a, b) => a + b.testigo, 0)
+  const abs = malos.reduce((a, b) => a + Math.abs(b.diferencia), 0)
+  console.log(`    sobre los bloques CON testigo: OS ${$(os)} · planilla ${$(pl)} · neto ${$(os - pl)} · en valor absoluto ${$(abs)}`)
   const dup = bloques.filter((b) => b.fechasDuplicadas > 0)
   if (dup.length) console.log(`    ⚠ ${dup.length} bloque(s) con fechas compartidas con otro bloque`)
 }
@@ -188,6 +210,7 @@ async function main() {
     await cliente.query('begin')
     for (const [titulo, r] of partes) {
       informar(titulo, r)
+      informarSinAlias(r.excluidas)
       if (r.bloques) informarBloques(r.bloques)
       for (const f of r.filas) {
         const ins = await imputarCostoReal({ query: q }, f, { conGranularidad })

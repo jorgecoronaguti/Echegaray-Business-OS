@@ -30,7 +30,7 @@
 // motivo por el que no entra. La normalización de los rótulos NO se reimplementa: se inyecta, y en
 // producción la hace `public.norm_obra` — que es la que ya usan `obra_costo_real` y el resto del OS.
 
-import { detectarBloques } from './jornales-estructura.mjs'
+import { detectarBloques, trabajadoresDeBloque, columnaPorRotulo } from './jornales-estructura.mjs'
 import { costoPorObra, testigoTotalMo } from './jornales-por-obra.mjs'
 
 /** Los tipos que acepta la tabla. Espejo de `cotizacion_partida_composicion.tipo`, que es contra
@@ -56,7 +56,7 @@ export const EXCLUSION = Object.freeze({
   SIN_OBRA_CANONICA: 'SIN_OBRA_CANONICA',
   NO_ES_OBRA: 'NO_ES_OBRA',
   SIN_VALUAR: 'SIN_VALUAR',
-  SIN_HORAS: 'SIN_HORAS',
+  SIN_MONTO: 'SIN_MONTO',
 })
 
 /**
@@ -210,10 +210,15 @@ export function resolverObraDeJornal({ cliente, obra }, { alias, norm } = {}) {
  * entra a una cotización. Quien compare contra un costo cotizado CON cargas tiene que saberlo — por
  * eso viaja escrito en `nota`, no sólo en la documentación.
  */
-export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente }) {
-  if (f.jornal == null) return { excluida: EXCLUSION.SIN_VALUAR, monto: 0 }
-  if (!(f.horas > 0)) return { excluida: EXCLUSION.SIN_HORAS, monto: f.jornal }
-  if (!obraId) return { excluida: EXCLUSION.SIN_OBRA_CANONICA, monto: f.jornal }
+export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSemana = null, valorHora = null }) {
+  // EL MONTO ES «TOTAL SEMANA», LA CELDA QUE LA PLANILLA YA CALCULÓ, y no horas × valor hora.
+  // En «JORNALES 25» la fórmula del total es `=K5*L5+SUM(J5)*M5-N5`: la sexta columna de fecha se
+  // paga a OTRA tarifa. Recalcular el producto ahí no da «casi lo mismo», da un número más chico y
+  // sin aviso — se midió $0 contra $1.500.800 de la propia planilla en el primer bloque de 2025.
+  const monto = totalSemana != null ? totalSemana : f.jornal
+  if (monto == null) return { excluida: EXCLUSION.SIN_VALUAR, monto: 0 }
+  if (monto === 0) return { excluida: EXCLUSION.SIN_MONTO, monto: 0 }
+  if (!obraId) return { excluida: EXCLUSION.SIN_OBRA_CANONICA, monto }
   return {
     fila: {
       obraId,
@@ -223,9 +228,13 @@ export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente }) {
       tipo: TIPO.MANO_DE_OBRA,
       recursoNombre: f.persona,
       unidad: 'HH',
+      // `cantidad × precioUnitario` NO tiene por qué dar `monto`, y eso es un HECHO de la fuente:
+      // el valor hora es la tarifa base y el total semanal puede incluir horas a otra tarifa. El
+      // que se paga es el total; la tarifa viaja igual porque es lo que se compara contra la
+      // cotización.
       cantidad: f.horas,
-      precioUnitario: f.valorHora,
-      monto: f.jornal,
+      precioUnitario: valorHora ?? f.valorHora,
+      monto,
       moneda: 'ARS',
       fecha: hasta,
       proveedor: null,
@@ -234,7 +243,8 @@ export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente }) {
       // Identidad ESTRUCTURAL (pestaña + bloque + fila de la hoja). El nombre no identifica: hay
       // homónimos en esta planilla y la misma persona cambia de fila en cada quincena.
       fuenteId: `${pestana}|${f.ref}`,
-      nota: `bruto sin cargas sociales · regla=${regla} · rotulo=${f.rotuloCliente || '—'}`
+      nota: `TOTAL SEMANA bruto (banco + efectivo), sin cargas sociales · regla=${regla}`
+        + ` · rotulo=${f.rotuloCliente || '—'}`
         + (frente ? ` · frente=${frente}` : ''),
     },
   }
@@ -270,6 +280,31 @@ export function cuadreDeCarga({ totalFuente, filas = [], excluidas = [] }) {
   }
 }
 
+/** El número de una celda, o null. `gi` puede ser undefined si la fila no se pudo ubicar: eso NO es
+ *  cero, es que no se pudo leer, y quien recibe null decide qué hacer. */
+function celdaNumero(grid, gi, col) {
+  if (gi == null || col == null) return null
+  const c = grid.filas?.[gi]?.[col]
+  const n = c?.numero
+  return typeof n === 'number' && Number.isFinite(n) ? n : null
+}
+
+/**
+ * DÓNDE ESTÁ LA PLATA DE ESTE BLOQUE, POR RÓTULO Y NO POR LETRA.
+ *
+ * «TOTAL SEMANA» está en P en JORNALES 25, en AB en Obreros 26 y en Z en Oficina 26 — tres letras
+ * para el mismo concepto, y ninguna se puede clavar. Se busca el rótulo en la fila del bloque y si
+ * no en la fila 1, igual que `resolverColumnas`.
+ *
+ * EL RÓTULO ES «TOTAL SEMANA» COMPLETO, NUNCA «TOTAL» A SECAS: en JORNALES 25 la columna O se llama
+ * «TOTAL RECIBO» y está ANTES; un `/^total/` la encontraría primero y cargaría el neto de adelanto
+ * en lugar del bruto, sin que nada lo delate.
+ */
+function columnasDePlata(grid, bloque) {
+  const buscar = (re) => columnaPorRotulo(grid, bloque.fila, re) ?? columnaPorRotulo(grid, 0, re)
+  return { totalSemana: buscar(/^total\s*semana\b/i), valorHora: buscar(/^\$\s*hora\b/i) }
+}
+
 /**
  * JORNALES ENTERO → FILAS DE COSTO REAL, BLOQUE POR BLOQUE.
  *
@@ -297,13 +332,22 @@ export function filasDeJornales(grid, { pestana, anio, mapa, alias, norm }) {
     if (!fechas.length) continue
     const desde = fechas[0].iso
     const hasta = fechas[fechas.length - 1].iso
+    const hastaFila = bloques[k + 1]?.fila ?? (grid.filas?.length ?? 0)
     const r = costoPorObra(grid, { desde, hasta, mapa, anio })
     const propias = r.filas.filter((f) => f.bloque === b.fila1)
-    const leido = propias.reduce((a, f) => a + (f.jornal ?? 0), 0)
-    const testigo = testigoTotalMo(grid, b.fila + 1, bloques[k + 1]?.fila ?? (grid.filas?.length ?? 0))
+    // La fila de la GRILLA de cada persona, sin aritmética sobre el offset del rango: el `ref` es la
+    // misma identidad estructural que arma `costoPorObra`.
+    const porRef = new Map(trabajadoresDeBloque(grid, b, { hastaFila }).map((t) => [t.ref, t.fila]))
+    const cols = columnasDePlata(grid, b)
+    const testigo = testigoTotalMo(grid, b.fila + 1, hastaFila)
+    let leido = 0
     for (const f of propias) {
+      const gi = porRef.get(f.ref)
+      const totalSemana = celdaNumero(grid, gi, cols.totalSemana)
+      const valorHora = celdaNumero(grid, gi, cols.valorHora)
+      leido += totalSemana != null ? totalSemana : (f.jornal ?? 0)
       const { obraId, regla, frente } = resolverObraDeJornal({ cliente: f.rotuloCliente, obra: f.obra }, { alias, norm })
-      const r2 = filaDeJornal(f, { pestana, hasta, obraId, regla, frente })
+      const r2 = filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSemana, valorHora })
       if (r2.fila) filas.push(r2.fila)
       else excluidas.push({ ...r2, pestana, bloque: b.fila1, persona: f.persona, rotulo: f.rotuloCliente })
     }

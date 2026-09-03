@@ -7,7 +7,7 @@ import {
   TIPO, GRANULARIDAD, EXCLUSION,
   tipoDeCompra, evaluarCompra, resolverObraDeJornal, filaDeJornal, cuadreDeCarga, filasDeJornales,
 } from './costo-real-partida.mjs'
-import { planilla, txt, MAPA } from './jornales-fixture-por-obra.mjs'
+import { planilla, txt, num, frm, MAPA } from './jornales-fixture-por-obra.mjs'
 
 // La normalización real la hace `public.norm_obra`. Acá se inyecta una equivalente para poder
 // probar las REGLAS sin base: lo que se prueba es el orden de las reglas, no el normalizador.
@@ -124,7 +124,18 @@ test('un jornal se carga con sus horas y su valor hora, y avisa que es BRUTO', (
   assert.equal(fila.fuenteId, 'Obreros 26|b499f501')
   assert.equal(fila.granularidad, GRANULARIDAD.FRENTE)
   assert.equal(fila.frenteTexto, 'Galpon 9')
-  assert.match(fila.nota, /bruto sin cargas sociales/)
+  assert.match(fila.nota, /TOTAL SEMANA bruto \(banco \+ efectivo\), sin cargas sociales/)
+})
+
+test('el TOTAL SEMANA de la planilla le gana al producto recalculado', () => {
+  // Y no es un empate ni «casi lo mismo»: en 2025 el producto no se puede derivar y el jornal sale
+  // null, mientras la planilla tiene el número escrito.
+  const f = { ref: 'b4f5', persona: 'Juan Bazan', rotuloCliente: 'ARCOR', horas: 44, valorHora: null, jornal: null }
+  const { fila } = filaDeJornal(f, { pestana: 'JORNALES 25', hasta: '2025-01-10', obraId: 'arcor', regla: 'obra', frente: null, totalSemana: 132000, valorHora: 3300 })
+  assert.equal(fila.monto, 132000)
+  assert.equal(fila.precioUnitario, 3300)
+  // cantidad × precioUnitario ≠ monto es un HECHO de la fuente, no un error: hay horas a otra tarifa.
+  assert.notEqual(fila.cantidad * fila.precioUnitario, fila.monto)
 })
 
 test('una persona sin valor hora no se carga en 0: se declara sin valuar', () => {
@@ -159,16 +170,28 @@ test('el cuadre da ROJO si se pierde plata en el camino — la mutación que lo 
 const COLS_2025 = { nombre: 'B', categoria: 'D', dia: 'F', horas: 'N', vh: 'O', total: 'P', cliente: 'Q', obra: null }
 const COLS_2026 = { nombre: 'B', categoria: 'D', dia: 'F', horas: 'Z', vh: 'AA', total: 'AB', cliente: 'AC', obra: 'AD' }
 
-test('layout 2025 (un solo rótulo en Q): cada persona sale con su obra y su jornal', () => {
+test('layout 2025 calcado del archivo: el total no se puede recalcular y se lee de la planilla', () => {
+  // La fórmula real es `=K5*L5+SUM(J5)*M5-N5` (la sexta columna de fecha va a otra tarifa) y `O` se
+  // llama «TOTAL RECIBO», que es el neto de adelanto y está ANTES de «TOTAL SEMANA». Un `/^total/`
+  // se quedaría con el recibo y cargaría de menos sin que nada lo delate. Éste es el defecto que la
+  // primera corrida real destapó: 534 filas sin valuar y 72 bloques leyendo $0.
   const p = planilla()
-  // El bloque real de 2025 rotula esa columna «Obra», no «CLIENTE»: por eso se arma a mano.
-  p.cruda({ A: txt('n'), B: txt('Obrero'), F: txt('6/1'), G: txt('7/1'), H: txt('8/1'), Q: txt('Obra') })
-  p.persona({ nombre: 'Quiroga Sebastian', horas: [8, 8, 8], vh: 5000, cliente: 'LA ESTRELLA', cols: COLS_2025 })
-  p.persona({ nombre: 'Molina Juan', horas: [8, 0, 8], vh: 4000, cliente: 'MESSINA', cols: COLS_2025 })
-  const r = filasDeJornales(p.grid('JORNALES 25'), { pestana: 'JORNALES 25', anio: 2025, mapa: MAPA, alias: ALIAS, norm })
-  assert.equal(r.filas.length, 2)
-  assert.deepEqual(r.filas.map((f) => [f.obraId, f.monto, f.cantidad]), [['la-estrella', 120000, 24], ['messina', 64000, 16]])
-  assert.equal(r.filas[0].fecha, '2025-01-08')
+  p.cruda({
+    B: txt('OBRERO'), K: txt('DIAS / HORAS'), L: txt('$ HORA'), N: txt('ADELANTO'),
+    O: txt('TOTAL RECIBO'), P: txt('TOTAL SEMANA'), Q: txt('OBRA'),
+  })
+  p.cruda({ A: txt('x'), B: txt('Obrero'), E: txt('6/1'), F: txt('7/1'), G: txt('8/1'), H: txt('9/1'), I: txt('10/1') })
+  p.cruda({
+    A: num(1), B: txt('Juan Bazan'), E: num(8), F: num(8), G: num(8), H: num(8), I: num(8),
+    K: frm('=SUM(E3:J3)', 40), L: num(3300), N: num(10000),
+    O: frm('=K3*L3+SUM(J3)*M3-N3', 122000), P: frm('=N3+O3', 132000), Q: txt('ARCOR'),
+  })
+  const r = filasDeJornales(p.grid('JORNALES 25'), { pestana: 'JORNALES 25', anio: 2025, mapa: MAPA, alias: new Map([['arcor', 'arcor']]), norm })
+  assert.equal(r.filas.length, 1)
+  assert.equal(r.filas[0].monto, 132000)
+  assert.equal(r.filas[0].precioUnitario, 3300)
+  assert.equal(r.filas[0].obraId, 'arcor')
+  assert.equal(r.filas[0].fecha, '2025-01-10')
   // Un solo rótulo NO inventa un frente: cliente y obra son la misma columna.
   assert.equal(r.filas[0].granularidad, GRANULARIDAD.OBRA)
 })
