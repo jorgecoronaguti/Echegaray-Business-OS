@@ -4,6 +4,7 @@
 //   node orquestador/scripts/costo-real-cargar.mjs                      # simula y no escribe
 //   node orquestador/scripts/costo-real-cargar.mjs --aplicar
 //   node orquestador/scripts/costo-real-cargar.mjs --fuente jornales --obra la-estrella --aplicar
+//   node orquestador/scripts/costo-real-cargar.mjs --rehacer --aplicar   # borra lo suyo y recarga
 //
 // ═══ QUÉ ESCRIBE Y QUÉ NO ═══
 //
@@ -51,7 +52,12 @@ function argumentos(argv) {
   }
   const fuente = typeof a.fuente === 'string' ? a.fuente : 'todo'
   if (!['todo', 'compras', 'jornales'].includes(fuente)) throw new Error('--fuente: todo | compras | jornales')
-  return { fuente, obra: typeof a.obra === 'string' ? a.obra : null, aplicar: a.aplicar === true }
+  return {
+    fuente,
+    obra: typeof a.obra === 'string' ? a.obra : null,
+    aplicar: a.aplicar === true,
+    rehacer: a.rehacer === true,
+  }
 }
 
 /** El estado de la tabla, medido. Se llama antes y después: la evidencia es el efecto. */
@@ -208,6 +214,20 @@ async function main() {
     if (opt.fuente !== 'compras') partes.push(['MANO DE OBRA · JORNALES', await desdeJornales(q, opt.obra)])
 
     await cliente.query('begin')
+    if (opt.rehacer) {
+      // BORRA SÓLO LO QUE ESTE CARGADOR ESCRIBIÓ, y nunca una imputación hecha por una persona: una
+      // fila con partida es trabajo humano y no se recalcula desde la fuente. Hace falta cuando
+      // cambia la REGLA de lectura —pasó: el monto dejó de ser «TOTAL SEMANA»—, porque
+      // `on conflict do nothing` deja el monto viejo para siempre.
+      const fuentes = partes.map(([t]) => (t.includes('JORNALES') ? 'jornales' : 'compra_sheet'))
+      const [b] = await q(
+        `with borradas as (
+           delete from public.obra_partida_costo_real
+            where fuente = any($1::text[]) and cotizacion_partida_id is null
+              and ($2::text is null or obra_id = $2) returning monto)
+         select count(*)::int n, coalesce(sum(monto),0)::numeric monto from borradas`, [fuentes, opt.obra])
+      console.log(`\n· --rehacer: ${b.n} fila(s) borradas (${$(b.monto)}) de ${fuentes.join(', ')}`)
+    }
     for (const [titulo, r] of partes) {
       informar(titulo, r)
       informarSinAlias(r.excluidas)

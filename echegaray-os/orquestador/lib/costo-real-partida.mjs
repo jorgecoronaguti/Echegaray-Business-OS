@@ -210,12 +210,23 @@ export function resolverObraDeJornal({ cliente, obra }, { alias, norm } = {}) {
  * entra a una cotización. Quien compare contra un costo cotizado CON cargas tiene que saberlo — por
  * eso viaja escrito en `nota`, no sólo en la documentación.
  */
-export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSemana = null, valorHora = null }) {
-  // EL MONTO ES «TOTAL SEMANA», LA CELDA QUE LA PLANILLA YA CALCULÓ, y no horas × valor hora.
-  // En «JORNALES 25» la fórmula del total es `=K5*L5+SUM(J5)*M5-N5`: la sexta columna de fecha se
-  // paga a OTRA tarifa. Recalcular el producto ahí no da «casi lo mismo», da un número más chico y
-  // sin aviso — se midió $0 contra $1.500.800 de la propia planilla en el primer bloque de 2025.
-  const monto = totalSemana != null ? totalSemana : f.jornal
+export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente, horas = null, valorHora = null }) {
+  // EL MONTO ES HORAS × $ HORA, LAS DOS COLUMNAS QUE LA PLANILLA DECLARA POR RÓTULO.
+  //
+  // NO es «TOTAL SEMANA», y esto se midió antes de decidirlo. En «JORNALES 25» esa columna es
+  // `=ADELANTO + TOTAL RECIBO`: NO incluye lo pagado por BANCO. En el bloque de la fila 445 suma
+  // $710.904 contra $2.284.800 que la propia planilla escribe como TOTAL MO — un tercio. En
+  // «Obreros 26» sí es el bruto, porque ahí la columna se arma distinto. Una misma etiqueta que
+  // cambia de significado entre generaciones no puede ser la definición del costo.
+  //
+  // Contra el TOTAL MO de la planilla, sobre los 69 bloques que lo tienen escrito:
+  //   HORAS × $ HORA      49 bloques exactos · $285,5 M contra $285,6 M del testigo
+  //   TOTAL SEMANA        50 bloques exactos · $279,8 M  (−$5,8 M: le falta el BANCO de 2025)
+  //   BANCO+ADEL+RECIBO   44 bloques exactos · pero en 2026 los rótulos son otros y falla feo
+  // Y además es el concepto correcto: el costo de la mano de obra son horas por tarifa. BANCO,
+  // ADELANTO y EFECTIVO son CÓMO se pagó —percibido—, no cuánto costó.
+  const producto = horas != null && valorHora != null ? horas * valorHora : null
+  const monto = producto != null ? producto : f.jornal
   if (monto == null) return { excluida: EXCLUSION.SIN_VALUAR, monto: 0 }
   if (monto === 0) return { excluida: EXCLUSION.SIN_MONTO, monto: 0 }
   if (!obraId) return { excluida: EXCLUSION.SIN_OBRA_CANONICA, monto }
@@ -228,11 +239,9 @@ export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSe
       tipo: TIPO.MANO_DE_OBRA,
       recursoNombre: f.persona,
       unidad: 'HH',
-      // `cantidad × precioUnitario` NO tiene por qué dar `monto`, y eso es un HECHO de la fuente:
-      // el valor hora es la tarifa base y el total semanal puede incluir horas a otra tarifa. El
-      // que se paga es el total; la tarifa viaja igual porque es lo que se compara contra la
-      // cotización.
-      cantidad: f.horas,
+      // Las tres son coherentes entre sí: cantidad × precioUnitario = monto. Es lo que permite
+      // comparar contra la cotización, que también es HH × costo horario.
+      cantidad: horas ?? f.horas,
       precioUnitario: valorHora ?? f.valorHora,
       monto,
       moneda: 'ARS',
@@ -243,7 +252,7 @@ export function filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSe
       // Identidad ESTRUCTURAL (pestaña + bloque + fila de la hoja). El nombre no identifica: hay
       // homónimos en esta planilla y la misma persona cambia de fila en cada quincena.
       fuenteId: `${pestana}|${f.ref}`,
-      nota: `TOTAL SEMANA bruto (banco + efectivo), sin cargas sociales · regla=${regla}`
+      nota: `horas × $ hora de JORNALES, bruto y SIN cargas sociales · regla=${regla}`
         + ` · rotulo=${f.rotuloCliente || '—'}`
         + (frente ? ` · frente=${frente}` : ''),
     },
@@ -292,9 +301,9 @@ function celdaNumero(grid, gi, col) {
 /**
  * DÓNDE ESTÁ LA PLATA DE ESTE BLOQUE, POR RÓTULO Y NO POR LETRA.
  *
- * «TOTAL SEMANA» está en P en JORNALES 25, en AB en Obreros 26 y en Z en Oficina 26 — tres letras
- * para el mismo concepto, y ninguna se puede clavar. Se busca el rótulo en la fila del bloque y si
- * no en la fila 1, igual que `resolverColumnas`.
+ * «DIAS / HORAS» está en K (2025), V (Obreros 26) y U (Oficina 26); «$ HORA» en L, W y V — el mismo
+ * concepto en tres letras distintas, y ninguna se puede clavar. Se busca el rótulo en la fila del
+ * bloque y si no en la fila 1, igual que `resolverColumnas`.
  *
  * EL RÓTULO ES «TOTAL SEMANA» COMPLETO, NUNCA «TOTAL» A SECAS: en JORNALES 25 la columna O se llama
  * «TOTAL RECIBO» y está ANTES; un `/^total/` la encontraría primero y cargaría el neto de adelanto
@@ -302,7 +311,12 @@ function celdaNumero(grid, gi, col) {
  */
 function columnasDePlata(grid, bloque) {
   const buscar = (re) => columnaPorRotulo(grid, bloque.fila, re) ?? columnaPorRotulo(grid, 0, re)
-  return { totalSemana: buscar(/^total\s*semana\b/i), valorHora: buscar(/^\$\s*hora\b/i) }
+  return {
+    horas: buscar(/^d[ií]as\s*\/\s*horas\b/i),
+    valorHora: buscar(/^\$\s*hora\b/i),
+    // Se sigue ubicando aunque no sea el monto: es lo que se informa cuando hace falta el percibido.
+    totalSemana: buscar(/^total\s*semana\b/i),
+  }
 }
 
 /**
@@ -343,11 +357,11 @@ export function filasDeJornales(grid, { pestana, anio, mapa, alias, norm }) {
     let leido = 0
     for (const f of propias) {
       const gi = porRef.get(f.ref)
-      const totalSemana = celdaNumero(grid, gi, cols.totalSemana)
+      const horas = celdaNumero(grid, gi, cols.horas)
       const valorHora = celdaNumero(grid, gi, cols.valorHora)
-      leido += totalSemana != null ? totalSemana : (f.jornal ?? 0)
+      leido += horas != null && valorHora != null ? horas * valorHora : (f.jornal ?? 0)
       const { obraId, regla, frente } = resolverObraDeJornal({ cliente: f.rotuloCliente, obra: f.obra }, { alias, norm })
-      const r2 = filaDeJornal(f, { pestana, hasta, obraId, regla, frente, totalSemana, valorHora })
+      const r2 = filaDeJornal(f, { pestana, hasta, obraId, regla, frente, horas, valorHora })
       if (r2.fila) filas.push(r2.fila)
       else excluidas.push({ ...r2, pestana, bloque: b.fila1, persona: f.persona, rotulo: f.rotuloCliente })
     }

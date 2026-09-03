@@ -113,7 +113,7 @@ test('cuando nada coincide devuelve null, y no la obra más parecida', () => {
 
 test('un jornal se carga con sus horas y su valor hora, y avisa que es BRUTO', () => {
   const f = { ref: 'b499f501', persona: 'Quiroga Sebastian', rotuloCliente: 'LA ESTRELLA', horas: 80, valorHora: 5000, jornal: 400000 }
-  const { fila } = filaDeJornal(f, { pestana: 'Obreros 26', hasta: '2026-01-15', obraId: 'la-estrella', regla: 'cliente', frente: 'Galpon 9' })
+  const { fila } = filaDeJornal(f, { pestana: 'Obreros 26', hasta: '2026-01-15', obraId: 'la-estrella', regla: 'cliente', frente: 'Galpon 9', horas: 80, valorHora: 5000 })
   assert.equal(fila.monto, 400000)
   assert.equal(fila.cantidad, 80)
   assert.equal(fila.precioUnitario, 5000)
@@ -124,18 +124,21 @@ test('un jornal se carga con sus horas y su valor hora, y avisa que es BRUTO', (
   assert.equal(fila.fuenteId, 'Obreros 26|b499f501')
   assert.equal(fila.granularidad, GRANULARIDAD.FRENTE)
   assert.equal(fila.frenteTexto, 'Galpon 9')
-  assert.match(fila.nota, /TOTAL SEMANA bruto \(banco \+ efectivo\), sin cargas sociales/)
+  assert.match(fila.nota, /bruto y SIN cargas sociales/)
 })
 
-test('el TOTAL SEMANA de la planilla le gana al producto recalculado', () => {
-  // Y no es un empate ni «casi lo mismo»: en 2025 el producto no se puede derivar y el jornal sale
-  // null, mientras la planilla tiene el número escrito.
-  const f = { ref: 'b4f5', persona: 'Juan Bazan', rotuloCliente: 'ARCOR', horas: 44, valorHora: null, jornal: null }
-  const { fila } = filaDeJornal(f, { pestana: 'JORNALES 25', hasta: '2025-01-10', obraId: 'arcor', regla: 'obra', frente: null, totalSemana: 132000, valorHora: 3300 })
-  assert.equal(fila.monto, 132000)
-  assert.equal(fila.precioUnitario, 3300)
-  // cantidad × precioUnitario ≠ monto es un HECHO de la fuente, no un error: hay horas a otra tarifa.
-  assert.notEqual(fila.cantidad * fila.precioUnitario, fila.monto)
+test('el monto son horas × $ hora, y NO el «TOTAL SEMANA» de la planilla', () => {
+  // Defecto medido en el bloque de la fila 445 de «JORNALES 25»: ahí TOTAL SEMANA es
+  // ADELANTO + TOTAL RECIBO y NO incluye el BANCO — suma $710.904 contra $2.284.800 que la propia
+  // planilla escribe como TOTAL MO. La misma etiqueta significa otra cosa en «Obreros 26». Si
+  // alguien vuelve a tomar esa columna como el bruto, este test se pone rojo.
+  const f = { ref: 'b445f446', persona: 'Juan Bazan', rotuloCliente: 'LA ESTRELLA', horas: 0, valorHora: null, jornal: null }
+  const { fila } = filaDeJornal(f, { pestana: 'JORNALES 25', hasta: '2025-05-02', obraId: 'la-estrella', regla: 'obra', frente: null, horas: 40, valorHora: 3600 })
+  assert.equal(fila.monto, 144000)
+  assert.equal(fila.cantidad, 40)
+  assert.equal(fila.precioUnitario, 3600)
+  // Coherencia interna: es lo que permite comparar contra HH × costo horario de la cotización.
+  assert.equal(fila.cantidad * fila.precioUnitario, fila.monto)
 })
 
 test('una persona sin valor hora no se carga en 0: se declara sin valuar', () => {
