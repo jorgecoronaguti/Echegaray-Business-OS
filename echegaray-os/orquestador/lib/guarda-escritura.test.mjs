@@ -32,6 +32,12 @@ registerHooks({
   },
 })
 
+// DINÁMICOS Y DESPUÉS DEL HOOK, A PROPÓSITO: `huella-celda.mjs` importa `db.mjs` de forma ESTÁTICA, y
+// un import estático acá lo cargaría antes de que `registerHooks` esté puesto — el doble no
+// interceptaría nada y los tests abrirían una conexión real a Postgres (medido: 10 s de timeouts).
+const { formaDe } = await import('./huella-forma.mjs')
+const { huellaDe } = await import('./huella-celda.mjs')
+
 test('nombreTab: saca la pestaña de un rango A1', () => {
   assert.equal(nombreTab('Compras!A1:B2'), 'Compras')
   assert.equal(nombreTab('Compras!A1'), 'Compras')
@@ -591,8 +597,8 @@ test('soloFilasVacias: sin base (fail-closed total) tampoco escribe — no se sa
 // edición del dueño y se bloqueaba a sí mismo a mitad de una operación.
 
 /** Base con firma VIVA: lo que se sella se puede volver a leer. Sin eso no se puede probar el re-sellado. */
-function baseViva({ candadas = [], candadasAuto = [] } = {}) {
-  const reg = { candados: [], firmas: new Map() }
+function baseViva({ candadas = [], candadasAuto = [], huellas = [] } = {}) {
+  const reg = { candados: [], firmas: new Map(), huellas }
   globalThis.__dobleDbGuarda.query = async (sql, params = []) => {
     if (/insert into public\.sheet_pestanas_bloqueadas/i.test(sql)) { reg.candados.push(params[1]); return { rows: [] } }
     if (/select bloqueada_por from public\.sheet_pestanas_bloqueadas/i.test(sql)) {
@@ -604,6 +610,8 @@ function baseViva({ candadas = [], candadasAuto = [] } = {}) {
     if (/select pestana from public\.sheet_pestanas_bloqueadas/i.test(sql)) return { rows: [...candadas, ...candadasAuto].map((p) => ({ pestana: p })) }
     if (/select firma from public\.sheet_tab_firma/i.test(sql)) { const f = reg.firmas.get(params[1]); return { rows: f ? [{ firma: f }] : [] } }
     if (/insert into public\.sheet_tab_firma/i.test(sql)) { reg.firmas.set(params[1], params[2]); return { rows: [] } }
+    // La huella POR CELDA (03/09): sin ella, un deleteDimension no puede probar que el tramo es suyo.
+    if (/select fila, col, forma, huella/i.test(sql)) return { rows: reg.huellas }
     return { rows: [] }
   }
   return reg
@@ -625,10 +633,27 @@ function planillaFalsa(filas = GRID) {
   return {
     estado,
     async getSheetMeta() { return [{ sheetId: SID, title: TAB, rows: estado.grid.length, cols: 26 }] },
-    async readSheetValues() { return estado.grid.map((f) => [...f]) },
+    // RECORTA POR EL RANGO, como el Sheet real: la guarda de estructura lee `'Tab'!16:30` para saber
+    // qué se llevaría el borrado, y un doble que devolviera siempre la grilla entera la haría decidir
+    // sobre filas que el request ni menciona.
+    async readSheetValues(_f, range) {
+      const g = estado.grid.map((f) => [...f])
+      const m = /!([A-Z]*)(\d+):([A-Z]*)(\d+)$/.exec(String(range ?? ''))
+      if (!m) return g
+      const col = (L) => (L ? L.split('').reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1 : 0)
+      return g.slice(Number(m[2]) - 1, Number(m[4])).map((f) => f.slice(col(m[1]), col(m[3]) + 1))
+    },
+    // El diseño también lleva huella (03/09): sin poder leer el formato vivo, la guarda de formato
+    // falla CERRADO y ni un ancho de columna entra. Esta pestaña falsa nace sin formato puesto.
+    async readSheetUserFormats() { return { filas: [], anchos: [], congeladas: { filas: 0, columnas: 0 } } },
     borrar(desde, hasta) { estado.grid.splice(desde, hasta - desde) },
   }
 }
+
+/** Las huellas de las quince filas que el OS escribió y ahora quiere borrar (índices 15..29 → filas 16..30). */
+const HUELLAS_16_30 = GRID.slice(15).flatMap((f, k) => f.map((v, c) => ({
+  fila: 16 + k, col: c, forma: formaDe(v), huella: huellaDe(v), valor: String(v), borrada_en: null, abandonada_en: null,
+})))
 
 test('deleteDimension sobre una pestaña CANDADA POR EL DUEÑO: rechazado', async (t) => {
   // El corazón del defecto. Antes esto pasaba: borrar quince filas de una pestaña que el dueño tomó
@@ -643,11 +668,11 @@ test('deleteDimension sobre una pestaña CANDADA POR EL DUEÑO: rechazado', asyn
 test('deleteDimension sobre una pestaña LIBRE: pasa, y re-sella su propia escritura', async (t) => {
   // La otra mitad: la guarda no puede volverse un freno de mano. En una pestaña libre el borrado entra.
   t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
-  const reg = baseViva()
+  const reg = baseViva({ huellas: HUELLAS_16_30 })
   const pl = planillaFalsa()
   reg.firmas.set(TAB, firmaDeGrid(pl.estado.grid)) // baseline: la última que escribió el OS
   const g = await guardarRequests(pl, 'ID', BORRAR_15)
-  assert.equal(g.requests.length, 1, 'el borrado pasa')
+  assert.equal(g.requests.length, 1, 'el borrado pasa: las quince filas son del OS por huella')
   assert.deepEqual(g.bloqueadas, [])
   pl.borrar(15, 30) // el batch se aplica de verdad contra la planilla
   await g.sellar()
@@ -660,7 +685,7 @@ test('la operación de DOS PASOS (borrar y después escribir) se completa entera
   // vuelve a poder romper una pestaña y no poder arreglarla: el borrado se auto-canda y la escritura que
   // repara lo borrado queda afuera, con las filas dependientes en #REF!.
   t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
-  const reg = baseViva()
+  const reg = baseViva({ huellas: HUELLAS_16_30 })
   const pl = planillaFalsa()
   reg.firmas.set(TAB, firmaDeGrid(pl.estado.grid))
 
@@ -691,19 +716,29 @@ test('el re-sellado NO levanta el candado del dueño: una pestaña candada no se
   assert.equal(reg.firmas.has(TAB), false, 'ninguna firma nueva para una pestaña que el dueño tomó')
 })
 
-test('un batch de pura apariencia no consulta nada: ni getSheetMeta, ni base, ni firma', async (t) => {
-  // El contrapeso de costo: la guarda nueva es más ancha, no más cara. 106 repeatCell de formato por
-  // corrida no pueden empezar a pagar una lectura de A1:BZ cada uno.
+test('un batch de puro formato paga UNA lectura por pestaña, no una por request', async (t) => {
+  // ═══ ESTE TEST CAMBIÓ DE CONTRATO EL 03/09, A PROPÓSITO ═══
+  //
+  // Decía «un batch de pura apariencia no consulta NADA». Era cierto y era el agujero: el dueño pidió
+  // que también se respete lo que «edita de diseño», y un formato no se puede respetar sin mirarlo.
+  // Lo que el test defiende sigue siendo el COSTO, que era su razón de ser: 106 repeatCell de una
+  // pestaña no pueden pagar 106 lecturas de A1:BZ. Se lee una vez por pestaña y se recorta.
   t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
   baseViva()
-  const cliente = { async getSheetMeta() { throw new Error('no debería pedir la meta') }, async readSheetValues() { throw new Error('no debería leer') } }
+  let formatos = 0
+  const cliente = {
+    async getSheetMeta() { return [{ sheetId: SID, title: TAB, rows: 100, cols: 26 }] },
+    async readSheetValues() { throw new Error('un formato no lee valores') },
+    async readSheetUserFormats() { formatos++; return { filas: [], anchos: [], congeladas: { filas: 0, columnas: 0 } } },
+  }
   const g = await guardarRequests(cliente, 'ID', [
     { repeatCell: { range: { sheetId: SID }, fields: 'userEnteredFormat.numberFormat' } },
     { updateBorders: { range: { sheetId: SID } } },
     { updateSheetProperties: { properties: { sheetId: SID, tabColor: {} }, fields: 'tabColor' } },
   ])
-  assert.equal(g.requests.length, 3)
+  assert.equal(g.requests.length, 3, 'sin huella previa de formato en la pestaña, la primera pasada entra entera')
   assert.deepEqual(g.bloqueadas, [])
+  assert.equal(formatos, 1, `tres requests de formato sobre una pestaña pagaron ${formatos} lecturas`)
 })
 
 test('EL DEFECTO DE LOS 20 GRÁFICOS: deleteEmbeddedObject se atribuye a SU pestaña mirando getCharts', async (t) => {

@@ -388,3 +388,69 @@ export function noReponerAusentes(generado = [], actual = [], huellas = new Map(
   suprimidas.push(...r.out)
   return { grid: r.grid, suprimidas, motivo }
 }
+
+// ═══ (b) LA CELDA MÍA QUE EL DUEÑO CAMBIÓ — la evidencia que la FORMA no puede dar (03/09) ═══
+//
+// EL DEFECTO, encontrado escribiendo el test de la propiedad por celda. `aplicarHuella` pisa SIN
+// CONDICIONES toda celda con huella propia donde el generador escribe contenido ("toda celda donde el
+// generador escribe contenido y tiene huella ya se pisa"). Eso era correcto mientras la pregunta fuera
+// "¿de quién es la celda?", y es incorrecto desde que el dueño dijo qué quiere: *"cualquier celda que
+// yo haya editado —texto, número o fórmula— no se pisa nunca"*. Una celda mía que él corrigió sigue
+// siendo suya a partir de esa corrección.
+//
+// POR QUÉ NO SE PODÍA ANTES: `sheet_huella_celda` guarda la FORMA —el contenido enmascarado— y por
+// diseño `$500.000` y `$750.000` son las dos `<$>`. Con eso es IMPOSIBLE ver que el dueño cambió un
+// importe. La huella ahora guarda también el VALOR exacto que el OS dejó, y esta función lo compara.
+//
+// ═══ LOS TRES FRENOS, PORQUE UN FALSO POSITIVO ACÁ CONGELA UNA CELDA CALCULADA ═══
+//
+//  1. SIN VALOR SELLADO NO SE AFIRMA NADA. Las huellas anteriores al 03/09 no tienen `valor`: sobre
+//     ésas el comportamiento es el de siempre (se pisan). La protección se enciende sola, celda por
+//     celda, a medida que el OS reescribe — no de golpe sobre un registro que no la puede sostener.
+//  2. EL LOCALE NO ES UNA EDICIÓN. El OS sella la fórmula como la escribe (`,`) y `localizeValues` la
+//     manda a es-AR (`;`). Comparar en crudo declararía editada cada fórmula del archivo. Se comparan
+//     normalizadas, con el separador unificado.
+//  3. «UN NÚMERO CONTRA UN TEXTO» NO ES EVIDENCIA. `USER_ENTERED` reinterpreta lo que se manda: el OS
+//     escribe el texto `$ 500.000` y la lectura devuelve el número `500000`. Eso no es una edición del
+//     dueño, es la planilla haciendo su trabajo. Si los dos lados parsean a número, mandan los
+//     números; si uno parsea y el otro no, NO se afirma nada (falla del lado de seguir manteniendo la
+//     celda, que es reversible; congelarla no lo es).
+
+/** Contenido comparable: la fórmula sin locale ni apóstrofos, o el texto sin mayúsculas ni espacios. */
+export function contenidoComparable(v) {
+  const s = String(v ?? '').replace(/^'/, '').trim()
+  if (!s.startsWith('=')) return s.replace(/\s+/g, ' ').toLowerCase()
+  return s.replace(/;/g, ',').replace(/'/g, '').replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** El número que representa un valor, o null si no se puede afirmar que sea uno. Acepta es-AR y en-US. */
+export function numeroDe(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const s = String(v ?? '').trim().replace(/^\$\s?/, '').replace(/\s/g, '')
+  if (!s || !/^-?[\d.,]+$/.test(s)) return null
+  // es-AR: el punto agrupa y la coma decide los decimales. en-US: al revés. Se distingue por cuál
+  // aparece último; con uno solo, se mira si separa grupos de tres.
+  const ultimaComa = s.lastIndexOf(','); const ultimoPunto = s.lastIndexOf('.')
+  let limpio
+  if (ultimaComa >= 0 && ultimoPunto >= 0) limpio = ultimaComa > ultimoPunto ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
+  else if (ultimaComa >= 0) limpio = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.')
+  else limpio = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s
+  const n = Number(limpio)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * ¿La celda que YO escribí hoy dice otra cosa? Puro. `sellado` es el valor que dejó el OS (null en las
+ * huellas viejas: sin evidencia no se afirma nada). Ver los tres frenos, arriba.
+ */
+export function editadaPorElDueno(hoy, sellado) {
+  if (sellado === null || sellado === undefined) return false
+  const a = contenidoComparable(hoy); const b = contenidoComparable(sellado)
+  if (a === b) return false
+  const esFormula = (s) => s.startsWith('=')
+  if (esFormula(a) || esFormula(b)) return true
+  const na = numeroDe(hoy); const nb = numeroDe(sellado)
+  if (na !== null && nb !== null) return na !== nb
+  if (na === null && nb === null) return true
+  return false
+}

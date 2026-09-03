@@ -56,8 +56,8 @@ import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
-  claveCelda, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido,
-  LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
+  claveCelda, editadaPorElDueno, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna,
+  hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
 
@@ -588,6 +588,19 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
       ajenas.push({ fila, col, suyo: String(hoy).slice(0, 60) }); return ''
     }
+    // ═══ LA CELDA ES MÍA Y HOY DICE OTRA COSA: LA CAMBIÓ ÉL (03/09) ═══
+    //
+    // Es el caso que faltaba, y el que el dueño nombró primero: *"cualquier celda que yo haya
+    // editado —texto, número o fórmula— no se pisa nunca"*. Hasta hoy este camino devolvía `c` sin
+    // preguntar nada, porque la única evidencia disponible era la FORMA y por diseño `$500.000` y
+    // `$750.000` son la misma. Con el VALOR sellado al lado, la corrección del dueño se ve.
+    //
+    // Los tres frenos contra el falso positivo —huella vieja sin valor, locale de la fórmula, número
+    // contra texto— viven en `editadaPorElDueno`, que es pura y se prueba sola.
+    if (mia && ocupada && editadaPorElDueno(hoy, mia.valor)) {
+      editadas.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), forma: mia.forma })
+      return ''
+    }
     return c
   }))
   return { ...vacio, grid }
@@ -606,7 +619,9 @@ export function huellasDeEscritura(grid = [], { fila0 = 1, col0 = 0 } = {}) {
     // El largo del guardado es una CONSTANTE compartida con la comparación, no un 300 suelto. Cuando
     // el sellado corta en un largo y la comparación en otro, una fórmula larga deja de coincidir
     // consigo misma y la huella no decide nunca — es lo que pasó en los dos Cash Flow.
-    out.push({ fila: fila0 + i, col: col0 + j, forma: forma.slice(0, LARGO_FORMA), huella: huellaDe(c) })
+    // EL VALOR EXACTO, además de la forma. Sin él no se puede ver que el dueño cambió un importe:
+    // `$500.000` y `$750.000` comparten forma por diseño. Ver `editadaPorElDueno`.
+    out.push({ fila: fila0 + i, col: col0 + j, forma: forma.slice(0, LARGO_FORMA), huella: huellaDe(c), valor: String(c).slice(0, LARGO_FORMA) })
   }))
   return out
 }
@@ -633,6 +648,9 @@ async function asegurarTabla() {
   // nueva tiene que llegar por acá. Sin esto la cuarta evidencia queda muerta hasta que alguien corra
   // la migración a mano, que es exactamente la trampa de "migración en el repo ≠ migración aplicada".
   await query('alter table public.sheet_huella_celda add column if not exists abandonada_en timestamptz')
+  // `valor` (03/09): el contenido EXACTO que dejó el OS. Nace null en las 5.858 huellas ya escritas y
+  // sobre ésas no se afirma nada — la protección de (b) se enciende celda por celda, no de golpe.
+  await query('alter table public.sheet_huella_celda add column if not exists valor text')
 }
 
 /**
@@ -651,12 +669,13 @@ export async function leerHuellas(fileId, pestana, ventana = null) {
     ? [ventana.fila0 - holgura, ventana.fila0 + ventana.alto - 1 + holgura, ventana.col0, ventana.col0 + ventana.ancho - 1]
     : []
   const r = await query(
-    `select fila, col, forma, huella, borrada_en, abandonada_en from public.sheet_huella_celda
+    `select fila, col, forma, huella, valor, borrada_en, abandonada_en from public.sheet_huella_celda
       where file_id = $1 and pestana = $2${cond}`,
     [fileId, pestana, ...args],
   )
   return new Map(r.rows.map((x) => [claveCelda(x.fila, x.col), {
-    forma: x.forma, huella: x.huella, borrada: Boolean(x.borrada_en), abandonada: Boolean(x.abandonada_en),
+    forma: x.forma, huella: x.huella, valor: x.valor ?? null,
+    borrada: Boolean(x.borrada_en), abandonada: Boolean(x.abandonada_en),
   }]))
 }
 
@@ -664,13 +683,13 @@ export async function leerHuellas(fileId, pestana, ventana = null) {
 async function upsertHuellas(fileId, pestana, filas, sello) {
   for (let i = 0; i < filas.length; i += 400) {
     const tanda = filas.slice(i, i + 400)
-    const vals = tanda.map((_, k) => `($1,$2,$${k * 4 + 4},$${k * 4 + 5},$${k * 4 + 6},$${k * 4 + 7},$3)`).join(',')
+    const vals = tanda.map((_, k) => `($1,$2,$${k * 5 + 4},$${k * 5 + 5},$${k * 5 + 6},$${k * 5 + 7},$${k * 5 + 8},$3)`).join(',')
     await query(
-      `insert into public.sheet_huella_celda (file_id, pestana, fila, col, forma, huella, escrito_en) values ${vals}
+      `insert into public.sheet_huella_celda (file_id, pestana, fila, col, forma, huella, valor, escrito_en) values ${vals}
        on conflict (file_id, pestana, fila, col)
-       do update set forma = excluded.forma, huella = excluded.huella, escrito_en = excluded.escrito_en,
-                     borrada_en = null, abandonada_en = null`,
-      [fileId, pestana, sello, ...tanda.flatMap((f) => [f.fila, f.col, f.forma, f.huella])],
+       do update set forma = excluded.forma, huella = excluded.huella, valor = excluded.valor,
+                     escrito_en = excluded.escrito_en, borrada_en = null, abandonada_en = null`,
+      [fileId, pestana, sello, ...tanda.flatMap((f) => [f.fila, f.col, f.forma, f.huella, f.valor ?? null])],
     )
   }
 }

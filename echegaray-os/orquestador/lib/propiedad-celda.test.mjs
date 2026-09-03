@@ -29,7 +29,7 @@ const { VACIO, MIA_PROBADA } = await import('./no-borrar.mjs')
 
 /** Registra una huella propia de `valor` en (fila, col) — la evidencia de "esta celda la escribí yo". */
 function sellar(fila, col, valor) {
-  estado.huellas.push({ fila, col, forma: formaDe(valor), huella: huellaDe(valor), borrada_en: null, abandonada_en: null })
+  estado.huellas.push({ fila, col, forma: formaDe(valor), huella: huellaDe(valor), valor: String(valor), borrada_en: null, abandonada_en: null })
 }
 
 /** Cliente de Sheets falso: devuelve `vivo` como lectura FORMULA del rango pedido. */
