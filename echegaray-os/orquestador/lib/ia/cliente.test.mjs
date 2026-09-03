@@ -12,6 +12,8 @@ const ok = (texto = 'listo', modelo = 'claude-haiku-4-5') => ({
 })
 const falla = (status, cuerpo = '') => ({ ok: false, status, text: async () => cuerpo })
 
+const { esperaDeReintento } = await import('./cliente.mjs')
+
 const base = { mensajes: [{ role: 'user', content: 'hola' }], agente: 'test', funcion: 'unitario', reintentos: 2 }
 
 test('devuelve el texto, el modelo real y los tokens', async () => {
@@ -98,4 +100,43 @@ test('un refusal (respuesta sin bloques de texto) devuelve cadena vacía, no rom
     fetchImpl: async () => ({ ok: true, json: async () => ({ content: [], model: 'm', usage: {} }) }),
   })
   assert.equal(r.texto, '')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL REINTENTO NO PUEDE VOLVER EN BLOQUE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Desde que el pipeline de planos lee las láminas de a cuatro, un 429 llega a las cuatro casi a la
+// vez. Sin jitter las cuatro dormían lo mismo y volvían juntas: el reintento reproducía el pico que
+// causó el 429, y las lecturas que agotaban los intentos se degradaban — se perdía una lectura que
+// el proveedor habría atendido si hubiera llegado sola.
+
+test('la espera CRECE con cada intento', () => {
+  const medio = () => 0.5
+  const e0 = esperaDeReintento(0, 800, medio)
+  const e1 = esperaDeReintento(1, 800, medio)
+  const e2 = esperaDeReintento(2, 800, medio)
+  assert.ok(e1 > e0 && e2 > e1, `tiene que crecer y dio ${e0}, ${e1}, ${e2}`)
+  assert.equal(e1, e0 * 2, 'el crecimiento sigue siendo exponencial, el jitter no lo aplana')
+})
+
+test('la espera nunca es menos de la mitad ni más que la nominal de antes', () => {
+  for (const intento of [0, 1, 2, 3]) {
+    const nominal = 800 * 2 ** intento
+    assert.equal(esperaDeReintento(intento, 800, () => 0), nominal / 2, 'el piso es la mitad: nunca martilla')
+    assert.equal(esperaDeReintento(intento, 800, () => 1), nominal, 'el techo es lo que se esperaba antes del jitter')
+  }
+})
+
+test('dos llamadas que fallan JUNTAS no vuelven juntas', () => {
+  // Cuatro láminas en paralelo que reciben 429 en el mismo instante y reintentan a la vez.
+  const azares = [0.13, 0.47, 0.68, 0.91]
+  const esperas = azares.map((a) => esperaDeReintento(1, 700, () => a))
+  assert.equal(new Set(esperas).size, 4, `las cuatro esperas tienen que ser distintas y dieron ${esperas}`)
+  const rango = Math.max(...esperas) - Math.min(...esperas)
+  assert.ok(rango > 500, `se tienen que separar de verdad y sólo se separaron ${rango} ms`)
+})
+
+test('un intento negativo no produce una espera absurda', () => {
+  assert.equal(esperaDeReintento(-3, 800, () => 1), 800, 'se trata como el intento 0, no como 2^-3')
 })
