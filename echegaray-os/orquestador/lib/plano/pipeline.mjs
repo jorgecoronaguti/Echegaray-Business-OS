@@ -18,10 +18,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { CAPACIDAD, pedirTexto } from '../ia/cliente.mjs'
-import { bloqueAdjunto } from '../comprobantes/vision.mjs'
+import { pedirTexto } from '../ia/cliente.mjs'
 import { partirDocumentos, planosDe } from './documentos.mjs'
-import { PROMPT, extraerJson, validarLamina, llaveDeCache } from './interpretar.mjs'
+import { llaveDeCache } from './interpretar.mjs'
 import { computarElementos } from './computo.mjs'
 import { mapearPartidas } from './partidas.mjs'
 import { seleccionarTodas, huella } from './seleccion.mjs'
@@ -37,12 +36,18 @@ import { obraDesdeCotizacion } from './genealogia.mjs'
 import { omisionesPotenciales } from '../circot/referencia.mjs'
 import { evaluarChecklist } from '../circot/modelo-galpon.mjs'
 import { VIA, medidor as nuevoMedidor } from '../conocimiento/metricas.mjs'
-import { medir } from './conteo.mjs'
 import { elegir } from './elector.mjs'
 import { FUENTE, faltaDato, tieneNumero } from './fuente.mjs'
+import { cacheDeLecturas } from './cache-lecturas.mjs'
+import { CONCURRENCIA_POR_DEFECTO } from './paralelo.mjs'
+import { leerLaminas, leerVistas } from './lectura.mjs'
 
-/** Dónde queda la interpretación de una lámina. Fuera del repo: es caché, no fuente. */
-export const DIR_CACHE = process.env.ORQ_PLANO_CACHE || path.join(process.env.HOME || '/tmp', '.cache', 'echegaray-planos')
+// Lo que mira un dibujo vive en `lectura.mjs` desde que este archivo pasó las 900 líneas. Se
+// re-exporta porque `DIR_CACHE`, `interpretarLamina`, `interpretarRegion` y `REGIONES_QUE_SE_MIRAN`
+// eran parte de la superficie pública de este módulo y mover un símbolo no es motivo para romper a
+// quien lo importa.
+export { DIR_CACHE } from './cache-lecturas.mjs'
+export { interpretarLamina, interpretarRegion, REGIONES_QUE_SE_MIRAN } from './lectura.mjs'
 
 /** Los archivos de un proyecto en el índice de Drive. El término se busca en ruta Y nombre porque
  *  un plano puede no llevar el nombre del cliente y colgar de su carpeta, o al revés. */
@@ -99,50 +104,6 @@ export function documentosEnMemoria(adjuntos = []) {
 export function carpetaRaiz(filas = []) {
   const carpetas = filas.filter((f) => f.is_folder).map((f) => f.path).sort((a, b) => a.length - b.length)
   return carpetas[0] ?? ''
-}
-
-function leerCache(llave) {
-  try { return JSON.parse(fs.readFileSync(path.join(DIR_CACHE, `${llave}.json`), 'utf8')) } catch { return null }
-}
-function guardarCache(llave, valor) {
-  try {
-    fs.mkdirSync(DIR_CACHE, { recursive: true })
-    fs.writeFileSync(path.join(DIR_CACHE, `${llave}.json`), JSON.stringify(valor))
-  } catch { /* el caché nunca decide si el pipeline funciona */ }
-}
-
-/**
- * INTERPRETAR UNA LÁMINA. Una llamada de visión, o cero si ya estaba interpretada.
- *
- * `capacidad` es COMPLEX a propósito y no es negociable por parámetro barato: leer un plano es el
- * razonamiento técnico más difícil de todo el OS, y el modelo chico —medido en la lectura de
- * comprobantes— confunde dígitos en documentos mucho más simples que éste. Ahorrar acá es cotizar
- * mal una obra entera para ahorrar centavos.
- */
-export async function interpretarLamina(doc, bytes, { pedir = pedirTexto, refrescar = false, logger = null } = {}) {
-  const llave = llaveDeCache(bytes)
-  if (!refrescar) {
-    const cacheado = leerCache(llave)
-    if (cacheado) return { ...validarLamina(cacheado.crudo, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: true, uso: null }
-  }
-  const bloque = bloqueAdjunto({ data: bytes.toString('base64'), mediaType: doc.mime_type || 'application/pdf' })
-  if (!bloque) return { ...validarLamina({}, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: null, error: `no hay forma de mirar un ${doc.mime_type}` }
-
-  const r = await pedir({
-    capacidad: CAPACIDAD.COMPLEX,
-    sistema: 'Sos un ingeniero civil computando una obra. Devolvés SÓLO JSON válido, sin markdown.',
-    mensajes: [{ role: 'user', content: [bloque, { type: 'text', text: PROMPT }] }],
-    maxTokens: 16000,
-    agente: 'xsas-ingenieria',
-    funcion: 'interpretar-plano',
-    logger,
-  })
-  const crudo = extraerJson(r.texto)
-  // «el modelo no devolvió JSON» y «no había modelo» son dos cosas distintas, y decir la primera
-  // cuando pasó la segunda esconde exactamente lo que hay que ver.
-  if (!crudo) return { ...validarLamina({}, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: r, degradado: r?.degradado ?? null, error: r?.degradado ? `no se pudo mirar la lámina: ${r.degradado}` : 'el modelo no devolvió JSON interpretable' }
-  guardarCache(llave, { crudo, archivo: doc.name, cuando: new Date().toISOString() })
-  return { ...validarLamina(crudo, { archivo: doc.name, archivoId: doc.drive_file_id }), deCache: false, uso: r }
 }
 
 /** El catálogo de la Base Maestra con análisis vigente. Sólo las tareas que tienen composición
@@ -244,43 +205,6 @@ export function escritorTemporal(dir = path.join(os.tmpdir(), 'xsas-fuentes')) {
 }
 
 /**
- * INTERPRETAR UNA REGIÓN RECORTADA. Una llamada de visión por VISTA, no por lámina.
- *
- * ═══ POR QUÉ VALE LA PENA PAGAR VARIAS EN VEZ DE UNA ═══
- *
- * La lámina entera llega al modelo a ~141 dpi: un símbolo de columna de 8 mm ocupa cuatro píxeles y
- * no se puede contar. La misma vista recortada llega a 226–400 dpi. Y además la respuesta deja de
- * mezclar: preguntar «qué elementos hay» sobre CORTE A-A no puede devolver cotas de la planta,
- * porque la planta no está en la imagen.
- *
- * El caché es por hash del PNG, así que el costo se paga una vez por contenido y una lámina que no
- * cambió no se vuelve a mirar nunca.
- */
-export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar = false, archivo = null, logger = null } = {}) {
-  const bytes = fs.readFileSync(recorte.ruta)
-  const llave = `v3region:${crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 32)}`
-  const contexto = { archivo: `${archivo ?? 'lámina'} · ${recorte.region?.titulo ?? `región ${recorte.region?.n}`}`, archivoId: null }
-  if (!refrescar) {
-    const cacheado = leerCache(llave)
-    if (cacheado) return { ...validarLamina(cacheado.crudo, contexto), region: recorte.region, deCache: true, uso: null }
-  }
-  const bloque = bloqueAdjunto({ data: bytes.toString('base64'), mediaType: 'image/png' })
-  const r = await pedir({
-    capacidad: CAPACIDAD.COMPLEX,
-    sistema: 'Sos un ingeniero civil computando una obra. Devolvés SÓLO JSON válido, sin markdown.',
-    mensajes: [{ role: 'user', content: [bloque, { type: 'text', text: `${PROMPT}\n\nESTA IMAGEN ES UNA SOLA VISTA de la lámina, recortada y ampliada: «${recorte.region?.titulo ?? ''}» (${recorte.region?.tipo ?? 'vista'}). Computá SÓLO lo que se ve acá. Si un dato está en otra vista, anotalo en "referencias_a_otras_laminas" y dejalo en null.` }] }],
-    maxTokens: 12000,
-    agente: 'xsas-ingenieria',
-    funcion: 'interpretar-region',
-    logger,
-  })
-  const crudo = extraerJson(r.texto)
-  if (!crudo) return { ...validarLamina({}, contexto), region: recorte.region, deCache: false, uso: r, degradado: r?.degradado ?? null, error: r?.degradado ? `no se pudo mirar la vista: ${r.degradado}` : 'el modelo no devolvió JSON interpretable' }
-  guardarCache(llave, { crudo, region: recorte.region?.titulo ?? null, cuando: new Date().toISOString() })
-  return { ...validarLamina(crudo, contexto), region: recorte.region, deCache: false, uso: r }
-}
-
-/**
  * ¿ESTO ES UN NÚMERO DE VERDAD? PURA.
  *
  * `Number(null)` es 0 y `Number.isFinite(0)` es `true`: preguntar sólo por `isFinite` contaba como
@@ -321,9 +245,26 @@ export const viaDePartida = ({ mapeada, vetadaPorModelo }) => (!mapeada ? VIA.HU
  *
  * `permitirModelo: false` ni siquiera intenta — es el escenario que hay que poder probar sin
  * romperle el saldo a nadie.
+ *
+ * ═══ EL TOPE DE GASTO ES OTRA FORMA DE LA MISMA DEGRADACIÓN ═══
+ *
+ * `topeUsd` acumula el `usd` de cada respuesta y, cuando el acumulado lo supera, las llamadas que
+ * faltan NO se hacen: se resuelven degradadas, igual que si el proveedor estuviera caído. No se
+ * tira una excepción a propósito — una corrida que se cae por el tope pierde TODO lo que ya se
+ * pagó, que es exactamente lo contrario de ahorrar. El motivo queda distinguible del apagado
+ * (`tope de gasto alcanzado` contra `modelo apagado`) para que quien lea el resultado sepa si le
+ * falta saldo o le falta presupuesto.
+ *
+ * Con concurrencia, varias llamadas ya en vuelo pueden cruzar el tope juntas: el tope frena las que
+ * FALTAN, no las que ya se pagaron. Cortarlas a mitad sería pagarlas y tirarlas.
  */
-export function pedirConDegradacion(pedir, { permitirModelo = true } = {}) {
-  const degradacion = { hubo: false, permitirModelo, intentos: 0, fallos: 0, motivos: [] }
+export function pedirConDegradacion(pedir, { permitirModelo = true, topeUsd = null } = {}) {
+  // `Number(null)` es 0 y `Number.isFinite(0)` es true: preguntar sólo por `isFinite` convertía el
+  // DEFAULT —sin tope— en un tope de USD 0, y toda corrida sin `topeUsd` salía degradada entera.
+  // Es la misma trampa que ya documenta `tieneNumero` veinte líneas más arriba, y la encontraron
+  // los tests de degradación que ya existían.
+  const tope = tieneNumero(topeUsd) && Number(topeUsd) >= 0 ? Number(topeUsd) : null
+  const degradacion = { hubo: false, permitirModelo, intentos: 0, fallos: 0, motivos: [], topeUsd: tope, usd: 0 }
   const anotar = (motivo, funcion) => {
     degradacion.hubo = true
     degradacion.fallos += 1
@@ -336,9 +277,15 @@ export function pedirConDegradacion(pedir, { permitirModelo = true } = {}) {
       anotar('el proveedor de razonamiento está apagado para esta corrida', args?.funcion)
       return { texto: null, degradado: 'modelo apagado' }
     }
+    if (tope !== null && degradacion.usd >= tope) {
+      anotar(`el tope de gasto de la corrida está alcanzado: USD ${degradacion.usd.toFixed(4)} de USD ${tope.toFixed(4)}`, args?.funcion)
+      return { texto: null, degradado: 'tope de gasto alcanzado' }
+    }
     degradacion.intentos += 1
     try {
-      return await pedir(args)
+      const r = await pedir(args)
+      degradacion.usd += Number.isFinite(Number(r?.usd)) ? Number(r.usd) : 0
+      return r
     } catch (e) {
       const m = String(e?.message ?? e).slice(0, 160)
       anotar(`el proveedor de razonamiento falló: ${m}`, args?.funcion)
@@ -642,10 +589,6 @@ export function parecidosSinFusionar(elementos = []) {
   return salida.sort((x, y) => (y.parecido ?? 0) - (x.parecido ?? 0) || x.clave.localeCompare(y.clave))
 }
 
-/** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
- *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
-export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
-
 /**
  * DE DÓNDE SALEN LOS DOCUMENTOS DE UNA CORRIDA — Y CUÁNDO DRIVE NO ENTRA.
  *
@@ -701,7 +644,19 @@ export async function fuentesDe({ query }, { termino, adjuntos = [], conDrive = 
   return { filas, conIndice }
 }
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [], conDrive = null } = {}) {
+/**
+ * @param {object} o
+ * @param {((p:{fase:string,hecho:number,total:number,que:string|null})=>Promise<void>)|null} [o.onProgreso]
+ *   se llama al TERMINAR cada lámina y cada vista, con el conteo real. Es informativo: su orden lo
+ *   decide la latencia, no el resultado.
+ * @param {(()=>Promise<boolean>)|null} [o.cancelado]
+ *   se consulta ENTRE unidades. Si da `true`, `correr()` devuelve normalmente lo que alcanzó a
+ *   hacer con `cancelada: true` — no tira. Nunca se corta una llamada de visión ya empezada: ésa
+ *   ya se pagó, y tirarla es pagarla dos veces.
+ * @param {number} [o.concurrencia] llamadas de visión simultáneas.
+ * @param {number|null} [o.topeUsd] al superarlo la corrida se DEGRADA, no se cae.
+ */
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [], conDrive = null, onProgreso = null, cancelado = null, concurrencia = CONCURRENCIA_POR_DEFECTO, topeUsd = null } = {}) {
   const t0 = Date.now()
   // ═══ CLAUDE = 0 ═══
   // El proveedor de razonamiento puede no estar: sin saldo, sin API key, caído, o apagado a mano
@@ -709,7 +664,10 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // lo determinístico corre igual, y lo que necesitaba mirar una lámina queda DECLARADO como no
   // leído con su motivo. Una cotización que sale igual de completa sin el modelo estaría mintiendo;
   // una que se cae no sirve para nada. La tercera opción —degradar y decirlo— es la única honesta.
-  const { pedirSeguro, degradacion } = pedirConDegradacion(pedir, { permitirModelo })
+  const { pedirSeguro, degradacion } = pedirConDegradacion(pedir, { permitirModelo, topeUsd })
+  // El caché de lecturas vive en Postgres y cae al disco cuando la base no está. Se arma UNA vez
+  // por corrida y viaja: si cada llamada armara el suyo, la promoción disco→base se repetiría.
+  const cache = cacheDeLecturas({ query, logger })
   // ═══ LAS MÉTRICAS SE TOMAN ADENTRO, NO SE DEDUCEN AL FINAL ═══
   // Un resumen calculado sobre el resultado puede quedar coherente y ser falso: mide lo que quedó,
   // no lo que pasó. Cada decisión se anota EN EL MOMENTO en que se resuelve, con la vía que la
@@ -726,45 +684,23 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // contradicción, y no tratar a una revisión superada como una fuente viva.
   const relaciones = relacionar(insumos.map((d) => ({ ...d, clase: claseDocumental(d.name).id })), { carpetaObra: raiz })
 
-  const laminas = []
   const usos = []
   // Una respuesta DEGRADADA no es una llamada al modelo: es una llamada que no se hizo. Contarla
   // como llamada publicaba «20 llamadas · USD 0,0000» en una corrida donde el modelo estaba
   // apagado — un número que se lee como «llamó y no cobró» cuando la verdad es «no llamó».
   const anotar = (u) => { if (u && !u.degradado) usos.push({ modelo: u.modelo, tokensIn: u.tokens?.in ?? null, tokensOut: u.tokens?.out ?? null, usd: u.usd, ms: u.ms }) }
-  const noDescargables = []
-  for (const doc of planos.legibles) {
-    let bytes = doc._bytes ?? null
-    if (!bytes) {
-      // Un archivo del índice que Drive ya no tiene (404, movido, sin permiso) se DECLARA y se
-      // sigue: con el plano adjunto en la mano, morir acá era regalar la corrida entera.
-      try { bytes = await google.descargarBytes(doc.drive_file_id) }
-      catch (e) {
-        noDescargables.push(doc)
-        met.decidio({ que: `lámina ${doc.name}`, via: VIA.HUECO })
-        logger?.warn?.('xsas: lámina no descargable', { archivo: doc.name, porQue: String(e?.message ?? e).slice(0, 80) })
-        continue
-      }
-    }
-    const lam = await interpretarLamina(doc, bytes, { pedir: pedirSeguro, refrescar, logger })
-    anotar(lam.uso)
-    met.decidio({ que: `lámina ${doc.name}`, via: lam.deCache ? VIA.CACHE : (lam.error ? VIA.HUECO : VIA.MODELO) })
-    if (lam.uso && !lam.uso.degradado) met.llamo({ proveedor: 'ia', modelo: lam.uso.modelo, tokensIn: lam.uso.tokens?.in ?? null, tokensOut: lam.uso.tokens?.out ?? null, usd: lam.uso.usd, ms: lam.uso.ms, funcion: 'interpretar-plano' })
-    // LA SEGUNDA PASADA VA SOBRE LA MISMA LÁMINA Y SÓLO SI QUEDÓ ALGO SIN MEDIR. Su resultado se
-    // cachea junto al inventario: dos pasadas se pagan una vez por contenido, no una por corrida.
-    const llave = `${llaveDeCache(bytes)}:medicion`
-    const guardado = refrescar ? null : leerCache(llave)
-    if (guardado) {
-      laminas.push({ ...lam, elementos: guardado.elementos, medicion: { ...guardado.medicion, deCache: true } })
-      continue
-    }
-    const m = await medir({ pedir: pedirSeguro, bloque: bloqueAdjunto({ data: bytes.toString('base64'), mediaType: doc.mime_type || 'application/pdf' }), elementos: lam.elementos, logger })
-    anotar(m.uso)
-    if (m.uso && !m.uso.degradado) met.llamo({ proveedor: 'ia', modelo: m.uso.modelo, tokensIn: m.uso.tokens?.in ?? null, tokensOut: m.uso.tokens?.out ?? null, usd: m.uso.usd, ms: m.uso.ms, funcion: 'medir' })
-    const medicion = { pendientes: m.pendientes, resueltos: m.resueltos, cambios: m.cambios, deCache: false }
-    if (m.uso) guardarCache(llave, { elementos: m.elementos, medicion })
-    laminas.push({ ...lam, elementos: m.elementos, medicion })
-  }
+  // ═══ LAS LÁMINAS SON INDEPENDIENTES Y SE LEEN A LA VEZ ═══
+  // Nada de lo que dice la lámina 3 cambia lo que se le pregunta a la 4. Lo que NO cambia es el
+  // orden: `laminas` y `usos` salen en el orden de `planos.legibles`, no en el de llegada, porque
+  // `huella()` compara dos corridas y una lista que se reordena sola convierte esa comparación en
+  // ruido. El detalle está en `lectura.mjs`.
+  const lectura = await leerLaminas({
+    docs: planos.legibles, google, pedir: pedirSeguro, refrescar, logger, cache, met, anotar,
+    concurrencia, cancelado, onProgreso,
+  })
+  const laminas = lectura.laminas
+  const noDescargables = lectura.noDescargables
+  let cancelada = lectura.cancelada
   if (noDescargables.length) {
     // Del lado de la respuesta son NO LEGIBLES con motivo — y la ingesta documental no los reintenta.
     planos.legibles = planos.legibles.filter((d) => !noDescargables.includes(d))
@@ -777,21 +713,17 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   const escribirTemporal = escritorTemporal()
   const documental = await ingerir({ google, insumos, planosLegibles: planos.legibles, escribirTemporal, limite: limiteRegiones, logger })
 
-  // ═══ UNA MIRADA POR VISTA, NO UNA POR LÁMINA ═══
-  const porRegion = []
-  if (porRegiones) {
-    for (const seg of documental.segmentaciones) {
-      for (const lam of seg.laminas) {
-        for (const rec of lam.recortes) {
-          if (!rec.ok || !REGIONES_QUE_SE_MIRAN.includes(rec.region?.tipo)) continue
-          const r = await interpretarRegion(rec, { pedir: pedirSeguro, refrescar, archivo: seg.archivo, logger })
-          anotar(r.uso)
-          met.decidio({ que: `vista ${rec.region?.titulo ?? rec.region?.n}`, via: r.deCache ? VIA.CACHE : (r.error ? VIA.HUECO : VIA.MODELO) })
-          if (r.uso && !r.uso.degradado) met.llamo({ proveedor: 'ia', modelo: r.uso.modelo, tokensIn: r.uso.tokens?.in ?? null, tokensOut: r.uso.tokens?.out ?? null, usd: r.uso.usd, ms: r.uso.ms, funcion: 'interpretar-region' })
-          porRegion.push({ archivo: seg.archivo, ...r })
-        }
-      }
-    }
+  // ═══ UNA MIRADA POR VISTA, NO UNA POR LÁMINA — Y TODAS A LA VEZ ═══
+  // Mismo criterio y mismo cuidado con el orden que las láminas. Y si ya se canceló, no se empieza:
+  // cancelar es dejar de gastar, no gastar el resto más rápido.
+  let porRegion = []
+  if (porRegiones && !cancelada) {
+    const vistas = await leerVistas({
+      segmentaciones: documental.segmentaciones, pedir: pedirSeguro, refrescar, logger, cache, met, anotar,
+      concurrencia, cancelado, onProgreso,
+    })
+    porRegion = vistas.porRegion
+    cancelada = cancelada || vistas.cancelada
   }
 
   // Los elementos de las vistas recortadas se SUMAN a los de la lámina completa y se deduplican por
@@ -884,6 +816,10 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
 
   return {
     termino, carpeta: raiz, ms: Date.now() - t0,
+    // ═══ UNA CORRIDA CANCELADA DEVUELVE, NO TIRA ═══
+    // Lo que se leyó antes de cancelar ya se pagó y ya está en el caché: descartarlo sería tirar
+    // plata. Sale entero, con `cancelada: true` para que nadie lea este resultado como completo.
+    cancelada,
     // `soloAdjuntos` es lo que le permite a la respuesta no decir «busqué en Drive» cuando no buscó.
     soloAdjuntos: !conIndice,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
