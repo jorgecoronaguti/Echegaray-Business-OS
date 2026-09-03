@@ -28,7 +28,7 @@ const toolCotizar = (corridas) => ({
     name: 'analizar_planos_y_cotizar',
     description:
       'LEE LOS PLANOS de un cliente u obra y devuelve una COTIZACIÓN BORRADOR con su cascada. '
-      + 'USALO cuando el dueño diga "cotizame esta obra", "cotizame estos planos", "armame una cotización de [obra]".',
+      + 'USALO cuando el dueño diga "cotizame esta obra", "cotizame estos planos", "empecemos a cotizar", "armame una cotización de [obra]".',
     input_schema: {
       type: 'object',
       properties: { proyecto: { type: 'string', description: 'cliente u obra' } },
@@ -174,4 +174,56 @@ test('UN EXTRACTO SIGUE SIENDO DEL BANCO: con el cotizador registrado al lado, e
   assert.equal(r.capacidades.via, 'adjunto_extracto')
   assert.equal(importadas.length, 1)
   assert.equal(cotizadas.length, 0, 'el cotizador no puede secuestrar un extracto bancario')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CAMINO CON MEMORIA — el que corrió de verdad la noche del 02/09 y no tenía un solo test.
+//
+// Los tests de arriba corren SIN `query`: la lectura se parsea siempre. En producción hay memoria,
+// y el segundo pedido del dueño («procesá esto», 20:46:47) reutilizó la lectura ya persistida
+// («ya lo había leído: reutilizo la lectura») — un objeto que sale de la BASE, no del parser. Si
+// esa rama devolviera la lectura con otra forma (sin `nombre`, sin `resumen.texto`), el detector
+// de planos no podría clasificarla y el plano volvería a terminar en la ingesta genérica.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La fila tal cual la devuelve `orq.xsas_adjunto` para un PDF ya leído (columnas del select real). */
+const FILA_CACHEADA = (nombre) => ({
+  nombre, tamano: 438789, familia: 'pdf', formato: 'pdf', destino: 'pdf',
+  resumen: { paginas: 3, caracteres: 8506, escaneado: false, texto: 'ESTRUCTURA TECHO P.ALTA H=6.10m · 2C 240 · K1', extracto: '…' },
+  con_bytes: true,
+})
+
+/** Postgres falso: sólo contesta la consulta del caché de adjuntos; el resto, vacío. */
+const memoriaCon = (fila) => async (sql) => (
+  /from orq\.xsas_adjunto/.test(sql) && /select nombre, tamano/.test(sql) ? { rows: [fila] } : { rows: [] }
+)
+
+test('LECTURA REUTILIZADA + «empecemos a cotizar»: el plano cacheado va al cotizador, no a la ingesta', async () => {
+  // El caso 02/09 20:09 (dueño): «empecemos a cotizar» + «Plano de Estructura.pdf» ya leído a las
+  // 15:40 → devolvió el volcado crudo del PDF. La lectura que sale de la base tiene que ser tan
+  // ruteable como la recién parseada.
+  const corridas = []
+  const r = await atender(
+    { actor: DIRECCION, canal: 'app', correlationId: 'c-2009', mensaje: 'empecemos a cotizar', adjuntos: [{ nombre: 'Plano de Estructura.pdf', contenido_base64: Buffer.from('%PDF-1.4 fake').toString('base64') }] },
+    { registro: registroCon(corridas), catalogo: [], ia: extractorQueDevuelve({ proyecto: null }), query: memoriaCon(FILA_CACHEADA('Plano de Estructura.pdf')) },
+  )
+  assert.notEqual(r.capacidades.via, 'archivo_ingesta', 'un plano NUNCA vuelve a salir como volcado de texto crudo')
+  assert.equal(r.capacidades.via, 'adjunto_falta_dato', '«Plano de Estructura» no trae obra en el rótulo: se pregunta')
+  assert.match(r.respuesta, /¿De qué obra o cliente/)
+  assert.equal(corridas.length, 0)
+})
+
+test('LECTURA REUTILIZADA + «procesá esto»: la obra sale del rótulo cacheado y el cotizador CORRE', async () => {
+  // El caso 02/09 20:46:47: segundo pedido sobre «Estructura San Francisco del Monte Entrepiso.pdf»,
+  // ya persistido. El nombre que rutea es el de la FILA, no el del adjunto que vuelve a subir.
+  const corridas = []
+  const r = await atender(
+    { actor: DIRECCION, canal: 'app', correlationId: 'c-2046', mensaje: 'procesá esto', adjuntos: [{ nombre: 'Estructura San Francisco del Monte Entrepiso.pdf', contenido_base64: Buffer.from('%PDF-1.4 fake').toString('base64') }] },
+    { registro: registroCon(corridas), catalogo: [], ia: razonadorMuerto(), query: memoriaCon(FILA_CACHEADA('Estructura San Francisco del Monte Entrepiso.pdf')) },
+  )
+  assert.equal(r.ok, true, JSON.stringify(r.error ?? ''))
+  assert.equal(r.capacidades.via, 'adjunto_con_motor')
+  assert.equal(corridas.length, 1)
+  assert.equal(corridas[0].proyecto, 'San Francisco del Monte')
+  assert.equal(corridas[0].archivos.length, 1, 'los bytes del adjunto llegan a la tool aunque la lectura sea de caché')
 })

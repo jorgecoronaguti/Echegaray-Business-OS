@@ -637,7 +637,32 @@ export function parecidosSinFusionar(elementos = []) {
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
 
-export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [] } = {}) {
+/**
+ * DE DÓNDE SALEN LOS DOCUMENTOS DE UNA CORRIDA — Y CUÁNDO DRIVE NO ENTRA.
+ *
+ * ═══ MODO SÓLO-ADJUNTOS (dueño, 02/09/2026: «google download 404») ═══
+ *
+ * Cuando el pedido trae PLANOS ADJUNTOS, esos planos SON la documentación de la corrida: el
+ * `termino` deja de ser un término de búsqueda y pasa a ser el RÓTULO de la obra. Salir igual al
+ * índice de Drive traía archivos que nadie mandó, los bajaba de a uno y bastaba un 404 para
+ * degradar —o tumbar— una cotización que tenía el plano en la mano. Peor: el rótulo inferido del
+ * nombre del archivo («San Francisco del Monte») como patrón `%...%` puede traer la carpeta de
+ * OTRA obra del mismo cliente y mezclar dos proyectos en un solo cómputo.
+ *
+ * Sumar Drive a una corrida con adjuntos vuelve a ser posible, pero SÓLO pedido explícitamente
+ * (`conDrive: true`). Sin adjuntos, la conducta es la de siempre: se busca por término.
+ *
+ * @returns {Promise<{filas:Array, conIndice:boolean}>} `conIndice` declara si se consultó Drive.
+ */
+export async function fuentesDe({ query }, { termino, adjuntos = [], conDrive = null } = {}) {
+  const enMemoria = documentosEnMemoria(adjuntos)
+  const conIndice = conDrive === true || (conDrive !== false && enMemoria.length === 0)
+  const filas = conIndice ? await documentosDelProyecto({ query }, termino) : []
+  filas.push(...enMemoria)
+  return { filas, conIndice }
+}
+
+export async function correr({ query, google, termino, pedir = pedirTexto, refrescar = false, conVeto = false, tipoObra = null, porRegiones = true, limiteRegiones = 12, logger = null, permitirModelo = true, adjuntos = [], conDrive = null } = {}) {
   const t0 = Date.now()
   // ═══ CLAUDE = 0 ═══
   // El proveedor de razonamiento puede no estar: sin saldo, sin API key, caído, o apagado a mano
@@ -652,8 +677,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // resolvió — que es la única forma de que «lo resolvió el caché» no se pueda confundir con
   // «lo resolvió el modelo y el resultado dio igual».
   const met = nuevoMedidor()
-  const filas = await documentosDelProyecto({ query }, termino)
-  filas.push(...documentosEnMemoria(adjuntos))
+  const { filas, conIndice } = await fuentesDe({ query }, { termino, adjuntos, conDrive })
   const raiz = carpetaRaiz(filas)
   const { insumos, reservados } = partirDocumentos(filas, { carpetaObra: raiz })
   const planos = planosDe(insumos)
@@ -821,6 +845,8 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
 
   return {
     termino, carpeta: raiz, ms: Date.now() - t0,
+    // `soloAdjuntos` es lo que le permite a la respuesta no decir «busqué en Drive» cuando no buscó.
+    soloAdjuntos: !conIndice,
     documentos: { total: filas.filter((f) => !f.is_folder).length, insumos, reservados, planos },
     relaciones,
     laminas, computo, catalogo: catalogo.length, mapeo, composiciones: comps, procesos,

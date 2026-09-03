@@ -148,9 +148,18 @@ export async function textoDe(doc, bytes, { google } = {}) {
       // que el lector con celdas no pudo, porque eso es lo que explica por qué esas cantidades no
       // van a poder citar su origen.
       if (!google?.readExcel) return { ok: false, formato, porQue: p.porQue }
-      const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
-      const texto = (x.rows ?? []).map((f) => (Array.isArray(f) ? f.filter(Boolean).join(' | ') : String(f))).join('\n')
-      return { ok: true, texto, formato, pestana: x.sheet, sinCeldas: p.porQue }
+      // ═══ EL SEGUNDO INTENTO TAMPOCO PUEDE TUMBAR LA CORRIDA (mismo criterio que `bytesDe`) ═══
+      // Este camino sale a Drive por el archivo: un adjunto en memoria («adjunto:<hash>») da 404
+      // seguro, y un archivo del índice puede haberse movido. Sin esta guarda, la excepción subía
+      // al catch general y el motivo quedaba en «Requested entity was not found» — que no dice
+      // cuál de los dos lectores falló ni por qué. Se declara, no se adivina.
+      try {
+        const x = await google.readExcel(doc.drive_file_id, { maxRows: 300 })
+        const texto = (x.rows ?? []).map((f) => (Array.isArray(f) ? f.filter(Boolean).join(' | ') : String(f))).join('\n')
+        return { ok: true, texto, formato, pestana: x.sheet, sinCeldas: p.porQue }
+      } catch (e) {
+        return { ok: false, formato, porQue: `${p.porQue} · y Drive tampoco lo pudo convertir: ${String(e?.message ?? e).slice(0, 80)}` }
+      }
     }
     // ═══ EL DOCUMENTO DE WORD ES DONDE VIVE EL ALCANCE ═══
     // Hasta acá este `return` decía «todavía no hay lector de texto para DOCUMENTO» y con esa frase

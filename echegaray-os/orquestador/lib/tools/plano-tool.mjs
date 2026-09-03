@@ -42,7 +42,7 @@ export function resumen({ r, cot, cascada, numero }) {
     '',
     // EL ESTADO VA ARRIBA DEL TOTAL. Quien lee un número primero ya no lee igual lo que sigue.
     `🚦 **${r.control?.estado ?? 'SIN CONTROL'}** — ${r.control?.porQue ?? 'no se pudo evaluar la cobertura'}`,
-    `📐 ${r.documentos.planos.legibles.length} plano(s) interpretados de ${r.documentos.total} documentos en Drive` +
+    `📐 ${r.documentos.planos.legibles.length} plano(s) interpretados de ${r.documentos.total} documentos ${r.soloAdjuntos ? 'adjuntos (no se buscó en Drive)' : 'en Drive'}` +
       (noLegibles.length ? ` · ${noLegibles.length} no los puedo abrir (${noLegibles.map((d) => d.name).join(', ')})` : ''),
     `🔍 ${r.computo.detectados} elementos detectados · ${r.computo.computados} computados · ${r.computo.conHueco} sin medida en la documentación`,
     `📋 ${cot.partidas.length} partidas de la Base Maestra · ${cot.candidatas.length} elementos sin partida que la cubra`,
@@ -122,6 +122,7 @@ export function planoTools(google) {
           properties: {
             proyecto: { type: 'string', description: 'cliente, obra o proyecto cuyos planos hay que analizar (ej. "Quattropani", "San Francisco")' },
             numero: { type: 'string', description: 'número para la cotización borrador (opcional; se genera solo)' },
+            conDrive: { type: 'boolean', description: 'sólo si el dueño pide EXPLÍCITAMENTE sumar los planos que ya están en Drive a los adjuntos. Por defecto false: con adjuntos se cotiza SOLO lo adjuntado.' },
           },
           required: ['proyecto'],
         },
@@ -134,13 +135,27 @@ export function planoTools(google) {
           // Su identidad es el hash del contenido (la misma del caché de interpretación) y sus
           // bytes ya persisten en `orq.xsas_adjunto`, así que la genealogía no pierde el origen.
           const archivos = Array.isArray(input?.archivos) ? input.archivos : []
-          const r = await conCorridaExclusiva(`plano:${proyecto}`, () => correr({ query, google, termino: proyecto, adjuntos: archivos }))
+          // ═══ CON ADJUNTOS, LOS ADJUNTOS SON LA DOCUMENTACIÓN (dueño, 02/09/2026) ═══
+          // `proyecto` deja de ser un término de búsqueda y pasa a ser el RÓTULO de la obra: no se
+          // consulta el índice de Drive ni se baja un solo archivo. Es lo que revierte el defecto
+          // medido —«google download 404» con el plano adjunto en la mano— y también el riesgo más
+          // caro: que el rótulo inferido arrastre la carpeta de OTRA obra al mismo cómputo.
+          // Sumar Drive vuelve a ser posible, pero pedido explícitamente.
+          const conDrive = input?.conDrive === true
+          const soloAdjuntos = archivos.length > 0 && !conDrive
+          const r = await conCorridaExclusiva(`plano:${proyecto}`, () => correr({ query, google, termino: proyecto, adjuntos: archivos, conDrive: soloAdjuntos ? false : (archivos.length ? true : null) }))
           if (!r.documentos.planos.legibles.length) {
+            const noLegibles = r.documentos.planos.noLegibles
+            const cad = noLegibles.length ? ` (${noLegibles.length} son DWG/CAD, que el OS no lee)` : ''
             return {
-              error: `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
+              error: soloAdjuntos
+                ? `ninguno de los ${archivos.length} archivo(s) que adjuntaste es un plano que pueda abrir`
+                : `no encontré ningún plano que pueda abrir para «${proyecto}» en Drive`,
               documentos_encontrados: r.documentos.total,
-              planos_no_legibles: r.documentos.planos.noLegibles.map((d) => d.name),
-              resumen_texto: `Busqué «${proyecto}» en el índice de Drive: ${r.documentos.total} documentos, ninguno es un plano que pueda abrir${r.documentos.planos.noLegibles.length ? ` (${r.documentos.planos.noLegibles.length} son DWG/CAD, que el OS no lee)` : ''}.`,
+              planos_no_legibles: noLegibles.map((d) => d.name),
+              resumen_texto: soloAdjuntos
+                ? `Miré SÓLO los ${archivos.length} adjunto(s) —no busqué en Drive—: ninguno es un plano que pueda abrir${cad}.`
+                : `Busqué «${proyecto}» en el índice de Drive: ${r.documentos.total} documentos, ninguno es un plano que pueda abrir${cad}.`,
             }
           }
           const { partidas, candidatas } = agruparPartidas(r.mapeo.mapeos)
@@ -185,6 +200,9 @@ export function planoTools(google) {
             razonamiento: rz,
             razonamiento_texto: textoDeRazonamiento(rz, { proyecto }),
             planos_adjuntos: archivos.map((a) => a?.nombre).filter(Boolean),
+            // Qué documentación miró esta corrida, dicho por ella misma: sin este campo, «cotizó
+            // con lo adjuntado» y «cotizó con media carpeta de Drive» se leen igual.
+            solo_adjuntos: r.soloAdjuntos === true,
             resumen_texto: resumen({ r, cot, cascada, numero })
               + (archivos.length ? `\n\n📎 ${archivos.length} adjunto(s) procesados en memoria — no se subió nada a Drive.` : ''),
           }
