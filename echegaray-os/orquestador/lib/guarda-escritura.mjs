@@ -27,6 +27,38 @@ import { tiene } from './preservar-anotaciones.mjs'
 import { footprintDeRango } from './no-borrar.mjs'
 import { CLASE, clasificarRequest } from './clasificar-request.mjs'
 
+// ═══ LA PROPIEDAD POR CELDA, UNIVERSAL (03/09) ═══
+//
+// El dueño, textual: *"el sheet flujo de fondos es un documento vivo autónomo y automático; lo único
+// que requiero siempre es que mis ediciones en el archivo sean las que manden y siempre se respeten"*.
+// Las dos mitades pesan igual, y todo lo que había en este archivo decidía por PESTAÑA: candado,
+// auto-candado, firma. Con eso sólo hay dos estados —congelada o pisada— y él no pidió ninguno de los
+// dos. Falta el del medio: la pestaña se rehace sola Y la celda que él tocó no se toca.
+//
+// La decisión celda por celda ya existía (`huella-celda.mjs`, 05/08) pero vivía adentro de
+// `escribirPreservando`. Acá se la sube al portón, que es por donde pasan TAMBIÉN los escritores
+// crudos (los diez pasos de Proveedores, los tableros de cheques, el libro de movimientos, las
+// tarjetas, cobranzas-control…). La regla no se duplica: se reusa. Ver `propiedad-celda.mjs`.
+
+/**
+ * Aplica la propiedad por celda a un `data` ya autorizado por pestaña, y compone el sellado.
+ * Nunca lanza: si el subsistema falla entero, el pedido sigue como venía (el resto de las guardas
+ * —vacío-sobre-lleno, no-borrar, candado— siguen puestas) y se dice fuerte.
+ */
+async function conPropiedadPorCelda(cliente, fileId, data, sellarFirma) {
+  try {
+    const { filtrarValues, avisarRespetadas, registrarRespetadas } = await import('./propiedad-celda.mjs')
+    const r = await filtrarValues(cliente, fileId, data, { esProtegible })
+    for (const d of r.descartados) console.log(`  🔒 "${d.range}": ${d.motivo}.`)
+    avisarRespetadas(r.respetadas)
+    await registrarRespetadas(fileId, r.respetadas)
+    return { data: r.data, respetadas: r.respetadas, sellar: async () => { await sellarFirma(); await r.sellar() } }
+  } catch (e) {
+    console.warn(`  ⚠ propiedad por celda inactiva (${String(e.message).slice(0, 90)}) — una edición tuya podría pisarse`)
+    return { data, respetadas: [], sellar: sellarFirma }
+  }
+}
+
 // ═══ CINTURÓN "VACÍO SOBRE LLENO" (28/07, TGUARD) — defensa en profundidad, INDEPENDIENTE de la base ═══
 //
 // POR QUÉ. La causa del super-bug histórico (un agente en worktree SIN DATABASE_URL) tenía dos mitades:
@@ -338,9 +370,14 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
   // administración va a invalidar sólo fabrica un baseline falso. No se sella.
   const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
+  // La propiedad por celda se aplica a lo que PISA. `chequearVacio:false` marca las dos escrituras que
+  // no pisan —`append` (INSERT_ROWS: mete filas nuevas) y `clearValues`— y ahí el destino releído no
+  // es el que se va a tocar: decidir sobre él sería decidir sobre otra cosa.
+  const porCelda = (d, sellar) => (chequearVacio ? conPropiedadPorCelda(cliente, fileId, d, sellar) : Promise.resolve({ data: d, respetadas: [], sellar }))
   if (!bloqueadas.size) {
     const conAprendidas = await reInyectarAprendidas(fileId, data)
-    return { data: conAprendidas, bloqueadas: [], sellar: sellarSi(tabs) }
+    const p = await porCelda(conAprendidas, sellarSi(tabs))
+    return { data: p.data, bloqueadas: [], respetadas: p.respetadas, sellar: p.sellar }
   }
   const { permitido, bloqueado } = separarPermitido(data, bloqueadas)
   let rescatados = []
@@ -360,14 +397,16 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   // del dueño y dejaría entrar la próxima reescritura completa del generador. Ver el encabezado.
   const escritos = tabsProtegibles(permitido)
   const conAprendidas = await reInyectarAprendidas(fileId, conservados)
+  const p = await porCelda(conAprendidas, sellarSi(escritos))
   return {
-    data: conAprendidas,
+    data: p.data,
+    respetadas: p.respetadas,
     bloqueadas: [...bloqueadas].filter((t) => !rescatadas.includes(t)),
     rescatadas,
     // `porQue` (pestaña → MOTIVO) viaja hasta el llamador para que pueda DECIR qué pasó. `motivo` sigue
     // reservado al cinturón vacío-sobre-lleno: es lo que distingue las dos rutas de bloqueo.
     porQue: Object.fromEntries(motivos),
-    sellar: sellarSi(escritos),
+    sellar: p.sellar,
   }
 }
 
