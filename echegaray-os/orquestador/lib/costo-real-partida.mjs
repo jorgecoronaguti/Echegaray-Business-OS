@@ -30,6 +30,9 @@
 // motivo por el que no entra. La normalización de los rótulos NO se reimplementa: se inyecta, y en
 // producción la hace `public.norm_obra` — que es la que ya usan `obra_costo_real` y el resto del OS.
 
+import { detectarBloques } from './jornales-estructura.mjs'
+import { costoPorObra, testigoTotalMo } from './jornales-por-obra.mjs'
+
 /** Los tipos que acepta la tabla. Espejo de `cotizacion_partida_composicion.tipo`, que es contra
  *  quien se compara: material / mano_obra / equipo (y carga_social, que acá no existe — ver abajo). */
 export const TIPO = Object.freeze({
@@ -242,4 +245,59 @@ export function cuadreDeCarga({ totalFuente, filas = [], excluidas = [] }) {
     // Un centavo de tolerancia: horas × valor hora en punto flotante no cierra al bit.
     cuadra: Math.abs(residuo) < 0.01,
   }
+}
+
+/**
+ * JORNALES ENTERO → FILAS DE COSTO REAL, BLOQUE POR BLOQUE.
+ *
+ * LA VENTANA ES EL BLOQUE, Y NO EL AÑO. `costoPorObra` marca `ventanaConsistente = false` cuando una
+ * persona tiene horas en dos bloques de la misma ventana — que es AMBIGÜEDAD si la ventana es una
+ * quincena y es LO NORMAL si la ventana es un año. Pidiendo el año entero, el único control de
+ * solapes que existe quedaría en rojo siempre y por lo tanto no diría nada.
+ *
+ * Y aun con la ventana del bloque, sólo se toman las filas DE ESE BLOQUE (`f.bloque === b.fila1`):
+ * si dos bloques comparten fechas, la ventana los trae a los dos y la misma persona entraría dos
+ * veces. La superposición se informa en `bloques[].fechasDuplicadas`, no se resuelve en silencio.
+ *
+ * EL CONTROL QUE NO SE PRODUCE ACÁ: el «TOTAL MO» que la planilla ya tiene escrito en el bloque.
+ * Es otra fórmula, mantenida por otra persona. Si coincide con lo que se va a cargar, el número está
+ * probado contra algo que el OS no calculó.
+ */
+export function filasDeJornales(grid, { pestana, anio, mapa, alias, norm }) {
+  const bloques = detectarBloques(grid, { anio })
+  const filas = []
+  const excluidas = []
+  const informe = []
+  for (let k = 0; k < bloques.length; k++) {
+    const b = bloques[k]
+    const fechas = b.fechas || []
+    if (!fechas.length) continue
+    const desde = fechas[0].iso
+    const hasta = fechas[fechas.length - 1].iso
+    const r = costoPorObra(grid, { desde, hasta, mapa, anio })
+    const propias = r.filas.filter((f) => f.bloque === b.fila1)
+    const leido = propias.reduce((a, f) => a + (f.jornal ?? 0), 0)
+    const testigo = testigoTotalMo(grid, b.fila + 1, bloques[k + 1]?.fila ?? (grid.filas?.length ?? 0))
+    for (const f of propias) {
+      const { obraId, regla, frente } = resolverObraDeJornal({ cliente: f.rotuloCliente, obra: f.obra }, { alias, norm })
+      const r2 = filaDeJornal(f, { pestana, hasta, obraId, regla, frente })
+      if (r2.fila) filas.push(r2.fila)
+      else excluidas.push({ ...r2, pestana, bloque: b.fila1, persona: f.persona, rotulo: f.rotuloCliente })
+    }
+    informe.push({
+      bloque: b.fila1,
+      desde,
+      hasta,
+      personas: propias.length,
+      leido,
+      testigo: testigo ? testigo.valor : null,
+      celda: testigo ? testigo.celda : null,
+      // null NO es cero: un bloque sin «TOTAL MO» escrito no tiene contra qué contrastarse, y eso
+      // es distinto de un bloque que contrasta bien.
+      diferencia: testigo ? leido - testigo.valor : null,
+      concuerda: testigo ? Math.abs(leido - testigo.valor) < 1 : null,
+      fechasDuplicadas: r.fechasDuplicadas.length,
+    })
+  }
+  return { filas, excluidas, bloques: informe }
 }

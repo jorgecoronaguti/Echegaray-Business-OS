@@ -25,6 +25,7 @@
 
 import {
   normalizarClave, parseHoras, detectarBloques, trabajadoresDeBloque, letraColumna, indiceColumna,
+  filaSheet, colSheet,
 } from './jornales-estructura.mjs'
 
 // La conversion letra->indice vive en el parser estructural junto a su inversa. Se re-exporta para
@@ -97,6 +98,29 @@ export function columnasDeDinero(fila) {
     if (b === letraHoras) return { colHoras, colValorHora: indiceColumna(a), colTotal: j }
   }
   return { colHoras, colValorHora: null, colTotal: null }
+}
+
+const RE_TOTAL_MO = /\bTOTAL\s*MO\b/i
+
+/**
+ * El «TOTAL MO» que la propia planilla escribió dentro de este bloque: el rótulo se busca, y el
+ * número es la primera celda numérica a su derecha. Devuelve null cuando el bloque no lo tiene —que
+ * NO es cero: es que este bloque no trae testigo y su total no se puede contrastar.
+ */
+export function testigoTotalMo(grid, desdeFila, hastaFila) {
+  for (let i = desdeFila; i < hastaFila; i++) {
+    const fila = grid.filas[i] || []
+    for (let j = 0; j < fila.length; j++) {
+      if (!RE_TOTAL_MO.test(String(fila[j]?.valor ?? ''))) continue
+      for (let k = j + 1; k < fila.length; k++) {
+        const n = fila[k]?.numero
+        if (typeof n === 'number' && Number.isFinite(n)) {
+          return { valor: n, celda: `${letraColumna(colSheet(grid, k))}${filaSheet(grid, i)}` }
+        }
+      }
+    }
+  }
+  return null
 }
 
 /** Horas de UNA celda diaria. escrita:false cuando no hay nada escrito - que NO es cero. */

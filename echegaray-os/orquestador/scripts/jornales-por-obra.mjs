@@ -22,13 +22,12 @@ import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorPara, getTokenFor } from '../lib/google-oauth.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
-import { detectarBloques, letraColumna, filaSheet, colSheet, trabajadoresDeBloque } from '../lib/jornales-estructura.mjs'
-import { costoPorObra } from '../lib/jornales-por-obra.mjs'
+import { detectarBloques, trabajadoresDeBloque } from '../lib/jornales-estructura.mjs'
+import { costoPorObra, testigoTotalMo } from '../lib/jornales-por-obra.mjs'
 import { auditarResumenPorCliente } from '../lib/jornales-resumen.mjs'
 import { cargarMapaClientes } from '../lib/cliente-alias.mjs'
 
 const RE_ISO = /^\d{4}-\d{2}-\d{2}$/
-const RE_TOTAL_MO = /\bTOTAL\s*MO\b/i
 
 function argumentos(argv) {
   const a = {}
@@ -55,27 +54,6 @@ function argumentos(argv) {
 
 const $ = (n) => (n == null ? '—' : new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(n))
 const hs = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(n)
-
-/**
- * El «TOTAL MO» que la propia planilla escribió dentro de este bloque: el rótulo se busca, y el
- * número es la primera celda numérica a su derecha. Devuelve null cuando el bloque no lo tiene —que
- * NO es cero: es que este bloque no trae testigo y su total no se puede contrastar.
- */
-function testigoTotalMo(grid, desdeFila, hastaFila) {
-  for (let i = desdeFila; i < hastaFila; i++) {
-    const fila = grid.filas[i] || []
-    for (let j = 0; j < fila.length; j++) {
-      if (!RE_TOTAL_MO.test(String(fila[j]?.valor ?? ''))) continue
-      for (let k = j + 1; k < fila.length; k++) {
-        const n = fila[k]?.numero
-        if (typeof n === 'number' && Number.isFinite(n)) {
-          return { valor: n, celda: `${letraColumna(colSheet(grid, k))}${filaSheet(grid, i)}` }
-        }
-      }
-    }
-  }
-  return null
-}
 
 /** Bloques cuyas fechas caen dentro de la ventana, con su límite de lectura. */
 function bloquesDeLaVentana(grid, { desde, hasta, anio }) {
