@@ -17,6 +17,7 @@ import { consolidateHandler } from './consolidate.mjs'
 import { operationExecuteHandler } from './operation_execute.mjs'
 import { scheduledDirectiveHandler } from './scheduled_directive.mjs'
 import { comunicacionResponderHandler } from './comunicacion.mjs'
+import { cotizacionPlanoHandler } from './cotizacion_plano.mjs'
 
 export const HANDLERS = {
   noop: noopHandler,
@@ -29,6 +30,7 @@ export const HANDLERS = {
   operation_execute: operationExecuteHandler, // PRP-015 F1: ejecuta una operación aprobada (escritura en Drive) idempotentemente
   scheduled_directive: scheduledDirectiveHandler, // PRP-015 F4: corre una directiva programada (recurrencia)
   'comunicacion.responder': comunicacionResponderHandler, // PR-4: responde en el chat el trabajo del Work Fabric
+  'cotizacion.plano': cotizacionPlanoHandler, // cotizar un plano es un trabajo asíncrono: la web encola, el worker lee y computa
 }
 
 export function resolveHandler(type) {
