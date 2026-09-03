@@ -125,6 +125,14 @@ export function formatoMillones(n: number | null): string | null {
   return `$${(n / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 })}M`
 }
 
+/** Una cantidad del cómputo: entera se ve entera, con fracción se ve a dos decimales. El backend
+ *  no manda cuántos decimales corresponden por ítem — inventar una regla por unidad sería fabricar
+ *  precisión que nadie declaró; ésta es la única que no depende de adivinar la unidad. */
+export function formatoCantidad(n: number | null): string | null {
+  if (n === null || !Number.isFinite(n)) return null
+  return formatoNumero(n, Number.isInteger(n) ? 0 : 2)
+}
+
 // ── EL COLOR DE UN ESTADO — la MISMA regla que `chipDe()` en el mockup ─────────────────────────
 // firme → verde · conflicto → rojo · con supuesto → ámbar · sin dato / revisar → gris apagado.
 
