@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { entrarComo } from './util/login'
 import { JEFE, servicio } from './util/identidades'
 
@@ -119,9 +119,14 @@ test('J06 · LA CAUSA DEL DESVÍO ENTRA POR LA PANTALLA Y LLEGA A `obra_causa_de
     const bloque = page.getByTestId('causa-desvio')
     await expect(bloque, 'la pantalla no preguntó por qué se desvió').toBeVisible({ timeout: 30_000 })
 
-    await bloque.getByTestId('causa').filter({ hasText: 'Espera de equipo' }).click()
+    await prender(bloque.getByTestId('causa').filter({ hasText: 'Espera de equipo' }))
     await page.getByTestId('causa-nota').fill(MARCA)
-    await page.getByTestId('valor-avance').first().click()
+    // EL ÚLTIMO VALOR (100 %), NO EL PRIMERO. La tarea que el test elige puede venir en 85 %, y
+    // `deltaHasta` rechaza —bien— un objetivo por debajo del avance actual: el parte no se
+    // escribía y el test culpaba a la causa de un problema del valor elegido.
+    await prender(page.getByTestId('valor-avance').last())
+    await expect(page.getByTestId('guardar-avance'),
+      'el botón sigue apagado: el avance no quedó cargado').toBeEnabled()
     await page.getByTestId('guardar-avance').click()
     await expect(page.getByTestId('resultado-avance')).toBeVisible({ timeout: 30_000 })
 
@@ -152,6 +157,19 @@ test('J06 · LA CAUSA DEL DESVÍO ENTRA POR LA PANTALLA Y LLEGA A `obra_causa_de
       .eq('actividad_id', t.actividad_id).eq('fuente', 'jefe_telefono')
   }
 })
+
+/**
+ * UN TOQUE QUE LLEGA ANTES DE LA HIDRATACIÓN NO EXISTE, y en esta VM —con siete agentes encima— el
+ * `next dev` tarda. El click se daba, React todavía no escuchaba, el estado no se movía y el botón
+ * quedaba apagado para siempre: el test colgaba 240 s y el informe decía «timeout», que no explica
+ * nada. Se reintenta hasta que el control quede efectivamente elegido.
+ */
+async function prender(loc: Locator) {
+  await expect(async () => {
+    await loc.click()
+    await expect(loc).toHaveAttribute('aria-pressed', 'true', { timeout: 2_000 })
+  }).toPass({ timeout: 90_000 })
+}
 
 /**
  * Una tarea de la obra que la pantalla vaya a marcar como desviada —proyecta fin después del plan—
