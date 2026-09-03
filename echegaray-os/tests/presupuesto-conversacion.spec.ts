@@ -208,17 +208,23 @@ test.describe('conversación del presupuesto', () => {
       await entrar(page)
       await page.goto(`/presupuestos/${esc.cotizacionId}`)
 
-      // El gate del motor, dibujado: dice que NO y dice por qué.
+      // El gate del motor, dibujado EN EL ENCABEZADO DEL PRESUPUESTO VIVO: dice que NO y dice por qué.
       const gate = page.getByTestId('gate-freeze')
       await expect(gate).toBeVisible({ timeout: 30000 })
       await expect(gate).toHaveAttribute('data-ready', '0')
       await expect(page.getByTestId('gate-porque')).toContainText('NO se congela')
-      await expect(page.getByTestId('issue-cola').first()).toBeVisible()
 
-      // EL BOTÓN NO SE OFRECE, y el motivo va en el `title` — no en un disabled mudo.
-      const boton = page.getByTestId('congelar')
-      await expect(boton).toBeDisabled()
-      await expect(boton).toHaveAttribute('title', /NO se congela/)
+      // ═══ EL BOTÓN NO EXISTE, Y EN SU LUGAR ESTÁ LA LISTA DE BLOQUEOS (contrato v5) ═══
+      //
+      // Antes se dibujaba DESHABILITADO con el motivo escondido en el `title`. El contrato lo
+      // prohíbe: un botón gris sin explicación obliga a adivinar qué falta. Ahora ese mismo lugar
+      // muestra los bloqueos, y cada uno es un enlace a su partida.
+      await expect(page.getByTestId('congelar')).toHaveCount(0)
+      await expect(page.getByTestId('bloqueo-envio').first()).toBeVisible()
+
+      // Y la cola completa vive en su panel, que es estado de URL y se puede compartir por enlace.
+      await page.goto(`/presupuestos/${esc.cotizacionId}?vista=costos&atencion=1`)
+      await expect(page.getByTestId('issue-cola').first()).toBeVisible({ timeout: 30000 })
 
       // ═══ EL INTENTO FORZADO ═══
       //
@@ -236,8 +242,9 @@ test.describe('conversación del presupuesto', () => {
       expect(laFila(data, 'el presupuesto de prueba').congelada_en).toBeNull()
 
       // La pantalla, recargada, sigue diciendo lo mismo: no quedó un estado a medias.
-      await page.reload()
+      await page.goto(`/presupuestos/${esc.cotizacionId}`)
       await expect(page.getByTestId('gate-freeze')).toHaveAttribute('data-ready', '0')
+      await expect(page.getByTestId('congelar')).toHaveCount(0)
     } finally {
       await limpiar(sb)
       await sb.auth.signOut({ scope: 'local' })

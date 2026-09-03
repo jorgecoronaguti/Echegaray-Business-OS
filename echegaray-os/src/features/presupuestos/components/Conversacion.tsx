@@ -5,9 +5,9 @@
 // ═══ NO ESTÁ EN EL MOCKUP, Y ESO NO ES LICENCIA PARA REDISEÑAR ═══
 //
 // El handoff de la pantalla 15 no dibuja ningún panel de chat: se construye nuevo. Se usa el
-// vocabulario YA MEDIDO del canon —la caja de tarjeta de `TARJETA`, los colores de `C`, el
-// `BotonMarca` amarillo— en vez de inventar una paleta. Lo que no existía es la forma de la
-// conversación; el aspecto sale de las mismas nueve pantallas que ya se portaron.
+// vocabulario YA MEDIDO del canon —los colores de `C`, el amarillo de marca— en vez de inventar una
+// paleta. El contrato v5 le fija la forma: columna de 648 px, alto de la ventana, scroll propio y el
+// campo abajo. No es una tarjeta más apilada en una página.
 //
 // ═══ ACÁ NO HAY NI UNA FRASE SOBRE EL PRESUPUESTO ═══
 //
@@ -15,18 +15,27 @@
 // llega en `respuesta`, que arma `redactar()` en `orquestador/lib/cotizador/conversacion.mjs` con
 // lo que devolvió `ejecutar()`. Una frase escrita acá («Listo, actualicé la mampostería») sería una
 // afirmación sobre el presupuesto que ningún motor verificó, y se vería idéntica a una verdadera.
-// El test `conversacion.test.mjs` cierra la puerta por el lado que importa: todo número que aparece
-// en la respuesta tiene que existir en lo que produjo el motor.
+// El test `conversacion-sin-respuestas.test.ts` cierra la puerta por el lado que importa.
 //
 // Lo único escrito acá son los EJEMPLOS de qué se puede pedir, y salen de `CANONICOS` —la misma
 // lista que el test del intérprete recorre—, así que no se puede publicar un ejemplo que el sistema
 // no entienda.
+//
+// ═══ EL HILO ES REGISTRO HISTÓRICO ═══
+//
+// Los turnos ya emitidos no se reescriben cuando la cola de excepciones se resuelve: cada uno es lo
+// que el motor contestó en ese momento, con el precio de ese momento. La cola VIVA está en el
+// encabezado del presupuesto, que es otro lugar a propósito. El autoscroll mueve `scrollTop` del
+// contenedor y no usa `scrollIntoView`, que arrastra la página entera cuando el hilo está adentro de
+// una columna con scroll propio.
 
-import { startTransition, useActionState, useRef } from 'react'
+import { startTransition, useActionState, useEffect, useRef } from 'react'
 import { hablarConElPresupuesto } from '../services/actionsConversacion.ts'
 import { TURNO_INICIAL, type RespuestaConversacion, type TurnoConversacion } from '../services/conversacionTipos.ts'
-import { C, RADIO_TARJETA, TARJETA, millones } from '@/shared/components/canon'
+import { C, RADIO_TARJETA, millones } from '@/shared/components/canon'
 import { CANONICOS } from '../../../../orquestador/lib/cotizador/interprete.mjs'
+import { AccionesDeterministicas, BannerDeterministico } from './ModoDeterministico'
+import { AvisoCongelada } from './AvisoCongelada'
 
 /** El color de cada tono. El tono lo decide `redactar()`; acá sólo se pinta. */
 const TONO: Record<RespuestaConversacion['tono'], { color: string; fondo: string }> = {
@@ -40,15 +49,51 @@ const TONO: Record<RespuestaConversacion['tono'], { color: string; fondo: string
 
 const EJEMPLOS: string[] = CANONICOS.map((c: { texto: string }) => c.texto)
 
-export function Conversacion({ cotizacionId, puedeEscribir }: {
+/**
+ * EL HILO, ACUMULADO EN EL REDUCTOR Y NO EN UN EFECTO.
+ *
+ * La versión anterior guardaba el turno nuevo con un `setState` dentro de un `useEffect`, y el
+ * compilador de React lo rechaza con razón: es un renderizado en cascada disparado por otro
+ * renderizado. `useActionState` ya es un reductor —recibe el estado anterior— así que el lugar
+ * correcto para agregar el turno es adentro suyo, donde la respuesta del servidor recién llegó.
+ *
+ * Se conservan los últimos 40: un hilo es registro histórico, pero uno de trescientos turnos
+ * repintaría la columna entera en cada frase.
+ */
+interface Hilo { turnos: TurnoConversacion[]; ultimo: TurnoConversacion }
+const HILO_INICIAL: Hilo = { turnos: [], ultimo: TURNO_INICIAL }
+const TOPE_HILO = 40
+
+export function Conversacion({
+  cotizacionId, puedeEscribir, modeloDisponible, congelada, version, hrefAtencion, hrefCostos,
+}: {
   cotizacionId: string
   /** Lo que el rol no puede, no se dibuja. El servidor lo re-valida igual: esto es comodidad. */
   puedeEscribir: boolean
+  /** Lo decide el servidor con el fusible de IA. En false, modo determinístico declarado. */
+  modeloDisponible: boolean
+  congelada: boolean
+  version: number
+  hrefAtencion: string
+  hrefCostos: string
 }) {
-  const [turno, enviar, pendiente] = useActionState<TurnoConversacion, FormData>(
-    hablarConElPresupuesto, TURNO_INICIAL,
+  const [{ turnos: historial }, enviar, pendiente] = useActionState<Hilo, FormData>(
+    async (prev, d) => {
+      const turno = await hablarConElPresupuesto(prev.ultimo, d)
+      return { turnos: [...prev.turnos, turno].slice(-TOPE_HILO), ultimo: turno }
+    },
+    HILO_INICIAL,
   )
   const campo = useRef<HTMLInputElement>(null)
+  const hilo = useRef<HTMLDivElement>(null)
+
+  // EL AUTOSCROLL MUEVE `scrollTop` DEL CONTENEDOR. `scrollIntoView` arrastra el ancestro
+  // scrolleable más cercano —que acá es la ventana— y llevaría la página entera al fondo cada vez
+  // que xsas contesta. Esto sí es sincronizar React con el DOM, que es para lo que existe el efecto.
+  useEffect(() => {
+    const el = hilo.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [historial, pendiente])
 
   const mandar = (texto: string, confirmado = false) => {
     const d = new FormData()
@@ -59,23 +104,26 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
   }
 
   return (
-    <section style={{ ...TARJETA }} data-testid="conversacion">
-      <header style={{
-        background: C.superficieTenue, borderBottom: `1px solid ${C.lineaBloque}`,
-        padding: '9px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span style={{ fontSize: 12.5, fontWeight: 500, color: C.tinta }}>Hablale al presupuesto</span>
-        {turno.degradado && (
-          // §34: DEGRADADO NO ES CAÍDO, y la diferencia se dice. Sin esto, una frase que el parser
-          // no entiende y una caída del proveedor se ven exactamente iguales desde la pantalla.
-          <span style={{ fontSize: 10.5, color: C.warn }} data-testid="conversacion-degradada">
-            sin razonador: sólo las frases que el intérprete entiende
-          </span>
-        )}
-      </header>
+    <section
+      data-testid="conversacion"
+      style={{
+        display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%',
+        background: C.superficie,
+      }}
+    >
+      {!modeloDisponible && <BannerDeterministico />}
 
-      <div style={{ padding: 14 }}>
-        {turno.estado === 'inicial' && (
+      <div
+        ref={hilo}
+        data-testid="hilo-conversacion"
+        style={{
+          flex: 1, overflow: 'auto', minHeight: 0, padding: '20px 24px 14px',
+          display: 'flex', flexDirection: 'column', gap: 18,
+        }}
+      >
+        {congelada && <AvisoCongelada version={version} />}
+
+        {historial.length === 0 && (
           <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: 0, padding: 0, listStyle: 'none' }}>
             {EJEMPLOS.map((e) => (
               <li key={e}>
@@ -96,13 +144,48 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
           </ul>
         )}
 
-        {turno.estado !== 'inicial' && (
-          <div data-testid="turno-conversacion">
+        {historial.map((t, i) => (
+          <div key={`${i}-${t.texto}`} data-testid="turno-conversacion">
             <p style={{ fontSize: 12.5, color: C.apagado, margin: '0 0 8px' }}>
-              <span style={{ color: C.tenue }}>vos: </span>{turno.texto}
+              <span style={{ color: C.tenue }}>vos: </span>{t.texto}
             </p>
-            {turno.respuesta && <Respuesta r={turno.respuesta} onConfirmar={() => mandar(turno.texto, true)} pendiente={pendiente} />}
+            {t.degradado && (
+              // §34: DEGRADADO NO ES CAÍDO, y la diferencia se dice EN EL TURNO en que pasó. Sin
+              // esto, una frase que el parser no entiende y una caída del proveedor se ven iguales.
+              <p style={{ fontSize: 10.5, color: C.warn, margin: '0 0 6px' }} data-testid="conversacion-degradada">
+                sin razonador: sólo las frases que el intérprete entiende
+              </p>
+            )}
+            {t.respuesta && (
+              <Respuesta
+                r={t.respuesta}
+                onConfirmar={() => mandar(t.texto, true)}
+                pendiente={pendiente}
+                ultimo={i === historial.length - 1}
+              />
+            )}
           </div>
+        ))}
+
+        {pendiente && (
+          <p style={{ fontSize: 12, color: C.apagado, margin: 0 }} data-testid="conversacion-pendiente">
+            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '.09em', color: C.info }}>XSAS</span>
+            {' '}esperando la respuesta del motor…
+          </p>
+        )}
+      </div>
+
+      <div style={{
+        flex: 'none', borderTop: `1px solid ${C.linea}`, padding: '12px 24px 16px',
+        display: 'flex', flexDirection: 'column', gap: 11, background: C.superficie,
+      }}>
+        {!modeloDisponible && (
+          <AccionesDeterministicas
+            onPreguntar={(t) => mandar(t)}
+            hrefAtencion={hrefAtencion}
+            hrefCostos={hrefCostos}
+            pendiente={pendiente || !puedeEscribir}
+          />
         )}
 
         {puedeEscribir ? (
@@ -130,7 +213,7 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
                 campo.current.focus()
               }
             }}
-            style={{ display: 'flex', gap: 8, marginTop: 12 }}
+            style={{ display: 'flex', gap: 8 }}
           >
             <input type="hidden" name="id" value={cotizacionId} />
             <input type="hidden" name="confirmado" value="0" />
@@ -146,7 +229,9 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
               // Deshabilitarlo tampoco protegía nada: el doble envío lo frena el botón, que sí
               // sigue deshabilitado. Lo único que hacía era romper el hilo de la conversación.
               ref={campo} name="texto" autoComplete="off"
-              placeholder="la mampostería son 520 m2 · ¿qué me falta para enviar?"
+              placeholder={modeloDisponible
+                ? 'la mampostería son 520 m2 · ¿qué me falta para enviar?'
+                : 'sin modelo: sólo las frases que el intérprete reconoce'}
               data-testid="entrada-conversacion"
               style={{
                 flex: 1, minWidth: 0, border: `1px solid ${C.linea}`, borderRadius: RADIO_TARJETA,
@@ -166,8 +251,8 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
         ) : (
           // LO QUE EL ROL NO PUEDE, NO SE DIBUJA. Y se dice por qué: un campo desactivado sin motivo
           // manda a preguntar; esto contesta la pregunta antes de que se haga.
-          <p style={{ fontSize: 11.5, color: C.tenue, marginTop: 12 }} data-testid="conversacion-solo-lectura">
-            Este presupuesto ya está congelado o tu rol no puede modificarlo: podés leerlo, no cambiarlo.
+          <p style={{ fontSize: 11.5, color: C.tenue, margin: 0 }} data-testid="conversacion-solo-lectura">
+            Tu rol puede leer este presupuesto, no cambiarlo.
           </p>
         )}
       </div>
@@ -176,10 +261,12 @@ export function Conversacion({ cotizacionId, puedeEscribir }: {
 }
 
 /** La respuesta del motor, dibujada. Ni un texto propio sobre el presupuesto. */
-function Respuesta({ r, onConfirmar, pendiente }: {
+function Respuesta({ r, onConfirmar, pendiente, ultimo }: {
   r: RespuestaConversacion
   onConfirmar: () => void
   pendiente: boolean
+  /** El confirmar del outlier sólo vive en el último turno: el hilo viejo es historia, no acción. */
+  ultimo: boolean
 }) {
   const t = TONO[r.tono] ?? TONO.dato
   return (
@@ -236,7 +323,7 @@ function Respuesta({ r, onConfirmar, pendiente }: {
 
       {/* El «sí, aplicalo igual» del outlier engine (§20). Sólo aparece cuando el motor PREGUNTÓ:
           un botón de confirmar siempre visible convertiría la advertencia en un trámite. */}
-      {r.tono === 'pregunta' && r.pregunta?.includes('¿Lo aplico igual?') && (
+      {ultimo && r.tono === 'pregunta' && r.pregunta?.includes('¿Lo aplico igual?') && (
         <button
           type="button" onClick={onConfirmar} disabled={pendiente} data-testid="confirmar-outlier"
           style={{

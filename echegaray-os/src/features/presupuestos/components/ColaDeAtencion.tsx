@@ -24,23 +24,19 @@
 
 import { C, TARJETA, millones } from '@/shared/components/canon'
 import type { Cola, Gate } from '../services/cotizadorPuente.ts'
+import { ROTULO_ISSUE, claveDeIssue } from '../services/vivo.ts'
 
-/** La traducción de los estados de dominio a lo que se lee. El modelo es de dominio; la UI traduce. */
-const ROTULO: Record<string, string> = {
-  FALTA_DATO: 'Falta un dato',
-  CONFLICTO: 'Conflicto',
-  AMBIGUO: 'Ambiguo',
-  SIN_PRECIO: 'Sin precio',
-  PRECIO_DESACTUALIZADO: 'Precio viejo',
-  SUBCONTRATO_SIN_PRECIO: 'Subcontrato sin precio',
-  OUTLIER_PENDING: 'Cambio atípico sin resolver',
-  COMMERCIAL_DECISION: 'Decisión comercial',
-  UNIDAD_INCOMPATIBLE: 'Unidad incompatible',
-  EXCLUSION_CON_COMPUTO: 'Excluido pero computado',
-  SIN_PARTIDA: 'Sin partida',
-  CANTIDAD_CRITICA_AUSENTE: 'Sin cantidad',
-  FUGA_ENTRE_CLIENTES: 'Dato de otro cliente',
-  SIN_PRECIO_CALCULABLE: 'Sin precio calculable',
+/**
+ * EL RÓTULO DE CADA TIPO SALE DE `vivo.ts`, NO DE ACÁ.
+ *
+ * Había dos mapas con los mismos catorce tipos: éste y el que arma el rótulo del chip de atención.
+ * Dos vocabularios para la misma cosa se separan solos —alguien agrega un tipo en uno y no en el
+ * otro— y entonces el chip y la cola nombran distinto el mismo problema. Se dice UNA vez.
+ */
+const enBadge = (i: { type: string; recommended_action: string | null }) => {
+  const clave = claveDeIssue(i)
+  const t = ROTULO_ISSUE[clave] ?? clave.toLowerCase().replace(/_/g, ' ')
+  return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
 const COLOR: Record<string, string> = {
@@ -116,7 +112,7 @@ export function ColaDeAtencion({ cola, gate, parcial }: {
                     fontSize: 10, letterSpacing: '.04em', color: COLOR[i.severity] ?? C.tenue,
                     border: `1px solid ${C.linea}`, borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap',
                   }}>
-                    {ROTULO[i.type] ?? i.type}
+                    {enBadge(i)}
                   </span>
                   <span style={{ fontSize: 12.5, color: C.tinta, fontWeight: 500 }}>{i.entity}</span>
                   <span style={{ marginLeft: 'auto', fontSize: 11.5, color: C.tenue, fontVariantNumeric: 'tabular-nums' }}>

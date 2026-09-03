@@ -74,8 +74,35 @@ export interface CascadaMotor {
   porQue: string | null
 }
 
+/**
+ * UNA PARTIDA YA CRUZADA CON EL ALCANCE — lo que devuelve `estadoDesdeFilas().partidas`.
+ *
+ * No es la fila de la vista: es `partidaDesdeFila()` pasada por `cruzarAlcance()`, que es quien
+ * decide si está adentro o afuera del presupuesto (§5). El `alcance` NO existe en la fila y por eso
+ * llega `null` cuando nadie declaró nada: `null` es «no se decidió», no «incluido».
+ *
+ * Se tipa acá, en la costura, por la misma razón que todo lo demás de este archivo: el `.mjs` no
+ * puede declarar su forma, y repartir el `as unknown as` por seis archivos dejaría seis contratos.
+ */
+export interface PartidaDelMotor {
+  id: string
+  codigo: string | null
+  descripcion: string
+  rubro: string | null
+  unidad: string | null
+  cantidad: number | null
+  costoUnitario: number | null
+  subtotal: number | null
+  hh: number | null
+  subcontratada: boolean
+  precioSubcontrato: number | null
+  sinAnalisis: boolean
+  congelada: boolean
+  alcance: 'INCLUIDO' | 'EXCLUIDO' | 'POR_DEFINIR' | null
+}
+
 export interface EstadoPresupuestoVivo {
-  partidas: unknown[]
+  partidas: PartidaDelMotor[]
   politica: unknown
   cascada: CascadaMotor | null
   cola: Cola

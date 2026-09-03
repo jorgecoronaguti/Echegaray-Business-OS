@@ -38,6 +38,25 @@
 // cuentan como cero, se declaran al lado. Pliega, como en el canónico: un presupuesto de 68 partidas
 // se recorre por rubro. Se abre por defecto — cerrar todo esconde el trabajo.
 //
+// ═══ UN COLOR POR FILA, NO POR CELDA (REGLAS-DATOS §8) ═══
+//
+// Cada celda sin dato se pintaba de ámbar por su cuenta: una partida sin HH, sin costo unitario y
+// sin subtotal mostraba TRES ámbar en el mismo renglón y además dos badges al lado. El ojo lee eso
+// como tres problemas distintos cuando es uno solo —no se puede valorizar— y el ámbar deja de
+// significar nada por repetición.
+//
+// Ahora el estado de la fila lo decide `motivoDeFila()` sobre las partidas ya cruzadas con el
+// alcance —las mismas que cuentan la certeza y los pendientes—, llega como mapa por id, y pinta UNA
+// cosa: un punto al principio del renglón. Las celdas sin dato escriben «—» sin color propio.
+//
+// ═══ UN PUNTO, NO UNA ETIQUETA REPETIDA ═══
+//
+// La primera versión escribía el motivo al lado de la descripción. Sobre COT-2026-001 las 26 filas
+// tienen el MISMO estado, así que la tabla mostraba veintiséis veces «sin alcance declarado»: no
+// distinguía nada —marcar lo normal no dice nada— y encima le comía el ancho a la descripción,
+// que volvió a superponerse con el código. El punto identifica la fila de un vistazo, el motivo
+// está en su `title`, y el número con su nombre vive UNA vez, en el encabezado.
+//
 // ═══ EL TOTAL DE LA TABLA NO SE SUMA ACÁ ═══
 //
 // Sale de `cotizacion_cascada`, que es el mismo número que abre la franja de arriba. Sumar las filas
@@ -52,8 +71,9 @@ import {
   BuscadorCaja, IcoAlerta, IcoChevron, IcoQuitar, entero, pesos, porcentajeCanon,
 } from '@/shared/components/canon'
 import type { PartidaValorizada } from '../types'
+import { COLOR_FILA, type EstadoFila } from '../services/vivo'
 import {
-  contarFaltantes, filasDeLaTabla, filtrarPartidas, filtrarPorFalta, faltantesDe,
+  contarFaltantes, filasDeLaTabla, filtrarPartidas, filtrarPorFalta,
   type FaltaPartida,
 } from '../services/partidas'
 import { importe, rendimiento } from '../services/formato'
@@ -67,8 +87,18 @@ import { CeldaEditable } from './CeldaEditable'
  */
 const COLS = 'minmax(0,1.9fr) 44px 84px 80px 80px 116px 116px 60px'
 
+/** El rótulo del estado, en el renglón. `extraido` no lleva: marcar lo normal no dice nada. */
+const ETIQUETA: Partial<Record<EstadoFila, string>> = {
+  confirmado: 'confirmada',
+  falta: 'sin poder valorizar',
+  ambiguo: 'sin alcance declarado',
+  excluido: 'excluida',
+  propuesto: 'propuesta',
+}
+
 export function TablaPartidas({
   partidas,
+  estados,
   cotizacionId,
   costoDirecto,
   hhPrevistas,
@@ -79,6 +109,8 @@ export function TablaPartidas({
   accion,
 }: {
   partidas: PartidaValorizada[]
+  /** El estado de cada fila por `partida_id`. Lo decide `motivoDeFila()`, no esta tabla. */
+  estados: Record<string, EstadoFila>
   cotizacionId: string
   costoDirecto: number | null
   /** Los tres del pie salen de `cotizacion_cascada`, igual que el costo directo: nunca se suman acá. */
@@ -206,6 +238,9 @@ export function TablaPartidas({
             <FilaPartida
               key={f.clave}
               p={f.partida}
+              // Sin entrada en el mapa la fila se dibuja neutra: se prefiere no decir nada a
+              // inventar un estado que ninguna función decidió.
+              estado={estados[f.partida.partida_id] ?? null}
               cotizacionId={cotizacionId}
               seleccionada={seleccionada === f.partida.partida_id}
               congelado={congelado}
@@ -290,15 +325,18 @@ function Chip({ n, activo, onClick, children, testid }: {
 }
 
 function FilaPartida({
-  p, cotizacionId, seleccionada, congelado,
+  p, estado, cotizacionId, seleccionada, congelado,
 }: {
   p: PartidaValorizada
+  estado: EstadoFila | null
   cotizacionId: string
   seleccionada: boolean
   congelado: boolean
 }) {
-  const faltantes = faltantesDe(p)
   const base = `/presupuestos/${cotizacionId}`
+  // EL color de la fila. `extraido` y las filas sin estado van en tinta normal: pintar lo normal
+  // gasta el color que hace falta para lo que no lo es.
+  const color = estado && estado !== 'extraido' ? COLOR_FILA[estado] : C.tinta
   return (
     <FilaCanon
       cols={COLS}
@@ -309,24 +347,25 @@ function FilaPartida({
     >
       {/* SANGRÍA DE 18px, como el canónico: es lo que hace que la partida se lea como hija de su
           rubro sin necesidad de una línea ni de un color. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, paddingLeft: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, paddingLeft: 12 }}>
+        {estado && estado !== 'extraido' ? (
+          <span
+            title={ETIQUETA[estado]}
+            aria-label={ETIQUETA[estado]}
+            data-testid="punto-estado"
+            data-estado={estado}
+            style={{ width: 6, height: 6, borderRadius: 3, background: color, flexShrink: 0 }}
+          />
+        ) : (
+          // El hueco se reserva igual: sin él las filas normales y las marcadas no alinean.
+          <span style={{ width: 6, flexShrink: 0 }} />
+        )}
         <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="codigo"
           valor={p.codigo ?? ''} mono ancho="w-[58px]" placeholder="s/c"
           deshabilitada={congelado} testid={`codigo-${p.partida_id}`} />
         <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="descripcion"
           valor={p.descripcion} deshabilitada={congelado} testid={`descripcion-${p.partida_id}`} />
-        {faltantes.map((f) => (
-          <span
-            key={f}
-            title={f}
-            data-testid="badge-falta"
-            style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.warn, flexShrink: 0 }}
-          >
-            <IcoAlerta s={13} />
-            <span style={{ fontSize: '9.5px' }}>{f}</span>
-          </span>
-        ))}
-      </div>
+</div>
 
       <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="unidad"
         valor={p.unidad ?? ''} ancho="w-[38px]" placeholder="un." deshabilitada={congelado} />
@@ -342,16 +381,18 @@ function FilaPartida({
         mono ancho="w-full" placeholder="sin dato" deshabilitada={congelado}
         testid={`hs-${p.partida_id}`} />
 
-      <CeldaTexto mono tam="11.5px" alineacion="derecha" color={p.hh === null ? C.warn : C.tinta}>
-        {entero(p.hh) ?? 'sin cargar'}
+      {/* «—» Y NO «sin cargar»: la ausencia se ve igual y no compite con el dato de al lado. El
+          color de la ausencia es el de la fila, que ya dice de qué ausencia se trata. */}
+      <CeldaTexto mono tam="11.5px" alineacion="derecha" color={p.hh === null ? C.tenue : C.tinta}>
+        {entero(p.hh) ?? '—'}
       </CeldaTexto>
 
-      <CeldaTexto mono tam="11.5px" alineacion="derecha" color={p.costo_unitario === null ? C.warn : C.tintaSuave}>
-        {importe(p.costo_unitario) ?? 'sin precio'}
+      <CeldaTexto mono tam="11.5px" alineacion="derecha" color={p.costo_unitario === null ? C.tenue : C.tintaSuave}>
+        {importe(p.costo_unitario) ?? '—'}
       </CeldaTexto>
 
-      <CeldaTexto mono tam="12px" alineacion="derecha" color={p.subtotal === null ? C.warn : C.tinta}>
-        {importe(p.subtotal) ?? 'sin precio'}
+      <CeldaTexto mono tam="12px" alineacion="derecha" color={p.subtotal === null ? C.tenue : C.tinta}>
+        {importe(p.subtotal) ?? '—'}
       </CeldaTexto>
 
       {/* El canónico dibuja UNA acción —el chevron que abre el análisis— y por eso su columna mide

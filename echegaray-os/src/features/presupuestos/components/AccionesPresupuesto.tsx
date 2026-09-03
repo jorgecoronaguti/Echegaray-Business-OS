@@ -3,13 +3,25 @@
 // LAS ACCIONES DEL PRESUPUESTO — una primaria por contexto, y las demás en icono o texto.
 //
 // «Convertir a obra» es la primaria de la pantalla 15. Cuando todavía no corresponde —el
-// presupuesto no está adjudicado, o no está congelado— NO se esconde: se dibuja apagada y el motivo
-// va en su `title`. Un botón que desaparece obliga a adivinar qué falta; uno apagado que al pasar
-// por encima dice «congelá primero» enseña el ciclo sin ocupar 240px de la línea del encabezado.
+// presupuesto no está adjudicado, o no está congelado— NO se dibuja apagada: se dibuja el MOTIVO,
+// como texto, en el encabezado del presupuesto vivo (`NotaConvertir`).
+//
+// La versión anterior lo dejaba gris con la explicación escondida en el `title`, y el argumento era
+// que un botón que desaparece obliga a adivinar. Es cierto, y por eso el motivo no desaparece: lo
+// que desaparece es el control muerto. «Se convierte cuando el presupuesto está adjudicado» escrito
+// enseña el ciclo mejor que un rectángulo gris que hay que descubrir pasando el mouse por encima.
 //
 // «Congelar» tiene efecto irreversible: copia la composición y fija el costo. Por eso su leyenda
 // dice qué hace ANTES de tocarlo —bajo demanda, en el `title`— y no hay `window.confirm`: un diálogo
 // nativo no se lee en el teléfono y no queda como evidencia en la pantalla.
+//
+// ═══ Y POR ESO CONGELAR SALIÓ DE ACÁ (contrato v5) ═══
+//
+// El botón vivía en esta fila, DESHABILITADO, con el motivo escondido en el `title`. El contrato lo
+// prohíbe: «con bloqueos no se muestra botón deshabilitado, se muestra la lista con enlace a cada
+// problema». Ahora `BotonCongelar` se exporta suelto y lo dibuja el encabezado del presupuesto vivo
+// SÓLO cuando el gate pasa; cuando no pasa, ese mismo lugar muestra los bloqueos, cada uno enlazado
+// a su partida. El botón deshabilitado desapareció porque no era una explicación, era un acertijo.
 //
 // ═══ TOKENS CLAROS, NO BLANCOS TRANSLÚCIDOS (Design 23/08) ═══
 //
@@ -32,28 +44,23 @@ const SECUNDARIO =
 export function AccionesPresupuesto({
   id,
   estado,
-  congelado,
-  puedeCongelar,
-  motivoCongelar,
   puedeConvertir,
-  motivoConvertir,
   hrefConvertir,
 }: {
   id: string
   estado: EstadoPresupuesto
-  congelado: boolean
-  puedeCongelar: boolean
-  motivoCongelar: string | null
   puedeConvertir: boolean
-  motivoConvertir: string | null
   hrefConvertir: string
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="acciones-presupuesto">
       <CambiarEstado id={id} estado={estado} />
-      {!congelado && <Congelar id={id} puede={puedeCongelar} motivo={motivoCongelar} />}
+      {/* Congelar NO se dibuja acá: cuando se puede, lo dibuja el encabezado del presupuesto vivo;
+          cuando no, ese lugar muestra los bloqueos. Ver el encabezado de este archivo. */}
       <NuevaVersion id={id} />
-      {puedeConvertir ? (
+      {/* Cuando no se puede, acá no va nada: el motivo lo escribe `NotaConvertir` en el encabezado
+          del presupuesto vivo, que es donde hay lugar para una frase entera. */}
+      {puedeConvertir && (
         <Link
           href={hrefConvertir}
           data-testid="convertir-a-obra"
@@ -61,16 +68,6 @@ export function AccionesPresupuesto({
         >
           Convertir a obra
         </Link>
-      ) : (
-        // El motivo va en el `title`, no en 240px de texto permanente al lado del botón: es la
-        // respuesta a «por qué está apagado», y esa pregunta se hace una vez.
-        <span
-          data-testid="convertir-bloqueado"
-          title={motivoConvertir ?? undefined}
-          className="cursor-not-allowed rounded-control bg-surface-sunken px-3.5 py-[7px] text-[12.5px] font-semibold text-faint"
-        >
-          Convertir a obra
-        </span>
       )}
     </div>
   )
@@ -111,7 +108,14 @@ function CambiarEstado({ id, estado }: { id: string; estado: EstadoPresupuesto }
   )
 }
 
-function Congelar({ id, puede, motivo }: { id: string; puede: boolean; motivo: string | null }) {
+/**
+ * EL BOTÓN DE CONGELAR, SUELTO — lo monta quien ya sabe que el gate pasa.
+ *
+ * No recibe `puede`: si hubiera que decidirlo acá, volvería a existir el estado deshabilitado que el
+ * contrato prohíbe. La cerradura de verdad sigue en la base (`cot_congelar_con_gate` levanta
+ * excepción si el gate no pasa), así que un POST que se saltee la pantalla rebota igual.
+ */
+export function BotonCongelar({ id }: { id: string }) {
   const [res, ejecutar, pendiente] = useActionState<EstadoAccion, FormData>(congelar, INICIAL)
   return (
     <form
@@ -125,12 +129,12 @@ function Congelar({ id, puede, motivo }: { id: string; puede: boolean; motivo: s
       <input type="hidden" name="id" value={id} />
       <button
         type="submit"
-        disabled={!puede || pendiente}
+        disabled={pendiente}
         data-testid="congelar"
-        title={motivo ?? 'Copia la composición de cada partida y fija el costo. Se hace una sola vez.'}
-        className={SECUNDARIO}
+        title="Copia la composición de cada partida y fija el costo. Se hace una sola vez."
+        className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-wait"
       >
-        {pendiente ? 'Congelando…' : 'Congelar'}
+        {pendiente ? 'Congelando…' : 'Congelar y preparar oferta'}
       </button>
       {res.mensaje && <span className="text-[11px] text-pos">{res.mensaje}</span>}
       {res.error && <span className="text-[11px] text-neg" data-testid="congelar-error">{res.error}</span>}
