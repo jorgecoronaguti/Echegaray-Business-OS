@@ -58,3 +58,12 @@ alter table orq.plano_lectura_cache enable row level security;
 drop policy if exists plano_lectura_cache_servicio on orq.plano_lectura_cache;
 create policy plano_lectura_cache_servicio on orq.plano_lectura_cache
   for all to service_role using (true) with check (true);
+
+-- ═══ Y EL GRANT, QUE NO ES LO MISMO QUE LA POLICY ═══
+--
+-- Lección ya pagada en este repo: una policy sin GRANT no autoriza nada — el rol llega a la tabla y
+-- se le niega antes de que la policy se evalúe siquiera. Hoy el worker se conecta como `postgres`
+-- (dueño de la tabla, saltea RLS) y por eso el caché andaría igual sin esta línea; pero el
+-- precedente que esta migración sigue —`orq.xsas_adjunto`— tiene el grant a `service_role`, y
+-- dejarlo afuera sería sembrar un fallo silencioso para el día que algo lea el caché por esa vía.
+grant select, insert, update, delete on orq.plano_lectura_cache to service_role;
