@@ -4,7 +4,7 @@
 // leyó el contrato antes de computar. Este archivo existe para que eso deje de poder pasar en
 // silencio: la partida excluida sale del total y el hecho queda DICHO con su plata al lado.
 
-import { test } from 'node:test'
+import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { ALCANCE, entradaDeAlcance, alcanza, cruzarAlcance, paraCostear } from './alcance.mjs'
 import { ESTADO, TIPO_ISSUE, SEVERIDAD } from './contrato.mjs'
@@ -88,4 +88,58 @@ test('sin ninguna entrada de alcance, TODO queda POR_DEFINIR — no incluido por
   assert.equal(r.porDefinir, 4)
   assert.equal(r.incluidas, 0)
   assert.equal(paraCostear(r.partidas).length, 0)
+})
+
+// ═══ DE QUÉ FILA SALIÓ CADA ISSUE (03/09/2026) ═══
+//
+// `issuesDePartidas` ya adjuntaba `evidence.partidaId` y `cruzarAlcance` no. Consecuencia medida
+// sobre COT-2026-001, 26 partidas: la pantalla une los issues del motor con los huecos de las filas
+// para contar PARTIDAS por resolver, no avisos — y sin el id no podía saber que el issue de alcance
+// y el hueco de la fila eran la misma partida. Publicó 52 pendientes sobre 26 partidas.
+//
+// El id es la clave estable. `entity` cae al código, que puede faltar (dos partidas sin código
+// colisionan) y no sirve para deduplicar.
+describe('todo issue que nace de una partida dice de cuál', () => {
+  const fila = (id, extra = {}) => ({
+    id, codigo: null, descripcion: `partida ${id}`, cantidad: 10, subtotal: 1000, ...extra,
+  })
+
+  test('el issue de POR_DEFINIR lleva su partidaId', () => {
+    const { issues } = cruzarAlcance({ partidas: [fila('p1')], alcance: [] })
+    const suyo = issues.filter((i) => i.type === TIPO_ISSUE.FALTA_DATO)
+    assert.equal(suyo.length, 1)
+    assert.equal(suyo[0].evidence?.partidaId, 'p1')
+  })
+
+  test('el issue de CONFLICTO también', () => {
+    const { issues } = cruzarAlcance({
+      partidas: [fila('p2', { descripcion: 'pintura' })],
+      alcance: [
+        { patron: 'pintura', estado: 'INCLUIDO', fuente: 'pliego' },
+        { patron: 'pintura', estado: 'EXCLUIDO', fuente: 'contrato' },
+      ],
+    })
+    const suyo = issues.filter((i) => i.type === TIPO_ISSUE.CONFLICTO)
+    assert.equal(suyo.length, 1)
+    assert.equal(suyo[0].evidence?.partidaId, 'p2')
+  })
+
+  test('el de EXCLUSION_CON_COMPUTO conserva la fuente Y agrega la partida', () => {
+    const { issues } = cruzarAlcance({
+      partidas: [fila('p3', { descripcion: 'pintura' })],
+      alcance: [{ patron: 'pintura', estado: 'EXCLUIDO', fuente: 'contrato', textoLiteral: 'sin pintura' }],
+    })
+    const suyo = issues.filter((i) => i.type === TIPO_ISSUE.EXCLUSION_CON_COMPUTO)
+    assert.equal(suyo.length, 1)
+    assert.equal(suyo[0].evidence?.partidaId, 'p3')
+    assert.equal(suyo[0].evidence?.fuente, 'contrato', 'la fuente no se perdió al agregar el id')
+  })
+
+  test('NINGÚN issue de esta función sale sin partida: la unión los contaría dos veces', () => {
+    const { issues } = cruzarAlcance({ partidas: [fila('a'), fila('b'), fila('c')], alcance: [] })
+    assert.ok(issues.length >= 3, 'el test dejó de mirar donde tenía que mirar')
+    for (const i of issues) {
+      assert.ok(i.evidence?.partidaId, `«${i.type}» salió sin decir de qué partida`)
+    }
+  })
 })
