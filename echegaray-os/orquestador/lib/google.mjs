@@ -54,7 +54,10 @@ const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé 
 /** El gancho de la guarda inversa, atado a este archivo: lo que el dueño vació no se repone. */
 const noReponer = (fileId) => (range, actual, values) => noReponerEnRango(fileId, range, actual, values)
 
-const READONLY_SCOPES = [
+// Se EXPORTA (03/09): un script que sólo mira —columnas-calculadas, la siembra de huellas, el diff
+// contra el snapshot— tiene que quedarse sin poder escribir por el TOKEN, no por un `if`. Un «no
+// escribe» que depende de una rama del código se vuelve a romper la próxima vez que alguien agrega una.
+export const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
@@ -1264,34 +1267,54 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
      *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
+    // ═══ SE MANDA LO QUE LA GUARDA DEVOLVIÓ, NO LO QUE ENTRÓ (03/09/2026) ═══
+    //
+    // EL DEFECTO, encontrado por la auditoría de cierre de la propiedad por celda: acá se llamaba a
+    // `guardarEscritura`, se miraba SÓLO si `g.data` había quedado vacío… y después se escribía
+    // `range` + `values` ORIGINALES. Todo lo que la guarda decide sobre el CONTENIDO se tiraba: el
+    // recorte por celda, y también la re-inyección de las celdas aprendidas, que tiene un año.
+    //
+    // El daño era peor que "no proteger": el log decía «✋ N celda(s) tuya(s) respetada(s)», la fila
+    // entraba en `sheet_reconciliacion_celda` como respetada, y la celda se pisaba igual. Una guarda
+    // que informa lo contrario de lo que hace es peor que no tenerla — es la que hace que nadie
+    // vuelva a mirar. `batchUpdateValues` (más abajo) ya consumía su `g.data`; ésta no.
+    //
+    // El camino feliz no cambia de forma: una sola entrada con el rango intacto sigue siendo el mismo
+    // PUT de siempre. Sólo cuando la guarda PARTIÓ el pedido se manda por `values:batchUpdate`, que
+    // es la única forma de escribir varios rangos sin volver a mandar los que se recortaron.
     async updateSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, range); if (hielo) return hielo
       // Mismo choke point que batchUpdateValues: no piso una pestaña candada ni una que editaste.
       let sellar = async () => {}
+      let data = [{ range, values }]
       if (!espejo && !yaGuardado) {
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
-          const g = await guardarEscritura(cliente, fileId, [{ range, values }])
+          const g = await guardarEscritura(cliente, fileId, data)
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
+          data = g.data
           sellar = g.sellar
         } catch { /* sin base: se escribe (disponibilidad) */ }
       }
       // NO-BORRAR: después de toda guarda y de todo bypass. Si acá una celda quedara vacía sobre
       // contenido, se conserva el contenido. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, [{ range, values }], { antesDePreservar: noReponer(fileId) })
+        const nb = await protegerBorrado(cliente, fileId, data, { antesDePreservar: noReponer(fileId) })
         if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
-        values = nb.data[0].values
+        data = nb.data
       }
-      values = await localizeValues(fileId, values)
-      const res = await apiSend(
-        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-        'PUT',
-        { range, majorDimension: 'ROWS', values },
-      )
-      await sellar()
+      const loc = []
+      for (const d of data) loc.push({ range: d.range, majorDimension: 'ROWS', values: await localizeValues(fileId, d.values) })
+      const res = loc.length === 1 && loc[0].range === range
+        ? await apiSend(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+          'PUT', loc[0])
+        : await apiSend(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values:batchUpdate`,
+          'POST', { valueInputOption: 'USER_ENTERED', data: loc })
+      await sellar(res)
       return res
     },
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
@@ -1746,11 +1769,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       // eso, el propio borrado auto-candaba la pestaña y frenaba la escritura que completaba la
       // operación. Nunca sella una pestaña bloqueada, así que no levanta ningún candado.
       let sellar = async () => {}
+      let frenados = []
       if (!espejo && !yaGuardado) {
         try {
           const { guardarRequests } = await import('./guarda-escritura.mjs')
           const g = await guardarRequests(cliente, fileId, requests)
-          if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          frenados = g.frenados ?? []
+          if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas, frenados }
           requests = g.requests
           sellar = g.sellar
         } catch { /* fail-open */ }
@@ -1761,7 +1786,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         { requests },
       )
       await sellar()
-      return res
+      // ═══ UN REQUEST ESTRUCTURAL FRENADO TIENE QUE LLEGAR AL LLAMADOR (03/09) ═══
+      //
+      // La guarda por celda puede frenar un `deleteDimension` porque en el tramo hay celdas del dueño.
+      // Si eso no vuelve, el generador sigue como si la geometría hubiera cambiado —«la banda pasó de
+      // 8 a 5 filas»— y escribe el layout nuevo sobre una pestaña que quedó con el viejo. El resultado
+      // es peor que no haber frenado nada: la pestaña queda mezclada. Los llamadores que dependen de
+      // la geometría ABORTAN mirando este campo.
+      return frenados.length ? { ...res, frenados } : res
     },
     /** Copia/duplica un archivo (para partir de una plantilla o de un presupuesto previo). */
     async copyFile(fileId, name, parents) {

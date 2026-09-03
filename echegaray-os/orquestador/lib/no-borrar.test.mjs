@@ -137,3 +137,51 @@ test('protegerBorrado informa las dos cosas por separado: lo que limpia y lo que
   assert.ok(r.detalleLimpiadas[0].includes('A1'), r.detalleLimpiadas.join(' '))
   assert.ok(r.detalle[0].includes('B1'), r.detalle.join(' '))
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// B7 — LA FRAGMENTACIÓN NO PUEDE MULTIPLICAR LAS LECTURAS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const { rectanguloDe, recortarDeUnion } = await import('./no-borrar.mjs')
+
+test('rectanguloDe: el rectángulo de un rango A1 ya delimitado', () => {
+  assert.deepEqual(rectanguloDe('Proveedores!A10:D12'), { tab: 'Proveedores', fila0: 10, col0: 0, filaFin: 12, colFin: 3 })
+  assert.deepEqual(rectanguloDe("'Cheques Emitidos'!C5"), { tab: "'Cheques Emitidos'", fila0: 5, col0: 2, filaFin: 5, colFin: 2 })
+  assert.equal(rectanguloDe('A1:B2'), null)
+})
+
+test('recortarDeUnion: sirve el subrango, y dice que no cuando no lo cubre', () => {
+  const union = { rect: { tab: 'T', fila0: 10, col0: 0, filaFin: 12, colFin: 3 }, filas: [
+    ['a1', 'b1', 'c1', 'd1'], ['a2', 'b2', 'c2', 'd2'], ['a3', 'b3', 'c3', 'd3'],
+  ] }
+  assert.deepEqual(recortarDeUnion(union, 'T!A11:C11'), [['a2', 'b2', 'c2']])
+  assert.deepEqual(recortarDeUnion(union, 'T!D12:D12'), [['d3']])
+  assert.equal(recortarDeUnion(union, 'T!A9:A9'), null, 'fuera del rectángulo leído: hay que ir a la API')
+  assert.equal(recortarDeUnion(undefined, 'T!A11'), null)
+})
+
+test('un pedido PARTIDO en seis bloques de la misma pestaña paga UNA lectura', async () => {
+  // Desde que la propiedad por celda recorta, una pestaña con cinco celdas del dueño sale partida en
+  // seis rangos. Con una lectura por entrada eso son seis lecturas de la misma pestaña, y justo en
+  // las más editadas —que son las que más se fragmentan—.
+  let lecturas = 0
+  const cliente = {
+    async readSheetValues(_f, rango) {
+      lecturas++
+      const m = /!([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(rango)
+      const alto = Number(m[4]) - Number(m[2]) + 1
+      const ancho = m[3].charCodeAt(0) - m[1].charCodeAt(0) + 1
+      return Array.from({ length: alto }, () => Array.from({ length: ancho }, () => 'x'))
+    },
+  }
+  const data = [
+    { range: 'Proveedores!A10:D10', values: [['1', '2', '3', '4']] },
+    { range: 'Proveedores!A11:A11', values: [['5']] },
+    { range: 'Proveedores!C11:D11', values: [['6', '7']] },
+    { range: 'Proveedores!A12:D12', values: [['8', '9', '10', '11']] },
+    { range: 'Proveedores!A13:B13', values: [['12', '13']] },
+    { range: 'Proveedores!D13:D13', values: [['14']] },
+  ]
+  await protegerBorrado(cliente, 'FILE', data)
+  assert.equal(lecturas, 1, `seis bloques de una pestaña pagaron ${lecturas} lecturas`)
+})

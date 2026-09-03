@@ -25,6 +25,7 @@
 //   node orquestador/scripts/compras-columna-fosil.mjs --aplicar   → borra la columna y verifica
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { abortaPorGeometria } from '../lib/propiedad-estructura.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { COL as COL_CARGADOR, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 import { referenciaAColumna } from '../lib/compras-valores.mjs'
@@ -168,6 +169,14 @@ async function main() {
   } }])
   if (r?.congelado) return console.log('🧊 el freno de mano está puesto: no borré nada.')
   if (r?.protegido) return console.log('🔒 la guarda descartó todo: la pestaña está candada.')
+  // Borrar una columna corre TODAS las de la derecha: si la guarda lo frenó porque hay contenido tuyo
+  // en el tramo, las letras del código siguen donde estaban y nadie puede asumir lo contrario.
+  const corte = abortaPorGeometria(r)
+  if (corte.aborta) {
+    console.error(`⛔ no borré la columna: ${corte.motivo}.`)
+    process.exitCode = 1
+    return
+  }
 
   // ── LA EVIDENCIA ES DEL EFECTO: se relee el encabezado y se cuenta lo que quedó.
   const despues = (await google.readSheetValues(ID, `${PESTANA}!A3:BZ3`))[0] || []

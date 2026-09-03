@@ -108,6 +108,41 @@ const MARCA_VEREDICTO = /[⛔⏭✗]/
 /** Una línea de DETALLE cuelga de su titular: empieza con un glifo de viñeta o viene sangrada. */
 const ES_DETALLE = (cruda) => /^\s{4,}/.test(cruda) || /^\s*[○·•]/.test(cruda)
 
+// ═══ LO QUE SE RESPETÓ TIENE QUE VERSE AL CIERRE, NO SÓLO ADENTRO DE UN PASO (03/09) ═══
+//
+// El dueño: *"lo único que requiero siempre es que mis ediciones en el archivo sean las que manden y
+// siempre se respeten"*. Que se respeten lo garantiza la guarda; que él SE ENTERE, esto. Cada paso
+// imprime su «✋ N celda(s) tuya(s) respetada(s) en <pestaña>: A1, B7, …», y el pipeline las junta —
+// un aviso adentro del log de un paso, entre cuarenta y siete pasos, no lo lee nadie.
+
+/** Reconoce la línea que imprime la guarda por celda. Se parsea el stdout porque cada paso es un proceso hijo. */
+const RESPETADAS = /✋\s*(\d+)\s*celda\(s\) tuya\(s\) respetada\(s\) en (.+?):\s*(.*)$/
+
+/** NÚCLEO PURO: suma las celdas respetadas que declaró un paso, por pestaña. */
+export function sumarRespetadas(stdout, acc = new Map()) {
+  for (const linea of String(stdout ?? '').split('\n')) {
+    const m = RESPETADAS.exec(linea.trim())
+    if (!m) continue
+    const tab = m[2]
+    const previo = acc.get(tab) ?? { celdas: 0, muestra: [] }
+    previo.celdas += Number(m[1])
+    for (const c of m[3].split(',').map((x) => x.trim()).filter((x) => x && !/^…/.test(x) && !/más$/.test(x))) {
+      if (previo.muestra.length < 12 && !previo.muestra.includes(c)) previo.muestra.push(c)
+    }
+    acc.set(tab, previo)
+  }
+  return acc
+}
+
+/** El párrafo de cierre. Devuelve [] cuando no se respetó nada: no se dice lo que no pasó. */
+export function informeRespetadas(acc = new Map()) {
+  if (!acc.size) return []
+  const total = [...acc.values()].reduce((n, v) => n + v.celdas, 0)
+  const out = [`\n✋ ${total} celda(s) tuya(s) respetada(s) en esta corrida — no las pisé:`]
+  for (const [tab, v] of acc) out.push(`  · ${tab}: ${v.celdas} (${v.muestra.join(', ')}${v.celdas > v.muestra.length ? ', …' : ''})`)
+  return out
+}
+
 export function motivoDeFalla(e = {}) {
   const crudas = String(e?.stderr ?? '').split('\n').filter((l) => l.trim())
   const lineas = crudas.map((l) => l.trim())
@@ -242,6 +277,7 @@ async function verificarPresentacion(bloqueadas = new Set()) {
 async function main() {
   const t0 = Date.now()
   const ok = []
+  const respetadas = new Map()
   const fallaron = []
   const reportes = []
   const saltados = []
@@ -383,6 +419,7 @@ async function main() {
       // un control que no cierra SIN fallar. Eso también hay que reportarlo.
       // LAS DOS MARCAS: la corrida imprime la vigente (`▲`) y todavía quedan logs con la publicada.
       // Buscar sólo una dejaría fuera del resumen del pipeline la mitad de los avisos, en silencio.
+      sumarRespetadas(stdout, respetadas)
       const conAlerta = stdout.split('\n').filter((l) => MARCA_ALERTA.test(l))
       const alerta = conAlerta.length ? conAlerta.join(' · ') : null
       ok.push({ script, que, seg: ((Date.now() - inicio) / 1000).toFixed(1), alerta })
@@ -397,6 +434,8 @@ async function main() {
 
   if (DRY) return
   await verificarPresentacion(bloqueadas)
+
+  for (const linea of informeRespetadas(respetadas)) console.log(linea)
 
   console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
   if (saltados.length) console.log(`🔒 ${saltados.length} paso(s) salteado(s) por tu candado: ${saltados.map((s) => s.pestañas.join('/')).join(', ')}`)

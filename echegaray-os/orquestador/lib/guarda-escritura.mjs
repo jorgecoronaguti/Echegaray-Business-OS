@@ -26,6 +26,10 @@
 import { tiene } from './preservar-anotaciones.mjs'
 import { footprintDeRango } from './no-borrar.mjs'
 import { CLASE, clasificarRequest } from './clasificar-request.mjs'
+// LA PROPIEDAD POR CELDA (03/09) vive en `guarda-por-celda.mjs`: es la capa que hace que la
+// pestaña se siga rehaciendo sola Y la celda que el dueño tocó no se toque. Este archivo decide
+// por PESTAÑA (candado, firma, vacío-sobre-lleno) y aquél por celda, tramo y rango de formato.
+import { conPropiedadPorCelda, filtrarPorCelda } from './guarda-por-celda.mjs'
 
 // ═══ CINTURÓN "VACÍO SOBRE LLENO" (28/07, TGUARD) — defensa en profundidad, INDEPENDIENTE de la base ═══
 //
@@ -338,9 +342,24 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
   // administración va a invalidar sólo fabrica un baseline falso. No se sella.
   const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
+  // ═══ A QUÉ ESCRITURAS SE LES APLICA LA PROPIEDAD POR CELDA ═══
+  //
+  // · `chequearVacio:false` marca las dos que NO PISAN —`append` (INSERT_ROWS: mete filas nuevas) y
+  //   `clearValues`—: ahí el destino releído no es el que se va a tocar, y decidir sobre él sería
+  //   decidir sobre otra cosa.
+  // · `compartida` (JORNALES) queda afuera por el MISMO motivo por el que queda afuera de la firma, y
+  //   está escrito arriba: ahí el OS no es dueño de la pestaña, sólo pone celdas sueltas, así que
+  //   nunca va a tener huella de casi nada y la propiedad por celda congelaría la carga de
+  //   administración entera y para siempre. Quien la use trae su propia protección, y más fina:
+  //   `registrarAsistencia` relee la celda destino, compara su huella justo antes de escribir y
+  //   aborta la operación si cambió. Se protege LA CELDA, que es la unidad que se comparte.
+  const porCelda = (d, sellar) => (chequearVacio && !compartida
+    ? conPropiedadPorCelda(cliente, fileId, d, sellar)
+    : Promise.resolve({ data: d, respetadas: [], sellar }))
   if (!bloqueadas.size) {
     const conAprendidas = await reInyectarAprendidas(fileId, data)
-    return { data: conAprendidas, bloqueadas: [], sellar: sellarSi(tabs) }
+    const p = await porCelda(conAprendidas, sellarSi(tabs))
+    return { data: p.data, bloqueadas: [], respetadas: p.respetadas, sellar: p.sellar }
   }
   const { permitido, bloqueado } = separarPermitido(data, bloqueadas)
   let rescatados = []
@@ -360,14 +379,16 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   // del dueño y dejaría entrar la próxima reescritura completa del generador. Ver el encabezado.
   const escritos = tabsProtegibles(permitido)
   const conAprendidas = await reInyectarAprendidas(fileId, conservados)
+  const p = await porCelda(conAprendidas, sellarSi(escritos))
   return {
-    data: conAprendidas,
+    data: p.data,
+    respetadas: p.respetadas,
     bloqueadas: [...bloqueadas].filter((t) => !rescatadas.includes(t)),
     rescatadas,
     // `porQue` (pestaña → MOTIVO) viaja hasta el llamador para que pueda DECIR qué pasó. `motivo` sigue
     // reservado al cinturón vacío-sobre-lleno: es lo que distingue las dos rutas de bloqueo.
     porQue: Object.fromEntries(motivos),
-    sellar: sellarSi(escritos),
+    sellar: p.sellar,
   }
 }
 
@@ -416,8 +437,12 @@ export function separarRequests(requests = [], sheetIdsBloqueados = new Set(), d
  * @returns {Promise<{requests:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
  */
 export async function guardarRequests(cliente, fileId, requests) {
-  // Primera pasada SIN meta: un batch de pura apariencia no paga ni una llamada a la API.
-  if ((requests || []).every((r) => clasificarRequest(r).clase !== CLASE.DESTRUCTIVO)) {
+  // Primera pasada SIN meta: un batch que no destruye NADA y no toca ningún formato no paga ni una
+  // llamada a la API. Antes alcanzaba con "no destruye": desde que el diseño lleva huella propia
+  // (03/09) un `repeatCell` también tiene que mirarse, porque re-aplicar un formato encima del que
+  // el dueño cambió es pisarle una edición igual que escribirle un número.
+  const { claveDeFormato } = await import('./huella-formato.mjs')
+  if ((requests || []).every((r) => clasificarRequest(r).clase !== CLASE.DESTRUCTIVO && !claveDeFormato(r))) {
     return { requests, bloqueadas: [], sellar: async () => {} }
   }
   const meta = await cliente.getSheetMeta(fileId)
@@ -462,5 +487,19 @@ export async function guardarRequests(cliente, fileId, requests) {
   // cualquiera: se sellan todas las de contenido (sólo puede pasar con ninguna bloqueada).
   const escritos = (pasoAlgunaTodas ? aEvaluar : [...atribuidas]).filter((t) => !bloqTabs.has(t))
   for (const t of bloqTabs) console.log(`  🔒 "${t}" bajo tu control (candado/edición): salteo lo que le borra o le pisa contenido, dejo la apariencia.`)
-  return { requests: permitidos, bloqueadas: [...bloqTabs], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  // ═══ Y RECIÉN ACÁ, LA PROPIEDAD POR CELDA (03/09) ═══
+  //
+  // Lo de arriba decide por PESTAÑA y sigue igual. Estas tres capas deciden por CELDA, por TRAMO y
+  // por RANGO DE FORMATO, que es lo que el dueño pidió: la pestaña se rehace sola y lo suyo no se
+  // toca. Corren sobre lo que la guarda de pestaña ya autorizó, nunca al revés — ninguna de las tres
+  // puede levantar un candado.
+  const porCelda = await filtrarPorCelda(cliente, fileId, permitidos, id2tab)
+  return {
+    requests: porCelda.requests,
+    bloqueadas: [...bloqTabs],
+    respetadas: porCelda.respetadas,
+    frenados: porCelda.frenados ?? [],
+    sellar: async () => { await sellarTabs(cliente, fileId, escritos); await porCelda.sellar() },
+  }
 }
+

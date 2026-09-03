@@ -16,7 +16,7 @@
 // saltean las líneas que ya llevan la marca de aviso.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { motivoDeFalla } from './flujo-caja-rehacer-todo.mjs'
+import { motivoDeFalla, sumarRespetadas, informeRespetadas } from './flujo-caja-rehacer-todo.mjs'
 
 /** El caso real: un aviso primero, la causa mucho después. */
 const STDERR_REAL = [
@@ -126,4 +126,26 @@ test('importar el runner NO arranca el pipeline: `main()` va detrás de la guard
   assert.match(fuente, /if \(import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`\) \{\s*\n\s*main\(\)/,
     'main() sin guarda: cualquier import de este módulo reescribe el Sheet real')
   assert.doesNotMatch(fuente, /^main\(\)/m, 'quedó una llamada a main() en el tope del módulo')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CIERRE DICE QUÉ SE RESPETÓ (03/09)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('sumarRespetadas: junta lo que declaró cada paso, por pestaña', () => {
+  const acc = new Map()
+  sumarRespetadas('✓ algo\n  ✋ 2 celda(s) tuya(s) respetada(s) en Proveedores: D11, B7\notra línea', acc)
+  sumarRespetadas('  ✋ 1 celda(s) tuya(s) respetada(s) en Proveedores: Q45', acc)
+  sumarRespetadas('  ✋ 30 celda(s) tuya(s) respetada(s) en CAJA: A1, A2, … y 28 más', acc)
+  assert.equal(acc.get('Proveedores').celdas, 3)
+  assert.deepEqual(acc.get('Proveedores').muestra, ['D11', 'B7', 'Q45'])
+  assert.equal(acc.get('CAJA').celdas, 30)
+  assert.deepEqual(acc.get('CAJA').muestra, ['A1', 'A2'], 'el «… y N más» no es una celda')
+})
+
+test('informeRespetadas: no dice nada cuando no se respetó nada', () => {
+  assert.deepEqual(informeRespetadas(new Map()), [])
+  const lineas = informeRespetadas(sumarRespetadas('  ✋ 2 celda(s) tuya(s) respetada(s) en CAJA: A1, B2'))
+  assert.match(lineas[0], /2 celda\(s\) tuya\(s\) respetada\(s\) en esta corrida/)
+  assert.match(lineas[1], /· CAJA: 2 \(A1, B2\)/)
 })

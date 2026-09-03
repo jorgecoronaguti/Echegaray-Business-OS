@@ -44,6 +44,7 @@
 //   node orquestador/scripts/proveedores-dos-cuadros.mjs --aplicar  → escribe y verifica
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { abortaPorGeometria } from '../lib/propiedad-estructura.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
@@ -349,8 +350,15 @@ async function recortarElAire({ google, sheetId, geo }) {
     return
   }
   console.log(`${s.blancas} fila(s) de aire antes de la sección 2 → se devuelven ${s.sobrante}, quedan ${COLCHON_FINAL}`)
-  await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: {
+  const r = await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: {
     sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
+  // La guarda por celda puede frenar el borrado si en esas filas de "aire" hay algo tuyo. Decirlo y
+  // salir: la relectura de abajo lo confirmaría igual, pero sin nombrar la causa.
+  const corte = abortaPorGeometria(r)
+  if (corte.aborta) {
+    console.error(`⛔ no devolví el aire: ${corte.motivo}. Las filas quedan como están.`)
+    process.exit(1)
+  }
 
   // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta el aire que quedó de verdad.
   const despues = await leerParaDecidirBorrado({ google, id: ID, rango })
