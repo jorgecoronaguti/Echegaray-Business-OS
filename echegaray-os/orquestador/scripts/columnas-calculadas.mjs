@@ -1,30 +1,38 @@
 #!/usr/bin/env node
-// DEVUELVE LA FÓRMULA A LAS CELDAS DONDE ALGUIEN PEGÓ UN VALOR ENCIMA.
+// AVISA CUÁNDO ALGUIEN PEGÓ UN VALOR SOBRE UNA COLUMNA CALCULADA. NO LO DESHACE.
 //
-// POR QUÉ (21/07). El dueño: "los IDs de Cobranzas no son únicos, ¿los renumeramos?" — sí. Pero al
-// ir a hacerlo apareció que la columna nunca tuvo IDs a mano: es `=IF(C51="";"";ROW()-4)`, que por
-// construcción no puede repetirse. Lo que había era un pegado de valores sobre dos celdas, las filas
-// 50 y 54, que son justamente el par duplicado de San Francisco.
+// ═══ POR QUÉ EXISTE (21/07) ═══
 //
-// Renumerar habría sido el arreglo equivocado: 54 números escritos a mano donde había una fórmula
-// que se mantiene sola, y el próximo pegado rompiéndola otra vez sin que nadie se entere. Esto
-// devuelve la fórmula y deja el control corriendo cada dos horas.
+// El dueño: "los IDs de Cobranzas no son únicos, ¿los renumeramos?" — sí. Pero al ir a hacerlo
+// apareció que la columna nunca tuvo IDs a mano: es `=IF(C51="";"";ROW()-4)`, que por construcción no
+// puede repetirse. Lo que había era un pegado de valores sobre dos celdas, las filas 50 y 54, que son
+// justamente el par duplicado de San Francisco. Renumerar habría sido el arreglo equivocado.
 //
-// LA REGLA DE ORO QUE APLICA: "en el Sheet NUNCA números sueltos calculados por código; fórmulas o
-// celdas con origen trazable". Un valor pegado sobre una columna calculada es exactamente el número
-// suelto que la regla prohíbe — sólo que lo pegó una persona, no el código.
+// ═══ POR QUÉ YA NO ESCRIBE (03/09) ═══
 //
-// QUÉ NO HACE: no toca una columna donde convivan dos fórmulas distintas. Puede ser legítimo y
-// elegir la más frecuente pisaría la otra. Esas se informan y las mira un humano.
+// Hasta hoy DEVOLVÍA la fórmula: `google.updateSheetValues` crudo, celda por celda, con la Regla 0
+// apagada a propósito ("este script existe justamente para DESHACER una edición a mano"). Eso quedó
+// prohibido por una orden explícita del dueño: *"lo único que requiero siempre es que mis ediciones en
+// el archivo sean las que manden y siempre se respeten"*, y después: *"todo lo que escribo, borro,
+// modifico, agrego, saco, edito de diseño, cambio de lugar, copio y pego"*.
+//
+// Un valor pegado sobre una columna calculada ES una de esas ediciones. Puede ser un error —y por eso
+// se sigue informando, fuerte y con la fórmula que iría— pero **quién decide si se deshace es él**, no
+// un timer que corre cada dos horas. El argumento viejo ("la Regla de Oro prohíbe números sueltos") no
+// sobrevive al choque: la regla gobierna lo que ESCRIBE EL OS, no lo que escribe el dueño.
+//
+// Lo que sí gana: cada pegado queda REGISTRADO en `sheet_reconciliacion_celda` con accion='informada',
+// así el aviso no se pierde con el scrollback de una corrida.
 //
 //   node orquestador/scripts/columnas-calculadas.mjs [--dry]
+//
+// `--dry` ya no cambia nada —este script nunca escribe— y se acepta para no romper a quien lo llame.
 
-import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { detectar, resumen } from '../lib/columna-formula.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-const DRY = process.argv.includes('--dry')
 
 /**
  * Las columnas CALCULADAS que el OS vigila. Una columna entra acá cuando su contenido se deriva de
@@ -38,58 +46,65 @@ export const VIGILADAS = [
   { pestana: 'Cobranzas', col: 'R', desde: 5, hasta: 400, que: 'Mes de cobro (derivado de la fecha)' },
 ]
 
-async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-
-  const leer = async (v) => {
+/**
+ * Mira las columnas vigiladas y devuelve los pegados. NO escribe una sola celda: el cliente que se le
+ * pasa sólo necesita `readSheetGrid`. Impura del lado Sheets; el registro en la base es aparte.
+ */
+export async function detectarPegados(google, vigiladas = VIGILADAS, log = console.log) {
+  const pegados = []
+  let ambiguas = 0
+  for (const v of vigiladas) {
     const grid = await google.readSheetGrid(ID, `${v.pestana}!${v.col}${v.desde}:${v.col}${v.hasta}`).catch((e) => {
-      console.log(`  ${v.pestana}!${v.col}: no pude leerla (${String(e?.message ?? e).slice(0, 70)})`)
+      log(`  ${v.pestana}!${v.col}: no pude leerla (${String(e?.message ?? e).slice(0, 70)})`)
       return null
     })
-    if (!grid) return null
-    return detectar(grid.filas.map((f, i) => ({ fila: v.desde + i, formula: f?.[0]?.formula ?? null, valor: f?.[0]?.valor ?? '' })))
-  }
-
-  const reparar = []
-  let ambiguas = 0
-  for (const v of VIGILADAS) {
-    const d = await leer(v)
-    if (!d) continue
-    console.log(`  ${resumen(d, `${v.pestana}!${v.col} · ${v.que}`)}`)
+    if (!grid) continue
+    const d = detectar(grid.filas.map((f, i) => ({ fila: v.desde + i, formula: f?.[0]?.formula ?? null, valor: f?.[0]?.valor ?? '' })))
+    log(`  ${resumen(d, `${v.pestana}!${v.col} · ${v.que}`)}`)
+    // QUÉ NO HACE: no opina sobre una columna donde convivan dos fórmulas distintas. Puede ser
+    // legítimo y elegir la más frecuente sería inventar cuál es la buena.
     if (d.ambigua) { ambiguas++; continue }
-    for (const p of d.pisadas) {
-      console.log(`     fila ${p.fila}: tenía "${p.valor}" pegado a mano → ${p.deberia}`)
-      reparar.push({ v, p })
-    }
+    for (const p of d.pisadas) pegados.push({ pestana: v.pestana, celda: `${v.col}${p.fila}`, valor: p.valor, formula: p.deberia })
   }
+  return { pegados, ambiguas }
+}
 
-  if (!reparar.length) {
+/** El aviso, que es todo el producto de este script. */
+export function avisar(pegados = [], log = console.log) {
+  for (const p of pegados) {
+    log(`▲ valor pegado sobre fórmula en ${p.pestana}!${p.celda}: «${p.valor}» (la fórmula sería ${p.formula})`)
+  }
+  return pegados.length
+}
+
+async function main() {
+  // READONLY, no WRITE: la incapacidad de escribir es del TOKEN, no de una rama del código. Un
+  // "no escribe" que depende de un `if` se vuelve a romper la próxima vez que alguien agregue una rama.
+  const google = makeGoogleClient({ config: loadConfig(), scopes: READONLY_SCOPES })
+  const { pegados, ambiguas } = await detectarPegados(google)
+
+  if (!pegados.length) {
     console.log(`\n✓ ninguna celda calculada pisada${ambiguas ? ` (${ambiguas} columna(s) ambigua(s) para mirar a mano)` : ''}`)
     return
   }
-  if (DRY) { console.log(`\n(--dry) ${reparar.length} celda(s) a reparar, no escribí nada`); return }
+  console.log('')
+  avisar(pegados)
+  console.log(`\n${pegados.length} celda(s) con un valor pegado sobre la fórmula. NO las toco: son tus ediciones.`)
+  console.log('   Si querés devolverles la fórmula, decímelo y lo hago celda por celda con vos mirando.')
 
-  // Se escribe celda por celda con USER_ENTERED, que es quien localiza la fórmula a es-AR
-  // (separador `;`). Son poquísimas celdas: no hace falta un batch.
-  for (const { v, p } of reparar) {
-    // REGLA 0 — SE APAGA A PROPÓSITO: respetar: false.
-    // Este script existe justamente para DESHACER una edición a mano: devuelve su fórmula a una
-    // celda calculada que alguien pisó con un número pegado. Respetar la edición sería anular el
-    // script entero. La Regla 0 protege los RÓTULOS que el dueño redacta, nunca un número pegado
-    // encima de un cálculo — la distinción está escrita en lib/respetar-ediciones.mjs.
-    await google.updateSheetValues(ID, `${v.pestana}!${v.col}${p.fila}`, [[p.deberia]])
+  try {
+    const { registrarCelda } = await import('../lib/reconciliacion-firma.mjs')
+    for (const p of pegados) {
+      await registrarCelda({}, ID, p.pestana, p.celda, {
+        valorDueno: String(p.valor), valorOs: String(p.formula),
+        causa: 'valor pegado sobre una columna calculada', accion: 'informada', estado: 'registrada',
+      })
+    }
+  } catch (e) {
+    console.log(`· no pude registrar los avisos en la base (${String(e.message).slice(0, 70)}) — quedan en este log`)
   }
-  console.log(`\n✓ ${reparar.length} celda(s) devueltas a su fórmula`)
-
-  // VERIFICACIÓN: releer y confirmar. Escribir y no mirar es cómo se instalan los defectos
-  // silenciosos que este script existe para cazar.
-  let quedan = 0
-  for (const v of VIGILADAS) {
-    const d = await leer(v)
-    if (d && !d.ambigua) quedan += d.pisadas.length
-  }
-  console.log(quedan ? `⚠ quedan ${quedan} sin reparar` : '✓ verificado: no queda ninguna celda pisada')
-  if (quedan) process.exitCode = 1
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

@@ -241,6 +241,16 @@ export function detallarRespetadas(ventana, respetadas = []) {
  * tiene de enterarse de qué se respetó sin abrir la base. El runner del pipeline la vuelve a sumar
  * al cierre de la corrida.
  */
+/**
+ * Cuántas celdas respetadas en una pestaña dejan de parecer ediciones y empiezan a parecer una huella
+ * incompleta. NO cambia la decisión —eso sería un bypass— sólo el aviso. Medido el 03/09: seis
+ * pestañas del Cash Flow (Cheques Emitidos, Cheques Recibidos, Cobranzas, Compras, Deuda viva,
+ * 01_Valores Iniciales) no tienen NI UNA huella, y otras la tienen parcial. Una ventana a medio sellar
+ * respeta de más en la primera corrida, y el dueño tiene que poder distinguir eso de sus propias
+ * ediciones sin abrir la base.
+ */
+export const SOSPECHA_HUELLA_INCOMPLETA = 50
+
 export function avisarRespetadas(respetadas = [], log = console.log) {
   const porTab = new Map()
   for (const r of respetadas) {
@@ -250,6 +260,10 @@ export function avisarRespetadas(respetadas = [], log = console.log) {
   for (const [tab, celdas] of porTab) {
     const muestra = celdas.slice(0, 20).map((c) => c.celda).join(', ')
     log(`  ✋ ${celdas.length} celda(s) tuya(s) respetada(s) en ${tab}: ${muestra}${celdas.length > 20 ? `, … y ${celdas.length - 20} más` : ''}`)
+    if (celdas.length > SOSPECHA_HUELLA_INCOMPLETA) {
+      log(`     ℹ son muchas para ser ediciones tuyas: puede que a "${tab}" le falte huella. `
+        + 'Miralo con `node orquestador/scripts/sheet-huellas-sembrar.mjs --dry`. No escribo igual: si no puedo probar que la celda es mía, es tuya.')
+    }
   }
   return porTab
 }

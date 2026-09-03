@@ -54,7 +54,9 @@ const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé 
 /** El gancho de la guarda inversa, atado a este archivo: lo que el dueño vació no se repone. */
 const noReponer = (fileId) => (range, actual, values) => noReponerEnRango(fileId, range, actual, values)
 
-const READONLY_SCOPES = [
+// Se EXPORTA (03/09): un script que sólo mira —columnas-calculadas— tiene que quedarse sin poder
+// escribir por el TOKEN, no por un `if`. Un «no escribe» que depende de una rama se vuelve a romper.
+export const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]

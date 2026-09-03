@@ -16,6 +16,7 @@ scripts · 14 timers en producción.
 | una pantalla de Administración | `src/app/(main)/administracion/<x>/page.tsx` + `src/features/administracion/{components,services}` |
 | Compras, comprobantes, la carga por chat | `orquestador/comunicacion/comprobantes/` (flujo·tanda·accion·aplicar) + `orquestador/lib/comprobantes/` |
 | escribir en la pestaña Compras | `orquestador/lib/carga-comprobantes.mjs` + `lib/comprobantes/contrato-columnas.mjs` (**el contrato A→AN vive ahí, con test**) |
+| que el Sheet NO pise una edición del dueño (una celda, un borrado, un formato, un bloque movido) | `orquestador/lib/guarda-por-celda.mjs` — el portón. Orquesta `propiedad-celda.mjs` (valores) · `propiedad-updatecells.mjs` (batch) · `propiedad-estructura.mjs` (borrar/mover tramos) · `huella-formato.mjs` (diseño). **La regla de propiedad es UNA y vive en `huella-celda.mjs`: si no puedo probar que la celda es mía, es tuya.** La evidencia del efecto es `scripts/sheet-diff-snapshot.mjs`; si una pestaña respeta de más, le falta huella → `scripts/sheet-huellas-sembrar.mjs --dry` |
 | CAJA, las tarjetas, la escalera | `orquestador/lib/caja-*.mjs` (43 módulos) · el generador es `scripts/caja-pestana.mjs` |
 | el libro canónico de movimientos | `orquestador/lib/libro-*.mjs` · las sumas del Sheet, `lib/libro-sumas.mjs` (`terminoLibro`) |
 | banco, extracto, conciliación | `orquestador/lib/banco-*.mjs` · la puerta es `scripts/importar-banco.mjs` |
