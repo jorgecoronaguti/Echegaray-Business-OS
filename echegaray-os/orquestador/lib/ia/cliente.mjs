@@ -73,6 +73,27 @@ const ESPERA_BASE_MS = Number(process.env.ORQ_IA_ESPERA_MS ?? 700)
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * CUÁNTO ESPERAR ANTES DEL SIGUIENTE INTENTO. PURA, para poder probarla sin reloj.
+ *
+ * POR QUÉ EL JITTER (03/09/2026). La espera era `ESPERA_BASE_MS * 2 ** intento` a secas. Con las
+ * llamadas en serie daba igual; desde que el pipeline de planos lee las láminas de a cuatro
+ * (`concurrencia`, ver lib/plano/paralelo.mjs) deja de dar igual: si el proveedor devuelve 429 a
+ * las cuatro casi al mismo tiempo, las cuatro duermen EXACTAMENTE lo mismo y vuelven a golpear
+ * juntas. El reintento sincronizado reproduce el pico que causó el 429 — y cuando se agotan los
+ * intentos, esas lecturas se DEGRADAN: se pierden lecturas que el proveedor habría atendido si
+ * hubieran llegado separadas.
+ *
+ * Se usa «equal jitter»: la mitad fija más la otra mitad al azar. Nunca espera más que antes, nunca
+ * menos de la mitad, y dos llamadas que fallaron juntas no vuelven juntas.
+ */
+export function esperaDeReintento(intento, base = ESPERA_BASE_MS, azar = Math.random) {
+  const nominal = base * 2 ** Math.max(0, intento)
+  const mitad = nominal / 2
+  return Math.round(mitad + azar() * mitad)
+}
+
+
 /** Carga perezosa: este módulo lo importan scripts que no siempre tienen base ni config. */
 async function estadoCerebro() {
   try { return await import('../estado-cerebro.mjs') } catch { return null }
@@ -244,7 +265,7 @@ export async function pedirTexto({
         // Sólo se reintenta lo reintentable, y nunca sin tope: un bucle infinito contra un
         // proveedor caído es peor que devolver el error.
         if (!c.reintentable || intento === reintentos) break
-        await dormir(ESPERA_BASE_MS * 2 ** intento)
+        await dormir(esperaDeReintento(intento))
       }
     }
     // Este proveedor no pudo. El siguiente —cuando exista— atiende como fallback y queda anotado.
