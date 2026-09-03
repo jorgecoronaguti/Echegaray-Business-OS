@@ -416,6 +416,16 @@ export { CLASE, clasificarRequest } from './clasificar-request.mjs'
  * Un destructivo sin sheetId atribuible (`todas`) se frena si hay CUALQUIER pestaña protegida.
  */
 export function frenaRequest(clasificacion, sheetIdsBloqueados = new Set()) {
+  // ═══ LO QUE BORRA CONTENIDO SE FRENA SIEMPRE, HAYA CANDADO O NO ═══
+  //
+  // El resto de esta función mira `sheetIdsBloqueados`, que sale de las pestañas CANDADAS A MANO —
+  // y la firma automática está apagada por orden del dueño desde el 05/08. Sobre una pestaña sin
+  // candado explícito, «destructivo» no frenaba nada. Para casi todo eso está bien: es el precio de
+  // que el Sheet siga siendo un documento vivo. Pero achicar la grilla borra filas con su contenido
+  // sin que ninguna otra capa lo mire (`propiedad-estructura.mjs` conoce deleteDimension, deleteRange
+  // y moveDimension, no éste), y ningún generador del OS necesita achicar: los veinte que tocan
+  // `rowCount` usan `Math.max` o preguntan antes. Así que acá no se pondera: se frena.
+  if (clasificacion.borraContenido) return true
   if (clasificacion.clase !== CLASE.DESTRUCTIVO) return false
   if (clasificacion.todas) return sheetIdsBloqueados.size > 0
   return clasificacion.sheetIds.some((s) => sheetIdsBloqueados.has(s))
