@@ -18,6 +18,7 @@ scripts · 14 timers en producción.
 | escribir en la pestaña Compras | `orquestador/lib/carga-comprobantes.mjs` + `lib/comprobantes/contrato-columnas.mjs` (**el contrato A→AN vive ahí, con test**) |
 | que el Sheet NO pise una edición del dueño (una celda, un borrado, un formato, un bloque movido) | `orquestador/lib/guarda-por-celda.mjs` — el portón. Orquesta `propiedad-celda.mjs` (valores) · `propiedad-updatecells.mjs` (batch) · `propiedad-estructura.mjs` (borrar/mover tramos) · `huella-formato.mjs` (diseño). **La regla de propiedad es UNA y vive en `huella-celda.mjs`: si no puedo probar que la celda es mía, es tuya.** La evidencia del efecto es `scripts/sheet-diff-snapshot.mjs`; si una pestaña respeta de más, le falta huella → `scripts/sheet-huellas-sembrar.mjs --dry` |
 | CAJA, las tarjetas, la escalera | `orquestador/lib/caja-*.mjs` (43 módulos) · el generador es `scripts/caja-pestana.mjs` |
+| los 4 gráficos de CAJA (anclas, alto de la hoja) | `orquestador/lib/caja-graficos.mjs` — el layout sale de `graficos()`; **verificalo contra la hoja viva con `node orquestador/scripts/caja-graficos-verificar.mjs`** (read-only, exit 1 si el editor los apiló) |
 | el libro canónico de movimientos | `orquestador/lib/libro-*.mjs` · las sumas del Sheet, `lib/libro-sumas.mjs` (`terminoLibro`) |
 | banco, extracto, conciliación | `orquestador/lib/banco-*.mjs` · la puerta es `scripts/importar-banco.mjs` |
 | cobranzas, certificados, portal del cliente | `src/features/clientes/` + `src/app/(portal)/` · sync en `scripts/portal-esquema-sync.mjs` |
