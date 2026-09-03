@@ -1,9 +1,13 @@
 // LOS CINCO ESTADOS DEL TRABAJO — fixtures con la forma EXACTA del contrato de
 // `GET /api/presupuestos/cotizar/<id>` (ver `orquestador/lib/plano/pasos-vista.mjs`), no formas
-// simplificadas: ENCOLADO sin pasos, LEYENDO con 3 de 7, LISTO con los 7, ERROR con lectura
-// parcial, y un LISTO con `cascada: null` (el costo directo puede quedar en cero sin que exista
-// venta calculable). El defecto que atrapan: que la pantalla —o su lógica— explote o mienta ante
-// cualquiera de estos cinco, no sólo ante el caso feliz.
+// simplificadas: ENCOLADO sin pasos, LEYENDO con los SIETE publicados y cuatro todavía pendientes,
+// LISTO con los 7 contestados, ERROR con lectura parcial, y un LISTO con `cascada: null` (el costo
+// directo puede quedar en cero sin que exista venta calculable). El defecto que atrapan: que la
+// pantalla —o su lógica— explote o mienta ante cualquiera de estos cinco, no sólo ante el caso feliz.
+//
+// LEYENDO cambió de forma el 03/09/2026: antes llegaban SÓLO los pasos ya resueltos y la pantalla
+// contaba cuántos había. Ahora llegan los siete desde el arranque y lo que avanza es su estado —
+// contar la longitud de la lista daría «7 de 7» a los dos segundos de empezar.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -24,25 +28,37 @@ test('ENCOLADO — sin pasos todavía, ningún cálculo revienta con listas vac�
     id: 'j1', estado: 'ENCOLADO', etapa: null, pasos: [], certeza: null, computo: null,
     cascada: null, presupuesto_id: null, error: null,
   }
-  assert.equal(progresoDeLectura(t.pasos.length).texto, 'paso 0 de 7')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza).texto, 'paso 0 de 7')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza).sello, 'Leyendo el plano · paso 0 de 7')
   assert.deepEqual(certezaMonetaria(t.pasos, t.computo), { firme: null, disputa: null, sinCotizar: 0, pctFirme: 0, pctDisputa: 0 })
   assert.deepEqual(filtrarComputo(t.computo, null), [])
 })
 
-test('LEYENDO — 3 de 7 pasos publicados, uno de ellos "sin dato": el pie no inventa plata', () => {
+test('LEYENDO — los SIETE publicados, 3 contestados y 4 pendientes: la guía completa desde el arranque', () => {
+  const pendiente = (i: number) => pasoBase({
+    id: `p${i}`, etiqueta: String(i), titulo: `Paso ${i}`, estado: 'pendiente',
+    resumen: 'Todavía no leí nada que conteste este paso.', evidencia: null,
+    deriva: { partidas: 0, importe: null, sinCotizar: 0 },
+  })
   const t: TrabajoLectura = {
-    id: 'j2', estado: 'LEYENDO', etapa: 'leyendo la lámina B-01',
+    id: 'j2', estado: 'LEYENDO', etapa: 'leyendo lámina 2 de 5',
     pasos: [
       pasoBase({}),
       pasoBase({ id: 'p2', etiqueta: '2', titulo: 'Bases', estado: 'sin dato', deriva: { partidas: 3, importe: null, sinCotizar: 3 } }),
       pasoBase({ id: 'p3', etiqueta: 'x', titulo: 'Excavaciones', estado: 'con supuesto', deriva: { partidas: 2, importe: 18_400, sinCotizar: 0 } }),
+      pendiente(4), pendiente(5), pendiente(6), pendiente(7),
     ],
-    certeza: { estado: 'sin dato', porEstado: { firme: 1, 'sin dato': 1, 'con supuesto': 1 }, firmes: 1, total: 3 },
+    certeza: { estado: 'pendiente', porEstado: { firme: 1, 'sin dato': 1, 'con supuesto': 1, pendiente: 4 }, firmes: 1, pendientes: 4, hechos: 3, total: 7 },
     computo: null, cascada: null, presupuesto_id: null, error: null,
   }
-  assert.equal(progresoDeLectura(t.pasos.length).texto, 'paso 3 de 7')
+  const pr = progresoDeLectura(t.pasos, t.certeza)
+  assert.equal(pr.texto, 'paso 3 de 7', 'el 3 sale de `certeza.hechos`; contar `pasos.length` diría 7 de 7 sin haber leído nada')
+  assert.equal(pr.sello, 'Leyendo el plano · paso 3 de 7')
+  assert.equal(pr.midiendo, 'Midiendo · paso 4', 'la línea de abajo nombra el próximo paso sin contestar')
+  assert.equal(pr.completo, false)
   assert.equal(pieDePaso(t.pasos[1]), '→ 3 partidas · sin importe')
   assert.equal(pieDePaso(t.pasos[0]), '→ 2 partidas · $0M')
+  assert.equal(pieDePaso(t.pasos[3]), 'todavía sin medir', '«no genera partida» sobre un paso que no se miró es una conclusión falsa')
 })
 
 test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disputa', () => {
@@ -58,7 +74,7 @@ test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disput
   }
   const t: TrabajoLectura = {
     id: 'j3', estado: 'LISTO', etapa: null, pasos,
-    certeza: { estado: 'conflicto', porEstado: { firme: 6, conflicto: 1 }, firmes: 6, total: 7 },
+    certeza: { estado: 'conflicto', porEstado: { firme: 6, conflicto: 1 }, firmes: 6, pendientes: 0, hechos: 7, total: 7 },
     computo,
     // Nombres reales de `cotizacion_cascada` — un fixture con nombres inventados nunca detecta
     // que la pantalla lee campos que el backend no manda (auditoría 03/09/2026).
@@ -70,14 +86,18 @@ test('LISTO — los 7 pasos, con un paso en conflicto que separa firme de disput
   assert.equal(cm.disputa, 468_000)
   assert.equal(filtrarComputo(t.computo, 'p4').length, 1)
   assert.equal(filtrarComputo(t.computo, 'p4')[0].pasoId, 'p4')
-  assert.equal(progresoDeLectura(t.pasos.length).completo, true)
+  const pr = progresoDeLectura(t.pasos, t.certeza)
+  assert.equal(pr.completo, true)
+  assert.equal(pr.texto, '7 de 7 · lectura cerrada')
+  assert.equal(pr.sello, 'Cómputo derivado del plano · borrador')
+  assert.equal(pr.midiendo, null, 'con la lectura cerrada no queda ningún paso midiéndose')
 })
 
 test('ERROR — motivo en castellano, y lo ya leído sigue siendo consultable', () => {
   const t: TrabajoLectura = {
     id: 'j4', estado: 'ERROR', etapa: null,
     pasos: [pasoBase({})],
-    certeza: { estado: 'firme', porEstado: { firme: 1 }, firmes: 1, total: 1 },
+    certeza: { estado: 'firme', porEstado: { firme: 1 }, firmes: 1, pendientes: 0, hechos: 1, total: 1 },
     computo: { grupos: [] }, cascada: null, presupuesto_id: null,
     error: 'no se pudo abrir el DWG: formato CAD no soportado por esta vía',
   }
@@ -88,7 +108,7 @@ test('ERROR — motivo en castellano, y lo ya leído sigue siendo consultable', 
 test('LISTO con cascada:null — costo directo sin firmeza todavía no calcula venta, y no se inventa', () => {
   const t: TrabajoLectura = {
     id: 'j5', estado: 'LISTO', etapa: null, pasos: [pasoBase({ estado: 'sin dato', deriva: { partidas: 1, importe: null, sinCotizar: 1 } })],
-    certeza: { estado: 'sin dato', porEstado: { 'sin dato': 1 }, firmes: 0, total: 1 },
+    certeza: { estado: 'sin dato', porEstado: { 'sin dato': 1 }, firmes: 0, pendientes: 0, hechos: 1, total: 1 },
     computo: { grupos: [{ pasoId: 'p1', rotulo: 'PASO 1', titulo: 'Superficies', subtotal: null, items: [{ d: 'Sin cotizar', c: null, u: 'un', p: null, imp: null }] }] },
     cascada: null, presupuesto_id: 'pres-456', error: null,
   }
@@ -104,14 +124,14 @@ test('CANCELADO — un final más: el sondeo para, y no se lee ni como error ni 
     id: 'j6', estado: 'CANCELADO', etapa: null,
     // Se canceló con dos pasos ya leídos: lo leído no desaparece de la pantalla.
     pasos: [pasoBase({}), pasoBase({ id: 'p2', etiqueta: '2', titulo: 'Bases' })],
-    certeza: { estado: 'firme', porEstado: { firme: 2 }, firmes: 2, total: 2 },
+    certeza: { estado: 'firme', porEstado: { firme: 2 }, firmes: 2, pendientes: 0, hechos: 2, total: 2 },
     computo: null, cascada: null, presupuesto_id: null, error: null,
   }
   assert.equal(esFinal(t.estado), true, 'seguir sondeando un trabajo cancelado es preguntar para siempre')
   assert.equal(enCurso(t.estado), false, 'un trabajo cancelado ya no se puede volver a cancelar')
   assert.equal(t.error, null, 'cancelar NO es un error: nadie falló')
   assert.equal(t.presupuesto_id, null, 'ni un éxito: no hay presupuesto')
-  assert.equal(progresoDeLectura(t.pasos.length).texto, 'paso 2 de 7', 'lo leído hasta el corte sigue a la vista')
+  assert.equal(progresoDeLectura(t.pasos, t.certeza).texto, 'paso 2 de 7', 'lo leído hasta el corte sigue a la vista')
 })
 
 test('esFinal / enCurso: los estados en los que todavía hay algo que esperar', () => {

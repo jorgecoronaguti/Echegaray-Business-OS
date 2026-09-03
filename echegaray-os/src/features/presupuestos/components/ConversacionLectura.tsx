@@ -1,19 +1,31 @@
 'use client'
 
 // LA COLUMNA IZQUIERDA — «Razonamiento del cotizador», porte de «Presupuestos v5 · Lectura del
-// plano» (912px, líneas 50-137). Un turno por paso, en el orden en que el backend los publica —el
-// esqueleto es siempre de 7, así que «paso 3 de 7» es una cuenta real contra ese total, no una
-// estimación.
+// plano» (912px, líneas 50-137).
+//
+// ═══ LOS PASOS SON LA GUÍA, Y SE VAN COMPLETANDO ═══
+//
+// Pedido textual del dueño (02/09/2026): «quiero que los pasos sean la guía y que sea como un paso
+// a paso que se va completando». Por eso los SIETE se dibujan desde el arranque —el backend los
+// publica pendientes en el mismo update que pone LEYENDO— y lo que avanza es el ESTADO de cada uno,
+// no cuántos hay en la lista. Un paso a paso que sólo muestra lo ya hecho no guía nada: se lee
+// después, cuando ya no hay nada que esperar.
+//
+// El «3» de «paso 3 de 7» sale de `certeza.hechos`, que el backend deriva de la evidencia leída.
+// Mientras midiendo, debajo de los pasos va la línea «Midiendo · <el próximo paso>» — no una etapa
+// suelta que reemplaza al paso a paso entero.
 
 import { C } from '@/shared/components/canon'
-import { enCurso, progresoDeLectura, type EstadoTrabajo, type PasoTrabajo } from '../services/trabajoLectura'
+import { enCurso, progresoDeLectura, type CertezaTrabajo, type EstadoTrabajo, type PasoTrabajo } from '../services/trabajoLectura'
 import { TurnoPaso } from './TurnoPaso'
 
 export function ConversacionLectura({
-  pasos, estado, etapa, error, errorTransitorio = null, filtro, abierto,
+  pasos, certeza = null, estado, etapa, error, errorTransitorio = null, filtro, abierto,
   cancelando = false, errorCancelar = null, onAbrir, onFiltrar, onRehacer, onCancelar,
 }: {
   pasos: PasoTrabajo[]
+  /** De dónde sale «paso 3 de 7». Del backend, nunca de un temporizador de esta pantalla. */
+  certeza?: CertezaTrabajo | null
   estado: EstadoTrabajo
   etapa: string | null
   error: string | null
@@ -31,7 +43,7 @@ export function ConversacionLectura({
   onRehacer: () => void
   onCancelar: () => void
 }) {
-  const progreso = progresoDeLectura(pasos.length)
+  const progreso = progresoDeLectura(pasos, certeza)
   const midiendo = enCurso(estado)
 
   return (
@@ -41,8 +53,11 @@ export function ConversacionLectura({
       data-testid="columna-conversacion"
     >
       <div className="flex flex-none items-start gap-6" style={{ padding: '24px 34px 0' }}>
-        <span className="flex-1" style={{ fontSize: 17.5, fontWeight: 600, letterSpacing: '-.014em', color: C.tinta }}>
-          Razonamiento del cotizador
+        <span className="flex flex-1 flex-col gap-[9px]" style={{ minWidth: 0 }}>
+          <span style={{ fontSize: 17.5, fontWeight: 600, letterSpacing: '-.014em', color: C.tinta }}>
+            Razonamiento del cotizador
+          </span>
+          <span className="font-mono text-[11px]" style={{ color: C.tenue }} data-testid="sello-etapa">{progreso.sello}</span>
         </span>
         {/* MIENTRAS CORRE, LA ACCIÓN ES CANCELAR — no rehacer. «Rehacer» sobre un trabajo vivo lo
             abandonaba en pantalla pero el worker seguía leyendo, y cada lámina que leía se pagaba
@@ -83,7 +98,9 @@ export function ConversacionLectura({
         {midiendo && (
           <div className="flex items-center gap-3" style={{ padding: '22px 0 0 50px' }} data-testid="midiendo">
             <span className="font-mono text-[10.5px] font-semibold" style={{ letterSpacing: '.09em', color: C.info }}>XSAS</span>
-            <span className="text-[12.5px]" style={{ color: C.apagado }}>{etapa ?? 'Midiendo'}</span>
+            {/* El paso que se está midiendo AHORA. Si ya no queda ninguno pendiente pero el trabajo
+              sigue vivo, habla la etapa del backend («leyendo lámina 4 de 5») en vez de callarse. */}
+          <span className="text-[12.5px]" style={{ color: C.apagado }}>{progreso.midiendo ?? etapa ?? 'Midiendo'}</span>
           </div>
         )}
 
@@ -123,7 +140,7 @@ export function ConversacionLectura({
 
         {estado === 'LISTO' && (
           <div className="mt-[22px] font-mono text-[12px]" style={{ paddingTop: 20, borderTop: `1px solid ${C.linea}`, color: C.apagado }} data-testid="cierre-lectura">
-            {pasos.length} de 7 pasos leídos.
+            {progreso.texto}.
           </div>
         )}
       </div>

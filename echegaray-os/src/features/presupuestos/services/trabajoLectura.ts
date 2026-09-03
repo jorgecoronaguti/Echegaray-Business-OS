@@ -28,7 +28,11 @@ export function esFinal(estado: EstadoTrabajo): boolean {
 /** Lo contrario, para la pantalla: mientras esto sea cierto, el trabajo puede cancelarse. */
 export const enCurso = (estado: EstadoTrabajo): boolean => !esFinal(estado)
 
-export type EstadoPaso = 'firme' | 'con supuesto' | 'sin dato' | 'conflicto' | 'revisar'
+// `pendiente` NO es un estado de certeza: es la ausencia de lectura. El backend lo publica
+// mientras la lectura sigue abierta, y existe porque «lo miré y el plano no lo trae» y «todavía no
+// llegué a esa lámina» son cosas distintas — mostrarlas iguales convertía el paso a paso en una
+// lista de faltantes que nadie había verificado. Ver `orquestador/lib/plano/pasos-vista.mjs`.
+export type EstadoPaso = 'pendiente' | 'firme' | 'con supuesto' | 'sin dato' | 'conflicto' | 'revisar'
 
 export interface FilaPaso {
   k: string
@@ -70,6 +74,10 @@ export interface CertezaTrabajo {
   estado: EstadoPaso | null
   porEstado: Partial<Record<EstadoPaso, number>>
   firmes: number
+  /** Pasos que todavía no se pudieron mirar. */
+  pendientes: number
+  /** Los pasos que YA contestaron algo — el «3» de «paso 3 de 7». Sale del backend. */
+  hechos: number
   total: number
 }
 
@@ -154,6 +162,8 @@ export function formatoCantidad(n: number | null): string | null {
 // firme → verde · conflicto → rojo · con supuesto → ámbar · sin dato / revisar → gris apagado.
 
 export const COLOR_ESTADO: Record<EstadoPaso, string> = {
+  // Pendiente se apaga más que «sin dato»: todavía no dice nada sobre el plano.
+  pendiente: '#A9A8A2',
   firme: '#067647',
   conflicto: '#B42318',
   'con supuesto': '#B54708',
@@ -164,6 +174,8 @@ export const COLOR_ESTADO: Record<EstadoPaso, string> = {
 // ── EL PIE DE UN PASO — «→ 3 partidas · $1,2M» ──────────────────────────────────────────────────
 
 export function pieDePaso(p: PasoTrabajo): string {
+  // «No genera partida» es una conclusión, y sobre un paso al que no se llegó todavía sería falsa.
+  if (p.estado === 'pendiente') return 'todavía sin medir'
   if (p.deriva.partidas === 0) return 'no genera partida'
   const partidas = p.deriva.partidas === 1 ? '1 partida' : `${p.deriva.partidas} partidas`
   const importe = p.deriva.importe === null ? 'sin importe' : formatoMillones(p.deriva.importe)
@@ -226,12 +238,49 @@ export function pctSobreCostoDirecto(base: number | null, valor: number | null):
   return `${((valor / base) * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`
 }
 
-/** El progreso «paso N de 7» y el ancho de la barra, sobre el ESQUELETO fijo de 7 pasos. */
-export function progresoDeLectura(cantidadPublicados: number, totalEsperado = 7) {
-  const hechos = Math.min(cantidadPublicados, totalEsperado)
+// ── EL PROGRESO — «paso 3 de 7», con el 3 salido de los datos ──────────────────────────────────
+//
+// Antes de esto la pantalla contaba PASOS PUBLICADOS y, en la vista del presupuesto, un
+// `setTimeout` de 620 ms los prendía de a uno: «Leyendo el plano · paso 3 de 7» sin haber leído
+// nada. Ahora los siete pasos llegan siempre, y el que avanza es el ESTADO de cada uno. El número
+// sale de `certeza.hechos` —que el backend deriva de la evidencia— y, si esa fila es vieja y no lo
+// trae, de contar los pasos que dejaron de estar pendientes. Nunca de un reloj.
+
+/** El esqueleto del razonamiento es de siete pasos. Lo fija `ESQUELETO` en el backend. */
+export const TOTAL_PASOS = 7
+
+export interface ProgresoLectura {
+  hechos: number
+  total: number
+  /** El sello de la cabecera. Frases del dueño, textuales. */
+  sello: string
+  /** El contador al lado de la barra. */
+  texto: string
+  /** «Midiendo · bases y muertos de anclaje» — el próximo paso sin contestar. `null` si no queda
+   *  ninguno: ahí el que habla es la etapa que publica el backend («leyendo lámina 2 de 5»). */
+  midiendo: string | null
+  pctAncho: number
+  completo: boolean
+}
+
+export function progresoDeLectura(pasos: PasoTrabajo[], certeza: CertezaTrabajo | null = null): ProgresoLectura {
+  // El esqueleto SIEMPRE es de siete. Tomar `pasos.length` como total hacía que una lectura
+  // cancelada con dos pasos publicados dijera «2 de 2 · lectura cerrada» — o sea, que cerró.
+  const total = Math.max(pasos.length, TOTAL_PASOS)
+  const hechos = typeof certeza?.hechos === 'number'
+    ? Math.min(certeza.hechos, total)
+    : pasos.filter((p) => p.estado !== 'pendiente').length
+  const proximo = pasos.find((p) => p.estado === 'pendiente')
+  const completo = hechos >= total
   return {
-    texto: `paso ${hechos} de ${totalEsperado}`,
-    pctAncho: totalEsperado ? Math.round((hechos / totalEsperado) * 100) : 0,
-    completo: hechos >= totalEsperado,
+    hechos,
+    total,
+    // «borrador» y no «borrador v2»: la revisión la numera la cotización cuando existe, y acá
+    // todavía no hay ninguna. El mockup traía un «v2» que era el dato de su ejemplo.
+    sello: completo ? 'Cómputo derivado del plano · borrador' : `Leyendo el plano · paso ${hechos} de ${total}`,
+    texto: completo ? `${total} de ${total} · lectura cerrada` : `paso ${hechos} de ${total}`,
+    midiendo: proximo ? `Midiendo · ${proximo.titulo.toLowerCase()}` : null,
+    pctAncho: total ? Math.round((hechos / total) * 100) : 0,
+    completo,
   }
 }

@@ -35,12 +35,18 @@ const enteroPositivo = (v, porDefecto) => {
  * @param {(item:unknown, i:number)=>Promise<unknown>} trabajo
  * @param {{ concurrencia?:number, cancelado?:(()=>Promise<boolean>)|null,
  *           onProgreso?:((p:object)=>Promise<void>)|null, fase?:string|null,
- *           que?:((item:unknown)=>string)|null }} opciones
+ *           que?:((item:unknown)=>string)|null,
+ *           parcialDe?:((hechos:Array)=>unknown)|null }} opciones
+ *   `parcialDe` convierte lo TERMINADO HASTA AHÍ en el dato que el llamador quiera publicar. Sin
+ *   él, `onProgreso` sólo puede decir «2 de 5» y quien mira no ve qué se leyó: el paso a paso de
+ *   la pantalla necesita el contenido, no la cuenta. Se llama sólo si hay `onProgreso`, así que
+ *   una corrida sin observador no paga nada por esto.
  * @returns {Promise<{ resultados:Array, cancelada:boolean, hechos:number, total:number }>}
  *          `resultados` en el MISMO orden que `items`, sólo con las unidades que llegaron a correr.
  */
 export async function enParalelo(items = [], trabajo, {
   concurrencia = CONCURRENCIA_POR_DEFECTO, cancelado = null, onProgreso = null, fase = null, que = null,
+  parcialDe = null,
 } = {}) {
   const total = items.length
   const VACIO = Symbol('sin correr')
@@ -60,7 +66,12 @@ export async function enParalelo(items = [], trabajo, {
       hechos += 1
       // El progreso es informativo y su orden lo decide la latencia, no el índice: `hecho` es el
       // conteo REAL de terminadas, que es lo único que una barra de progreso necesita.
-      if (onProgreso) await onProgreso({ fase, hecho: hechos, total, que: que ? que(items[i], i) : null })
+      if (onProgreso) {
+        // El parcial se arma sobre las unidades TERMINADAS en este instante — nunca sobre `salida`
+        // entera, que todavía tiene huecos de las que están en vuelo.
+        const parcial = parcialDe ? parcialDe(salida.filter((x) => x !== VACIO)) : null
+        await onProgreso({ fase, hecho: hechos, total, que: que ? que(items[i], i) : null, parcial })
+      }
     }
   }
 

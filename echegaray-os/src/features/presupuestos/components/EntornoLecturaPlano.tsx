@@ -32,14 +32,17 @@ export function EntornoLecturaPlano() {
 
   const { trabajo, errorSondeo } = useSondeoTrabajo(trabajoId)
 
-  // CADA PASO NUEVO SE ABRE SOLO — así se lee «Presupuestos v5 · Lectura del plano»: el más
-  // reciente queda expandido, los anteriores se colapsan a resumen. Se ajusta EN EL RENDER, no en
-  // un efecto: es estado derivado de un resultado nuevo (`trabajo.pasos`), y hacerlo en un efecto
-  // sería una segunda pasada de render para lo mismo que React ya resuelve acá mismo.
-  const pasosLen = trabajo?.pasos.length ?? 0
-  if (pasosLen !== pasosVistos) {
-    setPasosVistos(pasosLen)
-    if (pasosLen > pasosVistos) setAbierto(trabajo!.pasos[pasosLen - 1].id)
+  // CADA PASO QUE SE COMPLETA SE ABRE SOLO — así se lee «Presupuestos v5 · Lectura del plano»: el
+  // recién contestado queda expandido, los anteriores se colapsan a resumen. Se ajusta EN EL
+  // RENDER, no en un efecto: es estado derivado de un resultado nuevo (`trabajo.pasos`), y hacerlo
+  // en un efecto sería una segunda pasada de render para lo mismo que React ya resuelve acá mismo.
+  //
+  // Se cuentan los CONTESTADOS, no los publicados: desde que el backend manda los siete desde el
+  // arranque, `pasos.length` es 7 fijo y contar eso abría el último paso a los dos segundos.
+  const contestados = trabajo?.pasos.filter((p) => p.estado !== 'pendiente') ?? []
+  if (contestados.length !== pasosVistos) {
+    setPasosVistos(contestados.length)
+    if (contestados.length > pasosVistos) setAbierto(contestados[contestados.length - 1].id)
   }
 
   const arrancar = useCallback(async (mensaje: string, archivos: File[]) => {
@@ -106,7 +109,7 @@ export function EntornoLecturaPlano() {
   return (
     <div className="relative flex min-w-0 flex-1 flex-col xl:flex-row" style={{ minHeight: 0 }} data-testid="entorno-lectura">
       <ConversacionLectura
-        pasos={trabajo.pasos} estado={trabajo.estado} etapa={trabajo.etapa}
+        pasos={trabajo.pasos} certeza={trabajo.certeza} estado={trabajo.estado} etapa={trabajo.etapa}
         error={trabajo.error ?? errorSondeo} filtro={filtro} abierto={abierto}
         // Un fallo del SONDEO (red, no del trabajo) mientras todavía no hay estado terminal: se
         // avisa aparte, sin pisar el bloque de error final que sólo corresponde a `estado==='ERROR'`.

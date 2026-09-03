@@ -1,14 +1,23 @@
 'use client'
 
-// EL RAZONAMIENTO DEL COTIZADOR, DIBUJADO — «Presupuestos v5 · Lectura del plano».
+// EL RAZONAMIENTO DE UNA COTIZACIÓN YA GUARDADA, DIBUJADO — el plegable de
+// `/presupuestos/[presupuesto]`. Lee `cotizaciones.razonamiento`, que es una lectura TERMINADA y
+// congelada: acá no hay nada avanzando.
 //
 // Los pasos NO son un stepper fijo: los generó el motor leyendo el plano, y la cotización es su
 // consecuencia. Cada paso muestra su pregunta, sus mediciones con la lámina de la que salieron y
 // su estado DERIVADO de los datos: «firme» con cita, «sin dato» con el faltante nombrado,
-// «revisar» cuando el barrido dejó documentos sin leer. En modo progresivo (el arranque) los
-// pasos aparecen uno por uno, como el mockup: «Leyendo el plano · paso N de 7».
+// «revisar» cuando el barrido dejó documentos sin leer.
+//
+// ═══ ACÁ VIVÍA UN PROGRESO FABRICADO ═══
+//
+// Este componente tenía un modo «progresivo» con un `setTimeout` de 620 ms que prendía los pasos de
+// a uno y escribía «Leyendo el plano · paso 3 de 7». Los siete llegaban COMPLETOS del backend: el
+// contador no medía nada, era el ritmo del mockup copiado a producción. Presentar una animación
+// como el avance de una lectura es una estimación presentada como hecho, y además tapaba el
+// problema real —que el backend no publicaba el progreso—. El paso a paso que sí avanza vive en
+// `ConversacionLectura`, y su contador sale de `certeza.hechos`.
 
-import { useEffect, useRef, useState } from 'react'
 import type { PasoLectura } from '@/features/presupuestos/services/lecturaPlano'
 
 const CHIP: Record<PasoLectura['estado'], string> = {
@@ -17,38 +26,18 @@ const CHIP: Record<PasoLectura['estado'], string> = {
   revisar: 'text-amber-700',
 }
 
-// El ritmo del mockup («normal»: 620 ms por paso). Sin animación cuando no es progresivo.
-const RITMO_MS = 620
-
-export function LecturaDelPlano({ pasos, progresivo = false }: { pasos: PasoLectura[]; progresivo?: boolean }) {
-  const [hechos, setHechos] = useState(progresivo ? 0 : pasos.length)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    if (!progresivo || hechos >= pasos.length) return
-    timer.current = setTimeout(() => setHechos((h) => h + 1), RITMO_MS)
-    return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [progresivo, hechos, pasos.length])
-
+export function LecturaDelPlano({ pasos }: { pasos: PasoLectura[] }) {
   if (!pasos.length) return null
-  const leyendo = hechos < pasos.length
-  const visibles = pasos.slice(0, hechos)
 
   return (
     <div data-testid="lectura-del-plano">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">
-          {leyendo ? `Leyendo el plano · paso ${hechos} de ${pasos.length}` : 'Razonamiento del cotizador — la cotización deriva de estos pasos'}
+          Razonamiento del cotizador — la cotización deriva de estos pasos
         </p>
-        <span className="h-1 w-24 overflow-hidden rounded bg-slate-100" aria-hidden>
-          <span
-            className={`block h-full ${leyendo ? 'bg-slate-700' : 'bg-amber-400'}`}
-            style={{ width: `${Math.round((hechos / pasos.length) * 100)}%`, transition: 'width 300ms' }}
-          />
-        </span>
       </div>
       <ol className="space-y-3">
-        {visibles.map((p) => (
+        {pasos.map((p) => (
           <li key={p.id} className="rounded-lg border border-slate-200 bg-white p-3" data-testid={`paso-${p.id}`}>
             <div className="flex items-baseline justify-between gap-3">
               <p className="text-sm">

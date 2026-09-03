@@ -108,5 +108,59 @@ test('la certeza de la lectura es el PEOR de sus pasos', () => {
 
 test('sin razonamiento no hay pasos inventados', () => {
   assert.deepEqual(vistaDePasos(null), [])
-  assert.deepEqual(certezaDeLectura([]), { estado: null, porEstado: {}, firmes: 0, total: 0 })
+  assert.deepEqual(certezaDeLectura([]), { estado: null, porEstado: {}, firmes: 0, pendientes: 0, hechos: 0, total: 0 })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA LECTURA EN CURSO — «todavía no llegué» NO es «lo miré y no está»
+//
+// El defecto que estos controles atrapan: durante los minutos que dura la lectura, la pantalla
+// mostraba siete pasos animados por un temporizador de 620 ms. «Paso 3 de 7» sin haber leído nada
+// es una estimación presentada como hecho. Y la corrección ingenua —publicar los pasos reales desde
+// el primer avance— tiene su propio defecto: declara «sin dato» (el plano no lo trae, pedíselo al
+// proyectista) sobre láminas que todavía no se abrieron.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const rzVacio = () => razonar({ computo: { items: [] }, laminas: [], documentos: {} })
+
+test('lectura ABIERTA sin nada leído: los siete pasos existen y los siete son PENDIENTE', () => {
+  const pasos = vistaDePasos(rzVacio(), { items: [], cerrada: false })
+  assert.equal(pasos.length, 7, 'la guía completa se ve desde el primer segundo')
+  assert.deepEqual([...new Set(pasos.map((p) => p.estado))], [ESTADO.PENDIENTE])
+  assert.deepEqual(pasos.map((p) => p.titulo), ESQUELETO.map((e) => e.titulo), 'pendiente NO es un paso anónimo: trae su pregunta y su título')
+})
+
+test('la MISMA lectura, cerrada, no tiene un solo pendiente — ahí sí «sin dato» es una afirmación', () => {
+  const pasos = vistaDePasos(rzVacio(), { items: [], cerrada: true })
+  assert.equal(pasos.filter((p) => p.estado === ESTADO.PENDIENTE).length, 0)
+  assert.ok(pasos.some((p) => p.estado === ESTADO.SIN_DATO), 'con la lectura cerrada, lo que no apareció es un faltante con nombre')
+})
+
+test('un paso PENDIENTE no publica filas, ni evidencia, ni supuesto, ni faltantes', () => {
+  const p = vistaDePasos(rzVacio(), { items: [], cerrada: false }).find((x) => x.id === 'p3')
+  assert.equal(p.estado, ESTADO.PENDIENTE)
+  assert.deepEqual(p.filas, [], 'una fila «falta la profundidad» sobre un plano que no se abrió es un faltante inventado')
+  assert.equal(p.evidencia, null)
+  assert.equal(p.supuesto, null)
+  assert.deepEqual(p.faltan, [])
+})
+
+test('en cuanto un paso MIDE algo deja de estar pendiente, aunque la lectura siga abierta', () => {
+  const items = [item('B1')]
+  const abierta = vistaDePasos(razonar({ computo: { items }, laminas: [lamina()], documentos: {} }), { items, cerrada: false })
+  const bases = abierta.find((p) => p.id === 'p2')
+  assert.notEqual(bases.estado, ESTADO.PENDIENTE, 'ya midió 4 bases con su sección: eso es un hecho, no una espera')
+  assert.equal(bases.estado, ESTADO.FIRME)
+  // Y los que todavía no vieron nada siguen pendientes: la lectura avanza de a uno, no de golpe.
+  assert.ok(abierta.some((p) => p.estado === ESTADO.PENDIENTE), 'si TODOS quedaran resueltos con una lámina, el paso a paso no mediría nada')
+})
+
+test('certezaDeLectura: `hechos` es el número que ve el dueño y sale de los datos, no de un reloj', () => {
+  const items = [item('B1')]
+  const pasos = vistaDePasos(razonar({ computo: { items }, laminas: [lamina()], documentos: {} }), { items, cerrada: false })
+  const c = certezaDeLectura(pasos)
+  assert.equal(c.total, 7)
+  assert.equal(c.hechos + c.pendientes, 7, 'los siete están siempre: los contestados más los que faltan')
+  assert.ok(c.hechos > 0 && c.pendientes > 0, 'esta lectura está a mitad de camino — si diera 0 o 7 el control no probaría nada')
+  assert.equal(c.estado, ESTADO.PENDIENTE, 'una lectura con pasos sin contestar no puede declararse firme por los que sí contestó')
 })

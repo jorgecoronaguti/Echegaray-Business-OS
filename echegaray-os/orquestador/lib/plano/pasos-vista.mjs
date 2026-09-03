@@ -17,8 +17,15 @@
 
 import { rolDe, ROL } from './razonamiento.mjs'
 
-/** Los estados posibles de un paso. El orden es de peor a mejor: `peorEstado` los compara. */
+/** Los estados posibles de un paso. El orden es de peor a mejor: `peorEstado` los compara.
+ *
+ *  PENDIENTE no es un estado de certeza: es la ausencia de lectura. Existe porque «lo miré y no
+ *  está» y «todavía no llegué a mirarlo» son cosas distintas y la pantalla tiene que poder
+ *  distinguirlas — publicar `sin dato` a los diez segundos de arrancar sería afirmar un faltante
+ *  que nadie verificó. Sólo aparece mientras la lectura está ABIERTA; cuando cierra, cada paso se
+ *  queda con el estado que su evidencia sostiene. */
 export const ESTADO = Object.freeze({
+  PENDIENTE: 'pendiente',
   CONFLICTO: 'conflicto',
   SIN_DATO: 'sin dato',
   CON_SUPUESTO: 'con supuesto',
@@ -26,7 +33,9 @@ export const ESTADO = Object.freeze({
   FIRME: 'firme',
 })
 
-const GRAVEDAD = [ESTADO.CONFLICTO, ESTADO.SIN_DATO, ESTADO.CON_SUPUESTO, ESTADO.REVISAR, ESTADO.FIRME]
+// PENDIENTE encabeza la gravedad: una lectura con pasos sin contestar no puede declararse firme
+// por los que sí contestó.
+const GRAVEDAD = [ESTADO.PENDIENTE, ESTADO.CONFLICTO, ESTADO.SIN_DATO, ESTADO.CON_SUPUESTO, ESTADO.REVISAR, ESTADO.FIRME]
 const peorEstado = (...ee) => GRAVEDAD.find((e) => ee.includes(e)) ?? ESTADO.FIRME
 
 /** Qué paso cotiza cada rol constructivo. Es la ÚNICA atribución partida→paso que existe: si un
@@ -283,6 +292,30 @@ const VISTAS = {
   barrido: (rz, items) => verBarrido(rz.barrido, items),
 }
 
+export const RESUMEN_PENDIENTE = 'Todavía no leí nada que conteste este paso.'
+
+/**
+ * ¿ESTE PASO TODAVÍA NO SE PUDO MIRAR? Sí cuando de él no salió NINGUNA fila medida ni ninguna
+ * partida: todo lo que hay son huecos, y un hueco declarado a mitad de la lectura no es «el plano
+ * no lo dice» — es «todavía no llegué a la lámina que lo diría». La diferencia es la que separa un
+ * faltante para pedirle al proyectista de un paso que el motor no alcanzó a contestar.
+ *
+ * Es MONÓTONO por construcción: la evidencia sólo se acumula, así que un paso que dejó de estar
+ * pendiente no vuelve a estarlo y la barra de progreso nunca retrocede.
+ */
+export function todaviaNoSePudoMirar(vista, deriva) {
+  const medidas = (vista?.filas ?? []).filter((f) => !f.falta).length
+  return medidas === 0 && (deriva?.partidas ?? 0) === 0
+}
+
+/** El paso pendiente: el esqueleto sin ninguna conclusión. Ni filas, ni evidencia, ni supuesto, ni
+ *  faltantes — todo eso son afirmaciones sobre un plano que todavía no se terminó de leer. */
+const comoPendiente = (e, v, deriva) => ({
+  id: e.id, etiqueta: e.etiqueta, titulo: e.titulo, pregunta: e.pregunta,
+  estado: ESTADO.PENDIENTE, resumen: RESUMEN_PENDIENTE,
+  columnas: v.columnas, filas: [], evidencia: null, supuesto: null, faltan: [], deriva,
+})
+
 /**
  * LOS SIETE PASOS LISTOS PARA MOSTRAR. Uno por pregunta, en el orden de la lectura.
  *
@@ -291,13 +324,17 @@ const VISTAS = {
  * que lo respalda, el supuesto que lo sostiene si lo hay, y las partidas que deriva con su plata.
  *
  * @param {object} rz resultado de `razonar()`
- * @param {{ items?: object[] }} computo el cómputo del pipeline — de ahí sale la derivación
+ * @param {{ items?: object[], cerrada?: boolean }} opciones `items` es el cómputo del pipeline —de
+ *   ahí sale la derivación—. `cerrada: false` es una lectura EN CURSO: los pasos que todavía no
+ *   produjeron nada salen PENDIENTE en vez de fingir una conclusión. El default es `true` porque
+ *   la lectura terminada es el caso que ya existía y no puede cambiar de significado.
  */
-export function vistaDePasos(rz, { items = [] } = {}) {
+export function vistaDePasos(rz, { items = [], cerrada = true } = {}) {
   if (!rz) return []
   return ESQUELETO.map((e) => {
     const v = VISTAS[e.clave](rz, items)
     const deriva = derivaDe(e.id, items)
+    if (!cerrada && todaviaNoSePudoMirar(v, deriva)) return comoPendiente(e, v, deriva)
     return {
       id: e.id,
       etiqueta: e.etiqueta,
@@ -315,15 +352,23 @@ export function vistaDePasos(rz, { items = [] } = {}) {
   })
 }
 
-/** El estado de la lectura entera: el peor de sus pasos, y el conteo por estado. */
+/** El estado de la lectura entera: el peor de sus pasos, y el conteo por estado.
+ *
+ *  `hechos` es EL NÚMERO QUE VE EL DUEÑO («paso 3 de 7»): pasos que ya contestaron algo. Sale de
+ *  acá —de los datos— y no de un reloj en la pantalla: un contador que avanza solo dice «paso 3»
+ *  sin haber leído nada, que es exactamente la estimación presentada como hecho que este repo no
+ *  permite. */
 export function certezaDeLectura(pasos = []) {
-  if (!pasos.length) return { estado: null, porEstado: {}, firmes: 0, total: 0 }
+  if (!pasos.length) return { estado: null, porEstado: {}, firmes: 0, pendientes: 0, hechos: 0, total: 0 }
   const porEstado = {}
   for (const p of pasos) porEstado[p.estado] = (porEstado[p.estado] ?? 0) + 1
+  const pendientes = porEstado[ESTADO.PENDIENTE] ?? 0
   return {
     estado: peorEstado(...pasos.map((p) => p.estado)),
     porEstado,
     firmes: porEstado[ESTADO.FIRME] ?? 0,
+    pendientes,
+    hechos: pasos.length - pendientes,
     total: pasos.length,
   }
 }

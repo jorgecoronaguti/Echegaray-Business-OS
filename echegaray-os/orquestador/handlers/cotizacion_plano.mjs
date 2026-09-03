@@ -21,6 +21,14 @@
 //    corrida, no un tick por segundo). Antes, la etapa «leyendo N documento(s)» cubría la corrida
 //    entera: un texto congelado durante minutos es indistinguible de un sistema colgado.
 //
+//  · EL PASO A PASO SE COMPLETA DE VERDAD — la columna `pasos` se escribía UNA sola vez, en el
+//    UPDATE final a LISTO: durante los minutos de lectura estaba vacía, y la pantalla animaba siete
+//    pasos con un temporizador de 620 ms que decía «paso 3 de 7» sin haber leído nada. Eso es una
+//    estimación presentada como hecho. Ahora cada avance publica los SIETE pasos con el estado que
+//    la evidencia leída hasta ahí sostiene, y los que todavía no se pudieron mirar salen
+//    `pendiente` — que NO es `sin dato`: uno dice «lo miré y el plano no lo trae», el otro dice
+//    «todavía no llegué». Cuesta cero llamadas al modelo: `razonar()` y `vistaDePasos()` son puras.
+//
 //  · CANCELAR — `cancelado` consulta el estado de la fila entre unidades. Subir el legajo
 //    equivocado costaba minutos y todas las llamadas de visión que se pagaran mientras tanto.
 //
@@ -43,6 +51,7 @@ import { query as queryDb } from '../lib/db.mjs'
 import { correr as correrPipeline } from '../lib/plano/pipeline.mjs'
 import { bytesPorHash } from '../lib/xsas-archivos.mjs'
 import { razonar } from '../lib/plano/razonamiento.mjs'
+import { lecturaHastaAhora } from '../lib/plano/parcial.mjs'
 import { vistaDePasos, certezaDeLectura, pasoDeItem, ESQUELETO } from '../lib/plano/pasos-vista.mjs'
 import { agruparPartidas, armar, persistir, cascadaDe } from '../lib/plano/cotizacion-v0.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
@@ -204,7 +213,9 @@ async function clienteGoogleReal(ctx) {
 async function cosechar({ query, r, termino, publicar }) {
   await publicar('razonando el plano: armando los siete pasos')
   const rz = { ...razonar(r), procedencia: { soloAdjuntos: r.soloAdjuntos === true, documentos: r.documentos.planos.legibles.map((d) => d.name) } }
-  const pasos = vistaDePasos(rz, { items: r.computo.items })
+  // `cerrada: true` (el default, explícito acá): la lectura terminó, así que ya nadie queda
+  // pendiente — cada paso se queda con el estado que su evidencia sostiene, incluido «sin dato».
+  const pasos = vistaDePasos(rz, { items: r.computo.items, cerrada: true })
   const certeza = certezaDeLectura(pasos)
 
   await publicar('mapeando contra la Base Maestra y armando el cómputo')
@@ -232,6 +243,21 @@ async function cosechar({ query, r, termino, publicar }) {
 const ETAPA_INICIAL = 'buscando los adjuntos que se subieron'
 
 /**
+ * LOS SIETE PASOS CON LO LEÍDO HASTA AHORA. `parcial` es lo que trae `onProgreso` del pipeline;
+ * sin nada leído (el arranque) son los siete PENDIENTES, que es lo que hace que la pantalla pueda
+ * dibujar la guía completa desde el primer segundo sin fabricar un solo estado.
+ *
+ * `cerrada: false` es lo que impide que un paso al que todavía no se llegó se publique como
+ * «sin dato» — un faltante que nadie verificó todavía.
+ */
+export function pasosEnCurso(parcial = {}) {
+  const r = lecturaHastaAhora(parcial)
+  const items = r.computo?.items ?? []
+  const pasos = vistaDePasos(razonar(r), { items, cerrada: false })
+  return { pasos: jsonb(pasos), certeza: jsonb(certezaDeLectura(pasos)) }
+}
+
+/**
  * EL TABLERO DE UNA CORRIDA: todo lo que se publica sobre ella mientras avanza —la etapa visible,
  * lo que lleva gastado, si el dueño la frenó— con el estado mutable que esas cinco funciones
  * comparten. Vive fuera del handler para que el handler se lea de corrido: el flujo de la lectura
@@ -241,32 +267,48 @@ function tableroDeCorrida({ query, lecturaId, ctx, ahora }) {
   const arranque = ahora()
   let medido = { ia: null, metricas: null }
   let progreso = null
-  let ultimaEtapa = null
+  let ultimoPublicado = null
 
   const medicion = (extra) => jsonb(resumirMedicion({ ...medido, ms: ahora() - arranque, progreso, ...extra }))
 
-  // Una escritura POR UNIDAD TERMINADA, y sólo si el texto cambió: el sondeo de la pantalla es cada
-  // 1,5 s y no necesita más resolución que ésa.
-  const publicar = async (etapa) => {
-    if (etapa === ultimaEtapa) return
-    ultimaEtapa = etapa
-    await actualizar(query, lecturaId, { etapa }, { soloVivo: true })
+  // Una escritura POR UNIDAD TERMINADA, y sólo si CAMBIÓ ALGO: el sondeo de la pantalla es cada
+  // 1,5 s y no necesita más resolución que ésa. La comparación es sobre todo lo que se publica —no
+  // sólo la etapa—, porque dos avances con el mismo texto pueden traer pasos distintos (una lámina
+  // más leída) y ésa es justamente la escritura que no se puede saltear.
+  const publicar = async (etapa, campos = {}) => {
+    const payload = { etapa, ...campos }
+    const huella = JSON.stringify(payload)
+    if (huella === ultimoPublicado) return
+    ultimoPublicado = huella
+    await actualizar(query, lecturaId, payload, { soloVivo: true })
   }
 
   return {
     medicion,
     publicar,
-    /** El primer estado que ve la pantalla: ya en LEYENDO, con etapa y sin el error de un intento
-     *  anterior. */
+    /** El primer estado que ve la pantalla: ya en LEYENDO, con etapa, sin el error de un intento
+     *  anterior — y CON LOS SIETE PASOS pendientes. La guía completa se ve desde el primer segundo:
+     *  es la diferencia entre un paso a paso y una lista que aparece cuando ya está todo hecho. */
     arrancar: async () => {
-      await actualizar(query, lecturaId, { estado: 'LEYENDO', etapa: ETAPA_INICIAL, error: null }, { soloVivo: true })
-      ultimaEtapa = ETAPA_INICIAL
+      await actualizar(
+        query, lecturaId,
+        { estado: 'LEYENDO', etapa: ETAPA_INICIAL, error: null, ...pasosEnCurso() },
+        { soloVivo: true },
+      )
+      ultimoPublicado = null
     },
     /** Un progreso que no se pudo escribir NO puede tirar abajo una corrida que ya pagó sus
-     *  llamadas de visión: se avisa por log y el trabajo sigue. Para el vencimiento está el latido. */
+     *  llamadas de visión: se avisa por log y el trabajo sigue. Para el vencimiento está el latido.
+     *
+     *  Si el pipeline mandó lo leído hasta ahí (`parcial`), se recalculan los siete pasos y se
+     *  publican con la etapa, en el MISMO UPDATE: la pantalla no puede ver una etapa nueva con los
+     *  pasos viejos. Un pipeline que no mande `parcial` sigue funcionando igual que antes —
+     *  publica la etapa y nada más. */
     onProgreso: async (p) => {
       progreso = { fase: p?.fase ?? null, hecho: p?.hecho ?? null, total: p?.total ?? null }
-      try { await publicar(etapaDeProgreso(p ?? {})) } catch (e) { ctx.logger?.warn?.(`cotizacion.plano: progreso no publicado: ${e?.message ?? e}`) }
+      try {
+        await publicar(etapaDeProgreso(p ?? {}), p?.parcial ? pasosEnCurso(p.parcial) : {})
+      } catch (e) { ctx.logger?.warn?.(`cotizacion.plano: progreso no publicado: ${e?.message ?? e}`) }
     },
     cancelado: async () => {
       const { rows } = await query('select estado from public.cotizacion_lectura where id = $1', [lecturaId])

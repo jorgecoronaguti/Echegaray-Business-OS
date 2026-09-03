@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida, tieneNumero, viaDeCantidad, viaDePartida, pedirConDegradacion } from './pipeline.mjs'
+import { conParcial, fusionarElementos, parecidosSinFusionar, tipoObraDe, firmaNumerica, firmasDiscriminan, contradiccionesDe, mismaMedida, tieneNumero, viaDeCantidad, viaDePartida, pedirConDegradacion } from './pipeline.mjs'
 import { COMPARABLES, VIA, medidor } from '../conocimiento/metricas.mjs'
 import { FUENTE } from './fuente.mjs'
 
@@ -365,7 +365,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { enParalelo } from './paralelo.mjs'
-import { leerLaminas, leerVistas, vistasAMirar } from './lectura.mjs'
+import { laminaDeResultado, leerLaminas, leerVistas, vistasAMirar } from './lectura.mjs'
 import { cacheDeLecturas } from './cache-lecturas.mjs'
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -654,4 +654,73 @@ test('CORRER · `topeUsd: 0` degrada la corrida y lo dice con su motivo, en vez 
   const r = await m.correr({ query: queryVacia, google: null, termino: 'x', conDrive: false, topeUsd: 0 })
   assert.equal(r.degradacion.topeUsd, 0)
   assert.equal(r.cancelada, false, 'degradar por presupuesto NO es cancelar: son dos cosas y se leen distinto')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PROGRESO LLEVA LO LEÍDO — sin esto, el paso a paso de la pantalla no puede ser real
+//
+// El defecto que estos controles atrapan: `onProgreso` sólo decía «lámina 2 de 5». Con esa cuenta
+// no se puede completar un paso a paso de SIETE pasos, así que la pantalla lo animaba con un
+// temporizador. Lo que hace viable la corrección es que el parcial viaje con el aviso.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('PARCIAL · el aviso trae lo TERMINADO hasta ahí, nunca las unidades en vuelo', async () => {
+  const parciales = []
+  await enParalelo(['a', 'b', 'c'], async (x) => x.toUpperCase(), {
+    concurrencia: 1, fase: 'laminas',
+    parcialDe: (hechos) => [...hechos],
+    onProgreso: async (p) => parciales.push(p.parcial),
+  })
+  assert.deepEqual(parciales, [['A'], ['A', 'B'], ['A', 'B', 'C']], 'crece de a uno: si trajera las tres desde el primer aviso, el paso a paso volvería a ser una animación')
+})
+
+test('PARCIAL · sin `parcialDe` el aviso sigue siendo el de antes, con `parcial` en null', async () => {
+  const avisos = []
+  await enParalelo(['a'], async (x) => x, { fase: 'laminas', onProgreso: async (p) => avisos.push(p) })
+  assert.equal(avisos[0].parcial, null, 'nunca un objeto vacío que se lea como «leí y no encontré nada»')
+  assert.equal(avisos[0].hecho, 1)
+})
+
+test('PARCIAL · las láminas del progreso son las MISMAS que quedan al final (mismos elementos)', async () => {
+  const parciales = []
+  const met = medidorFalso()
+  const r = await leerLaminas({
+    docs: [docPlano(0), docPlano(1)], met, anotar: () => {},
+    cache: cacheDeLecturas({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'cache-vacio-')) }),
+    concurrencia: 1,
+    onProgreso: async (p) => parciales.push(p.parcial),
+    trabajar: async (doc) => ({
+      doc, lam: { archivo: doc.name, elementos: ['viejo'], deCache: false, uso: usoFalso('l') },
+      m: { elementos: [`medido-${doc.name}`], uso: usoFalso('m') }, medicion: { deCache: false },
+    }),
+  })
+  assert.deepEqual(parciales.map((x) => x.length), [1, 2])
+  assert.deepEqual(parciales.at(-1).map((l) => l.elementos), r.laminas.map((l) => l.elementos))
+  assert.deepEqual(r.laminas[0].elementos, ['medido-L0.pdf'], 'ganan los elementos MEDIDOS, no los de la primera pasada — en el parcial y en el final')
+})
+
+test('PARCIAL · una lámina que Drive ya no tiene no entra al parcial como lámina vacía', () => {
+  assert.equal(laminaDeResultado({ doc: {}, noDescargable: '404' }), null, 'una lámina vacía se leería como «la miré y no tiene nada»')
+})
+
+test('CONPARCIAL · láminas y vistas se acumulan por separado: una vista no borra lo ya leído', async () => {
+  const vistos = []
+  const avisar = conParcial(async (p) => vistos.push(p.parcial), { planos: { noLegibles: [] } })
+  await avisar({ fase: 'laminas', hecho: 1, total: 2, parcial: ['L0'] })
+  await avisar({ fase: 'vistas', hecho: 1, total: 3, parcial: ['V0'] })
+  assert.deepEqual(vistos.at(-1).laminas, ['L0'], 'si la vista pisara las láminas, un paso ya medido volvería a pendiente a mitad de la lectura')
+  assert.deepEqual(vistos.at(-1).porRegion, ['V0'])
+})
+
+test('CONPARCIAL · sin observador no devuelve función: una corrida sin `onProgreso` no acumula nada', () => {
+  assert.equal(conParcial(null, {}), null)
+})
+
+test('CONPARCIAL · los documentos viajan por REFERENCIA — la baja de un ilegible llega al parcial', async () => {
+  const planos = { legibles: [{ name: 'A.pdf' }], noLegibles: [] }
+  const vistos = []
+  const avisar = conParcial(async (p) => vistos.push(p.parcial.documentos), { planos })
+  planos.noLegibles = [{ name: 'A.pdf' }]   // lo que `correr()` hace cuando Drive no la entrega
+  await avisar({ fase: 'laminas', hecho: 1, total: 1, parcial: [] })
+  assert.deepEqual(vistos[0].planos.noLegibles, [{ name: 'A.pdf' }])
 })

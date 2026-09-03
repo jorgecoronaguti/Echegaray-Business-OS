@@ -645,10 +645,41 @@ export async function fuentesDe({ query }, { termino, adjuntos = [], conDrive = 
 }
 
 /**
+ * ═══ EL PROGRESO LLEVA LO LEÍDO, NO SÓLO LA CUENTA ═══
+ *
+ * «leyendo lámina 2 de 5» dice que el proceso avanza; no dice QUÉ se leyó — y la pantalla del dueño
+ * cuenta PASOS del razonamiento, no láminas. Con las láminas y las vistas TERMINADAS hasta ahí,
+ * quien observa puede correr `razonar()` + `vistaDePasos()` —los dos puros, cero llamadas al
+ * modelo— y publicar el paso a paso real en vez de animarlo con un temporizador.
+ *
+ * Las dos fases se acumulan por separado y viajan juntas: las vistas empiezan cuando las láminas
+ * ya terminaron, y si el avance de una vista pisara lo acumulado de las láminas el cómputo parcial
+ * PERDERÍA elementos a mitad de la lectura — un paso ya medido volvería a pendiente.
+ *
+ * `documentos` viaja por REFERENCIA a propósito: `correr()` mueve a `noLegibles` las láminas que
+ * Drive ya no tiene, y el barrido parcial tiene que ver esa baja igual que la ve el final.
+ *
+ * Sin `onProgreso` devuelve `null`: una corrida sin observador no acumula ni una lámina.
+ */
+export function conParcial(onProgreso, documentos) {
+  if (!onProgreso) return null
+  const acumulado = { laminas: [], porRegion: [] }
+  return async (p) => {
+    if (Array.isArray(p?.parcial)) acumulado[p.fase === 'vistas' ? 'porRegion' : 'laminas'] = p.parcial
+    await onProgreso({
+      fase: p?.fase ?? null, hecho: p?.hecho ?? null, total: p?.total ?? null, que: p?.que ?? null,
+      parcial: { laminas: acumulado.laminas, porRegion: acumulado.porRegion, documentos },
+    })
+  }
+}
+
+/**
  * @param {object} o
- * @param {((p:{fase:string,hecho:number,total:number,que:string|null})=>Promise<void>)|null} [o.onProgreso]
- *   se llama al TERMINAR cada lámina y cada vista, con el conteo real. Es informativo: su orden lo
- *   decide la latencia, no el resultado.
+ * @param {((p:{fase:string,hecho:number,total:number,que:string|null,parcial:object})=>Promise<void>)|null} [o.onProgreso]
+ *   se llama al TERMINAR cada lámina y cada vista, con el conteo real y con `parcial` —las láminas
+ *   y las vistas leídas HASTA AHÍ más los documentos—, que es lo que `lib/plano/parcial.mjs`
+ *   convierte en un cómputo parcial para el paso a paso. Es informativo: su orden lo decide la
+ *   latencia, no el resultado.
  * @param {(()=>Promise<boolean>)|null} [o.cancelado]
  *   se consulta ENTRE unidades. Si da `true`, `correr()` devuelve normalmente lo que alcanzó a
  *   hacer con `cancelada: true` — no tira. Nunca se corta una llamada de visión ya empezada: ésa
@@ -694,9 +725,12 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // orden: `laminas` y `usos` salen en el orden de `planos.legibles`, no en el de llegada, porque
   // `huella()` compara dos corridas y una lista que se reordena sola convierte esa comparación en
   // ruido. El detalle está en `lectura.mjs`.
+  // El progreso lleva LO LEÍDO, no sólo la cuenta. Ver `conParcial`.
+  const avisar = conParcial(onProgreso, { planos })
+
   const lectura = await leerLaminas({
     docs: planos.legibles, google, pedir: pedirSeguro, refrescar, logger, cache, met, anotar,
-    concurrencia, cancelado, onProgreso,
+    concurrencia, cancelado, onProgreso: avisar,
   })
   const laminas = lectura.laminas
   const noDescargables = lectura.noDescargables
@@ -720,7 +754,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   if (porRegiones && !cancelada) {
     const vistas = await leerVistas({
       segmentaciones: documental.segmentaciones, pedir: pedirSeguro, refrescar, logger, cache, met, anotar,
-      concurrencia, cancelado, onProgreso,
+      concurrencia, cancelado, onProgreso: avisar,
     })
     porRegion = vistas.porRegion
     cancelada = cancelada || vistas.cancelada

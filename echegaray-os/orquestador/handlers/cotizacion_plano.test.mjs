@@ -376,3 +376,103 @@ test('la cancelación que entra JUSTO entre la comprobación y el arranque tampo
   assert.ok(arranque, 'el arranque tiene que existir: en el momento del update la fila todavía se leía viva')
   assert.match(arranque.sql, /and estado <> 'CANCELADO'/, 'sin el freno, el UPDATE de arranque resucita una fila ya cancelada')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PASO A PASO SE COMPLETA DE VERDAD
+//
+// El defecto que estos controles atrapan: la columna `pasos` se escribía UNA sola vez, en el UPDATE
+// final a LISTO. Durante los minutos de lectura estaba vacía, y la pantalla la reemplazaba por una
+// animación de 620 ms por paso que decía «paso 3 de 7» sin haber leído nada.
+//
+// El segundo defecto, más sutil, es el de la corrección apurada: publicar los pasos reales desde el
+// primer avance hace que un paso al que todavía no se llegó salga «sin dato» — que en este dominio
+// significa «lo miré y el plano no lo trae, pedíselo al proyectista». Por eso existe `pendiente`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const laminaLeida = (codigo, elementos = []) => ({
+  archivo: `${codigo}.pdf`, lamina: { codigo, vistas: ['planta'] },
+  grilla: { largoTotal: 40, anchoTotal: 32 }, elementos, proyecto: {},
+})
+
+const baseMedida = (id) => ({
+  id, nombre: 'base de columna', forma: 'PRISMA',
+  dimensiones: { ancho: { valor: 1.8 }, alto: { valor: 0.5 }, largo: { valor: 1.8 } },
+  repeticion: { cantidad: { valor: 18 } },
+})
+
+/** Los `pasos` de un UPDATE, ya deserializados (la columna viaja como texto jsonb). */
+const pasosDe = (u) => (u.pasos ? JSON.parse(u.pasos) : null)
+const conPasos = (llamados) => updatesDeProgreso(llamados).filter((u) => u.pasos)
+
+test('los SIETE pasos se publican en el arranque, antes de leer una sola lámina, todos pendientes', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({ query, correr: async () => resultadoPipelineFalso(), crearGoogle: async () => null })
+  await handler(tareaFalsa({ lectura_id: 'lec-guia' }), ctxFalso)
+
+  const primero = conPasos(llamados)[0]
+  assert.equal(primero.estado, 'LEYENDO', 'la guía viaja en el MISMO update que pone LEYENDO: no hay ventana sin pasos')
+  const pasos = pasosDe(primero)
+  assert.equal(pasos.length, 7, 'la guía completa desde el primer segundo — el dueño pidió que los pasos SEAN la guía')
+  assert.deepEqual([...new Set(pasos.map((p) => p.estado))], ['pendiente'])
+  assert.equal(JSON.parse(primero.certeza).hechos, 0, '«paso 0 de 7» al arrancar, y sale del backend')
+})
+
+test('cada avance publica los pasos con lo leído hasta ahí — y «pendiente» nunca es «sin dato»', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({
+    query, crearGoogle: async () => null,
+    correr: async (args) => {
+      await args.onProgreso({
+        fase: 'laminas', hecho: 1, total: 2,
+        parcial: { laminas: [laminaLeida('B-01', [baseMedida('B1')])], porRegion: [], documentos: { planos: { legibles: [], noLegibles: [] } } },
+      })
+      return resultadoPipelineFalso()
+    },
+  })
+  await handler(tareaFalsa({ lectura_id: 'lec-vivo' }), ctxFalso)
+
+  const publicaciones = conPasos(llamados)
+  assert.ok(publicaciones.length >= 3, `la columna pasos se escribe varias veces, no sólo al final (fueron ${publicaciones.length})`)
+
+  const enMitad = pasosDe(publicaciones[1])
+  const hechos = JSON.parse(publicaciones[1].certeza).hechos
+  assert.ok(hechos > 0, 'después de leer una lámina hay pasos contestados: si diera 0, el paso a paso no se movería')
+  assert.ok(hechos < 7, 'y todavía NO están los siete: si diera 7 con una lámina, el progreso volvería a ser decorativo')
+  assert.ok(enMitad.some((p) => p.estado === 'pendiente'), 'lo que no se miró se declara pendiente, no «sin dato»')
+  for (const p of enMitad.filter((x) => x.estado === 'pendiente')) {
+    assert.deepEqual(p.filas, [], 'un paso pendiente no puede publicar faltantes: nadie los verificó todavía')
+  }
+
+  const ultimo = publicaciones.at(-1)
+  assert.equal(ultimo.estado, 'LISTO')
+  assert.equal(pasosDe(ultimo).filter((p) => p.estado === 'pendiente').length, 0, 'con la lectura cerrada no queda nadie pendiente: ahí sí «sin dato» es una afirmación')
+})
+
+test('un progreso sin `parcial` publica la etapa y NADA MÁS — no fabrica pasos', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({
+    query, crearGoogle: async () => null,
+    correr: async (args) => { await args.onProgreso({ fase: 'laminas', hecho: 1, total: 2 }); return resultadoPipelineFalso() },
+  })
+  await handler(tareaFalsa({ lectura_id: 'lec-sin-parcial' }), ctxFalso)
+  const conEtapa = updatesDeProgreso(llamados).filter((u) => u.etapa === 'leyendo lámina 1 de 2')
+  assert.equal(conEtapa.length, 1)
+  assert.equal(conEtapa[0].pasos, undefined, 'sin datos leídos no se publican pasos inventados')
+})
+
+test('dos avances con la misma etapa pero DISTINTO parcial se publican los dos', async () => {
+  const { query, llamados } = crearQueryFalso()
+  const handler = crearHandler({
+    query, crearGoogle: async () => null,
+    correr: async (args) => {
+      const aviso = (laminas) => args.onProgreso({ fase: 'laminas', hecho: 1, total: 2, parcial: { laminas, porRegion: [], documentos: {} } })
+      await aviso([])
+      await aviso([laminaLeida('B-01', [baseMedida('B1')])])
+      return resultadoPipelineFalso()
+    },
+  })
+  await handler(tareaFalsa({ lectura_id: 'lec-misma-etapa' }), ctxFalso)
+  const iguales = updatesDeProgreso(llamados).filter((u) => u.etapa === 'leyendo lámina 1 de 2')
+  assert.equal(iguales.length, 2, 'saltear el segundo dejaría la pantalla con los pasos viejos: es justamente el avance que hay que ver')
+  assert.notDeepEqual(pasosDe(iguales[0]).map((p) => p.estado), pasosDe(iguales[1]).map((p) => p.estado))
+})

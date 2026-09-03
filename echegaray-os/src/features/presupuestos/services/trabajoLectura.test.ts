@@ -107,9 +107,54 @@ test('pctSobreCostoDirecto se deriva de dos números reales, nunca una tasa fija
   assert.equal(pctSobreCostoDirecto(0, 100), null)
 })
 
-test('progresoDeLectura: "paso N de 7" no pasa de 7 aunque lleguen más pasos', () => {
-  assert.equal(progresoDeLectura(3).texto, 'paso 3 de 7')
-  assert.equal(progresoDeLectura(3).pctAncho, 43)
-  assert.equal(progresoDeLectura(9).texto, 'paso 7 de 7')
-  assert.equal(progresoDeLectura(7).completo, true)
+// ═══ EL PROGRESO SALE DE LOS DATOS, NUNCA DE UN RELOJ ═══
+//
+// El defecto que estos controles atrapan: la pantalla del presupuesto animaba los siete pasos con
+// un `setTimeout` de 620 ms y escribía «Leyendo el plano · paso 3 de 7» sin estar leyendo nada. Y
+// la corrección a medias —contar cuántos pasos llegaron— también miente desde que el backend manda
+// los siete desde el arranque: diría «7 de 7 · lectura cerrada» a los dos segundos de empezar.
+
+const pasoDe = (id: string, estado: PasoTrabajo['estado'], titulo = 'Bases y muertos de anclaje'): PasoTrabajo => ({
+  id, etiqueta: id.slice(1), titulo, pregunta: '¿cuántas?', estado, resumen: '',
+  columnas: { a: 'A', b: 'B', c: 'C', d: 'D' }, filas: [], evidencia: null, supuesto: null,
+  faltan: [], deriva: { partidas: 0, importe: null, sinCotizar: 0 },
+})
+
+const siete = (contestados: number): PasoTrabajo[] =>
+  Array.from({ length: 7 }, (_, i) => pasoDe(`p${i + 1}`, i < contestados ? 'firme' : 'pendiente'))
+
+test('progresoDeLectura: los siete pasos publicados con tres contestados son "paso 3 de 7"', () => {
+  const pr = progresoDeLectura(siete(3))
+  assert.equal(pr.texto, 'paso 3 de 7', 'contar la longitud de la lista daría 7 de 7 sin haber leído nada')
+  assert.equal(pr.hechos, 3)
+  assert.equal(pr.pctAncho, 43)
+  assert.equal(pr.completo, false)
+  assert.equal(pr.sello, 'Leyendo el plano · paso 3 de 7')
+  assert.equal(pr.midiendo, 'Midiendo · bases y muertos de anclaje', 'el título del PRÓXIMO paso sin contestar, en minúscula')
+})
+
+test('progresoDeLectura: con los siete contestados se cierra la lectura y nadie se está midiendo', () => {
+  const pr = progresoDeLectura(siete(7))
+  assert.equal(pr.texto, '7 de 7 · lectura cerrada')
+  assert.equal(pr.sello, 'Cómputo derivado del plano · borrador')
+  assert.equal(pr.midiendo, null)
+  assert.equal(pr.completo, true)
+})
+
+test('progresoDeLectura: manda `certeza.hechos` del backend por sobre lo que la lista aparente', () => {
+  // Una fila publicada a mitad de escritura: los pasos ya se ven contestados pero el backend
+  // todavía cuenta 2. Gana el backend — el número lo deriva quien leyó el plano.
+  const pr = progresoDeLectura(siete(5), { estado: 'pendiente', porEstado: {}, firmes: 5, pendientes: 5, hechos: 2, total: 7 })
+  assert.equal(pr.hechos, 2)
+  assert.equal(pr.texto, 'paso 2 de 7')
+})
+
+test('progresoDeLectura: sin ningún paso publicado todavía es "paso 0 de 7", no un progreso vacío', () => {
+  assert.equal(progresoDeLectura([]).texto, 'paso 0 de 7')
+  assert.equal(progresoDeLectura([]).pctAncho, 0)
+})
+
+test('pieDePaso: un paso pendiente no afirma que no genera partida', () => {
+  assert.equal(pieDePaso(pasoDe('p4', 'pendiente')), 'todavía sin medir')
+  assert.equal(pieDePaso(pasoDe('p4', 'firme')), 'no genera partida')
 })

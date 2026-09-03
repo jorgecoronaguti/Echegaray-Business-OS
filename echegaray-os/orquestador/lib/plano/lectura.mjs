@@ -121,6 +121,19 @@ async function trabajarLamina(doc, { google, pedir, refrescar, logger, cache }) 
  * dentro de cada trabajo los dejaría en orden de llegada: `ia.usos` cambiaría de orden entre dos
  * corridas idénticas y la evidencia de reproducibilidad se volvería ruido.
  */
+/**
+ * DE UN RESULTADO DE `trabajarLamina` A LA LÁMINA QUE SE PUBLICA. `null` si esa lámina no se pudo
+ * descargar. Es UNA función y no dos porque la usan dos consumidores —el resultado final y el
+ * parcial que viaja en el progreso— y si cada uno decidiera por su cuenta qué elementos ganan
+ * (los del caché o los recién medidos), la pantalla podría mostrar mientras lee un cómputo que no
+ * es el que va a quedar. PURA.
+ */
+export function laminaDeResultado(r) {
+  if (!r || r.noDescargable) return null
+  if (r.guardado) return { ...r.lam, elementos: r.guardado.elementos, medicion: { ...r.guardado.medicion, deCache: true } }
+  return { ...r.lam, elementos: r.m.elementos, medicion: r.medicion }
+}
+
 export async function leerLaminas({
   docs = [], google, pedir, refrescar = false, logger = null, cache = null, met, anotar,
   concurrencia = CONCURRENCIA_POR_DEFECTO, cancelado = null, onProgreso = null,
@@ -130,12 +143,15 @@ export async function leerLaminas({
   const { resultados, cancelada } = await enParalelo(
     docs,
     (doc) => trabajar(doc, { google, pedir, refrescar, logger, cache: cch }),
-    { concurrencia, cancelado, onProgreso, fase: 'laminas', que: (d) => d?.name ?? null })
+    {
+      concurrencia, cancelado, onProgreso, fase: 'laminas', que: (d) => d?.name ?? null,
+      parcialDe: (hechos) => hechos.map(laminaDeResultado).filter(Boolean),
+    })
 
   const laminas = []
   const noDescargables = []
   for (const r of resultados) {
-    const { doc, noDescargable, lam, m, guardado, medicion } = r
+    const { doc, noDescargable, lam, m, guardado } = r
     if (noDescargable) {
       noDescargables.push(doc)
       met?.decidio?.({ que: `lámina ${doc.name}`, via: VIA.HUECO })
@@ -146,12 +162,12 @@ export async function leerLaminas({
     met?.decidio?.({ que: `lámina ${doc.name}`, via: lam.deCache ? VIA.CACHE : (lam.error ? VIA.HUECO : VIA.MODELO) })
     if (lam.uso && !lam.uso.degradado) met?.llamo?.({ proveedor: 'ia', modelo: lam.uso.modelo, tokensIn: lam.uso.tokens?.in ?? null, tokensOut: lam.uso.tokens?.out ?? null, usd: lam.uso.usd, ms: lam.uso.ms, funcion: 'interpretar-plano' })
     if (guardado) {
-      laminas.push({ ...lam, elementos: guardado.elementos, medicion: { ...guardado.medicion, deCache: true } })
+      laminas.push(laminaDeResultado(r))
       continue
     }
     anotar?.(m.uso)
     if (m.uso && !m.uso.degradado) met?.llamo?.({ proveedor: 'ia', modelo: m.uso.modelo, tokensIn: m.uso.tokens?.in ?? null, tokensOut: m.uso.tokens?.out ?? null, usd: m.uso.usd, ms: m.uso.ms, funcion: 'medir' })
-    laminas.push({ ...lam, elementos: m.elementos, medicion })
+    laminas.push(laminaDeResultado(r))
   }
   return { laminas, noDescargables, cancelada }
 }
@@ -183,7 +199,10 @@ export async function leerVistas({
   const { resultados, cancelada } = await enParalelo(
     unidades,
     async ({ archivo, recorte }) => ({ archivo, r: await interpretar(recorte, { pedir, refrescar, archivo, logger, cache: cch }) }),
-    { concurrencia, cancelado, onProgreso, fase: 'vistas', que: (u) => u?.recorte?.region?.titulo ?? null })
+    {
+      concurrencia, cancelado, onProgreso, fase: 'vistas', que: (u) => u?.recorte?.region?.titulo ?? null,
+      parcialDe: (hechos) => hechos.map(({ archivo, r }) => ({ archivo, ...r })),
+    })
 
   const porRegion = []
   for (const { archivo, r } of resultados) {
