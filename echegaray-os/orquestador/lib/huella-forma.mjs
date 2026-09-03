@@ -472,7 +472,22 @@ export function editadaPorElDueno(hoy, sellado) {
     // mismo decimal en dos locales, y `(a;b)` y `(a,b)` la misma lista de argumentos. Sin colapsarlos,
     // cada fórmula con un decimal que pasó por `localizeValues` se declararía editada.
     const esqueleto = (f) => f.replace(/\$/g, '').replace(/\d+/g, '#').replace(/[#.,;]+/g, '#')
-    return esqueleto(a) !== esqueleto(b)
+    // ═══ LA FÓRMULA MÁS LARGA QUE EL SELLO (03/09/2026) ═══
+    //
+    // `valor` se guarda cortado a `LARGO_FORMA`. Una fórmula más larga que eso NO COINCIDE NUNCA
+    // consigo misma: se declara «editada» en la primera corrida siguiente y el generador ya no la
+    // puede volver a tocar — ni para corregir un error. Medido en «Impuestos y Financieros»: el
+    // cuadro de IVA saltaba entre 101 y 105 filas en corridas consecutivas, y los rótulos de la
+    // columna A quedaban tres filas corridos respecto de sus valores, porque la mitad del bloque
+    // estaba congelada y la otra mitad no.
+    //
+    // Un control que no puede decir «esto es mío» convierte cualquier defecto en permanente. Cuando
+    // el sellado llegó al tope, se compara sólo el tramo que sí se guardó: son 300 caracteres de
+    // estructura: si el dueño cambió la fórmula, ahí se ve. Y si tocó únicamente el final, el
+    // esqueleto del tramo guardado es idéntico y no se afirma nada — que es la misma prudencia que
+    // el resto de la función: NO declarar edición sin evidencia.
+    const izq = b.length >= LARGO_FORMA ? a.slice(0, b.length) : a
+    return esqueleto(izq) !== esqueleto(b)
   }
   if (esFormula(a) || esFormula(b)) return true
   const na = numeroDe(hoy); const nb = numeroDe(sellado)
