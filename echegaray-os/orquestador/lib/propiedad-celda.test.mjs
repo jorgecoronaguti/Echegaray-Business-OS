@@ -245,6 +245,81 @@ test('(j) mover un bloque 3×2: ni el origen se rellena ni el destino se pisa', 
   }
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// B3 — LA SALVAGUARDA: más de TOPE_SIN_HUELLA celdas sin huella en la ventana deja de "congelar"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Una ventana con un ANCLA de 8 celdas selladas y sin cambios (para que el mapa ALINEE, ≥8
+ * comparables, 100% de coincidencia) más `n` celdas sin huella y con contenido tuyo, distinto de lo
+ * generado. El ancla es indispensable: sin ella `mejorDesplazamiento` no tiene con qué alinear y cae
+ * en "primera corrida" —huellas.size === 0—, que escribe TODO sin pasar por el veredicto celda por
+ * celda. Eso probaría otra cosa (el caso ya cubierto por "base caída"), no la salvaguarda B3.
+ */
+function ventanaConAncla(n) {
+  reset()
+  const generado = []; const vivo = []
+  const ga = []; const va = []
+  for (let c = 0; c < 8; c++) { sellar(1, c, `ancla-${c}`); ga.push(`ancla-${c}`); va.push(`ancla-${c}`) }
+  generado.push(ga); vivo.push(va)
+  let restante = n
+  for (let f = 2; restante > 0; f++) {
+    const g = []; const v = []
+    for (let c = 0; c < 8; c++) {
+      if (restante > 0) { g.push(`nuevo-${f}-${c}`); v.push(`ajeno-${f}-${c}`); restante-- } else { g.push(''); v.push('') }
+    }
+    generado.push(g); vivo.push(v)
+  }
+  return { generado, vivo }
+}
+
+test('B3: exactamente en el tope, sigue el veredicto normal — ninguna celda se libera', async () => {
+  const { generado, vivo } = ventanaConAncla(20) // 20 celdas sin huella: el tope, no lo supera
+  const r = await filtrarValues(clienteCon(vivo), 'FILE', [{ range: 'Compras!A1', values: generado }])
+  assert.equal(r.respetadas.length, 20, `con el tope exacto ninguna se libera; quedaron ${r.respetadas.length}`)
+  const escritas = r.data.flatMap((d) => d.values.flat())
+  assert.equal(escritas.includes('nuevo-2-0'), false, 'las 20 celdas sin huella siguen siendo del dueño hasta probar lo contrario')
+})
+
+test('B3: una celda más que el tope — la ventana entera deja de poder AFIRMAR "no es mía"', async () => {
+  const { generado, vivo } = ventanaConAncla(21) // 21 celdas: una más que el tope
+  const r = await filtrarValues(clienteCon(vivo), 'FILE', [{ range: 'Compras!A1', values: generado }])
+  assert.equal(r.respetadas.length, 0,
+    `por encima del tope se escriben todas; quedaron respetadas: ${r.respetadas.map((x) => x.celda).join(',')}`)
+  const escritas = r.data.flatMap((d) => d.values.flat())
+  assert.ok(escritas.includes('nuevo-2-0'))
+})
+
+test('B3: aunque dispare por cantidad, lo que el dueño EDITÓ sobre una celda mía sigue protegido', async () => {
+  reset()
+  // Filas 1-2 (12 celdas): selladas y sin cambios — sólo para que el mapa ALINEE (≥8 comparables).
+  const generado = []; const vivo = []
+  for (let f = 1; f <= 2; f++) {
+    const g = []; const v = []
+    for (let c = 0; c < 6; c++) { sellar(f, c, `estable-${f}-${c}`); g.push(`estable-${f}-${c}`); v.push(`estable-${f}-${c}`) }
+    generado.push(g); vivo.push(v)
+  }
+  // Fila 3, col 0 (A3): sellada, pero el dueño la cambió DESPUÉS del sello — es una edición real.
+  sellar(3, 0, 'ORIGINAL-OS')
+  // Filas 3(resto)-6: sin huella y con contenido tuyo — 23 celdas, escritura masiva no reconocida.
+  const filaExtra = (f) => {
+    const g = []; const v = []
+    for (let c = 0; c < 6; c++) {
+      if (f === 3 && c === 0) { g.push('NUEVO-OS'); v.push('EDITADO POR EL DUEÑO'); continue }
+      g.push(`nuevo-${f}-${c}`); v.push(`ajeno-${f}-${c}`)
+    }
+    generado.push(g); vivo.push(v)
+  }
+  filaExtra(3); filaExtra(4); filaExtra(5); filaExtra(6)
+  const r = await filtrarValues(clienteCon(vivo), 'FILE', [{ range: 'Compras!A1', values: generado }])
+  assert.equal(r.respetadas.length, 1, `sólo A3 (la edición real) tiene que seguir respetada; quedaron: ${r.respetadas.map((x) => x.celda).join(',')}`)
+  assert.equal(r.respetadas[0].celda, 'A3')
+  assert.match(r.respetadas[0].causa, /editaste vos/)
+  const escritas = r.data.flatMap((d) => d.values.flat())
+  assert.equal(escritas.includes('NUEVO-OS'), false, 'la salvaguarda por cantidad no puede pisar una edición real del dueño')
+  assert.ok(escritas.includes('nuevo-4-0'), 'las 23 celdas realmente sin huella sí se escriben')
+})
+
 test('avisarRespetadas: una línea por pestaña, con las celdas nombradas', () => {
   const lineas = []
   avisarRespetadas([

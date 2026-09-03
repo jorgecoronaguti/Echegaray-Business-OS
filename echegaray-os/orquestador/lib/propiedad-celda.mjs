@@ -42,6 +42,23 @@ import { conHuellaDeCelda, hayContenido, quiereEscribir } from './huella-celda.m
 /** Cuántas celdas respetadas se registran en la base por pestaña y corrida. El resto se cuenta. */
 export const TOPE_REGISTRO = 200
 
+/**
+ * Cuántas celdas SIN HUELLA (con contenido, sin evidencia de que las escribió el OS) tolera una
+ * ventana de generador sin que el veredicto "no puedo probar que sea mía" deje de aplicarse celda por
+ * celda. Es el mismo número, y el mismo concepto, que `TOPE_SIN_HUELLA` de
+ * `sheet-huellas-sembrar.mjs` — se define acá porque acá vive la decisión en tiempo de escritura, y el
+ * script de siembra lo REUSA (no lo duplica) para medir con el mismo criterio.
+ *
+ * Por debajo del tope no pasa nada especial: una o dos celdas sin huella en una ventana bien sellada
+ * son casi siempre una edición real del dueño (ver el escenario base en `propiedad-celda.test.mjs`,
+ * caso (e)) y siguen respetadas como siempre. Por encima, ya no puede ser eso: nadie edita a mano 21
+ * celdas en el mismo rectángulo que un generador reescribe solo. Es la huella vieja que la siembra
+ * (B2) no alcanzó a recuperar, y dejarlas todas "respetadas" es la pestaña congelada que el dueño
+ * prohibió el 05/08 por otra puerta — la salvaguarda las trata como del OS, las escribe y las sella,
+ * y la corrida siguiente ya tiene huella propia para decidir con evidencia real.
+ */
+export const TOPE_SIN_HUELLA = 20
+
 /** ref citada para la API ("Cheques Emitidos" → "'Cheques Emitidos'"). */
 export function citarTab(tab) {
   return /[^A-Za-z0-9_]/.test(String(tab)) ? `'${String(tab).replace(/'/g, "''")}'` : String(tab)
@@ -223,6 +240,42 @@ export async function decidirVentana(cliente, fileId, ventana, generado) {
   const c = clasificarGrilla(generado, actual, h.grid)
   const porQue = causasDeVeredicto(h)
   for (const r of c.respetadas) { r.causa = porQue(fila0 + r.i, col0 + r.j) }
+  // ═══ MÁS DE TOPE_SIN_HUELLA CELDAS SIN HUELLA EN LA VENTANA YA NO ES RUIDO (03/09) ═══
+  //
+  // MEDIDO por la auditoría: seis pestañas quedan con cientos o miles de celdas CALCULADAS sin huella
+  // dentro de la ventana de su generador (Compras 10.160, Cobranzas 582, Proveedores 466, Cheques
+  // Emitidos 388, Tarjeta 73, Nómina 23). No las editó nadie: el OS las escribió con `updateCells`
+  // crudo antes de que existiera la huella, y su sello de firma quedó viejo porque una corrida
+  // posterior las reescribió sin re-sellar. La siembra (B2, `sheet-huellas-sembrar.mjs`) recupera la
+  // mayoría con evidencia legítima —el grid que el OS selló— pero no llega a cero en esas seis.
+  //
+  // POR QUÉ ES UN TOPE Y NO UN "SI HAY UNA SOLA, DUDO": el caso (e) de `propiedad-celda.test.mjs` es
+  // el escenario contrario y es el que este número no puede romper — una ventana con 10 de 11 celdas
+  // selladas y UNA que no (`D11`) es, con altísima probabilidad, una edición real del dueño sobre una
+  // fila que el OS sí mantiene. Tratar esa única celda como "escritura masiva no reconocida" fabricaría
+  // exactamente la propiedad que este mecanismo existe para no fabricar. Lo que sí es escritura masiva
+  // no reconocida es Compras con diez mil celdas sin huella en el mismo rectángulo que un generador
+  // reescribe solo — ahí nadie edita a mano esa cantidad, y dejarlas TODAS "respetadas" es la pestaña
+  // congelada que el dueño prohibió el 05/08 por otra puerta.
+  //
+  // LA REGLA: hasta `TOPE_SIN_HUELLA` celdas sin huella en la ventana, el veredicto normal decide
+  // celda por celda —así queda protegida la edición real de arriba—; por encima, la ventana entera
+  // deja de poder AFIRMAR "no es mía" y se escribe. Todo lo demás sigue en pie sin excepción:
+  //   · lo que el dueño VACIÓ no vuelve (huella propia + celda vacía)
+  //   · lo que EDITÓ sobre una celda mía no se pisa (huella propia + valor distinto)
+  //   · el cinturón vacío-sobre-lleno, `no-borrar` y el candado de pestaña no dependen de la huella
+  // Es transitorio y se liquida solo: lo que se escribe queda sellado, así la corrida siguiente ya
+  // tiene huella propia y la ventana vuelve a decidir con todo su peso, sin necesitar el tope.
+  const sinHuella = c.respetadas.filter((r) => /no puedo probar|nunca fue mía/.test(r.causa ?? ''))
+  if (sinHuella.length > TOPE_SIN_HUELLA) {
+    const conservadas = new Set(c.respetadas.filter((r) => !sinHuella.includes(r)).map((r) => `${r.i}:${r.j}`))
+    for (const r of sinHuella) { c.escribible[r.i][r.j] = true; c.payload[r.i][r.j] = generado[r.i][r.j] }
+    c.respetadas = c.respetadas.filter((r) => conservadas.has(`${r.i}:${r.j}`))
+    console.log(`  ℹ "${tab}"!${a1De(fila0, col0)}: ${sinHuella.length} celda(s) sin huella en esta ventana, `
+      + `por encima del tope (${TOPE_SIN_HUELLA}). Con esa cantidad ya no es ruido de siembra incompleta sino `
+      + 'una escritura masiva no reconocida: las escribo y las sello — y lo que vaciaste o editaste sigue intacto. '
+      + 'Se resuelve solo en la corrida siguiente; para verlo: scripts/sheet-huellas-sembrar.mjs --dry')
+  }
   return {
     estado: 'decidido',
     ...c,
