@@ -726,6 +726,8 @@ test('un batch de puro formato paga UNA lectura por pestaña, no una por request
   // pestaña no pueden pagar 106 lecturas de A1:BZ. Se lee una vez por pestaña y se recorta.
   t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
   baseViva()
+  // El caché de formato vive en el PROCESO (B7): sin vaciarlo, este test mide lo que dejó otro.
+  ;(await import('./huella-formato.mjs')).olvidarCacheFormato()
   let formatos = 0
   const cliente = {
     async getSheetMeta() { return [{ sheetId: SID, title: TAB, rows: 100, cols: 26 }] },

@@ -18,7 +18,7 @@ globalThis.__dbFmt = async (sql, params) => {
   return { rows: [] }
 }
 
-const { TIPO, claveDeFormato, decidirFormato, huellaDeRango, esFormatoVirgen, filtrarFormato } = await import('./huella-formato.mjs')
+const { TIPO, claveDeFormato, decidirFormato, huellaDeRango, esFormatoVirgen, filtrarFormato, olvidarCacheFormato } = await import('./huella-formato.mjs')
 
 const SID = 2
 const TAB = 'CAJA'
@@ -59,6 +59,7 @@ test('huellaDeRango: dos formatos distintos no pueden dar la misma huella', () =
 })
 
 function cliente(lectura) {
+  olvidarCacheFormato()
   return { async readSheetUserFormats() { return lectura } }
 }
 
@@ -95,7 +96,43 @@ test('sin base, o sin poder leer el formato vivo: no se re-aplica nada (fail-clo
   const a = await filtrarFormato(cliente(lecturaCon(negrita)), 'FILE', [PINTAR], id2tab)
   assert.deepEqual(a.requests, [])
   estado.caida = false; estado.huellas = [{ rango_a1: 'otro', tipo: TIPO.CELDA, huella: 'x' }]
+  olvidarCacheFormato()
   const b = await filtrarFormato({ async readSheetUserFormats() { throw new Error('429') } }, 'FILE', [PINTAR], id2tab)
   assert.deepEqual(b.requests, [])
   assert.match(b.respetadas[0].causa, /fail-closed/)
+})
+
+test('B7 — CINCO batches sobre la misma pestaña pagan UNA lectura, no cinco', async () => {
+  // La promesa del encabezado («una lectura por pestaña») era por BATCH, y un generador manda varios.
+  // Cada lectura es A1:BZ2000 = 156.000 celdas: cinco por pestaña × catorce pestañas es exactamente
+  // el gasto que hace que alguien termine apagando la guarda.
+  estado.caida = false; estado.huellas = []; estado.guardadas = []
+  olvidarCacheFormato()
+  let lecturas = 0
+  const g = { async readSheetUserFormats() { lecturas++; return lecturaCon(negrita) } }
+  for (let i = 0; i < 5; i++) await filtrarFormato(g, 'FILE', [PINTAR], id2tab)
+  assert.equal(lecturas, 1, `pagó ${lecturas} lecturas de A1:BZ2000 para la misma pestaña`)
+})
+
+test('B7 — después de aplicar formato, el caché se invalida: el sello relee lo que quedó', async () => {
+  estado.caida = false; estado.huellas = []; estado.guardadas = []
+  olvidarCacheFormato()
+  let lecturas = 0
+  const g = { async readSheetUserFormats() { lecturas++; return lecturaCon(negrita) } }
+  const r = await filtrarFormato(g, 'FILE', [PINTAR], id2tab)
+  assert.equal(lecturas, 1)
+  await r.sellar()
+  assert.equal(lecturas, 2, 'el sello tiene que RELEER: hashear lo que se mandó sería validar el control contra su propia salida')
+})
+
+test('B7 — una lectura que FALLA no se cachea: la corrida siguiente reintenta', async () => {
+  estado.caida = false; estado.huellas = [{ rango_a1: 'otro', tipo: TIPO.CELDA, huella: 'x' }]
+  olvidarCacheFormato()
+  let n = 0
+  const g = { async readSheetUserFormats() { n++; if (n === 1) throw new Error('429'); return lecturaCon(null) } }
+  const a = await filtrarFormato(g, 'FILE', [PINTAR], id2tab)
+  assert.deepEqual(a.requests, [], 'con la lectura caída no se re-aplica nada')
+  const b = await filtrarFormato(g, 'FILE', [PINTAR], id2tab)
+  assert.equal(n, 2, 'el fallo quedó cacheado y la pestaña no se pudo formatear nunca más')
+  assert.deepEqual(b.requests, [PINTAR], 'el rango está virgen: se aplica')
 })

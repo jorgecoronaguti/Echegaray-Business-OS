@@ -191,11 +191,33 @@ export async function guardarHuellaFormato(deps, fileId, pestana, tipo, rango, h
     [fileId, pestana, rango, tipo, huella])
 }
 
-/** Lee el formato vivo de una pestaña entera (una sola vez por corrida y pestaña). */
+// ═══ EL CACHÉ, PORQUE «UNA LECTURA POR PESTAÑA» ERA UNA PROMESA SIN CUMPLIR (03/09, auditoría) ═══
+//
+// El encabezado prometía una lectura por pestaña y por corrida, y lo que había era una por BATCH: un
+// generador que manda cuatro lotes de formato sobre la misma pestaña pagaba cuatro lecturas de
+// `A1:BZ2000` —156.000 celdas cada una— y el sellado, una quinta. Con catorce pestañas eso es
+// exactamente el tipo de gasto que hace que alguien apague la guarda.
+//
+// El caché vive en el PROCESO y no expira solo. Es correcto porque dentro de una corrida el único que
+// cambia el formato es el propio OS, y cuando lo cambia invalida la pestaña (`sellar` lo hace). Un
+// generador es un proceso que arranca, escribe su pestaña y termina.
+const cacheFormato = new Map()
+
+/** Se llama después de aplicar formato: lo que está en el caché ya no es lo que hay en la hoja. */
+export function invalidarFormato(fileId, tab) {
+  for (const k of [...cacheFormato.keys()]) if (k.startsWith(`${fileId}|${tab}|`)) cacheFormato.delete(k)
+}
+
+/** Sólo para los tests: vacía el caché entero. */
+export function olvidarCacheFormato() { cacheFormato.clear() }
+
+/** Lee el formato vivo de una pestaña entera. Una sola vez por proceso, pestaña y juego de campos. */
 export async function leerFormatoDePestana(cliente, fileId, tab, { conAltos = false, conMerges = false } = {}) {
+  const clave = `${fileId}|${tab}|${conAltos ? 'a' : ''}${conMerges ? 'm' : ''}`
+  if (cacheFormato.has(clave)) return cacheFormato.get(clave)
   const ref = `${citarTab(tab)}!A1:BZ${TECHO_FILAS_FORMATO}`
   const out = await cliente.readSheetUserFormats(fileId, ref)
-  if (!out) return null
+  if (!out) return null   // el fallo NO se cachea: la corrida siguiente tiene derecho a reintentar
   if (conAltos && cliente.readSheetFormats) {
     const f = await cliente.readSheetFormats(fileId, ref).catch(() => null)
     out.altos = f?.altos ?? []
@@ -204,6 +226,7 @@ export async function leerFormatoDePestana(cliente, fileId, tab, { conAltos = fa
     const g = await cliente.readSheetGrid(fileId, ref).catch(() => null)
     out.merges = g?.merges ?? []
   }
+  cacheFormato.set(clave, out)
   return out
 }
 
@@ -265,7 +288,11 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
     sellar: async () => {
       const releidos = new Map()
       for (const s of aSellar) {
-        if (!releidos.has(s.tab)) releidos.set(s.tab, await leerFormatoDePestana(cliente, fileId, s.tab, porTab.get(s.tab) ?? {}).catch(() => null))
+        // Se acaba de aplicar formato: lo cacheado ya no es lo que hay en la hoja.
+        if (!releidos.has(s.tab)) {
+          invalidarFormato(fileId, s.tab)
+          releidos.set(s.tab, await leerFormatoDePestana(cliente, fileId, s.tab, porTab.get(s.tab) ?? {}).catch(() => null))
+        }
         const h = huellaDeRango(s.tipo, releidos.get(s.tab), s.gr)
         if (h) await guardarHuellaFormato({}, fileId, s.tab, s.tipo, s.rango, h).catch(() => {})
       }

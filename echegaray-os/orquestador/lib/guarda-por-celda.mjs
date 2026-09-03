@@ -25,7 +25,9 @@ export async function conPropiedadPorCelda(cliente, fileId, data, sellarFirma) {
   try {
     const { filtrarValues, avisarRespetadas, registrarRespetadas } = await import('./propiedad-celda.mjs')
     const r = await filtrarValues(cliente, fileId, data, { esProtegible })
-    for (const d of r.descartados) console.log(`  🔒 "${d.range}": ${d.motivo}.`)
+    // ⛔ y no 🔒: un rango que no se escribió porque no se pudo LEER no es una protección, es una
+    // falla. El pipeline recoge esta marca como veredicto del paso (MARCA_VEREDICTO).
+    for (const d of r.descartados) console.log(`  ⛔ "${d.range}": ${d.motivo}.`)
     avisarRespetadas(r.respetadas)
     await registrarRespetadas(fileId, r.respetadas)
     return { data: r.data, respetadas: r.respetadas, sellar: async () => { await sellarFirma(); await r.sellar() } }
@@ -46,7 +48,7 @@ export async function filtrarPorCelda(cliente, fileId, requests, id2tab) {
     const { filtrarEstructura } = await import('./propiedad-estructura.mjs')
     const { filtrarFormato } = await import('./huella-formato.mjs')
     const a = await filtrarUpdateCells(cliente, fileId, requests, id2tab, { esProtegible })
-    for (const d of a.descartados) console.log(`  🔒 ${d.motivo}.`)
+    for (const d of a.descartados) console.log(`  ⛔ ${d.motivo}.`)
     const b = await filtrarEstructura(cliente, fileId, a.requests, id2tab, { esProtegible })
     const c = await filtrarFormato(cliente, fileId, b.requests, id2tab, { esProtegible })
     const respetadas = [...a.respetadas, ...b.respetadas, ...c.respetadas]

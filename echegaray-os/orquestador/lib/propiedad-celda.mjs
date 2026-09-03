@@ -195,9 +195,12 @@ export function todoEscribible(escribible = []) {
 export async function decidirVentana(cliente, fileId, ventana, generado) {
   const { tab, fila0, col0, alto, ancho } = ventana
   const rango = `${citarTab(tab)}!${a1De(fila0, col0)}:${a1De(fila0 + alto - 1, col0 + ancho - 1)}`
-  let actual
-  try { actual = await cliente.readSheetValues(fileId, rango, { render: 'FORMULA' }) } catch { actual = undefined }
-  if (actual === undefined) return { estado: 'sin-leer', escribible: [], payload: [], respetadas: [], sellar: async () => {} }
+  let actual; let porQueNoLei = null
+  try { actual = await cliente.readSheetValues(fileId, rango, { render: 'FORMULA' }) } catch (e) { actual = undefined; porQueNoLei = String(e.message).slice(0, 90) }
+  // UNA LECTURA QUE FALLA NO PUEDE DESCARTAR UN RANGO EN SILENCIO (03/09, auditoría). Un 429 dejaba
+  // el rango afuera sin una línea: el generador se felicitaba —"pestaña rehecha"— sobre una pestaña
+  // que no se escribió. El motivo viaja hasta el informe.
+  if (actual === undefined) return { estado: 'sin-leer', porQueNoLei, rango, escribible: [], payload: [], respetadas: [], sellar: async () => {} }
   // LA BASE ES LA QUE GUARDA LAS HUELLAS. Si no responde —ni el probe, ni la lectura de la ventana, ni
   // la tabla— ninguna celda se puede probar mía y no se escribe sobre nada que hoy tenga contenido.
   // Se prueban las DOS cosas y en el mismo lugar: un `select 1` que anda no garantiza que
@@ -319,7 +322,7 @@ export async function filtrarValues(cliente, fileId, data = [], { esProtegible =
     if (!ventana || !esProtegible(ventana.tab)) { salida.push(d); continue }
     const r = await decidirVentana(cliente, fileId, ventana, d.values ?? [])
     if (r.estado === 'sin-leer') {
-      descartados.push({ range: d.range, motivo: 'no pude releer el destino para saber de quién es cada celda (fail-closed)' })
+      descartados.push({ range: d.range, motivo: `NO ESCRITO por lectura fallida de ${r.rango} (${r.porQueNoLei}): sin ver el destino no sé de quién es cada celda (fail-closed)` })
       continue
     }
     respetadas.push(...detallarRespetadas(ventana, r.respetadas))

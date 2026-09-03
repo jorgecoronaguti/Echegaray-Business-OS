@@ -86,7 +86,7 @@ export async function filtrarUpdateCells(cliente, fileId, requests = [], id2tab 
     const ventana = { tab, fila0: g.fila0, col0: g.col0, alto: g.alto, ancho: g.ancho }
     const r = await decidirVentana(cliente, fileId, ventana, g.texto)
     if (r.estado === 'sin-leer') {
-      descartados.push({ tab, motivo: `updateCells sobre ${tab}!${a1De(g.fila0, g.col0)}: no pude releer el destino (fail-closed)` })
+      descartados.push({ tab, motivo: `NO ESCRITO: updateCells sobre ${tab}!${a1De(g.fila0, g.col0)} — lectura fallida del destino (${r.porQueNoLei}), fail-closed` })
       continue
     }
     // La decisión ya se tomó sobre la grilla de TEXTO (que es la que la huella entiende); el recorte
