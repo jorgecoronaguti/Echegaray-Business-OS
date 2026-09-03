@@ -295,11 +295,12 @@ function bloqueHero(poner, meta, refs = {}) {
     {
       rotulo: ROTULOS_HERO.egresos,
       valor: `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`,
-      // LA ADVERTENCIA DE PISO VUELVE AL TITULAR (02/09): el rediseño del 29/08 la sacó y el dueño
-      // vio el cierre empeorar sin la nota que lo explica — lo proyectado es la CUADRILLA extendida
-      // (un piso), no la obra: los meses sin cobros fechados llevan nómina entera y $0 de material.
-      ...glosaPartida(ROTULOS_HERO.egresosPagado, T('egresoReal'), ROTULOS_HERO.egresosPorPagar, T('egresoProyectado'),
-        'lo proyectado es un piso (cuadrilla)'),
+      // LA ADVERTENCIA DE PISO NO CABE EN ESTA GLOSA — MEDIDO (02/09): con un importe de diez
+      // dígitos la fila queda con ~48px de aire; cualquier cola desborda (la de «piso» sobraba
+      // 142px y cash-flow-hero-cabe lo probó). El aviso de que lo proyectado es la CUADRILLA
+      // extendida —no la obra— vive donde sí cabe: el paso asimetria-cash-flow.mjs lo imprime
+      // en CADA corrida del pipeline con los meses y montos concretos.
+      ...glosaPartida(ROTULOS_HERO.egresosPagado, T('egresoReal'), ROTULOS_HERO.egresosPorPagar, T('egresoProyectado')),
     },
     {
       // EL RESULTADO SE CALCULA ACÁ Y NO SE CITA LA FILA «Variación de caja»: esa fila incluye los
