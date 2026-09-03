@@ -92,6 +92,15 @@ const FAMILIA_A_TIPO = new Map([
 
 const texto = (v) => (v == null ? '' : String(v).trim())
 
+/** Fecha ISO (YYYY-MM-DD) venga como venga. `String(new Date())` da «Mon Jan 05 2026 …» y Postgres
+ *  lo rechaza: el driver devuelve Date para las columnas de fecha y el corte de 10 caracteres se
+ *  veía bien en los tests, donde la fecha siempre entraba como texto. */
+const fechaIso = (v) => {
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  const t = texto(v).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''
+}
+
 /** El tipo de una compra sale de la familia que la propia pestaña escribió. Sin familia, OTRO. */
 export function tipoDeCompra({ familiaMaterial } = {}) {
   const f = texto(familiaMaterial).toLowerCase()
@@ -115,24 +124,32 @@ const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinit
  */
 export function evaluarCompra(c, { obraId = null, clasificacion = null } = {}) {
   const monto = num(c.importe)
-  if (c.anulada) return { excluida: EXCLUSION.ANULADA, monto: monto ?? 0 }
+  // LOS DOS MONTOS SON MAGNITUDES DISTINTAS Y NO SE SUMAN ENTRE SÍ. `monto` es el NETO —lo mismo
+  // que se carga, y por eso es lo único que puede cuadrar contra el total de la fuente—. `bruto` es
+  // el total con IVA, y viaja aparte porque en una fila sin neto declarado es el ÚNICO tamaño que
+  // tiene: sin él, 145 filas por $178,9 M se informarían como «$0 excluidos» y parecerían nada.
+  const bruto = num(c.total) ?? 0
+  if (c.anulada) return { excluida: EXCLUSION.ANULADA, monto: monto ?? 0, bruto }
   if (texto(c.proveedor).toLowerCase() === 'sueldos') {
     // Es la MISMA plata que JORNALES, registrada global y a la mitad (se midió: $27.408.067 en
     // Compras contra $59.833.631 en JORNALES para La Estrella 2026). Cargar las dos la duplica.
-    return { excluida: EXCLUSION.NOMINA_EN_COMPRAS, monto: num(c.total) ?? 0 }
+    return { excluida: EXCLUSION.NOMINA_EN_COMPRAS, monto: monto ?? 0, bruto }
   }
-  if (monto === null || monto === 0) return { excluida: EXCLUSION.SIN_NETO_DECLARADO, monto: num(c.total) ?? 0 }
+  if (monto === null || monto === 0) return { excluida: EXCLUSION.SIN_NETO_DECLARADO, monto: 0, bruto }
   if (clasificacion != null && clasificacion !== 'obra' && clasificacion !== 'mantenimiento') {
-    return { excluida: EXCLUSION.NO_ES_OBRA, monto }
+    return { excluida: EXCLUSION.NO_ES_OBRA, monto, bruto }
   }
-  if (!obraId) return { excluida: EXCLUSION.SIN_OBRA_CANONICA, monto }
+  if (!obraId) return { excluida: EXCLUSION.SIN_OBRA_CANONICA, monto, bruto }
   return {
     fila: {
       obraId,
       cotizacionPartidaId: null,
       granularidad: GRANULARIDAD.OBRA,
       frenteTexto: null,
-      tipo: tipoDeCompra(c),
+      // La fila viene de Postgres en snake_case: pasarle `c` entero dejaba `familiaMaterial`
+      // en undefined y TODA la carga salía OTRO. Se vio recién en la corrida real: 531 filas
+      // clasificadas y ni una sola con tipo.
+      tipo: tipoDeCompra({ familiaMaterial: c.familia_material }),
       recursoNombre: texto(c.concepto) || texto(c.detalle_obra) || texto(c.proveedor) || 'sin detalle',
       // NULL a propósito: la pestaña no discrimina cantidad ni precio unitario por línea. Un 1 de
       // relleno convertiría el total del comprobante en «precio unitario» y arruinaría la
@@ -142,7 +159,7 @@ export function evaluarCompra(c, { obraId = null, clasificacion = null } = {}) {
       precioUnitario: null,
       monto,
       moneda: 'ARS',
-      fecha: texto(c.fecha).slice(0, 10),
+      fecha: fechaIso(c.fecha),
       proveedor: texto(c.proveedor) || null,
       comprobante: texto(c.comprobante) || null,
       fuente: 'compra_sheet',
@@ -234,9 +251,10 @@ export function cuadreDeCarga({ totalFuente, filas = [], excluidas = [] }) {
   const cargado = filas.reduce((a, f) => a + (Number(f.monto) || 0), 0)
   const porMotivo = new Map()
   for (const e of excluidas) {
-    const a = porMotivo.get(e.excluida) ?? { motivo: e.excluida, n: 0, monto: 0 }
+    const a = porMotivo.get(e.excluida) ?? { motivo: e.excluida, n: 0, monto: 0, bruto: 0 }
     a.n++
     a.monto += Number(e.monto) || 0
+    a.bruto += Number(e.bruto) || 0
     porMotivo.set(e.excluida, a)
   }
   const excluido = [...porMotivo.values()].reduce((a, e) => a + e.monto, 0)

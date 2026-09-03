@@ -44,6 +44,9 @@ test('el monto es el NETO y jamás el total con IVA', () => {
   assert.equal(fila.fuenteId, '60')
   assert.equal(fila.granularidad, GRANULARIDAD.OBRA)
   assert.equal(fila.cotizacionPartidaId, null)
+  // La fila llega de Postgres en snake_case. Sin esta línea, pasar `c` entero a tipoDeCompra dejaba
+  // `familiaMaterial` en undefined y las 531 filas de la primera corrida real salieron OTRO.
+  assert.equal(fila.tipo, TIPO.MATERIAL)
   assert.equal(fila.fecha, '2026-02-03')
   // La pestaña no discrimina cantidad por línea: un 1 de relleno convertiría el total del
   // comprobante en «precio unitario» y arruinaría la comparación contra el precio cotizado.
@@ -55,9 +58,19 @@ test('una fila con el neto en 0 no se carga: el total inflaría el costo hasta u
   const r = evaluarCompra(compra({ importe: 0, total: 11423000 }), { obraId: 'la-estrella' })
   assert.equal(r.fila, undefined)
   assert.equal(r.excluida, EXCLUSION.SIN_NETO_DECLARADO)
-  // El monto excluido viaja para que el cuadre pueda contarlo: si saliera 0, $50,2 M de La Estrella
-  // desaparecerían del informe sin una sola marca.
-  assert.equal(r.monto, 11423000)
+  // NETO y BRUTO son magnitudes distintas y no se suman. El neto excluido es 0 —esa fila no declara
+  // neto— y el bruto viaja aparte: sin él, 145 filas por $178,9 M se informarían como «$0» y
+  // parecerían nada. Con él sumado al neto, el cuadre daba un residuo de $345 M que no existía.
+  assert.equal(r.monto, 0)
+  assert.equal(r.bruto, 11423000)
+})
+
+test('la fecha del driver es un Date, y un Date no se corta con slice(0,10)', () => {
+  // Defecto real, encontrado en la primera corrida contra la base: el driver devuelve Date para las
+  // columnas de fecha y `String(fecha).slice(0,10)` daba «Mon Jan 05», que Postgres rechaza. En los
+  // tests no aparecía porque el fixture siempre traía la fecha como texto.
+  const { fila } = evaluarCompra(compra({ fecha: new Date('2026-01-05T03:00:00.000Z') }), { obraId: 'la-estrella' })
+  assert.equal(fila.fecha, '2026-01-05')
 })
 
 test('una nota de crédito entra con su signo negativo', () => {
@@ -69,7 +82,8 @@ test('una nota de crédito entra con su signo negativo', () => {
 test('la nómina cargada en Compras no entra: es la misma plata que JORNALES, a la mitad', () => {
   const r = evaluarCompra(compra({ proveedor: 'Sueldos', importe: 0, total: 6147450 }), { obraId: 'la-estrella' })
   assert.equal(r.excluida, EXCLUSION.NOMINA_EN_COMPRAS)
-  assert.equal(r.monto, 6147450)
+  assert.equal(r.monto, 0)
+  assert.equal(r.bruto, 6147450)
 })
 
 test('sin obra canónica, o siendo un indirecto, la fila no se inventa una obra', () => {

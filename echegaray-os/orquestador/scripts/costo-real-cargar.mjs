@@ -68,7 +68,7 @@ async function estado(q, obra) {
 async function desdeCompras(q, obra) {
   const filas = await q(
     `select cs.fila, cs.obra_texto, cs.detalle_obra, cs.concepto, cs.proveedor, cs.comprobante,
-            cs.familia_material, cs.importe, cs.total, cs.fecha, cs.anulada,
+            cs.familia_material, cs.importe, cs.total, cs.fecha::date::text fecha, cs.anulada,
             a.obra_id, a.clasificacion
        from public.compra_sheet cs
        left join public.obra_alias a on a.alias = public.norm_obra(cs.obra_texto)
@@ -138,7 +138,11 @@ function informar(titulo, r) {
   const c = cuadreDeCarga({ totalFuente: r.total, filas: r.filas, excluidas: r.excluidas })
   console.log(`\n${titulo}`)
   console.log(`  leído de la fuente ${$(c.total)} = cargado ${$(c.cargado)} + excluido ${$(c.excluido)}`)
-  for (const m of c.porMotivo) console.log(`    · ${m.motivo}: ${m.n} fila(s) ${$(m.monto)}`)
+  for (const m of c.porMotivo) {
+    // El bruto se muestra al lado y NUNCA sumado: una fila sin neto declarado excluye $0 de neto y
+    // esconde un comprobante de varios millones. Los dos números juntos son el tamaño real del hueco.
+    console.log(`    · ${m.motivo}: ${m.n} fila(s) · neto ${$(m.monto)} · con IVA ${$(m.bruto)}`)
+  }
   console.log(`  residuo ${$(c.residuo)} · ${c.cuadra ? '✓ cuadra' : '✗ NO CUADRA: hay plata sin nombre'}`)
   return c
 }
