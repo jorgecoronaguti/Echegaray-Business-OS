@@ -29,7 +29,7 @@
 // contenedor y no usa `scrollIntoView`, que arrastra la página entera cuando el hilo está adentro de
 // una columna con scroll propio.
 
-import { startTransition, useActionState, useEffect, useRef, useState } from 'react'
+import { startTransition, useActionState, useEffect, useRef } from 'react'
 import { hablarConElPresupuesto } from '../services/actionsConversacion.ts'
 import { TURNO_INICIAL, type RespuestaConversacion, type TurnoConversacion } from '../services/conversacionTipos.ts'
 import { C, RADIO_TARJETA, millones } from '@/shared/components/canon'
@@ -49,6 +49,21 @@ const TONO: Record<RespuestaConversacion['tono'], { color: string; fondo: string
 
 const EJEMPLOS: string[] = CANONICOS.map((c: { texto: string }) => c.texto)
 
+/**
+ * EL HILO, ACUMULADO EN EL REDUCTOR Y NO EN UN EFECTO.
+ *
+ * La versión anterior guardaba el turno nuevo con un `setState` dentro de un `useEffect`, y el
+ * compilador de React lo rechaza con razón: es un renderizado en cascada disparado por otro
+ * renderizado. `useActionState` ya es un reductor —recibe el estado anterior— así que el lugar
+ * correcto para agregar el turno es adentro suyo, donde la respuesta del servidor recién llegó.
+ *
+ * Se conservan los últimos 40: un hilo es registro histórico, pero uno de trescientos turnos
+ * repintaría la columna entera en cada frase.
+ */
+interface Hilo { turnos: TurnoConversacion[]; ultimo: TurnoConversacion }
+const HILO_INICIAL: Hilo = { turnos: [], ultimo: TURNO_INICIAL }
+const TOPE_HILO = 40
+
 export function Conversacion({
   cotizacionId, puedeEscribir, modeloDisponible, congelada, version, hrefAtencion, hrefCostos,
 }: {
@@ -62,22 +77,19 @@ export function Conversacion({
   hrefAtencion: string
   hrefCostos: string
 }) {
-  const [turno, enviar, pendiente] = useActionState<TurnoConversacion, FormData>(
-    hablarConElPresupuesto, TURNO_INICIAL,
+  const [{ turnos: historial }, enviar, pendiente] = useActionState<Hilo, FormData>(
+    async (prev, d) => {
+      const turno = await hablarConElPresupuesto(prev.ultimo, d)
+      return { turnos: [...prev.turnos, turno].slice(-TOPE_HILO), ultimo: turno }
+    },
+    HILO_INICIAL,
   )
   const campo = useRef<HTMLInputElement>(null)
   const hilo = useRef<HTMLDivElement>(null)
-  const [historial, setHistorial] = useState<TurnoConversacion[]>([])
-  const anterior = useRef<TurnoConversacion>(TURNO_INICIAL)
 
-  // Cada respuesta del motor es un objeto nuevo: comparar por identidad basta para saber si hubo
-  // turno, y evita el efecto que se dispara solo en cada repintado.
-  useEffect(() => {
-    if (turno === anterior.current) return
-    anterior.current = turno
-    if (turno.estado !== 'inicial') setHistorial((h) => [...h, turno])
-  }, [turno])
-
+  // EL AUTOSCROLL MUEVE `scrollTop` DEL CONTENEDOR. `scrollIntoView` arrastra el ancestro
+  // scrolleable más cercano —que acá es la ventana— y llevaría la página entera al fondo cada vez
+  // que xsas contesta. Esto sí es sincronizar React con el DOM, que es para lo que existe el efecto.
   useEffect(() => {
     const el = hilo.current
     if (el) el.scrollTop = el.scrollHeight

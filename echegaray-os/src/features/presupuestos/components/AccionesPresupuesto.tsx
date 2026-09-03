@@ -11,6 +11,14 @@
 // dice qué hace ANTES de tocarlo —bajo demanda, en el `title`— y no hay `window.confirm`: un diálogo
 // nativo no se lee en el teléfono y no queda como evidencia en la pantalla.
 //
+// ═══ Y POR ESO CONGELAR SALIÓ DE ACÁ (contrato v5) ═══
+//
+// El botón vivía en esta fila, DESHABILITADO, con el motivo escondido en el `title`. El contrato lo
+// prohíbe: «con bloqueos no se muestra botón deshabilitado, se muestra la lista con enlace a cada
+// problema». Ahora `BotonCongelar` se exporta suelto y lo dibuja el encabezado del presupuesto vivo
+// SÓLO cuando el gate pasa; cuando no pasa, ese mismo lugar muestra los bloqueos, cada uno enlazado
+// a su partida. El botón deshabilitado desapareció porque no era una explicación, era un acertijo.
+//
 // ═══ TOKENS CLAROS, NO BLANCOS TRANSLÚCIDOS (Design 23/08) ═══
 //
 // Estos controles vivían sobre el slab grafito y estaban escritos en `text-white/40`, `bg-white/10`
@@ -32,18 +40,12 @@ const SECUNDARIO =
 export function AccionesPresupuesto({
   id,
   estado,
-  congelado,
-  puedeCongelar,
-  motivoCongelar,
   puedeConvertir,
   motivoConvertir,
   hrefConvertir,
 }: {
   id: string
   estado: EstadoPresupuesto
-  congelado: boolean
-  puedeCongelar: boolean
-  motivoCongelar: string | null
   puedeConvertir: boolean
   motivoConvertir: string | null
   hrefConvertir: string
@@ -51,7 +53,8 @@ export function AccionesPresupuesto({
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="acciones-presupuesto">
       <CambiarEstado id={id} estado={estado} />
-      {!congelado && <Congelar id={id} puede={puedeCongelar} motivo={motivoCongelar} />}
+      {/* Congelar NO se dibuja acá: cuando se puede, lo dibuja el encabezado del presupuesto vivo;
+          cuando no, ese lugar muestra los bloqueos. Ver el encabezado de este archivo. */}
       <NuevaVersion id={id} />
       {puedeConvertir ? (
         <Link
@@ -111,7 +114,14 @@ function CambiarEstado({ id, estado }: { id: string; estado: EstadoPresupuesto }
   )
 }
 
-function Congelar({ id, puede, motivo }: { id: string; puede: boolean; motivo: string | null }) {
+/**
+ * EL BOTÓN DE CONGELAR, SUELTO — lo monta quien ya sabe que el gate pasa.
+ *
+ * No recibe `puede`: si hubiera que decidirlo acá, volvería a existir el estado deshabilitado que el
+ * contrato prohíbe. La cerradura de verdad sigue en la base (`cot_congelar_con_gate` levanta
+ * excepción si el gate no pasa), así que un POST que se saltee la pantalla rebota igual.
+ */
+export function BotonCongelar({ id }: { id: string }) {
   const [res, ejecutar, pendiente] = useActionState<EstadoAccion, FormData>(congelar, INICIAL)
   return (
     <form
@@ -125,12 +135,12 @@ function Congelar({ id, puede, motivo }: { id: string; puede: boolean; motivo: s
       <input type="hidden" name="id" value={id} />
       <button
         type="submit"
-        disabled={!puede || pendiente}
+        disabled={pendiente}
         data-testid="congelar"
-        title={motivo ?? 'Copia la composición de cada partida y fija el costo. Se hace una sola vez.'}
-        className={SECUNDARIO}
+        title="Copia la composición de cada partida y fija el costo. Se hace una sola vez."
+        className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-wait"
       >
-        {pendiente ? 'Congelando…' : 'Congelar'}
+        {pendiente ? 'Congelando…' : 'Congelar y preparar oferta'}
       </button>
       {res.mensaje && <span className="text-[11px] text-pos">{res.mensaje}</span>}
       {res.error && <span className="text-[11px] text-neg" data-testid="congelar-error">{res.error}</span>}

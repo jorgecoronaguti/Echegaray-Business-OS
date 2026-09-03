@@ -29,11 +29,11 @@ export function CajonInspector({ miga, hrefCerrar, children }: {
   return (
     <aside
       data-testid="cajon-inspector"
-      style={{
-        position: 'absolute', top: 0, right: 0, bottom: 0, width: 560, maxWidth: '100%',
-        background: C.superficie, borderLeft: `1px solid ${C.lineaFuerte}`,
-        display: 'flex', flexDirection: 'column', zIndex: 5,
-      }}
+      // POR ENCIMA del presupuesto sólo cuando hay lugar. Debajo de 1280 la pantalla se apila y el
+      // cajón se convierte en un bloque más de la columna: un panel flotante de 560 px sobre una
+      // ventana de 1100 taparía justamente la tabla que se está comparando.
+      className="flex flex-col border-b border-line-strong xl:absolute xl:inset-y-0 xl:right-0 xl:z-[5] xl:w-[560px] xl:border-b-0 xl:border-l"
+      style={{ background: C.superficie }}
     >
       <div style={{
         flex: 'none', height: 52, display: 'flex', alignItems: 'center', gap: 8,

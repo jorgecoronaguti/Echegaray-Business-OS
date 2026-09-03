@@ -31,13 +31,16 @@ const CIFRA: React.CSSProperties = {
 }
 
 export function EncabezadoVivo({
-  certeza, firmeza, precioFirme, bloqueos, nAtencion, congelado, sello, hrefBase, vista, accionCongelar,
+  certeza, firmeza, precioFirme, bloqueos, porQueGate, nAtencion, congelado, sello,
+  hrefBase, vista, accionCongelar,
 }: {
   certeza: Certeza
   firmeza: Firmeza
   /** El de la cascada. `null` = no hay una sola fila valorizada; no se dibuja un $0. */
   precioFirme: number | null
   bloqueos: Bloqueo[]
+  /** El `porQue` del gate, tal como lo escribe el motor. No se reescribe acá. */
+  porQueGate: string
   nAtencion: number
   congelado: boolean
   /** «v2 congelada · inmutable». Sólo cuando lo está. */
@@ -89,6 +92,7 @@ export function EncabezadoVivo({
 
       <EstadoDeEnvio
         congelado={congelado} sello={sello} bloqueos={bloqueos} accion={accionCongelar} q={q}
+        porQue={porQueGate}
       />
     </div>
   )
@@ -135,14 +139,20 @@ function Pendientes({ f }: { f: Firmeza }) {
   )
 }
 
+/**
+ * EL ESTADO DE ENVÍO. Los `data-testid` del gate viven acá porque acá es donde el gate se lee:
+ * `gate-freeze` / `gate-porque` son el mismo contrato que ya verificaba el recorrido de navegador,
+ * y moverlos sin dejar rastro habría dejado esa prueba mirando un lugar vacío.
+ */
 function EstadoDeEnvio({
-  congelado, sello, bloqueos, accion, q,
+  congelado, sello, bloqueos, accion, q, porQue,
 }: {
   congelado: boolean
   sello: string | null
   bloqueos: Bloqueo[]
   accion: React.ReactNode
   q: (extra: string) => string
+  porQue: string
 }) {
   if (congelado) {
     return (
@@ -156,15 +166,26 @@ function EstadoDeEnvio({
   }
   if (bloqueos.length === 0) {
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 14 }} data-testid="listo-para-enviar">
+      <span
+        style={{ display: 'flex', alignItems: 'center', gap: 14 }}
+        data-testid="gate-freeze" data-ready="1"
+      >
         <span style={{ fontSize: 12, color: C.pos, whiteSpace: 'nowrap' }}>Listo para enviar</span>
         {accion}
       </span>
     )
   }
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360 }} data-testid="bloqueos-envio">
+    <span
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360 }}
+      data-testid="gate-freeze" data-ready="0"
+    >
       <span style={{ fontSize: 12.5, fontWeight: 600, color: C.neg }}>Todavía no se puede enviar</span>
+      {/* El motivo EN LAS PALABRAS DEL MOTOR, chico y debajo. Reescribirlo acá abriría la puerta a
+          que la pantalla diga una cosa y el gate de la base decida otra. */}
+      <span style={{ fontSize: 10.5, color: C.tenue, lineHeight: 1.4 }} data-testid="gate-porque">
+        {porQue}
+      </span>
       {bloqueos.map((b, i) => (
         <Link
           key={`${b.tipo}-${b.partidaId ?? b.entidad}-${i}`}
