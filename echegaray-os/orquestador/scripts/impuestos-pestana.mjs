@@ -23,7 +23,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { terminoLibro } from '../lib/libro-sumas.mjs'
+import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO } from '../lib/impuestos-base-libro.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
@@ -46,7 +46,7 @@ import { ACUERDO, TARJETA } from '../lib/banco-santander.mjs'
 import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
-  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw, filasFacturadas,
+  leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw, predicadoDeCobranzaFacturada,
 } from '../lib/impuestos-fuentes.mjs'
 import {
   bloqueIva, mesDelSaldoVigente, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
@@ -114,16 +114,9 @@ const LINEAS_CREDITO = [
   'Servicios recurrentes',
 ]
 
-// ═══ LA BASE DE LA PROYECCIÓN SALE DEL LIBRO (05/08) ═══
-//
-// Las celdas del IVA proyectado apuntaban por POSICIÓN al Cash Flow Mensual. El rediseño por bloques
-// puso otra cosa en esas coordenadas y la fórmula habría leído el egreso proyectado de enero como
-// débito fiscal — sin un solo error. La base se calcula sobre `_MOVIMIENTOS` con `terminoLibro`, la
-// misma fuente única que alimenta las vistas.
-const RUBROS_CREDITO_LIBRO = ['Materiales Civil', 'Materiales Mantenimiento', 'Estructura', 'Servicios recurrentes']
-const ventanaDelMes = (m) => ({ desde: `DATE(${AÑO};${m};1)`, hasta: `EOMONTH(DATE(${AÑO};${m};1);0)+1` })
-const brutoDebitoLibro = (m) => [terminoLibro({ ...ventanaDelMes(m), signo: 1, rubros: ['Cobranzas'], medida: 'magnitud' })]
-const brutoCreditoLibro = (m) => [`-(${terminoLibro({ ...ventanaDelMes(m), rubros: RUBROS_CREDITO_LIBRO })})`]
+// La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
+const brutoDebitoLibro = (m) => [debitoFacturadoDelMes(AÑO, m)]
+const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
 /** La fila de cada rótulo en la columna A del cash flow. Rompe si falta alguno. */
 export function ubicarLineas(colA = [], rotulos = []) {
@@ -318,33 +311,7 @@ async function planDeProyeccionIva(google, ivaOficial) {
       origen: String(f[13] ?? ''), fila: Number(f[14]),
     }))
 
-  // ═══ EL DÉBITO SÓLO MIRA LO FACTURADO (03/09/2026) ═══
-  //
-  // El dueño: «las proyecciones de IVA están tomando de manera exagerada; lo indicado con B en
-  // cobranzas es lo que tiene que considerar siempre». Cobranzas marca la venta facturada con `B` y
-  // la que no lleva factura con `N`. El Libro no arrastra esa marca —sólo la pestaña y la fila de
-  // origen—, así que el puente se hace acá.
-  //
-  // MEDIDO sobre los 92 movimientos de rubro Cobranzas: 60 facturados por $562.605.362 y 32 sin
-  // factura por $291.473.901. En los meses que se proyectan, la base del débito bajaba así:
-  //
-  //     sep-26   $217.961.520 → $132.752.129
-  //     oct-26    $95.601.045 →  $62.421.413
-  //     nov-26    $24.690.667 →  $12.775.852
-  //     dic-26    $19.163.777 →  $19.163.777   (no tiene ninguna sin factura)
-  //
-  // $130.303.837 de base inventada, que a la alícuota vigente son unos $22,6M de IVA a pagar que
-  // nunca se iban a devengar. La plata de esos cobros ES real y sigue entera en la caja: lo único
-  // que no existe es su IVA. Por eso el filtro va acá y NO en el extractor del Libro.
-  const catCobranzas = (await google.readSheetValues(ID, 'Cobranzas!B5:B', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
-  const { facturadas, sinFactura, sinCategoria } = filasFacturadas(catCobranzas)
-  // Un movimiento de Cobranzas cuyo origen no sea esa pestaña no se puede clasificar: su número de
-  // fila apunta a otro lado. Medido hoy: cero. Se cuenta para que deje de ser cero con ruido.
-  const cobranzasSinOrigen = movs.filter((x) => x.signo === 1 && x.rubro === 'Cobranzas' && x.origen !== 'Cobranzas')
-  const debitoFacturado = (x) => x.rubro === 'Cobranzas' && x.origen === 'Cobranzas' && facturadas.has(x.fila)
-  console.log(`  débito del Libro: ${facturadas.size} filas de Cobranzas facturadas · ${sinFactura} sin factura (fuera del IVA, dentro de la caja)`
-    + `${sinCategoria ? ` · ⚠ ${sinCategoria} SIN CATEGORÍA` : ''}`
-    + `${cobranzasSinOrigen.length ? ` · ⚠ ${cobranzasSinOrigen.length} cobro(s) sin origen en Cobranzas, no clasificables` : ''}`)
+  const debitoFacturado = await predicadoDeCobranzaFacturada(google, ID, movs) // el puente, en el lib
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {

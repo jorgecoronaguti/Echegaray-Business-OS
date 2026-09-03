@@ -63,6 +63,8 @@ const grupoIgual = (col, valores) =>
  * @param {string[]} [f.instrumentos] OR de instrumentos
  * @param {string[]} [f.clientes] OR de clientes CANÓNICOS (columna Q, la que escribe libro-clientes)
  * @param {string}  [f.obra] una obra exacta
+ * @param {string[]} [f.extra] condiciones ya formadas y entre paréntesis, para lo que no es una
+ *   igualdad sobre una columna del libro (ver `COBRANZA_FACTURADA`)
  * @param {'neto'|'magnitud'} [f.medida] 'neto' multiplica por el signo (default); 'magnitud' no
  * @returns {string} un término SUMPRODUCT(...) en sintaxis es-AR (`;` no aplica: no lleva argumentos múltiples)
  */
@@ -80,6 +82,9 @@ export function terminoLibro(f = {}) {
   // Quién es el cliente de cada fila lo decide `libro-clientes.mjs`, una sola vez, al armar el libro.
   if (f.clientes?.length) cond.push(grupoIgual(LIBRO.col.cliente, f.clientes))
   if (f.obra) cond.push(`(${R(LIBRO.col.obra)}="${f.obra}")`)
+  // Condiciones que no se pueden expresar como igualdad sobre una columna del libro —hoy: si el
+  // cobro lleva factura, que vive en Cobranzas y no acá. Van al final, ya entre paréntesis.
+  for (const c of f.extra ?? []) cond.push(c)
   const importe = f.medida === 'magnitud'
     ? `N(${R(LIBRO.col.importe)})`
     : `N(${R(LIBRO.col.importe)})*N(${R(LIBRO.col.signo)})`
@@ -88,3 +93,29 @@ export function terminoLibro(f = {}) {
 
 /** La fórmula completa, con su `=`. Para la celda que es UNA suma y nada más. */
 export const formulaLibro = (f) => `=${terminoLibro(f)}`
+
+/**
+ * ¿ESTE COBRO LLEVA FACTURA? — la condición que el libro no puede contestar solo.
+ *
+ * ═══ POR QUÉ NO ES UNA COLUMNA DEL LIBRO (03/09/2026) ═══
+ *
+ * El dueño: «las proyecciones de IVA están tomando de manera exagerada; lo indicado con B en
+ * cobranzas es lo que tiene que considerar siempre». Cobranzas marca cada venta en su columna B:
+ * `B` facturada, `N` sin factura. Medido: 63 filas `B` por $464.427.693 con $102.539.282 de IVA, y
+ * 33 filas `N` por $284.773.901 con **IVA cero en las treinta y tres**.
+ *
+ * Esa marca NO viaja al libro, y no debe: el libro es la caja, y un cobro sin factura entró igual —
+ * la plata es real. Lo único que no existe es su IVA. Meter la categoría como columna obligaría a
+ * los otros doce extractores a declarar algo que no les significa nada.
+ *
+ * El puente es la trazabilidad que el libro ya guarda: `Origen` (la pestaña) y `Fila`. Con esas dos
+ * se vuelve a la fila de Cobranzas y se lee su categoría VIVA — si el dueño cambia una `N` por una
+ * `B`, el número se corrige solo en la próxima apertura, sin correr ningún generador.
+ *
+ * Se usa junto con `origenes: ['Cobranzas']`: sin eso, el número de fila apuntaría a otra pestaña y
+ * la comparación sería contra la fila equivocada de Cobranzas, en silencio.
+ *
+ * Rango ABIERTO en las dos puntas, como todo el resto: un tope escrito hoy es la bomba de tiempo
+ * que ya cortó Cobranzas en la fila 200 una vez.
+ */
+export const COBRANZA_FACTURADA = `ISNUMBER(MATCH(${R(LIBRO.col.fila)};FILTER(ROW(Cobranzas!$B$5:$B);Cobranzas!$B$5:$B="B");0))`

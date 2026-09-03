@@ -382,3 +382,31 @@ export async function escribirIIBBRaw(google, fileId, iibb) {
   for (let i = 0; i < reqs.length; i += 300) await google.spreadsheetBatchUpdate(fileId, reqs.slice(i, i + 300))
   console.log(`  ${IIBB_RAW}: ${datos.length} DDJJ escritas`)
 }
+
+/**
+ * EL PUENTE ENTRE EL LIBRO Y LA CATEGORÍA — y su medición, que es lo que lo hace auditable.
+ *
+ * El débito proyectado se arma de `_MOVIMIENTOS`, que guarda de qué pestaña y de qué fila salió cada
+ * movimiento pero NO si llevaba factura. Esto vuelve a Cobranzas por esas dos coordenadas y devuelve
+ * el predicado que el cuadro usa para descartar del IVA lo que no está facturado — **sin sacarlo de
+ * la caja**, que es la distinción entera: el cobro entró y la plata es real; lo que no existe es su
+ * IVA.
+ *
+ * MEDIDO el 03/09/2026 sobre los 92 movimientos de rubro Cobranzas: 60 facturados por $562.605.362
+ * y 32 sin factura por $291.473.901, ninguno huérfano. En los meses proyectados la base bajaba de
+ * $217.961.520 a $132.752.129 (sep), de $95.601.045 a $62.421.413 (oct) y de $24.690.667 a
+ * $12.775.852 (nov); diciembre no tiene ninguna sin factura. Son $130.303.837 de base inventada.
+ *
+ * Los dos casos que hoy dan cero se cuentan igual, para que dejen de dar cero **con ruido**: filas
+ * de Cobranzas sin categoría, y cobros cuyo origen no sea esa pestaña —ahí el número de fila
+ * apuntaría a otra parte y la comparación sería contra la fila equivocada, en silencio—.
+ */
+export async function predicadoDeCobranzaFacturada(google, fileId, movs = [], registrar = console.log) {
+  const cat = (await google.readSheetValues(fileId, 'Cobranzas!B5:B', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const { facturadas, sinFactura, sinCategoria } = filasFacturadas(cat)
+  const huerfanos = movs.filter((x) => x.signo === 1 && x.rubro === 'Cobranzas' && x.origen !== 'Cobranzas')
+  registrar(`  débito del Libro: ${facturadas.size} filas de Cobranzas facturadas · ${sinFactura} sin factura (fuera del IVA, dentro de la caja)`
+    + `${sinCategoria ? ` · ⚠ ${sinCategoria} SIN CATEGORÍA` : ''}`
+    + `${huerfanos.length ? ` · ⚠ ${huerfanos.length} cobro(s) sin origen en Cobranzas, no clasificables` : ''}`)
+  return (x) => x.rubro === 'Cobranzas' && x.origen === 'Cobranzas' && facturadas.has(x.fila)
+}
