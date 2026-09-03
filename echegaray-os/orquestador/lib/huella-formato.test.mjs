@@ -136,3 +136,61 @@ test('B7 — una lectura que FALLA no se cachea: la corrida siguiente reintenta'
   assert.equal(n, 2, 'el fallo quedó cacheado y la pestaña no se pudo formatear nunca más')
   assert.deepEqual(b.requests, [PINTAR], 'el rango está virgen: se aplica')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// AGRANDAR LA GRILLA NO ES FORMATEAR
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ (03/09/2026). El dueño, por enésima vez: «sigue estando mal lo de los gráficos de caja,
+// cuando haces la corrida se actualiza y baja». Medido contra el Sheet real: los cuatro gráficos
+// anclaban BIEN (filas 22, 37 y 52) y la hoja tenía 55 filas donde el layout necesita 68 — el
+// editor vivo sube el último bloque hasta que entre y lo dibuja encima del anterior.
+//
+// El generador ya sabía arreglarlo (`requestDeAltoMinimo`), pero la guarda de formato clasificaba
+// CUALQUIER `updateSheetProperties` como diseño de la pestaña y lo frenaba:
+//   🎨 "CAJA"!*: no re-aplico el formato — ese rango ya tiene un formato que yo no puse.
+// Agrandar la grilla no toca ninguna celda: agrega filas vacías al final. No es una decisión de
+// diseño del dueño, es capacidad. `frozenRowCount`, `hideGridlines` y el resto SÍ lo son y siguen
+// protegidos — por eso la excepción mira `fields`, no el tipo de request.
+
+const SOLO_FILAS = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 68 } }, fields: 'gridProperties.rowCount' } }
+const SOLO_COLS = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { columnCount: 30 } }, fields: 'gridProperties.columnCount' } }
+const FILAS_Y_COLS = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 68, columnCount: 30 } }, fields: 'gridProperties.rowCount,gridProperties.columnCount' } }
+const CONGELADAS = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { frozenRowCount: 4 } }, fields: 'gridProperties.frozenRowCount' } }
+const MIXTO = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 68, frozenRowCount: 4 } }, fields: 'gridProperties.rowCount,gridProperties.frozenRowCount' } }
+
+test('agrandar la grilla NO es formato: la guarda lo deja pasar', () => {
+  assert.equal(claveDeFormato(SOLO_FILAS), null, 'rowCount solo agrega filas vacías al final: no es diseño')
+  assert.equal(claveDeFormato(SOLO_COLS), null, 'columnCount idem')
+  assert.equal(claveDeFormato(FILAS_Y_COLS), null, 'los dos juntos siguen siendo tamaño, no diseño')
+})
+
+test('lo que SÍ es diseño de la pestaña se sigue protegiendo', () => {
+  assert.equal(claveDeFormato(CONGELADAS)?.tipo, TIPO.PESTANA, 'congelar filas es una decisión visual del dueño')
+  assert.equal(claveDeFormato(CONGELADAS)?.rango, '*')
+  assert.equal(claveDeFormato(MIXTO)?.tipo, TIPO.PESTANA,
+    'un request que ADEMÁS toca el diseño se protege entero: la excepción es sólo para el tamaño puro')
+})
+
+test('el request real que arregla los gráficos de CAJA atraviesa la guarda', async () => {
+  const { requestDeAltoMinimo } = await import('./caja-graficos.mjs')
+  const req = requestDeAltoMinimo(749583421, 55)
+  assert.equal(claveDeFormato(req), null, 'es el request que quedó frenado el 03/09 y dejó los gráficos pisados')
+  const r = await filtrarFormato({ async readSheetUserFormats() { throw new Error('no debería leer') } }, 'FILE', [req], id2tab)
+  assert.deepEqual(r.requests, [req], 'pasa entero, y sin gastar una lectura de formato')
+  assert.deepEqual(r.respetadas, [])
+})
+
+test('la excepción NO abre la puerta a achicar la grilla', async () => {
+  const { clasificarRequest, CLASE } = await import('./clasificar-request.mjs')
+  const achicar = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 10 } }, fields: 'gridProperties.rowCount' } }
+  // Esquiva la guarda de FORMATO igual que el de agrandar — son el mismo tipo de request…
+  assert.equal(claveDeFormato(achicar), null)
+  // …pero la que manda sobre el tamaño es la guarda ESTRUCTURAL, que sí mira el alto vivo.
+  const dims = new Map([[1, { rows: 55, cols: 26 }]])
+  assert.equal(clasificarRequest(achicar, dims).clase, CLASE.DESTRUCTIVO, 'de 55 a 10 filas borra 45 filas con lo que tengan')
+  assert.equal(clasificarRequest(SOLO_FILAS, dims).clase, CLASE.INOCUO, 'de 55 a 68 no deja ninguna afuera')
+  // Sin dimensiones no se puede afirmar nada: falla cerrado, y por eso el atajo de `guardarRequests`
+  // no puede saltearse la lectura de meta para un request de tamaño.
+  assert.equal(clasificarRequest(SOLO_FILAS, null).clase, CLASE.DESTRUCTIVO, 'sin el tamaño actual no se afirma que crezca')
+})
