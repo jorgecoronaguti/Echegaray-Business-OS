@@ -109,7 +109,7 @@ export async function crearPartida(_prev: EstadoAccion, form: FormData): Promise
   if (e) return { error: e.message }
 
   const aviso = await sincronizarComputoDePartida(c, String(creada.id), {
-    cantidad, unidad: d.unidad || null, donde: 'Presupuestos · alta de partida',
+    cantidad, donde: 'Presupuestos · alta de partida',
   })
   revalidatePath(`${RAIZ}/${d.cotizacion_id}`, 'layout')
   return { error: null, ok: true, ...(aviso ? { mensaje: aviso } : {}) }
@@ -148,8 +148,8 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
   // permiso económico, no el estado— así que el freno vive acá. Se verifica contra la base y no
   // contra lo que dice la pantalla: la misma acción entra por un formulario y mañana por el chat.
   const { data: cong } = await c.from('cotizacion_partida')
-    .select('cotizacion_id, unidad, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
-  const fila = cong as { unidad?: string | null; cotizaciones?: { congelada_en?: string | null } } | null
+    .select('cotizacion_id, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
+  const fila = cong as { cotizaciones?: { congelada_en?: string | null } } | null
   if (fila?.cotizaciones?.congelada_en) {
     return { error: 'Este presupuesto está congelado: para cambiarlo se crea una versión nueva.' }
   }
@@ -161,9 +161,7 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
   // número, y tocar la línea por eso la marcaría como recién decidida cuando no se decidió nada.
   const aviso = campo === 'cantidad'
     ? await sincronizarComputoDePartida(c, partida_id, {
-      cantidad: valor as number | null,
-      unidad: fila?.unidad ?? null,
-      donde: 'Presupuestos · edición inline',
+      cantidad: valor as number | null, donde: 'Presupuestos · edición inline',
     })
     : null
 

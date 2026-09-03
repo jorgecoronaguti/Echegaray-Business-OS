@@ -29,8 +29,14 @@ type Cliente = Awaited<ReturnType<typeof createClient>>
 export async function sincronizarComputoDePartida(
   c: Cliente,
   partidaId: string,
-  { cantidad, unidad = null, donde }: { cantidad: number | null; unidad?: string | null; donde: string },
+  { cantidad, donde }: { cantidad: number | null; donde: string },
 ): Promise<string | null> {
+  // LA UNIDAD SE LEE ACÁ Y NO LA TRAE EL CALLER. Tres callers pasando su propia unidad son tres
+  // oportunidades de que la línea de cómputo diga «m2» mientras la partida dice «m3». La unidad de
+  // una cantidad es la de su partida, y eso se decide en un solo lugar.
+  const { data: partida } = await c.from('cotizacion_partida').select('unidad').eq('id', partidaId).maybeSingle()
+  const unidad = (partida as { unidad?: string | null } | null)?.unidad ?? null
+
   const { data: previas, error: eL } = await c.from('computo')
     .select('id, origen, elemento').eq('cotizacion_partida_id', partidaId)
   // SIN PODER LEER NO SE DECIDE. Con una lista vacía, el plan insertaría una línea nueva sobre una
