@@ -513,3 +513,16 @@ export function requestDeAltoMinimo(sheetId, filasActuales = 0) {
   const rowCount = Math.max(FILA_FINAL_DE_GRAFICOS + 1, Number.isFinite(filasActuales) ? filasActuales : 0)
   return { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount } }, fields: 'gridProperties.rowCount' } }
 }
+
+/**
+ * LO QUE LA HOJA DEVUELVE DESPUÉS DE DIBUJAR: el alto de la grilla y el ancla de cada gráfico. Es la
+ * única lectura con la que se puede AFIRMAR que el layout quedó bien — `getCharts` trae el título pero
+ * no la posición, y la posición es justo lo que el editor vivo cambia por su cuenta.
+ */
+export async function leerLayoutDeGraficos(google, fileId, titulo) {
+  const campos = 'sheets(properties(title,gridProperties(rowCount)),charts(chartId,position(overlayPosition),spec(title)))'
+  const j = await google.getGridData(fileId, `'${titulo}'`, campos)
+  const hojas = j?.sheets ?? []
+  const hoja = hojas.find((s) => s.properties?.title === titulo) ?? hojas[0]
+  return { rows: hoja?.properties?.gridProperties?.rowCount, charts: hoja?.charts ?? [] }
+}
