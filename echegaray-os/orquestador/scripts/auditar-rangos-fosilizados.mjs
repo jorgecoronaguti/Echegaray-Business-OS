@@ -207,9 +207,12 @@ async function auditarNombrados(google, meta, grillas, formulas) {
   const porId = new Map(meta.map((h) => [h.sheetId, h.title]))
   const nombrados = []
   const noVerificables = []
-  // La PRIMERA celda de cada nombre, sin formatear: es la que promete la especie. Sale de la grilla
-  // que ya se leyó —no hay una llamada más— y `valor` viene crudo por `readSheetGrid`, que es lo que
-  // hace falta: "$209.231.271" formateado es un string igual que un número de comprobante.
+  // La PRIMERA celda de cada nombre. OJO: `valor` de readSheetGrid es el FORMATEADO
+  // ("$10.079.294", con $ y miles) — juzgado como texto, toda celda de plata bien formateada
+  // «miente su especie» (medido 02/09: tres falsos positivos sobre CAJA_TOTAL_DISPONIBLE,
+  // CAJA_FECHA_SALDO y ARCA_SIN_CARGAR_MONTO, las tres fórmulas vivas con número válido).
+  // La especie se juzga sobre `numero` (effectiveValue) cuando existe; el texto queda para
+  // las celdas que de verdad tienen texto.
   const conValor = []
   for (const nr of await google.getNamedRanges(ID)) {
     const hoja = porId.get(nr.range?.sheetId) ?? null
@@ -218,7 +221,7 @@ async function auditarNombrados(google, meta, grillas, formulas) {
     if (!cuenta) { noVerificables.push({ nombre: nr.name, hoja }); continue }
     nombrados.push({ nombre: nr.name, hoja, conDato: cuenta.con, celdas: cuenta.total })
     const c = gr.filas[nr.range?.startRowIndex ?? 0]?.[nr.range?.startColumnIndex ?? 0]
-    conValor.push({ nombre: nr.name, hoja, valor: c?.valor ?? null })
+    conValor.push({ nombre: nr.name, hoja, valor: c?.numero ?? c?.valor ?? null })
   }
 
   const clasificados = clasificarNombrados(nombrados, formulas)
