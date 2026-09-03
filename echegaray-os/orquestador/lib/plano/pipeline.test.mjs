@@ -348,3 +348,310 @@ test('NEGATIVO: el módulo se puede IMPORTAR y sus funciones internas existen de
   assert.equal(typeof m.viaDePartida, 'function')
   assert.equal(typeof m.pedirConDegradacion, 'function')
 })
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// B1/B2 · LEER EN PARALELO NO PUEDE CAMBIAR EL RESULTADO
+//
+// Las láminas y las vistas son independientes y se leían de a una: veinte láminas tardaban veinte
+// veces lo que tarda una. Paralelizarlas es correcto; hacerlo por la vía obvia —empujar al array a
+// medida que llegan— NO lo es, porque deja la salida en orden de LATENCIA. Este repo publica
+// `huella(seleccion)` para poder afirmar «dos corridas dieron lo mismo»: una lista que se reordena
+// sola rompe esa afirmación sin romper nada visible. Los tests de abajo desordenan los tiempos a
+// propósito y exigen la salida en orden de entrada.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { enParalelo } from './paralelo.mjs'
+import { leerLaminas, leerVistas, vistasAMirar } from './lectura.mjs'
+import { cacheDeLecturas } from './cache-lecturas.mjs'
+
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
+/** Un medidor de mentira que además GUARDA el orden: si el paralelismo desordenara las métricas,
+ *  el Claude Avoidance Rate de dos corridas iguales saldría con los mismos números en otro orden. */
+const medidorFalso = () => {
+  const decisiones = []
+  const llamadas = []
+  return { decisiones, llamadas, decidio: (d) => decisiones.push(d.que), llamo: (l) => llamadas.push(l.funcion) }
+}
+
+test('B1 · el orden de la salida es el de la ENTRADA, aunque las respuestas lleguen al revés', async () => {
+  // La primera tarda 40 ms y la última 1: en orden de llegada saldrían exactamente invertidas.
+  const demoras = [40, 30, 20, 10, 1]
+  const { resultados, cancelada, hechos } = await enParalelo(
+    demoras.map((ms, i) => ({ i, ms })),
+    async (u) => { await dormir(u.ms); return u.i },
+    { concurrencia: 5 })
+  assert.deepEqual(resultados, [0, 1, 2, 3, 4], 'en orden de llegada esto daría [4,3,2,1,0] y la huella cambiaría sola')
+  assert.equal(cancelada, false)
+  assert.equal(hechos, 5)
+})
+
+test('B1 · la concurrencia SOLAPA de verdad, y nunca pasa del tope pedido', async () => {
+  let vivas = 0
+  let pico = 0
+  const trabajo = async () => { vivas += 1; pico = Math.max(pico, vivas); await dormir(15); vivas -= 1 }
+  const t0 = Date.now()
+  await enParalelo(Array.from({ length: 8 }, (_, i) => i), trabajo, { concurrencia: 4 })
+  const ms = Date.now() - t0
+  assert.equal(pico, 4, 'si el pico fuera 1 seguiría siendo secuencial y este test es lo único que lo nota')
+  assert.ok(ms < 8 * 15, `ocho unidades de 15 ms de a cuatro no pueden tardar lo que tardan de a una (tardó ${ms} ms)`)
+})
+
+test('B1 · con concurrencia 1 el pico es 1: el control PUEDE dar el valor contrario', async () => {
+  let vivas = 0
+  let pico = 0
+  await enParalelo([1, 2, 3], async () => { vivas += 1; pico = Math.max(pico, vivas); await dormir(1); vivas -= 1 }, { concurrencia: 1 })
+  assert.equal(pico, 1)
+})
+
+test('CANCELAR · se corta ENTRE unidades y lo ya empezado se termina — esa llamada ya se pagó', async () => {
+  const empezadas = []
+  const terminadas = []
+  let cortar = false
+  const r = await enParalelo(
+    [0, 1, 2, 3, 4, 5, 6, 7],
+    async (i) => { empezadas.push(i); await dormir(10); terminadas.push(i); if (i >= 1) cortar = true; return i },
+    { concurrencia: 2, cancelado: async () => cortar })
+  assert.equal(r.cancelada, true)
+  assert.equal(empezadas.length, terminadas.length, 'una llamada de visión cortada a mitad se paga y se tira')
+  assert.ok(r.resultados.length < 8, 'si cancelar no cortara nada, esto no sería un control')
+  assert.deepEqual(r.resultados, [...r.resultados].sort((a, b) => a - b), 'lo que sí se hizo sale igual en orden de entrada')
+})
+
+test('CANCELAR · si cancela antes de empezar, no se gasta una sola llamada', async () => {
+  let llamadas = 0
+  const r = await enParalelo([1, 2, 3], async () => { llamadas += 1 }, { cancelado: async () => true })
+  assert.equal(llamadas, 0)
+  assert.equal(r.cancelada, true)
+  assert.deepEqual(r.resultados, [])
+})
+
+test('PROGRESO · se avisa al terminar cada unidad, con el conteo REAL y el total', async () => {
+  const avisos = []
+  await enParalelo(['a', 'b', 'c'], async (x) => x, {
+    concurrencia: 1, fase: 'laminas', que: (x) => x,
+    onProgreso: async (p) => avisos.push(p),
+  })
+  assert.deepEqual(avisos.map((a) => a.hecho), [1, 2, 3], 'el conteo es el de terminadas, no el del índice')
+  assert.deepEqual(avisos.map((a) => a.que), ['a', 'b', 'c'])
+  assert.ok(avisos.every((a) => a.fase === 'laminas' && a.total === 3))
+})
+
+const docPlano = (n) => ({ name: `L${n}.pdf`, drive_file_id: `id-${n}`, mime_type: 'application/pdf' })
+const usoFalso = (etiqueta) => ({ modelo: etiqueta, tokens: { in: 1, out: 2 }, usd: 0.01, ms: 1 })
+
+test('B1 · `laminas` y `usos` salen en el orden de `planos.legibles`, no en el de llegada', async () => {
+  const demoras = [40, 5, 25, 1]
+  const met = medidorFalso()
+  const usos = []
+  const r = await leerLaminas({
+    docs: demoras.map((_, i) => docPlano(i)),
+    pedir: async () => ({}), cache: cacheDeLecturas({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'cache-vacio-')) }),
+    met, anotar: (u) => { if (u) usos.push(u.modelo) }, concurrencia: 4,
+    trabajar: async (doc) => {
+      const i = Number(doc.name.match(/\d+/)[0])
+      await dormir(demoras[i])
+      return { doc, lam: { archivo: doc.name, elementos: [], deCache: false, uso: usoFalso(`lam-${i}`) }, m: { elementos: [], uso: usoFalso(`med-${i}`) }, medicion: { deCache: false } }
+    },
+  })
+  assert.deepEqual(r.laminas.map((l) => l.archivo), ['L0.pdf', 'L1.pdf', 'L2.pdf', 'L3.pdf'])
+  assert.deepEqual(usos, ['lam-0', 'med-0', 'lam-1', 'med-1', 'lam-2', 'med-2', 'lam-3', 'med-3'], 'interpretar y medir de cada lámina, en orden, igual que cuando era secuencial')
+  assert.deepEqual(met.decisiones, ['lámina L0.pdf', 'lámina L1.pdf', 'lámina L2.pdf', 'lámina L3.pdf'])
+  assert.equal(r.cancelada, false)
+})
+
+test('B1 · una lámina que Drive ya no tiene se DECLARA y no tumba a las otras', async () => {
+  const met = medidorFalso()
+  const r = await leerLaminas({
+    docs: [docPlano(0), docPlano(1)], met, anotar: () => {},
+    cache: cacheDeLecturas({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'cache-vacio-')) }),
+    trabajar: async (doc) => (doc.name === 'L0.pdf'
+      ? { doc, noDescargable: '404' }
+      : { doc, lam: { archivo: doc.name, elementos: [], deCache: false, uso: null }, m: { elementos: [], uso: null }, medicion: { deCache: false } }),
+  })
+  assert.deepEqual(r.noDescargables.map((d) => d.name), ['L0.pdf'])
+  assert.deepEqual(r.laminas.map((l) => l.archivo), ['L1.pdf'])
+})
+
+const recorteFalso = (n, titulo) => ({ ok: true, ruta: `/no/existe/${n}.png`, region: { n, titulo, tipo: 'planta' } })
+
+test('B2 · `porRegion` sale en el orden segmentación→lámina→recorte, con respuestas desordenadas', async () => {
+  const segmentaciones = [
+    { archivo: 'A.pdf', laminas: [{ recortes: [recorteFalso(1, 'PLANTA'), recorteFalso(2, 'CORTE')] }] },
+    { archivo: 'B.pdf', laminas: [{ recortes: [recorteFalso(3, 'DETALLE'), { ok: false, region: { n: 9, tipo: 'planta' } }, recorteFalso(4, 'CARATULA', 'caratula')] }] },
+  ]
+  const demoras = { PLANTA: 30, CORTE: 2, DETALLE: 15, CARATULA: 1 }
+  const met = medidorFalso()
+  const r = await leerVistas({
+    segmentaciones, met, anotar: () => {}, concurrencia: 4,
+    cache: cacheDeLecturas({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'cache-vacio-')) }),
+    interpretar: async (rec) => { await dormir(demoras[rec.region.titulo]); return { region: rec.region, elementos: [], deCache: false, uso: null } },
+  })
+  assert.deepEqual(r.porRegion.map((x) => x.region.titulo), ['PLANTA', 'CORTE', 'DETALLE', 'CARATULA'])
+  assert.deepEqual(r.porRegion.map((x) => x.archivo), ['A.pdf', 'A.pdf', 'B.pdf', 'B.pdf'])
+  assert.deepEqual(met.decisiones, ['vista PLANTA', 'vista CORTE', 'vista DETALLE', 'vista CARATULA'])
+})
+
+test('B2 · un recorte fallido o de un tipo que no se mira NO gasta una llamada', () => {
+  const u = vistasAMirar([{ archivo: 'A.pdf', laminas: [{ recortes: [
+    { ok: false, region: { n: 1, tipo: 'planta' } },
+    { ok: true, region: { n: 2, tipo: 'caratula' } },
+    { ok: true, region: { n: 3, tipo: 'corte' } },
+  ] }] }])
+  assert.deepEqual(u.map((x) => x.recorte.region.n), [3], 'la carátula no tiene nada que computar y el recorte roto no tiene nada que mirar')
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// D2 · EL TOPE DE GASTO DEGRADA, NO TIRA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('D2 · pasado el tope, las llamadas que faltan se DEGRADAN con un motivo propio', async () => {
+  let llamadas = 0
+  const { pedirSeguro, degradacion } = pedirConDegradacion(
+    async () => { llamadas += 1; return { texto: '{}', usd: 0.6, modelo: 'x' } },
+    { topeUsd: 1 })
+  assert.equal((await pedirSeguro({ funcion: 'interpretar-plano' })).texto, '{}')
+  assert.equal((await pedirSeguro({ funcion: 'interpretar-plano' })).texto, '{}', 'la segunda cruza el tope pero ya estaba empezada: se paga y se usa')
+  const tercera = await pedirSeguro({ funcion: 'interpretar-region' })
+  assert.equal(tercera.texto, null)
+  assert.equal(tercera.degradado, 'tope de gasto alcanzado')
+  assert.notEqual(tercera.degradado, 'modelo apagado', 'sin saldo y sin presupuesto son dos problemas distintos')
+  assert.equal(llamadas, 2, 'la tercera no se hizo: si se hubiera hecho, el tope no serviría para nada')
+  assert.equal(degradacion.hubo, true)
+  assert.match(degradacion.motivos[0].motivo, /tope de gasto/)
+  assert.equal(Math.round(degradacion.usd * 100) / 100, 1.2)
+  assert.equal(degradacion.topeUsd, 1)
+})
+
+test('D2 · con `topeUsd: null` no cambia absolutamente nada — el default preserva la conducta', async () => {
+  let llamadas = 0
+  const { pedirSeguro, degradacion } = pedirConDegradacion(async () => { llamadas += 1; return { texto: 'ok', usd: 999 } }, {})
+  for (let i = 0; i < 5; i++) assert.equal((await pedirSeguro({})).texto, 'ok')
+  assert.equal(llamadas, 5)
+  assert.equal(degradacion.hubo, false)
+  assert.equal(degradacion.topeUsd, null)
+})
+
+test('D2 · el tope NO tira: una corrida que se cae por el tope pierde todo lo que ya pagó', async () => {
+  const { pedirSeguro } = pedirConDegradacion(async () => ({ texto: 'x', usd: 5 }), { topeUsd: 0.01 })
+  await pedirSeguro({ funcion: 'f' })
+  await assert.doesNotReject(() => pedirSeguro({ funcion: 'f' }))
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// D1 · EL CACHÉ DE LECTURAS NUNCA DECIDE SI EL PIPELINE FUNCIONA
+//
+// Cada entrada es una llamada de visión ya cobrada. Se mudó a Postgres porque el disco del worker
+// muere con la máquina, pero la regla del `try/catch` original no se relaja: sin base, con base
+// caída o con la migración sin aplicar, la corrida sigue igual contra el disco.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const dirTemporal = () => fs.mkdtempSync(path.join(os.tmpdir(), 'cache-planos-'))
+/** Una base de mentira con UNA tabla. `select` y `insert ... on conflict`, nada más. */
+const baseFalsa = () => {
+  const filas = new Map()
+  return {
+    filas,
+    query: async (sql, params) => {
+      if (/^\s*select/i.test(sql)) return { rows: filas.has(params[0]) ? [{ valor: filas.get(params[0]) }] : [] }
+      filas.set(params[0], JSON.parse(params[1]))
+      return { rows: [] }
+    },
+  }
+}
+
+test('D1 · SIN base, el caché es el de disco de siempre y sirve lo que ya está guardado', async () => {
+  const dir = dirTemporal()
+  const c = cacheDeLecturas({ dir })
+  assert.equal(await c.guardar('v2:abc', { crudo: { a: 1 } }), 'disco')
+  assert.deepEqual(await c.leer('v2:abc'), { crudo: { a: 1 } })
+  assert.equal(await c.leer('v2:noexiste'), null)
+  assert.ok(fs.existsSync(path.join(dir, 'v2:abc.json')), 'el nombre del archivo NO cambia: los 135 que ya están se llaman así')
+})
+
+test('D1 · con la base CAÍDA —o la migración sin aplicar— el caché no tira y cae al disco', async () => {
+  const dir = dirTemporal()
+  const rota = async () => { throw new Error('relation "orq.plano_lectura_cache" does not exist') }
+  const c = cacheDeLecturas({ query: rota, dir })
+  assert.equal(await c.guardar('v2:xyz', { crudo: { b: 2 } }), 'disco', 'si esto tirara, una tabla que falta tumbaría la cotización entera')
+  assert.deepEqual(await c.leer('v2:xyz'), { crudo: { b: 2 } })
+})
+
+test('D1 · con la base viva se guarda y se lee de la base, con la MISMA llave de contenido', async () => {
+  const dir = dirTemporal()
+  const base = baseFalsa()
+  const c = cacheDeLecturas({ query: base.query, dir })
+  assert.equal(await c.guardar('v2:aaa:medicion', { elementos: [1] }), 'base')
+  assert.deepEqual(await c.leer('v2:aaa:medicion'), { elementos: [1] })
+  assert.ok(base.filas.has('v2:aaa:medicion'), 'la llave es la del hash del contenido, no un id nuevo')
+  assert.ok(!fs.existsSync(path.join(dir, 'v2:aaa:medicion.json')), 'con base no se duplica en disco')
+})
+
+test('D1 · los 135 archivos que ya están se PROMUEVEN solos: el disco se cosecha, no se tira', async () => {
+  const dir = dirTemporal()
+  fs.writeFileSync(path.join(dir, 'v1:viejo.json'), JSON.stringify({ crudo: { viejo: true } }))
+  const base = baseFalsa()
+  const c = cacheDeLecturas({ query: base.query, dir })
+  assert.deepEqual(await c.leer('v1:viejo'), { crudo: { viejo: true } }, 'una lectura ya pagada no se vuelve a pagar por haber cambiado de casa')
+  assert.deepEqual(base.filas.get('v1:viejo'), { crudo: { viejo: true } }, 'y quedó en la base sin que nadie corriera un script')
+})
+
+test('D1 · `interpretarLamina` sirve del caché SIN llamar al modelo — probado por la ruta real', async () => {
+  const dir = dirTemporal()
+  const c = cacheDeLecturas({ dir })
+  const bytes = Buffer.from('un plano cualquiera')
+  const m = await import('./lectura.mjs')
+  let llamadas = 0
+  const pedir = async () => { llamadas += 1; return { texto: '{"elementos":[]}', usd: 0.5 } }
+  const doc = { name: 'P.pdf', drive_file_id: 'x', mime_type: 'application/pdf' }
+  const primera = await m.interpretarLamina(doc, bytes, { pedir, cache: c })
+  assert.equal(primera.deCache, false)
+  assert.equal(llamadas, 1)
+  const segunda = await m.interpretarLamina(doc, bytes, { pedir, cache: c })
+  assert.equal(segunda.deCache, true)
+  assert.equal(llamadas, 1, 'si volviera a llamar, el caché sería decorativo y cada corrida pagaría de nuevo')
+  // Y `refrescar` tiene que poder ignorarlo: si no, el control no puede dar el valor contrario.
+  await m.interpretarLamina(doc, bytes, { pedir, cache: c, refrescar: true })
+  assert.equal(llamadas, 2)
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// `correr()` DE PUNTA A PUNTA, AUNQUE SEA VACÍA
+//
+// Este archivo ya documenta el día en que typecheck, eslint y 11.000 tests estaban en verde con el
+// producto muerto: nadie llamaba a `correr()`. Mover cuatro funciones a otro módulo es exactamente
+// el cambio que puede dejar un `ReferenceError` que ningún test unitario ve. Corre sin Drive, sin
+// modelo y sin láminas: no gasta un centavo y prueba que la función ENTERA se ejecuta.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const queryVacia = async () => ({ rows: [] })
+
+test('CORRER · una corrida sin documentos se ejecuta entera y declara que no fue cancelada', async () => {
+  const m = await import('./pipeline.mjs')
+  const r = await m.correr({ query: queryVacia, google: null, termino: 'obra que no existe', conDrive: false, permitirModelo: false })
+  assert.equal(r.cancelada, false)
+  assert.equal(r.laminas.length, 0)
+  assert.equal(r.ia.llamadas, 0)
+  assert.equal(typeof r.huella, 'string', 'la huella se calcula igual: es lo que compara dos corridas')
+  assert.equal(r.degradacion.topeUsd, null, 'sin `topeUsd` no hay tope: `Number(null)` es 0 y eso ya degradó una corrida entera')
+})
+
+test('CORRER · `cancelado` llega hasta la lectura y el resultado lo DECLARA, sin tirar', async () => {
+  const m = await import('./pipeline.mjs')
+  const r = await m.correr({ query: queryVacia, google: null, termino: 'x', conDrive: false, permitirModelo: false, cancelado: async () => true })
+  assert.equal(r.cancelada, true, 'si esto quedara en false, cancelar sería un botón que no hace nada')
+  assert.deepEqual(r.porRegion, [], 'cancelado no empieza las vistas: cancelar es dejar de gastar')
+})
+
+test('CORRER · `topeUsd: 0` degrada la corrida y lo dice con su motivo, en vez de tirar', async () => {
+  const m = await import('./pipeline.mjs')
+  const r = await m.correr({ query: queryVacia, google: null, termino: 'x', conDrive: false, topeUsd: 0 })
+  assert.equal(r.degradacion.topeUsd, 0)
+  assert.equal(r.cancelada, false, 'degradar por presupuesto NO es cancelar: son dos cosas y se leen distinto')
+})
