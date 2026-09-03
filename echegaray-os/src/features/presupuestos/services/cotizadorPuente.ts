@@ -29,6 +29,7 @@ import {
   cascadaDesdeFila as cascadaDesdeFilaMjs,
 } from '../../../../orquestador/lib/cotizador/desde-base.mjs'
 import { huellaDeEntradas as huellaDeEntradasMjs } from '../../../../orquestador/lib/cotizador/freeze.mjs'
+import { planDeComputoManual as planDeComputoManualMjs } from '../../../../orquestador/lib/cotizador/computo-genealogia.mjs'
 
 /** Un issue de la cola de atención (§22). `impact` es plata o `null`, nunca cero. */
 export interface IssueCola {
@@ -178,3 +179,50 @@ export interface Huella { sha256: string; partes: Record<string, unknown>; resum
 export const huellaDeEntradas = huellaDeEntradasMjs as unknown as (
   o: { documentos?: unknown[]; partidas?: unknown[]; precios?: unknown[]; politica?: unknown; alcance?: unknown[]; fx?: unknown },
 ) => Huella
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA GENEALOGÍA DE UNA CANTIDAD
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido el 03/09/2026: las 110 partidas de las cotizaciones `origen = 'os'` —las que la empresa
+// emitió de verdad— tenían CERO líneas en `public.computo`, mientras las 58 del camino
+// `xsas:plano` tenían 73. La cantidad entraba por el formulario y por el chat, y ninguno de los
+// dos pasaba por el único emisor, que vivía adentro de `plano/cotizacion-v0.mjs::persistir()`.
+//
+// La decisión —insertar, actualizar, borrar o apartarse— es PURA y vive en el motor. Acá sólo se
+// declara su firma, igual que el resto de este archivo: la web ejecuta el plan con SU credencial,
+// porque `computo` tiene RLS y la escritura tiene que evaluarla.
+
+/** Una fila de `public.computo` tal como se inserta: las claves SON las columnas. */
+export interface FilaComputo {
+  documento_drive_id: string | null
+  documento_nombre: string | null
+  revision: string | null
+  elemento: string
+  sector: string | null
+  unidad: string | null
+  cantidad: number
+  origen: 'plano' | 'relevamiento' | 'estimacion' | 'importado'
+  criterio: string
+}
+
+/** Qué hacer con la genealogía de una partida cuando alguien fija su cantidad a mano. `id` es la
+ *  línea que se actualiza; `idsABorrar`, las sobrantes. El caller no decide nada: ejecuta. */
+export interface PlanComputo {
+  accion: 'insertar' | 'actualizar' | 'borrar' | 'nada'
+  fila: FilaComputo | null
+  id: string | null
+  idsABorrar: readonly string[]
+  porQue: string | null
+}
+
+export const planDeComputoManual = planDeComputoManualMjs as unknown as (
+  o: {
+    lineas?: { id?: string; origen?: string; elemento?: string }[]
+    cantidad?: number | null
+    unidad?: string | null
+    criterio?: string | null
+    donde?: string | null
+  },
+) => PlanComputo

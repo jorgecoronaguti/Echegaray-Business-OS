@@ -261,6 +261,54 @@ export async function congelar(_prev: EstadoAccion, form: FormData): Promise<Est
  * vieja y recién ahí se enciende la nueva. Si algo falla en el medio queda un estado recuperable
  * —nunca dos vigentes, que es lo que el índice único prohíbe—, y se dice cuál es.
  */
+/**
+ * LA GENEALOGÍA VIAJA CON LA PARTIDA. Devuelve `null` si quedó bien, y el motivo si no.
+ *
+ * `nuevaVersion` copiaba las partidas y NO su cómputo: la versión 2 nacía con la misma cantidad y
+ * sin una línea que dijera de dónde salía. `COT-2026-001` va por la v4 — cada salto era una
+ * oportunidad más de perder la evidencia, y perderla en una copia es peor que no tenerla nunca,
+ * porque el número sobrevive y la razón no.
+ *
+ * El emparejamiento es por `orden` y no por la posición del array: PostgREST no promete devolver
+ * las filas insertadas en el orden en que se mandaron, y una genealogía cruzada —la cita de una
+ * partida colgada de otra— es exactamente la clase de dato falso que este módulo evita en todo lo
+ * demás. `orden` es único dentro de un presupuesto y lo acaba de escribir la copia de arriba.
+ *
+ * Lo que NO se copia: `autor` y `creado_en`. La línea de la v2 la creó esta acción, no quien midió
+ * el plano en febrero — y `documento_nombre`, `criterio` y `origen`, que son la evidencia, viajan
+ * enteros.
+ */
+async function copiarComputo(
+  c: Awaited<ReturnType<typeof createClient>>,
+  viejas: { id?: unknown; orden?: unknown }[],
+  nuevas: { id?: unknown; orden?: unknown }[],
+): Promise<string | null> {
+  const ids = (viejas ?? []).map((p) => String(p.id)).filter(Boolean)
+  if (!ids.length) return null
+  const { data: lineas, error } = await c.from('computo')
+    .select('cotizacion_partida_id, documento_drive_id, documento_nombre, revision, elemento, sector, unidad, cantidad, origen, criterio')
+    .in('cotizacion_partida_id', ids)
+  if (error) return `No pude leer el cómputo para copiarlo: ${error.message} — las partidas quedaron sin su genealogía.`
+  if (!lineas?.length) return null
+
+  const nuevaPorOrden = new Map((nuevas ?? []).map((p) => [String(p.orden), String(p.id)]))
+  const ordenPorVieja = new Map((viejas ?? []).map((p) => [String(p.id), String(p.orden)]))
+  const copia: Record<string, unknown>[] = []
+  const huerfanas: string[] = []
+  for (const l of lineas as Record<string, unknown>[]) {
+    const destino = nuevaPorOrden.get(ordenPorVieja.get(String(l.cotizacion_partida_id)) ?? '')
+    if (!destino) { huerfanas.push(String(l.elemento ?? 's/d')); continue }
+    copia.push({ ...sin(l, ['cotizacion_partida_id']), cotizacion_partida_id: destino })
+  }
+  if (copia.length) {
+    const { error: eI } = await c.from('computo').insert(copia)
+    if (eI) return `No pude copiar el cómputo: ${eI.message} — las partidas quedaron sin su genealogía.`
+  }
+  return huerfanas.length
+    ? `${huerfanas.length} línea(s) de cómputo no encontraron su partida en la versión nueva y NO se copiaron: ${huerfanas.slice(0, 3).join(', ')}.`
+    : null
+}
+
 export async function nuevaVersion(_prev: EstadoAccion, form: FormData): Promise<EstadoAccion> {
   const id = String(form.get('id') ?? '')
   if (!z.string().uuid().safeParse(id).success) return { error: 'Falta el presupuesto' }
@@ -298,8 +346,11 @@ export async function nuevaVersion(_prev: EstadoAccion, form: FormData): Promise
       costo_unitario: null,
       hs_unitarias: null,
     }))
-    const { error: eC } = await c.from('cotizacion_partida').insert(copia)
+    const { data: nuevas, error: eC } = await c.from('cotizacion_partida').insert(copia).select('id, orden')
     if (eC) return { error: `Creé la versión ${proxima} pero no pude copiar las partidas: ${eC.message}` }
+
+    const avisoComputo = await copiarComputo(c, partidas ?? [], nuevas ?? [])
+    if (avisoComputo) return { error: null, ok: true, mensaje: `Versión ${proxima} creada, en borrador. ${avisoComputo}` }
   }
 
   const { error: eV } = await c.from('cotizaciones').update({ vigente: false }).eq('id', id)

@@ -34,6 +34,7 @@ import type { RespuestaConversacion, TurnoConversacion } from './conversacionTip
 // El motor entra por UNA puerta: `cotizadorPuente` escribe la firma que el `.mjs` no puede declarar.
 import { cascadaDesdeFila, conversar, estadoDesdeFilas } from './cotizadorPuente.ts'
 import { decisionSobreCongelada } from './congelada.ts'
+import { sincronizarComputoDePartida } from './computoService.ts'
 
 const schema = z.object({
   id: z.string().uuid('Falta el presupuesto'),
@@ -215,6 +216,19 @@ async function hablar(form: FormData): Promise<TurnoConversacion> {
     }
   }
 
+  // LA CANTIDAD QUE FIJA EL CHAT TAMBIÉN DEJA GENEALOGÍA. «poné 480» escribía
+  // `cotizacion_partida.cantidad` y nada más: el cómputo de esa partida seguía diciendo lo de
+  // antes, o no diciendo nada. Se hace DESPUÉS del veredicto APLICADO y no antes — registrar de
+  // dónde salió un número que la base no aceptó sería inventar una historia para un dato que no
+  // existe. El motivo, si falla, viaja como una línea más de la respuesta: la cantidad ya está
+  // guardada y la conversación no se rompe por su registro de auditoría.
+  const avisoComputo = p.plan.tabla === 'cotizacion_partida' && 'cantidad' in p.plan.columnas && p.plan.id
+    ? await sincronizarComputoDePartida(supabase, p.plan.id, {
+      cantidad: typeof p.plan.columnas.cantidad === 'number' ? p.plan.columnas.cantidad : null,
+      donde: 'Presupuestos · conversación',
+    })
+    : null
+
   // LA PANTALLA TIENE QUE VER LO QUE PASÓ. Se revalida SÓLO acá: después de que el veredicto dijo
   // APLICADO. Revalidar tras un CONFLICTO o un DESAJUSTE repintaría la pantalla como si algo hubiera
   // cambiado —y no cambió—, que es la misma clase de mentira que el resto de esta función evita.
@@ -228,7 +242,7 @@ async function hablar(form: FormData): Promise<TurnoConversacion> {
     estado: 'ok', texto, degradado: turno.degradado,
     respuesta: {
       ...turno.respuesta,
-      lineas: [...turno.respuesta.lineas, p.plan.detalle],
+      lineas: [...turno.respuesta.lineas, p.plan.detalle, ...(avisoComputo ? [avisoComputo] : [])],
       impacto: impactoDe(cascadaAntes?.ventaSinIva ?? null, despues?.venta_sin_iva ?? null),
     },
   }

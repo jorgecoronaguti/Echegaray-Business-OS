@@ -20,12 +20,27 @@
 // el rendimiento sube las HH previstas y el plazo, no el precio. Es una limitación del modelo, no
 // una decisión de esta pantalla, y la pantalla la dice al lado del botón en vez de dejar creer que
 // recotizó.
+//
+// ═══ UNA CANTIDAD ESCRITA ACÁ TAMBIÉN DEJA GENEALOGÍA ═══
+//
+// Hasta el 03/09/2026 no la dejaba: `public.computo` tenía un solo emisor —el camino del plano— y
+// las 110 partidas de las cotizaciones que la empresa emitió de verdad tenían CERO líneas. La
+// consecuencia es la que importa: de `COT-2026-001`, `002` y `003` no se puede auditar por qué
+// tienen los números que tienen.
+//
+// Una cantidad tipeada no llega hasta un documento ni hasta una cita: llega hasta la persona. Eso
+// NO es lo mismo que no tener cómputo, y hoy `computo_de_partida` dice «sin cómputo cargado» para
+// las dos cosas. La línea con `origen = 'estimacion'` convierte ese silencio en un dato.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
 import type { EstadoAccion, Resultado } from './accion'
+// La decisión de qué hacer con la genealogía es PURA y vive en el motor
+// (`orquestador/lib/cotizador/computo-genealogia.mjs`); su ejecución contra PostgREST, en
+// `computoService` — que también usa el chat. Ver el encabezado de ese archivo.
+import { sincronizarComputoDePartida } from './computoService'
 
 
 const RAIZ = '/presupuestos'
@@ -45,6 +60,7 @@ function aNumeroOpcional(v: FormDataEntryValue | null): number | null | 'error' 
   const n = Number(t.replace(',', '.'))
   return Number.isFinite(n) && n >= 0 ? n : 'error'
 }
+
 
 const altaSchema = z.object({
   cotizacion_id: z.string().uuid(),
@@ -77,7 +93,7 @@ export async function crearPartida(_prev: EstadoAccion, form: FormData): Promise
     .select('orden').eq('cotizacion_id', d.cotizacion_id).order('orden', { ascending: false }).limit(1)
   const orden = Number(ultimo?.[0]?.orden ?? 0) + 1
 
-  const { error: e } = await c.from('cotizacion_partida').insert({
+  const { data: creada, error: e } = await c.from('cotizacion_partida').insert({
     cotizacion_id: d.cotizacion_id,
     orden,
     descripcion: d.descripcion,
@@ -89,10 +105,14 @@ export async function crearPartida(_prev: EstadoAccion, form: FormData): Promise
     analisis_id: d.analisis_id || null,
     subcontratada: d.subcontratada === 'on',
     precio_subcontrato: precio,
-  })
+  }).select('id').single()
   if (e) return { error: e.message }
+
+  const aviso = await sincronizarComputoDePartida(c, String(creada.id), {
+    cantidad, unidad: d.unidad || null, donde: 'Presupuestos · alta de partida',
+  })
   revalidatePath(`${RAIZ}/${d.cotizacion_id}`, 'layout')
-  return { error: null, ok: true }
+  return { error: null, ok: true, ...(aviso ? { mensaje: aviso } : {}) }
 }
 
 /** Los campos que la tabla deja editar en línea. Cada uno viaja solo y pisa sólo su columna. */
@@ -128,16 +148,27 @@ export async function editarCampoPartida(_prev: EstadoAccion, form: FormData): P
   // permiso económico, no el estado— así que el freno vive acá. Se verifica contra la base y no
   // contra lo que dice la pantalla: la misma acción entra por un formulario y mañana por el chat.
   const { data: cong } = await c.from('cotizacion_partida')
-    .select('cotizacion_id, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
-  const congelada = (cong as { cotizaciones?: { congelada_en?: string | null } } | null)?.cotizaciones?.congelada_en
-  if (congelada) {
+    .select('cotizacion_id, unidad, cotizaciones!inner(congelada_en)').eq('id', partida_id).maybeSingle()
+  const fila = cong as { unidad?: string | null; cotizaciones?: { congelada_en?: string | null } } | null
+  if (fila?.cotizaciones?.congelada_en) {
     return { error: 'Este presupuesto está congelado: para cambiarlo se crea una versión nueva.' }
   }
 
   const { error: e } = await c.from('cotizacion_partida').update({ [campo]: valor }).eq('id', partida_id)
   if (e) return { error: e.message }
+
+  // SÓLO LA CANTIDAD TIENE GENEALOGÍA. Corregir la unidad o el rubro no cambia de dónde salió el
+  // número, y tocar la línea por eso la marcaría como recién decidida cuando no se decidió nada.
+  const aviso = campo === 'cantidad'
+    ? await sincronizarComputoDePartida(c, partida_id, {
+      cantidad: valor as number | null,
+      unidad: fila?.unidad ?? null,
+      donde: 'Presupuestos · edición inline',
+    })
+    : null
+
   if (cotizacion_id) revalidatePath(`${RAIZ}/${cotizacion_id}`, 'layout')
-  return { error: null, ok: true }
+  return { error: null, ok: true, ...(aviso ? { mensaje: aviso } : {}) }
 }
 
 /**
