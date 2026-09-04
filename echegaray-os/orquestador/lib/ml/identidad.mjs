@@ -11,6 +11,7 @@ import { query } from '../db.mjs'
 import { normalizar } from './embeddings.mjs'
 import { resolverIdentidad, ESTADO, VERSION, cuitCanonico } from './entity-resolution.mjs'
 import { umbralesDe, configUmbrales } from './umbrales.mjs'
+import { escriturasDeCorreccion, DECISION } from './correccion.mjs'
 
 /** El padrón de una entidad. Hoy sólo proveedores tiene tabla propia; el resto se agrega acá y el
  *  resolver no cambia. */
@@ -76,21 +77,32 @@ function metodoDe(s = {}) {
  * VERIFICADO, para que la próxima vez ese mismo texto se resuelva solo y sin modelo. Es así como
  * «Corralon Progreso» = «PEREZ GARCIA MARISOL BIBIANA» pasa de imposible a instantáneo.
  */
-export async function corregir({ resolucionId, entidadIdCorrecta, por, crearAlias = true }) {
-  const q = await query(
+export async function corregir({ resolucionId, entidadIdCorrecta, por, decision = DECISION.CONFIRMAR, crearAlias = true }) {
+  const previa = await query(
+    'select id, entidad, valor_original, entidad_id from public.ml_resolucion where id = $1', [resolucionId])
+  if (!previa.rows.length) return { ok: false, porQue: `no existe la resolución ${resolucionId}` }
+
+  // QUÉ se escribe lo decide `correccion.mjs`, que es puro y lo comparte con la pantalla de Compras.
+  // Acá sólo se ejecuta. Dos caras, una definición de «confirmar un proveedor».
+  const plan = escriturasDeCorreccion(previa.rows[0], { decision, entidadId: entidadIdCorrecta, por })
+  if (!plan.ok) return plan
+
+  await query(
     `update public.ml_resolucion
-        set corregido_por = $2, corregido_en = now(), entidad_id_correcta = $3, estado = 'verificado_humano'
-      where id = $1 returning entidad, valor_original`, [resolucionId, por, entidadIdCorrecta ?? null])
-  if (!q.rows.length) return { ok: false, porQue: `no existe la resolución ${resolucionId}` }
-  const { entidad, valor_original: valor } = q.rows[0]
-  if (crearAlias && entidadIdCorrecta) {
+        set corregido_por = $2, corregido_en = now(), entidad_id_correcta = $3, estado = $4
+      where id = $1`,
+    [plan.resolucion.id, plan.resolucion.corregido_por, plan.resolucion.entidad_id_correcta, plan.resolucion.estado])
+
+  if (plan.alias && crearAlias) {
     await query(
       `insert into public.ml_entidad_alias (entidad, entidad_id, alias, alias_norm, fuente, confianza, verificado, verificado_por)
-       values ($1,$2,$3,$4,'correccion-humana',1,true,$5)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
        on conflict (entidad, alias_norm) do update set entidad_id = excluded.entidad_id, verificado = true, verificado_por = excluded.verificado_por`,
-      [entidad, String(entidadIdCorrecta), valor, normalizar(valor), por])
+      [plan.alias.entidad, plan.alias.entidad_id, plan.alias.alias, normalizar(plan.alias.alias),
+       plan.alias.fuente, plan.alias.confianza, plan.alias.verificado, plan.alias.verificado_por])
   }
-  return { ok: true, entidad, valor, alias: crearAlias && entidadIdCorrecta ? normalizar(valor) : null }
+  return { ok: true, entidad: previa.rows[0].entidad, valor: previa.rows[0].valor_original,
+           alias: plan.alias && crearAlias ? normalizar(plan.alias.alias) : null, estado: plan.resolucion.estado }
 }
 
 /** Lo que quedó esperando a una persona. Es la cola de trabajo, no un dashboard. */
@@ -104,4 +116,4 @@ export async function pendientes({ entidad = null, limite = 50 } = {}) {
   return q.rows
 }
 
-export { ESTADO }
+export { ESTADO, DECISION }

@@ -85,6 +85,7 @@ import {
   getCompra, getCompras, getConteos, getObrasDelEmisor, getParecidos, TOPE,
 } from '@/features/administracion/services/comprasService'
 import { getEntradas } from '@/features/administracion/services/comprobanteEntradaService'
+import { claveIdentidad, getIdentidades } from '@/features/administracion/services/identidadProveedorService'
 
 export const dynamic = 'force-dynamic'
 
@@ -140,10 +141,15 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
     )
   }
 
-  const [listado, sueltos, entradas] = await Promise.all([
+  // La identidad de los proveedores viaja en el mismo viaje que el resto: es una lectura chica
+  // —una fila por TEXTO distinto, no por compra— y sin ella el panel no puede decir de quién es el
+  // gasto. Si falla, el Map queda vacío y la pantalla dice «sin identificar»: nunca inventa un
+  // proveedor porque no pudo leer.
+  const [listado, sueltos, entradas, identidades] = await Promise.all([
     getComprasSheet(supabase),
     getAdjuntosSueltos(supabase),
     getEntradas(supabase),
+    getIdentidades(supabase),
   ])
 
   if (listado.error || !listado.data) {
@@ -241,6 +247,7 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
               {filaAbierta && (
                 <PanelCompraSheet
                   fila={filaAbierta}
+                  identidad={identidades.data.get(claveIdentidad(filaAbierta.proveedor, filaAbierta.cuit))}
                   cerrarHref={urlSheet({ s: null })}
                   hrefsFiltro={{
                     sinObra: urlSheet({ f: 'sinObra', s: null }),

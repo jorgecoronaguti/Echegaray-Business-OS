@@ -80,7 +80,17 @@ const cuit11 = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.l
 export function mismaEntidad(f, item) {
   const cf = cuit11(f?.cuit)
   const ci = cuit11(item?.cuit)
+  // 1. EL CUIT PRIMERO Y SIN APELACIÓN. Si los dos lados lo traen, decide él — incluido el «no»:
+  //    dos CUIT distintos son dos entidades distintas por más que el nombre sea idéntico, y ninguna
+  //    identidad canónica ni parecido de nombre puede contradecir eso.
   if (cf && ci) return cf === ci
+  // 2. LA IDENTIDAD CANÓNICA, cuando la resolvió la capa de identidad. Es lo que cierra el caso que
+  //    el CUIT solo no puede: la fila de Compras trae CUIT y el cheque no, pero el nombre del cheque
+  //    es un alias verificado del mismo proveedor. Sin esto, ese cruce cae al nombre y falla.
+  //    Sólo vale si LOS DOS lados tienen identidad: un lado resuelto contra uno sin resolver no
+  //    prueba nada, y compararlo contra `null` emparejaría todo lo no resuelto entre sí.
+  if (f?.idEntidad && item?.idEntidad) return String(f.idEntidad) === String(item.idEntidad)
+  // 3. EL NOMBRE, para las filas viejas que no tienen ni CUIT ni identidad resuelta.
   return f?.prov === item?.prov
 }
 

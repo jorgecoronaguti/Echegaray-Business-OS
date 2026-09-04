@@ -29,6 +29,8 @@ import { C, pesos } from '@/shared/components/canon'
 import { COLOR_PROP, propiedadesDe, reclamoDe } from '../services/panelCompraSheet'
 import { urlDelAdjunto } from '../services/comprasAdjuntoActions'
 import type { Adjunto, FilaConPapel } from '../services/comprasSheetService'
+import { estaReconocido, type IdentidadResuelta } from '../services/identidadProveedorService'
+import { ConfirmarIdentidad } from './ConfirmarIdentidad'
 
 const esImagen = (a: Adjunto) => a.media_type?.startsWith('image/')
 
@@ -99,11 +101,12 @@ function Papel({ a }: { a: Adjunto }) {
  * mira esto. Las tres URLs son tres strings: eso sí cruza la frontera.
  */
 export function PanelCompraSheet({
-  fila, cerrarHref, hrefsFiltro,
+  fila, cerrarHref, hrefsFiltro, identidad,
 }: {
   fila: FilaConPapel
   cerrarHref: string
   hrefsFiltro: Record<string, string>
+  identidad?: IdentidadResuelta
 }) {
   const reclamo = reclamoDe(fila)
   return (
@@ -119,6 +122,7 @@ export function PanelCompraSheet({
           <div style={{ fontSize: 16, fontWeight: 600, color: C.tinta, lineHeight: 1.25 }}>
             {fila.proveedor ?? 'sin proveedor'}
           </div>
+          <LineaIdentidad escrito={fila.proveedor} identidad={identidad} />
           <div style={{ fontSize: 12, color: C.apagado, marginTop: 4, textWrap: 'pretty' }}>
             {fila.concepto ?? fila.detalle_obra ?? 'sin concepto'}
           </div>
@@ -188,5 +192,40 @@ export function PanelCompraSheet({
         )}
       </div>
     </aside>
+  )
+}
+
+/**
+ * UNA LÍNEA. Quién es el proveedor de esta fila, según la capa de identidad.
+ *
+ * No se dibuja nada cuando el texto de la planilla YA es el nombre del proveedor canónico: repetir
+ * el mismo nombre debajo de sí mismo no informa, sólo ocupa. La línea aparece cuando dice algo que
+ * no se ve arriba — que «DUPEC» es Dubos Ugarte, o que este proveedor no está identificado.
+ *
+ * Nunca muestra un score ni un modelo. Y nunca presenta un «sugerido» como resuelto: mientras una
+ * persona no lo confirme, el proveedor no está identificado y la pantalla lo dice así.
+ */
+function LineaIdentidad({ escrito, identidad }: { escrito: string | null; identidad?: IdentidadResuelta }) {
+  const reconocido = estaReconocido(identidad)
+  const nombre = identidad?.proveedorNombre ?? null
+  const mismoTexto = !!nombre && String(escrito ?? '').trim().toUpperCase() === nombre.trim().toUpperCase()
+  if (reconocido && mismoTexto) return null
+
+  if (reconocido && nombre) {
+    return (
+      <div data-testid="identidad-proveedor" style={{ fontSize: 12, color: C.apagado, marginTop: 3, display: 'flex', alignItems: 'baseline', gap: 5 }}>
+        <span style={{ color: C.tenue }}>→</span>
+        <span style={{ color: C.tinta }}>{nombre}</span>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div data-testid="identidad-proveedor" style={{ fontSize: 12, color: C.apagado, marginTop: 3 }}>
+        Proveedor sin identificar
+      </div>
+      {identidad && <ConfirmarIdentidad identidad={identidad} />}
+    </>
   )
 }

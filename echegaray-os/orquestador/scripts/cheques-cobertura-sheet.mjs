@@ -25,6 +25,7 @@ import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { planDeMarcado, motivoDeAborto } from '../lib/marcado-columna.mjs'
 import { ALERTA, mismaMarca } from '../lib/glifos.mjs'
+import { resolverLote, anotarIdentidad, drenarTrazas } from '../lib/ml/identidad-lote.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -111,12 +112,58 @@ async function leer(google) {
   const numero = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   const I_CUIT = 36 // AM contando desde C (C=0)
   const filasCompras = crudoCompras.map((f, i) => ({
-    fila: i + 4, prov: normNombre(f?.[2]), cuit: f?.[I_CUIT], fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
+    fila: i + 4, prov: normNombre(f?.[2]), provRaw: String(f?.[2] ?? '').trim(),
+    cuit: f?.[I_CUIT], fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
   })).filter((f) => f.prov && f.total > 0)
   // `filasCh` = la última fila REAL del registro. Sale del largo leído más el offset de arranque
   // menos uno; con el `+ 1` de antes (que asumía arranque en la 2) el marcado se cortaba 25 filas
   // antes del final y los últimos cheques se quedaban sin marca — invisibles para el calendario.
-  return { enCompras, filasCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + FILA_DATO0 - 1, filasTj: crudoTj.length + 2 }
+  // ── LA IDENTIDAD CANÓNICA, AL LADO DEL DATO Y NUNCA EN LUGAR DEL DATO ────────────────────────────
+  //
+  // Acá es donde la capa de identidad entra al circuito real. Los dos lados del cruce —las filas de
+  // Compras y los cheques— se resuelven contra el MISMO padrón de proveedores, de modo que dos
+  // textos que no se parecen en nada terminen con el mismo `idEntidad` cuando son el mismo
+  // proveedor. El nombre y el CUIT que venían del Sheet quedan intactos: `idEntidad` es una columna
+  // más, y por eso una resolución equivocada se deshace sin haber perdido nada.
+  //
+  // Se resuelve en UN lote para las dos planillas juntas: el padrón y los aliases se leen una vez, y
+  // un nombre que aparece en las dos se resuelve una sola vez. Si la base no está, `identidades()`
+  // devuelve las filas tal cual y el cruce sigue funcionando como antes de existir esta capa —
+  // degradar no es fallar, y el cheque de un proveedor no puede quedar sin cruzar porque Postgres
+  // esté caído.
+  const conId = await identidades({ filasCompras, cheques, tarjeta })
+
+  return { enCompras, ...conId, pestanaCheques: CH, filasCh: crudoCh.length + FILA_DATO0 - 1, filasTj: crudoTj.length + 2 }
+}
+
+/**
+ * Resuelve la identidad de los dos lados del cruce. Devuelve las mismas listas con `idEntidad`.
+ *
+ * NO decide plata: no toca importes, ni fechas, ni el CUIT de origen. Sólo dice quién es quién, que
+ * es lo único que el cruce necesita y no tenía.
+ */
+export async function identidades({ filasCompras, cheques, tarjeta }, { resolver = resolverLote } = {}) {
+  const consultas = [
+    // El texto CRUDO: es el que queda escrito en `ml_resolucion` como valor original, y el que la
+    // pantalla de Compras vuelve a buscar. `prov` (normalizado) sigue siendo el del cruce.
+    ...filasCompras.map((f) => ({ nombre: f.provRaw ?? f.prov, cuit: f.cuit })),
+    ...cheques.map((c) => ({ nombre: c.proveedor, cuit: c.cuit })),
+    ...tarjeta.map((t) => ({ nombre: t.proveedor, cuit: null })),
+  ]
+  try {
+    const { porClave, metricas } = await resolver(consultas, { entidad: 'proveedor', fuente: 'cheques-cobertura-sheet' })
+    const det = metricas.porMetodo
+    console.log(`IDENTIDAD  ${metricas.consultas} consultas · ${metricas.unicas} textos distintos · CUIT ${det.strong_id} · exacto ${det.exacto} · alias ${det.alias} · fuzzy ${det.fuzzy} · embeddings ${det.embedding} · sin match ${det.ninguno}`)
+    console.log(`           auto ${metricas.porEstado.auto_resuelto} · sugerido ${metricas.porEstado.sugerido} · ambiguo ${metricas.porEstado.ambiguo} · sin match ${metricas.porEstado.sin_match} · necesitaron ML ${metricas.conML}/${metricas.unicas} · ${metricas.msPromedio} ms prom`)
+    return {
+      filasCompras: anotarIdentidad(filasCompras, porClave, { nombre: (f) => f.provRaw ?? f.prov, cuit: (f) => f.cuit }),
+      cheques: anotarIdentidad(cheques, porClave, { nombre: (c) => c.proveedor, cuit: (c) => c.cuit }),
+      tarjeta: anotarIdentidad(tarjeta, porClave, { nombre: (t) => t.proveedor, cuit: () => null }),
+    }
+  } catch (e) {
+    console.warn(`  ⚠ la capa de identidad no está disponible (el cruce sigue por CUIT y nombre): ${e.message.slice(0, 90)}`)
+    return { filasCompras, cheques, tarjeta }
+  }
 }
 
 /**
@@ -555,5 +602,9 @@ function avisarSalteadas(o, plan, letraCol) {
 // arranca main() y ESCRIBE EN EL SHEET REAL. Es la misma guarda que ya tiene caja-pestana.mjs, y
 // existe por el mismo motivo: un test que reescribe la planilla del dueño no es un test.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+  // `drenarTrazas()` antes de salir: `registrarTraza()` dispara y no se espera —medir no puede frenar
+  // una operación—, y un script que termina enseguida se lleva el INSERT sin escribir. Sin esta
+  // línea la capa de medición existe y no mide nada.
+  const cerrar = async (codigo) => { await drenarTrazas().catch(() => {}); process.exit(codigo) }
+  main().then(() => cerrar(0)).catch((e) => { console.error('ERROR:', e.message); cerrar(1) })
 }

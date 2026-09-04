@@ -22,7 +22,7 @@ let avisado = false
 const pendientes = new Set()
 
 /** Escribe la traza. No se espera y no se propaga: `resolver()` la dispara y sigue. */
-export function registrarTraza(r, { modulo = null } = {}) {
+export function registrarTraza(r, { modulo = null, ejecutar = query } = {}) {
   if (!r || !r.traceId) return
   const fila = [
     r.traceId, r.capacidad ?? null, modulo, r.metodo, r.modelo ?? null, r.proveedor ?? null,
@@ -31,7 +31,7 @@ export function registrarTraza(r, { modulo = null } = {}) {
     r.accion ?? null, Boolean(r.huboFallback), r.costoUsd ?? null, r.sensibilidad ?? null,
     r.metodo !== 'sin-resolver', r.metodo === 'sin-resolver' ? 'sin_resolver' : null,
   ]
-  const p = query(
+  const p = ejecutar(
     `insert into orq.ml_traza (trace_id, capacidad, modulo, metodo, modelo, proveedor, ms,
                                confianza, accion, hubo_fallback, costo_usd, sensibilidad, ok, error_kind)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, fila)

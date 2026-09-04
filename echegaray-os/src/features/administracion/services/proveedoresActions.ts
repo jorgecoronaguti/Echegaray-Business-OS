@@ -200,3 +200,84 @@ export async function deshacerResolucion(aliasId: string): Promise<Resultado> {
   revalidatePath('/administracion/proveedores')
   return { ok: true }
 }
+
+// ─── LA CONFIRMACIÓN HUMANA DE UNA IDENTIDAD ─────────────────────────────────────────────────────
+//
+// ═══ POR QUÉ ES LA ESCRITURA MÁS VALIOSA DE ESTA PANTALLA ═══
+//
+// Ningún modelo puede relacionar «DUPEC» con «Dubos Ugarte Pedro Luis Raul»: no hay nada en el texto
+// que los una. Cuando el CUIT no está cargado, la ÚNICA forma de que esos dos textos sean el mismo
+// proveedor es que una persona lo diga una vez. Esa confirmación crea un alias verificado, y a
+// partir de ahí ese nombre se resuelve solo, al instante y sin modelo — para siempre.
+//
+// ═══ POR QUÉ VA CON LLAVE DE SERVICIO Y NO CON LA SESIÓN ═══
+//
+// `ml_entidad_alias` es de sólo lectura para `authenticated` (ver `20260904T1800`). Un alias
+// verificado fusiona dos proveedores, y una fusión mueve deuda de uno a otro: no puede escribirla
+// cualquier sesión desde el navegador. Entra por acá, que valida el rol antes.
+//
+// QUÉ se escribe lo decide `orquestador/lib/ml/correccion.mjs`, que es puro y lo comparten esta
+// pantalla y los scripts del OS. Una sola definición de «confirmar un proveedor».
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
+import { escriturasDeCorreccion, DECISION } from '../../../../orquestador/lib/ml/correccion.mjs'
+import { normalizar } from '../../../../orquestador/lib/ml/embeddings.mjs'
+
+const correccionSchema = z.object({
+  resolucionId: z.coerce.number().int().positive(),
+  decision: z.enum([DECISION.CONFIRMAR, DECISION.OTRO, DECISION.SIN_RESOLVER]),
+  proveedorId: z.string().uuid().optional().nullable(),
+})
+
+export async function corregirIdentidad(form: FormData): Promise<Resultado> {
+  const parsed = correccionSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const d = parsed.data
+
+  const supabase = await createClient()
+  const perfil = await getPerfilActual(supabase)
+  if (!esAdministracion(perfil.data?.rol ?? null)) return { ok: false, error: 'Esta acción es de Administración.' }
+  // El autor sale de la sesión, NUNCA del formulario: una corrección sin autor verificable no se
+  // puede auditar, y una firmada por quien no la hizo es peor que ninguna.
+  const por = perfil.data?.id ?? null
+  if (!por) return { ok: false, error: 'No pude identificar quién confirma.' }
+
+  const { data: previa, error: eLectura } = await supabase
+    .from('ml_resolucion').select('id, entidad, valor_original, entidad_id').eq('id', d.resolucionId).maybeSingle()
+  if (eLectura) return { ok: false, error: eLectura.message }
+  if (!previa) return { ok: false, error: 'Esa identidad ya no existe.' }
+
+  const plan = escriturasDeCorreccion(previa, { decision: d.decision, entidadId: d.proveedorId ?? null, por })
+  if (!plan.ok) return { ok: false, error: plan.porQue }
+
+  const admin = createAdminClient()
+  const { error: eUpd } = await admin.from('ml_resolucion').update({
+    estado: plan.resolucion.estado,
+    entidad_id_correcta: plan.resolucion.entidad_id_correcta,
+    corregido_por: plan.resolucion.corregido_por,
+    corregido_en: new Date().toISOString(),
+  }).eq('id', plan.resolucion.id)
+  if (eUpd) return { ok: false, error: eUpd.message }
+
+  if (plan.alias) {
+    // `alias_norm` se calcula con la MISMA `normalizar()` del resolver. Si acá se usara otra, el
+    // alias quedaría guardado bajo una clave que el resolver nunca busca: escrito y sin efecto.
+    const { error: eAlias } = await admin.from('ml_entidad_alias').upsert({
+      entidad: plan.alias.entidad,
+      entidad_id: plan.alias.entidad_id,
+      alias: plan.alias.alias,
+      alias_norm: normalizar(plan.alias.alias),
+      fuente: plan.alias.fuente,
+      confianza: plan.alias.confianza,
+      verificado: plan.alias.verificado,
+      verificado_por: plan.alias.verificado_por,
+    }, { onConflict: 'entidad,alias_norm' })
+    if (eAlias) return { ok: false, error: eAlias.message }
+  }
+
+  revalidatePath('/administracion/compras')
+  revalidatePath('/administracion/proveedores')
+  return { ok: true }
+}

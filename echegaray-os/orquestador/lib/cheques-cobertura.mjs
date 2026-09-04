@@ -123,10 +123,15 @@ export function inferirRespaldo(instrumentos = [], filasCompras = [], { norm = n
   // La clave del grupo usa el CUIT cuando el cheque lo trae: dos cheques del mismo CUIT son del
   // mismo proveedor aunque uno diga «DUPEC» y el otro «DUBOS UGARTE PEDRO LUIS RAUL», y agruparlos
   // por nombre los partía en dos grupos que competían por las mismas facturas.
+  // La identidad canónica va PRIMERO en la clave, no el CUIT, y no es un detalle: cuando existe, ya
+  // se dedujo DEL CUIT. Si un cheque trae CUIT y otro no pero los dos resuelven al mismo proveedor,
+  // agrupar por CUIT los partiría en dos grupos que compiten por las mismas facturas — y competir
+  // por las mismas facturas es exactamente lo que dispara la guarda de ambigüedad y deja los dos sin
+  // respaldo. El CUIT queda de respaldo para lo que la capa de identidad no pudo resolver.
   const cuit11 = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 11 ? d : null }
   const grupos = new Map()
   for (const i of sinLlave) {
-    const k = `${cuit11(i.cuit) ?? norm(i.proveedor)}|${Math.round(Number(i.monto) || 0)}`
+    const k = `${i.idEntidad ?? cuit11(i.cuit) ?? norm(i.proveedor)}|${Math.round(Number(i.monto) || 0)}`
     grupos.set(k, [...(grupos.get(k) ?? []), i])
   }
   const usadas = new Set()
@@ -135,7 +140,7 @@ export function inferirRespaldo(instrumentos = [], filasCompras = [], { norm = n
   const sinRespaldo = []
   for (const grupo of grupos.values()) {
     const busca = (i, u) => candidatasPorImporte(
-      { prov: norm(i.proveedor), cuit: i.cuit, total: Number(i.monto) || 0, fecha: serialDe(i.fecha) },
+      { prov: norm(i.proveedor), cuit: i.cuit, idEntidad: i.idEntidad ?? null, total: Number(i.monto) || 0, fecha: serialDe(i.fecha) },
       filasCompras, { usadas: u, tol, ventanaDias })
     // Las candidatas del grupo ANTES de consumir ninguna: es contra ese universo que se mide si
     // alcanzan. Medirlo después de consumir declaraba ambiguo al segundo de dos pares perfectos.
