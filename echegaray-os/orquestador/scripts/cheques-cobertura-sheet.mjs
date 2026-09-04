@@ -28,6 +28,19 @@ import { ALERTA, mismaMarca } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
+
+// ═══ --forzar-candado: LA INTENCIÓN EXPLÍCITA DEL DUEÑO, NO UN DEFAULT (04/09/2026) ═══
+//
+// «Cheques Emitidos» está candada, y el portón descarta el marcado entero: el 04/09 los ocho
+// cheques más nuevos —$17.337.928, filas 133 a 140— quedaron sin ✓ ni ▲, y un renglón vacío no se
+// lee como un problema. El cuadro del Mensual lo publicaba como «Sin mirar todavía por el OS: 7 ·
+// $14.383.931», que es el propio OS diciendo que no puede.
+//
+// Este flag NO desactiva el candado: deja snapshot, destraba, escribe SÓLO la columna de marcas
+// —que es del OS, no del dueño; `planDeMarcado` sigue salteando fila por fila lo que tiene texto
+// ajeno— y vuelve a candar SIEMPRE, incluso si la escritura falla. Es el mismo patrón que
+// `cheques-emitidos-sync-banco.mjs` ya paga.
+const FORZAR = process.argv.includes('--forzar-candado')
 const DRY = process.argv.includes('--dry')
 // --solo-marcas: NO escribe el bloque en el Cash Flow Mensual — sólo las marcas de la columna M de
 // "Cheques Emitidos" (que CAJA!H15 consume). Desde el rediseño del 06/08 el Mensual es UNA matriz y
@@ -296,7 +309,9 @@ async function main() {
   let ultima = 0
   actual.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
   if (ultima > finBloque) {
-    await google.batchUpdateValues(ID, [{
+    // `yaGuardado` le dice al portón que esta escritura ya pasó por la decisión del dueño: sin él, el
+  // candado la descarta en silencio y el script informa un marcado que nunca llegó a la pestaña.
+  await google.batchUpdateValues(ID, [{
       range: `${PESTAÑA}!A${finBloque + 1}:${letra(ANCHO - 1)}${ultima}`,
       values: Array.from({ length: ultima - finBloque }, () => new Array(ANCHO).fill('')),
     }])
@@ -325,7 +340,7 @@ async function main() {
     // entrara la explicación de este bloque descuadraba el cuadro entero — el dueño lo vio como
     // "quedan descuadradas". El texto desborda a la derecha sobre celdas vacías, que es gratis.
     // Regla general: un script que escribe en una pestaña que no es suya no cambia su geometría.
-  ])
+  ], forzar ? { yaGuardado: true } : {})
 
   await marcarInstrumentos(google, datos, resp)
 
@@ -421,7 +436,40 @@ export async function marcarInstrumentos(google, datos, resp) {
     if (plan.aborto) throw new Error(motivoDeAborto(plan, { columna: letra(COL), pestaña: o.pestaña }))
     avisarSalteadas(o, plan, letra(COL))
     if (!plan.tramos.length) { console.log(`${o.pestaña}: no quedó ninguna fila propia para marcar en ${letra(COL)}`); continue }
-    await estampar(google, hoja, o, plan, marcas.length)
+
+    // ═══ EL CANDADO: SE MIRA, SE AVISA, Y SÓLO SE DESTRABA SI EL DUEÑO LO PIDIÓ ═══
+    // Sin `--forzar-candado` el script informaba «114/114 marcados» y el portón descartaba la
+    // escritura: un éxito declarado que no existía. Ahora, o se escribe de verdad, o se dice que no.
+    const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
+    const candada = await estaBloqueada({}, ID, o.pestaña).catch(() => false)
+    if (candada && !FORZAR) {
+      console.log(`🔒 "${o.pestaña}" está bajo tu control (candado): NO escribo las marcas.`)
+      console.log(`   ${plan.tramos.reduce((a, t) => a + t.valores.length, 0)} fila(s) quedan sin diagnóstico en la columna ${letra(COL)}.`)
+      console.log('   Para estamparlas igual: --forzar-candado (deja snapshot, escribe sólo esa columna y vuelve a candar).')
+      continue
+    }
+    if (candada && FORZAR) {
+      const { query } = await import('../lib/db.mjs')
+      const { desbloquear, bloquear } = await import('../lib/pestana-bloqueada.mjs')
+      const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+      const snap = await tomarSnapshot({
+        google, fileId: ID, pestana: o.pestaña, tool: 'cheques-cobertura-sheet',
+        directive: 'estampar la columna de marcas del OS en una pestaña candada, por pedido explícito del dueño',
+      }).catch(() => null)
+      console.log(`  📸 snapshot → ${snap ?? 'NO SE PUDO — se escribe igual porque lo pediste, pero sin red'}`)
+      await desbloquear({ query }, ID, o.pestaña)
+      try {
+        await estampar(google, hoja, o, plan, marcas.length, { forzar: true })
+      } finally {
+        // SIEMPRE se vuelve a candar, falle o no la escritura: dejar la pestaña abierta por un error
+        // sería quitarle una protección que el dueño puso, aprovechando una excepción.
+        await bloquear({ query }, ID, o.pestaña, { motivo: 're-candada tras estampar las marcas del OS (--forzar-candado)', por: 'OS' })
+        console.log(`  🔒 "${o.pestaña}" vuelta a candar`)
+      }
+      console.log(`${o.pestaña}: marcas estampadas forzando el candado`)
+      continue
+    }
+    await estampar(google, hoja, o, plan, marcas.length, { forzar: FORZAR })
     // Se cuenta lo ESCRITO, no lo que se quiso escribir: con filas salteadas los dos números difieren
     // y el que importa es el que quedó en la pestaña.
     const puestas = plan.tramos.flatMap((t) => t.valores).filter((m) => m[0])
@@ -438,7 +486,7 @@ export async function marcarInstrumentos(google, datos, resp) {
  * cambió de forma: repintarla es el defecto de "escritura salteada que sigue formateando", el que
  * dejó CAJA con una fila de pagos formateada como fecha.
  */
-async function estampar(google, hoja, o, plan, alto) {
+async function estampar(google, hoja, o, plan, alto, { forzar = false } = {}) {
   const COL = o.colMarca
   const letraCol = letra(COL)
   // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
