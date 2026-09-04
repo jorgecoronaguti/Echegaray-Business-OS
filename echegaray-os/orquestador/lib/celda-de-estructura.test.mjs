@@ -37,3 +37,21 @@ test('un texto libre del dueño no es estructura', () => {
   assert.equal(esCeldaDeEstructura('ojo con esto, preguntar al contador'), false)
   assert.equal(esCeldaDeEstructura('Prendario Ford XLS · Santander — cuota'), false)
 })
+
+test('LA FILA ENTERA es estructura, no sólo su rótulo: media fila de encabezado no es un encabezado', () => {
+  // El primer intento sólo miraba la columna A y el defecto siguió a la vista: se escribía
+  // «Concepto» en A23 pero no `'ene-26` en B23, y «⇒ Total otros impuestos» en A42 pero no su
+  // `=SUM(B40:B41)` en B42. El auditor de patrón las siguió contando.
+  const encabezado = ['Concepto', "'ene-26", "'feb-26"]
+  assert.equal(esCeldaDeEstructura("'ene-26", encabezado), true)
+  const total = ['⇒ Total otros impuestos', '=SUM(B40:B41)']
+  assert.equal(esCeldaDeEstructura('=SUM(B40:B41)', total), true)
+  // Y sin la fila, un mes suelto sigue sin ser estructura: el seguro no se ensancha por sí solo.
+  assert.equal(esCeldaDeEstructura("'ene-26"), false)
+})
+
+test('una fila de DATOS no se vuelve estructura porque tenga importes', () => {
+  const datos = ['Impuesto al cheque (Ley 25.413)', 874555, 642636]
+  assert.equal(esCeldaDeEstructura(874555, datos), false)
+  assert.equal(esCeldaDeEstructura('=MAX(SUMPRODUCT(1))', datos), false)
+})

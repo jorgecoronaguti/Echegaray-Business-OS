@@ -368,8 +368,9 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       // borra: nadie saca la palabra «Concepto» de un cuadro y deja los doce importes debajo. Medido
       // en «Impuestos y Financieros» al pasar de 105 filas a 68: A23 («Concepto») y A42 («⇒ Total
       // otros impuestos») quedaron mudas con sus importes al lado, y el auditor de patrón las contó.
+      // Se mira la FILA: media fila de encabezado no es un encabezado.
       // Ver lib/celda-de-estructura.mjs; un importe o un texto libre borrado sigue borrado.
-      if (!esCeldaDeEstructura(c)) {
+      if (!esCeldaDeEstructura(c, f)) {
         suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
         return ''
       }
