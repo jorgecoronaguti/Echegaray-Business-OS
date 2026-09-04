@@ -7,14 +7,20 @@
 // septiembre se veía $15.139.582 a pagar mientras el bloque de control de la MISMA pestaña decía
 // $452.447, porque en septiembre se cobran facturas emitidas meses antes.
 //
-// Las filas imitan `Cobranzas!A5:K`: 1 = Categoría · 2 = Fecha emisión (serial) · 10 = IVA.
+// Las filas imitan `Cobranzas!A5:P`. La fecha que manda es la de FACTURA (columna P), no la de venta.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ivaDeclaradoPorMesDeEmision, debitoFacturadoDelMes } from './impuestos-base-libro.mjs'
 
 const SEP26 = 46266 // 01/09/2026
-const fila = (cat, serial, iva) => [1, cat, serial, 'FA', '01-1', '', 'ARCOR', '', '', 1000000, iva]
+// Índices reales de `Cobranzas!A5:P`: 1 = Categoría · 10 = IVA · 15 = «Fecha de Factura».
+// La 2 es «Fecha de Venta», que es OTRA fecha: difieren hasta 82 días en 46 de las 95 filas.
+const fila = (cat, serial, iva) => {
+  const f = [1, cat, null, 'FA', '01-1', '', 'ARCOR', '', '', 1000000, iva]
+  f[15] = serial
+  return f
+}
 
 test('suma el IVA que la factura declara — no lo deriva del importe', () => {
   const r = ivaDeclaradoPorMesDeEmision([fila('B', SEP26, 6319082)])
@@ -35,6 +41,15 @@ test('una factura emitida en agosto NO cae en septiembre aunque se cobre despué
   const r = ivaDeclaradoPorMesDeEmision([fila('B', SEP26 - 5, 900)])
   assert.equal(r['2026-08'], 900)
   assert.equal(r['2026-09'], undefined, 'el IVA se devenga al emitir, no al cobrar')
+})
+
+test('manda la FECHA DE FACTURA (P), no la «Fecha de Venta» (C)', () => {
+  // El caso que lo destapó: una factura emitida el 05/10 no aparecía en octubre y el mes daba $0.
+  const f = [1, 'B', 46000, 'FA', '01-1', '', 'ARCOR', '', '', 1000000, 777]
+  f[15] = 46296 // 05/10/2026
+  const r = ivaDeclaradoPorMesDeEmision([f])
+  assert.equal(r['2026-10'], 777)
+  assert.equal(r['2026-06'], undefined, 'la fecha de venta no decide el período fiscal')
 })
 
 test('una fila sin fecha de emisión no se cuela en ningún mes', () => {
@@ -58,7 +73,7 @@ test('un mes SIN facturas emitidas vale VACÍO, no cero', () => {
 test('la FÓRMULA filtra por categoría B, por ventana de emisión, y suma la columna del IVA', () => {
   const f = debitoFacturadoDelMes(2026, 9)
   assert.match(f, /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado')
-  assert.match(f, /Cobranzas!\$C\$5:\$C>=DATE\(2026;9;1\)/, 'ventana por FECHA DE EMISIÓN')
+  assert.match(f, /Cobranzas!\$P\$5:\$P>=DATE\(2026;9;1\)/, 'la ventana va por la columna P, «Fecha de Factura»')
   assert.match(f, /Cobranzas!\$K\$5:\$K/, 'suma el IVA declarado')
   assert.doesNotMatch(f, /ALICUOTA|alicuota/i, 'no se vuelve a derivar lo que ya está escrito')
   assert.doesNotMatch(f, /_MOVIMIENTOS/, 'el débito no sale del libro de caja: sale de la factura')

@@ -46,7 +46,7 @@ export const ventanaDelMes = (anio, m) => ({ desde: `DATE(${anio};${m};1)`, hast
  */
 export const debitoFacturadoDelMes = (anio, m) => {
   const B = 'Cobranzas!$B$5:$B'
-  const C = 'Cobranzas!$C$5:$C'
+  const C = 'Cobranzas!$P$5:$P' // «Fecha de Factura» — NO la C, que es «Fecha de Venta»
   const { desde, hasta } = ventanaDelMes(anio, m)
   const suma = `SUMPRODUCT((${B}="B")*ISNUMBER(${C})*(${C}>=${desde})*(${C}<${hasta})*N(Cobranzas!$K$5:$K))`
   // UN MES SIN NINGUNA FACTURA EMITIDA VALE VACÍO, NO CERO. Son cosas distintas y la diferencia es
@@ -58,12 +58,12 @@ export const debitoFacturadoDelMes = (anio, m) => {
   return `LET(x;${suma};IF(x=0;"";x))`
 }
 
-/** NÚCLEO PURO: el mismo número que la fórmula, para exhibirlo en el `--dry`. Índices de `A5:K`. */
+/** NÚCLEO PURO: el mismo número que la fórmula, para exhibirlo en el `--dry`. Índices de `A5:P`. */
 export function ivaDeclaradoPorMesDeEmision(filas = []) {
   const porMes = {}
   for (const f of filas) {
     if (String(f?.[1] ?? '').trim().toUpperCase() !== 'B') continue
-    const s = Number(f?.[2])
+    const s = Number(f?.[15]) // columna P, «Fecha de Factura»
     if (!Number.isFinite(s) || !s) continue
     const d = new Date(Date.UTC(1899, 11, 30))
     d.setUTCDate(d.getUTCDate() + s)

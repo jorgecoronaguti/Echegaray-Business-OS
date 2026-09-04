@@ -27,7 +27,7 @@ import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, iv
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
-  anclaDeProyeccion, aNumero, supuestoDelMes, RANGO_ALICUOTA_IVA, soloLoTipeado,
+  anclaDeProyeccion, supuestoDelMes, RANGO_ALICUOTA_IVA, soloLoTipeado,
   filasReferenciadas, contratoDeFilas, contratoDeRotulos,
 } from '../lib/iva-libre-disponibilidad.mjs'
 import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
@@ -42,7 +42,6 @@ import { resolverColumnas } from '../lib/compras-columnas.mjs'
 // POR TEXTO en la columna A, así que el texto es el contrato y tiene una sola definición.
 import { CALENDARIO_IMPUESTOS, CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { ACUERDO, TARJETA } from '../lib/banco-santander.mjs'
 import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
@@ -52,14 +51,16 @@ import {
   bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
 } from '../lib/impuestos-bloques.mjs'
 import {
-  obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
-  OFFSET_TITULAR, ALTO_HERO, hallazgoDeVencimiento, conDecisionesDelDueno,
+  obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
+  OFFSET_TITULAR, ALTO_HERO, ROTULO_IVA_EN_CAJA, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
 import { IIBB_SUPUESTO } from '../lib/vencimientos-fiscales.mjs'
 import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe.mjs'
 import { formatear } from '../lib/impuestos-piel.mjs'
+export { ubicarLineas, sinSolapamiento } from '../lib/impuestos-base-proyeccion.mjs'
+import { resolverAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -80,7 +81,6 @@ const hoyISO = () => new Date().toISOString().slice(0, 10)
 // EL CRÉDITO NO USA EL TOTAL DE PROVEEDORES. "Cheques sin factura cargada" y "Cuotas de tarjeta sin
 // factura cargada" son plata que sale SIN comprobante, y sin comprobante no hay crédito fiscal
 // computable. Meterlas inflaría el crédito y haría desaparecer un pago de IVA que sí va a ocurrir.
-const CF = 'Cash Flow Mensual'
 /**
  * LOS NOMBRES SALEN DEL CUADRO, NO SE TIPEAN ACÁ (05/08). Estaban escritos a mano y uno derivó. Se
  * resuelve por PREFIJO contra `CUADRO`, que es quien escribe esos rótulos: si el cuadro le agrega o
@@ -118,49 +118,6 @@ const LINEAS_CREDITO = [
 const brutoDebitoLibro = (m) => [debitoFacturadoDelMes(AÑO, m)]
 const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
-/** La fila de cada rótulo en la columna A del cash flow. Rompe si falta alguno. */
-export function ubicarLineas(colA = [], rotulos = []) {
-  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
-  const idx = new Map(colA.map((f, i) => [norm(f?.[0]), i + 1]))
-  const filas = rotulos.map((r) => ({ rotulo: r, fila: idx.get(norm(r)) ?? null }))
-  const faltan = filas.filter((f) => !f.fila).map((f) => f.rotulo)
-  if (faltan.length) {
-    throw new Error(`impuestos-pestana: no encuentro en "${CF}" la(s) línea(s): ${faltan.join(' · ')}. `
-      + 'Sin ellas la proyección de IVA saldría $0 — no escribo una referencia muerta.')
-  }
-  return filas.map((f) => f.fila)
-}
-
-/**
- * NINGUNA BASE PUEDE LLEVAR UN TOTAL Y UNO DE SUS COMPONENTES A LA VEZ.
- *
- * El cuadro tiene totales sin sangría y componentes indentados debajo. Sumar un total Y uno de sus
- * hijos cuenta esa plata dos veces, y el resultado NO se delata: no hay #ERROR, no hay negativo
- * imposible, sólo un impuesto más grande. El parentesco se lee de la SANGRÍA, que es como el cuadro
- * lo expresa: un rótulo indentado pertenece al último rótulo sin indentar que tiene arriba.
- */
-export function sinSolapamiento(colA = [], filas = []) {
-  const texto = (f) => String(colA[f - 1]?.[0] ?? '')
-  const esComponente = (f) => /^\s{2,}/.test(texto(f))
-  const padreDe = (f) => {
-    if (!esComponente(f)) return null
-    for (let i = f - 1; i >= 1; i--) if (texto(i).trim() && !esComponente(i)) return i
-    return null
-  }
-  const elegidas = new Set(filas)
-  const choques = []
-  for (const f of filas) {
-    const p = padreDe(f)
-    if (p && elegidas.has(p)) choques.push(`la fila ${f} ("${texto(f).trim()}") es COMPONENTE de la ${p} ("${texto(p).trim()}")`)
-  }
-  if (choques.length) {
-    throw new Error('impuestos-pestana: doble conteo en la base de la proyección de IVA — '
-      + `${choques.join(' · ')}. Sumar un total y uno de sus componentes cuenta esa plata dos veces `
-      + 'y el resultado sigue pareciendo un importe razonable. Elegí el total O sus componentes, nunca los dos.')
-  }
-  return filas
-}
-
 /**
  * LA GRILLA ENTERA. Primero la cabecera, después se RESERVA el espacio de la posición, se escribe el
  * detalle —que es quien sabe en qué fila queda cada total— y recién entonces se llena la posición con
@@ -196,15 +153,16 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const mesesIibbTodos = M12.filter((m) => mesesIibbReales.includes(m) || (m > ultimoIibb && m <= hastaIibb))
   const mesesPlan = M12.filter((m) => planes.some((p) => p.porMes[m]))
   const mesesDelCalendario = { iva: mesesIvaTodos, iibb: mesesIibbTodos, plan: mesesPlan, prendario: M12 }
-  const calParaContar = obligacionesDelCalendario({ hoy, anio, meses: mesesDelCalendario, filas: { iva: 0, iibb: 0, plan: 0, prendario: 0 } })
-  const alto = altoDeLaPosicion(calParaContar)
+  // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: el calendario dejó de ocupar
+  // filas (ver `filasDeLaPosicion`), así que la reserva es constante y no puede quedar corta.
+  const alto = altoDeLaPosicion()
   const base = G.reservar(alto)
 
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
   const ibb = bloqueIibb(G, { anio, iibb, proy })
   bloqueRetenciones(G, { anio })
-  const otros = bloqueOtros(G, { anio, C })
+  bloqueOtros(G, { anio, C })
   const pln = bloquePlanes(G, { anio, C, planes })
   const deuda = bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal: pln.fTotal })
   const cierre = bloqueCierre(G, {
@@ -236,9 +194,13 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
     prendPend: `$B$${deuda.fPrendPend}`,
     planesPend: `$B$${deuda.fPlanesPend}`,
-    otrosSinFecha: formulaOtrosSinFecha([otros.fCheque, otros.fGanancias], hoy, anio, 3),
+    // Las tres filas del cuadro de IVA de las que sale "cuándo empieza a salir de la caja".
+    ivaAPagar: iva.fAPagar, ivaLibre: iva.fLibre, ivaCabecera: iva.fCabecera,
   }
-  G.fijar(base, alto, filasDeLaPosicion({ cal, base: base + 1, hoy, refs, acuerdo: ACUERDO, tarjeta: TARJETA }))
+  const hero = filasDeLaPosicion({ cal, hoy, refs })
+  G.fijar(base, alto, hero)
+  // EL CONTROL SE HACE CONTRA LO ESCRITO, no contra otra cuenta con las mismas constantes.
+  verificarReferenciasDelHero(hero, G.filas)
 
   // Los meses PROYECTADOS en ámbar, celda por celda: una proyección que se ve igual que un hecho
   // termina leyéndose como un hecho.
@@ -256,6 +218,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli, cierre.fAlic],
     textos: [iva.fDDJJ],
+    // El MES que el hero publica al lado del importe: una etiqueta, no un importe. La fila se BUSCA
+    // por su rótulo, nunca por su posición dentro del hero.
+    textosCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_IVA_EN_CAJA)), col: 2 }],
     ambar,
     // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
     // Sale del hero, no de un 12 tipeado — un renglón más en el hero y el 12 se lo dejaba afuera.
@@ -280,7 +245,10 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
 async function planDeProyeccionIva(google, ivaOficial) {
   // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Degradada a [], el ancla desaparece y el cuadro
   // sale sin proyección — o arranca de un saldo que no es: diría que no hay IVA que pagar.
-  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:N140`)
+  // SIN FORMATO. La columna A —los rótulos que se buscan acá— es texto y no cambia; el PARÁMETRO de
+  // la fila de alícuota, en cambio, se leía con su disfraz puesto: 0,21 con formato de moneda sin
+  // decimales devolvía "$0" y apagaba la proyección entera. Ver lib/impuestos-alicuota.mjs.
+  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:N140`, { render: 'UNFORMATTED_VALUE' })
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
   const filaDe = (rot) => previo.findIndex((f) => norm(f?.[0]) === norm(rot))
   const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
@@ -295,11 +263,13 @@ async function planDeProyeccionIva(google, ivaOficial) {
       + ' — se descarta del ancla y el mes se recalcula.')
   }
 
-  // LA ALÍCUOTA SALE DE LA CELDA, NO DE UNA CONSTANTE: si el dueño la editó, manda la suya. Sólo la
-  // primera vez se siembra 0,21 («edición manual = verdad definitiva»).
-  const iA = filaDe('Alícuota general de IVA')
-  const crudo = iA >= 0 ? previo[iA]?.[1] : null
-  const alicuotaVigente = aNumero(crudo) !== null ? aNumero(crudo) / (String(crudo).includes('%') ? 100 : 1) : null
+  // LA ALÍCUOTA SALE DE LA CELDA, NO DE UNA CONSTANTE: si el dueño la editó, manda la suya
+  // («edición manual = verdad definitiva»). Lo que la celda NO puede hacer es apagar el impuesto:
+  // un 0 —o un "$0" de un formato equivocado— no es una alícuota, es una celda sin declarar.
+  const iA = filaDe(ROTULO_ALICUOTA)
+  const alic = resolverAlicuota(iA >= 0 ? previo[iA]?.[1] : null)
+  if (alic.sembrada) console.log(`  alícuota de IVA: ${alic.motivo} (${(alic.alicuota * 100).toFixed(2)}%)`)
+  const alicuotaVigente = alic.alicuota
 
   // LA BASE, DEL LIBRO. Se recalcula en código el mismo número que la fórmula va a calcular en la
   // celda: el --dry exhibe el insumo y un importe fiscal se puede rehacer a mano contra el Libro.
@@ -311,7 +281,7 @@ async function planDeProyeccionIva(google, ivaOficial) {
     }))
 
   // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
-  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:K', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const ivaEmitido = ivaDeclaradoPorMesDeEmision(cob)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
