@@ -282,7 +282,7 @@ async function planDeProyeccionIva(google, ivaOficial) {
     }))
 
   // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
-  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:K', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
   const ivaEmitido = ivaDeclaradoPorMesDeEmision(cob)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
