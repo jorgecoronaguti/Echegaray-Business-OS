@@ -62,8 +62,26 @@ export const CUENTA = {
   // y "base impo. usd 15.000" (débito), y la comisión del 06/08 confirma el depósito. El destino
   // Balanz lo confirmó el dueño. 581,39 + 15.400 − 15.000 = 981,39. Cuando llegue el extracto USD,
   // este número se verifica contra él.
-  saldoDolares: 981.39,
-  corteDolares: '2026-08-05',
+  //
+  // ═══ ACTUALIZADO AL 03/09/2026, Y VERIFICADO POR DOS FUENTES INDEPENDIENTES ═══
+  //
+  // El dueño mandó la captura del homebanking del 03/09: "Dinero disponible · Saldo total en pesos
+  // −$166.663,56 · Saldo total en dólares U$S 507,53". La pata en pesos coincide al centavo con lo que
+  // CAJA publicaba ese día, así que la captura es de esta cuenta y de ese día.
+  //
+  // Y LA CUENTA CIERRA SOLA CONTRA EL EXTRACTO DE PESOS, que es la verificación que importa: el 01/09
+  // el extracto declara "Impuesto ley 25.413 debito 0,6% - Cta orig: 179-091384/3 - base impo. usd
+  // 544,99" y su crédito por "base impo. usd 71,13". Entonces 981,39 − 544,99 + 71,13 = 507,53, exacto.
+  // Las dos fuentes dan el mismo número sin haberse mirado.
+  //
+  // LO QUE ESTO DEJA A LA VISTA: la cuenta en dólares NO tiene puerta de carga. `importar-banco.mjs`
+  // sólo entiende la cuenta corriente en pesos (179-091383/6) y este número se actualiza EDITANDO ESTE
+  // ARCHIVO. Estuvo 29 días quieto mientras CAJA lo publicaba como saldo del día, y la pestaña lo
+  // declaraba —"▲ $1,5M de este total son del 05/08"— pero declararlo no es tenerlo al día. Las bases
+  // del 25.413 que acaban de reconstruirlo viven en el extracto que el OS ya carga: la cuenta en
+  // dólares se puede DERIVAR sola, y mientras no se derive va a volver a envejecer.
+  saldoDolares: 507.53,
+  corteDolares: '2026-09-03',
 }
 
 /**

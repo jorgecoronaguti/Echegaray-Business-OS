@@ -65,6 +65,8 @@ import {
 } from '../lib/caja-graficos.mjs'
 import { ubicarSeries } from '../lib/caja-anexo-series.mjs'
 import { MARCA_ALERTA, MARCA_OK } from '../lib/caja-avisos.mjs'
+import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
+import { query } from '../lib/db.mjs'
 
 export { grilla, rescatar }
 
@@ -181,6 +183,27 @@ async function main() {
     throw new Error(`CAJA quedó en ${g.filas.length} filas y el objetivo es ${FILAS_MAXIMAS}: no entra en una pantalla. Antes de escribir hay que decidir QUÉ SALE al anexo.`)
   }
   if (DRY) return console.log('--dry: no escribí nada.')
+
+  // ═══ UN CAMBIO DE LAYOUT NO PUEDE DEJAR A LA PESTAÑA SIN FORMATO (04/09/2026) ═══
+  //
+  // Las huellas de formato se indexan por COORDENADA. CAJA pasó de 55 a 68 filas y las cuatro filas
+  // de avisos volvieron: los rangos se corrieron, la guarda encontró en cada coordenada nueva un
+  // formato que no había sellado ahí, y respondió «lo respeto» a SEIS anchos de columna —E a J— y a
+  // los formatos de las cinco tarjetas. El efecto era visible y permanente: las tarjetas salían
+  // cortadas («CAJA INVERTI… $45.138.», y la del medio mostrando sólo «($»), porque las columnas se
+  // quedaron con el ancho del layout anterior. Y no se arreglaba solo nunca: sin re-aplicar tampoco
+  // se re-sella, así que la corrida siguiente encontraba lo mismo. Un control que impide corregir un
+  // defecto lo vuelve eterno.
+  //
+  // Es el mismo remedio que «Impuestos y Financieros» — mismo lib, misma razón. Va ANTES de la
+  // primera escritura de la corrida: el borrado de notas y el `unmergeCells` de más abajo también son
+  // requests de formato, y quedaban del lado bloqueado.
+  const layout = elLayoutCambio(previo.filas ?? [], g.filas)
+  if (layout.cambio) {
+    const n = await invalidarHuellasDeFormato(query, ID, tab)
+      .catch((e) => { console.warn(`  ⚠ no pude invalidar las huellas de formato: ${e.message}`); return 0 })
+    console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
+  }
 
   // GARANTIZAR EL ALTO Y EL ANCHO ANTES DE TODO: si el batch apunta más allá del alto real, la API
   // ABORTA el write entero y CAJA queda con lo de la corrida anterior. Y los gráficos flotan pero su
