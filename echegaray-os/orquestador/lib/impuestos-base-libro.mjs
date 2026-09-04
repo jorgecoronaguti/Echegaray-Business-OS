@@ -48,7 +48,14 @@ export const debitoFacturadoDelMes = (anio, m) => {
   const B = 'Cobranzas!$B$5:$B'
   const C = 'Cobranzas!$C$5:$C'
   const { desde, hasta } = ventanaDelMes(anio, m)
-  return `SUMPRODUCT((${B}="B")*ISNUMBER(${C})*(${C}>=${desde})*(${C}<${hasta})*N(Cobranzas!$K$5:$K))`
+  const suma = `SUMPRODUCT((${B}="B")*ISNUMBER(${C})*(${C}>=${desde})*(${C}<${hasta})*N(Cobranzas!$K$5:$K))`
+  // UN MES SIN NINGUNA FACTURA EMITIDA VALE VACÍO, NO CERO. Son cosas distintas y la diferencia es
+  // cara en las dos direcciones: leído como pronóstico, un `$0` dice «este mes no pagás IVA» cuando
+  // lo que pasa es que todavía no facturaste. Y hacia adentro del cuadro, el 0 CUENTA COMO DATO: sube
+  // el ancla de `origenDelMes` hasta diciembre, con lo que los cinco meses proyectados pasan a
+  // «ajeno», el generador deja de emitirlos y el bloque cambia de alto en cada corrida — medido el
+  // 03/09/2026: saltaba entre 101 y 105 filas y dejaba los rótulos tres filas corridos.
+  return `LET(x;${suma};IF(x=0;"";x))`
 }
 
 /** NÚCLEO PURO: el mismo número que la fórmula, para exhibirlo en el `--dry`. Índices de `A5:K`. */

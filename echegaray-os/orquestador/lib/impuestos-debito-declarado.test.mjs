@@ -47,6 +47,14 @@ test('un mes sin ninguna factura emitida no aparece — no es un cero', () => {
     'la ausencia se tiene que poder distinguir de un cero: son cosas distintas')
 })
 
+test('un mes SIN facturas emitidas vale VACÍO, no cero', () => {
+  // El 0 no es la ausencia: leído como pronóstico dice «no pagás IVA» cuando lo cierto es «todavía
+  // no facturaste», y hacia adentro del cuadro cuenta como dato y sube el ancla del origen.
+  const f = debitoFacturadoDelMes(2026, 11)
+  assert.match(f, /IF\(x=0;""/, 'sin facturas emitidas la celda queda vacía')
+  assert.match(f, /^LET\(x;/, 'la suma se calcula UNA vez, no dos')
+})
+
 test('la FÓRMULA filtra por categoría B, por ventana de emisión, y suma la columna del IVA', () => {
   const f = debitoFacturadoDelMes(2026, 9)
   assert.match(f, /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado')
