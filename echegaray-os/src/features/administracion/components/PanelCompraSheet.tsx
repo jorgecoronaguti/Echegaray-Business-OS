@@ -209,13 +209,19 @@ function LineaIdentidad({ escrito, identidad }: { escrito: string | null; identi
   const reconocido = estaReconocido(identidad)
   const nombre = identidad?.proveedorNombre ?? null
   const mismoTexto = !!nombre && String(escrito ?? '').trim().toUpperCase() === nombre.trim().toUpperCase()
-  if (reconocido && mismoTexto) return null
 
   if (reconocido && nombre) {
+    // QUÉ SE MUESTRA, EN ORDEN DE UTILIDAD. Si la planilla escribió otra cosa, lo que falta saber es
+    // de quién es el gasto: va el nombre canónico. Si la planilla ya usa el nombre canónico, eso ya
+    // está a la vista y repetirlo no informa — pero SÍ informa con qué nombre factura, que es lo
+    // que no se ve en ningún lado: «DUPEC → Dubos Ugarte Pedro Luis Raul». Si no hay ninguna de las
+    // dos cosas que decir, no se dibuja nada.
+    const decir = mismoTexto ? identidad?.razonSocial ?? null : nombre
+    if (!decir) return null
     return (
       <div data-testid="identidad-proveedor" style={{ fontSize: 12, color: C.apagado, marginTop: 3, display: 'flex', alignItems: 'baseline', gap: 5 }}>
         <span style={{ color: C.tenue }}>→</span>
-        <span style={{ color: C.tinta }}>{nombre}</span>
+        <span style={{ color: C.tinta }}>{decir}</span>
       </div>
     )
   }

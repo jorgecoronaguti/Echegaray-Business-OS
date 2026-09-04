@@ -33,6 +33,9 @@ export interface IdentidadResuelta {
   /** el proveedor canónico, cuando la decisión autoriza a vincular */
   proveedorId: string | null
   proveedorNombre: string | null
+  /** El nombre con el que ese proveedor factura, cuando no es el nombre con el que se lo conoce.
+   *  Sale de los alias que vinieron de ARCA: es un dato fiscal, no una inferencia. */
+  razonSocial: string | null
   /** para la cola de revisión: la fila de `ml_resolucion` que una confirmación humana corrige */
   resolucionId: number
 }
@@ -89,16 +92,33 @@ export async function getIdentidades(
       estado: r.estado as EstadoIdentidad,
       proveedorId,
       proveedorNombre: null,
+      razonSocial: null,
       resolucionId: Number(r.id),
     })
     if (proveedorId) ids.add(proveedorId)
   }
 
   if (ids.size) {
-    const { data: provs } = await supabase.from('proveedores').select('id, nombre').in('id', [...ids])
+    const [{ data: provs }, { data: fiscales }] = await Promise.all([
+      supabase.from('proveedores').select('id, nombre, razon_social').in('id', [...ids]),
+      // LA RAZÓN SOCIAL VIVE EN LOS ALIAS DE ARCA. El maestro tiene `razon_social` y está vacía en
+      // los 36 proveedores; lo que sí existe es el nombre con el que ARCA los publica, cargado como
+      // alias verificado. Ahí es donde está escrito que «DUPEC» factura como «DUBOS UGARTE PEDRO
+      // LUIS RAUL» — que es exactamente lo que quien mira una compra necesita saber.
+      supabase.from('ml_entidad_alias').select('entidad_id, alias')
+        .eq('entidad', entidad).eq('fuente', 'arca').eq('verificado', true).in('entidad_id', [...ids]),
+    ])
     const nombres = new Map((provs ?? []).map((p) => [String(p.id), p.nombre as string]))
+    const declarada = new Map((provs ?? []).filter((p) => p.razon_social).map((p) => [String(p.id), p.razon_social as string]))
+    const deArca = new Map((fiscales ?? []).map((a) => [String(a.entidad_id), a.alias as string]))
     for (const i of porClave.values()) {
-      if (i.proveedorId) i.proveedorNombre = nombres.get(i.proveedorId) ?? null
+      if (!i.proveedorId) continue
+      i.proveedorNombre = nombres.get(i.proveedorId) ?? null
+      // La del maestro manda sobre la de ARCA: si alguien la escribió a mano, es una decisión.
+      const fiscal = declarada.get(i.proveedorId) ?? deArca.get(i.proveedorId) ?? null
+      // Sólo se guarda si DICE algo que el nombre no dice ya.
+      i.razonSocial = fiscal && fiscal.trim().toUpperCase() !== (i.proveedorNombre ?? '').trim().toUpperCase()
+        ? fiscal : null
     }
   }
 

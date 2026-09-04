@@ -93,3 +93,7 @@ orquestador/scripts/diff-esquemas.txt
 build.log
 server.log
 orquestador/datos/modelos/
+
+# Capturas de una verificación visual: evidencia de una corrida, no fuente.
+QA_OUT/
+tests/_qa-*.spec.ts
