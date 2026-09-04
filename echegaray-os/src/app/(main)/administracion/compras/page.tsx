@@ -76,7 +76,7 @@ import { PanelCompraSheet } from '@/features/administracion/components/PanelComp
 import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
 import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
 import {
-  conteosDe, filtroDe as filtroSheetDe, pasa, ROTULO as ROTULO_SHEET, type FiltroSheet,
+  conteosDe, filtroDe as filtroSheetDe, pasa, ROTULO as ROTULO_SHEET, totalesDe, type FiltroSheet,
 } from '@/features/administracion/services/comprasSheet'
 import {
   getAdjuntosSueltos, getComprasSheet, TOPE as TOPE_SHEET,
@@ -192,6 +192,9 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
 
   // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
   const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
+  // Los totales del pie miran LO QUE SE ESTÁ VIENDO —la nota dice «6 de 882»—, a diferencia de los
+  // conteos de los chips, que miran la población entera.
+  const totalesVisibles = totalesDe(visibles)
 
   return (
     <Marco>
@@ -237,12 +240,43 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              {/* LOS TOTALES Y LA NOTA AL PIE VIVEN EN LA COLUMNA DE LA LISTA (handoff v4). Estaban
+                  debajo del split, así que al abrir el panel la nota quedaba cruzando por debajo de
+                  los dos y decía «6 de 882» a lo ancho de una pantalla donde la lista ocupa la
+                  mitad: el número se leía como si describiera el panel también. */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <TablaComprasSheet
                   filas={visibles}
                   seleccionada={filaAbierta?.fila}
                   hrefDe={(fila) => urlSheet({ s: fila === filaAbierta?.fila ? null : fila })}
                 />
+                <p className="mt-3 text-[11px] text-faint">
+                  <Num className="text-faint">{visibles.length}</Num> de{' '}
+                  <Num className="text-faint">{todas.length}</Num>
+                  {filtro !== 'todo' && <> · {ROTULO_SHEET[filtro]}</>}
+                  {q && <> · «{sp.q}»</>}
+                  {(q || filtro !== 'todo') && (
+                    <> · <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link></>
+                  )}
+                </p>
+                {/* EL TOTAL NO SUMA LO QUE NO TIENE IMPORTE, y eso se dice. La suma trata el `null`
+                    como 0 porque no puede hacer otra cosa; callarlo hace que el total se lea como
+                    si estuviera completo, y el que lo compare contra el Sheet no va a saber por qué
+                    no cierra. */}
+                {totalesVisibles.sinImporte > 0 && (
+                  <p className="mt-1 text-[11px] text-faint" data-testid="compras-sin-importe">
+                    <Num className="text-faint">{totalesVisibles.sinImporte}</Num>
+                    {totalesVisibles.sinImporte === 1 ? ' fila sin importe cargado' : ' filas sin importe cargado'}
+                    {': queda fuera de la suma.'}
+                  </p>
+                )}
+                {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». */}
+                {listado.data.truncado && (
+                  <p className="mt-1 text-[11.5px] text-warn" data-testid="compras-truncado">
+                    Se muestran las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está fuera
+                    del tope de esta pantalla.
+                  </p>
+                )}
               </div>
               {filaAbierta && (
                 <PanelCompraSheet
@@ -257,22 +291,6 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
                 />
               )}
             </div>
-            <p className="mt-3 max-w-[820px] text-[11px] text-faint">
-              <Num className="text-faint">{visibles.length}</Num> de{' '}
-              <Num className="text-faint">{todas.length}</Num>
-              {filtro !== 'todo' && <> · {ROTULO_SHEET[filtro]}</>}
-              {q && <> · «{sp.q}»</>}
-              {(q || filtro !== 'todo') && (
-                <> · <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link></>
-              )}
-            </p>
-            {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». */}
-            {listado.data.truncado && (
-              <p className="mt-1 max-w-[820px] text-[11.5px] text-warn" data-testid="compras-truncado">
-                Se muestran las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está fuera del
-                tope de esta pantalla.
-              </p>
-            )}
           </>
         )}
       </div>
