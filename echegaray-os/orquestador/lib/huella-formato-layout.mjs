@@ -46,11 +46,18 @@
  * @returns {{cambio:boolean, motivo:string}}
  */
 export function elLayoutCambio(antes = [], ahora = []) {
-  const rotulos = (g) => (g || []).map((f) => String(f?.[0] ?? '').replace(/\s+/g, ' ').trim())
+  // SE RECORTAN LOS RENGLONES VACÍOS DEL FINAL, DE LOS DOS LADOS (04/09/2026). La grilla termina en un
+  // separador en blanco y la API no lo devuelve al leer: 68 contra 67 en cada corrida. Sin el recorte
+  // este control se disparaba SIEMPRE —invalidando 363 huellas por corrida— y un control que siempre
+  // da positivo no controla nada: dejaba la guarda de formato apagada de hecho, que es justo lo que
+  // vino a evitar.
+  const rotulos = (g) => {
+    const r = (g || []).map((f) => String(f?.[0] ?? '').replace(/\s+/g, ' ').trim())
+    while (r.length && !r[r.length - 1]) r.pop()
+    return r
+  }
   const a = rotulos(antes)
   const b = rotulos(ahora)
-  // La cola de una corrida anterior ya viene incluida en `ahora` cuando el generador la limpia, así
-  // que las longitudes son comparables tal cual.
   if (a.length !== b.length) {
     return { cambio: true, motivo: `la pestaña pasa de ${a.length} a ${b.length} filas` }
   }

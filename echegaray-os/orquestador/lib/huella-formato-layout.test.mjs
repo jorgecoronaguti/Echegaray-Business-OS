@@ -47,3 +47,14 @@ test('la invalidación DICE cuántas borró: una silenciosa no se distingue de u
   assert.deepEqual(vistos[0].args, ['FILE', 'Impuestos y Financieros'])
   assert.match(vistos[0].sql, /file_id = \$1 and pestana = \$2/)
 })
+
+test('UN CONTROL QUE SIEMPRE DA POSITIVO NO CONTROLA NADA: los blancos del final no cuentan', () => {
+  // La grilla termina en un separador en blanco y la API no lo devuelve al leer: 68 contra 67 en cada
+  // corrida. Sin recortar, esto se disparaba SIEMPRE —363 huellas invalidadas por corrida— y dejaba
+  // la guarda de formato apagada de hecho, que es exactamente lo que vino a evitar.
+  const enLaHoja = [['Título'], ['A'], ['B']]
+  const laGrilla = [['Título'], ['A'], ['B'], [''], ['']]
+  assert.equal(elLayoutCambio(enLaHoja, laGrilla).cambio, false)
+  // Y un cambio real sigue detectándose aunque haya blancos al final.
+  assert.equal(elLayoutCambio(enLaHoja, [['Título'], ['A'], ['C'], ['']]).cambio, true)
+})
