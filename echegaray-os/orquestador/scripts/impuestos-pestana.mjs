@@ -61,6 +61,7 @@ import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe
 import { formatear } from '../lib/impuestos-piel.mjs'
 export { ubicarLineas, sinSolapamiento } from '../lib/impuestos-base-proyeccion.mjs'
 import { resolverAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -412,6 +413,22 @@ async function main() {
   // PRIMERO la réplica _IIBB_RAW: las fórmulas del bloque de IIBB la referencian.
   await escribirIIBBRaw(google, ID, iibb)
 
+  // ═══ UNA HUELLA DE FORMATO DE UN LAYOUT QUE YA NO EXISTE NO ES EVIDENCIA (04/09/2026) ═══
+  //
+  // Cuando esta pestaña pasó de 105 filas a 68, las 350 huellas viejas quedaron describiendo filas
+  // que ya no contienen lo que contenían: la guarda las leyó como diseño del dueño y bloqueó los 419
+  // rangos de formato de golpe. La pestaña se publicó con los importes crudos —`1419600` en vez de
+  // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella.
+  //
+  // VA ANTES DE LA PRIMERA ESCRITURA DE LA CORRIDA, y no antes de `formatear`: el borrado de notas
+  // también es un request de formato y quedaba del lado bloqueado. Ver lib/huella-formato-layout.mjs.
+  const previoParaLayout = await google.readSheetValues(ID, `${PESTAÑA}!A1:A400`)
+  const layout = elLayoutCambio(previoParaLayout, g.filas)
+  if (layout.cambio) {
+    const n = await invalidarHuellasDeFormato(query, ID, PESTAÑA).catch((e) => { console.warn(`  ⚠ no pude invalidar las huellas de formato: ${e.message}`); return 0 })
+    console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
+  }
+
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Las NOTAS viejas del
   // generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se llevaba los comentarios).
@@ -420,7 +437,13 @@ async function main() {
   // deja de emitirse y la vieja quedaría publicada con la cuota de un plan que ya no existe. El
   // mecanismo vive en lib/cola-de-rango.mjs; acá se declara sólo el ancho que ocupa este generador.
   const previoTab = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}400`)
-  const cola = conColaMedida(g.filas, previoTab, { ancho: ANCHO })
+  // `probarPorForma`: esta pestaña bajó de 105 filas a 68 y la cola no se podía borrar. Las celdas
+  // que escribió una versión anterior al sistema de huellas no tienen ninguna, así que la guarda
+  // respondía «nunca fue mía» y las filas 77, 101, 103 y 105 sobrevivieron a cuatro corridas — con un
+  // renglón de 592 caracteres y dos alícuotas sueltas que el censo de números pegados seguía
+  // contando. Con la bandera, una celda de la cola cuyo contenido tiene FORMA DE GENERADOR se prueba
+  // propia y se limpia; un texto libre del dueño sigue decidiéndolo la guarda. Ver cola-de-rango.mjs.
+  const cola = conColaMedida(g.filas, previoTab, { ancho: ANCHO, probarPorForma: true })
   if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
   g.filas = cola.filas
 
@@ -429,6 +452,14 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
   vaciarColumnaDeProsa(g.filas, ANCHO - 1)
+  // ═══ UNA HUELLA DE FORMATO DE UN LAYOUT QUE YA NO EXISTE NO ES EVIDENCIA (04/09/2026) ═══
+  //
+  // Cuando esta pestaña pasó de 105 filas a 68, las 350 huellas viejas quedaron describiendo filas
+  // que ya no contienen lo que contenían: la guarda las leyó como diseño del dueño y bloqueó los 419
+  // rangos de formato de golpe. La pestaña se publicó con los importes crudos —`1419600` en vez de
+  // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella. Se
+  // invalidan ANTES de escribir; la corrida vuelve a aplicar y a sellar sobre el layout nuevo, que es
+  // el único sobre el que la protección puede significar algo. Ver lib/huella-formato-layout.mjs.
   const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07). Una pestaña que no se escribió no
   // cambió de forma: su formato y sus nombres son los de su última escritura y así tienen que quedar.

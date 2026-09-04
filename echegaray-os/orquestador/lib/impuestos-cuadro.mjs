@@ -18,7 +18,6 @@
 import { rango } from './compras-columnas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { ALICUOTA as ALICUOTA_25413 } from './impuesto-cheque.mjs'
-import { TASAS } from './costo-descubierto.mjs'
 import { RANGO_ALICUOTA_IVA } from './iva-libre-disponibilidad.mjs'
 import { ALERTA } from './glifos.mjs'
 
@@ -177,83 +176,70 @@ export function formulaImpuestoChequeReal(hoja, anio, m) {
 export const formulaImpuestoCheque = (hoja, anio, m) =>
   `=MAX(${formulaImpuestoChequeReal(hoja, anio, m).slice(1)};${formulaImpuestoChequeProyectado(anio, m).slice(1)})`
 
+// ═══ EL CUADRO DE FINANCIAMIENTO SE FUE, Y CON ÉL `filasFinanciamiento` (04/09/2026) ═══
+//
+// El dueño, mirando la pestaña renderizada: *"no me sirven del cuadro 1 al 3"*. El 3 era el
+// financiamiento. La función que armaba sus cuatro líneas no la llama nadie más, así que se borra en
+// vez de quedar como capa fósil de un cuadro retirado — que es cómo un generador termina teniendo
+// código que nadie ejecuta y que la próxima lectura confunde con algo vigente.
+//
+// LO QUE NO SE PERDIÓ: el acuerdo en descubierto y el límite de la tarjeta viven en
+// `banco-santander.mjs` y los consume CAJA, que además mide cuánto del descubierto está TOMADO hoy —
+// cosa que esta pestaña nunca supo hacer y declaraba en el rótulo. El costo del descubierto verificado
+// (×1,12) vive en `costo-descubierto.mjs`, con su test, y se sigue consumiendo desde CAJA.
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// POSICIÓN DE FINANCIAMIENTO — LAS CUATRO FUENTES
+// ¿CUÁNDO EL IVA EMPIEZA A SALIR DE LA CAJA? — LA PREGUNTA QUE LA PESTAÑA EXISTÍA PARA CONTESTAR
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// La pestaña se llama "Impuestos y Financieros" y mostraba DOS de las cuatro fuentes de
-// financiamiento de la empresa: el prendario y los planes. El acuerdo en descubierto ($18,2M de
-// línea, 62,78% de costo financiero total) vivía sólo en una fila del Cash Flow, y la tarjeta ($10M
-// de cupo) sólo en su propia pestaña. Las dos que faltaban son justamente las DISPONIBLES: la
-// pregunta "con qué cuento si mañana no entra la cobranza" no se podía contestar acá.
+// En 2026 el IVA NUNCA salió en efectivo: marzo y julio quedaron a favor de ARCA por $10,75M y
+// $9,52M y los absorbió el saldo de libre disponibilidad. Pero ese colchón cae —$19,3M en junio,
+// $9,86M al cierre de julio, $4,0M en agosto— y el día que se agote, el IVA pide caja como
+// cualquier otro pago. Hasta hoy había que deducirlo leyendo la fila del saldo mes por mes.
+//
+// SE RESUELVE CON UNA FÓRMULA Y NO EN LA CORRIDA, a propósito: la fila del "IVA a pagar en efectivo"
+// tiene meses que escribe una persona y meses que calcula la planilla, así que el primer mes que
+// pide caja se mueve cuando el dueño edita una celda. Un mes calculado en JavaScript quedaría viejo
+// hasta la corrida siguiente, justo en la línea que decide si hay que salir a buscar plata.
+//
+// EL RANGO ARRANCA EN B Y TERMINA EN M: los doce meses, sin la columna del Total —que suma la fila
+// entera y daría "positivo" aunque ningún mes suelto lo sea.
 
 /**
- * NÚCLEO PURO: el costo de un peso de descubierto por día, con impuestos. Es el número con el que se
- * compara cualquier alternativa de financiamiento.
+ * El texto de la celda cuando ningún mes del año pide caja. Es un hecho —el crédito de libre
+ * disponibilidad lo absorbió todo—, no un hueco: no lleva ⚠.
+ *
+ * CORTO A PROPÓSITO (04/09/2026): va en la columna del mes, que mide 108 px ≈ 18 caracteres, y con
+ * la de al lado ocupada no hay adónde derramar. "ninguno en el año" se dibujaba cortado en "ninguno
+ * en el" — y un rótulo cortado al medio dice otra cosa que el rótulo entero. El renglón se lee
+ * completo: «EL IVA EMPIEZA A SALIR DE LA CAJA EN … ningún mes».
  */
-export const costoDescubiertoDiario = () =>
-  (TASAS.tna / TASAS.base) * (1 + TASAS.iva + TASAS.percepcion)
+export const IVA_SIN_SALIDA = 'ningún mes'
 
 /**
- * NÚCLEO PURO: las filas de la posición de financiamiento.
- * @param {{acuerdo:object, tarjeta:object, celdaPrendario:string, celdaPlanes:string}} f
- * @returns {Array<{rotulo, limite, usado, disponible, origen}>} `usado` y `disponible` son fórmulas
- *   o números; el prendario y los planes no tienen "límite" porque ya están tomados enteros.
+ * NÚCLEO PURO: la posición (1..12) del primer mes con un importe POSITIVO en la fila `f`.
+ *
+ * `IF(ISNUMBER(...))` no es decorativo: esa fila puede tener texto —el mes que escribió una persona,
+ * una leyenda— y en Sheets cualquier texto es MAYOR que cualquier número, así que sin el filtro una
+ * leyenda se leería como "acá el IVA pide caja" y publicaría el mes equivocado.
  */
-export function filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario, celdaPlanes, celdaUsoDescubierto }) {
-  const ar = (n, d = 2) => n.toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d })
-  // DOS NÚMEROS, NO UNO: el interés puro y el que sale de la cuenta. Publicar uno solo es cómo
-  // aparece una tercera versión del mismo peso — el interés solo subestima el costo un 12%.
-  const interesMillon = (TASAS.tna / TASAS.base) * 1e6
-  const costoMillon = costoDescubiertoDiario() * 1e6
-  return [
-    {
-      // ⚠ EN EL RÓTULO: esta pestaña no mide cuánto del acuerdo está tomado hoy. Sin la marca, el
-      // "disponible" se lee como plata que está y puede no estar — y es la línea con la que se
-      // decide no salir a pedir un adelanto.
-      rotulo: `Descubierto Santander ${acuerdo.numero} ${ALERTA} uso: lo mide CAJA`,
-      limite: acuerdo.importe,
-      usado: celdaUsoDescubierto ? `=MIN(${acuerdo.importe};MAX(0;-${celdaUsoDescubierto}))` : '',
-      disponible: null, // lo calcula el generador como límite − usado, en la propia grilla
-      origen: `Vence ${acuerdo.vence} · TNA ${ar(acuerdo.tna * 100, 0)}% · costo financiero total ${ar(acuerdo.cft * 100)}%`
-        + ` · cada millón en rojo cuesta $${ar(interesMillon)} de interés por día, $${ar(costoMillon)} con IVA y percepción`
-        + ' (× 1,12, verificado al centavo contra el cargo del banco del 14/07).',
-    },
-    {
-      // ═══ EL DISPONIBLE SALE POR FÓRMULA, COMO EL DE ARRIBA (06/08) ═══
-      //
-      // D46 estaba PEGADO en 8.693.073,70 mientras B46 − C46 daba 8.693.074,00: treinta centavos de
-      // diferencia entre la celda y su propia fila, en la única línea del cuadro que no calculaba. El
-      // origen no era el pegado sino el REDONDEO del tomado —`Math.round`— que rompía la identidad
-      // límite − tomado = disponible y obligaba a pegar el disponible para no perderlo.
-      //
-      // El dato primario sigue siendo el DISPONIBLE que declara el banco: el tomado se despeja de él,
-      // ahora al centavo, y el disponible vuelve a salir de la resta como en las otras tres filas.
-      rotulo: `Tarjeta de crédito · ${tarjeta.cuenta}`,
-      limite: tarjeta.limite,
-      usado: Math.round((tarjeta.limite - tarjeta.disponible) * 100) / 100,
-      disponible: null, // = límite − tomado, en la propia grilla
-      origen: `Resumen del banco al ${tarjeta.al} · cierra ${tarjeta.cierra}, vence ${tarjeta.vence}.`
-        + ' El dato del banco es el DISPONIBLE; el "tomado" se despeja de él (límite − disponible) y NO es'
-        + ' el consumido que lista el resumen: difieren $60.433 y no se inventa el motivo.'
-        + ' FOTO CAPTURADA A MANO: no hay puerta de carga para el resumen de la tarjeta.',
-    },
-    {
-      rotulo: 'Prendario Ford XLS · Santander (ya tomado)',
-      limite: null,
-      usado: `=${celdaPrendario}`,
-      disponible: 0,
-      origen: 'Compras, rubro "Financiero" · sólo las cuotas con vencimiento posterior al corte. Ya está tomado entero: no queda línea disponible.',
-    },
-    {
-      rotulo: 'Planes de pago F931 · ARCA (ya tomados)',
-      limite: null,
-      usado: `=${celdaPlanes}`,
-      disponible: 0,
-      origen: 'Compras, rubro "Deuda previsional (planes de pago)" · sólo las cuotas con vencimiento posterior al corte.',
-    },
-  ]
-}
+const primerMesPositivo = (f) => `MATCH(TRUE;INDEX(IF(ISNUMBER($B$${f}:$M$${f});$B$${f}:$M$${f};0)>0;0);0)`
+
+/** NÚCLEO PURO: el MES en que el IVA empieza a salir de la caja, leído del encabezado del cuadro. */
+export const formulaMesQueElIvaPideCaja = (fAPagar, fCabecera) =>
+  `=IFERROR(INDEX($B$${fCabecera}:$M$${fCabecera};${primerMesPositivo(fAPagar)});"${IVA_SIN_SALIDA}")`
+
+/** NÚCLEO PURO: CUÁNTO pide ese primer mes. Cero si ninguno pide: es la verdad, no un hueco. */
+export const formulaIvaQuePideCaja = (fAPagar) =>
+  `=IFERROR(INDEX($B$${fAPagar}:$M$${fAPagar};${primerMesPositivo(fAPagar)});0)`
+
+/**
+ * NÚCLEO PURO: el colchón de libre disponibilidad que queda al cierre del mes ANTERIOR — el que se
+ * agota. Si ningún mes pide caja, el colchón vigente es el último que la fila publica: `LOOKUP(9^99)`
+ * devuelve el último valor numérico de la fila, que es lo que un saldo acumulado significa.
+ */
+export const formulaColchonQueSeAgota = (fAPagar, fLibre) =>
+  `=IFERROR(INDEX($B$${fLibre}:$M$${fLibre};MAX(1;${primerMesPositivo(fAPagar)}-1));LOOKUP(9^99;$B$${fLibre}:$M$${fLibre}))`
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // EL HERO Y LA VENTANA — REFERENCIAS, NUNCA RECÁLCULOS
@@ -271,12 +257,6 @@ export function filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario, celdaPla
 export function formulaVentana(filas = [], dias) {
   const dentro = filas.filter((f) => !f.vencido && f.dias <= dias && f.celdaImporte)
   return dentro.length ? `=${dentro.map((f) => f.celdaImporte).join('+')}` : '=0'
-}
-
-/** NÚCLEO PURO: lo VENCIDO e impago — la primera mitad del riesgo. */
-export function formulaVencidoImpago(filas = []) {
-  const v = filas.filter((f) => f.vencido && f.celdaImporte)
-  return v.length ? `=${v.map((f) => f.celdaImporte).join('+')}` : '=0'
 }
 
 /**

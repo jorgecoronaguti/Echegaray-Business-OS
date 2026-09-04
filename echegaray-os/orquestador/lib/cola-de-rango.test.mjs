@@ -7,7 +7,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { VACIO } from './preservar-anotaciones.mjs'
+import {
+  VACIO } from './preservar-anotaciones.mjs'
+import { MIA_PROBADA } from './no-borrar.mjs'
 import {
   conColaLimpiable, conColaMedida, conColaMedidaLeida, ultimaFilaConDato, avisoDeCola,
 } from './cola-de-rango.mjs'
@@ -126,4 +128,38 @@ test('el rango de lectura usa la letra REAL de la columna: pasada la Z, 64+n no 
   const google = { readSheetValues: async (_id, r) => { rango = r; return [] } }
   await conColaMedidaLeida(google, 'ID', "'X'", [['a']], { ancho: 30, tope: 400 })
   assert.equal(rango, "'X'!A1:AD400")
+})
+
+test('LA COLA SE PUEDE BORRAR AUNQUE NO TENGA HUELLA: se prueba por la FORMA de lo que hay', () => {
+  // ═══ EL DEFECTO MEDIDO (04/09/2026) ═══
+  //
+  // `VACIO` dice "es mía y va vacía", y aguas abajo `huella-celda` sólo lo obedece si tiene huella
+  // propia de esa celda. Las que escribió una versión del generador ANTERIOR al sistema de huellas
+  // no tienen ninguna: la guarda responde "nunca fue mía" y la cola queda publicada para siempre.
+  // En «Impuestos y Financieros», al bajar de 105 filas a 68, las filas 77, 101, 103 y 105
+  // sobrevivieron a cuatro corridas seguidas — un renglón de 592 caracteres y dos alícuotas sueltas.
+  const filas = [['⇒ Total', 1], ['fin', 2]]
+  const previo = [
+    ['⇒ Total', 1], ['fin', 2],
+    ['', '=MAX(SUMPRODUCT(1))'],        // fórmula fósil: forma de generador
+    ['', '$1.234'],                     // importe fósil
+    ['▲ IVA de ago a diciembre: PROYECCIÓN — débito = …', ''], // marca del OS
+    ['ojo: preguntar al contador', ''], // TEXTO LIBRE del dueño: no se toca
+  ]
+  const r = conColaMedida(filas, previo, { ancho: 2, probarPorForma: true })
+  const cola = r.filas.slice(filas.length)
+  assert.equal(cola[0][1], MIA_PROBADA, 'una fórmula fósil se prueba propia y se borra')
+  assert.equal(cola[1][1], MIA_PROBADA, 'un importe fósil también')
+  assert.equal(cola[2][0], MIA_PROBADA, 'una marca tipográfica del OS también')
+  // UN TEXTO LIBRE NO SE PRUEBA: sigue yendo con el centinela de siempre y quien decide si se borra
+  // sigue siendo la guarda que relee el destino. Este mecanismo AGREGA una prueba, no saca una
+  // protección — si bajara de VACIO a "conservar", cambiaría el comportamiento de las otras trece
+  // pestañas que ya limpian su cola.
+  assert.equal(cola[3][0], VACIO, 'un texto libre no se prueba propio: lo sigue decidiendo la guarda')
+  // Y una celda que ya está vacía tampoco necesita probar nada.
+  assert.equal(cola[0][0], VACIO)
+  // Y APAGADA POR DEFECTO: saltear la guarda de borrado es la forma que tomaron las pérdidas de
+  // trabajo del dueño, y catorce pestañas llaman a esta función. Sin la bandera, todo sigue en VACIO.
+  const sinBandera = conColaMedida(filas, previo, { ancho: 2 }).filas.slice(filas.length)
+  assert.ok(sinBandera.every((f) => f.every((c) => c === VACIO || c === '')), 'sin bandera no cambia nada')
 })

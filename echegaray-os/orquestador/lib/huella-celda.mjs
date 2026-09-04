@@ -60,6 +60,7 @@ import {
   hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
+import { esCeldaDeEstructura } from './celda-de-estructura.mjs'
 
 // EL VOCABULARIO DE LA FORMA SE MUDÓ a `huella-forma.mjs` y se re-exporta desde acá para no romper a
 // quien ya lo importaba. Tuvo que mudarse porque ahora hay DOS veredictos que necesitan la misma
@@ -362,8 +363,17 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
     // (`filaHoy`). Si la pestaña se corrió, la marca tiene que quedar donde la celda está AHORA — si
     // no, la corrida siguiente la buscaría en la fila vieja y el borrado se olvidaría.
     if (mia && !ocupada) {
-      suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
-      return ''
+      // LA ESTRUCTURA NO SE DA POR BORRADA (04/09/2026). Un título de sección, un encabezado de tabla
+      // o una fila de total desaparecen cuando el GENERADOR mueve el layout, no cuando el dueño los
+      // borra: nadie saca la palabra «Concepto» de un cuadro y deja los doce importes debajo. Medido
+      // en «Impuestos y Financieros» al pasar de 105 filas a 68: A23 («Concepto») y A42 («⇒ Total
+      // otros impuestos») quedaron mudas con sus importes al lado, y el auditor de patrón las contó.
+      // Se mira la FILA: media fila de encabezado no es un encabezado.
+      // Ver lib/celda-de-estructura.mjs; un importe o un texto libre borrado sigue borrado.
+      if (!esCeldaDeEstructura(c, f)) {
+        suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
+        return ''
+      }
     }
     // PIDO LIMPIAR MI PROPIA CELDA Y TODAVÍA TIENE LO QUE YO ESCRIBÍ. La forma se compara truncada a
     // 300 porque así se guardó: comparar contra la entera daría falso negativo en un texto largo.

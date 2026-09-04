@@ -13,6 +13,7 @@ import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
 import { auditarPatron } from '../lib/patron-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { ANCHO_ROTULO } from '../lib/impuestos-piel.mjs'
 
 const FUENTE = readFileSync(new URL('./impuestos-pestana.mjs', import.meta.url), 'utf8')
 // EL CANARIO SE MUDA CON EL CÓDIGO (06/08). La reconstrucción partió el generador de 1.253 líneas:
@@ -242,23 +243,23 @@ test('LOS DOS RÓTULOS DEL CONTRATO están, una sola vez, y con el texto exacto'
   assert.equal(r.destino.iibb, g.filasCalendario.iibb)
 })
 
-test('LA POSICIÓN VA PRIMERO: hero, riesgo, calendario y financiamiento ARRIBA del detalle', () => {
-  // La orden del dueño: "la pantalla muestra PRIMERO posición, vencimientos, riesgo y proyección;
-  // después el detalle técnico". Y entre esos cuatro, el AGREGADO antes que su detalle: el calendario
-  // línea por línea es el respaldo del cuadro de 30/60/90, no la portada.
+test('LA POSICIÓN VA PRIMERO, Y AHORA ES LO ÚNICO QUE VA ARRIBA DEL DETALLE', () => {
+  // ═══ EL REDISEÑO DEL 04/09/2026 ═══
+  //
+  // El dueño, mirando la pestaña renderizada: "no me sirven del cuadro 1 al 3, veo del 4 en
+  // adelante". Entre el hero y el primer número que él usa había treinta y dos renglones: el riesgo
+  // 30/60/90, el calendario de vencimientos y el financiamiento. Ahora el hero cae directamente
+  // sobre la sección 1, que es el cuadro de IVA.
   const g = armar()
   const hero = filaDe(g, /^LA POSICIÓN AL/)
-  const riesgo = filaDe(g, /^1 · RIESGO Y PROYECCIÓN/)
-  const calend = filaDe(g, /^2 · CALENDARIO DE VENCIMIENTOS/)
-  const financ = filaDe(g, /^3 · FINANCIAMIENTO/)
-  const detalle = filaDe(g, /^4 · IVA — LA DDJJ OFICIAL/)
-  assert.ok(hero > 0 && riesgo > hero && calend > riesgo && financ > calend && detalle > financ,
-    `orden real: hero ${hero}, riesgo ${riesgo}, calendario ${calend}, financiamiento ${financ}, detalle ${detalle}`)
-  assert.ok(g.filasCalendario.iva > financ, 'el IVA a pagar es detalle: va abajo')
+  const detalle = filaDe(g, /^1 · IVA — LA DDJJ OFICIAL/)
+  assert.ok(hero > 0 && detalle > hero, `orden real: hero ${hero}, detalle ${detalle}`)
+  assert.equal(detalle - hero, 10, 'entre el titular y el primer cuadro no puede haber otra pantalla')
+  assert.ok(g.filasCalendario.iva > detalle, 'el IVA a pagar es detalle: va abajo')
   // Y la posición queda congelada ENTERA, o se va al scrollear y no sirve de nada. El número sale
   // del hero: con un 12 tipeado, un renglón más arriba dejaba el último sub-ítem fuera del congelado.
   assert.ok(g.congeladas >= g.hero.hasta, `congela ${g.congeladas} filas y el hero llega hasta la ${g.hero.hasta}`)
-  assert.ok(g.congeladas < riesgo, 'congelar el detalle además de la posición se come media pantalla')
+  assert.ok(g.congeladas < detalle, 'congelar el detalle además de la posición se come media pantalla')
 })
 
 test('el TITULAR que la piel agranda es la fila que decide, y el hero se declara entero', () => {
@@ -271,7 +272,7 @@ test('el TITULAR que la piel agranda es la fila que decide, y el hero se declara
   // Y el rango del hero contiene al titular y a los tres totales, sin desbordar al riesgo.
   assert.ok(g.hero.desde <= g.titular && g.titular <= g.hero.hasta)
   assert.equal(String(g.filas[g.hero.desde - 1][0]).startsWith('LA POSICIÓN AL'), true)
-  assert.ok(g.hero.hasta < filaDe(g, /^1 · RIESGO Y PROYECCIÓN/), 'el hero termina antes de la sección 1')
+  assert.ok(g.hero.hasta < filaDe(g, /^1 · IVA — LA DDJJ OFICIAL/), 'el hero termina antes de la sección 1')
 })
 
 test('la pestaña cumple su propia gramática — cero defectos de patrón', () => {
@@ -305,12 +306,21 @@ test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
   assert.ok(g.ambar.some((x) => x.mes === 8 && x.fila === fDDJJ))
 })
 
-test('el parámetro de alícuota queda ABAJO DE TODO: ninguna fila nueva lo corre', () => {
-  // El rango con nombre ALICUOTA_IVA apunta a esa celda. Una fila insertada arriba lo reapunta a
-  // otra cosa, y toda la proyección de IVA se calcularía con alícuota cero.
+test('el parámetro de alícuota vive DENTRO de su bloque, no huérfano al pie', () => {
+  // ═══ LO QUE SE ARREGLÓ (04/09/2026) ═══
+  //
+  // El bloque se llamaba "Lo que falta, y el parámetro que edita el dueño" —una "y" en el título de
+  // un bloque es la confesión de que son dos ideas— y encima la alícuota no quedaba adentro: la
+  // separaba una fila en blanco, así que se leía como un resto suelto al pie de la pestaña y no como
+  // lo que es, el único valor del archivo que el dueño firma a mano. Ahora es la PRIMERA fila de su
+  // bloque, que pasó a llamarse por lo que de verdad contiene: los supuestos y los huecos.
   const g = armar()
-  assert.equal(g.filaAlicuotaIva, g.filas.length, 'la alícuota es la última fila de la pestaña')
+  const bloque = filaDe(g, /^7 · SUPUESTOS Y HUECOS/)
+  assert.ok(bloque > 0, 'el bloque tiene que existir y llamarse por su única idea')
+  assert.equal(g.filaAlicuotaIva, bloque + 1, 'el parámetro es la primera fila de su bloque')
   assert.equal(g.filas[g.filaAlicuotaIva - 1][0], 'Alícuota general de IVA')
+  // Y ninguna fila en blanco lo separa del título de su bloque: eso es lo que lo dejaba huérfano.
+  assert.notEqual(String(g.filas[bloque][0] ?? '').trim(), '')
 })
 
 test('IIBB PROYECTA de julio en adelante: seis meses en blanco era el hueco', () => {
@@ -368,6 +378,8 @@ test('ningún archivo del generador pasa de 500 líneas', () => {
   const archivos = [
     './impuestos-pestana.mjs', '../lib/impuestos-informe.mjs', '../lib/impuestos-grilla.mjs', '../lib/impuestos-bloques.mjs',
     '../lib/impuestos-posicion.mjs', '../lib/impuestos-cuadro.mjs', '../lib/impuestos-fuentes.mjs',
+    '../lib/impuestos-base-proyeccion.mjs', '../lib/impuestos-alicuota.mjs',
+    '../lib/huella-formato-layout.mjs',
     '../lib/impuestos-piel.mjs', '../lib/vencimientos-fiscales.mjs',
   ]
   for (const a of archivos) {
@@ -376,23 +388,30 @@ test('ningún archivo del generador pasa de 500 líneas', () => {
   }
 })
 
-test('las filas del CALENDARIO declaran suyo todo su ancho: I:M van con centinela, no vacías', () => {
-  // ═══ EL RESIDUO I20:M20 (06/08) ═══
+test('las filas del HERO declaran suyo todo su ancho: C:O van con centinela, no vacías', () => {
+  // ═══ EL RESIDUO I20:M20 (06/08), Y POR QUÉ ESTE TEST SE MUDÓ AL HERO (04/09/2026) ═══
   //
-  // La pestaña arrastraba cinco "⚠ PROYECCIÓN" a la derecha de "18/08 · Planes de pago F931 (ARCA)".
-  // Ese texto es de la fila "DDJJ presentada", que en el layout anterior estaba en la 20 y hoy está en
-  // la 57. Lo primero que hubo que probar es de quién dice el generador que son esas celdas: si las
-  // dejara como cadena vacía, `fusionar()` las leería como "no son mías, preservá" y el residuo sería
-  // legítimo. Las declara suyas con VACIO —esto lo fija— y la limpieza la desbloquea `huella-celda`.
+  // La pestaña arrastraba cinco "⚠ PROYECCIÓN" a la derecha de una fila angosta. Ese texto era de la
+  // fila "DDJJ presentada" de un layout anterior. Lo que hay que probar es de quién dice el generador
+  // que son esas celdas: si las dejara como cadena vacía, `fusionar()` las leería como "no son mías,
+  // preservá" y el residuo sería legítimo. Las declara suyas con VACIO —esto lo fija— y la limpieza
+  // la desbloquea `huella-celda`.
+  //
+  // Las filas angostas eran las del calendario; el calendario se fue. Ahora son las del HERO, que
+  // usan A y B (a lo sumo C) y dejan el resto de su ancho para limpiar. Y el riesgo es MAYOR que
+  // antes: este rediseño acorta la pestaña treinta y dos renglones, así que debajo de cada fila del
+  // hero hay contenido de un layout que ya no existe.
   const g = armar()
-  const filasCal = g.filas
+  const filasHero = g.filas
     .map((f, i) => ({ f, i }))
-    .filter(({ f }) => /^\d{2}\/\d{2} · .+ · (ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/.test(String(f[0] ?? '')))
-  assert.ok(filasCal.length >= 4, `esperaba filas de calendario y encontré ${filasCal.length}`)
-  for (const { f, i } of filasCal) {
-    // A el rótulo, B el importe; de C a O es ancho propio que tiene que limpiarse solo.
-    for (let j = 2; j < 15; j++) {
-      assert.equal(f[j], VACIO, `fila ${i + 1} col ${j + 1}: una fila del calendario no puede dejar ancho sin centinela`)
+    .filter(({ i }) => i + 1 >= g.hero.desde && i + 1 <= g.hero.hasta)
+    .filter(({ f }) => /^(⇒|\s{2,}·)/.test(String(f[0] ?? '')))
+  assert.ok(filasHero.length >= 6, `esperaba filas de hero y encontré ${filasHero.length}`)
+  for (const { f, i } of filasHero) {
+    // A el rótulo, B el importe, C la etiqueta del mes cuando la hay; de ahí a O es ancho propio.
+    const desde = String(f[2] ?? '') === VACIO ? 2 : 3
+    for (let j = desde; j < 15; j++) {
+      assert.equal(f[j], VACIO, `fila ${i + 1} col ${j + 1}: una fila del hero no puede dejar ancho sin centinela`)
     }
   }
 })
@@ -406,8 +425,8 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // celda que la escritura dejaba vacía. El residuo de I20:M20 seguía visible con este test en verde.
   const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
   const g = armar()
-  const idxCal = g.filas.findIndex((f) => /^\d{2}\/\d{2} · Planes de pago F931/.test(String(f[0] ?? '')))
-  assert.ok(idxCal > 0, 'tiene que haber una fila de calendario de planes')
+  const idxCal = g.filas.findIndex((f) => /^⇒ DEUDA PENDIENTE/.test(String(f[0] ?? '')))
+  assert.ok(idxCal > 0, 'tiene que haber una fila angosta del hero')
   // La pestaña de hoy: lo que el generador escribió, más el residuo del layout viejo en I:M.
   const huellas = new Map(huellasDeEscritura(g.filas).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
   const hoy = g.filas.map((f, i) => (i === idxCal
@@ -422,4 +441,23 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
   assert.equal(enPestana[idxDDJJ][8], '▲ PROYECCIÓN')
+})
+
+test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {
+  // ═══ EL CRITERIO ES EL DEL AUDITOR, NO UNO INVENTADO ═══
+  //
+  // `defectos-pantalla.mjs` marca `texto_cortado` cuando el texto no entra Y la celda de al lado está
+  // OCUPADA: con la vecina vacía el texto se derrama y se lee entero, así que un renglón suelto puede
+  // ser largo. Lo que nunca puede ser largo es un rótulo que tiene un importe pegado a la derecha —
+  // ahí no hay adónde derramar y lo que se corta es el final, que es donde suele estar la condición
+  // ("PENDIENTE", "por vencer", "que todavía no vencieron").
+  //
+  // 87 = 500 px / (10 px × 0,57), la misma cuenta que hace el auditor con el ancho real de la columna
+  // A de esta pestaña (`ANCHO_ROTULO`).
+  const CABEN = Math.floor(ANCHO_ROTULO / (10 * 0.57))
+  const largos = armar().filas
+    .map((f, i) => ({ fila: i + 1, a: String(f[0] ?? ''), b: String(f[1] ?? '') }))
+    .filter((x) => x.a && x.a !== VACIO && x.b && x.b !== VACIO && !x.a.startsWith('='))
+    .filter((x) => x.a.length > CABEN)
+  assert.deepEqual(largos, [], `rótulos que se cortan con un importe al lado (entran ${CABEN} caracteres)`)
 })

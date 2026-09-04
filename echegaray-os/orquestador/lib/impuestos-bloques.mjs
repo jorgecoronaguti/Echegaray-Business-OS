@@ -1,7 +1,7 @@
-// EL DETALLE TÉCNICO DE "IMPUESTOS Y FINANCIEROS" — las secciones 4 a 10, cada una con su driver.
+// EL DETALLE TÉCNICO DE "IMPUESTOS Y FINANCIEROS" — las secciones 1 a 7, cada una con su driver.
 //
-// Va DESPUÉS de la posición y del calendario, y es a propósito: la pantalla contesta primero "cuánto
-// tengo, qué vence y cuánto necesito", y recién después "cómo se calculó". Acá vive el cómo.
+// Va DESPUÉS de la posición, y es a propósito: la pantalla contesta primero "cuánto tengo que pagar,
+// cuándo el IVA pide caja y cuánto debo", y recién después "cómo se calculó". Acá vive el cómo.
 
 import { seccion, sub as subItem, total as rotuloTotal } from './patron-pestana.mjs'
 import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
@@ -20,9 +20,10 @@ import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-for
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 import { ALERTA } from './glifos.mjs'
+import { ROTULO_ALICUOTA, ALICUOTA_POR_DEFECTO } from './impuestos-alicuota.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 4 · IVA — LA DDJJ OFICIAL (F.2051)
+// 1 · IVA — LA DDJJ OFICIAL (F.2051)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // El IVA se lee de la F.2051 presentada, que es la fuente primaria, y no del cálculo por
@@ -122,8 +123,11 @@ export function mesDeLaUltimaDDJJ(porOrigen = {}) {
 }
 
 export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
-  G.push([seccion(4, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
-  G.cabecera()
+  G.push([seccion(1, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
+  // LA FILA DE ENCABEZADO SE DEVUELVE: el hero lee de ahí el NOMBRE del mes en que el IVA empieza a
+  // salir de la caja. Sin devolverla habría que contarla desde afuera, que es cómo una referencia se
+  // queda apuntando a la fila de al lado el día que el bloque cambia de forma.
+  const fCabecera = G.cabecera()
   const porMesOf = new Map((ivaOficial ?? []).filter((d) => d.periodo).map((d) => [Number(String(d.periodo).slice(5, 7)), d]))
   const mesesOf = M12.filter((m) => porMesOf.has(m))
   const proyIva = proy?.meses ?? []
@@ -203,11 +207,11 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
     `F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. "${ALERTA} ARCA (sin DDJJ)" es el período cerrado calculado sobre los comprobantes reales que todavía no se presentaron; "${ALERTA} ARCA parcial" es el mes en curso, que se completa solo a medida que ARCA se carga; "${ALERTA} PROYECCIÓN" no tiene ni comprobantes: es un cálculo, no un hecho.`, { meses, totaliza: false })
   G.blanco()
   const porOrigen = Object.fromEntries(Object.values(ORIGEN).map((o) => [o, meses.filter((m) => origen(m) === o)]))
-  return { fDeb, fCred, fAPagar, fLibre, fDDJJ, meses, mesesOf, ancla, anio, porOrigen }
+  return { fDeb, fCred, fAPagar, fLibre, fDDJJ, fCabecera, meses, mesesOf, ancla, anio, porOrigen }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 5 · INGRESOS BRUTOS SAN JUAN — AHORA CON PROYECCIÓN
+// 2 · INGRESOS BRUTOS SAN JUAN — AHORA CON PROYECCIÓN
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // EL HUECO QUE ESTO CIERRA (06/08). El bloque tenía las seis DDJJ presentadas y de julio en adelante
@@ -226,7 +230,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
 // proyectados se mueven juntos en vez de contarse cada uno por su lado.
 
 export function bloqueIibb(G, { anio, iibb, proy }) {
-  G.push([seccion(5, 'Ingresos Brutos San Juan — ¿cuánto se debe cada mes?')])
+  G.push([seccion(2, 'Ingresos Brutos San Juan — ¿cuánto se debe cada mes?')])
   G.cabecera()
   const porMes = new Map(iibb.map((d) => [Number(String(d.periodo ?? '').slice(5, 7)), d]))
   const reales = M12.filter((m) => porMes.has(m))
@@ -262,7 +266,7 @@ export function bloqueIibb(G, { anio, iibb, proy }) {
     'Base × alícuota. Es el driver, no un promedio: si el mes proyectado cambia de cobranzas, el impuesto cambia.', { meses })
   G.mensual('Retenciones sufridas',
     (m) => (esProy(m) ? '=0' : `=${ref(m, IIBB_COL.retenciones)}`),
-    'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 6. Los meses proyectados van en CERO a propósito: proyectar retenciones sería inventar cuánto le va a retener cada cliente, y de más (una retención que no ocurre baja el impuesto a pagar y sube el piso de caja).', { meses })
+    'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3. Los meses proyectados van en CERO a propósito: proyectar retenciones sería inventar cuánto le va a retener cada cliente, y de más (una retención que no ocurre baja el impuesto a pagar y sube el piso de caja).', { meses })
   const fAPagar = G.mensual(CALENDARIO_IMPUESTOS.rotulos.iibb,
     (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRet}-${prev(m)})`,
     'Impuesto menos retenciones menos el saldo a favor que venía. ESTA es la fila que leen el Libro y el cash flow.', { meses })
@@ -273,21 +277,21 @@ export function bloqueIibb(G, { anio, iibb, proy }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 6 · RETENCIONES SUFRIDAS — referencia, no suma
+// 3 · RETENCIONES SUFRIDAS — referencia, no suma
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // Una retención es impuesto YA PAGADO. No se suma al hero porque ya está DENTRO de la libre
 // disponibilidad del F.2051 y de la DDJJ de Rentas: sumarla otra vez la contaría dos veces.
 
 export function bloqueRetenciones(G, { anio }) {
-  G.push([seccion(6, 'Retenciones sufridas — ¿cuánto impuesto ya pagado está inmovilizado?')])
+  G.push([seccion(3, 'Retenciones sufridas — ¿cuánto impuesto ya pagado está inmovilizado?')])
   G.cabecera()
   // RANGO ABIERTO. Cerrado en la fila 400 funcionaba con 357 filas de Cobranzas y reventaba callado
   // en la 401: el número que decide sale de la fuente con rango abierto.
   const retMes = (col) => (m) => `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q)=${anio})*(MONTH(Cobranzas!$Q$5:$Q)=${m})*IF(ISNUMBER(Cobranzas!$${col}$5:$${col});Cobranzas!$${col}$5:$${col};0))`
   const r0 = G.n() + 1
-  G.mensual('IVA', retMes('X'), 'Cobranzas · ya computada en el "a pagar" de la sección 4.')
+  G.mensual('IVA', retMes('X'), 'Cobranzas · ya computada en el "a pagar" de la sección 1.')
   G.mensual('Ganancias', retMes('Y'), 'Cobranzas · es pago a cuenta del impuesto anual: no se recupera hasta la DDJJ.')
-  G.mensual('Ingresos Brutos', retMes('Z'), 'Cobranzas · ya viene declarada en la DDJJ de Rentas de la sección 5.')
+  G.mensual('Ingresos Brutos', retMes('Z'), 'Cobranzas · ya viene declarada en la DDJJ de Rentas de la sección 2.')
   const r1 = G.n()
   const fTotal = G.mensual(rotuloTotal('Total retenido'), (m) => `=SUM(${cmes(m)}${r0}:${cmes(m)}${r1})`,
     'Plata de la empresa que está en manos del fisco. NO se suma a la posición: ya está adentro de los dos saldos a favor.')
@@ -296,7 +300,7 @@ export function bloqueRetenciones(G, { anio }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 7 · OTROS IMPUESTOS
+// 4 · OTROS IMPUESTOS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // EL BLOQUE MUERTO QUE SE ENTIERRA (06/08) — el defecto E. La proyección del impuesto al cheque vivía
@@ -307,7 +311,7 @@ export function bloqueRetenciones(G, { anio }) {
 // donde tiene que estar un impuesto que se paga.
 
 export function bloqueOtros(G, { anio, C }) {
-  G.push([seccion(7, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
+  G.push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   G.cabecera()
   const o0 = G.n() + 1
   const fCheque = G.mensual('Impuesto al cheque (Ley 25.413)', (m) => formulaImpuestoCheque(BANCO_RAW, anio, m),
@@ -329,11 +333,11 @@ export function bloqueOtros(G, { anio, C }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 8 · PLANES DE PAGO F931
+// 5 · PLANES DE PAGO F931
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloquePlanes(G, { anio, C, planes }) {
-  G.push([seccion(8, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
+  G.push([seccion(5, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
   G.cabecera()
   const q0 = G.n() + 1
   const colPlan = (campo) => (campo === 'concepto' ? C.concepto : C.detalle)
@@ -351,23 +355,23 @@ export function bloquePlanes(G, { anio, C, planes }) {
   }
   const q1 = G.n()
   const fTotal = G.mensual(rotuloTotal('Cuotas del año'), (m) => `=SUM(${cmes(m)}${q0}:${cmes(m)}${q1})`,
-    'Lo que sale por planes previsionales cada mes. Es el TOTAL DEL AÑO, pagadas incluidas: lo pendiente está en la sección 9.')
+    'Lo que sale por planes previsionales cada mes. Es el TOTAL DEL AÑO, pagadas incluidas: lo pendiente está en la sección 6.')
   G.blanco()
   return { fTotal }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 9 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
+// 6 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal }) {
-  G.push([seccion(9, 'Deuda financiera — cuánto se va por mes y cuánto FALTA pagar')])
+  G.push([seccion(6, 'Deuda financiera — cuánto se va por mes y cuánto FALTA pagar')])
   G.cabecera()
   const fCuota = G.mensual('Prendario Ford XLS · Santander — cuota',
     (m) => formulaCuotaPrendario(C, anio, m),
     'Compras, rubro "Financiero": el cuadro de amortización del banco, cuota por cuota, por su fecha prevista de pago (el banco debita el día 7). NO sale del extracto: un SUMIF sobre el extracto crece cada vez que se importa un mes más de banco, y así declaraba $2.567.316 de cuota donde la cuota es $1.282.811.')
   G.mensual('Planes previsionales F931 — cuota', (m) => `=${cmes(m)}${fPlanTotal}`,
-    'Traído de la sección 8: un solo cálculo, un solo lugar.')
+    'Traído de la sección 5: un solo cálculo, un solo lugar.')
   const fSalida = G.mensual(rotuloTotal('Salida financiera del mes'), (m) => `=${cmes(m)}${fCuota}+${cmes(m)}${fPlanTotal}`,
     'Todo lo que se va por deuda con instrumento, mes a mes.')
   // ═══ "PENDIENTE" QUIERE DECIR PENDIENTE (el defecto B) ═══
@@ -392,19 +396,46 @@ export function bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 10 · LO QUE FALTA Y EL PARÁMETRO — abajo de todo, para que ninguna fila nueva lo corra
+// 7 · SUPUESTOS Y HUECOS — lo que este cuadro ASUME, y lo que NO sabe
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 export function bloqueCierre(G, { proy, vencimientos }) {
-  G.push([seccion(10, 'Lo que falta, y el parámetro que edita el dueño')])
-  // UN HUECO SE VE COMO UN HUECO, NO COMO UN CERO. El dueño: "$0 y 'no lo sabemos' no son lo mismo y
-  // hoy se ven igual". "s/d" es TEXTO a propósito: SUM() lo ignora, así que el hueco queda a la vista
-  // sin ensuciar un solo total y sin que aparezca un cero que después alguien sume de buena fe.
+  // ═══ EL BLOQUE MEZCLABA DOS IDEAS Y DEJABA EL PARÁMETRO HUÉRFANO (04/09/2026) ═══
+  //
+  // Se llamaba "Lo que falta, y el parámetro que edita el dueño" —una "y" en el título de un bloque
+  // es la confesión de que son dos— y encima la alícuota no quedaba adentro: la separaba una fila en
+  // blanco, así que se leía como un resto suelto al pie de la pestaña y no como lo que es, el único
+  // valor de todo el archivo que el dueño firma a mano.
+  //
+  // Es UNA sola idea, y el título nuevo la nombra: qué asume este cuadro y qué no sabe. Una alícuota
+  // es un supuesto declarado; un hueco es un supuesto que ni siquiera se puede cuantificar. El
+  // parámetro va PRIMERO porque es el único que se edita y el único que cambia un número de arriba.
+  G.push([seccion(7, 'Supuestos y huecos — lo que este cuadro asume, y lo que no sabe')])
+  // LA ALÍCUOTA VIVE EN UNA CELDA CON NOMBRE, NO ADENTRO DE UNA FÓRMULA. La skill de impuestos
+  // prohíbe afirmar una alícuota vigente sin verificarla, y el OS no puede verificar una norma en
+  // cada corrida. Así que el OS no la afirma — la LEE de acá, y la firma quien puede.
+  //
+  // SI YA HAY UN VALOR, NO SE PISA: `alicuotaVigente` sale de la celda leída antes de escribir. Y un
+  // 0 no cuenta como valor: ver lib/impuestos-alicuota.mjs, donde ese 0 apagó la proyección entera.
+  const fAlic = G.lista(ROTULO_ALICUOTA, [proy?.alicuotaVigente ?? ALICUOTA_POR_DEFECTO],
+    `PARÁMETRO EDITABLE · lo usan la proyección de IVA de la sección 1 y la base de IIBB de la 2, por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
+    + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.')
+  // ═══ DOCE «s/d» NO INFORMAN MÁS QUE UNO (04/09/2026) ═══
+  //
+  // Un hueco se ve como un hueco y no como un cero —el dueño: "$0 y 'no lo sabemos' no son lo mismo y
+  // hoy se ven igual"— y "s/d" es TEXTO a propósito: SUM() lo ignora, así que no ensucia un total ni
+  // deja un cero que después alguien suma de buena fe.
+  //
+  // Pero estaba repetido en las doce columnas del mes MÁS la del total: tres filas de pared. Que un
+  // impuesto no esté cuantificado es UN hecho del año, no doce hechos mensuales. Se dice una vez, en
+  // la columna del Total, que es adonde el ojo va a buscar la cifra del año, y los meses quedan
+  // vacíos — que es lo que de verdad hay en ellos.
   const SD = 's/d'
-  G.push([`${ALERTA} Tasa municipal de seguridad e higiene`, ...Array(12).fill(SD), 'sin cuantificar',
-    'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.'])
-  G.push([`${ALERTA} Impuesto de sellos`, ...Array(12).fill(SD), 'sin cuantificar',
-    'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. Para cerrarlo hace falta la lista de contratos firmados en el año.'])
+  const hueco = (rotulo, porQue) => G.push([`${ALERTA} ${rotulo}`, ...Array(12).fill(VACIO), SD, porQue])
+  hueco('Tasa municipal de seguridad e higiene',
+    'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.')
+  hueco('Impuesto de sellos',
+    'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. Para cerrarlo hace falta la lista de contratos firmados en el año.')
   // LA PROSA VA EN LA COLUMNA DE PROCEDENCIA (la última), NO EN LA DE IMPORTES. En la columna B se
   // dibuja con formato de moneda y queda cortada a 108 píxeles: un texto de trescientos caracteres
   // sentado donde el ojo busca plata.
@@ -424,19 +455,28 @@ export function bloqueCierre(G, { proy, vencimientos }) {
       + 'Si ese aviso hace falta, va en esta sección o en la fila "DDJJ presentada" — nunca en una celda '
       + 'que otras fórmulas suman.')
   }
-  G.push([`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
-  G.push([`${ALERTA} Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.`])
-  if (proy?.meses?.length) G.push([`${ALERTA} IVA de ${MES[proy.meses[0] - 1]} a diciembre: ${proy.supuesto}`])
-  G.blanco()
-
-  // LA ALÍCUOTA VIVE EN UNA CELDA CON NOMBRE, NO ADENTRO DE UNA FÓRMULA. La skill de impuestos
-  // prohíbe afirmar una alícuota vigente sin verificarla, y el OS no puede verificar una norma en
-  // cada corrida. Así que el OS no la afirma — la LEE de acá, y la firma quien puede.
+  // ═══ LOS RENGLONES QUE NO ENTRABAN EN SU PROPIA COLUMNA (04/09/2026) ═══
   //
-  // AL FINAL DE LA PESTAÑA, Y ES DELIBERADO: una fila nueva arriba correría el rango con nombre.
-  // SI YA HAY UN VALOR, NO SE PISA: `alicuotaVigente` sale de la celda leída antes de escribir.
-  const fAlic = G.lista('Alícuota general de IVA', [proy?.alicuotaVigente ?? 0.21],
-    `PARÁMETRO EDITABLE · lo usa la proyección de IVA de la sección 4 y la base de IIBB de la 5, por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
-    + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.')
+  // Éste medía 223 caracteres y el de abajo 109, en una columna de 500 px donde entran 87.
+  // `reparar-textos.mjs` los cuenta como defecto de pantalla y dice explícitamente que los tiene que
+  // acortar el GENERADOR: ensanchar la columna a 1.300 px descuadraría la pestaña entera. Lo que se
+  // lee es la afirmación; el porqué —que es lo que la hace verificable— viaja a la columna de
+  // procedencia, que es adonde este archivo manda toda la prosa larga.
+  G.lista(`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO`, [], vencimientos.iibb)
+  G.lista(`${ALERTA} Los pagos de IVA e IIBB no se cargan en Compras`, [],
+    'El cash flow los ve por ESTA pestaña, no por Compras: si alguien los cargara además en Compras, '
+    + 'la misma plata saldría dos veces del flujo sin que ningún total se rompa.')
+  // ═══ EL RENGLÓN DE 592 CARACTERES (04/09/2026) ═══
+  //
+  // Esta fila publicaba el supuesto ENTERO de la proyección de IVA en la columna A: 592 caracteres en
+  // una columna de 500 px, donde entran 87. `reparar-textos.mjs` lo cuenta como defecto de pantalla y
+  // dice explícitamente que lo tiene que acortar el generador, no el reparador —ensanchar la columna
+  // a 3.400 px rompería toda la pestaña—. Lo que se lee en pantalla es una línea; el supuesto
+  // completo, que es lo que hace auditable la proyección, viaja en la columna de procedencia, que es
+  // adonde este archivo manda toda la prosa larga.
+  if (proy?.meses?.length) {
+    G.lista(`${ALERTA} IVA de ${MES[proy.meses[0] - 1]} a diciembre: es PROYECCIÓN, no un hecho`, [], proy.supuesto)
+  }
+  G.blanco()
   return { fAlic }
 }

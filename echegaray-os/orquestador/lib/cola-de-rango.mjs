@@ -20,6 +20,8 @@
 // PROBAR que llegó este generador — por dimensión declarada o por medición de lo que hay.
 
 import { VACIO, letraCol, colaLimpiable } from './preservar-anotaciones.mjs'
+import { MIA_PROBADA } from './no-borrar.mjs'
+import { formaDeGenerador } from './residuo-propio.mjs'
 
 /**
  * ¿HASTA QUÉ FILA HAY ALGO ESCRITO? 1-based; 0 = no hay nada.
@@ -85,7 +87,7 @@ export function conColaLimpiable(filas = [], { ancho, alto, quien = 'este genera
  *        prosa del dueño en Jornales, por ejemplo—: van con '' y se conservan.
  * @returns {{filas:any[][], limpiadas:number, preservadas:number[], desde:number, hasta:number}}
  */
-export function conColaMedida(filas = [], previo = [], { ancho, columnasAjenas = [], conPrueba = false, mios = new Set() } = {}) {
+export function conColaMedida(filas = [], previo = [], { ancho, columnasAjenas = [], conPrueba = false, mios = new Set(), probarPorForma = false } = {}) {
   if (!(ancho > 0)) throw new Error('conColaMedida: hay que declarar el ancho que ocupa el generador')
   const hasta = ultimaFilaConDato(previo)
   const vacio = { filas, limpiadas: 0, preservadas: [], desde: filas.length + 1, hasta }
@@ -98,9 +100,33 @@ export function conColaMedida(filas = [], previo = [], { ancho, columnasAjenas =
     ? colaLimpiable(cruda, mios).limpiar
     : cruda.map((_, i) => i))
   const ajenas = new Set(columnasAjenas)
-  const cola = cruda.map((_, i) => Array.from({ length: ancho }, (_, j) => (
-    limpiar.has(i) && !ajenas.has(j) ? VACIO : ''
-  )))
+  // ═══ UNA COLA QUE NO SE PUEDE BORRAR NO ES UNA COLA: ES UNA CAPA FÓSIL (04/09/2026) ═══
+  //
+  // `VACIO` dice "esta celda es mía y va vacía", y aguas abajo `huella-celda` sólo lo obedece si
+  // tiene huella propia de esa celda. Las celdas que escribió una versión del generador ANTERIOR al
+  // sistema de huellas no tienen ninguna, así que la guarda responde «nunca fue mía y tiene algo
+  // tuyo: no la piso» — y la cola queda publicada para siempre. Medido en «Impuestos y Financieros»
+  // al bajar de 105 filas a 68: las filas 77, 101, 103 y 105 sobrevivieron a cuatro corridas
+  // seguidas, con un renglón de 592 caracteres y dos alícuotas sueltas que el censo sigue contando.
+  //
+  // `MIA_PROBADA` es el tercer estado que `no-borrar.mjs` obedece SIN huella. Se usa sólo cuando lo
+  // que hay hoy en esa celda tiene FORMA DE GENERADOR —una fórmula, un importe, una fecha, una marca
+  // tipográfica del OS—, que es el mismo criterio con el que CAJA y Proveedores ya barren su cola. Un
+  // TEXTO LIBRE no la tiene: si el dueño escribió una nota debajo del cuadro, esa nota se conserva.
+  //
+  // VA DETRÁS DE UNA BANDERA Y APAGADA POR DEFECTO. Saltear la guarda de borrado es exactamente la
+  // forma que tomaron las pérdidas de trabajo del dueño, y catorce pestañas llaman a esta función.
+  // Se enciende en la que se MIDIÓ el fósil y se verificó el resultado contra el PDF; las demás
+  // siguen igual que antes, hasta que alguien las mida.
+  const cola = cruda.map((fila, i) => Array.from({ length: ancho }, (_, j) => {
+    if (!limpiar.has(i) || ajenas.has(j)) return ''
+    // SÓLO SE SUBE DE VACIO A MIA_PROBADA, NUNCA SE BAJA. Lo que no se puede probar por la forma
+    // sigue yendo con `VACIO` exactamente como antes, y quien decide si se borra sigue siendo la
+    // guarda que relee el destino: esto agrega una prueba, no saca una protección.
+    if (!probarPorForma) return VACIO
+    const hoy = (fila || [])[j]
+    return String(hoy ?? '').trim() && formaDeGenerador(hoy) ? MIA_PROBADA : VACIO
+  }))
   return {
     filas: [...filas, ...cola],
     limpiadas: limpiar.size,

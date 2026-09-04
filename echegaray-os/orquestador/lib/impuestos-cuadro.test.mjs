@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import {
   RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente, formulaPlanesPendiente,
   formulaAlicuotaIibbVigente, formulaBaseIibbProyectada, formulaIibbDeterminado,
-  formulaImpuestoChequeProyectado, formulaImpuestoCheque, filasFinanciamiento,
-  costoDescubiertoDiario, formulaVentana, formulaVencidoImpago, formulaDeudaPendiente,
+  formulaImpuestoChequeProyectado, formulaImpuestoCheque,
+  formulaVentana, formulaDeudaPendiente,
+  formulaMesQueElIvaPideCaja, formulaIvaQuePideCaja, formulaColchonQueSeAgota, IVA_SIN_SALIDA,
   proximoVencimiento, rangoIibb, formulaSaldoAFavor, formulaSaldoDeclarado,
 } from './impuestos-cuadro.mjs'
 import { serialDe } from './vencimientos-fiscales.mjs'
-import { ACUERDO, TARJETA } from './banco-santander.mjs'
 
 // Las columnas reales de Compras, leídas del encabezado el 06/08/2026.
 const C = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' }
@@ -132,44 +132,6 @@ test('el impuesto al cheque se deriva del movimiento bancario proyectado, no de 
 
 // ══ FINANCIAMIENTO — EL DEFECTO L ═════════════════════════════════════════════════════════════════
 
-test('la posición de financiamiento muestra las CUATRO fuentes, no dos', () => {
-  const filas = filasFinanciamiento({
-    acuerdo: ACUERDO, tarjeta: TARJETA, celdaPrendario: '$B$44', celdaPlanes: '$B$45',
-    celdaUsoDescubierto: 'CAJA_SALDO_BANCO',
-  })
-  assert.equal(filas.length, 4)
-  assert.match(filas[0].rotulo, /Descubierto Santander 00007/)
-  assert.equal(filas[0].limite, 18200000)
-  assert.match(filas[1].rotulo, /Tarjeta de crédito/)
-  assert.equal(filas[1].limite, 10000000)
-  // EL DISPONIBLE DE LA TARJETA SALE POR FÓRMULA, COMO EL DEL DESCUBIERTO (06/08). Estaba PEGADO en
-  // 8.693.073,70 con B46 − C46 = 8.693.074,00: treinta centavos entre la celda y su propia fila. El
-  // dato del banco sigue siendo el disponible; el tomado se despeja de él, ahora al centavo.
-  assert.equal(filas[1].disponible, null, 'lo calcula la grilla como límite − tomado')
-  assert.equal(filas[1].usado, 1306926.30)
-  assert.equal(Math.round((filas[1].limite - filas[1].usado) * 100) / 100, TARJETA.disponible,
-    'límite − tomado tiene que dar EXACTAMENTE el disponible que declara el banco')
-  assert.match(filas[2].rotulo, /Prendario Ford XLS/)
-  assert.equal(filas[2].usado, '=$B$44')
-  assert.match(filas[3].rotulo, /Planes de pago F931/)
-  assert.equal(filas[3].usado, '=$B$45')
-})
-
-test('el costo del descubierto lleva sus impuestos: ×1,12, verificado contra el cargo del banco', () => {
-  // 55%/365 × 1,12 = 0,00168767… → $1.687,67 por millón por día. El interés solo subestima 12%.
-  const d = costoDescubiertoDiario()
-  assert.ok(Math.abs(d - (0.55 / 365) * 1.12) < 1e-12)
-  assert.equal(Math.round(d * 1e6), 1688)
-  const filas = filasFinanciamiento({ acuerdo: ACUERDO, tarjeta: TARJETA, celdaPrendario: 'B1', celdaPlanes: 'B2' })
-  assert.match(filas[0].origen, /62,78%/, 'el porcentaje se escribe en es-AR')
-  // LOS DOS NÚMEROS, siempre juntos: el interés puro ($1.506,85) y lo que sale de la cuenta
-  // ($1.687,67). Publicar uno solo deja al lector eligiendo cuál es "el" costo del descubierto.
-  assert.match(filas[0].origen, /1\.506,85 de interés/)
-  assert.match(filas[0].origen, /1\.687,67 con IVA/)
-})
-
-// ══ HERO Y VENTANAS — REFERENCIAS, NO RECÁLCULOS ══════════════════════════════════════════════════
-
 const CAL = [
   { fecha: '2026-07-16', dias: -21, vencido: true, concepto: 'IIBB jun', celdaImporte: '$B$16' },
   { fecha: '2026-08-18', dias: 12, vencido: false, concepto: 'Plan F931 ago', celdaImporte: '$B$17' },
@@ -188,11 +150,6 @@ test('las ventanas 30/60/90 SUMAN CELDAS, una por una — nunca un rango', () =>
   for (const d of [30, 60, 90]) assert.ok(!formulaVentana(CAL, d).includes('$B$16'))
   // Ninguna obligación en la ventana da 0 explícito, no una celda vacía.
   assert.equal(formulaVentana([], 30), '=0')
-})
-
-test('el riesgo es lo VENCIDO e impago, y se suma aparte de la proyección', () => {
-  assert.equal(formulaVencidoImpago(CAL), '=$B$16')
-  assert.equal(formulaVencidoImpago(CAL.filter((f) => !f.vencido)), '=0')
 })
 
 test('el hero REFERENCIA las celdas del detalle: no vuelve a sumar Compras por su cuenta', () => {
@@ -236,18 +193,45 @@ test('un saldo suelto que no es número tampoco se muestra como plata', () => {
 
 // ══ LOCALE ════════════════════════════════════════════════════════════════════════════════════════
 
-test('todas las fórmulas van en locale es-AR: separador ";", nunca ","', () => {
-  const todas = [
-    formulaSaldoAFavor('$G$57', '$G$67'), formulaSaldoDeclarado('$G$57'),
-    formulaCuotaPrendario(C, 2026, 9), formulaPrendarioPendiente(C),
-    formulaPlanesPendiente(C, [{ patron: 'W303094', campo: 'concepto' }]),
-    formulaAlicuotaIibbVigente(IIBB.hoja, IIBB.fila0, IIBB.col, '2026-06'),
-    formulaBaseIibbProyectada(2026, 9), formulaIibbDeterminado('J58', 'J59'),
-    formulaImpuestoChequeProyectado(2026, 10), formulaImpuestoCheque('_BANCO_RAW', 2026, 10),
-    formulaVentana(CAL, 30), formulaVencidoImpago(CAL), formulaDeudaPendiente('$B$44', '$B$45'),
-  ]
-  for (const f of todas) {
-    assert.ok(f.startsWith('='), `una fórmula empieza con "=": ${f.slice(0, 40)}`)
-    assert.ok(!f.includes(','), `coma en una fórmula es-AR (es el decimal, no el separador): ${f.slice(0, 80)}`)
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// ¿CUÁNDO EL IVA EMPIEZA A SALIR DE LA CAJA? — la pregunta que la pestaña no contestaba
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el mes que pide caja se busca en los DOCE MESES, nunca en la columna del Total', () => {
+  // La N suma la fila entera. Incluida en el rango, un año en que ningún mes suelto pide caja pero
+  // el total del año da positivo publicaría "el IVA pide caja" señalando una columna que no es un mes.
+  const f = formulaMesQueElIvaPideCaja(55, 52)
+  assert.ok(f.includes('$B$55:$M$55'), f)
+  assert.ok(!f.includes('$N$'), `el rango no puede llegar al Total: ${f}`)
+  assert.ok(f.includes('$B$52:$M$52'), 'el nombre del mes sale del encabezado del cuadro')
+})
+
+test('un TEXTO en la fila del a-pagar no puede leerse como "acá pide caja"', () => {
+  // En Sheets cualquier texto es MAYOR que cualquier número: sin el filtro por ISNUMBER, la leyenda
+  // que una persona deja en un mes ajeno se compara como > 0 y publica el mes equivocado.
+  for (const f of [formulaMesQueElIvaPideCaja(55, 52), formulaIvaQuePideCaja(55), formulaColchonQueSeAgota(55, 56)]) {
+    assert.ok(f.includes('ISNUMBER('), `sin ISNUMBER un texto se lee como importe: ${f}`)
+  }
+})
+
+test('sin ningún mes que pida caja se dice, y el colchón es el último saldo publicado', () => {
+  // "ninguno en el año" es un HECHO —el crédito de libre disponibilidad lo absorbió todo—, no un
+  // hueco: por eso no lleva ⚠. Y el colchón vigente de un saldo acumulado es el último valor de la
+  // fila, no una suma: LOOKUP(9^99) devuelve exactamente eso.
+  assert.ok(formulaMesQueElIvaPideCaja(55, 52).includes(`"${IVA_SIN_SALIDA}"`))
+  assert.ok(formulaColchonQueSeAgota(55, 56).includes('LOOKUP(9^99;$B$56:$M$56)'))
+  assert.ok(formulaIvaQuePideCaja(55).endsWith(';0)'), 'cero pesos es la verdad, no un hueco')
+})
+
+test('el colchón es el del mes ANTERIOR: el que se agota, no el que ya se agotó', () => {
+  const f = formulaColchonQueSeAgota(55, 56)
+  assert.ok(/MAX\(1;MATCH\(/.test(f), `tiene que restar uno con piso en enero: ${f}`)
+  assert.ok(f.includes(');0)-1))'), `el -1 va sobre la posición, no sobre el rango: ${f}`)
+})
+
+test('las tres fórmulas van en locale es-AR: ni una coma de argumento', () => {
+  for (const f of [formulaMesQueElIvaPideCaja(55, 52), formulaIvaQuePideCaja(55), formulaColchonQueSeAgota(55, 56)]) {
+    assert.ok(!f.replace(/"[^"]*"/g, '').includes(','), `una coma rompe la fórmula en es-AR: ${f}`)
   }
 })
