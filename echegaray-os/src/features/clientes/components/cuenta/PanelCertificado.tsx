@@ -34,8 +34,9 @@ import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 import { C, MONO, PRIMARIA, TARJETA } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { Boton, BotonIcono } from '../canon/Piezas'
-import { MEDIOS } from '../../services/entradasCobranza'
+import { MEDIOS, aMonto } from '../../services/entradasCobranza'
 import { diaMes, diasEntre, montoM, pesos } from '../../services/cobranzaFormato'
+import { lecturaDelMonto, propiedadesDelCertificado } from '../../services/propiedadesCertificado'
 import type { CertificadoCliente } from '../../types/cobranzas'
 
 type Accion = (form: FormData) => Promise<ResultadoAccion>
@@ -110,6 +111,11 @@ function FormularioCobro({ documento, registrarCobro, onCerrar }: {
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
     (_p, form) => registrarCobro(form), null,
   )
+  // EL MONTO ES CONTROLADO PORQUE SE LEE MIENTRAS SE ESCRIBE. «3.100.000» y «3.100» se tipean casi
+  // igual y encolan cosas distintas; y un cobro parcial hay que decirlo ANTES de encolar, no
+  // después. `aMonto` es la misma regla argentina que valida el servidor.
+  const [monto, setMonto] = useState(String(Math.round(documento.monto)))
+  const lectura = lecturaDelMonto(aMonto(monto), documento.monto)
   const campo: React.CSSProperties = {
     width: '100%', border: `1px solid ${C.bordeCampo}`, borderRadius: '7px', padding: '0 12px',
     minHeight: '38px', fontSize: '13px', fontFamily: MONO, color: C.tinta, background: C.superficie,
@@ -129,8 +135,14 @@ function FormularioCobro({ documento, registrarCobro, onCerrar }: {
         {/* Sale del documento, y se puede corregir: un cobro parcial es la mitad de los casos de
             esta pantalla y forzar el total sería inventar que entró todo. */}
         <input type="text" name="monto" required inputMode="decimal"
-          defaultValue={String(Math.round(documento.monto))} placeholder={pesos(documento.monto)}
+          value={monto} onChange={(e) => setMonto(e.target.value)} placeholder={pesos(documento.monto)}
           data-testid="cobro-monto" style={{ ...campo, marginTop: '4px' }} />
+        <span
+          data-testid="cobro-lectura"
+          style={{ display: 'block', fontSize: '11.5px', marginTop: '5px', color: lectura.color }}
+        >
+          {lectura.texto}
+        </span>
       </label>
 
       <fieldset style={{ border: 'none', padding: 0, margin: '11px 0 0' }}>
@@ -147,6 +159,23 @@ function FormularioCobro({ documento, registrarCobro, onCerrar }: {
           ))}
         </div>
       </fieldset>
+
+      {/* ═══ POR QUÉ NO HAY CAMPO «REFERENCIA» ═══
+
+          El diseño dibuja uno para el número de la transferencia o del cheque, y no se puede
+          construir: la cola `cobranza_cambio` escribe UNA celda por fila y su CHECK sólo admite
+          `fecha`, `monto`, `medio` y `estado_cobrado`. No hay columna donde poner la referencia, ni
+          en la cola ni en la pestaña Cobranzas.
+
+          Un campo que acepta texto y lo tira es peor que no tener el campo: quien lo escribe se va
+          creyendo que quedó guardado. Así que se dice dónde falta, que es lo único que desbloquea. */}
+      <p
+        data-testid="cobro-sin-referencia"
+        style={{ fontSize: '11px', color: C.tenue, marginTop: '11px', lineHeight: 1.45 }}
+      >
+        La referencia de la transferencia o del cheque todavía no se puede guardar acá: la cola de
+        cambios escribe fecha, estado y medio, y no tiene columna para el número.
+      </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '13px' }}>
         <Boton type="submit" estilo={PRIMARIA} hoverFondo={C.marcaHover} deshabilitado={pendiente} testid="cobro-guardar">
@@ -221,6 +250,34 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
           valor={atraso == null ? '—' : atraso > 0 ? `${atraso} d` : '0 d'}
           color={atraso != null && atraso > 0 ? C.neg : C.tinta}
         />
+      </div>
+
+      {/* ═══ LAS PROPIEDADES: LO QUE LA TABLA SABE Y LA PESTAÑA COBRANZAS NO ═══
+
+          La pestaña tiene el número, el monto y la fecha. `certificado_cliente` tiene además el
+          estado de aprobación del cliente, el período certificado, su avance, el fondo de reparo y
+          el puente al Sheet — y nada de eso se estaba mostrando. Sin el reparo a la vista el
+          cliente paga el neto y la empresa proyecta el bruto para esa fecha.
+
+          Qué dice cada ausencia y de qué color va lo decide `propiedadesDelCertificado`, que se
+          prueba sin React: es donde «NULL nunca es cero» se rompe sin que nadie lo note. */}
+      <div style={{ padding: '11px 15px 3px' }} data-testid="panel-propiedades">
+        <div style={{ fontSize: '10.5px', color: C.tenue, letterSpacing: '.05em', marginBottom: '7px' }}>
+          PROPIEDADES
+        </div>
+        {propiedadesDelCertificado(documento).map((p) => (
+          <div
+            key={p.k}
+            data-testid={`prop-${p.k.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+            style={{
+              display: 'flex', alignItems: 'baseline', gap: '10px', padding: '6px 0',
+              borderBottom: `1px solid ${C.bordeFila}`,
+            }}
+          >
+            <span style={{ fontSize: '11.5px', color: C.tenue, width: '104px', flexShrink: 0 }}>{p.k}</span>
+            <span style={{ fontSize: '12.5px', color: p.color, minWidth: 0 }}>{p.v}</span>
+          </div>
+        ))}
       </div>
 
       {documento.observacion && (

@@ -1,15 +1,25 @@
 // CÓMO SE PINTA EL ESTADO DE UN DOCUMENTO Y DE UN PAGO — un solo mapa para las dos pantallas.
 //
-// Los cinco estados los dibuja el mockup 28 en la columna ESTADO (`28:203`, `28:249`, `28:281`,
-// `28:302`, `28:314`) y el 32 los repite idénticos en su columna ESTADO. Tenerlo dos veces es
-// garantizar que un día «Retenido» sea gris en una pantalla y verde en la otra.
+// Tenerlo dos veces es garantizar que un día «Retenido» sea gris en una pantalla y verde en la otra.
 //
-// El TEXTO también cambia de color y no es un descuido del zip: lo que sigue en juego se escribe
-// en `#3A3A38` y lo que ya se cerró —cobrado, retenido— en `#6B6B67`, medio tono más apagado.
+// ═══ LOS SIETE ESTADOS DEL CERTIFICADO YA NO SE APILAN EN TRES (04/09/2026) ═══
+//
+// `emitido`, `en_revision` y `aprobado` se dibujaban los tres en el azul de «en curso», y
+// `en_disputa` compartía el ámbar con `observado`. Eso borraba de la pantalla lo ÚNICO que
+// `certificado_cliente` sabe y la pestaña Cobranzas no: si el cliente ya aprobó el certificado.
+// Un certificado aprobado y uno que el cliente todavía no miró no se reclaman igual.
+//
+// EL COLOR Y EL RÓTULO SALEN DE `services/propiedadesCertificado.ts`, que es donde el panel los
+// lee y donde se prueban con `node --test`. Acá sólo se elige el ícono, que es lo único que no se
+// puede probar sin React.
+//
+// El TEXTO también cambia de tono y no es un descuido del zip: lo que sigue en juego se escribe en
+// `#3A3A38` y lo que ya se cerró —cobrado, retenido— en `#6B6B67`, medio tono más apagado.
 
 import type { ReactNode } from 'react'
 import { C } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
+import { COLOR_ESTADO, ROTULO_ESTADO } from '../../services/propiedadesCertificado'
 import type { EstadoCertificado, EstadoPago } from '../../types/cobranzas'
 
 export interface PintaEstado {
@@ -19,26 +29,38 @@ export interface PintaEstado {
   icono: ReactNode
 }
 
+/** El ícono de cada estado. Es lo único que decide este archivo: el color y el rótulo son del
+ *  servicio, para que la tabla, el panel y el calendario no puedan discrepar. */
+const ICONO_CERT: Record<EstadoCertificado, ReactNode> = {
+  emitido: <Ico d={P.reloj} s={14} w={2} />,
+  en_revision: <Ico d={P.reloj} s={14} w={2} />,
+  aprobado: <Ico d={P.okCirculo} s={14} w={2} />,
+  observado: <Ico d={P.chat} s={14} w={2} />,
+  vencido: <Ico d={P.alerta} s={14} w={2} />,
+  cobrado: <Ico d={P.okCirculo} s={14} w={2} />,
+  en_disputa: <Ico d={P.chat} s={14} w={2} />,
+}
+
+/** Un estado ya cerrado se escribe medio tono más apagado que uno que sigue en juego. */
+const CERRADOS = new Set<EstadoCertificado | EstadoPago>(['cobrado', 'retenido'])
+
+const mayus = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
 export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstado {
+  if (estado in ROTULO_ESTADO) {
+    const e = estado as EstadoCertificado
+    return {
+      texto: mayus(ROTULO_ESTADO[e]),
+      color: COLOR_ESTADO[e],
+      textoColor: CERRADOS.has(e) ? C.tintaSuave : C.tintaMedia,
+      icono: ICONO_CERT[e],
+    }
+  }
   switch (estado) {
-    case 'cobrado':
-      return { texto: 'Cobrado', color: C.pos, textoColor: C.tintaSuave, icono: <Ico d={P.okCirculo} s={14} w={2} /> }
-    case 'vencido':
-      return { texto: 'Vencido', color: C.neg, textoColor: C.tintaMedia, icono: <Ico d={P.alerta} s={14} w={2} /> }
-    case 'en_disputa':
-      return { texto: 'En disputa', color: C.warn, textoColor: C.tintaMedia, icono: <Ico d={P.chat} s={14} w={2} /> }
-    case 'observado':
-      return { texto: 'Observado', color: C.warn, textoColor: C.tintaMedia, icono: <Ico d={P.chat} s={14} w={2} /> }
     case 'retenido':
       return { texto: 'Retenido', color: C.tenue, textoColor: C.tintaSuave, icono: <Ico d={P.escudo} s={14} w={2} /> }
     case 'previsto':
       return { texto: 'Previsto', color: C.tenue, textoColor: C.tintaSuave, icono: <Ico d={P.circulo} s={14} w={2} /> }
-    case 'emitido':
-      return { texto: 'Emitido', color: C.curso, textoColor: C.tintaMedia, icono: <Ico d={P.reloj} s={14} w={2} /> }
-    case 'en_revision':
-      return { texto: 'En revisión', color: C.curso, textoColor: C.tintaMedia, icono: <Ico d={P.reloj} s={14} w={2} /> }
-    case 'aprobado':
-      return { texto: 'Aprobado', color: C.curso, textoColor: C.tintaMedia, icono: <Ico d={P.reloj} s={14} w={2} /> }
     default:
       return { texto: 'A vencer', color: C.curso, textoColor: C.tintaMedia, icono: <Ico d={P.reloj} s={14} w={2} /> }
   }

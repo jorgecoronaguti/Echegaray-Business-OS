@@ -78,8 +78,12 @@ export async function getCertificados(
 ): Promise<ServiceResult<CertificadoCliente[]>> {
   const { data, error } = await supabase
     .from('certificado_cliente')
+    // `huella_comprobante`, `huella_monto` y `origen` entran el 04/09/2026: el panel dice de dónde
+    // salió la fila y si el worker va a poder reconocerla. Los tres tienen grant de SELECT para
+    // `authenticated` (verificado contra `information_schema.column_privileges`).
     .select('id, cliente_id, obra_id, numero, factura, periodo_desde, periodo_hasta, avance_periodo,'
-      + ' monto, reparo, emitido_at, vence, estado, observacion, cobranza_fila, detalle_rubros')
+      + ' monto, reparo, emitido_at, vence, estado, observacion, cobranza_fila, detalle_rubros,'
+      + ' huella_comprobante, huella_monto, origen')
     .eq('cliente_id', clienteId)
     .order('emitido_at', { ascending: false, nullsFirst: false })
     .order('numero', { ascending: false })

@@ -22,7 +22,8 @@ function doc(p: Partial<CertificadoCliente> & { monto: number }): CertificadoCli
     id: p.numero ?? String(p.monto), cliente_id: 'c1', obra_id: null, obra_nombre: null,
     numero: p.numero ?? 'Certificado', factura: null, periodo_desde: null, periodo_hasta: null,
     avance_periodo: null, reparo: null, emitido_at: null, vence: null, estado: 'emitido',
-    observacion: null, cobranza_fila: null, detalle_rubros: null, ...p,
+    observacion: null, cobranza_fila: null, detalle_rubros: null,
+    huella_comprobante: null, huella_monto: null, origen: 'sync_cobranzas', ...p,
   }
 }
 

@@ -116,6 +116,22 @@ export interface CertificadoCliente {
   observacion: string | null
   /** Fila de la pestaña Cobranzas que lo cobra. Es la trazabilidad al Sheet. */
   cobranza_fila: number | null
+  /**
+   * LA HUELLA DE ESA FILA — lo que hace que el puntero sea confiable.
+   *
+   * `cobranza_fila` sola NO identifica: la columna A del Sheet es `=ROW()-4` y se corre entera al
+   * insertar una fila arriba, así que el número que se guardó ayer puede apuntar hoy a otro cobro.
+   * El worker compara la huella antes de escribir y rechaza si no coincide. Sin huella no hay con
+   * qué comparar, y por eso la pantalla lo dice en ámbar en vez de callarlo.
+   */
+  huella_comprobante: string | null
+  huella_monto: number | null
+  /**
+   * QUIÉN ESCRIBIÓ ESTA FILA. `'sync_cobranzas'` = la materializó el sync desde el Sheet y la
+   * vuelve a pisar en cada corrida; `'os'` = la creó alguien acá y el sync no la toca. El CHECK de
+   * la base no admite un tercer valor.
+   */
+  origen: 'sync_cobranzas' | 'os'
   /** El detalle de rubros que dibuja la 29. `unknown` a propósito: su forma la define el
    *  certificado real de cada obra, y la tabla lo guarda como jsonb sin esquema fijo. */
   detalle_rubros: unknown
