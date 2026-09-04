@@ -167,10 +167,9 @@ test('el cuadre da ROJO si se pierde plata en el camino — la mutación que lo 
 })
 
 // ── LOS DOS LAYOUTS DE JORNALES, LEÍDOS COMO SON ──────────────────────────────────────────────
-// Ninguna coordenada se asume: en 2025 hay UN solo rótulo (col Q) y la plata cierra en P; en 2026
-// hay CLIENTE (AC) y OBRA (AD) por separado y la plata cierra en AB. Si algún día se clavan las
-// letras de una generación, la otra tiene que ponerse roja acá.
-const COLS_2025 = { nombre: 'B', categoria: 'D', dia: 'F', horas: 'N', vh: 'O', total: 'P', cliente: 'Q', obra: null }
+// Ninguna coordenada se asume: en 2025 hay UN solo rótulo (col Q), las horas en K y la tarifa en L;
+// en 2026 hay CLIENTE (AC) y OBRA (AD) por separado, horas en Z y tarifa en AA. Si algún día se
+// clavan las letras de una generación, la otra tiene que ponerse roja acá.
 const COLS_2026 = { nombre: 'B', categoria: 'D', dia: 'F', horas: 'Z', vh: 'AA', total: 'AB', cliente: 'AC', obra: 'AD' }
 
 test('layout 2025 calcado del archivo: el total no se puede recalcular y se lee de la planilla', () => {
