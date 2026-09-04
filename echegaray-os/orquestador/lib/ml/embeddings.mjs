@@ -68,11 +68,44 @@ const claveDe = (t) => createHash('sha1').update(`${MODELO} ${t}`).digest('hex')
 const cache = new Map()
 const TOPE_CACHE = 5000
 
+/**
+ * CUÁNTA RAM LIBRE HACE FALTA PARA CARGARLO, MEDIDO (04/09/2026).
+ *
+ * El modelo pasa el proceso de 48 MB a 537 MB: son ~500 MB de RSS. En esta VM corren 8 procesos
+ * node del orquestador además de Postgres y los timers; si cada uno cargara el modelo serían 4 GB
+ * y la VM se cae. La carga perezosa ya hace que sólo lo pague el proceso que de verdad embebe,
+ * pero eso no alcanza como garantía: si alguien enchufa el motor en el worker equivocado, el
+ * apagón lo descubre el dueño.
+ *
+ * Por eso hay un piso de memoria libre. Por debajo, NO se carga y se falla limpio: el router lo
+ * cuenta como un escalón que no pudo y baja al siguiente. Estabilidad antes que sofisticación.
+ */
+const PISO_RAM_MB = Number(process.env.ORQ_ML_PISO_RAM_MB || 1200)
+
+async function ramLibreMb() {
+  const os = await import('node:os')
+  // `freemem` en Linux no cuenta el caché de páginas, que sí es reutilizable: se lee MemAvailable,
+  // que es lo que el kernel dice que hay de verdad. Si no se puede, se cae a freemem.
+  try {
+    const { readFileSync } = await import('node:fs')
+    const m = /MemAvailable:\s+(\d+) kB/.exec(readFileSync('/proc/meminfo', 'utf8'))
+    if (m) return Math.round(Number(m[1]) / 1024)
+  } catch { /* sigue */ }
+  return Math.round(os.freemem() / 1048576)
+}
+
 /** Carga perezosa, una sola vez, con las llamadas concurrentes compartiendo la misma promesa. */
 async function pipeline() {
   if (_pipe) return _pipe
   if (_cargando) return _cargando
   _cargando = (async () => {
+    const libre = await ramLibreMb()
+    if (libre < PISO_RAM_MB) {
+      _cargando = null
+      throw Object.assign(
+        new Error(`no cargo el modelo: quedan ${libre} MB libres y el piso es ${PISO_RAM_MB} MB (el modelo pide ~500 MB)`),
+        { clasificacion: { kind: 'recursos', reintentable: true } })
+    }
     const { pipeline: crear, env } = await import('@huggingface/transformers')
     env.cacheDir = CACHE_DIR
     _pipe = await crear('feature-extraction', MODELO, { dtype: 'q8' })

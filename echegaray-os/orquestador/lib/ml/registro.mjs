@@ -92,8 +92,9 @@ export const MODELOS = Object.freeze({
     revision: null,
     ejecucion: 'local-cpu',
     proveedor: 'local',
-    licencia: 'GPL-3.0', // ← copyleft: revisar antes de producción
+    licencia: 'GPL-3.0',
     estado: ESTADO.EXPERIMENTAL,
+    bloqueado: 'LICENCIA GPL-3.0 — copyleft. Enlazarlo a un producto propietario obliga a liberar el derivado. BLOQUEADO para producción hasta revisión legal explícita del dueño. Cuando llegue la fase de visión hay que buscar una alternativa permisiva (Apache-2.0 o MIT).',
     medido: null,
     porQue: 'detecta casco y chaleco en fotos de obra; ~14 MB, entra en CPU. Nunca afirma un incumplimiento: propone una revisión.',
   },
@@ -125,6 +126,9 @@ export function modeloDe(clave) {
 export function paraProduccion(clave) {
   const m = modeloDe(clave)
   if (!m) return { ok: false, porQue: `no hay modelo registrado para «${clave}»` }
+  // UN BLOQUEO DE LICENCIA MANDA SOBRE TODO LO DEMÁS. Da igual lo bien que mida: si el permiso
+  // legal no está, no entra. Es lo único de esta función que no se resuelve con un benchmark.
+  if (m.bloqueado) return { ok: false, modelo: m, porQue: `«${clave}» está BLOQUEADO: ${m.bloqueado}` }
   if (m.estado !== ESTADO.PRODUCCION) return { ok: false, modelo: m, porQue: `«${clave}» está en estado ${m.estado}: producción sólo usa lo que pasó a produccion` }
   if (!m.medido) return { ok: false, modelo: m, porQue: `«${clave}» no tiene una medición en esta VM` }
   if (m.proveedor !== 'anthropic' && !m.revision) return { ok: false, modelo: m, porQue: `«${clave}» no tiene la revisión clavada: producción no depende de una rama que se mueve` }
@@ -137,5 +141,6 @@ export function inventario() {
     clave, capacidad: m.capacidad, modelo: m.modelo, revision: m.revision ?? '—',
     ejecucion: m.ejecucion, proveedor: m.proveedor, licencia: m.licencia, estado: m.estado,
     medido: m.medido ? 'sí' : 'no',
+    bloqueado: m.bloqueado ? 'SÍ' : '',
   }))
 }

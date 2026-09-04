@@ -1,0 +1,61 @@
+{
+ "version": 2,
+ "fecha": "2026-09-04",
+ "resolverVersion": "1.0.0",
+ "modeloEmbeddings": "Xenova/multilingual-e5-small",
+ "comoSeMidio": "benchmark contra orquestador/datos/ml/gt-proveedores.json (19 positivos y 3.655 negativos VERIFICADOS por CUIT cruzando public.proveedores, public.compra_sheet y public.comprobantes_arca). De los negativos se evaluaron los 400 mas parecidos por trigrama, que son los unicos capaces de generar un falso positivo.",
+ "entidades": {
+  "proveedor": {
+   "auto": 0.95,
+   "sugerido": 0.6,
+   "margen": 0.05,
+   "calibrado": true,
+   "medicion": {
+    "positivos": 19,
+    "negativosEvaluados": 400,
+    "falsosPositivosEnAuto": 0,
+    "autoResueltosPorTexto": 8,
+    "recallAutoPorTexto": 0.42,
+    "peorNegativo": {
+     "score": 0.9408,
+     "par": "LOPEZ JOSE LUIS ~ GIMENEZ JOSE LUIS"
+    },
+    "positivosImposiblesPorTexto": [
+     "Corralon Progreso = PEREZ GARCIA MARISOL BIBIANA (0.0000)",
+     "Industrias Castel = MARTINEZ JORGE ROBERTO (0.0000)",
+     "DUPEC = DUBOS UGARTE PEDRO LUIS RAUL (0.0606)"
+    ]
+   },
+   "porQue": "0,95 es el unico umbral del barrido con CERO falsos positivos. En 0,90 entra «LOPEZ JOSE LUIS» ~ «GIMENEZ JOSE LUIS» (0,9408), que son dos personas distintas: fusionarlas mete la factura de una en la cuenta de la otra. El recall por texto es 42% a proposito — los otros 11 positivos se resuelven por CUIT o por alias, que es donde tienen que resolverse."
+  },
+  "cliente": {
+   "auto": 0.95,
+   "sugerido": 0.6,
+   "margen": 0.05,
+   "calibrado": false,
+   "porQue": "sin ground truth propio todavia: hereda proveedor, que es la entidad mas parecida y la mas conservadora medida. Se recalibra cuando haya CUITs de clientes cruzados."
+  },
+  "empleado": {
+   "auto": 0.98,
+   "sugerido": 0.8,
+   "margen": 0.08,
+   "calibrado": false,
+   "porQue": "MAS estricto que proveedor y a proposito: el peor falso positivo medido en todo el benchmark fue justamente entre dos PERSONAS que comparten nombre de pila («LOPEZ JOSE LUIS» ~ «GIMENEZ JOSE LUIS», 0,9408). Con personas la identidad la da el CUIL/DNI, no el nombre."
+  },
+  "material": {
+   "auto": 0.95,
+   "sugerido": 0.55,
+   "margen": 0.05,
+   "calibrado": false,
+   "porQue": "sin ground truth. El sugerido baja porque «hierro del 8» y «barra acero 8 mm» son la misma cosa escrita sin una palabra en comun, y ahi una sugerencia de mas es barata: la revisa quien carga."
+  },
+  "obra": {
+   "auto": 0.95,
+   "sugerido": 0.6,
+   "margen": 0.05,
+   "calibrado": false,
+   "porQue": "sin ground truth propio."
+  }
+ },
+ "limitaciones": "Solo `proveedor` esta calibrado con datos reales. Las demas entidades declaran calibrado:false y usan valores conservadores heredados; NO se debe presentar su comportamiento como medido hasta tener su propio ground truth."
+}

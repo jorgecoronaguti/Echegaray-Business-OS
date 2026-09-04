@@ -24,6 +24,7 @@
 import { randomUUID } from 'node:crypto'
 import { METODO, ESCALERA, resultado, sinResolver } from './resultado.mjs'
 import { metodosPermitidos, sensibilidadDe } from './politica.mjs'
+import { registrarTraza } from './traza.mjs'
 
 /** Las capacidades que el router expone. El nombre es el contrato con los módulos. */
 export const CAPACIDADES = Object.freeze([
@@ -74,7 +75,7 @@ const METODO_PROVEEDOR = {
  * `dominio` no es opcional: sin él no se puede decidir qué puede salir de la empresa, y un default
  * cómodo sería exactamente el agujero que la política existe para tapar.
  */
-export async function resolver(capacidad, entrada, { dominio, permitidoExplicitamente = false, hasta = null, traceId = null, ...ctx } = {}) {
+export async function resolver(capacidad, entrada, { dominio, permitidoExplicitamente = false, hasta = null, traceId = null, modulo = null, ...ctx } = {}) {
   if (!CAPACIDADES.includes(capacidad)) throw new Error(`capacidad desconocida: «${capacidad}»`)
   if (!dominio) throw new Error(`«${capacidad}» necesita un dominio: sin él no se puede decidir qué dato puede salir de la empresa`)
 
@@ -121,18 +122,23 @@ export async function resolver(capacidad, entrada, { dominio, permitidoExplicita
       evidencia: r.evidencia ?? null,
       traceId: tid,
     })
-    return { ...base, capacidad, sensibilidad: sensibilidadDe(dominio), saltados }
+    const salida = { ...base, capacidad, sensibilidad: sensibilidadDe(dominio), saltados }
+    registrarTraza(salida, { modulo })
+    return salida
   }
 
-  return {
+  const nada = {
     ...sinResolver(
       lista.length
         ? `ningún escalón resolvió «${capacidad}»`
         : `«${capacidad}» todavía no tiene solucionador enchufado — el módulo tiene que seguir con su cálculo de siempre`,
       { traceId: tid }),
+    capacidad,
     sensibilidad: sensibilidadDe(dominio),
     saltados,
   }
+  registrarTraza(nada, { modulo })
+  return nada
 }
 
 // ── LAS ONCE OPERACIONES ──
