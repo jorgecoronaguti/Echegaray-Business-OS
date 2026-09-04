@@ -212,14 +212,34 @@ export const ROTULOS_COBRANZAS = {
   // que no se re-escribe cuando el cobro se posterga: la fila ID 41 de MESSINA la conserva en
   // 31/12/2024 mientras su "Fecha de Venta" y su "Fecha cobro" ya se movieron a agosto y septiembre
   // de 2026. Si el rótulo cambia, el escritor ROMPE antes de publicar una columna de alarma en cero.
-  fechaEmision: /^Fecha\s*(de\s*)?emisi/i,
+  //
+  // ═══ EL RÓTULO CAMBIÓ EN EL ARCHIVO Y ROMPIÓ DOS PESTAÑAS (04/09/2026) ═══
+  //
+  // Entre las 06:56 y las 08:59 del 04/09 los encabezados de Cobranzas se renombraron: la columna C
+  // pasó de "Fecha de emisión" a "Fecha de Venta", y la P de "Fecha de Venta" a "Fecha de Factura".
+  // El escritor hizo lo que promete —ROMPER en vez de publicar una alarma en cero— y OBRAS y
+  // Calendario de Cobros dejaron de generarse en las tres corridas siguientes.
+  //
+  // Acá se actualiza SÓLO el rótulo por el que se busca cada columna. Las columnas siguen siendo las
+  // mismas —C y P— así que ni un número de esta pestaña cambia: es restaurar el servicio, no
+  // redefinir un criterio.
+  //
+  // LO QUE QUEDA ABIERTO Y NO LO DECIDE EL CÓDIGO: con los nombres nuevos, «el reloj de lo vencido»
+  // debería ser la Fecha de FACTURA (P) y no la de Venta (C) — el plazo de cobro corre desde que se
+  // factura. Cambiarlo mueve la antigüedad de la cartera y la columna de vencidos, que es plata: lo
+  // decide el dueño, es la misma pregunta que el traspaso dejó abierta para la base del IVA.
+  fechaEmision: /^Fecha\s*(de\s*)?(emisi|venta)/i,
   // LAS RETENCIONES SUFRIDAS ($7.671.680 en 2026). El criterio es el plural con "s": el archivo
   // tiene además TRES columnas de desglose que empiezan con "Retención" en singular ("Retención
   // 16,8%…", "Ret Ganancias", "Retención 2,5%/3,5%…"), y elegir una de ésas publicaría una parte
   // del retenido sin dar un solo error. Si el rótulo cambia, el escritor ROMPE antes de escribir.
   retenciones: /^Retenciones\b/i,
   // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
-  fechaVenta: /^Fecha\s*(de\s*)?venta/i, forma: /^Forma de [Cc]obro/,
+  // MUTUAMENTE EXCLUYENTE CON `fechaEmision` A PROPÓSITO: `resolverColumnas` toma el PRIMER rótulo
+  // que matchea, y "Fecha de Venta" (col C) aparece antes que "Fecha de Factura" (col P). Si este
+  // criterio aceptara "venta", este campo saltaría de P a C y movería el año de la venta —el
+  // devengado— sin que nadie lo pidiera.
+  fechaVenta: /^Fecha\s*(de\s*)?factura/i, forma: /^Forma de [Cc]obro/,
   // LA MONEDA (13/08). Sin esta columna la pestaña sumaba U$S 15.400 como $15.400 — dólares y pesos
   // en el mismo total. Va con el mismo criterio que las demás: si el rótulo no está, el escritor
   // ROMPE. Publicar la pestaña sin poder distinguir la moneda es peor que no publicarla.
