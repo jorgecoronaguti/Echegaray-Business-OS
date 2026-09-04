@@ -92,3 +92,4 @@ orquestador/scripts/.cfsemanal-backup-*.json
 orquestador/scripts/diff-esquemas.txt
 build.log
 server.log
+orquestador/datos/modelos/
