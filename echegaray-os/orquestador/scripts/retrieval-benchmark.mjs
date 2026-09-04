@@ -25,6 +25,7 @@
 import { query } from '../lib/db.mjs'
 import { CANDIDATOS, embeber, coseno, cargar, soltar } from '../lib/ml/motor-embeddings.mjs'
 import { buscarEnContenido } from '../lib/drive-busqueda/contenido.mjs'
+import { entenderConsulta, pasaFiltros } from '../lib/ml/entender-consulta.mjs'
 
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d }
 const MODELOS = String(arg('--modelos', 'e5-small,granite-97m,bge-m3')).split(',').filter(Boolean)
@@ -73,11 +74,61 @@ async function conjuntoDePrueba() {
   return preguntas.filter((p) => !p.ambigua).slice(0, MAX_PREGUNTAS)
 }
 
+/**
+ * EL CONJUNTO DIFICIL: preguntas que el filtro estructurado NO puede contestar solo.
+ *
+ * ═══ POR QUE HIZO FALTA, Y ES UNA CORRECCION A ESTE MISMO BENCHMARK ═══
+ *
+ * El primer conjunto arma las preguntas desde (tipo, periodo) y el pipeline filtra por exactamente
+ * esos dos campos: el filtro reconstruye la pregunta y da 100% por construccion. Eso prueba que el
+ * filtro funciona mecanicamente y NO prueba nada sobre la recuperacion — el modelo no aporta nada
+ * cuando queda un solo candidato. Un benchmark circular es peor que ninguno: da un numero perfecto
+ * y esconde que no se midio lo que se dijo medir.
+ *
+ * Aca la pregunta es por una PERSONA o un IMPORTE que aparece adentro del documento, y el tipo
+ * documental deja decenas de candidatos. El filtro acota; quien tiene que acertar es el modelo.
+ */
+async function conjuntoDificil() {
+  const q = await query(`
+    select l.drive_file_id, l.nombre, l.tipo, f.texto
+      from public.documento_leido l
+      join public.documento_fragmento f using (drive_file_id)
+     where l.tipo in ('recibo_sueldo','comprobante_pago','libro_sueldos','factura')
+       and l.error is null and f.orden = 0
+     order by l.drive_file_id`)
+
+  // Un nombre de persona en MAYUSCULAS con coma («RIOS, FERNANDO ANTONIO») o un beneficiario: es lo
+  // que una persona usa para pedir un papel, y no esta en el nombre del archivo.
+  const RE_PERSONA = /\b([A-ZÁÉÍÓÚÑ]{3,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,3}),\s*([A-ZÁÉÍÓÚÑ]{3,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){0,3})\b/
+  const RE_BENEF = /Beneficiario:\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{8,50})/
+
+  const porPersona = new Map()
+  for (const d of q.rows) {
+    const b = String(d.texto).match(RE_BENEF)
+    const m = b ? [null, b[1].trim(), ''] : String(d.texto).match(RE_PERSONA)
+    if (!m) continue
+    const persona = `${m[1]} ${m[2]}`.replace(/\s+/g, ' ').trim()
+    if (persona.length < 8) continue
+    if (!porPersona.has(persona)) porPersona.set(persona, [])
+    porPersona.get(persona).push(d)
+  }
+
+  const preguntas = []
+  for (const [persona, docs] of porPersona) {
+    // Solo sirve si UN documento contesta: con dos, acertar cualquiera seria acertar y la metrica
+    // diria mas de lo que sabe.
+    if (docs.length !== 1) continue
+    const d = docs[0]
+    preguntas.push({ texto: `el papel de ${persona}`, correcto: d.drive_file_id, tipo: d.tipo, nombre: d.nombre })
+  }
+  return preguntas.slice(0, MAX_PREGUNTAS)
+}
+
 /** Los fragmentos sobre los que se busca. Los mismos para todos los motores: comparar sobre
  *  universos distintos no es comparar. */
 async function corpus(correctos = [], tope = 2500) {
   const q = await query(`
-    select f.id, f.drive_file_id, f.pagina, f.texto
+    select f.id, f.drive_file_id, f.pagina, f.texto, l.tipo, l.campos
       from public.documento_fragmento f
       join public.documento_leido l using (drive_file_id)
      where l.error is null and length(f.texto) >= 60
@@ -120,7 +171,10 @@ function fusionar(listas, k = 60) {
 }
 
 async function main() {
-  const preguntas = await conjuntoDePrueba()
+  const preguntas = process.argv.includes('--dificil') ? await conjuntoDificil() : await conjuntoDePrueba()
+  if (process.argv.includes('--dificil')) {
+    console.log('CONJUNTO DIFICIL: la respuesta NO se deduce del tipo ni del periodo — la decide el contenido.\n')
+  }
   const { pozo: frags, total } = await corpus(preguntas.map((p) => p.correcto))
   console.log(`CONJUNTO   ${preguntas.length} preguntas con respuesta verificable`)
   console.log(`POZO       ${frags.length} fragmentos de ${new Set(frags.map((f) => f.drive_file_id)).size} documentos (de ${total} en total)\n`)
@@ -131,11 +185,18 @@ async function main() {
   // ── LÉXICO: lo que ya está en producción ──
   const t0 = Date.now()
   const lex = []
+  const lexFiltrado = []
+  const porDoc = new Map(frags.map((f) => [f.drive_file_id, f]))
   for (const p of preguntas) {
     const r = await buscarEnContenido((sql, prm) => query(sql, prm), p.texto, { limite: 20 })
-    lex.push({ correcto: p.correcto, ranking: r.documentos.map((d) => d.driveFileId) })
+    const ids = r.documentos.map((d) => d.driveFileId)
+    lex.push({ correcto: p.correcto, ranking: ids })
+    const f = entenderConsulta(p.texto)
+    const filtrados = f.filtros ? ids.filter((id) => porDoc.has(id) && pasaFiltros(porDoc.get(id), f)) : ids
+    lexFiltrado.push({ correcto: p.correcto, ranking: filtrados.length ? filtrados : ids })
   }
   tabla.push({ motor: 'lexical (producción)', ...metricas(lex), ms: Math.round((Date.now() - t0) / preguntas.length), dim: '—', mb: 0 })
+  tabla.push({ motor: 'filtros+lexical', ...metricas(lexFiltrado), ms: Math.round((Date.now() - t0) / preguntas.length), dim: '—', mb: 0 })
   const rankingLex = new Map(preguntas.map((p, i) => [p.texto, lex[i].ranking]))
 
   // ── LOS MODELOS ──
@@ -153,13 +214,24 @@ async function main() {
 
       const tq = Date.now()
       const res = []
+      const resFiltrado = []
       for (const p of preguntas) {
         const vq = await embeber(clave, p.texto, { rol: 'consulta' })
-        const puntuados = vecs.map((v, i) => ({ doc: frags[i].drive_file_id, s: coseno(vq, v) }))
+        const puntuados = vecs.map((v, i) => ({ doc: frags[i].drive_file_id, s: coseno(vq, v), i }))
         puntuados.sort((a, b) => b.s - a.s)
-        const ranking = []
-        for (const x of puntuados) { if (!ranking.includes(x.doc)) ranking.push(x.doc); if (ranking.length >= 20) break }
-        res.push({ correcto: p.correcto, ranking, texto: p.texto })
+        const rank = (lista) => {
+          const r = []
+          for (const x of lista) { if (!r.includes(x.doc)) r.push(x.doc); if (r.length >= 20) break }
+          return r
+        }
+        res.push({ correcto: p.correcto, ranking: rank(puntuados), texto: p.texto })
+
+        // ── EL PIPELINE COMPLETO: filtros estructurados PRIMERO, modelo despues ──
+        // Es la arquitectura real, no una variante del benchmark. Un periodo tiene respuesta
+        // exacta: se filtra. Lo que queda es la pregunta que un embedding contesta bien.
+        const f = entenderConsulta(p.texto)
+        const candidatos = f.filtros ? puntuados.filter((x) => pasaFiltros(frags[x.i], f)) : puntuados
+        resFiltrado.push({ correcto: p.correcto, ranking: rank(candidatos.length ? candidatos : puntuados) })
       }
       const msPorConsulta = Math.round((Date.now() - tq) / preguntas.length)
       const met = metricas(res)
@@ -170,7 +242,9 @@ async function main() {
       const hib = res.map((r) => ({ correcto: r.correcto, ranking: fusionar([rankingLex.get(r.texto) ?? [], r.ranking]) }))
       const metH = metricas(hib)
       tabla.push({ motor: `híbrido lexical+${clave}`, ...metH, ms: msPorConsulta, dim: c.dimensiones, mb: 0 })
-      if (!mejor || metH.mrr > mejor.mrr) mejor = { clave, ...metH }
+      const metF = metricas(resFiltrado)
+      tabla.push({ motor: `filtros+${clave}  ← el pipeline`, ...metF, ms: msPorConsulta, dim: c.dimensiones, mb: 0 })
+      if (!mejor || metF.mrr > mejor.mrr) mejor = { clave, ...metF, con: 'filtros' }
       await soltar(clave)
     } catch (e) {
       console.log(`  ✖ ${clave}: ${e.message.slice(0, 110)}`)

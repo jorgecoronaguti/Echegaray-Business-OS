@@ -113,10 +113,21 @@ test('lo local se puede siempre, incluso RESTRICTED', () => {
 
 // ── EL REGISTRO ──
 
-test('producción rechaza un modelo que no pasó a estado produccion', () => {
-  const r = paraProduccion('embeddings.es')
-  assert.equal(r.ok, false)
-  assert.match(r.porQue, /candidato/)
+test('producción rechaza cualquier modelo que no llegó a estado produccion', () => {
+  // ESTE TEST AFIRMABA EL ESTADO DEL MUNDO, NO LA REGLA.
+  //
+  // Decía `paraProduccion('embeddings.es') === false` porque ese modelo era candidato. El día que
+  // ganó su benchmark y pasó a producción —con revisión clavada y medición, que es exactamente lo
+  // que el guardián exige— el test se puso rojo sin que la regla hubiera cambiado. Un test que se
+  // rompe cuando el sistema hace lo correcto no protege nada: entrena a ignorarlo.
+  //
+  // Ahora prueba la REGLA sobre cualquier modelo que no esté en producción, sea cual sea.
+  const noProductivos = Object.entries(MODELOS).filter(([, m]) => m.estado !== ESTADO.PRODUCCION)
+  assert.ok(noProductivos.length, 'el registro tiene que tener algún modelo fuera de producción')
+  for (const [clave, m] of noProductivos) {
+    const r = paraProduccion(clave)
+    assert.equal(r.ok, false, `«${clave}» está en ${m.estado} y el guardián lo dejó pasar`)
+  }
 })
 
 test('ningún modelo local puede estar en produccion sin revisión clavada ni medición', () => {

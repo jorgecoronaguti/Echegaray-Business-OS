@@ -166,7 +166,15 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
      */
     async buscarContenido(texto, opciones = {}) {
       if (!port?.query) return { documentos: [], fragmentos: 0, ms: 0 }
-      return buscarEnContenido((sql, params) => port.query(sql, params), texto, opciones)
+      // RECUPERACIÓN HÍBRIDA, no sólo el índice de palabras. Medido el 04/09: sobre preguntas
+      // parafraseadas el léxico solo llega a Recall@5 6,7% y con el modelo sube a 26,7%; sobre
+      // preguntas por persona el léxico gana y el modelo lo complementa (MRR 75,9% → 77,8%). Los
+      // dos juntos nunca son peores que cualquiera solo, y por eso van los dos.
+      //
+      // Si el índice semántico no está o el modelo no carga, `recuperar` degrada al léxico y lo
+      // declara: la búsqueda que ya funcionaba sigue funcionando igual.
+      const { recuperar } = await import('../ml/recuperar.mjs')
+      return recuperar((sql, params) => port.query(sql, params), texto, opciones)
     },
     /**
      * Aceptaciones de esta consulta, separadas en PROPIAS y AJENAS.

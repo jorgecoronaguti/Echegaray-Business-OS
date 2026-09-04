@@ -18,6 +18,13 @@
 
 export const ESTADO = Object.freeze({
   EXPERIMENTAL: 'experimental', CANDIDATO: 'candidato', PRODUCCION: 'produccion', RETIRADO: 'retirado',
+  // DEPRECADO es distinto de RETIRADO y la diferencia importa: retirado es «ya no se usa»,
+  // deprecado es «se midió, PERDIÓ, y queda escrito para no volver a probarlo sin un motivo nuevo».
+  // Sin ese estado, un modelo descartado con evidencia vuelve a la lista de candidatos cada seis
+  // meses porque nadie recuerda por qué se había ido.
+  DEPRECADO: 'deprecado',
+  // BLOQUEADO es una prohibición, no una preferencia: licencia incompatible o política de datos.
+  BLOQUEADO: 'bloqueado',
 })
 
 /**
@@ -31,15 +38,38 @@ export const MODELOS = Object.freeze({
   'embeddings.es': {
     capacidad: 'embed',
     modelo: 'Xenova/multilingual-e5-small',
-    revision: null, // ← se clava al pasar a producción, con el sha del repo
+    revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
     ejecucion: 'local-cpu',
     proveedor: 'local',
-    licencia: 'MIT',
+    licencia: 'MIT (base intfloat/multilingual-e5-small)',
     dimensiones: 384,
-    estado: ESTADO.CANDIDATO,
-    medido: { ms: 7, rssMb: 584, pesosMb: 130, vm: '4 cores · AVX-512 VNNI · sin GPU', fecha: '2026-09-04' },
-    porQue: 'multilingüe con español nativo, INT8, 7 ms por embedding en esta VM. `intfloat/multilingual-e5-small` publica además un build `qint8_avx512_vnni` para exactamente este procesador.',
-    alternativas: ['sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', 'BAAI/bge-m3'],
+    estado: ESTADO.PRODUCCION,
+    dataset: 'documento_fragmento · 30 preguntas por tipo+periodo + 9 por persona, respuesta verificable',
+    medido: {
+      ms: 12, rssMb: 885, pesosMb: 118, vm: '4 cores · AVX-512 VNNI · sin GPU', fecha: '2026-09-04',
+      // Preguntas cuya respuesta NO se deduce del tipo ni del periodo (n=9):
+      dificil: { top1: 0.444, recall5: 0.556, mrr: 0.550 },
+      // Preguntas por tipo + periodo (n=30), donde el filtro estructurado ya decide:
+      porPeriodo: { top1: 0.067, recall5: 0.267, mrr: 0.156 },
+      hibridoConLexico: { top1: 0.667, recall5: 0.889, mrr: 0.778 },
+    },
+    porQue: 'GANÓ el benchmark del 04/09/2026 contra `granite-embedding-97m-multilingual-r2` sobre los mismos 2.500 fragmentos y las mismas preguntas: Recall@5 26,7% contra 0,0% en el conjunto por período, y 885 MB de RSS contra 2.490 MB. No gana por popularidad: gana por 4 veces el recall a un tercio de la memoria.',
+    alternativas: ['ibm-granite/granite-embedding-97m-multilingual-r2 (medido, perdió)', 'onnx-community/bge-m3-ONNX (568 MB de pesos: no entra cómodo en esta VM)'],
+  },
+
+  'embeddings.granite': {
+    capacidad: 'embed',
+    modelo: 'ibm-granite/granite-embedding-97m-multilingual-r2',
+    revision: '835ad14087e140460703cf0fae09f97d469d65c2',
+    ejecucion: 'local-cpu',
+    proveedor: 'local',
+    licencia: 'Apache-2.0',
+    dimensiones: 384,
+    estado: ESTADO.DEPRECADO,
+    dataset: 'el mismo que embeddings.es',
+    medido: { ms: 22, rssMb: 2490, pesosMb: 98, fecha: '2026-09-04', porPeriodo: { top1: 0, recall5: 0, mrr: 0.019 } },
+    porQue: 'MEDIDO Y DESCARTADO. Sobre las mismas preguntas y el mismo pozo dio Recall@5 0,0% contra 26,7% de e5-small, tardó el doble por consulta y ocupó 2,8 veces la RAM. Su licencia es mejor (Apache-2.0 contra MIT) y su ONNX está cuantizado para esta CPU: nada de eso alcanzó. Queda escrito para no volver a probarlo sin un motivo nuevo.',
+    alternativas: [],
   },
   'forecast.series': {
     capacidad: 'forecast',

@@ -22,6 +22,7 @@
 
 import { createHash } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
+import { freemem } from 'node:os'
 import { normalizar } from './normalizar.mjs'
 
 /**
@@ -45,7 +46,10 @@ export const CANDIDATOS = Object.freeze({
     id: 'ibm-granite/granite-embedding-97m-multilingual-r2',
     revision: '835ad14087e140460703cf0fae09f97d469d65c2',
     licencia: 'Apache-2.0',
-    dtype: 'q8', dimensiones: 768, discoMb: 98,
+    // El repo publica `onnx/model_quint8_avx2.onnx`, no el nombre que transformers.js espera para
+    // `q8`. El sufijo se declara explicito: adivinarlo daba «Could not locate file» y el modelo
+    // quedaba fuera del benchmark por un nombre de archivo, no por su calidad.
+    dtype: 'quint8_avx2', dimensiones: 384, discoMb: 98,
     prefijo: { consulta: '', documento: '' },
     porQue: 'multilingüe, Apache-2.0, y su ONNX viene cuantizado para AVX2 — el tamaño exacto de esta VM',
   },
@@ -68,8 +72,9 @@ function ramDisponibleMb() {
     const m = readFileSync('/proc/meminfo', 'utf8').match(/MemAvailable:\s+(\d+) kB/)
     if (m) return Math.round(Number(m[1]) / 1024)
   } catch { /* no es Linux o /proc no está */ }
-  // eslint-disable-next-line no-undef
-  return Math.round(require('node:os').freemem() / 1048576)
+  // `freemem()` es peor medida que MemAvailable —no cuenta el caché reclamable— pero es la única
+  // que hay fuera de Linux, y subestimar la memoria libre falla del lado seguro.
+  return Math.round(freemem() / 1048576)
 }
 
 const cargados = new Map()
