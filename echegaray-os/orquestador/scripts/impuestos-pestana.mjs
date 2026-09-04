@@ -49,7 +49,7 @@ import {
   leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw,
 } from '../lib/impuestos-fuentes.mjs'
 import {
-  bloqueIva, mesDelSaldoVigente, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
+  bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
@@ -227,11 +227,10 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     calCrudo.filter((o) => o.vencido).map(hallazgoDeVencimiento), { hoy })
   explicarDecisiones(decVenc, console.log, { detalle: (h) => `el vencimiento ${h.clave} (${h.forma.fecha})` })
   const cal = conDecisionesDelDueno(calCrudo, new Map(decVenc.silenciados.map((s) => [s.clave, s.decision])))
-  // El saldo a favor es el del ÚLTIMO MES CERRADO, no el del último mes del cuadro: de agosto en
-  // adelante es proyección, y el hero dice cuál es la posición HOY. Sale de la CASCADA —que ya sabe
-  // qué mes es un hecho y cuál un supuesto— y no del ancla de la proyección, que contesta otra
-  // pregunta y venía publicando el saldo de un mes anterior al último cerrado. Ver `mesDelSaldoVigente`.
-  const mesSaldoIva = mesDelSaldoVigente(iva.porOrigen) || mesesOf[mesesOf.length - 1] || 0
+  // El saldo a favor es el del ÚLTIMO MES CERRADO, no el del último del cuadro: de agosto en adelante
+  // es proyección y el hero dice la posición HOY. Sale de la CASCADA, no del ancla, que contesta otra
+  // pregunta y publicaba el saldo de un mes anterior al último cerrado. Ver `mesDeLaUltimaDDJJ`.
+  const mesSaldoIva = mesDeLaUltimaDDJJ(iva.porOrigen) || mesesOf[mesesOf.length - 1] || 0
   const refs = {
     saldoIva: mesSaldoIva ? `$${cmes(mesSaldoIva)}$${iva.fLibre}` : '0',
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',

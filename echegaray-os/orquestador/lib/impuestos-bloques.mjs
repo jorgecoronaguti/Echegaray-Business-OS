@@ -100,6 +100,27 @@ export function mesDelSaldoVigente(porOrigen = {}) {
   return cerrados.length ? Math.max(...cerrados) : 0
 }
 
+/**
+ * DE QUÉ MES ES EL SALDO A FAVOR QUE EL HERO PUBLICA COMO «F.2051» (04/09/2026).
+ *
+ * No es lo mismo que `mesDelSaldoVigente`, y confundirlos publicaba un número falso bajo el rótulo
+ * de la declaración jurada. Aquélla contesta «cuál es el último mes CERRADO» e incluye los meses que
+ * cierra ARCA — una posición TÉCNICA, reconstruida de comprobantes. Ésta contesta «qué saldo a favor
+ * DECLARÉ», y eso sólo puede salir de una F.2051 presentada.
+ *
+ * MEDIDO el 04/09/2026: el hero publicaba «saldo a favor de IVA · F.2051 = $4.046.759», que era la
+ * proyección de AGOSTO — un mes cuya DDJJ ni siquiera está presentada (venció el 20/08). La última
+ * declarada, la de julio, dice **$9.856.370,42**. El titular subdeclaraba $5,8M de crédito fiscal
+ * propio y llamaba «F.2051» a un número que ningún formulario respalda.
+ *
+ * Un activo fiscal mal medido en la celda más visible de la pestaña es peor que no mostrarlo: se usa
+ * para decidir si se pide plata prestada.
+ */
+export function mesDeLaUltimaDDJJ(porOrigen = {}) {
+  const declarados = porOrigen[ORIGEN.ddjj] ?? []
+  return declarados.length ? Math.max(...declarados) : 0
+}
+
 export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   G.push([seccion(4, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
   G.cabecera()
