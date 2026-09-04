@@ -20,6 +20,7 @@ import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-for
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 import { ALERTA } from './glifos.mjs'
+import { ROTULO_ALICUOTA, ALICUOTA_POR_DEFECTO } from './impuestos-alicuota.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 4 · IVA — LA DDJJ OFICIAL (F.2051)
@@ -435,7 +436,7 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   //
   // AL FINAL DE LA PESTAÑA, Y ES DELIBERADO: una fila nueva arriba correría el rango con nombre.
   // SI YA HAY UN VALOR, NO SE PISA: `alicuotaVigente` sale de la celda leída antes de escribir.
-  const fAlic = G.lista('Alícuota general de IVA', [proy?.alicuotaVigente ?? 0.21],
+  const fAlic = G.lista(ROTULO_ALICUOTA, [proy?.alicuotaVigente ?? ALICUOTA_POR_DEFECTO],
     `PARÁMETRO EDITABLE · lo usa la proyección de IVA de la sección 4 y la base de IIBB de la 5, por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
     + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.')
   return { fAlic }

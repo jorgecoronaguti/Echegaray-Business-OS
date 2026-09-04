@@ -368,6 +368,7 @@ test('ningún archivo del generador pasa de 500 líneas', () => {
   const archivos = [
     './impuestos-pestana.mjs', '../lib/impuestos-informe.mjs', '../lib/impuestos-grilla.mjs', '../lib/impuestos-bloques.mjs',
     '../lib/impuestos-posicion.mjs', '../lib/impuestos-cuadro.mjs', '../lib/impuestos-fuentes.mjs',
+    '../lib/impuestos-base-proyeccion.mjs', '../lib/impuestos-alicuota.mjs',
     '../lib/impuestos-piel.mjs', '../lib/vencimientos-fiscales.mjs',
   ]
   for (const a of archivos) {
