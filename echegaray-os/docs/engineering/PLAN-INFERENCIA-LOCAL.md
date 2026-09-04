@@ -53,6 +53,74 @@ en paralelo ya tumbó Supabase una vez.
 Esto descarta **BGE-M3** (568M, ~2,2 GB residentes) como modelo por defecto. Queda como opción
 configurable si e5-small no alcanza: el modelo es una constante, no una dependencia del código.
 
+
+## MEDIDO EN LA VM — 04/09/2026 (no estimado)
+
+Se instaló `@huggingface/transformers` 4.2.0 y se corrió `Xenova/multilingual-e5-small` INT8 en
+esta VM. **El plan anterior prometía cosas que esta corrida NO sostiene.**
+
+| Métrica | Estimado antes | Medido |
+|---|---|---|
+| Latencia por embedding | 10-30 ms | **7 ms** |
+| Carga del modelo | — | 5,8 s |
+| RSS del proceso | ~550 MB | **584 MB** |
+| Pesos en disco (2 modelos) | — | 259 MB |
+| `node_modules` de la librería | — | **686 MB** |
+
+`intfloat/multilingual-e5-small` publica `onnx/model_qint8_avx512_vnni.onnx`: un build cuantizado
+para exactamente el CPU de esta VM.
+
+### El resultado incómodo: la señal semántica SOLA no alcanza
+
+Cinco consultas reales contra seis capacidades:
+
+```
+e5-small:  4/5 aciertos · margen promedio 0.0152
+  OK  "flujo de fondos"        -> CAJA       margen 0.0005   <-- ruido, no señal
+  MAL "plata que nos deben"    -> CAJA       (debia ser COBRANZAS)
+MiniLM:    3/5 aciertos · margen promedio 0.0710
+  MAL "plata que nos deben"    -> CAJA
+  MAL "sueldos de la quincena" -> COBRANZAS
+```
+
+«Flujo de fondos» acertó por **0,0005**. Eso no rutea nada: cualquier cambio de redacción lo da
+vuelta. Y los dos modelos fallan el mismo caso obvio.
+
+**Corrección de diseño que sale de acá:** comparar la consulta contra la DESCRIPCIÓN de una
+capacidad es el enfoque débil. El fuerte es compararla contra **consultas anteriores reales ya
+etiquetadas** (kNN sobre ejemplos). Por eso el corpus de frases del dueño no es un accesorio del
+hito H1.1: es la condición para que funcione, y sin él H1.1 no se empieza.
+
+Falta medir, y hasta que se mida H1.1 no puede llamarse P0:
+- cuántas consultas rutea mal XSAS hoy, y con qué frecuencia se usa;
+- el mismo experimento con las descripciones REALES de las capacidades (las de la prueba las
+  escribió el que hizo el plan, que es justamente lo que no vale).
+
+---
+
+
+## EL ORDEN LO FIJA LA MISIÓN, NO LA COMODIDAD TÉCNICA
+
+`docs/MISION.md` fija el criterio de profundidad progresiva: **impacto económico + riesgo +
+frecuencia + tiempo humano ahorrado + mejora de precisión + capacidad desbloqueada.**
+
+La primera versión de este plan ordenó los hitos por dependencia técnica (qué habilita qué). Contra
+ese criterio el orden estaba mal:
+
+| Hito | Qué produce (principio de utilidad) | Orden técnico | Orden por misión |
+|---|---|---|---|
+| Anomalías en compras y banco | **recupera dinero** | fase 4 | **primero** |
+| Aprender rendimientos -> cotización | **aumenta margen** (Regla de oro 16) | fase 4 | **segundo** |
+| Ruteo de XSAS | reduce fricción | fase 1 | después |
+| Buscador global | reduce fricción | fase 1 | después |
+
+Y la misión pide algo que este plan casi no cubría: **el OS no debe esperar solicitudes** — debe
+buscar por sí mismo inconsistencias, desvíos, errores y oportunidades (Nivel B). Eso es detección de
+anomalías, no ruteo.
+
+Las fases 4.1 y 4.2 **no dependen del motor de embeddings** (son determinismo puro): pueden
+arrancar en paralelo con la fase 0 y entregar valor económico antes que cualquier hito de HF.
+
 ---
 
 # FASE 0 — LO QUE HABILITA TODO
