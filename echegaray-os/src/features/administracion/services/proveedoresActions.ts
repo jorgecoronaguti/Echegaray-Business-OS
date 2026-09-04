@@ -223,7 +223,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { escriturasDeCorreccion, DECISION } from '../../../../orquestador/lib/ml/correccion.mjs'
-import { normalizar } from '../../../../orquestador/lib/ml/embeddings.mjs'
+import { normalizar } from '../../../../orquestador/lib/ml/normalizar.mjs'
 
 const correccionSchema = z.object({
   resolucionId: z.coerce.number().int().positive(),

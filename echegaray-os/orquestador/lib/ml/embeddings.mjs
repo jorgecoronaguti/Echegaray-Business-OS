@@ -41,26 +41,11 @@ const CACHE_DIR = process.env.ORQ_ML_CACHE_DIR || new URL('../../datos/modelos/'
 let _pipe = null
 let _cargando = null
 
-/** Las marcas diacríticas de Unicode, escritas con escape a propósito: pegadas literalmente son
- *  caracteres invisibles que nadie puede revisar en un diff. */
-const DIACRITICOS = /[̀-ͯ]/g
-
-/**
- * NORMALIZACIÓN ANTES DE EMBEBER. No es cosmética: "S.R.L." y "SRL" tienen que dar el MISMO vector
- * para que la comparación mida el nombre y no la puntuación. Se hace acá, una vez, para que ningún
- * llamador tenga su propia versión — dos normalizaciones distintas del mismo texto son dos
- * identidades distintas, y eso ya costó caro en este repo con los ids de los planos.
- */
-export function normalizar(texto) {
-  return String(texto ?? '')
-    .normalize('NFD').replace(DIACRITICOS, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9ÑÜ\s.-]/g, ' ')
-    .replace(/\b(S\.?R\.?L|S\.?A\.?S?|S\.?H|SOCIEDAD ANONIMA|SRL|SA|SAS)\b\.?/g, ' ')
-    .replace(/[.\-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+// LA NORMALIZACIÓN VIVE EN SU PROPIO ARCHIVO, sin dependencias, y se re-exporta desde acá para que
+// ningún llamador tenga que cambiar. El motivo está escrito en `normalizar.mjs`: la pantalla de
+// Compras necesita la MISMA función para escribir un alias, y no puede pagar el peso de este módulo.
+export { normalizar } from './normalizar.mjs'
+import { normalizar } from './normalizar.mjs'
 
 /** La clave de caché de un texto ya normalizado. El mismo texto no se re-embebe nunca. */
 const claveDe = (t) => createHash('sha1').update(`${MODELO} ${t}`).digest('hex')
