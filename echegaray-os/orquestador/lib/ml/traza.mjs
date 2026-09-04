@@ -19,6 +19,7 @@
 import { query } from '../db.mjs'
 
 let avisado = false
+const pendientes = new Set()
 
 /** Escribe la traza. No se espera y no se propaga: `resolver()` la dispara y sigue. */
 export function registrarTraza(r, { modulo = null } = {}) {
@@ -30,7 +31,7 @@ export function registrarTraza(r, { modulo = null } = {}) {
     r.accion ?? null, Boolean(r.huboFallback), r.costoUsd ?? null, r.sensibilidad ?? null,
     r.metodo !== 'sin-resolver', r.metodo === 'sin-resolver' ? 'sin_resolver' : null,
   ]
-  query(
+  const p = query(
     `insert into orq.ml_traza (trace_id, capacidad, modulo, metodo, modelo, proveedor, ms,
                                confianza, accion, hubo_fallback, costo_usd, sensibilidad, ok, error_kind)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, fila)
@@ -39,6 +40,28 @@ export function registrarTraza(r, { modulo = null } = {}) {
       avisado = true
       console.warn(`  ⚠ la traza ML no se pudo escribir (se sigue igual): ${e.message.slice(0, 90)}`)
     })
+  pendientes.add(p)
+  p.finally(() => pendientes.delete(p))
+}
+
+/**
+ * Espera a que las trazas disparadas terminen de escribirse.
+ *
+ * `registrarTraza()` no se espera a propósito: la operación del negocio no puede depender de la
+ * medición. Pero casi todo el OS son scripts cortos que corren por timer y terminan enseguida — y
+ * un proceso que sale antes de que el INSERT llegue a Postgres pierde la fila sin decir nada. Eso
+ * ya pasó: el humo de la Fase 3 resolvió once proveedores y `orq.ml_traza` quedó en cero.
+ *
+ * Un script que use la capa ML llama a esto antes de salir. Un servicio largo no lo necesita.
+ */
+export async function drenarTrazas({ msMax = 3000 } = {}) {
+  if (pendientes.size === 0) return 0
+  const cuantas = pendientes.size
+  await Promise.race([
+    Promise.allSettled([...pendientes]),
+    new Promise((r) => setTimeout(r, msMax).unref?.()),
+  ])
+  return cuantas
 }
 
 /** Qué usó producción y cuánto tardó, por capacidad. Es la respuesta a la pregunta del dueño. */
