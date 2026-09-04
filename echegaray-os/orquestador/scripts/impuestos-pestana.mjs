@@ -437,7 +437,13 @@ async function main() {
   // deja de emitirse y la vieja quedaría publicada con la cuota de un plan que ya no existe. El
   // mecanismo vive en lib/cola-de-rango.mjs; acá se declara sólo el ancho que ocupa este generador.
   const previoTab = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}400`)
-  const cola = conColaMedida(g.filas, previoTab, { ancho: ANCHO })
+  // `probarPorForma`: esta pestaña bajó de 105 filas a 68 y la cola no se podía borrar. Las celdas
+  // que escribió una versión anterior al sistema de huellas no tienen ninguna, así que la guarda
+  // respondía «nunca fue mía» y las filas 77, 101, 103 y 105 sobrevivieron a cuatro corridas — con un
+  // renglón de 592 caracteres y dos alícuotas sueltas que el censo de números pegados seguía
+  // contando. Con la bandera, una celda de la cola cuyo contenido tiene FORMA DE GENERADOR se prueba
+  // propia y se limpia; un texto libre del dueño sigue decidiéndolo la guarda. Ver cola-de-rango.mjs.
+  const cola = conColaMedida(g.filas, previoTab, { ancho: ANCHO, probarPorForma: true })
   if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
   g.filas = cola.filas
 
