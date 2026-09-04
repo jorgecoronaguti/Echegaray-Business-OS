@@ -40,7 +40,7 @@ import { BarraAreas } from '@/features/administracion/components/BarraAreas'
 import { LibroDeTrabajo } from '@/features/administracion/components/LibroDeTrabajo'
 import { CarteraHome } from '@/features/administracion/components/CarteraHome'
 import {
-  areasDeAdministracion, atencionNoLeida, getConteosHome, senalesDeTrabajo, senalesVivas,
+  areasDeAdministracion, atencionNoLeida, getConteosHome, senalesDeTrabajo,
 } from '@/features/administracion/services/homeAdministracion'
 import {
   armarCartera, getCertificadosDeLaCartera, getObrasDeLaCartera, getUltimoParte, hoyEnLaEmpresa,
@@ -66,7 +66,7 @@ export default async function AdministracionPage() {
   // más para decir lo mismo, y el día que una de las dos cambie de criterio dirían números distintos.
   const conteos = { ...leidos, clientes: cartera.error ? null : activos.length }
   const senales = senalesDeTrabajo(conteos, rol)
-  const areas = areasDeAdministracion(conteos, rol, senalesVivas(conteos, rol))
+  const areas = areasDeAdministracion(conteos, rol)
 
   return (
     // SIN `PageShell` (porte 25/08, canónico 00 v2). El shell dibuja padding 16/24px y un ancho de

@@ -1,23 +1,29 @@
-// LOS SIETE DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
+// LOS CUATRO DESTINOS DE ADMINISTRACIÓN — la barra de nivel 2, en un solo lugar.
 //
-// ═══ QUÉ CAMBIÓ (00 · Home Navegación v2, zip del 25/08/2026) ═══
+// ═══ QUÉ CAMBIÓ (handoff CRM / Administración v4, 04/09/2026) ═══
 //
-// Eran DIEZ tablas en fila: al mismo nivel convivían maestros (Clientes, Personas, Proveedores),
-// registros (Compras, Base maestra, Documentos), colas de trabajo (Pendientes, Asistencia) y
-// configuración (Usuarios). Una barra donde todo es hermano de todo no ordena nada: sólo enumera.
+// La barra queda en **Clientes · Personal · Proveedores | Compras**, y eso saca tres destinos que
+// estaban en la v2. El motivo no es que sobre lugar: es que ninguno de los tres respondía una
+// pregunta que no respondiera ya la sección de al lado.
 //
-//   · TRABAJO absorbe Pendientes y las correcciones de Asistencia. Imputar un texto de obra no es
-//     un área hermana de Clientes: es trabajo sobre comprobantes, y tenerlo aparte hacía que la
-//     misma fila viviera en dos pantallas. Los filtros sucios de Compras y Proveedores entran por
-//     el libro mayor de la entrada, no por una solapa.
-//   · QUIÉN son los tres ejes relacionales — cliente, persona, proveedor.
-//   · REGISTRO Y REFERENCIA es lo que se CONSULTA, no lo que se opera.
-//   · PRESUPUESTOS sube a nivel 1 (es comercial) y USUARIOS baja al menú de la cuenta: se toca una
-//     vez por mes y estaba al lado de Clientes, que se toca todos los días.
+//   · TRABAJO enumeraba lo que cada sección ya reclama en sus propias filas. Un destino que sólo
+//     lista los pendientes de los demás obliga a mirar dos pantallas para el mismo trabajo, y la
+//     v4 elimina además la banda de señales: lo que falta se marca en la fila que lo tiene.
+//   · DOCUMENTOS era un repositorio general de archivos. Los papeles se leen colgados de su obra,
+//     su persona, su cliente o su proveedor —donde ya viven las fichas—; un catálogo transversal no
+//     contesta ninguna pregunta del día.
+//   · BASE MAESTRA se fue a Presupuestos: tareas tipo y recursos no son administración, son la
+//     materia con la que se cotiza. Se enlaza desde `/presupuestos`.
 //
-// NINGUNA RUTA SE ROMPIÓ. `/administracion/pendientes`, `/administracion/asistencia`,
-// `/administracion/usuarios` y `/presupuestos` siguen existiendo y respondiendo igual; lo único que
-// cambió es desde dónde se llega. Retirar un enlace es reversible en una línea; borrar una ruta no.
+// NINGUNA RUTA SE BORRÓ. `/administracion` (la entrada del área, a la que sigue llevando la solapa
+// de nivel 1), `/administracion/base-maestra`, `/administracion/pendientes`,
+// `/administracion/asistencia`, `/administracion/usuarios` y `/documentos` siguen existiendo y
+// respondiendo igual: retirar un enlace es reversible en una línea, borrar una ruta no.
+//
+// LAS DOS COLAS QUE ERAN DE «TRABAJO» AHORA CUELGAN DE SU SECCIÓN, que es el criterio de la v4:
+// imputar un comprobante es trabajo sobre Compras, y corregir una marca es trabajo sobre Personal.
+// Por eso `absorbe` las mueve ahí en vez de dejarlas sin solapa — una pantalla en la que la barra
+// se apaga entera deja de decir dónde está parado el que la mira.
 //
 // ═══ POR QUÉ ESTE ARCHIVO EXISTE ═══
 //
@@ -32,8 +38,8 @@
 import type { Rol } from '@/features/auth/types'
 import { puedeVerRuta } from '../../auth/types/areas.ts'
 
-/** Los tres grupos de la barra. El filo va donde cambia la NATURALEZA del destino, no cada tres. */
-export type GrupoArea = 'trabajo' | 'quien' | 'registro'
+/** Los dos grupos de la barra. El filo va donde cambia la NATURALEZA del destino, no cada tres. */
+export type GrupoArea = 'quien' | 'registro'
 
 export interface Destino {
   clave: string
@@ -57,13 +63,6 @@ export interface AreaAdmin {
 }
 
 export const DESTINOS: readonly Destino[] = [
-  // La entrada ES el trabajo: debajo de la barra vive el libro mayor de las siete señales, y cada
-  // fila lleva al filtro donde se resuelve. Por eso apunta a `/administracion` y no a una pantalla
-  // nueva que sería la misma.
-  {
-    clave: 'trabajo', titulo: 'Trabajo', href: '/administracion', grupo: 'trabajo',
-    absorbe: ['/administracion/pendientes', '/administracion/asistencia'],
-  },
   // Clientes NO absorbe nada. Durante unas horas del 26/08/2026 absorbió `/administracion/portal` y
   // `/administracion/cronograma`, dos pantallas que duplicaban las solapas 31 y 32 de la ficha del
   // cliente; se retiraron y la absorción se fue con ellas. Quién entra al portal y qué cobros ve se
@@ -71,17 +70,19 @@ export const DESTINOS: readonly Destino[] = [
   { clave: 'clientes', titulo: 'Clientes', href: '/clientes', grupo: 'quien' },
   // «Personal» y no «Personas»: es el rótulo del canónico 19 y el del mockup. La clave sigue siendo
   // `personas` porque es la que nombra la ruta y los identificadores de prueba.
-  { clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien' },
+  // Absorbe Asistencia: corregir una marca es trabajo sobre una persona, no un área hermana.
+  {
+    clave: 'personas', titulo: 'Personal', href: '/administracion/personas', grupo: 'quien',
+    absorbe: ['/administracion/asistencia'],
+  },
   { clave: 'proveedores', titulo: 'Proveedores', href: '/administracion/proveedores', grupo: 'quien' },
-  // El libro de compras de ARCA (pantalla 24). NO entra en `RUTAS_SOLO_ECONOMIA`: una compra es
-  // COSTO, no PRECIO, y el jefe de obra ve el costo de su obra (19/08).
-  { clave: 'compras', titulo: 'Compras', href: '/administracion/compras', grupo: 'registro' },
-  // La biblioteca de análisis de precio unitario: no se entra a hacer un trámite, se entra a mirar
-  // con qué se cotiza. Lo económico de esa pantalla lo cierra la base (`recurso_precio`).
-  { clave: 'base-maestra', titulo: 'Base maestra', href: '/administracion/base-maestra', grupo: 'registro' },
-  // SÍ entra en `RUTAS_SOLO_ECONOMIA`, y por eso el jefe de obra no la ve: las tres carpetas raíz
-  // del índice son `administracion`, `archivo-fiscal` y `libro-sueldos`.
-  { clave: 'documentos', titulo: 'Documentos', href: '/documentos', grupo: 'registro' },
+  // El libro de compras. NO entra en `RUTAS_SOLO_ECONOMIA`: una compra es COSTO, no PRECIO, y el
+  // jefe de obra ve el costo de su obra (19/08).
+  // Absorbe Pendientes de imputación: la fila sin obra que se resuelve ahí es una fila de Compras.
+  {
+    clave: 'compras', titulo: 'Compras', href: '/administracion/compras', grupo: 'registro',
+    absorbe: ['/administracion/pendientes'],
+  },
 ] as const
 
 /**
@@ -99,8 +100,8 @@ export function destinosVisibles(rol: Rol | null | undefined): Destino[] {
 /**
  * ¿HAY QUE DIBUJAR UN FILO ANTES DE ESTE DESTINO? Sólo cuando cambia el grupo.
  *
- * Se calcula sobre la lista YA filtrada por rol: si el jefe de obra no ve Documentos, el filo no
- * puede quedar colgando al final de la barra.
+ * Se calcula sobre la lista YA filtrada por rol: el día que un destino vuelva a ser sólo de quien
+ * ve economía, el filo no puede quedar colgando al final de la barra de quien no lo ve.
  */
 export function hayFiloAntes(destinos: readonly Destino[], i: number): boolean {
   return i > 0 && destinos[i - 1].grupo !== destinos[i].grupo
@@ -109,29 +110,23 @@ export function hayFiloAntes(destinos: readonly Destino[], i: number): boolean {
 /**
  * QUÉ SOLAPA ESTÁ ENCENDIDA PARA ESTA RUTA. `null` = ninguna, y eso es un estado legítimo.
  *
- * `/administracion/usuarios` devuelve `null` A PROPÓSITO: Usuarios bajó al menú de la cuenta y ya
- * no es una sección del área. La pantalla sigue abriéndose por su ruta y por el menú; lo que no
- * hace es encender una solapa que no existe.
+ * Devuelven `null` A PROPÓSITO `/administracion` (la entrada del área, que ya no es un destino de
+ * nivel 2), `/administracion/usuarios` (bajó al menú de la cuenta), `/administracion/base-maestra`
+ * (se fue a Presupuestos) y `/documentos` (se erradicó como destino). Las cuatro pantallas siguen
+ * abriéndose por su ruta; lo que no hacen es encender una solapa que no existe.
  *
- * El orden importa: el destino más específico gana. `/administracion` es prefijo de todas las demás
- * rutas del área, así que sólo enciende Trabajo cuando es la ruta exacta o una de las absorbidas.
+ * `absorbe` se mira en TODOS los destinos: Asistencia enciende Personal y Pendientes enciende
+ * Compras. Hasta el 26/08/2026 el campo estaba declarado para cualquiera y leído para uno solo, y
+ * ese era el defecto que apagaba la barra entera dentro del cronograma.
  *
- * `absorbe` se mira en TODOS los destinos, no sólo en Trabajo. Hasta el 26/08/2026 el campo estaba
- * declarado para cualquiera y leído para uno solo: agregar una pantalla que colgara de otra solapa
- * exigía un octavo destino —que el mockup no tiene y que un test prohíbe—, así que la única salida
- * era dejarla sin solapa. Ese es el defecto que apagaba la barra entera dentro del cronograma.
+ * Ya no hace falta el caso exacto que protegía a «Trabajo»: `/administracion` no es el `href` de
+ * ningún destino, así que dejó de ser prefijo de todos.
  */
 export function areaActiva(pathname: string | null | undefined): string | null {
   const ruta = (pathname ?? '').split('?')[0].replace(/\/+$/, '') || '/'
   const dentroDe = (base: string) => ruta === base || ruta.startsWith(`${base}/`)
-  const enciende = (d: Destino) => dentroDe(d.href) || (d.absorbe?.some(dentroDe) ?? false)
-  // Trabajo va al final: su `href` es prefijo de todas las rutas del área y ganaría siempre.
   for (const d of DESTINOS) {
-    if (d.clave === 'trabajo') continue
-    if (enciende(d)) return d.clave
+    if (dentroDe(d.href) || (d.absorbe?.some(dentroDe) ?? false)) return d.clave
   }
-  const trabajo = DESTINOS[0]
-  // Para Trabajo el `href` se compara EXACTO, no por prefijo, por lo mismo.
-  if (ruta === trabajo.href || trabajo.absorbe?.some(dentroDe)) return trabajo.clave
   return null
 }
