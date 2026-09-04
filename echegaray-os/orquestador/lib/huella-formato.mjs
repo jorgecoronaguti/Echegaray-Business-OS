@@ -296,6 +296,26 @@ export async function leerFormatoDePestana(cliente, fileId, tab, { conAltos = fa
  * FAIL-CLOSED: sin base, o sin poder leer el formato vivo, no se aplica ningún formato. Un Sheet con
  * el formato de ayer se arregla en la corrida siguiente; el diseño que el dueño hizo, no.
  */
+// ═══ «PRIMERA PASADA» ES DE LA CORRIDA, NO DE LA LLAMADA (04/09/2026) ═══
+//
+// `decidirFormato` tiene un camino explícito: si la pestaña no tiene NINGUNA huella de formato,
+// aplica y siembra. Pero `filtrarFormato` se llama VARIAS VECES por corrida —una por tanda de
+// requests— y relee la base en cada una. La primera tanda encuentra la pestaña vacía, aplica y
+// SELLA; a partir de ahí las tandas siguientes ya la ven con huellas, dejan de ser primera pasada y
+// caen en «ya tiene un formato que yo no puse». **El generador se envenena a sí mismo dentro de su
+// propia corrida.**
+//
+// MEDIDO en «Impuestos y Financieros»: con la pestaña en 0 huellas, una corrida aplicó formato a 2
+// rangos y bloqueó los otros 419 — el cuadro de IVA quedó con los números crudos, sin `$` ni
+// separador de miles, mientras el resto de la pestaña sí tenía formato.
+//
+// La respuesta se recuerda por proceso: si al empezar estaba virgen, lo sigue estando para toda la
+// corrida. Se limpia con `olvidarVirgenes()`, que usan los tests.
+const virgenAlEmpezar = new Map()
+
+/** Olvida qué pestañas estaban vírgenes. Para los tests: sin esto, una corrida contamina la siguiente. */
+export function olvidarVirgenes() { virgenAlEmpezar.clear() }
+
 export async function filtrarFormato(cliente, fileId, requests = [], id2tab = new Map(), { esProtegible = (t) => Boolean(t) && !String(t).startsWith('_') } = {}) {
   const claves = requests.map((r) => claveDeFormato(r))
   const conFormato = claves.map((c, i) => ({ c, i })).filter((x) => x.c && esProtegible(id2tab.get(x.c.sheetId)))
@@ -311,6 +331,12 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
   for (const [tab, necesita] of porTab) {
     vivos.set(tab, await leerFormatoDePestana(cliente, fileId, tab, necesita).catch(() => null))
     guardadas.set(tab, await leerHuellasFormato({}, fileId, tab).catch(() => null))
+  }
+  const clave = (f, t) => `${f}|${t}`
+  const virgenDeLaCorrida = (f, t, mapa) => {
+    const k = clave(f, t)
+    if (!virgenAlEmpezar.has(k)) virgenAlEmpezar.set(k, mapa.size === 0)
+    return virgenAlEmpezar.get(k)
   }
   const sellosDeLaPestana = new Map()
   for (const [tab, mapa] of guardadas) sellosDeLaPestana.set(tab, mapa ? new Set(mapa.values()) : null)
@@ -328,7 +354,7 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
     const d = decidirFormato({
       huellaViva: huellaDeRango(c.tipo, vivo, c.gr),
       huellaGuardada: mapa.get(`${c.tipo}|${c.rango}`) ?? null,
-      pestanaSinHuellas: mapa.size === 0,
+      pestanaSinHuellas: virgenDeLaCorrida(fileId, tab, mapa),
       virgen: esFormatoVirgen(c.tipo, vivo, c.gr),
       // Todo lo que el OS selló en ESTA pestaña, sin su coordenada: con eso reconoce su propio
       // formato cuando un bloque se corre de fila. Ver el caso en `decidirFormato`.
