@@ -88,7 +88,8 @@ export const TIPOS = Object.freeze([
     requiere: /N[º°]?\s*IERIC|IERIC\b/i,
     marcas: [/IERIC\b/i, /N[úu]mero\s+de\s+Boleta|Clave\s+de\s+pago\s+electr[óo]nico/i,
              /FECHA\s+DE\s+VENCIMIENTO|TOTAL\s+A\s+PAGAR/i],
-    minimo: 2, porQue: 'boleta del IERIC (aporte o multa): tiene número de boleta y vencimiento' },
+    minimo: 2, masEspecificoQue: ['ieric', 'nota_credito'],
+    porQue: 'boleta del IERIC (aporte o multa): tiene número de boleta y vencimiento' },
 
   { tipo: 'certificado_obra', sensibilidad: 'interno',
     marcas: [/CERTIFICADO\s*N[º°]?\s*\d+/i, /avance|acumulado|obra/i, /certificaci[óo]n/i],
@@ -102,7 +103,12 @@ export const TIPOS = Object.freeze([
     marcas: [/entre\s+las\s+partes|CL[ÁA]USULA|las\s+partes\s+acuerdan/i, /objeto\s+del\s+contrato|contratante|contratista/i],
     minimo: 2, porQue: 'documento contractual' },
 
+  // El tipo GENÉRICO del IERIC. `boleta_ieric` se declara más específico que éste: una boleta de
+  // multa es documentación del IERIC, pero llamarla así pierde lo único que importa de ella, que es
+  // que hay una multa con vencimiento. Sin la relación de especificidad declarada, cuál de los dos
+  // gana dependería del puntaje — y eso es una respuesta que cambia sin que nadie toque nada.
   { tipo: 'ieric', sensibilidad: 'confidencial',
+    requiere: /IERIC\b|Registro\s+Nacional\s+de\s+la\s+Industria\s+de\s+la\s+Construcci[óo]n/i,
     marcas: [/IERIC\b/i, /Registro\s+Nacional\s+de\s+la\s+Industria\s+de\s+la\s+Construcci[óo]n/i, /libreta/i],
     minimo: 1, porQue: 'documentación del registro de la construcción' },
 
