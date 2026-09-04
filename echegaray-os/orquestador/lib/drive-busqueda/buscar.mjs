@@ -42,6 +42,7 @@
 import { plano, sinExtension, tokenizar, tipoPedido, cargarSinonimos } from './normalizar.mjs'
 import { rankear, resolver, rutaLegible, PESOS } from './ranking.mjs'
 import { crearRegistro, crearEstados, fuenteCoincide, SQL_FUENTES, SQL_ESTADOS } from './senales.mjs'
+import { buscarEnContenido } from './contenido.mjs'
 
 /** Cuánto vale el índice cargado en memoria antes de volver a leerlo de Postgres. El timer
  *  de Drive corre cada 6 h: cinco minutos de desfasaje no pierde nada y ahorra 2.465 filas
@@ -155,6 +156,17 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
       await cargarRegistro()
       cargadoEn = t
       return filas
+    },
+    /**
+     * Buscar dentro del CONTENIDO de los documentos que el motor documental ya leyó.
+     *
+     * No viaja con el índice como el resto: el contenido son cientos de miles de fragmentos y
+     * cargarlos en memoria sería traer el Drive entero para contestar una pregunta. Va a Postgres,
+     * que para esto tiene un índice GIN en español y contesta en milisegundos.
+     */
+    async buscarContenido(texto, opciones = {}) {
+      if (!port?.query) return { documentos: [], fragmentos: 0, ms: 0 }
+      return buscarEnContenido((sql, params) => port.query(sql, params), texto, opciones)
     },
     /**
      * Aceptaciones de esta consulta, separadas en PROPIAS y AJENAS.
@@ -398,6 +410,43 @@ export async function buscar({
   // que vale una palabra entera del nombre — o la respuesta honesta es "no encontré nada".
   const ultimos = rankear(rescatados, consulta, { ahora, aceptacionesPor, registro, estados, alias })
     .filter((e) => e.texto >= PISO_RESCATE)
+
+  // ── Y CUANDO NI EL NOMBRE NI LA RUTA ALCANZAN: LO QUE EL PAPEL DICE ADENTRO ──
+  //
+  // Las seis etapas de arriba miran el NOMBRE. Sirven mientras el nombre describa el documento — y
+  // en este Drive 3.042 PDF se llaman «2024-08 TK.pdf» o «11-2024.pdf». «¿dónde está el CUIT
+  // 20-11793242-8?» no tiene respuesta posible por nombre: el dato está adentro.
+  //
+  // Va ÚLTIMA, y no es un orden arbitrario. Cuando el nombre alcanza, el nombre es mejor:
+  // «contrato Quattropani» encuentra el contrato con precisión perfecta, y por contenido devolvería
+  // además cada acta y cada certificado que lo menciona. Esta etapa no reemplaza a las otras;
+  // contesta lo que las otras no pueden.
+  //
+  // Si el índice documental no existe o falla, se devuelve lo de siempre: una capacidad nueva no
+  // puede romper la que ya funcionaba.
+  if (!ultimos.length && indice.buscarContenido) {
+    try {
+      const c = await indice.buscarContenido(texto, { limite })
+      if (c?.documentos?.length) {
+        return {
+          etapa: 'contenido',
+          ganador: null,
+          // NUNCA confianza alta. Que una frase aparezca adentro de un papel no prueba que ESE sea
+          // el papel que la persona busca: se ofrece con lo que se leyó y elige quien preguntó.
+          confianza: 'media',
+          alternativas: [],
+          opciones: [],
+          porContenido: c.documentos,
+          consulta,
+          alias,
+          evaluados: filas.length,
+          fragmentos: c.fragmentos,
+          ms: Date.now() - t0,
+        }
+      }
+    } catch { /* el índice documental es opcional: sin él, la búsqueda por nombre sigue igual */ }
+  }
+
   const cierre = resolver(ultimos, { exigeCobertura })
   return {
     etapa: ultimos.length ? 'rescate' : null,
