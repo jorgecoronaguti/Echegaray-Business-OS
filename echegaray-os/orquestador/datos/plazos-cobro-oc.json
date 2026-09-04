@@ -1,0 +1,274 @@
+{
+ "generado_por": "orquestador/scripts/plazo-cobro-leer-oc.mjs",
+ "leido_el": "2026-09-04",
+ "fuente": "Sheet 1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8 · Cobranzas!A5:S200 (SOLO LECTURA) + los PDF de las OC en Drive",
+ "resumen": {
+  "sin_pdf_en_drive": 10,
+  "leida": 9,
+  "condicion_sin_dias": 1
+ },
+ "ordenes": [
+  {
+   "orden_compra": "00002-00000279",
+   "cliente": "MESSINA",
+   "filas": [
+    45,
+    93
+   ],
+   "estado": "leida",
+   "codigo": "3",
+   "descripcion": "CUENTA CORRIENTE 15 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 15,
+   "instrumento": null,
+   "drive_file_id": "1TDLynbS8DDcCWU2Cx-AdDgz6DBnJ5Hs_",
+   "archivo": "OC_32_0000200000279 Echegaray.pdf"
+  },
+  {
+   "orden_compra": "00002-00001864",
+   "cliente": "MESSINA",
+   "filas": [
+    31,
+    38
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "1e_D2tROs0JrNHJw6pZSnqU-kkkQMGRT0",
+   "archivo": "OBRA - OC_32_0000200001864.pdf"
+  },
+  {
+   "orden_compra": "00002-00001923",
+   "cliente": "MESSINA",
+   "filas": [
+    42
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "13r6G3k95PZvk9Sah08BO-pA71GcYwthM",
+   "archivo": "ADICIONAL - OC_32_0000200001923.pdf"
+  },
+  {
+   "orden_compra": "00002-00001984",
+   "cliente": "MESSINA",
+   "filas": [
+    46
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "1XBHeCpC9pH4oxcqC6BPjrR5J83iY8kYo",
+   "archivo": "OC_32_0000200001984.pdf"
+  },
+  {
+   "orden_compra": "00002-00001985",
+   "cliente": "MESSINA",
+   "filas": [
+    47
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "16jl2ZbV8ZtMSeyxauVukDp62nbsvJXlb",
+   "archivo": "OC_32_0000200001985.pdf"
+  },
+  {
+   "orden_compra": "00002-00002097",
+   "cliente": "MESSINA",
+   "filas": [
+    55,
+    56
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 0000200002097"
+  },
+  {
+   "orden_compra": "00002-00002135",
+   "cliente": "MESSINA",
+   "filas": [
+    65
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 0000200002135"
+  },
+  {
+   "orden_compra": "00002-00002162",
+   "cliente": "MESSINA",
+   "filas": [
+    87
+   ],
+   "estado": "leida",
+   "codigo": "18",
+   "descripcion": "CHEQUE A 30 DIAS",
+   "tipo": "cheque",
+   "dias": 30,
+   "instrumento": "cheque",
+   "drive_file_id": "13o07FqgLMNkG54Le-YzKjuJSlXtKihTb",
+   "archivo": "OC_32_0000200002162.pdf"
+  },
+  {
+   "orden_compra": "00002-00002173",
+   "cliente": "MESSINA",
+   "filas": [
+    68,
+    74,
+    75
+   ],
+   "estado": "condicion_sin_dias",
+   "codigo": "21",
+   "descripcion": "50% ANTICIPADO - 50% CONTRA ENTREGA",
+   "tipo": "hitos",
+   "dias": null,
+   "instrumento": null,
+   "drive_file_id": "1rtcuIzTxPOxzWSzqkeqfoQFxPn9cE8xi",
+   "archivo": "OC_32_0000200002173.pdf"
+  },
+  {
+   "orden_compra": "00002-00002226",
+   "cliente": "MESSINA",
+   "filas": [
+    96
+   ],
+   "estado": "leida",
+   "codigo": "3",
+   "descripcion": "CUENTA CORRIENTE 15 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 15,
+   "instrumento": null,
+   "drive_file_id": "1EMcp2CyhiUM0o58jg7gVcEcWSBa_mNpX",
+   "archivo": "OC_32_0000200002226.pdf"
+  },
+  {
+   "orden_compra": "00002-00002256",
+   "cliente": "MESSINA",
+   "filas": [
+    98
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "15QUCmWc1KGfcQqiX-UPo3VDklfNEjqjz",
+   "archivo": "OC_32_0000200002256.pdf"
+  },
+  {
+   "orden_compra": "00002-00002266",
+   "cliente": "MESSINA",
+   "filas": [
+    99,
+    100
+   ],
+   "estado": "leida",
+   "codigo": "6",
+   "descripcion": "CUENTA CORRIENTE 30 DIAS",
+   "tipo": "cuenta_corriente",
+   "dias": 30,
+   "instrumento": null,
+   "drive_file_id": "1VoxVECOsHZQ-Ou_wRMYfGyN8kyOCdOlJ",
+   "archivo": "OC_32_0000200002266.pdf"
+  },
+  {
+   "orden_compra": "53239034",
+   "cliente": "ARCOR",
+   "filas": [
+    5,
+    8
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53239034"
+  },
+  {
+   "orden_compra": "53239036",
+   "cliente": "ARCOR",
+   "filas": [
+    10
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53239036"
+  },
+  {
+   "orden_compra": "53241303",
+   "cliente": "ARCOR",
+   "filas": [
+    6,
+    9
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53241303"
+  },
+  {
+   "orden_compra": "53259436",
+   "cliente": "ARCOR",
+   "filas": [
+    11,
+    13,
+    14,
+    17
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53259436"
+  },
+  {
+   "orden_compra": "53270182",
+   "cliente": "ARCOR",
+   "filas": [
+    12
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53270182"
+  },
+  {
+   "orden_compra": "53275590",
+   "cliente": "ARCOR",
+   "filas": [
+    15
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53275590"
+  },
+  {
+   "orden_compra": "53312775",
+   "cliente": "ARCOR",
+   "filas": [
+    49,
+    53
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53312775"
+  },
+  {
+   "orden_compra": "53357412",
+   "cliente": "ARCOR",
+   "filas": [
+    60
+   ],
+   "estado": "sin_pdf_en_drive",
+   "dias": null,
+   "motivo": "no hay ningún PDF cuyo nombre contenga 53357412"
+  }
+ ]
+}
