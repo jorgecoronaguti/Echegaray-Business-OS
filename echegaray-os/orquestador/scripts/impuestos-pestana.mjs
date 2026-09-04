@@ -61,6 +61,7 @@ import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe
 import { formatear } from '../lib/impuestos-piel.mjs'
 export { ubicarLineas, sinSolapamiento } from '../lib/impuestos-base-proyeccion.mjs'
 import { resolverAlicuota, ROTULO_ALICUOTA } from '../lib/impuestos-alicuota.mjs'
+import { elLayoutCambio, invalidarHuellasDeFormato } from '../lib/huella-formato-layout.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -429,6 +430,19 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
   vaciarColumnaDeProsa(g.filas, ANCHO - 1)
+  // ═══ UNA HUELLA DE FORMATO DE UN LAYOUT QUE YA NO EXISTE NO ES EVIDENCIA (04/09/2026) ═══
+  //
+  // Cuando esta pestaña pasó de 105 filas a 68, las 350 huellas viejas quedaron describiendo filas
+  // que ya no contienen lo que contenían: la guarda las leyó como diseño del dueño y bloqueó los 419
+  // rangos de formato de golpe. La pestaña se publicó con los importes crudos —`1419600` en vez de
+  // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella. Se
+  // invalidan ANTES de escribir; la corrida vuelve a aplicar y a sellar sobre el layout nuevo, que es
+  // el único sobre el que la protección puede significar algo. Ver lib/huella-formato-layout.mjs.
+  const layout = elLayoutCambio(previoTab, g.filas)
+  if (layout.cambio) {
+    const n = await invalidarHuellasDeFormato(query, ID, PESTAÑA).catch((e) => { console.warn(`  ⚠ no pude invalidar las huellas de formato: ${e.message}`); return 0 })
+    console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
+  }
   const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07). Una pestaña que no se escribió no
   // cambió de forma: su formato y sus nombres son los de su última escritura y así tienen que quedar.

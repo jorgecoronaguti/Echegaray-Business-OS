@@ -379,6 +379,7 @@ test('ningún archivo del generador pasa de 500 líneas', () => {
     './impuestos-pestana.mjs', '../lib/impuestos-informe.mjs', '../lib/impuestos-grilla.mjs', '../lib/impuestos-bloques.mjs',
     '../lib/impuestos-posicion.mjs', '../lib/impuestos-cuadro.mjs', '../lib/impuestos-fuentes.mjs',
     '../lib/impuestos-base-proyeccion.mjs', '../lib/impuestos-alicuota.mjs',
+    '../lib/huella-formato-layout.mjs',
     '../lib/impuestos-piel.mjs', '../lib/vencimientos-fiscales.mjs',
   ]
   for (const a of archivos) {
