@@ -311,12 +311,7 @@ function celdaNumero(grid, gi, col) {
  */
 function columnasDePlata(grid, bloque) {
   const buscar = (re) => columnaPorRotulo(grid, bloque.fila, re) ?? columnaPorRotulo(grid, 0, re)
-  return {
-    horas: buscar(/^d[ií]as\s*\/\s*horas\b/i),
-    valorHora: buscar(/^\$\s*hora\b/i),
-    // Se sigue ubicando aunque no sea el monto: es lo que se informa cuando hace falta el percibido.
-    totalSemana: buscar(/^total\s*semana\b/i),
-  }
+  return { horas: buscar(/^d[ií]as\s*\/\s*horas\b/i), valorHora: buscar(/^\$\s*hora\b/i) }
 }
 
 /**

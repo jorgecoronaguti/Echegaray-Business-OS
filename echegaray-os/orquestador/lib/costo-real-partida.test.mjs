@@ -180,14 +180,16 @@ test('layout 2025 calcado del archivo: el total no se puede recalcular y se lee 
   // primera corrida real destapó: 534 filas sin valuar y 72 bloques leyendo $0.
   const p = planilla()
   p.cruda({
-    B: txt('OBRERO'), K: txt('DIAS / HORAS'), L: txt('$ HORA'), N: txt('ADELANTO'),
+    B: txt('OBRERO'), K: txt('DIAS / HORAS'), L: txt('$ HORA'), M: txt('BANCO'), N: txt('ADELANTO'),
     O: txt('TOTAL RECIBO'), P: txt('TOTAL SEMANA'), Q: txt('OBRA'),
   })
   p.cruda({ A: txt('x'), B: txt('Obrero'), E: txt('6/1'), F: txt('7/1'), G: txt('8/1'), H: txt('9/1'), I: txt('10/1') })
   p.cruda({
     A: num(1), B: txt('Juan Bazan'), E: num(8), F: num(8), G: num(8), H: num(8), I: num(8),
     K: frm('=SUM(E3:J3)', 40), L: num(3300), N: num(10000),
-    O: frm('=K3*L3+SUM(J3)*M3-N3', 122000), P: frm('=N3+O3', 132000), Q: txt('ARCOR'),
+    // En el archivo real P no incluye el BANCO: acá vale 42.000 mientras el bruto es 40 × 3.300.
+    // Si alguien vuelve a tomar «TOTAL SEMANA» como el monto, este test se pone rojo.
+    M: num(90000), O: frm('=K3*L3-M3-N3', 32000), P: frm('=N3+O3', 42000), Q: txt('ARCOR'),
   })
   const r = filasDeJornales(p.grid('JORNALES 25'), { pestana: 'JORNALES 25', anio: 2025, mapa: MAPA, alias: new Map([['arcor', 'arcor']]), norm })
   assert.equal(r.filas.length, 1)
@@ -237,6 +239,15 @@ test('un bloque sin TOTAL MO escrito no contrasta — y eso NO es que contrastó
   const r = filasDeJornales(p.grid('Obreros 26'), { pestana: 'Obreros 26', anio: 2026, mapa: MAPA, alias: ALIAS, norm })
   assert.equal(r.bloques[0].testigo, null)
   assert.equal(r.bloques[0].concuerda, null)
+})
+
+test('una persona que no cobró nada esa quincena no entra como una fila de $0', () => {
+  // Una fila de costo en 0 no es un costo: ensucia el conteo de personas por obra y el promedio de
+  // jornal. Se declara SIN_MONTO y se cuenta aparte.
+  const f = { ref: 'b1f2', persona: 'X', rotuloCliente: 'LA ESTRELLA', horas: 0, valorHora: 5000, jornal: 0 }
+  const r = filaDeJornal(f, { pestana: 'Obreros 26', hasta: '2026-01-15', obraId: 'la-estrella', regla: 'cliente', frente: null, horas: 0, valorHora: 5000 })
+  assert.equal(r.fila, undefined)
+  assert.equal(r.excluida, EXCLUSION.SIN_MONTO)
 })
 
 test('un rótulo desconocido no se carga y su plata queda contada aparte', () => {
