@@ -47,6 +47,7 @@ scripts · 14 timers en producción.
 | compras | pestaña `Compras` → espejo `public.compra_sheet` (timer 1 h) | escribir Postgres y esperar que suba |
 | proveedores | `public.proveedores`, identidad por **CUIT** | crear por nombre parecido |
 | efectivo | el arqueo sellado + movimientos posteriores | inferir del Sheet |
+| plazo de cobro de una factura | la **orden de compra** del cliente (`Cond.Compra` del PDF) → `lib/plazo-cobro.mjs` · lectura versionada en `orquestador/datos/plazos-cobro-oc.json` · capa manual en `public.condicion_cobro` | la constante global sin marcarla SUPUESTO |
 | diseño de pantallas | los `.dc.html` del zip vigente | `COMPONENTS.md`, que pierde |
 
 ## Comandos
