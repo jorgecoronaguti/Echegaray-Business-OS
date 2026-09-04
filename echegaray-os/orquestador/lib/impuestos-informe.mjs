@@ -24,7 +24,8 @@ export function informarProyeccion(proy) {
     + ` · el IVA se extrae del bruto con a/(1+a) = ${(alic / (1 + alic)).toFixed(9)}`)
   const futuros = proy.meses.map((m) => ({
     periodo: `2026-${String(m).padStart(2, '0')}`,
-    base_debito: proy.bases[m].debito.reduce((s, b) => s + b.valor, 0),
+    // DECLARADO, no bruto: `bases[m].debito` es el IVA que las facturas B ya escriben en Cobranzas!K.
+    debito_declarado: proy.bases[m].debito.reduce((s, b) => s + b.valor, 0),
     base_credito: proy.bases[m].credito.reduce((s, b) => s + b.valor, 0),
     supuesto: proy.supuesto,
   }))
@@ -39,7 +40,9 @@ export function informarProyeccion(proy) {
         console.log(`    ${lado === 'debito' ? 'DÉB' : 'CRÉ'}  ${b.celda.padEnd(14)} ${b.rotulo.slice(0, 46).padEnd(48)} ${money(b.valor).padStart(15)}`)
       }
       console.log(`         ${''.padEnd(14)} ${'BASE (suma de las de arriba)'.padEnd(48)} ${money(suma).padStart(15)}`)
-      console.log(`         ${''.padEnd(14)} ${`× ${alic}/(1+${alic}) =`.padEnd(48)} ${money(suma * alic / (1 + alic)).padStart(15)}`)
+      // El débito NO se convierte: ya es el impuesto. El crédito sí: es un bruto de caja.
+      const conv = lado === 'debito' ? 'ya es el IMPUESTO declarado, no se convierte =' : `× ${alic}/(1+${alic}) =`
+      console.log(`         ${''.padEnd(14)} ${conv.padEnd(48)} ${money(lado === 'debito' ? suma : suma * alic / (1 + alic)).padStart(15)}`)
     }
     const r = calc.find((x) => x.periodo === `2026-${String(m).padStart(2, '0')}`)
     console.log(`    ⇒ IVA A PAGAR EN EFECTIVO${''.padEnd(35)} ${money(r.a_pagar_efectivo).padStart(15)}`)

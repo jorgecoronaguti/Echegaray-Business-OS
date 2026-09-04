@@ -13,10 +13,11 @@ import {
 } from './iva-libre-disponibilidad.mjs'
 import {
   formulaCuotaPrendario, formulaPrendarioPendiente, formulaPlanesPendiente,
-  formulaAlicuotaIibbVigente, formulaBaseIibbProyectada, formulaIibbDeterminado,
+  formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoCheque, rangoIibb,
 } from './impuestos-cuadro.mjs'
 import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-formula.mjs'
+import { ventasFacturadasDelMes } from './impuestos-base-libro.mjs'
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -55,7 +56,8 @@ import { ROTULO_ALICUOTA, ALICUOTA_POR_DEFECTO } from './impuestos-alicuota.mjs'
 
 /** Los estados posibles de un mes del cuadro. El texto es el que va a la fila de procedencia. */
 export const ORIGEN = {
-  ddjj: 'ddjj', ajeno: 'ajeno', arca: 'arca', arcaParcial: 'arca-parcial', proyeccion: 'proyeccion', vacio: 'vacio',
+  ddjj: 'ddjj', ajeno: 'ajeno', arca: 'arca', arcaParcial: 'arca-parcial', proyeccion: 'proyeccion',
+  sinVentas: 'sin-ventas', vacio: 'vacio',
 }
 
 /**
@@ -69,8 +71,9 @@ export const ORIGEN = {
  * @param {number[]} ctx.mesesArca   meses con comprobantes en `comprobantes_arca`
  * @param {number[]} ctx.mesesProy   meses que la proyección del Libro cubre
  * @param {number} ctx.mesEnCurso    el mes de HOY si el cuadro es del año corriente; 0 si el año ya pasó
+ * @param {number[]} ctx.sinVentas   meses que se iban a proyectar y NO tienen base de ventas
  */
-export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mesesProy = [], mesEnCurso = 0 } = {}) {
+export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mesesProy = [], mesEnCurso = 0, sinVentas = [] } = {}) {
   if (mesesDDJJ.includes(m)) return ORIGEN.ddjj
   if (m <= ancla) return ORIGEN.ajeno
   // UN MES POSTERIOR AL CORRIENTE NO USA ARCA aunque tenga comprobantes. Una factura con fecha futura
@@ -79,7 +82,9 @@ export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mes
   if (mesesArca.includes(m) && !(mesEnCurso && m > mesEnCurso)) {
     return m === mesEnCurso ? ORIGEN.arcaParcial : ORIGEN.arca
   }
-  if (mesesProy.includes(m)) return ORIGEN.proyeccion
+  // SIN BASE DE VENTAS NO HAY PERÍODO FISCAL QUE CALCULAR. Proyectar sólo el crédito —que es lo que
+  // pasaba— fabrica saldo a favor de la nada: ver `planDeVentas` en impuestos-base-libro.
+  if (mesesProy.includes(m)) return sinVentas.includes(m) ? ORIGEN.sinVentas : ORIGEN.proyeccion
   return ORIGEN.vacio
 }
 
@@ -145,7 +150,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   // que ya pasó no hay mes en curso y todos los meses con comprobantes están cerrados.
   const mesEnCurso = String(hoy ?? '').slice(0, 4) === String(anio) ? Number(String(hoy).slice(5, 7)) : 0
   const mesesArca = arca?.meses ?? []
-  const ctx = { mesesDDJJ: mesesOf, ancla, mesesArca, mesesProy: proyIva, mesEnCurso }
+  const ctx = { mesesDDJJ: mesesOf, ancla, mesesArca, mesesProy: proyIva, mesEnCurso, sinVentas: proy?.sinBase ?? [] }
   const origen = (m) => origenDelMes(m, ctx)
   const periodo = (m) => `${anio}-${String(m).padStart(2, '0')}`
   /** ¿El mes lo calcula la planilla (ARCA o proyección), o es un valor que se preserva? */
@@ -197,9 +202,10 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
     [ORIGEN.arca]: `${ALERTA} ARCA (sin DDJJ)`,
     [ORIGEN.arcaParcial]: `${ALERTA} ARCA parcial`,
     [ORIGEN.proyeccion]: `${ALERTA} PROYECCIÓN`,
+    [ORIGEN.sinVentas]: `${ALERTA} SIN VENTAS CARGADAS`,
   }
   const fDDJJ = G.mensual('DDJJ presentada',
-    (m) => (calculado(m) ? procedencia[origen(m)] : (porMesOf.has(m)
+    (m) => (procedencia[origen(m)] ?? (porMesOf.has(m)
       // Corto para la columna de mes (108px ≈ 18 caracteres): fecha dd/mm + últimas 4 del N° de
       // transacción — alcanza para verificar contra ARCA sin desbordar la celda.
       ? `${String(porMesOf.get(m).fecha_presentacion).slice(0, 5)}·N…${String(porMesOf.get(m).nro_transaccion).slice(-4)}`
@@ -219,15 +225,17 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
 // cash flow proyectaba $0 de Ingresos Brutos hasta diciembre, en un impuesto que la empresa paga
 // todos los meses y cuyo driver ya estaba medido y replicado en el archivo.
 //
-// EL DRIVER, DECLARADO: base × alícuota. La base proyectada son las cobranzas del Libro netas de IVA;
-// la alícuota, la que la empresa DECLARÓ en su última DDJJ (2,0%), leída de _IIBB_RAW y no tipeada.
-// NO es un promedio de los meses anteriores: un promedio no reacciona cuando el dueño mueve una
-// cobranza, y todo el punto de proyectar es que reaccione.
+// EL DRIVER, DECLARADO: base × alícuota. La alícuota es la que la empresa DECLARÓ en su última DDJJ
+// (2,0%), leída de _IIBB_RAW y no tipeada. NO es un promedio de los meses anteriores: un promedio no
+// reacciona cuando el dueño carga una factura, y todo el punto de proyectar es que reaccione.
 //
-// EL CRITERIO NO ES EL MISMO QUE EL DE LA DDJJ, Y SE DICE: Rentas recibe base DEVENGADA (facturación);
-// el Libro tiene PERCIBIDO (cobranzas). Se elige el percibido porque es el único driver que existe
-// hacia adelante y porque es el MISMO que usa el débito fiscal de IVA — así los dos impuestos
-// proyectados se mueven juntos en vez de contarse cada uno por su lado.
+// ═══ LA BASE ES LA MISMA QUE LA DEL IVA, Y ANTES NO LO ERA (04/09/2026) ═══
+//
+// Este bloque tomaba las COBRANZAS del Libro netas de IVA y el de arriba las FACTURAS EMITIDAS: dos
+// definiciones del mismo concepto en la misma pantalla, y en septiembre una decía $71.149.689 y la
+// otra $183.717.604. Ahora los dos piden la misma función —`ventasFacturadasDelMes`— y sólo cambian
+// de columna: el IVA la K (el impuesto) y esto la J (el neto, que es la base imponible). El porqué,
+// medido contra las siete DDJJ de Rentas presentadas, está en `impuestos-base-libro.mjs`.
 
 export function bloqueIibb(G, { anio, iibb, proy }) {
   G.push([seccion(2, 'Ingresos Brutos San Juan — ¿cuánto se debe cada mes?')])
@@ -239,7 +247,10 @@ export function bloqueIibb(G, { anio, iibb, proy }) {
   // Se proyecta desde el mes siguiente al último declarado hasta donde llegue la proyección de IVA
   // (mismo horizonte: dos horizontes distintos en la misma pestaña serían dos verdades del año).
   const hastaMes = Math.max(proy?.meses?.length ? proy.meses[proy.meses.length - 1] : 0, ultimoReal)
-  const proyectados = M12.filter((m) => m > ultimoReal && m <= hastaMes)
+  // UN MES FUTURO SIN FACTURAS NO ENTRA: fuera de `meses`, `G.mensual` le escribe VACIO en las seis
+  // filas. El porqué, con los números medidos, está en `planDeVentas` (impuestos-base-libro).
+  const sinBase = proy?.sinBase ?? []
+  const proyectados = M12.filter((m) => m > ultimoReal && m <= hastaMes && !sinBase.includes(m))
   const meses = [...reales, ...proyectados]
 
   const fBase = G.n() + 1
@@ -252,8 +263,8 @@ export function bloqueIibb(G, { anio, iibb, proy }) {
   const esProy = (m) => proyectados.includes(m)
 
   G.mensual('Base imponible declarada',
-    (m) => (esProy(m) ? formulaBaseIibbProyectada(anio, m, RANGO_ALICUOTA_IVA) : `=${ref(m, IIBB_COL.base)}`),
-    'DDJJ de Rentas · réplica _IIBB_RAW hasta el último período presentado. Los meses en ámbar son PROYECCIÓN: las cobranzas del Libro del mes, netas de IVA. La DDJJ declara base DEVENGADA y esto proyecta PERCIBIDO — criterios distintos, declarado.', { meses })
+    (m) => (esProy(m) ? `=${ventasFacturadasDelMes(anio, m, 'neto')}` : `=${ref(m, IIBB_COL.base)}`),
+    'DDJJ de Rentas · réplica _IIBB_RAW hasta el último período presentado. Los meses en ámbar son PROYECCIÓN y salen de LA MISMA definición que el débito fiscal del bloque 1: el neto de las facturas B emitidas en el mes (Cobranzas, columna J, por «Fecha de Factura»). Criterio DEVENGADO, el mismo que declara la DDJJ. Un mes futuro sin facturas cargadas queda VACÍO: no se proyecta una base que no tiene de dónde salir.', { meses })
   // LA ALÍCUOTA POR MES, NO UNA CONSTANTE ENTERRADA. Si Rentas la cambia, la DDJJ nueva la trae,
   // _IIBB_RAW la refleja y todo lo de abajo se recalcula solo. Los meses proyectados heredan la
   // ÚLTIMA declarada, referenciada — no una copia del número.
@@ -268,9 +279,9 @@ export function bloqueIibb(G, { anio, iibb, proy }) {
     (m) => (esProy(m) ? '=0' : `=${ref(m, IIBB_COL.retenciones)}`),
     'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3. Los meses proyectados van en CERO a propósito: proyectar retenciones sería inventar cuánto le va a retener cada cliente, y de más (una retención que no ocurre baja el impuesto a pagar y sube el piso de caja).', { meses })
   const fAPagar = G.mensual(CALENDARIO_IMPUESTOS.rotulos.iibb,
-    (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRet}-${prev(m)})`,
+    (m) => `=MAX(0;N(${cmes(m)}${fImp})-N(${cmes(m)}${fRet})-N(${prev(m)}))`,
     'Impuesto menos retenciones menos el saldo a favor que venía. ESTA es la fila que leen el Libro y el cash flow.', { meses })
-  G.mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${prev(m)}+${cmes(m)}${fRet}-${cmes(m)}${fImp})`,
+  G.mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;N(${prev(m)})+N(${cmes(m)}${fRet})-N(${cmes(m)}${fImp}))`,
     'Se arrastra al mes siguiente. El total no aplica.', { meses, totaliza: false })
   G.blanco()
   return { fBase, fAli, fImp, fRet, fAPagar, fSaldo, meses, reales, proyectados, ultimoReal, ultimoPeriodo }
@@ -418,7 +429,7 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   // SI YA HAY UN VALOR, NO SE PISA: `alicuotaVigente` sale de la celda leída antes de escribir. Y un
   // 0 no cuenta como valor: ver lib/impuestos-alicuota.mjs, donde ese 0 apagó la proyección entera.
   const fAlic = G.lista(ROTULO_ALICUOTA, [proy?.alicuotaVigente ?? ALICUOTA_POR_DEFECTO],
-    `PARÁMETRO EDITABLE · lo usan la proyección de IVA de la sección 1 y la base de IIBB de la 2, por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
+    `PARÁMETRO EDITABLE · lo usa la proyección de IVA de la sección 1 por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
     + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.')
   // ═══ DOCE «s/d» NO INFORMAN MÁS QUE UNO (04/09/2026) ═══
   //

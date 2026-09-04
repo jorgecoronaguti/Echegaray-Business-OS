@@ -18,7 +18,6 @@
 import { rango } from './compras-columnas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { ALICUOTA as ALICUOTA_25413 } from './impuesto-cheque.mjs'
-import { RANGO_ALICUOTA_IVA } from './iva-libre-disponibilidad.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /** El rubro de Compras donde vive el cuadro de amortización del prendario. Contrato con Compras. */
@@ -122,22 +121,16 @@ export function formulaAlicuotaIibbVigente(hoja, fila0, col, periodo) {
 }
 
 /**
- * NÚCLEO PURO: la base imponible proyectada del mes = cobranzas del Libro, netas de IVA.
- * @param {string} celdaAlicuotaIva la celda (o rango con nombre) de la alícuota de IVA
+ * NÚCLEO PURO: el impuesto determinado de un mes = base × alícuota.
+ * NO es un promedio de los meses anteriores: es el driver, aplicado al mes que se calcula.
+ *
+ * SOBREVIVE A UNA BASE VACÍA, Y NO ES UN DETALLE. Desde el 04/09 la base sale de
+ * `ventasFacturadasDelMes`, que devuelve VACÍO —no cero— cuando el mes no tiene una sola factura
+ * emitida: `=""*0,02` da #VALUE! y el error se propaga a la fila que leen el Libro y el cash flow.
+ * Y un mes sin ventas tampoco debe mostrar «$0 de impuesto» como si fuera un cálculo hecho.
  */
-export function formulaBaseIibbProyectada(anio, m, celdaAlicuotaIva = RANGO_ALICUOTA_IVA) {
-  const bruto = terminoLibro({
-    desde: `DATE(${anio};${m};1)`, hasta: `EOMONTH(DATE(${anio};${m};1);0)+1`,
-    signo: 1, rubros: ['Cobranzas'], medida: 'magnitud',
-  })
-  return `=(${bruto})/(1+${celdaAlicuotaIva})`
-}
-
-/**
- * NÚCLEO PURO: el impuesto determinado de un mes proyectado = base × alícuota.
- * NO es un promedio de los meses anteriores: es el driver, aplicado al mes que se proyecta.
- */
-export const formulaIibbDeterminado = (celdaBase, celdaAlicuota) => `=${celdaBase}*${celdaAlicuota}`
+export const formulaIibbDeterminado = (celdaBase, celdaAlicuota) =>
+  `=IF(N(${celdaBase})=0;"";N(${celdaBase})*${celdaAlicuota})`
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LEY 25.413 — DENTRO DEL MODELO, DERIVADO DEL MOVIMIENTO BANCARIO PROYECTADO

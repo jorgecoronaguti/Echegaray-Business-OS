@@ -64,8 +64,11 @@ export const factorIvaSobreBruto = (alicuota) => alicuota / (1 + alicuota)
  * @param {Array<{periodo:string, debito:number, credito:number, libre_disp?:number}>} reales
  *        los meses con DDJJ presentada (o con período cerrado y comprobantes completos). El último
  *        de la lista aporta el saldo del que arranca la proyección.
- * @param {Array<{periodo:string, base_debito:number, base_credito:number, supuesto:string}>} futuros
- *        los meses a proyectar, con sus BASES EN BRUTO (importes de caja, IVA incluido).
+ * @param {Array<{periodo:string, debito_declarado?:number, base_debito?:number, base_credito:number,
+ *         supuesto:string}>} futuros los meses a proyectar. `base_credito` va EN BRUTO (importe de
+ *        caja, IVA incluido) y se le extrae el impuesto. El débito acepta las dos formas y son
+ *        EXCLUYENTES: `debito_declarado` ya es el IMPUESTO en pesos y NO se convierte;
+ *        `base_debito` es un bruto y sí.
  * @param {number} alicuota fracción (0,21), declarada — nunca por defecto.
  * @returns {Array} un registro por mes, real o proyectado, con `es_proyeccion` y `supuesto`.
  */
@@ -86,7 +89,21 @@ export function proyectarLibreDisponibilidad(reales = [], futuros = [], alicuota
     salida.push({ ...m, es_proyeccion: false, libre_disp: saldo })
   }
   for (const m of futuros) {
-    const debito = (Number(m.base_debito) || 0) * f
+    // ═══ EL DÉBITO YA VIENE EN IMPUESTO, NO EN BRUTO (04/09/2026) ═══
+    //
+    // Desde el 03/09 la celda del débito SUMA la columna K de Cobranzas —el IVA que cada factura ya
+    // declara— sin convertir nada. Este núcleo seguía multiplicando por a/(1+a), así que el `--dry`
+    // exhibía un débito 17,4% más chico que el que la fórmula iba a escribir en la celda. Un informe
+    // que no reproduce el número que firma es peor que no tenerlo: se firma igual.
+    //
+    // Las dos formas son EXCLUYENTES y se rompe si vienen juntas: en silencio, una de las dos gana y
+    // nadie se entera de cuál.
+    const declarado = Number.isFinite(Number(m.debito_declarado)) ? Number(m.debito_declarado) : null
+    if (declarado !== null && Number.isFinite(Number(m.base_debito))) {
+      throw new Error(`iva-libre-disponibilidad: ${m.periodo} trae \`debito_declarado\` Y \`base_debito\`. `
+        + 'Uno es el impuesto y el otro un bruto: elegí cuál, o el resultado depende de este orden.')
+    }
+    const debito = declarado !== null ? declarado : (Number(m.base_debito) || 0) * f
     const credito = (Number(m.base_credito) || 0) * f
     const neto = saldo + credito - debito
     const aPagar = Math.max(0, -neto)
