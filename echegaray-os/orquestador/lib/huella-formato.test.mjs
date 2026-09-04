@@ -307,3 +307,52 @@ test('una lectura vieja SIN los campos no se confunde con una que los trae apaga
   assert.notEqual(huellaDeRango(TIPO.PESTANA, vieja, null), huellaDeRango(TIPO.PESTANA, apagados, null),
     'ausente y false son cosas distintas: si se igualaran, una huella vieja pasaría por buena')
 })
+
+// ── EL BLOQUE QUE SE CORRIÓ DE FILA (04/09/2026) ────────────────────────────────────────────────
+//
+// La huella de formato se indexa por COORDENADA. Cuando un bloque cambia de alto, el rango pasa de
+// `B52:N57` a `B53:N58`: coordenada nueva, sin huella, y con el formato que dejó el layout anterior.
+// Caía en «ya tiene un formato que yo no puse» y quedaba bloqueado PARA SIEMPRE.
+//
+// MEDIDO en «Impuestos y Financieros»: agregar UN renglón al titular produjo 25 defectos de pantalla
+// y la pestaña quedó congelada en su layout — no se podía rediseñar sin romperla.
+
+test('un formato propio que se mudó de fila se vuelve a aplicar', () => {
+  const d = decidirFormato({
+    huellaViva: 'h-cuadro-iva',
+    huellaGuardada: null,          // la coordenada nueva no tiene huella
+    pestanaSinHuellas: false,
+    virgen: false,                 // y ahí hay formato: el del layout viejo
+    huellasDeLaPestana: new Set(['h-otro', 'h-cuadro-iva']),
+  })
+  assert.equal(d.aplica, true, 'ese formato lo selló el propio OS en otro rango de la misma pestaña')
+  assert.equal(d.sellar, true)
+})
+
+test('un formato que el OS NUNCA selló sigue siendo del dueño', () => {
+  const d = decidirFormato({
+    huellaViva: 'h-que-puso-jorge',
+    huellaGuardada: null,
+    pestanaSinHuellas: false,
+    virgen: false,
+    huellasDeLaPestana: new Set(['h-cuadro-iva']),
+  })
+  assert.equal(d.aplica, false, 'el reconocimiento se ensancha SÓLO a lo que el OS probó haber puesto')
+})
+
+test('una edición del dueño SOBRE la coordenada exacta sigue mandando', () => {
+  // Es el caso fuerte: hay huella para ese rango y difiere. No lo salva estar en el conjunto.
+  const d = decidirFormato({
+    huellaViva: 'h-cuadro-iva',
+    huellaGuardada: 'h-lo-que-yo-habia-dejado',
+    pestanaSinHuellas: false,
+    virgen: false,
+    huellasDeLaPestana: new Set(['h-cuadro-iva']),
+  })
+  assert.equal(d.aplica, false, 'la edición manual del dueño es verdad definitiva')
+})
+
+test('sin el conjunto se comporta como antes — el parámetro es opcional', () => {
+  const d = decidirFormato({ huellaViva: 'x', huellaGuardada: null, pestanaSinHuellas: false, virgen: false })
+  assert.equal(d.aplica, false)
+})

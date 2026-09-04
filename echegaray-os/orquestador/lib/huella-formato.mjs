@@ -167,7 +167,7 @@ export function esFormatoVirgen(tipo, lectura, gr) {
  * @param {{huellaViva:string|null, huellaGuardada:string|null, pestanaSinHuellas:boolean, virgen:boolean}} x
  * @returns {{aplica:boolean, sellar:boolean, motivo:string}}
  */
-export function decidirFormato({ huellaViva, huellaGuardada, pestanaSinHuellas, virgen }) {
+export function decidirFormato({ huellaViva, huellaGuardada, pestanaSinHuellas, virgen, huellasDeLaPestana = null }) {
   if (!huellaViva) return { aplica: false, sellar: false, motivo: 'no pude leer el formato vivo del rango (fail-closed)' }
   if (huellaGuardada && huellaGuardada === huellaViva) return { aplica: true, sellar: true, motivo: 'el formato es el que dejé' }
   if (huellaGuardada) return { aplica: false, sellar: false, motivo: 'el formato de ese rango difiere del que dejé: lo cambiaste vos' }
@@ -177,6 +177,23 @@ export function decidirFormato({ huellaViva, huellaGuardada, pestanaSinHuellas, 
   // y en la duda manda él).
   if (pestanaSinHuellas) return { aplica: true, sellar: true, motivo: 'primera pasada de formato sobre esta pestaña: aplico y siembro la huella' }
   if (virgen) return { aplica: true, sellar: true, motivo: 'ese rango no tiene formato puesto: no hay diseño tuyo que respetar' }
+  // ═══ EL BLOQUE QUE SE CORRIÓ DE FILA (04/09/2026) ═══
+  //
+  // La huella se indexa por COORDENADA. Cuando un bloque cambia de alto —se agrega un renglón al
+  // titular, un cuadro pasa de 101 a 105 filas— el rango pasa de `B52:N57` a `B53:N58`: coordenada
+  // nueva, sin huella, y con el formato que el layout anterior dejó ahí. Cae en este último caso y
+  // queda bloqueado PARA SIEMPRE, aunque ese formato lo haya puesto el propio OS media hora antes.
+  //
+  // La consecuencia medida en «Impuestos y Financieros»: cualquier cambio de diseño desalineaba los
+  // formatos de forma permanente —25 defectos de pantalla con un solo renglón agregado— y la pestaña
+  // quedaba congelada en su layout. Un control que impide corregir un defecto lo vuelve eterno.
+  //
+  // El reconocimiento se ensancha SÓLO a lo que el OS probó haber puesto: si el formato vivo coincide
+  // con alguna huella que este mismo Sheet selló en esta misma pestaña, es formato propio mudado de
+  // lugar, no diseño del dueño. Nunca admite un formato que el OS no haya sellado antes.
+  if (huellasDeLaPestana?.size && huellasDeLaPestana.has(huellaViva)) {
+    return { aplica: true, sellar: true, motivo: 'ese formato lo puse yo en otro rango de esta pestaña: el bloque se corrió de fila' }
+  }
   return { aplica: false, sellar: false, motivo: 'ese rango ya tiene un formato que yo no puse: lo respeto' }
 }
 
@@ -295,6 +312,8 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
     vivos.set(tab, await leerFormatoDePestana(cliente, fileId, tab, necesita).catch(() => null))
     guardadas.set(tab, await leerHuellasFormato({}, fileId, tab).catch(() => null))
   }
+  const sellosDeLaPestana = new Map()
+  for (const [tab, mapa] of guardadas) sellosDeLaPestana.set(tab, mapa ? new Set(mapa.values()) : null)
   const salida = []; const respetadas = []; const aSellar = []
   const frenado = new Set()
   for (const { c, i } of conFormato) {
@@ -311,6 +330,9 @@ export async function filtrarFormato(cliente, fileId, requests = [], id2tab = ne
       huellaGuardada: mapa.get(`${c.tipo}|${c.rango}`) ?? null,
       pestanaSinHuellas: mapa.size === 0,
       virgen: esFormatoVirgen(c.tipo, vivo, c.gr),
+      // Todo lo que el OS selló en ESTA pestaña, sin su coordenada: con eso reconoce su propio
+      // formato cuando un bloque se corre de fila. Ver el caso en `decidirFormato`.
+      huellasDeLaPestana: sellosDeLaPestana.get(tab) ?? null,
     })
     if (!d.aplica) {
       frenado.add(i)
