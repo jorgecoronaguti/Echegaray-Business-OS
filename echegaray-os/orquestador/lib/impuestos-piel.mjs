@@ -117,7 +117,7 @@ export function requestsDeJerarquia(sheetId, g) {
 }
 
 /**
- * @param {object} g la grilla armada: {filas, titular, hero, alicuotas, textos, ambar, congeladas}
+ * @param {object} g la grilla armada: {filas, titular, hero, alicuotas, textos, textosCelda, ambar, congeladas}
  * @param {number} filasHoja cuántas filas tiene hoy la pestaña
  */
 export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
@@ -148,6 +148,14 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   })
   for (const f of g.alicuotas ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%;;"—"' } })
   for (const f of g.textos ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
+  // UNA CELDA SUELTA DE TEXTO, NO UNA FILA ENTERA (04/09/2026). El hero publica el MES en que el IVA
+  // empieza a salir de la caja al lado de su importe: la B lleva plata y la C una etiqueta. Con
+  // `textos`, que formatea B..N, el importe de la B también habría quedado como texto crudo —y con el
+  // formato de moneda heredado, la etiqueta se cuenta como el defecto `texto_en_numero` que el
+  // auditor de pantalla ya reporta nueve veces en esta misma pestaña.
+  for (const { fila, col } of g.textosCelda ?? []) {
+    fmt(r(fila - 1, fila, col, col + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+  }
 
   // ═══ EL ÁMBAR VA POR CELDA, NO POR COLUMNA (06/08) ═══
   //

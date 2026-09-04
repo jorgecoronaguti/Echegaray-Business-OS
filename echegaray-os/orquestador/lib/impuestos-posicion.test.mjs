@@ -2,14 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   VENTANA, obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion,
-  formulaOtrosSinFecha, diasAlProximo, ALTO_HERO, OFFSET_TITULAR, conceptoCorto, verificarAnclajes,
-  hallazgoDeVencimiento, conDecisionesDelDueno, marcaDeVencimiento,
+  diasAlProximo, ALTO_HERO, OFFSET_TITULAR, conceptoCorto, ROTULO_IVA_EN_CAJA,
+  verificarReferenciasDelHero, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from './impuestos-posicion.mjs'
-import { ACUERDO, TARJETA } from './banco-santander.mjs'
 import { CONTROLES, decisionesDe, aplicarDecisiones } from './decisiones-hallazgos.mjs'
 import { vencimientoIva, vencimientoIibb } from './vencimientos-fiscales.mjs'
 
-const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93', otrosSinFecha: '=0' }
+const REFS = {
+  saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93',
+  ivaAPagar: 55, ivaLibre: 56, ivaCabecera: 52,
+}
 
 const HOY = '2026-08-06'
 // Las filas del detalle tal como quedan en la pestaña reconstruida.
@@ -54,17 +56,13 @@ test('la ventana hacia adelante corta donde dice, y hacia atrás también', () =
 test('el espacio reservado alcanza EXACTAMENTE para lo que se escribe', () => {
   // Reservar de menos pisa el bloque de abajo sin dar un solo error; de más deja un hueco.
   const c = cal()
-  const filas = filasDeLaPosicion({
-    cal: c, base: 4, hoy: HOY, acuerdo: ACUERDO, tarjeta: TARJETA,
-    refs: { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93', otrosSinFecha: '=0' },
-  })
-  assert.equal(filas.length, altoDeLaPosicion(c))
+  const filas = filasDeLaPosicion({ cal: c, hoy: HOY, refs: REFS })
+  assert.equal(filas.length, altoDeLaPosicion())
+  // Y ya no depende de cuántos vencimientos haya: con el calendario vacío mide exactamente lo mismo.
+  assert.equal(filasDeLaPosicion({ cal: [], hoy: HOY, refs: REFS }).length, altoDeLaPosicion())
 })
 
-const posicion = () => filasDeLaPosicion({
-  cal: cal(), base: 4, hoy: HOY, acuerdo: ACUERDO, tarjeta: TARJETA,
-  refs: { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93', otrosSinFecha: '=$I$77+$J$77' },
-})
+const posicion = () => filasDeLaPosicion({ cal: cal(), hoy: HOY, refs: REFS })
 
 /** El bloque de posición, y dentro de él la fila de un rótulo — nunca por índice fijo. */
 const heroDe = (filas = posicion()) => filas.slice(0, ALTO_HERO)
@@ -82,7 +80,18 @@ test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
     // publicar #VALUE! cuando el mes ajeno tiene texto. Esa guarda no recalcula nada: mira las MISMAS
     // dos celdas. Lo que el hero sigue sin poder hacer es barrer un rango — ahí empezaría la segunda
     // verdad que este test existe para impedir.
-    assert.ok(!/\$?[A-N]\$?\d+:\$?[A-N]?\$?\d*/.test(f), `el hero no barre un rango: ${f}`)
+    // ═══ LA ÚNICA EXCEPCIÓN, Y ES ESTRECHA (04/09/2026) ═══
+    //
+    // Las tres fórmulas de "el IVA empieza a salir de la caja" SÍ recorren un rango: los doce meses
+    // de la fila «⇒ IVA a pagar en efectivo» y los de «Saldo de libre disponibilidad», para quedarse
+    // con el PRIMERO que pide caja. Eso no es una segunda verdad —no suma nada, no vuelve a calcular
+    // ningún importe—: lee exactamente la fila que el cuadro publica y devuelve UNA de sus celdas.
+    // Se permite por su forma exacta (INDEX/MATCH sobre B..M de una fila) y nada más: cualquier otro
+    // barrido de rango en el hero sigue siendo rojo.
+    const buscaEnUnaFila = /^=IFERROR\(INDEX\(\$B\$\d+:\$M\$\d+;/.test(f)
+    if (!buscaEnUnaFila) {
+      assert.ok(!/\$?[A-N]\$?\d+:\$?[A-N]?\$?\d*/.test(f), `el hero no barre un rango: ${f}`)
+    }
     assert.ok(!/SUM\(|AVERAGE|COUNTIFS?\(/.test(f), `el hero no agrega: ${f}`)
   }
   assert.match(porRotulo(hero, /IMPUESTOS A FAVOR/)[1], /^=IF\(COUNT\(\$H\$56;\$G\$66\)=2;\$H\$56\+\$G\$66;/,
@@ -113,7 +122,11 @@ test('el hero dice DEUDA PENDIENTE, y sólo lo que falta pagar', () => {
   // Rótulos CORTOS (auditor de pantalla, 06/08): PENDIENTE es la palabra que separa deuda real de
   // acumulado histórico; "por vencer" es la condición en tres palabras.
   assert.ok(porRotulo(hero, /DEUDA PENDIENTE/))
-  assert.equal(hero.filter((f) => /cuotas por vencer/.test(String(f[0] ?? ''))).length, 2)
+  // ═══ LOS DOS DESGLOSES SE FUERON (04/09/2026) ═══
+  // "prendario · cuotas por vencer" era literalmente `=$B$92`, la misma celda que la sección 6 ya
+  // publica con su serie mensual al lado. El hero repetía dos importes del detalle en los renglones
+  // más caros de la pantalla, y no contestaba cuándo el IVA empieza a salir de la caja. Se cambiaron.
+  assert.equal(hero.filter((f) => /cuotas por vencer/.test(String(f[0] ?? ''))).length, 0)
 })
 
 test('el próximo vencimiento lleva su fecha y su concepto EN el rótulo, sin el emisor', () => {
@@ -128,154 +141,6 @@ test('el próximo vencimiento lleva su fecha y su concepto EN el rótulo, sin el
   assert.equal(conceptoCorto('Prendario Ford XLS'), 'Prendario Ford XLS')
 })
 
-test('una fecha SUPUESTA se marca en la columna A, no en una nota que nadie ve', () => {
-  // Las notas de esta pestaña se borran y la columna de procedencia se vacía: una advertencia que
-  // sólo viviera ahí sería una advertencia invisible.
-  const filas = posicion()
-  const iibb = filas.filter((f) => /Ingresos Brutos San Juan/.test(String(f[0] ?? '')))
-  assert.ok(iibb.length >= 2)
-  for (const f of iibb) assert.match(String(f[0]), /▲ (fecha supuesta|VENCIDO)/)
-  // El IVA está verificado contra ARCA: no lleva la marca.
-  const ivaFuturo = filas.filter((f) => /IVA · DDJJ F\.2051/.test(String(f[0] ?? '')) && !/VENCIDO/.test(String(f[0])))
-  assert.ok(ivaFuturo.length >= 1)
-  for (const f of ivaFuturo) assert.ok(!/fecha supuesta/.test(String(f[0])), `${f[0]}: el IVA está verificado`)
-})
-
-test('el riesgo se declara como PREGUNTA: la pestaña no sabe si algo se pagó', () => {
-  const f = posicion().find((x) => /vencido s\/verificar/.test(String(x[0] ?? '')))
-  assert.ok(f, 'tiene que existir el renglón de riesgo')
-  assert.match(String(f[0]), /ver extracto/, 'la duda queda escrita: la pestaña no sabe si algo se pagó')
-})
-
-test('las tres ventanas son acumuladas y ninguna incluye lo vencido', () => {
-  const filas = posicion()
-  const total = filas.find((x) => /A PAGAR EN LA VENTANA/.test(String(x[0] ?? '')))
-  const [v30, v60, v90] = [1, 2, 3].map((i) => String(total[i]))
-  const celdas = (s) => (s === '=0' ? [] : s.slice(1).split('+'))
-  assert.ok(celdas(v30).length <= celdas(v60).length)
-  assert.ok(celdas(v60).length <= celdas(v90).length)
-  for (const c of celdas(v30)) assert.ok(celdas(v90).includes(c), 'lo de 30 días está adentro de lo de 90')
-  // El renglón de vencidos NO comparte ni una celda con las ventanas.
-  const riesgo = filas.find((x) => /vencido s\/verificar/.test(String(x[0] ?? '')))
-  for (const c of celdas(String(riesgo[1]))) assert.ok(!celdas(v90).includes(c), 'lo vencido no es proyección')
-})
-
-test('el financiamiento declara que NO mide el descubierto tomado', () => {
-  // Un "disponible" que se lee como plata que está, y puede no estar, es la línea con la que se
-  // decide no salir a pedir un adelanto.
-  const filas = posicion()
-  const desc = filas.find((x) => /Descubierto Santander/.test(String(x[0] ?? '')))
-  assert.match(String(desc[0]), /▲ uso: lo mide CAJA/, 'la duda queda escrita en el rótulo corto')
-  const techo = filas.find((x) => /FINANCIAMIENTO SIN USAR/.test(String(x[0] ?? '')))
-  assert.match(String(techo[0]), /TECHO/)
-})
-
-test('las referencias de "sin fecha cierta" son ABSOLUTAS y del mes en adelante', () => {
-  assert.equal(formulaOtrosSinFecha([77, 78], HOY, 2026, 3), '=$I$77+$J$77+$K$77+$I$78+$J$78+$K$78')
-  // Agosto es el mes 8 → columna I. Diciembre no tiene tres meses por delante: no inventa columnas.
-  assert.equal(formulaOtrosSinFecha([77], '2026-12-01', 2026, 3), '=$M$77')
-  assert.equal(formulaOtrosSinFecha([], HOY, 2026, 3), '=0')
-})
-
-test('NINGUNA celda del cuadro de financiamiento es un número PEGADO donde su fila la calcula', () => {
-  // ═══ D46 (06/08) ═══
-  //
-  // "Disponible" de la tarjeta estaba pegado en 8.693.073,70 mientras B46 − C46 daba 8.693.074,00:
-  // treinta centavos entre la celda y su propia fila, en la única de las cuatro que no calculaba. El
-  // origen era el REDONDEO del tomado, que rompía la identidad límite − tomado = disponible.
-  const filas = posicion()
-  const i0 = filas.findIndex((f) => /^Línea de financiamiento/.test(String(f[0] ?? '')))
-  assert.ok(i0 > 0, 'tiene que existir el encabezado del cuadro de financiamiento')
-  const lineas = filas.slice(i0 + 1).filter((f) => !/^(⇒|$)/.test(String(f[0] ?? ''))).slice(0, 4)
-  assert.equal(lineas.length, 4)
-  for (const f of lineas) {
-    const [rotulo, limite, tomado, disp] = f
-    // Las dos ya tomadas enteras (prendario y planes) no tienen límite y su disponible es 0 explícito.
-    if (typeof limite !== 'number') {
-      assert.equal(disp, 0, `${rotulo}: sin línea disponible, el 0 va explícito`)
-      continue
-    }
-    assert.match(String(disp), /^=\$B\$\d+-\$C\$\d+$/, `${rotulo}: el disponible tiene que salir de su fila`)
-    // Y el tomado conserva los centavos: redondearlo a peso es lo que rompía la identidad de la fila.
-    if (typeof tomado === 'number') {
-      assert.equal(tomado, Math.round(tomado * 100) / 100, `${rotulo}: el tomado no se redondea a peso`)
-    }
-  }
-  // El techo suma la columna: si una celda fuera un pegado, el total sería otra verdad.
-  const techo = filas.find((f) => /FINANCIAMIENTO SIN USAR/.test(String(f[0] ?? '')))
-  assert.match(String(techo[3]), /^=SUM\(\$D\$\d+:\$D\$\d+\)$/)
-})
-
-test('LO QUE DECIDE VA ARRIBA DE SU DETALLE: primero las ventanas, después el calendario', () => {
-  // ═══ EL DEFECTO DE PRODUCTO (06/08, mirando el PDF) ═══
-  //
-  // La primera pantalla eran quince renglones de vencimientos uno por uno —los dos primeros vencidos
-  // y dibujados "—"— y para llegar al único cuadro con el que se decide algo (cuánto juntar a 30, 60
-  // y 90 días) había que scrollear. Un calendario línea por línea contesta "cuándo", no "cuánto
-  // tengo que juntar": es el respaldo del agregado, y va abajo.
-  const filas = posicion()
-  const fila = (re) => filas.findIndex((f) => re.test(String(f[0] ?? '')))
-  const riesgo = fila(/^1 · RIESGO Y PROYECCIÓN/)
-  const calend = fila(/^2 · CALENDARIO DE VENCIMIENTOS/)
-  const financ = fila(/^3 · FINANCIAMIENTO/)
-  assert.ok(riesgo > 0 && calend > riesgo && financ > calend,
-    `orden real: riesgo ${riesgo}, calendario ${calend}, financiamiento ${financ}`)
-  // Y el riesgo entero entra en la primera pantalla, que es de lo que se trata.
-  assert.ok(fila(/A PAGAR EN LA VENTANA/) < 25, 'el cuadro de decisión no puede exigir scroll')
-})
-
-test('LAS REFERENCIAS DE ARRIBA APUNTAN A LAS FILAS QUE DICEN — o el generador rompe', () => {
-  // ═══ EL MODO DE FALLA QUE ESTO CIERRA ═══
-  //
-  // El hero suma `$B$` de las filas del calendario y el techo suma `$D$` de las del financiamiento, y
-  // las dos direcciones se calculan ANTES de escribir los bloques, a partir de las alturas del hero y
-  // del riesgo. Si alguien agrega un renglón al hero y no toca esas constantes, el hero sigue sumando
-  // las mismas celdas —que ahora son otro concepto— y publica un importe distinto con exactamente el
-  // mismo aspecto. No hay error, no hay #REF, no hay negativo imposible.
-  const c = cal()
-  const filas = posicion()
-  const base = 4
-  // La celda que el titular referencia tiene que caer sobre una fila de calendario, no sobre otra cosa.
-  const celdas = String(filas[OFFSET_TITULAR][1]).slice(1).split('+')
-  for (const celda of celdas) {
-    const f = Number(celda.replace(/\$B\$/, ''))
-    assert.match(String(filas[f - base][0]), /^\d{2}\/\d{2} · /,
-      `el titular suma ${celda} y ahí no hay un vencimiento sino "${String(filas[f - base][0]).slice(0, 40)}"`)
-  }
-  // Y la guarda tiene que gritar cuando la dirección calculada NO cae sobre el bloque que dice. Se la
-  // prueba con una geometría desplazada una fila, que es exactamente lo que deja un renglón nuevo en
-  // el hero: el síntoma real, no una condición inventada.
-  const filaCal0 = base + ALTO_HERO + 10 + 2
-  assert.throws(
-    () => verificarAnclajes(filas, base, {
-      filaCal0: filaCal0 + 1, filaFin0: filaCal0 + c.length, cal: c, fin: [{ rotulo: 'x' }],
-    }),
-    /apuntando a otras filas/,
-    'una referencia corrida una fila tiene que romper, no publicar el importe de al lado',
-  )
-  // Y con la geometría real no molesta a nadie.
-  assert.doesNotThrow(() => verificarAnclajes(filas, base, {
-    filaCal0, filaFin0: filaCal0 + c.length + 4, cal: c, fin: [{ rotulo: String(filas[filaCal0 + c.length + 4 - base][0]) }],
-  }))
-})
-
-test('el disponible de la TARJETA sigue siendo el que declara el banco, al centavo', () => {
-  // El dato primario del resumen es el DISPONIBLE; el tomado se despeja de él. Si alguien invierte la
-  // dependencia (tomado = consumido declarado), el disponible cambia $60.433 y nadie lo ve.
-  const filas = posicion()
-  const f = filas.find((x) => /^Tarjeta de crédito/.test(String(x[0] ?? '')))
-  assert.ok(f)
-  assert.equal(Math.round((f[1] - f[2]) * 100) / 100, TARJETA.disponible)
-})
-
-// ══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══════════════════════════════════════════
-//
-// El IIBB del 16/07 y el IVA del 21/07 salían "⚠ VENCIDO" cada dos horas después de que él dijera
-// "no afectan". Estos tests atrapan los tres defectos del registro de decisiones sobre esta pestaña:
-// que un vencimiento decidido siga gritando, que uno SIN decisión deje de gritar, y que una decisión
-// vieja siga aplicando después de que la fecha de vencimiento cambió.
-
-const DECISION_IIBB = { decision: 'no afectan', quien: 'dueño', cuando: '2026-08-13' }
 const vencidos = () => cal().filter((o) => o.vencido)
 
 test('la clave de un vencimiento es el impuesto y su período, NUNCA su posición en el calendario', () => {
@@ -284,44 +149,6 @@ test('la clave de un vencimiento es el impuesto y su período, NUNCA su posició
   for (const k of claves) assert.match(k, /^(iva|iibb)·\d{4}-\d{2}$/)
   // La forma es la fecha: si ARCA la mueve, la decisión del dueño fue sobre otra cosa.
   for (const o of vencidos()) assert.deepEqual(hallazgoDeVencimiento(o).forma, { fecha: o.fecha })
-})
-
-test('un vencimiento decidido cambia de MARCA, no de hecho: sigue vencido y sigue en el calendario', () => {
-  const uno = vencidos()[0]
-  const clave = hallazgoDeVencimiento(uno).clave
-  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
-  const liberado = c.find((o) => hallazgoDeVencimiento(o).clave === clave)
-  assert.equal(liberado.vencido, true, 'el hecho no se borra')
-  assert.equal(c.length, cal().length, 'la fila no desaparece del calendario')
-  const marca = marcaDeVencimiento(liberado)
-  assert.ok(!marca.includes('▲'), `un vencimiento revisado no lleva ▲: "${marca}"`)
-  assert.match(marca, /13\/08 lo revisó el dueño: "no afectan"/)
-})
-
-test('un vencimiento SIN decisión sigue marcado ▲ VENCIDO — se libera uno, no el control', () => {
-  const todos = vencidos()
-  const clave = hallazgoDeVencimiento(todos[0]).clave
-  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
-  const otros = c.filter((o) => o.vencido && hallazgoDeVencimiento(o).clave !== clave)
-  for (const o of otros) assert.equal(marcaDeVencimiento(o), '  ▲ VENCIDO', o.concepto)
-})
-
-test('la marca liberada llega a la fila que se escribe en la pestaña', () => {
-  const clave = hallazgoDeVencimiento(vencidos()[0]).clave
-  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
-  const F = filasDeLaPosicion({ cal: c, base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
-  const textos = F.map((f) => String(f?.[0] ?? ''))
-  assert.ok(textos.some((t) => /lo revisó el dueño: "no afectan"/.test(t)), 'la decisión se ve en la pestaña')
-  const conMarcaVieja = textos.filter((t) => t.includes('▲ VENCIDO')).length
-  const sinDecision = filasDeLaPosicion({ cal: cal(), base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
-    .map((f) => String(f?.[0] ?? '')).filter((t) => t.includes('▲ VENCIDO')).length
-  assert.equal(conMarcaVieja, sinDecision - 1, 'exactamente UN ▲ VENCIDO menos, no todos')
-})
-
-test('un vencimiento que NO está vencido nunca toma la marca de revisado', () => {
-  const futuro = cal().find((o) => !o.vencido)
-  const c = conDecisionesDelDueno([futuro], new Map([[hallazgoDeVencimiento(futuro).clave, DECISION_IIBB]]))
-  assert.equal(c[0].decisionDelDueno, undefined, 'no hay nada que liberar donde no hay hallazgo')
 })
 
 test('las dos decisiones reales del 13/08 apuntan a los vencimientos de junio, con su fecha', () => {
@@ -340,4 +167,96 @@ test('si la fecha de vencimiento cambia, la decisión vieja NO libera nada', () 
     { decisiones: decisionesDe(CONTROLES.vencimientoVencido) })
   assert.equal(r.silenciados.length, 0, 'el dueño decidió sobre el 21/07, no sobre el 28/07')
   assert.equal(r.caducadas.length, 1)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL REDISEÑO DEL 04/09/2026 — «no me sirven del cuadro 1 al 3, veo del 4 en adelante»
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('los tres cuadros que el dueño no usa NO se escriben — ni uno de sus renglones', () => {
+  // Riesgo 30/60/90, calendario de vencimientos y financiamiento: treinta y dos renglones antes del
+  // primer número que él mira. Si alguien los vuelve a agregar sin decirlo, esto se pone rojo.
+  const filas = posicion()
+  const textos = filas.map((f) => String(f?.[0] ?? ''))
+  for (const re of [/RIESGO Y PROYECCIÓN/, /CALENDARIO DE VENCIMIENTOS/, /^Fecha y concepto/,
+    /FINANCIAMIENTO/, /^Línea de financiamiento/, /Descubierto Santander/, /^Tarjeta de crédito/,
+    /A PAGAR EN LA VENTANA/, /vencido s\/verificar/]) {
+    assert.ok(!textos.some((t) => re.test(t)), `${re} sigue ocupando una fila de la pestaña`)
+  }
+  // Y ningún renglón de calendario, que es lo que empezaba con "dd/mm · ".
+  assert.ok(!textos.some((t) => /^\d{2}\/\d{2} · /.test(t)), 'no queda ningún renglón del calendario')
+})
+
+test('EL TITULAR SOBREVIVE AL BORRADO: suma las celdas del DETALLE, no las del calendario', () => {
+  // ═══ EL NUDO DE ESTE REDISEÑO ═══
+  //
+  // "A pagar en los próximos 30 días" sumaba las celdas B de las filas del calendario. Borrar el
+  // cuadro sin más rompía lo único que el dueño NO cuestionó. Se resolvió mirando qué había ADENTRO
+  // de esas celdas: cada renglón era `=$J$90`, una REFERENCIA al detalle. El calendario nunca fue
+  // fuente, era una escala. Ahora el hero salta la escala y suma las mismas celdas.
+  const titular = String(posicion()[OFFSET_TITULAR][1])
+  assert.ok(titular.startsWith('='), titular)
+  const celdas = titular.slice(1).split('+')
+  assert.ok(celdas.length >= 1)
+  const delDetalle = new Set(cal().filter((o) => !o.vencido && o.dias <= 30).map((o) => o.celda))
+  assert.deepEqual(new Set(celdas), delDetalle,
+    'el titular tiene que sumar exactamente las celdas del detalle que vencen en 30 días')
+  // Ninguna puede ser una celda de la columna B del propio bloque: ahí ya no hay calendario.
+  for (const c of celdas) assert.ok(!/^\$B\$/.test(c), `${c} apunta a la columna del hero, no al detalle`)
+})
+
+test('EL IVA EMPIEZA A SALIR DE LA CAJA: la pregunta que la pestaña existía para contestar', () => {
+  const hero = posicion()
+  const f = porRotulo(hero, new RegExp(ROTULO_IVA_EN_CAJA))
+  assert.ok(f, 'la línea tiene que estar en el hero')
+  assert.match(String(f[1]), /^=IFERROR\(INDEX\(\$B\$55:\$M\$55;/, 'el importe sale de la fila del a-pagar')
+  assert.match(String(f[2]), /\$B\$52:\$M\$52/, 'el MES sale del encabezado del cuadro de IVA')
+  // LA B ES SIEMPRE EL IMPORTE. Un texto ahí lo dibuja el formato de moneda como plata que no se ve:
+  // es la clase de defecto `texto_en_numero` que el auditor de pantalla cuenta. El mes va en la C.
+  assert.ok(!/\$B\$52/.test(String(f[1])), 'el nombre del mes no puede caer en la columna del importe')
+  const colchon = porRotulo(hero, /saldo a favor que lo venía absorbiendo/)
+  assert.ok(colchon, 'el colchón que se agota cuelga de la línea como sub-ítem')
+  assert.match(String(colchon[1]), /\$B\$56:\$M\$56/, 'sale de la fila de libre disponibilidad')
+})
+
+test('el hero entra en una pantalla: cuatro mensajes, ocho números', () => {
+  const hero = posicion()
+  assert.equal(hero.length, ALTO_HERO)
+  const mensajes = hero.filter((f) => /^⇒/.test(String(f[0] ?? ''))).length
+  const conImporte = hero.filter((f) => String(f[1] ?? '').startsWith('=')).length
+  assert.equal(mensajes, 4, 'cuatro y no más: el estándar ejecutivo son 5 a 7 indicadores')
+  assert.ok(conImporte <= 8, `${conImporte} números en el hero: de más para leerlo en tres segundos`)
+})
+
+test('UNA REFERENCIA A UNA FILA VACÍA DEVUELVE 0 SIN DAR ERROR — la guarda tiene que gritar', () => {
+  // El modo de falla que este control cierra: el hero apunta a una fila del detalle que se movió o
+  // que quedó sin escribir, Sheets devuelve 0, y el hero publica "no hay nada que pagar" con
+  // exactamente el mismo aspecto de siempre. Sin error, sin #REF, sin negativo imposible.
+  const hero = posicion()
+  const todas = Array.from({ length: 100 }, (_, i) => [`fila ${i + 1}`])
+  assert.doesNotThrow(() => verificarReferenciasDelHero(hero, todas))
+  // Se vacía UNA de las filas que el hero referencia: la guarda tiene que ponerse roja.
+  const referida = verificarReferenciasDelHero(hero, todas)[0]
+  const rotas = todas.map((f, i) => (i + 1 === referida ? [''] : f))
+  assert.throws(() => verificarReferenciasDelHero(hero, rotas), /sin rótulo/)
+})
+
+test('la decisión del dueño sigue pegada al vencimiento — ahora la ve el informe, no una fila', () => {
+  // ═══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08), Y SIGUE VIGENTE ═══
+  //
+  // El calendario dejó de ocupar filas de la pestaña, así que la marca "✓ lo revisó el dueño" ya no
+  // se dibuja en una celda. El mecanismo NO se fue: la decisión se sigue adjuntando al vencimiento y
+  // el informe del `--dry` la imprime al lado de su celda. Si alguien lo desconectara, el IVA del
+  // 21/07 volvería a salir "⚠ VENCIDO" en cada corrida después de que él dijera "no afectan".
+  const decision = { decision: 'no afectan', quien: 'dueño', cuando: '2026-08-13' }
+  const todos = cal().filter((o) => o.vencido)
+  assert.ok(todos.length > 0, 'el calendario del 06/08 tiene vencimientos hacia atrás')
+  const clave = hallazgoDeVencimiento(todos[0]).clave
+  const c = conDecisionesDelDueno(cal(), new Map([[clave, decision]]))
+  assert.equal(c.length, cal().length, 'la fila no desaparece del calendario: el hecho no se borra')
+  const liberado = c.find((o) => hallazgoDeVencimiento(o).clave === clave)
+  assert.deepEqual(liberado.decisionDelDueno, decision)
+  // Y sólo ÉSE: se libera un vencimiento, no el control entero.
+  const otros = c.filter((o) => o.vencido && hallazgoDeVencimiento(o).clave !== clave)
+  for (const o of otros) assert.equal(o.decisionDelDueno, undefined, o.concepto)
 })

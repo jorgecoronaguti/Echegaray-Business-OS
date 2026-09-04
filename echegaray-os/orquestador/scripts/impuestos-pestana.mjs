@@ -42,7 +42,6 @@ import { resolverColumnas } from '../lib/compras-columnas.mjs'
 // POR TEXTO en la columna A, así que el texto es el contrato y tiene una sola definición.
 import { CALENDARIO_IMPUESTOS, CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
-import { ACUERDO, TARJETA } from '../lib/banco-santander.mjs'
 import { crearGrilla, ANCHO, M12, MES, cmes } from '../lib/impuestos-grilla.mjs'
 import {
   IIBB_RAW, IIBB_COL, IIBB_FILA0, ARCA_RAW, ARCA_FILA0, BANCO_RAW,
@@ -52,8 +51,8 @@ import {
   bloqueIva, mesDeLaUltimaDDJJ, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
 } from '../lib/impuestos-bloques.mjs'
 import {
-  obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
-  OFFSET_TITULAR, ALTO_HERO, hallazgoDeVencimiento, conDecisionesDelDueno,
+  obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, verificarReferenciasDelHero,
+  OFFSET_TITULAR, ALTO_HERO, ROTULO_IVA_EN_CAJA, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from '../lib/impuestos-posicion.mjs'
 // Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
@@ -82,7 +81,6 @@ const hoyISO = () => new Date().toISOString().slice(0, 10)
 // EL CRÉDITO NO USA EL TOTAL DE PROVEEDORES. "Cheques sin factura cargada" y "Cuotas de tarjeta sin
 // factura cargada" son plata que sale SIN comprobante, y sin comprobante no hay crédito fiscal
 // computable. Meterlas inflaría el crédito y haría desaparecer un pago de IVA que sí va a ocurrir.
-const CF = 'Cash Flow Mensual'
 /**
  * LOS NOMBRES SALEN DEL CUADRO, NO SE TIPEAN ACÁ (05/08). Estaban escritos a mano y uno derivó. Se
  * resuelve por PREFIJO contra `CUADRO`, que es quien escribe esos rótulos: si el cuadro le agrega o
@@ -155,15 +153,16 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const mesesIibbTodos = M12.filter((m) => mesesIibbReales.includes(m) || (m > ultimoIibb && m <= hastaIibb))
   const mesesPlan = M12.filter((m) => planes.some((p) => p.porMes[m]))
   const mesesDelCalendario = { iva: mesesIvaTodos, iibb: mesesIibbTodos, plan: mesesPlan, prendario: M12 }
-  const calParaContar = obligacionesDelCalendario({ hoy, anio, meses: mesesDelCalendario, filas: { iva: 0, iibb: 0, plan: 0, prendario: 0 } })
-  const alto = altoDeLaPosicion(calParaContar)
+  // EL ESPACIO DEL HERO YA NO DEPENDE DE CUÁNTOS VENCIMIENTOS HAYA: el calendario dejó de ocupar
+  // filas (ver `filasDeLaPosicion`), así que la reserva es constante y no puede quedar corta.
+  const alto = altoDeLaPosicion()
   const base = G.reservar(alto)
 
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
   const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
   const ibb = bloqueIibb(G, { anio, iibb, proy })
   bloqueRetenciones(G, { anio })
-  const otros = bloqueOtros(G, { anio, C })
+  bloqueOtros(G, { anio, C })
   const pln = bloquePlanes(G, { anio, C, planes })
   const deuda = bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal: pln.fTotal })
   const cierre = bloqueCierre(G, {
@@ -195,9 +194,13 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
     prendPend: `$B$${deuda.fPrendPend}`,
     planesPend: `$B$${deuda.fPlanesPend}`,
-    otrosSinFecha: formulaOtrosSinFecha([otros.fCheque, otros.fGanancias], hoy, anio, 3),
+    // Las tres filas del cuadro de IVA de las que sale "cuándo empieza a salir de la caja".
+    ivaAPagar: iva.fAPagar, ivaLibre: iva.fLibre, ivaCabecera: iva.fCabecera,
   }
-  G.fijar(base, alto, filasDeLaPosicion({ cal, base: base + 1, hoy, refs, acuerdo: ACUERDO, tarjeta: TARJETA }))
+  const hero = filasDeLaPosicion({ cal, hoy, refs })
+  G.fijar(base, alto, hero)
+  // EL CONTROL SE HACE CONTRA LO ESCRITO, no contra otra cuenta con las mismas constantes.
+  verificarReferenciasDelHero(hero, G.filas)
 
   // Los meses PROYECTADOS en ámbar, celda por celda: una proyección que se ve igual que un hecho
   // termina leyéndose como un hecho.
@@ -215,6 +218,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli, cierre.fAlic],
     textos: [iva.fDDJJ],
+    // El MES que el hero publica al lado del importe: una etiqueta, no un importe. La fila se BUSCA
+    // por su rótulo, nunca por su posición dentro del hero.
+    textosCelda: [{ fila: base + 1 + hero.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_IVA_EN_CAJA)), col: 2 }],
     ambar,
     // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
     // Sale del hero, no de un 12 tipeado — un renglón más en el hero y el 12 se lo dejaba afuera.
