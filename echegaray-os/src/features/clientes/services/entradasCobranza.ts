@@ -81,6 +81,15 @@ export const cambioPagoSchema = z.object({
   aviso_dias: z.number().int().min(0).max(60).nullable(),
   mostrar_reprogramaciones: z.boolean(),
   nota_interna: z.string().max(1000).nullable(),
+  /**
+   * POR QUÉ SE MOVIÓ LA FECHA. Viaja junto al cambio de fecha y NO es un campo de la fila: se
+   * apila en el historial `reprogramaciones`.
+   *
+   * Es OPCIONAL a propósito. Exigirlo haría que la única forma de mover una fecha fuera escribir
+   * una justificación, y el resultado conocido de eso son motivos de relleno («ajuste», «ok») que
+   * ensucian la evidencia. Sin motivo se guarda igual y la pantalla lo pide en ámbar.
+   */
+  motivo_reprogramacion: z.string().trim().max(300).nullable(),
 }).partial().refine(
   (o) => Object.keys(o).length > 0,
   'No hay nada que cambiar',

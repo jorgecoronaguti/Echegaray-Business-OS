@@ -1,0 +1,31 @@
+-- EL HISTORIAL DE FECHAS DE UN COBRO SE PUEDE ESCRIBIR DESDE LA APP.
+--
+-- ═══ EL DEFECTO ═══
+--
+-- `20260825T1240_esquema_pago.sql` declara, textual: «Historial [{de,a,at,motivo}]. Se guarda
+-- siempre». `cuentaCorrienteActions.editarPago` repite la promesa en su docstring. Y no pasaba:
+-- `reprogramaciones` está en el grant de INSERT y NO en el de UPDATE, así que la única forma de
+-- que una fila tuviera historial era nacer con él. Mover una fecha desde la pantalla 32 —que es
+-- lo único que genera reprogramaciones— no escribía ninguna.
+--
+-- Efecto medido: `reprogramaciones` quedaba en `[]` para siempre, y con eso desaparece la evidencia
+-- de cuántas veces se movió un cobro. Esa evidencia es la que decide si a un cliente se le vuelve a
+-- cotizar con el mismo plazo de pago.
+--
+-- ═══ POR QUÉ ESTA COLUMNA SÍ Y LAS OTRAS NO ═══
+--
+-- `fecha`, `monto`, `medio` y `estado` siguen FUERA del grant de UPDATE y eso no se toca: son
+-- espejo de las columnas Q/J/N/O de la pestaña Cobranzas y se cambian encolando un
+-- `cobranza_cambio` que aplica el worker con bisturí. Que estén afuera es lo que hace imposible el
+-- atajo — una server action distraída rebota con permission denied en vez de crear una segunda
+-- verdad.
+--
+-- `reprogramaciones` es lo contrario: es PROPIA de la app, igual que `visible_portal`, `aviso_dias`
+-- y `nota_interna`, que ya estaban en el grant. El sync no la lee ni la escribe (verificado: no
+-- aparece en ningún `.mjs` de `orquestador/`). Estaba afuera por omisión, no por decisión.
+--
+-- La RLS no cambia: `esquema_pago_escribe` sigue exigiendo `es_administracion()`. Un grant sin
+-- policy no abre nada, y una policy sin grant deja la columna sin escribir — hacen falta las dos,
+-- y la que faltaba era ésta.
+
+grant update (reprogramaciones) on public.esquema_pago to authenticated;

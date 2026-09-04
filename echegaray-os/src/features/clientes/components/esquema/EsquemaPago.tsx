@@ -24,7 +24,7 @@ import { Ico, P } from '../canon/Iconos'
 import { Vacio } from '../canon/Piezas'
 import { useAlPedir } from '../canon/pedidos'
 import { CalendarioEsquema } from './CalendarioEsquema'
-import { CambiosEsquema } from './CambiosEsquema'
+import { AvisosAlCliente, CambiosEsquema } from './CambiosEsquema'
 import { ListadoEsquema } from './ListadoEsquema'
 import { PanelPago } from './PanelPago'
 import { montoM } from '../../services/cobranzaFormato'
@@ -80,11 +80,18 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [guardando, setGuardando] = useState<string | null>(null)
+  // Lo que pasó con el último arrastre. Vive acá y no adentro del calendario porque el calendario
+  // se desmonta al cambiar de vista y el aviso tiene que sobrevivir a eso.
+  const [avisoCalendario, setAvisoCalendario] = useState<string | null>(null)
 
   async function cambiar(id: string, cambio: CambioPago) {
     if (Object.keys(cambio).length === 0) return
     const antes = pagos
-    setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...cambio, cambio_pendiente: true } : p)))
+    // `motivo_reprogramacion` NO es una columna de la fila: viaja con el cambio y termina en el
+    // historial. Meterlo en el objeto optimista dejaría una propiedad fantasma en `PagoEsquema`.
+    const deLaFila = { ...cambio }
+    delete deLaFila.motivo_reprogramacion
+    setPagos((ps) => ps.map((p) => (p.id === id ? { ...p, ...deLaFila, cambio_pendiente: true } : p)))
     setGuardando(id)
     setError(null)
     const r = await editarPago(id, cambio)
@@ -122,7 +129,7 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
 
   const pago = pagos.find((x) => x.id === elegido) ?? null
   const total = totalEsquema(pagos)
-  const conFecha = pagos.filter((p) => p.fecha).length
+  const sinFecha = pagos.filter((p) => !p.fecha)
 
   return (
     <div data-testid="vista-esquema-pago" className="-mx-4 lg:-mx-10" style={{ background: C.lienzo }}>
@@ -186,20 +193,55 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
               : (
                 <CalendarioEsquema
                   pagos={pagos} hoy={hoy} elegido={elegido} onElegir={setElegido} onCambiar={cambiar}
+                  aviso={avisoCalendario} onAviso={setAvisoCalendario}
                 />
               )}
 
-          {pagos.length > 0 && conFecha < pagos.length && (
-            // UN PAGO SIN FECHA NO SE DIBUJA EN EL CALENDARIO, y callarlo lo haría desaparecer del
-            // plan entero al cambiar de vista.
-            <div
-              data-testid="pagos-sin-fecha"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '11px', fontSize: '11.5px', color: C.warn }}
-            >
-              <Ico d={P.alerta} s={14} w={2} />
-              {pagos.length - conFecha} {pagos.length - conFecha === 1 ? 'pago sin fecha' : 'pagos sin fecha'}: no aparecen en el calendario.
+          {sinFecha.length > 0 && (
+            // ═══ UN PAGO SIN FECHA NO SE DIBUJA EN EL CALENDARIO, NI EN CERO ═══
+            //
+            // El fondo de reparo no tiene fecha porque todavía no la tiene: se libera a los 180
+            // días de la recepción provisoria, y esa fecha depende de un hecho que no pasó.
+            // Ubicarlo en el 1º o en «hoy» sería inventar un cobro que nadie pactó para ese día, y
+            // ese día entra después a la proyección de caja. Va en su propia lista, y con su monto:
+            // es plata comprometida que hay que poder ver.
+            <div data-testid="pagos-sin-fecha" style={{ paddingTop: '14px' }}>
+              <div style={{ fontSize: '10.5px', color: C.tenue, letterSpacing: '.05em', marginBottom: '7px' }}>
+                SIN FECHA CARGADA
+              </div>
+              {sinFecha.map((p) => (
+                <div
+                  key={p.id}
+                  data-testid={`sin-fecha-${p.id}`}
+                  style={{
+                    display: 'flex', alignItems: 'baseline', gap: '10px', padding: '7px 0',
+                    borderBottom: `1px solid ${C.bordeFila}`,
+                  }}
+                >
+                  <span style={{ fontSize: '12.5px', color: C.tinta, minWidth: 0, flex: 1 }}>{p.concepto}</span>
+                  <span style={{ fontFamily: MONO, fontSize: '12.5px', color: C.tinta, flexShrink: 0 }}>
+                    {montoM(p.monto)}
+                  </span>
+                </div>
+              ))}
+              <div style={{ fontSize: '11.5px', color: C.warn, marginTop: '7px', lineHeight: 1.45 }}>
+                No aparecen en el calendario: no tienen fecha pactada, y ubicarlos en un día
+                cualquiera metería en la proyección de caja un cobro que nadie acordó.
+              </div>
             </div>
           )}
+
+          {/* ═══ LA FRONTERA, DICHA EN PANTALLA ═══
+
+              Media fila es del Sheet y media es de la app, y quien la mira no tiene forma de saber
+              cuál es cuál. Sin esta línea, mover una fecha se siente como guardar un dato —y es
+              encolar un pedido que un worker aplica más tarde, o rechaza. */}
+          <p style={{ fontSize: '11px', color: C.tenue, marginTop: '14px', lineHeight: 1.55, maxWidth: 760 }}>
+            La fecha, el monto, el medio y el estado son espejo de las columnas Q · J · N · O de la
+            pestaña Cobranzas: editarlas encola el cambio y lo escribe el worker, no esta pantalla.
+            Lo que sí es de la app —qué ve el cliente, cuándo se le avisa y el historial de fechas—
+            no lo toca el sync.
+          </p>
         </div>
 
         <div style={{
@@ -226,6 +268,7 @@ export function EsquemaPago({ esquema, hoy, clienteId, editarPago, publicarEsque
               </Vacio>
             )}
           <CambiosEsquema pagos={pagos} hoy={hoy} />
+          <AvisosAlCliente pagos={pagos} />
         </div>
       </div>
     </div>
