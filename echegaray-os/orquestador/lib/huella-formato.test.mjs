@@ -1,8 +1,13 @@
-import { test } from 'node:test'
+import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 
 const estado = { huellas: [], caida: false, guardadas: [] }
+
+// «Primera pasada» se recuerda POR PROCESO (ver `virgenAlEmpezar` en huella-formato.mjs): una
+// pestaña que arrancó virgen lo sigue estando toda la corrida, para que el propio generador no se
+// envenene sellando su primera tanda. En los tests eso hace que una prueba contamine a la siguiente.
+beforeEach(async () => { (await import('./huella-formato.mjs')).olvidarVirgenes() })
 registerHooks({
   load(url, context, next) {
     if (!url.endsWith('/orquestador/lib/db.mjs')) return next(url, context)
