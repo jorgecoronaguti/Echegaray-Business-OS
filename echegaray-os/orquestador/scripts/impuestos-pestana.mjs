@@ -27,7 +27,7 @@ import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, iv
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
-  anclaDeProyeccion, aNumero, supuestoDelMes, RANGO_ALICUOTA_IVA,
+  anclaDeProyeccion, aNumero, supuestoDelMes, RANGO_ALICUOTA_IVA, soloLoTipeado,
   filasReferenciadas, contratoDeFilas, contratoDeRotulos,
 } from '../lib/iva-libre-disponibilidad.mjs'
 import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
@@ -279,25 +279,25 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
  * F.2051 de Drive, la proyección arrancaría de un saldo que ya se consumió.
  */
 async function planDeProyeccionIva(google, ivaOficial) {
-  // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Si la API falla y esto se degrada a [], el ancla
-  // desaparece y el generador escribe la pestaña SIN proyección — o peor, arranca de un saldo que no
-  // es. Un error de red terminaría produciendo un cuadro que dice que no hay IVA que pagar.
+  // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Degradada a [], el ancla desaparece y el cuadro
+  // sale sin proyección — o arranca de un saldo que no es: diría que no hay IVA que pagar.
   const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:N140`)
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
   const filaDe = (rot) => previo.findIndex((f) => norm(f?.[0]) === norm(rot))
   const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
-  const filaLibre = iL >= 0 ? (previo[iL] || []).slice(1, 13) : []
+  const crudoLibre = iL >= 0
+    ? ((await google.readSheetValues(ID, `${PESTAÑA}!B${iL + 1}:M${iL + 1}`, { render: 'FORMULA' }))[0] ?? [])
+    : []
+  const filaLibre = soloLoTipeado(crudoLibre) // sólo lo TIPEADO: una fórmula es proyección propia
   const mesesConDDJJ = (ivaOficial ?? []).filter((d) => d.periodo).map((d) => Number(String(d.periodo).slice(5, 7)))
   const { ultimoMesConDato, libreDisp, mesesAProyectar, textoDondeVaImporte } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
-  // Un texto sentado en una celda de plata no puede irse sin dejar rastro: se avisa acá para el --dry
-  // y viaja a la sección 10, que es donde la pestaña declara sus huecos.
   for (const { mes, valor } of textoDondeVaImporte) {
     console.log(`  ${MES[mes - 1]}: "${valor}" está donde va el saldo de libre disponibilidad y no es un importe`
       + ' — se descarta del ancla y el mes se recalcula.')
   }
 
-  // LA ALÍCUOTA VIGENTE SALE DE LA CELDA, NO DE UNA CONSTANTE. Si el dueño ya la editó, manda la
-  // suya: es la regla de "edición manual = verdad definitiva". Sólo la primera vez se siembra 0,21.
+  // LA ALÍCUOTA SALE DE LA CELDA, NO DE UNA CONSTANTE: si el dueño la editó, manda la suya. Sólo la
+  // primera vez se siembra 0,21 («edición manual = verdad definitiva»).
   const iA = filaDe('Alícuota general de IVA')
   const crudo = iA >= 0 ? previo[iA]?.[1] : null
   const alicuotaVigente = aNumero(crudo) !== null ? aNumero(crudo) / (String(crudo).includes('%') ? 100 : 1) : null

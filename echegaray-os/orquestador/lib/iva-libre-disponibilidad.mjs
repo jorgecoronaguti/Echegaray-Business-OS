@@ -265,6 +265,24 @@ export function aNumero(v) {
  * @returns {{ultimoMesConDato:number|null, libreDisp:number|null, mesesAProyectar:number[],
  *            textoDondeVaImporte:Array<{mes:number, valor:string}>}}
  */
+/**
+ * EL ANCLA CUENTA LO QUE ESCRIBIÓ UNA PERSONA, NO LO QUE PROYECTÓ EL GENERADOR (04/09/2026).
+ *
+ * `anclaDeProyeccion` toma por «mes ya cargado» todo mes con un número en la fila del saldo. Leída
+ * con el render por defecto, una FÓRMULA devuelve su valor — así que la proyección que el propio
+ * generador escribió la corrida anterior volvía como dato del dueño, el ancla trepaba hasta
+ * diciembre, los cinco meses proyectados pasaban a ORIGEN.ajeno y el bloque dejaba de emitirse.
+ * A la corrida siguiente volvía a crecer. MEDIDO en «Impuestos y Financieros»: 101 ↔ 105 filas
+ * alternadas, con los rótulos de la columna A tres filas corridos respecto de sus valores.
+ *
+ * Un generador que no reconoce su propia salida no es idempotente. Leyendo la fila como FÓRMULA,
+ * `=` es del generador y un número es de una persona — que es lo que el docblock de
+ * `anclaDeProyeccion` pide desde siempre y el código no podía distinguir.
+ */
+export function soloLoTipeado(fila = []) {
+  return fila.map((v) => (String(v ?? '').startsWith('=') ? '' : v))
+}
+
 export function anclaDeProyeccion(filaLibreDisp = [], mesesConDDJJ = []) {
   let ultimo = null
   let saldo = null
