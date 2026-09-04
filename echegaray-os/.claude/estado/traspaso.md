@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-04 · cierre de la jornada de Flujo de Caja_
+_actualizado: 2026-09-04 · Flujo de Caja + capa ML enchufada a Compras × Cheques_
 
 ## 1. OBJETIVO GENERAL
 
@@ -82,6 +82,30 @@ Operativo, además: los 4 pagos pendientes a **PEDRO TELLO** ($9,9M) movidos una
 
 Commits: `e865772b` (rediseño) · `cae191a8` (CAJA) · `9aace250` (IVA base única).
 
+### 5.b · LA CAPA ML DEJÓ DE SER UNA BIBLIOTECA (fases 1-3 integradas)
+
+Estaba construida, probada y sin llamadores: `orq.ml_traza` tenía **cero filas**. Dos defectos
+reales encontrados y cerrados:
+
+- `registrarTraza()` dispara sin esperar y los scripts del OS salen enseguida → el INSERT nunca
+  llegaba. Ahora existe `drenarTrazas()` y los scripts la llaman antes de `process.exit`.
+- `valor_original` guardaba el texto NORMALIZADO. Un «original» normalizado no es el original, y la
+  pantalla que busca «Robles Pinturerías S.R.L.» no lo encontraba. Ahora se guarda crudo y el
+  cálculo se memoiza por forma normalizada.
+
+Enchufada en dos lugares reales: el cruce de cheques (`cheques-cobertura-sheet.mjs` resuelve los dos
+lados y `mismaEntidad` gana el peldaño de identidad canónica, DEBAJO del CUIT) y la pantalla de
+Compras (el panel dice «→ Nombre canónico» o «Proveedor sin identificar»; los sugeridos traen
+Confirmar / Elegir otro / Dejar sin resolver, y confirmar crea el alias verificado).
+
+**LO MEDIDO, QUE CONTRADICE LA EXPECTATIVA:** de 143 identidades reales, 45 se vinculan (25 por
+CUIT, 20 por nombre exacto) y las 98 que pasaron por fuzzy/embeddings aportaron **CERO
+vinculaciones**. Y el efecto sobre el cruce fue **nulo**: mismos contemplados, mismos inferidos,
+mismos huecos. El ML acá informa y encola trabajo humano; lo que vincula es el identificador fuerte.
+El trabajo que más rinde es cargar los CUIT que faltan, no afinar umbrales.
+
+Commits: `9cf52a81` (integración) · `5bf44c4e` (la normalización sale de embeddings).
+
 ## 6. PENDIENTES REALES
 
 **P0 — decisión del dueño, no arranca solo**
@@ -95,8 +119,15 @@ Commits: `e865772b` (rediseño) · `cae191a8` (CAJA) · `9aace250` (IVA base ún
 - La cadena de saldos del banco **no cierra por $455.082,14** (72 cortes, ninguno lo explica solo);
   el tramo sospechoso es anterior al 06/07. `scripts/auditar-saldo-banco.mjs` lo reporta.
 - Cablear `huella-formato-layout` en las 12 pestañas restantes, o resolverlo en la guarda misma.
-- `npm run orq:test` completo **no se corrió hoy** (había agentes en la VM). Correrlo antes del
-  próximo deploy.
+- **5 CUIT del Sheet no están en `proveedores`**: SOSTEN SA, Alvarado Mariel Edith, AGENCIA CALIDAD
+  SAN JUAN SEM, Machuca Hector (falta el alta) y **NEUMAGOM SAS, que existe y NO tiene el CUIT
+  cargado**. Ese último es el único auto-resuelto con riesgo residual: se vinculó por nombre exacto
+  y nada confirma el CUIT. Cargarlo lo pasa a identificador fuerte.
+- Conviven **dos almacenes de alias**: `proveedor_alias` (el viejo, con `clasificarNombre`) está
+  **vacío y sin llamadores en producción**, y `ml_entidad_alias` es el que usa el resolver. No
+  divergen hoy porque uno no se usa; el día que alguien lo use, divergen.
+- El `next-server` que corre en :3287 sale de un **worktree viejo** (`.claude/worktrees/desvio`), no
+  de producción. La app no está bajo systemd.
 - Dos filas «Retenciones sufridas» con números distintos y sin nota al lado: bloque 2 lee `_IIBB_RAW`
   ($3.645.362), bloque 3 lee `Cobranzas!Z` ($888.550). Decisión de dominio, no de diseño.
 - Deuda anterior aún abierta: `huellaDeRango(PESTANA)` hashea sólo filas/columnas congeladas ·
@@ -110,17 +141,24 @@ Commits: `e865772b` (rediseño) · `cae191a8` (CAJA) · `9aace250` (IVA base ún
 
 ## 7. ESTADO GIT
 
-- Rama: `main` · HEAD: `9aace250` · working tree **limpio** · sincronizado con `origin/main`.
+- Rama: `main` · HEAD: `5bf44c4e` · working tree **limpio** · sincronizado con `origin/main`.
+- Producción (`~/echegaray-os/produccion/echegaray-os`) al día en `5bf44c4e`, y el cruce corrido
+  desde ahí escribió trazas reales en `orq.ml_traza`.
+- `npm run orq:test`: **13.713 tests, 0 fallos** (dos corridas). `typecheck` y `build` en verde.
 - Ramas ya integradas hoy (se pueden borrar): `feat/impuestos-clase-mundial`,
   `fix/iva-base-unica-de-ventas`. Worktrees `.claude/worktrees/impuestos-wc` e `iva-base` sin limpiar
   (`node scripts/higiene-worktrees.mjs`).
-- Producción: **no verificada en este cierre.**
 
 ## 8. PRÓXIMO PASO
 
-Preguntarle al dueño si la base del IVA va por columna P o C (evidencia de marzo y mayo arriba) y
-aplicar la respuesta en `orquestador/lib/impuestos-base-libro.mjs`, partiendo de `main` en `9aace250`
-con la pestaña ya regenerada y verificada por PDF.
+Dos, en este orden:
+
+1. Preguntarle al dueño si la base del IVA va por columna P o C (evidencia de marzo y mayo arriba) y
+   aplicar la respuesta en `orquestador/lib/impuestos-base-libro.mjs`.
+2. Cargar los 5 CUIT que faltan en `proveedores` y volver a correr
+   `node orquestador/scripts/identidad-backfill.mjs` (en seco primero). Rinde más que cualquier
+   ajuste de umbrales: cada CUIT cargado convierte un cruce por nombre en uno por identificador
+   fuerte. La fase 4 (Document Intelligence) sigue **sin arrancar** por indicación del dueño.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
