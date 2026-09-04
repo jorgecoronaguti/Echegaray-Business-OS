@@ -73,15 +73,22 @@ export const MODELOS = Object.freeze({
   },
   'forecast.series': {
     capacidad: 'forecast',
-    modelo: 'amazon/chronos-bolt-small',
+    modelo: 'amazon/chronos-2',
     revision: null,
     ejecucion: 'local-cpu',
     proveedor: 'local',
     licencia: 'Apache-2.0',
-    estado: ESTADO.EXPERIMENTAL,
-    medido: null,
-    porQue: 'pronostica series sin entrenamiento previo; la familia tiene 25M de descargas. NO reemplaza el forecast determinístico: aporta la banda de incertidumbre sobre el piso conocido.',
-    alternativas: ['amazon/chronos-2', 'autogluon/chronos-bolt-small'],
+    estado: ESTADO.BLOQUEADO,
+    dataset: 'banco_movimientos · 100 dias / 14 semanas de historia',
+    medido: {
+      fecha: '2026-09-04',
+      // Backtest de origen movil sobre la serie REAL, cinco lineas de base:
+      diario: { mejor: 'estacionalSemanal', wape: 1.006, mae: 3852782 },
+      semanal: { mejor: 'medianaMovil', wapeNeto: 1.039, wapeSalidas: 0.767 },
+    },
+    porQue: 'BLOQUEADO POR FALTA DE DATOS, no por el modelo. La serie de caja tiene 100 dias / 14 semanas, y las cinco lineas de base dejan WAPE entre 77% y 104%: el error es del tamano de la propia serie, o sea que la senal no esta en su pasado. Instalar 2 GB de torch para superar un 77% medido sobre 14 puntos seria medir ruido con mas decimales. Lo que SI predice esta caja son los compromisos conocidos —cheques con fecha, vencimientos, cobranzas—, que el OS ya tiene y `forecast.mjs` combina.',
+    reingreso: 'volver a medir con 52 semanas de historia (aproximadamente septiembre de 2027) o cuando el WAPE de las lineas de base baje de 50%',
+    alternativas: ['amazon/chronos-bolt-small', 'autogluon/chronos-2-small', 'kashif/chronos-2-onnx (ONNX, evitaria torch)'],
   },
   'clasificacion.zeroshot': {
     capacidad: 'classify',
