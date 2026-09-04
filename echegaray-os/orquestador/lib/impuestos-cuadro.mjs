@@ -205,8 +205,16 @@ export const formulaImpuestoCheque = (hoja, anio, m) =>
 // EL RANGO ARRANCA EN B Y TERMINA EN M: los doce meses, sin la columna del Total —que suma la fila
 // entera y daría "positivo" aunque ningún mes suelto lo sea.
 
-/** El texto de la celda cuando ningún mes del año pide caja. Es un hecho, no un hueco: no lleva ⚠. */
-export const IVA_SIN_SALIDA = 'ninguno en el año'
+/**
+ * El texto de la celda cuando ningún mes del año pide caja. Es un hecho —el crédito de libre
+ * disponibilidad lo absorbió todo—, no un hueco: no lleva ⚠.
+ *
+ * CORTO A PROPÓSITO (04/09/2026): va en la columna del mes, que mide 108 px ≈ 18 caracteres, y con
+ * la de al lado ocupada no hay adónde derramar. "ninguno en el año" se dibujaba cortado en "ninguno
+ * en el" — y un rótulo cortado al medio dice otra cosa que el rótulo entero. El renglón se lee
+ * completo: «EL IVA EMPIEZA A SALIR DE LA CAJA EN … ningún mes».
+ */
+export const IVA_SIN_SALIDA = 'ningún mes'
 
 /**
  * NÚCLEO PURO: la posición (1..12) del primer mes con un importe POSITIVO en la fila `f`.

@@ -413,6 +413,22 @@ async function main() {
   // PRIMERO la réplica _IIBB_RAW: las fórmulas del bloque de IIBB la referencian.
   await escribirIIBBRaw(google, ID, iibb)
 
+  // ═══ UNA HUELLA DE FORMATO DE UN LAYOUT QUE YA NO EXISTE NO ES EVIDENCIA (04/09/2026) ═══
+  //
+  // Cuando esta pestaña pasó de 105 filas a 68, las 350 huellas viejas quedaron describiendo filas
+  // que ya no contienen lo que contenían: la guarda las leyó como diseño del dueño y bloqueó los 419
+  // rangos de formato de golpe. La pestaña se publicó con los importes crudos —`1419600` en vez de
+  // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella.
+  //
+  // VA ANTES DE LA PRIMERA ESCRITURA DE LA CORRIDA, y no antes de `formatear`: el borrado de notas
+  // también es un request de formato y quedaba del lado bloqueado. Ver lib/huella-formato-layout.mjs.
+  const previoParaLayout = await google.readSheetValues(ID, `${PESTAÑA}!A1:A400`)
+  const layout = elLayoutCambio(previoParaLayout, g.filas)
+  if (layout.cambio) {
+    const n = await invalidarHuellasDeFormato(query, ID, PESTAÑA).catch((e) => { console.warn(`  ⚠ no pude invalidar las huellas de formato: ${e.message}`); return 0 })
+    console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
+  }
+
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Las NOTAS viejas del
   // generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se llevaba los comentarios).
@@ -438,11 +454,6 @@ async function main() {
   // `$1.419.600`— y el bloqueo era permanente, porque sin re-aplicar tampoco se re-sella. Se
   // invalidan ANTES de escribir; la corrida vuelve a aplicar y a sellar sobre el layout nuevo, que es
   // el único sobre el que la protección puede significar algo. Ver lib/huella-formato-layout.mjs.
-  const layout = elLayoutCambio(previoTab, g.filas)
-  if (layout.cambio) {
-    const n = await invalidarHuellasDeFormato(query, ID, PESTAÑA).catch((e) => { console.warn(`  ⚠ no pude invalidar las huellas de formato: ${e.message}`); return 0 })
-    console.log(`  🎨 cambió el layout (${layout.motivo}): invalido ${n} huella(s) de formato y las vuelvo a sellar`)
-  }
   const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07). Una pestaña que no se escribió no
   // cambió de forma: su formato y sus nombres son los de su última escritura y así tienen que quedar.

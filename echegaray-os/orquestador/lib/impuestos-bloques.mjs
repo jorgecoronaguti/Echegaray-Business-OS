@@ -420,14 +420,22 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   const fAlic = G.lista(ROTULO_ALICUOTA, [proy?.alicuotaVigente ?? ALICUOTA_POR_DEFECTO],
     `PARÁMETRO EDITABLE · lo usan la proyección de IVA de la sección 1 y la base de IIBB de la 2, por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
     + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.')
-  // UN HUECO SE VE COMO UN HUECO, NO COMO UN CERO. El dueño: "$0 y 'no lo sabemos' no son lo mismo y
-  // hoy se ven igual". "s/d" es TEXTO a propósito: SUM() lo ignora, así que el hueco queda a la vista
-  // sin ensuciar un solo total y sin que aparezca un cero que después alguien sume de buena fe.
+  // ═══ DOCE «s/d» NO INFORMAN MÁS QUE UNO (04/09/2026) ═══
+  //
+  // Un hueco se ve como un hueco y no como un cero —el dueño: "$0 y 'no lo sabemos' no son lo mismo y
+  // hoy se ven igual"— y "s/d" es TEXTO a propósito: SUM() lo ignora, así que no ensucia un total ni
+  // deja un cero que después alguien suma de buena fe.
+  //
+  // Pero estaba repetido en las doce columnas del mes MÁS la del total: tres filas de pared. Que un
+  // impuesto no esté cuantificado es UN hecho del año, no doce hechos mensuales. Se dice una vez, en
+  // la columna del Total, que es adonde el ojo va a buscar la cifra del año, y los meses quedan
+  // vacíos — que es lo que de verdad hay en ellos.
   const SD = 's/d'
-  G.push([`${ALERTA} Tasa municipal de seguridad e higiene`, ...Array(12).fill(SD), 'sin cuantificar',
-    'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.'])
-  G.push([`${ALERTA} Impuesto de sellos`, ...Array(12).fill(SD), 'sin cuantificar',
-    'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. Para cerrarlo hace falta la lista de contratos firmados en el año.'])
+  const hueco = (rotulo, porQue) => G.push([`${ALERTA} ${rotulo}`, ...Array(12).fill(VACIO), SD, porQue])
+  hueco('Tasa municipal de seguridad e higiene',
+    'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.')
+  hueco('Impuesto de sellos',
+    'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. Para cerrarlo hace falta la lista de contratos firmados en el año.')
   // LA PROSA VA EN LA COLUMNA DE PROCEDENCIA (la última), NO EN LA DE IMPORTES. En la columna B se
   // dibuja con formato de moneda y queda cortada a 108 píxeles: un texto de trescientos caracteres
   // sentado donde el ojo busca plata.
