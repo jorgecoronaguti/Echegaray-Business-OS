@@ -262,6 +262,28 @@ async function main() {
       : c
     return conSum.replace(/#\{(\d+)\}/g, (_, n) => String(Number(n) + F - 1))
   }))
+  // ═══ LA HOJA TIENE QUE LLEGAR HASTA DONDE ESTE BLOQUE ESCRIBE (04/09/2026) ═══
+  //
+  // `actual` se lee hasta la fila 200 y `F` sale de la última fila CON CONTENIDO — pero el contenido
+  // puede terminar mucho antes de donde termina la GRILLA. El 04/09 el Cash Flow Mensual tenía 109
+  // filas, el bloque cayó en la 112 y la API abortó el lote entero con
+  // `Range ('Cash Flow Mensual'!A112:F155) exceeds grid limits. Max rows: 109` — sin escribir nada, y
+  // dejando los ocho cheques más nuevos sin diagnóstico en la columna M.
+  //
+  // Es el MISMO defecto que `caja-pestana.mjs` ya paga en su propio tramo: un generador que calcula
+  // dónde escribir sin asegurarse de que la hoja llegue ahí. Sólo AGRANDA —nunca achica—: un
+  // `rowCount` menor al de la hoja borraría filas de una persona, y eso no se hace nunca.
+  const meta = (await google.getSheetMeta(ID)).find((h) => h.title === PESTAÑA)
+  const necesita = F + filas.length - 1
+  if (meta && (meta.rows ?? 0) < necesita) {
+    await google.spreadsheetBatchUpdate(ID, [{
+      updateSheetProperties: {
+        properties: { sheetId: meta.sheetId, gridProperties: { rowCount: necesita } },
+        fields: 'gridProperties.rowCount',
+      },
+    }])
+    console.log(`  ↔ la hoja tenía ${meta.rows} filas y el bloque llega a la ${necesita}: la agrando`)
+  }
   const cp = await escribirPreservando(google, ID, PESTAÑA, filas, { fila0: F, anchoHoja: ANCHO })
   if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
