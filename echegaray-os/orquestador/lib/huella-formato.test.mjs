@@ -276,3 +276,34 @@ test('las herramientas expuestas a un modelo ya no borran pestañas', async () =
     assert.ok(/no borro pestañas/.test(bloque), `${archivo}: tiene que explicar por qué no, no fallar seco`)
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA HUELLA DE PESTAÑA ABARCA LO QUE LA CLAVE DE PESTAÑA DECIDE (auditoría del 03/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `claveDeFormato` manda a TIPO.PESTANA los updateSheetProperties de hideGridlines, tabColor y
+// title. La huella hasheaba sólo las congeladas: la decisión sobre el color de la pestaña se tomaba
+// mirando cuántas filas estaban congeladas. Con eso, el OS pisaba en silencio una elección de diseño
+// del dueño — justo lo que la guarda promete no hacer.
+
+const PESTANA_BASE = { congeladas: { filas: 4, columnas: 0 }, hideGridlines: true, tabColor: { red: 1 }, titulo: 'CAJA' }
+
+test('la huella de pestaña CAMBIA cuando cambia lo que la guarda dice proteger', () => {
+  const base = huellaDeRango(TIPO.PESTANA, PESTANA_BASE, null)
+  assert.notEqual(huellaDeRango(TIPO.PESTANA, { ...PESTANA_BASE, hideGridlines: false }, null), base,
+    'el dueño prendió las líneas de la grilla: eso es una edición de diseño suya')
+  assert.notEqual(huellaDeRango(TIPO.PESTANA, { ...PESTANA_BASE, tabColor: { blue: 1 } }, null), base,
+    'le cambió el color a la pestaña')
+  assert.notEqual(huellaDeRango(TIPO.PESTANA, { ...PESTANA_BASE, tabColor: null }, null), base,
+    'le sacó el color')
+  assert.notEqual(huellaDeRango(TIPO.PESTANA, { ...PESTANA_BASE, congeladas: { filas: 3, columnas: 0 } }, null), base,
+    'descongeló una fila — lo único que se detectaba antes')
+  assert.equal(huellaDeRango(TIPO.PESTANA, { ...PESTANA_BASE }, null), base, 'sin cambios, la misma huella')
+})
+
+test('una lectura vieja SIN los campos no se confunde con una que los trae apagados', () => {
+  const vieja = { congeladas: { filas: 4, columnas: 0 } }
+  const apagados = { congeladas: { filas: 4, columnas: 0 }, hideGridlines: false, tabColor: null, titulo: null }
+  assert.notEqual(huellaDeRango(TIPO.PESTANA, vieja, null), huellaDeRango(TIPO.PESTANA, apagados, null),
+    'ausente y false son cosas distintas: si se igualaran, una huella vieja pasaría por buena')
+})
