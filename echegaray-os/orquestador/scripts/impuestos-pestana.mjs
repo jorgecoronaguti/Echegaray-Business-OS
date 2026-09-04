@@ -23,7 +23,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
-import { debitoFacturadoDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, ivaDeclaradoPorMesDeEmision } from '../lib/impuestos-base-libro.mjs'
+import { ventasFacturadasDelMes, creditoDeComprasDelMes, RUBROS_CREDITO_LIBRO, planDeVentas } from '../lib/impuestos-base-libro.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
@@ -116,7 +116,7 @@ const LINEAS_CREDITO = [
 ]
 
 // La base de la proyección sale del Libro, no del Cash Flow por posición: ver `basesDelLibro`.
-const brutoDebitoLibro = (m) => [debitoFacturadoDelMes(AÑO, m)]
+const brutoDebitoLibro = (m) => [ventasFacturadasDelMes(AÑO, m, 'iva')]
 const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
 
 /**
@@ -243,7 +243,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
  * del último mes cargado, y ese mes puede haberlo escrito una persona. Si se anclara en la última
  * F.2051 de Drive, la proyección arrancaría de un saldo que ya se consumió.
  */
-async function planDeProyeccionIva(google, ivaOficial) {
+async function planDeProyeccionIva(google, ivaOficial, hoy) {
   // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Degradada a [], el ancla desaparece y el cuadro
   // sale sin proyección — o arranca de un saldo que no es: diría que no hay IVA que pagar.
   // SIN FORMATO. La columna A —los rótulos que se buscan acá— es texto y no cambia; el PARÁMETRO de
@@ -283,13 +283,13 @@ async function planDeProyeccionIva(google, ivaOficial) {
 
   // El débito sale de Cobranzas, no del Libro: el IVA que cada factura B ya declara, por emisión.
   const cob = (await google.readSheetValues(ID, 'Cobranzas!A5:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
-  const ivaEmitido = ivaDeclaradoPorMesDeEmision(cob)
+  const ventas = planDeVentas(cob, AÑO, hoy)
   const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
   const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
     debito: [{
       celda: 'Cobranzas', rotulo: 'IVA declarado por las facturas B emitidas en el mes',
-      valor: ivaEmitido[`${AÑO}-${String(m).padStart(2, '0')}`] ?? 0,
+      valor: ventas.iva(m),
     }],
     credito: [{
       celda: '_MOVIMIENTOS', rotulo: 'Compras con factura del Libro (4 rubros, netas de NC)',
@@ -303,8 +303,8 @@ async function planDeProyeccionIva(google, ivaOficial) {
     textoDondeVaImporte,
     alicuotaVigente,
     bases,
-    brutoDebito: brutoDebitoLibro,
-    brutoCredito: brutoCreditoLibro,
+    brutoDebito: brutoDebitoLibro, brutoCredito: brutoCreditoLibro,
+    sinBase: ventas.sinBase(mesesAProyectar),
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`
       + ' Es un CÁLCULO, no un hecho: el débito fiscal de una obra se devenga con el certificado aprobado, que puede caer antes que el cobro.',
@@ -364,7 +364,7 @@ async function main() {
   // QUÉ MESES TIENE ARCA. `disponible` quiere decir que el período tiene comprobantes cargados; no
   // quiere decir que estén TODOS. El mes en curso es parcial por construcción y el cuadro lo declara.
   const arca = { meses: iva.filter((m) => m.disponible).map((m) => Number(String(m.periodo).slice(5, 7))) }
-  const proy = await planDeProyeccionIva(google, ivaOficial)
+  const proy = await planDeProyeccionIva(google, ivaOficial, hoy)
   const planes = await planesDePago(AÑO)
   const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
   const { col: C, faltan } = resolverColumnas(cabCompras, {

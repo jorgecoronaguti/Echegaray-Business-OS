@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   RUBRO_PRENDARIO, formulaCuotaPrendario, formulaPrendarioPendiente, formulaPlanesPendiente,
-  formulaAlicuotaIibbVigente, formulaBaseIibbProyectada, formulaIibbDeterminado,
+  formulaAlicuotaIibbVigente, formulaIibbDeterminado,
   formulaImpuestoChequeProyectado, formulaImpuestoCheque,
   formulaVentana, formulaDeudaPendiente,
   formulaMesQueElIvaPideCaja, formulaIvaQuePideCaja, formulaColchonQueSeAgota, IVA_SIN_SALIDA,
@@ -84,21 +84,21 @@ test('el rubro del prendario es contrato con Compras y está declarado', () => {
 
 const IIBB = { hoja: '_IIBB_RAW', fila0: 4, col: { periodo: 'A', base: 'B', alicuota: 'C' } }
 
-test('IIBB proyectado = base × alícuota, NUNCA un promedio de los meses anteriores', () => {
-  const base = formulaBaseIibbProyectada(2026, 9)
+test('IIBB determinado = base × alícuota, NUNCA un promedio de los meses anteriores', () => {
+  // La BASE ya no se define acá: es `ventasFacturadasDelMes`, la misma que el débito fiscal del IVA
+  // — ver impuestos-base-unica-de-ventas.test.mjs. Acá queda sólo el driver que la multiplica.
   const det = formulaIibbDeterminado('J58', 'J59')
-  assert.equal(det, '=J58*J59')
-  // El driver: las cobranzas del Libro del mes, netas de IVA.
-  assert.ok(base.includes('_MOVIMIENTOS'), 'la base sale del Libro')
-  assert.ok(base.includes('"Cobranzas"'), 'el rubro es Cobranzas')
-  assert.ok(base.includes('DATE(2026;9;1)'), 'la ventana es la del mes proyectado')
-  assert.ok(base.includes('/(1+ALICUOTA_IVA)'), 'la base imponible es NETA de IVA')
-  for (const f of [base, det]) {
-    assert.ok(!/AVERAGE/i.test(f), 'un promedio no es un driver')
-    assert.ok(!/\bMEDIAN\b/i.test(f))
-  }
-  // Dos meses distintos dan bases distintas: si dieran la misma, sería un promedio disfrazado.
-  assert.notEqual(formulaBaseIibbProyectada(2026, 9), formulaBaseIibbProyectada(2026, 10))
+  assert.ok(!/AVERAGE/i.test(det), 'un promedio no es un driver')
+  assert.ok(!/\bMEDIAN\b/i.test(det))
+  assert.ok(det.includes('J58') && det.includes('J59'), 'base × alícuota, las dos celdas del mes')
+})
+
+test('una base VACÍA no da #VALUE! ni un "$0" que parezca calculado', () => {
+  // La base devuelve VACÍO —no cero— cuando el mes no tiene una sola factura emitida. `=""*0,02` da
+  // #VALUE! y el error se propaga a la fila que leen el Libro y el cash flow.
+  const det = formulaIibbDeterminado('J58', 'J59')
+  assert.match(det, /^=IF\(N\(J58\)=0;"";/, 'sin base, la celda queda vacía y no revienta')
+  assert.match(det, /N\(J58\)\*J59\)$/, 'con base, sigue siendo base × alícuota')
 })
 
 test('la alícuota de IIBB se REFERENCIA de la última DDJJ, no se tipea', () => {

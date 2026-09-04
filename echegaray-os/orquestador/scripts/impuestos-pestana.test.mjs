@@ -330,11 +330,33 @@ test('IIBB PROYECTA de julio en adelante: seis meses en blanco era el hueco', ()
   for (let m = 1; m <= 12; m++) {
     assert.notEqual(f[m], VACIO, `el mes ${m} de "IIBB a pagar" no puede estar vacío`)
   }
-  // Y la base de un mes proyectado sale del Libro, no de un promedio.
+  // Y LA BASE DE UN MES PROYECTADO ES LA MISMA QUE LA DEL DÉBITO FISCAL DE ARRIBA (04/09/2026).
+  // Antes salía de las cobranzas del Libro y el bloque de al lado de las facturas emitidas: dos
+  // definiciones de «las ventas del mes» a tres filas de distancia. En septiembre una decía $71,1M y
+  // la otra $183,7M.
   const base = g.filas[filaDe(g, /^Base imponible declarada$/) - 1]
-  assert.match(String(base[9]), /_MOVIMIENTOS/, 'la base de septiembre sale del Libro')
-  assert.match(String(base[9]), /\/\(1\+ALICUOTA_IVA\)/, 'la base imponible es NETA de IVA')
+  assert.match(String(base[9]), /Cobranzas!\$B\$5:\$B="B"/, 'sólo lo facturado, como el débito')
+  assert.match(String(base[9]), /Cobranzas!\$J\$5:\$J/, 'la base imponible es el NETO de la factura')
+  assert.doesNotMatch(String(base[9]), /_MOVIMIENTOS/, 'la base dejó de ser un percibido')
+  assert.doesNotMatch(String(base[9]), /ALICUOTA_IVA/, 'no se deriva de un bruto de caja')
   assert.ok(!/AVERAGE/i.test(String(base[9])))
+  assert.match(String(base[9]), /DATE\(2026;9;1\)/, 'la ventana es la del mes, la misma que la del débito')
+})
+
+test('un mes FUTURO sin facturas cargadas no proyecta NINGUNO de los dos lados', () => {
+  // El reporte del dueño: «cómo me va a dar a pagar si tengo saldo a favor en los meses siguientes».
+  // Noviembre y diciembre tenían crédito de IVA proyectado y débito cero, y de ahí salía un saldo a
+  // favor de $1.312.377 inventado. Ahora los dos bloques dejan el mes vacío y lo DECLARAN.
+  const g = armar({ proy: { ...armar().proy ?? {}, meses: [8, 9, 10, 11, 12], ultimoMesConDato: 7, libreDisp: 7050036,
+    alicuotaVigente: 0.21, brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`],
+    supuesto: 'el supuesto', sinBase: [11, 12] } })
+  for (const rot of [/^Débito fiscal del período$/, /^Crédito fiscal del período$/, /^Base imponible declarada$/]) {
+    const f = g.filas[filaDe(g, rot) - 1]
+    for (const mes of [11, 12]) assert.equal(f[mes], VACIO, `${rot} tiene que quedar vacío en el mes ${mes}`)
+  }
+  // Y EL HUECO SE DECLARA: una columna vacía sin explicación se lee como «no debo nada».
+  const proc = g.filas[filaDe(g, /^DDJJ presentada$/) - 1]
+  for (const mes of [11, 12]) assert.match(String(proc[mes]), /SIN VENTAS CARGADAS/)
 })
 
 test('los meses proyectados se marcan en ÁMBAR por celda, nunca por columna entera', () => {
