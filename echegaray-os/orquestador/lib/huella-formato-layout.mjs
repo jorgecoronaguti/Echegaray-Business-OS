@@ -51,8 +51,16 @@ export function elLayoutCambio(antes = [], ahora = []) {
   // este control se disparaba SIEMPRE —invalidando 363 huellas por corrida— y un control que siempre
   // da positivo no controla nada: dejaba la guarda de formato apagada de hecho, que es justo lo que
   // vino a evitar.
+  //
+  // Y LOS CENTINELAS DE VACÍO CUENTAN COMO VACÍO. La grilla del generador no trae cadenas vacías: trae
+  // `::VACIO::` («esta celda es mía y va vacía»), que se traduce recién al escribir. Comparado crudo
+  // contra lo que la hoja devuelve —una cadena vacía— cada renglón separador daba distinto y el
+  // control seguía disparándose siempre, ahora por la fila 3 en vez de por el alto.
   const rotulos = (g) => {
-    const r = (g || []).map((f) => String(f?.[0] ?? '').replace(/\s+/g, ' ').trim())
+    const r = (g || []).map((f) => {
+      const t = String(f?.[0] ?? '').replace(/\s+/g, ' ').trim()
+      return /::VACIO::|::MIA_Y_VACIA::/.test(t) ? '' : t
+    })
     while (r.length && !r[r.length - 1]) r.pop()
     return r
   }

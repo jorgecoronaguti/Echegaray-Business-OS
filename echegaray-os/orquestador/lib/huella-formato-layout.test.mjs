@@ -58,3 +58,13 @@ test('UN CONTROL QUE SIEMPRE DA POSITIVO NO CONTROLA NADA: los blancos del final
   // Y un cambio real sigue detectándose aunque haya blancos al final.
   assert.equal(elLayoutCambio(enLaHoja, [['Título'], ['A'], ['C'], ['']]).cambio, true)
 })
+
+test('el CENTINELA de vacío cuenta como vacío: la grilla no trae cadenas vacías, trae ::VACIO::', () => {
+  // La grilla del generador no trae '' sino el centinela «esta celda es mía y va vacía», que se
+  // traduce recién al escribir. Comparado crudo contra lo que la hoja devuelve —una cadena vacía—
+  // cada renglón separador daba distinto y el control se seguía disparando en cada corrida.
+  const V = '\u0000::VACIO::\u0000'
+  const enLaHoja = [['Título'], [''], ['A']]
+  const laGrilla = [['Título'], [V], ['A'], [V]]
+  assert.equal(elLayoutCambio(enLaHoja, laGrilla).cambio, false)
+})
