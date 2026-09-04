@@ -97,3 +97,38 @@ test('la línea de cheques del cash flow excluye sola lo ya contemplado', () => 
   const borde = [{ fecha: new Date(Date.UTC(2026, 1, 1)), monto: 100 }]
   eq(montoEnVentana(borde, ...ene), 0, 'el 1/2 NO es enero')
 })
+
+// ═══ EL CUIT MANDA SOBRE EL NOMBRE (04/09/2026) ═══
+// El dueño: «CUIT 20287737824 - DUBOS UGARTE PEDRO LUIS RAUL es DUPEC, algo que por CUIT deberías
+// reconocer». Las dos planillas ya traían el identificador fuerte y el cruce comparaba nombres.
+import { mismaEntidad } from './cobertura-arca.mjs'
+import { inferirRespaldo } from './cheques-cobertura.mjs'
+
+test('mismo CUIT = misma entidad, aunque los nombres no se parezcan en nada', () => {
+  assert.equal(mismaEntidad(
+    { prov: 'DUPEC', cuit: '20-28773782-4' },
+    { prov: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20287737824' }), true)
+})
+
+test('CUIT distinto = entidades distintas, aunque el nombre sea idéntico', () => {
+  assert.equal(mismaEntidad(
+    { prov: 'HORMISERV', cuit: '30-68164173-0' },
+    { prov: 'HORMISERV', cuit: '30-99999999-9' }), false)
+})
+
+test('sin CUIT en alguno de los dos lados, se cae al nombre y no se inventa un match', () => {
+  assert.equal(mismaEntidad({ prov: 'DUPEC' }, { prov: 'DUPEC', cuit: '20287737824' }), true)
+  assert.equal(mismaEntidad({ prov: 'DUPEC' }, { prov: 'DUBOS UGARTE PEDRO LUIS RAUL' }), false)
+})
+
+test('un CUIT mal formado no cuenta como identificador fuerte', () => {
+  assert.equal(mismaEntidad({ prov: 'X', cuit: '123' }, { prov: 'X', cuit: '456' }), true, 'ninguno es CUIT válido: decide el nombre')
+})
+
+test('inferirRespaldo agrupa por CUIT: dos nombres del mismo CUIT no compiten entre sí', () => {
+  const filas = [{ fila: 10, prov: 'DUPEC', cuit: '20-28773782-4', total: 1000, fecha: 100 }]
+  const r = inferirRespaldo(
+    [{ fila: 1, proveedor: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20287737824', monto: 1000, comprobante: '', fecha: 100 }],
+    filas, { ventanaDias: 90 })
+  assert.equal(r.inferidos.size, 1, 'el CUIT lo identifica aunque el nombre sea otro')
+})

@@ -44,3 +44,24 @@ test('sin ninguna de las dos fechas, el escritor ROMPE en vez de publicar una al
   const sinFecha = conMoneda(ENCABEZADO_HOY).map((r) => (/^Fecha de (Venta|Factura)$/.test(r) ? 'Otra cosa' : r))
   assert.throws(() => resolverColumnas([[], [], [], sinFecha], ROTULOS_COBRANZAS, 3), /no está en la fila de encabezado/)
 })
+
+/** La fila 4 como estaba ANTES del renombre del 04/09. */
+const ENCABEZADO_ANTES = ENCABEZADO_HOY.map((r) => (
+  r === 'Fecha de Venta' ? 'Fecha de emisión' : r === 'Fecha de Factura' ? 'Fecha de Venta' : r))
+
+// AHORA SÍ SE PUEDE EXIGIR: con la columna reservada, los dos encabezados resuelven el mismo mapeo.
+// La primera versión de este arreglo no podía, y por eso rompió seis tests de Cobranzas que la
+// suite completa atrapó — el test dirigido del archivo tocado no alcanzaba para verlo.
+test('el encabezado ANTERIOR resuelve exactamente las mismas columnas que el de hoy', () => {
+  const hoy = resolverColumnas([[], [], [], conMoneda(ENCABEZADO_HOY)], ROTULOS_COBRANZAS, 3)
+  const antes = resolverColumnas([[], [], [], conMoneda(ENCABEZADO_ANTES)], ROTULOS_COBRANZAS, 3)
+  assert.deepEqual(hoy, antes)
+  assert.equal(hoy.fechaEmision, 'C')
+  assert.equal(hoy.fechaVenta, 'P')
+})
+
+test('ningún campo comparte columna con otro: una celda es de un solo campo', () => {
+  const cols = resolverColumnas([[], [], [], conMoneda(ENCABEZADO_HOY)], ROTULOS_COBRANZAS, 3)
+  const letras = Object.entries(cols).filter(([k]) => k !== 'desde').map(([, v]) => v)
+  assert.equal(new Set(letras).size, letras.length, 'hay una columna asignada dos veces')
+})

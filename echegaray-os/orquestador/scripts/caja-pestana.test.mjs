@@ -571,13 +571,22 @@ test('BALANZ ESTÁ EN LA CAJA, DISCRIMINADO: se ve, se valúa, y el rótulo decl
   assert.equal(celda(g, fUsd, 3), '2026-08-05')
 })
 
-test('LA CUENTA USD DEL BANCO QUEDÓ AL 05/08: depósito 15.400 − 15.000 a Balanz = 981,39', () => {
-  // Las dos patas están probadas por el impuesto 25.413 del extracto de pesos (bases usd 15.400 y
-  // 15.000). Fechar este saldo con el corte global de julio afirmaría una frescura que no es la suya.
+// ═══ ESTE TEST AFIRMABA EL ESTADO DEL MUNDO Y EL MUNDO CAMBIÓ (04/09/2026) ═══
+//
+// Decía 981,39 al 05/08. El 03/09 el dueño mandó la captura del homebanking con el saldo real y
+// `lib/banco-cuenta-usd.mjs` pasó a DERIVARLO del extracto en pesos: 981,39 − 544,99 + 71,13 =
+// 507,53 al 03/09. El código se corrigió y este test se quedó con el número viejo, así que venía
+// rojo desde ayer — un test que afirma un dato del mundo envejece con el dato.
+//
+// Se lo ata a la fuente en vez de a la cifra: lo que tiene que probar es que CAJA publica lo que
+// dice el módulo de la cuenta, no un número tipeado acá que hay que actualizar a mano cada vez.
+test('la cuenta USD de CAJA publica exactamente lo que declara banco-santander, con su propio corte', async () => {
+  const { CUENTA } = await import('../lib/banco-santander.mjs')
   const g = construir()
   const f = filaDe(g, /^Santander · cta cte USD$/)
-  assert.equal(g.filas[f - 1][1], 981.39)
-  assert.equal(celda(g, f, 3), '2026-08-05')
+  const declarado = CUENTA.saldoDolares
+  assert.equal(g.filas[f - 1][1], declarado, 'CAJA no puede publicar un saldo distinto del que declara su fuente')
+  assert.match(String(celda(g, f, 3)), /^\d{4}-\d{2}-\d{2}$/, 'y con la fecha de ESE saldo, no con el corte global')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

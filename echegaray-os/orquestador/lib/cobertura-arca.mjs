@@ -61,13 +61,36 @@ export const TOL_IMPORTE = 0.03
  * @param {{usadas?:Set<number>, tol?:number, ventanaDias?:number|null}} opciones
  * @returns {Array} las filas candidatas, en el orden de `filasCompras`. Vacío = sin respaldo.
  */
+/** Un CUIT en sus 11 dígitos, o null. */
+const cuit11 = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 11 ? d : null }
+
+/**
+ * ¿ES LA MISMA ENTIDAD? EL CUIT MANDA SOBRE EL NOMBRE (04/09/2026).
+ *
+ * El dueño lo señaló con un caso concreto: el eCheq n°277 lleva CUIT 20-28773782-4 y el nombre
+ * «DUBOS UGARTE PEDRO LUIS RAUL», y en Compras ese mismo CUIT está en dieciocho filas escritas
+ * «DUPEC». Las dos planillas YA tenían el identificador fuerte y el cruce lo ignoraba, comparando
+ * nombres que no se parecen en nada — porque uno es el titular que factura y el otro el nombre de
+ * fantasía. Es el mismo patrón que «Corralon Progreso» = «PEREZ GARCIA MARISOL BIBIANA».
+ *
+ * Cuando los dos lados traen CUIT, decide el CUIT y el nombre no opina: si coinciden es la misma
+ * entidad aunque se llamen distinto, y si difieren NO lo es aunque se llamen igual. El nombre
+ * queda como respaldo para las filas viejas que no tienen CUIT cargado.
+ */
+export function mismaEntidad(f, item) {
+  const cf = cuit11(f?.cuit)
+  const ci = cuit11(item?.cuit)
+  if (cf && ci) return cf === ci
+  return f?.prov === item?.prov
+}
+
 export function candidatasPorImporte(item, filasCompras = [], { usadas = new Set(), tol = TOL_IMPORTE, ventanaDias = null } = {}) {
   const monto = Number(item?.total) || 0
   // El piso de UN PESO no es cosmético: con `tol` en 0 la comparación sería contra la igualdad exacta
   // de dos flotantes y $635.020,00 leído de dos pestañas distintas puede diferir en 1e-9.
   const margen = Math.max(1, monto * tol)
   return filasCompras.filter((f) => !usadas.has(f.fila)
-    && f.prov === item?.prov
+    && mismaEntidad(f, item)
     && Math.abs((Number(f.total) || 0) - monto) <= margen
     && (ventanaDias === null || !f.fecha || !item?.fecha || Math.abs(f.fecha - item.fecha) <= ventanaDias))
 }

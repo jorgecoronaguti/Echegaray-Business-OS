@@ -94,7 +94,10 @@ async function leer(google) {
   const crudoCh = await google.readSheetValues(ID, `${CH}!A${FILA_DATO0}:L${FILA_FIN}`)
   const crudoTj = await google.readSheetValues(ID, `${INSTRUMENTOS.tarjeta.pestaña}!A3:K400`)
   // fecha = la fecha REAL de pago (columna I). fecha_pago es su rótulo "julio 26", que es formato.
-  const cheques = crudoCh.map((f, i) => ({ fila: i + FILA_DATO0, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10], marca: f[12] })).filter((c) => c.monto > 0)
+  // `cuit` es la columna D del registro. Se lee para que el cruce pueda usar el IDENTIFICADOR
+  // FUERTE en vez del nombre: el eCheq n°277 dice «DUBOS UGARTE PEDRO LUIS RAUL» y en Compras ese
+  // mismo CUIT está escrito «DUPEC» — dos nombres que no se parecen en nada y son la misma persona.
+  const cheques = crudoCh.map((f, i) => ({ fila: i + FILA_DATO0, tipo: f[0], proveedor: f[4], cuit: f[3], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10], marca: f[12] })).filter((c) => c.monto > 0)
   const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9], marca: f[10] })).filter((c) => c.monto > 0)
   // ── EL LADO DE COMPRAS QUE NECESITA EL CRUCE DE RESPALDO, EN CRUDO ────────────────────────────────
   // SE LEE APARTE Y CON UNFORMATTED_VALUE A PROPÓSITO. La lectura de arriba viene formateada y `num()`
@@ -102,10 +105,13 @@ async function leer(google) {
   // devuelve 12345. Y la fecha formateada es "05/08/26", que no se puede restar contra otra fecha.
   // Dos lecturas del mismo rango es barato; una lectura mal parseada en el cruce que decide si un
   // cheque entra o no al calendario, no.
-  const crudoCompras = await google.readSheetValues(ID, 'Compras!C4:O', { render: 'UNFORMATTED_VALUE' })
+  // El rango llega hasta AM porque ahí vive «CUIT (OS)», que es lo que permite cruzar por
+  // identificador fuerte. Leer hasta O dejaba al cruce comparando sólo nombres.
+  const crudoCompras = await google.readSheetValues(ID, 'Compras!C4:AM', { render: 'UNFORMATTED_VALUE' })
   const numero = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const I_CUIT = 36 // AM contando desde C (C=0)
   const filasCompras = crudoCompras.map((f, i) => ({
-    fila: i + 4, prov: normNombre(f?.[2]), fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
+    fila: i + 4, prov: normNombre(f?.[2]), cuit: f?.[I_CUIT], fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
   })).filter((f) => f.prov && f.total > 0)
   // `filasCh` = la última fila REAL del registro. Sale del largo leído más el offset de arranque
   // menos uno; con el `+ 1` de antes (que asumía arranque en la 2) el marcado se cortaba 25 filas

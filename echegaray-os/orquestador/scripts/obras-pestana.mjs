@@ -95,9 +95,32 @@ export function resolverColumnas(filas, rotulos) {
   if (iFila < 0) throw new Error(`no encontré el rótulo ancla ${ancla} en las primeras filas`)
   const fila = filas[iFila]
   const res = { desde: iFila + 2 }
+  // ═══ UNA COLUMNA NO PUEDE QUEDAR ASIGNADA A DOS CAMPOS (04/09/2026) ═══
+  //
+  // Cuando el archivo renombró los encabezados —C de «Fecha de emisión» a «Fecha de Venta», P de
+  // «Fecha de Venta» a «Fecha de Factura»— los dos criterios de fecha pasaron a poder matchear la
+  // misma celda. Sin esta guarda hay que elegir entre dos males: criterios excluyentes, que dejan
+  // de reconocer el encabezado anterior y rompieron seis tests de Cobranzas; o criterios amplios,
+  // donde `findIndex` devuelve el primero y `fechaVenta` saltaba de P a C, moviendo el año de la
+  // venta sin que nadie lo pidiera.
+  //
+  // Reservando la columna se resuelve solo y con los DOS encabezados: `fechaEmision` toma la
+  // primera fecha que le corresponde, y `fechaVenta` sigue buscando a partir de ahí.
+  //
+  // Y UN CRITERIO PUEDE SER UNA LISTA EN ORDEN DE PREFERENCIA. Hace falta cuando el archivo trae
+  // las DOS fechas: con un criterio plano, `fechaEmision` se quedaba con «Fecha de Venta» por estar
+  // primera en la fila y `fechaVenta` no encontraba nada. Con la lista, cada campo se queda con su
+  // rótulo propio si existe, y sólo cae en el alternativo cuando el suyo no está.
+  const usadas = new Set()
   for (const [campo, crit] of entradas) {
-    const iCol = fila.findIndex((c) => matchea(c, crit))
-    if (iCol < 0) throw new Error(`el rótulo ${crit} (campo "${campo}") no está en la fila de encabezado ${iFila + 1}`)
+    const opciones = Array.isArray(crit) ? crit : [crit]
+    let iCol = -1
+    for (const o of opciones) {
+      iCol = fila.findIndex((c, i) => !usadas.has(i) && matchea(c, o))
+      if (iCol >= 0) break
+    }
+    if (iCol < 0) throw new Error(`el rótulo ${opciones[0]} (campo "${campo}") no está en la fila de encabezado ${iFila + 1}`)
+    usadas.add(iCol)
     res[campo] = letra(iCol)
   }
   return res
@@ -228,18 +251,17 @@ export const ROTULOS_COBRANZAS = {
   // debería ser la Fecha de FACTURA (P) y no la de Venta (C) — el plazo de cobro corre desde que se
   // factura. Cambiarlo mueve la antigüedad de la cartera y la columna de vencidos, que es plata: lo
   // decide el dueño, es la misma pregunta que el traspaso dejó abierta para la base del IVA.
-  fechaEmision: /^Fecha\s*(de\s*)?(emisi|venta)/i,
+  fechaEmision: [/^Fecha\s*(de\s*)?emisi/i, /^Fecha\s*(de\s*)?venta/i],
   // LAS RETENCIONES SUFRIDAS ($7.671.680 en 2026). El criterio es el plural con "s": el archivo
   // tiene además TRES columnas de desglose que empiezan con "Retención" en singular ("Retención
   // 16,8%…", "Ret Ganancias", "Retención 2,5%/3,5%…"), y elegir una de ésas publicaría una parte
   // del retenido sin dar un solo error. Si el rótulo cambia, el escritor ROMPE antes de escribir.
   retenciones: /^Retenciones\b/i,
   // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
-  // MUTUAMENTE EXCLUYENTE CON `fechaEmision` A PROPÓSITO: `resolverColumnas` toma el PRIMER rótulo
-  // que matchea, y "Fecha de Venta" (col C) aparece antes que "Fecha de Factura" (col P). Si este
-  // criterio aceptara "venta", este campo saltaría de P a C y movería el año de la venta —el
-  // devengado— sin que nadie lo pidiera.
-  fechaVenta: /^Fecha\s*(de\s*)?factura/i, forma: /^Forma de [Cc]obro/,
+  // ACEPTA LOS DOS RÓTULOS, Y NO COLISIONA CON `fechaEmision` PORQUE LA COLUMNA YA ESTÁ RESERVADA.
+  // Con el encabezado de hoy toma «Fecha de Factura» (P); con el anterior, «Fecha de Venta» (P).
+  // En los dos casos es la misma columna, que es lo único que importa: ningún número se mueve.
+  fechaVenta: [/^Fecha\s*(de\s*)?factura/i, /^Fecha\s*(de\s*)?venta/i], forma: /^Forma de [Cc]obro/,
   // LA MONEDA (13/08). Sin esta columna la pestaña sumaba U$S 15.400 como $15.400 — dólares y pesos
   // en el mismo total. Va con el mismo criterio que las demás: si el rótulo no está, el escritor
   // ROMPE. Publicar la pestaña sin poder distinguir la moneda es peor que no publicarla.

@@ -120,9 +120,13 @@ export function inferirRespaldo(instrumentos = [], filasCompras = [], { norm = n
   const sinLlave = instrumentos.filter((i) => !esLlaveUtil(normComprobante(i.comprobante)))
   // Se agrupa por (proveedor, importe al peso) porque la ambigüedad es una propiedad del GRUPO, no
   // de cada cheque: sólo mirando el grupo entero se sabe si alcanzan las facturas para todos.
+  // La clave del grupo usa el CUIT cuando el cheque lo trae: dos cheques del mismo CUIT son del
+  // mismo proveedor aunque uno diga «DUPEC» y el otro «DUBOS UGARTE PEDRO LUIS RAUL», y agruparlos
+  // por nombre los partía en dos grupos que competían por las mismas facturas.
+  const cuit11 = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 11 ? d : null }
   const grupos = new Map()
   for (const i of sinLlave) {
-    const k = `${norm(i.proveedor)}|${Math.round(Number(i.monto) || 0)}`
+    const k = `${cuit11(i.cuit) ?? norm(i.proveedor)}|${Math.round(Number(i.monto) || 0)}`
     grupos.set(k, [...(grupos.get(k) ?? []), i])
   }
   const usadas = new Set()
@@ -131,7 +135,7 @@ export function inferirRespaldo(instrumentos = [], filasCompras = [], { norm = n
   const sinRespaldo = []
   for (const grupo of grupos.values()) {
     const busca = (i, u) => candidatasPorImporte(
-      { prov: norm(i.proveedor), total: Number(i.monto) || 0, fecha: serialDe(i.fecha) },
+      { prov: norm(i.proveedor), cuit: i.cuit, total: Number(i.monto) || 0, fecha: serialDe(i.fecha) },
       filasCompras, { usadas: u, tol, ventanaDias })
     // Las candidatas del grupo ANTES de consumir ninguna: es contra ese universo que se mide si
     // alcanzan. Medirlo después de consumir declaraba ambiguo al segundo de dos pares perfectos.
