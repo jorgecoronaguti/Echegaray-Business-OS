@@ -284,6 +284,8 @@ function buscarCondicionCliente(mapa, cliente) {
  */
 export function fechaDeCobroProyectada(serialFactura, dias) {
   const f = Number(serialFactura)
-  if (!(f > 0) || !Number.isFinite(Number(dias))) return null
-  return f + Number(dias)
+  // `Number(null)` es 0 y 0 es finito: sin este chequeo, un FALTA_DATO se convertía en una fecha de
+  // cobro igual a la de la factura y entraba a la proyección como caja de esta semana.
+  if (!(f > 0) || typeof dias !== 'number' || !Number.isFinite(dias)) return null
+  return f + dias
 }

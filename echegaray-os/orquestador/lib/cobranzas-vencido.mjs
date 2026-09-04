@@ -33,10 +33,15 @@
 // `=P+30`. Y lo confirma el comportamiento real: de las 46 filas ya cobradas, 36 entraron dentro de
 // los 30 días de su venta.
 //
-// LÍMITE CONOCIDO Y DECLARADO: el plazo es UNO para todos los clientes porque en ninguna fuente está
-// declarado el plazo por cliente ni por contrato. ARCOR puede tener condiciones distintas de MESSINA
-// y este archivo no tiene con qué saberlo. El día que exista una columna de condición de pago, el
-// plazo se lee de ahí y esta constante se retira.
+// EL LÍMITE QUE ESTE ARCHIVO DECLARABA YA SE LEVANTÓ EN PARTE (04/09/2026). Decía: *"el plazo es
+// UNO para todos los clientes porque en ninguna fuente está declarado el plazo por cliente ni por
+// contrato"*. La fuente existía y era la ORDEN DE COMPRA: 9 de las 20 que Cobranzas declara traen
+// la condición escrita en su PDF (`Cond.Compra : 6 CUENTA CORRIENTE 30 DIAS`), y son CUATRO plazos
+// distintos, no uno. La lee `lib/plazo-cobro.mjs`.
+//
+// La constante NO se retira: pasa a ser el ÚLTIMO escalón de la cascada, el que se usa cuando no
+// hay OC archivada ni condición cargada — y desde ahí sale marcado SUPUESTO, nunca confundible con
+// un plazo pactado. `repartirPorAntiguedad` acepta el plazo POR FILA justamente para eso.
 //
 // ═══ POR QUÉ EL CRITERIO VIVE ACÁ Y NO ADENTRO DE LA GRILLA ═══
 //
@@ -112,27 +117,42 @@ export function tramoDe(dias) {
  * nombre para que el escritor pueda abortar. Es el mismo criterio con que la fórmula del Sheet exige
  * `emisión > 0`: una celda de fecha vacía vale 0 y entraría como vencida desde 1899.
  *
- * @param {Array<{emision:number, importe:number}>} filas las cobranzas PENDIENTES ya filtradas
+ * CADA FILA PUEDE TRAER SU PROPIO PLAZO, Y ESE ES EL PUNTO. `f.plazo` gana sobre el parámetro
+ * `plazo`, que queda como el supuesto para las filas que no tienen ninguno pactado. Con un plazo
+ * único, una factura de MESSINA a 15 días y una de ARCOR a 75 caen en el mismo tramo de atraso
+ * teniendo condiciones que se llevan dos meses de diferencia: el aging deja de medir mora y pasa a
+ * medir antigüedad.
+ *
+ * UN PLAZO EN `null` NO ES CERO NI ES EL SUPUESTO: es una condición que no se mide en días (un
+ * "50% contra entrega"). Esa fila sale por `sinPlazo`, igual que una sin fecha sale por `sinFecha`
+ * — nunca repartida en un tramo que nadie puede sostener.
+ *
+ * @param {Array<{emision:number, importe:number, plazo?:number|null}>} filas las PENDIENTES ya filtradas
  * @param {number} hoy serial de Sheets de hoy
- * @param {number} plazo días acordados
- * @returns {{porVencer:number, tramos:Record<string,number>, vencido:number, total:number, sinFecha:number}}
+ * @param {number} plazo días supuestos para las filas que no declaran el suyo
+ * @returns {{porVencer:number, tramos:Record<string,number>, vencido:number, total:number, sinFecha:number, sinPlazo:number}}
  */
 export function repartirPorAntiguedad(filas = [], hoy, plazo = PLAZO_COBRO_DIAS) {
   const tramos = Object.fromEntries(TRAMOS_ANTIGUEDAD.map((t) => [t.clave, 0]))
   let porVencer = 0
   let sinFecha = 0
+  let sinPlazo = 0
   let total = 0
   for (const f of filas) {
     const importe = Number(f?.importe) || 0
     total += importe
     const emision = Number(f?.emision) || 0
     if (!(emision > 0)) { sinFecha += importe; continue }
-    const clave = tramoDe(diasDeAtraso(emision, hoy, plazo))
+    // `undefined` es "esta fila no opina" y toma el supuesto; `null` es "no se mide en días".
+    if (f?.plazo === null) { sinPlazo += importe; continue }
+    const suyo = f?.plazo === undefined ? plazo : Number(f.plazo)
+    if (!Number.isFinite(suyo)) { sinPlazo += importe; continue }
+    const clave = tramoDe(diasDeAtraso(emision, hoy, suyo))
     if (clave === null) porVencer += importe
     else tramos[clave] += importe
   }
   const vencido = Object.values(tramos).reduce((s, x) => s + x, 0)
-  return { porVencer, tramos, vencido, total, sinFecha }
+  return { porVencer, tramos, vencido, total, sinFecha, sinPlazo }
 }
 
 // ═══ LOS CRITERIOS PARA LAS FÓRMULAS DEL SHEET ═══
