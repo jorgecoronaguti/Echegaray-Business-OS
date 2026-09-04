@@ -13,6 +13,7 @@ import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
 import { auditarPatron } from '../lib/patron-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { ANCHO_ROTULO } from '../lib/impuestos-piel.mjs'
 
 const FUENTE = readFileSync(new URL('./impuestos-pestana.mjs', import.meta.url), 'utf8')
 // EL CANARIO SE MUDA CON EL CÓDIGO (06/08). La reconstrucción partió el generador de 1.253 líneas:
@@ -439,4 +440,23 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
   assert.equal(enPestana[idxDDJJ][8], '▲ PROYECCIÓN')
+})
+
+test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {
+  // ═══ EL CRITERIO ES EL DEL AUDITOR, NO UNO INVENTADO ═══
+  //
+  // `defectos-pantalla.mjs` marca `texto_cortado` cuando el texto no entra Y la celda de al lado está
+  // OCUPADA: con la vecina vacía el texto se derrama y se lee entero, así que un renglón suelto puede
+  // ser largo. Lo que nunca puede ser largo es un rótulo que tiene un importe pegado a la derecha —
+  // ahí no hay adónde derramar y lo que se corta es el final, que es donde suele estar la condición
+  // ("PENDIENTE", "por vencer", "que todavía no vencieron").
+  //
+  // 87 = 500 px / (10 px × 0,57), la misma cuenta que hace el auditor con el ancho real de la columna
+  // A de esta pestaña (`ANCHO_ROTULO`).
+  const CABEN = Math.floor(ANCHO_ROTULO / (10 * 0.57))
+  const largos = armar().filas
+    .map((f, i) => ({ fila: i + 1, a: String(f[0] ?? ''), b: String(f[1] ?? '') }))
+    .filter((x) => x.a && x.a !== VACIO && x.b && x.b !== VACIO && !x.a.startsWith('='))
+    .filter((x) => x.a.length > CABEN)
+  assert.deepEqual(largos, [], `rótulos que se cortan con un importe al lado (entran ${CABEN} caracteres)`)
 })

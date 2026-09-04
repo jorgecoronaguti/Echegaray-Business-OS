@@ -447,8 +447,17 @@ export function bloqueCierre(G, { proy, vencimientos }) {
       + 'Si ese aviso hace falta, va en esta sección o en la fila "DDJJ presentada" — nunca en una celda '
       + 'que otras fórmulas suman.')
   }
-  G.push([`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
-  G.push([`${ALERTA} Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.`])
+  // ═══ LOS RENGLONES QUE NO ENTRABAN EN SU PROPIA COLUMNA (04/09/2026) ═══
+  //
+  // Éste medía 223 caracteres y el de abajo 109, en una columna de 500 px donde entran 87.
+  // `reparar-textos.mjs` los cuenta como defecto de pantalla y dice explícitamente que los tiene que
+  // acortar el GENERADOR: ensanchar la columna a 1.300 px descuadraría la pestaña entera. Lo que se
+  // lee es la afirmación; el porqué —que es lo que la hace verificable— viaja a la columna de
+  // procedencia, que es adonde este archivo manda toda la prosa larga.
+  G.lista(`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO`, [], vencimientos.iibb)
+  G.lista(`${ALERTA} Los pagos de IVA e IIBB no se cargan en Compras`, [],
+    'El cash flow los ve por ESTA pestaña, no por Compras: si alguien los cargara además en Compras, '
+    + 'la misma plata saldría dos veces del flujo sin que ningún total se rompa.')
   // ═══ EL RENGLÓN DE 592 CARACTERES (04/09/2026) ═══
   //
   // Esta fila publicaba el supuesto ENTERO de la proyección de IVA en la columna A: 592 caracteres en
