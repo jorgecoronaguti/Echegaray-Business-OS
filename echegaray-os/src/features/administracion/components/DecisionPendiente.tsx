@@ -101,18 +101,54 @@ function Obra({ o, elegida, alElegir }: { o: ObraElegible; elegida: boolean; alE
  * columna repetiría esa palabra en las veinte filas: ancho gastado para no decir nada. Cuando
  * mezcla, es lo único que distingue una fila de la de al lado.
  */
+/**
+ * LA GRILLA DEL HANDOFF v4, carácter por carácter — `Pendientes de imputación · una pantalla.dc.html`:
+ *   `120px 100px minmax(0,1.6fr) minmax(0,1fr) 140px`, gap 28, sangría 16, fila de 66px de alto
+ *   TIPO · FECHA · DESCRIPCIÓN · RECURSO · IMPORTE
+ *
+ * ═══ POR QUÉ UNA GRILLA Y NO EL `flex` QUE HABÍA ═══
+ *
+ * La fila era un `flex` con TODOS sus hijos en `shrink-0` menos la descripción: en angosto no
+ * encogía, DESBORDABA sobre lo de al lado, y encima cada fila decidía sus anchos por su cuenta, sin
+ * ningún encabezado arriba que dijera qué era cada columna. Cinco pistas declaradas una sola vez
+ * atan el rótulo y la celda al mismo ancho: sacar o agregar una columna ya no puede correr la fila
+ * respecto de su cabecera.
+ *
+ * Las dos variantes son la MISMA cadena menos la primera pista, para que no puedan divergir.
+ */
+const COLS_FILAS = 'grid-cols-[120px_100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
+/** La misma cadena MENOS la primera pista: el grupo de una sola fuente no dibuja TIPO. */
+const COLS_SIN_TIPO = 'grid-cols-[100px_minmax(0,1.6fr)_minmax(0,1fr)_140px]'
+/** Las dos van literales y enteras: Tailwind escanea el archivo y no compila una clase que se arma
+ *  concatenando en runtime — `grid-cols-[${...}]` deja la fila sin ninguna grilla. */
+const gridDe = (conTipo: boolean) =>
+  `grid gap-[28px] pl-4 ${conTipo ? COLS_FILAS : COLS_SIN_TIPO}`
+
+/** El encabezado del mockup: 40px, versalitas de 10.5px, y NINGÚN filo debajo (`33:115`). */
+function CabeceraFilas({ conTipo }: { conTipo: boolean }) {
+  return (
+    <div className={`${gridDe(conTipo)} h-10 items-center text-[10.5px] font-semibold uppercase tracking-[0.07em] text-faint`}>
+      {conTipo && <span>Tipo</span>}
+      <span>Fecha</span>
+      <span>Descripción</span>
+      <span>Recurso</span>
+      <span className="text-right">Importe</span>
+    </div>
+  )
+}
+
 function FilaQueSeMueve({ f, conTipo }: { f: GrupoPendiente['filas'][number]; conTipo: boolean }) {
   return (
-    <div data-testid="fila-detalle" className="flex items-start gap-[11px] border-t border-line px-0.5 py-[9px]">
+    <div data-testid="fila-detalle" className={`${gridDe(conTipo)} min-h-[66px] items-center border-b border-line`}>
       {conTipo && (
-        <span className="w-[76px] shrink-0 truncate text-[11.5px] text-muted" data-testid="fila-tipo">
+        <span className="truncate text-[11.5px] text-muted" data-testid="fila-tipo">
           {ETIQUETA_TIPO[f.tipo]}
         </span>
       )}
-      <span className={`w-[62px] shrink-0 font-mono text-[11.5px] tabular-nums ${f.fecha ? 'text-muted' : 'text-faint'}`}>
+      <span className={`truncate font-mono text-[11.5px] tabular-nums ${f.fecha ? 'text-muted' : 'text-faint'}`}>
         {f.fecha ? fechaCorta(f.fecha) : 'sin fecha'}
       </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-col gap-1">
         <span className="truncate text-[12px] text-ink">{f.descripcion}</span>
         {/* LA TRAZABILIDAD ES LA TABLA MÁS EL IDENTIFICADOR: sin el segundo, «salió de compras» no
             permite ir a buscar el comprobante y confirmarlo. */}
@@ -122,11 +158,11 @@ function FilaQueSeMueve({ f, conTipo }: { f: GrupoPendiente['filas'][number]; co
       </span>
       {/* SIN RECURSO NO ES UN GUIÓN: en una compra es el proveedor que nadie escribió, y es
           exactamente lo que hace falta para saber de quién es el costo. */}
-      <span className={`w-[150px] shrink-0 truncate text-[11.5px] ${f.recurso ? 'text-ink-soft' : 'text-faint'}`} data-testid="fila-recurso">
+      <span className={`truncate text-[11.5px] ${f.recurso ? 'text-ink-soft' : 'text-faint'}`} data-testid="fila-recurso">
         {f.recurso ?? 'sin recurso'}
       </span>
       {/* UNA FILA QUE MUEVE UN RECURSO Y NO PLATA NO VALE $ 0. */}
-      <span className={`w-[104px] shrink-0 text-right font-mono text-[11.5px] tabular-nums ${f.importe != null ? 'text-muted' : 'text-faint'}`}>
+      <span className={`truncate text-right font-mono text-[11.5px] tabular-nums ${f.importe != null ? 'text-muted' : 'text-faint'}`}>
         {f.importe != null ? plata(f.importe) : 'sin importe'}
       </span>
     </div>
@@ -231,6 +267,7 @@ export function DecisionPendiente({
             <span className="text-[10px] uppercase tracking-[0.07em] text-faint">Las filas que va a mover</span>
             <span className="font-mono text-[11px] tabular-nums text-faint">{filas}</span>
           </div>
+          <CabeceraFilas conTipo={g.tipos.length > 1} />
           {g.filas.map((f) => (
             <FilaQueSeMueve key={`${f.tabla}-${f.id}`} f={f} conTipo={g.tipos.length > 1} />
           ))}

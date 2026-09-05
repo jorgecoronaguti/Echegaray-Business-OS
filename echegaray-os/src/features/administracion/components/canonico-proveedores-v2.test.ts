@@ -86,12 +86,26 @@ test('la banda de señales NO vuelve: lo que falta se lee en la fila y en su rec
 // ── CRITERIO 2 · QUÉ BLOQUEA + VERBO, Y EL VERBO FUNCIONA EN EL LUGAR ────────────────────────────
 
 test('la fila sin CUIT trae su verbo y el verbo abre el formulario, no otra pantalla', () => {
-  const tabla = fuente('TablaProveedores.tsx')
-  assert.match(tabla, /Cargar CUIT →/)
+  // ═══ EL CONTRATO CAMBIÓ CON EL HANDOFF v4 (05/09/2026) ═══
+  //
+  // El v2 dibujaba una SEXTA columna sólo para el verbo «Cargar CUIT →». El v4 la borra: sus cinco
+  // columnas son PROVEEDOR · CUIT · TIPO · COMPRADO · ÚLTIMA COMPRA y no hay ninguna de acciones.
+  // El criterio 2 —la fila que reclama algo trae su verbo, y el verbo funciona en el lugar— no se
+  // pierde: LA CELDA QUE RECLAMA ES EL VERBO. La ausencia en ámbar es el enlace, así que el destino
+  // sigue siendo `hrefCuitDe` y sigue sin navegar a la ficha.
+  //
+  // Lo que este test protege ahora es lo que se puede perder: que la ausencia deje de ser accionable
+  // y quede como un texto muerto, obligando a abrir la ficha para cargar un CUIT.
+  const tabla = codigo('TablaProveedores.tsx')
+  assert.match(tabla, /data-testid="fila-cargar-cuit"/, 'la ausencia dejó de ser accionable')
+  assert.match(tabla, /data-testid="celda-sin-cuit"/)
   // El verbo apunta a la MISMA ruta con el panel y el formulario abiertos (`hrefCuitDe`), no a
   // `/administracion/proveedores/<id>`: mandarlo a la ficha es el `Ver → Editar` que el patrón veta.
   assert.match(tabla, /hrefCuitDe\(p\.id\)/)
   assert.doesNotMatch(tabla, /href=\{`\/administracion\/proveedores\/\$\{p\.id\}`\}/)
+  // Y el enlace tiene que estar SOBRE la capa que cubre la fila entera: el nombre se estira con un
+  // `after:inset-0`, y sin `relative z-10` el clic del verbo lo intercepta el enlace de la fila.
+  assert.match(tabla, /relative z-10/, 'el verbo quedó debajo de la capa del nombre')
 
   const panel = fuente('PanelProveedor.tsx')
   assert.match(panel, /testid="form-cargar-cuit"/, 'el CUIT dejó de poder cargarse en el panel')
@@ -247,18 +261,73 @@ test('el rotulo que se suelta en angosto no lleva `display` inline', () => {
   }
 })
 
-test('el maestro tiene CUATRO columnas: ni RUBRO ni PAPELES ni TIPO', () => {
+test('el maestro tiene las CINCO columnas del handoff v4, con su grilla literal', () => {
+  // ═══ EL CONTRATO CAMBIÓ, Y ÉSTE ES EL VALOR NUEVO ═══
+  //
+  // Hasta el 05/09/2026 este test exigía CUATRO columnas —PROVEEDOR · CUIT · COMPRADO · COMPROB.—
+  // y prohibía TIPO por no tener fuente. `Administración v4 · Pantallas.dc.html`, bloque
+  // «2 · PROVEEDORES», dibuja CINCO: PROVEEDOR · CUIT · TIPO · COMPRADO · ÚLTIMA COMPRA. No es
+  // «editar un test para que pase»: el diseño manda, y la prohibición cambia de forma en vez de
+  // desaparecer — TIPO se dibuja, pero sólo puede decir lo que la base prueba («Subcontratista») y
+  // el rubro, que no tiene columna en `proveedores`, sale como la ausencia «sin rubro».
+  //
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Que la grilla y los rótulos dejen de tener la MISMA cantidad de pistas. Una columna de más o de
+  // menos corre la fila entera respecto de su cabecera, y es el defecto más caro de agregar o sacar
+  // una columna: la pantalla sigue dibujándose, con cada dato bajo el rótulo equivocado.
   const src = codigo('TablaProveedores.tsx')
-  for (const c of ['Proveedor', 'CUIT · identidad', 'Comprado', 'Comprob.']) {
+  for (const c of ['Proveedor', 'CUIT', 'Tipo', 'Comprado', 'Última compra']) {
     assert.ok(src.includes(`>${c}<`), `falta la columna ${c}`)
   }
-  for (const c of ['>Rubro<', '>Papeles<', '>Tipo<', 'RUBRO', 'PAPELES']) {
+  // PAPELES sigue sin fuente y sigue sin dibujarse. «Comprob.» se fue con el v4.
+  for (const c of ['>Rubro<', '>Papeles<', 'PAPELES', '>Comprob.<']) {
     assert.equal(src.includes(c), false, `volvió una columna sin fuente: ${c}`)
   }
-  // La grilla y el rótulo tienen que tener la MISMA cantidad de columnas: una de más corre la fila
-  // entera y es el defecto más caro de sacar una columna.
-  const anchas = (src.match(/minmax\([^)]*\)/g) ?? []).filter((_, i) => i < 5)
-  assert.equal(anchas.length, 5, 'la grilla ancha dejó de tener cinco columnas')
+  // LA GRILLA, CARÁCTER POR CARÁCTER contra el mockup (`Administración v4 · Pantallas.dc.html:152`).
+  assert.ok(
+    src.includes('grid-cols-[minmax(240px,1.6fr)_160px_130px_160px_minmax(120px,1fr)]'),
+    'la grilla ancha dejó de ser la del handoff v4',
+  )
+  // Cinco pistas declaradas y cinco celdas dibujadas por fila. Se cuentan sobre el bloque de la
+  // fila, no sobre el archivo, para que un `<span>` del encabezado no infle el número.
+  const cuerpo = src.slice(src.indexOf('{proveedores.map('))
+  const celdas = ['IconoProveedor', 'formatearCuit', 'tipo-proveedor', 'pesos(c.total)', 'ultima-compra']
+  for (const c of celdas) assert.ok(cuerpo.includes(c), `la fila perdió la celda ${c}`)
+})
+
+test('TIPO no inventa un rubro: sólo dice lo que la base puede probar', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Que alguien llene la columna deduciendo el rubro del nombre —«Corralón» ⇒ Materiales,
+  // «Transporte» ⇒ Fletes—. `proveedores` no tiene columna de rubro (medido el 05/09/2026: doce
+  // columnas y ninguna es el rubro), así que cualquier valor ahí sería fabricado, y encima
+  // fabricado sobre el texto que el propio módulo declara que NO identifica a un proveedor.
+  const tabla = codigo('TablaProveedores.tsx')
+  assert.match(tabla, /esSub \? 'Subcontratista' : subcontratistas \? 'sin rubro' : 'sin leer'/)
+  assert.equal(/Materiales|Fletes|Servicios/.test(tabla), false, 'la columna TIPO inventó un rubro')
+  // Y una lectura que falló no dice «sin rubro»: dice «sin leer». Un control que no pudo mirar no
+  // afirma que no está.
+  assert.match(tabla, /subcontratistas \? 'sin rubro' : 'sin leer'/)
+})
+
+test('ÚLTIMA COMPRA declara que no la leyó en vez de inventar una fecha', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Que la columna se rellene con la fecha de otra cosa —`updated_at` del proveedor, la fecha de la
+  // última fila leída— o con un «—» que se lee como «nunca se le compró». La vista
+  // `proveedor_nombre_resuelto` publica `comprobantes` y `total`, no la fecha máxima; la fecha
+  // existe en `costos_obra` (940 de 940 filas la tienen) y traerla exige una migración.
+  //
+  // Las DOS ausencias son distintas y por eso valen las dos aserciones juntas: sin ningún nombre
+  // vinculado el «—» es verdad (no hay compra, no hay fecha); con compras vinculadas el «—» sería
+  // mentira y la celda dice «sin leer».
+  const tabla = codigo('TablaProveedores.tsx')
+  assert.match(tabla, /\{c \? 'sin leer' : comprado \? '—' : 'sin leer'\}/)
+  // El motivo va en la celda, no sólo en un comentario que el usuario no ve.
+  assert.match(tabla, /title=\{c \? SIN_FECHA : undefined\}/)
+  assert.match(tabla, /publica comprobantes/)
+  assert.equal(/updated_at|actualizado_en/.test(tabla), false, 'la fecha salió de otra columna')
 })
 
 test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {
