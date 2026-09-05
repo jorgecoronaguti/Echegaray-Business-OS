@@ -184,6 +184,12 @@ test('un jefe de obra NO puede vincular un papel a una obra que no es suya', opt
   const cli = await pool.connect()
   try {
     await cli.query('begin')
+    // EL CANDADO COMPARTIDO. Es una CLAVE, no un identificador: todos los pg-tests que tocan las
+    // tablas calientes —`obra_canonica`, `personas`, `cotizaciones`— usan 20260822 y por eso se
+    // serializan entre sí. Este archivo no lo tomaba y creaba una FK contra `obra_canonica`, que
+    // pide bloqueo exclusivo: con la suite en paralelo, deadlock contra quien tuviera filas de
+    // `personas` tomadas. Se libera solo con el rollback.
+    await cli.query('select pg_advisory_xact_lock(20260822)')
     await cli.query(`set local role authenticated`)
     await cli.query(`set local test.rol = 'jefe_obra'`)
     await cli.query(`set local test.obras = 'arcor'`)

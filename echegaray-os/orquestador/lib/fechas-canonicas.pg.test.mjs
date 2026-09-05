@@ -54,6 +54,12 @@ test('las siete fechas de la actividad y de la obra', { skip: !hayBase }, async 
   const uno = async (sql, params) => (await q(sql, params))[0]
   try {
     await c.query('begin')
+    // EL CANDADO COMPARTIDO. Es una CLAVE, no un identificador: todos los pg-tests que tocan las
+    // tablas calientes —`obra_canonica`, `personas`, `cotizaciones`— usan 20260822 y por eso se
+    // serializan entre sí. Este archivo no lo tomaba y creaba una FK contra `obra_canonica`, que
+    // pide bloqueo exclusivo: con la suite en paralelo, deadlock contra quien tuviera filas de
+    // `personas` tomadas. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await aplicar(c)
     const dir = await uno("select id from perfiles where rol='direccion' limit 1")
     await c.query("select set_config('request.jwt.claims', $1, true)",
