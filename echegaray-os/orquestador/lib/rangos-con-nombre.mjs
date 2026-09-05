@@ -155,10 +155,31 @@ export function usaNombre(formula, nombre) {
  * NÚCLEO PURO del auditor que corre sobre el ARCHIVO REAL: clasifica cada rango con nombre según
  * cuántas celdas con dato tiene y cuántas fórmulas lo leen.
  *
- *   ciego    — no tiene una sola celda con dato Y hay fórmulas que lo leen. Cada una de esas
- *              fórmulas está devolviendo 0 sin dar error. Es el defecto.
+ *   ciego    — no tiene una sola celda con dato, hay fórmulas que lo leen Y NINGUNA de ellas se
+ *              defiende de la ausencia. Cada una está devolviendo 0 sin dar error. Es el defecto.
+ *   esperando — no tiene dato, pero TODAS las fórmulas que lo leen tienen guarda de ausencia y
+ *              muestran el hueco. No es un defecto: es una pestaña de captura sin cargar.
  *   huérfano — nadie lo lee. No hace daño hoy, pero es exactamente cómo nace un ciego: queda ahí,
  *              anclado a un layout viejo, hasta que alguien escribe la primera fórmula que lo usa.
+ *
+ * ═══ POR QUÉ HIZO FALTA EL TERCER ESTADO (05/09/2026) ═══
+ *
+ * Este auditor reportaba `PRESUPUESTO_INGRESOS`, `PRESUPUESTO_EGRESOS` y `ANEXO_CONTEO_USD_DIA`
+ * como CIEGOS, con la frase «esas fórmulas valen 0 HOY». Es FALSO, y se verificó leyendo el Sheet
+ * real: la fila «Variación vs presupuesto» del Cash Flow Mensual muestra «—» en los doce meses. La
+ * fórmula que el OS escribe ahí es
+ *
+ *     =IFERROR(IF((N(INDEX(PRESUPUESTO_INGRESOS;…))<>0)+(…)=0;"—";…)
+ *
+ * o sea que la ausencia está contemplada y declarada; `cash-flow-presupuesto.mjs` lo dice en su
+ * cabecera —«UN MES SIN CARGAR NO ES UN MES EN CERO»— y tiene un test que lo prueba.
+ * `_PRESUPUESTO_MENSUAL` es una pestaña DE CAPTURA que el generador crea vacía a propósito, para que
+ * el dueño escriba ahí el presupuesto. Que esté vacía significa que todavía no lo cargó.
+ *
+ * El encabezado de este mismo módulo ya cuenta que la primera versión gritó por noventa cosas bien
+ * hechas y hubo que acotarla. Volvió a pasar: un agente leyó estos tres y los reportó como «lo más
+ * urgente que encontré». Un control que grita lobo no es un control estricto — es uno que entrena a
+ * ignorar la lista, y el día que haya un ciego de verdad va a estar en el mismo renglón que éstos.
  *
  * NO SE INFIERE QUIÉN LO PUBLICA. Un registro de "nombres que el OS mantiene" se desactualiza igual
  * que el rango que viene a cuidar; el propio archivo alcanza como fuente.
@@ -168,8 +189,39 @@ export function usaNombre(formula, nombre) {
  */
 export function clasificarNombrados(nombrados = [], formulas = []) {
   return nombrados.map((n) => {
-    const usos = formulas.filter((f) => usaNombre(f, n.nombre)).length
-    const estado = n.conDato === 0 && usos > 0 ? 'ciego' : (usos === 0 ? 'huérfano' : 'ok')
-    return { ...n, usos, estado }
+    const lectoras = formulas.filter((f) => usaNombre(f, n.nombre))
+    const usos = lectoras.length
+    // Sin dato, la pregunta NO es «¿lo lee alguien?» sino «¿alguno de los que lo leen publica un
+    // cero?». Basta UNA fórmula desprotegida para que el defecto exista; que las demás se defiendan
+    // no la salva.
+    const desprotegidas = lectoras.filter((f) => !seDefiendeDeLaAusencia(f)).length
+    const estado = usos === 0
+      ? 'huérfano'
+      : n.conDato === 0
+        ? (desprotegidas > 0 ? 'ciego' : 'esperando')
+        : 'ok'
+    return { ...n, usos, desprotegidas, estado }
   })
+}
+
+/**
+ * ¿ESTA FÓRMULA PUBLICA UN CERO CUANDO EL RANGO ESTÁ VACÍO, O MUESTRA EL HUECO? PURA.
+ *
+ * Se mira la SINTAXIS de la guarda y no el valor mostrado a propósito: el valor de hoy depende de si
+ * el dueño cargó o no, así que una fórmula sin guarda que hoy tiene datos pasaría inadvertida hasta
+ * el día que la pestaña se vacíe — que es justo cuando el control tiene que avisar.
+ *
+ * La guarda que el OS escribe es «si no hay nada cargado, texto», y se reconoce por el par: una
+ * comparación de existencia (`<>0`, `=0`, `ISBLANK`, `COUNT`) Y un literal de hueco («—», «sin
+ * cargar», «") en la salida. Las dos cosas juntas: un `IFERROR` solo NO alcanza —protege del
+ * `#NAME?` de un rango inexistente, no del cero de un rango vacío— y por eso no cuenta acá.
+ */
+export function seDefiendeDeLaAusencia(formula) {
+  const f = String(formula ?? '')
+  // `ISNUMBER` entró después de medir: la guarda de CAJA es `=IF(ISNUMBER(X);X;"")` y sin esta rama
+  // el rango del conteo de dólares seguía saliendo CIEGO cuando en pantalla muestra vacío. Las tres
+  // alarmas de este auditor eran falsas, y ésta fue la última en caer.
+  const pregunta = /<>\s*0|=\s*0\s*[;,)]|ISBLANK|ESBLANCO|ISNUMBER|ESNUMERO|COUNT\s*\(|CONTAR\s*\(/i.test(f)
+  const hueco = /"—"|"-"|"sin cargar"|"sin dato"|""/.test(f)
+  return pregunta && hueco
 }

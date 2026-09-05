@@ -115,3 +115,51 @@ test('un rango vacío que nadie lee NO se reporta como ciego', () => {
   const r = clasificarNombrados([{ nombre: 'X', hoja: 'H', conDato: 0, celdas: 5 }], [])
   assert.equal(r[0].estado, 'huérfano')
 })
+
+// ── EL TERCER ESTADO: VACÍO Y DECLARADO NO ES VACÍO Y ROTO ───────────────────────────────────────
+
+import { seDefiendeDeLaAusencia } from './rangos-con-nombre.mjs'
+
+/** La fórmula REAL que el OS escribe en «Variación vs presupuesto», leída del Sheet el 05/09/2026. */
+const REAL = '=IFERROR(IF((N(INDEX(PRESUPUESTO_INGRESOS;MATCH($B$7;PRESUPUESTO_MESES;0)))<>0)'
+  + '+(N(INDEX(PRESUPUESTO_EGRESOS;MATCH($B$7;PRESUPUESTO_MESES;0)))<>0)=0;"—";N($B$49)-1);"—")'
+
+test('una pestaña de captura vacía NO es un rango ciego', () => {
+  // ═══ EL FALSO POSITIVO QUE ESTE ESTADO EXISTE PARA MATAR ═══
+  //
+  // El auditor decía de PRESUPUESTO_INGRESOS «esas fórmulas valen 0 HOY». Se leyó el Sheet real: la
+  // fila muestra «—» en los doce meses. `_PRESUPUESTO_MENSUAL` es de captura y el dueño todavía no
+  // cargó el presupuesto; el generador la crea vacía a propósito.
+  const [r] = clasificarNombrados([{ nombre: 'PRESUPUESTO_INGRESOS', hoja: '_PRESUPUESTO_MENSUAL', conDato: 0, celdas: 12 }], [REAL])
+  assert.equal(r.estado, 'esperando')
+  assert.equal(r.desprotegidas, 0)
+})
+
+test('UNA sola fórmula desprotegida basta para que el rango sea ciego', () => {
+  // El defecto no se diluye con las buenas: si veinte se defienden y una publica el cero, hay un
+  // cero publicado. Promediar acá dejaría pasar exactamente el caso que el auditor busca.
+  const [r] = clasificarNombrados(
+    [{ nombre: 'X', hoja: 'H', conDato: 0, celdas: 3 }],
+    [REAL.replace(/PRESUPUESTO_INGRESOS/g, 'X'), '=SUM(X)'],
+  )
+  assert.equal(r.estado, 'ciego')
+  assert.equal(r.desprotegidas, 1)
+})
+
+test('un IFERROR solo NO es guarda: protege del #NAME?, no del cero', () => {
+  // Es la confusión que haría inútil el estado nuevo. `IFERROR` cubre que el rango no exista; que
+  // exista y esté vacío devuelve 0, y 0 no es un error.
+  assert.equal(seDefiendeDeLaAusencia('=IFERROR(SUM(PRESUPUESTO_EGRESOS);0)'), false)
+  assert.equal(seDefiendeDeLaAusencia('=SUM(PRESUPUESTO_EGRESOS)'), false)
+  // Hacen falta las dos mitades: preguntar si hay algo, Y escribir el hueco.
+  assert.equal(seDefiendeDeLaAusencia('=IF(COUNT(X)=0;"—";SUM(X))'), true)
+  assert.equal(seDefiendeDeLaAusencia('=IF(ISBLANK(X);"sin cargar";X)'), true)
+  assert.equal(seDefiendeDeLaAusencia('=IF(COUNT(X)=0;0;SUM(X))'), false, 'escribir 0 explícito es publicar el cero')
+  // La guarda REAL de CAJA, leída del Sheet el 05/09/2026. Muestra vacío, no cero.
+  assert.equal(seDefiendeDeLaAusencia('=IF(ISNUMBER(ANEXO_CONTEO_USD_DIA);ANEXO_CONTEO_USD_DIA;"")'), true)
+})
+
+test('con dato, el estado no cambia por la guarda', () => {
+  const [r] = clasificarNombrados([{ nombre: 'X', hoja: 'H', conDato: 5, celdas: 5 }], ['=SUM(X)'])
+  assert.equal(r.estado, 'ok')
+})
