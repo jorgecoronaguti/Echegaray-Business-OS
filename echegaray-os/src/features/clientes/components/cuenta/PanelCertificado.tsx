@@ -11,13 +11,27 @@
 // puntualidad perfecta para cualquier cliente). Se muestra «—», no un 0.
 'use client'
 
-// EL PANEL DEL CERTIFICADO (`28:466`–`28:608`) — la tarjeta de 376px de la derecha.
+// EL PANEL DEL CERTIFICADO — handoff CRM v4, «CRM · Lo que faltaba (…).dc.html:73`–`:180`.
 //
-//   tarjeta   `#FFFFFF`, borde `#E7E6E2`, radio 10, `overflow:hidden`
-//   cabecera  `padding:13px 15px`, título 13px/600, sublínea 11,5px `#6B6B67`, cruz a la derecha
+//   tarjeta   376px, `#FFFFFF`, borde `#E7E6E2`, radio 10, `overflow:hidden`
+//   cabecera  `padding:13px 15px`, título 13px/600, sublínea 11,5px, cruz a la derecha
 //   trío      tres celdas `flex:1` separadas por `#F1F0EC`, rótulo 10,5px, número mono 18px/600
-//   línea     «DEL CERTIFICADO AL COBRO»: hilo de 1px `#D7D5CF` entre íconos de 15px
-//   pie       primaria amarilla + cuadrados de 31px, y el de escalar contra el borde derecho
+//   props     grilla `120px 1fr`, `gap:12px`, `padding:5px 0`, SIN filo entre propiedades
+//   obs       `boxShadow: inset 2px 0 0 #B54708`, sin fondo y sin ícono
+//   línea     «DEL CERTIFICADO AL COBRO»: puntos de 7px e hilo de 1px `#D7D5CF`
+//   pie       primaria amarilla al ancho + las cuatro acciones como texto de 12px
+//
+// ═══ QUÉ CAMBIÓ DEL CONTRATO ANTERIOR (05/09/2026) ═══
+//
+// Tres piezas se dibujaban con el peso de la tanda anterior y la v4 las bajó de tono, porque el
+// panel es una LECTURA y el único énfasis que se gana es el de la acción primaria:
+//
+//   · Las propiedades tenían rótulo «PROPIEDADES» y un filo bajo cada una: seis hairlines para
+//     seis renglones, dentro de un bloque que ya está separado por su propio filo.
+//   · La observación tenía fondo ámbar e ícono; ahora es un filo de 2px y el texto. Un bloque
+//     entero teñido compite con el estado, que es lo que decide.
+//   · Las cuatro acciones que no existen eran cuadraditos con ícono: había que apretar cada uno
+//     para saber cuál era. Ahora son las cuatro palabras, y cada una sigue diciendo su motivo.
 //
 // ═══ REGISTRAR EL COBRO SE HACE ACÁ ADENTRO ═══
 //
@@ -69,32 +83,48 @@ const MOTIVO: Record<string, string> = {
   Escalar: 'no hay circuito de escalamiento definido: falta decidir a quién escala y con qué efecto',
 }
 
-function Hito({ icono, color, titulo, fecha, detalle, ultimo = false, apagado = false }: {
-  icono: React.ReactNode
+/** Las cuatro acciones del pie: el rótulo corto del handoff y la clave de su motivo. */
+const ACCIONES = [
+  { que: 'Enviar recordatorio', texto: 'Recordatorio', testid: 'panel-recordatorio' },
+  { que: 'Registrar promesa de pago', texto: 'Promesa de pago', testid: 'panel-promesa' },
+  { que: 'Descargar comprobante', texto: 'Comprobante', testid: 'panel-comprobante' },
+  { que: 'Escalar', texto: 'Escalar', testid: 'panel-escalar' },
+] as const
+
+/**
+ * UN HITO DE «DEL CERTIFICADO AL COBRO». El punto de 7px lleva el color del hito y el título va en
+ * ese mismo color: es lo que hace que «Vencido» se lea en rojo sin necesidad de un ícono de alerta.
+ * El hilo baja mientras haya un hito debajo.
+ */
+function Hito({ color, titulo, fecha, detalle, ultimo = false }: {
   color: string
   titulo: string
   fecha: string
   detalle?: string
   ultimo?: boolean
-  apagado?: boolean
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '11px' }}>
       <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '15px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '9px',
+        paddingTop: '4px',
       }}>
-        <span style={{ display: 'flex', color, marginTop: '1px' }}>{icono}</span>
-        {!ultimo && <div style={{ width: '1px', flex: 1, minHeight: '26px', background: C.bordeFuerte }} />}
-      </div>
-      <div style={{ minWidth: 0, flex: 1, paddingBottom: ultimo ? '8px' : '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+        <span style={{
+          width: '7px', height: '7px', borderRadius: '4px', flexShrink: 0, background: color,
+        }} />
+        {!ultimo && (
           <span style={{
-            fontSize: '12px', fontWeight: apagado ? 400 : 500, color: apagado ? C.tenue : C.tinta,
-          }}>{titulo}</span>
+            width: '1px', flex: 1, minHeight: '22px', background: C.bordeFuerte, marginTop: '4px',
+          }} />
+        )}
+      </div>
+      <div style={{ minWidth: 0, flex: 1, paddingBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 500, color }}>{titulo}</span>
           <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: '11px', color: C.tenue }}>{fecha}</span>
         </div>
         {detalle && (
-          <div style={{ fontSize: '11.5px', color: C.tintaSuave, marginTop: '2px', lineHeight: 1.45 }}>
+          <div style={{ fontSize: '11.5px', color: C.tintaMedia, marginTop: '2px', lineHeight: 1.45 }}>
             {detalle}
           </div>
         )}
@@ -115,6 +145,8 @@ function FormularioCobro({ documento, registrarCobro, onCerrar }: {
   // igual y encolan cosas distintas; y un cobro parcial hay que decirlo ANTES de encolar, no
   // después. `aMonto` es la misma regla argentina que valida el servidor.
   const [monto, setMonto] = useState(String(Math.round(documento.monto)))
+  const [medio, setMedio] = useState<string>(MEDIOS[0])
+  const [foco, setFoco] = useState<string | null>(null)
   const lectura = lecturaDelMonto(aMonto(monto), documento.monto)
   const campo: React.CSSProperties = {
     width: '100%', border: `1px solid ${C.bordeCampo}`, borderRadius: '7px', padding: '0 12px',
@@ -145,15 +177,33 @@ function FormularioCobro({ documento, registrarCobro, onCerrar }: {
         </span>
       </label>
 
-      <fieldset style={{ border: 'none', padding: 0, margin: '11px 0 0' }}>
+      {/* ═══ EL MEDIO ES UNA OPCIÓN SUBRAYADA, NO UNA PASTILLA ═══
+
+          El handoff v4 lo dibuja como tres palabras con el filo grafito debajo de la elegida. El
+          `input[type=radio]` sigue existiendo —tapado, no eliminado—: es lo que hace que el
+          formulario mande `medio` y que un lector de pantalla anuncie el grupo. Por eso el foco del
+          teclado se dibuja sobre la palabra: sin eso, tabular por el formulario dejaría de verse. */}
+      <fieldset style={{ border: 'none', padding: 0, margin: '12px 0 0' }}>
         <legend style={{ fontSize: '11.5px', color: C.tintaSuave, padding: 0 }}>Cómo entró</legend>
-        <div style={{ display: 'flex', gap: '7px', marginTop: '7px', flexWrap: 'wrap' }}>
-          {MEDIOS.map((m, i) => (
-            <label key={m} style={{
-              fontSize: '12px', color: C.tinta, border: `1px solid ${C.borde}`, borderRadius: '14px',
-              padding: '5px 11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
-            }}>
-              <input type="radio" name="medio" value={m} defaultChecked={i === 0} required />
+        <div style={{ display: 'flex', gap: '16px', marginTop: '8px', flexWrap: 'wrap' }}>
+          {MEDIOS.map((m) => (
+            <label
+              key={m} data-testid={`medio-${m}`}
+              style={{
+                fontSize: '12.5px', cursor: 'pointer', paddingBottom: '3px',
+                fontWeight: medio === m ? 600 : 400,
+                color: medio === m ? C.tinta : C.tintaSuave,
+                boxShadow: medio === m ? `inset 0 -2px 0 ${C.grafito}` : undefined,
+                outline: foco === m ? `2px solid ${C.marca}` : undefined,
+                outlineOffset: '2px',
+              }}
+            >
+              <input
+                type="radio" name="medio" value={m} required
+                checked={medio === m} onChange={() => setMedio(m)}
+                onFocus={() => setFoco(m)} onBlur={() => setFoco(null)}
+                style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0 }}
+              />
               {m[0].toUpperCase() + m.slice(1)}
             </label>
           ))}
@@ -223,7 +273,7 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
     <div style={TARJETA} data-testid="panel-certificado">
       <div style={{
         display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '13px 15px',
-        borderBottom: `1px solid ${C.bordeFila}`,
+        borderBottom: `1px solid ${C.bordeCelda}`,
       }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: '13px', fontWeight: 600, color: C.tinta }}>
@@ -239,7 +289,7 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
         </BotonIcono>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: `1px solid ${C.bordeFila}` }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.bordeCelda}` }}>
         <Celda rotulo="MONTO" valor={montoM(documento.monto)} />
         <Celda
           rotulo={documento.estado === 'cobrado' ? 'COBRADO' : atraso != null && atraso > 0 ? 'VENCIÓ' : 'VENCE'}
@@ -261,20 +311,20 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
 
           Qué dice cada ausencia y de qué color va lo decide `propiedadesDelCertificado`, que se
           prueba sin React: es donde «NULL nunca es cero» se rompe sin que nadie lo note. */}
-      <div style={{ padding: '11px 15px 3px' }} data-testid="panel-propiedades">
-        <div style={{ fontSize: '10.5px', color: C.tenue, letterSpacing: '.05em', marginBottom: '7px' }}>
-          PROPIEDADES
-        </div>
+      <div
+        style={{ padding: '11px 15px 13px', borderBottom: `1px solid ${C.bordeCelda}` }}
+        data-testid="panel-propiedades"
+      >
         {propiedadesDelCertificado(documento).map((p) => (
           <div
             key={p.k}
             data-testid={`prop-${p.k.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
             style={{
-              display: 'flex', alignItems: 'baseline', gap: '10px', padding: '6px 0',
-              borderBottom: `1px solid ${C.bordeFila}`,
+              display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px',
+              alignItems: 'baseline', padding: '5px 0',
             }}
           >
-            <span style={{ fontSize: '11.5px', color: C.tenue, width: '104px', flexShrink: 0 }}>{p.k}</span>
+            <span style={{ fontSize: '11.5px', color: C.tenue }}>{p.k}</span>
             <span style={{ fontSize: '12.5px', color: p.color, minWidth: 0 }}>{p.v}</span>
           </div>
         ))}
@@ -284,47 +334,45 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
         // La banda cálida del mockup dice la promesa de pago; acá dice la OBSERVACIÓN, que es el
         // hecho que sí está guardado y el que explica por qué el documento no avanza.
         <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '11px 15px',
-          background: C.warnFondo, borderBottom: `1px solid ${C.bordeFila}`,
+          padding: '11px 15px', borderBottom: `1px solid ${C.bordeCelda}`,
+          boxShadow: `inset 2px 0 0 ${C.warn}`,
         }} data-testid="panel-observacion">
-          <span style={{ display: 'flex', color: C.warn, flexShrink: 0, marginTop: '1px' }}>
-            <Ico d={P.chat} s={15} w={2} />
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '12px', fontWeight: 500, color: C.warn }}>Observado por el cliente</div>
-            <div style={{ fontSize: '11.5px', color: C.tintaSuave, marginTop: '2px', lineHeight: 1.45 }}>
-              {documento.observacion}
-            </div>
+          <div style={{ fontSize: '12px', fontWeight: 500, color: C.warn }}>Observado por el cliente</div>
+          <div style={{ fontSize: '11.5px', color: C.tintaMedia, marginTop: '3px', lineHeight: 1.5 }}>
+            {documento.observacion}
           </div>
         </div>
       )}
 
       <div style={{ padding: '13px 15px 4px' }}>
-        <div style={{ fontSize: '10.5px', color: C.tenue, letterSpacing: '.05em', marginBottom: '11px' }}>
+        <div style={{ fontSize: '10.5px', color: C.tenue, letterSpacing: '.05em', marginBottom: '12px' }}>
           DEL CERTIFICADO AL COBRO
         </div>
 
         {documento.emitido_at && (
-          <Hito icono={<Ico d={P.okCirculo} s={15} w={2} />} color={C.grafito} titulo="Certificado emitido"
+          <Hito color={C.grafito} titulo="Certificado emitido"
             fecha={diaMes(documento.emitido_at) ?? ''} detalle={documento.factura ? `Facturado ${documento.factura}` : 'Todavía sin factura'} />
         )}
         {documento.vence && (
           <Hito
-            icono={<Ico d={(atraso ?? 0) > 0 ? P.alerta : P.calendario} s={15} w={2} />}
             color={(atraso ?? 0) > 0 ? C.neg : C.grafito}
-            titulo={(atraso ?? 0) > 0 ? 'Vencido' : 'Vence'}
+            titulo={documento.estado === 'cobrado' ? 'Vencía' : (atraso ?? 0) > 0 ? 'Vencido' : 'Vence'}
             fecha={diaMes(documento.vence) ?? ''}
             detalle={(atraso ?? 0) > 0 && documento.estado !== 'cobrado' ? 'Sin cobro registrado' : undefined}
             ultimo={documento.estado !== 'cobrado' && !documento.observacion}
           />
         )}
+        {/* EL MOCKUP ESCRIBE ACÁ «Mientras esté observado no corre el plazo de pago» Y NO SE COPIA:
+            es una afirmación CONTRACTUAL, y el OS no leyó el contrato de este cliente para poder
+            sostenerla. El hito dice el hecho —que el cliente observó— y su texto ya está arriba,
+            en la banda de la observación. */}
         {documento.observacion && (
-          <Hito icono={<Ico d={P.chat} s={15} w={2} />} color={C.warn} titulo="Observado por el cliente"
-            fecha="" detalle={documento.observacion} ultimo={documento.estado !== 'cobrado'} />
+          <Hito color={C.warn} titulo="Observado por el cliente"
+            fecha="" ultimo={documento.estado !== 'cobrado'} />
         )}
         {documento.estado === 'cobrado' && (
-          <Hito icono={<Ico d={P.okCirculo} s={15} w={2} />} color={C.pos} titulo="Cobrado"
-            fecha={diaMes(documento.vence) ?? ''} ultimo />
+          <Hito color={C.pos} titulo="Cobrado" fecha={diaMes(documento.vence) ?? ''}
+            detalle="La fecha de cobro pisa la fecha esperada: el atraso ya no es medible" ultimo />
         )}
         {!documento.emitido_at && !documento.vence && (
           <div style={{ fontSize: '11.5px', color: C.tenue, paddingBottom: '10px' }}>
@@ -344,8 +392,8 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
         ? <FormularioCobro documento={documento} registrarCobro={registrarCobro} onCerrar={() => onCobrando(false)} />
         : (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 15px',
-            borderTop: `1px solid ${C.bordeFila}`,
+            display: 'flex', flexDirection: 'column', gap: '11px', padding: '11px 15px',
+            borderTop: `1px solid ${C.bordeCelda}`,
           }}>
             <Boton
               estilo={PRIMARIA} hoverFondo={C.marcaHover} testid="abrir-cobro"
@@ -355,20 +403,20 @@ export function PanelCertificado({ documento, hoy, registrarCobro, onCerrar, cob
               <Ico d={P.ok} s={14} w={2.2} />
               {documento.estado === 'cobrado' ? 'Ya cobrado' : 'Registrar cobro'}
             </Boton>
-            <BotonIcono titulo="Enviar recordatorio" onClick={() => noConectado('Enviar recordatorio')} testid="panel-recordatorio">
-              <Ico d={P.mail} s={16} />
-            </BotonIcono>
-            <BotonIcono titulo="Registrar promesa de pago" onClick={() => noConectado('Registrar promesa de pago')} testid="panel-promesa">
-              <Ico d={P.calendarioOk} s={16} />
-            </BotonIcono>
-            <BotonIcono titulo="Descargar comprobante" onClick={() => noConectado('Descargar comprobante')} testid="panel-comprobante">
-              <Ico d={P.bajar} s={16} />
-            </BotonIcono>
-            <span style={{ marginLeft: 'auto' }}>
-              <BotonIcono titulo="Escalar" tono="alerta" onClick={() => noConectado('Escalar')} testid="panel-escalar">
-                <Ico d={P.arriba} s={16} />
-              </BotonIcono>
-            </span>
+            {/* LAS CUATRO QUE NO EXISTEN, CON SU NOMBRE A LA VISTA. Eran cuatro cuadraditos con
+                ícono: había que apretarlos para saber cuál era cuál, y el motivo de cada una —que
+                es lo único que desbloquea— quedaba escondido detrás del clic. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              {ACCIONES.map((a) => (
+                <button
+                  key={a.que} type="button" onClick={() => noConectado(a.que)} data-testid={a.testid}
+                  style={{
+                    fontSize: '12px', color: C.tintaSuave, background: 'none', border: 'none',
+                    padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >{a.texto}</button>
+              ))}
+            </div>
           </div>
         )}
 
