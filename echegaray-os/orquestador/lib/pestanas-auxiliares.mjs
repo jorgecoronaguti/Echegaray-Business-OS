@@ -92,20 +92,50 @@ export const MANTENIDAS_POR_DINAMICA = Object.freeze({
 export const MARGEN_DINAMICA = 50
 
 /**
+ * NÚCLEO PURO: ¿el origen de esta dinámica es ABIERTO (sin fila final)?
+ *
+ * Un `GridRange` sin `endRowIndex` llega hasta el final de la hoja hoy y siempre. Es la forma que
+ * este repositorio ya EXIGE para toda dinámica sobre Compras desde el 18/08 —ver el encabezado de
+ * `fuenteCompras` en lib/proveedores-pivot-seccion1.mjs—, porque un origen acotado se fosiliza en la
+ * fila que había el día que corrió el generador.
+ *
+ * Se distingue de `endRowIndex: 0` a propósito: cero es un rango acotado en la fila cero (un cuadro
+ * vacío), no un rango abierto. Colapsar los dos con un `?? 0` es lo que produjo el falso positivo de
+ * 950 filas del 05/09.
+ *
+ * @param {{endRowIndex?:number}} [source]
+ */
+export const origenAbierto = (source) => source?.endRowIndex == null
+
+/**
  * NÚCLEO PURO: ¿el rango de origen de una dinámica todavía cubre su pestaña fuente?
  *
  * `finOrigen` es la última fila que el rango incluye (1-indexada, ya convertida desde el
  * `endRowIndex` de la API, que es exclusivo y 0-indexado). `filasFuente` es la última fila con dato
  * de la pestaña de origen.
  *
- * @param {{finOrigen?:number, filasFuente?:number, margen?:number}} [o]
- * @returns {{aire:number, cubre:boolean, avisa:boolean}}
+ * ═══ EL TERCER ESTADO QUE FALTABA: ABIERTO (05/09/2026) ═══
+ *
+ * Esta función sólo sabía comparar dos números, y quien la llamaba convertía el origen abierto en
+ * `0` con un `?? 0`. Resultado medido: la dinámica de "Deuda viva (OS)" —que está bien, con origen
+ * abierto— se reportó como *"llega a Compras fila 0 y Compras va por la 950: 950 filas YA QUEDARON
+ * AFUERA"*. Leído el archivo real, las dos dinámicas de esa pestaña tienen
+ * `{startRowIndex:2, startColumnIndex:0, endColumnIndex:38}` y NINGÚN `endRowIndex`.
+ *
+ * Un control que no puede distinguir «sin techo» de «techo en cero» no mide cobertura: mide la
+ * ausencia de una clave. `abierto` entra como bandera explícita y no como valor centinela, porque un
+ * centinela vuelve a colapsar con el cero el día que alguien pase `undefined`.
+ *
+ * @param {{finOrigen?:number, filasFuente?:number, margen?:number, abierto?:boolean}} [o]
+ * @returns {{aire:number, cubre:boolean, avisa:boolean, abierto:boolean}}
  */
-export function coberturaDeDinamica({ finOrigen = 0, filasFuente = 0, margen = MARGEN_DINAMICA } = {}) {
+export function coberturaDeDinamica({ finOrigen = 0, filasFuente = 0, margen = MARGEN_DINAMICA, abierto = false } = {}) {
+  // Sin fila final no hay nada que se pueda quedar corto: el aire es infinito y no hay qué avisar.
+  if (abierto) return { aire: Infinity, cubre: true, avisa: false, abierto: true }
   const aire = Number(finOrigen) - Number(filasFuente)
   // `cubre` es el hecho (¿ya se quedó corta?) y `avisa` la decisión (¿falta poco?). Separados a
   // propósito: el día que se quede corta el mensaje tiene que ser otro, no "queda poco aire".
-  return { aire, cubre: aire >= 0, avisa: aire < margen }
+  return { aire, cubre: aire >= 0, avisa: aire < margen, abierto: false }
 }
 
 /** ¿Este nombre es el de una pestaña auxiliar? Las del OS son `_MAYÚSCULAS_CON_GUIONES`. */

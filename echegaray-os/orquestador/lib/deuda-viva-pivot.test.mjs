@@ -37,9 +37,13 @@ test('el filtro de estado es el mismo universo que el titular: Pendiente y comer
   assert.deepEqual(estado.filterCriteria.visibleValues, [PENDIENTE])
 })
 
-test('la fuente arranca en la fila de rótulos y está acotada a la grilla real', () => {
+// Este test AFIRMABA `endRowIndex === 932`, o sea defendía el rango que se fosiliza en la próxima
+// carga de Compras. La lección del 18/08 (ver `fuenteCompras` en proveedores-pivot-seccion1.mjs) es
+// que el origen va SIN fila final; acá había una segunda copia a la que esa corrección nunca llegó.
+test('la fuente arranca en la fila de rótulos y NO tiene fila final: una compra nueva no puede caer afuera', () => {
   assert.equal(fuente.startRowIndex, 2, 'la fila 3 es el encabezado: arrancar más abajo toma una factura como rótulo')
-  assert.equal(fuente.endRowIndex, 932)
+  assert.ok(!('endRowIndex' in fuente),
+    `el origen se cortó en la fila ${fuente.endRowIndex}: la compra de mañana queda afuera en silencio`)
   assert.equal(fuente.endColumnIndex, 38, 'la columna 37 es "Saldo pendiente (OS)": sin ella no hay qué sumar')
 })
 

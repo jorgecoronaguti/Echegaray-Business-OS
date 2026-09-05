@@ -31,7 +31,7 @@ import { PASOS, PASOS_RETIRADOS } from '../lib/flujo-caja-pasos.mjs'
 // censo, que necesita el archivo vivo, y el test estático de `pestanas-auxiliares`, que corre sin
 // red—. Con la lista en el script, el test tendría que declarar sus propias excepciones y las dos
 // listas empezarían a divergir el día que se agregue una.
-import { SIN_GENERADOR, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica } from '../lib/pestanas-auxiliares.mjs'
+import { SIN_GENERADOR, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica, origenAbierto } from '../lib/pestanas-auxiliares.mjs'
 
 export { SIN_GENERADOR }
 
@@ -95,11 +95,20 @@ export function censar(titulos = [], pasos = PASOS, sinGenerador = SIN_GENERADOR
  * siendo cierta. Para "la carga una persona" no hay nada que medir. Para "la mantiene una tabla
  * dinámica" sí: el rango de origen es un hecho de la API.
  *
- * Y el modo de falla es el que este archivo persigue desde el primer día. El origen de la dinámica de
- * "Deuda viva (OS)" termina en la fila 932 de Compras, que va por la 846. El día que Compras pase esa
- * fila, la dinámica deja de ver las compras nuevas: la deuda viva BAJA, no hay un solo `#REF!`, y una
- * pestaña que se exime del censo por definición no tiene quién la mire. Es el mismo silencio de
- * `_CRUCE_ARCA`, con la diferencia de que acá el aire se puede contar antes de que se acabe.
+ * Y el modo de falla es el que este archivo persigue desde el primer día: un origen ACOTADO se
+ * fosiliza en la fila que había el día que corrió el generador. Cuando Compras pasa esa fila, la
+ * dinámica deja de ver las compras nuevas, la deuda viva BAJA, no hay un solo `#REF!`, y una pestaña
+ * que se exime del censo por definición no tiene quién la mire.
+ *
+ * ═══ LO QUE ESTE CONTROL NO SABÍA MIRAR, Y EL FALSO POSITIVO QUE PRODUJO (05/09/2026) ═══
+ *
+ * Leía `p.source.endRowIndex ?? 0`. Un origen ABIERTO —sin `endRowIndex`, que es la forma exigida
+ * desde el 18/08— caía en el cero y se reportaba como *"llega a Compras fila 0 y Compras va por la
+ * 950: 950 filas YA QUEDARON AFUERA"*. Leído el archivo real ese día, las dos dinámicas de
+ * "Deuda viva (OS)" tienen `{startRowIndex:2, startColumnIndex:0, endColumnIndex:38}` y ningún
+ * `endRowIndex`: el cuadro está bien y el que estaba mal era el control.
+ *
+ * Desde acá se miden SÓLO los orígenes acotados. El abierto se informa y no se cuenta como hallazgo.
  *
  * @param {object} g cliente de Google
  * @param {Record<string,string>} mantenidas pestaña → pestaña de origen
@@ -118,9 +127,17 @@ export async function auditarDinamicas(g, mantenidas = MANTENIDAS_POR_DINAMICA) 
       mal++
       continue
     }
-    // `endRowIndex` es exclusivo y 0-indexado: la última fila incluida es ese número tal cual.
-    const finOrigen = Math.min(...pivots.map((p) => Number(p?.source?.endRowIndex ?? 0)))
     const filasFuente = (await g.readSheetValues(ID, `${fuente}!A:A`).catch(() => [])).length
+    // UN ORIGEN SIN `endRowIndex` NO ES UN ORIGEN QUE TERMINA EN LA FILA 0: es un origen sin techo,
+    // que es la forma correcta y la que tienen hoy las dos dinámicas de "Deuda viva (OS)". Sólo se
+    // mide la cobertura de los orígenes ACOTADOS, que son los únicos que se pueden quedar cortos.
+    const acotados = pivots.map((p) => p?.source ?? {}).filter((s) => !origenAbierto(s))
+    if (!acotados.length) {
+      console.log(`· ${pestana.padEnd(28)} dinámica sobre ${fuente} con origen ABIERTO (sin fila final): no se puede quedar corta`)
+      continue
+    }
+    // `endRowIndex` es exclusivo y 0-indexado: la última fila incluida es ese número tal cual.
+    const finOrigen = Math.min(...acotados.map((s) => Number(s.endRowIndex)))
     const { aire, cubre, avisa } = coberturaDeDinamica({ finOrigen, filasFuente })
     if (!cubre) {
       console.log(`✖ ${pestana.padEnd(28)} su dinámica llega hasta ${fuente} fila ${finOrigen} y ${fuente} va por la ${filasFuente}: `
@@ -131,7 +148,7 @@ export async function auditarDinamicas(g, mantenidas = MANTENIDAS_POR_DINAMICA) 
         + 'cuando se acabe, el cuadro baja en silencio')
       mal++
     } else {
-      console.log(`· ${pestana.padEnd(28)} dinámica sobre ${fuente} hasta la fila ${finOrigen} · ${aire} filas de aire`)
+      console.log(`· ${pestana.padEnd(28)} dinámica sobre ${fuente} ACOTADA en la fila ${finOrigen} · ${aire} filas de aire`)
     }
   }
   return mal
