@@ -25,6 +25,11 @@ export const ESTADO = Object.freeze({
   DEPRECADO: 'deprecado',
   // BLOQUEADO es una prohibición, no una preferencia: licencia incompatible o política de datos.
   BLOQUEADO: 'bloqueado',
+  // RECHAZADO: se implementó, se midió y PERDIÓ. Distinto de bloqueado —una restricción externa—
+  // y de deprecado —perdió contra otro candidato—: esto es «se probó de verdad y no alcanza».
+  // Sin este estado, un modelo descartado con evidencia vuelve a la lista de candidatos cada seis
+  // meses porque nadie recuerda que ya se probó.
+  RECHAZADO: 'rechazado',
 })
 
 /**
@@ -150,14 +155,16 @@ export const MODELOS = Object.freeze({
     ejecucion: 'local-cpu',
     proveedor: 'local',
     licencia: 'MIT (base BAAI/bge-reranker-base)',
-    estado: ESTADO.CANDIDATO,
-    dataset: 'las 9 preguntas por persona del benchmark de recuperacion',
+    estado: ESTADO.PRODUCCION,
+    dataset: 'ecsas-rag-eval v1 @dbbbf312a04a · 150 preguntas de 678',
+    consumidor: 'lib/ml/recuperar.mjs → drive-busqueda',
     medido: {
-      fecha: '2026-09-04', pesosMb: 279, rssMb: 714,
-      sinReranker: { top1: 0.667, recall3: 0.778, mrr: 0.736, ms: 636 },
-      conReranker: { top1: 0.778, recall3: 0.778, mrr: 0.796, ms: 1730 },
+      fecha: '2026-09-05', pesosMb: 279, rssMb: 714, msPorConsulta: 1439,
+      sinReranker: { top1: 0.467, recall5: 0.627, mrr: 0.536 },
+      ruteado: { top1: 0.593, recall5: 0.687, mrr: 0.633 },
+      porFamilia: { contenido: { antes: 0.12, despues: 0.34 }, importe: { antes: 1.0, despues: 1.0 }, entidad: { antes: 0.38, despues: 0.38 } },
     },
-    porQue: 'MEJORA +6,0 puntos de MRR y +11,1 de Top-1, a cambio de 2,7 veces la latencia y 279 MB. Queda CANDIDATO y no produccion porque el conjunto son 9 preguntas: la mejora es real y la muestra es chica. Nota metodologica que vale mas que el numero: la primera medicion dio -7,7 puntos porque se le pasaba `nombre + extracto` en vez del pasaje real. Condenarlo con eso habria sido condenarlo por como se lo llamaba.',
+    porQue: 'EN PRODUCCION, pero SOLO donde midio que ayuda. Corriendolo siempre daba +2,5 puntos de MRR global y escondia que arruinaba dos de las tres familias: en preguntas por nombre propio bajaba Top-1 de 38% a 13%, y en preguntas por importe exacto de 100% a 96% —porque reordena por parecido semantico algo que ya se habia resuelto por IGUALDAD—. Ruteado (solo cuando la pregunta no trae identificador ni nombre propio) da +9,5 puntos de MRR y sube «contenido» de 12% a 34%. El costo es 3 veces la latencia y 279 MB.',
     alternativas: ['onnx-community/bge-reranker-v2-m3-ONNX (Apache-2.0, 571 MB)', 'jinaai/jina-reranker-v2 — DESCARTADO SIN PROBAR: CC-BY-NC-4.0, no comercial'],
   },
 

@@ -28,14 +28,25 @@ async function main() {
   }, { limite: N, etiqueta: 'léxico (producción anterior)' }))
 
   r.push(await evaluarRecuperacion(ds, async (p) => {
-    const x = await recuperar(eje, p.texto, { limite: 20, usarVector: false })
+    // SIN reranker tambien: si no, esta variante lo incluye y su numero es identico al de
+    // produccion, que es lo que paso en la primera corrida. Una etiqueta que miente sobre lo que
+    // midio es peor que una variante de menos.
+    const x = await recuperar(eje, p.texto, { limite: 20, usarVector: false, usarReranker: false })
     return x.documentos.map((d) => d.driveFileId)
-  }, { limite: N, etiqueta: 'filtros + léxico' }))
+  }, { limite: N, etiqueta: 'filtros + léxico (sin reranker)' }))
 
+  r.push(await evaluarRecuperacion(ds, async (p) => {
+    const x = await recuperar(eje, p.texto, { limite: 20, usarReranker: false })
+    return x.documentos.map((d) => d.driveFileId)
+  }, { limite: N, etiqueta: 'híbrido sin reranker' }))
+
+  // EL PIPELINE COMPLETO tal como queda en produccion: el reranker corre SOLO donde midio que
+  // ayuda. Correrlo siempre daba +2,6 puntos globales y escondia que arruinaba dos de las tres
+  // familias de preguntas.
   r.push(await evaluarRecuperacion(ds, async (p) => {
     const x = await recuperar(eje, p.texto, { limite: 20 })
     return x.documentos.map((d) => d.driveFileId)
-  }, { limite: N, etiqueta: 'híbrido (producción hoy)' }))
+  }, { limite: N, etiqueta: 'PRODUCCIÓN (reranker ruteado)' }))
 
   if (CON_RERANKER) {
     const m = await cargarReranker('bge-base')

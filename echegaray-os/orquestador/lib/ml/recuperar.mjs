@@ -26,6 +26,7 @@
 import { entenderConsulta, pasaFiltros } from './entender-consulta.mjs'
 import { buscarEnContenido } from '../drive-busqueda/contenido.mjs'
 import { CANDIDATOS, embeber } from './motor-embeddings.mjs'
+import { reordenar } from './reranker.mjs'
 
 /** Qué modelo indexó los vectores que hay en la base. Cambiarlo exige reindexar: mezclar vectores
  *  de dos modelos no falla, devuelve peor y nadie se entera. */
@@ -42,7 +43,7 @@ const K_FUSION = 60
  * @param {string} texto la pregunta tal como la escribió la persona
  * @param {{limite?:number, sensibilidadMaxima?:string, usarVector?:boolean}} opts
  */
-export async function recuperar(ejecutar, texto, { limite = 6, sensibilidadMaxima = null, usarVector = true } = {}) {
+export async function recuperar(ejecutar, texto, { limite = 6, sensibilidadMaxima = null, usarVector = true, usarReranker = true } = {}) {
   const t0 = Date.now()
   const q = String(texto ?? '').trim()
   if (!q) return { documentos: [], via: 'vacía', ms: 0 }
@@ -127,14 +128,43 @@ export async function recuperar(ejecutar, texto, { limite = 6, sensibilidadMaxim
   const fusionado = rescate
     ? fusionarPorRango([lexUsable, vecUsable].filter((l) => l.length))
     : lexUsable
-  const documentos = fusionado.slice(0, limite).map((id) => info.get(id)).filter(Boolean)
+  let documentos = fusionado.slice(0, limite).map((id) => info.get(id)).filter(Boolean)
+  let reordenado = false
+
+  // ── EL RERANKER, Y SÓLO DONDE MIDIÓ QUE AYUDA ──
+  //
+  // Medido sobre `ecsas-rag-eval` (150 preguntas), el reranker NO es bueno ni malo: depende de qué
+  // se pregunta.
+  //
+  //   contenido  Top-1 12% → 27%   ayuda mucho: la respuesta está en el significado del pasaje
+  //   entidad    Top-1 38% → 13%   DAÑA: un nombre propio se encuentra por coincidencia exacta y
+  //                                el reranker lo reordena por parecido semántico
+  //   importe    Top-1 100% → 96%  daña un poco, y por lo mismo
+  //
+  // Correrlo siempre da +2,6 puntos de MRR global y esconde que arruina dos de las tres familias.
+  // Se corre sólo cuando la pregunta NO trae un identificador ni un nombre propio — o sea, cuando
+  // lo que queda por decidir es de verdad semántico.
+  if (usarReranker && !rescate && documentos.length > 1 && esPreguntaSemantica(q, filtros)) {
+    try {
+      const t = await ejecutar(
+        `select drive_file_id, texto from public.documento_fragmento
+          where drive_file_id = any($1::text[]) and orden = 0`,
+        [documentos.map((d) => d.driveFileId)])
+      const porId = new Map(t.rows.map((x) => [x.drive_file_id, x.texto]))
+      const ro = await reordenar('bge-base', q,
+        documentos.map((d) => ({ id: d.driveFileId, texto: porId.get(d.driveFileId) ?? d.nombre })))
+      documentos = ro.map((x) => info.get(x.id)).filter(Boolean)
+      reordenado = true
+    } catch { /* sin reranker se devuelve el orden de la recuperación: degradar no es fallar */ }
+  }
 
   return {
-    documentos, filtros, degradado, filtroDescartado,
+    documentos, filtros, degradado, filtroDescartado, reordenado,
     via: [
       usoFiltro ? `filtros(${filtros.filtros})` : (filtroDescartado ? 'filtros descartados' : null),
       lexUsable.length ? 'léxico' : null,
       rescate && vecUsable.length ? 'semántico (rescate)' : null,
+      reordenado ? 'reranker' : null,
     ].filter(Boolean).join('+') || 'sin resultados',
     ms: Date.now() - t0,
   }
@@ -151,4 +181,19 @@ export function fusionarPorRango(listas, k = K_FUSION) {
 const ORDEN = ['publico', 'interno', 'confidencial', 'credenciales']
 function permitido(s, techo) {
   return ORDEN.indexOf(String(s ?? 'confidencial')) <= ORDEN.indexOf(String(techo))
+}
+
+/**
+ * ¿Lo que queda por decidir es SEMÁNTICO? Es la condición para que el reranker aporte.
+ *
+ * NO lo es cuando la pregunta trae un identificador (un CUIT, un comprobante, un importe): eso ya
+ * se resolvió por igualdad y reordenarlo cambia una certeza por una probabilidad. Tampoco cuando
+ * trae un nombre propio en mayúsculas, que es la forma en que una persona pide un papel de alguien
+ * y se encuentra por coincidencia exacta.
+ */
+export function esPreguntaSemantica(texto, filtros) {
+  if (filtros?.cuit || filtros?.comprobante || filtros?.importe) return false
+  // «RIOS, FERNANDO» o «RIOS FERNANDO»: dos palabras seguidas en mayúsculas es un nombre.
+  if (/\b[A-ZÁÉÍÓÚÑ]{3,}[, ]+[A-ZÁÉÍÓÚÑ]{3,}\b/.test(String(texto))) return false
+  return true
 }
