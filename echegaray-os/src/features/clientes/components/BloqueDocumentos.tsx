@@ -25,14 +25,16 @@
 
 import Link from 'next/link'
 import { Fragment } from 'react'
-import { Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { Nulo, Vacio } from '@/shared/components/ds'
 import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { IconoDocumento } from '@/shared/components/iconos'
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import { ROLES_DOCUMENTO, type DocumentoCliente } from '../types'
 import { SelectRolDocumento } from './SelectRolDocumento'
 import {
-  AbrirAcciones, AccionesDocumento, LineaDeAcciones, NotaDeAccion,
+  AbrirAcciones, AccionesDocumento, LineaDeAccionesEnGrilla, NotaDeAccion,
 } from './AccionesContacto'
 
 // ═══ POR QUÉ EL RECORD MUESTRA OCHO Y NO SESENTA (19/08/2026) ═══
@@ -46,6 +48,34 @@ import {
 // Más allá del tope grande la lista deja de ser un índice y hay que ir a Drive.
 const TOPE = 8
 const TOPE_TODO = 60
+
+// ═══ LA GRILLA DEL HANDOFF, Y POR QUÉ ESTA LISTA DEJÓ DE SER UNA `<table>` ═══
+//
+// `minmax(250px,2fr) 180px 150px 110px 28px` con `gap:28px`
+// (`CRM · Clientes · una pantalla.dc.html:171`). Una `<table>` no sabe decir `minmax()` ni `fr`:
+// con anchos en `px` la columna del nombre no crece con la pantalla, que es justo la que tiene que
+// crecer —el nombre del archivo es lo único que identifica la fila—. Además las otras dos caras de
+// esta misma ficha (Obras, Presupuestos) ya son grillas del v2: tener dos sistemas de tabla en la
+// misma pantalla era parte de lo que el dueño ve como «no hay exactitud».
+//
+// 250+180+150+110+28 + 4×28 = 830px útiles ⇒ 1223px de viewport con el costado puesto. Debajo de
+// eso, las mismas cinco columnas con las pistas elásticas y la mitad del aire.
+// A 390px el nombre del archivo es lo único que identifica la fila: debajo de 560px se esconden LO
+// COLGÓ y MODIFICADO —dos metadatos— y queda ARCHIVO · PARA QUÉ SIRVE · menú, que es lo que se hace
+// desde un teléfono: encontrar el papel y clasificarlo.
+const COLS_DOCS
+  = 'gap-[10px] grid-cols-[minmax(0,1fr)_120px_28px]'
+  + ' min-[560px]:gap-[14px] min-[560px]:grid-cols-[minmax(0,1.6fr)_minmax(0,130px)_minmax(0,1fr)_72px_28px]'
+  + ' min-[1240px]:gap-[28px] min-[1240px]:grid-cols-[minmax(250px,2fr)_180px_150px_110px_28px]'
+
+/** Lo que se esconde a 390px. Nunca el nombre ni el menú. */
+const SOLO_ANCHO = 'max-[559px]:hidden'
+
+/** El respiro de la derecha a 390px: sin él el `···` queda pegado al borde de la pantalla. */
+const AIRE_DERECHO = 'max-[559px]:pr-4'
+
+/** La sangría del handoff (`dc.html:171`, `padding-left:16px`). */
+const SANGRIA = 16
 
 export function BloqueDocumentos({
   documentos, carpetaDriveId, vincular, clasificar, desvincular, puedeEditar = true,
@@ -94,82 +124,113 @@ export function BloqueDocumentos({
         </Vacio>
       ) : (
         <>
-          <Tabla testid="tabla-documentos-cliente" minWidth={680}>
-            <THead>
-              <Th>Documento</Th>
-              <Th className="w-[170px]">Rol</Th>
-              <Th className="w-[150px]">Cómo llegó</Th>
-              <Th num className="w-[90px]">Fecha</Th>
-              {puedeEditar && <Th className="w-[52px]" />}
-            </THead>
-            <tbody>
-              {visibles.map((d) => {
-                const menu = menuAbierto === d.drive_file_id
-                return (
+          <div data-testid="tabla-documentos-cliente">
+            <div className={`grid ${COLS_DOCS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
+              <RotuloCol>Archivo</RotuloCol>
+              <RotuloCol>Para qué sirve</RotuloCol>
+              <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Lo colgó</RotuloCol></span>
+              <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Modificado</RotuloCol></span>
+              <RotuloCol />
+            </div>
+
+            {visibles.map((d) => {
+              const menu = menuAbierto === d.drive_file_id
+              return (
                 <Fragment key={d.drive_file_id}>
-                <Tr seleccionada={menu}>
-                  <Td fuerte className="max-w-[280px]">
-                    <a
-                      href={urlDeDrive(d.drive_file_id, 'archivo')}
-                      target="_blank" rel="noreferrer"
-                      data-testid="documento-cliente-enlace"
-                      className="block truncate hover:underline"
+                  <div
+                    className={`grid items-center ${CAJA_CONTENIDO} ${COLS_DOCS} ${AIRE_DERECHO} ${menu ? 'bg-surface-quiet' : 'hover:bg-[#F2F1ED]'}`}
+                    style={{
+                      minHeight: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
+                      // El filo amarillo dice «ésta es la fila abierta» y NO corre el contenido:
+                      // `inset` no empuja, un borde real desalinearía la fila de su encabezado.
+                      boxShadow: menu ? FILO_ELEGIDA : undefined,
+                      paddingTop: 6, paddingBottom: 6,
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
+                        <IconoDocumento className="h-[15px] w-[15px]" />
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <a
+                          href={urlDeDrive(d.drive_file_id, 'archivo')}
+                          target="_blank" rel="noreferrer"
+                          data-testid="documento-cliente-enlace"
+                          className="block truncate hover:underline"
+                          style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}
+                        >
+                          {/* Sin nombre se muestra el id: es feo y es la verdad. El índice de Drive
+                              se rehace cada 4 horas y un archivo puede salir de él sin que el
+                              vínculo deje de valer. Un rótulo inventado sería peor que feo. */}
+                          {d.name ?? d.drive_file_id}
+                        </a>
+                        {/* La RUTA va en mono: es una ruta, y el handoff reserva la mono para
+                            importes, fechas, CUIT y rutas. */}
+                        {d.path && (
+                          <span className="block truncate font-mono" style={{ fontSize: '11px', color: V.tenue }}>
+                            {d.path}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+
+                    <span style={{ minWidth: 0, overflow: 'hidden' }}>
+                      {puedeEditar ? (
+                        <SelectRolDocumento
+                          valor={d.rol}
+                          opciones={ROLES_DOCUMENTO}
+                          guardar={clasificar(d.drive_file_id)}
+                          testid="rol-documento"
+                        />
+                      ) : d.rol ? (
+                        <span className="truncate" style={{ fontSize: '12.5px', color: V.tintaSuave }}>{d.rol}</span>
+                      ) : (
+                        <span className="truncate" style={{ fontSize: '12.5px', color: V.warn }}>sin clasificar</span>
+                      )}
+                    </span>
+
+                    {/* «Vinculado a mano» = una persona afirmó que este archivo es de este cliente.
+                        «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
+                        distinción HECHO vs INFERENCIA que gobierna el resto del sistema, y va en la
+                        tabla porque cambia cuánto vale lo que se está mirando. */}
+                    <span className={`truncate ${SOLO_ANCHO}`} style={{ fontSize: '12.5px', color: V.apagado }}>
+                      {d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}
+                    </span>
+
+                    {/* LA FECHA VA A LA IZQUIERDA, como en el handoff (`dc.html:189`): es una marca
+                        de tiempo, no una magnitud que se compare de un vistazo con la de arriba. */}
+                    <span
+                      className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
+                      style={{ fontSize: '12px', color: V.tenue }}
                     >
-                      {/* Sin nombre se muestra el id: es feo y es la verdad. El índice de Drive se
-                          rehace cada 4 horas y un archivo puede salir de él sin que el vínculo deje
-                          de valer. Un rótulo inventado sería peor que feo. */}
-                      {d.name ?? d.drive_file_id}
-                    </a>
-                    {d.path && <span className="block truncate text-[11px] text-faint">{d.path}</span>}
-                  </Td>
-                  <Td>
-                    {puedeEditar ? (
-                      <SelectRolDocumento
-                        valor={d.rol}
-                        opciones={ROLES_DOCUMENTO}
-                        guardar={clasificar(d.drive_file_id)}
-                        testid="rol-documento"
-                      />
-                    ) : d.rol ? (
-                      <span className="text-[12.5px] text-muted">{d.rol}</span>
-                    ) : (
-                      <span className="text-[12.5px] text-warn">sin clasificar</span>
-                    )}
-                  </Td>
-                  {/* «Vinculado a mano» = una persona afirmó que este archivo es de este cliente.
-                      «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
-                      distinción HECHO vs INFERENCIA que gobierna el resto del sistema, y va en la
-                      tabla porque cambia cuánto vale lo que se está mirando. Sin color: no es un
-                      problema ni un logro. */}
-                  <Td>{d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}</Td>
-                  <Td num className="text-muted">
-                    {d.modified_time ? fecha(d.modified_time) : <Nulo>sin fecha</Nulo>}
-                  </Td>
-                  {puedeEditar && (
-                    <Td className="text-right">
-                      <AbrirAcciones
-                        href={urlMenuDe(menu ? null : d.drive_file_id)}
-                        abierto={menu}
-                        etiqueta="Acciones del documento"
-                        testid="acciones-documento-cliente"
-                      />
-                    </Td>
+                      {d.modified_time ? fecha(d.modified_time) : <Nulo>sin fecha</Nulo>}
+                    </span>
+
+                    <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      {puedeEditar && (
+                        <AbrirAcciones
+                          href={urlMenuDe(menu ? null : d.drive_file_id)}
+                          abierto={menu}
+                          etiqueta="Acciones del documento"
+                          testid="acciones-documento-cliente"
+                        />
+                      )}
+                    </span>
+                  </div>
+
+                  {menu && puedeEditar && (
+                    <LineaDeAccionesEnGrilla testid="acciones-documento-abierto">
+                      <AccionesDocumento driveFileId={d.drive_file_id} desvincular={desvincular} />
+                      {/* LA ACLARACIÓN VA AL LADO DE LA ACCIÓN, no en un `title`. «Quitar» sobre un
+                          contrato se lee como «destruir» si nadie dice lo contrario, y el que duda
+                          no lo aprieta: el índice se queda con vínculos viejos para siempre. */}
+                      <NotaDeAccion>No borra el archivo: vive en Drive y sigue ahí.</NotaDeAccion>
+                    </LineaDeAccionesEnGrilla>
                   )}
-                </Tr>
-                {menu && puedeEditar && (
-                  <LineaDeAcciones columnas={puedeEditar ? 5 : 4} testid="acciones-documento-abierto">
-                    <AccionesDocumento driveFileId={d.drive_file_id} desvincular={desvincular} />
-                    {/* LA ACLARACIÓN VA AL LADO DE LA ACCIÓN, no en un `title`. «Quitar» sobre un
-                        contrato se lee como «destruir» si nadie dice lo contrario, y el que duda no
-                        lo aprieta: el índice se queda con vínculos viejos para siempre. */}
-                    <NotaDeAccion>No borra el archivo: vive en Drive y sigue ahí.</NotaDeAccion>
-                  </LineaDeAcciones>
-                )}
                 </Fragment>
-                )
-              })}
-            </tbody>
-          </Tabla>
+              )
+            })}
+          </div>
           <p className="text-[11px] text-faint" data-testid="pie-documentos-cliente">
             {documentos.length <= TOPE ? (
               `${documentos.length} archivo${documentos.length === 1 ? '' : 's'}. Viven en Drive: acá está el vínculo, nunca una copia.`

@@ -77,6 +77,26 @@ export function LineaDeAcciones({ columnas, children, testid }: {
   )
 }
 
+/**
+ * LA MISMA LÍNEA, EN UNA LISTA DE GRILLA. En una `<table>` el «`grid-column: 1 / -1`» del handoff se
+ * escribe `colSpan`; en una lista de grilla —donde cada fila es su propio contenedor— se escribe
+ * como el hermano de ancho completo que va debajo de la fila. Las dos dibujan lo mismo: la línea
+ * ocupa la fila entera, dentro de ella, y el error de la base tiene dónde caer.
+ */
+export function LineaDeAccionesEnGrilla({ children, testid }: {
+  children: ReactNode
+  testid: string
+}) {
+  return (
+    <div
+      data-testid={testid}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#EFEEEA] bg-surface-quiet px-4 py-2"
+    >
+      {children}
+    </div>
+  )
+}
+
 /** «Editar» dentro de la línea. Enlace, porque el formulario de edición también vive en la URL. */
 export function AccionEnlace({ href, children, testid }: {
   href: string
@@ -101,6 +121,17 @@ export function NotaDeAccion({ children }: { children: ReactNode }) {
   return <span className="text-[11.5px] text-faint">{children}</span>
 }
 
+// ═══ LA ACCIÓN VIAJA ATADA, NUNCA ENVUELTA EN UNA ARROW (05/09/2026) ═══
+//
+// `ejecutar={() => borrar(contactoId)}` compila, pasa el lint y REVIENTA LA PANTALLA al abrir el
+// menú: «Functions cannot be passed directly to Client Components unless you explicitly expose it by
+// marking it with "use server"». `BotonDeFila` es de cliente y esta función se crea en un componente
+// de SERVIDOR, así que no se puede serializar. Lo encontró la pasada visual del 05/09/2026 abriendo
+// el `···` de un documento: la ficha entera se cambiaba por la pantalla de error.
+//
+// `borrar.bind(null, contactoId)` sobre una server action devuelve OTRA server action —con el
+// argumento ya adentro—, que sí cruza la frontera. Es la misma familia del React #419 que ya dejó
+// pantallas en blanco con un verbo pasado como función.
 export function AccionesContacto({
   contactoId, borrar,
 }: {
@@ -111,7 +142,7 @@ export function AccionesContacto({
     <BotonDeFila
       label="Borrar"
       testid="borrar-contacto"
-      ejecutar={() => borrar(contactoId)}
+      ejecutar={borrar.bind(null, contactoId)}
     />
   )
 }
@@ -129,7 +160,7 @@ export function AccionesDocumento({
       // clasificación y creer que se destruyó un contrato.
       label="Quitar el vínculo"
       testid="desvincular-documento-cliente"
-      ejecutar={() => desvincular(driveFileId)}
+      ejecutar={desvincular.bind(null, driveFileId)}
     />
   )
 }
