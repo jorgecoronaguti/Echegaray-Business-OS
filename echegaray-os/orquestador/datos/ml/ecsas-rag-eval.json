@@ -1,0 +1,3409 @@
+{
+ "nombre": "ecsas-rag-eval",
+ "version": 1,
+ "creado": "2026-09-05",
+ "procedencia": "public.documento_leido + documento_fragmento del OS. Cada pregunta sale del CONTENIDO del documento, nunca de su nombre de archivo.",
+ "sensibilidad": "CONFIDENCIAL — contiene nombres de personas y importes reales. NO se sube a ningún lado.",
+ "corpus": {
+  "documentos": 1213
+ },
+ "familias": {
+  "entidad": 32,
+  "importe": 259,
+  "contenido": 387
+ },
+ "total": 678,
+ "hash": "dbbbf312a04a",
+ "preguntas": [
+  {
+   "texto": "el papel de BAZAN RIVERO JUAN ERNESTO CUIL",
+   "correcto": "1_ZGhTVIRUhm7_freOpPO1XiZ4ibFBfZI",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de NIEVAS VILLEGAS JUAN IGNACIO CUIL",
+   "correcto": "10dvrqH4QVkzQOMd8H1yMXr34aUtS8ok8",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de AVALOS MANRIQUE MARCELO ALEJANDRO CUIT",
+   "correcto": "10lUBAcz4RS1_leEHwp_QKHYeYyAwPDlf",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de PARDO LEPEZ JUAN PABLO CUIT",
+   "correcto": "10oArx9rUt6c7Z376L1p3Z8U8eOHfuBS-",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de ROSALES DIEGO JOSE CUIT",
+   "correcto": "10wogaw6hI5DEgkiIf5w82AVwxz9VC-yY",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CRISTIAN DOMINGO AGUERO CUIL",
+   "correcto": "12yMFA_cZOElTneru4BRtM6Yt5F7QaNzA",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CONSTRUCCIÓN DE GABINETE CÁMARA",
+   "correcto": "13JZJ_n9t2HAnCAp2gNpjbYkkhp3B6qEp",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de GALVAN CHAVERO MARIA GUADALUPE",
+   "correcto": "14qJa1zQutu9Sz6syn1yKJMiJkZz2-QhK",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de GONZALEZ TOBARES JUAN GUILLERMO CUIL",
+   "correcto": "16bfV-U06gQ0Y1z7lKZF-p9AhjH3bm7nE",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de BALMACEDA GONZALEZ MAXIMILIANO",
+   "correcto": "16JQVWsNAJfR2wN_cFB8QiSflMCD9FCSq",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de DIAZ GOMEZ BRAIAN FACUNDO CUIT",
+   "correcto": "17BTMtz50GI27SMGfFjQgP0_Mrrq8Qmw8",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CASTRO PEREZ ROBERTO EDGAR CUIL",
+   "correcto": "17kznTmAeK8G83mXlS82rDpoocSx0b5b4",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de FERREYRA RODOLFO SEBASTIAN CUIT",
+   "correcto": "18mWmJMswwHwiQs59OcUQ-7v62mo-9P6q",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de SANCHEZ ACOSTA LEONARDO",
+   "correcto": "19l6o2IpByNcUjSb-43ViAjdEAp4giReL",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de MEGLIOLI FACUNDO FABIAN CUIT",
+   "correcto": "1aDSBzbtd6Bc59YgnA2BNwVhFI8S9zH-r",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de BALMACEDA GONZALEZ MAXIMILIANO ARIEL",
+   "correcto": "1BaaHS_RxGU9tSH8RxxfXzan4HrKNLQlI",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de DIAZ GOMEZ BRAIAN FACUNDO CUIL",
+   "correcto": "1cr8vgjyR29Xm_o4jbaKJO-Hh3UIHhZhz",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CASTILLO BENITEZ JUAN CARLOS CUIL",
+   "correcto": "1Diatz7xVUYpb0IASAANgFYWRD8XliAX8",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de SAN JUAN CHIMBAS",
+   "correcto": "1E1WYH54L11Nmju__DH48v2-_31MfTrgG",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de COMO ATENCION EN PRECIO CONTEMPLAMOS SEGURO DE CAUCION",
+   "correcto": "1HNqrqx1stXpGsVAely8IUOABsK8dYnmz",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de DIAZ GOMEZ BRAIAN FACUNDO",
+   "correcto": "1IgGMsBazisLXt0feSilGdcpASYsX8JOi",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de RAMOS DESSEFF FACUNDO GABRIEL",
+   "correcto": "1IpEXtTKcJFErlcDOgiaymLKQ0vWCDmlA",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de BRONIA JOFRE RODRIGO",
+   "correcto": "1jFbytg424RfnVTE5bQDJA5iaIBSfuOtp",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de FERNANDEZ FARKAS JAVIER",
+   "correcto": "1lyW8bQLkp-AF4gu4h76yx4u5P3ApbUPd",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CAPELLI PEREZ CESAR LORENZO CUIL",
+   "correcto": "1r9F9dmbsF07IfJnu6c-L5_HDtBEAM7cM",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de NIEVAS VILLEGAS JUAN IGNACIO JESUS",
+   "correcto": "1rWCd8DLpiauDwp12C1GTKbdy-vKfB3Gz",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de BRONIA JOFRE RODRIGO EMANUEL",
+   "correcto": "1RZS2BahHD3xo-nFMQD3J4vfOBi5elNGm",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de MALDONADO BATISTA EMILIANO",
+   "correcto": "1TtFJ1U_WlcLYkd-wSw_RPImscy67p8ki",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de QUIROGA GONZALEZ MAURICIO",
+   "correcto": "1v03cul2Ve850tXzEf6D7kdqMN1xTHxID",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de RIARTE FARIAS JUAN MANUEL",
+   "correcto": "1Vk8cmS-OPYemlN3Q-HKu2IXw3CsOIFY_",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de CONSOLIDACION ENTRE PISO BARANDA",
+   "correcto": "1YO9ZrjPpNeJpqz5YbXtIHx-jc8qWj2Nd",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el papel de FERNANDEZ FARKAS JAVIER ESTEBAN",
+   "correcto": "1ZrB5gt6wPHVTSmz3UZPdWXBzgg12MzHU",
+   "familia": "entidad"
+  },
+  {
+   "texto": "el comprobante de $6.386.234",
+   "correcto": "1_bb1ECOmVwPBd0s65dU8QRc_w_qS2wZ1",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $24.573.564",
+   "correcto": "1_EP4AUnOXqUs_kFw_WqJBKvJ9e_pXd8a",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $33.046.118",
+   "correcto": "1_HsjL_N_n0Kx_ELbO3QRlIxhg5avNm2G",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $23.759.067",
+   "correcto": "1-7tvfcAGMQ3-vNVsCA5YuGdQA91Bq-Us",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $170.000",
+   "correcto": "1-flbCdqfjGrkURaq9h1aHv2sy1BqHoFO",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $142.300",
+   "correcto": "1-fT856usjxjNhAxeJwh9xex-L6qUdCfH",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $599.040",
+   "correcto": "1-HL4_ho9W1axApQ6ify8i_sAO6M3kdf-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $35.344",
+   "correcto": "1-iHBtUOWqTuqnTXbel8erLQa6ipxs5b6",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.327.995",
+   "correcto": "1-JfSTaah364Rn_X_quRHLoC9fkbY3274",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $64.925",
+   "correcto": "1-OQLwlP_oojC7OF61qZsTOCj-tOGHgKo",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $18.493.426",
+   "correcto": "1-WwEzQfn7h2m_PC0az6Ut42X8LuR_PXE",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $695.922",
+   "correcto": "1-ZuknnHoL5dE-G-j30ZSSo2s16dQtNPd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $203.876",
+   "correcto": "10_u5CqDJsxsN0a9_s_u9lV0KWNlpZ8zP",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $26.500.000",
+   "correcto": "109lY96XQKcBuKqHUxW0mh7kX9qAefw7X",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.344.911",
+   "correcto": "10sTwJuOCk1Lp_NlfpsK1jQG_xddRuQgf",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $789.254",
+   "correcto": "10vy76pfFl85iHuNcEreheo3HRK7d7HAZ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $201.878",
+   "correcto": "10ye1etzqcRtJEJtF82NCg6mCnRVI6Fj-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $11.205.043",
+   "correcto": "114NG6cbjJ78HzR44s14UFPjDsgJvLzRw",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.803.502",
+   "correcto": "11abBxoXdGWFf3rWzlsqwPGIGP1vOmMVn",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $673.904",
+   "correcto": "11ZygBawOABlL6oeI4TrxPjxb6B512aYY",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $52.173",
+   "correcto": "12IAb_ZKX4l81uRfCDF6jEnFWwW3PPDRz",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $11.639.443",
+   "correcto": "12yjJD9eJk0rQ7-cUbOUYusMtvxkK8Rvd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $2.730.000",
+   "correcto": "13a3PiCy8FW5Wz4YjfFCebMs62OIiLDaU",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $224.070",
+   "correcto": "13Fi4IqQvTuCBjD3mIUmV1aKeNmRXW_gD",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $338.171",
+   "correcto": "13GIQOZKSOfOjua-lwgr_SLoF-9XkCu0f",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $225.063",
+   "correcto": "13MYfA3yO75qIxSPCiSGsGwC5_Yy4Lo6e",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $110.114",
+   "correcto": "13PpDgQNhN2pXf9Lk14C5fZyaHDhu02am",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.252.202",
+   "correcto": "13x1hAchOzZahIcMQSGJrSdd5SrBtqWzX",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.173.155",
+   "correcto": "14cfbmzqoGlSHgeVZckCIflkTO9OZjurG",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $848.640",
+   "correcto": "14Dr-7RDhmLAFE3IZJJw_FVUg5_MDFw4i",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $548.128",
+   "correcto": "14i1VQAmw8biCQHsgjy8PSd-UeC_Tm_6C",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $308.574",
+   "correcto": "14l3DHb5zKQpLERolYwP5yppk0CUgo5LD",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.965.000",
+   "correcto": "14m48vSSftzy7M-MS9dRgS3yGUA5jYXVy",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.181.599",
+   "correcto": "14mr7h-KRbJMcfUfYiuEtLfSKsS-7wWRT",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $519.798",
+   "correcto": "14qJa1zQutu9Sz6syn1yKJMiJkZz2-QhK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $35.600",
+   "correcto": "14SiaNqOjUtsISI8ov3HHGYT-BzFhPFUI",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $467.767",
+   "correcto": "14WtBNLSopu4eFN_R3F4iR5k35dfRO0uJ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $36.000",
+   "correcto": "15-ocYxA7_nVOiYVLr0ZZKn48XPvUyEes",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $346.530",
+   "correcto": "15L1Fz5S6AIL_FY0ZoPkXEVjwmmrjvZG5",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $597.478",
+   "correcto": "15nMHWD7VQkVKtXTaiMeFVStb2mMUIBvq",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $49.916.328",
+   "correcto": "15T-fHcWN-ltYHZYG2ycrBYhUdYrXl61n",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $66.745",
+   "correcto": "15ycbSe40ytjpn-ytTAcLiMyAh5eKGo9E",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $2.783.203",
+   "correcto": "1623PdHN9lfSBUkOj2L6Prjg59KVY1WQK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $130.000",
+   "correcto": "16AhwHnYkY4La7n8ZWRRKfA03nCLCeh0y",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $60.000",
+   "correcto": "16eNPvAyL9LOrzhJltuw9030mAeBMcHVe",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $42.057",
+   "correcto": "16Guh85DwTCbFOW5-1_R9Paby3zrrZv4u",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $161.543",
+   "correcto": "16LosXyEdFK3jBUM4jp3KwK_XLQQXHj1o",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $175.991",
+   "correcto": "16LVfS6IxGYlBemMwXJCurQgdkmgfp1Ht",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $5.145.578",
+   "correcto": "16MnMh-I94SbI25Fe0FCuLtxz00ILXC-e",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $230.000",
+   "correcto": "16qNFPrgaED-DeQzCmqJ2fqgJETcSfbu-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.160.215",
+   "correcto": "16SrX_9TYSnJUXrTN2jsfKQ3qtf5te8ei",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $379.655",
+   "correcto": "16WiKWjFTSPDv-r3SHPzngoT5oFJHAoid",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $661.260",
+   "correcto": "16Y5Xj3XABlidRDVS6lX6Jj5JKUVg8uOK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $205.630",
+   "correcto": "17-etLrX_12PI8tnAOu6l1G9_7rS19iYF",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $133.672",
+   "correcto": "179WMTMvd8LHnxI8zdiJJkN5vzOx3MK9i",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $115.230",
+   "correcto": "17Apws3_uaCW_mT_vpEyOAwJRfL5a8TvD",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $29.977.778",
+   "correcto": "17gBjec5vStg16QS1sNL4irPBUirpL_PD",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $4.784.747",
+   "correcto": "17Pu9RAf6cOuBhjOry0_bwPj4OGMIWGER",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $305.882.196",
+   "correcto": "17UdvqT8LyH7CK1XlikMxetA0_Z8fv4_B",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $79.773",
+   "correcto": "17Zl7nrNmGv7YMF6RCpY-sNn5wykQupym",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $39.261",
+   "correcto": "18_6Va2ioZk5QRwFsp8j8tBkZL-4G9Gfw",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $609.187",
+   "correcto": "181M5avUofgI42JrE_LaPSarygtmxG2j-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $6.760.000",
+   "correcto": "18OHPFLJeWQRmNLIBw2QwjwoXAv2UpeHN",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $560.128",
+   "correcto": "18w2TyNr_wFnzAHljxYTkGKYhnBEe61mw",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $455.003",
+   "correcto": "19O3V_5ftHLrGsjvmgB1UWo3my-mbVI28",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $33.137.851",
+   "correcto": "1A35MC7Nu-HbYpqwu1n8h1edI2rrUigbg",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $12.986.884",
+   "correcto": "1A6NIWLm5PPi4vUTLTWxdoQOWVblNX7Mf",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $635.000",
+   "correcto": "1AEDKpozgJPLKmqmYYdpPUR0Thi0wucSx",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.177.313",
+   "correcto": "1AIQ6Xq9G5yRgeUBAzpeuONWLm5AvJOTh",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $100.535",
+   "correcto": "1AKxufK1aBu6xfQXmkasowH_4BbKmoIJ-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $10.028.244",
+   "correcto": "1ASaeeN6o1nBjhwTyVxv7p-wbbhbAmsjK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $9.001.945",
+   "correcto": "1awBd0hP7uJNlwqonw6ZdfVDOV9ROpdfd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $53.234.758",
+   "correcto": "1b_GMzZMolRMRzbfSSrCy5ITW86xmn7Q8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $5.201.083",
+   "correcto": "1B9VmmY-F-sj6bApTHX-POgzvK1ZDcMeR",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $100.101",
+   "correcto": "1BaaHS_RxGU9tSH8RxxfXzan4HrKNLQlI",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $200.035",
+   "correcto": "1BB_pd1XFAOS8sxrmBnSGkW1GEqa3Quuk",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $12.299.263",
+   "correcto": "1BwOhSxQBaexf_nikhLghA4UDJDY0Yt_v",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $14.241.029",
+   "correcto": "1BZdiqaG887gXCA8829u_Su-Ai2EREU57",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $28.844.364",
+   "correcto": "1C8e5P83zS3CvYaYdg0Hf80qyLgLrD_8n",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $6.896.122",
+   "correcto": "1cB5BbsqYXD1Q5F3ZPVQOnPhxnF4dILvv",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.410.286",
+   "correcto": "1CGamMx4epJk_K4OXh_orBVWT3XpQrq34",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $23.988.436",
+   "correcto": "1cH_m0MqjuXk9aO7S5VflLqyeX0uAVd2V",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.351.143",
+   "correcto": "1cJFoaveUvRUCbhWMCFamHudjovsgepeK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $721.117",
+   "correcto": "1CK86gPaP7wGePngi23XSIp8OP7l41tML",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $50.000",
+   "correcto": "1ckvUffo81FjD-LcHGlpVdbg0SLRsqEHP",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $6.826.890",
+   "correcto": "1CnbZW_FmHKk1c6kBThgelt6c8zluaOkH",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $592.517",
+   "correcto": "1cQIQvFN0hClfmz7EfpQZgyh3m4LAt0il",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $189.592",
+   "correcto": "1cXtzlOJwxJx-Ku9pKihsGEUHAWG9ysvX",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.348.146",
+   "correcto": "1D5Fg43zQO5kZIlXw1a-Jd6xK9BFBedby",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $576.546",
+   "correcto": "1DaytJiVK2JrsF_UaeEa_S1r0VbYWXbpd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $9.098.855",
+   "correcto": "1DIQ2YT4AaNH5jm3cpQmn_qI6GQXsOMss",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $232.329",
+   "correcto": "1DJXxTGrTWrpyWf0viVV6tdxVOk_rh1da",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $371.334",
+   "correcto": "1dSnire1cmCxaO-oHY80oMSwzaXZH1uWn",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $8.790.788",
+   "correcto": "1dWMvlJmMJasLO2dBzqxvgCVnS6aR5nww",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.642.427",
+   "correcto": "1e57rMJJ4oaDlE7YB02ziOGlv8sGJrpTf",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.148.404",
+   "correcto": "1efELMSma6GHY0HsDg9IBDagvd3yWt3c2",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.745.794",
+   "correcto": "1EFpeB3XGWl4hD2ug4GihDL6PoSoizFTw",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $469.565",
+   "correcto": "1EG2_1aayna0vSJa0i9FUOWyZEmlNSE5B",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $15.189.472",
+   "correcto": "1EoQqZINbj6das1y2wzvta0UvJO-K1Y8G",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $2.182.272",
+   "correcto": "1EwJTjwGa1LUAPshbGSVo2OM4N82d27P1",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $16.060.006",
+   "correcto": "1Ezjrdu9VUP6tGPIR8g4cA8ctxAFrML6g",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $772.480",
+   "correcto": "1f8NNCLV7QjTL4sTdqFGF0c9m0VY3Qxwm",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $38.802.013",
+   "correcto": "1FAOpsWYm8cI-LdkQSRvIIHbnGCFpd8M5",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.687.904",
+   "correcto": "1FFipC1b2lV8TRpA-eKLnStzIB3zodQEI",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $903.500",
+   "correcto": "1fH1GFJkWnpfK0eP4QiYs2cwuLqFBGUQw",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $39.086.884",
+   "correcto": "1FofZel-bUX7HRWHo8b-CmcJpN3vpfZvR",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.617.224",
+   "correcto": "1fQeOfDT-Pm1i4lxFxLKpgzSZBrIPkiJ8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $18.757.047",
+   "correcto": "1ftXVZc2263eI9CBg_cXQohxfE5sucCxo",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $773.256",
+   "correcto": "1fVkmOK54SRWfH2fRhvhITDX7-rvvDzzZ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $128.218",
+   "correcto": "1FVOhXt0u7q2F-Dhjo_uh5InA0mdv4a_n",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $22.984.479",
+   "correcto": "1fwNVb9fxkrC0VmFA7rvinp-1e5q3s96F",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.173.085",
+   "correcto": "1Fz7JGv_HLEnM-PZqz9G3IRA0Q9WUf9ao",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $86.297",
+   "correcto": "1GfSRjKeK0GImL6k9tnJ14X0B_m1WyUJJ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $431.741",
+   "correcto": "1GfVEL_g5d8ZF6HZ9bSF44jZYH5hbBd3u",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $100.000",
+   "correcto": "1GL8hfC9DA3ugwY19E43LUwEw4YssKk0G",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $552.221",
+   "correcto": "1gnLvgtn2MhektYkKhwJi5CxVXrHogCMq",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $16.362.371",
+   "correcto": "1grsxHbK8Iz2Oj6jlwGK3VgqqDUODan4C",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.946.119",
+   "correcto": "1GVn5ZfWMQHPqwnK9afuSBSyxuABOe9Ng",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $30.687.101",
+   "correcto": "1GW9luFjVN10DWNg9DC4G1Snnvb568O8y",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $308.106",
+   "correcto": "1GypGaf2Y00tslyMAJTqM9-wqmfAzhuty",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.662.023",
+   "correcto": "1H9-7T4TlervwC84kvOdF2uEdFmNJBary",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $27.450.496",
+   "correcto": "1hE0F2RGkVqMKzNh_X1-MBkwtUONeFqs2",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $44.151",
+   "correcto": "1hefNjtWYiwjAAZy99RZ89vMcyAy9ya9v",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.326.154",
+   "correcto": "1hHsYGwp4PqDU_2Fs2vC7uuS7g4IJ_QPL",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $646.949",
+   "correcto": "1HQM0N96zGhF4ufJYDGMOoT5KCzP6wyN_",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $254.116",
+   "correcto": "1HSKhYrkda_oqCudVi_YxcRbgp9KIbLa-",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $80.550",
+   "correcto": "1HX0lHM1H5kipJQ8X8Ay7QbqfkE5WnYsc",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $12.833.682",
+   "correcto": "1hZ58zviWollwQN2ViwLC9gjx9ongV0bp",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.177.557",
+   "correcto": "1Ic9U1G7zpVnJaXmRDxF5RgzwsuSiM7Nd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $775.020",
+   "correcto": "1Ii7oJzbBe8050wyXn9YzixIHFErtUttW",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $260.123",
+   "correcto": "1IpEXtTKcJFErlcDOgiaymLKQ0vWCDmlA",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $4.675.063",
+   "correcto": "1iSx7Ycb5LP27aC9ke1nS5GGNmzQb0afp",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.190.048",
+   "correcto": "1IwTPtWawIl4EFu5t-nFFD2tEcMVDO6yv",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $210.310",
+   "correcto": "1J-uHcxsgrVEgNd1nP385Cz40vz6ZDO1W",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $11.972.729",
+   "correcto": "1JcA7sVoqyw57kqQiShzEPq9Y3oByxkGK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.110.198",
+   "correcto": "1jP8avoXc_x4JfeLra2gOysTeML0TXr6t",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $24.467.823",
+   "correcto": "1jTZQ1tWYojsLwxVrAfAWpLbiYRXtKa1j",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $618.970",
+   "correcto": "1JXPlChLgFEqVFCMFXUTHkQe8EKDM51ow",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $5.742.616",
+   "correcto": "1K20X3oRzO0x0nS5IqpgXvwKN_LGqv9mN",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $400.000.000",
+   "correcto": "1kH-AbddfKeWmvDB8Na5foGrMBPYzOE86",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $244.263",
+   "correcto": "1KhxZJMOf2RO3Tl965YA-jYwI01VowVKl",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $280.689",
+   "correcto": "1KjvETgyJeutZAl2gRPvDT_28WmSBts_w",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $264.740",
+   "correcto": "1KkFKAU4R3MUft7LsECO7W-BRUTm2za9E",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $17.311",
+   "correcto": "1Kwde6jzk99HBg9mHt3RT1r8oN62HAtx9",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $5.079.586",
+   "correcto": "1KX5D9OYqdGhuz1iHfugmZNTtsmhE3xnA",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $34.986",
+   "correcto": "1l_p4-g_sLFxZloci-CR773upu1Th0BNf",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $590.720",
+   "correcto": "1l7gQuO-OUs7G8M4Acq-xEZnnA5FgkDLN",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $24.580.060",
+   "correcto": "1LBqBUeIwRpbDaOsqO6_EhFUEKWnhqBtS",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $38.032.565",
+   "correcto": "1lDvb966JbxKHM0d5YAbpaOmsplzooNI3",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.017.675",
+   "correcto": "1ledE6c3snKBCBjiUshdbPBcj_UuGozWE",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.746.511",
+   "correcto": "1LGbWxGiO5LckE8E0pMx4sCxNBcA25bIj",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.391.500",
+   "correcto": "1lW5qtALMAjJRY0WCHJeWj109n25zAP6P",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $2.948.858",
+   "correcto": "1m-nM5SaYfAx1IpolcmvJqOaJCD0Oiali",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $462.701",
+   "correcto": "1MBm8JJgz2a3O0U7iCw3NUrChAwdVkSD9",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $179.400",
+   "correcto": "1mCNb4wvBHSGQGQjsJJUsKK9XOj63NtKv",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.672.956",
+   "correcto": "1mf6MRON1HlMx7qPx4DM2BKeyhaPmf5VO",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $18.963.021",
+   "correcto": "1mmkzdEFMZxelXGVMyVlqskr6-rViikiF",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $92.087.947",
+   "correcto": "1MoDrYzx8dAz8cTLRkNWbnNPINoXuvFph",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.238.110",
+   "correcto": "1muaFF3Po-POSiVmofxOqVNxGKvl6pLJ0",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $355.125",
+   "correcto": "1N0niA6KVmCnXOSJxsiIfQXreACx69IRB",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $152.134",
+   "correcto": "1n3DJ2NbNFYxUgdvC43StcfB4uS-3nOYs",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.053.089",
+   "correcto": "1N3MSB8OhW0Y_pQtDhd5OIQpzcs6-YI-x",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.311",
+   "correcto": "1n452wsUkgIpAo5Dg17PIPK-cOl1hZJX8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $582.541",
+   "correcto": "1n6hfc9NedMvwj-ms8bUvmZLkgduapL33",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $243.493",
+   "correcto": "1N9jvr-1Nf5iZBvHaWCL7J_TagIZgTiU0",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $131.520",
+   "correcto": "1Ndnuc_oCGfnFVOZrnSvq4JvrumGmKUJo",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $43.840",
+   "correcto": "1NdWJVf3MqcmniNIo2bgtI6sFjgzgxpUY",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $182.861",
+   "correcto": "1NfFIe6eJoP1uG2oekbP6xBD5yPzAJt1O",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $104.240",
+   "correcto": "1NX5elRtTPNPHbEODOMrMiY5NfaGMDzJl",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $129.140",
+   "correcto": "1NYOSIV4c5YLDCXSul8V2b6N87LmLDzS9",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $514.592",
+   "correcto": "1o-rLLeL5GKAjwCY8cyHi-Bi9R7Nibp4i",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $10.240.000",
+   "correcto": "1OcXV9Z4xEjzNH2o3b_EJoRWji4Z0MaBz",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $624.317",
+   "correcto": "1oCzKUsnyArkBoQDCF5uUM6K6cjq-6jsT",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.166.131",
+   "correcto": "1OiIpmG-7niOS_JBeWbhQhxWcBkmRlhec",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $5.132.849",
+   "correcto": "1ol8DJjtjBUnLPnzGkue9WGQrDf2NI_8y",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $467.367",
+   "correcto": "1OPHcOT6opAWzuRMWCiSxf_kA01IUDqgH",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $18.230.000",
+   "correcto": "1OPmHA3tpRQJDc9DZbhIjqJnF-GoxBzHD",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $516.806",
+   "correcto": "1pBz6QJPI_-tMplkgleh1r2nASCMunPDQ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $31.554",
+   "correcto": "1peiQUBz-OxFwxDZhOorT3B-fHiH6HViF",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.185.780",
+   "correcto": "1pHrFv4stVZeoo0T2dnZKR_wI2soXHwlu",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $37.886.934",
+   "correcto": "1Pl-FaS1C57VKNPBCLQFESZ-FayNlX4AV",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $78.349.587",
+   "correcto": "1PLGV30WCw5s6s9wdfTGnqTovRyYqBDiW",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $654.146",
+   "correcto": "1pNmJ8ecwzhqm787e03x58XJXuduCy4fr",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.297.610",
+   "correcto": "1Pz-rltYbNfNBdI6mN2m7sl8WirWB1Lm9",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $10.203.263",
+   "correcto": "1QMhJrq2beF6lH_FSF4Xffnjvmh4doIDd",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $14.974.202",
+   "correcto": "1qMigbukTtmmAjVyhYOMW58dIoj-dZnDJ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $4.859.763",
+   "correcto": "1QoQYLyYrpRv5mBoTuXG9ej1hHhShjUT6",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $239.791",
+   "correcto": "1QOXwZ-95CgeyE2mmgBEUJn4rs3KLk9_4",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.105.443",
+   "correcto": "1QYaftA9Wl9qnRjfxIQQ_qShufEsgsBWK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $13.410",
+   "correcto": "1rdJdN1Vc_cVeebPW-7eYKOoBonbWw-bH",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.501.126",
+   "correcto": "1rdTpBevFRKnpAKYd1kSWVBY569gPU6ri",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $757.258",
+   "correcto": "1RINY9lq8TfK4C3MJNe5B3fNjLvtZkTNV",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $4.400.000",
+   "correcto": "1RKR4wQcL5U0ebM2whBJ6kR1cZ56bNO97",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $284.872",
+   "correcto": "1RMDsDd4EC2hdLdIIHCA_M9o_I9AP5hST",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $57.051.567",
+   "correcto": "1rqLMuo5HgCOgDmET1Ois9aI7x311GQ43",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.525.579",
+   "correcto": "1RSypk0CZ5VBxiB4zRDTzbohsk1VKdgnz",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $78.195",
+   "correcto": "1rWCd8DLpiauDwp12C1GTKbdy-vKfB3Gz",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $189.293",
+   "correcto": "1RZS2BahHD3xo-nFMQD3J4vfOBi5elNGm",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $72.885",
+   "correcto": "1S6KVHvAPb2CRZ6Beiq4YIl6VYxOUaPEC",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $947.572",
+   "correcto": "1ShEhNX5sUNSZQ7nuQXklI3YnotpVXaD6",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $427.965",
+   "correcto": "1SltYLpXkaGrIfQkYr9B3aBJ3JxwpNbsz",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $639.974",
+   "correcto": "1sw02Gf2zqrmmor-3j5mN2wrh5c7pTxaF",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $878.716",
+   "correcto": "1sW7trc-NRwRSzrsJLIHDMrIOaFI-KDZf",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $148.431",
+   "correcto": "1T_PBYLH_fHdyRqCKK4tun5thSWRBS3Fn",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.811.458",
+   "correcto": "1TbqV6hIsOOiEjBikCT3-uEjwhp3hZ6fZ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $112.491.009",
+   "correcto": "1TD_Q8NVX3rkHI7LtVxzV51YUx95QPmMF",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $406.616",
+   "correcto": "1Tit2bNOXn-0ffkjzF6bGzHT-72zKphVJ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $325.222",
+   "correcto": "1Tju7Dfq25ek0sDGhD-ObNK9TQ02YCeJo",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $41.548.227",
+   "correcto": "1tpNtDRXJoLxm8NF-Y2A_nxXUpdLZBb6W",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $344.401",
+   "correcto": "1tTITOpxc371OH4cpBjlJ5tUVaIB2AlZ8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $654.065",
+   "correcto": "1tuzW4mQYWIwGJeXJWHKPW670Wbhw89xy",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $109.600",
+   "correcto": "1Uc8PXpF4Pyf3DzZHN49D8KW22_7NE_Zc",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $32.094.427",
+   "correcto": "1udHvqCg4YGo1kVKhvRgLWRZ-qDf_Ujz8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $87.680",
+   "correcto": "1UefBKYg2j_oKJZw8zhsVjfa8ugpvswr3",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.487.556",
+   "correcto": "1uGG47MSN0z46HJFfm2K8ag9T1C5aUK2O",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $12.924",
+   "correcto": "1UJg1c6XKmZ33LGOCnwf9k8uZ-LxrusrJ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $160.000",
+   "correcto": "1UN3fnd-eAAgzshqpbStV_tQRPY--1rPs",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $8.675.411",
+   "correcto": "1uouuk40CIzcU87YuA_6DRcO_In_OTycK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $10.825.886",
+   "correcto": "1UPcH-AiOkKZRGNGyN0YlqEo_nsRR3l3e",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.440.369",
+   "correcto": "1UShzbg6nFi6mWr-Xnk4ovA2L1XE_oYcv",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $368.936",
+   "correcto": "1V-m6wER5I7eI8tGgprKxzZYw6Cqv4RZu",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $150.000",
+   "correcto": "1v5BCR7oygMRjVszmQmIQxTkLiiA8iVCU",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $125.088",
+   "correcto": "1VIVKblT-fp0GSp9Zu21kIkEOEhCMH8gc",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $2.574.013",
+   "correcto": "1Vk8cmS-OPYemlN3Q-HKu2IXw3CsOIFY_",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $15.328.174",
+   "correcto": "1vWh0NAZMqvMZXw3osl5b56l08K4A9Lkh",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $414.481",
+   "correcto": "1VYITUqIJ0NBNyhVc2O6OpYU--T4S7NrY",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $8.232.237",
+   "correcto": "1W054WIr8DEWJKMLE-ivqD52QdISKv7y1",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.415.700",
+   "correcto": "1w0k8-C-FSfPQAEYu9C-WdeVGShZv1sw7",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $11.072.491",
+   "correcto": "1W57TSsEZMU6wh_i1MMsQhscRPm-0sMPE",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $692.467",
+   "correcto": "1w8AP7CUwteX0LBCHIB_IDOjTHF1clbyi",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $21.319.200",
+   "correcto": "1wb7ptoyH860KzJFYU6TQvpSB2jxsr839",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $753.969",
+   "correcto": "1wG2YmsIb5YLBpPCxT7m4q7Kor33eEQQW",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $168.904",
+   "correcto": "1WJWIAVGzaZu-8mbyiXO5xcQqdkiKTStr",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.553.236",
+   "correcto": "1Wlj_p3NRMmlc-5ayKBC3kt2uE_vDwcgg",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $3.714.852",
+   "correcto": "1ws78PBAyx8un-YPZ4fRXRVKI8uroUMOy",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $451.730",
+   "correcto": "1X3qJWsn-5lpv4GcCADo7gHhdzgLHEtru",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $695.118",
+   "correcto": "1xvOBi-FwsTeuSP9CCIh_eJq3jZzU0I6U",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $261.517",
+   "correcto": "1y6XPsNbeCoIxVGzlNcsJcDH-cz3wotI1",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $177.815",
+   "correcto": "1YdwgtIy_FTi5zNUfQQn97udMqBW0LbNO",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $136.800",
+   "correcto": "1YfPvv7Nocu5bvov_Gxc22UwkbfeCvE5s",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $25.000.000",
+   "correcto": "1yGwIRXgTA406a7vh1FnxSOl5vPBle5A5",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $6.831.275",
+   "correcto": "1yJ1dT91_W3K1yv-HlnfJ0U6hLW6UL5l9",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $8.974.572",
+   "correcto": "1ynvxP1GJCnxPCmtcuoM5FDujJqkNFGam",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $205.246",
+   "correcto": "1yq02eKG8vGLe9LFgdl-QH-fBEWkeLQvC",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $28.430.659",
+   "correcto": "1Yq5V1okwMdahZThUIHg34NI53mTFVlx8",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $575.603",
+   "correcto": "1yr-qlCCgQBEZLoPdWha7iK_6gGV1RPQT",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $1.136.886",
+   "correcto": "1YR0Ovr935_5kWZSEnpQEKA_QCHpB4I1D",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $665.875",
+   "correcto": "1YsHYquVGyc_KJXuFgVvT4oq1qOTTI-JN",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $140.880",
+   "correcto": "1YuK4sTrSFT7ZdHZeucJg6YwOvOhGHyxN",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $19.973.790",
+   "correcto": "1yvfZ-2L_B6d9e2MktadV5Yi51g0rvHVj",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $7.015.981",
+   "correcto": "1YwhYxKZHN1tsarcpe7OQgStV9G39Uk-H",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $106.167",
+   "correcto": "1YxjWPnvrIGiuTb0pB8IQUWH4rDmywaNZ",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $161.942",
+   "correcto": "1Z-Qur5kQQ6AWTpVuDW1uGnoC44-Zrv2U",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $117.400",
+   "correcto": "1Z62wfbKY5nC91Vu9z28pDUXvA5pE-tSe",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.239.552",
+   "correcto": "1zebhe18-9Vx3kgQIBo_zfPH2zVDswQZo",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $12.100.000",
+   "correcto": "1zjo25eZQf80ivfEqz0lP9_2NwjgIRUbK",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $105.127",
+   "correcto": "1ZrB5gt6wPHVTSmz3UZPdWXBzgg12MzHU",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $20.000.000",
+   "correcto": "1Zrjr6uex5vVY06ozzhXV7Z8rm6fa5yGV",
+   "familia": "importe"
+  },
+  {
+   "texto": "el comprobante de $26.824.001",
+   "correcto": "1zWPtZ-OnQL9EYFaJSudB6b70475uK2wS",
+   "familia": "importe"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ09/25»?",
+   "correcto": "1_bb1ECOmVwPBd0s65dU8QRc_w_qS2wZ1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ANTICIPO FINANCIERO ANTICIPO FINANCIERO»?",
+   "correcto": "1_D2ma9jWdGml51qIsr2XrAPmr3F5VG3k",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos del empleador Apellido y nombre»?",
+   "correcto": "1_ZGhTVIRUhm7_freOpPO1XiZ4ibFBfZI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «910,57 Saldo técnico a favor de ARCA»?",
+   "correcto": "1-7tvfcAGMQ3-vNVsCA5YuGdQA91Bq-Us",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «397,12 IDENTIFICADOR ÚNICO DEL LIBRO»?",
+   "correcto": "1-dK9WmgPMqCmffa-D_qjjVE0EYAM53e7",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «838,00 IDENTIFICADOR ÚNICO DE HOJA MÓVIL»?",
+   "correcto": "1-HL4_ho9W1axApQ6ify8i_sAO6M3kdf-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: YbTTrw»?",
+   "correcto": "1-jt-hBiFpAP-b8k9l9PB3NcqH4votzJ6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: YkBhYy»?",
+   "correcto": "1-m--AWsTTFaHvVMykVxaXGXSgRn1JqHI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ01/23»?",
+   "correcto": "1-OQLwlP_oojC7OF61qZsTOCj-tOGHgKo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «82620 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1-uBpri8P2JFg_gWyn6gCi6AfWepr5gye",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Galvan Chavero Maria Guadalupe»?",
+   "correcto": "1-ZuknnHoL5dE-G-j30ZSSo2s16dQtNPd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 13 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "10_u5CqDJsxsN0a9_s_u9lV0KWNlpZ8zP",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 31/03/26*»?",
+   "correcto": "10BMGs2DXlFczB9hB4W_NIEdH-J_fSDV9",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10812324»?",
+   "correcto": "10daV1FvIe6I7XH-4IgxQQ9SS-gJajTt4",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10747792»?",
+   "correcto": "10fl9_0QO1uz3qt7RjnzZLF3ZTs5dhVTN",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 30/07/2024 DNI»?",
+   "correcto": "10KcZc9_5aDxw4SdAABV2ZNEeWsut7CK6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Por el presente el/la Sr/Sra: AVALOS MANRIQUE MARCELO ALEJANDRO, CUIT/CUIL:»?",
+   "correcto": "10lUBAcz4RS1_leEHwp_QKHYeYyAwPDlf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «G5E IERIC RENOV ANUAL/OTRO CONSULTE EL PAGO FACIL MAS CERCANO LLAMAN-»?",
+   "correcto": "10NNqNMx7-GaPhmcwYYzTj1nqGNzSKcSD",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Por el presente el/la Sr/Sra: PARDO LEPEZ JUAN PABLO, CUIT/CUIL:  20313997554, ha»?",
+   "correcto": "10oArx9rUt6c7Z376L1p3Z8U8eOHfuBS-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10679608»?",
+   "correcto": "10p_7ImbkcH1daJ3Wjd1cWck685rx0aR1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MATERIALES PARA CONSTRUCCIÓN»?",
+   "correcto": "10PQdcMjVEDqWsBhHjglK986cx83MhNuE",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10604809»?",
+   "correcto": "10qOYbgbv4t1xPmIiO9HSltTn9SW2LAV5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «818,68 Determinación de la posición mensual»?",
+   "correcto": "10sTwJuOCk1Lp_NlfpsK1jQG_xddRuQgf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10604854»?",
+   "correcto": "10t2gZwfjgBZFQX9sQ5-gT_Dxvkg1MyaR",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Por el presente el/la Sr/Sra: ROSALES DIEGO JOSE, CUIT/CUIL:  20358508783, ha aprobado la»?",
+   "correcto": "10wogaw6hI5DEgkiIf5w82AVwxz9VC-yY",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ALFARO, NESTOR ANTONIO 0401 BASICO HS NORMALES»?",
+   "correcto": "10ye1etzqcRtJEJtF82NCg6mCnRVI6Fj-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «240,88 Saldo técnico a favor de ARCA»?",
+   "correcto": "113vKyTfVgMSto7Fa0qVnuGTzpFoyUOoI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «332,48 Determinación de la posición mensual»?",
+   "correcto": "11abBxoXdGWFf3rWzlsqwPGIGP1vOmMVn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 164»?",
+   "correcto": "11ILZyixkhHowCNALGrcEetMq7VheFIcd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: MONOTR07/25»?",
+   "correcto": "11MJLN-wH7dwW8kH0bXN-ieijcq4X3snH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Consultor Independiente (sep 2023 - Actualidad) Perfil Profesional​»?",
+   "correcto": "12eFJ-zdpSzcMJ6Ef7AafQaqi-YNtZUCz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: ZAlHag»?",
+   "correcto": "12I7RFPW1KZvTnx7cVb_OqF3MGWJ2jkCr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ02/23»?",
+   "correcto": "12IAb_ZKX4l81uRfCDF6jEnFWwW3PPDRz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: sZT1Ta»?",
+   "correcto": "12ofJBDXydvcPzhhJ-WC5kYzF27zqo98p",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PLAZO ESTIMADO DE OBRA: 2 MESES»?",
+   "correcto": "12Vcjhhe_E91QUuQ0tRkQ_fmHVKSerc2Z",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Apellido y nombre: QUIROGA JULIO CESAR»?",
+   "correcto": "12vzGZ-9wiC1rm-tgpxBhH-98jtzTXRR3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 29/05/26*»?",
+   "correcto": "132etFdmC0LmruIGsB_R-3Ma5byhsp_nK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «920,00 Total Impuesto Determinado»?",
+   "correcto": "13a3PiCy8FW5Wz4YjfFCebMs62OIiLDaU",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: qB75Lq»?",
+   "correcto": "13chOdVH_XEI6adZEyctBHXOiDf11QpDt",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Respecto a los NOTA DE PEDIDO Nº 40»?",
+   "correcto": "13fiiUuI8S0BgGGj91aRLFcAlhvaa14k6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: G7IN4s»?",
+   "correcto": "13jhes7qBVSOx-gzJi99O8KZmklJCuziB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «RE-ADECUACION DEL PLAN DE TRABAJO»?",
+   "correcto": "13JZJ_n9t2HAnCAp2gNpjbYkkhp3B6qEp",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CLASIFICACION DE MATERIALES EN»?",
+   "correcto": "13o07FqgLMNkG54Le-YzKjuJSlXtKihTb",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 20 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "13PpDgQNhN2pXf9Lk14C5fZyaHDhu02am",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «57 Reducción del Saldo Técnico - Beneficio a pequeños contribuyentes cumplidores-Art»?",
+   "correcto": "13REVCAL67QaQm-4EQWGxBkj8wNcx7G4O",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 8-3-2023»?",
+   "correcto": "13u3qqyDXaUs17dw4U3TGvQuT4EBMbY1l",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «AVANCE MENSUAL EN % ORIGINAL»?",
+   "correcto": "14-K5nvo9RKpG4mcOR6i2f-UH5iysAeO8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «44 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "148W8Bim30gQ6M1-Vapaou2PrsVhGMdZl",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ09/24»?",
+   "correcto": "14cfbmzqoGlSHgeVZckCIflkTO9OZjurG",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «16 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "14F5gGOApX52IcoD73t1sMofxktlGbanM",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PAGINA 1 de 13 0401 - BASICO HS NORMALES»?",
+   "correcto": "14i1VQAmw8biCQHsgjy8PSd-UeC_Tm_6C",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 03/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "14InMrs4P0aiY3l7KbFLzyE1jaESb-zHJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ07/24»?",
+   "correcto": "14l3DHb5zKQpLERolYwP5yppk0CUgo5LD",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «14 días de fecha fact prov»?",
+   "correcto": "14m48vSSftzy7M-MS9dRgS3yGUA5jYXVy",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ08/24»?",
+   "correcto": "14mr7h-KRbJMcfUfYiuEtLfSKsS-7wWRT",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Forma de Pago: Tarjeta de Crédito»?",
+   "correcto": "14SiaNqOjUtsISI8ov3HHGYT-BzFhPFUI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 16/01/2025 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "14UFNIMGdRrV-Ypwhpe46RTAd2RfwLnMM",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 01/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "14V6FSvqj9UODVyzF55DyRjidfc8oWdzr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Tipo de Sociedad: SOCIEDAD POR ACCIONES SIMPLIFICADAS (SAS)»?",
+   "correcto": "14VgdpA4mOJ1_AVRKE9ADyLnJXo--txL3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Emitido por: Contribuyente con Logeo»?",
+   "correcto": "14WI4I2g8rhTeJFQiFJp_jeY-nQUOoX2J",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «5 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "155qUOuhyk4508Tf1TB_XReMQDhkHJIt1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Registro Seccional: 18002, Número de Trámite : 376386, Número de Control Web: B7F16802AA»?",
+   "correcto": "15DKSZL6S_1hxGUh0pwpipAZWPdO8Sg48",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: Ir3BaD»?",
+   "correcto": "15KyVR-s6Sw3PR5u0shgb7AvjLKrZaDKw",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ESTA BOLETA FUE ABONADA EL 11/2/2025 EN BANELCO»?",
+   "correcto": "15L1Fz5S6AIL_FY0ZoPkXEVjwmmrjvZG5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «74 Total de Aportes Cuota Sindical»?",
+   "correcto": "15pY8BtpC5pub7qEahIcHd28vdBvB3aBc",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «AVDA RIOJA NORTE 75 - ENTRE LAS CALLES :»?",
+   "correcto": "15QQ3ixN9fIJcsSutO6sJwgh3Z6AehbrS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Observaciones: ADICIONAL ARMADO DE 20 METROS»?",
+   "correcto": "15QUCmWc1KGfcQqiX-UPo3VDklfNEjqjz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: Z$Ef5c»?",
+   "correcto": "15W_tImomGG12iy4JGrGHAOwrEWjX2Pxk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 02/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "16-3hLakTou4qFozcYdfoJTT5FHjfxFXJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Formulario: 931 v4400 - EMPLEADOR DJ MENSUAL-SUSS»?",
+   "correcto": "160RvawJlY9qrKfEt8FF6WjSQ_CdRDHhY",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «4 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "162r6F7iZP_i_luhqG-fVPkJyYZa8ZJeX",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Comprobante de Pago de Sueldos»?",
+   "correcto": "16eNPvAyL9LOrzhJltuw9030mAeBMcHVe",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ11/22»?",
+   "correcto": "16Guh85DwTCbFOW5-1_R9Paby3zrrZv4u",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Observaciones: AUMENTO SUPERF PLATAFORMA»?",
+   "correcto": "16jl2ZbV8ZtMSeyxauVukDp62nbsvJXlb",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 06/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "16KjbH_9bZBN94FH8KAM4fNy7Twh-M6Vz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 23 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "16LVfS6IxGYlBemMwXJCurQgdkmgfp1Ht",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «029,45 Saldo técnico a favor de ARCA»?",
+   "correcto": "16SrX_9TYSnJUXrTN2jsfKQ3qtf5te8ei",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Pagos :: Consulta de comprobantes»?",
+   "correcto": "16WiKWjFTSPDv-r3SHPzngoT5oFJHAoid",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 6 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "17-etLrX_12PI8tnAOu6l1G9_7rS19iYF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: myVUmf»?",
+   "correcto": "170qWairhep5wBYt-sr-TucOA0J7U0A0d",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Forma de Pago: Mercado Crédito»?",
+   "correcto": "176e5FiXtTvdpfXCZITMHHdhO9r42lGzT",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 7-1-2023»?",
+   "correcto": "1780k9yroIyfLi2ci_81Q3bhgrCTHDvm2",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 3 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "179WMTMvd8LHnxI8zdiJJkN5vzOx3MK9i",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 1 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "17Apws3_uaCW_mT_vpEyOAwJRfL5a8TvD",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DIAZ GOMEZ BRAIAN FACUNDO»?",
+   "correcto": "17BTMtz50GI27SMGfFjQgP0_Mrrq8Qmw8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DN: C=AR, CN=DUARTE Oscar»?",
+   "correcto": "17PEX6W7kUGv1ndTUvUwVYSbeBTlJWOd1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPROBANTE DE PAGO DE G5F IERIC CONTRIBUCION *** SEPSA - PAGO FACIL *** 1618»?",
+   "correcto": "181M5avUofgI42JrE_LaPSarygtmxG2j-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Por el presente el/la Sr/Sra: FERREYRA RODOLFO SEBASTIAN, CUIT/CUIL:  20262041132, ha»?",
+   "correcto": "18mWmJMswwHwiQs59OcUQ-7v62mo-9P6q",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Carla Patricia Total Haberes Remunerativos:»?",
+   "correcto": "18QC6FKMwzp4z-seq7MSWnxfCIlSqzcJ_",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CHECKLIST RUTINARIO DE VEHÍCULOS»?",
+   "correcto": "18xKVCrB2uVoana2bAbu2_16wKrXFDBEu",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: fDy3vB»?",
+   "correcto": "18YdORPEC6mZXX0y_4jhdNH2OfdQfgJAx",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 30/12/25*»?",
+   "correcto": "18zJ3PX1WEVVnKLnHKeaFGtHziBdirton",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 162»?",
+   "correcto": "192mLxsRXIZqfIUifUBXXto-w625ZY1VG",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «534,98 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "19eFuRNK3QIa0MgaOMcvWzZl-slWs9Afn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos registrados en las bases de la ANSES al 10/11/2025»?",
+   "correcto": "19O3V_5ftHLrGsjvmgB1UWo3my-mbVI28",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 31 de 32 Simplificación Registral»?",
+   "correcto": "19vjaTltVhGw-UwkFzsolZT7kl0EE7pBE",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «947,54 Total Impuesto Determinado»?",
+   "correcto": "1A6NIWLm5PPi4vUTLTWxdoQOWVblNX7Mf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 30/07/2025 Firma empleador y fecha de notificacion»?",
+   "correcto": "1aaDYATpFoUOT15nFZjzCTb6T6z_HbO1O",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Por el presente el/la Sr/Sra: MEGLIOLI FACUNDO FABIAN, CUIT/CUIL:  20318202622, ha»?",
+   "correcto": "1aDSBzbtd6Bc59YgnA2BNwVhFI8S9zH-r",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 08/08/2026 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1ahUPIQM5drcabL0NHFNfXry2lwG9Vt7c",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ10/24»?",
+   "correcto": "1AIQ6Xq9G5yRgeUBAzpeuONWLm5AvJOTh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «net/intranet/boletadeposito/boleta»?",
+   "correcto": "1aK8BugGx-0Ebb_prqTucQtsA3xOppPRB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «16 Total de Aportes Cuota Sindical»?",
+   "correcto": "1aRMJS0XJhogTH84vkh9Dctic8S0rv8Kn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «944,51 Saldo técnico a favor de ARCA»?",
+   "correcto": "1awBd0hP7uJNlwqonw6ZdfVDOV9ROpdfd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «GALPON 9 · LA ESTRELLA · Javier Nasser»?",
+   "correcto": "1b_GMzZMolRMRzbfSSrCy5ITW86xmn7Q8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Tensor Ø 16 soldado a cartela»?",
+   "correcto": "1b-dOzx5dexHYsL_895ZlG5n5rgZZzfpx",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 03/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1B5h0H8VLZ-tATzaDPOuFmSYjTDHzu0xP",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PAGINA 1 de 6 0401 - BASICO HS NORMALES»?",
+   "correcto": "1BB_pd1XFAOS8sxrmBnSGkW1GEqa3Quuk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Emitido por: Contribuyente con Logeo , San Juan, Martes 1 de Octubre de 2024»?",
+   "correcto": "1bi-VfDkdGoN5QKx6etS_11x2fWZH0ZFd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DN: C=AR, CN=DUARTE Oscar Alfredo,»?",
+   "correcto": "1bIK0_mxeceqv21ecKhF_Si3us7stPFel",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 173»?",
+   "correcto": "1BimHJk2AZ7V5MwOuPcqAJxxAP9en_TBv",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: #Me$kq»?",
+   "correcto": "1BK1PzPD3NCYGXshX4UFTcA1ABNvK-cLr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «2564365 Total de Aportes Cuota Sindical»?",
+   "correcto": "1BLHCrwNKfLnOCn9koyiXoSeSH2v7Ag_j",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «BANCO SUPERVIELLE CTA CTE 6349»?",
+   "correcto": "1bLRydXwZQakKIIld28wLOBpowzk_8Tfy",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 05/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1BqYDxA8MB2a6Ufanr1DYXNoqHUflvwsi",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «262,56 Saldo técnico a favor de ARCA»?",
+   "correcto": "1BwOhSxQBaexf_nikhLghA4UDJDY0Yt_v",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MEMORIA DE CÁLCULO DE TECHO METALICO T2»?",
+   "correcto": "1byXX1LRHOPne2hld5Fqm-HggDOl9fORL",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ar/tramites_con_clave_fiscal/MisFacilidadesNet/app/seguimiento/nuevos_planes»?",
+   "correcto": "1BZdiqaG887gXCA8829u_Su-Ai2EREU57",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «508,39 Total Haberes Remunerativos:»?",
+   "correcto": "1BzFeyOMfmcBKRPH5cHLTxw5QXx_kCUyX",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Jorge Antonio Total Haberes Remunerativos:»?",
+   "correcto": "1BzODtthon5J8BQ0tp1gEWG0-b40S6Psm",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «377,45 Total Impuesto Determinado»?",
+   "correcto": "1C8e5P83zS3CvYaYdg0Hf80qyLgLrD_8n",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 12/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1c9HQo6mK4vIFZV11ANPCfKdfUo7NCuTW",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 004544»?",
+   "correcto": "1CGamMx4epJk_K4OXh_orBVWT3XpQrq34",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Entidad de Pago: RED LINK»?",
+   "correcto": "1cH_m0MqjuXk9aO7S5VflLqyeX0uAVd2V",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ11/25»?",
+   "correcto": "1cJFoaveUvRUCbhWMCFamHudjovsgepeK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «AREA MANTENIMIENTO EDILICIO»?",
+   "correcto": "1CnbZW_FmHKk1c6kBThgelt6c8zluaOkH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «GOZADAS JORN 0429 - HORAS ACCIDENTE»?",
+   "correcto": "1cQIQvFN0hClfmz7EfpQZgyh3m4LAt0il",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 02/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1D4d8K4l2Wh0XHX_1QMb8FefvsXTTU5NH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 29/01/2026 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1ddeaiHLO4Wzs2ij1qkU0r4xiPut3keAk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: MONOTR06/25»?",
+   "correcto": "1DJCtM0tZr6nuBrvv-OcQ4OfagRTa1vVb",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «94 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1DjGkDaNjPHud-oi6YzEsQiLr8NW6ecTB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «(EFECTIVO) 2521 - SAC PROPORCIONAL»?",
+   "correcto": "1DJXxTGrTWrpyWf0viVV6tdxVOk_rh1da",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 22/01/2026 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1DmuJis-zhDchW0IiP_etIE4sUfaCOz6c",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 128»?",
+   "correcto": "1dnAyjrHAlJi73UJBiZ1ZreknfHR2Fycj",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPROBANTE DE PA=O DE =5E IERIC RENOV AN>AL/OTROS *** SEPSA - PA=O FACIL»?",
+   "correcto": "1DNwkvJyXdWm8MOpvy1xfTZ1zgom35dy3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «LOTE HOGAR 4 - MZA E - ABERASTAI»?",
+   "correcto": "1dOO3XAOD3G_BnrkBPG3HnSZql3XMnd0b",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «71 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1DSmDfMVx4txHskH5_nj7jfgLaf6TUpvj",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MODIFICACIÓN DE CANAL PARA NUEVO TAMIZ»?",
+   "correcto": "1dWMvlJmMJasLO2dBzqxvgCVnS6aR5nww",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 113»?",
+   "correcto": "1DXdD21_sFptGRAOL38_s6Px1TWi8qtxk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 05/02/2026 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1DXHPou5xuNU8RN4gr1BSRXZJkWIGdUs4",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CONSERVACION TANQUES FABRIC»?",
+   "correcto": "1e_D2tROs0JrNHJw6pZSnqU-kkkQMGRT0",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Notificación de aviso de pago:»?",
+   "correcto": "1E9US0RkdNRa0K1H5yRDB1RUJdl9AJwhF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «33 Total de Aportes Cuota Sindical»?",
+   "correcto": "1EAiXn701HRXjH6_kfWCONN6NpRhsy0Mh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: O2ChLj»?",
+   "correcto": "1earkAP_iNc11cDP1cQiOAVCzFFdjRWMh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 10/07/2025 DNI»?",
+   "correcto": "1EdOFU5PPSZ4ODEXYDe1oy3Jb9eAl-tIq",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPROBANTE DE PAGO DE G5F IERIC CONTRIBUCION *** SEPSA - PAGO FACIL *** 9127»?",
+   "correcto": "1efELMSma6GHY0HsDg9IBDagvd3yWt3c2",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Observaciones: RAMPA PARA PISO 120 M2»?",
+   "correcto": "1EMcp2CyhiUM0o58jg7gVcEcWSBa_mNpX",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «757,89 Total Impuesto Determinado»?",
+   "correcto": "1EoQqZINbj6das1y2wzvta0UvJO-K1Y8G",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: U9usI1»?",
+   "correcto": "1EvAIFr1pOP-Ym4ndJof8hCvBgBC5dEtS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ12/24»?",
+   "correcto": "1EwJTjwGa1LUAPshbGSVo2OM4N82d27P1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «NARBAEZ FACUNDO SEBASTIAN»?",
+   "correcto": "1f_K63FDhQav8n5xDhQ9WIh_2_fhEaqXH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PÁGINA 2 de 11 0401 - BASICO HS NORMALES»?",
+   "correcto": "1f8NNCLV7QjTL4sTdqFGF0c9m0VY3Qxwm",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «208,05 Total Impuesto Determinado»?",
+   "correcto": "1FAOpsWYm8cI-LdkQSRvIIHbnGCFpd8M5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «48 Reducción del Saldo Técnico - Beneficio a pequeños contribuyentes cumplidores-Art»?",
+   "correcto": "1FNcosLbyW76TuuqsrlnDA8PoNv3wXMjV",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «347,54 Total Impuesto Determinado»?",
+   "correcto": "1FofZel-bUX7HRWHo8b-CmcJpN3vpfZvR",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Trabajadores en obra:  OCHO (8)»?",
+   "correcto": "1fPKtnOY_HZG7JfNnvCLP3gRadiFcnzHB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ar/tramites_con_clave_fiscal/MisFacilidadesNet/app/seguimiento/detalle_deuda»?",
+   "correcto": "1fQeOfDT-Pm1i4lxFxLKpgzSZBrIPkiJ8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: XjPQ#Z»?",
+   "correcto": "1FSVcGFn-P8PnQxiCPNhOpDM-riRe3QCy",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «78 Cantidad de trabajadores NO afiliados»?",
+   "correcto": "1ftF5wPtwbcR2MF3vQ0WOConNOjv5EeK4",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «708,08 Determinación de la posición mensual»?",
+   "correcto": "1ftXVZc2263eI9CBg_cXQohxfE5sucCxo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Listado de clientes activos»?",
+   "correcto": "1FVDWISo-DWfyJDRNbOG4xT4P5jdQfN_B",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 004024»?",
+   "correcto": "1FVOhXt0u7q2F-Dhjo_uh5InA0mdv4a_n",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «568,08 Apellido y Nombre o Razón Social:»?",
+   "correcto": "1Fz7JGv_HLEnM-PZqz9G3IRA0Q9WUf9ao",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 18/09/2025 DNI»?",
+   "correcto": "1G15YPSbUtf9p8u9dC_Ie5g1jpWmDAXSk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 18/02/2025 DNI»?",
+   "correcto": "1g3LFr0turT2_uj-wfMrhcXAzvRVWVjvb",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «VM2/T1= Correa T1 soldada en  cordón inferior de»?",
+   "correcto": "1g6LsBYqAskYGA6qiNbMFi10TDn99umQf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos registrados en las bases de la ANSES al 13/04/2026»?",
+   "correcto": "1GfSRjKeK0GImL6k9tnJ14X0B_m1WyUJJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ04/24»?",
+   "correcto": "1GfVEL_g5d8ZF6HZ9bSF44jZYH5hbBd3u",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Registro Seccional: 18003, Número de Trámite : 415564, Número de Control Web: 934D2E15F2»?",
+   "correcto": "1gGF4sQG_hyLuOmbQ7bo4yaI0PNnzYXvT",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «209,25 IDENTIFICADOR ÚNICO DE HOJA MÓVIL»?",
+   "correcto": "1gnLvgtn2MhektYkKhwJi5CxVXrHogCMq",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Sr Director de Vialidad Provincial»?",
+   "correcto": "1gOqDLS3oPH81mOdg1aYBmJbDjbESxJkC",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Registro Seccional: 18002, Número de Trámite : 349255, Número de Control Web: 84156EB87A»?",
+   "correcto": "1Gu1JHTpVdUCSehyrHmetOVqTVsEWAOc0",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «12 Total de Aportes Cuota Sindical»?",
+   "correcto": "1GUJ7FRGGi_5BjWjhspvQOd-lQhOwewPz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «878,97 Determinación de la posición mensual»?",
+   "correcto": "1GVn5ZfWMQHPqwnK9afuSBSyxuABOe9Ng",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Provisión materiales y colocación de demarcaciones provisorias materializadas con cadenas»?",
+   "correcto": "1GW9luFjVN10DWNg9DC4G1Snnvb568O8y",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «26 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1Gy2vaqwus5lPKOtxz6Nm5xvbiP6tlZcQ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ01/24»?",
+   "correcto": "1GypGaf2Y00tslyMAJTqM9-wqmfAzhuty",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: yGQaeY»?",
+   "correcto": "1GzMOWegFG0jzilLG5JY6Udh6v6MuLuxX",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 19 de 32 Simplificación Registral»?",
+   "correcto": "1H-tbx0EMvtdamIG3IzfGGBXVTCcoqGi3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Dashboard P&L mensual - Echegaray Construcciones SAS»?",
+   "correcto": "1H8xIJ4sfGpR1le1x6C5x8FFgKYKjfRyH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ05/25»?",
+   "correcto": "1H9-7T4TlervwC84kvOdF2uEdFmNJBary",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Apellido y nombre: SALINAS CARLOS ANTONIO»?",
+   "correcto": "1Hal8XHrCO3upbPK0LIEgwymfvaap9YcJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «121,44 Apellido y Nombre o Razón Social:»?",
+   "correcto": "1hE0F2RGkVqMKzNh_X1-MBkwtUONeFqs2",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ08/23»?",
+   "correcto": "1hefNjtWYiwjAAZy99RZ89vMcyAy9ya9v",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «024,80 Determinación de la posición mensual»?",
+   "correcto": "1hHsYGwp4PqDU_2Fs2vC7uuS7g4IJ_QPL",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 23 de 32 Simplificación Registral»?",
+   "correcto": "1HOWBsHLIlt1BcSb2WlhSP5DTzMD50UJw",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 30/04/26*»?",
+   "correcto": "1HS5YgOtSWd6kSmLtg78Jckpu1zPIT9bT",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «75 Total de Aportes Cuota Sindical»?",
+   "correcto": "1hXqWPxNoGV2LFfT-KqXRTxCin1jjD32M",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PAGINA 1 de 3 0401 - BASICO HS NORMALES»?",
+   "correcto": "1HZ3TnulnZfQmj4lpG9b_t9YAShXTGuAn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «496,25 Saldo técnico a favor de ARCA»?",
+   "correcto": "1hZ58zviWollwQN2ViwLC9gjx9ongV0bp",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «69 Total de Aportes Cuota Sindical»?",
+   "correcto": "1I5KW14439_o8emVhhl27e21yQ0MHWC5p",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 165»?",
+   "correcto": "1Ia3V9twPFFjsxOIccG6Kdw1o3qXazkME",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «710,23 Total Impuesto Determinado»?",
+   "correcto": "1Ic9U1G7zpVnJaXmRDxF5RgzwsuSiM7Nd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 10/2022 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1IemDFejnxpYaf_j6wyGmbxW_0ggeiChh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos registrados en las bases de la ANSES al 12/05/2025»?",
+   "correcto": "1IgGMsBazisLXt0feSilGdcpASYsX8JOi",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CONTRERAS PEREZ ALMA FRANCESCA»?",
+   "correcto": "1Ii7oJzbBe8050wyXn9YzixIHFErtUttW",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «26 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1IO0IxzEpzsHkO5oG_k6p7p9l0bxJMK7g",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «SON MONEDA COR: CUATRO MILLONES SEISCIENTOS OCHENTA Y DOS MIL QUINIENTOS SES»?",
+   "correcto": "1ioEiJxW7_pcUpwnsKkp4cGNA29PZDuQu",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos registrados en las bases de la ANSES al 09/06/2025»?",
+   "correcto": "1IpEXtTKcJFErlcDOgiaymLKQ0vWCDmlA",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: ctxaRd»?",
+   "correcto": "1ISBlwxzG-IzhyDy20S74MYwnvwwjyaLk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 6-7-2023»?",
+   "correcto": "1IUtmQSE0DhqNk6LNKiOSjZq3X1yNBFP2",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DECLARACIÓN DE AUSENCIA DE CONFLICTO DE INTERÉS»?",
+   "correcto": "1iW6BfP93ookQyx-J5NopmgRaCHgklez_",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «BANCO DE GALICIA Y BUENOS»?",
+   "correcto": "1IwTPtWawIl4EFu5t-nFFD2tEcMVDO6yv",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Jurada N° 10880693»?",
+   "correcto": "1IzQrDTAXSLy4tS12v7wxT7pZEVISj_hI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DIAZ SOSA AITANA MILENA Vínculo»?",
+   "correcto": "1J-uHcxsgrVEgNd1nP385Cz40vz6ZDO1W",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «729,36 Saldo técnico a favor de ARCA»?",
+   "correcto": "1JcA7sVoqyw57kqQiShzEPq9Y3oByxkGK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CONSULTA DE NÓMINA DE DECLARACIONES JURADAS PRESENTADAS 33»?",
+   "correcto": "1jLHnqVFjneXk5uV5qhbtprOF0rNshBPz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MANTENIMIENTO TECHO NAVE INDUSTRIAL – CONTRATO MARCO 12/07/2024»?",
+   "correcto": "1jmHBuyS1b8E5PuNS-XjzqNpV0Wn9n63x",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ04/26»?",
+   "correcto": "1jP8avoXc_x4JfeLra2gOysTeML0TXr6t",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «RESPONSIBLE:MALDONADO BATISTA EMILIANO - Tec»?",
+   "correcto": "1JPm3eCZXa4g10knDLtWJKLAYs3tCik4o",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «871,29 Total Impuesto Determinado»?",
+   "correcto": "1jTZQ1tWYojsLwxVrAfAWpLbiYRXtKa1j",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «788,79 IDENTIFICADOR ÚNICO DE HOJA MÓVIL»?",
+   "correcto": "1JXPlChLgFEqVFCMFXUTHkQe8EKDM51ow",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 04/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1K3T2SwhMEDyCFWAQJ0fb7MlAf03FGUYG",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 03/09/2025 Situación de baja: 39 - Despido Art»?",
+   "correcto": "1KC4cdLyC3i1XY7xZUYgiEOisI3-bXPjy",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ06/23»?",
+   "correcto": "1KDS5-eLT4-c75mMWYBWbXfJlhlpjC4-w",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «73 Total de Aportes Cuota Sindical»?",
+   "correcto": "1KeXcRm37Vcu7HwIKNGkYlJ4Mj-867ns0",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: kVIQhP»?",
+   "correcto": "1KGuWWLgiXXH3xRc7Klu8giF6IKxKhNMv",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «409,52 IDENTIFICADOR UNICO DE HOJA MOVIL»?",
+   "correcto": "1KjvETgyJeutZAl2gRPvDT_28WmSBts_w",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 2qNno$»?",
+   "correcto": "1kwyQVX78P6v6E2F-D9V-FLwYo8kdgpuS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ07/25»?",
+   "correcto": "1KX5D9OYqdGhuz1iHfugmZNTtsmhE3xnA",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 04/02/2025 DNI»?",
+   "correcto": "1KybIGDa4MlR-0D7YwPWo8EYsw6iBNjk8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «78 Total de Aportes Cuota Sindical»?",
+   "correcto": "1KZoRjQIjoZeRZO8bQW5ozuWRe_iXMWik",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «22 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1l-lx6lt6ECKl9RkVTkLx_mGXMz_gidxd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Avenida Ignacio de la Rosa oeste 130 - Rivadavia»?",
+   "correcto": "1LBqBUeIwRpbDaOsqO6_EhFUEKWnhqBtS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «70 Reducción del Saldo Técnico - Beneficio a pequeños contribuyentes cumplidores-Art»?",
+   "correcto": "1LCuVRzBLSaJENOtGAG5CgzHB9sAemnIp",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «3,04 Juntas de Contracción tipo J2 según se indica en planos de proyecto»?",
+   "correcto": "1lDvb966JbxKHM0d5YAbpaOmsplzooNI3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ04/25»?",
+   "correcto": "1ledE6c3snKBCBjiUshdbPBcj_UuGozWE",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «120 dias corridos TOTALES»?",
+   "correcto": "1liENW-zIphe7DPXDjBxZnhBvEHGizIrZ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «299,13 Saldo técnico a favor de ARCA»?",
+   "correcto": "1LoIvWVYCS6Ta7yMqezM32oWL1buCAkpg",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 01/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1ly1wjHNoCfw9LCSruoB_oOV9f829gT6W",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «102,96 Total Retenciones y Percepciones»?",
+   "correcto": "1mf6MRON1HlMx7qPx4DM2BKeyhaPmf5VO",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 04/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1MrjYkguVVyV1PP3U7GepXR5QwOy0Xwc5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Dominguito s/n - Sarmiento, San Juan - Argentina»?",
+   "correcto": "1muaFF3Po-POSiVmofxOqVNxGKvl6pLJ0",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «84 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1N_3ajVOPMDvYTvKZ3n2X0zWYWlni7sXS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ05/24»?",
+   "correcto": "1N0niA6KVmCnXOSJxsiIfQXreACx69IRB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 008124»?",
+   "correcto": "1N5eNUzgGhokQCykntdrjbIUp8znp9fCo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «078,08 IDENTIFICADOR ÚNICO DE HOJA MÓVIL»?",
+   "correcto": "1n6hfc9NedMvwj-ms8bUvmZLkgduapL33",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 000337»?",
+   "correcto": "1N9jvr-1Nf5iZBvHaWCL7J_TagIZgTiU0",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 115»?",
+   "correcto": "1NJiD-1Gj_pP_0rv6MiOjdddotUEAS2iq",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 02/03/2026 Firma empleador y fecha de notificacion»?",
+   "correcto": "1nL2ynXI7oSXrrxSxuDPTp-_FmAtYPDIC",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «POR DIFERENCIA EN AUMENTO DE L»?",
+   "correcto": "1Nma7QvpvI5hWxrrlrbSaU1C_-wJ6ch4D",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 122»?",
+   "correcto": "1NOuMjI2QF-jE1XP2t5xultfNQLGDhQOq",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 126»?",
+   "correcto": "1NW2ScLx2JvMNHraIsqeMq5yBjA6HRT4o",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 8-5-2023»?",
+   "correcto": "1NWJDtK51x-iSX8KOtKCFdxvJJs0evwWk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PÁGINA 3 de 8 0401 - BASICO HS NORMALES»?",
+   "correcto": "1o-rLLeL5GKAjwCY8cyHi-Bi9R7Nibp4i",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «00 A favor del Responsable»?",
+   "correcto": "1O0-OGOKKkG81nz1VUkghHDp-ptDvvXKr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 11/2022 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1OiErL-a6yN83lagQQFZPvYsM_1bNmGeY",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «- Total Retenciones y Percepciones»?",
+   "correcto": "1OiIpmG-7niOS_JBeWbhQhxWcBkmRlhec",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «48 Total de Aportes Cuota Sindical»?",
+   "correcto": "1OisuSEK9V3XZNqpilL5WUylAtcTu9uVW",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 17/05/2026 Situación de baja: 39 - Despido Art»?",
+   "correcto": "1oJGKT9fAGJEha5fz79wH_B7sYqbwvHww",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «18 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1oJKooD_Z_9XCfncG3VZT4rSHKPdS15lJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ08/25»?",
+   "correcto": "1ol8DJjtjBUnLPnzGkue9WGQrDf2NI_8y",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «FERREYRA LUNA JAIRO MICHEL»?",
+   "correcto": "1OPHcOT6opAWzuRMWCiSxf_kA01IUDqgH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 30/06/26*»?",
+   "correcto": "1OPmHA3tpRQJDc9DZbhIjqJnF-GoxBzHD",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «69 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1OQVXM_v9DciBOFOUIyhLF2cpmDwYgn1G",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «73 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1Oy-0CTBrxF9b851q9eoLx0MzdBAgBGSz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 137»?",
+   "correcto": "1P-l3BJsF7PjNzoHLB4FyAoL1Ci6qWIJ5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DE MEDICION Nro 1 correspondiente al mes de Septiembre de 2022 con un»?",
+   "correcto": "1p368M1MuwfDJk4SPABA5eIMdG6XVljdK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Nivel de estudio:* RUTA 40 ENTRE CALLE 8 Y 9 8   - VILLA ABERASTAIN - SAN JUAN (5427)»?",
+   "correcto": "1PahI0dd8vkw-t2n0JtosXZzybH2CiB2u",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PAGINA 1 de 12 0401 - BASICO HS NORMALES»?",
+   "correcto": "1pBz6QJPI_-tMplkgleh1r2nASCMunPDQ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Comprobante de Transferencia Santander»?",
+   "correcto": "1peiQUBz-OxFwxDZhOorT3B-fHiH6HViF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Echeq Emitido - Cheque de pago diferido»?",
+   "correcto": "1pHrFv4stVZeoo0T2dnZKR_wI2soXHwlu",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 17/06/2025 Situación de baja: 36 - Despido con o sin justa causa / ART»?",
+   "correcto": "1pk6VjwwMo-OPu6--vQuILk7CHgGwisqf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «547,74 Total Impuesto Determinado»?",
+   "correcto": "1Pl-FaS1C57VKNPBCLQFESZ-FayNlX4AV",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 30/01/26*»?",
+   "correcto": "1q8vUKYDVsvzSq3YBsHAbLEDj-b4W6BpN",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 28/08/2025 DNI»?",
+   "correcto": "1qFNt0l6uO_VP0ryb0GtSgsZhBhYmsvsB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «351,71 Determinación de la posición mensual»?",
+   "correcto": "1qMigbukTtmmAjVyhYOMW58dIoj-dZnDJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de Hijos: RUTA 40 ENTRE CALLE 8 Y 9 0   - VILLA ABERASTAIN - SAN JUAN (5427)»?",
+   "correcto": "1QNtCqoUo2wEHxqxnwtolIEWL7O7yxUnf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ06/26»?",
+   "correcto": "1QoQYLyYrpRv5mBoTuXG9ej1hHhShjUT6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «NAVARRO MERCADO ISAIAS GIOVANNI»?",
+   "correcto": "1QOXwZ-95CgeyE2mmgBEUJn4rs3KLk9_4",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «demolicion con bobcat s650»?",
+   "correcto": "1QYaftA9Wl9qnRjfxIQQ_qShufEsgsBWK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «con el fin de solicitarle, en base a la actual situación de restricción por»?",
+   "correcto": "1R_LkCFyMWqeVLBjaPy_OLN_EKpPx1DRK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 7 de 32 Simplificación Registral»?",
+   "correcto": "1R-BJUNPuTwNtekc_OuTiTEnr20vWKiYa",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPROBANTE DE PAGO DE G5F IERIC CONTRIBUCION *** SEPSA - PAGO FACIL *** 5062»?",
+   "correcto": "1rdJdN1Vc_cVeebPW-7eYKOoBonbWw-bH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «004,51 Total Impuesto Determinado»?",
+   "correcto": "1rdTpBevFRKnpAKYd1kSWVBY569gPU6ri",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PÁGINA 2 de 14 0401 - BASICO HS NORMALES»?",
+   "correcto": "1RINY9lq8TfK4C3MJNe5B3fNjLvtZkTNV",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ar/transferencias#/autorizaciones»?",
+   "correcto": "1RKR4wQcL5U0ebM2whBJ6kR1cZ56bNO97",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «SALINAS PAREDES ALEJANDRO JONATAN»?",
+   "correcto": "1RMDsDd4EC2hdLdIIHCA_M9o_I9AP5hST",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 27 de 32 Simplificación Registral»?",
+   "correcto": "1rmigE_AjOLxAl34UUPUKxTvUGcGaqrG4",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «64 Reducción del Saldo Técnico - BENEFICIO A PEQUEÑOS CONTRIBUYENTES CUMPLIDORES-Art»?",
+   "correcto": "1RPMYrlArXBcjgh1Exs14xKyvLLClh77N",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Ref: Aviso de Liquidación del Préstamo y datos para inscribir Mutuo Prendario»?",
+   "correcto": "1rqLMuo5HgCOgDmET1Ois9aI7x311GQ43",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPRADOR: IBAÑEZ BETINA AVDA RIOJA NORTE 75»?",
+   "correcto": "1rtcuIzTxPOxzWSzqkeqfoQFxPn9cE8xi",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 12/2022 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1RuFEfnGyx5EZzYKmsUaxWR-H5-UP2pGw",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «BRONIA ONTIVEROS ISABELLA»?",
+   "correcto": "1RZS2BahHD3xo-nFMQD3J4vfOBi5elNGm",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 12/01/2026 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1s-zFPv8l_8Auh6_Y5KHKjE4LWpnPKZ-Y",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ09/23»?",
+   "correcto": "1S6KVHvAPb2CRZ6Beiq4YIl6VYxOUaPEC",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 25 de 32 Simplificación Registral»?",
+   "correcto": "1S7WpVVA2vWAJlEReZCKOymF_ihzsTIKV",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: PEXgTC»?",
+   "correcto": "1Sb1nayR_J_q58PezXmpMf0ogB7ZIjxrn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Técnica / Modelo Comercial»?",
+   "correcto": "1SCadzG3vwKhybExBiDnqEWBlJCfp54xj",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «790,29 Total Impuesto Determinado»?",
+   "correcto": "1ShEhNX5sUNSZQ7nuQXklI3YnotpVXaD6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 9 de 32 Simplificación Registral»?",
+   "correcto": "1sJP_8qTnD3ifMjgq0jc-aNJUJsdEU99Q",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ03/24»?",
+   "correcto": "1SltYLpXkaGrIfQkYr9B3aBJ3JxwpNbsz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «7 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1SrgBAXB6ntUvJiuYeJ2_tIncZqeLvcN-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Maldonado Batista Emiliano Mig»?",
+   "correcto": "1sW7trc-NRwRSzrsJLIHDMrIOaFI-KDZf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «79 Total de Aportes Cuota Sindical»?",
+   "correcto": "1SyiYFvVblszUI5DBHZBe3Vm6YXZeh6Jg",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 152»?",
+   "correcto": "1T_l3WYlLUKRpU4-4UALwzIkQBLGtBT8u",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos registrados en las bases de la ANSES al 14/04/2025»?",
+   "correcto": "1T_PBYLH_fHdyRqCKK4tun5thSWRBS3Fn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ12/25»?",
+   "correcto": "1TbqV6hIsOOiEjBikCT3-uEjwhp3hZ6fZ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DEMOLICION Y NUEVA PLATAFORMA»?",
+   "correcto": "1TDLynbS8DDcCWU2Cx-AdDgz6DBnJ5Hs_",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «DE MEDICION Nro 2 correspondiente al mes de Octubre de 2022 con un»?",
+   "correcto": "1tLXqs0U1n8kIqL6yvM36-upgvxkuVqNi",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «192,91 Total Impuesto Determinado»?",
+   "correcto": "1tpNtDRXJoLxm8NF-Y2A_nxXUpdLZBb6W",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «765,93 Saldo técnico a favor de ARCA»?",
+   "correcto": "1tVGOQK0XwtkbF2jY8u4890Pr-vmUk_FU",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PAGINA 5 de 10 0401 - BASICO HS NORMALES»?",
+   "correcto": "1TZIRpBBF1mhB0Plpnk1cDby8_oqcb3OJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 166»?",
+   "correcto": "1U3R2Sbih1G8H03_QT5ioqkHdO6JqDjcM",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 07/04/2026 Situación de baja: 39 - Despido Art»?",
+   "correcto": "1U6b7yup4WCpuVbJmI6JdXp-gA_KHuoi3",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MAQUINA PROPIA 256 CARGA SOCIAL OF»?",
+   "correcto": "1udHvqCg4YGo1kVKhvRgLWRZ-qDf_Ujz8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Total de Aportes Seguro de Vida Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1UeBTufmYhS3BFyPJUTSSsl1KvaVlIkAk",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ06/25»?",
+   "correcto": "1uGG47MSN0z46HJFfm2K8ag9T1C5aUK2O",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: SgzQ70»?",
+   "correcto": "1uhF01aK1It7i4OkXedKVHYEovw6mBKZF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 07/2024 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1UJg1c6XKmZ33LGOCnwf9k8uZ-LxrusrJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 3 de 32 Simplificación Registral»?",
+   "correcto": "1UmwlkVMPU2xN2j7mWXwJu9319QskL495",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «BAZAN RIVEROS JUAN ERNESTO»?",
+   "correcto": "1UN3fnd-eAAgzshqpbStV_tQRPY--1rPs",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «OTROS CONCEPTOS FONDO DE INV»?",
+   "correcto": "1uNzBlq-WsS2biLo7N8DwTWKEXbVc471M",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «411,31 Saldo técnico a favor de ARCA»?",
+   "correcto": "1uouuk40CIzcU87YuA_6DRcO_In_OTycK",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «AUMENTO DE SUPERFICIE EN PLATA»?",
+   "correcto": "1UqepPRR92qVPpmKKPrdTdgfFVy5At-PM",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: tP9BOD»?",
+   "correcto": "1Ur_uOYWK8mg_f-Zfk4_wxbw6s7UAn-Ed",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: ImezsK»?",
+   "correcto": "1Uyg_f023uYNnUJ8wvlz9ogE-GPO74p4U",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PLAZO ESTIMADO DE OBRA: 7 MESES OBRA»?",
+   "correcto": "1UyWQ7zmVwMqG_wkAMIoqIVruiWNaBBX6",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Encontrá más información en la sección A7uda de»?",
+   "correcto": "1V-by8ka-KJeLzXe_KHTM-3sGOrorjviw",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ06/24»?",
+   "correcto": "1V-m6wER5I7eI8tGgprKxzZYw6Cqv4RZu",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Volante Electrónico de Pago»?",
+   "correcto": "1v182yfy2egxPH8XUwIjyVWZFeTAnwF4M",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Datos del VEP Consolidado:»?",
+   "correcto": "1vD_JiZ4J1CEjjlAs-MLerPkL5wz5yfMF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 2vzPZJ»?",
+   "correcto": "1VFbavxaFgae4o8t0okan--uPHSbH0WmI",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 1cne#c»?",
+   "correcto": "1ViePCrByPnsWqmA-SooMyH9UA0hlefRL",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: 8nhQ6b»?",
+   "correcto": "1vIW8nzSnHhu6elV4_DT5OgaAvKqozKGS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «MARKETING Y VENTAS Período:»?",
+   "correcto": "1Vk8cmS-OPYemlN3Q-HKu2IXw3CsOIFY_",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «1 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1VN0T_M4Jj_hZKMJMc3KkMw0ktDpcvJfF",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 17/07/2025 Situación de baja: 21 - Renuncia del trabajador / ART»?",
+   "correcto": "1vO5k4u8g5X-5K2f-95CFsorBPTx2mae1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Observaciones: PLAYON DIL ACIDO»?",
+   "correcto": "1VoxVECOsHZQ-Ou_wRMYfGyN8kyOCdOlJ",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «31 Total de Aportes Cuota Sindical»?",
+   "correcto": "1VPVEeOF98ywHcnOH2_YMGlnR7kS54L6b",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Emitido por: Contribuyente con Logeo,San Juan, Martes 18 de Agosto de 2026»?",
+   "correcto": "1Vt_vqAHj3tvEFxcVV8HK1VjeJpVI0RCt",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ANTICIPO FINANCIERO 40%, SALDO RESTANTE CON CERTIFICACION QUINCENAL CON PAGO A 60 DIAS FF»?",
+   "correcto": "1vtno3a_WZIE4kL_3QmMF0P6qIXT9HNZh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «INFORMACION DEL PROVEEDOR»?",
+   "correcto": "1vWh0NAZMqvMZXw3osl5b56l08K4A9Lkh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 11/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1Vx58CvnGnbJC28sZTU1ADgJUSS1S83gz",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Proyecto – NUEVAS COCHERAS»?",
+   "correcto": "1vx6NjnJPkP8nPkadDwrDOsjt2pIVGiVf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ10/23»?",
+   "correcto": "1VYITUqIJ0NBNyhVc2O6OpYU--T4S7NrY",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Nota 1: Se cotiza con toma de agua del interior de planta»?",
+   "correcto": "1w0k8-C-FSfPQAEYu9C-WdeVGShZv1sw7",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «891,50 IDENTIFICADOR ÚNICO DEL LIBRO»?",
+   "correcto": "1w8AP7CUwteX0LBCHIB_IDOjTHF1clbyi",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «G5E G5E IERIC RENOV ANUAL/OTRO CONSULTE EL PAGO FACIL MAS CERCANO LLA-»?",
+   "correcto": "1w8DzMfgOLNdP2qckIf5bS4wT_xGrLea1",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 28/11/25*»?",
+   "correcto": "1wb7ptoyH860KzJFYU6TQvpSB2jxsr839",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Emitido por: Contribuyente con Logeo , San Juan, Lunes 14 de Octubre de 2024»?",
+   "correcto": "1wdcaNQAEX1DAQmSZrwGOdLtCXJ6mjavh",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PETINA RODRIGUEZ, JAIRO EMANUEL»?",
+   "correcto": "1wG2YmsIb5YLBpPCxT7m4q7Kor33eEQQW",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Acreditaciones :: Comprobante de Pago de Sueldos»?",
+   "correcto": "1WJWIAVGzaZu-8mbyiXO5xcQqdkiKTStr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Declaración Representante Técnico»?",
+   "correcto": "1woeBdWWecd6rpGS9Q9AsRH9gQ53GSPXY",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Retenciones sufridas - mes 10/2023 - Distribución y coeficientes por Jurisdicción»?",
+   "correcto": "1wq5ay98tLH7SwVJVDVF7Llhj7AbCKsMB",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «76 Total de Aportes Cuota Sindical»?",
+   "correcto": "1wtH4qm5ZO0KNHBg-Xf0hpfsq8LJt7W4H",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ11/23»?",
+   "correcto": "1X3qJWsn-5lpv4GcCADo7gHhdzgLHEtru",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CEMENTO PORTLAND LOMA NEGRA»?",
+   "correcto": "1x8aiVBovjOGcg7hOZaABGVmIB9iXmNPS",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 7/6/2022»?",
+   "correcto": "1XAgoPzrqM9obMKjJ3sWza9ZgPnlqcygn",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Observaciones: ACTUALIZACION oc 279»?",
+   "correcto": "1XBHeCpC9pH4oxcqC6BPjrR5J83iY8kYo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «049,77 Determinación de la posición mensual»?",
+   "correcto": "1XfM7IwK5Kk7gd3SapXk1yHA4E3NRWd05",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Pendiente ANTICIPO FINANCIERO»?",
+   "correcto": "1XHCV-1MEDEIOUx3reH4Qat_smFWLihIq",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 7/7/2022»?",
+   "correcto": "1XLBl2uoUXb6vwpmUF-bAlaeeBymiL1aH",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: lxqhEp»?",
+   "correcto": "1Xodpxg5gvVbyJdBLlD4aTiZQXbthIDGy",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 9/8/2022»?",
+   "correcto": "1XRqXk5V5--neiv8bHKkWaywlAMOz4ZBo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 17/06/2026 Situación de baja: 39 - Despido Art»?",
+   "correcto": "1xSWL43Ddj7zwW5D88PPjE4NDrPWFfD76",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Talón Para Ente Recaudador Número de Boleta: 5209904»?",
+   "correcto": "1XV05dIRIYZNzYZKGSnjx0HDWTsnlcxGx",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «PÁGINA 2 de 13 0401 - BASICO HS NORMALES»?",
+   "correcto": "1xvOBi-FwsTeuSP9CCIh_eJq3jZzU0I6U",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «88 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1XYgC4HiZjMsABD9PhACyXKOO4_tL4n1-",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 8/9/2022»?",
+   "correcto": "1XYN8PhINbz9xJ3bwla250M1C4osmoSRb",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: p7XlvB»?",
+   "correcto": "1Y_KbYcHyL_T6VM3_L6ztWvcwLjQvzOEp",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de declaración 10/11/2025 DNI»?",
+   "correcto": "1y3A91qk5wsWmhMFeUuX3jey2wyiyijEr",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «24 Aportes Seguro de Vida Colectivo»?",
+   "correcto": "1YdEj5YwtEcCuCKWMt2WPBklFJd-EaxA_",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Inicio > Créditos > Préstamos > Cuotas»?",
+   "correcto": "1yGwIRXgTA406a7vh1FnxSOl5vPBle5A5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «página 3 de 4 Simplificación Registral»?",
+   "correcto": "1yhGP6Dwreeup4RjGc9JH3NABQh_nXIrL",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ10/25»?",
+   "correcto": "1yJ1dT91_W3K1yv-HlnfJ0U6hLW6UL5l9",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: C6r#R$»?",
+   "correcto": "1YkWNfLvWxqwpSCa0KjwOSmS_fWbvlyak",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «San Juan, Martes 18 de Agosto de 2026»?",
+   "correcto": "1Yloxh0UPufvnYYmd-xxR8p2ITW0SjQLX",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ05/26»?",
+   "correcto": "1ynvxP1GJCnxPCmtcuoM5FDujJqkNFGam",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «CONSOLIDACION ENTRE PISO,»?",
+   "correcto": "1YO9ZrjPpNeJpqz5YbXtIHx-jc8qWj2Nd",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Boleta Tipo: Rectificativa»?",
+   "correcto": "1yoAkVMQcCjDMcdOSnESYuReRfzIqLv7p",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 07/01/2026 Situación de baja: 39 - Despido Art»?",
+   "correcto": "1YPT0HgecGKO89QhOxKlf1ErcI9TlBrdE",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «3,04 Juntas de Contracción tipo J1 según se indica en planos de proyecto»?",
+   "correcto": "1Yq5V1okwMdahZThUIHg34NI53mTFVlx8",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Página 44 ECHEGARAY CONSTRUCCIONES S»?",
+   "correcto": "1YR0Ovr935_5kWZSEnpQEKA_QCHpB4I1D",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «7129 - Oficiales y operarios de la construcción (obra gruesa 0000000055»?",
+   "correcto": "1YsHYquVGyc_KJXuFgVvT4oq1qOTTI-JN",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Código de Control: R2kGP0»?",
+   "correcto": "1Yt-u16J3JGtEgiCL5zhJA8c-P4iPD0zg",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «218,81 Determinación de la posición mensual»?",
+   "correcto": "1yvfZ-2L_B6d9e2MktadV5Yi51g0rvHVj",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Descripción Reducida: SIJPDJ03/26»?",
+   "correcto": "1YwhYxKZHN1tsarcpe7OQgStV9G39Uk-H",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «COMPROBANTE DE PAGO DE G5F IERIC CONTRIBUCION *** SEPSA - PAGO FACIL *** 1731 L26002»?",
+   "correcto": "1yyZHvmVrfd94b-jxYNMbY_gti84WPeqe",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 1/1/2024»?",
+   "correcto": "1Z1RqGYlcHeLQMvAUjh0y70nYfEIJh5Fe",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Los datos de protocolo pueden ser verificados desde la pagina institucional www»?",
+   "correcto": "1ZaltRGZ1e7Dt3wMkI1llG11HAAIfWCra",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «ANTICIPO FINANCIERO/ACOPIO:»?",
+   "correcto": "1zebhe18-9Vx3kgQIBo_zfPH2zVDswQZo",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Cantidad de registros: 153»?",
+   "correcto": "1zifY4DK3V_wHCvz8kYV7S6tdeJwTlbza",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de impresión: 13/11/2025 Firma empleador y fecha de notificacion»?",
+   "correcto": "1ZLpQXBAp6PQIOl5PAhX3BRrIzr-Qvtgf",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Fecha de aceptación 7-8-2023»?",
+   "correcto": "1ZPscuzkRMV6aEMnudjxhK-VsQGjUIiNx",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «Saldo total en cuentas al 27/02/26*»?",
+   "correcto": "1ZS6Sa6c7aJv0K9oeJMeX2kxJtiGL0KM5",
+   "familia": "contenido"
+  },
+  {
+   "texto": "¿qué documento dice «296,01 Total Impuesto Determinado»?",
+   "correcto": "1zWPtZ-OnQL9EYFaJSudB6b70475uK2wS",
+   "familia": "contenido"
+  }
+ ]
+}

@@ -107,15 +107,34 @@ export async function recuperar(ejecutar, texto, { limite = 6, sensibilidadMaxim
   const filtroDescartado = Boolean(filtros.filtros) && !usoFiltro
   const listas = usoFiltro ? [lexF, vecF] : [rankLex, rankVec]
 
-  const fusionado = fusionarPorRango(listas.filter((l) => l.length))
+  // ── EL VECTOR ES RESCATE, NO SOCIO. Medido sobre `ecsas-rag-eval` (100 preguntas) ──
+  //
+  // Fusionar SIEMPRE las dos listas hacía la búsqueda PEOR que el léxico solo: MRR 14,2% contra
+  // 18,4%. La causa es la naturaleza de las preguntas reales de esta empresa — un importe exacto y
+  // una frase textual del documento las contesta el índice de palabras de forma EXACTA, y meter
+  // candidatos semánticos en la fusión sólo empuja hacia abajo la respuesta correcta.
+  //
+  // El primer benchmark decía lo contrario. Tenía nueve preguntas. Ésta es la diferencia entre
+  // medir y creer haber medido.
+  //
+  // Ahora el vector entra cuando el léxico NO alcanza: no encontró nada, o encontró poco. Ahí es
+  // donde se paga —Recall@5 6,7% contra 26,7% en preguntas parafraseadas— y no le quita nada a lo
+  // que el léxico ya resuelve bien.
+  const LEXICO_SUFICIENTE = 3
+  const lexUsable = usoFiltro ? lexF : rankLex
+  const vecUsable = usoFiltro ? vecF : rankVec
+  const rescate = lexUsable.length < LEXICO_SUFICIENTE
+  const fusionado = rescate
+    ? fusionarPorRango([lexUsable, vecUsable].filter((l) => l.length))
+    : lexUsable
   const documentos = fusionado.slice(0, limite).map((id) => info.get(id)).filter(Boolean)
 
   return {
     documentos, filtros, degradado, filtroDescartado,
     via: [
       usoFiltro ? `filtros(${filtros.filtros})` : (filtroDescartado ? 'filtros descartados' : null),
-      rankLex.length ? 'léxico' : null,
-      rankVec.length ? 'semántico' : null,
+      lexUsable.length ? 'léxico' : null,
+      rescate && vecUsable.length ? 'semántico (rescate)' : null,
     ].filter(Boolean).join('+') || 'sin resultados',
     ms: Date.now() - t0,
   }

@@ -28,6 +28,8 @@
 const RE_CUIT = /\b(\d{2})[-\s.]?(\d{8})[-\s.]?(\d)\b/
 /** Un comprobante fiscal: punto de venta y número. */
 const RE_COMPROBANTE = /\b(\d{4,5})\s*-\s*(\d{7,8})\b/
+/** Un importe argentino dentro de una pregunta: «$1.234.567,89» o «1.234.567». */
+const RE_IMPORTE_CONSULTA = /\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{2})?)/
 
 /** Cuántos fragmentos se traen antes de agrupar por documento. Un documento con quince fragmentos
  *  que coinciden no debe tapar a los otros catorce documentos que también coinciden. */
@@ -124,6 +126,8 @@ export const SQL_CONTENIDO_LAXO = SQL_CONTENIDO.replace(
 export async function buscarPorIdentificador(ejecutar, texto) {
   const cuit = String(texto).match(RE_CUIT)
   const comp = String(texto).match(RE_COMPROBANTE)
+  const mi = String(texto).match(RE_IMPORTE_CONSULTA)
+  const importe = mi ? Number(mi[1].replace(/\./g, '').replace(',', '.')) : null
   // El comprobante se prueba primero: «0001-00001181» también calza como CUIT de once dígitos si
   // se le sacan los guiones, y confundirlos devolvería el documento equivocado.
   if (comp) {
@@ -134,8 +138,30 @@ export async function buscarPorIdentificador(ejecutar, texto) {
     const r = await ejecutar(SQL_POR_CAMPO, ['cuit', `${cuit[1]}${cuit[2]}${cuit[3]}`])
     return r.rows.map(aDocumento)
   }
+  // ── UN IMPORTE TAMBIÉN IDENTIFICA ──
+  //
+  // Medido sobre `ecsas-rag-eval`: las preguntas por monto exacto —259 de 678— acertaban el 8%
+  // buscando «$1.234.567,89» como texto libre, porque el tokenizador español parte el número por
+  // los puntos y las comas. El motor documental ya dejó ese total extraído en `campos.total`, con
+  // su página. Buscarlo ahí es una igualdad, no un parecido.
+  //
+  // La tolerancia de un peso no es cosmética: el total se guarda como número y «1.234.567,89»
+  // escrito por una persona puede diferir en el último centavo de lo que el PDF declaraba.
+  if (importe != null && importe >= 1000) {
+    const r = await ejecutar(SQL_POR_IMPORTE, [importe, Math.max(1, importe * 0.0001)])
+    if (r.rows.length) return r.rows.map(aDocumento)
+  }
   return []
 }
+
+export const SQL_POR_IMPORTE = `
+  select l.drive_file_id, l.nombre, l.path, l.tipo, l.sensibilidad, l.campos, l.evidencia,
+         (select f.texto from public.documento_fragmento f
+           where f.drive_file_id = l.drive_file_id order by f.pagina, f.orden limit 1) as extracto
+    from public.documento_leido l
+   where abs((l.campos->>'total')::numeric - $1::numeric) <= $2::numeric
+   order by abs((l.campos->>'total')::numeric - $1::numeric), l.leido_en desc
+   limit 20`
 
 export const SQL_POR_CAMPO = `
   select l.drive_file_id, l.nombre, l.path, l.tipo, l.sensibilidad, l.campos, l.evidencia,
