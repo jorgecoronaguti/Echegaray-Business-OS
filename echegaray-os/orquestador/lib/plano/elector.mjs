@@ -24,6 +24,7 @@
 // presupuesto se vea completo es la forma de contaminarla.
 
 import { CAPACIDAD } from '../ia/cliente.mjs'
+import { medirEnSombra } from '../ia/gateway.mjs'
 import { extraerJson } from './interpretar.mjs'
 import { FUENTE } from './fuente.mjs'
 
@@ -85,11 +86,31 @@ export async function elegir({ pedir, mapeos = [], logger = null } = {}) {
 
   let crudo = null
   let uso = null
+  const contenido = pedido(revisables)
+
+  // ═══ LA SOMBRA (05/09/2026) ═══
+  //
+  // Esta es la única llamada a Claude del OS cuyo dominio es INTERNAL de verdad: viajan códigos de
+  // partida, unidades, materiales y cantidades de la Base Maestra. No hay precios, ni clientes, ni
+  // nombres de obra. Por eso es acá —y no en el ruteo del chat, donde el mensaje de una persona
+  // puede decir cualquier cosa— donde un modelo de Hugging Face puede medirse contra tráfico real.
+  //
+  // Va ANTES y SIN `await`: no devuelve nada que este archivo use, no puede lanzar y no puede
+  // demorar la elección. Si HF no contesta, el pipeline ni se entera. El gateway además revisa el
+  // CONTENIDO —CUIT, importes, nombres— antes de mandarlo: el rótulo de un plano puede traer un
+  // nombre aunque el dominio esté bien etiquetado.
+  medirEnSombra({
+    tarea: 'elegir-partida', dominio: 'partidas', calidad: CAPACIDAD.COMPLEX,
+    sistema: 'Sos un ingeniero civil asignando partidas. Devolvés SÓLO JSON válido, sin markdown.',
+    mensajes: [{ role: 'user', content: contenido }],
+    maxTokens: 8000, agente: 'xsas-ingenieria', funcion: 'elegir-partida', logger,
+  })
+
   try {
     uso = await pedir({
       capacidad: CAPACIDAD.COMPLEX,
       sistema: 'Sos un ingeniero civil asignando partidas. Devolvés SÓLO JSON válido, sin markdown.',
-      mensajes: [{ role: 'user', content: pedido(revisables) }],
+      mensajes: [{ role: 'user', content: contenido }],
       maxTokens: 8000,
       agente: 'xsas-ingenieria',
       funcion: 'elegir-partida',

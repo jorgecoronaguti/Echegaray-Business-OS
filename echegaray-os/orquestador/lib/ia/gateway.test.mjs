@@ -82,3 +82,30 @@ test('la autorización explícita es por caso, no un interruptor global', () => 
   // Y no contamina al siguiente: la autorización viaja en la llamada, no en un estado del módulo.
   assert.equal(planDe({ tarea: 'rutear', dominio: 'obras' }).sombra, null)
 })
+
+// ── LA SOMBRA MIRA EL CONTENIDO, NO SÓLO LA ETIQUETA DEL DOMINIO ─────────────────────────────────
+
+import { llmRun } from './gateway.mjs'
+
+test('la sombra NO sale si el contenido trae un CUIT, aunque el dominio sea INTERNAL', async () => {
+  // `politica.mjs` clasifica por DOMINIO, que es una etiqueta que pone quien llama. Una etiqueta
+  // correcta no garantiza un contenido limpio: el prompt de `elegir-partida` lleva el texto literal
+  // del plano, y un plano puede tener un nombre o un CUIT en el rótulo.
+  const llamadas = []
+  const fetchImpl = async (url) => {
+    llamadas.push(url)
+    return { ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ content: [{ type: 'text', text: 'ok' }], usage: {} }), text: async () => '' }
+  }
+  const r = await llmRun({
+    tarea: 'elegir-herramienta', dominio: 'partidas',
+    mensajes: [{ role: 'user', content: 'la obra de 30-71234567-8 lleva columna C1' }],
+    apiKey: 'x', fetchImpl, agente: 'test', funcion: 'test',
+  })
+  // Sin `if`: si `llmRun` lanzara, el test tiene que ponerse ROJO, no saltearse las aserciones.
+  // Un condicional acá convierte el control en una constante que nunca puede fallar.
+  assert.ok(r.sombraOmitida, 'la sombra salió con un CUIT adentro')
+  assert.match(r.sombraOmitida.join(' '), /CUIT/i)
+  // Y sólo hubo UNA llamada: la de Claude, que sí puede ver ese contenido.
+  assert.ok(llamadas.every((u) => !String(u).includes('huggingface')), 'se mandó contenido a HF')
+})

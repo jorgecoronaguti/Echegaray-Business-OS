@@ -39,12 +39,27 @@ export function manifiestoDe(dataset) {
 
 /** Verifica que un objeto NO lleve nada que no deba salir. Se corre ANTES de subir, siempre: una
  *  lista blanca mal escrita es un error de una línea con consecuencia permanente. */
-export function esPublicable(obj) {
-  const txt = JSON.stringify(obj)
+/**
+ * LOS TRES HALLAZGOS SUSTANTIVOS, SOBRE TEXTO PLANO.
+ *
+ * Se separó de `esPublicable` el 05/09/2026 porque el gateway necesita el mismo criterio ANTES de
+ * mandarle un texto a un proveedor externo en modo sombra, y ahí no hay un objeto con campos: hay
+ * un prompt. Dos copias de «qué es un dato sensible» divergen el día que se agrega la cuarta
+ * comprobación y sólo una se entera.
+ */
+export function hallazgosEnTexto(txt) {
   const hallazgos = []
-  // Un CUIT, un importe con formato argentino, o una clave que huela a contenido.
   if (/\b\d{2}-?\d{8}-?\d\b/.test(txt)) hallazgos.push('parece contener un CUIT')
   if (/\$\s?\d{1,3}(\.\d{3})+/.test(txt)) hallazgos.push('parece contener un importe en pesos')
+  if (/[A-ZÁÉÍÓÚÑ]{3,},\s*[A-ZÁÉÍÓÚÑ]{3,}/.test(txt)) hallazgos.push('parece contener un nombre de persona («APELLIDO, NOMBRE»)')
+  return hallazgos
+}
+
+/** Verifica que un objeto NO lleve nada que no deba salir. Se corre ANTES de subir, siempre: una
+ *  lista blanca mal escrita es un error de una línea con consecuencia permanente. */
+export function esPublicable(obj) {
+  const txt = JSON.stringify(obj)
+  const hallazgos = hallazgosEnTexto(txt)
   // LOS CAMPOS QUE LLEVAN CONTENIDO, y no la palabra «proveedor» a secas.
   //
   // La primera versión incluía `proveedor` en esta lista y bloqueó los umbrales calibrados, donde
@@ -55,7 +70,6 @@ export function esPublicable(obj) {
   if (/"(texto|preguntas|fragmento|concepto|nombre_archivo|drive_file_id|correcto|extracto|pasajes|razon_social)"\s*:/.test(txt)) {
     hallazgos.push('lleva un campo de contenido o un identificador de documento')
   }
-  if (/[A-ZÁÉÍÓÚÑ]{3,},\s*[A-ZÁÉÍÓÚÑ]{3,}/.test(txt)) hallazgos.push('parece contener un nombre de persona («APELLIDO, NOMBRE»)')
   return { publicable: hallazgos.length === 0, hallazgos }
 }
 

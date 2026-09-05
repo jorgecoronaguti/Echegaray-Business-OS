@@ -39,6 +39,7 @@ import { anthropic } from './proveedores/anthropic.mjs'
 import { huggingface } from './proveedores/huggingface.mjs'
 import { puedeSalir } from '../ml/politica.mjs'
 import { autorizado } from '../ml/autorizaciones.mjs'
+import { hallazgosEnTexto } from '../ml/publicar-evaluacion.mjs'
 
 /** Cómo participa un proveedor no-Claude en una tarea. Es una escalera y no se saltean peldaños. */
 export const MODO = Object.freeze({
@@ -67,6 +68,10 @@ export const MODO_POR_TAREA = Object.freeze({
   rutear: MODO.SOMBRA,
   // Qué está pidiendo la persona, en estructura.
   interpretar: MODO.SOMBRA,
+  // Elegir la partida de la Base Maestra que corresponde a un elemento leído de un plano. Es el
+  // ÚNICO consumidor real de Claude cuyo dominio es INTERNAL de verdad: viajan códigos, unidades,
+  // materiales y cantidades de un catálogo técnico — no precios, no clientes, no obras.
+  'elegir-partida': MODO.SOMBRA,
 })
 
 export function modoDe(tarea) {
@@ -173,11 +178,28 @@ export async function llmRun({
   // ── LA SOMBRA VA PRIMERO Y NO PUEDE ROMPER NADA ──
   // Se lanza sin esperarla: si HF tarda o falla, el usuario no se entera. Una medición que degrada
   // la operación que mide deja de ser una medición y pasa a ser una avería.
+  //
+  // ═══ DEFENSA EN PROFUNDIDAD: LA POLÍTICA DICE EL DOMINIO, ESTO MIRA EL CONTENIDO ═══
+  //
+  // `politica.mjs` clasifica por DOMINIO, que es una etiqueta que pone quien llama. `partidas` es
+  // INTERNAL y es correcto que lo sea —códigos, unidades, materiales—, pero el prompt de
+  // `elegir-partida` incluye el texto literal del plano, y un plano puede tener un nombre en el
+  // rótulo. Una etiqueta correcta no garantiza un contenido limpio.
+  //
+  // Por eso la sombra —y SÓLO la sombra, que es lo opcional— pasa además por el mismo guardián que
+  // decide qué se puede publicar: CUIT, importes en pesos y nombres de persona. Si encuentra algo,
+  // no se mide y queda dicho por qué. Perder una medición es barato; exportar un nombre no.
   let sombra = null
+  let sombraOmitida = null
   if (plan.sombra) {
-    sombra = intentar(plan.sombra, { ...comunes, modelo: plan.sombra.idDeModelo(alias) },
-      { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias })
-      .catch(() => null)
+    const hallazgos = hallazgosEnTexto(JSON.stringify({ sistema, mensajes }))
+    if (hallazgos.length) {
+      sombraOmitida = hallazgos
+    } else {
+      sombra = intentar(plan.sombra, { ...comunes, modelo: plan.sombra.idDeModelo(alias) },
+        { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias })
+        .catch(() => null)
+    }
   }
 
   let ultimo = null
@@ -205,6 +227,7 @@ export async function llmRun({
         sensibilidad: plan.sensibilidad,
         ms: Date.now() - t0,
         sombra: sombra ? await sombra : null,
+        sombraOmitida,
       }
     }
     ultimo = res.err
@@ -214,4 +237,51 @@ export async function llmRun({
   const err = ultimo ?? new Error('gateway: ningún proveedor pudo atender')
   err.plan = plan.porQue
   throw err
+}
+
+
+/**
+ * MEDIR UN MODELO CONTRA EL TRÁFICO REAL, SIN TOCAR EL CAMINO QUE SIRVE.
+ *
+ * ═══ POR QUÉ ES UNA FUNCIÓN APARTE Y NO UNA OPCIÓN DE `llmRun` ═══
+ *
+ * `llmRun` es un reemplazo: quien lo adopta cambia por dónde pasa su llamada. Eso es correcto para
+ * código nuevo y es un riesgo innecesario para un camino que YA FUNCIONA en producción — el elector
+ * de partidas del pipeline de planos lleva meses andando.
+ *
+ * Esta función no reemplaza nada. Se la llama AL LADO de la llamada de siempre, no devuelve nada
+ * que nadie use y no puede lanzar. Si HF tarda, falla o el token no está, el pipeline ni se entera.
+ * Es la única forma honesta de tener «sombra»: si la medición puede degradar lo que mide, no es una
+ * medición, es una avería con nombre elegante.
+ *
+ * Lo que sí deja: una fila en `orq.chat_cost` con proveedor `huggingface` y la función marcada
+ * `:sombra`, que es exactamente lo que el Autonomy Rate necesita para decir «esto lo habría podido
+ * resolver el OS solo» sin habérselo jugado.
+ */
+export function medirEnSombra({
+  tarea, dominio = null, sistema = null, mensajes, herramientas = null,
+  calidad = CAPACIDAD.NORMAL, maxTokens = 1024, temperatura, agente = null, funcion = null,
+  permitidoExplicitamente = false, logger = null,
+} = {}) {
+  try {
+    const plan = planDe({ tarea, dominio, permitidoExplicitamente, hfDisponible: huggingface.configurado() })
+    if (!plan.sombra) return { medido: false, porQue: plan.porQue }
+
+    const hallazgos = hallazgosEnTexto(JSON.stringify({ sistema, mensajes }))
+    if (hallazgos.length) return { medido: false, porQue: `el contenido ${hallazgos.join(' y ')}` }
+
+    const capacidad = normalizarCapacidad(calidad)
+    const alias = modeloPara(capacidad)
+    // Sin `await` y con el error tragado: esta promesa no puede llegar a nadie.
+    intentar(plan.sombra, {
+      modelo: plan.sombra.idDeModelo(alias), sistema, mensajes, maxTokens, temperatura,
+      herramientas, dominio, permitidoExplicitamente,
+    }, { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias })
+      .then((r) => logger?.info?.('sombra medida', { tarea, ok: r.ok, ms: r.ms }))
+      .catch(() => {})
+    return { medido: true, modelo: plan.sombra.idDeModelo(alias) }
+  } catch {
+    // Ni siquiera un error de programación acá puede tocar la operación que se está midiendo.
+    return { medido: false, porQue: 'la sombra falló al armarse' }
+  }
 }
