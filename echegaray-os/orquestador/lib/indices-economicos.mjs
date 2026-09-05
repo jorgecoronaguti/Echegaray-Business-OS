@@ -97,9 +97,24 @@ export async function actualizarIndices(buscar, { anio = new Date().getFullYear(
     }
   }
 
-  const { rows } = await query(
+  const { rows: crudas } = await query(
     "select indice, periodo, tipo, variacion, factor_acumulado, fuente from public.factor_ajuste where periodo >= to_char(now(),'YYYY-MM') order by indice, periodo",
   )
+  // ═══ EL FACTOR SALE COMO NÚMERO, NO COMO STRING CON SEIS DECIMALES (05/09/2026) ═══
+  //
+  // `factor_acumulado` es `numeric` y `pg` lo entrega como string: «1.237788». En formato argentino
+  // eso se lee como UN MILLÓN DOSCIENTOS TREINTA Y SIETE MIL. No es una molestia estética: el
+  // control de visibilidad —que a propósito no sabe nada del filtro y sólo busca números grandes en
+  // la salida de una tool— lo contó como plata que se le estaba filtrando a un jefe de obra, y tenía
+  // razón en sospechar. Un factor que se puede leer como un importe es un factor mal serializado.
+  //
+  // Cuatro decimales son 0,01% de precisión sobre un índice de proyección. Los seis que traía la
+  // base son precisión falsa: nadie proyecta con la sexta cifra de un IPC.
+  const rows = crudas.map((f) => ({
+    ...f,
+    variacion: Number(f.variacion),
+    factor_acumulado: Number(Number(f.factor_acumulado).toFixed(4)),
+  }))
   const por_indice = {}
   for (const f of rows) (por_indice[f.indice] ??= []).push(f)
 

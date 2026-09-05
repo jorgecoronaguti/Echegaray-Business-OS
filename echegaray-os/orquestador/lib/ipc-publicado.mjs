@@ -32,6 +32,10 @@ export const IPC = [
   { periodo: '2026-04', variacion: 0.026 },
   { periodo: '2026-05', variacion: 0.021 },
   { periodo: '2026-06', variacion: 0.019 },
+  // JULIO 2026 — leído del informe de prensa oficial del INDEC (Vol. 10, n° 25), no de un diario.
+  // La búsqueda web devolvió «19,3% interanual»; el informe dice que 19,3% es el ACUMULADO DEL AÑO.
+  // Cargar el interanual como acumulado habría roto el control de abajo sin que nadie lo notara.
+  { periodo: '2026-07', variacion: 0.021 },
 ]
 
 export const FUENTE = 'INDEC — IPC nivel general, informes de prensa mensuales (contrastado con Chequeado y prensa económica)'
@@ -41,6 +45,7 @@ export const URL = 'https://www.indec.gob.ar/indec/web/Nivel4-Tema-3-5-31'
 export const ACUMULADOS_PUBLICADOS = [
   { hasta: '2026-03', valor: 0.094, que: 'acumulado del 1er trimestre 2026' },
   { hasta: '2026-06', valor: 0.168, que: 'acumulado del 1er semestre 2026' },
+  { hasta: '2026-07', valor: 0.193, que: 'acumulado enero-julio 2026 (informe IPC julio, INDEC)' },
 ]
 
 /** Cuánta diferencia se acepta entre el encadenado y el acumulado publicado (en fracción). */
