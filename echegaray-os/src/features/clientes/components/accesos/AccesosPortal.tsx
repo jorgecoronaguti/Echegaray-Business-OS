@@ -81,8 +81,14 @@ export function AccesosPortal({
         flexWrap: 'wrap', background: C.lienzo,
       }}
     >
+      {/* 958px ES EL ANCHO QUE PIDE LA TABLA DEL HANDOFF, no un número redondo: es la suma de sus
+          seis pistas (230+150+120+140+150+28) más los cinco huecos de 28. Con el mínimo anterior de
+          600px, entre 1500 y 1860px de viewport el panel de alta se quedaba al lado y estrangulaba
+          la tabla a ~620px: las columnas se pisaban y el mail —que es la llave— se cortaba. Con el
+          mínimo real, `flex-wrap` baja el panel cuando no entran los dos, que es lo que el handoff
+          v4 dibuja: la lista a ancho completo y el alta debajo. */}
       <div style={{
-        flex: 1, minWidth: 'min(600px, 100%)', display: 'flex', flexDirection: 'column', gap: '26px',
+        flex: 1, minWidth: 'min(958px, 100%)', display: 'flex', flexDirection: 'column', gap: '26px',
       }}>
         {(aviso || error) && (
           <div

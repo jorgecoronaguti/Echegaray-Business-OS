@@ -72,11 +72,26 @@ test('de +Autos se carga la tasa de CARTERA ABIERTA, no la bonificada', () => {
 // ═══ FISHER, Y SÓLO SOBRE LO QUE EXISTE ═══
 test('la tasa real es Fisher exacto y NO se reimplementa: sale de rodados-plan', () => {
   const inf = inflacionDeTrabajo().anual
+  // NO SE REIMPLEMENTA: es la MISMA función. Dos implementaciones de Fisher divergen en el tercer
+  // decimal y nadie sabe cuál creer.
   assert.equal(tasaRealBna(0.723, inf), tasaReal(0.723, inf))
-  // Fisher, no la resta: 72,30% − 29,83% daría 42,47%, y el verdadero es 32,71%.
-  assert.equal(Number((tasaRealBna(0.723, inf) * 100).toFixed(2)), 32.71)
-  assert.equal(Number((tasaRealBna(0.534, inf) * 100).toFixed(2)), 18.15)
-  assert.notEqual(Number((tasaRealBna(0.723, inf) * 100).toFixed(2)), 42.47)
+  assert.equal(tasaRealBna(0.534, inf), tasaReal(0.534, inf))
+
+  // ═══ FISHER CONTRA LA RESTA, SIN CLAVAR EL NÚMERO DEL MES ═══
+  //
+  // Acá decía `=== 32.71` y `=== 18.15`, con el comentario «72,30% − 29,83% daría 42,47%». Los tres
+  // números salían de la inflación viva. Al cargar julio del INDEC la ventana se corrió, la anual
+  // pasó a 27,32%, la real dio 35,33% y el test se puso rojo — sin que Fisher cambiara.
+  //
+  // Lo que el test existe para atrapar es que alguien reemplace Fisher por la resta ingenua. Eso se
+  // afirma comparando las dos, que es la diferencia real y no depende de qué mes publique el INDEC.
+  const fisher = tasaRealBna(0.723, inf)
+  const resta = 0.723 - inf
+  assert.ok(fisher < resta, 'Fisher siempre da MENOS que la resta cuando la tasa es positiva')
+  assert.ok(resta - fisher > 0.05, `la diferencia es material y no redondeo: ${resta - fisher}`)
+  // Y el número exacto se prueba con una inflación FIJA, que es donde un número clavado sí vale:
+  // (1,723 / 1,30) − 1 = 32,538%.
+  assert.equal(Number((tasaRealBna(0.723, 0.30) * 100).toFixed(3)), 32.538)
 })
 
 // El defecto que atrapa: propagar un NaN con cara de número cuando la tasa no existe. Un NaN ordena
