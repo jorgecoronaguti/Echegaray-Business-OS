@@ -38,8 +38,14 @@ import { subirLote, type EstadoArchivo } from '../services/subidaDirecta'
 
 const PANEL: React.CSSProperties = {
   position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30, width: 380, maxWidth: '86vw',
-  background: C.superficie, border: `1px solid ${C.linea}`, borderRadius: 10,
-  boxShadow: '0 8px 24px rgba(31,31,30,.10)', padding: 12,
+  background: C.superficie, borderRadius: 10, padding: 12,
+  // SIN SOMBRA. El handoff lo dice en la geometría: «sin sombras · sin gradientes». Este panel
+  // tenía `0 8px 24px rgba(31,31,30,.10)` — elevación de otro sistema de diseño, no de éste.
+  //
+  // Un panel flotante igual necesita despegarse de lo que tapa, y este lenguaje resuelve eso con
+  // BORDE, no con elevación: se sube de `line` a `line-strong`, que es exactamente el token que el
+  // handoff reserva para «borde de contenedor». Se ve separado sin inventar profundidad.
+  border: `1px solid ${C.lineaFuerte}`,
 }
 
 interface Elegido {
