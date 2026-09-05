@@ -106,17 +106,26 @@ export default async function PresupuestosPage({
         seleccionInicial={sel ?? null}
         margenObjetivo={valorDe(operativos.data, 'margen_objetivo_pct')}
         accion={
-          abierta ? (
-            <BotonPlano href="/presupuestos" testid="abrir-alta-presupuesto">
-              <IcoCerrar s={14} /> Cancelar
+          <>
+            {/* LA BASE MAESTRA VIVE ACÁ DESDE EL HANDOFF v4. Tareas tipo y recursos no son
+                administración: son la materia con la que se cotiza, y su solapa salió de la barra
+                del área. Este enlace es lo único que la mantiene a un clic — sin él, la pantalla
+                quedaría viva y sin puerta. Secundario y en texto: se consulta, no se opera. */}
+            <BotonPlano href="/administracion/base-maestra" testid="ir-base-maestra">
+              Base maestra
             </BotonPlano>
-          ) : (
-            // El camino principal es el conversacional («Presupuestos v5»): la carga manual
-            // sigue viva y enlazada desde /presupuestos/nuevo para no romper el hábito.
-            <BotonMarca href="/presupuestos/nuevo" testid="abrir-alta-presupuesto">
-              <IcoMas s={14} /> Nuevo presupuesto
-            </BotonMarca>
-          )
+            {abierta ? (
+              <BotonPlano href="/presupuestos" testid="abrir-alta-presupuesto">
+                <IcoCerrar s={14} /> Cancelar
+              </BotonPlano>
+            ) : (
+              // El camino principal es el conversacional («Presupuestos v5»): la carga manual
+              // sigue viva y enlazada desde /presupuestos/nuevo para no romper el hábito.
+              <BotonMarca href="/presupuestos/nuevo" testid="abrir-alta-presupuesto">
+                <IcoMas s={14} /> Nuevo presupuesto
+              </BotonMarca>
+            )}
+          </>
         }
       />
 

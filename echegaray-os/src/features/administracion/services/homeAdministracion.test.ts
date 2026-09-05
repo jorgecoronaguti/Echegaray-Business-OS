@@ -48,10 +48,11 @@ test('un cero real se dice, y no enciende ninguna señal', () => {
   assert.deepEqual(chipsDeAtencion(CERO, 'direccion'), [])
 })
 
-test('«Trabajo» cuenta SEÑALES VIVAS, no una tabla', () => {
+test('las señales vivas se cuentan aparte de la barra', () => {
+  // «Trabajo» dejó de ser un destino (handoff v4), así que su contador ya no vive en la barra. La
+  // cuenta sigue existiendo porque la usa el libro mayor y la campanita del header.
   const c = con({ proveedoresSinCuit: 14, comprasDuplicadas: 1 })
   assert.equal(senalesVivas(c, 'direccion'), 2)
-  assert.equal(areasDeAdministracion(c, 'direccion', senalesVivas(c, 'direccion'))[0].cuenta, 2)
   // Sin nada que leer, el contador no es 0: es que no se sabe.
   assert.equal(senalesVivas(NADA, 'direccion'), null)
 })
@@ -138,9 +139,9 @@ test('la lista vacía POR ERROR se distingue de la vacía porque no hay nada', (
   assert.equal(chipsDeAtencion(NADA as ConteosAtencion, 'direccion').length, 0)
 })
 
-test('el jefe de obra no ve los destinos del precio, y sí los suyos', () => {
+test('el jefe de obra ve los cuatro destinos de la v4', () => {
   const suyas = areasDeAdministracion(CERO, 'jefe_obra').map((a) => a.clave)
-  assert.deepEqual(suyas, ['trabajo', 'clientes', 'personas', 'proveedores', 'compras', 'base-maestra'])
+  assert.deepEqual(suyas, ['clientes', 'personas', 'proveedores', 'compras'])
   // Y tampoco le llegan señales a una pantalla que no puede abrir.
   for (const s of senalesDeTrabajo(con({ proveedoresSinCuit: 1, comprasSinImputar: 1 }), 'jefe_obra')) {
     assert.ok(!s.href.startsWith('/presupuestos') && !s.href.startsWith('/documentos'))

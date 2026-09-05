@@ -1,35 +1,28 @@
-// 24 · COMPRAS — la pestaña Compras del Sheet, con la geometría del canónico.
+// COMPRAS — la pestaña Compras del Sheet, con la geometría del handoff v4.
 //
-// `echegaray-design-v2/24 · Compras.dc.html`, línea 156:
-//   `62px minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1.1fr) 116px 116px 26px`
+// `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque «3 · COMPRAS»:
+//   `minmax(150px,1.2fr) minmax(120px,1fr) 112px minmax(110px,1fr) 92px 104px 112px 26px`
 //
-// ═══ LO QUE AGREGA LA v2 (25/08/2026) ═══
+// ═══ QUÉ CAMBIÓ RESPECTO DEL PORTE ANTERIOR (04/09/2026) ═══
 //
-// `24 · Compras v2` declara que la tabla «conserva la estructura real del Sheet Flujo de Fondos:
-// Unidad de Negocio · Cliente/Asignación · Forma de Pago · Deuda Parcial · Tipo de Costo». No son
-// cinco columnas nuevas —la tabla se volvería ilegible—: la v2 las APILA dentro de las celdas que
-// ya existen, igual que el número de comprobante bajo el concepto. Acá se portan las dos que van en
-// la fila:
+// La fila tenía siete columnas y abría con FECHA. La v4 la lleva a ocho y cambia dos cosas:
 //
-//   · la UNIDAD DE NEGOCIO delante del destino, en 11px apagado (897 de 897 filas la tienen: Civil
-//     540, Estructura 219, Impuestos 72, Mantenimiento 54, Financiero 12);
-//   · la DEUDA PARCIAL bajo el importe, en ámbar y sólo cuando es mayor que cero — 22 filas.
+//   · EL COMPROBANTE SUBE A COLUMNA PROPIA. Estaba apilado bajo el concepto, en 10,5px, y es el
+//     dato con el que se compara la fila contra el papel. Más importante: 876 de 882 filas NO
+//     tienen comprobante, y ese es el trabajo pendiente más grande de la pantalla — apilado abajo
+//     no se ve, y en su columna se lee de un vistazo cuál falta, en ámbar (sin comprobante el gasto
+//     no acredita IVA).
+//   · FORMA DE PAGO SUBE A COLUMNA PROPIA. Estaba sólo en el panel, y es lo que decide cuándo sale
+//     la plata: una compra a cheque 60d y una a transferencia no pesan igual en la caja de esta
+//     semana aunque el importe sea el mismo.
+//   · LA FECHA BAJA AL PANEL. Es lo que se sacrifica para que entren las dos anteriores: la lista
+//     ya viene ordenada por fecha y el día exacto se lee en la propiedad «Fecha» del panel. Es la
+//     única pérdida de este cambio y se declara.
 //
-// Y el chip «estructura» al lado de `F931`, `Taller` y `Almacen`, que no son obras sino costo de la
+// La UNIDAD DE NEGOCIO sigue delante del destino en 11px apagado (897 de 897 filas la tienen), la
+// DEUDA PARCIAL sigue bajo el importe en ámbar y sólo cuando es mayor que cero, y el chip
+// «estructura» sigue al lado de `F931`, `Taller` y `Almacen`, que no son obras sino costo de la
 // empresa (la regla vive en `services/comprasSheet.ts`, no acá).
-//
-// Forma de Pago y Tipo de Costo NO entran a la fila: la v2 las pone en el panel de detalle.
-//
-// ═══ AHORA LA TERCERA COLUMNA SÍ DICE «CONCEPTO» ═══
-//
-// La versión anterior de esta tabla la rotulaba «COMPROBANTE» con un motivo correcto: el libro de
-// ARCA no trae el detalle de lo comprado, así que «Hormigón H17 · 6 m³» era dato inventado del
-// mockup y dibujar una columna vacía habría hecho parecer que faltaba cargar algo inexistente.
-// Leyendo la PESTAÑA eso deja de ser cierto: «Concepto» y «Detalles / Obra» son dos columnas reales
-// que el dueño llena. El canónico se puede portar tal cual porque ahora hay con qué.
-//
-// El número de comprobante no se pierde: va debajo del concepto, en mono, que es como se lo compara
-// contra el papel.
 //
 // ═══ LA ÚLTIMA COLUMNA (26px) ES EL PAPEL, NO UN `⋯` ═══
 //
@@ -39,16 +32,16 @@
 import Link from 'next/link'
 import {
   ALTO, C, CeldaTexto, EncabezadoCanon, FilaCanon, PieCanon, TarjetaTabla, VacioCanon,
-  IcoAlerta, diaMes, entero, pesos,
+  IcoAlerta, entero, pesos,
 } from '@/shared/components/canon'
 import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
 
-/** `24`, línea 156. */
-const COLS = '62px minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1.1fr) 116px 116px 26px'
+/** El handoff v4, bloque «3 · COMPRAS». Ocho columnas; la última es el papel. */
+const COLS = 'minmax(150px,1.2fr) minmax(120px,1fr) 112px minmax(110px,1fr) 92px 104px 112px 26px'
 
-/** La pastilla del canónico: 11px, radio 11, borde propio. Líneas 118-121. */
+/** La pastilla del canónico: 11px, radio 11, borde propio. */
 function Pastilla({ estado }: { estado: string | null }) {
   const p = pastillaDe(estado)
   return (
@@ -94,8 +87,9 @@ export function TablaComprasSheet({
       <EncabezadoCanon
         cols={COLS}
         columnas={[
-          { rotulo: 'FECHA' }, { rotulo: 'PROVEEDOR' }, { rotulo: 'CONCEPTO' }, { rotulo: 'OBRA' },
-          { rotulo: 'ESTADO' }, { rotulo: 'MONTO', alineacion: 'derecha' }, { vacia: true, rotulo: '' },
+          { rotulo: 'PROVEEDOR' }, { rotulo: 'CONCEPTO' }, { rotulo: 'COMPROBANTE' },
+          { rotulo: 'CLIENTE / ASIGNACIÓN' }, { rotulo: 'ESTADO' }, { rotulo: 'FORMA DE PAGO' },
+          { rotulo: 'IMPORTE', alineacion: 'derecha' }, { vacia: true, rotulo: '' },
         ]}
       />
 
@@ -110,21 +104,23 @@ export function TablaComprasSheet({
             testid={`compra-${f.fila}`}
           >
             <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
-              <span style={{ fontFamily: 'var(--font-plex-mono)', fontSize: 11.5, color: C.tintaSuave }}>
-                {f.fecha ? diaMes(f.fecha) : '—'}
-              </span>
               <CeldaTexto>{f.proveedor ?? 'sin proveedor'}</CeldaTexto>
-              <div style={{ minWidth: 0 }}>
-                <CeldaTexto>{f.concepto ?? f.detalle_obra ?? 'sin concepto'}</CeldaTexto>
-                {f.comprobante && (
-                  <span style={{ fontFamily: 'var(--font-plex-mono)', fontSize: 10.5, color: C.tenue }}>
-                    {f.tipo ? `${f.tipo} ` : ''}{f.comprobante}
-                  </span>
-                )}
-              </div>
-              {/* «Sin imputar» en rojo con su ⚠, igual que el canónico (líneas 106-112). Hoy las 882
-                  filas tienen obra, así que este camino no se ve — existe porque el día que alguien
-                  cargue una sin imputar tiene que gritarlo, no esconderlo. */}
+              <CeldaTexto>{f.concepto ?? f.detalle_obra ?? 'sin concepto'}</CeldaTexto>
+              {/* SIN COMPROBANTE EL GASTO NO ACREDITA IVA: por eso va en ámbar y no en gris. Es el
+                  único dato de la fila cuya ausencia cuesta plata. */}
+              <span
+                className="font-mono"
+                style={{
+                  fontSize: 11.5, color: f.comprobante ? C.tintaSuave : '#B54708',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+                data-testid={f.comprobante ? undefined : 'compra-sin-comprobante'}
+              >
+                {f.comprobante ? `${f.tipo ? `${f.tipo} ` : ''}${f.comprobante}` : 'sin comprobante'}
+              </span>
+              {/* «Sin imputar» en rojo con su ⚠: hoy las 882 filas tienen destino, así que este
+                  camino no se ve — existe porque el día que alguien cargue una sin imputar tiene
+                  que gritarlo, no esconderlo. */}
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0 }}>
                 {f.unidad_negocio && (
                   <span style={{ fontSize: 11, color: C.tenue, flexShrink: 0 }}>{f.unidad_negocio}</span>
@@ -152,6 +148,11 @@ export function TablaComprasSheet({
               <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                 <Pastilla estado={f.estado} />
               </div>
+              {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
+                  igual; lo único que no se puede es proyectar cuándo sale la plata. */}
+              <CeldaTexto color={f.tipo_pago ? C.tintaSuave : C.tenue}>
+                {f.tipo_pago || 'sin cargar'}
+              </CeldaTexto>
               <div style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0,
                 fontFamily: 'var(--font-plex-mono)', fontSize: 12, textAlign: 'right',

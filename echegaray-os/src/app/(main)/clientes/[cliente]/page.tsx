@@ -87,6 +87,13 @@ const VE_CONTRACTUALES = ['direccion', 'administracion']
 type Query = {
   contacto?: string; editar?: string; archivadas?: string; actividad?: string; documentos?: string
   vista?: string
+  /** Qué fila tiene su línea de acciones abierta. UNA a la vez, porque es un parámetro y no una
+   *  lista: la alternativa era un `useState` en la tabla, que es de servidor, y volverla de cliente
+   *  obligaría a cruzar `editar(id)` por la frontera — el React #419 que deja la pantalla en
+   *  blanco. Son dos llaves distintas porque son dos tablas: abrir el menú de un contacto no puede
+   *  cerrar el de un documento. */
+  accContacto?: string
+  accDoc?: string
   /** El nombre viejo del mismo parámetro. Sigue leyéndose para que un enlace ya compartido no caiga
    *  en otra cara sin decir por qué. No se escribe más: `url()` emite `vista`. */
   solapa?: string
@@ -384,6 +391,8 @@ export default async function ClientePage({ params, searchParams }: {
 
             {solapa === 'documentos' && (
               <BloqueDocumentos
+                menuAbierto={q.accDoc ?? null}
+                urlMenuDe={(d) => url({ accDoc: d })}
                 documentos={lector.leer(documentos, [])}
                 carpetaDriveId={cliente.drive_carpeta_id}
                 vincular={vincularDocumentoCliente.bind(null, id)}
@@ -428,7 +437,9 @@ export default async function ClientePage({ params, searchParams }: {
             <BloqueContactos
               contactos={lector.leer(contactos, [])}
               enEdicion={q.contacto ?? null}
+              menuAbierto={q.accContacto ?? null}
               urlDe={(c) => url({ contacto: c })}
+              urlMenuDe={(c) => url({ accContacto: c })}
               editar={(c) => editarContacto.bind(null, c)}
               crear={crearContacto.bind(null, id)}
               borrar={borrarContacto}

@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   cambiosDelEsquema, cambiosSinPublicar, cuadreDelContrato, detalleDePago, estadoVigente,
-  grillaDelMes, montoBloqueado, pagosDelDia, totalEsquema,
+  grillaDelMes, marcaDelPago, montoBloqueado, nuevaReprogramacion, pagosDelDia, totalEsquema,
 } from './reglasEsquema.ts'
 import { montoConMoneda } from './cobranzaFormato.ts'
 import type { PagoEsquema } from '../types/cobranzas.ts'
@@ -77,7 +77,14 @@ test('el historial de cambios va del más nuevo al más viejo y dice si el clien
     'Certificado 4 movido al 17/09', 'Certificado 2 movido al 22/09',
   ])
   assert.equal(cambios[0].detalle, 'sin publicar · RE')
-  assert.equal(cambios[1].detalle, 'publicado · RE · promesa de Sosa')
+  assert.equal(cambios[1].detalle, 'publicado · RE')
+  // ═══ EL MOTIVO VIAJA APARTE, Y POR ESO LA FALTA SE PUEDE PINTAR ═══
+  //
+  // Estaba pegado adentro de `detalle`, así que un movimiento sin motivo simplemente no lo
+  // mencionaba: el historial no distinguía «se movió por la promesa de Sosa» de «se movió y nadie
+  // dijo por qué». La segunda es la que hay que ir a completar, y va en ámbar.
+  assert.equal(cambios[0].motivo, null)
+  assert.equal(cambios[1].motivo, 'promesa de Sosa')
 })
 
 test('mover la fecha al futuro saca la fila de «vencido» sin esperar al sync', () => {
@@ -168,4 +175,66 @@ test('un monto en dólares NO se escribe con la escala de millones de pesos', ()
   assert.equal(montoConMoneda(4_235, 'USD'), 'U$S 4.235')
   assert.equal(montoConMoneda(8_200_000, 'ARS'), '$ 8,20 M')
   assert.equal(montoConMoneda(null, 'USD'), '—')
+})
+
+
+// ── LA MARCA DE LA TARJETA: TRES AUSENCIAS, TRES FRASES ─────────────────────────────────────────
+//
+// ═══ EL DEFECTO QUE ATRAPAN ═══
+//
+// La RLS del portal exige `visible_portal` Y `publicado_at is not null`. Si las tres ausencias se
+// dicen con la misma palabra, la pantalla no distingue entre «el cliente nunca vio este pago» y
+// «el cliente está viendo la fecha VIEJA», que es la peligrosa: hay un plan comprometido distinto
+// del que se está mirando.
+
+const publicado = (p: Partial<PagoEsquema> & { monto: number }) =>
+  pago({ publicado_at: '2026-05-02T10:00:00Z', ...p })
+
+test('«nunca publicado» no es lo mismo que «sin publicar»', () => {
+  assert.deepEqual(marcaDelPago(pago({ monto: 1 })), { texto: 'nunca publicado', tono: 'warn' })
+  assert.deepEqual(
+    marcaDelPago(publicado({ monto: 1, cambio_pendiente: true })),
+    { texto: 'sin publicar', tono: 'warn' },
+  )
+})
+
+test('«oculto al cliente» es a propósito y no reclama: va apagado, no en ámbar', () => {
+  const m = marcaDelPago(publicado({ monto: 1, visible_portal: false }))
+  assert.deepEqual(m, { texto: 'oculto al cliente', tono: 'apagado' })
+})
+
+test('un cambio sin publicar gana sobre el oculto: es lo que el cliente NO está viendo', () => {
+  const m = marcaDelPago(publicado({ monto: 1, visible_portal: false, cambio_pendiente: true }))
+  assert.equal(m?.texto, 'sin publicar')
+})
+
+test('UNA reprogramación se dice «2ª fecha»: la original no está en el historial', () => {
+  const m = marcaDelPago(publicado({
+    monto: 1,
+    reprogramaciones: [{ de: '2026-08-15', a: '2026-09-15', at: '2026-08-06T00:00:00Z', por: null, motivo: null, publicado: false }],
+  }))
+  assert.deepEqual(m, { texto: '2ª fecha', tono: 'neg' })
+})
+
+test('un pago publicado, visible y sin movimientos NO lleva marca', () => {
+  // Una marca siempre encendida deja de leerse.
+  assert.equal(marcaDelPago(publicado({ monto: 1 })), null)
+})
+
+// ── EL HISTORIAL SE ESCRIBE SIEMPRE ─────────────────────────────────────────────────────────────
+
+test('la reprogramación se guarda aunque nadie escriba el motivo', () => {
+  // El hecho —cuántas veces se movió el cobro— no puede esperar a la explicación. Es lo que decide
+  // si a ese cliente se le vuelve a cotizar con el mismo plazo de pago.
+  const r = nuevaReprogramacion({ de: '2026-08-15', a: '2026-09-15', at: '2026-09-04T12:00:00Z' })
+  assert.equal(r.de, '2026-08-15')
+  assert.equal(r.a, '2026-09-15')
+  assert.equal(r.motivo, null)
+  assert.equal(r.publicado, false, 'mover la fecha no se la muestra al cliente')
+})
+
+test('un motivo en blanco queda NULL, no como cadena vacía', () => {
+  // Una cadena vacía se lee como «tiene motivo» y la pantalla dejaría de pedirlo en ámbar.
+  assert.equal(nuevaReprogramacion({ de: null, a: '2026-09-15', at: 'x', motivo: '   ' }).motivo, null)
+  assert.equal(nuevaReprogramacion({ de: null, a: '2026-09-15', at: 'x', motivo: ' tarde ' }).motivo, 'tarde')
 })

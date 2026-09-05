@@ -7,7 +7,7 @@
 // volver a correr.
 
 import { diasEntre } from './cobranzaFormato.ts'
-import type { PagoEsquema } from '../types/cobranzas.ts'
+import type { PagoEsquema, Reprogramacion } from '../types/cobranzas.ts'
 
 /**
  * La fila «Total del esquema» (`32:283`): lo que suman los pagos y lo que suman sus reparos.
@@ -91,6 +91,14 @@ export interface CambioDelEsquema {
   at: string
   texto: string
   detalle: string
+  /**
+   * POR QUÉ SE MOVIÓ. `null` = nadie lo escribió, y la pantalla lo pide en ámbar.
+   *
+   * Va aparte de `detalle` y no pegado adentro: cuando estaba adentro, un movimiento sin motivo
+   * simplemente no lo mencionaba, y un historial que no distingue «se movió porque la chapa entró
+   * tarde» de «se movió y nadie dijo por qué» no sirve para volver a cotizarle a ese cliente.
+   */
+  motivo: string | null
   publicado: boolean
 }
 
@@ -108,8 +116,8 @@ export function cambiosDelEsquema(pagos: PagoEsquema[]): CambioDelEsquema[] {
       cambios.push({
         at: r.at,
         texto: r.de ? `${p.concepto} movido al ${dia}` : `${p.concepto} agregado al ${dia}`,
-        detalle: [r.publicado ? 'publicado' : 'sin publicar', r.por, r.motivo]
-          .filter(Boolean).join(' · '),
+        detalle: [r.publicado ? 'publicado' : 'sin publicar', r.por].filter(Boolean).join(' · '),
+        motivo: r.motivo?.trim() || null,
         publicado: r.publicado,
       })
     }
@@ -131,6 +139,65 @@ export function estadoVigente(pago: PagoEsquema, hoy: string): PagoEsquema['esta
   }
   const dias = diasEntre(pago.fecha, hoy)
   return dias != null && dias > 0 ? 'vencido' : 'a_vencer'
+}
+
+/**
+ * LA MARCA DE LA TARJETA DEL CALENDARIO — qué ve el cliente de este pago, en una palabra.
+ *
+ * ═══ TRES AUSENCIAS DISTINTAS, TRES FRASES DISTINTAS ═══
+ *
+ * La RLS del portal exige LAS DOS cosas: `visible_portal` y `publicado_at is not null`. Así que
+ * hay tres formas de que el cliente no esté viendo lo que la pantalla muestra, y significan cosas
+ * opuestas:
+ *
+ *   · `publicado_at` NULL       → NUNCA PUBLICADO. El cliente no vio nunca este pago.
+ *   · `cambio_pendiente`        → SIN PUBLICAR. El cliente sigue viendo la fecha VIEJA, que es el
+ *                                 caso peligroso: hay un plan comprometido distinto del que se está
+ *                                 mirando acá.
+ *   · `visible_portal` en false → OCULTO AL CLIENTE. Es a propósito y no reclama nada.
+ *
+ * Hasta el 04/09/2026 las tres se dibujaban con dos frases y «nunca publicado» no existía: un pago
+ * que nadie publicó jamás se leía igual que uno publicado y al día.
+ *
+ * `null` = no hay nada que marcar, y entonces no se dibuja nada: una marca siempre encendida deja
+ * de leerse.
+ */
+export interface MarcaDePago {
+  texto: string
+  /** `warn` = el cliente no está viendo esto y debería · `apagado` = a propósito · `neg` = se movió. */
+  tono: 'warn' | 'apagado' | 'neg'
+}
+
+export function marcaDelPago(p: PagoEsquema): MarcaDePago | null {
+  if (p.publicado_at == null) return { texto: 'nunca publicado', tono: 'warn' }
+  if (p.cambio_pendiente) return { texto: 'sin publicar', tono: 'warn' }
+  if (!p.visible_portal) return { texto: 'oculto al cliente', tono: 'apagado' }
+  const movimientos = p.reprogramaciones?.length ?? 0
+  // «2ª fecha» con UNA reprogramación: la primera fecha es la original, que no está en el historial.
+  if (movimientos > 0) return { texto: `${movimientos + 1}ª fecha`, tono: 'neg' }
+  return null
+}
+
+/**
+ * UN MOVIMIENTO DE FECHA, listo para agregar al historial.
+ *
+ * Se escribe SIEMPRE, con motivo o sin él: es la evidencia de cuántas veces se movió un cobro, y
+ * esperar a que alguien escriba el motivo sería perder el hecho por no tener la explicación. El
+ * motivo vacío queda en `null` y la pantalla lo dibuja «sin motivo cargado» en ámbar hasta que
+ * alguien lo complete.
+ */
+export function nuevaReprogramacion(
+  { de, a, at, por, motivo }: { de: string | null; a: string; at: string; por?: string | null; motivo?: string | null },
+): Reprogramacion {
+  return {
+    de,
+    a,
+    at,
+    por: por ?? null,
+    motivo: motivo?.trim() || null,
+    // Nace SIN publicar: mover la fecha no se la muestra al cliente hasta que alguien publique.
+    publicado: false,
+  }
 }
 
 export interface DiaDeGrilla {

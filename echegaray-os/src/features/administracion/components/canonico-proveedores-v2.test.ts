@@ -65,13 +65,22 @@ const PANTALLAS = ['TablaProveedores.tsx', 'TablaNombres.tsx', 'PanelProveedor.t
 
 // ── CRITERIO 1 · LA PRIMERA LÍNEA DE CONTENIDO ES TRABAJO ────────────────────────────────────────
 
-test('el bloque de trabajo se dibuja ANTES que las sub-vistas y que cualquier lista', () => {
+test('la banda de señales NO vuelve: lo que falta se lee en la fila y en su recorte', () => {
+  // ═══ ESTO ERA EL CRITERIO 1 DEL PATRÓN v2, Y LA v4 LO REVIERTE ═══
+  //
+  // Hasta el handoff CRM / Administración v4 la pantalla abría con «Lo que pide trabajo» ANTES de
+  // las sub-vistas. La v4 lo saca de las pantallas de área: la banda repetía en un renglón lo que
+  // la fila ya marca en ámbar con su verbo y lo que el recorte «Sin CUIT» ya aísla de un clic, y
+  // empujaba la lista —a lo que se entra— fuera de la primera pantalla.
+  //
+  // El defecto que atrapa este test es que la banda vuelva por inercia al portar otra pantalla, o
+  // que se saque la banda SIN dejar las dos formas de leer lo que falta. Las tres aserciones tienen
+  // que valer juntas: sin el recorte, sacar la banda esconde el trabajo en vez de acercarlo.
   const src = pagina()
-  const trabajo = src.indexOf('<TrabajoDeSeccion')
-  const cabecera = src.indexOf('<CabeceraSeccion')
-  assert.ok(trabajo > 0, 'desapareció la primera línea de trabajo')
-  assert.ok(cabecera > 0)
-  assert.ok(trabajo < cabecera, 'el maestro volvió a ser lo primero que se ve')
+  assert.equal(src.includes('<TrabajoDeSeccion'), false, 'volvió la banda de señales')
+  assert.ok(src.indexOf('<CabeceraSeccion') > 0, 'la pantalla abre por sus sub-vistas')
+  assert.match(src, /etiqueta: 'Sin CUIT'/, 'se fue la banda y no quedó el recorte que la reemplaza')
+  assert.match(src, /titulo: 'Nombres sin resolver'/, 'la cola de nombres perdió su sub-vista')
 })
 
 // ── CRITERIO 2 · QUÉ BLOQUEA + VERBO, Y EL VERBO FUNCIONA EN EL LUGAR ────────────────────────────
@@ -89,16 +98,13 @@ test('la fila sin CUIT trae su verbo y el verbo abre el formulario, no otra pant
   assert.match(panel, /accion=\{editar\}/)
 })
 
-test('las señales se alimentan de las LECTURAS, no de un literal', () => {
-  // El defecto que atrapa: cablear `{ data: 0, error: null }` para «que no moleste». La señal
-  // desaparece y la pantalla se ve igual que la de una empresa al día. `armarSenales` ya prueba la
-  // regla; acá se prueba que le llegue el dato de verdad.
+test('el recorte de «Sin CUIT» se alimenta de la LECTURA, no de un literal', () => {
+  // El defecto que atrapa: cablear un número «para que no moleste». El contador se ve igual que el
+  // de una empresa al día. Antes esto vigilaba la llamada a `armarSenales`, que se fue con la
+  // banda; lo que quedó vigilando es la lectura que hoy alimenta el recorte y su contador.
   const src = codigoPagina()
-  const llamada = src.slice(src.indexOf('armarSenales('), src.indexOf('armarSenales(') + 400)
-  assert.match(llamada, /\n\s*sinCuit,/, 'la señal de CUIT dejó de salir del conteo de la base')
-  assert.match(llamada, /data: pendientes\.error \? null : cola\.length, error: pendientes\.error/)
-  assert.equal(/data:\s*\d+/.test(llamada), false, 'hay un número literal donde iba una lectura')
   assert.match(src, /contarProveedores\(supabase, \{ activo: 'activos', sinCuit: true \}\)/)
+  assert.match(src, /cuenta: pendientes\.error \? null : cola\.length/, 'el contador de la cola se cableó')
 })
 
 test('el CTA de vincular nombra lo que falta cuando está apagado', () => {

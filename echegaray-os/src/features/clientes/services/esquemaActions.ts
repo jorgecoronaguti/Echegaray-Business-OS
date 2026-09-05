@@ -5,15 +5,33 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
 import { esquemaPublicado } from '../../../../orquestador/comunicacion/portal/plantillas.mjs'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 import type { PagoEsquema } from '../types'
 import { proximoVencimiento } from './esquemaService'
+import { nuevaReprogramacion } from './reglasEsquema'
 import { editarPago } from './cuentaCorrienteActions'
 import {
   cambioPagoSchema,
   type CambioPago, type EntradaAjustePago, type EntradaPublicacion,
 } from './entradasCobranza'
+
+/**
+ * QUIÉN MOVIÓ LA FECHA. `null` cuando no se pudo saber, que es un dato válido: un historial sin
+ * autor sigue siendo la evidencia de que el cobro se movió, y perder el movimiento entero por no
+ * saber quién fue sería tirar lo importante para conservar lo accesorio.
+ */
+async function quienMueve(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
+  try {
+    const perfil = await getPerfilActual(supabase)
+    if (perfil.data?.nombre) return perfil.data.nombre
+    const { data } = await supabase.auth.getUser()
+    return data.user?.email ?? null
+  } catch {
+    return null
+  }
+}
 
 const ajustarSchema = z.object({
   esquemaPagoId: z.string().uuid(),
@@ -195,7 +213,9 @@ export async function editarPagoDelEsquema(
   const supabase = await createClient()
   const { data: pago, error } = await supabase
     .from('esquema_pago')
-    .select('cobranza_fila, huella_comprobante, huella_monto, fecha, monto, medio')
+    // `reprogramaciones` entra en la lectura porque el historial se APILA: escribir el arreglo
+    // nuevo sin el viejo borraría la evidencia de todas las veces anteriores.
+    .select('cobranza_fila, huella_comprobante, huella_monto, fecha, monto, medio, reprogramaciones')
     .eq('id', pagoId)
     .maybeSingle()
   if (error) return { ok: false, error: error.message }
@@ -222,6 +242,43 @@ export async function editarPagoDelEsquema(
       huellaMonto: pago.huella_monto,
     })
     if (!r.ok) return r
+  }
+
+  // ═══ EL HISTORIAL DE FECHAS SE ESCRIBE SIEMPRE, Y HASTA HOY NO SE ESCRIBÍA NUNCA ═══
+  //
+  // La migración de `esquema_pago` declara «Historial [{de,a,at,motivo}]. Se guarda siempre» y el
+  // docstring de `editarPago` lo repite. No pasaba: `reprogramaciones` no estaba en el grant de
+  // UPDATE, así que la única forma de tener historial era nacer con él. Lo arregla
+  // `20260905T0100`; esto es lo que lo llena.
+  //
+  // Se apila DESPUÉS de que la cola aceptó el cambio de fecha: registrar un movimiento que la cola
+  // rechazó dejaría un historial de cobros que nunca se movieron.
+  //
+  // Y va SIN MOTIVO cuando nadie lo escribió: el hecho —cuántas veces se movió este cobro— es lo
+  // que decide si a ese cliente se le vuelve a cotizar con el mismo plazo, y no puede esperar a la
+  // explicación. La pantalla lo dibuja «sin motivo cargado» en ámbar hasta que alguien lo complete.
+  if (v.fecha !== undefined && v.fecha !== pago.fecha) {
+    const historial = Array.isArray(pago.reprogramaciones) ? pago.reprogramaciones : []
+    const movimiento = nuevaReprogramacion({
+      de: pago.fecha ?? null,
+      a: v.fecha,
+      at: new Date().toISOString(),
+      por: await quienMueve(supabase),
+      motivo: v.motivo_reprogramacion,
+    })
+    const { error: errHistorial } = await supabase
+      .from('esquema_pago')
+      .update({ reprogramaciones: [...historial, movimiento], actualizado_at: movimiento.at })
+      .eq('id', pagoId)
+    // NO SE CALLA. El cambio de fecha YA está encolado y eso no se puede deshacer desde acá; lo que
+    // se perdió es la evidencia de que se movió, y eso hay que decirlo en vez de contestar que sí.
+    if (errHistorial) {
+      return {
+        ok: false,
+        error: 'La fecha quedó encolada, pero no pude guardar el historial del cambio: '
+          + `${errHistorial.message}. Anotá el movimiento a mano.`,
+      }
+    }
   }
 
   // DESPUÉS LO PROPIO DE LA APP. `undefined` = la pantalla no lo tocó, y no se manda: mandar el

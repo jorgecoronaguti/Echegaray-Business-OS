@@ -94,3 +94,54 @@ test('el resumen del portal no se afirma cuando no se leyó', () => {
   assert.match(codigoPagina(), /solapa === 'accesos'/)
   assert.match(codigoPagina(), /Se lee al abrir la cara/)
 })
+
+
+// ═══ ACCIONES DE FILA (handoff CRM / Administración v4) ═════════════════════════════════════════
+
+test('el menú de la fila NO es un popover flotante: expande dentro de la fila', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // El popover se dibujaba en `position:absolute` sobre la tabla: tapa la fila de abajo, se recorta
+  // contra el borde de la tarjeta, y —lo que importa— no tiene dónde poner el error de la base. «El
+  // contacto tiene un acceso al portal: revocalo primero» no entra en 180px, y al cerrarse el menú
+  // se va con ella.
+  const acciones = sinComentarios(fuente('AccionesContacto.tsx'))
+  assert.doesNotMatch(acciones, /MenuContextual/, 'volvió el popover')
+  assert.match(acciones, /colSpan=\{columnas\}/, 'la línea ya no ocupa la fila entera')
+})
+
+test('sólo hay UNA línea de acciones abierta, y su estado viaja en la URL', () => {
+  // Con `useState` en la tabla —que es de servidor— habría que volverla de cliente, y ahí
+  // `editar(c.id)` cruza la frontera: el React #419 que deja la pantalla en blanco en producción y
+  // compila sin una queja. Con un parámetro, «uno a la vez» sale gratis.
+  const src = codigoPagina()
+  assert.match(src, /accContacto/)
+  assert.match(src, /accDoc/)
+  const contactos = sinComentarios(fuente('BloqueContactos.tsx'))
+  assert.match(contactos, /menu=\{menuAbierto === c\.id\}/)
+  assert.doesNotMatch(contactos, /'use client'/, 'la tabla de contactos se volvió de cliente')
+})
+
+test('el error de la FUENTE se muestra al lado de la acción, no en un toast', () => {
+  const boton = sinComentarios(fuente('BotonDeFila.tsx'))
+  assert.match(boton, /setError\(r\.error\)/, 'el error dejó de ser el de la base')
+  assert.doesNotMatch(boton, /toast/i)
+})
+
+test('un contacto sin mail lo dice en ÁMBAR: sin mail no se le manda nada', () => {
+  // Ni la invitación al portal ni el recordatorio de cobranza. Es la definición de `warn` del
+  // sistema —dato faltante que bloquea—, no el gris de una ausencia inocua.
+  const contactos = fuente('BloqueContactos.tsx')
+  assert.match(contactos, /sin mail cargado/)
+  assert.match(contactos, /text-warn" data-testid="contacto-sin-mail"/)
+})
+
+test('«Quitar el vínculo» aclara que el archivo sigue en Drive, al lado de la acción', () => {
+  // Sin la aclaración, «quitar» sobre un contrato se lee como «destruir»: el que duda no lo
+  // aprieta, y el índice se queda con vínculos viejos para siempre.
+  const acciones = fuente('AccionesContacto.tsx')
+  assert.match(acciones, /Quitar el vínculo/)
+  assert.doesNotMatch(acciones, /label="Borrar el documento"/)
+  const docs = fuente('BloqueDocumentos.tsx')
+  assert.match(docs, /No borra el archivo: vive en Drive y sigue ahí\./)
+})

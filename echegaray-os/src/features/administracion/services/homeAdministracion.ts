@@ -211,16 +211,14 @@ export async function getConteosDeAtencion(supabase: SupabaseClient): Promise<Co
 // LA BARRA DE DESTINOS — lo puro, para poder probarlo sin base
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+// LOS CUATRO DESTINOS DE LA v4. `base-maestra`, `documentos` y `trabajo` salieron de la barra
+// (ver `areasAdmin.ts`) y por eso salieron de acá: una entrada para una solapa que no se dibuja
+// hace creer que el contador se sigue mostrando en algún lado.
 const CUENTA: Record<string, (c: ConteosHome) => number | null> = {
-  // Trabajo no cuenta una tabla: cuenta las señales VIVAS del libro mayor de abajo. Un contador
-  // escrito dos veces se contradice el día que uno cambie.
-  trabajo: () => null,
   clientes: (c) => c.clientes,
   personas: (c) => c.personas,
   proveedores: (c) => c.proveedores,
   compras: (c) => c.compras,
-  'base-maestra': (c) => c.tareasTipo,
-  documentos: (c) => c.documentos,
 }
 
 /**
@@ -231,15 +229,16 @@ const CUENTA: Record<string, (c: ConteosHome) => number | null> = {
  * área lo dice la campanita del header, que lee las MISMAS siete señales. Un triángulo repetido en
  * dos lugares de la misma pantalla no agrega un bit: agrega una segunda cosa que mantener.
  */
-export function areasDeAdministracion(
-  c: ConteosHome, rol: Rol | null | undefined, senalesVivas?: number | null,
-): AreaAdmin[] {
+export function areasDeAdministracion(c: ConteosHome, rol: Rol | null | undefined): AreaAdmin[] {
   return destinosVisibles(rol).map((d) => ({
     clave: d.clave,
     titulo: d.titulo,
     href: d.href,
     grupo: d.grupo,
-    cuenta: d.clave === 'trabajo' ? senalesVivas ?? null : CUENTA[d.clave](c),
+    // `CUENTA[d.clave]` puede no existir el día que se agregue un destino sin contador: sin el `?.`
+    // eso sería un TypeError en tiempo de render, y una barra que no se dibuja es peor que una
+    // barra sin números.
+    cuenta: CUENTA[d.clave]?.(c) ?? null,
     aviso: null,
   }))
 }

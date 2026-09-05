@@ -97,9 +97,27 @@ test('«A pagar» suma pendientes y NO suma proyectadas', () => {
   assert.equal(t.aPagar, 500)
 })
 
-test('un total NULL no se cuenta como cero disfrazado de dato', () => {
+test('un total NULL no se cuenta como cero disfrazado de dato, Y SE DECLARA', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // La suma no puede hacer otra cosa que saltear el `null`, y hasta acá lo salteaba EN SILENCIO: el
+  // pie decía «TOTAL $ 250» sobre dos filas y no había forma de saber que una no estaba adentro.
+  // Quien compara ese total contra el Sheet no cierra y no sabe por qué. `sinImporte` es lo que la
+  // pantalla escribe al lado; si vuelve a 0 con filas sin importe, este test se pone rojo.
   const t = totalesDe([fila({ total: null }), fila({ total: 250 })])
   assert.equal(t.total, 250)
+  assert.equal(t.sinImporte, 1)
+})
+
+test('una fila ANULADA sin importe no infla el «sin importe cargado»', () => {
+  // Las anuladas ya están fuera de todas las cuentas: contarlas acá mandaría a alguien a cargar el
+  // importe de una fila muerta.
+  const t = totalesDe([fila({ anulada: true, estado: ESTADO.ANULADA, total: null }), fila({ total: 10 })])
+  assert.equal(t.sinImporte, 0)
+})
+
+test('sin filas sin importe, el aviso no existe: no es «0 sin importe»', () => {
+  assert.equal(totalesDe([fila({ total: 10 })]).sinImporte, 0)
 })
 
 test('el conteo de cada chip sale de la población entera, no de la página', () => {

@@ -122,6 +122,14 @@ export interface Totales {
   nSinComprobante: number
   aPagar: number
   total: number
+  /**
+   * CUÁNTAS FILAS VIVAS NO TIENEN IMPORTE, y por lo tanto quedan FUERA de `total` y de `aPagar`.
+   *
+   * Existe porque la suma trata el `null` como 0 —no puede hacer otra cosa— y sin este número el
+   * total se lee como si estuviera completo. Un total al que le falta algo y no lo dice es peor que
+   * no tener total: alguien lo compara contra el Sheet, no cierra, y no hay forma de saber por qué.
+   */
+  sinImporte: number
 }
 
 /**
@@ -137,6 +145,7 @@ export function totalesDe(filas: Filtrable[]): Totales {
     nSinComprobante: vivas.filter((f) => f.tiene_adjunto !== true).length,
     aPagar: vivas.filter((f) => f.estado === ESTADO.PENDIENTE).reduce((s, f) => s + (f.total ?? 0), 0),
     total: vivas.reduce((s, f) => s + (f.total ?? 0), 0),
+    sinImporte: vivas.filter((f) => f.total == null).length,
   }
 }
 

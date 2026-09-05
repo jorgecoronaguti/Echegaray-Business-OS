@@ -38,7 +38,6 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import { getClientes, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, recortarCartera, separarArchivados } from '@/features/clientes/services/cartera'
-import { senalesDeClientes } from '@/features/clientes/services/senalesClientes'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { PanelCliente } from '@/features/clientes/components/PanelCliente'
@@ -49,10 +48,8 @@ import {
 import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { FormAccion } from '@/shared/components/ui'
-import { IconoCliente, IconoDinero } from '@/shared/components/iconos'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 
@@ -61,7 +58,6 @@ export const dynamic = 'force-dynamic'
 const RUTA = '/clientes'
 
 /** Los dos iconos que esta sección mezcla: un cliente incompleto y una obra sin contrato. */
-const ICONOS = { cliente: IconoCliente, dinero: IconoDinero }
 
 type Query = { archivados?: string; nuevo?: string; vista?: string; q?: string; c?: string }
 
@@ -117,10 +113,6 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     .filter((c) => porVista.some((x) => x.cliente_id === c.cliente_id))
     .filter((c) => contieneEnAlguno([c.nombre, razonDe(base, c.cliente_id)], sp.q ?? ''))
 
-  // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO: cuenta siempre sobre los ACTIVOS. Un aviso que
-  // cambiara al poner un filtro diría que la empresa tiene menos trabajo porque alguien tocó un chip.
-  const senales = senalesDeClientes(activos, obras === null ? null : obras.filter((o) => o.monto_contratado === null).length)
-
   const abierta = sp.nuevo === '1' && puedeEditar
   const seleccionado = sp.c ? base.find((c) => c.cliente_id === sp.c) ?? null : null
   const hayPanel = seleccionado !== null
@@ -131,12 +123,12 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
           con `normal`— y el preflight de Tailwind pone 1.5: cada bloque de texto salía 4-5px más
           alto y eso corría la tabla 25px hacia abajo. Ver `patron.tsx · CAJA_CONTENIDO`. */}
       <div style={{ lineHeight: 'normal' }}>
-        <TrabajoDeSeccion
-          senales={senales}
-          icono={IconoCliente}
-          iconos={ICONOS}
-          vacio="Ningún cliente sin CUIT ni sin teléfono, y ninguna obra en ejecución sin contrato."
-        />
+        {/* ═══ LA BANDA DE SEÑALES SE FUE (handoff CRM / Administración v4) ═══
+
+            Decía en tres renglones —clientes sin CUIT, sin teléfono, obras sin contrato— lo que
+            cada fila ya marca en su propia celda y lo que el recorte «Datos faltantes» ya aísla de
+            un clic. La v4 revierte el criterio 1 del patrón v2 para las pantallas de área: lo que
+            falta se lee donde está, no en un resumen que empuja la lista fuera de la pantalla. */}
 
         {/* EL ENLACE A `/administracion/portal` SE RETIRÓ (26/08/2026). Esa pantalla duplicaba la
             solapa «Acceso al portal» de la ficha del cliente, que administra lo mismo sobre
@@ -180,7 +172,14 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                 opciones={[
                   { clave: 'todo', etiqueta: 'Todos', href: armarHref(sp, { vista: undefined, c: undefined }), activo: vista === 'todo' },
                   { clave: 'activos', etiqueta: 'Con obra activa', href: armarHref(sp, { vista: 'activos', c: undefined }), activo: vista === 'activos' },
-                  { clave: 'sin-datos', etiqueta: 'Datos faltantes', href: armarHref(sp, { vista: 'sin-datos', c: undefined }), activo: vista === 'sin-datos' },
+                  {
+                    clave: 'sin-datos', etiqueta: 'Datos faltantes',
+                    href: armarHref(sp, { vista: 'sin-datos', c: undefined }),
+                    activo: vista === 'sin-datos',
+                    // LA POBLACIÓN DEL CORTE, no la de la página. Es lo que la banda de señales
+                    // decía en tres renglones y ahora dice el recorte que lo aísla, en un número.
+                    cuenta: recortarCartera(base, 'sin-datos').length,
+                  },
                 ]}
               />
 

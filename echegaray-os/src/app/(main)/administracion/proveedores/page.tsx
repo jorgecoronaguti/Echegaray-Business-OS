@@ -40,9 +40,6 @@ import { PanelProveedor } from '@/features/administracion/components/PanelProvee
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
-import { IconoProveedor } from '@/shared/components/iconos'
-import { armarSenales } from '@/features/administracion/services/senalesProveedores'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { pesos } from '@/shared/components/canon/formato'
 import { contiene } from '@/shared/utils/busqueda'
@@ -149,12 +146,6 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
   const panelAbierto = maestro ? (abrirAlta || seleccionado !== null) : nombreAbierto !== undefined
 
-  const senales = armarSenales(
-    sinCuit,
-    { data: pendientes.error ? null : cola.length, error: pendientes.error },
-    { sinCuit: armarHref({}, { cuit: 'falta' }), sinResolver: armarHref({}, { vista: 'resolver' }) },
-  )
-
   return (
     <Marco>
       <NavAdministracion />
@@ -176,11 +167,17 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           `Marco` porque ahí adentro está `NavAdministracion`, que es de la barra de áreas y no de
           esta pantalla: moverle el interlineado sería corregir mi corrimiento rompiendo el de otro. */}
       <div style={{ lineHeight: 'normal' }}>
-      <TrabajoDeSeccion
-        senales={senales}
-        icono={IconoProveedor}
-        vacio="Ningún proveedor sin CUIT y ningún nombre de Compras sin resolver."
-      />
+      {/* ═══ LA BANDA DE SEÑALES SE FUE (handoff CRM / Administración v4) ═══
+
+          Acá había un bloque «Lo que pide trabajo» con dos filas —proveedores sin CUIT, nombres de
+          Compras sin resolver— antes de la lista. Era el criterio 1 del patrón v2, y la v4 lo
+          revierte para las pantallas de área con un motivo concreto: la banda decía en un renglón
+          lo que la fila ya dice en su propia celda (el CUIT en ámbar con su verbo «Cargar CUIT →»)
+          y lo que el recorte «Sin CUIT» ya aísla de un clic. Contarlo tres veces no lo hace más
+          urgente: empuja la lista —que es a lo que se entra— fuera de la primera pantalla.
+
+          NO SE PERDIÓ NINGÚN CAMINO: «Sin CUIT» sigue siendo un recorte de la lista y «Nombres sin
+          resolver» sigue siendo una sub-vista con su contador. */}
 
       <CabeceraSeccion
         testid="vistas-proveedores"
@@ -232,6 +229,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           clave: 'sin-cuit', etiqueta: 'Sin CUIT',
                           href: armarHref(sp, { cuit: soloSinCuit ? undefined : 'falta', p: undefined, editcuit: undefined }),
                           activo: soloSinCuit,
+                          // LA POBLACIÓN DEL CORTE, no la de la página: es el conteo de la base
+                          // sobre los activos, el mismo que alimentaba la banda que se retiró.
+                          cuenta: sinCuit.error ? null : sinCuit.data,
                         },
                         // El ÚNICO recorte por tipo que la base puede probar: los que tienen un
                         // paquete en `subcontrato`. Si esa lectura falló, el filtro no se ofrece —

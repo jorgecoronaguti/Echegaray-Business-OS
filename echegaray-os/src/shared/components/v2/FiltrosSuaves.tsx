@@ -19,6 +19,17 @@ export interface OpcionFiltro {
   etiqueta: string
   href: string
   activo: boolean
+  /**
+   * CUÁNTOS HAY EN ESE CORTE — la población entera, no la página que se está viendo.
+   *
+   * El handoff v4 sacó la banda de señales de las pantallas de área con una condición: el recorte
+   * que aísla lo incompleto tiene que decir cuántos son. Sin el número, «Sin CUIT» es una puerta a
+   * ciegas y el trabajo pendiente deja de tener tamaño.
+   *
+   * `undefined` = este corte no cuenta nada (Todos, Activos). `null` = NO SE PUDO CONTAR, y
+   * entonces no se dibuja: un 0 ahí afirmaría que no queda ninguno.
+   */
+  cuenta?: number | null
 }
 
 export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
@@ -44,6 +55,16 @@ export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
           }}
         >
           {o.etiqueta}
+          {/* SIN LECTURA NO HAY NÚMERO — NUNCA UN CERO POR DEFECTO. */}
+          {o.cuenta != null && (
+            <span
+              className="font-mono tabular-nums"
+              data-testid={`${testid}-${o.clave}-cuenta`}
+              style={{ marginLeft: 5, fontSize: '10.5px', color: o.activo ? V.tenue : V.lupa }}
+            >
+              {o.cuenta}
+            </span>
+          )}
         </Link>
       ))}
       <span

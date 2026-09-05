@@ -3,39 +3,55 @@ import assert from 'node:assert/strict'
 import { areaActiva, DESTINOS, destinosVisibles, hayFiloAntes } from './areasAdmin.ts'
 import { RUTAS_SOLO_ECONOMIA, puedeVerRuta } from '../../auth/types/areas.ts'
 
-// LA BARRA DE NIVEL 2 — siete destinos en tres grupos (00 · Home Navegación v2).
+// LA BARRA DE NIVEL 2 — cuatro destinos en dos grupos (handoff CRM / Administración v4).
 //
 // Lo que estas pruebas impiden: que la barra vuelva a ser diez tablas en fila, que un destino se
 // dibuje para quien el middleware va a rebotar, y —sobre todo— que la barra se apague adentro de
-// las pantallas que «Trabajo» absorbió.
+// las dos colas que perdieron su solapa (Pendientes y Asistencia).
 
-test('son SIETE destinos en TRES grupos, en el orden del mockup', () => {
+test('son CUATRO destinos en DOS grupos, en el orden del handoff v4', () => {
   assert.deepEqual(
     DESTINOS.map((d) => d.titulo),
-    ['Trabajo', 'Clientes', 'Personal', 'Proveedores', 'Compras', 'Base maestra', 'Documentos'],
+    ['Clientes', 'Personal', 'Proveedores', 'Compras'],
   )
-  assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['trabajo', 'quien', 'registro'])
+  assert.deepEqual([...new Set(DESTINOS.map((d) => d.grupo))], ['quien', 'registro'])
+})
+
+test('«Trabajo», «Base maestra» y «Documentos» ya no son destinos', () => {
+  // Es una decisión declarada del handoff v4, no un olvido: si alguien los devuelve a la barra,
+  // esto se pone rojo y hay que discutirlo antes de tener siete hermanos de todo otra vez.
+  const claves = DESTINOS.map((d) => d.clave)
+  assert.ok(!claves.includes('trabajo'))
+  assert.ok(!claves.includes('base-maestra'))
+  assert.ok(!claves.includes('documentos'))
 })
 
 test('el filo va SÓLO donde cambia el grupo, y sobre la lista ya filtrada por rol', () => {
   const todas = [...DESTINOS]
-  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, true, false, false, true, false, false])
+  assert.deepEqual(todas.map((_, i) => hayFiloAntes(todas, i)), [false, false, false, true])
 
-  // El jefe de obra no ve Documentos. Si el filo se calculara sobre la lista completa, quedaría uno
-  // colgando al final de SU barra, separando nada de nada.
-  const suyas = destinosVisibles('jefe_obra')
-  assert.equal(hayFiloAntes(suyas, suyas.length - 1), false)
+  // El filo se calcula sobre la lista YA filtrada: nunca puede quedar uno abriendo la barra, que
+  // es lo que pasaría el día que un destino sea sólo de quien ve economía y el cálculo mire la
+  // lista completa.
+  for (const rol of ['direccion', 'administracion', 'jefe_obra', null] as const) {
+    assert.equal(hayFiloAntes(destinosVisibles(rol), 0), false, `filo colgando para ${rol}`)
+  }
 })
 
-test('el jefe de obra ve sus destinos y ninguno del precio', () => {
-  const suyas = destinosVisibles('jefe_obra').map((d) => d.clave)
-  assert.deepEqual(suyas, ['trabajo', 'clientes', 'personas', 'proveedores', 'compras', 'base-maestra'])
-  assert.ok(!suyas.includes('documentos'), 'el catálogo de Drive entero es de quien ve economía')
+test('el jefe de obra ve los cuatro: ninguno es precio', () => {
+  // Una compra es COSTO, no PRECIO. Lo que el jefe no ve es cuánto se vendió la obra, y eso no está
+  // en ninguna de estas cuatro pantallas.
+  assert.deepEqual(
+    destinosVisibles('jefe_obra').map((d) => d.clave),
+    ['clientes', 'personas', 'proveedores', 'compras'],
+  )
 })
 
 test('sin rol todavía cargado se falla CERRADO', () => {
   // Una solapa que aparece medio segundo y desaparece es peor que una que tarda en aparecer.
-  assert.ok(!destinosVisibles(null).some((d) => d.clave === 'documentos'))
+  for (const d of destinosVisibles(null)) {
+    assert.ok(puedeVerRuta(null, d.href), `${d.href} se dibuja sin saber quién mira`)
+  }
 })
 
 test('la barra y la puerta usan el MISMO portero', () => {
@@ -51,69 +67,51 @@ test('la barra y la puerta usan el MISMO portero', () => {
 
 // ═══ DÓNDE ESTOY PARADO ═══
 
-test('«Trabajo» sigue encendida adentro de lo que absorbió', () => {
-  // ÉSTE es el defecto que la reagrupación puede introducir: Pendientes y Asistencia perdieron su
-  // solapa, y sin la absorción la barra se apaga entera al entrar en ellas — la pantalla deja de
+test('las dos colas que perdieron su solapa encienden la sección que las reclama', () => {
+  // ÉSTE es el defecto que la reducción puede introducir: Pendientes y Asistencia eran de
+  // «Trabajo», y sin la absorción la barra se apaga entera al entrar en ellas — la pantalla deja de
   // decir dónde está parado el que la mira.
-  assert.equal(areaActiva('/administracion'), 'trabajo')
-  assert.equal(areaActiva('/administracion/pendientes'), 'trabajo')
-  assert.equal(areaActiva('/administracion/asistencia'), 'trabajo')
-  assert.equal(areaActiva('/administracion/pendientes?f=algo'), 'trabajo')
+  assert.equal(areaActiva('/administracion/pendientes'), 'compras')
+  assert.equal(areaActiva('/administracion/pendientes?f=algo'), 'compras')
+  assert.equal(areaActiva('/administracion/asistencia'), 'personas')
 })
 
-test('«Trabajo» NO se enciende por ser prefijo de las demás rutas del área', () => {
-  // `/administracion` es prefijo de `/administracion/personas`: sin el caso exacto, la entrada
-  // quedaría encendida en las cinco pantallas del área a la vez.
+test('cada sección se enciende en sus subrutas y no en las de al lado', () => {
   assert.equal(areaActiva('/administracion/personas'), 'personas')
   assert.equal(areaActiva('/administracion/personas/juan-perez'), 'personas')
   assert.equal(areaActiva('/administracion/proveedores?vista=resolver'), 'proveedores')
-  assert.equal(areaActiva('/administracion/base-maestra/recursos'), 'base-maestra')
+  assert.equal(areaActiva('/administracion/compras'), 'compras')
 })
 
 test('la ficha de un cliente sigue estando DENTRO de Clientes', () => {
   assert.equal(areaActiva('/clientes'), 'clientes')
   assert.equal(areaActiva('/clientes/la-estrella'), 'clientes')
-  assert.equal(areaActiva('/documentos'), 'documentos')
+  assert.equal(areaActiva('/clientes/arcor'), 'clientes')
 })
 
-test('Usuarios ya no es una sección del área: no enciende ninguna solapa', () => {
-  // Bajó al menú de la cuenta (v2). Es una decisión declarada, no un olvido: si alguien la devuelve
-  // a la barra, este test se pone rojo y hay que discutirlo.
+test('lo que ya no es un destino no enciende ninguna solapa', () => {
+  // Las cinco rutas siguen VIVAS y respondiendo: lo único que perdieron es la solapa. Si alguna
+  // vuelve a encender algo, es porque volvió a la barra, y eso se discute.
+  assert.equal(areaActiva('/administracion'), null)
+  assert.equal(areaActiva('/administracion/base-maestra/recursos'), null)
+  assert.equal(areaActiva('/documentos'), null)
   assert.equal(areaActiva('/administracion/usuarios'), null)
-  // Y Presupuestos subió a nivel 1: tampoco enciende una solapa de nivel 2.
   assert.equal(areaActiva('/presupuestos'), null)
   assert.equal(areaActiva('/obras'), null)
+  assert.equal(DESTINOS.length, 4)
 })
 
 test('las dos pantallas del portal se retiraron: ya no encienden nada', () => {
-  // Duplicaban las solapas 31 y 32 de la ficha del cliente y se borraron el 26/08/2026. Si alguien
-  // las devuelve, este test se pone rojo y hay que discutirlo antes de tener dos veces lo mismo.
+  // Duplicaban las solapas 31 y 32 de la ficha del cliente y se borraron el 26/08/2026.
   assert.equal(areaActiva('/administracion/portal'), null)
   assert.equal(areaActiva('/administracion/cronograma'), null)
-  // La ficha del cliente —que es donde eso vive ahora— sí enciende «Clientes».
-  assert.equal(areaActiva('/clientes/arcor'), 'clientes')
-  // Y siguen siendo SIETE.
-  assert.equal(DESTINOS.length, 7)
-})
-
-test('absorber no le roba la ruta a «Trabajo» ni a los demás', () => {
-  // `/administracion` sigue siendo Trabajo aunque Clientes absorba dos rutas que empiezan igual.
-  assert.equal(areaActiva('/administracion'), 'trabajo')
-  assert.equal(areaActiva('/administracion/pendientes'), 'trabajo')
-  assert.equal(areaActiva('/administracion/personas'), 'personas')
-  // Y lo que nadie absorbe sigue sin encender nada.
-  assert.equal(areaActiva('/administracion/usuarios'), null)
 })
 
 test('las rutas retiradas del portal ya no figuran entre las del dinero', () => {
-  // Se fueron con las pantallas. Dejarlas en la lista haría creer que hay una puerta cerrada donde
-  // no hay ninguna puerta, y el próximo que busque dónde se decide el acceso al portal iría ahí.
   // Se ensancha el tipo a `string[]` a propósito: la lista es un literal y preguntarle por una ruta
-  // que ya NO contiene es justamente lo que TypeScript rechaza. El test tiene que poder hacer la
-  // pregunta; si mañana alguien devuelve la ruta a la lista, la aserción se pone roja igual.
+  // que ya NO contiene es justamente lo que TypeScript rechaza.
   const soloEconomia: readonly string[] = RUTAS_SOLO_ECONOMIA
   assert.ok(!soloEconomia.includes('/administracion/portal'))
   assert.ok(!soloEconomia.includes('/administracion/cronograma'))
-  // Lo que SÍ sigue siendo del dinero: la ficha del cliente, que es donde eso se administra ahora.
   assert.equal(puedeVerRuta('jefe_obra', '/clientes'), true)
 })

@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { cobroSchema, type EntradaCobro, type EntradaEdicionPago } from './entradasCobranza'
+import { mensajeDelCobro } from './propiedadesCertificado'
 import type { ResultadoAccion } from '@/shared/components/ui/FormAccion'
 
 const fechaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
@@ -173,7 +174,9 @@ export async function registrarCobroDeCertificado(
   const supabase = await createClient()
   const { data: cert, error } = await supabase
     .from('certificado_cliente')
-    .select('cobranza_fila, huella_comprobante, huella_monto')
+    // `monto` entra para poder DETECTAR EL COBRO PARCIAL con el importe de la base y no con el que
+    // manda el navegador: un `curl` podría declarar el monto que le convenga y el aviso callarse.
+    .select('cobranza_fila, huella_comprobante, huella_monto, monto')
     .eq('id', certificadoId)
     .maybeSingle()
   if (error) return { ok: false, error: traducir(error.message) }
@@ -185,11 +188,16 @@ export async function registrarCobroDeCertificado(
     }
   }
 
-  return registrarCobro({
+  const r = await registrarCobro({
     cobranzaFila: cert.cobranza_fila,
     fecha: parsed.data.fecha,
     medio: parsed.data.medio,
     huellaComprobante: cert.huella_comprobante,
     huellaMonto: cert.huella_monto,
   })
+  // LO QUE SE ENCOLÓ NO ES LO QUE SE ESCRIBIÓ, y eso se dice. El formulario pide un monto y la cola
+  // sólo escribe fecha, estado y medio: sin este mensaje, un cobro parcial se iba con un «Encolado»
+  // que afirmaba un cobro total. Ver `mensajeDelCobro`.
+  if (!r.ok) return r
+  return { ok: true, mensaje: mensajeDelCobro(parsed.data.monto, Number(cert.monto)) }
 }

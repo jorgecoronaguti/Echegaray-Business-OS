@@ -19,8 +19,8 @@ import { useState } from 'react'
 import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { BotonIcono } from '../canon/Piezas'
-import { montoM } from '../../services/cobranzaFormato'
-import { estadoVigente, grillaDelMes, pagosDelDia } from '../../services/reglasEsquema'
+import { diaMesAnio, montoM } from '../../services/cobranzaFormato'
+import { estadoVigente, grillaDelMes, marcaDelPago, pagosDelDia } from '../../services/reglasEsquema'
 import type { CambioPago } from '../../services/entradasCobranza'
 import type { EstadoPago, PagoEsquema } from '../../types/cobranzas'
 
@@ -38,12 +38,18 @@ const PINTA: Record<EstadoPago, { fondo: string; filo: string; punteado?: boolea
   previsto: { fondo: C.tenueFondo, filo: C.tenue, punteado: true },
 }
 
-export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar }: {
+/** El tono de la marca de la tarjeta. El ámbar es «el cliente no está viendo esto y debería». */
+const TONO_MARCA = { warn: C.warn, apagado: C.tenue, neg: C.neg } as const
+
+export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, aviso, onAviso }: {
   pagos: PagoEsquema[]
   hoy: string
   elegido: string | null
   onElegir: (id: string) => void
   onCambiar: (id: string, cambio: CambioPago) => void
+  /** Lo que pasó con el último arrastre, al lado del mes. `null` = no se movió nada todavía. */
+  aviso: string | null
+  onAviso: (texto: string | null) => void
 }) {
   // Arranca en el mes del primer pago pendiente; si no hay ninguno, en el de hoy. Abrir siempre en
   // el mes corriente obligaría a navegar a mano hasta donde están los pagos.
@@ -82,6 +88,14 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar }: 
           <Ico d={P.arrastrar} s={14} />
           Arrastre un pago para cambiarle la fecha
         </span>
+        {aviso && (
+          <span
+            data-testid="calendario-aviso"
+            style={{ marginLeft: 'auto', fontSize: '11.5px', color: C.warn, textAlign: 'right' }}
+          >
+            {aviso}
+          </span>
+        )}
       </div>
 
       <div style={{
@@ -116,7 +130,19 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar }: 
                     e.preventDefault()
                     const id = e.dataTransfer.getData('text/plain') || arrastrando
                     setArrastrando(null)
-                    if (id) onCambiar(id, { fecha: dia.iso })
+                    if (!id) return
+                    const movido = pagos.find((p) => p.id === id)
+                    // SOLTARLO EN SU MISMO DÍA NO ES UN CAMBIO. Sin esto, cada arrastre fallido
+                    // encolaba una fila en `cobranza_cambio` y sumaba una reprogramación al
+                    // historial: la evidencia de «cuántas veces se movió» quedaba inflada por los
+                    // errores de puntería.
+                    if (!movido || movido.fecha === dia.iso) return
+                    onCambiar(id, { fecha: dia.iso })
+                    // LO QUE PASÓ, DICHO AL LADO DEL MES. Arrastrar NO escribe la fecha: encola el
+                    // cambio a la columna Q y deja el pago sin publicar, así que el cliente sigue
+                    // viendo la fecha vieja hasta que alguien publique. Callar eso es lo que hace
+                    // que alguien dé por avisado a un cliente que no se enteró.
+                    onAviso(`${movido.concepto} → ${diaMesAnio(dia.iso)} · encolado a la columna Q, sin publicar`)
                   }}
                   data-testid={`dia-${dia.iso}`}
                   style={{
@@ -135,11 +161,16 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar }: 
                     const estado = estadoVigente(p, hoy)
                     const pinta = PINTA[estado]
                     const fijo = estado === 'cobrado'
+                    const marca = marcaDelPago(p)
                     return (
                       <div
                         key={p.id} role="button" tabIndex={0}
                         draggable={!fijo}
-                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', p.id); setArrastrando(p.id) }}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', p.id)
+                          setArrastrando(p.id)
+                          onAviso(null)
+                        }}
                         onDragEnd={() => setArrastrando(null)}
                         onClick={() => onElegir(p.id)}
                         onKeyDown={(e) => { if (e.key === 'Enter') onElegir(p.id) }}
@@ -163,16 +194,16 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar }: 
                           color: estado === 'previsto' ? C.tintaSuave : C.tintaMedia,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{p.concepto}</div>
-                        {(p.cambio_pendiente || !p.visible_portal || p.reprogramaciones.length > 1) && (
-                          <div style={{
-                            fontSize: '10px', marginTop: '2px',
-                            color: p.cambio_pendiente ? C.warn : !p.visible_portal ? C.tenue : C.neg,
-                          }}>
-                            {p.cambio_pendiente
-                              ? 'sin publicar'
-                              : !p.visible_portal
-                                ? 'oculto'
-                                : `${p.reprogramaciones.length}ª fecha`}
+                        {/* TRES AUSENCIAS DISTINTAS, TRES FRASES DISTINTAS. La regla vive en
+                            `marcaDelPago`, que se prueba sin React: la RLS del portal exige
+                            `visible_portal` Y `publicado_at`, así que «nunca publicado», «sin
+                            publicar» y «oculto al cliente» significan cosas opuestas. */}
+                        {marca && (
+                          <div
+                            data-testid={`marca-${p.id}`}
+                            style={{ fontSize: '10px', marginTop: '2px', color: TONO_MARCA[marca.tono] }}
+                          >
+                            {marca.texto}
                           </div>
                         )}
                       </div>
