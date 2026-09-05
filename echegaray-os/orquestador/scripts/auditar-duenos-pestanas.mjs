@@ -11,6 +11,10 @@
 //   quedaron el bloque "PAGADO" de Cargas Sociales (seis meses de #VALUE! congelados) y el cuadro de
 //   SAC, que era el único contenido del archivo que ningún script mantenía.
 //
+//   FRENADA (05/09/2026). Tiene generador y el generador está RETIRADO a propósito: el freno vive en
+//   `PASOS_RETIRADOS` con su motivo y su condición de vuelta. No es una huérfana y decir que lo es
+//   manda a escribir de nuevo un script que ya existe. Se nombra en cada corrida, no suma al ≠0.
+//
 //   VARIOS DUEÑOS. Dos o tres scripts escriben la misma pestaña, cada uno con su ancho de grilla y
 //   su forma de titular. Es la causa estructural de "las pestañas no respetan un patrón de diseño":
 //   un solo script no puede descuadrarse contra sí mismo, tres sí.
@@ -21,7 +25,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { PASOS } from '../lib/flujo-caja-pasos.mjs'
+import { PASOS, PASOS_RETIRADOS } from '../lib/flujo-caja-pasos.mjs'
 // EL REGISTRO DE EXCEPCIONES SE MUDÓ A `lib/` (14/08/2026) y se re-exporta acá para no romper a quien
 // lo importaba de este script. El motivo es de fuente única: ahora lo consultan DOS controles —este
 // censo, que necesita el archivo vivo, y el test estático de `pestanas-auxiliares`, que corre sin
@@ -33,8 +37,32 @@ export { SIN_GENERADOR }
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
+/**
+ * NÚCLEO PURO: qué pestaña quedó sin refrescar por un FRENO DECLARADO, y no por un olvido.
+ *
+ * ═══ POR QUÉ (05/09/2026) ═══
+ *
+ * El censo reportaba «Materiales · Proveedores — HUÉRFANA: ningún script la mantiene». Es falso, y
+ * de la peor manera: sí tienen generador (`proveedores-materiales-pestana.mjs`), y está frenado A
+ * PROPÓSITO desde el 14/08 porque apilaba una capa nueva en cada corrida — el freno está escrito en
+ * `PASOS_RETIRADOS` con su motivo, su costo y sus cuatro condiciones de vuelta.
+ *
+ * Leerlo como huérfana tiene dos costos concretos: manda a quien lo lea a ESCRIBIR UN GENERADOR QUE
+ * YA EXISTE (que es la regla de oro 9 rota — no duplicar), y borra de la vista las condiciones que
+ * habría que cumplir para reactivar el que hay. El propio `PASOS_RETIRADOS` lo dice: «un freno que
+ * no se puede consultar es indistinguible de un olvido». Consultarlo es esto.
+ *
+ * NO CUENTA COMO DEFECTO (no suma al código de salida). Un freno con criterio de vuelta verificable
+ * ya es una decisión tomada y auditada por el test de `PASOS_RETIRADOS`; dejar el censo en rojo para
+ * siempre por algo decidido entrena a ignorar el rojo. Lo que sí hace es NOMBRARLO en cada corrida
+ * con lo que cuesta, para que nadie lo confunda con una pestaña al día.
+ */
+export function frenoDe(pestana, retirados = PASOS_RETIRADOS) {
+  return retirados.find((r) => (r.cuesta ?? []).some((c) => String(c).split('·')[0].trim() === pestana)) ?? null
+}
+
 /** NÚCLEO PURO: cruza las pestañas reales contra el registro de pasos. */
-export function censar(titulos = [], pasos = PASOS, sinGenerador = SIN_GENERADOR) {
+export function censar(titulos = [], pasos = PASOS, sinGenerador = SIN_GENERADOR, retirados = PASOS_RETIRADOS) {
   const duenos = new Map()
   for (const [script, , pestanas] of pasos) {
     for (const p of pestanas || []) {
@@ -46,10 +74,12 @@ export function censar(titulos = [], pasos = PASOS, sinGenerador = SIN_GENERADOR
     pestana: t,
     duenos: duenos.get(t) ?? [],
     excepcion: sinGenerador[t] ?? null,
+    freno: frenoDe(t, retirados),
   }))
   return {
     filas,
-    huerfanas: filas.filter((f) => !f.duenos.length && !f.excepcion),
+    huerfanas: filas.filter((f) => !f.duenos.length && !f.excepcion && !f.freno),
+    frenadas: filas.filter((f) => !f.duenos.length && !f.excepcion && f.freno),
     compartidas: filas.filter((f) => f.duenos.length > 1),
     // Un paso que declara una pestaña que ya no existe apunta al vacío: se renombró y nadie lo siguió.
     fantasmas: [...duenos.keys()].filter((p) => !titulos.includes(p)),
@@ -116,7 +146,13 @@ async function main() {
     if (f.duenos.length === 1) console.log(`✓ ${f.pestana.padEnd(28)} ${f.duenos[0]}`)
     else if (f.duenos.length > 1) console.log(`✖ ${f.pestana.padEnd(28)} ${f.duenos.length} DUEÑOS: ${f.duenos.join(', ')}`)
     else if (f.excepcion) console.log(`· ${f.pestana.padEnd(28)} sin generador — ${f.excepcion}`)
+    else if (f.freno) console.log(`⏸ ${f.pestana.padEnd(28)} FRENADA desde ${f.freno.desde}: ${f.freno.script} está retirado del pipeline (no es huérfana — tiene generador)`)
     else console.log(`✖ ${f.pestana.padEnd(28)} HUÉRFANA: ningún script la mantiene`)
+  }
+  // El criterio de vuelta se imprime UNA vez por freno y no una por pestaña: es lo que alguien tiene
+  // que poder leer sin abrir el código para saber qué falta medir para reactivarlo.
+  for (const freno of new Set(r.frenadas.map((f) => f.freno))) {
+    console.log(`   ⏸ ${freno.script} — vuelve cuando: ${freno.vuelve}`)
   }
   for (const p of r.fantasmas) console.log(`✖ ${p.padEnd(28)} declarada por un paso pero NO EXISTE en el archivo`)
 
@@ -125,7 +161,7 @@ async function main() {
   const malDinamicas = await auditarDinamicas(g)
 
   const mal = r.huerfanas.length + r.compartidas.length + r.fantasmas.length + malDinamicas
-  console.log(`\n── ${r.filas.filter((f) => f.duenos.length === 1).length} con un solo dueño · ${r.filas.filter((f) => f.excepcion).length} de captura · ${r.huerfanas.length} huérfana(s) · ${r.compartidas.length} con varios dueños · ${r.fantasmas.length} fantasma(s)`)
+  console.log(`\n── ${r.filas.filter((f) => f.duenos.length === 1).length} con un solo dueño · ${r.filas.filter((f) => f.excepcion).length} de captura · ${r.frenadas.length} frenada(s) declarada(s) · ${r.huerfanas.length} huérfana(s) · ${r.compartidas.length} con varios dueños · ${r.fantasmas.length} fantasma(s)`)
   process.exit(mal ? 1 : 0)
 }
 

@@ -435,6 +435,13 @@ export const PASOS = [
   // celda con error. Un modelo roto grita en la pantalla en vez de esperar al auditor.
   ['formato-condicional.mjs', 'formato condicional "error en rojo" en las pestañas calculadas', []],
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
+  // ═══ EL CONTRATO DE DISEÑO, MEDIDO (05/09/2026) ═══
+  //
+  // Va DESPUÉS de `reparar-textos` y `auditar-pantalla` porque mide otra cosa y no quiere
+  // confundirse con ellas: aquéllas miden si el texto ENTRA en su celda; éste mide si el texto
+  // TENDRÍA QUE ESTAR. Un párrafo perfectamente legible, en una columna bien ancha, pasa
+  // `auditar-pantalla` en verde y es exactamente lo que el dueño mandó sacar el 05/09.
+  ['auditar-diseno-unificado.mjs', 'el contrato de diseño: encabezado, numeración de bloques y CERO prosa en las pestañas del alcance', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],
   // ÚLTIMO: con el Sheet ya regenerado, el motor de Ingeniería Financiera arma el calendario diario y
@@ -542,7 +549,7 @@ export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.scri
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
-  'auditar-coherencia-pestanas.mjs',
+  'auditar-coherencia-pestanas.mjs', 'auditar-diseno-unificado.mjs',
   'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
   // Sus hallazgos («jornales proyectados con $0 de material») son una lectura de lo que falta
   // cargar, no un error de cuadre: reporte visible, jamás un fallo del pipeline.
