@@ -188,6 +188,24 @@ test('un papel es «1 cargado»: el plural delata que nadie miró la celda', () 
   assert.equal(rotuloDePapeles({ ...VACIO, total: 1 }, SIN_CONTROL).texto, '1 cargado')
 })
 
+test('un papel que Administración marcó AUSENTE no se cuenta como cargado', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // `total` cuenta las filas de `documentacion_legajo`, y una fila con `presente = false` existe
+  // justamente para decir que el papel NO está. Medido el 05/09/2026 sobre la base real hay 3.
+  // Contarlas haría que la celda dijera «6 cargados» de un legajo que tiene 4 papeles y dos huecos
+  // que la propia Administración declaró — la misma mentira que «al día», en chiquito.
+  const r = rotuloDePapeles({ vencidos: 0, porVencer: 0, faltan: 2, total: 6 }, SIN_CONTROL)
+  assert.deepEqual(r, { texto: '4 cargados', tono: 'dato' })
+})
+
+test('un legajo donde TODO se declaró ausente dice «sin cargar», no un número negativo', () => {
+  assert.deepEqual(
+    rotuloDePapeles({ vencidos: 0, porVencer: 0, faltan: 3, total: 3 }, SIN_CONTROL),
+    { texto: 'sin cargar', tono: 'falta' },
+  )
+})
+
 test('un vencido gana sobre el conteo y BLOQUEA: con la libreta vencida no se entra a la obra', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
