@@ -110,9 +110,15 @@ export async function buscarEnContenido(ejecutar, texto, { limite = 6, sensibili
 
 /** La misma consulta pero con OR entre las palabras. Es el segundo intento, nunca el primero: con
  *  OR, «flujo de caja» trae todo lo que diga «de». Por eso el orden importa y el ranking decide. */
-export const SQL_CONTENIDO_LAXO = SQL_CONTENIDO.replace(/plainto_tsquery/g, 'websearch_to_tsquery')
-  .replace("cross join websearch_to_tsquery('spanish', $1) q",
-           "cross join to_tsquery('spanish', array_to_string(regexp_split_to_array(regexp_replace(lower($1), '[^a-záéíóúñ0-9 ]', ' ', 'g'), '\\s+'), ' | ')) q")
+export const SQL_CONTENIDO_LAXO = SQL_CONTENIDO.replace(
+  "plainto_tsquery('spanish', $1) q",
+  // ── LOS TOKENS VACÍOS ROMPEN `to_tsquery` ──
+  // `regexp_split_to_array` sobre «20-28773782-4» deja cadenas vacías entre los guiones, y unirlas
+  // con « | » produce «20 |  | 28773782» — que no es una consulta inválida a medias: Postgres tira
+  // un error de sintaxis y la búsqueda entera muere. `array_remove` las saca antes.
+  // El `nullif` final es el otro borde: una consulta que queda sin NINGÚN token no puede convertirse
+  // en un tsquery vacío, y `to_tsquery(NULL)` devuelve NULL, que simplemente no matchea nada.
+  "to_tsquery('spanish', nullif(array_to_string(array_remove(regexp_split_to_array(regexp_replace(lower($1), '[^a-záéíóúñ0-9 ]', ' ', 'g'), '\\s+'), ''), ' | '), '')) q")
 
 /** Los documentos cuyo CUIT o número de comprobante ES el que se preguntó. Exacto, no parecido. */
 export async function buscarPorIdentificador(ejecutar, texto) {

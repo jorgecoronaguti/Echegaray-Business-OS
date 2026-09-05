@@ -27,13 +27,13 @@ async function main() {
   let total = 0
   const sinCarpeta = []
   for (const c of clientes) {
-    if (!c.drive_carpeta_id) { sinCarpeta.push(c.nombre); continue }
+    if (!c.drive_carpeta_id) { sinCarpeta.push(c.nombre_comercial); continue }
 
     // El path de la carpeta manda: todo lo que cuelga de ella es del cliente. Se busca por el id de
     // la carpeta, no por su nombre, porque dos clientes pueden tener carpetas que se llaman igual.
     const { rows: carpeta } = await query(
       `select path from public.drive_index where drive_file_id = $1`, [c.drive_carpeta_id])
-    if (!carpeta.length) { console.log(`  ⚠ ${c.nombre}: su carpeta no está en el índice de Drive`); continue }
+    if (!carpeta.length) { console.log(`  ⚠ ${c.nombre_comercial}: su carpeta no está en el índice de Drive`); continue }
 
     const prefijo = carpeta[0].path
     const { rows: archivos } = await query(
@@ -41,7 +41,7 @@ async function main() {
         where path like $1 || '/%' and mime_type not like '%folder%'
         order by modified_time desc nulls last`, [prefijo])
 
-    console.log(`  ${c.nombre}: ${archivos.length} archivo(s) bajo "${prefijo}"`)
+    console.log(`  ${c.nombre_comercial}: ${archivos.length} archivo(s) bajo "${prefijo}"`)
     total += archivos.length
     if (!APLICAR) continue
 
@@ -63,7 +63,7 @@ async function main() {
   if (APLICAR) {
     // LA EVIDENCIA ES DEL EFECTO: se relee de la vista que van a leer las pantallas.
     const { rows } = await query(
-      `select nombre, n_documentos, n_obras from public.cliente_panel order by nombre`)
+      `select nombre_comercial as nombre, n_documentos, n_obras from public.cliente_panel order by nombre_comercial`)
     console.log('\n  releído de cliente_panel:')
     for (const r of rows) console.log(`    ${String(r.nombre).padEnd(42)} ${String(r.n_documentos).padStart(4)} documentos · ${r.n_obras} obra(s)`)
   }
