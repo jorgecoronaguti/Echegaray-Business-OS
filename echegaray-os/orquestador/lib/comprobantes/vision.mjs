@@ -29,6 +29,7 @@ import { identidadDelComprobante } from './aritmetica.mjs'
 import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
 import { fechaDeLectura } from './lectura.mjs'
 import { avisarEstado, clasificarRespuesta, registrarUso } from '../ia/cliente.mjs'
+import { leerSinModelo } from './sin-modelo.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
 export const MODELO_LECTURA = process.env.ORQ_COMPROBANTES_MODELO || 'claude-haiku-4-5-20251001'
@@ -514,6 +515,24 @@ export async function leerAdjunto(adjunto, ctx = {}) {
   } = ctx
   const bloque = bloqueAdjunto(adjunto)
   if (!bloque) return { ok: false, error: `no puedo mirar un archivo ${adjunto?.mediaType ?? 'sin tipo'}` }
+
+  // ═══ EL CAMINO SIN MODELO VA PRIMERO (05/09/2026) ═══
+  //
+  // Una factura electrónica en PDF trae el texto EMBEBIDO: lo escribió el sistema de facturación del
+  // proveedor y AFIP rotuló cada importe. `pdf-afip.mjs` sabía leerla con cero tokens desde el
+  // 25/08 y NADIE la llamaba: lo importaba únicamente su propio test, así que todo PDF iba a Claude.
+  //
+  // Sólo contesta cuando la aritmética del propio papel cierra Y el emisor no es ambiguo. Si
+  // cualquiera de las dos falla —o si es una foto, o un PDF escaneado— devuelve null y sigue el
+  // camino de siempre, intacto.
+  const sinModelo = await leerSinModelo(adjunto, { logger: ctx.logger ?? null }).catch(() => null)
+  if (sinModelo?.ok) {
+    // NO pasa por `necesitaRevision`: ese control pide el modelo grande cuando no encuentra
+    // anotación manuscrita, y un PDF emitido por el proveedor no puede tener una. Pedirla convertiría
+    // el atajo en dos llamadas para buscar algo que no existe.
+    return { ok: true, crudo: sinModelo.crudo, revision: { hubo: false, motivos: [], via: sinModelo.via } }
+  }
+
   if (!apiKey || typeof fetchImpl !== 'function') return { ok: false, error: 'no hay lectura de comprobantes disponible ahora' }
 
   const imputacion = vocabulario ? bloqueImputacion(vocabulario) : null
