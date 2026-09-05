@@ -24,6 +24,7 @@
 // siempre. Esta capa sólo puede AGREGAR una respuesta que antes no existía.
 
 import { CAPACIDAD } from './ia/capacidad.mjs'
+import { completarPorCatalogo } from './xsas-argumentos-catalogo.mjs'
 
 /** El pedido al modelo: la frase, los parámetros que faltan con su descripción, y nada más. PURA. */
 export function prompt({ texto, tool, faltan = [] }) {
@@ -59,11 +60,40 @@ function extraerJson(texto) {
  * para un requerido, el parámetro SIGUE faltando y el gateway no ejecuta. Poner un valor plausible
  * para que la tool corra sería inventar el pedido de otro.
  */
-export async function completarArgumentos({ ia, texto, tool, args = {}, falta = [], logger = null } = {}) {
-  if (!falta.length || !ia?.pedirTextoONull) return { args, falta, uso: null }
+export async function completarArgumentos({
+  ia, texto, tool, args = {}, falta = [], catalogos = null, logger = null,
+} = {}) {
+  if (!falta.length) return { args, falta, uso: null }
   const declaradas = new Set(Object.keys(tool?.schema?.input_schema?.properties ?? {}))
+
+  // ═══ LA REGLA ANTES QUE EL MODELO (05/09/2026) ═══
+  //
+  // Para «analizá los planos de Quattropani», preguntarle a un modelo qué parte de la frase es el
+  // nombre de la obra es pagar una llamada de red para hacer lo que un `indexOf` contra la lista de
+  // obras hace sin equivocarse. Y no es sólo más barato: es MÁS PRECISO, porque el catálogo conoce
+  // el universo de respuestas válidas y devuelve el nombre exacto con el que la obra existe en la
+  // base. El modelo devuelve lo que leyó.
+  //
+  // Lo que la regla no puede —una fecha, un número, una obra ambigua— sube al modelo como siempre.
+  let porRegla = { args, falta, resueltos: [], ambiguos: {} }
+  if (catalogos) {
+    porRegla = completarPorCatalogo({ texto, args, falta: falta.filter((k) => declaradas.has(k)), catalogos })
+    if (porRegla.resueltos.length) {
+      logger?.info?.('argumentos: resueltos por catálogo, sin modelo', { resueltos: porRegla.resueltos })
+    }
+    // Si la regla llenó todo, no hay llamada: es el caso que sube la autonomía sin costo ni riesgo.
+    if (!porRegla.falta.length) {
+      return { args: porRegla.args, falta: [], uso: null, porRegla: porRegla.resueltos, ambiguos: porRegla.ambiguos }
+    }
+  }
+
+  if (!ia?.pedirTextoONull) {
+    return { args: porRegla.args, falta: porRegla.falta, uso: null, porRegla: porRegla.resueltos, ambiguos: porRegla.ambiguos }
+  }
+  args = porRegla.args
+  falta = porRegla.falta
   const pedibles = falta.filter((k) => declaradas.has(k))
-  if (!pedibles.length) return { args, falta, uso: null }
+  if (!pedibles.length) return { args, falta, uso: null, porRegla: porRegla.resueltos, ambiguos: porRegla.ambiguos }
 
   // `pedirTextoONull` devuelve el TEXTO, no el objeto con `.texto` que devuelve `pedirTexto`. Leer
   // `r.texto` acá daba siempre `undefined` y el argumento nunca se completaba, con la extracción
@@ -88,5 +118,14 @@ export async function completarArgumentos({ ia, texto, tool, args = {}, falta = 
     if (typeof v === 'string' && v.trim()) salida[k] = v.trim()
     else if (typeof v === 'number' || typeof v === 'boolean') salida[k] = v
   }
-  return { args: salida, falta: falta.filter((k) => salida[k] === undefined || salida[k] === null || salida[k] === ''), uso: texto_ }
+  return {
+    args: salida,
+    falta: falta.filter((k) => salida[k] === undefined || salida[k] === null || salida[k] === ''),
+    uso: texto_,
+    // Qué puso la regla y qué quedó ambiguo viaja SIEMPRE, también cuando después hubo modelo: sin
+    // esto el caller no puede distinguir un argumento verificado contra el catálogo de uno que un
+    // modelo leyó de la frase, y son cosas distintas a la hora de ejecutar.
+    porRegla: porRegla.resueltos,
+    ambiguos: porRegla.ambiguos,
+  }
 }
