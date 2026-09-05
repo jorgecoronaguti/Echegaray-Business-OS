@@ -170,6 +170,17 @@ export function prosaEnGrilla(filas = [], { tope = TOPE_PROSA, desde = 3 } = {})
   return out
 }
 
+/**
+ * Normaliza para comparar el título contra el nombre de la pestaña: minúsculas y sin tildes.
+ *
+ * POR QUÉ NO SE COMPARA LITERAL (05/09). Con igualdad exacta, nueve de quince pestañas del alcance
+ * daban `titulo-distinto` y ocho eran ruido: "Cargas sociales" contra "Cargas Sociales" (una
+ * mayúscula) y "Tarjeta de crédito" contra "Tarjeta de Credito" (la tilde le falta AL NOMBRE DE LA
+ * PESTAÑA, no al título). Un control con 8 de 9 falsos deja de mirarse, y el que sobra —"Servicios
+ * recurrentes 2026" en una pestaña llamada "Recurrentes"— se pierde entre ellos.
+ */
+const normal = (s) => String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+
 /** ¿La fila tiene contenido sólo en la columna A? Un título ocupa su fila solo. */
 const soloEnA = (f) => !(f || []).slice(1).some((c) => String(c ?? '').trim())
 
@@ -220,7 +231,11 @@ export function encabezadoRoto(filas = [], { pestana = '' } = {}) {
   const f3 = (filas?.[2] ?? []).some((c) => String(c ?? '').trim())
 
   if (!a1) mal.push({ fila: 1, regla: 'sin-titulo', detalle: 'A1 vacía: la pestaña no dice cómo se llama' })
-  else if (pestana && a1 !== pestana) mal.push({ fila: 1, regla: 'titulo-distinto', detalle: `A1 dice "${a1}" y la pestaña se llama "${pestana}"` })
+  else if (pestana && !normal(a1).startsWith(normal(pestana))) {
+    mal.push({ fila: 1, regla: 'titulo-distinto', detalle: `A1 dice "${a1}" y la pestaña se llama "${pestana}": el lector tiene dos nombres para lo mismo` })
+  } else if (pestana && normal(a1) !== normal(pestana)) {
+    mal.push({ fila: 1, regla: 'titulo-con-glosa', detalle: `A1 agrega "${a1.slice(pestana.length).trim()}": eso es la línea de procedencia y va en A2` })
+  }
   if (restoF1) mal.push({ fila: 1, regla: 'titulo-acompanado', detalle: 'la fila del título tiene algo más al lado: el título va solo' })
   if (!a2) mal.push({ fila: 2, regla: 'sin-procedencia', detalle: 'A2 vacía: falta la línea «qué contesta · fuente · corte»' })
   else if (a2.length > TOPE_SUBTITULO) mal.push({ fila: 2, regla: 'procedencia-larga', detalle: `${a2.length} caracteres (tope ${TOPE_SUBTITULO}): dejó de declarar y empezó a explicar` })
