@@ -144,3 +144,60 @@ export async function buscarCompras(texto: string): Promise<Resultado<CompraCand
   if (error) return { ok: false, error: 'No pude buscar.' }
   return { ok: true, dato: (data ?? []) as unknown as CompraCandidata[] }
 }
+
+/**
+ * LOS PAPELES SUELTOS QUE PODRÍAN SER DE ESTA COMPRA — la dirección inversa de `buscarCompras`.
+ *
+ * ═══ POR QUÉ HACÍA FALTA, MEDIDO EL 05/09/2026 ═══
+ *
+ * Vincular a mano ya se podía: desde la sub-vista «Comprobantes sin vincular» se busca la compra y
+ * se cuelga el papel. Pero `vinculado_por = 'match_manual'` está en CERO filas de `compra_adjunto`
+ * — 58 vinculados por `registro` y 53 sueltos, ninguno a mano. La acción existía y no la usó nadie,
+ * y la razón es la dirección: quien mira una compra sin respaldo está parado en el panel de esa
+ * compra, no en la lista de huérfanos. Desde ahí el camino era irse a otra pantalla, encontrar el
+ * papel entre 53 y buscar la compra de la que venía.
+ *
+ * 889 compras no tienen papel. 653 tienen clave y por lo tanto pueden recibir uno.
+ *
+ * ═══ QUÉ SE BUSCA, Y QUÉ NO SE ADIVINA ═══
+ *
+ * Sólo entre los SUELTOS (`compra_clave is null`). Un papel ya vinculado no es candidato: moverlo
+ * de una compra a otra desde acá dejaría a la primera sin respaldo sin que nadie se entere.
+ *
+ * El texto se busca en el nombre del archivo, que es lo único que un adjunto suelto tiene. NO se
+ * ordena por «parecido» al proveedor ni a la fecha de la compra: eso pondría primero un candidato
+ * por una coincidencia que el sistema no puede probar, y el error que este flujo existe para evitar
+ * es exactamente colgar el papel de la factura equivocada. Se ordena por el más reciente, que es un
+ * hecho.
+ */
+export async function buscarAdjuntosSueltos(texto: string): Promise<Resultado<AdjuntoSuelto[]>> {
+  const q = z.string().trim().max(80).safeParse(texto)
+  if (!q.success) return { ok: false, error: 'No pude buscar eso.' }
+  // Misma defensa que `buscarCompras`: `,()*%` son sintaxis de PostgREST y su comodín. Sin esto, lo
+  // que alguien tipea pasa a ser parte de la consulta.
+  const seguro = q.data.replace(/[,()*%]/g, ' ').trim()
+
+  const supabase = await createClient()
+  let consulta = supabase
+    .from('compra_adjunto')
+    .select('id, nombre, media_type, bytes, subido_at')
+    .is('compra_clave', null)
+    .order('subido_at', { ascending: false, nullsFirst: false })
+    .limit(12)
+  // Sin texto se devuelven los últimos: son 53 en total y los recién llegados son los que están
+  // esperando. Obligar a escribir algo para ver una lista de 53 es pedir que adivinen el nombre de
+  // un archivo que el proveedor eligió.
+  if (seguro) consulta = consulta.ilike('nombre', `%${seguro}%`)
+
+  const { data, error } = await consulta
+  if (error) return { ok: false, error: 'No pude buscar los comprobantes sueltos.' }
+  return { ok: true, dato: (data ?? []) as unknown as AdjuntoSuelto[] }
+}
+
+export interface AdjuntoSuelto {
+  id: string
+  nombre: string
+  media_type: string
+  bytes: number
+  subido_at: string | null
+}

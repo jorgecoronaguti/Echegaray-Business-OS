@@ -94,9 +94,10 @@ test('la última compra es el MÁXIMO entre los nombres, no la del último que p
   // último que aparece en el arreglo es quedarse con la de un nombre viejo que ya no se usa, y la
   // pantalla diría que a un proveedor activo no se le compra desde marzo.
   //
-  // El orden del arreglo lo decide la consulta (`order by comprobantes desc`), así que el nombre
-  // MÁS usado llega primero y suele ser el que tiene la fecha más nueva — o sea que el defecto
-  // pasaría desapercibido justo en los proveedores grandes y aparecería en los chicos.
+  // Y `getResolucionCartera` —la consulta que alimenta esta tabla— NO lleva `order by`: el orden
+  // que devuelve Postgres es arbitrario y puede cambiar con un plan distinto o una fila nueva. O
+  // sea que «el último que pasó» no es siquiera un criterio equivocado estable: es un valor que
+  // puede cambiar solo entre dos cargas de la misma pantalla, con los mismos datos.
   const mapa = agruparComprado([
     resuelto('p1', 9, 100, 'vinculado', '2026-03-10'),
     resuelto('p1', 2, 100, 'vinculado', '2026-09-01'),

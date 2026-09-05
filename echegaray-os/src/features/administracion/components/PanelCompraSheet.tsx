@@ -25,6 +25,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { AccionesCompra } from './AccionesCompra'
 import { C, pesos } from '@/shared/components/canon'
 import { COLOR_PROP, propiedadesDe, reclamoDe } from '../services/panelCompraSheet'
 import { urlDelAdjunto } from '../services/comprasAdjuntoActions'
@@ -185,12 +186,20 @@ export function PanelCompraSheet({
           </div>
         ) : (
           // NO es un hueco: un vacío se lee como «todavía no cargó». Esto es un dato y es trabajo.
+          //
+          // Y ya no termina en una INSTRUCCIÓN. Decía «se puede subir desde Cargar comprobante»:
+          // una frase que manda a la persona a buscar otra pantalla. El handoff v4 pone ahí una
+          // acción, y la acción está abajo.
           <p style={{ fontSize: 12, color: C.tenue, textWrap: 'pretty' }} data-testid="sin-papel">
             No hay archivo guardado de esta compra. Los que llegan por el canal de comprobantes se
-            vinculan solos; éste se puede subir desde «Cargar comprobante».
+            vinculan solos.
           </p>
         )}
       </div>
+
+      {/* EL PIE DE ACCIONES DEL HANDOFF v4. Va último, después de las propiedades y del papel: lo
+          que se decide se decide DESPUÉS de haber leído lo que hay. */}
+      <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
     </aside>
   )
 }
