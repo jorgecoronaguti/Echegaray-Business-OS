@@ -170,9 +170,14 @@ export function papelesPorPersona(
 /**
  * ¿HAY DE VERDAD UN CONTROL DE VENCIMIENTOS, O SÓLO UNA COLUMNA DONDE GUARDARLO?
  *
- * SONDA DEL 24/08/2026 sobre la base real: `documentacion_legajo` tiene 847 filas, 62 personas con
+ * SONDA DEL 24/08/2026 sobre la base real: `documentacion_legajo` tenía 847 filas, 62 personas con
  * legajo, y **0 filas con `fecha_vencimiento` cargada** y **0 con `presente = false`**. La columna
- * la agregó la migración 20260820T3000 y nadie la cargó todavía.
+ * la había agregado la migración 20260820T3000 y nadie la cargaba todavía.
+ *
+ * REMEDIDO EL 05/09/2026: 938 filas, 75 personas, **2 con vencimiento** y **3 marcadas ausentes**.
+ * El control existe desde que alguien cargó la primera fecha, y esta función lo enciende sola — que
+ * es exactamente para lo que se escribió. Los números de arriba se dejan porque son la razón por la
+ * que la columna se retiró en agosto, no una medición vigente.
  *
  * Con esos datos, la columna PAPELES escribiría «al día» en 61 filas. Eso no es un dato: es una
  * afirmación —«revisé sus papeles y están vigentes»— sostenida por un campo que nadie completó, y
@@ -184,6 +189,57 @@ export function papelesPorPersona(
  */
 export function hayControlDeVencimientos(papeles: PapelDeLegajo[]): boolean {
   return papeles.some((p) => p.fecha_vencimiento != null || p.presente === false)
+}
+
+/** Qué dice la celda PAPELES y con qué peso. El color lo pone la tabla: acá no entra un hex. */
+export interface RotuloDePapeles {
+  texto: string
+  /** `bloquea` = rojo (no puede estar en obra) · `falta` = tenue · `dato` = apagado. */
+  tono: 'bloquea' | 'falta' | 'dato' | 'sin_lectura'
+}
+
+/**
+ * LA CELDA PAPELES CUENTA, NO CERTIFICA (handoff CRM / Administración v4).
+ *
+ * ═══ POR QUÉ ESTA COLUMNA VOLVIÓ DICIENDO OTRA COSA ═══
+ *
+ * La versión de agosto escribía «al día» y por eso se retiró: con 847 papeles cargados y CERO con
+ * `fecha_vencimiento`, «al día» era una afirmación —«revisé sus papeles y están vigentes»— sostenida
+ * por una columna que nadie completó. Un conteo no afirma nada de eso: «6 cargados» es exactamente
+ * lo que la base sabe, y «sin cargar» es la ausencia que sí importa, porque un legajo vacío es el
+ * que no se puede presentar ante el IERIC.
+ *
+ * ═══ LAS CUATRO RESPUESTAS SON CUATRO COSAS DISTINTAS, Y NINGUNA ES UN CERO ═══
+ *
+ *   sin lectura   no se pudo leer la tabla. UN CONTROL QUE NO PUDO MIRAR NO DICE «NO ESTÁ». Es la
+ *                 razón por la que `leidos` es un parámetro y no se deduce de un mapa vacío: un
+ *                 error de RLS y una persona sin papeles llegan acá idénticos.
+ *   N vencidos    gana sobre todo lo demás, y sólo existe si `controlDeVencimientos`. Con la libreta
+ *                 o el apto médico vencido no se puede estar en obra: es la señal que la banda
+ *                 retirada dibujaba arriba sin poder decir de quién.
+ *   sin cargar    se leyó y no hay ni un papel presente. Falta, pero no bloquea el ingreso de hoy.
+ *   N cargados    el conteo. En singular cuando es uno: «1 cargados» delata que nadie lo miró.
+ *
+ * ═══ «CARGADOS» ES LO QUE ESTÁ, NO LAS FILAS DE LA TABLA ═══
+ *
+ * `total` cuenta también los papeles que Administración marcó como AUSENTES (`presente = false`):
+ * son filas que existen justamente para decir que el papel NO está. Medido el 05/09/2026 sobre la
+ * base real hay 3. Contarlas como «cargados» diría que un legajo tiene un papel que la propia
+ * Administración declaró faltante — es la misma clase de mentira que «al día» sobre un control que
+ * nadie hace, en chiquito.
+ */
+export function rotuloDePapeles(
+  estado: EstadoDePapeles | undefined,
+  { leidos, controlDeVencimientos }: { leidos: boolean; controlDeVencimientos: boolean },
+): RotuloDePapeles {
+  if (!leidos) return { texto: 'sin lectura', tono: 'sin_lectura' }
+  const vencidos = controlDeVencimientos ? (estado?.vencidos ?? 0) : 0
+  if (vencidos > 0) {
+    return { texto: `${vencidos} ${vencidos === 1 ? 'vencido' : 'vencidos'}`, tono: 'bloquea' }
+  }
+  const cargados = (estado?.total ?? 0) - (estado?.faltan ?? 0)
+  if (cargados <= 0) return { texto: 'sin cargar', tono: 'falta' }
+  return { texto: `${cargados} ${cargados === 1 ? 'cargado' : 'cargados'}`, tono: 'dato' }
 }
 
 // ═══ LO QUE SE FUE CON EL PORTE 19 v2 (25/08/2026) ═══

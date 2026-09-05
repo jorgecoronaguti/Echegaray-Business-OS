@@ -107,6 +107,51 @@ test('el recorte de «Sin CUIT» se alimenta de la LECTURA, no de un literal', (
   assert.match(src, /cuenta: pendientes\.error \? null : cola\.length/, 'el contador de la cola se cableó')
 })
 
+test('TODOS los recortes dicen su población, no sólo el que reemplazó a la banda', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Sacar la banda de señales y dejar los recortes mudos. «Sin CUIT 14» tenía su número desde el
+  // primer día; «Activos», «Archivados», «Todos» y «Subcontratistas» eran cuatro palabras sin
+  // tamaño, así que la única forma de saber cuántos proveedores archivados hay era hacer clic y
+  // contar filas a ojo. El handoff v4 pone el número al lado de cada recorte porque es lo que
+  // reemplaza al renglón de señales que se retiró.
+  const src = codigoPagina()
+  assert.match(src, /cuenta: POBLACION\[a\]/, 'los tres cortes de estado quedaron mudos')
+  assert.match(src, /activos: nActivos\?\.data \?\? null/)
+  assert.match(src, /archivados: nArchivados\?\.data \?\? null/)
+  assert.match(src, /todos: nTodos\?\.data \?\? null/)
+})
+
+test('«Todos» se lee de la base y NO se calcula como activos + archivados', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // La suma es gratis y miente cuando uno de los dos sumandos falla: con `archivados` en error,
+  // «Todos 36» publicaría una cartera de 36 donde hay 43. Un total más chico que el real es la
+  // clase de error que nadie ve, porque la lista que abre debajo también viene recortada.
+  const src = codigoPagina()
+  assert.match(src, /contarProveedores\(supabase, \{ activo: 'todos' \}\)/)
+  assert.doesNotMatch(src, /nActivos.*\+.*nArchivados/)
+})
+
+test('un conteo que falló NO dibuja un 0: el recorte se queda sin número', () => {
+  // `null` viaja hasta `FiltrosSuaves`, que sólo dibuja la cifra si no es nula. Un 0 diría «no hay
+  // ninguno archivado» — una afirmación sobre la cartera que un error de lectura no habilita.
+  assert.match(codigo(V2 + 'FiltrosSuaves.tsx'), /o\.cuenta != null &&/)
+  assert.match(codigoPagina(), /number \| null/)
+})
+
+test('el conteo de subcontratistas se hace sobre la lista LEÍDA, no sobre la ya recortada', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Contar sobre `porFiltro` —la lista después de aplicar «Sin CUIT» y el propio «Subcontratistas»—
+  // haría que el número se derrumbara a 1 apenas se hace clic en el recorte, y a 0 combinándolo con
+  // «Sin CUIT»: el contador diría que hay menos subcontratistas porque se los está mirando.
+  const src = codigoPagina()
+  assert.match(src, /cuenta: todos\.filter\(\(p\) => subs\.has\(p\.id\)\)\.length/)
+  assert.doesNotMatch(src, /cuenta: porFiltro\.filter/)
+  assert.doesNotMatch(src, /cuenta: lista\.filter/)
+})
+
 test('el CTA de vincular nombra lo que falta cuando está apagado', () => {
   const src = fuente('PanelNombre.tsx')
   assert.match(src, /data-testid="vincular-bloqueado"/)

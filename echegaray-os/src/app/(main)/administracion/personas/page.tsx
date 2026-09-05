@@ -1,15 +1,23 @@
 // 19 · PERSONAL v2 — el patrón de sección aplicado al plantel.
 //
-// ═══ EL ORDEN DE LA PANTALLA ES EL ARGUMENTO ═══
+// ═══ LA BANDA DE SEÑALES SE FUE (handoff CRM / Administración v4, 05/09/2026) ═══
 //
-// Criterio 1: la primera línea de contenido muestra TRABAJO, no un maestro. Lo primero que ve quien
-// entra no es el plantel —que casi nunca hay que tocar— sino lo que hay que resolver hoy: quién no
-// fichó, quién está sin obra y, cuando exista el dato, quién tiene un papel vencido.
+// Acá arriba había un bloque «Lo que pide trabajo» con hasta tres señales —papeles vencidos, sin
+// fichar hoy, sin obra asignada— antes de la lista. Era el criterio 1 del patrón v2, y la v4 lo
+// revierte para las pantallas de área por el mismo motivo que en Proveedores: la banda decía en un
+// renglón lo que la fila ya dice en su propia celda, y empujaba la lista —que es a lo que se
+// entra— fuera de la primera pantalla.
 //
-// Eso reemplaza a la banda de tres pastillas de alerta: las mismas cuentas, ahora con QUÉ BLOQUEA y
-// con el verbo del que sí tiene dónde aterrizar. Y a diferencia de aquéllas, el bloque de trabajo
-// se dibuja SIEMPRE, no sólo cuando la lista está sin filtrar — porque cuenta el PLANTEL entero y
-// lo dice, no «2 de los que ves».
+// NO SE PERDIÓ NINGUNA DE LAS TRES, Y ESA ES LA CONDICIÓN DE SACARLA:
+//
+//   SIN OBRA ASIGNADA   la celda OBRA lo dice en ámbar, la fila lleva su filo, y el recorte «Sin
+//                       asignar» lo aísla de un clic diciendo cuántos son.
+//   SIN FICHAR HOY      es la columna HOY, persona por persona.
+//   PAPELES VENCIDOS    baja a la celda PAPELES, en rojo y sólo cuando existe el control. La banda
+//                       lo contaba sin poder decir QUIÉN; la celda lo dice en la fila que lo tiene.
+//
+// Los recortes cuentan LA POBLACIÓN DEL CORTE, no la página: sin ese número, un recorte es una
+// puerta a ciegas y el trabajo pendiente deja de tener tamaño. Ninguno cambia al buscar.
 //
 // ═══ LO QUE NO ESTÁ ES TAN DELIBERADO COMO LO QUE ESTÁ ═══
 //
@@ -19,7 +27,9 @@
 //
 // ═══ LO QUE EL MOCKUP DIBUJA Y ACÁ NO ESTÁ ═══
 //
-// · «AUSENTES SIN JUSTIFICAR», la señal roja: este modelo no tiene ausencias. Ver `senalesPersonal`.
+// · «AUSENTES SIN JUSTIFICAR», la señal roja: este modelo no tiene ausencias — `estadoHoy` sólo
+//   sabe de `en_obra`, `ya_cerro` y `sin_fichar`, y ese silencio incluye al que no tiene batería.
+//   Pintarlo de rojo fabricaría una novedad de liquidación. Quién faltó lo declara el jefe de obra.
 // · EL PANEL LATERAL de la persona (jornadas, cuadrilla, papeles): la fila sigue llevando al legajo
 //   360, que muestra todo eso y más. Un panel con las últimas jornadas es una lectura por persona
 //   tocada, y esa pantalla ya existe. DECLARADO COMO PENDIENTE, no como hecho.
@@ -28,10 +38,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Aviso } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
-import { IconoCuadrilla, IconoFecha, IconoObra, IconoPersona } from '@/shared/components/iconos'
+import { IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
 import { FiltrosSuaves } from '@/shared/components/v2/FiltrosSuaves'
-import { TrabajoDeSeccion } from '@/shared/components/v2/TrabajoDeSeccion'
 import { NotaBloque, V } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
@@ -40,7 +49,6 @@ import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/c
 import {
   FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
 } from '@/features/administracion/services/personasService'
-import { senalesDePersonal } from '@/features/administracion/services/senalesPersonal'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
   hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente, papelesPorPersona,
@@ -53,9 +61,6 @@ import { hoyEnObra } from '@/features/jefe/services/contexto'
 export const dynamic = 'force-dynamic'
 
 const RUTA = '/administracion/personas'
-
-/** Los tres iconos que esta sección mezcla: el tiempo, la obra y el papel del legajo. */
-const ICONOS = { tiempo: IconoFecha, obra: IconoObra }
 
 type Busqueda = { q?: string; f?: string; nueva?: string }
 
@@ -119,6 +124,9 @@ function armarPulso(
     papeles: papelesPorPersona(papeles.data, hoy),
     hoyDisponible: marcas.error == null,
     hhDisponible: hh.error == null,
+    // SE PUDO LEER LA TABLA. Sin esto, un error de lectura escribiría «sin cargar» en 62 filas —una
+    // afirmación sobre 847 papeles que sí están— en vez de «sin lectura».
+    papelesLeidos: papeles.error == null,
     // LA COLUMNA EXISTE EN LA BASE Y AUN ASÍ PUEDE NO HABER CONTROL. Sonda del 24/08 sobre la base
     // real: 847 papeles cargados y CERO con vencimiento. Con eso, una señal de «vencidos» sería una
     // afirmación sobre un control que nadie está haciendo. Aparece sola el día del primer dato.
@@ -152,21 +160,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const pulso = armarPulso(marcas, hh, papeles, hoy)
   const abierta = sp.nueva === '1'
 
-  // LAS SEÑALES CUENTAN EL PLANTEL, NO LO QUE SE VE. Un número que cambiara al poner un filtro diría
-  // que la empresa tiene menos trabajo pendiente porque alguien tocó un chip. Se calculan sobre las
-  // filas del corte «plantel»: `getDirectorio` ya excluye a quien no pertenece, y `senalesDePersonal`
-  // lo vuelve a exigir con `en_la_empresa`.
-  const senales = pulso
-    ? senalesDePersonal({
-        personas,
-        marcas: pulso.marcas,
-        papeles: pulso.papeles,
-        hoyDisponible: pulso.hoyDisponible,
-        papelesDisponible: pulso.papelesDisponible,
-        hrefSinObra: armarHref({}, 'sin_asignar'),
-      })
-    : []
-
   return (
     <Marco>
       <NavAdministracion />
@@ -174,15 +167,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
       {/* EL INTERLINEADO DEL MOCKUP, DECLARADO UNA VEZ y por fuera de la barra de áreas, que es de
           la sección y no de esta pantalla. Ver `patron.tsx · CAJA_CONTENIDO`. */}
       <div style={{ lineHeight: 'normal' }}>
-        <TrabajoDeSeccion
-          senales={senales}
-          icono={IconoPersona}
-          iconos={ICONOS}
-          vacio={pulso
-            ? 'Todo el plantel fichó hoy y está asignado a una obra.'
-            : 'No pude leer la presencia de hoy: esta pantalla no puede afirmar que no haya nada que resolver.'}
-        />
-
         {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR, y su columna se apaga en vez de
             publicar «sin fichar» diecisiete veces. Un control que no pudo mirar no dice «no está». */}
         {[
@@ -231,6 +215,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                   etiqueta: f.etiqueta,
                   href: armarHref(sp, f.valor),
                   activo: f.valor === filtro,
+                  // LA POBLACIÓN DEL CORTE, NO LA PÁGINA. Son los cuatro `count` de la base, que no
+                  // se mueven al escribir en el buscador: el recorte promete cuántas filas hay del
+                  // otro lado del clic. `null` —no se pudo contar— no dibuja número: un 0 ahí diría
+                  // que no queda nadie sin asignar, que es la afirmación que reemplazó a la banda.
+                  cuenta: conteos[f.valor],
                 }))}
               />
 

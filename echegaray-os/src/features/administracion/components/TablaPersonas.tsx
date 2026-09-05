@@ -10,10 +10,12 @@
 //                        categoría UOCRA baja al legajo: es lo que cobra, no lo que hace, y en una
 //                        lista de trabajo no decide nada.
 //   CUADRILLA            baja al legajo. La lista contesta «¿en qué obra está?», no «¿con quién?».
-//   PAPELES              se retira de la fila. Medido el 24/08 sobre la base real: 847 papeles
-//                        cargados y CERO con vencimiento, así que la columna decía «al día» en 61
-//                        filas — un control que nadie está haciendo. Lo que sí queda es la SEÑAL de
-//                        arriba, que sólo aparece cuando hay un vencimiento de verdad.
+//   PAPELES              se retiró en agosto y VUELVE con el handoff v4, pero diciendo otra cosa.
+//                        Antes escribía «al día» sobre un control que nadie hace: 847 papeles
+//                        cargados y CERO con vencimiento (24/08). Ahora dice CUÁNTOS HAY —«6
+//                        cargados», «sin cargar»—, que es un conteo y no una afirmación de
+//                        vigencia. El vencimiento sólo aparece el día que exista uno cargado, y
+//                        entonces gana la celda: es lo que impide entrar a la obra.
 //   ···                  se fue. Una columna de menús en una lista que existe para encontrar y abrir
 //                        es una columna de ruido; las acciones viven en el legajo.
 //   AVATAR               pasa a ser el icono de persona del §11 (15px, `19v2:112`). Las iniciales
@@ -36,7 +38,8 @@ import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
 import { oficioVisible } from '../services/vocabularioPersona'
 import {
-  HOY_LABEL, estadoHoy, horasVisibles, type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy,
+  HOY_LABEL, estadoHoy, horasVisibles, rotuloDePapeles,
+  type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy, type RotuloDePapeles,
 } from '../services/pulsoDelPlantel'
 
 /** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
@@ -47,13 +50,21 @@ export interface PulsoDelPlantel {
   papeles: Map<string, EstadoDePapeles>
   hoyDisponible: boolean
   hhDisponible: boolean
-  /** Hoy siempre `false`: no hay ni un vencimiento cargado. Alimenta la SEÑAL, no una columna. */
+  /**
+   * SE PUDO LEER `documentacion_legajo`. Es lo único que habilita a escribir «sin cargar» en una
+   * fila: un control que no pudo mirar no dice «no está», dice «sin lectura».
+   */
+  papelesLeidos: boolean
+  /**
+   * HAY DE VERDAD UN CONTROL DE VENCIMIENTOS. Hoy siempre `false`: 847 papeles cargados y ninguno
+   * con fecha. Habilita el rótulo «N vencidos», no el conteo — el conteo sale igual sin él.
+   */
   papelesDisponible: boolean
 }
 
 /** `19v2:139`. Literales porque Tailwind no compila una clase armada en runtime. */
 const COLS
-  = 'grid-cols-[minmax(230px,1.5fr)_minmax(0,1fr)_minmax(0,130px)_minmax(0,90px)]'
+  = 'grid-cols-[minmax(230px,1.5fr)_minmax(0,1fr)_minmax(0,130px)_minmax(0,90px)_minmax(0,116px)]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
@@ -98,6 +109,7 @@ export function TablaPersonas({
               <>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Hoy</RotuloCol></span>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH del mes</RotuloCol></span>
+                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Papeles</RotuloCol></span>
               </>
             )}
       </div>
@@ -182,6 +194,8 @@ export function TablaPersonas({
                         ? 'sin lectura'
                         : pulso.hh.has(p.id) ? horasVisibles(pulso.hh.get(p.id) ?? 0) : 'sin HH'}
                     </span>
+
+                    <CeldaPapeles pulso={pulso} personaId={p.id} />
                   </>
                 )}
           </Link>
@@ -194,6 +208,31 @@ export function TablaPersonas({
         </div>
       )}
     </div>
+  )
+}
+
+/** El color de cada tono. La REGLA —qué dice la celda— vive en `rotuloDePapeles`, que se prueba
+ *  sin React; acá sólo se elige la tinta, que es lo único que no se puede afirmar en un `.ts`. */
+const TINTA_PAPELES: Record<RotuloDePapeles['tono'], string> = {
+  bloquea: V.neg,
+  falta: V.tenue,
+  dato: V.apagado,
+  sin_lectura: V.lupa,
+}
+
+function CeldaPapeles({ pulso, personaId }: { pulso?: PulsoDelPlantel; personaId: string }) {
+  const r = rotuloDePapeles(pulso?.papeles.get(personaId), {
+    leidos: pulso?.papelesLeidos ?? false,
+    controlDeVencimientos: pulso?.papelesDisponible ?? false,
+  })
+  return (
+    <span
+      className={`truncate ${SOLO_ANCHO}`}
+      style={{ fontSize: '12px', color: TINTA_PAPELES[r.tono] }}
+      data-testid="papeles-persona"
+    >
+      {r.texto}
+    </span>
   )
 }
 

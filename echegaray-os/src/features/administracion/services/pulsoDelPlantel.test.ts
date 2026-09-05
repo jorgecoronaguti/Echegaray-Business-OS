@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   estadoHoy, hayControlDeVencimientos, hhPorPersona, horasVisibles,
-  marcasPorPersona, mesCorriente, papelesPorPersona,
+  marcasPorPersona, mesCorriente, papelesPorPersona, rotuloDePapeles,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -140,3 +140,88 @@ test('vencido, por vencer y faltante se cuentan por separado', () => {
 // `senalesPersonal.test.ts` sobre `senalesDePersonal`, que devuelve la cifra y el rótulo POR
 // SEPARADO. La mitad de aquellas pruebas existía para vigilar que `partirCifra` volviera a partir
 // una frase que `alertasDelPlantel` acababa de armar; ese ida y vuelta ya no existe.
+
+
+// ── LA CELDA PAPELES (handoff CRM / Administración v4) ──────────────────────────────────────────
+//
+// La columna volvió a la fila cuando la banda de señales se retiró. Volvió DICIENDO OTRA COSA, y
+// estas pruebas son la diferencia entre las dos versiones: la de agosto certificaba, ésta cuenta.
+
+const SIN_CONTROL = { leidos: true, controlDeVencimientos: false }
+const CON_CONTROL = { leidos: true, controlDeVencimientos: true }
+const VACIO = { vencidos: 0, porVencer: 0, faltan: 0, total: 0 }
+
+test('no se pudo leer la tabla: dice «sin lectura», nunca «sin cargar»', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Si la celda dedujera el estado del mapa —«no está en el mapa ⇒ no tiene papeles»—, un error de
+  // RLS escribiría «sin cargar» en las 62 filas de un plantel con 847 papeles cargados. Un control
+  // que no pudo mirar no dice «no está». Por eso `leidos` es un parámetro y no una deducción.
+  assert.deepEqual(
+    rotuloDePapeles(undefined, { leidos: false, controlDeVencimientos: false }),
+    { texto: 'sin lectura', tono: 'sin_lectura' },
+  )
+  // Y no se salva ni cuando la persona SÍ tiene papeles leídos de otra corrida.
+  assert.equal(
+    rotuloDePapeles({ ...VACIO, total: 6 }, { leidos: false, controlDeVencimientos: false }).texto,
+    'sin lectura',
+  )
+})
+
+test('sin vencimientos cargados la celda NUNCA dice «al día»: cuenta', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Es el que retiró la columna en agosto. `documentacion_legajo` tiene 847 filas y CERO con
+  // `fecha_vencimiento`: con `controlDeVencimientos: false` la celda no puede afirmar vigencia
+  // ninguna. Si alguien vuelve a escribir «al día», «vigente» o «ok», esto se pone rojo.
+  const r = rotuloDePapeles({ ...VACIO, total: 6 }, SIN_CONTROL)
+  assert.deepEqual(r, { texto: '6 cargados', tono: 'dato' })
+  assert.doesNotMatch(r.texto, /al día|vigente|ok/i)
+})
+
+test('cero papeles es «sin cargar», nunca «0 cargados»', () => {
+  assert.deepEqual(rotuloDePapeles(VACIO, SIN_CONTROL), { texto: 'sin cargar', tono: 'falta' })
+  assert.deepEqual(rotuloDePapeles(undefined, SIN_CONTROL), { texto: 'sin cargar', tono: 'falta' })
+})
+
+test('un papel es «1 cargado»: el plural delata que nadie miró la celda', () => {
+  assert.equal(rotuloDePapeles({ ...VACIO, total: 1 }, SIN_CONTROL).texto, '1 cargado')
+})
+
+test('un papel que Administración marcó AUSENTE no se cuenta como cargado', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // `total` cuenta las filas de `documentacion_legajo`, y una fila con `presente = false` existe
+  // justamente para decir que el papel NO está. Medido el 05/09/2026 sobre la base real hay 3.
+  // Contarlas haría que la celda dijera «6 cargados» de un legajo que tiene 4 papeles y dos huecos
+  // que la propia Administración declaró — la misma mentira que «al día», en chiquito.
+  const r = rotuloDePapeles({ vencidos: 0, porVencer: 0, faltan: 2, total: 6 }, SIN_CONTROL)
+  assert.deepEqual(r, { texto: '4 cargados', tono: 'dato' })
+})
+
+test('un legajo donde TODO se declaró ausente dice «sin cargar», no un número negativo', () => {
+  assert.deepEqual(
+    rotuloDePapeles({ vencidos: 0, porVencer: 0, faltan: 3, total: 3 }, SIN_CONTROL),
+    { texto: 'sin cargar', tono: 'falta' },
+  )
+})
+
+test('un vencido gana sobre el conteo y BLOQUEA: con la libreta vencida no se entra a la obra', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // La señal «personas con papeles vencidos» vivía en la banda que se retiró y contaba sin poder
+  // decir QUIÉN. Al bajar a la fila no puede quedar escondida detrás del conteo: «9 cargados» sobre
+  // alguien con la libreta vencida es peor que no tener la columna.
+  const r = rotuloDePapeles({ vencidos: 2, porVencer: 1, faltan: 0, total: 9 }, CON_CONTROL)
+  assert.deepEqual(r, { texto: '2 vencidos', tono: 'bloquea' })
+  assert.equal(rotuloDePapeles({ ...VACIO, vencidos: 1, total: 3 }, CON_CONTROL).texto, '1 vencido')
+})
+
+test('el vencido NO se dibuja mientras el control de vencimientos no exista', () => {
+  // Sin una sola fecha cargada en toda la tabla, `hayControlDeVencimientos` es false y un `vencidos`
+  // suelto sería ruido de un dato a medio migrar. La celda cuenta y calla.
+  assert.equal(
+    rotuloDePapeles({ vencidos: 2, porVencer: 0, faltan: 0, total: 9 }, SIN_CONTROL).texto,
+    '9 cargados',
+  )
+})

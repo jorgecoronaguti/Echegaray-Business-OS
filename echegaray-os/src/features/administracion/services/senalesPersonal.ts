@@ -1,4 +1,20 @@
-// LAS SEÑALES DE LA PRIMERA LÍNEA DE PERSONAL — criterio 1 y 2 del patrón v2 (`19v2:40-56`).
+// LAS SEÑALES DE LA PRIMERA LÍNEA DE PERSONAL — SIN CONSUMIDOR DESDE EL HANDOFF v4 (05/09/2026).
+//
+// ═══ LEER ESTO ANTES DE VOLVER A ENCHUFARLO ═══
+//
+// La pantalla de Personal ya NO dibuja la banda «Lo que pide trabajo»: la v4 la retiró de las
+// pantallas de área, y lo que ella contaba se lee ahora en la fila que lo tiene —la celda OBRA en
+// ámbar, la columna HOY, la celda PAPELES— y en el recorte que lo aísla diciendo cuántos son.
+// `canonico-personal-v2.test.ts` se pone rojo si esta función vuelve a la página.
+//
+// No se borra porque las tres reglas de abajo son la definición escrita de qué reclama trabajo en
+// el plantel, y esa definición sigue siendo cierta: lo que cambió es DÓNDE se dibuja, no qué
+// bloquea. El día que exista un tablero de Dirección que necesite las mismas cuentas, salen de acá
+// y no de una cuarta versión del mismo `filter`. Vale lo mismo para `senalesProveedores.ts`.
+//
+// Lo que sigue es la decisión original, intacta:
+//
+// Criterio 1 y 2 del patrón v2 (`19v2:40-56`).
 //
 // Lo primero que se ve al entrar a Personal no es el plantel: es lo que hay que resolver hoy. Las
 // mismas cuentas que hasta ahora dibujaban las tres pastillas de alerta (`alertasDelPlantel`), pero

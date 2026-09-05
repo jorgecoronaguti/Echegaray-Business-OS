@@ -89,7 +89,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const soloSub = maestro && sp.tipo === 'sub'
   const supabase = await createClient()
 
-  const [listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos] = await Promise.all([
+  const [
+    listado, sinCuit, pendientes, resolucion, subcontratistas, resueltos, nActivos, nArchivados, nTodos,
+  ] = await Promise.all([
     getProveedores(supabase, { activo: activoLeido }),
     // LA SEÑAL NO DEPENDE DE LO QUE ESTOY MIRANDO. Cuenta siempre sobre los ACTIVOS, con el mismo
     // predicado que filtra la lista: un aviso que cambiara al pasar a «Archivados» diría que la
@@ -99,6 +101,19 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     maestro ? getResolucionCartera(supabase) : null,
     maestro ? getSubcontratistas(supabase) : null,
     maestro ? null : getNombresResueltos(supabase),
+    // ═══ CADA RECORTE DICE CUÁNTOS HAY DEL OTRO LADO DEL CLIC (handoff v4) ═══
+    //
+    // Es la condición que la v4 le pone a haber retirado la banda de señales: un recorte sin número
+    // es una puerta a ciegas. Tres `count` con `head: true` sobre una tabla de 43 filas — no traen
+    // ni una fila y viajan en esta misma tanda, así que no agregan una espera en serie.
+    //
+    // NO se derivan de `todos.length`: esa lista es la del corte que se está mirando, así que
+    // «Activos 36» se convertiría en «Activos 7» al pasar a «Archivados». Y «Todos» no se calcula
+    // como la suma de los otros dos: si uno de los dos fallara, la suma publicaría un total más
+    // chico que el real en vez de callarse.
+    maestro ? contarProveedores(supabase, { activo: 'activos' }) : null,
+    maestro ? contarProveedores(supabase, { activo: 'archivados' }) : null,
+    maestro ? contarProveedores(supabase, { activo: 'todos' }) : null,
   ])
 
   if (listado.error) {
@@ -126,6 +141,14 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     return true
   })
   const lista = porFiltro.filter((p) => coincideProveedor(p, sp.q))
+
+  // `null` = NO SE PUDO CONTAR, y entonces el recorte no dibuja número. Un 0 ahí diría «no hay
+  // ninguno archivado», que es una afirmación sobre la cartera que un error de lectura no habilita.
+  const POBLACION: Record<FiltroActivo, number | null> = {
+    activos: nActivos?.data ?? null,
+    archivados: nArchivados?.data ?? null,
+    todos: nTodos?.data ?? null,
+  }
 
   const abrirAlta = sp.p === 'nuevo'
   const seleccionadoId = abrirAlta ? undefined : sp.p
@@ -224,6 +247,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           etiqueta: a === 'activos' ? 'Activos' : a === 'archivados' ? 'Archivados' : 'Todos',
                           href: armarHref(sp, { activo: a === 'activos' ? undefined : a, cuit: undefined, p: undefined, editcuit: undefined }),
                           activo: a === activo && !soloSinCuit,
+                          cuenta: POBLACION[a],
                         })),
                         {
                           clave: 'sin-cuit', etiqueta: 'Sin CUIT',
@@ -241,6 +265,17 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                               clave: 'sub', etiqueta: 'Subcontratistas',
                               href: armarHref(sp, { tipo: soloSub ? undefined : 'sub', p: undefined, editcuit: undefined }),
                               activo: soloSub,
+                              // ÉSTE SE CUENTA SOBRE EL CORTE QUE SE ESTÁ MIRANDO, y no fijo sobre
+                              // los activos como «Sin CUIT». No es una inconsistencia: «Sin CUIT»
+                              // es trabajo pendiente de la empresa y tiene que ser estable, y
+                              // «Subcontratistas» es una faceta de esta lista — su número es
+                              // exactamente lo que el clic va a dejar en pantalla.
+                              //
+                              // «Es subcontratista» no es una columna de `proveedores`: es tener un
+                              // paquete en `subcontrato`, tabla filtrada por obra. Por eso el
+                              // conteo se hace en memoria sobre la lista ya leída, y por eso la
+                              // ausencia del chip nunca se escribe como «no es subcontratista».
+                              cuenta: todos.filter((p) => subs.has(p.id)).length,
                             }]
                           : []),
                       ]}
