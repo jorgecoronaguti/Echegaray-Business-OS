@@ -105,3 +105,28 @@ export function diaMes(iso: string | null | undefined): string | null {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   return `${dd}/${mm}`
 }
+
+/**
+ * `2026-09-01` → `01/09`, y `2025-11-15` → `15/11/25`.
+ *
+ * `diaMes` sin año sólo dice la verdad DENTRO del año en curso: «15/11» de una compra de hace
+ * catorce meses se lee como la semana que viene, y eso es mezclar dos ventanas de tiempo en la misma
+ * columna. El zip escribe día/mes porque todas sus filas de muestra son del año.
+ *
+ * `anioActual` entra por parámetro para que se pueda probar: con `new Date()` adentro, el test que
+ * afirma «una compra de 2026 se escribe 01/09» empieza a fallar solo el 1 de enero.
+ *
+ * VIVE ACÁ Y NO EN LA TABLA que la usa. Estaba exportada desde `TablaProveedores.tsx` y su test la
+ * importaba de ahí; `orq:test` corre `src/**` con `node --test` a secas, que no resuelve un `.tsx`,
+ * así que el archivo entero fallaba en la suite y pasaba con `npx tsx`. Una función pura de formato
+ * no tiene por qué obligar a cargar un componente para probarse.
+ */
+export function fechaCortaConAnio(
+  iso: string | null | undefined,
+  anioActual = new Date().getFullYear(),
+): string | null {
+  const dm = diaMes(iso)
+  if (!dm || !iso) return null
+  const anio = Number(iso.slice(0, 4))
+  return anio === anioActual ? dm : `${dm}/${String(anio).slice(2)}`
+}

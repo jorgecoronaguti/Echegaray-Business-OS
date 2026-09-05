@@ -1,6 +1,5 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fechaCompra } from './TablaProveedores'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -324,7 +323,7 @@ test('ÚLTIMA COMPRA muestra la fecha real, y nunca la de otra cosa', () => {
   // la prohibición no desapareció: cambió de forma. Ahora se exige que la fecha venga del agrupado
   // de compras y de ningún otro lado.
   const tabla = codigo('TablaProveedores.tsx')
-  assert.match(tabla, /fechaCompra\(c\.ultima\)/)
+  assert.match(tabla, /fechaCortaConAnio\(c\.ultima\)/)
   assert.equal(/updated_at|actualizado_en|creado_en|fecha_alta/.test(tabla), false,
     'la fecha de la última compra salió de otra columna')
   // LAS TRES AUSENCIAS SIGUEN SIENDO TRES. Sin cartera leída «sin leer»; con cartera pero sin
@@ -334,17 +333,6 @@ test('ÚLTIMA COMPRA muestra la fecha real, y nunca la de otra cosa', () => {
   // El motivo del borde va en la celda, no sólo en un comentario que el usuario no ve, y sólo
   // cuando ES el borde: un `title` en una fila que muestra su fecha es ruido.
   assert.match(tabla, /title=\{c && !c\.ultima \? SIN_FECHA : undefined\}/)
-})
-
-test('la fecha se escribe como el zip, y no miente sobre el año', () => {
-  // `01/09` es lo que dibuja el mockup. Pero DD/MM sin año sólo es verdad dentro del año en curso:
-  // una compra de noviembre de 2025 escrita «15/11» se lee como la semana que viene, y eso es
-  // mezclar dos ventanas de tiempo en la misma columna (regla de oro 3).
-  assert.equal(fechaCompra('2026-09-01', 2026), '01/09')
-  assert.equal(fechaCompra('2025-11-15', 2026), '15/11/25')
-  assert.equal(fechaCompra(null, 2026), null)
-  // Un dato ilegible NO se convierte en una fecha inventada ni en la de hoy.
-  assert.equal(fechaCompra('vaya a saber', 2026), null)
 })
 
 test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {

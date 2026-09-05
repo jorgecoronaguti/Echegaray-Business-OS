@@ -45,7 +45,7 @@
 import Link from 'next/link'
 import { IconoProblema, IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
-import { diaMes, pesos } from '@/shared/components/canon/formato'
+import { fechaCortaConAnio, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { CompradoProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
@@ -76,24 +76,6 @@ const SOLO_ANCHO = 'max-[1249px]:hidden'
  */
 const SIN_FECHA
   = 'Este proveedor tiene compras vinculadas, pero ninguna con fecha cargada en costos_obra.'
-
-/**
- * LA FECHA DE LA COLUMNA. `diaMes` («01/09») mientras la compra sea de este año, que es lo que
- * dibuja el zip y lo que entra en la columna. Fuera del año en curso se agrega el año en dos
- * dígitos: «15/11» y «15/11/25» son la misma columna, pero uno de los dos es de hace catorce meses
- * y la tabla no puede decir lo mismo de los dos.
- */
-export function fechaCompra(
-  iso: string | null | undefined,
-  // El año entra por parámetro para que se pueda probar: con `new Date()` adentro, el test que
-  // afirma «una compra de 2026 se escribe 01/09» empieza a fallar solo el 1 de enero.
-  anioActual = new Date().getFullYear(),
-): string | null {
-  const dm = diaMes(iso)
-  if (!dm || !iso) return null
-  const anio = Number(iso.slice(0, 4))
-  return anio === anioActual ? dm : `${dm}/${String(anio).slice(2)}`
-}
 
 export function TablaProveedores({
   proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, limpiarHref,
@@ -228,7 +210,7 @@ export function TablaProveedores({
               title={c && !c.ultima ? SIN_FECHA : undefined}
               data-testid="ultima-compra"
             >
-              {c ? (fechaCompra(c.ultima) ?? 'sin fecha') : comprado ? '—' : 'sin leer'}
+              {c ? (fechaCortaConAnio(c.ultima) ?? 'sin fecha') : comprado ? '—' : 'sin leer'}
             </span>
           </div>
         )

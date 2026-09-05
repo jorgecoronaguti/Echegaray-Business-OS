@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diaMes, entero, millones, pesos, pesosConCentavos, porcentajeCanon } from './formato.ts'
+import { diaMes, entero, fechaCortaConAnio, millones, pesos, pesosConCentavos, porcentajeCanon } from './formato.ts'
 
 // EL DEFECTO QUE ATRAPA ESTE ARCHIVO: que una ausencia se escriba como cero.
 //
@@ -99,4 +99,22 @@ test('un texto que no es número no se convierte en cero', () => {
 test('una fecha ilegible devuelve null y no «Invalid Date»', () => {
   assert.equal(diaMes('no es una fecha'), null)
   assert.equal(diaMes('2026-13-45'), null)
+})
+
+// ── LA FECHA CORTA QUE NO MIENTE SOBRE EL AÑO ───────────────────────────────────────────────────
+
+test('dentro del año en curso va día/mes; fuera, con el año', () => {
+  // `01/09` es lo que dibuja el zip en ÚLTIMA COMPRA. Pero día/mes sin año sólo es verdad dentro del
+  // año: «15/11» de una compra de hace catorce meses se lee como la semana que viene, y la columna
+  // estaría mezclando dos ventanas de tiempo (regla de oro 3).
+  assert.equal(fechaCortaConAnio('2026-09-01', 2026), '01/09')
+  assert.equal(fechaCortaConAnio('2025-11-15', 2026), '15/11/25')
+  assert.equal(fechaCortaConAnio('2027-01-02', 2026), '02/01/27', 'el futuro tampoco se disfraza de este año')
+})
+
+test('lo ilegible no se convierte en una fecha inventada', () => {
+  assert.equal(fechaCortaConAnio(null, 2026), null)
+  assert.equal(fechaCortaConAnio(undefined, 2026), null)
+  assert.equal(fechaCortaConAnio('vaya a saber', 2026), null)
+  assert.equal(fechaCortaConAnio('', 2026), null)
 })
