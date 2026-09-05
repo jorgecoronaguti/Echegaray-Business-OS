@@ -25,6 +25,11 @@
 
 import { readFileSync } from 'node:fs'
 import { comoFuncionOpenAI } from '../lib/ia/proveedores/huggingface.mjs'
+// EL FUSIBLE, TAMBIÉN ACÁ. Un benchmark es la clase de cosa que se corre «una vez más para
+// confirmar» y termina siendo treinta corridas de 30 casos contra opus. La suite tiene un
+// invariante que exige que TODO archivo que llame a Anthropic pase por el fusible, y este script
+// lo estaba violando: lo detectó `fusible.test.mjs`, no yo.
+import { admitir, acreditarUsd, usdEstimado } from '../lib/ia/fusible.mjs'
 import { token } from '../lib/ml/hf-inferencia.mjs'
 
 const DATASET = 'orquestador/datos/ml/ecsas-llm-eval.json'
@@ -89,6 +94,9 @@ async function preguntar({ modelo, caso, tools, esClaude }) {
     ? [{ role: 'user', content: `[contexto: ${caso.contexto}]\n${caso.pregunta}` }]
     : [{ role: 'user', content: caso.pregunta }]
   if (esClaude) {
+    // Antes de cada llamada, no antes del lote: treinta casos son treinta llamadas, y un corte
+    // tiene que poder ocurrir en la mitad conservando lo ya medido.
+    admitir({ vision: false, doble: false })
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -97,6 +105,9 @@ async function preguntar({ modelo, caso, tools, esClaude }) {
     const j = await res.json()
     if (!res.ok) return { error: `${res.status} ${JSON.stringify(j).slice(0, 120)}`, ms: Date.now() - t0 }
     const usos = (j.content ?? []).filter((b) => b.type === 'tool_use').map((b) => b.name)
+    // El gasto del benchmark se acredita al presupuesto igual que el de producción: si midiendo
+    // se consume la cuota del día, el fusible tiene que enterarse en el momento, no después.
+    acreditarUsd(usdEstimado(modelo, { in: j.usage?.input_tokens ?? 0, out: j.usage?.output_tokens ?? 0 }))
     return { llamadas: usos, ms: Date.now() - t0, tokens: (j.usage?.input_tokens ?? 0) + (j.usage?.output_tokens ?? 0) }
   }
   const res = await fetch('https://router.huggingface.co/v1/chat/completions', {

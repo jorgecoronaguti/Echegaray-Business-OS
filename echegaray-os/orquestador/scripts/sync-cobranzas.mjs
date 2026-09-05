@@ -7,6 +7,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
+import { resolverLote } from '../lib/cobranzas-cliente.mjs'
 
 const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
 // 02_Cobranzas!A..R (headers fila 4, datos desde fila 5): idx0 ID, 1 Categoría, 2 Fecha emisión,
@@ -35,6 +36,23 @@ async function main() {
   }
   if (!cobranzas.length) { console.error('no leí filas de Cobranzas — abortando (no toco la tabla)'); await closePool(); process.exit(1) }
 
+  // ═══ A QUÉ CLIENTE PERTENECE CADA FILA (05/09/2026) ═══
+  //
+  // `cliente_id` existía desde la migración del CRM y este sync nunca la escribía: 96 filas con
+  // NULL, y la vista `cliente_cuenta_corriente` —que filtra por `cliente_id is not null`—
+  // devolviendo cero para todo el mundo. La cara «Cuenta corriente» de la ficha estaba vacía.
+  //
+  // El vínculo se resuelve ACÁ y no en un backfill porque tres líneas más abajo hay un `delete`:
+  // cualquier cosa escrita aparte dura hasta la próxima corrida.
+  const clientes = (await query('select id, nombre_comercial, razon_social from public.clientes')).rows
+  const { porRotulo, resueltos, sinResolver } = resolverLote(cobranzas.map((c) => c.obra_cliente), clientes)
+  for (const c of cobranzas) c.cliente_id = porRotulo.get(c.obra_cliente)?.clienteId ?? null
+  const filasVinculadas = cobranzas.filter((c) => c.cliente_id).length
+  console.log(`clientes: ${resueltos} rótulo(s) vinculado(s), ${sinResolver} sin cliente · ${filasVinculadas}/${cobranzas.length} filas`)
+  // Un rótulo sin cliente NO es un error: MACRO, LIRIO y ADDATO facturan y no tienen ficha. Se
+  // nombran para que la próxima vez que aparezca uno nuevo se vea, en vez de quedar mudo en NULL.
+  for (const [rotulo, v] of porRotulo) if (!v.clienteId) console.log(`   sin cliente: «${rotulo}» — ${v.porQue}`)
+
   await query('begin')
   try {
     await query("delete from public.cobranzas where origen='cobranzas_sheet'")
@@ -43,11 +61,11 @@ async function main() {
         `insert into public.cobranzas
           (sheet_id, categoria, fecha_emision, factura, numero_comprobante, unidad, obra_cliente, orden_compra,
            concepto, monto_neto, iva, retenciones, total_bruto, forma_cobro, estado, fecha_venta, fecha_cobro,
-           mes_cobro, origen, sincronizado_en)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'cobranzas_sheet',now())`,
+           mes_cobro, cliente_id, origen, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'cobranzas_sheet',now())`,
         [c.sheet_id, c.categoria, c.fecha_emision, c.factura, c.numero_comprobante, c.unidad, c.obra_cliente,
           c.orden_compra, c.concepto, c.monto_neto, c.iva, c.retenciones, c.total_bruto, c.forma_cobro,
-          c.estado, c.fecha_venta, c.fecha_cobro, c.mes_cobro],
+          c.estado, c.fecha_venta, c.fecha_cobro, c.mes_cobro, c.cliente_id],
       )
     }
     await query('commit')
