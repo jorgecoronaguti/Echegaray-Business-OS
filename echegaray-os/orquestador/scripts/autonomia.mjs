@@ -43,12 +43,23 @@ async function main() {
   console.log(`  ABSTENCIÓN  ${pct(g.abstencion).padStart(6)}   ${g.abstuvo} el OS las intentó y NO alcanzó su piso de confianza`)
   console.log('')
 
+  // ═══ EL COSTO, ATADO A LA AUTONOMÍA Y NO SUELTO ═══
+  // «$42 por mes» no dice nada solo. «$0,18 por cada operación que el OS resolvió sin Claude» sí:
+  // es el número que baja cuando la autonomía sube, y el único que junta las dos cosas.
+  const c = r.costo
+  const usd = (n) => (n == null ? '—' : `$${n.toFixed(n < 1 ? 4 : 2)}`)
+  console.log(`  COSTO       ${usd(c.usdTotal).padStart(8)}   en la ventana · Claude ${usd(c.usdClaude)} · HF ${usd(c.usdHf)} · local $0 en caja`)
+  console.log(`  POR AUTÓNOMA${usd(c.porAutonoma).padStart(8)}   lo que cuesta cada operación que el OS resolvió solo`)
+  console.log(`              ${pct(c.fraccionClaude).padStart(8)}   de cada peso gastado se fue en escalar a Claude`)
+  console.log('')
+
   console.table(r.porModulo.map((m) => ({
     modulo: m.modulo,
     resuelto: m.resuelto,
     escalado: m.escalado,
     abstuvo: m.abstuvo,
     autonomia: pct(m.autonomia),
+    usd: m.usd,
   })))
 
   // DÓNDE ESTÁ CLAUDE, Y POR CUÁNTO. Sin esto la tasa dice que hay que trabajar, pero no dónde.

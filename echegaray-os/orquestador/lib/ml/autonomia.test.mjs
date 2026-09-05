@@ -80,3 +80,43 @@ test('los módulos se ordenan por operaciones contestadas, no por su tasa', () =
   filas.sort((a, b) => b.contestadas - a.contestadas)
   assert.deepEqual(filas.map((f) => f.contestadas), [600, 50, 2])
 })
+
+// ── EL COSTO POR OPERACIÓN AUTÓNOMA ─────────────────────────────────────────────────────────────
+
+import { costoPorAutonoma } from './autonomia.mjs'
+
+test('el costo por autónoma incluye lo que se gastó ESCALANDO, no sólo lo que resolvió', () => {
+  // Si para resolver 10 solo hubo que mandar 90 a Claude, esas 10 salieron carísimas. Un
+  // denominador de «operaciones autónomas» con un numerador de «costo de las autónomas» daría $0
+  // —las locales no facturan— y diría que la autonomía es gratis. Es al revés: es cara mientras
+  // el resto siga escalando.
+  const c = costoPorAutonoma({ usdTotal: 42.62, usdClaude: 42.62, usdHf: 0, resuelto: 238 })
+  assert.equal(Math.round(c.porAutonoma * 1000) / 1000, 0.179)
+  assert.equal(c.fraccionClaude, 1)
+})
+
+test('el costo local se informa $0 EN CAJA y no se estima cómputo', () => {
+  // Un modelo en la VM consume CPU y RAM que ya están pagadas. Prorratearlas por operación sería
+  // fabricar un número, y haría que la comparación contra Claude pareciera más precisa de lo que es.
+  assert.equal(costoPorAutonoma({ usdTotal: 10, resuelto: 5 }).usdLocal, 0)
+})
+
+test('sin operaciones autónomas el costo por autónoma es null, no infinito ni cero', () => {
+  const c = costoPorAutonoma({ usdTotal: 10, usdClaude: 10, resuelto: 0 })
+  assert.equal(c.porAutonoma, null)
+  // Un 0 diría «resolver solo es gratis»; un Infinity rompería el reporte. Null dice la verdad:
+  // no hubo ninguna operación autónoma sobre la cual repartir el gasto.
+})
+
+test('el gasto de una llamada FALLIDA también cuenta', async () => {
+  const query = async (sql) => (sql.includes('ml_traza')
+    ? { rows: [] }
+    : { rows: [
+      { modulo: 'x', proveedor: 'anthropic', ok: true, n: 1, usd: 1 },
+      { modulo: 'x', proveedor: 'anthropic', ok: false, n: 3, usd: 0.5 },
+    ] })
+  const r = await autonomyRate(query)
+  // Equivocarse consumió cuota y tiempo. Borrarlo del total haría parecer que es gratis.
+  assert.equal(r.costo.usdTotal, 1.5)
+  assert.equal(r.global.escalado, 1, 'las fallidas no cuentan como escalamiento resuelto')
+})
