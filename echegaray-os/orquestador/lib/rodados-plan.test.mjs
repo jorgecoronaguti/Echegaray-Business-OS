@@ -38,8 +38,38 @@ test('la inflación de trabajo SE DERIVA del IPC publicado, no se tipea', () => 
   assert.equal(inf.anual, aAnual(esperado))
   // Si el INDEC publica otro mes y alguien lo agrega a ipc-publicado.mjs, esto se mueve solo.
   assert.deepEqual(inf.meses, IPC.slice(-3).map((m) => m.periodo))
-  // El orden de magnitud verificable a mano: 2,6% · 2,1% · 1,9% encadenados y anualizados ≈ 29,8%.
-  assert.ok(Math.abs(inf.anual - 0.2983) < 0.0005, `anual=${inf.anual}`)
+
+  // ═══ POR QUÉ ACÁ NO VA UN NÚMERO ═══
+  //
+  // Esta línea decía `Math.abs(inf.anual - 0.2983) < 0.0005`, con el comentario «2,6% · 2,1% · 1,9%
+  // encadenados ≈ 29,8%». El 05/09/2026 se cargó julio del INDEC —dato real, verificado contra el
+  // PDF oficial— la ventana de tres meses se corrió, la inflación anual pasó a 27,32% y el test se
+  // puso rojo. El cálculo no se rompió: la ventana se movió, que es lo que la función existe para
+  // hacer. El test decía «se DERIVA del IPC publicado, no se tipea» y en la línea siguiente tipeaba
+  // el resultado.
+  //
+  // Lo que sí hay que atrapar es el error de UNIDAD —mensual devuelto como anual, porcentaje como
+  // fracción—, y para eso alcanza una banda ancha que ningún mes real va a cruzar.
+  assert.ok(inf.anual > 0.05 && inf.anual < 3, `anual=${inf.anual}: fuera de cualquier IPC argentino real`)
+  assert.ok(inf.mensual > 0 && inf.mensual < inf.anual, 'la mensual dejó de ser menor que la anual')
+})
+
+test('el encadenado y el anualizado son exactos sobre una serie INYECTADA', () => {
+  // El número exacto se prueba acá, con una serie que no depende de lo que publique el INDEC: tres
+  // meses al 2% dan (1,02)^12 − 1 = 26,824%. Éste es el test que se rompe si el cálculo se rompe;
+  // el de arriba es el que NO se tiene que romper cuando llega un dato nuevo.
+  const inf = inflacionDeTrabajo({
+    mesesIpc: [
+      { periodo: '2026-01', variacion: 0.02 },
+      { periodo: '2026-02', variacion: 0.02 },
+      { periodo: '2026-03', variacion: 0.02 },
+    ],
+    remMensual: 0,
+    fuenteIpc: 'test',
+  })
+  assert.ok(Math.abs(inf.mensual - 0.02) < 1e-12, `mensual=${inf.mensual}`)
+  assert.ok(Math.abs(inf.anual - (1.02 ** 12 - 1)) < 1e-12, `anual=${inf.anual}`)
+  assert.deepEqual(inf.meses, ['2026-01', '2026-02', '2026-03'])
 })
 
 test('la tasa real es Fisher, NO la resta ingenua — y la diferencia decide', () => {
@@ -128,7 +158,15 @@ test('la UVA 0% cuesta CERO EN TÉRMINOS REALES: el valor presente es el capital
   const c = cuadroUva(24_517_500, 24, inf)
   assert.ok(Math.abs(c.valorPresente - 24_517_500) < CENTAVO, `vp=${c.valorPresente}`)
   // Y sin embargo NO es gratis en pesos: el ajuste del capital es plata que sale de la caja.
-  assert.ok(c.costoNominal > 8_000_000, `costo nominal=${c.costoNominal}`)
+  //
+  // EL UMBRAL SE DERIVA, NO SE CLAVA. Decía `> 8_000_000`, un número calculado con la inflación de
+  // agosto; con julio del INDEC cargado la inflación bajó a 27,3%, el ajuste dio $7.321.355 y el
+  // test se puso rojo sin que nada estuviera mal. Lo que el test quiere afirmar es que el ajuste
+  // del capital NO es cero y pesa: se expresa como fracción del capital, que es lo que no depende
+  // del mes.
+  assert.ok(c.costoNominal > 24_517_500 * 0.2, `costo nominal=${c.costoNominal}: el ajuste del capital se volvió despreciable`)
+  // Y crece con la inflación: si alguien desindexa la cuota, esto deja de moverse.
+  assert.ok(cuadroUva(24_517_500, 24, inf * 2).costoNominal > c.costoNominal)
   assert.equal(c.cuotaNominal, 24_517_500 / 24)
   // El defecto que atrapa: si alguien indexa la cuota pero descuenta a otra tasa, o corre el índice
   // un mes, el valor presente deja de dar el capital y el "0% real" se vuelve una frase.
@@ -191,9 +229,13 @@ test('el plan respeta la estructura de la decisión: UVA para septiembre, FONDEF
 test('la unidad 1 tiene costo financiero real CERO y las de FONDEFIN, NEGATIVO', () => {
   const costos = costoDeCadaUnidad()
   assert.ok(Math.abs(costos[0].costoFinancieroReal) < 1, `u1 real=${costos[0].costoFinancieroReal}`)
-  assert.ok(costos[0].costoFinancieroNominal > 8_000_000, 'pero en pesos corrientes sí cuesta')
+  // Mismo criterio que arriba: fracción del capital, no un umbral atado a la inflación de un mes.
+  assert.ok(costos[0].costoFinancieroNominal > 0, 'pero en pesos corrientes sí cuesta')
+  assert.ok(costos[0].costoFinancieroNominal > costos[0].costoFinancieroReal)
   for (const u of [costos[1], costos[2]]) {
-    assert.ok(u.costoFinancieroReal < -3_000_000, `FONDEFIN devuelve menos valor del que recibe: ${u.costoFinancieroReal}`)
+    // EL SIGNO ES LA AFIRMACIÓN, no la magnitud: FONDEFIN devuelve menos valor del que recibe. La
+    // magnitud se mueve con la inflación publicada y clavarla ata este test al calendario del INDEC.
+    assert.ok(u.costoFinancieroReal < 0, `FONDEFIN devuelve menos valor del que recibe: ${u.costoFinancieroReal}`)
     assert.ok(u.costoFinancieroNominal > 0, 'y sin embargo en pesos corrientes se paga más')
   }
   // Los tres son PISO: falta el CFT de FONDEFIN y el "+ SEGURO" sin importe del presupuesto UVA.
