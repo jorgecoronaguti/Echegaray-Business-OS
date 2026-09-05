@@ -85,9 +85,30 @@ function Obra({ o, elegida, alElegir }: { o: ObraElegible; elegida: boolean; alE
   )
 }
 
-function FilaQueSeMueve({ f }: { f: GrupoPendiente['filas'][number] }) {
+/**
+ * ═══ EL RECURSO TIENE COLUMNA PROPIA (handoff CRM / Administración v4) ═══
+ *
+ * Hasta acá el recurso y el importe compartían la última celda: se dibujaba el importe, y el recurso
+ * SÓLO cuando no había importe. En herramientas y movimientos funcionaba —esas filas mueven un
+ * recurso y no plata— pero en compras el recurso ES EL PROVEEDOR, y esas filas siempre tienen
+ * importe. Resultado: la pantalla que pregunta «¿de quién es este costo?» escondía justo el dato
+ * con el que se contesta, y encima es la evidencia que usa el sugeridor («el proveedor nunca compró
+ * para otra obra»). Quien decidía veía «Hierro del 8 · $ 3.410.000» sin saber a quién se le compró.
+ *
+ * ═══ LA COLUMNA TIPO SÓLO APARECE CUANDO EL GRUPO MEZCLA FUENTES ═══
+ *
+ * El encabezado ya dice «Aparece en Compras · Herramientas». Cuando el grupo viene de una sola, la
+ * columna repetiría esa palabra en las veinte filas: ancho gastado para no decir nada. Cuando
+ * mezcla, es lo único que distingue una fila de la de al lado.
+ */
+function FilaQueSeMueve({ f, conTipo }: { f: GrupoPendiente['filas'][number]; conTipo: boolean }) {
   return (
     <div data-testid="fila-detalle" className="flex items-start gap-[11px] border-t border-line px-0.5 py-[9px]">
+      {conTipo && (
+        <span className="w-[76px] shrink-0 truncate text-[11.5px] text-muted" data-testid="fila-tipo">
+          {ETIQUETA_TIPO[f.tipo]}
+        </span>
+      )}
       <span className={`w-[62px] shrink-0 font-mono text-[11.5px] tabular-nums ${f.fecha ? 'text-muted' : 'text-faint'}`}>
         {f.fecha ? fechaCorta(f.fecha) : 'sin fecha'}
       </span>
@@ -99,8 +120,14 @@ function FilaQueSeMueve({ f }: { f: GrupoPendiente['filas'][number] }) {
           {f.tabla}{f.referencia ? ` · ${f.referencia}` : ''}{f.fuente ? ` · ${f.fuente}` : ''}
         </span>
       </span>
-      <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-muted">
-        {f.importe != null ? plata(f.importe) : (f.recurso ?? 'sin recurso')}
+      {/* SIN RECURSO NO ES UN GUIÓN: en una compra es el proveedor que nadie escribió, y es
+          exactamente lo que hace falta para saber de quién es el costo. */}
+      <span className={`w-[150px] shrink-0 truncate text-[11.5px] ${f.recurso ? 'text-ink-soft' : 'text-faint'}`} data-testid="fila-recurso">
+        {f.recurso ?? 'sin recurso'}
+      </span>
+      {/* UNA FILA QUE MUEVE UN RECURSO Y NO PLATA NO VALE $ 0. */}
+      <span className={`w-[104px] shrink-0 text-right font-mono text-[11.5px] tabular-nums ${f.importe != null ? 'text-muted' : 'text-faint'}`}>
+        {f.importe != null ? plata(f.importe) : 'sin importe'}
       </span>
     </div>
   )
@@ -197,12 +224,16 @@ export function DecisionPendiente({
               )}
         </div>
 
-        <div className="mt-6 max-w-[640px]">
+        {/* 860px y no 640: con el recurso y el importe en celdas propias, el ancho de lectura de los
+            párrafos estrangulaba la descripción, que es lo que identifica la fila. */}
+        <div className="mt-6 max-w-[860px]">
           <div className="mb-[7px] flex items-baseline gap-2">
             <span className="text-[10px] uppercase tracking-[0.07em] text-faint">Las filas que va a mover</span>
             <span className="font-mono text-[11px] tabular-nums text-faint">{filas}</span>
           </div>
-          {g.filas.map((f) => <FilaQueSeMueve key={`${f.tabla}-${f.id}`} f={f} />)}
+          {g.filas.map((f) => (
+            <FilaQueSeMueve key={`${f.tabla}-${f.id}`} f={f} conTipo={g.tipos.length > 1} />
+          ))}
         </div>
       </div>
 
