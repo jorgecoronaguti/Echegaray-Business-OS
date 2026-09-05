@@ -211,10 +211,18 @@ test('la tasa real usa el Fisher de rodados-plan, no una resta ni una copia', ()
   const inf = inflacionDeTrabajo().anual
   const tea = teaDeLaTna(CAMPANA_BICE.tna)
   assert.equal(tasaRealLeasing(tea, inf), tasaReal(tea, inf))
-  // Y NO es la resta ingenua: con 29,83% de inflación la resta da −8,55% y Fisher −6,59%. Son casi
-  // dos puntos de diferencia sobre una tasa que ya es negativa: la resta exagera el beneficio.
+  // Y NO es la resta ingenua: la resta exagera lo barato que sale.
+  //
+  // EL UMBRAL ERA UN NÚMERO DEL MES. Decía `> 0.015` porque con 29,83% de inflación la brecha daba
+  // casi dos puntos; al cargar julio del INDEC la inflación bajó a 27,32%, la brecha se achicó y el
+  // test se puso rojo sin que Fisher cambiara. La brecha es una IDENTIDAD algebraica:
+  //
+  //     fisher − resta = (tea−inf)/(1+inf) − (tea−inf) = −(tea−inf)·inf/(1+inf)
+  //
+  // Afirmarla exacta prueba más que cualquier umbral y no depende de qué publique el INDEC.
   const resta = tea - inf
-  assert.ok(Math.abs(tasaRealLeasing(tea, inf) - resta) > 0.015)
+  const brecha = tasaRealLeasing(tea, inf) - resta
+  assert.ok(Math.abs(brecha - (-(tea - inf) * inf / (1 + inf))) < 1e-12, `brecha=${brecha}`)
   assert.ok(tasaRealLeasing(tea, inf) > resta, 'la resta ingenua sobreestima lo barato que sale')
 })
 
@@ -228,17 +236,26 @@ test('sin tasa nominal no hay tasa real: null, no NaN con cara de número', () =
 // LOS NÚMEROS DEL INFORME. Si el IPC se actualiza y la inflación se mueve, este test se mueve con
 // ella: por eso compara contra `inflacionDeTrabajo()`, no contra un 29,83% tipeado.
 test('el leasing da tasa real NEGATIVA (~−6,6%) y aun así FONDEFIN le gana', () => {
+  // ═══ SOBRE EL DATO VIVO SE AFIRMAN PROPIEDADES ═══
+  //
+  // El comentario de arriba decía que este test «se mueve con» el IPC porque compara contra
+  // `inflacionDeTrabajo()` — y en la línea siguiente clavaba el RESULTADO en −0,0659, que es
+  // exactamente lo mismo que tipear la inflación. Al cargar julio del INDEC se puso rojo.
   const r = rankingReal()
   assert.ok(r.leasing_bice.tasa_real < 0, 'la tasa real del leasing es negativa')
-  assert.ok(Math.abs(r.leasing_bice.tasa_real - (-0.0659)) < 0.0005)
   assert.equal(r.leasing_bice.es_piso, true)
-
-  // Medidos con el MISMO criterio (ambos sin IVA), FONDEFIN sigue siendo más barato. Es lo que había
-  // que verificar antes de recomendar el leasing por precio: no se recomienda por precio.
-  assert.ok(Math.abs(r.criterio_homogeneo.fondefin - (-0.1175)) < 0.0005)
   assert.ok(r.criterio_homogeneo.fondefin < r.criterio_homogeneo.leasing_bice)
   assert.equal(r.criterio_homogeneo.gana, 'fondefin')
   assert.equal(FONDEFIN_PARA_COMPARAR.tna, 0.136875)
+
+  // ═══ Y LOS NÚMEROS DEL INFORME, CON LA INFLACIÓN QUE EL INFORME USÓ ═══
+  //
+  // 29,83% es el dato con el que se escribió el informe. Fijándolo, los números vuelven a ser
+  // verificables a mano y no se mueven nunca más: es la diferencia entre citar un informe y afirmar
+  // el presente. Si mañana hay que rehacer el informe, se cambia acá a propósito.
+  const delInforme = rankingReal(ANUAL_DEL_INFORME)
+  assert.ok(Math.abs(delInforme.leasing_bice.tasa_real - (-0.0659)) < 0.0005)
+  assert.ok(Math.abs(delInforme.criterio_homogeneo.fondefin - (-0.1175)) < 0.0005)
 })
 
 test('el producto permanente entra al ranking SIN tasa y con el motivo, no con un promedio', () => {
@@ -257,8 +274,20 @@ test('el costo en pesos de hoy reusa cuadroFrances y no reimplementa la cuota', 
   assert.equal(c.totalNominal, cuadro.totalPagado)
 })
 
+/** La inflación con la que se escribió el informe. Anual medida entonces; mensual derivada de ella. */
+const ANUAL_DEL_INFORME = 0.2983421231215264
+const MENSUAL_DEL_INFORME = (1 + ANUAL_DEL_INFORME) ** (1 / 12) - 1
+
 test('las dos referencias del OS dan los números del informe', () => {
-  const [dfsk, usd] = costoDeCadaReferencia()
+  // `precio`, `canonMensual` y `totalNominal` NO dependen de la inflación: son precio y tasa. Sólo
+  // el total EN PESOS DE HOY y el ahorro contra el contado se descuentan con ella, así que esos dos
+  // se miden con la inflación del informe y no con la viva. Antes se corría todo con la viva y los
+  // cinco números clavados: al cargar julio del INDEC, `totalPesosDeHoy` pasó de 26.774.155 a
+  // 27.492.592 —menos inflación descuenta menos— y el test se puso rojo con el cálculo intacto.
+  //
+  // La mensual se DERIVA de la anual del informe, no se tipea aparte: dos constantes que tienen que
+  // ser la misma tasa terminan divergiendo en el tercer decimal y nadie sabe cuál era la buena.
+  const [dfsk, usd] = costoDeCadaReferencia({ inflacionMensual: MENSUAL_DEL_INFORME })
 
   assert.equal(dfsk.precio, 29_400_000)
   assert.equal(Math.round(dfsk.canonMensual), 1_084_388)
@@ -324,12 +353,17 @@ test('Ford/Comafi entra como VARA vencida, no como alternativa', () => {
 })
 
 test('un leasing SIN convenio estatal da tasa real POSITIVA: la campaña es la excepción, no la regla', () => {
+  // La PROPIEDAD sobre el dato vivo: sin convenio estatal el leasing cuesta por encima de la
+  // inflación, y la distancia contra el subsidiado es grande. «Grande» se expresa contra la brecha
+  // de tasas nominales, que es lo que la causa; un umbral en puntos absolutos se mueve con el IPC.
   const r = rankingReal()
   const mercado = r.leasing_de_mercado_ford_comafi.tasa_real
   assert.ok(mercado > 0, 'el leasing de mercado cuesta por encima de la inflación')
-  assert.ok(Math.abs(mercado - 0.1117) < 0.0005)
-  // Diecisiete puntos y medio de distancia entre el leasing subsidiado y el leasing de mercado.
-  assert.ok(mercado - r.leasing_bice.tasa_real > 0.17)
+  assert.ok(mercado > r.leasing_bice.tasa_real, 'el subsidiado tiene que salir menos')
+  // El número del informe, con la inflación del informe.
+  const delInforme = rankingReal(ANUAL_DEL_INFORME)
+  assert.ok(Math.abs(delInforme.leasing_de_mercado_ford_comafi.tasa_real - 0.1117) < 0.0005)
+  assert.ok(delInforme.leasing_de_mercado_ford_comafi.tasa_real - delInforme.leasing_bice.tasa_real > 0.17)
 })
 
 test('el CFT de Ford casi duplica su TNA: es la medida de lo que BICE NO publica', () => {

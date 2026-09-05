@@ -6,7 +6,7 @@ import {
   costoDeLaDemora,
 } from './rodados-plan-caja.mjs'
 import { CAJA, CORRECCION_USD, EGRESOS_REALES, FUENTES_DE_FONDOS, UVA } from './rodados-plan-datos.mjs'
-import { planDeTresUnidades } from './rodados-plan.mjs'
+import { inflacionDeTrabajo, planDeTresUnidades } from './rodados-plan.mjs'
 import { compararFormasDePago } from './rodados-financiacion.mjs'
 
 const PESO = 1
@@ -164,7 +164,19 @@ test('cada mes de demora tiene un precio, y es distinto del costo de cambiar de 
   const d = costoDeLaDemora()
   const unMes = d.porMesDeEsperaEnElPrecio[0]
   assert.equal(unMes.mesDeDesembolso, '2027-01')
-  assert.ok(unMes.sobrecosto > 1_200_000 && unMes.sobrecosto < 1_400_000, `1 mes=${unMes.sobrecosto}`)
+
+  // ═══ EL SOBRECOSTO SE DERIVA, NO SE ACOTA A OJO ═══
+  //
+  // Esta línea decía `> 1_200_000 && < 1_400_000`, un rango calculado con la inflación de agosto. Al
+  // cargar julio del INDEC —dato real— la mensual bajó a 2,03%, el sobrecosto dio $1.195.574 y el
+  // test se puso rojo con el cálculo intacto. Esperar un mes cuesta el precio por la inflación de
+  // ese mes: es una identidad, y afirmarla prueba más que cualquier rango.
+  const inf = inflacionDeTrabajo().mensual
+  const precio = 29_400_000 * 2
+  assert.ok(Math.abs(unMes.sobrecosto - precio * inf) < 1, `1 mes=${unMes.sobrecosto}`)
+  // Y no es calderilla: un mes de demora vale más que un millón de pesos con cualquier IPC real.
+  assert.ok(unMes.sobrecosto > 1_000_000, `1 mes=${unMes.sobrecosto}`)
+
   // Compone: seis meses NO son seis veces un mes.
   const seis = d.porMesDeEsperaEnElPrecio.find((x) => x.meses === 6)
   assert.ok(seis.sobrecosto > unMes.sobrecosto * 6)
