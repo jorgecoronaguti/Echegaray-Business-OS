@@ -226,12 +226,19 @@ async function auditarNombrados(google, meta, grillas, formulas) {
 
   const clasificados = clasificarNombrados(nombrados, formulas)
   const ciegos = clasificados.filter((n) => n.estado === 'ciego')
+  const esperando = clasificados.filter((n) => n.estado === 'esperando')
   const huerfanos = clasificados.filter((n) => n.estado === 'huérfano')
 
   console.log(`\nRANGOS CON NOMBRE — ${clasificados.length} verificados de ${clasificados.length + noVerificables.length}`)
   if (ciegos.length) {
-    console.log('⚠ RANGOS CIEGOS — apuntan a celdas vacías y hay fórmulas leyéndolos: esas fórmulas valen 0 HOY:')
-    for (const n of ciegos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.celdas} celda(s), NINGUNA con dato · ${n.usos} fórmula(s) lo leen`)
+    console.log('⚠ RANGOS CIEGOS — vacíos, leídos, y SIN guarda de ausencia: esas fórmulas publican 0 HOY:')
+    for (const n of ciegos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.celdas} celda(s), NINGUNA con dato · ${n.desprotegidas} de ${n.usos} fórmula(s) publican el cero`)
+  }
+  // VACÍO Y DECLARADO NO ES VACÍO Y ROTO. Va en una línea y sin ⚠: es una pestaña de captura que el
+  // dueño todavía no llenó, y la pantalla ya lo dice. Ponerlo arriba con los ciegos fue lo que hizo
+  // que se reportara como «lo más urgente que encontré».
+  if (esperando.length) {
+    console.log(`· ESPERANDO CARGA — ${esperando.length} rango(s) vacío(s) cuyas fórmulas muestran el hueco, no un cero: ${esperando.map((n) => n.nombre).join(' · ')}`)
   }
   if (huerfanos.length) {
     console.log('· HUÉRFANOS — ninguna fórmula los lee. Sin dueño, se quedan anclados al layout viejo:')
