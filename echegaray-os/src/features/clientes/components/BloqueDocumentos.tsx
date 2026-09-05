@@ -24,13 +24,16 @@
 // nada y el índice quede vacío para siempre. Panel lateral es para edición compleja.
 
 import Link from 'next/link'
+import { Fragment } from 'react'
 import { Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
 import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import { ROLES_DOCUMENTO, type DocumentoCliente } from '../types'
 import { SelectRolDocumento } from './SelectRolDocumento'
-import { AccionesDocumento } from './AccionesContacto'
+import {
+  AbrirAcciones, AccionesDocumento, LineaDeAcciones, NotaDeAccion,
+} from './AccionesContacto'
 
 // ═══ POR QUÉ EL RECORD MUESTRA OCHO Y NO SESENTA (19/08/2026) ═══
 //
@@ -46,7 +49,7 @@ const TOPE_TODO = 60
 
 export function BloqueDocumentos({
   documentos, carpetaDriveId, vincular, clasificar, desvincular, puedeEditar = true,
-  todo = false, urlTodo, urlPoco,
+  todo = false, urlTodo, urlPoco, menuAbierto = null, urlMenuDe,
 }: {
   documentos: DocumentoCliente[]
   carpetaDriveId: string | null
@@ -59,6 +62,10 @@ export function BloqueDocumentos({
   todo?: boolean
   urlTodo: string
   urlPoco: string
+  /** El id del documento cuya línea de acciones está abierta. Uno a la vez: es un parámetro. */
+  menuAbierto?: string | null
+  /** La misma dirección con —o sin— la línea de acciones de un documento abierta. */
+  urlMenuDe: (driveFileId: string | null) => string
 }) {
   const tope = todo ? TOPE_TODO : TOPE
   const visibles = documentos.slice(0, tope)
@@ -96,8 +103,11 @@ export function BloqueDocumentos({
               {puedeEditar && <Th className="w-[52px]" />}
             </THead>
             <tbody>
-              {visibles.map((d) => (
-                <Tr key={d.drive_file_id}>
+              {visibles.map((d) => {
+                const menu = menuAbierto === d.drive_file_id
+                return (
+                <Fragment key={d.drive_file_id}>
+                <Tr seleccionada={menu}>
                   <Td fuerte className="max-w-[280px]">
                     <a
                       href={urlDeDrive(d.drive_file_id, 'archivo')}
@@ -137,11 +147,27 @@ export function BloqueDocumentos({
                   </Td>
                   {puedeEditar && (
                     <Td className="text-right">
-                      <AccionesDocumento driveFileId={d.drive_file_id} desvincular={desvincular} />
+                      <AbrirAcciones
+                        href={urlMenuDe(menu ? null : d.drive_file_id)}
+                        abierto={menu}
+                        etiqueta="Acciones del documento"
+                        testid="acciones-documento-cliente"
+                      />
                     </Td>
                   )}
                 </Tr>
-              ))}
+                {menu && puedeEditar && (
+                  <LineaDeAcciones columnas={puedeEditar ? 5 : 4} testid="acciones-documento-abierto">
+                    <AccionesDocumento driveFileId={d.drive_file_id} desvincular={desvincular} />
+                    {/* LA ACLARACIÓN VA AL LADO DE LA ACCIÓN, no en un `title`. «Quitar» sobre un
+                        contrato se lee como «destruir» si nadie dice lo contrario, y el que duda no
+                        lo aprieta: el índice se queda con vínculos viejos para siempre. */}
+                    <NotaDeAccion>No borra el archivo: vive en Drive y sigue ahí.</NotaDeAccion>
+                  </LineaDeAcciones>
+                )}
+                </Fragment>
+                )
+              })}
             </tbody>
           </Tabla>
           <p className="text-[11px] text-faint" data-testid="pie-documentos-cliente">

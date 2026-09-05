@@ -21,7 +21,7 @@
 
 import { Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
 import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { AccionesContacto } from './AccionesContacto'
+import { AbrirAcciones, AccionEnlace, AccionesContacto, LineaDeAcciones } from './AccionesContacto'
 import type { Contacto } from '../types'
 
 function CamposContacto({ c }: { c?: Contacto }) {
@@ -38,13 +38,17 @@ function CamposContacto({ c }: { c?: Contacto }) {
 }
 
 export function BloqueContactos({
-  contactos, enEdicion, urlDe, editar, crear, borrar, puedeEditar = true,
+  contactos, enEdicion, menuAbierto, urlDe, urlMenuDe, editar, crear, borrar, puedeEditar = true,
 }: {
   contactos: Contacto[]
   /** El id del contacto cuyo formulario está abierto, o null. Viene de la URL. */
   enEdicion: string | null
+  /** El id del contacto cuya línea de acciones está abierta. Uno a la vez, porque es un parámetro. */
+  menuAbierto: string | null
   /** Arma la dirección de esta misma solapa con —o sin— un contacto en edición. */
   urlDe: (contactoId: string | null) => string
+  /** Ídem para la línea de acciones. */
+  urlMenuDe: (contactoId: string | null) => string
   editar: (contactoId: string) => AccionFormulario
   crear: AccionFormulario
   borrar: (contactoId: string) => Promise<ResultadoAccion>
@@ -80,8 +84,9 @@ export function BloqueContactos({
           <tbody>
             {contactos.map((c) => (
               <FilaContacto
-                key={c.id} c={c} abierta={enEdicion === c.id}
-                urlDe={urlDe} editar={editar} borrar={borrar} puedeEditar={puedeEditar}
+                key={c.id} c={c} abierta={enEdicion === c.id} menu={menuAbierto === c.id}
+                urlDe={urlDe} urlMenuDe={urlMenuDe} editar={editar} borrar={borrar}
+                puedeEditar={puedeEditar}
               />
             ))}
           </tbody>
@@ -92,11 +97,13 @@ export function BloqueContactos({
 }
 
 function FilaContacto({
-  c, abierta, urlDe, editar, borrar, puedeEditar = true,
+  c, abierta, menu, urlDe, urlMenuDe, editar, borrar, puedeEditar = true,
 }: {
   c: Contacto
   abierta: boolean
+  menu: boolean
   urlDe: (contactoId: string | null) => string
+  urlMenuDe: (contactoId: string | null) => string
   editar: (contactoId: string) => AccionFormulario
   borrar: (contactoId: string) => Promise<ResultadoAccion>
   puedeEditar?: boolean
@@ -104,13 +111,16 @@ function FilaContacto({
   const columnas = puedeEditar ? 5 : 4
   return (
     <>
-      <Tr seleccionada={abierta}>
+      <Tr seleccionada={abierta || menu}>
         <Td fuerte>{c.nombre}</Td>
         <Td>{c.rol ?? <Nulo>sin rol declarado</Nulo>}</Td>
         <Td>
+          {/* SIN MAIL NO SE LE PUEDE MANDAR NADA: ni la invitación al portal, ni el recordatorio
+              de cobranza. Va en ÁMBAR y no en el gris de las demás ausencias porque bloquea, que
+              es la definición de `warn` del sistema. */}
           {c.email
             ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a>
-            : <Nulo>sin mail</Nulo>}
+            : <span className="text-[12.5px] text-warn" data-testid="contacto-sin-mail">sin mail cargado</span>}
         </Td>
         <Td>
           {c.telefono
@@ -119,15 +129,26 @@ function FilaContacto({
         </Td>
         {puedeEditar && (
           <Td className="text-right">
-            <AccionesContacto
-              contactoId={c.id}
-              href={urlDe(abierta ? null : c.id)}
-              enEdicion={abierta}
-              borrar={borrar}
+            <AbrirAcciones
+              href={urlMenuDe(menu ? null : c.id)}
+              abierto={menu}
+              etiqueta="Acciones del contacto"
+              testid="acciones-contacto"
             />
           </Td>
         )}
       </Tr>
+      {menu && puedeEditar && (
+        <LineaDeAcciones columnas={columnas} testid="acciones-contacto-abierto">
+          <AccionEnlace
+            href={urlDe(abierta ? null : c.id)}
+            testid={abierta ? 'cerrar-contacto' : 'editar-contacto'}
+          >
+            {abierta ? 'Cerrar edición' : 'Editar'}
+          </AccionEnlace>
+          <AccionesContacto contactoId={c.id} borrar={borrar} />
+        </LineaDeAcciones>
+      )}
       {abierta && (
         <tr className="border-b border-[#EFEEEA] bg-surface-quiet">
           <td colSpan={columnas} className="py-3">
