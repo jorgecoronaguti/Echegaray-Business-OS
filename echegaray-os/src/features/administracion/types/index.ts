@@ -232,4 +232,6 @@ export interface NombreResuelto {
   proveedor_nombre: string | null
   via: 'exacto' | 'resolucion_manual'
   alias_id: string | null
+  /** La compra más reciente de ESE nombre, `date` de Postgres. NULL sólo si no hay ninguna fechada. */
+  ultima_compra: string | null
 }

@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { fechaCompra } from './TablaProveedores'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -311,23 +312,39 @@ test('TIPO no inventa un rubro: sólo dice lo que la base puede probar', () => {
   assert.match(tabla, /subcontratistas \? 'sin rubro' : 'sin leer'/)
 })
 
-test('ÚLTIMA COMPRA declara que no la leyó en vez de inventar una fecha', () => {
+test('ÚLTIMA COMPRA muestra la fecha real, y nunca la de otra cosa', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
-  // Que la columna se rellene con la fecha de otra cosa —`updated_at` del proveedor, la fecha de la
-  // última fila leída— o con un «—» que se lee como «nunca se le compró». La vista
-  // `proveedor_nombre_resuelto` publica `comprobantes` y `total`, no la fecha máxima; la fecha
-  // existe en `costos_obra` (940 de 940 filas la tienen) y traerla exige una migración.
+  // Que la columna se rellene con la fecha de otra cosa: `updated_at` del proveedor, la fecha de
+  // alta, la de la última fila leída. Cualquiera de esas compila, se ve plausible en pantalla y
+  // manda a un jefe de compras a llamar a un proveedor al que no se le compra hace ocho meses.
   //
-  // Las DOS ausencias son distintas y por eso valen las dos aserciones juntas: sin ningún nombre
-  // vinculado el «—» es verdad (no hay compra, no hay fecha); con compras vinculadas el «—» sería
-  // mentira y la celda dice «sin leer».
+  // Hasta el 05/09 esta celda decía «sin leer» en el 100% de las filas porque la vista no publicaba
+  // la fecha. La migración `20260905T1600` la trajo (33 de 33 nombres vinculados la tienen), así que
+  // la prohibición no desapareció: cambió de forma. Ahora se exige que la fecha venga del agrupado
+  // de compras y de ningún otro lado.
   const tabla = codigo('TablaProveedores.tsx')
-  assert.match(tabla, /\{c \? 'sin leer' : comprado \? '—' : 'sin leer'\}/)
-  // El motivo va en la celda, no sólo en un comentario que el usuario no ve.
-  assert.match(tabla, /title=\{c \? SIN_FECHA : undefined\}/)
-  assert.match(tabla, /publica comprobantes/)
-  assert.equal(/updated_at|actualizado_en/.test(tabla), false, 'la fecha salió de otra columna')
+  assert.match(tabla, /fechaCompra\(c\.ultima\)/)
+  assert.equal(/updated_at|actualizado_en|creado_en|fecha_alta/.test(tabla), false,
+    'la fecha de la última compra salió de otra columna')
+  // LAS TRES AUSENCIAS SIGUEN SIENDO TRES. Sin cartera leída «sin leer»; con cartera pero sin
+  // ninguna compra de este proveedor, el «—» del mockup; con compras pero ninguna fechada, «sin
+  // fecha» — que no es ninguna de las otras dos.
+  assert.match(tabla, /'sin fecha'\s*\)\s*:\s*comprado \? '—' : 'sin leer'/)
+  // El motivo del borde va en la celda, no sólo en un comentario que el usuario no ve, y sólo
+  // cuando ES el borde: un `title` en una fila que muestra su fecha es ruido.
+  assert.match(tabla, /title=\{c && !c\.ultima \? SIN_FECHA : undefined\}/)
+})
+
+test('la fecha se escribe como el zip, y no miente sobre el año', () => {
+  // `01/09` es lo que dibuja el mockup. Pero DD/MM sin año sólo es verdad dentro del año en curso:
+  // una compra de noviembre de 2025 escrita «15/11» se lee como la semana que viene, y eso es
+  // mezclar dos ventanas de tiempo en la misma columna (regla de oro 3).
+  assert.equal(fechaCompra('2026-09-01', 2026), '01/09')
+  assert.equal(fechaCompra('2025-11-15', 2026), '15/11/25')
+  assert.equal(fechaCompra(null, 2026), null)
+  // Un dato ilegible NO se convierte en una fecha inventada ni en la de hoy.
+  assert.equal(fechaCompra('vaya a saber', 2026), null)
 })
 
 test('COMPRADO no promete una ventana de tiempo que el dato no tiene', () => {

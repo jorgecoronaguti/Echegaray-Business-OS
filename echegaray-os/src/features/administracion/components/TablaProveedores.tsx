@@ -20,12 +20,16 @@
 // tiene doce columnas y ninguna es el rubro. Por eso el resto de las filas dice «sin rubro» apagado
 // —la palabra del mockup— y no un rubro adivinado del nombre.
 //
-// «COMPROB.» SALE Y ENTRA «ÚLTIMA COMPRA». Y entra DECLARANDO QUE NO SE PUDO LEER: la vista
-// `proveedor_nombre_resuelto` publica `comprobantes` y `total`, no la fecha máxima. El dato existe
-// —las 940 filas de `costos_obra` tienen `fecha`, y agrupando por `normalizar_nombre_proveedor()`
-// hay 126 nombres con un máximo— pero publicarlo exige tocar la vista, o sea una migración, y este
-// porte no abre migraciones. La celda dice «sin leer» y lo explica en su `title`; lo que NO hace es
-// poner la fecha de otra cosa ni un guión que se lea como «nunca se le compró».
+// «COMPROB.» SALE Y ENTRA «ÚLTIMA COMPRA», CON LA FECHA REAL. El porte del 05/09 la había dejado
+// diciendo «sin leer» en el 100% de las filas porque la vista `proveedor_nombre_resuelto` publicaba
+// `comprobantes` y `total` pero no la fecha máxima. El mockup dibuja fechas en cuatro de sus cinco
+// filas de muestra, así que una columna muda era una divergencia del contrato, no una limitación
+// honesta: la migración `20260905T1600` agregó `max(fecha)` al mismo `group by` que ya se hacía.
+// Medido después de aplicarla: 33 de 33 nombres vinculados traen fecha, 0 sin fecha.
+//
+// El formato es `diaMes` —«01/09»— que es el del zip. Cuando la compra NO es del año en curso se
+// escribe el año («15/11/25»): sin él, una compra de hace catorce meses se lee como una de la
+// semana pasada, que es mezclar dos ventanas de tiempo en la misma columna.
 //
 // COMPRADO es HISTÓRICO y así lo dice la nota al pie: rotularlo «12 M» inventaría una ventana de
 // tiempo que el dato no tiene (regla de oro 3). PAPELES sigue sin dibujarse: ninguna tabla vincula
@@ -41,7 +45,7 @@
 import Link from 'next/link'
 import { IconoProblema, IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
-import { pesos } from '@/shared/components/canon/formato'
+import { diaMes, pesos } from '@/shared/components/canon/formato'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import type { CompradoProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
@@ -65,10 +69,31 @@ const GAP = 16
  */
 const SOLO_ANCHO = 'max-[1249px]:hidden'
 
-/** POR QUÉ LA FECHA NO ESTÁ, dicho en la celda y no sólo en un comentario. */
+/**
+ * POR QUÉ UNA FILA PUEDE NO TENER FECHA, dicho en la celda y no sólo en un comentario. Con la
+ * migración del 05/09 esto dejó de ser el caso general y pasó a ser el borde: un nombre vinculado
+ * cuyas compras no tienen `fecha` cargada. Medido ese día: 0 de 33.
+ */
 const SIN_FECHA
-  = 'La fecha existe en costos_obra, pero la vista proveedor_nombre_resuelto publica comprobantes '
-  + 'y total, no la fecha máxima: hace falta una migración para traerla.'
+  = 'Este proveedor tiene compras vinculadas, pero ninguna con fecha cargada en costos_obra.'
+
+/**
+ * LA FECHA DE LA COLUMNA. `diaMes` («01/09») mientras la compra sea de este año, que es lo que
+ * dibuja el zip y lo que entra en la columna. Fuera del año en curso se agrega el año en dos
+ * dígitos: «15/11» y «15/11/25» son la misma columna, pero uno de los dos es de hace catorce meses
+ * y la tabla no puede decir lo mismo de los dos.
+ */
+export function fechaCompra(
+  iso: string | null | undefined,
+  // El año entra por parámetro para que se pueda probar: con `new Date()` adentro, el test que
+  // afirma «una compra de 2026 se escribe 01/09» empieza a fallar solo el 1 de enero.
+  anioActual = new Date().getFullYear(),
+): string | null {
+  const dm = diaMes(iso)
+  if (!dm || !iso) return null
+  const anio = Number(iso.slice(0, 4))
+  return anio === anioActual ? dm : `${dm}/${String(anio).slice(2)}`
+}
 
 export function TablaProveedores({
   proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, limpiarHref,
@@ -192,18 +217,18 @@ export function TablaProveedores({
               {c ? (pesos(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
             </span>
 
-            {/* ÚLTIMA COMPRA — DOS AUSENCIAS DISTINTAS, DOS PALABRAS DISTINTAS. Sin ningún nombre
-                vinculado no hay compra y por lo tanto no hay fecha: eso es el «—» del mockup. Con
-                compras vinculadas la fecha EXISTE en `costos_obra` y esta pantalla no la leyó, así
-                que dice «sin leer» y explica por qué: escribir «—» ahí afirmaría que nunca se le
-                compró a alguien a quien se le compró. */}
+            {/* ÚLTIMA COMPRA — LA FECHA, Y DOS AUSENCIAS QUE NO SE DICEN IGUAL. Sin ningún nombre
+                vinculado no hay compra y por lo tanto no hay fecha: ése es el «—» del mockup. Con
+                compras vinculadas pero sin ninguna fechada, «sin fecha» y el motivo en el `title`:
+                un «—» ahí afirmaría que nunca se le compró a alguien a quien sí se le compró. Y sin
+                haber podido leer la cartera, «sin leer», que no es ninguna de las dos. */}
             <span
               className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
               style={{ fontSize: '12px', color: V.tenue }}
-              title={c ? SIN_FECHA : undefined}
+              title={c && !c.ultima ? SIN_FECHA : undefined}
               data-testid="ultima-compra"
             >
-              {c ? 'sin leer' : comprado ? '—' : 'sin leer'}
+              {c ? (fechaCompra(c.ultima) ?? 'sin fecha') : comprado ? '—' : 'sin leer'}
             </span>
           </div>
         )
