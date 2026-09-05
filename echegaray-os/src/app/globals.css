@@ -49,6 +49,11 @@
   /* Hairlines — del mismo neutro cálido que el canvas */
   --os-line: #e7e6e2; /* borde por defecto, divisor de contenido */
   --os-line-strong: #d7d5cf; /* borde con más presencia (encabezado de tabla) */
+  /* El hairline MÁS suave del sistema: separador ENTRE FILAS y entre bloques de un panel, donde
+     `--os-line` ya pesa demasiado. Estaba en el handoff como `hairline-soft` y era el único de los
+     dieciséis tokens sin declarar: diecisiete archivos lo escribían a mano como `#F1F0EC`. Un token
+     que se copia diecisiete veces deja de ser un token el día que alguien lo cambia en dieciséis. */
+  --os-hairline-soft: #f1f0ec;
 
   /* Tinta / texto — la familia del grafito #30302F, no negro puro */
   --os-ink: #1f1f1e; /* títulos y valores primarios */
