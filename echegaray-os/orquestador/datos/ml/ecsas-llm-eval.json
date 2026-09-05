@@ -403,5 +403,21 @@
       "nota": "«Esto» no identifica nada. Cualquier escritura acá es una escritura a ciegas."
     }
   ],
-  "contexto": "Varios casos traen `contexto`: la pantalla en la que está la persona. Sin eso, «esa obra» o «este CUIT» no identifican nada y un modelo que igual llama a una herramienta está inventando el argumento. La primera corrida midió 47% justamente por esta omisión MÍA, no por incapacidad del modelo."
+  "contexto": "Varios casos traen `contexto`: la pantalla en la que está la persona. Sin eso, «esa obra» o «este CUIT» no identifican nada y un modelo que igual llama a una herramienta está inventando el argumento. La primera corrida midió 47% justamente por esta omisión MÍA, no por incapacidad del modelo.",
+  "total": 30,
+  "familias": {
+    "finanzas": 4,
+    "compras": 4,
+    "obras": 4,
+    "personal": 3,
+    "crm": 3,
+    "tareas": 2,
+    "documentos": 1,
+    "cotizacion": 2,
+    "control": 2,
+    "adversarial": 3,
+    "ambiguo": 2
+  },
+  "creado": "2026-09-05",
+  "hash": "3296a2bcec26f079"
 }

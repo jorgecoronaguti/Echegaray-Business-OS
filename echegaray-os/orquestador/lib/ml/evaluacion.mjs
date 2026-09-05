@@ -23,7 +23,12 @@ import { readFileSync } from 'node:fs'
  *  que no evaluar, porque devuelve cero y parece un resultado. */
 export function cargarDataset(ruta) {
   const d = JSON.parse(readFileSync(ruta, 'utf8'))
-  if (!d?.preguntas?.length) throw new Error(`el dataset ${d?.nombre ?? ruta} no tiene preguntas`)
+  // Dos formas, un solo cargador. Los datasets de recuperación traen `preguntas` (una consulta y su
+  // documento correcto); los de tool calling traen `casos` (una frase, la herramienta correcta y las
+  // prohibidas). Es la misma idea —entrada con respuesta verificable— y no justifica dos cargadores
+  // ni dos publicadores: lo que cambia es qué se compara, no cómo se guarda.
+  const items = d?.preguntas ?? d?.casos
+  if (!items?.length) throw new Error(`el dataset ${d?.nombre ?? ruta} no tiene preguntas ni casos`)
   return d
 }
 
