@@ -7,7 +7,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
-import { resolverLote } from '../lib/cobranzas-cliente.mjs'
+import { resolverCliente } from '../lib/portal/cobranzas-a-cliente.mjs'
 
 const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
 // 02_Cobranzas!A..R (headers fila 4, datos desde fila 5): idx0 ID, 1 Categoría, 2 Fecha emisión,
@@ -44,14 +44,29 @@ async function main() {
   //
   // El vínculo se resuelve ACÁ y no en un backfill porque tres líneas más abajo hay un `delete`:
   // cualquier cosa escrita aparte dura hasta la próxima corrida.
-  const clientes = (await query('select id, nombre_comercial, razon_social from public.clientes')).rows
-  const { porRotulo, resueltos, sinResolver } = resolverLote(cobranzas.map((c) => c.obra_cliente), clientes)
-  for (const c of cobranzas) c.cliente_id = porRotulo.get(c.obra_cliente)?.clienteId ?? null
-  const filasVinculadas = cobranzas.filter((c) => c.cliente_id).length
-  console.log(`clientes: ${resueltos} rótulo(s) vinculado(s), ${sinResolver} sin cliente · ${filasVinculadas}/${cobranzas.length} filas`)
-  // Un rótulo sin cliente NO es un error: MACRO, LIRIO y ADDATO facturan y no tienen ficha. Se
-  // nombran para que la próxima vez que aparezca uno nuevo se vea, en vez de quedar mudo en NULL.
-  for (const [rotulo, v] of porRotulo) if (!v.clienteId) console.log(`   sin cliente: «${rotulo}» — ${v.porQue}`)
+  //
+  // Y se resuelve con `resolverCliente` de `lib/portal/`, que es el MISMO resolutor que usa
+  // `sync-esquema-cliente.mjs` para el portal. Escribí uno propio por tokens antes de buscar si ya
+  // existía; daba el mismo resultado sobre los ocho rótulos reales y lo tiré. Dos definiciones de
+  // «de qué cliente es esta cobranza» es exactamente el problema que el OS tiene prohibido: el día
+  // que se corrijan los alias, una se enteraría y la otra no.
+  const { rows: indice } = await query(
+    `select a.alias, o.cliente_id
+       from public.obra_alias a
+       join public.obra_canonica o on o.id = a.obra_id
+      where o.cliente_id is not null`,
+  )
+  const sinCliente = new Map()
+  for (const c of cobranzas) {
+    const r = resolverCliente(c.obra_cliente, indice)
+    c.cliente_id = r.cliente_id
+    if (!r.cliente_id) sinCliente.set(c.obra_cliente, r.motivo)
+  }
+  const vinculadas = cobranzas.filter((c) => c.cliente_id).length
+  console.log(`clientes: ${vinculadas}/${cobranzas.length} filas vinculadas`)
+  // Un rótulo sin cliente NO es un error: MACRO, LIRIO y ADDATO facturan y no tienen alias. Se
+  // NOMBRAN para que uno nuevo se vea, en vez de quedar mudo en NULL.
+  for (const [rotulo, motivo] of sinCliente) console.log(`   sin cliente: «${rotulo}» — ${motivo}`)
 
   await query('begin')
   try {

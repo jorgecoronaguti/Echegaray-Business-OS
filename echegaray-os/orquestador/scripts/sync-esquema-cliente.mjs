@@ -84,6 +84,29 @@ async function main() {
     for (const s of sin_cliente) console.log(`  fila ${s.sheet_id}: «${s.texto}» (${s.motivo}) ${$(s.total)}`)
     console.log('  Estas NO entran al portal. Se resuelven agregando el alias en obra_alias.')
   }
+  // ═══ EL `orden` QUE FALTABA — POR ESTO EL SYNC ENTERO NO ESCRIBÍA NADA (05/09/2026) ═══
+  //
+  // `esquema_pago` tiene un índice único parcial `(cliente_id, orden) WHERE obra_id IS NULL AND
+  // origen='sync_cobranzas'`, y la columna `orden` tiene DEFAULT 0 NOT NULL. `proyectar()` no emite
+  // `orden` ni `obra_id`, así que TODO pago nuevo nacía con obra_id NULL y orden 0: el primero de
+  // cada cliente entraba y el SEGUNDO reventaba el índice.
+  //
+  // Y como el `on conflict` apunta a `(cobranza_fila)`, la violación del OTRO índice no la absorbe
+  // nadie: sube como error, la transacción hace ROLLBACK y no se escribe NI UN certificado. Eso
+  // explica `certificado_cliente` con 0 filas teniendo 48 certificados proyectados — no era falta
+  // de datos, era el sync cayéndose entero desde hace tiempo, en silencio, todas las veces.
+  //
+  // El orden se asigna por posición dentro del cliente, ordenado por fecha y desempatando por fila
+  // del Sheet para que sea ESTABLE entre corridas. No se toca en el UPDATE: la pantalla 32 deja
+  // reordenar a mano y pisarlo borraría ese trabajo en cada sync.
+  const porCliente = new Map()
+  for (const g of pagos) porCliente.set(g.cliente_id, [...(porCliente.get(g.cliente_id) ?? []), g])
+  for (const lista of porCliente.values()) {
+    lista.sort((a, b) => String(a.fecha ?? '9999').localeCompare(String(b.fecha ?? '9999'))
+      || Number(a.cobranza_fila ?? 0) - Number(b.cobranza_fila ?? 0))
+    lista.forEach((g, i) => { g.orden = i })
+  }
+
   const noAptos = pagos.filter((p) => !p.apto_para_portal).length
   if (noAptos) console.log(`\n${noAptos} pagos quedan marcados NO aptos para el portal (categoría N).`)
 
@@ -131,8 +154,8 @@ async function guardarPago(p) {
   await query(
     `insert into public.esquema_pago
        (cliente_id, cobranza_fila, huella_comprobante, huella_monto, concepto, fecha, monto,
-        estado, medio, origen, sincronizado_en)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'sync_cobranzas',now())
+        estado, medio, orden, origen, sincronizado_en)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now())
      on conflict (cobranza_fila) where cobranza_fila is not null do update
        set concepto = excluded.concepto, fecha = excluded.fecha, monto = excluded.monto,
            estado = excluded.estado, medio = excluded.medio,
@@ -144,7 +167,7 @@ async function guardarPago(p) {
            sincronizado_en = now(), actualizado_at = now()
      where public.esquema_pago.origen = 'sync_cobranzas'`,
     [p.cliente_id, p.cobranza_fila, p.huella_comprobante, p.huella_monto, p.concepto, p.fecha,
-      p.monto, p.estado, p.medio],
+      p.monto, p.estado, p.medio, p.orden ?? 0],
   )
 }
 
