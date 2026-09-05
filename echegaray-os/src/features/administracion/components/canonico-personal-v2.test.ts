@@ -124,3 +124,56 @@ test('a quien ya no está no se le pregunta por sus papeles ni por su día', () 
   assert.match(tabla, /const COLS_BAJA/)
   assert.match(codigoPagina(), /const conPulso = filtro !== 'inactivos'/)
 })
+
+// ── LA GEOMETRÍA Y LAS COLUMNAS DEL HANDOFF v4 ───────────────────────────────────────────────────
+
+test('la lista tiene las SEIS columnas del handoff v4, con su grilla literal', () => {
+  // ═══ EL CONTRATO CAMBIÓ (05/09/2026) ═══
+  //
+  // `Administración v4 · Pantallas.dc.html`, bloque «1 · PERSONAL», dibuja seis columnas:
+  // PERSONA · PUESTO · OBRA · HOY · HH MES · PAPELES, sobre
+  // `minmax(220px,1.5fr) minmax(150px,1fr) 130px 110px 90px 130px`. El porte anterior tenía cinco:
+  // el oficio iba pegado al nombre, en 11,5px, compitiendo por el ancho de lo único que identifica
+  // una fila. No es «editar un test para que pase»: el diseño manda.
+  //
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Que la grilla y los rótulos dejen de tener la MISMA cantidad de pistas. Una columna de más o de
+  // menos corre la fila entera respecto de su cabecera y la pantalla se sigue dibujando, con cada
+  // dato bajo el rótulo equivocado — que es peor que no dibujarse.
+  const src = codigoTabla()
+  assert.ok(
+    src.includes('grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_130px]'),
+    'la grilla ancha dejó de ser la del handoff v4',
+  )
+  // «Obra» viaja por un ternario —«Última obra» en el corte de Inactivos—, así que se acepta el
+  // rótulo escrito como hijo directo o como literal del ternario. Lo que se exige es que ESTÉ.
+  for (const c of ['Persona', 'Puesto', 'Obra', 'Hoy', 'HH mes', 'Papeles']) {
+    assert.ok(src.includes(`>${c}<`) || src.includes(`'${c}'`), `falta el rótulo ${c}`)
+  }
+  // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
+  // infle el número.
+  const cuerpo = src.slice(src.indexOf('{personas.map('))
+  for (const celda of ['abrir-persona', 'puesto-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'papeles-persona']) {
+    assert.ok(cuerpo.includes(celda), `la fila perdió la celda ${celda}`)
+  }
+})
+
+test('PUESTO sale de la regla probada y su ausencia va APAGADA, no en ámbar', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Dos, y por eso van las tres aserciones juntas.
+  //
+  //   1. Que la columna se llene con `p.puesto ?? p.especialidad` — un `??` pelado no MIRA el
+  //      valor y publica «OFICIAL» o «MEDIO OFICIAL» como si fueran oficios: son categorías del
+  //      convenio, o sea lo que la persona cobra, no lo que sabe hacer. La regla vive en
+  //      `oficioVisible` y se prueba sin React en `vocabularioPersona.test.ts`.
+  //   2. Que la ausencia se pinte en ámbar por inercia, copiando la celda de OBRA. Medido el
+  //      05/09/2026: 53 de 78 filas tienen con qué llenar la columna y 25 quedan sin puesto. No
+  //      saber el oficio de alguien no bloquea ninguna decisión de esta pantalla; no saber su obra
+  //      sí. Ámbar es «esto bloquea» y gastarlo en 25 filas apaga la señal donde importa.
+  const src = codigoTabla()
+  assert.match(src, /oficioVisible\(p\.especialidad, p\.puesto\)/)
+  assert.match(src, /\{oficio \?\? 'sin puesto'\}/, 'la ausencia dejó de usar la palabra del mockup')
+  assert.match(src, /color: oficio \? V\.tintaSuave : V\.tenue/, 'la ausencia de puesto se pintó de ámbar')
+})

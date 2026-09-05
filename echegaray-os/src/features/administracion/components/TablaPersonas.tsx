@@ -1,4 +1,21 @@
-// 19 · PERSONAL v2 — el plantel sin caja. Porte literal de `19 · Personal v2.dc.html`.
+// 19 · PERSONAL — el plantel sin caja, con la geometría del handoff CRM / Administración v4.
+//
+// `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque «1 · PERSONAL»:
+//   `minmax(220px,1.5fr) minmax(150px,1fr) 130px 110px 90px 130px`, gap 16
+//   PERSONA · PUESTO · OBRA · HOY · HH MES · PAPELES
+//
+// ═══ QUÉ CAMBIÓ RESPECTO DEL PORTE DE AGOSTO (05/09/2026) ═══
+//
+// EL OFICIO SUBE A COLUMNA PROPIA — «PUESTO». Estaba pegado al nombre en 11,5px tenue, donde compite
+// por el mismo ancho que lo único que identifica una fila. En su columna se puede BARRER: leer de
+// arriba abajo quién es capataz y quién ayudante sin abrir 62 legajos.
+//
+// Lo que la columna dice y lo que NO: sale de `oficioVisible(especialidad, puesto)`, la misma regla
+// probada que ya alimentaba el rótulo pegado al nombre. Medido el 05/09/2026 sobre `personas`: 53 de
+// 78 filas tienen con qué llenarla (52 por `especialidad`, 1 por `puesto`) y 25 quedan en «sin
+// puesto». Las 25 NO son motivo para no dibujar la columna —el mockup dibuja «sin puesto» como un
+// valor más (`Ledesma, Marcos`)— pero sí para que la ausencia vaya APAGADA y no en ámbar: no saber
+// el oficio de alguien no bloquea ninguna decisión de la pantalla, a diferencia de no saber su obra.
 //
 // ═══ DE SIETE COLUMNAS A CUATRO ═══
 //
@@ -62,15 +79,24 @@ export interface PulsoDelPlantel {
   papelesDisponible: boolean
 }
 
-/** `19v2:139`. Literales porque Tailwind no compila una clase armada en runtime. */
+/**
+ * LA GRILLA DEL HANDOFF v4, carácter por carácter. Literal porque Tailwind no compila una clase
+ * armada en runtime.
+ *
+ * En angosto se sueltan PUESTO, HOY, HH MES y PAPELES y quedan PERSONA · OBRA: el déficit de ancho
+ * NUNCA cae sobre el nombre, que es lo único que identifica una fila, ni sobre la obra, que es la
+ * pregunta que la lista contesta. El oficio se sigue leyendo en el legajo.
+ */
 const COLS
-  = 'grid-cols-[minmax(230px,1.5fr)_minmax(0,1fr)_minmax(0,130px)_minmax(0,90px)_minmax(0,116px)]'
+  = 'grid-cols-[minmax(220px,1.5fr)_minmax(150px,1fr)_130px_110px_90px_130px]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 /** En «Inactivos» no hay HOY ni HH que preguntarle a quien ya no está: la baja ocupa su lugar. */
 const COLS_BAJA
   = 'grid-cols-[minmax(230px,1.5fr)_minmax(0,1fr)_minmax(0,220px)]'
   + ' max-[1249px]:grid-cols-[minmax(200px,1.5fr)_minmax(0,1fr)]'
 const SOLO_ANCHO = 'max-[1249px]:hidden'
+/** `gap:16` del bloque «1 · PERSONAL». El patrón v2 declara 14 y esta pantalla lo corre a 16. */
+const GAP = 16
 
 /** `19v2:37`. El punto de HOY. La palabra viaja al lado: nunca sólo el color. */
 const PUNTO: Record<EstadoHoy, string> = {
@@ -100,15 +126,19 @@ export function TablaPersonas({
 
   return (
     <div data-testid="tabla-personas">
-      <div className={`grid gap-[14px] ${cols}`} style={ENCABEZADO}>
+      <div className={`grid ${cols}`} style={{ ...ENCABEZADO, gap: conBaja ? 14 : GAP }}>
         <RotuloCol>Persona</RotuloCol>
-        <RotuloCol>{conBaja ? 'Última obra' : 'Obra asignada'}</RotuloCol>
+        {/* PUESTO se suelta en angosto junto con las otras tres: su rótulo NO puede llevar `display`
+            inline, porque un estilo inline le gana a cualquier media query y el rótulo se quedaría
+            dibujado sobre una grilla que ya no tiene su columna. */}
+        {!conBaja && <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Puesto</RotuloCol></span>}
+        <RotuloCol>{conBaja ? 'Última obra' : 'Obra'}</RotuloCol>
         {conBaja
           ? <RotuloCol>Baja</RotuloCol>
           : (
               <>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Hoy</RotuloCol></span>
-                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH del mes</RotuloCol></span>
+                <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>HH mes</RotuloCol></span>
                 <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Papeles</RotuloCol></span>
               </>
             )}
@@ -124,8 +154,9 @@ export function TablaPersonas({
             prefetch={false}
             role="row"
             data-testid="fila-persona"
-            className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED]`}
+            className={`grid items-center ${CAJA_CONTENIDO} ${cols} hover:bg-[#F2F1ED]`}
             style={{
+              gap: conBaja ? 14 : GAP,
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,
               // El filo ámbar dice «esto bloquea»: activo y sin obra. A quien ya no está no se le
@@ -143,13 +174,24 @@ export function TablaPersonas({
               <span data-testid="abrir-persona" className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
                 {oracion(p.nombre_completo)}
               </span>
-              {/* EL OFICIO, no la categoría UOCRA: lo que sabe hacer, no lo que cobra. La regla y su
-                  prueba viven en `services/vocabularioPersona.ts` — un `??` pelado no MIRABA el
-                  valor y dejaba pasar códigos importados como si fueran oficios. */}
-              <span style={{ fontSize: '11.5px', color: V.tenue, flexShrink: 0 }}>
-                {oficio ?? 'sin oficio'}
-              </span>
             </span>
+
+            {/* PUESTO — EL OFICIO, no la categoría UOCRA: lo que sabe hacer, no lo que cobra. La
+                regla y su prueba viven en `services/vocabularioPersona.ts` — un `??` pelado no
+                MIRABA el valor y dejaba pasar códigos del convenio importados como si fueran
+                oficios.
+                «SIN PUESTO» VA APAGADO Y NO EN ÁMBAR: es la palabra del mockup y el color de su
+                consecuencia. No conocer el oficio de alguien no impide nada en esta pantalla; no
+                conocer su obra sí, y por eso la celda de al lado sí puede ponerse ámbar. */}
+            {!conBaja && (
+              <span
+                className={`truncate ${SOLO_ANCHO}`}
+                style={{ fontSize: '12px', color: oficio ? V.tintaSuave : V.tenue }}
+                data-testid="puesto-persona"
+              >
+                {oficio ?? 'sin puesto'}
+              </span>
+            )}
 
             {/* SIN ASIGNAR NO ES UN HUECO: es una respuesta, y va en ámbar (`19v2:127`). */}
             <span
