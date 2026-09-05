@@ -16,6 +16,7 @@
 import { makeGoogleClient, READONLY_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
+import { toma } from '../lib/candado-base.mjs'
 import { procesarDocumento, guardarDocumento, yaLeido } from '../lib/documentos/procesar.mjs'
 import { resolverLote, claveConsulta, vincula, drenarTrazas } from '../lib/ml/identidad-lote.mjs'
 
@@ -25,6 +26,12 @@ const MAX_PAGINAS = Number(arg('--max-paginas', 6))
 const REHACER = process.argv.includes('--rehacer')
 
 async function main() {
+  // TURNO DE BASE ANTES DE ESCRIBIR. Este script hace UPDATE/INSERT sobre tablas que la suite de
+  // tests tambien toca; correr los dos a la vez le da a Postgres un «deadlock detected» y mata a
+  // uno de los dos al azar. El rojo que sale de ahi no es de nadie —el codigo esta bien y el test
+  // esta bien— y un rojo que no es de nadie entrena a ignorar los rojos.
+  const soltarTurno = await toma({ quien: 'documentos-procesar' })
+  try {
   const google = makeGoogleClient({ config: loadConfig(), scopes: READONLY_SCOPES })
 
   // Los que todavía no se leyeron primero, y dentro de eso los más chicos: un lote que arranca por
@@ -108,6 +115,9 @@ async function main() {
   console.log(`  ${r.fragmentos} fragmentos indexados · ${Math.round(r.ms / Math.max(1, r.ok))} ms por documento`)
   console.log('\n  POR TIPO:')
   for (const [t, n] of [...porTipo].sort((a, b) => b[1] - a[1])) console.log(`    ${String(t).padEnd(20)} ${n}`)
+  } finally {
+    soltarTurno()
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

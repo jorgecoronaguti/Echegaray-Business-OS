@@ -36,6 +36,26 @@ export const K = 5
  */
 export const RAZON_MINIMA = 1.35
 
+/**
+ * QUÉ TAN PARECIDO TIENE QUE SER EL VECINO MÁS CERCANO PARA QUE LA CLASE EXISTA.
+ *
+ * ═══ ESTE NÚMERO SALE DE MEDIR, Y SIN ÉL LA CAPACIDAD MENTÍA ═══
+ *
+ * Sin piso, el modelo proponía tipo para el 94,5% de los pendientes — y los más «seguros» incluían
+ * un examen de inducción clasificado como FACTURA. No es que se equivocara: es que las trece clases
+ * conocidas NO CONTIENEN lo que esos documentos son, y un voto entre trece opciones cerradas tiene
+ * que elegir la menos mala. Un clasificador que siempre contesta no está clasificando.
+ *
+ * Medido el 05/09/2026 sobre los 825 documentos que las reglas sí tiparon, con validación cruzada:
+ *
+ *   aciertos    p10 0,9931 · mediana 0,9977   (son formularios: el vecino es casi el mismo papel)
+ *   pendientes  p10 0,8967 · mediana 0,9195   369 de 381 por debajo del p10 de los aciertos
+ *
+ * Las dos poblaciones están separadas. El piso es el p10 de los aciertos: por debajo, el documento
+ * no se parece a NINGUNA clase conocida y la respuesta correcta es «ninguna de éstas».
+ */
+export const PISO_SIMILITUD = 0.9931
+
 /** Los documentos que una regla YA tipó: son los ejemplos contra los que se compara. */
 export async function ejemplos({ ejecutar = query } = {}) {
   const q = await ejecutar(`
@@ -76,6 +96,15 @@ export function votarVecinos(vectorConsulta, ejemplosConVector, { k = K, razonMi
   const cercanos = ejemplosConVector
     .map((e) => ({ tipo: e.tipo, s: coseno(vectorConsulta, e.vector) }))
     .sort((a, b) => b.s - a.s).slice(0, k)
+
+  // ── ¿SE PARECE A ALGO CONOCIDO? ──
+  // Va ANTES del voto: si el vecino más cercano está lejos, no importa quién gane la votación.
+  if (cercanos[0].s < PISO_SIMILITUD) {
+    return {
+      tipo: null, confianza: 0, razon: null, metodo: 'vecinos', similitud: Number(cercanos[0].s.toFixed(4)),
+      porQue: `no se parece a ningún tipo conocido: el documento más cercano queda en ${cercanos[0].s.toFixed(3)} y hace falta ${PISO_SIMILITUD}`,
+    }
+  }
 
   const voto = new Map()
   for (const v of cercanos) voto.set(v.tipo, (voto.get(v.tipo) ?? 0) + v.s)

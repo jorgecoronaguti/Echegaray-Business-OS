@@ -8,6 +8,7 @@
 //   node orquestador/scripts/clasificar-documentos-pendientes.mjs [--aplicar] [--pliegues 5]
 
 import { query } from '../lib/db.mjs'
+import { toma } from '../lib/candado-base.mjs'
 import { ejemplos, pendientes, votarVecinos, K, MODELO_INDICE } from '../lib/ml/clasificar-documento.mjs'
 import { embeber, cargar, CANDIDATOS } from '../lib/ml/motor-embeddings.mjs'
 import { drenarTrazas, registrarTraza } from '../lib/ml/traza.mjs'
@@ -19,6 +20,12 @@ const PLIEGUES = arg('--pliegues', 5)
 const recorte = (t) => String(t ?? '').slice(0, 1200)
 
 async function main() {
+  // TURNO DE BASE ANTES DE ESCRIBIR. Este script hace UPDATE/INSERT sobre tablas que la suite de
+  // tests tambien toca; correr los dos a la vez le da a Postgres un «deadlock detected» y mata a
+  // uno de los dos al azar. El rojo que sale de ahi no es de nadie —el codigo esta bien y el test
+  // esta bien— y un rojo que no es de nadie entrena a ignorar los rojos.
+  const soltarTurno = await toma({ quien: 'clasificar-documentos-pendientes' })
+  try {
   const ej = await ejemplos()
   const pen = await pendientes()
   const clases = [...new Set(ej.map((e) => e.tipo))]
@@ -85,6 +92,9 @@ async function main() {
     modelo: CANDIDATOS[MODELO_INDICE].id, proveedor: 'local', ms: msPen,
     accion: 'sugerir', sensibilidad: 'confidencial' }, { modulo: 'clasificar-documentos-pendientes' })
   console.log(`\n═══ ${decididos.length} propuestas escritas en \`tipo_propuesto\`. \`tipo\` NO se tocó. ═══`)
+  } finally {
+    soltarTurno()
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

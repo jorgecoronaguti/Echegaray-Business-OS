@@ -19,6 +19,7 @@
 
 import { createHash } from 'node:crypto'
 import { query } from '../lib/db.mjs'
+import { toma } from '../lib/candado-base.mjs'
 import { CANDIDATOS, embeber, cargar } from '../lib/ml/motor-embeddings.mjs'
 import { drenarTrazas, registrarTraza } from '../lib/ml/traza.mjs'
 import { randomUUID } from 'node:crypto'
@@ -45,6 +46,12 @@ function esIndexable(texto) {
 }
 
 async function main() {
+  // TURNO DE BASE ANTES DE ESCRIBIR. Este script hace UPDATE/INSERT sobre tablas que la suite de
+  // tests tambien toca; correr los dos a la vez le da a Postgres un «deadlock detected» y mata a
+  // uno de los dos al azar. El rojo que sale de ahi no es de nadie —el codigo esta bien y el test
+  // esta bien— y un rojo que no es de nadie entrena a ignorar los rojos.
+  const soltarTurno = await toma({ quien: 'documentos-indexar' })
+  try {
   const c = CANDIDATOS[MODELO]
   if (!c) throw new Error(`no hay un modelo declarado con la clave «${MODELO}»`)
   const motor = await cargar(MODELO)
@@ -115,6 +122,9 @@ async function main() {
   console.log(`═══ INDEXADO ═══`)
   console.log(`  ${aIndexar.length} fragmentos en ${msEmb} ms (${Math.round(msEmb / aIndexar.length)} ms cada uno)`)
   console.log(`  ${total.rows[0].n} vectores en total para este modelo · RSS ${Math.round(process.memoryUsage().rss / 1048576)} MB`)
+  } finally {
+    soltarTurno()
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

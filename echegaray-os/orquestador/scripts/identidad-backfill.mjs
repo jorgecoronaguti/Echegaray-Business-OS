@@ -32,6 +32,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
+import { toma } from '../lib/candado-base.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { padronDe, aliasesDe } from '../lib/ml/identidad.mjs'
@@ -68,6 +69,12 @@ export async function observacionesReales(google) {
 }
 
 async function main() {
+  // TURNO DE BASE ANTES DE ESCRIBIR. Este script hace UPDATE/INSERT sobre tablas que la suite de
+  // tests tambien toca; correr los dos a la vez le da a Postgres un «deadlock detected» y mata a
+  // uno de los dos al azar. El rojo que sale de ahi no es de nadie —el codigo esta bien y el test
+  // esta bien— y un rojo que no es de nadie entrena a ignorar los rojos.
+  const soltarTurno = await toma({ quien: 'identidad-backfill' })
+  try {
   const google = makeGoogleClient({ config: loadConfig() })
   console.log(APLICAR ? '═══ BACKFILL — APLICANDO ═══' : '═══ BACKFILL — CORRIDA EN SECO (no escribe nada) ═══')
 
@@ -150,6 +157,9 @@ async function main() {
 
   if (!APLICAR) console.log('\n═══ NADA SE ESCRIBIÓ. Repetir con --aplicar cuando la lista de arriba esté revisada. ═══')
   else console.log('\n═══ APLICADO ═══')
+  } finally {
+    soltarTurno()
+  }
 }
 
 const pct = (n, t) => (t ? `${((n / t) * 100).toFixed(1)}%` : '—')
