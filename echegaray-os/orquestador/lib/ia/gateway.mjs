@@ -38,6 +38,7 @@ import { registrarUso, avisarEstado } from './cliente.mjs'
 import { anthropic } from './proveedores/anthropic.mjs'
 import { huggingface } from './proveedores/huggingface.mjs'
 import { puedeSalir } from '../ml/politica.mjs'
+import { autorizado } from '../ml/autorizaciones.mjs'
 
 /** Cómo participa un proveedor no-Claude en una tarea. Es una escalera y no se saltean peldaños. */
 export const MODO = Object.freeze({
@@ -82,7 +83,12 @@ export function modoDe(tarea) {
  * @returns { cadena: [{proveedor, rol}], sombra: proveedor|null, porQue }
  */
 export function planDe({ tarea, dominio, permitidoExplicitamente = false, hfDisponible = true } = {}) {
-  const permiso = puedeSalir(dominio, 'huggingface', { permitidoExplicitamente })
+  // LA AUTORIZACIÓN DEL DUEÑO, DECLARADA UNA VEZ. `permitidoExplicitamente` sigue mandando cuando
+  // el caller la pasa —hay caminos que autorizan un caso puntual—, y si no, se consulta la lista
+  // que el dueño escribió en su archivo de configuración. Lo que no está en ninguna de las dos,
+  // no sale: sumar las dos fuentes es distinto de tener un interruptor global.
+  const permitido = permitidoExplicitamente || autorizado(dominio)
+  const permiso = puedeSalir(dominio, 'huggingface', { permitidoExplicitamente: permitido })
   const modo = modoDe(tarea)
 
   if (!hfDisponible) {
