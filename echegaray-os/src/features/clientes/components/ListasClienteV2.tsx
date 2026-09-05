@@ -68,7 +68,11 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
             </span>
           </span>
 
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {/* `overflow: hidden` NO es defensivo de más: todo lo de adentro tiene `flexShrink: 0`
+              —el punto, el estado, la barra, el porcentaje— y sin recorte la celda DESBORDA sobre
+              la columna del contratado. A 390 px se veía «94$246.149.261», con el % tapado por el
+              importe. Lo encontró la pasada visual mirando la captura, no el DOM. */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
             <span
               aria-hidden
               style={{
@@ -81,8 +85,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
             {o.avance_pct != null
               ? (
                   <>
+                    {/* La barra se ESCONDE en pantalla angosta, no se encoge. Es decorativa: el
+                        dato es el número, que se queda. Una barra de 20 px no dice nada y le roba
+                        el lugar al porcentaje, que sí dice. */}
                     <span
                       aria-hidden
+                      className="max-[560px]:hidden"
                       style={{ display: 'flex', height: 4, width: 70, borderRadius: 2, background: V.lineaFila, flexShrink: 0, marginLeft: 2, overflow: 'hidden' }}
                     >
                       <span style={{ width: `${Math.max(0, Math.min(100, o.avance_pct))}%`, background: V.grafito, borderRadius: 2 }} />

@@ -145,3 +145,32 @@ test('«Quitar el vínculo» aclara que el archivo sigue en Drive, al lado de la
   const docs = fuente('BloqueDocumentos.tsx')
   assert.match(docs, /No borra el archivo: vive en Drive y sigue ahí\./)
 })
+
+// ── EL DESBORDE DE LA CELDA DE ESTADO A 390 px ──────────────────────────────────────────────────
+//
+// La pasada visual del 05/09/2026 encontró, MIRANDO LA CAPTURA, que en la lista de obras el
+// porcentaje de avance se superponía con el monto contratado: «94$246.149.261», con el % tapado.
+//
+// La causa es de cascada, no de datos: la celda de ESTADO es un flex cuyos hijos —el punto, la
+// palabra, la barra y el porcentaje— tienen TODOS `flexShrink: 0`. Nada puede encogerse, así que a
+// 390 px el contenido desborda sobre la columna de al lado en vez de recortarse.
+//
+// Este test es estructural a propósito. No reemplaza a una captura —no puede—, pero sí impide que
+// el arreglo se revierta sin que nadie se entere, que es donde este defecto se vuelve a colar.
+
+test('la celda de estado RECORTA: sus hijos no se encogen y sin overflow desborda sobre el importe', () => {
+  const src = readFileSync(
+    join(DIR, 'ListasClienteV2.tsx'), 'utf8')
+  const celda = src.slice(src.indexOf("gap: 8, minWidth: 0"), src.indexOf('PUNTO_ESTADO['))
+  assert.match(celda, /overflow:\s*'hidden'/,
+    'la celda de estado dejó de recortar: a 390 px el avance se superpone con el contratado')
+})
+
+test('la barra de avance se ESCONDE en pantalla angosta; el número se queda', () => {
+  const src = readFileSync(join(DIR, 'ListasClienteV2.tsx'), 'utf8')
+  const barra = src.slice(src.indexOf('BARRA SÓLO SI EL VALOR'), src.indexOf('avance_pct} %'))
+  // La barra es decorativa: el dato es el número. Una barra de 20 px no dice nada y le roba el
+  // lugar al porcentaje, que sí dice.
+  assert.match(barra, /max-\[560px\]:hidden/, 'la barra dejó de esconderse en pantalla angosta')
+  assert.match(barra, /width: 70/, 'la barra perdió su ancho fijo de 70 px del handoff')
+})
