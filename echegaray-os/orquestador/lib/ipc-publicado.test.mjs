@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { IPC, ACUMULADOS_PUBLICADOS, acumulado, verificarAcumulado, faltantes } from './ipc-publicado.mjs'
+import { ACUMULADOS_PUBLICADOS, IPC, acumulado, verificarAcumulado, faltantes } from './ipc-publicado.mjs'
 
 test('la tabla del IPC reproduce los acumulados que publicó el INDEC', () => {
   // ESTE ES EL TEST QUE IMPORTA: si alguien transcribe mal un mes, el encadenado deja de dar el
@@ -12,7 +12,16 @@ test('la tabla del IPC reproduce los acumulados que publicó el INDEC', () => {
 test('detecta un mes transcripto mal', () => {
   const conDedazo = IPC.map((m) => (m.periodo === '2026-03' ? { ...m, variacion: 0.043 } : m))
   const rotos = verificarAcumulado(conDedazo)
-  assert.equal(rotos.length, 2, 'un error en marzo rompe el trimestre Y el semestre')
+  // SE CUENTA CONTRA LOS CONTROLES QUE INCLUYEN A MARZO, no contra un número fijo.
+  //
+  // Antes decía `rotos.length === 2` y se puso rojo el día que se agregó el control de julio —que
+  // también incluye a marzo, o sea que romperse era LO CORRECTO—. Un test atado a la cantidad de
+  // controles obliga a editarlo cada vez que se publica un mes nuevo, y editar un test por rutina
+  // es cómo se termina editándolo el día que de verdad estaba avisando algo.
+  const alcanzados = ACUMULADOS_PUBLICADOS.filter((c) => c.hasta >= '2026-03').length
+  assert.equal(rotos.length, alcanzados,
+    `un error en marzo tiene que romper los ${alcanzados} controles que lo incluyen`)
+  assert.ok(alcanzados >= 2, 'el control perdió cobertura: marzo entra en menos de dos acumulados')
 })
 
 test('el acumulado del trimestre da 9,4%', () => {
