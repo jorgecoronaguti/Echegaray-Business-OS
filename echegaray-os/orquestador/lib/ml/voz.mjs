@@ -62,12 +62,30 @@ export function interpretarParte(texto) {
 
   // Los nombres propios de un parte llegan sueltos («trabajaron Ochoa y Castillo»). Se detectan por
   // mayúscula inicial y se resuelven DESPUÉS contra el padrón: acá sólo se marcan como candidatos.
+  // ═══ UNA MAYÚSCULA NO ES UN NOMBRE: LA PRIMERA PALABRA DE CADA ORACIÓN TAMBIÉN LA LLEVA ═══
+  //
+  // Medido contra audio real: «Una de las variantes más sólidas» daba «Una» como persona, y «Las
+  // dependencias entre especies» daba «Las». Una lista negra de palabras no alcanza —el español
+  // tiene demasiadas— y el problema no es la palabra: es la POSICIÓN. Se descartan las que abren
+  // oración, salvo que vengan seguidas de otra mayúscula («Ochoa Martínez» sí, «Una de» no).
+  //
   // El patrón lleva las vocales acentuadas EN EL CUERPO, no sólo en la inicial: sin eso «Faltó» se
-  // parte en «Falt» y entra a la lista de personas como si fuera un apellido.
-  const NO_ES_NOMBRE = /^(hoy|ayer|mañana|falt|falt[óo]|faltaron|estuvimos|trabajaron|terminamos|termin[óo]|par[óo]|hubo|vino|llegó|lleg[óo])$/i
-  const personas = [...new Set(
-    (t.match(/\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/g) ?? []).filter((p) => !NO_ES_NOMBRE.test(p)),
-  )].map((nombre) => ({ nombre, norm: normalizar(nombre) }))
+  // parte en «Falt» y entra a la lista como si fuera un apellido.
+  const PALABRA = /[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}/g
+  const NO_ES_NOMBRE = /^(hoy|ayer|mañana|falt|falt[óo]|faltaron|estuvimos|trabajaron|terminamos|termin[óo]|par[óo]|hubo|vino|lleg[óo])$/i
+  const candidatos = []
+  for (const oracion of t.split(/(?<=[.!?])\s+|\n+/)) {
+    const enOracion = [...String(oracion).trim().matchAll(PALABRA)]
+    enOracion.forEach((m, i) => {
+      // La primera palabra de la oración sólo cuenta si la siguiente TAMBIÉN es mayúscula.
+      const abreOracion = m.index === 0
+      const siguePegada = enOracion[i + 1] && enOracion[i + 1].index === m.index + m[0].length + 1
+      if (abreOracion && !siguePegada) return
+      if (NO_ES_NOMBRE.test(m[0])) return
+      candidatos.push(m[0])
+    })
+  }
+  const personas = [...new Set(candidatos)].map((nombre) => ({ nombre, norm: normalizar(nombre) }))
 
   const frases = t.split(/[.;]|\by\b(?=\s+[a-z])/i).map((f) => f.trim()).filter(Boolean)
   const impedimentos = frases.filter((f) => RE_IMPEDIMENTO.test(f))

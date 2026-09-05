@@ -56,7 +56,7 @@ test('la carga del resumen contra la base real', { skip: !hayBase }, async (t) =
     await c.query('begin')
     // Mismo lock que el resto de los pg-tests que escriben tablas calientes: los serializa entre sí
     // y se libera solo con el rollback.
-    await c.query('select pg_advisory_xact_lock(20260828)')
+    await c.query('select pg_advisory_xact_lock(20260822)')
 
     await t.test('los índices únicos existen: sin ellos la idempotencia es una intención', async () => {
       const { rows } = await c.query(

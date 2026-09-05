@@ -135,6 +135,56 @@ export async function hfInferencia({
   throw ultimo ?? new ErrorHF('Hugging Face no contestó')
 }
 
+/**
+ * TRANSCRIBIR UN AUDIO EN HUGGING FACE. Manda los BYTES del archivo, sin decodificar.
+ *
+ * ═══ POR QUÉ ESTO EXISTE Y NO ALCANZA CON EL WHISPER LOCAL ═══
+ *
+ * `transformers.js` en Node NO decodifica audio: exige un Float32Array a 16 kHz y dice, textual,
+ * «AudioContext is not available in your environment». Esta VM no tiene ffmpeg, ni numpy, ni
+ * ningún decodificador de MP3 u Opus — y un mensaje de voz de Mattermost llega en Opus. O sea que
+ * el whisper local, que está implementado y probado, hoy no puede recibir un archivo real.
+ *
+ * El endpoint de Hugging Face acepta el archivo tal como viene y lo decodifica del otro lado. Eso
+ * convierte un bloqueo de infraestructura en una llamada de red.
+ *
+ * ═══ LA POLÍTICA SIGUE MANDANDO ═══
+ *
+ * Un parte de obra dictado nombra empleados y cantidades: no es público. Va con su `dominio` y la
+ * política decide, igual que todo lo demás. Para MEDIR el modelo se usa audio público, que no tiene
+ * nada de la empresa.
+ */
+export async function hfTranscribir({ audio, modelo = 'openai/whisper-large-v3', dominio,
+  contentType = 'audio/mpeg', idioma = 'es', permitidoExplicitamente = false, traceId = null, modulo = null } = {}) {
+  const tid = traceId ?? randomUUID()
+  const t0 = Date.now()
+  const permiso = puedeSalir(dominio, 'huggingface', { permitidoExplicitamente })
+  if (!permiso.permitido) {
+    registrarTraza({ traceId: tid, capacidad: 'transcribe', metodo: 'sin-resolver', proveedor: 'hf-router',
+      ms: 0, accion: 'descartar', sensibilidad: permiso.sensibilidad, modelo }, { modulo })
+    throw new ErrorHF(`la política no deja mandar este audio a Hugging Face: ${permiso.porQue}`)
+  }
+  const tk = token()
+  if (!tk) throw new ErrorHF('no hay token de Hugging Face configurado')
+
+  const res = await fetch(`https://router.huggingface.co/hf-inference/models/${modelo}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${tk}`, 'Content-Type': contentType },
+    body: audio,
+  })
+  const ms = Date.now() - t0
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    registrarTraza({ traceId: tid, capacidad: 'transcribe', metodo: 'sin-resolver', modelo,
+      proveedor: 'hf-router', ms, accion: 'descartar', sensibilidad: permiso.sensibilidad }, { modulo })
+    throw new ErrorHF(`Hugging Face respondió ${res.status}: ${t.slice(0, 160)}`, { estado: res.status })
+  }
+  const j = await res.json()
+  registrarTraza({ traceId: tid, capacidad: 'transcribe', metodo: 'hf-remoto', modelo,
+    proveedor: 'hf-router', ms, accion: 'aplicar', sensibilidad: permiso.sensibilidad }, { modulo })
+  return { texto: String(j.text ?? '').trim(), ms, modelo, traceId: tid, idioma }
+}
+
 /** Qué modelos publica el router para una tarea. Sirve para saber qué SE PUEDE pedir hoy, en vez de
  *  descubrirlo con un 404 en producción. */
 export async function modelosDisponibles({ tarea = null } = {}) {

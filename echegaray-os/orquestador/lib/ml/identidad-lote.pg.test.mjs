@@ -6,6 +6,17 @@
 //
 // TODO CORRE DENTRO DE UNA TRANSACCIÓN QUE TERMINA EN ROLLBACK. No queda una fila. Sin base se
 // saltea: un verde inventado es peor que un test que no corrió.
+//
+// ═══ EL NÚMERO DEL ADVISORY LOCK ES UNA LLAVE COMPARTIDA, NO UN IDENTIFICADOR ═══
+//
+// `pg_advisory_xact_lock(20260822)` es el mismo en TODOS los pg-tests del repo, y ésa es la razón
+// de que exista: los serializa ENTRE SÍ. `node --test` corre los archivos en paralelo, así que dos
+// tests que escriben tablas calientes se cruzan sí o sí.
+//
+// Estos tests nacieron con `20260904` —parecía razonable, es la fecha en que se escribieron— y con
+// eso no se serializaban con nadie. Resultado: `escritura-economica.pg.test.mjs` pedía un
+// AccessExclusiveLock mientras éstos tenían un RowShareLock, y Postgres mataba a uno de los dos.
+// El rojo aparecía en un archivo que nadie había tocado, tres corridas seguidas.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -27,7 +38,7 @@ test('la resolución queda escrita, con el texto ORIGINAL intacto', { skip: !hay
   const c = await getPool().connect()
   try {
     await c.query('begin')
-    await c.query('select pg_advisory_xact_lock(20260904)')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const escrito = 'Proveedor de Prueba Uno  S.R.L.'
     const ejecutar = (sql, params) => c.query(sql, params)
     const { porClave, metricas } = await resolverLote(
@@ -58,7 +69,7 @@ test('correrlo de nuevo NO escribe: la resolución vigente se reusa', { skip: !h
   const c = await getPool().connect()
   try {
     await c.query('begin')
-    await c.query('select pg_advisory_xact_lock(20260904)')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const consultas = [{ nombre: 'PROVEEDOR DE PRUEBA DOS', cuit: '30999999960' }]
     const opciones = { entidad: 'proveedor', fuente: 'pg-test-idempotencia', padron: PADRON,
       aliases: new Map(), usarEmbeddings: false, ejecutar: (sql, params) => c.query(sql, params) }
@@ -81,7 +92,7 @@ test('un texto escrito de dos formas guarda DOS filas y calcula UNA vez', { skip
   const c = await getPool().connect()
   try {
     await c.query('begin')
-    await c.query('select pg_advisory_xact_lock(20260904)')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const { metricas } = await resolverLote(
       [{ nombre: 'Proveedor de Prueba Uno S.R.L.', cuit: null },
        { nombre: 'PROVEEDOR DE PRUEBA UNO  SRL', cuit: null }],
