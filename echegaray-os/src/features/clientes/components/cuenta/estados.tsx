@@ -66,13 +66,25 @@ export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstad
   }
 }
 
-/** La celda ESTADO tal cual la dibuja el zip: ícono coloreado + texto en su gris. */
+/**
+ * LA CELDA ESTADO DE LAS DOS TABLAS DEL HANDOFF v4: texto en el color del estado, sin ícono.
+ *
+ * ═══ POR QUÉ SE FUE EL ÍCONO (05/09/2026) ═══
+ *
+ * El zip anterior dibujaba ícono coloreado + texto en gris. Los dos mockups de la entrega v4
+ * escriben el estado como TEXTO en el color del estado y nada más —`:513` de «Lo que faltaba» y
+ * `:804` de «una pantalla»—, y el motivo se ve en la captura: con siete estados, siete íconos
+ * distintos en una columna de 132px se leen como un semáforo y tapan la única palabra que
+ * distingue «aprobado por el cliente» de «en revisión del cliente».
+ *
+ * El rótulo va en minúscula, como en el mockup: es una celda de tabla, no un título.
+ */
 export function CeldaEstado({ estado }: { estado: EstadoCertificado | EstadoPago }) {
   const e = pintarEstado(estado)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: e.color, minWidth: 0 }}>
-      {e.icono}
-      <span style={{ fontSize: '11.5px', color: e.textoColor, whiteSpace: 'nowrap' }}>{e.texto}</span>
-    </div>
+    <span style={{
+      fontSize: '12.5px', color: e.color, minWidth: 0, overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    }}>{e.texto.toLocaleLowerCase('es-AR')}</span>
   )
 }
