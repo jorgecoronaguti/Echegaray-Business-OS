@@ -1,4 +1,3 @@
-
 //
 // ═══ NO HAY `cobrado_at`: LA FECHA DE COBRO ES `vence` ═══
 //
@@ -11,59 +10,55 @@
 // puntualidad perfecta para cualquier cliente). Se muestra «—», no un 0.
 'use client'
 
-// «CERTIFICADOS Y FACTURAS» (`28:172`–`28:332`).
+// LA TABLA DE CERTIFICADOS DEL HANDOFF v4 — «D1 · Panel del certificado» del README, dibujada en
+// `CRM · Lo que faltaba (cobranza, esquema, contacto).dc.html:51` y `:513`.
 //
-//   grilla   `minmax(0,1.7fr) 96px 104px 78px 116px 92px`, `gap:12px`
-//   filas    `minHeight:50px`, filo `#EFEEEA`, hover `background:#FFFFFF`
-//   elegida  `background:#FFFFFF` + `boxShadow:inset 3px 0 0 #FDC900`, y su primera celda corre 11px
-//   apagada  lo cobrado va en `#6B6B67`: sigue en la lista porque es la historia del cliente
+//   grilla   `minmax(190px,1.5fr) 96px 108px 116px 132px`, `gap:14px`
+//   columnas DOCUMENTO (número + obra · factura) · EMITIDO · VENCE · MONTO · ESTADO
+//   cabecera 10px, `letterSpacing:.06em`, `#91918B`, filo inferior `#D7D5CF`
+//   filas    `minHeight:54px`, separador `#F1F0EC` (el `hairline-soft` del handoff)
+//   elegida  `boxShadow: inset 2px 0 0 #FDC900`, SIN padding compensatorio
 //
-// ═══ LA COLUMNA GESTIÓN DICE LO QUE PASÓ, NO LO QUE PARECE ═══
+// ═══ POR QUÉ SE FUERON DOS COLUMNAS Y ENTRÓ UNA ═══
 //
-// El mockup dibuja ahí tres o cuatro íconos con `title` de gestión: «2 recordatorios y 1 llamada»,
-// «promesa de pago para el 28/08», «aviso previo leído por J. Sosa hoy». Ese historial de contacto
-// NO existe todavía como fuente en el OS —no hay tabla de recordatorios, promesas ni lecturas—, y
-// dibujar los íconos igual sería inventar una gestión que nadie hizo.
+// La tanda anterior dibujaba seis columnas: `minmax(0,1.7fr) 96px 104px 78px 116px 92px` con
+// REPARO y GESTIÓN, y sin EMITIDO. Las tres decisiones, medidas contra las 48 filas reales de
+// `certificado_cliente` el 05/09/2026:
 //
-// Se dibuja lo que SÍ es un hecho guardado: que hay factura emitida, que el cliente observó (con
-// su texto en el `title`) y que se cobró. El resto de los íconos aparece el día que su fuente
-// exista, no antes.
+//   · REPARO se fue. `reparo` está en NULL en las 48 filas: la columna era un guión de 78px de
+//     ancho en todas. El dato no se pierde —el panel lo dice con su palabra, «sin retención
+//     cargada», que es lo que una columna de guiones no puede decir—.
+//   · GESTIÓN se fue. Sus tres marcas ya están dichas en otro lado y mejor: la factura, en el
+//     segundo renglón del DOCUMENTO; la observación, en su banda del panel; el cobro, en ESTADO.
+//   · EMITIDO entró. `emitido_at` está cargado en las 48 filas, y sin él la única fecha visible
+//     era el vencimiento: no se podía leer el plazo que el contrato le da al cliente.
+//
+// ═══ EL FILO DE LA FILA ELEGIDA NO CORRE EL TEXTO ═══
+//
+// El `.dc.html` le suma `padding-left:11px` a la fila elegida y el README lo prohíbe con todas las
+// letras: «sin padding compensatorio (la fila no se desalinea de su cabecera)». Gana el README —se
+// ve en la captura del propio handoff que el número de la fila elegida queda corrido respecto de
+// su encabezado, que es exactamente el defecto que la regla nombra—.
 
-import { C, MONO, ROTULO_COL } from '../canon/tokens'
+import type { CSSProperties } from 'react'
+import { C, MONO } from '../canon/tokens'
 import { Ico, P } from '../canon/Iconos'
 import { TituloBloque, Vacio } from '../canon/Piezas'
-import { CeldaEstado } from './estados'
-import { diaMes, diasEntre, enMillones, montoM } from '../../services/cobranzaFormato'
+import { COLOR_ESTADO, ROTULO_ESTADO } from '../../services/propiedadesCertificado'
+import { diaMes, diasEntre, montoM } from '../../services/cobranzaFormato'
 import type { CertificadoCliente } from '../../types/cobranzas'
 
-const COLS = 'minmax(0,1.7fr) 96px 104px 78px 116px 92px'
+const COLS = 'minmax(190px,1.5fr) 96px 108px 116px 132px'
 
-/** El segundo renglón de la columna VENCE: «en 24 d», «20 d» en rojo, «cobrado a 34 d». */
-function plazo(d: CertificadoCliente, hoy: string): { texto: string; color: string } | null {
-  if (d.estado === 'cobrado') {
-    const tardanza = diasEntre(d.emitido_at, d.vence)
-    return tardanza == null ? null : { texto: `cobrado a ${tardanza} d`, color: C.tenue }
-  }
-  const dias = diasEntre(d.vence, hoy)
-  if (dias == null) return { texto: 'sin vencimiento', color: C.warn }
-  return dias > 0
-    ? { texto: `${dias} d`, color: C.neg }
-    : { texto: `en ${-dias} d`, color: C.tenue }
-}
+/** 190+96+108+116+132 y cuatro `gap:14px`. Debajo de esto la tabla scrollea por dentro. */
+const MIN_TABLA = 698
 
-function Gestion({ d }: { d: CertificadoCliente }) {
-  const marcas: { titulo: string; color: string; icono: React.ReactNode }[] = []
-  if (d.factura) marcas.push({ titulo: `Facturado · ${d.factura}`, color: C.tintaSuave, icono: <Ico d={P.documento} s={15} /> })
-  if (d.observacion) marcas.push({ titulo: `Observado: ${d.observacion}`, color: C.warn, icono: <Ico d={P.chat} s={15} /> })
-  if (d.estado === 'cobrado') marcas.push({ titulo: `Cobrado el ${diaMes(d.vence)}`, color: C.pos, icono: <Ico d={P.ok} s={15} /> })
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', justifyContent: 'flex-end' }}>
-      {marcas.map((m) => (
-        <span key={m.titulo} title={m.titulo} style={{ display: 'flex', color: m.color }}>{m.icono}</span>
-      ))}
-    </div>
-  )
-}
+/** El rótulo de columna de esta tanda: 10px `.06em` (`:51`), no el 9,5px de la tanda anterior. */
+const ROTULO: CSSProperties = { fontSize: '10px', color: C.tenue, letterSpacing: '.06em' }
+
+/** El segundo renglón del DOCUMENTO: `obra · factura`, y cada ausencia con su palabra. */
+const subtitulo = (d: CertificadoCliente): string =>
+  `${d.obra_nombre ?? 'sin obra asociada'} · ${d.factura ?? 'sin factura'}`
 
 export function TablaCertificados({ documentos, hoy, elegido, onElegir, filtrado }: {
   documentos: CertificadoCliente[]
@@ -87,75 +82,81 @@ export function TablaCertificados({ documentos, hoy, elegido, onElegir, filtrado
         }
       />
 
-      <div style={{
-        display: 'grid', gridTemplateColumns: COLS, gap: '12px', alignItems: 'end', height: '30px',
-        borderBottom: `1px solid ${C.borde}`,
-      }}>
-        <span style={ROTULO_COL}>DOCUMENTO</span>
-        <span style={ROTULO_COL}>VENCE</span>
-        <span style={{ ...ROTULO_COL, textAlign: 'right' }}>MONTO</span>
-        <span style={{ ...ROTULO_COL, textAlign: 'right' }}>REPARO</span>
-        <span style={ROTULO_COL}>ESTADO</span>
-        <span style={{ ...ROTULO_COL, textAlign: 'right' }}>GESTIÓN</span>
-      </div>
+      {/* ═══ LA TABLA SCROLLEA POR DENTRO; A 390 px NADA SE MONTA SOBRE LA COLUMNA VECINA ═══
 
-      {documentos.map((d) => {
-        const sel = elegido === d.id
-        const apagado = d.estado === 'cobrado'
-        const pl = plazo(d, hoy)
-        return (
-          <div
-            key={d.id} role="button" tabIndex={0} onClick={() => onElegir(d.id)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onElegir(d.id) } }}
-            data-testid={`fila-doc-${d.id}`} aria-current={sel ? 'true' : undefined}
-            style={{
-              display: 'grid', gridTemplateColumns: COLS, gap: '12px', alignItems: 'center',
-              minHeight: '50px', borderBottom: `1px solid ${C.bordeFila}`, cursor: 'pointer',
-              background: sel ? C.superficie : undefined,
-              boxShadow: sel ? `inset 3px 0 0 ${C.marca}` : undefined,
-            }}
-          >
-            <div style={{ minWidth: 0, paddingLeft: sel ? '11px' : undefined }}>
-              <div style={{
-                fontSize: '12.5px', fontWeight: sel ? 500 : 400,
-                color: apagado ? C.tintaSuave : C.tinta,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {d.numero}{d.factura ? ` · ${d.factura}` : ''}
-              </div>
-              <div style={{ fontSize: '11px', color: C.tenue, marginTop: '1px' }}>
-                {d.obra_nombre ?? 'sin obra asociada'}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontFamily: MONO, fontSize: '12px', color: apagado ? C.tintaSuave : C.tinta }}>
-                {diaMes(d.vence) ?? '—'}
-              </div>
-              {pl && (
-                <div style={{ fontFamily: MONO, fontSize: '11px', color: pl.color, marginTop: '1px' }}>
-                  {pl.texto}
-                </div>
-              )}
-            </div>
-
-            <span style={{
-              fontFamily: MONO, fontSize: '12.5px', textAlign: 'right',
-              color: apagado ? C.tintaSuave : C.tinta,
-            }}>{montoM(d.monto)}</span>
-
-            {d.reparo == null
-              ? <span style={{ fontSize: '11.5px', color: C.fantasma, textAlign: 'right' }}>—</span>
-              : <span style={{
-                  fontFamily: MONO, fontSize: '11.5px', textAlign: 'right',
-                  color: apagado ? C.tenue : C.tintaSuave,
-                }}>{enMillones(d.reparo)}</span>}
-
-            <CeldaEstado estado={d.estado} />
-            <Gestion d={d} />
+          La grilla del handoff son 698px de mínimo (la primera columna arranca en 190px y las
+          otras cuatro son fijas). Sin este envoltorio, a 390px las celdas se encimarían —el mismo
+          defecto que el 05/09 tapó el avance con el importe en la lista de obras—. `overflowX` no
+          dibuja nada mientras el contenido entra: en escritorio es un `div` de más. */}
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ minWidth: `${MIN_TABLA}px` }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: COLS, gap: '14px', padding: '0 0 8px',
+            borderBottom: `1px solid ${C.bordeFuerte}`,
+          }}>
+            <span style={ROTULO}>DOCUMENTO</span>
+            <span style={ROTULO}>EMITIDO</span>
+            <span style={ROTULO}>VENCE</span>
+            <span style={{ ...ROTULO, textAlign: 'right' }}>MONTO</span>
+            <span style={ROTULO}>ESTADO</span>
           </div>
-        )
-      })}
+
+          {documentos.map((d) => {
+            const sel = elegido === d.id
+            // El atraso pinta la fecha de rojo aunque el estado guardado no diga «vencido»: la
+            // fecha ya pasó, y esperar a que el sync mueva el estado es dejar de mostrar el atraso
+            // justo mientras dura.
+            const atraso = d.estado === 'cobrado' ? null : diasEntre(d.vence, hoy)
+            const vencido = atraso != null && atraso > 0
+            return (
+              <div
+                key={d.id} role="button" tabIndex={0} onClick={() => onElegir(d.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onElegir(d.id) } }}
+                data-testid={`fila-doc-${d.id}`} aria-current={sel ? 'true' : undefined}
+                style={{
+                  display: 'grid', gridTemplateColumns: COLS, gap: '14px', alignItems: 'center',
+                  minHeight: '54px', borderBottom: `1px solid ${C.bordeCelda}`, cursor: 'pointer',
+                  boxShadow: sel ? `inset 2px 0 0 ${C.marca}` : undefined,
+                }}
+              >
+                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{
+                    fontSize: '13px', fontWeight: 500, color: C.tinta,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{d.numero}</span>
+                  <span style={{
+                    fontSize: '11.5px', color: C.tenue,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{subtitulo(d)}</span>
+                </div>
+
+                <span style={{ fontFamily: MONO, fontSize: '12.5px', color: C.tintaSuave }}>
+                  {diaMes(d.emitido_at) ?? 'sin fecha'}
+                </span>
+
+                {/* Sin vencimiento no hay plazo que reclamar, y eso bloquea la cobranza: ámbar. */}
+                <span style={{
+                  fontFamily: MONO, fontSize: '12.5px',
+                  color: d.vence == null ? C.warn : vencido ? C.neg : C.tintaSuave,
+                }}>{diaMes(d.vence) ?? 'sin vencer'}</span>
+
+                <span style={{ fontFamily: MONO, fontSize: '13px', textAlign: 'right', color: C.tinta }}>
+                  {montoM(d.monto)}
+                </span>
+
+                {/* EL RÓTULO Y EL COLOR DE LOS SIETE ESTADOS SALEN DEL SERVICIO, que es donde se
+                    prueban con `node --test`: la tabla, el panel y el calendario no discrepan. */}
+                <span
+                  data-testid={`estado-${d.id}`}
+                  style={{ fontSize: '12.5px', color: COLOR_ESTADO[d.estado], whiteSpace: 'nowrap' }}
+                >
+                  {ROTULO_ESTADO[d.estado]}{d.estado === 'vencido' && vencido ? ` · ${atraso} d` : ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {documentos.length === 0 && (
         <Vacio testid="certificados-vacio">

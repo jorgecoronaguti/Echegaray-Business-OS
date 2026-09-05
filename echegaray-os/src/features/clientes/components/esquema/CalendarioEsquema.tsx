@@ -1,14 +1,22 @@
 'use client'
 
-// LA VISTA CALENDARIO DEL ESQUEMA (`32:293`–`32:345`).
+// LA VISTA CALENDARIO DEL ESQUEMA — handoff CRM v4, «CRM · Lo que faltaba (…).dc.html:201`–`:226`.
 //
 //   cabecera  dos cuadrados de 30px, mes 14px/600, y la pista «Arrastre un pago para cambiarle la fecha»
 //   tarjeta   blanca, borde `#E7E6E2`, radio 10, `overflow:hidden`
 //   encabezado grilla de 7, `background:#FAFAF8`, rótulos 9,5px `LUN`…`DOM`
-//   celda     `minHeight:104px; padding:8px`, filo derecho `#EFEEEA`; fin de semana y días de otro
+//   celda     `minHeight:104px; padding:8px`, filo derecho `#F1F0EC`; fin de semana y días de otro
 //             mes en `#FAFAF8` con el número en `#C4C2BC`
-//   hoy       `background:#FFFDF5` + `boxShadow:inset 0 0 0 2px #FDC900`
-//   pago      radio 6, `borderLeft:3px` del color del estado, `padding:6px 8px`, `cursor:grab`
+//   hoy       SÓLO `boxShadow:inset 0 0 0 2px #FDC900`, sin fondo
+//   pago      fondo BLANCO, `borderLeft:3px` del color del estado, hairline `#F1F0EC` en los otros
+//             tres lados, `borderRadius:0 6px 6px 0`, `padding:6px 8px`, `cursor:grab`
+//
+// ═══ LAS TARJETAS DEJARON DE TENER FONDO DE COLOR (05/09/2026) ═══
+//
+// Se pintaban con el tinte del estado (`#EFF5FF`, `#FDE2DE`, `#F1F9F4`…). Con dos o tres pagos en
+// una celda de 104px la grilla se volvía un mosaico, y el amarillo de «hoy» —que es lo único que
+// el handoff pinta— dejaba de destacarse. La v4 deja el color en un filo de 3px sobre blanco: el
+// estado se sigue leyendo y el mes vuelve a leerse como un mes.
 //
 // ARRASTRAR UN PAGO ES CAMBIARLE LA FECHA DE COBRO, o sea la columna Q de la pestaña Cobranzas. Por
 // eso el `drop` no es un adorno: dispara la misma escritura que el chip de fecha del listado, con
@@ -30,12 +38,13 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
-const PINTA: Record<EstadoPago, { fondo: string; filo: string; punteado?: boolean }> = {
-  a_vencer: { fondo: C.cursoFondo, filo: C.curso },
-  vencido: { fondo: C.negSuave, filo: C.neg },
-  cobrado: { fondo: C.posFondo, filo: C.pos },
-  retenido: { fondo: '#F2F1ED', filo: C.tenue },
-  previsto: { fondo: C.tenueFondo, filo: C.tenue, punteado: true },
+/** El filo de 3px de cada estado. `previsto` es el único punteado: todavía no hay certificado. */
+const PINTA: Record<EstadoPago, { filo: string; punteado?: boolean }> = {
+  a_vencer: { filo: C.curso },
+  vencido: { filo: C.neg },
+  cobrado: { filo: C.pos },
+  retenido: { filo: C.tenue },
+  previsto: { filo: C.tenue, punteado: true },
 }
 
 /** El tono de la marca de la tarjeta. El ámbar es «el cliente no está viendo esto y debería». */
@@ -113,10 +122,10 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, av
           ))}
         </div>
 
-        {grilla.map((semana, f) => (
+        {grilla.map((semana) => (
           <div key={semana[0].iso} style={{
             display: 'grid', gridTemplateColumns: 'repeat(7,1fr)',
-            borderBottom: f === grilla.length - 1 ? undefined : `1px solid ${C.bordeFila}`,
+            borderBottom: `1px solid ${C.bordeCelda}`,
           }}>
             {semana.map((dia, k) => {
               const esHoy = dia.iso === hoy
@@ -147,8 +156,10 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, av
                   data-testid={`dia-${dia.iso}`}
                   style={{
                     minHeight: '104px', padding: '8px',
-                    borderRight: k === 6 ? undefined : `1px solid ${C.bordeFila}`,
-                    background: esHoy ? C.marcaTenue : findeOFuera ? C.tenueFondo : undefined,
+                    borderRight: `1px solid ${C.bordeCelda}`,
+                    // HOY NO LLEVA FONDO: el recuadro amarillo es la marca, y un tinte detrás de
+                    // tarjetas blancas convertía el día en una mancha.
+                    background: esHoy ? undefined : findeOFuera ? C.tenueFondo : undefined,
                     boxShadow: esHoy ? `inset 0 0 0 2px ${C.marca}` : undefined,
                   }}
                 >
@@ -177,8 +188,10 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, av
                         data-testid={`pago-cal-${p.id}`}
                         title={fijo ? 'Cobrado: su fecha no se mueve' : 'Arrastrar para cambiar la fecha'}
                         style={{
-                          marginTop: '6px', borderRadius: '6px', background: pinta.fondo,
-                          border: pinta.punteado ? `1px dashed ${C.bordeFuerte}` : undefined,
+                          marginTop: '6px', borderRadius: '0 6px 6px 0', background: C.superficie,
+                          border: pinta.punteado
+                            ? `1px dashed ${C.bordeFuerte}`
+                            : `1px solid ${C.bordeCelda}`,
                           borderLeft: `3px solid ${pinta.filo}`, padding: '6px 8px',
                           cursor: fijo ? 'default' : 'grab',
                           outline: elegido === p.id ? `2px solid ${C.marca}` : undefined,
@@ -186,12 +199,10 @@ export function CalendarioEsquema({ pagos, hoy, elegido, onElegir, onCambiar, av
                         }}
                       >
                         <div style={{
-                          fontFamily: MONO, fontSize: '12.5px', fontWeight: 600,
-                          color: estado === 'previsto' ? C.tintaSuave : C.tinta,
+                          fontFamily: MONO, fontSize: '12.5px', fontWeight: 600, color: C.tinta,
                         }}>{montoM(p.monto)}</div>
                         <div style={{
-                          fontSize: '10.5px', marginTop: '1px',
-                          color: estado === 'previsto' ? C.tintaSuave : C.tintaMedia,
+                          fontSize: '10.5px', marginTop: '1px', color: C.tintaSuave,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{p.concepto}</div>
                         {/* TRES AUSENCIAS DISTINTAS, TRES FRASES DISTINTAS. La regla vive en

@@ -122,7 +122,7 @@ export async function getNombresResueltos(
 ): Promise<ServiceResult<NombreResuelto[]>> {
   const { data, error } = await supabase
     .from('proveedor_nombre_resuelto')
-    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
+    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id, ultima_compra')
     .order('comprobantes', { ascending: false })
     .limit(limite)
   if (error) return { data: null, error: error.message }
@@ -200,6 +200,12 @@ export interface CompradoProveedor {
   comprobantes: number
   /** En pesos, histórico. Nunca 0 por ausencia: un proveedor sin filas no está en el mapa. */
   total: number
+  /**
+   * La compra fechada más reciente, en ISO. Un proveedor llega acá con VARIOS nombres de Compras
+   * («CORRALON PROGRESO», «Corralon Progreso SRL»): la última compra del proveedor es el máximo
+   * entre todos ellos, no la del primer nombre que aparezca.
+   */
+  ultima: string | null
 }
 
 /** El agrupado, separado de la consulta para poder probarlo sin base. */
@@ -209,10 +215,13 @@ export function agruparComprado(filas: NombreResuelto[]): Map<string, CompradoPr
     // `no_es_proveedor` marca un texto que NO es nadie: sumarlo le regalaría compras a un
     // proveedor que la resolución justamente descartó.
     if (!f.proveedor_id || f.estado !== 'vinculado') continue
-    const previo = mapa.get(f.proveedor_id) ?? { comprobantes: 0, total: 0 }
+    const previo = mapa.get(f.proveedor_id) ?? { comprobantes: 0, total: 0, ultima: null }
     mapa.set(f.proveedor_id, {
       comprobantes: previo.comprobantes + Number(f.comprobantes ?? 0),
       total: previo.total + Number(f.total ?? 0),
+      // MÁXIMO, no «el último que pasó». Las fechas vienen en ISO `YYYY-MM-DD`, que ordena igual
+      // como texto que como fecha; comparar así evita construir un `Date` por fila.
+      ultima: (f.ultima_compra ?? '') > (previo.ultima ?? '') ? f.ultima_compra : previo.ultima,
     })
   }
   return mapa
@@ -223,7 +232,7 @@ export async function getResolucionCartera(
 ): Promise<ServiceResult<NombreResuelto[]>> {
   const { data, error } = await supabase
     .from('proveedor_nombre_resuelto')
-    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
+    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id, ultima_compra')
     .not('proveedor_id', 'is', null)
   // UN ERROR DE LECTURA NO ES UNA LISTA VACÍA. Vacío se dibuja como «a ninguno se le compró nada»;
   // el error se dice y la columna queda sin afirmar nada.

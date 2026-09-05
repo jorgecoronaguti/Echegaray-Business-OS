@@ -17,6 +17,7 @@ import type { NombreResuelto, Proveedor } from '../types/index.ts'
 const n = (nombre_norm: string, comprobantes: number, total: number, via: NombreResuelto['via']): NombreResuelto => ({
   nombre_norm, comprobantes, total, estado: 'vinculado', proveedor_id: 'p1',
   proveedor_nombre: 'Corralón del Centro', via, alias_id: via === 'resolucion_manual' ? 'a1' : null,
+  ultima_compra: null,
 })
 
 test('sin nombres vinculados, lo comprado es una AUSENCIA y no un cero', () => {
@@ -68,9 +69,10 @@ const cartera = (id: string, cuit: string | null): Proveedor => ({
 const resuelto = (
   proveedor_id: string | null, comprobantes: number, total: number,
   estado: NombreResuelto['estado'] = 'vinculado',
+  ultima_compra: string | null = null,
 ): NombreResuelto => ({
   nombre_norm: `${proveedor_id}-${comprobantes}`, comprobantes, total, estado,
-  proveedor_id, proveedor_nombre: null, via: 'exacto', alias_id: null,
+  proveedor_id, proveedor_nombre: null, via: 'exacto', alias_id: null, ultima_compra,
 })
 
 test('agrupar lo comprado NO le suma a un proveedor los textos marcados «no es proveedor»', () => {
@@ -80,8 +82,53 @@ test('agrupar lo comprado NO le suma a un proveedor los textos marcados «no es 
     resuelto('p1', 9, 9_000_000, 'no_es_proveedor'),
     resuelto(null, 4, 400),
   ])
-  assert.deepEqual(mapa.get('p1'), { comprobantes: 5, total: 1_500 })
+  assert.deepEqual(mapa.get('p1'), { comprobantes: 5, total: 1_500, ultima: null })
   assert.equal(mapa.size, 1)
+})
+
+test('la última compra es el MÁXIMO entre los nombres, no la del último que pasó', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Un proveedor llega acá con VARIOS nombres de Compras —«CORRALON PROGRESO», «Corralon Progreso
+  // SRL», «CORRALÓN PROGRESO S.R.L.»—, y cada uno trae su propia fecha máxima. Quedarse con la del
+  // último que aparece en el arreglo es quedarse con la de un nombre viejo que ya no se usa, y la
+  // pantalla diría que a un proveedor activo no se le compra desde marzo.
+  //
+  // El orden del arreglo lo decide la consulta (`order by comprobantes desc`), así que el nombre
+  // MÁS usado llega primero y suele ser el que tiene la fecha más nueva — o sea que el defecto
+  // pasaría desapercibido justo en los proveedores grandes y aparecería en los chicos.
+  const mapa = agruparComprado([
+    resuelto('p1', 9, 100, 'vinculado', '2026-03-10'),
+    resuelto('p1', 2, 100, 'vinculado', '2026-09-01'),
+    resuelto('p1', 1, 100, 'vinculado', '2026-01-05'),
+  ])
+  assert.equal(mapa.get('p1')?.ultima, '2026-09-01')
+})
+
+test('un nombre sin fecha no le borra al proveedor la fecha que ya tenía', () => {
+  // `null` es «este nombre no tiene ninguna compra fechada», no «este proveedor no tiene fecha».
+  // Un `Math.max` ingenuo o una asignación directa lo convertirían en lo segundo.
+  const conNull = agruparComprado([
+    resuelto('p1', 5, 100, 'vinculado', '2026-08-20'),
+    resuelto('p1', 1, 100, 'vinculado', null),
+  ])
+  assert.equal(conNull.get('p1')?.ultima, '2026-08-20')
+  // Y al revés: el `null` primero tampoco gana.
+  const nullPrimero = agruparComprado([
+    resuelto('p1', 5, 100, 'vinculado', null),
+    resuelto('p1', 1, 100, 'vinculado', '2026-08-20'),
+  ])
+  assert.equal(nullPrimero.get('p1')?.ultima, '2026-08-20')
+})
+
+test('un texto «no es proveedor» tampoco le presta su fecha', () => {
+  // Mismo criterio que el importe: si la resolución descartó el texto, su fecha tampoco cuenta.
+  // Una fecha reciente de un texto descartado haría parecer activo a un proveedor que no lo está.
+  const mapa = agruparComprado([
+    resuelto('p1', 5, 100, 'vinculado', '2026-02-01'),
+    resuelto('p1', 5, 100, 'no_es_proveedor', '2026-09-01'),
+  ])
+  assert.equal(mapa.get('p1')?.ultima, '2026-02-01')
 })
 
 test('un proveedor sin compras NO entra al mapa: la tabla escribe ausencia, no cero', () => {

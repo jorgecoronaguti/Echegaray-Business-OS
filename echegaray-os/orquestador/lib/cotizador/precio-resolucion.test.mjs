@@ -257,16 +257,76 @@ test('todo precio resuelto lleva los ocho campos que el programa exige', () => {
   for (const campo of ['recurso', 'valor', 'moneda', 'fuente', 'fecha', 'vigencia', 'evidencia', 'provenance']) {
     assert.ok(p[campo] !== undefined && p[campo] !== null, `falta «${campo}»`)
   }
-  // Sin materialidad conocida la tolerancia es el piso de ignorancia (5%) y el IPC real del INDEC
-  // da ~2,63%/mes: 30 × 5% ÷ 2,63% = 57 días. Pero el IPC publicado llega a 2026-06 y hoy es el
-  // 30/08: hay ~2 meses sin medir, así que la vigencia se recorta a 43. Que este número sea MENOR
-  // que 57 es la prueba de que la guarda del índice atrasado está aplicada y no sólo declarada.
-  assert.equal(p.vigencia.origenDeriva, 'IPC_INDEC_ATRASADO')
-  assert.ok(p.vigencia.dias < 57, `sin el recorte por atraso daría 57; dio ${p.vigencia.dias}`)
-  assert.equal(p.vigencia.dias, 43)
-  assert.equal(p.vigencia.venceEl, '2026-10-07', 'la vigencia dice HASTA CUÁNDO, no sólo cuántos días')
   assert.equal(p.evidencia.fila, 7)
   assert.equal(p.provenance.decididoEn, '2026-08-30')
+  // LA VIGENCIA DICE HASTA CUÁNDO, no sólo cuántos días — y las dos formas tienen que decir lo
+  // mismo. Se comprueba la COHERENCIA entre `dias` y `venceEl`, no una fecha clavada: el número de
+  // días sale del IPC publicado, y clavarlo acá ataba este test al calendario del INDEC.
+  //
+  // EL ANCLA ES `observadoEn`, NO HOY, y eso importa: un precio observado el 25/08 con 51 días de
+  // vigencia vence el 15/10, no el 20/10. Contar desde hoy le regalaría al precio los días que ya
+  // vivió — que es precisamente el error que una vigencia existe para no cometer.
+  const vence = new Date(`${p.vigencia.venceEl}T00:00:00Z`)
+  const desde = new Date('2026-08-25T00:00:00Z')
+  assert.equal(Math.round((vence - desde) / 86_400_000), p.vigencia.dias)
+})
+
+// ── EL RECORTE POR ÍNDICE ATRASADO, MEDIDO SIN DEPENDER DE CUÁNDO PUBLIQUE EL INDEC ─────────────
+//
+// ═══ POR QUÉ ESTE TEST SE SEPARÓ, Y POR QUÉ SE ROMPIÓ ═══
+//
+// Estas tres aserciones vivían colgadas del test de los ocho campos, con `dias === 43` y
+// `venceEl === '2026-10-07'` escritos a mano. Los dos números salían de la tabla REAL del IPC leída
+// con un `hoy` FIJO: mientras la tabla llegaba hasta 2026-06 había ~2 meses sin medir y la vigencia
+// se recortaba a 43 días.
+//
+// El 05/09/2026 se cargó julio del INDEC —un dato real, verificado contra el PDF oficial— y el test
+// se puso rojo: 51 en vez de 43. NO se había roto la regla: la regla funcionó. Con un mes menos de
+// atraso el recorte es menor y el precio vale MÁS días, que es exactamente lo que la guarda tiene
+// que hacer. Lo que estaba mal era el test, que medía el calendario de publicación en vez de la
+// regla, y por lo tanto se iba a poner rojo TODOS LOS MESES para siempre.
+//
+// Ahora la tabla se inyecta. Los números son deterministas y ningún dato nuevo del INDEC los mueve.
+
+import { vigenciaDerivada, derivaDelIPC } from './vigencia.mjs'
+
+const IPC_HASTA_JUNIO = [
+  { periodo: '2026-01', variacion: 0.026 }, { periodo: '2026-02', variacion: 0.026 },
+  { periodo: '2026-03', variacion: 0.026 }, { periodo: '2026-04', variacion: 0.026 },
+  { periodo: '2026-05', variacion: 0.026 }, { periodo: '2026-06', variacion: 0.026 },
+]
+const IPC_HASTA_JULIO = [...IPC_HASTA_JUNIO, { periodo: '2026-07', variacion: 0.026 }]
+
+test('un IPC más atrasado recorta MÁS la vigencia — y el recorte existe', () => {
+  const dias = (tabla) => vigenciaDerivada({ tipo: 'material', familia: 'MATERIAL', tablaIpc: tabla, hoy: HOY }).dias
+  const conJunio = dias(IPC_HASTA_JUNIO)
+  const conJulio = dias(IPC_HASTA_JULIO)
+  // MISMA deriva mensual en las dos tablas (2,6% en todos los meses): lo único que cambia es cuánto
+  // hace que se publicó. Si la guarda no estuviera aplicada, los dos números serían idénticos.
+  assert.ok(conJulio > conJunio, `sin la guarda del índice atrasado los dos darían igual: ${conJunio} y ${conJulio}`)
+  assert.equal(derivaDelIPC({ tabla: IPC_HASTA_JUNIO, hoy: HOY }).origen, 'IPC_INDEC_ATRASADO')
+})
+
+test('el recorte es proporcional al atraso, no una constante', () => {
+  // N meses medidos sobre N+M meses que la tasa pretende describir. Con 6 meses de ventana y 2 de
+  // atraso: 6/8 = 0,75. Con 1 de atraso sobre 7 de ventana: 7/8 = 0,875. Los dos son la MISMA
+  // fórmula, y ninguno es un número escrito a mano.
+  const junio = derivaDelIPC({ tabla: IPC_HASTA_JUNIO, hoy: HOY })
+  const julio = derivaDelIPC({ tabla: IPC_HASTA_JULIO, hoy: HOY })
+  assert.ok(junio.factorFrescura < julio.factorFrescura)
+  assert.ok(junio.factorFrescura < 1 && julio.factorFrescura < 1, 'ninguna de las dos tablas está al día al 30/08')
+  // Y el motivo se ESCRIBE: una vigencia recortada sin decir por qué es un número que nadie audita.
+  assert.match(junio.porQue, /meses posteriores sin medir/)
+})
+
+test('con la tabla al día NO se recorta: el calendario normal no es un defecto', () => {
+  // El INDEC publica el mes cerrado a mediados del siguiente. Recortar por ese medio mes castigaría
+  // el funcionamiento normal y volvería el aviso ruido de fondo — y entonces nadie lo miraría el día
+  // que la tabla SÍ se congele.
+  const alDia = [...IPC_HASTA_JULIO, { periodo: '2026-08', variacion: 0.026 }]
+  const d = derivaDelIPC({ tabla: alDia, hoy: HOY })
+  assert.equal(d.origen, 'IPC_INDEC')
+  assert.equal(d.factorFrescura, 1)
 })
 
 test('compararFuentes · dos monedas distintas no se comparan sin tipo de cambio', () => {

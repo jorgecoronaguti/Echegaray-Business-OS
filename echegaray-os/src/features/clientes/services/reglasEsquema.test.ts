@@ -238,3 +238,25 @@ test('un motivo en blanco queda NULL, no como cadena vacía', () => {
   assert.equal(nuevaReprogramacion({ de: null, a: '2026-09-15', at: 'x', motivo: '   ' }).motivo, null)
   assert.equal(nuevaReprogramacion({ de: null, a: '2026-09-15', at: 'x', motivo: ' tarde ' }).motivo, 'tarde')
 })
+
+test('ninguna fila del calendario es una semana entera de días ajenos', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // El handoff describe la regla como «se construye mientras el LUNES de la semana siga cayendo
+  // dentro del mes». Una grilla de seis filas fijas —o un `+1` de más en el cálculo— agrega una
+  // séptima semana con siete días del mes siguiente: 104px de alto por columna de calendario
+  // vacío, y un pago del mes que viene dibujado como si fuera de éste.
+  //
+  // Se barren 48 meses en vez de uno: el caso malo aparece sólo cuando el mes empieza domingo o
+  // tiene 31 días, y probar septiembre de 2026 no lo toca nunca.
+  for (let anio = 2024; anio <= 2027; anio++) {
+    for (let mes = 1; mes <= 12; mes++) {
+      const g = grillaDelMes(anio, mes)
+      const ajenas = g.filter((semana) => semana.every((d) => !d.delMes))
+      assert.deepEqual(ajenas, [], `${anio}-${mes}: hay una fila sin ningún día del mes`)
+      // Y ninguna fila puede faltar: los días del mes tienen que estar todos dibujados.
+      const delMes = g.flat().filter((d) => d.delMes).length
+      assert.equal(delMes, new Date(Date.UTC(anio, mes, 0)).getUTCDate(), `${anio}-${mes}: faltan días`)
+    }
+  }
+})

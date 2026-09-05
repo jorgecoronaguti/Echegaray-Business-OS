@@ -195,7 +195,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
           Acá había un bloque «Lo que pide trabajo» con dos filas —proveedores sin CUIT, nombres de
           Compras sin resolver— antes de la lista. Era el criterio 1 del patrón v2, y la v4 lo
           revierte para las pantallas de área con un motivo concreto: la banda decía en un renglón
-          lo que la fila ya dice en su propia celda (el CUIT en ámbar con su verbo «Cargar CUIT →»)
+          lo que la fila ya dice en su propia celda (el CUIT en ámbar, que ES el enlace que abre el
+          formulario, con el ⚠ al lado del nombre)
           y lo que el recorte «Sin CUIT» ya aísla de un clic. Contarlo tres veces no lo hace más
           urgente: empuja la lista —que es a lo que se entra— fuera de la primera pantalla.
 
