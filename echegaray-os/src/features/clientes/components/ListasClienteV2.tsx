@@ -45,12 +45,49 @@ const COLOR_ESTADO_OBRA: Record<string, string> = {
 // `viewport − 393` (20+20 de `CuerpoDeFicha` y 300+24+1+28 del costado), así que la grilla exacta
 // entra a partir de 1183px de viewport. Por debajo se dibuja la misma lista con las pistas
 // elásticas y la mitad del aire: no se esconde ninguna columna porque ninguna es decorativa.
+//
+// ═══ A 390px NO ALCANZA PARA CINCO COLUMNAS, Y EL NOMBRE NO SE NEGOCIA ═══
+//
+// Medido el 05/09/2026 sobre la captura: con las cinco pistas elásticas a 390px, el nombre de la
+// obra quedaba en 48px y se leía «B..», «L..», «P..». Una fila que no se puede identificar no sirve
+// para nada, aunque no desborde. Debajo de 560px se ESCONDE AVANCE —de las tres columnas de estado
+// es la que menos decide y la de texto más largo— y la fila queda en OBRA · ESTADO · CONTRATADO,
+// que es la pregunta de un teléfono: qué obras tiene y por cuánto.
 const COLS_OBRAS
-  = 'gap-[14px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_64px_minmax(0,120px)_28px]'
+  = 'gap-[10px] grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
+  // 90px y no 72: «sin cronograma» a 11,5px mide 84px y en 72 se cortaba en «sin cronogr…»
+  // (medido en la captura de 900px). La pista del handoff ya son 90; acá se respeta desde el
+  // primer escalón.
+  + ' min-[560px]:gap-[14px] min-[560px]:grid-cols-[minmax(0,1.5fr)_minmax(0,90px)_90px_minmax(0,120px)_28px]'
   + ' min-[1200px]:gap-[28px] min-[1200px]:grid-cols-[minmax(240px,1.8fr)_150px_90px_170px_28px]'
+
+/** Lo que se esconde a 390px. Nunca el nombre ni el importe. */
+const SOLO_ANCHO = 'max-[559px]:hidden'
+
+// EL RESPIRO DE LA DERECHA A 390px. En la pantalla ancha lo da la pista de 28px del menú; cuando esa
+// pista se esconde, el importe queda pegado al borde y se lee como si estuviera cortado.
+const AIRE_DERECHO = 'max-[559px]:pr-4'
 
 /** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
 const SANGRIA = 16
+
+/**
+ * EL AVANCE, DICHO EN 90px.
+ *
+ * Sin cronograma no hay 0 %: no hay avance, y se dice con palabras. Las palabras tienen que ENTRAR
+ * en la pista —«sin avance cargado» se cortaba en «sin avance car…» (medido en la captura del
+ * 05/09/2026)—, así que la frase corta va en la celda y la larga en el `title`. «sin medir» es,
+ * además, la palabra del propio handoff (`dc.html:896`).
+ */
+function avanceDeObra(o: ObraPanel): { texto: string; medido: boolean; ayuda: string } {
+  if (o.avance_pct != null) {
+    return { texto: `${o.avance_pct} %`, medido: true, ayuda: 'Avance físico cargado en el cronograma' }
+  }
+  if (o.n_actividades) {
+    return { texto: 'sin medir', medido: false, ayuda: 'Tiene cronograma y todavía nadie le cargó avance' }
+  }
+  return { texto: 'sin cronograma', medido: false, ayuda: 'Sin cronograma no hay contra qué medir el avance' }
+}
 
 /** OBRA · ESTADO · AVANCE · CONTRATADO · [acciones]. `dc.html:113-135`. */
 export function ObrasDelCliente({ obras, veEconomia, vacio }: {
@@ -61,12 +98,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
 }) {
   return (
     <div data-testid="obras-del-cliente">
-      <div className={`grid ${COLS_OBRAS}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
+      <div className={`grid ${COLS_OBRAS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Obra</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <RotuloCol derecha>Avance</RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
         <RotuloCol derecha>{veEconomia ? 'Contratado' : 'Etapa'}</RotuloCol>
-        <RotuloCol />
+        <span className={SOLO_ANCHO} />
       </div>
 
       {obras.length === 0 && (
@@ -75,10 +112,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
         </p>
       )}
 
-      {obras.map((o) => (
+      {obras.map((o) => {
+        const avance = avanceDeObra(o)
+        return (
         <Link
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
-          className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} hover:bg-[#F2F1ED]`}
+          className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
           style={{
             height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
@@ -108,28 +147,20 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
             {o.estado}
           </span>
 
-          {/* AVANCE — SIN CRONOGRAMA NO HAY 0 %. La ausencia se dice con palabras y en apagado: no
+          {/* AVANCE — SIN CRONOGRAMA NO HAY 0 %. La ausencia se dice con palabras y en tenue: no
               bloquea nada, sólo todavía no se midió. */}
-          {o.avance_pct != null
-            ? (
-                <span
-                  className="font-mono tabular-nums"
-                  style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
-                  data-testid="avance-obra-cliente"
-                >
-                  {o.avance_pct} %
-                </span>
-              )
-            : (
-                <span
-                  className="truncate"
-                  title={o.n_actividades ? 'sin avance cargado' : 'sin cronograma'}
-                  style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}
-                  data-testid="avance-obra-cliente"
-                >
-                  {o.n_actividades ? 'sin avance cargado' : 'sin cronograma'}
-                </span>
-              )}
+          <span
+            data-testid="avance-obra-cliente"
+            title={avance.ayuda}
+            className={`truncate ${SOLO_ANCHO} ${avance.medido ? 'font-mono tabular-nums' : ''}`}
+            style={{
+              fontSize: avance.medido ? '12px' : '11.5px',
+              color: avance.medido ? V.tintaSuave : V.tenue,
+              textAlign: 'right',
+            }}
+          >
+            {avance.texto}
+          </span>
 
           {veEconomia
             ? (
@@ -150,9 +181,10 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
               ficha no hay ninguna acción de fila cableada para una obra —ni quitar, ni archivar: se
               archiva desde la obra—. Dibujar un `···` que sólo repite el enlace de la fila sería
               inventar una capacidad; reservar la pista es lo que mantiene la grilla exacta. */}
-          <span aria-hidden />
+          <span aria-hidden className={SOLO_ANCHO} />
         </Link>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -177,7 +209,9 @@ export interface PresupuestoDeFicha {
  * puesto. Por eso su breakpoint es más alto que el de Obras: es la lista más ancha de la ficha.
  */
 const COLS_PRES
-  = 'gap-[14px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_44px_minmax(0,110px)_minmax(0,1fr)_28px]'
+  = 'gap-[10px] grid-cols-[minmax(0,1fr)_58px_minmax(0,110px)]'
+  + ' min-[560px]:gap-[14px]'
+  + ' min-[560px]:grid-cols-[minmax(0,1.4fr)_minmax(0,90px)_44px_minmax(0,110px)_minmax(0,1fr)_28px]'
   + ' min-[1320px]:gap-[28px]'
   + ' min-[1320px]:grid-cols-[minmax(210px,1.8fr)_170px_60px_160px_minmax(150px,1fr)_28px]'
 
@@ -216,13 +250,13 @@ function motivoODestino(p: PresupuestoDeFicha): { texto: string; color: string }
 export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] }) {
   return (
     <div data-testid="presupuestos-del-cliente">
-      <div className={`grid ${COLS_PRES}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
+      <div className={`grid ${COLS_PRES} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Presupuesto</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <RotuloCol derecha>Rev.</RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Rev.</RotuloCol></span>
         <RotuloCol derecha>Precio de venta</RotuloCol>
-        <RotuloCol>Motivo / destino</RotuloCol>
-        <RotuloCol />
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Motivo / destino</RotuloCol></span>
+        <span className={SOLO_ANCHO} />
       </div>
 
       {filas.length === 0 && (
@@ -237,7 +271,7 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
           <Link
             key={p.presupuesto_id} href={`/presupuestos/${p.presupuesto_id}`} prefetch={false}
             data-testid="fila-presupuesto"
-            className={`grid items-center ${CAJA_CONTENIDO} ${COLS_PRES} hover:bg-[#F2F1ED]`}
+            className={`grid items-center ${CAJA_CONTENIDO} ${COLS_PRES} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
             style={{ height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}` }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
@@ -255,7 +289,7 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
 
             {/* REV. — «—» es «no tiene revisiones», que es distinto de «revisión 0». */}
             <span
-              className="font-mono tabular-nums"
+              className={`font-mono tabular-nums ${SOLO_ANCHO}`}
               style={{ fontSize: '12px', color: p.revision == null ? V.inerte : V.apagado, textAlign: 'right' }}
               data-testid="rev-presupuesto"
             >
@@ -271,7 +305,7 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
             </span>
 
             <span
-              className="truncate"
+              className={`truncate ${SOLO_ANCHO}`}
               title={destino.texto}
               data-testid="destino-presupuesto"
               style={{ fontSize: '12px', color: destino.color }}
@@ -280,7 +314,7 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
             </span>
 
             {/* Misma pista vacía que en Obras, y por el mismo motivo: no hay acción de fila. */}
-            <span aria-hidden />
+            <span aria-hidden className={SOLO_ANCHO} />
           </Link>
         )
       })}

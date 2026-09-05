@@ -66,11 +66,18 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.match(codigoPagina(), /falta: enCurso\.length \? 'sin monto cargado' : 'sin obra en curso'/)
 })
 
-test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras', () => {
+test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras que ENTRAN', () => {
+  // Las tres ramas de `avanceDeObra`, y las dos ausencias distintas: sin cronograma no hay contra
+  // qué medir; con cronograma y sin carga, falta que alguien mida. Las frases son cortas a
+  // propósito: «sin avance cargado» se cortaba en «sin avance car…» dentro de la pista de 90px
+  // (medido en la captura del 05/09/2026), y una ausencia truncada no dice nada.
   const src = codigoListas()
   assert.match(src, /o\.avance_pct != null/)
-  assert.match(src, /'sin avance cargado'/)
+  assert.match(src, /'sin medir'/)
   assert.match(src, /'sin cronograma'/)
+  for (const frase of ['sin medir', 'sin cronograma']) {
+    assert.ok(frase.length <= 14, `«${frase}» no entra en la pista de 90 px`)
+  }
 })
 
 test('un presupuesto sin cascada cerrada no vale $ 0', () => {
@@ -126,6 +133,25 @@ test('el error de la FUENTE se muestra al lado de la acción, no en un toast', (
   const boton = sinComentarios(fuente('BotonDeFila.tsx'))
   assert.match(boton, /setError\(r\.error\)/, 'el error dejó de ser el de la base')
   assert.doesNotMatch(boton, /toast/i)
+})
+
+test('la acción de fila viaja ATADA, nunca envuelta en una arrow', () => {
+  // ═══ EL DEFECTO QUE ATRAPA, MEDIDO EN LA APP VIVA EL 05/09/2026 ═══
+  //
+  // Con `ejecutar={() => borrar(contactoId)}` abrir el `···` de un contacto —o de un documento—
+  // cambiaba la ficha entera por la pantalla de error: «Functions cannot be passed directly to
+  // Client Components unless you explicitly expose it by marking it with "use server"». `BotonDeFila`
+  // es de cliente y la arrow se crea en un componente de servidor: no se puede serializar.
+  //
+  // Probado por mutación contra el servidor corriendo: con la arrow, el botón «Quitar el vínculo» no
+  // existe en la página (0 nodos) porque la página es el error; con `.bind`, existe (1).
+  //
+  // Compila, pasa el lint y pasa el `build`. Sólo se ve abriendo el menú.
+  const acciones = sinComentarios(fuente('AccionesContacto.tsx'))
+  assert.doesNotMatch(acciones, /ejecutar=\{\s*\(\)\s*=>/,
+    'la acción volvió a cruzar la frontera como arrow: la ficha se cae al abrir el menú')
+  assert.match(acciones, /ejecutar=\{borrar\.bind\(null, contactoId\)\}/)
+  assert.match(acciones, /ejecutar=\{desvincular\.bind\(null, driveFileId\)\}/)
 })
 
 test('un contacto sin mail lo dice en ÁMBAR: sin mail no se le manda nada', () => {
@@ -224,7 +250,7 @@ test('Documentos es la tabla del handoff y no la `<table>` del canon viejo', () 
   assert.match(docs, /<RotuloCol>Archivo<\/RotuloCol>/)
   assert.match(docs, /<RotuloCol>Para qué sirve<\/RotuloCol>/)
   assert.match(docs, /<RotuloCol>Lo colgó<\/RotuloCol>/)
-  assert.match(docs, /<RotuloCol derecha>Modificado<\/RotuloCol>/)
+  assert.match(docs, /<RotuloCol>Modificado<\/RotuloCol>/)
   assert.doesNotMatch(docs, /<Tabla |<THead>/, 'volvió la tabla del canon viejo')
 })
 

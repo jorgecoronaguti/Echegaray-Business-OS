@@ -32,10 +32,21 @@ import type { AccesoPortal } from '../../types/cobranzas'
 // el costado de 353px), así que entra desde ~1100px de viewport: por encima, el panel de alta va al
 // lado; por debajo de 1386px el panel baja solo —`flex-wrap` ya estaba— y la tabla se queda con
 // todo el ancho. Debajo de 1100 se dibujan las mismas seis pistas, elásticas y con la mitad del aire.
+// A 390px el mail no entra con cinco columnas al lado: debajo de 560px quedan MAIL · ESTADO · menú
+// —quién entra y si entra—, y el alcance, los permisos y el último ingreso se leen en la pantalla
+// ancha o abriendo el acceso. El mail nunca se esconde: ES la llave.
 const COLS
-  = 'gap-[14px] grid-cols-[minmax(0,1.5fr)_minmax(0,110px)_84px_minmax(0,100px)_minmax(0,110px)_28px]'
+  = 'gap-[10px] grid-cols-[minmax(0,1fr)_70px_28px]'
+  + ' min-[560px]:gap-[14px]'
+  + ' min-[560px]:grid-cols-[minmax(0,1.5fr)_minmax(0,110px)_84px_minmax(0,100px)_minmax(0,110px)_28px]'
   + ' min-[1100px]:gap-[28px]'
   + ' min-[1100px]:grid-cols-[minmax(230px,1.6fr)_150px_120px_140px_150px_28px]'
+
+/** Lo que se esconde a 390px. Nunca el mail, el estado ni el menú. */
+const SOLO_ANCHO = 'max-[559px]:hidden'
+
+/** El respiro de la derecha a 390px: sin él el `···` queda pegado al borde de la pantalla. */
+const AIRE_DERECHO = 'max-[559px]:pr-4'
 
 /**
  * EL CHIP DE PERMISO ES UNA LETRA, NO UN ÍCONO (`dc.html:376-378`).
@@ -121,14 +132,14 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
       />
 
       <div
-        className={`grid ${COLS}`}
+        className={`grid ${COLS} ${AIRE_DERECHO}`}
         style={{ alignItems: 'end', height: '30px', paddingLeft: 16, borderBottom: `1px solid ${C.borde}` }}
       >
         <span style={ROTULO_COL}>MAIL HABILITADO</span>
-        <span style={ROTULO_COL}>OBRAS</span>
-        <span style={ROTULO_COL}>QUÉ PUEDE</span>
+        <span className={SOLO_ANCHO} style={ROTULO_COL}>OBRAS</span>
+        <span className={SOLO_ANCHO} style={ROTULO_COL}>QUÉ PUEDE</span>
         <span style={ROTULO_COL}>ESTADO</span>
-        <span style={ROTULO_COL}>ÚLTIMO INGRESO</span>
+        <span className={SOLO_ANCHO} style={ROTULO_COL}>ÚLTIMO INGRESO</span>
         <span style={{ paddingBottom: '7px' }} />
       </div>
 
@@ -143,7 +154,7 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
           <div key={a.id}>
             <div
               data-testid={`fila-acceso-${a.id}`}
-              className={`grid ${COLS}`}
+              className={`grid ${COLS} ${AIRE_DERECHO}`}
               style={{
                 alignItems: 'center', minHeight: '58px', paddingLeft: 16,
                 borderBottom: `1px solid ${C.bordeFila}`,
@@ -166,12 +177,15 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
               </div>
 
               {/* «Ninguna» es alcance CERO: el mail entra y no ve nada. Bloquea, y va en ámbar. */}
-              <span style={{
+              <span className={SOLO_ANCHO} style={{
                 fontSize: '12px', color: obras === 'Ninguna' ? C.warn : C.tintaMedia,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{obras}</span>
 
-              <span style={{ display: 'flex', gap: 6 }}>
+              {/* EL `display` VA EN LA CLASE Y NO EN EL `style`: un `display:flex` en línea le gana a
+                  `max-[559px]:hidden` —el estilo en línea siempre gana— y a 390px los tres chips
+                  se quedaban en pantalla empujando el menú a un renglón propio. */}
+              <span className={`flex gap-[6px] ${SOLO_ANCHO}`}>
                 <Chip on={a.puede_ver_obra} letra="O" titulo="Ve la obra y su avance" />
                 <Chip on={a.puede_ver_montos} letra="M" titulo="Ve montos, certificados y facturas" />
                 <Chip on={a.puede_aprobar} letra="A" titulo="Aprueba certificados: habilita una factura" />
@@ -184,7 +198,7 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
                   dos veces en dos colores. */}
               {ultimo
                 ? (
-                    <div style={{ minWidth: 0 }}>
+                    <div className={SOLO_ANCHO} style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: MONO, fontSize: '12px', color: C.tinta }}>{ultimo}</div>
                       {a.ultimo_dispositivo && (
                         <div style={{
@@ -195,7 +209,7 @@ export function TablaAccesos({ accesos, totalObras, hoy, elegido, onEditar, onRe
                     </div>
                   )
                 : (
-                    <span title="Todavía no entró ninguna vez" style={{ fontFamily: MONO, fontSize: '12px', color: C.fantasma }}>
+                    <span className={SOLO_ANCHO} title="Todavía no entró ninguna vez" style={{ fontFamily: MONO, fontSize: '12px', color: C.fantasma }}>
                       —
                     </span>
                   )}

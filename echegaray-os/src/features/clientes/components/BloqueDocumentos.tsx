@@ -60,9 +60,19 @@ const TOPE_TODO = 60
 //
 // 250+180+150+110+28 + 4×28 = 830px útiles ⇒ 1223px de viewport con el costado puesto. Debajo de
 // eso, las mismas cinco columnas con las pistas elásticas y la mitad del aire.
+// A 390px el nombre del archivo es lo único que identifica la fila: debajo de 560px se esconden LO
+// COLGÓ y MODIFICADO —dos metadatos— y queda ARCHIVO · PARA QUÉ SIRVE · menú, que es lo que se hace
+// desde un teléfono: encontrar el papel y clasificarlo.
 const COLS_DOCS
-  = 'gap-[14px] grid-cols-[minmax(0,1.6fr)_minmax(0,120px)_minmax(0,1fr)_72px_28px]'
+  = 'gap-[10px] grid-cols-[minmax(0,1fr)_120px_28px]'
+  + ' min-[560px]:gap-[14px] min-[560px]:grid-cols-[minmax(0,1.6fr)_minmax(0,130px)_minmax(0,1fr)_72px_28px]'
   + ' min-[1240px]:gap-[28px] min-[1240px]:grid-cols-[minmax(250px,2fr)_180px_150px_110px_28px]'
+
+/** Lo que se esconde a 390px. Nunca el nombre ni el menú. */
+const SOLO_ANCHO = 'max-[559px]:hidden'
+
+/** El respiro de la derecha a 390px: sin él el `···` queda pegado al borde de la pantalla. */
+const AIRE_DERECHO = 'max-[559px]:pr-4'
 
 /** La sangría del handoff (`dc.html:171`, `padding-left:16px`). */
 const SANGRIA = 16
@@ -115,11 +125,11 @@ export function BloqueDocumentos({
       ) : (
         <>
           <div data-testid="tabla-documentos-cliente">
-            <div className={`grid ${COLS_DOCS}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
+            <div className={`grid ${COLS_DOCS} ${AIRE_DERECHO}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
               <RotuloCol>Archivo</RotuloCol>
               <RotuloCol>Para qué sirve</RotuloCol>
-              <RotuloCol>Lo colgó</RotuloCol>
-              <RotuloCol derecha>Modificado</RotuloCol>
+              <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Lo colgó</RotuloCol></span>
+              <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Modificado</RotuloCol></span>
               <RotuloCol />
             </div>
 
@@ -128,7 +138,7 @@ export function BloqueDocumentos({
               return (
                 <Fragment key={d.drive_file_id}>
                   <div
-                    className={`grid items-center ${CAJA_CONTENIDO} ${COLS_DOCS} ${menu ? 'bg-surface-quiet' : 'hover:bg-[#F2F1ED]'}`}
+                    className={`grid items-center ${CAJA_CONTENIDO} ${COLS_DOCS} ${AIRE_DERECHO} ${menu ? 'bg-surface-quiet' : 'hover:bg-[#F2F1ED]'}`}
                     style={{
                       minHeight: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
                       // El filo amarillo dice «ésta es la fila abierta» y NO corre el contenido:
@@ -183,13 +193,15 @@ export function BloqueDocumentos({
                         «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
                         distinción HECHO vs INFERENCIA que gobierna el resto del sistema, y va en la
                         tabla porque cambia cuánto vale lo que se está mirando. */}
-                    <span className="truncate" style={{ fontSize: '12.5px', color: V.apagado }}>
+                    <span className={`truncate ${SOLO_ANCHO}`} style={{ fontSize: '12.5px', color: V.apagado }}>
                       {d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}
                     </span>
 
+                    {/* LA FECHA VA A LA IZQUIERDA, como en el handoff (`dc.html:189`): es una marca
+                        de tiempo, no una magnitud que se compare de un vistazo con la de arriba. */}
                     <span
-                      className="truncate font-mono tabular-nums"
-                      style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}
+                      className={`truncate font-mono tabular-nums ${SOLO_ANCHO}`}
+                      style={{ fontSize: '12px', color: V.tenue }}
                     >
                       {d.modified_time ? fecha(d.modified_time) : <Nulo>sin fecha</Nulo>}
                     </span>

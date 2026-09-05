@@ -38,8 +38,10 @@ export function SelectRolDocumento({
   // agrega como opción para que el desplegable muestre lo que hay de verdad.
   const lista = valor && !opciones.includes(valor) ? [valor, ...opciones] : opciones
 
+  // OCUPA SU CELDA Y SE ENCOGE CON ELLA. Con ancho intrínseco, a 390px el desplegable sobresalía de
+  // la columna y el recorte le cortaba la flecha: parecía roto.
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="flex w-full min-w-0 items-center gap-2">
       <select
         key={valor ?? ''}
         defaultValue={valor ?? ''}
@@ -54,7 +56,7 @@ export function SelectRolDocumento({
         // rol es un archivo que la búsqueda no va a encontrar nunca, y el color es lo que hace que
         // alguien lo clasifique. En la vista de sólo lectura ya iba así; acá no, y era la misma
         // ausencia dicha de dos maneras dentro de la misma columna.
-        className={`min-w-0 rounded-control border border-line-strong bg-surface px-2 py-1 text-[12.5px] disabled:bg-surface-sunken disabled:text-faint ${
+        className={`min-w-0 flex-1 rounded-control border border-line-strong bg-surface px-2 py-1 text-[12.5px] disabled:bg-surface-sunken disabled:text-faint ${
           valor ? 'text-ink' : 'text-warn'
         }`}
       >
