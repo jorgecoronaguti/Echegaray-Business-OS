@@ -112,11 +112,21 @@ test('las cuatro acciones que no existen se leen por su nombre, no por un ícono
 })
 
 test('cada acción inexistente dice SU motivo, y son cuatro motivos distintos', () => {
+  // Un «no disponible» único para las cuatro esconde que tres están a una decisión de distancia y
+  // la otra a una tabla. Y una acción cuya clave no está en MOTIVO escribe «todavía no está:
+  // undefined», que es peor que no tener el botón.
   const src = panel()
   const motivos = [...src.matchAll(/^\s*'?(?:Enviar recordatorio|Registrar promesa de pago|Descargar comprobante|Escalar)'?:\s*'([^']+)'/gm)]
     .map((m) => m[1])
   assert.equal(motivos.length, 4)
   assert.equal(new Set(motivos).size, 4, 'dos acciones comparten el mismo motivo')
+
+  const claves = [...src.matchAll(/\{ que: '([^']+)'/g)].map((m) => m[1])
+  assert.equal(claves.length, 4)
+  assert.equal(new Set(claves).size, 4, 'dos botones del pie apuntan al mismo motivo')
+  const enMotivo = src.slice(src.indexOf('const MOTIVO'), src.indexOf('const ACCIONES'))
+  claves.forEach((c) => assert.ok(enMotivo.includes(`${c}'`) || enMotivo.includes(`${c}:`),
+    `«${c}» no tiene motivo escrito: el aviso saldría «undefined»`))
 })
 
 test('el panel no canta victoria: el cobro queda ENCOLADO', () => {
@@ -131,6 +141,9 @@ test('el medio de pago es una opción subrayada y sigue siendo un radio de verda
   const src = panel()
   assert.match(src, /boxShadow: medio === m \? `inset 0 -2px 0 \$\{C\.grafito\}` : undefined/)
   assert.match(src, /type="radio" name="medio"/)
+  // El subrayado y el `input` tienen que leer el MISMO estado: con un `defaultChecked`, la palabra
+  // subrayada y el medio que viaja en el `FormData` se separan al primer clic.
+  assert.match(src, /checked=\{medio === m\} onChange=\{\(\) => setMedio\(m\)\}/)
   assert.match(src, /outline: foco === m/, 'el foco del teclado dejó de dibujarse sobre la palabra')
 })
 

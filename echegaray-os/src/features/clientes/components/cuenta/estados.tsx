@@ -10,59 +10,38 @@
 // Un certificado aprobado y uno que el cliente todavía no miró no se reclaman igual.
 //
 // EL COLOR Y EL RÓTULO SALEN DE `services/propiedadesCertificado.ts`, que es donde el panel los
-// lee y donde se prueban con `node --test`. Acá sólo se elige el ícono, que es lo único que no se
-// puede probar sin React.
+// lee y donde se prueban con `node --test`. Acá no se decide ninguno de los dos: sólo se traduce
+// el estado de un PAGO, que no está en ese mapa porque no es un estado de certificado.
 //
-// El TEXTO también cambia de tono y no es un descuido del zip: lo que sigue en juego se escribe en
-// `#3A3A38` y lo que ya se cerró —cobrado, retenido— en `#6B6B67`, medio tono más apagado.
+// ═══ EL ÍCONO SE FUE CON LA ENTREGA v4 (05/09/2026) ═══
+//
+// `ICONO_CERT` mapeaba los siete estados a siete íconos y ya no lo consume nadie: los dos mockups
+// del handoff escriben el estado como texto en su color. Se borra en vez de dejarse «por si
+// vuelve»: un mapa de íconos que nadie dibuja es la invitación a volver a dibujarlos.
 
-import type { ReactNode } from 'react'
 import { C } from '../canon/tokens'
-import { Ico, P } from '../canon/Iconos'
 import { COLOR_ESTADO, ROTULO_ESTADO } from '../../services/propiedadesCertificado'
 import type { EstadoCertificado, EstadoPago } from '../../types/cobranzas'
 
 export interface PintaEstado {
   texto: string
   color: string
-  textoColor: string
-  icono: ReactNode
 }
-
-/** El ícono de cada estado. Es lo único que decide este archivo: el color y el rótulo son del
- *  servicio, para que la tabla, el panel y el calendario no puedan discrepar. */
-const ICONO_CERT: Record<EstadoCertificado, ReactNode> = {
-  emitido: <Ico d={P.reloj} s={14} w={2} />,
-  en_revision: <Ico d={P.reloj} s={14} w={2} />,
-  aprobado: <Ico d={P.okCirculo} s={14} w={2} />,
-  observado: <Ico d={P.chat} s={14} w={2} />,
-  vencido: <Ico d={P.alerta} s={14} w={2} />,
-  cobrado: <Ico d={P.okCirculo} s={14} w={2} />,
-  en_disputa: <Ico d={P.chat} s={14} w={2} />,
-}
-
-/** Un estado ya cerrado se escribe medio tono más apagado que uno que sigue en juego. */
-const CERRADOS = new Set<EstadoCertificado | EstadoPago>(['cobrado', 'retenido'])
 
 const mayus = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
 export function pintarEstado(estado: EstadoCertificado | EstadoPago): PintaEstado {
   if (estado in ROTULO_ESTADO) {
     const e = estado as EstadoCertificado
-    return {
-      texto: mayus(ROTULO_ESTADO[e]),
-      color: COLOR_ESTADO[e],
-      textoColor: CERRADOS.has(e) ? C.tintaSuave : C.tintaMedia,
-      icono: ICONO_CERT[e],
-    }
+    return { texto: mayus(ROTULO_ESTADO[e]), color: COLOR_ESTADO[e] }
   }
   switch (estado) {
     case 'retenido':
-      return { texto: 'Retenido', color: C.tenue, textoColor: C.tintaSuave, icono: <Ico d={P.escudo} s={14} w={2} /> }
+      return { texto: 'Retenido', color: C.tenue }
     case 'previsto':
-      return { texto: 'Previsto', color: C.tenue, textoColor: C.tintaSuave, icono: <Ico d={P.circulo} s={14} w={2} /> }
+      return { texto: 'Previsto', color: C.tenue }
     default:
-      return { texto: 'A vencer', color: C.curso, textoColor: C.tintaMedia, icono: <Ico d={P.reloj} s={14} w={2} /> }
+      return { texto: 'A vencer', color: C.curso }
   }
 }
 
