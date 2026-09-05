@@ -77,6 +77,26 @@ export function LineaDeAcciones({ columnas, children, testid }: {
   )
 }
 
+/**
+ * LA MISMA LÍNEA, EN UNA LISTA DE GRILLA. En una `<table>` el «`grid-column: 1 / -1`» del handoff se
+ * escribe `colSpan`; en una lista de grilla —donde cada fila es su propio contenedor— se escribe
+ * como el hermano de ancho completo que va debajo de la fila. Las dos dibujan lo mismo: la línea
+ * ocupa la fila entera, dentro de ella, y el error de la base tiene dónde caer.
+ */
+export function LineaDeAccionesEnGrilla({ children, testid }: {
+  children: ReactNode
+  testid: string
+}) {
+  return (
+    <div
+      data-testid={testid}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#EFEEEA] bg-surface-quiet px-4 py-2"
+    >
+      {children}
+    </div>
+  )
+}
+
 /** «Editar» dentro de la línea. Enlace, porque el formulario de edición también vive en la URL. */
 export function AccionEnlace({ href, children, testid }: {
   href: string

@@ -1,15 +1,25 @@
-// 26 v2 · LAS CARAS DE LA FICHA DE UN CLIENTE — `26 · Cliente Ficha v2.dc.html` (108-230).
+// LAS CARAS DE LA FICHA DE UN CLIENTE — `CRM · Clientes · una pantalla.dc.html` (113-166).
 //
-// Obras, presupuestos y actividad, sin caja: encabezado de 26px cerrado por un filo `#D7D5CF`,
-// filas de 40-42px con divisor `#EDECE8` y sangría de 13px. Es el criterio 3 del patrón.
+// Obras y presupuestos, con la grilla LITERAL del handoff v4. Cada columna cita su ancho.
+//
+// ═══ POR QUÉ AVANCE ES UNA COLUMNA Y NO UN ADORNO DENTRO DE ESTADO ═══
+//
+// Hasta el 05/09/2026 el avance vivía DENTRO de la celda de estado —punto, palabra, barra de 70px y
+// porcentaje, todos con `flexShrink: 0`—. A 390px eso desbordaba sobre el importe y se leía
+// «94$246.149.261». Se parcheó con `overflow:hidden`; la solución del diseño es otra: AVANCE es su
+// propia pista de 90px (`dc.html:113`). Separada, no hay nada que pueda desbordar sobre el importe,
+// y la barra —que era decoración -- desaparece porque el handoff no la dibuja. El `overflow:hidden`
+// se queda igual: es defensa barata contra el próximo hijo que no se pueda encoger.
 //
 // ═══ LO QUE NO SE DIBUJA, Y POR QUÉ ═══
 //
-//   COSTO REAL   estaba en la tabla de agosto y el mockup 26 no lo trae. La ficha del cliente es la
-//                cara COMERCIAL de la relación —qué se contrató y cómo va—; el costo vive en la
-//                obra, que es donde se decide sobre él. Sigue a un clic, en `/obras/[id]`.
-//   AVANCE       sólo se dibuja como barra cuando `avance_pct` es una fracción 0-100 real. Una obra
-//                sin cronograma no tiene 0 % de avance: no tiene avance, y lo dice con palabras.
+//   COSTO REAL   la ficha del cliente es la cara COMERCIAL de la relación —qué se contrató y cómo
+//                va—; el costo vive en la obra, que es donde se decide sobre él.
+//   JEFE DE OBRA lo dibujaba la versión anterior en el lugar donde el handoff pone AVANCE. El
+//                handoff v4 no lo trae: quién la conduce se lee en la obra, y acá le robaba la
+//                columna al único dato que contesta «¿cómo va?».
+//   AVANCE       nunca es 0 % por falta de cronograma. Una obra sin plan no tiene avance, y lo dice
+//                con palabras.
 
 import Link from 'next/link'
 import { CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
@@ -17,17 +27,32 @@ import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
 
-/** Verde hecho · azul en curso · gris el resto. Nunca sólo color: al lado va siempre la palabra. */
-const PUNTO_ESTADO: Record<string, string> = {
-  activa: '#175CD3', pausada: '#B54708', cerrada: '#067647',
+/**
+ * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
+ *
+ * El handoff colorea el texto (`dc.html:900`: en ejecución tinta plena, pausada ámbar, el resto
+ * apagado) y no dibuja ningún bullet. El punto de 6px que había acá era una segunda señal para
+ * decir lo mismo, y era uno de los cuatro hijos que no se encogían.
+ */
+const COLOR_ESTADO_OBRA: Record<string, string> = {
+  activa: V.tinta, pausada: V.warn, cerrada: V.apagado,
 }
 
+// ═══ LA GRILLA ES LA DEL HANDOFF; EL BREAKPOINT SALE DE UNA CUENTA, NO DE UN GUSTO ═══
+//
+// `minmax(240px,1.8fr) 150px 90px 170px 28px` con `gap:28px` (`dc.html:113`) necesita
+// 240+150+90+170+28 + 4×28 = 790px de ancho ÚTIL. En esta pantalla el ancho útil es
+// `viewport − 393` (20+20 de `CuerpoDeFicha` y 300+24+1+28 del costado), así que la grilla exacta
+// entra a partir de 1183px de viewport. Por debajo se dibuja la misma lista con las pistas
+// elásticas y la mitad del aire: no se esconde ninguna columna porque ninguna es decorativa.
 const COLS_OBRAS
-  = 'grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,150px)_minmax(0,140px)]'
-  + ' max-[1249px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,140px)]'
-const SOLO_ANCHO = 'max-[1249px]:hidden'
+  = 'gap-[14px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_64px_minmax(0,120px)_28px]'
+  + ' min-[1200px]:gap-[28px] min-[1200px]:grid-cols-[minmax(240px,1.8fr)_150px_90px_170px_28px]'
 
-/** OBRA · ESTADO · JEFE DE OBRA · CONTRATADO. `26v2:110-146`. */
+/** La sangría del handoff (`dc.html:113`, `padding-left:16px`), que reemplaza los 13 del v2. */
+const SANGRIA = 16
+
+/** OBRA · ESTADO · AVANCE · CONTRATADO · [acciones]. `dc.html:113-135`. */
 export function ObrasDelCliente({ obras, veEconomia, vacio }: {
   obras: ObraPanel[]
   /** El jefe de obra no ve el precio de venta. Lo decide la RLS; acá se deja de dibujar la columna. */
@@ -36,11 +61,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
 }) {
   return (
     <div data-testid="obras-del-cliente">
-      <div className={`grid gap-[14px] ${COLS_OBRAS}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
+      <div className={`grid ${COLS_OBRAS}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Obra</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Jefe de obra</RotuloCol></span>
+        <RotuloCol derecha>Avance</RotuloCol>
         <RotuloCol derecha>{veEconomia ? 'Contratado' : 'Etapa'}</RotuloCol>
+        <RotuloCol />
       </div>
 
       {obras.length === 0 && (
@@ -52,9 +78,9 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
       {obras.map((o) => (
         <Link
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
-          className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_OBRAS} hover:bg-[#F2F1ED]`}
+          className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} hover:bg-[#F2F1ED]`}
           style={{
-            height: 42, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
+            height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
             boxShadow: veEconomia && o.monto_contratado == null ? FILO_BLOQUEA : 'none',
           }}
@@ -68,65 +94,63 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
             </span>
           </span>
 
-          {/* `overflow: hidden` NO es defensivo de más: todo lo de adentro tiene `flexShrink: 0`
-              —el punto, el estado, la barra, el porcentaje— y sin recorte la celda DESBORDA sobre
-              la columna del contratado. A 390 px se veía «94$246.149.261», con el % tapado por el
-              importe. Lo encontró la pasada visual mirando la captura, no el DOM. */}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
-            <span
-              aria-hidden
-              style={{
-                width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-                background: PUNTO_ESTADO[o.estado] ?? V.inerte,
-              }}
-            />
-            <span style={{ fontSize: '12px', color: V.tintaSuave, flexShrink: 0 }}>{o.estado}</span>
-            {/* BARRA SÓLO SI EL VALOR ES UNA FRACCIÓN REAL. Sin cronograma no hay 0 %. */}
-            {o.avance_pct != null
-              ? (
-                  <>
-                    {/* La barra se ESCONDE en pantalla angosta, no se encoge. Es decorativa: el
-                        dato es el número, que se queda. Una barra de 20 px no dice nada y le roba
-                        el lugar al porcentaje, que sí dice. */}
-                    <span
-                      aria-hidden
-                      className="max-[560px]:hidden"
-                      style={{ display: 'flex', height: 4, width: 70, borderRadius: 2, background: V.lineaFila, flexShrink: 0, marginLeft: 2, overflow: 'hidden' }}
-                    >
-                      <span style={{ width: `${Math.max(0, Math.min(100, o.avance_pct))}%`, background: V.grafito, borderRadius: 2 }} />
-                    </span>
-                    <span className="font-mono tabular-nums shrink-0" style={{ fontSize: '11.5px', color: V.apagado }}>
-                      {o.avance_pct} %
-                    </span>
-                  </>
-                )
-              : (
-                  <span className="truncate" style={{ fontSize: '11.5px', color: V.tenue }}>
-                    {o.n_actividades ? 'sin avance cargado' : 'sin cronograma'}
-                  </span>
-                )}
+          {/* `overflow: hidden` se queda aunque el avance ya no viva acá: es la defensa barata
+              contra el próximo hijo que no se pueda encoger. Lo que sacó el desborde de raíz fue
+              separar AVANCE en su propia pista. */}
+          <span
+            data-testid="estado-obra-cliente"
+            className="truncate"
+            style={{
+              fontSize: '12px', color: COLOR_ESTADO_OBRA[o.estado] ?? V.apagado,
+              minWidth: 0, overflow: 'hidden',
+            }}
+          >
+            {o.estado}
           </span>
 
-          <span className={`grid ${SOLO_ANCHO}`}>
-            <span className="truncate" style={{ fontSize: '12px', color: o.jefe_obra ? V.tintaSuave : V.tenue }}>
-              {o.jefe_obra ?? 'sin jefe asignado'}
-            </span>
-          </span>
+          {/* AVANCE — SIN CRONOGRAMA NO HAY 0 %. La ausencia se dice con palabras y en apagado: no
+              bloquea nada, sólo todavía no se midió. */}
+          {o.avance_pct != null
+            ? (
+                <span
+                  className="font-mono tabular-nums"
+                  style={{ fontSize: '12px', color: V.tintaSuave, textAlign: 'right' }}
+                  data-testid="avance-obra-cliente"
+                >
+                  {o.avance_pct} %
+                </span>
+              )
+            : (
+                <span
+                  className="truncate"
+                  title={o.n_actividades ? 'sin avance cargado' : 'sin cronograma'}
+                  style={{ fontSize: '11.5px', color: V.tenue, textAlign: 'right' }}
+                  data-testid="avance-obra-cliente"
+                >
+                  {o.n_actividades ? 'sin avance cargado' : 'sin cronograma'}
+                </span>
+              )}
 
           {veEconomia
             ? (
                 <span
-                  className="font-mono tabular-nums"
+                  className="font-mono tabular-nums truncate"
                   style={{ fontSize: '12px', color: o.monto_contratado == null ? V.warn : V.tinta, textAlign: 'right' }}
                 >
                   {o.monto_contratado == null ? 'sin monto' : plata(o.monto_contratado)}
                 </span>
               )
             : (
-                <span style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}>
+                <span className="truncate" style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}>
                   {o.etapa ? ETAPA_LABEL[o.etapa] : 'etapa sin declarar'}
                 </span>
               )}
+
+          {/* LA PISTA DE 28px EXISTE Y VA VACÍA. El handoff pone acá el menú de fila, pero en esta
+              ficha no hay ninguna acción de fila cableada para una obra —ni quitar, ni archivar: se
+              archiva desde la obra—. Dibujar un `···` que sólo repite el enlace de la fila sería
+              inventar una capacidad; reservar la pista es lo que mantiene la grilla exacta. */}
+          <span aria-hidden />
         </Link>
       ))}
     </div>
@@ -147,19 +171,58 @@ export interface PresupuestoDeFicha {
   accion?: { texto: string; href: string }
 }
 
+/**
+ * `minmax(210px,1.8fr) 170px 60px 160px minmax(150px,1fr) 28px` con `gap:28px` (`dc.html:143`)
+ * necesita 210+170+60+160+150+28 + 5×28 = 918px útiles, o sea 1311px de viewport con el costado
+ * puesto. Por eso su breakpoint es más alto que el de Obras: es la lista más ancha de la ficha.
+ */
 const COLS_PRES
-  = 'grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,150px)]'
-  + ' max-[1249px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,150px)]'
+  = 'gap-[14px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_44px_minmax(0,110px)_minmax(0,1fr)_28px]'
+  + ' min-[1320px]:gap-[28px]'
+  + ' min-[1320px]:grid-cols-[minmax(210px,1.8fr)_170px_60px_160px_minmax(150px,1fr)_28px]'
 
-/** PRESUPUESTO · ESTADO · MONTO · verbo. `26v2:183-201`. */
+/** El estado del presupuesto, con la tinta del handoff (`dc.html:815`). */
+function colorEstadoPresupuesto(estado: string | null): string {
+  if (!estado) return V.tenue
+  if (estado.startsWith('adjudicada')) return V.tinta
+  if (estado.startsWith('perdida')) return V.neg
+  return V.apagado
+}
+
+/**
+ * MOTIVO / DESTINO — LA COLUMNA QUE NO TIENE FUENTE PARA LA MITAD DE SU NOMBRE.
+ *
+ * DESTINO sí: `cotizacion_cascada.convertida_obra_id` dice en qué obra terminó un presupuesto
+ * adjudicado, y ése es un hecho. MOTIVO no: no existe ninguna columna de motivo de pérdida en
+ * `cotizacion_cascada`, y `cotizacion_evento.motivo` —el único candidato— tiene 0 filas (medido el
+ * 05/09/2026). Así que un presupuesto perdido dice «sin motivo cargado» en APAGADO, no en ámbar:
+ * la pérdida ya ocurrió y el dato que falta no bloquea nada, sólo impide aprender de ella.
+ *
+ * ADJUDICADA Y SIN CONVERTIR SÍ VA EN ÁMBAR: ahí falta trabajo, no un dato. La obra que se vendió
+ * todavía no existe en el sistema, y hasta que exista no hay dónde imputarle un peso. Es el aviso
+ * que antes cargaba el verbo «Convertir en obra →», que era texto muerto: su href nunca se usó
+ * —la fila entera es el enlace al presupuesto— y en el v4 las acciones de fila viven en el menú.
+ */
+function motivoODestino(p: PresupuestoDeFicha): { texto: string; color: string } {
+  // La página arma `accion` a partir de `convertida_obra_id`: un href a `/obras/…` SÓLO existe
+  // cuando el presupuesto ya se convirtió. Ése es el destino, y es un hecho de la base.
+  if (p.accion?.href.startsWith('/obras/')) return { texto: 'convertida en obra', color: V.apagado }
+  if (p.estado?.startsWith('adjudicada')) return { texto: 'sin convertir todavía', color: V.warn }
+  if (p.estado?.startsWith('perdida')) return { texto: 'sin motivo cargado', color: V.tenue }
+  return { texto: 'sin destino cargado', color: V.tenue }
+}
+
+/** PRESUPUESTO · ESTADO · REV. · PRECIO DE VENTA · MOTIVO / DESTINO · [acciones]. `dc.html:143-165`. */
 export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] }) {
   return (
     <div data-testid="presupuestos-del-cliente">
-      <div className={`grid gap-[14px] ${COLS_PRES}`} style={{ ...ENCABEZADO, paddingLeft: 13 }}>
+      <div className={`grid ${COLS_PRES}`} style={{ ...ENCABEZADO, gap: undefined, paddingLeft: SANGRIA }}>
         <RotuloCol>Presupuesto</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
-        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Monto</RotuloCol></span>
-        <RotuloCol derecha />
+        <RotuloCol derecha>Rev.</RotuloCol>
+        <RotuloCol derecha>Precio de venta</RotuloCol>
+        <RotuloCol>Motivo / destino</RotuloCol>
+        <RotuloCol />
       </div>
 
       {filas.length === 0 && (
@@ -169,13 +232,13 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
       )}
 
       {filas.map((p) => {
-        const v = p.accion
+        const destino = motivoODestino(p)
         return (
           <Link
             key={p.presupuesto_id} href={`/presupuestos/${p.presupuesto_id}`} prefetch={false}
             data-testid="fila-presupuesto"
-            className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_PRES} hover:bg-[#F2F1ED]`}
-            style={{ height: 42, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}` }}
+            className={`grid items-center ${CAJA_CONTENIDO} ${COLS_PRES} hover:bg-[#F2F1ED]`}
+            style={{ height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}` }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
               <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
@@ -184,35 +247,40 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
               <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}>
                 {p.nombre}
               </span>
-              {p.revision != null && (
-                <span className="font-mono shrink-0" style={{ fontSize: '10.5px', color: V.inerte }}>
-                  rev. {p.revision}
-                </span>
-              )}
             </span>
 
-            <span className="truncate" style={{ fontSize: '12px', color: p.estado ? V.tintaSuave : V.tenue }}>
+            <span className="truncate" style={{ fontSize: '12px', color: colorEstadoPresupuesto(p.estado) }}>
               {p.estado ?? 'sin estado'}
             </span>
 
-            <span className={`grid ${SOLO_ANCHO}`}>
-              {/* SIN TOTAL NO ES $ 0: el presupuesto existe y todavía no está valorizado. */}
-              <span
-                className="font-mono tabular-nums"
-                style={{ fontSize: '12px', color: p.total == null ? V.tenue : V.tinta, textAlign: 'right' }}
-              >
-                {p.total == null ? 'sin valorizar' : plata(p.total)}
-              </span>
+            {/* REV. — «—» es «no tiene revisiones», que es distinto de «revisión 0». */}
+            <span
+              className="font-mono tabular-nums"
+              style={{ fontSize: '12px', color: p.revision == null ? V.inerte : V.apagado, textAlign: 'right' }}
+              data-testid="rev-presupuesto"
+            >
+              {p.revision ?? '—'}
+            </span>
+
+            {/* SIN TOTAL NO ES $ 0: el presupuesto existe y todavía no está valorizado. */}
+            <span
+              className="font-mono tabular-nums truncate"
+              style={{ fontSize: '12px', color: p.total == null ? V.tenue : V.tinta, textAlign: 'right' }}
+            >
+              {p.total == null ? 'sin valorizar' : plata(p.total)}
             </span>
 
             <span
-              style={{
-                fontSize: '12.5px', fontWeight: 500, textAlign: 'right', paddingRight: 2,
-                color: v ? V.tinta : V.lupa,
-              }}
+              className="truncate"
+              title={destino.texto}
+              data-testid="destino-presupuesto"
+              style={{ fontSize: '12px', color: destino.color }}
             >
-              {v ? `${v.texto} →` : ''}
+              {destino.texto}
             </span>
+
+            {/* Misma pista vacía que en Obras, y por el mismo motivo: no hay acción de fila. */}
+            <span aria-hidden />
           </Link>
         )
       })}

@@ -66,7 +66,7 @@ test('sin monto cargado la cifra lo dice, y nunca escribe $ 0', () => {
   assert.match(codigoPagina(), /falta: enCurso\.length \? 'sin monto cargado' : 'sin obra en curso'/)
 })
 
-test('una obra sin cronograma no tiene 0 % de avance: la barra sólo sale con fracción real', () => {
+test('una obra sin cronograma no tiene 0 % de avance: lo dice con palabras', () => {
   const src = codigoListas()
   assert.match(src, /o\.avance_pct != null/)
   assert.match(src, /'sin avance cargado'/)
@@ -146,31 +146,110 @@ test('«Quitar el vínculo» aclara que el archivo sigue en Drive, al lado de la
   assert.match(docs, /No borra el archivo: vive en Drive y sigue ahí\./)
 })
 
-// ── EL DESBORDE DE LA CELDA DE ESTADO A 390 px ──────────────────────────────────────────────────
+// ── LA GRILLA DE LA FICHA ES LA DEL HANDOFF v4 ──────────────────────────────────────────────────
+//
+// Contrato: `design_handoff_crm_v4/pantallas/CRM · Clientes · una pantalla.dc.html`.
+//
+// ═══ EL DEFECTO QUE ATRAPAN ESTOS TESTS ═══
 //
 // La pasada visual del 05/09/2026 encontró, MIRANDO LA CAPTURA, que en la lista de obras el
 // porcentaje de avance se superponía con el monto contratado: «94$246.149.261», con el % tapado.
 //
-// La causa es de cascada, no de datos: la celda de ESTADO es un flex cuyos hijos —el punto, la
-// palabra, la barra y el porcentaje— tienen TODOS `flexShrink: 0`. Nada puede encogerse, así que a
-// 390 px el contenido desborda sobre la columna de al lado en vez de recortarse.
+// La causa era estructural: el avance vivía DENTRO de la celda de ESTADO, y todos sus hijos —el
+// punto, la palabra, la barra de 70px y el número— tenían `flexShrink: 0`. Nada podía encogerse, así
+// que a 390px la celda desbordaba sobre la columna de al lado. Se parcheó con `overflow:hidden`.
 //
-// Este test es estructural a propósito. No reemplaza a una captura —no puede—, pero sí impide que
-// el arreglo se revierta sin que nadie se entere, que es donde este defecto se vuelve a colar.
+// LA SOLUCIÓN DEL HANDOFF ES OTRA, y es la que estos tests fijan: AVANCE es su propia pista de 90px
+// (`dc.html:113`). Separada, no hay nada que pueda desbordar sobre el importe. El `overflow:hidden`
+// se queda igual —defensa barata contra el próximo hijo que no se encoja—, pero ya no es lo que
+// sostiene la fila.
+//
+// Son tests estructurales a propósito: no reemplazan a una captura —no pueden—, pero impiden que la
+// separación se revierta sin que nadie se entere, que es donde este defecto se vuelve a colar.
 
-test('la celda de estado RECORTA: sus hijos no se encogen y sin overflow desborda sobre el importe', () => {
-  const src = readFileSync(
-    join(DIR, 'ListasClienteV2.tsx'), 'utf8')
-  const celda = src.slice(src.indexOf("gap: 8, minWidth: 0"), src.indexOf('PUNTO_ESTADO['))
-  assert.match(celda, /overflow:\s*'hidden'/,
-    'la celda de estado dejó de recortar: a 390 px el avance se superpone con el contratado')
+test('Obras dibuja las cinco pistas del handoff, con AVANCE en su propia columna de 90px', () => {
+  const src = codigoListas()
+  assert.match(src, /minmax\(240px,1\.8fr\)_150px_90px_170px_28px/,
+    'la grilla de Obras dejó de ser la del handoff v4')
+  assert.match(src, /<RotuloCol derecha>Avance<\/RotuloCol>/)
+  // El jefe de obra ocupaba el lugar de AVANCE. El handoff no lo trae: se lee en la obra.
+  assert.doesNotMatch(src, /jefe_obra/, 'volvió la columna de jefe de obra donde va el avance')
 })
 
-test('la barra de avance se ESCONDE en pantalla angosta; el número se queda', () => {
+test('el avance NO vuelve a meterse dentro de la celda de estado', () => {
   const src = readFileSync(join(DIR, 'ListasClienteV2.tsx'), 'utf8')
-  const barra = src.slice(src.indexOf('BARRA SÓLO SI EL VALOR'), src.indexOf('avance_pct} %'))
-  // La barra es decorativa: el dato es el número. Una barra de 20 px no dice nada y le roba el
-  // lugar al porcentaje, que sí dice.
-  assert.match(barra, /max-\[560px\]:hidden/, 'la barra dejó de esconderse en pantalla angosta')
-  assert.match(barra, /width: 70/, 'la barra perdió su ancho fijo de 70 px del handoff')
+  // La celda ENTERA: sus atributos Y sus hijos. Recortarla en `{o.estado}` dejaba fuera justo lo
+  // que hay que vigilar —lo que se dibuja DENTRO de la celda—, y el control no podía dar rojo.
+  const desde = src.indexOf('data-testid="estado-obra-cliente"')
+  const celda = src.slice(desde, src.indexOf('</span>', src.indexOf('{o.estado}', desde)))
+  assert.ok(desde > 0 && celda.length > 0 && celda.length < 400, 'no se pudo aislar la celda de estado')
+  assert.doesNotMatch(celda, /avance/,
+    'el avance volvió a la celda de estado: a 390 px se superpone con el contratado')
+  assert.match(celda, /overflow: 'hidden'/,
+    'la celda de estado dejó de recortar')
+})
+
+test('el avance no se dibuja con una barra: el handoff pone el número y nada más', () => {
+  // La barra de 70px era decoración con `flexShrink: 0` — lo único que de verdad desbordaba. Con
+  // AVANCE en su propia pista no hay nada decorativo que esconder a 390 px.
+  const src = codigoListas()
+  assert.doesNotMatch(src, /width: 70/, 'volvió la barra de avance de 70 px')
+  assert.doesNotMatch(src, /max-\[560px\]:hidden/, 'volvió el parche que escondía la barra')
+})
+
+test('Presupuestos dibuja las seis pistas del handoff, con REV. y MOTIVO / DESTINO', () => {
+  const src = codigoListas()
+  assert.match(src, /minmax\(210px,1\.8fr\)_170px_60px_160px_minmax\(150px,1fr\)_28px/,
+    'la grilla de Presupuestos dejó de ser la del handoff v4')
+  assert.match(src, /<RotuloCol derecha>Rev\.<\/RotuloCol>/)
+  assert.match(src, /Motivo \/ destino/)
+})
+
+test('un presupuesto perdido no inventa el motivo que la base no guarda', () => {
+  // `cotizacion_cascada` no tiene columna de motivo y `cotizacion_evento` tiene 0 filas (05/09/2026):
+  // la única respuesta honesta es decir que falta, en apagado —la pérdida ya ocurrió, no bloquea—.
+  // Adjudicada y sin convertir SÍ va en ámbar: ahí falta trabajo, no un dato.
+  const src = codigoListas()
+  assert.match(src, /'sin motivo cargado', color: V\.tenue/)
+  assert.match(src, /'sin convertir todavía', color: V\.warn/)
+  assert.match(src, /'convertida en obra', color: V\.apagado/)
+})
+
+test('Documentos es la tabla del handoff y no la `<table>` del canon viejo', () => {
+  // Dos sistemas de tabla en la misma ficha —grilla v2 en Obras, `<table>` del `ds` en Documentos—
+  // es parte de lo que se ve como «el diseño y la app no coinciden». Y una `<table>` no sabe decir
+  // `minmax()`: la columna del nombre no crecía con la pantalla.
+  const docs = sinComentarios(fuente('BloqueDocumentos.tsx'))
+  assert.match(docs, /minmax\(250px,2fr\)_180px_150px_110px_28px/)
+  assert.match(docs, /<RotuloCol>Archivo<\/RotuloCol>/)
+  assert.match(docs, /<RotuloCol>Para qué sirve<\/RotuloCol>/)
+  assert.match(docs, /<RotuloCol>Lo colgó<\/RotuloCol>/)
+  assert.match(docs, /<RotuloCol derecha>Modificado<\/RotuloCol>/)
+  assert.doesNotMatch(docs, /<Tabla |<THead>/, 'volvió la tabla del canon viejo')
+})
+
+test('Acceso al portal: el orden de columnas del handoff, y el estado dicho en su columna', () => {
+  const acc = sinComentarios(fuente('accesos/TablaAccesos.tsx'))
+  assert.match(acc, /minmax\(230px,1\.6fr\)_150px_120px_140px_150px_28px/)
+  const orden = ['MAIL HABILITADO', 'OBRAS', 'QUÉ PUEDE', 'ESTADO', 'ÚLTIMO INGRESO']
+    .map((r) => acc.indexOf(`>${r}<`))
+  assert.ok(orden.every((i) => i > 0), 'falta alguno de los cinco rótulos del handoff')
+  assert.deepEqual(orden, [...orden].sort((a, b) => a - b), 'el orden de columnas no es el del handoff')
+  // El estado se deducía de un avatar punteado y de una opacidad: ahora es una columna que lo dice.
+  assert.match(acc, /'sin entrar', color: C\.warn/)
+  assert.match(acc, /'revocado', color: C\.tenue/)
+  assert.match(acc, /'activo', color: C\.pos/)
+})
+
+test('las tres acciones del acceso viven en el menú de 28px, no dibujadas en la fila', () => {
+  const acc = sinComentarios(fuente('accesos/TablaAccesos.tsx'))
+  assert.doesNotMatch(acc, /BotonIcono/, 'volvieron los tres botones dibujados en cada fila')
+  assert.match(acc, /aria-expanded=\{abierto\}/)
+  assert.match(acc, /acciones-acceso-abierto-/)
+})
+
+test('la columna de accesos declara el ancho que la tabla del handoff necesita', () => {
+  // Con el mínimo anterior de 600px, entre 1500 y 1860px de viewport el panel de alta se quedaba al
+  // lado y estrangulaba la tabla a ~620px contra los 958 que pide: las columnas se pisaban.
+  assert.match(sinComentarios(fuente('accesos/AccesosPortal.tsx')), /minWidth: 'min\(958px, 100%\)'/)
 })
