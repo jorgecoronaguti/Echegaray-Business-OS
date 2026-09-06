@@ -36,7 +36,13 @@ import type { ClientePanel, ObraDePanel } from '../types'
 /** `25v2:229`. Verde = terminada; azul = en ejecución. Nunca sólo el color: el % va al lado. */
 const PUNTO = { fin: '#067647', curso: '#175CD3', otro: V.lupa } as const
 
-/** Un atajo a una solapa de la ficha: fila entera clicable, sin caja — el patrón de la lista. */
+/**
+ * Un atajo a una solapa de la ficha: fila entera clicable, sin caja.
+ *
+ * Su alto es ritmo de panel y por eso no sale de `ALTO_V2`: el canvas dibuja los paneles sin alto
+ * fijo (`Administración v4:266`, `padding:8px 0`), y una lista de atajos con la densidad de una
+ * tabla de datos empujaría el resto del panel fuera de la pantalla.
+ */
 const ATAJO: CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
   minHeight: 34, fontSize: '12.5px', color: V.tinta, textDecoration: 'none',

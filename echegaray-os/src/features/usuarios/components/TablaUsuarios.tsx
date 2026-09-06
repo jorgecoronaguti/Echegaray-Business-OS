@@ -18,7 +18,7 @@
 // cuenta que puede entrar y no se sabe de quién es, es lo que esta pantalla existe para que no pase.
 
 import Link from 'next/link'
-import { CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { ROL_LABEL } from '@/features/auth/types'
 import { veEconomia } from '@/features/auth/types/areas'
 import { ultimoIngresoDicho, veTodasLasObras } from '../services/reglas'
@@ -86,7 +86,7 @@ export function TablaUsuarios({ usuarios, abierto, hrefDe, vacio }: {
             data-testid={`fila-${u.email ?? u.id}`} data-estado={sinAcceso ? 'sin_acceso' : 'activa'}
             className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#F2F1ED]`}
             style={{
-              height: 44, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
+              height: ALTO_V2.fila, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
               background: u.id === abierto ? V.seleccion : 'transparent',
               // SIN NIVEL ASIGNADO BLOQUEA: la cuenta existe, entra, y la base la trata como la
               // menos privilegiada — o sea que nadie decidió qué ve.
