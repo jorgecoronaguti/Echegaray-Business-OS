@@ -219,3 +219,25 @@ test('un NOMBRE que no entra en el tope dejó de nombrar: la exención no es un 
   const h = auditarDiseno([['Nómina'], ['x'], [], [largo]], { pestana: 'Nómina' })
   assert.ok(h.some((x) => x.regla === 'titulo-largo'), `no cayó por largo: ${h.map((x) => x.regla).join(', ')}`)
 })
+
+// ═══ EL TÍTULO DE UN BLOQUE PUEDE SER UNA FÓRMULA, Y EL CONTROL TIENE QUE VERLO IGUAL ═══
+//
+// Caso real de «OBRAS», 06/09/2026: el bloque 1 lleva la fecha de corte adentro del título, así que
+// se escribe con fórmula. Leído crudo empieza con `=` y no matchea `ES_SECCION_NUM`: el bloque
+// desaparecía de la cuenta y los cuatro que seguían quedaban corridos un lugar. El auditor informaba
+// cuatro huecos de numeración sobre una pestaña numerada 1,2,3,4,5 sin un solo hueco — y un control
+// con cuatro falsos de cuatro deja de mirarse.
+test('un título de bloque escrito con fórmula cuenta como bloque', () => {
+  const filas = [
+    ['OBRAS'], ['qué contesta · fuente · corte'], [],
+    ['="1 · COBRANZAS PENDIENTES AL "&TEXT(TODAY();"dd/mm/yyyy")'],
+    ['2 · OBRAS DEL AÑO'],
+  ]
+  assert.deepEqual(bloquesDe(filas).map((b) => b.n), [1, 2])
+  assert.deepEqual(numeracionRota(filas), [])
+})
+
+test('y con el título en fórmula la pestaña no se llama distinto de su A1', () => {
+  const filas = [['="OBRAS al "&TEXT(TODAY();"dd/mm")'], ['qué contesta · fuente · corte'], []]
+  assert.deepEqual(encabezadoRoto(filas, { pestana: 'OBRAS' }).map((x) => x.regla), ['titulo-con-glosa'])
+})

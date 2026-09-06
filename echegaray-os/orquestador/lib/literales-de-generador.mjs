@@ -100,7 +100,9 @@ export function llamadasA(src, nombre) {
   // solo push por paréntesis y la pila no se desfasa. `[ \t]*` en lugar de `\s*` a propósito — con
   // el salto de línea adentro, un comentario que termine en la palabra «fila» abriría una llamada
   // que no existe, y este repositorio comenta en castellano.
-  const re = new RegExp(`(?<![\\w$.])${nombre}[ \\t]*$`)
+  // El nombre puede traer un punto («h.push»): se escapa, porque un `.` crudo matchea cualquier cosa
+  // y `hxpush(` contaría como llamada.
+  const re = new RegExp(`(?<![\\w$.])${nombre.replace(/\./g, '\\.')}[ \\t]*$`)
   recorrerCodigo(src, (i, c) => {
     if (c === '(') abre.push(re.test(src.slice(Math.max(0, i - nombre.length - 8), i)) ? i + 1 : -1)
     else if (c === ')') { const a = abre.pop(); if (a > 0) out.push(src.slice(a, i)) }
@@ -182,11 +184,26 @@ function envolver(expresion, texto) {
  * @param {{fn?:string, desde?:string, hasta?:string}} opciones
  * @returns {string[]}
  */
+export function celdaDeColumnaA(codigo) {
+  // NO TODOS LOS GENERADORES DEL ARCHIVO ESCRIBEN IGUAL, Y NO HAY QUE OBLIGARLOS. «Nómina» empuja
+  // celda por celda —`fila('Persona', 'Categoría', …)`— y «OBRAS» empuja la fila entera como un
+  // array —`h.push(['⇒ SIN IMPUTAR', '', '', …])`—. Las dos formas ponen su primer valor en la
+  // columna A; lo que cambia es un corchete. Sin este desarmado, un array se leía como una sola
+  // celda con TODOS sus textos pegados: un total de tres palabras medía 200 caracteres y el control
+  // marcaba prosa donde no hay ninguna.
+  let e = primerArgumento(codigo).trim()
+  if (e.startsWith('[')) e = primerArgumento(e.slice(1, e.lastIndexOf(']')))
+  return textoDeCelda(e)
+}
+
+/**
+ * @param {string} fuente
+ * @param {{fn?:string, desde?:string, hasta?:string}} opciones
+ * @returns {string[]}
+ */
 export function textosDeColumnaA(fuente, { fn = 'fila', desde, hasta } = {}) {
   let src = String(fuente ?? '')
   if (desde) { const i = src.indexOf(desde); if (i >= 0) src = src.slice(i) }
   if (hasta) { const i = src.indexOf(hasta); if (i >= 0) src = src.slice(0, i) }
-  return llamadasA(src, fn)
-    .map((c) => textoDeCelda(primerArgumento(c)))
-    .filter(Boolean)
+  return llamadasA(src, fn).map(celdaDeColumnaA).filter(Boolean)
 }

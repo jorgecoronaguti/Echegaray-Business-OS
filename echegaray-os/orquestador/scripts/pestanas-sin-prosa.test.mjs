@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { llamadasA, primerArgumento, textoDeCelda } from '../lib/literales-de-generador.mjs'
+import { llamadasA, celdaDeColumnaA } from '../lib/literales-de-generador.mjs'
 import { esProsa, encabezadoRoto, TOPE_PROSA } from '../lib/diseno-unificado.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
@@ -33,14 +33,27 @@ const LIMPIAS = [
     desde: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
     hasta: 'LO QUE NO SE PUEDE DECIR',
   },
+  {
+    // «OBRAS» arma la fila entera como array y su grilla vive en un lib, no en el script. Los
+    // cuadros se reparten en funciones auxiliares que están definidas ANTES de `grillaObras`, así
+    // que el cuerpo es el archivo entero y el encabezado se busca por su propio marcador: en el
+    // orden del CÓDIGO, la fila 1 de la pestaña no es la primera celda del archivo.
+    titulo: 'OBRAS',
+    gen: '../lib/obras-grilla.mjs',
+    fn: 'h.push',
+    encDesde: 'h.push([PESTANA_OBRAS]',
+  },
 ]
 
 const fuente = (gen) => readFileSync(new URL(`./${gen}`, import.meta.url), 'utf8')
 
 /** TODAS las celdas de la columna A, SIN filtrar las vacías: el encabezado son tres filas contadas. */
-function celdasDeA(src) {
-  return llamadasA(src, 'fila').map((c) => textoDeCelda(primerArgumento(c)))
+function celdasDeA(src, fn = 'fila') {
+  return llamadasA(src, fn).map(celdaDeColumnaA)
 }
+
+/** Las tres celdas del encabezado: A1, A2 y A3. */
+const encabezadoDe = (p) => celdasDeA(tramo({ ...p, desde: p.encDesde ?? p.desde }), p.fn).slice(0, 3)
 
 /** El tramo del generador que le corresponde a una pestaña. */
 function tramo({ gen, desde, hasta }) {
@@ -52,20 +65,20 @@ function tramo({ gen, desde, hasta }) {
 
 for (const p of LIMPIAS) {
   test(`«${p.titulo}» no escribe una sola explicación: el porqué vive en el generador`, () => {
-    const celdas = celdasDeA(tramo(p))
+    const celdas = celdasDeA(tramo(p), p.fn)
     assert.ok(celdas.filter(Boolean).length >= 5, `no leí los literales de «${p.titulo}»: encontré ${celdas.length}`)
-    // Las TRES primeras se saltean contando filas, no textos: el encabezado son A1, A2 y A3, y en
-    // «Nómina» A1 se escribe con la constante `PESTANA` —sin literal— así que descartar «los dos
-    // primeros textos» se comía el primer renglón del cuerpo en una pestaña y no en la otra. Las
-    // filas 1 y 2 tienen su propia regla y su propio tope: las mide `encabezadoRoto`, abajo.
-    const cuerpo = celdas.slice(3).filter(Boolean)
+    // El encabezado se descarta POR SU TEXTO y no por posición: A1 y A2 tienen su propia regla y su
+    // propio tope (`encabezadoRoto`, abajo), y en «OBRAS» ni siquiera son las primeras celdas del
+    // archivo — los cuadros se escriben en funciones auxiliares definidas más arriba.
+    const enc = encabezadoDe(p)
+    const cuerpo = celdas.filter((t) => t && !enc.includes(t))
     const prosa = cuerpo.map((t) => [t, esProsa(t)]).filter(([, x]) => x)
     assert.deepEqual(prosa.map(([t]) => t), [],
       `volvió una explicación a «${p.titulo}» (tope ${TOPE_PROSA} car.): ${prosa.map(([t]) => t.slice(0, 70)).join(' | ')}`)
   })
 
   test(`«${p.titulo}» arranca con las tres filas del encabezado y la tercera vacía`, () => {
-    const [, procedencia, tercera] = celdasDeA(tramo(p))
+    const [, procedencia, tercera] = encabezadoDe(p)
     // A1 se escribe con la constante `PESTANA` y no como literal, así que acá va el nombre: lo que se
     // juzga es la fila 2 (que declare y no argumente) y que la 3 quede libre.
     const mal = encabezadoRoto([[p.titulo], [procedencia], [tercera]], { pestana: p.titulo })
