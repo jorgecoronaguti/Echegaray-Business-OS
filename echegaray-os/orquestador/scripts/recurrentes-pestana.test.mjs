@@ -326,3 +326,40 @@ test('TODA fórmula de la grilla cierra paréntesis y está en es-AR', () => {
     }
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// 4. `RECURRENTES_TOTAL_MESES` APUNTABA A LA FILA 3, QUE ES EL TÍTULO DEL PRIMER BLOQUE (06/09/2026)
+//
+// Medido contra el archivo vivo: el nombre resolvía a `Recurrentes!B3:M3`, y la fila 3 dice «1 · EL
+// GASTO RECURRENTE, MES A MES». Cero celdas con dato, así que cualquier fórmula que lo leyera valía
+// 0 sin dar error. El total por mes vive en la fila 9.
+//
+// Es el MISMO defecto que `ESTRUCTURA_TOTAL_MESES` ya tenía —misma fila 3, misma causa: el generador
+// no publicaba ningún rango con nombre— y que se arregló el 03/08 en la pestaña gemela. El arreglo
+// se aplicó a una de las dos y nadie miró la otra.
+//
+// El oráculo es la grilla que el generador acaba de armar, no un número de fila escrito acá: si el
+// cuadro vuelve a moverse, el test sigue diciendo la verdad.
+import { rangosDeRecurrentes, ROTULO_TOTAL } from './recurrentes-pestana.mjs'
+import { verificarRangos, explicarProblemas, fila as filaConNombre } from '../lib/rangos-con-nombre.mjs'
+
+test('RECURRENTES_TOTAL_MESES cae sobre la fila de totales, con los doce meses adentro', () => {
+  const problemas = verificarRangos(g.filas, rangosDeRecurrentes(g))
+  assert.deepEqual(problemas, [], explicarProblemas(problemas))
+  const [d] = rangosDeRecurrentes(g)
+  assert.equal(d.r0, g.fTot, 'el rango tiene que salir de la fila que el generador acaba de calcular')
+  assert.equal(d.c1 - d.c0 + 1, 12, 'son los doce meses del año, no el total anual ni el promedio')
+})
+
+test('LA FILA 3 —donde apuntaba— no es la fila de totales: el rango viejo está desanclado', () => {
+  // Esto es lo que prueba el DEFECTO y no el arreglo: con el rango en la fila 3, `verificarRangos`
+  // tiene que decir «desanclado». Si algún día dejara de decirlo, el «antes» que se documentó acá
+  // dejó de ser cierto y hay que volver a medir el archivo.
+  const viejo = filaConNombre('RECURRENTES_TOTAL_MESES', { fila: 3, c0: 1, c1: 12, rotulo: ROTULO_TOTAL })
+  assert.equal(verificarRangos(g.filas, [viejo])[0].problema, 'desanclado')
+  assert.notEqual(g.fTot, 3, 'el total no está en la fila 3, que es donde el nombre resolvía')
+})
+
+test('la fila de totales conserva su rótulo: es el ancla del rango', () => {
+  assert.equal(g.filas[g.fTot - 1][0], ROTULO_TOTAL)
+})
