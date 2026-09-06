@@ -89,3 +89,54 @@ test('el generador de «Plantel» publica las columnas derivadas como fórmula',
   assert.ok(!/Math\.round\(importeT\)|Math\.round\(horasT\)|Math\.round\(saleTotal\)/.test(PLANTEL),
     'la fila de totales volvió a pegar el acumulador en vez de sumar la columna')
 })
+
+// ═══ MINIMALISMO EXTREMO: «sin aclaraciones ni explicaciones de nada» (dueño, 05/09/2026) ═══
+//
+// «Plantel» tenía siete renglones de prosa medidos por auditar-diseno-unificado, de 94 a 238
+// caracteres: por qué el preaviso es cero, por qué los dos de Oficina van por la 22.250, cómo se
+// lee el legajo, un resumen al pie que repetía lo que el renglón ya decía. Todos se fueron de la
+// pestaña y su fundamento quedó en el comentario del generador, que es donde alguien lo busca.
+//
+// Este test mira los LITERALES que el generador escribe en «Plantel». No reemplaza a
+// auditar-diseno-unificado contra el archivo —eso hay que correrlo después de aplicar—, pero se
+// pone rojo en el commit que reintroduzca la explicación, sin gastar una llamada a la API.
+import { esProsa, TOPE_PROSA } from './diseno-unificado.mjs'
+
+/** Los textos que el generador manda a una celda de «Plantel», con los `${…}` neutralizados. */
+function literalesDePlantel(fuente) {
+  const bloque = fuente.slice(fuente.indexOf('─── DESDE ACÁ, TODO VA A «Plantel» ───'), fuente.indexOf('LO QUE NO SE PUEDE DECIR'))
+  const sinComentarios = bloque.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')
+  const out = []
+  for (const m of sinComentarios.matchAll(/fila\(\s*(?:sub\()?\s*([`'])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+    out.push(m[2].replace(/\$\{[^}]*\}/g, '0'))
+  }
+  return out
+}
+
+test('«Plantel» no escribe una sola explicación: el porqué vive en el generador, no en la pestaña', () => {
+  const textos = literalesDePlantel(GEN)
+  assert.ok(textos.length >= 6, `no leí los literales de «Plantel»: encontré ${textos.length}`)
+  // A1 es el nombre de la pestaña y A2 la línea de procedencia: tienen su propia regla y su propio
+  // tope (TOPE_SUBTITULO), no la de una celda cualquiera.
+  const cuerpo = textos.slice(2)
+  const prosa = cuerpo.map((t) => [t, esProsa(t)]).filter(([, p]) => p)
+  assert.deepEqual(prosa.map(([t]) => t), [],
+    `volvió una explicación a «Plantel» (tope ${TOPE_PROSA} car.): ${prosa.map(([t]) => t.slice(0, 60)).join(' | ')}`)
+})
+
+test('la línea de procedencia de «Plantel» está en A2 y la fila 3 queda vacía', () => {
+  const t = literalesDePlantel(GEN)
+  assert.equal(t[0], 'Plantel', 'A1 tiene que ser el nombre de la pestaña, tal cual')
+  assert.ok(/respaldo de «Nómina»/.test(t[1]) && /al 0/.test(t[1]),
+    `A2 tiene que declarar qué contesta, de dónde sale y a qué fecha: "${t[1]}"`)
+  assert.ok(t[1].length <= 120, `A2 mide ${t[1].length}: dejó de declarar y empezó a explicar`)
+  // Y la fila 3 queda VACÍA: es el respiro que el contrato exige entre el encabezado y el primer
+  // bloque, y lo ocupaba «Respaldo de «Nómina». Al …» en un tercer renglón. `literalesDePlantel` no
+  // ve las llamadas sin texto, así que esto se mira sobre la secuencia del generador.
+  const arranque = GEN.indexOf("fila('Plantel')")
+  const cabecera = GEN.slice(arranque, GEN.indexOf('fila(seccion(1,', arranque))
+  const llamadas = [...cabecera.matchAll(/^\s*fila\(/gm)].length
+  assert.equal(llamadas, 4, `el encabezado de «Plantel» son 4 renglones (nombre · procedencia · vacío · vacío) y hay ${llamadas}`)
+  assert.equal((cabecera.match(/^\s*fila\(\)$/gm) ?? []).length, 2,
+    'la fila 3 volvió a tener contenido: el encabezado se come el primer bloque')
+})

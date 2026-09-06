@@ -1188,8 +1188,11 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // ─── DESDE ACÁ, TODO VA A «Plantel» ───
   destino = g
   fila('Plantel')
-  fila('Quiénes son, qué devengaron en el año, qué costaría desvincularlos y qué papel les falta en el legajo.')
-  fila(`Respaldo de «Nómina». Al ${fecha(hoy)}.`)
+  // EL ENCABEZADO DEL CONTRATO: A1 el nombre, A2 la ÚNICA línea de procedencia (qué contesta ·
+  // de dónde sale · a qué fecha) y la fila 3 VACÍA. Estaban en tres renglones y el tercero se comía
+  // el respiro que separa el encabezado del primer bloque.
+  fila(`Quiénes son, qué devengaron y qué costaría desvincularlos · respaldo de «Nómina» · al ${fecha(hoy)}`)
+  fila()
   fila()
   fila(seccion(1, 'quiénes son'))
   fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
@@ -1236,7 +1239,9 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // AHORA el cuadro 2 existe: el cuadro 1 puede citarlo en vez de repetirlo.
   citarCuadro2EnCuadro1(destino, { filaQuienes, filaEnDevengado })
   const sinPrecio = activos.filter((p) => p.devengado.horasSinPrecio > 0)
-  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas cargadas sin $/hora: esas horas se cuentan y NO se valorizan`))
+  // Es un HALLAZGO de calidad del dato, no una explicación: esas horas se cuentan y no se valorizan,
+  // así que el devengado de esas personas es un piso. El renglón dice cuántas son; el porqué, acá.
+  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas sin $/hora`))
   fila()
 
   // ═══ 4 · QUÉ CUESTA DESVINCULAR ═══
@@ -1253,9 +1258,14 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
   // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
   // de una desvinculación a la mitad exacta.
+  // ═══ LAS DOS LÍNEAS QUE EXPLICABAN ESTE CUADRO SE FUERON (05/09/2026) ═══
+  //
+  // Decían que la liquidación formal cubre el 50% y que el fondo de cese no se suma. Las dos son
+  // ciertas y las dos son EXPLICACIONES, que es lo que el dueño mandó sacar del archivo. Lo que
+  // decían ya está en los rótulos: «Liquidación (por recibo)» + «A completar en efectivo» = «⇒ SALE
+  // DE LA CAJA», y «Fondo de cese acumulado» queda fuera de la columna del ⇒ justamente porque no
+  // sale de la caja. El porqué vive acá, que es donde alguien lo va a buscar cuando importe.
   fila(seccion(3, 'qué cuesta desvincular a cada uno'))
-  fila(`La liquidación formal cubre el ${Math.round(ACUERDO_BANCO * 100)}% —la parte registrada—; el resto se completa en efectivo. Las dos columnas SUMAN: juntas son lo que sale de la caja.`)
-  fila('El fondo de cese va aparte y NUNCA se suma: es plata del trabajador que se le entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
     'Liquidación (por recibo)', 'A completar en efectivo', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
   const filaCosto = []
@@ -1283,7 +1293,10 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   const cF = destino.length
   fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', '',
     sumaDeColumna('H', c0, cF), sumaDeColumna('I', c0, cF), sumaDeColumna('J', c0, cF), sumaDeColumna('K', c0, cF))
-  fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
+  // NO VA UNA LÍNEA DICIENDO «el preaviso y la indemnización son CERO por el art. 15 de la ley
+  // 22.250, no por olvido». Es una explicación, y la columna «Régimen» ya publica el régimen de cada
+  // persona: quien vea «Ley 22.250» y no encuentre preaviso está viendo la consecuencia, no un
+  // olvido. El fundamento queda acá.
   // ═══ LOS DOS DE «OFICINA» SON CONSTRUCCIÓN, Y ESTÁ PROBADO CON EL PAPEL ═══
   //
   // La duda era real y cara: bajo la LCT una liquidación suma preaviso (art. 231/232), integración
@@ -1296,27 +1309,35 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   //     ingreso 07/02/2026, OFICIAL ESPECIALIZADO, albañil. De ahí salió su fecha de ingreso, que
   //     hasta hoy no estaba en ningún lado y le dejaba la antigüedad, las vacaciones y el fondo en
   //     cero — que no es «no le corresponde», es «no lo pude calcular».
+  //
+  // ESO YA NO SE ESCRIBE EN LA PESTAÑA. La conclusión —que están bajo la 22.250— la publica la
+  // columna «Régimen» de su propio renglón, persona por persona; la prueba documental es de acá.
+  //
+  // Lo que SÍ es un dato y no una explicación es quién no tiene fecha de ingreso: sin ella la
+  // antigüedad, las vacaciones y el fondo no se pueden calcular, y un cero ahí se lee como «no le
+  // corresponde». Va como RÓTULO, con los nombres y sin argumentar.
   const oficina = activos.filter((p) => p.sector === 'Oficina')
-  if (oficina.length) {
-    fila(sub(`Los ${oficina.length} de «Oficina» (${oficina.map((p) => p.nombre).join(' · ')}) están bajo la ley 22.250 igual que los obreros: probado con la libreta del IERIC de uno y el formulario de alta del otro. Por eso no llevan preaviso ni indemnización por antigüedad.`))
-    const sinIngreso = oficina.filter((p) => !p.ingreso)
-    if (sinIngreso.length) fila(sub(`Sin fecha de ingreso en ningún lado: ${sinIngreso.map((p) => p.nombre).join(' · ')}. Sin ella no hay antigüedad, ni vacaciones proporcionales, ni fondo.`))
-  }
+  const sinIngreso = oficina.filter((p) => !p.ingreso)
+  if (sinIngreso.length) fila(sub(`Sin fecha de ingreso: ${sinIngreso.map((p) => p.nombre).join(' · ')}`))
   fila()
 
   // ═══ 5 · EL LEGAJO EN DRIVE ═══
+  // El cuadro mira el NOMBRE de los archivos de la carpeta, nunca el contenido: un «alta.pdf» que
+  // adentro tenga otra cosa se cuenta como alta igual. Es un límite REAL de lo que dice este cuadro,
+  // y por eso está escrito acá y no en un renglón de la pestaña.
   fila(seccion(4, 'el legajo de cada uno en Drive'))
-  fila('Mira el NOMBRE de los archivos de su carpeta, no el contenido: un «alta.pdf» que adentro tenga otra cosa se cuenta como alta igual.')
   fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
-  const sinCarpeta = []
   let completos = 0
   for (const p of activos) {
     const m = carpetaDe(p.nombre, legajos.carpetas)
     if (!m.seguro) {
-      sinCarpeta.push(`${p.nombre}${m.candidatos.length ? ` (¿${m.candidatos.slice(0, 3).join(' o ')}?)` : ''}`)
+      // LOS CANDIDATOS VAN EN EL RENGLÓN DE SU PERSONA, NO EN UN RESUMEN AL PIE. La línea del pie
+      // («1 sin carpeta emparejada: Gonzalez Juan (¿TELLO JUAN o …?)») repetía lo que el renglón ya
+      // decía y era el único lugar donde estaban los candidatos: acá quedan al lado del nombre, que
+      // es donde se resuelve el emparejamiento.
       fila(p.nombre, m.candidatos.length ? 'sin emparejar' : 'SIN CARPETA',
         ...PAPELES.map(() => SIN_DATO), SIN_DATO, SIN_DATO,
-        m.candidatos.length ? 'no se pudo emparejar con certeza' : 'no tiene carpeta en 1. ACTIVOS')
+        m.candidatos.length ? `¿${m.candidatos.slice(0, 2).join(' o ')}?` : 'sin carpeta en 1. ACTIVOS')
       continue
     }
     const pa = papelesDe(legajos.porCarpeta.get(m.carpeta) ?? [])
@@ -1325,7 +1346,6 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       pa.recibos || SIN_DATO, pa.ultimoRecibo ?? SIN_DATO, pa.falta.length ? pa.falta.join(' · ') : 'completo')
   }
   fila(rotuloTotal(`${completos} de ${activos.length} con los cuatro papeles`))
-  if (sinCarpeta.length) fila(sub(`${sinCarpeta.length} sin carpeta emparejada: ${sinCarpeta.join(' · ')}`))
   fila()
 
   // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══
