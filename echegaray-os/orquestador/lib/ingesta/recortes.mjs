@@ -66,6 +66,34 @@ export function llaveDeRecorte(hashArchivo, pagina, caja, dpi) {
 }
 
 /**
+ * DE VUELTA DESDE LA LLAVE: DE QUÉ PLANO, PÁGINA Y CAJA SALIÓ ESTE RECORTE. PURA.
+ *
+ * ═══ POR QUÉ HACE FALTA EL INVERSO ═══
+ *
+ * `interpretarRegion` cachea la lectura bajo el hash del PNG y guarda el TÍTULO de la región, pero
+ * no de qué archivo salió — `interpretarLamina`, al lado, sí lo guarda. Medido el 05/09/2026 sobre
+ * las 113 lecturas de región ya pagadas: ninguna sabía decir a qué plano pertenecía, así que
+ * «¿este dato estaba en otra vista del MISMO plano?» —la pregunta que decide si la segmentación es
+ * el defecto— no se podía contestar sin volver a pagar la lectura entera.
+ *
+ * Se puede contestar gratis porque el nombre del recorte ya lleva las cuatro cosas y los PNG siguen
+ * en disco: hasheando cada uno se recupera la llave de la lectura, y de ahí el plano. Devuelve
+ * `null` —no un objeto a medias— cuando el nombre no es una llave de recorte: un archivo suelto en
+ * la carpeta del caché no es un recorte con la caja en cero.
+ */
+export function leerLlaveDeRecorte(llave) {
+  const m = /^([0-9a-f]{16})-p(\d+)-(-?[\d.]+)_(-?[\d.]+)_(-?[\d.]+)_(-?[\d.]+)-(\d+)$/
+    .exec(String(llave ?? '').replace(/\.png$/, ''))
+  if (!m) return null
+  return {
+    hashArchivo: m[1],
+    pagina: Number(m[2]),
+    caja: [Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])],
+    dpi: Number(m[7]),
+  }
+}
+
+/**
  * RECORTAR UNA REGIÓN. Devuelve `{ ok, ruta, ancho, alto, dpi, deCache }` o el motivo.
  *
  * No lanza: un recorte que no sale es un dato del cierre —«esta región no se pudo mirar»— y no un

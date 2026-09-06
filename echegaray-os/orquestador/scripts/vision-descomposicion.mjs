@@ -53,7 +53,7 @@ async function main() {
 
   console.table(d.porTipo.map((t) => ({
     subcapacidad: t.tipo, llamadas: t.n, 'usd (repartido)': t.usd,
-    'elementos': t.elementos, 'con dato útil': t.elementosUtiles,
+    'elementos': t.elementos, 'computados (pipeline real)': t.elementosComputados,
     '% salida que es TEXTO': t.fraccionTexto,
   })))
 
