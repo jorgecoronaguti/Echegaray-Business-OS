@@ -71,12 +71,13 @@ import { PanelCompra } from '@/features/administracion/components/PanelCompra'
 import {
   filtroDe, obrasFrecuentes, ROTULO_FILTRO, type FiltroCompras,
 } from '@/features/administracion/services/comprasEstado'
-import { TablaComprasSheet } from '@/features/administracion/components/TablaComprasSheet'
+import { PieCompras, TablaComprasSheet } from '@/features/administracion/components/TablaComprasSheet'
 import { PanelCompraSheet } from '@/features/administracion/components/PanelCompraSheet'
 import { AdjuntosSueltos } from '@/features/administracion/components/AdjuntosSueltos'
 import { FiltrosSheet } from '@/features/administracion/components/FiltrosSheet'
 import {
-  conteosDe, filtroDe as filtroSheetDe, pasa, ROTULO as ROTULO_SHEET, totalesDe, type FiltroSheet,
+  conteosDe, filtroDe as filtroSheetDe, pasa, recorteDeLista, ROTULO as ROTULO_SHEET,
+  type FiltroSheet,
 } from '@/features/administracion/services/comprasSheet'
 import {
   getAdjuntosSueltos, getComprasSheet, TOPE as TOPE_SHEET,
@@ -118,7 +119,9 @@ function url({ f, q, c, o }: { f?: FiltroCompras; q?: string; c?: string; o?: st
 export default async function ComprasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; f?: string; fa?: string; c?: string; o?: string; s?: string }>
+  searchParams: Promise<{
+    q?: string; f?: string; fa?: string; c?: string; o?: string; s?: string; todo?: string
+  }>
 }) {
   const sp = await searchParams
   if (sp.f === 'arca') return <ControlArca searchParams={searchParams} />
@@ -126,9 +129,11 @@ export default async function ComprasPage({
 }
 
 /** LA PESTAÑA COMPRAS, entera. La lista que pidió el dueño. */
-async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string; s?: string } }) {
+async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string; s?: string; todo?: string } }) {
   const filtro = filtroSheetDe(sp.f)
   const q = sp.q?.trim().toLowerCase() || undefined
+  /** `todo=1`: el pedido explícito de levantar el tope de la lista. Ver `recorteDeLista`. */
+  const verTodo = sp.todo === '1'
 
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
@@ -180,21 +185,30 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
    * una llave distinta de la `c` del control ARCA a propósito: son dos poblaciones y abrir una no
    * puede dejar abierta la otra.
    */
-  const urlSheet = ({ f = filtro, s: filaSel }: { f?: FiltroSheet; s?: number | null } = {}) => {
+  const urlSheet = (
+    { f = filtro, s: filaSel, todo = verTodo }:
+    { f?: FiltroSheet; s?: number | null; todo?: boolean } = {},
+  ) => {
     const p = new URLSearchParams()
     if (f !== 'todo') p.set('f', f)
     if (sp.q) p.set('q', sp.q)
     if (filaSel != null) p.set('s', String(filaSel))
+    // `todo=1` LEVANTA EL TOPE DE LA LISTA y por eso viaja en la URL como el resto del estado: sin
+    // él, «Ver las 747 restantes» tendría que ser un componente de cliente con estado propio y la
+    // vista no se podría compartir con un enlace.
+    if (todo) p.set('todo', '1')
     const t = p.toString()
     return t ? `${RUTA}?${t}` : RUTA
   }
-  const href = (f: FiltroSheet) => urlSheet({ f, s: null })
+  const href = (f: FiltroSheet) => urlSheet({ f, s: null, todo: false })
 
   // La fila abierta sale de lo que YA se leyó: abrir el panel no cuesta una consulta más.
   const filaAbierta = sp.s ? (todas.find((f) => f.fila === Number(sp.s)) ?? null) : null
-  // Los totales del pie miran LO QUE SE ESTÁ VIENDO —la nota dice «6 de 882»—, a diferencia de los
+  // EL RECORTE. Las 947 filas juntas medían 43.871px de alto; el tope las deja en ~9.000 y el
+  // enlace directo manda sobre el tope (ver `recorteDeLista`). Los totales del pie miran LO QUE SE
+  // DIBUJA —el rótulo del canvas dice «Total de lo que hay en pantalla»—, a diferencia de los
   // conteos de los chips, que miran la población entera.
-  const totalesVisibles = totalesDe(visibles)
+  const recorte = recorteDeLista(visibles, { abierta: filaAbierta?.fila ?? null, todo: verTodo })
 
   return (
     <Marco>
@@ -239,44 +253,53 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+            {/* EL SPLIT SE APILA EN ANGOSTO. Era un `display:flex` fijo contra un panel de 372px
+                inelástico: a 390px el panel se quedaba con 396 y la lista, que sí lleva `min-w-0`,
+                cedía todo — 26px de desborde lateral medidos en producción. */}
+            <div className="flex flex-col lg:flex-row lg:items-start">
               {/* LOS TOTALES Y LA NOTA AL PIE VIVEN EN LA COLUMNA DE LA LISTA (handoff v4). Estaban
                   debajo del split, así que al abrir el panel la nota quedaba cruzando por debajo de
                   los dos y decía «6 de 882» a lo ancho de una pantalla donde la lista ocupa la
                   mitad: el número se leía como si describiera el panel también. */}
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="min-w-0 flex-1">
                 <TablaComprasSheet
-                  filas={visibles}
+                  filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}
                   hrefDe={(fila) => urlSheet({ s: fila === filaAbierta?.fila ? null : fila })}
                 />
-                <p className="mt-3 text-[11px] text-faint">
-                  <Num className="text-faint">{visibles.length}</Num> de{' '}
-                  <Num className="text-faint">{todas.length}</Num>
-                  {filtro !== 'todo' && <> · {ROTULO_SHEET[filtro]}</>}
-                  {q && <> · «{sp.q}»</>}
-                  {(q || filtro !== 'todo') && (
-                    <> · <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link></>
+                <PieCompras filas={recorte.enPantalla} total={todas.length}>
+                  {(filtro !== 'todo' || q) && (
+                    <span style={{ fontSize: '11.5px' }}>
+                      {filtro !== 'todo' && ROTULO_SHEET[filtro]}
+                      {q && <>{filtro !== 'todo' && ' · '}«{sp.q}»</>}
+                      {' · '}
+                      <Link href={RUTA} data-testid="quitar-filtros" className="underline underline-offset-2">Ver todo</Link>
+                    </span>
                   )}
-                </p>
-                {/* EL TOTAL NO SUMA LO QUE NO TIENE IMPORTE, y eso se dice. La suma trata el `null`
-                    como 0 porque no puede hacer otra cosa; callarlo hace que el total se lea como
-                    si estuviera completo, y el que lo compare contra el Sheet no va a saber por qué
-                    no cierra. */}
-                {totalesVisibles.sinImporte > 0 && (
-                  <p className="mt-1 text-[11px] text-faint" data-testid="compras-sin-importe">
-                    <Num className="text-faint">{totalesVisibles.sinImporte}</Num>
-                    {totalesVisibles.sinImporte === 1 ? ' fila sin importe cargado' : ' filas sin importe cargado'}
-                    {': queda fuera de la suma.'}
-                  </p>
-                )}
-                {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». */}
-                {listado.data.truncado && (
-                  <p className="mt-1 text-[11.5px] text-warn" data-testid="compras-truncado">
-                    Se muestran las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está fuera
-                    del tope de esta pantalla.
-                  </p>
-                )}
+                  {/* EL TOPE NO PUEDE SER SILENCIOSO: una lista recortada que no lo dice se lee como
+                      la lista entera. El verbo lleva a verlas todas, así que ninguna fila queda
+                      fuera de alcance — sólo fuera de la primera carga. */}
+                  {recorte.ocultas > 0 && (
+                    <span style={{ fontSize: '11.5px' }} data-testid="compras-recortada">
+                      <Num className="text-faint">{recorte.ocultas}</Num> más sin dibujar{' · '}
+                      <Link
+                        href={urlSheet({ todo: true })}
+                        data-testid="ver-todas-las-compras"
+                        className="underline underline-offset-2"
+                      >
+                        Ver todas
+                      </Link>
+                    </span>
+                  )}
+                  {/* UN CONTROL QUE NO PUDO MIRAR TODO NO PUEDE DECIR «NO HAY MÁS». Esto es otra
+                      cosa que el recorte de arriba: acá la LECTURA se cortó en la base. */}
+                  {listado.data.truncado && (
+                    <span className="text-warn" style={{ fontSize: '11.5px' }} data-testid="compras-truncado">
+                      Se leyeron las {TOPE_SHEET} más recientes. Lo que falta no está vacío: está
+                      fuera del tope de esta pantalla.
+                    </span>
+                  )}
+                </PieCompras>
               </div>
               {filaAbierta && (
                 <PanelCompraSheet

@@ -1,41 +1,48 @@
 // COMPRAS — la pestaña Compras del Sheet, dibujada con el PATRÓN v2.
 //
 // Contrato: `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque
-// «3 · COMPRAS · LA PESTAÑA DEL SHEET» (líneas 208-245).
+// «3 · COMPRAS · LA PESTAÑA DEL SHEET» (líneas 222-247).
 //
 // ═══ QUÉ CAMBIÓ EL 06/09/2026: SE FUE LA CAJA ═══
 //
 // Esta tabla era la única de las tres pantallas del canvas A que seguía corriendo por
 // `shared/components/canon` —el zip de AGOSTO—, cuyo objeto central es la CAJA: `TarjetaTabla`
 // declara `background:#FFFFFF;border:1px solid #E7E6E2;borderRadius:10px`, encabezado gris de 38px,
-// rótulo de 10px/.05em, fila de 46 y pie de totales adentro. El canvas la dibuja SIN caja, con
-// cabecera de 30, rótulo 11px/600/.06em y fila de 44 — el criterio 3 del patrón: «sin cajas —
-// filos, tipografía y números tabulares, el color sólo en la cifra».
+// rótulo de 10px/.05em y pie de totales adentro. El canvas la dibuja SIN caja, con cabecera de 30,
+// rótulo 11px/600/.06em y fila de 44 — el criterio 3 del patrón: «sin cajas — filos, tipografía y
+// números tabulares, el color sólo en la cifra».
 //
 // El ritmo NO se redeclara acá: sale de `ALTO_V2` (`shared/components/v2/patron.tsx`), que es la
 // única constante del repositorio que puede decir cuánto mide una fila. `ritmo-vertical.test.ts`
 // se pone rojo si este archivo escribe un alto propio.
 //
 // Con la caja se fue el PIE DE TOTALES del canon —el bloque gris con COMPROBANTES / SIN COMPROBANTE
-// / SIN IMPUTAR / A PAGAR / TOTAL—. Lo reemplaza `PieCompras`, que es la línea del canvas (`:246`)
+// / SIN IMPUTAR / A PAGAR / TOTAL—. Lo reemplaza `PieCompras`, que es la línea del canvas (`v4A:245`)
 // y vive DENTRO de la columna de la lista, no debajo del split: con el panel abierto, un pie a lo
 // ancho de los dos decía «6 de 882» cruzando por debajo del panel y se leía como si lo describiera
 // a él también.
 //
 // ═══ TRES COSAS QUE EL CANON PINTABA DE MÁS ═══
 //
-//   · EL ESTADO YA NO ES UNA PASTILLA. El canvas lo escribe como TEXTO de color (`:216` «Pagado» en
-//     #067647, `:224` «A pagar» en #B54708, «Proyectado» en #6B6B67, «Anulada» en #B42318). Los
+//   · EL ESTADO YA NO ES UNA PASTILLA. El canvas lo escribe como TEXTO de color (`v4A:223` «Pagado»
+//     en #067647, `:229` «A pagar» en #B54708, «Proyectado» en #6B6B67, «Anulada» en #B42318). Los
 //     cuatro colores son los mismos que ya devolvía `pastillaDe()`; lo que se retira es el fondo y
 //     el borde, que en 947 filas son 947 cápsulas compitiendo con el importe.
-//   · «SIN COMPROBANTE» BAJA DE ÁMBAR A APAGADO (`:220`, `:230`: #91918B). El porte anterior lo
+//   · «SIN COMPROBANTE» BAJA DE ÁMBAR A APAGADO (`v4A:226`, `:232`: #91918B). El porte anterior lo
 //     pintaba ámbar con un argumento correcto —sin papel el gasto no acredita IVA— y un efecto
 //     equivocado: 876 de 882 filas no tienen comprobante, así que la columna entera quedaba ámbar y
 //     el ámbar dejaba de significar «esto bloquea». Lo que sí bloquea se ve en el filtro «Sin
-//     comprobante» y en el panel, donde la propiedad SIGUE en ámbar (`:265`) porque ahí habla de UNA
-//     compra.
+//     comprobante» y en el panel, donde la propiedad SIGUE en ámbar porque ahí habla de UNA compra.
 //   · EL CHIP «ESTRUCTURA» PIERDE SU RECUADRO: el canvas lo escribe en 11px #91918B al lado del
-//     destino (`:221`), sin borde ni radio. Un recuadro alrededor de una palabra es una caja más.
+//     destino (`v4A:227`), sin borde ni radio. Un recuadro alrededor de una palabra es una caja más.
+//
+// ═══ EL CUERPO VA EN 12,5/12 Y NO EN LOS 13,5px DEL CANVAS ═══
+//
+// El canvas escribe `font-size:13.5px` en la fila de las TRES pantallas del bloque A (`:84` Personal,
+// `:223` Compras). Personal y Proveedores ya se portaron en 12,5px para el nombre y 12px para el
+// resto, y el dueño las dio por fieles. Copiar el 13,5 sólo acá dejaría tres listas hermanas con dos
+// cuerpos distintos en la misma pestaña, que se ve peor que la diferencia contra el zip. Es una
+// desviación deliberada y heredada, no un olvido.
 //
 // ═══ LA ÚLTIMA COLUMNA (26px) ES EL PAPEL, NO UN `⋯` ═══
 //
@@ -46,37 +53,54 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { pesos } from '@/shared/components/canon/formato'
 import { IconoProblema } from '@/shared/components/iconos'
-import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
+import {
+  ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, FILO_ELEGIDA, RotuloCol, V,
+} from '@/shared/components/v2/patron'
 import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
 
 /**
- * LA GRILLA DEL CANVAS, carácter por carácter (`v4A:208`), y sus dos variantes angostas. Literales
- * porque Tailwind escanea el texto del archivo: una clase armada en runtime no se compila nunca y
- * la fila se dibuja SIN grilla, defecto que sólo se ve mirando la pantalla.
+ * LA GRILLA DEL CANVAS, carácter por carácter (`v4A:222`), y sus dos variantes angostas. Literales
+ * porque Tailwind escanea el TEXTO del archivo: una clase armada en runtime no se compila nunca y la
+ * fila se dibuja sin grilla — defecto que sólo se ve mirando la pantalla.
  *
  * ═══ POR QUÉ HAY VARIANTES SI EL CANVAS DIBUJA UNA SOLA ═══
  *
- * Porque la grilla ancha necesita 924px y a 390 no cede: medido en producción el 06/09/2026,
- * `document.body.scrollWidth` daba 416 contra un viewport de 390 con el panel abierto — 26px de
- * desborde lateral, y el texto «Ver las a pagar →» del panel cortado contra el borde. El canon
- * resolvía eso metiendo la tabla en una caja con scroll propio; el v2 no tiene caja, así que suelta
- * columnas por media query (`25v2:154` — «nunca la identidad»). A 1249 se van CONCEPTO y FORMA DE
- * PAGO; a 767 quedan proveedor, importe y papel: de quién es el gasto, cuánto es, y si hay papel.
+ * Porque las ocho columnas del canvas son TODAS inelásticas —los `minmax(150px,…)` declaran piso— y
+ * suman 826px más 98 de `gap`: 924px que no ceden un píxel. El canon resolvía eso metiendo la tabla
+ * en una caja con scroll propio; el v2 no tiene caja, así que suelta columnas por media query
+ * (`25v2:154` — «nunca la identidad»).
+ *
+ * ═══ DE DÓNDE SALEN LOS DOS CORTES ═══
+ *
+ * `1384` no es un número redondo: es la cuenta. Con el panel abierto la lista sólo tiene
+ * `ancho − 40 (padding de página) − 421 (panel: 372 + 24 de margen + 1 de filo + 24 de sangría)`, así
+ * que las ocho columnas recién entran desde 924 + 421 + 40 = 1385. Por debajo se sueltan CONCEPTO,
+ * COMPROBANTE y FORMA DE PAGO y quedan cinco, que necesitan 546 y entran con el panel abierto ya a
+ * 1007px. El costo es real y se declara: entre 1250 y 1384 con el panel CERRADO las ocho entrarían y
+ * igual se ven cinco — CSS no puede saber si el panel está abierto, y equivocarse hacia el lado del
+ * recorte muestra menos columnas, mientras que equivocarse hacia el otro CORTA el dato (`body` lleva
+ * `overflow-x: clip`, así que no aparece ni una barra que lo delate).
+ *
+ * `767` es el teléfono: quedan de QUIÉN es el gasto y CUÁNTO es. Se va también el papel — 26px no son
+ * un blanco para un dedo y el comprobante se abre desde el panel, que en el teléfono queda debajo.
  */
 const COLS
   = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_104px_112px_26px]'
-  + ' max-[1249px]:grid-cols-[minmax(150px,1.2fr)_112px_minmax(110px,1fr)_92px_112px_26px]'
-  + ' max-[767px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_26px]'
+  + ' max-[1384px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_112px_26px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1fr)_112px]'
 
 /**
  * Las celdas que se sueltan, y el corte en el que se van. EL `display` DE ESTAS CELDAS VA POR CLASE,
  * NUNCA INLINE: un `style={{ display: 'flex' }}` le gana a cualquier media query y la celda sigue
- * ocupando su ancho aunque la grilla ya no tenga su columna — la fila se corre entera.
+ * ocupando su ancho aunque la grilla ya no tenga su columna — la fila entera se corre.
  */
-const SUELTA_TABLET = 'max-[1249px]:hidden'
+const SUELTA_ANCHO = 'max-[1384px]:hidden'
 const SUELTA_TELEFONO = 'max-[767px]:hidden'
+
+/** El `gap:14px` del canvas (`v4A:222`), en la cabecera y en la fila. */
+const GAP = 'gap-[14px]'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
@@ -104,15 +128,15 @@ export function TablaComprasSheet({
 }) {
   return (
     <div data-testid="tabla-compras-sheet">
-      <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
+      <div className={`grid ${GAP} ${COLS}`} style={ENCABEZADO}>
         <RotuloCol>Proveedor</RotuloCol>
-        <span className={`grid ${SUELTA_TABLET}`}><RotuloCol>Concepto</RotuloCol></span>
-        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Comprobante</RotuloCol></span>
+        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Concepto</RotuloCol></span>
+        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Comprobante</RotuloCol></span>
         <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Cliente / asignación</RotuloCol></span>
         <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
-        <span className={`grid ${SUELTA_TABLET}`}><RotuloCol>Forma de pago</RotuloCol></span>
+        <span className={`grid ${SUELTA_ANCHO}`}><RotuloCol>Forma de pago</RotuloCol></span>
         <RotuloCol derecha>Importe</RotuloCol>
-        <span />
+        <span className={SUELTA_TELEFONO} />
       </div>
 
       {filas.map((f) => {
@@ -125,14 +149,16 @@ export function TablaComprasSheet({
             role="row"
             data-testid={`compra-${f.fila}`}
             data-seleccionada={elegida ? '' : undefined}
-            className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegida ? '' : 'hover:bg-[#F2F1ED]'}`}
+            className={`grid items-center ${GAP} ${CAJA_CONTENIDO} ${COLS} ${elegida ? '' : 'hover:bg-[#F2F1ED]'}`}
             style={{
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,
               background: elegida ? V.seleccion : undefined,
-              // Estado y selección por canales distintos: el filo ámbar dice «esto bloquea» y
-              // sobrevive a la selección, que se expresa sólo con el fondo (`22v2:422`).
-              boxShadow: obra ? undefined : FILO_BLOQUEA,
+              // DOS SIGNIFICADOS Y UN SOLO `box-shadow`, así que hay una prioridad y está escrita:
+              // «esto bloquea» le gana a «esto está elegido» (`22v2:422` — el filo del problema tiene
+              // que sobrevivir a la selección, o elegir una fila borraría su problema). La selección
+              // no se queda sin canal: lleva además el fondo `V.seleccion`, que el filo no toca.
+              boxShadow: !obra ? FILO_BLOQUEA : elegida ? FILO_ELEGIDA : undefined,
             }}
           >
             {/* `display: contents` — la fila entera abre el panel, salvo el papel, que es un botón
@@ -142,12 +168,12 @@ export function TablaComprasSheet({
                 {f.proveedor ?? 'sin proveedor'}
               </span>
 
-              <span className={`truncate ${SUELTA_TABLET}`} style={{ fontSize: '12px', color: V.tintaSuave }}>
+              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: '12px', color: V.tintaSuave }}>
                 {f.concepto ?? f.detalle_obra ?? 'sin concepto'}
               </span>
 
               <span
-                className={`truncate font-mono ${SUELTA_TELEFONO}`}
+                className={`truncate font-mono ${SUELTA_ANCHO}`}
                 style={{ fontSize: '11.5px', color: f.comprobante ? V.tintaSuave : V.tenue }}
                 data-testid={f.comprobante ? undefined : 'compra-sin-comprobante'}
               >
@@ -157,7 +183,7 @@ export function TablaComprasSheet({
               {/* «Sin imputar» en rojo con su ⚠: hoy las 947 filas tienen destino, así que este
                   camino no se ve — existe porque el día que alguien cargue una sin imputar tiene
                   que gritarlo, no esconderlo. */}
-              <span className={`flex items-baseline gap-[7px] min-w-0 ${SUELTA_TELEFONO}`}>
+              <span className={`flex min-w-0 items-baseline gap-[7px] ${SUELTA_TELEFONO}`}>
                 {f.unidad_negocio && (
                   <span className="shrink-0" style={{ fontSize: '11px', color: V.tenue }}>{f.unidad_negocio}</span>
                 )}
@@ -180,13 +206,17 @@ export function TablaComprasSheet({
                 )}
               </span>
 
-              <span className={`truncate ${SUELTA_TELEFONO}`} style={{ fontSize: '12px', color: estado.color }} data-testid="estado-compra">
+              <span
+                className={`truncate ${SUELTA_TELEFONO}`}
+                style={{ fontSize: '12px', color: estado.color }}
+                data-testid="estado-compra"
+              >
                 {estado.texto}
               </span>
 
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
                   igual; lo único que no se puede es proyectar cuándo sale la plata. */}
-              <span className={`truncate ${SUELTA_TABLET}`} style={{ fontSize: '12px', color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
+              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: '12px', color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
                 {f.tipo_pago || 'sin cargar'}
               </span>
 
@@ -205,7 +235,9 @@ export function TablaComprasSheet({
               </span>
             </Link>
 
-            <CeldaComprobante adjuntos={f.adjuntos} />
+            <span className={`flex ${SUELTA_TELEFONO}`}>
+              <CeldaComprobante adjuntos={f.adjuntos} />
+            </span>
           </div>
         )
       })}
@@ -220,7 +252,7 @@ export function TablaComprasSheet({
 }
 
 /**
- * EL PIE DE LA LISTA — `v4A:246`, dentro de la columna de la lista y no debajo del split.
+ * EL PIE DE LA LISTA — `v4A:245`, dentro de la columna de la lista y no debajo del split.
  *
  * Suma LO QUE SE ESTÁ VIENDO, que es lo que dice el rótulo del canvas: «Total de lo que hay en
  * pantalla». Los conteos de la población entera son otra cosa y viven arriba, en los chips.
