@@ -123,6 +123,39 @@ const RE_CONECTOR = new RegExp(`\\b(${CONECTORES.join('|')})\\b`, 'iu')
 const palabras = (t) => (String(t).match(/\p{L}{2,}/gu) ?? []).length
 
 /**
+ * NÚCLEO PURO: UN TÍTULO DE SECCIÓN, PARTIDO EN LO QUE NOMBRA Y LO QUE GLOSA.
+ *
+ * ═══ LA REGLA QUE FALTABA, Y POR QUÉ SE PARTE EN DOS (05/09/2026) ═══
+ *
+ * Bajo «minimalismo extremo» un título PUEDE NOMBRAR SU BLOQUE Y NO PUEDE ARGUMENTAR SOBRE ÉL.
+ * Nombrar un bloque de esta empresa no entra en sesenta caracteres: «3.7 · Quattropani - Melisa
+ * García SAS — SALÓN COMERCIAL · 18/08 → 30/10» son 71 y no sobra una palabra — el cliente, el tipo
+ * de obra y el plazo son la identidad del bloque, no una explicación de lo que hay adentro.
+ *
+ * Medido contra el archivo, el detector marcaba CATORCE títulos de sección como prosa por pasar el
+ * tope, y uno («6 · LO QUE HAY QUE CORREGIR EN COMPRAS», 38 caracteres) como explicación porque
+ * «hay que» está en la lista de conectores. Ninguno de los quince argumenta nada.
+ *
+ * El corte es el guion largo: lo de la IZQUIERDA es el NOMBRE del bloque y no se juzga; lo de la
+ * DERECHA es la glosa, y la glosa se juzga con las mismas dos varas que cualquier otra celda. No
+ * hace falta un umbral nuevo —dos números para la misma idea es cómo se pierde el criterio—: con el
+ * tope de siempre aplicado a la glosa pasan los catorce títulos legítimos y siguen cayendo los tres
+ * que de verdad explican, entre ellos «6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer».
+ *
+ * @param {string} texto
+ * @returns {null|{nombre:string, glosa:string}} null si la celda no es un título de sección
+ */
+export function partesDeTitulo(texto) {
+  const t = String(texto ?? '').trim()
+  if (!ES_SECCION_NUM.test(t)) return null
+  // El separador es el guion LARGO rodeado de espacios. El corto queda afuera a propósito: aparece
+  // adentro de los nombres propios («Quattropani - Melisa García SAS») y partir ahí cortaría el
+  // nombre del cliente al medio.
+  const i = t.indexOf(' — ')
+  return i < 0 ? { nombre: t, glosa: '' } : { nombre: t.slice(0, i), glosa: t.slice(i + 3).trim() }
+}
+
+/**
  * NÚCLEO PURO: ¿esta celda es una explicación y no un rótulo?
  *
  * Dos caminos, y basta uno:
@@ -131,15 +164,33 @@ const palabras = (t) => (String(t).match(/\p{L}{2,}/gu) ?? []).length
  *     porque un encabezado legítimo puede contener el conector suelto («Nota de crédito», «Notas»):
  *     con menos de seis palabras no hay argumento, hay rótulo.
  *
+ * En un título de sección las dos varas se aplican a la GLOSA y no al renglón entero: ver
+ * `partesDeTitulo`. `sobre` dice qué se juzgó, para que el hallazgo no muestre un texto distinto del
+ * que midió.
+ *
  * @param {unknown} celda el valor crudo de la celda (puede ser una fórmula: se mira lo que se VE)
  * @param {{tope?:number}} opciones
- * @returns {null|{clase:'larga'|'argumenta', largo:number, texto:string}}
+ * @returns {null|{clase:'larga'|'argumenta', largo:number, texto:string, sobre:'celda'|'glosa'}}
  */
 export function esProsa(celda, { tope = TOPE_PROSA } = {}) {
-  const t = textoVisible(celda)
-  if (!t) return null
-  if (t.length > tope) return { clase: 'larga', largo: t.length, texto: t }
-  if (palabras(t) >= 6 && RE_CONECTOR.test(t)) return { clase: 'argumenta', largo: t.length, texto: t }
+  const visible = textoVisible(celda)
+  if (!visible) return null
+  const partes = partesDeTitulo(visible)
+  if (partes) {
+    // EL NOMBRE SE JUZGA SÓLO POR LARGO. Un nombre que no entra en el tope dejó de nombrar y empezó
+    // a describir; pero un conector adentro de un nombre no es un argumento («LO QUE HAY QUE
+    // CORREGIR EN COMPRAS» nombra un bloque, no explica nada).
+    if (partes.nombre.length > tope) return { clase: 'larga', largo: partes.nombre.length, texto: partes.nombre, sobre: 'nombre' }
+    if (!partes.glosa) return null
+    return juzgar(partes.glosa, tope, 'glosa')
+  }
+  return juzgar(visible, tope, 'celda')
+}
+
+/** Las dos varas —largo y argumento— sobre un texto ya recortado a lo que hay que juzgar. */
+function juzgar(t, tope, sobre) {
+  if (t.length > tope) return { clase: 'larga', largo: t.length, texto: t, sobre }
+  if (palabras(t) >= 6 && RE_CONECTOR.test(t)) return { clase: 'argumenta', largo: t.length, texto: t, sobre }
   return null
 }
 
@@ -259,10 +310,20 @@ export function auditarDiseno(filas = [], { pestana = '', tope = TOPE_PROSA } = 
     ...prosaEnGrilla(filas, { tope }).map((p) => ({
       fila: p.fila,
       col: p.col,
-      regla: p.clase === 'larga' ? 'prosa' : 'explicacion',
+      regla: reglaDeProsa(p),
       detalle: `${p.largo} car. — "${p.texto.slice(0, 70)}"`,
     })),
   ]
+}
+
+/**
+ * Cómo se llama el desvío según QUÉ se juzgó. Un título que argumenta y una glosa suelta a mitad de
+ * la grilla no se arreglan igual: el primero se recorta, la segunda se borra.
+ */
+function reglaDeProsa(p) {
+  if (p.sobre === 'nombre') return 'titulo-largo'
+  if (p.sobre === 'glosa') return 'titulo-argumenta'
+  return p.clase === 'larga' ? 'prosa' : 'explicacion'
 }
 
 /** Agrupa los hallazgos por regla, con un ejemplo cada uno. Para imprimir sin inundar la consola. */

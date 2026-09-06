@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   EXCLUIDAS, TOPE_SUBTITULO, esProsa, prosaEnGrilla, bloquesDe, numeracionRota,
-  encabezadoRoto, auditarDiseno, enAlcance,
+  encabezadoRoto, auditarDiseno, enAlcance, partesDeTitulo,
 } from './diseno-unificado.mjs'
 import { glosasLargas } from './patron-pestana.mjs'
 import { PASOS, esReporte } from './flujo-caja-pasos.mjs'
@@ -157,4 +157,65 @@ test('el auditor del contrato corre en el macro agente, y como REPORTE', () => {
   assert.deepEqual(paso[2], [], 'no escribe ninguna pestaña: es un control, no un generador')
   assert.ok(esReporte('auditar-diseno-unificado.mjs'),
     'sin esto, un desvío de diseño pondría el servicio entero en rojo y frenaría la frescura del Cash Flow')
+})
+
+
+// ═══ UN TÍTULO PUEDE NOMBRAR SU BLOQUE; NO PUEDE ARGUMENTAR SOBRE ÉL (05/09/2026) ═══
+//
+// El detector marcaba QUINCE títulos de sección del archivo real como prosa o como explicación.
+// Ninguno argumenta: nombran un bloque, y nombrar un bloque de esta empresa no entra en sesenta
+// caracteres. Los textos de acá abajo son los que estaban en el Sheet ese día, con su largo medido.
+
+test('partesDeTitulo corta por el guion LARGO, no por el que vive adentro del nombre del cliente', () => {
+  const t = partesDeTitulo('3.7 · Quattropani - Melisa García SAS — SALÓN COMERCIAL · 18/08 → 30/10')
+  assert.equal(t.nombre, '3.7 · Quattropani - Melisa García SAS',
+    'el guion corto separa el cliente de su razón social: cortar ahí parte el nombre al medio')
+  assert.equal(t.glosa, 'SALÓN COMERCIAL · 18/08 → 30/10')
+  // Un título sin glosa es todo nombre, y una celda que no es título no se parte.
+  assert.deepEqual(partesDeTitulo('6 · LO QUE HAY QUE CORREGIR EN COMPRAS'),
+    { nombre: '6 · LO QUE HAY QUE CORREGIR EN COMPRAS', glosa: '' })
+  assert.equal(partesDeTitulo('Persona'), null)
+})
+
+test('los títulos que sólo NOMBRAN dejan de ser hallazgo, aunque pasen los 60 caracteres', () => {
+  for (const t of [
+    '1 · DECLARADO EN LA DDJJ F931 — ¿CUÁNTO GENERÓ LA NÓMINA CADA MES?',
+    '7 · PLANES DE PAGO DE DEUDA PREVISIONAL — LAS CUOTAS, MES POR MES',
+    '1 · IVA — LA DDJJ OFICIAL (F.2051): QUÉ SE DEBE O SE TIENE A FAVOR',
+    '4 · OTROS IMPUESTOS — ¿QUÉ MÁS SE PAGA Y NO ESTABA A LA VISTA?',
+    '6 · DEUDA FINANCIERA — CUÁNTO SE VA POR MES Y CUÁNTO FALTA PAGAR',
+    '7 · SUPUESTOS Y HUECOS — LO QUE ESTE CUADRO ASUME, Y LO QUE NO SABE',
+    '3.7 · Quattropani - Melisa García SAS — SALÓN COMERCIAL · 18/08 → 30/10',
+    // 38 caracteres, y caía por «hay que»: el conector adentro de un NOMBRE no es un argumento.
+    '6 · LO QUE HAY QUE CORREGIR EN COMPRAS',
+  ]) {
+    assert.equal(esProsa(t), null, `«${t}» nombra su bloque y se estaba reportando como explicación`)
+    assert.ok(t.length > 37, 'el caso perdería sentido si el texto fuera corto')
+  }
+})
+
+test('el título que ARGUMENTA sigue cayendo, y se llama por su nombre', () => {
+  // El que de verdad explica: la glosa le dice al lector qué pensar del bloque.
+  const p = esProsa('6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer')
+  assert.equal(p.clase, 'argumenta')
+  assert.equal(p.sobre, 'glosa')
+  assert.equal(p.texto, 'la plomería, no es para leer', 'el hallazgo tiene que mostrar lo que midió, no el renglón entero')
+  const h = auditarDiseno([['Proveedores'], ['x'], [], ['6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer']], { pestana: 'Proveedores' })
+  assert.ok(h.some((x) => x.regla === 'titulo-argumenta'), 'un título que argumenta se recorta; una glosa suelta se borra: no es el mismo arreglo')
+})
+
+test('la glosa larga del título sigue siendo un hallazgo: el tope no se relajó, se movió de sujeto', () => {
+  // 95 caracteres en el archivo real, y su glosa sola pasa los 60.
+  const p = esProsa('5 · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario, que ya cuenta lo pedido)')
+  assert.equal(p.clase, 'larga')
+  assert.equal(p.sobre, 'glosa')
+})
+
+test('un NOMBRE que no entra en el tope dejó de nombrar: la exención no es un agujero', () => {
+  const largo = `1 · ${'X'.repeat(80)}`
+  const p = esProsa(largo)
+  assert.equal(p.sobre, 'nombre')
+  assert.equal(p.largo, 84)
+  const h = auditarDiseno([['Nómina'], ['x'], [], [largo]], { pestana: 'Nómina' })
+  assert.ok(h.some((x) => x.regla === 'titulo-largo'), `no cayó por largo: ${h.map((x) => x.regla).join(', ')}`)
 })
