@@ -137,12 +137,14 @@ export const FILO_ELEGIDA = `inset 2px 0 0 ${V.marca}`
  * El peso es la mitad del cambio: a 10px en peso 400 el rótulo se lee como un dato más y la
  * cabecera deja de separar. Los seis canvas del v4 lo escriben en 600 sin excepción.
  */
-export function RotuloCol({ children, derecha }: { children?: ReactNode; derecha?: boolean }) {
+export function RotuloCol(
+  { children, derecha, centro }: { children?: ReactNode; derecha?: boolean; centro?: boolean },
+) {
   return (
     <span
       style={{
         fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
-        color: V.tenue, textAlign: derecha ? 'right' : undefined,
+        color: V.tenue, textAlign: derecha ? 'right' : centro ? 'center' : undefined,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}
     >

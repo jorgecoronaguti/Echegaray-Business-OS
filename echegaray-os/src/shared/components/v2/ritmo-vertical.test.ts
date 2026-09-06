@@ -165,3 +165,24 @@ test('ningún consumidor de v2/patron fija su alto de fila a mano', () => {
   // dice ser: hay que revisarla, no borrarla en silencio.
   assert.ok(marcadas >= 3, `sólo ${marcadas} altos marcados como «${MARCA_DE_PANEL}»`)
 })
+
+test('ninguna cabecera de tabla copia el rótulo en vez de pedirlo', () => {
+  // La fuga que este test caza ya había pasado: `TablaUsuarios` dibujaba la columna «$» con el
+  // estilo del rótulo escrito a mano, y se quedó en 10px/400 mientras el patrón pasaba a 11px/600
+  // — dos pesos distintos en la misma cabecera, en la misma pantalla.
+  //
+  // La condición es «10px CON versalitas dentro de un ENCABEZADO», no «versalitas»: los rótulos de
+  // PANEL sí van en 10px y son otra pieza (`RotuloPanel`, y los cuatro paneles que lo escriben
+  // inline). Lo que no puede existir es un rótulo de COLUMNA fuera del patrón.
+  const fugas: string[] = []
+  for (const ruta of tsxQueUsanElPatron(join(process.cwd(), 'src'))) {
+    const src = readFileSync(ruta, 'utf8')
+    for (const bloque of src.split('ENCABEZADO').slice(1)) {
+      const cabecera = bloque.slice(0, bloque.indexOf('</div>'))
+      if (/fontSize: '10px'[^}]*letterSpacing: '\.06em'/.test(cabecera)) {
+        fugas.push(ruta.replace(process.cwd() + '/', ''))
+      }
+    }
+  }
+  assert.deepEqual(fugas, [], `rótulos de columna escritos a mano:\n${fugas.join('\n')}`)
+})

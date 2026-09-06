@@ -57,15 +57,10 @@ export function TablaUsuarios({ usuarios, abierto, hrefDe, vacio }: {
         <RotuloCol>Nivel</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Alcance</RotuloCol></span>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Últ. acceso</RotuloCol></span>
+        {/* Copiaba el rótulo a mano y se quedó en 10px/400 cuando el patrón pasó a 11px/600: dos
+            pesos distintos en la misma cabecera. Ahora lo pide, como las otras cuatro. */}
         <span title="Ve margen, precio de venta y rentabilidad" className="grid">
-          <span
-            style={{
-              fontSize: '10px', letterSpacing: '.06em', color: V.tenue, textAlign: 'center',
-              paddingBottom: 6,
-            }}
-          >
-            $
-          </span>
+          <RotuloCol centro>$</RotuloCol>
         </span>
       </div>
 
