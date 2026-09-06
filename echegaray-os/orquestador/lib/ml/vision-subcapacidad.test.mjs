@@ -63,6 +63,20 @@ test('el rendimiento se le pregunta al pipeline: una sección sin largo NO compu
   assert.equal(r.computados, 1, 'el que tiene sección pero no largo no se computa')
 })
 
+test('la descomposición reporta los computados de PRODUCCIÓN, no una cuenta propia', () => {
+  // Las tres lecturas traen un `lineal` con alto y sin largo. Ninguna computa. Si `descomponer`
+  // volviera a contar «tiene alguna dimensión», la planta diría 1 y el informe diría que rinde.
+  const d = descomponer([
+    lectura('PLANTA BAJA', [el('C1', { dim: 3, cantidad: 4, texto: 'C1' })]),
+    lectura('CORTE A-A', [el('V1', { cantidad: 2, texto: 'V1' })]),
+  ], { usdTotal: 10, llamadasReales: 2 })
+  for (const t of d.porTipo) {
+    assert.equal(t.elementos, 1)
+    assert.equal(t.elementosComputados, 0,
+      `un lineal con alto y sin largo no se computa; ${t.tipo} dice que sí`)
+  }
+})
+
 test('el reparto por campo separa lo escrito en el plano de lo que hay que mirar', () => {
   assert.equal(origenDeCampo('elementos'), 'DIBUJO')
   assert.equal(origenDeCampo('proyecto'), 'TEXTO')
