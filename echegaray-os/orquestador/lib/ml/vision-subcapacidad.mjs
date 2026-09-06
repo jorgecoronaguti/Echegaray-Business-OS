@@ -24,6 +24,8 @@
 // validado contra información que él mismo produce.
 
 import { clasificarPorTitulo, TIPO_REGION } from '../ingesta/segmentar.mjs'
+import { validarLamina } from '../plano/interpretar.mjs'
+import { computarElementos } from '../plano/computo.mjs'
 
 /** Los campos que devuelve `interpretar-region`, partidos por DE DÓNDE SALE cada uno.
  *
@@ -77,23 +79,28 @@ export function pesoDeCampos(crudo = {}) {
 }
 
 /**
- * ¿ESTE ELEMENTO SIRVE PARA COMPUTAR UNA OBRA? PURA.
+ * ¿ESTE ELEMENTO SIRVE PARA COMPUTAR UNA OBRA? — LA PREGUNTA SE LE HACE AL PIPELINE, NO ACÁ.
  *
- * ═══ LA PRIMERA VERSIÓN DE ESTA FUNCIÓN ERA UN CONTROL QUE NO PODÍA DECIR QUE NO ═══
+ * ═══ ESTA FUNCIÓN TUVO DOS VERSIONES Y LAS DOS MINTIERON ═══
  *
- * Aceptaba cualquier campo no nulo, así que devolvía `true` para los 840 elementos medidos —
- * 284 de 284, 249 de 249— porque TODO elemento trae `forma` y `evidencia`. Un control que da
- * verde siempre no está midiendo: está decorando. Y el número que producía («100% aporta»)
- * habría entrado al informe como un logro.
+ * La primera aceptaba cualquier campo no nulo y devolvía `true` para los 840 elementos medidos.
+ * La segunda —«tiene alguna dimensión O alguna cantidad»— devolvía 630 de 840: 75,0%. El pipeline
+ * de producción, corrido el 05/09/2026 sobre las MISMAS 113 lecturas, computa 152: 18,1%. Cuatro
+ * veces menos.
  *
- * Lo que hace computable a un elemento es poder multiplicarlo por un precio: hace falta una
- * DIMENSIÓN o una CANTIDAD. Un perfil sin largo ni cantidad no se cotiza — se vuelve a preguntar.
+ * La diferencia no es un matiz de criterio: un perfil `lineal` con su sección leída y sin largo
+ * tiene «alguna dimensión» y no se puede multiplicar por un precio. `computarElemento` lo sabe
+ * porque exige las aristas que la FORMA pide, y además que la cantidad se pueda sostener. Tener el
+ * criterio dos veces garantiza que la medición y el sistema se contradigan, y la copia siempre
+ * resulta ser la optimista.
+ *
+ * Por eso acá no hay criterio propio: hay una llamada a `computarElementos` sobre lo que
+ * `validarLamina` produce, que son literalmente las funciones que corrieron cuando se pagó.
  */
-export function elementoAporta(el) {
-  if (!el || typeof el !== 'object') return false
-  const dim = Object.values(el.dimensiones ?? {}).some((v) => typeof v === 'number' && Number.isFinite(v))
-  const cant = typeof el.repeticion?.cantidad === 'number' && Number.isFinite(el.repeticion.cantidad)
-  return dim || cant
+export function elementosComputados(crudo, archivo = 'desconocido') {
+  const lam = validarLamina(crudo, { archivo, archivoId: null })
+  const c = computarElementos(lam.elementos)
+  return { detectados: c.detectados, computados: c.computados }
 }
 
 /**
@@ -111,7 +118,7 @@ export function descomponer(lecturas = [], { usdTotal = 0, llamadasReales = 0 } 
     const { tipo } = subcapacidadDeLectura(l)
     const { pesos, total } = pesoDeCampos(l?.crudo)
     pesoTotal += total
-    const t = porTipo.get(tipo) ?? { tipo, n: 0, peso: 0, pesoTexto: 0, pesoDibujo: 0, elementos: 0, elementosUtiles: 0 }
+    const t = porTipo.get(tipo) ?? { tipo, n: 0, peso: 0, pesoTexto: 0, pesoDibujo: 0, elementos: 0, elementosComputados: 0 }
     t.n += 1
     t.peso += total
     for (const [campo, p] of Object.entries(pesos)) {
@@ -119,9 +126,9 @@ export function descomponer(lecturas = [], { usdTotal = 0, llamadasReales = 0 } 
       if (origenDeCampo(campo) === 'TEXTO') t.pesoTexto += p
       if (origenDeCampo(campo) === 'DIBUJO') t.pesoDibujo += p
     }
-    const els = Array.isArray(l?.crudo?.elementos) ? l.crudo.elementos : []
-    t.elementos += els.length
-    t.elementosUtiles += els.filter(elementoAporta).length
+    const c = elementosComputados(l?.crudo, l?.archivo ?? 'desconocido')
+    t.elementos += c.detectados
+    t.elementosComputados += c.computados
     porTipo.set(tipo, t)
   }
 

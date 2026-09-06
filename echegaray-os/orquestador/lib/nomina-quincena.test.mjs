@@ -249,3 +249,43 @@ test('el vocabulario del código dice «aumento», no «piso» — no quedan dos
   // Y el guard tiene que poder ver un uso de verdad: si no, es una constante que siempre da verde.
   assert.match(`${codigo}\nconst jornalPiso = 1`, /\bjornalPiso\b/)
 })
+
+// ── EL BLOQUE DE LIMITACIONES QUE EL DUEÑO MANDÓ SACAR ───────────────────────────────────────────
+
+test('«lo que esta pestaña NO puede decir» no se dibuja, y las limitaciones no se perdieron', () => {
+  // ═══ LA DECISIÓN, Y POR QUÉ ESTE TEST EXISTE ═══
+  //
+  // El 05/09/2026 se le planteó al dueño que sus dos instrucciones chocaban en este bloque:
+  // «minimalismo extremo, sin aclaraciones ni explicaciones de nada» contra el principio de cierre,
+  // que dice que la limitación de una cifra que decide plata no se saca de su vista. Eligió el
+  // minimalismo, sin excepción, sobre la recomendación contraria.
+  //
+  // El defecto que este test atrapa es que VUELVAN. Son seis renglones plausibles y bien escritos:
+  // exactamente la clase de cosa que alguien repone de buena fe en el próximo retoque, sin saber
+  // que hubo una decisión.
+  const dibujadas = NOMINA.split('\n').filter((l) => /^\s*fila\(/.test(l))
+  const bloque = dibujadas.filter((l) => /NO puede decir|no se inventan|licencia larga se lee como baja/.test(l))
+  assert.deepEqual(bloque, [], 'volvió a la pestaña el bloque de limitaciones que el dueño mandó sacar')
+
+  // Y LO OTRO, QUE IMPORTA IGUAL: sacarlas de la pantalla no las vuelve falsas. Siguen escritas en
+  // el script, donde las lee quien lo mantenga. Si alguien borra el comentario, el conocimiento se
+  // pierde de verdad — y ahí sí no queda en ningún lado.
+  //
+  // SE BUSCA DENTRO DEL BLOQUE, NO EN EL ARCHIVO. La primera versión de esta parte buscaba las
+  // frases en `NOMINA` entero y no podía dar rojo: «fondo de cese» también es el nombre de una
+  // COLUMNA del cuadro, así que borrar la limitación 5 dejaba el test en verde por una coincidencia
+  // con otra cosa. El control se validaba contra información que no era la suya.
+  const desde = NOMINA.indexOf('LO QUE ESTA PESTAÑA NO PUEDE DECIR')
+  assert.ok(desde > 0, 'desapareció el bloque de comentario que guarda las limitaciones')
+  const bloqueComentario = NOMINA.slice(desde, NOMINA.indexOf('return { nomina: f, plantel: g }', desde))
+  for (const limite of [
+    'plantel activo',
+    'acuerdos particulares',
+    'no se abren por persona',
+    'fondo de cese se calcula sobre el jornal',
+    'licencia larga se lee como baja',
+  ]) {
+    assert.ok(bloqueComentario.toLowerCase().includes(limite.toLowerCase()),
+      `se perdió la limitación «${limite}»: no está ni en la pestaña ni en el bloque del script`)
+  }
+})

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  origenDeCampo, subcapacidadDeLectura, pesoDeCampos, elementoAporta, descomponer,
+  origenDeCampo, subcapacidadDeLectura, pesoDeCampos, elementosComputados, descomponer,
   normalizarTexto, respaldo, verificarLectura,
 } from './vision-subcapacidad.mjs'
 
@@ -46,14 +46,35 @@ test('la cobertura declara que la muestra no es la población', () => {
 
 // ═══ EL CONTROL TIENE QUE PODER DECIR QUE NO ═══
 
-test('elementoAporta NO es una constante: distingue computable de no computable', () => {
-  // La primera versión aceptaba cualquier campo no nulo y devolvía true para los 840 elementos
-  // medidos. Si alguien la vuelve a aflojar, este test se pone rojo.
-  assert.equal(elementoAporta(el('C1', { dim: 0.3 })), true, 'con dimensión, computa')
-  assert.equal(elementoAporta(el('C2', { cantidad: 12 })), true, 'con cantidad, computa')
-  assert.equal(elementoAporta(el('C3', { texto: 'PGC 160' })), false,
-    'nombre, forma y evidencia NO alcanzan: sin dimensión ni cantidad no se puede cotizar')
-  assert.equal(elementoAporta(null), false)
+test('el rendimiento se le pregunta al pipeline: una sección sin largo NO computa', () => {
+  // Las dos versiones anteriores de este control decían que sí. `elementoAporta` daba 630 de 840
+  // (75,0%) donde el pipeline computa 152 (18,1%): un perfil con su sección leída y sin largo NO se
+  // puede multiplicar por un precio. Si alguien vuelve a poner un criterio propio y más blando acá,
+  // este test se pone rojo.
+  const seccionSinLargo = {
+    id: 'CM1', nombre: 'Perfil CM1', sistema: 'estructura_metalica', forma: 'lineal',
+    dimensiones: { ancho_m: 0.08, alto_m: 0.24, espesor_m: 0.0032, largo_m: null },
+    repeticion: { modo: 'conteo_directo', cantidad: 6 },
+    evidencia: { vista: 'DETALLE', texto_literal: 'CM1 2PC-240-80-25-3.2' },
+  }
+  const conLargo = { ...seccionSinLargo, id: 'CM2', dimensiones: { ...seccionSinLargo.dimensiones, largo_m: 2.6 } }
+  const r = elementosComputados({ elementos: [seccionSinLargo, conLargo] }, 'plano.pdf')
+  assert.equal(r.detectados, 2)
+  assert.equal(r.computados, 1, 'el que tiene sección pero no largo no se computa')
+})
+
+test('la descomposición reporta los computados de PRODUCCIÓN, no una cuenta propia', () => {
+  // Las tres lecturas traen un `lineal` con alto y sin largo. Ninguna computa. Si `descomponer`
+  // volviera a contar «tiene alguna dimensión», la planta diría 1 y el informe diría que rinde.
+  const d = descomponer([
+    lectura('PLANTA BAJA', [el('C1', { dim: 3, cantidad: 4, texto: 'C1' })]),
+    lectura('CORTE A-A', [el('V1', { cantidad: 2, texto: 'V1' })]),
+  ], { usdTotal: 10, llamadasReales: 2 })
+  for (const t of d.porTipo) {
+    assert.equal(t.elementos, 1)
+    assert.equal(t.elementosComputados, 0,
+      `un lineal con alto y sin largo no se computa; ${t.tipo} dice que sí`)
+  }
 })
 
 test('el reparto por campo separa lo escrito en el plano de lo que hay que mirar', () => {

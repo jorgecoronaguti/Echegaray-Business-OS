@@ -53,7 +53,15 @@ async function main() {
 
   console.table(d.porTipo.map((t) => ({
     subcapacidad: t.tipo, llamadas: t.n, 'usd (repartido)': t.usd,
-    'elementos': t.elementos, 'con dato útil': t.elementosUtiles,
+    'elementos': t.elementos, 'computados (pipeline real)': t.elementosComputados,
+    // EL NÚMERO QUE DECIDE DÓNDE GASTAR LA PRÓXIMA LLAMADA. El usd por llamada dice cuánto salió
+    // mirar; éste dice cuánto salió lo que quedó SERVIBLE, que es lo único comparable entre una
+    // planta con 40 elementos y un detalle con 2. Hereda el supuesto del reparto —el costo se
+    // prorratea por peso de salida porque `chat_cost` no lo guarda por región— y por eso es una
+    // ESTIMACIÓN, no un dato de factura.
+    'usd por elemento computado': t.elementosComputados
+      ? Math.round((t.usd / t.elementosComputados) * 1000) / 1000
+      : null,
     '% salida que es TEXTO': t.fraccionTexto,
   })))
 
