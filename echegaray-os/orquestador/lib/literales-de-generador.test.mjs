@@ -69,3 +69,14 @@ test('una llamada a OTRA función que termina en el mismo nombre no cuenta como 
   // texto que nunca llega a la columna A.
   assert.deepEqual(textosDeColumnaA("subfila('no'); tabla.fila('tampoco'); fila('sí')"), ['sí'])
 })
+
+test('un ternario son DOS celdas posibles: se juzga la rama más larga, no la suma de las dos', () => {
+  // Caso real de «Jornales por Quincena»: pegadas medían 99 caracteres y el control marcaba prosa
+  // sobre una celda que el lector ve en 45 o en 53. La celda muestra UNA rama.
+  const t = textosDeColumnaA("push([sub(hay ? 'Planilla al día' : 'Planilla sin meses cargados')])", { fn: 'push' })
+  assert.deepEqual(t, ['   · Planilla sin meses cargados'])
+})
+
+test('`??` y `?.` no son un ternario: no abren una rama', () => {
+  assert.deepEqual(textosDeColumnaA("fila(x?.nombre ?? 'sin nombre')"), ['sin nombre'])
+})

@@ -43,6 +43,18 @@ const LIMPIAS = [
     fn: 'h.push',
     encDesde: 'h.push([PESTANA_OBRAS]',
   },
+  {
+    // SIN CONTROL DE ENCABEZADO, Y ESTÁ DICHO POR QUÉ. «Jornales por Quincena» empuja la fila 2 como
+    // centinela y le asigna la línea de procedencia MIL LÍNEAS DESPUÉS, cuando ya conoce las filas
+    // del registro (`filas[fSubtitulo - 1][0] = rotuloAlDia(…)`). Leyendo el código en orden, la
+    // tercera celda del archivo no es la fila 3 de la pestaña: un test de encabezado acá afirmaría
+    // algo que no midió. El encabezado de esta pestaña lo sigue midiendo `auditar-diseno-unificado`
+    // contra el archivo vivo, donde hoy da conforme.
+    titulo: 'Jornales por Quincena',
+    gen: 'jornales-pestana.mjs',
+    fn: 'push',
+    encabezado: false,
+  },
 ]
 
 const fuente = (gen) => readFileSync(new URL(`./${gen}`, import.meta.url), 'utf8')
@@ -70,13 +82,16 @@ for (const p of LIMPIAS) {
     // El encabezado se descarta POR SU TEXTO y no por posición: A1 y A2 tienen su propia regla y su
     // propio tope (`encabezadoRoto`, abajo), y en «OBRAS» ni siquiera son las primeras celdas del
     // archivo — los cuadros se escriben en funciones auxiliares definidas más arriba.
-    const enc = encabezadoDe(p)
+    // Sin control de encabezado no se descarta nada: la línea de procedencia de esa pestaña no se
+    // escribe como literal acá, así que no hay riesgo de medirla con la vara equivocada.
+    const enc = p.encabezado === false ? [] : encabezadoDe(p)
     const cuerpo = celdas.filter((t) => t && !enc.includes(t))
     const prosa = cuerpo.map((t) => [t, esProsa(t)]).filter(([, x]) => x)
     assert.deepEqual(prosa.map(([t]) => t), [],
       `volvió una explicación a «${p.titulo}» (tope ${TOPE_PROSA} car.): ${prosa.map(([t]) => t.slice(0, 70)).join(' | ')}`)
   })
 
+  if (p.encabezado === false) continue
   test(`«${p.titulo}» arranca con las tres filas del encabezado y la tercera vacía`, () => {
     const [, procedencia, tercera] = encabezadoDe(p)
     // A1 se escribe con la constante `PESTANA` y no como literal, así que acá va el nombre: lo que se

@@ -132,6 +132,49 @@ export function primerArgumento(codigo) {
  * que se compara contra un tope.
  */
 export function textoDeCelda(codigo) {
+  const src = String(codigo ?? '')
+  // ═══ UN TERNARIO SON DOS CELDAS POSIBLES, NO UNA CELDA CON LOS DOS TEXTOS PEGADOS ═══
+  //
+  // Medido el 06/09 en «Jornales por Quincena»: `sub(hay ? 'Planilla al …' : 'Planilla sin meses …')`
+  // daba 99 caracteres —la suma de las dos ramas— y el control marcaba prosa donde el lector ve 45 o
+  // 53. Se juzga la rama MÁS LARGA, que es la misma regla con la que `textoVisible` mira una fórmula
+  // del archivo: la celda muestra una, y la que puede romper el tope es la larga.
+  const candidatas = ramas(desenvolverHelper(src))
+  const partes = candidatas.map(literalesDe).sort((a, b) => b.length - a.length)
+  return envolver(src, (partes[0] ?? '').replace(/\\n/g, ' ').trim())
+}
+
+/** Lo que hay adentro de `sub(…)` / `seccion(…)` / `total(…)`, para poder ver su ternario. */
+function desenvolverHelper(expresion) {
+  const e = expresion.trimStart()
+  const m = /^(?:sub|seccion|(?:rotulo)?[Tt]otal)\s*\(/.exec(e)
+  if (!m) return e
+  const fin = e.lastIndexOf(')')
+  return fin > m[0].length ? e.slice(m[0].length, fin) : e
+}
+
+/**
+ * Los tramos de una expresión separados por los `?` y `:` de NIVEL CERO — o sea, las ramas del
+ * ternario de más afuera. Sin ternario devuelve la expresión entera, que es el caso normal.
+ */
+function ramas(expresion) {
+  const cortes = []
+  let n = 0
+  recorrerCodigo(expresion, (i, c) => {
+    if ('([{'.includes(c)) n++
+    else if (')]}'.includes(c)) n--
+    // `??` y `?.` no abren una rama: son un operador que empieza igual.
+    else if (n === 0 && (c === ':' || (c === '?' && !'?.'.includes(expresion[i + 1] ?? '')))) cortes.push(i)
+  })
+  if (!cortes.length) return [expresion]
+  const out = []
+  let a = 0
+  for (const i of [...cortes, expresion.length]) { out.push(expresion.slice(a, i)); a = i + 1 }
+  return out
+}
+
+/** Los literales de una expresión, pegados en orden. */
+function literalesDe(codigo) {
   const partes = []
   let i = 0
   const src = String(codigo ?? '')
@@ -149,7 +192,7 @@ export function textoDeCelda(codigo) {
     }
     i++
   }
-  return envolver(src, partes.join('').replace(/\\n/g, ' ').trim())
+  return partes.join('')
 }
 
 /**

@@ -1173,13 +1173,19 @@ test('LA INSTRUCCIÓN DEL CONVENIO SE DICE UNA VEZ Y CONTADA, no una por categor
   const texto = comoSeVe(gm).flat().map(String)
   assert.equal(texto.filter((c) => /columna de al lado/.test(c)).length, 0,
     'volvió la instrucción repetida fila por fila')
-  const linea = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /→Oficial|→Ayudante/.test(c))
-  assert.equal(linea.length, 1, 'la línea del convenio tiene que existir UNA sola vez')
-  // ═══ Y DESDE EL 07/08 YA NO PIDE: DECLARA (equivalencia del dueño) ═══
-  // Las cuatro categorías del plantel tienen equivalente, así que la línea dice contra qué compara el
-  // bloque en vez de pedir una carga manual que ya no hace falta.
-  assert.match(linea[0], /OF, OF M→Oficial/)
-  assert.match(linea[0], /A, A M→Ayudante/)
+  // ═══ Y DESDE EL 06/09 LA EQUIVALENCIA VIAJA EN LA FILA DE CADA CATEGORÍA ═══
+  //
+  // Era una línea arriba del cuadro con las cuatro traducciones juntas: 85 caracteres contra un tope
+  // de 60, o sea un GLOSARIO, que es de lo que el contrato dice que no va. Lo que este test cuida no
+  // cambió —que la traducción esté UNA vez y no repetida como instrucción fila por fila— y ahora
+  // cada fila dice la suya, que es donde se necesita.
+  const rotulos = gm.filas.map((f) => String(f[0] ?? ''))
+  // El cuadro de categorías aparece UNA vez por bloque de plantel, y «OF → Oficial» es su fila: si
+  // aparece dos veces en el mismo bloque, volvió la repetición fila por fila.
+  assert.equal(rotulos.filter((c) => c === 'OF → Oficial').length, 1, 'la equivalencia de OF, una sola vez')
+  assert.ok(rotulos.some((c) => /→ Ayudante$/.test(c)), 'ninguna fila declara la equivalencia de Ayudante')
+  // Y ninguna la dice DOS veces: ni la de arriba ni un glosario que vuelva.
+  assert.equal(rotulos.filter((c) => /→.*·.*→/.test(c)).length, 0, 'volvió el glosario de equivalencias')
   // ═══ "manda la tuya" SE MUDÓ AL ENCABEZADO DE LA COLUMNA (13/08) ═══
   //
   // La frase colgaba de la glosa de arriba del cuadro. Una instrucción sobre una columna se lee en su
@@ -1768,7 +1774,10 @@ test('REAL 3 · el efectivo NO se estima: se declara el límite en la celda', ()
   // columna «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla.
   assert.match(String(fila[colC('Estimado')]), /^=/)
   assert.equal(String(fila[colC('Real')]), '—')
-  assert.match(String(fila[colC('De dónde sale el real')]), /residuo de la misma planilla/)
+  // El porqué («Total recibo» es un residuo de la propia planilla) salió de la celda al comentario de
+  // `EFECTIVO_SIN_FUENTE` con el contrato de diseño. Lo que la celda tiene que seguir diciendo es que
+  // NO HAY FUENTE — si algún día dice una, el control estaría midiéndose contra sí mismo.
+  assert.match(String(fila[colC('De dónde sale el real')]), /^sin fuente/)
 })
 
 test('REAL 4 · el total se publica DECLARADO como inferencia, no como un hecho', () => {

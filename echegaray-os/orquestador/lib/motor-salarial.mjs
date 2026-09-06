@@ -276,8 +276,10 @@ export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
   // a la celda del dueño.
   const porConvenio = new Map()
   for (const [cod, conv] of equivalencias) porConvenio.set(conv, [...(porConvenio.get(conv) ?? []), cod])
-  const mapa = [...porConvenio].map(([conv, cods]) => `${cods.join(', ')}→${conv}`).join(' · ')
-  return sub(`Convenio: ${mapa}`)
+  // EL RENGLÓN DE EQUIVALENCIAS SE FUE A LA FILA DE CADA CATEGORÍA (ver `filasPlantelBase`). Lo que
+  // queda acá es el único caso en que hace falta decir algo arriba del bloque: cuando un código de la
+  // planilla NO tiene equivalente en la escala, que es un pendiente y no una traducción.
+  return ''
 }
 
 /**
@@ -440,7 +442,18 @@ export function filasPlantel({
     // saber si alguien queda bajo el convenio— y esa columna hacía falta para la Σ del aumento.
     const minimo = `IFERROR(MIN(FILTER(${W};TRIM(${D})=${q};ISNUMBER(${W});${W}>0));0)`
     filas.push([
-      cat,
+      // ═══ LA EQUIVALENCIA VIAJA EN LA FILA, NO EN UN GLOSARIO (06/09/2026) ═══
+      //
+      // Arriba del cuadro había un renglón de 85 caracteres traduciendo los cuatro códigos
+      // («Convenio: OF→Oficial · A→Ayudante · OF E→Oficial Especializado · M OF→Medio Oficial»).
+      // Era un GLOSARIO, que es de lo que el contrato dice que no va (regla 10), y no se podía
+      // borrar sin más: la columna «Convenio (tuya)» es del dueño y viene VACÍA, así que sin ese
+      // renglón nada en la pestaña decía contra qué categoría de la escala se mide «OF».
+      //
+      // Ahora lo dice la celda de la propia fila. Es dato, no leyenda, y se lee donde se necesita.
+      // El código pelado se conserva a la izquierda porque es el que aparece en la planilla de
+      // jornales, que es de donde el que mira viene.
+      equiv ? `${cat} → ${equiv}` : cat,
       `=SUMPRODUCT(--(TRIM(${D})=${q}))`,
       `=SUMPRODUCT(--(TRIM(${D})=${q});N(${W}))`,
       // ═══ LA Σ DEL AUMENTO NO PUEDE SER «PERSONAS × CONSTANTE» (29/08, tercera lectura) ═══
@@ -486,11 +499,14 @@ export function filasPlantel({
       // gente ya cobra el piso: ahí el aumento es cero y no es un error.
       equiv && rangoCats
         ? `=IF(AND($E${r}<>"";NOT(ISNUMBER(MATCH($E${r};${rangoCats};0))));`
-          + `"${ALERTA} «Convenio» no está en la escala — uso ${equiv}";`
+          // «▲ «Convenio» no está en la escala — uso Oficial Especializado» medía 61 contra el tope
+          // de 60. Dice lo mismo en 45: el aviso es que la categoría escrita a mano quedó fuera y
+          // cuál se usó en su lugar.
+          + `"${ALERTA} fuera de escala — uso ${equiv}";`
           + `${estado(r, minimo)})`
         : (equiv
           ? `=${estado(r, minimo)}`
-          : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";${estado(r, minimo)}))`),
+          : `=IF($E${r}="";"—";IF(N($F${r})=0;"fuera de la escala del mes";${estado(r, minimo)}))`),
     ])
   })
   const fUltima = fPrimera + categorias.length - 1

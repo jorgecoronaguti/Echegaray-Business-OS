@@ -25,6 +25,7 @@ import {
   formulaTotalInferido, formulaDiferencia, formulaDelta, formulaAvisoUmbral,
   formulaSubtituloContraste, expresionVentana, expresionCierreDeQuincena,
 } from './jornales-real-vs-estimado.mjs'
+import { esProsa } from './diseno-unificado.mjs'
 import { clasificarMovimiento } from './banco-santander.mjs'
 
 // ── LOS DATOS REALES, TAL COMO SALIERON DE `banco_movimientos` EL 15/08/2026 ──────────────────────
@@ -258,9 +259,23 @@ test('CIERRE 3 · la guarda mira el INSUMO, no el resultado: un desde vacío da 
 test('CIERRE 4 · la celda no puede culpar al extracto por un problema propio', () => {
   const f = formulaOrigenDelReal({ celdaDesde: '$A$148', celdaMovs: '$C$19' })
   // Sin período, se acusa a sí misma. Es la frase que faltaba y que mandó a buscar el problema al banco.
-  assert.match(f, /^=IF\(N\(\$A\$148\)=0;"el registro no tiene la fecha de la quincena/)
-  // Y la frase que culpa al extracto queda para el caso en que de verdad no hay movimientos.
-  assert.match(f, /el extracto todav[íi]a no los muestra/)
+  //
+  // EL TEXTO SE ACORTÓ CON EL CONTRATO (06/09/2026) Y LA PROPIEDAD NO CAMBIÓ: lo que este test
+  // defiende no es la redacción, es QUIÉN queda señalado en cada rama. Sin fecha de quincena la
+  // celda habla de sí misma («sin fecha de quincena»); la ausencia de movimientos se le atribuye al
+  // extracto sólo cuando de verdad no hay ninguno. Por eso se afirma la rama y no la frase.
+  assert.match(f, /^=IF\(N\(\$A\$148\)=0;"sin fecha de quincena"/)
+  assert.doesNotMatch(f.split(';')[1] ?? '', /extracto/)
+  assert.match(f, /"sin movimientos en la ventana de pago"/)
+})
+
+test('CIERRE 4 bis · ninguna rama de la columna de origen es prosa', () => {
+  // La columna «De dónde sale el real» declara procedencia y no puede explicar: sus tres ramas
+  // medían 85, 152 y 92 caracteres contra el tope del contrato. Se mide cada literal por separado
+  // porque `textoVisible` publica el MÁS LARGO, que es el que ocupa la fila.
+  const f = formulaOrigenDelReal({ celdaDesde: '$A$148', celdaMovs: '$C$19' })
+  const largos = [...f.matchAll(/"([^"]*)"/g)].map((m) => m[1]).filter((t) => esProsa(t))
+  assert.deepEqual(largos, [], `la columna de origen volvió a explicar: ${largos.join(' | ')}`)
 })
 
 test('el cuadro tiene ocho columnas y su rótulo es reconocible como encabezado', () => {
@@ -274,8 +289,14 @@ test('el cuadro tiene ocho columnas y su rótulo es reconocible como encabezado'
 })
 
 test('el efectivo declara su límite en vez de estimarlo con la propia planilla', () => {
-  assert.match(EFECTIVO_SIN_FUENTE, /residuo de la misma planilla/)
+  // La celda tiene que decir que NO HAY FUENTE —ése es el límite— y no puede ofrecer como real un
+  // número sacado de la misma planilla que se está verificando. El porqué («Total recibo» es
+  // TOTAL−ADELANTO−BANCO, un residuo) salió de la celda al comentario del módulo con el contrato de
+  // diseño: lo que se afirma acá es la propiedad, no la redacción.
+  assert.match(EFECTIVO_SIN_FUENTE, /^sin fuente/)
   assert.match(TOTAL_INFERIDO, /^INFERIDO/)
+  // Y ninguno de los dos puede volver a ser un párrafo.
+  for (const t of [EFECTIVO_SIN_FUENTE, TOTAL_INFERIDO]) assert.equal(esProsa(t), null, `es prosa: ${t}`)
   // Ninguno de los dos textos puede contener una cifra: son el motivo, no un número disfrazado.
   for (const t of [EFECTIVO_SIN_FUENTE, TOTAL_INFERIDO]) assert.doesNotMatch(t, /\$\s?\d/)
 })
