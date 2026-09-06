@@ -171,3 +171,47 @@ export function claseDeAdjunto(mediaType: string | null | undefined): 'imagen' |
   if (t.startsWith('image/')) return 'imagen'
   return 'otro'
 }
+
+/**
+ * CUÁNTAS FILAS SE DIBUJAN DE UNA SOLA VEZ.
+ *
+ * ═══ EL DEFECTO MEDIDO (06/09/2026, producción) ═══
+ *
+ * La pantalla dibujaba las 947 filas juntas: 43.871px de alto, 947 filas de grilla con su enlace,
+ * su pastilla y su botón de papel. Funciona —y por eso nadie lo miró— pero es la página más pesada
+ * del OS y en el teléfono se nota. No hay un scroll virtual acá: la lista es un Server Component y
+ * volverla cliente para virtualizarla costaría el prerender entero.
+ *
+ * ═══ POR QUÉ 200 Y NO UN PAGINADOR ═══
+ *
+ * El canvas NO dibuja un paginador, y agregarle un control que el contrato no tiene a la pantalla
+ * cuyo trabajo es parecerse al contrato sería cambiar el problema de lugar. Lo que el canvas SÍ
+ * dibuja es su pie diciendo «6 de 882»: mostrar un recorte y decir cuánto es el todo es su propio
+ * vocabulario. 200 filas son ~8.800px — cinco pantallas de scroll, que es lo que alguien recorre
+ * antes de filtrar.
+ *
+ * ═══ EL ENLACE DIRECTO MANDA SOBRE EL TOPE ═══
+ *
+ * `?s=<fila>` abre una fila concreta y se usa: si esa fila cayera fuera del recorte, el enlace
+ * llevaría a una lista donde la fila abierta no está — el panel diría una cosa y la lista otra. Por
+ * eso el corte se estira hasta incluirla. Cuesta el alto de esa fila en adelante, y es el único
+ * caso en que el tope cede.
+ */
+export const TOPE_EN_PANTALLA = 200
+
+export interface Recorte<T> {
+  enPantalla: T[]
+  /** Las que quedaron fuera del recorte. 0 = se está viendo todo lo que coincide. */
+  ocultas: number
+}
+
+export function recorteDeLista<T extends { fila: number }>(
+  filas: T[],
+  { tope = TOPE_EN_PANTALLA, abierta = null, todo = false }:
+  { tope?: number; abierta?: number | null; todo?: boolean } = {},
+): Recorte<T> {
+  if (todo || filas.length <= tope) return { enPantalla: filas, ocultas: 0 }
+  const donde = abierta == null ? -1 : filas.findIndex((f) => f.fila === abierta)
+  const corte = Math.max(tope, donde + 1)
+  return { enPantalla: filas.slice(0, corte), ocultas: filas.length - corte }
+}

@@ -1,71 +1,92 @@
-// COMPRAS — la pestaña Compras del Sheet, con la geometría del handoff v4.
+// COMPRAS — la pestaña Compras del Sheet, dibujada con el PATRÓN v2.
 //
-// `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque «3 · COMPRAS»:
-//   `minmax(150px,1.2fr) minmax(120px,1fr) 112px minmax(110px,1fr) 92px 104px 112px 26px`
+// Contrato: `design_handoff_crm_v4/pantallas/Administración v4 · Pantallas.dc.html`, bloque
+// «3 · COMPRAS · LA PESTAÑA DEL SHEET» (líneas 208-245).
 //
-// ═══ QUÉ CAMBIÓ RESPECTO DEL PORTE ANTERIOR (04/09/2026) ═══
+// ═══ QUÉ CAMBIÓ EL 06/09/2026: SE FUE LA CAJA ═══
 //
-// La fila tenía siete columnas y abría con FECHA. La v4 la lleva a ocho y cambia dos cosas:
+// Esta tabla era la única de las tres pantallas del canvas A que seguía corriendo por
+// `shared/components/canon` —el zip de AGOSTO—, cuyo objeto central es la CAJA: `TarjetaTabla`
+// declara `background:#FFFFFF;border:1px solid #E7E6E2;borderRadius:10px`, encabezado gris de 38px,
+// rótulo de 10px/.05em, fila de 46 y pie de totales adentro. El canvas la dibuja SIN caja, con
+// cabecera de 30, rótulo 11px/600/.06em y fila de 44 — el criterio 3 del patrón: «sin cajas —
+// filos, tipografía y números tabulares, el color sólo en la cifra».
 //
-//   · EL COMPROBANTE SUBE A COLUMNA PROPIA. Estaba apilado bajo el concepto, en 10,5px, y es el
-//     dato con el que se compara la fila contra el papel. Más importante: 876 de 882 filas NO
-//     tienen comprobante, y ese es el trabajo pendiente más grande de la pantalla — apilado abajo
-//     no se ve, y en su columna se lee de un vistazo cuál falta, en ámbar (sin comprobante el gasto
-//     no acredita IVA).
-//   · FORMA DE PAGO SUBE A COLUMNA PROPIA. Estaba sólo en el panel, y es lo que decide cuándo sale
-//     la plata: una compra a cheque 60d y una a transferencia no pesan igual en la caja de esta
-//     semana aunque el importe sea el mismo.
-//   · LA FECHA BAJA AL PANEL. Es lo que se sacrifica para que entren las dos anteriores: la lista
-//     ya viene ordenada por fecha y el día exacto se lee en la propiedad «Fecha» del panel. Es la
-//     única pérdida de este cambio y se declara.
+// El ritmo NO se redeclara acá: sale de `ALTO_V2` (`shared/components/v2/patron.tsx`), que es la
+// única constante del repositorio que puede decir cuánto mide una fila. `ritmo-vertical.test.ts`
+// se pone rojo si este archivo escribe un alto propio.
 //
-// La UNIDAD DE NEGOCIO sigue delante del destino en 11px apagado (897 de 897 filas la tienen), la
-// DEUDA PARCIAL sigue bajo el importe en ámbar y sólo cuando es mayor que cero, y el chip
-// «estructura» sigue al lado de `F931`, `Taller` y `Almacen`, que no son obras sino costo de la
-// empresa (la regla vive en `services/comprasSheet.ts`, no acá).
+// Con la caja se fue el PIE DE TOTALES del canon —el bloque gris con COMPROBANTES / SIN COMPROBANTE
+// / SIN IMPUTAR / A PAGAR / TOTAL—. Lo reemplaza `PieCompras`, que es la línea del canvas (`:246`)
+// y vive DENTRO de la columna de la lista, no debajo del split: con el panel abierto, un pie a lo
+// ancho de los dos decía «6 de 882» cruzando por debajo del panel y se leía como si lo describiera
+// a él también.
+//
+// ═══ TRES COSAS QUE EL CANON PINTABA DE MÁS ═══
+//
+//   · EL ESTADO YA NO ES UNA PASTILLA. El canvas lo escribe como TEXTO de color (`:216` «Pagado» en
+//     #067647, `:224` «A pagar» en #B54708, «Proyectado» en #6B6B67, «Anulada» en #B42318). Los
+//     cuatro colores son los mismos que ya devolvía `pastillaDe()`; lo que se retira es el fondo y
+//     el borde, que en 947 filas son 947 cápsulas compitiendo con el importe.
+//   · «SIN COMPROBANTE» BAJA DE ÁMBAR A APAGADO (`:220`, `:230`: #91918B). El porte anterior lo
+//     pintaba ámbar con un argumento correcto —sin papel el gasto no acredita IVA— y un efecto
+//     equivocado: 876 de 882 filas no tienen comprobante, así que la columna entera quedaba ámbar y
+//     el ámbar dejaba de significar «esto bloquea». Lo que sí bloquea se ve en el filtro «Sin
+//     comprobante» y en el panel, donde la propiedad SIGUE en ámbar (`:265`) porque ahí habla de UNA
+//     compra.
+//   · EL CHIP «ESTRUCTURA» PIERDE SU RECUADRO: el canvas lo escribe en 11px #91918B al lado del
+//     destino (`:221`), sin borde ni radio. Un recuadro alrededor de una palabra es una caja más.
 //
 // ═══ LA ÚLTIMA COLUMNA (26px) ES EL PAPEL, NO UN `⋯` ═══
 //
-// En el mockup ese `⋯` no tiene handler: es decorativo. Se reemplaza por el comprobante, que es lo
-// que el dueño pidió que estuviera en la fila. Ver `CeldaComprobante`.
+// En el mockup ese `⋯` no tenía handler: era decorativo. Es el comprobante, en tinta cuando el
+// vínculo es un hecho y apagado cuando es deducido. Ver `CeldaComprobante`.
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
-import {
-  ALTO, C, CeldaTexto, EncabezadoCanon, FilaCanon, PieCanon, TarjetaTabla, VacioCanon,
-  IcoAlerta, entero, pesos,
-} from '@/shared/components/canon'
+import { pesos } from '@/shared/components/canon/formato'
+import { IconoProblema } from '@/shared/components/iconos'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
 import { CeldaComprobante } from './CeldaComprobante'
 
-/** El handoff v4, bloque «3 · COMPRAS». Ocho columnas; la última es el papel. */
-const COLS = 'minmax(150px,1.2fr) minmax(120px,1fr) 112px minmax(110px,1fr) 92px 104px 112px 26px'
+/**
+ * LA GRILLA DEL CANVAS, carácter por carácter (`v4A:208`), y sus dos variantes angostas. Literales
+ * porque Tailwind escanea el texto del archivo: una clase armada en runtime no se compila nunca y
+ * la fila se dibuja SIN grilla, defecto que sólo se ve mirando la pantalla.
+ *
+ * ═══ POR QUÉ HAY VARIANTES SI EL CANVAS DIBUJA UNA SOLA ═══
+ *
+ * Porque la grilla ancha necesita 924px y a 390 no cede: medido en producción el 06/09/2026,
+ * `document.body.scrollWidth` daba 416 contra un viewport de 390 con el panel abierto — 26px de
+ * desborde lateral, y el texto «Ver las a pagar →» del panel cortado contra el borde. El canon
+ * resolvía eso metiendo la tabla en una caja con scroll propio; el v2 no tiene caja, así que suelta
+ * columnas por media query (`25v2:154` — «nunca la identidad»). A 1249 se van CONCEPTO y FORMA DE
+ * PAGO; a 767 quedan proveedor, importe y papel: de quién es el gasto, cuánto es, y si hay papel.
+ */
+const COLS
+  = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_104px_112px_26px]'
+  + ' max-[1249px]:grid-cols-[minmax(150px,1.2fr)_112px_minmax(110px,1fr)_92px_112px_26px]'
+  + ' max-[767px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_26px]'
 
-/** La pastilla del canónico: 11px, radio 11, borde propio. */
-function Pastilla({ estado }: { estado: string | null }) {
-  const p = pastillaDe(estado)
-  return (
-    <span
-      data-testid="estado-compra"
-      style={{
-        fontSize: 11, fontWeight: 500, color: p.color, background: p.fondo,
-        border: `1px solid ${p.borde}`, borderRadius: 11, padding: '1.5px 8px', whiteSpace: 'nowrap',
-      }}
-    >
-      {p.texto}
-    </span>
-  )
-}
+/**
+ * Las celdas que se sueltan, y el corte en el que se van. EL `display` DE ESTAS CELDAS VA POR CLASE,
+ * NUNCA INLINE: un `style={{ display: 'flex' }}` le gana a cualquier media query y la celda sigue
+ * ocupando su ancho aunque la grilla ya no tenga su columna — la fila se corre entera.
+ */
+const SUELTA_TABLET = 'max-[1249px]:hidden'
+const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
  * Un total ausente NO se dibuja como $0 — un cero es una afirmación y un vacío es una ausencia.
  */
 function Importe({ f }: { f: FilaConPapel }) {
-  if (f.total == null) return <span style={{ color: C.tenue }}>sin importe</span>
+  if (f.total == null) return <span style={{ color: V.tenue }}>sin importe</span>
   return (
     <span style={{
-      color: f.anulada ? C.tenue : f.total < 0 ? '#067647' : C.tinta,
+      color: f.anulada ? V.tenue : f.total < 0 ? '#067647' : V.tinta,
       textDecoration: f.anulada ? 'line-through' : undefined,
     }}
     >
@@ -81,109 +102,171 @@ export function TablaComprasSheet({
   seleccionada?: number
   hrefDe: (fila: number) => string
 }) {
-  const t = totalesDe(filas)
   return (
-    <TarjetaTabla testid="tabla-compras-sheet" cols={COLS}>
-      <EncabezadoCanon
-        cols={COLS}
-        columnas={[
-          { rotulo: 'PROVEEDOR' }, { rotulo: 'CONCEPTO' }, { rotulo: 'COMPROBANTE' },
-          { rotulo: 'CLIENTE / ASIGNACIÓN' }, { rotulo: 'ESTADO' }, { rotulo: 'FORMA DE PAGO' },
-          { rotulo: 'IMPORTE', alineacion: 'derecha' }, { vacia: true, rotulo: '' },
-        ]}
-      />
+    <div data-testid="tabla-compras-sheet">
+      <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
+        <RotuloCol>Proveedor</RotuloCol>
+        <span className={`grid ${SUELTA_TABLET}`}><RotuloCol>Concepto</RotuloCol></span>
+        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Comprobante</RotuloCol></span>
+        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Cliente / asignación</RotuloCol></span>
+        <span className={`grid ${SUELTA_TELEFONO}`}><RotuloCol>Estado</RotuloCol></span>
+        <span className={`grid ${SUELTA_TABLET}`}><RotuloCol>Forma de pago</RotuloCol></span>
+        <RotuloCol derecha>Importe</RotuloCol>
+        <span />
+      </div>
 
       {filas.map((f) => {
         const obra = f.obra_texto?.trim()
+        const estado = pastillaDe(f.estado)
+        const elegida = seleccionada === f.fila
         return (
-          <FilaCanon
+          <div
             key={f.fila}
-            cols={COLS}
-            alto={ALTO.fila}
-            seleccionada={seleccionada === f.fila}
-            testid={`compra-${f.fila}`}
+            role="row"
+            data-testid={`compra-${f.fila}`}
+            data-seleccionada={elegida ? '' : undefined}
+            className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegida ? '' : 'hover:bg-[#F2F1ED]'}`}
+            style={{
+              height: ALTO_V2.fila,
+              borderBottom: `1px solid ${V.lineaFila}`,
+              background: elegida ? V.seleccion : undefined,
+              // Estado y selección por canales distintos: el filo ámbar dice «esto bloquea» y
+              // sobrevive a la selección, que se expresa sólo con el fondo (`22v2:422`).
+              boxShadow: obra ? undefined : FILO_BLOQUEA,
+            }}
           >
+            {/* `display: contents` — la fila entera abre el panel, salvo el papel, que es un botón
+                y no puede vivir dentro de un enlace (HTML inválido y rompe el tabulador). */}
             <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
-              <CeldaTexto>{f.proveedor ?? 'sin proveedor'}</CeldaTexto>
-              <CeldaTexto>{f.concepto ?? f.detalle_obra ?? 'sin concepto'}</CeldaTexto>
-              {/* SIN COMPROBANTE EL GASTO NO ACREDITA IVA: por eso va en ámbar y no en gris. Es el
-                  único dato de la fila cuya ausencia cuesta plata. */}
+              <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: f.proveedor ? V.tinta : V.tenue }}>
+                {f.proveedor ?? 'sin proveedor'}
+              </span>
+
+              <span className={`truncate ${SUELTA_TABLET}`} style={{ fontSize: '12px', color: V.tintaSuave }}>
+                {f.concepto ?? f.detalle_obra ?? 'sin concepto'}
+              </span>
+
               <span
-                className="font-mono"
-                style={{
-                  fontSize: 11.5, color: f.comprobante ? C.tintaSuave : '#B54708',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}
+                className={`truncate font-mono ${SUELTA_TELEFONO}`}
+                style={{ fontSize: '11.5px', color: f.comprobante ? V.tintaSuave : V.tenue }}
                 data-testid={f.comprobante ? undefined : 'compra-sin-comprobante'}
               >
                 {f.comprobante ? `${f.tipo ? `${f.tipo} ` : ''}${f.comprobante}` : 'sin comprobante'}
               </span>
-              {/* «Sin imputar» en rojo con su ⚠: hoy las 882 filas tienen destino, así que este
+
+              {/* «Sin imputar» en rojo con su ⚠: hoy las 947 filas tienen destino, así que este
                   camino no se ve — existe porque el día que alguien cargue una sin imputar tiene
                   que gritarlo, no esconderlo. */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0 }}>
+              <span className={`flex items-baseline gap-[7px] min-w-0 ${SUELTA_TELEFONO}`}>
                 {f.unidad_negocio && (
-                  <span style={{ fontSize: 11, color: C.tenue, flexShrink: 0 }}>{f.unidad_negocio}</span>
+                  <span className="shrink-0" style={{ fontSize: '11px', color: V.tenue }}>{f.unidad_negocio}</span>
                 )}
-                <CeldaTexto color={obra ? C.tinta : '#B42318'}>
+                <span className="truncate" style={{ fontSize: '12px', color: obra ? V.tintaSuave : V.neg }}>
                   {obra || 'sin imputar'}
-                </CeldaTexto>
+                </span>
                 {!obra && (
-                  <span title="Sin imputar a obra" style={{ display: 'flex', color: '#B42318', flexShrink: 0 }}>
-                    <IcoAlerta s={13} />
+                  <span title="Sin imputar a obra" className="flex shrink-0" style={{ color: V.neg }}>
+                    <IconoProblema className="h-[13px] w-[13px]" />
                   </span>
                 )}
                 {esEstructura(obra) && (
                   <span
+                    className="shrink-0 whitespace-nowrap"
                     title="Costo de la empresa, no de una obra"
-                    style={{
-                      fontSize: 10, color: C.apagado, border: `1px solid ${C.linea}`,
-                      borderRadius: 5, padding: '1px 5px', flexShrink: 0, whiteSpace: 'nowrap',
-                    }}
+                    style={{ fontSize: '11px', color: V.tenue }}
                   >
                     estructura
                   </span>
                 )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-                <Pastilla estado={f.estado} />
-              </div>
+              </span>
+
+              <span className={`truncate ${SUELTA_TELEFONO}`} style={{ fontSize: '12px', color: estado.color }} data-testid="estado-compra">
+                {estado.texto}
+              </span>
+
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
                   igual; lo único que no se puede es proyectar cuándo sale la plata. */}
-              <CeldaTexto color={f.tipo_pago ? C.tintaSuave : C.tenue}>
+              <span className={`truncate ${SUELTA_TABLET}`} style={{ fontSize: '12px', color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
                 {f.tipo_pago || 'sin cargar'}
-              </CeldaTexto>
-              <div style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0,
-                fontFamily: 'var(--font-plex-mono)', fontSize: 12, textAlign: 'right',
-              }}
+              </span>
+
+              <span
+                className="flex min-w-0 flex-col items-end gap-px font-mono tabular-nums"
+                style={{ fontSize: '12px', textAlign: 'right' }}
               >
                 <Importe f={f} />
                 {/* LO QUE TODAVÍA SE DEBE, y sólo cuando se debe algo. `saldo_pendiente` en 0 no es
                     «debe 0»: es que no debe nada, y dibujarlo diría lo contrario de lo que pasa. */}
                 {f.saldo_pendiente != null && f.saldo_pendiente > 0 && (
-                  <span title="Deuda parcial" style={{ fontSize: 10.5, color: '#B54708' }}>
+                  <span title="Deuda parcial" style={{ fontSize: '10.5px', color: V.warn }}>
                     debe {pesos(f.saldo_pendiente)}
                   </span>
                 )}
-              </div>
+              </span>
             </Link>
+
             <CeldaComprobante adjuntos={f.adjuntos} />
-          </FilaCanon>
+          </div>
         )
       })}
 
-      {!filas.length && <VacioCanon testid="compras-vacio">Nada coincide.</VacioCanon>}
+      {!filas.length && (
+        <div data-testid="compras-vacio" style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }}>
+          Nada coincide.
+        </div>
+      )}
+    </div>
+  )
+}
 
-      <PieCanon
-        totales={[
-          { rotulo: 'COMPROBANTES', valor: entero(t.nTotal), testid: 'pie-n' },
-          { rotulo: 'SIN COMPROBANTE', valor: entero(t.nSinComprobante), color: '#B42318', testid: 'pie-sin-papel' },
-          { rotulo: 'SIN IMPUTAR', valor: entero(t.nSinObra), color: '#B42318', testid: 'pie-sin-obra' },
-          { rotulo: 'A PAGAR', valor: pesos(t.aPagar), color: '#B54708', testid: 'pie-a-pagar' },
-          { rotulo: 'TOTAL', valor: pesos(t.total), fuerte: true, testid: 'pie-total' },
-        ]}
-      />
-    </TarjetaTabla>
+/**
+ * EL PIE DE LA LISTA — `v4A:246`, dentro de la columna de la lista y no debajo del split.
+ *
+ * Suma LO QUE SE ESTÁ VIENDO, que es lo que dice el rótulo del canvas: «Total de lo que hay en
+ * pantalla». Los conteos de la población entera son otra cosa y viven arriba, en los chips.
+ */
+export function PieCompras({
+  filas, total, children,
+}: {
+  filas: FilaConPapel[]
+  /** La población entera de la pestaña — el «882» del canvas. */
+  total: number
+  /** El contexto del recorte: qué filtro está puesto y cómo se sale de él. */
+  children?: ReactNode
+}) {
+  const t = totalesDe(filas)
+  return (
+    <div
+      data-testid="pie-compras"
+      className="flex flex-wrap items-baseline gap-x-[22px] gap-y-1"
+      style={{ marginTop: 14, fontSize: '12.5px', color: V.apagado }}
+    >
+      <span>
+        <span className="font-mono tabular-nums">{filas.length}</span> de{' '}
+        <span className="font-mono tabular-nums" style={{ color: V.tinta }} data-testid="pie-poblacion">{total}</span>
+      </span>
+      <span>
+        A pagar{' '}
+        <span className="font-mono tabular-nums" style={{ color: V.warn, fontWeight: 500 }} data-testid="pie-a-pagar">
+          {pesos(t.aPagar)}
+        </span>
+      </span>
+      <span>
+        Total de lo que hay en pantalla{' '}
+        <span className="font-mono tabular-nums" style={{ color: V.tinta, fontWeight: 500 }} data-testid="pie-total">
+          {pesos(t.total)}
+        </span>
+      </span>
+      {/* EL TOTAL NO SUMA LO QUE NO TIENE IMPORTE, y eso se dice. La suma trata el `null` como 0
+          porque no puede hacer otra cosa; callarlo hace que el total se lea como si estuviera
+          completo, y el que lo compare contra el Sheet no va a saber por qué no cierra. */}
+      {t.sinImporte > 0 && (
+        <span style={{ fontSize: '11.5px', color: V.tenue }} data-testid="compras-sin-importe">
+          <span className="font-mono tabular-nums">{t.sinImporte}</span>
+          {t.sinImporte === 1 ? ' sin importe cargado: queda' : ' sin importe cargado: quedan'} fuera de la suma
+        </span>
+      )}
+      {children}
+    </div>
   )
 }
