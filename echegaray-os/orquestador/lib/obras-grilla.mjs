@@ -138,6 +138,9 @@ import { comprasObraDe, patronEstaDeclarado, esProyectable, totalEgresos } from 
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 import { sumaConUSD } from './cobranzas-contrato.mjs'
 import { formulaCertificado } from './obras-certificado.mjs'
+// EL CONTRATO DE LA RÉPLICA `_OBRAS_RAW` VIVE EN UN SOLO LADO: nombre de la pestaña, letras de
+// columna, tope del rango y la fórmula que los usa. Ver lib/obras-replica.mjs.
+import { formulaCostoProyectado } from './obras-replica.mjs'
 // EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
 // pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
 // mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
@@ -1246,16 +1249,20 @@ function bloqueCosto(h, refs, o, idx) {
   const f = h.n + 1
   const rot = rotuloDeObra(o, idx, SECCION_COSTO)
   h.rotulos.push({ fila: f, texto: rot.texto })
+  // `proyectado` sigue existiendo porque el LOG de la corrida lo usa para decir cuánta plata declara
+  // el cuadro. Lo que ya no hace es entrar a la celda: la celda es la fórmula de arriba.
   const proyectado = totalEgresos(o)
   const patron = comprasObraDe(o)
-  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, proyectado, compradoDeObra(cmp, o), `=C${f}-D${f}`,
+  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, formulaCostoProyectado(o.obra ?? o.clave), compradoDeObra(cmp, o), `=C${f}-D${f}`,
     patronEstaDeclarado(o) ? `Compras: "${patron}"` : escribiEnCompras(patron)],
   // LA `F` DE ESTE CUADRO NO ES LA ALARMA SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA, y
   // por eso DERRAMA: mide 138px, `Compras: "Salones Comerciales"` mide 189, y con CLIP el texto no se
   // recorta — desaparece, justo en las obras que sí emparejaron. La G, la H y la I de este cuadro
   // están vacías, así que derramar sobre ellas usa un espacio que ya está y no tapa nada.
   ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'texto'])
-  h.tipeadas.push({ fila: f, col: 2 })
+  // La C DEJÓ DE SER TIPEADA: ya no se anota como tal. `tipeadas` alimenta el conteo que la corrida
+  // publica en el log, y dejarla adentro haría que el log siguiera diciendo que hay siete números
+  // del dueño estampados donde ya no hay ninguno.
   return { clave: o.clave, fila: f, proyectado, patron }
 }
 

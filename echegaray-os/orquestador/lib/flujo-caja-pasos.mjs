@@ -164,6 +164,18 @@ export const PASOS = [
   // sea que el paso "correría bien" todos los días sin publicar una celda. El defecto es no escribir
   // —dirección segura para equivocarse a mano— pero en el pipeline esa seguridad se vuelve una
   // pestaña congelada que informa éxito.
+  // ═══ LA RÉPLICA VA ANTES QUE LA PESTAÑA QUE LA CITA (05/09/2026) ═══
+  //
+  // Desde hoy el «Costo proyectado» del cuadro 4 de OBRAS no es un número estampado: es un SUMIFS
+  // sobre `_OBRAS_RAW`. Si la réplica corriera DESPUÉS, la primera corrida publicaría `#REF!` en las
+  // siete obras y las siguientes sumarían el plan de ayer. Y si la réplica no se pudo escribir, la
+  // celda sale `#N/A` —no cero—, así que la relectura de OBRAS lo levanta en vez de publicar en
+  // silencio un costo proyectado de "—".
+  //
+  // La carga desde el Sheet (`obras-previstos-cargar.mjs`) NO está acá a propósito: lee la pestaña
+  // OBRAS que este mismo pipeline reescribe, y meterla en el medio la haría leer un estado a medio
+  // publicar. Se corre aparte, con su propia verificación.
+  ['obras-raw-pestana.mjs', '_OBRAS_RAW — el plan de egresos por obra que el cuadro 4 de OBRAS suma', ['_OBRAS_RAW']],
   ['obras-pestana.mjs', 'OBRAS — el año entero obra por obra: venta/cobrado/pendiente por cliente y las obras del año', ['OBRAS'], ['--escribir']],
   // VA DESPUÉS DE OBRAS Y NO ES INDIFERENTE: su control de cierre LEE la Resta que OBRAS acaba de
   // publicar y aborta si no cuadra. Corriendo antes, se compararía contra la Resta de ayer.
