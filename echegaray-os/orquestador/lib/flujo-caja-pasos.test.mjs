@@ -319,3 +319,24 @@ test('el criterio de vuelta nombra el script con el que se lo mide', () => {
   assert.match(p.vuelve, /arca-reapuntar-nombres\.mjs/, 'los rangos con nombre son parte de lo que tiene que estar sano')
   assert.match(p.vuelve, /limpiadas > 0/, 'alinear es poder decidir, no haber limpiado: la corrida real sigue haciendo falta')
 })
+
+// ═══ UNA RÉPLICA QUE CORRE DESPUÉS DE LA PESTAÑA QUE LA CITA NO SIRVE (05/09/2026) ═══
+//
+// El «Costo proyectado» del cuadro 4 de OBRAS pasó de ser un número estampado a un SUMIFS sobre
+// `_OBRAS_RAW`. El orden dejó de ser una preferencia: con la réplica DESPUÉS, la primera corrida
+// publica `#REF!` en las siete obras y las siguientes suman el plan de ayer. No hay error que lo
+// delate desde el lado del pipeline —los dos pasos "corren bien"—, así que el control es este test.
+test('_OBRAS_RAW se escribe ANTES que la pestaña OBRAS que la cita', () => {
+  const scripts = PASOS.map(([s]) => s)
+  const raw = scripts.indexOf('obras-raw-pestana.mjs')
+  const obras = scripts.indexOf('obras-pestana.mjs')
+  assert.ok(raw >= 0, 'la réplica tiene que estar en PASOS: sin ella la fórmula de OBRAS da #REF!')
+  assert.ok(obras >= 0)
+  assert.ok(raw < obras, `obras-raw-pestana.mjs va en la posición ${raw} y obras-pestana.mjs en la ${obras}`)
+})
+
+// La carga desde el Sheet lee la pestaña OBRAS que el propio pipeline reescribe. Metida en el medio
+// leería un estado a medio publicar y guardaría en Postgres lo que el pipeline todavía no terminó.
+test('la carga del plan de egresos NO es un paso del pipeline', () => {
+  assert.ok(!PASOS.some(([s]) => s === 'obras-previstos-cargar.mjs'))
+})

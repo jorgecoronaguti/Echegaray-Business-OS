@@ -21,6 +21,7 @@ import {
   rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO, SECCION_MATERIALES,
 } from './obras-grilla.mjs'
 import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
+import { formulaCostoProyectado } from './obras-replica.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
@@ -430,12 +431,15 @@ test('la máquina propia NO entra al costo proyectado: es equipo propio, no plat
   // Regla del dueño. Antes se veía porque su fila quedaba fuera del rango sumado; ahora el cuadro no
   // tiene filas, así que la prueba es sobre el número: los $13.100.982 de las cuatro obras con
   // máquina declarada no pueden estar adentro de ninguna celda de `Costo proyectado`.
+  // 05/09: la celda dejó de ser el número y pasó a ser la SUMA de la réplica. La prueba se mueve con
+  // ella: ningún monto de máquina propia puede aparecer en la fórmula, y la fórmula tiene que ser
+  // exactamente la del contrato — no una variante escrita a mano en este archivo.
   const proyectados = g.filasCosto.map((f) => cel(g, `C${f}`))
-  assert.deepEqual(proyectados, OBRAS_FUTURAS.map((o) => totalEgresos(o)))
+  assert.deepEqual(proyectados, OBRAS_FUTURAS.map((o) => formulaCostoProyectado(o.obra)))
   for (const [i, o] of OBRAS_FUTURAS.entries()) {
-    const conMaquina = totalEgresos(o) + (o.noCaja?.maquinaPropia ?? 0)
     if (!o.noCaja?.maquinaPropia) continue
-    assert.notEqual(proyectados[i], conMaquina, `${o.clave}: la máquina propia entró al costo`)
+    assert.ok(!String(proyectados[i]).includes(String(o.noCaja.maquinaPropia)),
+      `${o.clave}: la máquina propia entró al costo`)
   }
 })
 
@@ -466,7 +470,8 @@ test('el monto declarado de un egreso NO entra a la celda de comprado: ahí sól
     const comprado = String(cel(g, `D${g.filasCosto[i]}`))
     for (const m of montos) assert.ok(!comprado.includes(m), `${o.clave}: se coló el monto proyectado ${m}`)
     // Pero SÍ está en el costo proyectado: es plata que va a salir, sólo que todavía no se compró.
-    assert.equal(cel(g, `C${g.filasCosto[i]}`), totalEgresos(o))
+    // Desde el 05/09 la celda lo SUMA de la réplica en vez de traerlo estampado.
+    assert.equal(cel(g, `C${g.filasCosto[i]}`), formulaCostoProyectado(o.obra))
   }
 })
 
@@ -763,7 +768,7 @@ test('una obra sin fechas se VE, se marca y no proyecta nada: sin inicio no hay 
   assert.ok(d.includes('SUMIFS'), 'el gasto real de una obra no depende de que se le haya puesto cronograma')
   assert.ok(d.includes(`"*${comprasObraDe(sinFecha)}*"`), 'empareja por su propio nombre, no por proveedor')
   assert.ok(d.includes(`${ANO}`) || /46023|46387/.test(d), 'la ventana es el AÑO de la pestaña, no las fechas de la obra')
-  assert.equal(cel(otra, `C${c}`), totalEgresos(sinFecha), 'y el costo proyectado se sigue viendo')
+  assert.equal(cel(otra, `C${c}`), formulaCostoProyectado(sinFecha.obra), 'y el costo proyectado se sigue viendo')
 })
 
 test('sin obras no se arma media pestaña: la sección 2 no publica un total que no existe', () => {
@@ -781,15 +786,17 @@ test('sin obras no se arma media pestaña: la sección 2 no publica un total que
 
 test('los ÚNICOS números tipeados son los proyectados del dueño, y son los suyos sin retocar', () => {
   const numeros = g.filas.flatMap((f, i) => f.map((v, c) => [`${COLS[c]}${i + 1}`, v]).filter(([, v]) => typeof v === 'number'))
-  const montos = numeros.filter(([ref]) => ref.startsWith('C')).map(([, v]) => v)
-  assert.deepEqual(montos, OBRAS_FUTURAS.map((o) => totalEgresos(o)), 'el costo proyectado, sin retocar')
+  // 05/09: LA C YA NO TIPEA NADA. El costo proyectado pasó a `public.obra_egreso_proyectado` y la
+  // celda lo suma de la réplica `_OBRAS_RAW`. Si vuelve a aparecer un número en la C, alguien
+  // reintrodujo el valor estampado y este test tiene que ponerse rojo.
+  assert.deepEqual(numeros.filter(([ref]) => /^C\d/.test(ref)), [], 'la C no tipea números: los suma de la réplica')
   // 24/08: el cuadro 5 publica el ítem por ítem en la E — los MISMOS montos del dueño, sin retocar.
   const items = numeros.filter(([ref]) => ref.startsWith('E')).map(([, v]) => v)
   assert.deepEqual(items, OBRAS_FUTURAS.flatMap((o) => (o.egresos ?? []).map((e) => e.monto)),
     'cada ítem previsto, el número del dueño sin retocar')
-  // Fuera de C (costo por obra), D (fechas del cuadro 5, serial con especie `fecha`), E (ítems del
-  // cuadro 5) y G (contrato releído de Cobranzas), nada tipeado.
-  for (const [ref] of numeros) assert.ok(/^[CDEG]/.test(ref), `${ref}: un número tipeado fuera de C, D, E y G`)
+  // Fuera de D (fechas del cuadro 5, serial con especie `fecha`), E (ítems del cuadro 5) y G
+  // (contrato releído de Cobranzas), nada tipeado.
+  for (const [ref] of numeros) assert.ok(/^[DEG]/.test(ref), `${ref}: un número tipeado fuera de D, E y G`)
 })
 
 test('el total proyectado de caja es egresos + MO, y la máquina propia NO está adentro', () => {
