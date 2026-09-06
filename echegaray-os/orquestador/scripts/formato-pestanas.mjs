@@ -102,12 +102,52 @@ export const PESTANAS = [
   // para que la posición no se vaya al scrollear el detalle. Con cols:12 el auditor de pantalla ni
   // miraba la columna del total (N) ni la de procedencia (O), o sea que no auditaba justo donde vive
   // el número que se lee. hastaFila 130: la pestaña pasó de 69 filas a ~105.
-  { titulo: 'Impuestos y Financieros', congeladas: 12, hastaFila: 130, cols: 15, propio: true },
+  //
+  // ═══ LOS 28 NÚMEROS DE LA DDJJ, QUE HOY DEPENDEN DE QUE UN TÍTULO NO SE ACORTE (06/09/2026) ═══
+  //
+  // `B16:H19` —débito, crédito, IVA a pagar y saldo de libre disponibilidad de enero a julio— son la
+  // transcripción de las siete DDJJ del F.2051 que ya se presentaron; la fila 20 publica de cada una
+  // su fecha de presentación y su número de acuse. La columna de agosto, que todavía no tiene DDJJ,
+  // es fórmula sobre `_ARCA_RAW`: es la cascada del OS, DDJJ > AJENO > ARCA > proyección.
+  //
+  // Hasta hoy los amparaba el propio título `A14`, porque contiene la palabra «DDJJ». O sea que
+  // alcanza con que alguien lo acorte a «1 · IVA» para que los 28 pasen a contarse como violación de
+  // la regla 5 — y la limpieza de prosa del minimalismo extremo va en esa dirección. La declaración
+  // se migra ACÁ antes de que eso pase, que es el orden que lib/origen-declarado.mjs dejó escrito.
+  //
+  // `B:M` y no `B:H`: el bloque gana una columna por mes y un rango cerrado en julio se fosiliza en
+  // agosto. Las columnas que todavía no tienen DDJJ están vacías o son fórmula, así que amparlas no
+  // ampara nada. La `N` —el total del año— queda AFUERA: es fórmula.
+  //
+  // `incluyeTotales` porque la fila 18 es «⇒ IVA a pagar en efectivo» y también es transcripta: es la
+  // línea de la DDJJ presentada. Recalcularla sería pisar la declaración jurada con aritmética propia.
+  { titulo: 'Impuestos y Financieros', congeladas: 12, hastaFila: 130, cols: 15, propio: true, origenPorBloque: [
+    { bloque: '1 · IVA — LA DDJJ OFICIAL (F.2051): QUÉ SE DEBE O SE TIENE A FAVOR', cols: 'B:M', incluyeTotales: true,
+      que: 'cada columna es un mes YA PRESENTADO ante ARCA: los cuatro renglones son la transcripción del F.2051 de ese mes, y la fila «DDJJ presentada» publica su fecha y su número de acuse. La DDJJ manda sobre cualquier cálculo propio (cascada DDJJ > AJENO > ARCA > proyección); el mes sin presentar es fórmula sobre _ARCA_RAW' },
+  ] },
   { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas
   // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
-  { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18 },
+  //
+  // ═══ LA CONCILIACIÓN DE ARCA CONTRA COMPRAS: SE DECLARA LA CANTIDAD Y **NO** EL MONTO (06/09/2026) ═══
+  //
+  // `B182`/`B183` (380 y 8 comprobantes) son el resultado de la conciliación que corre el OS —casar
+  // cada comprobante del libro de IVA contra Compras, por N° cuando lo hay y por proveedor+importe
+  // cuando no—. El Sheet no puede rehacer ese cruce, así que son dato de origen y hoy los ampara la
+  // prosa de `I179`, que la limpieza de minimalismo va a borrar.
+  //
+  // LA COLUMNA C NO SE DECLARA, Y ES A PROPÓSITO. `C182` publica **$12.694.400.780.000.000** para 380
+  // comprobantes, contra $38.391.091 para los 8 de la fila siguiente: siete órdenes de magnitud por
+  // comprobante. Es un número roto, y encima tiene nombre —`ARCA_EN_COMPRAS_MONTO`— o sea que quien lo
+  // cite publica esa cifra. Ampararlo sería usar la excepción para apagar el aviso, que es justo lo
+  // que lib/origen-declarado.mjs existe para no hacer. Queda contado como violación hasta que se
+  // arregle. El generador de esta pestaña está FRENADO en `PASOS_RETIRADOS`, así que el arreglo no es
+  // de este frente: el hallazgo se pasa con el número medido.
+  { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18, origenPorBloque: [
+    { bloque: '6 · LO QUE ARCA REGISTRÓ', cols: 'B',
+      que: 'cuántos comprobantes del libro de IVA encontró el OS en Compras — por N° de comprobante, o por proveedor + importe cuando el N° no está cargado. Es el resultado de un cruce que el Sheet no puede rehacer' },
+  ] },
   { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
   // LA COLUMNA C DE CAJA ES, POR DEFINICIÓN, DATO DE ORIGEN: "Saldo en moneda de origen" sale del
   // extracto del banco, del arqueo de caja o de la réplica de la tarjeta. Son los quince números que
@@ -147,13 +187,62 @@ export const PESTANAS = [
   //
   // Sin `origen`: las dos son 100% calculadas. Nómina la escribe entera su generador desde el espejo
   // y desde Postgres; SUBCONTRATISTAS es una vista de Compras y lo declara en su propia fila 2.
-  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true },
+  //
+  // ═══ LAS DOS COLUMNAS DE «Nómina» QUE TIPEA EL DUEÑO (06/09/2026) ═══
+  //
+  // No son un cálculo que envejece: son DECISIONES suyas, y el OS no las puede deducir de ninguna
+  // fuente. Sin declararlas el censo las cuenta como violación de la regla 5, y el día que alguien
+  // "arregle" la violación convirtiéndolas en fórmula le va a estar pisando la decisión.
+  //
+  // El amparo se corta en el renglón `⇒` de cada cuadro, sin `incluyeTotales`, y eso es deliberado:
+  // `I28` publica hoy $290.000 en la fila «⇒ 15 persona(s)» cuando la suma de las catorce de arriba
+  // es ~$4,37M. Es un fósil, no un total, y tiene que seguir saliendo en rojo.
+  //
+  // El rótulo de los dos bloques lleva su período —«· QUINCENA 01/09 A 15/09», «· MES 09/2026»— y por
+  // eso `normalizarRotulo` corta en el primer « · »: anclado al texto entero, el amparo se apagaría
+  // solo cada quincena y el censo empezaría a gritar por catorce números que están bien.
+  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true, origenPorBloque: [
+    { bloque: '1 · QUÉ SE LE PAGA A CADA UNO', cols: 'I',
+      que: '«EFECTIVO redondeado» es la cifra que el dueño decide y tipea al pagar: redondea el efectivo calculado al billete con el que se paga de verdad. Nunca se calcula — hay una regla explícita de que esta columna no se genera' },
+    { bloque: '2 · QUÉ SE LE PAGA A OFICINA', cols: 'C',
+      que: 'el neto acordado con cada persona de oficina ($1.800.000 hoy) es un ACUERDO del dueño, no una liquidación: por banco va lo que dice el recibo y el efectivo completa hasta ese neto. No sale de ninguna fuente que el Sheet pueda leer' },
+  ] },
   { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
   // «Plantel» nace el 31/08 al partir la Nómina: los cuatro cuadros de respaldo —quiénes son, lo
   // devengado, el costo de desvincular y el índice de legajos— salen de la pestaña que se opera y
   // pasan a la suya. Se anota acá EN LA MISMA corrida que la crea, para no repetir el descuido que
   // dejó a OBRAS y a la propia Nómina fuera de todos los controles.
-  { titulo: 'Plantel', congeladas: 3, hastaFila: 140, cols: 17, propio: true },
+  //
+  // ═══ LOS 285 NÚMEROS PEGADOS DE «Plantel», Y POR QUÉ NO SON 285 DEFECTOS (06/09/2026) ═══
+  //
+  // Medido: `censo-numeros-pegados` daba 285 sobre 122 fórmulas. La clasificación ya vive en
+  // `lib/plantel-formulas.mjs` y su parte A/B ya está hecha —el TOTAL AÑO, el SALE DE LA CAJA, las
+  // citas del cuadro 1 al 2 son fórmulas hoy—. Lo que faltaba es la especie C: los números que el
+  // Sheet NO puede rehacer, que la regla de oro 5 manda pegar CON su declaración de origen, y que
+  // desde el minimalismo extremo del 05/09 ya no pueden declararse en una celda visible.
+  //
+  // Con estas cinco declaraciones el censo de la pestaña pasa de 285 a 9, y los 9 que quedan son
+  // defectos reales: seis celdas fósiles en las dos filas «⇒ N persona(s)» (D24/F24 y D66:G66 — el
+  // porqué y su límite, en nomina-pestana.mjs) y tres del renglón de desvinculación que quedó pegado
+  // sobre el título de la sección 4 (D68:F68). El control quedó pudiendo dar rojo, que es la prueba
+  // de que la excepción explica en vez de apagar.
+  //
+  // NINGUNA declaración incluye la columna del total del renglón (N del cuadro 2, I/J del cuadro 3):
+  // ésas son fórmulas y si aparece un número pegado ahí tiene que salir en rojo.
+  { titulo: 'Plantel', congeladas: 3, hastaFila: 140, cols: 17, propio: true, origenPorBloque: [
+    { bloque: '1 · QUIÉNES SON', cols: 'F',
+      que: 'el $/hora pactado de cada persona — sale del jornal del espejo `_J_OBREROS`/`_J_OFICINA`, no de una cuenta sobre esta pestaña' },
+    { bloque: '2 · LO DEVENGADO MES A MES · 2026', cols: 'B:M',
+      que: 'los doce importes salen de reducir `_J_OBREROS`/`_J_OFICINA` quincena por quincena con la equivalencia de nombres del espejo — un SUMIFS no puede casar por rótulo lo que el espejo casa por persona (ver especie C en lib/plantel-formulas.mjs)' },
+    { bloque: '2 · LO DEVENGADO MES A MES · 2026', cols: 'O',
+      que: 'las horas del año, de la misma reducción del espejo que los importes' },
+    { bloque: '3 · QUÉ CUESTA DESVINCULAR A CADA UNO', cols: 'D:H',
+      que: 'vacaciones, SAC, SAC s/vacaciones y FCL salen de la antigüedad y del régimen de cada persona (ley 22.250 vs. LCT): es criterio laboral, no aritmética de planilla. «Liquidación (por recibo)» es SALE DE LA CAJA × la política del 50% registrado, que todavía no tiene celda de parámetro con rótulo ni rango con nombre' },
+    { bloque: '3 · QUÉ CUESTA DESVINCULAR A CADA UNO', cols: 'K',
+      que: 'el fondo de cese acumulado, de los depósitos reales del régimen de la 22.250' },
+    { bloque: '4 · EL LEGAJO DE CADA UNO EN DRIVE', cols: 'G',
+      que: 'cuántos recibos tiene cada persona en su carpeta de Drive — el Sheet no puede contar archivos de Drive. El fósil `G68`, que vive en la fila del título de la sección, NO queda amparado: el amparo se corta en las filas de estructura' },
+  ] },
 ]
 
 /**

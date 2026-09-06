@@ -90,6 +90,8 @@
 // escribe la declaración, y tiene que poder defenderlo. Acá sólo se resuelve dónde se anota y cómo
 // se verifica que la anotación siga hablando de algo que existe.
 
+import { esEstructural } from './respetar-ediciones.mjs'
+
 /** Cómo se compara un rótulo: sin tildes, sin mayúsculas, sin el número de sección, sin la glosa. */
 export function normalizarRotulo(texto) {
   // EL ORDEN IMPORTA, Y COSTÓ UN ROJO. Quitar tildes con `\p{Diacritic}` ANTES de cortar el número de
@@ -100,6 +102,18 @@ export function normalizarRotulo(texto) {
   // despoja de tildes.
   return String(texto ?? '')
     .replace(/^\s*\d+(?:\.\d+)?\s*·\s*/, '')   // «7 · Planes de pago» → «Planes de pago»
+    // ═══ EL PERÍODO TAMPOCO IDENTIFICA AL BLOQUE (06/09/2026) ═══
+    //
+    // Los bloques de «Nómina» se titulan con su período: «1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA
+    // 01/09 A 15/09» y «2 · QUÉ SE LE PAGA A OFICINA · MES 09/2026». Una declaración anclada a ese
+    // texto quedaría HUÉRFANA en la quincena siguiente —y una huérfana se denuncia como desvío—, o
+    // sea que el amparo se apagaría solo cada quince días y el censo empezaría a gritar por catorce
+    // números que están bien. Lo mismo con «2 · LO DEVENGADO MES A MES · 2026» de Plantel, que se
+    // habría caído sola el 1/1/2027.
+    //
+    // Es el mismo criterio que la línea de abajo ya aplica al guion largo: lo que va después del
+    // separador es glosa. El bloque ES «qué se le paga a cada uno»; la quincena es cuál corrida.
+    .split(' · ')[0]
     .split(' — ')[0]                            // la glosa a la derecha del guion largo no identifica
     .normalize('NFD').replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
@@ -107,11 +121,57 @@ export function normalizarRotulo(texto) {
     .trim()
 }
 
-/** ¿La fila está vacía? Es el mismo criterio con que el censo parte la grilla en bloques. */
-const vacia = (fila) => !(fila ?? []).some((c) => String(c?.valor ?? c ?? '').trim())
+/**
+ * El texto que se ve en una celda de la grilla, venga como objeto del censo o como string pelado.
+ *
+ * ═══ EL `?? celda` QUE DABA UN PERMISO EN BLANCO (06/09/2026) ═══
+ *
+ * Decía `String(celda?.valor ?? celda ?? '')`. Una celda VACÍA del censo es el objeto
+ * `{valor: null, formula: null, numero: null, …}`: `celda?.valor` da `null`, el `??` cae al objeto, y
+ * `String({})` es `"[object Object]"` — o sea que TODA fila vacía se leía como fila con contenido.
+ * `bloquesDeGrilla` devolvía entonces UN SOLO bloque por pestaña, y con eso cualquier declaración
+ * amparaba la pestaña ENTERA en sus columnas: exactamente el «permiso en blanco» que este módulo dice
+ * no otorgar.
+ *
+ * MEDIDO: en «Plantel», declarar los cuadros 2 y 3 amparaba también `D68:G68` —el residuo de un
+ * renglón de desvinculación pegado sobre el título de la sección 4— y las diecisiete cuentas de
+ * recibos de `G70:G86`, que no son ni una réplica ni un dato de origen de esos cuadros. La única
+ * declaración que ya existía, la de «Cargas Sociales», amparaba B:M de la pestaña entera en vez de
+ * las tres filas de planes de pago.
+ *
+ * El `?? celda` estaba para aceptar una grilla de strings pelados (como la usan los tests). Se
+ * mantiene esa capacidad, pero preguntando si la celda ES una celda del censo en vez de confiar en
+ * que su valor no sea nulo.
+ */
+const visible = (celda) => {
+  const v = celda && typeof celda === 'object' && 'valor' in celda ? celda.valor : celda
+  return String(v ?? '').trim()
+}
 
-/** El texto que se ve en una celda de la grilla, venga como objeto del censo o como string pelado. */
-const visible = (celda) => String(celda?.valor ?? celda ?? '').trim()
+/** ¿La fila está vacía? Es el mismo criterio con que el censo parte la grilla en bloques. */
+const vacia = (fila) => !(fila ?? []).some((c) => visible(c))
+
+/**
+ * ¿La fila es el TÍTULO DE SECCIÓN o el RENGLÓN DE TOTAL de su cuadro, y por lo tanto no es un dato?
+ *
+ * Se reusa `esEstructural` —la misma definición que ya decide, para la huella por celda, qué fila no
+ * se da nunca por borrada— en vez de escribir acá un segundo criterio: dos definiciones de «esta fila
+ * no es un dato» en el mismo archivo es cómo se termina amparando un rango distinto del que se creyó
+ * declarar.
+ *
+ * ═══ Y NO SE USA `esRotuloDeEstructura`, QUE ES LA MÁS ANCHA, POR UN FALSO POSITIVO MEDIDO ═══
+ *
+ * Aquélla suma `ES_ENCABEZADO`, la lista de primeras palabras con que un cuadro abre su columna A
+ * («período», «concepto», «plan», «proveedor»…). Sirve para reconocer la fila de encabezado; acá
+ * muerde un dato: `Cargas Sociales!A81` es «Plan F931 W303094 — financiación de junio 2026», el
+ * renglón de un plan de pago real, y arranca con «Plan». Con la lista ancha, sus tres cuotas
+ * (`I81:K81`, $2.494.875,65 cada una) quedaban fuera del amparo que la pestaña sí declaró. Un
+ * encabezado no lleva importes: si los lleva, es un dato.
+ */
+const esFilaDeEstructura = (fila) => esEstructural(visible((fila ?? [])[0]))
+
+/** ¿Es el TÍTULO de la sección? Un título nunca lleva datos, ni siquiera transcriptos. */
+const esTituloDeSeccion = (fila) => /^\s*\d+(\.\d+)?\s*·\s/.test(visible((fila ?? [])[0]))
 
 /**
  * NÚCLEO PURO: parte la grilla en bloques — runs de filas no vacías.
@@ -162,6 +222,8 @@ export function expandirColumnas(spec) {
  *                permiso en blanco, y un permiso en blanco no se otorga por omisión.
  *   · `que`    — por qué esos números son origen y no cálculo. No se usa para decidir; se usa para
  *                que la próxima persona pueda discutirlo.
+ *   · `incluyeTotales` — sólo cuando el renglón `⇒` del bloque TAMBIÉN es transcripto (un bloque que
+ *                copia entero un papel externo). Por defecto el amparo se corta ahí.
  *
  * @param {Array<Array<unknown>>} filas la grilla de la pestaña (0-based)
  * @param {{bloque:string, cols:string, que?:string}[]} declaraciones
@@ -177,18 +239,58 @@ export function amparoDeOrigen(filas = [], declaraciones = []) {
     if (!buscado) { huerfanas.push({ bloque: String(d?.bloque ?? ''), motivo: 'la declaración no dice qué bloque ampara' }); continue }
     if (!String(d?.cols ?? '').trim()) { huerfanas.push({ bloque: String(d?.bloque ?? ''), motivo: 'la declaración no dice qué columnas ampara' }); continue }
 
-    // El bloque se identifica por su rótulo en la PRIMERA columna: es donde el generador escribe el
-    // título de sección. Buscarlo en toda la fila haría que una celda de datos con el mismo texto
-    // abriera un amparo que nadie declaró.
+    // ═══ EL RÓTULO SE BUSCA EN EL TÍTULO DE SECCIÓN, NO EN CUALQUIER FILA (06/09/2026) ═══
+    //
+    // El comentario ya decía «es donde el generador escribe el título de sección», y el código
+    // miraba la columna A de TODAS las filas del bloque. Medido apenas se declaró el primer bloque
+    // de «Impuestos y Financieros»: el rótulo `1 · IVA — LA DDJJ OFICIAL (F.2051)…` se normaliza a
+    // «iva» (la glosa a la derecha del guion largo no identifica), y `A33` —una fila de datos del
+    // cuadro de retenciones sufridas— dice literalmente «IVA». La declaración de la DDJJ estaba
+    // amparando también B:M del cuadro 3, en silencio. Se exige el título: es lo único que nombra
+    // un bloque.
     const donde = bloques.filter((b) => {
-      for (let i = b.desde; i <= b.hasta; i++) if (normalizarRotulo(visible(filas[i]?.[0])) === buscado) return true
+      for (let i = b.desde; i <= b.hasta; i++) {
+        if (esTituloDeSeccion(filas[i]) && normalizarRotulo(visible(filas[i]?.[0])) === buscado) return true
+      }
       return false
     })
     if (!donde.length) { huerfanas.push({ bloque: String(d.bloque), motivo: 'ningún bloque de la pestaña lleva ese rótulo' }); continue }
+    // DOS BLOQUES CON EL MISMO RÓTULO NO SON UN AMPARO, SON UNA AMBIGÜEDAD. Amparar los dos sería
+    // ensanchar el permiso en silencio hasta un bloque que nadie declaró — y una pestaña con dos
+    // cuadros que se llaman igual ya es un defecto de por sí. Falla cerrada y se denuncia, igual que
+    // la huérfana: no amparar es reversible, amparar de más no se nota.
+    if (donde.length > 1) {
+      huerfanas.push({ bloque: String(d.bloque), motivo: `${donde.length} bloques de la pestaña llevan ese rótulo: no se puede saber cuál se quiso amparar` })
+      continue
+    }
 
     const cols = expandirColumnas(d.cols)
     for (const b of donde) {
-      for (let i = b.desde; i <= b.hasta; i++) for (const c of cols) amparadas.add(`${c}${i + 1}`)
+      for (let i = b.desde; i <= b.hasta; i++) {
+        // LA ESTRUCTURA DEL CUADRO NO ES DATO DE ORIGEN, NUNCA (06/09/2026). El amparo es por bloque,
+        // y un bloque incluye su título y su renglón `⇒`: sin este corte, declarar «los doce importes
+        // mensuales son una réplica» amparaba de yapa el total de la columna, que es aritmética pura
+        // de la propia pestaña. Medido en «Plantel»: la declaración de los cuadros 2 y 3 dejaba el
+        // censo en 0 de 285 —incluidas `D24`/`D66`, las filas «⇒ 17 persona(s)», y `D68:G68`, un
+        // renglón de desvinculación fósil pegado sobre el título de la sección 4— o sea que la
+        // excepción apagaba el aviso en vez de explicarlo, que es lo que este módulo existe para no
+        // hacer. Un número pegado en una fila de estructura se sigue contando siempre.
+        // ═══ LA EXCEPCIÓN A LA EXCEPCIÓN, Y SE PIDE POR ESCRITO (06/09/2026) ═══
+        //
+        // Hay un caso donde el renglón `⇒` TAMBIÉN es transcripto: cuando el bloque entero es la copia
+        // de un papel externo. `Impuestos y Financieros!B18:H18` es «⇒ IVA a pagar en efectivo» del
+        // bloque «1 · IVA — LA DDJJ OFICIAL (F.2051)», y esos siete números son la línea de la DDJJ
+        // que se presentó a ARCA, con su fecha y su número de acuse en la fila de abajo. Recalcularla
+        // como `MAX(0;B16-B17-…)` sería pisar la declaración jurada con aritmética propia, que es
+        // exactamente al revés de la cascada del OS (DDJJ > AJENO > ARCA > proyección).
+        //
+        // Por eso NO se afloja la regla: se pide decirlo. `incluyeTotales` deja el default seguro y
+        // obliga a que la excepción se lea en el diff con su motivo al lado. El TÍTULO de la sección
+        // no entra nunca, ni siquiera así: un título no lleva datos.
+        if (esTituloDeSeccion(filas[i])) continue
+        if (!d.incluyeTotales && esFilaDeEstructura(filas[i])) continue
+        for (const c of cols) amparadas.add(`${c}${i + 1}`)
+      }
     }
   }
   return { amparadas, huerfanas }

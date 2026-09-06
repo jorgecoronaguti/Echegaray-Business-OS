@@ -1333,7 +1333,19 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   }
   const c0 = (filaCosto[0] ?? destino.length) + 1
   const cF = destino.length
-  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', '',
+  // EL CENTINELA, NO LA CADENA VACÍA — la misma corrección que la fila de totales del cuadro 1 ya
+  // lleva desde el 05/09, en la fila gemela que quedó sin hacer. `''` NO vacía: no-borrar lo lee como
+  // «acá no escribo» y conserva lo que hubiera. Medido hoy en el archivo vivo, `D66:G66` arrastran
+  // «$259.942 · $200.611 · $21.662 · —» de una corrida anterior: cuatro importes en el renglón que
+  // suma la plata de las diecisiete personas, que NO son la suma de nada — la suma de las vacaciones
+  // de diecisiete personas no puede ser menor que las de Aguero solo ($456.446).
+  //
+  // Y ESTO NO LIMPIA LO QUE HAY HOY, igual que allá: esas celdas no tienen huella del OS (son de una
+  // versión anterior al sistema de huellas) y `VACIO` sólo se obedece con huella propia. Lo que
+  // cambia es que la intención queda declarada y el día que tengan huella se limpian solas. El
+  // residuo de hoy necesita `MIA_PROBADA`, que se enciende en la pestaña donde se MIDIÓ el fósil y
+  // se verificó contra el PDF — no se hizo acá, así que no se enciende.
+  fila(rotuloTotal(`${activos.length} persona(s)`), VACIO, VACIO, VACIO, VACIO, VACIO, VACIO,
     sumaDeColumna('H', c0, cF), sumaDeColumna('I', c0, cF), sumaDeColumna('J', c0, cF), sumaDeColumna('K', c0, cF))
   // NO VA UNA LÍNEA DICIENDO «el preaviso y la indemnización son CERO por el art. 15 de la ley
   // 22.250, no por olvido». Es una explicación, y la columna «Régimen» ya publica el régimen de cada

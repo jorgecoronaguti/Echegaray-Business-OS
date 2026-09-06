@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 import { grilla, formatosPropios, declaradosSinFila, RANGO_COMPRAS } from './recurrentes-pestana.mjs'
 import { mesCerrado, MES_EN_CURSO, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
+import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
 import { fusionar, tiene, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
@@ -362,4 +363,38 @@ test('LA FILA 3 —donde apuntaba— no es la fila de totales: el rango viejo es
 
 test('la fila de totales conserva su rótulo: es el ancla del rango', () => {
   assert.equal(g.filas[g.fTot - 1][0], ROTULO_TOTAL)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UN CONTROL PUBLICADO NO PUEDE QUEDARSE SIN SUS INSUMOS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido el 06/09/2026 contra el archivo vivo y `sheet_huella_celda`: `B24` publicaba
+// «⇒ Cobertura fiscal de esta pestaña» con `=IF(B21=0;"";B22/B21)` y B21/B22 VACÍAS, y `B14`
+// «⇒ Diferencia — un proveedor del rubro que el cuadro no lista» con `=ROUND(B12-B13;0)` y B12/B13
+// vacías: los dos devuelven lo mismo pase lo que pase. Causa: 19 celdas marcadas borradas en un
+// instante (13/08 19:30) —las de los dos cuadros de control, ni una del cuadro de datos— cuando el
+// layout del bloque se movió. La pestaña ALINEA (140 de 152), así que el seguro de alineación no lo
+// ve, y `esCeldaDeEstructura` rescata sólo el `⇒`.
+
+test('los dos ⇒ de Recurrentes tienen TODOS sus insumos amparados por un bloque declarado', () => {
+  assert.ok(g.indivisibles?.length, 'la grilla declara sus cuadros de control')
+  const controles = g.filas
+    .map((f, i) => ({ fila: i + 1, rotulo: String(f[0] ?? ''), formula: String(f[1] ?? '') }))
+    .filter((x) => x.rotulo.startsWith('⇒') && x.formula.startsWith('='))
+  assert.equal(controles.length, 2, 'Recurrentes publica dos controles: la diferencia y la cobertura')
+  for (const c of controles) {
+    const refs = [...c.formula.matchAll(/\$?[A-Z]{1,2}\$?(\d+)/g)].map((m) => Number(m[1]))
+    assert.ok(refs.length, `${c.rotulo} no referencia ninguna celda`)
+    for (const r of refs) {
+      assert.ok(enBloqueIndivisible(r, g.indivisibles),
+        `${c.rotulo} (fila ${c.fila}) lee la fila ${r} y ese insumo no está amparado por ningún bloque declarado`)
+    }
+  }
+})
+
+test('LA DECLARACIÓN NO SE COME EL CUADRO DE DATOS: ahí el dueño anota y la huella manda', () => {
+  for (let f = 1; f <= g.fTot; f++) {
+    assert.equal(enBloqueIndivisible(f, g.indivisibles), false, `la fila ${f} es cuadro de datos y no puede estar declarada`)
+  }
 })

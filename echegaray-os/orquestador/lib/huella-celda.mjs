@@ -60,7 +60,7 @@ import {
   hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
-import { esCeldaDeEstructura } from './celda-de-estructura.mjs'
+import { enBloqueIndivisible, esCeldaDeEstructura } from './celda-de-estructura.mjs'
 
 // EL VOCABULARIO DE LA FORMA SE MUDÓ a `huella-forma.mjs` y se re-exporta desde acá para no romper a
 // quien ya lo importaba. Tuvo que mudarse porque ahora hay DOS veredictos que necesitan la misma
@@ -284,7 +284,9 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  *            editadas:Array, reescritos:Array, desocupadas:Array, alineacion:object}}
  */
 export function aplicarHuella(generado = [], actual = [], huellas = new Map(), opts = {}) {
-  const { fila0 = 1, col0 = 0 } = opts
+  // `indivisibles`: los rangos de filas que el GENERADOR declara como una sola idea. Ver
+  // `celda-de-estructura.mjs` — el porqué entero, con las 34 celdas medidas, está ahí.
+  const { fila0 = 1, col0 = 0, indivisibles = [] } = opts
   const alineacion = mejorDesplazamiento(actual, huellas, opts)
   // La alineación se mide contra el mapa ENTERO —un residuo mío todavía publicado cae donde mi
   // registro dice, y eso es información—, pero la propiedad de hoy la decide sólo lo que ocupo hoy.
@@ -370,7 +372,10 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       // otros impuestos») quedaron mudas con sus importes al lado, y el auditor de patrón las contó.
       // Se mira la FILA: media fila de encabezado no es un encabezado.
       // Ver lib/celda-de-estructura.mjs; un importe o un texto libre borrado sigue borrado.
-      if (!esCeldaDeEstructura(c, f)) {
+      // Y TAMPOCO SE DA POR BORRADO UN BLOQUE QUE EL GENERADOR DECLARÓ INDIVISIBLE (06/09/2026).
+      // Un cuadro de control que pierde sus insumos y conserva su `⇒` publica una afirmación falsa:
+      // «acá se está mirando». Ver `enBloqueIndivisible` en lib/celda-de-estructura.mjs.
+      if (!esCeldaDeEstructura(c, f) && !enBloqueIndivisible(fila0 + i, indivisibles)) {
         suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
         return ''
       }

@@ -570,3 +570,48 @@ test('(o) un residuo NUMÉRICO no se pisa: un serial se parece a cualquier dato 
   assert.deepEqual(reescritos, [], 'un número nunca es evidencia de propiedad')
   assert.equal(ajenas.length, 1)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UN CUADRO DE CONTROL DECLARADO NO SE PIERDE DE A PEDAZOS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO (06/09/2026, medido contra el archivo vivo y `sheet_huella_celda`): la pestaña ALINEA
+// —281 de 293 celdas de Estructura caen donde el mapa dice— porque el cuadro de arriba no se movió;
+// el que se movió fue el bloque de control. Ese movimiento dejó 15 celdas marcadas borradas en un
+// instante, y desde entonces `B28` publica «⇒ Cobertura fiscal de esta pestaña» sobre B25/B26 vacías:
+// un control que no puede dar rojo. El seguro de alineación no lo ve porque la pestaña alinea, y
+// `esCeldaDeEstructura` sólo rescata el `⇒` — que es exactamente por qué hoy sobrevive el rótulo del
+// control y no sus insumos.
+
+test('un insumo de un cuadro DECLARADO indivisible se vuelve a escribir aunque hoy esté vacío', () => {
+  const ayer = [...lastre(), ['Lo que esta pestaña lista', '=SUMIFS(A:A;B:B;"x")'], ['⇒ Cobertura fiscal de esta pestaña', '=IF(B10=0;"";B11/B10)']]
+  const huellas = huellasDe(ayer)
+  const insumo = ayer.length - 2
+  // El bloque se movió y la corrida anterior dejó el insumo vacío: es el estado real de la pestaña.
+  const hoy = ayer.map((f, i) => (i === insumo ? ['', ''] : f))
+  const bloque = [{ desde: insumo + 1, hasta: ayer.length }]
+
+  const sinDeclarar = aplicarHuella(ayer, hoy, huellas)
+  assert.equal(sinDeclarar.alineacion.alineada, true, sinDeclarar.alineacion.motivo)
+  assert.equal(sinDeclarar.suprimidas.length, 2, 'sin declaración, el insumo se da por borrado — el defecto')
+  assert.equal(enLaPestana(sinDeclarar.grid, hoy)[insumo][1], '', 'y la celda queda vacía en la pestaña')
+
+  const declarado = aplicarHuella(ayer, hoy, huellas, { indivisibles: bloque })
+  assert.deepEqual(declarado.suprimidas, [], 'declarado, no se da por borrado ni se registra como tal')
+  assert.equal(enLaPestana(declarado.grid, hoy)[insumo][1], '=SUMIFS(A:A;B:B;"x")', 'el insumo vuelve a la pestaña')
+  assert.equal(enLaPestana(declarado.grid, hoy)[insumo][0], 'Lo que esta pestaña lista', 'y su rótulo también')
+})
+
+test('LA DECLARACIÓN NO SE DESBORDA: fuera del bloque, un borrado del dueño sigue respetado', () => {
+  // La mitad que importa. Si el amparo se derramara, el generador volvería a resucitar lo que el
+  // dueño vació a mano, que es el reclamo que hizo nacer toda la huella.
+  const ayer = [...lastre(), ['Una nota mía que el dueño borró'], ['⇒ Cobertura fiscal de esta pestaña', '=IF(B10=0;"";B11/B10)']]
+  const huellas = huellasDe(ayer)
+  const borrada = ayer.length - 2
+  const hoy = ayer.map((f, i) => (i === borrada ? [''] : f))
+  // El bloque declarado empieza DESPUÉS de la fila que el dueño vació.
+  const r = aplicarHuella(ayer, hoy, huellas, { indivisibles: [{ desde: ayer.length, hasta: ayer.length }] })
+  assert.equal(r.suprimidas.length, 1, 'lo que el dueño vació fuera del bloque sigue sin volver')
+  assert.equal(r.suprimidas[0].mio, 'Una nota mía que el dueño borró')
+  assert.equal(enLaPestana(r.grid, hoy)[borrada][0], '')
+})

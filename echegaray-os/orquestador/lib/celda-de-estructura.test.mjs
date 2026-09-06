@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { esCeldaDeEstructura } from './celda-de-estructura.mjs'
+import { enBloqueIndivisible, esCeldaDeEstructura } from './celda-de-estructura.mjs'
 
 // ═══ EL DEFECTO QUE ESTOS TESTS ATRAPAN (04/09/2026) ═══
 //
@@ -54,4 +54,32 @@ test('una fila de DATOS no se vuelve estructura porque tenga importes', () => {
   const datos = ['Impuesto al cheque (Ley 25.413)', 874555, 642636]
   assert.equal(esCeldaDeEstructura(874555, datos), false)
   assert.equal(esCeldaDeEstructura('=MAX(SUMPRODUCT(1))', datos), false)
+})
+
+// ═══ EL DEFECTO QUE ATRAPAN LOS TESTS DE `enBloqueIndivisible` (06/09/2026) ═══
+//
+// `Estructura!B28` y `Recurrentes!B24` publicaban «⇒ Cobertura fiscal de esta pestaña» con la fórmula
+// viva y sus dos insumos vacíos: `=IF(B25=0;"";B26/B25)` con B25 y B26 en blanco devuelve `""` pase lo
+// que pase. Medido en `sheet_huella_celda`: 15 celdas de Estructura marcadas borradas en un instante
+// (13/08 15:13) y 19 de Recurrentes en otro (13/08 19:30) — las de sus dos cuadros de control, ni una
+// del resto. El generador movió su bloque; la huella lo leyó como un borrado del dueño.
+
+test('una fila declarada dentro de un bloque indivisible NO se da por borrada', () => {
+  const bloques = [{ desde: 22, hasta: 30 }]
+  for (const f of [22, 25, 26, 28, 30]) assert.equal(enBloqueIndivisible(f, bloques), true, `fila ${f}`)
+})
+
+test('EL BORDE ES CERRADO DE LOS DOS LADOS: una fila de al lado no queda amparada', () => {
+  // La mitad que importa. Si el rango se ensanchara, la huella dejaría de respetar borrados reales
+  // del dueño en filas que no son del control — el defecto opuesto y más caro.
+  const bloques = [{ desde: 22, hasta: 30 }]
+  assert.equal(enBloqueIndivisible(21, bloques), false)
+  assert.equal(enBloqueIndivisible(31, bloques), false)
+})
+
+test('sin declaración no hay amparo: el default no puede blindar la pestaña entera', () => {
+  assert.equal(enBloqueIndivisible(25, []), false)
+  assert.equal(enBloqueIndivisible(25, undefined), false)
+  assert.equal(enBloqueIndivisible(25, [{ desde: null, hasta: 30 }]), false)
+  assert.equal(enBloqueIndivisible(NaN, [{ desde: 1, hasta: 99 }]), false)
 })

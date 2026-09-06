@@ -12,6 +12,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { expandirColumnas, indiceDeColumna } from '../lib/origen-declarado.mjs'
 import { PESTANAS, SIN_PANTALLA, pestanasSinCobertura } from './formato-pestanas.mjs'
 
 /**
@@ -77,4 +78,40 @@ test('el ancho declarado de "Jornales por Quincena" es el que escribe su generad
   const p = PESTANAS.find((x) => x.titulo === 'Jornales por Quincena')
   assert.equal(p.cols, ANCHO,
     'el auditor de pantalla recorre PESTANAS: con cols menor que ANCHO no mira las últimas columnas')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UNA EXCEPCIÓN DECLARADA TIENE QUE PODER DISCUTIRSE
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `origenPorBloque` apaga un aviso del censo. Lo único que la separa de un interruptor es que diga
+// POR QUÉ y que ampare un rango angosto y verificable. Un permiso sin motivo, o con un rango de
+// columnas más ancho que la pestaña, es exactamente la forma de tapar el problema que
+// lib/origen-declarado.mjs existe para no permitir.
+
+test('toda declaración de origen dice qué ampara, en qué columnas y POR QUÉ', () => {
+  for (const p of PESTANAS) {
+    for (const d of p.origenPorBloque ?? []) {
+      assert.ok(String(d.bloque ?? '').trim(), `${p.titulo}: una declaración sin bloque`)
+      assert.ok(String(d.cols ?? '').trim(), `${p.titulo}: "${d.bloque}" no dice qué columnas ampara`)
+      // El «por qué» es lo que la próxima persona va a discutir. Una palabra suelta no alcanza.
+      assert.ok(String(d.que ?? '').trim().length >= 40,
+        `${p.titulo}: "${d.bloque}" ampara sin explicar de dónde sale el dato`)
+    }
+  }
+})
+
+test('ninguna declaración ampara más columnas de las que la pestaña tiene, ni la misma dos veces', () => {
+  for (const p of PESTANAS) {
+    const vistas = new Set()
+    for (const d of p.origenPorBloque ?? []) {
+      for (const c of expandirColumnas(d.cols)) {
+        assert.ok(indiceDeColumna(c) < p.cols,
+          `${p.titulo}: "${d.bloque}" ampara ${c}, y la pestaña declara ${p.cols} columna(s)`)
+        const clave = `${d.bloque}|${c}`
+        assert.equal(vistas.has(clave), false, `${p.titulo}: "${d.bloque}" declara ${c} dos veces`)
+        vistas.add(clave)
+      }
+    }
+  }
 })
