@@ -34,6 +34,15 @@
 
 import { CAPACIDAD, modeloPara, normalizarCapacidad } from './capacidad.mjs'
 import { clasificarError } from './clasificar-error.mjs'
+// EL FUSIBLE, TAMBIÉN ACÁ — Y NO ES REDUNDANTE (06/09/2026).
+//
+// Los dos proveedores llaman a `verificar()`, que comprueba el bloqueo y la cancelación pero NO
+// consume presupuesto: su comentario dice, correctamente, que el consumo «lo cuenta el cliente».
+// El cliente es `lib/ia/cliente.mjs` — y por este gateway no pasa. Mientras esto fue sólo sombra
+// daba igual. Desde que atiende tráfico real, una llamada por el gateway no contaba contra el tope
+// de llamadas, ni contra el de USD, ni contra el de tiempo: un bucle que preguntara en round-robin
+// podía correr sin techo, y el fusible existe justamente porque eso ya pasó y costó $15,40.
+import { admitir, esVision } from './fusible.mjs'
 import { registrarUso, avisarEstado } from './cliente.mjs'
 import { anthropic } from './proveedores/anthropic.mjs'
 import { huggingface } from './proveedores/huggingface.mjs'
@@ -269,6 +278,12 @@ async function intentar(proveedor, opciones, meta, { msMax = 0, avisar = avisarE
   const t0 = Date.now()
   const plazo = conPlazo(opciones.señal, msMax)
   try {
+    // ANTES de la llamada y adentro del `try`: si el fusible corta, el corte se registra como
+    // cualquier otro fallo y la cadena escala. Un corte silencioso sería peor que el gasto.
+    admitir({
+      vision: esVision(opciones.mensajes),
+      doble: opciones.fetchImpl !== globalThis.fetch,
+    })
     const r = await proveedor.completar({ ...opciones, señal: plazo.señal })
     const ms = Date.now() - t0
     await registrarUso({

@@ -273,3 +273,54 @@ test('cuando HF contesta, contesta HF: la operación queda marcada como autónom
   assert.equal(r.autonomo, true)
   assert.equal(r.escalado, false)
 })
+
+test('una llamada por el gateway CONSUME presupuesto del fusible, igual que una por el cliente', async () => {
+  const { conPresupuesto, presupuestoActual } = await import('./fusible.mjs')
+  const { impl } = fetchDoble({
+    hf: async () => ({
+      ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ model: 'qwen', choices: [{ message: { content: 'cfo' } }], usage: {} }),
+      text: async () => '',
+    }),
+    claude: okClaude,
+  })
+  // ═══ POR QUÉ ESTE TEST ═══
+  //
+  // Los dos proveedores llaman a `verificar()`, que NO consume: su comentario dice que el consumo
+  // lo cuenta el cliente. Por el gateway no pasa ningún cliente. Mientras esto fue sombra daba
+  // igual; desde que atiende, una llamada que no cuenta es una llamada sin tope.
+  await conPresupuesto({ correlacion: 'test-fusible' }, async () => {
+    const antes = presupuestoActual().llamadas
+    await llmRun({
+      tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'hola',
+      mensajes: [{ role: 'user', content: 'hola' }],
+      apiKey: 'x', fetchImpl: impl, avisar: async () => {},
+    })
+    assert.equal(presupuestoActual().llamadas, antes + 1,
+      'la llamada del gateway no consumió presupuesto: corre sin tope de llamadas, de USD ni de tiempo')
+  })
+})
+
+test('agotado el presupuesto, el gateway no llama a nadie más', async () => {
+  const { conPresupuesto } = await import('./fusible.mjs')
+  const vistas = []
+  const impl = async (url) => {
+    vistas.push(String(url).includes('huggingface') ? 'hf' : 'claude')
+    return { ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ choices: [{ message: { content: 'x' } }], content: [{ type: 'text', text: 'x' }], usage: {} }),
+      text: async () => '' }
+  }
+  await conPresupuesto({ correlacion: 'test-tope', limites: { maxLlamadas: 1, maxVision: 40, maxUsd: 5, maxMs: 300_000 } }, async () => {
+    await llmRun({
+      tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'a',
+      mensajes: [{ role: 'user', content: 'a' }], apiKey: 'x', fetchImpl: impl, avisar: async () => {},
+    })
+    assert.equal(vistas.length, 1, 'la primera llamada tiene que salir')
+    // La segunda operación ya no entra: ni el principal ni el escalamiento.
+    await assert.rejects(() => llmRun({
+      tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'b',
+      mensajes: [{ role: 'user', content: 'b' }], apiKey: 'x', fetchImpl: impl, avisar: async () => {},
+    }))
+    assert.equal(vistas.length, 1, `el fusible no cortó: salieron ${vistas.length} llamadas`)
+  })
+})
