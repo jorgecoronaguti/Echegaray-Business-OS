@@ -81,6 +81,10 @@ export const ALIAS_PROBABLE = [
 
 export const GRUPOS = [
   { clave: 'sub', titulo: 'SUBCONTRATISTAS — trabajo puntual de obra', filas: SUBCONTRATISTAS },
-  { clave: 'prof', titulo: 'NO son subcontratistas · servicio profesional continuo', filas: PROFESIONALES },
-  { clave: 'com', titulo: 'NO son subcontratistas · venden materiales, repuestos o una reparación', filas: COMERCIOS },
+  // EL ⊘ DICE «NO ENTRA ACÁ» EN TODO EL ARCHIVO, y con él los dos títulos dejan de negar en prosa
+  // («NO son subcontratistas · venden materiales, repuestos o una reparación», 70 caracteres contra
+  // un tope de 60) y pasan a nombrar lo que el bloque agrupa. Que no son subcontratistas lo dice el
+  // símbolo, en una pestaña que se llama SUBCONTRATISTAS.
+  { clave: 'prof', titulo: '⊘ SERVICIO PROFESIONAL CONTINUO', filas: PROFESIONALES },
+  { clave: 'com', titulo: '⊘ MATERIALES, REPUESTOS Y REPARACIONES', filas: COMERCIOS },
 ]

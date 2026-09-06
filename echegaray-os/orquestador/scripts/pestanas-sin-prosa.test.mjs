@@ -2,7 +2,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { llamadasA, celdaDeColumnaA } from '../lib/literales-de-generador.mjs'
-import { esProsa, encabezadoRoto, TOPE_PROSA } from '../lib/diseno-unificado.mjs'
+import { esProsa, encabezadoRoto, auditarDiseno, TOPE_PROSA } from '../lib/diseno-unificado.mjs'
+import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { grillaObras } from '../lib/obras-grilla.mjs'
+import { construir } from '../lib/subcontratistas/pestana.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
 //
@@ -32,16 +35,6 @@ const LIMPIAS = [
     gen: 'nomina-pestana.mjs',
     desde: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
     hasta: 'LO QUE NO SE PUEDE DECIR',
-  },
-  {
-    // «OBRAS» arma la fila entera como array y su grilla vive en un lib, no en el script. Los
-    // cuadros se reparten en funciones auxiliares que están definidas ANTES de `grillaObras`, así
-    // que el cuerpo es el archivo entero y el encabezado se busca por su propio marcador: en el
-    // orden del CÓDIGO, la fila 1 de la pestaña no es la primera celda del archivo.
-    titulo: 'OBRAS',
-    gen: '../lib/obras-grilla.mjs',
-    fn: 'h.push',
-    encDesde: 'h.push([PESTANA_OBRAS]',
   },
   {
     // SIN CONTROL DE ENCABEZADO, Y ESTÁ DICHO POR QUÉ. «Jornales por Quincena» empuja la fila 2 como
@@ -98,5 +91,32 @@ for (const p of LIMPIAS) {
     // juzga es la fila 2 (que declare y no argumente) y que la 3 quede libre.
     const mal = encabezadoRoto([[p.titulo], [procedencia], [tercera]], { pestana: p.titulo })
     assert.deepEqual(mal, [], mal.map((x) => `fila ${x.fila}: ${x.regla} — ${x.detalle}`).join(' | '))
+  })
+}
+
+// ═══ Y CUANDO EL GENERADOR ES PURO, NO SE LEE SU CÓDIGO: SE LO CORRE ═══
+//
+// Leer los literales de un archivo es lo mejor que se puede hacer con un generador que necesita la
+// red para armar su grilla. Cuando NO la necesita —`grillaObras` y `construir` devuelven la grilla
+// con datos de muestra— hay algo estrictamente mejor: correrlo y pasarle el MISMO auditor que mide
+// el archivo vivo. No se juzga una aproximación del texto: se juzga la grilla que se va a escribir,
+// con sus tres filas de encabezado, su numeración de bloques y toda su prosa mire donde mire.
+const PURAS = [
+  { titulo: 'OBRAS', grilla: () => grillaObras({}).filas },
+  { titulo: 'SUBCONTRATISTAS', grilla: () => construir().filas },
+]
+
+/**
+ * El centinela dice «esta celda es MÍA y va vacía» y en el archivo se ve VACÍA. Sin traducirlo, el
+ * auditor lee «\u0000::VACIO::\u0000» como contenido y marca dos desvíos que el lector no tiene:
+ * un título acompañado y una fila 3 ocupada.
+ */
+const comoSeVe = (filas) => filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c)))
+
+for (const p of PURAS) {
+  test(`«${p.titulo}» cumple el contrato entero en la grilla que el generador devuelve`, () => {
+    const mal = auditarDiseno(comoSeVe(p.grilla()), { pestana: p.titulo })
+    assert.deepEqual(mal, [],
+      mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
   })
 }
