@@ -59,7 +59,13 @@ comment on column orq.llm_ejemplo.acerto is
   'true = la persona confirmó lo que el OS propuso · false = lo corrigió · null = el OS no propuso nada.';
 
 create index if not exists llm_ejemplo_tarea_ix on orq.llm_ejemplo (tarea, ts desc);
-create index if not exists llm_ejemplo_semana_ix on orq.llm_ejemplo (date_trunc('week', ts));
+-- LA ZONA VA FIJA, Y NO ES UN DETALLE DE SINTAXIS. `date_trunc('week', ts)` sobre un `timestamptz`
+-- NO es inmutable: su resultado depende del huso horario de la sesión que consulta, así que Postgres
+-- rechaza el índice («functions in index expression must be marked IMMUTABLE»). Fijar UTC lo vuelve
+-- inmutable y, además, hace que «cuántos ejemplos junté esta semana» dé lo mismo lo consulte quien lo
+-- consulte — que es justamente lo que se quiere medir.
+create index if not exists llm_ejemplo_semana_ix
+  on orq.llm_ejemplo (date_trunc('week', ts at time zone 'UTC'));
 
 -- ── RLS + GRANTS. LAS DOS: UNA POLICY SIN GRANT DEVUELVE «PERMISSION DENIED» ─────────────────
 --
