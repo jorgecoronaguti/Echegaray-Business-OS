@@ -34,6 +34,15 @@
 
 import { CAPACIDAD, modeloPara, normalizarCapacidad } from './capacidad.mjs'
 import { clasificarError } from './clasificar-error.mjs'
+// EL FUSIBLE, TAMBIÉN ACÁ — Y NO ES REDUNDANTE (06/09/2026).
+//
+// Los dos proveedores llaman a `verificar()`, que comprueba el bloqueo y la cancelación pero NO
+// consume presupuesto: su comentario dice, correctamente, que el consumo «lo cuenta el cliente».
+// El cliente es `lib/ia/cliente.mjs` — y por este gateway no pasa. Mientras esto fue sólo sombra
+// daba igual. Desde que atiende tráfico real, una llamada por el gateway no contaba contra el tope
+// de llamadas, ni contra el de USD, ni contra el de tiempo: un bucle que preguntara en round-robin
+// podía correr sin techo, y el fusible existe justamente porque eso ya pasó y costó $15,40.
+import { admitir, esVision } from './fusible.mjs'
 import { registrarUso, avisarEstado } from './cliente.mjs'
 import { anthropic } from './proveedores/anthropic.mjs'
 import { huggingface } from './proveedores/huggingface.mjs'
@@ -61,18 +70,106 @@ export const MODO = Object.freeze({
  * el default es no participar, nunca participar.
  */
 export const MODO_POR_TAREA = Object.freeze({
+  // ═══ EN PRODUCCIÓN (06/09/2026) — POR QUÉ ESTAS TRES Y NO OTRAS ═══
+  //
+  // El criterio no es «dónde el modelo anda bien»: es DÓNDE LA SALIDA ES VERIFICABLE POR EL OS SIN
+  // creerle al modelo. Las tres de abajo comparten la misma forma: el modelo elige de una LISTA
+  // CERRADA o copia un valor de una frase, y el OS descarta todo lo que no esté en la lista o no
+  // esté declarado en el `input_schema`. Un modelo que alucina no rompe nada: su salida se cae en
+  // la validación y el caso escala. Eso es lo que hace que se pueda abrir sin bajar la calidad.
+  //
+  // Evidencia: benchmark del 05/09/2026 sobre el catálogo real de 93 herramientas —
+  // Qwen3-4B-Instruct 90% = claude-haiku-4-5 90%, 0 herramientas prohibidas elegidas.
+
   // Elegir la herramienta y completar sus argumentos a partir de la pregunta. Es la tarea más
   // verificable que existe en el OS: hay una herramienta correcta y unos argumentos correctos.
-  'elegir-herramienta': MODO.SOMBRA,
-  // A qué especialista va un mensaje del chat.
-  rutear: MODO.SOMBRA,
-  // Qué está pidiendo la persona, en estructura.
+  //
+  // ATENCIÓN — ABIERTA PERO SIN CONSUMIDOR (06/09/2026). Ningún camino de producción llama todavía
+  // a `llmRun({ tarea: 'elegir-herramienta' })`: el bucle de los especialistas sigue corriendo
+  // sobre `engines/anthropic-api.mjs`, que es un motor de Anthropic y no pasa por el gateway.
+  // Está declarada porque su benchmark existe y porque el día que ese bucle se porte, no hay que
+  // volver a decidir nada. Pero HF NO está atendiendo esta tarea: no hay una sola fila suya en
+  // `orq.chat_cost`, y decir lo contrario sería exactamente el error que este archivo documenta.
+  'elegir-herramienta': MODO.PRODUCCION,
+  // Copiar de una frase el valor de un parámetro que la herramienta YA declaró. El modelo no elige
+  // la herramienta —eso lo decidió el ruteo determinístico— y no puede agregar claves: sólo se
+  // aceptan las que están en el `input_schema`. Es traducción, no decisión.
+  'completar-argumentos': MODO.PRODUCCION,
+  // A qué especialista va un mensaje del chat. Lista cerrada de slugs: un destino inventado se
+  // descarta en `razonar-ruteo.mjs` y el Director muestra el catálogo.
+  rutear: MODO.PRODUCCION,
+
+  // ═══ EN SOMBRA — POR QUÉ ÉSTAS NO SE ABREN TODAVÍA ═══
+  //
+  // Qué está pidiendo la persona, en estructura. La salida NO es una lista cerrada: es un objeto
+  // que después alimenta decisiones. No hay dónde validarla sin creerle al modelo, y ése es
+  // exactamente el caso que no se abre.
   interpretar: MODO.SOMBRA,
-  // Elegir la partida de la Base Maestra que corresponde a un elemento leído de un plano. Es el
-  // ÚNICO consumidor real de Claude cuyo dominio es INTERNAL de verdad: viajan códigos, unidades,
-  // materiales y cantidades de un catálogo técnico — no precios, no clientes, no obras.
+  // Elegir la partida de la Base Maestra para un elemento leído de un plano. El dominio es INTERNAL
+  // y la lista es cerrada —hasta ahí califica—, pero el prompt lleva el TEXTO LITERAL del plano, y
+  // un rótulo puede traer el nombre del comitente. El guardián de contenido lo atrapa caso por
+  // caso; hasta tener la medición de cuántos pasa y cuántos frena, se mide y no se sirve.
   'elegir-partida': MODO.SOMBRA,
 })
+
+/**
+ * LA EVIDENCIA QUE RESPALDA CADA PROMOCIÓN. UNA ENTRADA POR TAREA EN PRODUCCIÓN, SIN EXCEPCIÓN.
+ *
+ * ═══ POR QUÉ ES UNA TABLA Y NO UN COMENTARIO ═══
+ *
+ * Un comentario que dice «se midió» no se puede verificar y envejece sin avisar. Esto sí: hay un
+ * test que exige que TODA tarea en `MODO.PRODUCCION` tenga acá su corrida, su fecha y su número, y
+ * que ninguna que no esté en producción figure. Mover una tarea a producción sin escribir la
+ * evidencia pone el test en rojo — que es exactamente lo que tiene que pasar.
+ *
+ * `contra` es con quién se comparó. Un número sin línea de base no dice nada: 90% puede ser
+ * excelente o inaceptable según contra qué.
+ */
+export const EVIDENCIA_DE_PRODUCCION = Object.freeze({
+  'elegir-herramienta': {
+    corrida: 'ecsas-llm-eval · catálogo completo de 93 herramientas',
+    fecha: '2026-09-05',
+    modelo: 'Qwen/Qwen3-4B-Instruct-2507',
+    medido: '90% de aciertos · 0 herramientas prohibidas elegidas',
+    contra: 'claude-haiku-4-5: 90% · 0 prohibidas — EMPATE, no ventaja',
+  },
+  'completar-argumentos': {
+    corrida: 'ecsas-llm-eval · misma corrida: extraer los argumentos es el segundo tramo del caso',
+    fecha: '2026-09-05',
+    modelo: 'Qwen/Qwen3-4B-Instruct-2507',
+    medido: '90% de aciertos con argumentos incluidos',
+    contra: 'claude-haiku-4-5: 90%',
+  },
+  rutear: {
+    corrida: 'ecsas-llm-eval · elección de un ítem de una lista cerrada',
+    fecha: '2026-09-05',
+    modelo: 'Qwen/Qwen3-4B-Instruct-2507',
+    medido: '90% · la salida además se valida contra la lista de slugs vivos',
+    contra: 'claude-haiku-4-5: 90%',
+  },
+})
+
+/**
+ * PRESUPUESTO DE LATENCIA DE UN PROVEEDOR QUE NO ES CLAUDE.
+ *
+ * ═══ POR QUÉ SÓLO HF LO TIENE, Y POR QUÉ NO ALCANZA CON «SI FALLA, ESCALA» ═══
+ *
+ * Un proveedor que devuelve 500 escala solo: el `catch` ya está. El que NO escala es el que no
+ * contesta — el router de HF enruta a un proveedor de cómputo que puede estar frío, y una espera de
+ * 40 segundos no es un error, es la operación colgada. Para el usuario eso es peor que un fallo:
+ * un fallo se recupera, una espera indefinida no.
+ *
+ * Claude NO lleva presupuesto acá a propósito: es el último recurso, y cortarlo por tiempo dejaría
+ * la operación sin nadie que la atienda. Un techo de latencia sobre el fallback es un techo sobre
+ * la disponibilidad.
+ *
+ * El default sale de la medición: el 4B contesta en ~1,1 s desde esta VM. 8 s es siete veces eso —
+ * holgado para una cola razonable, corto para una que se colgó.
+ */
+export function presupuestoMs(env = process.env) {
+  const n = Number(env.ORQ_HF_MS_MAX)
+  return Number.isFinite(n) && n > 0 ? n : 8000
+}
 
 export function modoDe(tarea) {
   return MODO_POR_TAREA[String(tarea ?? '')] ?? MODO.APAGADO
@@ -124,11 +221,70 @@ export function planDe({ tarea, dominio, permitidoExplicitamente = false, hfDisp
   }
 }
 
+/**
+ * EL PLAN, DESPUÉS DE MIRAR EL CONTENIDO. Pura, y separada de `planDe` por una razón concreta.
+ *
+ * ═══ LA ETIQUETA Y EL CONTENIDO SON DOS CONTROLES DISTINTOS ═══
+ *
+ * `politica.mjs` clasifica por DOMINIO: una etiqueta que pone quien llama. `intenciones` es
+ * INTERNAL y está bien que lo sea —una pregunta no es una cobranza—, pero la pregunta la escribe
+ * una persona, y una persona puede escribir «pagale $1.250.000 a GONZALEZ, MARIO, CUIT
+ * 20-12345678-9». La etiqueta sigue siendo correcta y el contenido ya no lo es.
+ *
+ * Hasta hoy este control corría SÓLO en la sombra, que es donde no importaba: lo que se descartaba
+ * era una medición. Cuando HF pasa a atender de verdad, el control tiene que correr en el camino
+ * que sirve — si no, abrir la puerta significa mandar afuera lo que el guardián existía para frenar.
+ *
+ * Un caso frenado NO se pierde: se lo queda Claude, que es quien puede verlo. Baja la autonomía y
+ * está bien que la baje. La alternativa —dejarlo pasar— sube el número mintiendo.
+ */
+export function planSegunContenido(plan, hallazgos = []) {
+  if (!hallazgos.length) return plan
+  const limpia = plan.cadena.filter((p) => p.proveedor?.nombre !== 'huggingface')
+  if (!limpia.length) return plan
+  const porQue = `el contenido ${hallazgos.join(' y ')}: lo atiende Claude`
+  // El primero de la cadena es SIEMPRE `principal`. Si se saca a HF y el que queda conserva el rol
+  // `escalamiento`, la fila de costo diría que Claude escaló algo que nunca se intentó.
+  const cadena = limpia.map((p, i) => (i === 0 ? { ...p, rol: 'principal' } : p))
+  return { ...plan, cadena, sombra: null, porQue, frenadoPorContenido: hallazgos }
+}
+
+/**
+ * UNA SEÑAL QUE SE CORTA SOLA. Combina la del caller con el presupuesto de latencia.
+ *
+ * `cancelar()` se llama SIEMPRE en el `finally`: un timer vivo por llamada mantiene el proceso
+ * despierto y, peor, aborta una señal que ya nadie mira.
+ */
+function conPlazo(señal, msMax) {
+  if (!msMax) return { señal, cancelar() {}, vencio: () => false }
+  const ac = new AbortController()
+  let vencido = false
+  const t = setTimeout(() => { vencido = true; ac.abort() }, msMax)
+  t.unref?.()
+  const propagar = () => ac.abort()
+  if (señal) {
+    if (señal.aborted) ac.abort()
+    else señal.addEventListener?.('abort', propagar, { once: true })
+  }
+  return {
+    señal: ac.signal,
+    cancelar() { clearTimeout(t); señal?.removeEventListener?.('abort', propagar) },
+    vencio: () => vencido,
+  }
+}
+
 /** Una llamada a un proveedor, medida y registrada. No lanza: devuelve el resultado o el error. */
-async function intentar(proveedor, opciones, meta) {
+async function intentar(proveedor, opciones, meta, { msMax = 0, avisar = avisarEstado } = {}) {
   const t0 = Date.now()
+  const plazo = conPlazo(opciones.señal, msMax)
   try {
-    const r = await proveedor.completar(opciones)
+    // ANTES de la llamada y adentro del `try`: si el fusible corta, el corte se registra como
+    // cualquier otro fallo y la cadena escala. Un corte silencioso sería peor que el gasto.
+    admitir({
+      vision: esVision(opciones.mensajes),
+      doble: opciones.fetchImpl !== globalThis.fetch,
+    })
+    const r = await proveedor.completar({ ...opciones, señal: plazo.señal })
     const ms = Date.now() - t0
     await registrarUso({
       modelo: r.modeloUsado, usd: r.costoUsd ?? null, agente: meta.agente, funcion: meta.funcion,
@@ -137,10 +293,23 @@ async function intentar(proveedor, opciones, meta) {
       fallbackDe: meta.fallbackDe ?? null,
     })
     return { ok: true, r, ms, proveedor: proveedor.nombre }
-  } catch (err) {
-    const c = clasificarError(err)
+  } catch (crudo) {
+    // UN PRESUPUESTO AGOTADO NO ES «EL PROVEEDOR FALLÓ», y confundirlos arruina el diagnóstico: un
+    // AbortError se clasifica como cancelación del usuario y el fusible lo trataría como tal.
+    const err = plazo.vencio()
+      ? Object.assign(new Error(`${proveedor.nombre}: no contestó en ${msMax} ms — escala`),
+        { clasificacion: { kind: 'plazo_agotado', hard: false, reintentable: true } })
+      : crudo
+    const c = err.clasificacion ?? clasificarError(err)
     const ms = Date.now() - t0
-    await avisarEstado(c)
+    // ═══ QUE HF SE QUEDE SIN CUOTA NO APAGA EL RAZONADOR DEL OS ═══
+    //
+    // `avisarEstado` marca «sin crédito» y con eso XSAS degrada entero y deja de intentar. Ese
+    // estado es sobre CLAUDE: es el proveedor sin el cual el OS no razona. Un 402 de Hugging Face
+    // significa exactamente lo contrario —que HF no atiende y que Claude tiene que atender—, y
+    // pasarlo por la misma función haría que el OS se declare caído justo cuando su fallback está
+    // sano. El bug es de una línea y el síntoma sería «el OS dejó de contestar» sin causa visible.
+    if (proveedor.nombre === 'anthropic') await avisar(c)
     await registrarUso({
       modelo: proveedor.idDeModelo(meta.alias), usd: null, agente: meta.agente, funcion: meta.funcion,
       proveedor: proveedor.nombre, capacidad: meta.capacidad,
@@ -148,7 +317,35 @@ async function intentar(proveedor, opciones, meta) {
       fallbackDe: meta.fallbackDe ?? null,
     })
     return { ok: false, err, ms, proveedor: proveedor.nombre, kind: c.kind }
+  } finally {
+    plazo.cancelar()
   }
+}
+
+/**
+ * QUÉ PARTE DEL PROMPT MIRA EL GUARDIÁN DE CONTENIDO.
+ *
+ * ═══ EL SYSTEM PROMPT LO ESCRIBIÓ EL OS; EL MENSAJE, NO ═══
+ *
+ * Vigilar el prompt entero parece lo más seguro y no lo es: el prompt entero incluye texto que
+ * escribió el propio OS —el catálogo de especialistas, las descripciones de las herramientas, las
+ * reglas— y ese texto está lleno de siglas del rubro. El primer día en producción eso frenó OCHO de
+ * OCHO ruteos por la cadena «UOCRA, IERIC» del catálogo, que no es el nombre de nadie.
+ *
+ * Un guardián que da falso positivo sobre lo que el OS mismo escribió no protege: apaga la
+ * capacidad sin que nadie se entere de por qué. Por eso quien llama puede DECLARAR qué parte vino
+ * de afuera —el mensaje de la persona, el texto de un documento, un campo de la base— y el guardián
+ * mira eso.
+ *
+ * ═══ Y SI NADIE DECLARA NADA, SE MIRA TODO ═══
+ *
+ * El default tiene que ser el caro, no el cómodo: un caller que se olvida de declarar obtiene el
+ * comportamiento conservador —se revisa el prompt completo—, nunca el permisivo. Un olvido puede
+ * costar una medición; nunca una fuga.
+ */
+export function textoAVigilar({ sistema, mensajes, datosNoConfiables }) {
+  if (datosNoConfiables === undefined) return JSON.stringify({ sistema, mensajes })
+  return typeof datosNoConfiables === 'string' ? datosNoConfiables : JSON.stringify(datosNoConfiables ?? '')
 }
 
 /**
@@ -162,12 +359,23 @@ async function intentar(proveedor, opciones, meta) {
 export async function llmRun({
   tarea, dominio = null, sistema = null, mensajes, herramientas = null,
   calidad = CAPACIDAD.NORMAL, maxTokens = 1024, temperatura, formato = null,
-  agente = null, funcion = null, permitidoExplicitamente = false,
+  agente = null, funcion = null, permitidoExplicitamente = false, datosNoConfiables = undefined,
   señal, fetchImpl = globalThis.fetch, apiKey = process.env.ANTHROPIC_API_KEY,
+  // Se inyecta para poder PROBAR que un fallo de HF no marca el razonador del OS como caído. Sin
+  // inyección esa rama sólo se puede verificar mirando Postgres, y un control que necesita la base
+  // para decir que no, en la práctica no se corre.
+  avisar = avisarEstado,
 } = {}) {
   const capacidad = normalizarCapacidad(calidad)
   const alias = modeloPara(capacidad)
-  const plan = planDe({ tarea, dominio, permitidoExplicitamente, hfDisponible: huggingface.configurado() })
+  // EL GUARDIÁN DE CONTENIDO CORRE UNA VEZ Y GOBIERNA LAS DOS RAMAS. Antes corría sólo para la
+  // sombra, que es la rama donde no importaba.
+  const hallazgos = hallazgosEnTexto(textoAVigilar({ sistema, mensajes, datosNoConfiables }))
+  const plan = planSegunContenido(
+    planDe({ tarea, dominio, permitidoExplicitamente, hfDisponible: huggingface.configurado() }),
+    hallazgos,
+  )
+  const msMax = presupuestoMs()
   const t0 = Date.now()
 
   const comunes = {
@@ -190,16 +398,11 @@ export async function llmRun({
   // decide qué se puede publicar: CUIT, importes en pesos y nombres de persona. Si encuentra algo,
   // no se mide y queda dicho por qué. Perder una medición es barato; exportar un nombre no.
   let sombra = null
-  let sombraOmitida = null
+  const sombraOmitida = hallazgos.length ? hallazgos : null
   if (plan.sombra) {
-    const hallazgos = hallazgosEnTexto(JSON.stringify({ sistema, mensajes }))
-    if (hallazgos.length) {
-      sombraOmitida = hallazgos
-    } else {
-      sombra = intentar(plan.sombra, { ...comunes, modelo: plan.sombra.idDeModelo(alias) },
-        { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias })
-        .catch(() => null)
-    }
+    sombra = intentar(plan.sombra, { ...comunes, modelo: plan.sombra.idDeModelo(alias) },
+      { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias }, { msMax, avisar })
+      .catch(() => null)
   }
 
   let ultimo = null
@@ -209,9 +412,11 @@ export async function llmRun({
       ultimo ??= new Error('anthropic: sin credencial')
       continue
     }
+    // El presupuesto de latencia es del que NO es el último recurso. Ver `presupuestoMs`.
     const res = await intentar(proveedor, {
       ...comunes, modelo: proveedor.idDeModelo(alias), apiKey,
-    }, { agente, funcion: funcion ?? tarea, capacidad, alias, fallbackDe })
+    }, { agente, funcion: funcion ?? tarea, capacidad, alias, fallbackDe },
+    { msMax: proveedor === anthropic ? 0 : msMax, avisar })
 
     if (res.ok) {
       return {
@@ -283,5 +488,31 @@ export function medirEnSombra({
   } catch {
     // Ni siquiera un error de programación acá puede tocar la operación que se está midiendo.
     return { medido: false, porQue: 'la sombra falló al armarse' }
+  }
+}
+
+/**
+ * EL TEXTO, O NULL. La forma que necesitan los caminos que YA tenían un plan B.
+ *
+ * ═══ POR QUÉ NO SE PROPAGA EL ERROR ═══
+ *
+ * El ruteo del Director y el completado de argumentos comparten una propiedad: si el modelo no
+ * contesta, el OS sigue —el Director muestra el catálogo, el gateway pide el dato que falta—. Ahí
+ * una excepción no es información: es una rama que hay que escribir en los dos lados y que alguien
+ * va a olvidar. Se devuelve `texto: null` y QUIÉN contestó, que es lo que el Autonomy Rate necesita
+ * para distinguir «lo resolvió el OS solo» de «no lo resolvió nadie».
+ */
+export async function textoONull(opciones = {}) {
+  try {
+    const r = await llmRun(opciones)
+    return {
+      texto: r.texto ?? null, proveedor: r.proveedor, modelo: r.modelo,
+      autonomo: Boolean(r.autonomo), escalado: Boolean(r.escalado), motivo: r.motivo, ms: r.ms,
+    }
+  } catch (e) {
+    return {
+      texto: null, proveedor: null, modelo: null, autonomo: false, escalado: false,
+      motivo: String(e?.message ?? e).slice(0, 160), ms: null,
+    }
   }
 }
