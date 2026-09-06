@@ -75,8 +75,20 @@ function Obra({ o, elegida, alElegir }: { o: ObraElegible; elegida: boolean; alE
       }`}
     >
       <span className={`h-3 w-3 shrink-0 rounded-full border ${elegida ? 'border-accent bg-accent' : 'border-line-strong'}`} />
-      <span className={`min-w-0 truncate text-[12.5px] text-ink ${elegida ? 'font-semibold' : ''}`}>{o.nombre}</span>
-      <span className="ml-auto shrink-0 text-[11.5px] text-faint">{o.cliente_nombre ?? 'sin cliente'}</span>
+      {/* ═══ EL DÉFICIT DE ANCHO NUNCA CAE SOBRE EL NOMBRE DE LA OBRA (06/09/2026) ═══
+          El cliente iba con `shrink-0` —no se encogía— y el nombre con `truncate`, así que TODO el
+          faltante se lo comía el nombre. Medido a 390px con «Javier Sánchez - San Francisco -
+          IMOTOR»: «Entrepiso y Escalera» y «Pisos Industriales» se renderizaban como UN carácter,
+          `|` y `:`. La fila vecina, con cliente corto, truncaba bien — por eso no se veía en las
+          pruebas de siempre: el defecto sólo aparece cuando el cliente es largo.
+          El nombre es lo ÚNICO que identifica qué se está eligiendo, y elegir mal acá reimputa el
+          costo a la obra equivocada. Así que crece él, y el que se recorta es el cliente. */}
+      <span className={`min-w-0 flex-1 truncate text-[12.5px] text-ink ${elegida ? 'font-semibold' : ''}`}>{o.nombre}</span>
+      {/* En angosto el cliente se va del todo: la cola ya viene agrupada y el cliente se lee arriba.
+          Antes de desaparecer se recorta, nunca al revés. */}
+      <span className="min-w-0 max-w-[45%] shrink truncate text-[11.5px] text-faint max-[460px]:hidden">
+        {o.cliente_nombre ?? 'sin cliente'}
+      </span>
       {/* UNA OBRA SIN ACTIVIDADES MEDIDAS NO AVANZÓ 0 %: no se sabe. El hueco se nombra. */}
       <span className="shrink-0 text-right font-mono text-[11.5px] tabular-nums text-muted">
         {av ?? <span className="text-faint">sin medir</span>}

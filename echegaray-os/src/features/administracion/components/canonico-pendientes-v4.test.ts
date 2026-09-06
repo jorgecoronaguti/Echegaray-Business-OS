@@ -119,3 +119,33 @@ test('las clases de grilla van literales: Tailwind no compila una clase armada e
   const src = decision()
   assert.equal(/grid-cols-\[\$\{/.test(src), false, 'una clase de grilla se arma concatenando')
 })
+
+// ── EL NOMBRE DE LA OBRA NO SE ESTRANGULA (medido en producción a 390px, 06/09/2026) ────────────
+
+test('el déficit de ancho cae sobre el cliente, nunca sobre el nombre de la obra', () => {
+  // ═══ EL DEFECTO QUE ATRAPA, VISTO EN PRODUCCIÓN ═══
+  //
+  // El cliente iba con `shrink-0` y el nombre con `truncate`: todo el faltante se lo comía el
+  // nombre. A 390 px, con el cliente «Javier Sánchez - San Francisco - IMOTOR», las filas
+  // «Entrepiso y Escalera» y «Pisos Industriales» se renderizaban como UN carácter — `|` y `:`.
+  //
+  // Por qué no lo vio ningún test hasta ahora: la fila vecina, con cliente corto, truncaba bien. El
+  // defecto sólo aparece cuando el cliente es largo, y hay uno solo así en la cartera.
+  //
+  // Por qué importa más que un recorte feo: el nombre es lo ÚNICO que identifica qué se está
+  // eligiendo, y elegir mal acá reimputa el costo a la obra equivocada.
+  const src = decision()
+  const desde = src.indexOf('function Obra(')
+  const fila = src.slice(desde, src.indexOf('\n}', desde))
+
+  // El nombre CRECE y se trunca él mismo.
+  assert.match(fila, /min-w-0 flex-1 truncate text-\[12\.5px\] text-ink/)
+  // El cliente se ENCOGE. `shrink-0` acá es el defecto exacto que se corrigió.
+  assert.equal(/ml-auto shrink-0 text-\[11\.5px\] text-faint/.test(fila), false,
+    'el cliente volvió a ser inencogible y el nombre se va a estrangular otra vez')
+  assert.match(fila, /max-w-\[45%\] shrink truncate/)
+  // Y en angosto desaparece antes que dejar al nombre sin lugar.
+  assert.match(fila, /max-\[460px\]:hidden/)
+  // El porcentaje de avance SÍ se queda fijo: son cuatro caracteres y es el otro dato que decide.
+  assert.match(fila, /shrink-0 text-right font-mono/)
+})
