@@ -47,7 +47,7 @@ import { leerLaminas, leerVistas } from './lectura.mjs'
 // eran parte de la superficie pública de este módulo y mover un símbolo no es motivo para romper a
 // quien lo importa.
 export { DIR_CACHE } from './cache-lecturas.mjs'
-export { interpretarLamina, interpretarRegion, REGIONES_QUE_SE_MIRAN } from './lectura.mjs'
+export { interpretarLamina, interpretarRegion, REGIONES_QUE_SE_MIRAN, REGIONES_QUE_NO_PAGAN } from './lectura.mjs'
 
 /** Los archivos de un proyecto en el índice de Drive. El término se busca en ruta Y nombre porque
  *  un plano puede no llevar el nombre del cliente y colgar de su carpeta, o al revés. */
@@ -717,12 +717,16 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
   // Mismo criterio y mismo cuidado con el orden que las láminas. Y si ya se canceló, no se empieza:
   // cancelar es dejar de gastar, no gastar el resto más rápido.
   let porRegion = []
+  // Las vistas que el pipeline decidió NO mirar por costo. Viajan hasta el control y hasta el
+  // resultado: es la contrapartida de la decisión de ahorrar, y sin ella el ahorro es invisible.
+  let vistasNoMiradas = []
   if (porRegiones && !cancelada) {
     const vistas = await leerVistas({
       segmentaciones: documental.segmentaciones, pedir: pedirSeguro, refrescar, logger, cache, met, anotar,
       concurrencia, cancelado, onProgreso,
     })
     porRegion = vistas.porRegion
+    vistasNoMiradas = vistas.noMiradas ?? []
     cancelada = cancelada || vistas.cancelada
   }
 
@@ -810,7 +814,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     cad: documental.cad,
     relaciones,
   })
-  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos, identidadesAmbiguas })
+  const control = controlar({ computo, mapeo, procesos, checklist, omisionesCircot, conflictos: proyecto.conflictos, identidadesAmbiguas, vistasNoMiradas })
   const ids = [...new Set(mapeo.mapeos.filter((m) => m.tarea).map((m) => m.tarea.id))]
   const comps = await composiciones({ query }, ids)
 
@@ -831,6 +835,7 @@ export async function correr({ query, google, termino, pedir = pedirTexto, refre
     medicionCad: { resueltos: medidoConCad.resueltos, ambiguos: medidoConCad.ambiguos, bloquesDisponibles: medidoConCad.bloquesDisponibles, cotas: medidoConCad.cotas, porQueLasCotasNoSeUsan: medidoConCad.porQueLasCotasNoSeUsan },
     proyecto,
     porRegion: porRegion.map((r) => ({ archivo: r.archivo, region: r.region?.titulo ?? null, tipo: r.region?.tipo ?? null, elementos: r.elementos.length, deCache: r.deCache, error: r.error ?? null })),
+    vistasNoMiradas,
     referenciaCircot: referenciaCircot ? { periodo: referenciaCircot.periodo, items: referenciaCircot.total } : null,
     // La huella es lo que se compara entre dos corridas para decir si dieron lo mismo. Va en el
     // resultado y no en un script aparte porque una reproducibilidad que hay que reconstruir a mano

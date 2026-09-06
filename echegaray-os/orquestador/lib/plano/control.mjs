@@ -121,6 +121,11 @@ export function supuestosOcultos(items = []) {
  *  entra sin estar declarada, el número que produce es un supuesto con aspecto de cálculo. */
 export const SUPUESTAS_POR_EL_CODIGO = Object.freeze(['incluyeExtremos'])
 
+/** La pregunta que declara lo que el pipeline decidió NO mirar. Es constante para que las N vistas
+ *  salteadas colapsen en una sola, y nombra la variable que revierte la decisión: un hueco que no
+ *  dice cómo cerrarse es un hueco que nadie cierra. */
+export const PREGUNTA_VISTAS_NO_MIRADAS = '¿Hace falta computar las vistas que el pipeline NO miró por costo? Rindieron el 18% del cómputo por el 45% del gasto de visión; si alguna tiene cantidades que cotizar, la corrida se repite con XSAS_MIRAR_TODAS_LAS_REGIONES=1'
+
 /** Cuánto pesa destrabar cada cosa: primero lo que libera más partidas, y a igualdad, lo que libera
  *  la partida más cara. La plata no se conoce acá, así que el segundo criterio es el orden del
  *  elemento — estable y por lo tanto repetible. PURA. */
@@ -134,7 +139,7 @@ const porImpacto = (a, b) => b.destraba.length - a.destraba.length || String(a.p
  * TEXTO DE PREGUNTA: «¿de qué espesor es la platea?» es una sola pregunta aunque aparezca en tres
  * elementos.
  */
-export function preguntas({ mapeos = [], procesos = [], checklist = [] } = {}) {
+export function preguntas({ mapeos = [], procesos = [], checklist = [], vistasNoMiradas = [] } = {}) {
   const mapa = new Map()
   const sumar = (pregunta, destraba, quienLoTiene, origen) => {
     const g = mapa.get(pregunta) ?? { pregunta, destraba: [], quienLoTiene, origen }
@@ -159,6 +164,15 @@ export function preguntas({ mapeos = [], procesos = [], checklist = [] } = {}) {
   for (const c of checklist) {
     if (!c.pregunta) continue
     sumar(c.pregunta, `checklist ${c.n}`, 'proyecto', 'checklist constructivo')
+  }
+  // ═══ LO QUE NO SE MIRÓ ENTRA COMO UNA SOLA PREGUNTA, NO COMO CUARENTA ═══
+  //
+  // El texto es idéntico a propósito: `sumar` colapsa por texto, así que las N vistas salteadas
+  // quedan en UNA pregunta cuyo `destraba` las lista a todas. Cuarenta preguntas iguales serían
+  // devolverle el problema entero al que preguntó; una vista salteada en silencio sería peor,
+  // porque el cotizador informaría un cómputo más limpio POR HABER MIRADO MENOS.
+  for (const v of vistasNoMiradas) {
+    sumar(PREGUNTA_VISTAS_NO_MIRADAS, `${v.archivo ?? 'plano'} · ${v.region ?? v.n} (${v.tipo})`, 'dirección técnica', 'vista no mirada')
   }
   return [...mapa.values()].sort(porImpacto)
 }
@@ -275,10 +289,10 @@ export const ESTADO_COTIZACION = Object.freeze({ COMPLETA: 'COMPLETA', INCOMPLET
  * que uno cree del resto. Y declara `porQue` incluso cuando está completa: «alcanzó el 94% sin
  * supuestos ocultos» es una afirmación verificable; «lista» no lo es.
  */
-export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [], conflictos = [], identidadesAmbiguas = [] } = {}) {
+export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist = [], omisionesCircot = [], conflictos = [], identidadesAmbiguas = [], vistasNoMiradas = [] } = {}) {
   const cob = medirCobertura({ items: computo.items ?? [], mapeos: mapeo.mapeos ?? [], detectados: computo.detectados })
   const ocultos = supuestosOcultos(computo.items ?? [])
-  const abiertas = preguntas({ mapeos: mapeo.mapeos ?? [], procesos: procesos.procesos ?? [], checklist })
+  const abiertas = preguntas({ mapeos: mapeo.mapeos ?? [], procesos: procesos.procesos ?? [], checklist, vistasNoMiradas })
   const dec = decisiones(abiertas)
   // UN CONFLICTO DOCUMENTAL SIN RESOLVER TAMBIÉN DEJA LA COTIZACIÓN INCOMPLETA. Si el plano dice
   // H-21 y la memoria dice H-25, el precio de esa partida no está determinado por más cobertura que
@@ -305,6 +319,14 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
     conflictos,
     identidadesAmbiguas,
     ambiguedadesQueBloquean: bloqueantes,
+    // ═══ POR QUÉ NO BLOQUEA EL ESTADO ═══
+    //
+    // Con las regiones salteadas prendidas por defecto, exigir «ninguna vista sin mirar» dejaría
+    // INCOMPLETA a TODA cotización de TODO proyecto — el mismo defecto que tenían las identidades
+    // ambiguas veinte líneas más arriba: un control que nunca puede dar verde no distingue nada.
+    // Bloquea que se lea como cobertura limpia: va en el resumen, al lado de la cobertura, porque
+    // mirar menos SUBE el porcentaje y ese número sin esto se lee al revés.
+    vistasNoMiradas,
     porQue: estado === ESTADO_COTIZACION.COMPLETA
       ? `${Math.round(cob.cobertura * 100)}% de los elementos detectados quedaron con cantidad y con partida, sin conflictos documentales y sin ningún número con fuente no declarada`
       : ocultos.length
@@ -315,6 +337,6 @@ export function controlar({ computo = {}, mapeo = {}, procesos = {}, checklist =
         ? `hay ${bloqueantes.length} pieza(s) cuyas lecturas se contradicen en la medida o en la cantidad: ${bloqueantes.slice(0, 2).map((a) => a.nombre).join(', ')}`
         : `sólo ${Math.round(cob.cobertura * 100)}% de los ${cob.detectados} elementos detectados quedó con cantidad Y con partida (mínimo ${Math.round(UMBRAL_COBERTURA * 100)}%)`,
     // El resumen en una línea, para que quepa en un mensaje de chat sin perder lo que importa.
-    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · identidades ambiguas ${identidadesAmbiguas.length} (${bloqueantes.length} bloquean) · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}`,
+    resumen: `${estado} · cómputo ${Math.round(cob.coberturaComputo * 100)}% (${cob.conCantidad}/${cob.detectados}) · cotización ${Math.round(cob.cobertura * 100)}% (${cob.resueltos}/${cob.detectados}) · supuestos ocultos ${ocultos.length} · conflictos ${conflictos.length} · identidades ambiguas ${identidadesAmbiguas.length} (${bloqueantes.length} bloquean) · ${dec.decisiones.length} decisiones + ${dec.sueltas.length} preguntas sueltas (de ${abiertas.length} huecos)${omisionesCircot.length ? ` · omisiones CIRCOT a confirmar ${omisionesCircot.length}` : ''}${vistasNoMiradas.length ? ` · ${vistasNoMiradas.length} vista(s) NO miradas por costo (la cobertura es sobre lo que sí se miró)` : ''}`,
   }
 }

@@ -365,7 +365,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { enParalelo } from './paralelo.mjs'
-import { leerLaminas, leerVistas, vistasAMirar } from './lectura.mjs'
+import { leerLaminas, leerVistas, vistasAMirar, repartirVistas, interpretarRegion, REGIONES_QUE_NO_PAGAN, VARIABLE_PARA_VOLVER_ATRAS } from './lectura.mjs'
 import { cacheDeLecturas } from './cache-lecturas.mjs'
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -493,6 +493,69 @@ test('B2 · `porRegion` sale en el orden segmentación→lámina→recorte, con 
   assert.deepEqual(r.porRegion.map((x) => x.region.titulo), ['PLANTA', 'CORTE', 'DETALLE', 'CARATULA'])
   assert.deepEqual(r.porRegion.map((x) => x.archivo), ['A.pdf', 'A.pdf', 'B.pdf', 'B.pdf'])
   assert.deepEqual(met.decisiones, ['vista PLANTA', 'vista CORTE', 'vista DETALLE', 'vista CARATULA'])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// B3 · LAS REGIONES QUE NO PAGAN LO QUE CUESTAN — Y QUE NO SE PUEDEN CALLAR
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Dejar de mirar `detalle` e `indeterminado` ahorra el 45% del gasto de visión. El riesgo no es el
+// ahorro: es que la vista salteada desaparezca sin dejar rastro y la cotización informe un cómputo
+// más limpio POR HABER MIRADO MENOS. Estos tres tests son los que impiden las tres formas de que
+// eso pase: que no se declare, que no se pueda revertir, y que gaste igual.
+
+const recorteTipo = (n, titulo, tipo) => ({ ok: true, ruta: `/no/existe/${n}.png`, region: { n, titulo, tipo } })
+const segsMixtas = [{ archivo: 'A.pdf', laminas: [{ recortes: [
+  recorteTipo(1, 'PLANTA DE FUNDACIONES', 'planta'),
+  recorteTipo(2, 'DETALLE DE BASE', 'detalle'),
+  recorteTipo(3, 'SIN TITULO', 'indeterminado'),
+  recorteTipo(4, 'CORTE A-A', 'corte'),
+] }] }]
+
+test('B3 · lo salteado NO se pierde: vuelve con archivo, título, tipo y el motivo escrito', () => {
+  const { aMirar, noMiradas } = repartirVistas(segsMixtas, { env: {} })
+  assert.deepEqual(aMirar.map((u) => u.recorte.region.n), [1, 4])
+  assert.deepEqual(noMiradas.map((v) => v.tipo), REGIONES_QUE_NO_PAGAN.slice(), 'las dos que se saltean son exactamente las medidas como no rentables')
+  assert.deepEqual(noMiradas.map((v) => v.region), ['DETALLE DE BASE', 'SIN TITULO'])
+  assert.deepEqual(noMiradas.map((v) => v.archivo), ['A.pdf', 'A.pdf'], 'sin el archivo, el hueco no se puede ir a buscar al plano')
+  for (const v of noMiradas) assert.match(v.porQue, /XSAS_MIRAR_TODAS_LAS_REGIONES=1/, 'un hueco que no dice cómo cerrarse es un hueco que nadie cierra')
+})
+
+test('B3 · la bandera devuelve el gasto: con ella prendida se vuelven a mirar TODAS', () => {
+  const r = repartirVistas(segsMixtas, { env: { [VARIABLE_PARA_VOLVER_ATRAS]: '1' } })
+  assert.deepEqual(r.aMirar.map((u) => u.recorte.region.n), [1, 2, 3, 4], 'la decisión tiene que poder revertirse sin tocar una línea de código')
+  assert.deepEqual(r.noMiradas, [])
+})
+
+test('B3 · una vista salteada no gasta una llamada, y queda anotada como HUECO en las métricas', async () => {
+  const met = medidorFalso()
+  const mirados = []
+  const r = await leerVistas({
+    segmentaciones: segsMixtas, met, anotar: () => {}, salteadas: ['detalle', 'indeterminado'],
+    cache: cacheDeLecturas({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'cache-vacio-')) }),
+    interpretar: async (rec) => { mirados.push(rec.region.n); return { region: rec.region, elementos: [], deCache: false, uso: null } },
+  })
+  assert.deepEqual(mirados, [1, 4], 'las 53 llamadas de detalle+indeterminado son USD 7,91 de 17,69: si esto se rompe, se vuelven a pagar')
+  assert.deepEqual(r.noMiradas.map((v) => v.n), [2, 3])
+  assert.deepEqual(met.decisiones, ['vista DETALLE DE BASE', 'vista SIN TITULO', 'vista PLANTA DE FUNDACIONES', 'vista CORTE A-A'],
+    'las salteadas también son decisiones: si no están en el medidor, la corrida se lee como si esas vistas no hubieran existido')
+})
+
+test('B3 · la lectura de una región guarda DE QUÉ ARCHIVO salió, no sólo el título', async () => {
+  // Sin esto, el vínculo lectura↔plano sólo existe en el nombre de un PNG del caché de recortes —que
+  // es caché y se borra—. Medido el 05/09/2026: 113 lecturas pagadas y ninguna sabía decir su plano.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-region-'))
+  const png = path.join(dir, 'recorte.png')
+  fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'))
+  const cache = cacheDeLecturas({ dir })
+  const recorte = { ok: true, ruta: png, region: { n: 1, titulo: 'PLANTA', tipo: 'planta' } }
+  await interpretarRegion(recorte, {
+    cache, archivo: 'PLANO-ESTRUCTURA-R2.pdf',
+    pedir: async () => ({ texto: '{"elementos":[]}', modelo: 'x', usd: 0, tokens: { in: 1, out: 1 } }),
+  })
+  const guardado = fs.readdirSync(dir).filter((f) => f.startsWith('v3region')).map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))
+  assert.equal(guardado.length, 1)
+  assert.equal(guardado[0].archivo, 'PLANO-ESTRUCTURA-R2.pdf')
 })
 
 test('B2 · un recorte fallido o de un tipo que no se mira NO gasta una llamada', () => {

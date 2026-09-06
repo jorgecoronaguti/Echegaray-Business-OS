@@ -144,6 +144,32 @@ function aportadas(el) {
 }
 
 /**
+ * UN SOLO ELEMENTO A PARTIR DE TODAS SUS LECTURAS. PURA.
+ *
+ * ═══ EL FUSIONADO ARRANCA DE LA VISTA QUE SÍ TENÍA RESPALDO, NO DE LA PRIMERA ═══
+ *
+ * `validarElemento` marca `computable: false` cuando la lectura vino sin texto literal, y ese flag
+ * corta el cómputo antes de mirar una sola dimensión. Arrancando por `g[0]` la fusión daba GANANCIA
+ * −1: heredaba el «no computable» de una vista sin cita y perdía un elemento que otra vista sí
+ * sostenía. Una fusión que pierde no está midiendo la fusión, está midiendo el orden de los
+ * archivos en el caché.
+ *
+ * Se arranca del primero computable —el que tiene la cita que hace defendible el número— y recién
+ * ahí se completan los huecos con las otras vistas.
+ */
+export function fusionar(grupo = []) {
+  const base = grupo.find((e) => e?.computable) ?? grupo[0]
+  const resto = grupo.filter((e) => e !== base)
+  const fus = { ...base, dimensiones: { ...(base?.dimensiones ?? {}) }, repeticion: { ...(base?.repeticion ?? {}) } }
+  const yaTiene = new Set(aportadas(fus))
+  for (const e of resto) {
+    for (const k of aportadas(e)) if (!yaTiene.has(k)) { fus.dimensiones[k] = e.dimensiones[k]; yaTiene.add(k) }
+    if (fus.repeticion?.cantidad == null && e.repeticion?.cantidad != null) fus.repeticion = { ...e.repeticion }
+  }
+  return fus
+}
+
+/**
  * CUÁNTO SE GANA FUSIONANDO LAS VISTAS DE UN MISMO PLANO.
  *
  * @param porPlano `Map|objeto` de `plano -> [{ region, crudo, archivo }]`
@@ -164,24 +190,7 @@ export function gananciaDeFusionar(porPlano = {}) {
     for (const g of porClave.values()) {
       grupos += 1
       if (g.length > 1) multivista += 1
-      // ═══ EL FUSIONADO ARRANCA DE LA VISTA QUE SÍ TENÍA RESPALDO, NO DE LA PRIMERA ═══
-      //
-      // `validarElemento` marca `computable: false` cuando la lectura vino sin texto literal, y ese
-      // flag corta el cómputo antes de mirar una sola dimensión. Arrancando por `g[0]` la fusión
-      // daba GANANCIA −1: heredaba el «no computable» de una vista sin cita y perdía un elemento
-      // que otra vista sí sostenía. Una fusión que pierde no está midiendo la fusión, está midiendo
-      // el orden de los archivos en el caché.
-      //
-      // Se arranca del primero computable —el que tiene la cita que hace defendible el número— y
-      // recién ahí se completan los huecos con las otras vistas.
-      const base = g.find((e) => e?.computable) ?? g[0]
-      const resto = g.filter((e) => e !== base)
-      const fus = { ...base, dimensiones: { ...(base.dimensiones ?? {}) }, repeticion: { ...(base.repeticion ?? {}) } }
-      const yaTiene = new Set(aportadas(fus))
-      for (const e of resto) {
-        for (const k of aportadas(e)) if (!yaTiene.has(k)) { fus.dimensiones[k] = e.dimensiones[k]; yaTiene.add(k) }
-        if (fus.repeticion?.cantidad == null && e.repeticion?.cantidad != null) fus.repeticion = { ...e.repeticion }
-      }
+      const fus = fusionar(g)
       const antes = computarElementos(g).computados > 0
       const despues = computarElementos([fus]).computados > 0
       if (antes) sueltos += 1
@@ -194,5 +203,77 @@ export function gananciaDeFusionar(porPlano = {}) {
     computablesSueltos: sueltos,
     computablesFusionados: fusionados,
     ganados: fusionados - sueltos,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// QUÉ SE PIERDE DE VERDAD AL DEJAR DE MIRAR UNA SUBCAPACIDAD
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// «Se pierde el 18% del cómputo» es la cuenta de arriba: 28 elementos computados de los 152 salen
+// de las 53 llamadas a `detalle` e `indeterminado`. Pero esa cuenta es por LECTURA, y un elemento
+// que aparece en el detalle y también en la planta está contado dos veces: si la planta lo computa
+// igual, dejar de mirar el detalle no pierde nada — se deja de pagar dos veces por el mismo dato.
+//
+// Acá se separan las dos cosas: lo que sólo existía en lo que se dejó de mirar (PÉRDIDA REAL) y lo
+// que sigue estando en las vistas que se siguen mirando (DUPLICADO QUE SE DEJA DE PAGAR).
+//
+// ═══ POR QUÉ ESTE NÚMERO PODRÍA SER MENTIRA, Y CÓMO SE CONTROLA ═══
+//
+// La recuperación se decide por `claveDeElemento`, que es la marca del elemento o su nombre. Un
+// elemento sin ninguna de las dos no se puede rastrear entre vistas, y contarlo como «recuperado»
+// sería regalarse el resultado. Salen aparte, en `sinIdentidad`, y cuentan como pérdida.
+
+/**
+ * LA PÉRDIDA REAL DE DEJAR DE MIRAR CIERTAS SUBCAPACIDADES. PURA.
+ *
+ * @param porPlano `Map|objeto` de `plano -> [{ region, crudo, archivo }]`
+ * @param tipos    las subcapacidades que se dejan de mirar.
+ */
+export function perdidaPorNoMirar(porPlano = {}, tipos = ['detalle', 'indeterminado']) {
+  const entradas = porPlano instanceof Map ? [...porPlano.entries()] : Object.entries(porPlano)
+  const fuera = new Set(tipos)
+  let computadosAntes = 0; let computadosDespues = 0; let llamadasAntes = 0; let llamadasDespues = 0
+  let recuperados = 0; let perdidos = 0; let sinIdentidad = 0
+  for (const [plano, lecturas] of entradas) {
+    const elementosDe = (ls) => ls.flatMap((l) => validarLamina(l?.crudo, { archivo: plano, archivoId: null }).elementos)
+    const salen = lecturas.filter((l) => fuera.has(tipoDeLectura(l)))
+    const quedan = lecturas.filter((l) => !fuera.has(tipoDeLectura(l)))
+    llamadasAntes += lecturas.length; llamadasDespues += quedan.length
+    for (const l of lecturas) computadosAntes += computarLectura(l, plano).computados
+    for (const l of quedan) computadosDespues += computarLectura(l, plano).computados
+
+    // Lo que sigue disponible después del recorte, fusionado como lo fusiona el pipeline.
+    const porClave = new Map()
+    for (const e of elementosDe(quedan)) {
+      const k = claveDeElemento(e)
+      if (k) porClave.set(k, [...(porClave.get(k) ?? []), e])
+    }
+    const sigueComputando = new Set()
+    for (const [k, g] of porClave) if (computarElementos([fusionar(g)]).computados > 0) sigueComputando.add(k)
+
+    for (const e of elementosDe(salen)) {
+      if (computarElementos([e]).computados === 0) continue
+      const k = claveDeElemento(e)
+      if (!k) { sinIdentidad += 1; perdidos += 1; continue }
+      if (sigueComputando.has(k)) recuperados += 1
+      else perdidos += 1
+    }
+  }
+  const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null)
+  return {
+    llamadasAntes,
+    llamadasDespues,
+    llamadasAhorradas: llamadasAntes - llamadasDespues,
+    computadosAntes,
+    computadosDespues,
+    // La resta cruda: cuántos cómputos por lectura dejan de producirse.
+    computadosQueSeDejanDeVer: computadosAntes - computadosDespues,
+    // De ésos, los que OTRA vista del mismo plano sigue computando: no se pierden, se dejan de
+    // pagar dos veces.
+    recuperadosEnOtraVista: recuperados,
+    perdidaReal: perdidos,
+    sinIdentidad,
+    pctPerdidaSobreElTotal: pct(perdidos, computadosAntes),
   }
 }

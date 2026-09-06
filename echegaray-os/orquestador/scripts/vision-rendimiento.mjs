@@ -12,7 +12,8 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { DIR_CACHE } from '../lib/plano/cache-lecturas.mjs'
 import { DIR_CACHE as DIR_RECORTES, leerLlaveDeRecorte } from '../lib/ingesta/recortes.mjs'
-import { rendimiento, gananciaDeFusionar } from '../lib/ml/vision-rendimiento.mjs'
+import { rendimiento, gananciaDeFusionar, perdidaPorNoMirar } from '../lib/ml/vision-rendimiento.mjs'
+import { REGIONES_QUE_NO_PAGAN } from '../lib/plano/lectura.mjs'
 
 /**
  * DE QUÉ PLANO SALIÓ CADA LECTURA DE REGIÓN.
@@ -74,6 +75,16 @@ function main() {
   console.log(`  computables en alguna vista suelta: ${g.computablesSueltos}`)
   console.log(`  computables fusionando las vistas : ${g.computablesFusionados}   →  GANANCIA ${g.ganados >= 0 ? '+' : ''}${g.ganados}`)
   if (!g.multivista) console.log('  ⚠ ningún elemento apareció en dos vistas: la ganancia no significa nada.')
+
+  // ═══ EL ANTES/DESPUÉS DE DEJAR DE MIRAR LAS REGIONES QUE NO PAGAN ═══
+  // Se calcula sobre las MISMAS lecturas ya pagadas: es la simulación exacta de qué habría salido
+  // si esas llamadas no se hubieran hecho, no una proyección.
+  const pd = perdidaPorNoMirar(porPlano, REGIONES_QUE_NO_PAGAN)
+  console.log(`\n═══ DEJAR DE MIRAR ${REGIONES_QUE_NO_PAGAN.join(' + ')} — ANTES / DESPUÉS ═══\n`)
+  console.log(`  llamadas   ${pd.llamadasAntes} → ${pd.llamadasDespues}  (${pd.llamadasAhorradas} menos)`)
+  console.log(`  computados ${pd.computadosAntes} → ${pd.computadosDespues}  (${pd.computadosQueSeDejanDeVer} cómputos por lectura menos)`)
+  console.log(`  de esos ${pd.computadosQueSeDejanDeVer}: ${pd.recuperadosEnOtraVista} los computa OTRA vista del mismo plano · PÉRDIDA REAL ${pd.perdidaReal} (${pd.pctPerdidaSobreElTotal}% del cómputo total)`)
+  console.log(`  ${pd.sinIdentidad} de la pérdida no tienen marca ni nombre: no se pueden rastrear entre vistas y cuentan como perdidos`)
   console.log('')
 }
 
