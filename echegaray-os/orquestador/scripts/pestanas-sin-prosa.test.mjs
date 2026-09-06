@@ -1,0 +1,74 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { llamadasA, primerArgumento, textoDeCelda } from '../lib/literales-de-generador.mjs'
+import { esProsa, encabezadoRoto, TOPE_PROSA } from '../lib/diseno-unificado.mjs'
+
+// EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
+//
+// ═══ POR QUÉ HACEN FALTA LOS DOS CONTROLES Y NINGUNO REEMPLAZA AL OTRO (06/09/2026) ═══
+//
+// `auditar-diseno-unificado.mjs` mide lo que el lector VE hoy: es la evidencia del efecto y sigue
+// siendo la que cierra. Pero sólo puede bajar después de correr el pipeline contra el Sheet real, y
+// eso no se hace desde un worktree —este repositorio ya perdió una pestaña entera así—. Entre el
+// commit que saca la prosa y la corrida que la borra de la pestaña, el único control disponible es
+// éste; y después de la corrida, es el que impide que la prosa VUELVA sin que nadie lo note.
+//
+// Lo que mide: los textos que cada generador manda a su primera columna, juzgados con las mismas dos
+// varas del contrato —largo y argumento— que se aplican al archivo. Cuesta cero llamadas a la API.
+//
+// CÓMO SE AGREGA UNA PESTAÑA: se la limpia en su generador y se la anota acá. Estar en esta lista es
+// la afirmación de que esa pestaña no publica una sola explicación; sacarla de la lista para que el
+// test pase sería apagar el control, y el diff lo muestra.
+const LIMPIAS = [
+  {
+    titulo: 'Nómina',
+    gen: 'nomina-pestana.mjs',
+    desde: 'fila(PESTANA)',
+    hasta: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
+  },
+  {
+    titulo: 'Plantel',
+    gen: 'nomina-pestana.mjs',
+    desde: '─── DESDE ACÁ, TODO VA A «Plantel» ───',
+    hasta: 'LO QUE NO SE PUEDE DECIR',
+  },
+]
+
+const fuente = (gen) => readFileSync(new URL(`./${gen}`, import.meta.url), 'utf8')
+
+/** TODAS las celdas de la columna A, SIN filtrar las vacías: el encabezado son tres filas contadas. */
+function celdasDeA(src) {
+  return llamadasA(src, 'fila').map((c) => textoDeCelda(primerArgumento(c)))
+}
+
+/** El tramo del generador que le corresponde a una pestaña. */
+function tramo({ gen, desde, hasta }) {
+  let s = fuente(gen)
+  if (desde) { const i = s.indexOf(desde); if (i >= 0) s = s.slice(i) }
+  if (hasta) { const i = s.indexOf(hasta); if (i >= 0) s = s.slice(0, i) }
+  return s
+}
+
+for (const p of LIMPIAS) {
+  test(`«${p.titulo}» no escribe una sola explicación: el porqué vive en el generador`, () => {
+    const celdas = celdasDeA(tramo(p))
+    assert.ok(celdas.filter(Boolean).length >= 5, `no leí los literales de «${p.titulo}»: encontré ${celdas.length}`)
+    // Las TRES primeras se saltean contando filas, no textos: el encabezado son A1, A2 y A3, y en
+    // «Nómina» A1 se escribe con la constante `PESTANA` —sin literal— así que descartar «los dos
+    // primeros textos» se comía el primer renglón del cuerpo en una pestaña y no en la otra. Las
+    // filas 1 y 2 tienen su propia regla y su propio tope: las mide `encabezadoRoto`, abajo.
+    const cuerpo = celdas.slice(3).filter(Boolean)
+    const prosa = cuerpo.map((t) => [t, esProsa(t)]).filter(([, x]) => x)
+    assert.deepEqual(prosa.map(([t]) => t), [],
+      `volvió una explicación a «${p.titulo}» (tope ${TOPE_PROSA} car.): ${prosa.map(([t]) => t.slice(0, 70)).join(' | ')}`)
+  })
+
+  test(`«${p.titulo}» arranca con las tres filas del encabezado y la tercera vacía`, () => {
+    const [, procedencia, tercera] = celdasDeA(tramo(p))
+    // A1 se escribe con la constante `PESTANA` y no como literal, así que acá va el nombre: lo que se
+    // juzga es la fila 2 (que declare y no argumente) y que la 3 quede libre.
+    const mal = encabezadoRoto([[p.titulo], [procedencia], [tercera]], { pestana: p.titulo })
+    assert.deepEqual(mal, [], mal.map((x) => `fila ${x.fila}: ${x.regla} — ${x.detalle}`).join(' | '))
+  })
+}
