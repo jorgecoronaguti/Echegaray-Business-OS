@@ -176,3 +176,47 @@ test('`incluyeTotales` es la ÚNICA forma de amparar el renglón ⇒, y el títu
   assert.equal(con.has('B3'), true, 'pedido por escrito, el renglón ⇒ transcripto sí se ampara')
   assert.equal(con.has('B1'), false, 'el TÍTULO de la sección no se ampara ni pidiéndolo')
 })
+
+test('EL PERÍODO NO IDENTIFICA AL BLOQUE: el amparo sobrevive a la quincena siguiente', () => {
+  // Los bloques de «Nómina» se titulan con su período. Anclada al texto entero, la declaración
+  // quedaba huérfana cada quince días —y una huérfana se denuncia como desvío—, o sea que el amparo
+  // se apagaba solo y el censo empezaba a gritar por catorce números que están bien.
+  assert.equal(
+    normalizarRotulo('1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA 01/09 A 15/09'),
+    normalizarRotulo('1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA 16/09 A 30/09'),
+  )
+  assert.equal(normalizarRotulo('2 · LO DEVENGADO MES A MES · 2026'), normalizarRotulo('2 · LO DEVENGADO MES A MES · 2027'))
+  // Y sigue distinguiendo dos bloques que se parecen: el corte es la glosa, no la identidad.
+  assert.notEqual(normalizarRotulo('1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA 01/09'), normalizarRotulo('2 · QUÉ SE LE PAGA A OFICINA · MES 09/2026'))
+})
+
+test('EL RÓTULO SE BUSCA EN EL TÍTULO DE SECCIÓN, no en una fila de datos que diga lo mismo', () => {
+  // Medido en «Impuestos y Financieros»: `1 · IVA — LA DDJJ OFICIAL (F.2051)…` se normaliza a «iva»
+  // y `A33` —una fila del cuadro de retenciones sufridas— dice literalmente «IVA». La declaración de
+  // la DDJJ estaba amparando también las columnas del cuadro 3, en silencio.
+  const filas = [
+    ['1 · IVA — LA DDJJ OFICIAL', 'ene'],
+    ['Débito fiscal del período', 1419600],
+    [],
+    ['3 · RETENCIONES SUFRIDAS — CUÁNTO YA SE PAGÓ', 'ene'],
+    ['IVA', 7380000],
+    [],
+  ]
+  const { amparadas, huerfanas } = amparoDeOrigen(filas, [{ bloque: '1 · IVA — LA DDJJ OFICIAL', cols: 'B', que: 'x' }])
+  assert.deepEqual(huerfanas, [], 'el título existe: no es huérfana ni ambigua')
+  assert.equal(amparadas.has('B2'), true)
+  assert.equal(amparadas.has('B5'), false, 'la retención de IVA del otro cuadro NO puede quedar amparada')
+})
+
+test('DOS BLOQUES CON EL MISMO TÍTULO: no se ampara ninguno y se denuncia', () => {
+  const filas = [
+    ['1 · UN CUADRO', 10],
+    [],
+    ['2 · UN CUADRO', 20],
+    [],
+  ]
+  const { amparadas, huerfanas } = amparoDeOrigen(filas, [{ bloque: 'UN CUADRO', cols: 'B', que: 'x' }])
+  assert.equal(amparadas.size, 0, 'ante la ambigüedad no se ampara nada: falla cerrada')
+  assert.equal(huerfanas.length, 1)
+  assert.match(huerfanas[0].motivo, /2 bloques/)
+})

@@ -187,7 +187,26 @@ export const PESTANAS = [
   //
   // Sin `origen`: las dos son 100% calculadas. Nómina la escribe entera su generador desde el espejo
   // y desde Postgres; SUBCONTRATISTAS es una vista de Compras y lo declara en su propia fila 2.
-  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true },
+  //
+  // ═══ LAS DOS COLUMNAS DE «Nómina» QUE TIPEA EL DUEÑO (06/09/2026) ═══
+  //
+  // No son un cálculo que envejece: son DECISIONES suyas, y el OS no las puede deducir de ninguna
+  // fuente. Sin declararlas el censo las cuenta como violación de la regla 5, y el día que alguien
+  // "arregle" la violación convirtiéndolas en fórmula le va a estar pisando la decisión.
+  //
+  // El amparo se corta en el renglón `⇒` de cada cuadro, sin `incluyeTotales`, y eso es deliberado:
+  // `I28` publica hoy $290.000 en la fila «⇒ 15 persona(s)» cuando la suma de las catorce de arriba
+  // es ~$4,37M. Es un fósil, no un total, y tiene que seguir saliendo en rojo.
+  //
+  // El rótulo de los dos bloques lleva su período —«· QUINCENA 01/09 A 15/09», «· MES 09/2026»— y por
+  // eso `normalizarRotulo` corta en el primer « · »: anclado al texto entero, el amparo se apagaría
+  // solo cada quincena y el censo empezaría a gritar por catorce números que están bien.
+  { titulo: 'Nómina', congeladas: 3, hastaFila: 175, cols: 15, propio: true, origenPorBloque: [
+    { bloque: '1 · QUÉ SE LE PAGA A CADA UNO', cols: 'I',
+      que: '«EFECTIVO redondeado» es la cifra que el dueño decide y tipea al pagar: redondea el efectivo calculado al billete con el que se paga de verdad. Nunca se calcula — hay una regla explícita de que esta columna no se genera' },
+    { bloque: '2 · QUÉ SE LE PAGA A OFICINA', cols: 'C',
+      que: 'el neto acordado con cada persona de oficina ($1.800.000 hoy) es un ACUERDO del dueño, no una liquidación: por banco va lo que dice el recibo y el efectivo completa hasta ese neto. No sale de ninguna fuente que el Sheet pueda leer' },
+  ] },
   { titulo: 'SUBCONTRATISTAS', congeladas: 3, hastaFila: 60, cols: 12, propio: true },
   // «Plantel» nace el 31/08 al partir la Nómina: los cuatro cuadros de respaldo —quiénes son, lo
   // devengado, el costo de desvincular y el índice de legajos— salen de la pestaña que se opera y

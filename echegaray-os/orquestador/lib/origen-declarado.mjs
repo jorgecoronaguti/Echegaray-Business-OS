@@ -102,6 +102,18 @@ export function normalizarRotulo(texto) {
   // despoja de tildes.
   return String(texto ?? '')
     .replace(/^\s*\d+(?:\.\d+)?\s*·\s*/, '')   // «7 · Planes de pago» → «Planes de pago»
+    // ═══ EL PERÍODO TAMPOCO IDENTIFICA AL BLOQUE (06/09/2026) ═══
+    //
+    // Los bloques de «Nómina» se titulan con su período: «1 · QUÉ SE LE PAGA A CADA UNO · QUINCENA
+    // 01/09 A 15/09» y «2 · QUÉ SE LE PAGA A OFICINA · MES 09/2026». Una declaración anclada a ese
+    // texto quedaría HUÉRFANA en la quincena siguiente —y una huérfana se denuncia como desvío—, o
+    // sea que el amparo se apagaría solo cada quince días y el censo empezaría a gritar por catorce
+    // números que están bien. Lo mismo con «2 · LO DEVENGADO MES A MES · 2026» de Plantel, que se
+    // habría caído sola el 1/1/2027.
+    //
+    // Es el mismo criterio que la línea de abajo ya aplica al guion largo: lo que va después del
+    // separador es glosa. El bloque ES «qué se le paga a cada uno»; la quincena es cuál corrida.
+    .split(' · ')[0]
     .split(' — ')[0]                            // la glosa a la derecha del guion largo no identifica
     .normalize('NFD').replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
@@ -227,14 +239,30 @@ export function amparoDeOrigen(filas = [], declaraciones = []) {
     if (!buscado) { huerfanas.push({ bloque: String(d?.bloque ?? ''), motivo: 'la declaración no dice qué bloque ampara' }); continue }
     if (!String(d?.cols ?? '').trim()) { huerfanas.push({ bloque: String(d?.bloque ?? ''), motivo: 'la declaración no dice qué columnas ampara' }); continue }
 
-    // El bloque se identifica por su rótulo en la PRIMERA columna: es donde el generador escribe el
-    // título de sección. Buscarlo en toda la fila haría que una celda de datos con el mismo texto
-    // abriera un amparo que nadie declaró.
+    // ═══ EL RÓTULO SE BUSCA EN EL TÍTULO DE SECCIÓN, NO EN CUALQUIER FILA (06/09/2026) ═══
+    //
+    // El comentario ya decía «es donde el generador escribe el título de sección», y el código
+    // miraba la columna A de TODAS las filas del bloque. Medido apenas se declaró el primer bloque
+    // de «Impuestos y Financieros»: el rótulo `1 · IVA — LA DDJJ OFICIAL (F.2051)…` se normaliza a
+    // «iva» (la glosa a la derecha del guion largo no identifica), y `A33` —una fila de datos del
+    // cuadro de retenciones sufridas— dice literalmente «IVA». La declaración de la DDJJ estaba
+    // amparando también B:M del cuadro 3, en silencio. Se exige el título: es lo único que nombra
+    // un bloque.
     const donde = bloques.filter((b) => {
-      for (let i = b.desde; i <= b.hasta; i++) if (normalizarRotulo(visible(filas[i]?.[0])) === buscado) return true
+      for (let i = b.desde; i <= b.hasta; i++) {
+        if (esTituloDeSeccion(filas[i]) && normalizarRotulo(visible(filas[i]?.[0])) === buscado) return true
+      }
       return false
     })
     if (!donde.length) { huerfanas.push({ bloque: String(d.bloque), motivo: 'ningún bloque de la pestaña lleva ese rótulo' }); continue }
+    // DOS BLOQUES CON EL MISMO RÓTULO NO SON UN AMPARO, SON UNA AMBIGÜEDAD. Amparar los dos sería
+    // ensanchar el permiso en silencio hasta un bloque que nadie declaró — y una pestaña con dos
+    // cuadros que se llaman igual ya es un defecto de por sí. Falla cerrada y se denuncia, igual que
+    // la huérfana: no amparar es reversible, amparar de más no se nota.
+    if (donde.length > 1) {
+      huerfanas.push({ bloque: String(d.bloque), motivo: `${donde.length} bloques de la pestaña llevan ese rótulo: no se puede saber cuál se quiso amparar` })
+      continue
+    }
 
     const cols = expandirColumnas(d.cols)
     for (const b of donde) {
