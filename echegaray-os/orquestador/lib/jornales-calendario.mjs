@@ -129,10 +129,7 @@ export const expresionDias = (celdaDesde, celdaHasta) =>
 // caracteres decía tres cosas; sólo una era información que el cuadro no tiene: que los sábados
 // quedan afuera de la proyección. Que "aparecen en el registro cuando se cargan" ya lo dice la
 // sección 5 con su nombre, y "salen de la caja" es lo que hace todo lo demás de la pestaña.
-// 06/09: y de un rótulo a TRES PALABRAS. «No incluye sábados ni horas extra» caía como explicación
-// —seis palabras con «no incluye» adentro— y el ⊘ ya dice «no entra acá» en toda la pestaña. La
-// declaración no se perdió: se dejó de decir dos veces.
-export const LINEA_SABADOS = '⊘ sábados y horas extra'
+export const LINEA_SABADOS = '⊘ No incluye sábados ni horas extra'
 
 /**
  * El MISMO criterio que `expresionDias` escribe en la pestaña, en JavaScript: sirve para decidir

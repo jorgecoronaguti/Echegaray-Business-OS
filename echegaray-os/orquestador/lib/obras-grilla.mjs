@@ -1324,7 +1324,7 @@ export function grillaObras(ctx = {}) {
   const clientes = ctx.clientes ?? CLIENTES_MUESTRA
   const h = hoja()
 
-  h.push([PESTANA_OBRAS], ['rotulo'])
+  h.push([`${PESTANA_OBRAS} — EL AÑO ENTERO, OBRA POR OBRA`], ['rotulo'])
   // UNA LÍNEA, Y SÓLO PARA DECLARAR EL CRITERIO. El dueño rechazó hoy otra pestaña por *"muchas
   // palabras y frases y explicaciones que nadie lee"*. Lo único que no se puede deducir mirando la
   // tabla es con qué criterio está medida cada columna, y eso la regla de oro 3 obliga a declararlo.
@@ -1341,30 +1341,13 @@ export function grillaObras(ctx = {}) {
   // de Compras (por eso hay una columna que dice cuál), y que el costo proyectado incluye la mano de
   // obra, que se paga por Jornales y no puede aparecer nunca del lado comprado. Sin la segunda, la
   // columna "Resta proyectado" se lee como una deuda con proveedores y es, en su mayor parte, sueldos.
-  // ═══ LA FILA 2 DECLARA PROCEDENCIA; NO ES DONDE SE ESCRIBEN LOS CRITERIOS (06/09/2026) ═══
-  //
-  // Acá vivían 450 caracteres con las seis definiciones de la pestaña —qué es venta, qué es cobrado,
-  // a los cuántos días vence, de dónde sale el contrato, cómo se empareja el costo real y qué
-  // incluye el proyectado—. Se escribían con el argumento de que «el criterio no se deduce mirando
-  // la tabla», y era cierto; lo que cambió es dónde se escribe: el dueño, 05/09, «minimalismo
-  // extremo y no tenga aclaraciones ni explicaciones de nada», y el contrato le da a la fila 2 un
-  // tope de 120 caracteres justamente para que no vuelva a ser el lugar donde se explica la pestaña.
-  //
-  // LOS CRITERIOS, QUE SIGUEN VIGENTES Y AHORA VIVEN ACÁ:
-  //   · la venta va al NETO y es devengada; las cobranzas al TOTAL neto de retenciones y percibidas;
-  //   · «vencido» es a los `PLAZO_COBRO_DIAS` días de la fecha de emisión (el número vive una sola
-  //     vez, en `cobranzas-vencido.mjs`);
-  //   · el contrato se lee de la ORDEN DE COMPRA de Cobranzas — por eso «Saldo contrato» no es magia;
-  //   · el costo real es la Compras imputada por su texto de «Detalles / Obra», al neto y sin corte
-  //     por fecha de inicio, porque se compra antes de arrancar;
-  //   · el costo proyectado INCLUYE la mano de obra, que se paga por Jornales y nunca aparece del
-  //     lado comprado — sin eso, «Resta proyectado» se lee como deuda con proveedores y es sueldos.
-  //
-  // EL TIPO DE CAMBIO SE QUEDA, y no por excepción: no es un criterio, es el DATO con el que están
-  // valuadas las columnas en dólares. Va como fórmula sobre el rango con nombre de CAJA porque
-  // escrito como texto queda viejo al día siguiente y nadie se entera.
-  h.push([`=${quote('El año entero, obra por obra · Cobranzas y Compras · USD a ')}&`
-    + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")&${quote(' · al ')}&TEXT(TODAY();"dd/mm/yyyy")`], ['rotulo'])
+  h.push([`=${quote(`${ANO} · venta al NETO (devengado) · cobranzas al TOTAL neto de retenciones (percibido)`
+    + ` · vencido a los ${PLAZO_COBRO_DIAS} días de la fecha de emisión`
+    + ' · contrato leído de la ORDEN DE COMPRA de Cobranzas'
+    + ' · costo real = Compras imputada por su texto de "Detalles / Obra", al neto y sin corte por fecha de inicio'
+    + ' (se compra antes de arrancar); el costo proyectado incluye la mano de obra, que va por Jornales'
+    + ' · USD valuado a ')}&`
+    + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`], ['rotulo'])
   h.push([])
 
   // EL TITULAR VA PRIMERO. El estándar del área lo pide con todas las letras —"las 2-3 cifras que se
@@ -1460,10 +1443,7 @@ export function grillaObras(ctx = {}) {
     const clientes3 = [...new Set(obras.map((o) => o.cliente))]
     if (clientes3.length) {
       fSinImputar = h.n + 1
-      // EL RÓTULO NOMBRA LA FILA Y NO LA EXPLICA: qué le falta a esas compras lo dice la celda de al
-      // lado —«▲ falta escribir la obra en Compras»—, que es la acción, y no hace falta decirlo dos
-      // veces. Con la glosa el renglón medía 62 caracteres contra un tope de 60.
-      h.push(['⇒ SIN IMPUTAR', '', '',
+      h.push(['⇒ SIN IMPUTAR — compras de estos clientes que no dicen la obra', '', '',
         `=${clientes3.map((c) => compradoDeCliente(refs.cmp, c)).join('+')}-D${fTot3}`, '',
         `${ALERTA} falta escribir la obra en Compras`],
       ['rotulo', null, null, 'monedaTotal', null, 'texto'])
@@ -1488,10 +1468,7 @@ export function grillaObras(ctx = {}) {
   // DIBUJA la lista que llega en `ctx.materiales`, y sin ella se dibuja la semilla —que es lo
   // correcto para un test, para el `--dry` y para la primera corrida sobre una pestaña sin cuadro.
   h.push([])
-  // EL TÍTULO NOMBRA EL BLOQUE Y NO ARGUMENTA SOBRE ÉL (contrato: `partesDeTitulo`). La glosa decía
-  // que este cuadro está FUERA del calendario de caja desde el 24/08 — que es cierto, importante, y
-  // está escrito doce líneas más arriba, que es donde lo busca quien toque este generador.
-  h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS`], ['rotulo'])
+  h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario de caja desde el 24/08)`], ['rotulo'])
   h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
   const filasMateriales = []
   {

@@ -531,9 +531,7 @@ export function grilla({
   // distingue el trabajo hecho y no pagado (la columna «Pagado el» del registro, que carga el dueño).
   // Oficina y Dirección no la tienen: lo que sus bloques llaman «Pagado» es lo que la planilla y
   // Compras registran como salido. Fabricarles un comprometido sería un número sin fuente.
-  // «Cuánto hay que pagar — por grupo de empleados» caía como explicación: ocho palabras con «hay
-  // que» adentro. El titular NOMBRA lo que la pestaña contesta, no lo pregunta.
-  push(['Lo que se paga · por grupo'])
+  push(['Cuánto hay que pagar — por grupo de empleados'])
   // EL PERÍODO Y LA FECHA DE CAJA, EN UN RENGLÓN Y POR FÓRMULA: "Obreros · quincena 3/8→15/8 · se paga
   // el 17/8". Sale del registro de abajo (que sale del espejo), nunca de una fecha estampada en la
   // corrida: la pestaña se lee días después de escribirse y una fecha de JavaScript envejece muda.
@@ -575,14 +573,7 @@ export function grilla({
   //
   // NO SE COPIA EL NÚMERO ACÁ. Un concepto vive en un solo lugar y se referencia — duplicarlo es lo
   // que hace que el mismo dato tenga dos versiones distintas en dos pestañas.
-  // EL ALCANCE SE DECLARA CON EL MISMO SÍMBOLO QUE EL RESTO DE LA PESTAÑA (06/09). Decía «No incluye
-  // SAC, vacaciones ni cargas sociales» y eso argumenta: seis palabras con «no incluye» adentro. El
-  // ⊘ ya significa «no entra acá» acá y en la línea de los sábados, así que basta nombrar los tres
-  // conceptos. Dónde están, en cambio, no va en la pestaña: el SAC y las cargas viven en «Cargas
-  // Sociales» (§6, pagado real de Compras y devengado 1/12 de la remuneración) y las vacaciones no
-  // están en ninguna parte todavía —falta la antigüedad por legajo, y una provisión inventada es
-  // peor que una ausente porque se usa—.
-  push([sub('⊘ SAC · vacaciones · cargas sociales')])
+  push([sub('No incluye SAC, vacaciones ni cargas sociales')])
   blanco()
 
   // ══ ESTIMADO CONTRA REAL: EL CUADRO DE ARRIBA MEDIDO CONTRA UNA FUENTE QUE NO ES LA PLANILLA ══
@@ -1219,13 +1210,7 @@ export function grilla({
     filaInicio: filas.length + 1, escalonVigente, rotulo: rotuloDelPlantel(origenPlantel),
   })
   for (const f of plantel.filas) push(f)
-  // SÓLO SE PISA SI HAY ALGO QUE DECIR. Desde el 06/09 esta línea existe únicamente cuando falta
-  // declarar una equivalencia; la traducción de las que ya están resueltas se lee en la fila de cada
-  // categoría. Escribir la cadena vacía dejaría el glosario de la corrida anterior VIVO en la
-  // pestaña —la guarda NO-BORRAR conserva el destino cuando la fuente trae `''`—, así que sin
-  // pendiente la celda se queda con el centinela `VACIO`, que sí borra.
-  const lineaConvenio = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
-  if (lineaConvenio) filas[fConvenio - 1][0] = lineaConvenio
+  filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
   const fPlantel = plantel.fTotal
   // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
   //
