@@ -75,7 +75,27 @@ export const PESTANAS = [
   //
   // El ancho de esta entrada tiene que seguir al `ANCHO` del generador; el test lo ata.
   { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 90, cols: 14, propio: true },
-  { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
+  // ═══ LAS CUOTAS DE LOS PLANES DE PAGO SON UNA RÉPLICA, Y DESDE EL 05/09 NO PUEDEN DECIRLO ═══
+  //
+  // `lib/cargas-bloques.mjs` (bloquePlanes) escribe cada cuota con la leyenda «Réplica del plan
+  // cargado en Compras · N cuota(s) · …» y su comentario lo dice con todas las letras: «el censo la
+  // reconoce y no la cuenta como violación». Esa leyenda iba a la columna O, y desde el minimalismo
+  // extremo `cargas-sociales-pestana.mjs:347` la vacía con `vaciarColumnaDeProsa`. Leído del archivo
+  // vivo el 06/09: `Cargas Sociales!O1:O90` no tiene una sola celda con texto, y el censo pasó a
+  // informar 15 violaciones (B81:K83) sobre las cuotas de tres planes que están bien.
+  //
+  // No son un cálculo que el Sheet pueda rehacer, y el generador explica por qué: los planes se
+  // distinguen sólo por rótulo («Dic 25», «Enero 26», «W303094») —casar por rótulo es justamente lo
+  // que ese generador prohíbe— y la fecha de caja de Compras viene mezclada serial/texto, así que un
+  // SUMIFS daría un número DISTINTO del real. El dato ya vive una sola vez en Compras y en su espejo
+  // de Supabase; la pestaña lo replica agrupado por plan y por mes.
+  //
+  // El amparo llega hasta B:M —los doce meses— y NO incluye la N: la N es el total del renglón y es
+  // fórmula. Si un número apareciera pegado ahí, tiene que seguir saliendo en rojo.
+  { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16, origenPorBloque: [
+    { bloque: 'Planes de pago de deuda previsional', cols: 'B:M',
+      que: 'réplica de las cuotas cargadas en Compras (rubro «Deuda previsional (planes de pago)») agrupadas por plan y por mes desde su espejo en Supabase — ver bloquePlanes en lib/cargas-bloques.mjs' },
+  ] },
   // Piel de statement PROPIA (su generador aplica estilo-statement); el formateador general la saltea.
   // congeladas 12 (era 1) y cols 15 (era 12): la entrada estaba desalineada del generador, que escribe
   // ANCHO=15 (A..O) y —desde el rediseño del 06/08— congela el título, la frescura y el hero entero,

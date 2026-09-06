@@ -39,6 +39,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { PESTANAS, avisarSinCobertura } from './formato-pestanas.mjs'
+import { amparoDeOrigen } from '../lib/origen-declarado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const SOLO = process.argv[2]
@@ -56,9 +57,19 @@ function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i 
 export const RE_ORIGEN = /ddjj|transcript|conciliaci[oó]n del os|r[eé]plica|extracto del banco|dato de origen/i
 const filaDeclaraOrigen = (fila) => (fila || []).some((c) => c && !c.formula && RE_ORIGEN.test(String(c?.valor ?? '')))
 
-export function censar(grid) {
-  const r = { formula: 0, derramada: 0, pegadoNumero: 0, fecha: 0, texto: 0, origenFila: 0, pegados: [] }
+export function censar(grid, { declaraciones = [] } = {}) {
+  const r = { formula: 0, derramada: 0, pegadoNumero: 0, fecha: 0, texto: 0, origenFila: 0, pegados: [], huerfanas: [] }
   if (!grid?.filas) return r
+  // ═══ EL AMPARO QUE YA NO PUEDE VIVIR EN UNA CELDA (06/09) ═══
+  //
+  // `filaDeclaraOrigen` lee la leyenda de una celda VISIBLE, y el minimalismo extremo que el dueño
+  // ordenó el 05/09 vacía esas celdas (`vaciarColumnaDeProsa`). Los dos mecanismos no pueden
+  // convivir: uno exige que la procedencia esté escrita en la pestaña, el otro prohíbe que haya algo
+  // escrito que no sea el dato. La leyenda se sigue leyendo donde todavía exista —no se rompe nada
+  // que hoy funcione— y el registro del repositorio ampara lo que la pestaña ya no puede declarar.
+  // El detalle de por qué vive en el repo y no en una nota está en lib/origen-declarado.mjs.
+  const { amparadas, huerfanas } = amparoDeOrigen(grid.filas, declaraciones)
+  r.huerfanas = huerfanas
   const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
   // ORIGEN DECLARADO POR BLOQUE: un bloque es un run de filas no vacías entre filas vacías. Si
   // CUALQUIER fila del bloque trae la leyenda de origen (típicamente el encabezado o una advertencia
@@ -90,7 +101,7 @@ export function censar(grid) {
       if (c.formato === 'DATE' || c.formato === 'DATE_TIME') { r.fecha++; return }
       // La fila declara su origen: es dato transcripto/conciliado, no un cálculo pegado. Se cuenta
       // aparte para no inflar las violaciones reales.
-      if (declara) { r.origenFila++; return }
+      if (declara || amparadas.has(`${L(j)}${i + 1}`)) { r.origenFila++; return }
       r.pegadoNumero++
       r.pegados.push({ celda: `${L(j)}${i + 1}`, valor: c.numero, formato: c.formato })
       return
@@ -127,7 +138,7 @@ async function main() {
     const hasta = alto.get(p.titulo) || p.hastaFila
     const grid = await google.readSheetGrid(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch(() => null)
     if (!grid) { console.log(`  ${p.titulo.padEnd(24)} no pude leerla`); continue }
-    const c = censar(grid)
+    const c = censar(grid, { declaraciones: p.origenPorBloque ?? [] })
     // ── LOS RANGOS DECLARADOS COMO DATO DE ORIGEN ────────────────────────────────────────────────
     // La regla 3 dice: "el dato de ORIGEN sí se pega, y se declara". Una columna que por definición
     // contiene lo que alguien leyó de un extracto no es una violación — contarla como tal hacía que
@@ -148,6 +159,10 @@ async function main() {
       for (const x of c.pegados.slice(0, 12)) console.log(`        ${x.celda.padEnd(6)} ${String(x.valor).slice(0, 20)}`)
       if (c.pegados.length > 12) console.log(`        … y ${c.pegados.length - 12} más`)
     }
+    // UNA DECLARACIÓN HUÉRFANA ES UN HALLAZGO, NO UN NO-OP. Ampara un bloque que la pestaña ya no
+    // tiene: si se calla, queda un permiso vigente sobre nada y el día que ese rótulo vuelva —o que
+    // alguien lo copie— ampara lo que caiga ahí. Se cuenta como desvío para que la corrida dé rojo.
+    for (const h of c.huerfanas) { console.log(`        ▲ declaración huérfana: "${h.bloque}" — ${h.motivo}`); malos++ }
   }
   console.log(`\n${malos ? `⚠ ${malos} número(s) pegado(s) en pestañas que el OS calcula` : '✓ ninguna pestaña calculada tiene números pegados'}`)
   if (malos) process.exitCode = 1
