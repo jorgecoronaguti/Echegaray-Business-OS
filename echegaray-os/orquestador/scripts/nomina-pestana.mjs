@@ -1348,18 +1348,31 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila(rotuloTotal(`${completos} de ${activos.length} con los cuatro papeles`))
   fila()
 
-  // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══
-  // Las limitaciones son de la Nómina y van al pie de la Nómina: son los límites del número que se
-  // paga, no del cuadro de respaldo.
-  destino = f
-  fila('')
-  fila(seccion(4, 'lo que esta pestaña NO puede decir'))
-  fila(sub('Sólo el plantel ACTIVO. Los desvinculados se sacaron por pedido del dueño: su devengado histórico vive en la planilla de jornales.'))
-  fila(sub('Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla: no se inventan.'))
-  fila(sub('Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia siguen adentro de los PDF.'))
-  fila(sub('Las cargas sociales no se abren por persona: la planilla las tiene por total.'))
-  fila(sub('El fondo de cese acumulado se calcula sobre el jornal de la planilla. Si los aportes se depositaron sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — no lo puedo verificar desde acá.'))
-  fila(sub('«Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja: la planilla no las distingue.'))
+  // ═══ LO QUE ESTA PESTAÑA NO PUEDE DECIR — Y POR QUÉ YA NO SE DIBUJA ═══
+  //
+  // Estos seis renglones se publicaban al pie de la Nómina. El 05/09/2026 el dueño decidió que se
+  // van: se le planteó explícitamente que sus dos instrucciones chocaban acá —«minimalismo extremo,
+  // sin aclaraciones ni explicaciones de nada» contra el principio de cierre, que dice que la
+  // limitación de una cifra que decide plata no se saca de su vista— y eligió el minimalismo, sin
+  // excepción. Se recomendó lo contrario y se ejecuta lo que él decidió.
+  //
+  // NO SE PIERDEN: viven acá, en el script que genera la pestaña, y siguen siendo verdad. Quien lea
+  // este cuadro tiene que saber que:
+  //
+  //   1. Es SÓLO el plantel activo. Los desvinculados salieron por pedido del dueño; su devengado
+  //      histórico vive en la planilla de jornales.
+  //   2. Los acuerdos particulares (premios, condiciones fuera de convenio) no están en la planilla
+  //      y no se inventan.
+  //   3. Del legajo se mira QUÉ archivos hay, no qué dicen: el CUIL, la obra social y la familia
+  //      siguen adentro de los PDF.
+  //   4. Las cargas sociales no se abren por persona: la planilla las tiene por total.
+  //   5. El fondo de cese se calcula sobre el jornal de la planilla. Si los aportes se depositaron
+  //      sobre la mitad registrada, el fondo real es la mitad de lo que dice esa columna — y desde
+  //      acá no se puede verificar.
+  //   6. «Activo» es aparecer en la última quincena cargada. Una licencia larga se lee como baja:
+  //      la planilla no las distingue.
+  //
+  // La 5 es la que más pesa: puede duplicar o partir al medio un pasivo laboral real.
   return { nomina: f, plantel: g }
 }
 
