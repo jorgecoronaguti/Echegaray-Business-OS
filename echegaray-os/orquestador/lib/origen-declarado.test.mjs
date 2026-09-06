@@ -97,3 +97,61 @@ test('el amparo sigue al bloque cuando se mueve de fila', () => {
   assert.ok(amparadas.has('B13'), 'la cuota se movió de B9 a B13 y el amparo la siguió')
   assert.equal(amparadas.has('B9'), false, 'y dejó de amparar la fila vieja')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS DOS AGUJEROS QUE CONVERTÍAN LA EXCEPCIÓN DECLARADA EN UN INTERRUPTOR (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Una grilla del CENSO no trae strings: trae `{valor, formula, numero, derivada, formato}`, y una
+// celda vacía es `{valor: null, …}`. `visible()` hacía `String(celda?.valor ?? celda ?? '')`, así que
+// una celda vacía caía al objeto y devolvía "[object Object]" — con lo cual NINGUNA fila era vacía,
+// `bloquesDeGrilla` devolvía UN bloque por pestaña y cualquier declaración amparaba la pestaña
+// entera en sus columnas. Medido en «Plantel»: declarar los cuadros 2 y 3 amparaba de yapa `D68:G68`
+// y las diecisiete cuentas de recibos de `G70:G86`, que no son de esos cuadros.
+//
+// El segundo: el amparo llegaba hasta el renglón `⇒` del cuadro. Los seis fósiles de `D24`/`D66:G66`
+// —las filas «⇒ 17 persona(s)»— quedaban amparados y el censo daba 0 de 285.
+
+/** La MISMA grilla, pero con celdas del censo: es la forma con la que corre en producción. */
+const comoCenso = (filas) => filas.map((f) => Array.from({ length: 14 }, (_, j) => ({
+  valor: f[j] === undefined ? null : f[j], formula: null, numero: typeof f[j] === 'number' ? f[j] : null,
+  derivada: false, formato: null,
+})))
+
+test('UNA FILA VACÍA DEL CENSO ES VACÍA: si no, el bloque se come la pestaña entera', () => {
+  const filas = comoCenso(grilla())
+  const bloques = bloquesDeGrilla(filas)
+  assert.ok(bloques.length > 1, `la grilla del censo tiene que partirse en varios bloques, dio ${bloques.length}`)
+  const { amparadas } = amparoDeOrigen(filas, [{ bloque: '7 · PLANES DE PAGO DE DEUDA PREVISIONAL', cols: 'B:M', que: 'x' }])
+  // La fila 5 («Fondo de Cese devengado») vive en OTRO bloque: no puede quedar amparada.
+  assert.equal(amparadas.has('B5'), false, 'el amparo se derramó a un bloque anterior')
+})
+
+test('EL AMPARO SE CORTA EN LA ESTRUCTURA DEL CUADRO: su título y su renglón ⇒ nunca son dato de origen', () => {
+  const filas = [
+    ['1 · UN CUADRO', 100],
+    ['Persona', 'ene'],
+    ['Aguero', 1000],
+    ['⇒ 17 persona(s)', 46128],
+    [],
+  ]
+  const { amparadas } = amparoDeOrigen(filas, [{ bloque: '1 · UN CUADRO', cols: 'B', que: 'x' }])
+  assert.equal(amparadas.has('B3'), true, 'el renglón de datos sí queda amparado')
+  assert.equal(amparadas.has('B4'), false, 'el renglón ⇒ de total NO puede quedar amparado')
+  assert.equal(amparadas.has('B1'), false, 'el título de sección NO puede quedar amparado')
+})
+
+test('UN DATO QUE ARRANCA CON UNA PALABRA DE ENCABEZADO SIGUE SIENDO UN DATO', () => {
+  // Medido: `Cargas Sociales!A81` es «Plan F931 W303094 — financiación de junio 2026» y sus tres
+  // cuotas quedaban fuera del amparo porque «plan» abre la lista de ES_ENCABEZADO. Un encabezado no
+  // lleva importes.
+  const filas = [
+    ['7 · PLANES DE PAGO', 'ene'],
+    ['Plan F931 W303094 — financiación de junio 2026', 2494875.65],
+    ['⇒ Total de cuotas del año', 2494875.65],
+    [],
+  ]
+  const { amparadas } = amparoDeOrigen(filas, [{ bloque: '7 · PLANES DE PAGO', cols: 'B', que: 'x' }])
+  assert.equal(amparadas.has('B2'), true, 'la cuota de un plan es dato, aunque su rótulo empiece con «Plan»')
+  assert.equal(amparadas.has('B3'), false)
+})

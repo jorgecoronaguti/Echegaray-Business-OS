@@ -90,6 +90,8 @@
 // escribe la declaración, y tiene que poder defenderlo. Acá sólo se resuelve dónde se anota y cómo
 // se verifica que la anotación siga hablando de algo que existe.
 
+import { esEstructural } from './respetar-ediciones.mjs'
+
 /** Cómo se compara un rótulo: sin tildes, sin mayúsculas, sin el número de sección, sin la glosa. */
 export function normalizarRotulo(texto) {
   // EL ORDEN IMPORTA, Y COSTÓ UN ROJO. Quitar tildes con `\p{Diacritic}` ANTES de cortar el número de
@@ -107,11 +109,54 @@ export function normalizarRotulo(texto) {
     .trim()
 }
 
-/** ¿La fila está vacía? Es el mismo criterio con que el censo parte la grilla en bloques. */
-const vacia = (fila) => !(fila ?? []).some((c) => String(c?.valor ?? c ?? '').trim())
+/**
+ * El texto que se ve en una celda de la grilla, venga como objeto del censo o como string pelado.
+ *
+ * ═══ EL `?? celda` QUE DABA UN PERMISO EN BLANCO (06/09/2026) ═══
+ *
+ * Decía `String(celda?.valor ?? celda ?? '')`. Una celda VACÍA del censo es el objeto
+ * `{valor: null, formula: null, numero: null, …}`: `celda?.valor` da `null`, el `??` cae al objeto, y
+ * `String({})` es `"[object Object]"` — o sea que TODA fila vacía se leía como fila con contenido.
+ * `bloquesDeGrilla` devolvía entonces UN SOLO bloque por pestaña, y con eso cualquier declaración
+ * amparaba la pestaña ENTERA en sus columnas: exactamente el «permiso en blanco» que este módulo dice
+ * no otorgar.
+ *
+ * MEDIDO: en «Plantel», declarar los cuadros 2 y 3 amparaba también `D68:G68` —el residuo de un
+ * renglón de desvinculación pegado sobre el título de la sección 4— y las diecisiete cuentas de
+ * recibos de `G70:G86`, que no son ni una réplica ni un dato de origen de esos cuadros. La única
+ * declaración que ya existía, la de «Cargas Sociales», amparaba B:M de la pestaña entera en vez de
+ * las tres filas de planes de pago.
+ *
+ * El `?? celda` estaba para aceptar una grilla de strings pelados (como la usan los tests). Se
+ * mantiene esa capacidad, pero preguntando si la celda ES una celda del censo en vez de confiar en
+ * que su valor no sea nulo.
+ */
+const visible = (celda) => {
+  const v = celda && typeof celda === 'object' && 'valor' in celda ? celda.valor : celda
+  return String(v ?? '').trim()
+}
 
-/** El texto que se ve en una celda de la grilla, venga como objeto del censo o como string pelado. */
-const visible = (celda) => String(celda?.valor ?? celda ?? '').trim()
+/** ¿La fila está vacía? Es el mismo criterio con que el censo parte la grilla en bloques. */
+const vacia = (fila) => !(fila ?? []).some((c) => visible(c))
+
+/**
+ * ¿La fila es el TÍTULO DE SECCIÓN o el RENGLÓN DE TOTAL de su cuadro, y por lo tanto no es un dato?
+ *
+ * Se reusa `esEstructural` —la misma definición que ya decide, para la huella por celda, qué fila no
+ * se da nunca por borrada— en vez de escribir acá un segundo criterio: dos definiciones de «esta fila
+ * no es un dato» en el mismo archivo es cómo se termina amparando un rango distinto del que se creyó
+ * declarar.
+ *
+ * ═══ Y NO SE USA `esRotuloDeEstructura`, QUE ES LA MÁS ANCHA, POR UN FALSO POSITIVO MEDIDO ═══
+ *
+ * Aquélla suma `ES_ENCABEZADO`, la lista de primeras palabras con que un cuadro abre su columna A
+ * («período», «concepto», «plan», «proveedor»…). Sirve para reconocer la fila de encabezado; acá
+ * muerde un dato: `Cargas Sociales!A81` es «Plan F931 W303094 — financiación de junio 2026», el
+ * renglón de un plan de pago real, y arranca con «Plan». Con la lista ancha, sus tres cuotas
+ * (`I81:K81`, $2.494.875,65 cada una) quedaban fuera del amparo que la pestaña sí declaró. Un
+ * encabezado no lleva importes: si los lleva, es un dato.
+ */
+const esFilaDeEstructura = (fila) => esEstructural(visible((fila ?? [])[0]))
 
 /**
  * NÚCLEO PURO: parte la grilla en bloques — runs de filas no vacías.
@@ -188,7 +233,18 @@ export function amparoDeOrigen(filas = [], declaraciones = []) {
 
     const cols = expandirColumnas(d.cols)
     for (const b of donde) {
-      for (let i = b.desde; i <= b.hasta; i++) for (const c of cols) amparadas.add(`${c}${i + 1}`)
+      for (let i = b.desde; i <= b.hasta; i++) {
+        // LA ESTRUCTURA DEL CUADRO NO ES DATO DE ORIGEN, NUNCA (06/09/2026). El amparo es por bloque,
+        // y un bloque incluye su título y su renglón `⇒`: sin este corte, declarar «los doce importes
+        // mensuales son una réplica» amparaba de yapa el total de la columna, que es aritmética pura
+        // de la propia pestaña. Medido en «Plantel»: la declaración de los cuadros 2 y 3 dejaba el
+        // censo en 0 de 285 —incluidas `D24`/`D66`, las filas «⇒ 17 persona(s)», y `D68:G68`, un
+        // renglón de desvinculación fósil pegado sobre el título de la sección 4— o sea que la
+        // excepción apagaba el aviso en vez de explicarlo, que es lo que este módulo existe para no
+        // hacer. Un número pegado en una fila de estructura se sigue contando siempre.
+        if (esFilaDeEstructura(filas[i])) continue
+        for (const c of cols) amparadas.add(`${c}${i + 1}`)
+      }
     }
   }
   return { amparadas, huerfanas }
