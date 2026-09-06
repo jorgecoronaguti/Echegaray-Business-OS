@@ -67,18 +67,18 @@ export function filtrosPorCondicion(pivot = {}) {
 }
 
 /**
- * El rango de Compras que alimenta la dinámica. Acotado por abajo a la grilla real: un source
- * ilimitado obliga al pivot a recorrer la hoja entera en cada recálculo sin ganar una sola fila.
+ * ═══ LA TERCERA TRAMPA: HABÍA DOS `fuenteCompras` Y LA DE ACÁ SEGUÍA ROTA (05/09/2026) ═══
  *
- * @param {{sheetId:number, filas:number}} compras
+ * Este módulo tenía su propia copia, que devolvía `endRowIndex: filas` con `filas` = el `rowCount`
+ * de Compras. Ese es exactamente el defecto que se corrigió el 18/08 en la otra copia: cuando
+ * alguien carga una compra, Google agranda la grilla y el pivot se queda apuntando a la fila
+ * anterior — la factura nueva cae fuera del origen sin un solo error. Acá siguió verde diez días,
+ * defendida por un test que afirmaba `endRowIndex === 932`.
+ *
+ * Dos definiciones del mismo concepto: la corrección le llegó a una sola. Ahora hay UNA, y vive
+ * donde está escrita la lección con su medición.
  */
-export function fuenteCompras({ sheetId, filas }) {
-  if (!Number.isInteger(sheetId)) throw new Error('fuenteCompras: falta el sheetId de Compras')
-  if (!(filas > 3)) throw new Error(`fuenteCompras: la grilla de Compras no puede tener ${filas} filas`)
-  // startRowIndex 2 = la fila 3, que es donde el dueño tiene los rótulos. El pivot usa esa fila como
-  // encabezado; arrancar en la 4 le haría tomar la primera factura como nombre de columna.
-  return { sheetId, startRowIndex: 2, endRowIndex: filas, startColumnIndex: 0, endColumnIndex: 38 }
-}
+export { fuenteCompras } from './proveedores-pivot-seccion1.mjs'
 
 /** Detalle: proveedor → comprobante → saldo. Es el que se controla contra el titular al peso. */
 export function pivotDetalle(fuente) {

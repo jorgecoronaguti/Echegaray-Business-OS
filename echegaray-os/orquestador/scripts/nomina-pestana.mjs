@@ -33,6 +33,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { plantelDelEspejo, separarPlantel, claveNombre, mejorMesDelSemestre, fclDevengadoDelAnio } from '../lib/desvinculacion-plantel.mjs'
+import { citarCuadro2EnCuadro1, cuentasDelCostoDeSalida, sumaDeColumna, sumaOGuion, totalDelAnio } from '../lib/plantel-formulas.mjs'
 import { antiguedad, liquidacionFinal, alicuotaFcl } from '../lib/desvinculacion-22250.mjs'
 import { ACUERDO_BANCO, repartoPersona } from '../lib/jornales-reparto-pago.mjs'
 import { bancoDeLaPersona, reparto50DeLiquidacionFinal, tieneLiquidacionFinal, esSubcontratista, comoSeEscribe, CUIL_POR_PERSONA_DE_PLANILLA, COBRAN_Y_NO_ESTAN_EN_LA_PLANILLA, SUELDO_NETO_OFICINA } from '../lib/nomina-banco-recibo.mjs'
@@ -1187,42 +1188,60 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // ─── DESDE ACÁ, TODO VA A «Plantel» ───
   destino = g
   fila('Plantel')
-  fila('Quiénes son, qué devengaron en el año, qué costaría desvincularlos y qué papel les falta en el legajo.')
-  fila(`Respaldo de «Nómina». Al ${fecha(hoy)}.`)
+  // EL ENCABEZADO DEL CONTRATO: A1 el nombre, A2 la ÚNICA línea de procedencia (qué contesta ·
+  // de dónde sale · a qué fecha) y la fila 3 VACÍA. Estaban en tres renglones y el tercero se comía
+  // el respiro que separa el encabezado del primer bloque.
+  fila(`Quiénes son, qué devengaron y qué costaría desvincularlos · respaldo de «Nómina» · al ${fecha(hoy)}`)
+  fila()
   fila()
   fila(seccion(1, 'quiénes son'))
   fila('Persona', 'Sector', 'Cat.', 'Ingreso', 'Antigüedad', '$/hora', 'Horas 2026', 'Devengado 2026', 'Promedio mensual')
-  let horasT = 0
-  let importeT = 0
+  // ═══ LAS FILAS SE ANOTAN, NO SE DEDUCEN ═══
+  //
+  // «Horas 2026», «Devengado 2026» y «Promedio mensual» no son datos de este cuadro: son las
+  // columnas del cuadro 2, que todavía no se escribió. Se empujan vacías, se guarda el índice del
+  // renglón, y se parchean con su CITA cuando el cuadro 2 existe y su fila es un hecho. Calcular
+  // «el cuadro 2 arranca N+4 filas más abajo» es la aritmética de posición fija que se rompe con
+  // el próximo subtítulo que alguien agregue en el medio.
+  const filaQuienes = []
+  const filaEnDevengado = []
   for (const p of activos) {
-    const t = totalAnio(p.devengado)
-    horasT += t.horas; importeT += t.importe
     const ant = antiguedad(p.ingreso, hoy)
-    const conHoras = [...p.devengado.meses.values()].filter((v) => v.importe > 0).length
+    filaQuienes.push(destino.length)
     fila(p.nombre, p.sector, p.categoria || SIN_DATO, p.ingreso ? fecha(p.ingreso) : SIN_DATO,
-      ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO, p.jornalPactado || SIN_DATO,
-      Math.round(t.horas), Math.round(t.importe), conHoras ? Math.round(t.importe / conHoras) : SIN_DATO)
+      ant ? `${ant.anios} a ${ant.meses} m` : SIN_DATO, p.jornalPactado || SIN_DATO)
   }
-  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', Math.round(horasT), Math.round(importeT))
+  const q0 = (filaQuienes[0] ?? destino.length) + 1
+  const qF = destino.length
+  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', sumaDeColumna('G', q0, qF), sumaDeColumna('H', q0, qF))
   fila()
 
   // ═══ 3 · EL AÑO, MES A MES ═══
   fila(seccion(2, `lo devengado mes a mes · ${ANIO}`))
   fila('Persona', ...MES_CORTO, 'TOTAL AÑO', 'Horas')
-  const porMes = new Array(12).fill(0)
   for (const p of activos) {
-    const cel = meses.map((m, i) => {
+    const cel = meses.map((m) => {
       const v = p.devengado.meses.get(m)
       if (!v || !v.importe) return SIN_DATO
-      porMes[i] += v.importe
       return Math.round(v.importe)
     })
     const t = totalAnio(p.devengado)
-    fila(p.nombre, ...cel, Math.round(t.importe), Math.round(t.horas))
+    filaEnDevengado.push(destino.length)
+    // El TOTAL AÑO es la suma de los doce meses de su propio renglón: pegarlo es publicar dos veces
+    // el mismo número y que sólo uno se entere cuando cambie una hora en el espejo.
+    fila(p.nombre, ...cel, totalDelAnio(destino.length + 1), Math.round(t.horas))
   }
-  fila(rotuloTotal('TOTAL'), ...porMes.map((v) => (v ? Math.round(v) : SIN_DATO)), Math.round(importeT), Math.round(horasT))
+  const m0 = (filaEnDevengado[0] ?? destino.length) + 1
+  const mF = destino.length
+  fila(rotuloTotal('TOTAL'),
+    ...meses.map((_, i) => sumaOGuion(String.fromCharCode(66 + i), m0, mF)),
+    sumaDeColumna('N', m0, mF), sumaDeColumna('O', m0, mF))
+  // AHORA el cuadro 2 existe: el cuadro 1 puede citarlo en vez de repetirlo.
+  citarCuadro2EnCuadro1(destino, { filaQuienes, filaEnDevengado })
   const sinPrecio = activos.filter((p) => p.devengado.horasSinPrecio > 0)
-  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas cargadas sin $/hora: esas horas se cuentan y NO se valorizan`))
+  // Es un HALLAZGO de calidad del dato, no una explicación: esas horas se cuentan y no se valorizan,
+  // así que el devengado de esas personas es un piso. El renglón dice cuántas son; el porqué, acá.
+  if (sinPrecio.length) fila(sub(`${sinPrecio.length} persona(s) con horas sin $/hora`))
   fila()
 
   // ═══ 4 · QUÉ CUESTA DESVINCULAR ═══
@@ -1239,37 +1258,45 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   // «cuánto de eso puedo pagar por recibo», que es la pregunta que decide cómo se junta la plata. Y
   // porque quedarse sólo con la liquidación formal —el error que esto previene— subestima el costo
   // de una desvinculación a la mitad exacta.
+  // ═══ LAS DOS LÍNEAS QUE EXPLICABAN ESTE CUADRO SE FUERON (05/09/2026) ═══
+  //
+  // Decían que la liquidación formal cubre el 50% y que el fondo de cese no se suma. Las dos son
+  // ciertas y las dos son EXPLICACIONES, que es lo que el dueño mandó sacar del archivo. Lo que
+  // decían ya está en los rótulos: «Liquidación (por recibo)» + «A completar en efectivo» = «⇒ SALE
+  // DE LA CAJA», y «Fondo de cese acumulado» queda fuera de la columna del ⇒ justamente porque no
+  // sale de la caja. El porqué vive acá, que es donde alguien lo va a buscar cuando importe.
   fila(seccion(3, 'qué cuesta desvincular a cada uno'))
-  fila(`La liquidación formal cubre el ${Math.round(ACUERDO_BANCO * 100)}% —la parte registrada—; el resto se completa en efectivo. Las dos columnas SUMAN: juntas son lo que sale de la caja.`)
-  fila('El fondo de cese va aparte y NUNCA se suma: es plata del trabajador que se le entrega con la libreta, no un desembolso nuevo.')
   fila('Persona', 'Régimen', 'Antigüedad', 'Vacaciones', 'SAC', 'SAC s/vac.', 'FCL no depositado',
     'Liquidación (por recibo)', 'A completar en efectivo', rotuloTotal('SALE DE LA CAJA'), 'Fondo de cese acumulado')
-  let saleTotal = 0
-  let porReciboTotal = 0
-  let enEfectivoTotal = 0
-  let fondoTotal = 0
+  const filaCosto = []
   for (const p of activos) {
     const l = costoDe(p, hoy)
     const sale = (l.vacaciones || 0) + (l.sac || 0) + (l.sacSobreVacaciones || 0) + (l.fclPagoDirecto || 0)
     const porRecibo = sale * ACUERDO_BANCO
-    const enEfectivo = sale - porRecibo
-    saleTotal += sale
-    porReciboTotal += porRecibo
-    enEfectivoTotal += enEfectivo
     const fondo = l.fclDevengadoAcumulado ?? null
-    if (typeof fondo === 'number') fondoTotal += fondo
+    filaCosto.push(destino.length)
+    // «SALE DE LA CAJA» y «A completar en efectivo» son aritmética de este mismo renglón: D+E+F+G la
+    // primera, J−H la segunda. Pegadas, el día que alguien corrija a mano una vacación las tres
+    // columnas dejan de sumar lo que su rótulo promete y nada lo dice.
+    const cuentas = cuentasDelCostoDeSalida(destino.length + 1)
     fila(p.nombre,
       p.convenio ? (/22\.250/.test(p.convenio) ? 'Ley 22.250' : p.convenio) : 'sin declarar',
       l.antiguedad ? `${l.antiguedad.anios} a ${l.antiguedad.meses} m` : SIN_DATO,
       Math.round(l.vacaciones || 0), Math.round(l.sac || 0), Math.round(l.sacSobreVacaciones || 0),
       Math.round(l.fclPagoDirecto || 0),
-      Math.round(porRecibo), Math.round(enEfectivo), Math.round(sale),
+      // `porRecibo` es la ÚNICA que sigue pegada, y con motivo: es la política del 50% registrado,
+      // que no tiene celda de parámetro en el archivo. Ver la especie C en lib/plantel-formulas.mjs.
+      Math.round(porRecibo), cuentas.efectivo, cuentas.sale,
       typeof fondo === 'number' ? Math.round(fondo) : SIN_DATO)
   }
+  const c0 = (filaCosto[0] ?? destino.length) + 1
+  const cF = destino.length
   fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', '',
-    Math.round(porReciboTotal), Math.round(enEfectivoTotal), Math.round(saleTotal), Math.round(fondoTotal))
-  fila(sub(`Si se fueran todos hoy: ${Math.round(porReciboTotal).toLocaleString('es-AR')} por recibo + ${Math.round(enEfectivoTotal).toLocaleString('es-AR')} en efectivo = ${Math.round(saleTotal).toLocaleString('es-AR')} de la caja.`))
-  fila(sub('El preaviso y la indemnización por antigüedad son CERO por el último párrafo del art. 15 de la ley 22.250, no por olvido.'))
+    sumaDeColumna('H', c0, cF), sumaDeColumna('I', c0, cF), sumaDeColumna('J', c0, cF), sumaDeColumna('K', c0, cF))
+  // NO VA UNA LÍNEA DICIENDO «el preaviso y la indemnización son CERO por el art. 15 de la ley
+  // 22.250, no por olvido». Es una explicación, y la columna «Régimen» ya publica el régimen de cada
+  // persona: quien vea «Ley 22.250» y no encuentre preaviso está viendo la consecuencia, no un
+  // olvido. El fundamento queda acá.
   // ═══ LOS DOS DE «OFICINA» SON CONSTRUCCIÓN, Y ESTÁ PROBADO CON EL PAPEL ═══
   //
   // La duda era real y cara: bajo la LCT una liquidación suma preaviso (art. 231/232), integración
@@ -1282,27 +1309,35 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   //     ingreso 07/02/2026, OFICIAL ESPECIALIZADO, albañil. De ahí salió su fecha de ingreso, que
   //     hasta hoy no estaba en ningún lado y le dejaba la antigüedad, las vacaciones y el fondo en
   //     cero — que no es «no le corresponde», es «no lo pude calcular».
+  //
+  // ESO YA NO SE ESCRIBE EN LA PESTAÑA. La conclusión —que están bajo la 22.250— la publica la
+  // columna «Régimen» de su propio renglón, persona por persona; la prueba documental es de acá.
+  //
+  // Lo que SÍ es un dato y no una explicación es quién no tiene fecha de ingreso: sin ella la
+  // antigüedad, las vacaciones y el fondo no se pueden calcular, y un cero ahí se lee como «no le
+  // corresponde». Va como RÓTULO, con los nombres y sin argumentar.
   const oficina = activos.filter((p) => p.sector === 'Oficina')
-  if (oficina.length) {
-    fila(sub(`Los ${oficina.length} de «Oficina» (${oficina.map((p) => p.nombre).join(' · ')}) están bajo la ley 22.250 igual que los obreros: probado con la libreta del IERIC de uno y el formulario de alta del otro. Por eso no llevan preaviso ni indemnización por antigüedad.`))
-    const sinIngreso = oficina.filter((p) => !p.ingreso)
-    if (sinIngreso.length) fila(sub(`Sin fecha de ingreso en ningún lado: ${sinIngreso.map((p) => p.nombre).join(' · ')}. Sin ella no hay antigüedad, ni vacaciones proporcionales, ni fondo.`))
-  }
+  const sinIngreso = oficina.filter((p) => !p.ingreso)
+  if (sinIngreso.length) fila(sub(`Sin fecha de ingreso: ${sinIngreso.map((p) => p.nombre).join(' · ')}`))
   fila()
 
   // ═══ 5 · EL LEGAJO EN DRIVE ═══
+  // El cuadro mira el NOMBRE de los archivos de la carpeta, nunca el contenido: un «alta.pdf» que
+  // adentro tenga otra cosa se cuenta como alta igual. Es un límite REAL de lo que dice este cuadro,
+  // y por eso está escrito acá y no en un renglón de la pestaña.
   fila(seccion(4, 'el legajo de cada uno en Drive'))
-  fila('Mira el NOMBRE de los archivos de su carpeta, no el contenido: un «alta.pdf» que adentro tenga otra cosa se cuenta como alta igual.')
   fila('Persona', 'Carpeta en Drive', ...PAPELES.map((p) => p.rotulo), 'Recibos', 'Último recibo', 'Qué falta')
-  const sinCarpeta = []
   let completos = 0
   for (const p of activos) {
     const m = carpetaDe(p.nombre, legajos.carpetas)
     if (!m.seguro) {
-      sinCarpeta.push(`${p.nombre}${m.candidatos.length ? ` (¿${m.candidatos.slice(0, 3).join(' o ')}?)` : ''}`)
+      // LOS CANDIDATOS VAN EN EL RENGLÓN DE SU PERSONA, NO EN UN RESUMEN AL PIE. La línea del pie
+      // («1 sin carpeta emparejada: Gonzalez Juan (¿TELLO JUAN o …?)») repetía lo que el renglón ya
+      // decía y era el único lugar donde estaban los candidatos: acá quedan al lado del nombre, que
+      // es donde se resuelve el emparejamiento.
       fila(p.nombre, m.candidatos.length ? 'sin emparejar' : 'SIN CARPETA',
         ...PAPELES.map(() => SIN_DATO), SIN_DATO, SIN_DATO,
-        m.candidatos.length ? 'no se pudo emparejar con certeza' : 'no tiene carpeta en 1. ACTIVOS')
+        m.candidatos.length ? `¿${m.candidatos.slice(0, 2).join(' o ')}?` : 'sin carpeta en 1. ACTIVOS')
       continue
     }
     const pa = papelesDe(legajos.porCarpeta.get(m.carpeta) ?? [])
@@ -1311,7 +1346,6 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
       pa.recibos || SIN_DATO, pa.ultimoRecibo ?? SIN_DATO, pa.falta.length ? pa.falta.join(' · ') : 'completo')
   }
   fila(rotuloTotal(`${completos} de ${activos.length} con los cuatro papeles`))
-  if (sinCarpeta.length) fila(sub(`${sinCarpeta.length} sin carpeta emparejada: ${sinCarpeta.join(' · ')}`))
   fila()
 
   // ═══ 6 · LO QUE NO SE PUEDE DECIR ═══

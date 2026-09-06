@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   SIN_GENERADOR, constantesDeModulo, escribeEnElSheet, esPestanaAuxiliar,
-  importaciones, pestanasAuxiliaresDe, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica, MARGEN_DINAMICA,
+  importaciones, pestanasAuxiliaresDe, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica, MARGEN_DINAMICA, origenAbierto,
 } from './pestanas-auxiliares.mjs'
 import { estaRetirado, PASOS } from './flujo-caja-pasos.mjs'
 
@@ -178,9 +178,9 @@ test('toda pestaña mantenida por una dinámica está eximida del censo, y no al
 
 test('coberturaDeDinamica: el rango que YA se quedó corto se distingue del que está por quedarse', () => {
   // El caso real medido el 14/08: origen hasta la 932, Compras en la 846 → 86 filas de aire.
-  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 846 }), { aire: 86, cubre: true, avisa: false })
+  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 846 }), { aire: 86, cubre: true, avisa: false, abierto: false })
   // Ya se quedó corto: 4 compras dejaron de contarse y el cuadro no da un solo error.
-  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 936 }), { aire: -4, cubre: false, avisa: true })
+  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 936 }), { aire: -4, cubre: false, avisa: true, abierto: false })
   // Falta poco: avisa ANTES, porque cuando se acabe el cuadro ya habrá mentido una carga entera.
   const justo = coberturaDeDinamica({ finOrigen: 932, filasFuente: 932 - MARGEN_DINAMICA + 1 })
   assert.equal(justo.cubre, true)
@@ -189,4 +189,27 @@ test('coberturaDeDinamica: el rango que YA se quedó corto se distingue del que 
 
 test('coberturaDeDinamica sin datos no felicita: un rango en 0 no puede dar por cubierta la fuente', () => {
   assert.equal(coberturaDeDinamica({ finOrigen: 0, filasFuente: 846 }).cubre, false)
+})
+
+// ═══ EL FALSO POSITIVO DEL 05/09/2026, CONVERTIDO EN ROJO ═══
+//
+// El control leía `endRowIndex ?? 0` y denunciaba 950 filas afuera del cuadro sobre una dinámica que
+// está bien. Estos dos tests fijan la distinción que faltaba: SIN TECHO no es TECHO EN CERO.
+test('origenAbierto: sin endRowIndex es abierto; endRowIndex 0 es un techo en la fila cero', () => {
+  // El origen REAL leído del Sheet el 05/09 en las dos dinámicas de "Deuda viva (OS)".
+  assert.equal(origenAbierto({ sheetId: 1666326819, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: 38 }), true)
+  assert.equal(origenAbierto({ sheetId: 1, startRowIndex: 2, endRowIndex: 0 }), false)
+  assert.equal(origenAbierto({ sheetId: 1, startRowIndex: 2, endRowIndex: 932 }), false)
+  assert.equal(origenAbierto(undefined), true)
+})
+
+test('coberturaDeDinamica: un origen ABIERTO cubre siempre y no puede reportarse como corto', () => {
+  // Los números exactos del falso positivo: Compras en la fila 950, origen sin fila final.
+  const r = coberturaDeDinamica({ abierto: true, filasFuente: 950 })
+  assert.equal(r.cubre, true, 'un origen sin fila final no puede haberse quedado corto')
+  assert.equal(r.avisa, false, 'un origen sin fila final no tiene aire que se acabe')
+  assert.equal(r.abierto, true)
+  // Y el techo en cero sobre la MISMA fuente sí es un hallazgo: si los dos dieran igual, el control
+  // no distinguiría nada y este test no podría ponerse rojo.
+  assert.equal(coberturaDeDinamica({ finOrigen: 0, filasFuente: 950 }).cubre, false)
 })
