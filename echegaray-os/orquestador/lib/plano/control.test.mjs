@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, AMBIGUEDADES_QUE_BLOQUEAN, UMBRAL_COBERTURA, ESTADO_COTIZACION } from './control.mjs'
+import { controlar, medirCobertura, supuestosOcultos, preguntas, decisiones, DECISIONES, AMBIGUEDADES_QUE_BLOQUEAN, UMBRAL_COBERTURA, ESTADO_COTIZACION, PREGUNTA_VISTAS_NO_MIRADAS } from './control.mjs'
 import { computarElemento } from './computo.mjs'
 import { validarElemento } from './interpretar.mjs'
 import { ESTADO } from './seleccion.mjs'
@@ -313,4 +313,38 @@ test('B · el resumen dice cuántas hay Y cuántas bloquean, que son dos número
   })
   assert.match(r.resumen, /identidades ambiguas 3 \(1 bloquean\)/)
   assert.equal(r.estado, ESTADO_COTIZACION.INCOMPLETA)
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE EL PIPELINE DECIDIÓ NO MIRAR TIENE QUE VERSE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Saltear `detalle` e `indeterminado` ahorra el 45% del gasto de visión. El peligro es aritmético y
+// no es obvio: la cobertura se mide sobre los elementos DETECTADOS, y una vista que no se mira no
+// detecta nada — así que mirar menos SUBE el porcentaje. Un control que muestra 25% donde antes
+// mostraba 18% y no dice que miró 53 vistas menos está informando una mejora que no existe.
+
+const vistaNoMirada = (n, tipo) => ({ archivo: 'EST-01.pdf', region: `DETALLE ${n}`, tipo, n, porQue: 'no se mira: XSAS_MIRAR_TODAS_LAS_REGIONES=1 lo revierte' })
+
+test('LAS VISTAS NO MIRADAS SALEN COMO HUECO DECLARADO, no como vistas que no existieron', () => {
+  const r = controlar({
+    computo: { detectados: 2, items: [item('A', 1)] },
+    mapeo: { mapeos: [mapeo('A', ESTADO.MAPEADA)] },
+    vistasNoMiradas: [vistaNoMirada(1, 'detalle'), vistaNoMirada(2, 'detalle'), vistaNoMirada(3, 'indeterminado')],
+  })
+  const p = r.preguntas.find((x) => x.origen === 'vista no mirada')
+  assert.ok(p, 'sin esta pregunta, 53 vistas salteadas no aparecen en ningún lado de la cotización')
+  assert.equal(p.destraba.length, 3, 'las tres vistas colapsan en UNA pregunta pero se listan las tres')
+  assert.equal(r.vistasNoMiradas.length, 3)
+  assert.match(r.resumen, /3 vista\(s\) NO miradas por costo/, 'la cobertura y lo que no se miró se leen juntos o el número se lee al revés')
+})
+
+test('SIN VISTAS SALTEADAS, el control NO inventa un hueco', () => {
+  // Un control que siempre declara el mismo hueco no informa nada — el mismo defecto que tenían
+  // los supuestos ocultos cuando eran una constante disfrazada de medición.
+  const r = controlar({ computo: { detectados: 1, items: [item('A', 1)] }, mapeo: { mapeos: [mapeo('A', ESTADO.MAPEADA)] } })
+  assert.equal(r.vistasNoMiradas.length, 0)
+  assert.equal(r.preguntas.filter((x) => x.pregunta === PREGUNTA_VISTAS_NO_MIRADAS).length, 0)
+  assert.doesNotMatch(r.resumen, /NO miradas/)
 })

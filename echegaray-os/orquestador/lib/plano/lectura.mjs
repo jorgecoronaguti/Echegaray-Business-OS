@@ -81,13 +81,47 @@ export async function interpretarRegion(recorte, { pedir = pedirTexto, refrescar
   })
   const crudo = extraerJson(r.texto)
   if (!crudo) return { ...validarLamina({}, contexto), region: recorte.region, deCache: false, uso: r, degradado: r?.degradado ?? null, error: r?.degradado ? `no se pudo mirar la vista: ${r.degradado}` : 'el modelo no devolvió JSON interpretable' }
-  await cch.guardar(llave, { crudo, region: recorte.region?.titulo ?? null, cuando: new Date().toISOString() })
+  // `archivo` se guarda ACÁ y no se deduce después: `interpretarLamina` ya lo hace y ésta no lo
+  // hacía, así que para saber de qué plano salió una lectura había que hashear los PNG del caché de
+  // recortes —que son caché y se borran—. Cuando eso se limpie, el vínculo lectura↔plano se pierde
+  // para siempre y con él la única forma de preguntar «¿este dato estaba en otra vista?».
+  await cch.guardar(llave, { crudo, region: recorte.region?.titulo ?? null, archivo, cuando: new Date().toISOString() })
   return { ...validarLamina(crudo, contexto), region: recorte.region, deCache: false, uso: r }
 }
 
 /** Las regiones que vale la pena mirar. La carátula no tiene elementos que computar y el croquis de
  *  ubicación tampoco: gastar una llamada de visión en ellas es gastar por gastar. PURA. */
 export const REGIONES_QUE_SE_MIRAN = Object.freeze(['planta', 'corte', 'vista', 'detalle', 'cuadro', 'indeterminado'])
+
+/**
+ * LAS REGIONES QUE NO PAGAN LO QUE CUESTAN — MISMO CRITERIO QUE LA CARÁTULA, CON EL NÚMERO ADELANTE.
+ *
+ * La carátula está afuera desde el principio porque no tiene nada que computar. Éstas están afuera
+ * por lo mismo, sólo que medido: sobre las 113 lecturas ya pagadas (`vision-rendimiento.mjs`),
+ * `detalle` computó 21 elementos de 249 en 40 llamadas e `indeterminado` 7 de 104 en 13. Son 53 de
+ * 169 llamadas y USD 7,91 de 17,69 —el 45% del gasto— por el 18% del cómputo, y a USD 0,261 y 0,347
+ * por elemento computado contra 0,055 de una vista y 0,093 de una planta.
+ *
+ * ═══ ESTO NO ES «EL DETALLE NO IMPORTA» ═══
+ *
+ * Un detalle constructivo importa muchísimo para EJECUTAR. Lo que dice el número es otra cosa: hoy
+ * el modelo casi no saca de ahí una cantidad cotizable, porque el detalle DIBUJA una solución y no
+ * ESCRIBE cuántas hay. Lo que se deja de mirar queda DECLARADO como hueco —nunca desaparece— y la
+ * decisión se revierte entera con `XSAS_MIRAR_TODAS_LAS_REGIONES=1`, sin tocar una línea.
+ */
+export const REGIONES_QUE_NO_PAGAN = Object.freeze(['detalle', 'indeterminado'])
+
+/** La bandera que devuelve el gasto: si el cotizador empeora, se prende y todo vuelve a mirarse. */
+export const VARIABLE_PARA_VOLVER_ATRAS = 'XSAS_MIRAR_TODAS_LAS_REGIONES'
+
+/** Qué regiones se saltean en esta corrida. PURA respecto de `env`: se le pasa, no se lee sola. */
+export function regionesSalteadas(env = process.env) {
+  return env?.[VARIABLE_PARA_VOLVER_ATRAS] === '1' ? [] : REGIONES_QUE_NO_PAGAN
+}
+
+/** El motivo, literal, que viaja con cada vista que no se miró. Sin esto la vista salteada se lee
+ *  como una vista que no existía. */
+export const porQueNoSeMiro = (tipo) => `las regiones «${tipo}» no se miran: sobre las lecturas ya pagadas rindieron ${tipo === 'detalle' ? '21 elementos cotizables de 249 en 40 llamadas' : '7 de 104 en 13 llamadas'}, el 45% del gasto de visión por el 18% del cómputo. Se vuelve a mirar corriendo con ${VARIABLE_PARA_VOLVER_ATRAS}=1`
 
 /**
  * ¿QUÉ HAY QUE HACER CON UNA LÁMINA? Bajarla si no vino adjunta, interpretarla, y medir lo que
@@ -156,19 +190,36 @@ export async function leerLaminas({
   return { laminas, noDescargables, cancelada }
 }
 
-/** Las vistas que se van a mirar, aplanadas en un orden fijo: el de las segmentaciones, el de sus
- *  láminas y el de sus recortes. PURA — y separada para poder probar el orden sin llamar a nadie. */
-export function vistasAMirar(segmentaciones = []) {
-  const unidades = []
+/**
+ * QUÉ VISTAS SE MIRAN Y CUÁLES NO, en un orden fijo: el de las segmentaciones, el de sus láminas y
+ * el de sus recortes. PURA — y separada para poder probar el reparto sin llamar a nadie.
+ *
+ * Las dos listas salen JUNTAS de la misma pasada a propósito: una vista salteada que no vuelve en
+ * ningún lado es indistinguible de una vista que no existía, y ésa es exactamente la forma en que
+ * un ahorro se convierte en una cotización que miente por omisión.
+ */
+export function repartirVistas(segmentaciones = [], { salteadas = null, env = process.env } = {}) {
+  const salt = salteadas ?? regionesSalteadas(env)
+  const aMirar = []
+  const noMiradas = []
   for (const seg of segmentaciones) {
     for (const lam of seg.laminas ?? []) {
       for (const rec of lam.recortes ?? []) {
         if (!rec.ok || !REGIONES_QUE_SE_MIRAN.includes(rec.region?.tipo)) continue
-        unidades.push({ archivo: seg.archivo, recorte: rec })
+        if (salt.includes(rec.region?.tipo)) {
+          noMiradas.push({ archivo: seg.archivo, region: rec.region?.titulo ?? null, tipo: rec.region?.tipo ?? null, n: rec.region?.n ?? null, porQue: porQueNoSeMiro(rec.region?.tipo) })
+          continue
+        }
+        aMirar.push({ archivo: seg.archivo, recorte: rec })
       }
     }
   }
-  return unidades
+  return { aMirar, noMiradas }
+}
+
+/** Sólo las que se miran. Envoltorio de `repartirVistas` para no tener dos veces el mismo reparto. */
+export function vistasAMirar(segmentaciones = [], opciones = {}) {
+  return repartirVistas(segmentaciones, opciones).aMirar
 }
 
 /** UNA MIRADA POR VISTA, NO UNA POR LÁMINA — y todas a la vez. Mismo contrato de orden que
@@ -176,12 +227,15 @@ export function vistasAMirar(segmentaciones = []) {
 export async function leerVistas({
   segmentaciones = [], pedir, refrescar = false, logger = null, cache = null, met, anotar,
   concurrencia = CONCURRENCIA_POR_DEFECTO, cancelado = null, onProgreso = null,
-  interpretar = interpretarRegion,
+  interpretar = interpretarRegion, salteadas = null,
 } = {}) {
   const cch = cache ?? cacheDeLecturas({ logger })
-  const unidades = vistasAMirar(segmentaciones)
+  const { aMirar, noMiradas } = repartirVistas(segmentaciones, { salteadas })
+  // Una vista que no se mira TAMBIÉN es una decisión, y se anota como tal: si no queda en las
+  // métricas, la corrida se lee como si esa vista no hubiera estado nunca en la lámina.
+  for (const v of noMiradas) met?.decidio?.({ que: `vista ${v.region ?? v.n}`, via: VIA.HUECO })
   const { resultados, cancelada } = await enParalelo(
-    unidades,
+    aMirar,
     async ({ archivo, recorte }) => ({ archivo, r: await interpretar(recorte, { pedir, refrescar, archivo, logger, cache: cch }) }),
     { concurrencia, cancelado, onProgreso, fase: 'vistas', que: (u) => u?.recorte?.region?.titulo ?? null })
 
@@ -192,5 +246,5 @@ export async function leerVistas({
     if (r.uso && !r.uso.degradado) met?.llamo?.({ proveedor: 'ia', modelo: r.uso.modelo, tokensIn: r.uso.tokens?.in ?? null, tokensOut: r.uso.tokens?.out ?? null, usd: r.uso.usd, ms: r.uso.ms, funcion: 'interpretar-region' })
     porRegion.push({ archivo, ...r })
   }
-  return { porRegion, cancelada }
+  return { porRegion, noMiradas, cancelada }
 }
