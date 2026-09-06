@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claseDeAdjunto, conteosDe, ESTADO, esEstructura, filtroDe, pasa, pastillaDe, totalesDe,
+  claseDeAdjunto, conteosDe, ESTADO, esEstructura, filtroDe, pasa, pastillaDe, recorteDeLista,
+  TOPE_EN_PANTALLA, totalesDe,
   type Filtrable,
 } from './comprasSheet.ts'
 
@@ -157,4 +158,63 @@ test('las tres asignaciones que no son obra llevan su chip; una obra real no', (
   for (const x of ['LA ESTRELLA', 'San Francisco', 'MESSINA', '', null, undefined]) {
     assert.equal(esEstructura(x), false, String(x))
   }
+})
+
+// ── EL RECORTE DE LA LISTA ─────────────────────────────────────────────────────────────────────
+//
+// ═══ EL DEFECTO QUE ATRAPAN ═══
+//
+// Medido en producción el 06/09/2026: la pestaña dibujaba sus 947 filas juntas y la página medía
+// 43.871px de alto. El recorte lo baja a ~9.000, y al hacerlo abre un defecto NUEVO y peor que el
+// que cierra: `?s=<fila>` es un enlace directo que ya se usa, y una fila más allá del tope quedaría
+// abierta en el panel y AUSENTE de la lista — el panel diciendo una cosa y la lista otra, sin nada
+// que explique por qué. Por eso el enlace manda sobre el tope, y por eso se prueba.
+
+/** Una lista de N filas numeradas 1..N, que es como vienen de la pestaña. */
+const listaDe = (n: number) => Array.from({ length: n }, (_, i) => ({ fila: i + 1 }))
+
+test('lo que entra en el tope se dibuja entero y no dice que falta nada', () => {
+  const r = recorteDeLista(listaDe(TOPE_EN_PANTALLA), { tope: TOPE_EN_PANTALLA })
+  assert.equal(r.enPantalla.length, TOPE_EN_PANTALLA)
+  assert.equal(r.ocultas, 0)
+})
+
+test('por encima del tope se recorta, y CUÁNTAS quedaron fuera es un número, no un «hay más»', () => {
+  // Sin `ocultas` la lista recortada se lee como la lista entera: el modo de falla es silencioso.
+  const r = recorteDeLista(listaDe(947), { tope: 200 })
+  assert.equal(r.enPantalla.length, 200)
+  assert.equal(r.ocultas, 747)
+  assert.equal(r.enPantalla.length + r.ocultas, 947)
+})
+
+test('EL ENLACE DIRECTO MANDA SOBRE EL TOPE: la fila abierta siempre está en la lista', () => {
+  // `?s=611` con la fila 611 en la posición 610 de un tope de 200. Si el corte ignorara `abierta`,
+  // el panel mostraría la compra 611 y la lista no la tendría.
+  const r = recorteDeLista(listaDe(947), { tope: 200, abierta: 611 })
+  assert.ok(r.enPantalla.some((f) => f.fila === 611), 'la fila abierta quedó fuera de su propia lista')
+  assert.equal(r.enPantalla.length, 611)
+  assert.equal(r.ocultas, 336)
+})
+
+test('una fila abierta que NO está en el recorte filtrado no estira nada', () => {
+  // El filtro puede haberla sacado —«A pagar» con una compra pagada abierta—. Estirar hasta una fila
+  // que no está en la lista devolvería `-1 + 1 = 0` y, con un `Math.max` mal puesto, la lista vacía.
+  const r = recorteDeLista(listaDe(947), { tope: 200, abierta: 9999 })
+  assert.equal(r.enPantalla.length, 200)
+  assert.equal(r.ocultas, 747)
+})
+
+test('`todo` levanta el tope entero: ninguna fila queda fuera de alcance', () => {
+  // El recorte no puede volverse una pared. Sin esta puerta, la fila 900 sólo se alcanzaría
+  // adivinando su número en la URL.
+  const r = recorteDeLista(listaDe(947), { tope: 200, todo: true })
+  assert.equal(r.enPantalla.length, 947)
+  assert.equal(r.ocultas, 0)
+})
+
+test('el tope por defecto es el declarado, no uno que se elige en cada llamada', () => {
+  // Dos pantallas con dos topes distintos sobre la misma lista es cómo nace un «no hay más» que
+  // depende de por dónde entraste.
+  assert.equal(recorteDeLista(listaDe(TOPE_EN_PANTALLA + 1)).enPantalla.length, TOPE_EN_PANTALLA)
+  assert.equal(recorteDeLista(listaDe(TOPE_EN_PANTALLA + 1)).ocultas, 1)
 })

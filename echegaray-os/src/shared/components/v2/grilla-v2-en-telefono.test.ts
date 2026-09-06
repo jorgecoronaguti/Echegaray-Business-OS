@@ -45,6 +45,12 @@ const GRILLAS = [
   'src/features/administracion/components/CarteraHome.tsx',
   'src/features/administracion/components/LibroDeTrabajo.tsx',
   'src/shared/components/v2/TrabajoDeSeccion.tsx',
+  // COMPRAS entra el 06/09/2026, cuando deja el canon de agosto. Es la grilla más ancha del OS:
+  // las OCHO columnas del canvas son todas inelásticas —los `minmax(150px,…)` declaran piso— y
+  // suman 826px más 98 de `gap`. Mientras vivió dentro de `TarjetaTabla` eso lo tapaba la caja de
+  // scroll del canon; sin caja, a 390px la fila se corta contra el borde y `body` lleva
+  // `overflow-x: clip`, así que no aparece ni una barra que lo delate.
+  'src/features/administracion/components/TablaComprasSheet.tsx',
 ]
 
 /** El fuente SIN comentarios: este repo explica en prosa lo que retiró, y una prosa correcta no
