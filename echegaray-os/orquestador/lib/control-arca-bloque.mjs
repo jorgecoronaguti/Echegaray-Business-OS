@@ -141,6 +141,29 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
 export const ALTO_BLOQUE = 9
 
 /**
+ * NÚCLEO PURO: el bloque, declarado como UNA SOLA IDEA para la huella por celda.
+ *
+ * ═══ POR QUÉ HACE FALTA DECIRLO (06/09/2026) ═══
+ *
+ * Las nueve filas no son nueve datos: son un control. `⇒ Cobertura fiscal` es `B(universo)` sobre
+ * `B(conRespaldo)` — sin sus dos insumos publica `""` pase lo que pase, y una celda vacía debajo de un
+ * rótulo que promete cobertura afirma que se está mirando algo que no se mira.
+ *
+ * Medido: cuando este bloque cambió de forma el 13/08, la huella leyó el hueco que dejó el
+ * movimiento como «el dueño vació estas celdas» y las marcó BORRADAS —15 en Estructura, 19 en
+ * Recurrentes— para siempre. Las únicas que sobrevivieron son el título y el `⇒`, porque son las
+ * únicas que `esCeldaDeEstructura` sabe rescatar. El resultado son tres controles mudos publicados
+ * durante tres semanas. `Materiales`, que corre este MISMO bloque y no se movió ese día, no tiene una
+ * sola marca y publica su cobertura sin problema: el bloque funciona, lo que falló es la propiedad.
+ *
+ * @param {number} fila0 la fila REAL de la planilla donde arranca el bloque (la misma que `bloqueControlArca`)
+ * @returns {{desde:number, hasta:number}} rango de filas inclusivo, para `escribirPreservando`
+ */
+export function bloqueIndivisible(fila0) {
+  return { desde: fila0, hasta: fila0 + ALTO_BLOQUE - 1 }
+}
+
+/**
  * QUÉ UNIDAD TIENE CADA FILA DEL BLOQUE — declarado acá, aplicado por las tres pestañas.
  *
  * ═══ EL DEFECTO (14/08/2026) ═══

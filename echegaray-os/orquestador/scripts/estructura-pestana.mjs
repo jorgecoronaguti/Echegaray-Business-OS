@@ -27,7 +27,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
-import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
+import { bloqueControlArca, bloqueIndivisible, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -196,7 +196,13 @@ export function grilla() {
   }
 
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replaceAll('$TOT', String(fTot)) : c)))
-  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros, arca0 }
+  // LOS DOS CUADROS DE CONTROL SON INDIVISIBLES, y el generador es el único que lo sabe. Sin esta
+  // declaración la huella los da por borrados de a pedazos cuando este layout se mueve: pasó el
+  // 13/08 y dejó `B28` («⇒ Cobertura fiscal») publicando `""` con B25/B26 vacías, y `B19` («⇒
+  // Diferencia … debe ser $0») restando contra una `B18` vacía, o sea gritando en rojo el total
+  // entero del cuadro. Ver lib/celda-de-estructura.mjs.
+  const indivisibles = [{ desde: fc - 1, hasta: fc + 2 }, bloqueIndivisible(arca0)]
+  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros, arca0, indivisibles }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -291,7 +297,7 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, reqC)
 
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO), indivisibles: g.indivisibles })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace

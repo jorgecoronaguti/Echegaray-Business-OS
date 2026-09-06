@@ -43,7 +43,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
-import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
+import { bloqueControlArca, bloqueIndivisible, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
@@ -230,7 +230,12 @@ export function grilla(proveedores) {
     push(fila)
   }
 
-  return { filas, f0, f1, fTot, ctrl, fDif, arca0 }
+  // LOS DOS CUADROS DE CONTROL SON INDIVISIBLES. El de arriba arranca en su título (`ctrl`) y termina
+  // en «meses cerrados en $0»; el de ARCA declara su propio alto. Sin esto la huella los da por
+  // borrados de a pedazos cuando el layout se mueve: pasó el 13/08 y dejó `B24` («⇒ Cobertura
+  // fiscal») y `B14` («⇒ Diferencia») publicando sobre insumos vacíos. Ver lib/celda-de-estructura.mjs.
+  const indivisibles = [{ desde: ctrl, hasta: ctrl + 5 }, bloqueIndivisible(arca0)]
+  return { filas, f0, f1, fTot, ctrl, fDif, arca0, indivisibles }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -357,7 +362,7 @@ async function main() {
   // limpia la fila donde todo lo que hay es forma de dato generado o un rótulo que ya escribí antes.
   const cola = await conColaMedidaLeida(google, ID, hoja.title, gridRec, { ancho: ANCHO, conPrueba: true, pestana: hoja.title })
   if (avisoDeCola(cola, hoja.title)) console.log(avisoDeCola(cola, hoja.title))
-  const escritura = await escribirPreservando(google, ID, hoja.title, cola.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, hoja.title, cola.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO), indivisibles: g.indivisibles })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace

@@ -4,8 +4,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  bloqueControlArca, ALTO_BLOQUE, comprasDevengado, DIR, C, DESDE, HASTA, FILA_BLOQUE, MONTOS_BLOQUE,
+  bloqueControlArca, bloqueIndivisible, ALTO_BLOQUE, comprasDevengado, DIR, C, DESDE, HASTA,
+  FILA_BLOQUE, MONTOS_BLOQUE,
 } from './control-arca-bloque.mjs'
+import { enBloqueIndivisible } from './celda-de-estructura.mjs'
 
 const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
 
@@ -190,4 +192,36 @@ test('toda pestaña que inserta el bloque declara el formato de su cobertura', (
     assert.doesNotMatch(fuente, /g\.arca0 \+ \d/,
       `${f} todavía tipea a mano un desplazamiento del bloque: reordenar una fila lo desincroniza en silencio`)
   }
+})
+
+// ═══ EL BLOQUE ES UNA SOLA IDEA, Y HAY QUE DECIRLO (06/09/2026) ═══
+//
+// `⇒ Cobertura fiscal de esta pestaña` es una división entre dos celdas del propio bloque. Cuando la
+// huella por celda dio esas dos por borradas —15 celdas de Estructura marcadas en un instante el
+// 13/08, 19 de Recurrentes— la fórmula quedó viva sobre insumos vacíos y devolvió `""` para siempre.
+// `bloqueIndivisible` es lo que impide que el bloque se pierda de a pedazos, y estos tests lo atan al
+// orden real de sus filas: si alguien agrega una línea al bloque y no mueve `ALTO_BLOQUE`, dan rojo.
+
+test('bloqueIndivisible cubre las nueve filas del bloque, desde su título hasta su veredicto', () => {
+  const b = bloqueIndivisible(22)
+  assert.equal(b.desde, 22)
+  assert.equal(b.hasta, 30)
+  assert.equal(b.hasta - b.desde + 1, ALTO_BLOQUE)
+  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0: 22 })
+  assert.equal(filas.length, ALTO_BLOQUE, 'el alto declarado y el emitido son el mismo')
+})
+
+test('LA COBERTURA Y SUS DOS INSUMOS caen adentro del bloque declarado', () => {
+  const fila0 = 22
+  const b = bloqueIndivisible(fila0)
+  const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0 })
+  const cobertura = filas[FILA_BLOQUE.cobertura][1]
+  assert.match(String(cobertura), /^=IF\(B\d+=0;"";B\d+\/B\d+\)$/, 'la cobertura es una división entre dos celdas de la pestaña')
+  const insumos = [...String(cobertura).matchAll(/B(\d+)/g)].map((m) => Number(m[1]))
+  assert.ok(insumos.length >= 2)
+  for (const f of insumos) {
+    assert.ok(f >= b.desde && f <= b.hasta, `el insumo B${f} de la cobertura tiene que estar amparado por el bloque ${b.desde}-${b.hasta}`)
+  }
+  // Y la propia fila de la cobertura, obviamente.
+  assert.ok(enBloqueIndivisible(fila0 + FILA_BLOQUE.cobertura, [b]))
 })

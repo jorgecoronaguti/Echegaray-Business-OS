@@ -64,3 +64,59 @@ export function esCeldaDeEstructura(v, fila = null) {
   if (esRotuloDeEstructura(v)) return true
   return Array.isArray(fila) ? esRotuloDeEstructura(fila[0]) : false
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UN CONTROL PUBLICADO NO SE PARTE POR LA MITAD
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// ═══ EL DEFECTO MEDIDO EL 06/09/2026, CON LA BASE Y EL ARCHIVO VIVO AL LADO ═══
+//
+// `Estructura!B28` y `Recurrentes!B24` publican «⇒ Cobertura fiscal de esta pestaña» con la fórmula
+// entera —`=IF(B25=0;"";B26/B25)`— y B25/B26 VACÍAS: devuelven `""` pase lo que pase. `Recurrentes!B14`
+// («⇒ Diferencia — un proveedor del rubro que el cuadro no lista») igual, con B12/B13 vacías. Y
+// `Estructura!B19` es peor todavía: su `=ROUND($B18-$N15;0)` con B18 vacía publica el total del cuadro
+// EN ROJO como si faltara todo. Tres controles que no pueden dar rojo y uno que da rojo siempre.
+//
+// LA CAUSA, probada en `sheet_huella_celda`: 15 celdas de Estructura marcadas `borrada_en` en UN
+// instante (13/08 15:13) y 19 de Recurrentes en otro (13/08 19:30) — el día que `control-arca-bloque`
+// les cambió la forma al bloque. Son exactamente las celdas de sus dos cuadros de control, ni una del
+// resto de la pestaña. `Materiales`, que corre el MISMO bloque y no se movió ese día, tiene cero
+// marcas y publica su cobertura sin problema.
+//
+// Nadie vacía diecinueve celdas de dos cuadros de control en un instante y deja los `⇒` en pie. El
+// generador movió su bloque, la huella leyó el hueco como «lo vaciaste vos», y la marca es
+// PERMANENTE: se sale de ella sólo si la celda vuelve a tener contenido, y el generador dejó de
+// escribirla justamente porque la marca se lo prohíbe. Lazo cerrado, desde hace tres semanas.
+//
+// El seguro de alineación (15/08) no alcanza: la pestaña ALINEA —281 de 293 celdas caen donde el mapa
+// dice— porque el cuadro de arriba, que es casi toda la pestaña, no se movió. Se mueve un bloque, no
+// la pestaña. Y `esCeldaDeEstructura` (04/09) rescata sólo el `⇒` y el `N ·`, que es la razón exacta
+// por la que hoy sobrevive el rótulo del control y no sus insumos.
+//
+// ═══ POR QUÉ SE DECLARA Y NO SE ADIVINA ═══
+//
+// Un heurístico de texto no puede saber que B25 es el insumo de B28: son un rótulo y una fórmula como
+// cualquier otra. Quien SÍ lo sabe es el generador que emite el bloque — ahí está escrito que esas
+// nueve filas son una sola idea. La declaración viaja desde el generador hasta la huella y no se
+// deduce de la pantalla.
+//
+// ═══ EL COSTO, DECLARADO ═══
+//
+// Dentro de un bloque declarado, un borrado a mano del dueño VUELVE en la corrida siguiente. Es
+// deliberado y es el lado correcto para equivocarse: media fila de un control es una afirmación falsa
+// («acá se está mirando») y eso vale más que la molestia de que una línea reaparezca. La salida sigue
+// existiendo y es la de siempre — candar la pestaña (`pestana-bloqueada.mjs`), que frena a TODOS los
+// escritores, no sólo a éste. Se declara el CUADRO DE CONTROL, nunca el cuerpo de datos: ahí es donde
+// el dueño anota, y ahí la huella sigue mandando entera.
+
+/**
+ * NÚCLEO PURO: ¿esta fila cae dentro de un bloque que el generador declaró indivisible?
+ *
+ * @param {number} fila fila de la PESTAÑA (1-based), la de hoy — no la del mapa de huellas
+ * @param {Array<{desde:number, hasta:number}>} bloques rangos inclusivos declarados por el generador
+ * @returns {boolean}
+ */
+export function enBloqueIndivisible(fila, bloques = []) {
+  if (!Number.isFinite(fila) || !Array.isArray(bloques)) return false
+  return bloques.some((b) => Number.isFinite(b?.desde) && Number.isFinite(b?.hasta) && fila >= b.desde && fila <= b.hasta)
+}
