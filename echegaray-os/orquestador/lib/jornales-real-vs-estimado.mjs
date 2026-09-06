@@ -395,11 +395,16 @@ export function formulaOrigenDelReal({ celdaDesde, celdaMovs }) {
   const nModo = `COUNTIFS(${criterios(celdaDesde)};${IMPORTE};${modo})`
   const n = `N(${celdaMovs})`
   return conQuincena(celdaDesde,
-    `IF(${n}=0;"sin movimientos de haberes en la ventana de pago — el extracto todavía no los muestra";`
+    // LA COLUMNA DE ORIGEN DECLARA DE DÓNDE SALE EL NÚMERO; NO CUENTA QUÉ SIGNIFICA. Las tres ramas
+    // medían 85, 152 y 92 caracteres contra un tope de 60 (contrato: lib/diseno-unificado.mjs), y lo
+    // que sobraba era siempre la interpretación: que un pago uniforme «es la forma del 50% acordado
+    // y NO la liquidación individual», que importes distintos son «persona por persona». Eso se
+    // deduce de lo que la celda declara —cuántos movimientos y si son iguales— y está escrito acá.
+    `IF(${n}=0;"sin movimientos en la ventana de pago";`
     + `IF(${nModo}*${UNIFORME_DEN}>=${n}*${UNIFORME_NUM};`
-    + `"extracto · "&${n}&" movimientos iguales de "&TEXT(ABS(${modo});"$#,##0")&" — pago uniforme, la forma del 50% acordado; NO es la liquidación individual";`
-    + `"extracto · "&${n}&" movimientos de importes distintos — liquidación individual, persona por persona"))`,
-    '"el registro no tiene la fecha de la quincena: no hay período contra el que medir"')
+    + `"extracto · "&${n}&" pagos iguales de "&TEXT(ABS(${modo});"$#,##0");`
+    + `"extracto · "&${n}&" pagos de importes distintos"))`,
+    '"sin fecha de quincena"')
 }
 
 /** El total de la quincena INFERIDO del acuerdo: el banco por dos. `*2`, entero, sin coma. */
@@ -470,7 +475,15 @@ export function colContraste(rotulo, cols = COLS_CONTRASTE) {
  * efectivo no existe como dato. El día que exista una planilla de sobres firmados, esta constante se
  * reemplaza por su fórmula y el cuadro deja de tener un hueco.
  */
-export const EFECTIVO_SIN_FUENTE = 'sin fuente: «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla'
+// EL PORQUÉ NO CABE EN LA CELDA Y NO HACE FALTA QUE QUEPA: «Total recibo» de JORNALES es
+// TOTAL−ADELANTO−BANCO, o sea un residuo de la misma planilla que se quiere verificar — validar un
+// control contra la información que él mismo produce. Por eso no hay real de efectivo: no hay fuente.
+export const EFECTIVO_SIN_FUENTE = 'sin fuente registrada'
 
-/** Ídem para el total: es una INFERENCIA del acuerdo y el cuadro lo dice en la celda, no en una nota. */
-export const TOTAL_INFERIDO = 'INFERIDO del acuerdo 50/50 — banco × 2. No es un hecho: la mitad en efectivo no está probada'
+/**
+ * Ídem para el total: es una INFERENCIA del acuerdo y el cuadro lo dice en la celda, no en una nota.
+ * La palabra «INFERIDO» es lo que la regla de oro pide —no presentar una estimación como un hecho— y
+ * alcanza sola; lo que se sacó de la celda es la explicación de por qué no es un hecho: la mitad en
+ * efectivo del acuerdo 50/50 no está probada por ningún registro de entrega.
+ */
+export const TOTAL_INFERIDO = 'INFERIDO · banco × 2'

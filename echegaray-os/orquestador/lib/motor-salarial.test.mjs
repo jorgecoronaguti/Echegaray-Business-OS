@@ -241,7 +241,7 @@ test('EL CONTROL CONTRA EL CONVENIO YA NO ESPERA UNA CARGA MANUAL', () => {
     'un "vacío o no vacío" deja entrar la basura de un layout viejo')
   // Y LA FILA DICE QUE SE IGNORÓ SU CELDA. Corregir el número y dejar al dueño creyendo que su
   // categoría manda es media corrección.
-  assert.match(String(p.filas[1][7]), /«Convenio» no está en la escala/)
+  assert.match(String(p.filas[1][7]), /▲ fuera de escala — uso Oficial/)
   assert.doesNotMatch(String(p.filas[1][7]), /"—"/, 'con equivalencia declarada la fila ya tiene respuesta')
   // Una categoría desconocida NO se adivina: vuelve al "—" y la línea de arriba la nombra.
   const raro = filasPlantel({
@@ -250,12 +250,31 @@ test('EL CONTROL CONTRA EL CONVENIO YA NO ESPERA UNA CARGA MANUAL', () => {
   })
   assert.deepEqual(raro.equivalencias, [['ZZ', null]])
   assert.match(String(raro.filas[1][7]), /"—"/)
-  // La línea pasó de 180 caracteres a un rótulo (13/08). Sigue diciendo LAS DOS COSAS que decide:
-  // cuál categoría no tiene equivalente —marcada con ⚠, porque el control queda ciego para ella— y
-  // contra qué escala compara cada una. Lo que se fue es "si escribís otra en «Convenio», manda la
-  // tuya", que ahora vive en el encabezado de esa columna.
+  // La línea pasó de 180 caracteres a un rótulo (13/08) y el 06/09 se quedó sólo con el PENDIENTE:
+  // la categoría sin equivalente sigue nombrada —el control queda ciego para ella y hay que
+  // declararla— y la traducción de las que SÍ tienen equivalente se fue a la fila de cada una.
   assert.match(formulaConvenioPendiente(11, 11, raro.equivalencias), /▲.*ZZ/)
-  assert.match(formulaConvenioPendiente(11, 12, p.equivalencias), /OF→Oficial · A M→Ayudante/)
+  assert.equal(formulaConvenioPendiente(11, 12, p.equivalencias), '',
+    'con todas las equivalencias resueltas no hay nada que decir arriba del bloque')
+})
+
+test('LA EQUIVALENCIA DE CONVENIO SE LEE EN LA FILA, NO EN UN GLOSARIO', () => {
+  // El glosario de arriba del cuadro medía 85 caracteres contra el tope de 60 del contrato, y no se
+  // podía borrar sin perder el dato: la columna «Convenio (tuya)» es del dueño y viene vacía, así
+  // que nada más en la pestaña decía contra qué categoría de la escala se mide «OF».
+  const p = filasPlantel({
+    hoja: '_J_OBREROS', bloque: { inicio: 495, fin: 510 }, categorias: ['OF', 'A M'],
+    personas: 16, filaInicio: 10, escalonVigente: escalones[0],
+  })
+  // Sin la última fila, que es el ⇒ del total y no una categoría.
+  assert.deepEqual(p.filas.slice(1, -1).map((f) => f[0]), ['OF → Oficial', 'A M → Ayudante'])
+  // Y una categoría sin equivalente NO inventa una flecha: queda el código pelado, que es lo único
+  // cierto sobre ella.
+  const raro = filasPlantel({
+    hoja: '_J_OBREROS', bloque: { inicio: 495, fin: 510 }, categorias: ['ZZ'],
+    personas: 1, filaInicio: 10, escalonVigente: escalones[0],
+  })
+  assert.equal(raro.filas[1][0], 'ZZ')
 })
 
 test('el estado de la réplica llega a la pestaña como un sub-ítem, no como una nota escondida', () => {

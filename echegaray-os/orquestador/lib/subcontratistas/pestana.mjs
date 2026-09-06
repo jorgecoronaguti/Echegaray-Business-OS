@@ -64,7 +64,10 @@ export function construir() {
   const secciones = []
 
   f.push(['SUBCONTRATISTAS'])
-  f.push(['Trabajos puntuales contratados a nombres sueltos. Los montos se calculan contra «Compras»: acá no hay un solo número escrito a mano.'])
+  // LA FILA 2 DECLARA, NO EXPLICA (tope 120 del contrato; medía 132). «Acá no hay un solo número
+  // escrito a mano» es una promesa sobre el generador, y quien la verifica es
+  // `censo-numeros-pegados`, que hoy da cero en esta pestaña. En la fila 2 va de dónde sale el dato.
+  f.push(['Trabajos puntuales a nombres sueltos · calculado desde «Compras»'])
   f.push(V())
 
   const fKpi = f.length + 1
@@ -111,12 +114,26 @@ export function construir() {
   // OJO: C del KPI es la PROPORCIÓN, no un importe. El total sin comprobante vive en la tabla.
   f[fKpi - 1][2] = `=IF(E${sub.total}=0;"";F${sub.total}/E${sub.total})`
 
-  f.push(['Azul: dato tipeado.  ·  Verde: calculado desde «Compras».  ·  Ningún monto se escribe a mano.'])
-  f.push(['Quién es subcontratista no lo dice ninguna columna de «Compras»: es un juicio, y vive escrito en orquestador/lib/subcontratistas/padron.mjs.'])
-  for (const a of ALIAS_PROBABLE) {
-    f.push([`«${a.enCompras}» (proveedor) y «${a.enLegajos}» (legajo) parecen la misma persona — ${a.confianza}.`])
-  }
-  const pie = { desde: f.length - 1 - ALIAS_PROBABLE.length, hasta: f.length }
+  // ═══ EL PIE DE TRES NOTAS SE FUE, Y CADA UNA POR SU MOTIVO (06/09/2026) ═══
+  //
+  // Eran 375 caracteres al pie de la pestaña —la leyenda de los colores, el criterio del padrón y
+  // los alias probables—, y el contrato (lib/diseno-unificado.mjs, regla 10) no admite ninguna de
+  // las tres formas: leyenda, glosario ni nota al pie.
+  //
+  //   · LA LEYENDA DE COLORES explicaba una convención que se ve sola —el azul es lo tipeado, el
+  //     verde lo calculado— y afirmaba lo mismo que la fila 2. Se borra.
+  //   · EL CRITERIO DEL PADRÓN es cierto y sigue importando: quién es subcontratista NO lo dice
+  //     ninguna columna de «Compras», es un juicio y vive en `padron.mjs`. Está escrito acá, que es
+  //     donde lo busca el que va a cambiarlo; en la pestaña era una nota al pie que nadie acciona.
+  //   · LOS ALIAS PROBABLES son un HALLAZGO —dos nombres que parecen la misma persona sin CUIT que
+  //     lo confirme— y por eso NO se borran: se devuelven en `avisos` y el script los imprime al
+  //     correr. Un hallazgo se resuelve; publicarlo al pie de un cuadro es dejarlo ahí para siempre.
+  //
+  // `pie` se conserva como rango para que el formato siga teniendo dónde apoyarse, y ahora apunta a
+  // la última fila escrita: sin él, la tinta de la hoja se aplicaría a un rango que no existe.
+  const pie = { desde: f.length, hasta: f.length }
+  const avisos = ALIAS_PROBABLE.map((a) =>
+    `«${a.enCompras}» (proveedor) y «${a.enLegajos}» (legajo) parecen la misma persona — ${a.confianza}`)
 
-  return { filas: f, azul, verde, fechas, monedas, totales, encabezados, secciones, bloques, fKpi, pie }
+  return { filas: f, azul, verde, fechas, monedas, totales, encabezados, secciones, bloques, fKpi, pie, avisos }
 }

@@ -231,7 +231,11 @@ export function proyectarProxima(resumenes = [], { minMeses = 2 } = {}) {
       : 'ningún comercio se repitió en los resúmenes cargados')
   }
 
-  huecos.push('no incluye los consumos del período en curso')
+  // EL ⊘ ES «NO ENTRA ACÁ» EN TODO EL ARCHIVO, y con él el hueco se declara sin argumentar: «no
+  // incluye los consumos del período en curso» son seis palabras con un conector adentro, o sea una
+  // explicación bajo el contrato. Lo que el renglón dice es lo mismo — el piso no cuenta lo que se
+  // gastó desde el último cierre — y ahora en la mitad de los caracteres.
+  huecos.push('⊘ consumos del período en curso')
 
   const piso = c(componentes.filter((x) => x.procedencia === 'HECHO' && x.moneda === 'ARS').reduce((s, x) => s + x.importe, 0))
   return { componentes, piso, huecos, resumenes: orden.length, proximoCierre: r0.proximoCierre, proximoVencimiento: r0.proximoVencimiento }
