@@ -505,13 +505,25 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   fila('')
 
   fila(seccion(1, `qué se le paga a cada uno · quincena ${quincena.desde ?? '—'} a ${quincena.hasta ?? '—'}`))
-  fila(`Acuerdo 50/50: al banco la mitad del bruto, en efectivo el resto menos el adelanto ya entregado. `
-    + `Escala ${escala.rotulo ?? 'sin escala'}: a cada hora se le cierra el `
-    + `${Math.round(PORCENTAJE_DE_AUMENTO * 100)}% de la BRECHA hasta el piso de su categoría — el resultado `
-    + `nunca pasa el piso, y al que ya lo cobra no se le toca la hora.`)
-  fila(quincena.diasPendientes.length
-    ? `Horas = lo cargado + los días que faltan a jornada completa (9 h L-J, 8 h viernes): ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h.`
-    : 'La quincena está cargada entera: no se completó ninguna jornada.')
+
+  // ═══ SE FUERON DOS RENGLONES DE MÉTODO, Y UNO DEJÓ UN DATO ATRÁS ═══
+  //
+  // Acá se explicaba el acuerdo 50/50 —«al banco la mitad del bruto, en efectivo el resto menos el
+  // adelanto ya entregado»— y cómo se cierra la brecha hasta el piso de convenio. Es método: quien
+  // mira este cuadro el día de pago no lo necesita, y el dueño pidió el 05/09/2026 «minimalismo
+  // extremo, sin aclaraciones ni explicaciones de nada».
+  //
+  // El segundo renglón NO era sólo explicación: adentro de la frase iba el DATO de qué días se
+  // completaron a jornada y con cuántas horas. Eso no es glosa, es de dónde sale el número de horas
+  // que se paga — borrarlo entero lo escondía. Queda el dato con rótulo mínimo y sin la lección de
+  // cómo se cuenta una jornada.
+  //
+  // El método sigue escrito donde se ejecuta: el 50/50 en `ACUERDO_BANCO`, la brecha en
+  // `PORCENTAJE_DE_AUMENTO` y su comentario, y la jornada (9 h L–J, 8 h viernes) en el cálculo de
+  // `diasPendientes`.
+  if (quincena.diasPendientes.length) {
+    fila(`Jornadas completadas: ${quincena.diasPendientes.map((d) => `${d.etiqueta} ${d.horas} h`).join(' · ')} = ${quincena.horasPendientes} h`)
+  }
   // ═══ LAS TRES TARIFAS, UNA AL LADO DE LA OTRA (29/08) ═══
   //
   // `$/h HOY` y `$/h CON AUMENTO` estaban separadas por tres columnas de plata, y la del medio —el
@@ -1213,7 +1225,37 @@ function grilla(activos, { hoy, quincena, escala, legajos, recibosPorCuil = new 
   }
   const q0 = (filaQuienes[0] ?? destino.length) + 1
   const qF = destino.length
-  fila(rotuloTotal(`${activos.length} persona(s)`), '', '', '', '', '', sumaDeColumna('G', q0, qF), sumaDeColumna('H', q0, qF))
+  // ═══ EL CENTINELA, NO LA CADENA VACÍA (05/09/2026) ═══
+  //
+  // Estas cinco celdas iban con `''`, y `''` NO vacía: la guarda de no-borrar lo lee como «el
+  // generador no escribe acá» y conserva lo que hubiera antes. Resultado medido sobre el archivo
+  // real después de correr esta pestaña: la fila de TOTALES arrastraba `Obra`, `OF`, `46128`,
+  // `0 a 4 m` y `5924` de una versión anterior del cuadro, corrida tras corrida. `D24` se veía
+  // **«$46.128»** — un serial de fecha con formato de moneda, o sea un número mudo con cara de
+  // importe en el renglón que suma la plata, que es exactamente lo que las reglas de oro prohíben.
+  //
+  // `VACIO` dice «esta celda es MÍA y va vacía», y la fusión la limpia. No es saltear la guarda: la
+  // guarda sigue exigiendo huella propia de esa celda.
+  //
+  // ═══ Y ESTO NO ALCANZÓ PARA LIMPIAR EL RESIDUO. LO DIGO ACÁ PORQUE ES LO QUE MIDIÓ ═══
+  //
+  // Se corrió con el cambio puesto y el auditor de pantalla sigue dando los mismos 15 defectos. El
+  // log dice por qué, celda por celda: «F24 nunca fue mía y tiene algo tuyo ("5924"): no la piso».
+  // Esas celdas NO tienen huella del OS — son de una versión del generador anterior al sistema de
+  // huellas, la capa fósil que `cola-de-rango` documenta. `VACIO` sólo se obedece con huella propia,
+  // así que la guarda las conserva, y hace bien: sin huella no puede distinguir su propio sedimento
+  // de una nota del dueño.
+  //
+  // El cambio se queda igual porque expresa la intención correcta —el generador declara que esas
+  // celdas son suyas y van vacías— y el día que tengan huella se limpiarán solas. Pero NO resuelve
+  // lo que hay hoy. Para eso hace falta `MIA_PROBADA`, el tercer estado que se obedece sin huella
+  // cuando lo que hay tiene forma de generador; está detrás de una bandera apagada a propósito y su
+  // regla es explícita: se enciende en la pestaña donde se MIDIÓ el fósil y se verificó el resultado
+  // contra el PDF. Eso no se hizo acá, así que no se enciende.
+  //
+  // Lo que queda visible mientras tanto: `D24` se lee «$46.128» en la fila de TOTALES — un serial de
+  // fecha con formato de moneda, un número mudo con cara de importe en el renglón que suma la plata.
+  fila(rotuloTotal(`${activos.length} persona(s)`), VACIO, VACIO, VACIO, VACIO, VACIO, sumaDeColumna('G', q0, qF), sumaDeColumna('H', q0, qF))
   fila()
 
   // ═══ 3 · EL AÑO, MES A MES ═══
