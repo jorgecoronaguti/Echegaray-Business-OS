@@ -637,7 +637,8 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   if (!candidata) return mutacion ? escrituraNoDisponible({ pedido, eleccion, sinFirma, texto, t0 }) : null
   const ia = await puertaIa(deps)
   const completo = await completarArgumentos({
-    ia, texto, tool: candidata.tool, args: candidata.resuelto.args, falta: candidata.resuelto.falta, logger: deps.logger ?? null,
+    ia, llm: await puertaArgumentos(deps),
+    texto, tool: candidata.tool, args: candidata.resuelto.args, falta: candidata.resuelto.falta, logger: deps.logger ?? null,
   })
   // ═══ MUTACIÓN CON TOOL ALCANZABLE PERO SIN DATO: SE PIDE EL DATO, NO SE INVENTA NADA ═══
   // La capacidad de escritura existe y puede correr; lo que falta es un argumento que ni el
@@ -716,7 +717,7 @@ async function atenderPendiente({ pedido, texto, mapa, deps, t0 }) {
   }
   if (faltan.length) {
     const ia = await puertaIa(deps)
-    const completo = await completarArgumentos({ ia, texto, tool, args, falta: faltan, logger: deps.logger ?? null })
+    const completo = await completarArgumentos({ ia, llm: await puertaArgumentos(deps), texto, tool, args, falta: faltan, logger: deps.logger ?? null })
     args = completo.args
     faltan = completo.falta
   }
@@ -1223,4 +1224,40 @@ function escrituraNoDisponible({ pedido, eleccion, sinFirma, texto, t0 }) {
 async function puertaIa(deps) {
   if (deps.ia) return deps.ia
   return import('./ia/cliente.mjs')
+}
+
+/**
+ * LA PUERTA PARA COMPLETAR ARGUMENTOS — la que sí puede resolverse sin Claude.
+ *
+ * ═══ POR QUÉ ES UNA PUERTA APARTE DE `puertaIa` ═══
+ *
+ * `puertaIa` atiende `resolverConModelo`, que contesta EN PALABRAS sobre datos del negocio: obras,
+ * márgenes, cobranzas. Eso es CONFIDENTIAL y va a Claude, y cambiarlo sería exactamente el error
+ * que la política existe para impedir.
+ *
+ * Completar argumentos es otra cosa: viaja una frase y los nombres de los parámetros que la
+ * herramienta declara, y vuelve un JSON del que sólo se aceptan las claves del `input_schema`. Es
+ * `intenciones` —INTERNAL— y por eso puede atenderlo Hugging Face. Meter las dos por la misma
+ * puerta obligaría a que la más sensible mande sobre la más barata.
+ *
+ * Devuelve el TEXTO o null, que es la forma que `completarArgumentos` espera. Quién contestó queda
+ * en `orq.chat_cost`, que es donde el Autonomy Rate lo lee.
+ */
+async function puertaArgumentos(deps) {
+  if (deps.llmArgumentos) return deps.llmArgumentos
+  // Un caller que inyectó SU puerta manda: si `deps.ia` viene puesto —un test, una cara con su
+  // propio cliente— el gateway no se cuela por debajo. Devolver null hace que
+  // `completarArgumentos` use `ia.pedirTextoONull`, que es lo que ese caller pidió.
+  if (deps.ia) return null
+  const { textoONull } = await import('./ia/gateway.mjs')
+  return async (o) => (await textoONull({
+    tarea: 'completar-argumentos',
+    dominio: 'intenciones',
+    calidad: o.capacidad,
+    sistema: o.sistema,
+    mensajes: o.mensajes,
+    maxTokens: o.maxTokens,
+    agente: o.agente,
+    funcion: o.funcion,
+  })).texto
 }

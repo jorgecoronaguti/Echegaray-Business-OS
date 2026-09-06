@@ -61,7 +61,7 @@ function extraerJson(texto) {
  * para que la tool corra sería inventar el pedido de otro.
  */
 export async function completarArgumentos({
-  ia, texto, tool, args = {}, falta = [], catalogos = null, logger = null,
+  ia, llm = null, texto, tool, args = {}, falta = [], catalogos = null, logger = null,
 } = {}) {
   if (!falta.length) return { args, falta, uso: null }
   const declaradas = new Set(Object.keys(tool?.schema?.input_schema?.properties ?? {}))
@@ -87,7 +87,16 @@ export async function completarArgumentos({
     }
   }
 
-  if (!ia?.pedirTextoONull) {
+  // ═══ QUIÉN CONTESTA (06/09/2026) ═══
+  //
+  // `llm` es la puerta del gateway —`lib/ia/gateway.mjs`, que aplica la política de datos y puede
+  // resolver esto con Hugging Face en vez de Claude—. `ia.pedirTextoONull` queda como el camino de
+  // siempre para los callers que inyectan su propia puerta (los tests, y cualquier cara que todavía
+  // no migró). No es un default silencioso: quien quiere autonomía la pide.
+  const pedirTexto = typeof llm === 'function'
+    ? llm
+    : (ia?.pedirTextoONull ? (o) => ia.pedirTextoONull(o) : null)
+  if (!pedirTexto) {
     return { args: porRegla.args, falta: porRegla.falta, uso: null, porRegla: porRegla.resueltos, ambiguos: porRegla.ambiguos }
   }
   args = porRegla.args
@@ -98,7 +107,7 @@ export async function completarArgumentos({
   // `pedirTextoONull` devuelve el TEXTO, no el objeto con `.texto` que devuelve `pedirTexto`. Leer
   // `r.texto` acá daba siempre `undefined` y el argumento nunca se completaba, con la extracción
   // funcionando perfecto del otro lado — una falla muda que sólo se ve mirando el valor devuelto.
-  const texto_ = await ia.pedirTextoONull({
+  const texto_ = await pedirTexto({
     // Copiar un nombre propio de una frase es lo más simple que hay: el modelo barato alcanza y
     // pagar el potente por esto sería pagar razonamiento para hacer un recorte.
     capacidad: CAPACIDAD.SIMPLE,

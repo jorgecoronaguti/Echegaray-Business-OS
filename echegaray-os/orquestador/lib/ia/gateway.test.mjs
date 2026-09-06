@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { MODO, MODO_POR_TAREA, modoDe, planDe } from './gateway.mjs'
+import { MODO, MODO_POR_TAREA, EVIDENCIA_DE_PRODUCCION, modoDe, planDe, planSegunContenido, presupuestoMs } from './gateway.mjs'
 
 const nombres = (plan) => plan.cadena.map((c) => c.proveedor.nombre)
 
@@ -29,7 +29,9 @@ test('el motivo distingue «el dato no podía salir» de «el modelo no está ha
 })
 
 test('una intención en sombra: Claude sirve y HF mide al lado', () => {
-  const p = planDe({ tarea: 'elegir-herramienta', dominio: 'intenciones' })
+  // `interpretar` sigue en sombra a propósito: su salida es un objeto libre y no hay lista cerrada
+  // contra la cual validarla. Es el caso que NO se abre.
+  const p = planDe({ tarea: 'interpretar', dominio: 'intenciones' })
   assert.deepEqual(nombres(p), ['anthropic'], 'en sombra el que sirve sigue siendo Claude')
   assert.equal(p.sombra?.nombre, 'huggingface')
 })
@@ -49,38 +51,88 @@ test('lo que no está listado está APAGADO: el default es no participar', () =>
   assert.deepEqual(nombres(p), ['anthropic'])
 })
 
-test('ninguna tarea nace en producción: la promoción la firma un benchmark, no este archivo', () => {
-  // Este test es un candado sobre MÍ. El día que alguien —yo incluido— mueva una tarea a
-  // `produccion` sin haberla medido, esto se pone rojo y obliga a escribir la evidencia al lado.
+test('ninguna tarea llega a producción sin su corrida escrita al lado', () => {
+  // Este test es un candado sobre MÍ, y sigue siéndolo después de abrir la puerta. Antes decía
+  // «ninguna en producción», que era verdad mientras no hubiera ninguna y dejaba de servir en el
+  // momento exacto en que empezaba a importar. Ahora exige lo que de verdad hay que exigir: que
+  // cada tarea promovida cite su corrida, su fecha, su número y CONTRA QUÉ se comparó.
   for (const [tarea, modo] of Object.entries(MODO_POR_TAREA)) {
-    assert.notEqual(modo, MODO.PRODUCCION,
-      `«${tarea}» está en producción sin que este test conozca su corrida de ecsas-llm-eval`)
+    if (modo !== MODO.PRODUCCION) {
+      assert.equal(EVIDENCIA_DE_PRODUCCION[tarea], undefined,
+        `«${tarea}» no está en producción pero figura en la tabla de evidencia: sobra`)
+      continue
+    }
+    const e = EVIDENCIA_DE_PRODUCCION[tarea]
+    assert.ok(e, `«${tarea}» está en producción sin evidencia declarada`)
+    for (const campo of ['corrida', 'fecha', 'modelo', 'medido', 'contra']) {
+      assert.ok(e[campo] && String(e[campo]).trim(), `«${tarea}»: falta ${campo}`)
+    }
+    assert.match(e.fecha, /^\d{4}-\d{2}-\d{2}$/, `«${tarea}»: la fecha no es una fecha`)
   }
 })
 
 test('en producción HF atiende y Claude queda de escalamiento, en ese orden', () => {
-  // Se prueba el mecanismo con una tarea puesta a mano: el mapa real está en sombra a propósito, y
-  // este test tiene que poder verificar la rama de producción sin esperar a que algo se promueva.
-  const previo = MODO_POR_TAREA.rutear
-  assert.equal(previo, MODO.SOMBRA)
   const p = planDe({ tarea: 'rutear', dominio: 'intenciones' })
-  assert.equal(p.sombra?.nombre, 'huggingface')
-  // Y la rama de producción, con la autorización explícita del dueño sobre un dato confidencial:
-  const conAutorizacion = planDe({
-    tarea: 'rutear', dominio: 'compras', permitidoExplicitamente: true,
-  })
-  // Sigue en sombra —el modo manda—, pero ahora la política ya no es el motivo del corte.
-  assert.equal(conAutorizacion.sombra?.nombre, 'huggingface')
-  assert.match(conAutorizacion.porQue, /sombra/i)
+  assert.deepEqual(nombres(p), ['huggingface', 'anthropic'])
+  assert.equal(p.cadena[0].rol, 'principal')
+  assert.equal(p.cadena[1].rol, 'escalamiento', 'Claude tiene que quedar detrás, no desaparecer')
+  // Y la sombra se apaga: medir en paralelo a quien ya atiende sería pagar dos veces lo mismo.
+  assert.equal(p.sombra, null)
+})
+
+test('en producción, si HF no está configurado la operación la atiende Claude igual', () => {
+  const p = planDe({ tarea: 'rutear', dominio: 'intenciones', hfDisponible: false })
+  assert.deepEqual(nombres(p), ['anthropic'])
+  assert.equal(p.cadena[0].rol, 'principal')
+})
+
+test('un dominio CONFIDENTIAL no entra a producción de HF ni estando la tarea abierta', () => {
+  // `rutear` está en PRODUCCIÓN. Eso NO alcanza: la política manda sobre el modo.
+  const p = planDe({ tarea: 'rutear', dominio: 'cobranzas' })
+  assert.deepEqual(nombres(p), ['anthropic'])
+  assert.equal(p.sombra, null)
+  assert.match(p.porQue, /confidential/i)
 })
 
 test('la autorización explícita es por caso, no un interruptor global', () => {
-  const sin = planDe({ tarea: 'rutear', dominio: 'obras' })
-  const con = planDe({ tarea: 'rutear', dominio: 'obras', permitidoExplicitamente: true })
+  const sin = planDe({ tarea: 'interpretar', dominio: 'obras' })
+  const con = planDe({ tarea: 'interpretar', dominio: 'obras', permitidoExplicitamente: true })
   assert.equal(sin.sombra, null)
   assert.equal(con.sombra?.nombre, 'huggingface')
   // Y no contamina al siguiente: la autorización viaja en la llamada, no en un estado del módulo.
-  assert.equal(planDe({ tarea: 'rutear', dominio: 'obras' }).sombra, null)
+  assert.equal(planDe({ tarea: 'interpretar', dominio: 'obras' }).sombra, null)
+})
+
+// ── EL GUARDIÁN DE CONTENIDO, AHORA TAMBIÉN EN EL CAMINO QUE SIRVE ───────────────────────────────
+
+test('un contenido con CUIT saca a HF de la cadena de PRODUCCIÓN y lo atiende Claude', () => {
+  const p = planDe({ tarea: 'rutear', dominio: 'intenciones' })
+  assert.deepEqual(nombres(p), ['huggingface', 'anthropic'], 'precondición: HF atiende')
+  const q = planSegunContenido(p, ['parece contener un CUIT'])
+  assert.deepEqual(nombres(q), ['anthropic'])
+  // El que queda pasa a ser el principal: si conservara «escalamiento», la fila de costo diría que
+  // Claude escaló algo que nunca se intentó.
+  assert.equal(q.cadena[0].rol, 'principal')
+  assert.match(q.porQue, /CUIT/)
+})
+
+test('sin hallazgos el plan no se toca: el guardián no puede degradar lo limpio', () => {
+  const p = planDe({ tarea: 'rutear', dominio: 'intenciones' })
+  assert.equal(planSegunContenido(p, []), p)
+})
+
+test('si el único que queda es Claude, el guardián no lo saca: dejaría la operación sin nadie', () => {
+  const soloClaude = planDe({ tarea: 'rutear', dominio: 'cobranzas' })
+  const q = planSegunContenido(soloClaude, ['parece contener un importe en pesos'])
+  assert.deepEqual(nombres(q), ['anthropic'])
+})
+
+test('el presupuesto de latencia es un número positivo y se puede mover por entorno', () => {
+  assert.equal(presupuestoMs({}), 8000)
+  assert.equal(presupuestoMs({ ORQ_HF_MS_MAX: '2500' }), 2500)
+  // Un valor basura no puede dejar el presupuesto en 0: 0 significa «sin techo».
+  assert.equal(presupuestoMs({ ORQ_HF_MS_MAX: 'ni idea' }), 8000)
+  assert.equal(presupuestoMs({ ORQ_HF_MS_MAX: '-1' }), 8000)
 })
 
 // ── LA SOMBRA MIRA EL CONTENIDO, NO SÓLO LA ETIQUETA DEL DOMINIO ─────────────────────────────────
