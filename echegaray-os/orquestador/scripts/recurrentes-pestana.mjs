@@ -46,6 +46,7 @@ import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } fro
 import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -167,7 +168,7 @@ export function grilla(proveedores) {
   const f1 = filas.length
 
   const tot = vacia()
-  tot[0] = 'TOTAL'
+  tot[0] = ROTULO_TOTAL
   for (let m = 0; m < 12; m++) tot[C_MES0 + m] = `=SUM(${letra(C_MES0 + m)}${f0}:${letra(C_MES0 + m)}${f1})`
   tot[C_TOTREAL] = `=SUM(${letra(C_TOTREAL)}${f0}:${letra(C_TOTREAL)}${f1})`
   const fTot = push(tot)
@@ -230,6 +231,63 @@ export function grilla(proveedores) {
   }
 
   return { filas, f0, f1, fTot, ctrl, fDif, arca0 }
+}
+
+/** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
+export const ROTULO_TOTAL = 'TOTAL'
+
+/**
+ * NÚCLEO PURO: los rangos con nombre de esta pestaña, anclados a la fila de totales.
+ *
+ * ═══ EL MISMO DEFECTO QUE ESTRUCTURA YA ARREGLÓ EL 03/08, EN SU PESTAÑA GEMELA (06/09) ═══
+ *
+ * Medido contra el archivo vivo: `RECURRENTES_TOTAL_MESES` apunta a `Recurrentes!B3:M3`, y la fila 3
+ * de esta pestaña es el título «1 · EL GASTO RECURRENTE, MES A MES». Cero celdas con dato. El total
+ * por mes vive seis filas más abajo, en la fila 9 (`TOTAL`, `=SUM(B5:B8)` … ). O sea que el nombre
+ * quedó anclado a un layout anterior —cuando el cuadro arrancaba arriba de todo, sin subtítulo ni
+ * títulos de sección— y este generador nunca publicó un solo rango con nombre, así que nadie lo
+ * volvió a mover.
+ *
+ * `ESTRUCTURA_TOTAL_MESES` tenía EXACTAMENTE el mismo defecto, en EXACTAMENTE la misma fila 3, y se
+ * arregló hace un mes en `estructura-pestana.mjs` (ver `rangosDeEstructura`). El arreglo se aplicó a
+ * una de las dos pestañas gemelas y nadie miró la otra: por eso ésta sigue publicando cero.
+ *
+ * SE REAPUNTA, NO SE BORRA, por el mismo criterio que allá: el bloque que el nombre describe EXISTE
+ * —los doce totales por mes de la fila TOTAL, que es la línea «Servicios recurrentes» del cash flow
+ * mes a mes—. Un nombre con destino se arregla apuntándolo; uno sin destino se retira.
+ *
+ * INFERENCIA declarada, igual que en Estructura: que `RECURRENTES_TOTAL_MESES` quiere decir «los
+ * totales por mes» sale del nombre y de su forma (una fila de doce, no una columna). Ninguna fórmula
+ * del OS lo lee hoy —`auditar-rangos-fosilizados` lo lista como huérfano— así que no hay un
+ * consumidor que lo confirme. Si el dueño lo tenía apuntando a otra cosa, esto lo cambia.
+ *
+ * @param {ReturnType<typeof grilla>} g
+ */
+export function rangosDeRecurrentes(g) {
+  return [
+    filaConNombre('RECURRENTES_TOTAL_MESES', { fila: g.fTot, c0: C_MES0, c1: C_MES0 + 11, rotulo: ROTULO_TOTAL }),
+  ]
+}
+
+async function publicarRangos(google, sheetId, g) {
+  const quiero = rangosDeRecurrentes(g)
+  // No se publica un rango ciego: se verifica contra la grilla recién armada, sin red. Es la guarda
+  // que hace que este arreglo no pueda repetir el defecto que vino a corregir.
+  const problemas = verificarRangos(g.filas, quiero)
+  if (problemas.length) {
+    console.error('✗ NO publico los rangos con nombre: hay rangos ciegos\n' + explicarProblemas(problemas))
+    process.exitCode = 1
+    return
+  }
+  const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
+  const reqs = quiero.map((d) => {
+    const range = aRangoApi(sheetId, d)
+    return existentes.has(d.nombre)
+      ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(d.nombre), name: d.nombre, range }, fields: 'range' } }
+      : { addNamedRange: { namedRange: { name: d.nombre, range } } }
+  })
+  await google.spreadsheetBatchUpdate(ID, reqs)
+  console.log(`rangos con nombre publicados: ${quiero.map((d) => d.nombre).join(', ')} — sobre la fila ${g.fTot} (${ROTULO_TOTAL})`)
 }
 
 /**
@@ -317,6 +375,9 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   if (!salteada) await formatear(google, hoja, g)
+  // Los rangos con nombre van DESPUÉS de escribir y sólo si se escribió: apuntarlos a una grilla que
+  // no llegó al archivo los dejaría anclados a filas que allá no existen — el defecto de origen.
+  if (!salteada) await publicarRangos(google, hoja.sheetId, g)
 
   const v = await google.readSheetValues(ID, `${hoja.title}!A1:C${g.filas.length}`)
   console.log(`\nCONTROL  Compras ${v[g.ctrl]?.[1]} · cuadro ${v[g.ctrl + 1]?.[1]} · diferencia ${v[g.ctrl + 2]?.[1]}`)

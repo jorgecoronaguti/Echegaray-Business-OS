@@ -62,6 +62,30 @@
 //       pestaña se queda con un permiso vigente para un bloque que ya no existe, que es la forma
 //       exacta en que nace un control que no puede dar rojo.
 //
+// ═══ EL ORDEN EN QUE HAY QUE HACER EL RESTO, MEDIDO EL 06/09 ═══
+//
+// Cargas Sociales fue la primera pestaña que perdió su leyenda, no la única que puede perderla. Con
+// el censo corriendo sobre el archivo vivo, los números que HOY siguen dependiendo de que la leyenda
+// siga escrita en la pestaña son:
+//
+//   · «Impuestos y Financieros» — 28 números, amparados por `A14` («1 · IVA — LA DDJJ OFICIAL
+//     (F.2051)…», que ampara por contener «DDJJ») y por la fila `A20` («DDJJ presentada»). A20 es un
+//     rótulo de fila y sobrevive al minimalismo; A14 es un título de sección y basta con que alguien
+//     lo acorte sacándole «LA DDJJ OFICIAL» para que los 28 pasen a contarse como violación.
+//   · «Proveedores» — 3 números, amparados por `I179` («Conciliación del OS: se encontraron por
+//     proveedor + importe…») y `A247` («Del libro de IVA de ARCA, que el OS replica en _ARCA_RAW»).
+//     Las dos son prosa que `auditar-diseno-unificado` manda sacar: son parte de los 20 desvíos de
+//     prosa que esa pestaña tiene abiertos.
+//
+// O SEA QUE LOS DOS FRENTES ESTÁN ACOPLADOS Y EL ORDEN NO ES LIBRE. Sacar la prosa primero fabrica
+// 31 violaciones falsas en dos pestañas más, que es exactamente lo que ya pasó acá. Primero se migra
+// la declaración a `origenPorBloque` —bloque por bloque, mirando qué números ampara cada una— y
+// recién después se borra el texto.
+//
+// NO SE DEJARON DECLARADAS DE ANTEMANO, Y ES DELIBERADO: declarar un bloque sin haber verificado
+// celda por celda qué números caen adentro es usar la excepción para apagar el aviso, que es el
+// error que este módulo existe para no cometer. Se declara cuando se mide, no antes.
+//
 // LO QUE ESTE MÓDULO **NO** DECIDE: si un dato es de origen o es un cálculo. Eso lo decide quien
 // escribe la declaración, y tiene que poder defenderlo. Acá sólo se resuelve dónde se anota y cómo
 // se verifica que la anotación siga hablando de algo que existe.
