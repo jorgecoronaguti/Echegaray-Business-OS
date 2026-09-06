@@ -17,7 +17,7 @@
 
 import Link from 'next/link'
 import {
-  CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, RotuloPanel, V,
+  ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, RotuloPanel, V,
 } from '@/shared/components/v2/patron'
 import { IconoCerrar, IconoPersona } from '@/shared/components/iconos'
 import { ResolverCorreccion } from './ResolverCorreccion'
@@ -66,7 +66,7 @@ export function ColaDeCorrecciones({ filas, abierta, hrefDe, vacio }: {
             data-fecha={c.fecha} data-estado={c.estado}
             className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#F2F1ED]`}
             style={{
-              height: 44, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
+              height: ALTO_V2.fila, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
               background: elegida ? V.seleccion : 'transparent',
               // EL FILO ÁMBAR ES «ESTO BLOQUEA»: mientras el pedido no se resuelva, las HH de ese
               // día no son las que se van a liquidar.

@@ -42,7 +42,7 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
         <RotuloCol>Texto de Compras</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprob.</RotuloCol></span>
         <RotuloCol derecha>Total</RotuloCol>
-        <span style={{ paddingBottom: 6 }} />
+        <span />
       </div>
 
       {pendientes.map((n) => {

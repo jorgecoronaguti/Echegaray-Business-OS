@@ -86,7 +86,10 @@ export function TablaClientes({
               data-seleccionada={elegido ? '' : undefined}
               className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
               style={{
-                height: ALTO_V2.trabajo,
+                // 48 y no el alto de una lista común: esta fila es MAESTRA — debajo le cuelgan sus
+                // obras, y el canvas la dibuja más alta justamente para que se lea como la madre
+                // del bloque y no como un renglón más (`v4B:92`).
+                height: ALTO_V2.cliente,
                 // El divisor se afloja cuando abajo cuelgan obras: son el mismo bloque.
                 borderBottom: `1px solid ${c.enCurso.length ? TONO.divisorObra : V.lineaFila}`,
                 background: elegido ? V.seleccion : undefined,
@@ -138,7 +141,7 @@ export function TablaClientes({
                 role="row"
                 data-testid="fila-obra"
                 className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} hover:bg-[#FAFAF8]`}
-                style={{ height: 30, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                style={{ height: ALTO_V2.hija, borderBottom: `1px solid ${TONO.divisorObra}` }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, paddingLeft: 14 }}>
                   <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
@@ -177,7 +180,10 @@ export function TablaClientes({
             {c.enCurso.length === 0 && (
               <div
                 className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS}`}
-                style={{ height: 26, borderBottom: `1px solid ${TONO.divisorObra}` }}
+                // El canvas no dibuja esta fila —no hay ningún cliente sin obras en la muestra—,
+                // así que su alto es DERIVADO: los mismos 4px menos que la hija que ya tenía antes
+                // del v4 (era 30 contra 26). Es la única medida de este archivo sin línea que citar.
+                style={{ height: ALTO_V2.hija - 4, borderBottom: `1px solid ${TONO.divisorObra}` }}
               >
                 {/* «NO PUDE LEERLAS» NO SE DIBUJA COMO «NO HAY»: es el defecto de un control que no
                     pudo mirar y afirma que no hay nada. */}

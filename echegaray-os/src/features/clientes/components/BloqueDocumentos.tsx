@@ -27,7 +27,7 @@ import Link from 'next/link'
 import { Fragment } from 'react'
 import { Nulo, Vacio } from '@/shared/components/ds'
 import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { IconoDocumento } from '@/shared/components/iconos'
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
@@ -140,7 +140,9 @@ export function BloqueDocumentos({
                   <div
                     className={`grid items-center ${CAJA_CONTENIDO} ${COLS_DOCS} ${AIRE_DERECHO} ${menu ? 'bg-surface-quiet' : 'hover:bg-[#F2F1ED]'}`}
                     style={{
-                      minHeight: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
+                      // `minHeight` y no `height`: el nombre de un documento de Drive puede pasar
+                      // a dos renglones y recortarlo perdería lo único que lo identifica.
+                      minHeight: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
                       // El filo amarillo dice «ésta es la fila abierta» y NO corre el contenido:
                       // `inset` no empuja, un borde real desalinearía la fila de su encabezado.
                       boxShadow: menu ? FILO_ELEGIDA : undefined,

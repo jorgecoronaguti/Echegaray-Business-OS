@@ -392,6 +392,7 @@ export default async function FichaPersonaPage({
                     <Link
                       key={a.id} href={`/obras/${a.obra_id}`} prefetch={false}
                       className="flex items-baseline gap-4 hover:bg-[#F2F1ED]"
+                      // Ritmo de panel: son cuatro atajos del costado, no una tabla de datos.
                       style={{ height: 38, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`, alignItems: 'center' }}
                     >
                       <span className="min-w-0 flex-1 truncate" style={{ fontSize: '12.5px', color: V.tinta }}>

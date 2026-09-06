@@ -1,4 +1,6 @@
-// EL VOCABULARIO MEDIDO DEL PATRÓN DE SECCIÓN v2 — `22 · Proveedores v2.dc.html`.
+// EL VOCABULARIO MEDIDO DEL PATRÓN DE SECCIÓN — `22 · Proveedores v2.dc.html` para el color y la
+// estructura; `design_handoff_crm_v4/` para el RITMO VERTICAL (alto de fila, cabecera y rótulo),
+// que el dueño pidió por el zip el 06/09/2026 contra la cláusula «gana el componente existente».
 //
 // ═══ POR QUÉ NO SE REUSA `shared/components/canon` ═══
 //
@@ -6,8 +8,10 @@
 // declara `background:#FFFFFF;border:1px solid #E7E6E2;borderRadius:10px`, encabezado gris de 38px
 // y pie de totales adentro. El zip v2 borra la caja entera —criterio 3 del patrón: «sin cajas;
 // filos, tipografía y números tabulares»— y además corre los valores que sí sobreviven: el divisor
-// de fila pasa de #F1F0EC a #EDECE8 y el hover de #FAFAF8 a #F2F1ED. Dibujar v2 a través de un
-// componente que declara lo contrario es exactamente el error que ya costó cuatro entregas.
+// el hover pasa de #FAFAF8 a #F2F1ED. Dibujar v2 a través de un componente que declara lo
+// contrario es exactamente el error que ya costó cuatro entregas.
+//
+// (El divisor de fila SÍ volvió al `#F1F0EC` del canon: lo devolvió el v4, no el canon. Ver `V`.)
 //
 // Los valores salieron de LEER los `style=""` inline del `.dc.html`, donde el atributo ES el valor
 // computado. Cada uno cita su línea.
@@ -37,8 +41,14 @@ export const V = {
 
   /** Borde de bloque y del panel lateral. `22v2:25`, `:148`. */
   linea: '#E7E6E2',
-  /** Divisor entre filas de una tabla. `22v2:69`, `:125`. */
-  lineaFila: '#EDECE8',
+  /**
+   * Divisor entre filas de una tabla: el token `--os-hairline-soft`. `v4A:84`, `v4B:97`.
+   *
+   * El v2 de agosto lo había corrido a `#EDECE8`; el v4 lo devuelve a `#F1F0EC` en los seis
+   * canvas sin una sola excepción, que es además el valor que `shared/components/canon` nunca
+   * dejó de declarar. No es un color nuevo: es el token que ya vivía en `globals.css`.
+   */
+  lineaFila: '#F1F0EC',
   /** Divisor entre filas de un panel. `22v2:171`, `:184`. */
   lineaPanel: '#F3F2EE',
   /** Cierre del encabezado de columnas y foco del buscador. `22v2:115`, `:388`. */
@@ -60,8 +70,55 @@ export const V = {
   neg: '#B42318',
 } as const
 
-/** Alto de fila, medido. Trabajo 38, tabla 40, encabezado de columnas 26. `22v2:69`, `:115`, `:125`. */
-export const ALTO_V2 = { trabajo: 38, fila: 40, encabezado: 26 } as const
+/**
+ * EL RITMO VERTICAL — UNA CONSTANTE CON UN VALOR POR FAMILIA, NO UN NÚMERO PROMEDIADO.
+ *
+ * ═══ POR QUÉ NO ALCANZA UN SOLO ALTO ═══
+ *
+ * El handoff v4 (`/home/jorge/crmadmin/design_handoff_crm_v4/`) NO dibuja una densidad única, y
+ * quien la busque va a encontrar cuatro números y va a promediar. No se promedia: cada canvas es
+ * la pantalla que gobierna, y el número sale de ESA pantalla.
+ *
+ *   canvas                                  fila            qué es
+ *   `Administración v4 · Pantallas` :84     44px ×17        Personal · Proveedores · Compras
+ *   `CRM v4 · Pantallas`            :92     48px            la fila de cliente, que tiene hijas
+ *   `CRM v4 · Pantallas`            :97     38px            la obra colgada del cliente
+ *   `CRM v4 · Pantallas`            :192    46px ×14        las caras del eje Cliente
+ *
+ * El README del zip dice «fila de tabla 52–54px de alto mínimo» y ninguna pantalla lo cumple. No
+ * es una contradicción a resolver por votación: el `54` es de la tabla de certificados de D1
+ * (`Lo que faltaba:513`, `min-height:54px`, fila de DOS líneas) y el `52` de los paneles de esa
+ * misma entrega (`:343`, `:369`). La línea 53 del README generalizó a todo el zip una medida que
+ * pertenece a una tabla concreta. La regla que sí es universal —y se cumple en los seis canvas—
+ * es la cabecera: 30px, 11px/600/.06em, filo `#D7D5CF`.
+ *
+ * Los lienzos «· una pantalla» dibujan 66–68px (`Proveedores · una pantalla:297`) para las mismas
+ * listas. No mandan: son del handoff ANTERIOR —el README v4 los llama así— y el canvas A los
+ * reemplaza explícitamente («las tres pantallas de nivel 2 que no son Clientes»).
+ *
+ * ═══ POR QUÉ EL BORDE NO DESALINEA ═══
+ *
+ * Los cuatro valores son el CONTENIDO, no la caja: el `.dc.html` corre en `content-box` y el
+ * `border-bottom:1px` se suma por afuera. Fila y cabecera lo suman igual —`CAJA_CONTENIDO` en una,
+ * `boxSizing:'content-box'` en la otra—, así que subir los números no puede correr una respecto de
+ * la otra. La fila elegida sigue diciéndose sólo con `box-shadow: inset`, que no ocupa espacio.
+ */
+export const ALTO_V2 = {
+  /** La banda «lo que pide trabajo». Del v2 de agosto: el v4 borró la banda y no la redibuja. */
+  trabajo: 38,
+  /** Lista de nivel 2 de Administración: Personal, Proveedores, Compras. `v4A:84`. */
+  fila: 44,
+  /** La fila de cliente, que es maestra: debajo le cuelgan sus obras. `v4B:92`. */
+  cliente: 48,
+  /** Las caras del eje Cliente: presupuestos, documentos, cuenta corriente, actividad. `v4B:192`. */
+  cara: 46,
+  /** La obra colgada de su cliente — más chica que la madre, no igual. `v4B:97`. */
+  hija: 38,
+  /** La cabeza de un bloque que se despliega — no un renglón de lista. `21v2:99`. */
+  cabezaBloque: 44,
+  /** Cabecera de columnas. Universal en los seis canvas. `v4A:81`, `v4B:88`. */
+  encabezado: 30,
+} as const
 
 /**
  * EL FILO ÁMBAR ES «ESTO BLOQUEA», NO «ESTO ESTÁ ELEGIDO».
@@ -74,13 +131,20 @@ export const FILO_BLOQUEA = `inset 2px 0 0 ${V.warn}`
 /** El filo de la fila elegida en la cola: amarillo de marca, no ámbar de problema. `22v2:456`. */
 export const FILO_ELEGIDA = `inset 2px 0 0 ${V.marca}`
 
-/** Rótulo de columna: 10px, versalitas, interletrado .06em, pegado al borde. `22v2:116`. */
-export function RotuloCol({ children, derecha }: { children?: ReactNode; derecha?: boolean }) {
+/**
+ * Rótulo de columna: 11px en peso 600, versalitas, interletrado .06em. `v4A:81`, `v4B:88`.
+ *
+ * El peso es la mitad del cambio: a 10px en peso 400 el rótulo se lee como un dato más y la
+ * cabecera deja de separar. Los seis canvas del v4 lo escriben en 600 sin excepción.
+ */
+export function RotuloCol(
+  { children, derecha, centro }: { children?: ReactNode; derecha?: boolean; centro?: boolean },
+) {
   return (
     <span
       style={{
-        fontSize: '10px', letterSpacing: '.06em', textTransform: 'uppercase',
-        color: V.tenue, paddingBottom: 6, textAlign: derecha ? 'right' : undefined,
+        fontSize: '11px', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase',
+        color: V.tenue, textAlign: derecha ? 'right' : centro ? 'center' : undefined,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}
     >
@@ -89,11 +153,14 @@ export function RotuloCol({ children, derecha }: { children?: ReactNode; derecha
   )
 }
 
-/** La línea de encabezado de una tabla sin caja: sólo el filo inferior más fuerte. `22v2:115`. */
+/** La línea de encabezado de una tabla sin caja: sólo el filo inferior más fuerte. `v4A:81`. */
 export const ENCABEZADO: CSSProperties = {
-  display: 'grid', gap: 14, alignItems: 'end',
+  // `center`, no `end`: el canvas lo declara centrado en los seis lienzos. El `alignItems:'end'`
+  // más el `paddingBottom:6` del rótulo eran la compensación de una cabecera de 26px demasiado
+  // baja para centrar nada; con los 30 del v4 el ajuste sobra y falsea la posición.
+  display: 'grid', gap: 14, alignItems: 'center',
   height: ALTO_V2.encabezado, borderBottom: `1px solid ${V.lineaFuerte}`,
-  // El filo va POR AFUERA del alto, como en el mockup: 26 + 1 = 27. Ver `CAJA_CONTENIDO`.
+  // El filo va POR AFUERA del alto, como en el mockup: 30 + 1 = 31. Ver `CAJA_CONTENIDO`.
   boxSizing: 'content-box',
 }
 
@@ -159,6 +226,10 @@ export function PanelFilo({ children, testid }: { children: ReactNode; testid?: 
  *   fila de tabla (alto)           41px    40px   −1
  *   encabezado de columnas         27px    26px   −1
  *   fila de «lo que pide trabajo»  39px    38px   −1
+ *
+ * Esos altos son los del v2 de agosto, que el ritmo del v4 ya reemplazó (ver `ALTO_V2`). Lo que la
+ * medición prueba y sigue vigente es la CAUSA, no los números: mientras el borde se sume por
+ * afuera en la fila y en la cabecera, cambiar los altos no las desalinea entre sí.
  *
  * Una sola causa: el `.dc.html` no declara `box-sizing`, así que corre con el DEFAULT DE CSS
  * —`content-box`— donde `width:372px` es el CONTENIDO y el padding de 24 y el borde de 1 se SUMAN

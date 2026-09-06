@@ -1,8 +1,14 @@
 // 23 v2 · LAS CINCO CARAS DE LA FICHA DE UN PROVEEDOR — `23 · Proveedor Ficha v2.dc.html` (110-171).
 //
-// Todas comparten la misma anatomía del v2: encabezado de columnas de 26px cerrado por un filo
-// `#D7D5CF`, filas de 40-42px separadas por `#EDECE8`, sangría de 13px y nada de caja. Ninguna
-// dibuja tarjeta, borde exterior ni pie de totales — criterio 3 del patrón.
+// Todas comparten la misma anatomía: encabezado de columnas cerrado por un filo `#D7D5CF`, filas
+// separadas por `#F1F0EC`, sangría de 13px y nada de caja. Ninguna dibuja tarjeta, borde exterior
+// ni pie de totales — criterio 3 del patrón.
+//
+// EL ALTO ES `ALTO_V2.cara` Y ESO ES UNA INFERENCIA, NO UNA MEDIDA. El handoff v4 no redibujó la
+// ficha de proveedor: dibujó las caras del eje CLIENTE en 46px (`v4B:192`). Se toma ése porque la
+// pieza es la misma —una cara colgada de una ficha, no una lista de nivel 2— y porque el archivo
+// entero mezclaba 40 y 42 sin que nada explicara la diferencia. Si algún día llega el canvas de
+// proveedor y dice otro número, manda el canvas.
 //
 // LO QUE NO SE DIBUJA, Y POR QUÉ: la solapa «Papeles» del mockup existe pero no puede afirmar nada.
 // Ninguna tabla vincula un archivo con un proveedor —hoy los documentos cuelgan de una persona o de
@@ -63,7 +69,7 @@ export function ComprasDelProveedor({ filas, truncado, total }: {
           key={f.id} data-testid="fila-compra"
           className={`grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS_COMPRAS} hover:bg-[#F2F1ED]`}
           style={{
-            height: ALTO_V2.fila, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
+            height: ALTO_V2.cara, paddingLeft: 13, borderBottom: `1px solid ${V.lineaFila}`,
             // Sin obra imputada el filo es ROJO y no ámbar: el gasto ya ocurrió y está pesando en
             // ninguna obra, que no es «falta cargar un dato» sino plata mal atribuida (`23v2:442`).
             boxShadow: f.obra_texto?.trim() ? 'none' : `inset 2px 0 0 ${V.neg}`,
@@ -126,7 +132,7 @@ export function NombresDelProveedor({ nombres }: {
           key={n.nombre_norm} data-testid="fila-nombre"
           className={CAJA_CONTENIDO}
           style={{
-            display: 'flex', alignItems: 'center', gap: 11, height: ALTO_V2.fila, paddingLeft: 13,
+            display: 'flex', alignItems: 'center', gap: 11, height: ALTO_V2.cara, paddingLeft: 13,
             borderBottom: `1px solid ${V.lineaFila}`,
           }}
         >
@@ -166,7 +172,7 @@ export function ObrasDelProveedor({ filas }: { filas: CompraPorObra[] }) {
           key={o.obra ?? 'sin-obra'} data-testid="fila-obra"
           className={CAJA_CONTENIDO}
           style={{
-            display: 'flex', alignItems: 'center', gap: 11, height: 42, paddingLeft: 13,
+            display: 'flex', alignItems: 'center', gap: 11, height: ALTO_V2.cara, paddingLeft: 13,
             borderBottom: `1px solid ${V.lineaFila}`,
             boxShadow: o.obra ? 'none' : FILO_BLOQUEA,
           }}
@@ -217,7 +223,7 @@ export function PaquetesDelProveedor({ filas, error }: {
           key={p.id} data-testid="fila-paquete"
           className={CAJA_CONTENIDO}
           style={{
-            display: 'flex', alignItems: 'center', gap: 11, height: 42, paddingLeft: 13,
+            display: 'flex', alignItems: 'center', gap: 11, height: ALTO_V2.cara, paddingLeft: 13,
             borderBottom: `1px solid ${V.lineaFila}`,
           }}
         >

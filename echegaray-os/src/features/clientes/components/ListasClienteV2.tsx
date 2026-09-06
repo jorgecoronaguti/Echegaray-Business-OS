@@ -22,7 +22,7 @@
 //                con palabras.
 
 import Link from 'next/link'
-import { CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
@@ -119,7 +119,7 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
           key={o.obra_id} href={`/obras/${o.obra_id}`} prefetch={false} data-testid="fila-obra-cliente"
           className={`grid items-center ${CAJA_CONTENIDO} ${COLS_OBRAS} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
           style={{
-            height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
+            height: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}`,
             // Una obra sin monto contratado bloquea: no se puede decir qué se le facturó al cliente.
             boxShadow: veEconomia && o.monto_contratado == null ? FILO_BLOQUEA : 'none',
           }}
@@ -272,7 +272,7 @@ export function PresupuestosDelCliente({ filas }: { filas: PresupuestoDeFicha[] 
             key={p.presupuesto_id} href={`/presupuestos/${p.presupuesto_id}`} prefetch={false}
             data-testid="fila-presupuesto"
             className={`grid items-center ${CAJA_CONTENIDO} ${COLS_PRES} ${AIRE_DERECHO} hover:bg-[#F2F1ED]`}
-            style={{ height: 42, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}` }}
+            style={{ height: ALTO_V2.cara, paddingLeft: SANGRIA, borderBottom: `1px solid ${V.lineaFila}` }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
               <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>

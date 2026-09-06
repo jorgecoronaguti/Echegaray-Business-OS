@@ -151,7 +151,9 @@ export function PanelCompraSheet({
           data-testid="reclamo-compra"
           style={{
             display: 'flex', alignItems: 'center', gap: 9, marginTop: 14,
-            borderTop: '1px solid #EDECE8', borderBottom: '1px solid #EDECE8',
+            // `#F1F0EC`, que es como el canvas cierra los bloques de ESTE panel
+            // (`Administración v4 · Pantallas.dc.html:266`). El `#EDECE8` era del zip de agosto.
+            borderTop: `1px solid ${C.lineaFila}`, borderBottom: `1px solid ${C.lineaFila}`,
             padding: '9px 0 9px 11px', boxShadow: 'inset 2px 0 0 #B54708',
           }}
         >

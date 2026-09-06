@@ -21,7 +21,7 @@
 //                    obra: no existe el vínculo cuadrilla → tarea que las haría comparables.
 
 import Link from 'next/link'
-import { CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
+import { ALTO_V2, CAJA_CONTENIDO, V } from '@/shared/components/v2/patron'
 import { BarraDeCostado } from '@/shared/components/v2/segundoNivel'
 import { IconoCuadrilla } from '@/shared/components/iconos'
 import type { Cuadrilla, Integrante } from '../types'
@@ -78,9 +78,10 @@ export function TablaCuadrillas({
               href={hrefDe(c.id)} prefetch={false} data-testid="fila-cuadrilla"
               className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-[#F2F1ED]`}
               style={{
-                // 44 y no los 40 de una fila de tabla: la de la 21 es la cabeza de un bloque que se
-                // despliega, no un renglón de lista (`21v2:99`).
-                height: 44, paddingLeft: 13,
+                // La cabeza de un bloque que se despliega, no un renglón de lista (`21v2:99`).
+                // Coincide en píxeles con `ALTO_V2.fila` desde el v4, pero no es la misma medida:
+                // si el ritmo de la lista vuelve a moverse, ésta no tiene por qué seguirlo.
+                height: ALTO_V2.cabezaBloque, paddingLeft: 13,
                 borderTop: `1px solid ${V.lineaFuerte}`, borderBottom: `1px solid ${V.lineaFila}`,
                 background: esta ? V.seleccion : 'transparent',
                 // EL FILO ÁMBAR DICE «ESTO BLOQUEA», NO «ESTO ESTÁ ELEGIDO»: sobrevive a la
@@ -170,6 +171,7 @@ function Gente({ integrantes, porPersona, fichadosHoy, hrefEditar, nombre }: Des
           <div
             key={i.id}
             className={`${GRILLA} ${CAJA_CONTENIDO} hover:bg-[#FAFAF8]`}
+            // Ritmo de panel, no de lista: es el desplegable de la cuadrilla dentro de su bloque.
             style={{ height: 34, paddingLeft: 13, borderBottom: `1px solid ${V.lineaPanel}` }}
             data-testid="fila-integrante"
           >
