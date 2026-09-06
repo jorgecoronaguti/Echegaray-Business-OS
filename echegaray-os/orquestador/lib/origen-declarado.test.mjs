@@ -155,3 +155,24 @@ test('UN DATO QUE ARRANCA CON UNA PALABRA DE ENCABEZADO SIGUE SIENDO UN DATO', (
   assert.equal(amparadas.has('B2'), true, 'la cuota de un plan es dato, aunque su rótulo empiece con «Plan»')
   assert.equal(amparadas.has('B3'), false)
 })
+
+test('`incluyeTotales` es la ÚNICA forma de amparar el renglón ⇒, y el título nunca entra', () => {
+  // `Impuestos y Financieros!B18:H18` es «⇒ IVA a pagar en efectivo» del bloque de la DDJJ oficial:
+  // esos siete números son la línea del F.2051 que se presentó, no una cuenta. Recalcularlos sería
+  // pisar la declaración jurada con aritmética propia. Pero el default tiene que seguir siendo el
+  // corte, o cualquier declaración vuelve a amparar totales sin que nadie lo lea en el diff.
+  const filas = [
+    ['1 · IVA — LA DDJJ OFICIAL (F.2051)', 999],
+    ['Débito fiscal del período', 1419600],
+    ['⇒ IVA a pagar en efectivo', 0],
+    [],
+  ]
+  const d = { bloque: '1 · IVA — LA DDJJ OFICIAL (F.2051)', cols: 'B', que: 'x' }
+  const sin = amparoDeOrigen(filas, [d]).amparadas
+  assert.equal(sin.has('B2'), true)
+  assert.equal(sin.has('B3'), false, 'sin pedirlo, el renglón ⇒ no se ampara')
+
+  const con = amparoDeOrigen(filas, [{ ...d, incluyeTotales: true }]).amparadas
+  assert.equal(con.has('B3'), true, 'pedido por escrito, el renglón ⇒ transcripto sí se ampara')
+  assert.equal(con.has('B1'), false, 'el TÍTULO de la sección no se ampara ni pidiéndolo')
+})

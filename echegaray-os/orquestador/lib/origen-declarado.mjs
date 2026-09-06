@@ -158,6 +158,9 @@ const vacia = (fila) => !(fila ?? []).some((c) => visible(c))
  */
 const esFilaDeEstructura = (fila) => esEstructural(visible((fila ?? [])[0]))
 
+/** ¿Es el TÍTULO de la sección? Un título nunca lleva datos, ni siquiera transcriptos. */
+const esTituloDeSeccion = (fila) => /^\s*\d+(\.\d+)?\s*·\s/.test(visible((fila ?? [])[0]))
+
 /**
  * NÚCLEO PURO: parte la grilla en bloques — runs de filas no vacías.
  *
@@ -207,6 +210,8 @@ export function expandirColumnas(spec) {
  *                permiso en blanco, y un permiso en blanco no se otorga por omisión.
  *   · `que`    — por qué esos números son origen y no cálculo. No se usa para decidir; se usa para
  *                que la próxima persona pueda discutirlo.
+ *   · `incluyeTotales` — sólo cuando el renglón `⇒` del bloque TAMBIÉN es transcripto (un bloque que
+ *                copia entero un papel externo). Por defecto el amparo se corta ahí.
  *
  * @param {Array<Array<unknown>>} filas la grilla de la pestaña (0-based)
  * @param {{bloque:string, cols:string, que?:string}[]} declaraciones
@@ -242,7 +247,20 @@ export function amparoDeOrigen(filas = [], declaraciones = []) {
         // renglón de desvinculación fósil pegado sobre el título de la sección 4— o sea que la
         // excepción apagaba el aviso en vez de explicarlo, que es lo que este módulo existe para no
         // hacer. Un número pegado en una fila de estructura se sigue contando siempre.
-        if (esFilaDeEstructura(filas[i])) continue
+        // ═══ LA EXCEPCIÓN A LA EXCEPCIÓN, Y SE PIDE POR ESCRITO (06/09/2026) ═══
+        //
+        // Hay un caso donde el renglón `⇒` TAMBIÉN es transcripto: cuando el bloque entero es la copia
+        // de un papel externo. `Impuestos y Financieros!B18:H18` es «⇒ IVA a pagar en efectivo» del
+        // bloque «1 · IVA — LA DDJJ OFICIAL (F.2051)», y esos siete números son la línea de la DDJJ
+        // que se presentó a ARCA, con su fecha y su número de acuse en la fila de abajo. Recalcularla
+        // como `MAX(0;B16-B17-…)` sería pisar la declaración jurada con aritmética propia, que es
+        // exactamente al revés de la cascada del OS (DDJJ > AJENO > ARCA > proyección).
+        //
+        // Por eso NO se afloja la regla: se pide decirlo. `incluyeTotales` deja el default seguro y
+        // obliga a que la excepción se lea en el diff con su motivo al lado. El TÍTULO de la sección
+        // no entra nunca, ni siquiera así: un título no lleva datos.
+        if (esTituloDeSeccion(filas[i])) continue
+        if (!d.incluyeTotales && esFilaDeEstructura(filas[i])) continue
         for (const c of cols) amparadas.add(`${c}${i + 1}`)
       }
     }

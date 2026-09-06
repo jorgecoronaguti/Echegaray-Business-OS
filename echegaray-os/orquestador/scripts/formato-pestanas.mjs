@@ -102,12 +102,52 @@ export const PESTANAS = [
   // para que la posición no se vaya al scrollear el detalle. Con cols:12 el auditor de pantalla ni
   // miraba la columna del total (N) ni la de procedencia (O), o sea que no auditaba justo donde vive
   // el número que se lee. hastaFila 130: la pestaña pasó de 69 filas a ~105.
-  { titulo: 'Impuestos y Financieros', congeladas: 12, hastaFila: 130, cols: 15, propio: true },
+  //
+  // ═══ LOS 28 NÚMEROS DE LA DDJJ, QUE HOY DEPENDEN DE QUE UN TÍTULO NO SE ACORTE (06/09/2026) ═══
+  //
+  // `B16:H19` —débito, crédito, IVA a pagar y saldo de libre disponibilidad de enero a julio— son la
+  // transcripción de las siete DDJJ del F.2051 que ya se presentaron; la fila 20 publica de cada una
+  // su fecha de presentación y su número de acuse. La columna de agosto, que todavía no tiene DDJJ,
+  // es fórmula sobre `_ARCA_RAW`: es la cascada del OS, DDJJ > AJENO > ARCA > proyección.
+  //
+  // Hasta hoy los amparaba el propio título `A14`, porque contiene la palabra «DDJJ». O sea que
+  // alcanza con que alguien lo acorte a «1 · IVA» para que los 28 pasen a contarse como violación de
+  // la regla 5 — y la limpieza de prosa del minimalismo extremo va en esa dirección. La declaración
+  // se migra ACÁ antes de que eso pase, que es el orden que lib/origen-declarado.mjs dejó escrito.
+  //
+  // `B:M` y no `B:H`: el bloque gana una columna por mes y un rango cerrado en julio se fosiliza en
+  // agosto. Las columnas que todavía no tienen DDJJ están vacías o son fórmula, así que amparlas no
+  // ampara nada. La `N` —el total del año— queda AFUERA: es fórmula.
+  //
+  // `incluyeTotales` porque la fila 18 es «⇒ IVA a pagar en efectivo» y también es transcripta: es la
+  // línea de la DDJJ presentada. Recalcularla sería pisar la declaración jurada con aritmética propia.
+  { titulo: 'Impuestos y Financieros', congeladas: 12, hastaFila: 130, cols: 15, propio: true, origenPorBloque: [
+    { bloque: '1 · IVA — LA DDJJ OFICIAL (F.2051): QUÉ SE DEBE O SE TIENE A FAVOR', cols: 'B:M', incluyeTotales: true,
+      que: 'cada columna es un mes YA PRESENTADO ante ARCA: los cuatro renglones son la transcripción del F.2051 de ese mes, y la fila «DDJJ presentada» publica su fecha y su número de acuse. La DDJJ manda sobre cualquier cálculo propio (cascada DDJJ > AJENO > ARCA > proyección); el mes sin presentar es fórmula sobre _ARCA_RAW' },
+  ] },
   { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas
   // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
-  { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18 },
+  //
+  // ═══ LA CONCILIACIÓN DE ARCA CONTRA COMPRAS: SE DECLARA LA CANTIDAD Y **NO** EL MONTO (06/09/2026) ═══
+  //
+  // `B182`/`B183` (380 y 8 comprobantes) son el resultado de la conciliación que corre el OS —casar
+  // cada comprobante del libro de IVA contra Compras, por N° cuando lo hay y por proveedor+importe
+  // cuando no—. El Sheet no puede rehacer ese cruce, así que son dato de origen y hoy los ampara la
+  // prosa de `I179`, que la limpieza de minimalismo va a borrar.
+  //
+  // LA COLUMNA C NO SE DECLARA, Y ES A PROPÓSITO. `C182` publica **$12.694.400.780.000.000** para 380
+  // comprobantes, contra $38.391.091 para los 8 de la fila siguiente: siete órdenes de magnitud por
+  // comprobante. Es un número roto, y encima tiene nombre —`ARCA_EN_COMPRAS_MONTO`— o sea que quien lo
+  // cite publica esa cifra. Ampararlo sería usar la excepción para apagar el aviso, que es justo lo
+  // que lib/origen-declarado.mjs existe para no hacer. Queda contado como violación hasta que se
+  // arregle. El generador de esta pestaña está FRENADO en `PASOS_RETIRADOS`, así que el arreglo no es
+  // de este frente: el hallazgo se pasa con el número medido.
+  { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18, origenPorBloque: [
+    { bloque: '6 · LO QUE ARCA REGISTRÓ', cols: 'B',
+      que: 'cuántos comprobantes del libro de IVA encontró el OS en Compras — por N° de comprobante, o por proveedor + importe cuando el N° no está cargado. Es el resultado de un cruce que el Sheet no puede rehacer' },
+  ] },
   { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
   // LA COLUMNA C DE CAJA ES, POR DEFINICIÓN, DATO DE ORIGEN: "Saldo en moneda de origen" sale del
   // extracto del banco, del arqueo de caja o de la réplica de la tarjeta. Son los quince números que
