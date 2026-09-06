@@ -25,6 +25,7 @@ import {
 import { OBRAS_FUTURAS, comprasObraDe, patronEstaDeclarado, totalEgresos } from './obras-datos.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { PESTANA_REPLICA, REPLICA_DESDE } from './obras-replica.mjs'
 
 const { cmp } = REFS_OBRAS
 const iCol = (letra) => letra.charCodeAt(0) - 65
@@ -81,7 +82,28 @@ function compras() {
 
 const g = grillaObras({ obras: OBRAS_FUTURAS })
 const hoja = hojaDeGrilla(g.filas)
-const hojas = { Compras: compras() }
+// ═══ LA RÉPLICA, QUE ESTE TEST NO MODELABA (06/09/2026) ═══
+//
+// La columna C —costo proyectado— dejó de ser un número tipeado y pasó a ser un SUMIFS sobre
+// `_OBRAS_RAW`, la réplica que publica el plan de egresos guardado en Postgres. Este test evalúa las
+// fórmulas de verdad contra un modelo de hojas, así que al no existir esa pestaña la fórmula daba
+// `#REF!` y el archivo entero se ponía rojo. El defecto era del MODELO del test, no de la fórmula.
+//
+// Se construye desde `totalEgresos`, la MISMA función de la que sale el plan real: inventarle otro
+// número acá haría que el test pase con un proyectado que la pestaña nunca publicaría.
+const replica = () => {
+  const filas = Array.from({ length: REPLICA_DESDE - 1 }, () => [])
+  for (const o of OBRAS_FUTURAS) {
+    const f = []
+    f[0] = o.clave
+    f[1] = o.nombre ?? o.obra ?? o.clave
+    f[2] = 'materiales'
+    f[7] = totalEgresos(o)
+    filas.push(f)
+  }
+  return hojaDeGrilla(filas)
+}
+const hojas = { Compras: compras(), [PESTANA_REPLICA]: replica() }
 /** El valor PUBLICADO de una celda: no el texto de la fórmula, lo que la fórmula da. */
 const val = (ref) => {
   const v = hoja[ref]

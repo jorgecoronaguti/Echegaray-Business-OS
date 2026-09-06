@@ -342,6 +342,31 @@ function llamar(n, args, ev) {
       }
       return sel.reduce((s, i) => s + num(base[i]), 0)
     }
+    // NA() — el hueco EXPLÍCITO. Va junto a COUNTIFS porque son la misma fórmula: la guarda del costo
+    // proyectado es `IF(COUNTIFS(…)=0;NA();SUMIFS(…))`, y sin esta rama el test moría en la mitad
+    // buena de la guarda. Devolver 0 acá sería exactamente el defecto que el `NA()` viene a evitar.
+    case 'NA': throw new ErrorHoja('#N/A')
+    // COUNTIFS(r1;c1; r2;c2…) — TODOS los pares tienen que cumplirse, igual que SUMIFS pero contando.
+    //
+    // Entró el 06/09/2026 porque el OS empezó a escribirla: `formulaCostoProyectado` la usa como
+    // guarda —`IF(COUNTIFS(…)=0;NA();SUMIFS(…))`— para que una obra sin plan salga `#N/A` en vez de
+    // cero, ya que el formato de moneda dibuja el cero como «—» y el dato desaparecería en silencio.
+    // Sin esta rama, el test que evalúa esa fórmula moría con «la función COUNTIFS() no está
+    // soportada» y el archivo entero se ponía rojo.
+    //
+    // Rangos de distinto largo son ERROR, igual que en Sheets y que en SUMIFS de acá arriba: un
+    // modelo que «hace lo que puede» deja pasar una fórmula que en el archivo real da #N/A.
+    case 'COUNTIFS': {
+      if (v.length < 2 || v.length % 2 !== 0) throw new ErrorHoja('#N/A — COUNTIFS necesita pares rango;criterio')
+      const base = plano([v[0]])
+      let sel = base.map((_, i) => i)
+      for (let k = 0; k + 1 < v.length; k += 2) {
+        const rango = plano([v[k]])
+        if (rango.length !== base.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+        sel = sel.filter((i) => cumpleCriterio(rango[i], v[k + 1]))
+      }
+      return sel.length
+    }
     // SUMIF(rango; criterio; [rangoSuma]) — sin el tercero suma el propio rango filtrado.
     case 'SUMIF': {
       const rango = plano([v[0]])

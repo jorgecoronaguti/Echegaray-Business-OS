@@ -247,3 +247,42 @@ test('TRIM colapsa los espacios internos, no sólo las puntas', () => {
   // La cuenta real del cuadro: contar las personas de una categoría con la columna sucia.
   assert.equal(ev('=SUMPRODUCT(--(TRIM(A1:A3)="OF"))', { A1: 'OF ', A2: 'OF', A3: 'A ' }), 2)
 })
+
+// ── COUNTIFS, LA GUARDA QUE HACE QUE UNA OBRA SIN PLAN SE VEA ────────────────────────────────────
+
+test('COUNTIFS cuenta con TODOS los criterios, no con el primero', () => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Que se evalúe sólo el primer par y los demás se ignoren. En la fórmula real eso haría que
+  // `COUNTIFS(…)=0` casi nunca dé cero, la guarda nunca dispare, y el `#N/A` que tiene que avisar
+  // «esta obra no tiene plan cargado» se convierta en un cero dibujado como «—».
+  const hoja = hojaDeGrilla([
+    ['obra', 'tipo', 'monto'],
+    ['BSA', 'materiales', 100],
+    ['BSA', 'mano de obra', 200],
+    ['SALÓN', 'materiales', 300],
+  ])
+  assert.equal(evaluarFormula('=COUNTIFS(A2:A4;"BSA")', { hoja }), 2)
+  assert.equal(evaluarFormula('=COUNTIFS(A2:A4;"BSA";B2:B4;"materiales")', { hoja }), 1)
+  // Y el caso que la guarda existe para detectar: la obra que no está en la réplica.
+  assert.equal(evaluarFormula('=COUNTIFS(A2:A4;"MAMPOSTERÍA")', { hoja }), 0)
+})
+
+test('COUNTIFS con rangos de distinto largo es ERROR, no «lo que se pueda»', () => {
+  // Igual que SUMIFS y que Sheets. Un modelo indulgente deja pasar una fórmula que en el archivo
+  // real da #N/A, y entonces el test afirma sobre algo que la pestaña nunca publica.
+  const hoja = hojaDeGrilla([['a', 'b'], [1, 2], [3, 4]])
+  assert.throws(() => evaluarFormula('=COUNTIFS(A2:A3;1;B2:B2;2)', { hoja }), /distinto largo/)
+  assert.throws(() => evaluarFormula('=COUNTIFS(A2:A3)', { hoja }), /pares rango;criterio/)
+})
+
+test('la guarda real de una obra sin plan da #N/A, no cero', () => {
+  // La fórmula LITERAL que escribe `formulaCostoProyectado`, con la réplica modelada. Es el caso que
+  // motivó agregar COUNTIFS: sin el `NA()`, el formato de moneda dibujaría el cero como «—» y el
+  // costo proyectado de una obra desaparecería sin que nada grite.
+  const hoja = hojaDeGrilla([['x']])
+  const hojas = { _OBRAS_RAW: hojaDeGrilla([[], [], [], ['bsa', 'BSA', 'materiales', '', '', '', '', 999]]) }
+  const f = (obra) => `=IF(COUNTIFS(_OBRAS_RAW!$B$4:$B$200;"${obra}")=0;NA();SUMIFS(_OBRAS_RAW!$H$4:$H$200;_OBRAS_RAW!$B$4:$B$200;"${obra}"))`
+  assert.equal(evaluarFormula(f('BSA'), { hoja, hojas }), 999)
+  assert.throws(() => evaluarFormula(f('MAMPOSTERÍA'), { hoja, hojas }), /N\/A/)
+})
