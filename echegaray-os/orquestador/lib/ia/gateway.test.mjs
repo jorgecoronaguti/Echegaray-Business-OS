@@ -161,3 +161,115 @@ test('la sombra NO sale si el contenido trae un CUIT, aunque el dominio sea INTE
   // Y sólo hubo UNA llamada: la de Claude, que sí puede ver ese contenido.
   assert.ok(llamadas.every((u) => !String(u).includes('huggingface')), 'se mandó contenido a HF')
 })
+
+// ── HF ATENDIENDO DE VERDAD: LO QUE PASA CUANDO NO PUEDE ─────────────────────────────────────────
+
+/** Un `fetch` que distingue los dos destinos y responde lo que cada caso necesita. */
+function fetchDoble({ hf, claude }) {
+  const vistas = []
+  const impl = async (url, opts) => {
+    const esHf = String(url).includes('huggingface')
+    vistas.push(esHf ? 'hf' : 'claude')
+    return (esHf ? hf : claude)(url, opts)
+  }
+  return { impl, vistas }
+}
+
+const okClaude = async () => ({
+  ok: true, status: 200, headers: { get: () => null },
+  json: async () => ({ content: [{ type: 'text', text: 'contestó claude' }], usage: {} }),
+  text: async () => '',
+})
+
+test('HF sin cuota NO apaga el razonador del OS: eso es un estado sobre Claude', async () => {
+  const avisos = []
+  const { impl, vistas } = fetchDoble({
+    hf: async () => ({ ok: false, status: 402, headers: { get: () => null }, text: async () => 'sin creditos', json: async () => ({}) }),
+    claude: okClaude,
+  })
+  const r = await llmRun({
+    tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'hola',
+    mensajes: [{ role: 'user', content: 'hola' }],
+    apiKey: 'x', fetchImpl: impl, avisar: async (c) => { avisos.push(c.kind) },
+  })
+  assert.deepEqual(vistas, ['hf', 'claude'], 'no escaló a Claude después del 402 de HF')
+  assert.equal(r.texto, 'contestó claude')
+  assert.equal(r.escalado, true)
+  // ÉSTE es el punto: `avisarEstado` marca «sin crédito» y con eso el OS entero degrada. Un 402 de
+  // HF significa lo contrario —que Claude tiene que atender— y no puede tocar ese estado.
+  assert.deepEqual(avisos, [], `HF marcó el razonador del OS como caído: ${avisos.join(',')}`)
+})
+
+test('un fallo de Claude SÍ avisa: el control tiene que poder decir que sí, no sólo que no', async () => {
+  const avisos = []
+  const { impl } = fetchDoble({
+    hf: async () => ({ ok: false, status: 500, headers: { get: () => null }, text: async () => 'x', json: async () => ({}) }),
+    claude: async () => ({ ok: false, status: 401, headers: { get: () => null }, text: async () => 'sin credencial', json: async () => ({}) }),
+  })
+  await assert.rejects(() => llmRun({
+    tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'hola',
+    mensajes: [{ role: 'user', content: 'hola' }],
+    apiKey: 'x', fetchImpl: impl, avisar: async (c) => { avisos.push(c.kind) },
+  }))
+  assert.deepEqual(avisos, ['auth'], 'un 401 de Claude dejó de avisar: el aviso quedó muerto para todos')
+})
+
+test('HF que no contesta a tiempo escala a Claude y el usuario recibe su respuesta igual', async () => {
+  const { impl, vistas } = fetchDoble({
+    // Cuelga hasta que la señal aborte, o hasta un tope propio muy por encima del presupuesto. Es
+    // el modo de falla que NO se recupera solo: no es un error, es una espera indefinida.
+    hf: (url, opts) => new Promise((_, rechazar) => {
+      opts?.signal?.addEventListener?.('abort', () => rechazar(Object.assign(new Error('abortado'), { name: 'AbortError' })))
+      setTimeout(() => rechazar(new Error('el doble se cansó')), 30_000).unref?.()
+    }),
+    claude: okClaude,
+  })
+  const previo = process.env.ORQ_HF_MS_MAX
+  process.env.ORQ_HF_MS_MAX = '250'
+  try {
+    // ═══ LA CARRERA ES PARTE DEL CONTROL, NO UN ADORNO ═══
+    //
+    // Sin ella, quitar el presupuesto no pone el test en rojo: lo deja COLGADO hasta el timeout del
+    // runner, que es un modo de falla peor —parece contención, parece la máquina, parece cualquier
+    // cosa menos el bug—. Con la carrera, la ausencia del corte es un `AssertionError` en un
+    // segundo. Verificado mutando la línea del presupuesto.
+    const carrera = await Promise.race([
+      llmRun({
+        tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'hola',
+        mensajes: [{ role: 'user', content: 'hola' }],
+        apiKey: 'x', fetchImpl: impl, avisar: async () => {},
+      }).then((r) => ({ tipo: 'contestó', r })),
+      new Promise((res) => { setTimeout(() => res({ tipo: 'colgado' }), 4000).unref?.() }),
+    ])
+    assert.equal(carrera.tipo, 'contestó', 'el presupuesto de latencia no cortó: la operación quedó colgada')
+    assert.deepEqual(vistas, ['hf', 'claude'])
+    assert.equal(carrera.r.texto, 'contestó claude')
+    assert.equal(carrera.r.escalado, true, 'la respuesta no quedó marcada como escalada')
+  } finally {
+    if (previo === undefined) delete process.env.ORQ_HF_MS_MAX
+    else process.env.ORQ_HF_MS_MAX = previo
+  }
+})
+
+test('cuando HF contesta, contesta HF: la operación queda marcada como autónoma', async () => {
+  const { impl, vistas } = fetchDoble({
+    hf: async () => ({
+      ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ model: 'Qwen/Qwen3-4B-Instruct-2507', choices: [{ message: { content: 'cfo' } }], usage: { prompt_tokens: 10, completion_tokens: 2 } }),
+      text: async () => '',
+    }),
+    claude: okClaude,
+  })
+  const r = await llmRun({
+    tarea: 'rutear', dominio: 'intenciones', datosNoConfiables: 'hola',
+    mensajes: [{ role: 'user', content: 'hola' }],
+    apiKey: 'x', fetchImpl: impl, avisar: async () => {},
+  })
+  assert.deepEqual(vistas, ['hf'], 'se llamó a Claude aunque HF había contestado')
+  assert.equal(r.proveedor, 'huggingface')
+  assert.equal(r.texto, 'cfo')
+  // `autonomo` es el numerador del Autonomy Rate. Si esto se pusiera en false, el número diría que
+  // el OS no resolvió nada mientras lo resuelve todo.
+  assert.equal(r.autonomo, true)
+  assert.equal(r.escalado, false)
+})

@@ -258,7 +258,7 @@ function conPlazo(señal, msMax) {
 }
 
 /** Una llamada a un proveedor, medida y registrada. No lanza: devuelve el resultado o el error. */
-async function intentar(proveedor, opciones, meta, { msMax = 0 } = {}) {
+async function intentar(proveedor, opciones, meta, { msMax = 0, avisar = avisarEstado } = {}) {
   const t0 = Date.now()
   const plazo = conPlazo(opciones.señal, msMax)
   try {
@@ -287,7 +287,7 @@ async function intentar(proveedor, opciones, meta, { msMax = 0 } = {}) {
     // significa exactamente lo contrario —que HF no atiende y que Claude tiene que atender—, y
     // pasarlo por la misma función haría que el OS se declare caído justo cuando su fallback está
     // sano. El bug es de una línea y el síntoma sería «el OS dejó de contestar» sin causa visible.
-    if (proveedor.nombre === 'anthropic') await avisarEstado(c)
+    if (proveedor.nombre === 'anthropic') await avisar(c)
     await registrarUso({
       modelo: proveedor.idDeModelo(meta.alias), usd: null, agente: meta.agente, funcion: meta.funcion,
       proveedor: proveedor.nombre, capacidad: meta.capacidad,
@@ -301,6 +301,32 @@ async function intentar(proveedor, opciones, meta, { msMax = 0 } = {}) {
 }
 
 /**
+ * QUÉ PARTE DEL PROMPT MIRA EL GUARDIÁN DE CONTENIDO.
+ *
+ * ═══ EL SYSTEM PROMPT LO ESCRIBIÓ EL OS; EL MENSAJE, NO ═══
+ *
+ * Vigilar el prompt entero parece lo más seguro y no lo es: el prompt entero incluye texto que
+ * escribió el propio OS —el catálogo de especialistas, las descripciones de las herramientas, las
+ * reglas— y ese texto está lleno de siglas del rubro. El primer día en producción eso frenó OCHO de
+ * OCHO ruteos por la cadena «UOCRA, IERIC» del catálogo, que no es el nombre de nadie.
+ *
+ * Un guardián que da falso positivo sobre lo que el OS mismo escribió no protege: apaga la
+ * capacidad sin que nadie se entere de por qué. Por eso quien llama puede DECLARAR qué parte vino
+ * de afuera —el mensaje de la persona, el texto de un documento, un campo de la base— y el guardián
+ * mira eso.
+ *
+ * ═══ Y SI NADIE DECLARA NADA, SE MIRA TODO ═══
+ *
+ * El default tiene que ser el caro, no el cómodo: un caller que se olvida de declarar obtiene el
+ * comportamiento conservador —se revisa el prompt completo—, nunca el permisivo. Un olvido puede
+ * costar una medición; nunca una fuga.
+ */
+export function textoAVigilar({ sistema, mensajes, datosNoConfiables }) {
+  if (datosNoConfiables === undefined) return JSON.stringify({ sistema, mensajes })
+  return typeof datosNoConfiables === 'string' ? datosNoConfiables : JSON.stringify(datosNoConfiables ?? '')
+}
+
+/**
  * PEDIRLE AL OS QUE RAZONE ALGO. La interfaz que usan los módulos nuevos.
  *
  * @param tarea         qué se está haciendo ('elegir-herramienta', 'rutear'…). Decide el modo.
@@ -311,14 +337,18 @@ async function intentar(proveedor, opciones, meta, { msMax = 0 } = {}) {
 export async function llmRun({
   tarea, dominio = null, sistema = null, mensajes, herramientas = null,
   calidad = CAPACIDAD.NORMAL, maxTokens = 1024, temperatura, formato = null,
-  agente = null, funcion = null, permitidoExplicitamente = false,
+  agente = null, funcion = null, permitidoExplicitamente = false, datosNoConfiables = undefined,
   señal, fetchImpl = globalThis.fetch, apiKey = process.env.ANTHROPIC_API_KEY,
+  // Se inyecta para poder PROBAR que un fallo de HF no marca el razonador del OS como caído. Sin
+  // inyección esa rama sólo se puede verificar mirando Postgres, y un control que necesita la base
+  // para decir que no, en la práctica no se corre.
+  avisar = avisarEstado,
 } = {}) {
   const capacidad = normalizarCapacidad(calidad)
   const alias = modeloPara(capacidad)
   // EL GUARDIÁN DE CONTENIDO CORRE UNA VEZ Y GOBIERNA LAS DOS RAMAS. Antes corría sólo para la
   // sombra, que es la rama donde no importaba.
-  const hallazgos = hallazgosEnTexto(JSON.stringify({ sistema, mensajes }))
+  const hallazgos = hallazgosEnTexto(textoAVigilar({ sistema, mensajes, datosNoConfiables }))
   const plan = planSegunContenido(
     planDe({ tarea, dominio, permitidoExplicitamente, hfDisponible: huggingface.configurado() }),
     hallazgos,
@@ -349,7 +379,7 @@ export async function llmRun({
   const sombraOmitida = hallazgos.length ? hallazgos : null
   if (plan.sombra) {
     sombra = intentar(plan.sombra, { ...comunes, modelo: plan.sombra.idDeModelo(alias) },
-      { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias }, { msMax })
+      { agente, funcion: `${funcion ?? tarea}:sombra`, capacidad, alias }, { msMax, avisar })
       .catch(() => null)
   }
 
@@ -364,7 +394,7 @@ export async function llmRun({
     const res = await intentar(proveedor, {
       ...comunes, modelo: proveedor.idDeModelo(alias), apiKey,
     }, { agente, funcion: funcion ?? tarea, capacidad, alias, fallbackDe },
-    { msMax: proveedor === anthropic ? 0 : msMax })
+    { msMax: proveedor === anthropic ? 0 : msMax, avisar })
 
     if (res.ok) {
       return {

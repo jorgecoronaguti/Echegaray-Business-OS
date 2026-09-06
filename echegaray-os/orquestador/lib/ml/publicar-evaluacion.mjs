@@ -47,11 +47,36 @@ export function manifiestoDe(dataset) {
  * un prompt. Dos copias de «qué es un dato sensible» divergen el día que se agrega la cuarta
  * comprobación y sólo una se entera.
  */
+/**
+ * LAS SIGLAS DEL OFICIO. No son nombres de persona por más que se escriban en mayúscula.
+ *
+ * ═══ POR QUÉ ESTA LISTA EXISTE (06/09/2026, medido) ═══
+ *
+ * El catálogo de especialistas del Director dice «(UOCRA, IERIC, Fondo de Cese)». El patrón
+ * «MAYÚSCULAS, MAYÚSCULAS» lo leía como «APELLIDO, NOMBRE», y con eso el guardián frenaba el 100%
+ * del ruteo: OCHO de OCHO mensajes reales se fueron a Claude por una sigla del rubro. El guardián
+ * no estaba protegiendo nada —no hay ninguna persona en ese texto—, estaba anulando la capacidad
+ * que se acababa de habilitar, y en silencio.
+ *
+ * Un guardián que bloquea lo inocuo no protege más: enseña a esquivarlo. Ésta es la misma lección
+ * que ya había obligado a sacar la palabra «proveedor» de `esPublicable`, y se vuelve a aplicar.
+ * Un nombre de persona real —«GONZALEZ, MARIO»— lo sigue atrapando: la lista es cerrada y corta.
+ */
+const SIGLAS = new Set([
+  'UOCRA', 'IERIC', 'ARCA', 'AFIP', 'DGR', 'ART', 'SRT', 'IVA', 'SSMA', 'EPP', 'CCT', 'RTO',
+  'VTV', 'CUIT', 'CUIL', 'ARS', 'USD', 'IIBB', 'ANSES', 'OSPECON', 'PDF', 'CSV', 'API', 'RLS',
+  'ONNX', 'JSON', 'SQL', 'ERP',
+])
+
 export function hallazgosEnTexto(txt) {
   const hallazgos = []
   if (/\b\d{2}-?\d{8}-?\d\b/.test(txt)) hallazgos.push('parece contener un CUIT')
   if (/\$\s?\d{1,3}(\.\d{3})+/.test(txt)) hallazgos.push('parece contener un importe en pesos')
-  if (/[A-ZÁÉÍÓÚÑ]{3,},\s*[A-ZÁÉÍÓÚÑ]{3,}/.test(txt)) hallazgos.push('parece contener un nombre de persona («APELLIDO, NOMBRE»)')
+  const pares = String(txt).match(/[A-ZÁÉÍÓÚÑ]{3,},\s*[A-ZÁÉÍÓÚÑ]{3,}/g) ?? []
+  // Basta con que UN par no sea de siglas para que el texto quede frenado: el que decide es el
+  // hallazgo, no la mayoría.
+  const pareceNombre = pares.some((par) => par.split(/,\s*/).some((parte) => !SIGLAS.has(parte)))
+  if (pareceNombre) hallazgos.push('parece contener un nombre de persona («APELLIDO, NOMBRE»)')
   return hallazgos
 }
 

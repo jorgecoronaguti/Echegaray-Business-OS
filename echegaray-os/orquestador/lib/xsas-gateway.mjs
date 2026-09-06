@@ -637,7 +637,7 @@ async function intentarMotor({ pedido, eleccion, catalogo, mapa, porArchivo, por
   if (!candidata) return mutacion ? escrituraNoDisponible({ pedido, eleccion, sinFirma, texto, t0 }) : null
   const ia = await puertaIa(deps)
   const completo = await completarArgumentos({
-    ia, llm: await puertaArgumentos(deps),
+    ia, llm: await puertaArgumentos(deps, texto),
     texto, tool: candidata.tool, args: candidata.resuelto.args, falta: candidata.resuelto.falta, logger: deps.logger ?? null,
   })
   // ═══ MUTACIÓN CON TOOL ALCANZABLE PERO SIN DATO: SE PIDE EL DATO, NO SE INVENTA NADA ═══
@@ -717,7 +717,7 @@ async function atenderPendiente({ pedido, texto, mapa, deps, t0 }) {
   }
   if (faltan.length) {
     const ia = await puertaIa(deps)
-    const completo = await completarArgumentos({ ia, llm: await puertaArgumentos(deps), texto, tool, args, falta: faltan, logger: deps.logger ?? null })
+    const completo = await completarArgumentos({ ia, llm: await puertaArgumentos(deps, texto), texto, tool, args, falta: faltan, logger: deps.logger ?? null })
     args = completo.args
     faltan = completo.falta
   }
@@ -1243,7 +1243,7 @@ async function puertaIa(deps) {
  * Devuelve el TEXTO o null, que es la forma que `completarArgumentos` espera. Quién contestó queda
  * en `orq.chat_cost`, que es donde el Autonomy Rate lo lee.
  */
-async function puertaArgumentos(deps) {
+async function puertaArgumentos(deps, textoDelUsuario = null) {
   if (deps.llmArgumentos) return deps.llmArgumentos
   // Un caller que inyectó SU puerta manda: si `deps.ia` viene puesto —un test, una cara con su
   // propio cliente— el gateway no se cuela por debajo. Devolver null hace que
@@ -1259,5 +1259,8 @@ async function puertaArgumentos(deps) {
     maxTokens: o.maxTokens,
     agente: o.agente,
     funcion: o.funcion,
+    // Lo único que no escribió el OS es la frase de la persona. Las descripciones de los
+    // parámetros salen del `input_schema` de la herramienta, que es código de este repo.
+    datosNoConfiables: textoDelUsuario ?? undefined,
   })).texto
 }

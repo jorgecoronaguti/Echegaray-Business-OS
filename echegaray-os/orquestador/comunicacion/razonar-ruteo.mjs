@@ -74,6 +74,10 @@ export function crearRazonadorDeRuteo({ apiKey = process.env.ANTHROPIC_API_KEY, 
       dominio: 'intenciones',
       calidad: CAPACIDAD.SIMPLE,
       mensajes: [{ role: 'user', content: prompt }],
+      // LO NO CONFIABLE ES LO QUE ESCRIBIÓ LA PERSONA, no el catálogo de especialistas: el catálogo
+      // lo escribió el OS. Sin esta línea el guardián revisaba también el catálogo y lo frenaba
+      // entero por la sigla «UOCRA, IERIC» — ocho de ocho ruteos a Claude, medido el 06/09/2026.
+      datosNoConfiables: String(texto),
       maxTokens: MAX_TOKENS,
       agente: 'director',
       funcion: 'rutear',
