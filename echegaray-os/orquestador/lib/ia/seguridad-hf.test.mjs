@@ -212,3 +212,35 @@ test('una tarea que nadie declaró está APAGADA para HF, aunque el dominio sea 
   assert.deepEqual(nombres(p), ['anthropic'])
   assert.equal(p.sombra, null)
 })
+
+// ── 6. EL USUARIO NO VE LA MÁQUINA ───────────────────────────────────────────────────────────────
+
+test('la respuesta a una persona no dice qué modelo ni qué proveedor contestó', async () => {
+  const { render } = await import('../../comunicacion/especialistas/xsas.mjs')
+  // La respuesta del Core viene con toda la telemetría puesta: es correcto que la tenga —el costo
+  // hay que poder auditarlo— y es incorrecto que salga por la pantalla.
+  const delCore = {
+    respuesta: 'Tenés 3 obras activas.',
+    degradacion: null,
+    llm: {
+      proveedor: 'huggingface', modelo: 'Qwen/Qwen3-4B-Instruct-2507',
+      tokens: { in: 1074, out: 5 }, usd: 0.0001, ms: 621,
+    },
+    capacidades: { nivel: 'capacidad', tools: ['obras_activas'] },
+  }
+  const texto = render(delCore)
+  for (const secreto of ['huggingface', 'Qwen', 'anthropic', 'claude', '1074', 'usd', 'tokens', 'coseno', 'embedding']) {
+    assert.ok(!texto.toLowerCase().includes(secreto.toLowerCase()),
+      `la respuesta al usuario filtró «${secreto}»: ${texto}`)
+  }
+  assert.match(texto, /3 obras activas/, 'y la respuesta de verdad tiene que seguir estando')
+})
+
+test('una degradación SÍ se muestra, pero sin nombrar al proveedor que falló', async () => {
+  const { render } = await import('../../comunicacion/especialistas/xsas.mjs')
+  // Esconder una degradación sería peor que mostrar un nombre de modelo: el usuario tomaría por
+  // completa una respuesta que no lo es. Lo que se dice es QUÉ le falta, no QUIÉN falló.
+  const texto = render({ respuesta: 'Van 3 obras.', degradacion: 'sin razonador (credit)' })
+  assert.match(texto, /sin razonador/)
+  assert.ok(!/huggingface|anthropic|qwen|claude-/i.test(texto), `nombró un proveedor: ${texto}`)
+})

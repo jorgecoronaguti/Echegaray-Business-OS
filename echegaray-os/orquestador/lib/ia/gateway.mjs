@@ -74,6 +74,13 @@ export const MODO_POR_TAREA = Object.freeze({
 
   // Elegir la herramienta y completar sus argumentos a partir de la pregunta. Es la tarea más
   // verificable que existe en el OS: hay una herramienta correcta y unos argumentos correctos.
+  //
+  // ATENCIÓN — ABIERTA PERO SIN CONSUMIDOR (06/09/2026). Ningún camino de producción llama todavía
+  // a `llmRun({ tarea: 'elegir-herramienta' })`: el bucle de los especialistas sigue corriendo
+  // sobre `engines/anthropic-api.mjs`, que es un motor de Anthropic y no pasa por el gateway.
+  // Está declarada porque su benchmark existe y porque el día que ese bucle se porte, no hay que
+  // volver a decidir nada. Pero HF NO está atendiendo esta tarea: no hay una sola fila suya en
+  // `orq.chat_cost`, y decir lo contrario sería exactamente el error que este archivo documenta.
   'elegir-herramienta': MODO.PRODUCCION,
   // Copiar de una frase el valor de un parámetro que la herramienta YA declaró. El modelo no elige
   // la herramienta —eso lo decidió el ruteo determinístico— y no puede agregar claves: sólo se

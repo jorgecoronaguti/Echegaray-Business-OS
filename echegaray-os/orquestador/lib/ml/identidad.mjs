@@ -12,6 +12,7 @@ import { normalizar } from './embeddings.mjs'
 import { resolverIdentidad, ESTADO, VERSION, cuitCanonico } from './entity-resolution.mjs'
 import { umbralesDe, configUmbrales } from './umbrales.mjs'
 import { escriturasDeCorreccion, DECISION } from './correccion.mjs'
+import { guardar as guardarEjemplo, TAREA } from './ejemplos.mjs'
 
 /** El padrón de una entidad. Hoy sólo proveedores tiene tabla propia; el resto se agrega acá y el
  *  resolver no cambia. */
@@ -101,6 +102,24 @@ export async function corregir({ resolucionId, entidadIdCorrecta, por, decision 
       [plan.alias.entidad, plan.alias.entidad_id, plan.alias.alias, normalizar(plan.alias.alias),
        plan.alias.fuente, plan.alias.confianza, plan.alias.verificado, plan.alias.verificado_por])
   }
+  // ═══ EL VOLANTE: LA CORRECCIÓN TAMBIÉN SE GUARDA COMO EJEMPLO ═══
+  //
+  // El alias hace que ESTE texto no haya que volver a resolverlo. El ejemplo hace que el MODELO
+  // pueda aprender de la corrección. Son dos cosas distintas y hasta hoy sólo existía la primera:
+  // el OS se acordaba de la respuesta y no aprendía de la pregunta.
+  //
+  // Va después de las escrituras que importan y con el error tragado adentro de `guardarEjemplo`:
+  // capturar aprendizaje no puede romper la corrección que lo produjo.
+  await guardarEjemplo({
+    tarea: TAREA.IDENTIDAD,
+    dominio: previa.rows[0].entidad === 'proveedor' ? 'proveedores' : 'clientes',
+    entrada: previa.rows[0].valor_original,
+    contexto: { entidad: previa.rows[0].entidad },
+    propuestoPorElOs: previa.rows[0].entidad_id,
+    corregidoA: plan.resolucion.entidad_id_correcta,
+    por,
+  })
+
   return { ok: true, entidad: previa.rows[0].entidad, valor: previa.rows[0].valor_original,
            alias: plan.alias && crearAlias ? normalizar(plan.alias.alias) : null, estado: plan.resolucion.estado }
 }
