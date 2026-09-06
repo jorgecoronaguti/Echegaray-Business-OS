@@ -26,6 +26,7 @@ scripts · 14 timers en producción.
 | el bot, el Director, los especialistas | `orquestador/comunicacion/` · el WS es `mattermost-ws-consumer.mjs` |
 | jornales, quincenas, UOCRA | `orquestador/scripts/jornales-pestana.mjs` (2.835 líneas — **leé el tramo, no el archivo**) |
 | obras, avance, partes | `src/features/obras/` + `src/features/control-obras/` · grilla en `lib/obras-grilla.mjs` |
+| el plan de egresos proyectados de una obra (lo que el dueño estimó gastar, antes del comprobante) | `public.obra_egreso_proyectado` · carga desde el Sheet con `scripts/obras-previstos-cargar.mjs` (verifica lo guardado contra lo leído) · réplica `_OBRAS_RAW` por `scripts/obras-raw-pestana.mjs` · el contrato de la réplica y la fórmula que la cita, en `lib/obras-replica.mjs` |
 | permisos, roles, quién ve qué | `src/features/auth/` · y **la verdad final es RLS en Postgres**, no el front |
 | documentación técnica del cliente → cómputo → cotización (XSAS) | `orquestador/lib/plano/` — el borde es `pipeline.mjs`; **la partida la decide `seleccion.mjs`, que es PURO, y no el modelo** · corridas: `scripts/plano-a-cotizacion.mjs` y `scripts/plano-reproducibilidad.mjs` |
 | abrir un archivo que llegó del cliente (PDF, DXF, DWG, imagen, planilla) | `orquestador/lib/ingesta/` — un adaptador por formato detrás de `registro.mjs`. El `.dwg` **se abre solo**: LibreDWG 0.14 compilado en `~/.local/bin/dwg2dxf`, probado contra AC1032 y AC1027 |
@@ -47,6 +48,7 @@ scripts · 14 timers en producción.
 | compras | pestaña `Compras` → espejo `public.compra_sheet` (timer 1 h) | escribir Postgres y esperar que suba |
 | proveedores | `public.proveedores`, identidad por **CUIT** | crear por nombre parecido |
 | efectivo | el arqueo sellado + movimientos posteriores | inferir del Sheet |
+| costo proyectado de una obra | `public.obra_egreso_proyectado` (materiales + mano de obra, una fila cada uno) | volver a estampar el número en la celda: la C de OBRAS lo SUMA de `_OBRAS_RAW` |
 | diseño de pantallas | los `.dc.html` del zip vigente | `COMPONENTS.md`, que pierde |
 
 ## Comandos

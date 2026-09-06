@@ -101,10 +101,21 @@ export const PESTANAS = [
   // sobre "OBRAS" informaba "0 pegados": no porque no los tuviera, sino porque no la conocía. Un
   // control que no sabe que algo existe devuelve el mismo verde que uno que lo revisó.
   //
-  // NO SE LES DECLARA `origen`. OBRAS tiene ~40 números pegados en el detalle (columna C, el costo por
-  // ítem que viene de `costos_obra`, y la H con su fecha de pago): son insumos de otro sistema
-  // fosilizados dentro de la grilla, y declararlos "dato de origen" sería usar la excepción para
-  // apagar el aviso. Que el censo los cuente es exactamente lo que se quiere.
+  // NO SE LES DECLARA `origen`, Y ESTO SE VOLVIÓ A MEDIR EL 05/09/2026 CELDA POR CELDA. El comentario
+  // que estaba acá describía un layout que ya no existe ("~40 números en la C que vienen de
+  // costos_obra, y la H con su fecha de pago"): OBRAS se rehizo en agosto y el detalle desapareció.
+  // Lo que el censo cuenta hoy en OBRAS, verificado contra el archivo vivo, son 22:
+  //
+  //   · G22:G26 (5) «Contratado» — NO lo tipeó nadie: lo EXTRAE `lib/cobranzas-contrato.mjs` del
+  //     texto de la columna "ORDEN DE COMPRA" de Cobranzas y el generador lo estampa. Su fuente en
+  //     el OS ya existe (`obra_canonica.monto_contratado`, que coincide EXACTO en las 3 obras dadas
+  //     de alta); las otras 2 obras no están en `obra_canonica` y darlas de alta es del dueño.
+  //   · E45:E61 (17) «Previsto» del plan de materiales — ES dato de origen, pero declararlo acá sería
+  //     usar la excepción para apagar el aviso: el dueño eligió llevarlos a Supabase, no declararlos.
+  //     Ya están en `public.obra_egreso_proyectado`; falta que la celda pase a fórmula, y eso está
+  //     bloqueado por la fusión del cuadro 5 (ver lib/materiales-fusion.mjs).
+  //
+  // Los 7 de C33:C39 dejaron de contarse el 05/09: la celda pasa a sumar `_OBRAS_RAW`.
   { titulo: 'OBRAS', congeladas: 2, hastaFila: 98, cols: 9, propio: true },
   { titulo: 'Calendario de Cobros', congeladas: 4, hastaFila: 110, cols: 17, propio: true },
   // LAS DOS QUE FALTABAN (31/08). Mismo defecto que OBRAS y Calendario en agosto: nacieron después
