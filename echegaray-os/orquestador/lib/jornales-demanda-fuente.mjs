@@ -48,6 +48,7 @@ export async function demandaParaJornales({ hoy = new Date(), escalon = null, es
       porQuincena.set(q.clave, { ...c, nObras: q.nObras, plantel: q.plantel, desde: q.desde, hasta: q.hasta })
     }
     if (c?.sinEscala?.length) console.warn(`  ⚠ demanda ${q.clave}: sin escala para ${c.sinEscala.join(', ')} — esas horas NO entran valuadas en $0, entran sin valuar`)
+    if (c?.sinCargas?.length) console.warn(`  ⚠ demanda ${q.clave}: ${c.sinCargas.join(', ')} entra como jornal puro SIN cargas — no hay tarifa de cargas declarada para esa categoría`)
   }
   return { porQuincena, sinFechas, nObras: lista.length }
 }

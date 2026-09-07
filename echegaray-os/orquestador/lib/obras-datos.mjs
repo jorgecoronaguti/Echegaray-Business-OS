@@ -17,6 +17,9 @@
 //   'FEMENIA', 'Alumetal', 'Ferretec', 'Hormiserv'). ACA, Bedini, Sika, Mercado Libre todavía no
 //   tienen filas en Compras: quedan con el nombre del dueño y el real da $0 hasta la primera factura.
 // · `horas` y `moCargasPesos` vienen YA ESCALADAS por lo NO ejecutado.
+// · `mensuales` (opcional): plantel que cobra por MES y no por hora —hoy sólo `sereno` (CCT 76/75)—
+//   con su propio tramo `desde`/`hasta` y `cantidad`. Lo valúa jornales-demanda-obras con el básico
+//   mensual de la escala; NO se suma a `moCargasPesos`, que es la explosión del dueño tal cual.
 // · `cuotas`: cuando el dueño repartió un egreso en el tiempo. La suma de cuotas = `monto` (se
 //   verifica en el test). Donde el dueño dijo sólo el MES, el día es convención declarada (el 10).
 // · `familia` es descriptiva (INFERENCIA del concepto, no dato del dueño): sirve para agrupar, no
@@ -339,6 +342,16 @@ export const OBRAS_FUTURAS = [
     plantelTemporales: 5,
     pctEjecutado: 0,
     horas: { oficialEspecializado: 1119.08, oficial: 917.11, ayudante: 1896.5 },
+    // ═══ DOS SERENOS POR UN MES (pedido del dueño, 07/09/2026) ═══
+    // Textual: «se agreguen 2 serenos que trabajarán en la obra Quattropani ... las necesito un mes».
+    // NO son personas del plantel —Plantel/Nómina/Jornales listan gente real con CUIL y alta— sino
+    // DEMANDA de la obra: entran al Cash Flow como jornal puro (Sereno = básico MENSUAL del CCT 76/75,
+    // ver CATEGORIAS_MENSUALES en jornales-demanda-obras). El dueño no dijo DESDE cuándo: la ventana
+    // 16/09–15/10 es un SUPUESTO (la próxima quincena entera) y se corrige acá cuando él la confirme.
+    // No toca `moCargasPesos`: esa cifra es la explosión del dueño y no se completa por él.
+    mensuales: [
+      { categoria: 'sereno', cantidad: 2, desde: '2026-09-16', hasta: '2026-10-15', nota: 'SUPUESTO de fechas: un mes desde la próxima quincena; el dueño confirma desde/hasta' },
+    ],
     moCargasPesos: 38_802_169,
     egresos: [
       {

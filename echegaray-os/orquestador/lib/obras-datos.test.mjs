@@ -155,3 +155,23 @@ test('lo no-caja NUNCA se mezcla con los egresos: máquina propia va aparte', ()
   }
   assert.equal(porClave('sf-pisos-industriales').noCaja.maquinaPropia, 8_832_714)
 })
+
+test('Quattropani lleva DOS serenos por un mes como demanda mensual, dentro de las fechas de la obra y con su supuesto declarado', () => {
+  // Pedido del dueño (07/09/2026): «se agreguen 2 serenos que trabajarán en la obra Quattropani ...
+  // las necesito un mes». No son personas del plantel (eso exige CUIL y alta real): es demanda de obra.
+  const o = porClave('quattropani-salon-comercial')
+  assert.ok(Array.isArray(o.mensuales) && o.mensuales.length === 1)
+  const [s] = o.mensuales
+  assert.equal(s.categoria, 'sereno')
+  assert.equal(s.cantidad, 2)
+  assert.ok(fechaValida(s.desde) && fechaValida(s.hasta) && s.hasta > s.desde, 'tramo con fechas válidas')
+  assert.ok(s.desde >= o.inicio && s.hasta <= o.fin, 'el tramo cae dentro de la obra')
+  // Un mes: 30 días calendario, ambos incluidos.
+  const dias = (Date.parse(s.hasta) - Date.parse(s.desde)) / 86_400_000 + 1
+  assert.equal(dias, 30)
+  // El dueño no dijo desde cuándo: mientras no lo confirme, el tramo tiene que DECIR que es un supuesto.
+  assert.match(String(s.nota), /SUPUESTO/)
+  // Ningún otro campo del insumo del dueño se tocó por esto.
+  assert.equal(o.moCargasPesos, 38_802_169)
+  for (const otra of OBRAS_FUTURAS) if (otra !== o) assert.equal(otra.mensuales, undefined, `${otra.clave}: sin serenos`)
+})
