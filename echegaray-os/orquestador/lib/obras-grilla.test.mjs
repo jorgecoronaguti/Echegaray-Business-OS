@@ -35,17 +35,17 @@ import {
   rotuloDeObra, SIN_CONTRATO, SIN_COSTO, SECCION_OBRAS, ROTULO_TOTAL_ANO, ROTULO_TOTAL_OBRAS,
 } from './obras-grilla.mjs'
 import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
-import { formulaCostoProyectado } from './obras-replica.mjs'
+import { formulaCostoProyectado, TIPO } from './obras-replica.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
 
-const COLS = 'ABCDEFGHI'
+const COLS = 'ABCDEFGHIJK'
 const g = grillaObras({ obras: OBRAS_FUTURAS })
 
 /** El contenido de una celda por su referencia A1 ("D16"), como se lee en el Sheet. */
 const cel = (grid, ref) => {
-  const [, col, fila] = ref.match(/^([A-I])(\d+)$/)
+  const [, col, fila] = ref.match(/^([A-K])(\d+)$/)
   return grid.filas[Number(fila) - 1][COLS.indexOf(col)]
 }
 /** Todas las fórmulas de la grilla, con su referencia A1 — el material de casi todos los tests. */
@@ -108,7 +108,7 @@ test('el año y las obras dicen lo MISMO en la MISMA columna: E cobrado, F por c
       `la columna ${COLS[i]} tiene que significar lo mismo arriba y abajo`)
   }
   assert.deepEqual(encObras, ['Obra', 'Inicio', 'Fin', 'Contratado', 'Cobrado', 'Por cobrar',
-    `${ALERTA} Vencido`, 'Costo proyectado', 'Próx. cobro'])
+    `${ALERTA} Vencido`, 'Costo proyectado', '· mano de obra', '· materiales', 'Próx. cobro'])
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +156,30 @@ test('el CONTRATO no es una fórmula: lo trae el escritor de la Orden de Compra 
   }
 })
 
+test('EL COSTO SE ABRE EN MANO DE OBRA Y MATERIALES, y las dos partes suman el total', () => {
+  // Pedido del dueño: «valor de venta y costos totales y discriminado por mano de obra y
+  // materiales». Es además lo que pide un WIP schedule de construcción: el costo a la fecha se abre
+  // por naturaleza. La brecha entre las dos columnas ES el dato —87% de mano de obra en la
+  // instalación eléctrica contra 21% en BSA—: dos obras del mismo año con motores opuestos.
+  for (const b of g.bloques) {
+    const [total, mo, mat] = ['H', 'I', 'J'].map((c) => String(cel(g, `${c}${b.fProt}`)))
+    if (b.sinCosto) {
+      assert.deepEqual([total, mo, mat], [SIN_COSTO, SIN_COSTO, SIN_COSTO], `${b.clave}: sin costo, tres guiones`)
+      continue
+    }
+    assert.ok(mo.includes(`"${TIPO.mo}"`), `I${b.fProt}: la mano de obra filtra por su tipo`)
+    assert.ok(mat.includes(`"${TIPO.material}"`), `J${b.fProt}: los materiales filtran por el suyo`)
+    assert.ok(!total.includes(`"${TIPO.mo}"`) && !total.includes(`"${TIPO.material}"`),
+      `H${b.fProt}: el total NO filtra por tipo — si lo hiciera, dejaría afuera una de las dos partes`)
+  }
+  // Y el cierre suma las mismas filas en las tres columnas: un total que cita otras filas que su
+  // desglose publica un desglose que no explica su total.
+  const conCosto = g.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
+  for (const c of ['H', 'I', 'J']) {
+    assert.equal(cel(g, `${c}${g.fTotObras}`), `=${conCosto.map((n) => `${c}${n}`).join('+')}`)
+  }
+})
+
 test('el COSTO es el PROYECTADO y sale de la réplica, nunca de Compras', () => {
   // El 87% del costo de una obra es mano de obra, y la mano de obra se paga por Jornales: NO está en
   // Compras y no va a estarlo. Publicar el comprado al lado del contratado se leería como un margen
@@ -186,9 +210,9 @@ test('el próximo cobro publica el guion cuando no hay nada pendiente, no un bla
   // Un blanco lo cuenta `columnasDesparejas` como fórmula rota: el timer del Flujo de Caja terminó en
   // FAILURE con la pestaña ya publicada y sana por esto exacto.
   for (const n of filasObra) {
-    const f = String(cel(g, `I${n}`))
-    assert.ok(f.startsWith('=IF('), `I${n}`)
-    assert.ok(f.includes(`"${SIN_CONTRATO}"`), `I${n}: sin pendientes va el guion`)
+    const f = String(cel(g, `K${n}`))
+    assert.ok(f.startsWith('=IF('), `K${n}`)
+    assert.ok(f.includes(`"${SIN_CONTRATO}"`), `K${n}: sin pendientes va el guion`)
   }
 })
 

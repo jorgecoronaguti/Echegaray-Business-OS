@@ -22,7 +22,9 @@ import { OBRAS_FUTURAS } from './obras-datos.mjs'
 import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 
 const g = grillaObras({ obras: OBRAS_FUTURAS })
-const COL_PROX = 8 // la I del cuadro 3
+// 07/09/2026: el costo se abrió en mano de obra y materiales (pedido del dueño), la pestaña pasó
+// de 9 a 11 columnas y «Próx. cobro» se corrió de la I a la K. El índice se declara UNA vez acá.
+const COL_PROX = 10 // la K
 const filaDe = (clave) => g.bloques.find((b) => b.clave === clave).fProt
 const proxCobroDe = (clave) => g.filas[filaDe(clave) - 1][COL_PROX]
 
@@ -97,6 +99,6 @@ test('y el control NO pierde los dientes: una I vacía de verdad sigue tumbando 
   // arreglo de arriba habría desarmado la alarma en vez de darle un dato que no la dispare.
   const fila = filaDe('sf-pisos-industriales')
   const desparejas = columnasDesparejas(g.filas, publicado({ [fila]: '' }), FILAS_OBRA)
-  assert.deepEqual(desparejas, [{ columna: 'I', filas: [fila], de: g.bloques.length }])
-  assert.ok(ANCHO_OBRAS > COL_PROX, 'la I entra en el ancho que el control recorre')
+  assert.deepEqual(desparejas, [{ columna: 'K', filas: [fila], de: g.bloques.length }])
+  assert.ok(ANCHO_OBRAS > COL_PROX, 'la K entra en el ancho que el control recorre')
 })

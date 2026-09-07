@@ -140,7 +140,7 @@ import { sumaConUSD } from './cobranzas-contrato.mjs'
 // sigue viva en obras-certificado.mjs porque la usa el calculo de hitos del calendario de cobros.
 // EL CONTRATO DE LA RÉPLICA `_OBRAS_RAW` VIVE EN UN SOLO LADO: nombre de la pestaña, letras de
 // columna, tope del rango y la fórmula que los usa. Ver lib/obras-replica.mjs.
-import { formulaCostoProyectado } from './obras-replica.mjs'
+import { formulaCostoProyectado, formulaCostoPorTipo, TIPO } from './obras-replica.mjs'
 // EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
 // pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
 // mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
@@ -163,7 +163,7 @@ export const PESTANA_OBRAS = 'OBRAS'
  * rótulo se ALINEA con su columna (a la derecha sobre importes) en el escritor, que es donde vive el
  * criterio de alineación de un estado financiero — acá se declara qué ES la celda, no dónde se apoya.
  */
-const ENCABEZADO = Object.freeze(Array.from({ length: 9 }, () => 'rotulo'))
+const ENCABEZADO = Object.freeze(Array.from({ length: 11 }, () => 'rotulo'))
 
 /**
  * A rótulo · B % cobrado (S1) | % contrato (S2) · C venta · D cobrado · E resta · F vencido ·
@@ -217,7 +217,19 @@ const ENCABEZADO = Object.freeze(Array.from({ length: 9 }, () => 'rotulo'))
  * la `G` y la `H`, que también significan cosas distintas en cada sección y lo declaran en su
  * encabezado.
  */
-export const ANCHO_OBRAS = 9
+// ═══ NUEVE → ONCE: EL COSTO SE ABRE (07/09/2026, pedido del dueño) ═══
+//
+// Textual: *«me dijeras valor de venta y costos totales y discriminado por mano de obra y
+// materiales»*. Dos columnas más, y son las que el estándar de la industria pide: un WIP schedule de
+// construcción abre el costo a la fecha en mano de obra, materiales, subcontratos y equipos. Acá se
+// abre en las DOS que la empresa tiene medidas —la explosión de gastos del dueño clasifica cada
+// egreso como `mano_de_obra` o `material`, y no hay una tercera— porque publicar una columna
+// «Subcontratos» que siempre sale en cero sería la fila de $0 que él ya sacó dos veces.
+//
+// LA BRECHA ENTRE LAS DOS ES EL DATO, y por eso van juntas y no sumadas: 87% mano de obra en la
+// instalación eléctrica de San Francisco contra 21% en BSA. Dos obras del mismo año con motores
+// económicos opuestos, y eso decide cómo se cotiza la próxima.
+export const ANCHO_OBRAS = 11
 
 /**
  * EL ANCHO MÁS GRANDE QUE ESTE GENERADOR TUVO ALGUNA VEZ.
@@ -230,7 +242,7 @@ export const ANCHO_OBRAS = 9
  * La cola se limpia hasta acá y NO hasta el ancho de la hoja: más allá de la 9 nunca escribió este
  * generador, y rellenar a ciegas hasta el borde ya borró 14 fechas del dueño una vez.
  */
-export const ANCHO_HISTORICO = 9
+export const ANCHO_HISTORICO = 11
 
 /**
  * EL ALTO MÁS GRANDE QUE ESTA GRILLA TUVO. El mismo razonamiento que el ancho, en el otro eje.
@@ -269,7 +281,7 @@ export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALT
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten.
  *  La B pasó de 44 a 60 px cuando dejó de tener un glifo (✓/⚠) y pasó a tener un número: "100,0%"
  *  son seis caracteres y con CLIP en toda la hoja lo que no entra no se derrama, DESAPARECE. */
-export const ANCHOS_OBRAS = [300, 76, 76, 132, 132, 132, 132, 140, 126]
+export const ANCHOS_OBRAS = [300, 74, 74, 126, 126, 126, 122, 126, 118, 118, 122]
 
 /** Lo que Sheets muestra cuando una fórmula no evalúa. Publicar uno es peor que no escribir. */
 export const ERRORES_SHEET = Object.freeze(['#ERROR!', '#REF!', '#VALUE!', '#NAME?', '#N/A', '#DIV/0!', '#NUM!', '#NULL!'])
@@ -1002,6 +1014,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
   // propósito, para que el hueco se vea—, y el escritor de esta pestaña ABORTA si queda una celda en
   // error. El 07/09 se publicaron 20 `#N/A` por esto exacto. El guion dice lo mismo sin romper.
   const sinCosto = Boolean(o.sinCosto)
+  const rotuloObra = o.obra ?? o.clave
   h.push([rot.celda,
     // LAS FECHAS VAN COMO SERIAL Y NO COMO TEXTO: un "05/08" crudo lo auto-parsea Sheets y a veces
     // muestra 46239. Sin fecha va el guion, con especie `texto`, y NO una fecha inventada.
@@ -1019,10 +1032,12 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // cubre el otro caso, el que nadie declaró: la réplica no se pudo escribir, o se escribió con la
     // obra con otro nombre. El hueco se sigue viendo —con el guion, que es el idioma de esta pestaña
     // para un dato que falta— y la pestaña se publica.
-    sinCosto ? SIN_COSTO : `=IFNA(${formulaCostoProyectado(o.obra ?? o.clave).slice(1)};"${SIN_COSTO}")`,
+    sinCosto ? SIN_COSTO : `=IFNA(${formulaCostoProyectado(rotuloObra).slice(1)};"${SIN_COSTO}")`,
+    sinCosto ? SIN_COSTO : `=IFNA(${formulaCostoPorTipo(rotuloObra, TIPO.mo).slice(1)};"${SIN_COSTO}")`,
+    sinCosto ? SIN_COSTO : `=IFNA(${formulaCostoPorTipo(rotuloObra, TIPO.material).slice(1)};"${SIN_COSTO}")`,
     proximoCobro(cob, o.cliente, dela)],
   ['rotulo', o.inicio ? 'fecha' : 'texto', o.fin ? 'fecha' : 'texto', 'monedaTotal', 'monedaTotal',
-    'monedaTotal', 'alertaTotal', 'monedaTotal', 'rotulo'])
+    'monedaTotal', 'alertaTotal', 'monedaTotal', 'moneda', 'moneda', 'rotulo'])
   return { clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null, sinCosto }
 }
 
@@ -1107,8 +1122,11 @@ export function grillaObras(ctx = {}) {
 
   h.push([`${SECCION_OBRAS} · OBRAS`], ['rotulo'])
   // EL ▲ VA EN EL ENCABEZADO Y NO EN CADA CELDA: marca de una sola vez cuál es la columna de alarma.
+  // LAS DOS COLUMNAS DEL DESGLOSE LLEVAN EL PUNTO MEDIO ADELANTE: es la notación de subtotal del
+  // estándar —una partida que cuelga de la de arriba— y ahorra repetir «Costo» tres veces.
   h.encabezados.push(h.push(['Obra', 'Inicio', 'Fin', 'Contratado', 'Cobrado', 'Por cobrar',
-    `${ALERTA} Vencido`, 'Costo proyectado', 'Próx. cobro'], ENCABEZADO))
+    `${ALERTA} Vencido`, 'Costo proyectado', '· mano de obra', '· materiales', 'Próx. cobro'],
+  ENCABEZADO))
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de `tramos`.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   // ═══ LAS OBRAS SE ORDENAN POR FECHA DE INICIO, NO POR CLIENTE (07/09/2026) ═══
@@ -1140,9 +1158,11 @@ export function grillaObras(ctx = {}) {
     h.push([ROTULO_TOTAL_OBRAS, '', '',
       conContrato.length ? suma('D', conContrato) : SIN_CONTRATO,
       suma('E', filasObra), suma('F', filasObra), suma('G', filasObra),
-      conCosto.length ? suma('H', conCosto) : SIN_COSTO, ''],
+      conCosto.length ? suma('H', conCosto) : SIN_COSTO,
+      conCosto.length ? suma('I', conCosto) : SIN_COSTO,
+      conCosto.length ? suma('J', conCosto) : SIN_COSTO, ''],
     ['rotulo', null, null, 'monedaTotal', 'monedaTotal', 'monedaTotal', 'alertaTotal', 'monedaTotal',
-      'rotulo'])
+      'monedaTotal', 'monedaTotal', 'rotulo'])
   }
 
   return {
