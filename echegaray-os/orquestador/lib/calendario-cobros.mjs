@@ -354,12 +354,23 @@ export function grillaCalendario(ctx = {}) {
   const iTotal = ancho - 1
   const col = (i) => (i < 26 ? '' : String.fromCharCode(64 + Math.floor(i / 26))) + String.fromCharCode(65 + (i % 26))
 
-  h.push([`${PESTANA_CALENDARIO.toUpperCase()} — CUÁNDO ENTRA CADA PESO`])
-  // UNA LÍNEA. El dueño rechazó dos pestañas por *"muchas palabras y frases y explicación es q nadie
-  // lee"*. Lo único que no se deduce mirando la tabla es con qué criterio está medida cada columna, y
-  // eso hay que declararlo: percibido, por fecha de cobro, y qué significa el endosado.
-  h.push([`=${quote(`${ANO} · percibido, por fecha de cobro · importes con IVA netos de retenciones`
-    + ' · en itálica lo proyectado · ↳ endosado = cobrado que no pasó por la cuenta · USD valuado a ')}&`
+  // EL TÍTULO NOMBRA LA PESTAÑA Y NADA MÁS. «— CUÁNDO ENTRA CADA PESO» era la línea de procedencia
+  // metida adentro del título: el lector terminaba con dos nombres para el mismo cuadro.
+  h.push([PESTANA_CALENDARIO.toUpperCase()])
+  // LA PROCEDENCIA, EN UNA LÍNEA Y SIN GLOSARIO (06/09/2026). Tenía 169 caracteres —tope 120— y dos
+  // de sus tramos eran explicación pura: «en itálica lo proyectado» describe un formato que se ve
+  // solo, y «↳ endosado = cobrado que no pasó por la cuenta» es la definición de un encabezado. Las
+  // dos caen bajo «sin aclaraciones ni explicaciones de nada».
+  //
+  // EL TIPO DE CAMBIO SE QUEDA, Y NO ES UNA EXCEPCIÓN CÓMODA: la columna convierte los cobros en USD
+  // a pesos multiplicando por él (línea 293). Sin declararlo, la pestaña publica un importe cuya
+  // magnitud depende de un número que el lector no puede ver desde acá. Es procedencia, no glosa.
+  //
+  // Y NO EMPIEZA CON EL AÑO. Arrancaba con «2026 · », que `ES_SECCION_NUM` lee como el título del
+  // bloque número 2026: la fila 2 se contaba como primer bloque de la pestaña y la numeración salía
+  // rota sin que hubiera un solo bloque mal numerado.
+  h.push([`=${quote(`Cuándo entra cada peso de ${ANO} · Cobranzas, percibido · con IVA neto de `
+    + 'retenciones · USD a ')}&`
     + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`])
   h.push([])
   // UN SOLO BLOQUE, ASÍ QUE NO LLEVA RÓTULO DE BLOQUE NI NUMERACIÓN. Numerar "1 · …" cuando no hay un

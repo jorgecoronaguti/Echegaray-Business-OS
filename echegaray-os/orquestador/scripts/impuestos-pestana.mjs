@@ -126,7 +126,7 @@ const brutoCreditoLibro = (m) => [creditoDeComprasDelMes(AÑO, m)]
  */
 export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const G = crearGrilla(anio)
-  G.push(['Impuestos y financiero'])
+  G.push([PESTAÑA])  // tipeado aparte decía «Impuestos y financiero»: dos nombres para la misma pestaña
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
   // vivas (ARCA, el extracto, Cobranzas) con congeladas (las DDJJ de PDF, que se quedan en el último
   // período presentado), y un MAX le prestaría la fecha de la viva a la congelada. Con `compacto` cada

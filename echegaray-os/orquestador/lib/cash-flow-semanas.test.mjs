@@ -15,6 +15,7 @@ import {
 import { ventanasDe } from './cash-flow-ventanas.mjs'
 import { ESTADOS_PENDIENTES } from './cash-flow-medidas.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
+import { auditarDiseno } from './diseno-unificado.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
 const ANIO = 2026
@@ -363,4 +364,15 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas"; el 13/08 entró
   // "Egresos proyectados · Materiales de obra proyectados", que hasta ese día caía en "· Otros".
   assert.equal(conceptosDe('semana').length, 79)
+})
+
+test('EL CONTRATO DE DISEÑO en la grilla del semanal: sólo queda la fila del atajo, que es del dueño', () => {
+  // Mismo caso que el mensual y por el mismo motivo: `FILA.botonHoy` ocupa la fila 3 por decisión del
+  // dueño del 06/08. Ver el comentario del test gemelo en cash-flow-meses.test.mjs.
+  // Con `gid`: es la grilla que se ESCRIBE. Sin él el atajo no se dibuja y el test daría verde por
+  // medir un cuadro que nadie ve.
+  const filas = armar({ gid: 99 }).filas.map((f) => (f || []).map((c) => c ?? ''))
+  const mal = auditarDiseno(filas, { pestana: 'Cash Flow Semanal' })
+  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), ['3 · sin-respiro'],
+    mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })

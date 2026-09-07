@@ -495,6 +495,11 @@ async function main() {
     + `${rotas.slice(0, 5).map(([ref, why]) => `${ref} (${why})`).join(' · ')}. NO escribo.`)
   const proyectado = OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)
   console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${OBRAS_FUTURAS.length} obras · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
+  // LOS HALLAZGOS DEL CUADRO 5 SALEN POR ACÁ Y NO POR LA PESTAÑA. La columna «Nota» se retiró el
+  // 06/09 (prosa por fila, prohibida por el contrato); lo que ahí era un ▲ es un hallazgo y se
+  // resuelve, así que va a la consola del que corre el pipeline. Borrarlo a secas habría apagado un
+  // aviso, que es la forma exacta en que nace un control que no puede dar rojo.
+  for (const a of (g.avisosMateriales ?? [])) console.warn(`  ⚠ ${a}`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
 
   // `hojas` se leyó arriba, antes de la grilla: la misma lectura decide si la pestaña EXISTE (y por

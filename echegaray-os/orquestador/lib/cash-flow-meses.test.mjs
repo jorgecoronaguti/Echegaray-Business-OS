@@ -18,6 +18,7 @@ import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-mat
 import { ventanasDe } from './cash-flow-ventanas.mjs'
 import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
+import { auditarDiseno } from './diseno-unificado.mjs'
 import { CIERRE_SIN_INVERTIDO, CIERRE_CON_INVERTIDO, CRITERIO_INVERTIDO, citaUnaFilaDe } from './cash-flow-invertido.mjs'
 
 // `caja` es el TÍTULO de la pestaña de CAJA, que el generador resuelve contra el archivo. Sin él, la
@@ -471,4 +472,23 @@ test('con gid, el botón queda en A3 — la misma celda que en el Semanal', () =
   assert.match(en(filas, FILA.botonHoy, 0), /^=HYPERLINK\(/)
   // Sin gid no se escribe nada: una celda con un vínculo roto es peor que una celda vacía.
   assert.equal(en(armar().filas, FILA.botonHoy, 0), '')
+})
+
+test('EL CONTRATO DE DISEÑO en la grilla del mensual: sólo queda la fila del atajo, que es del dueño', () => {
+  // ═══ POR QUÉ ESTE TEST NO ESPERA CERO (06/09/2026) ═══
+  //
+  // El contrato pide la fila 3 VACÍA. Ahí vive `FILA.botonHoy`, y esa posición es una decisión
+  // explícita del dueño del 06/08: *"el botón va en A3, no en la columna TOTAL"* — en la columna 55 el
+  // atajo existía y nadie lo veía. No es prosa ni una explicación: es el único elemento de navegación
+  // del cuadro. Moverlo o borrarlo es una decisión suya, no de este frente, y correr el cuerpo una
+  // fila arrastra la cabecera —que hoy es la 7— y con ella las referencias de las dos vistas.
+  //
+  // Se clava el desvío ESPERADO en vez de saltear la pestaña: si mañana vuelve una glosa al título o
+  // una explicación a cualquier columna, la lista deja de ser esta única y el test se pone rojo.
+  // Con `gid`: es la grilla que se ESCRIBE. Sin él el atajo no se dibuja y el test daría verde por
+  // medir un cuadro que nadie ve.
+  const filas = armar({ gid: 99 }).filas.map((f) => (f || []).map((c) => c ?? ''))
+  const mal = auditarDiseno(filas, { pestana: 'Cash Flow Mensual' })
+  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), ['3 · sin-respiro'],
+    mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })

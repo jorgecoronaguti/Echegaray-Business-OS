@@ -216,7 +216,13 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJorn
     titular: hCosto,
     // Las notas al pie: apagadas y chicas, para que no compitan con los importes. Las declara el
     // bloque dueño de cada una — así una nota que se muda no deja el formato apuntando a otra fila.
+    // DESDE EL 06/09 LA LISTA VIENE VACÍA: las cuatro notas se retiraron por el minimalismo extremo
+    // (ver cargas-bloques.mjs). El canal se deja porque el formato de una nota futura tiene que
+    // seguir declarándose acá y no adivinarse; lo que no puede volver es la nota.
     pies: [...(caja.pies ?? []), ...(sac?.pies ?? []), ...(planes.pies ?? [])],
+    /** Los hallazgos que antes iban al pie del cuadro. Se imprimen en la corrida: un hallazgo se
+     *  resuelve, no se anota al lado de un importe. */
+    avisos: [...(caja.avisos ?? []), ...(sac?.avisos ?? []), ...(planes.avisos ?? [])],
     // El único control de integridad de la pestaña: el cero es la respuesta, no una celda vacía.
     controles: [planes.fControl],
     // Texto en el medio de la grilla: sin esto lo pinta el barrido de moneda y sale a la derecha,
@@ -297,7 +303,9 @@ async function main() {
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
   // `filas` es `let` porque la cola de la pestaña vieja se le agrega abajo, después de leerla.
-  let { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  let { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos, avisos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  // LOS HALLAZGOS, EN LA CORRIDA Y NO EN LA PESTAÑA: es donde los ve quien puede resolverlos.
+  for (const a of (avisos ?? [])) console.warn(`  ${a}`)
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 

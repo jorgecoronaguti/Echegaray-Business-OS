@@ -81,23 +81,26 @@ export function sinRespaldoN(rubros) {
  * @returns {(string|number)[][]}
  */
 export function bloqueControlArca({ titulo, rubros, fila0 }) {
+  // LA FILA SE PIDE POR SU NOMBRE, NO POR UN NÚMERO. Decía `f(3)`, `f(4)`, `f(5)`, `f(6)`: los mismos
+  // desplazamientos que `FILA_BLOQUE` declara abajo, tipeados otra vez acá. Sacar una fila del bloque
+  // obligaba a encontrar los cuatro y a acertarlos; con el nombre, se mueven solos.
   const f = (n) => fila0 + n
   const filas = []
   filas.push([titulo])
+  // ═══ LA BAJADA DE 230 CARACTERES SE FUE AL CÓDIGO (06/09/2026) ═══
+  //
+  // Decía: «Mide SÓLO lo que esta pestaña lista, comprobante por comprobante contra el libro de ARCA.
+  // No compara totales: ARCA no trae rubro, así que su total es el de TODAS las compras y no el de
+  // esta vista. Por fecha de FACTURA, no de caja.» Es exactamente lo que el dueño mandó sacar el
+  // 05/09 —«minimalismo extremo, sin aclaraciones ni explicaciones de nada»— y lo que el contrato
+  // prohíbe en su regla 10.
+  //
+  // LO QUE DECÍA NO SE PIERDE, Y NO HACE FALTA QUE ESTÉ EN LA PESTAÑA: que el control mide sólo esta
+  // vista ya lo dice el rótulo «Lo que esta pestaña lista»; que no compara totales lo hace cierto la
+  // construcción (las tres líneas son particiones del mismo conjunto, y el total del libro no vuelve
+  // a aparecer en una vista parcial desde el 04/08); y que la fecha es la de FACTURA vive en
+  // `comprasDevengado`, con su test. El párrafo repetía en palabras lo que el cuadro ya hace.
   filas.push([`="Ventana comparable · "&IF(${HAY_FUENTE};TEXT(${DESDE};"mmm yyyy")&" a "&TEXT(${HASTA};"mmm yyyy");"ARCA no replicó ningún comprobante")`])
-  // ═══ LA FILA VACÍA ES DELIBERADA, Y NO SE PUEDE SACAR (06/09/2026) ═══
-  //
-  // Acá vivía la bajada de 230 caracteres que explicaba que el control NO compara totales. Bajo
-  // «minimalismo extremo» esa prosa no va en la pestaña, y lo que decía está escrito arriba, en el
-  // encabezado de este módulo: el universo de esta comparación es lo que la vista lista, no el libro
-  // entero, y la ventana la declara la fila de arriba.
-  //
-  // La fila SE QUEDA vacía en vez de desaparecer porque `ALTO_BLOQUE` es contrato: las tres pestañas
-  // que insertan el bloque calculan con él la fila de todo lo que va abajo, y `bloqueIndivisible`
-  // ampara exactamente nueve filas. Achicarlo movería el bloque entero, y un bloque que se mueve es
-  // lo que el 13/08 la huella leyó como «el dueño vació estas celdas»: 15 celdas de Estructura y 19
-  // de Recurrentes marcadas como borradas, y tres coberturas mudas durante tres semanas.
-  filas.push([])
 
   // ═══ LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO ═══
   //
@@ -109,13 +112,13 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // Recurrentes, que no era un agujero sino dos universos distintos. El total del libro NO vuelve a
   // aparecer en una vista parcial.
   filas.push(['Lo que esta pestaña lista, dentro de la ventana', `=${comprasDevengado(rubros)}`])
-  filas.push(['· con su comprobante en el libro de ARCA', `=B${f(3)}-B${f(5)}`])
-  // El rótulo dice QUÉ es y no qué significa: esta cifra incluye proveedores que no emiten factura,
-  // así que está inflada y no es una lista de errores. Eso es una advertencia sobre el dato, y una
-  // advertencia es una explicación: por eso el veredicto de abajo no la pinta con ✗ y por eso acá no
-  // se escribe. El que la tenga que interpretar llega a este comentario.
+  filas.push(['· con su comprobante en el libro de ARCA', `=B${f(FILA_BLOQUE.universo)}-B${f(FILA_BLOQUE.sinRespaldo)}`])
+  // EL RÓTULO NOMBRA LA LÍNEA Y NO LA DEFIENDE. Llevaba pegado «— incluye proveedores que no facturan,
+  // NO es error sin más»: 88 caracteres para un rótulo, y un argumento. Que la cifra está inflada lo
+  // dice el veredicto del pie con su ⓘ, que es donde se lee el estado del control.
   filas.push(['· sin comprobante en el libro de ARCA', `=${sinRespaldo(rubros)}`])
-  filas.push(['⇒ Cobertura fiscal de esta pestaña', `=IF(B${f(3)}=0;"";B${f(4)}/B${f(3)})`])
+  filas.push(['⇒ Cobertura fiscal de esta pestaña',
+    `=IF(B${f(FILA_BLOQUE.universo)}=0;"";B${f(FILA_BLOQUE.conRespaldo)}/B${f(FILA_BLOQUE.universo)})`])
 
   // ═══ EL ÚNICO NÚMERO GLOBAL, Y VA REFERENCIADO — NO RECALCULADO ═══
   //
@@ -137,12 +140,9 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // lectores, y sólo uno defendido. Un dato de otra especie dibujado como plata no se ve; un "—" sí.
   //
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
-  //
-  // El rótulo NO aclara que la cifra es de Compras ENTERA y no de esta pestaña: es la única línea
-  // global del bloque y la aclaración era prosa. Queda dicho acá, que es donde se busca el día que
-  // alguien quiera repartirla por rubro — y no se puede, porque un comprobante que Compras no cargó
-  // todavía no tiene rubro.
-  filas.push([`${ALERTA} ARCA facturó y Compras no lo tiene`,
+  // «de Compras ENTERA, no de esta pestaña» era la glosa que defendía el número; «· Compras entera» es
+  // su DIMENSIÓN, que es lo que el contrato pide al lado del concepto. Dice lo mismo y no argumenta.
+  filas.push([`${ALERTA} ARCA facturó y Compras no lo tiene · Compras entera`,
     '=IFERROR(IF(ISNUMBER(ARCA_SIN_CARGAR_MONTO);ARCA_SIN_CARGAR_MONTO;"—");"—")'])
 
   // ═══ EL VEREDICTO ═══
@@ -153,12 +153,19 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // que se sabe inflada entrena al que la mira a ignorar el control, y ya pasó con los −$212M.
   //
   // Sin fuente NO hay ✓: afirmar que está todo bien justo cuando no se puede saber es el peor estado.
-  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} ARCA no replicó comprobantes";IF(ROUND(B${f(5)};0)=0;"✓ todo con comprobante en ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante · ${C}"))`])
+  // LOS TRES ESTADOS, CADA UNO EN UN RENGLÓN QUE ENTRA. Los literales medían 85, 86 y 190 caracteres
+  // contra un tope de 60, y los dos últimos tramos del ⓘ eran una explicación entera: dónde está el
+  // detalle ya lo dice `${C}`, y por qué la cifra está inflada es el motivo de que el estado sea ⓘ y
+  // no ✗ — está escrito arriba, en el código, que es donde se busca el día que importe.
+  const sinR = `B${f(FILA_BLOQUE.sinRespaldo)}`
+  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} NO PUEDO VERIFICAR · ARCA no replicó comprobantes";`
+    + `IF(ROUND(${sinR};0)=0;"✓ todo lo de la ventana tiene comprobante en ARCA";`
+    + `"ⓘ "&TEXT(${sinR};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) · detalle en ${C}"))`])
   return filas
 }
 
 /** Cuántas filas ocupa el bloque. Quien lo inserta necesita saberlo ANTES de armar la grilla. */
-export const ALTO_BLOQUE = 9
+export const ALTO_BLOQUE = 8
 
 /**
  * NÚCLEO PURO: el bloque, declarado como UNA SOLA IDEA para la huella por celda.
@@ -202,8 +209,8 @@ export function bloqueIndivisible(fila0) {
  * corrige es cómo se dibuja, igual que con las fechas-serial del Calendario.
  */
 export const FILA_BLOQUE = Object.freeze({
-  titulo: 0, ventana: 1, respiro: 2, universo: 3, conRespaldo: 4, sinRespaldo: 5,
-  cobertura: 6, global: 7, veredicto: 8,
+  titulo: 0, ventana: 1, universo: 2, conRespaldo: 3, sinRespaldo: 4,
+  cobertura: 5, global: 6, veredicto: 7,
 })
 
 /** Las filas del bloque que llevan un importe en la columna B, como rango [desde, hasta). */

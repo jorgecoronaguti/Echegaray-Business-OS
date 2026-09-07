@@ -1492,21 +1492,41 @@ export function grillaObras(ctx = {}) {
   // que este cuadro está FUERA del calendario de caja desde el 24/08 — que es cierto, importante, y
   // está escrito doce líneas más arriba, que es donde lo busca quien toque este generador.
   h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS`], ['rotulo'])
-  h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
+  // ═══ LA COLUMNA «Nota» SE FUE, Y NO SE PERDIÓ NADA (06/09/2026) ═══
+  //
+  // Era una columna de prosa por fila, que es lo que el contrato prohíbe en su regla 10 y lo que el
+  // dueño ordenó el 05/09. Medidas contra el archivo vivo, `F46` («repartida en 2 cuotas ago/sep por
+  // el dueño; el día 10 es convención») y `F48` («▲ Alumetal no tiene filas con cliente San Francisco
+  // en Compras…») eran los dos últimos desvíos de prosa de esta pestaña.
+  //
+  // LAS CINCO NOTAS DE CUOTAS YA ESTABAN DIBUJADAS EN LA COLUMNA D. «3 cuotas mensuales iguales
+  // (10/08, 10/09, 10/10)» es letra por letra lo que la D publica como «10/08 · 10/09 · 10/10»: la
+  // misma información dos veces, y la segunda en palabras. La convención del día 10 —que es una
+  // ESTIMACIÓN y no un hecho— está declarada donde manda: en `obras-datos.mjs`, al lado del dato.
+  //
+  // LA SEXTA ES UN HALLAZGO Y SE COMPORTA COMO TAL: sale por consola del generador (`avisosMateriales`
+  // abajo), que es donde lo ve quien corre el pipeline. Un hallazgo se resuelve; no se anota al lado
+  // de un importe. El campo `nota` sigue vivo en el modelo y en la fusión: lo que se retira es que se
+  // DIBUJE.
+  h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto'], ENCABEZADO)
   const filasMateriales = []
+  const avisosMateriales = []
   {
     const filasItem = []
     for (const it of (ctx.materiales ?? itemsSemilla(obras))) {
       const f = h.n + 1
       filasItem.push(f)
       filasMateriales.push(f)
-      h.push([it.rotulo, it.familia, it.proveedor, it.fecha, it.previsto, it.nota],
+      if (String(it.nota ?? '').startsWith(ALERTA)) avisosMateriales.push(`${it.rotulo}: ${it.nota}`)
+      // La F queda declarada `texto` y VACÍA: es la columna sobre la que derrama el rótulo de la A,
+      // y su especie es lo que impide que el formateador la pinte como importe.
+      h.push([it.rotulo, it.familia, it.proveedor, it.fecha, it.previsto],
         ['rotulo', 'texto', 'texto', it.especieFecha, 'moneda', 'texto'])
       h.tipeadas.push({ fila: f, col: 4 })
     }
     if (filasItem.length) {
       const fT = h.n + 1
-      h.push([`⇒ TOTAL — ${filasItem.length} ÍTEMS PREVISTOS`, '', '', '', suma('E', filasItem), ''],
+      h.push([`⇒ TOTAL — ${filasItem.length} ÍTEMS PREVISTOS`, '', '', '', suma('E', filasItem)],
         ['rotulo', null, null, null, 'monedaTotal', 'texto'])
       filasMateriales.push(fT)
     }
@@ -1536,6 +1556,9 @@ export function grillaObras(ctx = {}) {
     /** Las filas del cuadro 5 (ítems + total): también declaran `texto` en la F (Nota), y el control
      *  de derrame necesita saber que son legítimas — su G/H/I van vacías, no llevan contratado. */
     filasMateriales,
+    /** Las notas del cuadro 5 marcadas con ▲: hallazgos, no rótulos. El script las imprime; la
+     *  pestaña no las dibuja desde el 06/09 (ver el bloque del cuadro 5). */
+    avisosMateriales,
     totales,
     /** Los cierres de cada cuadro, en orden — el escritor los cita por nombre y no por posición. */
     fTotObras: fTot2,

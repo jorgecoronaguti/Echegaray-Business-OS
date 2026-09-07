@@ -134,6 +134,19 @@ import {
 import { parrafosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
+/**
+ * LA LÍNEA DE PROCEDENCIA DE «Materiales» — la fila 2, y el contrato le pone tope.
+ *
+ * Medía 188 caracteres contra un tope de 120 y el excedente era explicación: «que el OS calcula con
+ * una sola definición» describe cómo funciona `familia-material.mjs`, no de dónde sale el cuadro. Se
+ * exporta para que su test la mida con la misma vara que el auditor mide el archivo vivo — el
+ * literal enterrado adentro de `TRAMOS` no lo alcanzaba ningún control.
+ */
+export const SUBTITULO_MATERIALES = 'En qué se va la plata, por familia y por mes '
+  + '· Compras, columna "Familia de material"'
+
+
+
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
 // EL TÍTULO DEL PRIMER BLOQUE QUE ESCRIBE ESTE GENERADOR — la FRONTERA de la pestaña "Proveedores".
@@ -1700,7 +1713,7 @@ async function main() {
       subtitulo: 'Qué se debe y a quién: la posición arriba, la deuda agrupada por proveedor (con el +/- para abrir sus facturas), la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras no tiene. Todo son fórmulas sobre Compras y ARCA — ni un importe escrito.',
       anchos: [230, 132, 142, 104, 132, 132, 124, 172, 124, 124, 124, 124, 136, 116, 104, 240] },
     { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin, desdeFila: FILA0,
-      subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
+      subtitulo: SUBTITULO_MATERIALES,
       anchos: [236, ...Array(12).fill(96), 116, 78, 116, 116] },
   ]
 

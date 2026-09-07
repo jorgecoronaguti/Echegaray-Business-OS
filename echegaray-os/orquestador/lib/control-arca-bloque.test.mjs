@@ -9,6 +9,7 @@ import {
 } from './control-arca-bloque.mjs'
 import { enBloqueIndivisible } from './celda-de-estructura.mjs'
 import { esProsa, TOPE_PROSA } from './diseno-unificado.mjs'
+import { textoVisible } from './patron-pestana.mjs'
 
 const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
 
@@ -43,11 +44,11 @@ test('LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO: respaldado + sin res
   const filas = armar()
   const lista = filas.find((f) => String(f[0]).startsWith('Lo que esta pestaña lista'))
   const con = filas.find((f) => String(f[0]).includes('con su comprobante'))
-  const sin = filas.find((f) => String(f[0]).includes('sin comprobante'))
+  const sin = filas.find((f) => String(f[0]).startsWith('· sin comprobante'))
   assert.ok(lista && con && sin)
   // "con" se despeja de los otros dos: la identidad es exacta por construcción y no puede dejar un
   // residuo al que haya que inventarle una causa.
-  assert.equal(con[1], '=B53-B55')
+  assert.equal(con[1], '=B52-B54')
   assert.match(lista[1], /SUMIFS\(Compras!\$O\$4:\$O/)
   assert.match(sin[1], new RegExp(DIR.comprasSinArca))
 })
@@ -64,7 +65,7 @@ test('NINGÚN RESIDUO LLEVA CAUSA INVENTADA', () => {
 test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
   const cob = armar().find((f) => String(f[0]).includes('Cobertura fiscal'))
   assert.ok(cob, 'la línea de cobertura existe')
-  assert.equal(cob[1], '=IF(B53=0;"";B54/B53)')
+  assert.equal(cob[1], '=IF(B52=0;"";B53/B52)')
 })
 
 test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
@@ -73,9 +74,7 @@ test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
   const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras no lo tiene'))
   assert.ok(g, 'la línea global existe')
   assert.match(String(g[1]), /ARCA_SIN_CARGAR_MONTO/, 'la cifra sale del nombre, no de un recálculo local')
-  // DE QUÉ UNIVERSO ES YA NO SE ESCRIBE EN LA PESTAÑA (06/09): el rótulo decía «— de Compras ENTERA,
-  // no de esta pestaña» y eso es una explicación, que bajo minimalismo extremo vive en el comentario
-  // de `bloqueControlArca`, no en la celda.
+  assert.match(String(g[0]), /· Compras entera/, 'y dice de qué universo es')
 })
 
 // ═══ EL DEFECTO · UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
@@ -96,13 +95,17 @@ test('EL DEFECTO · la cifra global no se publica sin comprobar que es un númer
 })
 
 test('LO SIN RESPALDO NO SE PRESENTA COMO ERROR mientras la cifra esté inflada', () => {
-  const sin = armar().find((f) => String(f[0]).includes('sin comprobante'))
-  assert.ok(sin, 'la línea sin respaldo existe')
   const veredicto = String(armar().at(-1)[0])
   // El ✗ está reservado para lo inequívoco. Marcar en rojo una cifra que se sabe inflada entrena a
   // ignorar el control — que es justo lo que pasó con los −$212M.
+  //
+  // DESDE EL 06/09 EL LÍMITE NO SE ESCRIBE EN LA PESTAÑA: «hasta entonces esta cifra está inflada y
+  // no es una lista de errores» eran 130 de los 190 caracteres del veredicto, y el dueño prohibió la
+  // aclaración. Lo que queda es el ESTADO —ⓘ y no ✗— que es lo que dice que no es una lista de
+  // errores sin argumentarlo, más el remite a la pestaña que tiene el detalle fila por fila.
   assert.doesNotMatch(veredicto, /"✗/, 'sin respaldo no lleva ✗')
-  assert.match(veredicto, /ⓘ /, 'el estado del medio es informativo, no una falla')
+  assert.match(veredicto, /ⓘ /)
+  assert.match(veredicto, new RegExp(C), 'y el detalle se remite a la pestaña que lo tiene')
 })
 
 test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por fecha de caja (col AD)', () => {
@@ -119,7 +122,7 @@ test('la ventana sale de _ARCA_RAW y no está escrita a mano — se estira sola 
 
 test('EL VEREDICTO NO SE PONE VERDE SIN FUENTE', () => {
   const v = String(armar().at(-1)[0])
-  assert.match(v, /ARCA no replicó comprobantes/)
+  assert.match(v, /NO PUEDO VERIFICAR/)
   assert.match(v, /IF\(NOT\(COUNTIFS/, 'lo primero que evalúa es si la fuente llegó')
 })
 
@@ -144,34 +147,24 @@ test('el detalle accionable se remite a la pestaña que lo tiene', () => {
   assert.match(String(armar().at(-1)[0]), /_CRUCE_ARCA/)
 })
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// MINIMALISMO EXTREMO — EL BLOQUE NO EXPLICA NADA (06/09/2026)
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// EL DEFECTO, medido con `auditar-diseno-unificado` sobre el archivo vivo: este bloque aportaba
-// CUATRO desvíos a CADA UNA de las tres pestañas que lo insertan —doce en total—, y la mitad de los
-// diez de Estructura. La bajada de 230 caracteres ("Mide SÓLO lo que esta pestaña lista…"), el
-// "NO es error sin más" del rótulo sin respaldo, el "de Compras ENTERA" del global y los 190
-// caracteres escondidos adentro del `IF` del veredicto, que ningún auditor de valores veía.
-//
-// Este test es la vara, no la lista: mide con el MISMO núcleo que audita el archivo real
-// (`esProsa`), así que cualquier prosa nueva que alguien agregue al bloque —en el rótulo o adentro
-// de una fórmula— cae acá antes de llegar al Sheet.
-test('EL DEFECTO · ninguna celda del bloque es prosa ni explica — se mide con el mismo núcleo que el archivo vivo', () => {
-  const malas = []
-  for (const fila of armar()) {
-    for (const celda of fila) {
-      const p = esProsa(celda, { tope: TOPE_PROSA })
-      if (p) malas.push(`${p.clase} (${p.largo} car.): "${p.texto.slice(0, 80)}"`)
-    }
-  }
-  assert.deepEqual(malas, [], `el bloque de ARCA volvió a explicar:\n  ${malas.join('\n  ')}`)
-})
-
-test('la fila de respiro queda vacía y el alto NO se achica — mover el bloque es lo que dejó tres controles mudos', () => {
-  const filas = armar()
-  assert.equal(filas[FILA_BLOQUE.respiro].length, 0, 'la fila que ocupaba la bajada queda, vacía')
-  assert.equal(filas.length, ALTO_BLOQUE, 'sacarla correría todo lo que las tres pestañas ponen abajo')
+test('NI UNA EXPLICACIÓN EN LAS OCHO FILAS: el bloque nombra, no argumenta', () => {
+  // ═══ LO QUE ESTE TEST REEMPLAZA, Y POR QUÉ (06/09/2026) ═══
+  //
+  // Acá vivía «la bajada avisa que NO compara totales»: exigía que la fila 1 del bloque tuviera un
+  // párrafo de 230 caracteres explicando el control. El dueño lo prohibió el 05/09 («minimalismo
+  // extremo … sin aclaraciones ni explicaciones de nada») y el contrato de diseño lo mide. Invertir
+  // el test es lo que impide que la bajada vuelva de a poco, rótulo por rótulo: los cuatro literales
+  // que se recortaron medían 230, 88, 76 y 190 caracteres contra un tope de 60.
+  //
+  // Se juzga lo que se VE, así que las fórmulas se miden por su literal más largo (`textoVisible`):
+  // las glosas más largas del archivo vivían adentro de un IF de tres ramas, que es exactamente el
+  // caso del veredicto de este bloque.
+  const mal = armar()
+    .flat()
+    .map((c) => [textoVisible(c), esProsa(c)])
+    .filter(([, x]) => x)
+  assert.deepEqual(mal.map(([t]) => t), [],
+    `el bloque de ARCA volvió a explicar (tope ${TOPE_PROSA} car.)`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -230,10 +223,10 @@ test('toda pestaña que inserta el bloque declara el formato de su cobertura', (
 // `bloqueIndivisible` es lo que impide que el bloque se pierda de a pedazos, y estos tests lo atan al
 // orden real de sus filas: si alguien agrega una línea al bloque y no mueve `ALTO_BLOQUE`, dan rojo.
 
-test('bloqueIndivisible cubre las nueve filas del bloque, desde su título hasta su veredicto', () => {
+test('bloqueIndivisible cubre las ocho filas del bloque, desde su título hasta su veredicto', () => {
   const b = bloqueIndivisible(22)
   assert.equal(b.desde, 22)
-  assert.equal(b.hasta, 30)
+  assert.equal(b.hasta, 29)
   assert.equal(b.hasta - b.desde + 1, ALTO_BLOQUE)
   const filas = bloqueControlArca({ titulo: '3 · RESPALDO FISCAL', rubros: ['Estructura'], fila0: 22 })
   assert.equal(filas.length, ALTO_BLOQUE, 'el alto declarado y el emitido son el mismo')

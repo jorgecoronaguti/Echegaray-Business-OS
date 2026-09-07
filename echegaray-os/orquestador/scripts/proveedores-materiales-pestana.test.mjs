@@ -13,8 +13,9 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza, grilla, formatear, selloDeLoQueQuedo } from './proveedores-materiales-pestana.mjs'
+import { SUBTITULO_MATERIALES, estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza, grilla, formatear, selloDeLoQueQuedo } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { encabezadoRoto } from '../lib/diseno-unificado.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { ANCHOS_PROVEEDORES, aAnchoCompleto, anchoALimpiar } from '../lib/proveedores-frontera.mjs'
@@ -1114,4 +1115,18 @@ test('EL DEFECTO · sin relectura NO se sella nada, y se dice', () => {
     'se sella sin haber comprobado la relectura: un sello sobre una lectura que no llegó miente, y la corrida siguiente le cree')
   assert.match(tramo, /selloDeLoQueQuedo\(huella\.grid, quedo\)/,
     'se sella la relectura cruda: eso declara mías las celdas que se conservaron del dueño')
+})
+
+test('«Materiales» arranca con las tres filas del encabezado y su fila 2 DECLARA, no explica', () => {
+  // ═══ EL DESVÍO QUE ESTO CIERRA (06/09/2026) ═══
+  //
+  // `auditar-diseno-unificado` medía `Materiales!A2` en 188 caracteres contra un tope de 120. El
+  // excedente no era procedencia: «Sale de la columna "Familia de material" de Compras, QUE EL OS
+  // CALCULA CON UNA SOLA DEFINICIÓN» describe cómo funciona `familia-material.mjs`, que es código.
+  //
+  // El literal vivía enterrado adentro de `TRAMOS`, dentro de `main()`: ningún control lo alcanzaba
+  // sin correr el pipeline contra el Sheet real. Exportado, se mide con la misma función que juzga el
+  // archivo vivo y el rojo llega en el commit.
+  const mal = encabezadoRoto([['Materiales'], [SUBTITULO_MATERIALES], []], { pestana: 'Materiales' })
+  assert.deepEqual(mal, [], mal.map((x) => `fila ${x.fila}: ${x.regla} — ${x.detalle}`).join(' | '))
 })

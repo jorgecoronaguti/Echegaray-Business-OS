@@ -33,6 +33,7 @@ import { grillaObras, problemaDeSintaxis, clientesDeCobranzas, ANO } from './obr
 import { OBRAS_FUTURAS } from './obras-datos.mjs'
 import { contratoDeObra } from './cobranzas-contrato.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { auditarDiseno } from './diseno-unificado.mjs'
 
 const TC = 1491.97
 const HOY = new Date(Date.UTC(2026, 7, 13))
@@ -402,4 +403,20 @@ test('el subtítulo es UNA línea y ninguna celda del cuerpo explica nada', () =
 test('la pestaña se llama como dice su constante y el título la nombra', () => {
   assert.equal(PESTANA_CALENDARIO, 'Calendario de Cobros')
   assert.ok(String(g.filas[0][0]).startsWith(PESTANA_CALENDARIO.toUpperCase()))
+})
+
+test('EL CONTRATO DE DISEÑO en la grilla del Calendario: encabezado de tres filas y ni una explicación', () => {
+  // ═══ LOS TRES DESVÍOS QUE ESTO CIERRA, MEDIDOS EL 06/09/2026 ═══
+  //
+  //   · A1 decía «CALENDARIO DE COBROS — CUÁNDO ENTRA CADA PESO»: la procedencia adentro del título.
+  //   · A2 medía 169 caracteres contra un tope de 120, con dos tramos que son explicación pura.
+  //   · Y la numeración salía rota sin que hubiera un bloque mal numerado: A2 arrancaba con «2026 · »
+  //     y `ES_SECCION_NUM` la leía como el título del bloque número 2026.
+  //
+  // El centinela VACIO se traduce a vacío porque en el archivo se ve vacío: sin eso el auditor lee
+  // dos desvíos que el lector no tiene (un título acompañado y una fila 3 ocupada).
+  const g = grillaCalendario({ clientes: ['ARCOR'], hitos: [], meses: ventanaDeMeses('2026-08-13') })
+  const filas = g.filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c)))
+  const mal = auditarDiseno(filas, { pestana: PESTANA_CALENDARIO })
+  assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })
