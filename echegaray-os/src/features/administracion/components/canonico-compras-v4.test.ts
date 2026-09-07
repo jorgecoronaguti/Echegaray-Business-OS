@@ -217,3 +217,92 @@ test('el recorte de la lista no puede volverse una pared', () => {
   assert.match(p, /data-testid="compras-recortada"/, 'el recorte dejó de decir cuántas quedaron fuera')
   assert.match(p, /data-testid="ver-todas-las-compras"/, 'el recorte se quedó sin salida')
 })
+
+// ── LAS CINCO QUE QUEDABAN EN EL CANON DE AGOSTO (06/09/2026) ────────────────────────────────────
+//
+// El porte del 06/09 llevó la TABLA al canvas y dejó declaradas cinco piezas todavía en el canon de
+// agosto: el cuerpo en 12,5px, el panel en 372, el fondo de la fila elegida, los chips-pastilla y la
+// franja del encabezado. El dueño decidió llevarlas al canvas. Lo que sigue las clava.
+
+test('el cuerpo de la celda es el 13,5px del canvas, y sale de UNA constante', () => {
+  const t = codigoTabla()
+  assert.match(t, /const CUERPO = '13\.5px'/, 'el cuerpo dejó de ser el del canvas (`v4A:223`)')
+  // Ocho celdas con ocho literales se desfasan de a una y nadie lo ve. Ninguna celda de la fila
+  // puede volver a escribir su propio 12/12,5: las auxiliares del canvas son 11px (unidad de
+  // negocio, «estructura»), 12px (el mono del comprobante) y 10,5px (la deuda parcial).
+  const desde = t.indexOf('data-testid={`compra-${f.fila}`}')
+  const fila = t.slice(desde, t.indexOf('</div>', t.indexOf('<CeldaComprobante', desde)))
+  assert.ok(desde > 0 && fila.length > 500, 'no se pudo aislar la fila')
+  const propios = [...fila.matchAll(/fontSize: '(1[0-9](?:\.5)?)px'/g)].map((m) => m[1])
+  assert.deepEqual([...new Set(propios)].sort(), ['10.5', '11', '12'],
+    `una celda volvió a escribir su propio cuerpo en vez de pedir CUERPO: ${propios.join(', ')}`)
+})
+
+test('la fila elegida se dice SÓLO con el filo amarillo: sin fondo y sin padding que lo compense', () => {
+  const t = codigoTabla()
+  assert.match(t, /boxShadow: elegida \? FILO_ELEGIDA : undefined/,
+    'el filo de la fila abierta dejó de ser el del canvas (`v4A:229`)')
+  // EL FONDO ERA DEL v2 DE AGOSTO. El canvas dibuja la fila elegida igual que las demás salvo el
+  // filo; el #FEF9E6 competía con el ámbar del importe en la misma fila.
+  assert.equal(t.includes('V.seleccion'), false, 'volvió el fondo de la fila elegida')
+  // `inset` no ocupa caja: compensarlo con padding corre las ocho columnas 2px SÓLO en la fila
+  // abierta, y la tabla se mueve al elegir. Ninguna sangría izquierda en la fila.
+  assert.equal(/paddingLeft: 2\b/.test(t), false, 'apareció un padding que compensa el filo')
+  // Un solo canal para el borde: el filo ámbar de problema se retiró de esta tabla porque el
+  // destino ya lo dice dos veces (texto rojo + ⚠) y el canvas no lo dibuja.
+  assert.equal(t.includes('FILO_BLOQUEA'), false,
+    'volvieron dos significados al mismo box-shadow: elegir una fila le borra el problema')
+  assert.match(t, /color: obra \? V\.tintaSuave : V\.neg/, 'el destino dejó de gritar lo sin imputar')
+  assert.match(t, /<IconoProblema/, 'se fue el ⚠ del destino, que es el otro canal del problema')
+})
+
+test('el panel mide los 344 del canvas y la cabecera le reserva 392', () => {
+  const patron = sinComentarios(readFileSync(join(DIR, '../../../shared/components/v2/patron.tsx'), 'utf8'))
+  assert.match(patron, /lg:w-\[344px\]/, 'el panel volvió a los 372 del v2 de agosto')
+  assert.match(
+    sinComentarios(readFileSync(join(DIR, '../../../shared/components/v2/CabeceraSeccion.tsx'), 'utf8')),
+    /lg:w-\[392px\]/, 'el hueco de la cabecera se desfasó del panel (344 + 24 + 24)')
+  // Y EL CORTE DE COLUMNAS SIGUE AL PANEL. 924 (las ocho columnas + gap) + 393 (panel + margen +
+  // filo + sangría) + 40 (padding de página) = 1357: por debajo se sueltan tres columnas. Con el
+  // corte viejo de 1384 quedaba una franja de 28px donde las ocho no entran y se dibujan igual —y
+  // `body` lleva `overflow-x: clip`, así que el dato se corta sin una barra que lo delate.
+  assert.match(codigoTabla(), /max-\[1356px\]:/, 'el corte de columnas quedó calculado sobre el panel viejo')
+})
+
+test('la cabecera y los recortes son los del patrón v2, no la franja del canon', () => {
+  const p = codigoPagina()
+  assert.match(p, /<CabeceraSeccion\s/, 'Compras volvió a la franja del canon de agosto')
+  assert.match(p, /espacioPanel=\{!!filaAbierta\}/,
+    'la cabecera dejó de reservar la columna del panel: los controles gobiernan una tabla corrida')
+  assert.match(p, /accion=\{<CargarComprobante \/>\}/, 'se perdió la única acción amarilla de la pantalla')
+  // Los chips: `FiltrosSuaves` del patrón, el mismo control que Personal y Proveedores. La pastilla
+  // con borde de `ds/Filtros` es la caja que la tabla acaba de perder, dibujada arriba de ella.
+  const chips = sinComentarios(fuente('FiltrosSheet.tsx'))
+  assert.match(chips, /<FiltrosSuaves/, 'los recortes volvieron a la pastilla del canon')
+  assert.equal(/from '@\/shared\/components\/ds'/.test(chips), false, 'sigue colgando del ds de agosto')
+  // Y viven SOBRE la lista que recortan, no en la cabecera: con el panel abierto, un chip arriba
+  // del split se lee como si gobernara también el panel.
+  const filtros = p.indexOf('<FiltrosSheet')
+  const tabla = p.indexOf('<TablaComprasSheet')
+  const panel = p.indexOf('<PanelCompraSheet')
+  assert.ok(filtros > 0 && tabla > filtros && panel > tabla,
+    'los recortes salieron de la columna de la lista')
+})
+
+test('la nota al pie es la del canvas: abajo, sin caja, y no repite un número que no cuenta', () => {
+  // SÓLO LA PESTAÑA COMPRAS. El archivo tiene DOS pantallas —la pestaña del Sheet y `ControlArca`,
+  // que es el libro de ARCA y no se tocó—; medir el archivo entero da rojo por la caja de ayuda de
+  // la otra, que ahí sí corresponde. El recorte es lo que hace que este control pueda dar rojo por
+  // lo que mira y no por su vecina.
+  const entero = codigoPagina()
+  const p = entero.slice(0, entero.indexOf('async function ControlArca'))
+  assert.ok(p.length > 1000 && p.length < entero.length, 'no se pudo aislar la pestaña Compras')
+  assert.match(p, /<NotaBloque testid="nota-compras">/, 'la nota volvió a ser una caja `Ayuda`')
+  // ARRIBA DE LA LISTA EMPUJABA LA TABLA fuera de la primera pantalla, y se leía antes de haber
+  // visto lo que explica. El canvas la pone al pie (`v4A:247`).
+  assert.ok(p.indexOf('<NotaBloque') > p.indexOf('<PieCompras'), 'la nota volvió arriba de la lista')
+  assert.equal(/<Ayuda\b/.test(p), false, 'quedó la caja de ayuda del canon sobre la lista')
+  // El «632 comprobantes de ARCA» estaba escrito a mano acá: es el número de OTRA pantalla, que
+  // ésta no lee y por lo tanto no puede afirmar. Se cita la pantalla, no su cifra congelada.
+  assert.equal(/632/.test(p), false, 'volvió el conteo de ARCA escrito a mano en la pantalla de Compras')
+})

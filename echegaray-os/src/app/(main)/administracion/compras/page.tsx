@@ -62,6 +62,8 @@ import { getObrasCanonicas } from '@/features/control-obras/services/costosObraS
 import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
 import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { C, FranjaCartera, PAGINA } from '@/shared/components/canon'
+import { CabeceraSeccion } from '@/shared/components/v2/CabeceraSeccion'
+import { NotaBloque } from '@/shared/components/v2/patron'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
 import { CargarComprobante } from '@/features/administracion/components/CargarComprobante'
@@ -213,37 +215,35 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
   return (
     <Marco>
       <NavAdministracion />
-      <FranjaCartera titulo="Compras" testid="franja-compras" accion={<CargarComprobante />}>
-        <BuscadorURL
-          accion={RUTA}
-          q={sp.q}
-          placeholder="Buscar comprobante o proveedor"
-          oculto={{ f: filtro === 'todo' ? undefined : filtro }}
-          ancho="w-[238px] max-w-full"
-          variante="caja"
-          testid="buscar-compra"
-        />
-        <FiltrosSheet
-          conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
-        />
-        {/* EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta. */}
-        <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
-          Control ARCA
-        </Link>
-      </FranjaCartera>
+      {/* LA CABECERA DEL v2, LA MISMA QUE PERSONAL Y PROVEEDORES. Era `FranjaCartera` del canon de
+          agosto —título de 19px con los chips y el buscador colgados de un `children`—; el canvas
+          dibuja el título con su conteo, el buscador y la acción amarilla en una línea, y los
+          recortes en la SUYA (`v4A:199-208`). `espacioPanel` reserva la columna del panel para que
+          el buscador no se quede gobernando una tabla que ya no está debajo. */}
+      <CabeceraSeccion
+        testid="vistas-compras"
+        espacioPanel={!!filaAbierta}
+        accion={<CargarComprobante />}
+        buscador={{
+          accion: RUTA,
+          q: sp.q,
+          placeholder: 'Buscar comprobante o proveedor',
+          oculto: { f: filtro === 'todo' ? undefined : filtro },
+          testid: 'buscar-compra',
+        }}
+        vistas={[{
+          clave: 'compras', titulo: 'Compras', cuenta: todas.length, activa: true, href: RUTA,
+        }]}
+        filtros={(
+          // EL CONTROL CONTRA ARCA NO DESAPARECE: es otra pregunta y tiene su puerta.
+          <Link href={`${RUTA}?f=arca`} data-testid="ir-control-arca" className="text-[12px] text-faint underline underline-offset-2">
+            Control ARCA
+          </Link>
+        )}
+      />
 
       <div style={{ padding: '0 20px' }}>
         <EntradasSubidas entradas={entradas.data ?? []} />
-      </div>
-
-      <div style={{ padding: '0 20px' }}>
-        <Ayuda titulo="De dónde salen estas filas" testid="ayuda-compras">
-          Es la pestaña Compras del Sheet Flujo de Caja, fila por fila: todo lo que la empresa gastó,
-          con la obra que le asignó Dirección y el comprobante que se mandó por el chat. La FUENTE
-          sigue siendo el Sheet — esto es su espejo, y se refresca solo. El libro que ARCA le
-          reconoce a la empresa es otra cosa y vive en «Control ARCA»: ahí están 632 comprobantes
-          fiscales, acá {todas.length} filas de gasto.
-        </Ayuda>
       </div>
 
       <div style={{ padding: '0 20px 20px' }}>
@@ -262,6 +262,12 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
                   los dos y decía «6 de 882» a lo ancho de una pantalla donde la lista ocupa la
                   mitad: el número se leía como si describiera el panel también. */}
               <div className="min-w-0 flex-1">
+                {/* LOS RECORTES VIVEN SOBRE LA LISTA QUE RECORTAN (`v4A:208`), no en la cabecera:
+                    con el panel abierto, un chip arriba del split gobierna visualmente los dos. */}
+                <FiltrosSheet
+                  conteos={conteos} activo={filtro} hrefDe={href} sueltos={sueltos.data?.length ?? 0}
+                  conteo={{ n: recorte.enPantalla.length, total: todas.length }}
+                />
                 <TablaComprasSheet
                   filas={recorte.enPantalla}
                   seleccionada={filaAbierta?.fila}
@@ -300,6 +306,21 @@ async function PestanaCompras({ sp }: { sp: { q?: string; f?: string; c?: string
                     </span>
                   )}
                 </PieCompras>
+
+                {/* LA NOTA AL PIE — `v4A:247`. Era una caja `Ayuda` ARRIBA de la lista: un bloque
+                    con fondo y título que empujaba la tabla —que es a lo que se entra— fuera de la
+                    primera pantalla, y que además se lee ANTES de haber visto lo que explica. El
+                    canvas la pone abajo, en 11,5px apagados y sin caja: es contexto de lectura, no
+                    una advertencia. Los 632 comprobantes de ARCA no se escriben acá a mano: es el
+                    número de la otra pantalla y lo dice ella. */}
+                <NotaBloque testid="nota-compras">
+                  Esta lista es la pestaña Compras del Sheet Flujo de Caja fila por fila —{todas.length} filas
+                  de gasto—, no el libro que ARCA le reconoce a la empresa, que vive en «Control ARCA»:
+                  son dos preguntas distintas. La FUENTE sigue siendo el Sheet; esto es su espejo y se
+                  refresca solo. «Proyectado» no es un gasto hecho y no suma en «A pagar». F931, Taller
+                  y Almacén no son obras: encarecen la empresa. «Cargar comprobante» no carga: encola
+                  por el mismo circuito del bot.
+                </NotaBloque>
               </div>
               {filaAbierta && (
                 <PanelCompraSheet

@@ -36,14 +36,30 @@
 //   · EL CHIP «ESTRUCTURA» PIERDE SU RECUADRO: el canvas lo escribe en 11px #91918B al lado del
 //     destino (`v4A:227`), sin borde ni radio. Un recuadro alrededor de una palabra es una caja más.
 //
-// ═══ EL CUERPO VA EN 12,5/12 Y NO EN LOS 13,5px DEL CANVAS ═══
+// ═══ EL CUERPO ES EL DEL CANVAS: 13,5px ═══
 //
-// El canvas escribe `font-size:13.5px` en la fila de las TRES pantallas del bloque A (`:84` Personal,
-// `:223` Compras). Personal y Proveedores ya se portaron en 12,5px para el nombre y 12px para el
-// resto, y el dueño las dio por fieles. Copiar el 13,5 sólo acá dejaría tres listas hermanas con dos
-// cuerpos distintos en la misma pestaña, que se ve peor que la diferencia contra el zip. Es una
-// desviación deliberada y heredada, no un olvido.
+// El canvas escribe `font-size:13.5px` en la fila (`v4A:223`) y `12px` sólo en el mono del
+// comprobante (`v4A:223`) y en las dos palabras auxiliares —la unidad de negocio y «estructura», en
+// 11px (`v4A:227`)—. El porte del 06/09 lo había dejado en 12,5/12 con un argumento de coherencia:
+// que Personal y Proveedores ya estaban en 12,5 y tres hermanas con dos cuerpos se ven peor que la
+// diferencia contra el zip. El dueño decidió lo contrario el mismo día —el canvas manda— y por eso
+// el argumento queda escrito acá y no borrado: LA DEUDA ES REAL Y ES DE LAS OTRAS DOS. Personal y
+// Proveedores siguen en 12,5px, así que hoy la pestaña tiene dos cuerpos y el que está bien es éste.
 //
+// ═══ EL BORDE IZQUIERDO ES DE LA SELECCIÓN, Y DE NADA MÁS ═══
+//
+// La fila tenía DOS señales compitiendo por el mismo `box-shadow` —el filo ámbar de «sin imputar» y
+// el amarillo de «esto está abierto»— y la selección se compensaba además con un fondo #FEF9E6 que
+// el canvas no dibuja. El canvas resuelve las dos cosas de otra manera y es mejor: el problema se
+// dice DENTRO de la celda que lo tiene (destino en rojo más el ⚠, dos canales que no se pisan con
+// nada), y el borde queda libre para lo único que no tiene dónde más decirse — cuál fila está
+// abierta en el panel (`v4A:229`, `box-shadow:inset 2px 0 0 #FDC900`, sin fondo).
+//
+// Se pierde el barrido del borde para encontrar lo sin imputar. Hoy las 947 filas tienen destino,
+// así que no se pierde nada medible; y el corte «Sin obra» del encabezado sigue siendo la puerta
+// que las aísla con su número. Si el dueño extraña el filo ámbar, vuelve — pero entonces la
+// selección se queda sin ningún canal y hay que darle otro.
+
 // ═══ LA ÚLTIMA COLUMNA (26px) ES EL PAPEL, NO UN `⋯` ═══
 //
 // En el mockup ese `⋯` no tenía handler: era decorativo. Es el comprobante, en tinta cuando el
@@ -54,7 +70,7 @@ import Link from 'next/link'
 import { pesos } from '@/shared/components/canon/formato'
 import { IconoProblema } from '@/shared/components/iconos'
 import {
-  ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, FILO_ELEGIDA, RotuloCol, V,
+  ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_ELEGIDA, RotuloCol, V,
 } from '@/shared/components/v2/patron'
 import { esEstructura, pastillaDe, totalesDe } from '../services/comprasSheet'
 import type { FilaConPapel } from '../services/comprasSheetService'
@@ -74,11 +90,11 @@ import { CeldaComprobante } from './CeldaComprobante'
  *
  * ═══ DE DÓNDE SALEN LOS DOS CORTES ═══
  *
- * `1384` no es un número redondo: es la cuenta. Con el panel abierto la lista sólo tiene
- * `ancho − 40 (padding de página) − 421 (panel: 372 + 24 de margen + 1 de filo + 24 de sangría)`, así
- * que las ocho columnas recién entran desde 924 + 421 + 40 = 1385. Por debajo se sueltan CONCEPTO,
+ * `1356` no es un número redondo: es la cuenta. Con el panel abierto la lista sólo tiene
+ * `ancho − 40 (padding de página) − 393 (panel: 344 + 24 de margen + 1 de filo + 24 de sangría)`, así
+ * que las ocho columnas recién entran desde 924 + 393 + 40 = 1357. Por debajo se sueltan CONCEPTO,
  * COMPROBANTE y FORMA DE PAGO y quedan cinco, que necesitan 546 y entran con el panel abierto ya a
- * 1007px. El costo es real y se declara: entre 1250 y 1384 con el panel CERRADO las ocho entrarían y
+ * 979px. El costo es real y se declara: entre 1250 y 1356 con el panel CERRADO las ocho entrarían y
  * igual se ven cinco — CSS no puede saber si el panel está abierto, y equivocarse hacia el lado del
  * recorte muestra menos columnas, mientras que equivocarse hacia el otro CORTA el dato (`body` lleva
  * `overflow-x: clip`, así que no aparece ni una barra que lo delate).
@@ -88,7 +104,7 @@ import { CeldaComprobante } from './CeldaComprobante'
  */
 const COLS
   = 'grid-cols-[minmax(150px,1.2fr)_minmax(120px,1fr)_112px_minmax(110px,1fr)_92px_104px_112px_26px]'
-  + ' max-[1384px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_112px_26px]'
+  + ' max-[1356px]:grid-cols-[minmax(150px,1.2fr)_minmax(110px,1fr)_92px_112px_26px]'
   + ' max-[767px]:grid-cols-[minmax(0,1fr)_112px]'
 
 /**
@@ -96,11 +112,14 @@ const COLS
  * NUNCA INLINE: un `style={{ display: 'flex' }}` le gana a cualquier media query y la celda sigue
  * ocupando su ancho aunque la grilla ya no tenga su columna — la fila entera se corre.
  */
-const SUELTA_ANCHO = 'max-[1384px]:hidden'
+const SUELTA_ANCHO = 'max-[1356px]:hidden'
 const SUELTA_TELEFONO = 'max-[767px]:hidden'
 
 /** El `gap:14px` del canvas (`v4A:222`), en la cabecera y en la fila. */
 const GAP = 'gap-[14px]'
+
+/** El cuerpo de la celda. `v4A:223`. Una sola constante: ocho celdas con ocho literales se desfasan. */
+const CUERPO = '13.5px'
 
 /**
  * EL IMPORTE. Una fila anulada se dibuja apagada y tachada: existe en la pestaña, no es un gasto.
@@ -153,28 +172,27 @@ export function TablaComprasSheet({
             style={{
               height: ALTO_V2.fila,
               borderBottom: `1px solid ${V.lineaFila}`,
-              background: elegida ? V.seleccion : undefined,
-              // DOS SIGNIFICADOS Y UN SOLO `box-shadow`, así que hay una prioridad y está escrita:
-              // «esto bloquea» le gana a «esto está elegido» (`22v2:422` — el filo del problema tiene
-              // que sobrevivir a la selección, o elegir una fila borraría su problema). La selección
-              // no se queda sin canal: lleva además el fondo `V.seleccion`, que el filo no toca.
-              boxShadow: !obra ? FILO_BLOQUEA : elegida ? FILO_ELEGIDA : undefined,
+              // EL FILO ES DE LA SELECCIÓN, Y NO LLEVA PADDING QUE LO COMPENSE. `inset` pinta hacia
+              // adentro sin ocupar caja: la fila elegida y la que no arrancan en el mismo píxel, y
+              // un `paddingLeft: 2` para «devolver» el espacio correría las ocho columnas dos píxeles
+              // sólo en la fila abierta — el defecto que el canvas evita no dibujando ninguno.
+              boxShadow: elegida ? FILO_ELEGIDA : undefined,
             }}
           >
             {/* `display: contents` — la fila entera abre el panel, salvo el papel, que es un botón
                 y no puede vivir dentro de un enlace (HTML inválido y rompe el tabulador). */}
             <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
-              <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500, color: f.proveedor ? V.tinta : V.tenue }}>
+              <span className="truncate" style={{ fontSize: CUERPO, fontWeight: 500, color: f.proveedor ? V.tinta : V.tenue }}>
                 {f.proveedor ?? 'sin proveedor'}
               </span>
 
-              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: '12px', color: V.tintaSuave }}>
+              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: CUERPO, color: V.tintaSuave }}>
                 {f.concepto ?? f.detalle_obra ?? 'sin concepto'}
               </span>
 
               <span
                 className={`truncate font-mono ${SUELTA_ANCHO}`}
-                style={{ fontSize: '11.5px', color: f.comprobante ? V.tintaSuave : V.tenue }}
+                style={{ fontSize: '12px', color: f.comprobante ? V.tintaSuave : V.tenue }}
                 data-testid={f.comprobante ? undefined : 'compra-sin-comprobante'}
               >
                 {f.comprobante ? `${f.tipo ? `${f.tipo} ` : ''}${f.comprobante}` : 'sin comprobante'}
@@ -187,7 +205,7 @@ export function TablaComprasSheet({
                 {f.unidad_negocio && (
                   <span className="shrink-0" style={{ fontSize: '11px', color: V.tenue }}>{f.unidad_negocio}</span>
                 )}
-                <span className="truncate" style={{ fontSize: '12px', color: obra ? V.tintaSuave : V.neg }}>
+                <span className="truncate" style={{ fontSize: CUERPO, color: obra ? V.tintaSuave : V.neg }}>
                   {obra || 'sin imputar'}
                 </span>
                 {!obra && (
@@ -208,7 +226,7 @@ export function TablaComprasSheet({
 
               <span
                 className={`truncate ${SUELTA_TELEFONO}`}
-                style={{ fontSize: '12px', color: estado.color }}
+                style={{ fontSize: CUERPO, color: estado.color }}
                 data-testid="estado-compra"
               >
                 {estado.texto}
@@ -216,13 +234,13 @@ export function TablaComprasSheet({
 
               {/* NO BLOQUEA NADA y por eso es apagado, no ámbar: sin forma de pago la compra existe
                   igual; lo único que no se puede es proyectar cuándo sale la plata. */}
-              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: '12px', color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
+              <span className={`truncate ${SUELTA_ANCHO}`} style={{ fontSize: CUERPO, color: f.tipo_pago ? V.tintaSuave : V.tenue }}>
                 {f.tipo_pago || 'sin cargar'}
               </span>
 
               <span
                 className="flex min-w-0 flex-col items-end gap-px font-mono tabular-nums"
-                style={{ fontSize: '12px', textAlign: 'right' }}
+                style={{ fontSize: CUERPO, textAlign: 'right' }}
               >
                 <Importe f={f} />
                 {/* LO QUE TODAVÍA SE DEBE, y sólo cuando se debe algo. `saldo_pendiente` en 0 no es

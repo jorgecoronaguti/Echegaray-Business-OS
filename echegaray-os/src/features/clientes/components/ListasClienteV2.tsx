@@ -20,12 +20,20 @@
 //                columna al único dato que contesta «¿cómo va?».
 //   AVANCE       nunca es 0 % por falta de cronograma. Una obra sin plan no tiene avance, y lo dice
 //                con palabras.
+//   LA ETAPA     EN LA COLUMNA DEL IMPORTE. Hasta el 06/09/2026, un jefe de obra veía la ETAPA de la
+//                obra donde va CONTRATADO, y el rótulo mutaba de «Contratado» a «Etapa». Se leía
+//                como una tabla distinta según quién mirara, y contestaba una pregunta que nadie
+//                había hecho para tapar la que no puede contestar. El handoff decide otra cosa: la
+//                columna es siempre CONTRATADO y la celda dice `sin permiso` (`dc.html:112` para el
+//                rótulo fijo, `751/760/771/796/813/885/898/924` para el literal). El permiso NO
+//                cambia — el `monto_contratado` sigue cerrado por GRANT de columna, y esto sólo
+//                cambia la palabra con la que la pantalla admite que no lo tiene.
 
 import Link from 'next/link'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { IconoObra, IconoPresupuesto } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
-import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
+import type { ObraPanel } from '@/features/obras/types'
 
 /**
  * EL ESTADO SE DICE CON LA PALABRA Y SU TINTA, sin punto de color.
@@ -102,7 +110,7 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
         <RotuloCol>Obra</RotuloCol>
         <RotuloCol>Estado</RotuloCol>
         <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Avance</RotuloCol></span>
-        <RotuloCol derecha>{veEconomia ? 'Contratado' : 'Etapa'}</RotuloCol>
+        <RotuloCol derecha>Contratado</RotuloCol>
         <span className={SOLO_ANCHO} />
       </div>
 
@@ -172,8 +180,12 @@ export function ObrasDelCliente({ obras, veEconomia, vacio }: {
                 </span>
               )
             : (
-                <span className="truncate" style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}>
-                  {o.etapa ? ETAPA_LABEL[o.etapa] : 'etapa sin declarar'}
+                <span
+                  data-testid="contratado-sin-permiso"
+                  className="truncate"
+                  style={{ fontSize: '12px', color: V.tenue, textAlign: 'right' }}
+                >
+                  sin permiso
                 </span>
               )}
 

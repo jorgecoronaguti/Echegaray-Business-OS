@@ -210,6 +210,32 @@ export interface Proveedor {
   cuit: string | null
   notas: string | null
   activo: boolean
+  /**
+   * EL RUBRO DECLARADO POR UNA PERSONA. Le gana a `rubro_deducido` para siempre — no por una regla
+   * de la pantalla sino porque el deductor no escribe esta columna (ver `20260906T1800`).
+   */
+  rubro: string | null
+  /** Lo CALCULADO de las compras. Nunca se dibuja como si fuera decidido. */
+  rubro_deducido: string | null
+  /** La cuenta que produjo la deducción. Sin ella, la deducción no se puede auditar. */
+  rubro_deducido_evidencia: string | null
+}
+
+/**
+ * EL RUBRO EFECTIVO Y DE DÓNDE VIENE. Se calcula en un solo lugar: dos pantallas que resuelvan la
+ * precedencia por su cuenta terminan mostrando cosas distintas del mismo proveedor.
+ */
+export function rubroDe(p: Pick<Proveedor, 'rubro' | 'rubro_deducido' | 'rubro_deducido_evidencia'>): {
+  texto: string
+  declarado: boolean
+  /** null = no hay nada que explicar porque no hay rubro, o porque lo declaró una persona. */
+  evidencia: string | null
+} {
+  if (p.rubro) return { texto: p.rubro, declarado: true, evidencia: null }
+  if (p.rubro_deducido) {
+    return { texto: p.rubro_deducido, declarado: false, evidencia: p.rubro_deducido_evidencia }
+  }
+  return { texto: 'sin rubro', declarado: false, evidencia: null }
 }
 
 /** Un nombre de `Compras!E` que todavía no tiene proveedor canónico. */

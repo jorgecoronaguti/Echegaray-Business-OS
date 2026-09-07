@@ -194,20 +194,29 @@ export function RotuloPanel({ children, cuenta }: { children: ReactNode; cuenta?
 }
 
 /**
- * EL PANEL LATERAL DEL v2: 372px, filo izquierdo, y NADA MÁS. `22v2:148`.
+ * EL PANEL LATERAL DEL v2: 344px, filo izquierdo, y NADA MÁS. `v4A:255`.
  *
  * No es una tarjeta: no tiene fondo propio, ni borde completo, ni radio, ni sombra. La jerarquía la
  * da la indentación (24px a cada lado del filo), que es el criterio 4 del patrón.
  *
  * En pantalla angosta baja debajo de la lista con un filo superior en vez del lateral: un panel de
- * 372px fijo al lado de una tabla estrangula el nombre, y el nombre es lo único que identifica una
+ * 344px fijo al lado de una tabla estrangula el nombre, y el nombre es lo único que identifica una
  * fila.
+ *
+ * ═══ 344 Y NO 372, Y EL ZIP NO ES UNÁNIME ═══
+ *
+ * 372 venía del v2 de AGOSTO (`22v2:148`). El handoff v4 no lo escribe en ningún lienzo: dibuja 344
+ * en las dos pantallas del canvas de Administración (`v4A:255` Compras, `Personal:58`), 340 en
+ * Proveedores, 360 en Pendientes y 376 en el CRM. Siete anchos para el mismo objeto son un zip que
+ * se contradice, no una decisión de diseño, y ahí manda la regla de desempate del handoff: lo
+ * cosmético lo resuelve el repo con UNA definición. Se toma el 344 del canvas que el dueño pidió
+ * cerrar; los 4px contra Proveedores son el precio de que el panel exista una sola vez.
  */
 export function PanelFilo({ children, testid }: { children: ReactNode; testid?: string }) {
   return (
     <aside
       data-testid={testid}
-      className="w-full shrink-0 border-t pt-4 lg:ml-6 lg:box-content lg:w-[372px] lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+      className="w-full shrink-0 border-t pt-4 lg:ml-6 lg:box-content lg:w-[344px] lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
       style={{ borderColor: V.linea, display: 'flex', flexDirection: 'column', minWidth: 0 }}
     >
       {children}
@@ -221,7 +230,7 @@ export function PanelFilo({ children, testid }: { children: ReactNode; testid?: 
  * ═══ LO MEDIDO (25/08/2026, mockup y app a 1520×900, lado a lado) ═══
  *
  *   bloque                      mockup    app     Δ
- *   panel lateral (ancho total)  421px   396px   −25
+ *   panel lateral (ancho total)  421px   396px   −25   (medido cuando el panel era de 372)
  *   lista del maestro (ancho)   1059px  1084px   +25
  *   fila de tabla (alto)           41px    40px   −1
  *   encabezado de columnas         27px    26px   −1
@@ -232,9 +241,10 @@ export function PanelFilo({ children, testid }: { children: ReactNode; testid?: 
  * afuera en la fila y en la cabecera, cambiar los altos no las desalinea entre sí.
  *
  * Una sola causa: el `.dc.html` no declara `box-sizing`, así que corre con el DEFAULT DE CSS
- * —`content-box`— donde `width:372px` es el CONTENIDO y el padding de 24 y el borde de 1 se SUMAN
- * por afuera (372+24+1+24 de margen = 421). El preflight de Tailwind pone `border-box` en todo, y
- * ahí los mismos 372px se los comen el padding y el borde desde adentro: el panel queda 25px más
+ * —`content-box`— donde el `width` declarado es el CONTENIDO y el padding de 24 y el borde de 1 se
+ * SUMAN por afuera (344+24+1+24 de margen = 393). El preflight de Tailwind pone `border-box` en
+ * todo, y ahí los mismos píxeles se los comen el padding y el borde desde adentro: el panel queda
+ * 25px más
  * angosto y esos 25px se los lleva la lista. Idéntico con `height:40px` + `borderBottom:1px`: 41 en
  * el mockup, 40 en la app.
  *
