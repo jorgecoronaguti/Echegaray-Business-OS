@@ -1470,7 +1470,7 @@ export function grilla({
   // El rótulo COMPLETO del parámetro ("Meses hacia atrás para medir el ritmo real de horas") dentro de
   // una celda de la columna C dejaba 114 caracteres desparramados en el medio del cuadro. El nombre
   // del parámetro está en Parámetros, que es adonde hay que ir igual: acá alcanza con nombrar la hoja.
-  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"${ALERTA} sin quincenas cerradas — subí la ventana en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
+  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"${ALERTA} sin quincenas cerradas — subí la ventana en Parámetros";"medido s/ quincenas cerradas · "&${RANGO_MESES_BASE}&" meses")`
   // ═══ EL PROMEDIO DEL ADELANTO ES DEL AÑO Y SÓLO DE LO PAGADO (13/08) ═══
   //
   // El dueño: *"el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo

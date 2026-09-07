@@ -144,7 +144,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
     }
   }
 
-  formatoEncabezado({ celdas, req, rango, meta })
+  formatoEncabezado({ celdas, meta })
   formatoHero({ celdas, reglaFina, req, rango, meta })
   formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima })
 
@@ -206,7 +206,7 @@ export function tandasDeGrupos(sheetId, { filas = 0, cols = 0 } = {}, niveles = 
 }
 
 /** Título, subtítulo y el atajo de la esquina. */
-function formatoEncabezado({ celdas, req, rango, meta }) {
+function formatoEncabezado({ celdas, meta }) {
   celdas(FILA.titulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(INK, { bold: true, size: 16 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
@@ -235,33 +235,22 @@ function formatoEncabezado({ celdas, req, rango, meta }) {
     // TEXTO ENRIQUECIDO con el fragmento relativo sí scrollea dentro del documento abierto — es lo que
     // hace «Insertar → Enlace → Hojas y rangos con nombre», y va como formato, no como fórmula.
     //
-    // ═══ EL VALOR Y EL ENLACE VAN JUNTOS, Y NO ES UN DETALLE (07/09/2026) ═══
+    // ═══ POR QUÉ ACÁ NO HAY NINGÚN ENLACE, Y NO ES UN OLVIDO (07/09/2026) ═══
     //
-    // Primero se escribió sólo `fields: 'textFormatRuns'`, para no tocar el valor. Resultado medido
-    // en el archivo vivo: la celda quedó con el texto correcto y SIN enlace. La guarda de formato
-    // (`huella-formato.mjs:75`) trata todo `updateCells` que no escribe valor como una pasada de
-    // formato y la frena si el rango «ya tiene un formato que yo no puse» — fail-closed, correcto
-    // para la cosmética y equivocado acá: el enlace NO es cosmética, es el control entero. Sin él la
-    // celda es un rótulo muerto, que es exactamente lo que el dueño reportó tres veces.
+    // Se intentó poner el destino como ENLACE DE TEXTO ENRIQUECIDO (`textFormatRuns[].format.link`),
+    // que es lo único que scrollea DENTRO del documento sin abrirlo de nuevo. Medido contra el
+    // archivo vivo: la API ACEPTA el `updateCells` —devuelve 200— y NO GUARDA el enlace. Ni con el
+    // fragmento relativo `#gid=…&range=…` ni con la URL absoluta; al releer, `textFormatRuns` vuelve
+    // vacío. Ese enlace sólo lo crea la interfaz («Insertar → Enlace»); por API no existe.
     //
-    // Escribiéndolos juntos, el request pasa por la guarda de CONTENIDO —que sí sabe que esta celda
-    // es del OS— y no por la de diseño. Y además es lo correcto conceptualmente: el atajo es UNA
-    // cosa, texto y destino, y separarlos permite justo el estado que se produjo.
-    const r = rango(meta.botonHoy.fila - 1, meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1)
-    if (r && meta.botonHoy.uri && meta.botonHoy.texto) {
-      req.push({
-        updateCells: {
-          range: r,
-          fields: 'userEnteredValue,textFormatRuns',
-          rows: [{
-            values: [{
-              userEnteredValue: { stringValue: meta.botonHoy.texto },
-              textFormatRuns: [{ startIndex: 0, format: { ...txt(ACENTO, { size: 9 }), underline: true, link: { uri: meta.botonHoy.uri } } }],
-            }],
-          }],
-        },
-      })
-    }
+    // Y `HYPERLINK`, que sí se puede escribir, no sirve para lo que el dueño pide: con el fragmento
+    // suelto no navega (medido el 13/08) y con la URL entera ABRE el archivo de nuevo — *«me tiene
+    // que llevar a la columna, no abrir un flujo nuevo»*.
+    //
+    // Lo que sí lleva a la columna, en un gesto y sin abrir nada, es un RANGO CON NOMBRE elegido en
+    // el cuadro de nombres. Lo publican `destinosNombrados` de las dos vistas: SEMANA_ACTUAL y
+    // MES_ACTUAL, reapuntados en cada corrida. La celda A3 se queda con lo que sí puede dar —DECIR
+    // en qué columna está el período en curso— y no promete un clic que Sheets no puede cumplir.
   }
 }
 

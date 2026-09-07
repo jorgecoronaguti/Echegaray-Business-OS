@@ -37,7 +37,7 @@ import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './ca
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
-import { columnasDelPasado, atajoDelPeriodo } from './cash-flow-hoy.mjs'
+import { columnasDelPasado, atajoDelPeriodo, indiceDeLetra } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaDeCierre, glosaConInvertido, muestraSemanal, IMPORTE_MUESTRA, GLOSA_SIN_ANCLA,
@@ -430,6 +430,20 @@ export const NOMBRES_VISTA = Object.freeze({
   // add da 400). Nombres nuevos, y el generador ahora publica ANTES de achicar para no repetirlo.
   inicio: 'CF_INICIO',
   cierre: 'CF_CIERRE',
+  // ═══ EL DESTINO DEL PERÍODO EN CURSO, COMO RANGO CON NOMBRE (07/09/2026) ═══
+  //
+  // Medido hoy contra el archivo vivo: la API de Sheets ACEPTA un `updateCells` con
+  // `textFormatRuns[].format.link` y NO LO GUARDA — ni con el fragmento relativo `#gid=…&range=…`
+  // ni con la URL absoluta. El enlace de texto enriquecido que hace «Insertar → Enlace» sólo se
+  // puede crear desde la interfaz; por API no existe. Y `HYPERLINK`, que sí se puede escribir, o no
+  // navega (fragmento suelto) o abre el archivo de nuevo (URL entera) — que es exactamente lo que el
+  // dueño rechazó tres veces: *«me tiene que llevar a la columna, no abrir un flujo nuevo»*.
+  //
+  // Lo que SÍ existe y hace justo eso: un RANGO CON NOMBRE. Se elige en el cuadro de nombres (arriba
+  // a la izquierda, al lado de la barra de fórmulas) y la hoja SCROLLEA hasta él sin abrir nada. Es
+  // un gesto, dentro del documento, y el nombre no cambia aunque la columna sí — el generador lo
+  // reapunta en cada corrida.
+  actual: 'MES_ACTUAL',
 })
 
 /**
@@ -450,6 +464,11 @@ export function destinosNombrados(meta) {
     { name: NOMBRES_VISTA.meses, fila: meta.cab.fila, col, filas: 1, cols },
     { name: NOMBRES_VISTA.inicio, fila: meta.fila.saldoInicial, col, filas: 1, cols },
     { name: NOMBRES_VISTA.cierre, fila: meta.fila.saldoFinal, col, filas: 1, cols },
+    // UNA SOLA CELDA: la cabecera del período en curso. Si hoy cae fuera del ejercicio que muestra
+    // el cuadro, no se publica — un nombre que apunta a una columna cualquiera es peor que no tenerlo.
+    ...(meta.botonHoy?.uri
+      ? [{ name: NOMBRES_VISTA.actual, fila: meta.cab.fila, col: indiceDeLetra(/range=([A-Z]{1,3})/.exec(meta.botonHoy.uri)[1]) + 1, filas: 1, cols: 1 }]
+      : []),
   ]
 }
 

@@ -63,7 +63,7 @@ import {
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
-import { columnasDelPasado, atajoDelPeriodo } from './cash-flow-hoy.mjs'
+import { columnasDelPasado, atajoDelPeriodo, indiceDeLetra } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaConInvertido, muestraSemanal, GLOSA_SIN_ANCLA,
@@ -339,4 +339,24 @@ export function vinculoHoy(gid, meta, hoy = new Date()) {
     // fecha que no es la de ninguna columna. Es la misma trampa que ya vació fechas dd/mm una vez.
     rotularFecha: (d) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
   })
+}
+
+/** El nombre del destino de la semana en curso. Ver `NOMBRES_VISTA.actual` del mensual: el enlace de
+ *  texto enriquecido NO se puede escribir por API, y un rango con nombre sí lleva a la columna. */
+export const NOMBRE_SEMANA_ACTUAL = 'SEMANA_ACTUAL'
+
+/**
+ * LOS RANGOS CON NOMBRE QUE PUBLICA EL SEMANAL. Hasta hoy no publicaba ninguno.
+ *
+ * Uno solo, y es el que el dueño usa todos los días: la cabecera de la semana en curso. Se elige en
+ * el cuadro de nombres y la hoja scrollea hasta ahí, dentro del documento y sin abrir nada.
+ *
+ * Si hoy cae fuera del ejercicio del cuadro NO se publica: un nombre que lleva a una columna
+ * cualquiera es peor que no tenerlo.
+ */
+export function destinosNombrados(meta) {
+  if (!meta?.botonHoy?.uri) return []
+  const letra = /range=([A-Z]{1,3})/.exec(meta.botonHoy.uri)?.[1]
+  if (!letra) return []
+  return [{ name: NOMBRE_SEMANA_ACTUAL, fila: meta.cab.fila, col: indiceDeLetra(letra) + 1, filas: 1, cols: 1 }]
 }

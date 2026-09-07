@@ -257,7 +257,29 @@ async function main() {
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
-  const escritura = await escribirPreservando(google, ID, tab, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // ═══ LOS AVISOS SON UN BLOQUE INDIVISIBLE, Y SIN ESTO SE APAGARON SOLOS (07/09/2026) ═══
+  //
+  // El dueño, por décima vez: «se rompieron las ubicaciones de los gráficos en CAJA». No eran los
+  // gráficos. Los cuadros 3 (ALERTAS CRÍTICAS) y 4 (ACCIONES RECOMENDADAS) tenían su título y NADA
+  // debajo — cuatro filas mudas — y los gráficos, que anclan al final del contenido, quedaban donde
+  // el hueco los dejaba. Nueve correcciones movieron el ancla; ninguna preguntó por qué el hueco.
+  //
+  // La causa, leída en el log de la corrida de las 11:04: «🚫 vos vaciaste la celda A17: no vuelvo a
+  // escribir». La guarda por celda tenía huella propia de esas celdas y las encontró vacías, así que
+  // concluyó lo que debe concluir por defecto —las vació una persona— y dejó de reponerlas PARA
+  // SIEMPRE. No las vació nadie: quedaron vacías cuando una corrida anterior falló a mitad de camino.
+  //
+  // `indivisibles` es exactamente el remedio que este archivo ya tiene escrito para el caso: «un
+  // cuadro de control que pierde sus insumos y conserva su ⇒ publica una afirmación falsa: acá se
+  // está mirando». Un título «ALERTAS CRÍTICAS» sin una sola alerta debajo dice que la caja está
+  // vigilada cuando no lo está — es la peor celda vacía posible de esta pestaña.
+  //
+  // Sigue valiendo para el resto: un importe o un texto que el dueño borre, sigue borrado.
+  const escritura = await escribirPreservando(google, ID, tab, g.filas, {
+    respetar: false,
+    anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO),
+    indivisibles: [{ desde: g.fAviso0 - 1, hasta: g.fAviso1 }],
+  })
   // ═══ SI NO SE ESCRIBIÓ, NO SE FORMATEA NI SE MUEVEN LOS NOMBRES ═══
   //
   // La guarda hacía bien su trabajo —con la pestaña candada NO se escribe— pero el resultado se

@@ -34,7 +34,7 @@ import { cuadre, guardaDeCobertura, linea, totalesDeVista } from '../lib/cash-fl
 import { auditarCuadreCobranzas, informe } from '../lib/cobranzas-cuadre-vivo.mjs'
 // El nombre de cada pestaña ya viene en su `meta`: importarlo suelto era una segunda forma de decir lo
 // mismo, y la que se olvida de cambiar el día que una pestaña se renombra.
-import { grillaSemanal } from '../lib/cash-flow-semanas.mjs'
+import { destinosNombrados as destinosSemanal, grillaSemanal } from '../lib/cash-flow-semanas.mjs'
 import { grillaMeses, destinosNombrados } from '../lib/cash-flow-meses.mjs'
 import {
   grillaPresupuesto, rescatarPresupuesto, formatoPresupuesto,
@@ -402,7 +402,7 @@ async function main() {
   await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid, hoy }), mensual.meta.footprint, refs, destinosNombrados)
   // Y EL SEMANAL VA CON EL MISMO AÑO QUE EL MENSUAL, no con el rodante de hoy: las dos vistas cubren
   // el mismo ejercicio o la conciliación entre ellas deja de significar algo.
-  await escribirVista(google, (gid) => grillaSemanal({ hoy, anio: AÑO, refs, gid }), semanal.meta.footprint, refs)
+  await escribirVista(google, (gid) => grillaSemanal({ hoy, anio: AÑO, refs, gid }), semanal.meta.footprint, refs, destinosSemanal)
   if (DRY) return console.log('\n--dry: no escribí nada.')
 
   // LOS DOS CUADRES CORREN SIEMPRE, aunque el primero falle: son independientes y saber los DOS
