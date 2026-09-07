@@ -114,7 +114,7 @@ interface Consulta {
 }
 
 /** Un PostgREST de mentira que anota QUÉ se pidió: la tabla, el conteo, el orden y el tope. */
-function baseFalsa(filas: Record<string, unknown>[], count: number | null, error: string | null) {
+function baseFalsa(filas: PapelProveedor[], count: number | null, error: string | null) {
   const consultas: Consulta[] = []
   const cliente = {
     from: (tabla: string) => ({
