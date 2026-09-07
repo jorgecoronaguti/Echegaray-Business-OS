@@ -171,7 +171,13 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             }}
           />
           <div style={{ padding: '10px 20px 24px' }}>
-            <BloqueAsistenciaSemana semanaPedida={sp.semana} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia} />
+            <BloqueAsistenciaSemana
+              semanaPedida={sp.semana} hoy={hoy} q={sp.q} hrefDe={hrefAsistencia}
+              // ESTA PANTALLA YA ES DE ADMINISTRACIÓN: quien llega acá pasó el portero del área.
+              // El `true` no es un permiso, es la afirmación de dónde vive el botón; la policy de
+              // `registros_hh` y la de `obra_asignacion` son las que rechazan de verdad.
+              puedeCorregir
+            />
           </div>
         </div>
       </Marco>

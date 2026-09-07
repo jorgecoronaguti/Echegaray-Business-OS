@@ -79,3 +79,51 @@ export function acuseDe(p: PlanDeJornada): string {
     ? 'No había nada que cambiar: el día ya estaba así.'
     : `Día guardado: ${partes.join(' · ')}.`
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CORRECCIÓN DE UN DÍA POR ADMINISTRACIÓN
+//
+// El dueño: *«que todo pueda ser modificado por el administrador, asignándole obra»*. Eso es más
+// que cambiar un número: es poder mover un día de una obra a otra, declararlo ausencia o borrarlo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+export const correccionSchema = z.object({
+  persona_id: z.string().uuid('Elegí a quién le corregís el día'),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  /** De dónde salen las horas hoy. `null` = el día no tiene nada cargado todavía. */
+  obra_origen: z.union([z.string().trim().min(1), z.null()]).default(null),
+  obra_destino: z.string().trim().min(1, 'Elegí la obra'),
+  estado: z.enum(['presente', 'ausente', 'borrar']),
+  horas: z.number().positive().max(24).nullable().default(null),
+  /** Asignar a la persona a la obra destino en el mismo gesto. Explícito: nunca por defecto. */
+  asignar: z.boolean().default(false),
+}).refine((d) => d.estado !== 'presente' || d.horas !== null, {
+  message: 'Poné cuántas horas hizo, o marcá que no vino',
+})
+
+export type Correccion = z.infer<typeof correccionSchema>
+
+/**
+ * ¿Este día CAMBIA DE OBRA?
+ *
+ * Es la única pregunta que decide si la corrección es un update o un movimiento. Sin origen no hay
+ * movimiento: el día no tenía nada y se está cargando por primera vez.
+ */
+export const cambiaDeObra = (c: Correccion): boolean =>
+  c.obra_origen !== null && c.obra_origen !== c.obra_destino
+
+/**
+ * El ORDEN en que se toca la base cuando el día se mueve de obra.
+ *
+ * PostgREST no da transacciones: `insertar` y `borrar` son dos viajes. El orden importa y no es
+ * simétrico —es la diferencia entre un error visible y horas perdidas—:
+ *
+ *   INSERTAR PRIMERO. Si el insert falla, no se borró nada y el día sigue como estaba.
+ *   BORRAR DESPUÉS.   Si el borrado falla, el día queda cargado en LAS DOS obras: se ve en la
+ *                     grilla, la persona aparece con dos filas y alguien lo corrige.
+ *
+ * Al revés —borrar y después insertar— un fallo en el segundo paso deja el día en NINGUNA obra: las
+ * horas desaparecen sin que nadie vea un error. Un duplicado visible siempre le gana a una pérdida
+ * silenciosa. La clave única no se opone: son obras distintas, así que las dos filas conviven.
+ */
+export const ORDEN_DEL_MOVIMIENTO = ['insertar', 'borrar'] as const

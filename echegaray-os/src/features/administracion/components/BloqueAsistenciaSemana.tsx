@@ -21,12 +21,15 @@ import { GrillaAsistenciaObra } from './GrillaAsistenciaObra'
 // La semana viaja en la URL (`?semana=2026-09-07`): así se puede pasar «mirá la semana pasada» por
 // mensaje, y recargar no devuelve a hoy.
 
-export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe }: {
+export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, puedeCorregir }: {
   semanaPedida?: string
   hoy: string
   /** El texto del buscador. Filtra DESPUÉS de armar la grilla — ver abajo. */
   q?: string
   hrefDe: (semana: string) => string
+  /** Corregir la OBRA de un día es de Administración. La policy decide de verdad; esto evita
+   *  ofrecer un botón que va a rebotar contra un `permission denied`. */
+  puedeCorregir: boolean
 }) {
   const esFecha = /^\d{4}-\d{2}-\d{2}$/.test(semanaPedida ?? '')
   const semana = semanaDe(esFecha ? (semanaPedida as string) : hoy)
@@ -57,7 +60,10 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe }: {
   const totales = totalesPorDia(todas, dias)
   const chips = personasPorObra(todas)
   const sinMarcar = diasSinMarcar(todas)
-  const jornadaPorObra = await jornadasDe(supabase, chips.map((c) => c.obra_id))
+  // LAS OBRAS A LAS QUE SE PUEDE MOVER UN DÍA: las activas que la sesión ve. La jornada de cada una
+  // viaja junta —es lo que vale una ausencia— y sale del mismo viaje, no de dos.
+  const obras = await obrasElegibles(supabase)
+  const jornadaPorObra = Object.fromEntries(obras.map((o) => [o.id, o.jornada]))
 
   return (
     <div data-testid="bloque-asistencia">
@@ -99,6 +105,8 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe }: {
           totalesDia={totales}
           total={totalDeLaSemanaPorObra(todas)}
           jornadaPorObra={jornadaPorObra}
+          obras={obras.map((o) => ({ id: o.id, nombre: o.nombre }))}
+          puedeCorregir={puedeCorregir}
         />
       )}
 
@@ -112,18 +120,24 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe }: {
   )
 }
 
-/** La jornada pactada de cada obra de la grilla: es lo que vale una ausencia cuando se escribe «A». */
-async function jornadasDe(
-  supabase: Awaited<ReturnType<typeof createClient>>, obraIds: string[],
-): Promise<Record<string, number>> {
-  if (obraIds.length === 0) return {}
-  const { data } = await supabase.from('obra_canonica').select('id, jornada_horas').in('id', obraIds)
-  const mapa: Record<string, number> = {}
-  for (const o of (data ?? []) as { id: string; jornada_horas: number | string | null }[]) {
+/**
+ * Las obras a las que se puede mover un día, con su jornada pactada.
+ *
+ * SE PIDEN LAS ACTIVAS Y TAMBIÉN LAS QUE YA APARECEN EN LA GRILLA: una obra que se cerró esta
+ * semana sigue teniendo horas cargadas, y si desapareciera del selector el día que quedó mal
+ * imputado ahí no se podría sacar de ninguna manera.
+ */
+async function obrasElegibles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ id: string; nombre: string; jornada: number }[]> {
+  const { data } = await supabase
+    .from('obra_canonica').select('id, nombre, jornada_horas, estado').order('nombre')
+  return ((data ?? []) as {
+    id: string; nombre: string; jornada_horas: number | string | null; estado: string | null
+  }[]).map((o) => {
     const h = Number(o.jornada_horas)
-    if (Number.isFinite(h) && h > 0) mapa[o.id] = h
-  }
-  return mapa
+    return { id: o.id, nombre: o.nombre, jornada: Number.isFinite(h) && h > 0 ? h : 0 }
+  })
 }
 
 function Semanas({ semana, hrefDe }: { semana: string; hrefDe: (s: string) => string }) {

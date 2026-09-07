@@ -5,6 +5,7 @@ import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaSemanaObra } from '../services/semanaPorObra'
 import { guardarJornada } from '../services/jornadaPorObraActions'
+import { PanelCorreccionJornada, type ObraElegible } from './PanelCorreccionJornada'
 
 // 02 · LA SEMANA, POR OBRA. La misma jornada que el jefe carga en el teléfono, a la distancia de
 // Administración: una fila por par (persona, obra) y una columna por día.
@@ -37,16 +38,24 @@ function vacioDe(estado: CeldaObra['estado']): { texto: string; color: string; p
   return { texto: '', color: ROJO, punteada: true }
 }
 
-export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total, jornadaPorObra }: {
+export function GrillaAsistenciaObra({
+  filas, dias, etiquetas, totalesDia, total, jornadaPorObra, obras, puedeCorregir,
+}: {
   filas: FilaSemanaObra[]
   dias: string[]
   etiquetas: string[]
   totalesDia: (number | null)[]
   total: number
   jornadaPorObra: Record<string, number>
+  /** Las obras a las que se puede mover un día. Vienen del servidor con el RLS ya aplicado. */
+  obras: ObraElegible[]
+  /** Sólo Administración corrige la obra de un día. La puerta de verdad es la policy; esto evita
+   *  ofrecer un botón que va a rebotar contra un `permission denied`. */
+  puedeCorregir: boolean
 }) {
   const [borradores, setBorradores] = useState<Record<string, string>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
+  const [corrigiendo, setCorrigiendo] = useState<string | null>(null)
   const [, arrancar] = useTransition()
 
   const claveDe = (fila: FilaSemanaObra, fecha: string) => `${fila.clave}·${fecha}`
@@ -86,6 +95,8 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
     })
   }
 
+  const abierta = puedeCorregir ? (filas.find((f) => f.clave === corrigiendo) ?? null) : null
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} data-testid="grilla-asistencia">
@@ -95,6 +106,7 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
             <Rotulo ancho="18%">Obra</Rotulo>
             {etiquetas.map((e) => <Rotulo key={e} centro>{e}</Rotulo>)}
             <Rotulo derecha>Horas</Rotulo>
+            {puedeCorregir && <Rotulo />}
           </tr>
         </thead>
         <tbody>
@@ -152,6 +164,18 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
               }}>
                 {hs(fila.horas)}
               </td>
+              {puedeCorregir && (
+                <td style={{ padding: '7px 0 7px 10px', textAlign: 'right' }}>
+                  <button
+                    type="button"
+                    data-testid="abrir-correccion"
+                    onClick={() => setCorrigiendo(corrigiendo === fila.clave ? null : fila.clave)}
+                    style={{ fontSize: '11.5px', color: corrigiendo === fila.clave ? V.tinta : V.apagado }}
+                  >
+                    corregir
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
 
@@ -168,9 +192,21 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
             <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
               {hs(total)}
             </td>
+            {puedeCorregir && <td />}
           </tr>
         </tbody>
       </table>
+
+      {abierta && (
+        <PanelCorreccionJornada
+          fila={abierta}
+          dias={dias}
+          etiquetas={etiquetas}
+          obras={obras}
+          jornada={jornadaPorObra[abierta.obra.id] ?? 0}
+          alCerrar={() => setCorrigiendo(null)}
+        />
+      )}
     </div>
   )
 }
