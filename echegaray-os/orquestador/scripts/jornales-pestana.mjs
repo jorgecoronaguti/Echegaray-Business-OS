@@ -165,6 +165,7 @@ import {
   formulaPrimerRetiroDe, formulaPagadoMes, formulaSePagaElDireccion, formulaProyectadoMes,
 } from '../lib/direccion-retiros.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
+import { quincenaConAumento } from '../lib/proyeccion-convenio.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 // EL NOMBRE DE LA PESTAÑA SE EXPORTA: Cargas Sociales la lee para saber con qué base quedó valuada la
@@ -2189,6 +2190,18 @@ async function main() {
   // ── LA DEMANDA DE LAS OBRAS VENDIDAS: el otro lado del MAX de 1.3 (07/08) ──
   // Si lib/obras-datos.mjs no está en esta rama, la fuente avisa y devuelve 0: la pestaña queda igual.
   const demanda = await demandaParaJornales({ hoy, escalon: escalonVigente, escalones })
+  // ═══ LA DEMANDA NO ENTRA EN LA QUINCENA QUE SE PAGA ESTE MES (07/09/2026) ═══
+  //
+  // El MAX contra la demanda de obras volvió por orden del dueño, pero la orden del 07/08 sigue en
+  // pie: la caja comprometida —lo que sale de acá a fin de mes— es lo que el plantel cobra, no una
+  // hipótesis de planificación. La frontera se decide ACÁ, en JavaScript y con el mismo gemelo que
+  // usa la fórmula (`quincenaConAumento`), para que la celda siga teniendo UNA sola frontera adentro:
+  // una quincena que cierra dentro del mes en curso se paga dentro del mes y no recibe demanda. La
+  // que cierra el último día y se paga el 1° del mes siguiente queda también afuera: es el lado
+  // conservador del corte, y el que no infla la disponibilidad libre.
+  for (const [clave, q] of demanda.porQuincena) {
+    if (!quincenaConAumento(q.hasta instanceof Date ? q.hasta : new Date(q.hasta), hoy)) demanda.porQuincena.delete(clave)
+  }
   if (demanda.nObras) console.log(`demanda de obras: ${demanda.nObras} obra(s) · ${demanda.porQuincena.size} quincena(s) con demanda valuada`
     + (demanda.sinFechas.length ? ` · ${ALERTA} SIN FECHAS (quedan afuera): ${demanda.sinFechas.map((x) => x.clave).join(', ')}` : ''))
 

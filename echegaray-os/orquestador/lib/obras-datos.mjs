@@ -412,6 +412,9 @@ export const OBRAS_FUTURAS = [
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
     // MO $1.381.787,06 + cargas sociales $1.300.395,60 (Presupuesto, col. O + Q).
     moCargasPesos: 2_682_183,
+    // El jornal PURO (col. O), para la demanda de obra del calendario de Jornales: la obra no trae
+    // horas por categoría y sin esto su demanda valía cero.
+    jornalPesos: 1_381_787,
     egresos: [
       {
         concepto: 'Materiales del playón (hormigón, armadura, juntas)', proveedor: 'A DEFINIR', familia: 'Materiales',
@@ -455,6 +458,8 @@ export const OBRAS_FUTURAS = [
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
     // MO $2.819.280 + cargas sociales $1.723.680 (Presupuesto, col. O + Q).
     moCargasPesos: 4_542_960,
+    // El jornal PURO (col. O), para la demanda de obra del calendario de Jornales.
+    jornalPesos: 2_819_280,
     egresos: [
       {
         concepto: 'Materiales del muro en L (hormigón, armadura)', proveedor: 'A DEFINIR', familia: 'Materiales',

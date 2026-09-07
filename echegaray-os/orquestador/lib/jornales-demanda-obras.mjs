@@ -162,7 +162,7 @@ export function demandaPorQuincena(obras = [], { desde, hastaMeses = 6 } = {}) {
       if (qHasta < d0) continue
       quincenas.push({
         desde: qDesde, hasta: qHasta, periodo: periodoDe(qDesde), clave: claveQuincena(qDesde),
-        obras: [], horas: HORAS_CERO(), plantel: 0, nObras: 0,
+        obras: [], horas: HORAS_CERO(), plantel: 0, nObras: 0, jornalPesos: 0,
       })
     }
   }
@@ -189,6 +189,11 @@ export function demandaPorQuincena(obras = [], { desde, hastaMeses = 6 } = {}) {
       if (!hab) continue
       const fraccion = hab / totalObra
       for (const k of Object.keys(q.horas)) q.horas[k] += (Number(o?.horas?.[k]) || 0) * fraccion
+      // LA OBRA COTIZADA EN PESOS Y NO EN HORAS (07/09/2026). Dilución y Tercer Muro salen de una
+      // planilla de cotización que trae la mano de obra en $ por tarea, sin horas por categoría. Sin
+      // esto su demanda valía CERO y el Cash Flow no las veía. Es jornal PURO (sin cargas), a valores
+      // de la cotización: entra sin revaluar por paritaria porque no tiene mes base declarado.
+      q.jornalPesos += (Number(o?.jornalPesos) || 0) * fraccion
       q.plantel += (Number(o?.plantelFullTime) || 0) + (Number(o?.plantelTemporales) || 0)
       q.nObras++
       q.obras.push({ clave, fraccion, diasHabiles: hab })
@@ -246,6 +251,8 @@ export function costoDemanda(quincena, escala = ESCALON_RESPALDO, paritaria = []
     jornales += j
     cargas += c
   }
+  // Los pesos de las obras cotizadas sin horas se suman al jornal puro: ver `demandaPorQuincena`.
+  jornales += Number(quincena?.jornalPesos) || 0
   return {
     periodo,
     factor: fEscala.factor,
@@ -316,8 +323,30 @@ export function proyeccionQuincena(piso, demanda) {
  * @returns {string} la fórmula, separador es-AR
  */
 export function formulaProyectadoQuincena({ convenio, celdaPago }, demanda = null) {
-  void celdaPago; void demanda
-  // ═══ EL MAX CONTRA LA DEMANDA SE FUE (14/08) ═══
+  void celdaPago
+  // ═══ EL MAX CONTRA LA DEMANDA VUELVE (07/09/2026) — POR ORDEN DEL DUEÑO, Y CON UN ARREGLO ═══
+  //
+  // El 14/08 el dueño lo sacó: *«hace lo solicitado CON EL PLANTEL ACTUAL»*. Hoy, con la pestaña
+  // OBRAS mostrando $129,6M de mano de obra para nueve obras en cartera y el Cash Flow proyectando
+  // $7M por mes de jornales, lo pidió al revés y dos veces: *«el cash flow tb tiene q basarse en lo q
+  // indique pestaña obras»* · *«tiene que TAMBIÉN basarse en esta pestaña, tiene q cuadrar con todo lo
+  // demás»*. Es su decisión y queda registrada acá: el egreso proyectado de jornales es el MAYOR entre
+  // lo que paga el plantel actual y lo que piden las obras vendidas, quincena por quincena.
+  //
+  // LO QUE SE ARREGLÓ RESPECTO DEL MAX DEL 14/08: aquél cambiaba la naturaleza de la columna en la
+  // frontera de la caja comprometida porque la frontera vivía en dos lugares. Ahora la fórmula tiene
+  // UNA sola frontera (la de `expresionMasaDeLaQuincena`) y la demanda NO entra en la quincena que se
+  // paga dentro del mes en curso: eso lo decide el LLAMADOR en JavaScript (`quincenaConAumento`), que
+  // es el mismo gemelo de la frontera, y pasa `null` para esa fila. El 07/08 el dueño ordenó que la
+  // planificación no le coma la disponibilidad libre, y se respeta.
+  //
+  // El término entra como CONSTANTE redondeada a peso: sale del insumo del dueño (sus explosiones y
+  // planillas de cotización), se recalcula en cada corrida y no puede llevar coma decimal en una
+  // fórmula que ya usa `;` (formula-por-api-va-en-locale). Es jornal PURO: Cargas Sociales calcula lo
+  // suyo sobre esta misma columna y meter las cargas acá las contaría dos veces.
+  const d = Math.round(Number(demanda?.jornales) || 0)
+  if (d > 0) return `=IFERROR(MAX(${convenio};${d});"")`
+  // ═══ LO QUE DECÍA EL 14/08, CONSERVADO COMO HISTORIA ═══
   //
   // Decía `MAX(convenio; demanda de las obras)`. Con eso la columna cambiaba de NATURALEZA fila por
   // fila: de agosto a septiembre publicaba lo que piden las obras vendidas ($18,7M–$21,5M) y de
@@ -362,5 +391,5 @@ export function glosaDemanda(demanda = null) {
   // Dice lo que la columna ES. La demanda de obras sigue siendo información —y sigue midiéndose,
   // en `coberturaDeManoDeObra`— pero NO entra en este número, y por eso se nombra para decir
   // exactamente eso.
-  return ` · Proyectado = plantel actual, no la demanda de ${n} obra${n === 1 ? '' : 's'}`
+  return ` · Proyectado = MAX(plantel actual; demanda de ${n} obra${n === 1 ? '' : 's'})`
 }

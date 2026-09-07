@@ -138,24 +138,37 @@ test('LA LIB NO ESCRIBE NINGUNA LETRA DE COLUMNA: el layout es del llamador', ()
   assert.doesNotMatch(f.replace(/C7/g, ''), /\b[A-Z]\d+\b/, `la lib volvió a escribir una letra de columna: ${f}`)
 })
 
-test('EL MAX CONTRA LA DEMANDA NO VUELVE: la proyección es el 100% del convenio sobre el plantel actual', () => {
-  // ═══ CAMBIO DE CONTRATO (14/08) ═══
+test('EL MAX CONTRA LA DEMANDA VUELVE (07/09/2026): la proyección es el MAYOR entre plantel y obras vendidas', () => {
+  // ═══ CAMBIO DE CONTRATO, OTRA VEZ — Y POR ORDEN DEL DUEÑO ═══
   //
-  // Esto exigía `MAX(convenio; demanda de obra)`. Con esa regla la columna cambiaba de NATURALEZA fila
-  // por fila: de agosto a septiembre publicaba lo que piden las obras vendidas ($18,7M–$21,5M) y de
-  // octubre en adelante lo que obliga el convenio ($7,2M–$8,8M). El dueño: *"esas proyecciones no
-  // puedn ser asi, no dan confianza"* · *"q mierda estas haciendo con las proyecciones de obreros"* ·
-  // *"hace lo solicitado CON EL PLANTEL ACTUAL"*.
+  // El 14/08 lo sacó: «hace lo solicitado CON EL PLANTEL ACTUAL». El 07/09, con OBRAS mostrando
+  // $129,6M de mano de obra para nueve obras y el Cash Flow proyectando $7M por mes, lo pidió al
+  // revés y dos veces: «el cash flow tb tiene q basarse en lo q indique pestaña obras» · «tiene que
+  // TAMBIÉN basarse en esta pestaña, tiene q cuadrar con todo lo demás». Queda registrado acá.
   //
-  // Y tenía razón por aritmética: esos $18,7M equivalen a ~38 personas con la Σ $/hora del convenio,
-  // contra las 16 del plantel. El número no describía ni a su gente ni a su escala.
+  // LO QUE NO VUELVE: la frontera duplicada. La demanda entra como constante redondeada dentro de UN
+  // MAX sobre la expresión del plantel, que ya lleva su única frontera adentro. Qué fila recibe
+  // demanda y cuál no (la que se paga este mes, no) lo decide el llamador con `quincenaConAumento`.
   const conDemanda = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, { jornales: 1234567.89 })
+  assert.equal(conDemanda, '=IFERROR(MAX(SIG*HS*DIAS;1234568);"")')
+  assert.ok(!conDemanda.includes(','), 'separador es-AR: punto y coma, nunca coma; y la constante va sin decimales')
+  assert.ok(!conDemanda.includes('EOMONTH'), 'la lib no puede meter una segunda frontera en la celda')
+  // Sin demanda (o demanda cero), la celda es la del plantel tal cual: el diff en esas filas es cero.
   const sinDemanda = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, null)
-  assert.equal(conDemanda, sinDemanda, 'la demanda de obra volvió a pisar el convenio')
-  assert.equal(conDemanda, '=IFERROR(SIG*HS*DIAS;"")')
-  assert.ok(!conDemanda.includes('MAX'), 'volvió el MAX contra la demanda')
-  assert.ok(!conDemanda.includes('1234568'), 'la demanda se coló como constante en la fórmula')
-  assert.ok(!conDemanda.includes(','), 'separador es-AR: punto y coma, nunca coma')
+  assert.equal(sinDemanda, '=IFERROR(SIG*HS*DIAS;"")')
+  assert.equal(formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, { jornales: 0 }), sinDemanda)
+})
+
+test('la obra cotizada en PESOS y sin horas también empuja la demanda', () => {
+  // Dilución y Tercer Muro traen la mano de obra en $ por tarea, sin horas por categoría: con horas
+  // en cero su demanda valía $0 y el Cash Flow no las veía. El jornal puro en pesos entra prorrateado
+  // por días hábiles, igual que las horas.
+  const obras = [{ clave: 'x', inicio: '2026-10-01', fin: '2026-10-31', horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 }, jornalPesos: 2_000_000 }]
+  const { quincenas } = demandaPorQuincena(obras, { desde: '2026-10-01', hastaMeses: 1 })
+  const total = quincenas.reduce((s, q) => s + q.jornalPesos, 0)
+  assert.ok(Math.abs(total - 2_000_000) < 1, `los pesos se reparten enteros entre las quincenas: ${total}`)
+  const c = costoDemanda(quincenas[0])
+  assert.ok(c.jornales > 0 && Math.abs(c.jornales - quincenas[0].jornalPesos) < 1, 'y llegan al jornal de la quincena tal cual, sin revaluar')
 })
 
 test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas obras la empujan', () => {
@@ -172,6 +185,9 @@ test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas
   // Lo que se exige ahora: que nombre cuántas obras hay —el dato sigue siendo útil— y que diga que
   // NO entran en el número. Y que no vuelva a nombrar el MAX, que es lo que lo hacía falso.
   assert.match(g, /7 obras/)
-  assert.match(g, /no la demanda/, 'la glosa dejó de decir que la demanda NO entra en la columna')
-  assert.doesNotMatch(g, /MAX/, 'volvió a anunciar en la pestaña un MAX que la fórmula no tiene')
+  // Desde el 07/09 la celda vuelve a ser MAX(plantel; demanda) y la glosa tiene que decir ESO — la
+  // regla de este test es una sola: glosa y fórmula no pueden contar historias distintas.
+  assert.match(g, /MAX\(plantel actual; demanda de 7 obras\)/, 'la glosa dejó de describir la fórmula que la celda tiene')
+  // Y con demanda en alguna quincena, decir MAX es decir la verdad: la celda lo tiene desde el 07/09.
+  assert.match(g, /MAX/, 'la glosa dejó de nombrar el MAX que la fórmula sí tiene')
 })
