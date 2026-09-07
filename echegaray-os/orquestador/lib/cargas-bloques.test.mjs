@@ -19,6 +19,7 @@ import { ROTULOS_CARGAS } from './libro-extractores-cargas.mjs'
 import {
   bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
 } from './cargas-bloques.mjs'
+import { SIN_DDJJ } from './cargas-grilla.mjs'
 
 const ANIO = 2026
 const C = {
@@ -107,7 +108,11 @@ test('el cuadro del "al día" compara LO MISMO CONTRA LO MISMO, y con el mes cor
   assert.ok(dif, 'desapareció la fila del control de "¿estamos al día?"')
   // Julio es la columna H y su contraparte es JUNIO, la G: el F931 del mes m−1 se paga en el mes m.
   // Sin el corrimiento el cuadro no puede dar cero ningún mes y hay que pedirle perdón en una nota.
-  assert.equal(String(dif[7]), `=H${pag.filaPag.F931}-G${decl.fDeclTot}`)
+  // La resta va envuelta desde el 07/09: si el mes anterior no tiene DDJJ, su celda dice «sin DDJJ»
+  // (texto) y restarla daba #VALUE!. Lo que se sigue exigiendo es CONTRA QUÉ compara —el F931 del mes
+  // anterior, no el total pagado— y que el corrimiento de un mes esté.
+  assert.equal(String(dif[7]),
+    `=IF(N(G${decl.fDeclTot})=0;"";H${pag.filaPag.F931}-G${decl.fDeclTot})`)
   assert.notEqual(pag.filaPag.F931, pag.fPagTot, 'la fila del F931 y la del total pagado no son la misma')
   // Enero no tiene contra qué compararse: su F931 es la DDJJ de diciembre del año anterior.
   assert.equal(dif[1], VACIO, 'enero comparó contra una columna que no existe en esta grilla')
@@ -167,4 +172,25 @@ test('ningún archivo del generador de cargas pasa de 500 líneas', () => {
     const n = readFileSync(new URL(a, import.meta.url), 'utf8').split('\n').length
     assert.ok(n <= 500, `${a} tiene ${n} líneas`)
   }
+})
+
+// ═══ UN MES SIN DDJJ NO PUEDE VERSE COMO UN CERO (07/09/2026) ═══
+//
+// El dueño: «como puede ser q salgan meses en cero? mal conceptualmente». El total mensual hacía
+// `SUM` sobre las celdas vacías de los meses sin declaración; `SUM` de vacías da 0 y el formato de
+// moneda lo dibuja «—», igual que un mes declarado en cero. Son dos hechos distintos y sólo uno es
+// un dato. Si alguien vuelve a poner un SUM incondicional acá, esto se pone rojo.
+test('el total declarado de un mes SIN DDJJ dice la ausencia, no suma cero', () => {
+  const G = crearGrilla(2026)
+  const conceptos = [{ codigo: '301', rotulo: 'Aportes de Seguridad Social' }]
+  // Ocho declaraciones de doce: es el estado real al 07/09/2026.
+  const periodos = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']
+  const { fDeclTot } = bloqueDeclarado(G, { anio: 2026, periodos, conceptos })
+  const fila = G.filas[fDeclTot - 1]
+  // B..M son los doce meses. Agosto (índice 8) suma; septiembre (índice 9) declara la ausencia.
+  assert.match(String(fila[8]), /^=SUM\(/, 'agosto tiene DDJJ: suma')
+  assert.equal(fila[9], SIN_DDJJ, 'septiembre no tiene DDJJ: lo dice')
+  assert.equal(fila[12], SIN_DDJJ, 'diciembre tampoco')
+  // Y no es un número disfrazado: nada que pueda entrar en una aritmética.
+  assert.equal(Number.isFinite(Number(SIN_DDJJ)), false)
 })

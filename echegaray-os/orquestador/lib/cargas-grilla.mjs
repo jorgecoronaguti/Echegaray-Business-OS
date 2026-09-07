@@ -54,6 +54,10 @@ export const REALES = (fila, desdeProy) => {
 export const MESES_REALES = (desdeProy) => Array.from({ length: desdeProy - 1 }, (_, i) => i + 1)
 
 /** El constructor de la grilla: las tres formas de fila que usa la pestaña, y nada más. */
+/** Un mes cuya DDJJ todavía no existe. TEXTO y no número: no entra en ninguna suma, y se lee como
+ *  la ausencia que es en vez de como un cero declarado (07/09/2026, pedido del dueño). */
+export const SIN_DDJJ = 'sin DDJJ'
+
 export function crearGrilla(anio) {
   const filas = []
   /** Empuja una fila rellenando hasta el ancho de la grilla y devuelve su número de fila real. */

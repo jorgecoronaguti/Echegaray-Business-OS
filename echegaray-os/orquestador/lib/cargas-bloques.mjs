@@ -14,7 +14,7 @@ import {
   formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
-import { MES, cm, REALES, MESES_REALES } from './cargas-grilla.mjs'
+import { MES, cm, REALES, MESES_REALES, SIN_DDJJ } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
 import { formulaProvisionVacaciones, formulaSinFechaDeIngreso } from './vacaciones-construccion.mjs'
@@ -41,7 +41,10 @@ export function bloqueDeclarado(G, { anio, periodos, conceptos }) {
       `Código ${c.codigo} de la DDJJ · ${RAW}`)
   }
   const d1 = G.n()
-  const fDeclTot = G.mensual(rotuloTotal('Total declarado'), (m) => `=SUM(${cm(m)}${d0}:${cm(m)}${d1})`, 'Suma de los conceptos de arriba.')
+  // UN MES SIN DDJJ NO ES UN CERO (07/09): el SUM sobre vacías daba 0 y se leía «declaró cero».
+  const fDeclTot = G.mensual(rotuloTotal('Total declarado'),
+    (m) => (periodos.includes(per(m)) ? `=SUM(${cm(m)}${d0}:${cm(m)}${d1})` : SIN_DDJJ),
+    'Suma de los conceptos. Un mes sin DDJJ lo dice, no suma cero.')
   const fEmp = G.mensual('Empleados en nómina', (m) => (periodos.includes(per(m)) ? celdaCabecera(per(m), 'E') : VACIO),
     'Cabecera de la DDJJ.', { totaliza: false })
   const fRem = G.mensual('Remuneración declarada', (m) => (periodos.includes(per(m)) ? celdaCabecera(per(m), 'F') : VACIO),
@@ -163,14 +166,14 @@ export function bloqueDiferencia(G, { fPagF931, fDeclTot }) {
   // titulado "¿estamos al día?" que no puede contestar su propia pregunta es peor que no tenerlo,
   // porque el que lo mira se queda tranquilo.
   //
-  // Y la nota pedía perdón por el desfasaje ("no tiene que dar cero mes a mes, la diferencia corre un
-  // mes"). El desfasaje no es una excusa: es la regla. El F931 del mes m−1 se paga en el mes m, así
-  // que la comparación correcta ya viene corrida y entonces SÍ tiene que dar cero. Con esto, los meses
-  // pagados completos dan $0 y los que se financiaron en un plan quedan en rojo con su importe exacto
-  // —que es justo lo que hay que ver— en vez de esconderse adentro de un número grande y verde.
+  // El desfasaje no es una excusa, es la regla: el F931 del mes m−1 se paga en el mes m, así que la
+  // comparación ya viene corrida y SÍ tiene que dar cero. Los meses pagados completos dan $0 y los
+  // financiados en un plan quedan en rojo con su importe exacto, en vez de esconderse en un total.
   G.push([seccion(3, 'Al día con el F931 — lo pagado contra lo declarado')])
   G.cabecera()
-  G.mensual('F931 pagado − declarado el mes anterior', (m) => `=${cm(m)}${fPagF931}-${cm(m - 1)}${fDeclTot}`,
+  // SIN DDJJ EL MES ANTERIOR NO HAY QUÉ COMPARAR: restar el texto «sin DDJJ» daba #VALUE!.
+  G.mensual('F931 pagado − declarado el mes anterior',
+    (m) => `=IF(N(${cm(m - 1)}${fDeclTot})=0;"";${cm(m)}${fPagF931}-${cm(m - 1)}${fDeclTot})`,
     'El F931 de un mes se paga al siguiente: la comparación ya viene corrida, así que un mes pagado completo da $0. En rojo queda lo que se declaró y no salió de la caja.',
     // Enero compara contra diciembre del año anterior, que esta grilla no tiene.
     { meses: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] })
