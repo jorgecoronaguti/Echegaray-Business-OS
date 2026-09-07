@@ -28,6 +28,7 @@
 // que el admin hizo en la pantalla 32 en cada corrida del timer. Se fusiona, no se rehace.
 import { query, closePool } from '../lib/db.mjs'
 import { proyectar } from '../lib/portal/cobranzas-a-cliente.mjs'
+import { cobrosOcultos, guardarPagoDelSync, plataOculta } from '../lib/portal/publicacion.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
 
@@ -112,6 +113,7 @@ async function main() {
 
   if (!APLICAR) {
     console.log('\nENSAYO: no escribí nada. Agregá --aplicar para escribir.')
+    await informarCobrosOcultos()
     await closePool(); return
   }
 
@@ -126,7 +128,36 @@ async function main() {
     await closePool(); process.exit(1)
   }
   console.log(`\nescritos ${certificados.length} certificados y ${pagos.length} pagos.`)
+  await informarCobrosOcultos()
   await closePool()
+}
+
+/**
+ * EL CONTROL QUE NO EXISTÍA: cuánta plata YA COBRADA no está llegando al cliente.
+ *
+ * Se corre SIEMPRE, en ensayo y en aplicar, porque el defecto que motivó este control duró dos
+ * semanas en silencio: el sync terminaba en verde con seis cobros por $105,9 M invisibles. Una
+ * corrida que no puede decir «esto quedó afuera» no es evidencia de que no quedó nada afuera.
+ *
+ * NO republica nada por su cuenta: mostrarle un cobro a un cliente es un efecto hacia afuera y lo
+ * autoriza el dueño. Lo que hace es que sea imposible no enterarse.
+ */
+async function informarCobrosOcultos() {
+  const { rows } = await query(
+    `select e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto, e.concepto, e.fecha,
+            e.visible_portal, e.publicado_at
+       from public.esquema_pago e join public.clientes c on c.id = e.cliente_id
+      where e.origen = 'sync_cobranzas'`)
+  const grupos = cobrosOcultos(rows)
+  if (!grupos.length) { console.log('\ncobros ocultos al cliente: ninguno.'); return }
+  const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
+  console.log(`\n⚠ COBROS QUE EL PORTAL NO REFLEJA — ${$(plataOculta(grupos))} en ${grupos.length} cliente(s):`)
+  for (const g of grupos) {
+    console.log(`  ${g.cliente ?? g.cliente_id}: ${g.n} cobro(s), ${$(g.total)}`)
+    for (const f of g.filas) console.log(`    · ${String(f.fecha ?? '').slice(0, 10)} ${$(Number(f.monto) || 0)} — ${f.concepto}`)
+  }
+  console.log('  Son cobros REALES que el cliente no ve. Se publican desde la ficha del cliente')
+  console.log('  (pantalla 32 · «Publicar»), que es quien tiene que autorizar lo que se le muestra.')
 }
 
 // El UPDATE toca SÓLO lo que viene del Sheet. `estado` y `observacion` no se pisan: el estado de
@@ -148,27 +179,10 @@ async function guardarCertificado(c) {
   )
 }
 
-// Ídem: `visible_portal`, `aviso_dias`, `nota_interna`, `orden` y `publicado_at` NO están en el SET.
-// Son del admin y el Sheet no las conoce — pisarlas despublicaría el esquema en cada corrida.
-async function guardarPago(p) {
-  await query(
-    `insert into public.esquema_pago
-       (cliente_id, cobranza_fila, huella_comprobante, huella_monto, concepto, fecha, monto,
-        estado, medio, orden, origen, sincronizado_en)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now())
-     on conflict (cobranza_fila) where cobranza_fila is not null do update
-       set concepto = excluded.concepto, fecha = excluded.fecha, monto = excluded.monto,
-           estado = excluded.estado, medio = excluded.medio,
-           huella_comprobante = excluded.huella_comprobante, huella_monto = excluded.huella_monto,
-           -- Cambió algo que el cliente ya había visto: se marca para que el admin lo publique.
-           cambio_pendiente = (public.esquema_pago.publicado_at is not null
-                               and (public.esquema_pago.fecha is distinct from excluded.fecha
-                                    or public.esquema_pago.monto is distinct from excluded.monto)),
-           sincronizado_en = now(), actualizado_at = now()
-     where public.esquema_pago.origen = 'sync_cobranzas'`,
-    [p.cliente_id, p.cobranza_fila, p.huella_comprobante, p.huella_monto, p.concepto, p.fecha,
-      p.monto, p.estado, p.medio, p.orden ?? 0],
-  )
-}
+// EL UPSERT DEL PAGO VIVE EN `lib/portal/publicacion.mjs`, junto al criterio de con qué visibilidad
+// nace una fila del sync. Estaba acá y decía lo contrario que el OTRO escritor de la misma tabla
+// (`portal-sembrar.mjs`): por eso cada cobro nuevo del Sheet nacía invisible para el cliente.
+const guardarPago = (p) => guardarPagoDelSync(p, { query })
+
 
 main().catch((e) => { console.error(e); process.exit(1) })

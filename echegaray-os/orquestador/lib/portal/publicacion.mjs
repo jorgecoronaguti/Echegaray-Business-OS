@@ -1,0 +1,132 @@
+// CÓMO NACE UNA FILA DE `esquema_pago` QUE EL SYNC TRAJO DEL SHEET — definido UNA sola vez.
+//
+// ═══ EL DEFECTO QUE EXISTE PARA QUE NO SE REPITA (07/09/2026) ═══
+//
+// `esquema_pago` tiene DOS escritores, los dos con `origen = 'sync_cobranzas'`, y hasta hoy decían
+// cosas opuestas sobre lo mismo:
+//
+//   scripts/portal-sembrar.mjs      insert (… origen, visible_portal, publicado_at)
+//                                   values (… 'sync_cobranzas', true, now())      ← nace publicada
+//   scripts/sync-esquema-cliente    insert (… origen) values (… 'sync_cobranzas') ← nace INVISIBLE
+//                                   (`visible_portal boolean not null default false`)
+//
+// El segundo empezó a insertar de verdad el 05/09/2026 —antes se caía entero por el índice único de
+// `orden`, ver su propio comentario— y desde entonces cada cobro NUEVO del Sheet nace oculto. Medido
+// contra la base el 07/09: las 29 filas creadas ese día tienen `publicado_at` nulo, SIN UNA SOLA
+// EXCEPCIÓN, y entre ellas hay 6 cobros ya percibidos por $105.876.355,81 en tres clientes.
+//
+// No se recuperan solas. `publicarEsquema` (pantalla 32) sella `publicado_at` con
+// `.eq('visible_portal', true)`: una fila que nace en `false` queda fuera del filtro, así que
+// administración puede volver a publicar el esquema del cliente todas las veces que quiera y esa
+// fila nunca entra. Es invisible por construcción y de forma permanente.
+//
+// Efecto en la cara del cliente, medido en San Francisco: Cobranzas dice $141.865.646 cobrados en
+// 2026 y el portal publica $133.797.709,50 — y encima, para el mismo dinero, sigue mostrando la
+// línea vieja «saldo del anticipo · 1ª de 2 cuotas» como *a vencer*. Le reclama lo que ya cobró.
+//
+// ═══ POR QUÉ EL CRITERIO SE IMPORTA Y NO SE COPIA ═══
+//
+// Realidad única: el criterio de si una fila del sync nace visible existía ya —el del sembrador— y
+// lo correcto es que los dos escritores lean el MISMO. Escribirlo de nuevo en el otro script deja
+// otra vez dos definiciones, que es exactamente lo que produjo este defecto.
+
+/**
+ * CON QUÉ VISIBILIDAD NACE UNA FILA QUE EL SYNC TRAE DEL SHEET.
+ *
+ * `true` y publicada, igual que en `portal-sembrar.mjs`. La razón no es comodidad: un cobro del
+ * Sheet no es una propuesta que administración tenga que aprobar antes de comunicar — es un hecho
+ * que el cliente conoce mejor que nosotros, porque lo pagó él. Esconderlo no protege nada y deja al
+ * portal reclamando plata ya cobrada.
+ *
+ * SÓLO RIGE EN EL `insert`. Apagar una línea publicada es una decisión de administración y una
+ * corrida del sync no puede deshacerla: por eso `visible_portal` y `publicado_at` NO están —ni
+ * pueden estar— en el `do update set`.
+ */
+export const NACE_VISIBLE_AL_CLIENTE = true
+
+/**
+ * ¿ESTA FILA ES UN COBRO QUE EL CLIENTE NO PUEDE VER?
+ *
+ * El predicado de publicación es el de la policy `esquema_pago_select` —`visible_portal AND
+ * publicado_at IS NOT NULL`— y se pregunta por el mismo lado que lo pregunta el portal
+ * (`publicadoAlPortal` en `src/app/portal/esquema.ts`). Preguntarlo distinto acá haría que el
+ * control diga que está todo bien mientras el cliente ve otra cosa.
+ *
+ * Se mira SÓLO `estado = 'cobrado'`: una línea proyectada que todavía no se publicó es trabajo
+ * pendiente de administración, no un defecto. Una COBRADA que no se publicó es plata que entró y
+ * que el portal no refleja, que es lo que este control existe para encontrar.
+ */
+export function esCobroOculto(fila) {
+  if (String(fila?.estado ?? '') !== 'cobrado') return false
+  return !(fila?.visible_portal === true && fila?.publicado_at != null)
+}
+
+/**
+ * LOS COBROS QUE EL PORTAL NO ESTÁ REFLEJANDO, agrupados por cliente y con su plata.
+ *
+ * Núcleo puro a propósito: es el control, y un control que sólo se puede correr contra la base
+ * productiva no se puede probar en rojo. Ver `publicacion.test.mjs`.
+ *
+ * @param filas `[{ cliente_id, cliente, estado, monto, visible_portal, publicado_at, … }]`
+ * @returns `[{ cliente_id, cliente, n, total, filas }]`, de más plata oculta a menos.
+ */
+export function cobrosOcultos(filas = []) {
+  const porCliente = new Map()
+  for (const f of filas) {
+    if (!esCobroOculto(f)) continue
+    const clave = String(f?.cliente_id ?? '')
+    const previo = porCliente.get(clave)
+      ?? { cliente_id: clave, cliente: f?.cliente ?? null, n: 0, total: 0, filas: [] }
+    previo.n += 1
+    // Un monto que no es número NO suma cero en silencio: sumarlo como 0 haría que el control
+    // informe menos plata oculta de la que hay, que es la dirección equivocada para equivocarse.
+    const m = Number(f?.monto)
+    previo.total += Number.isFinite(m) ? m : 0
+    previo.filas.push(f)
+    porCliente.set(clave, previo)
+  }
+  return [...porCliente.values()].sort((a, b) => b.total - a.total)
+}
+
+/** La plata total que los cobros ocultos representan. `0` cuando no hay ninguno. */
+export const plataOculta = (grupos = []) => grupos.reduce((s, g) => s + g.total, 0)
+
+/**
+ * GUARDA UN PAGO QUE EL SYNC TRAJO DEL SHEET. La sentencia vive acá y no en el script para que el
+ * criterio de nacimiento y el `insert` que lo aplica no puedan volver a separarse.
+ *
+ * IDEMPOTENTE por `cobranza_fila`. Es UPSERT y nunca delete+insert: `esquema_pago` tiene columnas
+ * PROPIAS de la app (`visible_portal`, `aviso_dias`, `nota_interna`, `orden`, `publicado_at`) que
+ * el Sheet no conoce, y rehacer la fila borraría el trabajo de la pantalla 32 en cada corrida.
+ *
+ * QUÉ ESTÁ Y QUÉ NO ESTÁ EN EL `do update set`, y por qué importa:
+ *
+ *   · `visible_portal` y `publicado_at` van SÓLO en el `insert`. Apagar o despublicar una línea es
+ *     una decisión de administración y el sync no puede deshacerla — ni siquiera para «corregir».
+ *   · `orden` tampoco: la pantalla 32 deja reordenar a mano.
+ *   · `estado` y `medio` SÍ: los declara la columna O del Sheet, que es su fuente.
+ *
+ * @param query el ejecutor. Se inyecta para que el test pueda correr dentro de una transacción que
+ *   termina en ROLLBACK, en vez de tener que escribir en la base productiva para probar el efecto.
+ */
+export async function guardarPagoDelSync(p, { query }) {
+  return await query(
+    `insert into public.esquema_pago
+       (cliente_id, cobranza_fila, huella_comprobante, huella_monto, concepto, fecha, monto,
+        estado, medio, orden, origen, sincronizado_en, visible_portal, publicado_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'sync_cobranzas',now(),$11,
+             case when $11 then now() else null end)
+     on conflict (cobranza_fila) where cobranza_fila is not null do update
+       set concepto = excluded.concepto, fecha = excluded.fecha, monto = excluded.monto,
+           estado = excluded.estado, medio = excluded.medio,
+           huella_comprobante = excluded.huella_comprobante, huella_monto = excluded.huella_monto,
+           -- Cambió algo que el cliente ya había visto: se marca para que el admin lo publique.
+           cambio_pendiente = (public.esquema_pago.publicado_at is not null
+                               and (public.esquema_pago.fecha is distinct from excluded.fecha
+                                    or public.esquema_pago.monto is distinct from excluded.monto)),
+           sincronizado_en = now(), actualizado_at = now()
+     where public.esquema_pago.origen = 'sync_cobranzas'`,
+    [p.cliente_id, p.cobranza_fila, p.huella_comprobante, p.huella_monto, p.concepto, p.fecha,
+      p.monto, p.estado, p.medio, p.orden ?? 0, NACE_VISIBLE_AL_CLIENTE],
+  )
+}
