@@ -425,9 +425,20 @@ test('el interlineado del mockup se declara UNA vez y no envuelve la barra ajena
 test('el alto y el ancho se miden como el mockup: el borde va POR AFUERA', () => {
   // ANTES: el panel medía 396px contra los 421px del zip —el padding de 24 y el borde de 1 se los
   // comía desde adentro `border-box`— y esos 25px se los llevaba la lista. Las filas, 40 contra 41.
+  //
+  // EL 372 SE FUE A 344 EL 06/09/2026 (el handoff v4 no escribe 372 en ningún lienzo; ver el
+  // porqué en `patron.tsx`). Lo que este test protege NO es el número: es que el ancho se declare
+  // junto a `box-content`, que es lo único que hacía aparecer los 25px. Por eso el ancho queda
+  // abierto y lo que se exige es que los dos viajen pegados — si alguien pone el `w-[…]` sin el
+  // `box-content`, esto se pone rojo igual, que es el defecto de origen.
   const patron = codigo(V2 + 'patron.tsx')
   assert.match(patron, /export const CAJA_CONTENIDO = 'box-content'/)
-  assert.match(patron, /lg:box-content lg:w-\[372px\]/, 'el panel volvió a medir su padding por dentro')
+  assert.match(patron, /lg:box-content lg:w-\[\d+px\]/, 'el panel volvió a medir su padding por dentro')
+  // Y el hueco que la cabecera reserva TIENE QUE SEGUIR AL PANEL: 344 + 24 de margen + 24 de
+  // sangría = 392. Desfasarlos deja el buscador gobernando una tabla que ya no está debajo.
+  assert.match(patron, /lg:w-\[344px\]/, 'el panel dejó de medir los 344 del canvas v4')
+  assert.match(codigo(V2 + 'CabeceraSeccion.tsx'), /lg:w-\[392px\]/,
+    'el hueco de la cabecera se desfasó del panel: 344 + 24 + 24 = 392')
   assert.match(patron, /boxSizing: 'content-box'/, 'el encabezado de columnas perdió su filo por afuera')
   for (const a of ['TablaProveedores.tsx', 'TablaNombres.tsx', V2 + 'TrabajoDeSeccion.tsx']) {
     assert.match(codigo(a), /CAJA_CONTENIDO/, `${a}: sus filas volvieron a comerse el filo desde adentro`)

@@ -5,14 +5,16 @@
 // se marca con `inset 0 -2px 0 #30302F` y su conteo se pone tenue —no gris claro— porque el número
 // del que está abierto sí se lee.
 //
-// ═══ EL HUECO DE 420px NO ES UN ERROR DE MEDICIÓN ═══
+// ═══ EL HUECO DE 392px NO ES UN ERROR DE MEDICIÓN ═══
 //
 // El mockup reserva la columna del panel en la cabecera (`22v2:100-102`) para que el buscador y el
 // botón de alta queden alineados con la LISTA QUE GOBIERNAN, no con el borde de la página. Sin ese
-// hueco, abrir el panel corre la tabla 420px hacia la izquierda y los controles se quedan flotando
-// sobre el panel, gobernando algo que ya no está debajo. 420 = 372 del panel + 24 de margen + 24 de
-// sangría.
+// hueco, abrir el panel corre la tabla hacia la izquierda y los controles se quedan flotando sobre
+// el panel, gobernando algo que ya no está debajo. 392 = 344 del panel (`PanelFilo`, `v4A:255`) +
+// 24 de margen + 24 de sangría: EL HUECO SIGUE AL PANEL, así que si el panel vuelve a cambiar de
+// ancho hay que mover los dos números o la cabecera queda desalineada de su propia tabla.
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { IconoCrear } from '@/shared/components/iconos'
 import { BuscadorFilo } from './BuscadorFilo'
@@ -29,7 +31,7 @@ export interface SubVista {
   href: string
 }
 
-export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel, testid = 'vistas-seccion' }: {
+export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espacioPanel, testid = 'vistas-seccion' }: {
   /** Una sola = el título de la sección, sin subrayado de solapa. Dos o más = el nivel 3. */
   vistas: SubVista[]
   buscador: {
@@ -42,8 +44,16 @@ export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel,
    * Documentos y Base maestra no crean su fila desde acá— y entonces no se dibuja ningún amarillo.
    */
   alta?: { href: string; etiqueta: string; testid?: string }
+  /**
+   * LA ACCIÓN PRIMARIA CUANDO NO ES UN ENLACE DE ALTA. Compras no navega a un formulario: abre un
+   * popover que sube el archivo y lo encola por el mismo circuito del bot (`CargarComprobante`), así
+   * que no puede viajar como `{href, etiqueta}`. Va en el mismo lugar que `alta` y con el mismo
+   * amarillo, porque para el que mira es el mismo botón; lo que cambia es qué hace al tocarlo.
+   * Las dos juntas no tienen sentido —una sola acción primaria por pantalla— y por eso `alta` gana.
+   */
+  accion?: ReactNode
   /** Los recortes, cuando el mockup los pone en la MISMA línea que el buscador (`25v2:66-73`). */
-  filtros?: React.ReactNode
+  filtros?: ReactNode
   espacioPanel: boolean
   testid?: string
 }) {
@@ -103,6 +113,7 @@ export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel,
             testid={buscador.testid ?? 'buscar'}
           />
           {filtros}
+          {!alta && accion}
           {alta && (
             <Link
               href={alta.href}
@@ -120,7 +131,7 @@ export function CabeceraSeccion({ vistas, buscador, alta, filtros, espacioPanel,
         </div>
       </div>
 
-      {espacioPanel && <span className="hidden shrink-0 lg:block lg:w-[420px]" aria-hidden />}
+      {espacioPanel && <span className="hidden shrink-0 lg:block lg:w-[392px]" aria-hidden />}
     </div>
   )
 }
