@@ -440,6 +440,12 @@ export const SIN_CENSO_DE_FILA = Object.freeze([
   { pestana: 'Estructura', porque: 'la proyección es por CONCEPTO y mes ("Combustible·10"), neta de lo ya facturado en Compras. No hay correspondencia 1:1 con una fila.' },
   { pestana: 'Recurrentes', porque: 'la provisión es "lo esperado del mes − lo materializado en Compras": un cálculo, no una fila.' },
   { pestana: 'Obras', porque: 'sale del cuadro 5 de OBRAS (explosión de costos declarada por el dueño) y cita "cuadro5:f45": la fila es del cuadro, no de una pestaña de registro.' },
+  // EL CUADRO 5 SE RETIRÓ Y LA FUENTE SE MUDÓ A POSTGRES (07/09/2026). El libro cita ahora
+  // `obra_egreso_proyectado` como origen de los materiales previstos, y este control dejó de medir esa
+  // fuente sin que nada avisara: el informe terminaba con «⛔ el libro trae plata de
+  // "obra_egreso_proyectado" y este control no la censa ni la declara sin censo». Un control que no
+  // pudo mirar no dice «no está» — se declara, con su motivo, igual que el cuadro del que viene.
+  { pestana: 'obra_egreso_proyectado', porque: 'es el REGISTRO en Postgres del plan de egresos por obra (public.obra_egreso_proyectado), con la celda o el archivo de Drive del que salió cada fila. Es un plan declarado, no una pestaña de registro de hechos: censar sus filas censaría la proyección contra sí misma.' },
   { pestana: 'Impuestos y Financieros', porque: 'el movimiento es la celda de un calendario (IVA/IIBB del mes), citada como "I28". Censar filas no aplica: se censarían celdas.' },
   { pestana: 'Cheques Emitidos', porque: 'por diseño sólo emite los cheques SIN factura cargada — el que tiene factura viaja por Compras. Un censo de filas marcaría como hueco cada cheque correctamente excluido.' },
   { pestana: 'Tarjeta de Credito', porque: 'mismo criterio anti-doble-conteo que Cheques Emitidos: sólo la cuota sin factura cargada.' },
