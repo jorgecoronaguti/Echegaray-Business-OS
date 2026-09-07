@@ -52,6 +52,9 @@
  */
 export const MARCADOR_CONTRATO = /(?:\$\s*|s\/?\s*(?:total|contrato)\s+)(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
 
+/** El precio de la obra cuando la fila lo distingue de su saldo. Ver `contratoDeclarado`. */
+export const MARCADOR_PRECIO = /precio\s+(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
+
 /**
  * EL CONTRATO QUE DECLARA UN TEXTO DE ORDEN DE COMPRA.
  *
@@ -59,7 +62,19 @@ export const MARCADOR_CONTRATO = /(?:\$\s*|s\/?\s*(?:total|contrato)\s+)(\d{1,3}
  * @returns {number|null} el monto declarado, o null si esa fila no declara ninguno
  */
 export function contratoDeclarado(texto) {
-  const m = MARCADOR_CONTRATO.exec(String(texto ?? ''))
+  // EL "PRECIO" LE GANA AL "S/ TOTAL" CUANDO LA MISMA FILA DICE LOS DOS (07/09/2026).
+  //
+  // Mampostería: *"Venta propia s/ total 9.273.576,40 — saldo de mampostería y cierre pádel (precio
+  // 14.273.576,40; 5.000.000 cobrados el 17/07 en la fila 50)"*. Los dos números son ciertos y dicen
+  // cosas distintas: 9.273.576,40 es lo que queda por facturar y 14.273.576,40 es lo que vale la
+  // obra. La columna se llama «Contratado», así que manda el precio — publicar el saldo dejaba la
+  // obra $5.000.000 más barata de lo que es y su margen $5.000.000 peor.
+  //
+  // ES EL ÚNICO RENGLÓN DE COBRANZAS QUE USA LA PALABRA (verificado el 07/09 sobre las 100 filas del
+  // archivo vivo), y por eso el marcador exige un número PEGADO a ella: "ACTUALIZACIÓN DE PRECIOS"
+  // no declara nada y no puede engancharse.
+  const precio = MARCADOR_PRECIO.exec(String(texto ?? ''))
+  const m = precio ?? MARCADOR_CONTRATO.exec(String(texto ?? ''))
   if (!m) return null
   // es-AR: el punto separa miles y la coma es el decimal. Al revés da 47,59 en vez de 47.590.272.
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))

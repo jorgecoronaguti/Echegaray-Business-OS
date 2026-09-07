@@ -182,3 +182,19 @@ test('sin conversión posible NO hay importe: ni el nativo ni cero', () => {
     assert.match(sinTC.motivo, /tipo de cambio/)
   }
 })
+
+test('cuando la fila dice el saldo Y el precio, el contratado es el PRECIO', () => {
+  // Mampostería es la única fila del archivo que distingue las dos cosas, y la distingue bien: el
+  // "s/ total" es lo que queda por facturar y el "precio" es lo que vale la obra. Leyendo el saldo,
+  // la pestaña publicaba $9.273.576 sobre una obra de $14.273.576 y su margen salía $5.000.000 peor.
+  const t = 'Venta propia s/ total 9.273.576,40 — saldo de mampostería y cierre pádel'
+    + ' (precio 14.273.576,40; 5.000.000 cobrados el 17/07 en la fila 50) — cobro íntegro al cierre'
+  assert.equal(contratoDeclarado(t), 14_273_576.4)
+  assert.notEqual(contratoDeclarado(t), 9_273_576.4, 'el saldo no es el contrato')
+})
+
+test('«ACTUALIZACIÓN DE PRECIOS» no declara ningún precio: el número tiene que estar pegado', () => {
+  // Un marcador que enganchara la palabra suelta convertiría un concepto en un contrato inventado.
+  assert.equal(contratoDeclarado('ACTUALIZACION DE PRECIOS OBRA CIVIL'), null)
+  assert.equal(contratoDeclarado('Ajuste de precios según índice CAC'), null)
+})
