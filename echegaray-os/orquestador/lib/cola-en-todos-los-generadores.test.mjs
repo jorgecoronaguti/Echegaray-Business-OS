@@ -26,6 +26,9 @@ const CARPETAS = [RAIZ, join(RAIZ, '..', 'scripts')]
  * por qué no le hace falta — con el hecho medido, no con una opinión.
  */
 const CON_OTRO_MECANISMO = {
+  'reclamar-parrafos-huerfanos.mjs':
+    'no escribe una grilla: toca celdas SUELTAS, una por una, con su `fila0`/`col0`, y sólo las que probó '
+    + 'suyas contra el historial de git. No tiene cola porque no tiene forma: nunca achica ni agranda un bloque.',
   'caja-pestana.mjs':
     'barre la cola con `rellenoDeCola` + el registro de rótulos, que es la versión con PRUEBA de propiedad: '
     + 'la portada nueva son 20 filas y la pestaña traía 37 (condición D3 del auditor de CAJA).',

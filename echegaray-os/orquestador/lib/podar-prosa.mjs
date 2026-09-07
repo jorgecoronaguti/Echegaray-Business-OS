@@ -153,6 +153,11 @@ export function podarProsa(filas = [], { pestana = '', procedencia = '', tope = 
   if (out[2] && Array.isArray(out[2])) for (let j = 0; j < out[2].length; j++) out[2][j] = VACIO
 
   podarCuerpo(out, tope, 3)
+  if (process.env.ORQ_PODADOR_HABLA === '1') {
+    let n = 0
+    out.forEach((f, i) => (f || []).forEach((c, j) => { if (c === VACIO && filas[i]?.[j] !== VACIO && String(filas[i]?.[j] ?? '').trim()) n++ }))
+    console.log(`  ✂ podador en "${pestana}": ${n} celda(s) de prosa sacadas de ${out.length} filas`)
+  }
 
   // ── la numeración: 1..N sin huecos, después de podar (podar puede borrar un título entero) ───
   //

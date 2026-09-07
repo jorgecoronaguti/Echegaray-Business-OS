@@ -30,7 +30,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ALERTA, SEMAFORO, esInvisible, glifosInvisibles } from './glifos.mjs'
+import { ALERTA, SEMAFORO, esInvisible, glifosInvisibles, variantesDeMarca } from './glifos.mjs'
 import { formulaEstadoPago } from './compras-valores.mjs'
 import { MARCAS, marcaDe } from './cheques-cobertura.mjs'
 import { SIN_FACTURA } from './cash-flow-conciliacion.mjs'
@@ -73,7 +73,13 @@ test('las fórmulas que suman por la marca no publican el glifo viejo COMO TEXTO
     'y sigue reconociendo las filas ya publicadas: sin esto la línea del cuadro da $0')
   const F = formulasInstrumento(INSTRUMENTOS.cheques, MARCAS)
   assert.ok(F.falta.cantidad.includes(`COUNTIF`) && F.falta.cantidad.includes(MARCAS.falta))
-  assert.ok(F.falta.cantidad.split('COUNTIF').length === 3, 'cuenta los dos glifos, o pierde 60 filas')
+  // UNA POR VARIANTE, no «dos». Eran dos mientras la única variante era el glifo; desde que el aviso
+  // se acortó para entrar en el tope del contrato, el texto viejo también es una variante viva: las
+  // filas publicadas con él siguen contándose hasta que la columna se regenere entera. Clavar el 2
+  // habría dejado esas filas afuera con la fórmula dando $0 y sin error.
+  assert.equal(F.falta.cantidad.split('COUNTIF').length - 1, variantesDeMarca(MARCAS.falta).length,
+    'una comparación por variante viva de la marca, o pierde las filas ya publicadas')
+  for (const v of variantesDeMarca(MARCAS.falta)) assert.ok(F.falta.cantidad.includes(v), `no cuenta "${v}"`)
   // La partición tiene que seguir cerrando: `ajena` resta LAS DOS formas de cada marca.
   for (const m of Object.values(MARCAS)) {
     assert.ok(F.noReconocida.cantidad.includes(`-(`), 'ajena resta las marcas')

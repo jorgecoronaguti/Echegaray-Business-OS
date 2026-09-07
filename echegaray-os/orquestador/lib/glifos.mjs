@@ -89,9 +89,30 @@ export function mismaMarca(a, b) {
  * @returns {string[]}
  */
 export function variantesDeMarca(marca) {
-  const heredada = String(marca).replaceAll(ALERTA, ALERTA_HEREDADA)
-  return heredada === marca ? [String(marca)] : [String(marca), heredada]
+  const vivas = [String(marca), ...(TEXTOS_RETIRADOS[String(marca)] ?? [])]
+  const todas = new Set()
+  for (const v of vivas) { todas.add(v); todas.add(v.replaceAll(ALERTA, ALERTA_HEREDADA)) }
+  return [...todas]
 }
+
+/**
+ * LOS TEXTOS QUE ESTA MARCA TUVO ANTES, Y POR QUÉ NO SE PUEDEN OLVIDAR.
+ *
+ * Acortar un aviso NO borra las celdas que ya se publicaron con el texto largo. Un `SUMPRODUCT` que
+ * compara contra el texto de hoy deja de sumarlas y no da error: da $0 — el mismo defecto que
+ * `ALERTA_HEREDADA` resuelve para el glifo, ahora para el texto.
+ *
+ * Medido el 06/09/2026: «▲ FALTA cargar la factura en Compras — este pago no lo ve el cash flow»
+ * medía 70 contra el tope de 60 del contrato de minimalismo y se acortó a 24. Las filas ya
+ * publicadas con el texto viejo siguen contándose hasta que la columna se regenere entera.
+ *
+ * Una entrada se saca de acá cuando el archivo no tiene una sola celda con ese texto.
+ */
+export const TEXTOS_RETIRADOS = Object.freeze({
+  [`${ALERTA} FALTA la factura en Compras`]: [
+    `${ALERTA} FALTA cargar la factura en Compras — este pago no lo ve el cash flow`,
+  ],
+})
 
 /**
  * EL PREDICADO DE FÓRMULA QUE RECONOCE LA MARCA CON CUALQUIERA DE LOS DOS GLIFOS.
@@ -107,9 +128,9 @@ export function variantesDeMarca(marca) {
  * @returns {string} una expresión booleana lista para multiplicar dentro de un SUMPRODUCT
  */
 export function comparaMarca(rango, marca) {
-  const heredada = String(marca).replaceAll(ALERTA, ALERTA_HEREDADA)
-  if (heredada === marca) return `(${rango}="${marca}")`
-  return `((${rango}="${marca}")+(${rango}="${heredada}"))`
+  const v = variantesDeMarca(marca)
+  if (v.length === 1) return `(${rango}="${v[0]}")`
+  return `(${v.map((t) => `(${rango}="${t}")`).join('+')})`
 }
 
 /**
