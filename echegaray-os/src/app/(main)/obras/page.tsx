@@ -20,14 +20,16 @@
 // Postgres (ver `20260819T0400_economia_comercial_solo_administracion.sql`). Acá sólo se evita
 // dibujar una columna de guiones.
 //
-// FUENTE: la vista `obra_panel`, que sale de `obra_canonica` cruzada con `obra_costo_real`. NO se
-// lee `public.obras` legacy —era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
+// FUENTE: la vista `obra_panel`, que sale de `obra_canonica` cruzada con `obra_costo_real`, leída
+// por `getCartera` con las DOCE columnas que esta tabla dibuja y no con `select('*')`: son 36 y las
+// otras 24 eran 17 KB que viajaban de São Paulo para tirarse (medido el 07/09, ver el servicio). NO
+// se lee `public.obras` legacy —era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
 // activas" mientras cuatro obras facturaban $287M—, y tampoco `obra_canonica` cruda: un `select('*')`
 // sobre ella devuelve 403 para todos, Administración incluida.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
+import { getCartera, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
 import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { CarteraObras, type FilaCartera } from '@/features/obras/components/CarteraObras'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -57,7 +59,7 @@ export default async function ObrasPage({
   // pudo mirar.
   const [perfil, { data, error }, { data: planes }, senales] = await Promise.all([
     getPerfilActual(supabase),
-    getPortafolio(supabase),
+    getCartera(supabase),
     getPlanVsRealPortafolio(supabase),
     getSenalesCartera(supabase, hoyIso),
   ])
