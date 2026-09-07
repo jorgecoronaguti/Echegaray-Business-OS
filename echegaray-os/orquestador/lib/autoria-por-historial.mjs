@@ -27,9 +27,21 @@ import { promisify } from 'node:util'
 
 const ejecutar = promisify(execFile)
 
-/** El texto, listo para viajar como argumento de `git log -S`. Sin recortes: la coincidencia es exacta. */
+/**
+ * El texto, listo para viajar como argumento de `git log -S`.
+ *
+ * SE LE SACA EL GLIFO DE ADELANTE, Y ESO NO AFLOJA LA PRUEBA. En el código el aviso se arma como
+ * `${ALERTA} FALTA cargar la factura…`: el glifo entra por interpolación y NUNCA está escrito junto
+ * al texto. Buscando la celda entera —«▲ FALTA cargar…»— no coincide con ninguna línea del
+ * repositorio, y así fue como cinco celdas de «Tarjeta de Credito» dieron «no puedo probar que sea
+ * mía» sobre un texto que sale, literal, de `cheques-cobertura.mjs`. Lo que queda —64 caracteres de
+ * prosa exacta— sigue siendo una coincidencia que nada más que ese generador produce.
+ */
 export function normalizarParaBuscar(texto) {
-  return String(texto ?? '').replace(/\s+/g, ' ').trim()
+  return String(texto ?? '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .trim()
 }
 
 /**

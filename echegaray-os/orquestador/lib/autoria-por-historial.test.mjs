@@ -40,3 +40,8 @@ test('el caso real: un párrafo de este repositorio se reconoce contra el git de
   assert.equal(typeof r.mio, 'boolean')
   assert.ok(r.porQue.length > 10)
 })
+
+test('el glifo de adelante no rompe la búsqueda: en el código entra por interpolación', () => {
+  assert.equal(normalizarParaBuscar('▲ FALTA la factura en Compras'), 'FALTA la factura en Compras')
+  assert.equal(normalizarParaBuscar('ⓘ  $1 en 85 filas'), '1 en 85 filas')
+})
