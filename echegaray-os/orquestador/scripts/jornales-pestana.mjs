@@ -1225,7 +1225,17 @@ export function grilla({
   // pestaña —la guarda NO-BORRAR conserva el destino cuando la fuente trae `''`—, así que sin
   // pendiente la celda se queda con el centinela `VACIO`, que sí borra.
   const lineaConvenio = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
-  if (lineaConvenio) filas[fConvenio - 1][0] = lineaConvenio
+  // LA FILA SIEMPRE SE ESCRIBE, AUNQUE VAYA VACÍA (06/09/2026).
+  //
+  // Al minimizar la prosa se pasó a omitir la escritura cuando no hay equivalencias pendientes. El
+  // renglón dejaba de existir, todo el bloque de abajo se corría una posición, y siete tests del
+  // cuadro de aumento por categoría se pusieron rojos: ubican las filas por offset desde `fPrimera` y
+  // encontraban la cabecera donde esperaban la primera categoría.
+  //
+  // Escribir `''` NO es lo mismo que no escribir: mantiene el renglón —y con él la geometría que el
+  // resto del cuadro da por sentada— y deja la celda visualmente vacía, que es lo que el minimalismo
+  // extremo pedía. El defecto era de estructura, no de texto.
+  filas[fConvenio - 1][0] = lineaConvenio || ''
   const fPlantel = plantel.fTotal
   // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
   //
