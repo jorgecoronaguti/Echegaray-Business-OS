@@ -82,3 +82,16 @@ test('una escritura PARCIAL no se come la fila: el encabezado sólo se toca en l
   const una = [['', 'ARCOR', '', 1402900]]
   assert.deepEqual(podarProsa(una, { pestana: 'Jornales por Quincena' }), una)
 })
+
+test('la glosa del título BAJA a la fila 2 cuando la 2 está vacía', () => {
+  const filas = [['OBRAS — EL AÑO ENTERO, OBRA POR OBRA'], [''], [''], []]
+  const podada = podarProsa(filas, { pestana: 'OBRAS' })
+  assert.equal(podada[0][0], 'OBRAS')
+  assert.equal(podada[1][0], 'EL AÑO ENTERO, OBRA POR OBRA')
+  assert.deepEqual(auditarDiseno(limpiarCentinela(podada), { pestana: 'OBRAS' }), [])
+})
+
+test('si la fila 2 ya declara, la glosa del título no la pisa', () => {
+  const filas = [['OBRAS — glosa vieja'], ['Qué contesta · Compras · al 06/09'], [''], []]
+  assert.equal(podarProsa(filas, { pestana: 'OBRAS' })[1][0], 'Qué contesta · Compras · al 06/09')
+})

@@ -136,13 +136,26 @@ export function podarProsa(filas = [], { pestana = '', procedencia = '', tope = 
   if (!encabezado || out.length < 4) return podarCuerpo(out, tope, 3)
 
   // ── el encabezado de tres filas ──────────────────────────────────────────────────────────────
+  // LA GLOSA DEL TÍTULO NO SE TIRA: BAJA A LA FILA 2. El auditor lo dice con todas las letras —«A1
+  // agrega "— EL AÑO ENTERO, OBRA POR OBRA": eso es la línea de procedencia y va en A2»—, y en dos
+  // pestañas del archivo (OBRAS y «Cash Flow Mensual») la A2 está vacía justamente porque lo que
+  // tenía que declarar estaba arriba. Tirar la glosa dejaría el otro desvío —`sin-procedencia`— en
+  // pie, y encima habría perdido el único texto que sabía de dónde sale el cuadro.
+  const glosaDelTitulo = (() => {
+    const a1 = textoVisible(out[0]?.[0]).trim()
+    if (!pestana || !a1) return ''
+    const n = (x) => String(x).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+    if (!n(a1).startsWith(n(pestana))) return ''
+    return a1.slice(pestana.length).replace(/^\s*[—·:-]\s*/, '').trim()
+  })()
+
   if (out[0] && Array.isArray(out[0])) {
     if (pestana) out[0][0] = pestana
     for (let j = 1; j < out[0].length; j++) out[0][j] = VACIO
   }
   if (out[1] && Array.isArray(out[1])) {
     const a2 = textoVisible(out[1][0]).trim()
-    out[1][0] = recortarProcedencia(a2 || procedencia) || VACIO
+    out[1][0] = recortarProcedencia(a2 || procedencia || glosaDelTitulo) || VACIO
     for (let j = 1; j < out[1].length; j++) out[1][j] = VACIO
   }
   if (out[2] && Array.isArray(out[2])) for (let j = 0; j < out[2].length; j++) out[2][j] = VACIO
