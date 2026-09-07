@@ -23,7 +23,7 @@
 
 import { auditarDiseno, esProsa, bloquesDe, TOPE_PROSA, TOPE_SUBTITULO, enAlcance, partesDeTitulo } from './diseno-unificado.mjs'
 import { textoVisible } from './patron-pestana.mjs'
-import { PESTANAS } from '../scripts/formato-pestanas.mjs'
+import { esDePantalla } from './pestanas-del-contrato.mjs'
 // EL CENTINELA, IMPORTADO Y NO REDEFINIDO — Y POR QUÉ EL CICLO ES SEGURO.
 //
 // `preservar-anotaciones` importa este módulo (ahí se enchufa el podador), así que esto cierra un
@@ -46,16 +46,8 @@ import { VACIO } from './preservar-anotaciones.mjs'
  * negativa sola, un espejo entraría al contrato y perdería una celda de dato por parecer un párrafo.
  * Acá se poda SÓLO lo que el contrato mide.
  */
-// SE ARMA AL PRIMER USO Y NO AL EVALUAR EL MÓDULO: los imports de acá cierran un ciclo (ver el
-// comentario de `VACIO`), y en un ciclo el módulo que se evalúa primero encuentra las constantes del
-// otro todavía en su zona muerta. Leerlas adentro de una función corre siempre después.
-let DEL_CONTRATO = null
-
 /** ¿Esta pestaña la mide el contrato de diseño? Lista positiva Y decisión del dueño. */
-export function sePoda(pestana) {
-  DEL_CONTRATO ??= new Set(PESTANAS.map((p) => p.titulo))
-  return DEL_CONTRATO.has(String(pestana)) && enAlcance(pestana)
-}
+export const sePoda = (pestana) => esDePantalla(pestana) && enAlcance(pestana)
 
 /**
  * Recorta la línea de procedencia al tope SIN cortar una palabra al medio.

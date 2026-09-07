@@ -8,6 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { PESTANAS } from '../scripts/formato-pestanas.mjs'
+import { TITULOS_DE_PANTALLA } from './pestanas-del-contrato.mjs'
 import { enAlcance } from './diseno-unificado.mjs'
 import { sePoda } from './podar-prosa.mjs'
 
@@ -20,6 +21,13 @@ const PODADOS = /escribirPreservando\(|conEdicionesRespetadas\(/
  * puede razonar sobre filas que no ve.
  */
 const POR_RANGO_DECLARADOS = new Set([])
+
+test('las dos listas de pestañas no se separan: el lib puro y el formateador dicen lo mismo', () => {
+  // `pestanas-del-contrato.mjs` existe porque el camino de escritura no puede importar un script que
+  // arrastra `google.mjs` (rompía siete tests herméticos por orden de carga). Copiar una lista es
+  // cómo se termina teniendo dos verdades: esto lo impide.
+  assert.deepEqual([...TITULOS_DE_PANTALLA], PESTANAS.map((p) => p.titulo))
+})
 
 test('el alcance del podador es exactamente el del contrato, ni una pestaña más', () => {
   for (const p of PESTANAS) assert.equal(sePoda(p.titulo), enAlcance(p.titulo), p.titulo)
