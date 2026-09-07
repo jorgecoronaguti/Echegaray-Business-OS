@@ -38,7 +38,7 @@
 //   3 · volver la Σ a `SUMPRODUCT($B;$F)` (el piso entero) → cae la Σ que proyecta.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { categoriasDelBloque, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
+import { categoriasDelBloque, codigoDeCategoria, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
 import { sigmaConAumentoDelPlantel, formulaSigmaConAumento } from './proyeccion-convenio.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { ESCALA_VERIFICADA, jornalConAumento, tarifaConAumento } from './uocra-paritaria.mjs'
@@ -100,7 +100,11 @@ function resolver(grid, cuadro, basicoDe) {
   const n = cuadro.fUltima - cuadro.fPrimera + 1
   for (let i = 0; i < n; i++) {
     const f = cuadro.filas[i + 1]
-    const cat = String(f[0])
+    // ESTA CELDA ES LA CLAVE, NO UNA ETIQUETA. El 06/09 se intentó meterle la equivalencia
+    // («OF → Oficial») para sacar el glosario de arriba, y rompió el cuadro entero: el resto del
+    // bloque ubica su fila por este valor. El `split` queda como red por si alguien lo reintenta,
+    // pero la equivalencia va en una columna propia.
+    const cat = codigoDeCategoria(f[0])
     const r = cuadro.fPrimera + i
     const mB = /^=SUMPRODUCT\(--\(TRIM\((.+?)\)="(.*)"\)\)$/.exec(String(f[1]))
     const mC = /^=SUMPRODUCT\(--\(TRIM\((.+?)\)="(.*)"\);N\((.+?)\)\)$/.exec(String(f[2]))
@@ -116,8 +120,9 @@ function resolver(grid, cuadro, basicoDe) {
     const sigmaAumento = evaluarFormula(String(f[3]), { hoja, hojas: { _J_OBREROS: espejoHoja } })
     hoja[`D${r}`] = sigmaAumento
     const conAumento = evaluarFormula(String(f[6]), { hoja })
+    const cat = codigoDeCategoria(f[0])
     filas.push({
-      cat: String(f[0]), personas: hoja[`B${r}`], hoy: hoja[`C${r}`], basico: basicoDe(String(f[0])),
+      cat, personas: hoja[`B${r}`], hoy: hoja[`C${r}`], basico: basicoDe(cat),
       sigmaAumento, conAumento,
     })
   }

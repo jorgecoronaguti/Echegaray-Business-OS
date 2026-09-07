@@ -287,6 +287,17 @@ export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
  *
  * @returns {{filas:any[][], fPrimera:number, fUltima:number, fTotal:number, canario:string}}
  */
+/**
+ * EL CÓDIGO DE CATEGORÍA, LEÍDO DE LA CELDA QUE ADEMÁS MUESTRA SU EQUIVALENCIA. PURA.
+ *
+ * La celda dice «OF → Oficial»; la clave es «OF». Existe UNA sola función para leerla porque el día
+ * que cada consumidor haga su propio `split` van a divergir y el cuadro va a publicar ceros sin que
+ * nada falle.
+ */
+export function codigoDeCategoria(celda) {
+  return String(celda ?? '').split('→')[0].trim()
+}
+
 export function filasPlantel({
   hoja, bloque, categorias, personas, filaInicio, escalonVigente, tabla = CONVENIO_POR_CODIGO,
   // CUÁNTO SE AUMENTA NO SE DECIDE ACÁ: la decisión del dueño vive en `PORCENTAJE_DE_AUMENTO`
@@ -453,6 +464,19 @@ export function filasPlantel({
       // Ahora lo dice la celda de la propia fila. Es dato, no leyenda, y se lee donde se necesita.
       // El código pelado se conserva a la izquierda porque es el que aparece en la planilla de
       // jornales, que es de donde el que mira viene.
+      // ═══ LA CELDA MUESTRA «OF → Oficial» Y SIGUE SIENDO LA CLAVE ═══
+      //
+      // El glosario de arriba era prosa prohibida por el contrato (regla 10) y se fue; la
+      // equivalencia bajó a la fila, donde es DATO y se lee donde se necesita.
+      //
+      // EL RIESGO QUE ESTO TIENE, MEDIDO EL 06/09/2026: esta celda no es sólo una etiqueta, es la
+      // CLAVE con la que el resto del bloque ubica su fila. Al meterle la traducción, el cuadro de
+      // aumento por categoría dejó de encontrar sus filas y publicó CERO donde iban $29.360. Un
+      // cuadro de sueldos en cero no se ve roto: se ve como que nadie cobra aumento.
+      //
+      // Por eso el código pelado va PRIMERO y la única forma de leerlo es `codigoDeCategoria()`, que
+      // recorta por la flecha. Cualquier consumidor que compare la celda entera contra «OF» se rompe
+      // en silencio, y hay un test que lo prohíbe.
       equiv ? `${cat} → ${equiv}` : cat,
       `=SUMPRODUCT(--(TRIM(${D})=${q}))`,
       `=SUMPRODUCT(--(TRIM(${D})=${q});N(${W}))`,
