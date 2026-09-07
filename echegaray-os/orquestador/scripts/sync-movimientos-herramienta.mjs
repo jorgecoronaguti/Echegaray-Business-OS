@@ -46,7 +46,10 @@ async function main() {
        on conflict (id_movimiento) do update set
          id_herramienta=excluded.id_herramienta, destino=excluded.destino,
          responsable=excluded.responsable, fecha=excluded.fecha, sincronizado_en=now()
-       where public.movimientos_herramienta.origen = 'appsheet_sheet'`,
+       where public.movimientos_herramienta.origen = 'appsheet_sheet'
+         and (public.movimientos_herramienta.id_herramienta, public.movimientos_herramienta.destino,
+              public.movimientos_herramienta.responsable, public.movimientos_herramienta.fecha)
+             is distinct from (excluded.id_herramienta, excluded.destino, excluded.responsable, excluded.fecha)`,
       [id, String(row[1] ?? '').trim() || null, resolver(row[2]), row[4] ?? null, fechaISO(row[3])],
     )
     n++
