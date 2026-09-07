@@ -66,7 +66,12 @@ export default async function AsistenciaCampoPage({ searchParams }: {
     return (
       <MarcoCampo titulo="Cargar asistencia" subtitulo={rotuloDelDia(fecha)}>
         {error && <Aviso tono="neg" titulo="No pude leer tus obras">{error}</Aviso>}
-        <ElegirObra obras={obras} hrefBase={`/campo/asistencia?dia=${fecha}`} />
+        {/* SIN `?dia=` EN LA BASE. `ElegirObra` arma `${hrefBase}?obra=…`, así que pasarle una URL
+            que YA tiene `?` producía `/campo/asistencia?dia=2026-09-07?obra=quattropani`: el segundo
+            `?` es un carácter más del valor de `dia`, `obra` nunca llega, y tocar una obra de la
+            lista devolvía la misma lista. Medido en el error-context de Playwright del 07/09.
+            El día se conserva sólo cuando NO es hoy — que es cuando alguien lo eligió a propósito. */}
+        <ElegirObra obras={obras} hrefBase="/campo/asistencia" />
       </MarcoCampo>
     )
   }

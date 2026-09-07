@@ -278,3 +278,39 @@ export function traducirEscritura(error: { code?: string; message: string }): st
 /** El motivo de una marca, o `null` si es un día trabajado. Es lo que va a `registros_hh.notas`. */
 export const motivoDe = (m: MarcaDeJornada): string | null =>
   m.estado === 'ausente' ? (m.motivo ?? null) : null
+
+/**
+ * QUÉ SE BORRA CUANDO ADMINISTRACIÓN SACA UN DÍA — y qué NO.
+ *
+ * El defecto que corrige (auditoría, 07/09): `corregirJornada` con `estado: 'borrar'` hacía
+ * `delete().in('id', …)` sobre TODAS las filas de esa persona en esa obra y ese día. «Sacar lo
+ * cargado» borraba, además de la jornada, la imputación a una actividad del plan, la hora
+ * improductiva con su causa y las extras al 50 %. El panel decía «Día borrado: 3 registros» y el
+ * jefe que había cargado las extras nunca se enteraba.
+ *
+ * Usa EXACTAMENTE el mismo criterio que `planDeGuardado`: `esDeLaJornada`. Un solo lugar decide qué
+ * filas administra esta pantalla — dos criterios para lo mismo discrepan el día que se toca uno.
+ */
+export function planDeBorrado(
+  existentes: FilaExistente[],
+  opciones: { administraLicencias?: boolean } = {},
+): { borrar: string[]; intactas: { id: string; motivo: string }[] } {
+  const administra = opciones.administraLicencias === true
+  const ordenadas = [...existentes].sort((a, b) => a.id.localeCompare(b.id))
+  return {
+    borrar: ordenadas.filter((e) => esDeLaJornada(e, administra)).map((e) => e.id),
+    intactas: ordenadas.filter((e) => !esDeLaJornada(e, administra))
+      .map((e) => ({ id: e.id, motivo: motivoDeNoTocar(e) })),
+  }
+}
+
+/** El acuse del borrado. Cuenta lo que la BASE devolvió y nombra lo que quedó. */
+export function acuseDeBorrado(borradas: number, intactas: { motivo: string }[]): string {
+  const cabeza = borradas === 0
+    ? 'No se borró nada.'
+    : `Día borrado: ${borradas} ${borradas === 1 ? 'registro' : 'registros'}.`
+  if (intactas.length === 0) return cabeza
+  return `${cabeza} ${intactas.length === 1
+    ? `Quedó una fila sin tocar: ${intactas[0].motivo}.`
+    : `Quedaron ${intactas.length} filas sin tocar (una ${intactas[0].motivo}).`}`
+}

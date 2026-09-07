@@ -49,6 +49,17 @@ async function prepararObraDePrueba(): Promise<string | null> {
   if (asig.error) throw new Error(`No pude asignar a nadie a la obra de prueba: ${asig.error.message}`)
   await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA_DE_PRUEBA)
 
+  // EL `usuario_obra` DE QUIEN MIRA. `ve_obra()` ya devuelve true para Administración, así que
+  // para el ADMIN esto es redundante — pero no para el JEFE ni para nadie de campo, y una obra de
+  // prueba que sólo ve un rol es una obra que sirve para un test y no para el siguiente.
+  const { data: usuarios } = await sb.from('perfiles').select('id').limit(50)
+  for (const u of (usuarios ?? []) as { id: string }[]) {
+    await sb.from('usuario_obra').upsert(
+      { usuario_id: u.id, obra_canonica_id: OBRA_DE_PRUEBA, papel: 'jefe' },
+      { onConflict: 'usuario_id,obra_canonica_id' },
+    )
+  }
+
   // SE RELEE ANTES DE SEGUIR. Que el upsert conteste que sí no prueba que la obra esté ahí para la
   // sesión del navegador: es la misma regla que gobierna todo este trabajo, aplicada al escenario.
   const { data: vista, error } = await sb.from('obra_canonica')
@@ -65,6 +76,7 @@ async function limpiarObraDePrueba(): Promise<void> {
   const sb = servicio()
   await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA_DE_PRUEBA)
   await sb.from('obra_asignacion').delete().eq('obra_id', OBRA_DE_PRUEBA)
+  await sb.from('usuario_obra').delete().eq('obra_canonica_id', OBRA_DE_PRUEBA)
   await sb.from('obra_canonica').delete().eq('id', OBRA_DE_PRUEBA)
 }
 
@@ -82,18 +94,12 @@ test('01 · el jefe carga la asistencia en el teléfono', async ({ page }) => {
   await expect(page.getByTestId('form-asistencia')).toBeVisible()
   await expect(page.getByTestId('fila-asistencia').first()).toBeVisible()
 
-  // ═══ EL CONTROL DEL DEFECTO QUE COSTÓ EL REVERT, EN EL NAVEGADOR ═══
-  // La casilla NACE VACÍA y la fila nace `sin_marcar`. Si alguien vuelve a precargar la jornada,
-  // esto se pone rojo antes de que un toque en Guardar escriba el plantel entero.
-  await expect(page.getByTestId('horas').first()).toHaveValue('')
-  await expect(page.getByTestId('fila-asistencia').first()).toHaveAttribute('data-estado', 'sin_marcar')
-  await expect(page.getByTestId('pie-jornada')).toContainText('0 presentes')
+  // LA PANTALLA ABRE Y DIBUJA SU GENTE. Nada más se afirma acá: esta obra es VIVA y su día de hoy
+  // cambia solo. Afirmar «la casilla está vacía» o «0 presentes» contra ella pondría el test en
+  // rojo el día que un jefe cargue de verdad, sin que ninguna regla se haya roto. El control del
+  // defecto que costó el revert vive donde el escenario es propio — ver el test 07.
+  await expect(page.getByTestId('pie-jornada')).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asistencia-01b-obra-390.png', fullPage: true })
-
-  // Y LA JORNADA SE PONE CON UN GESTO, que es lo que reemplaza al default.
-  await page.getByTestId('poner-jornada').click()
-  await expect(page.getByTestId('horas').first()).toHaveValue('8,8')
-  await page.screenshot({ path: 'qa-shots/asistencia-01c-jornada-puesta-390.png', fullPage: true })
 
   // EL PIE CUENTA LO QUE LA PANTALLA MUESTRA, no lo que la base tiene guardado.
   await expect(page.getByTestId('pie-jornada')).toBeVisible()
@@ -152,7 +158,6 @@ test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => 
 })
 
 test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', async ({ page }) => {
-  test.fixme(true, 'Mismo escenario a medio armar que el de arriba: falta el usuario_obra sobre ZZ-E2E.')
   test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
     'Escribe HH. Se habilita con E2E_ESCRIBE_ASISTENCIA=1 y usa su propia obra ZZ-E2E.')
   // El defecto que atrapa: que la casilla vuelva a traer la jornada completa al reabrir. El jefe
@@ -217,4 +222,31 @@ test('06 · el registro cronológico de la persona, con quién lo cargó', async
   await page.goto(`${href}?v=horas`)
   await expect(page.getByTestId('bloque-horas')).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asistencia-07-cronologia-1440.png', fullPage: true })
+})
+
+test('07 · LA CASILLA NACE VACÍA Y GUARDAR NO ESCRIBE NADA — sobre una obra propia', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Prepara una obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+  // EL CONTROL DEL DEFECTO QUE COSTÓ EL REVERT, EN EL NAVEGADOR Y CON ESCENARIO PROPIO.
+  // Sobre una obra viva no se puede afirmar «0 presentes»: su día de hoy cambia cuando un jefe
+  // carga. Acá la obra es de la prueba, así que el estado inicial es una afirmación defendible.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie asignado.')
+  try {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await entrarComo(page, ADMIN.email, ADMIN.password)
+    await page.goto(`/campo/asistencia?obra=${OBRA_DE_PRUEBA}`)
+    await expect(page.getByTestId('form-asistencia')).toBeVisible()
+
+    await expect(page.getByTestId('horas').first()).toHaveValue('')
+    await expect(page.getByTestId('fila-asistencia').first()).toHaveAttribute('data-estado', 'sin_marcar')
+    await expect(page.getByTestId('pie-jornada')).toContainText('0 presentes')
+    await page.screenshot({ path: 'qa-shots/asistencia-07-casilla-vacia-390.png', fullPage: true })
+
+    await page.getByTestId('poner-jornada').click()
+    await expect(page.getByTestId('horas').first()).toHaveValue('8,8')
+    await page.screenshot({ path: 'qa-shots/asistencia-08-jornada-puesta-390.png', fullPage: true })
+  } finally {
+    await limpiarObraDePrueba()
+  }
 })

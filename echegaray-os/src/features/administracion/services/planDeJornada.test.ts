@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ORDEN_DEL_MOVIMIENTO, acuseDe, cambiaDeObra, correccionSchema, envioSchema, motivoDe,
-  planDeGuardado, traducirEscritura,
+  ORDEN_DEL_MOVIMIENTO, acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema,
+  motivoDe, planDeBorrado, planDeGuardado, traducirEscritura,
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
@@ -338,4 +338,76 @@ test('UN DÍA TRABAJADO NO LLEVA MOTIVO', () => {
   assert.equal(motivoDe(presente(A, 8)), null)
   assert.equal(motivoDe(ausente(A, 8.8, 'enfermedad')), 'enfermedad')
   assert.equal(motivoDe(ausente(A, 8.8, null)), null)
+})
+
+// ── SACAR UN DÍA NO PUEDE LLEVARSE POR DELANTE LO QUE NO ES LA JORNADA ────────────────────────
+
+test('BORRAR EL DÍA NO BORRA LA IMPUTACIÓN A UNA ACTIVIDAD DEL PLAN', () => {
+  // EL BLOQUEANTE DE LA SEGUNDA AUDITORÍA. `corregirJornada` con estado 'borrar' hacía
+  // `delete().in('id', TODAS las filas del día)`: «sacar lo cargado» se llevaba la imputación a una
+  // actividad, la hora improductiva con su causa y las extras que había cargado otro. El acuse
+  // decía «3 registros» y nadie se enteraba de qué se había perdido.
+  const plan = planDeBorrado([
+    fila('r1', A, 8.8),
+    fila('r2', A, 4, 'normal', { actividad_id: '00000000-0000-4000-8000-000000000001' }),
+    fila('r3', A, 2, 'extra_50'),
+    fila('r4', A, 3, 'normal', { improductiva: true }),
+  ], { administraLicencias: true })
+
+  assert.deepEqual(plan.borrar, ['r1'], 'sólo la fila de la jornada')
+  assert.deepEqual(plan.intactas.map((i) => i.id), ['r2', 'r3', 'r4'])
+  assert.match(plan.intactas[0].motivo, /actividad del plan/)
+  assert.match(plan.intactas[2].motivo, /improductiva/)
+})
+
+test('BORRAR USA EL MISMO CRITERIO QUE GUARDAR, no uno propio', () => {
+  // Dos criterios para «qué filas administra esta pantalla» discrepan el día que se toca uno solo.
+  const filas = [
+    fila('r1', A, 8.8),
+    fila('r2', A, 4, 'normal', { actividad_id: '00000000-0000-4000-8000-000000000001' }),
+    fila('r3', A, 8.8, 'licencia'),
+  ]
+  const guardar = planDeGuardado([presente(A, 9)], filas)
+  const borrar = planDeBorrado(filas)
+  assert.deepEqual(
+    borrar.intactas.map((i) => i.id).sort(),
+    guardar.intactas.map((i) => i.id).sort(),
+    'lo que guardar deja intacto tiene que ser exactamente lo que borrar deja intacto',
+  )
+})
+
+test('LA LICENCIA TAMBIÉN SE PROTEGE DEL BORRADO desde la obra', () => {
+  const desdeCampo = planDeBorrado([fila('r1', A, 8.8, 'licencia')])
+  assert.deepEqual(desdeCampo.borrar, [])
+  assert.match(desdeCampo.intactas[0].motivo, /Administración/)
+
+  const desdeAdmin = planDeBorrado([fila('r1', A, 8.8, 'licencia')], { administraLicencias: true })
+  assert.deepEqual(desdeAdmin.borrar, ['r1'])
+})
+
+test('UN DÍA DONDE NO HAY NADA DE LA JORNADA NO SE PUEDE «SACAR»', () => {
+  // Si sólo hay una imputación a una actividad, «sacar lo cargado» no tiene nada que sacar. Antes
+  // borraba esa imputación; ahora la acción devuelve el motivo y no toca nada.
+  const plan = planDeBorrado([
+    fila('r2', A, 4, 'normal', { actividad_id: '00000000-0000-4000-8000-000000000001' }),
+  ], { administraLicencias: true })
+  assert.deepEqual(plan.borrar, [])
+  assert.equal(plan.intactas.length, 1)
+})
+
+test('EL ACUSE DEL BORRADO CUENTA LO QUE LA BASE DEVOLVIÓ, y nombra lo que quedó', () => {
+  // El otro bloqueante: el acuse decía «Día borrado: N registros» con N por INTENCIÓN, porque el
+  // delete no encadenaba `.select()`. La evidencia es del efecto.
+  assert.equal(acuseDeBorrado(0, []), 'No se borró nada.')
+  assert.equal(acuseDeBorrado(1, []), 'Día borrado: 1 registro.')
+  assert.match(
+    acuseDeBorrado(1, [{ motivo: 'tiene horas imputadas a una actividad del plan (normal)' }]),
+    /sin tocar.*actividad del plan/,
+  )
+  assert.match(acuseDeBorrado(1, [{ motivo: 'a' }, { motivo: 'b' }]), /Quedaron 2 filas sin tocar/)
+})
+
+test('EL ORDEN DE LAS FILAS NO CAMBIA QUÉ SE BORRA', () => {
+  const filas = [fila('r3', A, 2, 'extra_50'), fila('r1', A, 8.8)]
+  assert.deepEqual(planDeBorrado(filas).borrar, planDeBorrado([...filas].reverse()).borrar)
 })

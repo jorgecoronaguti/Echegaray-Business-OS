@@ -24,7 +24,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { tipoDeMotivo } from './motivoDeAusencia'
 import {
-  acuseDe, cambiaDeObra, correccionSchema, envioSchema, motivoDe, planDeGuardado, traducirEscritura,
+  acuseDe, acuseDeBorrado, cambiaDeObra, correccionSchema, envioSchema, motivoDe, planDeBorrado,
+  planDeGuardado, traducirEscritura,
   type EscritoEnLaBase, type FilaExistente, type MarcaDeJornada, type PlanDeJornada,
 } from './planDeJornada'
 
@@ -187,6 +188,22 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   const supabase = await createClient()
 
   if (c.estado !== 'borrar') {
+    // LA OBRA DESTINO TIENE QUE ESTAR ACTIVA. Mover un día a una obra cerrada le imputa costo de
+    // mano de obra a algo que ya nadie mira, y el número aparece en el plan contra real de una obra
+    // terminada. Si alguna vez hace falta corregir un día viejo, se reabre la obra: eso es una
+    // decisión de alguien y queda registrada, que es justo lo que no pasa si la acción lo permite.
+    const destino = await supabase.from('obra_canonica')
+      .select('nombre, estado').eq('id', c.obra_destino).maybeSingle()
+    if (destino.error) return { ok: false, error: destino.error.message }
+    if (!destino.data) return { ok: false, error: 'Esa obra no existe o no la ves.' }
+    const o = destino.data as { nombre: string; estado: string | null }
+    if (o.estado !== 'activa') {
+      return {
+        ok: false,
+        error: `«${o.nombre}» no está activa (${o.estado ?? 'sin estado'}): no se le pueden mover `
+          + 'horas. Si hay que corregir un día viejo, se reabre la obra.',
+      }
+    }
     const falta = await faltaAsignacion(supabase, c.persona_id, c.obra_destino, c.fecha)
     if (falta) {
       if (!c.asignar) {
@@ -215,11 +232,23 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
 
   if (c.estado === 'borrar') {
     if (enOrigen.length === 0) return { ok: false, error: 'Ese día no tiene nada cargado.' }
-    const { error } = await supabase.from('registros_hh').delete()
-      .in('id', enOrigen.map((f) => f.id))
-    if (error) return { ok: false, error: error.message }
+    // EL MISMO CRITERIO QUE `planDeGuardado`, no un `delete` a todo lo del día: «sacar lo cargado»
+    // no puede llevarse por delante una imputación a una actividad del plan, una hora improductiva
+    // con su causa ni unas extras que cargó otro. Las nombra en el acuse.
+    const plan = planDeBorrado(enOrigen, { administraLicencias: true })
+    if (plan.borrar.length === 0) {
+      return {
+        ok: false,
+        error: `Ese día no tiene jornada cargada para sacar. Lo que hay es otra cosa: ${plan.intactas[0]?.motivo ?? 'horas de otro tipo'}.`,
+      }
+    }
+    const { data, error } = await supabase.from('registros_hh').delete()
+      .in('id', plan.borrar).select('id')
+    if (error) return { ok: false, error: traducirEscritura(error) }
     revalidar()
-    return { ok: true, mensaje: `Día borrado: ${enOrigen.length} ${enOrigen.length === 1 ? 'registro' : 'registros'}.` }
+    // EL ACUSE CUENTA LO QUE LA BASE DEVOLVIÓ. `plan.borrar.length` es la intención; `data` es el
+    // efecto, y pueden diferir (otro la borró entremedio, la policy la rechazó sin error).
+    return { ok: true, mensaje: acuseDeBorrado((data ?? []).length, plan.intactas) }
   }
 
   const marca: MarcaDeJornada = c.estado === 'ausente'
@@ -235,7 +264,18 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   if (escrito.error) return { ok: false, error: escrito.error }
 
   if (cambiaDeObra(c) && enOrigen.length > 0) {
-    const { error } = await supabase.from('registros_hh').delete().in('id', enOrigen.map((f) => f.id))
+    // SÓLO LA JORNADA SE MUEVE. Las extras, las improductivas y lo imputado a una actividad se
+    // quedan en la obra vieja: son hechos de ESA obra que alguien declaró con más información.
+    const aMover = planDeBorrado(enOrigen, { administraLicencias: true })
+    const { data, error } = await supabase.from('registros_hh')
+      .delete().in('id', aMover.borrar).select('id')
+    if (!error && (data ?? []).length === 0 && aMover.borrar.length > 0) {
+      return {
+        ok: false,
+        error: 'Las horas quedaron cargadas en la obra nueva pero el borrado de la vieja no afectó '
+          + 'ninguna fila. El día está en las dos obras — miralo antes de volver a tocarlo.',
+      }
+    }
     if (error) {
       return {
         ok: false,

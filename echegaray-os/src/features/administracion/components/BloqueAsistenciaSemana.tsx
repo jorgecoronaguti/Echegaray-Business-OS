@@ -121,11 +121,11 @@ export async function BloqueAsistenciaSemana({ semanaPedida, hoy, q, hrefDe, pue
 }
 
 /**
- * Las obras a las que se puede mover un día, con su jornada pactada.
+ * Las obras a las que se puede mover un día, con su jornada pactada. SÓLO LAS ACTIVAS.
  *
- * SE PIDEN LAS ACTIVAS Y TAMBIÉN LAS QUE YA APARECEN EN LA GRILLA: una obra que se cerró esta
- * semana sigue teniendo horas cargadas, y si desapareciera del selector el día que quedó mal
- * imputado ahí no se podría sacar de ninguna manera.
+ * Una obra cerrada con un día mal imputado no queda sin salida: «Sacar lo cargado» sigue
+ * funcionando sobre la fila que ya existe —el borrado no mira el estado de la obra destino— y para
+ * moverlo a otra parte se reabre la obra, que es una decisión que queda registrada.
  */
 async function obrasElegibles(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -134,10 +134,15 @@ async function obrasElegibles(
     .from('obra_canonica').select('id, nombre, jornada_horas, estado').order('nombre')
   return ((data ?? []) as {
     id: string; nombre: string; jornada_horas: number | string | null; estado: string | null
-  }[]).map((o) => {
-    const h = Number(o.jornada_horas)
-    return { id: o.id, nombre: o.nombre, jornada: Number.isFinite(h) && h > 0 ? h : 0 }
-  })
+  }[])
+    // SÓLO LAS ACTIVAS SE OFRECEN COMO DESTINO. La acción lo rechaza igual —es la puerta— pero un
+    // selector que ofrece 40 obras cerradas para que la acción las rebote una por una enseña que la
+    // pantalla miente. Una obra cerrada con horas mal imputadas se corrige reabriéndola.
+    .filter((o) => o.estado === 'activa')
+    .map((o) => {
+      const h = Number(o.jornada_horas)
+      return { id: o.id, nombre: o.nombre, jornada: Number.isFinite(h) && h > 0 ? h : 0 }
+    })
 }
 
 function Semanas({ semana, hrefDe }: { semana: string; hrefDe: (s: string) => string }) {
