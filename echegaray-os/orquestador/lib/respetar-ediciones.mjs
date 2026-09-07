@@ -32,6 +32,7 @@
 
 import { query } from './db.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { podarProsa, sePoda } from './podar-prosa.mjs'
 
 /**
  * Postgres RECHAZA el byte nulo en un texto, y una celda de Sheets puede traerlo (llega de un pegado
@@ -413,6 +414,11 @@ export async function sembrarEdiciones(fileId, pestana, rotulos = []) {
 }
 
 export async function conEdicionesRespetadas(fileId, pestana, generado, actual) {
+  // El contrato de minimalismo, aplicado ANTES de comparar contra la pestaña. Va acá y no después
+  // por la misma razón que en `escribirPreservando`: lo que se poda es lo GENERADO. Si se podara la
+  // grilla ya fusionada se borraría prosa del dueño, y eso no lo juzga ningún contrato mío. Ver
+  // lib/podar-prosa.mjs — el criterio es el mismo que audita, no una copia.
+  if (sePoda(pestana)) generado = podarProsa(generado, { pestana })
   const { mios, ediciones, candidatos } = await leerRegistro(fileId, pestana)
     .catch(() => ({ mios: [], ediciones: new Map(), candidatos: new Set() }))
   // ═══ PERSISTENCIA ENTRE CORRIDAS (24/07) — "siempre respetar lo que hago" ═══
