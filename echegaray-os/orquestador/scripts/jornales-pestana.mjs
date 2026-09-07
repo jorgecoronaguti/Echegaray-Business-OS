@@ -73,6 +73,7 @@
 //   node orquestador/scripts/jornales-pestana.mjs [--dry]
 
 import { formulaNetoAPagar, formulaEnEfectivo, formulaBancoOficina } from '../lib/jornales-neto-pago.mjs'
+import { writeFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotaciones.mjs'
@@ -2260,6 +2261,16 @@ async function main() {
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
   if (aMano) console.log(`  ✋ ${aMano} fecha(s) de pago escrita(s) a mano: no las toco`)
+  // `--volcar` escribe la grilla ENTERA a un JSON, sin recortar. El `--dry` de arriba corta cada celda
+  // a 34 caracteres para que la salida se pueda leer, y con eso alcanza para revisar la FORMA del
+  // cuadro — pero no para recuperar una fórmula. El 07/09 hizo falta reponer a mano una columna que
+  // la Regla 0 no dejaba escribir, y la única copia disponible era la de `sheet_huella_celda`, que
+  // guarda 300 caracteres: la fórmula entró truncada y las seis celdas quedaron en #ERROR!. Una
+  // fórmula no se reconstruye de memoria ni se corta: se lee entera de quien la produce.
+  if (process.env.ORQ_VOLCAR_GRILLA) {
+    writeFileSync(process.env.ORQ_VOLCAR_GRILLA, JSON.stringify(g.filas, null, 1))
+    console.log(`grilla volcada entera → ${process.env.ORQ_VOLCAR_GRILLA} (${g.filas.length} filas)`)
+  }
   if (DRY) { for (const f of g.filas) console.log('   ', f.filter((c) => c && c !== VACIO).map((x) => String(x).slice(0, 34)).join(' | ')); return }
 
   const hojas = await google.getSheetMeta(ID)
