@@ -65,8 +65,15 @@ test('el archivo vivo entero traduce a 24 filas sin un solo hallazgo', () => {
   assert.deepEqual(hallazgos, [])
   const materiales = filas.filter((f) => f.tipo === 'material')
   const mo = filas.filter((f) => f.tipo === 'mano_de_obra')
-  assert.equal(materiales.length, 17, 'los 17 ítems del cuadro 5')
-  assert.equal(mo.length, 7, 'una fila de mano de obra por obra')
+  // LOS CONTEOS SE DERIVAN DEL ARCHIVO, NO SE CLAVAN (07/09/2026). Decía «17 ítems» y «7 obras»: el
+  // día que Dilución y Tercer Muro recibieron su costo desde la planilla de cotización, el test se
+  // puso rojo sin que ninguna regla se hubiera roto. Lo que este test prueba es la IDENTIDAD —cada
+  // ítem del cuadro 5 es una fila de material y cada obra con costo es una fila de mano de obra—, y
+  // eso se afirma contra la fuente, cualquiera sea su tamaño.
+  const conCosto = OBRAS_FUTURAS.filter((o) => !o.sinCosto)
+  assert.ok(conCosto.length >= 7, 'la fuente perdió obras con costo: eso sí hay que mirarlo')
+  assert.equal(materiales.length, itemsSemilla(OBRAS_FUTURAS).length, 'una fila de material por ítem del cuadro 5')
+  assert.equal(mo.length, conCosto.length, 'una fila de mano de obra por obra con costo')
   // La suma por obra RECONSTRUYE el costo proyectado que publica el Sheet: es la identidad que hace
   // que la celda pueda pasar a ser un SUMIFS.
   for (const o of OBRAS_FUTURAS) {
@@ -130,7 +137,9 @@ test('MUTACIÓN — si el Sheet y obras-datos.mjs no dicen lo mismo, no se carga
   })
   assert.equal(hallazgos.length, 1)
   assert.match(hallazgos[0], /el Sheet dice .* y obras-datos\.mjs/)
-  assert.equal(filas.filter((f) => f.tipo === 'mano_de_obra').length, 6)
+  // Cae exactamente UNA obra: la mutada. Las demás con costo siguen entrando.
+  const conCosto = OBRAS_FUTURAS.filter((o) => !o.sinCosto).length
+  assert.equal(filas.filter((f) => f.tipo === 'mano_de_obra').length, conCosto - 1)
 })
 
 test('filaEsDeObra exige que el rótulo NOMBRE la obra', () => {

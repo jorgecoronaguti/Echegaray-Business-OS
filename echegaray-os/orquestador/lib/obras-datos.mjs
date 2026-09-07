@@ -395,14 +395,35 @@ export const OBRAS_FUTURAS = [
     plantelFullTime: 0,
     plantelTemporales: 0,
     pctEjecutado: 0,
+    // ═══ EL COSTO SALE DE LA PLANILLA DE COTIZACIÓN (07/09/2026) ═══
+    //
+    // No hay archivo «Gastos» para esta obra en Drive (verificado sobre los 141 ítems de la carpeta
+    // MESSINA). El dueño: *«eso está en la planilla de cotización, de ahí se puede obtener»*. Sale de
+    // `MESSINA/Playon para Dilucion de Acido/Cotizacion Interna/Cotizacion.xlsm`
+    // (Drive 1_1Si2IKXMBTgFdXYo1eXdz8ACbIOwRz-), pestaña Presupuesto, filas 10-15 — cantidades
+    // idénticas a las del PDF vendido ($20.090.867,83, Cobranzas 99-100).
+    //
+    // ES PRESUPUESTO INTERNO, NO GASTO EJECUTADO: es lo que la obra iba a costar cuando se cotizó. Se
+    // declara como CÁLCULO. Las horas por categoría no están en la planilla — la MO viene en pesos.
+    //
+    // CONFLICTO MENOR, DECLARADO: la pestaña GastosMA del mismo archivo reparte distinto (MO
+    // $2.561.797 · materiales $6.361.217) y cierra en el MISMO total, $8.923.014,26. Se toma la
+    // pestaña Presupuesto porque es la que cuadra tarea por tarea con el PDF; no se promedia.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 0,
-    egresos: [],
-    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
-    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
-    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
-    sinCosto: 'no hay archivo de costo en Drive para esta obra',
-    notas: 'FALTA_DATO: no hay archivo de costo en Drive para esta obra. La venta sale de Cobranzas 95-96 (OC 2266). El costo se publica #N/A a propósito — no se inventa.',
+    // MO $1.381.787,06 + cargas sociales $1.300.395,60 (Presupuesto, col. O + Q).
+    moCargasPesos: 2_682_183,
+    egresos: [
+      {
+        concepto: 'Materiales del playón (hormigón, armadura, juntas)', proveedor: 'A DEFINIR', familia: 'Materiales',
+        monto: 6_240_832,
+        // La planilla no fecha la compra. La obra corre 03/09→31/12: el hormigón se compra al inicio.
+        // Convención declarada: el 15 del primer mes, igual que el resto de las obras del archivo.
+        fechaEstimada: '2026-09-15',
+        nota: 'Cotizacion.xlsm · Presupuesto · col. P (Σ filas 10-15) = $6.240.831,60',
+      },
+    ],
+    noCaja: { maquinaPropia: 0 },
+    notas: 'CÁLCULO: costo de la planilla de cotización (Cotizacion.xlsm, Presupuesto). Total $8.923.014,26 = MO+cargas $2.682.182,66 + materiales $6.240.831,60. Sin archivo de Gastos. Venta: Cobranzas 99-100 (OC 2266).',
   },
   {
     clave: 'messina-adicional-tercer-muro',
@@ -420,14 +441,31 @@ export const OBRAS_FUTURAS = [
     plantelFullTime: 0,
     plantelTemporales: 0,
     pctEjecutado: 0,
+    // ═══ EL COSTO SALE DE LA PLANILLA DE COTIZACIÓN (07/09/2026) ═══
+    //
+    // Sin archivo «Gastos» propio en Drive. El dueño: *«eso está en la planilla de cotización, de ahí
+    // se puede obtener»*. Sale de `MESSINA/PLATEA DE HORMIGON - Playon de azufre/Cotizaciones/
+    // ADICIONAL MURO.xlsm` (Drive 1MFtUGWLGVk_qnAeeapwdiz99xZ9AA8yV), pestaña Presupuesto, fila 10,
+    // tarea T1161 «Muro de contención en L», 20 ml. Su precio (col. T, $10.940.587,02) cuadra con el
+    // PDF entregado al cliente; la OC 2256 se emitió por $10.000.000 (Cobranzas 98) — CONFLICTO de
+    // venta declarado en la grilla, no acá.
+    //
+    // TRAMPA EVITADA: la pestaña GastosMA de ESE archivo dice $49.916.328 — es una copia del costeo
+    // del Playón de Azufre entero, no del adicional. Usarla multiplicaría por diez el costo del muro.
     horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
-    moCargasPesos: 0,
-    egresos: [],
-    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
-    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
-    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
-    sinCosto: 'sin archivo de costo en Drive',
-    notas: 'FALTA_DATO: sin archivo de costo. Venta de Cobranzas 94 (OC 2256). El dueño la declaró obra propia el 07/09, no un adicional dentro de Playón de Azufre.',
+    // MO $2.819.280 + cargas sociales $1.723.680 (Presupuesto, col. O + Q).
+    moCargasPesos: 4_542_960,
+    egresos: [
+      {
+        concepto: 'Materiales del muro en L (hormigón, armadura)', proveedor: 'A DEFINIR', familia: 'Materiales',
+        monto: 640_611,
+        // Sin fecha en la planilla; la obra arranca el 02/09. Convención declarada: el 15 del primer mes.
+        fechaEstimada: '2026-09-15',
+        nota: 'ADICIONAL MURO.xlsm · Presupuesto · fila 10 col. P = $640.611,40',
+      },
+    ],
+    noCaja: { maquinaPropia: 0 },
+    notas: 'CÁLCULO: costo de la planilla de cotización (ADICIONAL MURO.xlsm, Presupuesto, T1161). Total $5.183.571,40 = MO+cargas $4.542.960 + materiales $640.611,40. Venta: Cobranzas 98 (OC 2256, $10.000.000) vs cotización $10.940.587 — CONFLICTO.',
   },
   {
     clave: 'messina-pisos-120-rampa',
