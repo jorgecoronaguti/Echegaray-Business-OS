@@ -11,7 +11,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, rangosDeEstructura, ROTULO_TOTAL, formatosPropios } from './estructura-pestana.mjs'
 import { verificarRangos, explicarProblemas, fila } from '../lib/rangos-con-nombre.mjs'
-import { tiene, fusionar } from '../lib/preservar-anotaciones.mjs'
+import { tiene, fusionar, limpiarCentinela } from '../lib/preservar-anotaciones.mjs'
+import { auditarDiseno } from '../lib/diseno-unificado.mjs'
 import { MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { enBloqueIndivisible } from '../lib/celda-de-estructura.mjs'
@@ -283,4 +284,23 @@ test('LA DECLARACIÓN NO SE COME EL CUADRO DE DATOS: ahí el dueño anota y la h
   for (let f = 1; f <= g.fTot; f++) {
     assert.equal(enBloqueIndivisible(f, g.indivisibles), false, `la fila ${f} es cuadro de datos y no puede estar declarada`)
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTRATO DE DISEÑO SE MIDE SOBRE LA GRILLA, NO SOBRE EL SHEET (06/09/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con `auditar-diseno-unificado.mjs` contra el archivo vivo: diez desvíos en esta
+// pestaña. `A1` decía "Gastos de estructura" sobre una pestaña llamada "Estructura" (dos nombres para
+// lo mismo); `A17` argumentaba en su título ("QUE ESTE CUADRO SEA EXACTAMENTE EL RUBRO ESTRUCTURA DE
+// COMPRAS"); `A18`, `A19` y `A20` explicaban al lado del número; y las cuatro restantes venían del
+// bloque de ARCA, que es compartido.
+//
+// El auditor lee el Sheet REAL y por eso no puede correr acá. Esto mide lo MISMO —el mismo núcleo
+// puro, `auditarDiseno`— sobre lo que el generador está por escribir: el desvío se ve antes de que
+// llegue a la pantalla del dueño, y no dos horas después en el log del worker.
+test('EL DEFECTO · la grilla que se escribe no tiene un solo desvío del contrato de diseño', () => {
+  const h = auditarDiseno(limpiarCentinela(g.filas), { pestana: 'Estructura' })
+  const detalle = h.map((x) => `${(x.col ?? 'A')}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n  ')
+  assert.deepEqual(h, [], `Estructura vuelve a desviarse del contrato:\n  ${detalle}`)
 })
