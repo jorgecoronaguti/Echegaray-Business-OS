@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-07 · minimalismo del Sheet aplicado en el camino de escritura_
+_actualizado: 2026-09-07 (tarde) · extracto cargado, botón repuesto, filtros de admin_
 
 ## 1. OBJETIVO GENERAL
 
@@ -79,34 +79,47 @@ es OTRO checkout: pushear actualiza Vercel pero NO ese árbol, y el timer corre 
 - CRM admin: 155 tests canónicos contra `crmadmin.zip` en verde. Papeles del proveedor en el panel.
 - Firma por pestaña (ORQ_AUTOCANDADO) sigue APAGADA a propósito. Timer activo — verificarlo, no asumirlo.
 
-## 5. TRABAJO DE ESTA SESIÓN (06–07/09)
+## 5. TRABAJO DE ESTA SESIÓN (07/09 tarde)
 
-Tres frentes: minimalismo del Sheet, CRM y HF. Lo que cambió de fondo:
+Siete pedidos del dueño en ráfaga. Lo que quedó:
 
-1. **`lib/podar-prosa.mjs` + `lib/pestanas-del-contrato.mjs`** — el contrato se aplica una vez, con
-   la MISMA definición que lo mide. La lista de pestañas salió del script a un lib puro: importar
-   `formato-pestanas.mjs` (que arrastra `google.mjs`) desde el camino de escritura rompía 7 tests
-   herméticos por ORDEN DE CARGA.
-2. **`lib/autoria-por-historial.mjs` + `scripts/reclamar-parrafos-huerfanos.mjs`** — 63 párrafos
-   reclamados con su commit. El glifo entra por interpolación (`${ALERTA} …`), así que la búsqueda
-   ignora el prefijo no alfanumérico.
-3. **Dos falsos positivos del auditor corregidos**: `bloquesDe` exigía el título solo en su fila
-   (Recurrentes lo comparte con los encabezados de mes) → segunda puerta «el título grita».
-4. **`glifos.mjs`: `TEXTOS_RETIRADOS`** — acortar un aviso NO borra las celdas ya publicadas; un
-   SUMPRODUCT que no coincide da $0, no error.
-5. **CAJA**: el aire entre portada y gráficos salía de la PANTALLA (fila 16) y la grilla emite hasta
-   la 20 → `AIRE_TRAS_PORTADA` 6 → 2, y el ancla se deriva de `finDeContenido(g.filas)`. Además el
-   verificador clavaba el ancla mientras el generador la derivaba: dos definiciones, ahora una.
-6. **`scripts/olvidar-huella-de-formato.mjs`** (+ tests) — ver la trampa en §4.
-7. **`estructura-pestana.mjs` ahora tiene cola** con prueba de propiedad: su excusa de «alto fijo»
-   era falsa y el archivo la desmintió (aviso de ARCA de 190 chars sobreviviendo en A30).
-
-Commits: `03d24dd9` · `21deb156` · `93897e35` · `96851743` · `12a64700` · `4289f873` · `5b252866` ·
-`55b8c421` · `f2f774a3` · `22848149`. Suite completa en verde antes de cada push.
+1. **Extracto bancario cargado** (`importar-banco.mjs --sheet`). 3 movimientos nuevos; `_BANCO_RAW`
+   en 556, corte 07/09, saldo **$14.066.088,84** = el declarado por el banco, leído del destino. La
+   cadena completa mejoró: el agujero bajó de $455.082,14 a **$45.080,00**.
+2. **El botón «ir al día» volvió a A3 de las dos vistas del Cash Flow** (`cc8ee0b8`). Lo había
+   borrado `podarProsa`, que vaciaba la fila 3 ENTERA para el aire que pide `sin-respiro`. La
+   excepción se define UNA vez —`esAtajoDelPeriodo` en `diseno-unificado.mjs`— y la usan el podador
+   y el auditor. Reconoce las dos formas: `=HYPERLINK(…)` del generador y el rótulo ya resuelto al
+   medir el archivo. Los dos tests gemelos esperaban '3 · sin-respiro' como desvío; ahora esperan
+   CERO y exigen el HYPERLINK, para que un cero conseguido borrando el botón no pase.
+3. **Dos facturas de honorarios del mail → Compras** (filas 951–952, verificadas sin #ERROR):
+   Robles Jose Maria FC 00001-00000211 $696.502,61 y MASS CONSULTORA FC 00001-00000067 $250.000.
+   Fecha prevista de pago **11/09/2026** escrita con bisturí en Q951:R952 (Q es VALOR en esta
+   pestaña, no fórmula: el copyPaste del cargador les deja el texto «Pendiente»).
+   D'Amico NO era proveedor nuevo: ya existía como MASS CONSULTORA, su razón social.
+4. **Filtros de admin** (`61bb1a6b`). Compras: 10 criterios combinables en `comprasFiltros.ts` (puro,
+   12 tests) que conviven con los chips —el chip decide la población, los criterios la recortan—.
+   Proveedores: rubro (con `rubroDe`, porque ninguno tiene rubro DECLARADO y 18 lo tienen deducido)
+   y deuda, que ahora es un concepto del OS: vista `proveedor_deuda`, aplicada y verificada.
+5. **`compra_sheet` sincronizada** (949 filas). El timer `echegaray-compras-sync` ya corre cada hora.
 
 ## 6. PENDIENTES REALES
 
 **P0 — decisión del dueño, no arranca solo**
+- **ARCA SYNC CAÍDO DESDE EL 01/09.** `echegaray-arca-sync.service` FAILED: no hay `ACCESS_TOKEN` de
+  AfipSDK en `~/.config/echegaray-orq/worker.env` (el 24/08 todavía funcionaba). Falla cerrado, bien,
+  pero `comprobante_compra` quedó congelada en el 21/08 con 653 filas. **Bloquea el pedido de «todos
+  los gastos al día»**: la pestaña sí está al día, el libro fiscal no. Reponer el token.
+- **El cheque ECHEQ 277 a «DUBOS UGARTE PEDRO LUIS RAUL» ($1.002.330,73, FA 03-000242, emitido
+  4/12/2025, vence 22/01/2026).** El dueño pidió darle tratamiento en Compras. NO se cargó, y el
+  motivo es dato, no pereza: DUBOS = DUPEC está PROBADO (mismo CUIT 20-28773782-4 en las 4 filas de
+  Cheques Emitidos), pero ese CUIT sólo emite desde los puntos de venta **11 y 9** en ARCA — nunca 03
+  —, no hay ninguna compra de ese importe en la pestaña, y la factura sería de 2025, fuera del
+  ejercicio que cubren Compras y el Libro IVA. Falta la factura o el número correcto.
+- **$14.294.688,31 de deuda SIN ACREEDOR en el maestro.** La pestaña declara $19.164.815,70 de saldo
+  vivo; `proveedor_deuda` llega a $4.870.127,39. La diferencia son cuatro textos no vinculados:
+  PEDRO TELLO $8,65M (4) · Pedro Fredes $5,2M (5) · Sersolin SAS $376.890,80 · RSV $67.797,51. Se
+  arregla vinculándolos en la cola de resolución de nombres.
 - **¿La base del IVA va por «Fecha de Factura» (col P) o «Fecha de Venta» (col C)?** La base
   declarada de las DDJJ de marzo ($78.349.586,76) y mayo ($20.000.000) coincide AL CENTAVO con la
   columna C, no con la P. Hoy se usa P. Si la respuesta es C, cambia una sola constante
@@ -116,9 +129,11 @@ Commits: `03d24dd9` · `21deb156` · `93897e35` · `96851743` · `12a64700` · `
   y no del dueño, hay que señalarlo para sacarlo.
 
 **P1 — técnicos**
-- **Push pendiente: 2 commits (`f2f774a3`, `22848149`) sin subir.** La suite quedó corriendo al
-  cerrar. Correr `npm run orq:test` y, si da 0 rojos, pushear + actualizar producción + reiniciar
-  units. NO pushear en rojo.
+- **Push pendiente: 6 commits sin subir** (hasta `61bb1a6b`). Pushear + `git merge --ff-only
+  origin/main` en `~/echegaray-os/produccion/echegaray-os` + reiniciar los 3 units. NO en rojo.
+- Las dos pantallas de admin NO se miraron con un navegador: typecheck, eslint y los tests puros
+  están en verde, pero nadie vio los filtros dibujados. `qa-visual` sobre /administracion/compras y
+  /administracion/proveedores, autenticado.
 - 17 desvíos del contrato: Proveedores 9 (arriba de la fila 157, territorio de las dinámicas, que ese
   generador no escribe) · Jornales 2 · Nómina 2 · Estructura 1 · Materiales 1 · OBRAS 1 · CF Mensual 1.
 - El pipeline `echegaray-flujo-caja` termina en FAILED desde el 3/09 por `▲ $171.314 salen por un
@@ -139,18 +154,14 @@ Commits: `03d24dd9` · `21deb156` · `93897e35` · `96851743` · `12a64700` · `
 
 ## 7. ESTADO GIT
 
-- Rama: `main` · HEAD: `22848149` · working tree **limpio** · **ahead 2 de `origin/main`**.
-- Producción (`~/echegaray-os/produccion/echegaray-os`): al día en `55b8c421` al momento del último
-  deploy verificado; los 2 commits de arriba NO están desplegados.
-- Suite: la última corrida completa verificada dio **0 rojos** en `55b8c421`. La corrida sobre
-  `22848149` quedó en curso al cerrar — **verificarla antes de pushear**.
+- Rama: `main` · HEAD `61bb1a6b` · **ahead 6 de `origin/main`** · árbol limpio.
+- Producción sigue en `55b8c421`: nada de esto está desplegado.
 
 ## 8. PRÓXIMO PASO
 
-Correr `npm run orq:test`; si da 0 rojos, pushear los 2 commits, actualizar
-`~/echegaray-os/produccion/echegaray-os` con `git merge --ff-only origin/main` y reiniciar
-`echegaray-comunicacion-ws`, `echegaray-xsas-gateway`, `echegaray-asistencia-http`. Si hay rojos,
-cerrarlos antes: no se pushea con validaciones en rojo.
+Mirar las dos pantallas de admin con `qa-visual` (autenticado), y si están bien: pushear los 6
+commits, actualizar producción y reiniciar `echegaray-comunicacion-ws`, `echegaray-xsas-gateway`,
+`echegaray-asistencia-http`. En paralelo, el dueño tiene que reponer el token de AfipSDK.
 
 ## 9. REGLA PARA NUEVAS SESIONES
 
