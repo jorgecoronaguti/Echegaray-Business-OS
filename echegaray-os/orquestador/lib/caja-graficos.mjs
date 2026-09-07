@@ -66,10 +66,13 @@ export const COL_ANCLA = 0
 /**
  * CUÁNTAS FILAS DE AIRE ENTRE EL FIN DE LA PORTADA Y EL PRIMER GRÁFICO.
  *
- * Seis es lo que hay hoy en el archivo con los bloques 3 y 4 vacíos, y se conserva para que el
- * rediseño no mueva nada cuando no hay alertas.
+ * DOS, y el número sale del archivo (07/09/2026). Se había puesto SEIS contando desde la última fila
+ * ESCRITA que se veía en pantalla (la 16), pero la grilla que el generador emite llega a la 20: seis
+ * más veinte mandó el primer gráfico a la 27 y dejó el hueco que el dueño reportó —«no se ve
+ * gráfico»—. Con dos, la portada termina en la 20 y el gráfico arranca en la 23, que es exactamente
+ * donde estuvo siempre (`FILA_ANCLA`), y con siete alertas se corre lo justo para no tapar ninguna.
  */
-export const AIRE_TRAS_PORTADA = 6
+export const AIRE_TRAS_PORTADA = 2
 
 /**
  * DÓNDE ANCLA EL PRIMER GRÁFICO, DERIVADO DEL ALTO REAL DE LA PORTADA. PURA.
@@ -545,8 +548,12 @@ export function anclasDeCharts(charts = []) {
  * a mano al lado se desincroniza el día que cambia `FILAS_POR_BLOQUE`, y el control pasa a certificar
  * el layout viejo: dos definiciones de lo mismo, que es lo que esta pestaña ya pagó una vez.
  */
-export function layoutEsperado(series = SERIES_COMPLETAS) {
-  return anclasDeRequests(graficos(0, 1, series).requests)
+export function layoutEsperado(series = SERIES_COMPLETAS, finPortada = null) {
+  // LA PORTADA VIAJA HASTA ACÁ, Y ESE ERA EL AGUJERO (07/09/2026). El generador derivaba el ancla del
+  // alto real y este control la clavaba en `FILA_ANCLA`: dos definiciones de lo mismo, así que el
+  // verificador declaraba mal un layout correcto —«ancla en la 27 y le corresponde la 23»— y nadie
+  // sabía cuál de las dos tenía razón. Ahora es UNA: quien verifica le pasa la portada que leyó.
+  return anclasDeRequests(graficos(0, 1, series, finPortada).requests)
 }
 
 /**
@@ -554,9 +561,9 @@ export function layoutEsperado(series = SERIES_COMPLETAS) {
  * @param {{rows:number, charts:Array, esperados?:Array}} leido `rows` = gridProperties.rowCount de CAJA.
  * @returns {{ok:boolean, problemas:string[]}}
  */
-export function verificarLayoutGraficos({ rows, charts, esperados = layoutEsperado() } = {}) {
+export function verificarLayoutGraficos({ rows, charts, finPortada = null, esperados = layoutEsperado(SERIES_COMPLETAS, finPortada) } = {}) {
   const problemas = []
-  const minimo = FILA_FINAL_DE_GRAFICOS + 1
+  const minimo = filaFinalDeGraficos(finPortada) + 1
   if (!Number.isFinite(rows) || rows < minimo) {
     problemas.push(`la hoja tiene ${Number.isFinite(rows) ? rows : '—'} filas y necesita ${minimo}: con menos, el editor vivo sube el último bloque hasta que entre y lo dibuja encima del anterior`)
   }

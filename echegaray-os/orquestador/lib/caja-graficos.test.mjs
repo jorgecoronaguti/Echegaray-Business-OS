@@ -435,12 +435,17 @@ test('NO ACHICA NUNCA: si la hoja ya es más alta, el request pide el alto que y
 
 import { anclaDeGraficos, filaFinalDeGraficos, AIRE_TRAS_PORTADA, finDeContenido } from './caja-graficos.mjs'
 
-test('con la portada de hoy nada se mueve: seis filas de aire, ancla en la 22', () => {
-  // La portada real termina hoy en la fila 16 —los bloques 3 y 4 están vacíos— y el primer gráfico
-  // se dibuja en la 23. El rediseño no puede mover lo que hoy está bien.
-  assert.equal(anclaDeGraficos(16), 22)
-  assert.equal(anclaDeGraficos(16), FILA_ANCLA)
-  assert.equal(AIRE_TRAS_PORTADA, 6)
+test('con la portada de hoy nada se mueve: el gráfico arranca en la 23 de siempre', () => {
+  // ═══ EL NÚMERO SALE DEL ARCHIVO, Y LA PRIMERA VERSIÓN LO SACÓ DE LA PANTALLA (07/09/2026) ═══
+  //
+  // Se había contado el aire desde la última fila que SE VE escrita (la 16) y puesto seis. Pero la
+  // grilla que el generador emite llega a la 20 —el propio script lo imprime: «QUEDÓ ESCRITO en 20
+  // filas»—, así que seis más veinte mandó el primer gráfico a la 27 y dejó el hueco que el dueño
+  // reportó: «no se ve gráfico». Con DOS, la portada termina en la 20 y el gráfico arranca en la 23,
+  // que es donde estuvo siempre.
+  assert.equal(AIRE_TRAS_PORTADA, 2)
+  assert.equal(anclaDeGraficos(20), FILA_ANCLA, 'la portada de hoy deja el gráfico donde estaba')
+  assert.equal(anclaDeGraficos(20) + 1, 23, 'la fila 23, contada como la ve el lector')
 })
 
 test('EL DEFECTO: con alertas, la portada crece y el gráfico ya no la pisa', () => {
@@ -451,7 +456,7 @@ test('EL DEFECTO: con alertas, la portada crece y el gráfico ya no la pisa', ()
   // fila 23 y el primer gráfico, clavado en la 22, se dibujaba ENCIMA de la última alerta.
   //
   // Una alerta crítica tapada por un gráfico es exactamente el aviso que no se lee.
-  assert.equal(anclaDeGraficos(23), 29, 'con la portada en 23 el gráfico tiene que bajar')
+  assert.equal(anclaDeGraficos(23), 25, 'con la portada en 23 el gráfico tiene que bajar')
   assert.ok(anclaDeGraficos(23) > 23, 'el gráfico NO puede empezar antes de que termine la portada')
   for (const fin of [17, 20, 25, 40]) {
     assert.ok(anclaDeGraficos(fin) >= fin + AIRE_TRAS_PORTADA - (fin + AIRE_TRAS_PORTADA < FILA_ANCLA ? FILA_ANCLA - fin - AIRE_TRAS_PORTADA : 0),
@@ -478,17 +483,16 @@ test('sin dato de portada cae en la constante, no en NaN', () => {
 test('el alto de la hoja BAJA con el ancla: sin filas debajo, el editor colapsa el último gráfico', () => {
   // El ancla correcta no alcanza — está medido en este repo: hacen falta filas POR DEBAJO del último
   // bloque. Si la portada empuja los gráficos y la hoja no crece, el de abajo queda contra el borde.
-  assert.equal(filaFinalDeGraficos(16), FILA_FINAL_DE_GRAFICOS)
-  assert.equal(filaFinalDeGraficos(23), FILA_FINAL_DE_GRAFICOS + 7)
+  assert.equal(filaFinalDeGraficos(20), FILA_FINAL_DE_GRAFICOS, 'con la portada de hoy la hoja no cambia')
+  assert.equal(filaFinalDeGraficos(23), FILA_FINAL_DE_GRAFICOS + 3, 'con tres filas más de portada, tres más de hoja')
   assert.ok(filaFinalDeGraficos(23) > anclaDeGraficos(23), 'la hoja tiene que pasar del ancla del último gráfico')
 })
 
 test('el ancla sigue al CONTENIDO, no al rango reservado — el defecto del 07/09', () => {
-  // La portada real termina en la 16 y los dos bloques de avisos están vacíos. Usando el fin del
-  // rango (21) los gráficos se iban a la 27 y quedaban diez filas en blanco: la pestaña se abría sin
-  // un solo gráfico a la vista.
-  const portada = Array.from({ length: 21 }, (_, i) => (i < 16 ? ['algo'] : ['']))
-  assert.equal(finDeContenido(portada), 16)
+  // La grilla emite hasta la 20 y el rango reservado para avisos llega más abajo. Contando el rango,
+  // los gráficos se iban aún más lejos y la pestaña se abría sin un solo gráfico a la vista.
+  const portada = Array.from({ length: 26 }, (_, i) => (i < 20 ? ['algo'] : ['']))
+  assert.equal(finDeContenido(portada), 20)
   assert.equal(anclaDeGraficos(finDeContenido(portada)), FILA_ANCLA, 'vuelve al ancla de siempre')
 })
 

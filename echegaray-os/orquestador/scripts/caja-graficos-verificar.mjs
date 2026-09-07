@@ -20,6 +20,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import {
   leerLayoutDeGraficos, verificarLayoutGraficos, layoutEsperado, anclasDeCharts, FILA_FINAL_DE_GRAFICOS,
+  finDeContenido, FILA_ANCLA,
 } from '../lib/caja-graficos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -29,12 +30,17 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig() })
   const tab = hallarPestana(await google.getSheetMeta(ID), PESTAÑA).title
   const { rows, charts } = await leerLayoutDeGraficos(google, ID, tab)
+  // LA PORTADA SE LEE DE LA HOJA, no se supone. Sin esto el control clavaba el ancla en `FILA_ANCLA`
+  // mientras el generador la derivaba del alto real: dos definiciones de lo mismo, y el veredicto
+  // «ancla en la 27 y le corresponde la 23» no decía cuál de las dos tenía razón.
+  const portada = await google.readSheetValues(ID, `${tab}!A1:R${FILA_FINAL_DE_GRAFICOS}`).catch(() => [])
+  const finPortada = finDeContenido(portada.slice(0, FILA_ANCLA))
 
   console.log(`${tab} — ${rows} fila(s) de grilla (el layout de gráficos necesita ${FILA_FINAL_DE_GRAFICOS + 1})`)
   console.log(`${charts.length} gráfico(s) en la pestaña:`)
   // Se imprime SIEMPRE lo leído, esté bien o mal: un veredicto sin los números que lo produjeron
   // obliga a volver a mirar el archivo para poder discutirlo.
-  const esperados = layoutEsperado()
+  const esperados = layoutEsperado(undefined, finPortada)
   for (const c of anclasDeCharts(charts)) {
     const e = esperados.find((x) => x.titulo === c.titulo)
     const donde = `fila ${c.fila + 1} · x=${c.x}px`
@@ -42,7 +48,7 @@ async function main() {
     console.log(`  ${c.titulo} → ${donde} ${debe}`)
   }
 
-  const { ok, problemas } = verificarLayoutGraficos({ rows, charts })
+  const { ok, problemas } = verificarLayoutGraficos({ rows, charts, finPortada })
   if (ok) return console.log('\n✓ el layout de gráficos de CAJA está como corresponde')
   console.log('')
   for (const p of problemas) console.log(`✗ ${p}`)
