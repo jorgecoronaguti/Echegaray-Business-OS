@@ -5,6 +5,7 @@ import { Aviso, Boton, CAMPO, Campo, ErrorCampo } from '@/shared/components/ds'
 import { V } from '@/shared/components/v2/patron'
 import { hs, leerHoras } from '../services/jornadaPorObra'
 import { corregirJornada } from '../services/jornadaPorObraActions'
+import { motivosDeDiaNoTrabajado } from '../services/motivoDeAusencia'
 import type { CeldaObra, FilaSemanaObra } from '../services/semanaPorObra'
 
 // EL ADMINISTRADOR CORRIGE TODO — el día de una persona: su obra, sus horas, si no vino, o sacarlo.
@@ -50,7 +51,9 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
   const [asignar, setAsignar] = useState(false)
   const [pedirAsignacion, setPedirAsignacion] = useState(false)
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
+  const [motivo, setMotivo] = useState<string | null>(null)
   const [pendiente, arrancar] = useTransition()
+  const motivos = motivosDeDiaNoTrabajado()
 
   // AL CAMBIAR DE DÍA, EL FORMULARIO SE RELLENA CON LO DE ESE DÍA. Sin esto, elegir el jueves y
   // guardar escribiría en el jueves las horas que se estaban viendo del lunes.
@@ -79,6 +82,9 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
         obra_destino: obraDestino,
         estado,
         horas: estado === 'ausente' ? (jornada > 0 ? jornada : 1) : horas,
+        // EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA. Vacaciones y parte médico son licencia;
+        // faltar sin avisar, ausencia. Ninguna suma horas trabajadas.
+        motivo: estado === 'ausente' ? motivo : null,
         asignar,
       })
       if (r.ok) {
@@ -144,6 +150,19 @@ export function PanelCorreccionJornada({ fila, dias, etiquetas, obras, jornada, 
           </Campo>
         )}
         {estado === 'presente' && error && <ErrorCampo>{error}</ErrorCampo>}
+        {estado === 'ausente' && (
+          <Campo rotulo="Por qué no vino" ayuda="Vacaciones, parte médico y ART quedan como licencia.">
+            <select value={motivo ?? ''} onChange={(e) => setMotivo(e.target.value || null)}
+              className={CAMPO} data-testid="correccion-motivo">
+              <option value="">Sin declarar todavía</option>
+              {motivos.map((m) => (
+                <option key={m.clave} value={m.clave}>
+                  {m.etiqueta}{m.tipo === 'licencia' ? ' · licencia' : ''}
+                </option>
+              ))}
+            </select>
+          </Campo>
+        )}
         {estado === 'ausente' && (
           <p style={{ fontSize: '11.5px', color: V.tenue }}>
             {/* SE GUARDA CON HORAS Y NO CON CERO: `registros_hh` exige horas > 0, y

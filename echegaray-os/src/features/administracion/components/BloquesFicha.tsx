@@ -14,7 +14,7 @@ import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/s
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import type { TotalHH } from '../services/hhPersonaService'
-import { porMes, porSemana, trazaDe } from '../services/cronologiaHH'
+import { porMes, porSemana, tipoYMotivo, trazaDe } from '../services/cronologiaHH'
 import { DOCUMENTO_ESTADO, estadoDocumento, solicitadosDelLegajo } from '../services/fichaPersona'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
@@ -205,7 +205,9 @@ export function BloqueHoras({
                   <Td num>{r.fecha ? fecha(r.fecha) : `semana del ${r.fecha_inicio_semana}`}</Td>
                   <Td>{r.obra_nombre ?? <Nulo>sin obra</Nulo>}</Td>
                   <Td>{r.actividad_nombre ?? <Nulo>toda la obra</Nulo>}</Td>
-                  <Td>{r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}</Td>
+                  {/* «Licencia · Vacaciones», no «Licencia» a secas: el motivo es lo que hace que
+                      el historial sirva para contestar por qué faltó, que es la pregunta real. */}
+                  <Td>{tipoYMotivo(r) ?? ''}</Td>
                   <Td>{trazaDe(r) ?? <Nulo>sin traza</Nulo>}</Td>
                   <Td num fuerte>{hh(r.horas)}</Td>
                 </Tr>

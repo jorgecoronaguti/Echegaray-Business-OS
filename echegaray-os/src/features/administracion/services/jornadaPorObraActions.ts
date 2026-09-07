@@ -22,8 +22,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { tipoDeMotivo } from './motivoDeAusencia'
 import {
-  acuseDe, cambiaDeObra, correccionSchema, envioSchema, planDeGuardado, traducirEscritura,
+  acuseDe, cambiaDeObra, correccionSchema, envioSchema, motivoDe, planDeGuardado, traducirEscritura,
   type EscritoEnLaBase, type FilaExistente, type MarcaDeJornada, type PlanDeJornada,
 } from './planDeJornada'
 
@@ -69,7 +70,7 @@ export async function guardarJornada(entrada: unknown): Promise<ResultadoJornada
   // `improductiva`, el plan no puede distinguir la jornada del día de una imputación al plan de
   // obra y las trata como intercambiables. Sin `.order()`, el orden lo elige PostgREST.
   const previos = await supabase.from('registros_hh')
-    .select('id, persona_id, horas, tipo_hora, actividad_id, improductiva')
+    .select('id, persona_id, horas, tipo_hora, actividad_id, improductiva, notas')
     .eq('obra_canonica_id', obraId).eq('fecha', fecha)
     .in('persona_id', marcas.map((m) => m.persona_id))
     .order('id', { ascending: true })
@@ -124,7 +125,12 @@ async function escribirPlan(
       // es `not null` y un insert sin ella fallaría si el trigger se cayera.
       fecha_inicio_semana: fecha,
       horas: m.horas,
-      tipo_hora: m.estado === 'ausente' ? 'ausencia' : 'normal',
+      // EL TIPO LO DECIDE EL MOTIVO (`tipoQuePide` en `planDeJornada.ts`): vacaciones y parte
+      // médico son LICENCIA, faltar sin avisar es AUSENCIA. Ninguna de las dos suma trabajo.
+      tipo_hora: tipoDeLaMarca(m),
+      // EL MOTIVO VA EN `notas`, que es la columna que ya existe. No se agregó ninguna: la clave
+      // es estable (viene del catálogo) y por eso el ausentismo se puede agrupar por causa.
+      notas: motivoDe(m),
       fuente_legacy: 'web:asistencia-obra',
     }))).select('id')
     if (error) return { escrito: null, error: traducirEscritura(error) }
@@ -135,7 +141,7 @@ async function escribirPlan(
     // EL TIPO VIAJA EN EL UPDATE. Antes sólo iba `horas`, así que corregir una jornada a «no vino»
     // dejaba la fila en `normal` con las horas de la ausencia: el día contaba como trabajado.
     const { data, error } = await supabase.from('registros_hh')
-      .update({ horas: marca.horas, tipo_hora: tipo })
+      .update({ horas: marca.horas, tipo_hora: tipo, notas: motivoDe(marca) })
       .eq('id', id).eq('obra_canonica_id', obraId).select('id')
     if (error) return { escrito: null, error: traducirEscritura(error) }
     escrito.actualizadas += (data ?? []).length
@@ -199,7 +205,7 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   }
 
   const previos = await supabase.from('registros_hh')
-    .select('id, persona_id, horas, tipo_hora, obra_canonica_id, actividad_id, improductiva')
+    .select('id, persona_id, horas, tipo_hora, obra_canonica_id, actividad_id, improductiva, notas')
     .eq('persona_id', c.persona_id).eq('fecha', c.fecha)
     .in('obra_canonica_id', [c.obra_origen, c.obra_destino].filter((x): x is string => Boolean(x)))
     .order('id', { ascending: true })
@@ -217,14 +223,15 @@ export async function corregirJornada(entrada: unknown): Promise<ResultadoCorrec
   }
 
   const marca: MarcaDeJornada = c.estado === 'ausente'
-    ? { persona_id: c.persona_id, estado: 'ausente', horas: c.horas ?? 1 }
+    ? { persona_id: c.persona_id, estado: 'ausente', horas: c.horas ?? 1, motivo: c.motivo }
     : { persona_id: c.persona_id, estado: 'presente', horas: c.horas as number }
 
   // INSERTAR PRIMERO, BORRAR DESPUÉS (ver `ORDEN_DEL_MOVIMIENTO`): un duplicado visible le gana a
   // una pérdida silenciosa, y PostgREST no ofrece la transacción que haría innecesaria la elección.
   const enDestino = filas.filter((f) => f.obra_canonica_id === c.obra_destino)
+  // ADMINISTRACIÓN SÍ CORRIGE UNA LICENCIA: es quien la autorizó. Desde `/campo` no.
   const escrito = await escribirPlan(supabase, c.obra_destino, c.fecha,
-    planDeGuardado([marca], enDestino))
+    planDeGuardado([marca], enDestino, { administraLicencias: true }))
   if (escrito.error) return { ok: false, error: escrito.error }
 
   if (cambiaDeObra(c) && enOrigen.length > 0) {
@@ -286,3 +293,8 @@ async function personasSinAsignacion(
     .map((a) => a.persona_id))
   return personaIds.filter((id) => !vigentes.has(id))
 }
+
+/** El `tipo_hora` que le toca a una marca. Duplicado mínimo de `tipoQuePide` porque aquélla es
+ *  privada del plan; la regla —el motivo decide— vive una sola vez, en `tipoDeMotivo`. */
+const tipoDeLaMarca = (m: MarcaDeJornada): string =>
+  m.estado === 'ausente' ? tipoDeMotivo(m.motivo) : 'normal'

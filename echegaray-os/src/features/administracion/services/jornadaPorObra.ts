@@ -194,6 +194,10 @@ export interface CasillaJornada {
   texto: string
   /** `true` sólo si alguien tocó la «A». */
   ausente: boolean
+  /** POR QUÉ no vino. Clave del catálogo, elegida en un SEGUNDO toque: marcar que alguien faltó y
+   *  no saber todavía por qué es honesto, y exigir la causa para poder guardar haría que se elija
+   *  cualquiera con tal de cerrar el formulario. */
+  motivo?: string | null
 }
 
 export type VistaCasilla = {
@@ -201,6 +205,7 @@ export type VistaCasilla = {
   estado: EstadoJornada
   horas: number | null
   error: string | null
+  motivo: string | null
 }
 
 /**
@@ -215,7 +220,7 @@ export function casillasIniciales(filas: FilaJornada[]): Record<string, CasillaJ
   const m: Record<string, CasillaJornada> = {}
   for (const f of filas) {
     m[f.persona.persona_id] = f.estado === 'ausente'
-      ? { texto: '', ausente: true }
+      ? { texto: '', ausente: true, motivo: f.observacion }
       : { texto: f.estado === 'presente' && f.horas !== null ? hs(f.horas) : '', ausente: false }
   }
   return m
@@ -223,13 +228,16 @@ export function casillasIniciales(filas: FilaJornada[]): Record<string, CasillaJ
 
 /** El estado de una casilla, leído de lo que hay escrito en ella. */
 export function estadoDeCasilla(persona_id: string, c: CasillaJornada | undefined): VistaCasilla {
-  if (c?.ausente) return { persona_id, estado: 'ausente', horas: null, error: null }
+  if (c?.ausente) {
+    return { persona_id, estado: 'ausente', horas: null, error: null, motivo: c.motivo ?? null }
+  }
   const { horas, error } = leerHoras(c?.texto ?? '')
   return {
     persona_id,
     estado: horas === null ? 'sin_marcar' : 'presente',
     horas,
     error,
+    motivo: null,
   }
 }
 
@@ -254,14 +262,18 @@ export function ponerLaJornada(
  */
 export function loQueViaja(
   vista: VistaCasilla[], jornada: number,
-): { persona_id: string; estado: 'presente' | 'ausente'; horas: number }[] {
-  const salida: { persona_id: string; estado: 'presente' | 'ausente'; horas: number }[] = []
+): { persona_id: string; estado: 'presente' | 'ausente'; horas: number; motivo?: string | null }[] {
+  const salida: {
+    persona_id: string; estado: 'presente' | 'ausente'; horas: number; motivo?: string | null
+  }[] = []
   for (const v of vista) {
     if (v.error) continue
     if (v.estado === 'ausente') {
       // SIN JORNADA PACTADA LA AUSENCIA NO SE PUEDE MEDIR, y `registros_hh` exige horas > 0. No se
       // descarta en silencio: `ausenciasSinJornada` la nombra para que la pantalla lo diga.
-      if (jornada > 0) salida.push({ persona_id: v.persona_id, estado: 'ausente', horas: jornada })
+      if (jornada > 0) {
+        salida.push({ persona_id: v.persona_id, estado: 'ausente', horas: jornada, motivo: v.motivo })
+      }
       continue
     }
     if (v.estado === 'presente' && v.horas !== null) {

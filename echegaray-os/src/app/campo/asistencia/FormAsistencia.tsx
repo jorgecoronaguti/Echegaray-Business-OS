@@ -8,6 +8,7 @@ import {
 } from '@/features/administracion/services/jornadaPorObra'
 import type { CasillaJornada, FilaJornada } from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
+import { motivosDeDiaNoTrabajado } from '@/features/administracion/services/motivoDeAusencia'
 
 // CARGAR ASISTENCIA — una obra, un día, las horas de cada uno.
 //
@@ -43,6 +44,9 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
   const [casillas, setCasillas] = useState<Record<string, CasillaJornada>>(() => casillasIniciales(filas))
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
   const [pendiente, arrancar] = useTransition()
+  // El catálogo es el mismo que usa el bot de Mattermost desde julio. No es una lista de esta
+  // pantalla: si fuera, discreparía con la del bot el día que alguien agregue un motivo.
+  const motivos = useMemo(() => motivosDeDiaNoTrabajado(), [])
 
   const vista = useMemo(
     () => filas.map((f) => estadoDeCasilla(f.persona.persona_id, casillas[f.persona.persona_id])),
@@ -173,6 +177,25 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
                 </button>
               </div>
               {v?.error && <ErrorCampo>{v.error}</ErrorCampo>}
+              {/* EL SEGUNDO TOQUE: por qué no vino. Aparece SÓLO cuando ya se marcó la ausencia y
+                  no es obligatorio — marcar que alguien faltó sin saber todavía por qué es
+                  honesto; exigir la causa para poder guardar hace que se elija cualquiera. */}
+              {ausente && (
+                <select
+                  aria-label={`Por qué no vino ${fila.persona.nombre}`}
+                  data-testid="motivo"
+                  value={casillas[id]?.motivo ?? ''}
+                  onChange={(e) => cambiar(id, { motivo: e.target.value || null })}
+                  className="mt-2 h-[40px] w-full rounded-[6px] border border-line px-2 text-[13px] text-ink"
+                >
+                  <option value="">¿Por qué no vino? (se puede cargar después)</option>
+                  {motivos.map((m) => (
+                    <option key={m.clave} value={m.clave}>
+                      {m.etiqueta}{m.tipo === 'licencia' ? ' · licencia' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </li>
           )
         })}

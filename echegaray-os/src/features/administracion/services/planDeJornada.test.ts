@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ORDEN_DEL_MOVIMIENTO, acuseDe, cambiaDeObra, correccionSchema, envioSchema, planDeGuardado,
-  traducirEscritura,
+  ORDEN_DEL_MOVIMIENTO, acuseDe, cambiaDeObra, correccionSchema, envioSchema, motivoDe,
+  planDeGuardado, traducirEscritura,
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
@@ -19,8 +19,8 @@ const B = '22222222-2222-4222-8222-222222222222'
 
 const presente = (persona_id: string, horas: number): MarcaDeJornada =>
   ({ persona_id, estado: 'presente', horas })
-const ausente = (persona_id: string, horas = 8.8): MarcaDeJornada =>
-  ({ persona_id, estado: 'ausente', horas })
+const ausente = (persona_id: string, horas = 8.8, motivo: string | null = null): MarcaDeJornada =>
+  ({ persona_id, estado: 'ausente', horas, motivo })
 const fila = (
   id: string, persona_id: string, horas: number, tipo_hora = 'normal',
   extra: Partial<FilaExistente> = {},
@@ -94,10 +94,11 @@ test('UNA IMPUTACIÓN A UNA ACTIVIDAD DEL PLAN NO ES LA JORNADA DEL DÍA', () =>
   assert.match(plan.intactas[0].motivo, /actividad del plan/)
 })
 
-test('UNA LICENCIA CARGADA POR ADMINISTRACIÓN NO SE BORRA NI SE PISA', () => {
+test('EL JEFE DE OBRA NO PISA UNA LICENCIA QUE AUTORIZÓ ADMINISTRACIÓN', () => {
   // El defecto que atrapa: `esTrabajada` agrupaba `ausencia` y `licencia`. Marcar presente sobre
-  // una licencia la BORRABA, y marcar ausente con las mismas horas decía «no había nada que
-  // cambiar» y dejaba la licencia en pie — dos formas de mentir sobre el mismo día.
+  // una licencia la BORRABA —se perdía el respaldo de unas vacaciones o un parte médico— y marcar
+  // ausente con las mismas horas decía «no había nada que cambiar» y la dejaba en pie: dos formas
+  // de mentir sobre el mismo día, desde un teléfono a 300 km de quien la autorizó.
   const conLicencia = [fila('r1', A, 8.8, 'licencia')]
 
   const trabajo = planDeGuardado([presente(A, 8.8)], conLicencia)
@@ -109,6 +110,17 @@ test('UNA LICENCIA CARGADA POR ADMINISTRACIÓN NO SE BORRA NI SE PISA', () => {
   assert.deepEqual(falta.borrar, [])
   assert.equal(falta.insertar.length, 1, 'la ausencia se registra aparte, no se confunde con la licencia')
   assert.deepEqual(falta.intactas.map((i) => i.id), ['r1'])
+  assert.match(falta.intactas[0].motivo, /Administración/)
+})
+
+test('ADMINISTRACIÓN SÍ CORRIGE UNA LICENCIA: es quien la autorizó', () => {
+  // La otra mitad del pedido del dueño: «que todo pueda ser modificado por el administrador». Si la
+  // licencia fuera intocable para todos, un parte médico mal cargado no se podría arreglar nunca.
+  const conLicencia = [fila('r1', A, 8.8, 'licencia', { notas: 'vacaciones' })]
+  const plan = planDeGuardado([presente(A, 8.8)], conLicencia, { administraLicencias: true })
+  assert.deepEqual(plan.borrar, ['r1'], 'la licencia se reemplaza por el día trabajado')
+  assert.equal(plan.insertar.length, 1)
+  assert.deepEqual(plan.intactas, [])
 })
 
 test('UNA HORA IMPRODUCTIVA CON SU CAUSA QUEDA INTACTA', () => {
@@ -250,4 +262,80 @@ test('EL ERROR DE POSTGRES NO LLEGA CRUDO AL TELÉFONO DEL JEFE', () => {
   const cerrado = 'El período 08/2026 está cerrado: no se pueden cargar, modificar ni borrar horas '
     + 'de ese mes. Reabrilo si hay que corregirlo.'
   assert.equal(traducirEscritura({ code: '23514', message: cerrado }), cerrado)
+})
+
+// ── EL MOTIVO: «ausencias, parte médico, etc» (pedido del dueño, 07/09/2026) ───────────────────
+
+test('EL MOTIVO DECIDE SI EL DÍA ES AUSENCIA O LICENCIA', () => {
+  // Sin esto, vacaciones y «faltó sin avisar» se guardan como el mismo cero: la diferencia entre un
+  // derecho reconocido y una falta desaparece, y es justo la que usa quien liquida.
+  const conParteMedico = planDeGuardado([ausente(A, 8.8, 'enfermedad')], [])
+  assert.equal(conParteMedico.insertar.length, 1)
+
+  // Sobre una fila ya cargada se ve el tipo que le va a tocar. Va con `administraLicencias`
+  // porque corregir una licencia es de Administración: el jefe de obra no la toca.
+  const corrige = planDeGuardado(
+    [ausente(A, 8.8, 'vacaciones')], [fila('r1', A, 8.8, 'licencia')],
+    { administraLicencias: true })
+  assert.deepEqual(corrige.actualizar.map((x) => x.tipo), ['licencia'])
+  assert.deepEqual(corrige.borrar, [])
+
+  const falta = planDeGuardado([ausente(A, 8.8, 'falta')], [fila('r1', A, 8.8, 'ausencia')])
+  assert.deepEqual(falta.actualizar.map((x) => x.tipo), ['ausencia'])
+})
+
+test('CAMBIAR DE FALTA A PARTE MÉDICO CAMBIA LA FILA aunque las horas sean las mismas', () => {
+  // El defecto que atrapa: comparar sólo las horas. Corregir «faltó sin avisar» por «enfermedad» no
+  // mueve ningún número, así que el plan decía «no había nada que cambiar» y dejaba la falta — con
+  // el parte médico en la mano.
+  const plan = planDeGuardado(
+    [ausente(A, 8.8, 'enfermedad')],
+    [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })],
+  )
+  // La fila pasa de `ausencia` a `licencia`: no es un update, es reemplazo — son tipos distintos.
+  assert.deepEqual(plan.borrar, ['r1'])
+  assert.equal(plan.insertar.length, 1)
+})
+
+test('CORREGIR EL MOTIVO DENTRO DEL MISMO TIPO SÍ ES UN UPDATE', () => {
+  const plan = planDeGuardado(
+    [ausente(A, 8.8, 'falta_con_aviso')],
+    [fila('r1', A, 8.8, 'ausencia', { notas: 'falta' })],
+  )
+  assert.deepEqual(plan.actualizar.map((x) => x.id), ['r1'])
+  assert.deepEqual(plan.borrar, [])
+})
+
+test('EL MISMO MOTIVO Y LAS MISMAS HORAS NO ESCRIBEN DE NUEVO', () => {
+  const plan = planDeGuardado(
+    [ausente(A, 8.8, 'vacaciones')],
+    [fila('r1', A, 8.8, 'licencia', { notas: 'vacaciones' })],
+    { administraLicencias: true },
+  )
+  assert.deepEqual(plan, { insertar: [], actualizar: [], borrar: [], intactas: [] })
+})
+
+test('UN MOTIVO QUE NO ESTÁ EN EL CATÁLOGO NO ENTRA', () => {
+  // `notas` es texto libre. Sin la validación, «se fue nomás» quedaría guardado como si fuera un
+  // motivo y el ausentismo por causa dejaría de poder agruparse.
+  assert.equal(envioSchema.safeParse({
+    obra_id: 'estrella', fecha: '2026-09-07',
+    marcas: [{ persona_id: A, estado: 'ausente', horas: 8.8, motivo: 'se fue nomás' }],
+  }).success, false)
+  assert.equal(envioSchema.safeParse({
+    obra_id: 'estrella', fecha: '2026-09-07',
+    marcas: [{ persona_id: A, estado: 'ausente', horas: 8.8, motivo: 'enfermedad' }],
+  }).success, true)
+  // SIN MOTIVO SE PUEDE: marcar que alguien no vino sin saber todavía por qué es honesto.
+  // Inventarle una causa para que el formulario cierre, no.
+  assert.equal(envioSchema.safeParse({
+    obra_id: 'estrella', fecha: '2026-09-07',
+    marcas: [{ persona_id: A, estado: 'ausente', horas: 8.8, motivo: null }],
+  }).success, true)
+})
+
+test('UN DÍA TRABAJADO NO LLEVA MOTIVO', () => {
+  assert.equal(motivoDe(presente(A, 8)), null)
+  assert.equal(motivoDe(ausente(A, 8.8, 'enfermedad')), 'enfermedad')
+  assert.equal(motivoDe(ausente(A, 8.8, null)), null)
 })

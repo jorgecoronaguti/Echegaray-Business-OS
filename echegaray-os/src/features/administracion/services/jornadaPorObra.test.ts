@@ -177,7 +177,9 @@ test('SÓLO VIAJA LO CONFIRMADO: un número escrito o una A tocada', () => {
   ]
   assert.deepEqual(loQueViaja(vista, JORNADA), [
     { persona_id: 'a', estado: 'presente', horas: 5 },
-    { persona_id: 'c', estado: 'ausente', horas: 8.8 },
+    // EL MOTIVO VIAJA CON LA AUSENCIA. `null` = todavía no se declaró, que es un estado legítimo:
+    // marcar que alguien no vino sin saber por qué es honesto.
+    { persona_id: 'c', estado: 'ausente', horas: 8.8, motivo: null },
   ])
 })
 
@@ -230,6 +232,22 @@ test('REABRIR A UN AUSENTE LO MUESTRA AUSENTE, con la casilla vacía', () => {
     personas: PLANTEL, registros: [reg('a', 8.8, 'ausencia')], jornada: JORNADA,
   })
   const casillas = casillasIniciales(filas)
-  assert.deepEqual(casillas['a'], { texto: '', ausente: true })
+  // El motivo cargado vuelve con la casilla: reabrir un parte médico tiene que mostrar el parte
+  // médico, no un desplegable en blanco que invite a elegir otra cosa.
+  assert.deepEqual(casillas['a'], { texto: '', ausente: true, motivo: null })
   assert.equal(estadoDeCasilla('a', casillas['a']).estado, 'ausente')
+})
+
+test('EL MOTIVO DEL AUSENTE VIAJA, y sin motivo también se puede guardar', () => {
+  // El pedido del dueño: «parte médico, etc». Y su contracara: NO se exige. Obligar a elegir la
+  // causa para poder guardar hace que se elija cualquiera con tal de cerrar el formulario, y una
+  // causa inventada es peor que ninguna.
+  const conMotivo = [estadoDeCasilla('a', { texto: '', ausente: true, motivo: 'enfermedad' })]
+  assert.deepEqual(loQueViaja(conMotivo, JORNADA), [
+    { persona_id: 'a', estado: 'ausente', horas: 8.8, motivo: 'enfermedad' },
+  ])
+  const sinMotivo = [estadoDeCasilla('a', { texto: '', ausente: true })]
+  assert.deepEqual(loQueViaja(sinMotivo, JORNADA), [
+    { persona_id: 'a', estado: 'ausente', horas: 8.8, motivo: null },
+  ])
 })

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { abarca, porMes, porSemana, rotuloDeMes, rotuloDeSemana, trazaDe } from './cronologiaHH.ts'
+import {
+  abarca, porMes, porSemana, rotuloDeMes, rotuloDeSemana, tipoYMotivo, trazaDe,
+} from './cronologiaHH.ts'
 import { seCorrigio } from './hhPersonaService.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
@@ -108,4 +110,29 @@ test('LA TRAZA DICE QUIÉN Y CUÁNDO, y calla cuando no lo sabe', () => {
 test('LOS RÓTULOS SE LEEN EN CASTELLANO', () => {
   assert.equal(rotuloDeSemana('2026-09-07'), 'semana del 7 de septiembre')
   assert.equal(rotuloDeMes('2026-09'), 'septiembre 2026')
+})
+
+test('EL HISTORIAL DICE POR QUÉ FALTÓ, no sólo que faltó', () => {
+  // El pedido del dueño: «marcar ausencias, parte médico, etc». Un historial que dice «Ausencia» en
+  // los cuatro casos —faltó, se enfermó, se accidentó, estaba de vacaciones— no contesta la única
+  // pregunta por la que alguien lo abre.
+  assert.equal(tipoYMotivo({ tipo_hora: 'licencia', notas: 'enfermedad' }), 'Licencia · Enfermedad')
+  assert.equal(tipoYMotivo({ tipo_hora: 'licencia', notas: 'vacaciones' }), 'Licencia · Vacaciones')
+  assert.equal(tipoYMotivo({ tipo_hora: 'ausencia', notas: 'falta' }), 'Ausencia · Faltó sin avisar')
+  assert.equal(
+    tipoYMotivo({ tipo_hora: 'licencia', notas: 'accidente' }),
+    'Licencia · Accidente de trabajo (en obra)',
+  )
+})
+
+test('UN DÍA NORMAL NO ESCRIBE NADA EN LA COLUMNA TIPO', () => {
+  // Escribir «Normal» en 250 renglones es ruido que tapa los cuatro que no lo son.
+  assert.equal(tipoYMotivo({ tipo_hora: 'normal', notas: null }), null)
+  assert.equal(tipoYMotivo({ tipo_hora: 'extra_50', notas: null }), 'extra_50')
+})
+
+test('SIN MOTIVO SE DICE EL TIPO SOLO, y una clave muerta no se muestra cruda', () => {
+  // El defecto que atrapa: mostrar `falta_con_aviso` o una clave que ya no está en el catálogo.
+  assert.equal(tipoYMotivo({ tipo_hora: 'ausencia', notas: null }), 'Ausencia')
+  assert.equal(tipoYMotivo({ tipo_hora: 'ausencia', notas: 'motivo_borrado_en_2027' }), 'Ausencia')
 })

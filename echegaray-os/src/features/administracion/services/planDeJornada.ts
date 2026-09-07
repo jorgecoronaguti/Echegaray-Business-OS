@@ -5,6 +5,7 @@
 // prueba sin base y sin sesión, que es lo que hace que el defecto quede atrapado para siempre.
 
 import { z } from 'zod'
+import { esMotivo, tipoDeMotivo } from './motivoDeAusencia.ts'
 
 export const marcaSchema = z.discriminatedUnion('estado', [
   z.object({
@@ -18,6 +19,11 @@ export const marcaSchema = z.discriminatedUnion('estado', [
     estado: z.literal('ausente'),
     /** Las horas que se pierden. Es la jornada de la obra, no un cero: la base exige horas > 0. */
     horas: z.number().positive().max(24),
+    /** POR QUÉ NO VINO. Clave del catálogo `orquestador/lib/asistencia-motivos.mjs`, no texto
+     *  libre: `notas` acepta cualquier cosa y sin una clave estable el ausentismo no se puede
+     *  agrupar por causa, que es para lo que sirve el dato. Opcional: se puede marcar que alguien
+     *  no vino sin saber todavía por qué, y eso es honesto — inventar el motivo no lo sería. */
+    motivo: z.string().trim().refine(esMotivo, 'Ese motivo no está en el catálogo').nullable().default(null),
   }),
 ])
 
@@ -38,6 +44,8 @@ export interface FilaExistente {
    *  escribe siempre `actividad_id = null`. Sin este campo el plan las trataba como intercambiables
    *  y borraba trabajo imputado a una actividad para poner la jornada del día. */
   actividad_id?: string | null
+  /** El motivo guardado. Se compara para saber si la corrección lo cambió. */
+  notas?: string | null
   /** Una hora improductiva lleva su causa y su significado. No se reemplaza a ciegas. */
   improductiva?: boolean | null
 }
@@ -50,10 +58,17 @@ export interface PlanDeJornada {
   intactas: { id: string; motivo: string }[]
 }
 
-export type TipoDeMarca = 'normal' | 'ausencia'
+export type TipoDeMarca = 'normal' | 'ausencia' | 'licencia'
 
-/** Lo que esta pantalla declara: la jornada del día, sin actividad. */
-const tipoQuePide = (m: MarcaDeJornada): TipoDeMarca => (m.estado === 'ausente' ? 'ausencia' : 'normal')
+/**
+ * Qué `tipo_hora` le corresponde a esta marca.
+ *
+ * EL MOTIVO DECIDE SI ES AUSENCIA O LICENCIA, no una casilla aparte. Pedir las dos cosas sería
+ * dejar que alguien guarde «vacaciones» marcado como ausencia y «faltó sin avisar» como licencia:
+ * dos campos que dicen lo mismo siempre terminan diciendo cosas distintas.
+ */
+const tipoQuePide = (m: MarcaDeJornada): TipoDeMarca =>
+  m.estado === 'ausente' ? tipoDeMotivo(m.motivo) : 'normal'
 
 /**
  * ¿Esta fila existente es la que esta pantalla administra?
@@ -68,16 +83,32 @@ const tipoQuePide = (m: MarcaDeJornada): TipoDeMarca => (m.estado === 'ausente' 
  * Con las extras primero en el resultado —y el `select` no tenía `.order()`, así que el orden lo
  * decidía PostgREST— corregir la jornada convertía 8,8 normales en 8,8 extra_50.
  */
-const esDeLaJornada = (e: FilaExistente): boolean =>
-  (e.tipo_hora === 'normal' || e.tipo_hora === 'ausencia')
-  && !e.actividad_id
-  && e.improductiva !== true
+/**
+ * Qué filas administra cada pantalla.
+ *
+ * ═══ LA LICENCIA NO ES DEL JEFE DE OBRA ═══
+ *
+ * Una licencia —parte médico, vacaciones, ART, suspensión— la autoriza Administración con un papel
+ * atrás. Si el jefe pudiera pisarla desde el teléfono, marcar «trabajó» sobre unas vacaciones las
+ * BORRARÍA: se perdería el respaldo de un derecho que alguien reconoció, y el aviso que lo diría
+ * está a 300 km de la obra. Desde `/campo` la licencia queda intacta y el acuse la nombra.
+ *
+ * Administración SÍ la administra: es quien la cargó y quien tiene que poder corregirla —el dueño
+ * pidió justamente eso, «que todo pueda ser modificado por el administrador».
+ */
+const DE_LA_JORNADA: readonly string[] = ['normal', 'ausencia']
+
+const esDeLaJornada = (e: FilaExistente, administra: boolean): boolean =>
+  (DE_LA_JORNADA.includes(e.tipo_hora) || (administra && e.tipo_hora === 'licencia'))
+  && !e.actividad_id && e.improductiva !== true
 
 /** Por qué una fila existente queda intacta. Se dice con el nombre del hecho, no «se salteó». */
 function motivoDeNoTocar(e: FilaExistente): string {
   if (e.actividad_id) return `tiene horas imputadas a una actividad del plan (${e.tipo_hora})`
   if (e.improductiva === true) return 'es una hora improductiva con su causa declarada'
-  if (e.tipo_hora === 'licencia') return 'tiene una licencia cargada por Administración'
+  if (e.tipo_hora === 'licencia') {
+    return 'tiene una licencia que autorizó Administración: se corrige desde ahí, no desde la obra'
+  }
   return `tiene una hora ${e.tipo_hora} cargada aparte`
 }
 
@@ -100,17 +131,23 @@ function motivoDeNoTocar(e: FilaExistente): string {
  *
  * Guardar el día no puede convertir un silencio en una afirmación.
  */
-export function planDeGuardado(marcas: MarcaDeJornada[], existentes: FilaExistente[]): PlanDeJornada {
+export function planDeGuardado(
+  marcas: MarcaDeJornada[],
+  existentes: FilaExistente[],
+  /** `true` sólo desde Administración: habilita corregir una licencia. Ver `esDeLaJornada`. */
+  opciones: { administraLicencias?: boolean } = {},
+): PlanDeJornada {
+  const administra = opciones.administraLicencias === true
   const plan: PlanDeJornada = { insertar: [], actualizar: [], borrar: [], intactas: [] }
   for (const m of marcas) {
     const suyas = [...existentes.filter((e) => e.persona_id === m.persona_id)]
       .sort((a, b) => a.id.localeCompare(b.id))
     const quiero = tipoQuePide(m)
 
-    for (const e of suyas.filter((x) => !esDeLaJornada(x))) {
+    for (const e of suyas.filter((x) => !esDeLaJornada(x, administra))) {
       plan.intactas.push({ id: e.id, motivo: motivoDeNoTocar(e) })
     }
-    const deLaJornada = suyas.filter(esDeLaJornada)
+    const deLaJornada = suyas.filter((x) => esDeLaJornada(x, administra))
     const misma = deLaJornada.find((e) => e.tipo_hora === quiero) ?? null
     // La OTRA fila de la jornada (la contraria: ausencia cuando se declara trabajo, y al revés) sí
     // se borra: un día no puede ser trabajado y faltado a la vez, y las dos las escribe esta misma
@@ -118,7 +155,12 @@ export function planDeGuardado(marcas: MarcaDeJornada[], existentes: FilaExisten
     for (const e of deLaJornada) if (e.id !== misma?.id) plan.borrar.push(e.id)
 
     if (!misma) plan.insertar.push(m)
-    else if (Number(misma.horas) !== m.horas) plan.actualizar.push({ id: misma.id, marca: m, tipo: quiero })
+    // EL MOTIVO CUENTA COMO CAMBIO. Corregir «faltó sin avisar» por «enfermedad» no mueve las
+    // horas, y sin esto el plan decía «no había nada que cambiar» y dejaba el motivo viejo — que
+    // es la diferencia entre una falta y un parte médico.
+    else if (Number(misma.horas) !== m.horas || motivoDe(m) !== (misma.notas ?? null)) {
+      plan.actualizar.push({ id: misma.id, marca: m, tipo: quiero })
+    }
   }
   return plan
 }
@@ -172,6 +214,8 @@ export const correccionSchema = z.object({
   obra_destino: z.string().trim().min(1, 'Elegí la obra'),
   estado: z.enum(['presente', 'ausente', 'borrar']),
   horas: z.number().positive().max(24).nullable().default(null),
+  /** Por qué no vino. Decide si el día queda como `ausencia` o como `licencia`. */
+  motivo: z.string().trim().refine(esMotivo, 'Ese motivo no está en el catálogo').nullable().default(null),
   /** Asignar a la persona a la obra destino en el mismo gesto. Explícito: nunca por defecto. */
   asignar: z.boolean().default(false),
 }).refine((d) => d.estado !== 'presente' || d.horas !== null, {
@@ -230,3 +274,7 @@ export function traducirEscritura(error: { code?: string; message: string }): st
   // 23514 es el CHECK del período cerrado: su mensaje ya está escrito para una persona.
   return error.message
 }
+
+/** El motivo de una marca, o `null` si es un día trabajado. Es lo que va a `registros_hh.notas`. */
+export const motivoDe = (m: MarcaDeJornada): string | null =>
+  m.estado === 'ausente' ? (m.motivo ?? null) : null

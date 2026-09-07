@@ -17,6 +17,7 @@
 // número: esconderlas haría que un mes con cuatro faltas se leyera igual que uno sin ninguna.
 
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import { etiquetaDeMotivo } from './motivoDeAusencia.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 export interface TramoCronologico {
@@ -119,4 +120,17 @@ export function trazaDe(r: ImputacionHH): string | null {
   }
   if (!r.creado_en) return null
   return r.cargo ? `${r.cargo} · ${cuando(r.creado_en)}` : (cuando(r.creado_en) as string)
+}
+
+/**
+ * Lo que se ve en la columna TIPO del historial: «Ausencia · Enfermedad», «Licencia · Vacaciones».
+ *
+ * La etiqueta sale del catálogo, no de `notas` en crudo: si alguien guardó una clave que ya no
+ * existe, se muestra el tipo solo en vez de un texto que nadie puede interpretar.
+ */
+export function tipoYMotivo(r: { tipo_hora: string; notas: string | null }): string | null {
+  if (esTrabajada(r.tipo_hora)) return r.tipo_hora === 'normal' ? null : r.tipo_hora
+  const cabeza = r.tipo_hora === 'licencia' ? 'Licencia' : 'Ausencia'
+  const motivo = etiquetaDeMotivo(r.notas)
+  return motivo ? `${cabeza} · ${motivo}` : cabeza
 }
