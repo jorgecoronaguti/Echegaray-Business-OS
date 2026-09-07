@@ -29,9 +29,16 @@ const NOMBRE_OBRA = `${MARCA_PRUEBA} asistencia por obra`
 /** Deja la obra de prueba ACTIVA con una persona real asignada, y devuelve a quién. */
 async function prepararObraDePrueba(): Promise<string | null> {
   const sb = servicio()
-  const { data: alguien } = await sb.from('obra_asignacion')
-    .select('persona_id').is('hasta', null).limit(1).maybeSingle()
-  const personaId = (alguien as { persona_id: string } | null)?.persona_id ?? null
+  // LA PERSONA SALE DEL PLANTEL, NO DE UNA ASIGNACIÓN CUALQUIERA. La pantalla descarta a quien no
+  // tiene nombre en `persona_plantel`; con `obra_asignacion ... limit(1)` el escenario caía en una
+  // persona ficticia que dejó otro E2E (`e2e00000-…`), sin legajo, y la pantalla decía «Nadie está
+  // asignado» con la obra creada y la asignación puesta. Medido el 07/09 con una sonda.
+  const alguien = await sb.from('persona_plantel')
+    .select('id').not('nombre_completo', 'is', null).limit(1)
+  // `.maybeSingle()` no: con un error de PostgREST devuelve `data: null` y el test se SALTEA como si
+  // la base estuviera vacía. El error se mira.
+  if (alguien.error) throw new Error(`No pude elegir a alguien del plantel: ${alguien.error.message}`)
+  const personaId = (alguien.data?.[0] as { id: string } | undefined)?.id ?? null
   if (!personaId) return null
   // LA PERSONA ES REAL Y LA OBRA NO. Al revés —persona inventada— habría que crear un legajo, que
   // es un maestro con más consecuencias que una obra de prueba que se borra entera.
@@ -134,9 +141,12 @@ test('02 · la semana por obra abre en Administración → Personal', async ({ p
 // de Administración— está en `qa-shots/asistencia-03-guardado-390.png` y `-04-leido-1440.png`.
 test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => {
   test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
-    'Escribe HH en `prueba-e2e`. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
+    'Escribe HH en su propia obra ZZ-E2E. Se habilita con E2E_ESCRIBE_ASISTENCIA=1.')
   // El único cierre que vale: la escritura probada en su DESTINO, y en la otra pantalla. Que el
   // formulario responda que sí no prueba nada.
+  const persona = await prepararObraDePrueba()
+  if (!persona) test.skip(true, 'La base no tiene a nadie en el plantel.')
+  try {
   await page.setViewportSize({ width: 390, height: 844 })
   await entrarComo(page, ADMIN.email, ADMIN.password)
 
@@ -155,6 +165,9 @@ test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => 
   await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
   await expect(page.locator('[data-testid="celda-hora"][value="7"]').first()).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asistencia-04-leido-1440.png', fullPage: true })
+  } finally {
+    await limpiarObraDePrueba()
+  }
 })
 
 test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', async ({ page }) => {
