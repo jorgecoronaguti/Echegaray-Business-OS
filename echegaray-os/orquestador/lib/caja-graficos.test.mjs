@@ -220,7 +220,13 @@ test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () =
   // el gráfico que se pasa del borde de la hoja y lo sube tapando al de arriba (visto por el dueño:
   // el bloque 3 anclado en 52 de una hoja de 53 se dibujaba en la 39). La hoja llega al FINAL del
   // último bloque.
-  assert.match(src, /FILA_FINAL_DE_GRAFICOS \+ 1/, 'el generador tiene que extender la hoja hasta el FINAL del último bloque, no hasta su ancla')
+  // SEGUNDO CAMBIO DE CONTRATO (06/09/2026), por reclamo del dueño: «hacé que el corredor de la
+  // pestaña CAJA deje de romperte la ubicación de los gráficos». La constante pasó a función porque
+  // el ancla ya no es fija — se deriva del alto real de la portada, que crece con las alertas. La
+  // REGLA no cambió: la hoja sigue teniendo que llegar al FINAL del último bloque y no a su ancla.
+  // Lo que cambió es que ese final ahora se calcula en vez de escribirse.
+  assert.match(src, /filaFinalDeGraficos\(g\.fAviso1\) \+ 1/, 'el generador tiene que extender la hoja hasta el FINAL del último bloque, derivado del alto de la portada')
+  assert.match(src, /anclaDeGraficos\(g\.fAviso1\)/, 'el ancla tiene que salir del alto real de la portada, no de una constante')
   assert.match(src, /gridProperties\.rowCount/, 'y pedirle a la API que cambie el alto, no suponerlo')
 })
 
@@ -417,4 +423,56 @@ test('NO ACHICA NUNCA: si la hoja ya es más alta, el request pide el alto que y
   // Y la prueba de que la guarda SÍ sabe decir que no: el request ingenuo sobre la misma hoja.
   const ingenuo = { updateSheetProperties: { properties: { sheetId: 7, gridProperties: { rowCount: 68 } }, fields: 'gridProperties.rowCount' } }
   assert.equal(clasificarRequest(ingenuo, dims).clase, CLASE.DESTRUCTIVO)
+})
+
+// ── EL ANCLA DEJA DE ESTAR CLAVADA (reclamo del dueño, 06/09/2026) ──────────────────────────────
+
+import { anclaDeGraficos, filaFinalDeGraficos, AIRE_TRAS_PORTADA } from './caja-graficos.mjs'
+
+test('con la portada de hoy nada se mueve: seis filas de aire, ancla en la 22', () => {
+  // La portada real termina hoy en la fila 16 —los bloques 3 y 4 están vacíos— y el primer gráfico
+  // se dibuja en la 23. El rediseño no puede mover lo que hoy está bien.
+  assert.equal(anclaDeGraficos(16), 22)
+  assert.equal(anclaDeGraficos(16), FILA_ANCLA)
+  assert.equal(AIRE_TRAS_PORTADA, 6)
+})
+
+test('EL DEFECTO: con alertas, la portada crece y el gráfico ya no la pisa', () => {
+  // ═══ LO QUE PASABA ═══
+  //
+  // `FILA_ANCLA` era una constante. Los bloques «3 · ALERTAS CRÍTICAS» y «4 · ACCIONES RECOMENDADAS»
+  // crecen con `Math.max(alertas.length, acciones.length)`. Con siete alertas la portada llega a la
+  // fila 23 y el primer gráfico, clavado en la 22, se dibujaba ENCIMA de la última alerta.
+  //
+  // Una alerta crítica tapada por un gráfico es exactamente el aviso que no se lee.
+  assert.equal(anclaDeGraficos(23), 29, 'con la portada en 23 el gráfico tiene que bajar')
+  assert.ok(anclaDeGraficos(23) > 23, 'el gráfico NO puede empezar antes de que termine la portada')
+  for (const fin of [17, 20, 25, 40]) {
+    assert.ok(anclaDeGraficos(fin) >= fin + AIRE_TRAS_PORTADA - (fin + AIRE_TRAS_PORTADA < FILA_ANCLA ? FILA_ANCLA - fin - AIRE_TRAS_PORTADA : 0),
+      `portada hasta ${fin}: el gráfico la pisa`)
+    assert.ok(anclaDeGraficos(fin) > fin, `portada hasta ${fin}: el gráfico arranca antes de que termine`)
+  }
+})
+
+test('si la portada se ACHICA, los gráficos no suben', () => {
+  // Subirlos dejaría un hueco arriba y movería de lugar algo que el dueño ya sabe dónde encontrar,
+  // sin ganar nada. El piso es la posición de siempre.
+  assert.equal(anclaDeGraficos(5), FILA_ANCLA)
+  assert.equal(anclaDeGraficos(1), FILA_ANCLA)
+})
+
+test('sin dato de portada cae en la constante, no en NaN', () => {
+  // El generador podría llamar sin `fAviso1` — un NaN acá manda `rowIndex: NaN` a la API y el lote
+  // entero devuelve 400.
+  for (const malo of [null, undefined, NaN, 'veinte', 0, -3, {}]) {
+    assert.equal(anclaDeGraficos(malo), FILA_ANCLA, `anclaDeGraficos(${String(malo)}) tiene que caer en la constante`)
+  }
+})
+
+test('el alto de la hoja BAJA con el ancla: sin filas debajo, el editor colapsa el último gráfico', () => {
+  // El ancla correcta no alcanza — está medido en este repo: hacen falta filas POR DEBAJO del último
+  // bloque. Si la portada empuja los gráficos y la hoja no crece, el de abajo queda contra el borde.
+  assert.equal(filaFinalDeGraficos(16), FILA_FINAL_DE_GRAFICOS)
+  assert.equal(filaFinalDeGraficos(23), FILA_FINAL_DE_GRAFICOS + 7)
+  assert.ok(filaFinalDeGraficos(23) > anclaDeGraficos(23), 'la hoja tiene que pasar del ancla del último gráfico')
 })
