@@ -56,6 +56,19 @@ export const NO_LAS_USA_A_OCULTAR = {
   'Deuda viva (OS)': 'publica EXACTAMENTE el mismo total que Proveedores ($11.921.115 al 21/08). Cero '
     + 'fórmulas externas la leen. Dos pestañas con el mismo número es justo lo que confunde. Se oculta '
     + 'ahora y su detalle por comprobante se funde dentro de Proveedores cuando ese generador se repare.',
+  // ═══ «Recurrentes» SE DISOLVIÓ DENTRO DE ESTRUCTURA (07/09/2026) ═══
+  //
+  // El dueño pidió una sola pestaña para el gasto propio y el generador `recurrentes-pestana.mjs`
+  // quedó RETIRADO: sus cuatro proveedores viven en el bloque 2 de Estructura con su propio TOTAL.
+  // Pero la pestaña vieja siguió a la vista con los números congelados del último día que corrió,
+  // y él lo dijo textual: *«la unión de las pestañas estructura y recurrentes jamás sucedió»*. Tenía
+  // razón en lo que se ve: dos pestañas con el mismo gasto es exactamente lo que confunde.
+  //
+  // SE OCULTA, NO SE BORRA. Nada la lee (el Cash Flow toma «Servicios recurrentes» de Compras, no de
+  // acá) y ocultar es reversible con `--mostrar`; borrar no. Si en un mes nadie la extrañó, borrarla
+  // es otra decisión, del dueño.
+  Recurrentes: 'su generador está RETIRADO desde el 07/09 y el contenido vive en Estructura · bloque 2. '
+    + 'Lo que muestra es una foto congelada del gasto recurrente; ninguna fórmula del libro la lee.',
   // ═══ «Cheques Recibidos» VUELVE A LA VISTA (21/08/2026) ═══
   //
   // La oculté con un argumento medido —vista de 9 filas, $0 en cartera, cero fórmulas del libro la
