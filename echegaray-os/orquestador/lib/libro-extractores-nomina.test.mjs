@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { deJornalesQuincenas, deOficina, deDireccion } from './libro-extractores-nomina.mjs'
 import { SALE } from './libro-movimientos.mjs'
 import { serialDe } from './libro-extractores-fechas.mjs'
+import { NAT } from './banco-santander.mjs'
 
 const CIERRE_15 = serialDe(2026, 7, 15)
 const PAGO_17 = serialDe(2026, 7, 17)
@@ -272,4 +273,44 @@ test('JORNALES: sin «Pagado el» y sin banco, la quincena sigue siendo compromi
   const ms = deJornalesQuincenas(bloques, 46250, { aviso: () => {} })
   assert.equal(ms.length, 1)
   assert.notEqual(ms[0].estado, 'REAL', 'nadie probó que salió: no se da por pagada')
+})
+
+test('JORNALES: que el banco pruebe el MONTO no valida una fecha imposible (07/09/2026)', () => {
+  // ═══ EL DEFECTO MEDIDO EN EL SHEET VIVO ═══
+  //
+  // La columna «Pagado el» se volvió a desalinear y TRES quincenas seguidas —las que cierran el
+  // 15/07, el 31/07 y el 15/08— decían todas "01/07/2026". `fechaImposible` las detecta bien: no se
+  // paga una quincena antes de terminar de trabajarse. Pero `testigoDeQuincena` devuelve el veredicto
+  // `BANCO` cuando el extracto explica el importe, y `deJornalesQuincenas` sólo descartaba la fecha
+  // cuando el veredicto era `FECHA_IMPOSIBLE`. Resultado: las tres se publicaron REAL el 01/07.
+  //
+  // AGOSTO QUEDÓ EN CERO. $4.634.623 + $2.760.056 = $7.394.679 que se pagan el 03/08 y el 17/08
+  // aparecían en julio, y el Cash Flow Mensual publicaba agosto sin UN SOLO jornal de obra mientras
+  // todos los demás meses del año van de $9,6M a $16,4M.
+  //
+  // QUE EL BANCO EXPLIQUE EL IMPORTE NO DICE NADA DEL CUÁNDO. Son dos afirmaciones distintas y el
+  // débito tiene su propia fecha: usar la de la celda rota porque el monto cerró es tomar una
+  // coincidencia de magnitud como prueba de calendario.
+  const extracto = {
+    corte: serialDe(2026, 8, 20),
+    usados: new Set(),
+    debitos: [{
+      fecha: serialDe(2026, 8, 3), importe: 3336233, fila: 1,
+      concepto: 'Pago de haberes', naturaleza: NAT.sueldos,
+    }],
+  }
+  const reales = {
+    pago: [serialDe(2026, 8, 3)],
+    hasta: [CIERRE_31],
+    pagado: [serialDe(2026, 7, 1)],  // imposible: la quincena cierra el 31/07
+    banco: [3336233],
+    total: [4634623],
+  }
+  const ms = deJornalesQuincenas({ reales }, serialDe(2026, 8, 20), { extracto, aviso: () => {} })
+  const total = ms.reduce((s, m) => s + m.importe, 0)
+  assert.equal(Math.round(total), 4634623, 'la plata no se pierde ni se duplica')
+  for (const m of ms) {
+    assert.notEqual(m.fecha, serialDe(2026, 7, 1), 'la fecha imposible NO puede ser la fecha de caja')
+    assert.ok(m.fecha >= CIERRE_31, `${m.fecha}: ninguna parte se paga antes de que la quincena cierre`)
+  }
 })

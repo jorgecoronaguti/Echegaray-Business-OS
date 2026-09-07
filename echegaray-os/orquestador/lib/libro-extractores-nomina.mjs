@@ -28,7 +28,7 @@ import { respaldoEnLote } from './libro-respaldo-banco.mjs'
 // El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
 // DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
 // la evidencia al dueño). Escrito dos veces, el libro y la tabla podrían decir cosas distintas.
-import { lotesDeHaberes, testigoDeQuincena, VEREDICTO, GRITAN } from './jornales-testigos.mjs'
+import { fechaImposible, lotesDeHaberes, testigoDeQuincena, VEREDICTO, GRITAN } from './jornales-testigos.mjs'
 
 /** La pestaña de la que salen los tres bloques. Es una sola: el bloque distingue, no la pestaña. */
 export const PESTANA_NOMINA = 'Jornales por Quincena'
@@ -192,7 +192,29 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
     const importe = num(real.total[i])
     // La fecha declarada sólo cuenta si PUEDE ser la de este pago: una imposible movía $4,9M de enero
     // a mayo en el Cash Flow Mensual sin dar un error. Descartada, manda la prevista.
-    const declarada = t.veredicto === VEREDICTO.imposible ? null : q.pagado
+    // ═══ QUE EL BANCO PRUEBE EL MONTO NO VALIDA LA FECHA (07/09/2026) ═══
+    //
+    // Esto miraba el VEREDICTO, y el veredicto tiene tres salidas para una fecha imposible: si el
+    // extracto explica el importe, `testigoDeQuincena` devuelve `BANCO` —no `FECHA_IMPOSIBLE`— y se
+    // limita a agregar "ojo con «Pagado el»" al motivo. Entonces `declarada` se quedaba con la fecha
+    // que la aritmética ya había desmentido, y la regla 1 de `fechaDeCajaDeQuincena` ("PAGADO gana
+    // siempre") la mandaba derecho a la caja.
+    //
+    // MEDIDO EN EL SHEET VIVO: la columna «Pagado el» se desalineó y las quincenas que cierran el
+    // 15/07, el 31/07 y el 15/08 decían las tres "01/07/2026". Las tres se publicaron el 01/07, y el
+    // Cash Flow Mensual mostró AGOSTO SIN UN SOLO JORNAL DE OBRA —$0— contra $9,6M a $16,4M en todos
+    // los demás meses del año. Los $4.634.623 que se pagan el 03/08 y los $2.760.056 del 17/08
+    // estaban contados en julio: $7.394.679 en el mes equivocado, y julio inflado por lo mismo.
+    //
+    // Son dos afirmaciones con fuerza distinta y el código las trataba como una: que el débito
+    // explique el importe dice QUE se pagó, no CUÁNDO. Tomar la coincidencia de magnitud como prueba
+    // de calendario es la regla de oro 2 —una inferencia presentada como hecho—.
+    //
+    // SE PREGUNTA POR LA ARITMÉTICA, NO POR EL VEREDICTO. `fechaImposible` es aritmética pura sobre
+    // la propia fila y no depende de ningún testigo: si dice que no puede ser, no puede ser, y la
+    // quincena cae en la rama `marcada` —REAL con la fecha PREVISTA, la única defendible—, que es
+    // exactamente lo que el comentario de esa rama declara desde el 16/08.
+    const declarada = fechaImposible(q) ? null : q.pagado
     // ═══ DESCARTAR LA FECHA NO ES DESCARTAR EL PAGO (16/08/2026, publicado y corregido) ═══
     //
     // La primera versión de esto mandaba una fecha imposible a `null` y ahí terminaba: el renglón
