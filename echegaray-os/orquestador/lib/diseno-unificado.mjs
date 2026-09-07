@@ -232,8 +232,15 @@ export function prosaEnGrilla(filas = [], { tope = TOPE_PROSA, desde = 3 } = {})
  */
 const normal = (s) => String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
-/** ¿La fila tiene contenido sólo en la columna A? Un título ocupa su fila solo. */
+/** ¿La fila tiene contenido sólo en la columna A? */
 const soloEnA = (f) => !(f || []).slice(1).some((c) => String(c ?? '').trim())
+
+/** ¿El nombre del bloque —lo de la izquierda del guion largo— está en mayúsculas? */
+function gritaComoTitulo(titulo) {
+  const nombre = String(titulo ?? '').split(' — ')[0]
+  const letras = nombre.match(/\p{L}/gu) ?? []
+  return letras.length >= 3 && nombre.toLocaleUpperCase('es') === nombre
+}
 
 /**
  * NÚCLEO PURO: los números de bloque de primer nivel, en el orden en que aparecen.
@@ -244,7 +251,18 @@ const soloEnA = (f) => !(f || []).slice(1).some((c) => String(c ?? '').trim())
 export function bloquesDe(filas = []) {
   const out = []
   filas.forEach((f, i) => {
-    if (!soloEnA(f)) return
+    // ═══ POR QUÉ YA NO SE EXIGE QUE EL TÍTULO ESTÉ SOLO EN SU FILA (06/09/2026) ═══
+    //
+    // Se exigía, y el archivo lo desmintió. En «Recurrentes» la A4 dice «1 · EL GASTO RECURRENTE,
+    // MES A MES» y la B4 arranca los doce encabezados de mes: el título comparte su renglón con la
+    // cabecera del cuadro, que es exactamente como tiene que verse. Con `soloEnA` ese bloque no
+    // existía, y los otros dos —numerados 2 y 3, sin un solo hueco— salían reportados como «es el
+    // bloque 1º y está numerado 2». Dos desvíos falsos sobre una pestaña impecable.
+    //
+    // LA SEGUNDA PUERTA: EL TÍTULO GRITA. Un renglón de detalle numerado —«1 · una fila de detalle»,
+    // con su importe al lado— sigue sin abrir bloque, que es la razón por la que existía `soloEnA`.
+    // Lo que las separa no es estar solo en la fila: es que en este archivo TODOS los títulos de
+    // primer nivel van en mayúsculas y ninguna fila de datos lo está.
     // EL TÍTULO SE LEE COMO LO VE EL LECTOR, NO COMO ESTÁ ESCRITO. Medido el 06/09 en «OBRAS»: el
     // bloque 1 es `="1 · COBRANZAS PENDIENTES AL "&TEXT(TODAY();"dd/mm/yyyy")` —el corte va adentro
     // del título y por eso es fórmula—, y esta función lo leía crudo. Con el `=` adelante no matchea
@@ -252,7 +270,9 @@ export function bloquesDe(filas = []) {
     // corridos un lugar: cuatro `numeracion-con-hueco` sobre una pestaña numerada 1,2,3,4,5 sin un
     // solo hueco. El resto del módulo ya leía con `textoVisible`; esta función se había quedado atrás.
     const m = textoVisible(f?.[0]).trim().match(ES_SECCION_NUM)
-    if (m && m[2] === undefined) out.push({ fila: i + 1, n: Number(m[1]), titulo: m[3] })
+    if (!m || m[2] !== undefined) return
+    if (!soloEnA(f) && !gritaComoTitulo(m[3])) return
+    out.push({ fila: i + 1, n: Number(m[1]), titulo: m[3] })
   })
   return out
 }

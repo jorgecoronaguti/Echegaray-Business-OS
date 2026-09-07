@@ -241,3 +241,19 @@ test('y con el título en fórmula la pestaña no se llama distinto de su A1', (
   const filas = [['="OBRAS al "&TEXT(TODAY();"dd/mm")'], ['qué contesta · fuente · corte'], []]
   assert.deepEqual(encabezadoRoto(filas, { pestana: 'OBRAS' }).map((x) => x.regla), ['titulo-con-glosa'])
 })
+
+test('un título que comparte su fila con la cabecera del cuadro SIGUE siendo un bloque', () => {
+  // El caso real de «Recurrentes»: A4 es el título, B4 arranca los doce encabezados de mes.
+  const filas = [['Recurrentes'], ['de dónde sale'], [],
+    ['1 · EL GASTO RECURRENTE, MES A MES', '1/1/2026', '1/2/2026'],
+    ['Proveedor', 'x'], [],
+    ['2 · CONTROL'], ['Compras del rubro', 100]]
+  assert.deepEqual(numeracionRota(filas), [])
+  assert.equal(bloquesDe(filas).length, 2)
+})
+
+test('los sub-bloques N.M no compiten con la numeración de primer nivel', () => {
+  const filas = [['X'], ['y'], [], ['1 · primero'], ['1.1 · hijo'], ['1.2 · hijo'], ['2 · segundo']]
+  assert.deepEqual(bloquesDe(filas).map((b) => b.n), [1, 2])
+  assert.deepEqual(numeracionRota(filas), [])
+})
