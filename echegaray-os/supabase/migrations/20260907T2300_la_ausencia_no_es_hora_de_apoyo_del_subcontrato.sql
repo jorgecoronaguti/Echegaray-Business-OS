@@ -20,7 +20,7 @@ create or replace view public.subcontrato_aporte_detalle as
     a.monto,
     a.fecha,
     a.registros_hh_id,
-    CASE WHEN r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text]) THEN r.horas ELSE NULL::numeric END AS horas_hh
+    CASE WHEN r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text]) THEN r.horas ELSE NULL::numeric(6,2) END::numeric(6,2) AS horas_hh
    FROM subcontrato_aporte a
      JOIN subcontrato s ON s.id = a.subcontrato_id
      LEFT JOIN registros_hh r ON r.id = a.registros_hh_id
