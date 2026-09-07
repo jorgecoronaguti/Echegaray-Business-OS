@@ -41,14 +41,7 @@ export const PASOS = [
   // pestaña es lo que produce anchos de grilla mezclados, bloques huérfanos y —acá— el techo de 14
   // quincenas, porque la fila que insertaba uno caía fuera del rango que sumaba el otro.
   // Este generador escribe la pestaña ENTERA y publica sus rangos con nombre para las demás.
-  // NÓMINA ANTES QUE JORNALES POR QUINCENA, y el orden importa: desde el 29/08 la fila de pago de
-  // «Jornales por Quincena» CITA la fila de total de Nómina en vez de recalcularla. Si Nómina se
-  // escribiera después, esa fila leería la corrida anterior — el mismo desfase de una vuelta que ya
-  // pagamos con _CRUCE_ARCA.
-  //
-  // Lleva `--aplicar` porque sin la bandera el generador imprime y no escribe: dentro del pipeline
-  // eso sería un paso que dice «✓» sin haber hecho nada, que es la peor de las salidas.
-  ['nomina-pestana.mjs', 'Nómina y Plantel — qué se le paga a cada uno mañana y con qué papeles', ['Nómina', 'Plantel'], ['--aplicar']],
+  // ['nomina-pestana.mjs', …] — RETIRADO el 07/09/2026, ver PASOS_RETIRADOS al pie.
   ['jornales-pestana.mjs', 'Jornales por Quincena — quincenas reales, proyección y control de convenio', ['Jornales por Quincena']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
@@ -555,6 +548,29 @@ export const PASOS_RETIRADOS = Object.freeze([
       + 'línea y ningún importe del bloque guardado como texto.',
     // Lo que queda sin actualizar mientras dure el freno. Es el costo, dicho: es menor que apilar.
     cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)', 'Materiales'],
+  }),
+  Object.freeze({
+    script: 'nomina-pestana.mjs',
+    desde: '2026-09-07',
+    // El dueño, 01/09/2026, textual: «tenías prohibido tocar la columna de efectivo redondeado y la
+    // borraste por completo, era información importante que tenía que conservar».
+    motivo: 'el generador quedó REVERTIDO al 31/08 y no refleja la semántica que el dueño fijó el '
+      + '01/09 (COBRA · POR BANCO leído del EXTRACTO y no de una intención · EFECTIVO redondeado '
+      + 'como columna SUYA, prohibida). La decisión de no correrlo se tomó ese día y quedó sólo '
+      + 'escrita: el paso siguió en el pipeline y el timer lo ejecutó cada 2 h desde entonces. '
+      + 'Medido el 07/09 en las tres primeras filas de datos de «Nómina»: I11 vacía e I12/I13 con el '
+      + 'texto «EFECTIVO redondeado» adentro de la celda, donde van los billetes que él anota — los '
+      + 'importes de Aguero, Castillo y Alaniz no están en ninguna revisión recuperable. Cada corrida '
+      + 'era otra oportunidad de pisar la única columna que él pidió no tocar.',
+    // El criterio lo verifica alguien que no escribió el generador, con la pestaña viva delante.
+    vuelve: 'las TRES: (1) el generador emite la semántica del 01/09 —COBRA, POR BANCO desde el '
+      + 'extracto, y NO escribe la columna «EFECTIVO redondeado» ni ninguna otra que no conozca—; '
+      + '(2) una corrida en seco sobre la pestaña VIVA muestra que el encabezado que va a escribir '
+      + 'contiene todas las columnas que hoy están, y ninguna se pierde; (3) el dueño mira el '
+      + 'resultado de esa corrida en seco y lo aprueba. Recién ahí se repone la línea en PASOS, con '
+      + 'este retiro borrado y su test actualizado en el MISMO commit.',
+    // Plantel cae con Nómina porque las escribe el mismo generador: no hay forma de correr una sola.
+    cuesta: ['Nómina', 'Plantel'],
   }),
 ])
 

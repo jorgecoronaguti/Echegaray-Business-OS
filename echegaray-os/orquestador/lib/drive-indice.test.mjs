@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import {
   FOLDER, RAIZ_ADMINISTRACION, PISO_BORRADO,
   tipoLegible, emailDeOwners, raicesDesdeEnv, filaIndice, decidirEscritura, planDeBorrado,
+  RAIZ_ARCHIVO_FISCAL,
 } from './drive-indice.mjs'
 import { tokenizar } from './drive-busqueda/normalizar.mjs'
 
@@ -161,9 +162,23 @@ test('si no faltó ninguno, no hay borrado', () => {
 
 // ── 4. Multi-raíz ────────────────────────────────────────────────────────────
 
-test('sin configuración, la única raíz sigue siendo administracion', () => {
-  assert.deepEqual(raicesDesdeEnv({}), [{ id: RAIZ_ADMINISTRACION, rotulo: 'administracion' }])
-  assert.deepEqual(raicesDesdeEnv({ ORQ_DRIVE_INDEX_ROOTS: '   ' }), [{ id: RAIZ_ADMINISTRACION, rotulo: 'administracion' }])
+// EL DEFECTO QUE ESTE TEST ATRAPA (07/09/2026): `archivo-fiscal` fuera del default.
+// Las DDJJ F931 viven ahí y NO adentro de `administracion`. Con una sola raíz por defecto y sin
+// `ORQ_DRIVE_INDEX_ROOTS` en `worker.env`, esa carpeta se indexó UNA vez —el 19/08, a mano— y
+// después quedó congelada: el F931 de agosto se subió el 05/09 y el OS siguió diciendo que la
+// última declaración era la de julio. Si alguien vuelve a dejar una sola raíz acá, esto grita.
+test('sin configuración se indexan las DOS raíces: administracion y archivo-fiscal', () => {
+  const esperado = [
+    { id: RAIZ_ADMINISTRACION, rotulo: 'administracion' },
+    { id: RAIZ_ARCHIVO_FISCAL, rotulo: 'archivo-fiscal' },
+  ]
+  assert.deepEqual(raicesDesdeEnv({}), esperado)
+  assert.deepEqual(raicesDesdeEnv({ ORQ_DRIVE_INDEX_ROOTS: '   ' }), esperado)
+  // Y NO SE COMPARTE LA REFERENCIA: quien la reciba puede mutarla sin envenenar el default de la
+  // próxima llamada. `Object.freeze` protege el array, no los objetos de adentro.
+  const a = raicesDesdeEnv({})
+  a[0].rotulo = 'pisado'
+  assert.equal(raicesDesdeEnv({})[0].rotulo, 'administracion')
 })
 
 test('varias raíces forman un solo índice lógico', () => {

@@ -340,3 +340,24 @@ test('_OBRAS_RAW se escribe ANTES que la pestaña OBRAS que la cita', () => {
 test('la carga del plan de egresos NO es un paso del pipeline', () => {
   assert.ok(!PASOS.some(([s]) => s === 'obras-previstos-cargar.mjs'))
 })
+
+// ═══ «Nómina» NO PUEDE VOLVER AL PIPELINE POR DESCUIDO (07/09/2026) ═══
+//
+// El defecto que atrapa: la decisión de no correr `nomina-pestana.mjs` se tomó el 01/09 y quedó
+// escrita SÓLO en la memoria. El paso siguió en PASOS y el timer lo ejecutó cada 2 h durante una
+// semana, pisando la columna «EFECTIVO redondeado» que el dueño había pedido no tocar. Una decisión
+// que no está en el código no protege nada.
+//
+// Si alguien repone la línea, esto se pone rojo y lo obliga a borrar el retiro en el mismo commit —
+// que es cuando tiene que leer las tres condiciones de vuelta.
+test('nomina-pestana.mjs está FUERA del pipeline y su retiro está declarado', () => {
+  assert.equal(PASOS.some((p) => String(p[0]) === 'nomina-pestana.mjs'), false,
+    'el generador de Nómina no puede correr en el pipeline: pisa la columna del dueño')
+  assert.equal(estaRetirado('nomina-pestana.mjs'), true, 'y el freno tiene que estar DECLARADO, no comentado')
+  const r = PASOS_RETIRADOS.find((x) => x.script === 'nomina-pestana.mjs')
+  // Las dos pestañas, porque las escribe el mismo generador y no se puede correr una sola.
+  assert.deepEqual(r.cuesta, ['Nómina', 'Plantel'])
+  // El criterio de vuelta tiene que ser verificable por un tercero, no una intención.
+  assert.match(r.vuelve, /EFECTIVO redondeado|columna que no conozca|no escribe la columna/i)
+  assert.match(r.motivo, /01\/09|revertido/i)
+})

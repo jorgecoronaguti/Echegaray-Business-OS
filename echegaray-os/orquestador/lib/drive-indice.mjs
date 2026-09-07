@@ -18,9 +18,37 @@ import { plano, sinExtension, tokensDeArchivo, hashDe } from './drive-busqueda/n
 
 export const FOLDER = 'application/vnd.google-apps.folder'
 
-/** La raíz histórica: la carpeta `administracion`. Sigue siendo el default para que la
- *  corrida actual no cambie de comportamiento si nadie configura nada. */
+/** La raíz histórica: la carpeta `administracion`. */
 export const RAIZ_ADMINISTRACION = '1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs'
+
+/**
+ * LA SEGUNDA RAÍZ, Y POR QUÉ ESTÁ EN EL CÓDIGO Y NO EN UNA VARIABLE (07/09/2026).
+ *
+ * `archivo-fiscal` es donde viven las DDJJ F931, los VEP y los tickets de pago — la fuente del
+ * cuadro «DECLARADO EN LA DDJJ F931» de Cargas Sociales. NO está adentro de `administracion`: es
+ * una carpeta hermana, así que el default de una sola raíz nunca la miraba.
+ *
+ * ═══ LO QUE COSTÓ, MEDIDO ═══
+ *
+ * Sus 24 archivos entraron al índice el 19/08, cuando alguien corrió una vez con
+ * `ORQ_DRIVE_INDEX_ROOTS` puesta a mano. Esa variable no está en `worker.env`, así que el timer
+ * diario siguió corriendo sobre `administracion` sola y esa carpeta quedó congelada 19 días. El
+ * `2026-08 F.931.pdf` se subió el 05/09 y el OS no lo vio: Cargas Sociales seguía diciendo que la
+ * última declaración era la de julio, y el dueño tuvo que corregirlo — «hay info hasta agosto».
+ *
+ * Va en el código y no en la variable a propósito. Una fuente crítica que sólo se lee cuando
+ * alguien se acuerda de exportar una env no es una fuente: es una casualidad. El token de AfipSDK
+ * desapareció de ese mismo archivo el 01/09 y dejó ARCA congelado — el mismo modo de falla, dos
+ * veces en una semana. `ORQ_DRIVE_INDEX_ROOTS` sigue mandando cuando está: lo que cambia es que
+ * ausente ya no significa «mirá sólo administracion».
+ */
+export const RAIZ_ARCHIVO_FISCAL = '1-7RmmzQeJA2g2O7GqZi4o_WQtiTQLc7l'
+
+/** Las raíces que se indexan cuando nadie configuró nada. */
+export const RAICES_POR_DEFECTO = Object.freeze([
+  { id: RAIZ_ADMINISTRACION, rotulo: 'administracion' },
+  { id: RAIZ_ARCHIVO_FISCAL, rotulo: 'archivo-fiscal' },
+])
 
 /** Campos que se le piden a Drive. `owners(emailAddress)` es nuevo: sin él no se puede
  *  saber de quién es un archivo, y "¿quién subió esto?" es media respuesta de casi
@@ -60,15 +88,15 @@ export function emailDeOwners(owners) {
  * Las raíces a indexar, desde `ORQ_DRIVE_INDEX_ROOTS` (ids separados por coma).
  *
  * Un solo índice lógico puede alimentarse de varias carpetas o unidades compartidas: el
- * data room no tiene por qué ser una sola carpeta para siempre. Sin la variable, la única
- * raíz es `administracion` — el comportamiento de hoy, intacto.
+ * data room no tiene por qué ser una sola carpeta para siempre. Sin la variable se indexan
+ * `RAICES_POR_DEFECTO` — `administracion` Y `archivo-fiscal`; ver por qué en esa constante.
  *
  * El rótulo de cada raíz (el primer segmento del `path`) se puede fijar con `id:rotulo`;
  * si no, se resuelve preguntándole a Drive el nombre de la carpeta.
  */
 export function raicesDesdeEnv(env = process.env) {
   const crudo = String(env?.ORQ_DRIVE_INDEX_ROOTS ?? '').trim()
-  if (!crudo) return [{ id: RAIZ_ADMINISTRACION, rotulo: 'administracion' }]
+  if (!crudo) return RAICES_POR_DEFECTO.map((r) => ({ ...r }))
   const vistos = new Set()
   const salida = []
   for (const parte of crudo.split(',')) {
@@ -77,7 +105,7 @@ export function raicesDesdeEnv(env = process.env) {
     vistos.add(id)
     salida.push({ id, rotulo: rotulo || null })
   }
-  if (!salida.length) return [{ id: RAIZ_ADMINISTRACION, rotulo: 'administracion' }]
+  if (!salida.length) return RAICES_POR_DEFECTO.map((r) => ({ ...r }))
   return salida
 }
 
