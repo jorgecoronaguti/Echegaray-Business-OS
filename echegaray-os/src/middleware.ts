@@ -1,12 +1,13 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { esRutaCampoPermitida, esRutaPublica } from '@/features/auth/types'
+import { esRutaCampoPermitida, esRutaPublica, type Rol } from '@/features/auth/types'
 import { puedeVerRuta } from '@/features/auth/types/areas'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
 import { destinoPorRol } from '@/features/portal/types'
 import { trazar } from '@/lib/supabase/traza'
+import { COOKIE_ROL, VIDA_ROL_SEGUNDOS, leerRol, sellarRol, secretoDelRol } from '@/lib/auth/rol-cache'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -77,7 +78,26 @@ export async function middleware(request: NextRequest) {
   // gobernada vive en `/administracion/usuarios`, que SÍ pasa por el portero de abajo.
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login')
   if (user && !esApiOAuth) {
-    const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+    // ═══ EL ROL SE LEE UNA VEZ Y VIAJA FIRMADO (07/09/2026) ═══
+    //
+    // Acá había un `from('perfiles')` por request: documento, cada payload RSC y cada prefetch pagaban
+    // un viaje serial a Postgres (~120 ms desde Vercel) antes de que la página arrancara. Ahora el rol
+    // viene de una cookie httpOnly firmada y atada al `sub`; sólo se va a la base cuando la cookie no
+    // está, venció o no cierra — y en ese caso se vuelve a sellar. El porqué entero y la regla de
+    // seguridad («la puerta, no la cerradura») están en lib/auth/rol-cache.ts.
+    const secreto = secretoDelRol()
+    let rol = secreto ? await leerRol(request.cookies.get(COOKIE_ROL)?.value, { uid: user.id }, secreto) : null
+    if (rol === null) {
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+      rol = perfil?.rol ?? null
+      if (rol && secreto) {
+        response.cookies.set(COOKIE_ROL, await sellarRol({ uid: user.id, rol }, secreto), {
+          httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: VIDA_ROL_SEGUNDOS,
+        })
+      }
+    }
+    // El rol viene de la base o de la cookie que la base selló: la forma la garantiza `perfiles`.
+    const perfil = rol ? { rol: rol as Rol } : null
 
     // ═══ EL PORTAL DEL CLIENTE SE DECIDE PRIMERO (25/08/2026) ═══
     //
