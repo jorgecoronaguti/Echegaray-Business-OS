@@ -444,32 +444,33 @@ test('después de la sección POR CLIENTE no hay NADA: el costo financiero vive 
 // EL ATAJO AL MES ACTUAL — el Mensual no lo tenía y el control del pipeline lo reclamaba igual
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el vínculo "hoy" del Mensual apunta al mes corriente, con la URL entera y sin gid no se inventa uno', () => {
-  const { meta } = armar()
-  assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
-  const v = vinculoHoy(99, meta)
-  // El fragmento "#gid=" suelto no navega: Google contesta "se borró el rango vinculado".
-  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
-  assert.ok(v.includes('/edit#gid=99&range="&ADDRESS('), v)
-  // El primero del mes corriente, con la MISMA expresión con la que se escribieron los encabezados.
-  assert.ok(v.includes('EOMONTH(TODAY();-1)+1'), v)
-  assert.ok(!v.includes('WEEKDAY'), 'el mes no se ubica por el lunes de la semana')
-  // ═══ EL CONTRATO CAMBIÓ EL 13/08/2026, Y NO ES UN AJUSTE PARA QUE PASE ═══
+test('el vínculo "hoy" del Mensual apunta al mes corriente con un enlace INTERNO, y sin gid no se inventa uno', () => {
+  // La fecha se INYECTA: si el atajo se probara con `new Date()` el test cambiaría de mes solo y
+  // dejaría de medir nada el 1º de cada mes. Agosto de 2026 es el mes 7 (0-based) del ejercicio.
+  const HOY = new Date(Date.UTC(2026, 7, 13))
+  const { meta } = armar({ hoy: HOY })
+  assert.equal(vinculoHoy(null, meta, HOY), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
+  const v = vinculoHoy(99, meta, HOY)
+  // ═══ RELATIVO, NO ABSOLUTO (07/09/2026) ═══
   //
-  // Acá se exigía `;"⏵  IR AL MES ACTUAL")`: un rótulo tipeado que promete un botón. `HYPERLINK` no
-  // puede ser un botón (un clic selecciona, el segundo abre el chip, el tercero navega, y el doble
-  // clic abre el modo edición), así que el rótulo pasa a DECIR dónde está el mes en curso. El prefijo
-  // sigue siendo literal porque es por donde el control del pipeline parte la fórmula.
-  assert.ok(v.includes(';"Mes actual: "&'), v)
-  assert.ok(v.endsWith('"mmm yy"))'), v)
-  assert.ok(!v.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
-  assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
+  // Mismo defecto y misma corrección que en el Semanal: `HYPERLINK` con el fragmento suelto no navega
+  // y con la URL entera abre el archivo DE NUEVO. Lo único que scrollea dentro del documento es un
+  // enlace de texto enriquecido con el fragmento relativo. Ver cash-flow-hoy.mjs::atajoDelPeriodo.
+  assert.match(v.uri, /^#gid=99&range=[A-Z]{1,3}\d+$/, v.uri)
+  assert.ok(!v.uri.includes('docs.google.com'), 'una URL absoluta al mismo archivo lo abre de nuevo')
+  assert.ok(!String(v.texto).startsWith('='), 'el atajo dejó de ser una fórmula: es texto con enlace')
+  // El destino es la columna del mes en curso en la fila de cabecera, no una celda cualquiera.
+  assert.equal(v.uri, `#gid=99&range=${letra(meta.cab.col0 + HOY.getUTCMonth())}${meta.cab.fila}`)
+  assert.ok(v.texto.startsWith('Mes actual: '), v.texto)
+  assert.ok(!v.texto.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
 })
 
-test('con gid, el botón queda en A3 — la misma celda que en el Semanal', () => {
+test('con gid, el atajo queda en A3 — la misma celda que en el Semanal', () => {
   const { filas, meta } = armar({ gid: 99 })
-  assert.deepEqual(meta.botonHoy, { fila: FILA.botonHoy, col: 0 })
-  assert.match(en(filas, FILA.botonHoy, 0), /^=HYPERLINK\(/)
+  assert.equal(meta.botonHoy.fila, FILA.botonHoy)
+  assert.equal(meta.botonHoy.col, 0)
+  assert.match(String(meta.botonHoy.uri), /^#gid=99&range=/, 'la meta lleva el enlace: la piel lo aplica')
+  assert.match(en(filas, FILA.botonHoy, 0), /^Mes actual: /)
   // Sin gid no se escribe nada: una celda con un vínculo roto es peor que una celda vacía.
   assert.equal(en(armar().filas, FILA.botonHoy, 0), '')
 })
@@ -494,5 +495,5 @@ test('EL CONTRATO DE DISEÑO en la grilla del mensual: cero desvíos, y el atajo
   const mal = auditarDiseno(filas, { pestana: 'Cash Flow Mensual' })
   assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), [],
     mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
-  assert.match(String(filas[FILA.botonHoy - 1][0]), /^=HYPERLINK\(/, 'el botón sigue en A3')
+  assert.match(String(filas[FILA.botonHoy - 1][0]), /^Mes actual: [A-Z]{1,3}\s+·\s+\S+/, 'el atajo sigue en A3')
 })

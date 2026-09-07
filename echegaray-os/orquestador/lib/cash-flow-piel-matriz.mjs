@@ -144,7 +144,7 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
     }
   }
 
-  formatoEncabezado({ celdas, meta })
+  formatoEncabezado({ celdas, req, rango, meta })
   formatoHero({ celdas, reglaFina, req, rango, meta })
   formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima })
 
@@ -206,7 +206,7 @@ export function tandasDeGrupos(sheetId, { filas = 0, cols = 0 } = {}, niveles = 
 }
 
 /** Título, subtítulo y el atajo de la esquina. */
-function formatoEncabezado({ celdas, meta }) {
+function formatoEncabezado({ celdas, req, rango, meta }) {
   celdas(FILA.titulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(INK, { bold: true, size: 16 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, 0, 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
@@ -228,6 +228,25 @@ function formatoEncabezado({ celdas, meta }) {
         backgroundColor: BLANCO,
         horizontalAlignment: 'LEFT',
       })
+    // ── Y EL ENLACE, QUE ES LO ÚNICO QUE HACE QUE EL CLIC LLEVE A ALGÚN LADO (07/09/2026) ──
+    //
+    // El dueño, tercera vez: *«me tiene que llevar a la columna, no abrir un flujo nuevo»*. `HYPERLINK`
+    // no puede: con el fragmento no navega y con la URL entera abre el archivo DE NUEVO. Un enlace de
+    // TEXTO ENRIQUECIDO con el fragmento relativo sí scrollea dentro del documento abierto — es lo que
+    // hace «Insertar → Enlace → Hojas y rangos con nombre», y va como formato, no como fórmula.
+    //
+    // `updateCells` y no `repeatCell`: los runs son por celda, no un formato que se repite en un rango.
+    // El `fields` nombra SÓLO `textFormatRuns`, así que el valor de la celda ni se toca.
+    const r = rango(meta.botonHoy.fila - 1, meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1)
+    if (r && meta.botonHoy.uri) {
+      req.push({
+        updateCells: {
+          range: r,
+          fields: 'textFormatRuns',
+          rows: [{ values: [{ textFormatRuns: [{ startIndex: 0, format: { ...txt(ACENTO, { size: 9 }), underline: true, link: { uri: meta.botonHoy.uri } } }] }] }],
+        },
+      })
+    }
   }
 }
 

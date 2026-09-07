@@ -135,22 +135,35 @@ test('el rótulo se calcula en la hoja y no promete ningún clic', () => {
   assert.ok(r.includes(`LEN(ADDRESS(7;34;4))-${String(FILA.cabecera).length}`), r)
 })
 
-test('EL CONTROL DEL PIPELINE SIGUE PARTIENDO LA FÓRMULA — esto ya rompió una vez', () => {
-  // `flujo-caja-rehacer-todo.mjs` lee el atajo así: busca `&range="&` y `;"<ROTULO_HOY>` y se queda con
-  // lo del medio. Cuando el rótulo cambió el 13/08 y el control no, gritaba "destino inválido" en CADA
-  // corrida y en las DOS pestañas. Acá se corre EL MISMO algoritmo sobre la fórmula real.
-  for (const [f, rotulo] of [
-    [vinculoSemanal(1234, grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS }).meta), ROTULO_HOY.semana],
-    [vinculoMensual(99, grillaMeses({ anio: ANIO, refs: REFS, hoy: HOY }).meta), ROTULO_HOY.mes],
-  ]) {
-    const i = f.indexOf('&range="&')
-    const j = f.lastIndexOf(`;"${rotulo}`)
-    assert.ok(i > 0 && j > i, `el control no puede partir la fórmula: ${f}`)
-    const expresion = f.slice(i + 9, j)
-    assert.ok(expresion.startsWith('ADDRESS(') && expresion.endsWith(')'),
-      `lo que el control pega en la celda de apunte tiene que ser la expresión del destino, y es "${expresion}"`)
-    assert.ok(/#gid=\d+/.test(f) && f.includes('https://docs.google.com/spreadsheets/d/'))
+test('EL ATAJO LLEVA A LA COLUMNA SIN ABRIR OTRO FLUJO — el defecto del 07/09', () => {
+  // El dueño, TERCERA vez: *«no funciona lo que has hecho, me tiene que llevar a la columna, no abrir
+  // un flujo nuevo»*. La corrección del 13/08 puso la URL ABSOLUTA porque el fragmento suelto no
+  // navegaba en `HYPERLINK` — cierto —, pero una URL absoluta al mismo archivo ABRE el archivo de
+  // nuevo. Este test fija la única forma que scrollea dentro del documento: enlace RELATIVO.
+  const casos = [
+    [vinculoSemanal(1234, grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS }).meta, HOY), ROTULO_HOY.semana, 1234],
+    [vinculoMensual(99, grillaMeses({ anio: ANIO, refs: REFS, hoy: HOY }).meta, HOY), ROTULO_HOY.mes, 99],
+  ]
+  for (const [v, rotulo, gid] of casos) {
+    assert.ok(v && v.uri && v.texto, 'con hoy dentro del ejercicio el atajo existe')
+    // LO QUE MATA EL DEFECTO: relativo, y sin rastro del dominio de Sheets.
+    assert.ok(v.uri.startsWith('#'), `el enlace tiene que ser relativo o abre otro flujo: ${v.uri}`)
+    assert.ok(!v.uri.includes('docs.google.com'),
+      `una URL absoluta al mismo archivo lo abre de nuevo en vez de llevar a la columna: ${v.uri}`)
+    assert.match(v.uri, new RegExp(`^#gid=${gid}&range=[A-Z]{1,3}\\d{1,5}$`), v.uri)
+    // Y EL TEXTO SIGUE ARRANCANDO CON EL RÓTULO COMPARTIDO: el control del pipeline lo verifica así.
+    assert.ok(v.texto.startsWith(rotulo), `${v.texto} no arranca con "${rotulo}"`)
+    assert.ok(!/⏵|IR A|HYPERLINK/.test(v.texto), 'ni ícono de botón ni imperativo ni fórmula')
+    // El destino cae en la FILA DE CABECERA y dentro de las columnas de tiempo, no en cualquier lado.
+    const [, col, fila] = /range=([A-Z]{1,3})(\d+)/.exec(v.uri)
+    assert.equal(Number(fila), FILA.cabecera, 'el atajo apunta a la cabecera de la columna del período')
+    assert.ok(indiceDeLetra(col) >= COL.tiempo0, `${col} cae antes de la primera columna de tiempo`)
   }
+  // SIN gid NO HAY ENLACE — y sin `hoy` adentro del ejercicio tampoco se inventa un destino.
+  const meta = grillaSemanal({ hoy: HOY, anio: ANIO, refs: REFS }).meta
+  assert.equal(vinculoSemanal(null, meta, HOY), null, 'sin gid no hay vínculo a ningún lado')
+  assert.equal(vinculoSemanal(1234, meta, new Date(Date.UTC(2031, 0, 5))), null,
+    'un año que el cuadro no muestra no tiene columna: no se inventa una')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

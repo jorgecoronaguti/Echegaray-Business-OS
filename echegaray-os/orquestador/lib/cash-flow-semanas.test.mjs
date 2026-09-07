@@ -317,27 +317,27 @@ test('el patrón de la pestaña se cumple, salvo la única excepción declarada:
 
 test('el vínculo "hoy" apunta a la columna de la semana corriente, y sin gid no se inventa uno', () => {
   const { meta } = armar()
-  assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
-  const v = vinculoHoy(1234, meta)
-  // ═══ LA URL ENTERA, NO EL FRAGMENTO SUELTO (13/08/2026) ═══
+  assert.equal(vinculoHoy(null, meta, HOY), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
+  const v = vinculoHoy(1234, meta, HOY)
+  // ═══ RELATIVO, NO ABSOLUTO — Y LAS DOS COSAS FUERON DEFECTOS (07/09/2026) ═══
   //
-  // Acá se exigía `=HYPERLINK("#gid=1234…` — el fragmento a secas. Google no navega con eso: contesta
-  // "no se puede abrir el vínculo porque se borró el rango vinculado". El test fijaba el defecto, así
-  // que el atajo que el dueño usa para llegar a la semana actual no hacía nada al hacer clic y ningún
-  // control lo veía. Sale de `URL_ARCHIVO()`, que es donde vive el id del archivo.
-  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
-  assert.ok(v.includes('/edit#gid=1234&range="&ADDRESS('), v)
-  assert.ok(v.includes('TODAY()-WEEKDAY(TODAY();3)'), 'el lunes de hoy se calcula igual que los encabezados')
-  // ═══ EL RÓTULO DEJÓ DE PROMETER UN BOTÓN (13/08/2026) ═══
+  // El 13/08 se cambió el fragmento suelto por la URL entera porque `HYPERLINK("#gid=…")` no navega.
+  // Era cierto y la conclusión era falsa: la URL entera navega ABRIENDO el archivo otra vez. El dueño:
+  // *«me tiene que llevar a la columna, no abrir un flujo nuevo»*. Lo único que scrollea dentro del
+  // documento es un ENLACE DE TEXTO ENRIQUECIDO con el fragmento relativo, que no es una fórmula.
+  assert.equal(v.uri, `#gid=1234&range=${letra(meta.cab.col0 + 31)}${meta.cab.fila}`,
+    'el miércoles 05/08/2026 cae en la semana del lunes 03/08: la columna AG de la cabecera')
+  assert.ok(!v.uri.includes('docs.google.com'), 'una URL absoluta al mismo archivo lo abre de nuevo')
+  assert.ok(!String(v.texto).startsWith('='), 'el atajo dejó de ser una fórmula: es texto con enlace')
+  // ═══ EL RÓTULO DEJÓ DE PROMETER UN BOTÓN (13/08/2026) — Y SIGUE INFORMANDO ═══
   //
-  // Acá se exigía `;"⏵  IR A LA SEMANA ACTUAL")`. El dueño lo reportó roto y un navegador real lo
-  // midió: el destino estaba BIEN (AH7) y el gesto no existía —hacen falta tres clics, y el doble clic
-  // abre el modo edición—. El rótulo ahora DICE dónde está la semana actual, calculado en la hoja, y
-  // sirve aunque nadie haga clic. El prefijo va literal: por ahí parte la fórmula el control.
-  assert.ok(v.includes(';"Semana actual: "&'), v)
-  assert.ok(v.endsWith('"d/mm"))'), v)
-  assert.ok(!v.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
-  assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
+  // Antes decía `⏵ IR A LA SEMANA ACTUAL`: un imperativo que promete un clic que Sheets no da. Ahora
+  // DICE dónde está la semana actual, así que sirve aunque nadie haga clic. El prefijo va literal
+  // porque por ahí reconoce el atajo el control del pipeline y la regla `sin-respiro` del diseño.
+  // 03/08 y NO 02/08: las ventanas son medianoche UTC y la VM corre en -03. Con `getDate()` local el
+  // rótulo mostraba el domingo anterior — una fecha que no es la de ninguna columna del cuadro.
+  assert.equal(v.texto, 'Semana actual: AG  ·  03/08')
+  assert.ok(!v.texto.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
 })
 
 test('sin los rangos con nombre de CAJA, el ancla va VACÍA en vez de apuntar a una celda inventada', () => {
@@ -376,5 +376,6 @@ test('EL CONTRATO DE DISEÑO en la grilla del semanal: cero desvíos, y el atajo
   const mal = auditarDiseno(filas, { pestana: 'Cash Flow Semanal' })
   assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), [],
     mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
-  assert.match(String(filas[2][0]), /^=HYPERLINK\(/, 'el botón sigue en A3')
+  // Y EL ATAJO SIGUE EN A3: un cero de desvíos conseguido borrando el botón no es un cero.
+  assert.match(String(filas[2][0]), /^Semana actual: [A-Z]{1,3}\s+·\s+\d{2}\/\d{2}$/, 'el atajo sigue en A3')
 })

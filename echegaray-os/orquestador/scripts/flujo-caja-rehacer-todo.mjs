@@ -215,64 +215,46 @@ async function verificarPresentacion(bloqueadas = new Set()) {
     // La última fila de la grilla SIEMPRE existe, cualquiera sea el alto de la pestaña. Y abajo, el
     // bloque entero va en try/catch: si el apunte falla por lo que sea, se reporta como "no verificado"
     // y el resto de la corrida sigue. Nunca más una comprobación puede voltear el pipeline.
-    const apunte = `A${Math.max(1, hoja?.rows ?? 1000)}`
-    // ═══ LA CELDA Y EL RÓTULO SALEN DE LA GRILLA, NO DE ESTE ARCHIVO (13/08/2026) ═══
+    // ═══ EL DESTINO YA NO ESTÁ ADENTRO DE UNA FÓRMULA (07/09/2026) ═══
     //
-    // Acá decía `A2` y `;"📅` a mano. La matriz del 06/08 movió el atajo a `A3` y le cambió el rótulo a
-    // "⏵ IR A LA SEMANA ACTUAL", así que este control quedó leyendo el SUBTÍTULO: no encontraba `#gid=`
-    // ni `&range=`, y escribía en CADA corrida y en las DOS pestañas "el atajo IR A HOY apunta a un
-    // destino inválido (gid undefined, range null)". Nunca miró el atajo de verdad. Ahora la fila y el
-    // texto vienen de `cash-flow-matriz.mjs`, que es quien los define para las dos grillas: si mañana
-    // el atajo se muda de fila, el control se muda con él.
+    // Hasta hoy el atajo era `=HYPERLINK("…&range="&ADDRESS(…);"<rótulo>"…)`, así que para saber a
+    // dónde apuntaba había que EVALUARLO: pegar su expresión en una celda de apunte, leer el resultado
+    // y reponer lo que hubiera. Esa maniobra dejaba su propio residuo a la vista (`A107 = "AH7"`) y se
+    // pisaba sola cada dos horas.
+    //
+    // Desde que el atajo es un ENLACE DE TEXTO ENRIQUECIDO —el fragmento `#gid=…&range=…` puesto sobre
+    // la celda como formato— el destino se LEE. No hay celda de apunte, no hay residuo, no hay nada
+    // que reponer, y esta verificación ya no puede escribir en la pestaña que verifica.
     const celdaAtajo = `A${FILA.botonHoy}`
     const rotulo = pestaña === 'Cash Flow Semanal' ? ROTULO_HOY.semana : ROTULO_HOY.mes
-    const f = (await google.readSheetGrid(ID, `${pestaña}!${celdaAtajo}`)).filas?.[0]?.[0]?.formula ?? ''
-    const gid = /#gid=(\d+)/.exec(f)?.[1]
-    const i = f.indexOf('&range="&')
-    const j = f.lastIndexOf(`;"${rotulo}`)
-    let rango = null
-    if (i > 0 && j > i) {
-      // A200 se usa como celda de apunte. Se GUARDA lo que hubiera y se RESTAURA: si el dueño escribió
-      // ahí, no se pierde (regla de oro: nunca borrar lo que escribe una persona).
-      // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
-      // Acá no se escribe contenido: A200 se usa un instante como celda de apunte para resolver a qué
-      // rango apunta un atajo, y se restaura lo que hubiera. Nada queda escrito al terminar.
-      try {
-        const previo = (await google.readSheetValues(ID, `${pestaña}!${apunte}`, { render: 'FORMULA' }))?.[0]?.[0] ?? ''
-        // yaGuardado: la celda de apunte es transitoria; se lee y RESTAURA acá mismo (su propia
-        // preservación). No debe pasar por la guarda central ni disparar sello de firma.
-        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[`=${f.slice(i + 9, j)}`]] }], { yaGuardado: true })
-        rango = (await google.readSheetValues(ID, `${pestaña}!${apunte}`))?.[0]?.[0]
-        // ═══ Y LA CELDA DE APUNTE SE LIMPIA DE VERDAD (13/08/2026) ═══
-        //
-        // `previo` casi siempre está vacío, y `no-borrar` no deja escribir vacío sobre lleno: la
-        // reposición se descartaba en silencio y el valor resuelto se quedaba a la vista. Medido con
-        // captura: `Cash Flow Semanal!A107 = "AH7"` y `Cash Flow Mensual!A109 = "I7"`, repuestos por
-        // esta misma verificación cada dos horas desde que existe. El OS se pisaba a sí mismo.
-        //
-        // `vaciarPropio` NO es un permiso: es el texto exacto que el OS acaba de escribir acá y leer
-        // de vuelta. La guarda RELEE el destino y compara ella misma — si en el medio el dueño escribió
-        // otra cosa, no coincide y la celda se conserva. Sólo aplica si lo que había era vacío: si el
-        // dueño tenía algo, se repone lo suyo y no hay nada que vaciar.
-        const propio = !String(previo ?? '').trim() && /^[A-Z]{1,3}\d{1,5}$/.test(String(rango ?? ''))
-        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[previo]] }],
-          { yaGuardado: true, vaciarPropio: propio ? { mios: [String(rango)] } : null })
-      } catch (e) {
-        console.log(`   ⚠ no pude verificar el atajo de ${pestaña} (${String(e.message).slice(0, 80)}) — sigo con el resto`)
-        continue
-      }
+    let uri = ''
+    let texto = ''
+    try {
+      const g = await google.getGridData(ID, `${pestaña}!${celdaAtajo}`,
+        'sheets(data(rowData(values(formattedValue,textFormatRuns(format(link(uri)))))))')
+      const celda = g?.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0] ?? {}
+      texto = String(celda.formattedValue ?? '')
+      uri = String((celda.textFormatRuns ?? []).map((r) => r?.format?.link?.uri).find(Boolean) ?? '')
+    } catch (e) {
+      console.log(`   ⚠ no pude verificar el atajo de ${pestaña} (${String(e.message).slice(0, 80)}) — sigo con el resto`)
+      continue
     }
-    // LA URL ENTERA TAMBIÉN SE VERIFICA. Un `HYPERLINK("#gid=…")` con el fragmento suelto calcula bien
-    // el destino y NO navega: Google contesta "se borró el rango vinculado". Es el defecto que tenía la
-    // matriz, y es invisible salvo haciendo clic — salvo que el control lo mire, que es lo que hace acá.
-    const urlEntera = f.includes('https://docs.google.com/spreadsheets/d/')
-    if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal) && urlEntera) {
+    const gid = /#gid=(\d+)/.exec(uri)?.[1]
+    const rango = /[?&]range=([A-Z]{1,3}\d{1,5})/.exec(uri)?.[1] ?? null
+    // ═══ Y LA REGLA SE DIO VUELTA: LA URL ENTERA AHORA ES EL DEFECTO ═══
+    //
+    // Antes se exigía la URL absoluta porque `HYPERLINK` con el fragmento suelto no navegaba. Con un
+    // enlace de texto enriquecido pasa lo contrario, y es lo que el dueño reportó el 07/09: una URL
+    // absoluta al MISMO archivo es, para el navegador, otro documento — abre una pestaña nueva del
+    // Sheet en vez de scrollear ésta. El atajo tiene que ser RELATIVO para llevar a la columna.
+    const relativo = uri.startsWith('#')
+    if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal) && relativo && texto.startsWith(rotulo)) {
       console.log(`   ✓ atajo de ${pestaña}: lleva a ${rango}`)
     } else {
       hubo = true
-      const porQue = !urlEntera && gid
-        ? 'el vínculo lleva el fragmento "#gid=" suelto en vez de la URL entera: no navega'
-        : `gid ${gid}, range ${rango}`
+      const porQue = uri && !relativo
+        ? 'el enlace es una URL absoluta: abre el archivo de nuevo en vez de llevar a la columna'
+        : !uri ? 'la celda no tiene enlace' : `gid ${gid}, range ${rango}`
       console.log(`   ⚠ ${pestaña}: el atajo "IR A HOY" (${celdaAtajo}) apunta a un destino inválido — ${porQue}`)
     }
   }

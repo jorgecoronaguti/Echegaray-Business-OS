@@ -29,7 +29,7 @@ import {
   COL, FILA,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
-  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, URL_ARCHIVO, ROTULO_HOY, ROTULO_CONCEPTO,
+  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
 import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
@@ -37,7 +37,7 @@ import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './ca
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
-import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
+import { columnasDelPasado, atajoDelPeriodo } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaDeCierre, glosaConInvertido, muestraSemanal, IMPORTE_MUESTRA, GLOSA_SIN_ANCLA,
@@ -167,8 +167,8 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   // control del pipeline lo reclamaba igual en las dos pestañas — reclamaba un atajo que en el Mensual
   // no existía. Doce columnas se recorren de un vistazo, pero saber cuál es el mes en curso no es un
   // atajo de navegación: es la línea entre lo que ya ocurrió y lo que todavía es proyección.
-  const vinculo = vinculoHoy(gid, meta)
-  if (vinculo) { poner(FILA.botonHoy, 0, vinculo); meta.botonHoy = { fila: FILA.botonHoy, col: 0 } }
+  const vinculo = vinculoHoy(gid, meta, hoy)
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri } }
 
   bloqueHero(poner, meta, refs)
 
@@ -225,14 +225,13 @@ export function formulaSubtitulo(refFecha, primerMes) {
  * los encabezados, así que el MATCH es exacto y no aproximado. Si el cuadro quedó viejo (otro año) la
  * celda muestra #N/A, y está bien: taparlo con IFERROR cambiaría un aviso por un vínculo a cualquier lado.
  */
-export function vinculoHoy(gid, meta) {
-  if (gid === null || gid === undefined) return null
-  const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
-  const primero = 'EOMONTH(TODAY();-1)+1'
-  const dir = `ADDRESS(${meta.cab.fila};MATCH(${primero};${rangoCab};0)+${meta.cab.col0};4)`
-  // `mmm yy` va en US como todo patrón de formato del repo, aunque los argumentos vayan en es-AR (`;`).
-  const rotulo = expresionRotulo(ROTULO_HOY.mes, dir, primero, 'mmm yy')
-  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};${rotulo})`
+export function vinculoHoy(gid, meta, hoy = new Date()) {
+  return atajoDelPeriodo({
+    gid, prefijo: ROTULO_HOY.mes, ventanas: meta.ventanas, hoy,
+    col0: meta.cab.col0, filaCabecera: meta.cab.fila,
+    // El mismo rótulo corto que ya usan los encabezados del cuadro: "ago 26".
+    rotularFecha: (d) => rotuloMes(d),
+  })
 }
 
 /**

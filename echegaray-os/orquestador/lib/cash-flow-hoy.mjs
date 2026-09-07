@@ -178,3 +178,45 @@ export function esApunteDelAtajo(valor, { filaCabecera = FILA.cabecera, col0 = C
 
 /** El rango del pliegue, en letras, para el log: "B..AG". PURA. */
 export const rangoEnLetras = (r) => (r ? `${letra(r.inicio)}..${letra(r.fin - 1)}` : '—')
+
+/**
+ * NÚCLEO PURO: EL ATAJO AL PERÍODO EN CURSO — texto plano + un enlace INTERNO al rango.
+ *
+ * ═══ POR QUÉ DEJÓ DE SER `HYPERLINK` (07/09/2026) ═══
+ *
+ * El dueño, por tercera vez: *«no funciona lo que has hecho, me tiene que llevar a la columna, no
+ * abrir un flujo nuevo»*. Y tenía razón: `HYPERLINK` exige una URL ABSOLUTA —el fragmento suelto
+ * `#gid=…` no navega, eso ya se midió el 13/08— y una URL absoluta al mismo archivo es, para el
+ * navegador, OTRO documento: abre una pestaña nueva del Sheet en vez de scrollear ésta.
+ *
+ * Las dos cosas que se sabían eran ciertas y la conclusión de juntarlas era falsa:
+ *   · con el fragmento, `HYPERLINK` no navega   → se puso la URL entera
+ *   · con la URL entera, `HYPERLINK` navega     → sí, pero ABRIENDO el archivo de nuevo
+ *
+ * Lo que Sheets sí sabe hacer es un ENLACE DE TEXTO ENRIQUECIDO (`textFormatRuns[].format.link`) con
+ * el fragmento relativo `#gid=…&range=…`: es lo que produce «Insertar → Enlace → Hojas y rangos con
+ * nombre», y scrollea DENTRO del documento abierto, en un clic. Eso no es una fórmula: es formato
+ * sobre una celda de texto. Por eso esta función devuelve `{texto, uri}` y no una fórmula.
+ *
+ * ═══ LO QUE SE PIERDE, DECLARADO ═══
+ *
+ * El rótulo deja de calcularse en la hoja: se congela al generar. No se mueve solo el lunes a la
+ * madrugada — lo mueve la corrida siguiente del pipeline, que es cada 2 h. El desfase máximo real es
+ * de una corrida, y a cambio el clic funciona, que es lo que se pedía.
+ *
+ * @param {number|null} gid              sin él no hay destino: devuelve null, no un enlace a ningún lado
+ * @param {string} prefijo               `ROTULO_HOY.semana` / `.mes`
+ * @param {Array<{desde:Date|string}>} ventanas las mismas ventanas con las que suma cada columna
+ * @param {(d:Date)=>string} rotularFecha cómo se lee la fecha del período ("10/08", "ago 26")
+ * @returns {{texto:string, uri:string}|null} null si hoy cae fuera del ejercicio que muestra la vista
+ */
+export function atajoDelPeriodo({ gid, prefijo, ventanas = [], hoy = new Date(), col0 = COL.tiempo0, filaCabecera = FILA.cabecera, rotularFecha }) {
+  if (gid === null || gid === undefined) return null
+  const j = indiceDeHoy(ventanas, hoy)
+  if (j < 0) return null // el ejercicio del cuadro no contiene hoy: no se inventa un destino
+  const col = letra(col0 + j)
+  return {
+    texto: `${prefijo}${col}  ·  ${rotularFecha(new Date(ventanas[j].desde))}`,
+    uri: `#gid=${gid}&range=${col}${filaCabecera}`,
+  }
+}

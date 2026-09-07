@@ -58,12 +58,12 @@ import {
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, formulaMayorImporte, formulaMayorContraparte,
-  ventanas, celda, rangoFila, serialDeFecha, URL_ARCHIVO, ROTULO_HOY, ROTULO_CONCEPTO,
+  ventanas, celda, rangoFila, serialDeFecha, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
-import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
+import { columnasDelPasado, atajoDelPeriodo } from './cash-flow-hoy.mjs'
 import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
 import {
   expresionInvertido, glosaConInvertido, muestraSemanal, GLOSA_SIN_ANCLA,
@@ -141,8 +141,8 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
     '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
   // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo
   // existía y nadie lo veía — un vínculo que hay que scrollear para encontrar no ahorra el scroll.
-  const vinculo = vinculoHoy(gid, meta)
-  if (vinculo) { poner(FILA.botonHoy, 0, vinculo); meta.botonHoy = { fila: FILA.botonHoy, col: 0 } }
+  const vinculo = vinculoHoy(gid, meta, hoy)
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri } }
 
   bloqueHero(poner, meta, refs)
 
@@ -329,14 +329,14 @@ function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null })
  * ejercicio que muestra la pestaña —cambió el año y nadie la regeneró—. Taparlo con un IFERROR
  * cambiaría un aviso por un vínculo que lleva a cualquier lado.
  */
-export function vinculoHoy(gid, meta) {
-  if (gid === null || gid === undefined) return null
-  const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
-  // WEEKDAY(fecha;3) devuelve 0 para el lunes: TODAY() menos eso ES el lunes de la semana corriente,
-  // la misma definición con la que se generaron los encabezados.
-  const lunes = 'TODAY()-WEEKDAY(TODAY();3)'
-  const dir = `ADDRESS(${meta.cab.fila};MATCH(${lunes};${rangoCab};0)+${meta.cab.col0};4)`
-  const rotulo = expresionRotulo(ROTULO_HOY.semana, dir, lunes, 'd/mm')
-  // LA URL ENTERA, NO EL FRAGMENTO "#gid=…": con el fragmento suelto el clic no navega. Ver URL_ARCHIVO.
-  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};${rotulo})`
+export function vinculoHoy(gid, meta, hoy = new Date()) {
+  return atajoDelPeriodo({
+    gid, prefijo: ROTULO_HOY.semana, ventanas: meta.ventanas, hoy,
+    col0: meta.cab.col0, filaCabecera: meta.cab.fila,
+    // El lunes de la ventana, como lo lee una persona: "10/08". Es la misma fecha del encabezado.
+    // getUTCDate y NO getDate: las ventanas son medianoche UTC y esta VM corre en -03, así que el
+    // getter local devuelve el DÍA ANTERIOR — el lunes 10/08 se rotulaba "09/08" y el atajo decía una
+    // fecha que no es la de ninguna columna. Es la misma trampa que ya vació fechas dd/mm una vez.
+    rotularFecha: (d) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+  })
 }
