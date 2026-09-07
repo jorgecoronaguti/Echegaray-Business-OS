@@ -29,12 +29,16 @@ import { guardarJornada } from '@/features/administracion/services/jornadaPorObr
 //
 // Ni foto, ni tarea, ni actividad, ni plata: el jefe de obra no ve el valor hora.
 
+/** Lo que ya tiene esa persona cargado ESE día en otra obra. Sin esto, dos jefes cargan la jornada
+ *  de la misma persona el mismo día y quedan 17,6 hs repartidas entre dos obras. */
+export type FilaConOtraObra = FilaJornada & { enOtraObra?: { obra: string; horas: number } | null }
+
 export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
   obraId: string
   obraNombre: string
   fecha: string
   jornada: number
-  filas: FilaJornada[]
+  filas: FilaConOtraObra[]
 }) {
   const [casillas, setCasillas] = useState<Record<string, CasillaJornada>>(() => casillasIniciales(filas))
   const [resultado, setResultado] = useState<{ ok: boolean; texto: string } | null>(null)
@@ -123,6 +127,14 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
                   {(fila.persona.nota ?? fila.observacion) && (
                     <p className="truncate text-[12px] text-muted">
                       {[fila.persona.nota, fila.observacion].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                  {/* YA TIENE EL DÍA EN OTRA OBRA. Dos personas del plantel están asignadas a dos
+                      obras a la vez: sin este renglón, cada jefe cargaba su jornada completa y la
+                      persona terminaba con 17,6 hs el mismo día, repartidas, sin un solo aviso. */}
+                  {fila.enOtraObra && (
+                    <p className="truncate text-[12px] text-[#B54708]" data-testid="ya-en-otra-obra">
+                      ya tiene {hs(fila.enOtraObra.horas)} hs ese día en {fila.enOtraObra.obra}
                     </p>
                   )}
                 </div>

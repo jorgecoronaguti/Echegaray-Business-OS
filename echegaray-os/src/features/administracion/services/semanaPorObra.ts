@@ -62,7 +62,8 @@ export interface FilaSemanaObra {
   /** La misma persona ya apareció más arriba con otra obra. */
   repetida: boolean
   celdas: CeldaObra[]
-  horas: number
+  /** Horas trabajadas de la fila. `null` = ninguna hora declarada, que no es lo mismo que cero. */
+  horas: number | null
   /** Las fechas que hay que reclamar. Vacío = nada que reclamar. */
   reclama: string[]
 }
@@ -124,7 +125,12 @@ export function armarSemanaPorObra(e: EntradaSemanaObra): FilaSemanaObra[] {
       obra: { id: par.obra_id, nombre: par.obra },
       repetida,
       celdas,
-      horas: redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0)),
+      // `null` Y NO CERO CUANDO NO HAY NINGUNA HORA. Un «0» en la columna HORAS afirma que esa
+      // persona trabajó cero horas esa semana en esa obra; lo que pasa es que no hay con qué
+      // contestar —nadie marcó, o sólo hay ausencias—. Es la misma regla que `totalesPorDia`.
+      horas: celdas.some((c) => c.estado === 'horas')
+        ? redondear(celdas.reduce((s, c) => s + (c.horas ?? 0), 0))
+        : null,
       reclama: celdas.filter((c) => c.estado === 'sin_marcar').map((c) => c.fecha),
     }
   })
@@ -182,7 +188,7 @@ export function totalesPorDia(filas: FilaSemanaObra[], dias: string[]): (number 
 }
 
 export const totalDeLaSemanaPorObra = (filas: FilaSemanaObra[]): number =>
-  redondear(filas.reduce((s, f) => s + f.horas, 0))
+  redondear(filas.reduce((s, f) => s + (f.horas ?? 0), 0))
 
 /** Cuántas personas tiene cada obra en la semana. Los chips del encabezado. */
 export function personasPorObra(filas: FilaSemanaObra[]): { obra_id: string; nombre: string; personas: number }[] {

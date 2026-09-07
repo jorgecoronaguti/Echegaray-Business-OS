@@ -35,7 +35,7 @@ test('QUIEN CAMBIÓ DE OBRA TIENE DOS FILAS, y la segunda queda marcada como rep
   assert.equal(filas.length, 2)
   assert.equal(filas[0].repetida, false)
   assert.equal(filas[1].repetida, true)
-  assert.equal(filas[0].horas + filas[1].horas, 24)
+  assert.equal((filas[0].horas ?? 0) + (filas[1].horas ?? 0), 24)
   assert.notEqual(filas[0].obra.id, filas[1].obra.id)
 })
 
@@ -106,7 +106,7 @@ test('LA AUSENCIA SE VE «A» Y NO SUMA HORAS NI A LA FILA NI A LA COLUMNA', () 
   const molina = filas.find((f) => f.persona.id === 'a')!
   assert.equal(molina.celdas[0].estado, 'ausente')
   assert.equal(molina.celdas[0].horas, null)
-  assert.equal(molina.horas, 0)
+  assert.equal(molina.horas, null, 'de un ausente no se puede decir que trabajó cero: se sabe que no vino')
   assert.deepEqual(totalesPorDia(filas, [V]), [8.8])
   assert.equal(totalDeLaSemanaPorObra(filas), 8.8)
 })
@@ -146,4 +146,27 @@ test('HORAS CARGADAS EN UNA OBRA SIN ASIGNACIÓN VIGENTE SIGUEN APARECIENDO', ()
   })
   assert.equal(filas.length, 2)
   assert.ok(filas.some((f) => f.obra.id === 'messina' && f.horas === 8))
+})
+
+test('UNA FILA SIN NINGUNA HORA TOTALIZA null, no cero', () => {
+  // El defecto que atrapa: escribir «0» en la columna HORAS de quien no fue marcado. Cero es una
+  // afirmación sobre su semana; lo que hay es la falta de cualquier registro. Y de un ausente
+  // tampoco se puede decir que trabajó cero: se sabe que no vino, que es otra cosa.
+  const filas = armarSemanaPorObra({
+    asignaciones: [asig('a', 'Molina', ...ESTRELLA), asig('b', 'Ríos', ...ESTRELLA)],
+    registros: [reg('b', 'estrella', L, 8)],
+    dias: [L], hoy: HOY,
+  })
+  assert.equal(filas.find((f) => f.persona.id === 'a')!.horas, null)
+  assert.equal(filas.find((f) => f.persona.id === 'b')!.horas, 8)
+  assert.equal(totalDeLaSemanaPorObra(filas), 8, 'el total de la semana no se rompe con un null')
+})
+
+test('UNA FILA SÓLO CON AUSENCIAS TOTALIZA null: no vino no es trabajó cero', () => {
+  const filas = armarSemanaPorObra({
+    asignaciones: [asig('a', 'Molina', ...ESTRELLA)],
+    registros: [reg('a', 'estrella', L, 8.8, 'ausencia')],
+    dias: [L], hoy: HOY,
+  })
+  assert.equal(filas[0].horas, null)
 })

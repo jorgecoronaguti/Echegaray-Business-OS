@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ORDEN_DEL_MOVIMIENTO, acuseDe, cambiaDeObra, correccionSchema, envioSchema, planDeGuardado,
+  traducirEscritura,
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
@@ -231,4 +232,22 @@ test('UNA OBRA DESTINO VACÍA NO ENTRA', () => {
   assert.equal(correccionSchema.safeParse({
     persona_id: A, fecha: '2026-09-07', obra_destino: '   ', estado: 'presente', horas: 8,
   }).success, false)
+})
+
+test('EL ERROR DE POSTGRES NO LLEGA CRUDO AL TELÉFONO DEL JEFE', () => {
+  // El defecto que atrapa: mostrar `duplicate key value violates unique constraint
+  // "registros_hh_persona_unico"` a alguien parado en una obra. No es un mensaje, es ruido — y lo
+  // peor es que el caso real (otro cargó el mismo día al mismo tiempo) tiene una salida concreta.
+  const choque = traducirEscritura({ code: '23505', message: 'duplicate key value violates unique constraint' })
+  assert.match(choque, /Alguien más cargó ese mismo día/)
+  assert.doesNotMatch(choque, /constraint|duplicate/)
+
+  assert.match(traducirEscritura({ code: '42501', message: 'permission denied for table registros_hh' }),
+    /no puede escribir horas/)
+
+  // EL DEL PERÍODO CERRADO SE MUESTRA TAL CUAL: el trigger ya lo escribió para una persona, y
+  // taparlo con un texto genérico le sacaría la única instrucción útil que tiene.
+  const cerrado = 'El período 08/2026 está cerrado: no se pueden cargar, modificar ni borrar horas '
+    + 'de ese mes. Reabrilo si hay que corregirlo.'
+  assert.equal(traducirEscritura({ code: '23514', message: cerrado }), cerrado)
 })

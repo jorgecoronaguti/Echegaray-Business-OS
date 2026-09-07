@@ -204,3 +204,29 @@ export const cambiaDeObra = (c: Correccion): boolean =>
  * silenciosa. La clave única no se opone: son obras distintas, así que las dos filas conviven.
  */
 export const ORDEN_DEL_MOVIMIENTO = ['insertar', 'borrar'] as const
+
+// ── EL ERROR DE POSTGRES, EN EL IDIOMA DE QUIEN CARGA ──────────────────────────────────────────
+//
+// Vive acá y no en la acción por la misma razón mecánica que todo lo demás de este archivo: un
+// `'use server'` sólo puede exportar funciones async, y exportar una pura desde ahí ROMPE EL BUILD.
+// El typecheck no lo ve; el build sí. Y de paso se prueba sin base.
+
+/**
+ * El error de Postgres, dicho en el idioma de quien carga.
+ *
+ * El trigger `registros_hh_periodo_cerrado` ya escribe un mensaje pensado para una persona y se
+ * muestra tal cual. Los que no —una colisión de la clave única, un permiso— salían crudos: un
+ * `duplicate key value violates unique constraint "registros_hh_persona_unico"` en el teléfono de
+ * un jefe de obra no es un mensaje, es ruido.
+ */
+export function traducirEscritura(error: { code?: string; message: string }): string {
+  if (error.code === '23505') {
+    return 'Alguien más cargó ese mismo día mientras estabas en esta pantalla. Recargá para ver lo '
+      + 'que quedó y corregí sobre eso — para no escribir dos veces la misma jornada.'
+  }
+  if (error.code === '42501') {
+    return 'Tu usuario no puede escribir horas en esta obra.'
+  }
+  // 23514 es el CHECK del período cerrado: su mensaje ya está escrito para una persona.
+  return error.message
+}

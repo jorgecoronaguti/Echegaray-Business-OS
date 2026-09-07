@@ -23,7 +23,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import {
-  acuseDe, cambiaDeObra, correccionSchema, envioSchema, planDeGuardado,
+  acuseDe, cambiaDeObra, correccionSchema, envioSchema, planDeGuardado, traducirEscritura,
   type EscritoEnLaBase, type FilaExistente, type MarcaDeJornada, type PlanDeJornada,
 } from './planDeJornada'
 
@@ -149,26 +149,6 @@ async function escribirPlan(
   }
 
   return { escrito, error: null }
-}
-
-/**
- * El error de Postgres, dicho en el idioma de quien carga.
- *
- * El trigger `registros_hh_periodo_cerrado` ya escribe un mensaje pensado para una persona y se
- * muestra tal cual. Los que no —una colisión de la clave única, un permiso— salían crudos: un
- * `duplicate key value violates unique constraint "registros_hh_persona_unico"` en el teléfono de
- * un jefe de obra no es un mensaje, es ruido.
- */
-export function traducirEscritura(error: { code?: string; message: string }): string {
-  if (error.code === '23505') {
-    return 'Alguien más cargó ese mismo día mientras estabas en esta pantalla. Recargá para ver lo '
-      + 'que quedó y corregí sobre eso — para no escribir dos veces la misma jornada.'
-  }
-  if (error.code === '42501') {
-    return 'Tu usuario no puede escribir horas en esta obra.'
-  }
-  // 23514 es el CHECK del período cerrado: su mensaje ya está escrito para una persona.
-  return error.message
 }
 
 

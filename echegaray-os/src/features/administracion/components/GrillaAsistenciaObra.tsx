@@ -160,9 +160,11 @@ export function GrillaAsistenciaObra({
 
               <td style={{
                 padding: '7px 0 7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-                color: fila.reclama.length > 0 ? ROJO : V.tinta,
+                color: fila.reclama.length > 0 ? ROJO : fila.horas === null ? V.inerte : V.tinta,
               }}>
-                {hs(fila.horas)}
+                {/* `—` Y NO `0`: cero afirma que trabajó cero horas esa semana; lo que hay es que
+                    nadie declaró ninguna. */}
+                {fila.horas === null ? '—' : hs(fila.horas)}
               </td>
               {puedeCorregir && (
                 <td style={{ padding: '7px 0 7px 10px', textAlign: 'right' }}>
