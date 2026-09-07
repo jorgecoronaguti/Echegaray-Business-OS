@@ -128,10 +128,15 @@ export function TablaPersonas({
     <div data-testid="tabla-personas">
       <div className={`grid ${cols}`} style={{ ...ENCABEZADO, gap: conBaja ? 14 : GAP }}>
         <RotuloCol>Persona</RotuloCol>
-        {/* PUESTO se suelta en angosto junto con las otras tres: su rótulo NO puede llevar `display`
-            inline, porque un estilo inline le gana a cualquier media query y el rótulo se quedaría
-            dibujado sobre una grilla que ya no tiene su columna. */}
-        {!conBaja && <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Puesto</RotuloCol></span>}
+        {/* «CATEGORÍA», NO «PUESTO» (07/09/2026, pedido del dueño). El campo guarda la categoría de
+            convenio —oficial, ayudante, oficial especializado—, que es lo que decide la tarifa; el
+            rótulo anterior sugería un cargo. El nombre del campo en la base no cambia: renombrarlo
+            arrastraría el legajo, la auditoría de cambios y el formulario, y lo que estaba mal era
+            cómo se lee, no dónde vive.
+            SU RÓTULO NO PUEDE LLEVAR `display` INLINE: se suelta en angosto junto con las otras tres,
+            y un estilo inline le gana a cualquier media query — el rótulo quedaría dibujado sobre una
+            grilla que ya no tiene su columna. */}
+        {!conBaja && <span className={`grid ${SOLO_ANCHO}`}><RotuloCol>Categoría</RotuloCol></span>}
         <RotuloCol>{conBaja ? 'Última obra' : 'Obra'}</RotuloCol>
         {conBaja
           ? <RotuloCol>Baja</RotuloCol>

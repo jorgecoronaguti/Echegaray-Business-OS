@@ -148,7 +148,9 @@ test('la lista tiene las SEIS columnas del handoff v4, con su grilla literal', (
   )
   // «Obra» viaja por un ternario —«Última obra» en el corte de Inactivos—, así que se acepta el
   // rótulo escrito como hijo directo o como literal del ternario. Lo que se exige es que ESTÉ.
-  for (const c of ['Persona', 'Puesto', 'Obra', 'Hoy', 'HH mes', 'Papeles']) {
+  // «Categoría» y no «Puesto» desde el 07/09/2026: el campo guarda la categoría de convenio, que
+  // es la que decide la tarifa. Es el rótulo que pidió el dueño.
+  for (const c of ['Persona', 'Categoría', 'Obra', 'Hoy', 'HH mes', 'Papeles']) {
     assert.ok(src.includes(`>${c}<`) || src.includes(`'${c}'`), `falta el rótulo ${c}`)
   }
   // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
