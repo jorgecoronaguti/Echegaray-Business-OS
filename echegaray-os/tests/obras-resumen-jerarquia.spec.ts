@@ -49,17 +49,14 @@ test('el resumen de obras es una fila por obra, con OBRA y CLIENTE separados y c
     await entrar(page)
     await page.goto('/obras')
 
-    // ── NIVEL 2: DOS ENTRADAS, NI UNA MÁS ────────────────────────────────────
-    // CAMBIO DE REGLA DECLARADO (Design 23/08): las dos entradas se llaman «Tabla» y «Línea de
-    // tiempo». Eran «Resumen» y «Gantt», y «Resumen» es también el nombre de la primera solapa
-    // DENTRO de una obra: el mismo nombre en dos niveles de la jerarquía. Lo que este test cuida no
-    // cambia —que acá no vuelvan a colarse dominios de una obra—, sólo cómo se llaman las dos vistas.
-    const barra = page.getByTestId('nav-vistas-obras')
-    await expect(barra).toBeVisible({ timeout: 30000 })
-    await expect(
-      barra.getByRole('link'),
-      'la barra del área volvió a mezclar dominios de una obra con vistas del área',
-    ).toHaveText(['Tabla', 'Línea de tiempo'])
+    // ── NIVEL 2: EL CAMINO AL GANTT ──────────────────────────────────────────
+    // La barra `nav-vistas-obras` dejó de existir en /obras el 24/08, cuando la cartera canónica se
+    // portó del zip; este test quedó rojo desde entonces exigiendo un `testid` retirado. Lo que
+    // importaba no era la barra sino que la otra vista del ÁREA siga estando a un click y con su
+    // nombre: el 07/09 el dueño dio el Gantt por eliminado porque el control era un ícono mudo.
+    const alGantt = page.getByTestId('conmutar-vista')
+    await expect(alGantt, 'desde /obras no hay camino visible al Gantt').toBeVisible({ timeout: 30000 })
+    await expect(alGantt).toHaveText(/Gantt/)
 
     // ── UNA FILA POR OBRA ────────────────────────────────────────────────────
     const tabla = page.getByTestId('portafolio-tabla')

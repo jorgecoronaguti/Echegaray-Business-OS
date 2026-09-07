@@ -43,7 +43,14 @@ import { usePathname } from 'next/navigation'
 
 const VISTAS = [
   { href: '/obras', id: 'resumen', label: 'Tabla' },
-  { href: '/obras/gantt', id: 'gantt', label: 'Línea de tiempo' },
+  // «GANTT» Y NO «LÍNEA DE TIEMPO» (07/09/2026). El 23/08 esta vista pasó a llamarse «Línea de
+  // tiempo» para emparejar con «Tabla». El nombre describía bien, pero el dueño buscó su Gantt, no
+  // lo encontró y lo dio por eliminado: *"necesito la vista gantt de todas las obras, esto ha sido
+  // quitado por vos"*. La vista nunca se fue; se fue su nombre. Gana la palabra que usa quien lo
+  // usa. Lo que sí se arregló ese día —que «Resumen» significaba dos pantallas distintas— sigue
+  // arreglado: la otra vista se llama «Tabla», y adentro de una obra el cronograma se llama
+  // «Cronograma», así que «Gantt» no colisiona con nada.
+  { href: '/obras/gantt', id: 'gantt', label: 'Gantt' },
 ] as const
 
 export function NavObras() {

@@ -294,3 +294,50 @@ test('el Gantt global no empuja la página de costado en el teléfono', async ({
     document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(desborde, `/obras/gantt desborda ${desborde}px de costado en 390px`).toBeLessThanOrEqual(1)
 })
+
+/**
+ * EL GANTT SE ABRE MOSTRANDO LA CARTERA, NO EL PRIMER TERCIO DE LA CARTERA.
+ *
+ * ═══ EL DEFECTO QUE ATRAPA (07/09/2026) ═══
+ *
+ * El dueño: *"necesito la vista gantt de todas las obras, esto ha sido quitado por vos"*. No estaba
+ * quitada: abría siempre en escala «semana» —16 px por día— y con las diez obras activas llegando al
+ * 31/12 el lienzo medía **3.364 px dentro de 1.392 visibles**. El fin de las cuatro obras más largas
+ * nacía fuera de la pantalla y no había ninguna señal de que hubiera algo más a la derecha.
+ *
+ * ═══ POR QUÉ NO SE MIDE «EL LIENZO ENTRA» A SECAS ═══
+ *
+ * Porque eso mide el largo de la cartera, no la regla: el día que haya una obra a tres años, ninguna
+ * de las dos escalas entra y el test daría rojo sin que nada esté mal. Lo que se exige es que no
+ * quede una escala más chica SIN USAR: si el Gantt desborda al abrir, «mes» ya tiene que estar
+ * puesta. Con la regla vieja —abrir siempre en semana— esto es rojo hoy; con cualquier cartera
+ * futura sigue midiendo lo mismo.
+ */
+test('el Gantt se abre en la escala que hace entrar la cartera', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await entrar(page)
+  await page.goto('/obras/gantt')
+  await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+
+  const caja = page.locator('[data-gantt-caja]')
+  const { desborde, visible } = await caja.evaluate((el) => ({
+    desborde: el.scrollWidth, visible: el.clientWidth,
+  }))
+  const mesPuesta = await page.getByTestId('escala-mes').getAttribute('aria-pressed')
+
+  if (desborde > visible + 1) {
+    expect(mesPuesta,
+      `el Gantt abre con ${desborde}px de lienzo en ${visible}px visibles y todavía no usó la escala de mes`,
+    ).toBe('true')
+  }
+
+  // Y la escala más chica no se usa porque sí: si está puesta, es porque la cartera no entraba de
+  // otro modo. Un Gantt que abre en «mes» teniendo lugar de sobra desperdicia la mitad del detalle.
+  if (mesPuesta === 'true') {
+    await page.getByTestId('escala-semana').click()
+    const enSemana = await caja.evaluate((el) => el.scrollWidth)
+    expect(enSemana,
+      'el Gantt abrió en «mes» aunque en «semana» la cartera entraba: eligió una escala de más',
+    ).toBeGreaterThan(visible)
+  }
+})

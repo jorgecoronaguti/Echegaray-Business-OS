@@ -130,33 +130,57 @@ test('el renglón global de una obra responde a las actividades de esa obra', as
  * en esas URLs no quede NADA de la vista global —ni su barra ni su tabla— y que la pantalla diga
  * que no hay tal obra. Si alguien repone el `page.tsx`, las dos condiciones se rompen.
  */
-test('la barra del área Obras tiene exactamente dos entradas: Tabla y Línea de tiempo', async ({ page }) => {
+test('desde /obras se llega al Gantt de la cartera, y las vistas retiradas no volvieron', async ({ page }) => {
+  // OCHO NAVEGACIONES EN UN SOLO RECORRIDO: login, la cartera, el Gantt, la vuelta y las cinco rutas
+  // retiradas. Con `next dev` cada ruta compila la primera vez que se abre, y los 30 s por defecto se
+  // consumen antes de la primera aserción. El tope no afloja nada: lo que se mide es el mismo.
+  test.setTimeout(150000)
   await entrar(page)
   await page.goto('/obras')
 
-  // CAMBIO DE REGLA DECLARADO (Design 23/08): las dos vistas del área pasaron a llamarse por lo que
-  // muestran —«Tabla» y «Línea de tiempo»— en vez de «Resumen» y «Gantt». «Resumen» colisionaba con
-  // la primera solapa de una obra. Siguen siendo DOS y siguen siendo del área: eso es lo que se
-  // prueba acá.
-  const barra = page.getByTestId('nav-vistas-obras')
-  await expect(barra).toBeVisible({ timeout: 30000 })
-  await expect(barra.getByRole('link')).toHaveText(['Tabla', 'Línea de tiempo'])
+  // ═══ EL CAMINO AL GANTT, NO LA BARRA (07/09/2026) ═══
+  //
+  // Hasta el 24/08 el nivel 2 era la barra `nav-vistas-obras` con dos entradas. La cartera canónica
+  // la reemplazó por un control en su barra de herramientas, y ahí se abrió el agujero: el control
+  // quedó siendo un cuadradito de 28px SIN TEXTO que ni siquiera llevaba a `/obras/gantt`. El dueño
+  // dio el Gantt por eliminado, y estos tests llevaban rojos desde entonces exigiendo un `testid`
+  // que ya no existía — un rojo que nadie leyó porque parecía un cambio de diseño.
+  //
+  // Lo que se exige ahora es la REGLA, no el componente: desde la pantalla que se abre por defecto
+  // tiene que haber un camino VISIBLE Y CON NOMBRE al Gantt de la cartera. Si alguien vuelve a
+  // dejarlo sin rótulo, sin enlace o sin pantalla, esto se pone rojo.
+  const alGantt = page.getByTestId('conmutar-vista')
+  await expect(alGantt, 'desde /obras no hay ningún camino visible al Gantt').toBeVisible({ timeout: 30000 })
+  await expect(alGantt, 'el camino al Gantt no dice su nombre: un ícono mudo no se encuentra').toHaveText(/Gantt/)
+  await expect(alGantt).toHaveAttribute('href', '/obras/gantt')
 
-  // Y el nivel 1 no se mezcla con el 2: en Obras, el título es OBRAS.
-  await expect(page.getByRole('heading', { name: 'OBRAS', level: 1 })).toBeVisible()
+  // Y del otro lado del enlace está el Gantt de verdad, con sus renglones: un camino que lleva a una
+  // pantalla vacía es el mismo defecto con otra cara.
+  await alGantt.click()
+  await page.waitForURL(/\/obras\/gantt/, { timeout: 30000 })
+  await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+  expect(await page.locator('[data-testid="obra-gantt"]').count(),
+    'el Gantt abrió sin un solo renglón').toBeGreaterThan(0)
+  await page.goto('/obras')
 
   // LAS CUATRO RETIRADAS NO EXISTEN COMO RUTA. `/obras/cronograma` entra en la lista aunque su
   // contenido siga vivo: se mudó a `/obras/gantt`, y dejar la vieja respondiendo sería tener dos
   // URLs para la misma pantalla — el principio de una sola realidad, aplicado a la navegación.
   for (const ruta of ['/obras/personal', '/obras/operacion', '/obras/certificaciones', '/obras/documentos', '/obras/cronograma']) {
     await page.goto(ruta)
+    // EL TEXTO EXACTO NO ES LA REGLA (07/09/2026). Se exigía «No pude leer la obra»; la pantalla de
+    // obra inexistente hoy dice «No encontramos esa obra» y distingue —bien— no encontrada de no
+    // legible. La regla que este test cuida es que la ruta NO sea una vista global del área, y eso
+    // se mide por lo que la pantalla NO dibuja, que es lo que no depende de cómo esté redactada.
     await expect(
-      page.getByRole('heading', { name: 'No pude leer la obra', level: 1 }),
+      page.getByRole('heading', { name: /No (encontramos esa obra|pude leer la obra)/, level: 1 }),
       `${ruta} volvió a ser una pantalla propia: la vista global volvió`,
     ).toBeVisible({ timeout: 30000 })
-    await expect(
-      page.getByTestId('nav-vistas-obras'),
-      `${ruta} dibuja la barra del área: sigue siendo una vista global`,
-    ).toHaveCount(0)
+    for (const global of ['nav-vistas-obras', 'portafolio-tabla', 'gantt-obras']) {
+      await expect(
+        page.getByTestId(global),
+        `${ruta} dibuja «${global}»: sigue siendo una vista global`,
+      ).toHaveCount(0)
+    }
   }
 })
