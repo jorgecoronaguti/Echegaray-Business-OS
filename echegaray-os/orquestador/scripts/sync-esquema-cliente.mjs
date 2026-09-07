@@ -28,9 +28,14 @@
 // que el admin hizo en la pantalla 32 en cada corrida del timer. Se fusiona, no se rehace.
 import { query, closePool } from '../lib/db.mjs'
 import { proyectar } from '../lib/portal/cobranzas-a-cliente.mjs'
-import { cobrosOcultos, guardarPagoDelSync, plataOculta } from '../lib/portal/publicacion.mjs'
+import {
+  cobrosOcultos, filasQueElSyncNoAlcanza, guardarPagoDelSync, plataOculta, repararCobrosOcultos,
+} from '../lib/portal/publicacion.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
+// NIVEL E: publica cobros en la cara del cliente. Apagada siempre salvo que alguien la escriba a
+// mano — el timer no la lleva, y no se enciende «porque el control encontró algo».
+const REPARAR = process.argv.includes('--reparar-cobros-ocultos')
 
 /** Los alias que el DUEÑO ya declaró, resueltos hasta el cliente. No se inventa ninguno acá. */
 async function cargarIndice() {
@@ -128,6 +133,11 @@ async function main() {
     await closePool(); process.exit(1)
   }
   console.log(`\nescritos ${certificados.length} certificados y ${pagos.length} pagos.`)
+  if (REPARAR) {
+    const reparados = await repararCobrosOcultos({ query })
+    console.log(`\nreparados ${reparados.length} cobro(s) que habían nacido ocultos:`)
+    for (const r of reparados) console.log(`  · ${r.concepto} — $${Math.round(Number(r.monto)).toLocaleString('es-AR')}`)
+  }
   await informarCobrosOcultos()
   await closePool()
 }
@@ -144,17 +154,29 @@ async function main() {
  */
 async function informarCobrosOcultos() {
   const { rows } = await query(
-    `select e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto, e.concepto, e.fecha,
-            e.visible_portal, e.publicado_at
+    `select e.cliente_id, c.nombre_comercial cliente, e.estado, e.monto, e.concepto,
+            to_char(e.fecha, 'DD/MM/YYYY') fecha, e.visible_portal, e.publicado_at,
+            e.origen, e.cobranza_fila
        from public.esquema_pago e join public.clientes c on c.id = e.cliente_id
       where e.origen = 'sync_cobranzas'`)
+  const huerfanas = filasQueElSyncNoAlcanza(rows)
+  if (huerfanas.length) {
+    console.log(`\n⚠ ${huerfanas.length} línea(s) publicadas que este sync NO PUEDE actualizar (sin cobranza_fila):`)
+    console.log('  las sembró portal-sembrar.mjs, que concilia por (obra_id, orden) y no guarda la fila del')
+    console.log('  Sheet. Quedan congeladas en el estado del día que se sembraron y son las que el cliente ve.')
+    const orden = (a, b) => String(a.cliente).localeCompare(String(b.cliente), 'es')
+      || String(a.fecha ?? '').slice(6).localeCompare(String(b.fecha ?? '').slice(6))
+    for (const f of [...huerfanas].sort(orden)) {
+      console.log(`    · ${f.cliente}: ${f.fecha ?? 'sin fecha'} ${f.estado} — ${f.concepto}`)
+    }
+  }
   const grupos = cobrosOcultos(rows)
   if (!grupos.length) { console.log('\ncobros ocultos al cliente: ninguno.'); return }
   const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
   console.log(`\n⚠ COBROS QUE EL PORTAL NO REFLEJA — ${$(plataOculta(grupos))} en ${grupos.length} cliente(s):`)
   for (const g of grupos) {
     console.log(`  ${g.cliente ?? g.cliente_id}: ${g.n} cobro(s), ${$(g.total)}`)
-    for (const f of g.filas) console.log(`    · ${String(f.fecha ?? '').slice(0, 10)} ${$(Number(f.monto) || 0)} — ${f.concepto}`)
+    for (const f of g.filas) console.log(`    · ${f.fecha ?? 'sin fecha'} ${$(Number(f.monto) || 0)} — ${f.concepto}`)
   }
   console.log('  Son cobros REALES que el cliente no ve. Se publican desde la ficha del cliente')
   console.log('  (pantalla 32 · «Publicar»), que es quien tiene que autorizar lo que se le muestra.')

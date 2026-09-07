@@ -7,7 +7,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cobrosOcultos, esCobroOculto, plataOculta, NACE_VISIBLE_AL_CLIENTE } from './publicacion.mjs'
+import {
+  cobrosOcultos, esCobroOculto, filasQueElSyncNoAlcanza, plataOculta, NACE_VISIBLE_AL_CLIENTE,
+} from './publicacion.mjs'
 
 /** Una fila de `esquema_pago` publicada al cliente. Cada test cambia sólo lo que prueba. */
 const fila = (cambios = {}) => ({
@@ -81,4 +83,17 @@ test('el criterio de nacimiento es el mismo que el del otro escritor de la tabla
   // `portal-sembrar.mjs` inserta `… 'sync_cobranzas', true, now()`. Si esta constante se pusiera en
   // `false`, los dos escritores de `esquema_pago` volverían a contradecirse — que es el defecto.
   assert.equal(NACE_VISIBLE_AL_CLIENTE, true)
+})
+
+test('las filas que el sync no puede mantener son las que NO tienen cobranza_fila', () => {
+  // El sembrador concilia por (obra_id, orden) y no guarda la fila del Sheet: sus líneas quedan
+  // fuera del alcance del sync y congeladas. Son las que el cliente ve.
+  const filas = [
+    { origen: 'sync_cobranzas', cobranza_fila: 94, concepto: 'del sync' },
+    { origen: 'sync_cobranzas', cobranza_fila: null, concepto: 'saldo del anticipo · 1ª de 2 cuotas' },
+    { origen: 'manual', cobranza_fila: null, concepto: 'cargada a mano, no es de ningún sync' },
+  ]
+  const huerfanas = filasQueElSyncNoAlcanza(filas)
+  assert.equal(huerfanas.length, 1)
+  assert.equal(huerfanas[0].concepto, 'saldo del anticipo · 1ª de 2 cuotas')
 })

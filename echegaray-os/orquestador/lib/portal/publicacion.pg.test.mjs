@@ -18,7 +18,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPool } from '../db.mjs'
-import { cobrosOcultos, guardarPagoDelSync } from './publicacion.mjs'
+import { cobrosOcultos, guardarPagoDelSync, repararCobrosOcultos } from './publicacion.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
@@ -98,4 +98,62 @@ test('el otro escritor de la misma tabla no se contradice con éste', { skip: !h
   const inserts = src.match(/'sync_cobranzas',\s*true,\s*now\(\)/g) ?? []
   assert.ok(inserts.length >= 2,
     'el sembrador dejó de insertar publicada: revisá cuál de los dos escritores tiene razón antes de tocar nada')
+})
+
+test('la reparación toca los cobros ocultos y NADA más', { skip: !hayBase }, async (t) => {
+  const c = await getPool().connect()
+  const q = (sql, params) => c.query(sql, params)
+  const cobrada = (fila) => q(
+    `select visible_portal, publicado_at from public.esquema_pago where cobranza_fila = $1`, [fila])
+    .then((r) => r.rows[0])
+  try {
+    await q('begin')
+    await q('select pg_advisory_xact_lock(20260822)')
+    const { rows: [cli] } = await q('select id from public.clientes limit 1')
+
+    // Se recrea el estado exacto del defecto: filas que nacieron sin visibilidad. Se apagan a mano
+    // DESPUÉS del insert porque el insert ya está arreglado — el test tiene que partir del mundo roto.
+    const nacerOculta = async (fila, cambios) => {
+      await guardarPagoDelSync(pago({ cliente_id: cli.id, cobranza_fila: fila, orden: 900000 + fila, ...cambios }), { query: q })
+      await q(`update public.esquema_pago set visible_portal = false, publicado_at = null
+                where cobranza_fila = $1`, [fila])
+    }
+    await nacerOculta(FILA_QA, { estado: 'cobrado' })
+    await nacerOculta(OTRA_QA, { estado: 'a_vencer' })
+    // Y una tercera que administración publicó y APAGÓ a propósito: `publicado_at` queda sellado.
+    await guardarPagoDelSync(pago({ cliente_id: cli.id, cobranza_fila: 999903, orden: 900003 }), { query: q })
+    await q(`update public.esquema_pago set visible_portal = false where cobranza_fila = 999903`)
+
+    const reparados = await repararCobrosOcultos({ query: q })
+
+    await t.test('el cobro oculto vuelve a la cara del cliente', async () => {
+      const f = await cobrada(FILA_QA)
+      assert.equal(f.visible_portal, true)
+      assert.notEqual(f.publicado_at, null)
+      assert.ok(reparados.some((r) => Number(r.monto) === 8067936.5), 'y la reparación lo declara')
+    })
+
+    await t.test('una línea PROYECTADA sin publicar NO se publica: sería inventarle deuda', async () => {
+      // Medido en San Francisco: publicar las proyectadas subía el pendiente de $77.660.038,90 a
+      // $87.660.814,80 por doble conteo contra las líneas viejas del sembrador.
+      const f = await cobrada(OTRA_QA)
+      assert.equal(f.visible_portal, false)
+      assert.equal(f.publicado_at, null)
+    })
+
+    await t.test('una línea que administración APAGÓ a mano no se re-enciende', async () => {
+      const f = await cobrada(999903)
+      assert.equal(f.visible_portal, false, 'la decisión de administración no la revierte una reparación')
+    })
+
+    await t.test('y después de reparar el control no encuentra nada de lo que tocó', async () => {
+      const { rows } = await q(
+        `select cliente_id, estado, monto, visible_portal, publicado_at
+           from public.esquema_pago where cobranza_fila = $1`, [FILA_QA])
+      assert.deepEqual(cobrosOcultos(rows), [])
+    })
+  } finally {
+    await c.query('rollback')
+    c.release()
+  }
 })
