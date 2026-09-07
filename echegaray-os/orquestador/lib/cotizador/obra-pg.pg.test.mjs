@@ -160,8 +160,41 @@ test('obra · genealogía, plan congelado, costo real y observaciones contra la 
   })
 
   await t.test('leerEjecucionReal trae las cinco fuentes en cinco consultas', async () => {
+    // ═══ EL PARTE LO PONE EL TEST, NO LA BASE DE PRODUCCIÓN (07/09/2026) ═══
+    //
+    // Esto decía `r.ejecuciones.length >= 6` y contaba los partes que Quattropani tenía cargados ese
+    // día. El dueño vació el avance de las obras para rehacer el plan («lo demas vacialo para volver
+    // a empezar», 07/09) y el test se puso rojo sin que se rompiera una sola regla: no medía a
+    // `leerEjecucionReal`, medía cuánto había trabajado la obra.
+    //
+    // Es el mismo error que ya costó nueve rojos con el IPC de julio. La afirmación que este test
+    // tiene que sostener está en su propio título —CINCO FUENTES EN CINCO CONSULTAS— y para eso el
+    // hecho lo tiene que poner él: inserta un parte sobre una actividad viva y verifica que vuelve.
+    // Sigue adentro del `begin`/`rollback` de arriba, así que la base queda igual.
+    //
+    // NO SE AFLOJÓ LA ASERCIÓN A `>= 0`: eso habría dejado un control que no puede decir que no. Se
+    // le pide un parte CONOCIDO y se lo busca por su id.
+    const [tarea] = await q(
+      `select id from public.obra_actividad where obra_id = $1 and tipo = 'tarea' order by orden limit 1`,
+      [OBRA],
+    )
+    assert.ok(tarea, 'la obra no tiene ni una actividad de tipo tarea: el fixture no se puede armar')
+    // `metodo = 'manual'` OBLIGA a declarar el criterio —lo pide el CHECK
+    // `obra_ejecucion_manual_exige_criterio`, y está bien que lo pida: un avance puesto a mano sin
+    // decir contra qué se midió no es un hecho, es una opinión. El fixture lo declara.
+    const [puesto] = await q(
+      `insert into public.obra_ejecucion (obra_id, actividad_id, fecha, avance_pct, fuente, metodo, criterio)
+       values ($1, $2, '2026-08-25', 40, 'ZZ-test', 'manual', 'fixture del test: avance declarado')
+       returning id`,
+      [OBRA, tarea.id],
+    )
+
     const r = await leerEjecucionReal(puerta, OBRA, { partidaIds: filasPlan.slice(0, 3).map((f) => f.cotizacionPartidaId) })
-    assert.ok(Array.isArray(r.ejecuciones) && r.ejecuciones.length >= 6, `obra_ejecucion de Quattropani trajo ${r.ejecuciones.length}`)
+    assert.ok(Array.isArray(r.ejecuciones), 'ejecuciones no llegó como lista')
+    assert.ok(
+      r.ejecuciones.some((e) => e.id === puesto.id),
+      'el parte que acaba de entrar no volvió: leerEjecucionReal no está leyendo obra_ejecucion',
+    )
     for (const k of ['horas', 'equipos', 'costos', 'composicion']) assert.ok(Array.isArray(r[k]), `${k} no llegó como lista`)
     assert.ok(r.composicion.length > 0, 'la composición de la versión congelada no llegó')
   })
