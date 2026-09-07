@@ -1,6 +1,6 @@
 # ECHEGARAY BUSINESS OS — HANDOFF
 
-_actualizado: 2026-09-07 (tarde) · extracto cargado, botón repuesto, filtros de admin_
+_actualizado: 2026-09-07 (tarde-2) · ARCA descongelado, Jornales reparada, Nómina fuera del pipeline_
 
 ## 1. OBJETIVO GENERAL
 
@@ -103,13 +103,40 @@ Siete pedidos del dueño en ráfaga. Lo que quedó:
    y deuda, que ahora es un concepto del OS: vista `proveedor_deuda`, aplicada y verificada.
 5. **`compra_sheet` sincronizada** (949 filas). El timer `echegaray-compras-sync` ya corre cada hora.
 
+## 5.b LO QUE PASÓ DESPUÉS (07/09, segunda tanda)
+
+6. **ARCA descongelado.** No hacía falta un token nuevo: `scripts/arca/credentials/afipsdk-token.txt`
+   existía en el árbol de desarrollo y NUNCA se copió a producción, que es de donde corre el
+   servicio (los credenciales no viajan por git, y está bien). Copiado + corrida con
+   `ORQ_AFIPSDK_RESERVA=0` porque el plan free tenía 8 de 10 usadas y las 2 últimas están reservadas
+   para el dueño — él pidió correrlo. **Compras 653 → 737, hasta el 04/09** (venía del 21/08).
+   **Queda SIN CUOTA hasta el 10/09.**
+7. **Jornales por Quincena reparada.** La columna «Obreros» (D) del calendario estaba vacía en 6 de 8
+   quincenas: por eso Cargas Sociales proyectaba $31.746 para octubre con 25 empleados. Repuesta con
+   las fórmulas del generador (volcadas con `ORQ_VOLCAR_GRILLA`, no de la huella — que trunca a 300
+   caracteres y en el primer intento dejó 6 celdas en #ERROR!). Las fechas de las filas 45-46 eran un
+   problema de FORMATO, no de dato: seriales con formato de moneda. **Obreros proyectado
+   $4.770.955 → $19.400.639; costo laboral del año $64,9M → $80.487.869.**
+8. **`nomina-pestana.mjs` fuera del pipeline** (`PASOS_RETIRADOS`) y **timer del Flujo de Caja
+   DETENIDO**. Corría cada 2 h desde el 01/09 pisando la columna «EFECTIVO redondeado» del dueño.
+9. **El F931 de agosto entró** ($8.331.698, 25 empleados) y **su pago también** (referencia 49815776,
+   $8.331.697,69 del 07/09, leído del comprobante en Drive).
+10. **Comprobantes: 52 → 101 compras con foto.** El backfill del canal encontró 62 archivos nunca
+    bajados; 54 vincularon por registro. Quedan 168 archivos para 707 compras — **lo que falta no
+    existe**: julio (100) y junio (102) son los meses más vacíos.
+
 ## 6. PENDIENTES REALES
 
 **P0 — decisión del dueño, no arranca solo**
-- **ARCA SYNC CAÍDO DESDE EL 01/09.** `echegaray-arca-sync.service` FAILED: no hay `ACCESS_TOKEN` de
-  AfipSDK en `~/.config/echegaray-orq/worker.env` (el 24/08 todavía funcionaba). Falla cerrado, bien,
-  pero `comprobante_compra` quedó congelada en el 21/08 con 653 filas. **Bloquea el pedido de «todos
-  los gastos al día»**: la pestaña sí está al día, el libro fiscal no. Reponer el token.
+- **EL TIMER DEL FLUJO DE CAJA ESTÁ DETENIDO.** Se paró el 07/09 porque el pipeline corría
+  `nomina-pestana.mjs`, prohibido desde el 01/09. Ese paso ya salió (`PASOS_RETIRADOS`), pero
+  **producción todavía no tiene ese commit**: encender el timer antes de desplegar es volver a
+  pisar la columna del dueño. Orden: desplegar → verificar → `systemctl --user start
+  echegaray-flujo-caja.timer`.
+- **Los 3 «EFECTIVO redondeado» perdidos** (Aguero, Castillo, Alaniz en «Nómina»). No están en
+  ninguna revisión recuperable — la única que Drive conserva ya los tenía rotos. Sólo el dueño
+  los tiene.
+- **AfipSDK sin cuota hasta el 10/09** (plan free, 10 automatizaciones por ventana).
 - **El cheque ECHEQ 277 a «DUBOS UGARTE PEDRO LUIS RAUL» ($1.002.330,73, FA 03-000242, emitido
   4/12/2025, vence 22/01/2026).** El dueño pidió darle tratamiento en Compras. NO se cargó, y el
   motivo es dato, no pereza: DUBOS = DUPEC está PROBADO (mismo CUIT 20-28773782-4 en las 4 filas de
