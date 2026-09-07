@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { podarProsa, podarCelda, recortarProcedencia } from './podar-prosa.mjs'
+import { podarProsa, podarCelda, recortarProcedencia, loQueQueda } from './podar-prosa.mjs'
 import { auditarDiseno } from './diseno-unificado.mjs'
 import { VACIO, limpiarCentinela } from './preservar-anotaciones.mjs'
 
@@ -102,4 +102,32 @@ test('el centinela no ciega la renumeración: un título con VACIO al lado sigue
   const podada = podarProsa(filas, { pestana: 'Recurrentes' })
   assert.equal(podada[4][0], '1 · SERVICIOS')
   assert.equal(podada[6][0], '2 · TOTAL')
+})
+
+// EL ATAJO AL PERÍODO EN CURSO NO ES PROSA (07/09). El dueño, el 13/08: "mantenme el boton de ir al
+// dia en los dos". El contrato de minimalismo vaciaba la fila 3 ENTERA para dejar aire entre el
+// encabezado y el primer bloque, y con eso borró el único control de las dos vistas del Cash Flow:
+// A3 quedó vacía en el archivo vivo. Un contrato de formato no puede sacar un control que el dueño
+// pidió — y la fila 3 sigue teniendo que estar limpia de todo lo demás.
+test('la fila 3 se vacía salvo el atajo al período en curso', () => {
+  const filas = [
+    ['Cash Flow Semanal', 'algo'],
+    ['Qué se cobra · del libro · al 7/09'],
+    ['=HYPERLINK("https://x#gid=1&range=AH7";"Semana actual: "&"AH"&"  ·  7/09")', 'basura al lado'],
+    ['1. Un bloque'],
+  ]
+  const out = podarProsa(filas, { pestana: 'Cash Flow Semanal' })
+  assert.match(String(out[2][0]), /^=HYPERLINK\(/, 'el atajo de A3 sobrevive al podador')
+  assert.equal(out[2][1], VACIO, 'lo que lo acompaña en la fila 3 sí se poda')
+})
+
+// Y el auditor no puede contarlo como desvío: si lo contara, la única forma de tener la pestaña
+// conforme sería borrar el botón otra vez. El atajo llega como fórmula desde el generador y como su
+// rótulo ya resuelto cuando se lee el archivo — las dos formas se reconocen.
+test('el auditor no cuenta el atajo del período como fila 3 ocupada', () => {
+  const base = ['Cash Flow Semanal', 'Qué se cobra · del libro · al 7/09']
+  for (const a3 of ['=HYPERLINK("u";"Semana actual: AH")', 'Semana actual: AH  ·  7/09', 'Mes actual: AH  ·  sep 26']) {
+    const mal = loQueQueda([[base[0]], [base[1]], [a3], ['1. Un bloque']], 'Cash Flow Semanal')
+    assert.equal(mal.filter((x) => x.regla === 'sin-respiro').length, 0, `"${a3}" no es contenido: es el control`)
+  }
 })

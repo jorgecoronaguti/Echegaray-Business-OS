@@ -366,13 +366,15 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   assert.equal(conceptosDe('semana').length, 79)
 })
 
-test('EL CONTRATO DE DISEÑO en la grilla del semanal: sólo queda la fila del atajo, que es del dueño', () => {
-  // Mismo caso que el mensual y por el mismo motivo: `FILA.botonHoy` ocupa la fila 3 por decisión del
-  // dueño del 06/08. Ver el comentario del test gemelo en cash-flow-meses.test.mjs.
+test('EL CONTRATO DE DISEÑO en la grilla del semanal: cero desvíos, y el atajo intacto', () => {
+  // Mismo caso que el mensual y por el mismo motivo: ver el comentario del test gemelo en
+  // cash-flow-meses.test.mjs. Desde el 07/09 el atajo del período no se cuenta como contenido de la
+  // fila 3 —es un control— y la pestaña queda conforme SIN perder el botón, que se exige acá mismo.
   // Con `gid`: es la grilla que se ESCRIBE. Sin él el atajo no se dibuja y el test daría verde por
   // medir un cuadro que nadie ve.
   const filas = armar({ gid: 99 }).filas.map((f) => (f || []).map((c) => c ?? ''))
   const mal = auditarDiseno(filas, { pestana: 'Cash Flow Semanal' })
-  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), ['3 · sin-respiro'],
+  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), [],
     mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
+  assert.match(String(filas[2][0]), /^=HYPERLINK\(/, 'el botón sigue en A3')
 })

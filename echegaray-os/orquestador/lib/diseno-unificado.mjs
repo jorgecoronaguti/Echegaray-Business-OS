@@ -156,6 +156,32 @@ export function partesDeTitulo(texto) {
 }
 
 /**
+ * EL ATAJO AL PERÍODO EN CURSO ES UN CONTROL, NO CONTENIDO. PURA.
+ *
+ * ═══ POR QUÉ EXISTE (07/09) ═══
+ *
+ * El dueño, el 13/08: *"mantenme el boton de ir al dia en los dos"*. Las dos vistas del Cash Flow lo
+ * llevan en A3 (`vinculoHoy`), y la regla `sin-respiro` de acá abajo exige la fila 3 limpia para que
+ * el encabezado no se coma el primer bloque. Las dos cosas son ciertas y chocan en la misma celda:
+ * el podador vaciaba la fila 3 entera y el archivo vivo amaneció con A3 vacía en las dos pestañas.
+ *
+ * Gana el dueño, y la excepción se define UNA vez: el podador (`podar-prosa.mjs`) no la borra y el
+ * auditor no la cuenta. Si vivieran separadas, la única pestaña conforme sería la que perdió el botón.
+ *
+ * SE RECONOCEN LAS DOS FORMAS DE LA MISMA CELDA, y no es un detalle: del generador llega como
+ * `=HYPERLINK(…)`, y leída del archivo llega ya resuelta a su rótulo ("Semana actual: AH · 7/09").
+ * Un predicado que sólo mirara la fórmula daría verde en el camino de escritura y rojo al medir el
+ * archivo — el desvío fantasma que este repo ya pagó dos veces.
+ *
+ * El rótulo es el de `ROTULO_HOY` (cash-flow-matriz.mjs), que NO se importa: traerlo hasta acá
+ * arrastraría el cuadro entero a un lib que hoy no depende de ningún dominio, y ese orden de carga
+ * ya rompió siete tests herméticos el 06/09. Lo que se comparte es la FORMA, fijada por su test.
+ */
+export const esAtajoDelPeriodo = (celda) =>
+  /^\s*=\s*HYPERLINK\s*\(/i.test(String(celda ?? '')) ||
+  /^\s*(?:semana|mes) actual\s*:/i.test(textoVisible(celda))
+
+/**
  * NÚCLEO PURO: ¿esta celda es una explicación y no un rótulo?
  *
  * Dos caminos, y basta uno:
@@ -168,6 +194,7 @@ export function partesDeTitulo(texto) {
  * `partesDeTitulo`. `sobre` dice qué se juzgó, para que el hallazgo no muestre un texto distinto del
  * que midió.
  *
+
  * @param {unknown} celda el valor crudo de la celda (puede ser una fórmula: se mira lo que se VE)
  * @param {{tope?:number}} opciones
  * @returns {null|{clase:'larga'|'argumenta', largo:number, texto:string, sobre:'celda'|'glosa'}}
@@ -307,7 +334,7 @@ export function encabezadoRoto(filas = [], { pestana = '' } = {}) {
   const a1 = textoVisible(filas?.[0]?.[0]).trim()
   const restoF1 = (filas?.[0] ?? []).slice(1).some((c) => String(c ?? '').trim())
   const a2 = textoVisible(filas?.[1]?.[0])
-  const f3 = (filas?.[2] ?? []).some((c) => String(c ?? '').trim())
+  const f3 = (filas?.[2] ?? []).some((c) => String(c ?? '').trim() && !esAtajoDelPeriodo(c))
 
   if (!a1) mal.push({ fila: 1, regla: 'sin-titulo', detalle: 'A1 vacía: la pestaña no dice cómo se llama' })
   else if (pestana && !normal(a1).startsWith(normal(pestana))) {

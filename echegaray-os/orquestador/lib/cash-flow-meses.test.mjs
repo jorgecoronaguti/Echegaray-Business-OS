@@ -474,21 +474,25 @@ test('con gid, el botón queda en A3 — la misma celda que en el Semanal', () =
   assert.equal(en(armar().filas, FILA.botonHoy, 0), '')
 })
 
-test('EL CONTRATO DE DISEÑO en la grilla del mensual: sólo queda la fila del atajo, que es del dueño', () => {
-  // ═══ POR QUÉ ESTE TEST NO ESPERA CERO (06/09/2026) ═══
+test('EL CONTRATO DE DISEÑO en la grilla del mensual: cero desvíos, y el atajo intacto', () => {
+  // ═══ POR QUÉ ESTE TEST ESPERABA UNO Y AHORA ESPERA CERO (07/09/2026) ═══
   //
-  // El contrato pide la fila 3 VACÍA. Ahí vive `FILA.botonHoy`, y esa posición es una decisión
-  // explícita del dueño del 06/08: *"el botón va en A3, no en la columna TOTAL"* — en la columna 55 el
-  // atajo existía y nadie lo veía. No es prosa ni una explicación: es el único elemento de navegación
-  // del cuadro. Moverlo o borrarlo es una decisión suya, no de este frente, y correr el cuerpo una
-  // fila arrastra la cabecera —que hoy es la 7— y con ella las referencias de las dos vistas.
+  // El contrato pide la fila 3 VACÍA y ahí vive `FILA.botonHoy` por decisión explícita del dueño del
+  // 06/08 (*"el botón va en A3, no en la columna TOTAL"*). Hasta hoy este test clavaba ese desvío como
+  // esperado: era la forma de decir «esta pestaña no puede quedar conforme sin borrar el botón».
   //
-  // Se clava el desvío ESPERADO en vez de saltear la pestaña: si mañana vuelve una glosa al título o
-  // una explicación a cualquier columna, la lista deja de ser esta única y el test se pone rojo.
+  // El 07/09 el conflicto se resolvió donde correspondía: el atajo al período en curso es un CONTROL y
+  // no contenido, así que el auditor no lo cuenta y el podador no lo borra (`esAtajoDelPeriodo`). La
+  // pestaña queda conforme CON su botón, y por eso la lista esperada es vacía — pero se sigue midiendo
+  // la lista entera: si mañana vuelve una glosa al título o una explicación a una columna, esto grita.
+  //
+  // Y SE EXIGE QUE EL ATAJO SIGA AHÍ, en el mismo test: un cero de desvíos que se consiguiera borrando
+  // el botón sería exactamente la regresión que este cambio vino a cerrar.
   // Con `gid`: es la grilla que se ESCRIBE. Sin él el atajo no se dibuja y el test daría verde por
   // medir un cuadro que nadie ve.
   const filas = armar({ gid: 99 }).filas.map((f) => (f || []).map((c) => c ?? ''))
   const mal = auditarDiseno(filas, { pestana: 'Cash Flow Mensual' })
-  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), ['3 · sin-respiro'],
+  assert.deepEqual(mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla}`), [],
     mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
+  assert.match(String(filas[FILA.botonHoy - 1][0]), /^=HYPERLINK\(/, 'el botón sigue en A3')
 })

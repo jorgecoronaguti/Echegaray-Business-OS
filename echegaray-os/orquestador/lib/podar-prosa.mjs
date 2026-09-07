@@ -21,7 +21,7 @@
 // que hay en el archivo. Es a propósito y es la línea que no se cruza: si podara después de fusionar
 // borraría prosa del DUEÑO, y lo que él escribe en su planilla no lo juzga ningún contrato mío.
 
-import { auditarDiseno, esProsa, bloquesDe, TOPE_PROSA, TOPE_SUBTITULO, enAlcance, partesDeTitulo } from './diseno-unificado.mjs'
+import { auditarDiseno, esProsa, bloquesDe, TOPE_PROSA, TOPE_SUBTITULO, enAlcance, partesDeTitulo, esAtajoDelPeriodo } from './diseno-unificado.mjs'
 import { textoVisible } from './patron-pestana.mjs'
 import { esDePantalla } from './pestanas-del-contrato.mjs'
 // EL CENTINELA, IMPORTADO Y NO REDEFINIDO — Y POR QUÉ EL CICLO ES SEGURO.
@@ -150,7 +150,13 @@ export function podarProsa(filas = [], { pestana = '', procedencia = '', tope = 
     out[1][0] = recortarProcedencia(a2 || procedencia || glosaDelTitulo) || VACIO
     for (let j = 1; j < out[1].length; j++) out[1][j] = VACIO
   }
-  if (out[2] && Array.isArray(out[2])) for (let j = 0; j < out[2].length; j++) out[2][j] = VACIO
+  // LA FILA 3 SE VACÍA SALVO EL ATAJO AL PERÍODO EN CURSO (07/09). Vaciarla entera borró el botón
+  // «ir al día» de las dos vistas del Cash Flow —A3 amaneció vacía en el archivo vivo— y ese botón
+  // lo pidió el dueño explícitamente. El reconocedor es el del auditor, no una copia: si divergieran,
+  // el podador dejaría en pie exactamente lo que el auditor cuenta como desvío. Ver `esAtajoDelPeriodo`.
+  if (out[2] && Array.isArray(out[2])) {
+    for (let j = 0; j < out[2].length; j++) if (!esAtajoDelPeriodo(out[2][j])) out[2][j] = VACIO
+  }
 
   podarCuerpo(out, tope, 3)
   if (process.env.ORQ_PODADOR_HABLA === '1') {
