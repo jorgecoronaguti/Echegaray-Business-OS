@@ -5,6 +5,14 @@ import {
 } from './planDeJornada.ts'
 import type { Correccion, FilaExistente, MarcaDeJornada } from './planDeJornada.ts'
 
+/** El acuse habla de lo que la BASE devolvió: se le pasa el efecto, no el plan. */
+const comoSiTodoEntro = (p: ReturnType<typeof planDeGuardado>) => ({
+  insertadas: p.insertar.length,
+  actualizadas: p.actualizar.length,
+  borradas: p.borrar.length,
+  intactas: p.intactas,
+})
+
 const A = '11111111-1111-4111-8111-111111111111'
 const B = '22222222-2222-4222-8222-222222222222'
 
@@ -12,15 +20,17 @@ const presente = (persona_id: string, horas: number): MarcaDeJornada =>
   ({ persona_id, estado: 'presente', horas })
 const ausente = (persona_id: string, horas = 8.8): MarcaDeJornada =>
   ({ persona_id, estado: 'ausente', horas })
-const fila = (id: string, persona_id: string, horas: number, tipo_hora = 'normal'): FilaExistente =>
-  ({ id, persona_id, horas, tipo_hora })
+const fila = (
+  id: string, persona_id: string, horas: number, tipo_hora = 'normal',
+  extra: Partial<FilaExistente> = {},
+): FilaExistente => ({ id, persona_id, horas, tipo_hora, actividad_id: null, improductiva: false, ...extra })
 
 test('EL DÍA QUE SE ABRE Y SE GUARDA SIN TOCAR NADA NO ESCRIBE DE NUEVO', () => {
   // El defecto que atrapa: reguardar el día crea una segunda fila y duplica las horas de la obra, o
   // choca contra la clave única y devuelve un error de Postgres a un jefe que no hizo nada mal.
   const plan = planDeGuardado([presente(A, 8.8)], [fila('r1', A, 8.8)])
-  assert.deepEqual(plan, { insertar: [], actualizar: [], borrar: [] })
-  assert.match(acuseDe(plan), /ya estaba así/)
+  assert.deepEqual(plan, { insertar: [], actualizar: [], borrar: [], intactas: [] })
+  assert.match(acuseDe(comoSiTodoEntro(plan)), /ya estaba así/)
 })
 
 test('CORREGIR 8,8 A 5 ACTUALIZA LA FILA, NO AGREGA UNA SEGUNDA', () => {
@@ -49,12 +59,93 @@ test('VOLVER DE AUSENTE A PRESENTE BORRA LA AUSENCIA', () => {
   assert.equal(plan.insertar.length, 1)
 })
 
-test('LAS EXTRAS CARGADAS APARTE SE REEMPLAZAN: la casilla es UN número por día', () => {
-  // El defecto que atrapa: corregir el día a 9 dejando viva una fila de 2 hs extras. El total de la
-  // obra diría 11 y la casilla que el jefe cerró diría 9 — dos verdades sobre la misma jornada.
+test('LAS EXTRAS NO SE REEMPLAZAN: son otro hecho y quedan intactas', () => {
+  // EL DEFECTO QUE ENCONTRÓ LA AUDITORÍA. `esTrabajada()` metía normal, extra_50 y extra_100 en el
+  // mismo cajón, y `find` tomaba la PRIMERA — con el `select` sin `.order()`, la que eligiera
+  // PostgREST. Si venían las extras primero, corregir la jornada convertía 8,8 normales en 8,8
+  // extra_50: un recargo que nadie declaró, sobre horas que se liquidan.
   const plan = planDeGuardado([presente(A, 9)], [fila('r1', A, 8.8), fila('r2', A, 2, 'extra_50')])
-  assert.deepEqual(plan.borrar, ['r2'])
+  assert.deepEqual(plan.borrar, [], 'la extra no se borra: la declaró alguien con más información')
   assert.deepEqual(plan.actualizar.map((a) => a.id), ['r1'])
+  assert.deepEqual(plan.actualizar.map((a) => a.tipo), ['normal'], 'el tipo no puede cambiar solo')
+  assert.deepEqual(plan.intactas.map((i) => i.id), ['r2'])
+})
+
+test('EL ORDEN EN QUE VIENEN LAS FILAS NO PUEDE CAMBIAR EL PLAN', () => {
+  // La otra mitad del mismo defecto: el resultado dependía de qué devolvía PostgREST primero.
+  const filas = [fila('r1', A, 8.8), fila('r2', A, 2, 'extra_50'), fila('r3', A, 1, 'extra_100')]
+  const directo = planDeGuardado([presente(A, 9)], filas)
+  const alReves = planDeGuardado([presente(A, 9)], [...filas].reverse())
+  assert.deepEqual(directo, alReves)
+})
+
+test('UNA IMPUTACIÓN A UNA ACTIVIDAD DEL PLAN NO ES LA JORNADA DEL DÍA', () => {
+  // El defecto que atrapa: dos filas `normal` del mismo día —una del plan de obra con su actividad,
+  // otra la jornada— se veían idénticas y el plan borraba una. Se perdía trabajo imputado a una
+  // actividad, que es lo que alimenta el plan contra real.
+  const plan = planDeGuardado([presente(A, 9)], [
+    fila('r1', A, 8.8),
+    fila('r2', A, 4, 'normal', { actividad_id: '00000000-0000-4000-8000-000000000001' }),
+  ])
+  assert.deepEqual(plan.borrar, [])
+  assert.deepEqual(plan.actualizar.map((a) => a.id), ['r1'])
+  assert.deepEqual(plan.intactas.map((i) => i.id), ['r2'])
+  assert.match(plan.intactas[0].motivo, /actividad del plan/)
+})
+
+test('UNA LICENCIA CARGADA POR ADMINISTRACIÓN NO SE BORRA NI SE PISA', () => {
+  // El defecto que atrapa: `esTrabajada` agrupaba `ausencia` y `licencia`. Marcar presente sobre
+  // una licencia la BORRABA, y marcar ausente con las mismas horas decía «no había nada que
+  // cambiar» y dejaba la licencia en pie — dos formas de mentir sobre el mismo día.
+  const conLicencia = [fila('r1', A, 8.8, 'licencia')]
+
+  const trabajo = planDeGuardado([presente(A, 8.8)], conLicencia)
+  assert.deepEqual(trabajo.borrar, [], 'una licencia no se borra al marcar presente')
+  assert.equal(trabajo.insertar.length, 1)
+  assert.deepEqual(trabajo.intactas.map((i) => i.id), ['r1'])
+
+  const falta = planDeGuardado([ausente(A, 8.8)], conLicencia)
+  assert.deepEqual(falta.borrar, [])
+  assert.equal(falta.insertar.length, 1, 'la ausencia se registra aparte, no se confunde con la licencia')
+  assert.deepEqual(falta.intactas.map((i) => i.id), ['r1'])
+})
+
+test('UNA HORA IMPRODUCTIVA CON SU CAUSA QUEDA INTACTA', () => {
+  // El CHECK de la base exige causa si es improductiva, y esa causa alimenta el aprendizaje del
+  // estándar. Pisarla con «la jornada del día» borra la explicación del desvío.
+  const plan = planDeGuardado([presente(A, 9)], [fila('r1', A, 4, 'normal', { improductiva: true })])
+  assert.deepEqual(plan.borrar, [])
+  assert.equal(plan.insertar.length, 1)
+  assert.match(plan.intactas[0].motivo, /improductiva/)
+})
+
+test('EL TIPO VIAJA EN LA CORRECCIÓN: de trabajado a ausente y al revés', () => {
+  // El defecto que atrapa: el `update` sólo mandaba `horas`. Corregir una jornada a «no vino»
+  // dejaba la fila en `normal` con las horas de la ausencia — el día seguía contando como trabajado.
+  const aAusente = planDeGuardado([ausente(A, 8.8)], [fila('r1', A, 8.8)])
+  // Con las MISMAS horas y distinto tipo, la fila normal se borra y entra la ausencia: no alcanza
+  // con actualizar, porque «no había nada que cambiar» sería falso.
+  assert.deepEqual(aAusente.borrar, ['r1'])
+  assert.equal(aAusente.insertar.length, 1)
+  assert.equal(aAusente.insertar[0].estado, 'ausente')
+})
+
+test('EL ACUSE CUENTA LO QUE LA BASE DEVOLVIÓ, no lo que el plan pidió', () => {
+  // El defecto que atrapa: afirmar «1 corregida» cuando el update afectó CERO filas —porque otro la
+  // borró entremedio, o porque la policy la rechazó sin error—. La evidencia es del efecto.
+  assert.match(acuseDe({ insertadas: 0, actualizadas: 0, borradas: 0, intactas: [] }),
+    /No cambió nada en la base/)
+  assert.equal(acuseDe({ insertadas: 1, actualizadas: 2, borradas: 0, intactas: [] }),
+    'Día guardado: 1 marca nueva · 2 corregidas.')
+})
+
+test('LO QUE NO SE TOCÓ SE NOMBRA EN EL ACUSE', () => {
+  const texto = acuseDe({
+    insertadas: 1, actualizadas: 0, borradas: 0,
+    intactas: [{ id: 'r2', motivo: 'tiene una licencia cargada por Administración' }],
+  })
+  assert.match(texto, /sin tocar/)
+  assert.match(texto, /licencia/)
 })
 
 test('A QUIEN NO SE MANDÓ NO SE LE TOCA NADA: el silencio no se convierte en afirmación', () => {
@@ -90,7 +181,7 @@ test('EL ENVÍO SE VALIDA: cero horas, 25 horas y un id que no es uuid no entran
 
 test('EL ACUSE DICE LO QUE PASÓ, no «guardado»', () => {
   const plan = planDeGuardado([presente(A, 5), ausente(B)], [fila('r1', A, 8.8)])
-  assert.equal(acuseDe(plan), 'Día guardado: 1 marca nueva · 1 corregida.')
+  assert.equal(acuseDe(comoSiTodoEntro(plan)), 'Día guardado: 1 marca nueva · 1 corregida.')
 })
 
 // ── LA CORRECCIÓN DE ADMINISTRACIÓN ───────────────────────────────────────────────────────────

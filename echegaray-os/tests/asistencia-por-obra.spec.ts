@@ -85,3 +85,59 @@ test('LO QUE SE GUARDA EN CAMPO SE LEE EN ADMINISTRACIÓN', async ({ page }) => 
   await expect(page.locator('[data-testid="celda-hora"][value="7"]').first()).toBeVisible()
   await page.screenshot({ path: 'qa-shots/asistencia-04-leido-1440.png', fullPage: true })
 })
+
+test('04 · REABRIR EL DÍA MUESTRA LO YA CARGADO, no la jornada de nuevo', async ({ page }) => {
+  test.skip(process.env.E2E_ESCRIBE_ASISTENCIA !== '1',
+    'Escribe HH reales en la base real. Se habilita con E2E_ESCRIBE_ASISTENCIA=1 y se limpia después.')
+  // El defecto que atrapa: que la casilla vuelva a traer la jornada completa al reabrir. El jefe
+  // corrige a González a 5, sale, vuelve, guarda sin tocar nada — y le devuelve las 8,8 que
+  // justamente había corregido. La excepción se pierde sin que nadie vea un error.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto(`/campo/asistencia?obra=${OBRA_CON_GENTE}`)
+  await expect(page.getByTestId('form-asistencia')).toBeVisible()
+
+  await page.getByTestId('horas').first().fill('5')
+  await page.getByTestId('guardar-dia').click()
+  await expect(page.getByTestId('acuse-jornada')).toBeVisible({ timeout: 20000 })
+
+  await page.reload()
+  await expect(page.getByTestId('form-asistencia')).toBeVisible()
+  await expect(page.getByTestId('horas').first()).toHaveValue('5')
+  await page.screenshot({ path: 'qa-shots/asistencia-05-reabierto-390.png', fullPage: true })
+})
+
+test('05 · el panel de corrección de Administración', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas?vista=asistencia')
+  await expect(page.getByTestId('grilla-asistencia')).toBeVisible()
+
+  const abrir = page.getByTestId('abrir-correccion').first()
+  if (await abrir.count() === 0) test.skip(true, 'La semana no tiene ninguna fila que corregir.')
+  await abrir.click()
+  await expect(page.getByTestId('panel-correccion')).toBeVisible()
+  // LAS TRES PALANCAS QUE PIDIÓ EL DUEÑO, A LA VISTA: el día, la obra y qué pasó.
+  await expect(page.getByTestId('correccion-dia')).toBeVisible()
+  await expect(page.getByTestId('correccion-obra')).toBeVisible()
+  await expect(page.getByTestId('correccion-estado')).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asistencia-06-correccion-1440.png', fullPage: true })
+})
+
+test('06 · el registro cronológico de la persona, con quién lo cargó', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/personas')
+  await expect(page.getByTestId('vistas-personal')).toBeVisible()
+
+  // POR EL href Y NO POR UN CLIC A CIEGAS: «En obra ahora» y «Cuadrillas» también cuelgan de
+  // /administracion/personas/, y el primero de la lista es uno de ellos — no una persona.
+  const href = await page.locator('a[href^="/administracion/personas/"]')
+    .evaluateAll((as) => (as as HTMLAnchorElement[])
+      .map((a) => a.getAttribute('href') ?? '')
+      .find((h) => /\/administracion\/personas\/[0-9a-f-]{36}$/.test(h)) ?? null)
+  if (!href) test.skip(true, 'El plantel no tiene ninguna persona con ficha.')
+  await page.goto(`${href}?v=horas`)
+  await expect(page.getByTestId('bloque-horas')).toBeVisible()
+  await page.screenshot({ path: 'qa-shots/asistencia-07-cronologia-1440.png', fullPage: true })
+})

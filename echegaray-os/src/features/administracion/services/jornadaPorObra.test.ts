@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarJornada, avisoDeFaltantes, hs, leerHoras, resumenJornada, sobreLaJornada,
+  armarJornada, ausenciasSinJornada, avisoDeFaltantes, casillasIniciales, estadoDeCasilla, hs,
+  leerHoras, loQueViaja, ponerLaJornada, resumenJornada, sobreLaJornada,
 } from './jornadaPorObra.ts'
 import type { PersonaDeLaObra, RegistroDelDia } from './jornadaPorObra.ts'
 
@@ -131,4 +132,104 @@ test('LAS HORAS SE MUESTRAN EN EL LOCALE DEL LUGAR: 8,8 y no 8.8', () => {
   assert.equal(hs(79.2), '79,2')
   assert.equal(hs(8), '8')
   assert.equal(leerHoras(hs(8.8)).horas, 8.8, 'lo que se muestra se vuelve a leer sin perder nada')
+})
+
+// ── LAS CASILLAS DE `/campo/asistencia` ────────────────────────────────────────────────────────
+//
+// EL DEFECTO QUE COSTÓ UN REVERT (07/09/2026). La primera versión hacía nacer la casilla con la
+// jornada puesta como VALOR: `sin_marcar` era inalcanzable, toda fila nacía «presente» y un solo
+// toque en Guardar escribió 77,4 HH de nueve personas en una obra viva. Estas pruebas son el
+// control que aquel comentario no era.
+
+test('LA CASILLA DE UNA FILA SIN REGISTRO NACE VACÍA, no con la jornada', () => {
+  const filas = armarJornada({ personas: PLANTEL, registros: [], jornada: JORNADA })
+  const casillas = casillasIniciales(filas)
+  for (const p of PLANTEL) {
+    assert.equal(casillas[p.persona_id].texto, '',
+      'precargar la jornada convierte el silencio de todo el plantel en una afirmación')
+    assert.equal(casillas[p.persona_id].ausente, false)
+  }
+})
+
+test('SIN_MARCAR ES ALCANZABLE: una casilla vacía NO es «presente»', () => {
+  // El defecto exacto del revert: si `estadoDeCasilla` devolviera 'presente' para una casilla
+  // vacía, el pie diría «3 presentes · 0 hs» y el envío llevaría a tres personas que nadie marcó.
+  const v = estadoDeCasilla('a', { texto: '', ausente: false })
+  assert.equal(v.estado, 'sin_marcar')
+  assert.equal(v.horas, null)
+  assert.equal(v.error, null)
+})
+
+test('UNA CASILLA SIN MARCAR NO VIAJA AL SERVIDOR', () => {
+  // La prueba del efecto: aunque alguien toque Guardar con el plantel entero sin marcar, el envío
+  // sale VACÍO. Ésta es la que se pone roja si vuelve el default.
+  const filas = armarJornada({ personas: PLANTEL, registros: [], jornada: JORNADA })
+  const vista = PLANTEL.map((p) => estadoDeCasilla(p.persona_id, casillasIniciales(filas)[p.persona_id]))
+  assert.deepEqual(loQueViaja(vista, JORNADA), [], 'guardar sin marcar nada no puede escribir nada')
+  assert.equal(resumenJornada(filas).sinMarcar, 3)
+})
+
+test('SÓLO VIAJA LO CONFIRMADO: un número escrito o una A tocada', () => {
+  const vista = [
+    estadoDeCasilla('a', { texto: '5', ausente: false }),
+    estadoDeCasilla('b', { texto: '', ausente: false }),
+    estadoDeCasilla('c', { texto: '', ausente: true }),
+  ]
+  assert.deepEqual(loQueViaja(vista, JORNADA), [
+    { persona_id: 'a', estado: 'presente', horas: 5 },
+    { persona_id: 'c', estado: 'ausente', horas: 8.8 },
+  ])
+})
+
+test('UNA CASILLA CON UN VALOR IMPOSIBLE NO VIAJA', () => {
+  // El defecto que atrapa: mandar «25» o «cero» y que la base lo rechace con un error de CHECK que
+  // no le dice nada al jefe. O peor, que entre un 0 que la ausencia sí acepta.
+  const vista = [
+    estadoDeCasilla('a', { texto: '25', ausente: false }),
+    estadoDeCasilla('b', { texto: '0', ausente: false }),
+    estadoDeCasilla('c', { texto: '8', ausente: false }),
+  ]
+  assert.deepEqual(loQueViaja(vista, JORNADA), [{ persona_id: 'c', estado: 'presente', horas: 8 }])
+})
+
+test('«PONER LA JORNADA» LLENA LAS VACÍAS Y NO PISA LO ESCRITO', () => {
+  // El defecto que atrapa: que el botón general borre la corrección de González. Abrir, corregir a
+  // 5, tocar «poner la jornada» para el resto, y encontrarse a González con 8,8 otra vez.
+  const antes = {
+    a: { texto: '5', ausente: false },
+    b: { texto: '', ausente: false },
+    c: { texto: '', ausente: true },
+  }
+  const despues = ponerLaJornada(antes, JORNADA)
+  assert.equal(despues.a.texto, '5', 'lo corregido no se pisa')
+  assert.equal(despues.b.texto, '8,8')
+  assert.equal(despues.c.texto, '', 'al ausente no se le pone jornada')
+  assert.equal(despues.c.ausente, true)
+})
+
+test('SIN JORNADA PACTADA NO SE PONE NADA, y la ausencia se NOMBRA en vez de descartarse', () => {
+  // El defecto que atrapa: marcar «no vino» en una obra sin jornada, que la marca se caiga del
+  // envío y que la pantalla acuse éxito. El jefe cree que quedó registrado y no quedó nada.
+  const casillas = { a: { texto: '', ausente: true } }
+  assert.deepEqual(ponerLaJornada(casillas, 0), casillas)
+  const vista = [estadoDeCasilla('a', casillas.a)]
+  assert.deepEqual(loQueViaja(vista, 0), [])
+  assert.deepEqual(ausenciasSinJornada(vista, 0), ['a'])
+  assert.deepEqual(ausenciasSinJornada(vista, 8.8), [])
+})
+
+test('REABRIR MUESTRA LO CARGADO: la casilla trae las 5, no la jornada ni un vacío', () => {
+  const filas = armarJornada({ personas: PLANTEL, registros: [reg('a', 5)], jornada: JORNADA })
+  const casillas = casillasIniciales(filas)
+  assert.equal(casillas['a'].texto, '5')
+  assert.equal(casillas['b'].texto, '', 'a quien no tiene nada cargado no se le inventa un número')
+})
+
+test('REABRIR A UN AUSENTE LO MUESTRA AUSENTE, con la casilla vacía', () => {
+  const filas = armarJornada({
+    personas: PLANTEL, registros: [reg('a', 8.8, 'ausencia')], jornada: JORNADA,
+  })
+  const casillas = casillasIniciales(filas)
+  assert.deepEqual(casillas['a'], { texto: '', ausente: true })
+  assert.equal(estadoDeCasilla('a', casillas['a']).estado, 'ausente')
 })

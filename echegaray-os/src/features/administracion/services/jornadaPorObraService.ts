@@ -24,7 +24,7 @@ export interface ObraDeLaJornada {
 
 export interface JornadaDelDia {
   obra: ObraDeLaJornada
-  filas: FilaJornada[]
+  filas: (FilaJornada & { enOtraObra: { obra: string; horas: number } | null })[]
 }
 
 /** Sin jornada pactada la pantalla NO inventa una: la casilla nace vacía y se tipea. */
@@ -81,12 +81,19 @@ export async function getObraDeLaJornada(
 export async function getJornadaDelDia(
   supabase: SupabaseClient, obraId: string, fecha: string,
 ): Promise<{ data: JornadaDelDia | null; error: string | null }> {
-  const [obra, asignaciones, registros] = await Promise.all([
+  const [obra, asignaciones, registros, enOtras] = await Promise.all([
     getObraDeLaJornada(supabase, obraId),
     getAsignaciones(supabase, obraId),
     supabase.from('registros_hh')
       .select('id, persona_id, fecha, horas, tipo_hora, notas')
       .eq('obra_canonica_id', obraId).eq('fecha', fecha).not('persona_id', 'is', null),
+    // ═══ QUIÉN YA TIENE ESE DÍA CARGADO EN OTRA OBRA ═══
+    // Dos personas del plantel tienen asignación vigente en DOS obras a la vez. Sin esta lectura,
+    // el jefe de cada obra abría la pantalla, veía la jornada sugerida y cargaba: 17,6 hs el mismo
+    // día para la misma persona, repartidas entre dos obras, sin un solo aviso.
+    supabase.from('registros_hh')
+      .select('persona_id, horas, tipo_hora, obra_canonica_id, obra_canonica(nombre)')
+      .eq('fecha', fecha).neq('obra_canonica_id', obraId).not('persona_id', 'is', null),
   ])
   if (obra.error) return { data: null, error: obra.error }
   if (!obra.data) return { data: null, error: null }
@@ -106,6 +113,20 @@ export async function getJornadaDelDia(
   const unicas = [...new Map(personas.map((p) => [p.persona_id, p])).values()]
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 
+  const otras = new Map<string, { obra: string; horas: number }>()
+  if (!enOtras.error) {
+    for (const f of (enOtras.data ?? []) as unknown as {
+      persona_id: string; horas: number | string; obra_canonica: { nombre: string } | null
+      obra_canonica_id: string
+    }[]) {
+      const previo = otras.get(f.persona_id)
+      otras.set(f.persona_id, {
+        obra: previo?.obra ?? f.obra_canonica?.nombre ?? f.obra_canonica_id,
+        horas: (previo?.horas ?? 0) + Number(f.horas),
+      })
+    }
+  }
+
   return {
     data: {
       obra: obra.data,
@@ -113,7 +134,7 @@ export async function getJornadaDelDia(
         personas: unicas,
         registros: filasHH.map((r) => ({ ...r, horas: Number(r.horas) })),
         jornada: obra.data.jornada,
-      }),
+      }).map((f) => ({ ...f, enOtraObra: otras.get(f.persona.persona_id) ?? null })),
     },
     error: null,
   }
@@ -123,6 +144,8 @@ export interface DatosSemanaPorObra {
   asignaciones: AsignacionSemana[]
   registros: RegistroSemana[]
   noLaborables: string[]
+  /** Las obras en estado `activa`. Sólo esas se pueden marcar y sólo esas se reclaman. */
+  obrasActivas: string[]
 }
 
 /** Los feriados de la ventana. La misma tabla que lee la grilla de presencia — no una lista aparte. */
@@ -144,14 +167,19 @@ export async function getSemanaPorObra(
       .select('persona_id, obra_canonica_id, fecha, horas, tipo_hora')
       .gte('fecha', desde).lte('fecha', hasta)
       .not('persona_id', 'is', null).not('obra_canonica_id', 'is', null),
-    supabase.from('obra_canonica').select('id, nombre'),
+    supabase.from('obra_canonica').select('id, nombre, estado'),
     getNoLaborables(supabase, desde, hasta),
   ])
   if (asignaciones.error) return { data: null, error: asignaciones.error }
   if (registros.error) return { data: null, error: registros.error.message }
   if (obras.error) return { data: null, error: obras.error.message }
 
-  const nombreDeObra = new Map((obras.data ?? []).map((o) => [o.id as string, o.nombre as string]))
+  const catalogo = (obras.data ?? []) as { id: string; nombre: string; estado: string | null }[]
+  const nombreDeObra = new Map(catalogo.map((o) => [o.id, o.nombre]))
+  // SÓLO LAS ACTIVAS SE PUEDEN MARCAR. Una obra cerrada aparecía en la grilla con sus celdas
+  // editables y sus días sin marcar sumando al «1 día sin marcar»: la pantalla reclamaba cargar
+  // horas de una obra que ya nadie mira, y aceptaba escribirlas.
+  const activas = new Set(catalogo.filter((o) => o.estado === 'activa').map((o) => o.id))
   return {
     data: {
       asignaciones: (asignaciones.data ?? [])
@@ -159,6 +187,7 @@ export async function getSemanaPorObra(
         // y quien terminó el martes también — sus horas del lunes y el martes son reales y son de
         // esa obra. Sin nombre no se dibuja: una fila que no se puede nombrar no sirve para marcar.
         .filter((a) => Boolean(a.persona_nombre)
+          && activas.has(a.obra_id)
           && (!a.desde || a.desde <= hasta) && (!a.hasta || a.hasta >= desde))
         .map((a) => ({
           persona_id: a.persona_id,
@@ -177,6 +206,9 @@ export async function getSemanaPorObra(
         tipo_hora: r.tipo_hora,
       })),
       noLaborables,
+      // Las obras que se pueden marcar. Lo que quedó fuera sigue mostrando sus horas —existen— pero
+      // no se reclama ni se ofrece editar.
+      obrasActivas: [...activas],
     },
     error: null,
   }

@@ -5,7 +5,6 @@
 // prueba sin base y sin sesión, que es lo que hace que el defecto quede atrapado para siempre.
 
 import { z } from 'zod'
-import { esTrabajada } from '../../obras/services/tipoHora.ts'
 
 export const marcaSchema = z.discriminatedUnion('estado', [
   z.object({
@@ -35,49 +34,127 @@ export interface FilaExistente {
   persona_id: string
   horas: number
   tipo_hora: string
+  /** Una imputación a una actividad del plan NO es la jornada que carga el jefe: `/campo/asistencia`
+   *  escribe siempre `actividad_id = null`. Sin este campo el plan las trataba como intercambiables
+   *  y borraba trabajo imputado a una actividad para poner la jornada del día. */
+  actividad_id?: string | null
+  /** Una hora improductiva lleva su causa y su significado. No se reemplaza a ciegas. */
+  improductiva?: boolean | null
 }
 
 export interface PlanDeJornada {
   insertar: MarcaDeJornada[]
-  actualizar: { id: string; marca: MarcaDeJornada }[]
+  actualizar: { id: string; marca: MarcaDeJornada; tipo: TipoDeMarca }[]
   borrar: string[]
+  /** Lo que el plan NO tocó y por qué. La pantalla lo dice: saltear en silencio es peor que fallar. */
+  intactas: { id: string; motivo: string }[]
+}
+
+export type TipoDeMarca = 'normal' | 'ausencia'
+
+/** Lo que esta pantalla declara: la jornada del día, sin actividad. */
+const tipoQuePide = (m: MarcaDeJornada): TipoDeMarca => (m.estado === 'ausente' ? 'ausencia' : 'normal')
+
+/**
+ * ¿Esta fila existente es la que esta pantalla administra?
+ *
+ * SÓLO LAS FILAS DE LA JORNADA. Una imputación a una actividad del plan, una hora improductiva con
+ * su causa, una licencia cargada por Administración y una extra al 50 % son hechos DISTINTOS que
+ * alguien declaró con más información de la que tiene esta pantalla. Reemplazarlas por «la jornada
+ * del día» borra esa información sin preguntar.
+ *
+ * El defecto original: `suyas.find((e) => esTrabajada(e.tipo_hora) ? 'normal' : 'ausencia' === quiero)`
+ * agrupaba `normal`, `extra_50` y `extra_100` en un mismo cajón y `ausencia` con `licencia` en otro.
+ * Con las extras primero en el resultado —y el `select` no tenía `.order()`, así que el orden lo
+ * decidía PostgREST— corregir la jornada convertía 8,8 normales en 8,8 extra_50.
+ */
+const esDeLaJornada = (e: FilaExistente): boolean =>
+  (e.tipo_hora === 'normal' || e.tipo_hora === 'ausencia')
+  && !e.actividad_id
+  && e.improductiva !== true
+
+/** Por qué una fila existente queda intacta. Se dice con el nombre del hecho, no «se salteó». */
+function motivoDeNoTocar(e: FilaExistente): string {
+  if (e.actividad_id) return `tiene horas imputadas a una actividad del plan (${e.tipo_hora})`
+  if (e.improductiva === true) return 'es una hora improductiva con su causa declarada'
+  if (e.tipo_hora === 'licencia') return 'tiene una licencia cargada por Administración'
+  return `tiene una hora ${e.tipo_hora} cargada aparte`
 }
 
 /**
  * El plan, decidido contra lo que ya está guardado.
  *
- * La fila del mismo tipo se corrige; cualquier otra fila de esa persona en ese día se BORRA. Sin el
- * borrado, marcar ausente a quien ya tenía 8,8 normales dejaría las dos filas y el día contaría
- * trabajo y ausencia a la vez. Las extras cargadas aparte también se van: esta pantalla declara UN
- * número por día, y dejar viva una fila que el jefe no ve haría que el total no coincidiera con la
- * casilla que él mismo cerró.
+ * ═══ COINCIDENCIA EXACTA DE TIPO, NUNCA POR FAMILIA ═══
  *
- * Quien no viene en `marcas` NO se toca. Guardar el día no puede convertir un silencio en una
- * afirmación.
+ * Se corrige la fila cuyo `tipo_hora` es EXACTAMENTE el que se pide. Todo lo demás de esa persona
+ * en ese día —extras, licencias, improductivas, imputaciones a una actividad— queda INTACTO y se
+ * informa. Reemplazarlo sería decidir por quien lo cargó con más información.
+ *
+ * ═══ EL ORDEN NO PUEDE DECIDIR NADA ═══
+ *
+ * El resultado no depende de en qué orden vengan las filas: `esDeLaJornada` y la igualdad exacta de
+ * tipo son deterministas. Aun así la lectura pide `.order('id')` — dos capas, porque de esto ya se
+ * pagó una.
+ *
+ * ═══ QUIEN NO VIENE EN `marcas` NO SE TOCA ═══
+ *
+ * Guardar el día no puede convertir un silencio en una afirmación.
  */
 export function planDeGuardado(marcas: MarcaDeJornada[], existentes: FilaExistente[]): PlanDeJornada {
-  const plan: PlanDeJornada = { insertar: [], actualizar: [], borrar: [] }
+  const plan: PlanDeJornada = { insertar: [], actualizar: [], borrar: [], intactas: [] }
   for (const m of marcas) {
-    const suyas = existentes.filter((e) => e.persona_id === m.persona_id)
-    const quiero = m.estado === 'ausente' ? 'ausencia' : 'normal'
-    const misma = suyas.find((e) => (esTrabajada(e.tipo_hora) ? 'normal' : 'ausencia') === quiero)
-    for (const otra of suyas) if (otra.id !== misma?.id) plan.borrar.push(otra.id)
+    const suyas = [...existentes.filter((e) => e.persona_id === m.persona_id)]
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const quiero = tipoQuePide(m)
+
+    for (const e of suyas.filter((x) => !esDeLaJornada(x))) {
+      plan.intactas.push({ id: e.id, motivo: motivoDeNoTocar(e) })
+    }
+    const deLaJornada = suyas.filter(esDeLaJornada)
+    const misma = deLaJornada.find((e) => e.tipo_hora === quiero) ?? null
+    // La OTRA fila de la jornada (la contraria: ausencia cuando se declara trabajo, y al revés) sí
+    // se borra: un día no puede ser trabajado y faltado a la vez, y las dos las escribe esta misma
+    // pantalla. Una segunda fila del MISMO tipo tampoco puede quedar: sería un día contado dos veces.
+    for (const e of deLaJornada) if (e.id !== misma?.id) plan.borrar.push(e.id)
+
     if (!misma) plan.insertar.push(m)
-    else if (Number(misma.horas) !== m.horas) plan.actualizar.push({ id: misma.id, marca: m })
+    else if (Number(misma.horas) !== m.horas) plan.actualizar.push({ id: misma.id, marca: m, tipo: quiero })
   }
   return plan
 }
 
-/** El acuse. Dice lo que PASÓ, no «guardado»: el efecto se mira, no se cree. */
-export function acuseDe(p: PlanDeJornada): string {
+/** Lo que la base efectivamente devolvió por cada operación. */
+export interface EscritoEnLaBase {
+  insertadas: number
+  actualizadas: number
+  borradas: number
+  intactas: { id: string; motivo: string }[]
+}
+
+/**
+ * El acuse. Dice lo que PASÓ EN LA BASE, no lo que el plan pidió.
+ *
+ * El defecto que corrige: el acuse afirmaba «1 corregida» contando `plan.actualizar.length`, aunque
+ * el `update` hubiera afectado CERO filas —porque otro la borró entremedio, o porque la policy la
+ * rechazó sin error—. Un acuse que cuenta intenciones es exactamente lo que este repo prohíbe:
+ * la evidencia es del efecto, no del intento. Los números vienen del `.select()` encadenado.
+ */
+export function acuseDe(e: EscritoEnLaBase): string {
   const partes = [
-    p.insertar.length > 0 ? `${p.insertar.length} ${p.insertar.length === 1 ? 'marca nueva' : 'marcas nuevas'}` : null,
-    p.actualizar.length > 0 ? `${p.actualizar.length} ${p.actualizar.length === 1 ? 'corregida' : 'corregidas'}` : null,
-    p.borrar.length > 0 ? `${p.borrar.length} ${p.borrar.length === 1 ? 'reemplazada' : 'reemplazadas'}` : null,
+    e.insertadas > 0 ? `${e.insertadas} ${e.insertadas === 1 ? 'marca nueva' : 'marcas nuevas'}` : null,
+    e.actualizadas > 0 ? `${e.actualizadas} ${e.actualizadas === 1 ? 'corregida' : 'corregidas'}` : null,
+    e.borradas > 0 ? `${e.borradas} ${e.borradas === 1 ? 'reemplazada' : 'reemplazadas'}` : null,
   ].filter(Boolean)
-  return partes.length === 0
-    ? 'No había nada que cambiar: el día ya estaba así.'
+  const nada = partes.length === 0
+    ? 'No cambió nada en la base: el día ya estaba así.'
     : `Día guardado: ${partes.join(' · ')}.`
+  if (e.intactas.length === 0) return nada
+  // LO QUE NO SE TOCÓ SE NOMBRA. Saltear en silencio es peor que fallar: alguien creería que la
+  // pantalla dejó el día como lo ve, cuando hay otra hora cargada que sigue contando.
+  const [primera] = e.intactas
+  return `${nada} ${e.intactas.length === 1
+    ? `Quedó sin tocar una fila: ${primera.motivo}.`
+    : `Quedaron ${e.intactas.length} filas sin tocar (una ${primera.motivo}).`}`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

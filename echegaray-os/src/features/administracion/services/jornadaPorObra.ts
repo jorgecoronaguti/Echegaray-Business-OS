@@ -176,3 +176,103 @@ export const hs = (n: number): string => n.toLocaleString('es-AR', { maximumFrac
 export function sobreLaJornada(horas: number, jornada: number): number {
   return horas > jornada ? redondear(horas - jornada) : 0
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ESTADO DE LAS CASILLAS DE `/campo/asistencia`
+//
+// Vive acá y no en el componente por lo que costó tenerlo allá: la primera versión hacía nacer la
+// casilla CON la jornada puesta como valor, y con eso `sin_marcar` se volvió inalcanzable —toda
+// fila nacía «presente»— y un solo toque en Guardar escribía la jornada completa de las nueve
+// personas. Así se fabricaron 77,4 HH en una obra viva: un número tipeado, ocho filas por default.
+//
+// Un comentario que dice «sin marcar no es ausente» no es un control. Esto sí: son funciones puras
+// con sus pruebas, y si el default vuelve, se ponen rojas.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+export interface CasillaJornada {
+  /** Lo tipeado. Vacío = sin marcar. NUNCA se precarga con la jornada. */
+  texto: string
+  /** `true` sólo si alguien tocó la «A». */
+  ausente: boolean
+}
+
+export type VistaCasilla = {
+  persona_id: string
+  estado: EstadoJornada
+  horas: number | null
+  error: string | null
+}
+
+/**
+ * Cómo nacen las casillas al abrir el día.
+ *
+ * LO YA CARGADO SE MUESTRA; LO QUE NO ESTÁ, NO SE INVENTA. Una fila sin registro nace VACÍA y en
+ * `sin_marcar`: la jornada de la obra se ofrece como sugerencia visual (`placeholder`) y con el
+ * botón «poner la jornada», que es un acto de alguien. Precargarla como VALOR convierte el silencio
+ * de ocho personas en una afirmación que nadie hizo.
+ */
+export function casillasIniciales(filas: FilaJornada[]): Record<string, CasillaJornada> {
+  const m: Record<string, CasillaJornada> = {}
+  for (const f of filas) {
+    m[f.persona.persona_id] = f.estado === 'ausente'
+      ? { texto: '', ausente: true }
+      : { texto: f.estado === 'presente' && f.horas !== null ? hs(f.horas) : '', ausente: false }
+  }
+  return m
+}
+
+/** El estado de una casilla, leído de lo que hay escrito en ella. */
+export function estadoDeCasilla(persona_id: string, c: CasillaJornada | undefined): VistaCasilla {
+  if (c?.ausente) return { persona_id, estado: 'ausente', horas: null, error: null }
+  const { horas, error } = leerHoras(c?.texto ?? '')
+  return {
+    persona_id,
+    estado: horas === null ? 'sin_marcar' : 'presente',
+    horas,
+    error,
+  }
+}
+
+/** «Poner la jornada a todos»: llena SÓLO las casillas vacías. Lo ya escrito no se pisa — el que
+ *  corrigió a González a 5 no puede perder la corrección por tocar un botón general. */
+export function ponerLaJornada(
+  casillas: Record<string, CasillaJornada>, jornada: number,
+): Record<string, CasillaJornada> {
+  if (!(jornada > 0)) return casillas
+  const m: Record<string, CasillaJornada> = {}
+  for (const [id, c] of Object.entries(casillas)) {
+    m[id] = c.ausente || c.texto.trim() !== '' ? c : { ...c, texto: hs(jornada) }
+  }
+  return m
+}
+
+/**
+ * QUÉ VIAJA AL SERVIDOR. Sólo lo confirmado: un número escrito o una «A» tocada.
+ *
+ * Lo que queda `sin_marcar` NO viaja, y por eso guardar el día no puede convertir un silencio en
+ * una afirmación. Una casilla con un valor imposible tampoco viaja: se corrige antes.
+ */
+export function loQueViaja(
+  vista: VistaCasilla[], jornada: number,
+): { persona_id: string; estado: 'presente' | 'ausente'; horas: number }[] {
+  const salida: { persona_id: string; estado: 'presente' | 'ausente'; horas: number }[] = []
+  for (const v of vista) {
+    if (v.error) continue
+    if (v.estado === 'ausente') {
+      // SIN JORNADA PACTADA LA AUSENCIA NO SE PUEDE MEDIR, y `registros_hh` exige horas > 0. No se
+      // descarta en silencio: `ausenciasSinJornada` la nombra para que la pantalla lo diga.
+      if (jornada > 0) salida.push({ persona_id: v.persona_id, estado: 'ausente', horas: jornada })
+      continue
+    }
+    if (v.estado === 'presente' && v.horas !== null) {
+      salida.push({ persona_id: v.persona_id, estado: 'presente', horas: v.horas })
+    }
+  }
+  return salida
+}
+
+/** A quiénes se marcó ausentes pero no se puede registrar porque la obra no tiene jornada pactada.
+ *  Se nombran: descartarlas en silencio con un acuse de éxito es peor que no dejar marcarlas. */
+export function ausenciasSinJornada(vista: VistaCasilla[], jornada: number): string[] {
+  return jornada > 0 ? [] : vista.filter((v) => v.estado === 'ausente').map((v) => v.persona_id)
+}
