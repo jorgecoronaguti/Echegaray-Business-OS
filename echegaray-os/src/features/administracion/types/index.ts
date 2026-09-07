@@ -235,3 +235,35 @@ export interface NombreResuelto {
   /** La compra más reciente de ESE nombre, `date` de Postgres. NULL sólo si no hay ninguna fechada. */
   ultima_compra: string | null
 }
+
+/**
+ * UN PAPEL DE UN PROVEEDOR — una fila de la vista `proveedor_papel`.
+ *
+ * El vínculo con el proveedor NO está guardado en ningún lado: se deriva de la compra de la que el
+ * archivo cuelga (`compra_adjunto.compra_clave` → `compra_sheet.clave` → el nombre resuelto). Por
+ * eso vienen juntos el archivo y su compra de origen: sin la compra, el papel no tendría por qué
+ * estar en esta ficha, y quien lo mira necesita ver de qué comprobante es.
+ */
+export interface PapelProveedor {
+  adjunto_id: string
+  nombre: string
+  media_type: string
+  /** `bigint` en Postgres: PostgREST lo puede devolver como texto. Se formatea, no se calcula. */
+  bytes: number | string
+  subido_at: string | null
+  vinculado_por: 'registro' | 'match_numero' | 'match_manual' | 'sin_vincular'
+  compra_clave: string | null
+  compra_fila: number | null
+  /** NULL es «esta compra no tiene fecha cargada», nunca hoy. */
+  compra_fecha: string | null
+  comprobante: string | null
+  /** El total con IVA de la compra. NULL es «sin importe cargado», no $ 0. */
+  total: number | null
+}
+
+/** Lo que la lectura de papeles devuelve: las filas ya recortadas al tope y cuántas hay en total. */
+export interface PapelesLeidos {
+  papeles: PapelProveedor[]
+  /** El conteo COMPLETO en la base, no `papeles.length`: el panel muestra sólo los más recientes. */
+  total: number
+}

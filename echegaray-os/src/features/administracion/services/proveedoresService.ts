@@ -6,10 +6,13 @@
 // pregunta y la pantalla podría discrepar con cualquier otro consumidor.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { z } from 'zod'
 // La ruta es relativa y con extensión a propósito: `node --test` corre este archivo sin el alias
 // `@/` de Next, y un import por alias lo hace fallar antes del primer test.
 import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
-import type { NombrePendiente, NombreResuelto, Proveedor, ServiceResult } from '../types'
+import type {
+  NombrePendiente, NombreResuelto, PapelesLeidos, PapelProveedor, Proveedor, ServiceResult,
+} from '../types'
 
 const COLUMNAS = 'id, nombre, razon_social, cuit, notas, activo'
 
@@ -290,4 +293,60 @@ export async function getSubcontratistas(supabase: SupabaseClient): Promise<Serv
   const ids = new Set<string>()
   for (const f of (data ?? []) as { proveedor_id: string | null }[]) if (f.proveedor_id) ids.add(f.proveedor_id)
   return { data: ids, error: null }
+}
+
+// ═══ LOS PAPELES DE UN PROVEEDOR (pedido del dueño, 06/09/2026) ═══
+//
+// «que el panel de proveedores tenga guardadas las facturas o la imagen del comprobante que
+// corresponden a cada proveedor, así como lo hacemos con Compras».
+//
+// LA VISTA HACE EL SALTO QUE PostgREST NO PUEDE HACER. El archivo cuelga de la compra y la compra
+// trae el proveedor como TEXTO LIBRE; llegar del texto al proveedor canónico exige
+// `normalizar_nombre_proveedor()` dentro del filtro, que PostgREST no ofrece. `proveedor_papel`
+// resuelve eso en Postgres reusando `proveedor_nombre_resuelto` —la misma vista que ya decide
+// quién es quién en esta pantalla—, así que acá no se escribe ningún criterio de identidad.
+
+/** Cuántos papeles entran en el panel. Si hay más, la pantalla dice «N de M». */
+export const TOPE_PAPELES = 12
+
+/**
+ * Los papeles de UN proveedor, del más reciente al más viejo.
+ *
+ * ═══ POR QUÉ SE ORDENA POR LA FECHA DE LA COMPRA Y NO POR LA DE SUBIDA ═══
+ *
+ * `subido_at` es cuándo el archivo entró al bucket —el backfill de agosto subió 58 papeles de meses
+ * distintos en dos días—, así que ordenar por ahí mezcla el orden de la carga con el orden de los
+ * gastos. Lo que quien mira una ficha busca es la última FACTURA, no el último upload. Los papeles
+ * de una compra sin fecha van al final (`nullsFirst: false`) pero se muestran: un comprobante sin
+ * fecha es trabajo pendiente, no un comprobante viejo.
+ *
+ * `count: 'exact'` viaja en la MISMA consulta: el panel muestra los 12 más recientes y tiene que
+ * poder decir cuántos hay. Sin el conteo, «12» se leería como «tiene 12» cuando tiene 40.
+ */
+export async function getPapelesDelProveedor(
+  supabase: SupabaseClient,
+  proveedorId: string,
+): Promise<ServiceResult<PapelesLeidos>> {
+  // EL ID VIENE DE LA QUERY STRING, o sea de quien tipea la URL. Sin esto, `?p=nuevo` o `?p=' or 1`
+  // viajan a Postgres y vuelven como un error de sintaxis de uuid que la pantalla mostraría como
+  // «no pude leer sus papeles» — un fallo de lectura donde en realidad no hay nada que leer.
+  if (!z.string().uuid().safeParse(proveedorId).success) {
+    return { data: null, error: 'Ese proveedor no existe.' }
+  }
+  const { data, count, error } = await supabase
+    .from('proveedor_papel')
+    .select(
+      'adjunto_id, nombre, media_type, bytes, subido_at, vinculado_por, compra_clave, compra_fila, compra_fecha, comprobante, total',
+      { count: 'exact' },
+    )
+    .eq('proveedor_id', proveedorId)
+    .order('compra_fecha', { ascending: false, nullsFirst: false })
+    .order('subido_at', { ascending: false, nullsFirst: false })
+    .limit(TOPE_PAPELES)
+  if (error) return { data: null, error: error.message }
+  const papeles = (data ?? []) as unknown as PapelProveedor[]
+  // `count` puede venir `null` si PostgREST no pudo contar. NO se reemplaza por 0: el estado usa el
+  // mayor entre el conteo y lo listado, así que un null degrada a «tantos como se ven» en vez de
+  // publicar «0 papeles» encima de una lista con papeles.
+  return { data: { papeles, total: count ?? papeles.length }, error: null }
 }
