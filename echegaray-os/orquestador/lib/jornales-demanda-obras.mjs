@@ -23,7 +23,27 @@
 //   { clave, cliente, obra, inicio, fin (ISO o null), horas: { oficialEspecializado, oficial,
 //     ayudante }, moCargasPesos, plantelFullTime, plantelTemporales, notas }
 
-import { factorUocraEntre, ESCALA_VERIFICADA, PERIODO_VERIFICADO } from './uocra-paritaria.mjs'
+import { factorUocraEntre, ESCALA_VERIFICADA, MENSUAL_VERIFICADO, PERIODO_VERIFICADO } from './uocra-paritaria.mjs'
+
+/**
+ * ═══ LAS CATEGORÍAS QUE SE PAGAN POR MES, NO POR HORA (07/09/2026) ═══
+ *
+ * El dueño pidió dos serenos por un mes para Quattropani. El Sereno es categoría del CCT 76/75 y en la
+ * escala Zona A cobra un BÁSICO MENSUAL ($980.858 en agosto/26, verificado en uocra-paritaria), no un
+ * jornal por hora: meterlo en `horas` lo valuaría a $980.858 la hora (la trampa que ya pagó
+ * nomina-replica). Por eso viaja en OTRO campo del insumo —`mensuales`— y se valúa aparte:
+ *
+ *   obra.mensuales = [{ categoria: 'sereno', cantidad: 2, desde: ISO, hasta: ISO, nota }]
+ *
+ * y la quincena acumula `mensuales.sereno` en PERSONAS-MES (cantidad × días calendario del tramo que
+ * caen en la quincena ÷ días del mes). Calendario y no hábiles: el sereno cuida la obra también el fin
+ * de semana. Las CARGAS de estas categorías NO se valúan: el insumo de cargas del dueño
+ * (TARIFA_CARGAS_EXPLOSION) es por hora y no trae al Sereno, y una carga inventada sería un número con
+ * cara de dato — se reporta en `sinCargas` y el que consume decide con eso a la vista.
+ */
+export const CATEGORIAS_MENSUALES = {
+  sereno: 'Sereno',
+}
 
 /**
  * LA EQUIVALENCIA ENTRE LAS CLAVES DE HORAS DEL INSUMO Y LAS CATEGORÍAS DEL CONVENIO.
@@ -61,7 +81,9 @@ export const PERIODO_TARIFAS_CARGAS = '2026-08'
 export const ESCALON_RESPALDO = {
   periodo: PERIODO_VERIFICADO,
   categorias: Object.fromEntries(
-    Object.entries(ESCALA_VERIFICADA).map(([cat, basico]) => [cat, { basico }]),
+    // El Sereno entra con su básico MENSUAL: es el mismo shape que trae la réplica `_UOCRA_RAW`, donde
+    // la fila del Sereno también lleva el importe del mes en la columna «Básico» (uocra-acuerdos).
+    [...Object.entries(ESCALA_VERIFICADA), ...Object.entries(MENSUAL_VERIFICADO)].map(([cat, basico]) => [cat, { basico }]),
   ),
 }
 
@@ -128,6 +150,15 @@ export function diasHabilesObra(desde, hasta) {
 }
 
 const HORAS_CERO = () => ({ oficialEspecializado: 0, oficial: 0, ayudante: 0 })
+const MENSUALES_CERO = () => Object.fromEntries(Object.keys(CATEGORIAS_MENSUALES).map((k) => [k, 0]))
+
+/** Días calendario entre dos fechas locales, ambas incluidas. 0 si el tramo está dado vuelta. */
+export function diasCalendario(desde, hasta) {
+  if (!(desde instanceof Date) || !(hasta instanceof Date) || hasta < desde) return 0
+  const a = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate())
+  const b = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())
+  return Math.round((b - a) / 86_400_000) + 1
+}
 
 /**
  * NÚCLEO PURO: LA DEMANDA DE MANO DE OBRA, QUINCENA POR QUINCENA.
@@ -162,7 +193,7 @@ export function demandaPorQuincena(obras = [], { desde, hastaMeses = 6 } = {}) {
       if (qHasta < d0) continue
       quincenas.push({
         desde: qDesde, hasta: qHasta, periodo: periodoDe(qDesde), clave: claveQuincena(qDesde),
-        obras: [], horas: HORAS_CERO(), plantel: 0, nObras: 0, jornalPesos: 0,
+        obras: [], horas: HORAS_CERO(), mensuales: MENSUALES_CERO(), plantel: 0, nObras: 0, jornalPesos: 0,
       })
     }
   }
@@ -197,6 +228,30 @@ export function demandaPorQuincena(obras = [], { desde, hastaMeses = 6 } = {}) {
       q.plantel += (Number(o?.plantelFullTime) || 0) + (Number(o?.plantelTemporales) || 0)
       q.nObras++
       q.obras.push({ clave, fraccion, diasHabiles: hab })
+    }
+    // EL PLANTEL QUE COBRA POR MES (serenos): su propio tramo de fechas, en días CALENDARIO. Un tramo
+    // sin fechas no se reparte ni se inventa: se reporta, igual que una obra sin fechas.
+    for (const m of Array.isArray(o?.mensuales) ? o.mensuales : []) {
+      const k = String(m?.categoria ?? '')
+      const cantidad = Number(m?.cantidad) || 0
+      if (!(k in CATEGORIAS_MENSUALES) || cantidad <= 0) {
+        sinFechas.push({ clave: `${clave}·${k || '(sin categoría)'}`, motivo: 'plantel mensual con categoría desconocida o cantidad 0' })
+        continue
+      }
+      const mIni = aFechaLocal(m?.desde)
+      const mFin = aFechaLocal(m?.hasta)
+      if (!mIni || !mFin || mFin < mIni) {
+        sinFechas.push({ clave: `${clave}·${k}`, motivo: 'plantel mensual sin desde/hasta válidos' })
+        continue
+      }
+      for (const q of quincenas) {
+        const s = mIni > q.desde ? mIni : q.desde
+        const e = mFin < q.hasta ? mFin : q.hasta
+        if (e < s) continue
+        const diasMes = new Date(q.desde.getFullYear(), q.desde.getMonth() + 1, 0).getDate()
+        q.mensuales[k] += cantidad * diasCalendario(s, e) / diasMes
+        if (!q.obras.some((x) => x.clave === clave)) { q.nObras++; q.obras.push({ clave, fraccion: 0, diasHabiles: 0 }) }
+      }
     }
   }
   return { quincenas, sinFechas }
@@ -251,6 +306,22 @@ export function costoDemanda(quincena, escala = ESCALON_RESPALDO, paritaria = []
     jornales += j
     cargas += c
   }
+  // LAS CATEGORÍAS POR MES: personas-mes × básico mensual, revaluado por la misma paritaria. Sin
+  // tarifa de cargas declarada por el dueño, las cargas NO se inventan: la categoría se reporta.
+  const sinCargas = []
+  for (const [k, nombre] of Object.entries(CATEGORIAS_MENSUALES)) {
+    const mesesPersona = Number(quincena?.mensuales?.[k]) || 0
+    if (!mesesPersona) continue
+    const basico = escala?.categorias?.[nombre]?.basico
+    if (typeof basico !== 'number') {
+      sinEscala.push(nombre)
+      continue
+    }
+    const j = mesesPersona * basico * fEscala.factor
+    porCategoria.push({ categoria: nombre, mesesPersona, basico, jornales: j, cargas: 0 })
+    jornales += j
+    sinCargas.push(nombre)
+  }
   // Los pesos de las obras cotizadas sin horas se suman al jornal puro: ver `demandaPorQuincena`.
   jornales += Number(quincena?.jornalPesos) || 0
   return {
@@ -262,6 +333,7 @@ export function costoDemanda(quincena, escala = ESCALON_RESPALDO, paritaria = []
     total: jornales + cargas,
     porCategoria,
     sinEscala,
+    sinCargas,
   }
 }
 

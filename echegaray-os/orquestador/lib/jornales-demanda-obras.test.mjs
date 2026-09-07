@@ -191,3 +191,65 @@ test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas
   // Y con demanda en alguna quincena, decir MAX es decir la verdad: la celda lo tiene desde el 07/09.
   assert.match(g, /MAX/, 'la glosa dejó de nombrar el MAX que la fórmula sí tiene')
 })
+
+// ═══ EL PLANTEL QUE COBRA POR MES: LOS SERENOS (07/09/2026) ═══
+//
+// El dueño pidió dos serenos por un mes para Quattropani. El Sereno cobra un básico MENSUAL del CCT
+// 76/75 —no un jornal por hora—, así que no puede viajar en `horas` sin valuarse a $980.858 la hora.
+// Viaja en `mensuales` y se reparte en PERSONAS-MES por días calendario (el sereno cuida también el
+// fin de semana). Las cargas no se inventan: se reportan en `sinCargas`.
+test('dos serenos del 16/09 al 15/10 son 1,0 personas-mes en la 2ª de septiembre y 30/31 en la 1ª de octubre', () => {
+  const obras = [obra({
+    inicio: '2026-08-18', fin: '2026-12-30', horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    mensuales: [{ categoria: 'sereno', cantidad: 2, desde: '2026-09-16', hasta: '2026-10-15' }],
+  })]
+  const { quincenas, sinFechas } = demandaPorQuincena(obras, { desde: '2026-09-01', hastaMeses: 2 })
+  assert.equal(sinFechas.length, 0)
+  assert.equal(q(quincenas, '2026-09-1').mensuales.sereno, 0, 'antes del tramo no hay sereno')
+  assert.ok(Math.abs(q(quincenas, '2026-09-2').mensuales.sereno - 1) < 1e-9, '2 × 15/30 días de septiembre')
+  assert.ok(Math.abs(q(quincenas, '2026-10-1').mensuales.sereno - 2 * 15 / 31) < 1e-9, '2 × 15/31 días de octubre')
+  assert.equal(q(quincenas, '2026-10-2').mensuales.sereno, 0, 'después del tramo tampoco')
+  // Y la obra cuenta como activa en esas quincenas aunque no aporte horas.
+  assert.equal(q(quincenas, '2026-09-2').nObras, 1)
+})
+
+test('el sereno se valúa personas-mes × básico MENSUAL de la escala, revaluado por la misma paritaria, y SIN cargas', () => {
+  const desde = new Date(2026, 8, 16)
+  const quincena = { periodo: '2026-08', desde, horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 }, mensuales: { sereno: 1 } }
+  const c = costoDemanda(quincena)
+  // En el mes base de la escala el factor es 1: 1 persona-mes = el básico mensual verificado, tal cual.
+  assert.equal(c.jornales, ESCALON_RESPALDO.categorias.Sereno.basico)
+  assert.equal(c.jornales, 980_858, 'el básico mensual del Sereno, Zona A agosto/26 — el de uocra-paritaria, no otro')
+  assert.equal(c.cargas, 0, 'no hay tarifa de cargas del dueño para el Sereno: no se inventa')
+  assert.deepEqual(c.sinCargas, ['Sereno'], 'y se DICE que entró sin cargas')
+  assert.deepEqual(c.sinEscala, [])
+  assert.equal(c.porCategoria[0].categoria, 'Sereno')
+  assert.equal(c.porCategoria[0].mesesPersona, 1)
+  // Dos meses adelante, el mismo factor que revalúa las horas revalúa al sereno.
+  const f = factorUocraEntre('2026-08', '2026-10', []).factor
+  const c2 = costoDemanda({ ...quincena, periodo: '2026-10', mensuales: { sereno: 2 } })
+  assert.ok(Math.abs(c2.jornales - 2 * 980_858 * f) < 1e-6, 'personas-mes × básico × factor')
+  assert.ok(c2.mesesProyectados > 0, 'y después del 31/08 viene rotulado como proyección')
+})
+
+test('el control PUEDE dar rojo: sin básico del Sereno en la escala, la categoría se reporta en sinEscala y no entra en $0 mudo', () => {
+  const escalaSinSereno = { periodo: '2026-08', categorias: { Ayudante: { basico: 5399 } } }
+  const c = costoDemanda({ periodo: '2026-08', horas: { ayudante: 10 }, mensuales: { sereno: 2 } }, escalaSinSereno)
+  assert.deepEqual(c.sinEscala, ['Sereno'])
+  assert.equal(c.jornales, 10 * 5399, 'las horas de Ayudante siguen valuadas; el sereno no suma cero en silencio')
+  assert.deepEqual(c.sinCargas, [])
+})
+
+test('un tramo mensual sin fechas o con categoría desconocida NO se inventa: se reporta en sinFechas', () => {
+  const obras = [obra({
+    mensuales: [
+      { categoria: 'sereno', cantidad: 2 },
+      { categoria: 'portero', cantidad: 1, desde: '2026-09-01', hasta: '2026-09-30' },
+    ],
+  })]
+  const { quincenas, sinFechas } = demandaPorQuincena(obras, { desde: '2026-09-01', hastaMeses: 1 })
+  assert.equal(sinFechas.length, 2)
+  assert.match(sinFechas.find((s) => s.clave.endsWith('·sereno')).motivo, /sin desde\/hasta/)
+  assert.match(sinFechas.find((s) => s.clave.endsWith('·portero')).motivo, /desconocida/)
+  for (const x of quincenas) assert.equal(x.mensuales.sereno, 0)
+})

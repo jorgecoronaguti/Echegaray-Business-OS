@@ -81,16 +81,19 @@ export function demandaJornalPorQuincena(obras = [], { desde, hastaMeses = 6, es
   const { quincenas, sinFechas } = demandaPorQuincena(obras, { desde, hastaMeses })
   const porQuincena = new Map()
   const sinEscala = new Set()
+  const sinCargas = new Set()
   let total = 0
   for (const q of quincenas) {
     const c = costoDemanda(q, escala, paritaria)
     if (!c) continue
     for (const s of c.sinEscala ?? []) sinEscala.add(s)
+    for (const s of c.sinCargas ?? []) sinCargas.add(s)
     if (!(c.jornales > 0)) continue
     porQuincena.set(q.clave, { jornales: c.jornales, cargas: c.cargas, periodo: c.periodo })
     total += c.jornales
   }
-  return { porQuincena, total, sinFechas, sinEscala: [...sinEscala] }
+  // `sinCargas`: categorías que entraron como jornal puro sin cargas (Sereno) — el total es un PISO ahí.
+  return { porQuincena, total, sinFechas, sinEscala: [...sinEscala], sinCargas: [...sinCargas] }
 }
 
 /**
