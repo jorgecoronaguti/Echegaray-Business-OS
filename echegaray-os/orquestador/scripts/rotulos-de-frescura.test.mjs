@@ -47,9 +47,11 @@ const FUENTES_MIXTAS = [
  * OS", el cruce de conciliación de Proveedores). Una fórmula ahí no daría frescura: daría frescura
  * FALSA sobre un dato que no se mueve, que es peor que el texto honesto.
  */
+// 06/09/2026 — «proveedores-materiales-pestana.mjs» salió de acá porque dejó de estampar: el
+// minimalismo extremo le sacó la glosa donde vivía la fecha congelada. Una excepción que ya no
+// existe esconde el próximo caso real detrás de un permiso que nadie revisa, así que se saca.
 const ESTAMPADO_HONESTO = [
   'orquestador/scripts/cheques-cobertura-sheet.mjs',
-  'orquestador/scripts/proveedores-materiales-pestana.mjs',
 ]
 
 const leer = (f) => readFile(f, 'utf8')
