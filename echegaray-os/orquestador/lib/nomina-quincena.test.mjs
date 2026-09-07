@@ -81,7 +81,18 @@ test('la Nómina NOMBRA las equivalencias que dedujo el OS, no las hace pasar po
     'dejó de detectar qué equivalencias dedujo el OS')
   assert.match(NOMINA, /const inferidas = lineaEquivalenciasInferidas\(conInferencia\)/,
     'la línea al pie que nombra las inferencias dejó de armarse')
-  assert.match(NOMINA, /if \(inferidas\) fila\(sub\(inferidas\)\)/, 'se arma la línea pero no se escribe')
+  // ═══ CAMBIO DE CONTRATO (06/09/2026) ═══
+  //
+  // Antes esta línea se ESCRIBÍA en la pestaña. El dueño pidió «minimalismo extremo y no tenga
+  // aclaraciones ni explicaciones de nada», y este renglón son 243 caracteres explicando el mapeo
+  // crudo y dónde se corrige — exactamente lo que mandó sacar del Sheet.
+  //
+  // LA DISTINCIÓN NO SE PERDIÓ, que es lo que este test cuida: la marca «▲» sigue en la celda de la
+  // categoría, así que quien mira la fila ve que esa equivalencia no la declaró nadie. Lo que se fue
+  // del Sheet es la explicación; el aviso se quedó, y el detalle completo sale por el log de la
+  // corrida, que es donde lo lee quien mantiene el generador.
+  assert.match(NOMINA, /if \(inferidas\) console\.warn/,
+    'la advertencia dejó de decirse en algún lado: no está en la pestaña NI en el log')
 })
 
 test('los comentarios de la Nómina no describen un código que ya no existe', () => {

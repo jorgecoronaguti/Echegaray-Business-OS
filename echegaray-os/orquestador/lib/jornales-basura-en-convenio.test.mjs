@@ -27,7 +27,7 @@
 // cero y la Σ del aumento se desploma.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { categoriasDelBloque, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
+import { categoriasDelBloque, codigoDeCategoria, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
 import { expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'
@@ -100,7 +100,7 @@ function resolverCuadro(grid, escrito = {}) {
   const TRIM = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
   for (let i = 0; i < n; i++) {
     const r = c.fPrimera + i
-    const cat = String(c.filas[i + 1][0])
+    const cat = codigoDeCategoria(c.filas[i + 1][0])
     let personas = 0
     let hoy = 0
     for (let f = BLOQUE.inicio; f <= BLOQUE.fin; f++) {
@@ -115,7 +115,7 @@ function resolverCuadro(grid, escrito = {}) {
   }
   for (let i = 0; i < n; i++) {
     const r = c.fPrimera + i
-    const cat = String(c.filas[i + 1][0])
+    const cat = codigoDeCategoria(c.filas[i + 1][0])
     const basico = evaluarFormula(String(c.filas[i + 1][5]), { hoja, hojas: { _UOCRA_RAW: REPLICA } })
     hoja[`F${r}`] = basico
     const sigmaAumento = evaluarFormula(String(c.filas[i + 1][3]),
@@ -172,9 +172,12 @@ test('LAS CUATRO FILAS DICEN QUE SE IGNORÓ LA CELDA DEL DUEÑO, Y CONTRA QUÉ M
     // SE EVALÚA LA CELDA, NO SE LE BUSCA EL TEXTO. El `IF` de este evaluador es perezoso igual que el
     // de Sheets: con la condición en TRUE ni toca la rama del `FILTER`, que es la que no soporta.
     const dice = evaluarFormula(f.estadoFormula, { hoja: f.hoja, hojas: { _UOCRA_RAW: REPLICA } })
-    assert.match(String(dice), /^▲ «Convenio» no está en la escala — uso /,
+    // MINIMALISMO (06/09/2026): el aviso pasó de «▲ «Convenio» no está en la escala — uso X» a
+    // «▲ fuera de escala — uso X». Lo que el test cuida NO cambió: que la celda avise, y que NOMBRE
+    // la categoría con la que midió. Lo que se fue son las palabras de más.
+    assert.match(String(dice), /^▲ fuera de escala — uso /,
       `la fila «${f.cat}» usó la equivalencia declarada y no lo dice: ${dice}`)
-    assert.equal(String(dice), `▲ «Convenio» no está en la escala — uso ${equivalentes[f.cat]}`,
+    assert.equal(String(dice), `▲ fuera de escala — uso ${equivalentes[f.cat]}`,
       `la fila «${f.cat}» no nombra la categoría con la que midió`)
   }
   // ═══ Y EL AVISO SE APAGA CON LA COLUMNA LIMPIA — EVALUANDO LA CONDICIÓN REAL, NO UNA COPIA ═══
@@ -184,7 +187,7 @@ test('LAS CUATRO FILAS DICEN QUE SE IGNORÓ LA CELDA DEL DUEÑO, Y CONTRA QUÉ M
   // misma trampa que el mapa de básicos que este archivo vino a reemplazar: probaría que el test
   // sabe la regla, no que la celda la aplica.
   const c = cuadro(espejo())
-  const estadoOF = String(c.filas.find((f) => String(f[0]) === 'OF')[7])
+  const estadoOF = String(c.filas.find((f) => codigoDeCategoria(f[0]) === 'OF')[7])
   const cond = /^=IF\((.+?);"▲/.exec(estadoOF)
   assert.ok(cond, `no pude extraer la condición del Estado emitido: ${estadoOF.slice(0, 80)}`)
   const enciende = (celda) => evaluarFormula(`IF(${cond[1].replace(/\$E\d+/g, '$E$1')};1;0)`,

@@ -20,7 +20,7 @@
 // el primer test se pone rojo con 5 contra 17.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { categoriasDelBloque, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
+import { categoriasDelBloque, codigoDeCategoria, filasPlantel, personasDelBloque } from './motor-salarial.mjs'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { CONVENIO_POR_CODIGO, claveDeCategoria } from './uocra-paritaria.mjs'
 
@@ -173,7 +173,11 @@ test('un espacio DE MÁS en el medio del código tampoco parte la categoría en 
 test('los dos códigos nuevos de la quincena tienen su fila, con su gente y su equivalencia', () => {
   const g = espejo({ sucio: true })
   const c = cuadro(g)
-  const filaDe = (cat) => c.filas.find((f) => f[0] === cat)
+  // La celda muestra «OF E → Oficial Especializado» desde el 06/09: la equivalencia bajó del glosario
+  // (prosa prohibida) a la fila. La CLAVE sigue siendo el código, y se lee con la única función que
+  // sabe hacerlo — comparar la celda entera contra «OF E» es el defecto que puso un cuadro de
+  // sueldos en cero.
+  const filaDe = (cat) => c.filas.find((f) => codigoDeCategoria(f[0]) === cat)
   assert.ok(filaDe('OF E'), 'Pastran y Quiroga ascendieron a Oficial Especializado y no tienen fila')
   assert.ok(filaDe('M OF'), 'Castillo entró el 19/08 y no tiene fila')
   assert.equal(evaluar(filaDe('OF E')[1], g), 2)
@@ -185,7 +189,7 @@ test('los dos códigos nuevos de la quincena tienen su fila, con su gente y su e
 test('un texto en la columna de importes no rompe la Σ ni contamina el mínimo', () => {
   // Con `(cond)*W` el producto da #VALUE! aunque la condición sea 0, y la fila entera se apaga.
   const g = espejo({ sucio: true, jornalRaro: { nombre: 'Aguero', valor: 'vacaciones' } })
-  const filaOF = cuadro(g).filas.find((f) => f[0] === 'OF')
+  const filaOF = cuadro(g).filas.find((f) => codigoDeCategoria(f[0]) === 'OF')
   assert.equal(evaluar(filaOF[1], g), 5, 'la persona sigue contando: tiene categoría, lo que falta es el importe')
   assert.equal(evaluar(filaOF[2], g), 5300 + 5400 + 5500 + 5600, 'el texto tiene que valer cero, no romper')
   assert.equal(evaluar(minimoDe(filaOF[7]), g), 5300, 'el mínimo es el menor NUMÉRICO positivo, no el texto')
