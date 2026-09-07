@@ -5,6 +5,7 @@ import { llamadasA, celdaDeColumnaA } from '../lib/literales-de-generador.mjs'
 import { esProsa, encabezadoRoto, auditarDiseno, TOPE_PROSA } from '../lib/diseno-unificado.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { grillaObras } from '../lib/obras-grilla.mjs'
+import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 import { construir } from '../lib/subcontratistas/pestana.mjs'
 
 // EL CONTRATO DE DISEÑO, MEDIDO EN EL GENERADOR Y NO EN EL ARCHIVO VIVO.
@@ -101,8 +102,19 @@ for (const p of LIMPIAS) {
 // con datos de muestra— hay algo estrictamente mejor: correrlo y pasarle el MISMO auditor que mide
 // el archivo vivo. No se juzga una aproximación del texto: se juzga la grilla que se va a escribir,
 // con sus tres filas de encabezado, su numeración de bloques y toda su prosa mire donde mire.
+//
+// ═══ Y SE CORRE CON DATOS, PORQUE SIN ELLOS EL CONTROL NO PUEDE DAR ROJO (06/09/2026) ═══
+//
+// Decía `grillaObras({})`. Medido: esa llamada devuelve VEINTISIETE filas y CERO ítems en el cuadro
+// 5 —el default de `obras` es la lista vacía, no `OBRAS_FUTURAS`—, así que el test verde afirmaba
+// que la pestaña no tenía prosa mirando una pestaña sin cuadro 5. Los dos desvíos que el archivo
+// vivo sí tenía (`F46` y `F48`, la columna «Nota») estaban fuera de la grilla medida.
+//
+// La mutación lo probó: devolver la nota a la fila del cuadro 5 dejaba este test en verde. Con
+// `OBRAS_FUTURAS` —las mismas obras que le pasa el script— la grilla trae sus diecisiete ítems y el
+// control puede decir que no.
 const PURAS = [
-  { titulo: 'OBRAS', grilla: () => grillaObras({}).filas },
+  { titulo: 'OBRAS', grilla: () => grillaObras({ obras: OBRAS_FUTURAS }).filas },
   { titulo: 'SUBCONTRATISTAS', grilla: () => construir().filas },
 ]
 
