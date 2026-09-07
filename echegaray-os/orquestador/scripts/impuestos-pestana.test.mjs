@@ -14,6 +14,9 @@ import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
 import { auditarPatron } from '../lib/patron-pestana.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { ANCHO_ROTULO } from '../lib/impuestos-piel.mjs'
+import { auditarDiseno } from '../lib/diseno-unificado.mjs'
+import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
+import { ANCHO as ANCHO_PESTANA } from '../lib/impuestos-grilla.mjs'
 
 const FUENTE = readFileSync(new URL('./impuestos-pestana.mjs', import.meta.url), 'utf8')
 // EL CANARIO SE MUDA CON EL CÓDIGO (06/08). La reconstrucción partió el generador de 1.253 líneas:
@@ -482,4 +485,24 @@ test('un rótulo con un importe al lado tiene que ENTRAR en su columna', () => {
     .filter((x) => x.a && x.a !== VACIO && x.b && x.b !== VACIO && !x.a.startsWith('='))
     .filter((x) => x.a.length > CABEN)
   assert.deepEqual(largos, [], `rótulos que se cortan con un importe al lado (entran ${CABEN} caracteres)`)
+})
+
+test('la pestaña cumple el CONTRATO DE DISEÑO entero en la grilla que el generador devuelve', () => {
+  // ═══ POR QUÉ ACÁ Y NO SÓLO EN EL ARCHIVO VIVO (06/09/2026) ═══
+  //
+  // `auditar-diseno-unificado` medía «A1 dice "Impuestos y financiero" y la pestaña se llama
+  // "Impuestos y Financieros"»: el título estaba TIPEADO aparte del nombre real, así que las dos
+  // cadenas podían divergir sin que nada se rompiera. Ese auditor sólo puede dar rojo después de
+  // correr el pipeline contra el Sheet real, que es lo que no se hace desde un worktree. Acá el mismo
+  // contrato se mide sobre la grilla, sin una llamada a la API: si alguien vuelve a tipear el título,
+  // o mete una explicación en cualquier columna, este test se pone rojo en el commit y no dos días
+  // después en el archivo.
+  // La columna O se juzga VACÍA porque `main()` la vacía antes de escribir (`vaciarColumnaDeProsa`,
+  // el mismo llamado que se usa acá): medirla con su texto adentro sería marcar 29 desvíos que el
+  // lector no tiene, y el rojo dejaría de significar algo.
+  const g = armar()
+  vaciarColumnaDeProsa(g.filas, ANCHO_PESTANA - 1)
+  const filas = g.filas.map((f) => (f || []).map((c) => (c === VACIO ? '' : c)))
+  const mal = auditarDiseno(filas, { pestana: 'Impuestos y Financieros' })
+  assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })
