@@ -280,6 +280,35 @@ export function filasDeObra(filas = [], cols = {}, obra = {}) {
 }
 
 /**
+ * ¿ESTA OBRA TODAVÍA TIENE PLATA POR COBRAR?
+ *
+ * Regla del dueño (07/09/2026): *«quitar obras q ya no tiene saldo pendiente»*. La pestaña OBRAS es
+ * una herramienta de cobranza, no un archivo histórico: una obra íntegramente cobrada ya no admite
+ * ninguna decisión y ocupa un renglón que compite con las que sí.
+ *
+ * SE MIDE SOBRE EL ESTADO DE SUS FILAS, NO SOBRE UN IMPORTE. Comparar cobrado contra contratado
+ * daría falsos cierres —una obra en dólares y una con retenciones nunca cierran al peso—, y daría
+ * también falsas aperturas por un centavo de diferencia. El estado es lo que el dueño escribe.
+ *
+ * UNA OBRA SIN NINGUNA FILA NO SE DA POR COBRADA: no se sabe nada de ella, y esconderla sería
+ * afirmar que se cobró. Las que sí tienen filas, se esconden sólo si TODAS están Cobrado o Cancelar.
+ *
+ * @param {Array<Array>} filas filas de datos de Cobranzas
+ * @param {{cliente:number, concepto:number, oc:number, estado:number}} cols índices 0-based
+ * @param {{variantes:string[], needle:string, unica:boolean}} obra
+ * @returns {{cobrada:boolean, pendientes:number[], total:number}} `pendientes` son las filas
+ *   1-based que todavía deben plata: la evidencia de por qué la obra se queda.
+ */
+export function saldoDeObra(filas = [], cols = {}, obra = {}, desde = 1) {
+  const cerrado = new Set(['cobrado', 'cancelar'])
+  const indices = filasDeObra(filas, cols, obra)
+  const pendientes = indices
+    .filter((i) => !cerrado.has(String(filas[i]?.[cols.estado] ?? '').trim().toLowerCase()))
+    .map((i) => desde + i)
+  return { cobrada: indices.length > 0 && pendientes.length === 0, pendientes, total: indices.length }
+}
+
+/**
  * EL CONTRATO DE UNA OBRA, LEÍDO DE SUS PROPIAS FILAS.
  *
  * @returns {{contrato:number|null, valores:Array<{monto:number, fila:number, texto:string}>,

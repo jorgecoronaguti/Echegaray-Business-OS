@@ -56,7 +56,7 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, contratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import {
-  contratoDeObra, filasDeObra, monedasDesconocidas, normalizarMoneda,
+  contratoDeObra, filasDeObra, monedasDesconocidas, normalizarMoneda, saldoDeObra,
 } from '../lib/cobranzas-contrato.mjs'
 import { certificadoDeObra } from '../lib/obras-certificado.mjs'
 // El ⚠ del log sale de su única fuente, no tipeado: el guardián de `glifos-generadores.test.mjs`
@@ -291,6 +291,7 @@ export function leerContratos(filas, refs, obras) {
       variantes: variantesDe(o.cliente), needle: o.ventaTexto, unica: porCliente.get(o.cliente) === 1,
     }
     const c = contratoDeObra(filas, cols, selector, refs.cob.desde)
+    c.saldo = saldoDeObra(filas, { ...cols, estado: indiceDeLetra(refs.cob.estado) }, selector, refs.cob.desde)
     // LAS FILAS DE LA OBRA VIAJAN CON EL CONTRATO aunque ninguna lo declare: son la evidencia de la
     // obra que publica la suma viva, y recalcularlas después con otro selector sería otra medición.
     c.filasObra = filasDeObra(filas, cols, selector).map((i) => refs.cob.desde + i)
@@ -478,7 +479,23 @@ async function main() {
   // un material. Hasta que exista esa pantalla, se corrige en `obra_egreso_proyectado`.
   const hojas = await google.getSheetMeta(ID)
 
-  const g = grillaObras({ obras, refs })
+  // ═══ LA OBRA COBRADA ENTERA SALE DE LA PESTAÑA (07/09/2026) ═══
+  //
+  // El dueño: *«quitar obras q ya no tiene saldo pendiente»*. La pestaña es una herramienta de
+  // cobranza y un renglón cobrado no admite ninguna decisión: le saca lugar a los que sí.
+  //
+  // NO SE BORRA NADA Y SE DICE CUÁL SALIÓ. La obra sigue en `obras-datos.mjs` con su explosión de
+  // gastos y su cobranza sigue viva en Cobranzas; lo único que pasa es que no se dibuja. Si mañana
+  // aparece una fila pendiente suya —un adicional, un ajuste—, vuelve sola en la corrida siguiente.
+  const enCartera = obras.filter((o) => !contratos.get(o.clave)?.saldo?.cobrada)
+  for (const o of obras) {
+    const saldo = contratos.get(o.clave)?.saldo
+    if (saldo?.cobrada) {
+      console.log(`  ${o.clave}: COBRADA ENTERA (${saldo.total} fila(s), ninguna pendiente) — no la dibujo`)
+    }
+  }
+  if (!enCartera.length) throw new Error('ninguna obra quedó con saldo pendiente: no publico una pestaña vacía')
+  const g = grillaObras({ obras: enCartera, refs })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
@@ -489,8 +506,8 @@ async function main() {
     .filter((x) => x && x[1]))
   if (rotas.length) throw new Error(`${rotas.length} fórmula(s) no parsean y Sheets las publicaría como #ERROR!: `
     + `${rotas.slice(0, 5).map(([ref, why]) => `${ref} (${why})`).join(' · ')}. NO escribo.`)
-  const proyectado = OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)
-  console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${OBRAS_FUTURAS.length} obras · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
+  const proyectado = enCartera.reduce((s, o) => s + totalEgresos(o), 0)
+  console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${enCartera.length} obras con saldo (de ${OBRAS_FUTURAS.length}) · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
 
   // `hojas` se leyó arriba, antes de la grilla: la misma lectura decide si la pestaña EXISTE (y por

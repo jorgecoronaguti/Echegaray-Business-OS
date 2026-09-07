@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas,
+  contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas, saldoDeObra,
   sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO,
 } from './cobranzas-contrato.mjs'
 import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
@@ -197,4 +197,40 @@ test('«ACTUALIZACIÓN DE PRECIOS» no declara ningún precio: el número tiene 
   // Un marcador que enganchara la palabra suelta convertiría un concepto en un contrato inventado.
   assert.equal(contratoDeclarado('ACTUALIZACION DE PRECIOS OBRA CIVIL'), null)
   assert.equal(contratoDeclarado('Ajuste de precios según índice CAC'), null)
+})
+
+test('la obra cobrada entera se declara cobrada; la que tiene una fila pendiente, no', () => {
+  // Regla del dueño (07/09/2026): la pestaña OBRAS es una herramienta de cobranza y una obra
+  // íntegramente cobrada no admite ninguna decisión. Se mide por ESTADO, no comparando importes:
+  // una obra en dólares o con retenciones nunca cierra al peso contra su contrato.
+  const cols = { cliente: 0, concepto: 1, oc: 2, estado: 3 }
+  const filas = [
+    ['MESSINA', 'Pisos 120m2 - Anticipo 50%', 'OC 2097', 'Cobrado'],
+    ['MESSINA', 'Pisos 120m2 - Restante 50%', 'OC 2097', 'Cobrado'],
+    ['MESSINA', 'Playón Dilución — Anticipo', 'OC 2266', 'Pendiente'],
+    ['MESSINA', 'Playón Dilución — Saldo', 'OC 2266', 'Cobrado'],
+  ]
+  const pisos = saldoDeObra(filas, cols, { variantes: ['MESSINA'], needle: 'Pisos 120m2' }, 5)
+  assert.equal(pisos.cobrada, true)
+  assert.deepEqual(pisos.pendientes, [])
+
+  const dilucion = saldoDeObra(filas, cols, { variantes: ['MESSINA'], needle: 'Playón Dilución' }, 5)
+  assert.equal(dilucion.cobrada, false, 'una sola fila pendiente la mantiene en la pestaña')
+  assert.deepEqual(dilucion.pendientes, [7], 'y se sabe cuál es, para poder desmentirlo')
+})
+
+test('la obra SIN filas en Cobranzas NO se da por cobrada: esconderla afirmaría que se cobró', () => {
+  // Es la diferencia entre "no debe nada" y "no sé nada de ella". Un `pendientes` vacío por falta de
+  // datos sacaría de la pestaña justo a la obra de la que hay que preguntar.
+  const cols = { cliente: 0, concepto: 1, oc: 2, estado: 3 }
+  const r = saldoDeObra([['MESSINA', 'Otra cosa', '', 'Cobrado']], cols,
+    { variantes: ['MESSINA'], needle: 'Obra que no está' }, 5)
+  assert.equal(r.total, 0)
+  assert.equal(r.cobrada, false)
+})
+
+test('CANCELAR cuenta como cerrada: una venta que dejó de existir no es plata por cobrar', () => {
+  const cols = { cliente: 0, concepto: 1, oc: 2, estado: 3 }
+  const filas = [['SF', 'Obra X', '', 'Cobrado'], ['SF', 'Obra X', '', 'CANCELAR']]
+  assert.equal(saldoDeObra(filas, cols, { variantes: ['SF'], needle: 'Obra X' }, 5).cobrada, true)
 })
