@@ -454,6 +454,19 @@ export const PASOS = [
   // TENDRÍA QUE ESTAR. Un párrafo perfectamente legible, en una columna bien ancha, pasa
   // `auditar-pantalla` en verde y es exactamente lo que el dueño mandó sacar el 05/09.
   ['auditar-diseno-unificado.mjs', 'el contrato de diseño: encabezado, numeración de bloques y CERO prosa en las pestañas del alcance', []],
+  // ═══ LA REGLA DE ORO 8, MEDIDA EN PESOS (06/09/2026) ═══
+  //
+  // *"los cash flows semanales y mensuales tienen q reflejar todos los datos del sheet"*. Hasta hoy
+  // nadie contaba esa plata: `auditar-cuadre-cash-flow` compara las dos vistas ENTRE SÍ —y su propia
+  // cabecera declara que no valida el número del que parten— y `cash-flow-cobertura` mide meses
+  // cubiertos y roles de pestaña. Con los dos en verde, la primera corrida de éste encontró
+  // $26.327.534 del archivo que ninguna celda de ningún Cash Flow muestra.
+  //
+  // VA DESPUÉS DE TODOS LOS GENERADORES porque cuelga de `_MOVIMIENTOS`: corrido antes mediría la
+  // cobertura de la corrida de ayer. Y VA EN `REPORTES`: su ≠0 significa "hay filas del archivo que no
+  // llegan al cuadro" —celdas que tiene que llenar el dueño—, no "no pude generar los datos". Contado
+  // como fallo dejaría el servicio siempre en rojo y la frescura del Cash Flow sin registrar.
+  ['auditar-cobertura-cash-flow.mjs', 'la regla 8 en pesos: cuánta plata del archivo no llega a ningún Cash Flow, y de qué fila sale', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],
   // ÚLTIMO: con el Sheet ya regenerado, el motor de Ingeniería Financiera arma el calendario diario y
@@ -563,6 +576,7 @@ export const REPORTES = new Set([
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
   'auditar-coherencia-pestanas.mjs', 'auditar-diseno-unificado.mjs',
   'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
+  'auditar-cobertura-cash-flow.mjs',
   // Sus hallazgos («jornales proyectados con $0 de material») son una lectura de lo que falta
   // cargar, no un error de cuadre: reporte visible, jamás un fallo del pipeline.
   'asimetria-cash-flow.mjs',
