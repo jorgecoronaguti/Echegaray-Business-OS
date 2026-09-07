@@ -174,7 +174,9 @@ function informe(r, movs) {
   console.log(`\nTOTAL · plata censada del archivo ${peso(r.censado)}`)
   console.log(`        NO llega a ninguna celda de ningún Cash Flow: ${peso(r.noLlegaALaVista)}`)
   console.log(`          · ${peso(r.hueco)} por filas de origen que no producen movimiento`)
-  console.log(`          · ${peso(r.fueraDeVista)} por movimientos fuera del ejercicio`)
+  console.log(`          · ${peso(r.perdidaDeVentana)} por movimientos con fecha que ninguna vista abre ya`)
+  console.log(`          · ${peso(r.frontera)} de frontera: obligaciones del ejercicio que se pagan en el siguiente`)
+  console.log('        (la frontera se informa y NO enciende el rojo: el Cash Flow es percibido)')
   if (r.ok) console.log('\n✓ toda la plata censada llega a las dos vistas (ver los límites declarados en lib/cobertura-archivo.mjs)')
   else console.log('\n⛔ hay plata del archivo que ningún Cash Flow muestra.')
 }

@@ -173,9 +173,11 @@ test('EL CONTROL PUEDE DAR ROJO Y PUEDE DAR VERDE — las dos ramas, sobre los m
 })
 
 test('el eslabón 1 limpio NO alcanza para dar verde: la ventana también cuenta', () => {
+  // Un movimiento con fecha del ejercicio ANTERIOR: ninguna vista abre ya ese año, así que esa plata
+  // no la muestra ninguna celda y no la va a mostrar nunca. Eso sí es pérdida, no frontera.
   const r = resumenDeCobertura({
     fuentes: [coberturaDeFuente({ pestana: 'Compras', renglones: [{ fila: 5, monto: 1000 }], cubiertas: new Set([5]) })],
-    fuera: fueraDeLaVentana([mov({ importe: 14_992_277, fecha: serialDe(2027, 1, 1) })], V),
+    fuera: fueraDeLaVentana([mov({ importe: 14_992_277, fecha: serialDe(2025, 12, 20) })], V),
   })
   assert.equal(r.hueco, 0)
   assert.equal(r.ok, false, 'toda la plata produjo movimiento y aun así hay $15M que ninguna celda muestra')
@@ -242,4 +244,26 @@ test('un desvío del eslabón 3 solo ya deja el resumen en rojo', () => {
   assert.equal(r.hueco, 0)
   assert.equal(r.fueraDeVista, 0)
   assert.equal(r.ok, false, 'la plata puede llegar al libro entera y la vista publicar otra cosa')
+})
+
+test('LA FRONTERA NO ES UN HUECO: la nómina de diciembre que se paga en enero se informa, no se grita', () => {
+  // Criterio PERCIBIDO: un pago del 01/01/2027 no es caja de 2026. Exigirle al cuadro del ejercicio
+  // que lo muestre sería mezclar dos ventanas de tiempo. Se informa con su monto y no enciende el rojo.
+  const r = fueraDeLaVentana([
+    mov({ origen: 'Jornales por Quincena', importe: 9_000_000, fecha: serialDe(2027, 1, 1) }),
+    mov({ origen: 'Compras', importe: 250_000, fecha: serialDe(2025, 11, 30) }),
+  ], V)
+  assert.equal(r.monto, 9_250_000)
+  assert.equal(r.frontera, 9_000_000)
+  assert.equal(r.perdida, 250_000, 'lo del año pasado sí es pérdida: ninguna vista lo abre ya')
+
+  const res = resumenDeCobertura({ fuentes: [], fuera: r })
+  assert.equal(res.ok, false, 'los $250.000 anteriores al ejercicio encienden el rojo')
+
+  const soloFrontera = resumenDeCobertura({
+    fuentes: [],
+    fuera: fueraDeLaVentana([mov({ importe: 9_000_000, fecha: serialDe(2027, 1, 1) })], V),
+  })
+  assert.equal(soloFrontera.ok, true, 'la frontera sola NO puede dejar el control rojo para siempre')
+  assert.equal(soloFrontera.frontera, 9_000_000, 'pero sigue publicada con su monto')
 })

@@ -60,6 +60,9 @@ export const ventanaDelEjercicio = (anio) => ({ desde: serialDe(anio, 1, 1), has
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
 
+/** El motivo que NO es un defecto: el ejercicio siguiente todavía no tiene cuadro. Ver `fueraDeLaVentana`. */
+export const POSTERIOR = 'posterior al ejercicio'
+
 /**
  * ESLABÓN 2 · la plata del Libro que no cae en NINGUNA columna de NINGUNA vista.
  *
@@ -79,12 +82,33 @@ export function fueraDeLaVentana(movs = [], { desde, hasta } = {}) {
     // Sin fecha numérica la fila no la suma ninguna celda: `terminoLibro` antepone ISNUMBER(fecha)
     // justamente porque una celda vacía compara como 0 y caería dentro de cualquier ventana.
     const motivo = fecha === null ? 'fecha que no es un número'
-      : (fecha < desde ? 'anterior al ejercicio' : (fecha >= hasta ? 'posterior al ejercicio' : null))
+      : (fecha < desde ? 'anterior al ejercicio' : (fecha >= hasta ? POSTERIOR : null))
     if (!motivo) continue
     detalle.push({ origen: txt(m?.origen), fila: m?.fila ?? null, fecha, importe, motivo, rubro: txt(m?.rubro), estado: txt(m?.estado) })
   }
   const porOrigen = agrupar(detalle, (d) => `${d.origen} · ${d.motivo}`)
-  return { n: detalle.length, monto: detalle.reduce((s, d) => s + d.importe, 0), porOrigen, detalle }
+  const frontera = detalle.filter((d) => d.motivo === POSTERIOR)
+  const perdida = detalle.filter((d) => d.motivo !== POSTERIOR)
+  return {
+    n: detalle.length,
+    monto: detalle.reduce((s, d) => s + d.importe, 0),
+    // LA FRONTERA NO ES UN HUECO, Y LA DIFERENCIA VALE $18.920.862 (medido el 06/09/2026).
+    //
+    // Lo que cae DESPUÉS del ejercicio es, hoy, la nómina de diciembre y su F931: la última quincena
+    // ($2.385.477), Oficina ($3.606.800), Dirección ($9.000.000) y las cargas de diciembre
+    // ($3.928.585), todas con fecha de pago en enero de 2027. El Cash Flow es PERCIBIDO: un pago de
+    // enero no es caja de 2026, y exigirle al cuadro del ejercicio que lo muestre sería mezclar dos
+    // ventanas de tiempo (regla de oro 3). Se INFORMA con su monto —el año cierra debiéndolo— pero no
+    // enciende el rojo: un control que grita por algo correcto se deja de mirar, y entonces tampoco se
+    // ve el grito que importa.
+    //
+    // Lo ANTERIOR al ejercicio sí es pérdida: es plata con fecha de un año que ninguna vista abre ya, y
+    // no la va a mostrar nunca. Una fecha que no es número, igual — ninguna fórmula la suma.
+    frontera: frontera.reduce((s, d) => s + d.importe, 0),
+    perdida: perdida.reduce((s, d) => s + d.importe, 0),
+    porOrigen,
+    detalle,
+  }
 }
 
 /**
@@ -272,19 +296,22 @@ export function resumenDeCobertura({ fuentes = [], fuera = null, sinCenso = [], 
   const censado = fuentes.reduce((s, f) => s + f.censado, 0)
   const hueco = fuentes.reduce((s, f) => s + f.hueco, 0)
   const declarado = fuentes.reduce((s, f) => s + f.declarado, 0)
-  const fueraDeVista = fuera?.monto ?? 0
+  const perdidaDeVentana = fuera?.perdida ?? 0
+  const frontera = fuera?.frontera ?? 0
   return {
     censado,
     llegaAlLibro: fuentes.reduce((s, f) => s + f.cubierto, 0),
     declarado,
     hueco,
-    fueraDeVista,
-    noLlegaALaVista: hueco + fueraDeVista,
+    fueraDeVista: fuera?.monto ?? 0,
+    perdidaDeVentana,
+    frontera,
+    noLlegaALaVista: hueco + (fuera?.monto ?? 0),
     fuentes,
     fuera,
     sinCenso,
     desvios,
-    ok: hueco === 0 && fueraDeVista === 0 && desvios.length === 0,
+    ok: hueco === 0 && perdidaDeVentana === 0 && desvios.length === 0,
   }
 }
 
