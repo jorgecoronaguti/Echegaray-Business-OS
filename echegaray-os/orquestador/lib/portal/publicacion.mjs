@@ -130,3 +130,63 @@ export async function guardarPagoDelSync(p, { query }) {
       p.monto, p.estado, p.medio, p.orden ?? 0, NACE_VISIBLE_AL_CLIENTE],
   )
 }
+
+/**
+ * LA OTRA MITAD DEL MISMO PROBLEMA: filas que el sync YA NO PUEDE MANTENER.
+ *
+ * `sync-esquema-cliente.mjs` concilia por `cobranza_fila`; `portal-sembrar.mjs` concilia por
+ * `(obra_id, orden)` y NO escribe `cobranza_fila`. Las filas que dejó el segundo son invisibles para
+ * el primero: quedan congeladas en el estado del día que se sembraron, y son justo las que el
+ * cliente ve.
+ *
+ * En San Francisco eso se lee así, el 07/09/2026: el portal publica «saldo del anticipo · 1ª de 2
+ * cuotas» por $9.034.356,20 como *a vencer* (sembrada el 26/08, sin `cobranza_fila`), mientras la
+ * fila 94 del Sheet dice que ese saldo se cobró el 04/09 por $8.067.936,50. El mismo dinero, dos
+ * veces, y la copia que está al día es la que no se ve.
+ *
+ * POR QUÉ ESTO SE INFORMA Y NO SE ARREGLA SOLO: emparejar las dos representaciones exigiría un
+ * criterio que no existe. Los montos no coinciden —el sembrador partió el saldo en dos mitades
+ * iguales y el Sheet lo partió distinto— así que cualquier emparejamiento automático sería inventado.
+ * Y publicar la fila nueva SIN retirar la vieja le mostraría al cliente el mismo cobro dos veces.
+ */
+export function filasQueElSyncNoAlcanza(filas = []) {
+  return filas.filter((f) => f?.origen === 'sync_cobranzas' && f?.cobranza_fila == null)
+}
+
+/**
+ * REPARA LOS COBROS QUE NACIERON OCULTOS POR EL DEFECTO — nunca automática.
+ *
+ * ═══ POR QUÉ SÓLO LOS COBRADOS, Y POR QUÉ ESO NO ES TIMIDEZ ═══
+ *
+ * Publicar en bloque TODO lo que el sync dejó sin publicar rompe el otro lado del portal, y está
+ * medido contra la base el 07/09/2026 (transacción + rollback), en San Francisco:
+ *
+ *   en bloque (29 filas)     cobrado 133.797.709,50 → 141.865.646   PENDIENTE 77.660.038,90 → 87.660.814,80
+ *   sólo cobrados (6 filas)  cobrado 133.797.709,50 → 141.865.646   PENDIENTE 77.660.038,90 → 77.660.038,90
+ *
+ * Los $10.000.775,90 que aparecen en el pendiente de la primera variante son la fila 95 del Sheet
+ * publicándose AL LADO de las dos líneas viejas del sembrador ($9.034.356,20 cada una) que hablan
+ * del mismo saldo. Es el mismo dinero reclamado dos veces — ver `filasQueElSyncNoAlcanza`. Corregir
+ * lo que el cliente ya pagó no puede pagarse inventándole deuda.
+ *
+ * Un cobro percibido no tiene ese problema: no hay nada que reclamar y el cliente lo conoce mejor
+ * que nosotros. El predicado es el MISMO de `esCobroOculto`, escrito en SQL: si los dos se
+ * separaran, el control diría que quedó limpio mientras la reparación tocó otra cosa.
+ *
+ * NO alcanza a una línea que administración apagó a mano: ésa tiene `publicado_at` sellado de
+ * cuando se publicó su esquema, y el `publicado_at is null` la deja afuera.
+ *
+ * ES NIVEL E: publica hacia afuera. Nunca se llama desde el timer — sólo con la bandera explícita
+ * `--reparar-cobros-ocultos`, y la autoriza el dueño.
+ */
+export async function repararCobrosOcultos({ query }) {
+  const { rows } = await query(
+    `update public.esquema_pago
+        set visible_portal = true, publicado_at = now(), actualizado_at = now()
+      where origen = 'sync_cobranzas'
+        and estado = 'cobrado'
+        and publicado_at is null
+        and visible_portal = false
+      returning cliente_id, concepto, monto, fecha`)
+  return rows
+}
