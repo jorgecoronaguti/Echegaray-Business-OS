@@ -43,7 +43,7 @@ export function CajonInspector({ miga, hrefCerrar, children }: {
           <span key={m.texto} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             {i > 0 && <span style={{ color: C.inerte, fontSize: 12 }}>/</span>}
             {m.href ? (
-              <Link href={m.href} style={{ fontSize: 12.5, color: C.apagado }}>{m.texto}</Link>
+              <Link prefetch={false} href={m.href} style={{ fontSize: 12.5, color: C.apagado }}>{m.texto}</Link>
             ) : (
               <span style={{
                 fontSize: 12.5, fontWeight: 500, color: C.tinta, whiteSpace: 'nowrap',

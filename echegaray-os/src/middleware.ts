@@ -6,6 +6,7 @@ import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
 import { destinoPorRol } from '@/features/portal/types'
+import { trazar } from '@/lib/supabase/traza'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -17,6 +18,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: { fetch: trazar() },
       cookies: {
         getAll() {
           return request.cookies.getAll()

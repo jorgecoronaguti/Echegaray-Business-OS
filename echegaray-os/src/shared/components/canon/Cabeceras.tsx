@@ -80,7 +80,7 @@ export function BandaDetalle({
           <span key={i} style={{ display: 'contents' }}>
             {i > 0 && <span>/</span>}
             {m.href ? (
-              <Link href={m.href} style={{ color: C.tenue }} className="hover:text-[#3A3A38]">{m.texto}</Link>
+              <Link prefetch={false} href={m.href} style={{ color: C.tenue }} className="hover:text-[#3A3A38]">{m.texto}</Link>
             ) : (
               <span style={{ color: C.tintaSuave }}>{m.texto}</span>
             )}
@@ -129,7 +129,7 @@ export function BandaFicha({
           <span key={i} style={{ display: 'contents' }}>
             {i > 0 && <span>/</span>}
             {m.href ? (
-              <Link href={m.href} style={{ color: C.tenue }} className="hover:text-[#3A3A38]">{m.texto}</Link>
+              <Link prefetch={false} href={m.href} style={{ color: C.tenue }} className="hover:text-[#3A3A38]">{m.texto}</Link>
             ) : (
               <span style={{ color: C.tintaSuave }}>{m.texto}</span>
             )}

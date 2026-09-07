@@ -135,7 +135,7 @@ export function Shell({ cliente, obras, children }: Props) {
         {NAVEGABLES.map((d) => {
           const encendido = activo?.href === d.href
           return (
-            <Link
+            <Link prefetch={false}
               key={d.href}
               href={d.href}
               aria-current={encendido ? 'page' : undefined}

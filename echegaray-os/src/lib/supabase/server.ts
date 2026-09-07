@@ -1,5 +1,6 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { trazar } from './traza'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -8,6 +9,8 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Apagado salvo que se esté midiendo: ver `traza.ts`.
+      global: { fetch: trazar() },
       cookies: {
         getAll() {
           return cookieStore.getAll()

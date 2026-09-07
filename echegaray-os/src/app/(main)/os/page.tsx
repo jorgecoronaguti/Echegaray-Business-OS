@@ -173,7 +173,7 @@ export default async function OsPage() {
           { href: '/calendario-financiero', label: 'Calendario financiero' },
           { href: '/reportes', label: 'Reportes' },
         ].map((l) => (
-          <Link key={`${l.href}-${l.label ?? ''}`} href={l.href} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+          <Link prefetch={false} key={`${l.href}-${l.label ?? ''}`} href={l.href} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
             {l.label} →
           </Link>
         ))}

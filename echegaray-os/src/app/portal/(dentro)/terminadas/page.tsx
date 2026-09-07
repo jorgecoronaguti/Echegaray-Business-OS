@@ -57,7 +57,7 @@ export default async function Terminadas() {
       ) : (
         <div className="mt-5">
           {obras.map((o, i) => (
-            <Link
+            <Link prefetch={false}
               key={String(o.id)}
               href={`/portal/terminadas/${o.id}`}
               className="flex min-h-[60px] flex-wrap items-center gap-x-4 gap-y-1 border-b border-line py-4 hover:bg-surface-quiet"

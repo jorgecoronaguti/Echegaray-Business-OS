@@ -229,7 +229,7 @@ function EstadoDeEnvio({
         {porQue}
       </span>
       {bloqueos.map((b, i) => (
-        <Link
+        <Link prefetch={false}
           key={`${b.tipo}-${b.partidaId ?? b.entidad}-${i}`}
           href={b.partidaId ? href({ insp: `partida:${b.partidaId}` }) : href({ atencion: true })}
           data-testid="bloqueo-envio"

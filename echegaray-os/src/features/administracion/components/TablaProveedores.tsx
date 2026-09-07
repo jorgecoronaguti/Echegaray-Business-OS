@@ -146,6 +146,7 @@ export function TablaProveedores({
                   anidar un enlace dentro de otro, que es HTML inválido y rompe el tabulador. */}
               <Link
                 href={hrefDe(p.id)}
+                prefetch={false}
                 data-testid="abrir-proveedor"
                 className="min-w-0 truncate after:absolute after:inset-0 after:content-['']"
                 style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}
@@ -183,6 +184,7 @@ export function TablaProveedores({
               : (
                   <Link
                     href={hrefCuitDe(p.id)}
+                    prefetch={false}
                     data-testid="fila-cargar-cuit"
                     title="Cargar el CUIT"
                     className="relative z-10 truncate hover:underline"

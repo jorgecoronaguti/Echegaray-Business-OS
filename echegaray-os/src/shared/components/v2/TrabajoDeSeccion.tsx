@@ -110,7 +110,7 @@ export function TrabajoDeSeccion({ senales, icono, iconos, vacio, testid = 'lo-q
             }
             return s.href
               ? (
-                  <Link key={s.clave} href={s.href} data-testid={`senal-${s.clave}`} className={`${clases} cursor-pointer hover:bg-[#F2F1ED]`} style={estilo}>
+                  <Link prefetch={false} key={s.clave} href={s.href} data-testid={`senal-${s.clave}`} className={`${clases} cursor-pointer hover:bg-[#F2F1ED]`} style={estilo}>
                     {cuerpo}
                   </Link>
                 )

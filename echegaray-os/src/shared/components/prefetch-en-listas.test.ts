@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -108,3 +109,78 @@ for (const { archivo, ancla, porque } of ENLACES_MULTIPLICADOS) {
     )
   })
 }
+
+// ═══ LA LISTA DE ARRIBA NO ALCANZÓ, Y SE PUEDE PROBAR (07/09/2026) ═══
+//
+// La lista es a mano, y por eso no viaja: el rediseño v2 reemplazó `FiltrosURL` por `FiltrosSuaves`
+// —otro archivo, mismo control— y el `prefetch={false}` se quedó en el componente viejo. Medido con
+// el navegador contra `next start`, una sola visita disparaba renders de servidor completos que
+// nadie pidió:
+//
+//   /documentos ······················ 25
+//   /administracion/compras ·········· 11
+//   /administracion/personas ·········  9
+//   /clientes ························  7
+//   /presupuestos ····················  4
+//
+// O sea el defecto que este archivo dice cuidar estaba VIVO en las mismas cinco pantallas, con el
+// test en verde. Un control cuya lista se mantiene a mano no puede decir que no hay más casos: sólo
+// puede decir que los que alguien anotó siguen ahí.
+//
+// ESTE BARRIDO NO TIENE LISTA. La regla es estructural y se lee del código: un `<Link>` escrito
+// DENTRO de un `.map(` se dibuja una vez por dato, y todos entran en pantalla juntos. Un enlace
+// suelto —«Ver todo», la marca, un botón que lleva a otra pantalla— no está adentro de ningún
+// `.map(` y este barrido ni lo mira, que es exactamente la línea que el bloque de arriba declara.
+
+/** El `)` que cierra el `(` que empieza en `abre`. */
+function cierreDeParentesis(fuente: string, abre: number): number {
+  let n = 0
+  for (let i = abre; i < fuente.length; i++) {
+    if (fuente[i] === '(') n++
+    else if (fuente[i] === ')') { n--; if (n === 0) return i }
+  }
+  return fuente.length
+}
+
+/** Los `<Link>` de `fuente` que están adentro de algún `.map(`, con su línea. */
+export function enlacesMultiplicados(fuente: string): { linea: number; atributos: string }[] {
+  const rangos: [number, number][] = []
+  for (let m = fuente.indexOf('.map('); m >= 0; m = fuente.indexOf('.map(', m + 1)) {
+    rangos.push([m, cierreDeParentesis(fuente, m + 4)])
+  }
+  const salida: { linea: number; atributos: string }[] = []
+  for (let i = fuente.indexOf('<Link'); i >= 0; i = fuente.indexOf('<Link', i + 1)) {
+    if (!rangos.some(([d, h]) => i > d && i < h)) continue
+    let llaves = 0
+    let fin = fuente.length
+    for (let j = i; j < fuente.length; j++) {
+      const c = fuente[j]
+      if (c === '{') llaves++
+      else if (c === '}') llaves--
+      else if (c === '>' && llaves === 0) { fin = j; break }
+    }
+    salida.push({ linea: fuente.slice(0, i).split('\n').length, atributos: fuente.slice(i, fin) })
+  }
+  return salida
+}
+
+test('ningún <Link> dentro de un .map() precarga', () => {
+  const archivos = execFileSync('find', [RAIZ, '-name', '*.tsx'], { encoding: 'utf8' })
+    .trim().split('\n').filter(Boolean)
+  // Que no encuentre archivos sería un verde vacío: el barrido tiene que haber mirado algo.
+  assert.ok(archivos.length > 100, `sólo encontré ${archivos.length} .tsx: el barrido no miró el repo`)
+  const culpables: string[] = []
+  for (const archivo of archivos) {
+    for (const { linea, atributos } of enlacesMultiplicados(readFileSync(archivo, 'utf8'))) {
+      if (!/prefetch=\{false\}/.test(atributos)) {
+        culpables.push(`${archivo.replace(RAIZ, '')}:${linea}`)
+      }
+    }
+  }
+  assert.deepEqual(
+    culpables, [],
+    'estos <Link> se dibujan uno por dato y precargan: cada uno dispara un render de servidor '
+    + 'completo del destino, que además es force-dynamic y no se reusa al hacer clic. '
+    + `Poné prefetch={false}:\n  ${culpables.join('\n  ')}`,
+  )
+})

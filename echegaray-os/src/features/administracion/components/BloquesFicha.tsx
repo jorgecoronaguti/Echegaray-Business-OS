@@ -49,7 +49,7 @@ export function BloqueAsignacion({
         {asignaciones.map((a) => (
           <Tr key={a.id} data-testid="fila-asignacion">
             <Td fuerte>
-              <Link href={`/obras/${a.obra_id}`} className="text-ink hover:underline">
+              <Link prefetch={false} href={`/obras/${a.obra_id}`} className="text-ink hover:underline">
                 {a.obra_nombre ?? a.obra_id}
               </Link>
             </Td>
@@ -156,7 +156,7 @@ export function BloqueHoras({
         {/* Nivel 3: texto con subrayado, nunca otra barra de solapas. */}
         <nav className="flex flex-wrap items-center gap-x-4 gap-y-1.5" data-testid="periodo-hh">
           {PERIODOS.map((p) => (
-            <Link
+            <Link prefetch={false}
               key={p} href={hrefPeriodo(p)} data-testid={`periodo-${p}`}
               aria-current={p === periodoActivo ? 'true' : undefined}
               className={`pb-[2px] text-[12.5px] transition-colors ${

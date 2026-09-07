@@ -448,7 +448,7 @@ export function BarraContextos({
       }}
     >
       {items.map((n) => (
-        <Link
+        <Link prefetch={false}
           key={n.href}
           href={n.href}
           data-testid={n.testid}
