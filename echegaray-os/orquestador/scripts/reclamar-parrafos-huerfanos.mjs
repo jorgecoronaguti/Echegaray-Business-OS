@@ -16,8 +16,9 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { esProsa, enAlcance } from '../lib/diseno-unificado.mjs'
-import { sePoda } from '../lib/podar-prosa.mjs'
+import { sePoda, podarCelda } from '../lib/podar-prosa.mjs'
 import { loEscribioElOS } from '../lib/autoria-por-historial.mjs'
+import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -46,14 +47,19 @@ async function main() {
         if (String(celda ?? '').startsWith('=')) continue
         if (!esProsa(celda)) continue
         const a = await loEscribioElOS(celda)
-        if (a.mio) aLimpiar.push({ ref: `${LETRA(j)}${i + 1}`, texto: String(celda).slice(0, 60), commit: a.commit })
-        else protegidas++
+        if (!a.mio) { protegidas++; continue }
+        // NO SE VACÍA: SE PODA. Un título de sección que argumenta —«7 · FACTURAS EMITIDAS — control
+        // cruzado contra Cobranzas»— también cae en `esProsa`, y borrarlo entero se lleva puesto el
+        // nombre del bloque. `podarCelda` es la misma decisión que ya toma el podador: la glosa se
+        // va, el nombre se queda.
+        const queda = podarCelda(celda)
+        aLimpiar.push({ ref: `${LETRA(j)}${i + 1}`, texto: String(celda).slice(0, 60), commit: a.commit, queda, crudo: String(celda) })
       }
     }
 
     if (!aLimpiar.length) { console.log(`✓ ${p.titulo.padEnd(24)} nada que reclamar`); continue }
     console.log(`${APLICAR ? '🧹' : '·'} ${p.titulo.padEnd(24)} ${aLimpiar.length} párrafo(s) míos`)
-    for (const c of aLimpiar) console.log(`      ${c.ref} · ${c.commit.slice(0, 8)} · "${c.texto}"`)
+    for (const c of aLimpiar) console.log(`      ${c.ref} · ${c.commit.slice(0, 8)} · "${c.texto}"${c.queda === VACIO ? '' : ` → "${c.queda}"`}`)
     reclamadas += aLimpiar.length
 
     if (APLICAR) {
@@ -61,7 +67,19 @@ async function main() {
       // llevaría puesto todo lo que hay en el medio, que es de otro.
       // Por `batchUpdateValues` y NO por un escritor crudo: ahí vive la guarda central que se niega
       // a pisar una pestaña candada o una que el dueño editó desde mi última escritura.
-      const r = await google.batchUpdateValues(ID, aLimpiar.map((c) => ({ range: `'${p.titulo}'!${c.ref}`, values: [['']] })))
+      // ═══ POR QUÉ HACE FALTA `vaciarPropio` (06/09/2026) ═══
+      //
+      // La primera aplicación escribió las 26 celdas y el archivo no cambió: el cinturón
+      // vacío-sobre-lleno las frenó una por una —«no piso contenido con una grilla vacía»—, que es
+      // exactamente su trabajo y por eso existe. `vaciarPropio` es la segunda vía de prueba que ese
+      // mismo módulo define: se le entrega el TEXTO que hoy tiene cada celda, ya probado mío contra
+      // el historial de git. Sin esa prueba el cinturón vuelve a frenar, que es como tiene que ser.
+      const mios = new Set(aLimpiar.map((c) => c.crudo))
+      const r = await google.batchUpdateValues(
+        ID,
+        aLimpiar.map((c) => ({ range: `'${p.titulo}'!${c.ref}`, values: [[c.queda === VACIO ? '' : c.queda]] })),
+        { vaciarPropio: { mios, tope: aLimpiar.length } },
+      )
       if (r?.protegido) console.log(`      ⛔ no escribí: ${r.motivo ?? r.porQue ?? 'la guarda lo frenó'}`)
     }
   }
