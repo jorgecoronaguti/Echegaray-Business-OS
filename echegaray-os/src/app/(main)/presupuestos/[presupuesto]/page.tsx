@@ -337,7 +337,7 @@ function Solapas({ href, vista }: {
       data-testid="solapas-vista"
     >
       {(['oferta', 'costos'] as const).map((v) => (
-        <Link
+        <Link prefetch={false}
           key={v}
           href={href({ vista: v })}
           data-testid={`solapa-${v}`}

@@ -80,7 +80,7 @@ function Asignaciones({ asignaciones }: { asignaciones: AsignacionDePersona[] })
     <ul data-testid="persona-asignaciones" className="space-y-1.5">
       {asignaciones.map((a) => (
         <li key={a.id} className="flex items-baseline justify-between gap-3 text-[12px]">
-          <Link href={`/obras/${a.obra_id}`} className="min-w-0 truncate text-ink hover:underline">
+          <Link prefetch={false} href={`/obras/${a.obra_id}`} className="min-w-0 truncate text-ink hover:underline">
             {a.obra_id}
           </Link>
           <span className="shrink-0 text-faint">

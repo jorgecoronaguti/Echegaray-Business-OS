@@ -63,6 +63,7 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
           >
             <Link
               href={hrefDe(n.nombre_norm)}
+              prefetch={false}
               data-testid="abrir-nombre"
               className="min-w-0 truncate font-mono after:absolute after:inset-0 after:content-['']"
               style={{ fontSize: '12.5px', color: V.tinta }}

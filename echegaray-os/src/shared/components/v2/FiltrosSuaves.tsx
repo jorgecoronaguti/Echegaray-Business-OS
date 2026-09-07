@@ -44,6 +44,11 @@ export function FiltrosSuaves({ opciones, conteo, testid = 'filtros' }: {
         <Link
           key={o.clave}
           href={o.href}
+          // NO SE PRECARGA — ver `shared/components/prefetch-en-listas.test.ts`. Cada pastilla
+          // apunta a ESTA MISMA pantalla con otra query, y el destino es `force-dynamic`: precargar
+          // dispara un render de servidor entero por chip y el payload no se reusa al hacer clic.
+          // Medido el 07/09/2026 en `/documentos`: 25 renders de más por cada visita.
+          prefetch={false}
           data-testid={`${testid}-${o.clave}`}
           aria-current={o.activo ? 'true' : undefined}
           className="hover:bg-[#EFEEEA]"

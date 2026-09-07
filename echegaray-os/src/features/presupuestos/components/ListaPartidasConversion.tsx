@@ -62,6 +62,7 @@ export function ListaPartidasConversion({
             <li key={p.partida_id} className="border-b border-[#EFEEEA]">
               <Link
                 href={`${hrefBase}?partida=${p.partida_id}`}
+                prefetch={false}
                 data-testid="tarjeta-partida"
                 data-partida={p.partida_id}
                 data-seleccionada={activa ? '' : undefined}

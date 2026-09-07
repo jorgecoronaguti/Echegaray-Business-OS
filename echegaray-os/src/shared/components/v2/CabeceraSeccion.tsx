@@ -67,7 +67,7 @@ export function CabeceraSeccion({ vistas, buscador, alta, accion, filtros, espac
         data-testid={testid}
       >
         {vistas.map((v) => (
-          <Link
+          <Link prefetch={false}
             key={v.clave}
             href={v.href}
             data-testid={`vista-${v.clave}`}

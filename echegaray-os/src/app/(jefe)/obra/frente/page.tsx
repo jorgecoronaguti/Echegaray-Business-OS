@@ -128,7 +128,7 @@ export default async function JefeFrentePage({
                   </div>
                 </div>
                 {i.actividad_id && (
-                  <Link
+                  <Link prefetch={false}
                     href={conObra('/obra/avance', obra.id, { actividad: i.actividad_id })}
                     style={{ fontSize: 12.5, fontWeight: 600, color: C.neg, flexShrink: 0 }}
                   >
@@ -197,7 +197,7 @@ export default async function JefeFrentePage({
             ) : tareas.map((t) => {
               const a = aspectoDeTarea(t)
               return (
-                <Link
+                <Link prefetch={false}
                   key={t.actividad_id}
                   href={conObra('/obra/avance', obra.id, { actividad: t.actividad_id })}
                   data-testid="tarea-del-frente"

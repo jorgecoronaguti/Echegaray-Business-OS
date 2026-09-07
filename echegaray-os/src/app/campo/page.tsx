@@ -157,7 +157,7 @@ export default async function CampoPage() {
         <Eyebrow>Hoy</Eyebrow>
         <div className="mt-2 grid grid-cols-3 gap-2.5">
           {acciones.map((a) => (
-            <Link
+            <Link prefetch={false}
               key={a.href}
               href={a.href}
               data-testid={a.testid}
@@ -178,7 +178,7 @@ export default async function CampoPage() {
         <ul className="mt-5">
           {consultas.map((a, i) => (
             <li key={a.href} className={i === consultas.length - 1 ? '' : 'border-b border-[#EFEEEA]'}>
-              <Link
+              <Link prefetch={false}
                 href={a.href}
                 data-testid={a.testid}
                 className="flex min-h-[60px] items-center gap-3 py-2.5 active:bg-surface-quiet"

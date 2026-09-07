@@ -130,7 +130,7 @@ export function PanelDocumento({
                   {v.clase}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
-                  {v.href ? <Link href={v.href} className="hover:underline">{v.nombre}</Link> : v.nombre}
+                  {v.href ? <Link prefetch={false} href={v.href} className="hover:underline">{v.nombre}</Link> : v.nombre}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted">
                   {v.detalle ?? <Nulo>sin clasificar</Nulo>}

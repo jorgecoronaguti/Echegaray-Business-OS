@@ -54,7 +54,7 @@ export function TablaPeriodosHH({
                 {p.correcciones === 0
                   ? <Nulo>—</Nulo>
                   : (
-                      <Link href="/administracion/asistencia" className="hover:underline" data-testid="ir-a-correcciones">
+                      <Link href="/administracion/asistencia" prefetch={false} className="hover:underline" data-testid="ir-a-correcciones">
                         <Num className={bloqueado ? 'text-warn' : 'text-muted'}>{p.correcciones}</Num>
                         {bloqueado && <span className="ml-1 text-[10px] text-warn">{p.correcciones_pendientes} pend.</span>}
                       </Link>

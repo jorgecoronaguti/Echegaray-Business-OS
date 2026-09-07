@@ -148,7 +148,7 @@ export function PanelCuadrilla({
               <ul data-testid="integrantes" className="space-y-2">
                 {vigentes.map((i) => (
                   <li key={i.id} className="flex items-baseline gap-2.5 text-[12.5px]">
-                    <Link href={`/administracion/personas/${i.persona_id}`} className="min-w-0 flex-1 truncate text-ink hover:underline">
+                    <Link prefetch={false} href={`/administracion/personas/${i.persona_id}`} className="min-w-0 flex-1 truncate text-ink hover:underline">
                       {i.nombre_completo ?? i.persona_id}
                     </Link>
                     <Peso categoria={i.categoria} factores={factores} />

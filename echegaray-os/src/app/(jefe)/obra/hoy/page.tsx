@@ -138,7 +138,7 @@ export default async function JefeHoyPage({
               <span style={{ ...mono, marginLeft: 'auto', fontSize: 12.5, color: C.neg }}>{problemas.length}</span>
             </div>
             {problemas.map((p) => (
-              <Link
+              <Link prefetch={false}
                 key={p.clave}
                 data-testid="problema"
                 href={p.actividadId
@@ -185,7 +185,7 @@ export default async function JefeHoyPage({
             const dot = dotacionDeFrente(f)
             const parte = parteDeFrente(f)
             return (
-              <Link
+              <Link prefetch={false}
                 key={f.frente.id}
                 data-testid="frente"
                 href={conObra('/obra/frente', obra.id, { frente: f.frente.id })}
