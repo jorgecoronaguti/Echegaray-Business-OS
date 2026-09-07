@@ -79,6 +79,7 @@ import {
 import { rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
 import { verificarRangos as verificarRangosCS, explicarProblemas as explicarProblemasCS } from '../lib/rangos-con-nombre.mjs'
 import { auditarPatron as patronCS } from '../lib/patron-pestana.mjs'
+import { auditarDiseno } from '../lib/diseno-unificado.mjs'
 import { VACIO as VACIO_CS } from '../lib/preservar-anotaciones.mjs'
 
 /** El ancho de la pestaña: la última columna es la de prosa, que el generador vacía a propósito. */
@@ -190,21 +191,34 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
   assert.match(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'la columna de estado tiene que ser la resuelta por rótulo')
 })
 
-test('B11 · los avisos ▲ tienen su texto EN la celda, no en la columna que el generador vacía', () => {
-  // El filtro miraba SÓLO el texto del rótulo: cualquier fila que empezara con "Fondo de Cese"
-  // entraba, incluida una fila de DATOS mensuales agregada el 18/08 ("Fondo de Cese devengado
-  // (DDJJ UOCRA)"). Un renglón con doce importes no es un aviso y no tiene por qué explicarse en su
-  // propio rótulo. Lo que distingue a un aviso no es cómo empieza: es que ocupa la fila entera y no
-  // trae ni un número. Se afila por esa condición, que es la que el test de verdad quiere probar.
-  const esAviso = (f) => (/^[▲]/.test(String(f[0] ?? '')) || /^(Vacaciones|Fondo de Cese)/.test(String(f[0] ?? '')))
+test('B11 · NINGÚN aviso ocupa una fila de la pestaña: los hallazgos salen por la corrida', () => {
+  // ═══ ESTE TEST ESTÁ DADO VUELTA, Y ESTÁ DICHO POR QUÉ (06/09/2026) ═══
+  //
+  // Pedía lo contrario: que los cuatro avisos ▲ tuvieran su texto EN la celda y midieran más de 70
+  // caracteres. Era la cura correcta para el defecto B11 —el aviso que quedaba mudo porque su
+  // explicación vivía en la columna O, que este mismo generador vacía— y dejó de serlo el 05/09,
+  // cuando el dueño prohibió la aclaración en el Sheet. Un aviso de 217 caracteres al pie de un
+  // cuadro es exactamente lo que el contrato llama nota al pie.
+  //
+  // La cura de B11 no se pierde: un aviso mudo sigue siendo imposible, porque ahora no hay aviso en
+  // la pestaña. Los dos que son hallazgos vivos salen por `grilla().avisos`, y el test de abajo mide
+  // que sigan saliendo — si se borraran, este par de tests quedaría verde por partida doble y el
+  // control no podría dar rojo.
+  const esFilaSuelta = (f) => String(f[0] ?? '').trim()
     && f.slice(1, ANCHO_CS - 1).every((c) => c === '' || c == null || c === VACIO_CS)
-  const avisos = gCS.filas.filter(esAviso)
-  assert.ok(avisos.length >= 4, `esperaba los cuatro avisos y encontré ${avisos.length}`)
-  for (const a of avisos) {
-    assert.ok(String(a[0]).length > 70,
-      `"${String(a[0]).slice(0, 40)}…" quedó como un ▲ mudo: su explicación vive en la columna de prosa que este mismo generador borra`)
-    assert.equal(a[ANCHO_CS - 1], VACIO_CS, 'la explicación no puede volver a la columna O')
-  }
+  const notas = gCS.filas.filter((f) => esFilaSuelta(f) && /^▲/.test(String(f[0] ?? '')))
+  assert.deepEqual(notas.map((f) => String(f[0]).slice(0, 60)), [],
+    'volvió una nota al pie a «Cargas Sociales»')
+})
+
+test('los dos HALLAZGOS que estaban al pie siguen saliendo — por la corrida, no por la pestaña', () => {
+  // Sacar la nota y no publicar el hallazgo en ningún lado sería apagar el aviso, que es la forma
+  // exacta en que nace un control que no puede dar rojo. Los dos son accionables: conseguir los días
+  // de vacaciones por tramo que confirme el contador, y conseguir el plan original de ARCA.
+  const avisos = (gCS.avisos ?? []).join(' | ')
+  assert.match(avisos, /Vacaciones/, 'el pendiente de los días por tramo dejó de avisarse')
+  assert.match(avisos, /plan original de ARCA/, 'el pendiente del plan de ARCA dejó de avisarse')
+  for (const a of gCS.avisos) assert.match(a, /^▲/, 'un aviso sin su marca no se distingue de un log')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -263,12 +277,11 @@ test('los planes NO son una cuarta partición, y la pestaña lo dice al lado del
   assert.doesNotMatch(String(filaCS(/^⇒ Costo laboral del año/)[1]), new RegExp(`\\$B\\$${heroCS(/^⇒ En planes de pago/)}\\b`))
 })
 
-test('las notas al pie y el control se declaran para que la piel los dibuje distinto', () => {
-  // Las cuatro advertencias salían con el peso de un importe (tres, además, en negrita y con regla
-  // encima, porque empiezan con ⚠ y la piel compartida lee eso como un total). Y el control de
-  // integridad, cuyo cero ES la respuesta, salía como el mismo "—" que significa "no hay dato".
-  assert.equal(gCS.pies.length, 4, `esperaba las cuatro notas al pie y llegaron ${gCS.pies.length}`)
-  for (const f of gCS.pies) assert.match(String(gCS.filas[f - 1][0]), /^▲ /, 'una nota al pie declarada que no es una nota')
+test('el control de integridad se declara para que la piel lo dibuje distinto', () => {
+  // El cero de esta fila ES la respuesta, y salía como el mismo "—" que significa "no hay dato".
+  // Las cuatro notas al pie que este test también declaraba se retiraron el 06/09: `pies` queda como
+  // canal —el formato de una nota futura tiene que declararse, no adivinarse— pero llega vacío.
+  assert.deepEqual(gCS.pies, [], 'una nota al pie volvió a declararse: el contrato la prohíbe')
   assert.deepEqual(gCS.controles, [heroCS(/^⇒ Diferencia — tiene que ser \$0/)])
 })
 
@@ -502,4 +515,22 @@ test('REALES no tiene default: un rango congelado en silencio es el defecto que 
   assert.throws(() => REALES(20), /desdeProy/)
   assert.throws(() => REALES(20, null), /desdeProy/)
   assert.throws(() => REALES(20, 1), /desdeProy/)
+})
+
+test('la pestaña cumple el CONTRATO DE DISEÑO entero: encabezado, numeración y ni una explicación', () => {
+  // ═══ POR QUÉ ADEMÁS DEL PATRÓN (06/09/2026) ═══
+  //
+  // `auditarPatron` mide la gramática de la pestaña —secciones, totales, encabezados— y da cero desde
+  // hace tiempo. Lo que no miraba nadie es la PROSA fuera de la columna A y el encabezado de tres
+  // filas: los cuatro desvíos que `auditar-diseno-unificado` le encontraba a esta pestaña (A66, A75,
+  // A77 y A87, de 105 a 218 caracteres) pasaban por delante del patrón sin despeinarlo.
+  //
+  // La columna O se juzga VACÍA porque `main()` la vacía antes de escribir (`vaciarColumnaDeProsa`):
+  // medirla con su texto adentro marcaría decenas de desvíos que el lector no tiene.
+  const filas = gCS.filas.map((f) => (f || []).map((c, j) => {
+    if (j === ANCHO_CS - 1 || c === VACIO_CS) return ''
+    return c
+  }))
+  const mal = auditarDiseno(filas, { pestana: 'Cargas Sociales' })
+  assert.deepEqual(mal, [], mal.map((x) => `${x.col ?? ''}${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
 })

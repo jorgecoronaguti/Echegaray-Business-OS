@@ -319,16 +319,16 @@ export function bloqueCaja(G, { anio, desdeProy, proyMeses, fDeclTot, fProyTot, 
   G.mensual(sub('diferencia contra lo proyectado acá'), (m) => `=${cm(m)}${fPrevisto}-${cm(m - 1)}${fProyTot}`,
     'Si esta fila se aleja de cero, la previsión cargada a mano y la proyección medida no coinciden.',
     { meses: proyMeses.filter((m) => m > desdeProy) })
-  // ═══ EL AVISO VA EN LA CELDA, NO EN LA COLUMNA DE PROSA (06/08 — defecto B11) ═══
+  // ═══ LAS CUATRO NOTAS AL PIE SE FUERON A LA CONSOLA (06/09/2026) ═══
   //
-  // Estas tres filas escribían su explicación en la columna O… y `vaciarColumnaDeProsa` la borra en
-  // la misma corrida, por decisión del dueño ("quitá las notas, son confusas"). Resultado: tres
-  // avisos con el ⚠ puesto y sin una palabra al lado. Un aviso mudo es peor que ninguno: ocupa el
-  // lugar de la explicación y hace creer que se dijo algo. El texto entero va a la columna A, que es
-  // ancha, derrama a la derecha sobre celdas vacías y no la vacía nadie.
-  const pie = G.push([`${ALERTA} No contempla SAC ni vacaciones (sección 6), ni altas de personal que no estén en los jornales cargados.`])
+  // Medían 105, 217, 218 y 147 caracteres y eran los CUATRO desvíos de prosa de «Cargas Sociales».
+  // El dueño las prohibió el 05/09 y el contrato lo escribe en su regla 10. No se borran a secas:
+  // dos de las cuatro son HALLAZGOS vivos y salen por `avisos`, que el generador imprime — borrar un
+  // aviso es cómo nace un control que no puede dar rojo. Las otras dos declaraban el ALCANCE, y eso
+  // vive acá: esta caja no contempla SAC ni vacaciones —tienen su cuadro en la sección 6— ni altas
+  // de personal que no estén en los jornales cargados.
   G.push()
-  return { fCuotasVencen, pies: [pie] }
+  return { fCuotasVencen, pies: [], avisos: [] }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -399,7 +399,9 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy, bloqueBase = null }) {
   G.push([sub('   del plantel, sin fecha de ingreso cargada'),
     formulaSinFechaDeIngreso({ hoja: '_J_OBREROS', bloque: bloqueBase }), ...Array(12).fill(VACIO),
     `Nombre presente y columna C vacía en _J_OBREROS: esas personas NO entran en la provisión de la fila ${fVac}. Un total que las ignora en silencio es un total corto.`])
-  const pieVac = G.push([`${ALERTA} Vacaciones — la provisión sale de la antigüedad REAL, pero los días por tramo son normativos y esta corrida no pudo verificar la norma vigente: cargalos en Parámetros con lo que confirme el contador. No se inventan.`])
+  // HALLAZGO, NO NOTA: la provisión sale de la antigüedad REAL, pero los días por tramo son
+  // normativos y la corrida no puede verificar la norma vigente. Va por consola (ver `avisos`).
+  const avisoVac = `${ALERTA} Vacaciones: cargá en Parámetros los días por tramo que confirme el contador — no se inventan`
   // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
   //
   // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el
@@ -435,9 +437,11 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy, bloqueBase = null }) {
     // corrida (18/08): la columna de julio publicó 0 al lado de un devengado de $1,48M en junio.
     `=IF(COUNTIF(_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}")=0;"";SUMIFS(_UOCRA_DDJJ_RAW!$I:$I;_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}"))`,
     'DDJJ Nominativa de UOCRA, renglón "Total Aportes Devengados al Fondo de Cese Laboral", leído del PDF de Drive por scripts/uocra-raw-pestana.mjs. Vacío = ese mes todavía no tiene DDJJ presentada, NO cero.')
-  const pieFcl = G.push([`${ALERTA} Fondo de Cese (Ley 22.250) — el devengado sale de la DDJJ de UOCRA (fila ${fFclDev}) y lo pagado, de Compras. ${A_VERIFICAR}: que los aportes estén al día; la diferencia entre las dos filas es lo que falta girar.`])
+  // Que la diferencia entre devengado y pagado es lo que falta girar ya está DIBUJADO: son dos
+  // renglones y su resta. Lo que es un pendiente —y no un rótulo— va por consola.
+  const avisoFcl = `${ALERTA} Fondo de Cese (Ley 22.250) — ${A_VERIFICAR}: que los aportes estén al día (fila ${fFclDev} contra lo pagado en Compras)`
   G.push()
-  return { pies: [pieVac, pieFcl] }
+  return { pies: [], avisos: [avisoVac, avisoFcl] }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -485,6 +489,8 @@ export function bloquePlanes(G, { ps, C }) {
   // pone su propio formato: verde "✓ $0" cuando cierra, el número en rojo cuando no.
   const fControl = G.push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B$${fCtrl}-$N$${fCuotasTot}`,
     ...Array(11).fill(VACIO), VACIO, `Las dos celdas vivas: el total del rubro en Compras menos el total de esta tabla (${ps.reduce((s, p) => s + p.n, 0)} cuota(s) de ${ps.length} plan(es)). Si no da cero, hay cuotas del rubro que esta tabla no ve — por ejemplo, de otro año.`])
-  const pie = G.push([`${ALERTA} Falta el plan original de ARCA: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es lo previsto en la planilla.`])
-  return { fCuotasTot, fControl, pies: [pie] }
+  // HALLAZGO: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es
+  // lo previsto en la planilla. Se resuelve consiguiendo el plan; no se anota al pie del cuadro.
+  const aviso = `${ALERTA} Falta el plan original de ARCA: el saldo de los planes es lo previsto en la planilla`
+  return { fCuotasTot, fControl, pies: [], avisos: [aviso] }
 }
