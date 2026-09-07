@@ -142,7 +142,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo
   // existía y nadie lo veía — un vínculo que hay que scrollear para encontrar no ahorra el scroll.
   const vinculo = vinculoHoy(gid, meta, hoy)
-  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri } }
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri, texto: vinculo.texto } }
 
   bloqueHero(poner, meta, refs)
 

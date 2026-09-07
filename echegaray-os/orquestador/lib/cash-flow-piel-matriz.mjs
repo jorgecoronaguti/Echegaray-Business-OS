@@ -235,15 +235,30 @@ function formatoEncabezado({ celdas, req, rango, meta }) {
     // TEXTO ENRIQUECIDO con el fragmento relativo sí scrollea dentro del documento abierto — es lo que
     // hace «Insertar → Enlace → Hojas y rangos con nombre», y va como formato, no como fórmula.
     //
-    // `updateCells` y no `repeatCell`: los runs son por celda, no un formato que se repite en un rango.
-    // El `fields` nombra SÓLO `textFormatRuns`, así que el valor de la celda ni se toca.
+    // ═══ EL VALOR Y EL ENLACE VAN JUNTOS, Y NO ES UN DETALLE (07/09/2026) ═══
+    //
+    // Primero se escribió sólo `fields: 'textFormatRuns'`, para no tocar el valor. Resultado medido
+    // en el archivo vivo: la celda quedó con el texto correcto y SIN enlace. La guarda de formato
+    // (`huella-formato.mjs:75`) trata todo `updateCells` que no escribe valor como una pasada de
+    // formato y la frena si el rango «ya tiene un formato que yo no puse» — fail-closed, correcto
+    // para la cosmética y equivocado acá: el enlace NO es cosmética, es el control entero. Sin él la
+    // celda es un rótulo muerto, que es exactamente lo que el dueño reportó tres veces.
+    //
+    // Escribiéndolos juntos, el request pasa por la guarda de CONTENIDO —que sí sabe que esta celda
+    // es del OS— y no por la de diseño. Y además es lo correcto conceptualmente: el atajo es UNA
+    // cosa, texto y destino, y separarlos permite justo el estado que se produjo.
     const r = rango(meta.botonHoy.fila - 1, meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1)
-    if (r && meta.botonHoy.uri) {
+    if (r && meta.botonHoy.uri && meta.botonHoy.texto) {
       req.push({
         updateCells: {
           range: r,
-          fields: 'textFormatRuns',
-          rows: [{ values: [{ textFormatRuns: [{ startIndex: 0, format: { ...txt(ACENTO, { size: 9 }), underline: true, link: { uri: meta.botonHoy.uri } } }] }] }],
+          fields: 'userEnteredValue,textFormatRuns',
+          rows: [{
+            values: [{
+              userEnteredValue: { stringValue: meta.botonHoy.texto },
+              textFormatRuns: [{ startIndex: 0, format: { ...txt(ACENTO, { size: 9 }), underline: true, link: { uri: meta.botonHoy.uri } } }],
+            }],
+          }],
         },
       })
     }

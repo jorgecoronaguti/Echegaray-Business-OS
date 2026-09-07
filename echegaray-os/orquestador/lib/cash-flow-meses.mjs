@@ -168,7 +168,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
   // no existía. Doce columnas se recorren de un vistazo, pero saber cuál es el mes en curso no es un
   // atajo de navegación: es la línea entre lo que ya ocurrió y lo que todavía es proyección.
   const vinculo = vinculoHoy(gid, meta, hoy)
-  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri } }
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo.texto); meta.botonHoy = { fila: FILA.botonHoy, col: 0, uri: vinculo.uri, texto: vinculo.texto } }
 
   bloqueHero(poner, meta, refs)
 
