@@ -27,6 +27,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AccionesCompra } from './AccionesCompra'
 import { C, pesos } from '@/shared/components/canon'
+import { PanelFilo } from '@/shared/components/v2/patron'
 import { COLOR_PROP, propiedadesDe, reclamoDe } from '../services/panelCompraSheet'
 import { urlDelAdjunto } from '../services/comprasAdjuntoActions'
 import type { Adjunto, FilaConPapel } from '../services/comprasSheetService'
@@ -111,13 +112,14 @@ export function PanelCompraSheet({
 }) {
   const reclamo = reclamoDe(fila)
   return (
-    <aside
-      data-testid="panel-compra-sheet"
-      style={{
-        width: 372, flexShrink: 0, marginLeft: 24, borderLeft: `1px solid ${C.linea}`,
-        paddingLeft: 24, display: 'flex', flexDirection: 'column',
-      }}
-    >
+    // EL PANEL NO SE REDISEÑA — SÓLO DEJA DE SER INELÁSTICO. Su geometría estaba escrita a mano y
+    // sin media query: 372 + 24 de margen en TODO ancho. Medido en producción el 06/09/2026 a
+    // 390×844 con el panel abierto, `document.body.scrollWidth` daba 416 contra un viewport de 390
+    // —los 20px de padding izquierdo más los 396 del panel— y «Ver las a pagar →» quedaba cortado
+    // contra el borde. La lista, que sí lleva `min-w-0`, cedía TODO su ancho y el panel nada.
+    // `PanelFilo` es la misma geometría del patrón que ya usan Proveedores y Clientes, con su corte
+    // en `lg`: debajo de 1024 el panel baja bajo la lista con un filo superior en vez del lateral.
+    <PanelFilo testid="panel-compra-sheet">
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: C.tinta, lineHeight: 1.25 }}>
@@ -202,7 +204,7 @@ export function PanelCompraSheet({
       {/* EL PIE DE ACCIONES DEL HANDOFF v4. Va último, después de las propiedades y del papel: lo
           que se decide se decide DESPUÉS de haber leído lo que hay. */}
       <AccionesCompra clave={fila.clave} filaCompras={fila.fila} />
-    </aside>
+    </PanelFilo>
   )
 }
 

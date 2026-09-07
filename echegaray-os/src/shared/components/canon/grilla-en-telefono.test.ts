@@ -68,7 +68,11 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
   // 26/08/2026 · el piso baja de 7 a 6: `21 · Cuadrillas` salió del canon con el porte de las
   // pantallas de segundo nivel (su `ListaCanon` pasó a filas de 44px con `min-[1250px]:`). Bajarlo
   // de a uno por cada porte es deliberado: si se desploma de golpe, la regla dejó de mirar.
-  assert.ok(archivos.length >= 6, `esperaba las tablas del canon, encontré ${archivos.length}`)
+  //
+  // 06/09/2026 · de 6 a 5: `24 · Compras` era la última de las tres pantallas del canvas A que
+  // seguía en el canon y pasó al patrón v2. Su teléfono ya NO lo resuelve una caja con scroll sino
+  // la media query que suelta columnas, probada en `v2/grilla-v2-en-telefono.test.ts`.
+  assert.ok(archivos.length >= 5, `esperaba las tablas del canon, encontré ${archivos.length}`)
 
   let cajas = 0
   for (const { ruta, src } of archivos) {
@@ -90,7 +94,8 @@ test('toda tabla del canon le pasa sus columnas a la caja que la contiene', () =
       )
     }
   }
-  assert.ok(cajas >= 6, `esperaba ≥6 cajas del canon, miré ${cajas}`)
+  // Baja con `archivos.length` y por el mismo motivo: cada pantalla portada al v2 se lleva su caja.
+  assert.ok(cajas >= 5, `esperaba ≥5 cajas del canon, miré ${cajas}`)
 })
 
 test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso', () => {
@@ -123,7 +128,11 @@ test('ninguna cadena de columnas del canon deja el nombre por debajo de su piso'
   // Ficha` y `26 · Cliente Ficha` ya están en el patrón v2, que resuelve el teléfono con una media
   // query que SUELTA columnas en vez de con una caja que scrollea. Bajar el piso de a una por porte
   // es deliberado; si se desploma de golpe, la regla dejó de mirar lo que debe mirar.
-  assert.ok(grillas >= 8, `esperaba ≥8 grillas canon declaradas, encontré ${grillas}`)
+  //
+  // 06/09/2026 · de 8 a 7 con el porte de `24 · Compras`, la última del canvas A. Su cadena de ocho
+  // columnas no desapareció: se mudó a `v2/grilla-v2-en-telefono.test.ts`, que la mide con la MISMA
+  // `anchoMinimoDeGrilla` y además le exige la variante de teléfono que el canon no le pedía.
+  assert.ok(grillas >= 7, `esperaba ≥7 grillas canon declaradas, encontré ${grillas}`)
 })
 
 test('las DOS cajas del canon envuelven con scroll propio y ancho reservado', () => {
