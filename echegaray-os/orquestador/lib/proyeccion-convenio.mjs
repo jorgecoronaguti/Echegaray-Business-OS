@@ -591,7 +591,34 @@ export function expresionMasaDeLaQuincena({
   // Sin convenio no hay obligación que valuar aparte: el cuadro ya publica la Σ pactada y la fórmula
   // es EXACTAMENTE la de siempre. El diff en ese caso es cero, que es lo que lo hace seguro.
   if (!pactada || !celdaPago || !exprHorasJornada) return `${delCuadro}*${alPactado}`
+  // ═══ LAS DOS RAMAS SE VALÚAN CON LAS HORAS MEDIDAS (07/09/2026) ═══
+  //
+  // La rama de "lo que se debe" multiplicaba la Σ del convenio por la JORNADA PLENA —9 h de lunes a
+  // jueves, 8 el viernes, 4 el sábado, sin ausentismo— y esa celda es la que el libro `_MOVIMIENTOS`
+  // toma como jornal PROYECTADO y la que el Cash Flow publica como plata que va a salir.
+  //
+  // MEDIDO EN EL ARCHIVO VIVO: con el mismo plantel de 15–17 personas, las quincenas cerradas de
+  // junio a agosto costaron $1,4M–$5,7M cada una, $7M–$9M por mes. La rama de la jornada proyectaba
+  // $9,9M–$11,3M POR QUINCENA para octubre, noviembre y diciembre: $20M por mes, entre 2 y 2,5 veces
+  // lo que sale de la caja todos los meses desde enero. Ningún mes de 2026 se acercó a ese número.
+  // La pestaña lo venía diciendo en su propio control —«▲ la proyección se mide con 3 h y la jornada
+  // es 8 h»— y el Cash Flow Mensual pasó de cerrar el año en ~$187M a $76M el día que esa rama se
+  // pobló. El dueño: *«hacé bien la proyección y el cálculo, revisá celda por celda»*.
+  //
+  // UN CASH FLOW ES PERCIBIDO (regla de oro 5) Y SE COMPARA CONTRA LA REALIDAD (regla 15). La
+  // obligación teórica del convenio a jornada plena es una hipótesis de planificación que nunca
+  // coincidió con un solo mes real: publicarla como caja proyectada infla el egreso y arrastra con
+  // ella las cargas sociales, que se calculan sobre esta misma columna.
+  //
+  // LO QUE SÍ CAMBIA DE UN LADO AL OTRO DE LA FRONTERA ES LA BASE, Y ESO SE CONSERVA: hasta fin de
+  // mes la Σ PACTADA (lo que se paga hoy); de ahí en adelante la Σ del cuadro 4.2, que ya lleva el
+  // aumento del convenio desde el mes en que rige — la decisión del dueño del 29/08 sigue intacta.
+  // Las horas son las MEDIDAS en los dos casos: el pronóstico honesto de lo que se trabaja y se paga,
+  // ausentismo incluido, calibrado sobre las quincenas cerradas de los últimos meses.
+  //
+  // `exprHorasJornada` se sigue recibiendo para que el llamador no cambie: la jornada plena queda
+  // para el CONTROL del piso (`formulaControlAumento`), que es donde tiene sentido comparar.
   return `IF(${expresionCajaComprometida(celdaPago)};`
     + `${pactada}*${alPactado};`
-    + `${delCuadro}*${exprHorasJornada})`
+    + `${delCuadro}*${alPactado})`
 }

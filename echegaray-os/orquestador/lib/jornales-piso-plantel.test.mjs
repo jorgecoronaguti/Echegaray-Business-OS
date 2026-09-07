@@ -188,25 +188,34 @@ test('EL DEFECTO, EN PESOS: la proyección valía el 66% del piso — el plantel
   assert.equal(Math.round(piso) - Math.round(antes), 25_409_742)
 })
 
-test('EL DEFECTO: la obligación se valuaba con la asistencia — una sola frontera decide base y horas', () => {
+test('LA PROYECCIÓN SE VALÚA CON LAS HORAS MEDIDAS DE LOS DOS LADOS DE LA FRONTERA (07/09/2026)', () => {
+  // La rama de "lo que se debe" multiplicaba la Σ del convenio por la JORNADA PLENA y esa celda es la
+  // que el libro toma como jornal proyectado: con 15 personas publicaba $20M por mes para oct–dic
+  // contra $7M–$9M reales todos los meses del año. El Cash Flow pasó de cerrar en ~$187M a $76M el
+  // día que esa rama se pobló. Un cash flow es percibido: proyecta lo que va a salir, no la
+  // obligación teórica a asistencia perfecta.
   const esc = { f0: 101, f1: 103, conAumento: true, celdaSigmaBase: '$C$95', rAnclaBase: 101 }
+  const jornada = '(NETWORKDAYS.INTL(A40;B40;"0000111")*$B$34+NETWORKDAYS.INTL(A40;B40;"1111011")*$C$34+NETWORKDAYS.INTL(A40;B40;"1111101")*$D$34)'
   const e = expresionMasaDeLaQuincena({
     esc,
     celdaDesde: 'A40',
     celdaPago: 'C40',
     celdaHorasMedidas: '$B$33',
     exprDias: 'NETWORKDAYS.INTL(A40;B40;"0000011")',
-    exprHorasJornada: '(NETWORKDAYS.INTL(A40;B40;"0000111")*$B$34+NETWORKDAYS.INTL(A40;B40;"1111011")*$C$34+NETWORKDAYS.INTL(A40;B40;"1111101")*$D$34)',
+    exprHorasJornada: jornada,
   })
-  // UNA sola condición para las dos decisiones. Dos copias de la frontera se separan el día que
-  // alguien corrige una, y ahí la celda valúa con la base de un lado y las horas del otro.
+  // UNA sola frontera sigue decidiendo — pero ahora decide sólo la BASE ($/hora pactada o del cuadro
+  // con aumento), no las horas.
   assert.equal(e.split('EOMONTH(TODAY();0)').length - 1, 1, 'la frontera aparece más de una vez')
   assert.ok(e.startsWith('IF(AND(N(C40)>0;C40<=EOMONTH(TODAY();0));'))
-  // Lo que se paga dentro del mes: pactado × horas MEDIDAS × días hábiles.
-  assert.ok(e.includes('$B$33*NETWORKDAYS.INTL(A40;B40;"0000011")'))
-  // Lo que se proyecta: convenio × horas de jornada, SIN volver a multiplicar por días.
-  const rama = e.slice(e.indexOf('"0000111"'))
-  assert.ok(!rama.includes('"0000011"'), 'el término del convenio volvió a multiplicar por días L-V')
+  // Las dos ramas multiplican por las horas MEDIDAS × días hábiles.
+  assert.equal(e.split('$B$33*NETWORKDAYS.INTL(A40;B40;"0000011")').length - 1, 2,
+    'las dos ramas tienen que llevar horas medidas × días')
+  // Y la jornada plena NO entra a la celda que el libro lee: queda para el control del piso.
+  assert.ok(!e.includes('"0000111"') && !e.includes('$B$34'), 'la jornada plena volvió a la proyección')
+  // La base sí cambia de un lado al otro: pactada adentro del mes, la del cuadro (con aumento) después.
+  assert.ok(e.includes('$C$95'), 'la Σ pactada del plantel base')
+  assert.ok(e.includes('INDEX($F$101:$F$103'), 'la Σ del cuadro 4.2, que lleva el aumento del convenio')
   // Sin convenio la fórmula es EXACTAMENTE la de siempre: el diff en ese caso es cero.
   const sinConvenio = expresionMasaDeLaQuincena({
     esc: { f0: 101, f1: 103 }, celdaDesde: 'A40', celdaPago: 'C40',

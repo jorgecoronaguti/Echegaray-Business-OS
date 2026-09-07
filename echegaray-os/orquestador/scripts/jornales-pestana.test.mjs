@@ -928,9 +928,13 @@ test('LA CADENA COMPLETA: el plantel del espejo llega CON EL AUMENTO hasta JORNA
   // La rama del PACTADO: horas medidas × días lunes a viernes. Es lo que va a salir de la caja.
   assert.match(String(q[3]), new RegExp(`\\*\\$B\\$${fMed}\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
     `la rama del pactado dejó de valuarse con horas medidas × días L-V: ${q[3]}`)
-  // La rama del CONVENIO: las horas de la jornada, contadas por día de la semana, sin días aparte.
-  assert.match(String(q[3]), new RegExp(`NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000111"\\)\\*\\$B\\$${fJor}`),
-    `la rama del convenio dejó de usar la jornada real: ${q[3]}`)
+  // La rama del CONVENIO (07/09/2026): la Σ del cuadro 4.2 —con el aumento— por las MISMAS horas
+  // medidas × días L-V. La jornada plena ($B$fJor) NO entra a esta celda: con 15 personas publicaba
+  // $20M por mes para oct–dic contra $7M–$9M reales todos los meses del año, y el Cash Flow cerró el
+  // año en $76M en vez de ~$187M el día que esa rama se pobló. La jornada queda para el control.
+  assert.equal(String(q[3]).split(`$B$${fMed}*NETWORKDAYS.INTL(A${gm.p0};B${gm.p0};"0000011")`).length - 1, 2,
+    `las dos ramas tienen que valuarse con horas medidas × días L-V: ${q[3]}`)
+  assert.ok(!String(q[3]).includes(`$B$${fJor}`), `la jornada plena volvió a la proyección: ${q[3]}`)
   // 6 · …y esa columna es la que publica el rango que consumen Cargas Sociales, el Libro, CAJA y los
   //     cash flows. APUNTA A "Obreros", NO AL "TOTAL" del calendario: el TOTAL ya trae oficina y
   //     dirección, que viajan por sus propios rangos, y sumarlas de nuevo las contaría dos veces.
@@ -1897,26 +1901,31 @@ test('la pestaña publica la JORNADA al lado de las horas medidas, no en su luga
   assert.match(String(gm.filas[jornada][4] ?? ''), /44h\/sem · sábado supuesto/)
 })
 
-test('EL DEFECTO: la columna «Obreros» valuaba la obligación con las horas MEDIDAS', () => {
+test('LA COLUMNA «Obreros» PROYECTA CON LAS HORAS MEDIDAS DE LOS DOS LADOS DE LA FRONTERA (07/09/2026)', () => {
+  // Hasta hoy la rama de "lo que se debe" multiplicaba la Σ del convenio por la jornada plena (9/8/4 h
+  // por día de semana, sin ausentismo). Esa celda es la que el libro toma como jornal PROYECTADO y la
+  // que Cargas Sociales usa de base: con el plantel de 15 publicaba $9,9M–$11,3M por quincena para
+  // oct–dic, entre 2 y 2,5 veces lo que salió de la caja en cada mes de 2026. Un cash flow es
+  // percibido: proyecta lo que va a salir, calibrado con las quincenas cerradas, no la obligación
+  // teórica a asistencia perfecta. La base sí cambia en la frontera (pactada → con aumento).
   const jornada = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas de jornada')) + 1
   const medidas = gm.filas.findIndex((f) => String(f[0] ?? '').includes('Horas por persona y día — medidas')) + 1
   const enc = gm.filas.findIndex((f) => f[0] === 'Período' && f[3] === 'Obreros')
   assert.ok(enc >= 0, 'no está el encabezado del calendario')
   const proyectada = String(gm.filas[enc + 1][3] ?? '')
-  // LAS TRES CELDAS DE LA JORNADA, cada una con SU máscara de día de semana. Si una se pierde, el
-  // término deja de contar ese día y el faltante es silencioso: la fórmula sigue dando un número.
+  // Las horas MEDIDAS aparecen en las DOS ramas, multiplicando días L-V.
+  assert.equal(proyectada.split(`$B$${medidas}*NETWORKDAYS.INTL(`).length - 1, 2,
+    `las dos ramas tienen que llevar horas medidas: ${proyectada.slice(0, 220)}`)
+  // La jornada plena y sus máscaras por día de semana NO entran a la celda que el libro lee.
   for (const [celda, mascara] of [[`$B$${jornada}`, '"0000111"'], [`$C$${jornada}`, '"1111011"'], [`$D$${jornada}`, '"1111101"']]) {
-    assert.ok(proyectada.includes(`${mascara})*${celda}`),
-      `la proyección perdió ${celda} con su máscara ${mascara}: ${proyectada.slice(0, 200)}`)
+    assert.ok(!proyectada.includes(celda) && !proyectada.includes(mascara),
+      `la jornada plena (${celda} ${mascara}) volvió a la proyección: ${proyectada.slice(0, 200)}`)
   }
-  // Y las horas MEDIDAS no se pueden perder: son las que valúan lo que sale de la caja este mes.
-  assert.ok(proyectada.includes(`$B$${medidas}`), 'se fueron las horas medidas del pactado')
-  // La frontera que elige entre las dos ramas es la MISMA que elige la base, y se reclasifica sola.
-  assert.ok(proyectada.includes('EOMONTH(TODAY();0)'))
-  // EL TÉRMINO DEL CONVENIO NO MULTIPLICA POR DÍAS. Las horas de jornada ya vienen contadas por día
-  // de la semana; multiplicarlas otra vez por una cuenta de días es el error que este test caza.
-  const ramaConvenio = proyectada.slice(proyectada.indexOf('"0000111"'))
-  assert.ok(!ramaConvenio.includes('"0000011"'), `el término del convenio volvió a multiplicar por días L-V: ${ramaConvenio}`)
+  // La frontera sigue siendo UNA y decide la base.
+  assert.equal(proyectada.split('EOMONTH(TODAY();0)').length - 1, 1)
+  // Y la jornada sigue viva donde corresponde: en el control del piso, comparada contra las medidas.
+  const control = gm.filas.map((f) => String(f[0] ?? '')).find((s) => s.includes('llevan el aumento'))
+  assert.ok(control && control.includes('la jornada es'), 'el control del piso dejó de comparar horas medidas contra jornada')
 })
 
 test('EL DEFECTO: el ✓ del piso se firmaba sin mirar el plantel ni las horas', () => {
