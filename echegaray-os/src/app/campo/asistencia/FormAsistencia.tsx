@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import { Aviso, Boton, ErrorCampo, Nulo } from '@/shared/components/ds'
 import {
-  avisoDeFaltantes, leerHoras, resumenJornada,
+  avisoDeFaltantes, hs, leerHoras, resumenJornada,
 } from '@/features/administracion/services/jornadaPorObra'
 import type { FilaJornada } from '@/features/administracion/services/jornadaPorObra'
 import { guardarJornada } from '@/features/administracion/services/jornadaPorObraActions'
@@ -45,7 +45,7 @@ function inicial(filas: FilaJornada[]): Record<string, Marca> {
       ? { estado: 'ausente', texto: '' }
       // La casilla nace con la propuesta EN PANTALLA aunque nadie la haya tocado: eso es lo que
       // permite abrir y guardar sin tocar nada si el día fue normal.
-      : { estado: f.estado, texto: String(f.propuesta || '') }
+      : { estado: f.estado, texto: f.propuesta > 0 ? hs(f.propuesta) : '' }
   }
   return m
 }
@@ -162,7 +162,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
                   aria-pressed={ausente}
                   data-testid="ausente"
                   onClick={() => cambiar(id, ausente
-                    ? { estado: 'presente', texto: String(jornada || '') }
+                    ? { estado: 'presente', texto: jornada > 0 ? hs(jornada) : '' }
                     : { estado: 'ausente', texto: '' })}
                   className="h-[44px] w-[44px] rounded-[6px] border text-[15px] font-semibold"
                   style={{
@@ -184,7 +184,7 @@ export function FormAsistencia({ obraId, obraNombre, fecha, jornada, filas }: {
         <p className="text-[13px] text-ink" data-testid="pie-jornada">
           {resumen.presentes} {resumen.presentes === 1 ? 'presente' : 'presentes'}
           {' · '}{resumen.ausentes} no {resumen.ausentes === 1 ? 'vino' : 'vinieron'}
-          {' · '}{resumen.horas} hs
+          {' · '}{hs(resumen.horas)} hs
         </p>
         {falta && (
           <p className="text-[12.5px] font-medium text-[#B4231F]" data-testid="falta-marcar">{falta}</p>

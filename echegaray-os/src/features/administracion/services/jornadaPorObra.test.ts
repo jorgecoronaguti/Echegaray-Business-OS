@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarJornada, avisoDeFaltantes, leerHoras, resumenJornada, sobreLaJornada,
+  armarJornada, avisoDeFaltantes, hs, leerHoras, resumenJornada, sobreLaJornada,
 } from './jornadaPorObra.ts'
 import type { PersonaDeLaObra, RegistroDelDia } from './jornadaPorObra.ts'
 
@@ -121,4 +121,14 @@ test('LO QUE SOBRA DE LA JORNADA SE CALCULA, NO SE DECLARA COMO RECARGO', () => 
   assert.equal(sobreLaJornada(5, 8.8), 0)
   // El error binario no puede llegar a la pantalla: 10,8 − 8,8 en punto flotante da 1,9999999999999996.
   assert.equal(sobreLaJornada(11.8, 8.8), 3)
+})
+
+test('LAS HORAS SE MUESTRAN EN EL LOCALE DEL LUGAR: 8,8 y no 8.8', () => {
+  // El defecto que atrapa: mostrar «8.8» en la casilla. El teclado del teléfono en español escribe
+  // coma, así que quien corrige tipearía «8,5» sobre un «8.8» — dos separadores conviviendo en el
+  // mismo campo. Lo que se muestra tiene que ser exactamente lo que se puede volver a tipear.
+  assert.equal(hs(8.8), '8,8')
+  assert.equal(hs(79.2), '79,2')
+  assert.equal(hs(8), '8')
+  assert.equal(leerHoras(hs(8.8)).horas, 8.8, 'lo que se muestra se vuelve a leer sin perder nada')
 })

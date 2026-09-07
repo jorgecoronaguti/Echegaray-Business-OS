@@ -168,6 +168,10 @@ export function leerHoras(bruto: string): { horas: number | null; error: string 
   return { horas: redondear(n), error: null }
 }
 
+/** Horas en el locale del lugar: `8,8`, no `8.8`. El teclado del teléfono escribe coma y
+ *  `leerHoras` la acepta, así que lo que se muestra es exactamente lo que se puede volver a tipear. */
+export const hs = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+
 /** Lo que sobra de la jornada pactada. No dice «extra al 50%»: el recargo lo elige quien liquida. */
 export function sobreLaJornada(horas: number, jornada: number): number {
   return horas > jornada ? redondear(horas - jornada) : 0

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { Aviso } from '@/shared/components/ds'
+import { hs } from '@/features/administracion/services/jornadaPorObra'
 import { getJornadaDelDia } from '@/features/administracion/services/jornadaPorObraService'
 import { hoyISO, leerDatosCampo } from '../datos'
 import { puedeCargarParte } from '../permisos'
@@ -88,7 +89,7 @@ export default async function AsistenciaCampoPage({ searchParams }: {
     <MarcoCampo
       titulo={obra.nombre}
       subtitulo={obra.jornada > 0
-        ? `${rotuloDelDia(fecha)} · ${obra.jornada} hs de jornada`
+        ? `${rotuloDelDia(fecha)} · ${hs(obra.jornada)} hs de jornada`
         // NO SE INVENTA UNA JORNADA. Sin `jornada_horas` la casilla nace vacía y se tipea: un 8
         // escrito acá sería una afirmación sobre el contrato de esa obra que nadie hizo.
         : `${rotuloDelDia(fecha)} · esta obra no tiene jornada pactada cargada`}

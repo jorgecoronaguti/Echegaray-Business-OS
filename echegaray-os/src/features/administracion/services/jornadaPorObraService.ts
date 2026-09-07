@@ -35,11 +35,25 @@ const numero = (v: unknown): number => {
   return Number.isFinite(n) && n > 0 ? n : JORNADA_SIN_DATO
 }
 
-/** La nota gris debajo del nombre: el rol de la asignación, y si no hay, la categoría de convenio. */
-function notaDe(a: { rol: string | null; persona_categoria: string | null }): string | null {
+/**
+ * La nota gris debajo del nombre.
+ *
+ * `rol` sólo distingue cuando dice algo: en la base al 07/09/2026 hay 20 «integrante» y 1
+ * «responsable», así que escribir «integrante» debajo de nueve nombres es ruido. Se cae a la
+ * ESPECIALIDAD —que es lo que el jefe usa para reconocer a alguien en la obra— y de ahí a la
+ * categoría de convenio. Si no hay ninguna de las tres, no se escribe nada: inventar un «operario»
+ * sería una afirmación sobre el legajo.
+ */
+const ROL_GENERICO = ['integrante', 'operario']
+
+function notaDe(a: {
+  rol: string | null; persona_categoria: string | null; persona_especialidad: string | null
+}): string | null {
   const rol = (a.rol ?? '').trim()
-  if (rol && rol !== 'operario') return rol
-  return (a.persona_categoria ?? '').trim() || null
+  if (rol && !ROL_GENERICO.includes(rol.toLowerCase())) return rol
+  return (a.persona_especialidad ?? '').trim().toLowerCase()
+    || (a.persona_categoria ?? '').trim().replace('_', ' ')
+    || null
 }
 
 /** ¿Estaba asignado ese día? `desde`/`hasta` en null significan «sin límite», no «nunca». */

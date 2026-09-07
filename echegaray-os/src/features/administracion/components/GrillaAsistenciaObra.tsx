@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { V } from '@/shared/components/v2/patron'
-import { leerHoras } from '../services/jornadaPorObra'
+import { hs, leerHoras } from '../services/jornadaPorObra'
 import type { CeldaObra, FilaSemanaObra } from '../services/semanaPorObra'
 import { guardarJornada } from '../services/jornadaPorObraActions'
 
@@ -23,7 +23,7 @@ import { guardarJornada } from '../services/jornadaPorObraActions'
 const ROJO = '#B42318'
 
 function textoDe(c: CeldaObra): string {
-  if (c.estado === 'horas') return String(c.horas ?? '')
+  if (c.estado === 'horas') return c.horas === null ? '' : hs(c.horas)
   if (c.estado === 'ausente') return 'A'
   return ''
 }
@@ -150,7 +150,7 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
                 padding: '7px 0 7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
                 color: fila.reclama.length > 0 ? ROJO : V.tinta,
               }}>
-                {fila.horas}
+                {hs(fila.horas)}
               </td>
             </tr>
           ))}
@@ -162,11 +162,11 @@ export function GrillaAsistenciaObra({ filas, dias, etiquetas, totalesDia, total
                 padding: '8px 2px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
                 color: t === null ? V.inerte : V.tinta,
               }}>
-                {t === null ? '—' : t}
+                {t === null ? '—' : hs(t)}
               </td>
             ))}
             <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-              {total}
+              {hs(total)}
             </td>
           </tr>
         </tbody>
