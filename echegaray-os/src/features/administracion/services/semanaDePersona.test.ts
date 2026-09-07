@@ -14,6 +14,7 @@ function hh(fecha: string, horas: number, tipo_hora = 'normal'): ImputacionHH {
     id: `${fecha}-${tipo_hora}`, fecha, fecha_inicio_semana: '2026-08-17',
     obra_canonica_id: null, actividad_id: null, actividad_nombre: null, obra_nombre: null,
     horas, tipo_hora, notas: null, fuente_legacy: '',
+    creado_en: null, cargo: null, corregido_en: null, corrigio: null,
   }
 }
 

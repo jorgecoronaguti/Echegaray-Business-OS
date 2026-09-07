@@ -8,12 +8,13 @@
 // palabras: una ficha que dice «0 HH» cuando nadie imputó nada es una ficha que miente despacio.
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import type { TotalHH } from '../services/hhPersonaService'
+import { porMes, porSemana, trazaDe } from '../services/cronologiaHH'
 import { DOCUMENTO_ESTADO, estadoDocumento, solicitadosDelLegajo } from '../services/fichaPersona'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
@@ -173,35 +174,73 @@ export function BloqueHoras({
         <ListaTotales titulo="Por actividad" totales={porActividad} testid="hh-por-actividad" />
       </div>
 
-      {/* EL REGISTRO, ABIERTO. Es lo que se viene a mirar; esconderlo detrás de un desplegable
-          obliga a un toque de más todos los días. */}
-      <Tabla testid="hh-registro" minWidth={620}>
+      {/* EL REGISTRO CRONOLÓGICO, ABIERTO Y CORTADO POR SEMANA.
+          El dueño: «que cada persona vaya quedando registro cronológico propio». Sin el corte, un
+          año de asistencia son 250 renglones iguales y la pregunta «cuánto hizo esa semana» se
+          contesta sumando a mano. El subtotal va en la MISMA tabla y no en un panel aparte: separar
+          el total de sus filas es la forma de que dejen de coincidir. */}
+      <Tabla testid="hh-registro" minWidth={720}>
         <THead>
           <Th>Día</Th>
           <Th>Obra</Th>
           <Th>Actividad</Th>
           <Th>Tipo</Th>
+          {/* QUIÉN LO CARGÓ Y CUÁNDO. La escribe Postgres (`default auth.uid()` y el trigger
+              `set_actualizado_en`), no la pantalla: una traza que llena la app se puede omitir. */}
+          <Th>Cargó</Th>
           <Th num>HH</Th>
         </THead>
         <tbody>
           {registros.length === 0 && (
             <tr className="h-fila border-b border-[#EFEEEA]">
-              <td colSpan={5} className="text-[12.5px] text-faint">
+              <td colSpan={6} className="text-[12.5px] text-faint">
                 Sin horas en este período. Hay {historial.length} imputación(es) en otras fechas.
               </td>
             </tr>
           )}
-          {registros.map((r) => (
-            <Tr key={r.id} compacta data-testid="fila-registro">
-              <Td num>{r.fecha ? fecha(r.fecha) : `semana del ${r.fecha_inicio_semana}`}</Td>
-              <Td>{r.obra_nombre ?? <Nulo>sin obra</Nulo>}</Td>
-              <Td>{r.actividad_nombre ?? <Nulo>toda la obra</Nulo>}</Td>
-              <Td>{r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}</Td>
-              <Td num fuerte>{hh(r.horas)}</Td>
-            </Tr>
+          {porSemana(registros).map((tramo) => (
+            <Fragment key={tramo.clave}>
+              {tramo.registros.map((r) => (
+                <Tr key={r.id} compacta data-testid="fila-registro">
+                  <Td num>{r.fecha ? fecha(r.fecha) : `semana del ${r.fecha_inicio_semana}`}</Td>
+                  <Td>{r.obra_nombre ?? <Nulo>sin obra</Nulo>}</Td>
+                  <Td>{r.actividad_nombre ?? <Nulo>toda la obra</Nulo>}</Td>
+                  <Td>{r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}</Td>
+                  <Td>{trazaDe(r) ?? <Nulo>sin traza</Nulo>}</Td>
+                  <Td num fuerte>{hh(r.horas)}</Td>
+                </Tr>
+              ))}
+              <tr className="border-b border-[#EFEEEA]" data-testid="total-tramo">
+                <td colSpan={5} className="py-1.5 text-[11.5px] text-faint">
+                  {tramo.rotulo} · {tramo.dias} {tramo.dias === 1 ? 'día' : 'días'}
+                  {tramo.ausencias > 0 && ` · ${tramo.ausencias} sin venir`}
+                </td>
+                <td className="py-1.5 text-right text-[12px] font-medium tabular-nums text-muted">
+                  {hh(tramo.horas)}
+                </td>
+              </tr>
+            </Fragment>
           ))}
         </tbody>
       </Tabla>
+
+      {/* EL MES ES LA VENTANA DE LA LIQUIDACIÓN, y por eso va aparte del corte semanal: una semana
+          a caballo de dos meses aporta a los dos, y sumar semanas nunca da el mes. */}
+      {porMes(registros).length > 1 && (
+        <div data-testid="hh-por-mes">
+          <p className="mb-1.5 text-[11px] uppercase tracking-[0.06em] text-faint">Por mes</p>
+          <ul className="text-[12.5px]">
+            {porMes(registros).map((m) => (
+              <li key={m.clave} className="flex justify-between border-b border-[#EFEEEA] py-1.5">
+                <span className="text-ink">{m.rotulo}</span>
+                <span className="tabular-nums text-muted">
+                  {m.dias} {m.dias === 1 ? 'día' : 'días'} · {hh(m.horas)} HH
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {historial.length > registros.length && (
         <p className="text-[11px] text-faint" data-testid="hh-fuera-del-periodo">

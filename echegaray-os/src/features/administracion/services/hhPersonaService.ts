@@ -31,24 +31,68 @@ export async function getHHDePersona(
   const { data, error } = await supabase
     .from('registros_hh')
     .select('id, fecha, fecha_inicio_semana, obra_canonica_id, actividad_id, horas, tipo_hora, ' +
-      'notas, fuente_legacy, obra_actividad(nombre), obra_canonica(nombre)')
+      'notas, fuente_legacy, created_at, creado_por, actualizado_en, actualizado_por, ' +
+      'obra_actividad(nombre), obra_canonica(nombre)')
     .eq('persona_id', personaId)
     .order('fecha', { ascending: false, nullsFirst: false })
   if (error) return { data: null, error: error.message }
 
-  type Cruda = Omit<ImputacionHH, 'actividad_nombre' | 'obra_nombre'> & {
+  type Cruda = Omit<ImputacionHH, 'actividad_nombre' | 'obra_nombre' | 'creado_en' | 'cargo'
+    | 'corregido_en' | 'corrigio'> & {
     obra_actividad: { nombre: string } | null
     obra_canonica: { nombre: string } | null
+    created_at: string | null
+    creado_por: string | null
+    actualizado_en: string | null
+    actualizado_por: string | null
   }
+  const crudas = ((data ?? []) as unknown as Cruda[])
+  // EL NOMBRE DE QUIEN CARGÓ SE RESUELVE APARTE, no con un embed. `creado_por` sí tiene FK a
+  // `perfiles`, pero `actualizado_por` NO la tiene: pedir los dos embebidos devuelve error de
+  // PostgREST y la solapa entera queda vacía. Una consulta por ids sirve a los dos igual.
+  const nombres = await nombresDePerfil(supabase, crudas.flatMap(
+    (f) => [f.creado_por, f.actualizado_por]))
+
   return {
-    data: ((data ?? []) as unknown as Cruda[]).map((f) => ({
+    data: crudas.map((f) => ({
       ...f,
       horas: Number(f.horas),
       actividad_nombre: f.obra_actividad?.nombre ?? null,
       obra_nombre: f.obra_canonica?.nombre ?? null,
+      creado_en: f.created_at,
+      cargo: f.creado_por ? (nombres.get(f.creado_por) ?? null) : null,
+      // UNA CORRECCIÓN SÓLO SE DECLARA SI OCURRIÓ. `actualizado_en` tiene `default now()`, así que
+      // toda fila nace con un valor igual al de creación: mostrarlo como «corregido» diría que
+      // alguien tocó todas las imputaciones del sistema el día que se cargaron.
+      corregido_en: seCorrigio(f.created_at, f.actualizado_en) ? f.actualizado_en : null,
+      corrigio: seCorrigio(f.created_at, f.actualizado_en) && f.actualizado_por
+        ? (nombres.get(f.actualizado_por) ?? null)
+        : null,
     })),
     error: null,
   }
+}
+
+/** Un segundo de margen: `created_at` y `actualizado_en` son dos `now()` del mismo INSERT y pueden
+ *  diferir en microsegundos. Sin el margen, cada fila nacería declarándose corregida. */
+export function seCorrigio(creado: string | null, actualizado: string | null): boolean {
+  if (!creado || !actualizado) return false
+  const a = new Date(creado).getTime()
+  const b = new Date(actualizado).getTime()
+  return Number.isFinite(a) && Number.isFinite(b) && b - a > 1000
+}
+
+async function nombresDePerfil(
+  supabase: SupabaseClient, ids: (string | null)[],
+): Promise<Map<string, string>> {
+  const unicos = [...new Set(ids.filter(Boolean))] as string[]
+  const m = new Map<string, string>()
+  if (unicos.length === 0) return m
+  const { data } = await supabase.from('perfiles').select('id, nombre').in('id', unicos)
+  for (const p of (data ?? []) as { id: string; nombre: string | null }[]) {
+    if (p.nombre) m.set(p.id, p.nombre)
+  }
+  return m
 }
 
 /** Las horas TRABAJADAS del período pedido. `desde`/`hasta` en ISO, ambas inclusive.

@@ -21,7 +21,8 @@ const imp = (p: Partial<ImputacionHH>): ImputacionHH => ({
   fecha: '2026-08-19', fecha_inicio_semana: '2026-08-17',
   obra_canonica_id: 'san-francisco', obra_nombre: 'San Francisco',
   actividad_id: 'act-1', actividad_nombre: 'Hormigón',
-  horas: 8, tipo_hora: 'normal', notas: null, fuente_legacy: 'web:obra', ...p,
+  horas: 8, tipo_hora: 'normal', notas: null, fuente_legacy: 'web:obra',
+  creado_en: null, cargo: null, corregido_en: null, corrigio: null, ...p,
 })
 
 test('el período recorta por el día trabajado, con los bordes adentro', () => {

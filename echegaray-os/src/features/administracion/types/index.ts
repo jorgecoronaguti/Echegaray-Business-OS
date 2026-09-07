@@ -185,6 +185,13 @@ export interface ImputacionHH {
   tipo_hora: string
   notas: string | null
   fuente_legacy: string
+  /** QUIÉN LO CARGÓ Y CUÁNDO. `creado_por` tiene `default auth.uid()` y `actualizado_por` lo pone el
+   *  trigger `set_actualizado_en()`: la traza no la escribe ninguna pantalla, la escribe Postgres —
+   *  que es la única forma de que valga, porque un campo que llena la app se puede omitir. */
+  creado_en: string | null
+  cargo: string | null
+  corregido_en: string | null
+  corrigio: string | null
 }
 
 /** Dónde está asignada una persona. La MISMA fila que lee `Obra → Personal`: una sola relación
