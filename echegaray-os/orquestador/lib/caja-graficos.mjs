@@ -85,8 +85,16 @@ export const AIRE_TRAS_PORTADA = 6
  * y el primer gráfico se dibuja ENCIMA de la última alerta** — y una alerta crítica tapada por un
  * gráfico es exactamente el aviso que no se lee.
  *
- * La grilla ya sabía dónde termina: devuelve `fAviso1`. Lo que faltaba era que los gráficos lo
- * usaran en vez de una constante escrita a mano.
+ * ═══ Y LA SEGUNDA VUELTA, REPORTADA POR EL DUEÑO EL 07/09/2026 ═══
+ *
+ * «la barrida volvió a romper el diseño de CAJA, no se ve gráfico». Tenía razón: se estaba usando
+ * `fAviso1`, que es el fin del RANGO RESERVADO para los avisos, no el fin de lo que hay ESCRITO. Con
+ * los dos bloques vacíos ese rango igual llega a la 21, el primer gráfico se fue a la 27 y entre la
+ * portada y los gráficos quedaron diez filas en blanco — la pestaña se abre y no se ve un gráfico.
+ *
+ * Lo que corresponde derivar es el fin del CONTENIDO: `finDeContenido`. Cuando no haya alertas la
+ * portada termina en la 16 y los gráficos vuelven a la 22 de siempre; cuando haya siete, se corren
+ * solos y ninguna alerta queda tapada. Las dos cosas que el dueño pidió, en el mismo número.
  *
  * Devuelve un `rowIndex` (base 0). `finPortada` viene en base 1, que es como cuenta la grilla.
  *
@@ -94,6 +102,18 @@ export const AIRE_TRAS_PORTADA = 6
  * están. Subirlos dejaría un hueco arriba y movería de lugar algo que el dueño ya sabe dónde
  * encontrar, sin ganar nada.
  */
+/**
+ * NÚCLEO PURO: la última fila de la grilla que tiene ALGO escrito, en base 1.
+ *
+ * No es lo mismo que el fin del rango reservado, y ésa fue exactamente la diferencia que dejó la
+ * pestaña con diez filas en blanco antes del primer gráfico.
+ */
+export function finDeContenido(filas = []) {
+  let ultima = 0
+  filas.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
+  return ultima
+}
+
 export function anclaDeGraficos(finPortada, aire = AIRE_TRAS_PORTADA) {
   const n = Number(finPortada)
   if (!Number.isFinite(n) || n <= 0) return FILA_ANCLA

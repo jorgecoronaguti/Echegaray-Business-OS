@@ -225,8 +225,14 @@ test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () =
   // el ancla ya no es fija — se deriva del alto real de la portada, que crece con las alertas. La
   // REGLA no cambió: la hoja sigue teniendo que llegar al FINAL del último bloque y no a su ancla.
   // Lo que cambió es que ese final ahora se calcula en vez de escribirse.
-  assert.match(src, /filaFinalDeGraficos\(g\.fAviso1\) \+ 1/, 'el generador tiene que extender la hoja hasta el FINAL del último bloque, derivado del alto de la portada')
-  assert.match(src, /anclaDeGraficos\(g\.fAviso1\)/, 'el ancla tiene que salir del alto real de la portada, no de una constante')
+  //
+  // TERCER CAMBIO (07/09/2026), por reclamo del dueño: «la barrida volvió a romper el diseño de
+  // CAJA, no se ve gráfico». `g.fAviso1` es el fin del RANGO RESERVADO para los avisos, no el de lo
+  // que hay ESCRITO: con los dos bloques vacíos igual llegaba a la 21, el primer gráfico se fue a la
+  // 27 y quedaron diez filas en blanco. Se deriva de `finDeContenido(g.filas)`, que es la última
+  // fila con algo adentro.
+  assert.match(src, /filaFinalDeGraficos\(finDeContenido\(g\.filas\)\) \+ 1/, 'el generador tiene que extender la hoja hasta el FINAL del último bloque, derivado del alto real de la portada')
+  assert.match(src, /anclaDeGraficos\(finDeContenido\(g\.filas\)\)/, 'el ancla tiene que salir del CONTENIDO de la portada, no del rango reservado ni de una constante')
   assert.match(src, /gridProperties\.rowCount/, 'y pedirle a la API que cambie el alto, no suponerlo')
 })
 
@@ -427,7 +433,7 @@ test('NO ACHICA NUNCA: si la hoja ya es más alta, el request pide el alto que y
 
 // ── EL ANCLA DEJA DE ESTAR CLAVADA (reclamo del dueño, 06/09/2026) ──────────────────────────────
 
-import { anclaDeGraficos, filaFinalDeGraficos, AIRE_TRAS_PORTADA } from './caja-graficos.mjs'
+import { anclaDeGraficos, filaFinalDeGraficos, AIRE_TRAS_PORTADA, finDeContenido } from './caja-graficos.mjs'
 
 test('con la portada de hoy nada se mueve: seis filas de aire, ancla en la 22', () => {
   // La portada real termina hoy en la fila 16 —los bloques 3 y 4 están vacíos— y el primer gráfico
@@ -475,4 +481,23 @@ test('el alto de la hoja BAJA con el ancla: sin filas debajo, el editor colapsa 
   assert.equal(filaFinalDeGraficos(16), FILA_FINAL_DE_GRAFICOS)
   assert.equal(filaFinalDeGraficos(23), FILA_FINAL_DE_GRAFICOS + 7)
   assert.ok(filaFinalDeGraficos(23) > anclaDeGraficos(23), 'la hoja tiene que pasar del ancla del último gráfico')
+})
+
+test('el ancla sigue al CONTENIDO, no al rango reservado — el defecto del 07/09', () => {
+  // La portada real termina en la 16 y los dos bloques de avisos están vacíos. Usando el fin del
+  // rango (21) los gráficos se iban a la 27 y quedaban diez filas en blanco: la pestaña se abría sin
+  // un solo gráfico a la vista.
+  const portada = Array.from({ length: 21 }, (_, i) => (i < 16 ? ['algo'] : ['']))
+  assert.equal(finDeContenido(portada), 16)
+  assert.equal(anclaDeGraficos(finDeContenido(portada)), FILA_ANCLA, 'vuelve al ancla de siempre')
+})
+
+test('y con alertas de verdad los gráficos se corren solos: ninguna queda tapada', () => {
+  const conAlertas = Array.from({ length: 30 }, (_, i) => (i < 23 ? ['alerta'] : ['']))
+  assert.equal(finDeContenido(conAlertas), 23)
+  assert.ok(anclaDeGraficos(finDeContenido(conAlertas)) > 23, 'el primer gráfico arranca DEBAJO de la última alerta')
+})
+
+test('una grilla sin nada no manda los gráficos a la fila 6', () => {
+  assert.equal(anclaDeGraficos(finDeContenido([[''], ['']])), FILA_ANCLA)
 })

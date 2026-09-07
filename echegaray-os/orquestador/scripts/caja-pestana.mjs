@@ -61,7 +61,7 @@ import {
 } from '../lib/caja-grilla.mjs'
 import {
   requestsDeGraficos, requestDeAltoMinimo, leerLayoutDeGraficos, verificarLayoutGraficos,
-  FILA_ANCLA, FILA_FINAL_DE_GRAFICOS, anclaDeGraficos, filaFinalDeGraficos,
+  FILA_ANCLA, FILA_FINAL_DE_GRAFICOS, anclaDeGraficos, filaFinalDeGraficos, finDeContenido,
 } from '../lib/caja-graficos.mjs'
 import { ubicarSeries } from '../lib/caja-anexo-series.mjs'
 import { MARCA_ALERTA, MARCA_OK } from '../lib/caja-avisos.mjs'
@@ -212,7 +212,7 @@ async function main() {
   // apilan por offset): sin esa fila, `addChart` sobre una celda inexistente devuelve 400.
   // El alto de la hoja sigue al ancla derivada: si la portada creció, el último gráfico bajó y la
   // hoja tiene que acompañarlo, o el editor vivo lo colapsa contra el borde.
-  const hasta = Math.max(g.filas.length + 20, filaFinalDeGraficos(g.fAviso1) + 1, hoja.rows ?? 0)
+  const hasta = Math.max(g.filas.length + 20, filaFinalDeGraficos(finDeContenido(g.filas)) + 1, hoja.rows ?? 0)
   const anchoHoja = Math.max(ANCHO, hoja.cols ?? 0)
   if ((hoja.rows ?? 0) < hasta || (hoja.cols ?? 0) < anchoHoja) {
     await google.spreadsheetBatchUpdate(ID, [{
@@ -221,7 +221,7 @@ async function main() {
         fields: 'gridProperties.rowCount,gridProperties.columnCount',
       },
     }])
-    console.log(`  ↔ la hoja queda en ${hasta} filas × ${anchoHoja} columnas (los gráficos anclan en la fila ${anclaDeGraficos(g.fAviso1) + 1}, portada hasta la ${g.fAviso1})`)
+    console.log(`  ↔ la hoja queda en ${hasta} filas × ${anchoHoja} columnas (los gráficos anclan en la fila ${anclaDeGraficos(finDeContenido(g.filas)) + 1}, portada hasta la ${finDeContenido(g.filas)})`)
   }
   const creados = await rangoConNombre(google, hoja.sheetId, g, { soloFaltantes: true })
   if (creados) console.log(`  🔖 ${creados} rango(s) con nombre CREADOS (no existían): arranque en frío`)
@@ -571,7 +571,7 @@ export async function formatear(google, sheetId, g, anexo, titulo = PESTAÑA) {
   // tenga sus filas debajo, para no dibujar media verdad— la descartó. El gráfico desaparecía por un
   // artefacto del transporte, no por falta de dato. Se rellena hasta el largo pedido.
   while (colA.length < 600) colA.push([''])
-  const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA), g.fAviso1)
+  const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA), finDeContenido(g.filas))
   if (!charts.length) return
 
   // ═══ EL ALTO SE GARANTIZA EN EL MISMO LOTE QUE LOS GRÁFICOS (03/09/2026) ═══
