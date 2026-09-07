@@ -154,26 +154,27 @@ test('la lista tiene las SEIS columnas del handoff v4, con su grilla literal', (
   // Seis rótulos y seis celdas. Se cuentan sobre el cuerpo de la fila para que el encabezado no
   // infle el número.
   const cuerpo = src.slice(src.indexOf('{personas.map('))
-  for (const celda of ['abrir-persona', 'puesto-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'papeles-persona']) {
+  for (const celda of ['abrir-persona', 'categoria-persona', 'sin asignar', 'hoy-persona', 'hh-mes', 'papeles-persona']) {
     assert.ok(cuerpo.includes(celda), `la fila perdió la celda ${celda}`)
   }
 })
 
-test('PUESTO sale de la regla probada y su ausencia va APAGADA, no en ámbar', () => {
+test('CATEGORÍA sale de la regla probada y su ausencia va APAGADA, no en ámbar', () => {
   // ═══ EL DEFECTO QUE ATRAPA ═══
   //
-  // Dos, y por eso van las tres aserciones juntas.
+  // Tres, y por eso van las aserciones juntas.
   //
-  //   1. Que la columna se llene con `p.puesto ?? p.especialidad` — un `??` pelado no MIRA el
-  //      valor y publica «OFICIAL» o «MEDIO OFICIAL» como si fueran oficios: son categorías del
-  //      convenio, o sea lo que la persona cobra, no lo que sabe hacer. La regla vive en
-  //      `oficioVisible` y se prueba sin React en `vocabularioPersona.test.ts`.
-  //   2. Que la ausencia se pinte en ámbar por inercia, copiando la celda de OBRA. Medido el
-  //      05/09/2026: 53 de 78 filas tienen con qué llenar la columna y 25 quedan sin puesto. No
-  //      saber el oficio de alguien no bloquea ninguna decisión de esta pantalla; no saber su obra
-  //      sí. Ámbar es «esto bloquea» y gastarlo en 25 filas apaga la señal donde importa.
+  //   1. Que la columna se llene con `p.categoria ?? p.puesto` — un `??` pelado no MIRA el valor y
+  //      publicaría «Albañil» como si fuera una categoría del convenio. La regla vive en
+  //      `categoriaVisible` y se prueba sin React en `vocabularioPersona.test.ts`.
+  //   2. Que la ausencia se pinte en ámbar por inercia, copiando la celda de OBRA. No saber la
+  //      categoría de alguien no bloquea ninguna decisión de esta pantalla; no saber su obra sí.
+  //      Ámbar es «esto bloquea» y gastarlo acá apaga la señal donde importa.
+  //   3. Que vuelva el OFICIO. El 07/09/2026 el dueño pidió lo contrario —«quiero que se vea la
+  //      categoría en lugar del puesto»— y la razón es económica: la categoría es lo que liquida.
   const src = codigoTabla()
-  assert.match(src, /oficioVisible\(p\.especialidad, p\.puesto\)/)
-  assert.match(src, /\{oficio \?\? 'sin puesto'\}/, 'la ausencia dejó de usar la palabra del mockup')
-  assert.match(src, /color: oficio \? V\.tintaSuave : V\.tenue/, 'la ausencia de puesto se pintó de ámbar')
+  assert.match(src, /categoriaVisible\(p\.categoria, p\.puesto\)/)
+  assert.match(src, /\{categoria \?\? 'sin categoría'\}/, 'la ausencia dejó de usar la palabra de la columna')
+  assert.match(src, /color: categoria \? V\.tintaSuave : V\.tenue/, 'la ausencia de categoría se pintó de ámbar')
+  assert.doesNotMatch(src, /oficioVisible/, 'volvió el oficio a la columna que el dueño pidió para la categoría')
 })

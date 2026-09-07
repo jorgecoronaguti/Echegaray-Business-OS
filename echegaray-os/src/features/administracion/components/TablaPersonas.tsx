@@ -53,7 +53,7 @@ import { IconoPersona } from '@/shared/components/iconos'
 import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from '@/shared/components/v2/patron'
 import { oracion } from '@/shared/utils/texto'
 import type { PersonaEnDirectorio } from '../types'
-import { oficioVisible } from '../services/vocabularioPersona'
+import { categoriaVisible } from '../services/vocabularioPersona'
 import {
   HOY_LABEL, estadoHoy, horasVisibles, rotuloDePapeles,
   type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy, type RotuloDePapeles,
@@ -146,7 +146,7 @@ export function TablaPersonas({
 
       {personas.map((p) => {
         const hoy = conPulso && pulso?.hoyDisponible ? estadoHoy(pulso.marcas.get(p.id)) : null
-        const oficio = oficioVisible(p.especialidad, p.puesto)
+        const categoria = categoriaVisible(p.categoria, p.puesto)
         return (
           <Link
             key={p.id}
@@ -186,10 +186,10 @@ export function TablaPersonas({
             {!conBaja && (
               <span
                 className={`truncate ${SOLO_ANCHO}`}
-                style={{ fontSize: '12px', color: oficio ? V.tintaSuave : V.tenue }}
-                data-testid="puesto-persona"
+                style={{ fontSize: '12px', color: categoria ? V.tintaSuave : V.tenue }}
+                data-testid="categoria-persona"
               >
-                {oficio ?? 'sin puesto'}
+                {categoria ?? 'sin categoría'}
               </span>
             )}
 

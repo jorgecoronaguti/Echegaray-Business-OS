@@ -26,7 +26,7 @@
 // dueño, no una migración de UI. Lo que esta capa hace es NO PUBLICAR como oficio algo que es una
 // categoría: preferir callar a afirmar el hecho equivocado.
 
-import { esCategoriaDeConvenio } from '../types/index.ts'
+import { esCategoriaDeConvenio, etiquetaCategoria } from '../types/index.ts'
 
 /** Normaliza para comparar contra el catálogo: la nómina escribe «OFICIAL», «Medio Oficial»,
  *  «medio_oficial» y «Medio oficial» para el mismo puesto. */
@@ -65,4 +65,32 @@ export function oficioVisible(
   const p = puesto?.trim()
   if (!p || pareceCategoria(p)) return null
   return p
+}
+
+/**
+ * LA CATEGORÍA QUE SE PUEDE MOSTRAR, o `null`.
+ *
+ * ═══ POR QUÉ ESTA COLUMNA MUESTRA CATEGORÍA Y NO OFICIO (07/09/2026) ═══
+ *
+ * Pedido del dueño: *«en la sección personal quiero que se vea la CATEGORÍA en lugar del puesto»*.
+ * Y tiene el peso a favor: la categoría es lo que LIQUIDA —es el hecho con efecto económico— y el
+ * oficio no decide nada en esta pantalla. Barrer la lista de arriba abajo para saber quién es
+ * oficial y quién ayudante es la pregunta que se hace todos los días; «albañil» no lo es.
+ *
+ * `categoria` es el campo hecho para esto y manda. `puesto` entra SÓLO cuando el texto libre resulta
+ * ser una categoría del convenio disfrazada —`pareceCategoria` ya sabe reconocerlo—, que es
+ * exactamente el caso que `oficioVisible` descarta. Los dos usan el mismo catálogo: lo que uno
+ * rechaza por ser categoría, el otro lo rescata por serlo. No puede haber una fila que caiga en los
+ * dos ni una que se pierda entre los dos.
+ *
+ * Devuelve `null` y no «Sin categoría»: quién dibuja la ausencia, y de qué color, lo decide la
+ * pantalla. Una función pura que ya eligió la palabra le saca esa decisión a quien la muestra.
+ */
+export function categoriaVisible(
+  categoria: string | null, puesto: string | null,
+): string | null {
+  const c = categoria?.trim()
+  if (c) return etiquetaCategoria(c)
+  const p = puesto?.trim()
+  return p && pareceCategoria(p) ? etiquetaCategoria(clave(p)) : null
 }
