@@ -668,6 +668,58 @@ const enPesos = (cob, campo, criterios) => sumaConUSD({
 })
 
 /** VENTA: el NETO de todo lo que no está cancelado. El IVA no es venta. */
+/**
+ * VENTA: el NETO de todo lo que no está cancelado. El IVA no es venta.
+ *
+ * ═══ VUELVE A SER UNA COLUMNA (07/09/2026) ═══
+ *
+ * El dueño, tres veces seguidas: *«te pedí precio de venta y costo (discriminado en MA y MO) DE CADA
+ * OBRA en la pestaña y no lo estás haciendo»*. La columna decía «Contratado» y publicaba el número
+ * que declara la ORDEN DE COMPRA de Cobranzas — que CINCO de las diez obras no declaran, así que
+ * salían en guion. Una columna con la mitad de los renglones vacíos no contesta «cuánto vale esta
+ * obra».
+ *
+ * LA VENTA SÍ EXISTE PARA LAS DIEZ: es lo facturado a esa obra, y sale de la misma fuente y con el
+ * mismo criterio que el cobrado de al lado. El contrato no se pierde —lo sigue leyendo el escritor y
+ * lo sigue verificando `contratoMalPublicado`—; lo que sale es la COLUMNA, porque el contrato es el
+ * papel y la venta es el hecho.
+ */
+const venta = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'neto', cliente, extra, `"<>${NO_VENTA}"`)}`
+
+/**
+ * CONTRATADO: LO QUE VALE LA OBRA, NO LO QUE SE LE FACTURÓ HASTA HOY.
+ *
+ * ═══ POR QUÉ VOLVIÓ (07/09/2026) ═══
+ *
+ * La columna había pasado a publicar la VENTA —el neto acumulado en Cobranzas— porque cinco de las
+ * diez obras salían en guion. El dueño lo rechazó en el acto: *«NO QUIERO — EN CONTRATADO»*, y
+ * después mostró por qué con un caso: Instalación Eléctrica **vale $40.000.000** y lleva
+ * $20.000.000 facturados. Publicando la venta, la pestaña decía $20.000.000 al lado de un costo
+ * proyectado de $24,5M, o sea una obra que pierde plata. No pierde: le falta facturar la mitad.
+ * Comparar media venta contra el costo entero es la regla de oro 6 —confundir facturación con
+ * rentabilidad— y produce exactamente la decisión equivocada.
+ *
+ * ═══ LAS TRES FORMAS EN QUE COBRANZAS DECLARA UN CONTRATO ═══
+ *
+ * 1. EN PESOS, en la ORDEN DE COMPRA: *"Anticipo inicio obra 50% $ 47.590.272"*. Va el NÚMERO, que
+ *    es el único número tipeado de la fila y sale de la celda del dueño, no de acá.
+ * 2. EN DÓLARES: *"Resto 50% s/ contrato U$S 63.000 + IVA"* (Quattropani). Va `U$S × TC` como
+ *    FÓRMULA: valuarlo acá lo congelaría al dólar del día de la corrida.
+ * 3. SIN DECLARARLO, pero con todos sus hitos cargados — las cuatro obras de MESSINA que facturan
+ *    "50% + 50%" o un adicional íntegro. Ahí el contrato ES la suma viva de sus filas, y va la misma
+ *    fórmula que la venta.
+ *
+ * EL RIESGO DE LA TERCERA, DICHO: si una obra sin contrato declarado tuviera hitos SIN cargar, esta
+ * celda publicaría de menos — que es el defecto que el dueño acaba de rechazar. No se tapa con una
+ * aclaración en la pestaña (regla del dueño: minimalismo extremo): el escritor imprime en la corrida
+ * qué obras cayeron en este camino y con qué filas, para que se pueda desmentir mirando Cobranzas.
+ */
+function contratado(o, cob, dela) {
+  if (o.contrato) return o.contrato
+  if (o.contratoUsd) return `=${o.contratoUsd}*${RANGO_TC}`
+  return venta(cob, o.cliente, dela)
+}
+
 /** COBRADO: el importe que entró, con IVA. */
 const cobrado = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'total', cliente, extra, `"${COBRADO}"`)}`
 
@@ -743,14 +795,22 @@ export const SIN_COSTO = GUION
 export function contratoMalPublicado(bloques = [], publicadoFormula = []) {
   const malas = []
   for (const b of bloques) {
-    // La D lleva el contrato: un NUMERO leido de la ORDEN DE COMPRA de Cobranzas, o el guion.
+    // LA D LLEVA EL CONTRATO EN UNA DE SUS TRES FORMAS (ver `contratado`), y este control verifica
+    // LA QUE CORRESPONDE A ESA OBRA — no que la celda "tenga algo". Un contrato declarado que se
+    // publica como fórmula viva se ve idéntico a uno correcto y publicaría media obra en silencio:
+    // ése es exactamente el defecto que el dueño rechazó el 07/09.
     const enD = String(publicadoFormula[b.fProt - 1]?.[3] ?? '').trim()
     if (b.contrato) {
       if (Number(enD) !== Number(b.contrato)) {
         malas.push(`${b.clave}: contrato $${b.contrato.toLocaleString('es-AR')} y la D quedo "${enD}"`)
       }
-    } else if (enD !== SIN_CONTRATO) {
-      malas.push(`${b.clave}: sin contrato declarado y la D quedo "${enD}" en vez de "${SIN_CONTRATO}"`)
+    } else if (b.contratoUsd) {
+      if (!enD.startsWith(`=${b.contratoUsd}*`)) {
+        malas.push(`${b.clave}: contrato U$S ${b.contratoUsd} y la D quedo "${enD.slice(0, 60)}"`)
+      }
+    } else if (!enD.startsWith('=SUMIFS')) {
+      malas.push(`${b.clave}: sin contrato declarado, la D tiene que ser la suma viva de sus filas`
+        + ` y quedo "${enD.slice(0, 60)}"`)
     }
   }
   return malas
@@ -1020,7 +1080,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // muestra 46239. Sin fecha va el guion, con especie `texto`, y NO una fecha inventada.
     o.inicio ? serialISO(o.inicio) : SIN_CONTRATO,
     o.fin ? serialISO(o.fin) : SIN_CONTRATO,
-    o.contrato ?? SIN_CONTRATO,
+    contratado(o, cob, dela),
     cobrado(cob, o.cliente, dela), restaCobrar(cob, o.cliente, dela),
     vencido(cob, o.cliente, dela),
     // ═══ EL `NA()` DE LA RÉPLICA NO PUEDE LLEGAR A LA CELDA (07/09/2026) ═══
@@ -1038,7 +1098,10 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     proximoCobro(cob, o.cliente, dela)],
   ['rotulo', o.inicio ? 'fecha' : 'texto', o.fin ? 'fecha' : 'texto', 'monedaTotal', 'monedaTotal',
     'monedaTotal', 'alertaTotal', 'monedaTotal', 'moneda', 'moneda', 'rotulo'])
-  return { clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null, sinCosto }
+  return {
+    clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null,
+    contratoUsd: o.contratoUsd ?? null, sinCosto,
+  }
 }
 
 export const SIN_FECHA_PREVISTA = 'sin fecha'
@@ -1153,10 +1216,9 @@ export function grillaObras(ctx = {}) {
     // suma que ignora texto depende de una conducta de Sheets que no puedo VERIFICAR desde acá sin
     // escribir en el archivo. Citando sólo las filas con número, el resultado es el mismo en Sheets y
     // en el evaluador en frío, y el test puede afirmarlo.
-    const conContrato = bloques.filter((b) => b.contrato).map((b) => b.fProt)
     const conCosto = bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
     h.push([ROTULO_TOTAL_OBRAS, '', '',
-      conContrato.length ? suma('D', conContrato) : SIN_CONTRATO,
+      suma('D', filasObra),
       suma('E', filasObra), suma('F', filasObra), suma('G', filasObra),
       conCosto.length ? suma('H', conCosto) : SIN_COSTO,
       conCosto.length ? suma('I', conCosto) : SIN_COSTO,

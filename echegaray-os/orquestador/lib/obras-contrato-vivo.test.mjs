@@ -133,23 +133,31 @@ test('QUATTROPANI COBRÓ Y TIENE POR COBRAR MÁS QUE SU CONTRATO, y la pestaña 
   assert.equal(redondo(val(`E${f}`, 1) + val(`F${f}`, 1) - val(`D${f}`, 1)), redondo(excedente - 15_400 * (TC - 1)))
 })
 
-test('la obra SIN contrato declarado publica el guion, no un cero ni un blanco', () => {
+test('la obra SIN contrato declarado publica la suma VIVA de sus filas, no el guion', () => {
+  // BSA no declara contrato en ninguna fila: factura "50% + 50%" de la OC 279 más un adicional
+  // íntegro de la OC 1985. El guion era honesto pero dejaba media columna vacía y el dueño la
+  // rechazó dos veces; la suma de sus propias filas ES el precio mientras estén todas cargadas.
+  //
+  // LA INFERENCIA QUEDA DICHA, no escondida: éste es el único de los tres caminos que SUPONE algo
+  // —que la obra tiene todos sus hitos cargados—, y por eso el escritor imprime en cada corrida qué
+  // obras cayeron acá y con qué filas, para poder desmentirlo mirando Cobranzas.
   const f = bloque('messina-bsa').fProt
-  assert.equal(cel(`D${f}`), SIN_CONTRATO, 'el contrato')
-  // Un 0 habría afirmado que el contrato vale cero, de una obra que simplemente no lo declara en
-  // ninguna fila de Cobranzas.
-  assert.notEqual(cel(`D${f}`), 0)
+  const d = cel(`D${f}`)
+  assert.ok(String(d).startsWith('=SUMIFS'), `la D de BSA es la suma viva y quedó "${d}"`)
+  assert.notEqual(d, SIN_CONTRATO, 'ya no publica el guion')
+  assert.notEqual(d, 0, 'un 0 afirmaría que el contrato vale cero')
 })
 
-test('el cierre del cuadro de obras no mezcla las que declaran contrato con las que no', () => {
+test('el cierre del contratado suma las DIEZ obras, porque las diez publican un número', () => {
   const fTot = g.fTotObras
-  const conContrato = g.bloques.filter((b) => b.contrato)
-  // El contratado del cierre cita SÓLO las obras con contrato: las otras publican el guion, y una
-  // suma que ignora texto depende de una conducta de Sheets que este worktree no puede verificar.
-  assert.equal(cel(`D${fTot}`), `=${conContrato.map((b) => `D${b.fProt}`).join('+')}`)
-  assert.ok(!cel(`D${fTot}`).includes(`D${bloque('messina-bsa').fProt}`), 'BSA no se cita')
-  assert.equal(redondo(val(`D${fTot}`)), 304_227_336)
-  assert.equal(conContrato.reduce((s, b) => s + b.contrato, 0), 304_227_336)
+  // Antes citaba sólo las que declaraban contrato y BSA quedaba afuera: el cierre valía $304.227.336
+  // sobre una cartera de diez obras de las que cinco no aparecían. Ahora las diez publican —número,
+  // «U$S × TC» o suma viva— y el cierre es el valor de la cartera entera.
+  assert.equal(cel(`D${fTot}`), `=${g.bloques.map((b) => `D${b.fProt}`).join('+')}`)
+  assert.ok(cel(`D${fTot}`).includes(`D${bloque('messina-bsa').fProt}`), 'BSA ahora sí se cita')
+  const declarado = g.bloques.reduce((s, b) => s + (b.contrato ?? 0), 0)
+  assert.equal(declarado, 304_227_336, 'lo declarado en Cobranzas no cambió')
+  assert.ok(val(`D${fTot}`) > declarado, 'y el cierre ahora incluye además las obras sin declaración')
 })
 
 test('el cuadro del año también valúa los dólares: el vendido y el cobrado suben igual', () => {
@@ -204,16 +212,27 @@ test('el contrato de OTRA obra no pasa: el número tiene que ser el de ÉSTA', (
   assert.match(malas[0], /contrato \$40\.000\.000 y la D quedo "47590272"/)
 })
 
-test('sin contrato declarado, la D lleva el guion y NADA más', () => {
-  const bloques = [{ clave: 'bsa', fProt: 15, contrato: null }]
-  const guion = []; guion[14] = ['2.6 · BSA', 46232, 46255, '—', '', '', '', '', '']
-  assert.deepEqual(contratoMalPublicado(bloques, guion), [])
-  // Un cero publicado ahí AFIRMA que el contrato vale cero: eso sí es un defecto.
-  const cero = []; cero[14] = ['2.6 · BSA', 46232, 46255, 0, '', '', '', '', '']
-  assert.equal(contratoMalPublicado(bloques, cero).length, 1)
-  // Y una celda vacía tampoco: es indistinguible de una fórmula que se rompió en silencio.
-  const vacia = []; vacia[14] = ['2.6 · BSA', 46232, 46255, '', '', '', '', '', '']
-  assert.equal(contratoMalPublicado(bloques, vacia).length, 1)
+test('sin contrato declarado, la D tiene que ser la suma viva — y el control lo puede negar', () => {
+  const bloques = [{ clave: 'bsa', fProt: 15, contrato: null, contratoUsd: null }]
+  const viva = []; viva[14] = ['2.6 · BSA', 46232, 46255, '=SUMIFS(Cobranzas!J:J;...)', '', '', '', '', '']
+  assert.deepEqual(contratoMalPublicado(bloques, viva), [])
+  // Un guion vuelve a dejar la columna vacía; un cero AFIRMA que el contrato vale cero; una celda
+  // en blanco es indistinguible de una fórmula que se rompió en silencio. Los tres son defectos.
+  for (const publicado of ['—', 0, '']) {
+    const fila = []; fila[14] = ['2.6 · BSA', 46232, 46255, publicado, '', '', '', '', '']
+    assert.equal(contratoMalPublicado(bloques, fila).length, 1, `"${publicado}" tiene que denunciarse`)
+  }
+})
+
+test('el contrato en DÓLARES se publica como fórmula, y pegarlo en pesos se denuncia', () => {
+  // Quattropani declara "Resto 50% s/ contrato U$S 63.000 + IVA". Valuarlo en el escritor lo
+  // congelaría al dólar del día de la corrida: el contrato de una obra en dólares se mueve con el
+  // dólar, y la pestaña ya tiene el TC en el título del cuadro.
+  const bloques = [{ clave: 'quattropani', fProt: 20, contrato: null, contratoUsd: 63_000 }]
+  const conFormula = []; conFormula[19] = ['2.7', 46262, 46396, '=63000*Datos!B2', '', '', '', '', '']
+  assert.deepEqual(contratoMalPublicado(bloques, conFormula), [])
+  const pegado = []; pegado[19] = ['2.7', 46262, 46396, 95_060_720, '', '', '', '', '']
+  assert.equal(contratoMalPublicado(bloques, pegado).length, 1, 'un número pegado se congela: es defecto')
 })
 
 test('la fila que no se pudo releer se denuncia, no se da por buena', () => {

@@ -148,7 +148,7 @@ export function filasRecurrentes({ proveedores = [], fila0, col, letra, vacia })
  *   devuelve el número de bloque —se cuenta, no se tipea: sin la sección, los de abajo se corren—.
  */
 export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia, anio, numerar }) {
-  if (!proveedores.length) return { filas: [], fTot: null }
+  if (!proveedores.length) return { filas: [], fCab: null, fTot: null }
   const salida = []
   salida.push(vacia())
   const titulo = vacia(); titulo[0] = `${numerar()} · LOS SERVICIOS RECURRENTES, MES A MES`
@@ -160,6 +160,7 @@ export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia,
   cab[col.proy] = 'Proyectado'
   cab[col.totalAnio] = `Total ${anio}`
   salida.push(cab)
+  const fCab = fila0 + salida.length - 1
   const f0 = fila0 + salida.length
   const r = filasRecurrentes({ proveedores, fila0: f0, col, letra, vacia })
   for (const [i, fila] of r.filas.entries()) {
@@ -174,7 +175,7 @@ export function seccionRecurrentes({ proveedores = [], fila0, col, letra, vacia,
     tot[c] = `=SUM(${letra(c)}${r.f0}:${letra(c)}${r.f1})`
   }
   salida.push(tot)
-  return { filas: salida, fTot: fila0 + salida.length - 1 }
+  return { filas: salida, fCab, fTot: fila0 + salida.length - 1 }
 }
 
 /** El cierre de la sección de recurrentes. Va APARTE del de Estructura a propósito: son dos universos

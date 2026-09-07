@@ -145,14 +145,23 @@ test('lo que RESTA COBRAR sale del ESTADO, no de una columna de saldo', () => {
   }
 })
 
-test('el CONTRATO no es una fórmula: lo trae el escritor de la Orden de Compra de Cobranzas', () => {
+test('el CONTRATADO llega en una de sus tres formas, y NINGUNA obra queda en guion', () => {
   // Sheets no puede extraer "47.590.272" de adentro del texto "Resto 50% s/ total 47.590.272 —
-  // certificación quincenal 1/4". Por eso el número lo lee `cobranzas-contrato.mjs` en cada corrida
-  // y entra como valor; sin contrato, la celda publica el guion y NUNCA un cero.
+  // certificación quincenal 1/4": ese número lo lee `cobranzas-contrato.mjs` en cada corrida y entra
+  // como VALOR. Las otras dos formas sí son fórmula: el contrato en dólares se publica «U$S × TC»
+  // para que no se congele, y la obra que no lo declara publica la suma viva de sus filas.
+  //
+  // EL GUION YA NO ES UNA RESPUESTA VÁLIDA ACÁ (07/09/2026). Cinco de las diez obras no declaran
+  // contrato y la columna salía medio vacía; el dueño la rechazó dos veces. Lo que NO puede volver
+  // es la venta acumulada en la obra que SÍ declara contrato: ahí Instalación Eléctrica publicaba
+  // $20.000.000 sobre un contrato de $40.000.000 y aparentaba perder plata.
   for (const n of filasObra) {
     const v = cel(g, `D${n}`)
-    assert.ok(typeof v === 'number' || v === SIN_CONTRATO, `D${n}: contrato o guion, nada más`)
+    const esNumero = typeof v === 'number'
+    const esFormula = typeof v === 'string' && v.startsWith('=')
+    assert.ok(esNumero || esFormula, `D${n}: número del contrato o fórmula viva, nunca un guion`)
     assert.notEqual(v, 0, `D${n}: un 0 afirmaría que el contrato vale cero`)
+    assert.notEqual(v, SIN_CONTRATO, `D${n}: la columna ya no admite el guion`)
   }
 })
 
@@ -272,14 +281,14 @@ test('los cierres suman las filas UNA POR UNA, no un rango que se lleve puesto l
   assert.ok(!String(cel(g, `E${g.fTotObras}`)).includes(':'), 'ningún rango en el cierre')
 })
 
-test('el cierre del contratado y el del costo citan SÓLO las filas que publican un número', () => {
-  // Las otras publican el guion, y una suma que ignora texto depende de una conducta de Sheets que no
-  // se puede verificar sin escribir en el archivo. Citando sólo las filas con número, el resultado es
-  // el mismo en Sheets y en el evaluador en frío — y el test puede afirmarlo.
-  const conContrato = g.bloques.filter((b) => b.contrato).map((b) => b.fProt)
+test('el cierre cita TODAS las obras en el contratado y SÓLO las que tienen costo en el costo', () => {
+  // El contratado ya lo publican las diez —número, «U$S × TC» o suma viva—, así que el cierre las
+  // suma a todas y el total es el valor de la cartera. El costo NO: sólo lo tienen las obras con
+  // explosión de gastos, y ahí la suma sigue citando fila por fila. Una suma por RANGO que ignora
+  // texto depende de una conducta de Sheets que no se puede verificar sin escribir en el archivo;
+  // citando las filas, el resultado es el mismo en Sheets y en el evaluador en frío.
   const conCosto = g.bloques.filter((b) => !b.sinCosto).map((b) => b.fProt)
-  assert.equal(cel(g, `D${g.fTotObras}`),
-    conContrato.length ? `=${conContrato.map((n) => `D${n}`).join('+')}` : SIN_CONTRATO)
+  assert.equal(cel(g, `D${g.fTotObras}`), `=${filasObra.map((n) => `D${n}`).join('+')}`)
   assert.equal(cel(g, `H${g.fTotObras}`),
     conCosto.length ? `=${conCosto.map((n) => `H${n}`).join('+')}` : SIN_COSTO)
   assert.ok(conCosto.length < filasObra.length, 'hay obras sin costo cargado: si no, este test no prueba nada')

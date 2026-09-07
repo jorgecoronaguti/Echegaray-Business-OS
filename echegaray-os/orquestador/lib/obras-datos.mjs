@@ -433,7 +433,12 @@ export const OBRAS_FUTURAS = [
     clave: 'messina-pisos-120-rampa',
     cliente: 'MESSINA',
     obra: 'PISOS 120 M² Y RAMPA',
-    ventaTexto: 'Pisos 120m2',
+    // LA RAMPA ES PARTE DE LA OBRA Y SE FACTURA APARTE (07/09/2026). Con el texto "Pisos 120m2" la
+    // obra publicaba $7.108.887 y le faltaba la fila 96 —"Rampa para Piso 120 m2", OC 2226,
+    // $2.354.255—, que es la otra mitad de lo que el rótulo promete. "Piso" toma las tres filas de
+    // MESSINA y NINGUNA más (verificado el 07/09 contra el archivo vivo); "120" habría sido peor:
+    // engancha cualquier número de orden de compra que lo contenga.
+    ventaTexto: 'Piso',
     // Cobranzas 51 y 52 (OC 02-00002097, $3.554.443,27 c/u) + fila 92 (OC 00002-00002226, rampa
     // $2.354.255,39) = $9.463.141,93 neto.
     //

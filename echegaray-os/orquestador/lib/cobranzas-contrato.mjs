@@ -66,6 +66,32 @@ export function contratoDeclarado(texto) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+/**
+ * EL MARCADOR DEL CONTRATO EN DÓLARES.
+ *
+ * Quattropani escribe su contrato así: *"Resto 50% s/ contrato U$S 63.000 + IVA — certificación
+ * quincenal 1/9"*. El marcador de pesos NO lo puede leer y no es un descuido: el `$` de "U$S" está
+ * seguido de una letra, así que `MARCADOR_CONTRATO` no engancha, y menos mal — leer 63.000 como
+ * pesos publicaría un contrato noventa y cinco millones más chico que el real.
+ *
+ * SE DEVUELVE EN DÓLARES, NO EN PESOS. Convertir acá congelaría el contrato al tipo de cambio del
+ * día de la corrida; la pestaña publica `U$S × TC` como FÓRMULA VIVA y el número se mueve solo.
+ */
+export const MARCADOR_CONTRATO_USD = /(?:U\$S|US\$|USD)\s*(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)/i
+
+/**
+ * EL CONTRATO EN DÓLARES QUE DECLARA UN TEXTO DE ORDEN DE COMPRA.
+ *
+ * @param {string} texto la celda "ORDEN DE COMPRA" tal cual
+ * @returns {number|null} el monto en USD, o null si esa fila no declara ninguno
+ */
+export function contratoUsdDeclarado(texto) {
+  const m = MARCADOR_CONTRATO_USD.exec(String(texto ?? ''))
+  if (!m) return null
+  const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 /** El código con el que Cobranzas marca una fila en dólares (col "Moneda"). */
 export const MONEDA_USD = 'USD'
 
@@ -248,15 +274,25 @@ export function filasDeObra(filas = [], cols = {}, obra = {}) {
  */
 export function contratoDeObra(filas = [], cols = {}, obra = {}, desde = 1) {
   const valores = []
+  const enUsd = []
   for (const i of filasDeObra(filas, cols, obra)) {
     const texto = String(filas[i]?.[cols.oc] ?? '')
     const monto = contratoDeclarado(texto)
     if (monto) valores.push({ monto, fila: desde + i, texto })
+    // EL DÓLAR SE JUNTA APARTE Y NO SE SUMA AL PESO: son unidades distintas y sumarlas daría un
+    // número sin significado. Quattropani declara U$S 63.000 y ninguna de sus filas declara pesos,
+    // así que las dos listas nunca se pisan; si algún día se pisaran, gana el peso —está en la
+    // moneda en la que se cobra— y el dólar queda visible en `usd` para poder mirarlo.
+    const usd = contratoUsdDeclarado(texto)
+    if (usd) enUsd.push({ monto: usd, fila: desde + i, texto })
   }
   const distintos = [...new Set(valores.map((v) => v.monto))]
+  const distintosUsd = [...new Set(enUsd.map((v) => v.monto))]
   return {
     contrato: distintos.length ? distintos.reduce((a, b) => a + b, 0) : null,
+    contratoUsd: distintosUsd.length ? distintosUsd.reduce((a, b) => a + b, 0) : null,
     valores,
+    usd: enUsd,
     distintos,
     partido: distintos.length > 1,
   }

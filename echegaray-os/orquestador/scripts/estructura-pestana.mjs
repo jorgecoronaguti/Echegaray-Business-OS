@@ -243,7 +243,7 @@ export function grilla(recurrentes = []) {
   // Diferencia … debe ser $0») restando contra una `B18` vacía, o sea gritando en rojo el total
   // entero del cuadro. Ver lib/celda-de-estructura.mjs.
   const indivisibles = [{ desde: fc - 1, hasta: fc + 2 }, bloqueIndivisible(arca0)]
-  return { filas: resuelto, f0, f1, fTot, fTotRec, fCtrl: fc, rubros, arca0, indivisibles }
+  return { filas: resuelto, f0, f1, fTot, fTotRec, fCabRec: rec.fCab, fCtrl: fc, rubros, arca0, indivisibles }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -421,9 +421,15 @@ export function formatosPropios(sheetId, g) {
 
   fmt(r(0, g.filas.length, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
-  fmt({ ...r(FILA_CAB - 1, FILA_CAB), startColumnIndex: C_MES0, endColumnIndex: C_MES0 + 12 },
-    'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'DATE', pattern: 'mmm' }, horizontalAlignment: 'RIGHT' })
+  // LOS DOS ENCABEZADOS DE MES LLEVAN EL MISMO FORMATO, y el segundo se resuelve por la fila que la
+  // grilla declara — no por una constante. Sin esto la fila 18 publicaba «1/1/2026» crudo al lado de
+  // un «ene»: dos formas del mismo encabezado en la misma pestaña, que es justo lo que la
+  // unificación vino a terminar.
+  for (const fc of [FILA_CAB, ...(g.fTotRec ? [g.fCabRec] : [])].filter(Boolean)) {
+    fmt({ ...r(fc - 1, fc), startColumnIndex: C_MES0, endColumnIndex: C_MES0 + 12 },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'DATE', pattern: 'mmm' }, horizontalAlignment: 'RIGHT' })
+  }
   fmt({ ...r(FILA_CAB - 1, FILA_CAB), startColumnIndex: C_TOTREAL, endColumnIndex: C_PCT + 1 },
     'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })

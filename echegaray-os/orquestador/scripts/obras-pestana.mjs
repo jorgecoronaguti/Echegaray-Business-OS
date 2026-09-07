@@ -55,7 +55,9 @@ import {
   conColaLimpiable, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, contratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
-import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
+import {
+  contratoDeObra, filasDeObra, monedasDesconocidas, normalizarMoneda,
+} from '../lib/cobranzas-contrato.mjs'
 import { certificadoDeObra } from '../lib/obras-certificado.mjs'
 // El ⚠ del log sale de su única fuente, no tipeado: el guardián de `glifos-generadores.test.mjs`
 // existe porque un glifo tipeado ya se coló en una celda y el PDF no lo dibujaba.
@@ -289,6 +291,9 @@ export function leerContratos(filas, refs, obras) {
       variantes: variantesDe(o.cliente), needle: o.ventaTexto, unica: porCliente.get(o.cliente) === 1,
     }
     const c = contratoDeObra(filas, cols, selector, refs.cob.desde)
+    // LAS FILAS DE LA OBRA VIAJAN CON EL CONTRATO aunque ninguna lo declare: son la evidencia de la
+    // obra que publica la suma viva, y recalcularlas después con otro selector sería otra medición.
+    c.filasObra = filasDeObra(filas, cols, selector).map((i) => refs.cob.desde + i)
     contratos.set(o.clave, c)
     certificados.set(o.clave, certificadoDeObra(filas, cols, selector, c.contrato, refs.cob.desde))
   }
@@ -420,13 +425,26 @@ async function main() {
   const { contratos, certificados, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
   await verificarMoneda(google, { monedasRaras, hayUSD })
   const obras = OBRAS_FUTURAS.map((o) => ({
-    ...o, contrato: contratos.get(o.clave)?.contrato ?? null, cert: certificados.get(o.clave) ?? null,
+    ...o,
+    contrato: contratos.get(o.clave)?.contrato ?? null,
+    contratoUsd: contratos.get(o.clave)?.contratoUsd ?? null,
+    cert: certificados.get(o.clave) ?? null,
   }))
   for (const o of obras) {
     const c = contratos.get(o.clave)
-    console.log(`  contrato · ${o.clave}: ${o.contrato === null ? 'NO DECLARADO en ninguna fila — publico "—"'
-      : `$${o.contrato.toLocaleString('es-AR')}${c.partido ? ` (PARTIDO: ${c.distintos.map((d) => `$${d.toLocaleString('es-AR')}`).join(' + ')})` : ''}`
-        + ` · declarado en ${c.valores.length} fila(s): ${c.valores.map((v) => v.fila).join(', ')}`}`)
+    // LA OBRA QUE NO DECLARA CONTRATO PUBLICA LA SUMA VIVA DE SUS FILAS, Y ESO SE DICE ACÁ CON LAS
+    // FILAS A LA VISTA. Es el único camino de los tres que INFIERE —supone que la obra tiene todos
+    // sus hitos cargados—, así que la evidencia para desmentirlo tiene que quedar en la corrida: sin
+    // esto, una obra a medio facturar publicaría de menos exactamente como pasó con Instalación
+    // Eléctrica, y nadie se enteraría hasta que el dueño lo viera en la pestaña.
+    console.log(`  contrato · ${o.clave}: ${
+      o.contrato ? `$${o.contrato.toLocaleString('es-AR')}${c.partido ? ` (PARTIDO: ${c.distintos.map((d) => `$${d.toLocaleString('es-AR')}`).join(' + ')})` : ''}`
+        + ` · declarado en ${c.valores.length} fila(s): ${c.valores.map((v) => v.fila).join(', ')}`
+        : o.contratoUsd ? `U$S ${o.contratoUsd.toLocaleString('es-AR')} · publico "U$S x TC" como fórmula`
+          + ` · declarado en ${c.usd.length} fila(s): ${c.usd.map((v) => v.fila).join(', ')}`
+          : `${ALERTA} NO DECLARADO — publico la SUMA VIVA de sus filas de ${refs.cob.hoja}`
+            + ` (fila(s) ${c.filasObra.join(', ') || 'ninguna'})`
+    }`)
     // LOS HITOS SE LOGUEAN UNO POR UNO. La `C` publica un total; el que audita necesita ver de qué
     // filas salió y qué filas quedaron AFUERA del contrato, porque ahí es donde vivía el defecto:
     // una fila puede facturar el hito Y algo que el contrato no incluye (Quattropani, materiales).
@@ -573,9 +591,9 @@ async function main() {
     { render: 'FORMULA' }).catch(() => [])
   if (!formulas.length) throw new Error('escribí pero no pude releer las FÓRMULAS: no puedo verificar la columna del contrato.')
   const malCont = contratoMalPublicado(g.bloques, formulas)
-  if (malCont.length) throw new Error(`LA COLUMNA "Contratado" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
+  if (malCont.length) throw new Error(`LA COLUMNA "Venta (neto)" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
   const conContrato = g.bloques.filter((b) => b.contrato).length
-  console.log(`  ✓ contrato publicado en ${conContrato} de ${g.bloques.length} obras `
+  console.log(`  ✓ venta viva en las ${g.bloques.length} obras · contrato leído en ${conContrato} `
     + `(las otras no declaran contrato en ninguna fila de ${REFS_OBRAS.cob.hoja} y publican "${SIN_CONTRATO}")`)
 
   // ═══ EL CONTROL DEL DOBLE CONTEO, DESPUÉS DE QUE EL CUADRO DE CLIENTES SALIERA (07/09/2026) ═══
