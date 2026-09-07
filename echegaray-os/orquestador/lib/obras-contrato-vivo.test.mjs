@@ -81,7 +81,7 @@ test('NINGUNA OTRA OBRA SE MUEVE: la conversión toca la fila en dólares y nada
   }
 })
 
-test('el CONTRATO de cada obra sale de Cobranzas, y seis de siete cierran EXACTO', () => {
+test('el CONTRATO de cada obra sale de Cobranzas, y las que lo declaran cierran EXACTO', () => {
   // Es la verificación cruzada que vale: el contrato lo declara el TEXTO de la Orden de Compra y la
   // venta sale de la columna de importes. Que den lo mismo prueba que el extractor leyó bien y que
   // están cargados todos los hitos — dos cosas que ninguna de las dos fuentes puede afirmar sola.
@@ -93,6 +93,15 @@ test('el CONTRATO de cada obra sale de Cobranzas, y seis de siete cierran EXACTO
     'messina-playon-azufre': 102_500_000,
     'messina-bsa': null,
     'quattropani-salon-comercial': 97_650_000,
+    // LAS TRES DE MESSINA QUE ENTRARON EL 07/09 van en `null` acá y NO es un descuido: el fixture de
+    // Cobranzas de este test es el de agosto y todavía no tiene sus filas. En la Cobranzas REAL las
+    // tres sí declaran contrato (OC 2266 $20.090.868 · OC 2256 $10.000.000 · OC 2097+2226
+    // $9.463.142). Lo que este test prueba es el EXTRACTOR —que lee el contrato del texto de la OC y
+    // lo cruza contra los importes—, no que el fixture esté al día: clavar acá los importes reales
+    // sin sus filas en el fixture haría pasar el test por una coincidencia, no por la regla.
+    'messina-playon-dilucion-acido': null,
+    'messina-adicional-tercer-muro': null,
+    'messina-pisos-120-rampa': null,
   }
   assert.deepEqual(Object.fromEntries(contratos), esperado)
   for (const [clave, c] of Object.entries(esperado)) {

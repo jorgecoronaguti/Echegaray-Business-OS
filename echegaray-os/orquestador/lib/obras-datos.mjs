@@ -354,6 +354,89 @@ export const OBRAS_FUTURAS = [
     noCaja: { maquinaPropia: 1_691_659 },
     notas: 'materiales YA comprados y en Compras, se facturan al cliente con margen — no se proyecta ninguno',
   },
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // LAS TRES QUE FALTABAN — leídas de COBRANZAS, no de una lista que alguien se acuerde de tocar
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // El dueño, 07/09/2026: *«está mal lo hecho en pestaña OBRAS porque FALTAN obras, y hay obras que
+  // ya no están: tenés que revisar contra pestaña COBRANZAS»*. Tenía razón, y el defecto no es que
+  // faltaran tres filas: es que esta lista se escribe A MANO. Cobranzas es el ledger vivo del dueño y
+  // ya tenía las tres, con su OC y su importe, desde hace días. Mientras la lista no se DERIVE de
+  // Cobranzas, esto vuelve a pasar con la próxima obra — está declarado como deuda, no resuelto acá.
+  //
+  // Las tres se agregan con la VENTA que dice Cobranzas y SIN costo inventado. Sin egresos ni MO, la
+  // réplica no tiene filas para ellas y `formulaCostoProyectado` publica #N/A: un dato que falta se
+  // VE. Poner 0 las dibujaría como obras sin costo, que es una mentira con formato de moneda.
+  {
+    clave: 'messina-playon-dilucion-acido',
+    cliente: 'MESSINA',
+    obra: 'PLAYÓN DILUCIÓN DE ÁCIDO',
+    ventaTexto: 'Playón para Dilución de Ác',
+    // Cobranzas filas 95 y 96 (03/09/2026), OC 00002-00002266: $10.045.433,92 cada una =
+    // $20.090.867,84 neto. Coincide centavo a centavo con la cotización interna del 28/08 en Drive.
+    comprasObra: 'Dilución',
+    inicio: '2026-09-03',
+    fin: '2026-12-31',
+    plantelFullTime: 0,
+    plantelTemporales: 0,
+    pctEjecutado: 0,
+    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
+    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
+    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
+    sinCosto: 'no hay archivo de costo en Drive para esta obra',
+    notas: 'FALTA_DATO: no hay archivo de costo en Drive para esta obra. La venta sale de Cobranzas 95-96 (OC 2266). El costo se publica #N/A a propósito — no se inventa.',
+  },
+  {
+    clave: 'messina-adicional-tercer-muro',
+    cliente: 'MESSINA',
+    obra: 'ADICIONAL TERCER MURO',
+    ventaTexto: 'Adicional tercer muro',
+    // Cobranzas fila 94 (02/09/2026), OC 00002-00002256: $10.000.000 neto.
+    comprasObra: 'tercer muro',
+    inicio: '2026-09-02',
+    fin: '2026-12-31',
+    plantelFullTime: 0,
+    plantelTemporales: 0,
+    pctEjecutado: 0,
+    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
+    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
+    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
+    sinCosto: 'sin archivo de costo en Drive',
+    notas: 'FALTA_DATO: sin archivo de costo. Venta de Cobranzas 94 (OC 2256). El dueño la declaró obra propia el 07/09, no un adicional dentro de Playón de Azufre.',
+  },
+  {
+    clave: 'messina-pisos-120-rampa',
+    cliente: 'MESSINA',
+    obra: 'PISOS 120 M² Y RAMPA',
+    ventaTexto: 'Pisos 120m2',
+    // Cobranzas 51 y 52 (OC 02-00002097, $3.554.443,27 c/u) + fila 92 (OC 00002-00002226, rampa
+    // $2.354.255,39) = $9.463.141,93 neto.
+    //
+    // CONFLICTO DECLARADO Y NO RESUELTO: el PDF de la OC 2226 en Drive dice, en su campo DETALLE,
+    // «PLAYON AZUFRE» — no «rampa». Cobranzas, que es el ledger del dueño, la imputa acá. Gana
+    // Cobranzas porque es la fuente que él mantiene, pero si la OC estuviera bien archivada estos
+    // $2.354.255 serían de Playón de Azufre y no de esta obra.
+    comprasObra: 'Pisos 120',
+    inicio: '2026-07-20',
+    fin: '2026-12-31',
+    plantelFullTime: 0,
+    plantelTemporales: 0,
+    pctEjecutado: 0,
+    horas: { oficialEspecializado: 0, oficial: 0, ayudante: 0 },
+    moCargasPesos: 0,
+    egresos: [],
+    // LA AUSENCIA DE COSTO SE DECLARA, NO SE CUELA COMO UN CERO. Con este campo el test de shape
+    // deja de exigir `moCargasPesos > 0` para ESTA obra y sigue exigiéndolo para todas las demás: una
+    // obra nueva no puede entrar en silencio con costo cero, tiene que decir por qué no lo tiene.
+    sinCosto: 'sin archivo de costo en Drive',
+    notas: 'FALTA_DATO: sin archivo de costo. Venta de Cobranzas 51, 52 y 92. La OC 2226 dice "PLAYON AZUFRE" en su detalle: conflicto declarado, manda Cobranzas.',
+  },
 ]
 
 /**

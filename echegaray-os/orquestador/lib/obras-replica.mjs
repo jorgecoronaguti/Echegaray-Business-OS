@@ -22,6 +22,9 @@ export const REPLICA_COLUMNAS = Object.freeze([
 ])
 export const REPLICA_COL = Object.freeze({ obraClave: 'A', obra: 'B', tipo: 'C', monto: 'H' })
 
+/** Los dos valores que toma la columna `Tipo`. Medidos sobre la réplica viva: 7 y 17 filas. */
+export const TIPO = Object.freeze({ mo: 'mano_de_obra', material: 'material' })
+
 /** Primera fila de datos: 1 título, 2 nota, 3 encabezado. */
 export const REPLICA_DESDE = 4
 /** Última fila que citan las fórmulas. RANGO CERRADO. El generador ROMPE si los datos no entran. */
@@ -52,4 +55,29 @@ export const REPLICA_HASTA = 200
 export function formulaCostoProyectado(obra, { pestana = PESTANA_REPLICA, desde = REPLICA_DESDE, hasta = REPLICA_HASTA } = {}) {
   const criterio = `${pestana}!$${REPLICA_COL.obra}$${desde}:$${REPLICA_COL.obra}$${hasta};"${String(obra ?? '')}"`
   return `=IF(COUNTIFS(${criterio})=0;NA();SUMIFS(${pestana}!$${REPLICA_COL.monto}$${desde}:$${REPLICA_COL.monto}$${hasta};${criterio}))`
+}
+
+/**
+ * EL COSTO PROYECTADO DE UNA OBRA, PARTIDO POR TIPO — mano de obra o materiales.
+ *
+ * ═══ POR QUÉ HACÍA FALTA (07/09/2026) ═══
+ *
+ * Pedido del dueño: *«reflejame las obras que se vienen de aquí a fin de año con su venta y COSTO
+ * DESGLOSADO»*. El cuadro publicaba un solo número por obra, y un total sin partir no contesta la
+ * pregunta que se hace al cotizar: en esta obra, ¿lo que pesa es la mano de obra o el material? La
+ * diferencia es enorme y ya está medida: en la instalación eléctrica de San Francisco la MO es el
+ * 87% del costo y en BSA el 21%. Dos obras del mismo año con motores económicos opuestos.
+ *
+ * Es la MISMA fórmula que `formulaCostoProyectado` con un criterio más, no otra suma por otro
+ * camino: si mañana cambia el rango de la réplica, cambian las tres juntas. Y conserva el `COUNTIFS`
+ * de adelante por el mismo motivo — un `SUMIFS` sobre una obra que la réplica no tiene devuelve
+ * CERO, y el formato de moneda lo dibuja como «—»: el costo desaparecería sin que nada grite.
+ *
+ * @param {string} obra el rótulo tal como lo escribe la réplica en su columna B
+ * @param {string} tipo `TIPO.mo` o `TIPO.material`
+ */
+export function formulaCostoPorTipo(obra, tipo, { pestana = PESTANA_REPLICA, desde = REPLICA_DESDE, hasta = REPLICA_HASTA } = {}) {
+  const porObra = `${pestana}!$${REPLICA_COL.obra}$${desde}:$${REPLICA_COL.obra}$${hasta};"${String(obra ?? '')}"`
+  const porTipo = `${pestana}!$${REPLICA_COL.tipo}$${desde}:$${REPLICA_COL.tipo}$${hasta};"${String(tipo ?? '')}"`
+  return `=IF(COUNTIFS(${porObra})=0;NA();SUMIFS(${pestana}!$${REPLICA_COL.monto}$${desde}:$${REPLICA_COL.monto}$${hasta};${porObra};${porTipo}))`
 }

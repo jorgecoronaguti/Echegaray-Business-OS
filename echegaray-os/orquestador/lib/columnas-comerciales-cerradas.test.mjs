@@ -69,6 +69,20 @@ const PERSONAS_ABIERTAS = [
   // liquida JORNALES, la obra no lo usa, y la ficha lo lee por `persona_legajo`, que corre como su
   // dueño y no depende de este grant.
   'en_la_empresa',
+  // `es_prueba` está por la MISMA razón que `en_la_empresa` y con el mismo cuidado: la necesita
+  // `persona_directorio` —que es `security_invoker`— para no publicar los registros que existen sólo
+  // para probar. Sin este grant la vista entera devuelve «permission denied for table personas» y la
+  // pantalla de Personal no carga: pasó el 07/09/2026 y estuvo rota veinte minutos.
+  //
+  // ABRIRLA NO PUBLICA NADA DE NADIE: es un booleano sobre el REGISTRO, no sobre la persona. Dice si
+  // la fila la creó un fixture, no un hecho del legajo. Saberlo no revela ni el teléfono, ni el
+  // sueldo, ni el DNI, ni la carpeta de Drive de nadie — que es lo que esta lista blanca protege.
+  //
+  // Y la alternativa era peor: el primer arreglo fue poner la vista en `security_invoker = false`
+  // para esquivar el grant, y eso apagó el RLS de `personas` — cualquier autenticado, incluido un rol
+  // de campo, pasó a leer las 74 filas. Un permiso mínimo y declarado le gana a una vista que se
+  // saltea la cerradura entera.
+  'es_prueba',
 ]
 
 const SIN_BASE = !process.env.DATABASE_URL

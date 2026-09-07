@@ -140,7 +140,7 @@ import { sumaConUSD } from './cobranzas-contrato.mjs'
 import { formulaCertificado } from './obras-certificado.mjs'
 // EL CONTRATO DE LA RÉPLICA `_OBRAS_RAW` VIVE EN UN SOLO LADO: nombre de la pestaña, letras de
 // columna, tope del rango y la fórmula que los usa. Ver lib/obras-replica.mjs.
-import { formulaCostoProyectado } from './obras-replica.mjs'
+import { TIPO, formulaCostoPorTipo, formulaCostoProyectado } from './obras-replica.mjs'
 // EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
 // pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
 // mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
@@ -244,8 +244,17 @@ export const ANCHO_HISTORICO = 9
  * Se limpia hasta acá y no hasta el fondo de la hoja, por lo mismo que el ancho: más abajo nunca
  * escribió este generador. Y si la grilla lo supera, `conColaLimpiable` ROMPE en vez de dejar cola
  * silenciosa — la constante se sube a mano, que es la única forma de que siga significando algo.
+ *
+ * 66 → 72 el 07/09/2026: entraron las tres obras de MESSINA que faltaban contra Cobranzas (Playón
+ * para Dilución de Ácido, Adicional tercer muro, Pisos 120 m² + Rampa) y la grilla pasó a 68 filas.
+ * El guardián rompió y dijo exactamente a cuánto subirla — que es para lo que existe.
+ *
+ * SE DEJA HOLGURA Y NO SE CLAVA EN 68 A PROPÓSITO. Con el alto EXACTAMENTE igual a la grilla no queda
+ * banda de limpieza: el día que una obra salga, su fila vieja se queda publicada. Cuatro filas de
+ * margen son dos obras más — y la limpieza sólo toca lo que el registro de rótulos prueba que es de
+ * este generador, así que una anotación del dueño ahí abajo se conserva igual.
  */
-export const ALTO_HISTORICO = 66
+export const ALTO_HISTORICO = 72
 
 /**
  * LAS FILAS CON SU COLA LIMPIABLE: cada una llega hasta `hasta` con el centinela VACIO, que significa
@@ -1253,13 +1262,19 @@ function bloqueCosto(h, refs, o, idx) {
   // el cuadro. Lo que ya no hace es entrar a la celda: la celda es la fórmula de arriba.
   const proyectado = totalEgresos(o)
   const patron = comprasObraDe(o)
-  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, formulaCostoProyectado(o.obra ?? o.clave), compradoDeObra(cmp, o), `=C${f}-D${f}`,
+  const rotuloObra = o.obra ?? o.clave
+  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, formulaCostoProyectado(rotuloObra), compradoDeObra(cmp, o), `=C${f}-D${f}`,
+    formulaCostoPorTipo(rotuloObra, TIPO.mo), formulaCostoPorTipo(rotuloObra, TIPO.material), '',
     patronEstaDeclarado(o) ? `Compras: "${patron}"` : escribiEnCompras(patron)],
   // LA `F` DE ESTE CUADRO NO ES LA ALARMA SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA, y
   // por eso DERRAMA: mide 138px, `Compras: "Salones Comerciales"` mide 189, y con CLIP el texto no se
   // recorta — desaparece, justo en las obras que sí emparejaron. La G, la H y la I de este cuadro
   // están vacías, así que derramar sobre ellas usa un espacio que ya está y no tapa nada.
-  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'texto'])
+  // La H va VACÍA y declarada `fecha`: este cuadro no la usa, y la columna es de fechas de punta a
+  // punta salvo donde otro cuadro dice lo contrario. Declararla mal dibujó $7.671.680 como un día del
+  // año 2110 una vez; por eso la especie la declara la celda y un test la mide sobre la matriz.
+  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal',
+    'fecha', 'texto'])
   // La C DEJÓ DE SER TIPEADA: ya no se anota como tal. `tipeadas` alimenta el conteo que la corrida
   // publica en el log, y dejarla adentro haría que el log siguiera diciendo que hay siete números
   // del dueño estampados donde ya no hay ninguno.
@@ -1430,16 +1445,24 @@ export function grillaObras(ctx = {}) {
   // esa obra por su texto de "Detalles / Obra": es un hecho, y la columna F dice cuál es ese texto
   // para que se pueda ir a la fuente a verificarlo. El porqué del camino está en `compradoDeObra`.
   h.push([`${SECCION_COSTO} · OBRAS — COSTO PROYECTADO Y COMPRAS IMPUTADAS`], ['rotulo'])
-  h.push(['Obra', '% comprado', 'Costo proyectado', 'Comprado (real)', 'Resta proyectado', 'Imputado por'],
-    ENCABEZADO)
+  // ═══ EL COSTO SE PARTE (07/09/2026) ═══
+  //
+  // Pedido del dueño: «venta y COSTO DESGLOSADO». Un total por obra no contesta lo que se pregunta al
+  // cotizar la próxima: acá, ¿pesa la mano de obra o el material? La brecha ya está medida y es
+  // enorme —87% MO en la instalación eléctrica de San Francisco, 21% en BSA—, o sea dos obras del
+  // mismo año con motores económicos opuestos. `Imputado por` se corre a la I, que estaba vacía: es
+  // texto y sigue teniendo dónde derramar.
+  h.push(['Obra', '% comprado', 'Costo proyectado', 'Comprado (real)', 'Resta proyectado',
+    'Mano de obra', 'Materiales', '', 'Imputado por'], ENCABEZADO)
   const costos = obras.map((o, i) => bloqueCosto(h, refs, o, i + 1))
   const filasCosto = costos.map((c) => c.fila)
   const fTot3 = costos.length ? h.n + 1 : null
   let fSinImputar = null
   if (fTot3) {
     h.push([`⇒ TOTAL — ${costos.length} OBRAS`, `=IF(C${fTot3}=0;0;D${fTot3}/C${fTot3})`,
-      suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto)],
-    ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal'])
+      suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto),
+      suma('F', filasCosto), suma('G', filasCosto)],
+    ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal'])
 
     // ═══ LA FILA QUE HACE QUE NADA SE PIERDA NI SE REPARTA (14/08) ═══
     //
