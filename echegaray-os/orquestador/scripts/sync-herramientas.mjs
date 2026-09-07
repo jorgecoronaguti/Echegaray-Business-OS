@@ -50,7 +50,9 @@ async function main() {
        on conflict (id_herramienta) do update set
          nombre=excluded.nombre, ubicacion_actual=excluded.ubicacion_actual, fecha=excluded.fecha,
          sincronizado_en=now()
-       where public.herramientas.origen = 'appsheet_sheet'`,
+       where public.herramientas.origen = 'appsheet_sheet'
+         and (public.herramientas.nombre, public.herramientas.ubicacion_actual, public.herramientas.fecha)
+             is distinct from (excluded.nombre, excluded.ubicacion_actual, excluded.fecha)`,
       [id, row[1] ?? null, resolver(row[2]), fechaISO(row[3])],
     )
     n++
