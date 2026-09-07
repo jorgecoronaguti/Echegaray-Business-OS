@@ -45,11 +45,10 @@ import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/
 // comunes a los dos caminos.
 import { serialDeFecha } from '../lib/libro-extractores-obras.mjs'
 import {
-  materialesDesdeCuadro5, movimientosDeMateriales, exigirNeteoDeMateriales, totalDeclarado,
+  materialesDesdeRegistro, movimientosDeMateriales, exigirNeteoDeMateriales,
 } from '../lib/materiales-previstos.mjs'
 // El nombre REAL de la pestaña lo publica su propio generador: escribirlo acá a mano es la segunda
 // definición que se desincroniza el día que la pestaña se renombre.
-import { PESTANA_OBRAS as PESTANA_OBRAS_HOJA } from '../lib/obras-grilla.mjs'
 // La medición de si la MO de las obras llegó de verdad al flujo. Ver la nota al pie de la
 // conciliación con OBRAS: la línea que decía "$126.974.442 de MO va por Jornales" no medía nada.
 import {
@@ -70,6 +69,8 @@ import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompr
 import { total } from '../lib/patron-pestana.mjs'
 import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
+// EL PLAN DE EGRESOS DE OBRA VIVE EN POSTGRES DESDE EL 07/09/2026 (ver el bloque que lo lee).
+import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = '_MOVIMIENTOS'
@@ -79,7 +80,6 @@ const DRY = process.argv.includes('--dry')
 const hoySerial = () => Math.floor((Date.now() - Date.UTC(1899, 11, 30)) / 86400000)
 
 /** Dos decimales — sumar pesos con coma flotante deja centavos que después no cierran contra el Sheet. */
-const r2c = (v) => Math.round(v * 100) / 100
 
 // `Cliente` va DESPUÉS de `Clave` y no al lado de `Obra`, que es donde se leería mejor: el portón
 // (conciliar-libro.mjs) lee esta pestaña por índice —origen es el 13— y una columna insertada en el
@@ -236,48 +236,55 @@ async function extraerDeLasFuentes(google, corte) {
   // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
   const colEstadoCompras = columnaEstadoDeCompras(compras)
   const colsVivas = columnasVivasDeCompras(compras)
-  // ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE `OBRAS`, NO DE obras-datos.mjs (24/08/2026) ═══
+  // ═══ LOS MATERIALES PREVISTOS SALEN DE `public.obra_egreso_proyectado` (07/09/2026) ═══
   //
-  // Hasta hoy este bloque leía los egresos de `lib/obras-datos.mjs` —la transcripción de los PDF del
-  // dueño, con las fechas del día de la transcripción: casi todo el 25/08—. El dueño ENTRÓ A LA
-  // PESTAÑA y las corrigió a mano: movió el grueso al 07/09/2026 y repartió tres ítems en cuotas.
-  // **La edición manual del dueño es la verdad definitiva**, así que el cuadro 5 pasa a ser EL ORIGEN
-  // de estos movimientos y la constante deja de serlo para este camino. La lógica de lectura es pura
-  // y está probada en frío en lib/materiales-previstos.mjs; acá sólo se lee la pestaña.
+  // Vinieron de tres fuentes en tres meses y el motivo del último salto está escrito entero en
+  // `lib/materiales-previstos.mjs`: las constantes de obras-datos (hasta el 24/08) → el cuadro 5 de
+  // la pestaña OBRAS, porque el dueño editaba ahí las fechas a mano → el REGISTRO, porque el 07/09 el
+  // dueño sacó ese cuadro de la pestaña y su plan quedó sin celda.
   //
-  // SIN FALLBACK, A PROPÓSITO: si la pestaña no se puede leer o el cuadro no aparece, salen CERO
-  // materiales y se grita. Caer a las constantes sería republicar en silencio las fechas viejas que
-  // él ya corrigió — exactamente el defecto que este cambio arregla.
+  // LA MUDANZA SE HIZO ANTES DE SACAR EL CUADRO, no después: los 17 ítems con las fechas que él
+  // corrigió el 24/08 están en el registro con su celda de origen. Si se hubiera borrado primero, el
+  // cash flow habría perdido $18,9M de egresos proyectados sin un solo error.
+  //
+  // SIN FALLBACK, A PROPÓSITO: si el registro no se puede leer o está vacío, salen CERO materiales y
+  // se grita. Caer a las constantes sería republicar en silencio las fechas viejas que él ya corrigió
+  // — exactamente el defecto que las dos mudanzas anteriores vinieron a arreglar.
   //
   // ═══ LA LLAVE DEL DUEÑO (24/08/2026): «esas proyecciones no deben considerarse por el momento» ═══
   //
-  // La llave se conserva con su semántica: con ORQ_LIBRO_SIN_OBRAS=1 el libro sale sin «Materiales de
-  // obra proyectados». Lo que cambió es el DEFECTO: sin la llave vuelven a entrar, ahora con las
-  // fechas del dueño. Jornales, cargas, estructura y recurrentes NO pasan por acá.
+  // Se conserva con su semántica: con ORQ_LIBRO_SIN_OBRAS=1 el libro sale sin «Materiales de obra
+  // proyectados». Jornales, cargas, estructura y recurrentes NO pasan por acá.
   const sinObras = process.env.ORQ_LIBRO_SIN_OBRAS === '1'
-  // La FICHA de cada obra (cliente y fecha de inicio) sigue viniendo de obras-datos: el cuadro 5 no
-  // publica ninguno de los dos y el SUMPRODUCT del neteo los necesita. Lo que dejó de leerse de ahí
-  // es lo que el dueño editó — la fecha y el importe de cada ítem. Import dinámico con guarda, como
-  // estaba: sin el módulo la ficha sale vacía y el aviso de cada obra lo dice.
+  // La FICHA de cada obra (cliente y fecha de inicio) sigue viniendo de obras-datos: el registro no
+  // publica ninguno de los dos y el SUMPRODUCT del neteo los necesita. Import dinámico con guarda,
+  // como estaba: sin el módulo la ficha sale vacía y el aviso de cada obra lo dice.
   const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
   const contextoObras = new Map(OBRAS_FUTURAS.map((o) => [String(o?.obra ?? '').trim(), {
     clave: o?.clave, cliente: o?.cliente, inicioSerial: serialDeFecha(o?.inicio),
   }]))
-  // LA PESTAÑA OBRAS SE LEE ENTERA Y SIN FORMATEAR: la columna D del cuadro 5 es un SERIAL cuando la
-  // fecha es única, y sólo `UNFORMATTED_VALUE` lo devuelve como número. Formateada llegaría "07/09/26"
-  // y el parser tendría que adivinar el año dos veces.
-  const filasObras = sinObras ? [] : await google.readSheetValues(ID, `'${PESTANA_OBRAS_HOJA}'!A1:I`,
-    { render: 'UNFORMATTED_VALUE' }).catch((e) => {
-    console.error(`  ⚠⚠ NO PUDE LEER LA PESTAÑA ${PESTANA_OBRAS_HOJA} (${e.message}). Los materiales previstos `
-      + 'salen en CERO: no caigo a obras-datos.mjs porque eso republicaría las fechas viejas que el dueño '
-      + 'ya corrigió a mano, y saldrían sin que nadie se entere.')
-    return []
-  })
-  const cuadro5 = sinObras
+  // SÓLO LOS MATERIALES: la mano de obra del registro se paga por Jornales y entra al libro por su
+  // propia puerta. `to_char` y no el Date crudo — la VM corre en -03 y una medianoche UTC leída con
+  // los getters locales devuelve el DÍA ANTERIOR.
+  const previstos = sinObras ? [] : await query(`select obra_rotulo, concepto, familia, proveedor,
+      to_char(fecha_estimada, 'YYYY-MM-DD') as fecha_estimada, fecha_texto, monto, nota
+    from public.obra_egreso_proyectado where tipo = 'material'
+    order by fecha_estimada nulls last, obra_rotulo, concepto`)
+    .then((r) => r.rows)
+    .catch((e) => {
+      console.error(`  ⚠⚠ NO PUDE LEER public.obra_egreso_proyectado (${e.message}). Los materiales `
+        + 'previstos salen en CERO: no caigo a obras-datos.mjs porque eso republicaría las fechas '
+        + 'viejas que el dueño ya corrigió a mano, y saldrían sin que nadie se entere.')
+      return []
+    })
+  const plan = sinObras
     ? { movimientos: [], omitidas: [], resumen: { items: 0, movimientos: 0, total: 0, omitidas: 0 } }
-    : materialesDesdeCuadro5(filasObras, { aviso: (m) => console.warn(`  ⚠ ${m}`) })
+    : materialesDesdeRegistro(previstos, { aviso: (m) => console.warn(`  ⚠ ${m}`) })
   if (sinObras) {
     console.warn('  ⚠ materiales previstos: EXCLUIDOS por ORQ_LIBRO_SIN_OBRAS=1 (llave del dueño, 24/08) — el libro sale sin «Materiales de obra proyectados».')
+  } else if (!previstos.length) {
+    console.warn('  ⚠⚠ public.obra_egreso_proyectado NO TIENE MATERIALES: el cash flow sale sin un solo '
+      + 'egreso de obra proyectado. Cargalos con `node orquestador/scripts/obras-previstos-cargar.mjs --aplicar`.')
   }
   // ═══ SIN NETEO NO SE PUBLICA: ABORTA, Y EL MENSAJE DICE QUÉ COLUMNA FALTÓ (13/08/2026) ═══
   //
@@ -285,38 +292,33 @@ async function extraerDeLasFuentes(google, corte) {
   // pegados. El criterio, y por qué un dato muerto en silencio es peor que una corrida caída, viven
   // con la función en lib/libro-estado-vivo.mjs. Sin materiales previstos no hay nada que netear y no
   // hay nada que exigir: la corrida no depende de un encabezado que no va a usar.
-  const colsNeteo = cuadro5.movimientos.length ? exigirColumnasNeteo(compras) : null
-  const obrasFuturas = movimientosDeMateriales(cuadro5.movimientos, {
+  const colsNeteo = plan.movimientos.length ? exigirColumnasNeteo(compras) : null
+  const obrasFuturas = movimientosDeMateriales(plan.movimientos, {
     contexto: contextoObras, colsCompras: colsNeteo, corte, aviso: (m) => console.warn(`  ⚠ ${m}`),
   })
   // Y ACÁ TAMPOCO SE DEGRADA: si algún grupo no pudo netear, aborta con la obra y el proveedor
   // adentro. Es la misma puerta que `exigirColumnasNeteo`, una fila más abajo. Ver la función.
   exigirNeteoDeMateriales(obrasFuturas)
   if (obrasFuturas.resumen.movimientos) {
-    console.log(`  materiales previstos (cuadro 5 de ${PESTANA_OBRAS_HOJA}): ${obrasFuturas.resumen.obras} obra(s) · `
-      + `${cuadro5.resumen.items} ítem(s) · ${obrasFuturas.resumen.movimientos} egreso(s) proyectado(s) · `
+    console.log(`  materiales previstos (public.obra_egreso_proyectado): ${obrasFuturas.resumen.obras} obra(s) · `
+      + `${plan.resumen.items} ítem(s) · ${obrasFuturas.resumen.movimientos} egreso(s) proyectado(s) · `
       + `${pesos(obrasFuturas.resumen.total)} planificado (con neteo vivo contra Compras)`)
   }
-  // EL CONTROL DE LA LECTURA CONTRA EL TOTAL QUE PUBLICA LA PROPIA PESTAÑA. No es autocomplaciente:
-  // ese total lo calcula una fórmula SUM() de Sheets sobre las mismas celdas que el dueño edita, así
-  // que es una fuente distinta de este parser. Si no cierra, algún ítem se está leyendo mal o se está
-  // omitiendo — y un cuadro corto y coherente consigo mismo es el modo de falla más caro del archivo.
-  if (!sinObras) {
-    const declarado = totalDeclarado(filasObras)
-    const leido = r2c(cuadro5.resumen.total + cuadro5.omitidas.reduce((s, o) => s + (Number(o.previsto) || 0), 0))
-    if (declarado === null) {
-      console.warn(`  ⚠ el cuadro 5 de ${PESTANA_OBRAS_HOJA} no publica su fila «⇒ TOTAL»: leí ${pesos(leido)} y `
-        + 'no tengo contra qué contrastarlo.')
-    } else if (Math.abs(declarado - leido) > 1) {
-      console.warn(`  ⚠ el cuadro 5 declara ${pesos(declarado)} y yo leí ${pesos(leido)} `
-        + `(${pesos(declarado - leido)} de diferencia): hay ítems que no estoy interpretando.`)
-    } else {
-      console.log(`  ✓ cuadro 5: leí ${pesos(leido)} y la pestaña declara ${pesos(declarado)} — cierran.`)
-    }
-    if (cuadro5.resumen.omitidas) {
-      console.warn(`  ⚠ ${cuadro5.resumen.omitidas} fila(s) del cuadro 5 quedaron FUERA del calendario `
-        + '(ver los avisos de arriba): esa plata no está en ningún cash flow.')
-    }
+  // ═══ EL CONTROL CONTRA EL TOTAL DECLARADO SE RETIRA, Y HAY QUE DECIR POR QUÉ (07/09/2026) ═══
+  //
+  // Comparaba lo que este parser leía contra el `SUM()` que publicaba la propia pestaña: dos caminos
+  // distintos sobre las mismas celdas, y por eso servía — el riesgo era la INTERPRETACIÓN de un texto
+  // («46.296» leído como importe, un «10/09» auto-parseado a serial). Leyendo del registro, el importe
+  // llega tipado como `numeric` y la fecha como `date`: no hay nada que interpretar mal, y el control
+  // pasaría a comparar la suma de las filas contra la suma de las mismas filas — un control validado
+  // contra la información que produce, que es peor que no tener control porque da verde siempre.
+  //
+  // LO QUE SÍ SE CONSERVA es la única lectura que puede fallar: una fila cuya fecha o importe no se
+  // entienden se OMITE y se grita, con su rótulo. Esa plata no está en ningún cash flow.
+  if (!sinObras && plan.resumen.omitidas) {
+    const fuera = plan.omitidas.reduce((s, o) => s + (Number(o.previsto) || 0), 0)
+    console.warn(`  ⚠ ${plan.resumen.omitidas} fila(s) de public.obra_egreso_proyectado quedaron FUERA `
+      + `del calendario (ver los avisos de arriba)${fuera ? `: ${pesos(fuera)}` : ''} — esa plata no está en ningún cash flow.`)
   }
   {
     // ═══ "$X DE MO VA POR JORNALES" ERA UNA AFIRMACIÓN, NO UNA MEDICIÓN (14/08/2026) ═══

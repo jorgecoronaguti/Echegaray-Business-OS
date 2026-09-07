@@ -21,7 +21,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  materialesDesdeCuadro5, movimientosDeMateriales, exigirNeteoDeMateriales, serialesDeCelda,
+  materialesDesdeCuadro5, materialesDesdeRegistro, movimientosDeMateriales, exigirNeteoDeMateriales, serialesDeCelda,
   repartirEnCuotas, anioDeMesSuelto, totalDeclarado, ubicarCuadro5,
 } from './materiales-previstos.mjs'
 import { serialDe } from './libro-extractores-fechas.mjs'
@@ -250,30 +250,55 @@ test('CADA CUOTA LLEVA SU PROPIA CLAVE DE ORIGEN: sin eso `deduplicar` colapsar�
 
 // ═══ EL CONTRATO CON QUIEN ESCRIBE EL CUADRO ═══
 
-test('LA GRILLA QUE ESCRIBE LA PESTAÑA SE PARSEA CON ESTE MISMO LECTOR — el ida y vuelta cierra', () => {
-  // Si `obras-grilla.mjs` renombra el título, cambia el encabezado o mueve la columna de la fecha, el
-  // lector deja de encontrar el cuadro y el libro sale con CERO materiales. Nada de eso da error: este
-  // test es el único lugar donde escritor y lector se miran a la cara.
-  const g = grillaObras({ obras: OBRAS_FUTURAS })
-  const r = materialesDesdeCuadro5(g.filas)
-  assert.ok(r.resumen.items > 0, 'el lector encuentra el cuadro que el escritor acaba de escribir')
-  assert.equal(r.omitidas.length, 0, 'ninguna fila escrita por el generador resulta ilegible')
-  const declarado = g.filas.find((f) => String(f[0] ?? '').startsWith('⇒ TOTAL —') && String(f[0]).includes('ÍTEMS'))
-  assert.ok(declarado, 'la fila de cierre existe')
-  // El total del generador es una fórmula SUM(): lo que se compara es el conteo de ítems, que sí es texto.
-  assert.match(String(declarado[0]), new RegExp(`${r.resumen.items} ÍTEMS PREVISTOS`))
+test('EL REGISTRO SE LEE CON LA MISMA INTERPRETACIÓN QUE LA CELDA — una fecha, o sus cuotas', () => {
+  // ACÁ VIVÍA EL IDA Y VUELTA CONTRA LA GRILLA (07/09/2026). El cuadro 5 salió de la pestaña y su
+  // plan vive en `public.obra_egreso_proyectado`: escritor y lector ya no se miran a la cara en una
+  // celda. Lo que sigue teniendo que ser cierto —y es lo que rompía en silencio— es que la fecha del
+  // registro se interprete IGUAL que la de la celda: un serial es una salida, un texto de cuotas son
+  // varias, y el reparto lo absorbe la última.
+  const filas = [
+    { obra_rotulo: 'PLAYÓN', concepto: 'Gasoil', familia: 'Combustible', proveedor: 'ACA',
+      fecha_estimada: '2026-10-01', fecha_texto: null, monto: '1000000', nota: '' },
+    { obra_rotulo: 'PLAYÓN', concepto: 'Cemento', familia: 'Materiales', proveedor: 'Bedini',
+      fecha_estimada: '2026-09-10', fecha_texto: '10/09 · 10/10 · 10/11', monto: '1000', nota: '' },
+  ]
+  const r = materialesDesdeRegistro(filas)
+  assert.equal(r.resumen.items, 2)
+  assert.equal(r.resumen.movimientos, 4, 'una salida la primera, tres cuotas la segunda')
+  assert.equal(r.omitidas.length, 0)
+  assert.equal(r.resumen.total, 1_001_000)
+  const cuotas = r.movimientos.filter((m) => m.cuotas === 3)
+  assert.equal(cuotas.reduce((s, m) => s + m.importe, 0), 1000, 'las cuotas reconstruyen el total exacto')
+  assert.match(cuotas[0].concepto, /PLAYÓN · Cemento · cuota 1\/3/)
+  // La fecha única entra como serial del DÍA que dice el registro, sin correrse por la zona horaria
+  // de la VM (-03): con los getters locales sobre una medianoche UTC daba el día anterior.
+  assert.equal(r.movimientos[0].fechaSerial, serialDe(2026, 10, 1), 'el 01/10/2026, no el 30/09')
 })
+
+test('una fila del registro que no se entiende se OMITE con su rótulo, no se adivina', () => {
+  const r = materialesDesdeRegistro([
+    { obra_rotulo: 'X', concepto: 'sin plata', fecha_estimada: '2026-10-01', monto: '0' },
+    { obra_rotulo: 'Y', concepto: 'sin fecha', fecha_estimada: null, fecha_texto: null, monto: '500' },
+  ])
+  assert.equal(r.resumen.items, 0)
+  assert.equal(r.omitidas.length, 2)
+  assert.match(r.omitidas[0].rotulo, /^X — sin plata$/)
+  assert.match(r.omitidas[1].motivo, /Fecha estimada/)
+})
+
 
 test('EL LIBRO YA NO ARMA SUS MATERIALES CON LAS CONSTANTES — el cableado también es el defecto', () => {
   // El defecto no vivía en una función: vivía en QUÉ FUENTE llamaba el generador. Un test de la lib no
   // se pone rojo si alguien vuelve a enchufar `deObras(OBRAS_FUTURAS…)`, y ese cableado no se puede
   // probar sin red. Por eso se mira el archivo: es feo, y es lo único que se pone rojo si vuelve.
   const src = readFileSync(new URL('../scripts/libro-movimientos-pestana.mjs', import.meta.url), 'utf8')
-  assert.ok(src.includes('materialesDesdeCuadro5('), 'el libro lee el cuadro 5 de la pestaña')
+  // 07/09/2026: la fuente pasó del cuadro 5 —que el dueño sacó de la pestaña— al registro de Postgres.
+  assert.ok(src.includes('materialesDesdeRegistro('), 'el libro lee el registro obra_egreso_proyectado')
+  assert.ok(!src.includes('materialesDesdeCuadro5('), 'y NO vuelve a leer un cuadro que ya no existe')
   assert.ok(!/\bdeObras\(/.test(src), 'y NO vuelve a construir los egresos desde las constantes')
   assert.ok(src.includes("process.env.ORQ_LIBRO_SIN_OBRAS === '1'"), 'la llave del dueño sigue en pie')
   // Y NO HAY FALLBACK: si la pestaña no se lee, la fuente sale en cero. Un `?? OBRAS_FUTURAS` acá
   // republicaría en silencio las fechas viejas, que es el defecto entero otra vez.
-  assert.match(src, /NO PUDE LEER LA PESTAÑA/, 'la lectura fallida tiene que gritar')
-  assert.ok(!/materialesDesdeCuadro5\([^)]*\)\s*\?\?/.test(src), 'apareció un fallback sobre la lectura del cuadro')
+  assert.match(src, /NO PUDE LEER public\.obra_egreso_proyectado/, 'la lectura fallida tiene que gritar')
+  assert.ok(!/materialesDesdeRegistro\([^)]*\)\s*\?\?/.test(src), 'apareció un fallback sobre la lectura del registro')
 })

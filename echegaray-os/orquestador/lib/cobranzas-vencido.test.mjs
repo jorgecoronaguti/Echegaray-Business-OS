@@ -83,48 +83,34 @@ test('LA COLUMNA `Vencido` DE LA PESTAÑA YA NO PUBLICA CERO: se evalúa la fór
   // ═══ ÉSTE ES EL TEST QUE SE PONE ROJO SI ALGUIEN REVIERTE EL ARREGLO ═══
   //
   // No mira el texto de la fórmula: la CORRE sobre las 91 filas reales. Con el criterio viejo
-  // (`fechaCobro < TODAY()`) las nueve celdas dan 0 y este test falla en la primera aserción.
-  const filasCliente = []
-  for (let f = g.fClientes[0]; f <= g.fClientes[1]; f++) filasCliente.push(f)
-  const porCliente = Object.fromEntries(filasCliente.map((f) => [String(cel(`A${f}`)), redondo(val(`F${f}`))]))
-  const total = filasCliente.reduce((s, f) => s + val(`F${f}`), 0)
+  // (`fechaCobro < TODAY()`) las celdas dan 0 y este test falla en la primera aserción.
+  //
+  // 07/09/2026: el cuadro por CLIENTE salió con el rediseño de dos cuadros, así que «a quién
+  // reclamarle» ya no se lee por cliente sino por OBRA — que es más específico, no menos: la fila
+  // dice qué trabajo concreto tiene la plata parada.
+  const total = val(`G${g.fAno}`)
   assert.ok(total > 0, `LA COLUMNA VENCIDO VOLVIÓ A DAR CERO teniendo ${pendientes.length} cobranzas pendientes `
     + 'y 10 vencidas en la fuente — el reloj está midiendo contra la fecha equivocada otra vez')
   assert.equal(redondo(total), 50_594_877.83, 'y es exactamente lo que la fuente dice que está vencido')
-  // A QUIÉN RECLAMARLE, que es para lo que sirve la columna. Los cuatro clientes con deuda vencida:
-  assert.deepEqual(porCliente, {
-    'LA ESTRELLA /ALIMENTOS DEL SUR SAS': 8_234_758.25,
-    'San Francisco': 0,
-    MESSINA: 24_910_816.27,
-    ARCOR: 17_449_303.31,
-    'Quattropani - Melisa García SAS': 0,
-    'LIRIO DANIEL RAMIRO': 0,
-    ADDATO: 0,
-    'MACRO CONSTRUCCIONES SRL': 0,
-  })
+  // A QUÉ OBRA RECLAMARLE, que es para lo que sirve la columna. Las que tienen plata vencida:
+  const porObra = Object.fromEntries(g.bloques
+    .map((b) => [b.clave, redondo(val(`G${b.fProt}`))])
+    .filter(([, v]) => v > 0))
+  // Sobre la foto de Cobranzas de agosto, la única obra con plata vencida es BSA. Las de San
+  // Francisco tienen vencido en el archivo REAL de hoy; el fixture es de agosto y no lo tiene — y
+  // clavar acá los números de hoy haría pasar el test por una coincidencia, no por la regla.
+  assert.deepEqual(porObra, { 'messina-bsa': 17_085_494.51 })
+  // Y las obras NO pueden sumar más que el año: son un subconjunto de Cobranzas.
+  assert.ok(Object.values(porObra).reduce((a2, b2) => a2 + b2, 0) <= total + 1)
 })
 
-test('EL TITULAR DE CARTERA CIERRA CONTRA LA "Resta" DEL CUADRO DE CLIENTES, POR OTRO CAMINO', () => {
-  // Los cinco tramos filtran por fecha de emisión; la Resta se calcula como "todo lo no cancelado
-  // menos lo cobrado". Dos rutas independientes al mismo número: si difieren, hay una cobranza que
-  // no cayó en ningún tramo, y el escritor aborta antes de publicar dos carteras distintas.
-  const f = g.fCartera
-  const tramos = ['C', 'D', 'E', 'F', 'G'].map((c) => val(`${c}${f}`))
-  assert.equal(redondo(val(`I${f}`)), redondo(tramos.reduce((s, x) => s + x, 0)), 'el total es la suma de sus tramos')
-  assert.equal(redondo(val(`I${f}`)), redondo(val(`E${g.fTotClientes}`)), 'y da la Resta del cuadro de clientes')
-  assert.equal(redondo(val(`I${f}`)), 357_487_077.82)
-  // El % que publica la B es el de lo vencido sobre el total: la cifra que decide si hay problema.
-  assert.equal(redondo(val(`B${f}`) * 100), 14.15, '14,15% de la cartera está vencida')
-})
-
-test('LA SUMA DE LO VENCIDO POR CLIENTE ES LO VENCIDO DE LA CARTERA: los dos cuadros no se contradicen', () => {
-  // Dos cuadros de la misma pestaña que publican el mismo hecho con fórmulas distintas. Si uno filtra
-  // por cliente y el otro no, un cliente que la lista derivada no supiera ubicar los haría diferir —
-  // y el lector tendría dos números y ninguna forma de saber cuál creer.
-  let porCliente = 0
-  for (let f = g.fClientes[0]; f <= g.fClientes[1]; f++) porCliente += val(`F${f}`)
-  const enCartera = ['D', 'E', 'F', 'G'].reduce((s, c) => s + val(`${c}${g.fCartera}`), 0)
-  assert.equal(redondo(porCliente), redondo(enCartera))
+test('EL VENCIDO DEL AÑO NO ES LA SUMA DE LAS OBRAS, Y NO PUEDE SERLO', () => {
+  // Las obras declaradas son un subconjunto de lo que se factura: MESSINA vende trabajos fuera de sus
+  // obras. Si el cuadro del año sumara las filas de abajo, el vencido bajaría solo cada vez que una
+  // obra sale de la lista — y nadie se enteraría. Sale de la fuente entera.
+  const enObras = g.bloques.reduce((s, b) => s + val(`G${b.fProt}`), 0)
+  assert.ok(val(`G${g.fAno}`) > enObras, 'hay vencido fuera de las obras declaradas, y el año lo ve')
+  assert.equal(redondo(val(`G${g.fAno}`) - enObras), 33_509_383.32, 'lo que está vencido fuera de obra')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -192,12 +178,16 @@ test('los criterios salen en locale es-AR y con TODAY() adentro: la cartera enve
 test('la pestaña cita la fecha de EMISIÓN y NUNCA la de cobro para decidir si algo está vencido', () => {
   // El defecto original, fijado como regla: si alguien vuelve a apuntar la alarma a la fecha de
   // cobro, la columna vuelve a dar cero y ninguna aserción de número lo diría tan claro como ésta.
+  // 07/09/2026: el cuadro por CLIENTE salió y «Vencido» pasó de la F a la G. Las filas que se
+  // recorren son las OBRAS más el cierre del año — las mismas celdas que publican la alarma.
   const emision = `'Cobranzas'!$${REFS_OBRAS.cob.fechaEmision}$${REFS_OBRAS.cob.desde}`
-  for (let f = g.fClientes[0]; f <= g.fClientes[1]; f++) {
-    const v = String(cel(`F${f}`))
+  const filas = [g.fAno, ...g.bloques.map((b) => b.fProt)]
+  assert.ok(filas.length > 1, 'hay obras y hay cierre de año: si no, este test no prueba nada')
+  for (const f of filas) {
+    const v = String(cel(`G${f}`))
     assert.ok(v.includes(`${emision}:$${REFS_OBRAS.cob.fechaEmision};"<"&(TODAY()-${PLAZO_COBRO_DIAS})`),
-      `F${f}: lo vencido se mide contra la fecha de emisión más el plazo`)
+      `G${f}: lo vencido se mide contra la fecha de emisión más el plazo`)
     // La fecha de cobro sigue estando, pero SÓLO como ventana del año: nunca como el corte de hoy.
-    assert.ok(!v.includes(`$${REFS_OBRAS.cob.fechaCobro};"<"&TODAY()`), `F${f}: el reloj viejo volvió`)
+    assert.ok(!v.includes(`$${REFS_OBRAS.cob.fechaCobro};"<"&TODAY()`), `G${f}: el reloj viejo volvió`)
   }
 })

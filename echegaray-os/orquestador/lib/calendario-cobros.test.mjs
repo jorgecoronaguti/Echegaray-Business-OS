@@ -142,8 +142,10 @@ test('EL CALENDARIO CUADRA CONTRA LA "Resta" DE OBRAS, PESO POR PESO', () => {
     }, DESDE).contrato,
   }))
   const gObras = grillaObras({ obras, clientes })
-  const fTotObras = gObras.fTotClientes
-  const restaObras = evaluarFormula(cel(gObras.filas, `E${fTotObras}`), {
+  // 07/09/2026: «Resta (total)» del cuadro de clientes pasó a ser «Por cobrar» del cuadro del año,
+  // columna F. La cuenta es la MISMA (todo lo no cancelado − lo cobrado) sobre la MISMA fuente: lo
+  // que cambió es dónde se publica, y por eso el control sigue siendo dos caminos al mismo hecho.
+  const restaObras = evaluarFormula(cel(gObras.filas, `F${gObras.fAno}`), {
     hoja: hojaDeGrilla(gObras.filas), hojas: { Cobranzas: comoHoja() }, nombres: { TIPO_CAMBIO_USD: TC }, hoy: HOY,
   })
   const totalCal = val(`${letra(g.iTotal)}${g.fTotal}`)

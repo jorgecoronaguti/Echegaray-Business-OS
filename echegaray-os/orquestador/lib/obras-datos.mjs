@@ -111,6 +111,17 @@ export const CLIENTES_CANONICOS = ['San Francisco', 'MESSINA', 'Quattropani - Me
 /** El tramo de "Detalles / Obra" (Compras col K) que identifica esta obra. Si no hay override
  *  declarado, es el nombre de la obra tal como se lo escribiría en la fuente. El emparejamiento es
  *  SIEMPRE cliente + este texto: nunca por proveedor. */
+// ═══ DESDE EL 07/09/2026 NINGUNA PESTAÑA LEE ESTO ═══
+//
+// El cuadro 4 de `OBRAS` —«costo proyectado vs comprado real», que emparejaba por este texto contra
+// la columna «Detalles / Obra» de Compras— salió con el rediseño de dos cuadros que eligió el dueño.
+// El campo NO se borra: es un dato que él declaró obra por obra y es el enganche que necesita el
+// módulo Obras de la app para imputar una compra a una obra. Lo que se retiró es su ÚNICO consumidor,
+// junto con `obras-costo-real.test.mjs`, que probaba las fórmulas de ese cuadro.
+//
+// SI VUELVE A HABER UN CONSUMIDOR, VUELVE EL CONTROL: dos obras del mismo cliente no pueden declarar
+// patrones donde uno contenga al otro — la misma factura entraría a las dos y el residuo se iría a
+// negativo sin que Sheets diera un solo error.
 export const comprasObraDe = (o) => {
   if (o?.comprasObra) return String(o.comprasObra)
   const propio = o?.ventaTexto ?? o?.obra

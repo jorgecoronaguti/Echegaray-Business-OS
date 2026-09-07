@@ -142,8 +142,10 @@ test('el rótulo del cierre se construye desde ANO: el productor y el lector no 
   const g = grillaObras({ obras: OBRAS_FUTURAS })
   const u = ubicarRestaDeObras(g.filas)
   assert.equal(u.motivo, undefined, 'sobre la grilla REAL de OBRAS el cuadre tiene que encontrar su celda')
-  assert.equal(u.fila, g.fTotClientes, 'y tiene que ser la fila que el generador declara como cierre de clientes')
-  assert.equal(u.columna, 'E')
+  // 07/09/2026: el cierre del año pasó del cuadro por CLIENTE (que salió) al cuadro «1 · EL AÑO», y
+  // su «Por cobrar» a la F. El lector lo resuelve por ROTULO y por ENCABEZADO, así que se mueve solo.
+  assert.equal(u.fila, g.fAno, 'y tiene que ser la fila que el generador declara como cierre del año')
+  assert.equal(u.columna, 'F')
 })
 
 test('la columna se resuelve por su ENCABEZADO, no por la letra E', () => {
@@ -165,10 +167,10 @@ test('si el cierre del año no está, el aviso NOMBRA las filas que sí vio', ()
   assert.equal(u.valor, undefined, 'y NO devolver una celda cualquiera')
 })
 
-test('sin encabezado "Resta (total)" no se adivina la columna: se declara el motivo', () => {
+test('sin el encabezado de la columna no se adivina: se declara el motivo', () => {
   const sinEncabezado = OBRAS_CON_DOS_TOTALES.map((f, i) => (i === 8 ? f.map((c) => (c === ROTULO_RESTA ? 'Pendiente' : c)) : f))
   const u = ubicarRestaDeObras(sinEncabezado)
-  assert.match(u.motivo, /Resta \(total\)/)
+  assert.match(u.motivo, new RegExp(ROTULO_RESTA))
   assert.match(u.motivo, /fila 18/)
 })
 

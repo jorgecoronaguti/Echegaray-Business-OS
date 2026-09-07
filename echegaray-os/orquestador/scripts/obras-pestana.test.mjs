@@ -126,15 +126,17 @@ test('el --dry declara que las columnas son las de DEFECTO: no se lo puede confu
   assert.match(txt, /no las del archivo vivo/)
 })
 
-test('el --dry dice, obra por obra, dónde cae su costo y si declara contrato', () => {
+test('el --dry dice, obra por obra, en qué fila cae y si declara contrato', () => {
   // El ensayo en seco es lo único que se puede mirar sin abrir el Sheet, así que tiene que decir lo
-  // que decide una corrida. Con el detalle afuera (14/08) ya no hay filas que listar: lo que importa
-  // es que cada obra tenga su fila en el cuadro de costo y si su contrato se pudo leer — sin
-  // contrato, dos celdas de la obra salen en "—" y conviene enterarse antes de publicar.
+  // que decide una corrida. Desde el 07/09/2026 cada obra es UNA fila —el cuadro de costo separado
+  // salió— y lo que importa es si su contrato se pudo leer: sin contrato, la celda sale en "—" y
+  // conviene enterarse antes de publicar.
   const g = grillaObras({ obras: OBRAS_FUTURAS })
   const txt = render(g, OBRAS_FUTURAS)
-  assert.equal((txt.match(/ costo \d+ /g) ?? []).length, OBRAS_FUTURAS.length, 'una fila de costo por obra')
-  for (const f of g.filasCosto) assert.ok(txt.includes(` costo ${f} `), `la fila de costo ${f} no se declara`)
+  assert.equal((txt.match(/ {2}fila {2}?\d+ {2}/g) ?? []).length, OBRAS_FUTURAS.length, 'una fila por obra')
+  for (const b of g.bloques) assert.match(txt, new RegExp(`fila\\s+${b.fProt}\\s`), `la obra ${b.clave} no se declara`)
+  assert.equal((txt.match(/contrato NO DECLARADO/g) ?? []).length,
+    g.bloques.filter((b) => !b.contrato).length, 'y dice cuáles no declaran contrato')
   assert.match(txt, new RegExp(`\\$${Math.round(OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)).toLocaleString('es-AR').replace(/\./g, '\\.')} proyectados`))
 })
 

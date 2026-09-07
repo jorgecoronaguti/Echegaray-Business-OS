@@ -249,6 +249,91 @@ function puntosDeFila(f, nFila, anioBase) {
 }
 
 /**
+ * LOS MATERIALES PREVISTOS DEL REGISTRO `public.obra_egreso_proyectado` → los MISMOS puntos.
+ *
+ * ═══ POR QUÉ CAMBIÓ LA FUENTE OTRA VEZ (07/09/2026) ═══
+ *
+ * El dueño sacó el cuadro 5 de la pestaña: *"si no va a ser util, quitarlo"*, y después eligió el
+ * rediseño de dos cuadros. La celda dejó de existir; el plan de egresos no. Vive en Postgres desde el
+ * 05/09 con su celda de origen y su fecha de lectura (`scripts/obras-previstos-cargar.mjs`), que es
+ * además donde la REALIDAD ÚNICA dice que tiene que vivir un concepto que consumen varias caras.
+ *
+ * SE REUSA `puntosDeFila` Y NO SE REESCRIBE LA INTERPRETACIÓN. La forma de la fecha (serial único vs
+ * cuotas «dd/mm · dd/mm»), el reparto en cuotas con la última absorbiendo el redondeo y la forma del
+ * concepto son EXACTAMENTE los mismos: una segunda copia de esa lógica se desincroniza sin dar error
+ * y el cash flow publicaría dos calendarios distintos para el mismo plan.
+ *
+ * SÓLO LOS MATERIALES. El registro guarda también la mano de obra (7 filas, $126.974.442): esa plata
+ * se paga por Jornales y entra al libro por su propia puerta. Sumarla acá la contaría dos veces.
+ *
+ * @param {Array<object>} filas del registro: `obra_rotulo`, `concepto`, `familia`, `proveedor`,
+ *   `fecha_estimada` (YYYY-MM-DD), `fecha_texto` (las cuotas, si las hay), `monto`, `nota`.
+ * @returns la misma forma que `materialesDesdeCuadro5`.
+ */
+export function materialesDesdeRegistro(filas = [], { aviso = () => {}, anioBase = 2026 } = {}) {
+  const movimientos = []
+  const omitidas = []
+  let items = 0
+  let total = 0
+  for (const [i, f] of (filas ?? []).entries()) {
+    // LA FECHA DE TEXTO GANA sobre la fecha única: una fila con cuotas guarda las dos, y el serial es
+    // el de la PRIMERA cuota — tomarlo dejaría el importe entero en el primer mes.
+    const fecha = txt(f.fecha_texto) || serialDeISO(f.fecha_estimada)
+    const cruda = [
+      `${txt(f.obra_rotulo)}${SEPARADOR_OBRA_CONCEPTO}${txt(f.concepto)}`,
+      txt(f.familia), txt(f.proveedor), fecha, Number(f.monto), txt(f.nota),
+    ]
+    const r = puntosDeFila(cruda, i + 1, anioBase)
+    if (!r) continue
+    if (r.omitida) { omitidas.push(r.omitida); continue }
+    items++
+    total = r2(total + r.previsto)
+    // De dónde salió cada peso, para que el libro no siga diciendo «cuadro5» de un cuadro que ya no
+    // existe. Viaja en el punto y `emitirGrupo` lo usa; sin él caería al valor viejo.
+    for (const p of r.puntos) p.origenPestana = ORIGEN_REGISTRO
+    movimientos.push(...r.puntos)
+  }
+  for (const o of omitidas) {
+    aviso(`obra_egreso_proyectado, fila ${o.fila} «${o.rotulo}»: ${o.motivo}. Se OMITE del calendario `
+      + '— no invento la fecha ni el importe de un egreso.')
+  }
+  return { movimientos, omitidas, resumen: { items, movimientos: movimientos.length, total, omitidas: omitidas.length } }
+}
+
+/**
+ * NÚCLEO PURO: LA CLAVE DE UN ÍTEM DE EGRESO = rótulo + proveedor, normalizados.
+ *
+ * Vivía en `materiales-fusion.mjs`, que se retiró el 07/09/2026 junto con el cuadro 5. La clave NO se
+ * retira: la usa `obras-egresos-proyectados.mjs` para emparejar lo que se carga al registro contra lo
+ * que ya está guardado.
+ *
+ * EL RÓTULO SOLO NO ALCANZA: en el archivo real hay TRES ítems «PLAYÓN DE AZUFRE — Materiales», uno
+ * por proveedor (FEMENIA, Bedini, Alumetal). Con el rótulo como clave, los tres colapsarían en uno y
+ * dos egresos de $1,6M desaparecerían sin que nada gritara.
+ *
+ * SE NORMALIZA LO QUE NO CAMBIA EL SIGNIFICADO Y NADA MÁS: mayúsculas, corridas de espacios (incluido
+ * el espacio duro del copiar-pegar) y la composición Unicode («Ó» compuesta y descompuesta se ven
+ * idénticas). NO se sacan acentos ni signos: «Pintura» y «Pinturas» son ítems DISTINTOS, y adivinar
+ * que son el mismo es lo que hace que un gasto aterrice en la obra equivocada.
+ */
+export const claveDeItem = (rotulo, proveedor) => {
+  const n = (s) => String(s ?? '').normalize('NFC').replace(/[\s\u00a0]+/g, ' ').trim().toLocaleUpperCase('es-AR')
+  return `${n(rotulo)}\u2016${n(proveedor)}`
+}
+
+/** El rótulo de procedencia de un egreso que salió del registro y no de una celda. */
+export const ORIGEN_REGISTRO = 'obra_egreso_proyectado'
+
+/** «2026-10-01» (o un Date) → el serial que entiende Sheets. Se lee en UTC a propósito: la VM corre
+ *  en -03 y `getDate()` sobre una medianoche UTC devuelve el DÍA ANTERIOR. */
+function serialDeISO(v) {
+  if (v === null || v === undefined || v === '') return ''
+  const d = v instanceof Date ? v : new Date(`${String(v).slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return ''
+  return serialDe(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
+}
+
+/**
  * LOS MATERIALES PREVISTOS DEL CUADRO 5 → puntos de egreso, uno por cuota.
  *
  * @param {Array<Array>} filas la pestaña OBRAS entera, cruda (UNFORMATTED_VALUE)
@@ -308,7 +393,7 @@ function emitirGrupo(grupo, { real, cliente, corte }) {
       cliente,
       // La FILA del cuadro y la CUOTA entran a la clave: sin ellas, dos cuotas del mismo ítem
       // comparten clave de deduplicación y `deduplicar` colapsaría una de las dos.
-      origen: { pestana: PESTANA_OBRAS, fila: `cuadro5:f${p.fila}${p.cuotas > 1 ? `·cuota ${p.cuota}` : ''}` },
+      origen: { pestana: p.origenPestana ?? PESTANA_OBRAS, fila: `${p.origenPestana ? 'egreso' : 'cuadro5'}:f${p.fila}${p.cuotas > 1 ? `·cuota ${p.cuota}` : ''}` },
     })
     // `importeVivo` viaja FUERA de movimiento() (que congela su shape): el script lo escribe en la
     // celda C en lugar del número pegado, igual que hace con `deObras` y con `deCompras`.

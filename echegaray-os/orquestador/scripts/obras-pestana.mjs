@@ -45,16 +45,15 @@ import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
-import { conEdicionesRespetadas, guardarRegistro, leerRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 // EL CUADRO 5 NO SE REGENERA: SE FUSIONA. La pestaña es el origen de la fecha y el importe de cada
 // material previsto desde el 24/08 — este script se los pisaba en cada corrida. Ver materiales-fusion.
-import { fusionarCuadro5, lineasDeFusion, clavesEscritas, clavesDeMemoria, MARCA_ESCRITO } from '../lib/materiales-fusion.mjs'
 // EL FORMATO DE NÚMERO SALE DE LA ESPECIE QUE DECLARA LA GRILLA. Ver `obras-especies.mjs`.
 import { matrizDeEspecies, requestsDeEspecie } from '../lib/obras-especies.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
-  conColaLimpiable, trabajosFueraDeObra, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
-  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, saldoContratoMalPublicado,
+  conColaLimpiable, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
+  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, contratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
 import { certificadoDeObra } from '../lib/obras-certificado.mjs'
@@ -136,15 +135,6 @@ const COLS = 'ABCDEFGHI'
  * encabezado: sus rótulos quedaban alineados a la izquierda sobre importes alineados a la derecha, y
  * el "Total pendiente" se leía sobre otra columna.
  */
-export const ENCABEZADO_SECCION = /^(Cliente|Obra|Cartera)$/
-
-/** Los enteros de un par [a, b] inclusive; vacío si el par no existe. */
-const rangoDe = (par) => {
-  if (!Array.isArray(par) || par.length !== 2) return []
-  const out = []
-  for (let i = par[0]; i <= par[1]; i++) out.push(i)
-  return out
-}
 const cortar = (s, n) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 const izq = (s, n) => cortar(s, n).padEnd(n)
 const der = (s, n) => cortar(s, n).padStart(n)
@@ -183,12 +173,11 @@ export function render(g, obras = []) {
   // García SAS — SALÓN COMERCIAL" se cortaba, y ésta es justo la lista que existe para decir QUÉ obras
   // salen. Una evidencia que recorta el nombre de la obra no es evidencia de esa obra.
   const anchoRotulo = Math.max(0, ...(g.bloques ?? []).map((b) => String(g.filas[b.fProt - 1]?.[0] ?? '').length))
-  for (const [i, b] of (g.bloques ?? []).entries()) {
+  for (const b of (g.bloques ?? [])) {
     // Ya no hay filas de detalle que listar: cada obra es UNA fila en el cuadro de contrato y UNA en
     // el de costo. Lo que sigue importando para juzgar la corrida es si la obra declara contrato
     // —sin él las dos celdas del contrato salen en "—"— y si es proyectable.
     L.push(`  fila ${String(b.fProt).padStart(3)}  ${izq(String(g.filas[b.fProt - 1]?.[0] ?? ''), anchoRotulo)}`
-      + `  costo ${g.filasCosto?.[i] ?? '—'}`
       + `  contrato ${b.contrato ? `$${b.contrato.toLocaleString('es-AR')}` : 'NO DECLARADO'}`
       + `${b.proyectable ? '' : ' · ▲ sin fechas, no se proyecta'}`)
   }
@@ -455,34 +444,23 @@ async function main() {
     }
   }
 
-  // ═══ EL CUADRO 5 SE FUSIONA CONTRA LA PESTAÑA, NO SE REGENERA (24/08/2026) ═══
+  // ═══ EL CUADRO 5 SE RETIRÓ, Y SU FUENTE SE MUDÓ ANTES DE SACARLO (07/09/2026) ═══
   //
-  // La fecha y el importe de cada material previsto los edita el DUEÑO en la pestaña —el 24/08 movió
-  // los 17 ítems al 01/10— y desde ese día el libro los lee de ahí. Escribir las constantes de
-  // obras-datos encima es pisarle la corrección, y por eso el timer del flujo de caja quedó detenido.
+  // El dueño: *"el cuadro 5 de materiales previstos en pestaña obras no esta siendo actualizado con
+  // la informacion q corresponde, si no va a ser util, quitarlo"*, y después eligió el rediseño de
+  // dos cuadros. Acá vivía la fusión que preservaba las fechas que él editó a mano el 24/08.
   //
-  // SE LEE CRUDO (`UNFORMATTED_VALUE`) Y APARTE de la lectura de la Regla 0: aquélla necesita el texto
-  // FORMATEADO para emparejar rótulos; ésta necesita el SERIAL de la columna D — formateada llegaría
-  // "01/10/2026" y volvería a la celda como texto. Son dos lecturas porque son dos preguntas.
+  // ESAS FECHAS NO SE PERDIERON, Y ESO SE HIZO PRIMERO. Los 17 ítems ($18.880.836) y las 7 filas de
+  // mano de obra ($126.974.442) están en `public.obra_egreso_proyectado`, cargados con su celda de
+  // origen y su fecha de lectura por `scripts/obras-previstos-cargar.mjs`. El Libro de Movimientos
+  // los lee de ahí: si se hubiera borrado el cuadro sin mudar la fuente, el Cash Flow habría perdido
+  // $18,9M de egresos proyectados sin un solo error.
   //
-  // LA PESTAÑA QUE NO EXISTE Y LA LECTURA QUE FALLA NO SON LO MISMO: la primera es la primera corrida
-  // (siembra completa, legítima); la segunda es no saber, y ahí no se escribe — sembrar a ciegas es
-  // exactamente el defecto que esto arregla.
+  // LO QUE SÍ SE PIERDE, DICHO EN VOZ ALTA: el dueño ya no tiene una CELDA donde corregir la fecha de
+  // un material. Hasta que exista esa pantalla, se corrige en `obra_egreso_proyectado`.
   const hojas = await google.getSheetMeta(ID)
-  const existeObras = hojas.some((h) => h.title === PESTANA_OBRAS)
-  const filasObras = existeObras
-    ? await google.readSheetValues(ID, `'${PESTANA_OBRAS}'!A1:${letra(ANCHO_OBRAS - 1)}`, { render: 'UNFORMATTED_VALUE' })
-      .catch((e) => { throw new Error(`no pude leer "${PESTANA_OBRAS}" para fusionar el cuadro 5 (${e.message}). NO escribo: sin esa lectura le piso al dueño la fecha y el importe de cada material previsto.`) })
-    : []
-  // LA MEMORIA DE QUÉ ÍTEMS ESCRIBÍ LA CORRIDA PASADA. Es lo único que distingue un ítem NUEVO de
-  // obras-datos de uno que el dueño BORRÓ de la pestaña: los dos se ven igual en una sola lectura.
-  // Sin registro (`null`) la fusión elige no resucitar, que es la dirección segura para equivocarse.
-  const memoria = await leerRegistro(ID, PESTANA_OBRAS).then((r) => clavesDeMemoria(r.mios))
-    .catch((e) => { console.warn(`  ⚠ no pude leer el registro de rótulos (${e.message}): la fusión del cuadro 5 no va a sembrar ítems nuevos en esta corrida.`); return null })
-  const fusion = fusionarCuadro5({ obras, filas: filasObras, escritos: memoria })
-  for (const l of lineasDeFusion(fusion.diagnostico)) console.log(l)
 
-  const g = grillaObras({ obras, refs, clientes, materiales: fusion.items })
+  const g = grillaObras({ obras, refs })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
@@ -495,11 +473,6 @@ async function main() {
     + `${rotas.slice(0, 5).map(([ref, why]) => `${ref} (${why})`).join(' · ')}. NO escribo.`)
   const proyectado = OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)
   console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${OBRAS_FUTURAS.length} obras · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
-  // LOS HALLAZGOS DEL CUADRO 5 SALEN POR ACÁ Y NO POR LA PESTAÑA. La columna «Nota» se retiró el
-  // 06/09 (prosa por fila, prohibida por el contrato); lo que ahí era un ▲ es un hallazgo y se
-  // resuelve, así que va a la consola del que corre el pipeline. Borrarlo a secas habría apagado un
-  // aviso, que es la forma exacta en que nace un control que no puede dar rojo.
-  for (const a of (g.avisosMateriales ?? [])) console.warn(`  ⚠ ${a}`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
 
   // `hojas` se leyó arriba, antes de la grilla: la misma lectura decide si la pestaña EXISTE (y por
@@ -554,8 +527,6 @@ async function main() {
   // escribir ese texto (es su regla explícita)— bajo una marca que ninguna celda puede tener, así que
   // `respetarEdiciones` nunca la va a encontrar en una celda generada. Las claves de la corrida
   // anterior se PODAN antes: si no, un ítem sacado de obras-datos quedaría recordado para siempre.
-  for (const k of [...ediciones.keys()]) if (String(k).startsWith(MARCA_ESCRITO)) ediciones.delete(k)
-  for (const k of clavesEscritas(fusion.items)) ediciones.set(k, '')
   await guardarRegistro(ID, PESTANA_OBRAS, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
@@ -597,99 +568,53 @@ async function main() {
   // SE RELEE LA FÓRMULA, NO LO QUE SE VE. El formato de moneda dibuja el CERO como "—", el mismo
   // glifo que `SIN_CONTRATO`: mirando la pantalla, una obra 100% facturada (saldo cero) es
   // indistinguible de una que no declara contrato. Este control abortó cinco obras sanas por eso.
-  // El motivo entero está en `saldoContratoMalPublicado`.
+  // El motivo entero está en `contratoMalPublicado`.
   const formulas = await google.readSheetValues(ID, `${PESTANA_OBRAS}!A1:${letra(ANCHO_OBRAS - 1)}${g.filas.length}`,
     { render: 'FORMULA' }).catch(() => [])
   if (!formulas.length) throw new Error('escribí pero no pude releer las FÓRMULAS: no puedo verificar la columna del contrato.')
-  const malCont = saldoContratoMalPublicado(g.bloques, formulas)
-  if (malCont.length) throw new Error(`LA COLUMNA "Saldo contrato" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
+  const malCont = contratoMalPublicado(g.bloques, formulas)
+  if (malCont.length) throw new Error(`LA COLUMNA "Contratado" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
   const conContrato = g.bloques.filter((b) => b.contrato).length
-  console.log(`  ✓ saldo de contrato publicado en ${conContrato} de ${g.bloques.length} obras `
+  console.log(`  ✓ contrato publicado en ${conContrato} de ${g.bloques.length} obras `
     + `(las otras no declaran contrato en ninguna fila de ${REFS_OBRAS.cob.hoja} y publican "${SIN_CONTRATO}")`)
 
-  // ═══ EL CONTROL QUE ANTES ERA UNA FILA DE LA PESTAÑA ═══
+  // ═══ EL CONTROL DEL DOBLE CONTEO, DESPUÉS DE QUE EL CUADRO DE CLIENTES SALIERA (07/09/2026) ═══
   //
-  // El dueño sacó "⇒ sin ubicar" dos veces: un renglón que dice $0 todos los días no es información.
-  // La verificación no se perdió, se mudó acá: si la suma de los clientes no da el total de la
-  // fuente, hay plata facturada que no entró en ninguna fila y el generador lo dice. Vive en el log
-  // y no en la portada, que es donde el dueño quería que no estuviera.
+  // Hasta hoy había cuatro controles apoyados en cuadros que el dueño mandó sacar: la suma de los
+  // clientes contra Cobranzas entera, los cinco tramos de cartera contra la Resta, las obras dentro
+  // de la venta de SUS clientes, y el residuo del costo. Los cuatro miraban celdas que ya no existen.
+  //
+  // LO QUE SE CONSERVA ES LA INVARIANTE QUE ATRAPÓ EL DEFECTO REAL: las obras declaradas son un
+  // SUBCONJUNTO de Cobranzas, así que su cierre NUNCA puede superar al del año. Cuando dos obras del
+  // mismo cliente emparejan la misma factura —el defecto que publicó $692.395.550 donde iban
+  // $125.680.764— la suma de las obras se va por arriba del universo y esto lo dice. Sheets no da
+  // ningún error en ese caso: devuelve un número creíble.
+  //
+  // ES MÁS DÉBIL QUE EL ANTERIOR Y HAY QUE DECIRLO. El control viejo comparaba obra contra la venta de
+  // SU cliente; éste compara contra el año entero, así que un doble conteo en MESSINA puede quedar
+  // tapado por el margen que dejan los demás clientes. Con los ocho clientes del año y diez obras
+  // declaradas ese margen es chico, pero existe. Se cambió alcance por la pestaña que pidió el dueño.
   const num = (v) => Number(String(v ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
-  const [cli0, cli1] = g.fClientes
-  const sumaClientes = quedo.slice(cli0 - 1, cli1).reduce((s, f) => s + num(f?.[2]), 0)
-  const totalFuente = num(quedo[g.fTotClientes - 1]?.[2])
-  const sinUbicar = Math.round((totalFuente - sumaClientes) * 100) / 100
-  if (Math.abs(sinUbicar) > 1) {
-    throw new Error(`SIN UBICAR $${sinUbicar.toLocaleString('es-AR')}: la venta de los ${cli1 - cli0 + 1} clientes `
-      + `($${sumaClientes.toLocaleString('es-AR')}) no da el total de Cobranzas ($${totalFuente.toLocaleString('es-AR')}). `
-      + 'Hay un cliente que el mecanismo no supo ubicar — revisar ALIAS_CLIENTE y la lista derivada.')
-  }
-  console.log(`  ✓ sin ubicar: $0 — la suma de los ${cli1 - cli0 + 1} clientes da el total de Cobranzas`)
-
-  // ═══ EL TITULAR DE CARTERA TIENE QUE CERRAR CONTRA EL CUADRO DE ABAJO ═══
-  //
-  // Los cinco tramos reparten la MISMA cartera que publica la columna "Resta (total)" del cierre de
-  // clientes, pero llegan por otro camino: los tramos filtran por fecha de emisión y la resta se
-  // calcula como "todo lo no cancelado menos lo cobrado". Dos rutas independientes al mismo número,
-  // que es la única forma de probar un total sin preguntárselo a quien lo produjo.
-  //
-  // SI NO CIERRA, HAY UNA FILA QUE NO CAYÓ EN NINGÚN TRAMO. El caso concreto es una cobranza
-  // pendiente sin fecha de emisión: las fórmulas la excluyen a propósito (con la celda vacía valdría
-  // 0 y entraría como vencida desde 1899), así que desaparece del titular y el cuadro de abajo la
-  // sigue contando. El generador tiene que decirlo, no publicar dos cifras de cartera distintas.
-  if (g.fCartera) {
-    const enCartera = num(quedo[g.fCartera - 1]?.[8])
-    const enResta = num(quedo[g.fTotClientes - 1]?.[4])
-    const dif = Math.round((enCartera - enResta) * 100) / 100
-    if (Math.abs(dif) > 1) {
-      throw new Error(`EL TITULAR DE CARTERA NO CIERRA: los tramos suman $${enCartera.toLocaleString('es-AR')} `
-        + `y la "Resta (total)" del cierre de clientes da $${enResta.toLocaleString('es-AR')} `
-        + `(diferencia $${dif.toLocaleString('es-AR')}). Hay cobranza pendiente que no cayó en ningún tramo `
-        + `— lo más probable es una fila de ${REFS_OBRAS.cob.hoja} sin "Fecha emisión", que las fórmulas `
-        + 'excluyen a propósito. Corregir esa fecha en la fuente antes de creerle a la pestaña.')
+  if (g.fTotObras && g.fAno) {
+    // Las tres columnas que significan lo MISMO arriba y abajo. La D no entra: arriba es lo vendido
+    // (devengado, de Cobranzas) y abajo lo contratado (de la Orden de Compra) — dos magnitudes
+    // distintas, y compararlas sería inventar una identidad que nadie declaró.
+    for (const [col, nombre] of [[4, 'Cobrado'], [5, 'Por cobrar'], [6, 'Vencido']]) {
+      const enObras = num(quedo[g.fTotObras - 1]?.[col])
+      const enAno = num(quedo[g.fAno - 1]?.[col])
+      if (enObras - enAno > 1) {
+        throw new Error(`DOBLE CONTEO: la columna "${nombre}" suma $${Math.round(enObras).toLocaleString('es-AR')} `
+          + `en las ${g.bloques.length} obras y el año entero da $${Math.round(enAno).toLocaleString('es-AR')}. `
+          + 'Las obras son un subconjunto de Cobranzas: no pueden sumar más. Hay una factura que dos '
+          + 'obras del mismo cliente se están llevando — revisar los `ventaTexto` de obras-datos.mjs, '
+          + 'que uno no puede contener a otro.')
+      }
     }
-    const vencidoTotal = [3, 4, 5, 6].reduce((s, c) => s + num(quedo[g.fCartera - 1]?.[c]), 0)
-    console.log(`  ✓ cartera $${enCartera.toLocaleString('es-AR')} repartida en sus tramos — vencido `
-      + `$${vencidoTotal.toLocaleString('es-AR')} (${enCartera ? Math.round((vencidoTotal / enCartera) * 1000) / 10 : 0}%)`)
-  }
-
-  // ═══ EL CONTROL QUE ANTES ERA LA FILA "Otros trabajos…" DE LA SECCIÓN 2 ═══
-  //
-  // El dueño sacó la fila; la identidad que verificaba sigue viva acá y contra lo YA PUBLICADO. Las
-  // obras declaradas son un subconjunto de lo que se le factura a sus clientes, así que el sobrante
-  // es normal — lo IMPOSIBLE es que sea negativo, y eso ya se publicó una vez ($692.395.550 donde
-  // iban $125.680.764) sin que Sheets diera un solo error.
-  if (g.fTotObras) {
-    const conObra = [...new Set(OBRAS_FUTURAS.map((o) => o.cliente))]
-    const sinFila = conObra.filter((c) => !g.filaDeCliente?.[c])
-    if (sinFila.length) throw new Error(`no puedo controlar el doble conteo: ${sinFila.join(' · ')} tiene obra `
-      + 'declarada y no salió como fila de cliente en la Sección 1. NO afirmo que la pestaña cierre.')
-    const ventaClientes = conObra.reduce((s, c) => s + num(quedo[g.filaDeCliente[c] - 1]?.[2]), 0)
-    const ventaObras = num(quedo[g.fTotObras - 1]?.[2])
-    const { fuera, problema } = trabajosFueraDeObra(ventaClientes, ventaObras)
-    if (problema) throw new Error(`DOBLE CONTEO EN LA SECCIÓN 2: ${problema}.`)
-    console.log(`  ✓ las ${g.bloques.length} obras suman $${Math.round(ventaObras).toLocaleString('es-AR')} dentro de los `
-      + `$${Math.round(ventaClientes).toLocaleString('es-AR')} de sus ${conObra.length} clientes `
-      + `— $${Math.round(fuera).toLocaleString('es-AR')} son trabajos fuera de obra`)
-  }
-  // ═══ EL MISMO CONTROL, DEL LADO DEL COSTO (14/08) ═══
-  //
-  // El cuadro 4 empareja por el TEXTO de "Detalles / Obra", y los patrones son COMODINES: si alguien
-  // declarara "Pisos" en una obra y "Pisos Industriales" en otra del mismo cliente, la misma factura
-  // entraría a las dos. El cuadro seguiría prolijo —dos números creíbles— y la única huella sería que
-  // el residuo se va a NEGATIVO, porque las obras se habrían llevado más de lo que el cliente tiene
-  // en Compras. Los tests ya prohíben esa forma en el dato; esto lo verifica sobre lo PUBLICADO, que
-  // es la única evidencia que vale, y con el número que Sheets calculó y no el que yo esperaba.
-  if (g.fSinImputar) {
-    const residuo = num(quedo[g.fSinImputar - 1]?.[3])
-    const enObras = num(quedo[g.fTotCosto - 1]?.[3])
-    if (residuo < -1) {
-      throw new Error(`DOBLE CONTEO EN EL CUADRO 4: las obras se llevaron $${Math.round(enObras).toLocaleString('es-AR')} `
-        + `y el residuo quedó en $${Math.round(residuo).toLocaleString('es-AR')} — negativo. Dos obras del mismo `
-        + 'cliente están emparejando la misma compra: revisar los `comprasObra` de obras-datos.mjs, '
-        + 'que uno no puede contener a otro.')
-    }
-    console.log(`  ✓ costo real: $${Math.round(enObras).toLocaleString('es-AR')} imputado a las ${g.bloques.length} obras `
-      + `+ $${Math.round(residuo).toLocaleString('es-AR')} de compras de esos clientes que todavía no dicen a qué obra van`)
+    const cobradoObras = num(quedo[g.fTotObras - 1]?.[4])
+    const cobradoAno = num(quedo[g.fAno - 1]?.[4])
+    console.log(`  ✓ las ${g.bloques.length} obras cobraron $${Math.round(cobradoObras).toLocaleString('es-AR')} `
+      + `dentro de los $${Math.round(cobradoAno).toLocaleString('es-AR')} del año `
+      + `— $${Math.round(cobradoAno - cobradoObras).toLocaleString('es-AR')} son trabajos fuera de obra`)
   }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
 }
@@ -718,6 +643,11 @@ export async function formatear(google, sheetId, g) {
   const HAIR = { red: 0.82, green: 0.80, blue: 0.76 }
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
   const borde = (rg) => req.push({ updateBorders: { range: rg, bottom: { style: 'SOLID', color: HAIR } } })
+  // QUIÉN ES ENCABEZADO LO DICE LA GRILLA, no una expresión regular sobre el texto de la columna A:
+  // el encabezado del cuadro del año deja la A vacía a propósito (sus cuatro números se alinean con
+  // las columnas del cuadro de abajo) y con el reconocimiento por texto quedaba sin formato de
+  // encabezado — la fila se dibujaba como plata. Ver `hoja().encabezados`.
+  const encabezados = new Set(g.encabezados ?? [])
 
   // ═══ EL FORMATO DE NÚMERO SALE DE LA ESPECIE DE LA CELDA, NO DE UNA LISTA DE RANGOS (14/08) ═══
   //
@@ -750,7 +680,7 @@ export async function formatear(google, sheetId, g) {
       fmt(r(i, i + 1), 'userEnteredFormat.textFormat',
         { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK } })
     }
-    if (ENCABEZADO_SECCION.test(t.trim())) { // los encabezados de sección: texto, nunca plata
+    if (encabezados.has(i + 1)) { // los encabezados de columna: texto, nunca plata
       fmt(r(i, i + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
       fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
         { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'LEFT' })
@@ -792,20 +722,17 @@ export async function formatear(google, sheetId, g) {
     fmt(r(f0 - 1, f1, c, c + 1), 'userEnteredFormat.textFormat',
       { textFormat: { bold, italic, fontFamily: E.FUENTE, foregroundColor: italic ? MUTED : INK } })
   }
-  const [C_TOTAL, D_MOVIDO, E_FALTA] = [2, 3, 4]
-  const deCosto = new Set(g.filasCosto ?? [])
-  for (const f of [...(g.protagonistas ?? []), ...(g.totales ?? []), ...rangoDe(g.fClientes)]) {
-    // La cartera queda afuera: sus columnas son tramos de tiempo, no un par real/proyección.
-    if (f === g.fCartera) continue
-    // `D` es siempre lo que YA se movió —cobrado arriba, pagado abajo— y siempre es un HECHO.
-    escenario(f, f, D_MOVIDO, { bold: true })
-    // `E` es siempre lo que FALTA moverse. Arriba es un compromiso (se certificó y no entró): va en
-    // redonda. Abajo es la estimación del dueño menos lo pagado: proyección, y se dibuja como tal.
-    if (deCosto.has(f) || f === g.fTotCosto) escenario(f, f, E_FALTA, { italic: true })
+  // LAS COLUMNAS DEL CUADRO DE OBRAS, CON EL RESTO DE LOS CUADROS YA RETIRADOS (07/09/2026):
+  //   D contratado · E cobrado · F por cobrar · G vencido · H costo proyectado.
+  const [E_COBRADO, H_COSTO] = [4, 7]
+  for (const f of [...(g.protagonistas ?? []), ...(g.totales ?? [])]) {
+    // `E` es lo que YA entró: un HECHO, y se dibuja como tal en negrita.
+    escenario(f, f, E_COBRADO, { bold: true })
+    // `H` es la explosión de gastos que el dueño ESTIMÓ: la única columna de la pestaña que no es un
+    // hecho, y por eso la única en itálica apagada. El cuadro del año no la tiene: su fila la deja
+    // vacía y `escenario` sobre una celda vacía no dibuja nada.
+    escenario(f, f, H_COSTO, { italic: true })
   }
-  // El `Costo proyectado` es la explosión de gastos que el dueño estimó: la única `C` que no es un
-  // hecho en toda la pestaña, y por eso la única que va en itálica apagada.
-  for (const f of [...(g.filasCosto ?? []), ...(g.fTotCosto ? [g.fTotCosto] : [])]) escenario(f, f, C_TOTAL, { italic: true })
 
   // NINGUNA FILA OCULTA Y NI UNA NOTA: lo que existe se ve, y una nota sobrevive a la reescritura
   // salvo que se borre explícitamente.
@@ -837,9 +764,8 @@ export async function formatear(google, sheetId, g) {
   // buscar a qué columna pertenecía cada número. En un estado financiero el rótulo de una columna de
   // cifras va del mismo lado que las cifras. Va DESPUÉS del pase de especies porque el último request
   // gana: adelantarlo lo dejaría sin efecto.
-  for (const [i, fila] of (g.filas ?? []).entries()) {
-    if (!ENCABEZADO_SECCION.test(String(fila?.[0] ?? '').trim())) continue
-    fmt(r(i, i + 1, 1, ANCHO_OBRAS), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
+  for (const f of encabezados) {
+    fmt(r(f - 1, f, 1, ANCHO_OBRAS), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
   }
   await google.spreadsheetBatchUpdate(ID, req)
 }

@@ -16,7 +16,7 @@ import assert from 'node:assert/strict'
 import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 import { netoDeFila, sumaNetaSheet, esMaterialSheet, netoDeFilaCruda } from './costo-materiales.mjs'
 import { bloqueMaterialesPorObra, FILA_TOTAL } from './materiales-por-obra.mjs'
-import { grillaObras, REFS_OBRAS, ANCHO_OBRAS } from './obras-grilla.mjs'
+import { REFS_OBRAS } from './obras-grilla.mjs'
 import { obrasConMateriales } from './obras-con-materiales.mjs'
 import { SIN_FAMILIA, RUBROS_CON_FAMILIA } from './familia-material.mjs'
 import { OBRAS_FUTURAS } from './obras-datos.mjs'
@@ -89,21 +89,37 @@ function pestanaMateriales({ obras = [OBRA, 'San Francisco'], filas = FILAS } = 
   }
 }
 
-/** La celda "Materiales (neto)" de OBRAS para un cliente, evaluada contra el mismo Compras. */
-function pestanaObras({ cliente = OBRA, filas = FILAS } = {}) {
-  const g = grillaObras({ obras: OBRAS_FUTURAS, clientes: [cliente] })
-  const [f0] = g.fClientes
-  const celda = g.filas[f0 - 1][6] // G = "Materiales (neto)"
-  assert.equal(g.filas[f0 - 1][0], cliente)
-  assert.equal(g.filas[0].length, ANCHO_OBRAS)
+/**
+ * LA DEFINICIÓN COMPARTIDA de "costo de materiales", armada con los MISMOS helpers que usa cualquier
+ * pestaña que la publique: el universo es «familia no vacía» (`esMaterialSheet`) y el importe es el
+ * NETO (`sumaNetaSheet`), nunca el Total con IVA.
+ *
+ * ═══ ACÁ SE EVALUABA LA COLUMNA «Materiales (neto)» DE OBRAS (07/09/2026) ═══
+ *
+ * Esa columna salió con el cuadro por CLIENTE, que el dueño mandó sacar en el rediseño de dos
+ * cuadros. La divergencia que este archivo vino a cerrar —OBRAS medía el neto y Materiales el total
+ * con IVA, $409.500 de diferencia sobre este juego de datos— ya no puede nacer de ese lado, porque
+ * ese lado no publica nada.
+ *
+ * LO QUE EL TEST SIGUE PROBANDO, Y ES LO QUE IMPORTA: que la pestaña Materiales mida contra la
+ * definición compartida y no contra una copia suya. Si alguien vuelve a poner el Total en su fórmula,
+ * la igualdad de abajo se rompe y el test dice exactamente cuántos pesos se movió.
+ */
+function definicionCompartida({ cliente = OBRA, filas = FILAS } = {}) {
+  const celda = `=${sumaNetaSheet({
+    neto: RANGOS.neto,
+    iva: RANGOS.iva,
+    total: RANGOS.total,
+    criterios: `${esMaterialSheet(RANGOS.familia)};${RANGOS.obra};"${cliente}"`,
+  })}`
   return { celda, valor: evaluarFormula(celda, { hoja: {}, hojas: { Compras: hojaCompras(filas) } }) }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 test('LA REGLA: las dos pestañas dan EXACTAMENTE el mismo costo de materiales por obra', () => {
-  const obras = pestanaObras()
+  const obras = definicionCompartida()
   const mat = pestanaMateriales()
-  assert.equal(obras.valor, ESPERADO, 'OBRAS mide el neto')
+  assert.equal(obras.valor, ESPERADO, 'la definición compartida mide el neto')
   assert.equal(mat.porObra(0), ESPERADO, 'la pestaña Materiales mide lo mismo')
   assert.equal(obras.valor, mat.porObra(0), 'y por eso no pueden diferir')
   // El criterio viejo de Materiales daba este otro número. Si alguien vuelve a "Total" (O), la
@@ -131,13 +147,13 @@ test('EL DEFECTO, EN FRÍO: sumar "Total" en vez del neto rompe la igualdad', ()
   const vieja = `=SUMIFS(${RANGOS.total};${RANGOS.familia};"<>";${RANGOS.obra};"${OBRA}")`
   const conIva = evaluarFormula(vieja, { hoja: {}, hojas: { Compras: hojaCompras() } })
   assert.equal(conIva, CON_IVA_VIEJO)
-  assert.notEqual(conIva, pestanaObras().valor, 'era esto lo que el dueño veía distinto en dos pestañas')
+  assert.notEqual(conIva, definicionCompartida().valor, 'era esto lo que el dueño veía distinto en dos pestañas')
 })
 
 test('las filas sin "Importe" entran por Total − IVA, no como cero ni con IVA', () => {
   // La fila sin discriminar aporta sus $700.000 enteros: es el caso de las 54 filas reales por $56M.
   const sinEsaFila = FILAS.filter((f) => f[3] !== 700_000)
-  assert.equal(pestanaObras({ filas: sinEsaFila }).valor, ESPERADO - 700_000)
+  assert.equal(definicionCompartida({ filas: sinEsaFila }).valor, ESPERADO - 700_000)
   assert.equal(pestanaMateriales({ filas: sinEsaFila }).porObra(0), ESPERADO - 700_000)
   // Y un CERO tipeado no es un vacío: no se le aplica Total − IVA.
   assert.equal(netoDeFila({ neto: 0, iva: 21_000, total: 121_000 }), 0)
@@ -147,7 +163,7 @@ test('las filas sin "Importe" entran por Total − IVA, no como cero ni con IVA'
 
 test('el material SIN CLASIFICAR sigue siendo material en las dos caras', () => {
   const sinEse = FILAS.filter((f) => f[4] !== SIN_FAMILIA)
-  assert.equal(pestanaObras({ filas: sinEse }).valor, ESPERADO - 300_000)
+  assert.equal(definicionCompartida({ filas: sinEse }).valor, ESPERADO - 300_000)
   assert.equal(pestanaMateriales({ filas: sinEse }).porObra(0), ESPERADO - 300_000)
 })
 
@@ -156,7 +172,7 @@ test('el universo es el mismo: "familia no vacía" y no una lista de rubros', ()
   // con rubro de material y sin familia. La columna de familia YA es la proyección del rubro.
   assert.equal(esMaterialSheet('X'), 'X;"<>"')
   const soloNoMaterial = FILAS.filter((f) => !f[4])
-  assert.equal(pestanaObras({ filas: soloNoMaterial }).valor, 0, 'un F931 de la obra no es material')
+  assert.equal(definicionCompartida({ filas: soloNoMaterial }).valor, 0, 'un F931 de la obra no es material')
   assert.equal(pestanaMateriales({ filas: soloNoMaterial }).porObra(0), 0)
 })
 

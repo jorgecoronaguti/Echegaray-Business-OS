@@ -19,7 +19,7 @@
 
 // LA IDENTIDAD DE UN ÍTEM SE DEFINE UNA SOLA VEZ. `claveDeItem` ya empareja el ítem con su fila del
 // Sheet en la fusión del cuadro 5; una segunda normalización acá se desincronizaría en silencio.
-import { claveDeItem } from './materiales-fusion.mjs'
+import { claveDeItem } from './materiales-previstos.mjs'
 import { totalEgresos } from './obras-datos.mjs'
 // El serial de Sheets se convierte a ISO con la MISMA época que usa el libro de movimientos. Una
 // segunda conversión propia se desincroniza por un día y nadie lo ve hasta que un egreso cae en el
