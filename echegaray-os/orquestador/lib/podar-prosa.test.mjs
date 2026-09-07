@@ -95,3 +95,11 @@ test('si la fila 2 ya declara, la glosa del título no la pisa', () => {
   const filas = [['OBRAS — glosa vieja'], ['Qué contesta · Compras · al 06/09'], [''], []]
   assert.equal(podarProsa(filas, { pestana: 'OBRAS' })[1][0], 'Qué contesta · Compras · al 06/09')
 })
+
+test('el centinela no ciega la renumeración: un título con VACIO al lado sigue siendo un título', () => {
+  const filas = [['Recurrentes'], ['de dónde sale'], [''], [],
+    ['2 · SERVICIOS', VACIO, VACIO], [], ['3 · TOTAL', VACIO]]
+  const podada = podarProsa(filas, { pestana: 'Recurrentes' })
+  assert.equal(podada[4][0], '1 · SERVICIOS')
+  assert.equal(podada[6][0], '2 · TOTAL')
+})

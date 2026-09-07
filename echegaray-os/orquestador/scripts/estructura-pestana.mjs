@@ -24,6 +24,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
@@ -315,7 +316,16 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, reqC)
 
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO), indivisibles: g.indivisibles })
+  // LA COLA (06/09/2026) — LA EXCUSA ERA FALSA Y EL ARCHIVO LA DESMINTIÓ. La lista de
+  // `cola-en-todos-los-generadores.test.mjs` declaraba a esta pestaña de alto fijo, «nunca cambió de
+  // tamaño». La A30 del archivo real dice otra cosa: el aviso largo del bloque de ARCA —el de 190
+  // caracteres que se acortó cuando el bloque cambió de forma— sobrevive ahí abajo, fuera de la
+  // grilla, contando «$1 en 85 filas (-35.721.950.023%)». Ninguna corrida lo escribe hoy y ninguna lo
+  // borraba: el generador no era dueño de su cola. Con `conPrueba` sólo se limpia lo que este
+  // generador probó haber escrito antes.
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, g.filas, { ancho: ANCHO, conPrueba: true, pestana: PESTAÑA })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  const escritura = await escribirPreservando(google, ID, PESTAÑA, cola.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO), indivisibles: g.indivisibles })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace

@@ -44,9 +44,6 @@ const CON_OTRO_MECANISMO = {
     + 'difieren — así se descubrió la fila Z519 de "Obreros 26" que sobrevivía. Se escribe en tramos de 200 filas '
     + 'con `fila0` variable, así que el barrido por grilla no aplica sin rehacer el bucle: se deja como está y se '
     + 'declara, en vez de tocar a ciegas un espejo que no puedo verificar contra el archivo real.',
-  'estructura-pestana.mjs':
-    'medido en la historia del repo: alto FIJO —los rubros salen de `SUBRUBROS`, 7 desde el 21/07— y ancho 32 '
-    + 'desde el primer commit. Nunca cambió de tamaño: agregarle un barrido sería riesgo sin defecto que curar.',
   'resumen-pestana.mjs':
     'medido: alto fijo (la grilla no recorre ningún dato) y ancho 3 desde el 22/07, sin un solo cambio.',
   'cobranzas-por-cliente.mjs':

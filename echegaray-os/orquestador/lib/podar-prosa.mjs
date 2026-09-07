@@ -163,7 +163,14 @@ export function podarProsa(filas = [], { pestana = '', procedencia = '', tope = 
   podarCuerpo(out, tope, 3)
 
   // ── la numeración: 1..N sin huecos, después de podar (podar puede borrar un título entero) ───
-  bloquesDe(out).forEach((b, i) => {
+  //
+  // SE CUENTA SOBRE LA GRILLA SIN CENTINELAS, Y ESO NO ES UN DETALLE. `bloquesDe` sólo reconoce un
+  // título cuando está SOLO en su fila, y el centinela —' ::VACIO:: '— no es una celda vacía para
+  // nadie que mire el texto: con él puesto, ninguna fila parecía tener el título solo y la
+  // renumeración no encontraba un solo bloque. Medido el 06/09 en «Recurrentes»: el podador corrió,
+  // escribió, y los dos bloques siguieron numerados 2 y 3.
+  const vista = out.map((f) => (Array.isArray(f) ? f.map((c) => (c === VACIO ? '' : c)) : f))
+  bloquesDe(vista).forEach((b, i) => {
     if (b.n !== i + 1) out[b.fila - 1][0] = renumerar(out[b.fila - 1][0], i + 1)
   })
 
