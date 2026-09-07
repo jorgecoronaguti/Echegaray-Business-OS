@@ -197,9 +197,9 @@ export function PanelProveedor({
               </div>
             )}
         <p style={{ fontSize: '11px', lineHeight: 1.6, color: V.tenue, marginTop: 10, textWrap: 'pretty' }} data-testid="sin-detalle-comprobantes">
-          Las compras SIN papel no se listan una por una acá: Compras guarda el proveedor como texto
-          libre y ninguna vista publica esas filas por proveedor. Se ven por nombre vinculado, que es
-          lo que el OS sí puede probar; comprobante por comprobante, en la ficha.
+          Las compras SIN papel no se listan una por una acá: Compras guarda el proveedor como
+          texto libre y ninguna vista publica esas filas por proveedor. Se ven por nombre vinculado,
+          que es lo que el OS sí puede probar; comprobante por comprobante, en la ficha.
         </p>
       </div>
 

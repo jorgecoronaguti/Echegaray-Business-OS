@@ -350,6 +350,54 @@ test('la ficha declara EN PANTALLA por qué no hay detalle comprobante por compr
   assert.match(src, /texto libre y ninguna vista publica esas filas por proveedor/)
 })
 
+// ── LOS PAPELES DEL PROVEEDOR (06/09/2026) ───────────────────────────────────────────────────────
+//
+// El canónico v2 declaraba PAPELES «sin fuente: ninguna tabla vincula un archivo con un proveedor».
+// Dejó de ser cierto y lo que se protege ahora es lo contrario: que el bloque esté, que salga de la
+// vista derivada y que no vuelva a pedir N firmas contra un bucket privado.
+
+test('el papel del proveedor se dibuja, y antes que el diagnóstico de nombres', () => {
+  const panel = codigo('PanelProveedor.tsx')
+  assert.match(panel, /<PapelesDelProveedor estado=\{papeles\} \/>/)
+  assert.ok(
+    panel.indexOf('<PapelesDelProveedor') < panel.indexOf('Nombres de Compras vinculados'),
+    'el diagnóstico de la canonicalización quedó antes que lo que la persona vino a buscar',
+  )
+})
+
+test('el panel NO previsualiza: una firma por clic, no una por papel al abrir', () => {
+  const src = codigo('proveedores/PapelesDelProveedor.tsx')
+  // El defecto que esto evita está medido: un proveedor tiene 15 papeles y el bucket es privado.
+  // Previsualizarlos son 15 URLs firmadas apenas se abre el panel, pedidas por adelantado para
+  // archivos que quizá nadie mire.
+  assert.equal(/useEffect/.test(src), false, 'el bloque pide firmas al montar')
+  assert.equal(/<img/.test(src), false, 'el bloque dibuja miniaturas')
+  // La firma la da la server action con el cliente del USUARIO. Armar la URL del bucket acá sería
+  // saltear la policy que decide quién puede ver una factura.
+  assert.match(src, /urlDelAdjunto\(p\.adjunto_id\)/)
+  assert.equal(/object\/public|createSignedUrl|storage\.from/.test(src), false)
+  assert.match(src, /window\.open\(r\.dato, '_blank', 'noopener'\)/)
+})
+
+test('las cuatro ausencias del papel se dicen con palabras, nunca con un cero ni un guión', () => {
+  const src = fuente('proveedores/PapelesDelProveedor.tsx')
+  for (const t of ['papeles-sin-leer', 'sin-papeles-proveedor']) assert.match(src, new RegExp(`data-testid="${t}"`))
+  for (const k of ['sin-compras', 'sin-archivo', 'no-se-sabe']) assert.match(src, new RegExp(`'${k}':`))
+  assert.match(src, /esta ficha no puede afirmar que no tenga ninguno/)
+  // Un importe o una fecha que faltan se nombran; el mockup pone «—» en su tabla ancha y acá, en un
+  // panel de 372px, un guión suelto no se distingue de un dato en blanco.
+  assert.match(src, /'sin fecha'/)
+  assert.match(src, /'sin importe'/)
+  assert.equal(/>—</.test(src), false, 'un guión mudo volvió al panel')
+})
+
+test('los papeles se leen UNA vez por panel abierto, nunca uno por fila de la cartera', () => {
+  const pag = codigoPagina()
+  assert.equal((pag.match(/getPapelesDelProveedor/g) ?? []).length, 2, 'hay más de una lectura de papeles')
+  // Va en la tanda paralela: encadenarla después de resolver la ficha agrega un viaje a cada clic.
+  assert.match(pag, /sp\.p \? getPapelesDelProveedor\(supabase, sp\.p\) : null/)
+})
+
 // ── NULL NUNCA ES CERO ───────────────────────────────────────────────────────────────────────────
 
 test('no pude leerlo, no se le compró y cero son TRES cosas distintas', () => {
